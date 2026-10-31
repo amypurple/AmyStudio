@@ -1,0 +1,1434 @@
+cartridge "PEG SOLITAIRE/C. REGENA, COMPUTE!/1986"
+
+' PEG SOLITAIRE
+' Based on "Solitaire" by C. Regena, "Programming the TI", COMPUTE!
+' September and October 1986 (TI-99/4A; orig/ has the October pages and
+' a transcription of part 2: keeping the moves, backing up, the replay).
+' Made for the ColecoVision in Amy (the language by Amy Bienvenu) by
+' Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the column's rules.
+' - The English cross of 33 holes, all filled but the centre (the TI kept
+'   it in G(12,12) with 2 for the places off the board, 1 a peg, 0 a
+'   hole; here B(121) on an 11 x 11 grid: 2 off the board, 1, 0).
+' - A peg jumps one neighbour (up, down, left or right) into a hole; the
+'   jumped peg is taken off. The aim: one peg left, best in the centre.
+' - Every move is kept (the TI's M$, four digits a move: here the from
+'   and to places), so you can back up a move (the TI's REDO), begin
+'   again, and see the whole game replayed a move at a time.
+' Made for this machine: a wooden board, round pegs, a cursor; the button
+' picks a peg and the stick jumps it (it hops over in an arc and the
+' jumped peg pops); the right button backs up; a menu beside the board:
+' UNDO, HINT, SHOW (the replay), NEW, QUIT; a peg count and a rating at
+' the end; two more boards (the French 37 and the triangle of 15); a
+' hint that follows a known solution (found by solve.py, stored in the
+' ROM: a search on the Z80 would be too slow); sounds; the soft loop
+' "Quiet Board" under play (music first in the sound table, effects
+' after); an original title tune, "Hop Scotch".
+'
+' Controls (either joystick): the stick moves the cursor (right of the
+' board: the menu); the left button picks a peg (again: puts it down);
+' with a peg picked, the stick jumps it that way (a diagonal on the
+' triangle); the right button backs up one move.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const THole00 = 128
+const THole01 = 129
+const THole10 = 130
+const THole11 = 131
+const TPeg00 = 132
+const TPeg01 = 133
+const TPeg10 = 134
+const TPeg11 = 135
+const TSel00 = 136
+const TSel01 = 137
+const TSel10 = 138
+const TSel11 = 139
+const TWood = 140
+const TFtop = 141
+const TFbot = 142
+const TFlft = 143
+const TFrgt = 144
+const TFtl = 145
+const TFtr = 146
+const TFbl = 147
+const TFbr = 148
+const SCursor = 0
+const SHophi = 4
+const SHop = 8
+const SPop = 12
+const SMark = 16
+const NTiles8 = 168
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndPop = 5
+const SndHop = 6
+const SndPick = 7
+const SndBuzz = 8
+const SndUndo = 9
+const SndTick = 10
+const SndEnd = 11
+const SndWin = 12
+const Start0 = 60
+const SolN0 = 31
+const Start1 = 38
+const SolN1 = 35
+const Start2 = 24
+const SolN2 = 13
+' the tune now playing once: frames left (counted in Rearm)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the board: B(place) 2 off the board, 1 a peg, 0 a hole; a place is
+' (row + 2) * 11 + column + 2
+u8 B[121]
+' the moves made: from and to (the jumped peg is half way)
+u8 Mf[40]
+u8 Mt[40]
+u8 Mn = 0
+' Bd: 0 English 33, 1 French 37, 2 triangle 15
+u8 Bd = 0
+u8 Pegs = 0
+' Ci the cursor's place, Sl the picked peg (255 none)
+u8 Ci = 0
+u8 Sl = 255
+' Mode 0 the board, 1 the menu (Mi the item)
+u8 Mode = 0
+u8 Mi = 0
+u8 Ended = 0
+' Ph: 1 waiting on the board, 2 a peg hopping, 3 the replay waiting,
+' 0 elsewhere (for the bot)
+u8 Ph = 0
+u8 Idle = 0
+u8 Hints = 0
+' work
+u8 R0 = 0
+u8 C0 = 0
+u8 Ok = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Pf = 0
+u8 Pt = 0
+u8 Po = 0
+u8 Hf = 0
+u8 Ht = 0
+u8 Dy = 0
+u8 Dx = 0
+u8 Dd = 0
+u8 Dw = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Gx = 0
+u8 Gy = 0
+u8 Fr = 0
+u8 Rn = 0
+' Rk: the replay's move (Hop and the drawing subs use K)
+u8 Rk = 0
+u8 Lk = 0
+u8 Pi = 0
+u16 A16 = 0
+
+u16 NumU = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PgSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+new_game:
+  NewScreen
+  SetupBoard
+  DrawBoard
+  DrawPanel
+  ShowScreen
+  play sound SndRunA
+  play sound SndRunB
+  ReadPad
+  WasBtn = 1
+  WasBtn2 = 1
+  WasStk = 1
+
+pl_loop:
+  Ph = 1
+  Frame1
+  ReadPad
+  Cursor
+  if Mode = 1 then goto menu_mode
+  ' the right button: back up a move
+  if Press2 = 1 then
+    PutDown
+    Undo
+    goto pl_loop
+  end if
+  if Press = 1 then
+    ClearMsg
+    if Sl <> 255 then
+      if Sl = Ci then
+        PutDown
+        goto pl_loop
+      end if
+    end if
+    if B[Ci] = 1 then
+      PutDown
+      Sl = Ci
+      Pi = Ci
+      DrawPlace
+      play sound SndPick
+    else
+      play sound SndBuzz
+    end if
+    goto pl_loop
+  end if
+  ' the stick: with a peg picked it jumps; else it moves the cursor (a step
+  ' at once, then repeating while held)
+  Stk = Lf1 + Rt1
+  Stk = Stk + Up1
+  Stk = Stk + Dn1
+  if Stk = 0 then
+    WasStk = 0
+    goto pl_loop
+  end if
+  if WasStk = 0 then
+    ' a few frames for the other axis of a diagonal (a short tap counts
+    ' as it was first read)
+    StickDir
+    Sx = Dy
+    Sy = Dx
+    for Tm = 1 to 3
+      Frame1
+    next
+    ReadPad
+    Rep = 16
+    WasStk = 1
+    StickDir
+    if Dy = 0 then Dy = Sx
+    if Dx = 0 then Dx = Sy
+    if Sl <> 255 then
+      TryJump
+      if Ok = 1 then goto after_move
+      PutDown
+    end if
+    MoveCursor
+    goto pl_loop
+  end if
+  if Sl <> 255 then goto pl_loop
+  dec Rep
+  if Rep = 0 then
+    Rep = 6
+    StickDir
+    MoveCursor
+  end if
+  goto pl_loop
+
+after_move:
+  CheckEnd
+  goto pl_loop
+
+menu_mode:
+  if Press2 = 1 then
+    LeaveMenu
+    goto pl_loop
+  end if
+  V = Up1 | Dn1
+  V = V | Lf1
+  if V = 0 then WasStk = 0
+  if V = 1 then
+    if WasStk = 0 then
+      WasStk = 1
+      if Lf1 = 1 then
+        LeaveMenu
+        goto pl_loop
+      end if
+      if Up1 = 1 then
+        if Mi > 0 then dec Mi
+      end if
+      if Dn1 = 1 then
+        if Mi < 4 then inc Mi
+      end if
+      ShowMarker
+      play sound SndTick
+    end if
+  end if
+  if Press = 0 then goto pl_loop
+  if Mi = 0 then
+    Undo
+    goto pl_loop
+  end if
+  if Mi = 1 then
+    LeaveMenu
+    Hint
+    goto pl_loop
+  end if
+  if Mi = 2 then
+    Replay
+    goto pl_loop
+  end if
+  if Mi = 3 then
+    stop sound SndRunA
+    stop sound SndRunB
+    mute all
+    goto new_game
+  end if
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  Ph = 0
+  goto title
+
+' ---------------------------------------------------------------------
+' the rules
+
+' ValidRC: Ok 1 when row R0, column C0 is a hole of board Bd
+sub ValidRC:
+  Ok = 0
+  if R0 > 6 then return
+  if C0 > 6 then return
+  if Bd = 2 then
+    if R0 > 4 then return
+    if C0 > R0 then return
+    Ok = 1
+    return
+  end if
+  if R0 >= 2 then
+    if R0 <= 4 then Ok = 1
+  end if
+  if C0 >= 2 then
+    if C0 <= 4 then Ok = 1
+  end if
+  if Bd = 1 then
+    V = R0 | 4
+    W = C0 | 4
+    ' rows and columns 1 and 5 meet at the French board's four corners
+    if V = 5 then
+      if W = 5 then Ok = 1
+    end if
+  end if
+  return
+end sub
+
+' PlaceRC: I the place of row R0, column C0
+sub PlaceRC:
+  I = R0 + 2
+  I = I * 11
+  I = I + C0
+  I = I + 2
+  return
+end sub
+
+' SetupBoard: every hole of board Bd filled but the start one
+sub SetupBoard:
+  for I = 0 to 120
+    B[I] = 2
+  next
+  Pegs = 0
+  for R0 = 0 to 6
+    for C0 = 0 to 6
+      ValidRC
+      if Ok = 1 then
+        PlaceRC
+        B[I] = 1
+        inc Pegs
+      end if
+    next
+  next
+  I = Start0
+  if Bd = 1 then I = Start1
+  if Bd = 2 then I = Start2
+  B[I] = 0
+  dec Pegs
+  Ci = I
+  Mn = 0
+  Sl = 255
+  Mode = 0
+  Mi = 0
+  Ended = 0
+  Hints = 0
+  return
+end sub
+
+' Legal: Ok 1 when the peg at Pf can jump to Pt (Po the jumped place)
+sub Legal:
+  Ok = 0
+  if B[Pf] <> 1 then return
+  if B[Pt] <> 0 then return
+  V = Pt - Pf
+  W = 0
+  if V = 22 then W = 1
+  if V = 234 then W = 1
+  if V = 2 then W = 1
+  if V = 254 then W = 1
+  if Bd = 2 then
+    if V = 24 then W = 1
+    if V = 232 then W = 1
+  end if
+  if W = 0 then return
+  Po = Pf + Pt
+  Po = Po >> 1
+  if B[Po] <> 1 then return
+  Ok = 1
+  return
+end sub
+
+' AnyMove: Ok 1 when some jump is left (Hf, Ht the first found)
+sub AnyMove:
+  for Hf = 0 to 120
+    if B[Hf] = 1 then
+      for K = 0 to 5
+        Dd = Dirs[K]
+        if Bd < 2 then
+          if K > 3 then Dd = 0
+        end if
+        if Dd <> 0 then
+          Pf = Hf
+          Pt = Hf + Dd
+          Pt = Pt + Dd
+          Legal
+          if Ok = 1 then
+            Ht = Pt
+            return
+          end if
+        end if
+      next
+    end if
+  next
+  Ok = 0
+  return
+end sub
+
+' DoMove: the peg at Pf hops to Pt (Legal has said yes); Lk 1 to keep the
+' move in the list
+sub DoMove:
+  Ph = 2
+  HideCursor
+  Hop
+  if Lk = 1 then
+    Mf[Mn] = Pf
+    Mt[Mn] = Pt
+    inc Mn
+  end if
+  dec Pegs
+  ShowCounts
+  return
+end sub
+
+' TryJump: the picked peg jumps the way the stick points (Ok 1 if it did)
+sub TryJump:
+  Ok = 0
+  Pf = Sl
+  ' the first and second choice of direction (0 none)
+  V = 0
+  W = 0
+  if Bd = 2 then
+    if Dy = 255 then
+      V = 245
+      W = 244
+      if Dx = 1 then W = 0
+      if Dx = 255 then
+        V = 244
+        W = 0
+      end if
+    end if
+    if Dy = 1 then
+      V = 12
+      W = 11
+      if Dx = 1 then W = 0
+      if Dx = 255 then
+        V = 11
+        W = 0
+      end if
+    end if
+  else
+    if Dy = 255 then V = 245
+    if Dy = 1 then V = 11
+  end if
+  if Dy = 0 then
+    if Dx = 1 then V = 1
+    if Dx = 255 then V = 255
+  else
+    if Bd < 2 then
+      if Dx = 1 then W = 1
+      if Dx = 255 then W = 255
+    end if
+  end if
+  ' (Legal uses V and W: the second choice waits in Dw)
+  Dw = W
+  if V <> 0 then
+    Dd = V
+    JumpWay
+    if Ok = 1 then return
+  end if
+  if Dw <> 0 then
+    Dd = Dw
+    JumpWay
+  end if
+  return
+end sub
+
+sub JumpWay:
+  Pf = Sl
+  Pt = Pf + Dd
+  Pt = Pt + Dd
+  Legal
+  if Ok = 0 then return
+  Sl = 255
+  Lk = 1
+  DoMove
+  Ci = Pt
+  Ok = 1
+  return
+end sub
+
+' Undo: back up one move (the TI's REDO)
+sub Undo:
+  ClearMsg
+  if Mn = 0 then
+    play sound SndBuzz
+    return
+  end if
+  dec Mn
+  Pf = Mf[Mn]
+  Pt = Mt[Mn]
+  Po = Pf + Pt
+  Po = Po >> 1
+  B[Pf] = 1
+  B[Po] = 1
+  B[Pt] = 0
+  Pi = Pf
+  DrawPlace
+  Pi = Po
+  DrawPlace
+  Pi = Pt
+  DrawPlace
+  inc Pegs
+  Ended = 0
+  Ci = Pf
+  ShowCounts
+  play sound SndUndo
+  return
+end sub
+
+' CheckEnd: no jump left? the game is over: the rating
+sub CheckEnd:
+  AnyMove
+  if Ok = 1 then return
+  Ended = 1
+  ClearMsg
+  print at 24,15, "NO"
+  print at 24,16, "MOVES"
+  if Pegs = 1 then
+    ' (on the French board the centre can't be the last place: any
+    ' one peg is a perfect game there)
+    V = 0
+    if Bd > 0 then V = 1
+    if B[60] = 1 then V = 1
+    if V = 1 then
+      print at 24,18, "GENIUS"
+    else
+      print at 24,18, "MASTER"
+    end if
+    play sound SndWin
+    return
+  end if
+  if Pegs = 2 then print at 24,18, "EXPERT"
+  if Pegs = 3 then print at 24,18, "GOOD"
+  if Pegs = 4 then print at 24,18, "FAIR"
+  if Pegs > 4 then
+    print at 24,18, "TRY"
+    print at 24,19, "AGAIN"
+  end if
+  play sound SndEnd
+  return
+end sub
+
+' SolAt: Hf, Ht move K of the stored solution (N its length)
+sub SolAt:
+  if Bd = 0 then
+    N = SolN0
+    Hf = SolF0[K]
+    Ht = SolT0[K]
+  end if
+  if Bd = 1 then
+    N = SolN1
+    Hf = SolF1[K]
+    Ht = SolT1[K]
+  end if
+  if Bd = 2 then
+    N = SolN2
+    Hf = SolF2[K]
+    Ht = SolT2[K]
+  end if
+  return
+end sub
+
+' Hint: on the path of the stored solution: its next move; off it: which
+' move to back up to, and any jump left
+sub Hint:
+  ClearMsg
+  inc Hints
+  if Ended = 1 then
+    print at 24,15, "NONE"
+    play sound SndBuzz
+    return
+  end if
+  ' how far the moves made follow the solution
+  K = 0
+hint_cmp:
+  if K = Mn then goto hint_on
+  SolAt
+  if Hf <> Mf[K] then goto hint_off
+  if Ht <> Mt[K] then goto hint_off
+  inc K
+  goto hint_cmp
+hint_on:
+  SolAt
+  print at 24,15, "NEXT"
+  print at 24,16, "MOVE:"
+  goto hint_show
+hint_off:
+  print at 24,15, "OFF"
+  print at 24,16, "PATH."
+  print at 24,17, "UNDO"
+  print at 24,18, "TO"
+  NumU = K
+  print at 27,18, digits$(NumU, 2)
+  print at 24,19, "OR:"
+  AnyMove
+hint_show:
+  ' the peg picked, the target marked
+  PutDown
+  Ci = Hf
+  Sl = Hf
+  Pi = Hf
+  DrawPlace
+  Pi = Ht
+  PlaceXY
+  X = Cx << 3
+  Y = Cy << 3
+  dec Y
+  set sprite 4 to Y,X,SMark,3
+  update sprites
+  play sound SndPick
+  return
+end sub
+
+' Replay: the game again from the start, a move at a time (the TI's
+' "PRESS SPACE FOR NEXT MOVE"); the right button skips to the end
+sub Replay:
+  ClearMsg
+  Rn = Mn
+  PutDown
+  HideCursor
+  SetupBoard
+  Mn = Rn
+  DrawBoard
+  ShowCounts
+  print at 24,15, "SHOW"
+  print at 24,17, "FIRE:"
+  print at 24,18, "NEXT"
+  print at 24,19, "RIGHT:"
+  print at 24,20, "END"
+  Rearm
+  wait no fire
+  nmi off
+  ' (the buttons are up now: the next press counts at once)
+  WasBtn = 0
+  WasBtn2 = 0
+  Rk = 0
+rp_next:
+  if Rk = Rn then goto rp_done
+  Ph = 3
+  Frame1
+  ReadPad
+  if Press2 = 1 then goto rp_fast
+  if Press = 0 then goto rp_next
+  Pf = Mf[Rk]
+  Pt = Mt[Rk]
+  Lk = 0
+  Legal
+  DoMove
+  ' the buttons as they are now (one let go during the hop reads as up)
+  ReadPad
+  inc Rk
+  goto rp_next
+rp_fast:
+  ' the rest at once
+  if Rk = Rn then goto rp_done
+  Pf = Mf[Rk]
+  Pt = Mt[Rk]
+  Po = Pf + Pt
+  Po = Po >> 1
+  B[Pf] = 0
+  B[Po] = 0
+  B[Pt] = 1
+  Pi = Pf
+  DrawPlace
+  Pi = Po
+  DrawPlace
+  Pi = Pt
+  DrawPlace
+  dec Pegs
+  inc Rk
+  goto rp_fast
+rp_done:
+  ShowCounts
+  ClearMsg
+  Mode = 0
+  ShowMarker
+  if Rn > 0 then
+    Rk = Rn - 1
+    Ci = Mt[Rk]
+  end if
+  CheckEnd
+  ReadPad
+  WasBtn = 1
+  WasBtn2 = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the cursor and the menu
+
+' StickDir: Dy, Dx from the stick (255 up or left, 1 down or right)
+sub StickDir:
+  Dy = 0
+  Dx = 0
+  if Up1 = 1 then Dy = 255
+  if Dn1 = 1 then Dy = 1
+  if Lf1 = 1 then Dx = 255
+  if Rt1 = 1 then Dx = 1
+  return
+end sub
+
+' MoveCursor: a row up or down (to the nearest hole in it), or along the
+' row; right past the last hole: the menu
+sub MoveCursor:
+  R0 = Dv11[Ci]
+  R0 = R0 - 2
+  C0 = Md11[Ci]
+  C0 = C0 - 2
+  N = C0
+  if Dy <> 0 then
+    for J = 1 to 6
+      R0 = R0 + Dy
+      if R0 > 6 then return
+      ' the nearest hole in row R0: N, N-1, N+1, N-2, ...
+      for K = 0 to 6
+        C0 = N - K
+        ValidRC
+        if Ok = 1 then goto mc_found
+        C0 = N + K
+        ValidRC
+        if Ok = 1 then goto mc_found
+      next
+    next
+    return
+  end if
+  if Dx <> 0 then
+    for J = 1 to 6
+      C0 = C0 + Dx
+      ValidRC
+      if Ok = 1 then goto mc_found
+    next
+    if Dx = 1 then
+      Mode = 1
+      HideCursor
+      ShowMarker
+      play sound SndTick
+    end if
+  end if
+  return
+mc_found:
+  PlaceRC
+  Ci = I
+  play sound SndTick
+  return
+end sub
+
+sub LeaveMenu:
+  Mode = 0
+  ShowMarker
+  return
+end sub
+
+' PutDown: the picked peg is put down (and the hint mark goes)
+sub PutDown:
+  set sprite 4 to 192,0,0,0
+  update sprites
+  if Sl = 255 then return
+  Pi = Sl
+  Sl = 255
+  DrawPlace
+  return
+end sub
+
+' Cursor: the ring round the place under the cursor, blinking
+sub Cursor:
+  if Mode = 1 then
+    V = Tick & 16
+    W = 62
+    if V = 0 then W = 32
+    V = Mi + 9
+    put char W at 24,V
+    return
+  end if
+  Pi = Ci
+  PlaceXY
+  X = Cx << 3
+  Y = Cy << 3
+  dec Y
+  V = Tick & 16
+  W = 15
+  if V = 0 then W = 1
+  set sprite 3 to Y,X,SCursor,W
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  set sprite 3 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ShowMarker: the menu's marker (when the menu is chosen) or none
+sub ShowMarker:
+  for K = 0 to 4
+    V = K + 9
+    put char 32 at 24,V
+  next
+  if Mode = 1 then
+    V = Mi + 9
+    put char 62 at 24,V
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' drawing
+
+' PlaceXY: Cx, Cy the screen cell of place Pi's top-left tile
+sub PlaceXY:
+  R0 = Dv11[Pi]
+  R0 = R0 - 2
+  C0 = Md11[Pi]
+  C0 = C0 - 2
+  if Bd = 2 then
+    V = 4 - R0
+    V = V << 1
+    Cx = V + 4
+    V = C0 << 2
+    Cx = Cx + V
+    V = R0 * 3
+    Cy = V + 5
+    return
+  end if
+  V = C0 * 3
+  Cx = V + 3
+  V = R0 * 3
+  Cy = V + 2
+  return
+end sub
+
+' DrawPlace: the hole or peg at place Pi (light if picked)
+sub DrawPlace:
+  PlaceXY
+  V = THole00
+  if B[Pi] = 1 then
+    V = TPeg00
+    if Pi = Sl then V = TSel00
+  end if
+  X = Cx + 1
+  Y = Cy + 1
+  put char V at Cx,Cy
+  inc V
+  put char V at X,Cy
+  inc V
+  put char V at Cx,Y
+  inc V
+  put char V at X,Y
+  return
+end sub
+
+' DrawBoard: the wooden board (columns 2-23, rows 1-22) and its holes
+sub DrawBoard:
+  for Y = 2 to 21
+    put char TFlft at 2,Y
+    for X = 3 to 22
+      put char TWood at X,Y
+    next
+    put char TFrgt at 23,Y
+  next
+  put char TFtl at 2,1
+  put char TFtr at 23,1
+  put char TFbl at 2,22
+  put char TFbr at 23,22
+  for X = 3 to 22
+    put char TFtop at X,1
+    put char TFbot at X,22
+  next
+  for Pi = 0 to 120
+    if B[Pi] < 2 then DrawPlace
+  next
+  return
+end sub
+
+' DrawPanel: the counts and the menu beside the board
+sub DrawPanel:
+  print at 24,1, "PEGS"
+  print at 24,4, "MOVE"
+  print at 25,9, "UNDO"
+  print at 25,10, "HINT"
+  print at 25,11, "SHOW"
+  print at 25,12, "NEW"
+  print at 25,13, "QUIT"
+  if Bd = 0 then print at 24,22, "33 PEG"
+  if Bd = 1 then print at 24,22, "37 PEG"
+  if Bd = 2 then print at 24,22, "15 PEG"
+  ShowCounts
+  ShowMarker
+  return
+end sub
+
+sub ShowCounts:
+  NumU = Pegs
+  print at 26,2, digits$(NumU, 2)
+  NumU = Mn
+  print at 26,5, digits$(NumU, 2)
+  return
+end sub
+
+sub ClearMsg:
+  for K = 15 to 20
+    print at 24,K, "      "
+  next
+  return
+end sub
+
+' Hop: the peg hops from Pf over Po to Pt in an arc (16 frames); the
+' jumped peg pops half way
+sub Hop:
+  Po = Pf + Pt
+  Po = Po >> 1
+  Pi = Pf
+  PlaceXY
+  Sx = Cx << 3
+  Sy = Cy << 3
+  B[Pf] = 0
+  DrawPlace
+  Pi = Pt
+  PlaceXY
+  Tx = Cx << 3
+  Ty = Cy << 3
+  play sound SndHop
+  for Fr = 1 to 16
+    Frame1
+    if Tx >= Sx then
+      A16 = Tx - Sx
+      A16 = A16 * Fr
+      A16 = A16 >> 4
+      Gx = Sx + A16
+    else
+      A16 = Sx - Tx
+      A16 = A16 * Fr
+      A16 = A16 >> 4
+      Gx = Sx - A16
+    end if
+    if Ty >= Sy then
+      A16 = Ty - Sy
+      A16 = A16 * Fr
+      A16 = A16 >> 4
+      Gy = Sy + A16
+    else
+      A16 = Sy - Ty
+      A16 = A16 * Fr
+      A16 = A16 >> 4
+      Gy = Sy - A16
+    end if
+    ' the arc: up to 16 pixels at the top
+    V = 16 - Fr
+    A16 = V * Fr
+    A16 = A16 >> 2
+    V = A16
+    Gy = Gy - V
+    dec Gy
+    set sprite 0 to Gy,Gx,SHophi,15
+    set sprite 1 to Gy,Gx,SHop,9
+    if Fr = 8 then
+      B[Po] = 0
+      Pi = Po
+      DrawPlace
+      play sound SndPop
+    end if
+    if Fr >= 8 then
+      Pi = Po
+      PlaceXY
+      X = Cx << 3
+      Y = Cy << 3
+      dec Y
+      V = 11
+      if Fr > 12 then V = 9
+      set sprite 2 to Y,X,SPop,V
+    end if
+    update sprites
+  next
+  B[Pt] = 1
+  Pi = Pt
+  DrawPlace
+  for K = 0 to 2
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' screens and the frame
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a row of pegs and holes at row Y (the title and credits)
+sub PegRow:
+  for K = 0 to 6
+    V = K * 3
+    X = V + 6
+    V = TPeg00
+    W = K % 3
+    if W = 1 then V = THole00
+    if K = 3 then V = TSel00
+    put char V at X,Y
+    inc V
+    inc X
+    put char V at X,Y
+    inc V
+    dec X
+    inc Y
+    put char V at X,Y
+    inc V
+    inc X
+    put char V at X,Y
+    dec Y
+  next
+  return
+end sub
+
+' the title: pegs, the rules, a joystick menu (START, the board, CREDITS)
+sub TitlePage:
+  Ph = 0
+  NewScreen
+  print at 3,2, "P E G   S O L I T A I R E"
+  Y = 4
+  PegRow
+  print at 3,8, "JUMP A PEG OVER ITS"
+  print at 3,9, "NEIGHBOUR INTO A HOLE, THE"
+  print at 3,10, "JUMPED PEG COMES OFF. LEAVE"
+  print at 3,11, "ONE PEG, BEST IN THE MIDDLE."
+  print at 3,13, "FIRE PICKS, STICK JUMPS,"
+  print at 3,14, "RIGHT BUTTON BACKS UP."
+  print at 11,17, "START"
+  print at 11,18, "BOARD:"
+  print at 11,19, "CREDITS"
+  ShowBoardName
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasStk = 1
+tp_loop:
+  Frame1
+  ReadPad
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStk = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+      if Menu = 1 then
+        if Rt1 = 1 then NextBoard
+        if Lf1 = 1 then
+          if Bd = 0 then
+            Bd = 2
+          else
+            dec Bd
+          end if
+          ShowBoardName
+        end if
+      end if
+      ShowMenu
+      play sound SndTick
+    end if
+  end if
+  WasStk = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    NextBoard
+    play sound SndTick
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub NextBoard:
+  inc Bd
+  if Bd = 3 then Bd = 0
+  ShowBoardName
+  return
+end sub
+
+sub ShowBoardName:
+  if Bd = 0 then print at 18,18, "ENGLISH 33 "
+  if Bd = 1 then print at 18,18, "FRENCH 37  "
+  if Bd = 2 then print at 18,18, "TRIANGLE 15"
+  return
+end sub
+
+sub ShowMenu:
+  for K = 17 to 19
+    put char 32 at 9,K
+  next
+  V = Menu + 17
+  put char 62 at 9,V
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  Y = 1
+  PegRow
+  print at 3,5, "BASED ON SOLITAIRE BY"
+  print at 3,6, "C. REGENA, PROGRAMMING THE"
+  print at 3,7, "TI, COMPUTE! SEPTEMBER AND"
+  print at 3,8, "OCTOBER 1986 (TI-99/4A)."
+  print at 3,10, "MADE FOR THE COLECOVISION"
+  print at 3,11, "BY CLAUDE (AN AI MADE BY"
+  print at 3,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,13, "2026, IN AMY BY AMY"
+  print at 3,14, "BIENVENU."
+  print at 3,16, "MUSIC: HOP SCOTCH,"
+  print at 3,17, "QUIET BOARD"
+  print at 3,19, "BOARDS: ENGLISH 33,"
+  print at 3,20, "FRENCH 37, TRIANGLE 15"
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  return
+end sub
+
+' the four (six on the triangle) directions of a jump, as bytes that wrap
+data Dirs bytes
+  245,11,255,1,244,12
+end data
+data Dv11 bytes
+  0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10
+end data
+data Md11 bytes
+  0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10
+end data
+data SolF0 bytes
+  38,47,26,28,49,46,50,52,59,26,57,59,61,28,63,61,81,68,70,37,59,72,39,74,71,94,61,92,94,73,82
+end data
+data SolT0 bytes
+  60,49,48,26,47,48,28,50,37,48,59,37,39,50,61,39,59,70,48,59,61,50,61,72,73,72,83,94,72,71,60
+end data
+data SolF1 bytes
+  36,39,58,36,49,27,46,49,51,60,68,46,59,26,73,40,71,69,73,52,61,28,92,94,71,74,93,71,84,63,61,39,37,59,80
+end data
+data SolT1 bytes
+  38,37,36,38,47,49,48,47,49,38,46,48,37,48,51,62,73,71,51,50,39,50,70,72,73,72,71,73,62,61,39,37,59,81,82
+end data
+data SolF2 bytes
+  46,48,24,57,60,69,70,35,36,72,48,71,68
+end data
+data SolT2 bytes
+  24,46,48,35,36,47,48,59,60,48,70,69,70
+end data
+data TilePat bytes
+  $00,$00,$00,$01,$07,$F0,$F0,$E0
+  $00,$00,$00,$80,$E0,$F0,$F0,$07
+  $E0,$F0,$F0,$07,$01,$00,$00,$00
+  $07,$F0,$F0,$E0,$80,$00,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$F0,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$F0,$07,$00,$00
+  $03,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$F0,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$F0,$07,$00,$00
+  $03,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+end data
+data TileCol bytes
+  $0A,$0A,$0A,$1A,$1A,$A1,$A1,$A1
+  $0A,$0A,$0A,$1A,$1A,$1A,$1A,$A1
+  $A1,$A1,$A1,$1A,$1A,$0A,$0A,$0A
+  $A1,$1A,$1A,$1A,$1A,$0A,$0A,$0A
+  $0A,$0A,$9A,$A9,$A9,$A9,$A9,$A8
+  $0A,$0A,$9A,$9A,$A9,$A9,$A9,$A8
+  $A8,$A8,$A8,$A8,$A8,$8A,$0A,$0A
+  $A8,$A8,$A8,$A8,$8A,$8A,$0A,$0A
+  $0A,$0A,$FA,$AF,$AF,$AF,$AF,$AB
+  $0A,$0A,$FA,$FA,$AF,$AF,$AF,$AB
+  $AB,$AB,$AB,$AB,$AB,$BA,$0A,$0A
+  $AB,$AB,$AB,$AB,$BA,$BA,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $06,$06,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$06,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $06,$06,$6A,$6A,$6A,$6A,$6A,$6A
+  $06,$06,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$06,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$06,$06
+end data
+data SpritePat bytes
+  $00,$70,$40,$40,$00,$00,$00,$00,$00,$00,$00,$40,$40,$70,$00,$00
+  $00,$0E,$02,$02,$00,$00,$00,$00,$00,$00,$00,$02,$02,$0E,$00,$00
+  $00,$00,$00,$0E,$1F,$0E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$01,$00,$31,$3F,$3F,$3F,$3F,$3F,$1F,$0F,$07,$00,$00
+  $00,$00,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$FC,$F8,$F0,$E0,$00,$00
+  $00,$00,$01,$11,$09,$04,$00,$38,$00,$04,$09,$11,$01,$00,$00,$00
+  $00,$00,$00,$10,$20,$40,$00,$38,$00,$40,$20,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+PgPop:
+    db $00,$00,$04,$01,$00,$00,$25,$02,$00,$00,$56,$03,$10
+PgHop:
+    db $40,$D6,$20,$02,$40,$AA,$20,$02,$40,$8F,$20,$02,$40,$6B,$30,$03,$50
+PgPick:
+    db $40,$5F,$20,$02,$40,$47,$40,$03,$50
+PgBuzz:
+    db $40,$F9,$13,$08,$40,$FF,$33,$06,$50
+PgUndo:
+    db $40,$6B,$20,$02,$40,$8F,$20,$02,$40,$D6,$40,$03,$50
+PgTick:
+    db $80,$40,$30,$01,$80,$40,$70,$01,$90
+PgEnd:
+    db $40,$D6,$20,$08,$40,$FE,$30,$08,$40,$41,$41,$08,$40,$7C,$51,$10,$50
+PgWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05
+    db $40,$55,$20,$05,$40,$47,$30,$14,$50
+
+PgSoundTable:
+    dw PgTuneMel,$702B
+    dw PgTuneBass,$7035
+    dw PgRunMel,$702B
+    dw PgRunBass,$7035
+    dw PgPop,$703F
+    dw PgHop,$7049
+    dw PgPick,$7049
+    dw PgBuzz,$7049
+    dw PgUndo,$7049
+    dw PgTick,$7053
+    dw PgEnd,$7049
+    dw PgWin,$7049
+; Hop Scotch (original)
+; Tiny Sound, 6 frames per step
+PgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$50,$F1,$22,$1F,$1C,$1F,$24,$01,$23,$21,$1F,$01,$1C,$1D,$1F
+    db $21,$01,$1F,$1D,$1C,$01,$1A,$1C,$1D,$1F,$01,$21,$23,$24,$01,$1F
+    db $1C,$18,$01,$01,$01,$1F,$1C,$1F,$24,$01,$26,$28,$26,$24,$23,$21
+    db $23,$24,$01,$21,$1F,$1C,$01,$1A,$1C,$1D,$1A,$01,$17,$1A,$18,$01
+    db $01,$01,$00,$01
+    db $FF
+PgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$18,$32,$0C,$01,$07,$01,$0C,$01,$07,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$07,$01
+    db $0C,$01,$01,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$05,$01,$0C,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Quiet Board (original)
+; Tiny Sound, 10 frames per step
+PgRunMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$80,$F1,$22,$01,$01,$01,$18,$01,$1C,$01,$01,$01,$17,$01,$1A
+    db $01,$01,$01,$15,$01,$18,$01,$01,$01,$01,$01,$01,$01,$01,$01,$1A
+    db $01,$1D,$01,$01,$01,$18,$01,$1C,$01,$01,$01,$17,$01,$1A,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+PgRunBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$90,$18,$32,$09,$01,$01,$04,$01,$01,$09,$01,$01,$04,$01,$01
+    db $05,$01,$01,$0C,$01,$01,$05,$01,$01,$0C,$01,$01,$0E,$01,$01,$09
+    db $01,$01,$0E,$01,$01,$09,$01,$01,$04,$01,$01,$0B,$01,$01,$04,$01
+    db $01,$08,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1320 @@
+cartridge "PYRAMID POWER/MIKE LIGHTSTONE, COMPUTE!/1986"
+
+' PYRAMID POWER
+' A ColecoVision game based on "Pyramid Power" by Mike Lightstone,
+' COMPUTE! October 1986 (Amiga version of an IBM PC/PCjr game). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a line-by-line port: the rules are the magazine's, the game is
+' built for the ColecoVision (smooth hopping sprites, a palette per level,
+' music under play, three-voice sound). The look is original.
+'
+' The game: hop from cube to cube on a pyramid of 21 cubes (6 rows, 1 to
+' 6 cubes). Each cube you land on for the first time changes colour and
+' scores 100 x the level. Change all 21 for a bonus of 1000 x the level
+' and the next pyramid. A rock falls on the top cube and bounces down at
+' random; a bug-like creature hops after you. Touching either, or hopping
+' off the pyramid, ends the game. Two hovering lifts beside the base (one
+' hop out from the bottom corners, or from the cubes above them) carry you
+' to the top, for 100 x the level off your score. The rock and the
+' creature speed up at level 3 and again at level 8. The high score is
+' kept.
+'
+' Controls (either joystick): the stick's diagonals are the four hops
+' (up-left, up-right, down-left, down-right). Straight pushes work too,
+' turned a quarter clockwise: up = up-right, right = down-right, down =
+' down-left, left = up-left. On the title: left and right choose START or
+' CREDITS, the button confirms.
+'
+' From the listing: 21 cubes, the colour change, 100 points x level a
+' cube, the level bonus (lev*1000), the elevators to the apex for 100 x
+' level off, the bouncing rock from the top, the creature that follows
+' your moves, the fall off the edge, the speed-ups at levels 3 and 8
+' (the listing's sp = .5 at lev 2 and 1 at lev 7, counted from 0), the
+' high score.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table ($702B,
+' $7035), effects after, by channel.
+
+const TTopaL = 128
+const TTopaM = 129
+const TTopaR = 130
+const TTopbL = 131
+const TTopbM = 132
+const TTopbR = 133
+const TFlU = 134
+const TFlD = 135
+const TFrU = 136
+const TFrD = 137
+const TStar = 138
+const TStar2 = 139
+const TMini = 140
+const SSuitR = 0
+const SHeadR = 4
+const SSuitL = 8
+const SHeadL = 12
+const SHopR = 16
+const SHopHR = 20
+const SHopL = 24
+const SHopHL = 28
+const SRock1 = 32
+const SRock2 = 36
+const SBug1 = 40
+const SBug2 = 44
+const SEyes = 48
+const SLift = 52
+const SLift2 = 56
+const SBurst = 60
+const NTiles8 = 104
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndHop = 5
+const SndCube = 6
+const SndThud = 7
+const SndLift = 8
+const SndFall = 9
+const SndHit = 10
+const SndClear = 11
+const SndOver = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u16 Score = 0
+u16 Hi = 0
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 Rs = 1
+u16 Px16 = 0
+u16 Py16 = 0
+u16 Fx16 = 0
+u16 Fy16 = 0
+u16 Ex16 = 0
+u16 Ey16 = 0
+u8 Lev = 1
+u8 Nf = 0
+u8 Fl[21]
+' the hero: Hs 0 standing, 1 hopping, 2 riding a lift, 3 falling, 4 hit,
+' 5 pyramid cleared; Hq Hc its cube (row 1-6, place 1-row), Tq Tc the
+' hop's goal, Ht the hop's frame (0-11), Hd facing 0 right 1 left
+u8 Hs = 0
+u8 Hq = 1
+u8 Hc = 1
+u8 Tq = 1
+u8 Tc = 1
+u8 Ht = 0
+u8 Hd = 0
+u8 St = 0
+u8 Ew = 0
+' the rock: Ra on the pyramid, Rw frames until it falls, Oq Oc its cube,
+' Nq Nc the next, Ot the frame of its period Op
+u8 Ra = 0
+u8 Rw = 0
+u8 Oq = 0
+u8 Oc = 0
+u8 Nq = 0
+u8 Nc = 0
+u8 Ot = 0
+u8 Op = 40
+' the creature: the same, Kp its period
+u8 Ka = 0
+u8 Kw = 0
+u8 Kq = 0
+u8 Kc = 0
+u8 Mq = 0
+u8 Mc = 0
+u8 Kt = 0
+u8 Kp = 48
+' logical cells (worked out by Cells)
+u8 Lq = 0
+u8 Lc = 0
+u8 Rq = 0
+u8 Rc = 0
+u8 Bq = 0
+u8 Bc = 0
+u8 Over = 0
+u8 Hits = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Busy = 0
+u8 Idle = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 D = 0
+u8 Gq = 0
+u8 Gc = 0
+u8 Aq = 0
+u8 Ac = 0
+u8 Sq = 0
+u8 Sc = 0
+
+  tile screen
+  set sound table PySoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  Score = 0
+  Lev = 1
+  Over = 0
+  SetupLevel
+  play sound SndRunA
+  play sound SndRunB
+
+play_loop:
+  Frame1
+  ReadPad
+  HeroStep
+  if Hs <= 2 then
+    RockStep
+    BugStep
+  end if
+  if Hs <= 1 then Collide
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  stop sound SndRunA
+  stop sound SndRunB
+  if Score > Hi then Hi = Score
+  print at 10,22, "GAME  OVER"
+  play sound SndOver
+  Rearm
+  wait 150 frames
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the hero
+
+sub HeroStep:
+  if Hs = 0 then
+    D = 0
+    if Up1 = 1 then D = 2
+    if Rt1 = 1 then D = 4
+    if Dn1 = 1 then D = 3
+    if Lf1 = 1 then D = 1
+    if Up1 = 1 then
+      if Lf1 = 1 then D = 1
+      if Rt1 = 1 then D = 2
+    end if
+    if Dn1 = 1 then
+      if Lf1 = 1 then D = 3
+      if Rt1 = 1 then D = 4
+    end if
+    if D = 0 then return
+    Tq = Hq
+    Tc = Hc
+    if D = 1 then
+      dec Tq
+      dec Tc
+      Hd = 1
+    end if
+    if D = 2 then
+      dec Tq
+      Hd = 0
+    end if
+    if D = 3 then
+      inc Tq
+      Hd = 1
+    end if
+    if D = 4 then
+      inc Tq
+      inc Tc
+      Hd = 0
+    end if
+    Ht = 0
+    Hs = 1
+    play sound SndHop
+    return
+  end if
+  if Hs = 1 then
+    inc Ht
+    if Ht = 12 then Land
+    return
+  end if
+  if Hs = 2 then
+    ' the lift rises to the top cube, then sets you on it
+    inc St
+    if Ex16 < 120 then Ex16 = Ex16 + 2
+    if Ex16 > 120 then Ex16 = Ex16 - 2
+    if Ey16 > 34 then Ey16 = Ey16 - 2
+    if St = 60 then
+      Hq = 1
+      Hc = 1
+      Hs = 0
+      LandCube
+    end if
+    return
+  end if
+  if Hs = 3 then
+    inc St
+    Fy16 = Fy16 + 3
+    if St = 50 then Over = 1
+    return
+  end if
+  if Hs = 4 then
+    inc St
+    if St = 60 then Over = 1
+    return
+  end if
+  if Hs = 5 then
+    inc St
+    V = St & 7
+    if V = 0 then
+      V = St & 8
+      if V = 0 then
+        TopColour(1)
+      else
+        TopColour(2)
+      end if
+    end if
+    if St = 90 then
+      inc Lev
+      SetupLevel
+    end if
+  end if
+  return
+end sub
+
+' Land: the hop ends on a cube, a lift, or nothing
+sub Land:
+  Hq = Tq
+  Hc = Tc
+  Hs = 0
+  Valid(Hq, Hc)
+  if V = 1 then
+    LandCube
+    return
+  end if
+  if Hq = 5 then
+    if Hc = 0 then
+      Ew = 0
+      StartRide
+      return
+    end if
+    if Hc = 6 then
+      Ew = 1
+      StartRide
+      return
+    end if
+  end if
+  ' off the edge
+  CellXY(Hq, Hc)
+  Fx16 = Px16
+  Fy16 = Py16
+  Hs = 3
+  St = 0
+  play sound SndFall
+  return
+end sub
+
+sub StartRide:
+  CellXY(Hq, Hc)
+  Ex16 = Px16
+  Ey16 = Py16
+  Hs = 2
+  St = 0
+  for J = 1 to Lev
+    if Score >= 100 then
+      Score = Score - 100
+    else
+      Score = 0
+    end if
+  next
+  ShowScore
+  play sound SndLift
+  return
+end sub
+
+' LandCube: a new cube changes colour and scores; the 21st clears
+sub LandCube:
+  V = Base[Hq]
+  V = V + Hc
+  dec V
+  if Fl[V] = 1 then return
+  Fl[V] = 1
+  inc Nf
+  for J = 1 to Lev
+    Score = Score + 100
+  next
+  DrawCube(Hq, Hc)
+  play sound SndCube
+  if Nf = 21 then
+    for J = 1 to Lev
+      Score = Score + 1000
+    next
+    Hs = 5
+    St = 0
+    stop sound SndRunA
+    stop sound SndRunB
+    play sound SndClear
+  end if
+  ShowScore
+  return
+end sub
+
+' Valid(Q, C): V = 1 if (Q, C) is a cube of the pyramid
+sub Valid(u8 Vq, u8 Vc):
+  V = 0
+  if Vq < 1 then return
+  if Vq > 6 then return
+  if Vc < 1 then return
+  if Vc > Vq then return
+  V = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the rock: falls on the top cube, bounces down at random, off the bottom
+
+sub RockStep:
+  if Ra = 0 then
+    if Rw > 0 then dec Rw
+    if Rw = 0 then
+      Ra = 1
+      Oq = 1
+      Oc = 1
+      Ot = 0
+      RockPick
+      play sound SndThud
+    end if
+    return
+  end if
+  inc Ot
+  if Ot = Op then
+    Oq = Nq
+    Oc = Nc
+    Ot = 0
+    if Oq = 7 then
+      Ra = 0
+      Rw = 60
+      return
+    end if
+    RockPick
+    play sound SndThud
+  end if
+  return
+end sub
+
+sub RockPick:
+  Rand
+  Nq = Oq + 1
+  Nc = Oc
+  V = Rs & 1
+  if V = 1 then inc Nc
+  return
+end sub
+
+' Rand: a 16-bit xorshift (7, 9, 8)
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the creature: hops toward where you are (the top cube while you ride)
+
+sub BugStep:
+  if Ka = 0 then
+    if Kw > 0 then dec Kw
+    if Kw = 0 then
+      Ka = 1
+      Kq = 1
+      Kc = 1
+      Kt = 0
+      BugPick
+    end if
+    return
+  end if
+  inc Kt
+  if Kt = Kp then
+    Kq = Mq
+    Kc = Mc
+    Kt = 0
+    BugPick
+  end if
+  return
+end sub
+
+sub BugPick:
+  Cells
+  Gq = Lq
+  Gc = Lc
+  Valid(Gq, Gc)
+  if V = 0 then
+    Gq = 1
+    Gc = 1
+  end if
+  if Hs >= 2 then
+    Gq = 1
+    Gc = 1
+  end if
+  ' D: 3 down-left, 4 down-right, 1 up-left, 2 up-right
+  D = 3
+  if Gq > Kq then
+    if Gc > Kc then D = 4
+  end if
+  if Gq < Kq then
+    D = 2
+    if Gc < Kc then D = 1
+  end if
+  if Gq = Kq then
+    if Gc > Kc then
+      D = 2
+      if Kq < 6 then D = 4
+    end if
+    if Gc < Kc then
+      D = 1
+      if Kq < 6 then D = 3
+    end if
+  end if
+  BugTry
+  if V = 1 then return
+  for D = 3 to 4
+    BugTry
+    if V = 1 then return
+  next
+  for D = 1 to 2
+    BugTry
+    if V = 1 then return
+  next
+  return
+end sub
+
+' BugTry: Mq Mc the creature's hop D; V = 1 if it lands on a cube
+sub BugTry:
+  Mq = Kq
+  Mc = Kc
+  if D = 1 then
+    dec Mq
+    dec Mc
+  end if
+  if D = 2 then dec Mq
+  if D = 3 then inc Mq
+  if D = 4 then
+    inc Mq
+    inc Mc
+  end if
+  Valid(Mq, Mc)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Cells: the cells that count for touching (a hop counts from its middle)
+
+sub Cells:
+  Lq = Hq
+  Lc = Hc
+  if Hs = 1 then
+    if Ht >= 6 then
+      Lq = Tq
+      Lc = Tc
+    end if
+  end if
+  Rq = Oq
+  Rc = Oc
+  V = Op - 6
+  if Ot >= V then
+    Rq = Nq
+    Rc = Nc
+  end if
+  Bq = Kq
+  Bc = Kc
+  V = Kp - 6
+  if Kt >= V then
+    Bq = Mq
+    Bc = Mc
+  end if
+  return
+end sub
+
+sub Collide:
+  Cells
+  if Ra = 1 then
+    if Lq = Rq then
+      if Lc = Rc then HitMe
+    end if
+  end if
+  if Hs <> 1 then
+    if Hs <> 0 then return
+  end if
+  if Ka = 1 then
+    if Lq = Bq then
+      if Lc = Bc then HitMe
+    end if
+  end if
+  return
+end sub
+
+sub HitMe:
+  Hs = 4
+  St = 0
+  inc Hits
+  play sound SndHit
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' places: CellXY(Q, C) gives the sprite place over a cube: Px16, and Py16
+' 24 pixels low (so hops above the top stay positive)
+
+sub CellXY(u8 Cq, u8 Cc):
+  Px16 = Cc
+  Px16 = Px16 << 5
+  Px16 = Px16 + 104
+  W16 = Cq
+  W16 = W16 << 4
+  Px16 = Px16 - W16
+  Py16 = Cq
+  Py16 = Py16 << 3
+  W16 = Py16 << 1
+  Py16 = Py16 + W16
+  Py16 = Py16 + 10
+  return
+end sub
+
+' HopAt(Q, C, Q2, C2, T): the place T frames into a hop from Q,C to Q2,C2
+sub HopAt(u8 Aq1, u8 Ac1, u8 Aq2, u8 Ac2, u8 At):
+  CellXY(Aq1, Ac1)
+  ' to the right: down-right (C grows) or up-right (C stays)
+  Sq = 0
+  if Aq2 > Aq1 then
+    if Ac2 > Ac1 then Sq = 1
+  else
+    if Ac2 = Ac1 then Sq = 1
+  end if
+  V = HopX[At]
+  W16 = V
+  if Sq = 1 then
+    Px16 = Px16 + W16
+  else
+    Px16 = Px16 - W16
+  end if
+  V = HopY[At]
+  W16 = V
+  if Aq2 > Aq1 then
+    Py16 = Py16 + W16
+  else
+    Py16 = Py16 - W16
+  end if
+  V = Lift[At]
+  W16 = V
+  Py16 = Py16 - W16
+  return
+end sub
+
+' Put(sprite, pattern, colour): at Px16, Py16 (or hidden off the screen)
+sub PutSpr(u8 Ps, u8 Pn, u8 Pc):
+  if Py16 < 24 then
+    set sprite Ps to 192,0,0,0
+    return
+  end if
+  if Py16 > 215 then
+    set sprite Ps to 192,0,0,0
+    return
+  end if
+  W16 = Py16 - 25
+  Y = W16
+  X = Px16
+  set sprite Ps to Y,X,Pn,Pc
+  return
+end sub
+
+sub DrawSprites:
+  ' the hero (sprites 0 head, 1 suit)
+  if Hs = 1 then
+    HopAt(Hq, Hc, Tq, Tc, Ht)
+  elseif Hs = 2 then
+    Px16 = Ex16
+    Py16 = Ey16
+  elseif Hs = 3 then
+    Px16 = Fx16
+    Py16 = Fy16
+  else
+    CellXY(Hq, Hc)
+  end if
+  Sq = SHeadR
+  Sc = SSuitR
+  if Hd = 1 then
+    Sq = SHeadL
+    Sc = SSuitL
+  end if
+  if Hs = 1 then
+    Sq = SHopHR
+    Sc = SHopR
+    if Hd = 1 then
+      Sq = SHopHL
+      Sc = SHopL
+    end if
+  end if
+  if Hs = 4 then
+    V = St & 4
+    if V = 0 then
+      PutSpr(0, SBurst, 15)
+    else
+      PutSpr(0, SBurst, 11)
+    end if
+    PutSpr(1, Sc, 9)
+  else
+    PutSpr(0, Sq, 11)
+    PutSpr(1, Sc, 9)
+  end if
+  ' the creature (sprites 2 eyes, 3 body)
+  if Ka = 1 then
+    V = Kp - 12
+    if Kt >= V then
+      N = Kt - V
+      HopAt(Kq, Kc, Mq, Mc, N)
+    else
+      CellXY(Kq, Kc)
+    end if
+    V = Tick & 8
+    N = SBug1
+    if V > 0 then N = SBug2
+    PutSpr(2, SEyes, 15)
+    PutSpr(3, N, 13)
+  else
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  end if
+  ' the rock (sprite 4)
+  if Ra = 1 then
+    V = Op - 12
+    if Ot >= V then
+      N = Ot - V
+      HopAt(Oq, Oc, Nq, Nc, N)
+    else
+      CellXY(Oq, Oc)
+    end if
+    ' falling in from above at first
+    if Oq = 1 then
+      if Ot < 12 then
+        if Nq = 2 then
+          V = 11 - Ot
+          V = V << 1
+          W16 = V
+          if Py16 >= W16 then Py16 = Py16 - W16
+        end if
+      end if
+    end if
+    V = Tick & 8
+    N = SRock1
+    if V > 0 then N = SRock2
+    PutSpr(4, N, 10)
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  ' the lifts (sprites 5 left, 6 right): the riding one carries you
+  V = Tick & 4
+  N = SLift
+  if V > 0 then N = SLift2
+  K = 0
+  if Hs = 2 then
+    if Ew = 0 then K = 1
+  end if
+  if K = 1 then
+    Px16 = Ex16
+    Py16 = Ey16 + 6
+  else
+    CellXY(5, 0)
+    Py16 = Py16 + 6
+  end if
+  PutSpr(5, N, 7)
+  K = 0
+  if Hs = 2 then
+    if Ew = 1 then K = 1
+  end if
+  if K = 1 then
+    Px16 = Ex16
+    Py16 = Ey16 + 6
+  else
+    CellXY(5, 6)
+    Py16 = Py16 + 6
+  end if
+  PutSpr(6, N, 7)
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the pyramid
+
+' DrawCube(Q, C): the cube at tile column 12 - 2Q + 4C, row 3Q, its top
+' visited (set B) or not (set A)
+sub DrawCube(u8 Dq, u8 Dc):
+  X = Dc << 2
+  X = X + 12
+  V = Dq << 1
+  X = X - V
+  Y = Dq << 1
+  Y = Y + Dq
+  V = Base[Dq]
+  V = V + Dc
+  dec V
+  N = TTopaL
+  if Fl[V] = 1 then N = TTopbL
+  put char N at X,Y
+  inc N
+  K = X + 1
+  put char N at K,Y
+  K = X + 2
+  put char N at K,Y
+  inc N
+  K = X + 3
+  put char N at K,Y
+  inc Y
+  put char TFlU at X,Y
+  K = X + 1
+  put char TFlU at K,Y
+  K = X + 2
+  put char TFrU at K,Y
+  K = X + 3
+  put char TFrU at K,Y
+  inc Y
+  put char TFlD at X,Y
+  K = X + 1
+  put char TFlD at K,Y
+  K = X + 2
+  put char TFrD at K,Y
+  K = X + 3
+  put char TFrD at K,Y
+  return
+end sub
+
+sub DrawPyramid:
+  for Aq = 1 to 6
+    for Ac = 1 to 6
+      if Ac <= Aq then DrawCube(Aq, Ac)
+    next
+  next
+  return
+end sub
+
+' the level's colours: palette (Lev - 1) & 7, four colours a palette
+' (top not visited, top visited, left face, right face)
+sub LevelColours:
+  copy CubePat count 80 to vram.pattern + 1024
+  copy CubePat count 80 to vram.pattern + 3072
+  copy CubePat count 80 to vram.pattern + 5120
+  TopColour(1)
+  ' faces
+  V = Lev - 1
+  V = V & 7
+  V = V << 2
+  V = V + 2
+  FaceColour(V, 6)
+  inc V
+  FaceColour(V, 8)
+  return
+end sub
+
+' TopColour(1): the two top sets in their colours; TopColour(2): the
+' visited set flashes white
+sub TopColour(u8 Tw):
+  V = Lev - 1
+  V = V & 7
+  V = V << 2
+  N = Pal[V]
+  N = N << 4
+  N = N + 1
+  W16 = 1024
+  fill N count 24 to vram.color + W16
+  inc V
+  N = Pal[V]
+  if Tw = 2 then N = 15
+  N = N << 4
+  N = N + 1
+  W16 = 1048
+  fill N count 24 to vram.color + W16
+  return
+end sub
+
+' FaceColour(palette index, first tile - 128): two face tiles
+sub FaceColour(u8 Fi, u8 Ft):
+  N = Pal[Fi]
+  N = N << 4
+  N = N + 1
+  W16 = Ft
+  W16 = W16 << 3
+  W16 = W16 + 1024
+  fill N count 16 to vram.color + W16
+  return
+end sub
+
+sub SetupLevel:
+  NewScreen
+  LevelColours
+  for J = 0 to 20
+    Fl[J] = 0
+  next
+  Nf = 0
+  Stars
+  DrawPyramid
+  ShowHud
+  Hq = 1
+  Hc = 1
+  Hs = 0
+  Hd = 0
+  Ht = 0
+  St = 0
+  Ra = 0
+  Rw = 120
+  Ka = 0
+  Kw = 200
+  Ot = 0
+  Kt = 0
+  Op = 40
+  Kp = 48
+  if Lev >= 3 then
+    Op = 30
+    Kp = 36
+  end if
+  if Lev >= 8 then
+    Op = 22
+    Kp = 26
+  end if
+  LandCube
+  ShowScreen
+  if Lev > 1 then
+    play sound SndRunA
+    play sound SndRunB
+  end if
+  return
+end sub
+
+' a few stars in the night sky
+sub Stars:
+  for J = 0 to 40
+    Rand
+    V = Rs & 31
+    if V < 2 then V = V + 2
+    if V > 29 then V = V - 4
+    W16 = Rs >> 8
+    K = W16
+    K = K & 15
+    K = K + 2
+    N = TStar
+    if J > 20 then N = TStar2
+    put char N at V,K
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the score line (row 1) and the help line (row 22)
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  ShowScore
+  print at 15,1, "HI"
+  NumU = Hi
+  print at 18,1, digits$(NumU, 5)
+  print at 24,1, "LV"
+  NumU = Lev
+  print at 27,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 7
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Busy = 1
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Busy = 0
+  return
+end sub
+
+' title: the pyramid (half visited), the tune once, START / CREDITS
+sub TitlePage:
+  Lev = 1
+  NewScreen
+  LevelColours
+  for J = 0 to 20
+    V = J & 1
+    Fl[J] = V
+  next
+  Stars
+  DrawPyramid
+  print at 8,1, "PYRAMID  POWER"
+  print at 2,22, "HI"
+  NumU = Hi
+  print at 5,22, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  Hq = 1
+  Hc = 1
+  Hs = 0
+  Hd = 0
+  Ra = 0
+  Ka = 0
+  DrawSprites
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Lf1 | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  DrawSprites
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  print at 14,22, " START   CREDITS"
+  if Menu = 0 then
+    put char 62 at 14,22
+  else
+    put char 62 at 22,22
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 8,2, "PYRAMID  POWER"
+  print at 2,5, "BASED ON PYRAMID POWER BY"
+  print at 2,6, "MIKE LIGHTSTONE, COMPUTE!"
+  print at 2,7, "OCTOBER 1986 (AMIGA"
+  print at 2,8, "VERSION OF AN IBM PC/PCJR"
+  print at 2,9, "GAME)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: SANDSTONE STEPS,"
+  print at 2,19, "HOP ALONG"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$03,$01,$00,$00,$00,$00,$00
+  $E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$40,$00
+  $00,$18,$C3,$81,$18,$24,$00,$00
+end data
+data TileCol bytes
+  $1F,$1F,$1F,$0F,$0F,$0F,$0F,$01
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$01
+  $1F,$1F,$1F,$0F,$0F,$0F,$0F,$01
+  $1F,$1F,$1F,$0F,$0F,$0F,$0F,$01
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$01
+  $1F,$1F,$1F,$0F,$0F,$0F,$0F,$01
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$1F,$01
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$1F,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$51,$01,$01,$01,$01,$51,$01
+  $01,$91,$19,$19,$91,$91,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$03,$07,$0E,$0D,$07,$03,$02,$06,$0E,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$70,$B0,$E0,$C0,$40,$60,$70,$00,$00
+  $03,$07,$05,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$06,$0E
+  $C0,$E0,$A0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$70
+  $00,$00,$00,$00,$00,$03,$07,$0E,$0D,$07,$03,$02,$06,$0E,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$70,$B0,$E0,$C0,$40,$60,$70,$00,$00
+  $03,$07,$05,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$06,$0E
+  $C0,$E0,$A0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$70
+  $00,$00,$00,$00,$00,$0F,$1F,$3B,$03,$07,$07,$0C,$18,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$B0,$D8,$C0,$E0,$60,$30,$00,$00,$00
+  $03,$06,$06,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$18,$00,$00
+  $00,$00,$00,$00,$00,$03,$03,$0D,$1B,$03,$07,$06,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$F0,$F8,$DC,$C0,$E0,$E0,$30,$18,$00,$00,$00
+  $03,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$18,$00,$00
+  $C0,$60,$60,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$00,$00
+  $00,$00,$00,$00,$03,$0F,$1F,$3E,$3B,$3F,$3F,$1B,$0F,$03,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F8,$FC,$F8,$F4,$FC,$F8,$F0,$C0,$00,$00
+  $00,$00,$00,$00,$03,$0F,$1F,$3F,$1F,$2F,$3F,$1F,$0F,$03,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F8,$7C,$DC,$FC,$FC,$D8,$F0,$C0,$00,$00
+  $00,$00,$00,$00,$04,$02,$07,$08,$18,$1F,$3F,$3F,$1F,$14,$24,$00
+  $00,$00,$00,$00,$20,$40,$E0,$10,$18,$F8,$FC,$FC,$F8,$28,$24,$00
+  $00,$00,$00,$00,$04,$02,$07,$08,$18,$1F,$3F,$3F,$1F,$0A,$0A,$00
+  $00,$00,$00,$00,$20,$40,$E0,$10,$18,$F8,$FC,$FC,$F8,$50,$50,$00
+  $00,$00,$00,$00,$00,$00,$00,$04,$06,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$60,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$3F,$7F,$3F,$0F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$FC,$FE,$FC,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$36,$7F,$1B,$0F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$D8,$FE,$6C,$F0,$00,$00
+  $00,$11,$09,$05,$03,$3F,$03,$05,$09,$11,$00,$00,$00,$00,$00,$00
+  $00,$10,$20,$40,$80,$F8,$80,$40,$20,$10,$00,$00,$00,$00,$00,$00
+end data
+data CubePat bytes
+  $1F,$3F,$7F,$FF,$FF,$FF,$FF,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $F8,$FC,$FE,$FF,$FF,$FF,$FF,$00
+  $1F,$3F,$7F,$FF,$FF,$FF,$FF,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $F8,$FC,$FE,$FF,$FF,$FF,$FF,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$7F,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FE,$00
+end data
+
+' the first cube of each row (index Base[Q] + C - 1)
+data Base bytes
+  0,0,1,3,6,10,15
+end data
+' a hop of 12 frames: 16 pixels across, 24 up or down, lifted in an arc
+data HopX bytes
+  0,1,3,4,5,7,8,9,11,12,13,15
+end data
+data HopY bytes
+  0,2,4,6,8,10,12,14,16,18,20,22
+end data
+data Lift bytes
+  0,3,6,8,9,10,10,10,9,8,6,3
+end data
+' palettes: top not visited, top visited, left face, right face
+data Pal bytes
+  10,13,11,9
+  5,11,7,4
+  12,9,3,2
+  14,8,15,14
+  6,3,9,6
+  4,10,5,4
+  13,7,13,12
+  9,15,11,10
+end data
+
+asm {
+PyHop:
+    db $40,$A9,$20,$01,$40,$7F,$20,$01,$40,$6B,$40,$02,$50
+PyCube:
+    db $80,$55,$10,$02,$80,$47,$10,$02,$80,$35,$30,$04,$90
+PyThud:
+    db $00,$00,$25,$02,$00,$00,$46,$03,$10
+PyLift:
+    db $80,$D6,$20,$04,$80,$AA,$20,$04,$80,$8F,$20,$04,$80,$6B,$20,$04,$80,$55,$20,$04,$80,$47,$30,$08
+    db $90
+PyFall:
+    db $40,$47,$20,$04,$40,$55,$20,$04,$40,$6B,$20,$04,$40,$7F,$20,$04,$40,$AA,$30,$04,$40,$D6,$30,$04
+    db $40,$1D,$41,$08,$50
+PyHit:
+    db $00,$00,$04,$04,$00,$00,$25,$08,$00,$00,$56,$0A,$00,$00,$77,$0E,$10
+PyClear:
+    db $80,$8F,$20,$05,$80,$71,$20,$05,$80,$5F,$20,$05,$80,$47,$20,$05,$80,$5F,$20,$05,$80,$47,$30,$0E
+    db $90
+PyOver:
+    db $80,$FE,$20,$0A,$80,$1D,$21,$0A,$80,$41,$21,$0A,$80,$AB,$31,$1A,$90
+
+PySoundTable:
+    dw PyTuneMel,$702B
+    dw PyTuneBass,$7035
+    dw PyRunMel,$702B
+    dw PyRunBass,$7035
+    dw PyHop,$7049
+    dw PyCube,$7053
+    dw PyThud,$703F
+    dw PyLift,$7053
+    dw PyFall,$7049
+    dw PyHit,$703F
+    dw PyClear,$7053
+    dw PyOver,$7053
+; Sandstone Steps (original)
+; Tiny Sound, 7 frames per step
+PyTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$15,$01,$18,$01,$1C,$01,$21,$01,$1F,$01,$1C,$01
+    db $18,$01,$01,$01,$17,$01,$1A,$01,$1D,$01,$21,$01,$20,$01,$1C,$01
+    db $17,$01,$01,$01,$18,$01,$1C,$01,$1F,$01,$24,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$1A,$01,$1D,$01,$21,$01,$20,$01,$1C,$01,$17,$01
+    db $15,$01,$00,$01
+    db $FF
+PyTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$09,$15,$09,$15,$09,$15,$09,$15,$04,$10,$04,$10
+    db $04,$10,$04,$10,$05,$11,$05,$11,$04,$10,$04,$10,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$0E,$1A,$0E,$1A,$04,$10,$04,$10,$09,$15,$09,$15
+    db $04,$10,$04,$10,$09,$01,$01,$01,$00,$01,$01,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Hop Along (original)
+; Tiny Sound, 8 frames per step
+PyRunMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$1C,$01,$01,$01,$1F,$01,$01,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$24,$01,$01,$01,$23,$01,$01,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$1F,$01,$01,$01,$21,$01,$01,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01,$1A,$01,$01,$01,$1C,$01,$01,$01,$15,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+PyRunBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01
+    db $FF
+}

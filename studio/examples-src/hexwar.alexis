@@ -1,0 +1,2407 @@
+cartridge "HEX WAR/TODD HEIMARCK, COMPUTE!/1986"
+
+' HEX WAR
+' Based on "Hex War" by Todd Heimarck, COMPUTE! July 1986: a two-player
+' strategy game for the Commodore 128, with versions for the 64 and the
+' Atari (Kevin Mykytyn), the Apple II (Tim Victor), the IBM PC/PCjr
+' (Patrick Parrish) and the Amiga (Philip Nelson). Made for the
+' ColecoVision in Amy (the language by Amy Bienvenu) by Claude (an AI made
+' by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the listings' rules
+' (orig/ has the scans; the Amiga listing, the most readable, was the
+' main guide). Kept: 61 hexes (T, B from 0 to 8 with T + B from 4 to 12),
+' twelve cities from the listings' DATA, four robot armies of strength
+' 64 (hex 40) a side, three movement points (1 to step, 1 more into a
+' neutral or enemy hex), zones of control, merging (one of the two
+' armies under 32), battles between neighbouring armies (KA = KB = 1/48,
+' KC = 1/32 of an army's strength, split by six coin tosses), injured
+' bots to the botspital (back in five turns, or captured for seven),
+' disrupted bots back next turn or the turn after, a reinforcement queue
+' of 21 turns a side made at random as the listing does, income of a bot
+' per hex owned, new armies entering at the corners (lost when the enemy
+' owns the entry hex, waiting while it is occupied), and the five
+' scenarios. Changed, each noted where it happens: a battle cannot take
+' more bots than an army has (the listing let strengths go below zero and
+' made injured bots out of nothing); values are bytes (a merge over 255
+' is refused; a queue slot spills once into the next).
+' Made for this machine: the honeycomb in big two-colour hexes, the
+' owner's colour, cities, capitals, robots, "++" for an army done, its
+' strength in hexadecimal; a status panel with each number in hex and in
+' decimal (to learn hexadecimal, the Amiga's speech idea); laser bursts
+' in battle; a computer opponent; music under play.
+'
+' Controls: the stick moves the hex cursor. Left and right go to the
+' next hex in the row; the diagonals go to the four slanted neighbours
+' (up-right NE, up-left NW, down-left SW, down-right SE); straight up or
+' down zigzags NE/NW (or SW/SE), so you can climb a column. The left
+' button picks up your army, moves it to the next hex under the cursor,
+' or (on its own hex) stops it ("++") or puts it back if it has not
+' moved. The right button ends your turn. Blue is player one (joystick
+' 1), red player two (joystick 2, or the computer).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TO0t0empty = 128
+const TO0t0city = 129
+const TO0t0capital = 130
+const TO0t1empty = 131
+const TO0t1city = 132
+const TO0t1capital = 133
+const TO0bl = 134
+const TO0br = 135
+const TO1t0empty = 136
+const TO1t0city = 137
+const TO1t0capital = 138
+const TO1t0robot = 139
+const TO1t0plus = 140
+const TO1t1empty = 141
+const TO1t1city = 142
+const TO1t1capital = 143
+const TO1t1robot = 144
+const TO1t1plus = 145
+const TO1b00 = 146
+const TO1b01 = 147
+const TO1b02 = 148
+const TO1b03 = 149
+const TO1b04 = 150
+const TO1b05 = 151
+const TO1b06 = 152
+const TO1b07 = 153
+const TO1b08 = 154
+const TO1b09 = 155
+const TO1b0A = 156
+const TO1b0B = 157
+const TO1b0C = 158
+const TO1b0D = 159
+const TO1b0E = 160
+const TO1b0F = 161
+const TO1b0x = 162
+const TO1b10 = 163
+const TO1b11 = 164
+const TO1b12 = 165
+const TO1b13 = 166
+const TO1b14 = 167
+const TO1b15 = 168
+const TO1b16 = 169
+const TO1b17 = 170
+const TO1b18 = 171
+const TO1b19 = 172
+const TO1b1A = 173
+const TO1b1B = 174
+const TO1b1C = 175
+const TO1b1D = 176
+const TO1b1E = 177
+const TO1b1F = 178
+const TO1b1x = 179
+const TO2t0empty = 180
+const TO2t0city = 181
+const TO2t0capital = 182
+const TO2t0robot = 183
+const TO2t0plus = 184
+const TO2t1empty = 185
+const TO2t1city = 186
+const TO2t1capital = 187
+const TO2t1robot = 188
+const TO2t1plus = 189
+const TO2b00 = 190
+const TO2b01 = 191
+const TO2b02 = 192
+const TO2b03 = 193
+const TO2b04 = 194
+const TO2b05 = 195
+const TO2b06 = 196
+const TO2b07 = 197
+const TO2b08 = 198
+const TO2b09 = 199
+const TO2b0A = 200
+const TO2b0B = 201
+const TO2b0C = 202
+const TO2b0D = 203
+const TO2b0E = 204
+const TO2b0F = 205
+const TO2b0x = 206
+const TO2b10 = 207
+const TO2b11 = 208
+const TO2b12 = 209
+const TO2b13 = 210
+const TO2b14 = 211
+const TO2b15 = 212
+const TO2b16 = 213
+const TO2b17 = 214
+const TO2b18 = 215
+const TO2b19 = 216
+const TO2b1A = 217
+const TO2b1B = 218
+const TO2b1C = 219
+const TO2b1D = 220
+const TO2b1E = 221
+const TO2b1F = 222
+const TO2b1x = 223
+const TRule = 224
+const TChipr = 225
+const TChipb = 226
+const SCursor = 0
+const SBurst = 4
+const NTiles8 = 792
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPlayA = 3
+const SndPlayB = 4
+const SndStep = 5
+const SndPick = 6
+const SndDrop = 7
+const SndBuzz = 8
+const SndMerge = 9
+const SndZap = 10
+const SndBoom = 11
+const SndArrive = 12
+const SndWin = 13
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the armies, side Sd army N at index Sd * 32 + N (N 1-31): Sa strength,
+' Ij injured, Dn disrupted (back next turn), Dt disrupted (back in two
+' turns), Po its hex, Fg 0 free to move, else done or in battles (the
+' number of battles); Sv a copy of the strengths for a battle round
+u8 Sa[64]
+u8 Ij[64]
+u8 Dn[64]
+u8 Po[64]
+u8 Fg[64]
+' the map, hex T * 9 + B: owner (0 none, 1 side 0, 2 side 1) times 32
+' plus the army there
+u8 Mh[81]
+' Dt (disrupted, back in two turns: VRAM spr_pat + 896 + index) and the
+' reinforcement queues (side * 21 + turns to wait: spr_pat + 1024 + slot)
+' live in VRAM, read with VGet and written with VSet
+' the next army number of each side
+u8 Nx[2]
+' the battles (side 0's army, side 1's army) and the strengths before a
+' battle round live in VRAM (BtGet, BtSet, Sv at spr_pat + 768): the
+' ColecoVision has 1K of RAM
+u8 Bp = 0
+u16 Rs = 1
+u16 Rs0 = 1
+u16 Rt = 0
+' Pn the side to move (1 blue, player one, moves first); Gn the scenario
+' 1-5; Mode 0 one player, 1 two players, 2 demo; Winner 0, or side + 1
+u8 Pn = 1
+u8 Gn = 1
+u8 Mode = 0
+u8 Winner = 0
+u16 Turn = 0
+' the army picked: Pk 1, An its number, Ct its hex, Mv points used
+u8 Pk = 0
+u8 An = 0
+u8 Ct = 0
+u8 Mv = 0
+' the cursor hex, the zigzag
+u8 Cur = 40
+u8 Zig = 0
+' for the tests: each action (ActH the hex, ActR its result) and phase
+u16 ActN = 0
+u8 ActH = 0
+u8 ActR = 0
+u16 PhN = 0
+u8 PhK = 0
+' the computer's scratch
+u8 Tg = 0
+u8 Bs = 0
+u8 Bh = 0
+u8 Sc = 0
+u8 Cs = 0
+u8 Ai = 0
+
+u16 NumU = 0
+u16 W16 = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Dn1 = 0
+u8 Up1 = 0
+u8 Btn = 0
+u8 Bt2 = 0
+u8 WasBtn = 0
+u8 WasB2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 Idle = 0
+u8 H = 0
+u8 H2 = 0
+u8 Ia = 0
+u8 Ib = 0
+u8 Sd = 0
+u8 Od = 0
+u8 J = 0
+u8 K = 0
+u8 L = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 T1 = 0
+u8 B1 = 0
+u8 T2 = 0
+u8 B2 = 0
+u8 Aa = 0
+u8 Ab = 0
+u8 Ca = 0
+u8 Cb = 0
+u8 Dd = 0
+u8 Ee = 0
+u8 Ff = 0
+u8 Qa = 0
+u8 Qb = 0
+u8 Ln = 0
+u8 Nb = 0
+u8 Qd = 0
+u8 Mg = 0
+u8 Dg1 = 0
+u8 Dg2 = 0
+u16 Acc = 0
+u16 Vo = 0
+u8 Vv = 0
+u8 Sm = 0
+' InTurn: 1 while a player's stick moves the cursor (for the tests)
+u8 InTurn = 0
+
+  tile screen
+  set sound table HxSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+  Mode = Menu
+  ScenarioPage
+
+new_game:
+  NewGame
+  Phase(8)
+  DrawBoard
+  ShowScreen
+  play sound SndPlayA
+  play sound SndPlayB
+
+round:
+  inc Turn
+  Reveille
+  Phase(1)
+  DrawAll
+  ShowTurn
+  TakeTurn
+  InTurn = 0
+  if Winner = 99 then goto quit_game
+  Pk = 0
+  HideCursor
+  ShowMsg(0)
+  Battle
+  Phase(2)
+  Resolve
+  Phase(3)
+  Battle
+  Phase(4)
+  Prisoners
+  Phase(5)
+  Reinforce
+  Phase(6)
+  DrawAll
+  Outcome
+  Phase(7)
+  if Winner > 0 then goto won
+  Pn = Pn ^ 1
+  goto round
+
+won:
+  stop sound SndPlayA
+  stop sound SndPlayB
+  mute all
+  play sound SndWin
+  print at 2,20, "                            "
+  print at 2,21, "                            "
+  print at 2,22, "                            "
+  if Winner = 2 then
+    print at 3,20, "BLUE (PLAYER ONE) WINS!"
+  else
+    print at 3,20, "RED (PLAYER TWO) WINS!"
+  end if
+  ShowGoalWon
+  print at 3,22, "FIRE: TITLE"
+  for Tm = 1 to 60
+    Frame1
+  next
+  WasBtn = 1
+won_wait:
+  Frame1
+  ReadAny
+  if Press = 0 then goto won_wait
+  goto title
+
+quit_game:
+  stop sound SndPlayA
+  stop sound SndPlayB
+  mute all
+  goto title
+
+' ---------------------------------------------------------------------
+' the rules (model.mjs is the same in JavaScript)
+
+' Rnd16: the random numbers (xorshift)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  return
+end sub
+
+' Rmod(N): a random number 0 to N - 1 (0 when N is 0)
+function Rmod(u8 Rn) as u8
+  Rnd16
+  if Rn = 0 then return 0
+  W16 = Rs % Rn
+  V = W16
+  return V
+
+' Split: Aa heads in six tosses, Ab = 6 - Aa (the listing's line 3100)
+sub Split:
+  Aa = 0
+  for Ln = 1 to 6
+    Rnd16
+    if Rs >= 32768 then inc Aa
+  next
+  Ab = 6 - Aa
+  return
+end sub
+
+' NewGame: the armies, the cities, the reinforcement queues
+sub NewGame:
+  for J = 0 to 63
+    Sa[J] = 0
+    Ij[J] = 0
+    Dn[J] = 0
+    Vo = J + 896
+    VSet(Vo, 0)
+    Po[J] = 0
+    Fg[J] = 0
+  next
+  for J = 0 to 80
+    Mh[J] = 0
+  next
+  Nx[0] = 5
+  Nx[1] = 5
+  for J = 1 to 4
+    H = StartHex[J - 1]
+    Sa[J] = 64
+    Po[J] = H
+    Mh[H] = 32 + J
+    K = J + 32
+    H = StartHex[J + 3]
+    Sa[K] = 64
+    Po[K] = H
+    Mh[H] = 64 + J
+  next
+  ' the queues (lines 1600-1640): a = INT(RND*K*3), five times
+  ' INT(RND*21-8) more, nothing under 16, else (a + K*8) AND 254
+  Rs0 = Rs
+  for Sd = 0 to 1
+    for K = 0 to 20
+      W = K * 3
+      V = Rmod(W)
+      Acc = V
+      for L = 1 to 5
+        V = Rmod(21)
+        Acc = Acc + V
+      next
+      ' Acc is a + 40 (each toss counted from 0, not -8)
+      if Acc < 56 then
+        V = 0
+      else
+        Acc = Acc - 40
+        V = K << 3
+        Acc = Acc + V
+        Acc = Acc & 254
+        V = Acc
+      end if
+      J = Sd * 21
+      J = J + K
+      Vo = J + 1024
+      VSet(Vo, V)
+    next
+  next
+  Pn = 1
+  Turn = 0
+  Winner = 0
+  Pk = 0
+  Cur = 40
+  Bp = 0
+  return
+end sub
+
+' Valid(T, B): 1 if T, B is a hex of the field
+function Valid(u8 Vt, u8 Vb) as u8
+  if Vt > 8 then return 0
+  if Vb > 8 then return 0
+  V = Vt + Vb
+  if V < 4 then return 0
+  if V > 12 then return 0
+  return 1
+
+' Nbr(H, D): the hex next to H in direction D (0-5), 255 if none:
+' 0 T+1 (NE), 1 T+1 B-1 (E), 2 B-1 (SE), 3 T-1 (SW), 4 T-1 B+1 (W),
+' 5 B+1 (NW)
+function Nbr(u8 Nh, u8 Nd) as u8
+  T2 = HT[Nh] + DirT[Nd]
+  B2 = HB[Nh] + DirB[Nd]
+  T2 = T2 - 1
+  B2 = B2 - 1
+  V = Valid(T2, B2)
+  if V = 0 then return 255
+  V = T2 * 9
+  V = V + B2
+  return V
+
+' Adjacent(H, H2): 1 if the two hexes are neighbours
+function Adjacent(u8 Ah, u8 Ah2) as u8
+  for Dd = 0 to 5
+    V = Nbr(Ah, Dd)
+    if V = Ah2 then return 1
+  next
+  return 0
+
+' Dist(H, H2): hexes between two hexes
+function Dist(u8 Gh, u8 Gh2) as u8
+  T1 = HT[Gh]
+  B1 = HB[Gh]
+  T2 = HT[Gh2]
+  B2 = HB[Gh2]
+  if T1 > T2 then
+    V = T1 - T2
+  else
+    V = T2 - T1
+  end if
+  if B1 > B2 then
+    W = B1 - B2
+  else
+    W = B2 - B1
+  end if
+  V = V + W
+  T1 = T1 + B1
+  T2 = T2 + B2
+  if T1 > T2 then
+    W = T1 - T2
+  else
+    W = T2 - T1
+  end if
+  V = V + W
+  V = V >> 1
+  return V
+
+' IsCity(H): 1 a city, 2 a capital (in this scenario), 0 neither
+function IsCity(u8 Ch) as u8
+  for Ln = 0 to 11
+    if CityHex[Ln] = Ch then
+      if Ln = 0 then return 2
+      if Ln = 1 then
+        if Gn = 1 then return 2
+      end if
+      if Ln = 2 then
+        if Gn = 2 then return 2
+      end if
+      return 1
+    end if
+  next
+  return 0
+
+' ClearFlags: Fg 0 for every army of both sides
+sub ClearFlags:
+  for J = 0 to 63
+    Fg[J] = 0
+  next
+  return
+end sub
+
+' FindBattles (lines 2400-2500): every pair of neighbouring armies of
+' the two sides, each pair once
+sub FindBattles:
+  Bp = 0
+  for H = 0 to 80
+    W = Mh[H]
+    Aa = W & 31
+    Ab = W >> 5
+    if Aa = 0 then goto fb_next
+    if Ab = 0 then goto fb_next
+    Ia = Ab - 1
+    Ia = Ia << 5
+    Ia = Ia + Aa
+    if Sa[Ia] = 0 then goto fb_next
+    for Dd = 0 to 2
+      H2 = Nbr(H, Dd)
+      if H2 = 255 then goto fb_dir
+      W = Mh[H2]
+      Ca = W & 31
+      Cb = W >> 5
+      if Ca = 0 then goto fb_dir
+      if Cb = Ab then goto fb_dir
+      if Cb = 0 then goto fb_dir
+      Ib = Cb - 1
+      Ib = Ib << 5
+      Ib = Ib + Ca
+      if Sa[Ib] = 0 then goto fb_dir
+      if Bp < 48 then
+        V = Bp << 1
+        if Ab = 1 then
+          BtSet(V, Aa)
+          inc V
+          BtSet(V, Ca)
+        else
+          BtSet(V, Ca)
+          inc V
+          BtSet(V, Aa)
+        end if
+        inc Bp
+      end if
+fb_dir:
+    next
+fb_next:
+  next
+  return
+end sub
+
+' VGet(O), VSet(O, V): a byte kept in VRAM at spr_pat + O
+function VGet(u16 Go) as u8
+  vpeek vram.spr_pat + Go into V
+  return V
+
+sub VSet(u16 So, u8 Sv2):
+  vpoke vram.spr_pat + So, Sv2
+  return
+end sub
+
+' BtSet(I, V), BtGet(I): the battle list in VRAM
+sub BtSet(u8 Bi, u8 Bv):
+  W16 = Bi + 512
+  vpoke vram.spr_pat + W16, Bv
+  return
+end sub
+
+function BtGet(u8 Bi) as u8
+  W16 = Bi + 512
+  vpeek vram.spr_pat + W16 into V
+  return V
+
+' Battle: the battles, each army's Fg the number it is in
+sub Battle:
+  FindBattles
+  ClearFlags
+  CountBattles
+  return
+end sub
+
+sub CountBattles:
+  if Bp = 0 then return
+  for K = 1 to Bp
+    Qd = K - 1
+    Qd = Qd << 1
+    Ia = BtGet(Qd)
+    inc Qd
+    Ib = BtGet(Qd) + 32
+    W = Fg[Ia]
+    if W < 255 then Fg[Ia] = W + 1
+    W = Fg[Ib]
+    if W < 255 then Fg[Ib] = W + 1
+  next
+  return
+end sub
+
+' Reveille (lines 1900-2050): side Pn's lost armies leave the list, its
+' disrupted bots come back, then the battles (an army in one cannot move)
+sub Reveille:
+rv_again:
+  J = 1
+rv_scan:
+  if J >= Nx[Pn] then goto rv_done
+  Ia = Pn << 5
+  Ia = Ia + J
+  if Sa[Ia] > 0 then
+    inc J
+    goto rv_scan
+  end if
+  ' the army is gone: off the map, the later ones move down
+  H = Po[Ia]
+  W = Mh[H]
+  V = W & 31
+  N = Pn + 1
+  Aa = W >> 5
+  if V = J then
+    if Aa = N then Mh[H] = W & 224
+  end if
+  K = J
+rv_shift:
+  N = Nx[Pn] - 1
+  if K >= N then goto rv_last
+  Ia = Pn << 5
+  Ia = Ia + K
+  Ib = Ia + 1
+  Sa[Ia] = Sa[Ib]
+  Ij[Ia] = Ij[Ib]
+  Dn[Ia] = Dn[Ib]
+  Vo = Ib + 896
+  V = VGet(Vo)
+  Vo = Ia + 896
+  VSet(Vo, V)
+  Po[Ia] = Po[Ib]
+  Fg[Ia] = Fg[Ib]
+  H = Po[Ia]
+  W = Mh[H] & 224
+  Mh[H] = W + K
+  inc K
+  goto rv_shift
+rv_last:
+  Ia = Pn << 5
+  Ia = Ia + K
+  Sa[Ia] = 0
+  Ij[Ia] = 0
+  Dn[Ia] = 0
+  Vo = Ia + 896
+  VSet(Vo, 0)
+  Po[Ia] = 0
+  Fg[Ia] = 0
+  N = Nx[Pn] - 1
+  Nx[Pn] = N
+  goto rv_again
+rv_done:
+  ' the disrupted come back
+  N = Nx[Pn] - 1
+  if N > 0 then
+    for J = 1 to 31
+      if J <= N then
+        Ia = Pn << 5
+        Ia = Ia + J
+        W16 = Sa[Ia] + Dn[Ia]
+        if W16 > 255 then W16 = 255
+        Sa[Ia] = W16
+        Vo = Ia + 896
+        V = VGet(Vo)
+        Dn[Ia] = V
+        VSet(Vo, 0)
+      end if
+    next
+  end if
+  Battle
+  return
+end sub
+
+' Take(I, C): army I loses C bots (never more than it has: a change
+' from the listing, which let strengths go below zero); Cs the bots taken
+sub Take(u8 Ti, u8 Tc):
+  Cs = Tc
+  if Cs > Sa[Ti] then Cs = Sa[Ti]
+  Sa[Ti] = Sa[Ti] - Cs
+  return
+end sub
+
+' AddCap(V, C): V + C, at most 255
+function AddCap(u8 Av, u8 Ac) as u8
+  W16 = Av + Ac
+  if W16 > 255 then W16 = 255
+  V = W16
+  return V
+
+' Resolve (lines 2600-2800): every battle at once, from the strengths
+' before it: each army's share ct = INT(strength / battles) + 1 hits the
+' other with INT(ct/48)+1 vaporized, Aa (or Ab) times INT(ct/48)+1
+' injured, Aa (or Ab) times INT(ct/32)+1 disrupted
+sub Resolve:
+  if Bp = 0 then return
+  for J = 0 to 63
+    W16 = J + 768
+    vpoke vram.spr_pat + W16, Sa[J]
+  next
+  for N = 1 to Bp
+    Qd = N - 1
+    Qd = Qd << 1
+    Ia = BtGet(Qd)
+    inc Qd
+    Ib = BtGet(Qd) + 32
+    BattleShow
+    ' the shares
+    Qa = Share(Ia)
+    Qb = Share(Ib)
+    ' vaporized
+    Split
+    V = Qb / 48
+    V = V + 1
+    Take(Ia, V)
+    V = Qa / 48
+    V = V + 1
+    Take(Ib, V)
+    ' injured
+    Split
+    V = Qb / 48
+    V = V + 1
+    V = V * Aa
+    Take(Ia, V)
+    Ij[Ia] = AddCap(Ij[Ia], Cs)
+    V = Qa / 48
+    V = V + 1
+    V = V * Ab
+    Take(Ib, V)
+    Ij[Ib] = AddCap(Ij[Ib], Cs)
+    ' disrupted
+    Split
+    V = Qb >> 5
+    V = V + 1
+    V = V * Aa
+    Take(Ia, V)
+    Vo = Ia + 896
+    V = VGet(Vo)
+    V = AddCap(V, Cs)
+    VSet(Vo, V)
+    V = Qa >> 5
+    V = V + 1
+    V = V * Ab
+    Take(Ib, V)
+    Vo = Ib + 896
+    V = VGet(Vo)
+    V = AddCap(V, Cs)
+    VSet(Vo, V)
+    H2 = Po[Ib]
+    H = Po[Ia]
+    DrawHex(H)
+    H = H2
+    DrawHex(H)
+  next
+  HideCursor
+  return
+end sub
+
+' Share(I): INT(strength before the round / battles) + 1, at most 255
+function Share(u8 Si) as u8
+  W16 = Si + 768
+  vpeek vram.spr_pat + W16 into V
+  W16 = V
+  V = Fg[Si]
+  if V = 0 then V = 1
+  W16 = W16 / V
+  W16 = W16 + 1
+  if W16 > 255 then W16 = 255
+  V = W16
+  return V
+
+' QAdd(Q, C): C more bots in queue slot Q, the excess over 255 spills
+' into the next slot (and stops at 255 there)
+sub QAdd(u8 Qq, u8 Qc):
+  Vo = Qq + 1024
+  V = VGet(Vo)
+  W16 = V + Qc
+  if W16 > 255 then
+    W16 = W16 - 255
+    VSet(Vo, 255)
+    inc Vo
+    V = VGet(Vo)
+    W16 = W16 + V
+    if W16 > 255 then W16 = 255
+  end if
+  V = W16
+  VSet(Vo, V)
+  return
+end sub
+
+' Prisoners (lines 2200-2320): a destroyed army's disrupted bots go to
+' the enemy's queue in two turns, its injured in six (reprogrammed); an
+' army out of battle sends its injured home, back in four
+sub Prisoners:
+  for Sd = 0 to 1
+    Od = Sd ^ 1
+    N = Nx[Sd] - 1
+    if N = 0 then goto pr_side
+    for J = 1 to 31
+      if J > N then goto pr_army
+      Ia = Sd << 5
+      Ia = Ia + J
+      if Sa[Ia] > 0 then goto pr_home
+      Vo = Ia + 896
+      V = VGet(Vo)
+      W16 = Dn[Ia] + V
+      if W16 > 255 then W16 = 255
+      V = W16
+      Qa = Od * 21
+      Qa = Qa + 2
+      QAdd(Qa, V)
+      Qa = Qa + 4
+      V = Ij[Ia]
+      QAdd(Qa, V)
+      H = Po[Ia]
+      W = Mh[H]
+      V = W & 31
+      Aa = W >> 5
+      Ab = Sd + 1
+      if V = J then
+        if Aa = Ab then Mh[H] = W & 224
+      end if
+      Ij[Ia] = 0
+      Dn[Ia] = 0
+      Vo = Ia + 896
+      VSet(Vo, 0)
+      Po[Ia] = 0
+      Fg[Ia] = 0
+pr_home:
+      if Fg[Ia] > 0 then goto pr_army
+      Qa = Sd * 21
+      Qa = Qa + 4
+      V = Ij[Ia]
+      QAdd(Qa, V)
+      Ij[Ia] = 0
+pr_army:
+    next
+pr_side:
+  next
+  return
+end sub
+
+' Reinforce (lines 2900-3060): a bot per hex owned joins side Pn's queue
+' next turn; then the other side's queue moves on: its first slot enters
+' at its corner as a new army (unless the corner is occupied: then the
+' queue waits; or owned by the enemy: then this turn's and next turn's
+' bots are lost)
+sub Reinforce:
+  Nb = 0
+  V = Pn + 1
+  for H = 0 to 80
+    W = Mh[H] >> 5
+    if W = V then inc Nb
+  next
+  Qa = Pn * 21
+  Qa = Qa + 1
+  QAdd(Qa, Nb)
+  Od = Pn ^ 1
+  H = Pn << 3
+  H = H + 36
+  W = Mh[H]
+  V = W & 31
+  if V > 0 then return
+  Qa = Od * 21
+  V = W >> 5
+  W = Pn + 1
+  if V = W then
+    Vo = Qa + 1024
+    VSet(Vo, 0)
+    inc Vo
+    VSet(Vo, 0)
+    goto rf_shift
+  end if
+  J = Nx[Od]
+  if J > 31 then return
+  Vo = Qa + 1024
+  V = VGet(Vo)
+  if V = 0 then goto rf_shift
+  Nx[Od] = J + 1
+  W = Od + 1
+  W = W << 5
+  Mh[H] = W + J
+  Ia = Od << 5
+  Ia = Ia + J
+  Sa[Ia] = V
+  Ij[Ia] = 0
+  Dn[Ia] = 0
+  Vo = Ia + 896
+  VSet(Vo, 0)
+  Po[Ia] = H
+  Fg[Ia] = 0
+  play sound SndArrive
+rf_shift:
+  for K = 0 to 19
+    Vo = Qa + K
+    Vo = Vo + 1025
+    V = VGet(Vo)
+    dec Vo
+    VSet(Vo, V)
+  next
+  Vo = Qa + 1044
+  VSet(Vo, 0)
+  return
+end sub
+
+' Outcome (lines 3400-3640): the scenario's goal, side 0 checked first
+sub Outcome:
+  Winner = 0
+  if Gn = 1 then
+    H = CityHex[1]
+    V = Mh[H] >> 5
+    if V = 1 then Winner = 1
+  end if
+  if Gn = 2 then
+    H = CityHex[2]
+    V = Mh[H] >> 5
+    if V = 1 then Winner = 1
+  end if
+  if Gn <= 2 then
+    if Winner = 0 then
+      H = CityHex[0]
+      V = Mh[H] >> 5
+      if V = 2 then Winner = 2
+    end if
+    return
+  end if
+  CountGoal
+  if Gn = 3 then L = 8
+  if Gn = 4 then L = 6
+  if Gn = 5 then L = 40
+  if Qa >= L then
+    Winner = 1
+    return
+  end if
+  if Qb >= L then Winner = 2
+  return
+end sub
+
+' CountGoal: Qa, Qb what side 0 and side 1 hold toward the goal (cities
+' owned; cities owned with an army there, out of battle; hexes owned)
+sub CountGoal:
+  Qa = 0
+  Qb = 0
+  if Gn = 5 then
+    for H = 0 to 80
+      V = Mh[H] >> 5
+      if V = 1 then inc Qa
+      if V = 2 then inc Qb
+    next
+    return
+  end if
+  for K = 0 to 11
+    H = CityHex[K]
+    W = Mh[H]
+    V = W >> 5
+    Aa = W & 31
+    if Gn = 4 then
+      if V > 0 then
+        if Aa = 0 then
+          V = 0
+        else
+          Ia = V - 1
+          Ia = Ia << 5
+          Ia = Ia + Aa
+          if Fg[Ia] > 0 then V = 0
+        end if
+      end if
+    end if
+    if V = 1 then inc Qa
+    if V = 2 then inc Qb
+  next
+  return
+end sub
+
+' Act(H): the button on hex H, for side Pn (lines 1100-1420); ActR the
+' result: 1 picked, 2 put back, 3 stopped, 4 moved, 5 moved and done,
+' 6 merged, 9 refused
+sub Act(u8 Xh):
+  ActH = Xh
+  ActR = 9
+  W = Mh[Xh]
+  Aa = W & 31
+  Ab = W >> 5
+  N = Pn + 1
+  if Pk = 0 then
+    if Ab <> N then goto act_end
+    if Aa = 0 then goto act_end
+    Ia = Pn << 5
+    Ia = Ia + Aa
+    if Fg[Ia] > 0 then goto act_end
+    Pk = 1
+    An = Aa
+    Ct = Xh
+    Mv = 0
+    ActR = 1
+    goto act_end
+  end if
+  Ia = Pn << 5
+  Ia = Ia + An
+  if Xh = Ct then
+    if Mv = 0 then
+      Pk = 0
+      ActR = 2
+    else
+      Fg[Ia] = 1
+      Pk = 0
+      ActR = 3
+    end if
+    goto act_end
+  end if
+  ' an enemy army there: no
+  if Aa > 0 then
+    if Ab <> N then goto act_end
+  end if
+  V = Adjacent(Ct, Xh)
+  if V = 0 then goto act_end
+  if Aa > 0 then
+    ' a merge: one of the two under 32 (and the sum at most 255)
+    Mg = Aa
+    Ib = Pn << 5
+    Ib = Ib + Aa
+    if Sa[Ib] > 31 then
+      if Sa[Ia] > 31 then goto act_end
+    end if
+    W16 = Sa[Ib] + Sa[Ia]
+    if W16 > 255 then goto act_end
+    Sa[Ib] = W16
+    Ij[Ib] = AddCap(Ij[Ib], Ij[Ia])
+    Dn[Ib] = AddCap(Dn[Ib], Dn[Ia])
+    Vo = Ia + 896
+    V = VGet(Vo)
+    Ff = V
+    Vo = Ib + 896
+    V = VGet(Vo)
+    V = AddCap(V, Ff)
+    VSet(Vo, V)
+    Sa[Ia] = 0
+    Ij[Ia] = 0
+    Dn[Ia] = 0
+    Vo = Ia + 896
+    VSet(Vo, 0)
+    Fg[Ib] = 1
+    W = Mh[Ct] & 224
+    Mh[Ct] = W
+    H = Ct
+    DrawHex(H)
+    Ct = Xh
+    An = Mg
+    Pk = 0
+    ActR = 6
+    H = Xh
+    DrawHex(H)
+    goto act_end
+  end if
+  ' a step: one point, one more into a hex not ours
+  inc Mv
+  if Ab <> N then inc Mv
+  W = Mh[Ct] & 224
+  Mh[Ct] = W
+  H = Ct
+  DrawHex(H)
+  W = N << 5
+  Mh[Xh] = W + An
+  Po[Ia] = Xh
+  Ct = Xh
+  ' a zone of control: an enemy army next to it ends the move
+  Od = 2 - Pn
+  for Dd = 0 to 5
+    H2 = Nbr(Xh, Dd)
+    if H2 < 255 then
+      W = Mh[H2]
+      V = W >> 5
+      if V = Od then
+        V = W & 31
+        if V > 0 then Mv = 3
+      end if
+    end if
+  next
+  ActR = 4
+  if Mv >= 3 then
+    Fg[Ia] = 1
+    Pk = 0
+    ActR = 5
+  end if
+  H = Xh
+  DrawHex(H)
+act_end:
+  inc ActN
+  Frame1
+  return
+end sub
+
+' CanMove: V 1 if side Pn has an army free to move
+sub CanMove:
+  V = 0
+  N = Nx[Pn] - 1
+  if N = 0 then return
+  for K = 1 to 31
+    if K <= N then
+      Ia = Pn << 5
+      Ia = Ia + K
+      if Sa[Ia] > 0 then
+        if Fg[Ia] = 0 then V = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' Phase(K): a phase done (for the tests), and a frame
+sub Phase(u8 Pk2):
+  PhK = Pk2
+  inc PhN
+  Frame1
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' a turn
+
+sub TakeTurn:
+  Pk = 0
+  V = 0
+  if Mode = 2 then V = 1
+  if Mode = 0 then
+    if Pn = 0 then V = 1
+  end if
+  if V = 1 then
+    AiTurn
+    return
+  end if
+  ' a human: the cursor on the first army free to move
+  Cur = 40
+  for K = 31 to 1 step -1
+    Ia = Pn << 5
+    Ia = Ia + K
+    N = Nx[Pn]
+    if K < N then
+      if Sa[Ia] > 0 then
+        if Fg[Ia] = 0 then Cur = Po[Ia]
+      end if
+    end if
+  next
+  ShowMsg(1)
+  ShowCursor
+  ShowInfo
+  WasBtn = 1
+  WasB2 = 1
+  Rep = 0
+tt_loop:
+  InTurn = 1
+  Frame1
+  ReadPad
+  ' the stick
+  V = 0
+  if Up1 = 1 then V = 1
+  if Dn1 = 1 then V = 2
+  W = 0
+  if Lf1 = 1 then W = 1
+  if Rt1 = 1 then W = 2
+  V = V * 3
+  V = V + W
+  if V = 0 then
+    Rep = 0
+  else
+    if Rep = 0 then
+      CurMove(V)
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        CurMove(V)
+        Rep = 7
+      end if
+    end if
+  end if
+  if Press = 1 then
+    H = Cur
+    Act(H)
+    if ActR = 9 then
+      play sound SndBuzz
+    elseif ActR = 1 then
+      play sound SndPick
+    elseif ActR = 6 then
+      play sound SndMerge
+    elseif ActR = 2 then
+      play sound SndDrop
+    elseif ActR = 3 then
+      play sound SndDrop
+    else
+      play sound SndStep
+    end if
+    ShowCursor
+    ShowInfo
+    CanMove
+    if V = 0 then
+      if Pk = 0 then return
+    end if
+  end if
+  if Press2 = 1 then return
+  goto tt_loop
+end sub
+
+' CurMove(D): the stick (D = 3 * vertical + horizontal: 1 left, 2 right,
+' 3 up, 4 up-left, 5 up-right, 6 down, 7 down-left, 8 down-right)
+sub CurMove(u8 Md):
+  Qd = 255
+  if Md = 1 then Qd = 4
+  if Md = 2 then Qd = 1
+  if Md = 4 then Qd = 5
+  if Md = 5 then Qd = 0
+  if Md = 7 then Qd = 3
+  if Md = 8 then Qd = 2
+  if Md = 3 then
+    if Zig = 0 then
+      Qd = 0
+    else
+      Qd = 5
+    end if
+    Zig = Zig ^ 1
+  end if
+  if Md = 6 then
+    if Zig = 0 then
+      Qd = 3
+    else
+      Qd = 2
+    end if
+    Zig = Zig ^ 1
+  end if
+  if Qd = 255 then return
+  W = Nbr(Cur, Qd)
+  if W = 255 then
+    ' straight up or down at an edge: try the other diagonal
+    if Md = 3 then Qd = Qd ^ 5
+    if Md = 6 then Qd = Qd ^ 1
+    W = Nbr(Cur, Qd)
+  end if
+  if W = 255 then return
+  Cur = W
+  ShowCursor
+  ShowInfo
+  return
+end sub
+
+' AiTurn: the computer moves side Pn's armies one after another
+sub AiTurn:
+  ShowMsg(2)
+  for Ai = 1 to 31
+    N = Nx[Pn]
+    if Ai >= N then goto ai_army
+    Ia = Pn << 5
+    Ia = Ia + Ai
+    if Sa[Ia] = 0 then goto ai_army
+    if Fg[Ia] > 0 then goto ai_army
+    H = Po[Ia]
+    Cur = H
+    ShowCursor
+    ShowInfo
+    Wait8
+    Act(H)
+    if ActR <> 1 then goto ai_army
+    play sound SndPick
+    AiTarget
+ai_step:
+    ' the best next hex, or stay
+    Ia = Pn << 5
+    Ia = Ia + An
+    H = Ct
+    Bs = Score(H)
+    Bh = Ct
+    for Ee = 0 to 5
+      H2 = Nbr(Ct, Ee)
+      if H2 < 255 then
+        V = Legal(H2)
+        if V = 1 then
+          H = H2
+          Sc = Score(H)
+          if Sc > Bs then
+            Bs = Sc
+            Bh = H2
+          end if
+        end if
+      end if
+    next
+    Cur = Bh
+    ShowCursor
+    Wait8
+    H = Bh
+    Act(H)
+    if ActR = 9 then
+      H = Ct
+      Act(H)
+    end if
+    if ActR = 6 then
+      play sound SndMerge
+    elseif ActR >= 4 then
+      play sound SndStep
+    else
+      play sound SndDrop
+    end if
+    ShowInfo
+    if Pk = 1 then goto ai_step
+ai_army:
+    if Mode = 2 then
+      ReadAny
+      if Press = 1 then
+        Winner = 99
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' Legal(H): 1 if the army picked may go to H (a step, or a merge it
+' would like: both armies small)
+function Legal(u8 Lh) as u8
+  W = Mh[Lh]
+  Aa = W & 31
+  Ab = W >> 5
+  N = Pn + 1
+  if Aa = 0 then return 1
+  if Ab <> N then return 0
+  Ib = Pn << 5
+  Ib = Ib + Aa
+  if Sa[Ib] > 23 then
+    if Sa[Ia] > 23 then return 0
+  end if
+  if Sa[Ib] > 31 then
+    if Sa[Ia] > 31 then return 0
+  end if
+  W16 = Sa[Ib] + Sa[Ia]
+  if W16 > 255 then return 0
+  return 1
+
+' AiTarget: Tg, where the army picked heads
+sub AiTarget:
+  Ia = Pn << 5
+  Ia = Ia + An
+  if Gn <= 2 then
+    ' the enemy's capital (side 0 wants city 2 or 3, side 1 city 1)
+    if Pn = 1 then
+      Tg = CityHex[0]
+    else
+      Tg = CityHex[Gn]
+    end if
+    ' unless an enemy army is near our own capital: the nearest army
+    ' of ours goes home
+    if Pn = 1 then
+      H2 = CityHex[Gn]
+    else
+      H2 = CityHex[0]
+    end if
+    Ff = 0
+    for H = 0 to 80
+      W = Mh[H]
+      V = W >> 5
+      Aa = W & 31
+      if Aa > 0 then
+        if V = 2 - Pn then
+          V = Dist(H, H2)
+          if V <= 2 then Ff = 1
+        end if
+      end if
+    next
+    if Ff = 1 then
+      ' are we the nearest?
+      Dd = Dist(Ct, H2)
+      Ee = 1
+      N = Nx[Pn] - 1
+      for K = 1 to 31
+        if K <= N then
+          Ib = Pn << 5
+          Ib = Ib + K
+          if Sa[Ib] > 0 then
+            H = Po[Ib]
+            V = Dist(H, H2)
+            if V < Dd then Ee = 0
+          end if
+        end if
+      next
+      if Ee = 1 then Tg = H2
+    end if
+    return
+  end if
+  ' cities (scenarios 3 and 4) or hexes (5): the nearest one not ours
+  Bs = 255
+  Tg = Ct
+  N = Pn + 1
+  for H = 0 to 80
+    T1 = HT[H]
+    B1 = HB[H]
+    V = Valid(T1, B1)
+    if V = 1 then
+      W = Mh[H]
+      V = W >> 5
+      Ff = 0
+      if V <> N then Ff = 1
+      if Gn = 4 then
+        if V = N then
+          V = W & 31
+          if V = 0 then Ff = 1
+        end if
+      end if
+      if Gn < 5 then
+        V = IsCity(H)
+        if V = 0 then Ff = 0
+      end if
+      if Ff = 1 then
+        V = Dist(Ct, H)
+        if V < Bs then
+          Bs = V
+          Tg = H
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Score(H): how much the army picked (index Ia) likes hex H: near its
+' goal, new ground, cities, and away from stronger enemies (toward
+' weaker ones)
+function Score(u8 Sh) as u8
+  V = Dist(Sh, Tg)
+  W16 = 180
+  if V = 0 then W16 = 210
+  V = V * 12
+  if V > 170 then V = 170
+  W16 = W16 - V
+  W = Mh[Sh]
+  V = W >> 5
+  N = Pn + 1
+  if V <> N then W16 = W16 + 4
+  Ff = IsCity(Sh)
+  if Ff > 0 then
+    if V <> N then W16 = W16 + 6
+  end if
+  Od = 2 - Pn
+  for Dd = 0 to 5
+    H = Nbr(Sh, Dd)
+    if H < 255 then
+      W = Mh[H]
+      V = W >> 5
+      if V = Od then
+        V = W & 31
+        if V > 0 then
+          Ib = 1 - Pn
+          Ib = Ib << 5
+          Ib = Ib + V
+          if Sa[Ib] > Sa[Ia] then
+            if W16 > 40 then
+              W16 = W16 - 40
+            else
+              W16 = 0
+            end if
+          else
+            W16 = W16 + 5
+          end if
+        end if
+      end if
+    end if
+  next
+  if W16 > 250 then W16 = 250
+  V = W16
+  return V
+
+sub Wait8:
+  for Tm = 1 to 8
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the screen
+
+' DrawHex(H): hex H as its owner, icon and army show it
+sub DrawHex(u8 Dh):
+  T1 = HT[Dh]
+  B1 = HB[Dh]
+  V = Valid(T1, B1)
+  if V = 0 then return
+  W = Mh[Dh]
+  Aa = W & 31
+  Ab = W >> 5
+  ' where: column 10 + T - B, row 26 - 2 (T + B)
+  X = HT[Dh] + 10
+  X = X - HB[Dh]
+  Y = HT[Dh] + HB[Dh]
+  Y = Y << 1
+  Y = 26 - Y
+  Ff = IsCity(Dh)
+  if Ab = 0 then
+    V = 128 + Ff
+    put char V at X,Y
+    V = V + 3
+    inc X
+    put char V at X,Y
+    inc Y
+    put char 135 at X,Y
+    dec X
+    put char 134 at X,Y
+    return
+  end if
+  ' an owner's hexes: base 136 or 180
+  Ca = Ab - 1
+  Ca = Ca * 44
+  Ca = Ca + 136
+  Cb = Ff
+  Dg1 = 16
+  Dg2 = 16
+  if Aa > 0 then
+    Ib = Ab - 1
+    Ib = Ib << 5
+    Ib = Ib + Aa
+    Cb = 3
+    if Fg[Ib] > 0 then Cb = 4
+    V = Sa[Ib]
+    Dg1 = V >> 4
+    Dg2 = V & 15
+  end if
+  V = Ca + Cb
+  put char V at X,Y
+  V = V + 5
+  inc X
+  put char V at X,Y
+  inc Y
+  V = Ca + 27
+  V = V + Dg2
+  put char V at X,Y
+  dec X
+  V = Ca + 10
+  V = V + Dg1
+  put char V at X,Y
+  return
+end sub
+
+sub DrawAll:
+  for H2 = 0 to 80
+    H = H2
+    DrawHex(H)
+  next
+  ShowQueues
+  ShowGoal
+  return
+end sub
+
+' DrawBoard: the whole game screen
+sub DrawBoard:
+  NewScreen
+  for Y = 1 to 19
+    put char TRule at 20,Y
+  next
+  DrawAll
+  return
+end sub
+
+' ShowTurn: whose turn, on the panel
+sub ShowTurn:
+  print at 21,1, "TURN"
+  NumU = Turn
+  print at 26,1, digits$(NumU, 3)
+  if Pn = 1 then
+    put char TChipb at 21,2
+    print at 22,2, "BLUE   "
+  else
+    put char TChipr at 21,2
+    print at 22,2, "RED    "
+  end if
+  return
+end sub
+
+' ShowInfo: what is under the cursor (an army's numbers in hex and
+' decimal), and the moves left of the army picked
+sub ShowInfo:
+  print at 21,3, "         "
+  if Pk = 1 then
+    print at 21,3, "MOVES"
+    V = 3 - Mv
+    if Mv > 3 then V = 0
+    V = V + 48
+    put char V at 27,3
+  end if
+  W = Mh[Cur]
+  Aa = W & 31
+  Ab = W >> 5
+  for Y = 5 to 10
+    print at 21,Y, "         "
+  next
+  if Aa = 0 then
+    V = IsCity(Cur)
+    if V = 1 then print at 21,5, "CITY"
+    if V = 2 then print at 21,5, "CAPITAL"
+    if V = 0 then print at 21,5, "HEX"
+    T1 = HT[Cur] + 48
+    B1 = HB[Cur] + 48
+    put char T1 at 21,6
+    put char 46 at 22,6
+    put char B1 at 23,6
+    return
+  end if
+  Ia = Ab - 1
+  Ia = Ia << 5
+  Ia = Ia + Aa
+  print at 21,5, "ARMY"
+  NumU = Aa
+  print at 26,5, digits$(NumU, 2)
+  print at 21,6, "   HX DEC"
+  print at 21,7, "ST"
+  V = Sa[Ia]
+  Numbers(7, V)
+  print at 21,8, "IN"
+  V = Ij[Ia]
+  Numbers(8, V)
+  print at 21,9, "D1"
+  V = Dn[Ia]
+  Numbers(9, V)
+  print at 21,10, "D2"
+  Vo = Ia + 896
+  V = VGet(Vo)
+  Numbers(10, V)
+  return
+end sub
+
+' Numbers(Y, V): V in hex at column 24 and in decimal at 27
+sub Numbers(u8 Ny, u8 Nv):
+  PutHex(24, Ny, Nv)
+  NumU = Nv
+  print at 27,Ny, digits$(NumU, 3)
+  return
+end sub
+
+sub PutHex(u8 Px, u8 Py, u8 Pv):
+  V = Pv >> 4
+  V = HexCh[V]
+  put char V at Px,Py
+  V = Pv & 15
+  V = HexCh[V]
+  inc Px
+  put char V at Px,Py
+  return
+end sub
+
+' ShowQueues: the next six turns of each side's reinforcements, in hex
+sub ShowQueues:
+  put char TChipb at 21,12
+  print at 22,12, "QUEUE"
+  put char TChipr at 21,15
+  print at 22,15, "QUEUE"
+  for K = 0 to 5
+    X = K % 3
+    X = X * 3
+    X = X + 21
+    Y = K / 3
+    Y = Y + 13
+    Vo = K + 1045
+    V = VGet(Vo)
+    PutHex(X, Y, V)
+    Y = Y + 3
+    Vo = K + 1024
+    V = VGet(Vo)
+    PutHex(X, Y, V)
+  next
+  return
+end sub
+
+' ShowGoal: the scenario and how far each side is
+sub ShowGoal:
+  if Gn = 1 then print at 21,18, "CAP FAR"
+  if Gn = 2 then print at 21,18, "CAP NEAR"
+  if Gn = 3 then print at 21,18, "8 CITIES"
+  if Gn = 4 then print at 21,18, "6 CTRL"
+  if Gn = 5 then print at 21,18, "40 HEXES"
+  if Gn >= 3 then
+    CountGoal
+    put char TChipb at 21,19
+    NumU = Qb
+    print at 22,19, digits$(NumU, 2)
+    put char TChipr at 25,19
+    NumU = Qa
+    print at 26,19, digits$(NumU, 2)
+  end if
+  return
+end sub
+
+sub ShowGoalWon:
+  if Gn = 1 then print at 3,21, "THE CAPITAL IS TAKEN"
+  if Gn = 2 then print at 3,21, "THE CAPITAL IS TAKEN"
+  if Gn = 3 then print at 3,21, "8 OF 12 CITIES OCCUPIED"
+  if Gn = 4 then print at 3,21, "6 OF 12 CITIES CONTROLLED"
+  if Gn = 5 then print at 3,21, "40 OF 61 HEXES OCCUPIED"
+  return
+end sub
+
+' ShowMsg(M): the bottom lines (0 the battles, 1 a player, 2 computer)
+sub ShowMsg(u8 Mm2):
+  print at 2,20, "                            "
+  print at 2,21, "                            "
+  print at 2,22, "                            "
+  if Mm2 = 0 then
+    print at 2,21, "BATTLES..."
+  end if
+  if Mm2 = 1 then
+    if Pn = 1 then
+      print at 2,20, "BLUE: JOYSTICK 1"
+    else
+      print at 2,20, "RED: JOYSTICK 2"
+    end if
+    print at 2,21, "FIRE: PICK UP, MOVE, STOP"
+    print at 2,22, "2ND BUTTON: END TURN"
+  end if
+  if Mm2 = 2 then
+    if Pn = 1 then
+      print at 2,21, "BLUE IS THINKING..."
+    else
+      print at 2,21, "RED IS THINKING..."
+    end if
+    if Mode = 2 then print at 2,22, "DEMO: A BUTTON FOR THE TITLE"
+  end if
+  return
+end sub
+
+' ShowCursor: sprite 0 the cursor, sprite 1 the army picked
+sub ShowCursor:
+  HexXY(Cur)
+  set sprite 0 to Y,X,SCursor,15
+  if Pk = 1 then
+    HexXY(Ct)
+    set sprite 1 to Y,X,SCursor,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  set sprite 2 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' HexXY(H): X, Y the pixel place of hex H for a sprite
+sub HexXY(u8 Xh):
+  X = HT[Xh] + 10
+  X = X - HB[Xh]
+  X = X << 3
+  Y = HT[Xh] + HB[Xh]
+  Y = Y << 1
+  Y = 26 - Y
+  Y = Y << 3
+  dec Y
+  return
+end sub
+
+' BattleShow: laser bursts flash over the two armies of battle Ia/Ib
+sub BattleShow:
+  play sound SndZap
+  for Tm = 1 to 8
+    V = Tm & 1
+    if V = 0 then
+      H = Po[Ia]
+    else
+      H = Po[Ib]
+    end if
+    HexXY(H)
+    W = Tm & 3
+    V = 11
+    if W = 1 then V = 15
+    if W = 2 then V = 9
+    set sprite 2 to Y,X,SBurst,V
+    update sprites
+    Frame1
+  next
+  play sound SndBoom
+  set sprite 2 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: the stick and buttons of the side to move (two players: blue
+' joystick 1, red joystick 2; one player: either)
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Bt2 = 0
+  V = 1
+  W = 1
+  if Mode = 1 then
+    if Pn = 1 then W = 0
+    if Pn = 0 then V = 0
+  end if
+  if V = 1 then
+    if joypad(1).left then Lf1 = 1
+    if joypad(1).right then Rt1 = 1
+    if joypad(1).up then Up1 = 1
+    if joypad(1).down then Dn1 = 1
+    if joypad(1).button1 then Btn = 1
+    if joypad(1).button2 then Bt2 = 1
+  end if
+  if W = 1 then
+    if joypad(2).left then Lf1 = 1
+    if joypad(2).right then Rt1 = 1
+    if joypad(2).up then Up1 = 1
+    if joypad(2).down then Dn1 = 1
+    if joypad(2).button1 then Btn = 1
+    if joypad(2).button2 then Bt2 = 1
+  end if
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Bt2 = 1 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB2 = Bt2
+  return
+end sub
+
+' ReadAny: either joystick (menus, the title)
+sub ReadAny:
+  Sm = Mode
+  Mode = 0
+  ReadPad
+  Mode = Sm
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a small honeycomb, a joystick menu
+sub TitlePage:
+  NewScreen
+  for J = 0 to 80
+    Mh[J] = 0
+  next
+  Gn = 1
+  ' a few hexes of colour round the title
+  Mh[60] = 64
+  Mh[52] = 32
+  Mh[44] = 64
+  Mh[68] = 32
+  for H2 = 36 to 76
+    H = H2
+    V = HB[H]
+    if V >= 4 then DrawHex(H)
+  next
+  print at 22,4, "HEX WAR"
+  print at 21,6, "ROBOTS"
+  print at 21,7, "ON A FAR"
+  print at 21,8, "PLANET"
+  print at 6,14, "1 PLAYER (YOU ARE BLUE)"
+  print at 6,15, "2 PLAYERS"
+  print at 6,16, "DEMO (COMPUTER VS ITSELF)"
+  print at 6,17, "CREDITS"
+  print at 4,20, "BLUE: JOYSTICK 1"
+  print at 4,21, "RED: JOYSTICK 2"
+  Menu = 0
+  ShowMenu(14, 3)
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadAny
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      play sound SndStep
+      ShowMenu(14, 3)
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  W16 = Tick
+  Rs = Rs ^ W16
+  W16 = W16 << 8
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = $1D3B
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+' ScenarioPage: the five games of the listings
+sub ScenarioPage:
+  NewScreen
+  print at 9,3, "CHOOSE A GAME"
+  print at 5,6, "1 CAPTURE CAPITAL (FAR)"
+  print at 5,8, "2 CAPTURE CAPITAL (NEAR)"
+  print at 5,10, "3 OCCUPY 8 OF 12 CITIES"
+  print at 5,12, "4 CONTROL 6 OF 12 CITIES"
+  print at 5,14, "5 OCCUPY 40 OF 61 HEXES"
+  print at 3,18, "CONTROL: AN ARMY OF YOURS IN"
+  print at 3,19, "THE CITY, OUT OF BATTLE"
+  Menu = 0
+  ShowMenu2
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+sp_loop:
+  Frame1
+  ReadAny
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 4 then inc Menu
+      end if
+      play sound SndStep
+      ShowMenu2
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto sp_loop
+  Gn = Menu + 1
+  return
+end sub
+
+sub ShowMenu(u8 My, u8 Mn):
+  for J = 0 to 3
+    V = My + J
+    put char 32 at 4,V
+  next
+  V = My + Menu
+  put char 62 at 4,V
+  return
+end sub
+
+sub ShowMenu2:
+  for J = 0 to 4
+    V = J << 1
+    V = V + 6
+    put char 32 at 3,V
+  next
+  V = Menu << 1
+  V = V + 6
+  put char 62 at 3,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  for X = 3 to 28
+    put char TRule at X,2
+    put char TRule at X,21
+  next
+  print at 12,4, "HEX WAR"
+  print at 3,6, "BASED ON HEX WAR BY TODD"
+  print at 3,7, "HEIMARCK, COMPUTE! JULY 1986"
+  print at 3,8, "(C128; VERSIONS BY KEVIN"
+  print at 3,9, "MYKYTYN, TIM VICTOR, PATRICK"
+  print at 3,10, "PARRISH AND PHILIP NELSON)."
+  print at 3,12, "MADE FOR THE COLECOVISION"
+  print at 3,13, "BY CLAUDE (AN AI MADE BY"
+  print at 3,14, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,15, "2026, IN AMY BY AMY BIENVENU."
+  print at 3,17, "MUSIC: HONEYCOMB MARCH,"
+  print at 3,18, "ORE FIELDS"
+  print at 8,20, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' the six directions: T + 1 and B + 1 added (then 1 taken off)
+data DirT bytes
+  2,2,1,0,0,1
+end data
+data DirB bytes
+  1,0,0,1,2,2
+end data
+' the twelve cities (the listings' DATA): city 1 side 0's capital, city
+' 2 side 1's far capital, city 3 its near one
+data CityHex bytes
+  76,4,72,8,36,44,50,30,57,23,47,33
+end data
+' the armies at the start, strength 64: side 0 then side 1
+data StartHex bytes
+  26,34,51,60,20,29,46,54
+end data
+data HexCh bytes
+  48,49,50,51,52,53,54,55,56,57,65,66,67,68,69,70
+end data
+
+data HT bytes
+  0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8
+end data
+data HB bytes
+  0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7,8
+end data
+data TilePat bytes
+  $03,$F0,$C0,$00,$00,$00,$00,$00
+  $03,$F0,$C0,$04,$04,$0E,$0E,$F0
+  $03,$F0,$C1,$03,$F0,$07,$02,$04
+  $C0,$F0,$03,$01,$01,$01,$01,$01
+  $C0,$F0,$03,$41,$E1,$E1,$E1,$E1
+  $C0,$F0,$03,$81,$E1,$C1,$81,$41
+  $00,$00,$00,$00,$00,$C0,$F0,$03
+  $01,$01,$01,$01,$01,$03,$F0,$C0
+  $03,$F0,$C0,$00,$00,$00,$00,$00
+  $03,$F0,$C0,$04,$04,$0E,$0E,$F0
+  $03,$F0,$C1,$03,$F0,$07,$02,$04
+  $03,$F0,$C1,$07,$05,$07,$0B,$02
+  $03,$F0,$C0,$04,$0E,$04,$00,$00
+  $C0,$F0,$03,$01,$01,$01,$01,$01
+  $C0,$F0,$03,$41,$E1,$E1,$E1,$E1
+  $C0,$F0,$03,$81,$E1,$C1,$81,$41
+  $C0,$F0,$03,$C1,$41,$C1,$A1,$81
+  $C0,$F0,$03,$41,$E1,$41,$01,$01
+  $00,$0E,$0A,$0A,$0A,$31,$F0,$03
+  $00,$04,$0C,$04,$04,$31,$F0,$03
+  $00,$0E,$02,$0E,$08,$31,$F0,$03
+  $00,$0E,$02,$06,$02,$31,$F0,$03
+  $00,$0A,$0A,$0E,$02,$C2,$F0,$03
+  $00,$0E,$08,$0E,$02,$31,$F0,$03
+  $00,$0E,$08,$0E,$0A,$31,$F0,$03
+  $00,$0E,$02,$04,$04,$C4,$F0,$03
+  $00,$0E,$0A,$0E,$0A,$31,$F0,$03
+  $00,$0E,$0A,$0E,$02,$31,$F0,$03
+  $00,$04,$0A,$0E,$0A,$CA,$F0,$03
+  $00,$0C,$0A,$0C,$0A,$CC,$F0,$03
+  $00,$06,$08,$08,$08,$C6,$F0,$03
+  $00,$0C,$0A,$0A,$0A,$CC,$F0,$03
+  $00,$0E,$08,$0C,$08,$31,$F0,$03
+  $00,$0E,$08,$0C,$08,$C8,$F0,$03
+  $00,$00,$00,$00,$00,$C0,$F0,$03
+  $01,$8E,$51,$51,$51,$8C,$F0,$C0
+  $01,$21,$61,$21,$21,$8C,$F0,$C0
+  $01,$8E,$11,$8E,$41,$8C,$F0,$C0
+  $01,$8E,$11,$31,$11,$8C,$F0,$C0
+  $01,$51,$51,$8E,$11,$13,$F0,$C0
+  $01,$8E,$41,$8E,$11,$8C,$F0,$C0
+  $01,$8E,$41,$8E,$51,$8C,$F0,$C0
+  $01,$8E,$11,$21,$21,$23,$F0,$C0
+  $01,$8E,$51,$8E,$51,$8C,$F0,$C0
+  $01,$8E,$51,$8E,$11,$8C,$F0,$C0
+  $01,$21,$51,$8E,$51,$AC,$F0,$C0
+  $01,$61,$51,$61,$51,$9C,$F0,$C0
+  $01,$31,$41,$41,$41,$CC,$F0,$C0
+  $01,$61,$51,$51,$51,$9C,$F0,$C0
+  $01,$8E,$41,$61,$41,$8C,$F0,$C0
+  $01,$8E,$41,$61,$41,$43,$F0,$C0
+  $01,$01,$01,$01,$01,$03,$F0,$C0
+  $03,$F0,$C0,$00,$00,$00,$00,$00
+  $03,$F0,$C0,$04,$04,$0E,$0E,$F0
+  $03,$F0,$C1,$03,$F0,$07,$02,$04
+  $03,$F0,$C1,$07,$05,$07,$0B,$02
+  $03,$F0,$C0,$04,$0E,$04,$00,$00
+  $C0,$F0,$03,$01,$01,$01,$01,$01
+  $C0,$F0,$03,$41,$E1,$E1,$E1,$E1
+  $C0,$F0,$03,$81,$E1,$C1,$81,$41
+  $C0,$F0,$03,$C1,$41,$C1,$A1,$81
+  $C0,$F0,$03,$41,$E1,$41,$01,$01
+  $00,$0E,$0A,$0A,$0A,$31,$F0,$03
+  $00,$04,$0C,$04,$04,$31,$F0,$03
+  $00,$0E,$02,$0E,$08,$31,$F0,$03
+  $00,$0E,$02,$06,$02,$31,$F0,$03
+  $00,$0A,$0A,$0E,$02,$C2,$F0,$03
+  $00,$0E,$08,$0E,$02,$31,$F0,$03
+  $00,$0E,$08,$0E,$0A,$31,$F0,$03
+  $00,$0E,$02,$04,$04,$C4,$F0,$03
+  $00,$0E,$0A,$0E,$0A,$31,$F0,$03
+  $00,$0E,$0A,$0E,$02,$31,$F0,$03
+  $00,$04,$0A,$0E,$0A,$CA,$F0,$03
+  $00,$0C,$0A,$0C,$0A,$CC,$F0,$03
+  $00,$06,$08,$08,$08,$C6,$F0,$03
+  $00,$0C,$0A,$0A,$0A,$CC,$F0,$03
+  $00,$0E,$08,$0C,$08,$31,$F0,$03
+  $00,$0E,$08,$0C,$08,$C8,$F0,$03
+  $00,$00,$00,$00,$00,$C0,$F0,$03
+  $01,$8E,$51,$51,$51,$8C,$F0,$C0
+  $01,$21,$61,$21,$21,$8C,$F0,$C0
+  $01,$8E,$11,$8E,$41,$8C,$F0,$C0
+  $01,$8E,$11,$31,$11,$8C,$F0,$C0
+  $01,$51,$51,$8E,$11,$13,$F0,$C0
+  $01,$8E,$41,$8E,$11,$8C,$F0,$C0
+  $01,$8E,$41,$8E,$51,$8C,$F0,$C0
+  $01,$8E,$11,$21,$21,$23,$F0,$C0
+  $01,$8E,$51,$8E,$51,$8C,$F0,$C0
+  $01,$8E,$51,$8E,$11,$8C,$F0,$C0
+  $01,$21,$51,$8E,$51,$AC,$F0,$C0
+  $01,$61,$51,$61,$51,$9C,$F0,$C0
+  $01,$31,$41,$41,$41,$CC,$F0,$C0
+  $01,$61,$51,$51,$51,$9C,$F0,$C0
+  $01,$8E,$41,$61,$41,$8C,$F0,$C0
+  $01,$8E,$41,$61,$41,$43,$F0,$C0
+  $01,$01,$01,$01,$01,$03,$F0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $E1,$1E,$1E,$0E,$0E,$0E,$0E,$0E
+  $E1,$1E,$1E,$1E,$1E,$1E,$1E,$E1
+  $E1,$1E,$1E,$1E,$E1,$1E,$1E,$1E
+  $E1,$E1,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$1E,$1E,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$E1,$E1
+  $81,$18,$18,$08,$08,$08,$08,$08
+  $81,$18,$18,$18,$18,$18,$18,$81
+  $81,$18,$18,$18,$81,$18,$18,$18
+  $81,$18,$18,$18,$18,$18,$18,$18
+  $81,$18,$18,$18,$18,$18,$08,$08
+  $81,$81,$18,$18,$18,$18,$18,$18
+  $81,$81,$18,$18,$18,$18,$18,$18
+  $81,$81,$18,$18,$18,$18,$18,$18
+  $81,$81,$18,$18,$18,$18,$18,$18
+  $81,$81,$18,$18,$18,$18,$18,$18
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$18,$18,$18,$18,$81,$18,$81
+  $08,$18,$18,$18,$18,$18,$18,$81
+  $08,$08,$08,$08,$08,$18,$18,$81
+  $18,$81,$18,$18,$18,$81,$81,$81
+  $18,$18,$18,$18,$18,$81,$81,$81
+  $18,$81,$18,$81,$18,$81,$81,$81
+  $18,$81,$18,$18,$18,$81,$81,$81
+  $18,$18,$18,$81,$18,$18,$81,$81
+  $18,$81,$18,$81,$18,$81,$81,$81
+  $18,$81,$18,$81,$18,$81,$81,$81
+  $18,$81,$18,$18,$18,$18,$81,$81
+  $18,$81,$18,$81,$18,$81,$81,$81
+  $18,$81,$18,$81,$18,$81,$81,$81
+  $18,$18,$18,$81,$18,$81,$81,$81
+  $18,$18,$18,$18,$18,$81,$81,$81
+  $18,$18,$18,$18,$18,$81,$81,$81
+  $18,$18,$18,$18,$18,$81,$81,$81
+  $18,$81,$18,$18,$18,$81,$81,$81
+  $18,$81,$18,$18,$18,$18,$81,$81
+  $18,$18,$18,$18,$18,$18,$81,$81
+  $51,$15,$15,$05,$05,$05,$05,$05
+  $51,$15,$15,$15,$15,$15,$15,$51
+  $51,$15,$15,$15,$51,$15,$15,$15
+  $51,$15,$15,$15,$15,$15,$15,$15
+  $51,$15,$15,$15,$15,$15,$05,$05
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$15,$15,$15,$15,$51,$15,$51
+  $05,$15,$15,$15,$15,$15,$15,$51
+  $05,$05,$05,$05,$05,$15,$15,$51
+  $15,$51,$15,$15,$15,$51,$51,$51
+  $15,$15,$15,$15,$15,$51,$51,$51
+  $15,$51,$15,$51,$15,$51,$51,$51
+  $15,$51,$15,$15,$15,$51,$51,$51
+  $15,$15,$15,$51,$15,$15,$51,$51
+  $15,$51,$15,$51,$15,$51,$51,$51
+  $15,$51,$15,$51,$15,$51,$51,$51
+  $15,$51,$15,$15,$15,$15,$51,$51
+  $15,$51,$15,$51,$15,$51,$51,$51
+  $15,$51,$15,$51,$15,$51,$51,$51
+  $15,$15,$15,$51,$15,$51,$51,$51
+  $15,$15,$15,$15,$15,$51,$51,$51
+  $15,$15,$15,$15,$15,$51,$51,$51
+  $15,$15,$15,$15,$15,$51,$51,$51
+  $15,$51,$15,$15,$15,$51,$51,$51
+  $15,$51,$15,$15,$15,$15,$51,$51
+  $15,$15,$15,$15,$15,$15,$51,$51
+  $01,$01,$01,$0E,$0E,$01,$01,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$15,$15,$15,$15,$15,$15,$01
+end data
+data SpritePat bytes
+  $03,$0C,$30,$C0,$80,$80,$80,$80,$80,$80,$80,$80,$C0,$30,$0C,$03
+  $C0,$30,$0C,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$0C,$30,$C0
+  $00,$01,$11,$09,$05,$03,$7F,$03,$05,$09,$11,$01,$00,$00,$00,$00
+  $00,$00,$10,$20,$40,$80,$FC,$80,$40,$20,$10,$00,$00,$00,$00,$00
+end data
+
+asm {
+HxStep:
+    db $40,$47,$20,$01,$40,$5F,$50,$02,$50
+HxPick:
+    db $40,$35,$20,$02,$40,$2A,$40,$02,$50
+HxDrop:
+    db $40,$6B,$30,$02,$40,$8F,$60,$03,$50
+HxBuzz:
+    db $40,$F9,$33,$06,$50
+HxMerge:
+    db $40,$D6,$20,$03,$40,$8F,$20,$03,$40,$6B,$40,$05,$50
+HxZap:
+    db $40,$28,$10,$01,$40,$33,$20,$01,$40,$42,$30,$01,$40,$56,$50,$02,$40,$70,$70,$02,$50
+HxBoom:
+    db $00,$00,$05,$03,$00,$00,$36,$05,$00,$00,$66,$08,$10
+HxArrive:
+    db $40,$AA,$20,$03,$40,$8F,$20,$03,$40,$71,$20,$03,$40,$55,$40,$06,$50
+HxWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05
+    db $40,$55,$20,$14,$50
+
+HxSoundTable:
+    dw HxTuneMel,$702B
+    dw HxTuneBass,$7035
+    dw HxPlayMel,$702B
+    dw HxPlayBass,$7035
+    dw HxStep,$7049
+    dw HxPick,$7049
+    dw HxDrop,$7049
+    dw HxBuzz,$7049
+    dw HxMerge,$7049
+    dw HxZap,$7049
+    dw HxBoom,$703F
+    dw HxArrive,$7049
+    dw HxWin,$7049
+; Honeycomb March (original)
+; Tiny Sound, 7 frames per step
+HxTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$21,$01,$01,$01,$1C,$01,$21,$01,$24,$01,$01,$01
+    db $23,$01,$21,$01,$1F,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$01,$01
+    db $21,$01,$01,$01,$1D,$01,$01,$01,$18,$01,$1D,$01,$21,$01,$01,$01
+    db $1F,$01,$1D,$01,$1C,$01,$01,$01,$20,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+HxTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$09,$01,$15,$01,$09,$01,$15,$01,$09,$01,$15,$01
+    db $09,$01,$15,$01,$07,$01,$13,$01,$07,$01,$13,$01,$04,$01,$10,$01
+    db $04,$01,$10,$01,$05,$01,$11,$01,$05,$01,$11,$01,$0E,$01,$1A,$01
+    db $0E,$01,$1A,$01,$04,$01,$10,$01,$04,$01,$10,$01,$09,$01,$15,$01
+    db $09,$01,$01,$01
+    db $FF
+
+; Ore Fields (original)
+; Tiny Sound, 9 frames per step
+HxPlayMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$80,$1A,$21,$1C,$01,$01,$01,$01,$01,$1F,$01,$01,$01,$23,$01
+    db $01,$01,$01,$01,$21,$01,$01,$01,$01,$01,$1E,$01,$01,$01,$1A,$01
+    db $01,$01,$01,$01,$18,$01,$01,$01,$01,$01,$1C,$01,$01,$01,$1F,$01
+    db $01,$01,$01,$01,$1E,$01,$01,$01,$01,$01,$1B,$01,$01,$01,$1C,$01
+    db $01,$01,$01,$01
+    db $FF
+HxPlayBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$90,$18,$32,$04,$01,$01,$01,$10,$01,$01,$01,$04,$01,$01,$01
+    db $10,$01,$01,$01,$0E,$01,$01,$01,$1A,$01,$01,$01,$0E,$01,$01,$01
+    db $1A,$01,$01,$01,$0C,$01,$01,$01,$18,$01,$01,$01,$0C,$01,$01,$01
+    db $18,$01,$01,$01,$0B,$01,$01,$01,$17,$01,$01,$01,$04,$01,$01,$01
+    db $10,$01,$01,$01
+    db $FF
+}

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compilerCore.js";
 import { inferGeneratedUserRoutineClobbers, optimizeGeneratedMemoryLoads } from "../studio/core/compiler/transpileFinalizationHelpers.js";
 
@@ -98,4 +102,50 @@ assert.deepEqual(
   { a: beforeState.a, b: beforeState.b, hlValue: beforeState.hlValue, sp: beforeState.sp, storedValue: beforeState.storedValue },
 );
 assert.equal(afterState.a, 0x42);
-console.log("User-routine clobber inference: static barriers and binary before/after equivalence passed (2-byte synthetic gain).");
+const root = resolve(import.meta.dirname, "..");
+const compiler = join(root, "tools", "amyc.mjs");
+const directory = mkdtempSync(join(tmpdir(), "amy-call-clobber-reload-"));
+try {
+  const sourcePath = join(directory, "reload-after-call.alexis");
+  writeFileSync(sourcePath, `project "Reload after call"
+u8 Mn = 0
+u8 Got = 0
+  Mn = 0
+  Redraw
+  Got = Mn
+done:
+  goto done
+
+sub Redraw:
+  call asm Clobber
+  return
+end sub
+
+asm {
+Clobber:
+  ld a,87
+  ret
+}
+`);
+  for (const level of ["none", "safe", "balanced", "aggressive", "experimental"]) {
+    const asmPath = join(directory, `reload-${level}.asm`);
+    execFileSync(process.execPath, [compiler, sourcePath, "--asm", asmPath, "--opt", level], {
+      cwd: root,
+      stdio: "pipe",
+    });
+    const asm = readFileSync(asmPath, "utf8");
+    const call = asm.indexOf("call AMY_UPROC_Redraw");
+    const store = asm.indexOf("ld (AMY_UVAR_Got),a", call);
+    assert.notEqual(call, -1, `${level}: Redraw call missing`);
+    assert.notEqual(store, -1, `${level}: Got store missing`);
+    assert.match(
+      asm.slice(call, store),
+      /ld a,\(AMY_UVAR_Mn\)/i,
+      `${level}: Mn must be reloaded after Redraw transitively clobbers AF`,
+    );
+  }
+} finally {
+  rmSync(directory, { recursive: true, force: true });
+}
+
+console.log("User-routine clobber inference: static barriers, binary equivalence, and five-profile call reload passed (2-byte synthetic gain).");

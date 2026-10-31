@@ -1,0 +1,1251 @@
+cartridge "SOLITAIRE/BEN ELIZER, COMPUTE!/1986"
+
+' SOLITAIRE (the game of Gaps)
+' Based on "Solitaire" by Ben Elizer, COMPUTE! January 1986 (pages 48-64;
+' Commodore 64 original, versions for the Atari by Kevin Mykytyn, the IBM
+' PC, the Apple by Tim Victor and the TI-99/4A by Patrick Parrish). Made
+' for the ColecoVision in Amy (the language by Amy Bienvenu) by Claude (an
+' AI made by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the listing's rules
+' (orig/ has the scans). The rules, as the listing plays them:
+' - 52 cards are dealt in four rows of 13; the aces are the four gaps.
+' - A gap takes the card one higher, in the same suit, than the card to
+'   its left; a gap after a king or after another gap is dead. A gap at
+'   the start of a row takes any 2: you choose the suit.
+' - When no gap can be filled, the cards are gathered and dealt again,
+'   but each row keeps its run from the left: a 2 in the first column and
+'   the cards that follow it in order and suit (line 590-650 of the
+'   Commodore listing). Everything else, the aces too, is shuffled into
+'   the places left (lines 820-870).
+' - You win when every row runs 2 to king in one suit; the game tells how
+'   many deals it took ("IT TOOK YOU n TRIES").
+' Made for this machine: a green felt table, cards of 2 x 3 tiles with a
+' red or black corner index, a cursor that blinks round the chosen card,
+' the moved card gliding (three sprites) from its place into the gap, a
+' menu of the four 2s for a gap at a row's start, the deals counted and
+' the session's best kept, card sounds; the quiet waltz "Patience" while
+' you play (music first in the sound table, effects after); an original
+' title tune, "Royal Flush".
+'
+' Controls (either joystick): the stick moves the cursor; the left button
+' fills the gap under it (on a card, the cursor jumps to the next gap);
+' the right button jumps to the next gap; both buttons together give up
+' and go back to the title.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TRk01 = 128
+const TRk02 = 129
+const TRk03 = 130
+const TRk04 = 131
+const TRk05 = 132
+const TRk06 = 133
+const TRk07 = 134
+const TRk08 = 135
+const TRk09 = 136
+const TRk10 = 137
+const TRk11 = 138
+const TRk12 = 139
+const TRR01 = 140
+const TRR02 = 141
+const TRR03 = 142
+const TRR04 = 143
+const TRR05 = 144
+const TRR06 = 145
+const TRR07 = 146
+const TRR08 = 147
+const TRR09 = 148
+const TRR10 = 149
+const TRR11 = 150
+const TRR12 = 151
+const TSS = 152
+const TSH = 153
+const TSD = 154
+const TSC = 155
+const TCbl = 156
+const TCtr = 157
+const TCmr = 158
+const TCbr = 159
+const TGtl = 160
+const TGtr = 161
+const TGml = 162
+const TGmr = 163
+const TGbl = 164
+const TGbr = 165
+const SCurt = 0
+const SCurb = 4
+const SBodyt = 8
+const SBodyb = 12
+const SGlyph = 16
+const NTiles8 = 304
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndFlick = 5
+const SndSlide = 6
+const SndLay = 7
+const SndBuzz = 8
+const SndTick = 9
+const SndPick = 10
+const SndStuck = 11
+const SndWin = 12
+' the tune now playing once: frames left (counted in Rearm)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the table: Pc[position] the card there, Ps[card] its position.
+' A card is suit * 13 + rank: suits spades, hearts, diamonds, clubs (as
+' the listing), rank 0 the ace (a gap), 1 the 2 ... 12 the king. A
+' position is row * 13 + column.
+u8 Pc[52]
+u8 Ps[52]
+u8 Dk[52]
+' Kp[row]: the run kept from the left at a reshuffle (0-12)
+u8 Kp[4]
+u8 Tries = 0
+u8 Best = 0
+' Ph: 1 waiting for you, 2 a card moving, 3 choosing a 2, 4 reshuffling,
+' 5 won, 0 elsewhere (for the bot)
+u8 Ph = 0
+u8 Idle = 0
+' the cursor (row 0-3, column 0-12), the 2 chosen in the menu (suit)
+u8 Cr = 0
+u8 Cc = 0
+u8 Sel = 0
+u8 Moves = 0
+' cell drawing and moving
+u8 Pp = 0
+u8 Cv = 0
+u8 Rk = 0
+u8 Su = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Tg = 0
+u8 Src = 0
+u8 Gv = 0
+u8 Ok = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Gx = 0
+u8 Gy = 0
+u8 Gc = 0
+u8 Fr = 0
+u16 A16 = 0
+' Rs: the shuffle's random numbers (a 16-bit LCG, seeded by the time
+' spent on the title page)
+u16 Rs = 4321
+' Lx, Lw: a loop's counter and end where the drawing subs use X and W
+u8 Lx = 0
+u8 Lw = 0
+u16 B16 = 0
+
+u16 NumU = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table GpSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Tries = 1
+  Moves = 0
+  for I = 0 to 3
+    Kp[I] = 0
+  next
+  NewScreen
+  ShowHud
+  ShowScreen
+  Ph = 4
+  print at 10,11, "SHUFFLING"
+  Shuffle
+  print at 10,11, "         "
+  DealOut
+  play sound SndRunA
+  play sound SndRunB
+  Cr = 0
+  Cc = 0
+  NextGap
+  Hint
+  ReadPad
+
+' after every move and every deal: no gap can be filled? then a win, or
+' gather and deal again (a fresh deal can be stuck too)
+deal_check:
+  CheckStuck
+  if Ok = 1 then goto gp_loop
+  Kept
+  if Ok = 1 then goto won
+  Reshuffle
+  goto deal_check
+
+gp_loop:
+  Ph = 1
+  Frame1
+  ReadPad
+  Cursor
+  ' both buttons together: give up
+  V = Btn & Btn2
+  if V = 1 then goto give_up
+  if Press2 = 1 then
+    NextGap
+    play sound SndFlick
+  end if
+  if Press = 1 then
+    J = Cr * 13
+    Pp = J + Cc
+    Cv = Pc[Pp]
+    Rk = Md13[Cv]
+    if Rk = 0 then
+      FillGap
+      if Ok = 1 then
+        inc Moves
+        goto deal_check
+      end if
+    else
+      NextGap
+      play sound SndFlick
+    end if
+  end if
+  ' the stick: a step at once, then repeating while held
+  Stk = Lf1 + Rt1
+  Stk = Stk + Up1
+  Stk = Stk + Dn1
+  if Stk = 0 then
+    WasStk = 0
+    goto gp_loop
+  end if
+  if WasStk = 0 then
+    Rep = 16
+    WasStk = 1
+    StepCursor
+    goto gp_loop
+  end if
+  dec Rep
+  if Rep = 0 then
+    Rep = 6
+    StepCursor
+  end if
+  goto gp_loop
+
+give_up:
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  Ph = 0
+  goto title
+
+won:
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  Ph = 5
+  HideSprites
+  if Best = 0 then Best = Tries
+  if Tries < Best then Best = Tries
+  ShowHud
+  Clear3
+  print at 7,20, "CONGRATULATIONS!"
+  print at 4,21, "YOU WON! IT TOOK YOU"
+  NumU = Tries
+  print at 25,21, digits$(NumU, 3)
+  print at 4,22, "TRIES. FIRE: PLAY AGAIN"
+  play sound SndWin
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+won_wait:
+  Frame1
+  ReadPad
+  if Dn1 = 1 then goto title
+  if Press = 0 then goto won_wait
+  goto new_game
+
+' ---------------------------------------------------------------------
+' the rules
+
+' Shuffle: every card not kept (Kp) is shuffled into the places after the
+' kept runs (the listing's lines 820-870)
+sub Shuffle:
+  for I = 0 to 51
+    Dk[I] = 0
+  next
+  for I = 0 to 3
+    N = Kp[I]
+    if N > 0 then
+      J = I * 13
+      for K = 1 to N
+        V = Pc[J]
+        Dk[V] = 1
+        inc J
+      next
+    end if
+  next
+  ' the free cards, in a list (Ps serves as the list for a moment)
+  N = 0
+  for I = 0 to 51
+    if Dk[I] = 0 then
+      Ps[N] = I
+      inc N
+    end if
+  next
+  ' shuffle the list (Fisher-Yates)
+  I = N - 1
+shuf_next:
+  if I = 0 then goto shuf_done
+  Rs = Rs * 109
+  Rs = Rs + 89
+  A16 = Rs >> 8
+  V = A16
+  W = I + 1
+  J = V % W
+  V = Ps[I]
+  W = Ps[J]
+  Ps[I] = W
+  Ps[J] = V
+  dec I
+  goto shuf_next
+shuf_done:
+  ' deal it into the places after each kept run
+  K = 0
+  for I = 0 to 3
+    J = I * 13
+    N = Kp[I]
+    J = J + N
+    W = 13 - N
+    if W > 0 then
+      for X = 1 to W
+        V = Ps[K]
+        Pc[J] = V
+        inc K
+        inc J
+      next
+    end if
+  next
+  for I = 0 to 51
+    V = Pc[I]
+    Ps[V] = I
+  next
+  return
+end sub
+
+' Kept: Kp[row] the run from the left of each row (a 2 in the first
+' column, then the next cards in order and suit, up to the twelfth);
+' Ok 1 when all four rows run 2 to king (the game is won)
+sub Kept:
+  Ok = 1
+  for I = 0 to 3
+    Kp[I] = 0
+    J = I * 13
+    V = Pc[J]
+    W = Md13[V]
+    if W = 1 then
+      N = 1
+kept_next:
+      if N = 12 then goto kept_row
+      K = J + 1
+      W = Pc[K]
+      V = V + 1
+      if W <> V then goto kept_row
+      inc N
+      J = K
+      goto kept_next
+kept_row:
+      Kp[I] = N
+    end if
+    V = Kp[I]
+    if V <> 12 then Ok = 0
+  next
+  return
+end sub
+
+' CheckStuck: Ok 1 when some gap can be filled (a gap at a row's start
+' always can; another gap can unless a king or a gap is on its left)
+sub CheckStuck:
+  Ok = 0
+  for I = 0 to 3
+    J = I * 13
+    V = Ps[J]
+    W = Md13[V]
+    if W = 0 then
+      Ok = 1
+    else
+      dec V
+      W = Pc[V]
+      W = Md13[W]
+      if W <> 0 then
+        if W <> 12 then Ok = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' FillGap: the gap at Pp takes its card (Ok 1), or the gap is dead (Ok 0)
+sub FillGap:
+  Ok = 0
+  W = Md13[Pp]
+  if W = 0 then
+    ChooseTwo
+    if Sel = 255 then return
+    Tg = Sel * 13
+    inc Tg
+  else
+    J = Pp - 1
+    V = Pc[J]
+    W = Md13[V]
+    if W = 0 then
+      play sound SndBuzz
+      return
+    end if
+    if W = 12 then
+      play sound SndBuzz
+      return
+    end if
+    Tg = V + 1
+  end if
+  Ph = 2
+  Src = Ps[Tg]
+  Gv = Pc[Pp]
+  Glide
+  Pc[Pp] = Tg
+  Ps[Tg] = Pp
+  Pc[Src] = Gv
+  Ps[Gv] = Src
+  N = Pp
+  Pp = Src
+  DrawCell
+  Pp = N
+  DrawCell
+  play sound SndLay
+  Ok = 1
+  ' the buttons as they are now (a press made during the glide counts)
+  ReadPad
+  return
+end sub
+
+' Reshuffle: no more moves: the runs stay, the rest is dealt again
+sub Reshuffle:
+  Ph = 4
+  HideSprites
+  Clear3
+  print at 8,20, "NO MORE MOVES"
+  print at 8,21, "RESHUFFLING..."
+  play sound SndStuck
+  for Tm = 1 to 90
+    Frame1
+  next
+  ' gather: everything after the runs goes back to the deck
+  for I = 0 to 3
+    J = I * 13
+    N = Kp[I]
+    J = J + N
+    Lw = 13 - N
+    if Lw > 0 then
+      for Lx = 1 to Lw
+        Pp = J
+        DrawGap
+        inc J
+      next
+    end if
+  next
+  for Tm = 1 to 20
+    Frame1
+  next
+  Shuffle
+  inc Tries
+  ShowHud
+  DealOut
+  NextGap
+  Hint
+  ReadPad
+  return
+end sub
+
+' DealOut: draws every card after the runs, one at a time, with a click
+sub DealOut:
+  for I = 0 to 3
+    J = I * 13
+    N = Kp[I]
+    J = J + N
+    Lw = 13 - N
+    if Lw > 0 then
+      for Lx = 1 to Lw
+        Frame1
+        Pp = J
+        DrawCell
+        V = J & 1
+        if V = 0 then play sound SndTick
+        inc J
+      next
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the cursor and the menu
+
+' StepCursor: one step the way the stick points (wrapping round)
+sub StepCursor:
+  if Lf1 = 1 then
+    if Cc = 0 then
+      Cc = 12
+    else
+      dec Cc
+    end if
+  end if
+  if Rt1 = 1 then
+    if Cc = 12 then
+      Cc = 0
+    else
+      inc Cc
+    end if
+  end if
+  if Up1 = 1 then
+    if Cr = 0 then
+      Cr = 3
+    else
+      dec Cr
+    end if
+  end if
+  if Dn1 = 1 then
+    if Cr = 3 then
+      Cr = 0
+    else
+      inc Cr
+    end if
+  end if
+  play sound SndFlick
+  return
+end sub
+
+' NextGap: the cursor goes to the next gap after it, in reading order
+sub NextGap:
+  J = Cr * 13
+  J = J + Cc
+  for K = 1 to 52
+    inc J
+    if J = 52 then J = 0
+    V = Pc[J]
+    W = Md13[V]
+    if W = 0 then
+      Cr = Dv13[J]
+      Cc = Md13[J]
+      return
+    end if
+  next
+  return
+end sub
+
+' Cursor: the brackets round the chosen card, blinking
+sub Cursor:
+  V = Cc << 1
+  V = V + 3
+  X = V << 3
+  V = Cr << 2
+  V = V + 4
+  Y = V << 3
+  Y = Y - 1
+  V = Tick & 16
+  W = 13
+  if V = 0 then W = 11
+  set sprite 3 to Y,X,SCurt,W
+  Y = Y + 8
+  set sprite 4 to Y,X,SCurb,W
+  update sprites
+  return
+end sub
+
+' ChooseTwo: a gap at a row's start: which 2? (Sel the suit, 255 none)
+sub ChooseTwo:
+  Ph = 3
+  Clear3
+  print at 3,20, "WHICH 2 GOES HERE?"
+  for K = 0 to 3
+    V = K * 4
+    V = V + 9
+    W = TRk01
+    if K = 1 then W = TRR01
+    if K = 2 then W = TRR01
+    put char W at V,21
+    W = K + TSS
+    X = V + 1
+    put char W at X,21
+  next
+  print at 3,22, "FIRE: PLACE  RIGHT: NO"
+  Sel = 0
+  ShowSel
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasStk = 1
+ct_loop:
+  Frame1
+  ReadPad
+  Cursor
+  Stk = Lf1 | Rt1
+  if Stk = 1 then
+    if WasStk = 0 then
+      if Lf1 = 1 then
+        if Sel = 0 then
+          Sel = 3
+        else
+          dec Sel
+        end if
+      end if
+      if Rt1 = 1 then
+        if Sel = 3 then
+          Sel = 0
+        else
+          inc Sel
+        end if
+      end if
+      ShowSel
+      play sound SndPick
+    end if
+  end if
+  WasStk = Stk
+  if Press2 = 1 then
+    Sel = 255
+    Hint
+    return
+  end if
+  if Press = 0 then goto ct_loop
+  Hint
+  return
+end sub
+
+sub ShowSel:
+  for K = 0 to 3
+    V = K * 4
+    V = V + 8
+    W = 32
+    if K = Sel then W = 62
+    put char W at V,21
+  next
+  return
+end sub
+
+' Hint: the lines under the cards while you play
+sub Hint:
+  Clear3
+  print at 4,20, "FIRE: FILL THE GAP"
+  print at 4,21, "RIGHT: NEXT GAP"
+  print at 4,22, "BOTH BUTTONS: GIVE UP"
+  return
+end sub
+
+sub Clear3:
+  print at 2,20, "                            "
+  print at 2,21, "                            "
+  print at 2,22, "                            "
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "DEAL"
+  NumU = Tries
+  print at 7,1, digits$(NumU, 3)
+  print at 18,1, "BEST"
+  if Best = 0 then
+    print at 23,1, "---"
+  else
+    NumU = Best
+    print at 23,1, digits$(NumU, 3)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' drawing
+
+' DrawCell: the card (or the gap) at position Pp
+sub DrawCell:
+  Cv = Pc[Pp]
+  CellXY
+  DrawAt
+  return
+end sub
+
+' DrawGap: an empty place at position Pp (while the cards are gathered)
+sub DrawGap:
+  CellXY
+  Rk = 0
+  DrawFace
+  return
+end sub
+
+' CellXY: Cx, Cy the screen cell of position Pp's top-left tile
+sub CellXY:
+  V = Md13[Pp]
+  V = V << 1
+  Cx = V + 3
+  V = Dv13[Pp]
+  V = V << 2
+  Cy = V + 4
+  return
+end sub
+
+' DrawAt: card Cv at Cx, Cy
+sub DrawAt:
+  Rk = Md13[Cv]
+  Su = Dv13[Cv]
+  DrawFace
+  return
+end sub
+
+' DrawFace: rank Rk (0 a gap) of suit Su at Cx, Cy
+sub DrawFace:
+  X = Cx + 1
+  Y = Cy + 1
+  if Rk = 0 then
+    put char TGtl at Cx,Cy
+    put char TGtr at X,Cy
+    put char TGml at Cx,Y
+    put char TGmr at X,Y
+    inc Y
+    put char TGbl at Cx,Y
+    put char TGbr at X,Y
+    return
+  end if
+  V = TRk01
+  if Su = 1 then V = TRR01
+  if Su = 2 then V = TRR01
+  V = V + Rk
+  dec V
+  put char V at Cx,Cy
+  put char TCtr at X,Cy
+  V = Su + TSS
+  put char V at Cx,Y
+  put char TCmr at X,Y
+  inc Y
+  put char TCbl at Cx,Y
+  put char TCbr at X,Y
+  return
+end sub
+
+' Glide: card Tg slides from position Src to the gap Pp as three sprites
+' (its white body and its index); its old place shows a gap meanwhile
+sub Glide:
+  HideCursor
+  ' the index into the glyph sprite: rank above, suit below
+  Rk = Md13[Tg]
+  Su = Dv13[Tg]
+  A16 = Rk - 1
+  A16 = A16 << 3
+  B16 = SGlyph * 8
+  for K = 0 to 7
+    V = RankGl[A16]
+    vpoke vram.spr_pat + B16, V
+    inc A16
+    inc B16
+  next
+  A16 = Su << 3
+  for K = 0 to 7
+    V = SuitGl[A16]
+    vpoke vram.spr_pat + B16, V
+    inc A16
+    inc B16
+  next
+  Gc = 1
+  if Su = 1 then Gc = 8
+  if Su = 2 then Gc = 8
+  ' from, to (pixels)
+  N = Pp
+  Pp = Src
+  CellXY
+  Sx = Cx << 3
+  Sy = Cy << 3
+  DrawGap
+  Pp = N
+  CellXY
+  Tx = Cx << 3
+  Ty = Cy << 3
+  play sound SndSlide
+  for Fr = 1 to 12
+    Frame1
+    ' Gx = Sx + (Tx - Sx) * Fr / 12, by halves (unsigned)
+    if Tx >= Sx then
+      A16 = Tx - Sx
+      A16 = A16 * Fr
+      A16 = A16 / 12
+      Gx = Sx + A16
+    else
+      A16 = Sx - Tx
+      A16 = A16 * Fr
+      A16 = A16 / 12
+      Gx = Sx - A16
+    end if
+    if Ty >= Sy then
+      A16 = Ty - Sy
+      A16 = A16 * Fr
+      A16 = A16 / 12
+      Gy = Sy + A16
+    else
+      A16 = Sy - Ty
+      A16 = A16 * Fr
+      A16 = A16 / 12
+      Gy = Sy - A16
+    end if
+    Y = Gy - 1
+    set sprite 0 to Y,Gx,SGlyph,Gc
+    set sprite 1 to Y,Gx,SBodyt,15
+    Y = Y + 16
+    set sprite 2 to Y,Gx,SBodyb,15
+    update sprites
+  next
+  ' the card lands (drawn by Fill), the sprites go
+  for K = 0 to 2
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  set sprite 3 to 192,0,0,0
+  set sprite 4 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' screens and the frame
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a row of hearts with a gap, the rules, a joystick menu
+sub TitlePage:
+  Ph = 0
+  NewScreen
+  print at 10,2, "S O L I T A I R E"
+  print at 9,3, "THE GAME OF GAPS"
+  Cy = 6
+  for K = 0 to 12
+    V = K << 1
+    Cx = V + 3
+    Su = 1
+    Rk = K + 1
+    if K = 12 then Rk = 0
+    if K = 9 then Rk = 0
+    DrawFace
+  next
+  print at 3,11, "FILL EACH GAP WITH THE CARD"
+  print at 3,12, "ONE HIGHER IN SUIT THAN THE"
+  print at 3,13, "CARD ON ITS LEFT, UNTIL"
+  print at 3,14, "EVERY ROW RUNS 2 TO KING."
+  print at 12,17, "START"
+  print at 12,18, "CREDITS"
+  print at 10,21, "BEST"
+  if Best = 0 then
+    print at 15,21, "---"
+  else
+    NumU = Best
+    print at 15,21, digits$(NumU, 3)
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 504
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  Rs = Rs + 257
+  Rs = Rs + Tick
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStk = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+      play sound SndFlick
+    end if
+  end if
+  WasStk = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,17
+  put char 32 at 10,18
+  V = Menu + 17
+  put char 62 at 10,V
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  Cy = 2
+  for K = 0 to 3
+    V = K * 7
+    Cx = V + 4
+    Su = K
+    Rk = 12
+    DrawFace
+  next
+  print at 4,6, "BASED ON SOLITAIRE BY BEN"
+  print at 4,7, "ELIZER, COMPUTE! JANUARY"
+  print at 4,8, "1986 (COMMODORE 64; ATARI"
+  print at 4,9, "BY KEVIN MYKYTYN, APPLE BY"
+  print at 4,10, "TIM VICTOR, TI-99/4A BY"
+  print at 4,11, "PATRICK PARRISH)."
+  print at 4,13, "MADE FOR THE COLECOVISION"
+  print at 4,14, "BY CLAUDE (AN AI MADE BY"
+  print at 4,15, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 4,16, "2026, IN AMY BY AMY"
+  print at 4,17, "BIENVENU."
+  print at 4,19, "MUSIC: ROYAL FLUSH,"
+  print at 4,20, "PATIENCE"
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  return
+end sub
+
+data Dv13 bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3
+end data
+data Md13 bytes
+  0,1,2,3,4,5,6,7,8,9,10,11,12,0,1,2,3,4,5,6,7,8,9,10,11,12,0,1,2,3,4,5,6,7,8,9,10,11,12,0,1,2,3,4,5,6,7,8,9,10,11,12
+end data
+data RankGl bytes
+  0,0,48,72,8,16,32,120
+  0,0,112,8,48,8,8,112
+  0,0,16,48,80,120,16,16
+  0,0,120,64,112,8,8,112
+  0,0,48,64,112,72,72,48
+  0,0,120,8,16,16,32,32
+  0,0,48,72,48,72,72,48
+  0,0,48,72,72,56,8,48
+  0,0,92,84,84,84,84,92
+  0,0,24,8,8,8,72,48
+  0,0,48,72,72,72,88,56
+  0,0,72,80,96,80,72,72
+end data
+data SuitGl bytes
+  0,8,28,62,127,127,20,28
+  0,54,127,127,127,62,28,8
+  0,8,28,62,127,62,28,8
+  0,28,28,107,127,107,8,28
+end data
+data TilePat bytes
+  $00,$00,$30,$48,$08,$10,$20,$87
+  $00,$00,$70,$08,$30,$08,$08,$70
+  $00,$00,$10,$30,$50,$87,$10,$10
+  $00,$00,$87,$40,$70,$08,$08,$70
+  $00,$00,$30,$40,$70,$48,$48,$30
+  $00,$00,$87,$08,$10,$10,$20,$20
+  $00,$00,$30,$48,$30,$48,$48,$30
+  $00,$00,$30,$48,$48,$38,$08,$30
+  $00,$00,$A3,$54,$54,$54,$54,$A3
+  $00,$00,$18,$08,$08,$08,$48,$30
+  $00,$00,$30,$48,$48,$48,$58,$38
+  $00,$00,$48,$50,$60,$50,$48,$48
+  $00,$00,$30,$48,$08,$10,$20,$87
+  $00,$00,$70,$08,$30,$08,$08,$70
+  $00,$00,$10,$30,$50,$87,$10,$10
+  $00,$00,$87,$40,$70,$08,$08,$70
+  $00,$00,$30,$40,$70,$48,$48,$30
+  $00,$00,$87,$08,$10,$10,$20,$20
+  $00,$00,$30,$48,$30,$48,$48,$30
+  $00,$00,$30,$48,$48,$38,$08,$30
+  $00,$00,$A3,$54,$54,$54,$54,$A3
+  $00,$00,$18,$08,$08,$08,$48,$30
+  $00,$00,$30,$48,$48,$48,$58,$38
+  $00,$00,$48,$50,$60,$50,$48,$48
+  $00,$08,$1C,$C1,$80,$80,$14,$1C
+  $00,$C9,$80,$80,$80,$C1,$1C,$08
+  $00,$08,$1C,$C1,$80,$C1,$1C,$08
+  $00,$1C,$1C,$94,$80,$94,$08,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$80,$40,$40,$40,$40,$40
+  $00,$00,$07,$08,$08,$08,$08,$08
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $40,$40,$40,$40,$40,$80,$00,$00
+  $08,$08,$08,$08,$08,$07,$00,$00
+end data
+data TileCol bytes
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$F1
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$1F,$1F,$1F,$F1,$1F,$1F
+  $0C,$0F,$F1,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$F1,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$F1,$1F,$1F,$1F,$1F,$F1
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$F8
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$8F,$8F,$8F,$F8,$8F,$8F
+  $0C,$0F,$F8,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$F8,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$F8,$8F,$8F,$8F,$8F,$F8
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0C,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$1F,$1F,$F1,$F1,$F1,$1F,$1F
+  $0F,$F8,$F8,$F8,$F8,$F8,$8F,$8F
+  $0F,$8F,$8F,$F8,$F8,$F8,$8F,$8F
+  $0F,$1F,$1F,$F1,$F1,$F1,$1F,$1F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0C
+  $0C,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$CF,$CF,$CF,$0C
+  $0C,$0C,$C2,$2C,$2C,$2C,$2C,$2C
+  $0C,$0C,$C2,$2C,$2C,$2C,$2C,$2C
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $2C,$2C,$2C,$2C,$2C,$C2,$0C,$0C
+  $2C,$2C,$2C,$2C,$2C,$C2,$0C,$0C
+end data
+data SpritePat bytes
+  $F8,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1F,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$F8
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$1F
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+GpFlick:
+    db $00,$00,$04,$01,$00,$00,$35,$02,$10
+GpSlide:
+    db $00,$00,$25,$02,$00,$00,$46,$03,$00,$00,$66,$03,$10
+GpLay:
+    db $40,$6B,$20,$02,$40,$55,$40,$04,$50
+GpBuzz:
+    db $40,$F9,$13,$08,$40,$FF,$33,$06,$50
+GpTick:
+    db $80,$47,$30,$01,$80,$47,$70,$01,$90
+GpPick:
+    db $80,$7F,$20,$02,$80,$5F,$40,$03,$90
+GpStuck:
+    db $40,$D6,$20,$08,$40,$FE,$30,$08,$40,$41,$41,$08,$40,$7C,$51,$10,$50
+GpWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05
+    db $40,$55,$20,$05,$40,$47,$30,$14,$50
+
+GpSoundTable:
+    dw GpTuneMel,$702B
+    dw GpTuneBass,$7035
+    dw GpRunMel,$702B
+    dw GpRunBass,$7035
+    dw GpFlick,$703F
+    dw GpSlide,$703F
+    dw GpLay,$7049
+    dw GpBuzz,$7049
+    dw GpTick,$7053
+    dw GpPick,$7053
+    dw GpStuck,$7049
+    dw GpWin,$7049
+; Royal Flush (original)
+; Tiny Sound, 7 frames per step
+GpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$1A,$01,$1E,$01,$21,$01,$26,$01,$01,$01,$25,$01
+    db $23,$01,$21,$01,$01,$01,$1E,$01,$1F,$01,$21,$01,$23,$01,$01,$01
+    db $21,$01,$1F,$01,$1E,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01
+    db $01,$01,$23,$01,$25,$01,$26,$01,$01,$01,$21,$01,$1E,$01,$1C,$01
+    db $1A,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+GpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$0E,$01,$0E,$01,$09,$01,$0E,$01,$0B,$01,$0B,$01
+    db $06,$01,$06,$01,$07,$01,$07,$01,$0E,$01,$0E,$01,$07,$01,$07,$01
+    db $09,$01,$09,$01,$09,$01,$09,$01,$04,$01,$04,$01,$07,$01,$07,$01
+    db $09,$01,$09,$01,$0B,$01,$06,$01,$07,$01,$09,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+
+; Patience (original)
+; Tiny Sound, 10 frames per step
+GpRunMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$80,$F1,$22,$01,$01,$01,$1E,$01,$21,$01,$01,$01,$1C,$01,$1F
+    db $01,$01,$01,$1A,$01,$1E,$01,$01,$01,$01,$01,$01,$01,$01,$01,$1F
+    db $01,$23,$01,$01,$01,$1E,$01,$21,$01,$01,$01,$1C,$01,$1F,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+GpRunBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$90,$18,$32,$0E,$01,$01,$09,$01,$01,$0E,$01,$01,$09,$01,$01
+    db $0B,$01,$01,$06,$01,$01,$0B,$01,$01,$06,$01,$01,$07,$01,$01,$0E
+    db $01,$01,$07,$01,$01,$0E,$01,$01,$09,$01,$01,$10,$01,$01,$09,$01
+    db $01,$0D,$01,$01
+    db $FF
+}

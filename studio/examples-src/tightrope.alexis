@@ -1,0 +1,1388 @@
+cartridge "TIGHTROPE/DANIEL AVEN, COMPUTE!/1986"
+
+' TIGHTROPE
+' Based on "Tightrope" by Daniel Aven, COMPUTE! August 1986 (pages
+' 42-51): a balancing game and typing tutor for the Commodore 64, with
+' versions for the Atari (Kevin Mykytyn), IBM PC and Amiga (Patrick
+' Parrish) and Apple II (Tim Victor). Made for the ColecoVision in Amy
+' (the language by Amy Bienvenu) by Claude (an AI made by Anthropic) for
+' Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the listings' rules
+' (orig/ has the scans). Kept: the acrobat walks the rope by himself; now
+' and then he starts to fall to one side (more often, and harder, at each
+' level); push the stick the other way to win his balance back, too much
+' and he teeters the other way; lose it and he falls into the net and
+' bounces. Points for every step, more at each level, and a bonus that
+' counts down (3 a second from 1000) for a quick crossing; each crossing
+' is a level up, and, as in the C64 version, the levels alternate between
+' walking and riding a unicycle. A starting level 0-9 on the title.
+' The typing tutor needed a keyboard: here it is the CUE GAME, a reflex
+' trainer in the same spirit: when he wobbles, a sign appears beside his
+' head (an arrow left or right, or button 1 or 2) and you must answer it
+' with the stick or that button; the right answer straightens him, a
+' wrong one sounds the buzzer and he teeters more; too slow, a new sign.
+'
+' Made for this machine: a circus tent (stripes, lamps, a crowd that does
+' the wave), the acrobat as two sprites (leotard, head and hands) and his
+' balance pole as two more, all turning with his lean; a lean that moves
+' (gravity pulls it outward, the stick pushes back, damping slows it);
+' the rope sagging under his feet; the net dipping as he bounces; crowd
+' cheers and an "ooh" when he wobbles; music under play, quieter than the
+' effects. Original tunes: "Sawdust and Spangles" (title), "High Wire".
+'
+' Controls: GAME: left and right keep the balance. CUE GAME: answer the
+' sign (stick left or right, button 1 or button 2). After a fall, the
+' left button tries again at the same level; stick down or the right
+' button goes back to the menu.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TSr = 128
+const TSw = 129
+const TScr = 130
+const TScw = 131
+const TLamp = 132
+const TStar = 133
+const TStar2 = 134
+const TRope = 135
+const TSagl = 136
+const TSagm = 137
+const TSagr = 138
+const TPlank = 139
+const TPlankp = 140
+const TPole = 141
+const TNet = 142
+const TNetm = 143
+const TNetl = 144
+const TNetr = 145
+const TNetp = 146
+const TRing = 147
+const THd = 148
+const THu = 149
+const THu2 = 150
+const TTr = 151
+const TTb = 152
+const TTg = 153
+const TTy = 154
+const TCul = 155
+const TCur = 156
+const TCu1 = 157
+const TCu2 = 158
+const SBw00 = 0
+const SBw01 = 4
+const SBw10 = 8
+const SBw11 = 12
+const SBw20 = 16
+const SBw21 = 20
+const SBw30 = 24
+const SBw31 = 28
+const SBw40 = 32
+const SBw41 = 36
+const SBw50 = 40
+const SBw51 = 44
+const SBw60 = 48
+const SBw61 = 52
+const SBu00 = 56
+const SBu01 = 60
+const SBu10 = 64
+const SBu11 = 68
+const SBu20 = 72
+const SBu21 = 76
+const SBu30 = 80
+const SBu31 = 84
+const SBu40 = 88
+const SBu41 = 92
+const SBu50 = 96
+const SBu51 = 100
+const SBu60 = 104
+const SBu61 = 108
+const SKw0 = 112
+const SKw1 = 116
+const SKw2 = 120
+const SKw3 = 124
+const SKw4 = 128
+const SKw5 = 132
+const SKw6 = 136
+const SKu0 = 140
+const SKu1 = 144
+const SKu2 = 148
+const SKu3 = 152
+const SKu4 = 156
+const SKu5 = 160
+const SKu6 = 164
+const SPl0 = 168
+const SPr0 = 172
+const SPl1 = 176
+const SPr1 = 180
+const SPl2 = 184
+const SPr2 = 188
+const SPl3 = 192
+const SPr3 = 196
+const SPl4 = 200
+const SPr4 = 204
+const SPl5 = 208
+const SPr5 = 212
+const SPl6 = 216
+const SPr6 = 220
+const SBlyl = 224
+const SKlyl = 228
+const SBlyr = 232
+const SKlyr = 236
+const NTiles8 = 248
+const SprBytes = 1920
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndStep = 5
+const SndOoh = 6
+const SndCheer = 7
+const SndFall = 8
+const SndBounce = 9
+const SndDing = 10
+const SndBuzz = 11
+const SndPick = 12
+const SndTally = 13
+' the tune now playing once: frames left
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the rope (model.mjs mirrors these, step for step) --------------------
+' Ph 1 on the rope, 2 falling, 3 across, 4 resting in the net, 0 elsewhere
+u8 Ph = 0
+' Ln the lean (2048 upright; above leans right), Vl its speed (1024 still)
+u16 Ln = 2048
+u16 Vl = 1024
+' Ax his feet (pixels), Wk eighths of a pixel walked
+u8 Ax = 24
+u8 Wk = 0
+' Gt frames to the next wobble; Rs the random numbers
+u8 Gt = 90
+u16 Rs = $ACE1
+u16 Score = 0
+u16 Hi = 0
+u16 Bonus = 1000
+u8 Bf = 0
+u8 Steps = 0
+u8 Lv = 0
+u8 Uni = 0
+u8 Cross = 0
+' Mode 0 GAME, 1 CUE GAME; Cue the sign (1 left 2 right 3 button 1
+' 4 button 2), CueT frames left to answer it
+u8 Mode = 0
+u8 Cue = 0
+u8 CueT = 0
+u8 Good = 0
+u8 Bad = 0
+' Inp this frame's controls (1 left 2 right 4 up 8 down 16 button 1
+' 32 button 2), Pin the last frame's; Fr counts rope steps (for the tests)
+u8 Inp = 0
+u8 Pin = 0
+u8 Fresh = 0
+u8 Any = 0
+u8 Fr = 0
+' the level's numbers
+u8 Gk = 3
+u8 Push = 6
+u8 Kick = 12
+u8 Gmin = 150
+u8 Ws = 4
+u8 CueTm = 80
+u8 Pts = 10
+u8 StartLv = 0
+
+' --- on screen ----------------------------------------------------------------
+u8 Idx = 3
+u8 Sy = 66
+u8 Sc = 0
+u8 CuX = 0
+u8 CuT = 0
+u8 Oo = 0
+u8 LastSt = 0
+u8 Dirty = 0
+u8 Wv = 0
+u8 WvT = 0
+u8 Side = 0
+u16 Fy = 0
+u16 Fv = 0
+u8 Bn = 0
+u8 Nt = 0
+
+u16 A16 = 0
+u16 D16 = 0
+u16 T16 = 0
+u16 NumU = 0
+u8 Menu = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Idle = 0
+
+  tile screen
+  set sound table TrSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+  Mode = Menu
+  Lv = StartLv
+  Cross = 0
+  Uni = 0
+  Score = 0
+
+round:
+  NewRound
+  DrawArena
+  ShowHud
+  print at 10,13, "LEVEL "
+  print at 16,13, digits$(Lv, 1)
+  if Uni = 1 then
+    print at 9,14, "ON A UNICYCLE"
+  else
+    print at 11,14, "ON FOOT"
+  end if
+  if Mode = 1 then print at 6,15, "ANSWER THE SIGNS!"
+  ShowScreen
+  play sound SndRunA
+  play sound SndRunB
+  for Tm = 1 to 100
+    Frame1
+    DrawFigure
+    CrowdWave(6)
+  next
+  print at 9,13, "            "
+  print at 8,14, "              "
+  print at 6,15, "                 "
+  Ph = 1
+
+rope:
+  Frame1
+  ReadPad
+  RopeStep
+  if Steps <> LastSt then
+    LastSt = Steps
+    play sound SndStep
+    Dirty = 1
+  end if
+  if Bf = 0 then Dirty = 1
+  if Dirty = 1 then
+    ShowHud
+    Dirty = 0
+  end if
+  ' an "ooh" when he starts to teeter
+  if Ln >= 2048 then
+    D16 = Ln - 2048
+  else
+    D16 = 2048 - Ln
+  end if
+  if D16 > 300 then
+    if Oo = 0 then
+      play sound SndOoh
+      Oo = 1
+    end if
+  end if
+  if D16 < 150 then Oo = 0
+  DrawFigure
+  DrawCue
+  CrowdWave(6)
+  if Ph = 1 then goto rope
+  ClearCue
+  if Ph = 3 then goto across
+  goto falling
+
+across:
+  ShowHud
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndCheer
+  print at 12,13, "BRAVO!"
+  print at 9,14, "BONUS "
+  NumU = Bonus
+  print at 15,14, digits$(NumU, 4)
+  for Tm = 1 to 150
+    Frame1
+    DrawFigure
+    CrowdWave(2)
+  next
+  if Lv < 9 then inc Lv
+  inc Cross
+  Uni = Cross & 1
+  goto round
+
+falling:
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndFall
+  Side = 0
+  if Ln > 2048 then Side = 1
+  Fy = Sy
+  Fy = Fy << 4
+  Fv = 0
+  Bn = 0
+fall_loop:
+  Frame1
+  Fv = Fv + 5
+  Fy = Fy + Fv
+  ' the net: his sprite rests at 122
+  if Fy >= 1952 then
+    Fy = 1952
+    inc Bn
+    play sound SndBounce
+    NetDip(1)
+    Fv = Fv >> 1
+    Fv = Fv >> 1
+    if Bn >= 4 then goto fall_done
+    ' up again (the speed turned round): rise until it is spent
+    Fv = 65535 - Fv
+    Fv = Fv + 1
+  end if
+  DrawFall
+  if Bn > 0 then
+    if Nt = 0 then NetDip(0)
+  end if
+  ' a rising speed is a big number (65536 - speed): Fy goes up
+  goto fall_loop
+fall_done:
+  Ph = 4
+  DrawFall
+  for Tm = 1 to 20
+    Frame1
+  next
+  NetDip(0)
+  if Score > Hi then Hi = Score
+  print at 9,11, "INTO THE NET!"
+  print at 5,12, "SCORE "
+  NumU = Score
+  print at 11,12, digits$(NumU, 5)
+  print at 18,12, "HIGH "
+  NumU = Hi
+  print at 23,12, digits$(NumU, 5)
+  print at 4,13, "LEFT BUTTON: TRY AGAIN"
+  print at 4,14, "STICK DOWN: MENU"
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+over_loop:
+  Frame1
+  ReadPad
+  CrowdWave(8)
+  if Press = 1 then
+    Score = 0
+    goto round
+  end if
+  V = Inp & 40
+  if V > 0 then
+    mute all
+    goto title
+  end if
+  goto over_loop
+
+' --- the rules -----------------------------------------------------------------
+sub SetLevel:
+  Gk = 3 + Lv
+  Push = 6
+  Ws = Lv >> 1
+  Ws = Ws + 4
+  if Uni = 1 then
+    Gk = Gk + 2
+    Push = 5
+    Ws = Ws + 2
+  end if
+  Kick = Lv * 3
+  Kick = Kick + 12
+  Gmin = Lv * 10
+  Gmin = 150 - Gmin
+  CueTm = Lv * 6
+  CueTm = 80 - CueTm
+  if CueTm < 30 then CueTm = 30
+  Pts = Lv + 1
+  Pts = Pts * 10
+  return
+end sub
+
+sub NewRound:
+  SetLevel
+  Ph = 0
+  Ln = 2048
+  Vl = 1024
+  Ax = 24
+  Wk = 0
+  Gt = 90
+  Bonus = 1000
+  Bf = 0
+  Steps = 0
+  LastSt = 0
+  Cue = 0
+  CueT = 0
+  Pin = 63
+  Sc = 0
+  CuX = 0
+  Oo = 0
+  return
+end sub
+
+sub Rnd:
+  T16 = Rs << 7
+  Rs = Rs ^ T16
+  T16 = Rs >> 9
+  Rs = Rs ^ T16
+  T16 = Rs << 8
+  Rs = Rs ^ T16
+  return
+end sub
+
+' NewCue: a sign from the random number
+sub NewCue:
+  T16 = Rs >> 4
+  T16 = T16 & 3
+  Cue = T16
+  inc Cue
+  CueT = CueTm
+  return
+end sub
+
+' Step: one frame on the rope (model.mjs step())
+sub RopeStep:
+  inc Fr
+  Fresh = Pin ^ 255
+  Fresh = Fresh & Inp
+  ' 1. a wobble now and then
+  dec Gt
+  if Gt = 0 then
+    Rnd
+    T16 = Rs & 1
+    if T16 = 1 then
+      Vl = Vl + Kick
+    else
+      Vl = Vl - Kick
+    end if
+    T16 = Rs >> 8
+    T16 = T16 & 63
+    Gt = T16
+    Gt = Gt + Gmin
+    if Mode = 1 then
+      if Cue = 0 then NewCue
+    end if
+  end if
+  ' 2. gravity pulls the lean outward
+  if Ln >= 2048 then
+    D16 = Ln - 2048
+    A16 = D16 * Gk
+    A16 = A16 >> 10
+    Vl = Vl + A16
+  else
+    D16 = 2048 - Ln
+    A16 = D16 * Gk
+    A16 = A16 >> 10
+    Vl = Vl - A16
+  end if
+  ' 3. the player
+  if Mode = 0 then
+    V = Inp & 1
+    if V > 0 then Vl = Vl - Push
+    V = Inp & 2
+    if V > 0 then Vl = Vl + Push
+  else
+    if Cue > 0 then Answer
+  end if
+  ' 4. damping and the limits
+  if Vl > 1024 then
+    A16 = Vl - 1024
+    A16 = A16 >> 3
+    Vl = Vl - A16
+  else
+    A16 = 1024 - Vl
+    A16 = A16 >> 3
+    Vl = Vl + A16
+  end if
+  if Vl > 1184 then Vl = 1184
+  if Vl < 864 then Vl = 864
+  ' 5. the lean
+  if Vl >= 1024 then
+    A16 = Vl - 1024
+    Ln = Ln + A16
+  else
+    A16 = 1024 - Vl
+    Ln = Ln - A16
+  end if
+  if Ln > 3448 then
+    Ph = 2
+    Pin = Inp
+    return
+  end if
+  if Ln < 648 then
+    Ph = 2
+    Pin = Inp
+    return
+  end if
+  ' 6. he walks unless he teeters
+  if Ln >= 2048 then
+    D16 = Ln - 2048
+  else
+    D16 = 2048 - Ln
+  end if
+  if D16 <= 300 then
+    Wk = Wk + Ws
+walk_more:
+    if Wk >= 8 then
+      Wk = Wk - 8
+      inc Ax
+      V = Ax & 7
+      if V = 0 then
+        inc Steps
+        AddScore(Pts)
+      end if
+      goto walk_more
+    end if
+    if Ax >= 232 then
+      Ph = 3
+      A16 = 65535 - Score
+      if A16 < Bonus then
+        Score = 65535
+      else
+        Score = Score + Bonus
+      end if
+    end if
+  end if
+  ' 7. the bonus counts down 3 a second
+  if Ph = 1 then
+    inc Bf
+    if Bf = 60 then
+      Bf = 0
+      if Bonus >= 3 then
+        Bonus = Bonus - 3
+      else
+        Bonus = 0
+      end if
+    end if
+  end if
+  Pin = Inp
+  return
+end sub
+
+' Answer: the CUE GAME's sign
+sub Answer:
+  W = CueBit[Cue]
+  Any = Fresh & 51
+  V = Any & W
+  if V > 0 then
+    Ln = 2048
+    Vl = 1024
+    Cue = 0
+    inc Good
+    play sound SndDing
+  else
+    if Any > 0 then
+      if Ln >= 2048 then
+        Vl = Vl + Kick
+      else
+        Vl = Vl - Kick
+      end if
+      inc Bad
+      play sound SndBuzz
+    end if
+  end if
+  if Cue > 0 then
+    dec CueT
+    if CueT = 0 then
+      Rnd
+      NewCue
+    end if
+  end if
+  return
+end sub
+
+sub AddScore(u8 P):
+  A16 = 65535 - Score
+  if A16 < P then
+    Score = 65535
+  else
+    Score = Score + P
+  end if
+  return
+end sub
+
+' --- the picture -----------------------------------------------------------
+' LeanIdx: the lean as one of the 7 poses
+sub LeanIdx:
+  if Ln < 998 then
+    Idx = 0
+  else
+    A16 = Ln - 998
+    A16 = A16 / 300
+    Idx = A16
+    if Idx > 6 then Idx = 6
+  end if
+  return
+end sub
+
+' DrawFigure: the acrobat, his pole, the rope's sag under him
+sub DrawFigure:
+  LeanIdx
+  Sy = 66
+  V = Ax >> 3
+  if V >= 4 then
+    if V <= 27 then Sy = 68
+  end if
+  Sag(V)
+  if Uni = 1 then
+    W = Ax >> 1
+    W = W & 1
+    N = Idx * 2
+    N = N + W
+    N = N << 2
+    N = N + SBu00
+    K = Idx << 2
+    K = K + SKu0
+  else
+    W = Ax >> 2
+    W = W & 1
+    N = Idx * 2
+    N = N + W
+    N = N << 2
+    N = N + SBw00
+    K = Idx << 2
+    K = K + SKw0
+  end if
+  X = Ax - 8
+  set sprite 0 to Sy,X,K,9
+  set sprite 1 to Sy,X,N,13
+  W = Idx << 3
+  W = W + SPl0
+  Y = Sy
+  if Uni = 1 then dec Y
+  X = Ax - 16
+  set sprite 2 to Y,X,W,11
+  W = W + 4
+  set sprite 3 to Y,Ax,W,11
+  update sprites
+  return
+end sub
+
+' DrawFall: falling (the outermost pose), then lying in the net
+sub DrawFall:
+  T16 = Fy >> 4
+  Y = T16
+  X = Ax - 8
+  if Ph = 4 then
+    Y = Y + 2
+    if Side = 1 then
+      set sprite 0 to Y,X,SKlyr,9
+      set sprite 1 to Y,X,SBlyr,13
+    else
+      set sprite 0 to Y,X,SKlyl,9
+      set sprite 1 to Y,X,SBlyl,13
+    end if
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  else
+    N = 0
+    if Side = 1 then N = 6
+    K = N << 2
+    K = K + SKw0
+    W = N * 8
+    N = W + SBw00
+    set sprite 0 to Y,X,K,9
+    set sprite 1 to Y,X,N,13
+    W = W + SPl0
+    X = Ax - 16
+    set sprite 2 to Y,X,W,11
+    W = W + 4
+    set sprite 3 to Y,Ax,W,11
+  end if
+  update sprites
+  return
+end sub
+
+' Sag(C): the rope dips under cell C (the old dip is mended)
+sub Sag(u8 Cc):
+  if Cc < 4 then Cc = 0
+  if Cc > 27 then Cc = 0
+  if Cc = Sc then return
+  if Sc > 0 then
+    RopeCell(Sc - 1)
+    RopeCell(Sc)
+    RopeCell(Sc + 1)
+  end if
+  Sc = Cc
+  if Sc = 0 then return
+  if Sc > 4 then
+    V = Sc - 1
+    put char TSagl at V,10
+  end if
+  put char TSagm at Sc,10
+  if Sc < 27 then
+    V = Sc + 1
+    put char TSagr at V,10
+  end if
+  return
+end sub
+
+sub RopeCell(u8 Rc):
+  if Rc < 4 then return
+  if Rc > 27 then return
+  put char TRope at Rc,10
+  return
+end sub
+
+' NetDip(On): the net sags under him (1) or springs back (0)
+sub NetDip(u8 Dip):
+  V = Ax >> 3
+  if V < 5 then V = 5
+  if V > 26 then V = 26
+  W = V - 1
+  X = V + 1
+  if Dip = 1 then
+    put char TNetl at W,17
+    put char TNetm at V,17
+    put char TNetr at X,17
+    Nt = 6
+  else
+    put char TNet at W,17
+    put char TNet at V,17
+    put char TNet at X,17
+  end if
+  return
+end sub
+
+' DrawCue: the sign beside his head (row 7)
+sub DrawCue:
+  V = 0
+  if Cue > 0 then
+    V = Ax >> 3
+    V = V + 2
+    if V > 29 then V = V - 4
+  end if
+  if V = CuX then
+    if Cue = CuT then return
+  end if
+  ClearCue
+  if V = 0 then return
+  CuX = V
+  CuT = Cue
+  W = CueTile[Cue]
+  put char W at CuX,7
+  return
+end sub
+
+sub ClearCue:
+  if CuX > 0 then put char 32 at CuX,7
+  CuX = 0
+  CuT = 0
+  return
+end sub
+
+' CrowdWave(S): the wave moves a column every S frames
+sub CrowdWave(u8 Spd):
+  inc WvT
+  if WvT < Spd then return
+  WvT = 0
+  ' the column leaving the wave goes down, the new one up
+  V = Wv
+  CrowdCol(V, 0)
+  inc Wv
+  if Wv > 33 then Wv = 0
+  V = Wv + 2
+  CrowdCol(V, 1)
+  return
+end sub
+
+sub CrowdCol(u8 Cx, u8 Up):
+  if Cx > 31 then return
+  if Up = 1 then
+    W = Cx & 1
+    W = W + THu
+    if W > THu then W = THu2
+  else
+    W = THd
+  end if
+  put char W at Cx,19
+  put char W at Cx,21
+  return
+end sub
+
+' --- screens -----------------------------------------------------------------
+sub DrawArena:
+  NewScreen
+  for X = 0 to 31
+    V = X & 1
+    if V = 0 then
+      put char TSr at X,2
+      put char TSr at X,3
+      put char TScr at X,4
+    else
+      put char TSw at X,2
+      put char TSw at X,3
+      put char TScw at X,4
+    end if
+    put char TRing at X,18
+    put char THd at X,19
+    put char THd at X,21
+    V = X + 1
+    V = V & 3
+    W = TrCol[V]
+    put char W at X,20
+    V = X + 3
+    V = V & 3
+    W = TrCol[V]
+    put char W at X,22
+  next
+  put char TLamp at 4,5
+  put char TLamp at 27,5
+  put char TLamp at 15,5
+  put char TStar at 8,6
+  put char TStar2 at 12,8
+  put char TStar at 20,6
+  put char TStar2 at 24,8
+  put char TStar2 at 6,9
+  put char TStar at 2,7
+  put char TStar2 at 29,7
+  for X = 4 to 27
+    put char TRope at X,10
+    put char TNet at X,17
+  next
+  put char TPlank at 2,10
+  put char TPlankp at 3,10
+  put char TPlankp at 28,10
+  put char TPlank at 29,10
+  for Y = 11 to 16
+    put char TPole at 3,Y
+    put char TPole at 28,Y
+  next
+  put char TNetp at 3,17
+  put char TNetp at 28,17
+  Wv = 0
+  WvT = 0
+  Sc = 0
+  CuX = 0
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 14,1, "BONUS"
+  NumU = Bonus
+  print at 20,1, digits$(NumU, 4)
+  print at 25,1, "LV"
+  print at 28,1, digits$(Lv, 1)
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  if Nt > 0 then dec Nt
+  return
+end sub
+
+sub ReadPad:
+  Inp = 0
+  if joypad(1).left then Inp = Inp | 1
+  if joypad(1).right then Inp = Inp | 2
+  if joypad(1).up then Inp = Inp | 4
+  if joypad(1).down then Inp = Inp | 8
+  if joypad(1).button1 then Inp = Inp | 16
+  if joypad(1).button2 then Inp = Inp | 32
+  if joypad(2).left then Inp = Inp | 1
+  if joypad(2).right then Inp = Inp | 2
+  if joypad(2).up then Inp = Inp | 4
+  if joypad(2).down then Inp = Inp | 8
+  if joypad(2).button1 then Inp = Inp | 16
+  if joypad(2).button2 then Inp = Inp | 32
+  Btn = Inp & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  Ph = 0
+  Uni = 0
+  Ln = 2048
+  Ax = 24
+  DrawArena
+  print at 8,7, "T I G H T R O P E"
+  print at 6,8, "CAN YOU WALK THE ROPE?"
+  print at 11,12, "GAME"
+  print at 11,13, "CUE GAME"
+  print at 11,14, "LEVEL"
+  print at 11,15, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  ' he sways on the platform, waiting
+  V = Tick >> 4
+  V = V & 7
+  Ln = SwayLn[V]
+  DrawFigure
+  CrowdWave(4)
+  V = Inp & 15
+  if V > 0 then
+    if WasStick = 0 then
+      W = Inp & 4
+      if W > 0 then
+        if Menu > 0 then dec Menu
+      end if
+      W = Inp & 8
+      if W > 0 then
+        if Menu < 3 then inc Menu
+      end if
+      if Menu = 2 then
+        W = Inp & 1
+        if W > 0 then
+          if StartLv > 0 then dec StartLv
+        end if
+        W = Inp & 2
+        if W > 0 then
+          if StartLv < 9 then inc StartLv
+        end if
+      end if
+      play sound SndPick
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 2 then goto tp_loop
+  T16 = Tick
+  Rs = Rs ^ T16
+  T16 = T16 << 8
+  Rs = Rs ^ T16
+  if Rs = 0 then Rs = 1
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  Ln = 2048
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 3
+    V = J + 12
+    if J = Menu then
+      print at 9,V, ">"
+    else
+      print at 9,V, " "
+    end if
+  next
+  print at 17,14, "< "
+  print at 19,14, digits$(StartLv, 1)
+  print at 20,14, " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  for X = 2 to 29
+    V = X & 1
+    if V = 0 then
+      put char TScr at X,2
+      put char TScr at X,20
+    else
+      put char TScw at X,2
+      put char TScw at X,20
+    end if
+  next
+  print at 10,4, "TIGHTROPE"
+  print at 3,6, "BASED ON TIGHTROPE BY DANIEL"
+  print at 3,7, "AVEN, COMPUTE! AUGUST 1986"
+  print at 3,8, "(C64; VERSIONS BY KEVIN"
+  print at 3,9, "MYKYTYN, PATRICK PARRISH"
+  print at 3,10, "AND TIM VICTOR)."
+  print at 3,12, "MADE FOR THE COLECOVISION"
+  print at 3,13, "BY CLAUDE (AN AI MADE BY"
+  print at 3,14, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,15, "2026, IN AMY BY AMY BIENVENU."
+  print at 3,17, "MUSIC: SAWDUST AND SPANGLES,"
+  print at 3,18, "HIGH WIRE"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' the wanted control for each sign, and its tile
+data CueBit bytes
+  0,1,2,16,32
+end data
+data CueTile bytes
+  32,TCul,TCur,TCu1,TCu2
+end data
+' the crowd's shirts
+data TrCol bytes
+  TTr,TTb,TTg,TTy
+end data
+' the title's sway
+data SwayLn words
+  1948,1998,2048,2098,2148,2098,2048,1998
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$81,$81,$C3,$18,$00
+  $00,$00,$00,$81,$81,$C3,$18,$00
+  $18,$18,$C3,$81,$81,$81,$C3,$00
+  $00,$00,$08,$1C,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$38,$0E,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$1C,$70,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $81,$42,$24,$18,$18,$24,$42,$81
+  $00,$00,$81,$42,$24,$18,$18,$24
+  $00,$81,$42,$24,$18,$18,$24,$42
+  $00,$81,$42,$24,$18,$18,$24,$42
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$C3,$C3,$18,$00
+  $42,$A5,$83,$C3,$18,$00,$00,$00
+  $81,$A5,$C3,$C3,$18,$00,$00,$00
+  $18,$81,$00,$00,$00,$00,$00,$00
+  $18,$81,$00,$00,$00,$00,$00,$00
+  $18,$81,$00,$00,$00,$00,$00,$00
+  $18,$81,$00,$00,$00,$00,$00,$00
+  $10,$30,$80,$00,$80,$30,$10,$00
+  $08,$0C,$01,$00,$01,$0C,$08,$00
+  $38,$93,$05,$19,$05,$1C,$93,$38
+  $38,$44,$D2,$05,$10,$83,$A1,$38
+end data
+data TileCol bytes
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $08,$08,$08,$18,$18,$18,$81,$01
+  $0F,$0F,$0F,$1F,$1F,$1F,$F1,$01
+  $E1,$E1,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$01,$B1,$B1,$B1,$01,$01,$01
+  $01,$01,$01,$01,$01,$71,$01,$01
+  $01,$01,$0F,$0F,$01,$01,$01,$01
+  $01,$01,$F1,$F1,$F1,$F1,$01,$01
+  $01,$01,$01,$01,$0F,$0F,$01,$01
+  $01,$01,$F1,$F1,$F1,$F1,$01,$01
+  $01,$01,$0B,$0A,$0A,$01,$01,$01
+  $01,$01,$0B,$0A,$0A,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $EF,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $08,$08,$0A,$0A,$0A,$0A,$0A,$0A
+  $01,$01,$01,$91,$19,$19,$91,$01
+  $91,$19,$19,$19,$91,$01,$01,$01
+  $91,$19,$19,$19,$91,$01,$01,$01
+  $91,$18,$08,$08,$08,$08,$08,$08
+  $91,$15,$05,$05,$05,$05,$05,$05
+  $91,$13,$03,$03,$03,$03,$03,$03
+  $91,$1B,$0B,$0B,$0B,$0B,$0B,$0B
+  $B1,$B1,$1B,$0B,$1B,$B1,$B1,$01
+  $B1,$B1,$1B,$0B,$1B,$B1,$B1,$01
+  $71,$17,$17,$17,$17,$17,$17,$71
+  $71,$71,$71,$17,$17,$71,$17,$71
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$1B,$1E,$6C,$CC,$8E,$06,$06,$07,$03,$02,$02
+  $00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$40
+  $00,$00,$00,$00,$00,$1B,$1E,$6C,$CC,$8E,$06,$06,$02,$03,$01,$01
+  $00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $00,$00,$00,$00,$00,$0F,$1E,$76,$C6,$02,$02,$03,$03,$02,$02,$02
+  $00,$00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$40
+  $00,$00,$00,$00,$00,$0F,$1E,$76,$C6,$02,$02,$02,$03,$01,$01,$01
+  $00,$00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $00,$00,$00,$00,$01,$07,$1F,$73,$03,$01,$01,$03,$02,$02,$02,$02
+  $00,$00,$00,$00,$00,$C0,$70,$00,$00,$00,$00,$00,$80,$80,$C0,$40
+  $00,$00,$00,$00,$01,$07,$1F,$73,$03,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$C0,$70,$00,$00,$00,$00,$00,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$03,$3C,$00,$00,$00,$01,$01,$01,$03,$02,$02
+  $00,$00,$00,$00,$80,$C0,$B8,$80,$80,$80,$80,$80,$80,$C0,$40,$40
+  $00,$00,$00,$00,$00,$03,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$B8,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$03,$0E,$00,$00,$00,$00,$00,$01,$01,$03,$02
+  $00,$00,$00,$00,$00,$E0,$78,$4E,$C0,$C0,$C0,$C0,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$03,$0E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$78,$4E,$C0,$C0,$C0,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00,$01,$03,$02
+  $00,$00,$00,$00,$00,$F0,$38,$3E,$63,$60,$60,$C0,$C0,$40,$40,$40
+  $00,$00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$F0,$38,$3E,$63,$60,$60,$40,$C0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$01,$03,$02
+  $00,$00,$00,$00,$00,$C8,$7C,$1E,$1B,$31,$30,$60,$E0,$C0,$40,$40
+  $00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C8,$7C,$1E,$1B,$31,$30,$60,$40,$C0,$C0,$80
+  $00,$00,$00,$00,$13,$3E,$78,$CC,$8C,$0C,$07,$0F,$0D,$0F,$0C,$0F
+  $00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$80
+  $00,$00,$00,$00,$13,$3E,$78,$CC,$8C,$0C,$07,$0F,$0D,$0F,$0A,$0F
+  $00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$80
+  $00,$00,$00,$00,$0F,$1C,$66,$C6,$06,$06,$07,$07,$0D,$0F,$0C,$07
+  $00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$40,$C0
+  $00,$00,$00,$00,$0F,$1C,$66,$C6,$06,$06,$07,$07,$0D,$0B,$0E,$07
+  $00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$40,$C0
+  $00,$00,$00,$02,$07,$1F,$73,$03,$03,$03,$03,$06,$06,$07,$04,$07
+  $00,$00,$00,$00,$C0,$70,$00,$00,$00,$00,$80,$C0,$E0,$E0,$60,$C0
+  $00,$00,$00,$02,$07,$1F,$73,$03,$03,$03,$03,$06,$07,$05,$07,$07
+  $00,$00,$00,$00,$C0,$70,$00,$00,$00,$00,$80,$C0,$E0,$E0,$60,$C0
+  $00,$00,$00,$00,$03,$3C,$00,$00,$00,$01,$03,$07,$06,$07,$06,$03
+  $00,$00,$00,$80,$C0,$B8,$80,$80,$80,$80,$C0,$E0,$E0,$E0,$60,$C0
+  $00,$00,$00,$00,$03,$3C,$00,$00,$00,$01,$03,$07,$06,$05,$07,$03
+  $00,$00,$00,$80,$C0,$B8,$80,$80,$80,$80,$C0,$E0,$E0,$E0,$60,$C0
+  $00,$00,$00,$00,$03,$0E,$00,$00,$00,$00,$01,$03,$07,$07,$06,$03
+  $00,$00,$00,$00,$E0,$78,$4E,$40,$C0,$C0,$C0,$60,$60,$E0,$20,$E0
+  $00,$00,$00,$00,$03,$0E,$00,$00,$00,$00,$01,$03,$07,$05,$07,$03
+  $00,$00,$00,$00,$E0,$78,$4E,$40,$C0,$C0,$C0,$60,$E0,$E0,$20,$E0
+  $00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$01,$03,$03,$03,$02,$03
+  $00,$00,$00,$00,$F0,$38,$36,$33,$60,$60,$C0,$E0,$70,$F0,$30,$E0
+  $00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$01,$03,$03,$03,$03,$03
+  $00,$00,$00,$00,$F0,$38,$36,$33,$60,$60,$C0,$E0,$70,$F0,$30,$E0
+  $00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$03,$03,$02,$03,$01
+  $00,$00,$00,$00,$C8,$7C,$0E,$1B,$19,$30,$E0,$F0,$B0,$F0,$30,$F0
+  $00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$03,$02,$03,$03,$01
+  $00,$00,$00,$00,$C8,$7C,$0E,$1B,$19,$30,$E0,$F0,$B0,$F0,$30,$F0
+  $00,$00,$20,$70,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$1C,$18,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$30,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$06,$07,$02,$00,$00,$00,$C0,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$08,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$00,$00,$00,$30,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$00,$00,$0C,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$60,$E0,$40,$00,$00,$00,$03,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0C,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$38,$18,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$0E,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$70,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$18,$08,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$60,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $04,$06,$06,$00,$00,$00,$C0,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$01,$00,$00,$30,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$0C,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$60,$60,$00,$00,$00,$03,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$06,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$18,$10,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$0E,$06,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$0E,$18,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$1C,$70,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$F8,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0E,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$1E,$F0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$1F,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$0E,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$7E,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$0E,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$FC,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$3F,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$60,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$7E,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$70,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$F8,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$78,$0F,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$70,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$1F,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$38,$0E,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$70,$18,$0C,$00,$00
+  $00,$00,$00,$00,$02,$02,$06,$04,$0F,$0F,$0C,$04,$04,$04,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$FE,$78,$0E,$01,$00,$00,$00
+  $00,$00,$00,$02,$03,$00,$00,$40,$E0,$60,$00,$00,$00,$00,$06,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$7F,$1F,$70,$80,$00,$00,$00
+  $00,$00,$00,$00,$40,$40,$60,$20,$30,$F0,$F0,$20,$20,$20,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$C0,$00,$00,$02,$07,$06,$00,$00,$00,$00,$60,$20
+end data
+
+asm {
+TrStep:
+    db $40,$5D,$30,$01,$40,$7C,$50,$01,$50
+TrOoh:
+    db $80,$D6,$30,$04,$80,$E2,$30,$04,$80,$F0,$30,$04,$80,$FE,$40,$04,$80,$0E,$51,$06,$80,$1D,$61,$08
+    db $90
+TrCheer:
+    db $00,$00,$15,$08,$00,$00,$25,$08,$00,$00,$15,$08,$00,$00,$25,$08,$00,$00,$15,$08,$00,$00,$25,$08
+    db $00,$00,$25,$08,$00,$00,$35,$08,$00,$00,$35,$08,$00,$00,$45,$08,$00,$00,$45,$08,$00,$00,$55,$08
+    db $10
+TrFall:
+    db $80,$47,$20,$03,$80,$50,$20,$03,$80,$5A,$20,$03,$80,$65,$20,$03,$80,$71,$30,$03,$80,$7F,$30,$03
+    db $80,$8F,$30,$03,$80,$A0,$30,$03,$80,$B4,$40,$04,$80,$CA,$40,$04,$80,$E2,$50,$06,$90
+TrBounce:
+    db $00,$00,$16,$02,$00,$00,$26,$03,$00,$00,$57,$04,$10
+TrDing:
+    db $40,$47,$20,$03,$40,$35,$30,$06,$40,$35,$50,$06,$50
+TrBuzz:
+    db $40,$F9,$23,$0A,$40,$F9,$43,$06,$50
+TrPick:
+    db $40,$7F,$20,$02,$40,$A9,$50,$02,$50
+TrTally:
+    db $40,$40,$30,$01,$40,$40,$60,$01,$50
+
+TrSoundTable:
+    dw TrTuneMel,$702B
+    dw TrTuneBass,$7035
+    dw TrRunMel,$702B
+    dw TrRunBass,$7035
+    dw TrStep,$7049
+    dw TrOoh,$7053
+    dw TrCheer,$703F
+    dw TrFall,$7053
+    dw TrBounce,$703F
+    dw TrDing,$7049
+    dw TrBuzz,$7049
+    dw TrPick,$7049
+    dw TrTally,$7049
+; Sawdust and Spangles (original)
+; Tiny Sound, 6 frames per step
+TrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$31,$88,$1A,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1F,$01
+    db $21,$01,$23,$01,$24,$01,$28,$01,$26,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$1A,$01,$1F,$01,$23,$01,$26,$01,$28,$01,$26,$01
+    db $24,$01,$23,$01,$21,$01,$26,$01,$24,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$18,$32,$07,$0E,$07,$0E,$07,$0E,$07,$0E,$06,$0E,$06,$0E
+    db $06,$0E,$07,$0E,$0C,$13,$0C,$13,$06,$0E,$06,$0E,$07,$0E,$07,$0E
+    db $07,$01,$01,$01,$07,$0E,$07,$0E,$0C,$13,$0C,$13,$06,$0E,$06,$0E
+    db $06,$0E,$06,$0E,$0B,$0E,$0B,$0E,$07,$0E,$07,$0E,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; High Wire (original)
+; Tiny Sound, 8 frames per step
+TrRunMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$23,$01,$01,$01,$26,$01,$23,$01,$01,$01,$21,$01
+    db $1F,$01,$01,$01,$01,$01,$21,$01,$01,$01,$23,$01,$21,$01,$01,$01
+    db $1E,$01,$1A,$01,$01,$01,$01,$01,$23,$01,$01,$01,$26,$01,$2B,$01
+    db $01,$01,$2A,$01,$28,$01,$01,$01,$26,$01,$24,$01,$01,$01,$23,$01
+    db $21,$01,$01,$01,$1A,$01,$1F,$01,$01,$01,$01,$01
+    db $FF
+TrRunBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$07,$01,$0B,$01,$0E,$01,$07,$01,$0B,$01,$0E,$01
+    db $04,$01,$07,$01,$0B,$01,$04,$01,$07,$01,$0B,$01,$06,$01,$06,$01
+    db $09,$01,$06,$01,$06,$01,$09,$01,$07,$01,$0B,$01,$0E,$01,$07,$01
+    db $0B,$01,$0E,$01,$04,$01,$04,$01,$07,$01,$06,$01,$06,$01,$09,$01
+    db $06,$01,$06,$01,$09,$01,$07,$01,$0B,$01,$0E,$01
+    db $FF
+}

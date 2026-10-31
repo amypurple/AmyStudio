@@ -1,0 +1,1595 @@
+cartridge "WARI/DON DONATI, COMPUTE!/1987"
+
+' WARI
+' Based on "Wari" by Don Donati, COMPUTE! February 1987 (pages 62-71;
+' Commodore 64 original, the other versions by Patrick Parrish). Made for
+' the ColecoVision in Amy (the language by Amy Bienvenu) by Claude (an AI
+' made by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the C64 listing's rules
+' (orig/ has the scans and a transcription; the listing's line numbers are
+' quoted below). Kept: twelve compartments, the computer's A-F along the
+' top (A at the right), yours G-L along the bottom, four counters in
+' each; a move takes every counter of one of your compartments and sows
+' them one by one counterclockwise (lines 1280-1350); when the last one
+' makes an opponent's compartment 2 or 3, those counters are captured,
+' and so are the ones before it while they also hold 2 or 3, on the
+' opponent's side only (lines 1370-1480); the game ends when the board is
+' empty, when the player to move has no counters (the rest go to the side
+' they lie on, lines 910-1010), when someone has captured more than 24,
+' or in a limited game when both sides have made the limit of moves; the
+' higher total wins (lines 1030-1060). The computer's move is the
+' listing's (lines 520-820): every move of both sides is tried; it takes
+' the move that captures most, or moves out of the compartment where your
+' best capture would start if that is worth more; with nothing to take or
+' defend it starves you when you have no counters (a compartment whose
+' sowing stays on its side, line 800), else plays a random compartment.
+' Changed (noted where the code does it):
+' - lines 690 and 710 let a compartment that captures nothing (even an
+'   empty one) win the comparison, so the computer could choose an empty
+'   compartment and pass, and lines 770-820 never ran; here a move counts
+'   in that comparison only when it captures, as lines 740-820 intend.
+' - the article says a sowing of 12 or more skips the compartment it came
+'   from; the listing (line 1310) does not; here it is skipped.
+' Made for this machine: a carved board with cups of beans (up to twelve
+' drawn, the number beside), a cursor arrow, every bean hopping from cup
+' to cup as it is sown, captured beans flying into the stores at the
+' ends, a menu for the limit and who goes first, a two-player game (the
+' top side on controller 2), music under play quieter than the effects,
+' an original title tune, "Sowing Song".
+'
+' Controls: left and right choose a cup, the left button sows it, the
+' right button quits the game (with a question first).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TCupt0l = 128
+const TCupt0r = 129
+const TCupt1l = 130
+const TCupt1r = 131
+const TCupt2l = 132
+const TCupt2r = 133
+const TCupt3l = 134
+const TCupt3r = 135
+const TCupt4l = 136
+const TCupt4r = 137
+const TCupt5l = 138
+const TCupt5r = 139
+const TCupt6l = 140
+const TCupt6r = 141
+const TCupb0l = 142
+const TCupb0r = 143
+const TCupb1l = 144
+const TCupb1r = 145
+const TCupb2l = 146
+const TCupb2r = 147
+const TCupb3l = 148
+const TCupb3r = 149
+const TCupb4l = 150
+const TCupb4r = 151
+const TCupb5l = 152
+const TCupb5r = 153
+const TCupb6l = 154
+const TCupb6r = 155
+const TStm0l = 156
+const TStm0r = 157
+const TStm1l = 158
+const TStm1r = 159
+const TStm2l = 160
+const TStm2r = 161
+const TStm3l = 162
+const TStm3r = 163
+const TStm4l = 164
+const TStm4r = 165
+const TStm5l = 166
+const TStm5r = 167
+const TStm6l = 168
+const TStm6r = 169
+const TWood = 170
+const TGrain1 = 171
+const TGrain2 = 172
+const TCtl = 173
+const TCtr = 174
+const TCbl = 175
+const TCbr = 176
+const TChl = 177
+const TChr = 178
+const SUp = 0
+const SDown = 4
+const SBean = 8
+const SPile = 12
+const NTiles8 = 408
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPlayA = 3
+const SndPlayB = 4
+const SndTick = 5
+const SndLift = 6
+const SndPlink = 7
+const SndCap = 8
+const SndBuzz = 9
+const SndThink = 10
+const SndWin = 11
+const SndLose = 12
+const SndDraw = 13
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the board: Pt[1..12] the counters in A-L (the listing's A()), Bb the
+' copy a move sows into (B()), Sc and Lw each move's captures and the
+' compartment its last counter reached (SC(), I())
+u8 Pt[13]
+u8 Bb[13]
+u8 Sc[13]
+u8 Lw[13]
+' Sc0 your captures (PL), Sc1 the computer's (CP); Mp, Mc the moves made
+' (MP, MC); Lim 1 a limited game of Ml moves each
+u8 Sc0 = 0
+u8 Sc1 = 0
+u8 Mp = 0
+u8 Mc = 0
+u8 Lim = 0
+u8 Ml = 25
+' Mode 0 one player, 1 two players; First 0 you (the bottom) start, 1 the
+' computer (the top); Sd the side to move, 0 the bottom (P$="P"), 1 the
+' top (P$="C")
+u8 Mode = 0
+u8 First = 0
+u8 Sd = 0
+' a move: I0 the compartment, Ds 1 shown on the screen, T0 where the last
+' counter fell, Cap the counters captured
+u8 I0 = 0
+u8 Ds = 0
+u8 T0 = 0
+u8 Cap = 0
+u8 Kc = 0
+u8 Wp = 0
+u8 Lq = 0
+u8 Tot = 0
+u8 Pq = 0
+u8 Pa = 0
+u8 Pb = 0
+u8 Xa = 0
+u8 Xb = 0
+u8 Best = 0
+u8 Cu = 7
+u8 CuTop = 1
+' Ph: 0 the title, 1 your move (bottom), 5 the top player's move, 3 the
+' computer has chosen (Best), 2 sowing, 4 game over, 9 quit
+u8 Ph = 0
+u8 Winner = 0
+u8 Quit = 0
+u16 Turns = 0
+u16 Rs0 = 0
+' the random numbers: a 16-bit xorshift (Rs), Rb its low byte
+u16 Rs = $2F51
+u16 Rt = 0
+u8 Rb = 0
+' the hopping bean: Hx, Hy its sprite place; Fs frames a hop
+u8 Hx = 0
+u8 Hy = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Fs = 8
+u8 Fm = 0
+u8 Pat = 0
+u16 Ax = 0
+u16 Ay = 0
+
+u16 W16 = 0
+u16 NumU = 0
+u8 F = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Dn1 = 0
+u8 Up1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 LastD = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 Idle = 0
+
+  tile screen
+  set sound table WrSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 5 then goto title
+
+new_game:
+  for J = 1 to 12
+    Pt[J] = 4
+    Bb[J] = 4
+  next
+  Pt[0] = 0
+  Bb[0] = 0
+  Sc0 = 0
+  Sc1 = 0
+  Mp = 0
+  Mc = 0
+  Quit = 0
+  Winner = 0
+  Cu = 7
+  CuTop = 1
+  Sd = First
+  DrawBoard
+  ShowHud
+  ShowScreen
+  play sound SndPlayA
+  play sound SndPlayB
+
+turn:
+  if Sd = 1 then goto top_turn
+
+' your move (lines 350-500)
+bottom_turn:
+  inc Mp
+  ShowHud
+  Pq = 0
+  for J = 7 to 12
+    V = Pt[J]
+    Pq = Pq + V
+  next
+  if Pq = 0 then goto no_counters
+  HumanMove
+  if Quit = 1 then goto quit_game
+  DoMove
+  if Lim = 1 then
+    if Mp = Ml then
+      if Mc = Ml then goto award
+    end if
+  end if
+  if Tot = 0 then goto no_counters
+  if Sc0 > 24 then goto award
+  Sd = 1
+  goto turn
+
+' the computer's move, or the top player's (lines 510-890)
+top_turn:
+  inc Mc
+  ShowHud
+  Pq = 0
+  for J = 1 to 6
+    V = Pt[J]
+    Pq = Pq + V
+  next
+  if Pq = 0 then goto no_counters
+  if Mode = 0 then
+    ComputerMove
+  else
+    HumanMove
+    if Quit = 1 then goto quit_game
+  end if
+  DoMove
+  if Lim = 1 then
+    if Mp = Ml then
+      if Mc = Ml then goto award
+    end if
+  end if
+  if Tot = 0 then goto no_counters
+  if Sc1 > 24 then goto award
+  Sd = 0
+  goto turn
+
+' lines 910-950: the side to move has nothing; an empty board ends the
+' game as it is, else the counters left are awarded
+no_counters:
+  Message
+  print at 2,21, "NO COUNTERS!!!"
+  Pause(60)
+  Tot = 0
+  for J = 1 to 12
+    V = Pt[J]
+    Tot = Tot + V
+  next
+  if Tot = 0 then
+    print at 17,21, "GAME OVER."
+    Pause(40)
+    goto who_won
+  end if
+
+' lines 970-1010: each side takes the counters on its side
+award:
+  Message
+  print at 2,21, "GAME OVER. AWARD COUNTERS."
+  Pause(40)
+  for F = 1 to 6
+    Sd = 1
+    G = F
+    AwardPit
+    Sd = 0
+    G = F + 6
+    AwardPit
+  next
+  goto who_won
+
+' lines 1130-1170: quitting ends the game as it stands
+quit_game:
+  Message
+  print at 2,21, "GAME OVER."
+  Pause(30)
+
+who_won:
+  Ph = 4
+  ShowHud
+  Message
+  if Sc0 = Sc1 then
+    Winner = 2
+    print at 2,21, "A DRAW."
+    play sound SndDraw
+  else
+    if Sc0 > Sc1 then
+      Winner = 0
+      if Mode = 0 then
+        print at 2,21, "PLAYER WINS."
+        play sound SndWin
+      else
+        print at 2,21, "PLAYER 1 WINS."
+        play sound SndWin
+      end if
+    else
+      Winner = 1
+      if Mode = 0 then
+        print at 2,21, "COMPUTER WINS."
+        play sound SndLose
+      else
+        print at 2,21, "PLAYER 2 WINS."
+        play sound SndWin
+      end if
+    end if
+  end if
+  print at 2,22, "AGAIN? LEFT: YES, RIGHT: NO"
+  set sprite 0 to 192,0,SUp,15
+  set sprite 1 to 192,0,SBean,11
+  update sprites
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+ag_loop:
+  Frame1
+  ReadAll
+  if Press2 = 1 then goto title
+  if Press = 0 then goto ag_loop
+  goto new_game
+
+' ---------------------------------------------------------------------
+' the moves
+
+' DoMove: sow I0 on the screen (Ds 1), then the board becomes the copy
+' (lines 460-470 and 840-850): Tot the counters left
+sub DoMove:
+  Ph = 2
+  Ds = 1
+  Sow
+  Tot = 0
+  for J = 1 to 12
+    V = Bb[J]
+    Pt[J] = V
+    Tot = Tot + V
+  next
+  inc Turns
+  ShowHud
+  set sprite 1 to 192,0,SBean,11
+  update sprites
+  Pause(20)
+  return
+end sub
+
+' Sow: the listing's lines 1280-1480 on the copy Bb: the counters of I0,
+' one each into the next compartments counterclockwise (A to L, then A),
+' the captures of side Sd. Ds 1: every bean hops on the screen and the
+' captures fly into the store (and count). Out: T0, Cap.
+sub Sow:
+  for J = 0 to 12
+    V = Pt[J]
+    Bb[J] = V
+  next
+  Kc = Pt[I0]
+  Bb[I0] = 0
+  Cap = 0
+  Wp = I0
+  if Ds = 1 then
+    Fs = 8
+    if Kc > 10 then Fs = 4
+    play sound SndLift
+    CupDraw(I0)
+    CupCentre(I0)
+    Hx = Tx
+    Hy = Ty
+  end if
+sow_next:
+  if Kc = 0 then goto sow_done
+  inc Wp
+  if Wp > 12 then Wp = 1
+  ' changed: the article's rule, a sowing of 12 or more skips the
+  ' compartment it came from (line 1310 does not)
+  if Wp = I0 then goto sow_next
+  V = Bb[Wp]
+  inc V
+  Bb[Wp] = V
+  if Ds = 1 then
+    Hop(Wp)
+    CupDraw(Wp)
+    play sound SndPlink
+  end if
+  dec Kc
+  goto sow_next
+sow_done:
+  T0 = Wp
+  ' lines 1370-1400: the last counter made 2 or 3 on the opponent's side
+  V = Bb[T0]
+  if V < 2 then return
+  if V > 3 then return
+  if Sd = 0 then
+    if T0 > 6 then return
+    Lq = 1
+  else
+    if T0 < 7 then return
+    Lq = 7
+  end if
+  ' lines 1420-1480: from there back toward the side's first compartment
+  ' while they hold 2 or 3
+  F = T0
+cap_next:
+  V = Bb[F]
+  if V < 2 then return
+  if V > 3 then return
+  Cap = Cap + V
+  Bb[F] = 0
+  if Ds = 1 then
+    Lift(F, V)
+  end if
+  if F = Lq then return
+  dec F
+  goto cap_next
+end sub
+
+' AwardPit: the counters of compartment G go to side Sd's store
+sub AwardPit:
+  V = Pt[G]
+  if V = 0 then return
+  Pt[G] = 0
+  Bb[G] = 0
+  Lift(G, V)
+  return
+end sub
+
+' Lift(P, Nv): Nv beans leave cup P and fly into side Sd's store, which
+' counts them
+sub Lift(u8 P, u8 Nv):
+  CupDraw(P)
+  CupCentre(P)
+  Hx = Tx - 3
+  Hy = Ty - 2
+  if Sd = 1 then
+    Tx = 27
+  else
+    Tx = 211
+  end if
+  Ty = 84
+  Fs = 16
+  Pat = SPile
+  Glide
+  if Sd = 1 then
+    Sc1 = Sc1 + Nv
+  else
+    Sc0 = Sc0 + Nv
+  end if
+  StoreDraw(Sd)
+  ShowHud
+  play sound SndCap
+  set sprite 1 to 192,0,SPile,11
+  update sprites
+  Pause(8)
+  return
+end sub
+
+' CupCentre(P): Tx, Ty the bean sprite's place over cup P
+sub CupCentre(u8 P):
+  V = CupCol[P]
+  Tx = V << 3
+  Tx = Tx + 6
+  V = CupRow[P]
+  Ty = V << 3
+  Ty = Ty + 6
+  return
+end sub
+
+' Hop(P): the bean hops from where it is to cup P (an arc, Fs frames)
+sub Hop(u8 P):
+  CupCentre(P)
+  Pat = SBean
+  Glide
+  return
+end sub
+
+' Glide: sprite 1 (pattern Pat) from Hx, Hy to Tx, Ty in Fs frames (8 or
+' 4: an arc; 16: a straight line), then Hx, Hy = Tx, Ty
+sub Glide:
+  if Tx >= Hx then
+    Dx = Tx - Hx
+    Sx = 0
+  else
+    Dx = Hx - Tx
+    Sx = 1
+  end if
+  if Ty >= Hy then
+    Dy = Ty - Hy
+    Sy = 0
+  else
+    Dy = Hy - Ty
+    Sy = 1
+  end if
+  Ax = 0
+  Ay = 0
+  for Fm = 1 to Fs
+    Ax = Ax + Dx
+    Ay = Ay + Dy
+    if Fs = 8 then
+      W16 = Ax >> 3
+      X = W16
+      W16 = Ay >> 3
+      Y = W16
+      V = Arc8[Fm]
+    elseif Fs = 4 then
+      W16 = Ax >> 2
+      X = W16
+      W16 = Ay >> 2
+      Y = W16
+      V = Fm << 1
+      V = Arc8[V]
+    else
+      W16 = Ax >> 4
+      X = W16
+      W16 = Ay >> 4
+      Y = W16
+      V = 0
+    end if
+    if Sx = 0 then
+      X = Hx + X
+    else
+      X = Hx - X
+    end if
+    if Sy = 0 then
+      Y = Hy + Y
+    else
+      Y = Hy - Y
+    end if
+    Y = Y - V
+    dec Y
+    set sprite 1 to Y,X,Pat,11
+    update sprites
+    Frame1
+  next
+  Hx = Tx
+  Hy = Ty
+  return
+end sub
+
+' HumanMove: the arrow over the side to move's cups until the button sows
+' one that is not empty (Quit 1: the right button, then yes)
+sub HumanMove:
+  if Sd = 0 then
+    Ph = 1
+  else
+    Ph = 5
+  end if
+  Message
+  if Mode = 0 then
+    print at 2,21, "YOUR TURN: CHOOSE G-L"
+  else
+    if Sd = 0 then
+      print at 2,21, "PLAYER 1: CHOOSE G-L"
+    else
+      print at 2,21, "PLAYER 2: CHOOSE A-F"
+    end if
+  end if
+  if Sd = 0 then
+    V = Pt[Cu]
+    if V = 0 then FirstFull
+  else
+    V = Pt[CuTop]
+    if V = 0 then FirstFull
+  end if
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  LastD = 0
+hm_loop:
+  Frame1
+  ReadPad
+  V = 0
+  if Lf1 = 1 then V = 3
+  if Rt1 = 1 then V = 4
+  if V = 0 then
+    LastD = 0
+  else
+    if V <> LastD then
+      LastD = V
+      Rep = 14
+      MoveCursor(V)
+    else
+      dec Rep
+      if Rep = 0 then
+        Rep = 7
+        MoveCursor(V)
+      end if
+    end if
+  end if
+  DrawCursor
+  if Press2 = 1 then
+    AskQuit
+    if Quit = 1 then return
+    goto hm_loop
+  end if
+  if Press = 0 then goto hm_loop
+  if Sd = 0 then
+    I0 = Cu
+  else
+    I0 = CuTop
+  end if
+  V = Pt[I0]
+  if V = 0 then
+    ' lines 440-450
+    play sound SndBuzz
+    print at 2,22, "ILLEGAL MOVE!!!"
+    Pause(40)
+    print at 2,22, "               "
+    goto hm_loop
+  end if
+  HideCursor
+  return
+end sub
+
+' FirstFull: the cursor to the side's first compartment with counters
+sub FirstFull:
+  if Sd = 0 then
+    for J = 7 to 12
+      V = Pt[J]
+      if V <> 0 then
+        Cu = J
+        return
+      end if
+    next
+  else
+    for J = 1 to 6
+      V = Pt[J]
+      if V <> 0 then
+        CuTop = J
+        return
+      end if
+    next
+  end if
+  return
+end sub
+
+' MoveCursor(D): 3 left, 4 right on the screen (the top row runs F to A
+' from left to right)
+sub MoveCursor(u8 D):
+  if Sd = 0 then
+    if D = 3 then
+      if Cu > 7 then dec Cu
+    else
+      if Cu < 12 then inc Cu
+    end if
+  else
+    if D = 3 then
+      if CuTop < 6 then inc CuTop
+    else
+      if CuTop > 1 then dec CuTop
+    end if
+  end if
+  play sound SndTick
+  return
+end sub
+
+' AskQuit: lines 1130-1170, a question first
+sub AskQuit:
+  Message
+  print at 2,21, "QUIT GAME. ARE YOU SURE?"
+  print at 2,22, "LEFT BUTTON YES, RIGHT NO"
+aq_loop:
+  Frame1
+  ReadPad
+  if Press = 1 then
+    Quit = 1
+    HideCursor
+    return
+  end if
+  if Press2 = 0 then goto aq_loop
+  Message
+  print at 2,21, "CHOOSE A CUP TO SOW"
+  return
+end sub
+
+' ComputerMove: every move tried (lines 570-660), the choice (670-820),
+' a moment of thought, the arrow over the cup
+sub ComputerMove:
+  Message
+  print at 2,21, "COMPUTER'S TURN (A-F)"
+  Evaluate
+  PickPit
+  I0 = Best
+  Ph = 3
+  play sound SndThink
+  for Tm = 1 to 50
+    Frame1
+    if Tm > 20 then
+      CuTop = Best
+      DrawCursor
+    end if
+  next
+  HideCursor
+  return
+end sub
+
+' Evaluate: lines 580-660: each compartment's move, its captures Sc and
+' the compartment its last counter reaches Lw (the bottom's moves as the
+' bottom's)
+sub Evaluate:
+  Ds = 0
+  for G = 1 to 12
+    Sc[G] = 0
+    Lw[G] = 0
+    V = Pt[G]
+    if V <> 0 then
+      Sd = 1
+      if G >= 7 then Sd = 0
+      I0 = G
+      Sow
+      Sc[G] = Cap
+      Lw[G] = T0
+    end if
+  next
+  Sd = 1
+  for J = 0 to 12
+    V = Pt[J]
+    Bb[J] = V
+  next
+  return
+end sub
+
+' PickPit: lines 680-820 (Best). Changed: only a move that captures takes
+' part in the comparisons of lines 690 and 710 (see the top)
+sub PickPit:
+  Rs0 = Rs
+  Pa = 0
+  Pb = 0
+  Xa = 0
+  Xb = 0
+  for F = 1 to 6
+    V = Sc[F]
+    W = Pt[F]
+    if W <> 0 then
+      if V > 0 then
+        if V >= Pa then
+          Xa = F
+          Pa = V
+        end if
+      end if
+    end if
+    G = F + 6
+    V = Sc[G]
+    W = Lw[G]
+    W = Pt[W]
+    if W <> 0 then
+      if V > 0 then
+        if V >= Pb then
+          Xb = Lw[G]
+          Pb = V
+        end if
+      end if
+    end if
+  next
+  V = Xa | Xb
+  if V <> 0 then
+    Best = Xa
+    if Pb > Pa then Best = Xb
+    return
+  end if
+  ' lines 770-810: you have nothing: a compartment whose sowing stays on
+  ' the computer's side
+  Pq = 0
+  for J = 7 to 12
+    V = Pt[J]
+    Pq = Pq + V
+  next
+  if Pq = 0 then
+    for F = 1 to 5
+      V = Pt[F]
+      if V <> 0 then
+        W = 6 - F
+        if V <= W then
+          Best = F
+          return
+        end if
+      end if
+    next
+  end if
+  ' line 820: a random compartment with counters
+pick_again:
+  Rnd8
+  V = Rb & 7
+  if V > 5 then goto pick_again
+  inc V
+  W = Pt[V]
+  if W = 0 then goto pick_again
+  Best = V
+  return
+end sub
+
+' Rnd8: the next random number (xorshift 7, 9, 8), Rb its low byte
+sub Rnd8:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rb = Rs & 255
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the screen
+
+' CupDraw(P): cup P with Bb[P] beans (up to 12 drawn) and its number
+sub CupDraw(u8 P):
+  X = CupCol[P]
+  Y = CupRow[P]
+  N = Bb[P]
+  W = N
+  if W > 6 then W = 6
+  V = 0
+  if N > 6 then V = N - 6
+  if V > 6 then V = 6
+  V = V << 1
+  V = V + TCupt0l
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  dec X
+  inc Y
+  V = W << 1
+  V = V + TCupb0l
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  dec X
+  ' the number: above the top cups, below the bottom ones
+  Y = 5
+  if P > 6 then Y = 16
+  Num2(N)
+  return
+end sub
+
+' Num2(Nv): a number 0-99 at X, Y in two cells: one digit then a blank,
+' or two digits
+sub Num2(u8 Nv):
+  V = 0
+  W = Nv
+num_tens:
+  if W >= 10 then
+    W = W - 10
+    inc V
+    goto num_tens
+  end if
+  W = W + 48
+  if V = 0 then
+    put char W at X,Y
+    inc X
+    put char 32 at X,Y
+  else
+    V = V + 48
+    put char V at X,Y
+    inc X
+    put char W at X,Y
+  end if
+  dec X
+  return
+end sub
+
+' StoreDraw(S): side S's store (top left, bottom right) filled from the
+' bottom with its captures (six a row, 24 drawn)
+sub StoreDraw(u8 S):
+  if S = 1 then
+    X = 3
+    N = Sc1
+  else
+    X = 26
+    N = Sc0
+  end if
+  put char TCupt0l at X,8
+  inc X
+  put char TCupt0r at X,8
+  dec X
+  for J = 0 to 3
+    Y = 12 - J
+    V = 0
+    W = J << 1
+    W = W + J
+    W = W << 1
+    if N > W then V = N - W
+    if V > 6 then V = 6
+    V = V << 1
+    V = V + TStm0l
+    put char V at X,Y
+    inc V
+    inc X
+    put char V at X,Y
+    dec X
+  next
+  put char TCupb0l at X,13
+  inc X
+  put char TCupb0r at X,13
+  dec X
+  return
+end sub
+
+' DrawBoard: the wood, the cups, the stores, the letters, the labels
+sub DrawBoard:
+  NewScreen
+  print at 2,1, "W A R I"
+  for Y = 7 to 14
+    for X = 2 to 28
+      V = X + Y
+      V = V + Y
+      V = V & 7
+      W = TWood
+      if V = 2 then W = TGrain1
+      if V = 5 then W = TGrain2
+      put char W at X,Y
+    next
+  next
+  put char TCtl at 2,7
+  put char TCtr at 28,7
+  put char TCbl at 2,14
+  put char TCbr at 28,14
+  for J = 0 to 12
+    V = Pt[J]
+    Bb[J] = V
+  next
+  for J = 1 to 12
+    CupDraw(J)
+    X = CupCol[J]
+    V = J + 64
+    if J < 7 then
+      put char V at X,4
+      put char TChl at X,10
+    else
+      put char V at X,17
+      inc X
+      put char TChr at X,11
+    end if
+  next
+  StoreDraw(0)
+  StoreDraw(1)
+  if Mode = 0 then
+    print at 2,2, "COMPUTER"
+    print at 2,19, "PLAYER"
+  else
+    print at 2,2, "PLAYER 2"
+    print at 2,19, "PLAYER 1"
+  end if
+  print at 12,2, "MOVE"
+  print at 20,2, "SCORE"
+  print at 12,19, "MOVE"
+  print at 20,19, "SCORE"
+  if Lim = 0 then
+    print at 18,1, "UNLIMITED"
+  else
+    print at 14,1, "LIMITED:"
+    X = 23
+    Y = 1
+    Num2(Ml)
+  end if
+  return
+end sub
+
+sub ShowHud:
+  X = 17
+  Y = 2
+  Num2(Mc)
+  X = 26
+  Num2(Sc1)
+  X = 17
+  Y = 19
+  Num2(Mp)
+  X = 26
+  Num2(Sc0)
+  return
+end sub
+
+' Message: the message rows cleared (spaces: an empty print corrupts
+' VRAM, bug 22)
+sub Message:
+  print at 2,21, "                            "
+  print at 2,22, "                            "
+  return
+end sub
+
+' DrawCursor: the arrow under your cup (or over the top cup), blinking
+sub DrawCursor:
+  V = Tick & 16
+  if V <> 0 then
+    HideCursor
+    return
+  end if
+  if Sd = 0 then
+    V = CupCol[Cu]
+    X = V << 3
+    set sprite 0 to 111,X,SUp,15
+  else
+    V = CupCol[CuTop]
+    X = V << 3
+    set sprite 0 to 47,X,SDown,15
+  end if
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  set sprite 0 to 192,0,SUp,15
+  update sprites
+  return
+end sub
+
+' Pause(Nf): Nf frames
+sub Pause(u8 Nf):
+  for Tm = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' frames, controllers, pages
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: the side to move's controller (two players: bottom 1, top 2;
+' one player: either)
+sub ReadPad:
+  V = 1
+  W = 1
+  if Mode = 1 then
+    if Sd = 0 then W = 0
+    if Sd = 1 then V = 0
+  end if
+  ReadPads
+  return
+end sub
+
+sub ReadAll:
+  V = 1
+  W = 1
+  ReadPads
+  return
+end sub
+
+' ReadPads: controller 1 if V = 1, controller 2 if W = 1
+sub ReadPads:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if V = 1 then
+    if joypad(1).left then Lf1 = 1
+    if joypad(1).right then Rt1 = 1
+    if joypad(1).up then Up1 = 1
+    if joypad(1).down then Dn1 = 1
+    if joypad(1).button1 then Btn = 1
+    if joypad(1).button2 then Btn2 = 1
+  end if
+  if W = 1 then
+    if joypad(2).left then Lf1 = 1
+    if joypad(2).right then Rt1 = 1
+    if joypad(2).up then Up1 = 1
+    if joypad(2).down then Dn1 = 1
+    if joypad(2).button1 then Btn = 1
+    if joypad(2).button2 then Btn2 = 1
+  end if
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  set sprite 0 to 192,0,SUp,15
+  set sprite 1 to 192,0,SBean,11
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of the board with four beans in each cup, a menu
+sub TitlePage:
+  Ph = 0
+  NewScreen
+  print at 13,2, "W A R I"
+  print at 4,3, "AN ANCIENT GAME OF SOWING"
+  for Y = 5 to 8
+    for X = 5 to 26
+      V = X + Y
+      V = V & 7
+      W = TWood
+      if V = 3 then W = TGrain1
+      put char W at X,Y
+    next
+  next
+  put char TCtl at 5,5
+  put char TCtr at 26,5
+  put char TCbl at 5,8
+  put char TCbr at 26,8
+  for J = 0 to 5
+    X = J << 1
+    X = X + J
+    X = X + 7
+    V = J + 1
+    V = V << 1
+    V = V & 6
+    W = TCupt0l
+    if J = 2 then W = TCupt2l
+    put char W at X,6
+    inc W
+    inc X
+    put char W at X,6
+    dec X
+    W = TCupb4l
+    if J = 4 then W = TCupb6l
+    put char W at X,7
+    inc W
+    inc X
+    put char W at X,7
+  next
+  ShowMenu
+  print at 3,20, "STICK: CHOOSE, LEFT/RIGHT:"
+  print at 3,21, "CHANGE, BUTTON: START"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 4
+  ShowMenu
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  LastD = 0
+tp_loop:
+  Frame1
+  ReadAll
+  ' the random numbers run while the title waits
+  Rnd8
+  V = 0
+  if Up1 = 1 then V = 1
+  if Dn1 = 1 then V = 2
+  if Lf1 = 1 then V = 3
+  if Rt1 = 1 then V = 4
+  if V = 0 then
+    LastD = 0
+  else
+    if V <> LastD then
+      LastD = V
+      Rep = 16
+      MenuStick(V)
+    else
+      dec Rep
+      if Rep = 0 then
+        Rep = 5
+        if V > 2 then MenuStick(V)
+      end if
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu < 4 then
+    MenuStick(4)
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 5 then CreditsPage
+  return
+end sub
+
+' MenuStick(D): 1 up, 2 down, 3 left, 4 right (and the button)
+sub MenuStick(u8 D):
+  if D = 1 then
+    if Menu > 0 then dec Menu
+  end if
+  if D = 2 then
+    if Menu < 5 then inc Menu
+  end if
+  if D > 2 then
+    if Menu = 0 then Mode = Mode ^ 1
+    if Menu = 1 then Lim = Lim ^ 1
+    if Menu = 2 then
+      if D = 3 then
+        if Ml > 5 then dec Ml
+      else
+        if Ml < 99 then inc Ml
+      end if
+    end if
+    if Menu = 3 then First = First ^ 1
+  end if
+  play sound SndTick
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  if Mode = 0 then
+    print at 6,12, "PLAYERS: 1 (YOU, COMPUTER)"
+  else
+    print at 6,12, "PLAYERS: 2               "
+  end if
+  if Lim = 0 then
+    print at 6,13, "GAME:    UNLIMITED"
+  else
+    print at 6,13, "GAME:    LIMITED  "
+  end if
+  print at 6,14, "MOVE LIMIT:"
+  X = 18
+  Y = 14
+  Num2(Ml)
+  if Mode = 0 then
+    if First = 0 then
+      print at 6,15, "FIRST:   YOU     "
+    else
+      print at 6,15, "FIRST:   COMPUTER"
+    end if
+  else
+    if First = 0 then
+      print at 6,15, "FIRST:   PLAYER 1"
+    else
+      print at 6,15, "FIRST:   PLAYER 2"
+    end if
+  end if
+  print at 6,16, "START"
+  print at 6,17, "CREDITS"
+  for J = 12 to 17
+    put char 32 at 4,J
+  next
+  V = Menu + 12
+  put char 62 at 4,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 13,2, "W A R I"
+  print at 3,4, "BASED ON WARI BY DON DONATI,"
+  print at 3,5, "COMPUTE! FEBRUARY 1987"
+  print at 3,6, "(COMMODORE 64; THE OTHER"
+  print at 3,7, "VERSIONS BY PATRICK PARRISH)."
+  print at 3,9, "SOW YOUR BEANS TO THE RIGHT"
+  print at 3,10, "AND AROUND. A LAST BEAN THAT"
+  print at 3,11, "MAKES 2 OR 3 ON THE OTHER"
+  print at 3,12, "SIDE CAPTURES THEM."
+  print at 3,14, "MADE FOR THE COLECOVISION"
+  print at 3,15, "BY CLAUDE (AN AI MADE BY"
+  print at 3,16, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,17, "2026, IN AMY BY AMY BIENVENU."
+  print at 3,19, "MUSIC: SOWING SONG,"
+  print at 3,20, "MARKET DAY"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' the cups' places: column and row of the top-left tile of compartments
+' 0 (unused), A-F (the top row, A at the right) and G-L (the bottom row)
+data CupCol bytes
+  0,22,19,16,13,10,7,7,10,13,16,19,22
+end data
+data CupRow bytes
+  0,8,8,8,8,8,8,12,12,12,12,12,12
+end data
+' a hop's height, frame 1-8
+data Arc8 bytes
+  0,3,5,6,7,7,6,4,0
+end data
+
+data TilePat bytes
+  $F0,$C0,$00,$00,$00,$00,$00,$00
+  $F0,$03,$00,$00,$00,$00,$00,$00
+  $F0,$C0,$00,$00,$00,$00,$00,$00
+  $F0,$03,$00,$00,$00,$00,$70,$60
+  $F0,$C0,$00,$00,$00,$00,$0E,$0C
+  $F0,$03,$00,$00,$00,$00,$70,$60
+  $F0,$C0,$00,$00,$00,$00,$0E,$0C
+  $F0,$03,$00,$00,$00,$00,$88,$99
+  $F0,$C0,$00,$01,$01,$00,$0E,$0C
+  $F0,$03,$00,$C0,$80,$00,$88,$99
+  $F0,$C0,$00,$C6,$31,$00,$0E,$0C
+  $F0,$03,$00,$C0,$80,$00,$88,$99
+  $F0,$C0,$00,$C6,$31,$00,$0E,$0C
+  $F0,$03,$00,$31,$8C,$00,$88,$99
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$03,$F0
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$70,$60,$00,$03,$F0
+  $00,$00,$00,$0E,$0C,$00,$C0,$F0
+  $00,$00,$00,$70,$60,$00,$03,$F0
+  $00,$00,$00,$0E,$0C,$00,$C0,$F0
+  $00,$00,$00,$88,$99,$00,$03,$F0
+  $01,$01,$00,$0E,$0C,$00,$C0,$F0
+  $C0,$80,$00,$88,$99,$00,$03,$F0
+  $C6,$31,$00,$0E,$0C,$00,$C0,$F0
+  $C0,$80,$00,$88,$99,$00,$03,$F0
+  $C6,$31,$00,$0E,$0C,$00,$C0,$F0
+  $31,$8C,$00,$88,$99,$00,$03,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$70,$60,$00
+  $00,$00,$00,$00,$00,$0E,$0C,$00
+  $00,$00,$00,$00,$00,$70,$60,$00
+  $00,$00,$00,$00,$00,$0E,$0C,$00
+  $00,$00,$00,$00,$00,$88,$99,$00
+  $00,$01,$01,$00,$00,$0E,$0C,$00
+  $00,$C0,$80,$00,$00,$88,$99,$00
+  $00,$C6,$31,$00,$00,$0E,$0C,$00
+  $00,$C0,$80,$00,$00,$88,$99,$00
+  $00,$C6,$31,$00,$00,$0E,$0C,$00
+  $00,$31,$8C,$00,$00,$88,$99,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$38,$00,$00,$07,$00,$00
+  $00,$C0,$00,$00,$0E,$00,$00,$00
+  $07,$E0,$C0,$80,$80,$00,$00,$00
+  $E0,$07,$03,$01,$01,$00,$00,$00
+  $00,$00,$00,$80,$80,$C0,$E0,$07
+  $00,$00,$00,$01,$01,$03,$07,$E0
+  $00,$04,$08,$10,$08,$04,$00,$00
+  $00,$20,$10,$08,$10,$20,$00,$00
+end data
+data TileCol bytes
+  $61,$61,$01,$01,$01,$01,$01,$01
+  $16,$61,$01,$01,$01,$01,$01,$01
+  $61,$61,$01,$01,$01,$01,$01,$01
+  $16,$61,$01,$01,$01,$01,$B1,$B1
+  $61,$61,$01,$01,$01,$01,$B1,$B1
+  $16,$61,$01,$01,$01,$01,$B1,$B1
+  $61,$61,$01,$01,$01,$01,$B1,$B1
+  $16,$61,$01,$01,$01,$01,$1B,$1B
+  $61,$61,$01,$B1,$B1,$01,$B1,$B1
+  $16,$61,$01,$B1,$B1,$01,$1B,$1B
+  $61,$61,$01,$1B,$B1,$01,$B1,$B1
+  $16,$61,$01,$B1,$B1,$01,$1B,$1B
+  $61,$61,$01,$1B,$B1,$01,$B1,$B1
+  $16,$61,$01,$1B,$B1,$01,$1B,$1B
+  $01,$01,$01,$01,$01,$01,$61,$61
+  $01,$01,$01,$01,$01,$01,$61,$16
+  $01,$01,$01,$01,$01,$01,$61,$61
+  $01,$01,$01,$B1,$B1,$01,$61,$16
+  $01,$01,$01,$B1,$B1,$01,$61,$61
+  $01,$01,$01,$B1,$B1,$01,$61,$16
+  $01,$01,$01,$B1,$B1,$01,$61,$61
+  $01,$01,$01,$1B,$1B,$01,$61,$16
+  $B1,$B1,$01,$B1,$B1,$01,$61,$61
+  $B1,$B1,$01,$1B,$1B,$01,$61,$16
+  $1B,$B1,$01,$B1,$B1,$01,$61,$61
+  $B1,$B1,$01,$1B,$1B,$01,$61,$16
+  $1B,$B1,$01,$B1,$B1,$01,$61,$61
+  $1B,$B1,$01,$1B,$1B,$01,$61,$16
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$B1,$B1,$01
+  $01,$01,$01,$01,$01,$B1,$B1,$01
+  $01,$01,$01,$01,$01,$B1,$B1,$01
+  $01,$01,$01,$01,$01,$B1,$B1,$01
+  $01,$01,$01,$01,$01,$1B,$1B,$01
+  $01,$B1,$B1,$01,$01,$B1,$B1,$01
+  $01,$B1,$B1,$01,$01,$1B,$1B,$01
+  $01,$1B,$B1,$01,$01,$B1,$B1,$01
+  $01,$B1,$B1,$01,$01,$1B,$1B,$01
+  $01,$1B,$B1,$01,$01,$B1,$B1,$01
+  $01,$1B,$B1,$01,$01,$1B,$1B,$01
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$A6,$06,$06,$A6,$06,$06
+  $06,$A6,$06,$06,$A6,$06,$06,$06
+  $61,$16,$16,$16,$16,$06,$06,$06
+  $61,$16,$16,$16,$16,$06,$06,$06
+  $06,$06,$06,$16,$16,$16,$16,$61
+  $06,$06,$06,$16,$16,$16,$16,$61
+  $06,$A6,$A6,$A6,$A6,$A6,$06,$06
+  $06,$A6,$A6,$A6,$A6,$A6,$06,$06
+end data
+data SpritePat bytes
+  $03,$07,$0F,$1F,$3D,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$F8,$BC,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$3D,$1F,$0F,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$BC,$F8,$F0,$E0,$C0
+  $70,$F8,$F8,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3B,$7D,$7D,$3B,$0E,$1F,$1F,$0E,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$E0,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+WrTick:
+    db $40,$40,$50,$01,$50
+WrLift:
+    db $00,$00,$35,$02,$00,$00,$56,$02,$10
+WrPlink:
+    db $40,$55,$20,$01,$40,$6B,$40,$02,$50
+WrCap:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$20,$03,$40,$47,$30,$06,$50
+WrBuzz:
+    db $40,$F9,$33,$0A,$50
+WrThink:
+    db $00,$00,$54,$01,$00,$00,$74,$01,$10
+WrWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05
+    db $40,$55,$20,$18,$50
+WrLose:
+    db $40,$1D,$21,$08,$40,$2E,$31,$08,$40,$41,$31,$08,$40,$53,$41,$18,$50
+WrDraw:
+    db $40,$D6,$30,$08,$40,$D6,$40,$08,$40,$1D,$41,$10,$50
+
+WrSoundTable:
+    dw WrTuneMel,$702B
+    dw WrTuneBass,$7035
+    dw WrPlayMel,$702B
+    dw WrPlayBass,$7035
+    dw WrTick,$7049
+    dw WrLift,$703F
+    dw WrPlink,$7049
+    dw WrCap,$7049
+    dw WrBuzz,$7049
+    dw WrThink,$703F
+    dw WrWin,$7049
+    dw WrLose,$7049
+    dw WrDraw,$7049
+; Sowing Song (original)
+; Tiny Sound, 7 frames per step
+WrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$F1,$22,$1A,$01,$1E,$01,$21,$01,$01,$01,$23,$01,$21,$01
+    db $1E,$01,$01,$01,$1C,$01,$1E,$01,$1A,$01,$17,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01,$21,$01,$23,$01,$26,$01,$01,$01,$23,$01,$21,$01
+    db $1E,$01,$01,$01,$1C,$01,$1A,$01,$17,$01,$15,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+WrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0E,$01,$01,$01,$09,$01,$0E,$01,$07,$01,$01,$01
+    db $0E,$01,$07,$01,$09,$01,$01,$01,$10,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0E,$01,$01,$01,$09,$01,$0E,$01,$07,$01,$01,$01
+    db $0E,$01,$07,$01,$09,$01,$01,$01,$10,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$01,$01
+    db $FF
+
+; Market Day (original)
+; Tiny Sound, 9 frames per step
+WrPlayMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$80,$1A,$21,$21,$01,$1E,$01,$1A,$01,$01,$01,$1C,$01,$1E,$01
+    db $01,$01,$21,$01,$23,$01,$21,$01,$1E,$01,$01,$01,$1C,$01,$1A,$01
+    db $01,$01,$01,$01,$17,$01,$1A,$01,$1C,$01,$01,$01,$1E,$01,$1C,$01
+    db $01,$01,$1A,$01,$17,$01,$15,$01,$17,$01,$01,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+WrPlayBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$90,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01
+    db $FF
+}

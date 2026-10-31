@@ -1,0 +1,1776 @@
+cartridge "LUMPIES OF LOTUS IV/JOHN AND JEFF KLEIN/1986"
+
+' LUMPIES OF LOTUS IV
+' A ColecoVision game based on "Lumpies Of Lotus IV" by John and Jeff
+' Klein, COMPUTE! October 1986, pages 52-56 (IBM PCjr, cartridge BASIC).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu. The scans and the typed-in maze DATA are in orig/ and
+' maze.py.
+'
+' Not a line-by-line port: the rules and the two levels of caves come
+' from the listing, the game is built for the ColecoVision. You are a spy
+' lost in the caves of the Lumpies. The left window shows the corridor in
+' front of you in 3-D, the right one the map of the caves you have seen,
+' with an arrow for you. Free the prisoners you meet, find food, fight or
+' flee the Lumpies (the stronger weapon has the better chance; a beaten
+' Lumpie flees and leaves you its weapon), climb the ladder to the second
+' level, call home from the communications room, then go back to your
+' crashed ship (where you started) and go home.
+'
+' Controls (either joystick): up walks forward (into a door: you break
+' it), down turns round, left and right turn; the right button shows your
+' status; in a question, left and right choose and the left button
+' answers.
+'
+' From the listing: strength 20 at the start, one less for each Lumpie
+' blow, food (1 to 6) gives it back; a hit on a Lumpie counts 1 or 2, a
+' weapon breaks 7.5 times in 100 rounds; new: walking gives one
+' strength back every 8 steps, up to 20; a Lumpie on an "5" of the DATA 85
+' times in 100, a few more at random; the weapons NONE, BRIEFCASE,
+' WRENCH, GUN, ARROW, YO-YO, REFRESHMENT, BOMB with powers 1-9; a Lumpie
+' flees after five hits ("HE'S WORRIED", "NERVOUS", "A LITTLE SORE",
+' "GETTING WEAK"); running away: it gets its strength back; ladders,
+' prisoners, the communications room (call home), going home from the
+' base; the mission ends at strength 0.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off after a wait; music first in the sound
+' table ($702B, $7035), effects after, by channel.
+
+const TCeil = 128
+const TFloor = 129
+const TFar = 130
+const TSide = 131
+const TFront = 167
+const TMap = 176
+const NTiles8 = 864
+const SprBytes = 768
+const SArrow = 80
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCaveA = 3
+const SndCaveB = 4
+const SndStep = 5
+const SndBump = 6
+const SndDoor = 7
+const SndLump = 8
+const SndHit = 9
+const SndOuch = 10
+const SndMiss = 11
+const SndFlee = 12
+const SndFood = 13
+const SndFree = 14
+const SndLadder = 15
+const SndCall = 16
+const SndWin = 17
+const SndLose = 18
+const SndTick = 19
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the spy: Px column (0-19), Py row (0-21), Dir 0 north 1 east 2 south
+' 3 west, Lev 0 or 1, Ox Oy the cell before (for running away)
+u8 Px = 5
+u8 Py = 0
+u8 Dir = 2
+u8 Lev = 0
+u8 Ox = 5
+u8 Oy = 0
+u8 Ys = 20
+u8 Pf = 0
+u8 Ld = 0
+u8 Home = 0
+u8 Ywp = 0
+u8 Ywpn = 0
+' the Lumpie met: weapon, power, hits taken
+u8 Lw = 0
+u8 Lp = 0
+u8 Ht = 0
+u8 Won = 0
+u8 Lost = 0
+u16 Score = 0
+u16 Hi = 0
+u16 Rs = 1
+u16 Seed = 1
+' for the test bot: Idle 1 waiting for the stick in the caves, AskK the
+' first choice of the question on screen (0 none), Sel the choice marked
+u8 Idle = 0
+u8 AskK = 0
+u8 Sel = 0
+u8 NOpt = 0
+u8 Op1 = 0
+u8 Op2 = 0
+u8 Op3 = 0
+u16 Moves = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Menu = 0
+' the 3-D view (16 x 16 tiles) before it goes to the screen
+u8 Vb[256]
+' scratch
+u16 A16 = 0
+u16 W16 = 0
+u16 NumU = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Tc = 0
+u8 Tr = 0
+u8 Ct = 0
+u8 Ob = 0
+u8 Obk = 0
+u8 R = 0
+u8 Rb = 0
+u8 V1 = 0
+u8 V2 = 0
+u8 Busy = 0
+u8 Ri = 0
+u8 Rj = 0
+u8 Ca = 0
+
+  tile screen
+  set sound table LmSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Px = 5
+  Py = 0
+  Dir = 2
+  Lev = 0
+  Ox = 5
+  Oy = 0
+  Ys = 20
+  Pf = 0
+  Ld = 0
+  Home = 0
+  Ywp = 0
+  Ywpn = 0
+  Won = 0
+  Lost = 0
+  Moves = 0
+  Rs = Seed
+  GameScreen
+  play sound SndCaveA
+  play sound SndCaveB
+  ShowAll
+  print at 2,18, "YOUR SHIP CRASHED ON LOTUS"
+  print at 2,19, "IV. FIND THE LUMPIES' RADIO"
+  print at 2,20, "ROOM AND CALL HOME."
+
+play_loop:
+  Idle = 1
+  Frame1
+  ReadPad
+  if P2 = 1 then
+    Idle = 0
+    ShowStatus
+    goto play_loop
+  end if
+  if Stk = 0 then goto play_loop
+  ' one move a push; walking repeats while held
+  if WasStk = 1 then
+    if Up1 = 0 then goto play_loop
+    inc Rep
+    if Rep < 12 then goto play_loop
+  end if
+  Rep = 0
+  WasStk = 1
+  Idle = 0
+  if Up1 = 1 then
+    Forward
+  elseif Dn1 = 1 then
+    Dir = Dir + 2
+    Dir = Dir & 3
+    ClearMsg
+    ShowAll
+  elseif Lf1 = 1 then
+    Dir = Dir + 3
+    Dir = Dir & 3
+    ClearMsg
+    ShowAll
+  elseif Rt1 = 1 then
+    Dir = Dir + 1
+    Dir = Dir & 3
+    ClearMsg
+    ShowAll
+  end if
+  if Lost = 1 then goto game_lost
+  if Won = 1 then goto game_won
+  goto play_loop
+
+game_lost:
+  Idle = 0
+  mute all
+  play sound SndLose
+  EndPage
+  goto title
+
+game_won:
+  Idle = 0
+  mute all
+  play sound SndWin
+  EndPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' moving
+
+' Forward: one cell ahead, if it is not a wall; a door is broken first
+sub Forward:
+  X = Px + DxT[Dir]
+  Y = Py + DyT[Dir]
+  Ct = CellT(X, Y)
+  ClearMsg
+  if Ct = 0 then
+    play sound SndBump
+    print at 2,18, "A SOLID WALL."
+    return
+  end if
+  if Ct = 2 then
+    SetT(X, Y, 1)
+    play sound SndDoor
+    print at 2,18, "DOOR BROKEN!"
+    ShowAll
+    return
+  end if
+  Ox = Px
+  Oy = Py
+  Px = X
+  Py = Y
+  inc Moves
+  ' resting while walking: one strength back every 8 steps, up to 20
+  V = Moves & 7
+  if V = 0 then
+    if Ys < 20 then inc Ys
+  end if
+  play sound SndStep
+  MarkSeen
+  ShowAll
+  Enter
+  return
+end sub
+
+' Enter: what is in the cell just entered
+sub Enter:
+  if Lev = 0 then
+    if Px = 5 then
+      if Py = 0 then
+        AtBase
+        return
+      end if
+    end if
+  end if
+  Ct = CellT(Px, Py)
+  if Ct = 5 then
+    Fight
+    return
+  end if
+  if Ct = 6 then
+    R = Rnd(6)
+    R = R + 1
+    W = Ys + R
+    Ys = 99
+    if W < 99 then Ys = W
+    SetT(Px, Py, 1)
+    play sound SndFood
+    print at 2,18, "YOU FOUND FOOD WORTH"
+    NumU = R
+    print at 23,18, digits$(NumU, 1)
+    print at 2,19, "STRENGTH."
+    ShowAll
+    return
+  end if
+  if Ct = 7 then
+    inc Pf
+    SetT(Px, Py, 1)
+    play sound SndFree
+    print at 2,18, "YOU FREED A PRISONER!"
+    ShowAll
+    return
+  end if
+  if Ct = 4 then
+    Ladder
+    return
+  end if
+  if Ct = 8 then
+    Radio
+    return
+  end if
+  return
+end sub
+
+sub AtBase:
+  if Home = 0 then
+    print at 2,18, "YOUR CRASHED SHIP. FIND THE"
+    print at 2,19, "COMMUNICATIONS ROOM FIRST."
+    return
+  end if
+  print at 2,18, "THE RESCUE SHIP IS HERE."
+  print at 2,19, "RETURN HOME?"
+  Ask(10, 7, 0)
+  if Sel = 0 then
+    Won = 1
+    return
+  end if
+  ClearMsg
+  print at 2,18, "COME BACK WHEN YOU ARE READY."
+  return
+end sub
+
+sub Ladder:
+  print at 2,18, "A LADDER."
+  if Lev = 0 then
+    Ask(6, 7, 0)
+  else
+    Ask(5, 7, 0)
+  end if
+  ClearMsg
+  if Sel = 1 then return
+  ' the ladder leads to the other level's ladder (level 1 row 17 column 7,
+  ' level 2 row 0 column 13)
+  Lev = Lev ^ 1
+  if Lev = 1 then
+    Px = 13
+    Py = 0
+  else
+    Px = 7
+    Py = 17
+  end if
+  Ox = Px
+  Oy = Py
+  play sound SndLadder
+  MarkSeen
+  DrawMap
+  ShowAll
+  if Lev = 1 then
+    print at 2,18, "YOU CLIMB DOWN TO LEVEL 2."
+  else
+    print at 2,18, "YOU CLIMB UP TO LEVEL 1."
+  end if
+  return
+end sub
+
+sub Radio:
+  if Home = 1 then
+    print at 2,18, "THE COMMUNICATIONS ROOM."
+    print at 2,19, "HELP IS ON THE WAY."
+    return
+  end if
+  print at 2,18, "THE LUMPIES' COMMUNICATIONS"
+  print at 2,19, "ROOM!"
+  Ask(8, 9, 0)
+  ClearMsg
+  if Sel = 1 then return
+  Home = 1
+  play sound SndCall
+  print at 2,18, "A RESCUE TEAM IS ON THE WAY."
+  print at 2,19, "GO BACK TO YOUR SHIP."
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Lumpies
+
+sub Fight:
+  play sound SndLump
+  LumpWpn
+  Ht = 0
+  print at 2,18, "A LUMPIE WITH A"
+  PrintWpn(18, 18, Lw)
+  print at 2,19, "POWER"
+  NumU = Lp
+  print at 8,19, digits$(NumU, 1)
+fight_ask:
+  Ask(1, 2, 0)
+  if Sel = 1 then
+    ' run: back to the cell before; the Lumpie gets its strength back
+    Px = Ox
+    Py = Oy
+    Ht = 0
+    ClearMsg
+    print at 2,18, "YOU RAN AWAY."
+    ShowAll
+    return
+  end if
+  ClearMsg
+  ' your blow: 50% plus 5% for each point of power more than his
+  V = Ywpn * 5
+  V = V + 50
+  W = Lp * 5
+  V = V - W
+  R = Rnd(100)
+  if R < V then
+    ' a hit counts 1 or 2 (line 710: HT=HT+INT(RND*2)+1)
+    R = Rnd(2)
+    R = R + 1
+    Ht = Ht + R
+    play sound SndHit
+    print at 2,18, "YOU HIT HIM!"
+    if Ht = 1 then print at 2,19, "HE'S WORRIED."
+    if Ht = 2 then print at 2,19, "HE'S NERVOUS."
+    if Ht = 3 then print at 2,19, "HE'S A LITTLE SORE."
+    if Ht = 4 then print at 2,19, "HE'S GETTING WEAK."
+  else
+    play sound SndMiss
+    print at 2,18, "YOU MISSED."
+  end if
+  if Ht >= 5 then
+    Fled
+    return
+  end if
+  ' his blow
+  V = Lp * 5
+  V = V + 50
+  W = Ywpn * 5
+  V = V - W
+  R = Rnd(100)
+  if R < V then
+    dec Ys
+    play sound SndOuch
+    print at 2,20, "HE HIT YOU!"
+  else
+    print at 2,20, "HE MISSED."
+  end if
+  if Ys = 0 then
+    ShowHud
+    Lost = 1
+    return
+  end if
+  ' a weapon may break (line 740: 7.5 times in 100)
+  if Ywpn > 0 then
+    R = Rnd(200)
+    if R < 15 then
+      Ywp = 0
+      Ywpn = 0
+      print at 2,21, "YOUR WEAPON BROKE!"
+    end if
+  end if
+  ShowHud
+  goto fight_ask
+end sub
+
+sub Fled:
+  inc Ld
+  SetT(Px, Py, 1)
+  play sound SndFlee
+  ShowAll
+  ClearMsg
+  print at 2,18, "HE HAS FLED! TAKE HIS"
+  PrintWpn(2, 19, Lw)
+  print at 14,19, "POWER"
+  NumU = Lp
+  print at 20,19, digits$(NumU, 1)
+  Ask(3, 4, 0)
+  ClearMsg
+  if Sel = 0 then
+    Ywp = Lw
+    Ywpn = Lp
+    print at 2,18, "IT'S YOURS NOW."
+  else
+    print at 2,18, "YOU KEEP YOUR OWN."
+  end if
+  ShowHud
+  return
+end sub
+
+' LumpWpn: the weapon and power of the Lumpie here (kept beside the map)
+sub LumpWpn:
+  CellAt(Px, Py)
+  A16 = A16 + 512
+  vpeek vram.pattern + A16 into V
+  Lw = V & 15
+  Lp = V >> 4
+  return
+end sub
+
+sub PrintWpn(u8 Wx, u8 Wy, u8 Wi):
+  if Wi = 0 then print at Wx,Wy, "NOTHING"
+  if Wi = 1 then print at Wx,Wy, "BRIEFCASE"
+  if Wi = 2 then print at Wx,Wy, "WRENCH"
+  if Wi = 3 then print at Wx,Wy, "GUN"
+  if Wi = 4 then print at Wx,Wy, "ARROW"
+  if Wi = 5 then print at Wx,Wy, "YO-YO"
+  if Wi = 6 then print at Wx,Wy, "REFRESHMENT"
+  if Wi = 7 then print at Wx,Wy, "BOMB"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' questions: up to three choices on row 22, left and right choose, the
+' left button answers; Sel the choice
+
+sub Ask(u8 A1, u8 A2, u8 A3):
+  Op1 = A1
+  Op2 = A2
+  Op3 = A3
+  NOpt = 2
+  if A3 > 0 then NOpt = 3
+  Sel = 0
+  AskK = A1
+  ShowOpts
+  WasStk = 1
+ask_loop:
+  Frame1
+  ReadPad
+  if Stk = 0 then WasStk = 0
+  if Stk = 1 then
+    if WasStk = 0 then
+      WasStk = 1
+      if Lf1 = 1 then
+        if Sel > 0 then dec Sel
+      end if
+      if Rt1 = 1 then
+        V = NOpt - 1
+        if Sel < V then inc Sel
+      end if
+      play sound SndTick
+      ShowOpts
+    end if
+  end if
+  if P1 = 0 then goto ask_loop
+  AskK = 0
+  fill 32 count 28 at 2,22
+  WasStk = 1
+  return
+end sub
+
+sub ShowOpts:
+  fill 32 count 28 at 2,22
+  ShowOpt(Op1, 3)
+  ShowOpt(Op2, 12)
+  if NOpt = 3 then ShowOpt(Op3, 21)
+  V = Sel * 9
+  V = V + 2
+  put char 62 at V,22
+  return
+end sub
+
+sub ShowOpt(u8 Oc, u8 Ocx):
+  if Oc = 1 then print at Ocx,22, "FIGHT"
+  if Oc = 2 then print at Ocx,22, "RUN"
+  if Oc = 3 then print at Ocx,22, "YES"
+  if Oc = 4 then print at Ocx,22, "NO"
+  if Oc = 5 then print at Ocx,22, "GO UP"
+  if Oc = 6 then print at Ocx,22, "GO DOWN"
+  if Oc = 7 then print at Ocx,22, "STAY"
+  if Oc = 8 then print at Ocx,22, "CALL"
+  if Oc = 9 then print at Ocx,22, "IGNORE"
+  if Oc = 10 then print at Ocx,22, "GO HOME"
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,18
+  fill 32 count 28 at 2,19
+  fill 32 count 28 at 2,20
+  fill 32 count 28 at 2,21
+  return
+end sub
+
+' Status: the right button
+sub ShowStatus:
+  ClearMsg
+  CalcScore
+  print at 2,18, "STRENGTH"
+  NumU = Ys
+  print at 11,18, digits$(NumU, 2)
+  print at 15,18, "FREED"
+  NumU = Pf
+  print at 21,18, digits$(NumU, 2)
+  print at 2,19, "LUMPIES DEFEATED"
+  NumU = Ld
+  print at 19,19, digits$(NumU, 2)
+  print at 2,20, "SCORE"
+  NumU = Score
+  print at 8,20, digits$(NumU, 5)
+  if Home = 1 then
+    print at 2,21, "HOME CALLED: GO TO YOUR SHIP"
+  else
+    print at 2,21, "HOME NOT CALLED YET"
+  end if
+  return
+end sub
+
+sub CalcScore:
+  Score = Pf
+  Score = Score * 100
+  W16 = Ld
+  W16 = W16 * 50
+  Score = Score + W16
+  W16 = Ys
+  W16 = W16 * 10
+  Score = Score + W16
+  if Won = 1 then Score = Score + 1000
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the caves: in VRAM, a byte a cell (20 a row, 22 rows) at $3000 for level
+' 1 and $3400 for level 2: bits 0-3 the kind, bit 7 seen; the byte 512
+' further holds a Lumpie's weapon (bits 0-3) and power (bits 4-7)
+
+sub CellAt(u8 Ac, u8 Ar):
+  A16 = Ar
+  A16 = A16 << 4
+  W16 = Ar
+  W16 = W16 << 2
+  A16 = A16 + W16
+  A16 = A16 + Ac
+  A16 = A16 + 12288
+  if Lev = 1 then A16 = A16 + 1024
+  return
+end sub
+
+' CellT(c, r): the kind of cell (0 outside the caves)
+function CellT(u8 Fc, u8 Fr) as u8
+  if Fc >= 20 then return 0
+  if Fr >= 22 then return 0
+  CellAt(Fc, Fr)
+  vpeek vram.pattern + A16 into Rb
+  Rb = Rb & 15
+  return Rb
+
+sub SetT(u8 Sc, u8 Sr, u8 St):
+  CellAt(Sc, Sr)
+  vpeek vram.pattern + A16 into Rb
+  Rb = Rb & 128
+  Rb = Rb | St
+  vpoke vram.pattern + A16, Rb
+  return
+end sub
+
+sub MarkSeen:
+  CellAt(Px, Py)
+  vpeek vram.pattern + A16 into Rb
+  Rb = Rb | 128
+  vpoke vram.pattern + A16, Rb
+  Tc = Px >> 1
+  Tr = Py >> 1
+  MapTile
+  return
+end sub
+
+' Caves: the two levels from the DATA; a 5 is a Lumpie 85 times in 100,
+' and about one corridor in 40 gets a Lumpie too (never the ship's cell)
+sub Caves:
+  copy MazeData count 440 to vram.pattern + 12288
+  copy MazeData + 440 count 440 to vram.pattern + 13312
+  for Lev = 0 to 1
+    for Cy = 0 to 21
+      for Cx = 0 to 19
+        CellAt(Cx, Cy)
+        vpeek vram.pattern + A16 into Ct
+        if Ct = 5 then
+          R = Rnd(100)
+          if R < 85 then
+            NewLump
+          else
+            vpoke vram.pattern + A16, 1
+          end if
+        elseif Ct = 1 then
+          V = 1
+          if Lev = 0 then
+            if Cx = 5 then
+              if Cy = 0 then V = 0
+            end if
+          end if
+          if V = 1 then
+            call asm LmRnd
+            R = Rs
+            if R < 6 then
+              vpoke vram.pattern + A16, 5
+              NewLump
+            end if
+          end if
+        end if
+      next
+    next
+  next
+  Lev = 0
+  return
+end sub
+
+'' NewLump: a weapon 1-7 and a power for the Lumpie at A16: 1-4 on the
+' first level, 1-7 on the second (the listing's scale is 1-9; weaker
+' Lumpies near the ship give an unarmed spy a chance to win a weapon)
+sub NewLump:
+  V1 = Rnd(7)
+  V1 = V1 + 1
+  if Lev = 0 then
+    V2 = Rnd(4)
+  else
+    V2 = Rnd(7)
+  end if
+  V2 = V2 + 1
+  V2 = V2 << 4
+  V1 = V1 | V2
+  W16 = A16 + 512
+  vpoke vram.pattern + W16, V1
+  return
+end sub
+
+' Rnd(n): 0 to n-1 from the high byte of (random byte) x n
+function Rnd(u8 Rn) as u8
+  call asm LmRnd
+  Rb = Rs
+  W16 = Rb * Rn
+  W16 = W16 >> 8
+  Rb = W16
+  return Rb
+
+' ---------------------------------------------------------------------------
+' the map: 20 x 22 cells of 4 x 4 pixels in 10 x 11 tiles (columns 20-29,
+' rows 2-12); rows 2-7 are in the top third, 8-12 in the middle one, and
+' use the same 60 codes (each third has its own patterns)
+
+' MapTile: the pattern of map tile Tc, Tr from the four cells it shows
+sub MapTile:
+  Cx = Tc << 1
+  Cy = Tr << 1
+  V1 = 0
+  V2 = 0
+  CellAt(Cx, Cy)
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V1 = $F0
+  A16 = A16 + 1
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V1 = V1 | $0F
+  A16 = A16 + 20
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V2 = $0F
+  A16 = A16 - 1
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V2 = V2 | $F0
+  V = Tr
+  W16 = 0
+  if V >= 6 then
+    V = V - 6
+    W16 = 2048
+  end if
+  V = V * 10
+  V = V + Tc
+  V = V + TMap
+  A16 = V
+  A16 = A16 << 3
+  A16 = A16 + W16
+  for J = 0 to 3
+    vpoke vram.pattern + A16, V1
+    inc A16
+  next
+  for J = 0 to 3
+    vpoke vram.pattern + A16, V2
+    inc A16
+  next
+  return
+end sub
+
+sub DrawMap:
+  for Tr = 0 to 10
+    for Tc = 0 to 9
+      MapTile
+    next
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the 3-D view: 16 x 16 tiles at columns 2-17, rows 1-16, built in Vb.
+' Depth k (0-2) is the cell k ahead: its side walls fill columns 2k-2k+1
+' (left) and 14-2k-15-2k (right), rows 2k-15-2k; a wall in the cell
+' k+1 ahead fills the middle; three open cells end in darkness.
+
+sub DrawView:
+  for J = 0 to 127
+    Vb[J] = TCeil
+  next
+  for J = 128 to 255
+    Vb[J] = TFloor
+  next
+  Cx = Px
+  Cy = Py
+  Ob = 0
+  Obk = 0
+  ' what stands here (shown big)
+  V = CellT(Px, Py)
+  ObjOf(V)
+  if Ob > 0 then Obk = 1
+  for K = 0 to 2
+    ' left of cell k
+    V = Dir + 3
+    V = V & 3
+    X = Cx + DxT[V]
+    Y = Cy + DyT[V]
+    V = CellT(X, Y)
+    SideL(V)
+    V = Dir + 1
+    V = V & 3
+    X = Cx + DxT[V]
+    Y = Cy + DyT[V]
+    V = CellT(X, Y)
+    SideR(V)
+    ' the cell ahead
+    Cx = Cx + DxT[Dir]
+    Cy = Cy + DyT[Dir]
+    V = CellT(Cx, Cy)
+    if V = 0 then
+      Front(K, 0)
+      goto view_done
+    end if
+    if V = 2 then
+      Front(K, 1)
+      goto view_done
+    end if
+    if K = 0 then
+      if Ob = 0 then
+        ObjOf(V)
+        if Ob > 0 then Obk = 2
+      end if
+    end if
+  next
+  Rect(6, 6, 9, 9, TFar)
+view_done:
+  call asm LmBlit
+  return
+end sub
+
+' ObjOf(kind): Ob the object shown for a kind of cell (0 none)
+sub ObjOf(u8 Ok):
+  Ob = 0
+  if Ok = 5 then Ob = 1
+  if Ok = 7 then Ob = 2
+  if Ok = 6 then Ob = 3
+  if Ok = 4 then Ob = 4
+  if Ok = 8 then Ob = 5
+  return
+end sub
+
+sub Rect(u8 C0, u8 R0, u8 C1, u8 R1, u8 Rt):
+  for Rj = R0 to R1
+    Rb = Rj << 4
+    Rb = Rb + C0
+    for Ri = C0 to C1
+      Vb[Rb] = Rt
+      inc Rb
+    next
+  next
+  return
+end sub
+
+' SideL(kind): the left side of depth K: a wall (or door), or an opening
+' (the far wall of the side passage)
+sub SideL(u8 Sk):
+  N = K << 1
+  if Sk = 0 then
+    W = 0
+  elseif Sk = 2 then
+    W = 1
+  else
+    W = K << 1
+    W = W + TFront
+    V1 = N + 2
+    V2 = 13 - N
+    V = N + 1
+    Rect(N, V1, V, V2, W)
+    return
+  end if
+  W = W + N
+  W = W * 6
+  W = W + TSide
+  ' W is the depth's left wall; W+1 the top diagonal, W+2 the bottom one
+  V = N << 4
+  V = V + N
+  V1 = W + 1
+  Vb[V] = V1
+  V = V + 16
+  Vb[V] = W
+  inc V
+  Vb[V] = V1
+  V1 = N + 2
+  V2 = 13 - N
+  V = N + 1
+  Rect(N, V1, V, V2, W)
+  V = 14 - N
+  V = V << 4
+  V = V + N
+  Vb[V] = W
+  V2 = W + 2
+  inc V
+  Vb[V] = V2
+  V = V + 15
+  Vb[V] = V2
+  return
+end sub
+
+sub SideR(u8 Sk):
+  N = K << 1
+  Ca = 15 - N
+  if Sk = 0 then
+    W = 0
+  elseif Sk = 2 then
+    W = 1
+  else
+    W = K << 1
+    W = W + TFront
+    V1 = N + 2
+    V2 = 13 - N
+    V = Ca - 1
+    Rect(V, V1, Ca, V2, W)
+    return
+  end if
+  W = W + N
+  W = W * 6
+  W = W + TSide
+  W = W + 3
+  ' W the right wall; W+1 the top diagonal, W+2 the bottom one
+  V = N << 4
+  V = V + Ca
+  V1 = W + 1
+  Vb[V] = V1
+  V = V + 16
+  Vb[V] = W
+  dec V
+  Vb[V] = V1
+  V1 = N + 2
+  V2 = 13 - N
+  V = Ca - 1
+  Rect(V, V1, Ca, V2, W)
+  V = 14 - N
+  V = V << 4
+  V = V + Ca
+  Vb[V] = W
+  V2 = W + 2
+  dec V
+  Vb[V] = V2
+  V = V + 17
+  Vb[V] = V2
+  return
+end sub
+
+' Front(depth, door): the wall closing the corridor after depth k
+sub Front(u8 Fk, u8 Fd):
+  N = Fk << 1
+  W = N + TFront
+  W = W + Fd
+  V1 = N + 2
+  V2 = 13 - N
+  Rect(V1, V1, V2, V2, W)
+  return
+end sub
+
+' ShowAll: the view, the objects, the arrow on the map and the panel
+sub ShowAll:
+  DrawView
+  DrawSprites
+  ShowHud
+  return
+end sub
+
+sub DrawSprites:
+  V = Dir << 2
+  V = V + SArrow
+  X = Px << 2
+  X = X + 159
+  Y = Py << 2
+  Y = Y + 14
+  set sprite 0 to Y,X,V,15
+  if Ob = 0 then
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  else
+    N = Ob - 1
+    N = N << 4
+    V1 = TopC[Ob]
+    V2 = BodyC[Ob]
+    if Obk = 1 then
+      Y = 103
+    else
+      N = N + 8
+      Y = 67
+    end if
+    set sprite 1 to Y,72,N,V1
+    N = N + 4
+    set sprite 2 to Y,72,N,V2
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 19,1, "LEVEL"
+  V = Lev + 1
+  NumU = V
+  print at 25,1, digits$(NumU, 1)
+  print at 19,14, "STRENGTH"
+  NumU = Ys
+  print at 28,14, digits$(NumU, 2)
+  print at 19,15, "FREED"
+  NumU = Pf
+  print at 28,15, digits$(NumU, 2)
+  fill 32 count 11 at 19,16
+  PrintWpn(19, 16, Ywp)
+  print at 19,17, "POWER"
+  NumU = Ywpn
+  print at 25,17, digits$(NumU, 1)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens
+
+sub GameScreen:
+  NewScreen
+  backdrop black
+  for Tr = 0 to 10
+    for Tc = 0 to 9
+      V = Tr
+      if V >= 6 then V = V - 6
+      V = V * 10
+      V = V + Tc
+      V = V + TMap
+      X = Tc + 20
+      Y = Tr + 2
+      put char V at X,Y
+    next
+  next
+  print at 2,18, "PREPARING THE CAVES..."
+  Caves
+  fill 32 count 28 at 2,18
+  MarkSeen
+  DrawMap
+  ShowScreen
+  return
+end sub
+
+sub EndPage:
+  CalcScore
+  if Score > Hi then Hi = Score
+  NewScreen
+  backdrop dark blue
+  if Won = 1 then
+    print at 6,3, "MISSION ACCOMPLISHED!"
+    print at 2,5, "THE RESCUE SHIP TAKES YOU"
+    print at 2,6, "HOME FROM LOTUS IV."
+  else
+    print at 7,3, "YOU ARE DEFEATED."
+    print at 2,5, "THE LUMPIES HAVE WORN YOU"
+    print at 2,6, "DOWN. YOUR MISSION FAILED."
+  end if
+  print at 4,9, "PRISONERS FREED"
+  NumU = Pf
+  print at 22,9, digits$(NumU, 2)
+  print at 4,10, "LUMPIES DEFEATED"
+  NumU = Ld
+  print at 22,10, digits$(NumU, 2)
+  print at 4,11, "STRENGTH LEFT"
+  NumU = Ys
+  print at 22,11, digits$(NumU, 2)
+  print at 4,13, "SCORE"
+  NumU = Score
+  print at 19,13, digits$(NumU, 5)
+  print at 4,14, "BEST"
+  NumU = Hi
+  print at 19,14, digits$(NumU, 5)
+  print at 7,20, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' title: the tune once, START / CREDITS; the time spent here seeds the
+' random numbers
+sub TitlePage:
+  NewScreen
+  backdrop dark blue
+  print at 6,3, "LUMPIES OF LOTUS IV"
+  print at 4,5, "BY JOHN AND JEFF KLEIN"
+  Ob = 1
+  Obk = 1
+  set sprite 1 to 60,120,0,15
+  set sprite 2 to 60,120,4,13
+  print at 3,12, "FREE THE PRISONERS, CALL"
+  print at 3,13, "HOME AND GET OUT ALIVE."
+  print at 11,16, "START"
+  print at 11,17, "CREDITS"
+  print at 10,20, "BEST"
+  NumU = Hi
+  print at 15,20, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  update sprites
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasStk = 1
+  W16 = 0
+tp_loop:
+  Frame1
+  inc W16
+  ReadPad
+  if Stk = 0 then WasStk = 0
+  if Stk = 1 then
+    if WasStk = 0 then
+      WasStk = 1
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  if P1 = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  Seed = W16 * 251
+  Seed = Seed ^ $5A3C
+  if Seed = 0 then Seed = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,16
+  put char 32 at 9,17
+  V = Menu + 16
+  put char 62 at 9,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 6,2, "LUMPIES OF LOTUS IV"
+  print at 2,5, "BASED ON LUMPIES OF LOTUS IV"
+  print at 2,6, "BY JOHN AND JEFF KLEIN,"
+  print at 2,7, "COMPUTE! OCTOBER 1986"
+  print at 2,8, "(IBM PCJR)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: LOTUS LANDING,"
+  print at 2,18, "LUMPY CAVES"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  B1 = 0
+  B2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  V = joypad(1).button1 | joypad(2).button1
+  if V = 1 then B1 = 1
+  V = joypad(1).button2 | joypad(2).button2
+  if V = 1 then B2 = 1
+  P1 = 0
+  if B1 = 1 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  WasB1 = B1
+  P2 = 0
+  if B2 = 1 then
+    if WasB2 = 0 then P2 = 1
+  end if
+  WasB2 = B2
+  Stk = Up1 | Dn1
+  Stk = Stk | Lf1
+  Stk = Stk | Rt1
+  if Stk = 0 then
+    WasStk = 0
+    Rep = 0
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Busy = 1
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Busy = 0
+  return
+end sub
+
+data TilePat bytes
+  $80,$08,$00,$00,$00,$00,$40,$04
+  $80,$10,$02,$00,$00,$20,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $88,$11,$22,$44,$88,$11,$22,$44
+  $92,$92,$92,$FF,$92,$92,$92,$92
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $7C,$7C,$7C,$7C,$7C,$7C,$7C,$7C
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $7C,$7C,$7C,$7C,$7C,$7C,$7C,$7C
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $5C,$5C,$5C,$5C,$5C,$5C,$5C,$5C
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $5C,$5C,$5C,$5C,$5C,$5C,$5C,$5C
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $AC,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $AC,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $4C,$4C,$4C,$4C,$4C,$4C,$4C,$4C
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $4C,$4C,$4C,$4C,$4C,$4C,$4C,$4C
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $6C,$6C,$6C,$6C,$6C,$6C,$6C,$6C
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $6C,$6C,$6C,$6C,$6C,$6C,$6C,$6C
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+end data
+data SpritePat bytes
+  $C0,$3C,$7E,$76,$7E,$3C,$E0,$00,$03,$01,$00,$00,$00,$08,$08,$18
+  $03,$3C,$7E,$6E,$7E,$3C,$07,$00,$C0,$80,$00,$00,$00,$10,$10,$18
+  $FF,$7F,$7F,$3F,$3F,$1F,$1F,$0F,$0F,$07,$07,$03,$03,$01,$00,$00
+  $FF,$FE,$FE,$FC,$FC,$F8,$F8,$F0,$F0,$E0,$E0,$C0,$C0,$80,$00,$00
+  $00,$00,$00,$00,$0E,$0F,$0F,$0C,$01,$00,$02,$06,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$F0,$F0,$30,$80,$00,$40,$60,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$0F,$07,$07,$03,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$E0,$E0,$C0,$C0,$80,$00,$00,$00,$00,$00
+  $03,$07,$05,$07,$83,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$A0,$E0,$C1,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$43,$67,$3F,$0F,$0F,$0F,$0E,$0E,$0E,$1E
+  $00,$00,$00,$00,$00,$00,$C2,$E6,$FC,$F0,$F0,$F0,$70,$70,$70,$78
+  $00,$00,$00,$00,$03,$03,$09,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$90,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0F,$07,$03,$03,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$E0,$C0,$C0,$E0,$00,$00,$00,$00
+  $01,$01,$03,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$70,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0E,$1F,$3F,$3F,$3F,$3F,$3F,$1F,$1F,$0F,$06,$00,$00
+  $00,$00,$00,$70,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$60,$00,$00
+  $00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$1F,$18,$18,$18,$1F,$18,$18,$18,$1F,$18,$18,$18,$1F,$18
+  $18,$18,$F8,$18,$18,$18,$F8,$18,$18,$18,$F8,$18,$18,$18,$F8,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$06,$07,$06,$07,$06,$07,$06,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$60,$E0,$60,$E0,$60,$E0,$60,$E0,$00,$00,$00,$00
+  $00,$01,$00,$00,$00,$00,$00,$1F,$16,$1F,$00,$00,$00,$09,$00,$00
+  $80,$C0,$80,$00,$00,$00,$00,$F8,$90,$F8,$00,$00,$00,$24,$00,$00
+  $00,$01,$00,$00,$00,$3F,$7F,$60,$60,$60,$7F,$7F,$7F,$6D,$7F,$7F
+  $80,$40,$80,$80,$80,$FC,$FE,$06,$06,$06,$FE,$FE,$FE,$B6,$FE,$FE
+  $00,$00,$00,$00,$01,$00,$00,$07,$07,$00,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$00,$E0,$E0,$00,$60,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$00,$07,$0F,$0C,$0F,$0F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$E0,$F0,$30,$F0,$F0,$F0,$00,$00,$00,$00
+  $20,$70,$F8,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$30,$F8,$30,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$20,$F8,$70,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$60,$F8,$60,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+' the two levels from the listing's DATA (maze.py): 22 rows of 20
+data MazeData bytes
+  1,2,5,1,0,1,0,6,1,5,2,1,1,1,1,1,1,2,5,6
+  1,0,1,1,0,1,0,1,1,1,0,1,0,0,2,0,1,0,0,0
+  1,0,6,1,2,1,2,5,1,1,0,1,0,6,5,0,1,2,5,1
+  1,0,0,0,0,1,0,0,0,0,0,1,0,0,2,0,1,0,1,6
+  1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,0,1,0,0,0
+  2,0,0,0,0,1,0,0,0,0,2,0,0,1,5,2,1,2,5,1
+  1,1,1,1,0,1,2,5,0,1,1,1,0,1,0,0,1,0,1,1
+  1,1,1,1,0,1,0,6,0,5,1,5,0,6,0,1,1,0,6,1
+  0,0,0,0,0,1,0,0,0,2,0,2,0,0,0,1,0,0,0,0
+  1,5,2,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1
+  6,1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,2
+  0,0,0,1,0,7,2,1,2,7,0,7,2,1,2,7,0,1,0,5
+  1,1,1,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0
+  1,0,0,0,0,7,2,1,2,7,0,7,2,1,2,7,0,1,1,1
+  1,2,5,6,0,0,0,2,0,0,0,0,0,2,0,0,0,1,0,1
+  1,0,6,5,2,1,0,1,1,1,5,1,1,1,0,1,1,1,0,1
+  1,0,0,0,0,1,0,0,0,0,2,0,0,0,0,1,0,0,0,1
+  1,1,1,1,1,1,0,4,0,1,5,1,0,1,1,1,1,1,1,1
+  0,0,0,0,1,0,0,5,0,6,1,1,0,1,0,0,0,0,2,0
+  1,1,1,1,1,0,2,5,0,0,0,0,0,1,0,1,6,0,5,1
+  2,0,2,0,1,1,1,0,0,1,1,1,1,1,2,5,1,0,1,1
+  7,0,7,0,0,0,1,1,1,1,0,0,0,0,0,1,1,0,1,6
+  1,1,0,0,1,1,1,1,1,0,0,0,0,4,5,1,1,0,1,1
+  1,1,6,0,2,0,0,0,1,1,1,1,0,0,1,1,1,2,5,6
+  1,1,1,0,5,1,1,0,0,0,0,1,1,0,1,1,1,0,0,0
+  1,1,5,0,1,1,1,2,1,1,0,1,1,0,1,1,1,0,6,1
+  0,0,2,0,0,0,0,0,1,1,0,1,1,0,0,5,1,0,1,5
+  1,1,1,2,1,1,1,0,1,5,2,1,1,1,1,2,0,0,0,2
+  2,0,1,0,1,1,1,0,0,1,0,1,0,0,0,0,0,1,1,1
+  1,2,1,0,1,1,1,2,0,0,0,1,0,1,1,1,0,5,1,1
+  1,0,0,0,0,0,0,1,1,1,1,1,0,1,1,1,0,2,0,0
+  1,0,1,1,1,6,0,0,0,0,0,1,0,5,1,1,0,1,1,1
+  1,0,0,0,1,1,0,1,1,1,0,1,0,2,0,0,0,1,0,1
+  1,1,1,0,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1
+  0,0,1,0,0,5,0,2,0,2,0,0,1,0,0,0,0,0,0,2
+  8,0,1,1,2,1,2,1,0,1,1,0,1,2,7,0,7,2,5,1
+  2,0,0,1,0,0,0,1,2,5,1,0,1,0,0,0,0,0,1,1
+  1,1,1,1,1,1,1,1,0,1,1,0,1,2,7,0,7,2,1,1
+  0,0,0,1,0,0,0,2,0,0,0,0,1,0,0,0,0,0,2,0
+  0,7,2,1,2,7,0,1,0,1,5,2,1,2,5,1,5,2,1,0
+  0,0,0,2,0,0,0,0,0,1,1,0,1,0,1,1,1,0,2,0
+  1,6,0,7,0,1,5,0,6,1,1,0,1,0,0,0,0,0,5,1
+  1,1,0,0,0,1,1,0,0,0,0,0,1,2,5,1,0,1,1,1
+  1,5,2,1,2,1,1,2,1,1,1,1,1,0,1,1,0,6,1,1
+end data
+
+' a step for each way (north, east, south, west); 255 is -1
+data DxT bytes
+  0,1,0,255
+end data
+data DyT bytes
+  255,0,1,0
+end data
+' object colours (index 1 Lumpie, 2 prisoner, 3 food, 4 ladder, 5 radio):
+' the top layer and the body
+data TopC bytes
+  0,15,11,12,0,8
+end data
+data BodyC bytes
+  0,13,9,8,10,14
+end data
+
+asm {
+; LmRnd: 16-bit xorshift (7, 9, 8) on Rs
+LmRnd:
+  ld hl,(AMY_UVAR_Rs)
+  ld a,h
+  rra
+  ld a,l
+  rra
+  xor h
+  ld h,a
+  ld a,l
+  rra
+  ld a,h
+  rra
+  xor l
+  ld l,a
+  xor h
+  ld h,a
+  ld (AMY_UVAR_Rs),hl
+  ret
+
+; LmBlit: the 16 x 16 view buffer Vb to the name table, columns 2-17 of
+; rows 1-16 (called with the NMI off)
+LmBlit:
+  ld hl,AMY_UVAR_Vb
+  ld de,$5822
+  ld c,16
+LmBlitRow:
+  ld a,e
+  out ($BF),a
+  ld a,d
+  out ($BF),a
+  ld b,16
+LmBlitCol:
+  ld a,(hl)
+  out ($BE),a
+  inc hl
+  djnz LmBlitCol
+  ld a,e
+  add a,32
+  ld e,a
+  jr nc,LmBlitNc
+  inc d
+LmBlitNc:
+  dec c
+  jr nz,LmBlitRow
+  ret
+LmStep:
+    db $00,$00,$23,$01,$00,$00,$53,$02,$10
+LmBump:
+    db $40,$F9,$13,$03,$40,$FF,$33,$04,$50
+LmDoor:
+    db $00,$00,$05,$03,$00,$00,$26,$05,$00,$00,$57,$08,$00,$00,$77,$0A,$10
+LmLump:
+    db $40,$53,$21,$03,$40,$1D,$21,$03,$40,$53,$21,$03,$40,$1D,$21,$03,$40,$AB,$31,$06,$50
+LmHit:
+    db $00,$00,$04,$02,$00,$00,$35,$04,$00,$00,$56,$06,$10
+LmOuch:
+    db $40,$D6,$10,$03,$40,$1D,$21,$04,$40,$AB,$41,$08,$50
+LmMiss:
+    db $40,$47,$30,$04,$40,$50,$50,$04,$50
+LmFlee:
+    db $40,$8F,$20,$02,$40,$71,$20,$02,$40,$5F,$20,$02,$40,$47,$20,$02,$40,$35,$40,$06,$50
+LmFood:
+    db $80,$AA,$20,$03,$80,$8F,$20,$03,$80,$6B,$30,$08,$90
+LmFree:
+    db $80,$D6,$20,$04,$80,$AA,$20,$04,$80,$8F,$20,$04,$80,$6B,$30,$0C,$90
+LmLadder:
+    db $40,$AB,$21,$03,$40,$53,$21,$03,$40,$1D,$21,$03,$40,$D6,$20,$03,$40,$AA,$30,$03,$50
+LmCall:
+    db $80,$6B,$20,$06,$80,$FF,$83,$06,$80,$6B,$20,$06,$80,$FF,$83,$06,$80,$47,$30,$0C,$90
+LmWin:
+    db $80,$D6,$10,$06,$80,$AA,$10,$06,$80,$8F,$10,$06,$80,$6B,$10,$06,$80,$8F,$10,$06,$80,$6B,$30,$14
+    db $90
+LmLose:
+    db $80,$1D,$21,$0C,$80,$53,$21,$0C,$80,$7C,$31,$0C,$80,$3B,$42,$1E,$90
+LmTick:
+    db $80,$40,$30,$01,$80,$40,$60,$02,$90
+
+LmSoundTable:
+    dw LmTuneMel,$702B
+    dw LmTuneBass,$7035
+    dw LmCaveMel,$702B
+    dw LmCaveBass,$7035
+    dw LmStep,$703F
+    dw LmBump,$7049
+    dw LmDoor,$703F
+    dw LmLump,$7049
+    dw LmHit,$703F
+    dw LmOuch,$7049
+    dw LmMiss,$7049
+    dw LmFlee,$7049
+    dw LmFood,$7053
+    dw LmFree,$7053
+    dw LmLadder,$7049
+    dw LmCall,$7053
+    dw LmWin,$7053
+    dw LmLose,$7053
+    dw LmTick,$7053
+; Lotus Landing (original)
+; Tiny Sound, 7 frames per step
+LmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$1A,$21,$17,$01,$1A,$1C,$01,$01,$1F,$01,$1E,$01,$1A,$01
+    db $17,$01,$01,$01,$16,$01,$17,$01,$1A,$01,$1D,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$1A,$1C,$01,$01,$1F,$01,$21,$01,$1F,$01
+    db $1C,$01,$01,$01,$1A,$01,$17,$01,$16,$01,$12,$01,$17,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+LmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$0B,$01,$06,$01,$0B,$01,$06,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0B,$01,$06,$01,$0B,$01,$06,$01,$0C,$01,$07,$01
+    db $0C,$01,$07,$01,$0B,$01,$06,$01,$0B,$01,$06,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$06,$01
+    db $0B,$01,$01,$01
+    db $FF
+
+; Lumpy Caves (original)
+; Tiny Sound, 8 frames per step
+LmCaveMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$01,$01,$01,$01,$01,$01,$2F,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$2A,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$26,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$28,$01,$01,$01,$25,$01
+    db $01,$01,$01,$01
+    db $FF
+LmCaveBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$0B,$01,$01,$0E,$01,$01,$0B,$01,$10,$01,$01,$0E
+    db $01,$01,$0B,$01,$0B,$01,$01,$0E,$01,$01,$0B,$01,$06,$01,$01,$09
+    db $01,$01,$06,$01,$07,$01,$01,$0B,$01,$01,$07,$01,$09,$01,$01,$0D
+    db $01,$01,$09,$01,$06,$01,$01,$0A,$01,$01,$0D,$01,$06,$01,$01,$04
+    db $01,$01,$06,$01
+    db $FF
+}

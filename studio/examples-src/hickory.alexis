@@ -1,0 +1,1349 @@
+cartridge "HICKORY, DICKORY, DOCK/BARBARA H. SCHULAK/1986"
+
+' HICKORY, DICKORY, DOCK
+' Based on "Hickory, Dickory, Dock" by Barbara H. Schulak, COMPUTE! May
+' 1986 (pages 36-46): an educational program for children learning to
+' tell time, written for the Commodore 64, with versions for the Atari,
+' Apple II, IBM PC, Atari ST and Amiga by the magazine's programmers.
+' Made for the ColecoVision in Amy (the language by Amy Bienvenu) by
+' Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision program on the article's ideas
+' (orig/ has the scans). Kept: a round clock face with the numbers 1-12
+' and a digital display; four activities: PRACTICE (move the hands, the
+' digital display follows), and three tests where the program shows a
+' time and the child sets the hands: HOURS, HOURS AND HALF HOURS, FIVE
+' MINUTES; five right answers bring a little reward with the nursery
+' rhyme; after three wrong tries the hands move to the right answer.
+' Made for this machine: a grandfather clock in the bitmap screen (a
+' dark red case, brass trim, a light yellow face with big numbers and
+' minute dots), hands drawn dot by dot (the hour hand turning as the
+' minutes pass, as in the IBM version), a red LED readout, a swinging
+' pendulum (a sprite) with a soft tick-tock, and a mouse that runs up the
+' clock, hears it strike one and runs down again.
+'
+' Controls (either joystick): left and right turn the minute hand (one
+' minute a step in PRACTICE, five in the tests; held, it keeps going), up
+' and down turn the hour hand, the left button answers, the right button
+' goes back to the menu.
+'
+' House rules kept: text in columns 2-29; the frame loop is protected from
+' the NMI and every screen is drawn with the NMI off after a wait; an
+' original setting of the traditional rhyme plays once on the title; a
+' credits page.
+
+const SprBytes = 416
+const SPend = 0
+const SMouseU = 20
+const SMouseD = 36
+const SndRhymeA = 1
+const SndRhymeB = 2
+const SndTick = 3
+const SndTock = 4
+const SndClick = 5
+const SndRight = 6
+const SndWrong = 7
+const SndDong = 8
+const SndPick = 9
+const SndStep = 10
+
+' the clock: Hr 1-12 and Mn 0-59 (the hands); Qh, Qm the time asked;
+' Act 0 PRACTICE, 1 HOURS, 2 HALF HOURS, 3 FIVE MINUTES
+u8 Hr = 12
+u8 Mn = 0
+u8 Qh = 12
+u8 Qm = 0
+u8 Act = 0
+' Nr right answers toward the reward (5), Nw wrong tries at this question,
+' Rw rewards given, Res the last answer (1 right, 2 wrong, 3 shown)
+u8 Nr = 0
+u8 Nw = 0
+u8 Rw = 0
+u8 Res = 0
+u16 Qn = 0
+' Ph: 0 menu, 1 waiting for the child, 2 busy (a message, the answer
+' shown, the reward)
+u8 Ph = 0
+' for the hands' drawing (hands.asm)
+u8 HdHp = 0
+u8 HdM = 0
+u8 HdPc = 0
+u8 HdX = 0
+u8 HdY = 0
+' text on the bitmap (text.asm)
+u8 ZRow = 0
+u8 ZCol = 0
+u8 ZCh = 0
+u8 ZClr = $F4
+u16 ZPtr = 0
+' the pendulum's frame (0-119) and the mouse
+u8 Sw = 0
+u8 Msy = 192
+u8 Msk = 0
+u8 Msp = 0
+u8 Mstep = 0
+' random numbers: a 16-bit generator, stirred by the time on the menu
+u16 Rs = 12345
+u16 W16 = 0
+u16 A16 = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 Idle = 0
+' Clk 1 while the clock is on screen (the pendulum shown)
+u8 Clk = 0
+u8 Prw = 0
+u8 Sdh = 0
+u8 Sdm = 0
+
+  bitmap screen
+  set sound table HdSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SprPat count SprBytes to vram.spr_pat
+  set sprite count 3
+  Msy = 192
+  ShowSprites
+  backdrop dark blue
+  screen on
+  nmi off
+  CreditsPage
+
+main_menu:
+  MenuPage
+  if Menu = 4 then
+    CreditsPage
+    goto main_menu
+  end if
+  Act = Menu
+  ClockScreen
+  Nr = 0
+  Rw = 0
+  Qn = 0
+  if Act = 0 then goto practice
+
+' --- the tests ---------------------------------------------------------------
+question:
+  NewQuestion
+  Nw = 0
+ask:
+  Hr = 12
+  Mn = 0
+  RedrawHands
+  ShowDigital(Qh, Qm)
+  Panel(1, @TxSet1, $F4)
+  Panel(2, @TxSet2, $F4)
+  ShowStars
+  Ph = 1
+  WasBtn = 1
+  WasBtn2 = 1
+ask_loop:
+  Frame1
+  ReadPad
+  if Press2 = 1 then goto back_menu
+  V = MoveHands(5)
+  if Press = 0 then goto ask_loop
+  ' the answer
+  Ph = 2
+  inc Qn
+  if Hr = Qh then
+    if Mn = Qm then goto right
+  end if
+  ' wrong
+  Res = 2
+  inc Nw
+  play sound SndWrong
+  if Nw >= 3 then goto show_answer
+  Panel(1, @TxTry1, $84)
+  Panel(2, @TxTry2, $84)
+  Pause(70)
+  goto ask
+right:
+  Res = 1
+  inc Nr
+  play sound SndRight
+  Panel(1, @TxRight, $34)
+  Panel(2, @TxBlank, $F4)
+  ShowStars
+  Pause(70)
+  if Nr >= 5 then
+    Reward
+    Nr = 0
+  end if
+  goto question
+show_answer:
+  ' after three tries, the hands go to the right time
+  Res = 3
+  Panel(1, @TxThis1, $B4)
+  Panel(2, @TxThis2, $B4)
+  Pause(30)
+  Hr = Qh
+  RedrawHands
+sa_step:
+  if Mn = Qm then goto sa_done
+  inc Mn
+  if Mn = 60 then Mn = 0
+  RedrawHands
+  play sound SndStep
+  Pause(3)
+  goto sa_step
+sa_done:
+  Pause(120)
+  goto question
+
+' --- practice: the hands move, the digital display follows ------------------
+practice:
+  Hr = 12
+  Mn = 0
+  ' (the display before the hands: bugs/README.md, bug 23)
+  ShowDigital(Hr, Mn)
+  RedrawHands
+  Panel(1, @TxPr1, $F4)
+  Panel(2, @TxPr2, $F4)
+  Ph = 1
+  WasBtn = 1
+  WasBtn2 = 1
+pr_loop:
+  Frame1
+  ReadPad
+  if Press2 = 1 then goto back_menu
+  if Press = 1 then
+    ' the button: the time, said by the clock's mouse
+    Reward
+    ShowDigital(Hr, Mn)
+    RedrawHands
+    Panel(1, @TxPr1, $F4)
+    Panel(2, @TxPr2, $F4)
+    Ph = 1
+    WasBtn = 1
+  end if
+  V = MoveHands(1)
+  if V = 1 then ShowDigital(Hr, Mn)
+  goto pr_loop
+
+back_menu:
+  Ph = 0
+  goto main_menu
+
+' --- the hands -----------------------------------------------------------
+' MoveHands(S): the stick turns the hands (S minutes a step); 1 if moved
+function MoveHands(u8 S) as u8
+  W = 0
+  if Lf1 = 1 then W = 1
+  if Rt1 = 1 then W = 2
+  if Up1 = 1 then W = 3
+  if Dn1 = 1 then W = 4
+  if W = 0 then
+    Rep = 0
+    return 0
+  end if
+  if Rep > 0 then
+    dec Rep
+    return 0
+  end if
+  ' held: the first step waits 16 frames, then a step every 5
+  if Mstep = 0 then
+    Rep = 16
+  else
+    Rep = 5
+  end if
+  Mstep = 1
+  if W = 2 then
+    Mn = Mn + S
+    if Mn >= 60 then Mn = Mn - 60
+  end if
+  if W = 1 then
+    if Mn < S then
+      Mn = Mn + 60
+    end if
+    Mn = Mn - S
+  end if
+  if W = 3 then
+    inc Hr
+    if Hr = 13 then Hr = 1
+  end if
+  if W = 4 then
+    dec Hr
+    if Hr = 0 then Hr = 12
+  end if
+  play sound SndClick
+  RedrawHands
+  return 1
+
+' RedrawHands: the old hands cleared, the new ones drawn
+sub RedrawHands:
+  HdPc = 0
+  call asm HdDraw
+  V = Hr
+  if V = 12 then V = 0
+  V = V * 5
+  W = Mn / 12
+  HdHp = V + W
+  HdM = Mn
+  HdPc = 1
+  call asm HdDraw
+  return
+end sub
+
+' --- the digital display: H:MM in the LED box (columns 21-29, rows 6-7) --
+sub ShowDigital(u8 Dh, u8 Dm):
+  Sdh = Dh
+  Sdm = Dm
+  V = Sdh / 10
+  if V = 0 then V = 10
+  BigAt(21, V)
+  V = Sdh % 10
+  BigAt(23, V)
+  V = Sdm / 10
+  BigAt(26, V)
+  V = Sdm % 10
+  BigAt(28, V)
+  A16 = 6 * 256 + 25 * 8
+  copy ColonPat count 8 to vram.pattern + A16
+  A16 = A16 + 256
+  copy ColonPat + 8 count 8 to vram.pattern + A16
+  return
+end sub
+
+' BigAt(C, G): big glyph G (0-9, 10 blank) at column C, rows 6-7
+sub BigAt(u8 C, u8 G):
+  W16 = G
+  W16 = W16 << 5
+  A16 = C
+  A16 = A16 << 3
+  A16 = A16 + 1536
+  copy BigPat + W16 count 8 to vram.pattern + A16
+  W16 = W16 + 8
+  A16 = A16 + 8
+  copy BigPat + W16 count 8 to vram.pattern + A16
+  W16 = W16 + 8
+  A16 = A16 + 248
+  copy BigPat + W16 count 8 to vram.pattern + A16
+  W16 = W16 + 8
+  A16 = A16 + 8
+  copy BigPat + W16 count 8 to vram.pattern + A16
+  return
+end sub
+
+' --- the messages on the wall (columns 21-29) ------------------------------
+' Panel(L, text, colour): line L (1, 2 at rows 11, 12)
+sub Panel(u8 L, u16 Ad, u8 C):
+  ZClr = C
+  ZRow = 10 + L
+  ZCol = 21
+  Prw = ZRow
+  SayAt(21, Prw, @TxBlank)
+  SayAt(21, Prw, Ad)
+  return
+end sub
+
+sub SayAt(u8 C, u8 R, u16 Ad):
+  ZRow = R
+  ZCol = C
+sa_next:
+  V = peek(Ad)
+  if V = 0 then return
+  ZCh = V
+  call asm ZPutCh
+  inc Ad
+  goto sa_next
+end sub
+
+' ShowStars: the right answers so far toward the reward
+sub ShowStars:
+  if Act = 0 then return
+  ZClr = $B4
+  ZRow = 15
+  ZCol = 22
+  for J = 1 to 5
+    if J <= Nr then
+      ZCh = 42
+    else
+      ZCh = 46
+    end if
+    call asm ZPutCh
+    ZCh = 32
+    call asm ZPutCh
+  next
+  return
+end sub
+
+' --- the questions ----------------------------------------------------------
+function Rnd(u8 N) as u8
+  ' xorshift 7, 9, 8
+  if Rs = 0 then Rs = 12345
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  W16 = Rs >> 8
+  W16 = W16 % N
+  V = W16
+  return V
+
+sub NewQuestion:
+nq_again:
+  Qh = Rnd(12)
+  inc Qh
+  Qm = 0
+  if Act = 2 then
+    V = Rnd(2)
+    Qm = V * 30
+  end if
+  if Act = 3 then
+    V = Rnd(12)
+    Qm = V * 5
+  end if
+  ' never the time the hands start at (12:00)
+  if Qh = 12 then
+    if Qm = 0 then goto nq_again
+  end if
+  return
+end sub
+
+' --- the reward: the mouse runs up the clock, it strikes one, it runs down -
+sub Reward:
+  Ph = 2
+  inc Rw
+  Panel(1, @TxRw1, $B4)
+  Panel(2, @TxRw2, $B4)
+  play song HdSong once
+  Msk = 0
+  ' up the right side of the case
+  for Msy = 176 to 6 step -2
+    Frame1
+    inc Msk
+    ShowSprites
+  next
+  ' the clock struck one
+  Msp = 1
+  Hr = 1
+  Mn = 0
+  RedrawHands
+  ShowDigital(1, 0)
+  play sound SndDong
+  for Tm = 1 to 60
+    Frame1
+    ShowSprites
+  next
+  ' the mouse ran down
+  Msp = 2
+  for Msy = 6 to 176 step 2
+    Frame1
+    inc Msk
+    ShowSprites
+  next
+  Msp = 0
+  Msy = 192
+  ShowSprites
+  for Tm = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+' --- sprites: the pendulum (0) and the mouse (1, 2) -------------------------
+sub ShowSprites:
+  V = Swing[Sw]
+  V = V << 2
+  if Clk = 1 then
+    set sprite 0 to 150,72,V,10
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  if Msy >= 192 then
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  else
+    V = Msk >> 2
+    V = V & 1
+    V = V << 3
+    if Msp = 2 then
+      V = V + SMouseD
+    else
+      V = V + SMouseU
+    end if
+    set sprite 1 to Msy,150,V,14
+    V = V + 4
+    set sprite 2 to Msy,150,V,9
+  end if
+  update sprites
+  return
+end sub
+
+' --- the frame: the pendulum swings, tick at one end, tock at the other ----
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  inc Sw
+  if Sw = 120 then Sw = 0
+  if Ph <> 0 then
+    if Sw = 30 then play sound SndTick
+    if Sw = 90 then play sound SndTock
+  end if
+  ShowSprites
+  return
+end sub
+
+sub Pause(u8 N):
+  for Tm = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(2).button2 then Btn2 = 1
+  V = Lf1 | Rt1
+  V = V | Up1
+  V = V | Dn1
+  if V = 0 then Mstep = 0
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+' --- screens ----------------------------------------------------------------
+sub NewPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  Msy = 192
+  Clk = 0
+  return
+end sub
+
+sub ClearBm:
+  fill 0 count 6144 to vram.pattern
+  fill $F4 count 6144 to vram.color
+  return
+end sub
+
+sub ShowPage:
+  ShowSprites
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the clock screen: the packed bitmap, then the hands and the help
+sub ClockScreen:
+  NewPage
+  decompress zx0 ClockP to vram $0000
+  decompress zx0 ClockC to vram $2000
+  Clk = 1
+  HdPc = 0
+  HdHp = 0
+  HdM = 0
+  Hr = 12
+  Mn = 0
+  RedrawHands
+  ZClr = $B4
+  SayAt(21, 1, @TxT1)
+  SayAt(21, 2, @TxT2)
+  SayAt(21, 3, @TxT3)
+  ZClr = $F4
+  if Act = 0 then SayAt(21, 18, @TxAct0)
+  if Act = 1 then SayAt(21, 18, @TxAct1)
+  if Act = 2 then SayAt(21, 18, @TxAct2)
+  if Act = 3 then SayAt(21, 18, @TxAct3)
+  ZClr = $E4
+  SayAt(21, 20, @TxH1)
+  SayAt(21, 21, @TxH2)
+  SayAt(21, 22, @TxH3)
+  ShowPage
+  return
+end sub
+
+sub MenuPage:
+  Ph = 0
+  NewPage
+  ClearBm
+  ZClr = $B4
+  SayAt(5, 2, @TxTitle)
+  ZClr = $F4
+  SayAt(6, 5, @TxM0)
+  SayAt(6, 7, @TxM1)
+  SayAt(6, 9, @TxM2)
+  SayAt(6, 11, @TxM3)
+  SayAt(6, 13, @TxM4)
+  ZClr = $E4
+  SayAt(3, 17, @TxMH1)
+  SayAt(3, 18, @TxMH2)
+  Menu = 0
+  MenuMark
+  ShowPage
+  WasBtn = 1
+  WasBtn2 = 1
+mp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Up1 | Dn1
+  if V = 0 then Rep = 0
+  if V = 1 then
+    if Rep = 0 then
+      Rep = 12
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 4 then inc Menu
+      end if
+      MenuMark
+      play sound SndPick
+    else
+      dec Rep
+    end if
+  end if
+  if Press = 0 then goto mp_loop
+  return
+end sub
+
+sub MenuMark:
+  ZClr = $B4
+  for J = 0 to 4
+    ZRow = J * 2
+    ZRow = ZRow + 5
+    ZCol = 4
+    if J = Menu then
+      ZCh = 62
+    else
+      ZCh = 32
+    end if
+    call asm ZPutCh
+  next
+  ' the mouse waits by the chosen line
+  Msp = 0
+  Msk = 0
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewPage
+  ClearBm
+  ZClr = $B4
+  SayAt(5, 2, @TxTitle)
+  ZClr = $F4
+  SayAt(3, 5, @TxK1)
+  SayAt(3, 6, @TxK2)
+  SayAt(3, 7, @TxK3)
+  SayAt(3, 8, @TxK4)
+  SayAt(3, 9, @TxK5)
+  SayAt(3, 11, @TxK6)
+  SayAt(3, 12, @TxK7)
+  SayAt(3, 13, @TxK8)
+  SayAt(3, 14, @TxK9)
+  SayAt(3, 16, @TxK10)
+  SayAt(3, 17, @TxK11)
+  ZClr = $E4
+  SayAt(8, 20, @TxPress)
+  ShowPage
+  play song HdSong once
+  WasBtn = 1
+  WasBtn2 = 1
+cp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Press | Press2
+  if V = 0 then goto cp_loop
+  stop song
+  return
+end sub
+
+data TxTitle chars "HICKORY, DICKORY, DOCK{0}"
+data TxT1 chars "HICKORY,{0}"
+data TxT2 chars "DICKORY,{0}"
+data TxT3 chars "DOCK!{0}"
+data TxBlank chars "         {0}"
+data TxSet1 chars "SET THE{0}"
+data TxSet2 chars "HANDS!{0}"
+data TxTry1 chars "TRY{0}"
+data TxTry2 chars "AGAIN!{0}"
+data TxRight chars "RIGHT!{0}"
+data TxThis1 chars "THIS IS{0}"
+data TxThis2 chars "THE TIME.{0}"
+data TxPr1 chars "MOVE THE{0}"
+data TxPr2 chars "HANDS!{0}"
+data TxRw1 chars "WELL{0}"
+data TxRw2 chars "DONE!{0}"
+data TxAct0 chars "PRACTICE{0}"
+data TxAct1 chars "HOURS{0}"
+data TxAct2 chars "HALF HRS{0}"
+data TxAct3 chars "5 MINUTES{0}"
+data TxH1 chars "<> MINUTE{0}"
+data TxH2 chars "UP/DN HR{0}"
+data TxH3 chars "FIRE: OK{0}"
+data TxM0 chars "PRACTICE{0}"
+data TxM1 chars "TEST: HOURS{0}"
+data TxM2 chars "TEST: HALF HOURS{0}"
+data TxM3 chars "TEST: FIVE MINUTES{0}"
+data TxM4 chars "CREDITS{0}"
+data TxMH1 chars "STICK: CHOOSE  BUTTON: GO{0}"
+data TxMH2 chars "RIGHT BUTTON: BACK TO HERE{0}"
+data TxK1 chars "BASED ON HICKORY, DICKORY,{0}"
+data TxK2 chars "DOCK BY BARBARA H. SCHULAK,{0}"
+data TxK3 chars "COMPUTE! MAY 1986 (C64;{0}"
+data TxK4 chars "VERSIONS BY KEVIN MYKYTYN,{0}"
+data TxK5 chars "TIM VICTOR, JOHN KRAUSE).{0}"
+data TxK6 chars "MADE FOR THE COLECOVISION{0}"
+data TxK7 chars "BY CLAUDE (AN AI MADE BY{0}"
+data TxK8 chars "ANTHROPIC) FOR AMY STUDIO,{0}"
+data TxK9 chars "2026, IN AMY BY AMY BIENVENU.{0}"
+data TxK10 chars "MUSIC: THE TRADITIONAL{0}"
+data TxK11 chars "RHYME, SET BY CLAUDE.{0}"
+data TxPress chars "PRESS A BUTTON{0}"
+
+data SprPat bytes
+  0,1,1,1,2,2,2,4,4,4,8,60,62,62,60,8
+  128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,1,1,1,1,1,1,2,2,2,2,15,15,15,15,2
+  128,0,0,0,0,0,0,0,0,0,0,0,128,128,0,0
+  0,0,0,0,0,0,0,0,0,0,1,3,7,7,3,1
+  128,128,128,128,128,128,128,128,128,128,128,192,224,224,192,128
+  0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0
+  128,128,128,128,128,128,128,64,64,64,64,240,240,240,240,64
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  128,128,128,128,64,64,64,32,32,32,16,60,124,124,60,16
+  12,30,30,15,7,5,3,7,47,31,31,31,15,7,3,0
+  48,120,120,240,224,160,192,224,240,248,248,248,248,224,192,0
+  0,12,12,0,0,0,1,0,0,0,0,0,0,0,0,0
+  0,48,48,0,0,0,128,0,0,0,0,0,0,0,0,128
+  12,30,30,15,7,5,3,7,15,31,31,31,31,7,3,0
+  48,120,120,240,224,160,192,224,244,248,248,248,240,224,192,0
+  0,12,12,0,0,0,1,0,0,0,0,0,0,0,0,0
+  0,48,48,0,0,0,128,0,0,0,0,0,0,0,0,128
+  0,3,7,15,31,31,31,47,7,3,5,7,15,30,30,12
+  0,192,224,248,248,248,248,240,224,192,160,224,240,120,120,48
+  0,0,0,0,0,0,0,0,0,1,0,0,0,12,12,0
+  64,0,0,0,0,0,0,0,0,128,0,0,0,48,48,0
+  0,3,7,31,31,31,31,15,7,3,5,7,15,30,30,12
+  0,192,224,240,248,248,248,244,224,192,160,224,240,120,120,48
+  1,0,0,0,0,0,0,0,0,1,0,0,0,12,12,0
+  0,0,0,0,0,0,0,0,0,128,0,0,0,48,48,0
+end data
+data BigPat bytes
+  0,31,31,224,224,224,224,227,0,240,240,14,14,126,126,142
+  227,252,252,224,224,31,31,0,142,14,14,14,14,240,240,0
+  0,3,3,31,31,3,3,3,0,128,128,128,128,128,128,128
+  3,3,3,3,3,31,31,0,128,128,128,128,128,240,240,0
+  0,31,31,224,224,0,0,0,0,240,240,14,14,14,14,112
+  0,3,3,28,28,255,255,0,112,128,128,0,0,254,254,0
+  0,255,255,0,0,3,3,0,0,254,254,112,112,128,128,112
+  0,0,0,224,224,31,31,0,112,14,14,14,14,240,240,0
+  0,0,0,3,3,28,28,224,0,112,112,240,240,112,112,112
+  224,255,255,0,0,0,0,0,112,254,254,112,112,112,112,0
+  0,255,255,224,224,255,255,0,0,254,254,0,0,240,240,14
+  0,0,0,224,224,31,31,0,14,14,14,14,14,240,240,0
+  0,3,3,28,28,224,224,255,0,240,240,0,0,0,0,240
+  255,224,224,224,224,31,31,0,240,14,14,14,14,240,240,0
+  0,255,255,0,0,0,0,3,0,254,254,14,14,112,112,128
+  3,28,28,28,28,28,28,0,128,0,0,0,0,0,0,0
+  0,31,31,224,224,224,224,31,0,240,240,14,14,14,14,240
+  31,224,224,224,224,31,31,0,240,14,14,14,14,240,240,0
+  0,31,31,224,224,224,224,31,0,240,240,14,14,14,14,254
+  31,0,0,0,0,31,31,0,254,14,14,112,112,128,128,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data ColonPat bytes
+  0,0,0,24,24,24,0,0,0,0,24,24,24,0,0,0
+end data
+data Swing bytes
+  2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4
+  4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+  4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+  3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2
+  2,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+  1,1,1,1,2,2,2,2
+end data
+data ClockP bytes
+  $85,$00,$18,$E2,$07,$7F,$BC,$A8,$1F,$E0,$2A,$7F,$82,$80,$A8,$3F,$C0,$5E,$FF,$82,$00,$8F,$E0,$C1
+  $C6,$4C,$A9,$FE,$01,$5A,$FC,$A4,$03,$AE,$F0,$FE,$05,$18,$D8,$01,$07,$45,$6A,$01,$0F,$3F,$F0,$C0
+  $07,$AF,$F8,$16,$88,$F8,$80,$45,$29,$0F,$66,$F0,$FE,$0F,$E6,$EA,$09,$C0,$F8,$3E,$07,$63,$80,$C0
+  $34,$CE,$02,$0E,$0F,$1F,$3F,$60,$FF,$B9,$C0,$92,$52,$D2,$07,$C2,$5F,$FA,$68,$80,$D7,$42,$5D,$90
+  $60,$20,$FA,$F8,$0C,$06,$03,$FE,$00,$45,$5A,$C0,$5D,$D1,$20,$A6,$03,$CC,$07,$AD,$6F,$7F,$F0,$F9
+  $B4,$F7,$E0,$E2,$C8,$FC,$80,$46,$80,$7F,$A4,$1F,$BA,$FE,$EC,$F8,$03,$EA,$22,$80,$F0,$FC,$FE,$D6
+  $07,$40,$69,$E0,$07,$6D,$0A,$81,$00,$56,$DD,$01,$15,$36,$C5,$17,$89,$7F,$DD,$E0,$C0,$80,$19,$9F
+  $B2,$BC,$A0,$10,$AA,$04,$80,$2F,$01,$E8,$D3,$83,$56,$09,$3F,$60,$C4,$7D,$A9,$EE,$ED,$C6,$D1,$D2
+  $80,$5C,$D3,$E2,$A7,$04,$72,$5E,$CA,$30,$F7,$3F,$2F,$03,$A1,$F2,$1A,$F5,$36,$F8,$FC,$00,$14,$4B
+  $01,$7D,$0E,$AD,$12,$F8,$F6,$10,$C0,$29,$04,$87,$0C,$4C,$3C,$3C,$0C,$D8,$FF,$AA,$F7,$8E,$89,$FF
+  $C1,$60,$26,$F8,$00,$01,$AA,$06,$18,$9B,$7F,$60,$80,$EB,$9C,$E0,$E2,$AB,$A0,$D0,$30,$93,$F6,$3B
+  $A6,$7E,$2C,$F3,$0F,$9A,$F0,$80,$CF,$EE,$60,$00,$54,$B5,$01,$28,$E0,$61,$3F,$7C,$78,$F8,$F0,$A6
+  $02,$92,$40,$FF,$0C,$FE,$CB,$76,$A6,$3E,$00,$C1,$96,$EC,$F0,$B3,$F8,$74,$00,$DF,$0F,$A0,$5F,$4C
+  $79,$10,$28,$20,$D2,$FD,$33,$3E,$1E,$ED,$34,$EB,$77,$0E,$75,$00,$57,$5E,$19,$FF,$AA,$07,$0F,$A8
+  $E0,$C0,$A8,$80,$AA,$00,$06,$1E,$88,$06,$A8,$86,$01,$06,$6B,$F8,$E3,$DC,$66,$66,$C0,$3E,$30,$FA
+  $B6,$FE,$AB,$7E,$81,$F0,$68,$88,$BF,$86,$86,$CE,$7A,$F7,$01,$FF,$0E,$C0,$B3,$8E,$73,$DD,$45,$00
+  $55,$D7,$11,$A8,$FE,$3F,$D7,$AA,$77,$18,$F5,$DF,$5F,$40,$DD,$F1,$8D,$F3,$94,$F8,$F1,$38,$1D,$F0
+  $2E,$AF,$CB,$60,$E0,$70,$9D,$BA,$3D,$4A,$3B,$F0,$3C,$A3,$FF,$1E,$75,$00,$57,$1B,$16,$8D,$FE,$5E
+  $29,$C8,$28,$08,$34,$7D,$5C,$CF,$9E,$F1,$80,$FE,$5A,$07,$D4,$99,$E8,$8E,$FE,$FE,$18,$30,$70,$FF
+  $F6,$FE,$75,$00,$57,$7A,$04,$F0,$F5,$FF,$67,$88,$16,$56,$EB,$FF,$1F,$AC,$F3,$01,$58,$44,$D1,$E0
+  $55,$22,$53,$43,$BB,$D3,$69,$EB,$4B,$48,$DD,$30,$DA,$0D,$01,$07,$5A,$83,$55,$4F,$FE,$B5,$7C,$C8
+  $0C,$C7,$04,$01,$DB,$8D,$EE,$84,$0E,$0C,$2F,$F6,$FE,$C3,$76,$7C,$30,$B5,$10,$9C,$04,$31,$05,$80
+  $00,$03,$A9,$FE,$1F,$D1,$E8,$8C,$01,$18,$93,$01,$01,$A6,$FF,$00,$9F,$80,$2C,$41,$D0,$81,$80,$A7
+  $40,$E8,$D9,$FF,$3C,$B7,$FC,$00,$55,$71,$EE,$F2,$07,$00,$37,$39,$AF,$E2,$E0,$F3,$78,$04,$92,$18
+  $18,$24,$7E,$7E,$53,$37,$78,$43,$80,$D0,$9F,$58,$70,$FF,$EC,$F3,$88,$C8,$EA,$03,$F8,$FF,$F0,$8C
+  $E0,$18,$00,$00,$35,$CD,$16,$46,$DA,$C3,$F7,$4B,$EA,$55,$F5,$04,$C3,$AA,$61,$CA,$F5,$ED,$1B,$52
+  $D2,$4A,$96,$01,$91,$E0,$E4,$F4,$E4,$B0,$BF,$20,$EE,$02,$27,$A0,$0F,$9D,$1F,$1E,$3E,$FC,$16,$00
+  $05,$0B,$0F,$45,$F4,$C4,$1E,$B2,$86,$80,$9B,$7F,$04,$25,$F2,$B4,$30,$4D,$A2,$34,$58,$14,$C2,$93
+  $D8,$18,$0E,$D6,$73,$F0,$18,$4A,$CE,$71,$40,$7D,$B5,$03,$52,$A1,$10,$6D,$3F,$6B,$12,$E0,$6C,$08
+  $56,$00,$14,$0D,$06,$B2,$4C,$CD,$F1,$F3,$DB,$6F,$CA,$F6,$E4,$6E,$4F,$E4,$8F,$04,$18,$FF,$06,$54
+  $3B,$F0,$7D,$05,$D0,$C5,$37,$BA,$E2,$A4,$30,$30,$D8,$10,$36,$13,$77,$FE,$7E,$FC,$0E,$C4,$64,$00
+  $01,$F6,$F0,$61,$1F,$07,$03,$CA,$F6,$BC,$00,$E7,$16,$74,$69,$FC,$78,$EB,$96,$FC,$10,$DC,$C4,$58
+  $68,$1F,$7B,$F4,$6A,$16,$00,$C4,$3D,$7D,$AF,$A1,$15,$80,$36,$00,$44,$1D,$D6,$B4,$33,$3F,$07,$CC
+  $6B,$7F,$01,$D7,$00,$72,$3E,$82,$F0,$24,$FE,$F0,$39,$40,$D9,$00,$41,$77,$C0,$55,$E7,$44,$74,$00
+  $15,$5D,$18,$0C,$17,$C5,$40,$78,$B0,$47,$70,$04,$57,$55,$55,$80
+end data
+data ClockC bytes
+  $85,$44,$1A,$A4,$E6,$F2,$25,$AA,$A6,$A5,$66,$FA,$F0,$AA,$A3,$66,$FD,$BD,$E3,$F0,$F8,$D3,$D0,$38
+  $B0,$7C,$DE,$E5,$70,$FB,$EE,$44,$81,$FE,$43,$7D,$30,$A8,$7C,$A6,$E3,$F6,$BB,$FE,$F4,$91,$FE,$0F
+  $52,$7D,$30,$FA,$10,$A6,$76,$F2,$7A,$FF,$44,$45,$58,$A8,$A4,$64,$A6,$37,$72,$10,$E8,$93,$AA,$75
+  $E2,$3F,$F0,$97,$A6,$FD,$EE,$B0,$E1,$5C,$5A,$A4,$E6,$FE,$91,$44,$57,$CD,$12,$D4,$B0,$FE,$C0,$B6
+  $9F,$AA,$AB,$AB,$F9,$EB,$F7,$FF,$1B,$FE,$F5,$F7,$FE,$24,$AA,$1B,$E7,$E4,$F9,$D0,$F0,$FF,$B0,$EA
+  $F9,$93,$90,$E3,$72,$C1,$30,$F6,$CB,$00,$10,$1F,$CA,$6E,$AB,$FE,$69,$1B,$11,$F7,$92,$9F,$72,$E5
+  $DD,$50,$85,$00,$13,$70,$12,$B8,$1B,$FE,$54,$CD,$66,$F7,$32,$65,$00,$6E,$81,$FE,$05,$36,$00,$54
+  $DC,$0C,$E8,$FF,$1B,$55,$73,$40,$7D,$12,$DD,$00,$55,$C7,$26,$5E,$FE,$55,$7D,$34,$E7,$14,$60,$00
+  $41,$B9,$1B,$FE,$44,$AD,$11,$30,$F0,$77,$00,$50,$35,$D7,$0E,$C5,$FE,$4A,$AB,$5D,$1D,$00,$55,$B7
+  $AB,$00,$55,$53,$DD,$FE,$D1,$00,$4A,$A6,$01,$13,$67,$DE,$47,$04,$01,$76,$0E,$5D,$D5,$00,$5D,$53
+  $FC,$75,$DD,$E4,$85,$72,$7D,$B0,$0F,$F9,$58,$10,$17,$45,$81,$00,$43,$DD,$E4,$CC,$BE,$24,$E0,$13
+  $1C,$1E,$31,$58,$00,$45,$33,$F0,$5F,$ED,$57,$2C,$29,$AB,$55,$A4,$A6,$C4,$64,$00,$10,$C1,$70,$9A
+  $C2,$D2,$A6,$AA,$9F,$66,$EA,$B7,$AA,$58,$71,$1C,$12,$5F,$B0,$FE,$A6,$38,$07,$61,$00,$45,$DD,$B4
+  $5D,$55,$CD,$1E,$BF,$54,$F0,$FE,$FE,$F0,$FE,$AB,$DC,$E0,$78,$D0,$F7,$B0,$DF,$90,$F4,$D9,$00,$51
+  $7D,$B0,$B9,$11,$FE,$53,$9D,$94,$D0,$00,$55,$74,$77,$B0,$C1,$F0,$D1,$87,$10,$94,$F0,$7D,$90,$F5
+  $40,$77,$F0,$76,$20,$55,$75,$55,$58
+end data
+
+asm {
+HdTick:
+    db $00,$00,$64,$01,$00,$00,$74,$01,$10
+HdTock:
+    db $00,$00,$65,$01,$00,$00,$85,$01,$10
+HdClick:
+    db $40,$40,$50,$01,$40,$40,$70,$01,$50
+HdRight:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$30,$0A,$50
+HdWrong:
+    db $40,$53,$41,$08,$40,$AB,$51,$0C,$50
+HdDong:
+    db $40,$1D,$11,$02,$40,$1D,$21,$0A,$40,$1D,$41,$10,$40,$1D,$61,$14,$50
+HdPick:
+    db $40,$35,$40,$01,$50
+HdStep:
+    db $40,$55,$50,$01,$50
+
+HdSoundTable:
+    dw HdRhymeMel,$702B
+    dw HdRhymeBass,$7035
+    dw HdTick,$703F
+    dw HdTock,$703F
+    dw HdClick,$7049
+    dw HdRight,$7049
+    dw HdWrong,$7049
+    dw HdDong,$7049
+    dw HdPick,$7049
+    dw HdStep,$7049
+; Hickory, Dickory, Dock (traditional)
+; Tiny Sound, 8 frames per step
+HdRhymeMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1A,$01,$1C,$1E,$01,$1F,$21,$01,$01,$1A,$01,$01
+    db $1E,$1F,$21,$23,$01,$25,$26,$01,$01,$01,$01,$01,$26,$01,$01,$21
+    db $01,$01,$25,$23,$21,$1F,$1E,$1C,$1A,$01,$1C,$1E,$01,$1C,$1A,$01
+    db $01,$00,$01,$01
+    db $FF
+HdRhymeBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0E,$01,$01,$09,$01,$01,$0E,$01,$01,$09,$01,$01
+    db $0E,$01,$01,$07,$01,$01,$0E,$01,$01,$09,$01,$01,$0E,$01,$01,$09
+    db $01,$01,$09,$01,$01,$09,$01,$01,$0E,$01,$01,$09,$01,$01,$0E,$01
+    db $01,$00,$01,$01
+    db $FF
+; ---------------------------------------------------------------------------
+; Text on the bitmap screen (after games/hs/ztext.asm): character ZCh at
+; cell ZCol,ZRow (pattern at row*256 + col*8, colour at $2000 + the same),
+; colour byte ZClr; the font is HdFont (characters 32-95, art.py)
+; ---------------------------------------------------------------------------
+ZCellAddr:
+    ld a,(AMY_UVAR_ZRow)
+    ld h,a
+    ld a,(AMY_UVAR_ZCol)
+    add a,a
+    add a,a
+    add a,a
+    ld l,a
+    ret
+
+; HL = 8 pattern bytes for the current cell, then its colour
+ZPut8:
+    push hl
+    call ZCellAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld b,8
+zp8_p:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz zp8_p
+    call ZCellAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    ld a,(AMY_UVAR_ZClr)
+    ld b,8
+zp8_c:
+    out ($BE),a
+    nop
+    nop
+    djnz zp8_c
+    ld hl,AMY_UVAR_ZCol
+    inc (hl)
+    ret
+
+ZPutCh:
+    ld a,(AMY_UVAR_ZCh)
+    sub 32
+    jr nc,zpc_ok
+    xor a
+zpc_ok:
+    cp 64
+    jr c,zpc_in
+    ld a,31
+zpc_in:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,HdFont
+    add hl,de
+    jp ZPut8
+
+; the zero-ended string at ZPtr
+ZPrint:
+    ld hl,(AMY_UVAR_ZPtr)
+zpr_loop:
+    ld a,(hl)
+    or a
+    ret z
+    ld (AMY_UVAR_ZCh),a
+    push hl
+    call ZPutCh
+    pop hl
+    inc hl
+    jr zpr_loop
+
+; ---------------------------------------------------------------------------
+; the 5 x 7 font, characters 32-95 (art.py)
+HdFont:
+    db $00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$10,$10,$10,$10,$10,$00,$10
+    db $00,$28,$28,$00,$00,$00,$00,$00
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$60,$64,$08,$10,$20,$4C,$0C
+    db $00,$30,$48,$50,$20,$54,$48,$34
+    db $00,$10,$10,$20,$00,$00,$00,$00
+    db $00,$08,$10,$20,$20,$20,$10,$08
+    db $00,$20,$10,$08,$08,$08,$10,$20
+    db $00,$00,$54,$38,$7C,$38,$54,$00
+    db $00,$00,$10,$10,$7C,$10,$10,$00
+    db $00,$00,$00,$00,$00,$30,$10,$20
+    db $00,$00,$00,$00,$7C,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$30,$30
+    db $00,$04,$04,$08,$10,$20,$40,$40
+    db $00,$38,$44,$4C,$54,$64,$44,$38
+    db $00,$10,$30,$10,$10,$10,$10,$38
+    db $00,$38,$44,$04,$08,$10,$20,$7C
+    db $00,$7C,$08,$10,$08,$04,$44,$38
+    db $00,$08,$18,$28,$48,$7C,$08,$08
+    db $00,$7C,$40,$78,$04,$04,$44,$38
+    db $00,$18,$20,$40,$78,$44,$44,$38
+    db $00,$7C,$04,$08,$10,$20,$20,$20
+    db $00,$38,$44,$44,$38,$44,$44,$38
+    db $00,$38,$44,$44,$3C,$04,$08,$30
+    db $00,$00,$30,$30,$00,$30,$30,$00
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$08,$10,$20,$40,$20,$10,$08
+    db $00,$00,$00,$7C,$00,$7C,$00,$00
+    db $00,$20,$10,$08,$04,$08,$10,$20
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$44,$7C,$44,$44,$44
+    db $00,$78,$44,$44,$78,$44,$44,$78
+    db $00,$38,$44,$40,$40,$40,$44,$38
+    db $00,$78,$44,$44,$44,$44,$44,$78
+    db $00,$7C,$40,$40,$78,$40,$40,$7C
+    db $00,$7C,$40,$40,$78,$40,$40,$40
+    db $00,$38,$44,$40,$5C,$44,$44,$3C
+    db $00,$44,$44,$44,$7C,$44,$44,$44
+    db $00,$38,$10,$10,$10,$10,$10,$38
+    db $00,$1C,$08,$08,$08,$08,$48,$30
+    db $00,$44,$48,$50,$60,$50,$48,$44
+    db $00,$40,$40,$40,$40,$40,$40,$7C
+    db $00,$44,$6C,$54,$54,$44,$44,$44
+    db $00,$44,$64,$54,$4C,$44,$44,$44
+    db $00,$38,$44,$44,$44,$44,$44,$38
+    db $00,$78,$44,$44,$78,$40,$40,$40
+    db $00,$38,$44,$44,$44,$54,$48,$34
+    db $00,$78,$44,$44,$78,$50,$48,$44
+    db $00,$3C,$40,$40,$38,$04,$04,$78
+    db $00,$7C,$10,$10,$10,$10,$10,$10
+    db $00,$44,$44,$44,$44,$44,$44,$38
+    db $00,$44,$44,$44,$44,$44,$28,$10
+    db $00,$44,$44,$44,$54,$54,$54,$28
+    db $00,$44,$44,$28,$10,$28,$44,$44
+    db $00,$44,$44,$28,$10,$10,$10,$10
+    db $00,$7C,$04,$08,$10,$20,$40,$7C
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+; the hands (art.py): HdMin, 60 positions of 32 dots; HdHr, 60 of 20
+HdMin:
+    db 0,253,0,252,0,251,0,250,0,249,0,248,0,247,0,246,0,245,0,244,0,243,0,242,0,241,0,240,0,239,0,238,0,237,0,236,0,235,0,234,0,233,0,232,0,231,0,230,0,229,0,228,0,227,0,226,0,225,0,224,0,223,0,222
+    db 0,253,0,252,1,251,1,250,1,249,1,248,1,247,1,246,1,245,1,244,1,243,1,242,2,241,2,240,2,239,2,238,2,237,2,236,2,235,2,234,2,233,3,232,3,231,3,230,3,229,3,228,3,227,3,226,3,225,3,224,3,223,4,222
+    db 1,253,1,252,1,251,1,250,1,249,2,248,2,247,2,246,2,245,2,244,3,243,3,242,3,241,3,240,4,239,4,238,4,237,4,236,4,235,5,234,5,234,5,233,5,232,5,231,6,230,6,229,6,228,6,227,6,226,7,225,7,224,7,223
+    db 1,253,1,252,2,251,2,250,2,249,2,248,3,247,3,246,3,246,4,245,4,244,4,243,5,242,5,241,5,240,6,239,6,238,6,237,6,236,7,235,7,234,7,233,8,232,8,231,8,230,9,229,9,228,9,227,10,227,10,226,10,225,11,224
+    db 1,253,2,252,2,251,2,251,3,250,3,249,4,248,4,247,4,246,5,245,5,244,6,243,6,242,7,241,7,240,7,240,8,239,8,238,9,237,9,236,9,235,10,234,10,233,11,232,11,231,11,230,12,230,12,229,13,228,13,227,13,226,14,225
+    db 1,253,2,253,2,252,3,251,3,250,4,249,4,248,5,247,5,246,6,246,6,245,7,244,7,243,8,242,8,241,9,240,9,240,10,239,10,238,11,237,11,236,12,235,12,234,13,233,13,233,14,232,14,231,15,230,15,229,16,228,16,227,17,227
+    db 2,254,2,253,3,252,4,251,4,250,5,250,5,249,6,248,6,247,7,246,8,245,8,245,9,244,9,243,10,242,11,241,11,241,12,240,12,239,13,238,14,237,14,237,15,236,15,235,16,234,16,233,17,233,18,232,18,231,19,230,19,229,20,228
+    db 2,254,3,253,3,252,4,252,5,251,5,250,6,249,7,249,7,248,8,247,9,246,9,246,10,245,11,244,11,243,12,243,13,242,13,241,14,240,15,240,15,239,16,238,17,237,17,237,18,236,19,235,19,234,20,234,21,233,21,232,22,231,23,231
+    db 2,254,3,253,4,253,4,252,5,251,6,251,7,250,7,249,8,249,9,248,10,247,10,247,11,246,12,245,13,245,13,244,14,243,15,243,16,242,16,241,17,241,18,240,19,239,19,239,20,238,21,237,22,237,22,236,23,235,24,235,25,234,25,233
+    db 2,254,3,254,4,253,5,252,6,252,6,251,7,251,8,250,9,250,10,249,11,248,11,248,12,247,13,247,14,246,15,245,15,245,16,244,17,244,18,243,19,242,19,242,20,241,21,241,22,240,23,240,23,239,24,238,25,238,26,237,27,237,28,236
+    db 3,254,3,254,4,253,5,253,6,252,7,252,8,251,9,251,10,250,10,250,11,249,12,249,13,248,14,248,15,247,16,247,16,246,17,246,18,245,19,245,20,244,21,244,22,243,23,243,23,242,24,242,25,241,26,241,27,240,28,240,29,239,29,239
+    db 3,255,4,254,5,254,5,254,6,253,7,253,8,252,9,252,10,252,11,251,12,251,13,250,14,250,15,249,16,249,16,249,17,248,18,248,19,247,20,247,21,247,22,246,23,246,24,245,25,245,26,245,26,244,27,244,28,243,29,243,30,243,31,242
+    db 3,255,4,255,5,254,6,254,7,254,8,254,9,253,10,253,10,253,11,252,12,252,13,252,14,251,15,251,16,251,17,250,18,250,19,250,20,250,21,249,22,249,23,249,24,248,25,248,26,248,27,247,28,247,29,247,29,246,30,246,31,246,32,245
+    db 3,255,4,255,5,255,6,255,7,255,8,254,9,254,10,254,11,254,12,254,13,253,14,253,15,253,16,253,17,252,18,252,19,252,20,252,21,252,22,251,22,251,23,251,24,251,25,251,26,250,27,250,28,250,29,250,30,250,31,249,32,249,33,249
+    db 3,0,4,0,5,255,6,255,7,255,8,255,9,255,10,255,11,255,12,255,13,255,14,255,15,254,16,254,17,254,18,254,19,254,20,254,21,254,22,254,23,254,24,253,25,253,26,253,27,253,28,253,29,253,30,253,31,253,32,253,33,253,34,252
+    db 3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0,11,0,12,0,13,0,14,0,15,0,16,0,17,0,18,0,19,0,20,0,21,0,22,0,23,0,24,0,25,0,26,0,27,0,28,0,29,0,30,0,31,0,32,0,33,0,34,0
+    db 3,0,4,0,5,1,6,1,7,1,8,1,9,1,10,1,11,1,12,1,13,1,14,1,15,2,16,2,17,2,18,2,19,2,20,2,21,2,22,2,23,2,24,3,25,3,26,3,27,3,28,3,29,3,30,3,31,3,32,3,33,3,34,4
+    db 3,1,4,1,5,1,6,1,7,1,8,2,9,2,10,2,11,2,12,2,13,3,14,3,15,3,16,3,17,4,18,4,19,4,20,4,21,4,22,5,22,5,23,5,24,5,25,5,26,6,27,6,28,6,29,6,30,6,31,7,32,7,33,7
+    db 3,1,4,1,5,2,6,2,7,2,8,2,9,3,10,3,10,3,11,4,12,4,13,4,14,5,15,5,16,5,17,6,18,6,19,6,20,6,21,7,22,7,23,7,24,8,25,8,26,8,27,9,28,9,29,9,29,10,30,10,31,10,32,11
+    db 3,1,4,2,5,2,5,2,6,3,7,3,8,4,9,4,10,4,11,5,12,5,13,6,14,6,15,7,16,7,16,7,17,8,18,8,19,9,20,9,21,9,22,10,23,10,24,11,25,11,26,11,26,12,27,12,28,13,29,13,30,13,31,14
+    db 3,1,3,2,4,2,5,3,6,3,7,4,8,4,9,5,10,5,10,6,11,6,12,7,13,7,14,8,15,8,16,9,16,9,17,10,18,10,19,11,20,11,21,12,22,12,23,13,23,13,24,14,25,14,26,15,27,15,28,16,29,16,29,17
+    db 2,2,3,2,4,3,5,4,6,4,6,5,7,5,8,6,9,6,10,7,11,8,11,8,12,9,13,9,14,10,15,11,15,11,16,12,17,12,18,13,19,14,19,14,20,15,21,15,22,16,23,16,23,17,24,18,25,18,26,19,27,19,28,20
+    db 2,2,3,3,4,3,4,4,5,5,6,5,7,6,7,7,8,7,9,8,10,9,10,9,11,10,12,11,13,11,13,12,14,13,15,13,16,14,16,15,17,15,18,16,19,17,19,17,20,18,21,19,22,19,22,20,23,21,24,21,25,22,25,23
+    db 2,2,3,3,3,4,4,4,5,5,5,6,6,7,7,7,7,8,8,9,9,10,9,10,10,11,11,12,11,13,12,13,13,14,13,15,14,16,15,16,15,17,16,18,17,19,17,19,18,20,19,21,19,22,20,22,21,23,21,24,22,25,23,25
+    db 2,2,2,3,3,4,4,5,4,6,5,6,5,7,6,8,6,9,7,10,8,11,8,11,9,12,9,13,10,14,11,15,11,15,12,16,12,17,13,18,14,19,14,19,15,20,15,21,16,22,16,23,17,23,18,24,18,25,19,26,19,27,20,28
+    db 1,3,2,3,2,4,3,5,3,6,4,7,4,8,5,9,5,10,6,10,6,11,7,12,7,13,8,14,8,15,9,16,9,16,10,17,10,18,11,19,11,20,12,21,12,22,13,23,13,23,14,24,14,25,15,26,15,27,16,28,16,29,17,29
+    db 1,3,2,4,2,5,2,5,3,6,3,7,4,8,4,9,4,10,5,11,5,12,6,13,6,14,7,15,7,16,7,16,8,17,8,18,9,19,9,20,9,21,10,22,10,23,11,24,11,25,11,26,12,26,12,27,13,28,13,29,13,30,14,31
+    db 1,3,1,4,2,5,2,6,2,7,2,8,3,9,3,10,3,10,4,11,4,12,4,13,5,14,5,15,5,16,6,17,6,18,6,19,6,20,7,21,7,22,7,23,8,24,8,25,8,26,9,27,9,28,9,29,10,29,10,30,10,31,11,32
+    db 1,3,1,4,1,5,1,6,1,7,2,8,2,9,2,10,2,11,2,12,3,13,3,14,3,15,3,16,4,17,4,18,4,19,4,20,4,21,5,22,5,22,5,23,5,24,5,25,6,26,6,27,6,28,6,29,6,30,7,31,7,32,7,33
+    db 0,3,0,4,1,5,1,6,1,7,1,8,1,9,1,10,1,11,1,12,1,13,1,14,2,15,2,16,2,17,2,18,2,19,2,20,2,21,2,22,2,23,3,24,3,25,3,26,3,27,3,28,3,29,3,30,3,31,3,32,3,33,4,34
+    db 0,3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0,11,0,12,0,13,0,14,0,15,0,16,0,17,0,18,0,19,0,20,0,21,0,22,0,23,0,24,0,25,0,26,0,27,0,28,0,29,0,30,0,31,0,32,0,33,0,34
+    db 0,3,0,4,255,5,255,6,255,7,255,8,255,9,255,10,255,11,255,12,255,13,255,14,254,15,254,16,254,17,254,18,254,19,254,20,254,21,254,22,254,23,253,24,253,25,253,26,253,27,253,28,253,29,253,30,253,31,253,32,253,33,252,34
+    db 255,3,255,4,255,5,255,6,255,7,254,8,254,9,254,10,254,11,254,12,253,13,253,14,253,15,253,16,252,17,252,18,252,19,252,20,252,21,251,22,251,22,251,23,251,24,251,25,250,26,250,27,250,28,250,29,250,30,249,31,249,32,249,33
+    db 255,3,255,4,254,5,254,6,254,7,254,8,253,9,253,10,253,10,252,11,252,12,252,13,251,14,251,15,251,16,250,17,250,18,250,19,250,20,249,21,249,22,249,23,248,24,248,25,248,26,247,27,247,28,247,29,246,29,246,30,246,31,245,32
+    db 255,3,254,4,254,5,254,5,253,6,253,7,252,8,252,9,252,10,251,11,251,12,250,13,250,14,249,15,249,16,249,16,248,17,248,18,247,19,247,20,247,21,246,22,246,23,245,24,245,25,245,26,244,26,244,27,243,28,243,29,243,30,242,31
+    db 255,3,254,3,254,4,253,5,253,6,252,7,252,8,251,9,251,10,250,10,250,11,249,12,249,13,248,14,248,15,247,16,247,16,246,17,246,18,245,19,245,20,244,21,244,22,243,23,243,23,242,24,242,25,241,26,241,27,240,28,240,29,239,29
+    db 254,2,254,3,253,4,252,5,252,6,251,6,251,7,250,8,250,9,249,10,248,11,248,11,247,12,247,13,246,14,245,15,245,15,244,16,244,17,243,18,242,19,242,19,241,20,241,21,240,22,240,23,239,23,238,24,238,25,237,26,237,27,236,28
+    db 254,2,253,3,253,4,252,4,251,5,251,6,250,7,249,7,249,8,248,9,247,10,247,10,246,11,245,12,245,13,244,13,243,14,243,15,242,16,241,16,241,17,240,18,239,19,239,19,238,20,237,21,237,22,236,22,235,23,235,24,234,25,233,25
+    db 254,2,253,3,252,3,252,4,251,5,250,5,249,6,249,7,248,7,247,8,246,9,246,9,245,10,244,11,243,11,243,12,242,13,241,13,240,14,240,15,239,15,238,16,237,17,237,17,236,18,235,19,234,19,234,20,233,21,232,21,231,22,231,23
+    db 254,2,253,2,252,3,251,4,250,4,250,5,249,5,248,6,247,6,246,7,245,8,245,8,244,9,243,9,242,10,241,11,241,11,240,12,239,12,238,13,237,14,237,14,236,15,235,15,234,16,233,16,233,17,232,18,231,18,230,19,229,19,228,20
+    db 253,2,253,2,252,3,251,3,250,4,249,4,248,5,247,5,246,6,246,6,245,7,244,7,243,8,242,8,241,9,240,9,240,10,239,10,238,11,237,11,236,12,235,12,234,13,233,13,233,14,232,14,231,15,230,15,229,16,228,16,227,17,227,17
+    db 253,1,252,2,251,2,251,2,250,3,249,3,248,4,247,4,246,4,245,5,244,5,243,6,242,6,241,7,240,7,240,7,239,8,238,8,237,9,236,9,235,9,234,10,233,10,232,11,231,11,230,11,230,12,229,12,228,13,227,13,226,13,225,14
+    db 253,1,252,1,251,2,250,2,249,2,248,2,247,3,246,3,246,3,245,4,244,4,243,4,242,5,241,5,240,5,239,6,238,6,237,6,236,6,235,7,234,7,233,7,232,8,231,8,230,8,229,9,228,9,227,9,227,10,226,10,225,10,224,11
+    db 253,1,252,1,251,1,250,1,249,1,248,2,247,2,246,2,245,2,244,2,243,3,242,3,241,3,240,3,239,4,238,4,237,4,236,4,235,4,234,5,234,5,233,5,232,5,231,5,230,6,229,6,228,6,227,6,226,6,225,7,224,7,223,7
+    db 253,0,252,0,251,1,250,1,249,1,248,1,247,1,246,1,245,1,244,1,243,1,242,1,241,2,240,2,239,2,238,2,237,2,236,2,235,2,234,2,233,2,232,3,231,3,230,3,229,3,228,3,227,3,226,3,225,3,224,3,223,3,222,4
+    db 253,0,252,0,251,0,250,0,249,0,248,0,247,0,246,0,245,0,244,0,243,0,242,0,241,0,240,0,239,0,238,0,237,0,236,0,235,0,234,0,233,0,232,0,231,0,230,0,229,0,228,0,227,0,226,0,225,0,224,0,223,0,222,0
+    db 253,0,252,0,251,255,250,255,249,255,248,255,247,255,246,255,245,255,244,255,243,255,242,255,241,254,240,254,239,254,238,254,237,254,236,254,235,254,234,254,233,254,232,253,231,253,230,253,229,253,228,253,227,253,226,253,225,253,224,253,223,253,222,252
+    db 253,255,252,255,251,255,250,255,249,255,248,254,247,254,246,254,245,254,244,254,243,253,242,253,241,253,240,253,239,252,238,252,237,252,236,252,235,252,234,251,234,251,233,251,232,251,231,251,230,250,229,250,228,250,227,250,226,250,225,249,224,249,223,249
+    db 253,255,252,255,251,254,250,254,249,254,248,254,247,253,246,253,246,253,245,252,244,252,243,252,242,251,241,251,240,251,239,250,238,250,237,250,236,250,235,249,234,249,233,249,232,248,231,248,230,248,229,247,228,247,227,247,227,246,226,246,225,246,224,245
+    db 253,255,252,254,251,254,251,254,250,253,249,253,248,252,247,252,246,252,245,251,244,251,243,250,242,250,241,249,240,249,240,249,239,248,238,248,237,247,236,247,235,247,234,246,233,246,232,245,231,245,230,245,230,244,229,244,228,243,227,243,226,243,225,242
+    db 253,254,253,254,252,253,251,253,250,252,249,252,248,251,247,251,246,250,246,250,245,249,244,249,243,248,242,248,241,247,240,247,240,246,239,246,238,245,237,245,236,244,235,244,234,243,233,243,233,242,232,242,231,241,230,241,229,240,228,240,227,239,227,239
+    db 254,254,253,254,252,253,251,252,250,252,250,251,249,251,248,250,247,250,246,249,245,248,245,248,244,247,243,247,242,246,241,245,241,245,240,244,239,244,238,243,237,242,237,242,236,241,235,241,234,240,233,240,233,239,232,238,231,238,230,237,229,237,228,236
+    db 254,254,253,253,252,253,252,252,251,251,250,251,249,250,249,249,248,249,247,248,246,247,246,247,245,246,244,245,243,245,243,244,242,243,241,243,240,242,240,241,239,241,238,240,237,239,237,239,236,238,235,237,234,237,234,236,233,235,232,235,231,234,231,233
+    db 254,254,253,253,253,252,252,252,251,251,251,250,250,249,249,249,249,248,248,247,247,246,247,246,246,245,245,244,245,243,244,243,243,242,243,241,242,240,241,240,241,239,240,238,239,237,239,237,238,236,237,235,237,234,236,234,235,233,235,232,234,231,233,231
+    db 254,254,254,253,253,252,252,251,252,250,251,250,251,249,250,248,250,247,249,246,248,245,248,245,247,244,247,243,246,242,245,241,245,241,244,240,244,239,243,238,242,237,242,237,241,236,241,235,240,234,240,233,239,233,238,232,238,231,237,230,237,229,236,228
+    db 255,253,254,253,254,252,253,251,253,250,252,249,252,248,251,247,251,246,250,246,250,245,249,244,249,243,248,242,248,241,247,240,247,240,246,239,246,238,245,237,245,236,244,235,244,234,243,233,243,233,242,232,242,231,241,230,241,229,240,228,240,227,239,227
+    db 255,253,254,252,254,251,254,251,253,250,253,249,252,248,252,247,252,246,251,245,251,244,250,243,250,242,249,241,249,240,249,240,248,239,248,238,247,237,247,236,247,235,246,234,246,233,245,232,245,231,245,230,244,230,244,229,243,228,243,227,243,226,242,225
+    db 255,253,255,252,254,251,254,250,254,249,254,248,253,247,253,246,253,246,252,245,252,244,252,243,251,242,251,241,251,240,250,239,250,238,250,237,250,236,249,235,249,234,249,233,248,232,248,231,248,230,247,229,247,228,247,227,246,227,246,226,246,225,245,224
+    db 255,253,255,252,255,251,255,250,255,249,254,248,254,247,254,246,254,245,254,244,253,243,253,242,253,241,253,240,252,239,252,238,252,237,252,236,252,235,251,234,251,234,251,233,251,232,251,231,250,230,250,229,250,228,250,227,250,226,249,225,249,224,249,223
+    db 0,253,0,252,255,251,255,250,255,249,255,248,255,247,255,246,255,245,255,244,255,243,255,242,254,241,254,240,254,239,254,238,254,237,254,236,254,235,254,234,254,233,253,232,253,231,253,230,253,229,253,228,253,227,253,226,253,225,253,224,253,223,252,222
+HdHr:
+    db 0,253,0,252,0,251,0,250,0,249,0,248,0,247,0,246,0,245,0,244,0,243,0,242,0,241,0,240,0,239,0,238,0,237,0,236,0,235,0,234
+    db 0,253,0,252,1,251,1,250,1,249,1,248,1,247,1,246,1,245,1,244,1,243,1,242,2,241,2,240,2,239,2,238,2,237,2,236,2,235,2,234
+    db 1,253,1,252,1,251,1,250,1,249,2,248,2,247,2,246,2,245,2,244,3,243,3,242,3,241,3,240,4,239,4,238,4,237,4,236,4,235,5,234
+    db 1,253,1,252,2,251,2,250,2,249,2,248,3,247,3,246,3,246,4,245,4,244,4,243,5,242,5,241,5,240,6,239,6,238,6,237,6,236,7,235
+    db 1,253,2,252,2,251,2,251,3,250,3,249,4,248,4,247,4,246,5,245,5,244,6,243,6,242,7,241,7,240,7,240,8,239,8,238,9,237,9,236
+    db 1,253,2,253,2,252,3,251,3,250,4,249,4,248,5,247,5,246,6,246,6,245,7,244,7,243,8,242,8,241,9,240,9,240,10,239,10,238,11,237
+    db 2,254,2,253,3,252,4,251,4,250,5,250,5,249,6,248,6,247,7,246,8,245,8,245,9,244,9,243,10,242,11,241,11,241,12,240,12,239,13,238
+    db 2,254,3,253,3,252,4,252,5,251,5,250,6,249,7,249,7,248,8,247,9,246,9,246,10,245,11,244,11,243,12,243,13,242,13,241,14,240,15,240
+    db 2,254,3,253,4,253,4,252,5,251,6,251,7,250,7,249,8,249,9,248,10,247,10,247,11,246,12,245,13,245,13,244,14,243,15,243,16,242,16,241
+    db 2,254,3,254,4,253,5,252,6,252,6,251,7,251,8,250,9,250,10,249,11,248,11,248,12,247,13,247,14,246,15,245,15,245,16,244,17,244,18,243
+    db 3,254,3,254,4,253,5,253,6,252,7,252,8,251,9,251,10,250,10,250,11,249,12,249,13,248,14,248,15,247,16,247,16,246,17,246,18,245,19,245
+    db 3,255,4,254,5,254,5,254,6,253,7,253,8,252,9,252,10,252,11,251,12,251,13,250,14,250,15,249,16,249,16,249,17,248,18,248,19,247,20,247
+    db 3,255,4,255,5,254,6,254,7,254,8,254,9,253,10,253,10,253,11,252,12,252,13,252,14,251,15,251,16,251,17,250,18,250,19,250,20,250,21,249
+    db 3,255,4,255,5,255,6,255,7,255,8,254,9,254,10,254,11,254,12,254,13,253,14,253,15,253,16,253,17,252,18,252,19,252,20,252,21,252,22,251
+    db 3,0,4,0,5,255,6,255,7,255,8,255,9,255,10,255,11,255,12,255,13,255,14,255,15,254,16,254,17,254,18,254,19,254,20,254,21,254,22,254
+    db 3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0,11,0,12,0,13,0,14,0,15,0,16,0,17,0,18,0,19,0,20,0,21,0,22,0
+    db 3,0,4,0,5,1,6,1,7,1,8,1,9,1,10,1,11,1,12,1,13,1,14,1,15,2,16,2,17,2,18,2,19,2,20,2,21,2,22,2
+    db 3,1,4,1,5,1,6,1,7,1,8,2,9,2,10,2,11,2,12,2,13,3,14,3,15,3,16,3,17,4,18,4,19,4,20,4,21,4,22,5
+    db 3,1,4,1,5,2,6,2,7,2,8,2,9,3,10,3,10,3,11,4,12,4,13,4,14,5,15,5,16,5,17,6,18,6,19,6,20,6,21,7
+    db 3,1,4,2,5,2,5,2,6,3,7,3,8,4,9,4,10,4,11,5,12,5,13,6,14,6,15,7,16,7,16,7,17,8,18,8,19,9,20,9
+    db 3,1,3,2,4,2,5,3,6,3,7,4,8,4,9,5,10,5,10,6,11,6,12,7,13,7,14,8,15,8,16,9,16,9,17,10,18,10,19,11
+    db 2,2,3,2,4,3,5,4,6,4,6,5,7,5,8,6,9,6,10,7,11,8,11,8,12,9,13,9,14,10,15,11,15,11,16,12,17,12,18,13
+    db 2,2,3,3,4,3,4,4,5,5,6,5,7,6,7,7,8,7,9,8,10,9,10,9,11,10,12,11,13,11,13,12,14,13,15,13,16,14,16,15
+    db 2,2,3,3,3,4,4,4,5,5,5,6,6,7,7,7,7,8,8,9,9,10,9,10,10,11,11,12,11,13,12,13,13,14,13,15,14,16,15,16
+    db 2,2,2,3,3,4,4,5,4,6,5,6,5,7,6,8,6,9,7,10,8,11,8,11,9,12,9,13,10,14,11,15,11,15,12,16,12,17,13,18
+    db 1,3,2,3,2,4,3,5,3,6,4,7,4,8,5,9,5,10,6,10,6,11,7,12,7,13,8,14,8,15,9,16,9,16,10,17,10,18,11,19
+    db 1,3,2,4,2,5,2,5,3,6,3,7,4,8,4,9,4,10,5,11,5,12,6,13,6,14,7,15,7,16,7,16,8,17,8,18,9,19,9,20
+    db 1,3,1,4,2,5,2,6,2,7,2,8,3,9,3,10,3,10,4,11,4,12,4,13,5,14,5,15,5,16,6,17,6,18,6,19,6,20,7,21
+    db 1,3,1,4,1,5,1,6,1,7,2,8,2,9,2,10,2,11,2,12,3,13,3,14,3,15,3,16,4,17,4,18,4,19,4,20,4,21,5,22
+    db 0,3,0,4,1,5,1,6,1,7,1,8,1,9,1,10,1,11,1,12,1,13,1,14,2,15,2,16,2,17,2,18,2,19,2,20,2,21,2,22
+    db 0,3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0,11,0,12,0,13,0,14,0,15,0,16,0,17,0,18,0,19,0,20,0,21,0,22
+    db 0,3,0,4,255,5,255,6,255,7,255,8,255,9,255,10,255,11,255,12,255,13,255,14,254,15,254,16,254,17,254,18,254,19,254,20,254,21,254,22
+    db 255,3,255,4,255,5,255,6,255,7,254,8,254,9,254,10,254,11,254,12,253,13,253,14,253,15,253,16,252,17,252,18,252,19,252,20,252,21,251,22
+    db 255,3,255,4,254,5,254,6,254,7,254,8,253,9,253,10,253,10,252,11,252,12,252,13,251,14,251,15,251,16,250,17,250,18,250,19,250,20,249,21
+    db 255,3,254,4,254,5,254,5,253,6,253,7,252,8,252,9,252,10,251,11,251,12,250,13,250,14,249,15,249,16,249,16,248,17,248,18,247,19,247,20
+    db 255,3,254,3,254,4,253,5,253,6,252,7,252,8,251,9,251,10,250,10,250,11,249,12,249,13,248,14,248,15,247,16,247,16,246,17,246,18,245,19
+    db 254,2,254,3,253,4,252,5,252,6,251,6,251,7,250,8,250,9,249,10,248,11,248,11,247,12,247,13,246,14,245,15,245,15,244,16,244,17,243,18
+    db 254,2,253,3,253,4,252,4,251,5,251,6,250,7,249,7,249,8,248,9,247,10,247,10,246,11,245,12,245,13,244,13,243,14,243,15,242,16,241,16
+    db 254,2,253,3,252,3,252,4,251,5,250,5,249,6,249,7,248,7,247,8,246,9,246,9,245,10,244,11,243,11,243,12,242,13,241,13,240,14,240,15
+    db 254,2,253,2,252,3,251,4,250,4,250,5,249,5,248,6,247,6,246,7,245,8,245,8,244,9,243,9,242,10,241,11,241,11,240,12,239,12,238,13
+    db 253,2,253,2,252,3,251,3,250,4,249,4,248,5,247,5,246,6,246,6,245,7,244,7,243,8,242,8,241,9,240,9,240,10,239,10,238,11,237,11
+    db 253,1,252,2,251,2,251,2,250,3,249,3,248,4,247,4,246,4,245,5,244,5,243,6,242,6,241,7,240,7,240,7,239,8,238,8,237,9,236,9
+    db 253,1,252,1,251,2,250,2,249,2,248,2,247,3,246,3,246,3,245,4,244,4,243,4,242,5,241,5,240,5,239,6,238,6,237,6,236,6,235,7
+    db 253,1,252,1,251,1,250,1,249,1,248,2,247,2,246,2,245,2,244,2,243,3,242,3,241,3,240,3,239,4,238,4,237,4,236,4,235,4,234,5
+    db 253,0,252,0,251,1,250,1,249,1,248,1,247,1,246,1,245,1,244,1,243,1,242,1,241,2,240,2,239,2,238,2,237,2,236,2,235,2,234,2
+    db 253,0,252,0,251,0,250,0,249,0,248,0,247,0,246,0,245,0,244,0,243,0,242,0,241,0,240,0,239,0,238,0,237,0,236,0,235,0,234,0
+    db 253,0,252,0,251,255,250,255,249,255,248,255,247,255,246,255,245,255,244,255,243,255,242,255,241,254,240,254,239,254,238,254,237,254,236,254,235,254,234,254
+    db 253,255,252,255,251,255,250,255,249,255,248,254,247,254,246,254,245,254,244,254,243,253,242,253,241,253,240,253,239,252,238,252,237,252,236,252,235,252,234,251
+    db 253,255,252,255,251,254,250,254,249,254,248,254,247,253,246,253,246,253,245,252,244,252,243,252,242,251,241,251,240,251,239,250,238,250,237,250,236,250,235,249
+    db 253,255,252,254,251,254,251,254,250,253,249,253,248,252,247,252,246,252,245,251,244,251,243,250,242,250,241,249,240,249,240,249,239,248,238,248,237,247,236,247
+    db 253,254,253,254,252,253,251,253,250,252,249,252,248,251,247,251,246,250,246,250,245,249,244,249,243,248,242,248,241,247,240,247,240,246,239,246,238,245,237,245
+    db 254,254,253,254,252,253,251,252,250,252,250,251,249,251,248,250,247,250,246,249,245,248,245,248,244,247,243,247,242,246,241,245,241,245,240,244,239,244,238,243
+    db 254,254,253,253,252,253,252,252,251,251,250,251,249,250,249,249,248,249,247,248,246,247,246,247,245,246,244,245,243,245,243,244,242,243,241,243,240,242,240,241
+    db 254,254,253,253,253,252,252,252,251,251,251,250,250,249,249,249,249,248,248,247,247,246,247,246,246,245,245,244,245,243,244,243,243,242,243,241,242,240,241,240
+    db 254,254,254,253,253,252,252,251,252,250,251,250,251,249,250,248,250,247,249,246,248,245,248,245,247,244,247,243,246,242,245,241,245,241,244,240,244,239,243,238
+    db 255,253,254,253,254,252,253,251,253,250,252,249,252,248,251,247,251,246,250,246,250,245,249,244,249,243,248,242,248,241,247,240,247,240,246,239,246,238,245,237
+    db 255,253,254,252,254,251,254,251,253,250,253,249,252,248,252,247,252,246,251,245,251,244,250,243,250,242,249,241,249,240,249,240,248,239,248,238,247,237,247,236
+    db 255,253,255,252,254,251,254,250,254,249,254,248,253,247,253,246,253,246,252,245,252,244,252,243,251,242,251,241,251,240,250,239,250,238,250,237,250,236,249,235
+    db 255,253,255,252,255,251,255,250,255,249,254,248,254,247,254,246,254,245,254,244,253,243,253,242,253,241,253,240,252,239,252,238,252,237,252,236,252,235,251,234
+    db 0,253,0,252,255,251,255,250,255,249,255,248,255,247,255,246,255,245,255,244,255,243,255,242,254,241,254,240,254,239,254,238,254,237,254,236,254,235,254,234
+
+; ---------------------------------------------------------------------------
+; HdDraw: both hands at HdHp (the hour hand's position, 0-59) and HdM (the
+; minute, 0-59), dots set (HdPc 1) or cleared (HdPc 0); then the hub when
+; setting. The hour hand 3 dots thick (x, x+1, y+1), the minute hand 2.
+; NMI off.
+; ---------------------------------------------------------------------------
+HdDraw:
+    ld a,(AMY_UVAR_HdHp)
+    ld hl,HdHr
+    ld de,20*2
+    call hd_index
+    ld b,20
+hd_hr:
+    push bc
+    ld a,(hl)
+    add a,88
+    ld (AMY_UVAR_HdX),a
+    inc hl
+    ld a,(hl)
+    add a,84
+    ld (AMY_UVAR_HdY),a
+    inc hl
+    push hl
+    call HdPix
+    ld hl,AMY_UVAR_HdX
+    inc (hl)
+    call HdPix
+    ld hl,AMY_UVAR_HdY
+    inc (hl)
+    call HdPix
+    pop hl
+    pop bc
+    djnz hd_hr
+    ld a,(AMY_UVAR_HdM)
+    ld hl,HdMin
+    ld de,32*2
+    call hd_index
+    ld b,32
+hd_mn:
+    push bc
+    ld a,(hl)
+    add a,88
+    ld (AMY_UVAR_HdX),a
+    inc hl
+    ld a,(hl)
+    add a,84
+    ld (AMY_UVAR_HdY),a
+    inc hl
+    push hl
+    call HdPix
+    ld hl,AMY_UVAR_HdX
+    inc (hl)
+    call HdPix
+    pop hl
+    pop bc
+    djnz hd_mn
+    ld a,(AMY_UVAR_HdPc)
+    or a
+    ret z
+    ; the hub: 4 x 4 round the centre
+    ld c,84-2
+hd_hub_y:
+    ld a,c
+    ld (AMY_UVAR_HdY),a
+    ld b,88-1
+hd_hub_x:
+    ld a,b
+    ld (AMY_UVAR_HdX),a
+    push bc
+    call HdPix
+    pop bc
+    inc b
+    ld a,b
+    cp 88+3
+    jr nz,hd_hub_x
+    inc c
+    ld a,c
+    cp 84+3
+    jr nz,hd_hub_y
+    ret
+
+; HL = HL + A * DE
+hd_index:
+    or a
+    ret z
+hd_ix:
+    add hl,de
+    dec a
+    jr nz,hd_ix
+    ret
+
+; HdPix: the dot HdX,HdY set (HdPc 1) or cleared (HdPc 0) in the bitmap
+HdPix:
+    ld a,(AMY_UVAR_HdY)
+    ld c,a
+    rrca
+    rrca
+    rrca
+    and $1F
+    ld h,a
+    ld a,(AMY_UVAR_HdX)
+    and $F8
+    ld l,a
+    ld a,c
+    and 7
+    or l
+    ld l,a
+    ld a,(AMY_UVAR_HdX)
+    and 7
+    ld b,a
+    ld a,$80
+    jr z,hp_m
+hp_sh:
+    rrca
+    djnz hp_sh
+hp_m:
+    ld e,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld d,a
+    ld a,(AMY_UVAR_HdPc)
+    or a
+    jr z,hp_clr
+    ld a,d
+    or e
+    jr hp_put
+hp_clr:
+    ld a,e
+    cpl
+    and d
+hp_put:
+    ld d,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,d
+    out ($BE),a
+    ret
+HdSong:
+    dw $0001
+    db $40+1,2
+    dw $0000
+}

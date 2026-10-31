@@ -1,0 +1,1424 @@
+cartridge "SWITCHBOX/TODD HEIMARCK, COMPUTE!/1986"
+
+' SWITCHBOX
+' Based on "Switchbox" by Todd Heimarck, COMPUTE! March 1986 (pages
+' 34-52; the Commodore 128 original, with versions for the 64, Atari,
+' Apple II and IBM PC/PCjr, the Atari 520ST by Kevin Mykytyn and Tim
+' Victor, and the Amiga by Philip I. Nelson). Made for the ColecoVision in
+' Amy (the language by Amy Bienvenu) by Claude (an AI made by Anthropic)
+' for Amy Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the article's and the
+' listings' rules (orig/ has the scans). A box of five levels of two-way
+' switches, 4 in the top level and 8 at the bottom (the listing's
+' SW(4,7)). Each switch has a plate under one path and a trigger under the
+' other; it leans left or right, at random at the start. Balls come in at
+' 8 entries at the top and leave by 16 exits at the bottom; every path
+' runs straight down. A ball that lands on an empty plate stops there (the
+' switch is loaded). A ball that hits a trigger flips the switch and goes
+' on down its path; if the switch was loaded, the ball on the plate falls
+' onto the trigger that just came over, the switch flips back (now empty)
+' and both balls go on down, one on each side. A ball that lands on a full
+' plate slides over to the trigger (the one ball that does not go straight
+' down). So one ball can set off a chain reaction.
+' Players take turns dropping a ball (or passing); the balls that reach
+' the exits score their exits' values for the player who dropped. Four
+' rounds: goal 10 with every exit worth 2, goal 40 with Fibonacci values
+' (1 2 3 5 8 13 21 34, larger toward the edges), goal 20 with 2 to 9, goal
+' 80 with the squares 1 to 64. When a player reaches the goal, the other
+' has one last turn and the round ends. Each round's score gets the goal
+' as a bonus if it met the goal; the round's winner then gets 2 more and
+' the loser 2 less. The board stays as it is from round to round.
+' The computer (one-player game) tries every drop and the pass, and for
+' each every reply you could make, and plays the one that leaves it the
+' most points ahead (on a last-chance turn, simply the most points).
+'
+' Made for this machine: the box drawn big in tiles inside the overscan,
+' switches that tip over as they flip, balls as sprites dropping smoothly
+' (more than four on a line flicker in turn), the exits' values along the
+' bottom, the round's scores and goal at the top, an arrow in the player's
+' colour for the entry; a click for each flip, a thunk for a ball coming
+' to rest, a ping for each ball that scores; quiet music under the play.
+'
+' Liberties: the article's "If you win by two points, two is added to
+' your score (and two is subtracted from the other player)" is taken as:
+' the round's winner (after the goal bonus) gets +2, the loser -2, a tie
+' nothing. The round 3 values are the listing's DATA (2 to 9; the article
+' says 1 to 8).
+'
+' Controls: left and right choose the entry, the left button drops, the
+' right button passes. One player: either controller (you are PLAYER 1).
+' Two players: player 1 on controller 1, player 2 on controller 2.
+'
+' House rules kept: text in columns 2-29; tiles from code 128; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait.
+
+const TE000 = 128
+const TE001 = 129
+const TE002 = 130
+const TE010 = 131
+const TE011 = 132
+const TE012 = 133
+const TE100 = 134
+const TE101 = 135
+const TE102 = 136
+const TE110 = 137
+const TE111 = 138
+const TE112 = 139
+const TE200 = 140
+const TE201 = 141
+const TE202 = 142
+const TE210 = 143
+const TE211 = 144
+const TE212 = 145
+const TE300 = 146
+const TE301 = 147
+const TE302 = 148
+const TE310 = 149
+const TE311 = 150
+const TE312 = 151
+const TE400 = 152
+const TE401 = 153
+const TE402 = 154
+const TE410 = 155
+const TE411 = 156
+const TE412 = 157
+const TO000 = 158
+const TO001 = 159
+const TO010 = 160
+const TO011 = 161
+const TO100 = 162
+const TO101 = 163
+const TO110 = 164
+const TO111 = 165
+const TO200 = 166
+const TO201 = 167
+const TO210 = 168
+const TO211 = 169
+const TO300 = 170
+const TO301 = 171
+const TO310 = 172
+const TO311 = 173
+const TO400 = 174
+const TO401 = 175
+const TO410 = 176
+const TO411 = 177
+const TPa = 178
+const TPb = 179
+const TCa = 180
+const TCb = 181
+const TFh = 182
+const TFb = 183
+const SBall = 0
+const SBallh = 4
+const SArrow = 8
+const SSpark = 12
+const NTiles8 = 448
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPlayA = 3
+const SndPlayB = 4
+const SndLoad = 5
+const SndFlip = 6
+const SndDrop = 7
+const SndScore = 8
+const SndStep = 9
+const SndPass = 10
+const SndRound = 11
+const SndWin = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the box: Sw 0 leans left (plate under the left path, trigger under
+' the right), 1 leans right; Ld 1 when a ball rests on the plate.
+' Switch K is level SwL[K], its left path is column SwC[K] (0-15).
+u8 Sw[30]
+u8 Ld[30]
+' snapshots: SwP LdP at the start of each turn (for the tests); SwA LdA
+' and SwB LdB for the computer's look-ahead
+u8 SwP[30]
+u8 LdP[30]
+u8 SwA[30]
+u8 LdA[30]
+u8 SwB[30]
+u8 LdB[30]
+' the balls on their way: Wc[C] how many in column C at this level; Nx the
+' next level's
+u8 Wc[16]
+u8 Nx[16]
+' Resolve: RL RC the level and column in; Rk the switch, Rb its left
+' column, Rd the side, Ro 0 stopped, 1 flipped (one ball on), 2 released
+' (two balls on)
+u8 RL = 0
+u8 RC = 0
+u8 Rk = 0
+u8 Rb = 0
+u8 Rd = 0
+u8 Ro = 0
+u8 Q = 0
+' the simulation's loops
+u8 Lv = 0
+u8 Cv = 0
+u8 Nv = 0
+u16 Got = 0
+' TGot the last turn's points (for the tests; Got is the computer's scratch)
+u16 TGot = 0
+' the game: Mode 0 one player, 1 two players; P the player to move (0 or
+' 1); Rnd the round (0-3); Gl its goal; Rs0 Rs1 the round's points;
+' Last 1 once the goal is reached (the other player's last turn)
+u8 Mode = 0
+u8 P = 0
+u8 Rnd = 0
+u8 Gl = 10
+u16 Rs0 = 0
+u16 Rs1 = 0
+u8 Last = 0
+u8 Rdone = 0
+i16 Fin0 = 0
+i16 Fin1 = 0
+i16 Gt0 = 0
+i16 Gt1 = 0
+i16 Sv = 0
+' the turn: Ent the entry (0-7), Ch the choice made (0-7, 8 pass), Tn the
+' turns played, Await 1 while a turn waits to start (for the tests)
+u8 Ent = 3
+u8 Ch = 0
+u8 Tn = 0
+u8 Await = 0
+u8 Gover = 0
+' the computer: Bv the best value (scaled), Be its choice
+i16 Bv = 0
+i16 Tv = 0
+u8 Be = 0
+u8 Ea = 0
+u8 Fb = 0
+u16 P1v = 0
+u16 Qv = 0
+' the moving balls: Ya Yb the travel, Yy now; Ns sprites in use
+u8 Ya = 0
+u8 Yb = 0
+u8 Yy = 0
+u8 Ns = 0
+u8 Lp = 0
+u8 Cp = 0
+u8 Np = 0
+u8 Sx[20]
+u8 Sy[20]
+u8 Dk = 0
+u8 Dst = 0
+
+u8 Menu = 0
+u8 Pp = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Pr1 = 0
+u8 Pr2 = 0
+u8 WasStick = 0
+u8 Rpt = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Tx = 0
+u8 Ty = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table SbSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+new_game:
+  ' the switches lean at random; no ball anywhere
+  for J = 0 to 29
+    V = random(0, 1)
+    Sw[J] = V
+    Ld[J] = 0
+  next
+  Gt0 = 0
+  Gt1 = 0
+  Rnd = 0
+  P = 0
+  Gover = 0
+
+round_start:
+  Gl = Goals[Rnd]
+  Rs0 = 0
+  Rs1 = 0
+  Last = 0
+  Rdone = 0
+  DrawBoard
+  ShowScreen
+  play sound SndPlayA
+  play sound SndPlayB
+  Ent = 3
+
+turn_loop:
+  ShowHud
+  for J = 0 to 29
+    SwP[J] = Sw[J]
+    LdP[J] = Ld[J]
+  next
+  Await = 1
+  if Mode = 0 then
+    if P = 1 then
+      CompTurn
+      goto turn_play
+    end if
+  end if
+  HumanTurn
+turn_play:
+  Await = 0
+  if Ch = 8 then
+    Got = 0
+    if P = 0 then print at 2,22, "  PLAYER 1 PASSES           "
+    if P = 1 then print at 2,22, "  PLAYER 2 PASSES           "
+    play sound SndPass
+    for Tm = 1 to 50
+      Frame1
+    next
+  else
+    PlayDrop
+  end if
+  if P = 0 then Rs0 = Rs0 + Got
+  if P = 1 then Rs1 = Rs1 + Got
+  TGot = Got
+  inc Tn
+  if Last = 1 then goto round_end
+  if Rs0 >= Gl then Last = 1
+  if Rs1 >= Gl then Last = 1
+  P = P ^ 1
+  goto turn_loop
+
+round_end:
+  Rdone = 1
+  P = P ^ 1
+  RoundScores
+  stop sound SndPlayA
+  stop sound SndPlayB
+  mute all
+  SummaryPage
+  inc Rnd
+  if Rnd < 4 then goto round_start
+  Gover = 1
+  EndPage
+  if Menu = 0 then goto new_game
+  goto title
+
+' --- the rules -------------------------------------------------------
+
+' Resolve: one ball comes into level RL in column RC; the switch acts and
+' the balls going on are added to Nx
+sub Resolve:
+  Q = RC + RL
+  Q = Q - 4
+  Rd = Q & 1
+  Q = Q >> 1
+  Rk = LBase[RL] + Q
+  Rb = RC - Rd
+  if Rd = Sw[Rk] then
+    if Ld[Rk] = 0 then
+      ' an empty plate: the ball stops
+      Ld[Rk] = 1
+      Ro = 0
+      return
+    end if
+    ' a full plate: the ball slides over to the trigger
+    Rd = Rd ^ 1
+  end if
+  if Ld[Rk] = 1 then
+    ' a loaded switch: it flips, the resting ball falls onto the new
+    ' trigger, it flips back empty; both balls go on
+    Ld[Rk] = 0
+    V = Nx[Rb] + 1
+    Nx[Rb] = V
+    Q = Rb + 1
+    V = Nx[Q] + 1
+    Nx[Q] = V
+    Ro = 2
+    return
+  end if
+  Sw[Rk] = Sw[Rk] ^ 1
+  Q = Rb + Rd
+  V = Nx[Q] + 1
+  Nx[Q] = V
+  Ro = 1
+  return
+end sub
+
+' ExitVal(C): the value of exit C in this round
+function ExitVal(u8 C) as u8
+  if C < 8 then
+    V = 7 - C
+  else
+    V = C - 8
+  end if
+  W = Rnd << 3
+  V = V + W
+  return Pts[V]
+
+' SimDrop(E): drop at entry E (8 a pass) with no pictures; Got the points
+sub SimDrop(u8 E):
+  for Cv = 0 to 15
+    Wc[Cv] = 0
+  next
+  Got = 0
+  if E = 8 then return
+  Cv = E + 4
+  Wc[Cv] = 1
+  for Lv = 0 to 4
+    for Cv = 0 to 15
+      Nx[Cv] = 0
+    next
+    for Cv = 0 to 15
+      Nv = Wc[Cv]
+sd_ball:
+      if Nv > 0 then
+        RL = Lv
+        RC = Cv
+        Resolve
+        dec Nv
+        goto sd_ball
+      end if
+    next
+    for Cv = 0 to 15
+      Wc[Cv] = Nx[Cv]
+    next
+  next
+  for Cv = 0 to 15
+    Nv = Wc[Cv]
+sd_score:
+    if Nv > 0 then
+      V = ExitVal(Cv)
+      Got = Got + V
+      dec Nv
+      goto sd_score
+    end if
+  next
+  return
+end sub
+
+sub SaveA:
+  for J = 0 to 29
+    SwA[J] = Sw[J]
+    LdA[J] = Ld[J]
+  next
+  return
+end sub
+sub LoadA:
+  for J = 0 to 29
+    Sw[J] = SwA[J]
+    Ld[J] = LdA[J]
+  next
+  return
+end sub
+sub SaveB:
+  for J = 0 to 29
+    SwB[J] = Sw[J]
+    LdB[J] = Ld[J]
+  next
+  return
+end sub
+sub LoadB:
+  for J = 0 to 29
+    Sw[J] = SwB[J]
+    Ld[J] = LdB[J]
+  next
+  return
+end sub
+
+' CompTurn: every drop and the pass, each against every reply; the value
+' is (its points - the best reply's points) x 4, a pass 2 less, plus 0-3
+' at random to choose among equals; on the last-chance turn, the points
+sub CompTurn:
+  print at 2,22, "  PLAYER 2 IS THINKING...   "
+  SaveA
+  Bv = -30000
+  Be = 0
+  for Ea = 0 to 8
+    LoadA
+    SimDrop(Ea)
+    P1v = Got
+    Qv = 0
+    if Last = 0 then
+      SaveB
+      for Fb = 0 to 7
+        LoadB
+        SimDrop(Fb)
+        if Got > Qv then Qv = Got
+      next
+    end if
+    Tv = P1v
+    Sv = Qv
+    Tv = Tv - Sv
+    Tv = Tv << 2
+    if Ea = 8 then Tv = Tv - 2
+    V = random(0, 3)
+    Sv = V
+    Tv = Tv + Sv
+    if Tv > Bv then
+      Bv = Tv
+      Be = Ea
+    end if
+    Frame1
+  next
+  LoadA
+  Ch = Be
+  if Ch = 8 then return
+  ' the arrow goes to its choice
+  print at 2,22, "  PLAYER 2 DROPS A BALL     "
+ct_walk:
+  DrawArrow
+  for Tm = 1 to 6
+    Frame1
+  next
+  if Ent < Ch then
+    inc Ent
+    play sound SndStep
+    goto ct_walk
+  end if
+  if Ent > Ch then
+    dec Ent
+    play sound SndStep
+    goto ct_walk
+  end if
+  for Tm = 1 to 12
+    Frame1
+  next
+  return
+end sub
+
+' HumanTurn: the stick chooses the entry; the left button drops, the
+' right button passes
+sub HumanTurn:
+  Pp = 0
+  if Mode = 1 then Pp = P + 1
+  if P = 0 then print at 2,22, "P1: FIRE DROPS, RIGHT PASSES"
+  if P = 1 then print at 2,22, "P2: FIRE DROPS, RIGHT PASSES"
+  WasB1 = 1
+  WasB2 = 1
+  Rpt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  V = 0
+  if Lf1 = 1 then V = 1
+  if Rt1 = 1 then V = 2
+  if V > 0 then
+    if Rpt = 0 then
+      if V = 1 then
+        if Ent > 0 then dec Ent
+      else
+        if Ent < 7 then inc Ent
+      end if
+      play sound SndStep
+      Rpt = 10
+      if WasStick = 1 then Rpt = 5
+    end if
+    dec Rpt
+    WasStick = 1
+  else
+    Rpt = 0
+    WasStick = 0
+  end if
+  DrawArrow
+  if Pr1 = 1 then
+    Ch = Ent
+    return
+  end if
+  if Pr2 = 1 then
+    Ch = 8
+    return
+  end if
+  goto ht_loop
+end sub
+
+' DrawArrow: the entry arrow in the player's colour
+sub DrawArrow:
+  X = Ent * 12
+  X = X + 81
+  V = 9
+  if P = 1 then V = 7
+  set sprite 0 to 21,X,SArrow,V
+  update sprites
+  return
+end sub
+
+' PlayDrop: the ball dropped at Ch, level by level, with pictures and
+' sounds; Got the points
+sub PlayDrop:
+  print at 2,22, "                            "
+  for Cp = 0 to 15
+    Wc[Cp] = 0
+  next
+  Cp = Ch + 4
+  Wc[Cp] = 1
+  play sound SndDrop
+  Ya = 22
+  Yb = 36
+  for Lp = 0 to 4
+    Travel
+    HideBalls
+    for Cp = 0 to 15
+      Nx[Cp] = 0
+    next
+    for Cp = 0 to 15
+      Np = Wc[Cp]
+pd_ball:
+      if Np > 0 then
+        RL = Lp
+        RC = Cp
+        Resolve
+        AnimSwitch
+        dec Np
+        goto pd_ball
+      end if
+    next
+    for Cp = 0 to 15
+      Wc[Cp] = Nx[Cp]
+    next
+    Ya = Yb
+    Yb = Yb + 24
+  next
+  Yb = 150
+  Travel
+  ' the exits
+  Got = 0
+  for Cp = 0 to 15
+    Np = Wc[Cp]
+pd_score:
+    if Np > 0 then
+      V = ExitVal(Cp)
+      Got = Got + V
+      X = Cp * 12
+      X = X + 35
+      set sprite 1 to 146,X,SSpark,11
+      update sprites
+      play sound SndScore
+      for Tm = 1 to 10
+        Frame1
+      next
+      dec Np
+      goto pd_score
+    end if
+  next
+  HideBalls
+  if Got > 0 then
+    print at 2,22, "  POINTS:                   "
+    NumU = Got
+    print at 11,22, digits$(NumU, 3)
+  else
+    print at 2,22, "  NO POINTS                 "
+  end if
+  for Tm = 1 to 30
+    Frame1
+  next
+  return
+end sub
+
+' Travel: the balls of Wc move from Ya down to Yb (two pixels a frame; a
+' second ball in a column rides 9 pixels above); more than 4 on a line
+' flicker, the order turning round each frame
+sub Travel:
+  Yy = Ya
+tr_loop:
+  Ns = 0
+  for Cp = 0 to 15
+    Np = Wc[Cp]
+    X = Cp * 12
+    X = X + 35
+    Y = Yy
+tr_ball:
+    if Np > 0 then
+      if Ns < 20 then
+        Sx[Ns] = X
+        Sy[Ns] = Y
+        inc Ns
+      end if
+      Y = Y - 9
+      dec Np
+      goto tr_ball
+    end if
+  next
+  V = Tick & 1
+  for J = 0 to 19
+    if J < Ns then
+      K = J
+      if V = 1 then
+        K = Ns - 1
+        K = K - J
+      end if
+      N = J + 1
+      X = Sx[K]
+      Y = Sy[K]
+      set sprite N to Y,X,SBall,15
+    else
+      N = J + 1
+      set sprite N to 192,0,SBall,15
+    end if
+  next
+  update sprites
+  Frame1
+  if Yy < Yb then
+    Yy = Yy + 2
+    if Yy > Yb then Yy = Yb
+    goto tr_loop
+  end if
+  return
+end sub
+
+sub HideBalls:
+  for J = 1 to 20
+    set sprite J to 192,0,SBall,15
+  next
+  update sprites
+  return
+end sub
+
+' AnimSwitch: the switch Rk shows what Resolve did
+sub AnimSwitch:
+  Dk = Rk
+  if Ro = 0 then
+    play sound SndLoad
+    DrawSw
+    for Tm = 1 to 4
+      Frame1
+    next
+    return
+  end if
+  play sound SndFlip
+  Dst = 4
+  DrawSwSt
+  for Tm = 1 to 3
+    Frame1
+  next
+  if Ro = 2 then
+    ' over and back
+    Dst = Sw[Rk] ^ 1
+    Dst = Dst << 1
+    DrawSwSt
+    for Tm = 1 to 3
+      Frame1
+    next
+    play sound SndFlip
+    Dst = 4
+    DrawSwSt
+    for Tm = 1 to 3
+      Frame1
+    next
+  end if
+  DrawSw
+  return
+end sub
+
+' DrawSw: switch Dk as it is; DrawSwSt: in picture Dst (0 left, 1 left
+' loaded, 2 right, 3 right loaded, 4 level)
+sub DrawSw:
+  Dst = Sw[Dk] << 1
+  Dst = Dst + Ld[Dk]
+  DrawSwSt
+  return
+end sub
+sub DrawSwSt:
+  Tx = SwC[Dk]
+  Ty = SwL[Dk]
+  Y = Ty * 3
+  Y = Y + 4
+  W = Ty & 1
+  if W = 0 then
+    X = Tx >> 1
+    X = X + Tx
+    X = X + 4
+    V = Dst * 6
+    V = V + TE000
+    for N = 0 to 2
+      put char V at X,Y
+      inc X
+      inc V
+    next
+    X = X - 3
+    inc Y
+    for N = 0 to 2
+      put char V at X,Y
+      inc X
+      inc V
+    next
+  else
+    X = Tx * 12
+    X = X + 36
+    X = X >> 3
+    V = Dst << 2
+    V = V + TO000
+    put char V at X,Y
+    inc V
+    inc X
+    put char V at X,Y
+    inc V
+    dec X
+    inc Y
+    put char V at X,Y
+    inc V
+    inc X
+    put char V at X,Y
+  end if
+  return
+end sub
+
+' RoundScores: the goal bonus, then +2 / -2 for the round's winner
+sub RoundScores:
+  Fin0 = Rs0
+  Fin1 = Rs1
+  if Rs0 >= Gl then Fin0 = Fin0 + Gl
+  if Rs1 >= Gl then Fin1 = Fin1 + Gl
+  if Fin0 > Fin1 then
+    Fin0 = Fin0 + 2
+    Fin1 = Fin1 - 2
+  end if
+  if Fin1 > Fin0 then
+    Fin1 = Fin1 + 2
+    Fin0 = Fin0 - 2
+  end if
+  Gt0 = Gt0 + Fin0
+  Gt1 = Gt1 + Fin1
+  return
+end sub
+
+' --- the pictures ----------------------------------------------------
+
+' DrawBoard: the frame, the paths, the switches, the entries and exits
+sub DrawBoard:
+  NewScreen
+  ' the paths above each level (rows 3, 6, 9, 12, 15) and below (18)
+  for Lp = 0 to 5
+    Y = Lp * 3
+    Y = Y + 3
+    Tx = 4 - Lp
+    Ty = 11 + Lp
+    if Lp = 5 then
+      Tx = 0
+      Ty = 15
+    end if
+    for Cp = 0 to 15
+      if Cp >= Tx then
+        if Cp <= Ty then
+          PathX
+          V = TPa
+          W = Cp & 1
+          if W = 1 then V = TPb
+          put char V at X,Y
+        end if
+      end if
+    next
+  next
+  ' the cups and the exits' values (even columns row 20, odd row 21)
+  for Cp = 0 to 15
+    PathX
+    V = TCa
+    W = Cp & 1
+    if W = 1 then V = TCb
+    put char V at X,19
+    X = Cp * 12
+    X = X + 30
+    X = X >> 3
+    Y = W + 20
+    V = ExitVal(Cp)
+    NumU = V
+    if V < 10 then
+      inc X
+      print at X,Y, digits$(NumU, 1)
+    else
+      print at X,Y, digits$(NumU, 2)
+    end if
+  next
+  for Dk = 0 to 29
+    DrawSw
+  next
+  ShowHud
+  return
+end sub
+
+' PathX: the tile column of column Cp's path
+sub PathX:
+  X = Cp * 12
+  X = X + 38
+  X = X >> 3
+  return
+end sub
+
+' ShowHud: the round's points, the goal, whose turn
+sub ShowHud:
+  print at 2,1, " P1     GOAL    P2     "
+  if Mode = 0 then print at 18,1, "CPU"
+  NumU = Rs0
+  print at 6,1, digits$(NumU, 3)
+  NumU = Gl
+  print at 15,1, digits$(NumU, 2)
+  NumU = Rs1
+  print at 22,1, digits$(NumU, 3)
+  if P = 0 then
+    put char 62 at 2,1
+    put char 32 at 26,1
+  else
+    put char 32 at 2,1
+    put char 60 at 26,1
+  end if
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  B1 = 0
+  B2 = 0
+  if Pp <> 2 then
+    if joypad(1).left then Lf1 = 1
+    if joypad(1).right then Rt1 = 1
+    if joypad(1).up then Up1 = 1
+    if joypad(1).down then Dn1 = 1
+    if joypad(1).button1 then B1 = 1
+    if joypad(1).button2 then B2 = 1
+  end if
+  if Pp <> 1 then
+    if joypad(2).left then Lf1 = 1
+    if joypad(2).right then Rt1 = 1
+    if joypad(2).up then Up1 = 1
+    if joypad(2).down then Dn1 = 1
+    if joypad(2).button1 then B1 = 1
+    if joypad(2).button2 then B2 = 1
+  end if
+  Pr1 = 0
+  if B1 = 1 then
+    if WasB1 = 0 then Pr1 = 1
+  end if
+  WasB1 = B1
+  Pr2 = 0
+  if B2 = 1 then
+    if WasB2 = 0 then Pr2 = 1
+  end if
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 21
+  for J = 0 to 20
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a little row of switches for the title and the pages
+sub Deco(u8 Row):
+  for J = 0 to 5
+    Dk = J + 22
+    Dst = J & 3
+    Tx = SwC[Dk]
+    X = Tx >> 1
+    X = X + Tx
+    X = X + 4
+    V = Dst * 6
+    V = V + TE000
+    Y = Row
+    for N = 0 to 2
+      put char V at X,Y
+      inc X
+      inc V
+    next
+    X = X - 3
+    inc Y
+    for N = 0 to 2
+      put char V at X,Y
+      inc X
+      inc V
+    next
+  next
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 11,2, "SWITCHBOX"
+  Deco(4)
+  print at 11,9, "1 PLAYER"
+  print at 11,10, "2 PLAYERS"
+  print at 11,11, "CREDITS"
+  print at 4,14, "DROP BALLS THROUGH A BOX"
+  print at 4,15, "OF SWITCHES; SET OFF THE"
+  print at 4,16, "CHAIN REACTIONS. FOUR"
+  print at 4,17, "ROUNDS, FOUR GOALS."
+  print at 4,20, "AFTER A GAME BY TODD"
+  print at 4,21, "HEIMARCK, COMPUTE! 1986"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Pp = 0
+  MenuArrow
+  WasB1 = 1
+  WasB2 = 1
+tp_loop:
+  Frame1
+  ReadPad
+  V = 255
+  if Up1 = 1 then V = 0
+  if Dn1 = 1 then V = 1
+  if V < 2 then
+    if WasStick = 0 then
+      if V = 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      MenuArrow
+      play sound SndStep
+    end if
+    WasStick = 1
+  else
+    WasStick = 0
+  end if
+  V = Pr1 | Pr2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then
+    CreditsPage
+    return
+  end if
+  Mode = Menu
+  return
+end sub
+
+sub MenuArrow:
+  for J = 0 to 2
+    Y = J + 9
+    put char 32 at 9,Y
+    if J = Menu then put char 62 at 9,Y
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "SWITCHBOX"
+  print at 3,4, "BASED ON SWITCHBOX BY"
+  print at 3,5, "TODD HEIMARCK, COMPUTE!"
+  print at 3,6, "MARCH 1986 (VERSIONS BY"
+  print at 3,7, "KEVIN MYKYTYN, TIM VICTOR"
+  print at 3,8, "AND PHILIP I. NELSON)."
+  print at 3,10, "MADE FOR THE COLECOVISION"
+  print at 3,11, "BY CLAUDE (AN AI MADE BY"
+  print at 3,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,13, "2026, IN AMY BY AMY"
+  print at 3,14, "BIENVENU."
+  print at 3,16, "MUSIC: TIPPING POINT AND"
+  print at 3,17, "CLOCKWORK"
+  Deco(19)
+  ShowScreen
+  Pp = 0
+  WasB1 = 1
+  WasB2 = 1
+cr_loop:
+  Frame1
+  ReadPad
+  V = Pr1 | Pr2
+  if V = 0 then goto cr_loop
+  return
+end sub
+
+' PrintS(X, Y): Sv as a signed number, 4 places
+sub PrintS(u8 Px, u8 Py):
+  print at Px,Py, "    "
+  if Sv < 0 then
+    put char 45 at Px,Py
+    Sv = 0 - Sv
+  end if
+  inc Px
+  NumU = Sv
+  print at Px,Py, digits$(NumU, 3)
+  return
+end sub
+
+' SummaryPage: the round's scores, the bonuses, the totals
+sub SummaryPage:
+  for Tm = 1 to 40
+    Frame1
+  next
+  NewScreen
+  V = Rnd + 49
+  print at 8,2, "END OF ROUND"
+  put char V at 21,2
+  print at 15,5, "P1    P2"
+  if Mode = 0 then print at 21,5, "CPU"
+  print at 3,7, "POINTS"
+  Sv = Rs0
+  PrintS(14,7)
+  Sv = Rs1
+  PrintS(20,7)
+  print at 3,8, "GOAL"
+  NumU = Gl
+  print at 15,8, digits$(NumU, 2)
+  print at 21,8, digits$(NumU, 2)
+  print at 3,10, "ROUND"
+  Sv = Fin0
+  PrintS(14,10)
+  Sv = Fin1
+  PrintS(20,10)
+  print at 3,11, "(GOAL BONUS, WIN +2/-2)"
+  print at 3,13, "TOTAL"
+  Sv = Gt0
+  PrintS(14,13)
+  Sv = Gt1
+  PrintS(20,13)
+  if Rnd < 3 then
+    V = Rnd + 1
+    W = Goals[V]
+    print at 3,16, "NEXT GOAL:"
+    NumU = W
+    print at 14,16, digits$(NumU, 2)
+  end if
+  print at 3,20, "PRESS A BUTTON"
+  Deco(17)
+  ShowScreen
+  play sound SndRound
+  Pp = 0
+  WasB1 = 1
+  WasB2 = 1
+sp_loop:
+  Frame1
+  ReadPad
+  V = Pr1 | Pr2
+  if V = 0 then goto sp_loop
+  return
+end sub
+
+' EndPage: the winner; the left button plays again, stick down (or the
+' right button) goes to the title (Menu 0 again, 1 title)
+sub EndPage:
+  NewScreen
+  print at 10,3, "GAME OVER"
+  print at 6,6, "TOTALS:  P1"
+  Sv = Gt0
+  PrintS(18,6)
+  print at 15,7, "P2"
+  if Mode = 0 then print at 14,7, "CPU"
+  Sv = Gt1
+  PrintS(18,7)
+  if Gt0 > Gt1 then print at 8,10, "PLAYER 1 WINS!"
+  if Gt1 > Gt0 then print at 8,10, "PLAYER 2 WINS!"
+  if Gt0 = Gt1 then print at 10,10, "A DRAW!"
+  print at 5,14, "FIRE: PLAY AGAIN"
+  print at 5,15, "RIGHT BUTTON: TITLE"
+  Deco(18)
+  ShowScreen
+  play sound SndWin
+  Pp = 0
+  WasB1 = 1
+  WasB2 = 1
+ep_loop:
+  Frame1
+  ReadPad
+  if Pr1 = 1 then
+    Menu = 0
+    return
+  end if
+  if Pr2 = 1 then
+    Menu = 1
+    return
+  end if
+  goto ep_loop
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$F0,$F0,$60,$C0,$80
+  $00,$00,$00,$F0,$F0,$00,$00,$00
+  $03,$06,$0C,$07,$F0,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$06
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$F0,$F0,$60,$C0,$80
+  $F0,$F0,$06,$F0,$F0,$00,$00,$00
+  $03,$06,$0C,$07,$F0,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$06,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$60,$30,$E0,$F0,$18,$18,$18
+  $00,$00,$00,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$06,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$60
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$60,$30,$E0,$F0,$18,$18,$18
+  $F0,$F0,$60,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$18,$18,$18,$18,$18
+  $E0,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$06,$0C,$18
+  $00,$00,$00,$00,$00,$01,$01,$01
+  $30,$60,$C0,$80,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$60
+  $00,$00,$00,$F0,$F0,$06,$0C,$18
+  $F0,$F0,$60,$00,$00,$01,$01,$01
+  $30,$60,$C0,$80,$00,$80,$80,$80
+  $00,$00,$00,$F0,$F0,$60,$30,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$06,$03,$01,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$80,$80,$80
+  $00,$00,$00,$F0,$F0,$60,$30,$18
+  $00,$00,$00,$00,$00,$00,$00,$06
+  $0C,$06,$03,$01,$00,$01,$01,$01
+  $F0,$F0,$06,$00,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$01,$01,$01,$01,$01,$01
+  $01,$01,$80,$80,$80,$80,$80,$80
+  $06,$06,$00,$00,$06,$06,$00,$00
+  $60,$60,$00,$00,$60,$60,$00,$00
+  $00,$00,$00,$00,$09,$09,$F0,$00
+  $00,$00,$00,$00,$90,$90,$F0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$B4
+  $04,$04,$04,$B4,$B4,$B4,$B4,$B4
+  $04,$04,$04,$4B,$4B,$04,$04,$04
+  $B4,$B4,$B4,$4B,$B4,$E4,$E4,$E4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$F4
+  $04,$04,$04,$04,$04,$04,$04,$B4
+  $04,$04,$04,$B4,$B4,$B4,$B4,$B4
+  $4F,$4F,$F4,$4B,$4B,$04,$04,$04
+  $B4,$B4,$B4,$4B,$B4,$E4,$E4,$E4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$4B,$4B,$B4,$B4,$B4
+  $04,$04,$04,$04,$04,$04,$04,$B4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $B4,$B4,$B4,$4B,$4B,$E4,$E4,$E4
+  $04,$04,$04,$B4,$B4,$04,$04,$04
+  $04,$04,$04,$4B,$4B,$B4,$B4,$B4
+  $04,$04,$04,$04,$04,$04,$04,$B4
+  $04,$04,$04,$04,$04,$04,$04,$F4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $B4,$B4,$B4,$4B,$4B,$E4,$E4,$E4
+  $F4,$F4,$F4,$B4,$B4,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $B4,$B4,$04,$04,$04,$04,$04,$04
+  $0B,$0B,$E4,$E4,$E4,$E4,$E4,$E4
+  $B4,$B4,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$4B,$4B,$B4,$B4,$B4
+  $04,$04,$04,$0B,$0B,$E4,$E4,$E4
+  $B4,$B4,$B4,$B4,$04,$E4,$E4,$E4
+  $04,$04,$04,$04,$04,$04,$04,$F4
+  $04,$04,$04,$4B,$4B,$B4,$B4,$B4
+  $F4,$F4,$F4,$0B,$0B,$E4,$E4,$E4
+  $B4,$B4,$B4,$B4,$04,$E4,$E4,$E4
+  $04,$04,$04,$B4,$B4,$B4,$B4,$B4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $B4,$B4,$B4,$B4,$04,$E4,$E4,$E4
+  $04,$04,$04,$0B,$0B,$E4,$E4,$E4
+  $04,$04,$04,$B4,$B4,$B4,$B4,$B4
+  $04,$04,$04,$04,$04,$04,$04,$F4
+  $B4,$B4,$B4,$B4,$04,$E4,$E4,$E4
+  $4F,$4F,$F4,$0B,$0B,$E4,$E4,$E4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $4B,$4B,$E4,$E4,$E4,$E4,$E4,$E4
+  $4B,$4B,$E4,$E4,$E4,$E4,$E4,$E4
+  $54,$54,$04,$04,$54,$54,$04,$04
+  $54,$54,$04,$04,$54,$54,$04,$04
+  $04,$04,$04,$04,$E4,$E4,$4E,$04
+  $04,$04,$04,$04,$E4,$E4,$E4,$04
+  $0E,$0F,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$0F,$0E
+end data
+data SpritePat bytes
+  $30,$78,$FC,$FC,$78,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$48,$84,$84,$48,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$7F,$3F,$1E,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$92,$54,$38,$FE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' each level's first switch
+data LBase bytes 0,4,9,15,22
+' each switch's level and left path column (level L, switch n: 4 - L + 2n)
+data SwL bytes 0,0,0,0, 1,1,1,1,1, 2,2,2,2,2,2, 3,3,3,3,3,3,3, 4,4,4,4,4,4,4,4
+data SwC bytes 4,6,8,10, 3,5,7,9,11, 2,4,6,8,10,12, 1,3,5,7,9,11,13, 0,2,4,6,8,10,12,14
+' the goals and the exits' values, from the middle out (the listing's DATA)
+data Goals bytes 10,40,20,80
+data Pts bytes 2,2,2,2,2,2,2,2, 1,2,3,5,8,13,21,34, 2,3,4,5,6,7,8,9, 1,4,9,16,25,36,49,64
+
+asm {
+SbLoad:
+    db $00,$00,$05,$01,$00,$00,$36,$03,$10
+SbFlip:
+    db $40,$40,$10,$01,$40,$55,$40,$02,$50
+SbDrop:
+    db $80,$7F,$20,$02,$80,$8F,$30,$02,$80,$AA,$50,$03,$90
+SbScore:
+    db $40,$47,$10,$02,$40,$35,$20,$03,$40,$35,$50,$06,$50
+SbStep:
+    db $80,$6B,$40,$01,$90
+SbPass:
+    db $80,$1D,$21,$06,$80,$53,$41,$08,$90
+SbRound:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$0C,$50
+SbWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$8F,$20,$06,$40,$6B,$30,$10
+    db $50
+
+SbSoundTable:
+    dw SbTuneMel,$702B
+    dw SbTuneBass,$7035
+    dw SbPlayMel,$702B
+    dw SbPlayBass,$7035
+    dw SbLoad,$703F
+    dw SbFlip,$7049
+    dw SbDrop,$7053
+    dw SbScore,$7049
+    dw SbStep,$7053
+    dw SbPass,$7053
+    dw SbRound,$7049
+    dw SbWin,$7049
+; Tipping Point (original)
+; Tiny Sound, 7 frames per step
+SbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$1F,$01,$1A,$01,$1F,$01,$1A,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$21,$01,$1C,$01,$21,$01,$1C,$01,$24,$01,$23,$01
+    db $21,$01,$01,$01,$23,$01,$1F,$01,$26,$01,$23,$01,$24,$01,$21,$01
+    db $28,$01,$24,$01,$26,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$07,$01,$0B,$01,$0E,$01,$0B,$01,$07,$01,$0B,$01
+    db $0E,$01,$01,$01,$09,$01,$0C,$01,$10,$01,$0C,$01,$0E,$01,$12,$01
+    db $15,$01,$01,$01,$07,$01,$0B,$01,$0E,$01,$13,$01,$0C,$01,$10,$01
+    db $13,$01,$10,$01,$0E,$01,$01,$01,$06,$01,$01,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Clockwork (original)
+; Tiny Sound, 8 frames per step
+SbPlayMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$90,$1A,$21,$01,$01,$01,$01,$23,$01,$01,$01,$01,$01,$01,$01
+    db $26,$01,$01,$01,$01,$01,$01,$01,$21,$01,$01,$01,$01,$01,$01,$01
+    db $1F,$01,$01,$01,$01,$01,$01,$01,$23,$01,$01,$01,$01,$01,$01,$01
+    db $28,$01,$01,$01,$01,$01,$01,$01,$26,$01,$01,$01,$24,$01,$01,$01
+    db $23,$01,$01,$01
+    db $FF
+SbPlayBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$A0,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0C,$01,$13,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01
+    db $FF
+}

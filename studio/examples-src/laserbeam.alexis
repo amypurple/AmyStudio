@@ -1,0 +1,1656 @@
+cartridge "LASER BEAM/MIKE GREENFIELD, COMPUTE!/1985"
+
+' LASER BEAM
+' Based on "Laser Beam" by Mike Greenfield, COMPUTE! October 1985 (pages
+' 59-68): an Atari arcade game in machine language, with a Commodore 64
+' version by Kevin Mykytyn that plays quite differently. Made for the
+' ColecoVision in Amy (the language by Amy Bienvenu) by Claude (an AI
+' made by Anthropic) for Amy Studio, 2026.
+'
+' Not a port: both listings are machine code in DATA lines (orig/ has the
+' scans). This is a ColecoVision game built on the article's rules, with
+' both versions as two modes chosen on the title:
+'
+' CLASSIC (the Atari game): the more you move, the more you score: one
+' point a step with one ball in the arena, up to five with five. A ball
+' joins every half minute, up to five. A laser roves along each side of
+' the arena; when a fire sequence starts, that laser turns red (it tells
+' where, never when) and fires a beam across the arena. A ball, a wall or
+' a beam ends the game. The countdown gets shorter with more balls.
+'
+' BASKET (the 64 game): seven coloured balls bounce round the arena; the
+' safe zone at the left keeps them out. From the safe zone's top corner
+' (the green square) the stick steers a laser gun round the edge (right
+' clockwise, left counterclockwise) and the button fires it. Shoot the
+' ball that matches the border's colour: it turns white and safe; carry
+' it to the basket (lower right) and press the button: 5 points if it is
+' the only white ball, doubling for each other white ball (up to 320).
+' Any other ball you shoot turns white too, and stays deadly. Touch a
+' deadly ball and you are zapped (three lives). After a good shot the
+' safe zone shrinks from the bottom, a row at a time: get out before it
+' reaches you. Empty the arena before the time bar runs out: 50 more.
+'
+' Made for this machine: the full screen inside the overscan; the balls
+' and the runner are sprites moving pixel by pixel at 60 frames a
+' second (the balls in 1/16 pixel steps); with more than four sprites on
+' a line, the balls take turns (their order rotates every frame), so a
+' crowded line flickers instead of losing a ball; lasers and beams are
+' tiles; music plays quietly under the effects (the music first in the
+' sound table, the effects after by channel).
+'
+' Controls (either joystick): the stick moves; the left button fires or
+' drops (BASKET); the right button pauses. On the title: up and down
+' choose, left and right change the mode and the speed (0 slowest to 9).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait; an original title tune played once.
+
+const TFloor = 128
+const TWall = 129
+const TEmit = 130
+const TWarn = 131
+const TGun = 132
+const TBeamv = 133
+const TBeamh = 134
+const TSafe = 135
+const TBask = 136
+const TBar = 137
+const TSpot = 138
+const SBall = 0
+const SStand = 4
+const SRun1 = 8
+const SRun2 = 12
+const SZap = 16
+const NTiles8 = 88
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndZap = 5
+const SndFall = 6
+const SndFire = 7
+const SndArm = 8
+const SndBall = 9
+const SndHit = 10
+const SndGrab = 11
+const SndDrop = 12
+const SndShrink = 13
+const SndClear = 14
+const SndOver = 15
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the game -------------------------------------------------------------
+' Mode 0 CLASSIC, 1 BASKET; Df the speed 0-9; Ph 1 play, 2 hit, 3 between
+' rounds, 5 over
+u8 Mode = 0
+u8 Df = 3
+u8 Ph = 0
+u8 Idle = 0
+u16 Score = 0
+u16 HiA = 0
+u16 HiB = 0
+u8 Lives = 0
+u8 Round = 0
+' the runner: Rx, Ry its top-left (pixels; the figure is 8 x 8), Mv steps
+' toward the next point (CLASSIC), Rm 1 if it moved this frame
+u8 Rx = 0
+u8 Ry = 0
+u8 Mv = 0
+u8 Rm = 0
+' the balls: place (pixels), the 1/16 left over, speed (1/16 pixel a
+' frame), direction (0 right or down, 1 left or up), state (0 coloured,
+' 1 white and safe, 2 white and deadly, 3 gone, 4 carried), colour
+u8 Nb = 0
+u8 Bx[7]
+u8 By[7]
+u8 Ax[7]
+u8 Ay[7]
+u8 Vx[7]
+u8 Vy[7]
+u8 Dx[7]
+u8 Dy[7]
+u8 St[7]
+u8 Bcol[7]
+u8 Rot = 0
+' CLASSIC: the emitters (0 top, 1 bottom: columns 3-28; 2 left, 3 right:
+' rows 3-20), their directions; La the armed one (255 none), Lc its
+' countdown, Lw the wait before the next; Nt frames to the next ball
+u8 Ep[4]
+u8 Ed[4]
+u8 La = 255
+u8 Lc = 0
+u8 Lw = 0
+u8 Cmax = 0
+u16 Nt = 0
+' a beam on screen: Lb frames left, Bo 0 down a column / 1 along a row,
+' Bp that column or row, B1-B2 its cells
+u8 Lb = 0
+u8 Bo = 0
+u8 Bp = 0
+u8 B1 = 0
+u8 B2 = 0
+' BASKET: Gp the gun (0-87 round the edge, clockwise from the top left),
+' Tc the target ball, Cb the ball carried (255 none), Szb the safe zone's
+' last row (2: gone), Zp the pixel under it, Shr 1 while it shrinks, Sk
+' frames to the next row, Bar the time bar's cells, Bt frames to the next
+' cell, Left balls not yet dropped, Spot 1 at the gun's control square
+u8 Gp = 0
+u8 Tc = 0
+u8 Cb = 255
+u8 Szb = 20
+u8 Zp = 168
+u8 Shr = 0
+u8 Sk = 0
+u8 Skp = 0
+u8 Bar = 0
+u16 Bt = 0
+u8 Left = 0
+u8 Spot = 0
+u8 Whites = 0
+u16 Pts = 0
+
+' temporaries (each family its own, as every name is global)
+u8 Bi = 0
+u8 Mn = 0
+u8 Ma = 0
+u8 Mx = 0
+u8 Ci = 0
+u8 Ei = 0
+u8 Ex = 0
+u8 Ey = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Qt = 0
+u8 Gc = 0
+u8 Gr = 0
+u8 Hb = 0
+u8 Hd = 0
+u8 Sp = 0
+u16 NumU = 0
+u8 Sel = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Dn1 = 0
+u8 Up1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Tx = 40
+u8 Ty = 100
+u8 Tdx = 0
+u8 Tdy = 0
+
+' the balls' colours: red, light green, light blue, light yellow,
+' magenta, cyan, grey
+data BallCol bytes 8, 3, 5, 11, 13, 7, 14
+
+  tile screen
+  set sound table LzSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Round = 1
+  Lives = 3
+  if Mode = 0 then Lives = 1
+
+new_round:
+  if Mode = 0 then
+    SetupClassic
+  else
+    SetupBasket
+  end if
+  ShowScreen
+  for Tm = 1 to 60
+    Frame1
+    DrawSprites
+  next
+  print at 11,22, "          "
+  if Mode = 1 then DrawBar
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+  WasBtn = 1
+
+play_loop:
+  Frame1
+  ReadPad
+  if Press2 = 1 then Pause
+  if Mode = 0 then
+    StepClassic
+  else
+    StepBasket
+  end if
+  DrawSprites
+  if Ph = 2 then goto hit
+  if Mode = 1 then
+    if Left = 0 then goto cleared
+  end if
+  goto play_loop
+
+hit:
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndZap
+  play sound SndFall
+  for Tm = 1 to 70
+    Frame1
+    DrawSprites
+  next
+  if Mode = 1 then
+    dec Lives
+    ShowHud
+    if Lives > 0 then
+      Rezap
+      play sound SndRunA
+      play sound SndRunB
+      Ph = 1
+      WasBtn = 1
+      goto play_loop
+    end if
+  end if
+  ' game over
+  Ph = 5
+  if Mode = 0 then
+    if Score > HiA then HiA = Score
+  else
+    if Score > HiB then HiB = Score
+  end if
+  ShowHud
+  print at 11,11, "GAME OVER"
+  play sound SndOver
+  for Tm = 1 to 120
+    Frame1
+  next
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+over_wait:
+  Frame1
+  ReadPad
+  if Press = 0 then goto over_wait
+  goto title
+
+cleared:
+  ' BASKET: the arena is empty; 50 more if the bar is not gone
+  Ph = 3
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndClear
+  if Bar > 0 then
+    Score = Score + 50
+    print at 9,11, "TIME BONUS 50"
+  else
+    print at 11,11, "CLEARED!"
+  end if
+  ShowHud
+  for Tm = 1 to 120
+    Frame1
+    DrawSprites
+  next
+  inc Round
+  goto new_round
+
+' --- CLASSIC ----------------------------------------------------------------
+
+sub SetupClassic:
+  NewScreen
+  DrawArena
+  Nb = 1
+  for J = 0 to 6
+    St[J] = 3
+    Bcol[J] = BallCol[J]
+  next
+  Rx = 124
+  Ry = 92
+  Mv = 0
+  Bi = 0
+  AddBall
+  Nt = 1800
+  Ep[0] = 5
+  Ep[1] = 26
+  Ep[2] = 6
+  Ep[3] = 17
+  Ed[0] = 0
+  Ed[1] = 1
+  Ed[2] = 0
+  Ed[3] = 1
+  for Ei = 0 to 3
+    DrawEmit
+  next
+  La = 255
+  Lw = 90
+  Lb = 0
+  ShowHud
+  print at 2,22, "CLASSIC"
+  print at 21,22, "SPEED"
+  NumU = Df
+  print at 27,22, digits$(NumU, 1)
+  print at 11,22, "GET READY"
+  backdrop black
+  return
+end sub
+
+' AddBall: ball Bi somewhere in the arena, away from the runner, a
+' random speed for this level (more balls, faster)
+sub AddBall:
+  Sp = Df * 2
+  Sp = Sp + 12
+  V = Nb - 1
+  if Mode = 1 then V = Round - 1
+  V = V * 3
+  Sp = Sp + V
+  if Sp > 44 then Sp = 44
+  St[Bi] = 0
+ab_again:
+  X = random(32, 220)
+  Y = random(28, 160)
+  ' at least 40 pixels from the runner one way or the other
+  V = 0
+  if X > Rx then
+    W = X - Rx
+  else
+    W = Rx - X
+  end if
+  if W > 40 then V = 1
+  if Y > Ry then
+    W = Y - Ry
+  else
+    W = Ry - Y
+  end if
+  if W > 40 then V = 1
+  if V = 0 then goto ab_again
+  if Mode = 1 then
+    if X < 64 then goto ab_again
+  end if
+  Bx[Bi] = X
+  By[Bi] = Y
+  Ax[Bi] = 0
+  Ay[Bi] = 0
+  W = Sp >> 1
+  Vx[Bi] = random(W, Sp)
+  Vy[Bi] = random(W, Sp)
+  Dx[Bi] = random(0, 1)
+  Dy[Bi] = random(0, 1)
+  return
+end sub
+
+sub StepClassic:
+  MoveRunner
+  if Ph = 2 then return
+  ' a point a step for every ball (a step is 8 pixels of running)
+  if Rm = 1 then
+    inc Mv
+    if Mv = 4 then
+      Mv = 0
+      Score = Score + Nb
+      ShowScore
+    end if
+  end if
+  ' a new ball every half minute, up to five
+  if Nb < 5 then
+    dec Nt
+    if Nt = 0 then
+      Bi = Nb
+      inc Nb
+      AddBall
+      Nt = 1800
+      play sound SndBall
+      ShowHud
+    end if
+  end if
+  MoveBalls
+  Lasers
+  Touch
+  return
+end sub
+
+' Lasers: the emitters rove; one at a time is armed (red), counts down and
+' fires a beam across the arena
+sub Lasers:
+  V = Tick & 7
+  if V = 0 then
+    for Ei = 0 to 3
+      if Ei <> La then StepEmit
+    next
+  end if
+  if Lb > 0 then
+    dec Lb
+    if Lb = 0 then
+      EraseBeam
+      Lw = 60
+    end if
+  else
+    if La = 255 then
+      dec Lw
+      if Lw = 0 then
+        La = random(0, 3)
+        ' the countdown shortens with more balls and a higher speed
+        V = Nb * 20
+        W = Df * 10
+        V = V + W
+        Cmax = 40
+        if V < 160 then Cmax = 200 - V
+        W = Cmax >> 1
+        Lc = random(W, Cmax)
+        Ei = La
+        DrawEmit
+        play sound SndArm
+      end if
+    else
+      dec Lc
+      if Lc = 0 then
+        ' fire: the beam from the armed emitter right across
+        Ei = La
+        La = 255
+        Bp = Ep[Ei]
+        if Ei < 2 then
+          Bo = 0
+          B1 = 3
+          B2 = 20
+        else
+          Bo = 1
+          B1 = 3
+          B2 = 28
+        end if
+        DrawBeam
+        Lb = 24
+        DrawEmit
+        play sound SndFire
+      end if
+    end if
+  end if
+  ' the beam: touching it ends the game
+  if Lb > 0 then
+    V = Bp << 3
+    if Bo = 0 then
+      W = V + 7
+      if Rx < W then
+        W = Rx + 7
+        if W > V then Ph = 2
+      end if
+    else
+      W = V + 7
+      if Ry < W then
+        W = Ry + 7
+        if W > V then Ph = 2
+      end if
+    end if
+  end if
+  return
+end sub
+
+' StepEmit: emitter Ei one cell along its wall, back at the ends
+sub StepEmit:
+  Ex = Ep[Ei]
+  Ey = 28
+  if Ei >= 2 then Ey = 20
+  ' wipe the old cell back to wall
+  EmitCell
+  put char TWall at Qx,Qy
+  if Ed[Ei] = 0 then
+    if Ex >= Ey then
+      Ed[Ei] = 1
+      dec Ex
+    else
+      inc Ex
+    end if
+  else
+    if Ex <= 3 then
+      Ed[Ei] = 0
+      inc Ex
+    else
+      dec Ex
+    end if
+  end if
+  Ep[Ei] = Ex
+  DrawEmit
+  return
+end sub
+
+' EmitCell: Qx,Qy the cell of emitter Ei
+sub EmitCell:
+  if Ei = 0 then
+    Qx = Ep[0]
+    Qy = 2
+  end if
+  if Ei = 1 then
+    Qx = Ep[1]
+    Qy = 21
+  end if
+  if Ei = 2 then
+    Qx = 2
+    Qy = Ep[2]
+  end if
+  if Ei = 3 then
+    Qx = 29
+    Qy = Ep[3]
+  end if
+  return
+end sub
+
+sub DrawEmit:
+  EmitCell
+  if Ei = La then
+    put char TWarn at Qx,Qy
+  else
+    put char TEmit at Qx,Qy
+  end if
+  return
+end sub
+
+' --- BASKET -----------------------------------------------------------------
+
+sub SetupBasket:
+  NewScreen
+  DrawArena
+  Szb = 20
+  Zp = 168
+  DrawZone
+  for Y = 18 to 20
+    for X = 26 to 28
+      put char TBask at X,Y
+    next
+  next
+  Rx = 24
+  Ry = 24
+  Nb = 7
+  for Bi = 0 to 6
+    Bcol[Bi] = BallCol[Bi]
+    AddBall
+  next
+  Cb = 255
+  Left = 7
+  Shr = 0
+  V = Df << 1
+  Skp = 50 - V
+  Sk = Skp
+  Bar = 26
+  Bt = 300
+  Gp = 0
+  Lb = 0
+  DrawGun
+  Tc = random(0, 6)
+  SetBorder
+  ShowHud
+  print at 11,22, "ROUND "
+  NumU = Round
+  print at 17,22, digits$(NumU, 2)
+  return
+end sub
+
+sub StepBasket:
+  ' the control square: the zone's top corner (the green square)
+  Spot = 0
+  if Rx <= 25 then
+    if Ry <= 25 then Spot = 1
+  end if
+  if Spot = 1 then
+    V = Tick & 3
+    if V = 0 then
+      if Rt1 = 1 then
+        EraseGun
+        inc Gp
+        if Gp = 88 then Gp = 0
+        DrawGun
+      end if
+      if Lf1 = 1 then
+        EraseGun
+        if Gp = 0 then
+          Gp = 87
+        else
+          dec Gp
+        end if
+        DrawGun
+      end if
+    end if
+    ' up and down still move the runner (out of the square)
+    Lf1 = 0
+    Rt1 = 0
+  end if
+  MoveRunner
+  if Press = 1 then
+    if Spot = 1 then
+      if Lb = 0 then Shoot
+    else
+      if Cb < 255 then
+        V = Rx + 4
+        W = Ry + 4
+        if V >= 208 then
+          if W >= 144 then DropBall
+        end if
+      end if
+    end if
+  end if
+  if Lb > 0 then
+    dec Lb
+    if Lb = 0 then EraseBeam
+  end if
+  ' the zone shrinks from the bottom after a good shot
+  if Shr = 1 then
+    dec Sk
+    if Sk = 0 then
+      Sk = Skp
+      ShrinkZone
+    end if
+  end if
+  ' the time bar
+  dec Bt
+  if Bt = 0 then
+    Bt = 300
+    if Bar > 0 then
+      X = Bar + 2
+      put char TFloor at X,22
+      dec Bar
+    end if
+  end if
+  MoveBalls
+  Touch
+  return
+end sub
+
+' Shoot: the gun's beam straight across from its side, stopped by the
+' first ball in its path; a coloured ball hit turns white (safe if it is
+' the border's colour)
+sub Shoot:
+  GunCell
+  Hb = 255
+  Hd = 0
+  if Gr = 2 then
+    ' from the top, down column Gc: the highest ball in the column
+    Bo = 0
+    Bp = Gc
+    Hd = 255
+    for Bi = 0 to 6
+      if St[Bi] < 3 then
+        InColumn
+        if V = 1 then
+          if By[Bi] < Hd then
+            Hd = By[Bi]
+            Hb = Bi
+          end if
+        end if
+      end if
+    next
+    B1 = 3
+    B2 = 20
+    if Hb < 255 then
+      V = Hd + 3
+      B2 = V >> 3
+    end if
+  end if
+  if Gr = 21 then
+    Bo = 0
+    Bp = Gc
+    for Bi = 0 to 6
+      if St[Bi] < 3 then
+        InColumn
+        if V = 1 then
+          if By[Bi] >= Hd then
+            Hd = By[Bi]
+            Hb = Bi
+          end if
+        end if
+      end if
+    next
+    B1 = 3
+    B2 = 20
+    if Hb < 255 then
+      V = Hd + 3
+      B1 = V >> 3
+    end if
+  end if
+  if Gc = 29 then
+    ' from the right, along row Gr: the rightmost ball in the row
+    Bo = 1
+    Bp = Gr
+    for Bi = 0 to 6
+      if St[Bi] < 3 then
+        InRow
+        if V = 1 then
+          if Bx[Bi] >= Hd then
+            Hd = Bx[Bi]
+            Hb = Bi
+          end if
+        end if
+      end if
+    next
+    B1 = 3
+    B2 = 28
+    if Hb < 255 then
+      V = Hd + 3
+      B1 = V >> 3
+    end if
+  end if
+  if Gc = 2 then
+    Bo = 1
+    Bp = Gr
+    Hd = 255
+    for Bi = 0 to 6
+      if St[Bi] < 3 then
+        InRow
+        if V = 1 then
+          if Bx[Bi] < Hd then
+            Hd = Bx[Bi]
+            Hb = Bi
+          end if
+        end if
+      end if
+    next
+    B1 = 3
+    B2 = 28
+    if Hb < 255 then
+      V = Hd + 3
+      B2 = V >> 3
+    end if
+  end if
+  DrawBeam
+  Lb = 10
+  play sound SndFire
+  if Hb < 255 then
+    if St[Hb] = 0 then
+      play sound SndHit
+      if Hb = Tc then
+        St[Hb] = 1
+        ' a good shot: the zone starts to shrink
+        if Shr = 0 then
+          Shr = 1
+          Sk = Skp
+        end if
+      else
+        St[Hb] = 2
+      end if
+    end if
+  end if
+  return
+end sub
+
+' InColumn / InRow: V = 1 if ball Bi crosses the beam's column / row Bp
+sub InColumn:
+  V = 0
+  W = Bp << 3
+  Mx = W + 7
+  if Bx[Bi] <= Mx then
+    Mx = Bx[Bi] + 5
+    if Mx >= W then V = 1
+  end if
+  return
+end sub
+
+sub InRow:
+  V = 0
+  W = Bp << 3
+  Mx = W + 7
+  if By[Bi] <= Mx then
+    Mx = By[Bi] + 5
+    if Mx >= W then V = 1
+  end if
+  return
+end sub
+
+' DropBall: the carried ball into the basket: 5 points, doubled for each
+' other white ball in the arena
+sub DropBall:
+  Whites = 0
+  for Ci = 0 to 6
+    V = St[Ci]
+    if V = 1 then inc Whites
+    if V = 2 then inc Whites
+    if V = 4 then inc Whites
+  next
+  Pts = 5
+  V = Whites
+  while V > 1
+    Pts = Pts + Pts
+    dec V
+  end while
+  Score = Score + Pts
+  St[Cb] = 3
+  Cb = 255
+  dec Left
+  play sound SndDrop
+  ShowScore
+  ' a new border colour, the zone back to its full size
+  NewTarget
+  SetBorder
+  Szb = 20
+  Zp = 168
+  Shr = 0
+  DrawZone
+  for Ci = 0 to 6
+    if St[Ci] < 3 then
+      if Bx[Ci] < 56 then Bx[Ci] = 56
+    end if
+  next
+  return
+end sub
+
+' NewTarget: Tc a coloured ball at random; none left: a deadly white ball
+' becomes the safe one; none at all: 255
+sub NewTarget:
+  Tc = 255
+  K = random(0, 6)
+  for Ci = 0 to 6
+    if Tc = 255 then
+      if St[K] = 0 then Tc = K
+    end if
+    inc K
+    if K = 7 then K = 0
+  next
+  if Tc < 255 then return
+  for Ci = 0 to 6
+    if Tc = 255 then
+      if St[Ci] = 2 then
+        Tc = Ci
+        St[Ci] = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' SetBorder: the backdrop (the border) in the target's colour
+sub SetBorder:
+  V = 1
+  if Tc < 255 then
+    if St[Tc] = 0 then
+      V = Bcol[Tc]
+    else
+      V = 15
+    end if
+  end if
+  call asm LzBack
+  return
+end sub
+
+' ShrinkZone: the zone's bottom row goes; a runner in it is zapped
+sub ShrinkZone:
+  for X = 3 to 6
+    put char TFloor at X,Szb
+  next
+  play sound SndShrink
+  if Rx < 56 then
+    V = Szb << 3
+    W = Ry + 7
+    if W >= V then
+      W = V + 7
+      if Ry <= W then Ph = 2
+    end if
+  end if
+  dec Szb
+  Zp = Szb << 3
+  Zp = Zp + 8
+  if Szb = 2 then Shr = 0
+  return
+end sub
+
+sub DrawZone:
+  for Y = 3 to 20
+    for X = 3 to 6
+      if Y <= Szb then
+        put char TSafe at X,Y
+      else
+        put char TFloor at X,Y
+      end if
+    next
+  next
+  if Szb >= 3 then put char TSpot at 3,3
+  return
+end sub
+
+sub DrawBar:
+  for X = 3 to 28
+    V = X - 2
+    if V <= Bar then
+      put char TBar at X,22
+    else
+      put char TFloor at X,22
+    end if
+  next
+  return
+end sub
+
+' GunCell: Gc,Gr the gun's cell on the edge for Gp
+sub GunCell:
+  if Gp < 26 then
+    Gc = Gp + 3
+    Gr = 2
+    return
+  end if
+  if Gp < 44 then
+    Gc = 29
+    Gr = Gp - 23
+    return
+  end if
+  if Gp < 70 then
+    Gc = 72 - Gp
+    Gr = 21
+    return
+  end if
+  Gc = 2
+  Gr = 90 - Gp
+  return
+end sub
+
+sub DrawGun:
+  GunCell
+  put char TGun at Gc,Gr
+  return
+end sub
+
+sub EraseGun:
+  GunCell
+  put char TWall at Gc,Gr
+  return
+end sub
+
+' Rezap: after a zap (BASKET), back to the control square; a ball carried
+' is let go where the runner was
+sub Rezap:
+  if Cb < 255 then
+    St[Cb] = 1
+    Bx[Cb] = Rx
+    By[Cb] = Ry
+    if Bx[Cb] < 56 then Bx[Cb] = 56
+    Cb = 255
+  end if
+  Rx = 24
+  Ry = 24
+  Szb = 20
+  Zp = 168
+  Shr = 0
+  DrawZone
+  for Ci = 0 to 6
+    if St[Ci] < 3 then
+      if Bx[Ci] < 56 then Bx[Ci] = 56
+    end if
+  next
+  return
+end sub
+
+' --- both modes -------------------------------------------------------------
+
+' MoveRunner: two pixels a frame; in CLASSIC a wall is deadly, in BASKET
+' the runner stops at it
+sub MoveRunner:
+  Rm = 0
+  if Lf1 = 1 then
+    Rm = 1
+    if Rx < 26 then
+      Rx = 24
+      if Mode = 0 then Ph = 2
+    else
+      Rx = Rx - 2
+    end if
+  end if
+  if Rt1 = 1 then
+    Rm = 1
+    if Rx > 222 then
+      Rx = 224
+      if Mode = 0 then Ph = 2
+    else
+      Rx = Rx + 2
+    end if
+  end if
+  if Up1 = 1 then
+    Rm = 1
+    if Ry < 26 then
+      Ry = 24
+      if Mode = 0 then Ph = 2
+    else
+      Ry = Ry - 2
+    end if
+  end if
+  if Dn1 = 1 then
+    Rm = 1
+    if Ry > 158 then
+      Ry = 160
+      if Mode = 0 then Ph = 2
+    else
+      Ry = Ry + 2
+    end if
+  end if
+  return
+end sub
+
+' MoveBalls: each ball its whole pixels this frame, one at a time, turning
+' at the walls (and at the safe zone in BASKET)
+sub MoveBalls:
+  for Bi = 0 to 6
+    if St[Bi] < 3 then MoveOne
+  next
+  return
+end sub
+
+sub MoveOne:
+  ' across: the zone's edge is a wall for a ball beside it
+  Ma = 24
+  if Mode = 1 then
+    if By[Bi] < Zp then Ma = 56
+  end if
+  V = Ax[Bi] + Vx[Bi]
+  Mn = V >> 4
+  Ax[Bi] = V & 15
+  Mx = Bx[Bi]
+  while Mn > 0
+    if Dx[Bi] = 0 then
+      if Mx >= 226 then
+        Dx[Bi] = 1
+        dec Mx
+      else
+        inc Mx
+      end if
+    else
+      if Mx <= Ma then
+        Dx[Bi] = 0
+        inc Mx
+      else
+        dec Mx
+      end if
+    end if
+    dec Mn
+  end while
+  Bx[Bi] = Mx
+  ' down or up: under the zone, its bottom is a ceiling
+  Ma = 24
+  if Mode = 1 then
+    if Mx < 56 then Ma = Zp
+  end if
+  V = Ay[Bi] + Vy[Bi]
+  Mn = V >> 4
+  Ay[Bi] = V & 15
+  Mx = By[Bi]
+  while Mn > 0
+    if Dy[Bi] = 0 then
+      if Mx >= 162 then
+        Dy[Bi] = 1
+        dec Mx
+      else
+        inc Mx
+      end if
+    else
+      if Mx <= Ma then
+        Dy[Bi] = 0
+        inc Mx
+      else
+        dec Mx
+      end if
+    end if
+    dec Mn
+  end while
+  By[Bi] = Mx
+  return
+end sub
+
+' Touch: the runner against the balls (a pixel of grace each way)
+sub Touch:
+  if Ph = 2 then return
+  for Ci = 0 to 6
+    if St[Ci] < 3 then
+      V = Bx[Ci] + 5
+      W = Rx + 7
+      if Rx < V then
+        if Bx[Ci] < W then
+          V = By[Ci] + 5
+          W = Ry + 7
+          if Ry < V then
+            if By[Ci] < W then TouchBall
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub TouchBall:
+  if St[Ci] = 1 then
+    if Cb = 255 then
+      St[Ci] = 4
+      Cb = Ci
+      play sound SndGrab
+    end if
+    return
+  end if
+  Ph = 2
+  return
+end sub
+
+' DrawBeam / EraseBeam: the beam's tiles, and what was under them
+sub DrawBeam:
+  for Qt = B1 to B2
+    if Bo = 0 then
+      put char TBeamv at Bp,Qt
+    else
+      put char TBeamh at Qt,Bp
+    end if
+  next
+  return
+end sub
+
+sub EraseBeam:
+  for Qt = B1 to B2
+    if Bo = 0 then
+      Qx = Bp
+      Qy = Qt
+    else
+      Qx = Qt
+      Qy = Bp
+    end if
+    UnderCell
+  next
+  return
+end sub
+
+' UnderCell: the floor's tile at Qx,Qy (the zone, the basket or the floor)
+sub UnderCell:
+  N = TFloor
+  if Mode = 1 then
+    if Qx <= 6 then
+      if Qy <= Szb then N = TSafe
+      if Qx = 3 then
+        if Qy = 3 then
+          if Szb >= 3 then N = TSpot
+        end if
+      end if
+    end if
+    if Qx >= 26 then
+      if Qy >= 18 then N = TBask
+    end if
+  end if
+  put char N at Qx,Qy
+  return
+end sub
+
+' DrawSprites: the runner on sprite 0; the balls on 1-7 in an order that
+' turns every frame (more than four on a line take turns)
+sub DrawSprites:
+  Y = Ry - 1
+  if Ph = 2 then
+    set sprite 0 to Y,Rx,SZap,9
+  else
+    N = SStand
+    if Rm = 1 then
+      V = Tick & 8
+      N = SRun1
+      if V = 0 then N = SRun2
+    end if
+    set sprite 0 to Y,Rx,N,11
+  end if
+  inc Rot
+  if Rot >= 7 then Rot = 0
+  K = Rot
+  for J = 1 to 7
+    if K >= 7 then K = K - 7
+    V = St[K]
+    if V = 3 then
+      set sprite J to 192,0,0,0
+    else
+      X = Bx[K]
+      Y = By[K] - 1
+      W = Bcol[K]
+      if V = 1 then W = 15
+      if V = 2 then W = 15
+      if V = 4 then
+        X = Rx + 1
+        Y = Ry - 7
+        W = 15
+      end if
+      set sprite J to Y,X,SBall,W
+    end if
+    inc K
+  next
+  update sprites
+  return
+end sub
+
+sub DrawArena:
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,21
+  for Y = 3 to 20
+    put char TWall at 2,Y
+    put char TWall at 29,Y
+    fill TFloor count 26 at 3,Y
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  ShowScore
+  if Mode = 0 then
+    print at 14,1, "BALLS"
+    NumU = Nb
+    NumU = HiA
+  else
+    print at 14,1, "LIVES"
+    NumU = HiB
+  end if
+  print at 22,1, "HI"
+  print at 24,1, digits$(NumU, 5)
+  if Mode = 0 then
+    NumU = Nb
+  else
+    NumU = Lives
+  end if
+  print at 20,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  return
+end sub
+
+' Pause: the right button; the left button goes on
+sub Pause:
+  print at 12,22, "PAUSED"
+  WasBtn = 1
+pause_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto pause_loop
+  print at 12,22, "      "
+  if Mode = 1 then DrawBar
+  WasBtn = 1
+  Press = 0
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name between two beams, a ball bouncing, a joystick menu
+sub TitlePage:
+tp_start:
+  NewScreen
+  fill TWall count 28 at 2,2
+  fill TBeamh count 26 at 3,3
+  print at 10,5, "LASER  BEAM"
+  fill TBeamh count 26 at 3,7
+  fill TWall count 28 at 2,8
+  print at 6,10, "THE MORE YOU MOVE,"
+  print at 6,11, "THE MORE YOU SCORE"
+  print at 9,14, "START"
+  print at 9,16, "MODE"
+  print at 9,18, "SPEED"
+  print at 9,20, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Sel = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  if Tdx = 0 then
+    Tx = Tx + 2
+    if Tx > 226 then Tdx = 1
+  else
+    Tx = Tx - 2
+    if Tx < 20 then Tdx = 0
+  end if
+  if Tdy = 0 then
+    inc Ty
+    if Ty > 176 then Tdy = 1
+  else
+    dec Ty
+    if Ty < 96 then Tdy = 0
+  end if
+  V = Ty - 1
+  set sprite 1 to V,Tx,SBall,8
+  update sprites
+  V = Up1 | Dn1
+  W = Lf1 | Rt1
+  V = V | W
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Sel > 0 then dec Sel
+      end if
+      if Dn1 = 1 then
+        if Sel < 3 then inc Sel
+      end if
+      if Sel = 1 then
+        if W = 1 then Mode = Mode ^ 1
+      end if
+      if Sel = 2 then
+        if Lf1 = 1 then
+          if Df > 0 then dec Df
+        end if
+        if Rt1 = 1 then
+          if Df < 9 then inc Df
+        end if
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Sel = 1 then
+    Mode = Mode ^ 1
+    ShowMenu
+    goto tp_loop
+  end if
+  if Sel = 2 then
+    inc Df
+    if Df = 10 then Df = 0
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Sel = 3 then
+    CreditsPage
+    goto tp_start
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 3
+    V = J * 2
+    V = V + 14
+    if J = Sel then
+      put char 62 at 7,V
+    else
+      put char 32 at 7,V
+    end if
+  next
+  if Mode = 0 then
+    print at 15,16, "CLASSIC"
+  else
+    print at 15,16, "BASKET "
+  end if
+  NumU = Df
+  print at 15,18, digits$(NumU, 1)
+  print at 2,22, "HI "
+  NumU = HiA
+  if Mode = 1 then NumU = HiB
+  print at 5,22, digits$(NumU, 5)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill TBeamh count 26 at 3,2
+  fill TBeamh count 26 at 3,21
+  print at 10,4, "LASER BEAM"
+  print at 3,6, "BASED ON LASER BEAM BY"
+  print at 3,7, "MIKE GREENFIELD, COMPUTE!"
+  print at 3,8, "OCTOBER 1985 (ATARI); THE"
+  print at 3,9, "COMMODORE 64 VERSION BY"
+  print at 3,10, "KEVIN MYKYTYN."
+  print at 3,12, "MADE FOR THE COLECOVISION"
+  print at 3,13, "BY CLAUDE (AN AI MADE BY"
+  print at 3,14, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,15, "2026, IN AMY BY AMY"
+  print at 3,16, "BIENVENU."
+  print at 3,18, "MUSIC: BEAM ME THROUGH"
+  print at 8,19, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$83,$40,$40,$40,$C1,$00,$00
+  $00,$38,$83,$87,$83,$38,$00,$00
+  $00,$38,$83,$83,$83,$38,$00,$00
+  $00,$83,$83,$83,$83,$83,$00,$00
+  $18,$C3,$18,$C3,$18,$C3,$18,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $88,$00,$22,$00,$88,$00,$22,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$01,$01,$01,$01,$01,$00,$00
+  $00,$82,$82,$82,$82,$82,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$EF,$FE,$FE,$FE,$E1,$0E,$01
+  $0E,$7E,$E7,$E7,$E7,$7E,$0E,$01
+  $0E,$8E,$E8,$E8,$E8,$8E,$0E,$01
+  $0E,$EB,$EB,$EB,$EB,$EB,$0E,$01
+  $F1,$1F,$F1,$1F,$F1,$1F,$F1,$1F
+  $01,$01,$09,$0F,$0F,$09,$01,$01
+  $C1,$01,$C1,$01,$C1,$01,$C1,$01
+  $51,$15,$51,$15,$51,$15,$51,$15
+  $01,$1B,$1B,$1B,$1B,$1A,$01,$01
+  $0C,$C1,$C1,$C1,$C1,$C1,$1C,$01
+end data
+data SpritePat bytes
+  $78,$FC,$FC,$FC,$FC,$78,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$3C,$5A,$18,$24,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$7C,$9A,$18,$24,$42,$81,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$3E,$59,$18,$18,$28,$24,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$F7,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+LzZap:
+    db $00,$00,$04,$03,$00,$00,$25,$06,$00,$00,$56,$0A,$00,$00,$76,$0E,$10
+LzFall:
+    db $40,$7F,$20,$03,$40,$A9,$30,$03,$40,$E2,$40,$03,$40,$2E,$51,$04,$40,$AB,$71,$08,$50
+LzFire:
+    db $40,$2F,$10,$01,$40,$38,$20,$01,$40,$42,$20,$01,$40,$50,$30,$02,$40,$5D,$50,$03,$40,$70,$70,$04
+    db $50
+LzArm:
+    db $80,$40,$20,$02,$80,$FF,$F3,$02,$80,$40,$20,$02,$90
+LzBall:
+    db $80,$D6,$20,$03,$80,$8F,$20,$03,$80,$6B,$30,$06,$90
+LzHit:
+    db $C0,$47,$10,$02,$C0,$35,$10,$02,$C0,$2A,$30,$06,$D0
+LzGrab:
+    db $80,$71,$20,$02,$80,$55,$20,$04,$90
+LzDrop:
+    db $80,$8F,$10,$03,$80,$71,$10,$03,$80,$5F,$10,$03,$80,$47,$20,$08,$90
+LzShrink:
+    db $C0,$53,$31,$02,$C0,$7C,$51,$02,$D0
+LzClear:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$20,$04,$40,$55,$30,$0C,$50
+LzOver:
+    db $40,$FE,$20,$0A,$40,$41,$31,$0A,$40,$7C,$31,$0A,$40,$FC,$41,$18,$50
+
+LzSoundTable:
+    dw LzTuneMel,$702B
+    dw LzTuneBass,$7035
+    dw LzRunMel,$702B
+    dw LzRunBass,$7035
+    dw LzZap,$703F
+    dw LzFall,$7049
+    dw LzFire,$7049
+    dw LzArm,$7053
+    dw LzBall,$7053
+    dw LzHit,$705D
+    dw LzGrab,$7053
+    dw LzDrop,$7053
+    dw LzShrink,$705D
+    dw LzClear,$7049
+    dw LzOver,$7049
+; Beam Me Through (original)
+; Tiny Sound, 6 frames per step
+LzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$31,$88,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $1F,$01,$21,$01,$23,$01,$01,$01,$00,$01,$01,$01,$1F,$01,$21,$01
+    db $24,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1A,$01,$1E,$01,$21,$01
+    db $26,$01,$01,$01,$24,$01,$23,$01,$21,$01,$23,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+LzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$18,$32,$04,$10,$04,$10,$04,$10,$04,$10,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$07,$13,$07,$13,$07,$13,$07,$13,$09,$15,$09,$15
+    db $0E,$1A,$0E,$1A,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0C,$18,$0C,$18
+    db $09,$15,$09,$15,$0B,$17,$0B,$17,$0B,$17,$0F,$17,$04,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Arena Pulse (original)
+; Tiny Sound, 7 frames per step
+LzRunMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$80,$1A,$21,$01,$01,$01,$01,$01,$01,$2F,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$2B,$01,$01,$01,$2D,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$2F,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$32,$01,$01,$01,$01,$01,$2F,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+LzRunBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$90,$18,$32,$04,$01,$10,$01,$04,$01,$10,$01,$04,$01,$10,$01
+    db $0E,$01,$1A,$01,$0C,$01,$18,$01,$0C,$01,$18,$01,$0B,$01,$17,$01
+    db $0B,$01,$0F,$01,$04,$01,$10,$01,$04,$01,$10,$01,$07,$01,$13,$01
+    db $06,$01,$12,$01,$0C,$01,$18,$01,$0E,$01,$1A,$01,$0B,$01,$17,$01
+    db $0B,$01,$17,$01
+    db $FF
+
+; LzBack: the backdrop (VDP register 7) to the colour V
+LzBack:
+    ld a,(AMY_UVAR_V)
+    out ($BF),a
+    ld a,$87
+    out ($BF),a
+    ret
+}

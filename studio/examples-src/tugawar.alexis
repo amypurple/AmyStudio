@@ -1,0 +1,1164 @@
+cartridge "TUG-A-WAR/MARK TUTTLE, COMPUTE!/1986"
+
+' TUG-A-WAR
+' Based on "Tug-A-War" by Mark Tuttle, COMPUTE! April 1986 (pages
+' 42-50): a two-player strategy game for the Commodore 64, with versions
+' for the Atari, IBM PC, Apple II, Atari ST, TI-99/4A and Amiga by the
+' magazine's programmers. Made for the ColecoVision in Amy (the language
+' by Amy Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the listings' rules
+' (orig/ has the scans). Kept: eleven boxes in a row, each one of four
+' colours, set at random; the ball on the middle box; four key boxes
+' showing which colour moves the ball one or two boxes left or right; on
+' a turn you change 1 to 11 boxes counted from your own end, each to the
+' next colour in a fixed cycle (1 2 3 4 1 ...); then, if the boxes you
+' changed reached the ball, the ball moves by the colour of its box. Bring
+' it home (past your last box) to win. The order is the C64 original's:
+' change first, then move by the new colour (the Atari and IBM versions
+' moved by the old colour, then changed: a slip in the conversion).
+' Made for this machine: big boxes across the whole width, the change
+' rippling box by box from your end with a note per colour, the ball a
+' sprite rolling to its new box, a pointer you slide with the stick to
+' choose how many boxes to change, a rope and two pullers; red on
+' controller 1, blue on controller 2; a computer player (EASY: the best
+' move now; HARD: the best move against your best answer); music under
+' play, quieter than the effects; an original title tune, "Heave Ho".
+'
+' Controls: left and right slide the pointer (how many boxes to change),
+' the left button changes them. Red (the right end) is controller 1,
+' blue (the left end) controller 2; against the computer you are red and
+' either controller works.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TBox1tl = 128
+const TBox1tr = 129
+const TBox1ml = 130
+const TBox1mr = 131
+const TBox1bl = 132
+const TBox1br = 133
+const TBox2tl = 134
+const TBox2tr = 135
+const TBox2ml = 136
+const TBox2mr = 137
+const TBox2bl = 138
+const TBox2br = 139
+const TBox3tl = 140
+const TBox3tr = 141
+const TBox3ml = 142
+const TBox3mr = 143
+const TBox3bl = 144
+const TBox3br = 145
+const TBox4tl = 146
+const TBox4tr = 147
+const TBox4ml = 148
+const TBox4mr = 149
+const TBox4bl = 150
+const TBox4br = 151
+const THomebtl = 152
+const THomebtr = 153
+const THomebml = 154
+const THomebmr = 155
+const THomebbl = 156
+const THomebbr = 157
+const THomertl = 158
+const THomertr = 159
+const THomerml = 160
+const THomermr = 161
+const THomerbl = 162
+const THomerbr = 163
+const TRope = 164
+const TBarr = 165
+const TBarb = 166
+const TPb00 = 167
+const TPb01 = 168
+const TPb10 = 169
+const TPb11 = 170
+const TPr00 = 171
+const TPr01 = 172
+const TPr10 = 173
+const TPr11 = 174
+const SSeam0 = 0
+const SSeam1 = 4
+const SSeam2 = 8
+const SSeam3 = 12
+const SBall = 16
+const SPoint = 20
+const NTiles8 = 376
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPlayA = 3
+const SndPlayB = 4
+const SndC1 = 5
+const SndC2 = 6
+const SndC3 = 7
+const SndC4 = 8
+const SndRoll = 9
+const SndStay = 10
+const SndMove = 11
+const SndBuzz = 12
+const SndWin = 13
+const SndPick = 14
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the game: Col[1..11] the boxes' colours (1-4); Bp the ball's box (0 is
+' blue's home past box 1, 12 red's home past box 11); Pl the player to
+' move (0 red, 1 blue); Cn the boxes chosen; Ph 1 a player choosing, 2
+' the change and the roll, 3 the computer thinking, 4 the game won
+u8 Col[13]
+u8 Bp = 6
+u8 Pl = 0
+u8 Cn = 1
+u8 Ph = 0
+' Mode 0 one player EASY, 1 one player HARD, 2 two players
+u8 Mode = 0
+u8 Starter = 0
+u8 WinR = 0
+u8 WinB = 0
+u8 Winner = 0
+' the last turn, for the tests: Moved 1 if the ball moved; Ai the
+' computer's choice; Turns counts the turns
+u8 Moved = 0
+u8 Ai = 0
+u16 Turns = 0
+' the ball on screen (pixels) and its target
+u8 Bx = 120
+u8 Tgx = 120
+u8 Bt = 6
+u8 Rl = 0
+
+' the computer's look ahead: two scratch rows of boxes, An the boxes it
+' changes, Ab the ball
+u8 C1[13]
+u8 C2[13]
+u8 An = 0
+u8 Ab = 0
+u8 B1 = 0
+u8 Ni = 0
+u8 Mi = 0
+u16 Sc = 0
+u16 Best = 0
+u16 Worst = 0
+u16 Vv = 0
+
+u16 NumU = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Dn1 = 0
+u8 Up1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Idle = 0
+
+  tile screen
+  set sound table TgSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+  Mode = Menu
+  WinR = 0
+  WinB = 0
+  Starter = 0
+
+new_game:
+  for K = 1 to 11
+    V = random(1, 4)
+    Col[K] = V
+  next
+  Bp = 6
+  Bx = 120
+  Pl = Starter
+  Turns = 0
+  DrawBoard
+  ShowScreen
+  play sound SndPlayA
+  play sound SndPlayB
+
+turn:
+  ' the pointer starts on the first count that reaches the ball
+  if Pl = 1 then
+    Cn = Bp
+  else
+    Cn = 12 - Bp
+  end if
+  ShowTurn
+  if Mode = 2 then goto human
+  if Pl = 0 then goto human
+  ' the computer (blue)
+  Ph = 3
+  print at 2,19, "BLUE IS THINKING...         "
+  print at 2,21, "                            "
+  Frame1
+  AiPick
+  Ai = Ni
+  ' it slides the pointer to its choice, like a player would
+  for Tm = 1 to 12
+    Frame1
+    DrawSprites
+  next
+ai_slide:
+  if Cn = Ai then goto ai_done
+  if Cn < Ai then
+    inc Cn
+  else
+    dec Cn
+  end if
+  play sound SndPick
+  ShowCount
+  for Tm = 1 to 6
+    Frame1
+    DrawSprites
+  next
+  goto ai_slide
+ai_done:
+  for Tm = 1 to 20
+    Frame1
+    DrawSprites
+  next
+  goto change
+
+human:
+  Ph = 1
+  WasBtn = 1
+  Rep = 0
+human_loop:
+  Frame1
+  ReadPad
+  DrawSprites
+  ' the pointer: right moves it right; for blue (the left end) that is
+  ' more boxes, for red (the right end) fewer
+  V = 0
+  if Rt1 = 1 then V = 1
+  if Lf1 = 1 then V = 2
+  if V = 0 then
+    Rep = 0
+  else
+    if Rep = 0 then
+      Slide(V)
+      Rep = 14
+    else
+      dec Rep
+      if Rep = 0 then
+        Slide(V)
+        Rep = 6
+      end if
+    end if
+  end if
+  if Press = 0 then goto human_loop
+
+change:
+  Ph = 2
+  print at 2,21, "                            "
+  ' the boxes change one after another, from the player's end
+  for J = 1 to Cn
+    if Pl = 1 then
+      K = J
+    else
+      K = 12 - J
+    end if
+    V = Col[K]
+    inc V
+    if V > 4 then V = 1
+    Col[K] = V
+    DrawBox(K)
+    W = V + 4
+    play sound W
+    for Tm = 1 to 5
+      Frame1
+      DrawSprites
+    next
+  next
+  ' the ball moves only when the change reached it
+  Moved = 0
+  if Pl = 1 then
+    if Cn >= Bp then Moved = 1
+  else
+    V = 12 - Cn
+    if V <= Bp then Moved = 1
+  end if
+  if Moved = 1 then
+    V = Col[Bp]
+    V = Bp + Mv[V]
+    if V < 2 then
+      Bt = 0
+    else
+      Bt = V - 2
+    end if
+    if Bt > 12 then Bt = 12
+    play sound SndMove
+    RollBall
+  else
+    play sound SndStay
+    for Tm = 1 to 24
+      Frame1
+      DrawSprites
+    next
+  end if
+  inc Turns
+  if Bp = 0 then
+    Winner = 1
+    goto won
+  end if
+  if Bp = 12 then
+    Winner = 0
+    goto won
+  end if
+  Pl = Pl ^ 1
+  goto turn
+
+won:
+  Ph = 4
+  stop sound SndPlayA
+  stop sound SndPlayB
+  mute all
+  play sound SndWin
+  if Winner = 0 then
+    inc WinR
+  else
+    inc WinB
+  end if
+  ShowHud
+  ClearBar
+  print at 2,19, "                            "
+  if Winner = 0 then
+    print at 10,19, "RED WINS!"
+  else
+    print at 10,19, "BLUE WINS!"
+  end if
+  print at 2,21, "FIRE: AGAIN    DOWN: TITLE  "
+  ' the winning side's pointer hides; the ball bobs at home
+  set sprite 2 to 192,0,0,0
+  for Tm = 1 to 60
+    Frame1
+    DrawSprites
+  next
+  WasBtn = 1
+won_wait:
+  Frame1
+  ReadPad
+  DrawSprites
+  if Dn1 = 1 then
+    stop sound SndWin
+    goto title
+  end if
+  if Press = 0 then goto won_wait
+  ' the loser of a game starts the next
+  Starter = Winner ^ 1
+  goto new_game
+
+' Slide(D): the pointer one box right (1) or left (2), within 1-11
+sub Slide(u8 D):
+  V = 0
+  if Pl = 1 then
+    if D = 1 then V = 1
+  else
+    if D = 2 then V = 1
+  end if
+  if V = 1 then
+    if Cn < 11 then
+      inc Cn
+      play sound SndPick
+    else
+      play sound SndBuzz
+    end if
+  else
+    if Cn > 1 then
+      dec Cn
+      play sound SndPick
+    else
+      play sound SndBuzz
+    end if
+  end if
+  ShowCount
+  return
+end sub
+
+' RollBall: the ball rolls from Bp to Bt, 2 pixels a frame, a thump on
+' each box it crosses
+sub RollBall:
+  Tgx = Bt << 4
+  Tgx = Tgx + 24
+roll_loop:
+  if Bx = Tgx then goto roll_end
+  if Bx < Tgx then
+    Bx = Bx + 2
+  else
+    Bx = Bx - 2
+  end if
+  V = Bx & 15
+  if V = 8 then play sound SndRoll
+  Frame1
+  DrawSprites
+  goto roll_loop
+roll_end:
+  Bp = Bt
+  return
+end sub
+
+' DrawSprites: the ball (its seam turns as it rolls), the pointer over
+' the last box chosen (hidden while the boxes change)
+sub DrawSprites:
+  V = Bx >> 2
+  V = V & 3
+  V = V << 2
+  set sprite 0 to 67,Bx,V,10
+  set sprite 1 to 67,Bx,SBall,11
+  if Ph = 1 then
+    PointAt
+  end if
+  if Ph = 3 then
+    PointAt
+  end if
+  if Ph = 2 then
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub PointAt:
+  if Pl = 1 then
+    V = Cn
+  else
+    V = 12 - Cn
+  end if
+  V = V << 4
+  V = V + 24
+  if Pl = 1 then
+    set sprite 2 to 86,V,SPoint,5
+  else
+    set sprite 2 to 86,V,SPoint,8
+  end if
+  return
+end sub
+
+' DrawBox(Q): box Q (0 blue's home, 1-11 the boxes, 12 red's home)
+sub DrawBox(u8 Q):
+  if Q = 0 then
+    W = 5
+  elseif Q = 12 then
+    W = 6
+  else
+    W = Col[Q]
+  end if
+  W = W * 6
+  W = W + 122
+  X = Q << 1
+  X = X + 3
+  put char W at X,12
+  inc W
+  inc X
+  put char W at X,12
+  inc W
+  dec X
+  put char W at X,13
+  inc W
+  inc X
+  put char W at X,13
+  inc W
+  dec X
+  put char W at X,14
+  inc W
+  inc X
+  put char W at X,14
+  return
+end sub
+
+' KeyBox(C, X, Y): a little 2 x 2 key box of colour C at column X, rows
+' Y and Y + 1
+sub KeyBox(u8 Kc, u8 Kx, u8 Ky):
+  W = Kc * 6
+  W = W + 122
+  put char W at Kx,Ky
+  inc W
+  V = Kx + 1
+  put char W at V,Ky
+  W = W + 3
+  Y = Ky + 1
+  put char W at Kx,Y
+  inc W
+  put char W at V,Y
+  return
+end sub
+
+' the board: the key, the rope and the pullers, the boxes and homes
+sub DrawBoard:
+  NewScreen
+  ShowHud
+  print at 2,3, "BALL"
+  print at 2,4, "MOVES"
+  KeyBox(2, 9, 3)
+  KeyBox(1, 14, 3)
+  KeyBox(3, 19, 3)
+  KeyBox(4, 24, 3)
+  print at 9,5, "<<"
+  print at 14,5, "<"
+  print at 20,5, ">"
+  print at 24,5, ">>"
+  for X = 5 to 26
+    put char TRope at X,9
+  next
+  put char TPb00 at 3,8
+  put char TPb01 at 4,8
+  put char TPb10 at 3,9
+  put char TPb11 at 4,9
+  put char TPr00 at 27,8
+  put char TPr01 at 28,8
+  put char TPr10 at 27,9
+  put char TPr11 at 28,9
+  for K = 0 to 12
+    DrawBox(K)
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "BLUE"
+  NumU = WinB
+  print at 7,1, digits$(NumU, 2)
+  print at 11,1, "TUG-A-WAR"
+  NumU = WinR
+  print at 23,1, digits$(NumU, 2)
+  print at 26,1, "RED"
+  return
+end sub
+
+' ShowTurn: whose turn, the numbers counted from that player's end, the
+' bar under the boxes chosen
+sub ShowTurn:
+  print at 2,19, "                            "
+  if Pl = 0 then
+    if Mode = 2 then
+      print at 2,19, "RED'S TURN (JOYSTICK 1)"
+    else
+      print at 2,19, "RED'S TURN (YOU)"
+    end if
+  else
+    if Mode = 2 then
+      print at 2,19, "BLUE'S TURN (JOYSTICK 2)"
+    else
+      print at 2,19, "BLUE'S TURN (COMPUTER)"
+    end if
+  end if
+  for K = 1 to 11
+    if Pl = 1 then
+      V = K
+    else
+      V = 12 - K
+    end if
+    if V < 10 then
+      V = V + 48
+    elseif V = 10 then
+      V = 48
+    else
+      V = 65
+    end if
+    X = K << 1
+    X = X + 3
+    put char V at X,16
+  next
+  print at 2,21, "STICK: HOW MANY  FIRE: GO"
+  ShowCount
+  return
+end sub
+
+' ShowCount: the bar under the boxes chosen and the count
+sub ShowCount:
+  for K = 1 to 11
+    V = 32
+    if Pl = 1 then
+      if K <= Cn then V = TBarb
+    else
+      W = 12 - Cn
+      if K >= W then V = TBarr
+    end if
+    X = K << 1
+    X = X + 3
+    put char V at X,17
+    inc X
+    put char V at X,17
+  next
+  print at 2,20, "CHANGE"
+  NumU = Cn
+  print at 9,20, digits$(NumU, 2)
+  if Cn = 1 then
+    print at 12,20, "BOX  "
+  else
+    print at 12,20, "BOXES"
+  end if
+  return
+end sub
+
+sub ClearBar:
+  for X = 5 to 26
+    put char 32 at X,17
+  next
+  print at 2,20, "                 "
+  return
+end sub
+
+' AiPick: the computer (blue) chooses Ni, how many boxes to change.
+' EASY: the count leaving the ball nearest blue's home after this turn.
+' HARD: the count whose worst outcome after red's best answer is best
+' (then the nearer ball now). A win now is taken at once. Ties: the
+' smallest count.
+sub AiPick:
+  Best = 0
+  Ni = 1
+  for Mi = 1 to 11
+    for K = 1 to 11
+      C1[K] = Col[K]
+    next
+    An = Mi
+    Ab = Bp
+    Apply1
+    B1 = Ab
+    BallValue(B1)
+    if Mode = 0 then
+      Sc = Vv
+    else
+      if B1 = 0 then
+        Sc = 65000
+      elseif B1 = 12 then
+        Sc = 0
+      else
+        Answer
+        Sc = Worst << 4
+        V = 12 - B1
+        Sc = Sc + V
+      end if
+    end if
+    if Sc > Best then
+      Best = Sc
+      Ni = Mi
+    end if
+  next
+  return
+end sub
+
+' Answer: Worst, the lowest value red can leave after the change in C1
+' (ball B1)
+sub Answer:
+  Worst = 65535
+  for N = 1 to 11
+    for K = 1 to 11
+      C2[K] = C1[K]
+    next
+    An = N
+    Ab = B1
+    Apply2
+    BallValue(Ab)
+    if Vv < Worst then Worst = Vv
+  next
+  return
+end sub
+
+' BallValue(B): how good ball place B is for blue (1000 home, 0 lost)
+sub BallValue(u8 Bv):
+  if Bv = 0 then
+    Vv = 1000
+  elseif Bv = 12 then
+    Vv = 0
+  else
+    V = 12 - Bv
+    Vv = V * 10
+    Vv = Vv + 500
+  end if
+  return
+end sub
+
+' Apply1: blue changes An boxes of C1 from the left; the ball Ab moves
+sub Apply1:
+  for K = 1 to An
+    V = C1[K]
+    inc V
+    if V > 4 then V = 1
+    C1[K] = V
+  next
+  if An >= Ab then
+    V = C1[Ab]
+    V = Ab + Mv[V]
+    if V < 2 then
+      Ab = 0
+    else
+      Ab = V - 2
+    end if
+    if Ab > 12 then Ab = 12
+  end if
+  return
+end sub
+
+' Apply2: red changes An boxes of C2 from the right; the ball Ab moves
+sub Apply2:
+  W = 12 - An
+  for K = W to 11
+    V = C2[K]
+    inc V
+    if V > 4 then V = 1
+    C2[K] = V
+  next
+  if W <= Ab then
+    V = C2[Ab]
+    V = Ab + Mv[V]
+    if V < 2 then
+      Ab = 0
+    else
+      Ab = V - 2
+    end if
+    if Ab > 12 then Ab = 12
+  end if
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: let the NMI run during the wait, then keep it off
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: the stick and the left button of the player to move (in a two
+' player game, red is controller 1 and blue controller 2; otherwise both)
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  V = 1
+  W = 1
+  if Mode = 2 then
+    if Ph = 1 then
+      if Pl = 0 then W = 0
+      if Pl = 1 then V = 0
+    end if
+  end if
+  if V = 1 then
+    if joypad(1).left then Lf1 = 1
+    if joypad(1).right then Rt1 = 1
+    if joypad(1).up then Up1 = 1
+    if joypad(1).down then Dn1 = 1
+    if joypad(1).button1 then Btn = 1
+  end if
+  if W = 1 then
+    if joypad(2).left then Lf1 = 1
+    if joypad(2).right then Rt1 = 1
+    if joypad(2).up then Up1 = 1
+    if joypad(2).down then Dn1 = 1
+    if joypad(2).button1 then Btn = 1
+  end if
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the rope with its two pullers and the ball swaying between
+' them, a joystick menu
+sub TitlePage:
+  NewScreen
+  print at 11,2, "TUG-A-WAR"
+  print at 4,3, "A GAME OF COLOURED BOXES"
+  for X = 5 to 26
+    put char TRope at X,9
+  next
+  put char TPb00 at 3,8
+  put char TPb01 at 4,8
+  put char TPb10 at 3,9
+  put char TPb11 at 4,9
+  put char TPr00 at 27,8
+  put char TPr01 at 28,8
+  put char TPr10 at 27,9
+  put char TPr11 at 28,9
+  for K = 1 to 4
+    X = K * 3
+    X = X + 8
+    KeyBox(K, X, 5)
+  next
+  print at 10,13, "1 PLAYER  EASY"
+  print at 10,14, "1 PLAYER  HARD"
+  print at 10,15, "2 PLAYERS"
+  print at 10,16, "CREDITS"
+  print at 3,19, "RED: JOYSTICK 1 (RIGHT)"
+  print at 3,20, "BLUE: JOYSTICK 2 (LEFT)"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Mode = 0
+  Ph = 0
+  Bx = 120
+  Rl = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  ' the ball sways along the rope, as if both sides were pulling
+  if Rl = 0 then
+    inc Bx
+    if Bx > 150 then Rl = 1
+  else
+    dec Bx
+    if Bx < 90 then Rl = 0
+  end if
+  DrawSprites
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      play sound SndPick
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 13 to 16
+    put char 32 at 8,J
+  next
+  V = Menu + 13
+  put char 62 at 8,V
+  return
+end sub
+
+sub CreditsPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  for X = 3 to 28
+    put char TRope at X,2
+    put char TRope at X,21
+  next
+  print at 11,4, "TUG-A-WAR"
+  print at 3,6, "BASED ON TUG-A-WAR BY MARK"
+  print at 3,7, "TUTTLE, COMPUTE! APRIL 1986"
+  print at 3,8, "(C64; VERSIONS BY KEVIN"
+  print at 3,9, "MYKYTYN, TIM VICTOR, PATRICK"
+  print at 3,10, "PARRISH AND JOHN KRAUSE)."
+  print at 3,12, "MADE FOR THE COLECOVISION"
+  print at 3,13, "BY CLAUDE (AN AI MADE BY"
+  print at 3,14, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,15, "2026, IN AMY BY AMY BIENVENU."
+  print at 3,17, "MUSIC: HEAVE HO, FIELD DAY"
+  print at 8,19, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' the ball's move by colour, plus 2 (colour 1: one left, 2: two left,
+' 3: one right, 4: two right; the listings' MOV table)
+data Mv bytes
+  2,1,0,3,4
+end data
+
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$24,$92,$24,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$03,$01,$03,$07,$07
+  $C0,$E0,$E0,$C0,$80,$00,$00,$C0
+  $03,$03,$06,$06,$0C,$0C,$1C,$00
+  $C0,$C0,$60,$30,$18,$0C,$07,$00
+  $03,$07,$07,$03,$01,$00,$00,$03
+  $C0,$E0,$E0,$C0,$80,$C0,$E0,$E0
+  $03,$03,$06,$0C,$18,$30,$E0,$00
+  $C0,$C0,$60,$60,$30,$30,$38,$00
+end data
+data TileCol bytes
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$15,$15,$15,$15,$15,$15,$15
+  $01,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$15,$15,$15,$15,$01
+  $15,$15,$15,$15,$15,$15,$15,$01
+  $01,$18,$18,$18,$18,$18,$18,$18
+  $01,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$14,$14,$14,$14,$14,$14,$14
+  $01,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$01
+  $14,$14,$14,$14,$14,$14,$14,$01
+  $01,$16,$16,$16,$16,$16,$16,$16
+  $01,$16,$16,$16,$16,$16,$16,$16
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $16,$16,$16,$16,$16,$16,$16,$01
+  $16,$16,$16,$16,$16,$16,$16,$01
+  $01,$01,$01,$1A,$1A,$1A,$01,$01
+  $01,$01,$08,$08,$08,$01,$01,$01
+  $01,$01,$05,$05,$05,$01,$01,$01
+  $91,$91,$91,$91,$51,$51,$51,$51
+  $91,$91,$91,$91,$51,$05,$05,$51
+  $51,$51,$51,$51,$51,$51,$51,$01
+  $51,$51,$51,$51,$51,$51,$51,$01
+  $91,$91,$91,$91,$81,$08,$08,$81
+  $91,$91,$91,$91,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$01
+  $81,$81,$81,$81,$81,$81,$81,$01
+end data
+data SpritePat bytes
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$20,$70,$38,$1C,$0E,$07,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$70,$38,$1C,$0E,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$0E,$1C,$38,$70,$20,$00
+  $00,$04,$0E,$1C,$38,$70,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $0F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$0F
+  $F0,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F0
+  $1F,$1F,$0F,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+TgC1:
+    db $40,$47,$10,$01,$40,$47,$40,$02,$40,$47,$80,$02,$50
+TgC2:
+    db $40,$55,$10,$01,$40,$55,$40,$02,$40,$55,$80,$02,$50
+TgC3:
+    db $40,$6B,$10,$01,$40,$6B,$40,$02,$40,$6B,$80,$02,$50
+TgC4:
+    db $40,$7F,$10,$01,$40,$7F,$40,$02,$40,$7F,$80,$02,$50
+TgRoll:
+    db $00,$00,$35,$01,$00,$00,$76,$02,$10
+TgStay:
+    db $40,$3B,$42,$03,$40,$7F,$72,$05,$50
+TgMove:
+    db $40,$D6,$30,$02,$40,$AA,$30,$02,$50
+TgBuzz:
+    db $40,$F9,$33,$06,$50
+TgWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05
+    db $40,$55,$20,$14,$50
+TgPick:
+    db $40,$35,$40,$01,$50
+
+TgSoundTable:
+    dw TgTuneMel,$702B
+    dw TgTuneBass,$7035
+    dw TgPlayMel,$702B
+    dw TgPlayBass,$7035
+    dw TgC1,$7049
+    dw TgC2,$7049
+    dw TgC3,$7049
+    dw TgC4,$7049
+    dw TgRoll,$703F
+    dw TgStay,$7049
+    dw TgMove,$7049
+    dw TgBuzz,$7049
+    dw TgWin,$7049
+    dw TgPick,$7049
+; Heave Ho (original)
+; Tiny Sound, 7 frames per step
+TgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1A,$01,$1E,$01,$21,$01,$01,$01,$1E,$01,$21,$01
+    db $26,$01,$01,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01,$21,$01
+    db $1E,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$1C,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$0D,$01
+    db $09,$01,$01,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Field Day (original)
+; Tiny Sound, 8 frames per step
+TgPlayMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$24,$01,$01,$01,$28,$01,$01,$01,$2B,$01,$01,$01
+    db $28,$01,$01,$01,$26,$01,$01,$01,$23,$01,$01,$01,$1F,$01,$01,$01
+    db $01,$01,$01,$01,$21,$01,$01,$01,$24,$01,$01,$01,$28,$01,$01,$01
+    db $26,$01,$01,$01,$24,$01,$01,$01,$1F,$01,$01,$01,$24,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+TgPlayBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$0C,$01,$07,$01,$0C,$01,$07,$01,$0C,$01,$07,$01
+    db $10,$01,$07,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0B,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0B,$01,$0C,$01,$07,$01
+    db $0C,$01,$07,$01
+    db $FF
+}
