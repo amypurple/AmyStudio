@@ -59,7 +59,14 @@ export function createExpressionComputeHelpers({
   }
 
   function emitComputeExpressionAst(node, preferredDeclaredType = null) {
-    const computationType = resolveExpressionAstComputationType(node, preferredDeclaredType);
+    const widenIntermediate = (node?.op === "/" || node?.op === ">>")
+      && node.left?.kind === "binary"
+      && ["+", "-", "*"].includes(node.left.op)
+      && ["u8", "i8", "boolean", "bool", "byte"].includes(String(preferredDeclaredType || "").toLowerCase());
+    const effectivePreferred = widenIntermediate
+      ? (isSignedDeclaredType(preferredDeclaredType) ? "i16" : "u16")
+      : preferredDeclaredType;
+    const computationType = resolveExpressionAstComputationType(node, effectivePreferred);
     if (!computationType) return null;
     if (computationType.runtimeType === "int8") {
       const lines = emitLoadInt8AstIntoA(node);
@@ -67,7 +74,7 @@ export function createExpressionComputeHelpers({
       return { ...computationType, register: "a", lines };
     }
     if (computationType.runtimeType === "int16") {
-      const lines = emitLoadInt16AstIntoHL(node, preferredDeclaredType || computationType.declaredType);
+      const lines = emitLoadInt16AstIntoHL(node, computationType.declaredType);
       if (!lines) return null;
       return { ...computationType, register: "hl", lines };
     }
@@ -258,6 +265,10 @@ export function createExpressionComputeHelpers({
     return Array.isArray(lines) && lines.some((line) => /\b(?:b|bc)\b/i.test(String(line || "").replace(/;.*/, "")));
   }
 
+  function loadLinesContainCall(lines) {
+    return Array.isArray(lines) && lines.some((line) => /^\s*(?:call|rst)\b/i.test(String(line || "").replace(/;.*/, "")));
+  }
+
   function isDirectByteLoadToken(token) {
     const text = String(token || "").trim();
     if (!text) return false;
@@ -435,6 +446,9 @@ export function createExpressionComputeHelpers({
         return emitRandomCountIntoA(renderExpressionAst(node.args[0]));
       }
       if (callName === "random" && node.args.length === 2) {
+        if (renderExpressionAst(node.args[0]) === renderExpressionAst(node.args[1])) {
+          return emitLoadInt8AstIntoA(node.args[0]);
+        }
         const evaluateRandomBound = (argNode) => {
           const rendered = renderExpressionAst(argNode);
           return typeof tryEvaluateCompileTimeNumericExpression === "function"
@@ -444,9 +458,13 @@ export function createExpressionComputeHelpers({
         const minValue = evaluateRandomBound(node.args[0]);
         const maxValue = evaluateRandomBound(node.args[1]);
         const retryLabel = makeGeneratedLabel("RandomBetweenRetry");
+        const singleValueLabel = makeGeneratedLabel("RandomBetweenSingle");
+        const doneLabel = makeGeneratedLabel("RandomBetweenDone");
         const rangeLines = [];
         if (minValue !== null && maxValue !== null) {
           const fullRange = maxValue - minValue + 1;
+          if (fullRange === 1) return [`    ld a,${symbolOrValue(String(minValue & 0xFF))}`];
+          if (fullRange < 1) return null;
           if (fullRange === 256) {
             return [
               "    call AMY_RANDOM_U8",
@@ -482,6 +500,11 @@ export function createExpressionComputeHelpers({
         }
         return [
           ...rangeLines,
+          ...(minValue === null || maxValue === null ? [
+            "    ld a,b",
+            "    cp 1",
+            `    jr z,${singleValueLabel}`
+          ] : []),
           `${retryLabel}:`,
           "    push bc",
           "    push de",
@@ -491,7 +514,13 @@ export function createExpressionComputeHelpers({
           ...(minValue !== null && maxValue !== null ? ["    and d"] : []),
           "    cp b",
           `    jr nc,${retryLabel}`,
-          "    add a,c"
+          "    add a,c",
+          ...(minValue === null || maxValue === null ? [
+            `    jr ${doneLabel}`,
+            `${singleValueLabel}:`,
+            "    ld a,c",
+            `${doneLabel}:`
+          ] : [])
         ];
       }
       if ((callName === "min" || callName === "max") && node.args.length === 2) {
@@ -622,7 +651,9 @@ export function createExpressionComputeHelpers({
         if (isDirectByteLoadToken(rightToken)) {
           const loadRightB = emitLoadInt8Into("b", rightToken);
           const loadLeftA = emitLoadInt8AstIntoA(node.left);
-          if (loadRightB && loadLeftA && !loadLinesClobberB(loadLeftA)) return [...loadRightB, ...loadLeftA, `    ${opInstr}`];
+          if (loadRightB && loadLeftA && !loadLinesClobberB(loadLeftA) && !loadLinesContainCall(loadLeftA)) {
+            return [...loadRightB, ...loadLeftA, `    ${opInstr}`];
+          }
         }
         const loadLeft = emitLoadInt8AstIntoA(node.left);
         const loadRight = emitLoadInt8AstIntoA(node.right);

@@ -801,6 +801,13 @@ export function createRuntimeValueHelpers({
       }
       if (normalizedSourceDeclared === "fix8_8" || normalizedSourceDeclared === "ufix8_8") return null;
     }
+    const valueAst = parseExpressionAst(value);
+    if ((targetType === "int8" || targetType === "int16") && valueAst
+      && (valueAst.kind === "binary" || valueAst.kind === "unary")) {
+      const computed = emitComputeExpressionAst(valueAst, targetDeclaredType);
+      const stored = emitStoreComputedExpression(name, computed);
+      if (stored) return stored;
+    }
     if (targetType === "int8" && !sourceType) {
       const loadSpecialByte = emitLoadInt8Into("a", value);
       const storeTarget = emitStoreInt8FromA(name);
@@ -812,7 +819,6 @@ export function createRuntimeValueHelpers({
       if (!loadSource || !storeFixedByte) return null;
       return [...loadSource, ...storeFixedByte];
     }
-    const valueAst = parseExpressionAst(value);
     if ((targetType === "int8" || targetType === "int16") && valueAst) {
       const computed = emitComputeExpressionAst(valueAst, targetDeclaredType);
       const stored = emitStoreComputedExpression(name, computed);

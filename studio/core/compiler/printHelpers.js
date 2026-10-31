@@ -574,6 +574,11 @@ export function createPrintHelpers(ctx) {
     if (!loadY || !loadX) return null;
     const constY = tryEvaluateByteConstantExpression(yToken);
     const constX = tryEvaluateByteConstantExpression(xToken);
+    const screenOffset = constY !== null && constX !== null ? (constY << 5) + constX : null;
+    const safeLength = screenOffset !== null
+      ? Math.max(0, Math.min(literal.length, 768 - screenOffset))
+      : literal.length;
+    if (safeLength === 0) return { lines: [], width: literal.length };
     const lines = [];
     if (constY !== null && constX !== null) {
       lines.push(`    ld de,${formatHex16(((constY << 5) + constX) & 0xFFFF)}`);
@@ -590,7 +595,7 @@ export function createPrintHelpers(ctx) {
     }
     lines.push("    ex de,hl");
     lines.push(`    ld hl,${literal.label}`);
-    lines.push(`    ld bc,$${literal.length.toString(16).toUpperCase().padStart(4, "0")}`);
+    lines.push(`    ld bc,$${safeLength.toString(16).toUpperCase().padStart(4, "0")}`);
     lines.push("    call WRITE_VRAM");
     return { lines, width: literal.length };
   }

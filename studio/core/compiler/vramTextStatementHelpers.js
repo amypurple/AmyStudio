@@ -714,6 +714,13 @@ export function handleVramTextStatement({
           return { ok: false, handled: true, log: `copy to VRAM needs an explicit count for non-data or offset source ${sourceExpr}: ${rawLine}` };
         }
         const useDirectWriteVram = isDefinitelyByteSizedCount(resolvedCountToken);
+        const constantCount = tryEvaluateConstantExpression(resolvedCountToken);
+        if (constantCount === 0) return { ok: true, handled: true, lines: [] };
+        const countDoneLabel = constantCount === null ? makeGeneratedLabel("CopyVramCountZero") : null;
+        const guardedCount = countDoneLabel
+          ? ["    ld a,b", "    or c", `    jr z,${countDoneLabel}`]
+          : [];
+        const guardedDone = countDoneLabel ? [`${countDoneLabel}:`] : [];
         const targetIsDirectDeLoad = targetVram.length === 1 && /^\s*ld de,/.test(targetVram[0]);
         return {
           ok: true,
@@ -723,7 +730,9 @@ export function handleVramTextStatement({
                 ...sourceCode,
                 ...targetVram,
                 ...emitLoadCountIntoBC(resolvedCountToken),
-                `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
+                ...guardedCount,
+                `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`,
+                ...guardedDone
               ]
             : [
                 ...targetVram,
@@ -731,7 +740,9 @@ export function handleVramTextStatement({
                 ...sourceCode,
                 "    pop de",
                 ...emitLoadCountIntoBC(resolvedCountToken),
-                `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
+                ...guardedCount,
+                `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`,
+                ...guardedDone
               ])
         };
       }
@@ -1089,7 +1100,13 @@ export function handleVramTextStatement({
     if (!targetCode) return { ok: false, handled: true, log: `fill to VRAM requires a valid VRAM target: ${rawLine}` };
     if (!countCode) return { ok: false, handled: true, log: `fill to VRAM count must be a valid byte count: ${rawLine}` };
     if (!loadValue) return { ok: false, handled: true, log: `fill to VRAM value must be a byte value: ${rawLine}` };
-    return { ok: true, handled: true, lines: wrapVramUploadLines([...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"]) };
+    const constantCount = tryEvaluateConstantExpression(fillToVram[2].trim());
+    if (constantCount === 0) return { ok: true, handled: true, lines: [] };
+    const doneLabel = constantCount === null ? makeGeneratedLabel("FillVramCountZero") : null;
+    const guardedCall = doneLabel
+      ? [...targetCode, ...countCode, "    ld a,d", "    or e", `    jr z,${doneLabel}`, ...loadValue, "    call FILL_VRAM", `${doneLabel}:`]
+      : [...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"];
+    return { ok: true, handled: true, lines: wrapVramUploadLines(guardedCall) };
   }
 
   const findTileBox = line.match(new RegExp(`^find\\s+tile\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+under\\s+box\\s+(.+?)\\s*,\\s*(.+?)\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+into\\s+${qualifiedByteTarget}\\s*,\\s*${qualifiedByteTarget}$`, "i"));

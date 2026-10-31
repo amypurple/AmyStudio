@@ -501,6 +501,19 @@ export function createControlFlowHelpers(ctx) {
     const initialRightDeclared = resolveDeclaredValueType(rightToken);
     leftToken = coerceSimpleLiteralForFixedCompare(leftToken, initialRightDeclared);
     rightToken = coerceSimpleLiteralForFixedCompare(rightToken, initialLeftDeclared);
+    const leftDomainDeclared = initialLeftDeclared || inferLiteralDeclaredType(leftToken);
+    const rightDomainDeclared = initialRightDeclared || inferLiteralDeclaredType(rightToken);
+    const leftConstant = tryEvaluateConstantExpression(leftToken);
+    const rightConstant = tryEvaluateConstantExpression(rightToken);
+    const isUnsignedIntegerDeclared = (declared) => ["u8", "u16", "u32", "boolean", "bool", "byte"].includes(String(declared || "").toLowerCase());
+    const knownUnsignedVsNegative = rightConstant < 0 && isUnsignedIntegerDeclared(leftDomainDeclared)
+      ? ({ "==": false, "!=": true, ">": true, ">=": true, "<": false, "<=": false })[effectiveOperator]
+      : leftConstant < 0 && isUnsignedIntegerDeclared(rightDomainDeclared)
+        ? ({ "==": false, "!=": true, ">": false, ">=": false, "<": true, "<=": true })[effectiveOperator]
+        : undefined;
+    if (typeof knownUnsignedVsNegative === "boolean") {
+      return knownUnsignedVsNegative ? [`    jp ${asmLabel}`] : [];
+    }
     const constantResult = evaluateConstantComparison(leftToken, effectiveOperator, rightToken);
     if (constantResult !== null) {
       return constantResult ? [`    jp ${asmLabel}`] : [];
@@ -513,8 +526,8 @@ export function createControlFlowHelpers(ctx) {
     const rightU32Array = getU32Info(rightToken);
     const leftType32 = resolveValueType(leftToken);
     const rightType32 = resolveValueType(rightToken);
-    const leftDeclared = resolveDeclaredValueType(leftToken);
-    const rightDeclared = resolveDeclaredValueType(rightToken);
+    const leftDeclared = resolveDeclaredValueType(leftToken) || inferLiteralDeclaredType(leftToken);
+    const rightDeclared = resolveDeclaredValueType(rightToken) || inferLiteralDeclaredType(rightToken);
     const leftFp5 = leftDeclared === "fp5" || leftDeclared === "float";
     const rightFp5 = rightDeclared === "fp5" || rightDeclared === "float";
     const leftSigned = isSignedDeclaredType(leftDeclared);

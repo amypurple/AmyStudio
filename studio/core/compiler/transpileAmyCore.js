@@ -3267,6 +3267,17 @@ export function transpileAmyCore(sourceText, deps) {
     if (node.kind === "binary") {
       const leftType = resolveExpressionAstComputationType(node.left);
       const rightType = resolveExpressionAstComputationType(node.right);
+      const needsWideIntermediate = (node.op === "/" || node.op === ">>")
+        && node.left?.kind === "binary"
+        && ["+", "-", "*"].includes(node.left.op)
+        && declaredTypeBitWidth(preferredDeclaredType) <= 8;
+      if (needsWideIntermediate) {
+        const signed = isSignedDeclaredType(leftType?.declaredType)
+          || isSignedDeclaredType(rightType?.declaredType)
+          || isSignedDeclaredType(preferredDeclaredType);
+        const declaredType = declaredTypeForWidth(16, signed);
+        return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
+      }
       if (node.op === "<<" || node.op === ">>") {
         const declaredType = mergeDeclaredTypes(leftType?.declaredType, null, preferredDeclaredType, node.op);
         return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };

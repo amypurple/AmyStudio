@@ -252,49 +252,41 @@ export function handleVramPixelInputStatement({
     const pressLabel = makeGeneratedLabel("PausePress");
     const finalReleaseLabel = pauseUntilPress[1] ? makeGeneratedLabel("PauseFinalRelease") : null;
     const pad = pauseUntilPress[2] || null;
+    const emitActionRead = () => {
+      if (!nmiKnownOff || nativeEos) {
+        if (pad) return [`    ld a,(JOYPAD_${pad})`, "    and $F0"];
+        return ["    ld a,(JOYPAD_1)", "    and $F0", "    ld d,a", "    ld a,(JOYPAD_2)", "    and $F0", "    or d"];
+      }
+      const rawPairs = pad === "1"
+        ? ["$73EE", "$73F0"]
+        : pad === "2"
+          ? ["$73EF", "$73F1"]
+          : ["$73EE", "$73F0", "$73EF", "$73F1"];
+      const lines = ["    call UPDATE_CONTROLLERS", `    ld a,(${rawPairs[0]})`];
+      for (const address of rawPairs.slice(1)) lines.push("    ld d,a", `    ld a,(${address})`, "    or d");
+      lines.push("    and $40");
+      return lines;
+    };
     body.push(`${releaseLabel}:`);
-    body.push("    halt");
+    if (!nmiKnownOff || nativeEos) body.push("    halt");
+    body.push(...emitActionRead());
     if (pad) {
-      body.push(`    ld a,(JOYPAD_${pad})`);
-      body.push("    and $F0");
       body.push(`    jr nz,${releaseLabel}`);
       body.push(`${pressLabel}:`);
-      body.push("    halt");
-      body.push(`    ld a,(JOYPAD_${pad})`);
-      body.push("    and $F0");
+      if (!nmiKnownOff || nativeEos) body.push("    halt");
+      body.push(...emitActionRead());
       body.push(`    jr z,${pressLabel}`);
     } else {
-      body.push("    ld a,(JOYPAD_1)");
-      body.push("    and $F0");
-      body.push("    ld d,a");
-      body.push("    ld a,(JOYPAD_2)");
-      body.push("    and $F0");
-      body.push("    or d");
       body.push(`    jr nz,${releaseLabel}`);
       body.push(`${pressLabel}:`);
-      body.push("    halt");
-      body.push("    ld a,(JOYPAD_1)");
-      body.push("    and $F0");
-      body.push("    ld d,a");
-      body.push("    ld a,(JOYPAD_2)");
-      body.push("    and $F0");
-      body.push("    or d");
+      if (!nmiKnownOff || nativeEos) body.push("    halt");
+      body.push(...emitActionRead());
       body.push(`    jr z,${pressLabel}`);
     }
     if (finalReleaseLabel) {
       body.push(`${finalReleaseLabel}:`);
-      body.push("    halt");
-      if (pad) {
-        body.push(`    ld a,(JOYPAD_${pad})`);
-        body.push("    and $F0");
-      } else {
-        body.push("    ld a,(JOYPAD_1)");
-        body.push("    and $F0");
-        body.push("    ld d,a");
-        body.push("    ld a,(JOYPAD_2)");
-        body.push("    and $F0");
-        body.push("    or d");
-      }
+      if (!nmiKnownOff || nativeEos) body.push("    halt");
+      body.push(...emitActionRead());
       body.push(`    jr nz,${finalReleaseLabel}`);
     }
     return { handled: true, ok: true };

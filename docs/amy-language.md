@@ -1791,6 +1791,8 @@ Preferred current direction:
 - use expression-style `random(N)` when you want a bounded integer in an assignment or formula
 - `random(N)` returns `0..N-1`
 - `random(A, B)` returns an inclusive integer value in `A..B` for byte-style integer targets
+- equal bounds are valid and return that value directly (`random(3, 3)` is always `3`)
+- constant reversed bounds are rejected; the lower bound must not exceed the upper bound
 - zero-argument `random()` is valid only for `fp5` and `fixed32` targets; integer code must supply one or two arguments
 - integer random values use the Coleco BIOS random service, with an Amy zero-seed guard before calling it; the exact BIOS RAM address is a non-normative implementation detail
 - `Fp5Var = random(A, B)` returns an `fp5` value in `A..B` using `A + random() * (B-A)`
@@ -2160,6 +2162,10 @@ ByteVar = vdp.status
 The `vpeek` destination may be a byte variable, array element, record field,
 local-record field, or overlay-qualified byte field. Wider destinations are rejected.
 
+A `fill ... count N to vram.*` or RAM-to-VRAM `copy ... count N` with a runtime
+count of zero performs no transfer. This prevents the Coleco BIOS zero-count convention
+from turning an empty operation into a 65,536-byte transfer.
+
 In multicolor mode, `Target = pget X,Y` and `Target = pget multicolor X,Y`
 accept the same byte destinations, including indexed and overlay-qualified fields.
 
@@ -2412,7 +2418,8 @@ It centers on the 32-column ColecoVision text line and rejects literals longer
 than 32 characters. When the padding is odd, the extra column stays on the left
 so 31-character titles start at column 1 instead of the CRT-riskier column 0.
 Explicit-position `print` uses `X,Y`; centered `print` takes only `Y` because
-Amy computes `X`.
+Amy computes `X`. A constant-position literal that reaches the final NAME-table cell
+is clipped there; it never continues into the sprite attribute table.
 
 `put Source + Offset count N at X,Y` writes a runtime-selected slice of a ROM DATA block or byte array. Use fixed-width `data ... chars` rows plus an offset table for compact menus, status messages, and tilemap rows without one print routine per choice.
 
@@ -2809,7 +2816,8 @@ halt
 `pause until press` waits until all action buttons are released, then waits for a new
 action-button press. Both side buttons of a standard controller are accepted; all four
 Super Action Controller buttons are accepted. Without `on joypad N`, either controller
-can resume.
+can resume. When VDP NMI is explicitly disabled, the plain pause form polls the BIOS
+controller bytes directly instead of relying on the NMI-updated Amy controller shadows.
 Use it for menu pauses and "press to continue" screens. `pause until press and release`
 adds a final release wait, preventing the accepted button from becoming an immediate
 gameplay action. `wait fire` and `wait no fire` are lower-level action waits;
