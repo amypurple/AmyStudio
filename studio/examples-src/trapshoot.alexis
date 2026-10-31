@@ -1,0 +1,804 @@
+cartridge "TI TRAPSHOOT/C. REGENA, COMPUTE!/1983"
+
+' TI TRAPSHOOT
+' The game by C. Regena from COMPUTE!, March 1983 (pages 144-146, for the
+' TI-99/4A in Extended BASIC), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026.
+'
+' Source: the listing, transcribed in orig/trapshoot-ti.bas from the
+' scans beside it. The TI-99/4A's video chip is the ColecoVision's
+' (TMS9918A), so its screen is kept dot for dot: the same 32 x 24 cells,
+' the same sprites, magnified (MAGNIFY(4): 16 x 16 patterns drawn 32 x 32)
+' at the same places; DISPLAY AT's columns 1-28 are the screen's 2-29.
+'
+' The game: a clay pigeon springs from the trap. Aim the shotgun (seven
+' positions) and fire; the buckshot flies up along the barrel's line and a
+' hit is any dot of it touching a dot of the pigeon (CALL COINC(ALL,C)).
+' One shot a pigeon. 50 pigeons, then the score in percent.
+'
+' Controls (either joystick): left and right aim (the TI's S and D keys),
+' the button fires (ENTER) and starts (any key). TRY AGAIN? (Y/N) is a
+' choice: left YES, right NO, the button confirms; NO goes back to the
+' credits page (the listing's STOP). Keypad not used.
+'
+' How the TI ran it, kept here:
+' - CALL SPRITE's motion: a velocity is 1/16 of a dot a frame (the TI's
+'   interrupt adds it 60 times a second), positions keep the fraction.
+' - CALL SOUND with a positive duration waits for the sound before it to
+'   end: the shot's second-long noise holds the program at line 370 (a
+'   hit) or 230 (the next pigeon, already flying), as on the TI.
+' - CALL COINC(ALL) is the VDP's coincidence: every dot of the two magnified
+'   patterns is compared (Coinc, with the pigeon's and the buckshot's masks).
+' - Timing (Extended BASIC's pace, estimated): a pass of the key loop
+'   (240-300) is 3 frames, the stick read on its first; the three DISPLAY
+'   USING of line 210 take 6 frames; a pass of the COINC loop (330-340) is a
+'   frame, so the 19 passes leave the buckshot near the top, as the article
+'   says; a pass of line 360 is a frame; each CALL CHAR of the title (with
+'   its CALL COLOR(2,...)) 10 frames. Labels such as l230 are the
+'   listing's line numbers.
+'
+' Liberties taken:
+' - The seven shotgun patterns are drawn from the article's figure (the
+'   scan's hex for lines 540-600 is too faint); the other patterns are the
+'   listing's hex.
+' - The shot's noise -4 runs at tone 3's rate, never set in the listing;
+'   here the slowest fixed rate.
+' - The texts name the joystick and the button; line 720's PRESS ANY KEY
+'   (row 24) is on row 22, inside the overscan.
+' - Line 420's PRINT scrolls the screen up four rows: drawn here at once.
+' - A credits page with an original tune (Pull!) played once.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from 128;
+' the frame loop is protected from the NMI and every screen is drawn with
+' the NMI off after a wait.
+
+const TGrass = 128
+const TTrapL = 129
+const TTrapM = 130
+const TTrapR = 131
+const TStar = 132
+const SPigeon = 0
+const SShot = 4
+const SGun0 = 8
+const SGun1 = 12
+const SGun2 = 16
+const SGun3 = 20
+const SGun4 = 24
+const SGun5 = 28
+const SGun6 = 32
+const NTiles8 = 40
+const SprBytes = 288
+const SndSpring = 1
+const SndShot = 2
+const SndBreak = 3
+const SndQuiet = 4
+const SndTuneA = 5
+const SndTuneB = 6
+
+' --- the listing's variables ----------------------------------------------
+' N the shotgun's pattern (108-132 as 0-6 here: Ng), H hits, T birds, SH
+' rounds (shots), N2 the aim (-12..12)
+u8 Ng = 3
+u8 H = 0
+u8 T = 0
+u8 SH = 0
+u8 R = 0
+u8 I = 0
+' the sprites: #1 the pigeon, #2 the buckshot (positions in 16ths of a dot,
+' the SAT's y and x; velocities in 16ths of a dot a frame, two's
+' complement), #3 the shotgun
+u8 Bon = 0
+u8 Son = 0
+u8 Bpat = 0
+u16 By16 = 0
+u16 Bx16 = 0
+u16 Vby = 0
+u16 Vbx = 0
+u16 Sy16 = 0
+u16 Sx16 = 0
+u16 Vsy = 0
+u16 Vsx = 0
+u8 By = 0
+u8 Bx = 0
+u8 Sy = 0
+u8 Sx = 0
+' the hit test
+i16 Dx = 0
+i16 Dy = 0
+i16 Rs16 = 0
+u16 Ma = 0
+u16 Mb = 0
+u8 C = 0
+u8 Sh8 = 0
+' CALL SOUND's wait: frames left of the sound playing
+u8 SndBusy = 0
+' for the test bot: Ph 0 credits, 1 title, 2 instructions, 3 play, 4 the
+' buckshot flying (Ci its COINC pass), 5 waiting for the pigeon to leave,
+' 6 the score; Nk counts the key loop's stick reads, Hitf the last shot's
+' result (1 hit, 2 miss)
+u8 Ph = 0
+u8 Ci = 0
+u8 Nk = 0
+u8 Hitf = 0
+u8 Yes = 1
+
+u8 Dir = 0
+u8 Fr = 0
+u8 Any = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 K8 = 0
+u8 Tick = 0
+u16 W16 = 0
+u16 X16 = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 Rs = $3A71
+u16 Rt = 0
+u16 Rw = 0
+u16 Rv = 0
+
+  tile screen
+  sprites 16x16
+  sprites double
+  set sound table TrSoundTable areas 4
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  set sprite count 3
+  HideAll
+  screen on
+
+credits:
+  CreditsPage
+
+l460:
+  ' 460-660: the title in a frame of stars, the frame blinking as each
+  ' CALL CHAR's CALL COLOR(2,...) swaps its colours (dark red, white)
+  Ph = 1
+  NewScreen
+  for J8 = 5 to 25
+    put char TStar at J8,8
+    put char TStar at J8,12
+  next
+  for J8 = 9 to 11
+    put char TStar at 5,J8
+    put char TStar at 25,J8
+  next
+  print at 7,10, "T R A P S H O O T"
+  ShowScreen
+  for K8 = 1 to 14
+    W = K8 & 1
+    if W = 1 then
+      V = $6F
+    else
+      V = $F6
+    end if
+    StarCol(V)
+    Pause(10)
+  next
+
+l670:
+  ' 670-730: the instructions
+  Ph = 2
+  NewScreen
+  print at 2,2, "A CLAY PIGEON WILL SPRING"
+  print at 4,3, "FROM THE TRAP."
+  print at 2,7, "USE THE JOYSTICK TO AIM"
+  print at 3,8, "YOUR RIFLE LEFT OR RIGHT."
+  print at 2,12, "PRESS THE BUTTON TO SHOOT."
+  print at 2,16, "YOU WILL HAVE A CHANCE"
+  print at 3,17, "TO SHOOT 50 CLAY BIRDS."
+  print at 2,21, "PRESS THE BUTTON TO START."
+  ShowScreen
+  WaitLetGo
+l730:
+  Frame1
+  ReadStick
+  if Fr = 0 then goto l730
+
+l150:
+  ' 150-200: RANDOMIZE, a new game: the grass, the trap, the shotgun
+  Reseed
+  Ng = 3
+  H = 0
+  T = 0
+  SH = 0
+  Bon = 0
+  Son = 0
+  NewScreen
+  for J8 = 0 to 31
+    put char TGrass at J8,23
+  next
+  put char TTrapL at 13,14
+  for J8 = 14 to 16
+    put char TTrapM at J8,14
+  next
+  put char TTrapR at 17,14
+  for J8 = 13 to 17
+    put char TTrapM at J8,15
+    put char TTrapM at J8,16
+  next
+  print at 20,20, "HITS:"
+  print at 20,21, "BIRDS:"
+  print at 20,22, "ROUNDS:"
+  Ph = 3
+  ShowScreen
+
+l210:
+  ' 210: the counts, USING "###"
+  Num3(H, 20)
+  Num3(T, 21)
+  Num3(SH, 22)
+  Pass(6)
+  ' 220
+  if T = 50 then goto l410
+  ' 230: the next clay pigeon from the trap
+  inc T
+  ' RRV = -INT(RND*10+14)
+  RndK(10)
+  W16 = Rv + 14
+  Vby = 0 - W16
+  ' RCV = (-1)^INT(RND*4+1) * INT(RND*18)
+  RndK(4)
+  V = lowbyte Rv
+  RndK(18)
+  W16 = Rv
+  Vbx = W16
+  W = V & 1
+  if W = 0 then Vbx = 0 - W16
+  By16 = 111 * 16
+  Bx16 = 116 * 16
+  Bpat = SPigeon
+  Bon = 1
+  Hitf = 0
+  Ph = 3
+  CallSound(SndSpring, 9)
+
+l240:
+  ' 240-290: the key loop: the button fires, left and right aim
+  Frame1
+  ReadStick
+  inc Nk
+  if Fr = 1 then goto l310
+  if Dir = 1 then
+    if Ng > 0 then dec Ng
+  end if
+  if Dir = 2 then
+    if Ng < 6 then inc Ng
+  end if
+  Frame1
+  Frame1
+  ' 300: the pigeon still in the sky (rows 11-111)?
+  Bpos
+  if R > 10 then
+    if R < 112 then goto l240
+  end if
+  Bon = 0
+  goto l210
+
+l310:
+  ' 310-320: the shot: its noise, then the buckshot from the barrel's end
+  CallSound(SndShot, 60)
+  Frame1
+  W = Ng
+  V = ShotX[W]
+  Sx16 = V
+  Sx16 = Sx16 << 4
+  Sy16 = 153 * 16
+  Vsy = 0 - 100
+  W16 = ShotV[W]
+  Vsx = W16
+  if W < 3 then Vsx = 0 - W16
+  Son = 1
+  Ci = 0
+  Ph = 4
+  ' 330-340: CALL COINC(ALL,C) 19 times
+  for I = 1 to 19
+    Frame1
+    Ci = I
+    Coinc
+    if C = 1 then goto l370
+  next
+  ' 350-360: a miss: the buckshot gone, wait for the pigeon to leave
+  Son = 0
+  Hitf = 2
+  Ph = 5
+l360:
+  Frame1
+  Bpos
+  if R > 5 then
+    if R < 112 then goto l360
+  end if
+  Bon = 0
+  inc SH
+  goto l210
+
+l370:
+  ' 370-400: a hit: the pigeon breaks, the buckshot vanishes
+  Bpat = SShot
+  Son = 0
+  Hitf = 1
+  CallSound(SndBreak, 60)
+  inc SH
+  inc H
+  goto l210
+
+l410:
+  ' 410-420: the score (PRINT scrolls the screen four rows up)
+  CallSound(SndQuiet, 0)
+  Bon = 0
+  Son = 0
+  HideAll
+  Ph = 6
+  NewScreen
+  put char TTrapL at 13,10
+  for J8 = 14 to 16
+    put char TTrapM at J8,10
+  next
+  put char TTrapR at 17,10
+  for J8 = 13 to 17
+    put char TTrapM at J8,11
+    put char TTrapM at J8,12
+  next
+  print at 20,16, "HITS:"
+  print at 20,17, "BIRDS:"
+  print at 20,18, "ROUNDS:"
+  Num3(H, 16)
+  Num3(T, 17)
+  Num3(SH, 18)
+  ' INT(H/T*100+.5) = INT((200*H+T)/(2*T))
+  W16 = H
+  W16 = W16 * 200
+  W16 = W16 + T
+  X16 = T
+  X16 = X16 * 2
+  W16 = W16 / X16
+  print at 5,21, "SCORE ="
+  V = 12
+  if W16 > 99 then
+    put char 49 at 13,21
+    V = 14
+    W16 = W16 - 100
+  end if
+  W = lowbyte W16
+  K8 = W / 10
+  J8 = K8 * 10
+  J8 = W - J8
+  if V = 14 then
+    K8 = K8 + 48
+    put char K8 at 14,21
+    V = 15
+  else
+    if K8 > 0 then
+      K8 = K8 + 48
+      put char K8 at 13,21
+      V = 14
+    else
+      V = 13
+    end if
+  end if
+  J8 = J8 + 48
+  put char J8 at V,21
+  V = V + 2
+  print at V,21, "PERCENT"
+  print at 5,22, "TRY AGAIN?  YES  NO"
+  Yes = 1
+  Mark
+  ShowScreen
+  WaitLetGo
+l430:
+  Frame1
+  ReadStick
+  if Dir = 1 then
+    Yes = 1
+    Mark
+  end if
+  if Dir = 2 then
+    Yes = 0
+    Mark
+  end if
+  if Fr = 0 then goto l430
+  if Yes = 1 then goto l150
+  goto credits
+
+' Mark: the arrow on YES or NO
+sub Mark:
+  if Yes = 1 then
+    put char 62 at 16,22
+    put char 32 at 21,22
+  else
+    put char 32 at 16,22
+    put char 62 at 21,22
+  end if
+  return
+end sub
+
+' Bpos: R, CALL POSITION's row of the pigeon (its SAT y plus one)
+sub Bpos:
+  W16 = By16 >> 4
+  R = lowbyte W16
+  inc R
+  return
+end sub
+
+' Coinc: C 1 when a dot of the buckshot touches a dot of the pigeon (both
+' 8 x 8 patterns, each dot drawn 2 x 2)
+sub Coinc:
+  C = 0
+  if Bon = 0 then return
+  if Son = 0 then return
+  W16 = By16 >> 4
+  By = lowbyte W16
+  W16 = Bx16 >> 4
+  Bx = lowbyte W16
+  W16 = Sy16 >> 4
+  Sy = lowbyte W16
+  W16 = Sx16 >> 4
+  Sx = lowbyte W16
+  Dy = Sy
+  if Sy > 207 then Dy = Dy - 256
+  Rs16 = By
+  Dy = Dy - Rs16
+  Dx = Sx
+  Rs16 = Bx
+  Dx = Dx - Rs16
+  if Dx < -15 then return
+  if Dx > 15 then return
+  if Dy < -15 then return
+  if Dy > 15 then return
+  for K8 = 0 to 15
+    Rs16 = K8
+    Rs16 = Rs16 - Dy
+    if Rs16 >= 0 then
+      if Rs16 < 16 then
+        Ma = PigeonM[K8]
+        J8 = lowbyte Rs16
+        Mb = ShotM[J8]
+        if Dx > 0 then
+          Sh8 = lowbyte Dx
+          Mb = Mb >> Sh8
+        else
+          Rs16 = 0 - Dx
+          Sh8 = lowbyte Rs16
+          Mb = Mb << Sh8
+        end if
+        Ma = Ma & Mb
+        if Ma <> 0 then
+          C = 1
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Num3: DISPLAY AT(row,26):USING "###":Nv (columns 27-29)
+sub Num3(u8 Nv, u8 Nr):
+  print at 27,Nr, "   "
+  V = Nv / 10
+  W = V * 10
+  W = Nv - W
+  W = W + 48
+  put char W at 29,Nr
+  if Nv > 9 then
+    W = V / 10
+    K8 = W * 10
+    K8 = V - K8
+    K8 = K8 + 48
+    put char K8 at 28,Nr
+    if Nv > 99 then
+      W = W + 48
+      put char W at 27,Nr
+    end if
+  end if
+  return
+end sub
+
+' CallSound: CALL SOUND with a positive duration: wait for the sound playing
+' to end (the sprites move on), then start this one for Sd frames
+sub CallSound(u8 Sn, u8 Sd):
+snd_wait:
+  if SndBusy > 0 then
+    Frame1
+    goto snd_wait
+  end if
+  if Sn = SndSpring then play sound SndSpring
+  if Sn = SndShot then play sound SndShot
+  if Sn = SndBreak then play sound SndBreak
+  if Sn = SndQuiet then play sound SndQuiet
+  SndBusy = Sd
+  return
+end sub
+
+' StarCol: the frame's colours (CALL COLOR(2,...): fore and back nybbles)
+sub StarCol(u8 Sc):
+  W16 = TStar - 128
+  W16 = W16 << 3
+  for J8 = 0 to 7
+    vpoke vram.color + 1024 + W16, Sc
+    inc W16
+  next
+  return
+end sub
+
+sub Pass(u8 Pn):
+  for K8 = 1 to Pn
+    Frame1
+  next
+  return
+end sub
+
+sub Pause(u8 Wn):
+  for J8 = 1 to Wn
+    Frame1
+  next
+  return
+end sub
+
+' ReadStick: Dir 1 left, 2 right, 0 neither; Fr the button
+sub ReadStick:
+  Dir = 0
+  Any = 0
+  V = joypad(1).left | joypad(2).left
+  if V = 1 then
+    Dir = 1
+    inc Any
+  end if
+  V = joypad(1).right | joypad(2).right
+  if V = 1 then
+    Dir = 2
+    inc Any
+  end if
+  V = joypad(1).up | joypad(2).up
+  Any = Any | V
+  V = joypad(1).down | joypad(2).down
+  Any = Any | V
+  Fr = joypad(1).fire | joypad(2).fire
+  return
+end sub
+
+sub WaitLetGo:
+wl_loop:
+  Frame1
+  ReadStick
+  Any = Any | Fr
+  if Any > 0 then goto wl_loop
+  return
+end sub
+
+' Frame1: one frame: the sprites move (CALL SPRITE's velocities) and show
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  if SndBusy > 0 then dec SndBusy
+  if Bon = 1 then
+    By16 = By16 + Vby
+    By16 = By16 & 4095
+    Bx16 = Bx16 + Vbx
+    Bx16 = Bx16 & 4095
+    W16 = By16 >> 4
+    By = lowbyte W16
+    W16 = Bx16 >> 4
+    Bx = lowbyte W16
+    set sprite 0 to By,Bx,Bpat,6
+  else
+    hide sprite 0
+  end if
+  if Son = 1 then
+    Sy16 = Sy16 + Vsy
+    Sy16 = Sy16 & 4095
+    Sx16 = Sx16 + Vsx
+    Sx16 = Sx16 & 4095
+    W16 = Sy16 >> 4
+    Sy = lowbyte W16
+    W16 = Sx16 >> 4
+    Sx = lowbyte W16
+    set sprite 1 to Sy,Sx,SShot,1
+  else
+    hide sprite 1
+  end if
+  if Ph >= 3 then
+    if Ph <= 5 then
+      V = Ng << 2
+      V = V + SGun0
+      set sprite 2 to 159,107,V,4
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+sub HideAll:
+  hide sprite 0
+  hide sprite 1
+  hide sprite 2
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  Bon = 0
+  Son = 0
+  HideAll
+  NewScreen
+  print at 9,2, "TI TRAPSHOOT"
+  print at 2,4, "BY C. REGENA, FROM COMPUTE!,"
+  print at 2,5, "MARCH 1983 (TI-99/4A,"
+  print at 2,6, "EXTENDED BASIC). FIFTY CLAY"
+  print at 2,7, "PIGEONS AT THE TRAP-SHOOTING"
+  print at 2,8, "RANGE."
+  print at 2,11, "FOR THE COLECOVISION BY"
+  print at 2,12, "CLAUDE (AN AI MADE BY"
+  print at 2,13, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "2026, IN AMY, THE LANGUAGE"
+  print at 2,15, "BY AMY BIENVENU."
+  print at 2,17, "MUSIC: PULL! (ORIGINAL)."
+  print at 8,21, "PRESS THE BUTTON"
+  ShowScreen
+  play song TrSong once
+  WaitLetGo
+cp_wait:
+  Frame1
+  ReadStick
+  if Fr = 0 then goto cp_wait
+  Reseed
+  return
+end sub
+
+' Reseed: RANDOMIZE, from the frames counted so far
+sub Reseed:
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $3A71
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  backdrop cyan
+  fill mode 2 text color with $10
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' RndK: Rv = INT(RND * Kn)
+sub RndK(u8 Kn):
+  Rnd16
+  Uq = Rw
+  Uq2 = Kn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+' the buckshot's start (line 320): column 116+N2*1.2 (rounded; the SAT's x
+' one less) and its column velocity (N2/4+2*SGN(N2))*12.7, rounded (the
+' sign from Ng: 0-2 left), for Ng 0-6 (N2 -12..12)
+data ShotX bytes 101, 105, 110, 115, 120, 125, 129
+data ShotV words 64, 51, 38, 0, 38, 51, 64
+
+data TilePat bytes
+  $82,$A6,$B7,$F7,$FF,$FF,$FF,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $00,$28,$10,$7C,$10,$28,$00,$00
+end data
+data TileCol bytes
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $6F,$6F,$6F,$6F,$6F,$6F,$6F,$6F
+end data
+data SpritePat bytes
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $DC,$DD,$59,$02,$44,$D2,$9B,$19,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$0C,$0C,$06,$06,$03,$03,$01,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$C0,$60,$60,$30,$18
+  $0C,$0C,$0C,$06,$06,$03,$03,$03,$01,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$C0,$C0,$60,$60,$30
+  $06,$06,$06,$06,$03,$03,$03,$03,$01,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$C0,$C0,$C0,$60
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$01,$01,$01,$01,$03,$03,$03,$03,$06,$06,$06,$06
+  $60,$C0,$C0,$C0,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$03,$03,$03,$06,$06,$0C,$0C,$0C
+  $30,$60,$60,$C0,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$03,$03,$06,$06,$0C,$0C,$18,$18
+  $18,$30,$60,$60,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data PigeonM words $0FF0,$0FF0,$3FFC,$3FFC,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$3FFC,$3FFC,$0FF0,$0FF0
+data ShotM words $F3F0,$F3F0,$F3F3,$F3F3,$33C3,$33C3,$000C,$000C,$3030,$3030,$F30C,$F30C,$C3CF,$C3CF,$03C3,$03C3
+
+asm {
+TrSpring:
+    db $00,$00,$04,$09,$10
+TrShot:
+    db $00,$00,$02,$3C,$10
+TrBreak:
+    db $00,$00,$05,$3C,$10
+TrQuiet:
+    db $00,$00,$F5,$01,$10
+
+TrSoundTable:
+    dw TrSpring,$702B
+    dw TrShot,$702B
+    dw TrBreak,$702B
+    dw TrQuiet,$702B
+    dw TrTuneMel,$703F
+    dw TrTuneBass,$7049
+; Pull!, G major (original for this game)
+; Tiny Sound, 7 frames per step
+TrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1A,$01,$01,$21,$01,$01,$26,$01,$01,$01,$01,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$23,$01,$01,$26,$01,$01,$01,$23,$01
+    db $21,$01,$01,$01,$1E,$01,$01,$21,$01,$01,$26,$01,$01,$01,$2A,$01
+    db $28,$01,$26,$01,$25,$01,$21,$01,$23,$01,$25,$01,$26,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0E,$01,$01,$01,$09,$01,$01,$01,$0E,$01,$01,$01
+    db $09,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$07,$01,$01,$01
+    db $06,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01,$0B,$01,$01,$01
+    db $06,$01,$01,$01,$09,$01,$01,$01,$09,$01,$07,$01,$06,$01,$01,$01
+    db $0E,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+TrSong:
+    dw $0001
+    db $40+5,6
+    dw $0000
+}

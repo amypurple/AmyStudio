@@ -6648,5 +6648,180 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "copycat",
+    "label": "Copy Cat (February 1983)",
+    "detail": "Mark and Dan Powell's COMPUTE! memory game, preserving its growing four-box colour-and-note sequence, timeout hints and three-miss limit.",
+    "projectName": "Copy Cat",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "memory",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "races",
+    "label": "A Day at the Races (February 1983)",
+    "detail": "Robert B. Ferree's COMPUTE! horse-racing game, preserving its named horses, track conditions, hidden odds, betting and five-race competition.",
+    "projectName": "A Day at the Races",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "racing",
+      "simulation",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "slalom",
+    "label": "Slalom (February 1983)",
+    "detail": "George Leotti's COMPUTE! skiing game, preserving its fixed Pine Mountain course, pseudo-3D flags, selectable length and speed, penalties and best time.",
+    "projectName": "Slalom",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "sports",
+      "skiing",
+      "pet",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "mastermaze",
+    "label": "Mastermaze (February 1983)",
+    "detail": "Kenneth S. Szajda's COMPUTE! multilevel maze, preserving its stacked floors, one-use tunnels, visible or invisible walls and timed escape.",
+    "projectName": "Mastermaze",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "maze",
+      "atari",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "boggler",
+    "label": "Boggler (March 1983)",
+    "detail": "Gary Braun's COMPUTE! two-player strategy game, preserving pair captures, five-in-a-row victories and the original 17-by-17 board.",
+    "projectName": "Boggler",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "strategy",
+      "board-game",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "closeout",
+    "label": "Closeout (March 1983)",
+    "detail": "L. L. Beh's COMPUTE! department-store chase, preserving its sale-item rounds, homing shoppers, stairs and limited defensive shoves.",
+    "projectName": "Closeout",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "maze",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "fighteraces",
+    "label": "Fighter Aces (March 1983)",
+    "detail": "John Parr's COMPUTE! two-player biplane game, preserving eight-way flight, limited-range shots, hazards and first-to-fifteen scoring.",
+    "projectName": "Fighter Aces",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "flying",
+      "vic-20",
+      "two-player",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "trapshoot",
+    "label": "TI Trapshoot (March 1983)",
+    "detail": "C. Regena's COMPUTE! TI-99/4A trapshooting game, preserving its seven-position shotgun, moving clay pigeon, dot collision and fifty-shot score.",
+    "projectName": "TI Trapshoot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "shooting",
+      "ti-99-4a",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

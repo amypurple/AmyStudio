@@ -1,0 +1,1044 @@
+cartridge "A DAY AT THE RACES/ROBERT B. FERREE, COMPUTE!/1983"
+
+' A DAY AT THE RACES
+' The game by Robert B. Ferree from COMPUTE!, February 1983 (pages 44-48),
+' for the ColecoVision in Amy by Amy Bienvenu. Ported by Claude (an AI
+' made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: Programs 1 and 2, the VIC-20 version (transcribed in
+' orig/races-vic.bas from the scans beside it): Program 1 sets up the
+' horse characters and shows a horse galloping across, Program 2 is the
+' game. The Atari version ("Horse Race", Program 3) was only read.
+'
+' The game: one to six players, $500 each, four horses named by the
+' players, five races. Each race the track is dry, turf or muddy; each
+' horse has its own odds for the dry track and for the turf (given once,
+' at the start: remember how they ran). Bet on a horse; a winning bet pays
+' three to one, a losing bet is lost. The horses run when the bugle has
+' played: each pass, each horse moves a pixel unless RND(1) plus its odds
+' is over .9 (the higher the odds, the slower), and the first past the
+' line (169 moves) wins.
+'
+' Controls (either joystick): the stick chooses (players, letters, bets,
+' horses), the button confirms. Keypad not used.
+'
+' The VIC-20's screen (22 columns, 23 rows) is kept at columns 5-26 and
+' rows 1-23: the four tracks are VIC rows 8, 11, 14 and 17 (S1-S4), the
+' horses the listing's characters 33-48 drawn as tiles (art.py). Labels
+' such as l410 are the listing's line numbers.
+'
+' Kept as the listing has them: RND(1)/12 odds, given twice to the dry
+' track (line 120 repeats line 110: the muddy track's U1-U4 are never
+' given values, so on a muddy track every horse runs at even odds); a
+' horse that wins is found in order 1-4 after all four moved; the bets
+' compared by name (two horses with the same name both win for a bet on
+' that name); a player with no money bets nothing but keeps his last
+' horse; the bugle call (DATA 750-780) before every race; the clicks of
+' horses 1 and 3; the rising sweeps for the winner; BASIC's spaces around
+' numbers ("RACE # 1", "AMY 500", "LOSES $ 50").
+' Liberties taken:
+' - INPUT is the stick: the number of players, names of up to eight
+'   letters spelled with the stick, a bet raised and lowered by $10 (up,
+'   down) or $100 (right, left), the horse chosen from the list. A bet
+'   can never be more than the player has, so "CAN'T BET THAT MUCH!" is
+'   never needed; it also stops where a win would take a wallet past
+'   $65535 (Amy's u16).
+' - RND is a 16-bit xorshift read a byte at a time (odds 0-21 in 256ths,
+'   the .9 test as 230), seeded by the time spent on the title.
+' - Colours: the VIC's light yellow (dry) and light green (turf) screens;
+'   light purple (muddy) is grey here, the purple horse is magenta, the
+'   green one dark green. The finish (character columns 21-22) stays on
+'   its row instead of spilling onto the next.
+' - Timing: a pass of the four horses is 4 frames; the waits (FOR X=1 TO
+'   5500 between races) are in frames, and the button shortens them.
+' - Program 1's "PRESS PLAY AND WAIT" (loading Program 2) reads "PRESS THE
+'   BUTTON"; the ending is on a screen of its own, then the button starts
+'   again. A credits page and an original title tune ("Downs Day").
+'
+' House rules kept: text in columns 2-29; no sprites; tiles from 128;
+' every screen is drawn with the NMI off after a wait.
+
+const THorse = 128
+const NTiles8 = 640
+const SndHoof1 = 1
+const SndHoof3 = 2
+const SndPost = 3
+const SndWin = 4
+const SndTick = 5
+const SndOk = 6
+const SndTuneA = 7
+const SndTuneB = 8
+const PostLen = 224
+const WinLen = 50
+
+' --- the listing's variables ----------------------------------------------
+' PL players, Wl the money (W), Bt the bets (B), Pk the horse bet on (B$,
+' 0-3), Nam the names: players 0-5 then horses 6-9 (N$, A$), 8 letters
+' each (0 space, 1-26 A-Z)
+u8 PL = 1
+u16 Wl[6]
+u16 Bt[6]
+u8 Pk[6]
+u8 Nam[80]
+' Dd Tt the odds for dry and turf (D1-D4, T1-T4), Oo the race's (O1-O4);
+' Hh the moves (H1-H4), Cc the cell (C1-C4), Zz the character (Z1-Z4)
+u8 Dd[4]
+u8 Tt[4]
+u8 Oo[4]
+u8 Hh[4]
+u8 Cc[4]
+u8 Zz[4]
+' Rr the race (R), Tr the track (0 dry, 1 turf, 2 muddy), TrR its roll,
+' Wn the winner (0-3), Np the passes of this race
+u8 Rr = 0
+u8 Tr = 0
+u8 TrR = 0
+u8 Wn = 0
+u16 Np = 0
+' for the test bot: Ph the phase (1 credits, 2 title, 3 players, 4 names,
+' 5 horses, 6 bets, 7 race, 8 results, 9 the end), Qq the player betting,
+' Bk the bet being chosen, Rs0 the seed when the odds were given
+u8 Ph = 0
+u8 Qq = 0
+u16 Bk = 0
+u16 Rs0 = 0
+
+u16 Rseed = $5A3C
+u16 Rtmp = 0
+u8 Rv = 0
+u16 NumW = 0
+u16 V16 = 0
+u16 W16 = 0
+u16 Lim = 0
+u8 Dg[6]
+u8 Nd = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Ni = 0
+u8 Hj = 0
+u8 Qj = 0
+u8 Lj = 0
+u8 Kj = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Fire1 = 0
+u8 WasF1 = 0
+u8 WasDir = 0
+u8 HeldN = 0
+u8 Kp = 0
+u8 Hp = 0
+
+' the font's # and $ (codes 35, 36): the BIOS font may lack them
+data FontFix bytes 0,40,40,124,40,124,40,40,0,16,60,80,56,20,120,16
+
+data DefNames bytes 15,14,5,0,0,0,0,0, 20,23,15,0,0,0,0,0, 20,8,18,5,5,0,0,0, 6,15,21,18,0,0,0,0, 6,9,22,5,0,0,0,0, 19,9,24,0,0,0,0,0, 19,1,13,0,0,0,0,0, 10,1,3,11,0,0,0,0, 19,1,24,15,14,0,0,0, 4,1,14,0,0,0,0,0
+
+  tile screen
+  set sound table DrSoundTable areas 4
+  copy FontFix count 16 to vram.pattern + 280
+  copy FontFix count 16 to vram.pattern + 2328
+  copy FontFix count 16 to vram.pattern + 4376
+  nmi off
+  screen on
+  CreditsPage
+
+new_game:
+  TitlePage
+  ' 100-130: the odds (line 120 gives D1-D4 again)
+  Rs0 = Rseed
+  for Hj = 0 to 3
+    Rnd8
+    Dd[Hj] = Rv / 12
+  next
+  for Hj = 0 to 3
+    Rnd8
+    Dd[Hj] = Rv / 12
+  next
+  for Hj = 0 to 3
+    Rnd8
+    Tt[Hj] = Rv / 12
+  next
+  ' 150-190: players and horses
+  Players
+  for Qj = 0 to 5
+    Wl[Qj] = 500
+    Bt[Qj] = 0
+    Pk[Qj] = 0
+  next
+  for Lj = 0 to 79
+    Nam[Lj] = DefNames[Lj]
+  next
+  Names
+  Horses
+  Rr = 0
+
+' 200-250: the track
+l200:
+  Rnd8
+  TrR = Rv
+  for Hj = 0 to 3
+    Oo[Hj] = 0
+  next
+  if TrR < 77 then
+    Tr = 0
+    for Hj = 0 to 3
+      Oo[Hj] = Dd[Hj]
+    next
+  elseif TrR < 154 then
+    Tr = 1
+    for Hj = 0 to 3
+      Oo[Hj] = Tt[Hj]
+    next
+  else
+    Tr = 2
+  end if
+  inc Rr
+  ' 260-298: the race's page, the bets
+  BetPage
+  ' 300-390: all bets are down, the tracks, the bugle
+  TrackScreen
+  print at 5,3, " ALL BETS ARE DOWN!!!"
+  ShowScreen
+  Np = 0
+  Ph = 7
+  play sound SndPost
+  Hold(PostLen)
+  for Hj = 0 to 3
+    Hh[Hj] = 0
+    Cc[Hj] = 0
+    Zz[Hj] = 33
+  next
+' 400-580: the horses run
+l400:
+  Hold(4)
+  inc Np
+  for Hj = 0 to 3
+    Rnd8
+    V16 = Rv
+    V16 = V16 + Oo[Hj]
+    if V16 <= 230 then MoveHorse
+  next
+  for Hj = 0 to 3
+    if Hh[Hj] > 168 then
+      Wn = Hj
+      goto l590
+    end if
+  next
+  goto l400
+
+' 590-650: the winner, the payouts
+l590:
+  play sound SndWin
+  Hold(WinLen)
+  TrackScreen
+  Tx = 5
+  Ty = 1
+  Ni = Wn + 6
+  PutName
+  print at Tx,Ty, " WINS"
+  for Qj = 0 to PL - 1
+    Ty = Qj * 2
+    Ty = Ty + 3
+    Tx = 5
+    Ni = Qj
+    PutName
+    SameName
+    if K = 1 then
+      ' 620: three to one
+      V16 = Bt[Qj] * 3
+      W16 = Wl[Qj] + V16
+      Wl[Qj] = W16
+      print at Tx,Ty, " WINS $"
+      Tx = Tx + 7
+      NumW = V16
+      PutNum
+    else
+      ' 630: the bet lost
+      W16 = Wl[Qj] - Bt[Qj]
+      Wl[Qj] = W16
+      print at Tx,Ty, " LOSES $"
+      Tx = Tx + 8
+      NumW = Bt[Qj]
+      PutNum
+    end if
+  next
+  ShowScreen
+  Ph = 8
+  ' 680-700: five races, a wait between them
+  if Rr = 5 then goto l710
+  Wait2(330)
+  goto l200
+
+' 710-730: the ending
+l710:
+  Wait2(150)
+  TrackScreen
+  print at 8,5, "HAVE A GOOD DAY!"
+  for Qj = 0 to PL - 1
+    Ty = Qj + 8
+    Tx = 5
+    Ni = Qj
+    PutName
+    print at Tx,Ty, "$"
+    inc Tx
+    NumW = Wl[Qj]
+    PutNum
+  next
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Ph = 9
+  WaitPress
+  goto new_game
+
+' MoveHorse: 420-520 for horse Hj
+sub MoveHorse:
+  Tx = Cc[Hj] + 5
+  Ty = Hj * 3
+  Ty = Ty + 9
+  V = Tx - 1
+  put char 32 at V,Ty
+  dec V
+  put char 32 at V,Ty
+  N = Hj * 16
+  N = N + Zz[Hj]
+  N = N + 95
+  put char N at Tx,Ty
+  inc N
+  inc Tx
+  put char N at Tx,Ty
+  V = Zz[Hj] + 2
+  Zz[Hj] = V
+  V = Hh[Hj] + 1
+  Hh[Hj] = V
+  if Hj = 0 then play sound SndHoof1
+  if Hj = 2 then play sound SndHoof3
+  if Zz[Hj] = 49 then
+    V = Cc[Hj] + 1
+    Cc[Hj] = V
+    Zz[Hj] = 33
+  end if
+  return
+end sub
+
+' SameName: K 1 when player Qj's horse has the winner's name (620)
+sub SameName:
+  K = 1
+  V = Pk[Qj] + 6
+  V = V * 8
+  W = Wn + 6
+  W = W * 8
+  for Kj = 0 to 7
+    if Nam[V] <> Nam[W] then K = 0
+    inc V
+    inc W
+  next
+  return
+end sub
+
+' BetPage: 260-298, the race, the track, the horses, the players, the bets
+sub BetPage:
+  TrackScreen
+  print at 5,2, "RACE #"
+  Tx = 11
+  Ty = 2
+  NumW = Rr
+  PutNum
+  print at 5,3, "THE TRACK IS "
+  if Tr = 0 then print at 18,3, "DRY"
+  if Tr = 1 then print at 18,3, "TURF"
+  if Tr = 2 then print at 18,3, "MUDDY"
+  for Hj = 0 to 3
+    Tx = 10
+    Ty = Hj + 4
+    Ni = Hj + 6
+    PutName
+  next
+  for Qj = 0 to PL - 1
+    Tx = 5
+    Ty = Qj + 8
+    Ni = Qj
+    PutName
+    NumW = Wl[Qj]
+    PutNum
+  next
+  ShowScreen
+  for Qj = 0 to PL - 1
+    if Wl[Qj] = 0 then
+      Bt[Qj] = 0
+    else
+      Bet
+    end if
+  next
+  Qq = 255
+  return
+end sub
+
+' Bet: 292-296 for player Qj, with the stick
+sub Bet:
+  Ph = 6
+  Qq = Qj
+  Ty = PL + 9
+  W = Ty + 1
+  Rearm
+  wait
+  nmi off
+  fill 32 count 28 at 2,Ty
+  fill 32 count 28 at 2,W
+  Tx = 5
+  Ni = Qj
+  PutName
+  print at Tx,Ty, " BETS? "
+  Tx = Tx + 7
+  Kj = Tx
+  print at 2,20, "UP/DOWN $10, RIGHT/LEFT $100"
+  print at 2,21, "THE BUTTON: DONE           "
+  ' the most: the money, and no win past 65535
+  Lim = 65535 - Wl[Qj]
+  Lim = Lim / 3
+  if Lim > Wl[Qj] then Lim = Wl[Qj]
+  Bk = 0
+  WasF1 = 1
+bet_loop:
+  Tx = Kj
+  NumW = Bk
+  PutNum
+  V = 30 - Tx
+  fill 32 count V at Tx,Ty
+  Frame1
+  ReadPad
+  if Up1 = 1 then
+    Bk = Bk + 10
+    play sound SndTick
+  end if
+  if Rt1 = 1 then
+    Bk = Bk + 100
+    play sound SndTick
+  end if
+  if Dn1 = 1 then
+    if Bk > 10 then
+      Bk = Bk - 10
+    else
+      Bk = 0
+    end if
+    play sound SndTick
+  end if
+  if Lf1 = 1 then
+    if Bk > 100 then
+      Bk = Bk - 100
+    else
+      Bk = 0
+    end if
+    play sound SndTick
+  end if
+  if Bk > Lim then Bk = Lim
+  if Fire1 = 0 then goto bet_loop
+  play sound SndOk
+  Bt[Qj] = Bk
+  ' 296: on which horse
+  Ty = PL + 10
+  print at 5,Ty, "  ON? "
+  print at 2,20, "UP/DOWN: THE HORSE          "
+  Hp = Pk[Qj]
+on_loop:
+  for Hj = 0 to 3
+    V = Hj + 4
+    W = 32
+    if Hj = Hp then W = 62
+    put char W at 8,V
+  next
+  fill 32 count 9 at 11,Ty
+  Tx = 11
+  Ni = Hp + 6
+  PutName
+  Frame1
+  ReadPad
+  if Dn1 = 1 then
+    inc Hp
+    if Hp > 3 then Hp = 0
+    play sound SndTick
+  end if
+  if Up1 = 1 then
+    if Hp = 0 then Hp = 4
+    dec Hp
+    play sound SndTick
+  end if
+  if Fire1 = 0 then goto on_loop
+  play sound SndOk
+  Pk[Qj] = Hp
+  V = Hp + 4
+  put char 32 at 8,V
+  return
+end sub
+
+' TrackScreen: a clear screen in the track's colours (220-240, black
+' text); the horses' patterns in every third
+sub TrackScreen:
+  NewScreen
+  fill mode 2 text color with $10
+  if Tr = 0 then backdrop light yellow
+  if Tr = 1 then backdrop light green
+  if Tr = 2 then backdrop gray
+  return
+end sub
+
+' Players: 150-160, how many (1-6)
+sub Players:
+  Ph = 3
+  NewScreen
+  print at 5,3, "HOW MANY PLAYERS? "
+  print at 2,20, "UP/DOWN: HOW MANY"
+  print at 2,21, "THE BUTTON: DONE"
+  ShowScreen
+  WasF1 = 1
+pl_loop:
+  print at 23,3, digits$(PL, 1)
+  Frame1
+  ReadPad
+  if Up1 = 1 then
+    if PL < 6 then inc PL
+    play sound SndTick
+  end if
+  if Dn1 = 1 then
+    if PL > 1 then dec PL
+    play sound SndTick
+  end if
+  if Fire1 = 0 then goto pl_loop
+  play sound SndOk
+  return
+end sub
+
+' Names: 170-180, the players' names
+sub Names:
+  Ph = 4
+  NewScreen
+  for Qj = 0 to PL - 1
+    Ty = Qj * 2
+    Ty = Ty + 3
+    print at 5,Ty, "NAME OF PLAYER? "
+  next
+  NameHelp
+  ShowScreen
+  for Qj = 0 to PL - 1
+    Ty = Qj * 2
+    Ty = Ty + 3
+    Ni = Qj
+    Spell
+  next
+  return
+end sub
+
+' Horses: 190, the four horses' names
+sub Horses:
+  Ph = 5
+  NewScreen
+  print at 5,2, "NAME THE FOUR HORSES:"
+  for Qj = 0 to 3
+    Ty = Qj * 2
+    Ty = Ty + 4
+    print at 5,Ty, "? "
+  next
+  NameHelp
+  ShowScreen
+  for Qj = 0 to 3
+    Ty = Qj * 2
+    Ty = Ty + 4
+    Ni = Qj + 6
+    Spell
+  next
+  return
+end sub
+
+sub NameHelp:
+  print at 2,19, "UP/DOWN: A LETTER"
+  print at 2,20, "RIGHT/LEFT: THE PLACE"
+  print at 2,21, "THE BUTTON: DONE"
+  return
+end sub
+
+' Spell: name Ni at row Ty (column 21 for players, 7 for horses), eight
+' letters with the stick
+sub Spell:
+  Tx = 21
+  if Ni > 5 then Tx = 7
+  K = 0
+  WasF1 = 1
+sp_loop:
+  V = Ni * 8
+  W = Ty + 1
+  for Lj = 0 to 7
+    N = Nam[V]
+    if N > 0 then
+      N = N + 64
+    else
+      N = 32
+    end if
+    J = Tx + Lj
+    put char N at J,Ty
+    N = 32
+    if Lj = K then N = 45
+    put char N at J,W
+    inc V
+  next
+  Frame1
+  ReadPad
+  V = Ni * 8
+  V = V + K
+  if Up1 = 1 then
+    N = Nam[V] + 1
+    if N > 26 then N = 0
+    Nam[V] = N
+    play sound SndTick
+  end if
+  if Dn1 = 1 then
+    N = Nam[V]
+    if N = 0 then N = 27
+    dec N
+    Nam[V] = N
+    play sound SndTick
+  end if
+  if Rt1 = 1 then
+    if K < 7 then inc K
+  end if
+  if Lf1 = 1 then
+    if K > 0 then dec K
+  end if
+  if Fire1 = 0 then goto sp_loop
+  play sound SndOk
+  W = Ty + 1
+  fill 32 count 8 at Tx,W
+  return
+end sub
+
+' PutName: name Ni at Tx,Ty without its trailing spaces; Tx moves on
+sub PutName:
+  V = Ni * 8
+  W = 0
+  for Lj = 0 to 7
+    if Nam[V] > 0 then W = Lj + 1
+    inc V
+  next
+  if W = 0 then return
+  V = Ni * 8
+  for Lj = 1 to W
+    N = Nam[V]
+    if N > 0 then
+      N = N + 64
+    else
+      N = 32
+    end if
+    put char N at Tx,Ty
+    inc Tx
+    inc V
+  next
+  return
+end sub
+
+' PutNum: NumW as BASIC prints it, a space first (the sign); Tx moves on
+sub PutNum:
+  put char 32 at Tx,Ty
+  inc Tx
+  Nd = 0
+  V16 = NumW
+pn_div:
+  W16 = V16 / 10
+  NumW = W16 * 10
+  NumW = V16 - NumW
+  Dg[Nd] = NumW
+  inc Nd
+  V16 = W16
+  if V16 > 0 then goto pn_div
+pn_put:
+  dec Nd
+  N = Dg[Nd] + 48
+  put char N at Tx,Ty
+  inc Tx
+  if Nd > 0 then goto pn_put
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Credits, title (Program 1)
+
+sub CreditsPage:
+  Ph = 1
+  NewScreen
+  backdrop black
+  print at 7,2, "A DAY AT THE RACES"
+  for Lj = 0 to 7
+    J = Lj * 3
+    J = J + 4
+    N = Lj * 2
+    N = N + 64
+    N = N + 128
+    put char N at J,4
+    inc J
+    inc N
+    put char N at J,4
+  next
+  print at 4,7, "BY ROBERT B. FERREE, FROM"
+  print at 4,8, "COMPUTE! FEBRUARY 1983"
+  print at 4,9, "(VIC-20 VERSION)"
+  print at 2,12, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,13, "BY ANTHROPIC), AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU."
+  print at 2,16, "MUSIC: DOWNS DAY (ORIGINAL),"
+  print at 2,17, "THE BUGLE CALL IS THE"
+  print at 2,18, "LISTING'S."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+' TitlePage: Program 1 (10-30 the welcome, 220-290 a horse galloping
+' across VIC row 8, 300-320 the rules), then the button
+sub TitlePage:
+  Ph = 2
+  NewScreen
+  backdrop black
+  print at 6,5, "WELCOME TO VIC DOWNS"
+  ShowScreen
+  play song DrSong once
+  WasF1 = 1
+  for Lj = 1 to 150
+    Frame1
+    Rnd8
+    ReadPad
+    if Fire1 = 1 then goto tp_rules
+  next
+  Rearm
+  wait
+  nmi off
+  fill 32 count 768 to vram.name
+  ' 240-290: S 7856 (row 8), C the cell, Z the character, H the moves
+  Cc[0] = 0
+  Zz[0] = 33
+  for V16 = 1 to 169
+    Frame1
+    Frame1
+    Rnd8
+    Tx = Cc[0] + 5
+    V = Tx - 2
+    put char 32 at V,9
+    inc V
+    put char 32 at V,9
+    N = Zz[0] + 159
+    put char N at Tx,9
+    inc Tx
+    inc N
+    put char N at Tx,9
+    V = Zz[0] + 2
+    Zz[0] = V
+    if V = 49 then
+      V = Cc[0] + 1
+      Cc[0] = V
+      Zz[0] = 33
+    end if
+    ReadPad
+    if Fire1 = 1 then goto tp_rules
+  next
+tp_rules:
+  Rearm
+  wait
+  nmi off
+  fill 32 count 768 to vram.name
+  print at 5,5, "EACH PLAYER STARTS"
+  print at 5,6, "WITH $500."
+  print at 5,8, "A WINNING BET PAYS"
+  print at 5,9, "3 TO 1."
+  print at 5,11, "PRESS THE BUTTON."
+  WasF1 = 1
+tp_wait:
+  Frame1
+  Rnd8
+  ReadPad
+  if Fire1 = 0 then goto tp_wait
+  stop song
+  play sound SndOk
+  Rseed = Rseed ^ Tick
+  if Rseed = 0 then Rseed = $5A3C
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Screens, frames, input
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  backdrop black
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u16 Nf):
+  for W16 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+' Wait2 N: N frames; after a moment the button ends it
+sub Wait2(u16 Nf):
+  WasF1 = 1
+  for W16 = 1 to Nf
+    Frame1
+    ReadPad
+    if W16 > 30 then
+      if Fire1 = 1 then return
+    end if
+  next
+  return
+end sub
+
+sub WaitPress:
+  WasF1 = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Fire1 = 0 then goto wp_loop
+  play sound SndOk
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Rnd8: RND(1) as Rv/256 (a 16-bit xorshift, 7 9 8; its high byte)
+sub Rnd8:
+  Rtmp = Rseed << 7
+  Rseed = Rseed ^ Rtmp
+  Rtmp = Rseed >> 9
+  Rseed = Rseed ^ Rtmp
+  Rtmp = Rseed << 8
+  Rseed = Rseed ^ Rtmp
+  Rtmp = Rseed >> 8
+  Rv = Rtmp
+  return
+end sub
+
+' ReadPad: a push of the stick (held: again every 4 frames after 20) and
+' of the button
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Fire1 = 0
+  V = 0
+  W = joypad(1).up | joypad(2).up
+  if W = 1 then V = 1
+  W = joypad(1).down | joypad(2).down
+  if W = 1 then V = 2
+  W = joypad(1).left | joypad(2).left
+  if W = 1 then V = 3
+  W = joypad(1).right | joypad(2).right
+  if W = 1 then V = 4
+  Kp = 0
+  if V <> WasDir then
+    Kp = V
+    HeldN = 0
+  elseif V > 0 then
+    inc HeldN
+    if HeldN > 200 then HeldN = 180
+    if HeldN > 20 then
+      W = HeldN & 3
+      if W = 0 then Kp = V
+    end if
+  end if
+  WasDir = V
+  if Kp = 1 then Up1 = 1
+  if Kp = 2 then Dn1 = 1
+  if Kp = 3 then Lf1 = 1
+  if Kp = 4 then Rt1 = 1
+  W = joypad(1).button1 | joypad(2).button1
+  if W = 1 then
+    if WasF1 = 0 then Fire1 = 1
+  end if
+  WasF1 = W
+  return
+end sub
+
+data TilePat bytes
+  $00,$06,$07,$FC,$FC,$07,$48,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$0E,$7E,$74,$24,$22,$20,$00,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$07,$3F,$3A,$11,$10,$20,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$1F,$1F,$09,$10,$10,$00,$C0,$E0,$80,$80,$00,$80,$40,$00
+  $00,$00,$0F,$0F,$04,$08,$08,$00,$60,$70,$C0,$C0,$80,$40,$40,$00
+  $00,$00,$07,$07,$02,$02,$04,$00,$00,$30,$38,$E0,$E0,$40,$40,$40
+  $00,$00,$03,$03,$01,$01,$01,$00,$00,$18,$9C,$F0,$70,$20,$40,$40
+  $00,$00,$00,$01,$01,$00,$00,$00,$00,$0C,$0E,$F8,$F8,$90,$90,$50
+  $00,$06,$07,$FC,$FC,$07,$48,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$0E,$7E,$74,$24,$22,$20,$00,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$07,$3F,$3A,$11,$10,$20,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$1F,$1F,$09,$10,$10,$00,$C0,$E0,$80,$80,$00,$80,$40,$00
+  $00,$00,$0F,$0F,$04,$08,$08,$00,$60,$70,$C0,$C0,$80,$40,$40,$00
+  $00,$00,$07,$07,$02,$02,$04,$00,$00,$30,$38,$E0,$E0,$40,$40,$40
+  $00,$00,$03,$03,$01,$01,$01,$00,$00,$18,$9C,$F0,$70,$20,$40,$40
+  $00,$00,$00,$01,$01,$00,$00,$00,$00,$0C,$0E,$F8,$F8,$90,$90,$50
+  $00,$06,$07,$FC,$FC,$07,$48,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$0E,$7E,$74,$24,$22,$20,$00,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$07,$3F,$3A,$11,$10,$20,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$1F,$1F,$09,$10,$10,$00,$C0,$E0,$80,$80,$00,$80,$40,$00
+  $00,$00,$0F,$0F,$04,$08,$08,$00,$60,$70,$C0,$C0,$80,$40,$40,$00
+  $00,$00,$07,$07,$02,$02,$04,$00,$00,$30,$38,$E0,$E0,$40,$40,$40
+  $00,$00,$03,$03,$01,$01,$01,$00,$00,$18,$9C,$F0,$70,$20,$40,$40
+  $00,$00,$00,$01,$01,$00,$00,$00,$00,$0C,$0E,$F8,$F8,$90,$90,$50
+  $00,$06,$07,$FC,$FC,$07,$48,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$0E,$7E,$74,$24,$22,$20,$00,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$07,$3F,$3A,$11,$10,$20,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$1F,$1F,$09,$10,$10,$00,$C0,$E0,$80,$80,$00,$80,$40,$00
+  $00,$00,$0F,$0F,$04,$08,$08,$00,$60,$70,$C0,$C0,$80,$40,$40,$00
+  $00,$00,$07,$07,$02,$02,$04,$00,$00,$30,$38,$E0,$E0,$40,$40,$40
+  $00,$00,$03,$03,$01,$01,$01,$00,$00,$18,$9C,$F0,$70,$20,$40,$40
+  $00,$00,$00,$01,$01,$00,$00,$00,$00,$0C,$0E,$F8,$F8,$90,$90,$50
+  $00,$06,$07,$FC,$FC,$07,$48,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$0E,$7E,$74,$24,$22,$20,$00,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$07,$3F,$3A,$11,$10,$20,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$1F,$1F,$09,$10,$10,$00,$C0,$E0,$80,$80,$00,$80,$40,$00
+  $00,$00,$0F,$0F,$04,$08,$08,$00,$60,$70,$C0,$C0,$80,$40,$40,$00
+  $00,$00,$07,$07,$02,$02,$04,$00,$00,$30,$38,$E0,$E0,$40,$40,$40
+  $00,$00,$03,$03,$01,$01,$01,$00,$00,$18,$9C,$F0,$70,$20,$40,$40
+  $00,$00,$00,$01,$01,$00,$00,$00,$00,$0C,$0E,$F8,$F8,$90,$90,$50
+end data
+data TileCol bytes
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+end data
+
+asm {
+DrHoof1:
+    db $00,$00,$44,$01,$10
+DrHoof3:
+    db $00,$00,$45,$01,$10
+DrPost:
+    db $40,$D5,$20,$04,$40,$D5,$F0,$04,$40,$A5,$20,$04,$40,$A5,$F0,$04,$40,$81,$20,$04,$40,$81,$F0,$04
+    db $40,$6C,$20,$04,$40,$6C,$F0,$04,$40,$6C,$20,$04,$40,$6C,$F0,$04,$40,$6C,$20,$04,$40,$6C,$F0,$04
+    db $40,$81,$20,$04,$40,$81,$F0,$04,$40,$81,$20,$04,$40,$81,$F0,$04,$40,$81,$20,$04,$40,$81,$F0,$04
+    db $40,$A5,$20,$04,$40,$A5,$F0,$04,$40,$81,$20,$04,$40,$81,$F0,$04,$40,$A5,$20,$04,$40,$A5,$F0,$04
+    db $40,$D5,$20,$18,$40,$D5,$F0,$04,$40,$D5,$20,$04,$40,$D5,$F0,$04,$40,$A5,$20,$04,$40,$A5,$F0,$04
+    db $40,$81,$20,$04,$40,$81,$F0,$04,$40,$6C,$20,$04,$40,$6C,$F0,$04,$40,$6C,$20,$04,$40,$6C,$F0,$04
+    db $40,$6C,$20,$04,$40,$6C,$F0,$04,$40,$D5,$20,$04,$40,$D5,$F0,$04,$40,$D5,$20,$04,$40,$D5,$F0,$04
+    db $40,$D5,$20,$04,$40,$D5,$F0,$04,$40,$A5,$20,$18,$40,$A5,$F0,$04,$50
+DrWin:
+    db $40,$72,$21,$01,$40,$2A,$21,$01,$40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01
+    db $40,$2A,$21,$01,$40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01,$40,$2A,$21,$01
+    db $40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01,$40,$2A,$21,$01,$40,$E0,$20,$01
+    db $40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01,$40,$2A,$21,$01,$40,$E0,$20,$01,$40,$97,$20,$01
+    db $40,$4D,$20,$01,$40,$72,$21,$01,$40,$2A,$21,$01,$40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01
+    db $40,$72,$21,$01,$40,$2A,$21,$01,$40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01
+    db $40,$2A,$21,$01,$40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01,$40,$2A,$21,$01
+    db $40,$E0,$20,$01,$40,$97,$20,$01,$40,$4D,$20,$01,$40,$72,$21,$01,$40,$2A,$21,$01,$40,$E0,$20,$01
+    db $40,$97,$20,$01,$40,$4D,$20,$01,$50
+DrTick:
+    db $40,$47,$50,$02,$50
+DrOk:
+    db $40,$6B,$40,$03,$40,$47,$40,$05,$50
+
+DrSoundTable:
+    dw DrHoof1,$702B
+    dw DrHoof3,$702B
+    dw DrPost,$7035
+    dw DrWin,$7035
+    dw DrTick,$7035
+    dw DrOk,$7035
+    dw DrTuneMel,$703F
+    dw DrTuneBass,$7049
+; Downs Day, F major (original for this game)
+; Tiny Sound, 6 frames per step
+DrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$1F,$01,$24,$01,$28,$01,$24,$01,$2B,$01,$28,$01
+    db $24,$01,$01,$01,$21,$01,$26,$01,$29,$01,$26,$01,$23,$01,$26,$01
+    db $2B,$01,$01,$01,$1F,$01,$24,$01,$28,$01,$24,$01,$2B,$01,$2D,$01
+    db $2B,$01,$28,$01,$29,$01,$28,$01,$26,$01,$23,$01,$24,$01,$01,$01
+    db $24,$01,$01,$01
+    db $FF
+DrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$13,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+DrSong:
+    dw $0001
+    db $40+7,8
+    dw $0000
+}

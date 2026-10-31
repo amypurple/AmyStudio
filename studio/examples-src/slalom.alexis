@@ -1,0 +1,1407 @@
+cartridge "SLALOM/GEORGE LEOTTI, COMPUTE!/1983"
+
+' SLALOM
+' The game by George Leotti (Glenolden, PA) from COMPUTE!, February 1983
+' (pages 76-85; Atari notes by Charles Brannon), for the ColecoVision in
+' Amy by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Sources: Program 1, the PET version (transcribed in orig/slalom-pet.bas
+' from the scans beside it). The Atari version, "SKI!" (Program 2,
+' transcribed in orig/ski-atari.bas), is a different game (a scrolling
+' run past trees and flags for points); only its sounds were borrowed.
+'
+' The game: the Pine Mountain slalom course. Choose its length (10 to 50
+' flags) and the speed (1 fast to 9 slow). The flags come towards you in
+' 3-D: a far pair (two dots), a middle pair, a near pair, then the pair at
+' your skis. Pass between each pair: a missed set costs a five-second
+' penalty, a hit flag stops you for two seconds. The course is the same
+' every time (the listing's DATA), and the best official time is kept for
+' as long as you ski again.
+'
+' Controls (either joystick): left and right start the skis sliding that
+' way, down stops them (the PET's 4, 6 and 5 keys); the button starts a
+' run. The skis keep sliding until stopped, a wall, or a flag hit or
+' missed, as on the PET; while they slide, the flags wait (the clock does
+' not). Keypad not used.
+'
+' The PET's 40 columns are kept cell for cell: the play area (PET rows
+' 4-10) is a copy of the PET's cells in RAM (PG), drawn 5 pixels a column
+' by SsRender (art.py explains); S and the flag columns R(I) are the
+' listing's. Labels such as l150 are the listing's line numbers.
+'
+' Liberties taken:
+' - Timing: a pass of the speed loop (line 140) is a frame, a step of the
+'   sliding skis 2 frames, each flag's drawing a frame (at least: drawing
+'   the flags can take longer, and the clock, TI, counts real frames).
+' - INPUT is a joystick menu (up and down change the number, the button
+'   accepts); "WANT TO SKI AGAIN" is a YES/NO choice; NO goes back to the
+'   title page, as a new RUN would.
+' - C1$ (line 500) cannot be read in full on the scan: it blanks exactly
+'   the cells G$ drew.
+' - The texts are shortened to 28 columns (PENALTY on two rows, its ; a comma, RUN# RUN (the font has neither), THIS
+'   TIME/RUN and BEST TIME/RUN as THIS TIME and BEST TIME); ">>COMMODORE
+'   TIMING<<" reads ">>COLECOVISION TIMING<<"; "PRESS ANY KEY" reads
+'   "PRESS THE BUTTON".
+' - Sounds (the PET has none) after the Atari version's; a title page
+'   with an original tune ("Pine Mountain").
+' Quirks kept: the skis go on sliding from one flag to the next after a
+' clean pass; T is also the clock and the times' leftover jiffies, so when
+' it happens to be 52 or 54 the skis start sliding on their own (line 190,
+' and the next run after an official time ending on 52 or 54 jiffies).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles at codes
+' 128 and up; no sprites; every screen is drawn with the NMI off after a
+' wait.
+
+const GlyphFull = 15
+const GlyphNotch = 7
+const TEdgeL = 246
+const TEdgeR = 247
+const TArrow = 220
+const TRsp = 232
+const SndHush = 1
+const SndCrash = 2
+const SndReady = 3
+const SndMiss = 4
+const SndFinish = 5
+const SndClick = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+' --- the listing's variables ----------------------------------------------
+' N the course's flags, Spd the speed asked (1-9), P the speed loop's
+' passes (Spd, times 5 above 1), S the skis' column (0-35), M the penalty
+' seconds, R the runs, BR the best run, I the flag (1-N), Tk what T means
+' for the skis: 0 nothing, 1 the 6 key (right), 2 the 4 key (left)
+u8 N = 20
+u8 Spd = 5
+u8 P = 25
+u8 S = 17
+u8 M = 0
+u8 R = 0
+u8 BR = 0
+u8 I = 1
+u8 Tk = 0
+' the clock (TI, in frames) and its switch, T at a hit (Tt), the run's
+' time (J) and the official one (Off), split (Mm Ss Jj), the best (B...)
+u16 JF = 0
+u8 Clk = 0
+' TI$'s minutes, seconds and frames (kept with JF, for the display)
+u8 Cm = 0
+u8 Cs = 0
+u8 Cf = 0
+' Lf the VDP's frame flag (SsLost), Lost the frames so counted (for the
+' test bot: they depend on the machine, not on the rules)
+u8 Lf = 0
+u16 Lost = 0
+u16 Tt = 0
+u16 Tend = 0
+u16 Off = 0
+u8 Mm = 0
+u8 Ss = 0
+u8 Jj = 0
+u8 BMm = 0
+u8 BSs = 0
+u8 BJj = 0
+' Fx R(I), Col the column a flag string is printed at
+u8 Fx = 0
+u8 Col = 0
+
+' --- the soft screen (SsPut, SsRender) -------------------------------------
+u8 PG[280]
+u8 Dm[28]
+u8 Buf[8]
+u16 Gp = 0
+u16 Va = 0
+u16 Dp = 0
+
+' --- for the test bot -------------------------------------------------------
+' Ph: 1 the setup menu, 2 waiting for the button, 3 racing, 4 the
+' results, 6 the title page; Rk the stick read at line 150 (0 nothing,
+' 1 right, 2 left, 3 down), Ev those reads, Fd the flags done, Res the
+' flag's outcome (0 clean, 1 missed, 2 hit)
+u8 Ph = 0
+u8 Rk = 0
+u8 Ev = 0
+u8 Fd = 0
+u8 Res = 0
+
+u16 V16 = 0
+u16 W16 = 0
+u8 V = 0
+u8 W = 0
+u8 K = 0
+u8 Kp = 0
+u8 J8 = 0
+u8 Xc = 0
+u8 Yc = 0
+u8 Ch = 0
+u8 Rb = 0
+u8 Sk = 0
+u8 Sel = 0
+u8 Tick = 0
+
+  tile screen
+  set sound table SsSoundTable areas 4
+  nmi off
+  screen on
+
+l_run:
+  ' a new RUN: the runs and the best time forgotten
+  R = 0
+  BR = 0
+  Tk = 0
+  TitlePage
+
+  ' 550-610: the course's length and the speed
+l550:
+  Ph = 1
+  NewScreen
+  print at 2,3, "COURSE LENGTH (10-50)?"
+  print at 2,5, "SPEED (1=FAST) TO (9=SLOW)"
+  print at 2,6, "?"
+  print at 2,9, "PUSH THE STICK UP OR DOWN,"
+  print at 2,10, "THEN PRESS THE BUTTON."
+  print at 2,13, "ON THE HILL (EITHER STICK):"
+  print at 2,14, "LEFT, RIGHT: SKI THAT WAY"
+  print at 2,15, "DOWN: STOP SKIING"
+  print at 2,17, "PASS BETWEEN EACH PAIR OF"
+  print at 2,18, "FLAGS: A MISSED SET COSTS"
+  print at 2,19, "5 SECONDS, A HIT FLAG SLOWS"
+  print at 2,20, "YOU DOWN."
+  Ch = Spd + 48
+  put char Ch at 5,6
+  ShowScreen
+  Yc = 3
+  Xc = 26
+  V = N
+  K = 10
+  W = 50
+  AskNum
+  N = V
+  Yc = 6
+  Xc = 5
+  V = Spd
+  K = 1
+  W = 9
+  AskNum
+  Spd = V
+  P = Spd
+  if P > 1 then P = P * 5
+
+  ' 630-660: the hill, the skis, PRESS ANY KEY
+l630:
+  NewScreen
+  HillScreen
+  S = 17
+  M = 0
+  Col = S
+  call asm PutSki
+  call asm SsRender
+  put RvPress count 16 at 6,2
+  ShowScreen
+  Ph = 2
+  play sound SndReady
+  WaitPress
+  print at 6,2, "                "
+  print at 2,1, "MMSS "
+  put RvHead count 23 at 7,1
+
+  ' 110-240: the course
+  Ph = 3
+  JF = 0
+  Lost = 0
+  Cm = 0
+  Cs = 0
+  Cf = 0
+  Clk = 1
+  I = 1
+l110:
+  Fx = RD[I - 1]
+  Col = Fx
+  call asm PutB
+  if I < N then
+    Col = RD[I]
+    call asm PutM
+  end if
+  V = N - 1
+  if I < V then
+    Col = RD[I + 1]
+    call asm PutL
+  end if
+  call asm SsRender
+  ' 140: the speed loop, then the flag at the skis
+  for J8 = 1 to P
+    ShowClk
+    Pace(1)
+  next
+  Col = Fx
+  call asm PutG
+  call asm SsRender
+  Pace(1)
+l150:
+  ReadStick
+  inc Ev
+  if Tk = 0 then goto l180
+  if Tk = 1 then
+    if S = 35 then goto l180
+    inc S
+  else
+    if S = 0 then goto l180
+    dec S
+  end if
+  ' 170
+  Col = S
+  call asm PutSki
+  call asm SsRender
+  Pace(2)
+  goto l150
+l180:
+  Res = 0
+  V = Fx - 1
+  W = Fx + 9
+  if S > V then
+    if W > S then goto l210
+  end if
+l190:
+  Tt = JF
+  Tk = 0
+  if JF = 52 then Tk = 2
+  if JF = 54 then Tk = 1
+  V = Fx - 3
+  W = Fx + 11
+  K = 0
+  if V > S then K = 1
+  if S > W then K = 1
+  if K = 1 then
+    M = M + 5
+    Res = 1
+    play sound SndMiss
+    goto l210
+  end if
+  ' 200: a flag hit: two seconds
+  Res = 2
+  play sound SndCrash
+l200:
+  W16 = JF - Tt
+  if W16 < 120 then
+    ShowClk
+    Pace(1)
+    goto l200
+  end if
+l210:
+  Col = Fx
+  call asm PutC1
+  if I < N then
+    Col = RD[I]
+    call asm PutC2
+  end if
+  V = N - 1
+  if I < V then
+    Col = RD[I + 1]
+    call asm PutC3
+  end if
+  call asm SsRender
+  ' 240
+  ShowClk
+  inc Fd
+  Pace(1)
+  inc I
+  if I <= N then goto l110
+  Tend = JF
+  Clk = 0
+
+  ' 250-430: the results
+  Ph = 4
+  play sound SndFinish
+  put RvFinish count 11 at 10,12
+  inc R
+  if M > 0 then
+    print at 2,14, "PENALTY OF"
+    V16 = M
+    Xc = 13
+    Yc = 14
+    ShowDec
+    print at Xc,14, " SECONDS,"
+    V16 = M / 5
+    Xc = 2
+    Yc = 15
+    ShowDec
+    print at Xc,15, " FLAGS MISSED"
+  end if
+  ' 270-350: this time
+  V16 = Tend
+  Split
+  print at 2,16, "THIS TIME: "
+  Xc = 13
+  Yc = 16
+  ShowTime
+  print at 21,16, " RUN "
+  V16 = R
+  Xc = 26
+  ShowDec
+  ' 360-370: the official time (the penalty added)
+  Off = M * 60
+  Off = Off + Tend
+  V16 = Off
+  Split
+  ' (T is left with the time's last jiffies)
+  V16 = Tend % 60
+  Tk = 0
+  if V16 = 52 then Tk = 2
+  if V16 = 54 then Tk = 1
+  put RvOff count 15 at 2,18
+  Xc = 17
+  Yc = 18
+  ShowTimeRev
+  put char TArrow at 26,18
+  put char TArrow at 27,18
+  put char TArrow at 28,18
+  ' 380-400: the best time
+  K = 0
+  if R = 1 then K = 1
+  if Mm < BMm then K = 1
+  if Mm = BMm then
+    if Ss < BSs then K = 1
+    if Ss = BSs then
+      if Jj < BJj then K = 1
+    end if
+  end if
+  if K = 1 then
+    BMm = Mm
+    BSs = Ss
+    BJj = Jj
+    BR = R
+  end if
+  ' 410
+  print at 2,20, "BEST TIME: "
+  Mm = BMm
+  Ss = BSs
+  Jj = BJj
+  Xc = 13
+  Yc = 20
+  ShowTime
+  print at 21,20, " RUN "
+  V16 = BR
+  Xc = 26
+  ShowDec
+  ' 420: WANT TO SKI AGAIN
+  print at 2,22, "WANT TO SKI AGAIN?  YES  NO"
+  Sel = 0
+  Marks
+  WaitUp
+l420:
+  Pace(1)
+  ReadPad
+  if Sk = 2 then
+    if Sel = 1 then
+      Sel = 0
+      play sound SndClick
+      Marks
+    end if
+  end if
+  if Sk = 1 then
+    if Sel = 0 then
+      Sel = 1
+      play sound SndClick
+      Marks
+    end if
+  end if
+  if Rb = 0 then goto l420
+  if Sel = 0 then goto l630
+  goto l_run
+
+' ShowClk: RIGHT$(TI$,4) at the PET's row 1: the minutes and seconds
+sub ShowClk:
+  V = Cm
+  Xc = 2
+  Yc = 2
+  Dig2
+  V = Cs
+  Xc = 4
+  Dig2
+  return
+end sub
+
+' Dig2: V as two digits at Xc,Yc
+sub Dig2:
+  Ch = V / 10
+  Ch = Ch + 48
+  put char Ch at Xc,Yc
+  Ch = V % 10
+  Ch = Ch + 48
+  W = Xc + 1
+  put char Ch at W,Yc
+  return
+end sub
+
+' Split: the jiffies V16 as MT$ ST$ JT$ (lines 280-330): minutes,
+' seconds, hundredths (the first two digits of STR$(T/60))
+sub Split:
+  W16 = V16 / 3600
+  Mm = W16
+  W16 = V16 % 3600
+  V16 = W16 / 60
+  Ss = V16
+  W16 = W16 % 60
+  W16 = W16 * 5
+  W16 = W16 / 3
+  Jj = W16
+  return
+end sub
+
+' ShowTime: MM:SS.JJ at Xc,Yc
+sub ShowTime:
+  V = Mm
+  Dig2
+  Xc = Xc + 2
+  put char 58 at Xc,Yc
+  inc Xc
+  V = Ss
+  Dig2
+  Xc = Xc + 2
+  put char 46 at Xc,Yc
+  inc Xc
+  V = Jj
+  Dig2
+  return
+end sub
+
+' ShowTimeRev: the same in reversed digits
+sub ShowTimeRev:
+  V = Mm
+  RevDig2
+  Ch = RvDig[11]
+  put char Ch at Xc,Yc
+  inc Xc
+  V = Ss
+  RevDig2
+  Ch = RvDig[10]
+  put char Ch at Xc,Yc
+  inc Xc
+  V = Jj
+  RevDig2
+  return
+end sub
+
+sub RevDig2:
+  W = V / 10
+  Ch = RvDig[W]
+  put char Ch at Xc,Yc
+  inc Xc
+  W = V % 10
+  Ch = RvDig[W]
+  put char Ch at Xc,Yc
+  inc Xc
+  return
+end sub
+
+' ShowDec: V16 (0-999) at Xc,Yc, no leading zeros; Xc ends after it
+sub ShowDec:
+  K = 0
+  if V16 >= 100 then
+    W16 = V16 / 100
+    Ch = W16
+    Ch = Ch + 48
+    put char Ch at Xc,Yc
+    inc Xc
+    K = 1
+  end if
+  W16 = V16 % 100
+  if W16 >= 10 then K = 1
+  if K = 1 then
+    W16 = W16 / 10
+    Ch = W16
+    Ch = Ch + 48
+    put char Ch at Xc,Yc
+    inc Xc
+  end if
+  W16 = V16 % 10
+  Ch = W16
+  Ch = Ch + 48
+  put char Ch at Xc,Yc
+  inc Xc
+  return
+end sub
+
+' Marks: the arrow on YES or NO
+sub Marks:
+  if Sel = 0 then
+    print at 21,22, ">"
+    print at 26,22, " "
+  else
+    print at 21,22, " "
+    print at 26,22, ">"
+  end if
+  return
+end sub
+
+' AskNum: the number V (K to W) at Xc,Yc; the stick up and down change
+' it (held: again every 6 frames after 20), the button accepts
+sub AskNum:
+  WaitUp
+  J8 = 0
+an_show:
+  Ch = V / 10
+  if Ch = 0 then
+    Ch = 32
+  else
+    Ch = Ch + 48
+  end if
+  W16 = Xc - 1
+  Sel = W16
+  put char Ch at Sel,Yc
+  Ch = V % 10
+  Ch = Ch + 48
+  put char Ch at Xc,Yc
+an_wait:
+  Pace(1)
+  ReadPad
+  if Rb = 1 then
+    play sound SndClick
+    return
+  end if
+  if Sk < 4 then
+    J8 = 0
+    goto an_wait
+  end if
+  inc J8
+  if J8 = 1 then goto an_step
+  if J8 < 20 then goto an_wait
+  J8 = 14
+an_step:
+  if Sk = 4 then
+    if V < W then inc V
+  else
+    if V > K then dec V
+  end if
+  goto an_show
+end sub
+
+' ReadStick: line 150's GET: a push sets T (left the 4 key, right the 6,
+' down the 5: stop), nothing leaves it
+sub ReadStick:
+  ReadPad
+  Rk = 0
+  if Sk = 1 then
+    Rk = 1
+    Tk = 1
+  end if
+  if Sk = 2 then
+    Rk = 2
+    Tk = 2
+  end if
+  if Sk = 8 then
+    Rk = 3
+    Tk = 0
+  end if
+  return
+end sub
+
+' ReadPad: Sk the stick (8 down, 4 up, 2 left, 1 right, 0 none: one at a
+' time, down first), Rb the button
+sub ReadPad:
+  Sk = 0
+  if joypad(1).right then Sk = 1
+  if joypad(2).right then Sk = 1
+  if joypad(1).left then Sk = 2
+  if joypad(2).left then Sk = 2
+  if joypad(1).up then Sk = 4
+  if joypad(2).up then Sk = 4
+  if joypad(1).down then Sk = 8
+  if joypad(2).down then Sk = 8
+  Rb = 0
+  if joypad(1).fire then Rb = 1
+  if joypad(2).fire then Rb = 1
+  return
+end sub
+
+' WaitUp: the stick and the button let go
+sub WaitUp:
+wu_loop:
+  Pace(1)
+  ReadPad
+  V16 = Sk + Rb
+  if V16 > 0 then goto wu_loop
+  return
+end sub
+
+' WaitPress: let go, then the button
+sub WaitPress:
+  WaitUp
+wp_loop:
+  Pace(1)
+  ReadPad
+  if Rb = 0 then goto wp_loop
+  return
+end sub
+
+' HillScreen: the soft screen's rows (names), the snow (630: three rows of
+' reversed spaces from the PET's row 10) and the soft screen drawn
+sub HillScreen:
+  for J8 = 0 to 6
+    V16 = J8 * 26
+    Yc = J8 + 5
+    put SsNames + V16 count 26 at 3,Yc
+  next
+  for Yc = 12 to 13
+    put char TEdgeL at 3,Yc
+    fill TRsp count 24 at 4,Yc
+    put char TEdgeR at 28,Yc
+  next
+  for V16 = 0 to 239
+    PG[V16] = 0
+  next
+  for V16 = 240 to 279
+    PG[V16] = GlyphFull
+  next
+  for J8 = 0 to 27
+    Dm[J8] = 255
+  next
+  call asm SsRender
+  return
+end sub
+
+' TitlePage: the near gate on the hill, the credits, the tune once
+sub TitlePage:
+  Ph = 6
+  NewScreen
+  HillScreen
+  Col = 14
+  call asm PutG
+  Col = 18
+  call asm PutSki
+  call asm SsRender
+  print at 13,2, "SLALOM"
+  print at 4,15, "BY GEORGE LEOTTI, FROM"
+  print at 4,16, "COMPUTE! FEBRUARY 1983"
+  print at 4,17, "(PET VERSION)"
+  print at 2,19, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,20, "BY ANTHROPIC), AMY STUDIO."
+  print at 2,21, "MUSIC: PINE MOUNTAIN."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  play song SsSong once
+  WaitPress
+  Tick = Tick + 1
+  stop song
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  backdrop black
+  fill mode 2 text color with $F1
+  fill $F1 count 1024 to vram.color + 1024
+  call asm RevFont
+  copy EdgePat count 16 to vram.pattern + 4016
+  copy ArrowPat count 8 to vram.pattern + 5856
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+' Pace N: N frames (the clock counts them while a run is on)
+sub Pace(u8 Np):
+  for Kp = 1 to Np
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  ' a frame that went by while the work had the NMI off (the VDP's frame
+  ' flag set) is counted too, so the clock keeps real time
+  call asm SsLost
+  if Lf <> 0 then
+    if Clk = 1 then
+      ClockTick
+      inc Lost
+    end if
+  end if
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  if Clk = 1 then ClockTick
+  return
+end sub
+
+' ClockTick: TI goes on a jiffy (JF, and Cm Cs Cf for the display)
+sub ClockTick:
+  if JF = 65535 then return
+  inc JF
+  inc Cf
+  if Cf = 60 then
+    Cf = 0
+    inc Cs
+    if Cs = 60 then
+      Cs = 0
+      inc Cm
+      if Cm = 60 then Cm = 0
+    end if
+  end if
+  return
+end sub
+
+data RD bytes 14,6,24,27,15,13,23,15,8,25,19,11,14,5,3,18,24,4,19,5,24,13,23,4,7,10,13,24,27,20,23,4,25,24,3,27,8,6,9,4,11,14,3,7,10,13,16,19,22,25
+data SsNames bytes 128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231
+data RvHead bytes 221,221,222,223,224,225,222,223,226,234,236,234,223,235,232,227,234,228,234,235,229,230,230
+data RvPress bytes 231,238,225,236,236,232,227,237,225,232,239,240,227,227,223,235
+data RvFinish bytes 233,232,234,232,235,232,234,232,236,232,237
+data RvOff bytes 223,233,233,234,222,234,241,224,232,227,234,228,225,242,232
+data RvDig bytes 243,244,245,248,249,250,251,252,253,254,255,242
+data EdgePat bytes 15,15,15,15,15,15,15,15,240,240,240,240,240,240,240,240
+data ArrowPat bytes 24,60,126,255,24,24,24,0
+
+asm {
+SsHush:
+    db $00,$00,$F4,$01,$10
+SsCrash:
+    db $40,$62,$21,$02,$40,$70,$21,$02,$40,$7E,$21,$02,$40,$8B,$21,$02,$40,$9A,$21,$02,$40,$A8,$21,$02
+    db $40,$B5,$21,$02,$40,$C3,$21,$02,$40,$D2,$21,$02,$40,$E0,$21,$02,$40,$ED,$21,$02,$40,$FC,$21,$02
+    db $40,$08,$22,$02,$50
+SsReady:
+    db $40,$5D,$10,$01,$40,$5D,$F0,$01,$40,$5D,$10,$01,$40,$5D,$F0,$01,$40,$5D,$10,$01,$40,$5D,$F0,$01
+    db $40,$5D,$10,$01,$40,$5D,$F0,$01,$40,$5D,$10,$01,$40,$5D,$F0,$01,$40,$5D,$10,$01,$40,$5D,$F0,$01
+    db $40,$5D,$10,$01,$40,$5D,$F0,$01,$40,$5D,$10,$01,$40,$5D,$F0,$01,$40,$5D,$10,$01,$40,$5D,$F0,$01
+    db $40,$5D,$10,$01,$40,$5D,$F0,$01,$50
+SsMiss:
+    db $40,$FC,$21,$06,$40,$A6,$32,$06,$50
+SsFinish:
+    db $40,$8F,$10,$05,$40,$71,$10,$05,$40,$5F,$10,$05,$40,$47,$10,$0E,$50
+SsClick:
+    db $40,$40,$30,$01,$50
+
+SsSoundTable:
+    dw SsHush,$702B
+    dw SsCrash,$7035
+    dw SsReady,$7035
+    dw SsMiss,$7035
+    dw SsFinish,$7035
+    dw SsClick,$7035
+    dw SsTuneMel,$703F
+    dw SsTuneBass,$7049
+; Pine Mountain, G major (original for this game)
+; Tiny Sound, 7 frames per step
+SsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$31,$88,$21,$01,$1E,$01,$1A,$01,$1E,$01,$21,$01,$26,$01
+    db $01,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$01,$1C,$01
+    db $01,$01,$1F,$01,$1C,$01,$19,$01,$1C,$01,$1F,$01,$25,$01,$01,$01
+    db $23,$01,$21,$01,$1F,$01,$1C,$01,$1E,$01,$01,$01,$1A,$01,$01,$01
+    db $21,$01,$23,$01,$25,$01,$26,$01,$28,$01,$2A,$01,$01,$01,$28,$01
+    db $26,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$1A,$01,$1C,$01,$1E,$01
+    db $01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+SsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $0D,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$12,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$07,$01,$0E,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$07,$01,$09,$01,$01,$01,$09,$01,$01,$01,$0E,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+SsSong:
+    dw $0001
+    db $40+7,8
+    dw $0000
+
+; the flag strings (art.py): HL = the cells, A = the column R
+PutB:
+    ld hl,FlB
+    jr PutAny
+PutM:
+    ld hl,FlM
+    jr PutAny
+PutL:
+    ld hl,FlL
+    jr PutAny
+PutG:
+    ld hl,FlG
+    jr PutAny
+PutC1:
+    ld hl,FlC1
+    jr PutAny
+PutC2:
+    ld hl,FlC2
+    jr PutAny
+PutC3:
+    ld hl,FlC3
+    jr PutAny
+PutSki:
+    ld hl,FlSki
+PutAny:
+    ld a,(AMY_UVAR_Col)
+    jp SsPut
+
+; SsPut: the PET's PRINT of a flag string: each cell (row 0-6, column+3,
+; glyph) of HL written at column A into PG; a cell that changes sets its
+; one or two tiles' bits in its row's dirty bytes (Dm: 4 bytes a row)
+SsPut:
+    ld c,a
+    ld b,(hl)
+    inc hl
+SpNext:
+    push bc
+    ld a,(hl)
+    inc hl
+    add a,a
+    ld e,a
+    ld d,0
+    ld a,(hl)
+    inc hl
+    add a,c
+    sub 3
+    ld c,a
+    ld b,(hl)
+    inc hl
+    push hl
+    ; HL = PG row + column
+    ld hl,SsRowPG
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    add a,c
+    ld l,a
+    ld a,0
+    adc a,h
+    ld h,a
+    ld a,b
+    cp (hl)
+    jr z,SpSame
+    ld (hl),a
+    ; IX-free marking: HL = the row's Dm bytes, then lo and hi tiles
+    ld hl,SsRowDm
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld b,0
+    ld hl,SsLoI
+    add hl,bc
+    ld a,(hl)
+    ld hl,SsLoM
+    add hl,bc
+    ex de,hl
+    push hl
+    add a,l
+    ld l,a
+    ld a,0
+    adc a,h
+    ld h,a
+    ld a,(de)
+    or (hl)
+    ld (hl),a
+    pop hl
+    ex de,hl
+    ld hl,SsHiI
+    add hl,bc
+    ld a,(hl)
+    ld hl,SsHiM
+    add hl,bc
+    ex de,hl
+    add a,l
+    ld l,a
+    ld a,0
+    adc a,h
+    ld h,a
+    ld a,(de)
+    or (hl)
+    ld (hl),a
+SpSame:
+    pop hl
+    pop bc
+    djnz SpNext
+    ret
+
+SsRowPG:
+    dw AMY_UVAR_PG,AMY_UVAR_PG+40,AMY_UVAR_PG+80,AMY_UVAR_PG+120,AMY_UVAR_PG+160,AMY_UVAR_PG+200,AMY_UVAR_PG+240
+SsRowDm:
+    dw AMY_UVAR_Dm,AMY_UVAR_Dm+4,AMY_UVAR_Dm+8,AMY_UVAR_Dm+12,AMY_UVAR_Dm+16,AMY_UVAR_Dm+20,AMY_UVAR_Dm+24
+
+; SsLost: Lf = the VDP's frame flag (a frame went by with the NMI off)
+SsLost:
+    in a,($BF)
+    and $80
+    ld (AMY_UVAR_Lf),a
+    ret
+
+; SsRender: the dirty tiles of each soft row drawn (NMI off)
+SsRender:
+    push ix
+    ld e,0
+SrRow:
+    push de
+    ld a,e
+    add a,a
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,AMY_UVAR_Dm
+    add hl,bc
+    ld (AMY_UVAR_Dp),hl
+    ld a,(hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    jr z,SrRowDone
+    ; Gp = PG + row*40, Va = the row's pattern address
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld b,h
+    ld c,l
+    add hl,hl
+    add hl,hl
+    add hl,bc
+    ld bc,AMY_UVAR_PG
+    add hl,bc
+    ld (AMY_UVAR_Gp),hl
+    ld hl,SsRowVa
+    ld d,0
+    add hl,de
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld (AMY_UVAR_Va),hl
+    ; each dirty byte's bits, low bit first: tile 8 x byte + bit
+    ld hl,(AMY_UVAR_Dp)
+    ld c,0
+SrByte:
+    ld a,(hl)
+    or a
+    jr z,SrByteNext
+    ld (hl),0
+    push hl
+    push bc
+    ld d,a
+    ld e,c
+SrBit:
+    srl d
+    jr nc,SrNoT
+    ld a,e
+    cp 26
+    jr nc,SrNoT
+    push de
+    ld c,e
+    call SsTile
+    pop de
+SrNoT:
+    inc e
+    ld a,d
+    or a
+    jr nz,SrBit
+    pop bc
+    pop hl
+SrByteNext:
+    inc hl
+    ld a,c
+    add a,8
+    ld c,a
+    cp 32
+    jr nz,SrByte
+SrRowDone:
+    pop de
+    inc e
+    ld a,e
+    cp 7
+    jr nz,SrRow
+    pop ix
+    ret
+
+; SsTile: tile C of the row (Gp, Va): the glyphs of its up to three PET
+; cells (SsDesc) found in SsGT, ORed together line by line straight to
+; VRAM (no glyph: zeros; one: copied)
+SsTile:
+    push bc
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(AMY_UVAR_Va)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld l,c
+    ld h,0
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld de,SsDesc
+    add hl,de
+    push hl
+    pop ix
+    ; the glyphs' addresses on the stack, C counts them
+    ld c,0
+    ld b,3
+StEnt:
+    ld a,(ix+0)
+    cp 255
+    jr z,StSkip
+    ld hl,(AMY_UVAR_Gp)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,StSkip
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,(ix+2)
+    ld e,a
+    ld d,(ix+1)
+    ld hl,SsGT
+    add hl,de
+    push hl
+    inc c
+StSkip:
+    inc ix
+    inc ix
+    inc ix
+    djnz StEnt
+    ld a,c
+    or a
+    jr z,StZero
+    dec a
+    jr z,StOne
+    dec a
+    jr z,StTwo
+    ; three
+    pop ix
+    pop de
+    pop hl
+    ld b,8
+StThree:
+    ld a,(de)
+    or (hl)
+    or (ix+0)
+    out ($BE),a
+    inc hl
+    inc de
+    inc ix
+    djnz StThree
+    pop bc
+    ret
+StTwo:
+    pop de
+    pop hl
+    ld b,8
+StTwoL:
+    ld a,(de)
+    or (hl)
+    out ($BE),a
+    inc hl
+    inc de
+    djnz StTwoL
+    pop bc
+    ret
+StOne:
+    pop hl
+    ld c,$BE
+    ld b,8
+StOneL:
+    outi
+    nop
+    jr nz,StOneL
+    pop bc
+    ret
+StZero:
+    xor a
+    ld b,8
+StZeroL:
+    out ($BE),a
+    nop
+    nop
+    nop
+    djnz StZeroL
+    pop bc
+    ret
+
+SsBit:
+    db 1,2,4,8,16,32,64,128
+
+; RevFont: the reversed characters: each font character of RevTab (third
+; 0 of the pattern table) copied inverted into its tile, in the three
+; thirds (after THUNDERBIRD)
+RevFont:
+    ld hl,RevTab
+RfNext:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    ld e,a
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    pop hl
+    ld b,8
+RfByte:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    cpl
+    ld c,a
+    push hl
+    call RfPut
+    ld a,h
+    add a,8
+    ld h,a
+    call RfPut
+    ld a,h
+    add a,8
+    ld h,a
+    call RfPut
+    pop hl
+    inc hl
+    inc de
+    djnz RfByte
+    pop hl
+    jr RfNext
+RfPut:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    nop
+    nop
+    ld a,c
+    out ($BE),a
+    ret
+
+SsGT:
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 12,12,12,12,12,12,12,12,0,0,0,0,0,0,0,0
+    db 15,15,0,0,0,0,0,0,128,128,0,0,0,0,0,0
+    db 15,15,15,0,0,0,0,0,128,128,128,0,0,0,0,0
+    db 0,0,0,0,0,15,15,15,0,0,0,0,0,128,128,128
+    db 0,0,0,0,0,0,15,15,0,0,0,0,0,0,128,128
+    db 15,15,15,15,15,0,0,0,128,128,128,128,128,0,0,0
+    db 0,0,0,15,15,15,15,15,0,0,0,128,128,128,128,128
+    db 15,15,15,15,15,15,15,15,0,0,0,0,0,0,0,0
+    db 15,15,15,15,0,0,0,0,128,128,128,128,0,0,0,0
+    db 15,15,15,15,15,15,0,0,128,128,128,128,128,128,0,0
+    db 0,0,0,0,15,15,15,15,0,0,0,0,128,128,128,128
+    db 0,0,15,15,15,15,15,15,0,0,128,128,128,128,128,128
+    db 0,0,0,0,3,3,3,3,0,0,0,0,128,128,128,128
+    db 0,0,0,0,12,12,12,12,0,0,0,0,0,0,0,0
+    db 15,15,15,15,15,15,15,15,128,128,128,128,128,128,128,128
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 96,96,96,96,96,96,96,96,0,0,0,0,0,0,0,0
+    db 124,124,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 124,124,124,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,124,124,124,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,124,124,0,0,0,0,0,0,0,0
+    db 124,124,124,124,124,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,124,124,124,124,124,0,0,0,0,0,0,0,0
+    db 120,120,120,120,120,120,120,120,0,0,0,0,0,0,0,0
+    db 124,124,124,124,0,0,0,0,0,0,0,0,0,0,0,0
+    db 124,124,124,124,124,124,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,124,124,124,124,0,0,0,0,0,0,0,0
+    db 0,0,124,124,124,124,124,124,0,0,0,0,0,0,0,0
+    db 0,0,0,0,28,28,28,28,0,0,0,0,0,0,0,0
+    db 0,0,0,0,96,96,96,96,0,0,0,0,0,0,0,0
+    db 124,124,124,124,124,124,124,124,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 3,3,3,3,3,3,3,3,0,0,0,0,0,0,0,0
+    db 3,3,0,0,0,0,0,0,224,224,0,0,0,0,0,0
+    db 3,3,3,0,0,0,0,0,224,224,224,0,0,0,0,0
+    db 0,0,0,0,0,3,3,3,0,0,0,0,0,224,224,224
+    db 0,0,0,0,0,0,3,3,0,0,0,0,0,0,224,224
+    db 3,3,3,3,3,0,0,0,224,224,224,224,224,0,0,0
+    db 0,0,0,3,3,3,3,3,0,0,0,224,224,224,224,224
+    db 3,3,3,3,3,3,3,3,192,192,192,192,192,192,192,192
+    db 3,3,3,3,0,0,0,0,224,224,224,224,0,0,0,0
+    db 3,3,3,3,3,3,0,0,224,224,224,224,224,224,0,0
+    db 0,0,0,0,3,3,3,3,0,0,0,0,224,224,224,224
+    db 0,0,3,3,3,3,3,3,0,0,224,224,224,224,224,224
+    db 0,0,0,0,0,0,0,0,0,0,0,0,224,224,224,224
+    db 0,0,0,0,3,3,3,3,0,0,0,0,0,0,0,0
+    db 3,3,3,3,3,3,3,3,224,224,224,224,224,224,224,224
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 24,24,24,24,24,24,24,24,0,0,0,0,0,0,0,0
+    db 31,31,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 31,31,31,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,31,31,31,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,31,31,0,0,0,0,0,0,0,0
+    db 31,31,31,31,31,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,31,31,31,31,31,0,0,0,0,0,0,0,0
+    db 30,30,30,30,30,30,30,30,0,0,0,0,0,0,0,0
+    db 31,31,31,31,0,0,0,0,0,0,0,0,0,0,0,0
+    db 31,31,31,31,31,31,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,31,31,31,31,0,0,0,0,0,0,0,0
+    db 0,0,31,31,31,31,31,31,0,0,0,0,0,0,0,0
+    db 0,0,0,0,7,7,7,7,0,0,0,0,0,0,0,0
+    db 0,0,0,0,24,24,24,24,0,0,0,0,0,0,0,0
+    db 31,31,31,31,31,31,31,31,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 192,192,192,192,192,192,192,192,0,0,0,0,0,0,0,0
+    db 248,248,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 248,248,248,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,248,248,248,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,248,248,0,0,0,0,0,0,0,0
+    db 248,248,248,248,248,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,248,248,248,248,248,0,0,0,0,0,0,0,0
+    db 240,240,240,240,240,240,240,240,0,0,0,0,0,0,0,0
+    db 248,248,248,248,0,0,0,0,0,0,0,0,0,0,0,0
+    db 248,248,248,248,248,248,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,248,248,248,248,0,0,0,0,0,0,0,0
+    db 0,0,248,248,248,248,248,248,0,0,0,0,0,0,0,0
+    db 0,0,0,0,56,56,56,56,0,0,0,0,0,0,0,0
+    db 0,0,0,0,192,192,192,192,0,0,0,0,0,0,0,0
+    db 248,248,248,248,248,248,248,248,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 6,6,6,6,6,6,6,6,0,0,0,0,0,0,0,0
+    db 7,7,0,0,0,0,0,0,192,192,0,0,0,0,0,0
+    db 7,7,7,0,0,0,0,0,192,192,192,0,0,0,0,0
+    db 0,0,0,0,0,7,7,7,0,0,0,0,0,192,192,192
+    db 0,0,0,0,0,0,7,7,0,0,0,0,0,0,192,192
+    db 7,7,7,7,7,0,0,0,192,192,192,192,192,0,0,0
+    db 0,0,0,7,7,7,7,7,0,0,0,192,192,192,192,192
+    db 7,7,7,7,7,7,7,7,128,128,128,128,128,128,128,128
+    db 7,7,7,7,0,0,0,0,192,192,192,192,0,0,0,0
+    db 7,7,7,7,7,7,0,0,192,192,192,192,192,192,0,0
+    db 0,0,0,0,7,7,7,7,0,0,0,0,192,192,192,192
+    db 0,0,7,7,7,7,7,7,0,0,192,192,192,192,192,192
+    db 0,0,0,0,1,1,1,1,0,0,0,0,192,192,192,192
+    db 0,0,0,0,6,6,6,6,0,0,0,0,0,0,0,0
+    db 7,7,7,7,7,7,7,7,192,192,192,192,192,192,192,192
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 48,48,48,48,48,48,48,48,0,0,0,0,0,0,0,0
+    db 62,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 62,62,62,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,62,62,62,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,62,62,0,0,0,0,0,0,0,0
+    db 62,62,62,62,62,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,62,62,62,62,62,0,0,0,0,0,0,0,0
+    db 60,60,60,60,60,60,60,60,0,0,0,0,0,0,0,0
+    db 62,62,62,62,0,0,0,0,0,0,0,0,0,0,0,0
+    db 62,62,62,62,62,62,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,62,62,62,62,0,0,0,0,0,0,0,0
+    db 0,0,62,62,62,62,62,62,0,0,0,0,0,0,0,0
+    db 0,0,0,0,14,14,14,14,0,0,0,0,0,0,0,0
+    db 0,0,0,0,48,48,48,48,0,0,0,0,0,0,0,0
+    db 62,62,62,62,62,62,62,62,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 1,1,1,1,1,1,1,1,128,128,128,128,128,128,128,128
+    db 1,1,0,0,0,0,0,0,240,240,0,0,0,0,0,0
+    db 1,1,1,0,0,0,0,0,240,240,240,0,0,0,0,0
+    db 0,0,0,0,0,1,1,1,0,0,0,0,0,240,240,240
+    db 0,0,0,0,0,0,1,1,0,0,0,0,0,0,240,240
+    db 1,1,1,1,1,0,0,0,240,240,240,240,240,0,0,0
+    db 0,0,0,1,1,1,1,1,0,0,0,240,240,240,240,240
+    db 1,1,1,1,1,1,1,1,224,224,224,224,224,224,224,224
+    db 1,1,1,1,0,0,0,0,240,240,240,240,0,0,0,0
+    db 1,1,1,1,1,1,0,0,240,240,240,240,240,240,0,0
+    db 0,0,0,0,1,1,1,1,0,0,0,0,240,240,240,240
+    db 0,0,1,1,1,1,1,1,0,0,240,240,240,240,240,240
+    db 0,0,0,0,0,0,0,0,0,0,0,0,112,112,112,112
+    db 0,0,0,0,1,1,1,1,0,0,0,0,128,128,128,128
+    db 1,1,1,1,1,1,1,1,240,240,240,240,240,240,240,240
+SsDesc:
+    db 0,0,0,255,0,0,255,0,0,0,0,8,1,1,0,2,2,0,2,2,8,3,3,0,255,0,0,4,4,0
+    db 5,5,0,255,0,0,5,5,8,6,6,0,7,7,0,7,7,8,8,0,0,255,0,0,8,0,8,9,1,0
+    db 10,2,0,10,2,8,11,3,0,255,0,0,12,4,0,13,5,0,255,0,0,13,5,8,14,6,0,15,7,0
+    db 15,7,8,16,0,0,255,0,0,16,0,8,17,1,0,18,2,0,18,2,8,19,3,0,255,0,0,20,4,0
+    db 21,5,0,255,0,0,21,5,8,22,6,0,23,7,0,23,7,8,24,0,0,255,0,0,24,0,8,25,1,0
+    db 26,2,0,26,2,8,27,3,0,255,0,0,28,4,0,29,5,0,255,0,0,29,5,8,30,6,0,31,7,0
+    db 31,7,8,32,0,0,255,0,0,32,0,8,33,1,0,34,2,0,34,2,8,35,3,0,255,0,0,36,4,0
+    db 37,5,0,255,0,0,37,5,8,38,6,0,39,7,0,39,7,8,255,0,0,255,0,0
+SsLoI:
+    db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3
+SsLoM:
+    db 1,2,2,4,8,8,16,16,32,64,64,128,1,1,2,2,4,8,8,16,32,32,64,64,128,1,1,2,4,4,8,8,16,32,32,64,128,128,1,1
+SsHiI:
+    db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3
+SsHiM:
+    db 2,2,4,4,8,16,16,32,64,64,128,128,1,2,2,4,8,8,16,16,32,64,64,128,1,1,2,2,4,8,8,16,32,32,64,64,128,1,1,2
+SsRowVa:
+    dw 1024,1232,1440,3072,3280,3488,3696
+FlB:
+    db 24,5,3,1,4,3,1,3,3,1,2,3,1,1,0,2,1,1,3,1,2,6,1,3,1,0,0,5,0,1,4
+    db 0,2,7,0,3,1,0,12,5,0,13,4,0,14,7,0,15,1,1,12,2,1,13,3,1,14,6,1,15,1,2
+    db 15,1,3,15,1,4,15,1,5,15,1
+FlM:
+    db 14,5,3,1,4,1,2,4,2,3,4,3,1,3,1,5,3,2,4,3,3,1,3,6,5,3,7,4,3,8,1
+    db 4,6,2,4,7,3,4,8,1,5,8,1
+FlG:
+    db 24,5,3,8,4,3,8,3,3,8,2,3,8,1,0,9,1,1,6,1,2,10,1,3,8,0,0,11,0,1,7
+    db 0,2,12,0,3,8,0,12,11,0,13,7,0,14,12,0,15,8,1,12,9,1,13,6,1,14,10,1,15,8,2
+    db 15,8,3,15,8,4,15,8,5,15,8
+FlL:
+    db 2,5,3,13,5,6,14
+FlC1:
+    db 24,5,3,0,4,3,0,3,3,0,2,3,0,1,0,0,1,1,0,1,2,0,1,3,0,0,0,0,0,1,0
+    db 0,2,0,0,3,0,0,12,0,0,13,0,0,14,0,0,15,0,1,12,0,1,13,0,1,14,0,1,15,0,2
+    db 15,0,3,15,0,4,15,0,5,15,0
+FlC2:
+    db 13,4,1,0,4,2,0,4,3,0,3,1,0,3,2,0,3,3,0,3,6,0,3,7,0,3,8,0,4,6,0
+    db 4,7,0,4,8,0,5,8,0
+FlC3:
+    db 1,5,6,0
+FlSki:
+    db 5,6,3,15,6,4,7,6,5,15,6,6,7,6,7,15
+RevTab:
+    db 32,232,70,233,73,234,78,235,83,236,72,237,62,221,67,222,79,223,76,224,69,225,86,226,84,227,77,228,71,229,60,230
+    db 80,231,82,238,66,239,85,240,65,241,58,242,48,243,49,244,50,245,51,248,52,249,53,250,54,251,55,252,56,253,57,254
+    db 46,255,0
+}

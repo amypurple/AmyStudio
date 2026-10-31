@@ -1,0 +1,769 @@
+cartridge "MASTERMAZE/KENNETH S. SZAJDA, COMPUTE!/1983"
+
+' MASTERMAZE: MAZING IN THREE DIMENSIONS
+' The game by Kenneth S. Szajda (Rockaway, New Jersey) from COMPUTE!,
+' February 1983 (pages 98-107, for the Atari), built on Charles Bond's
+' maze generator (COMPUTE!, December 1981), for the ColecoVision in Amy by
+' Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Source: the Atari listing (page 107), transcribed in
+' orig/mastermaze-atari.bas from the scans beside it; Bond's generator as
+' printed for Microsoft BASIC on page 106 is in orig/bond-maze.bas.
+'
+' The game: a maze of several levels stacked one under the other, only
+' the level you are on shown. You are the ball, starting under the S at
+' the top left of the top level; the way out is the F at the bottom
+' right of the lowest level. Between each two levels, five tunnels (+)
+' sit at the same place on both: stand on one and press the button to
+' go through, up or down. A tunnel works once: the ball you leave behind
+' closes it. The screen changes colour at each pass. The clock runs from
+' the start to the finish (five beeps), and the time shows as
+' hours:minutes:seconds. Invisible mazes hide the walls (they are still
+' there) until the end.
+'
+' Controls (either joystick): on the first two screens the stick chooses
+' the number of levels and visible or invisible, the button confirms; the
+' button starts the maze; in the maze the stick moves the ball (up, down,
+' left, right; diagonals do nothing, as on the Atari) and the button
+' takes a tunnel. After the finish the button builds another maze.
+' Keypad not used.
+'
+' The Atari built every level as a screen of its own in 1K of memory and
+' showed one at a time by changing the address in the display list ("page
+' flipping"). Here each level is a name table of its own in VRAM, at a 1K
+' boundary, and the VDP's register 2 shows one (MzReg). Seven slots are
+' free in VRAM (Lvl 0 at $1C00, then $2800-$3C00; $1800 holds the
+' messages), so a maze has 1 to 7 levels (the Atari's limit was memory:
+' up to 32 on 48K; the article suggests three or four).
+'
+' The Atari's screen (40 x 24) kept its maze in columns 2-38 and rows 0-22
+' (18 x 11 rooms); here it is in columns 2-28 and rows 1-23 (13 x 11
+' rooms), inside the overscan. Cells keep the listing's meaning: TWall is
+' the inverse space (128), TS and TF the S (51) and F (38), TPlus the
+' tunnel (83), TBall the ball (84), a space the open floor (0). Offsets
+' are as the listing's (A, B, J, ST, T), counted in a 32-column level.
+' Labels such as l185 are the listing's line numbers.
+'
+' Kept as the listing has them: a tunnel goes up if it can, else down; a
+' tunnel whose other end is spent does nothing but change the colour, and
+' the ball then counts as standing on itself, so leaving it closes this
+' end too; holding the button on the tunnel you came out of keeps the
+' ball still (line 300); the finish text overwrites the top two rows of
+' the lowest level, its time without leading zeros.
+'
+' Liberties taken:
+' - The numbers are chosen with the stick and the button (the Atari's
+'   INPUT); START is the button (after letting it go), and the press
+'   that starts the maze counts in it only once let go (on the Atari
+'   START was a key of its own; the start may be on a tunnel).
+' - Timing: a pass of the main loop is 3 frames (Atari BASIC's pace); the
+'   clock counts real seconds.
+' - Colours: the Atari's random hue at brightness 4, with the text and
+'   walls at its light brightness, is a pair of ColecoVision colours from
+'   a table of 16 (Hue).
+' - A credits page with an original tune (Down the Tunnels) played once.
+'
+' House rules kept: text in columns 2-29 and rows 1-23; tiles from 128; no
+' sprites; the frame loop is protected from the NMI and every screen is
+' drawn with the NMI off after a wait.
+
+const TWall = 128
+const TS = 129
+const TF = 130
+const TPlus = 131
+const TBall = 132
+const THash = 133
+const NTiles8 = 48
+const SndHush = 1
+const SndBeep = 2
+const SndTuneA = 3
+const SndTuneB = 4
+
+' --- the listing's variables ----------------------------------------------
+' Nl the levels (MAXLEV + 1), Inv 1 invisible / 2 visible, Lv the level
+' shown (0 the lowest, the Atari's BOT; Nl - 1 the top, R1 at the start),
+' ST the ball's place and T its last, Sv what is under the ball (S), SW 1
+' just out of a tunnel; A B J X1 the generator's
+u8 Nl = 3
+u8 Inv = 2
+u8 Lv = 0
+u16 ST = 0
+u16 T16 = 0
+u8 Sv = 0
+u8 SW = 0
+u16 A16 = 0
+u16 B16 = 0
+u16 J16 = 0
+u8 J = 0
+u8 X1 = 0
+u8 X = 0
+u8 Xm = 0
+u8 Y = 0
+' Vis: the walls shown (2) or hidden (1); Fg Bg the screen's colours
+u8 Vis = 2
+u8 Fg = 15
+u8 Bg = 4
+' the clock: Secs and the frames of the second running
+u16 Secs = 0
+u8 Fct = 0
+u16 EH = 0
+u16 EM = 0
+u16 ES = 0
+' for the test bot: Ph 0 credits, 1 the questions, 2 building / press the
+' button, 3 in the maze, 4 finished; Steps counts the passes, Qin the
+' stick read at the last (0 none, 1 up, 2 down, 3 left, 4 right), Rin the
+' button, Rs0 the generator before the build, Cx Cy the place printed
+u8 Ph = 0
+u16 Steps = 0
+u8 Qin = 0
+u8 Rin = 0
+u16 Rs0 = 0
+u8 Ask = 0
+u8 Hold = 0
+
+u8 Pc = 0
+u8 V = 0
+u8 W = 0
+u8 Rg = 0
+u8 Up8 = 0
+u8 Dn8 = 0
+u8 Lf8 = 0
+u8 Rt8 = 0
+u8 Fr = 0
+u8 Any = 0
+u8 J8 = 0
+u8 Tick = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Dg = 0
+u16 NumU = 0
+u16 Base16 = 0
+u16 W16 = 0
+u16 V16 = 0
+u16 Rs = $5A3D
+u16 Rt = 0
+u16 Rw = 0
+
+  tile screen
+  set sound table MzSoundTable areas 4
+  nmi off
+  ' no sprites: sprite 0 ends the list, so the levels at $3800 and $3C00
+  ' (the sprite patterns' place) are never read as sprites
+  clear sprites
+  set sprite count 0
+  update sprites
+  screen on
+  CreditsPage
+
+l20:
+  ' 10-23: the questions (the messages' page, $1800)
+  Ph = 1
+  NewScreen
+  put char THash at 2,2
+  print at 3,2, " OF LEVELS?"
+  print at 2,20, "STICK: CHOOSE"
+  print at 2,21, "BUTTON: OK"
+  ShowScreen
+  Pc = Nl
+  Cy = 2
+  AskNum(14, 1, 7)
+  Nl = Pc
+  print at 2,3, "INVISIBLE (1) OR"
+  print at 2,4, "VISIBLE (2)?"
+  Pc = Inv
+  Cy = 4
+  AskNum(14, 1, 2)
+  Inv = Pc
+  ' 27: the wait message, then 28: the screen off, the start message
+  Ph = 2
+  NewScreen
+  print at 4,10, "CONSTRUCTING MAZE..."
+  print at 4,11, "PLEASE WAIT"
+  ShowScreen
+  for J8 = 1 to 120
+    Frame1
+  next
+  Rearm
+  wait
+  nmi off
+  display off
+  cls
+  print at 6,11, "PRESS FIRE TO BEGIN"
+  ' 29-120: the levels, each its own page
+  Rs0 = Rs
+  X = 0
+l30:
+  Gen
+  inc X
+  if X < Nl then goto l30
+  ' 130: the F at the bottom right of the lowest level, the S over the
+  ' start of the top one
+  PokeC(0, 763, TF)
+  V = Nl - 1
+  PokeC(V, 35, TS)
+  ' 135-170: five tunnels between each level and the one above
+  if Nl = 1 then goto l172
+  Xm = Nl - 2
+  for X = 0 to Xm
+    for Y = 1 to 5
+l150:
+      Rnd16
+      J16 = Rw & 1023
+      if J16 >= 665 then goto l150
+      J16 = J16 + 67
+      W = J16 & 31
+      if W < 3 then goto l150
+      if W > 28 then goto l150
+      PeekC(X, J16)
+      if V <> 32 then goto l150
+      J8 = X + 1
+      PeekC(J8, J16)
+      if V <> 32 then goto l150
+      PokeC(X, J16, TPlus)
+      PokeC(J8, J16, TPlus)
+    next
+  next
+l172:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  NewColour
+  ' 173: START (the button) to begin, the word flashing
+  Ask = 1
+  WaitLetGo
+  J8 = 0
+l173:
+  Frame1
+  inc J8
+  V = J8 & 4
+  if V = 0 then
+    print at 12,11, "FIRE"
+  else
+    print at 12,11, "    "
+  end if
+  Fr = joypad(1).fire | joypad(2).fire
+  if Fr = 0 then goto l173
+  Ask = 0
+  ' 174-180: the walls shown or not, the clock at zero, the top level
+  Vis = Inv
+  Paint
+  Secs = 0
+  Fct = 0
+  Lv = Nl - 1
+  ST = 67
+  ShowLv
+  Ph = 3
+  Hold = 1
+
+l185:
+  ' 185: the ball goes on its cell, what was there kept
+  PeekC(Lv, ST)
+  Sv = V
+  T16 = ST
+  PokeC(Lv, ST, TBall)
+l190:
+  ' a pass every 3 frames, the clock every frame
+  Frame1
+  Clock
+  Frame1
+  Clock
+  Frame1
+  Clock
+  ' 190: the stick (straight directions only) and the button
+  Up8 = joypad(1).up | joypad(2).up
+  Dn8 = joypad(1).down | joypad(2).down
+  Lf8 = joypad(1).left | joypad(2).left
+  Rt8 = joypad(1).right | joypad(2).right
+  Qin = 0
+  V = Up8 + Dn8
+  V = V + Lf8
+  V = V + Rt8
+  if V = 1 then
+    if Up8 = 1 then Qin = 1
+    if Dn8 = 1 then Qin = 2
+    if Lf8 = 1 then Qin = 3
+    if Rt8 = 1 then Qin = 4
+  end if
+  Rin = joypad(1).fire | joypad(2).fire
+  ' (the button that started the maze counts once let go)
+  if Rin = 0 then Hold = 0
+  if Hold = 1 then Rin = 0
+  inc Steps
+  if Rin = 1 then
+    if Sv = TPlus then goto l300
+  end if
+  ' 200-230
+  if Qin = 4 then ST = ST + 1
+  if Qin = 3 then ST = ST - 1
+  if Qin = 1 then ST = ST - 32
+  if Qin = 2 then ST = ST + 32
+  ' 235: the F, the way out
+  PeekC(Lv, ST)
+  if V = TF then goto l400
+  ' 240: walls and the S stop the ball
+  if V = TWall then ST = T16
+  if V = TS then ST = T16
+  ' 250
+  if ST <> T16 then
+    SW = 0
+    PokeC(Lv, T16, Sv)
+    goto l185
+  end if
+  goto l190
+
+l300:
+  ' 300-321: through a tunnel (up first), not twice in a row
+  if SW = 1 then goto l190
+  V = Lv + 1
+  if V < Nl then
+    PeekC(V, ST)
+    if V = TPlus then
+      inc Lv
+      goto l321
+    end if
+  end if
+  if Lv > 0 then
+    V = Lv - 1
+    PeekC(V, ST)
+    if V = TPlus then dec Lv
+  end if
+l321:
+  ShowLv
+  SW = 1
+  NewColour
+  goto l185
+
+l400:
+  ' 400-402: the time, five beeps, the walls shown
+  Ph = 4
+  EH = Secs / 3600
+  V16 = EH * 3600
+  NumU = Secs - V16
+  EM = NumU / 60
+  V16 = EM * 60
+  ES = NumU - V16
+  for J8 = 1 to 5
+    play sound SndBeep
+    for X = 1 to 18
+      Frame1
+    next
+  next
+  Vis = 2
+  Paint
+  ' 403-415: the time and the next maze, over the top two rows of the
+  ' lowest level (written on the messages' page, then copied)
+  cls
+  ' (A$ padded with spaces: the rest of the row cleared)
+  fill row 1 from 0 count 32 with 32
+  print at 2,1, "ELAPSED TIME: "
+  Cx = 16
+  Cy = 1
+  NumU = EH
+  PutNum
+  put char 58 at Cx,Cy
+  inc Cx
+  NumU = EM
+  PutNum
+  put char 58 at Cx,Cy
+  inc Cx
+  NumU = ES
+  PutNum
+  print at 2,2, "PRESS FIRE FOR ANOTHER MAZE"
+  copy vram.name + 34 count 27 to vram.name + 1058
+  copy vram.name + 66 count 27 to vram.name + 1090
+  ' 420-440: START (the button) for another maze
+  Ask = 1
+  WaitLetGo
+l430:
+  Frame1
+  Fr = joypad(1).fire | joypad(2).fire
+  if Fr = 0 then goto l430
+  Ask = 0
+  goto l20
+
+' AskNum(Col, Lo, Hi): the number Pc at Col, Cy, changed with the stick
+' (up or right more, down or left less), until the button
+sub AskNum(u8 Col, u8 Lo, u8 Hi):
+  Ask = 1
+  WaitLetGo
+  W = 0
+ch_show:
+  V = 48 + Pc
+  put char V at Col,Cy
+ch_wait:
+  Frame1
+  Up8 = joypad(1).up | joypad(2).up
+  Rt8 = joypad(1).right | joypad(2).right
+  Dn8 = joypad(1).down | joypad(2).down
+  Lf8 = joypad(1).left | joypad(2).left
+  Fr = joypad(1).fire | joypad(2).fire
+  if Fr = 1 then
+    Ask = 0
+    ' the time spent choosing seeds the generator
+    Rt = Tick
+    Rs = Rs ^ Rt
+    Rt = Rt << 8
+    Rs = Rs ^ Rt
+    if Rs = 0 then Rs = $5A3D
+    return
+  end if
+  V = Up8 | Rt8
+  J8 = Dn8 | Lf8
+  Any = V | J8
+  ' (held: a step every 12 frames)
+  if Any = 0 then W = 0
+  if W > 0 then
+    dec W
+    goto ch_wait
+  end if
+  if V = 1 then
+    if Pc < Hi then inc Pc
+    W = 12
+    goto ch_show
+  end if
+  if J8 = 1 then
+    if Pc > Lo then dec Pc
+    W = 12
+    goto ch_show
+  end if
+  goto ch_wait
+end sub
+
+' Gen: level X built by Bond's routine (lines 30-120), straight into its
+' page: the walls (65), then the rooms dug from the start (70-110)
+sub Gen:
+  SlotOf(X)
+  fill 32 count 768 to vram.name + Base16
+  W16 = Base16 + 34
+  for J8 = 1 to 23
+    fill TWall count 27 to vram.name + W16
+    W16 = W16 + 32
+  next
+  A16 = 67
+  PokeC(X, A16, 5)
+g80:
+  Rnd16
+  J = Rw & 3
+  X1 = J
+g90:
+  DirOf(J)
+  B16 = A16 + V16
+  if B16 < 768 then
+    PeekC(X, B16)
+    if V = TWall then
+      V = J + 1
+      PokeC(X, B16, V)
+      HalfOf(J)
+      W16 = A16 + V16
+      PokeC(X, W16, 32)
+      A16 = B16
+      goto g80
+    end if
+  end if
+  ' 100
+  inc J
+  if J = 4 then J = 0
+  if J <> X1 then goto g90
+  ' 110
+  PeekC(X, A16)
+  J = V
+  PokeC(X, A16, 32)
+  if J < 5 then
+    V = J - 1
+    DirOf(V)
+    A16 = A16 - V16
+    goto g80
+  end if
+  return
+end sub
+
+' DirOf(D): A(D) in V16 (2, -32 * 2, -2, 32 * 2); HalfOf(D): A(D) / 2
+sub DirOf(u8 D):
+  if D = 0 then V16 = 2
+  if D = 1 then V16 = 65472
+  if D = 2 then V16 = 65534
+  if D = 3 then V16 = 64
+  return
+end sub
+
+sub HalfOf(u8 D):
+  if D = 0 then V16 = 1
+  if D = 1 then V16 = 65504
+  if D = 2 then V16 = 65535
+  if D = 3 then V16 = 32
+  return
+end sub
+
+' SlotOf(L): level L's page, as Base16 (from vram.name, $1800)
+sub SlotOf(u8 L):
+  if L = 0 then Base16 = $0400
+  if L = 1 then Base16 = $1000
+  if L = 2 then Base16 = $1400
+  if L = 3 then Base16 = $1800
+  if L = 4 then Base16 = $1C00
+  if L = 5 then Base16 = $2000
+  if L = 6 then Base16 = $2400
+  return
+end sub
+
+' PeekC(L, Off): the cell Off of level L in V; PokeC(L, Off, Code)
+sub PeekC(u8 L, u16 Off):
+  SlotOf(L)
+  W16 = Base16 + Off
+  vpeek vram.name + W16 into V
+  return
+end sub
+
+sub PokeC(u8 L, u16 Off, u8 Code):
+  SlotOf(L)
+  W16 = Base16 + Off
+  vpoke vram.name + W16, Code
+  return
+end sub
+
+' ShowLv: level Lv's page on the screen (POKE TOP+1,R1): register 2
+sub ShowLv:
+  if Lv = 0 then
+    V = 7
+  else
+    V = Lv + 9
+  end if
+  Rg = 2
+  call asm MzReg
+  return
+end sub
+
+' NewColour (line 500): a random hue, dark for the screen, light for the
+' text and walls
+sub NewColour:
+  Rnd16
+  V = Rw & 15
+  Bg = HueBg[V]
+  Fg = HueFg[V]
+  Paint
+  return
+end sub
+
+' Paint: the backdrop and the colours of the text and tiles (the walls
+' clear when hidden: CHACT 1 hides the inverse characters)
+sub Paint:
+  V = Bg
+  Rg = 7
+  call asm MzReg
+  V = Fg << 4
+  fill V count 816 to vram.color + 256
+  if Vis = 1 then fill 0 count 8 to vram.color + 1024
+  return
+end sub
+
+' Clock: a frame of the clock (RTCLOK)
+sub Clock:
+  inc Fct
+  if Fct = 60 then
+    Fct = 0
+    inc Secs
+  end if
+  return
+end sub
+
+' PutNum: NumU at Cx, Cy without leading zeros (as Atari BASIC prints)
+sub PutNum:
+  V16 = 10000
+  W = 0
+pn_loop:
+  Dg = 0
+pn_sub:
+  if NumU >= V16 then
+    NumU = NumU - V16
+    inc Dg
+    goto pn_sub
+  end if
+  if Dg > 0 then W = 1
+  if V16 = 1 then W = 1
+  if W = 1 then
+    V = 48 + Dg
+    put char V at Cx,Cy
+    inc Cx
+  end if
+  if V16 = 1 then return
+  V16 = V16 / 10
+  goto pn_loop
+end sub
+
+sub WaitLetGo:
+wl_loop:
+  Frame1
+  Up8 = joypad(1).up | joypad(2).up
+  Dn8 = joypad(1).down | joypad(2).down
+  Lf8 = joypad(1).left | joypad(2).left
+  Rt8 = joypad(1).right | joypad(2).right
+  Fr = joypad(1).fire | joypad(2).fire
+  Any = Up8 | Dn8
+  Any = Any | Lf8
+  Any = Any | Rt8
+  Any = Any | Fr
+  if Any = 1 then goto wl_loop
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  print at 2,1, "MASTERMAZE"
+  print at 2,2, "MAZING IN THREE DIMENSIONS"
+  print at 2,4, "BY KENNETH S. SZAJDA OF"
+  print at 2,5, "ROCKAWAY, NEW JERSEY, FROM"
+  print at 2,6, "COMPUTE!, FEBRUARY 1983"
+  print at 2,7, "(ATARI). THE MAZES ARE MADE"
+  print at 2,8, "BY CHARLES BOND'S ROUTINE"
+  print at 2,9, "(COMPUTE!, DECEMBER 1981)."
+  print at 2,11, "FIND THE F ON THE LOWEST"
+  print at 2,12, "LEVEL. THE + ARE TUNNELS:"
+  print at 2,13, "THE BUTTON TAKES ONE, ONCE."
+  print at 2,15, "FOR THE COLECOVISION BY"
+  print at 2,16, "CLAUDE (AN AI MADE BY"
+  print at 2,17, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,18, "2026, IN AMY, THE LANGUAGE"
+  print at 2,19, "BY AMY BIENVENU."
+  print at 2,20, "MUSIC: DOWN THE TUNNELS"
+  print at 9,22, "PRESS A BUTTON"
+  ShowScreen
+  play song MzSong once
+  Ask = 1
+  WaitLetGo
+cp_wait:
+  Frame1
+  Fr = joypad(1).fire | joypad(2).fire
+  if Fr = 0 then goto cp_wait
+  Ask = 0
+  Rt = Tick
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $5A3D
+  return
+end sub
+
+' NewScreen: the messages' page shown again (register 2: $1800), cleared,
+' in the Atari's first colours (white on blue)
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  V = 6
+  Rg = 2
+  call asm MzReg
+  Bg = 4
+  Fg = 15
+  Vis = 2
+  Paint
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' the Atari's 16 hues at brightness 4 (the screen) and at the text's
+' brightness (walls and letters), as ColecoVision colours: grey, gold,
+' orange, red-orange, pink, purple, purple-blue, blue, blue, light blue,
+' turquoise, green-blue, green, yellow-green, orange-green, light orange
+data HueBg bytes 1,10,6,6,8,13,4,4,4,5,12,12,12,2,10,6
+data HueFg bytes 14,11,9,11,15,15,5,5,7,15,7,3,15,11,15,11
+
+data TilePat bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$3C,$60,$3C,$06,$06,$7C,$00
+  $00,$7E,$60,$7C,$60,$60,$60,$00
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+  $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+  $00,$6C,$FE,$6C,$6C,$FE,$6C,$00
+end data
+
+asm {
+MzHush:
+    db $00,$00,$F0,$01,$10
+MzBeep:
+    db $40,$23,$00,$01,$40,$23,$10,$01,$40,$23,$20,$01,$40,$23,$30,$01,$40,$23,$40,$01,$40,$23,$50,$01
+    db $40,$23,$60,$01,$40,$23,$70,$01,$40,$23,$80,$01,$40,$23,$90,$01,$40,$23,$A0,$01,$40,$23,$B0,$01
+    db $40,$23,$C0,$01,$40,$23,$D0,$01,$40,$23,$E0,$01,$40,$23,$F0,$01,$50
+
+MzSoundTable:
+    dw MzHush,$702B
+    dw MzBeep,$7035
+    dw MzTuneMel,$703F
+    dw MzTuneBass,$7049
+; Down the Tunnels, D minor (original for this game)
+; Tiny Sound, 8 frames per step
+MzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$21,$01,$24,$01,$23,$01,$21,$01,$1C,$01,$01,$01
+    db $1F,$01,$21,$01,$23,$01,$26,$01,$24,$01,$23,$01,$1F,$01,$01,$01
+    db $23,$01,$24,$01,$21,$01,$24,$01,$28,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$21,$01,$1C,$01,$20,$01,$23,$01,$21,$01,$00,$01
+    db $00,$01,$01,$01
+    db $FF
+MzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$09,$01,$01,$01,$10,$01,$01,$01,$09,$01,$01,$01
+    db $10,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$07,$01,$01,$01
+    db $0E,$01,$01,$01,$05,$01,$01,$01,$0C,$01,$01,$01,$05,$01,$01,$01
+    db $0C,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+MzSong:
+    dw $0001
+    db $40+3,4
+    dw $0000
+
+; MzReg: VDP register Rg to the value V (2: the name table shown, 7: the
+; backdrop). The NMI is off whenever it is called.
+MzReg:
+    ld a,(AMY_UVAR_V)
+    out ($BF),a
+    ld a,(AMY_UVAR_Rg)
+    or $80
+    out ($BF),a
+    ret
+}

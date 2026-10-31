@@ -1,0 +1,1196 @@
+cartridge "FIGHTER ACES/JOHN PARR, COMPUTE!/1983"
+
+' FIGHTER ACES
+' The game by John Parr from COMPUTE!, March 1983 (pages 138-142, "Fighter
+' Aces - Add A Second VIC Joystick"), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: the VIC-20 listing, transcribed in orig/fighteraces-vic.bas from
+' the scans beside it. The article's point was a second joystick for the
+' VIC, wired to its user port; the ColecoVision has two controller ports of
+' its own, so controller 1 flies player 1's biplane and controller 2 player
+' 2's.
+'
+' The game: two biplanes take off from the same airfield, one at each end,
+' and dogfight across the sky. The stick turns your biplane (eight ways; it
+' keeps flying the way it points), the button fires a shot of limited
+' range. A biplane shot down, flown into the clouds, the ground, the
+' control tower or a shot gives the other player a point; a mid-air
+' collision gives each player one. The first to fifteen wins; the standings
+' (games won) are kept from game to game.
+'
+' Controls: controller 1 player 1 (the black biplane, on the left),
+' controller 2 player 2 (the white one); after a game, the button plays
+' again and the stick down goes back to the title. Keypad not used.
+'
+' The VIC-20's screen (22 columns, 23 rows) is kept cell for cell, at
+' columns 5-26 and rows 1-23: P, SP and the other positions are the VIC's
+' screen offsets (from V%), and the moves the listing's +-1, +-21, +-22,
+' +-23. Labels such as l290 are the listing's line numbers; the listing's
+' odd ways out of its FOR loops are followed exactly (a shot stopped by the
+' tower, a shot meeting a shot or a hit biplane ends the shots' loop through
+' line 290's NEXT, which then skips the second pass of the Y loop).
+'
+' Liberties taken:
+' - Controller 1 is player 1, controller 2 player 2 (on the VIC, player 1
+'   used the second joystick on the user port).
+' - Timing: a pass of the main loop (two shot steps and a biplane step each)
+'   is 5 frames, about the VIC's BASIC speed; the explosion's empty loop
+'   (70 passes) is 4 frames.
+' - The explosion is drawn in the colour of the biplane that blows up (the
+'   VIC used whatever colour its colour memory held in that cell, which is
+'   that biplane's but for a chain of explosions at a biplane just sent
+'   back to its start).
+' - "PRESS RETURN TO BEGIN" reads "PRESS FIRE TO BEGIN"; "PLAY AGAIN?"
+'   gets the line "FIRE: YES  DOWN: NO" (any key but N played again; N
+'   ended the program, here it goes back to the title).
+' - The ground (an underlined '#' in the listing, a graphics character) is
+'   a cyan checkerboard; the text is the ColecoVision's font.
+' - A credits page with an original title tune ("Twin Props").
+' Quirks kept: a biplane flying into a shot loses (and its shooter scores);
+' a shot fired point-blank wipes the picture of whatever is right in front
+' of the biplane (line 250 POKEs a space there); the shots' flags are not
+' cleared between games, so a shot in flight when a game ends goes on in
+' the next one.
+'
+' House rules kept: text in columns 2-29; no sprites; the frame loop is
+' protected from the NMI and every screen is drawn with the NMI off after a
+' wait.
+
+const TPk0 = 128
+const TPk1 = 129
+const TPk2 = 130
+const TPk3 = 131
+const TPk4 = 132
+const TPk5 = 133
+const TPk6 = 134
+const TPk7 = 135
+const TPw0 = 136
+const TPw1 = 137
+const TPw2 = 138
+const TPw3 = 139
+const TPw4 = 140
+const TPw5 = 141
+const TPw6 = 142
+const TPw7 = 143
+const TShk = 144
+const TShw = 145
+const TBok = 146
+const TBow = 147
+const TTower = 148
+const TGround = 149
+const TStar = 150
+const TcS = 151
+const TcC = 152
+const TcO = 153
+const TcR = 154
+const TcE = 155
+const TcU = 156
+const TcN = 157
+const TcT = 158
+const TcA = 159
+const TcD = 160
+const TcI = 161
+const TcG = 162
+const TcCol = 163
+const TcAst = 164
+const Tk0 = 165
+const Tk1 = 166
+const Tk2 = 167
+const Tk3 = 168
+const Tk4 = 169
+const Tk5 = 170
+const Tk6 = 171
+const Tk7 = 172
+const Tk8 = 173
+const Tk9 = 174
+const TkP = 175
+const TkL = 176
+const TkA = 177
+const TkY = 178
+const TkG = 179
+const TkI = 180
+const TkN = 181
+const TkQue = 182
+const TkF = 183
+const TkR = 184
+const TkE = 185
+const TkCol = 186
+const TkS = 187
+const TkD = 188
+const TkO = 189
+const TkW = 190
+const Ty0 = 191
+const Ty1 = 192
+const Ty2 = 193
+const Ty3 = 194
+const Ty4 = 195
+const Ty5 = 196
+const Ty6 = 197
+const Ty7 = 198
+const Ty8 = 199
+const Ty9 = 200
+const TyP = 201
+const TyL = 202
+const TyA = 203
+const TyY = 204
+const TyE = 205
+const TyR = 206
+const TyMin = 207
+const TbF = 208
+const TbI = 209
+const TbG = 210
+const TbH = 211
+const TbT = 212
+const TbE = 213
+const TbR = 214
+const TbA = 215
+const TbC = 216
+const TbS = 217
+const TbExc = 218
+const TbAst = 219
+const TgP = 220
+const TgR = 221
+const TgE = 222
+const TgS = 223
+const TgF = 224
+const TgI = 225
+const TgT = 226
+const TgO = 227
+const TgB = 228
+const TgG = 229
+const TgN = 230
+const NTiles8 = 824
+const SndDroneN = 1
+const SndDroneT = 2
+const SndBoomN = 3
+const SndBoomT = 4
+const SndQuietN = 5
+const SndQuietT = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+' --- the listing's variables ----------------------------------------------
+' Pp the biplanes (P%), Dd their moves (D%, 16 bits: -1 is 65535), Ah
+' their headings (A%: the character is 33 + A%), Sp Sd Sf the shots (SP%,
+' SD%, SF%: the steps left), Sc the scores (SC%), Ee the winners' flags
+' (E%), Gw the games won (G%), Mj the sticks (M%: bit 1 right, 2 up, 3
+' down, 4 left, 5 the button, 0 when pressed)
+u16 Pp[2]
+u16 Dd[2]
+u8 Ah[2]
+u16 Sp[2]
+u16 Sd[2]
+u8 Sf[2]
+u8 Sc[2]
+u8 Ee[2]
+u8 Gw[2]
+u8 Mj[2]
+' Cx the biplane blowing up (C%), Hh the cell in front of it (H%), Bf Lf
+' the listing's B% and L%, X Yl the loops' X and Y
+u8 Cx = 0
+u8 Hh = 0
+u8 Bf = 0
+u8 Lf = 0
+u8 X = 0
+u8 Yl = 0
+u16 Dn = 0
+u16 Q = 0
+' B the cell (a VIC offset), Tl the tile to put there, Pk the tile found,
+' Kd the VIC character it stands for (32 a space, 33-40 the biplanes, 41 a
+' shot, 42 an explosion, 194 the tower, 1 anything else)
+u16 B = 0
+u8 Tl = 0
+u8 Pk = 0
+u8 Kd = 0
+' for the test bot: Ph 1 the credits, 2 the title, 3 playing, 4 the game's
+' end; Stp the main loop's passes
+u8 Ph = 0
+u8 Stp = 0
+' the drone (the engines): Dron 1 while it plays, Dt its frames
+u8 Dron = 0
+u8 Dt = 0
+u8 Rb = 0
+u8 Rd = 0
+u8 W = 0
+u16 NumW = 0
+u8 Nc = 0
+u8 Nr = 0
+u8 Nb = 0
+u8 Dg[5]
+u8 Nd = 0
+u8 V = 0
+u8 Jp = 0
+u8 Jh = 0
+u8 Jn = 0
+u8 Tick = 0
+' Fc: the screen's text colour (0 white, 1 black)
+u8 Fc = 0
+
+  tile screen
+  set sound table FaSoundTable areas 4
+  nmi off
+  screen on
+
+l10:
+  CreditsPage
+  TitlePage
+l60:
+  ' 30, 60: CLR and DIM: everything starts at zero
+  for Jn = 0 to 1
+    Sp[Jn] = 0
+    Sd[Jn] = 0
+    Sf[Jn] = 0
+    Sc[Jn] = 0
+    Ee[Jn] = 0
+    Gw[Jn] = 0
+    Mj[Jn] = 0
+  next
+  Bf = 0
+  Lf = 0
+  Cx = 0
+l120:
+  GameScreen
+  Ph = 3
+l140:
+  Cx = 0
+  Reset1
+  Cx = 1
+  Reset1
+  ShowScore
+l150:
+  DroneOn
+
+l160:
+  ' 160-170: the sticks (Mj), after a pass's time
+  Pace(5)
+  Yl = 1
+l190:
+  ' 190-220: a button pressed and no shot in the air: a shot starts in
+  ' front of the biplane (not drawn yet), unless that is off the field or
+  ' the tower; the first one started ends this loop (line 220 goes on to
+  ' 230 without its NEXT)
+  X = 0
+l190a:
+  V = Mj[X] & 32
+  if V <> 0 then goto l190n
+  if Sf[X] <> 0 then goto l190n
+  Sf[X] = 11
+  Sp[X] = Pp[X] + Dd[X]
+  Sd[X] = Dd[X]
+  if Sp[X] > 483 then goto l220f
+  if Sp[X] < 66 then goto l220f
+  B = Sp[X]
+  Look
+  if Kd = 194 then goto l220f
+  goto l230
+l220f:
+  Sf[X] = 0
+l190n:
+  if X = 0 then
+    X = 1
+    goto l190a
+  end if
+l230:
+  ' 230-280: the shots fly a step
+  X = 0
+l230a:
+  if Sf[X] = 0 then goto l230n
+  V = Sf[X] - 1
+  Sf[X] = V
+  if V = 0 then
+    B = Sp[X]
+    Tl = 32
+    Put1
+    goto l230n
+  end if
+  B = Sp[X]
+  Tl = 32
+  Put1
+  Sp[X] = Sp[X] + Sd[X]
+  if Sp[X] < 66 then goto l260f
+  if Sp[X] > 483 then goto l260f
+  B = Sp[X]
+  Look
+  if Kd <> 32 then
+    Sf[X] = 0
+    goto l410
+  end if
+  Tl = TShk + X
+  Put1
+  goto l230n
+l260f:
+  Sf[X] = 0
+l230n:
+  if X = 0 then
+    X = 1
+    goto l230a
+  end if
+l290y:
+  ' 290: the NEXT of the Y loop (the shots fly twice a pass)
+  if Yl = 1 then
+    Yl = 2
+    goto l190
+  end if
+l290p:
+  ' 290-400: the biplanes
+  X = 0
+l290a:
+  V = Mj[X] & 30
+  if V = 30 then goto l350
+l300:
+  ' FNM: up -22, left -1, right +1, down +22
+  Dn = 0
+  V = Mj[X] & 4
+  if V = 0 then Dn = Dn - 22
+  V = Mj[X] & 16
+  if V = 0 then Dn = Dn - 1
+  V = Mj[X] & 2
+  if V = 0 then Dn = Dn + 1
+  V = Mj[X] & 8
+  if V = 0 then Dn = Dn + 22
+  if Dn = Dd[X] then goto l350
+l310:
+  ' 310-340: the heading, ABS of D%/11 nudged (0 right, 1 down-left, 2
+  ' down, 3 down-right, 4 left, 5 up-right, 6 up, 7 up-left)
+  Dd[X] = Dn
+  Ah[X] = 0
+  if Dn = 21 then Ah[X] = 1
+  if Dn = 22 then Ah[X] = 2
+  if Dn = 23 then Ah[X] = 3
+  if Dn = 65535 then Ah[X] = 4
+  if Dn = 65515 then Ah[X] = 5
+  if Dn = 65514 then Ah[X] = 6
+  if Dn = 65513 then Ah[X] = 7
+l350:
+  ' 350: off the field (into the clouds or the ground): blown up
+  Q = Pp[X] + Dd[X]
+  V = 0
+  if Q < 66 then V = 1
+  if Q > 483 then V = 1
+  if V = 1 then
+    Cx = X
+    Lf = 1
+    Explode
+  end if
+l360:
+  ' 360: something in the way: blown up
+  B = Pp[X] + Dd[X]
+  Look
+  if Kd <> 32 then
+    Cx = X
+    Explode
+  end if
+l370:
+  V = Ee[0] | Ee[1]
+  if V <> 0 then goto l550
+l380:
+  B = Pp[X]
+  Tl = 32
+  Put1
+  Pp[X] = Pp[X] + Dd[X]
+  B = Pp[X]
+  Tl = X * 8
+  Tl = Tl + Ah[X]
+  Tl = Tl + TPk0
+  Put1
+  if X = 0 then
+    X = 1
+    goto l290a
+  end if
+  inc Stp
+  goto l160
+
+l410:
+  ' 410-440: what the shot X ran into: the tower stops it, a shot stops
+  ' both, anything else is the other biplane, blown up; then line 290's
+  ' NEXT (the shots' loop)
+  B = Sp[X]
+  Look
+  if Kd = 194 then goto l410n
+  if Kd = 41 then
+    Tl = 32
+    Put1
+    Sf[0] = 0
+    Sf[1] = 0
+    goto l410n
+  end if
+l430:
+  Cx = 1 - X
+  Explode
+  if Ee[X] <> 0 then goto l550
+l410n:
+  if X = 0 then
+    X = 1
+    goto l230a
+  end if
+  goto l290p
+
+l550:
+  ' 550-610: the game's end
+  Ph = 4
+  DroneOff
+  Fc = 0
+  NewScreen
+  backdrop dark blue
+  V = Ee[0] & Ee[1]
+  if V <> 0 then
+    print at 5,1, "TIE GAME !!"
+  else
+    W = 1
+    if Ee[1] = 1 then W = 2
+    if Ee[0] = 1 then W = 1
+    print at 5,1, "PLAYER"
+    V = W + 48
+    put char V at 12,1
+    print at 15,1, "WINS."
+    V = W - 1
+    Jn = Gw[V] + 1
+    Gw[V] = Jn
+  end if
+  copy TxStand count 21 to vram.name + 133
+  for Jn = 0 to 1
+    V = Jn * 2
+    V = V + 6
+    Nr = V
+    VPutPlayer
+    V = Jn + 1
+    V = V + Ty0
+    put char V at 12,Nr
+    put char TyMin at 15,Nr
+    NumW = Gw[Jn]
+    Nc = 17
+    Nb = Ty0
+    ShowNum
+  next
+  copy TxAgain count 11 to vram.name + 325
+  copy TxHint count 19 to vram.name + 389
+  ShowScreen
+l620:
+  ' 620-650: the button plays again, the stick down stops
+  Pace(1)
+  V = Rb | Rd
+  if V <> 0 then goto l620
+l620w:
+  Pace(1)
+  if Rd = 1 then goto l10
+  if Rb = 0 then goto l620w
+l630:
+  Sc[0] = 0
+  Sc[1] = 0
+  Ee[0] = 0
+  Ee[1] = 0
+  goto l120
+
+
+' 450-540: the biplane Cx blows up: the other player scores (fifteen
+' wins); a biplane or shot right in front of it goes too (a mid-air
+' collision blows up both), unless it went off the field (L%)
+sub Explode:
+ex450:
+  B = Pp[Cx]
+  Tl = TBok + Cx
+  Put1
+  play sound SndBoomN
+  play sound SndBoomT
+  Hold(4)
+  DroneOn
+  Tl = 32
+  Put1
+ex460:
+  B = Pp[Cx] + Dd[Cx]
+  Look
+  Hh = Kd
+  if Hh = 41 then
+    V = 1 - Cx
+    Sf[V] = 0
+    Tl = 32
+    Put1
+    Hh = 32
+  end if
+  if Hh <> 32 then
+    if Hh <> 194 then Bf = 1
+  end if
+ex490:
+  V = 1 - Cx
+  W = Sc[V] + 1
+  Sc[V] = W
+  if W = 15 then Ee[V] = 1
+  Reset1
+  if Lf <> 0 then
+    Lf = 0
+    Bf = 0
+    goto ex540
+  end if
+  if Bf <> 0 then
+    Bf = 0
+    Cx = 1 - Cx
+    goto ex450
+  end if
+ex540:
+  ShowScore
+  return
+end sub
+
+' 90-100: biplane Cx back to its end of the airfield
+sub Reset1:
+  if Cx = 0 then
+    Pp[0] = 463
+    Ah[0] = 0
+    Dd[0] = 1
+  else
+    Pp[1] = 482
+    Ah[1] = 4
+    Dd[1] = 65535
+  end if
+  return
+end sub
+
+' 110: the scores (row 1: player 1's in black at column 6, player 2's in
+' white at column 15, after the sign's space)
+sub ShowScore:
+  copy TxScore count 6 to vram.name + 37
+  NumW = Sc[0]
+  Nc = 11
+  Nr = 2
+  Nb = Tk0
+  ShowNum
+  NumW = Sc[1]
+  Nc = 20
+  Nb = 48
+  ShowNum
+  return
+end sub
+
+' ShowNum: NumW's digits from column Nc of row Nr, the 0 being tile Nb
+sub ShowNum:
+  Nd = 0
+sn_div:
+  V = NumW % 10
+  Dg[Nd] = V
+  inc Nd
+  NumW = NumW / 10
+  if NumW <> 0 then goto sn_div
+sn_put:
+  dec Nd
+  V = Dg[Nd] + Nb
+  put char V at Nc,Nr
+  inc Nc
+  if Nd <> 0 then goto sn_put
+  return
+end sub
+
+' "PLAYER" in yellow at column 5 of row Nr
+sub VPutPlayer:
+  for Jh = 0 to 5
+    V = TxPlayer[Jh]
+    W = Jh + 5
+    put char V at W,Nr
+  next
+  return
+end sub
+
+' 120-130: the field: the clouds (row 2), the ground (row 22, columns
+' 1-20) and the control tower (column 11, rows 18-21)
+sub GameScreen:
+  Fc = 0
+  NewScreen
+  backdrop dark blue
+  fill TStar count 22 at 5,3
+  fill TGround count 20 at 6,23
+  for Jh = 19 to 22
+    put char TTower at 16,Jh
+  next
+  ShowScreen
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 1
+  Fc = 0
+  NewScreen
+  backdrop dark blue
+  print at 10,2, "FIGHTER ACES"
+  put char TPk0 at 9,5
+  put char TShk at 11,5
+  put char TShw at 20,5
+  put char TPw4 at 22,5
+  fill TStar count 22 at 5,7
+  print at 4,10, "BY JOHN PARR, FROM"
+  print at 4,11, "COMPUTE! MARCH 1983"
+  print at 4,12, "(VIC-20 VERSION)"
+  print at 2,15, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,16, "BY ANTHROPIC), AMY STUDIO."
+  print at 2,17, "MUSIC: TWIN PROPS."
+  print at 2,19, "TWO PLAYERS, TWO JOYSTICKS."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  play song FaSong once
+cp_up:
+  Pace(1)
+  if Rb = 1 then goto cp_up
+cp_wait:
+  Pace(1)
+  if Rb = 0 then goto cp_wait
+  stop song
+  return
+end sub
+
+' 660-780: the title (the VIC's white screen)
+sub TitlePage:
+  Ph = 2
+  Fc = 1
+  NewScreen
+  backdrop white
+  copy TxTitle count 21 to vram.name + 69
+  print at 12,8, "ANOTHER"
+  print at 14,10, "JHP"
+  print at 14,11, "VIC"
+  print at 12,13, "PROGRAM"
+  copy TxPress count 19 to vram.name + 645
+  ShowScreen
+tp_up:
+  Pace(1)
+  if Rb = 1 then goto tp_up
+tp_wait:
+  Pace(1)
+  if Rb = 0 then goto tp_wait
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  if Fc = 1 then
+    fill mode 2 text color with $10
+  else
+    fill mode 2 text color with $F0
+  end if
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  call asm FontTiles
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+' Pace N: N frames, then the sticks: Mj[0] controller 1, Mj[1] controller
+' 2 (the listing's bits), Rb a button of either, Rd either stick down
+sub Pace(u8 N):
+  for Jp = 1 to N
+    Frame1
+  next
+  V = 62
+  if joypad(1).right then V = V - 2
+  if joypad(1).up then V = V - 4
+  if joypad(1).down then V = V - 8
+  if joypad(1).left then V = V - 16
+  W = joypad(1).button1 | joypad(1).button2
+  if W = 1 then V = V - 32
+  Mj[0] = V
+  V = 62
+  if joypad(2).right then V = V - 2
+  if joypad(2).up then V = V - 4
+  if joypad(2).down then V = V - 8
+  if joypad(2).left then V = V - 16
+  W = joypad(2).button1 | joypad(2).button2
+  if W = 1 then V = V - 32
+  Mj[1] = V
+  V = Mj[0] & Mj[1]
+  Rb = 0
+  W = V & 32
+  if W = 0 then Rb = 1
+  Rd = 0
+  W = V & 8
+  if W = 0 then Rd = 1
+  return
+end sub
+
+sub Hold(u8 N):
+  for Jh = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+' the engines' drone (line 150: the bass and noise voices at 200, volume 5),
+' a long sound started again before it ends
+sub DroneOn:
+  play sound SndDroneN
+  play sound SndDroneT
+  Dron = 1
+  Dt = 0
+  return
+end sub
+
+sub DroneOff:
+  play sound SndQuietN
+  play sound SndQuietT
+  Dron = 0
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  if Dron = 1 then
+    inc Dt
+    if Dt = 200 then
+      DroneOn
+    end if
+  end if
+  return
+end sub
+
+' Put1: POKE B,Tl (on the screen only)
+sub Put1:
+  if B > 505 then return
+  call asm FaPoke
+  return
+end sub
+
+' Look: Kd = the VIC character at B (PEEK(B)); off the screen, 1
+sub Look:
+  Kd = 1
+  if B > 505 then return
+  call asm FaPeek
+  if Pk = 32 then Kd = 32
+  if Pk >= TPk0 then
+    if Pk <= TPw7 then
+      V = Pk - TPk0
+      V = V & 7
+      Kd = V + 33
+    end if
+  end if
+  if Pk = TShk then Kd = 41
+  if Pk = TShw then Kd = 41
+  if Pk = TBok then Kd = 42
+  if Pk = TBow then Kd = 42
+  if Pk = TTower then Kd = 194
+  return
+end sub
+
+data TilePat bytes
+  $00,$1C,$89,$DD,$FF,$DD,$89,$1C
+  $04,$16,$27,$58,$3A,$B4,$48,$20
+  $3C,$18,$00,$5A,$7E,$5A,$00,$3C
+  $20,$68,$E4,$1A,$5C,$2D,$12,$04
+  $00,$38,$91,$BB,$FF,$BB,$91,$38
+  $04,$12,$2D,$5C,$1A,$E4,$68,$20
+  $3C,$00,$5A,$7E,$5A,$00,$18,$3C
+  $20,$48,$B4,$3A,$58,$27,$16,$04
+  $00,$1C,$89,$DD,$FF,$DD,$89,$1C
+  $04,$16,$27,$58,$3A,$B4,$48,$20
+  $3C,$18,$00,$5A,$7E,$5A,$00,$3C
+  $20,$68,$E4,$1A,$5C,$2D,$12,$04
+  $00,$38,$91,$BB,$FF,$BB,$91,$38
+  $04,$12,$2D,$5C,$1A,$E4,$68,$20
+  $3C,$00,$5A,$7E,$5A,$00,$18,$3C
+  $20,$48,$B4,$3A,$58,$27,$16,$04
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $99,$5A,$3C,$FF,$FF,$3C,$5A,$99
+  $99,$5A,$3C,$FF,$FF,$3C,$5A,$99
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TileCol bytes
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+end data
+
+data TxScore bytes 151,152,153,154,155,163
+data TxStand bytes 164,32,152,156,154,154,155,157,158,32,151,158,159,157,160,161,157,162,151,32,164
+data TxPlayer bytes 201,202,203,204,205,206
+data TxAgain bytes 175,176,177,178,32,177,179,177,180,181,182
+data TxHint bytes 183,180,184,185,186,32,178,185,187,32,32,188,189,190,181,186,32,181,189
+data TxTitle bytes 219,32,219,32,208,209,210,211,212,213,214,32,215,216,213,217,218,32,219,32,219
+data TxPress bytes 220,221,222,223,223,32,224,225,221,222,32,226,227,32,228,222,229,225,230
+
+asm {
+FaDroneN:
+    db $00,$00,$55,$3C,$00,$00,$55,$3C,$00,$00,$55,$3C,$00,$00,$55,$3C,$10
+FaDroneT:
+    db $40,$0E,$53,$3C,$40,$0E,$53,$3C,$40,$0E,$53,$3C,$40,$0E,$53,$3C,$50
+FaBoomN:
+    db $00,$00,$05,$04,$10
+FaBoomT:
+    db $40,$0E,$03,$04,$50
+FaQuietN:
+    db $00,$00,$F5,$01,$10
+FaQuietT:
+    db $40,$0E,$F3,$01,$50
+
+FaSoundTable:
+    dw FaDroneN,$702B
+    dw FaDroneT,$7035
+    dw FaBoomN,$702B
+    dw FaBoomT,$7035
+    dw FaQuietN,$702B
+    dw FaQuietT,$7035
+    dw FaTuneMel,$703F
+    dw FaTuneBass,$7049
+; Twin Props, G major (original for this game)
+; Tiny Sound, 7 frames per step
+FaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1A,$01,$1E,$01,$21,$01,$01,$01,$1E,$01,$21,$01
+    db $26,$01,$01,$01,$25,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$01,$01,$21,$01,$1E,$01
+    db $1A,$01,$1E,$01,$1C,$01,$01,$01,$21,$01,$01,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01,$1A,$01,$1E,$01,$21,$01,$01,$01,$1E,$01,$21,$01
+    db $26,$01,$01,$01,$28,$01,$26,$01,$25,$01,$23,$01,$21,$01,$01,$01
+    db $1E,$01,$01,$01,$1F,$01,$23,$01,$21,$01,$1E,$01,$1C,$01,$1F,$01
+    db $1E,$01,$1C,$01,$1A,$01,$01,$01,$15,$01,$01,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+FaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0E,$01,$01,$01,$09,$01,$01,$01,$0E,$01,$01,$01
+    db $09,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$0E,$01,$01,$01
+    db $09,$01,$01,$01,$07,$01,$01,$01,$0B,$01,$01,$01,$0E,$01,$01,$01
+    db $12,$01,$01,$01,$09,$01,$01,$01,$0D,$01,$01,$01,$10,$01,$01,$01
+    db $0D,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01,$0E,$01,$01,$01
+    db $09,$01,$01,$01,$09,$01,$01,$01,$10,$01,$01,$01,$0E,$01,$01,$01
+    db $12,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01
+    db $0D,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+FaSong:
+    dw $0001
+    db $40+7,8
+    dw $0000
+
+; FaCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+FaCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+FaCellDiv:
+    or a
+    sbc hl,de
+    jr c,FaCellRem
+    inc b
+    jr FaCellDiv
+FaCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; FaPeek: Pk = the tile at B (PEEK(B))
+FaPeek:
+    call FaCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; FaPoke: the tile Tl at B (POKE B,Tl)
+FaPoke:
+    call FaCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+
+; FontTiles: each font character of FontTab (third 0 of the pattern
+; table) copied into its tile, in the three thirds (the tile's colour is
+; TileCol's)
+FontTiles:
+    ld hl,FontTab
+FtNext:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    ld e,a
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    pop hl
+    ; DE = the character's pattern, HL = the tile's
+    ld b,8
+FtByte:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    ld c,a
+    push hl
+    call FtPut
+    ld a,h
+    add a,8
+    ld h,a
+    call FtPut
+    ld a,h
+    add a,8
+    ld h,a
+    call FtPut
+    pop hl
+    inc hl
+    inc de
+    djnz FtByte
+    pop hl
+    jr FtNext
+FtPut:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    nop
+    nop
+    ld a,c
+    out ($BE),a
+    ret
+FontTab:
+    db 83,151,67,152,79,153,82,154,69,155,85,156,78,157,84,158,65,159,68,160,73,161,71,162,58,163,42,164,48,165,49,166,50,167,51,168,52,169,53,170,54,171,55,172,56,173,57,174,80,175,76,176,65,177,89,178,71,179,73,180,78,181,63,182,70,183,82,184,69,185,58,186,83,187,68,188,79,189,87,190,48,191,49,192,50,193,51,194,52,195,53,196,54,197,55,198,56,199,57,200,80,201,76,202,65,203,89,204,69,205,82,206,45,207,70,208,73,209,71,210,72,211,84,212,69,213,82,214,65,215,67,216,83,217,33,218,42,219,80,220,82,221,69,222,83,223,70,224,73,225,84,226,79,227,66,228,71,229,78,230,0
+}
