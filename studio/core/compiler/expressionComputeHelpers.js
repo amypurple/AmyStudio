@@ -700,13 +700,40 @@ export function createExpressionComputeHelpers({
       }
       if (node.op === "<<" || node.op === ">>") {
         const shiftCount = tryEvaluateConstantExpression(renderExpressionAst(node.right));
-        if (shiftCount === null || shiftCount < 0 || shiftCount > 7) return null;
         const loadLeft = emitLoadInt8AstIntoA(node.left);
         if (!loadLeft) return null;
         const declaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
         const shiftInstr = node.op === "<<"
           ? "add a,a"
           : (isSignedDeclaredType(declaredType) ? "sra a" : "srl a");
+        if (shiftCount === null) {
+          const countDeclared = resolveDeclaredValueType(renderExpressionAst(node.right));
+          const countType = resolveValueType(renderExpressionAst(node.right));
+          const loadCount = emitLoadInt8AstIntoA(node.right);
+          if (countType !== "int8" || isSignedDeclaredType(countDeclared) || !loadCount) return null;
+          const countReady = makeGeneratedLabel("Shift8CountReady");
+          const shiftLoop = makeGeneratedLabel("Shift8Loop");
+          const done = makeGeneratedLabel("Shift8Done");
+          return [
+            ...loadLeft,
+            "    push af",
+            ...loadCount,
+            "    cp 9",
+            `    jr c,${countReady}`,
+            "    ld a,8",
+            `${countReady}:`,
+            "    ld b,a",
+            "    pop af",
+            "    inc b",
+            "    dec b",
+            `    jr z,${done}`,
+            `${shiftLoop}:`,
+            `    ${shiftInstr}`,
+            `    djnz ${shiftLoop}`,
+            `${done}:`
+          ];
+        }
+        if (shiftCount < 0 || shiftCount > 7) return null;
         const shiftLines = [];
         for (let i = 0; i < shiftCount; i += 1) shiftLines.push(`    ${shiftInstr}`);
         return [...loadLeft, ...shiftLines];
@@ -984,15 +1011,45 @@ export function createExpressionComputeHelpers({
       }
       if (node.op === "<<" || node.op === ">>") {
         const shiftCount = tryEvaluateConstantExpression(renderExpressionAst(node.right));
-        if (shiftCount === null || shiftCount < 0 || shiftCount > 15) return null;
         const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
         if (!loadLeft) return null;
         const declaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
+        const oneShift = node.op === "<<"
+          ? ["    add hl,hl"]
+          : isSignedDeclaredType(declaredType)
+            ? ["    sra h", "    rr l"]
+            : ["    srl h", "    rr l"];
+        if (shiftCount === null) {
+          const countDeclared = resolveDeclaredValueType(renderExpressionAst(node.right));
+          const countType = resolveValueType(renderExpressionAst(node.right));
+          const loadCount = emitLoadInt8AstIntoA(node.right);
+          if (countType !== "int8" || isSignedDeclaredType(countDeclared) || !loadCount) return null;
+          const countReady = makeGeneratedLabel("Shift16ExprCountReady");
+          const shiftLoop = makeGeneratedLabel("Shift16ExprLoop");
+          const done = makeGeneratedLabel("Shift16ExprDone");
+          return [
+            ...loadLeft,
+            "    push hl",
+            ...loadCount,
+            "    cp 17",
+            `    jr c,${countReady}`,
+            "    ld a,16",
+            `${countReady}:`,
+            "    ld b,a",
+            "    pop hl",
+            "    inc b",
+            "    dec b",
+            `    jr z,${done}`,
+            `${shiftLoop}:`,
+            ...oneShift,
+            `    djnz ${shiftLoop}`,
+            `${done}:`
+          ];
+        }
+        if (shiftCount < 0 || shiftCount > 15) return null;
         const shiftLines = [];
         for (let i = 0; i < shiftCount; i += 1) {
-          if (node.op === "<<") shiftLines.push("    add hl,hl");
-          else if (isSignedDeclaredType(declaredType)) shiftLines.push("    sra h", "    rr l");
-          else shiftLines.push("    srl h", "    rr l");
+          shiftLines.push(...oneShift);
         }
         return [...loadLeft, ...shiftLines];
       }

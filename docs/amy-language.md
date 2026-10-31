@@ -1170,13 +1170,15 @@ if Ready == 1 then StartRound
 if SparkTile == 42 then put char 32 at SparkX,SparkY
 if NeedsFlash then fill 15 count 4 at 8,10
 if Hit then play sound 2
+if Announce then play voxpcm VoiceReady
 if DebugMark then vpoke vram.name + 31, 65
 if Alert then backdrop red
 ```
 
 The guarded statement uses the same compiler implementation as its standalone form.
 This includes `put char`, `put ... count/frame`, `fill`, `print ... at`,
-`play sound`/`play sounds`, `set sprite`/`hide sprite`, `vpoke`, and `backdrop`.
+`play sound`/`play sounds`, `play voxpcm`/`play tripcm`,
+`set sprite`/`hide sprite`, `vpoke`, and `backdrop`.
 Only one statement is allowed in each branch; use a block `if` for multiple actions.
 
 One-line `elseif` / `else` chains are supported when each branch contains one inline statement:
@@ -1639,7 +1641,9 @@ Value <<= 3
 Score >>= 2
 ```
 
-`u8`/`i8` shifts accept fixed counts from 1 to 7. `u16`/`i16` expressions
+`u8`/`i8` expressions accept fixed or unsigned byte counts; counts of 8 or
+more produce zero for left/logical-right shifts or all sign bits for arithmetic
+right shift. `u16`/`i16` expressions
 and compound assignments accept fixed or unsigned byte counts; counts of 16 or
 more produce zero for left/logical-right shifts or all sign bits for arithmetic
 right shift.

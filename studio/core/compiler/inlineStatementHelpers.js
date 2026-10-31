@@ -86,7 +86,7 @@ export function createInlineStatementCompiler(ctx) {
           : { ok: false, lines: [], log: vramPixelResult.log };
       }
     }
-    if (/^play\s+sounds?\b/i.test(inlineStmt)) {
+    if (/^play\s+(?:sounds?|voxpcm|tripcm)\b/i.test(inlineStmt)) {
       const soundResult = compileSoundSpinnerStatement?.(inlineStmt, rawLineText);
       if (soundResult?.handled) {
         return soundResult.ok

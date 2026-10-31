@@ -12,6 +12,8 @@
 - Rebuilt the Visual Studio Code extension with these compiler fixes and added
   runtime regressions across all five optimization profiles. The six-sample
   comparison total remains **7,372 occupied bytes**.
+- Fixed one-line `if` branches containing `play voxpcm` or `play tripcm`, and
+  added bounded variable-count shifts for byte and word expressions.
 - Added seven Ahoy! adaptations: **Crazy Joe**, **Head-On**, **Nebergall
   Run**, **Escape from Skull Castle**, **Flap!**, **Meteor Run** and **Step
   On It**, with publication dates, authorship and adaptation provenance.
