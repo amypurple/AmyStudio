@@ -954,7 +954,12 @@ ShowText(@Greeting)
 ```basic
 u16 MessageAddress = 0
 MessageAddress = @Greeting
+MessageAddress = MessageAddress + @Greeting  ' runtime byte offset plus ROM base
 ```
+
+Address arithmetic accepts `u16 + @Label`, `@Label + u16`, and subtraction in
+either order. Amy performs the calculation as a full 16-bit pointer operation;
+it does not truncate the runtime offset to one byte.
 
 Direct string-literal routine arguments are not supported.
 
@@ -1658,6 +1663,10 @@ Result <<= 4
 Result = Flags >> ShiftCount
 ```
 
+Use the symbols `&`, `|`, `^`, and `~` in value expressions. The words `and`,
+`or`, and `not` combine boolean conditions in `if`, `while`, and related control
+flow; they are not aliases for integer bitwise operators.
+
 The same operations accept `u32`/`i32` globals, array elements, record fields,
 and qualified overlay fields. Bitwise operations preserve raw two's-complement
 bits; only signed right shift treats the high bit specially.
@@ -1861,21 +1870,21 @@ as breakpoint locations.
 In normal Amy code, prefer `screen on/off`.
 
 An explicit `nmi off` also begins a programmer-owned VRAM batch. Until the next
-`nmi on` or `screen on`, generated bulk VRAM uploads omit their automatic
-`AMY_VRAM_BEGIN` / `AMY_VRAM_END` wrappers. This is an optimization contract,
-not a change to the hardware: the programmer must keep the region bounded and
-must not call `wait`, blocking input, a menu, or an unbounded loop inside it.
+`nmi on` or `screen on`, generated bulk VRAM commands omit their otherwise
+automatic `AMY_VRAM_BEGIN` / `AMY_VRAM_END` wrappers. This is an optimization
+contract, not weaker default safety: outside that lexical region every managed
+upload remains protected. The region must not contain `wait`, a blocking menu,
+or code that depends on VBlank music, timers, controller refresh, or callbacks.
 
 ```basic
-wait
 nmi off
-copy Patterns count 128 to vram.pattern
-copy Colors count 128 to vram.color
+copy PatternData count 768 to vram.pattern
+copy ColorData count 768 to vram.color
 nmi on
 ```
 
-Outside this explicit region, Amy retains the safe automatic wrappers. `di` is
-not a substitute because it does not disable the TMS9918 NMI.
+Z80 `DI/EI` is not a substitute because the ColecoVision VDP is connected to
+the non-maskable interrupt input.
 
 Per-VBlank Amy hook:
 
@@ -2042,6 +2051,9 @@ compile misleading programs.
 raw picture-table setup and `bitmap screen` for drawable bitmap graphics.
 
 `backdrop Color` writes VDP register 7, the TMS9918A backdrop/border color.
+`Color` may be a Coleco color name, a constant from `0` to `15`, or a byte
+expression. Runtime values are masked to the low color nibble, so alarms and
+screen flashes can use `backdrop FlashColor` without inline assembly.
 This is separate from Mode 2 text color-table commands such as
 `fill mode 2 text color with $F0`, and from character backgrounds in
 `set text colors ... on ...`.
@@ -3171,8 +3183,9 @@ DiamondsNeeded = MinimumDiamonds[Mountain]
 ```
 
 The indexed form reads one byte from ROM. The table name must be a known
-`data ... bytes` block, the index is evaluated as an 8-bit expression, and the
-result is `u8`.
+`data ... bytes` block, the index may be an 8- or 16-bit expression, and the
+result is `u8`. Assigning it to `u16` or `i16` zero-extends the ROM byte, just
+like assigning an element of a RAM `u8[]` array to a word variable.
 Constant indexes are checked; calculated indexes deliberately have no runtime bounds check.
 Use `{Name}`, `{$16}`, `{200}`, or `{byte:$16}` inside a row to insert a
 single non-printable/custom tile byte. Use `{{` or `}}` for literal braces.
@@ -3352,7 +3365,7 @@ call asm ReadValues with a = Lives, hl = Score
 call asm FillBuffer with hl = address of Buffer, de = address of Lives
 ```
 
-An address can also be stored in an unsigned 16-bit variable before a later ASM call:
+An unsigned 16-bit Amy variable can also retain an address for a later bridge call:
 
 ```basic
 u16 BufferAddress = 0
@@ -3362,8 +3375,9 @@ BufferAddress = address of Buffer
 call asm FillBuffer with hl = BufferAddress
 ```
 
-The destination of an `address of` assignment must be `u16`; byte, signed, and fixed-point
-destinations are rejected because they cannot represent a ColecoVision address safely.
+The assignment form accepts addressable global data, arrays, records, and variables. Its target
+must be `u16`; byte, signed, and fixed-point destinations are rejected rather than truncating or
+reinterpreting the pointer.
 
 For two or more register arguments, Amy evaluates every expression first and stages the results
 before loading the requested registers. One argument therefore cannot destroy another while it is
@@ -3460,7 +3474,7 @@ ordinary snippets. Available memory profiles live in `tools/memory/*.json`.
 | `u32 Name` | Global 32-bit unsigned variable |
 | `i32 Name` | Global 32-bit signed variable |
 | `data Name bytes ...` | ROM u8 block |
-| `Var = DataName[Index]` | Read one byte from a ROM `data ... bytes` table |
+| `Var = DataName[Index]` | Read one ROM byte with an 8- or 16-bit index; word targets zero-extend it |
 | `data Name chars` | ROM character/tile map from quoted rows |
 | `data Name bitmap8` | ROM 8-bit bitmap block |
 | `data Name sprite16` | ROM 16×16 sprite block |
@@ -3570,7 +3584,7 @@ false, and the right side of `or` is skipped when the left side is true.
 | `bitmap screen` / `bitmap screen color $F0` | Drawable bitmap surface for `pset`, `line`, `circle`; default color is `$F0` |
 | `picture screen` | Raw full-screen picture/table surface |
 | `multicolor screen` | Multicolor mode surface |
-| `backdrop Color` | Set VDP register 7 backdrop/border color |
+| `backdrop Color` | Set VDP register 7 backdrop/border color from a name, constant, or byte expression |
 | `set text colors F [on B] [at N] [count M]` | Fill standard text color groups; omitted background is transparent |
 | `cls [with Tile]` | Clear the current screen surface, optionally with an explicit NAME-table tile |
 | `load default ascii` | Load BIOS font |

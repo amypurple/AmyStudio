@@ -5796,6 +5796,13 @@ export function transpileAmyCore(sourceText, deps) {
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
       if (!assignmentCode) {
+        if (/\b(?:and|or)\b/i.test(formulaAssignment.value)) {
+          return {
+            ok: false,
+            asmBody: "",
+            log: `Value expressions use '&' and '|'; 'and' and 'or' join conditions: ${rawLine}`
+          };
+        }
         if (formulaAssignment.op === "="
           && resolveValueType(formulaAssignment.target) === "bcd"
           && resolveValueType(formulaAssignment.value) === "bcd") {

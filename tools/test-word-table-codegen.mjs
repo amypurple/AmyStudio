@@ -255,6 +255,32 @@ loop forever
   assert.match(String(oversizedTable.log || ""), /257 entries.*at most 256/i);
 });
 
+check("u16 address arithmetic accepts a runtime offset", () => {
+  const addressArithmetic = transpileAmy(`data Names chars "ALPHA{0}BETA{0}"
+u16 Offset = 2
+u16 Pointer = 0
+Pointer = Offset + @Names
+loop forever
+`);
+  assert.equal(addressArithmetic.ok, true, addressArithmetic.log || "address arithmetic transpile failed");
+  assert.match(
+    String(addressArithmetic.asmBody || ""),
+    /ld hl,\(AMY_UVAR_Offset\)\s*\n\s*push hl\s*\n\s*ld hl,AMY_UDATA_Names\s*\n\s*ex de,hl\s*\n\s*pop hl\s*\n\s*add hl,de\s*\n\s*ld \(AMY_UVAR_Pointer\),hl/i,
+    "runtime offset plus a ROM label must use 16-bit address arithmetic"
+  );
+});
+
+check("word-valued and/or reports Amy value-operator syntax", () => {
+  const logicalWords = transpileAmy(`u16 A = 1
+u16 B = 2
+u16 C = 0
+C = A and B
+loop forever
+`);
+  assert.equal(logicalWords.ok, false);
+  assert.match(String(logicalWords.log || ""), /value expressions use '&' and '\|'.*and.*or.*conditions/i);
+});
+
 check("put frame accepts a table entry as source", () => {
   assert.match(
     asm,

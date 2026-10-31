@@ -476,9 +476,35 @@ export function createRuntimeValueHelpers({
 
   function emitLoadInt16IntoHL(token, preferredDeclaredType = null) {
     const normalized = normalizeExpression(String(token).trim());
+    if (/\b(?:and|or)\b/i.test(normalized)) return null;
     const addressLiteral = normalized.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
     if (addressLiteral) {
       return [`    ld hl,${resolveAddressSymbol(addressLiteral[1])}`];
+    }
+    const addressRight = normalized.match(/^(.+?)\s*([+-])\s*@([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (addressRight) {
+      const loadLeft = emitLoadInt16IntoHL(addressRight[1].trim(), preferredDeclaredType);
+      if (!loadLeft) return null;
+      return [
+        ...loadLeft,
+        `    ld de,${resolveAddressSymbol(addressRight[3])}`,
+        ...(addressRight[2] === "+" ? ["    add hl,de"] : ["    or a", "    sbc hl,de"])
+      ];
+    }
+    const addressLeft = normalized.match(/^@([A-Za-z_][A-Za-z0-9_]*)\s*([+-])\s*(.+)$/);
+    if (addressLeft) {
+      const loadRight = emitLoadInt16IntoHL(addressLeft[3].trim(), preferredDeclaredType);
+      if (!loadRight) return null;
+      if (addressLeft[2] === "+") {
+        return [...loadRight, `    ld de,${resolveAddressSymbol(addressLeft[1])}`, "    add hl,de"];
+      }
+      return [
+        ...loadRight,
+        "    ex de,hl",
+        `    ld hl,${resolveAddressSymbol(addressLeft[1])}`,
+        "    or a",
+        "    sbc hl,de"
+      ];
     }
     if (isAnyFixedDeclaredType(preferredDeclaredType)) {
       const fixedLiteral = parseFixedPointLiteral(normalized);

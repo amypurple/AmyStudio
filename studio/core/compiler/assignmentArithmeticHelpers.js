@@ -1152,6 +1152,12 @@ export function createAssignmentArithmeticHelpers({
   function emitFormulaAssignment(target, opToken, valueToken) {
     const targetType = resolveValueType(target);
     if (opToken === "=") {
+      const valueText = String(valueToken || "").trim();
+      // `and`/`or` are condition combinators, not value operators. Reject them
+      // here before the generic store can mistake the whole expression for an
+      // assembler immediate. Bitwise value expressions use `&` and `|`.
+      if (/\b(?:and|or)\b/i.test(valueText)) return null;
+
       const addressMatch = String(valueToken || "").trim().match(/^address\s+of\s+(.+)$/i);
       if (addressMatch) {
         const targetDeclared = normalizeDeclaredType(resolveDeclaredValueType(target));
@@ -1159,6 +1165,27 @@ export function createAssignmentArithmeticHelpers({
         const loadAddress = emitLoadSourceAddressIntoHL(addressMatch[1].trim());
         const storeTarget = emitStoreInt16FromHL(target);
         return loadAddress && storeTarget ? [...loadAddress, ...storeTarget] : null;
+      }
+      if (targetType === "int16") {
+        const targetDeclared = normalizeDeclaredType(resolveDeclaredValueType(target));
+        const addressArithmetic = valueText.match(/^(.+?)\s*([+-])\s*@([A-Za-z_][A-Za-z0-9_]*)$/)
+          || valueText.match(/^@([A-Za-z_][A-Za-z0-9_]*)\s*([+-])\s*(.+)$/);
+        if (addressArithmetic && targetDeclared !== "i16" && !isAnyFixedDeclaredType(targetDeclared)) {
+          const addressFirst = valueText.startsWith("@");
+          const sourceToken = addressFirst ? addressArithmetic[3].trim() : addressArithmetic[1].trim();
+          const operator = addressArithmetic[2];
+          const addressToken = addressFirst ? addressArithmetic[1] : addressArithmetic[3];
+          const loadSource = emitLoadInt16IntoHL(sourceToken);
+          const loadAddress = emitLoadSourceAddressIntoHL(addressToken);
+          const storeTarget = emitStoreInt16FromHL(target);
+          if (loadSource && loadAddress && storeTarget) {
+            const lines = addressFirst
+              ? [...loadSource, "    push hl", ...loadAddress, "    pop de"]
+              : [...loadSource, "    push hl", ...loadAddress, "    ex de,hl", "    pop hl"];
+            lines.push(operator === "+" ? "    add hl,de" : "    or a", ...(operator === "-" ? ["    sbc hl,de"] : []));
+            return [...lines, ...storeTarget];
+          }
+        }
       }
       if (targetType === "int16") {
         const shift = String(valueToken || "").trim().match(/^(.+?)\s*(<<|>>)\s*(.+)$/);

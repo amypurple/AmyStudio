@@ -15,7 +15,10 @@ try {
   writeFileSync(source, [
     'data Msg chars "AB{0}"',
     "u16 P = 0",
+    "u16 Offset = 2",
+    "u16 Q = 0",
     "P = @Msg",
+    "Q = Offset + @Msg",
     "loop forever",
     ""
   ].join("\n"));
@@ -32,6 +35,11 @@ try {
 
     const asmText = readFileSync(asm, "utf8");
     assert.match(asmText, /ld hl,AMY_UDATA_Msg/i, `${profile}: data address was not resolved`);
+    assert.match(
+      asmText,
+      /ld hl,\(AMY_UVAR_Offset\)\s*\n\s*push hl\s*\n\s*ld hl,AMY_UDATA_Msg\s*\n\s*ex de,hl\s*\n\s*pop hl\s*\n\s*add hl,de\s*\n\s*ld \(AMY_UVAR_Q\),hl/i,
+      `${profile}: runtime label offset was not emitted as 16-bit address arithmetic`
+    );
     assert.doesNotMatch(asmText, /ld hl,@/i, `${profile}: invalid @ address reached the assembler`);
 
     const symbols = readFileSync(sym, "utf8");

@@ -49,6 +49,13 @@ const cases = [
     checks: ["-8", "-68", "-768", "-2768", "-32768"].map((expected, index) => ({ address: 0x1800 + (6 + index) * 32 + 5, expected }))
   },
   {
+    id: "print-i16-width-signed",
+    checks: [
+      { address: 0x1800 + 6 * 32 + 5, expected: "-  42" },
+      { address: 0x1800 + 7 * 32 + 5, expected: "   0" }
+    ]
+  },
+  {
     id: "print-i16-expression-qualified",
     checks: ["-00", "-99"].map((expected, index) => ({ address: 0x1800 + (8 + index) * 32 + 5, expected }))
   },
