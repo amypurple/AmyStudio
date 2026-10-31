@@ -7021,5 +7021,29 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "acrobat",
+    "label": "Acrobat (February 1985)",
+    "detail": "A ColecoVision reimagining of Peter Rizzuto's COMPUTE! obstacle runner, featuring parallax scenery, jumping, sliding, flips, four settings and progressive speed.",
+    "projectName": "Acrobat",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "runner",
+      "atari",
+      "commodore-64",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];
