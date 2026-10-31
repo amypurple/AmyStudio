@@ -1,0 +1,1480 @@
+cartridge "ASTROSTORM/PETER LEAR, COMPUTE!/1983"
+
+' ASTROSTORM
+' The game by Peter Lear from COMPUTE!, June 1983 (pages 72-84, with the
+' Atari, TI-99/4A and Apple notes by Patrick Parrish), for the ColecoVision
+' in Amy by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for
+' Amy Studio, 2026.
+'
+' Sources: Program 1, the VIC-20 version, transcribed in
+' orig/astrostorm-vic.bas from the scans beside it (the Atari, TI and
+' Apple versions are in the scans for reference; not used).
+'
+' The game: Captain Bosdiger's tug, the Viccard, must cross an asteroid
+' field with medical supplies in under two minutes. Choose the asteroid
+' depth (the ship's row, 5-18); an asteroid field rushes by while you wait
+' for the drop out of hyperspace (the button); then steer the ship left and
+' right as the asteroids scroll up past it. Moving right scores (the
+' asteroid's column times its colour times the square root of the depth),
+' moving left loses as much; off the right edge you come back on the left,
+' a crossing (W). Six crossings in the 418 passes (two minutes) complete
+' the mission; hitting an asteroid blows the ship up.
+'
+' Controls (either joystick): the stick left and right; the button drops
+' out of hyperspace, and answers the questions (FIRE: YES, DOWN: NO).
+' Keypad not used.
+'
+' The VIC-20's screen (22 columns, 23 rows) is kept cell for cell at
+' columns 5-26 and rows 1-23, with the VIC's printing: the asteroids are
+' PRINTed at the cursor (TAB(NA)"*") and the screen scrolls up at each
+' PRINT on the last row, ship and all; S, OP, SB, SE and E() are the VIC's
+' screen offsets. An asteroid in the last column moves the cursor to the
+' next row at once, so that PRINT scrolls twice (that is why line 500
+' wipes two rows of old ships). Labels such as l2070 are the listing's
+' line numbers.
+'
+' Liberties taken:
+' - Joystick only: the title shows "JOYSTICK(1)" and the button chooses it
+'   (KEYBOARD(2) and the keys Z, C, H are gone); "HIT 'C' TO CHANGE A.D."
+'   reads "PRESS FIRE: NEW A.D.".
+' - INPUT L is a number after the "? " that the stick changes (up and down,
+'   1-25) and the button enters; under 5 is still TOO EASY, over 18 TOO
+'   RISKY. The Y/N questions get the line "FIRE: YES  DOWN: NO"; N to
+'   "ANOTHER DELIVERY?" (CLR: END) goes to the credits page.
+' - A press counts once let go of (the VIC's keys did not repeat into the
+'   next question, and the button that answers Y must not also end the
+'   asteroid field at once).
+' - The listing's strings are padded with spaces so that words start on a
+'   new row (VIC rows are 22 wide); here the plain words are printed and a
+'   word that would not fit pads the row with spaces first, the same rows.
+' - Timing: a pass of the main loop is 17 frames (418 passes, two minutes,
+'   as the article says); a pass of the asteroid field 5 frames; the
+'   seven-second waits 420 frames; an explosion ring's noise 8 frames; each
+'   flash colour 2 frames.
+' - PT is kept in 32 bits (the VIC's numbers had no 16-bit limit).
+' - Colours: the VIC's purple text is magenta, its flash colours orange and
+'   light orange are light red and dark yellow.
+' - A credits page with an original title tune ("Benard Run").
+' Fixed (each noted where it is fixed, with the listing's behaviour):
+' line 5030 played each note for Z loops (T read, unused), so the launch
+' tune was short blips, now T long with Z rests; W and DN are reset for
+' each game (the listing kept them from game to game, so after one
+' completed mission every later run "completed" too); line 8165's
+' E(5)=E(1)+23+... (the second ring's down-right arm drawn on the
+' up-left one) is E(5)=E(5)+23+...; "THEY ARE ALSO HAVE ANOTHER MISSION"
+' reads "THEY ALSO HAVE".
+' Quirks kept: the explosion's rings scroll the screen (line 8150's
+' PRINT); "MISSION.THE" and "SERVICES.DO" printed together; the second
+' ring can go off the screen's bottom (cells past it are not drawn).
+'
+' House rules kept: text in columns 2-29 (the VIC's 22 columns at 5-26);
+' no sprites; tiles at codes 128 and up; the frame loop is protected from
+' the NMI and every screen is drawn with the NMI off after a wait.
+
+const TSt1 = 128
+const TSt2 = 129
+const TSt3 = 130
+const TSt4 = 131
+const TSt5 = 132
+const TSt6 = 133
+const TSt7 = 134
+const TShL = 135
+const TShE = 136
+const TShR = 137
+const TBxD = 138
+const TBxV = 139
+const TBxH = 140
+const NTiles8 = 856
+const SndCrash = 1
+const SndFade = 2
+const SndLaunch = 3
+const SndAlarmA = 4
+const SndAlarmB = 5
+const SndQuiet = 6
+const SndTuneA = 7
+const SndTuneB = 8
+const LaunchFrames = 548
+
+' --- the listing's variables ----------------------------------------------
+' S the ship (a VIC screen offset), Op Sb Se the listing's OP SB SE, Dn the
+' move (0, 1 or 65535 for -1), W the crossings, L the depth, Lf LF, Ck CK
+' (1 or 0 for -1), Na Kc the asteroid's column and colour (NA, CC), G the
+' main loop's pass, PtLo PtHi PT (32 bits, two's complement)
+u16 S = 0
+u16 Op = 0
+u16 Sb = 0
+u16 Se = 0
+u16 Dn = 0
+i16 W = 0
+u8 L = 10
+u8 Lf = 0
+u8 Ck = 1
+u8 Na = 0
+u8 Kc = 0
+u16 G = 0
+u16 PtLo = 0
+u16 PtHi = 0
+u16 Eo[8]
+u8 At[8]
+u8 Ar = 0
+u8 Ii = 0
+u8 Jj = 0
+u16 Kk = 0
+u16 Q = 0
+u8 Rr = 0
+' the VIC's cursor (Cr row 0-22, Cx column 0-21) and print colour (Pc 0
+' purple, 1 yellow); B the cell (a VIC offset), Tl the tile to put, Pk the
+' tile found
+u8 Cr = 0
+u8 Cx = 0
+u8 Pc = 0
+u16 B = 0
+u8 Tl = 0
+u8 Pk = 0
+u8 Buf[22]
+u8 NumB[4]
+u8 Dg[10]
+u8 Nd = 0
+u8 Ng = 0
+u16 Ad = 0
+u8 Ch = 0
+u8 Wl = 0
+' the sticks (either controller), read by Pace: Jl left, Jr right, Ju up,
+' Jd down, Jb a button; Arm 1 once the button has been let go
+u8 Jl = 0
+u8 Jr = 0
+u8 Ju = 0
+u8 Jd = 0
+u8 Jb = 0
+u8 Arm = 0
+u8 Yes = 0
+u16 Rs = $1D3B
+u16 Rt = 0
+u8 V = 0
+u8 V2 = 0
+u8 Jp = 0
+u8 Tick = 0
+u16 Hw = 0
+' for the test bot: Ph 1 the credits, 2 the title, 3 the depth asked, 4
+' the asteroid field, 5 playing, 6 the explosion's flash, 7 YOU DIDN'T
+' MAKE IT, 8 fined, 9 ANOTHER DELIVERY?, 10 SAME ASTEROID DEPTH?; Gp the
+' passes (main loop and field)
+u8 Ph = 0
+u8 Gp = 0
+' Idle: 1 while the game waits for a frame (the bot looks then)
+u8 Idle = 0
+
+  tile screen
+  set sound table AsSoundTable areas 4
+  nmi off
+  NewScreen
+  screen on
+
+credits:
+  CreditsPage
+l5:
+  ' RUN: everything starts at zero
+  W = 0
+  Lf = 0
+  PtLo = 0
+  PtHi = 0
+  Dn = 0
+  L = 10
+  ' 5-50: the title (black screen, purple text)
+  Ph = 2
+  ClrScr
+  Pc = 0
+  Cr = 4
+  Cx = 5
+  Say(@MsTitle)
+  Cret
+  inc Cr
+  Cx = 5
+  Say(@MsJoy)
+  Cret
+  Seen
+  WaitPress
+  Rt = Tick
+  Rs = Rs ^ Rt
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $1D3B
+l70:
+  ' 70: the tune (line 5000)
+  play sound SndLaunch
+  Hold(LaunchFrames)
+l900:
+  if Lf = 1 then goto l1000
+l910:
+  Say(@MsAsk)
+  AskL
+  if L < 5 then
+    Say(@MsEasy)
+    Cret
+    goto l900
+  end if
+  if L > 18 then
+    Say(@MsRisky)
+    Cret
+    goto l910
+  end if
+  ' 940: PRINT "{CLEAR}", then the asteroid field
+  Lf = 1
+  ClrScr
+  Cret
+  goto l2200
+
+l1000:
+  ' 1000-1040: the field from row 19 on, the ship at row L+1
+  Ph = 5
+  ClrScr
+  Cr = 18
+  Cret
+  S = L
+  S = S + 1
+  S = S * 22
+  Ck = 1
+  Op = S
+  Sb = S - 1
+  Se = S + 23
+  ' fixed: W (crossings) and DN start again at zero for each game (the
+  ' listing reset them only at RUN: after one completed mission every
+  ' later game counted as completed, and a new game's first pass scored
+  ' with the last game's move)
+  W = 0
+  Dn = 0
+  Rr = 2
+  if L > 6 then Rr = 3
+  if L > 12 then Rr = 4
+  G = 0
+l2000:
+  inc G
+  Pace(17)
+  ' 2010-2040: an asteroid at TAB(NA), in colour CC
+  Rnd16
+  Na = Rs >> 8
+  Hw = Na
+  Hw = Hw * 22
+  Na = Hw >> 8
+  V = Rs & 255
+  Hw = V
+  Hw = Hw * 7
+  Kc = Hw >> 8
+  inc Kc
+  if Cx < Na then Cx = Na
+  Tl = TSt1 + Kc
+  dec Tl
+  PutT
+  ' 2055: the points, by the last move
+  Q = Na
+  Q = Q * Kc
+  Q = Q * Rr
+  if Dn = 1 then AddPt
+  if Dn = 65535 then SubPt
+  ' 2060, 2065: off the left edge, or a crossing
+  if S = Sb then
+    B = S
+    Tl = 32
+    Poke
+    S = S + 22
+    W = W - 1
+  end if
+  if S = Se then
+    B = S
+    Tl = 32
+    Poke
+    S = S - 22
+    W = W + 1
+  end if
+l2070:
+  B = S
+  Peek
+  if Pk >= TSt1 then
+    if Pk <= TSt7 then goto l8000
+  end if
+  B = S + 22
+  Peek
+  if Pk >= TSt1 then
+    if Pk <= TSt7 then goto l8000
+  end if
+  ' 2085: the stick
+  Dn = 0
+  if Jl = 1 then Dn = 65535
+  if Jr = 1 then Dn = Dn + 1
+  Op = S - 22
+  S = S + Dn
+  ' 2090: the alarm, the old ships wiped (500), the ship, PRINT
+  if Ck = 1 then
+    Ck = 0
+    play sound SndAlarmA
+  else
+    Ck = 1
+    play sound SndAlarmB
+  end if
+  if Dn <> 0 then
+    B = S - Dn
+    Peek
+    V = 0
+    if Pk >= TSt1 then
+      if Pk <= TSt7 then V = 1
+    end if
+    if V = 0 then
+      Tl = 32
+      Poke
+    end if
+  end if
+  for Ii = 1 to 2
+    Tl = 32
+    B = Op
+    Poke
+    B = Op - Dn
+    Poke
+    Op = Op - 22
+  next
+  B = S
+  Tl = TShE
+  if Dn = 1 then Tl = TShR
+  if Dn = 65535 then Tl = TShL
+  Poke
+  Cret
+  inc Gp
+  if G < 418 then goto l2000
+l2110:
+  Pc = 1
+  Cret
+  play sound SndQuiet
+l6000:
+  if W < 6 then
+    Say(@MsNot)
+    Cret
+    goto l6200
+  end if
+  Cret
+  Say(@MsDone)
+  Say(@MsMin)
+  SayPt
+  Cret
+  Say(@MsServ)
+  Say(@MsDeliv)
+  Cret
+  Say(@MsYN)
+  Cret
+  Ph = 9
+  AskYN
+  if Yes = 0 then goto credits
+  Say(@MsSame)
+  Cret
+  Say(@MsYN)
+  Cret
+  Ph = 10
+  AskYN
+  if Yes = 0 then goto l5
+  goto l2200
+l6200:
+  Say(@MsFined)
+  SayPt
+  Say(@MsGal)
+  Cret
+  Say(@MsMore)
+  Cret
+  Ph = 8
+  Hold(420)
+  goto l2200
+
+l8000:
+  ' 8000-8240: the explosion
+  Pc = 1
+  Cret
+  play sound SndQuiet
+  Eo[0] = S - 23
+  Eo[1] = S - 22
+  Eo[2] = S - 1
+  Eo[3] = S
+  Eo[4] = S + 23
+  Eo[5] = S + 22
+  Eo[6] = S + 1
+  Eo[7] = S
+  At[0] = TBxD
+  At[1] = TBxV
+  At[2] = TBxH
+  At[3] = TSt2
+  At[4] = TBxD
+  At[5] = TBxV
+  At[6] = TBxH
+  At[7] = TSt2
+  Burst
+  At[3] = At[0]
+  At[7] = At[4]
+  Ar = 2
+  if L > 17 then Ar = 1
+  for Ii = 1 to Ar
+    for Jj = 0 to 7
+      B = Eo[Jj]
+      Tl = 32
+      Poke
+    next
+    Cret
+    Kk = Ii - 1
+    Kk = Kk * 22
+    Eo[0] = Eo[0] - 23
+    Eo[0] = Eo[0] - Kk
+    Eo[1] = Eo[1] - 22
+    Eo[1] = Eo[1] - Kk
+    Eo[2] = Eo[2] - 1
+    Eo[2] = Eo[2] - Kk
+    Eo[3] = Eo[3] - 23
+    Eo[3] = Eo[3] - Kk
+    ' fixed: the listing's 8165 has E(5)=E(1)+23+..., which puts the
+    ' down-right arm back on the up-left arm's cell; E(5)=E(5)+23+...
+    Eo[4] = Eo[4] + 23
+    Eo[4] = Eo[4] + Kk
+    Eo[5] = Eo[5] + 22
+    Eo[5] = Eo[5] + Kk
+    Eo[6] = Eo[6] + 1
+    Eo[6] = Eo[6] + Kk
+    Eo[7] = Eo[7] + 23
+    Eo[7] = Eo[7] + Kk
+    Burst
+    play sound SndCrash
+    Hold(8)
+  next
+  ' 8200-8240: the screen flashing as the noise fades
+  Ph = 6
+  play sound SndFade
+  for Ii = 1 to 8
+    backdrop white
+    Hold(2)
+    backdrop medium red
+    Hold(2)
+    backdrop light yellow
+    Hold(2)
+    backdrop light red
+    Hold(2)
+    backdrop dark yellow
+    Hold(2)
+    backdrop light yellow
+    Hold(2)
+    backdrop black
+  next
+l7000:
+  play sound SndQuiet
+  ClrScr
+  Pc = 1
+  Say(@MsLost)
+  Say(@MsFam)
+  Cret
+  SayPt
+  Say(@MsGal2)
+  Cret
+  Say(@MsHitC)
+  Cret
+  Ph = 7
+  ' 7030: seven seconds to change the depth (RUN)
+  Seen
+  for Kk = 1 to 420
+    Pace(1)
+    if Jb = 0 then Arm = 1
+    if Arm = 1 then
+      if Jb = 1 then goto l5
+    end if
+  next
+
+l2200:
+  ' 2200-2240: the asteroid field, until the button (LF = 1: the same
+  ' depth, after the tune)
+  Ph = 4
+  Seen
+a2200:
+  Pace(5)
+  PtLo = 0
+  PtHi = 0
+  if Jb = 0 then Arm = 1
+  if Arm = 1 then
+    if Jb = 1 then
+      Lf = 1
+      goto l70
+    end if
+  end if
+  Rnd16
+  Na = Rs >> 8
+  Hw = Na
+  Hw = Hw * 22
+  Na = Hw >> 8
+  V = Rs & 255
+  Hw = V
+  Hw = Hw * 7
+  Kc = Hw >> 8
+  inc Kc
+  if Cx < Na then Cx = Na
+  Tl = TSt1 + Kc
+  dec Tl
+  PutT
+  Cret
+  inc Gp
+  goto a2200
+
+' Burst: the explosion's eight cells (8090, 8170: POKE E(J),A(J), red)
+sub Burst:
+  for Jj = 0 to 7
+    B = Eo[Jj]
+    Tl = At[Jj]
+    Poke
+  next
+  return
+end sub
+
+' AddPt, SubPt: PT = PT + Q, PT = PT - Q (32 bits)
+sub AddPt:
+  Hw = PtLo
+  PtLo = PtLo + Q
+  if PtLo < Hw then inc PtHi
+  return
+end sub
+
+sub SubPt:
+  if PtLo < Q then dec PtHi
+  PtLo = PtLo - Q
+  return
+end sub
+
+' SayPt: PRINT PT (a space or '-', the digits, a space)
+sub SayPt:
+  Hw = PtHi & $8000
+  if Hw <> 0 then
+    ' minus: the two's complement
+    Q = PtLo ^ $FFFF
+    Hw = PtHi ^ $FFFF
+    Q = Q + 1
+    if Q = 0 then inc Hw
+    Ng = 1
+  else
+    Q = PtLo
+    Hw = PtHi
+    Ng = 0
+  end if
+  NumB[0] = Q & 255
+  NumB[1] = Q >> 8
+  NumB[2] = Hw & 255
+  NumB[3] = Hw >> 8
+  call asm AsDec
+  ' the number as one word: sign and digits must fit the row
+  V = Nd + 1
+  V2 = Cx + V
+  if Cx > 0 then
+    if V2 > 22 then PadRow
+  end if
+  if Ng = 1 then
+    PutCh(45)
+  else
+    PutCh(32)
+  end if
+  while Nd > 0
+    dec Nd
+    V = Dg[Nd] + 48
+    PutCh(V)
+  end while
+  PutCh(32)
+  return
+end sub
+
+' Say: a message (ASCII, 0 at its end) at the cursor, in the colour Pc;
+' a word that would not fit pads the row with spaces first; a space at the
+' start of a row is not printed (it was padding)
+sub Say(u16 Msg):
+  Ad = Msg
+say_lp:
+  Ch = peek(Ad)
+  if Ch = 0 then return
+  if Ch = 32 then
+    if Cx > 0 then PutCh(32)
+    inc Ad
+    goto say_lp
+  end if
+  ' the word's length
+  Hw = Ad
+  Wl = 0
+say_len:
+  V = peek(Hw)
+  if V > 32 then
+    inc Wl
+    inc Hw
+    goto say_len
+  end if
+  V2 = Cx + Wl
+  if Cx > 0 then
+    if V2 > 22 then PadRow
+  end if
+say_wd:
+  Ch = peek(Ad)
+  if Ch > 32 then
+    PutCh(Ch)
+    inc Ad
+    goto say_wd
+  end if
+  goto say_lp
+end sub
+
+' PadRow: spaces to the end of the row (the cursor then wraps)
+sub PadRow:
+  while Cx > 0
+    Tl = 32
+    PutT
+  end while
+  return
+end sub
+
+' PutCh: the ASCII character C at the cursor, in the colour Pc
+sub PutCh(u8 C):
+  Tl = 32
+  if C > 32 then
+    V = C - 32
+    if Pc = 1 then V = V + 64
+    Tl = ChTab[V]
+  end if
+  PutT
+  return
+end sub
+
+' PutT: the tile Tl at the cursor; the cursor moves on, to the next row
+' after the last column
+sub PutT:
+  B = Cr
+  B = B * 22
+  B = B + Cx
+  Poke
+  inc Cx
+  if Cx = 22 then
+    Cx = 0
+    NewRow
+  end if
+  return
+end sub
+
+' Cret: PRINT's carriage return
+sub Cret:
+  Cx = 0
+  NewRow
+  return
+end sub
+
+' NewRow: the cursor down a row; below the last one, the screen scrolls up
+sub NewRow:
+  inc Cr
+  if Cr = 23 then
+    call asm AsScroll
+    Cr = 22
+  end if
+  return
+end sub
+
+' ClrScr: PRINT "{CLEAR}"
+sub ClrScr:
+  fill 32 count 768 to vram.name
+  Cr = 0
+  Cx = 0
+  return
+end sub
+
+' AskL: INPUT L: "? " and a number the stick changes, the button enters
+sub AskL:
+  Ph = 3
+  PutCh(63)
+  PutCh(32)
+  Seen
+  Jj = 0
+ask_show:
+  ' the number typed so far, from the cursor (a space after one digit)
+  B = Cr
+  B = B * 22
+  B = B + Cx
+  V = L / 10
+  V2 = L % 10
+  if V > 0 then
+    V = V + 16
+    Tl = ChTab[V]
+    Poke
+    inc B
+  end if
+  V2 = V2 + 16
+  Tl = ChTab[V2]
+  Poke
+  inc B
+  Tl = 32
+  Poke
+ask_lp:
+  Pace(1)
+  if Jb = 0 then Arm = 1
+  if Arm = 1 then
+    if Jb = 1 then goto ask_done
+  end if
+  if Ju = 0 then
+    if Jd = 0 then
+      Jj = 0
+      goto ask_lp
+    end if
+  end if
+  if Jj > 0 then
+    dec Jj
+    goto ask_lp
+  end if
+  Jj = 10
+  if Ju = 1 then
+    if L < 25 then inc L
+  end if
+  if Jd = 1 then
+    if L > 1 then dec L
+  end if
+  goto ask_show
+ask_done:
+  ' the number typed stays, then RETURN
+  V = L / 10
+  if V > 0 then
+    V = V + 48
+    PutCh(V)
+  end if
+  V = L % 10
+  V = V + 48
+  PutCh(V)
+  Cret
+  return
+end sub
+
+' AskYN: the button YES (Yes 1), the stick down NO (Yes 0)
+sub AskYN:
+  Seen
+yn_lp:
+  Pace(1)
+  if Jb = 0 then
+    if Jd = 0 then Arm = 1
+  end if
+  if Arm = 0 then goto yn_lp
+  if Jb = 1 then
+    Yes = 1
+    return
+  end if
+  if Jd = 1 then
+    Yes = 0
+    return
+  end if
+  goto yn_lp
+end sub
+
+' Seen: the next press counts only once the button is let go
+sub Seen:
+  Arm = 0
+  return
+end sub
+
+' WaitPress: a button press (once let go)
+sub WaitPress:
+wp_lp:
+  Pace(1)
+  if Jb = 0 then Arm = 1
+  if Arm = 0 then goto wp_lp
+  if Jb = 0 then goto wp_lp
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 1
+  backdrop black
+  ClrScr
+  Pc = 1
+  Cr = 1
+  Cx = 6
+  Say(@CrTitle)
+  Cr = 3
+  Cx = 4
+  for Jj = 0 to 6
+    Tl = TSt1 + Jj
+    PutT
+    Tl = 32
+    PutT
+  next
+  Pc = 0
+  Cr = 6
+  Cx = 0
+  Say(@CrBy)
+  Cr = 7
+  Cx = 0
+  Say(@CrFrom)
+  Cr = 8
+  Cx = 0
+  Say(@CrNotes)
+  Cr = 9
+  Cx = 0
+  Say(@CrNotes2)
+  Pc = 1
+  Cr = 12
+  Cx = 0
+  Say(@CrCv)
+  Cr = 13
+  Cx = 0
+  Say(@CrCv2)
+  Cr = 14
+  Cx = 0
+  Say(@CrCv3)
+  Cr = 15
+  Cx = 0
+  Say(@CrMus)
+  Pc = 0
+  Cr = 18
+  Cx = 0
+  Say(@CrHow)
+  Cr = 19
+  Cx = 0
+  Say(@CrHow2)
+  Pc = 1
+  Cr = 21
+  Cx = 3
+  Say(@CrPress)
+  play song AsSong once
+  Seen
+  WaitPress
+  stop song
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  call asm FontTiles
+  fill 32 count 768 to vram.name
+  backdrop black
+  return
+end sub
+
+' Pace N: N frames, then the sticks (either controller)
+sub Pace(u8 N):
+  for Jp = 1 to N
+    Frame1
+  next
+  Jl = joypad(1).left | joypad(2).left
+  Jr = joypad(1).right | joypad(2).right
+  Ju = joypad(1).up | joypad(2).up
+  Jd = joypad(1).down | joypad(2).down
+  V = joypad(1).button1 | joypad(1).button2
+  V2 = joypad(2).button1 | joypad(2).button2
+  Jb = V | V2
+  return
+end sub
+
+sub Hold(u16 N):
+  for Hw = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  return
+end sub
+
+' Poke: POKE B,Tl (on the screen only)
+sub Poke:
+  if B > 505 then return
+  call asm AsPoke
+  return
+end sub
+
+' Peek: Pk = PEEK(B) (off the screen, 0)
+sub Peek:
+  Pk = 0
+  if B > 505 then return
+  call asm AsPeek
+  return
+end sub
+
+' visible attribution: ASTROSTORM BY PETER LEAR, FROM COMPUTE! JUNE 1983
+data CrTitle bytes 65,83,84,82,79,83,84,79,82,77,0
+data CrBy bytes 66,89,32,80,69,84,69,82,32,76,69,65,82,44,0
+data CrFrom bytes 67,79,77,80,85,84,69,33,32,74,85,78,69,32,49,57,56,51,0
+data CrNotes bytes 40,86,73,67,45,50,48,41,44,32,78,79,84,69,83,32,66,89,0
+data CrNotes2 bytes 80,65,84,82,73,67,75,32,80,65,82,82,73,83,72,46,0
+data CrCv bytes 67,79,76,69,67,79,86,73,83,73,79,78,58,32,67,76,65,85,68,69,0
+data CrCv2 bytes 40,65,78,32,65,73,32,66,89,32,65,78,84,72,82,79,80,73,67,41,44,0
+data CrCv3 bytes 65,77,89,32,83,84,85,68,73,79,46,0
+data CrMus bytes 77,85,83,73,67,58,32,66,69,78,65,82,68,32,82,85,78,46,0
+data CrHow bytes 83,84,73,67,75,58,32,76,69,70,84,44,32,82,73,71,72,84,0
+data CrHow2 bytes 66,85,84,84,79,78,58,32,72,89,80,69,82,83,80,65,67,69,0
+data CrPress bytes 80,82,69,83,83,32,84,72,69,32,66,85,84,84,79,78,0
+
+data TilePat bytes
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $00,$66,$3C,$FF,$3C,$66,$00,$00
+  $0E,$18,$30,$60,$30,$18,$0E,$00
+  $00,$00,$7E,$00,$7E,$00,$00,$00
+  $70,$18,$0C,$06,$0C,$18,$70,$00
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$30,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$30,$30,$30,$30,$30,$3C,$00
+  $3C,$0C,$0C,$0C,$0C,$0C,$3C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$30,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$30,$30,$30,$30,$30,$3C,$00
+  $3C,$0C,$0C,$0C,$0C,$0C,$3C,$00
+end data
+
+data TileCol bytes
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+end data
+
+data ChTab bytes
+  32,142,32,32,32,32,32,143,144,145,32,32,141,146,147,32
+  148,149,150,151,152,153,154,155,156,157,158,32,32,32,32,159
+  32,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174
+  175,176,177,178,179,180,181,182,183,184,185,186,32,187,32,32
+  32,189,32,32,32,32,32,190,191,192,32,32,188,193,194,32
+  195,196,197,198,199,200,201,202,203,204,205,32,32,32,32,206
+  32,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221
+  222,223,224,225,226,227,228,229,230,231,232,233,32,234,32,32
+end data
+
+data MsTitle bytes 65,83,84,82,79,83,84,79,82,77,0
+data MsJoy bytes 74,79,89,83,84,73,67,75,40,49,41,0
+data MsAsk bytes 84,72,69,32,65,46,68,46,91,65,83,84,69,82,79,73,68,32,68,69,80,84,72,93,32,68,69,83,73,82,69,68,32,40,53,45,49,56,41,0
+data MsEasy bytes 84,79,79,32,69,65,83,89,0
+data MsRisky bytes 84,79,79,32,82,73,83,75,89,0
+data MsNot bytes 89,79,85,32,68,73,68,32,78,79,84,32,67,79,77,80,76,69,84,69,32,89,79,85,82,32,77,73,83,83,73,79,78,46,0
+data MsDone bytes 89,79,85,32,67,79,77,80,76,69,84,69,68,32,89,79,85,82,32,77,73,83,83,73,79,78,46,0
+data MsMin bytes 84,72,69,32,83,79,76,65,82,73,65,78,32,83,89,83,84,69,77,32,77,73,78,73,83,84,69,82,32,72,65,83,32,65,87,65,82,68,69,68,32,89,79,85,0
+data MsServ bytes 83,79,76,65,82,73,65,78,32,67,82,69,68,73,84,83,32,70,79,82,32,89,79,85,82,32,83,69,82,86,73,67,69,83,46,0
+data MsDeliv bytes 68,79,32,89,79,85,32,87,73,83,72,32,84,79,32,77,65,75,69,32,65,78,79,84,72,69,82,32,68,69,76,73,86,69,82,89,63,0
+data MsSame bytes 83,65,77,69,32,65,83,84,69,82,79,73,68,32,68,69,80,84,72,63,0
+data MsYN bytes 70,73,82,69,58,32,89,69,83,32,32,68,79,87,78,58,32,78,79,0
+data MsFined bytes 84,72,69,32,83,79,76,65,82,73,65,78,32,71,79,86,69,82,78,45,32,77,69,78,84,32,72,65,83,32,70,73,78,69,68,32,89,79,85,0
+data MsGal bytes 32,71,65,76,65,67,84,73,67,32,67,82,69,68,73,84,83,0
+data MsMore bytes 84,72,69,89,32,65,76,83,79,32,72,65,86,69,32,65,78,79,84,72,69,82,32,77,73,83,83,73,79,78,32,70,79,82,32,89,79,85,33,0
+data MsLost bytes 89,79,85,32,68,73,68,78,39,84,32,77,65,75,69,32,73,84,46,84,72,69,32,83,79,76,65,82,73,65,78,32,71,79,86,69,82,78,77,69,78,84,32,72,65,83,32,83,69,78,84,0
+data MsFam bytes 32,89,79,85,82,32,70,65,77,73,76,89,0
+data MsGal2 bytes 71,65,76,65,67,84,73,67,32,67,82,69,68,73,84,83,0
+data MsHitC bytes 80,82,69,83,83,32,70,73,82,69,58,32,78,69,87,32,65,46,68,46,0
+
+asm {
+AsCrash:
+    db $00,$00,$05,$08,$10
+AsFade:
+    db $00,$00,$15,$0C,$00,$00,$35,$0C,$00,$00,$55,$0C,$00,$00,$75,$0C,$00,$00,$95,$0C,$00,$00,$B5,$0C
+    db $00,$00,$D5,$0C,$00,$00,$F5,$0C,$10
+AsLaunch:
+    db $40,$85,$20,$0E,$40,$85,$F0,$01,$40,$85,$20,$08,$40,$85,$F0,$01,$40,$2A,$22,$1C,$40,$2A,$F2,$07
+    db $40,$2A,$22,$1C,$40,$2A,$F2,$07,$40,$85,$20,$0E,$40,$85,$F0,$01,$40,$2A,$22,$08,$40,$2A,$F2,$01
+    db $40,$2B,$23,$1C,$40,$2B,$F3,$07,$40,$85,$20,$0E,$40,$85,$F0,$01,$40,$2A,$22,$08,$40,$2A,$F2,$01
+    db $40,$2B,$23,$15,$40,$2B,$F3,$03,$40,$85,$20,$0E,$40,$85,$F0,$01,$40,$2A,$22,$08,$40,$2A,$F2,$01
+    db $40,$2B,$23,$1C,$40,$2B,$F3,$07,$40,$85,$20,$0E,$40,$85,$F0,$01,$40,$2A,$22,$08,$40,$2A,$F2,$01
+    db $40,$2B,$23,$22,$40,$2B,$F3,$07,$40,$2A,$22,$0E,$40,$2A,$F2,$01,$40,$2B,$23,$08,$40,$2B,$F3,$01
+    db $40,$C4,$23,$22,$40,$C4,$F3,$01,$40,$2B,$23,$1C,$40,$2B,$F3,$01,$40,$2A,$22,$15,$40,$2A,$F2,$01
+    db $40,$85,$20,$22,$40,$85,$F0,$01,$40,$85,$20,$1C,$40,$85,$F0,$01,$40,$85,$20,$0E,$40,$85,$F0,$01
+    db $40,$2A,$22,$22,$50
+AsAlarmA:
+    db $80,$7F,$33,$28,$90
+AsAlarmB:
+    db $80,$8D,$33,$28,$90
+AsQuiet:
+    db $80,$7F,$F3,$01,$90
+
+AsSoundTable:
+    dw AsCrash,$702B
+    dw AsFade,$702B
+    dw AsLaunch,$7035
+    dw AsAlarmA,$703F
+    dw AsAlarmB,$703F
+    dw AsQuiet,$703F
+    dw AsTuneMel,$703F
+    dw AsTuneBass,$7049
+; Benard Run, E minor (original for this game)
+; Tiny Sound, 8 frames per step
+AsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$23,$01,$01,$1E,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$1A,$1F,$01,$23,$01,$21,$01,$1F,$01
+    db $1E,$01,$01,$01,$23,$01,$01,$1E,$23,$01,$26,$01,$28,$01,$26,$01
+    db $25,$01,$21,$01,$23,$01,$21,$01,$1E,$01,$1A,$01,$17,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+AsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$09,$15,$09,$15
+    db $09,$15,$09,$15,$07,$13,$07,$13,$07,$13,$07,$13,$06,$12,$06,$12
+    db $06,$12,$06,$12,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$09,$15,$09,$15
+    db $09,$15,$09,$15,$07,$13,$06,$12,$07,$13,$06,$12,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+AsSong:
+    dw $0001
+    db $40+7,8
+    dw $0000
+
+; AsCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+AsCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+AsCellDiv:
+    or a
+    sbc hl,de
+    jr c,AsCellRem
+    inc b
+    jr AsCellDiv
+AsCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; AsPeek: Pk = the tile at B
+AsPeek:
+    call AsCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; AsPoke: the tile Tl at B
+AsPoke:
+    call AsCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+
+; AsScroll: the VIC's screen (rows 1-23, columns 5-26) up a row, a row of
+; spaces at the bottom
+AsScroll:
+    ld hl,(VDP_NAME_SHADOW)
+    ld de,32+5
+    add hl,de
+    ld b,22
+AsScRow:
+    push bc
+    push hl
+    ld de,32
+    add hl,de
+    ; read the row below into Buf
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld de,AMY_UVAR_Buf
+    ld b,22
+AsScRd:
+    in a,($BE)
+    ld (de),a
+    inc de
+    nop
+    nop
+    djnz AsScRd
+    pop hl
+    ; write it here
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld de,AMY_UVAR_Buf
+    ld b,22
+AsScWr:
+    ld a,(de)
+    out ($BE),a
+    inc de
+    nop
+    nop
+    djnz AsScWr
+    ld de,32
+    add hl,de
+    pop bc
+    djnz AsScRow
+    ; the last row: spaces
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld b,22
+    ld a,32
+AsScSp:
+    out ($BE),a
+    nop
+    nop
+    nop
+    djnz AsScSp
+    ret
+
+; AsDec: the 32-bit number NumB (little-endian) in decimal: Dg the digits
+; (lowest first), Nd how many (at least one)
+AsDec:
+    xor a
+    ld (AMY_UVAR_Nd),a
+AsDecNext:
+    ld hl,AMY_UVAR_NumB+3
+    ld b,4
+    xor a
+AsDecByte:
+    ld e,(hl)
+    push bc
+    ld b,8
+AsDecBit:
+    sla e
+    rla
+    cp 10
+    jr c,AsDecLo
+    sub 10
+    inc e
+AsDecLo:
+    djnz AsDecBit
+    pop bc
+    ld (hl),e
+    dec hl
+    djnz AsDecByte
+    ; A the remainder: the next digit
+    ld c,a
+    ld a,(AMY_UVAR_Nd)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Dg
+    add hl,de
+    ld (hl),c
+    inc a
+    ld (AMY_UVAR_Nd),a
+    ld hl,(AMY_UVAR_NumB)
+    ld a,h
+    or l
+    ld hl,(AMY_UVAR_NumB+2)
+    or h
+    or l
+    jr nz,AsDecNext
+    ret
+
+; FontTiles: each font character of FontTab (third 0 of the pattern
+; table) copied into its tile, in the three thirds
+FontTiles:
+    ld hl,FontTab
+FtNext:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    ld e,a
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    pop hl
+    ld b,8
+FtByte:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    ld c,a
+    push hl
+    call FtPut
+    ld a,h
+    add a,8
+    ld h,a
+    call FtPut
+    ld a,h
+    add a,8
+    ld h,a
+    call FtPut
+    pop hl
+    inc hl
+    inc de
+    djnz FtByte
+    pop hl
+    jr FtNext
+FtPut:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    nop
+    nop
+    ld a,c
+    out ($BE),a
+    ret
+FontTab:
+    db 44,141,33,142,40,144,41,145,45,146,46,147,48,148,49,149,50,150,51,151,52,152,53,153,54,154,55,155,56,156,57,157,58,158,63,159,65,160,66,161,67,162,68,163,69,164,70,165,71,166,72,167,73,168,74,169,75,170,76,171,77,172,78,173,79,174,80,175,81,176,82,177,83,178,84,179,85,180,86,181,87,182,88,183,89,184,90,185,44,188,33,189,40,191,41,192,45,193,46,194,48,195,49,196,50,197,51,198,52,199,53,200,54,201,55,202,56,203,57,204,58,205,63,206,65,207,66,208,67,209,68,210,69,211,70,212,71,213,72,214,73,215,74,216,75,217,76,218,77,219,78,220,79,221,80,222,81,223,82,224,83,225,84,226,85,227,86,228,87,229,88,230,89,231,90,232,0
+}

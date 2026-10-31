@@ -1,0 +1,2036 @@
+cartridge "CASTLE QUEST/TIMOTHY G. BALDWIN/1983"
+
+' CASTLE QUEST
+' The game by Timothy G. Baldwin from COMPUTE!, July 1983 (pages 85-89),
+' for the ColecoVision in Amy by Amy Bienvenu. Ported by Claude (an AI
+' made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: the Atari listing, transcribed in orig/castlequest-atari.bas
+' from the scans beside it. Its machine code (DATA 790-950, a vertical
+' blank routine in page 6) is not run: it is read (orig/README of the
+' routine in README.md) and done again here in Vblank, MoveSv and the
+' asm of cq.asm.
+'
+' The game: the King will give you Princess Dilayna if you capture the
+' three evil wizards. Each lives in a castle of ten rooms full of his
+' servants (bat-wingers, blinkers, chokers, stompers and crushers: one
+' kind a room). A room has no exit until you touch its two keys; the
+' second key shows only once the first is touched, and from then on wall
+' pieces fall about the room. In a castle's tenth room the wizard shows
+' too, and must be caught before the exit opens. Walk out through the gap
+' in the right wall. Touching a wall or a servant, or running out of cloak
+' time (the counter at the top), costs a life; the button freezes the
+' servants for 50 units of cloak time. Three lives, three more for each
+' wizard caught. Servants placed on the outer walls leave holes there when
+' they move: secret passages.
+'
+' Controls (joystick 1): the stick walks, the button freezes the servants
+' (and starts a page where the Atari wanted START). Keypad not used.
+'
+' The Atari's screen is kept to its own units: the 40 x 24 characters of
+' GRAPHICS 0 (kept in VRAM at $1C00, as the listing keeps them in screen
+' memory, PEEKed and POKEd by its machine code), drawn 5 x 7 pixels each
+' on the bitmap screen in columns 28-227, rows 12-179; the players at the
+' Atari's colour clocks and scan lines (H0 V0, W1 Y1 ...), shown by four
+' sprites at 5/4 and 7/8 of those places. The collisions are worked out
+' in the Atari's units, dot for dot, from the listing's shapes: player 0
+' and the playfield (P0PF, the machine code's test) and player 0 and the
+' other players (P0PL, line 150). Labels such as l120 are the listing's
+' line numbers.
+'
+' The machine code, every 60th of a second: if player 0 has met the
+' playfield (P0PF = 4), it marks you caught (1566), clears the collisions
+' and takes itself off; else it moves F-1 servants picked at random from
+' the 32 addresses kept in page 1 (each a step of 1 or 40 cells, left,
+' right, up or down, into an empty cell only: it blanks the old cell, so
+' a wall piece dropped on a servant is lost when it moves), then walks
+' player 0 a clock or a line for each way the stick is pushed. F is 2, one
+' more in the tenth room, two more for each wizard caught (1568); the
+' button sets it to 1, which moves none.
+'
+' Liberties taken:
+' - Timing: a pass of the main loop (lines 120-220) is 6 frames, the
+'   button's freeze loop 20 frames more, the shooting sound 5, the key
+'   sound 2, the exit's opening 12; the machine code runs every frame.
+' - The Atari's RANDOM register and RND are one 16-bit xorshift (RND is
+'   its high byte / 256), seeded by the time spent on the credits page.
+' - The screens of text are drawn in 8 x 8 cells, lower case in capitals;
+'   "Press START" and "Press SYSTEM RESET" become the button; after YOU
+'   WON! the button goes back to the title (the Atari waited for SYSTEM
+'   RESET). The GRAPHICS 2 lines (TOUGH LUCK!, ATTABOY!, the title) are
+'   drawn twice as large.
+' - The page 1 addresses the listing fills with 254 (ROM) never move here
+'   (on the Atari they read ROM and nearly always stayed put).
+' - The machine code stays on only during a room (on the Atari it kept
+'   running between rooms after an escape).
+' - The colours: the Atari's hues mapped to the nearest ColecoVision
+'   colours; the room's colour (SETCOLOR 2) is the backdrop, so the border
+'   takes it too.
+' - The digits are drawn after the Atari's font; the other characters are
+'   the listing's own.
+' - A credits page with an original tune ("The Wizard's Keep"), played
+'   once.
+' Fixed (the listing's behaviour noted where it is fixed):
+' - Line 1550 began at D-1 and wrote 254 over the last servant's address,
+'   so that servant never moved (except among the tenth room's 32): it
+'   now moves like the others.
+' - Colour register 706 (the hidden key's colour, also line 200's "key 1
+'   touched" test) was never cleared between rooms: when a room's N
+'   equalled the last one, walls fell from the start and key 1 gave no
+'   sound. It is cleared for each room.
+' Added: in rooms 1-6, where the Atari's walls were grey, each room's
+' walls have a colour of their own.
+' Quirk kept: a POP in the maze routine (1480) starts the walls again
+' without clearing those drawn.
+'
+' House rules kept: text in columns 2-29; the frame loop is protected from
+' the NMI and every screen is drawn with the NMI off after a wait.
+
+const SndShoot = 1
+const SndLuck = 2
+const SndAttaA = 3
+const SndAttaB = 4
+const SndKeyA = 5
+const SndKeyB = 6
+const SndStep = 7
+const SndExit = 8
+const SndHi = 9
+const SndLo = 10
+const SndWon = 11
+const SndTuneA = 12
+const SndTuneB = 13
+
+' --- the listing's variables ----------------------------------------------
+u8 C = 0
+u8 L = 3
+u8 Mis = 1
+u8 Q = 0
+u8 T2 = 0
+i16 G = 0
+u16 Score = 0
+' A M N P (the Atari colours), B the wall's code, E the servants', F, D
+u8 Ca = 0
+u8 Cm = 0
+u8 Cn = 0
+u8 Cp = 0
+u8 B = 1
+u8 E = 7
+u8 F = 2
+u8 D = 2
+' the players: 0 you (H0 V0), 1 and 2 the keys, 3 the wizard; W the
+' horizontal places chosen, Y the lines, Hx the horizontal registers
+' (0: off), C705 C706 C707 the colour registers; Wz the wizard drawn
+u8 H0 = 60
+u8 V0 = 120
+u8 W1 = 0
+u8 W2 = 0
+u8 W3 = 0
+u8 Y1 = 0
+u8 Y2 = 0
+u8 Y3 = 0
+u8 Hx0 = 0
+u8 Hx1 = 0
+u8 Hx2 = 0
+u8 Hx3 = 0
+u8 C705 = 0
+u8 C706 = 0
+u8 C707 = 0
+u8 Wz = 0
+' the collision registers (latched until HITCLR), 1566 (Dead), the
+' machine code on (Vbi), 1568 (Fz), the character set (Cs: 0 the T1=8
+' set, 1 the T1=16 set), the room's colour (Hue), G under 100 (Red)
+u8 Lpf = 0
+u8 Lpl = 0
+u8 Dead = 0
+u8 Vbi = 0
+u8 Fz = 1
+u8 Cs = 0
+u8 Hue = 0
+u8 Red = 0
+' page 1: the servants' cells (row 255: the listing's 254, never moves)
+u8 Svc[32]
+u8 Svr[32]
+' the frame loop: Pc frames to the next pass, Pn passes, Fc frames (for
+' the test bot), Ph 1 credits, 2 title, 3 a room, 4 between rooms, Rm
+' rooms set up, Res how a room ended (1 caught, 2 out), Frz the freeze's
+' second half due
+u8 Pc = 0
+u8 Pn = 0
+u8 Fc = 0
+u8 Ph = 0
+u8 Rm = 0
+u8 Res = 0
+u8 Frz = 0
+u8 Stk = 0
+u8 Btn = 0
+u8 Tick = 0
+u16 Rs = $1D3B
+u16 Rt = 0
+' the cells (cq.asm)
+u8 Cc = 0
+u8 Cr = 0
+u8 Ck = 0
+u8 Zx = 0
+u8 Zy = 0
+u8 Zs = 0
+u8 Zm1 = 0
+u8 Zm2 = 0
+u8 Zo = 0
+u8 Zc = 0
+u8 Zl = 0
+u8 Zn0 = 0
+u8 Zn1 = 0
+u16 Zp = 0
+u16 Zb = 0
+u8 Hit = 0
+u8 ZRow = 0
+u8 ZCol = 0
+u8 ZClr = $F0
+u8 ZCh = 0
+u8 ZBuf[8]
+' working variables
+u8 V = 0
+u8 W = 0
+u8 K = 0
+u8 J = 0
+u8 I = 0
+u8 Jh = 0
+u8 Xs = 0
+u8 Ys = 0
+u8 Zz = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Ob = 0
+u8 St0 = 0
+u8 Rb = 0
+u8 Lsum = 0
+u8 Lim = 0
+u8 Ks = 0
+u8 Bk = 0
+u8 Pb = 0
+u8 Dg[5]
+u8 Nd = 0
+u16 Nm = 0
+u16 W16 = 0
+u16 Ho = 0
+i16 Si = 0
+
+' the texts
+data TxWait chars "WAIT FOR GAME SETUP{0}"
+data TxReady chars "GET READY FOR ROOM {0}"
+data TxLuck chars "TOUGH LUCK!{0}"
+data TxAtta chars "ATTABOY!{0}"
+data TxCastle chars "CASTLE{0}"
+data TxQuest chars "QUEST{0}"
+data TxHow1 chars "HOW MANY ROOMS{0}"
+data TxHow2 chars "CAN YOU SURVIVE?{0}"
+data TxCon1 chars "CONGRATULATIONS!{0}"
+data TxCon2 chars "YOU HAVE{0}"
+data TxCon3 chars "COMPLETED YOUR{0}"
+data TxCon4 chars "QUEST{0}"
+data TxSor1 chars "SORRY!{0}"
+data TxSor2 chars "YOU BLEW IT.{0}"
+data TxSor3 chars "QUESTS COMPLETED {0}"
+data TxPress chars "PRESS THE BUTTON{0}"
+data TxCont chars "TO CONTINUE{0}"
+data TxScore chars "SCORE: {0}"
+data TxWon chars "YOU WON!{0}"
+data TxWon2 chars "PRESS THE BUTTON TO{0}"
+data TxWon3 chars "BEGIN A NEW GAME.{0}"
+data TxFinal chars "FINAL SCORE {0}"
+data TxK1 chars "CASTLE QUEST{0}"
+data TxK2 chars "BY TIMOTHY G. BALDWIN,{0}"
+data TxK3 chars "FROM COMPUTE! JULY 1983{0}"
+data TxK4 chars "(ATARI VERSION){0}"
+data TxK5 chars "COLECOVISION: CLAUDE (AN AI{0}"
+data TxK6 chars "BY ANTHROPIC), AMY STUDIO.{0}"
+data TxK7 chars "MUSIC: THE WIZARD'S KEEP.{0}"
+data TxK8 chars "STICK: WALK{0}"
+data TxK9 chars "BUTTON: FREEZE THE SERVANTS{0}"
+
+' the Atari hues as ColecoVision colours, dark (luminance 0-4) and light
+data DarkCol bytes 14,10,6,6,13,13,4,4,4,5,7,12,12,2,10,10
+data LightCol bytes 15,11,9,9,13,13,5,5,5,7,7,2,3,3,11,11
+' the room's backdrop for hues 0-15 at luminance 0
+' the walls' hue in rooms 1-6 (0, 7-10 keep the room's)
+data WallHue bytes 0,9,12,1,4,10,15,0,0,0,0
+data BackCol bytes 1,10,6,6,13,13,4,4,4,4,12,12,12,12,10,10
+' the shapes (DATA 940-950, 1030, 350)
+data ShP0 bytes 60,126,90,126,90,102,126,60
+data ShKey bytes 0,6,15,249,255,166,160,0
+data ShWiz bytes 102,36,126,90,126,126,66,90,60,60,36,102
+
+  bitmap screen
+  set sound table CqSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy CqSpr count 96 to vram.spr_pat
+  set sprite count 4
+  HideSpr
+  backdrop black
+  screen on
+  nmi off
+
+l10:
+  CreditsPage
+l20:
+  C = 0
+  L = 3
+  Mis = 1
+  Q = 0
+  T2 = 0
+  G = 0
+  Score = 0
+  C706 = 0
+  Wz = 0
+l40:
+  TitlePage
+  Ph = 4
+  ClearPage
+  ZClr = $E0
+  SayAt(6, 11, @TxWait)
+  Hold(30)
+l60:
+  ReadyPage
+l80:
+  RoomSetup
+  InRoom
+  if Res = 1 then goto l400
+  goto l520
+
+' 400-430: caught (or out of time)
+l400:
+  Ph = 4
+  Fz = 1
+  Vbi = 0
+  HideSpr
+  Hue = 0
+  Red = 0
+  ClearPage
+  ZClr = $E0
+  BigAt(5, 10, @TxLuck)
+  play sound SndLuck
+  Hold(40)
+  T2 = 1
+  dec L
+  ClearPage
+  ' line 430's C-1 and C+1 around GOSUB 320: the same room again
+  dec C
+  ReadyPage
+  inc C
+  if L = 0 then goto l590
+  goto l80
+
+' 520-570: out of the room
+l520:
+  Ph = 4
+  Q = 1
+  Fz = 1
+  Vbi = 0
+  HideSpr
+  Hue = 0
+  Red = 0
+  ClearPage
+  ZClr = $E0
+  BigAt(8, 10, @TxAtta)
+  Q = 0
+  for I = 0 to 5
+    play sound SndAttaA
+    backdrop gray
+    Hold(4)
+    play sound SndAttaB
+    backdrop black
+    Hold(4)
+  next
+  ClearPage
+  ReadyPage
+  ' SCORE=SCORE+MISSION*INT((G*C)/10)
+  Si = G * C
+  Si = Si / 10
+  W16 = Si
+  W16 = W16 * Mis
+  Score = Score + W16
+  if C = 10 then
+    if Mis = 3 then goto l700
+    goto l590
+  end if
+  goto l80
+
+' 580-670: the end of a quest
+l590:
+  Ph = 4
+  ClearPage
+  C707 = 0
+  if L = 0 then goto l660
+  ZClr = $B0
+  SayAt(8, 4, @TxCon1)
+  ZClr = $E0
+  SayAt(12, 6, @TxCon2)
+  SayAt(9, 8, @TxCon3)
+  SayAt(13, 10, @TxCon4)
+  C = 0
+  L = L + 3
+l620:
+  ZClr = $E0
+  SayAt(8, 15, @TxPress)
+  SayAt(10, 16, @TxCont)
+  SayAt(8, 19, @TxScore)
+  PutNum(Score)
+  WaitTrig
+  ClearPage
+  if L = 0 then goto l20
+  inc Mis
+  goto l60
+l660:
+  ZClr = $E0
+  SayAt(13, 4, @TxSor1)
+  SayAt(10, 6, @TxSor2)
+  SayAt(6, 8, @TxSor3)
+  V = Mis - 1
+  PutNum(V)
+  goto l620
+
+' 700-740: you won
+l700:
+  Ph = 4
+  ClearPage
+  ZClr = $90
+  BigAt(8, 4, @TxWon)
+  ZClr = $E0
+  SayAt(6, 8, @TxWon2)
+  SayAt(7, 9, @TxWon3)
+  ZClr = $90
+  SayAt(6, 13, @TxFinal)
+  PutNum(Score)
+  play sound SndWon
+  for I = 1 to 15
+    Bk = I
+    call asm CqBack
+    Hold(4)
+  next
+  backdrop black
+  WaitTrig
+  goto l20
+
+' --- a room ---------------------------------------------------------------
+' 80-100 (with 970-1060, 450-500, 1340-1550, 340-360)
+sub RoomSetup:
+  Ph = 4
+  ' 970-1060: the players. Player 0 at line 120, clock 60
+  V0 = 120
+  H0 = 60
+  Hx0 = 0
+  if C = 0 then Wz = 0
+  if C = 10 then Wz = 0
+  Y1 = Rn(151) + 52
+  W1 = Rn(130) + 70
+  Y2 = Rn(151) + 52
+  W2 = Rn(130) + 70
+  C705 = Cm
+  ' fixed: colour register 706 is cleared for the new room (the listing
+  ' kept the last room's; when the new N happened to equal it, walls fell
+  ' before any key was touched and key 1 gave no sound)
+  C706 = 0
+  if T2 = 1 then
+    dec C
+    T2 = 0
+  end if
+  Hx1 = 0
+  Hx2 = 0
+  Hx3 = 0
+  ' 450-500: the room's colours, walls, servants, cloak time
+  V = Rn(16)
+  Ca = V * 16
+  Ca = Ca + 6
+  V = Rn(16)
+  Cm = V * 16
+  Cm = Cm + 2
+  V = Rn(16)
+  Cn = V * 16
+  Cn = Cn + 4
+  V = Rn(16)
+  Cp = V * 16
+  Cp = Cp + 8
+  ' B=33+C-6*(C>5) (with C before the room's), as a code: B-32
+  B = C + 1
+  if C > 5 then B = B - 6
+  inc C
+  D = 2
+  if C > 1 then D = D + 2
+  if C > 3 then D = D + 4
+  if C > 6 then D = D + 8
+  if C > 9 then D = D + 16
+  E = Rn(5) + 7
+  F = Mis - 1
+  F = F * 2
+  F = F + 2
+  if C > 9 then inc F
+  G = C * 50
+  G = G + 100
+  Dead = 0
+  Cs = 0
+  Lpf = 0
+  Lpl = 0
+  Red = 0
+  Hue = 0
+  if C = 7 then Hue = 7
+  if C = 8 then Hue = 2
+  if C = 9 then Hue = 1
+  if C = 10 then Hue = 3
+  ' 1340-1390: the room
+  Rearm
+  wait
+  nmi off
+  call asm CqClrStore
+  fill 0 count 6144 to vram.pattern
+  SetColors
+l1350:
+  for Xs = 0 to 39
+    PutAt(Xs, 0, B)
+    PutAt(Xs, 23, B)
+  next
+  for Ys = 1 to 22
+    PutAt(0, Ys, B)
+    PutAt(39, Ys, B)
+  next
+l1360:
+  Wall(10, 0, 7)
+  if Zz = 1 then goto l1360
+  Wall(15, 5, 13)
+  if Zz = 1 then goto l1360
+  Wall(10, 16, 7)
+  if Zz = 1 then goto l1360
+l1370:
+  V = Rh()
+  if V < 128 then
+    Xs = Rn(31) + 8
+    Ys = Rn(31) + 8
+    if Xs > Ys then
+      V = Xs
+      Xs = Ys
+      Ys = V
+    end if
+    for J = Xs to Ys
+      PutAt(J, 11, B)
+    next
+  end if
+  TopRow
+  ' 1500-1550: the servants and their addresses
+  Lim = D - 1
+  for I = 0 to Lim
+    W = Rn(4)
+    if W > 2 then
+      Ho = Rn239()
+      Ho = Ho + 680
+    else
+      Ho = Rn279()
+      Ho = Ho + 40
+    end if
+    W16 = Ho / 40
+    Ys = W16
+    W16 = W16 * 40
+    W16 = Ho - W16
+    Xs = W16
+    Svc[I] = Xs
+    Svr[I] = Ys
+    PutAt(Xs, Ys, E)
+  next
+  ' fixed: line 1550 began at D-1, writing 254 over the last servant's
+  ' address too, so that one never moved
+  if D < 32 then
+    V = D
+    for I = V to 31
+      Svr[I] = 255
+    next
+  end if
+  ' 80: the servants still, you and key 1 shown
+  Fz = 1
+  Hx0 = H0
+  Hx1 = W1
+  ' 90, 340-360: the wizard in the tenth room
+  if C = 10 then
+    Y3 = Rn(151) + 52
+    W3 = Rn(130) + 70
+    C707 = Cp
+    Wz = 1
+  end if
+  ShowSpr
+  inc Rm
+  return
+end sub
+
+' Wall(X,Y,Z): 1400-1480, Zz 1 when the POP of 1480 starts them again
+sub Wall(u8 Wx, u8 Wy, u8 Wl):
+  Zz = 0
+  K = Rn(8) + 1
+  if K = 2 then VLine(Wx, Wy, Wl)
+  if K = 3 then
+    Wx = Wx + 10
+    VLine(Wx, Wy, Wl)
+  end if
+  if K = 4 then
+    Wx = Wx + 20
+    VLine(Wx, Wy, Wl)
+  end if
+  if K = 5 then
+    VLine(Wx, Wy, Wl)
+    Wx = Wx + 10
+    VLine(Wx, Wy, Wl)
+  end if
+  if K = 6 then
+    Wx = Wx + 10
+    VLine(Wx, Wy, Wl)
+    Wx = Wx + 10
+    VLine(Wx, Wy, Wl)
+  end if
+  if K = 7 then
+    VLine(Wx, Wy, Wl)
+    Wx = Wx + 10
+    VLine(Wx, Wy, Wl)
+    Wx = Wx + 10
+    VLine(Wx, Wy, Wl)
+  end if
+  if K = 8 then Zz = 1
+  return
+end sub
+
+' 1420: PLOT X,Y: DRAWTO X,Y+Z
+sub VLine(u8 Lx, u8 Ly, u8 Ll):
+  W = Ly + Ll
+  for Jh = Ly to W
+    PutAt(Lx, Jh, B)
+  next
+  return
+end sub
+
+' 1380-1390: the room, lives and score on the top wall
+sub TopRow:
+  PrNum(6, C)
+  PrNum(9, L)
+  PrNum(30, Score)
+  return
+end sub
+
+' PrNum: PRINT a number at column Xs of the top row, in digits 16-25
+sub PrNum(u8 Px, u16 Pv):
+  Nm = Pv
+  Digits
+pn_put:
+  dec Nd
+  V = Dg[Nd] + 16
+  PutAt(Px, 0, V)
+  inc Px
+  if Nd <> 0 then goto pn_put
+  return
+end sub
+
+sub Digits:
+  call asm CqDigits
+  return
+end sub
+
+sub PutAt(u8 Ax, u8 Ay, u8 Ak):
+  Cc = Ax
+  Cr = Ay
+  Ck = Ak
+  call asm CqPut
+  return
+end sub
+
+function CodeAt(u8 Ax, u8 Ay) as u8
+  Cc = Ax
+  Cr = Ay
+  call asm CqGet
+  return Ck
+
+' --- the main loop --------------------------------------------------------
+' Play: frames until the room ends (Res 1 caught or out of time, 2 out)
+sub InRoom:
+  Ph = 3
+  Res = 0
+  Frz = 0
+  ' 100: the machine code on; FOR I=0 TO 100 (8 frames), then POKE 1568,F
+  Vbi = 1
+  Pc = 8
+  St0 = 1
+pl_frame:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  ReadStick
+  Vblank
+  if Pc = 0 then
+    if St0 = 1 then
+      Fz = F
+      St0 = 0
+    end if
+    if Frz = 1 then
+      Pass2
+    else
+      Pass1
+    end if
+    if Res <> 0 then
+      inc Fc
+      return
+    end if
+  end if
+  dec Pc
+  ' the sprites again only when a player has moved or shown
+  V = H0 ^ V0
+  V = V ^ Hx1
+  V = V ^ Hx2
+  V = V ^ Hx3
+  if V <> Lsum then
+    Lsum = V
+    ShowSpr
+  else
+    if Stk <> 0 then ShowSpr
+  end if
+  Collide
+  inc Fc
+  goto pl_frame
+end sub
+
+' 120-180 (and, without the button, 190-210)
+sub Pass1:
+  inc Pn
+  Pc = 6
+  G = G - 1
+  if Dead = 1 then
+    Res = 1
+    return
+  end if
+  if G < 0 then
+    Res = 1
+    return
+  end if
+  if H0 > 204 then
+    Res = 2
+    return
+  end if
+  ' 140
+  PrintG
+  if G < 100 then
+    if Red = 0 then
+      Red = 1
+      SetColors
+    end if
+  end if
+  ' 150-170
+  V = Lpl
+  if V >= 2 then
+    Hx2 = W2
+    Hx1 = 0
+    if C706 <> Cn then
+      play sound SndKeyA
+      play sound SndKeyB
+      Pc = Pc + 2
+      C706 = Cn
+    end if
+  end if
+  if V >= 4 then
+    Hx3 = W3
+    Hx2 = 0
+  end if
+  if V >= 6 then OpenExit
+  ' 180
+  if Btn = 1 then
+    Fz = 1
+    G = G - 50
+    Frz = 1
+    Pc = 20
+    return
+  end if
+  Pass2b
+  return
+end sub
+
+' the freeze's end: POKE 1568,F, then 190-210
+sub Pass2:
+  Frz = 0
+  Fz = F
+  Pc = 6
+  Pass2b
+  return
+end sub
+
+sub Pass2b:
+  ' 190: the character set by G's parity
+  V = G & 1
+  W = 1 - V
+  if W <> Cs then
+    Cs = W
+    for I = 0 to 31
+      if Svr[I] < 24 then
+        Cc = Svc[I]
+        Cr = Svr[I]
+        call asm CqGet
+        if Ck = E then
+          call asm CqDraw
+        end if
+      end if
+    next
+  end if
+  ' 200: walls falling once key 1 is touched (colour 706 = N)
+  if C706 = Cn then
+    V = Rh()
+    if V >= 244 then
+      Xs = Rn(38)
+      Ys = Rn(22)
+      PutAt(Xs, Ys, B)
+      play sound SndShoot
+      Pc = Pc + 5
+    end if
+  end if
+  ' 210
+  if Stk <> 0 then play sound SndStep
+  return
+end sub
+
+' 260-290: the exit opens (in the tenth room only with the wizard: X=14)
+sub OpenExit:
+  if C = 10 then
+    if Lpl <> 14 then return
+  end if
+  for Ys = 9 to 14
+    PutAt(39, Ys, 0)
+  next
+  Lpf = 0
+  Lpl = 0
+  play sound SndExit
+  Pc = Pc + 12
+  Hx3 = 0
+  Hx2 = 0
+  return
+end sub
+
+' 140: the counter, between two wall characters
+sub PrintG:
+  Xs = 23
+  if G > 999 then dec Xs
+  if G > 99 then dec Xs
+  if G > 9 then dec Xs
+  PutAt(Xs, 0, B)
+  inc Xs
+  Nm = G
+  Digits
+pg_put:
+  dec Nd
+  V = Dg[Nd] + 16
+  PutAt(Xs, 0, V)
+  inc Xs
+  if Nd <> 0 then goto pg_put
+  PutAt(Xs, 0, B)
+  return
+end sub
+
+' the machine code (DATA 790-950), once a frame
+sub Vblank:
+  if Vbi = 0 then return
+  if Lpf = 4 then
+    Dead = 1
+    Lpf = 0
+    Lpl = 0
+    Vbi = 0
+    return
+  end if
+  ' F-1 servants (LDX #F: DEX), picked by RANDOM AND 31
+  K = Fz - 1
+  if K <> 0 then
+    for Jh = 1 to K
+      V = Rh()
+      V = V & 31
+      MoveSv(V)
+    next
+  end if
+  ' the stick, bits up, down, left, right
+  V = Stk & 1
+  if V <> 0 then dec V0
+  V = Stk & 2
+  if V <> 0 then inc V0
+  V = Stk & 4
+  if V <> 0 then dec H0
+  V = Stk & 8
+  if V <> 0 then inc H0
+  Hx0 = H0
+  return
+end sub
+
+' MoveSv: the routine at $0694 for the servant in page 1's slot S
+sub MoveSv(u8 S):
+  ' RANDOM AND 1: 0 subtract, else add; RANDOM AND 1: 1 a cell, 0 a row
+  Sx = Svc[S]
+  Sy = Svr[S]
+  if Sy < 24 then PutAt(Sx, Sy, 0)
+  V = Rh()
+  Ob = V & 1
+  V = Rh()
+  Pb = V & 1
+  if Sy >= 24 then return
+  Xs = Sx
+  Ys = Sy
+  if Ob = 0 then
+    if Pb = 1 then
+      if Xs = 0 then
+        Xs = 39
+        dec Ys
+      else
+        dec Xs
+      end if
+    else
+      dec Ys
+    end if
+  else
+    if Pb = 1 then
+      inc Xs
+      if Xs = 40 then
+        Xs = 0
+        inc Ys
+      end if
+    else
+      inc Ys
+    end if
+  end if
+  ' off the screen (never in practice): stays
+  if Ys >= 24 then goto ms_stay
+  V = CodeAt(Xs, Ys)
+  if V <> 0 then goto ms_stay
+  Svc[S] = Xs
+  Svr[S] = Ys
+  PutAt(Xs, Ys, E)
+  return
+ms_stay:
+  PutAt(Sx, Sy, E)
+  return
+end sub
+
+' the collisions of what the frame shows: P0PF (cq.asm) and P0PL
+sub Collide:
+  call asm CqPF
+  Lpf = Lpf | Hit
+  if Hx1 <> 0 then
+    V = Meet(Hx1, Y1, 0)
+    if V = 1 then Lpl = Lpl | 2
+  end if
+  if Hx2 <> 0 then
+    V = Meet(Hx2, Y2, 0)
+    if V = 1 then Lpl = Lpl | 4
+  end if
+  if Hx3 <> 0 then
+    if Wz = 1 then
+      V = Meet(Hx3, Y3, 1)
+      if V = 1 then Lpl = Lpl | 8
+    end if
+  end if
+  return
+end sub
+
+' Meet: does player 0 meet a key (Mw 0) or the wizard (Mw 1) at Mh,My?
+function Meet(u8 Mh, u8 My, u8 Mw) as u8
+  ' the clocks apart (player 0 left of the other: Sx > 0)
+  if Mh >= H0 then
+    Sx = Mh - H0
+    Ob = 0
+  else
+    Sx = H0 - Mh
+    Ob = 1
+  end if
+  if Sx >= 8 then return 0
+  ' lines apart: none can meet
+  if My >= V0 then
+    W = My - V0
+    if W >= 8 then return 0
+  else
+    W = V0 - My
+    if W >= 12 then return 0
+  end if
+  Pb = 8
+  if Mw = 1 then Pb = 12
+  for Jh = 0 to 7
+    W = V0 + Jh
+    if W >= My then
+      W = W - My
+      if W < Pb then
+        if Mw = 0 then
+          V = ShKey[W]
+        else
+          V = ShWiz[W]
+        end if
+        if Sx <> 0 then
+          for Ks = 1 to Sx
+            if Ob = 0 then
+              V = V >> 1
+            else
+              V = V << 1
+            end if
+          next
+        end if
+        K = ShP0[Jh]
+        V = V & K
+        if V <> 0 then return 1
+      end if
+    end if
+  next
+  return 0
+
+' ReadStick: Stk bits 1 up, 2 down, 4 left, 8 right; Btn the button
+sub ReadStick:
+  Stk = 0
+  if joypad(1).up then Stk = Stk | 1
+  if joypad(1).down then Stk = Stk | 2
+  if joypad(1).left then Stk = Stk | 4
+  if joypad(1).right then Stk = Stk | 8
+  Btn = joypad(1).button1 | joypad(1).button2
+  return
+end sub
+
+' --- the picture ----------------------------------------------------------
+' SetColors: the walls in the room's hue at luminance 10 over the backdrop
+' (SETCOLOR 2, the room's hue at luminance 0; 4 when G is under 100)
+sub SetColors:
+  V = Hue
+  if Red = 1 then V = 4
+  ' added colour: rooms 1-6 (grey walls on the Atari) get a hue each
+  W = WallHue[C]
+  if Hue <> 0 then W = V
+  if Red = 1 then W = V
+  W = LightCol[W]
+  W = W * 16
+  fill W count 6144 to vram.color
+  Bk = BackCol[V]
+  call asm CqBack
+  return
+end sub
+
+' the four players as sprites: x = 28 + (H-48)*5/4, y = 12 + (Y-32)*7/8
+sub ShowSpr:
+  SprAt(0, Hx0, V0, 0, Ca)
+  SprAt(1, Hx1, Y1, 1, C705)
+  SprAt(2, Hx2, Y2, 1, C706)
+  if Wz = 1 then
+    SprAt(3, Hx3, Y3, 2, C707)
+  else
+    SprAt(3, 0, 0, 2, 0)
+  end if
+  update sprites
+  return
+end sub
+
+sub SprAt(u8 Sn, u8 Sh, u8 Sv, u8 Sp, u8 Sc):
+  if Sh < 26 then goto sa_hide
+  W16 = Sh + 16
+  W16 = W16 * 5
+  W16 = W16 >> 2
+  W16 = W16 - 52
+  if W16 > 255 then goto sa_hide
+  Xs = W16
+  W16 = Sv + 32
+  W16 = W16 * 7
+  W16 = W16 >> 3
+  ' 12 + floor((Y-32)*7/8) - 1 = floor((Y+32)*7/8) - 45
+  if W16 < 45 then goto sa_hide
+  W16 = W16 - 45
+  if W16 > 190 then goto sa_hide
+  Ys = W16
+  V = Sc >> 4
+  K = Sc & 15
+  if K >= 6 then
+    W = LightCol[V]
+  else
+    W = DarkCol[V]
+  end if
+  set sprite Sn to Ys,Xs,Sp,W
+  return
+sa_hide:
+  set sprite Sn to 192,0,0,0
+  return
+end sub
+
+sub HideSpr:
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' --- pages ----------------------------------------------------------------
+sub ClearPage:
+  Rearm
+  wait
+  nmi off
+  fill 0 count 6144 to vram.pattern
+  fill $F0 count 6144 to vram.color
+  backdrop black
+  return
+end sub
+
+' 320: "Get ready for Room" C+1
+sub ReadyPage:
+  Ph = 4
+  ClearPage
+  ZClr = $E0
+  SayAt(4, 11, @TxReady)
+  V = C + 1
+  PutNum(V)
+  Hold(30)
+  return
+end sub
+
+' 1080-1130: the title
+sub TitlePage:
+  Ph = 2
+  ClearPage
+  ZClr = $30
+  BigAt(10, 3, @TxCastle)
+  BigAt(11, 7, @TxQuest)
+  ZClr = $E0
+  SayAt(9, 14, @TxHow1)
+  SayAt(8, 15, @TxHow2)
+  for I = 0 to 3
+    TitleCol(1)
+    play sound SndHi
+    Hold(8)
+    play sound SndLo
+    TitleCol(3)
+    Hold(8)
+  next
+  return
+end sub
+
+' the title's colour register 708 (0 black, else light green)
+sub TitleCol(u8 Tc):
+  W = Tc * 16
+  fill W count 2048 to vram.color + 512
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 1
+  ClearPage
+  ZClr = $B0
+  SayAt(10, 2, @TxK1)
+  ZClr = $F0
+  SayAt(4, 5, @TxK2)
+  SayAt(4, 6, @TxK3)
+  SayAt(8, 7, @TxK4)
+  ZClr = $E0
+  SayAt(2, 10, @TxK5)
+  SayAt(2, 11, @TxK6)
+  SayAt(2, 12, @TxK7)
+  ZClr = $70
+  SayAt(2, 15, @TxK8)
+  SayAt(2, 16, @TxK9)
+  ZClr = $B0
+  SayAt(8, 20, @TxPress)
+  ' you, a key and the wizard
+  set sprite 0 to 138,88,0,9
+  set sprite 1 to 138,124,1,5
+  set sprite 2 to 136,160,2,3
+  update sprites
+  play song CqSong once
+  WaitTrig
+  stop song
+  HideSpr
+  ' the random numbers: the time spent here
+  Rt = Tick
+  Rs = Rs ^ Rt
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $1D3B
+  return
+end sub
+
+sub SayAt(u8 Tx, u8 Ty, u16 Ad):
+  ZRow = Ty
+  ZCol = Tx
+sy_next:
+  V = peek(Ad)
+  if V = 0 then return
+  ZCh = V
+  call asm ZPutCh
+  inc Ad
+  goto sy_next
+end sub
+
+sub BigAt(u8 Tx, u8 Ty, u16 Ad):
+  ZRow = Ty
+  ZCol = Tx
+bg_next:
+  V = peek(Ad)
+  if V = 0 then return
+  ZCh = V
+  call asm ZBig
+  inc Ad
+  goto bg_next
+end sub
+
+sub PutNum(u16 N):
+  Nm = N
+  Digits
+pu_put:
+  dec Nd
+  V = Dg[Nd] + 48
+  ZCh = V
+  call asm ZPutCh
+  if Nd <> 0 then goto pu_put
+  return
+end sub
+
+' --- frames, the button, the random numbers -------------------------------
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Hold(u8 N):
+  for Jh = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+' WaitTrig: the button let go, then pressed
+sub WaitTrig:
+wt_up:
+  Frame1
+  V = joypad(1).button1 | joypad(1).button2
+  if V = 1 then goto wt_up
+wt_down:
+  Frame1
+  V = joypad(1).button1 | joypad(1).button2
+  if V = 0 then goto wt_down
+  return
+end sub
+
+' Rh: the next random byte (RANDOM, or RND as Rh/256), a 16-bit xorshift
+function Rh() as u8
+  call asm CqRnd
+  return Rb
+
+' Rn(N): INT(RND(0)*N)
+function Rn(u8 N) as u8
+  V = Rh()
+  W16 = V * N
+  return highbyte W16
+
+' INT(RND(0)*279) and INT(RND(0)*239)
+function Rn279() as u16
+  V = Rh()
+  W16 = V * 23
+  W16 = W16 >> 8
+  W16 = W16 + V
+  return W16
+
+function Rn239() as u16
+  V = Rh()
+  W16 = V * 239
+  W16 = W16 >> 8
+  return W16
+
+asm {
+CqShoot:
+    db $00,$00,$04,$01,$00,$00,$04,$01,$00,$00,$05,$02,$00,$00,$16,$02,$00,$00,$36,$01,$10
+CqLuck:
+    db $00,$00,$41,$28,$10
+CqAttaA:
+    db $00,$00,$40,$04,$10
+CqAttaB:
+    db $00,$00,$42,$04,$10
+CqKeyA:
+    db $40,$49,$20,$03,$50
+CqKeyB:
+    db $80,$1B,$21,$03,$90
+CqStep:
+    db $C0,$62,$41,$01,$D0
+CqExit:
+    db $40,$26,$00,$02,$40,$2A,$20,$02,$40,$2D,$40,$02,$40,$31,$60,$02,$40,$26,$80,$02,$40,$2A,$A0,$02
+    db $40,$2D,$D0,$03,$50
+CqHi:
+    db $40,$D5,$20,$08,$50
+CqLo:
+    db $40,$35,$22,$08,$50
+CqWon:
+    db $40,$7F,$13,$06,$40,$BB,$12,$06,$40,$15,$12,$06,$40,$90,$11,$06,$40,$26,$11,$06,$40,$C8,$10,$06
+    db $40,$7C,$10,$06,$40,$46,$10,$06,$40,$25,$20,$06,$40,$13,$40,$08,$50
+
+CqSoundTable:
+    dw CqShoot,$702B
+    dw CqLuck,$702B
+    dw CqAttaA,$702B
+    dw CqAttaB,$702B
+    dw CqKeyA,$7035
+    dw CqKeyB,$703F
+    dw CqStep,$7049
+    dw CqExit,$7035
+    dw CqHi,$7035
+    dw CqLo,$7035
+    dw CqWon,$7035
+    dw CqTuneMel,$703F
+    dw CqTuneBass,$7049
+; The Wizard's Keep, D minor (original for this game)
+; Tiny Sound, 7 frames per step
+CqTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$21,$01,$01,$01,$1C,$01,$21,$01,$24,$01,$01,$01
+    db $23,$01,$21,$01,$1F,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$01,$01
+    db $21,$01,$1F,$01,$1D,$01,$01,$01,$21,$01,$24,$01,$28,$01,$01,$01
+    db $26,$01,$24,$01,$23,$01,$20,$01,$23,$01,$26,$01,$28,$01,$01,$01
+    db $00,$01,$01,$01,$24,$01,$23,$01,$21,$01,$01,$01,$1F,$01,$1D,$01
+    db $1C,$01,$01,$01,$1A,$01,$1C,$01,$1D,$01,$21,$01,$1F,$01,$01,$01
+    db $1C,$01,$01,$01,$1D,$01,$1F,$01,$21,$01,$24,$01,$23,$01,$21,$01
+    db $20,$01,$01,$01,$21,$01,$1C,$01,$18,$01,$1C,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+CqTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$09,$01,$04,$01,$09,$01,$04,$01,$09,$01,$04,$01
+    db $09,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $07,$01,$0B,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$04,$01,$01,$01
+    db $00,$01,$01,$01,$09,$01,$04,$01,$09,$01,$04,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$04,$01,$09,$01,$04,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+CqSong:
+    dw $0001
+    db $40+12,13
+    dw $0000
+; ---------------------------------------------------------------------------
+; CASTLE QUEST: the Atari's GRAPHICS 0 screen on the bitmap screen.
+; The 40 x 24 character codes are kept in VRAM at $1C00 (free in the bitmap
+; screen's layout: names $1800, sprites $1B00), the way the listing keeps
+; them in screen memory and its machine code PEEKs and POKEs them; each
+; character is drawn 5 x 7 pixels at x = 28 + 5c, y = 12 + 7r.
+; Variables: Cc Cr the cell, Ck the code, Cs the character set (0, 1).
+; ---------------------------------------------------------------------------
+CQ_STORE equ $1C00
+
+; HL = the cell's place in the store
+CqAddr:
+    ld a,(AMY_UVAR_Cr)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld a,(AMY_UVAR_Cc)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,CQ_STORE
+    add hl,de
+    ret
+
+; VRAM byte at HL into A (DE, BC, HL kept)
+CqVRd:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    and $3F
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ret
+
+; A into VRAM at HL (DE, BC, HL kept)
+CqVWr:
+    push af
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop af
+    out ($BE),a
+    ret
+
+; Ck = the code at Cc,Cr
+CqGet:
+    call CqAddr
+    call CqVRd
+    ld (AMY_UVAR_Ck),a
+    ret
+
+; the code Ck put at Cc,Cr and drawn (nothing to do if it is there)
+CqPut:
+    call CqAddr
+    call CqVRd
+    ld b,a
+    ld a,(AMY_UVAR_Ck)
+    cp b
+    ret z
+    call CqVWr
+    ; fall through
+; draw the picture of code Ck (set Cs) at Cc,Cr
+CqDraw:
+    ld a,(AMY_UVAR_Cc)
+    ld b,a
+    add a,a
+    add a,a
+    add a,b
+    add a,28
+    ld (AMY_UVAR_Zx),a
+    ld a,(AMY_UVAR_Cr)
+    ld b,a
+    add a,a
+    add a,a
+    add a,a
+    sub b
+    add a,12
+    ld (AMY_UVAR_Zy),a
+    ld a,(AMY_UVAR_Cs)
+    and 1
+    rrca
+    rrca
+    rrca
+    ld b,a
+    ld a,(AMY_UVAR_Ck)
+    and 31
+    or b
+    ld l,a
+    ld h,0
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    or a
+    sbc hl,de
+    ld de,CqGlyD
+    add hl,de
+    ld (AMY_UVAR_Zp),hl
+    ld a,(AMY_UVAR_Zx)
+    and 7
+    ld (AMY_UVAR_Zs),a
+    ld de,$F800
+    or a
+    jr z,cd_m
+    ld b,a
+cd_ms:
+    srl d
+    rr e
+    djnz cd_ms
+cd_m:
+    ld a,d
+    cpl
+    ld (AMY_UVAR_Zm1),a
+    ld a,e
+    cpl
+    ld (AMY_UVAR_Zm2),a
+    ld c,7
+cd_row:
+    ld a,(AMY_UVAR_Zy)
+    ld b,a
+    rrca
+    rrca
+    rrca
+    and $1F
+    ld h,a
+    ld a,(AMY_UVAR_Zx)
+    and $F8
+    ld l,a
+    ld a,b
+    and 7
+    or l
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_Zp)
+    ld d,(hl)
+    inc hl
+    ld (AMY_UVAR_Zp),hl
+    pop hl
+    ld e,0
+    ld a,(AMY_UVAR_Zs)
+    or a
+    jr z,cd_ns
+    ld b,a
+cd_sh:
+    srl d
+    rr e
+    djnz cd_sh
+cd_ns:
+    call CqVRd
+    ld b,a
+    ld a,(AMY_UVAR_Zm1)
+    and b
+    or d
+    call CqVWr
+    ld a,(AMY_UVAR_Zs)
+    cp 4
+    jr c,cd_next
+    ld a,l
+    add a,8
+    ld l,a
+    call CqVRd
+    ld b,a
+    ld a,(AMY_UVAR_Zm2)
+    and b
+    or e
+    call CqVWr
+cd_next:
+    ld hl,AMY_UVAR_Zy
+    inc (hl)
+    dec c
+    jr nz,cd_row
+    ret
+
+; ---------------------------------------------------------------------------
+; CqPF: does player 0 (8 lines of CqP0 at H0,V0, Atari colour clocks and
+; scan lines) meet a lit dot of the playfield? Hit = 4 if so (the Atari's
+; P0PF register, playfield 2), else 0. GRAPHICS 0's characters start at
+; clock 48 and line 32; a player dot is a clock, the playfield's dots half
+; clocks (CqGlyN holds each line as 4 clocks).
+; ---------------------------------------------------------------------------
+CqPF:
+    xor a
+    ld (AMY_UVAR_Hit),a
+    ld a,(AMY_UVAR_H0)
+    and 3
+    ld (AMY_UVAR_Zo),a
+    ld a,(AMY_UVAR_H0)
+    srl a
+    srl a
+    sub 12
+    ld (AMY_UVAR_Zc),a
+    ld b,0
+pf_line:
+    ld a,(AMY_UVAR_V0)
+    add a,b
+    ld l,a
+    ld h,0
+    jr nc,pf_nc
+    inc h
+pf_nc:
+    ld de,32
+    or a
+    sbc hl,de
+    jp c,pf_skip
+    ld a,h
+    or a
+    jp nz,pf_skip
+    ld a,l
+    cp 192
+    jp nc,pf_skip
+    and 7
+    ld (AMY_UVAR_Zl),a
+    ld a,l
+    rrca
+    rrca
+    rrca
+    and $1F
+    ; base = CQ_STORE + r*40
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld de,CQ_STORE
+    add hl,de
+    ld (AMY_UVAR_Zb),hl
+    push bc
+    ld a,(AMY_UVAR_Zc)
+    call CqNib
+    ld (AMY_UVAR_Zn0),a
+    ld a,(AMY_UVAR_Zc)
+    inc a
+    call CqNib
+    ld (AMY_UVAR_Zn1),a
+    ld a,(AMY_UVAR_Zc)
+    inc a
+    inc a
+    call CqNib
+    ; HL = n0<<8 | n1<<4 | n2
+    ld l,a
+    ld a,(AMY_UVAR_Zn1)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    or l
+    ld l,a
+    ld a,(AMY_UVAR_Zn0)
+    ld h,a
+    ld a,(AMY_UVAR_Zo)
+    or a
+    jr z,pf_o
+    ld b,a
+pf_ol:
+    add hl,hl
+    djnz pf_ol
+pf_o:
+    ; >> 4, keep the low 8 bits
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    pop bc
+    ld a,b
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,CqP0
+    add hl,de
+    ld a,(hl)
+    pop hl
+    and l
+    jr z,pf_skip
+    ld a,4
+    ld (AMY_UVAR_Hit),a
+    ret
+pf_skip:
+    inc b
+    ld a,b
+    cp 8
+    jp nz,pf_line
+    ret
+
+; A = column (signed); the line's 4 clocks of that cell (0 outside)
+CqNib:
+    bit 7,a
+    jr nz,nb_0
+    cp 40
+    jr nc,nb_0
+    ld e,a
+    ld d,0
+    ld hl,(AMY_UVAR_Zb)
+    add hl,de
+    call CqVRd
+    and 31
+    ld e,a
+    ld a,(AMY_UVAR_Cs)
+    and 1
+    rrca
+    rrca
+    rrca
+    or e
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_Zl)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,CqGlyN
+    add hl,de
+    ld a,(hl)
+    ret
+nb_0:
+    xor a
+    ret
+
+; the player's shape (DATA 940-950, page 6 at 1776)
+CqP0:
+    db 60,126,90,126,90,102,126,60
+
+; ---------------------------------------------------------------------------
+; the store cleared (960 codes 0)
+; ---------------------------------------------------------------------------
+CqClrStore:
+    ld hl,CQ_STORE
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld bc,960
+cs_l:
+    xor a
+    out ($BE),a
+    dec bc
+    ld a,b
+    or c
+    jr nz,cs_l
+    ret
+
+; ---------------------------------------------------------------------------
+; Text pages, 8 x 8 characters on the bitmap screen (after games/ch): ZCh
+; at cell ZCol,ZRow in colour ZClr; ZBig the same twice as large (2 x 2
+; cells), as the Atari's GRAPHICS 2 lines
+; ---------------------------------------------------------------------------
+ZCellAddr:
+    ld a,(AMY_UVAR_ZRow)
+    ld h,a
+    ld a,(AMY_UVAR_ZCol)
+    add a,a
+    add a,a
+    add a,a
+    ld l,a
+    ret
+
+; HL = 8 pattern bytes for the current cell, then its colour
+ZPut8:
+    push hl
+    call ZCellAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld b,8
+zp8_p:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz zp8_p
+    call ZCellAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    ld a,(AMY_UVAR_ZClr)
+    ld b,8
+zp8_c:
+    out ($BE),a
+    nop
+    nop
+    djnz zp8_c
+    ld hl,AMY_UVAR_ZCol
+    inc (hl)
+    ret
+
+; HL = the font's 8 bytes for ZCh (lower case as capitals)
+ZGlyph:
+    ld a,(AMY_UVAR_ZCh)
+    cp 97
+    jr c,zg_up
+    cp 123
+    jr nc,zg_up
+    sub 32
+zg_up:
+    sub 32
+    jr nc,zg_ok
+    xor a
+zg_ok:
+    cp 64
+    jr c,zg_in
+    ld a,31
+zg_in:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,CqFont
+    add hl,de
+    ret
+
+ZPutCh:
+    call ZGlyph
+    jp ZPut8
+
+; ZBig: ZCh doubled into the cells ZCol,ZRow to ZCol+1,ZRow+1
+ZBig:
+    call ZGlyph
+    ld (AMY_UVAR_Zp),hl
+    ; top left, top right, bottom left, bottom right
+    ld c,0
+zb_q:
+    ld hl,(AMY_UVAR_Zp)
+    ld a,c
+    and 2
+    jr z,zb_top
+    ld de,4
+    add hl,de
+zb_top:
+    ld de,AMY_UVAR_ZBuf
+    ld b,4
+zb_r:
+    ld a,(hl)
+    bit 0,c
+    jr nz,zb_lo
+    rrca
+    rrca
+    rrca
+    rrca
+zb_lo:
+    and 15
+    push hl
+    ld l,a
+    ld h,0
+    push de
+    ld de,ZExp
+    add hl,de
+    pop de
+    ld a,(hl)
+    pop hl
+    ld (de),a
+    inc de
+    ld (de),a
+    inc de
+    inc hl
+    djnz zb_r
+    push bc
+    ld hl,AMY_UVAR_ZBuf
+    call ZPut8
+    pop bc
+    ld a,c
+    cp 1
+    jr nz,zb_n1
+    ; after the top right: back two cells, down one
+    ld hl,AMY_UVAR_ZCol
+    dec (hl)
+    dec (hl)
+    ld hl,AMY_UVAR_ZRow
+    inc (hl)
+zb_n1:
+    inc c
+    ld a,c
+    cp 4
+    jr nz,zb_q
+    ld hl,AMY_UVAR_ZRow
+    dec (hl)
+    ret
+
+ZExp:
+    db $00,$03,$0C,$0F,$30,$33,$3C,$3F,$C0,$C3,$CC,$CF,$F0,$F3,$FC,$FF
+
+; the backdrop (VDP register 7) set to colour Bk
+CqBack:
+    ld a,(AMY_UVAR_Bk)
+    and 15
+    out ($BF),a
+    ld a,$87
+    out ($BF),a
+    ret
+
+; the 16-bit xorshift (7, 9, 8) on Rs; Rb its new high byte
+CqRnd:
+    ld hl,(AMY_UVAR_Rs)
+    ; x ^= x << 7
+    ld a,l
+    rrca
+    and $80
+    ld e,a
+    ld a,l
+    srl a
+    ld d,a
+    ld a,h
+    rrca
+    and $80
+    or d
+    ld d,a
+    ld a,l
+    xor e
+    ld l,a
+    ld a,h
+    xor d
+    ld h,a
+    ; x ^= x >> 9
+    ld a,h
+    srl a
+    xor l
+    ld l,a
+    ; x ^= x << 8
+    ld a,l
+    xor h
+    ld h,a
+    ld (AMY_UVAR_Rs),hl
+    ld (AMY_UVAR_Rb),a
+    ret
+
+; Digits of Nm (0-65535) into Dg (lowest first), Nd how many
+CqDigits:
+    push ix
+    ld hl,(AMY_UVAR_Nm)
+    ld ix,AMY_UVAR_Dg
+    ld b,0
+dg_l:
+    ; HL / 10: quotient to HL, remainder to A
+    push bc
+    ld c,10
+    xor a
+    ld b,16
+dg_d:
+    add hl,hl
+    rla
+    cp c
+    jr c,dg_n
+    sub c
+    inc l
+dg_n:
+    djnz dg_d
+    pop bc
+    ld (ix+0),a
+    inc ix
+    inc b
+    ld a,h
+    or l
+    jr nz,dg_l
+    ld a,b
+    ld (AMY_UVAR_Nd),a
+    pop ix
+    ret
+; CASTLE QUEST pictures (art.py)
+CqGlyD:
+    db $00,$00,$00,$00,$00,$00,$00,$D0,$28,$D0,$28,$D0,$28,$F8,$F8,$F8
+    db $F8,$F8,$F8,$F8,$F8,$D0,$28,$D0,$28,$D0,$28,$F8,$D0,$28,$D0,$28
+    db $D0,$28,$F8,$30,$E8,$D8,$30,$E8,$D8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $F8,$C8,$F8,$30,$30,$30,$00,$00,$F8,$F8,$C8,$C8,$C8,$C8,$F8,$F8
+    db $F8,$00,$00,$00,$00,$F8,$30,$30,$30,$30,$F8,$D8,$F8,$30,$F8,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$30,$F8,$F8,$F8,$F8,$30,$00,$30,$30,$30,$30,$30,$F8,$00,$30
+    db $F8,$10,$30,$20,$F8,$00,$F8,$10,$30,$10,$F8,$30,$00,$10,$30,$30
+    db $F0,$F8,$10,$00,$F8,$E0,$F0,$18,$F8,$30,$00,$30,$E0,$F0,$F8,$F8
+    db $30,$00,$F8,$18,$10,$30,$20,$20,$00,$30,$F8,$30,$F8,$F8,$30,$00
+    db $30,$F8,$38,$18,$10,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$D0,$28,$D0,$28,$D0,$28,$F8,$F8,$F8
+    db $F8,$F8,$F8,$F8,$F8,$D0,$28,$D0,$28,$D0,$28,$F8,$D0,$28,$D0,$28
+    db $D0,$28,$F8,$30,$E8,$D8,$30,$E8,$D8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $F8,$00,$00,$00,$30,$30,$30,$F8,$00,$00,$30,$30,$30,$30,$00,$00
+    db $00,$F8,$F8,$F8,$F8,$00,$30,$30,$30,$30,$30,$30,$00,$30,$30,$30
+    db $30,$30,$30,$F8,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$30,$F8,$F8,$F8,$F8,$30,$00,$30,$30,$30,$30,$30,$F8,$00,$30
+    db $F8,$10,$30,$20,$F8,$00,$F8,$10,$30,$10,$F8,$30,$00,$10,$30,$30
+    db $F0,$F8,$10,$00,$F8,$E0,$F0,$18,$F8,$30,$00,$30,$E0,$F0,$F8,$F8
+    db $30,$00,$F8,$18,$10,$30,$20,$20,$00,$30,$F8,$30,$F8,$F8,$30,$00
+    db $30,$F8,$38,$18,$10,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+CqGlyN:
+    db $00,$00,$00,$00,$00,$00,$00,$00,$0A,$05,$0A,$05,$0A,$05,$0A,$05
+    db $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0A,$05,$0A,$05,$0A,$05,$0A,$05
+    db $0A,$05,$0A,$05,$0A,$05,$0A,$05,$06,$0D,$0B,$06,$0D,$0B,$06,$0D
+    db $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$09,$0F,$06,$06,$06,$00,$00,$00
+    db $0F,$0F,$09,$09,$09,$09,$0F,$0F,$0F,$0F,$00,$00,$00,$00,$0F,$0F
+    db $06,$06,$06,$06,$0F,$0B,$0B,$0F,$06,$0F,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$06,$0F,$0F,$0F,$0F,$06,$00,$00,$06,$06,$06,$06,$06,$0F,$00
+    db $00,$06,$0F,$02,$06,$04,$0F,$00,$00,$0F,$02,$06,$02,$0F,$06,$00
+    db $00,$02,$06,$06,$0E,$0F,$02,$00,$00,$0F,$0C,$0E,$03,$0F,$06,$00
+    db $00,$06,$0C,$0E,$0F,$0F,$06,$00,$00,$0F,$03,$02,$06,$04,$04,$00
+    db $00,$06,$0F,$06,$0F,$0F,$06,$00,$00,$06,$0F,$07,$03,$02,$06,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$0A,$05,$0A,$05,$0A,$05,$0A,$05
+    db $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0A,$05,$0A,$05,$0A,$05,$0A,$05
+    db $0A,$05,$0A,$05,$0A,$05,$0A,$05,$06,$0D,$0B,$06,$0D,$0B,$06,$0D
+    db $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$00,$00,$00,$06,$06,$06,$0F,$09
+    db $00,$00,$06,$06,$06,$06,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$00,$00
+    db $06,$06,$06,$06,$06,$06,$00,$00,$06,$06,$06,$06,$06,$06,$06,$0F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$06,$0F,$0F,$0F,$0F,$06,$00,$00,$06,$06,$06,$06,$06,$0F,$00
+    db $00,$06,$0F,$02,$06,$04,$0F,$00,$00,$0F,$02,$06,$02,$0F,$06,$00
+    db $00,$02,$06,$06,$0E,$0F,$02,$00,$00,$0F,$0C,$0E,$03,$0F,$06,$00
+    db $00,$06,$0C,$0E,$0F,$0F,$06,$00,$00,$0F,$03,$02,$06,$04,$04,$00
+    db $00,$06,$0F,$06,$0F,$0F,$06,$00,$00,$06,$0F,$07,$03,$02,$06,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+CqSpr:
+    db $1F,$3F,$2E,$3F,$2E,$31,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$80,$80,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$01,$07,$FE,$FF,$D1,$D0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$80,$C0,$40,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $31,$11,$3F,$2E,$3F,$3F,$2E,$1F,$1F,$11,$31,$00,$00,$00,$00,$00
+    db $80,$00,$80,$80,$80,$80,$80,$00,$00,$00,$80,$00,$00,$00,$00,$00
+; the 5 x 7 font, characters 32-95 (art.py)
+CqFont:
+    db $00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$10,$10,$10,$10,$10,$00,$10
+    db $00,$28,$28,$00,$00,$00,$00,$00
+    db $00,$28,$28,$7C,$28,$7C,$28,$28
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$60,$64,$08,$10,$20,$4C,$0C
+    db $00,$30,$48,$50,$20,$54,$48,$34
+    db $00,$10,$10,$20,$00,$00,$00,$00
+    db $00,$08,$10,$20,$20,$20,$10,$08
+    db $00,$20,$10,$08,$08,$08,$10,$20
+    db $00,$00,$54,$38,$7C,$38,$54,$00
+    db $00,$00,$10,$10,$7C,$10,$10,$00
+    db $00,$00,$00,$00,$00,$30,$10,$20
+    db $00,$00,$00,$00,$7C,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$30,$30
+    db $00,$04,$04,$08,$10,$20,$40,$40
+    db $00,$38,$44,$4C,$54,$64,$44,$38
+    db $00,$10,$30,$10,$10,$10,$10,$38
+    db $00,$38,$44,$04,$08,$10,$20,$7C
+    db $00,$7C,$08,$10,$08,$04,$44,$38
+    db $00,$08,$18,$28,$48,$7C,$08,$08
+    db $00,$7C,$40,$78,$04,$04,$44,$38
+    db $00,$18,$20,$40,$78,$44,$44,$38
+    db $00,$7C,$04,$08,$10,$20,$20,$20
+    db $00,$38,$44,$44,$38,$44,$44,$38
+    db $00,$38,$44,$44,$3C,$04,$08,$30
+    db $00,$00,$30,$30,$00,$30,$30,$00
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$08,$10,$20,$40,$20,$10,$08
+    db $00,$00,$00,$7C,$00,$7C,$00,$00
+    db $00,$20,$10,$08,$04,$08,$10,$20
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$44,$7C,$44,$44,$44
+    db $00,$78,$44,$44,$78,$44,$44,$78
+    db $00,$38,$44,$40,$40,$40,$44,$38
+    db $00,$78,$44,$44,$44,$44,$44,$78
+    db $00,$7C,$40,$40,$78,$40,$40,$7C
+    db $00,$7C,$40,$40,$78,$40,$40,$40
+    db $00,$38,$44,$40,$5C,$44,$44,$3C
+    db $00,$44,$44,$44,$7C,$44,$44,$44
+    db $00,$38,$10,$10,$10,$10,$10,$38
+    db $00,$1C,$08,$08,$08,$08,$48,$30
+    db $00,$44,$48,$50,$60,$50,$48,$44
+    db $00,$40,$40,$40,$40,$40,$40,$7C
+    db $00,$44,$6C,$54,$54,$44,$44,$44
+    db $00,$44,$64,$54,$4C,$44,$44,$44
+    db $00,$38,$44,$44,$44,$44,$44,$38
+    db $00,$78,$44,$44,$78,$40,$40,$40
+    db $00,$38,$44,$44,$44,$54,$48,$34
+    db $00,$78,$44,$44,$78,$50,$48,$44
+    db $00,$3C,$40,$40,$38,$04,$04,$78
+    db $00,$7C,$10,$10,$10,$10,$10,$10
+    db $00,$44,$44,$44,$44,$44,$44,$38
+    db $00,$44,$44,$44,$44,$44,$28,$10
+    db $00,$44,$44,$44,$54,$54,$54,$28
+    db $00,$44,$44,$28,$10,$28,$44,$44
+    db $00,$44,$44,$28,$10,$10,$10,$10
+    db $00,$7C,$04,$08,$10,$20,$40,$7C
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+}

@@ -1,0 +1,1351 @@
+cartridge "THE FORTRESS OF ADNIL/GEORGE W. MILLER, COMPUTE!/1983"
+
+' THE FORTRESS OF ADNIL
+' The game by George W. Miller from COMPUTE!, July 1983 (pages 92-97),
+' for the Timex/Sinclair 1000 (the ZX81) with 16K, for the ColecoVision in
+' Amy by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Source: the listing, transcribed in orig/adnil-zx81.bas from the scans
+' beside it. Labels such as l250 are its line numbers.
+'
+' The game: you are a magician-warrior (+) in Adnil's fortress, a field of
+' barricades. Every move costs a unit of energy (you start with 50, shown
+' in the bottom border); energy pellets (inverse *) give 10, the treasure
+' (inverse $) 200, and a new treasure appears now and then. With each move
+' Adnil places two more NAWS (black squares) at random: step on one, or
+' have one land on you, and you are captured: with more than 1000 units
+' you pay a ransom of 1000, otherwise the quest ends. The laser sword
+' reaches five cells: it cuts a barricade, burns a treasure in its path,
+' costs 5 units a cell when it meets a pellet, and fights a NAW at even
+' odds (won: +100 and the NAW is gone; lost: the beam comes back and
+' destroys you). Over 2000 units and you have defeated Adnil.
+'
+' Controls (either joystick): the stick moves (the ZX81's 5, 6, 7 and 8
+' keys); the button is the laser sword (the 9 key): hold it, then push the
+' stick the way to strike. A diagonal is no key, as two keys were on the
+' ZX81. The button answers the pages ("PRESS ANY KEY").
+'
+' The ZX81's screen is kept cell for cell: its display file (33 bytes a
+' row with the NEWLINE) lives in VRAM at $1C00 and the game PEEKs and
+' POKEs it with the listing's S offsets (zx.asm). Each cell is drawn 7
+' pixels wide, so the 32 columns fit in ColecoVision columns 2-29 (art.py
+' explains); the 22 rows are screen rows 1-22. Black on white, as on the
+' ZX81.
+'
+' Liberties taken:
+' - Timing: a POKE of the blinking + is 4 frames; each NAW placed 2; a
+'   step of the laser's beam 3 for the dash and 1 for the blank; PAUSE n is
+'   n frames (the TS1000 is a 60 Hz machine) and, as on the ZX81, ends
+'   early at a key: here a new press of the button.
+' - The stick is read every frame while you blink, not only at line 280.
+' - Cells the ZX81 could not have held you in: the listing lets you step
+'   onto the energy's digits in the bottom border, from there further down
+'   would POKE past the display file and left onto row 20's NEWLINE (a
+'   crash on the ZX81); here a step or a beam off the display file or onto
+'   a NEWLINE is stopped like the border.
+' - Line 7500's message is 33 characters (one too many for the row: the
+'   ZX81 would stop with an error); its last space is dropped.
+' - The pages name the stick and the button instead of the keys, and
+'   "PRESS ANY KEY" reads "PRESS THE BUTTON"; "DO YOU NEED INSTRUCTIONS?"
+'   is answered by choosing Y or N with the stick and the button.
+' - Sounds (the ZX81 is silent); a credits page with an original tune
+'   ("The King of Annep") played once; the font is the 5 x 7 font of
+'   games/hs, the ZX81's block graphics drawn after its character set.
+' Quirks kept: the beam's line 2080 can never happen (it tests a NAW
+' already dealt with), so cutting a barricade costs only the move; a beam
+' burns any treasure in its path; C counts the pellets taken and, while
+' it is 15, every move scatters 20 more pellets and skips the rest of the
+' move (no cost, the cell you left keeps a +, a NAW there does not catch
+' you) until another pellet makes it 16; a NAW can land on you, or on
+' a barricade you walk into; line 580 draws RND every move (the ZX81's AND evaluates both sides).
+'
+' House rules kept: joystick only; all text within columns 2-29 and rows
+' 1-22; every screen drawn with the NMI off after a wait.
+
+' the ZX81 codes the listing PEEKs and POKEs
+const ZBar = 136
+const ZNaw = 128
+const ZGold = 141
+const ZPill = 151
+const ZYou = 149
+const ZYou2 = 21
+const ZLaser = 22
+const ZNl = 118
+const ZDash = 22
+const SndHush = 1
+const SndStep = 2
+const SndPill = 3
+const SndGold = 4
+const SndZap = 5
+const SndBeat = 6
+const SndCaught = 7
+const SndRansom = 8
+const SndBoom = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+' --- the listing's variables -----------------------------------------------
+' S your cell, P the cell you left, B the beam's cell (offsets from D_FILE),
+' T the energy (the score), C the pellets taken, Z the moves since a
+' treasure, G 1 once play has begun, X Y the random row and column (GOSUB
+' 1000), N the beam's step, Kc the key (A$: 5 6 7 8 9, 0 none), Bd the
+' beam's way (B$)
+u16 S = 347
+u16 P = 347
+u16 B = 0
+i16 T = 50
+u8 C = 0
+u8 Z = 0
+u8 G = 0
+u8 X = 1
+u8 Y = 1
+u8 N = 0
+u8 Nn = 0
+u8 Kc = 0
+u8 Kd = 0
+u8 Bd = 0
+u8 Cd = 0
+u8 Dead = 0
+' Yc: what your cell showed when the key came (149 or 21; for the bot)
+u8 Yc = 0
+
+' --- the display file (zx.asm) ---------------------------------------------
+u16 ZS = 0
+u8 ZC = 0
+u8 ZRow = 0
+u8 ZCol = 0
+u8 ZX7 = 0
+u8 ZCc = 0
+u8 ZOf = 0
+u8 ZLn = 0
+u16 ZRb = 0
+u8 ZBuf[8]
+
+' --- random numbers (AdRnd: Rs, ZQ = INT(RND * ZN)) ------------------------
+u16 Rs = $5A3C
+u8 ZN = 1
+u8 ZQ = 0
+
+' --- for the test bot ------------------------------------------------------
+' Ph: 1 blinking (waiting for a key), 7 the laser waiting for its way,
+' 3 a move, 2 a new fortress, 4 captured or ransom, 5 the end, 8 the end's
+' PRESS THE BUTTON, 6 the pages; Mv the moves done; Rs0 Rs at line 10
+u8 Ph = 6
+u16 Mv = 0
+u16 Rs0 = 0
+' Pn: pages shown (for the bot)
+u8 Pn = 0
+
+u16 Tn = 0
+u8 Dg[6]
+u8 Nd = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 Kp = 0
+u8 Rel = 0
+u8 Hit = 0
+u16 Fr = 0
+u16 V16 = 0
+u8 Ans = 0
+
+' visible attribution: THE FORTRESS OF ADNIL BY GEORGE W. MILLER, FROM COMPUTE! JULY 1983
+
+data PgCredits bytes 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,57,45,42,0,43,52,55,57,55,42,56,56,0,52,43,0,38,41,51,46,49,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,39,62,0,44,42,52,55,44,42,0,60,27,0,50,46,49,49,42,55,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,43,55,52,50,0,40,52,50,53,58,57,42,64,26,0,47,58,49,62,0,29,37,36,31,26,0,0,0,0,0,118,0,0,43,52,55,0,57,45,42,0,57,46,50,42,61,24,56,46,51,40,49,38,46,55,0,29,28,28,28,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,40,52,49,42,40,52,59,46,56,46,52,51,0,59,42,55,56,46,52,51,14,0,0,0,0,0,0,0,0,0,118,0,0,40,49,38,58,41,42,0,16,38,51,0,38,46,0,39,62,0,38,51,57,45,55,52,53,46,40,17,0,0,0,118,0,0,43,52,55,0,38,50,62,0,56,57,58,41,46,52,26,0,30,28,30,34,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,50,58,56,46,40,14,0,57,45,42,0,48,46,51,44,0,52,43,0,38,51,51,42,53,0,0,0,0,0,0,118,0,0,16,38,51,0,52,55,46,44,46,51,38,49,0,57,58,51,42,17,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,136,136,136,0,141,0,151,0,128,0,149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgTitle bytes 0,0,0,0,0,0,0,0,57,45,42,0,43,52,55,57,55,42,56,56,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,52,43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,38,41,51,46,49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgAsk bytes 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,41,52,0,62,52,58,0,51,42,42,41,0,46,51,56,57,55,58,40,57,46,52,51,56,15,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,56,57,46,40,48,14,0,40,45,52,52,56,42,26,0,39,58,57,57,52,51,14,0,52,48,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgIns1 bytes 62,52,58,0,38,55,42,0,38,39,52,58,57,0,57,52,0,42,51,57,42,55,0,57,45,42,0,0,0,0,0,0,118,43,52,55,57,55,42,56,56,0,52,43,0,38,41,51,46,49,26,0,38,0,53,52,60,42,55,43,58,49,0,0,0,118,50,38,44,46,40,46,38,51,22,60,38,55,55,46,52,55,0,46,51,0,57,45,42,0,48,46,51,44,41,52,50,0,118,52,43,0,38,51,51,42,53,27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,62,52,58,55,0,44,52,38,49,0,46,56,0,57,52,0,43,46,51,41,0,38,56,0,50,58,40,45,0,0,0,0,118,52,43,0,57,45,42,0,57,55,42,38,56,58,55,42,0,16,141,17,0,38,41,51,46,49,0,45,38,56,0,0,0,118,53,49,38,40,42,41,0,46,51,0,45,46,56,0,43,52,55,57,55,42,56,56,0,38,56,0,62,52,58,0,0,0,118,40,38,51,27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,62,52,58,0,50,58,56,57,0,46,51,40,55,42,38,56,42,0,62,52,58,55,0,42,51,42,55,44,62,0,0,0,118,39,62,0,40,52,49,49,42,40,57,46,51,44,0,42,51,42,55,44,62,0,53,42,49,49,42,57,56,0,16,151,17,118,60,45,46,40,45,0,38,55,42,0,56,40,38,57,57,42,55,42,41,0,46,51,0,57,45,42,0,0,0,0,0,0,118,43,52,55,57,55,42,56,56,27,0,0,62,52,58,55,0,53,52,60,42,55,0,60,46,49,49,0,38,49,56,52,0,118,46,51,40,55,42,38,56,42,0,46,43,0,62,52,58,0,41,42,43,42,38,57,0,57,45,42,0,0,0,0,0,0,118,51,38,60,56,0,16,128,17,0,38,41,51,46,49,0,58,56,42,56,0,38,56,0,44,58,38,55,41,56,27,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgIns2 bytes 39,42,0,40,38,55,42,43,58,49,27,0,0,46,43,0,38,41,51,46,49,0,46,56,0,50,52,55,42,0,0,0,118,53,52,60,42,55,43,58,49,0,57,45,38,51,0,62,52,58,26,0,57,45,42,51,0,57,45,42,0,51,38,60,56,118,60,46,49,49,0,41,42,56,57,55,52,62,0,62,52,58,27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,46,43,0,62,52,58,0,38,55,42,0,40,38,53,57,58,55,42,41,26,0,62,52,58,0,60,46,49,49,0,0,0,118,45,38,59,42,0,38,0,40,45,38,51,40,42,0,57,52,0,53,38,62,0,38,0,55,38,51,56,52,50,0,0,0,118,43,52,55,0,62,52,58,55,0,55,42,49,42,38,56,42,26,0,39,58,57,0,57,45,42,0,0,0,0,0,0,0,118,53,55,46,40,42,0,46,56,0,45,46,44,45,0,38,51,41,0,38,41,51,46,49,0,50,38,62,0,0,0,0,0,118,51,52,57,0,38,40,40,42,53,57,0,62,52,58,55,0,52,43,43,42,55,27,0,0,0,0,0,0,0,0,0,0,118,62,52,58,55,0,52,51,49,62,0,60,42,38,53,52,51,0,46,56,0,62,52,58,55,0,49,38,56,42,55,0,0,118,56,60,52,55,41,0,60,45,46,40,45,0,62,52,58,0,58,56,42,0,39,62,0,45,52,49,41,46,51,44,0,0,118,57,45,42,0,39,58,57,57,52,51,0,38,51,41,0,40,45,52,52,56,46,51,44,0,57,45,42,0,0,0,0,0,118,41,46,55,42,40,57,46,52,51,0,57,52,0,38,57,57,38,40,48,27,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgIns3 bytes 57,52,0,50,52,59,42,0,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,49,42,43,57,0,0,53,58,56,45,0,49,42,43,57,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,41,52,60,51,0,0,53,58,56,45,0,41,52,60,51,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,58,53,0,0,0,0,53,58,56,45,0,58,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,55,46,44,45,57,0,53,58,56,45,0,55,46,44,45,57,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,62,52,58,55,0,49,38,56,42,55,0,56,60,52,55,41,0,46,56,0,0,0,0,0,0,0,0,118,0,0,0,0,0,57,45,42,0,39,58,57,57,52,51,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,58,56,42,0,57,45,42,0,56,57,46,40,48,0,57,52,0,40,45,52,52,56,42,0,62,52,58,55,0,0,0,0,118,41,46,55,42,40,57,46,52,51,0,52,43,0,38,57,57,38,40,48,0,60,46,57,45,0,62,52,58,55,0,0,0,118,49,38,56,42,55,0,56,60,52,55,41,27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,62,52,58,0,60,46,49,49,0,56,57,38,55,57,0,60,46,57,45,0,38,51,0,42,51,42,55,44,62,0,0,0,118,49,42,59,42,49,0,52,43,0,33,28,0,58,51,46,57,56,27,0,0,42,38,40,45,0,50,52,59,42,0,0,0,118,60,46,49,49,0,40,52,56,57,0,29,0,58,51,46,57,0,38,51,41,0,58,56,42,0,0,0,0,0,0,0,0,118,52,43,0,57,45,42,0,49,38,56,42,55,0,40,52,56,57,56,0,50,52,55,42,27,0,0,0,0,0,0,0,0,118,40,38,53,57,58,55,42,0,57,45,42,0,57,55,42,38,56,58,55,42,0,16,13,17,0,38,51,41,0,0,0,0,118,44,38,46,51,0,42,51,42,55,44,62,0,16,23,17,0,39,62,0,50,52,59,46,51,44,0,57,52,0,0,0,0,118,57,45,52,56,42,0,56,53,38,40,42,56,27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgIns4 bytes 46,43,0,62,52,58,0,38,55,42,0,57,55,38,53,53,42,41,0,46,51,0,57,45,42,0,50,38,63,42,0,0,118,62,52,58,0,50,38,62,0,58,56,42,0,62,52,58,55,0,49,38,56,42,55,0,56,60,52,55,41,0,0,0,0,118,57,52,0,39,49,38,56,57,0,57,45,55,52,58,44,45,0,57,45,42,0,60,38,49,49,27,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,44,52,52,41,0,49,58,40,48,27,27,27,62,52,58,0,60,46,49,49,0,51,42,42,41,0,46,57,27,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data PgTrans bytes 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,57,45,42,0,56,40,55,42,42,51,0,60,46,49,49,0,39,42,0,39,49,38,51,48,0,43,52,55,0,0,0,0,118,38,39,52,58,57,0,29,33,0,56,42,40,52,51,41,56,0,60,45,46,49,42,0,62,52,58,0,38,55,42,0,0,118,57,55,38,51,56,53,52,55,57,42,41,0,57,52,0,57,45,42,0,43,52,55,57,55,42,56,56,0,52,43,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,38,41,51,46,49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,118
+data TxBar8 bytes 131,131,131,131,131,131,131,131,255
+data TxBar32 bytes 131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,255
+data TxPower bytes 0,62,52,58,0,45,38,59,42,0,58,56,42,41,0,38,49,49,0,62,52,58,55,0,53,52,60,42,55,0,255
+data TxCapt bytes 0,62,52,58,0,45,38,59,42,0,39,42,42,51,0,40,38,53,57,58,55,42,41,0,39,62,0,38,41,51,46,49,255
+data TxRansom bytes 0,62,52,58,0,45,38,59,42,0,53,38,46,41,0,55,38,51,56,52,50,0,57,52,0,38,41,51,46,49,0,255
+data TxDestr bytes 0,0,0,0,0,62,52,58,0,45,38,59,42,0,39,42,42,51,0,41,42,56,57,55,52,62,42,41,0,0,0,0,255
+data TxBlank bytes 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255
+data TxScore bytes 62,52,58,55,0,56,40,52,55,42,0,14,255
+data TxAgain bytes 0,53,55,42,56,56,0,57,45,42,0,39,58,57,57,52,51,0,57,52,0,53,49,38,62,0,38,44,38,46,51,0,255
+data TxAgainI bytes 128,181,183,170,184,184,128,185,173,170,128,167,186,185,185,180,179,128,185,180,128,181,177,166,190,128,166,172,166,174,179,0,255
+data TxCont bytes 0,53,55,42,56,56,0,57,45,42,0,39,58,57,57,52,51,0,57,52,0,40,52,51,57,46,51,58,42,0,0,0,255
+data TxContI bytes 128,181,183,170,184,184,128,185,173,170,128,167,186,185,185,180,179,128,185,180,128,168,180,179,185,174,179,186,170,0,0,0,255
+data TxReady bytes 53,55,42,56,56,0,57,45,42,0,39,58,57,57,52,51,0,60,45,42,51,0,55,42,38,41,62,255
+data TxReadyI bytes 181,183,170,184,184,128,185,173,170,128,167,186,185,185,180,179,128,188,173,170,179,128,183,170,166,169,190,255
+data TxDefeat bytes 62,52,58,0,45,38,59,42,0,41,42,43,42,38,57,42,41,0,38,41,51,46,49,255
+data TxYes bytes 62,255
+data TxYesI bytes 190,255
+data TxOr bytes 0,52,55,0,255
+data TxNo bytes 51,255
+data TxNoI bytes 179,255
+data TxPress bytes 53,55,42,56,56,0,57,45,42,0,39,58,57,57,52,51,255
+data TxPressI bytes 181,183,170,184,184,128,185,173,170,128,167,186,185,185,180,179,255
+
+  bitmap screen
+  set sound table AdSoundTable areas 4
+  nmi off
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 208,0,0,0
+  update sprites
+  fill 0 count 6144 to vram.pattern
+  fill $1F count 6144 to vram.color
+  backdrop white
+  call asm ZxClear
+  screen on
+  nmi off
+
+  CreditsPage
+l8100:
+  ' 8100-8140: the title, PAUSE 600
+  Ph = 6
+  ShowPage(@PgTitle)
+  Pause(600)
+  ' 8145-8190: instructions?
+  ShowPage(@PgAsk)
+  AskYN
+  if Ans = 0 then goto l8245
+  ShowPage(@PgIns1)
+  Prompt(@TxCont, @TxContI, 21, 0)
+  ShowPage(@PgIns2)
+  Prompt(@TxCont, @TxContI, 21, 0)
+  ShowPage(@PgIns3)
+  Prompt(@TxCont, @TxContI, 21, 0)
+  ShowPage(@PgIns4)
+  Prompt(@TxReady, @TxReadyI, 21, 3)
+l8245:
+  ' 8245-8251: "THE SCREEN WILL BE BLANK...", PAUSE 400, CLS, GOTO 10
+  Ph = 6
+  ShowPage(@PgTrans)
+  Pause(400)
+  ZxCls
+
+l10:
+  Ph = 2
+  Rs0 = Rs
+  C = 0
+  Z = 0
+  G = 0
+  T = 50
+  ' 40 FAST: the screen off while the fortress is built
+  Frame1
+  display off
+  nmi off
+  ' 50-120: the border, as PLOT draws it (quarter squares)
+  call asm ZxClear
+  At(0, 0)
+  Set1(7)
+  for J8 = 1 to 30
+    At(0, J8)
+    Set1(3)
+    At(21, J8)
+    Set1(131)
+  next
+  At(0, 31)
+  Set1(132)
+  for J8 = 1 to 20
+    At(J8, 0)
+    Set1(5)
+    At(J8, 31)
+    Set1(133)
+  next
+  At(21, 0)
+  Set1(130)
+  At(21, 31)
+  Set1(129)
+  ' 130-160: 300 barricades
+  for V16 = 1 to 300
+    Rnd1000
+    At(X, Y)
+    Set1(ZBar)
+  next
+  call asm ZxAll
+l170:
+  ' 170-200: 20 energy pellets (at the 15th pellet taken, 20 more)
+  for J8 = 1 to 20
+    Rnd1000
+    At(X, Y)
+    if G = 1 then
+      Poke1(ZPill)
+      Pace(1)
+    else
+      Set1(ZPill)
+    end if
+  next
+  if G = 1 then
+    inc Mv
+    goto l250
+  end if
+  ' 205: the energy; 210 SLOW
+  call asm ZxAll
+  At(21, 0)
+  PrT
+  screen on
+  nmi off
+  S = 347
+  Rnd1000
+  At(X, Y)
+  Poke1(ZGold)
+
+l250:
+  ' 250-280: you blink (inverse + twice, then +) until a key
+  Ph = 1
+  ZS = S
+  Poke1(ZYou)
+  Look4
+  if Kc = 0 then
+    ZS = S
+    Poke1(ZYou)
+    Look4
+  end if
+  if Kc = 0 then
+    ZS = S
+    Poke1(ZYou2)
+    Look4
+  end if
+  if Kc = 0 then goto l250
+  ' 290-350
+  Ph = 3
+  Yc = PeekAt(S)
+  P = S
+  if Kc = 5 then S = S - 1
+  if Kc = 6 then S = S + 33
+  if Kc = 7 then S = S - 33
+  if Kc = 8 then S = S + 1
+  if Kc = 9 then
+    Laser
+    if Dead = 1 then goto l8000
+  end if
+  if Kc <> 9 then play sound SndStep
+  ' 360-390: two NAWS
+  for J8 = 1 to 2
+    Rnd1000
+    At(X, Y)
+    Poke1(ZNaw)
+    Pace(2)
+  next
+  ' 400-440: the border and the barricades stop you
+  Cd = PeekAt(S)
+  if Cd = 5 then S = P
+  if Cd = 3 then S = P
+  if Cd = 131 then S = P
+  if Cd = 133 then S = P
+  if Cd = ZBar then S = P
+  if Cd = ZNl then S = P
+  ' 450-465: the treasure, and a new one
+  if PeekAt(S) = ZGold then
+    T = T + 200
+    Rnd1000
+    At(X, Y)
+    Poke1(ZGold)
+    play sound SndGold
+  end if
+  ' 470-490: a pellet
+  if PeekAt(S) = ZPill then
+    T = T + 10
+    inc C
+    play sound SndPill
+  end if
+  if C = 15 then goto l170
+  ' 500: a NAW there
+  if PeekAt(S) = ZNaw then goto l7500
+  ' 510-550
+  ZS = P
+  Poke1(0)
+  T = T - 1
+  if T > 2000 then goto l8500
+  At(21, 0)
+  PrS(@TxBar8)
+  At(21, 0)
+  PrT
+  if T <= 0 then goto l7000
+  ' 560-610: now and then a new treasure (RND is drawn every move)
+  inc Z
+  if Z = 40 then Rnd1000
+  call asm AdRnd
+  if Z = 40 then
+    if Rs > 19660 then
+      At(X, Y)
+      Poke1(ZGold)
+    end if
+  end if
+  if Z = 40 then Z = 0
+  G = 1
+  Pace(2)
+  inc Mv
+  goto l250
+
+l7000:
+  ' 7000: no energy left
+  At(21, 0)
+  PrS(@TxPower)
+  goto l8010
+l7500:
+  ' 7500-7509: captured; the ransom if you can pay it
+  Ph = 4
+  play sound SndCaught
+  At(21, 0)
+  PrS(@TxCapt)
+  if T <= 1000 then goto l8010
+  Pause(200)
+  At(21, 0)
+  PrS(@TxRansom)
+  play sound SndRansom
+  S = P
+  T = T - 1000
+  Pause(200)
+  At(21, 0)
+  PrS(@TxBar32)
+  At(21, 0)
+  PrT
+  inc Mv
+  goto l250
+l8000:
+  ' 8000: the beam came back
+  play sound SndBoom
+  At(21, 0)
+  PrS(@TxDestr)
+l8010:
+  ' 8010-8060: the score, then the button to play again
+  Ph = 5
+  Pause(200)
+  At(20, 0)
+  PrS(@TxBlank)
+  At(20, 0)
+  PrS(@TxScore)
+  PrT
+  Ph = 8
+  Rel = 0
+l8020:
+  At(0, 0)
+  PrS(@TxAgain)
+  if Watch(12) = 1 then goto l8050
+  At(0, 0)
+  PrS(@TxAgainI)
+  if Watch(12) = 1 then goto l8050
+  goto l8020
+l8050:
+  ZxCls
+  goto l8245
+l8500:
+  ' 8500-8503: over 2000 units
+  Ph = 5
+  ZxCls
+  At(10, 0)
+  PrS(@TxDefeat)
+  At(12, 5)
+  PrS(@TxScore)
+  PrT
+  goto l8010
+
+' Laser: 2000-4590, the laser sword (GOSUB 2000); Dead 1 when the beam
+' came back (GOTO 8000)
+sub Laser:
+  Ph = 7
+  Dead = 0
+la_wait:
+  ' 2000-2020: you shown, waiting for the way (the button held or not)
+  ZS = P
+  Poke1(ZYou)
+  Frame1
+  ReadDir
+  if Kd = 0 then goto la_wait
+  Bd = Kd
+  Ph = 3
+  play sound SndZap
+  B = P
+  for N = 1 to 5
+    BStep
+    Cd = PeekAt(B)
+    if Cd = ZNaw then
+      ' 2065: the fight (4500), 2070-2075
+      Fight
+      if Dead = 1 then return
+      if PeekAt(B) = ZNaw then T = T + 100
+      play sound SndBeat
+      ZS = B
+      Poke1(0)
+      P = S
+      return
+    end if
+    if Cd = ZBar then
+      ' 2090 -> 4000: the barricade cut
+      ZS = B
+      Poke1(0)
+      P = S
+      return
+    end if
+    if Cd = 5 then return
+    if Cd = 3 then return
+    if Cd = 133 then return
+    if Cd = 131 then return
+    if Cd = ZNl then return
+    if Cd = ZPill then
+      T = T - N * 5
+      return
+    end if
+    ' 3080-3085: the dash, then the cell blank
+    ZS = B
+    Poke1(ZDash)
+    Pace(3)
+    ZS = B
+    Poke1(0)
+    Pace(1)
+  next
+  ' 4000
+  ZS = B
+  Poke1(0)
+  P = S
+  return
+end sub
+
+' Fight: 4500-4590: RND > .5 wins; otherwise the beam comes back N cells
+' (each cell black, a dash, blank) and destroys you
+sub Fight:
+  call asm AdRnd
+  if Rs > 32768 then return
+  if Bd = 5 then
+    Bd = 8
+  elseif Bd = 8 then
+    Bd = 5
+  elseif Bd = 6 then
+    Bd = 7
+  else
+    Bd = 6
+  end if
+  Nn = N
+  for X = 1 to 5
+    if X <= Nn then
+      BStep
+      ZS = B
+      Poke1(ZNaw)
+      Pace(1)
+      ZS = B
+      Poke1(ZDash)
+      Pace(1)
+      ZS = B
+      Poke1(0)
+      Pace(1)
+    end if
+  next
+  Dead = 1
+  return
+end sub
+
+' BStep: the beam a cell on (2030-2060, 4541-4545)
+sub BStep:
+  if Bd = 5 then B = B - 1
+  if Bd = 6 then B = B + 33
+  if Bd = 7 then B = B - 33
+  if Bd = 8 then B = B + 1
+  return
+end sub
+
+' --- the ZX81 --------------------------------------------------------------
+' At(R, K): PRINT AT R,K (ZS the cell)
+sub At(u8 R, u8 K):
+  ZS = R * 33
+  ZS = ZS + K
+  ZS = ZS + 1
+  return
+end sub
+
+' Poke1: code Cv at ZS, drawn; Set1 the same not drawn (FAST)
+sub Poke1(u8 Cv):
+  ZC = Cv
+  call asm ZxPoke
+  return
+end sub
+
+sub Set1(u8 Cv):
+  ZC = Cv
+  call asm ZxSet
+  return
+end sub
+
+function PeekAt(u16 Sp) as u8
+  ZS = Sp
+  call asm ZxPeek
+  return ZC
+
+' PrS: PRINT a string (ZX81 codes, 255 the end) at ZS on
+sub PrS(u16 Ad):
+ps_next:
+  V = peek(Ad)
+  if V = 255 then return
+  ZC = V
+  call asm ZxPoke
+  inc ZS
+  inc Ad
+  goto ps_next
+end sub
+
+' PrT: PRINT T (no leading space, a minus sign when below zero)
+sub PrT:
+  if T < 0 then
+    ZC = 22
+    call asm ZxPoke
+    inc ZS
+    Tn = 0 - T
+  else
+    Tn = T + 0
+  end if
+  Nd = 0
+pt_dig:
+  V16 = Tn / 10
+  W = Tn - V16 * 10
+  Dg[Nd] = W
+  inc Nd
+  Tn = V16
+  if Tn > 0 then goto pt_dig
+pt_put:
+  dec Nd
+  ZC = Dg[Nd] + 28
+  call asm ZxPoke
+  inc ZS
+  if Nd > 0 then goto pt_put
+  return
+end sub
+
+' Rnd1000: GOSUB 1000, X = INT(RND*20)+1, Y = INT(RND*30)+1
+sub Rnd1000:
+  ZN = 20
+  call asm AdRnd
+  X = ZQ + 1
+  ZN = 30
+  call asm AdRnd
+  Y = ZQ + 1
+  return
+end sub
+
+' ZxCls: CLS (the display file blank, the pixels cleared)
+sub ZxCls:
+  Frame1
+  call asm ZxClear
+  fill 0 count 5632 to vram.pattern + 256
+  return
+end sub
+
+' ShowPage: a page of text (PRINTed, art.py) shown after a CLS
+sub ShowPage(u16 Pg):
+  ZxCls
+  V16 = Pg
+  for Fr = 0 to 725
+    V = peek(V16)
+    vpoke vram.pattern + 7168 + Fr, V
+    inc V16
+  next
+  call asm ZxAll
+  inc Pn
+  return
+end sub
+
+' Prompt: the blinking "PRESS THE BUTTON" (normal, inverse) until pressed
+sub Prompt(u16 Tx, u16 TxI, u8 R, u8 K):
+  Rel = 0
+pr_lp:
+  At(R, K)
+  PrS(Tx)
+  if Watch(12) = 1 then return
+  At(R, K)
+  PrS(TxI)
+  if Watch(12) = 1 then return
+  goto pr_lp
+end sub
+
+' AskYN: 8160-8190, "Y OR N" at 12,8: the stick chooses, the button
+' answers (Ans 1 yes, 0 no)
+sub AskYN:
+  Ans = 1
+  Rel = 0
+ay_lp:
+  At(12, 8)
+  if Ans = 1 then
+    PrS(@TxYesI)
+  else
+    PrS(@TxYes)
+  end if
+  PrS(@TxOr)
+  if Ans = 0 then
+    PrS(@TxNoI)
+  else
+    PrS(@TxNo)
+  end if
+  Frame1
+  ReadDir
+  if Kd = 5 then Ans = 1
+  if Kd = 8 then Ans = 0
+  V = joypad(1).button1 | joypad(2).button1
+  W = joypad(1).button2 | joypad(2).button2
+  V = V | W
+  if V = 0 then Rel = 1
+  if V = 1 then
+    if Rel = 1 then return
+  end if
+  goto ay_lp
+end sub
+
+' CreditsPage: the original author, the port, the tune once
+sub CreditsPage:
+  Ph = 6
+  ShowPage(@PgCredits)
+  play song AdSong once
+  Prompt(@TxPress, @TxPressI, 20, 8)
+  stop song
+  return
+end sub
+
+' Watch(n): n frames; 1 at a new press of the button (Rel: let go seen)
+function Watch(u8 Nw) as u8
+  for Kp = 1 to Nw
+    Frame1
+    V = joypad(1).button1 | joypad(2).button1
+    W = joypad(1).button2 | joypad(2).button2
+    V = V | W
+    if V = 0 then Rel = 1
+    if V = 1 then
+      if Rel = 1 then return 1
+    end if
+  next
+  return 0
+
+' Pause(n): PAUSE n, ended early by a new press of the button
+sub Pause(u16 Np):
+  Rel = 0
+  for Fr = 1 to Np
+    Frame1
+    V = joypad(1).button1 | joypad(2).button1
+    W = joypad(1).button2 | joypad(2).button2
+    V = V | W
+    if V = 0 then Rel = 1
+    if V = 1 then
+      if Rel = 1 then return
+    end if
+  next
+  return
+end sub
+
+' Look4: four frames of blinking, reading the stick (Kc the key)
+sub Look4:
+  for Kp = 1 to 4
+    Frame1
+    ReadKey
+    if Kc <> 0 then return
+  next
+  return
+end sub
+
+' ReadKey: Kc = 9 with the button, else the one way pushed (5 left,
+' 6 down, 7 up, 8 right), 0 for none or a diagonal
+sub ReadKey:
+  V = joypad(1).button1 | joypad(2).button1
+  W = joypad(1).button2 | joypad(2).button2
+  V = V | W
+  if V = 1 then
+    Kc = 9
+    return
+  end if
+  ReadDir
+  Kc = Kd
+  return
+end sub
+
+sub ReadDir:
+  Kd = 0
+  Hit = 0
+  V = joypad(1).left | joypad(2).left
+  if V = 1 then
+    Kd = 5
+    inc Hit
+  end if
+  V = joypad(1).down | joypad(2).down
+  if V = 1 then
+    Kd = 6
+    inc Hit
+  end if
+  V = joypad(1).up | joypad(2).up
+  if V = 1 then
+    Kd = 7
+    inc Hit
+  end if
+  V = joypad(1).right | joypad(2).right
+  if V = 1 then
+    Kd = 8
+    inc Hit
+  end if
+  if Hit <> 1 then Kd = 0
+  return
+end sub
+
+sub Pace(u8 Np):
+  for Kp = 1 to Np
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  return
+end sub
+
+asm {
+AdHush:
+    db $00,$00,$F0,$01,$10
+AdStep:
+    db $40,$7F,$40,$02,$50
+AdPill:
+    db $40,$6B,$20,$03,$40,$47,$20,$03,$40,$35,$20,$04,$50
+AdGold:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$20,$08,$50
+AdZap:
+    db $40,$2B,$20,$02,$40,$38,$20,$02,$40,$4B,$30,$02,$40,$66,$40,$02,$40,$8C,$50,$02,$50
+AdBeat:
+    db $00,$00,$14,$04,$00,$00,$35,$06,$10
+AdCaught:
+    db $40,$53,$11,$0A,$40,$AB,$21,$0A,$40,$3B,$22,$14,$50
+AdRansom:
+    db $40,$55,$20,$06,$40,$FF,$F3,$0A,$40,$55,$20,$06,$50
+AdBoom:
+    db $00,$00,$06,$08,$00,$00,$27,$0C,$00,$00,$47,$14,$10
+
+AdSoundTable:
+    dw AdHush,$702B
+    dw AdStep,$7035
+    dw AdPill,$7035
+    dw AdGold,$7035
+    dw AdZap,$7035
+    dw AdBeat,$702B
+    dw AdCaught,$7035
+    dw AdRansom,$7035
+    dw AdBoom,$702B
+    dw AdTuneMel,$703F
+    dw AdTuneBass,$7049
+; The King of Annep, D minor (original for this game)
+; Tiny Sound, 8 frames per step
+AdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$21,$01,$01,$01,$1C,$01,$21,$01,$24,$01,$01,$01
+    db $23,$01,$21,$01,$1F,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$01,$01
+    db $21,$01,$1F,$01,$1D,$01,$01,$01,$21,$01,$24,$01,$28,$01,$01,$01
+    db $26,$01,$24,$01,$23,$01,$21,$01,$20,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+AdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+AdSong:
+    dw $0001
+    db $40+10,11
+    dw $0000
+; ---------------------------------------------------------------------------
+; The ZX81's display on the bitmap screen (art.py explains the layout).
+; The display file is kept in VRAM at $1C00: 22 rows of 33 bytes (32 cells
+; and the NEWLINE, 118); cell S (the listing's offset from D_FILE, 1 + 33 x
+; row + column) is at $1BFF + S. Each cell is drawn 7 pixels wide from x 16
+; (ZX81 column c at x 16 + 7c), row r at screen row r + 1. Call with the
+; NMI off.
+; ---------------------------------------------------------------------------
+
+; ZxTile: draws tile column E (0-27) of ZX81 row D (0-21) from the 2 or 3
+; cells over it (ZxTT: the first cell and where it starts in the tile)
+ZxTile:
+    push de
+    ld hl,AMY_UVAR_ZBuf
+    ld b,8
+    xor a
+zt_clr:
+    ld (hl),a
+    inc hl
+    djnz zt_clr
+    ld l,d
+    ld h,0
+    add hl,hl
+    ld bc,ZxRowS
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld (AMY_UVAR_ZRb),hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    ld bc,ZxTT
+    add hl,bc
+    ld a,(hl)
+    ld (AMY_UVAR_ZCc),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_ZOf),a
+zt_cell:
+    ld a,(AMY_UVAR_ZOf)
+    bit 7,a
+    jr nz,zt_in
+    cp 8
+    jr nc,zt_done
+zt_in:
+    ld a,(AMY_UVAR_ZCc)
+    cp 32
+    jr nc,zt_done
+    ld hl,(AMY_UVAR_ZRb)
+    ld c,a
+    ld b,0
+    add hl,bc
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    ld c,0
+    bit 7,a
+    jr z,zt_norm
+    ld c,$FF
+zt_norm:
+    and $7F
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,ZxFont
+    add hl,de
+    ld de,AMY_UVAR_ZBuf
+    ld a,8
+    ld (AMY_UVAR_ZLn),a
+zt_line:
+    ld a,(AMY_UVAR_ZOf)
+    ld b,a
+    ld a,(hl)
+    xor c
+    and $FE
+    inc b
+    dec b
+    jr z,zt_put
+    bit 7,b
+    jr nz,zt_left
+zt_r:
+    srl a
+    djnz zt_r
+    jr zt_put
+zt_left:
+    push af
+    ld a,b
+    neg
+    ld b,a
+    pop af
+zt_l:
+    sla a
+    djnz zt_l
+zt_put:
+    ex de,hl
+    or (hl)
+    ld (hl),a
+    inc hl
+    ex de,hl
+    inc hl
+    ld a,(AMY_UVAR_ZLn)
+    dec a
+    ld (AMY_UVAR_ZLn),a
+    jr nz,zt_line
+    ld hl,AMY_UVAR_ZCc
+    inc (hl)
+    ld a,(AMY_UVAR_ZOf)
+    add a,7
+    ld (AMY_UVAR_ZOf),a
+    jr zt_cell
+zt_done:
+    pop de
+    ld a,e
+    add a,2
+    add a,a
+    add a,a
+    add a,a
+    out ($BF),a
+    ld a,d
+    inc a
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_ZBuf
+    ld b,8
+zt_w:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz zt_w
+    ret
+
+; ZxRC: ZS (1-726) to D = row, A = column (32 the NEWLINE); carry set if
+; ZS is off the display file
+ZxRC:
+    ld hl,(AMY_UVAR_ZS)
+    ld a,h
+    or l
+    jr z,zrc_off
+    ld de,727
+    or a
+    sbc hl,de
+    jr nc,zrc_off
+    ld hl,(AMY_UVAR_ZS)
+    dec hl
+    ld d,0
+    ld bc,33
+zrc_lp:
+    or a
+    sbc hl,bc
+    jr c,zrc_got
+    inc d
+    jr zrc_lp
+zrc_got:
+    add hl,bc
+    ld a,l
+    or a
+    ret
+zrc_off:
+    scf
+    ret
+
+; ZxPeek: ZC = the code at cell ZS (118, a NEWLINE, off the display file:
+; nothing there can be walked on or blasted)
+ZxPeek:
+    call ZxRC
+    jr c,zpk_off
+    ld hl,(AMY_UVAR_ZS)
+    ld de,$1BFF
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    ld (AMY_UVAR_ZC),a
+    ret
+zpk_off:
+    ld a,118
+    ld (AMY_UVAR_ZC),a
+    ret
+
+; ZxSet: code ZC into cell ZS, not drawn (the ZX81's FAST mode)
+ZxSet:
+    call ZxRC
+    ret c
+    ld hl,(AMY_UVAR_ZS)
+    ld de,$1BFF
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_ZC)
+    out ($BE),a
+    ret
+
+; ZxPoke: code ZC into cell ZS, and the cell drawn
+ZxPoke:
+    call ZxRC
+    ret c
+    ld (AMY_UVAR_ZCol),a
+    ld a,d
+    ld (AMY_UVAR_ZRow),a
+    ld hl,(AMY_UVAR_ZS)
+    ld de,$1BFF
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_ZC)
+    out ($BE),a
+    ld a,(AMY_UVAR_ZCol)
+    cp 32
+    ret nc
+; ZxCell: draws cell ZCol (0-31) of row ZRow: its one or two tiles
+ZxCell:
+    ld a,(AMY_UVAR_ZCol)
+    ld b,a
+    add a,a
+    add a,a
+    add a,a
+    sub b
+    ld (AMY_UVAR_ZX7),a
+    srl a
+    srl a
+    srl a
+    ld e,a
+    ld a,(AMY_UVAR_ZRow)
+    ld d,a
+    push de
+    call ZxTile
+    pop de
+    ld a,(AMY_UVAR_ZX7)
+    add a,6
+    srl a
+    srl a
+    srl a
+    cp e
+    ret z
+    ld e,a
+    jp ZxTile
+
+; ZxRow: draws the whole of row ZRow
+ZxRow:
+    ld e,0
+zr_lp:
+    ld a,(AMY_UVAR_ZRow)
+    ld d,a
+    push de
+    call ZxTile
+    pop de
+    inc e
+    ld a,e
+    cp 28
+    jr c,zr_lp
+    ret
+
+; ZxAll: draws the 22 rows
+ZxAll:
+    xor a
+    ld (AMY_UVAR_ZRow),a
+za_lp:
+    call ZxRow
+    ld hl,AMY_UVAR_ZRow
+    inc (hl)
+    ld a,(hl)
+    cp 22
+    jr c,za_lp
+    ret
+
+; ZxClear: CLS in the display file (spaces and the 22 NEWLINEs), not drawn
+ZxClear:
+    ld hl,$1C00
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld c,22
+zc_row:
+    ld b,32
+    xor a
+zc_cell:
+    out ($BE),a
+    nop
+    nop
+    djnz zc_cell
+    ld a,118
+    out ($BE),a
+    nop
+    nop
+    dec c
+    jr nz,zc_row
+    ret
+
+; AdRnd: the next random number (Rs, a 16-bit xorshift 7, 9, 8), and
+; ZQ = INT(RND * ZN) with RND = Rs / 65536
+AdRnd:
+    ld hl,(AMY_UVAR_Rs)
+    ld a,l
+    and 1
+    rrca
+    ld e,a
+    ld a,h
+    and 1
+    rrca
+    ld d,a
+    ld a,l
+    srl a
+    or d
+    ld d,a
+    ld a,h
+    xor d
+    ld h,a
+    ld a,l
+    xor e
+    ld l,a
+    ld a,h
+    srl a
+    xor l
+    ld l,a
+    ld a,h
+    xor l
+    ld h,a
+    ld (AMY_UVAR_Rs),hl
+    ; ZQ = (H * ZN + (L * ZN) >> 8) >> 8
+    ld a,(AMY_UVAR_ZN)
+    ld e,a
+    ld a,l
+    call ar_mul
+    ld c,h
+    ld b,0
+    push bc
+    ld a,(AMY_UVAR_Rs+1)
+    call ar_mul
+    pop bc
+    add hl,bc
+    ld a,h
+    ld (AMY_UVAR_ZQ),a
+    ret
+; HL = A * E
+ar_mul:
+    ld hl,0
+    ld d,0
+    ld b,8
+arm_lp:
+    add hl,hl
+    rla
+    jr nc,arm_no
+    add hl,de
+arm_no:
+    djnz arm_lp
+    ret
+; the ZX81 font, codes 0-64 (art.py): 8 bytes each, bit 0 unused
+ZxFont:
+    db $00,$00,$00,$00,$00,$00,$00,$00
+    db $F0,$F0,$F0,$F0,$00,$00,$00,$00
+    db $0F,$0F,$0F,$0F,$00,$00,$00,$00
+    db $FF,$FF,$FF,$FF,$00,$00,$00,$00
+    db $00,$00,$00,$00,$F0,$F0,$F0,$F0
+    db $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+    db $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+    db $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+    db $AA,$55,$AA,$55,$AA,$55,$AA,$55
+    db $00,$00,$00,$00,$AA,$55,$AA,$55
+    db $AA,$55,$AA,$55,$00,$00,$00,$00
+    db $00,$28,$28,$00,$00,$00,$00,$00
+    db $00,$18,$24,$20,$78,$20,$20,$7C
+    db $00,$10,$3C,$50,$38,$14,$78,$10
+    db $00,$00,$30,$30,$00,$30,$30,$00
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$08,$10,$20,$20,$20,$10,$08
+    db $00,$20,$10,$08,$08,$08,$10,$20
+    db $00,$20,$10,$08,$04,$08,$10,$20
+    db $00,$08,$10,$20,$40,$20,$10,$08
+    db $00,$00,$00,$7C,$00,$7C,$00,$00
+    db $00,$00,$10,$10,$7C,$10,$10,$00
+    db $00,$00,$00,$00,$7C,$00,$00,$00
+    db $00,$00,$54,$38,$7C,$38,$54,$00
+    db $00,$04,$04,$08,$10,$20,$40,$40
+    db $00,$00,$30,$30,$00,$30,$10,$20
+    db $00,$00,$00,$00,$00,$30,$10,$20
+    db $00,$00,$00,$00,$00,$00,$30,$30
+    db $00,$38,$44,$4C,$54,$64,$44,$38
+    db $00,$10,$30,$10,$10,$10,$10,$38
+    db $00,$38,$44,$04,$08,$10,$20,$7C
+    db $00,$7C,$08,$10,$08,$04,$44,$38
+    db $00,$08,$18,$28,$48,$7C,$08,$08
+    db $00,$7C,$40,$78,$04,$04,$44,$38
+    db $00,$18,$20,$40,$78,$44,$44,$38
+    db $00,$7C,$04,$08,$10,$20,$20,$20
+    db $00,$38,$44,$44,$38,$44,$44,$38
+    db $00,$38,$44,$44,$3C,$04,$08,$30
+    db $00,$38,$44,$44,$7C,$44,$44,$44
+    db $00,$78,$44,$44,$78,$44,$44,$78
+    db $00,$38,$44,$40,$40,$40,$44,$38
+    db $00,$78,$44,$44,$44,$44,$44,$78
+    db $00,$7C,$40,$40,$78,$40,$40,$7C
+    db $00,$7C,$40,$40,$78,$40,$40,$40
+    db $00,$38,$44,$40,$5C,$44,$44,$3C
+    db $00,$44,$44,$44,$7C,$44,$44,$44
+    db $00,$38,$10,$10,$10,$10,$10,$38
+    db $00,$1C,$08,$08,$08,$08,$48,$30
+    db $00,$44,$48,$50,$60,$50,$48,$44
+    db $00,$40,$40,$40,$40,$40,$40,$7C
+    db $00,$44,$6C,$54,$54,$44,$44,$44
+    db $00,$44,$64,$54,$4C,$44,$44,$44
+    db $00,$38,$44,$44,$44,$44,$44,$38
+    db $00,$78,$44,$44,$78,$40,$40,$40
+    db $00,$38,$44,$44,$44,$54,$48,$34
+    db $00,$78,$44,$44,$78,$50,$48,$44
+    db $00,$3C,$40,$40,$38,$04,$04,$78
+    db $00,$7C,$10,$10,$10,$10,$10,$10
+    db $00,$44,$44,$44,$44,$44,$44,$38
+    db $00,$44,$44,$44,$44,$44,$28,$10
+    db $00,$44,$44,$44,$54,$54,$54,$28
+    db $00,$44,$44,$28,$10,$28,$44,$44
+    db $00,$44,$44,$28,$10,$10,$10,$10
+    db $00,$7C,$04,$08,$10,$20,$40,$7C
+    db $00,$10,$10,$10,$10,$10,$00,$10
+; ZxTT: for each tile column t (0-27), the first cell over it (c0)
+; and where that cell starts in the tile (7 c0 - 8 t, -6 to 0)
+ZxTT:
+    db 0,0
+    db 1,255
+    db 2,254
+    db 3,253
+    db 4,252
+    db 5,251
+    db 6,250
+    db 8,0
+    db 9,255
+    db 10,254
+    db 11,253
+    db 12,252
+    db 13,251
+    db 14,250
+    db 16,0
+    db 17,255
+    db 18,254
+    db 19,253
+    db 20,252
+    db 21,251
+    db 22,250
+    db 24,0
+    db 25,255
+    db 26,254
+    db 27,253
+    db 28,252
+    db 29,251
+    db 30,250
+; ZxRowS: the shadow display file's address of each row's column 0
+ZxRowS:
+    dw $1C00
+    dw $1C21
+    dw $1C42
+    dw $1C63
+    dw $1C84
+    dw $1CA5
+    dw $1CC6
+    dw $1CE7
+    dw $1D08
+    dw $1D29
+    dw $1D4A
+    dw $1D6B
+    dw $1D8C
+    dw $1DAD
+    dw $1DCE
+    dw $1DEF
+    dw $1E10
+    dw $1E31
+    dw $1E52
+    dw $1E73
+    dw $1E94
+    dw $1EB5
+}

@@ -6866,5 +6866,116 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "beetrap",
+    "label": "Bee Trap (June 1983)",
+    "detail": "Robert L. Lykins' COMPUTE! guide-bee game, preserving its lost bees, flower bed, Venus bee traps, credits and escalating danger.",
+    "projectName": "Bee Trap",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "vic-20",
+      "atari",
+      "color-computer",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "hawkmen",
+    "label": "The Hawkmen of Dindrin (June 1983)",
+    "detail": "Esteban V. Aguilar Jr.'s COMPUTE! flying game, preserving its energy, tongue attacks, floaters, skimmer, lizards, stones and scrolling descent.",
+    "projectName": "The Hawkmen of Dindrin",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "flying",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "castlequest",
+    "label": "Castle Quest (July 1983)",
+    "detail": "Timothy G. Baldwin's COMPUTE! castle action game, preserving its thirty rooms, servants, falling walls, keys, cloak power and three wizards.",
+    "projectName": "Castle Quest",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "castle",
+      "atari",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "adnil",
+    "label": "The Fortress of Adnil (July 1983)",
+    "detail": "George W. Miller's COMPUTE! fortress game, preserving its ZX81 display-file map, energy economy, multiplying NAWS, treasure and laser sword.",
+    "projectName": "The Fortress of Adnil",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "strategy",
+      "action",
+      "zx81",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "astrostorm",
+    "label": "Astrostorm (June 1983)",
+    "detail": "Peter Lear's COMPUTE! asteroid-field mission, preserving its selectable depth, scrolling VIC-20 field, six crossings, scoring and two-minute delivery limit.",
+    "projectName": "Astrostorm",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "space",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

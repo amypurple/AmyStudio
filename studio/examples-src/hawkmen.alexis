@@ -1,0 +1,1904 @@
+cartridge "HAWKMEN OF DINDRIN/E. V. AGUILAR JR., COMPUTE!/1983"
+
+' THE HAWKMEN OF DINDRIN
+' The game by Esteban V. Aguilar Jr. from COMPUTE!, June 1983 (pages
+' 86-100; the notes on the Atari and Commodore 64 versions by Charles
+' Brannon), for the ColecoVision in Amy by Amy Bienvenu. Ported by Claude
+' (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: the VIC-20 version (Programs 1 and 2), transcribed in
+' orig/hawkmen-vic.bas from the scans beside it, gives the rules and the
+' screen; the Atari and 64 versions (orig/hawkmen-atari.bas,
+' orig/hawkmen-64.bas) give the shapes where the VIC's are plain: the
+' hawkman flapping his wings, the grinning floaters, the lizards' darting
+' tongues (two views each, flipped every 8 frames as those versions' machine
+' language flips their two character sets), the oval stones and the wavy
+' ground (art.py says which is which).
+'
+' The game: you, the hawkman, fly across the sky of Dindrin under the
+' clouds, a row lower at each line's end. Left backs up, up climbs and
+' down dives (diagonally, forward); no stick flies on. The button
+' sticks out your tongue (three cells ahead): a floater is worth 15 points
+' and 20 energy, the skimmer 5 and 10. Snatch the stones at the bottom (100
+' points, 100 energy) but not where a lizard waits (it eats you and half
+' your energy). Touching anything else costs a life; energy drains every
+' move and the tongue costs 3; when energy is low (under 100) the border
+' disappears. Four lives. The game goes on until the lives or the energy
+' run out; then 10,000 points or more is a win.
+'
+' Controls (either joystick): the stick as above (right is not read, as
+' on the VIC: flying on is the default), the button the tongue; after a
+' game the button plays again, the stick down goes back to the credits.
+'
+' The VIC-20's screen (22 columns, 23 rows) is kept cell for cell, at
+' columns 5-26 and rows 1-23, with its colour memory: each VIC character
+' in each colour is a tile (art.py), so the name table holds the screen and
+' its colours and the game reads PEEKs back from it. Y, SK, F and the
+' other positions are the VIC's screen offsets (from 7680), Q its moves
+' (+-1, +23, -21). Labels such as l51 are the listing's line numbers.
+'
+' Fixes (clear bugs of the listing; the original behaviour is noted where
+' the code changes):
+' - Line 58 printed the energy at column 1 of its row, over the word
+'   ENERGY: (and a shorter number left old digits behind): it is printed
+'   after ENERGY: here, cleared behind, and not below 0.
+' - Line 57's floor test (Y+Q>=8163) made the last stone (column 21)
+'   deadly: the floor starts at 8164.
+' - Line 606 (the skimmer runs into you) moved Y one cell on (Y=Y+1)
+'   without its colour address, so the burst landed beside you in the
+'   wrong colour and your picture stayed: here the burst is on you.
+' - Line 605 erased the skimmer's tail three cells back even just after
+'   its wrap, cutting holes in the row above (row 17, columns 19-21).
+' - Line 500 (flying into a lizard from the end of row 20) put a stone and
+'   a lizard into the ground row: only cells of the stones' row change.
+' - Lines 611-626 updated the border only when a floater appeared (one
+'   pass in ten): it follows the energy every pass.
+' - The tongue went on into the next row from the end of a line: it stops
+'   at the line's end.
+' - After a game the VIC kept the last text colour (purple, or red after a
+'   win), so the next game's words, clouds and skimmer changed colour:
+'   every game is drawn as the first.
+' - Running out of energy with the tongue (line 101 to 500) left the
+'   hawkman's picture where he was (a "ghost" that could be flown into):
+'   it is erased.
+' - The fire button still held when the game ended played again at once
+'   (line 1035): it must be let go first.
+'
+' Improvements (smoother, more colour):
+' - The hawkman is a sprite gliding from cell to cell over the pass (the
+'   VIC jumped a cell at a time); the game still moves him by cells.
+' - The tongue is red (the VIC drew it in whatever colour that cell's
+'   colour memory held, mostly the blue of the empty sky).
+' - The Atari and 64 shapes and their two-view animation (above).
+'
+' Liberties taken:
+' - Timing: a pass of the main loop is 7 frames, about the VIC's BASIC
+'   speed; each tongue step a frame, the burst after a catch 4 frames, the
+'   crash 4, the lizard's meal 44 (its two pictures in turn).
+' - The skimmer's head, multicolour on the VIC (colour 8), is drawn black.
+' - Words in the ColecoVision's font; the score stops at 65535.
+' - The title (Program 1's screen) waits for the button (the VIC loaded
+'   Part 2 from tape meanwhile); a credits page with an original tune,
+'   "Wings over Dindrin".
+'
+' House rules kept: text in columns 2-29; the frame loop is protected from
+' the NMI and every screen is drawn with the NMI off after a wait.
+
+const TSp0 = 128
+const TSp1 = 129
+const TSp2 = 130
+const TSp3 = 131
+const TSp4 = 132
+const TSp5 = 133
+const TSp6 = 134
+const TSp7 = 135
+const TFl0 = 136
+const TFl1 = 137
+const TFl2 = 138
+const TFl3 = 139
+const TFl4 = 140
+const TFl5 = 141
+const TFl6 = 142
+const TFl7 = 143
+const TLz0 = 144
+const TLz1 = 145
+const TLz2 = 146
+const TLz3 = 147
+const TLz4 = 148
+const TLz5 = 149
+const TLz6 = 150
+const TLz7 = 151
+const THawk = 152
+const TTg0 = 153
+const TTg1 = 154
+const TTg2 = 155
+const TTg3 = 156
+const TTg4 = 157
+const TTg5 = 158
+const TTg6 = 159
+const TTg7 = 160
+const TSt0 = 161
+const TSt1 = 162
+const TSt2 = 163
+const TSt3 = 164
+const TSt4 = 165
+const TSt5 = 166
+const TSt6 = 167
+const TSt7 = 168
+const TCl0 = 169
+const TCl1 = 170
+const TCl2 = 171
+const TCl3 = 172
+const TCl4 = 173
+const TCl5 = 174
+const TCl6 = 175
+const TCl7 = 176
+const TBu0 = 177
+const TBu1 = 178
+const TBu2 = 179
+const TBu3 = 180
+const TBu4 = 181
+const TBu5 = 182
+const TBu6 = 183
+const TBu7 = 184
+const THd0 = 185
+const THd1 = 186
+const THd2 = 187
+const THd3 = 188
+const THd4 = 189
+const THd5 = 190
+const THd6 = 191
+const THd7 = 192
+const TJaw = 193
+const TGnd = 194
+const TNeck = 195
+const Tg0 = 196
+const Tg1 = 197
+const Tg2 = 198
+const Tg3 = 199
+const Tg4 = 200
+const Tg5 = 201
+const Tg6 = 202
+const Tg7 = 203
+const Tg8 = 204
+const Tg9 = 205
+const TgL = 206
+const TgI = 207
+const TgF = 208
+const TgE = 209
+const TgCol = 210
+const TgS = 211
+const TgC = 212
+const TgO = 213
+const TgR = 214
+const TgN = 215
+const TgG = 216
+const TgY = 217
+const TgMin = 218
+const NTilesG = 728
+const PSpY = 128
+const PSpR = 129
+const PSpB = 130
+const PB0 = 150
+const NTilesP = 600
+const PAFirst = 131
+const PACount = 19
+const TgFirst = 196
+const TgCount = 23
+const SndThrum = 1
+const SndDive = 2
+const SndClimb = 3
+const SndStone = 4
+const SndTongue = 5
+const SndGulp = 6
+const SndCrash = 7
+const SndTuneA = 8
+const SndTuneB = 9
+
+' --- the listing's variables ----------------------------------------------
+' Y the hawkman (VIC offset), Q his move (16 bits: -1 is 65535), E the
+' energy (16 bits, signed: 32768 and up below zero), SC the score, TN the
+' lives, SK the skimmer's head, F the floater's place, J the stick
+' (the VIC's PEEK(37151): 126 none, 122 up, 118 down, 110 left, 94 fire)
+u16 Y = 133
+u16 Q = 0
+u16 E = 200
+u16 SC = 0
+u8 TN = 4
+u16 SK = 400
+u16 F = 0
+u8 J = 126
+u8 O = 0
+u8 D = 0
+u8 Z = 0
+u8 W = 0
+u8 X = 0
+u8 Bt = 0
+' Go5: 1 when a subroutine jumps to line 500 (the crash), Hit: 1 when the
+' skimmer ran into the hawkman
+u8 Go5 = 0
+u8 Hit = 0
+' cells: B the VIC offset, Ch Cl the VIC character and colour to put, Kd
+' Kc those found (PEEK), Tp the tile, Tl its tile
+u16 B = 0
+u16 Bw = 0
+u8 Ch = 0
+u8 Cl = 0
+u8 Kd = 0
+u8 Kc = 0
+u8 Tp = 0
+u8 Tl = 0
+' Tc the text colour (VIC), Bord the border (0 red, 1 yellow)
+u8 Tc = 6
+u8 Bord = 0
+' the random numbers (RND): a 16-bit xorshift
+u16 Rs = $3A57
+u16 Rt = 0
+u16 Rw = 0
+u16 Rv = 0
+u32 Uq = 0
+u32 Uq2 = 0
+' TI$: Fr frames, Ts seconds since the game began
+u8 Fr = 0
+u16 Ts = 0
+' the animation: Anim 1 when the game's tiles are loaded, Af the frames,
+' Av the view (0 or 1)
+u8 Anim = 0
+u8 Af = 0
+u8 Av = 0
+' the hawkman's sprite: Hon 1 shown, Hx Hy its place, Gx Gy its goal
+u8 Hon = 0
+u8 Hx = 0
+u8 Hy = 0
+u8 Gx = 0
+u8 Gy = 0
+' for the test bot: Ph 1 credits, 2 title, 3 playing, 4 the game's end;
+' Stp the passes; Jr the stick read in the pass
+u8 Ph = 0
+u8 Stp = 0
+u8 Jr = 126
+u8 Rb = 0
+u8 Rd = 0
+u8 V = 0
+u8 V2 = 0
+u8 Jp = 0
+u8 Jh = 0
+u8 Rr = 0
+u8 Tick = 0
+u16 NumW = 0
+u8 Neg = 0
+u8 Nd = 0
+u8 Dg[5]
+u8 Nc = 0
+u8 Nr = 0
+u16 Hh = 0
+u16 Mm = 0
+u8 Tcf = 0
+u8 Tcn = 0
+
+  tile screen
+  sprites 8x8
+  set sound table HkSoundTable areas 4
+  nmi off
+  copy SpritePat count 16 to vram.spr_pat
+  set sprite count 1
+  hide sprite 0
+  update sprites
+  screen on
+
+l0:
+  CreditsPage
+  TitlePage
+l6:
+  ' 6-9: TI$ from zero, CLR (Q = 0), the energy
+  Ts = 0
+  Fr = 0
+  Q = 0
+  E = 200
+  ' 10: the screen
+  SC = 0
+  Y = 133
+  SK = 400
+  TN = 4
+  Bord = 0
+  Tc = 6
+  GameScreen
+  Ph = 3
+l50:
+  ' 50: the hawkman (black) at his start
+  B = Y
+  Ch = 0
+  Cl = 0
+  call asm HkPut
+  HawkGoal
+  Hx = Gx
+  Hy = Gy
+  Hon = 1
+l51:
+  ' 51: the stick, a move's energy, the world (600)
+  inc Stp
+  Pace(7)
+  Jr = J
+  E = E - 1
+  Go5 = 0
+  Hit = 0
+  World
+  if Go5 = 1 then goto l500
+l52:
+  if J = 94 then
+    Tongue
+    if Go5 = 1 then goto l500
+  end if
+  if J = 110 then Q = 65535
+  if J = 126 then Q = 1
+  if J = 118 then
+    Q = 23
+    play sound SndDive
+  end if
+  if J = 122 then
+    Q = 65515
+    play sound SndClimb
+  end if
+l57:
+  ' 57: off the field (above row 5, or the floor: see the fixes)
+  B = Y
+  Ch = 32
+  PutKeep
+  Bw = Y + Q
+  if Bw < 110 then goto l500
+  if Bw >= 484 then goto l500
+l58:
+  ShowStat
+  ELe0
+  if V = 1 then goto l1000
+l59:
+  B = Y + Q
+  call asm HkGet
+  if Kd = 35 then goto l90
+  if Kd <> 32 then goto l500
+l75:
+  Y = Y + Q
+  B = Y
+  Ch = 0
+  Cl = 0
+  call asm HkPut
+  HawkGoal
+  B = Y + 22
+  call asm HkGet
+  if Kd = 36 then goto l300
+  goto l51
+
+l90:
+  ' 90-96: a stone: 100 points and 100 energy; the hawkman takes it and
+  ' rises a row
+  Y = Y + Q
+  B = Y
+  Ch = 0
+  Cl = 0
+  call asm HkPut
+  HawkGoal
+  AddSc(100)
+  E = E + 100
+  play sound SndStone
+  Hold(4)
+  B = Y
+  Ch = 32
+  PutKeep
+  Y = Y - 22
+  B = Y
+  Ch = 0
+  Cl = 0
+  call asm HkPut
+  HawkGoal
+  goto l51
+
+l300:
+  ' 300-351: a lizard eats the hawkman (red), then leaves a stone; half
+  ' the energy, a life
+  HawkOff
+  B = Y + 22
+  Cl = 2
+  PutCol
+  B = Y + 22
+  Ch = 41
+  PutKeep
+  B = Y
+  Ch = 36
+  Cl = 2
+  call asm HkPut
+  play sound SndThrum
+  for Rr = 1 to 22
+    B = Y
+    Ch = 36
+    PutKeep
+    Hold(1)
+    B = Y
+    Ch = 37
+    PutKeep
+    Hold(1)
+  next
+  B = Y
+  Ch = 32
+  PutKeep
+  B = Y + 22
+  Ch = 35
+  PutKeep
+  ' 346: E=INT(E*.5)
+  if E >= 32768 then
+    E = E >> 1
+    E = E | 32768
+  else
+    E = E >> 1
+  end if
+  dec TN
+  if TN = 0 then goto l1000
+  Y = 133
+  goto l50
+
+l500:
+  ' 500: into a lizard: it moves under the hawkman and eats him (see the
+  ' fixes: only the stones' row changes)
+  if Hit = 0 then
+    B = Y + Q
+    call asm HkGet
+    if Kd = 36 then
+      Bw = Y + 23
+      if Bw >= 462 then
+        if Bw < 484 then
+          B = Bw
+          Ch = 35
+          PutKeep
+        end if
+      end if
+      Bw = Y + 22
+      if Bw >= 462 then
+        if Bw < 484 then
+          B = Bw
+          Ch = 36
+          PutKeep
+        end if
+      end if
+      goto l300
+    end if
+l501:
+    ' (see the fixes: no hawkman left behind)
+    B = Y
+    call asm HkGet
+    if Kd = 0 then
+      Ch = 32
+      PutKeep
+    end if
+    Y = Y + Q
+  end if
+  ' 501-507: the crash: a red burst where the hawkman hit, a life
+  HawkOff
+  B = Y
+  Ch = 42
+  Cl = 2
+  call asm HkPut
+  play sound SndCrash
+  Hold(4)
+  B = Y
+  Ch = 32
+  PutKeep
+  dec TN
+  if TN = 0 then goto l1000
+  Y = 133
+  goto l50
+
+' 1000-1050: the game's end
+l1000:
+  Ph = 4
+  HawkOff
+  NewScreen(1, 0)
+  Anim = 0
+  if Bord = 0 then
+    V = 8
+  else
+    V = 11
+  end if
+  call asm HkBack
+  for Rr = 1 to 23
+    fill PSpY count 22 at 5,Rr
+  next
+  V = VicCol[Tc]
+  V = V << 4
+  V = V | 11
+  Tcf = PAFirst
+  Tcn = PACount
+  call asm HkColRange
+  copy TxOver0 count 19 to vram.name + 37
+  copy TxOver1 count 22 to vram.name + 69
+  copy TxOver2 count 7 to vram.name + 101
+  copy TxOver3 count 21 to vram.name + 133
+  copy TxOver4 count 14 to vram.name + 165
+  copy TxOver5 count 11 to vram.name + 197
+  Nc = 16
+  Nr = 6
+  NumW = SC
+  PNum
+  copy TxOver6 count 11 to vram.name + 229
+  Nc = 16
+  Nr = 7
+  PTime
+  if SC >= 10000 then
+    copy TxWon count 13 to vram.name + 261
+  end if
+  ShowScreen
+  ' (see the fixes: the button let go first)
+l1025:
+  Pace(1)
+  V = Rb | Rd
+  if V = 1 then goto l1025
+l1030:
+  Pace(1)
+  if J = 94 then goto l6
+  if J = 118 then goto l0
+  goto l1030
+
+' World: lines 600-650, once a pass: a stone or a lizard somewhere on the
+' bottom row, the skimmer's step (running into the hawkman: Go5, Hit),
+' now and then a floater, the border
+sub World:
+  RndK(22)
+  O = Rv + 1
+  if O = 22 then O = 0
+  RndK(22)
+  O = Rv + 1
+  if O = 22 then O = 0
+  RndK(2)
+  D = Rv + 1
+  B = O + 462
+  if D = 1 then
+    Ch = 36
+    Cl = 4
+  else
+    Ch = 35
+    Cl = 5
+  end if
+  call asm HkPut
+  ' 605 (see the fixes: not just after the wrap)
+  if SK >= 399 then
+    B = SK - 3
+    Ch = 32
+    PutKeep
+  end if
+  B = SK
+  Ch = 33
+  PutKeep
+  ' 606: the skimmer runs into the hawkman (see the fixes)
+  B = SK + 1
+  call asm HkGet
+  if Kd = 0 then
+    Go5 = 1
+    Hit = 1
+    return
+  end if
+  SK = SK + 1
+  if SK = 418 then
+    SK = 396
+    B = 416
+    Ch = 32
+    PutKeep
+    B = 417
+    PutKeep
+    B = 415
+    PutKeep
+  end if
+  ' 610: the head (multicolour on the VIC: black here)
+  B = SK
+  Ch = 43
+  Cl = 0
+  call asm HkPut
+  Border
+  ' 611-616: one pass in ten, a floater in a free cell of rows 7-18
+  RndK(10)
+  Z = Rv + 1
+  if Z <> 5 then return
+w612:
+  RndK(242)
+  F = Rv + 1
+  B = F + 154
+  call asm HkGet
+  if Kd <> 32 then goto w612
+w614:
+  RndK(7)
+  W = Rv + 1
+  if W = 7 then goto w614
+  B = F + 154
+  Ch = 34
+  Cl = W
+  call asm HkPut
+  return
+end sub
+
+' Border: lines 625-626 (see the fixes: every pass), under 100 energy the
+' border is the screen's yellow, over 100 red
+sub Border:
+  V = 0
+  if E < 100 then V = 1
+  if E >= 32768 then V = 1
+  if V = 1 then
+    if Bord = 0 then
+      Bord = 1
+      V = 11
+      call asm HkBack
+    end if
+    return
+  end if
+  if E > 100 then
+    if Bord = 1 then
+      Bord = 0
+      V = 8
+      call asm HkBack
+    end if
+  end if
+  return
+end sub
+
+' Tongue: lines 100-150: three cells ahead (in red), for 3 energy; what
+' it meets (a floater, the skimmer) is eaten
+sub Tongue:
+  if Y >= 458 then return
+  E = E - 3
+  ELe0
+  if V = 1 then
+    Go5 = 1
+    return
+  end if
+  play sound SndTongue
+  ' the cells left in this line (see the fixes)
+  Bw = Y % 22
+  V2 = lowbyte Bw
+  V2 = 21 - V2
+  X = 1
+tg110:
+  if X > V2 then goto tg119
+  B = Y + X
+  call asm HkGet
+  if Kd <> 32 then goto tg135
+  Ch = 33
+  Cl = 2
+  call asm HkPut
+  Hold(1)
+  inc X
+  if X <= 3 then goto tg110
+tg119:
+  Bt = X - 1
+tg120:
+  if Bt = 0 then return
+  B = Y + Bt
+  Ch = 32
+  PutKeep
+  Hold(1)
+  dec Bt
+  goto tg120
+tg135:
+  if Kd = 34 then
+    E = E + 20
+    AddSc(15)
+  end if
+  if Kd = 33 then
+    E = E + 10
+    AddSc(5)
+  end if
+  if Kd = 43 then
+    E = E + 10
+    AddSc(5)
+  end if
+  play sound SndGulp
+  B = Y + X
+  Ch = 42
+  PutKeep
+  Bt = X
+  Hold(4)
+  goto tg120
+end sub
+
+sub AddSc(u8 N):
+  NumW = 65535 - N
+  if SC > NumW then
+    SC = 65535
+  else
+    SC = SC + N
+  end if
+  return
+end sub
+
+' ELe0: V = 1 when E <= 0
+sub ELe0:
+  V = 0
+  if E = 0 then V = 1
+  if E >= 32768 then V = 1
+  return
+end sub
+
+' ShowStat: line 58: LIFE: and the lives, the score, the energy (see the
+' fixes), in the text colour
+sub ShowStat:
+  B = 0
+  VP(12)
+  VP(9)
+  VP(6)
+  VP(5)
+  VP(58)
+  NumW = TN
+  VNum
+  B = 28
+  NumW = SC
+  VNum
+  B = 51
+  NumW = E
+  if E >= 32768 then NumW = 0
+  VNum
+  VP(32)
+  VP(32)
+  return
+end sub
+
+' VP: the VIC character C at B in the text colour, B on
+sub VP(u8 C):
+  Ch = C
+  Cl = Tc
+  call asm HkPut
+  B = B + 1
+  return
+end sub
+
+' VNum: NumW printed at B as the VIC does (a space, the digits)
+sub VNum:
+  VP(32)
+  Nd = 0
+vn_div:
+  Bw = NumW % 10
+  Dg[Nd] = lowbyte Bw
+  inc Nd
+  NumW = NumW / 10
+  if NumW <> 0 then goto vn_div
+vn_put:
+  dec Nd
+  V = Dg[Nd] + 48
+  VP(V)
+  if Nd <> 0 then goto vn_put
+  return
+end sub
+
+' PutKeep: POKE B,Ch (the cell keeps its colour); PutCol: the colour Cl
+' at B (the cell keeps its character)
+sub PutKeep:
+  call asm HkGet
+  Cl = Kc
+  call asm HkPut
+  return
+end sub
+
+sub PutCol:
+  call asm HkGet
+  Ch = Kd
+  call asm HkPut
+  return
+end sub
+
+' HawkGoal: the hawkman's sprite glides to Y's cell (or jumps there when
+' it is not next to him)
+sub HawkGoal:
+  Bw = Y / 22
+  V = lowbyte Bw
+  Gy = V * 8
+  Gy = Gy + 7
+  Bw = Y % 22
+  V = lowbyte Bw
+  Gx = V * 8
+  Gx = Gx + 40
+  V = 0
+  if Gx > Hx then
+    V2 = Gx - Hx
+  else
+    V2 = Hx - Gx
+  end if
+  if V2 > 8 then V = 1
+  if Gy > Hy then
+    V2 = Gy - Hy
+  else
+    V2 = Hy - Gy
+  end if
+  if V2 > 8 then V = 1
+  if V = 1 then
+    Hx = Gx
+    Hy = Gy
+  end if
+  return
+end sub
+
+' the game's screen: lines 10-35
+sub GameScreen:
+  NewScreen(0, 0)
+  Anim = 1
+  V = 8
+  call asm HkBack
+  ' the text tiles in the text colour
+  V = VicCol[Tc]
+  V = V << 4
+  V = V | 11
+  Tcf = TgFirst
+  Tcn = TgCount
+  call asm HkColRange
+  ' 10: the cleared screen: spaces in the text colour
+  Ch = 32
+  Cl = Tc
+  call asm HkEnc
+  for Rr = 1 to 23
+    fill Tl count 22 at 5,Rr
+  next
+  ' 20: the clouds (row 4)
+  B = 88
+  for Rr = 1 to 22
+    VP(38)
+  next
+  ' 21: SCORE: and ENERGY:
+  B = 22
+  VP(19)
+  VP(3)
+  VP(15)
+  VP(18)
+  VP(5)
+  VP(58)
+  B = 44
+  VP(5)
+  VP(14)
+  VP(5)
+  VP(18)
+  VP(7)
+  VP(25)
+  VP(58)
+  ' 22: the ground (blue), 30: the stones (green)
+  for Rr = 0 to 21
+    B = Rr + 484
+    Ch = 40
+    Cl = 6
+    call asm HkPut
+    B = Rr + 462
+    Ch = 35
+    Cl = 5
+    call asm HkPut
+  next
+  ' 35: the skimmer ( !!!+ on row 18)
+  B = 396
+  VP(32)
+  VP(33)
+  VP(33)
+  VP(33)
+  VP(43)
+  ShowScreen
+  return
+end sub
+
+' PNum: NumW in the page's purple digits from column Nc of row Nr, after
+' the sign's space
+sub PNum:
+  put char PSpY at Nc,Nr
+  inc Nc
+  Nd = 0
+pn_div:
+  Bw = NumW % 10
+  Dg[Nd] = lowbyte Bw
+  inc Nd
+  NumW = NumW / 10
+  if NumW <> 0 then goto pn_div
+pn_put:
+  dec Nd
+  V = Dg[Nd] + PB0
+  put char V at Nc,Nr
+  inc Nc
+  if Nd <> 0 then goto pn_put
+  return
+end sub
+
+' PTime: VAL(TI$), the hours, minutes and seconds as one number (HHMMSS
+' without its leading zeros)
+sub PTime:
+  Hh = Ts / 3600
+  Mm = Ts % 3600
+  NumW = Mm % 60
+  Mm = Mm / 60
+  Rr = lowbyte NumW
+  put char PSpY at Nc,Nr
+  inc Nc
+  if Hh > 0 then
+    NumW = Hh
+    PNum2
+    NumW = Mm
+    Pad2
+    NumW = Rr
+    Pad2
+    return
+  end if
+  if Mm > 0 then
+    NumW = Mm
+    PNum2
+    NumW = Rr
+    Pad2
+    return
+  end if
+  NumW = Rr
+  PNum2
+  return
+end sub
+
+' PNum2: NumW's digits (no space); Pad2: two digits
+sub PNum2:
+  Nd = 0
+p2_div:
+  Bw = NumW % 10
+  Dg[Nd] = lowbyte Bw
+  inc Nd
+  NumW = NumW / 10
+  if NumW <> 0 then goto p2_div
+p2_put:
+  dec Nd
+  V = Dg[Nd] + PB0
+  put char V at Nc,Nr
+  inc Nc
+  if Nd <> 0 then goto p2_put
+  return
+end sub
+
+sub Pad2:
+  Bw = NumW / 10
+  V = lowbyte Bw
+  V = V + PB0
+  put char V at Nc,Nr
+  inc Nc
+  Bw = NumW % 10
+  V = lowbyte Bw
+  V = V + PB0
+  put char V at Nc,Nr
+  inc Nc
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 1
+  Hon = 0
+  NewScreen(0, 0)
+  Anim = 1
+  V = 4
+  call asm HkBack
+  print at 5,2, "THE HAWKMEN OF DINDRIN"
+  ' a strip of Dindrin's field
+  fill TCl6 count 22 at 5,4
+  fill TSp6 count 22 at 5,5
+  put char TFl1 at 9,5
+  put char TFl3 at 14,5
+  put char TFl4 at 19,5
+  put char TTg0 at 21,5
+  put char TTg0 at 22,5
+  put char THd0 at 23,5
+  for Rr = 5 to 26
+    put char TSt5 at Rr,6
+    put char TGnd at Rr,7
+  next
+  put char TLz4 at 8,6
+  put char TLz4 at 17,6
+  put char TLz4 at 24,6
+  Hx = 48
+  Hy = 39
+  Gx = 48
+  Gy = 39
+  Hon = 1
+  print at 3,9, "BY ESTEBAN V. AGUILAR JR."
+  print at 3,10, "COMPUTE! JUNE 1983, THE"
+  print at 3,11, "VIC-20 VERSION. NOTES ON"
+  print at 3,12, "THE ATARI AND 64 VERSIONS"
+  print at 3,13, "BY CHARLES BRANNON."
+  print at 3,15, "STICK: UP CLIMB, DOWN DIVE,"
+  print at 3,16, "LEFT BACK. BUTTON: TONGUE."
+  print at 3,18, "COLECOVISION: CLAUDE (AN AI"
+  print at 3,19, "BY ANTHROPIC), AMY STUDIO."
+  print at 3,20, "MUSIC: WINGS OVER DINDRIN."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  play song HkSong once
+cp_up:
+  Pace(1)
+  if Rb = 1 then goto cp_up
+cp_wait:
+  Pace(1)
+  if Rb = 0 then goto cp_wait
+  stop song
+  return
+end sub
+
+' the title: Program 1's screen (green, the name in reverse)
+sub TitlePage:
+  Ph = 2
+  HawkOff
+  NewScreen(1, 1)
+  Anim = 0
+  V = 2
+  call asm HkBack
+  copy TxTitle count 18 to vram.name + 39
+  print at 8,21, "PRESS THE BUTTON"
+  ShowScreen
+tp_up:
+  Pace(1)
+  if Rb = 1 then goto tp_up
+tp_wait:
+  Pace(1)
+  if Rb = 0 then goto tp_wait
+  ' a new seed from the time spent on the title
+  Rt = Tick
+  Rs = Rs ^ Rt
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $3A57
+  return
+end sub
+
+' NewScreen Bk Fc: a blank screen with the tiles of bank Bk (0 the game's,
+' 1 the pages'), the font white (Fc 0) or blue on green (Fc 1)
+sub NewScreen(u8 Bk, u8 Fc):
+  Rearm
+  wait
+  nmi off
+  display off
+  if Fc = 1 then
+    fill mode 2 text color with $42
+  else
+    fill mode 2 text color with $F0
+  end if
+  if Bk = 0 then
+    copy TilePatG count NTilesG to vram.pattern + 1024
+    copy TilePatG count NTilesG to vram.pattern + 3072
+    copy TilePatG count NTilesG to vram.pattern + 5120
+    copy TileColG count NTilesG to vram.color + 1024
+    call asm FontTilesG
+  else
+    copy TilePatP count NTilesP to vram.pattern + 1024
+    copy TilePatP count NTilesP to vram.pattern + 3072
+    copy TilePatP count NTilesP to vram.pattern + 5120
+    copy TileColP count NTilesP to vram.color + 1024
+    call asm FontTilesP
+  end if
+  fill 32 count 768 to vram.name
+  Av = 0
+  Af = 0
+  return
+end sub
+
+sub HawkOff:
+  Hon = 0
+  hide sprite 0
+  update sprites
+  return
+end sub
+
+' ShowScreen: the screen on; then the VDP's status is read once, which
+' resets its address latch (an NMI arriving while "screen on" wrote its
+' register could leave the latch half-set, and the next VRAM write, the
+' hawkman at his start, went astray: seen once in the bot's games)
+sub ShowScreen:
+  screen on
+  nmi off
+  call asm HkLatch
+  return
+end sub
+
+' Pace N: N frames, then the stick: J as the VIC's PEEK(37151) (either
+' joystick; right is not read), Rb a button, Rd the stick down
+sub Pace(u8 N):
+  for Jp = 1 to N
+    Frame1
+  next
+  J = 126
+  Rb = 0
+  Rd = 0
+  V = joypad(1).up | joypad(2).up
+  if V = 1 then J = J - 4
+  V = joypad(1).down | joypad(2).down
+  if V = 1 then
+    J = J - 8
+    Rd = 1
+  end if
+  V = joypad(1).left | joypad(2).left
+  if V = 1 then J = J - 16
+  V = joypad(1).button1 | joypad(2).button1
+  V2 = joypad(1).button2 | joypad(2).button2
+  V = V | V2
+  if V = 1 then
+    J = J - 32
+    Rb = 1
+  end if
+  return
+end sub
+
+sub Hold(u8 N):
+  for Jh = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' Frame1: a frame: TI$, the two views' flip (every 8 frames), the
+' hawkman's sprite gliding to his cell (2 pixels the first frame of a
+' cell's step, then 1: 8 pixels in 7 frames)
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Fr
+  if Fr = 60 then
+    Fr = 0
+    Ts = Ts + 1
+  end if
+  if Anim = 1 then
+    inc Af
+    if Af = 8 then
+      Af = 0
+      Av = 1 - Av
+      call asm HkFlip
+    end if
+  end if
+  if Hon = 1 then
+    if Hx < Gx then
+      V2 = Gx - Hx
+      inc Hx
+      if V2 > 6 then inc Hx
+    end if
+    if Hx > Gx then
+      V2 = Hx - Gx
+      dec Hx
+      if V2 > 6 then dec Hx
+    end if
+    if Hy < Gy then
+      V2 = Gy - Hy
+      inc Hy
+      if V2 > 6 then inc Hy
+    end if
+    if Hy > Gy then
+      V2 = Hy - Gy
+      dec Hy
+      if V2 > 6 then dec Hy
+    end if
+    set sprite 0 to Hy,Hx,Av,1
+    update sprites
+  end if
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' RndK: Rv = INT(RND(1) * Rk)
+sub RndK(u8 Rk):
+  Rnd16
+  Uq = Rw
+  Uq2 = Rk
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+data TilePatG bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $00,$66,$DB,$24,$7E,$89,$42,$3C
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $20,$18,$4E,$AA,$9E,$7C,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $1C,$3E,$3E,$3E,$3E,$3E,$1C,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $00,$00,$00,$AA,$55,$00,$00,$00
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $23,$55,$5B,$C0,$6D,$29,$65,$1A
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $00,$1C,$36,$FF,$30,$1E,$00,$00
+  $18,$CF,$8D,$EF,$FF,$FF,$FF,$FF
+  $81,$C3,$E7,$FF,$FF,$FF,$FF,$FF
+  $FF,$7E,$3C,$3C,$3C,$3C,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TileColG bytes
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $7B,$7B,$7B,$7B,$7B,$7B,$7B,$7B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $2B,$2B,$2B,$2B,$2B,$2B,$2B,$2B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+end data
+
+data TilePatP bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TileColP bytes
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+end data
+
+data Enc bytes
+  152,152,152,152,152,152,152,152,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,212,212,212,212,212,212,212,212
+  128,129,130,131,132,133,134,135,209,209,209,209,209,209,209,209,208,208,208,208,208,208,208,208,216,216,216,216,216,216,216,216
+  128,129,130,131,132,133,134,135,207,207,207,207,207,207,207,207,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135
+  206,206,206,206,206,206,206,206,128,129,130,131,132,133,134,135,215,215,215,215,215,215,215,215,213,213,213,213,213,213,213,213
+  128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,214,214,214,214,214,214,214,214,211,211,211,211,211,211,211,211
+  128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135
+  128,129,130,131,132,133,134,135,217,217,217,217,217,217,217,217,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135
+  128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135
+  128,129,130,131,132,133,134,135,153,154,155,156,157,158,159,160,136,137,138,139,140,141,142,143,161,162,163,164,165,166,167,168
+  144,145,146,147,148,149,150,151,193,193,193,193,193,193,193,193,169,170,171,172,173,174,175,176,128,129,130,131,132,133,134,135
+  194,194,194,194,194,194,194,194,195,195,195,195,195,195,195,195,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192
+  128,129,130,131,132,133,134,135,218,218,218,218,218,218,218,218,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135
+  196,196,196,196,196,196,196,196,197,197,197,197,197,197,197,197,198,198,198,198,198,198,198,198,199,199,199,199,199,199,199,199
+  200,200,200,200,200,200,200,200,201,201,201,201,201,201,201,201,202,202,202,202,202,202,202,202,203,203,203,203,203,203,203,203
+  204,204,204,204,204,204,204,204,205,205,205,205,205,205,205,205,210,210,210,210,210,210,210,210,128,129,130,131,132,133,134,135
+  128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135,128,129,130,131,132,133,134,135
+end data
+
+data KindT bytes
+  32,32,32,32,32,32,32,32,34,34,34,34,34,34,34,34,36,36,36,36,36,36,36,36,0,33,33,33,33,33,33,33,33,35,35,35,35,35,35,35,35,38,38,38,38,38,38,38,38,42,42,42,42,42,42,42,42,43,43,43,43,43,43,43,43,37,40,41,48,49,50,51,52,53,54,55,56,57,12,9,6,5,58,19,3,15,18,14,7,25,45,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+
+data ColT bytes
+  0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,2,6,2,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+data FlipA bytes
+  $00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$00,$66,$DB,$24,$7E,$89,$42,$3C,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$20,$18,$4E,$AA,$9E,$7C,$18,$18,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data FlipB bytes
+  $81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$81,$66,$5A,$24,$7E,$52,$24,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$20,$18,$0E,$8A,$9E,$7C,$18,$18,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data SpritePat bytes
+  $99,$DB,$E7,$FF,$5A,$18,$24,$42,$18,$5A,$E7,$FF,$DB,$99,$24,$42
+end data
+
+data TxOver0 bytes 131,132,128,133,134,135,128,136,131,137,138,128,139,134,128,140,141,142,133
+data TxOver1 bytes 142,143,142,131,144,145,128,140,146,147,137,137,128,139,138,147,128,132,131,146,147,128
+data TxOver2 bytes 148,135,139,139,134,144,149
+data TxOver3 bytes 160,161,128,162,163,164,165,164,166,167,162,128,168,169,167,170,170,128,164,166,167
+data TxOver4 bytes 171,163,172,170,164,160,173,174,128,175,163,176,162,177
+data TxOver5 bytes 172,163,178,169,128,170,173,163,169,167,179
+data TxOver6 bytes 172,163,178,169,128,164,160,180,167,128,179
+data TxWon bytes 181,182,183,129,184,185,186,187,129,188,182,189,190
+data TxTitle bytes 191,192,193,194,195,196,197,130,198,199,130,200,201,197,200,202,201,197
+data VicCol bytes 1,15,8,7,13,2,4,11
+
+asm {
+HkThrum:
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01,$00,$00,$15,$01,$00,$00,$16,$01
+    db $00,$00,$15,$01,$00,$00,$16,$01,$10
+HkDive:
+    db $80,$71,$23,$02,$90
+HkClimb:
+    db $80,$42,$21,$02,$90
+HkStone:
+    db $40,$7B,$10,$01,$40,$61,$10,$01,$40,$4C,$10,$01,$40,$38,$10,$01,$50
+HkTongue:
+    db $C0,$54,$20,$01,$C0,$46,$20,$01,$C0,$38,$20,$01,$D0
+HkGulp:
+    db $40,$D5,$10,$04,$50
+HkCrash:
+    db $C0,$E0,$10,$01,$C0,$1F,$11,$01,$C0,$75,$11,$01,$C0,$F8,$11,$01,$D0
+
+HkSoundTable:
+    dw HkThrum,$702B
+    dw HkDive,$703F
+    dw HkClimb,$703F
+    dw HkStone,$7035
+    dw HkTongue,$7049
+    dw HkGulp,$7035
+    dw HkCrash,$7049
+    dw HkTuneMel,$703F
+    dw HkTuneBass,$7049
+; Wings over Dindrin, E minor (original for this game)
+; Tiny Sound, 7 frames per step
+HkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$17,$01,$01,$01,$1A,$01,$1E,$01,$23,$01,$01,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$01,$1E,$01,$1C,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01,$1C,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$01,$01
+    db $25,$01,$23,$01,$21,$01,$01,$01,$1E,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$01,$01,$21,$01,$1E,$01,$26,$01,$01,$01
+    db $25,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$1E,$01,$01,$01
+    db $00,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$1C,$01,$1A,$01,$01,$01
+    db $19,$01,$1A,$01,$17,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+HkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$01,$01,$01,$06,$01,$01,$01,$0B,$01,$01,$01
+    db $06,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$07,$01,$01,$01
+    db $0E,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$07,$01,$01,$01
+    db $0E,$01,$01,$01,$06,$01,$01,$01,$0D,$01,$01,$01,$06,$01,$01,$01
+    db $09,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$0B,$01,$01,$01
+    db $06,$01,$01,$01,$09,$01,$01,$01,$04,$01,$01,$01,$0E,$01,$01,$01
+    db $09,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$06,$01,$01,$01
+    db $0A,$01,$01,$01,$0B,$01,$01,$01,$06,$01,$01,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+HkSong:
+    dw $0001
+    db $40+8,9
+    dw $0000
+
+; HkLatch: read the VDP status (resets the address latch)
+HkLatch:
+    in a,($BF)
+    ret
+
+; HkBack: the backdrop (VDP register 7) to the colour V
+HkBack:
+    ld a,(AMY_UVAR_V)
+    out ($BF),a
+    ld a,$87
+    out ($BF),a
+    ret
+
+; HkCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+HkCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+HkCellDiv:
+    or a
+    sbc hl,de
+    jr c,HkCellRem
+    inc b
+    jr HkCellDiv
+HkCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; HkGet: Tp the tile at B, Kd Kc the VIC character and colour it stands for
+HkGet:
+    call HkCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Tp),a
+    cp 128
+    jr nc,HkGetT
+    ld a,32
+    ld (AMY_UVAR_Kd),a
+    xor a
+    ld (AMY_UVAR_Kc),a
+    ret
+HkGetT:
+    sub 128
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_KindT
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Kd),a
+    ld hl,AMY_UDATA_ColT
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Kc),a
+    ret
+
+; HkEnc: Tl the tile of the VIC character Ch in the colour Cl
+HkEnc:
+    ld a,(AMY_UVAR_Ch)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_Cl)
+    and 7
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,AMY_UDATA_Enc
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Tl),a
+    ret
+
+; HkPut: the VIC character Ch in the colour Cl at B (POKE B and its colour)
+HkPut:
+    call HkEnc
+    call HkCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+
+; HkColRange: the colour byte V for the Tcn tiles from Tcf (colour table)
+HkColRange:
+    ld a,(AMY_UVAR_Tcf)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$2000
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_Tcn)
+    add a,a
+    add a,a
+    add a,a
+    ld b,a
+    ld a,(AMY_UVAR_V)
+HkCrLoop:
+    out ($BE),a
+    nop
+    nop
+    nop
+    djnz HkCrLoop
+    ret
+
+; HkFlip: the floaters', lizards' (and the hawkman's blank cell's) view Av
+; into their tiles 136-152, in the three thirds (just after the wait)
+HkFlip:
+    ld a,(AMY_UVAR_Av)
+    or a
+    ld hl,AMY_UDATA_FlipA
+    jr z,HkFl1
+    ld hl,AMY_UDATA_FlipB
+HkFl1:
+    ld de,$0440
+    call HkFlW
+    ld de,$0C40
+    call HkFlW
+    ld de,$1440
+HkFlW:
+    push hl
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $40
+    out ($BF),a
+    ld b,136
+    ld c,$BE
+HkFlB:
+    outi
+    nop
+    nop
+    jr nz,HkFlB
+    pop hl
+    ret
+
+; FontTilesG / FontTilesP: each font character of the bank's table (third
+; 0 of the pattern table) copied into its tile, in the three thirds
+FontTilesG:
+    ld hl,FontTabG
+    jr FtNext
+FontTilesP:
+    ld hl,FontTabP
+FtNext:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    ld e,a
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    pop hl
+    ld b,8
+FtByte:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    ld c,a
+    push hl
+    call FtPut
+    ld a,h
+    add a,8
+    ld h,a
+    call FtPut
+    ld a,h
+    add a,8
+    ld h,a
+    call FtPut
+    pop hl
+    inc hl
+    inc de
+    djnz FtByte
+    pop hl
+    jr FtNext
+FtPut:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    nop
+    nop
+    ld a,c
+    out ($BE),a
+    ret
+FontTabG:
+    db 48,196,49,197,50,198,51,199,52,200,53,201,54,202,55,203,56,204,57,205,76,206,73,207,70,208,69,209,58,210,83,211,67,212,79,213,82,214,78,215,71,216,89,217,45,218,0
+FontTabP:
+    db 73,131,70,132,89,133,79,134,85,135,87,136,83,137,72,138,84,139,80,140,76,141,65,142,71,143,78,144,44,145,82,146,69,147,66,148,46,149,48,150,49,151,50,152,51,153,52,154,53,155,54,156,55,157,56,158,57,159,73,160,70,161,78,162,79,163,84,164,44,165,72,166,69,167,80,168,82,169,83,170,74,171,89,172,67,173,75,174,68,175,87,176,46,177,85,178,58,179,77,180,89,181,79,182,85,183,72,184,65,185,86,186,69,187,87,188,78,189,33,190,72,191,65,192,87,193,75,194,77,195,69,196,78,197,79,198,70,199,68,200,73,201,82,202,0
+}

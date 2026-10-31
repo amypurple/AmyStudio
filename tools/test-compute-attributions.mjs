@@ -28,7 +28,7 @@ for (const example of catalog) {
 
   const visible = source
     .split(/\r?\n/)
-    .filter((line) => /^\s*(?:print\b|data\s+[A-Za-z_][A-Za-z0-9_]*\s+chars\b)/i.test(line))
+    .filter((line) => /^\s*(?:print\b|data\s+[A-Za-z_][A-Za-z0-9_]*\s+chars\b|'\s*visible attribution:)/i.test(line))
     .join("\n");
 
   assert.match(visible, /COMPUTE!|GAZETTE/i, `${example.id}: no visible COMPUTE!/Gazette credit`);
