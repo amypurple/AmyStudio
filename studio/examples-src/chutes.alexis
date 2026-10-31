@@ -1,0 +1,1453 @@
+cartridge "CHUTES/MATT GIWER, COMPUTE!/1983"
+
+' CHUTES
+' The game by Matt Giwer from COMPUTE!, April 1983 (pages 86-90, "Chutes
+' For Atari"), for the ColecoVision in Amy by Amy Bienvenu. Ported by
+' Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: the Atari listing, transcribed in orig/chutes-atari.bas from the
+' scans beside it. The article was a lesson in the Atari's player/missile
+' size registers: three RAM-ships come down three chutes in perspective,
+' far-off dots at first, then players that widen (normal, double, then
+' quadruple width) as they near you.
+'
+' The game: you fly the ship at the bottom; the stick left and right moves
+' it from chute to chute (the three places 69, 109 and 149 of the
+' listing). Each wave is three RAM-ships, one per chute, starting at random
+' distances; dodge them until one has gone past you. A collision is an
+' explosion and a lost round. The ships come faster each level (a level
+' every five rounds); a won round scores twice the level. After 30 rounds
+' (level 7) comes the CONGRATULATIONS page with the session's high score,
+' then a new game.
+'
+' Controls (joystick 1): left and right change chutes, the button starts
+' each round. Keypad not used.
+'
+' The Atari's picture is kept to its own coordinates: its GRAPHICS 7 field
+' (160 x 80 points, each 1.4 x 2 pixels here) on the bitmap screen, columns
+' 2-29 and rows 0-18, the four-line text window below it (rows 19-22).
+' The players' places are the Atari's (Hx, Hy, Hz the horizontal places,
+' the vertical places POKEd at 1780-1783 and the size registers), shown by
+' four sprites; the collisions are worked out from the listing's shapes at
+' those places. Labels such as l4010 are the listing's line numbers. B, C
+' and D (the RAM-ships' distances) are kept plus 64 (Yb, Yc, Yd), so that
+' the listing's -59 start is 5.
+'
+' The collision register: the Atari latches a collision whenever the
+' players overlap on the screen, and the listing reads it once a pass
+' (line 4028). Here a pass checks your ship's new place against each
+' RAM-ship before and after its move (the screen showed both during the
+' pass): this is the article's "invisible anti-matter exhaust": the faster
+' a RAM-ship, the longer the stretch behind it you must not cut across.
+'
+' Liberties taken:
+' - Timing: a pass of the main loops is 3 frames (about Atari BASIC's
+'   speed), a pass of the explosion 4 frames, its two flashes 3 frames on
+'   and 2 off.
+' - The sprites are 8, 16 and 32 pixels wide (the Atari's 8, 16 and 32
+'   colour clocks, the field itself drawn 1.4 times wider), each pair of
+'   like lines of the listing's shapes one double-height dot row.
+' - The chutes and explosions are drawn behind the sprites (the listing
+'   put the playfield in front, POKE 623,8).
+' - " GAMES LOST" comes after two spaces instead of three, so that the line
+'   fits in 28 columns.
+' - The button must be let go before it starts a round (on the Atari a
+'   trigger held down went straight on).
+' - The Atari's lower case prints in capitals; text in the 5 x 7 font of
+'   games/hs.
+' - RND is a 16-bit xorshift, seeded by the time spent before the first
+'   round of a game.
+' - A credits page with an original tune ("Down the Chutes"), played once.
+' Quirks kept: the level goes up every five rounds won or lost; the 30th
+' round scores nothing even when won (line 8050 jumps first), and the high
+' score is only kept on reaching the CONGRATULATIONS page; there "YOUR
+' SCORE IS" and "HIGH SCORE IS" are printed in the colour of register 710,
+' black on black (POKE 710,0); a RAM-ship that hits you stops where it is;
+' erasing a far dot (COLOR 3) can cut a hole in the horizon or a chute
+' line.
+'
+' House rules kept: text in columns 2-29; the frame loop is protected from
+' the NMI and every screen is drawn with the NMI off after a wait.
+
+const NLines = 27
+const SprBytes = 128
+const SndBoomN = 1
+const SndBoomT = 2
+const SndBell = 3
+const SndTuneA = 4
+const SndTuneB = 5
+
+' --- the listing's variables ----------------------------------------------
+u8 Lev = 1
+u8 Gam = 1
+u8 Win = 0
+u16 Scr = 0
+u16 Hscr = 0
+u8 Jump = 0
+u8 Tmp = 0
+u8 Zzz = 0
+' B C D plus 64, BB CD DD (the players' rows once out of the dots), TEMPBY
+' TEMPCY TEMPDY plus 64
+u16 Yb = 0
+u16 Yc = 0
+u16 Yd = 0
+u16 Bs = 71
+u16 Cs = 71
+u16 Ds = 71
+u16 Tb = 63
+u16 Tc = 63
+u16 Td = 63
+' MVB MVC MVD, BC CC DC (the width corrections), A (your ship's place)
+u8 Mb = 2
+u8 Mc = 2
+u8 Md = 2
+u8 Ob = 0
+u8 Oc = 0
+u8 Od = 0
+u8 Ax = 109
+' the Atari's players: horizontal places (53248-53251), rows (1780-1783),
+' size registers (53256-53259)
+u8 Hx[4]
+u8 Hy[4]
+u8 Hz[4]
+' Hit: the collision register's bits (2, 4, 8), Ts TS, Ex EXPX
+u8 Hit = 0
+u8 Ts = 0
+u8 Ex = 0
+' the stick (1 left, 2 right, 0 anything else) and the random numbers
+u8 Sk = 0
+u16 Rs = $1D3B
+u16 Rs0 = 0
+u16 Rt = 0
+' for the test bot: Ph 1 the credits, 2 waiting to start a game, 3 a round,
+' 4 waiting after a round, 5 CONGRATULATIONS; Stp the passes
+u8 Ph = 0
+u8 Stp = 0
+u8 Tick = 0
+' the text window: 4 rows of 28 characters, the cursor
+u8 Tw[112]
+u8 Trow = 0
+u8 Tcol = 0
+' working variables
+u8 V = 0
+u8 W = 0
+u8 K = 0
+u8 J = 0
+u8 Jh = 0
+u8 Ci = 0
+u8 Cm = 0
+u8 Cb = 0
+u8 Pi = 0
+u8 Ri = 0
+u8 Fi = 0
+u8 Ei = 0
+u16 Cy = 0
+u16 Ce = 0
+u16 Pl = 0
+u16 Pr = 0
+u16 Al = 0
+u16 Ar = 0
+u16 W16 = 0
+u16 Nm = 0
+u8 Dg[5]
+u8 Nd = 0
+' the GRAPHICS 7 pen: Gx Gy the point, Pc 1 COLOR 1, 0 COLOR 3; Qx Qy the
+' pen, Rx Ry the DRAWTO's end
+u8 Gx = 0
+u8 Gy = 0
+u8 Pc = 1
+u8 Px = 0
+u8 Pe = 0
+u8 Py = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Rx = 0
+u8 Ry = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Dx = 0
+u8 Dy = 0
+u16 Nn = 0
+u16 Ra = 0
+u16 Ca = 0
+u16 Kk = 0
+' sprites
+u8 Sp = 0
+u8 Sw = 0
+u8 Sy8 = 0
+u8 Sx8 = 0
+' the text routine (text.asm)
+u8 ZRow = 0
+u8 ZCol = 0
+u8 ZClr = $E0
+u8 ZCh = 32
+u16 ZPtr = 0
+
+data TxPlease chars "PLEASE WAIT...{0}"
+data TxGame chars "GAME #{0}"
+data TxLevel chars "   LEVEL #{0}"
+data TxWon chars " GAMES WON {0}"
+data TxLost chars "  GAMES LOST {0}"
+data TxScore chars "     SCORE :{0}"
+data TxPress chars " PRESS TRIGGER TO START{0}"
+data TxC1 chars "  CONGRATULATIONS{0}"
+data TxC2 chars "   YOUR SCORE IS{0}"
+data TxC3 chars "        {0}"
+data TxC4 chars "   HIGH SCORE IS{0}"
+data TxC5 chars " PRESS TRIGGER FOR{0}"
+data TxC6 chars "   ANOTHER ROUND{0}"
+data TxK1 chars "C H U T E S{0}"
+data TxK2 chars "BY MATT GIWER, FROM{0}"
+data TxK3 chars "COMPUTE! APRIL 1983{0}"
+data TxK4 chars "(ATARI VERSION){0}"
+data TxK5 chars "COLECOVISION: CLAUDE (AN AI{0}"
+data TxK6 chars "BY ANTHROPIC), AMY STUDIO.{0}"
+data TxK7 chars "MUSIC: DOWN THE CHUTES.{0}"
+data TxK8 chars "STICK LEFT, RIGHT: CHUTES{0}"
+data TxK9 chars "PRESS THE BUTTON{0}"
+
+  bitmap screen
+  set sound table ChSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SprPat count SprBytes to vram.spr_pat
+  set sprite count 4
+  for J = 0 to 3
+    Hx[J] = 0
+    Hy[J] = 0
+    Hz[J] = 0
+  next
+  ShowSpr
+  backdrop black
+  screen on
+  nmi off
+
+l10:
+  CreditsPage
+l30:
+  ' 30: GOSUB 30000 (GRAPHICS 7), 30200 (players), 30400 (the chutes)
+  Setup
+  PmSetup
+  Chutes
+l31:
+  Lev = 1
+  Gam = 1
+  Win = 0
+  Scr = 0
+l32:
+  CrLf
+  CrLf
+  PrS(@TxGame)
+  PrN(Gam)
+  PrS(@TxLevel)
+  PrN(Lev)
+  CrLf
+  PrS(@TxWon)
+  PrN(Win)
+  PrS(@TxLost)
+  V = Gam - Win
+  V = V - 1
+  PrN(V)
+  CrLf
+  PrS(@TxPress)
+l35:
+  Ph = 2
+  WaitTrig
+  ' a new game's random numbers: the time waited
+  Rt = Tick
+  Rs = Rs ^ Rt
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $1D3B
+  Rs0 = Rs
+l8010:
+  V = Lev * 2
+  V = V + 1
+  Mb = V
+  Mc = V
+  Md = V
+l8040:
+  Ph = 3
+  Round
+  inc Gam
+  V = Gam / 5
+  Lev = V + 1
+  if Lev = 7 then goto l9000
+l8060:
+  if Jump = 0 then
+    inc Win
+    V = Lev * 2
+    Scr = Scr + V
+    goto l8082
+  end if
+l8069:
+  Setup
+  PmSetup
+  Chutes
+l8082:
+  CrLf
+  PrS(@TxGame)
+  PrN(Gam)
+  PrS(@TxLevel)
+  PrN(Lev)
+  CrLf
+  PrS(@TxWon)
+  PrN(Win)
+  PrS(@TxLost)
+  V = Gam - Win
+  V = V - 1
+  PrN(V)
+  CrLf
+  PrS(@TxScore)
+  PrN(Scr)
+  CrLf
+  PrS(@TxPress)
+  play sound SndBell
+  Ph = 4
+  WaitTrig
+  goto l8010
+
+l9000:
+  ' 9000-9090: the CONGRATULATIONS page (GRAPHICS 18), then a new game
+  for J = 0 to 3
+    Hx[J] = 0
+  next
+  ShowSpr
+  if Scr > Hscr then Hscr = Scr
+  Rearm
+  wait
+  nmi off
+  ClearBm
+  ' 20 columns of GRAPHICS 2 at columns 6-25, a row of it two rows here;
+  ' the colours of its four registers: 708 for capitals and digits
+  ' (orange), 710 for inverse capitals (0, black), 711 for inverse lower
+  ' case (29, light yellow)
+  ZClr = $A0
+  Say(1, @TxC1)
+  ZClr = $10
+  Say(5, @TxC2)
+  ZClr = $A0
+  Say(9, @TxC3)
+  PutNum(Scr)
+  ZClr = $10
+  Say(13, @TxC4)
+  ZClr = $A0
+  Say(17, @TxC3)
+  PutNum(Hscr)
+  ZClr = $B0
+  Say(21, @TxC5)
+  Say(22, @TxC6)
+  Ph = 5
+  WaitTrig
+  goto l30
+
+
+' --- 4000: a round ---------------------------------------------------------
+sub Round:
+  Stp = 0
+l4002:
+  Hz[0] = 3
+  Hy[0] = 184
+  Hx[0] = 109
+l6005:
+  ' 6000: the attack pattern, three dots far off coming down the chutes,
+  ' each a player once past row 20
+  Bs = 71
+  Cs = 71
+  Ds = 71
+  Tb = 63
+  Tc = 63
+  Td = 63
+  Tmp = Rn(3)
+  Jump = 0
+  if Tmp = 0 then
+    Yb = 5
+    V = Rn(20)
+    Yc = 25 + V
+    V = Rn(40)
+    Yd = 15 + V
+  end if
+  if Tmp = 1 then
+    Yc = 5
+    V = Rn(30)
+    Yb = 21 + V
+    V = Rn(20)
+    Yd = 31 + V
+  end if
+  if Tmp = 2 then
+    Yd = 5
+    V = Rn(20)
+    Yb = 25 + V
+    V = Rn(30)
+    Yc = 15 + V
+  end if
+  Hz[0] = 3
+  Hy[0] = 184
+  Hx[0] = 109
+  Ax = 109
+  ShowSpr
+l6045:
+  inc Stp
+  Pace(3)
+  if Sk = 1 then
+    if Ax <> 69 then Ax = Ax - 40
+  end if
+  if Sk = 2 then
+    if Ax <> 149 then Ax = Ax + 40
+  end if
+  Hx[0] = Ax
+l6049:
+  ' COLOR 3: the dots' last places erased (TRAP: none above the field)
+  Pc = 0
+  Gx = 76
+  W16 = Tb
+  DotAt
+  Gx = 80
+  W16 = Tc
+  DotAt
+  Gx = 84
+  W16 = Td
+  DotAt
+  Pc = 1
+l6069:
+  if Yb > 84 then
+    Bs = Bs + Mb
+    Hy[1] = Bs
+    K = Bs - 71
+    Hx[1] = 119 - Ru[K]
+  else
+    Yb = Yb + Mb
+    Gx = 76
+    W16 = Yb
+    DotAt
+    Tb = Yb
+  end if
+l6079:
+  if Yc > 84 then
+    Cs = Cs + Mc
+    Hy[2] = Cs
+    Hx[2] = 123
+  else
+    Yc = Yc + Mc
+    Gx = 80
+    W16 = Yc
+    DotAt
+    Tc = Yc
+  end if
+l6089:
+  if Yd > 84 then
+    Ds = Ds + Md
+    Hy[3] = Ds
+    K = Ds - 71
+    Hx[3] = 129 + Rd[K]
+  else
+    Yd = Yd + Md
+    Gx = 84
+    W16 = Yd
+    DotAt
+    Td = Yd
+  end if
+  ShowSpr
+l6100:
+  if Yb <= 84 then goto l6045
+  if Yc <= 84 then goto l6045
+  if Yd <= 84 then goto l6045
+l4003:
+  Yb = Bs + 64
+  Yc = Cs + 64
+  Yd = Ds + 64
+l4010:
+  inc Stp
+  Pace(3)
+  if Sk = 1 then
+    if Ax <> 69 then Ax = Ax - 40
+  end if
+  if Sk = 2 then
+    if Ax <> 149 then Ax = Ax + 40
+  end if
+  Hx[0] = Ax
+  ' the collision register: your ship at its new place against the
+  ' RAM-ships where they are, then where they go
+  Hit = 0
+  Coll
+l4020:
+  Yb = Yb + Mb
+  Yc = Yc + Mc
+  Yd = Yd + Md
+  MoveB
+  MoveC
+  MoveD
+l4026:
+  if Yb > 319 then goto l4026r
+  if Yc > 319 then goto l4026r
+  if Yd > 319 then goto l4026r
+  if Jump = 1 then goto l4030
+  Coll
+l4028:
+  if Hit <> 0 then Boom
+l4029:
+  if Yb > 319 then goto l4026r
+  if Yc > 319 then goto l4026r
+  if Yd > 319 then goto l4026r
+l4030:
+  Sizes
+  ShowSpr
+  goto l4010
+l4026r:
+  NoSize
+l4985:
+  for J = 0 to 3
+    Hx[J] = 0
+  next
+  ShowSpr
+  return
+end sub
+
+' 4021, 4023, 4025 (and 5031-5035): a RAM-ship's row and place, unless it
+' is past 255
+sub MoveB:
+  if Yb > 319 then return
+  W16 = Yb - 64
+  Hy[1] = W16
+  W16 = Yb - 135
+  K = W16
+  V = 119 - Ru[K]
+  Hx[1] = V - Ob
+  return
+end sub
+
+sub MoveC:
+  if Yc > 319 then return
+  W16 = Yc - 64
+  Hy[2] = W16
+  Hx[2] = 123 - Oc
+  return
+end sub
+
+sub MoveD:
+  if Yd > 319 then return
+  W16 = Yd - 64
+  Hy[3] = W16
+  W16 = Yd - 135
+  K = W16
+  V = 129 + Rd[K]
+  Hx[3] = V - Od
+  return
+end sub
+
+' 4030-4040 (5038-5043): the widths, double past row 100, quadruple past
+' 150
+sub Sizes:
+  if Yb > 164 then
+    if Yb <= 214 then
+      Hz[1] = 1
+      Ob = 4
+    end if
+  end if
+  if Yb > 214 then
+    Hz[1] = 3
+    Ob = 16
+  end if
+  if Yc > 164 then
+    if Yc <= 214 then
+      Hz[2] = 1
+      Oc = 4
+    end if
+  end if
+  if Yc > 214 then
+    Hz[2] = 3
+    Oc = 16
+  end if
+  if Yd > 164 then
+    if Yd <= 214 then
+      Hz[3] = 1
+      Od = 4
+    end if
+  end if
+  if Yd > 214 then
+    Hz[3] = 3
+    Od = 16
+  end if
+  return
+end sub
+
+sub NoSize:
+  Hz[1] = 0
+  Hz[2] = 0
+  Hz[3] = 0
+  Ob = 0
+  Oc = 0
+  Od = 0
+  return
+end sub
+
+' --- 5000: the explosion -----------------------------------------------------
+sub Boom:
+l5002:
+  if Hit = 2 then
+    Mb = 0
+    Ts = 1
+    Ex = 41
+  end if
+  if Hit = 4 then
+    Mc = 0
+    Ts = 2
+    Ex = 79
+  end if
+  if Hit = 8 then
+    Md = 0
+    Ts = 3
+    Ex = 119
+  end if
+  Jump = 1
+l5007:
+  ' two flashes of the background (710 and 712 to 15) and the noise
+  for Fi = 1 to 2
+    backdrop white
+    play sound SndBoomN
+    play sound SndBoomT
+    Hold(3)
+    backdrop black
+    Hold(2)
+  next
+l5010:
+  ' eleven lines from the collision up into the field, the others coming on
+  for Ei = 0 to 10
+    Qx = Ex
+    Qy = 79
+    Gx = Qx
+    Gy = Qy
+    Plot7
+    V = Rn(20)
+    Rx = Ex + V
+    Rx = Rx - 10
+    V = Rn(20)
+    Ry = 79 - V
+    Draw7
+    play sound SndBoomN
+    play sound SndBoomT
+    Yb = Yb + Mb
+    Yc = Yc + Mc
+    Yd = Yd + Md
+    MoveB
+    MoveC
+    MoveD
+    if Yb > 319 then goto l5036
+    if Yc > 319 then goto l5036
+    if Yd > 319 then goto l5036
+    Sizes
+    ShowSpr
+    inc Stp
+    Hold(4)
+  next
+  goto l5095
+l5036:
+  NoSize
+l5095:
+  Hy[1] = 0
+  Hy[2] = 0
+  Hy[3] = 0
+  ShowSpr
+  return
+end sub
+
+' Coll: the collision register's bits for your ship (at Ax, rows 184-191,
+' four times as wide) against each RAM-ship as it is now, from the
+' listing's shapes (8,8,8,8,28,28,62,62 and 20,62,62,28,28,8)
+sub Coll:
+  for Ci = 1 to 3
+    Cy = Hy[Ci]
+    Ce = Cy + 5
+    if Cy < 184 then Cy = 184
+    if Ce > 191 then Ce = 191
+    if Cy > Ce then goto co_next
+    Cm = 1
+    if Hz[Ci] = 1 then Cm = 2
+    if Hz[Ci] = 3 then Cm = 4
+    Cb = 2
+    if Ci = 2 then Cb = 4
+    if Ci = 3 then Cb = 8
+co_row:
+    W16 = Cy - 184
+    Pi = W16
+    V = PlL[Pi]
+    Pl = V * 4
+    Pl = Pl + Ax
+    V = PlR[Pi]
+    Pr = V * 4
+    Pr = Pr + Ax
+    Pr = Pr + 3
+    W16 = Cy - Hy[Ci]
+    Ri = W16
+    if Ri = 0 then
+      ' the two points of the first line (20: columns 3 and 5)
+      V = 3
+      W = 3
+      Ovl
+      V = 5
+      W = 5
+      Ovl
+    else
+      V = AtL[Ri]
+      W = AtR[Ri]
+      Ovl
+    end if
+    inc Cy
+    if Cy <= Ce then goto co_row
+co_next:
+  next
+  return
+end sub
+
+' Ovl: columns V-W of RAM-ship Ci (Cm wide each) against Pl-Pr
+sub Ovl:
+  Al = V * Cm
+  Al = Al + Hx[Ci]
+  Ar = W + 1
+  Ar = Ar * Cm
+  Ar = Ar + Hx[Ci]
+  Ar = Ar - 1
+  if Al > Pr then return
+  if Pl > Ar then return
+  Hit = Hit | Cb
+  return
+end sub
+
+' --- the screen ----------------------------------------------------------------
+' ShowSpr: the four players as sprites (0 your ship, 1-3 the RAM-ships):
+' the Atari's place to a pixel (the middle of the player kept), the row
+' less 40 (row 0 of the field is the Atari's line 40)
+sub ShowSpr:
+  for J = 0 to 3
+    if Hx[J] = 0 then goto ss_hide
+    V = Hy[J]
+    if V >= 232 then goto ss_hide
+    if V < 33 then goto ss_hide
+    Sy8 = V - 41
+    Cm = 1
+    if Hz[J] = 1 then Cm = 2
+    if Hz[J] = 3 then Cm = 4
+    Sw = Cm * 4
+    V = Hx[J] + Sw
+    V = V - 48
+    Sx8 = X7[V]
+    Sx8 = Sx8 - Sw
+    if J = 0 then
+      set sprite 0 to Sy8,Sx8,0,7
+    else
+      Sp = 4
+      if Cm = 2 then Sp = 8
+      if Cm = 4 then Sp = 12
+      K = 3
+      if J = 2 then K = 9
+      if J = 3 then K = 5
+      set sprite J to Sy8,Sx8,Sp,K
+    end if
+    goto ss_next
+ss_hide:
+    set sprite J to 192,0,0,0
+ss_next:
+  next
+  update sprites
+  return
+end sub
+
+' DotAt: PLOT Gx, W16 - 64 (nothing above the field)
+sub DotAt:
+  if W16 < 64 then return
+  W16 = W16 - 64
+  if W16 > 79 then return
+  Gy = W16
+  Plot7
+  return
+end sub
+
+' Plot7: the GRAPHICS 7 point Gx,Gy, 1.4 x 2 pixels, in COLOR 1 (Pc 1) or
+' COLOR 3 (black); the field's first four rows are above the screen
+sub Plot7:
+  if Gx > 159 then return
+  if Gy < 4 then return
+  if Gy > 79 then return
+  Py = Gy * 2
+  Py = Py - 8
+  Px = X7[Gx]
+  K = Gx + 1
+  Pe = X7[K]
+pl_x:
+  call asm ChPix
+  inc Py
+  call asm ChPix
+  dec Py
+  inc Px
+  if Px < Pe then goto pl_x
+  return
+end sub
+
+' Draw7: DRAWTO Rx,Ry from the pen Qx,Qy, the Atari's way (the longer
+' side a point a step, the other through a counter started at half)
+sub Draw7:
+  if Rx >= Qx then
+    Dx = Rx - Qx
+    Sx = 1
+  else
+    Dx = Qx - Rx
+    Sx = 255
+  end if
+  if Ry >= Qy then
+    Dy = Ry - Qy
+    Sy = 1
+  else
+    Dy = Qy - Ry
+    Sy = 255
+  end if
+  Nn = Dx
+  if Dy > Dx then Nn = Dy
+  if Nn = 0 then return
+  Ra = Nn >> 1
+  Ca = Ra
+  Kk = Nn
+dr_step:
+  Ra = Ra + Dy
+  if Ra >= Nn then
+    Ra = Ra - Nn
+    Qy = Qy + Sy
+  end if
+  Ca = Ca + Dx
+  if Ca >= Nn then
+    Ca = Ca - Nn
+    Qx = Qx + Sx
+  end if
+  Gx = Qx
+  Gy = Qy
+  Plot7
+  dec Kk
+  if Kk <> 0 then goto dr_step
+  return
+end sub
+
+' 30400: the chutes (COLOR 1), the listing's PLOTs and DRAWTOs
+sub Chutes:
+  Pc = 1
+  for J = 0 to 26
+    K = J * 4
+    Qx = Lines[K]
+    inc K
+    Qy = Lines[K]
+    inc K
+    Rx = Lines[K]
+    inc K
+    Ry = Lines[K]
+    Gx = Qx
+    Gy = Qy
+    Plot7
+    Draw7
+  next
+  return
+end sub
+
+'ClearBm: the bitmap's points cleared, its colours white on clear
+sub ClearBm:
+  fill 0 count 6144 to vram.pattern
+  fill $F0 count 6144 to vram.color
+  return
+end sub
+
+' 30000: GRAPHICS 7 (the field and the text window cleared)
+sub Setup:
+  Rearm
+  wait
+  nmi off
+  ClearBm
+  for J = 0 to 111
+    Tw[J] = 32
+  next
+  Trow = 0
+  Tcol = 0
+  Mb = 2
+  Mc = 2
+  Md = 2
+  return
+end sub
+
+' 30200: the players' sizes back to normal; the first time, "Please
+' Wait..." while the Atari cleared its player memory
+sub PmSetup:
+  Hz[0] = 0
+  Hz[1] = 0
+  Hz[2] = 0
+  Hz[3] = 0
+  ShowSpr
+  if Zzz = 0 then
+    PrS(@TxPlease)
+    CrLf
+    Hold(120)
+    Zzz = 1
+  end if
+  return
+end sub
+
+' --- the text window (rows 19-22) ------------------------------------------
+sub PutC(u8 Ch):
+  if Tcol >= 28 then return
+  V = Trow * 28
+  V = V + Tcol
+  Tw[V] = Ch
+  ZRow = Trow + 19
+  ZCol = Tcol + 2
+  ZCh = Ch
+  ZClr = $E0
+  call asm ZPutCh
+  inc Tcol
+  return
+end sub
+
+sub CrLf:
+  Tcol = 0
+  inc Trow
+  if Trow < 4 then return
+  Trow = 3
+  for J = 0 to 83
+    K = J + 28
+    Tw[J] = Tw[K]
+  next
+  for J = 84 to 111
+    Tw[J] = 32
+  next
+  ZClr = $E0
+  K = 0
+  for Jh = 19 to 22
+    ZRow = Jh
+    ZCol = 2
+    for J = 0 to 27
+      ZCh = Tw[K]
+      call asm ZPutCh
+      inc K
+    next
+  next
+  return
+end sub
+
+sub PrS(u16 Ad):
+ps_next:
+  V = peek(Ad)
+  if V = 0 then return
+  PutC(V)
+  inc Ad
+  goto ps_next
+end sub
+
+' PrN: a number as Atari BASIC prints it (no leading space or zeros)
+sub PrN(u16 N):
+  Nm = N
+  Digits
+pn_put:
+  dec Nd
+  V = Dg[Nd] + 48
+  PutC(V)
+  if Nd <> 0 then goto pn_put
+  return
+end sub
+
+sub Digits:
+  Nd = 0
+dg_div:
+  W16 = Nm % 10
+  Dg[Nd] = W16
+  inc Nd
+  Nm = Nm / 10
+  if Nm <> 0 then goto dg_div
+  return
+end sub
+
+' Say: a zero-ended text at row R from column 6 (the CONGRATULATIONS page),
+' PutNum the number after it
+sub Say(u8 R, u16 Ad):
+  SayAt(6, R, Ad)
+  return
+end sub
+
+sub SayAt(u8 C, u8 R, u16 Ad):
+  ZRow = R
+  ZCol = C
+sa_next:
+  V = peek(Ad)
+  if V = 0 then return
+  ZCh = V
+  call asm ZPutCh
+  inc Ad
+  goto sa_next
+end sub
+
+sub PutNum(u16 N):
+  Nm = N
+  Digits
+pu_put:
+  dec Nd
+  V = Dg[Nd] + 48
+  ZCh = V
+  call asm ZPutCh
+  if Nd <> 0 then goto pu_put
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 1
+  Rearm
+  wait
+  nmi off
+  ClearBm
+  ZClr = $A0
+  SayAt(10, 3, @TxK1)
+  ZClr = $F0
+  SayAt(4, 7, @TxK2)
+  SayAt(4, 8, @TxK3)
+  SayAt(4, 9, @TxK4)
+  ZClr = $E0
+  SayAt(2, 12, @TxK5)
+  SayAt(2, 13, @TxK6)
+  SayAt(2, 14, @TxK7)
+  ZClr = $70
+  SayAt(2, 17, @TxK8)
+  ZClr = $B0
+  SayAt(8, 21, @TxK9)
+  ' the three RAM-ships and your ship
+  set sprite 0 to 150,112,0,7
+  set sprite 1 to 40,60,12,3
+  set sprite 2 to 40,112,12,9
+  set sprite 3 to 40,164,12,5
+  update sprites
+  play song ChSong once
+  WaitTrig
+  stop song
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' --- frames, the stick, the button -----------------------------------------
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Hold(u8 N):
+  for Jh = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+' Pace: N frames, then the stick as STICK(0) = 11 (left alone) or 7 (right
+' alone)
+sub Pace(u8 N):
+  for Jh = 1 to N
+    Frame1
+  next
+  Sk = 0
+  V = 0
+  if joypad(1).up then V = 1
+  if joypad(1).down then V = 1
+  if V = 1 then return
+  if joypad(1).left then
+    if joypad(1).right then return
+    Sk = 1
+  end if
+  if joypad(1).right then
+    if joypad(1).left then return
+    Sk = 2
+  end if
+  return
+end sub
+
+' WaitTrig: the button let go, then pressed
+sub WaitTrig:
+wt_up:
+  Frame1
+  V = joypad(1).button1 | joypad(1).button2
+  if V = 1 then goto wt_up
+wt_down:
+  Frame1
+  V = joypad(1).button1 | joypad(1).button2
+  if V = 0 then goto wt_down
+  return
+end sub
+
+' Rnd(N): INT(RND(0)*N), from a 16-bit xorshift
+function Rn(u8 N) as u8
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  V = highbyte Rs
+  W16 = V * N
+  V = highbyte W16
+  return V
+
+data SprPat bytes
+  0,0,3,15,0,0,0,0,0,0,0,0,0,0,0,0
+  192,192,240,252,0,0,0,0,0,0,0,0,0,0,0,0
+  96,112,96,32,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  20,62,28,8,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  3,15,3,0,0,0,0,0,0,0,0,0,0,0,0,0
+  48,252,240,192,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data X7 bytes
+  16,17,18,20,21,23,24,25,27,28,30,31,32,34,35,37
+  38,39,41,42,44,45,46,48,49,51,52,53,55,56,58,59
+  60,62,63,65,66,67,69,70,72,73,74,76,77,79,80,81
+  83,84,86,87,88,90,91,93,94,95,97,98,100,101,102,104
+  105,107,108,109,111,112,114,115,116,118,119,121,122,123,125,126
+  128,129,130,132,133,135,136,137,139,140,142,143,144,146,147,149
+  150,151,153,154,156,157,158,160,161,163,164,165,167,168,170,171
+  172,174,175,177,178,179,181,182,184,185,186,188,189,191,192,193
+  195,196,198,199,200,202,203,205,206,207,209,210,212,213,214,216
+  217,219,220,221,223,224,226,227,228,230,231,233,234,235,237,238
+  240
+end data
+data Ru bytes
+  0,0,1,1,1,1,2,2,2,3,3,3,3,4,4,4
+  5,5,5,6,6,6,6,7,7,7,8,8,8,8,9,9
+  9,10,10,10,10,11,11,11,12,12,12,12,13,13,13,14
+  14,14,14,15,15,15,16,16,16,17,17,17,17,18,18,18
+  19,19,19,19,20,20,20,21,21,21,21,22,22,22,23,23
+  23,23,24,24,24,25,25,25,26,26,26,26,27,27,27,28
+  28,28,28,29,29,29,30,30,30,30,31,31,31,32,32,32
+  32,33,33,33,34,34,34,35,35,35,35,36,36,36,37,37
+  37,37,38,38,38,39,39,39,39,40,40,40,41,41,41,41
+  42,42,42,43,43,43,43,44,44,44,45,45,45,46,46,46
+  46,47,47,47,48,48,48,48,49,49,49,50,50,50,50,51
+  51,51,52,52,52,52,53,53,53,54,54,54,55,55,55,55
+  56,56,56,57,57,57,57,58
+end data
+data Rd bytes
+  0,0,1,1,1,1,2,2,2,3,3,3,3,4,4,4
+  5,5,5,6,6,6,6,7,7,7,8,8,8,8,9,9
+  9,10,10,10,10,11,11,11,12,12,12,12,13,13,13,14
+  14,14,15,15,15,15,16,16,16,17,17,17,17,18,18,18
+  19,19,19,19,20,20,20,21,21,21,21,22,22,22,23,23
+  23,23,24,24,24,25,25,25,26,26,26,26,27,27,27,28
+  28,28,28,29,29,29,30,30,30,30,31,31,31,32,32,32
+  32,33,33,33,34,34,34,35,35,35,35,36,36,36,37,37
+  37,37,38,38,38,39,39,39,39,40,40,40,41,41,41,41
+  42,42,42,43,43,43,44,44,44,44,45,45,45,46,46,46
+  46,47,47,47,48,48,48,48,49,49,49,50,50,50,50,51
+  51,51,52,52,52,52,53,53,53,54,54,54,55,55,55,55
+  56,56,56,57,57,57,57,58
+end data
+data Lines bytes
+  78,20,78,0
+  82,20,82,0
+  74,20,74,0
+  86,20,86,0
+  0,0,74,0
+  0,5,74,5
+  0,10,74,10
+  0,15,74,15
+  86,0,159,0
+  86,5,159,5
+  86,10,159,10
+  86,15,159,15
+  0,20,159,20
+  78,20,60,79
+  82,20,100,79
+  74,20,20,79
+  86,20,140,79
+  70,20,0,59
+  90,20,159,59
+  66,20,0,39
+  94,20,159,39
+  72,20,0,75
+  88,20,159,75
+  68,20,0,49
+  92,20,159,49
+  64,20,0,29
+  96,20,159,29
+end data
+data PlL bytes 4,4,4,4,3,3,2,2
+data PlR bytes 4,4,4,4,5,5,6,6
+data AtL bytes 3,2,2,3,3,4
+data AtR bytes 5,6,6,5,5,4
+
+asm {
+ChBoomN:
+    db $00,$00,$06,$03,$10
+ChBoomT:
+    db $40,$71,$03,$03,$50
+ChBell:
+    db $40,$5D,$10,$02,$40,$FF,$F3,$02,$40,$5D,$10,$02,$40,$FF,$F3,$02,$40,$5D,$20,$02,$50
+
+ChSoundTable:
+    dw ChBoomN,$702B
+    dw ChBoomT,$7035
+    dw ChBell,$7035
+    dw ChTuneMel,$703F
+    dw ChTuneBass,$7049
+; Down the Chutes, E minor (original for this game)
+; Tiny Sound, 7 frames per step
+ChTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$23,$01,$01,$01,$21,$01,$1E,$01,$01,$01,$1A,$01
+    db $1C,$01,$1E,$01,$1F,$01,$01,$01,$1E,$01,$1C,$01,$01,$01,$19,$01
+    db $1A,$01,$1C,$01,$1E,$01,$01,$01,$1C,$01,$1A,$01,$01,$01,$17,$01
+    db $19,$01,$1A,$01,$19,$01,$17,$01,$16,$01,$17,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01,$1A,$01,$1E,$01,$23,$01,$01,$01,$21,$01,$1F,$01
+    db $1E,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$01,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$19,$01,$1C,$01,$1F,$01,$1E,$01,$1C,$01,$1A,$01
+    db $19,$01,$01,$01,$17,$01,$1A,$01,$1E,$01,$23,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ChTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$01,$0B,$01,$06,$01,$06,$01,$0B,$01,$0B,$01
+    db $06,$01,$06,$01,$04,$01,$04,$01,$0B,$01,$0B,$01,$09,$01,$09,$01
+    db $04,$01,$04,$01,$0E,$01,$0E,$01,$09,$01,$09,$01,$07,$01,$07,$01
+    db $0E,$01,$0E,$01,$06,$01,$06,$01,$0D,$01,$0D,$01,$06,$01,$01,$01
+    db $00,$01,$01,$01,$0B,$01,$0B,$01,$06,$01,$06,$01,$0B,$01,$0B,$01
+    db $0E,$01,$0E,$01,$04,$01,$04,$01,$07,$01,$07,$01,$0E,$01,$0E,$01
+    db $06,$01,$06,$01,$09,$01,$09,$01,$04,$01,$04,$01,$06,$01,$06,$01
+    db $0A,$01,$0A,$01,$0B,$01,$06,$01,$0B,$01,$06,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+ChSong:
+    dw $0001
+    db $40+4,5
+    dw $0000
+; ---------------------------------------------------------------------------
+; Text on the bitmap screen (after games/hs/ztext.asm): character ZCh at
+; cell ZCol,ZRow (pattern at row*256 + col*8, colour at $2000 + the same),
+; colour byte ZClr; the font is ChFont (characters 32-95, art.py)
+; ---------------------------------------------------------------------------
+ZCellAddr:
+    ld a,(AMY_UVAR_ZRow)
+    ld h,a
+    ld a,(AMY_UVAR_ZCol)
+    add a,a
+    add a,a
+    add a,a
+    ld l,a
+    ret
+
+; HL = 8 pattern bytes for the current cell, then its colour
+ZPut8:
+    push hl
+    call ZCellAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld b,8
+zp8_p:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz zp8_p
+    call ZCellAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    ld a,(AMY_UVAR_ZClr)
+    ld b,8
+zp8_c:
+    out ($BE),a
+    nop
+    nop
+    djnz zp8_c
+    ld hl,AMY_UVAR_ZCol
+    inc (hl)
+    ret
+
+ZPutCh:
+    ld a,(AMY_UVAR_ZCh)
+    sub 32
+    jr nc,zpc_ok
+    xor a
+zpc_ok:
+    cp 64
+    jr c,zpc_in
+    ld a,31
+zpc_in:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,ChFont
+    add hl,de
+    jp ZPut8
+
+; the zero-ended string at ZPtr
+ZPrint:
+    ld hl,(AMY_UVAR_ZPtr)
+zpr_loop:
+    ld a,(hl)
+    or a
+    ret z
+    ld (AMY_UVAR_ZCh),a
+    push hl
+    call ZPutCh
+    pop hl
+    inc hl
+    jr zpr_loop
+
+; ---------------------------------------------------------------------------
+; ChPix: the pixel Px,Py set (Pc 1, colour byte $A0 there) or cleared (Pc 0)
+; ---------------------------------------------------------------------------
+ChPix:
+    ld a,(AMY_UVAR_Py)
+    ld c,a
+    rrca
+    rrca
+    rrca
+    and $1F
+    ld h,a
+    ld a,(AMY_UVAR_Px)
+    and $F8
+    ld l,a
+    ld a,c
+    and 7
+    or l
+    ld l,a              ; HL = pattern address
+    ld a,(AMY_UVAR_Px)
+    and 7
+    ld b,a
+    ld a,$80
+    jr z,cp_m
+cp_sh:
+    rrca
+    djnz cp_sh
+cp_m:
+    ld e,a              ; E = the pixel's bit
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld d,a
+    ld a,(AMY_UVAR_Pc)
+    or a
+    jr z,cp_clr
+    ld a,d
+    or e
+    jr cp_put
+cp_clr:
+    ld a,e
+    cpl
+    and d
+cp_put:
+    ld d,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,d
+    out ($BE),a
+    ld a,(AMY_UVAR_Pc)
+    or a
+    ret z
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,$A0
+    out ($BE),a
+    ret
+; the 5 x 7 font, characters 32-95 (art.py)
+ChFont:
+    db $00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$10,$10,$10,$10,$10,$00,$10
+    db $00,$28,$28,$00,$00,$00,$00,$00
+    db $00,$28,$28,$7C,$28,$7C,$28,$28
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$60,$64,$08,$10,$20,$4C,$0C
+    db $00,$30,$48,$50,$20,$54,$48,$34
+    db $00,$10,$10,$20,$00,$00,$00,$00
+    db $00,$08,$10,$20,$20,$20,$10,$08
+    db $00,$20,$10,$08,$08,$08,$10,$20
+    db $00,$00,$54,$38,$7C,$38,$54,$00
+    db $00,$00,$10,$10,$7C,$10,$10,$00
+    db $00,$00,$00,$00,$00,$30,$10,$20
+    db $00,$00,$00,$00,$7C,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$30,$30
+    db $00,$04,$04,$08,$10,$20,$40,$40
+    db $00,$38,$44,$4C,$54,$64,$44,$38
+    db $00,$10,$30,$10,$10,$10,$10,$38
+    db $00,$38,$44,$04,$08,$10,$20,$7C
+    db $00,$7C,$08,$10,$08,$04,$44,$38
+    db $00,$08,$18,$28,$48,$7C,$08,$08
+    db $00,$7C,$40,$78,$04,$04,$44,$38
+    db $00,$18,$20,$40,$78,$44,$44,$38
+    db $00,$7C,$04,$08,$10,$20,$20,$20
+    db $00,$38,$44,$44,$38,$44,$44,$38
+    db $00,$38,$44,$44,$3C,$04,$08,$30
+    db $00,$00,$30,$30,$00,$30,$30,$00
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$08,$10,$20,$40,$20,$10,$08
+    db $00,$00,$00,$7C,$00,$7C,$00,$00
+    db $00,$20,$10,$08,$04,$08,$10,$20
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$44,$7C,$44,$44,$44
+    db $00,$78,$44,$44,$78,$44,$44,$78
+    db $00,$38,$44,$40,$40,$40,$44,$38
+    db $00,$78,$44,$44,$44,$44,$44,$78
+    db $00,$7C,$40,$40,$78,$40,$40,$7C
+    db $00,$7C,$40,$40,$78,$40,$40,$40
+    db $00,$38,$44,$40,$5C,$44,$44,$3C
+    db $00,$44,$44,$44,$7C,$44,$44,$44
+    db $00,$38,$10,$10,$10,$10,$10,$38
+    db $00,$1C,$08,$08,$08,$08,$48,$30
+    db $00,$44,$48,$50,$60,$50,$48,$44
+    db $00,$40,$40,$40,$40,$40,$40,$7C
+    db $00,$44,$6C,$54,$54,$44,$44,$44
+    db $00,$44,$64,$54,$4C,$44,$44,$44
+    db $00,$38,$44,$44,$44,$44,$44,$38
+    db $00,$78,$44,$44,$78,$40,$40,$40
+    db $00,$38,$44,$44,$44,$54,$48,$34
+    db $00,$78,$44,$44,$78,$50,$48,$44
+    db $00,$3C,$40,$40,$38,$04,$04,$78
+    db $00,$7C,$10,$10,$10,$10,$10,$10
+    db $00,$44,$44,$44,$44,$44,$44,$38
+    db $00,$44,$44,$44,$44,$44,$28,$10
+    db $00,$44,$44,$44,$54,$54,$54,$28
+    db $00,$44,$44,$28,$10,$28,$44,$44
+    db $00,$44,$44,$28,$10,$10,$10,$10
+    db $00,$7C,$04,$08,$10,$20,$40,$7C
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+    db $00,$38,$44,$04,$08,$10,$00,$10
+}

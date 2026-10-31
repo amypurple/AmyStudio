@@ -6823,5 +6823,48 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "matchem",
+    "label": "TI-99 Match-Em (April 1983)",
+    "detail": "C. Regena's COMPUTE! TI-99/4A concentration game, preserving its sixteen lettered squares, eight hidden pairs, try counter and original matching quirks.",
+    "projectName": "TI-99 Match-Em",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "memory",
+      "ti-99-4a",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "chutes",
+    "label": "Chutes (April 1983)",
+    "detail": "Matt Giwer's COMPUTE! perspective-dodging game, preserving its three descending chutes, approaching RAM-ships, thirty rounds, levels and scoring.",
+    "projectName": "Chutes",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "perspective",
+      "atari",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];
