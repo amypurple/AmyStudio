@@ -949,7 +949,14 @@ ShowText(@Greeting)
 ```
 
 `@Label` is an address, not a byte value, and is therefore rejected for `u8` or
-`i8` parameters. Direct string-literal routine arguments are not supported.
+`i8` parameters. It may also be assigned directly to a `u16` or `i16` pointer:
+
+```basic
+u16 MessageAddress = 0
+MessageAddress = @Greeting
+```
+
+Direct string-literal routine arguments are not supported.
 
 Behavior:
 - `end sub` closes the current subroutine explicitly

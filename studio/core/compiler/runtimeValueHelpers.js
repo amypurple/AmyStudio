@@ -476,6 +476,10 @@ export function createRuntimeValueHelpers({
 
   function emitLoadInt16IntoHL(token, preferredDeclaredType = null) {
     const normalized = normalizeExpression(String(token).trim());
+    const addressLiteral = normalized.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (addressLiteral) {
+      return [`    ld hl,${resolveAddressSymbol(addressLiteral[1])}`];
+    }
     if (isAnyFixedDeclaredType(preferredDeclaredType)) {
       const fixedLiteral = parseFixedPointLiteral(normalized);
       if (fixedLiteral !== null) return [`    ld hl,${formatFixedPointLiteral16(fixedLiteral)}`];
@@ -744,6 +748,12 @@ export function createRuntimeValueHelpers({
       const storeTarget = emitStoreInt16FromHL(name);
       if (!loadRaw || !storeTarget) return null;
       return [...loadRaw, ...storeTarget];
+    }
+    const addressValue = String(value || "").trim().match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (addressValue && targetType === "int16") {
+      const storeTarget = emitStoreInt16FromHL(name);
+      if (!storeTarget) return null;
+      return [`    ld hl,${resolveAddressSymbol(addressValue[1])}`, ...storeTarget];
     }
     if (sourceType === "fp5" && targetType === "i32" && isFix16_16DeclaredType(targetDeclaredType)) {
       const scratch = ensureCompareScratch32();
