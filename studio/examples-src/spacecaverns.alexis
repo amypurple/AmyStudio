@@ -1,0 +1,1189 @@
+cartridge "SPACE CAVERNS/VINCE VALENTI, COMPUTE!/1985"
+
+' SPACE CAVERNS
+' A ColecoVision game based on "Space Caverns" by Vince Valenti,
+' COMPUTE! March 1985 (Atari; Commodore 64, VIC-20 and IBM versions by
+' Kevin Martin, Apple version by Rob Terrell). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the magazine's, the game is
+' built for the ColecoVision (full screen, smooth sprites, colour, music).
+'
+' The game: your diamond ship is trapped in a walled cavern room with four
+' aliens that home in on you. Shoot them all (50, 100, 150 and 200
+' points) to go to the next room. After twice the level's number of rooms,
+' a bonus round: sleeping aliens appear one at a time, each worth the
+' countdown clock when you touch it. Then the next level: the caverns
+' shrink, and from level 2 you start inside a central cave of crystal
+' rock (from level 3 more rocks lie about). Your laser cuts through rock;
+' the aliens fly over it. An extra ship at 10,000 points. The three best
+' scores are kept.
+'
+' Controls (either joystick): the stick moves; the button fires the laser
+' the way the stick last pointed. On the title: up and down choose START
+' or CREDITS, left and right the starting level (1-5).
+'
+' From the listings: the four aliens and their 50-200 points, homing
+' aliens, rooms per level = twice the level (Commodore versions), the room
+' bonus L*500 + rooms*50, the bonus round's clock (200 + 60*L) and its
+' sleeping aliens worth the clock, shrinking caverns, a central cave and
+' obstacles you can shoot through (C64, VIC, Apple), the extra ship at
+' 10,000, the top three scores, starting levels 1-5.
+' New: sprites moving a pixel at a time, a palette per level, the music
+' ("Cavern Call" on the title, "Deep Hunt" under play) and the sounds.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' the frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table ($702B,
+' $7035), effects after, by channel.
+
+const TFloor = 128
+const TWall = 129
+const TRock = 130
+const TShip = 131
+const TBar = 132
+const SShip = 0
+const SHeart = 4
+const SAlien1 = 8
+const SAlien2 = 12
+const SSleep = 16
+const SLash = 20
+const SLasv = 24
+const SBoom1 = 28
+const SBoom2 = 32
+const NTiles8 = 40
+const SprBytes = 288
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndZap = 5
+const SndKill = 6
+const SndRock = 7
+const SndBoom = 8
+const SndClear = 9
+const SndGrab = 10
+const SndExtra = 11
+const SndOver = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u16 NumU = 0
+u16 Score = 0
+u16 H1 = 0
+u16 H2 = 0
+u16 H3 = 0
+u16 W16 = 0
+u16 Clock = 0
+u8 Ships = 0
+u8 Extra = 0
+' Lv the level (1-5, the cavern's size), Stage the level counted on,
+' Rm rooms cleared in this level, Mode 0 rooms, 1 bonus round
+u8 Lv = 1
+u8 StartLv = 1
+u8 Stage = 1
+u8 Rm = 0
+u8 Mode = 0
+' the cavern: inside columns C0-C1, rows R0-R1
+u8 C0 = 0
+u8 C1 = 0
+u8 R0 = 0
+u8 R1 = 0
+' the ship (sprite place), Fd the way it faces (0 up 1 down 2 left 3 right)
+u8 Px = 0
+u8 Py = 0
+u8 Fd = 0
+u8 Dead = 0
+u8 DeadT = 0
+u8 Over = 0
+' the aliens
+u8 Ax[4]
+u8 Ay[4]
+u8 Alive[4]
+u8 KillT[4]
+u8 Acc = 0
+u8 Spd = 0
+u8 Grace = 0
+' the laser
+u8 La = 0
+u8 Lx = 0
+u8 Ly = 0
+u8 Ld = 0
+' the bonus round's sleeper
+u8 Bx = 0
+u8 By = 0
+u8 ClkT = 0
+u16 Grabs = 0
+' rocks: a bit a cell, 4 bytes a row
+u8 Rk[96]
+' events counted for the test bot
+u16 Kills = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Mix = 0
+' scratch (never kept across a sub call)
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Sc = 0
+u8 Sr = 0
+u8 Sol = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Hit = 0
+u8 Ri = 0
+u8 Rb = 0
+u8 Rc = 0
+' Busy: a screen is being drawn (for the test bot)
+u8 Busy = 0
+u8 Rj = 0
+
+  tile screen
+  set sound table SvSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  Score = 0
+  Ships = 3
+  Extra = 0
+  Lv = StartLv
+  Stage = StartLv
+  Rm = 0
+  Mode = 0
+  Over = 0
+  play sound SndRunA
+  play sound SndRunB
+  NewRoom
+
+play_loop:
+  Frame1
+  ReadPad
+  if Dead = 1 then
+    DeathStep
+  else
+    MoveShip
+    if Mode = 0 then
+      Laser
+      Aliens
+    else
+      Bonus
+    end if
+  end if
+  if Extra = 0 then
+    if Score >= 10000 then
+      Extra = 1
+      inc Ships
+      play sound SndExtra
+      ShowHud
+    end if
+  end if
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' game over
+  stop sound SndRunA
+  stop sound SndRunB
+  HideSprites
+  print at 10,11, "GAME OVER"
+  play sound SndOver
+  HighScore
+  Rearm
+  wait 150 frames
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the ship: 2 pixels a frame, stopped by walls and rock
+
+sub MoveShip:
+  if Up1 = 1 then Fd = 0
+  if Dn1 = 1 then Fd = 1
+  if Lf1 = 1 then Fd = 2
+  if Rt1 = 1 then Fd = 3
+  Nx = Px
+  Ny = Py
+  if Lf1 = 1 then Nx = Px - 2
+  if Rt1 = 1 then Nx = Px + 2
+  if Nx <> Px then
+    Box(Nx, Py)
+    if Sol = 0 then Px = Nx
+  end if
+  if Up1 = 1 then Ny = Py - 2
+  if Dn1 = 1 then Ny = Py + 2
+  if Ny <> Py then
+    Box(Px, Ny)
+    if Sol = 0 then Py = Ny
+  end if
+  return
+end sub
+
+' Box: is the ship's 10 x 10 middle at (Bx0,By0) touching wall or rock?
+sub Box(u8 Bx0, u8 By0):
+  Sol = 0
+  Sc = Bx0 + 3
+  Sc = Sc >> 3
+  Sr = By0 + 3
+  Sr = Sr >> 3
+  Solid
+  if Sol = 1 then return
+  Sc = Bx0 + 12
+  Sc = Sc >> 3
+  Solid
+  if Sol = 1 then return
+  Sr = By0 + 12
+  Sr = Sr >> 3
+  Solid
+  if Sol = 1 then return
+  Sc = Bx0 + 3
+  Sc = Sc >> 3
+  Solid
+  return
+end sub
+
+' Solid: cell (Sc,Sr) is wall (Sol 1) or rock (Sol 2), else 0
+sub Solid:
+  Sol = 1
+  if Sc < C0 then return
+  if Sc > C1 then return
+  if Sr < R0 then return
+  if Sr > R1 then return
+  Sol = 0
+  Ri = Sr << 2
+  V = Sc >> 3
+  Ri = Ri + V
+  V = Sc & 7
+  Rb = BitT[V]
+  V = Rk[Ri] & Rb
+  if V <> 0 then Sol = 2
+  return
+end sub
+
+' a rock at (Sc,Sr)
+sub SetRock:
+  Ri = Sr << 2
+  V = Sc >> 3
+  Ri = Ri + V
+  V = Sc & 7
+  Rb = BitT[V]
+  V = Rk[Ri] | Rb
+  Rk[Ri] = V
+  put char TRock at Sc,Sr
+  return
+end sub
+
+sub ClearRock:
+  Ri = Sr << 2
+  V = Sc >> 3
+  Ri = Ri + V
+  V = Sc & 7
+  Rb = BitT[V]
+  Rb = Rb ^ 255
+  V = Rk[Ri] & Rb
+  Rk[Ri] = V
+  put char TFloor at Sc,Sr
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the laser: fired the way the ship faces, 8 pixels a frame (two steps)
+
+sub Laser:
+  if La = 0 then
+    if Press = 1 then
+      La = 1
+      Ld = Fd
+      Lx = Px + 8
+      Ly = Py + 8
+      play sound SndZap
+    end if
+    return
+  end if
+  for K = 0 to 1
+    if La = 1 then
+      if Ld = 0 then Ly = Ly - 4
+      if Ld = 1 then Ly = Ly + 4
+      if Ld = 2 then Lx = Lx - 4
+      if Ld = 3 then Lx = Lx + 4
+      Sc = Lx >> 3
+      Sr = Ly >> 3
+      Solid
+      if Sol = 1 then La = 0
+      if Sol = 2 then
+        ClearRock
+        play sound SndRock
+        La = 0
+      end if
+      if La = 1 then LaserHit
+    end if
+  next
+  return
+end sub
+
+' LaserHit: does the laser's point meet a live alien?
+sub LaserHit:
+  for J = 0 to 3
+    if Alive[J] = 1 then
+      X = Ax[J]
+      Y = Ay[J]
+      if Lx >= X then
+        V = X + 15
+        if Lx <= V then
+          if Ly >= Y then
+            V = Y + 14
+            if Ly <= V then
+              Alive[J] = 0
+              KillT[J] = 16
+              La = 0
+              inc Kills
+              ' 50, 100, 150, 200 points
+              V = J + 1
+              W16 = V
+              W16 = W16 * 50
+              Score = Score + W16
+              play sound SndKill
+              ShowScore
+              return
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the aliens: Spd sixteenths of a pixel a frame toward the ship, both ways
+' at once, over rock; touching the ship destroys it
+
+sub Aliens:
+  if Grace > 0 then
+    dec Grace
+  else
+    Acc = Acc + Spd
+    while Acc >= 16
+      Acc = Acc - 16
+      for J = 0 to 3
+        if Alive[J] = 1 then
+          X = Ax[J]
+          if X < Px then inc X
+          if X > Px then dec X
+          Ax[J] = X
+          Y = Ay[J]
+          if Y < Py then inc Y
+          if Y > Py then dec Y
+          Ay[J] = Y
+        end if
+      next
+    end while
+  end if
+  N = 0
+  for J = 0 to 3
+    if KillT[J] > 0 then
+      V = KillT[J] - 1
+      KillT[J] = V
+    end if
+    if Alive[J] = 1 then
+      inc N
+      X = Ax[J]
+      if X >= Px then
+        Dx = X - Px
+      else
+        Dx = Px - X
+      end if
+      Y = Ay[J]
+      if Y >= Py then
+        Dy = Y - Py
+      else
+        Dy = Py - Y
+      end if
+      if Dx < 11 then
+        if Dy < 11 then
+          if Dead = 0 then
+            Dead = 1
+            DeadT = 72
+            La = 0
+            play sound SndBoom
+          end if
+        end if
+      end if
+    end if
+  next
+  if N = 0 then
+    if Dead = 0 then RoomCleared
+  end if
+  return
+end sub
+
+sub RoomCleared:
+  ' let the last burst show, then the next room or the bonus round
+  ' (Rc and Rj: DrawSprites uses J and K)
+  for Rc = 0 to 30
+    DrawSprites
+    Frame1
+    for Rj = 0 to 3
+      if KillT[Rj] > 0 then
+        V = KillT[Rj] - 1
+        KillT[Rj] = V
+      end if
+    next
+  next
+  play sound SndClear
+  inc Rm
+  V = Lv << 1
+  if Rm >= V then
+    StartBonus
+  else
+    NewRoom
+  end if
+  return
+end sub
+
+sub DeathStep:
+  dec DeadT
+  if DeadT > 0 then return
+  Dead = 0
+  dec Ships
+  if Ships = 0 then
+    Over = 1
+    return
+  end if
+  ' the same room again: the aliens left go back to their corners
+  if Mode = 0 then
+    PlaceAll
+  else
+    PlaceShip
+  end if
+  ShowHud
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the bonus round
+
+sub StartBonus:
+  Mode = 1
+  W16 = Lv
+  W16 = W16 * 500
+  Score = Score + W16
+  W16 = Rm
+  W16 = W16 * 50
+  Score = Score + W16
+  Clock = Lv
+  Clock = Clock * 60
+  Clock = Clock + 200
+  ClkT = 0
+  DrawCavern
+  for J = 0 to 3
+    Alive[J] = 0
+    KillT[J] = 0
+  next
+  La = 0
+  PlaceShip
+  NewSleeper
+  ShowHud
+  ShowCavern
+  return
+end sub
+
+sub Bonus:
+  ' touched the sleeper? it is worth the clock
+  if Bx >= Px then
+    Dx = Bx - Px
+  else
+    Dx = Px - Bx
+  end if
+  if By >= Py then
+    Dy = By - Py
+  else
+    Dy = Py - By
+  end if
+  if Dx < 12 then
+    if Dy < 12 then
+      Score = Score + Clock
+      inc Grabs
+      play sound SndGrab
+      NewSleeper
+      ShowScore
+    end if
+  end if
+  inc ClkT
+  if ClkT >= 4 then
+    ClkT = 0
+    dec Clock
+    ShowClock
+    if Clock = 0 then
+      ' the next level: the caverns shrink
+      if Lv < 5 then inc Lv
+      inc Stage
+      Rm = 0
+      Mode = 0
+      play sound SndClear
+      NewRoom
+    end if
+  end if
+  return
+end sub
+
+' a sleeper somewhere inside, away from the ship
+sub NewSleeper:
+ns_again:
+  V = C1 - C0
+  V = V - 1
+  X = random(0, 255)
+  X = X + Mix
+  while X > V
+    X = X - V
+  end while
+  X = X + C0
+  X = X << 3
+  V = R1 - R0
+  V = V - 1
+  Y = random(0, 255)
+  Y = Y + Tick
+  while Y > V
+    Y = Y - V
+  end while
+  Y = Y + R0
+  Y = Y << 3
+  if X >= Px then
+    Dx = X - Px
+  else
+    Dx = Px - X
+  end if
+  if Y >= Py then
+    Dy = Y - Py
+  else
+    Dy = Py - Y
+  end if
+  inc Mix
+  if Dx < 32 then
+    if Dy < 32 then goto ns_again
+  end if
+  Bx = X
+  By = Y
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' rooms
+
+sub NewRoom:
+  Mode = 0
+  DrawCavern
+  ' rocks: from level 2 a central cave, from level 3 rocks about
+  for J = 0 to 95
+    Rk[J] = 0
+  next
+  if Lv >= 2 then
+    for Sc = 12 to 19
+      Sr = 9
+      SetRock
+      Sr = 14
+      SetRock
+    next
+    for Sr = 10 to 13
+      Sc = 12
+      SetRock
+      Sc = 19
+      SetRock
+    next
+  end if
+  if Lv >= 3 then
+    N = Lv - 2
+    N = N << 2
+    for K = 1 to 12
+      if K <= N then RandomRock
+    next
+  end if
+  for J = 0 to 3
+    Alive[J] = 1
+    KillT[J] = 0
+  next
+  ' the aliens' speed in sixteenths of a pixel a frame: 10 in the first
+  ' room, more with each room and level, up to 36 (the ship makes 32)
+  Spd = Lv * 3
+  Spd = Spd + 7
+  Spd = Spd + Rm
+  V = Stage - Lv
+  V = V << 1
+  Spd = Spd + V
+  if Spd > 36 then Spd = 36
+  PlaceAll
+  ShowHud
+  ShowCavern
+  return
+end sub
+
+' a rock at random inside, not in the middle nor at the corners
+sub RandomRock:
+rr_again:
+  V = C1 - C0
+  Sc = random(0, 255)
+  Sc = Sc + Mix
+  while Sc > V
+    Sc = Sc - V
+  end while
+  Sc = Sc + C0
+  V = R1 - R0
+  Sr = random(0, 255)
+  Sr = Sr + Tick
+  inc Mix
+  while Sr > V
+    Sr = Sr - V
+  end while
+  Sr = Sr + R0
+  if Sc >= 10 then
+    if Sc <= 21 then
+      if Sr >= 7 then
+        if Sr <= 16 then goto rr_again
+      end if
+    end if
+  end if
+  V = C0 + 2
+  if Sc < V then goto rr_again
+  V = C1 - 2
+  if Sc > V then goto rr_again
+  SetRock
+  return
+end sub
+
+sub PlaceShip:
+  Px = 120
+  Py = 88
+  Fd = 0
+  La = 0
+  return
+end sub
+
+' the ship in the middle, the live aliens in the four corners
+sub PlaceAll:
+  PlaceShip
+  X = C0 << 3
+  Y = R0 << 3
+  Ax[0] = X
+  Ay[0] = Y
+  Ax[2] = X
+  V = C1 << 3
+  V = V - 8
+  Ax[1] = V
+  Ax[3] = V
+  Ay[1] = Y
+  V = R1 << 3
+  V = V - 8
+  Ay[2] = V
+  Ay[3] = V
+  Acc = 0
+  Grace = 45
+  return
+end sub
+
+' the cavern of this level, with its colours (display off)
+sub DrawCavern:
+  NewScreen
+  V = Lv - 1
+  C0 = 3 + V
+  C1 = 28 - V
+  R0 = 3 + V
+  R1 = 20 - V
+  W16 = V
+  W16 = W16 << 3
+  copy WallC + W16 count 8 to vram.color + 1032
+  copy FloorC + W16 count 8 to vram.color + 1024
+  for Y = 2 to 21
+    fill TWall count 28 at 2,Y
+  next
+  N = C1 - C0
+  inc N
+  for Y = R0 to R1
+    fill TFloor count N at C0,Y
+  next
+  return
+end sub
+
+sub ShowCavern:
+  DrawSprites
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Busy = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0-1 ship, 2-5 aliens (or the sleeper), 6 laser
+
+sub DrawSprites:
+  if Dead = 1 then
+    V = DeadT & 8
+    N = SBoom1
+    if V = 0 then N = SBoom2
+    Y = Py - 1
+    set sprite 0 to Y,Px,N,8
+    V = DeadT & 4
+    K = 11
+    if V = 0 then K = 15
+    set sprite 1 to Y,Px,N,K
+  else
+    Y = Py - 1
+    V = 11
+    if Grace > 0 then
+      K = Tick & 4
+      if K > 0 then V = 15
+    end if
+    set sprite 0 to Y,Px,SShip,V
+    K = Tick & 16
+    V = 15
+    if K > 0 then V = 7
+    set sprite 1 to Y,Px,SHeart,V
+  end if
+  if Mode = 0 then
+    V = Tick & 16
+    N = SAlien1
+    if V > 0 then N = SAlien2
+    for J = 0 to 3
+      K = J + 2
+      Y = Ay[J] - 1
+      X = Ax[J]
+      if Alive[J] = 1 then
+        V = AlienC[J]
+        set sprite K to Y,X,N,V
+      elseif KillT[J] > 0 then
+        V = KillT[J] & 4
+        Sc = SBoom1
+        if V = 0 then Sc = SBoom2
+        V = AlienC[J]
+        set sprite K to Y,X,Sc,V
+      else
+        set sprite K to 192,0,0,0
+      end if
+    next
+  else
+    Y = By - 1
+    V = Tick & 32
+    K = 10
+    if V > 0 then K = 11
+    set sprite 2 to Y,Bx,SSleep,K
+    set sprite 3 to 192,0,0,0
+    set sprite 4 to 192,0,0,0
+    set sprite 5 to 192,0,0,0
+  end if
+  if La = 1 then
+    X = Lx - 8
+    Y = Ly - 9
+    N = SLasv
+    if Ld >= 2 then N = SLash
+    set sprite 6 to Y,X,N,15
+  else
+    set sprite 6 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the score line (row 1) and the room line (row 22)
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,22
+  print at 2,1, "SCORE"
+  ShowScore
+  print at 19,1, "SHIPS"
+  for J = 0 to 3
+    K = 25 + J
+    if J < Ships then
+      put char TShip at K,1
+    else
+      put char 32 at K,1
+    end if
+  next
+  if Ships > 4 then print at 29,1, "+"
+  print at 2,22, "LEVEL"
+  NumU = Stage
+  print at 8,22, digits$(NumU, 2)
+  if Mode = 0 then
+    print at 13,22, "ROOM"
+    NumU = Rm + 1
+    print at 18,22, digits$(NumU, 1)
+    print at 20,22, "OF"
+    NumU = Lv << 1
+    print at 23,22, digits$(NumU, 2)
+  else
+    print at 13,22, "BONUS"
+    print at 20,22, "TIME"
+    ShowClock
+  end if
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowClock:
+  NumU = Clock
+  print at 25,22, digits$(NumU, 3)
+  return
+end sub
+
+' the three best scores
+sub HighScore:
+  if Score > H1 then
+    H3 = H2
+    H2 = H1
+    H1 = Score
+    return
+  end if
+  if Score > H2 then
+    H3 = H2
+    H2 = Score
+    return
+  end if
+  if Score > H3 then H3 = Score
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 7
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Busy = 1
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Busy = 0
+  return
+end sub
+
+' title: the tune once, the three best scores, START / CREDITS, level 1-5
+sub TitlePage:
+  NewScreen
+  for J = 2 to 29
+    put char TRock at J,2
+    put char TRock at J,21
+  next
+  print at 9,5, "SPACE  CAVERNS"
+  print at 8,7, "BY VINCE VALENTI"
+  print at 9,10, "HIGH SCORES"
+  NumU = H1
+  print at 13,12, digits$(NumU, 5)
+  NumU = H2
+  print at 13,13, digits$(NumU, 5)
+  NumU = H3
+  print at 13,14, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then Menu = Menu ^ 1
+      if Dn1 = 1 then Menu = Menu ^ 1
+      if Lf1 = 1 then
+        if StartLv > 1 then dec StartLv
+      end if
+      if Rt1 = 1 then
+        if StartLv < 5 then inc StartLv
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  fill 32 count 26 at 3,17
+  fill 32 count 26 at 3,18
+  print at 9,17, "START  LEVEL <"
+  NumU = StartLv
+  print at 23,17, digits$(NumU, 1)
+  print at 24,17, ">"
+  print at 9,18, "CREDITS"
+  V = Menu + 17
+  put char 62 at 7,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 9,2, "SPACE  CAVERNS"
+  print at 2,5, "BASED ON SPACE CAVERNS BY"
+  print at 2,6, "VINCE VALENTI, COMPUTE!"
+  print at 2,7, "MARCH 1985 (ATARI). C64,"
+  print at 2,8, "VIC-20 AND IBM VERSIONS BY"
+  print at 2,9, "KEVIN MARTIN, APPLE BY"
+  print at 2,10, "ROB TERRELL."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$20,$00,$00,$02,$00,$00
+  $04,$04,$04,$00,$40,$40,$40,$00
+  $18,$C3,$81,$60,$00,$81,$C3,$18
+  $10,$38,$93,$C6,$93,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$41,$01,$01,$41,$01,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $D1,$1D,$1D,$FD,$0D,$1D,$1D,$D1
+  $B1,$B1,$1B,$B1,$1B,$B1,$B1,$01
+  $01,$01,$01,$0F,$0F,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$01,$03,$07,$0E,$1C,$38,$70,$70,$38,$1C,$0E,$07,$03,$01,$00
+  $00,$80,$C0,$E0,$70,$38,$1C,$0E,$0E,$1C,$38,$70,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$3F,$7F,$71,$F3,$F1,$FF,$FF,$7F,$3F,$19,$31,$61,$00
+  $00,$E0,$F8,$FC,$FE,$8E,$9F,$8F,$FF,$FF,$FE,$FC,$98,$8C,$86,$00
+  $00,$07,$1F,$3F,$7F,$7C,$FE,$FC,$FF,$FF,$7F,$3F,$19,$19,$09,$00
+  $00,$E0,$F8,$FC,$FE,$62,$73,$63,$FF,$FF,$FE,$FC,$98,$98,$90,$00
+  $00,$07,$1F,$3F,$7F,$7F,$FF,$F8,$FF,$FF,$7F,$3F,$19,$31,$61,$00
+  $00,$E0,$F8,$FC,$FE,$FE,$FF,$C7,$FF,$FF,$FE,$FC,$98,$8C,$86,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$02,$12,$08,$23,$02,$3C,$02,$23,$08,$12,$02,$00,$00,$00
+  $00,$00,$40,$48,$10,$C4,$40,$3C,$40,$C4,$10,$48,$40,$00,$00,$00
+  $81,$41,$20,$10,$00,$00,$00,$C0,$C0,$00,$00,$10,$20,$41,$81,$00
+  $81,$82,$04,$08,$00,$00,$00,$03,$03,$00,$00,$08,$04,$82,$81,$00
+end data
+
+' wall colours per level (grey, red, green, blue, gold: the brick is the
+' background colour, the mortar black) and the floor's specks
+data WallC bytes
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $18,$18,$18,$01,$18,$18,$18,$01
+  $1C,$1C,$1C,$01,$1C,$1C,$1C,$01
+  $15,$15,$15,$01,$15,$15,$15,$01
+  $1A,$1A,$1A,$01,$1A,$1A,$1A,$01
+end data
+data FloorC bytes
+  $01,$01,$41,$01,$01,$41,$01,$01
+  $01,$01,$61,$01,$01,$61,$01,$01
+  $01,$01,$C1,$01,$01,$C1,$01,$01
+  $01,$01,$41,$01,$01,$41,$01,$01
+  $01,$01,$A1,$01,$01,$A1,$01,$01
+end data
+data AlienC bytes
+  13,3,7,9
+end data
+data BitT bytes
+  1,2,4,8,16,32,64,128
+end data
+
+asm {
+SvZap:
+    db $40,$2B,$10,$01,$40,$35,$20,$01,$40,$42,$30,$01,$40,$56,$40,$02,$40,$70,$60,$02,$50
+SvKill:
+    db $00,$00,$04,$02,$00,$00,$25,$04,$00,$00,$56,$06,$00,$00,$76,$08,$10
+SvRock:
+    db $00,$00,$13,$02,$00,$00,$44,$03,$10
+SvBoom:
+    db $00,$00,$06,$04,$00,$00,$27,$08,$00,$00,$47,$0C,$00,$00,$67,$10,$00,$00,$87,$14,$10
+SvClear:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$04,$40,$47,$30,$0A,$50
+SvGrab:
+    db $80,$55,$10,$02,$80,$40,$10,$02,$80,$35,$30,$06,$90
+SvExtra:
+    db $80,$6B,$20,$04,$80,$55,$20,$04,$80,$47,$20,$04,$80,$35,$20,$04,$80,$47,$20,$04,$80,$35,$30,$0C
+    db $90
+SvOver:
+    db $80,$FE,$20,$0A,$80,$41,$21,$0A,$80,$7C,$21,$0A,$80,$FC,$31,$18,$90
+
+SvSoundTable:
+    dw SvTuneMel,$702B
+    dw SvTuneBass,$7035
+    dw SvRunMel,$702B
+    dw SvRunBass,$7035
+    dw SvZap,$7049
+    dw SvKill,$703F
+    dw SvRock,$703F
+    dw SvBoom,$703F
+    dw SvClear,$7049
+    dw SvGrab,$7053
+    dw SvExtra,$7053
+    dw SvOver,$7053
+; Cavern Call (original)
+; Tiny Sound, 7 frames per step
+SvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$17,$01,$1E,$01,$23,$01,$01,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$01,$01,$21,$01,$1E,$01
+    db $19,$01,$01,$01,$17,$01,$1E,$01,$23,$01,$01,$01,$26,$01,$25,$01
+    db $23,$01,$01,$01,$21,$01,$1E,$01,$1C,$01,$19,$01,$17,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$04,$10,$04,$10,$04,$10,$04,$10,$06,$12,$06,$12
+    db $06,$12,$06,$12,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$07,$13,$07,$13
+    db $09,$15,$09,$15,$06,$12,$06,$12,$06,$12,$06,$12,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Deep Hunt (original)
+; Tiny Sound, 8 frames per step
+SvRunMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$01,$01,$01,$01,$2A,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$26,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$28,$01
+    db $01,$01,$25,$01,$01,$01,$01,$01,$2A,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$2D,$01,$01,$01,$01,$01,$01,$01,$2B,$01,$01,$01,$2A,$01
+    db $01,$01,$01,$01
+    db $FF
+SvRunBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$0B,$01,$01,$0B,$0E,$01,$01,$01,$0B,$01,$01,$0B
+    db $10,$01,$0E,$01,$0B,$01,$01,$0B,$0E,$01,$01,$01,$0B,$01,$01,$0B
+    db $06,$01,$05,$01,$07,$01,$01,$07,$0B,$01,$01,$01,$07,$01,$01,$07
+    db $09,$01,$07,$01,$06,$01,$01,$06,$0A,$01,$01,$01,$06,$01,$01,$06
+    db $0D,$01,$0A,$01
+    db $FF
+}

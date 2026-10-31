@@ -6977,5 +6977,49 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "rebound",
+    "label": "Rebound (February 1985)",
+    "detail": "A ColecoVision reimagining of Chris Metcalf and Marc Sugiyama's COMPUTE! machine-language Breakout game, retaining its five brick rows, eight balls and progressive speed.",
+    "projectName": "Rebound",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "breakout",
+      "ibm-pc",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "spacecaverns",
+    "label": "Space Caverns (March 1985)",
+    "detail": "A ColecoVision reimagining of Vince Valenti's COMPUTE! cavern game, retaining its homing aliens, shrinking rooms, destructible rocks, bonus rounds and high scores.",
+    "projectName": "Space Caverns",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "space",
+      "atari",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];
