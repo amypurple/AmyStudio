@@ -7312,6 +7312,51 @@ export const exampleManifest = [
     "originLabel": "Reimagined adaptation"
   },
   {
+    "id": "shaker",
+    "label": "Shaker (June 1986)",
+    "detail": "A ColecoVision reimagining of John Fedor's Ahoy! shell game, with seven pop cans, animated shuffling, eleven speed levels, three misses and session high scores.",
+    "projectName": "Shaker",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "memory",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "starstrike",
+    "label": "Star Strike (June 1986)",
+    "detail": "A ColecoVision reimagining of Bob Eaton's Ahoy! space shooter, with perspective targeting, plasma spheres, shields, three attack phases and four difficulty levels.",
+    "projectName": "Star Strike",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "shooting",
+      "space",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
     "id": "hexwar",
     "label": "Hex War (July 1986)",
     "detail": "Todd Heimarck's COMPUTE! strategy game, preserving its 61-hex field, robot armies, cities, movement points, battles, reinforcements and five scenarios.",

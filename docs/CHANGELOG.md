@@ -15,9 +15,11 @@
 - Added seven Ahoy! adaptations: **Crazy Joe**, **Head-On**, **Nebergall
   Run**, **Escape from Skull Castle**, **Flap!**, **Meteor Run** and **Step
   On It**, with publication dates, authorship and adaptation provenance.
+- Added the Ahoy! adaptations **Shaker** and **Star Strike**, reimagining
+  their mostly machine-language originals for ColecoVision play.
 - Updated 21 existing games with a consistent game-over flow that waits for
   input, supports Amy's screen saver and returns cleanly to the title screen.
-- Expanded the example catalogue to **442 programs** and revalidated the
+- Expanded the example catalogue to **444 programs** and revalidated the
   affected sources with the Balanced compiler profile.
 
 ## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations
