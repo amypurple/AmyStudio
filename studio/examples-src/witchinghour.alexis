@@ -1,0 +1,1382 @@
+cartridge "THE WITCHING HOUR/BRIAN FLYNN, COMPUTE!/1985"
+
+' THE WITCHING HOUR
+' Based on "The Witching Hour" by Brian Flynn, COMPUTE! October 1985
+' (pages 42-58; the IBM PC original, with versions for the Commodore 64
+' and Atari by Kevin Mykytyn, the VIC-20 and Apple by Kevin Martin and the
+' TI-99/4A by Patrick Parrish). Made for the ColecoVision in Amy (the
+' language by Amy Bienvenu) by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the listing's rules
+' (orig/ has the scans). Alquerque, as the listing plays it: a board of 5
+' x 5 points, 12 witches against 12 ghosts; a piece steps along a line to
+' the next free point (diagonals only where the board's lines go: the
+' listing's tables D and M), or jumps an enemy next to it to the free
+' point beyond, taking it. A jump must be taken when there is one, and a
+' piece that can jump again must go on jumping. Play ends when a side has
+' no pieces left.
+' The computer plays as the listing's lines 60-160 do: every step it
+' could make gets a score of RND * .9, every jump 1 + RND * .9, and the
+' best score is played (so a jump whenever there is one, picked at random
+' among them); after a jump it looks again from where it landed, jumps
+' only.
+' Made for this machine: a moonlit board filling the screen inside the
+' overscan, its lines drawn in tiles; the witches and ghosts are tiles that
+' sway (two views each), and a moving piece becomes sprites that glide
+' along the line, or leap over the piece it takes, which vanishes in a
+' puff; a box moved by the stick picks and drops (a buzz for a move that
+' is not allowed); in a two-player game each side has its own controller;
+' one player plays the witches against the computer; a demo plays the
+' computer against itself.
+'
+' Liberties (each noted where it is done):
+' - The listing asks nothing and plays on when a side cannot move; here a
+'   side that cannot move loses.
+' - A jump off the bottom right corner is refused: the listing's B(42)
+'   was never set, so it read as an empty point.
+' - The Commodore and Apple versions ask "JUMP AGAIN (Y/N)?": here, as
+'   the article says for all but the Apple, a piece that can jump again
+'   must (JUMP AGAIN shows, the piece stays picked).
+'
+' Controls: the stick moves the box, the left button picks a piece and
+' drops it where it should go (picking it again puts it back). One
+' player: either controller, you are the witches. Two players: the
+' witches on controller 1, the ghosts on controller 2. In the demo, a
+' button goes back to the title.
+'
+' House rules kept: text in columns 2-29; tiles from code 128; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait.
+
+const THla = 128
+const THlb = 129
+const TVla = 130
+const TVlb = 131
+const TDdn = 132
+const TDup = 133
+const TNode00 = 134
+const TNode01 = 135
+const TNode10 = 136
+const TNode11 = 137
+const TWit00 = 138
+const TWit01 = 139
+const TWit10 = 140
+const TWit11 = 141
+const TWib00 = 142
+const TWib01 = 143
+const TWib10 = 144
+const TWib11 = 145
+const TGha00 = 146
+const TGha01 = 147
+const TGha10 = 148
+const TGha11 = 149
+const TGhb00 = 150
+const TGhb01 = 151
+const TGhb10 = 152
+const TGhb11 = 153
+const TSt1 = 154
+const TSt2 = 155
+const TSt3 = 156
+const TMoon00 = 157
+const TMoon01 = 158
+const TMoon02 = 159
+const TMoon03 = 160
+const TMoon10 = 161
+const TMoon11 = 162
+const TMoon12 = 163
+const TMoon13 = 164
+const TMoon20 = 165
+const TMoon21 = 166
+const TMoon22 = 167
+const TMoon23 = 168
+const TMoon30 = 169
+const TMoon31 = 170
+const TMoon32 = 171
+const TMoon33 = 172
+const TTree00 = 173
+const TTree01 = 174
+const TTree02 = 175
+const TTree03 = 176
+const TTree10 = 177
+const TTree11 = 178
+const TTree12 = 179
+const TTree13 = 180
+const TNight = 181
+const SBox = 0
+const SPick = 4
+const SWbody = 8
+const SWface = 12
+const SGhost = 16
+const SPuf1 = 20
+const SPuf2 = 24
+const SPuf3 = 28
+const NTiles8 = 432
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndNiteA = 3
+const SndNiteB = 4
+const SndPuff = 5
+const SndPick = 6
+const SndDrop = 7
+const SndGlide = 8
+const SndLeap = 9
+const SndBuzz = 10
+const SndStep = 11
+const SndWin = 12
+const SndLose = 13
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the board: B[H] for H = 6 * row + column + 7 (the listing's layout:
+' a border of 2 round the 5 x 5 points); 0 free, 1 a witch, 3 a ghost
+u8 B[43]
+' S the side to move, O the other; Wn Gn the pieces left
+u8 S = 1
+u8 O = 3
+u8 Wn = 12
+u8 Gn = 12
+' Mode 0 one player (you are the witches), 1 two players, 2 the demo
+u8 Mode = 0
+u8 Fs = 1
+u8 Winr = 0
+' the moves made (for the tests): the count, the last step's from, to and
+' the piece taken (0 none)
+u8 Mvn = 0
+u8 Lf = 0
+u8 Lt = 0
+u8 Lk = 0
+u8 Bz = 0
+' the scan (lines 60-160): Qa the piece looked at, Jo 1 for jumps only;
+' H the best score, Fr Tg Kk its move
+u8 Qa = 0
+u8 Qc = 0
+u8 Qt = 0
+u8 Jo = 0
+u8 H = 0
+u8 Fr = 0
+u8 Tg = 0
+u8 Kk = 0
+u8 Sc = 0
+u8 Bd = 0
+u8 Lim = 0
+' a piece's possibilities: Pj a jump, Pm a step; Must 1 when the side to
+' move has a jump somewhere; Anym 1 when it can move at all
+u8 Pj = 0
+u8 Pm = 0
+u8 Must = 0
+u8 Anym = 0
+u8 Lg = 0
+u8 Lc = 0
+' the player's turn: Cy Cx the box's point, Cr its H; Pk 1 with a piece
+' picked at Pf; Cont 1 while it must jump again
+u8 Cy = 4
+u8 Cx = 2
+u8 Cr = 0
+u8 Pk = 0
+u8 Pf = 0
+u8 Cont = 0
+u8 Pp = 0
+u8 Rpt = 0
+u8 WasDir = 0
+u8 Dir = 0
+u8 Turn = 0
+' the gliding piece: Gx Gy its place, Gt its kind; the puff: Uf frames
+' left, Ux Uy its place
+u8 Gx = 0
+u8 Gy = 0
+u8 Gt = 0
+u8 Ex = 0
+u8 Ey = 0
+u8 Ns = 0
+u8 Uf = 0
+u8 Ux = 0
+u8 Uy = 0
+' the swaying pieces: Brd 1 while the board shows; their clocks and views
+u8 Brd = 0
+u8 Aw = 0
+u8 Ag = 0
+u8 Vw = 0
+u8 Vg = 0
+
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Dn1 = 0
+u8 Up1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Tx = 0
+u8 Ty = 0
+u16 NumU = 0
+u16 Ad = 0
+
+  tile screen
+  set sound table WhSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+new_game:
+  NewBoard
+  DrawBoard
+  ShowScreen
+  play sound SndNiteA
+  play sound SndNiteB
+  S = Fs
+  Cy = 4
+  Cx = 2
+
+turn_loop:
+  ' the side to move: no pieces, or no move at all, and the other wins
+  O = 4 - S
+  ComputeMust
+  if Anym = 0 then goto game_over
+  ShowTurn
+  Turn = 0
+  if Mode = 1 then Turn = 1
+  if Mode = 0 then
+    if S = 1 then Turn = 1
+  end if
+  if Turn = 1 then
+    HumanTurn
+  else
+    CompTurn
+  end if
+  if Mode = 2 then
+    if Menu = 9 then goto demo_out
+  end if
+  S = O
+  goto turn_loop
+
+game_over:
+  Winr = O
+  stop sound SndNiteA
+  stop sound SndNiteB
+  mute all
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  if Winr = 1 then
+    print at 8,1, "THE WITCHES WIN!"
+  else
+    print at 8,1, "THE GHOSTS WIN! "
+  end if
+  V = 0
+  if Mode = 0 then
+    if Winr = 3 then V = 1
+  end if
+  if V = 1 then
+    play sound SndLose
+  else
+    play sound SndWin
+  end if
+  for Tm = 1 to 120
+    Frame1
+  next
+  print at 7,22, "PRESS THE BUTTON"
+  WasBtn = 1
+  Pp = 0
+  N = 0
+go_wait:
+  Frame1
+  ReadPad
+  if Mode = 2 then
+    inc N
+    if N = 240 then goto new_game
+  end if
+  if Press = 0 then goto go_wait
+demo_out:
+  stop sound SndNiteA
+  stop sound SndNiteB
+  mute all
+  Brd = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' NewBoard: the listing's DATA (lines 720-750): the ghosts on the top two
+' rows and the two left points of the middle row, the witches on the rest
+sub NewBoard:
+  for J = 0 to 42
+    B[J] = Start[J]
+  next
+  Wn = 12
+  Gn = 12
+  Mvn = 0
+  Pk = 0
+  Cont = 0
+  Uf = 0
+  return
+end sub
+
+' Score1: the listing's lines 60-160 for the piece at Qa (side S): every
+' step scores 1-90 (RND * .9), every jump 100-189 (1 + RND * .9); the best
+' so far is kept in H, Fr, Tg, Kk (Kk the piece taken, 0 for a step). Jo 1
+' looks at jumps only (after a jump, line 40)
+sub Score1:
+  V = Qa - 7
+  Lim = Dd[V]
+  for Bd = 0 to 7
+    if Bd <= Lim then
+      Qc = Qa + Mv[Bd]
+      V = B[Qc]
+      if V = 0 then
+        if Jo = 0 then
+          Sc = random(1, 90)
+          if H < Sc then
+            H = Sc
+            Fr = Qa
+            Tg = Qc
+            Kk = 0
+          end if
+        end if
+      elseif V = O then
+        Qt = Qc + Mv[Bd]
+        if B[Qt] = 0 then
+          Sc = random(100, 189)
+          if H < Sc then
+            H = Sc
+            Fr = Qa
+            Tg = Qt
+            Kk = Qc
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Probe: can the piece at Qa (side S) jump (Pj) or step (Pm)?
+sub Probe:
+  Pj = 0
+  Pm = 0
+  V = Qa - 7
+  Lim = Dd[V]
+  for Bd = 0 to 7
+    if Bd <= Lim then
+      Qc = Qa + Mv[Bd]
+      V = B[Qc]
+      if V = 0 then Pm = 1
+      if V = O then
+        Qt = Qc + Mv[Bd]
+        if B[Qt] = 0 then Pj = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' ComputeMust: Must 1 if side S has a jump anywhere; Anym 1 if it can move
+sub ComputeMust:
+  Must = 0
+  Anym = 0
+  for K = 7 to 35
+    if B[K] = S then
+      Qa = K
+      Probe
+      if Pj = 1 then Must = 1
+      V = Pj | Pm
+      if V = 1 then Anym = 1
+    end if
+  next
+  return
+end sub
+
+' Legal: may the piece at Pf go to Cr? Lg 1 if so, Lc the piece taken
+sub Legal:
+  Lg = 0
+  Lc = 0
+  if B[Cr] <> 0 then return
+  V = Pf - 7
+  Lim = Dd[V]
+  for Bd = 0 to 7
+    if Bd <= Lim then
+      Qc = Pf + Mv[Bd]
+      if Qc = Cr then
+        if Must = 0 then Lg = 1
+      end if
+      if B[Qc] = O then
+        Qt = Qc + Mv[Bd]
+        if Qt = Cr then
+          Lg = 1
+          Lc = Qc
+        end if
+      end if
+    end if
+  next
+  if Cont = 1 then
+    if Lc = 0 then Lg = 0
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the turns
+
+' HumanTurn: the box, picking and dropping
+sub HumanTurn:
+  Pp = 0
+  if Mode = 1 then
+    Pp = 1
+    if S = 3 then Pp = 2
+  end if
+  Pk = 0
+  Cont = 0
+  WasBtn = 1
+ht_loop:
+  Frame1
+  ReadPad
+  MoveBox
+  DrawBox
+  if Press = 0 then goto ht_loop
+  if Pk = 1 then
+    if Cr = Pf then
+      ' picked again: put back (not while it must jump again)
+      if Cont = 0 then
+        Pk = 0
+        play sound SndDrop
+      end if
+      goto ht_loop
+    end if
+    if B[Cr] = S then
+      if Cont = 0 then goto ht_pick
+      goto ht_buzz
+    end if
+    Legal
+    if Lg = 0 then goto ht_buzz
+    Fr = Pf
+    Tg = Cr
+    Kk = Lc
+    Pk = 0
+    DrawBox
+    DoMove
+    if Kk = 0 then return
+    ' a jump: again if it can
+    Qa = Tg
+    Probe
+    if Pj = 0 then return
+    Pk = 1
+    Pf = Tg
+    Cont = 1
+    Must = 1
+    print at 8,1, "   JUMP AGAIN!  "
+    goto ht_loop
+  end if
+ht_pick:
+  if B[Cr] <> S then goto ht_buzz
+  Qa = Cr
+  Probe
+  V = 0
+  if Must = 1 then
+    V = Pj
+  else
+    V = Pj | Pm
+  end if
+  if V = 0 then goto ht_buzz
+  Pk = 1
+  Pf = Cr
+  play sound SndPick
+  goto ht_loop
+ht_buzz:
+  inc Bz
+  play sound SndBuzz
+  goto ht_loop
+end sub
+
+' MoveBox: the stick moves the box a point; held, it repeats
+sub MoveBox:
+  Dir = 0
+  if Up1 = 1 then Dir = 1
+  if Dn1 = 1 then Dir = 2
+  if Lf1 = 1 then Dir = 3
+  if Rt1 = 1 then Dir = 4
+  if Dir = 0 then
+    WasDir = 0
+    return
+  end if
+  if WasDir = 0 then
+    Rpt = 0
+  else
+    if Rpt > 0 then
+      dec Rpt
+      return
+    end if
+  end if
+  if WasDir = 0 then
+    Rpt = 16
+  else
+    Rpt = 7
+  end if
+  WasDir = 1
+  if Dir = 1 then
+    if Cy > 0 then dec Cy
+  end if
+  if Dir = 2 then
+    if Cy < 4 then inc Cy
+  end if
+  if Dir = 3 then
+    if Cx > 0 then dec Cx
+  end if
+  if Dir = 4 then
+    if Cx < 4 then inc Cx
+  end if
+  play sound SndStep
+  return
+end sub
+
+sub DrawBox:
+  Cr = Cy * 6
+  Cr = Cr + Cx
+  Cr = Cr + 7
+  X = Cx * 32
+  X = X + 56
+  Y = Cy * 32
+  Y = Y + 23
+  V = 11
+  if S = 3 then V = 7
+  set sprite 0 to Y,X,SBox,V
+  if Pk = 1 then
+    Qa = Pf
+    SprAt
+    set sprite 1 to Ty,Tx,SPick,9
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' CompTurn: the listing's lines 20-50
+sub CompTurn:
+  H = 0
+  Jo = 0
+  for J = 7 to 35
+    if B[J] = S then
+      Qa = J
+      Score1
+    end if
+  next
+ct_go:
+  ' its choice shows a moment: the box on the piece, then on the point
+  for Tm = 1 to 30
+    Frame1
+    if Mode = 2 then
+      ReadPad
+      if Press = 1 then
+        Menu = 9
+        return
+      end if
+    end if
+    Qa = Fr
+    SprAt
+    set sprite 1 to Ty,Tx,SPick,9
+    set sprite 0 to 192,0,0,0
+    update sprites
+  next
+  set sprite 1 to 192,0,0,0
+  update sprites
+  DoMove
+  if Kk = 0 then return
+  ' line 40: from where it landed, jumps only
+  H = 0
+  Jo = 1
+  Qa = Tg
+  Score1
+  if H = 0 then return
+  goto ct_go
+end sub
+
+' ---------------------------------------------------------------------------
+' moving a piece: Fr to Tg, Kk taken (0 none)
+
+' SprAt: the sprite place of point Qa in Tx, Ty
+sub SprAt:
+  Tx = Pc[Qa] * 32
+  Tx = Tx + 56
+  Ty = Pr[Qa] * 32
+  Ty = Ty + 23
+  return
+end sub
+
+sub DoMove:
+  Gt = B[Fr]
+  B[Fr] = 0
+  Qa = Fr
+  DrawAt
+  Qa = Fr
+  SprAt
+  Gx = Tx
+  Gy = Ty
+  Qa = Tg
+  SprAt
+  Ex = Tx
+  Ey = Ty
+  if Kk = 0 then
+    Ns = 16
+    play sound SndGlide
+  else
+    Ns = 32
+    play sound SndLeap
+  end if
+  for N = 1 to 32
+    if N <= Ns then
+      Frame1
+      if Gx < Ex then Gx = Gx + 2
+      if Gx > Ex then Gx = Gx - 2
+      if Gy < Ey then Gy = Gy + 2
+      if Gy > Ey then Gy = Gy - 2
+      V = 0
+      if Kk > 0 then V = Arc[N]
+      Y = Gy - V
+      if Gt = 1 then
+        set sprite 2 to Y,Gx,SWface,3
+        set sprite 3 to Y,Gx,SWbody,13
+      else
+        set sprite 2 to 192,0,0,0
+        set sprite 3 to Y,Gx,SGhost,15
+      end if
+      ' half way over: the piece taken goes up in smoke
+      if N = 16 then
+        if Kk > 0 then
+          B[Kk] = 0
+          Qa = Kk
+          DrawAt
+          Qa = Kk
+          SprAt
+          Ux = Tx
+          Uy = Ty
+          Uf = 24
+          play sound SndPuff
+          if Gt = 1 then
+            dec Gn
+          else
+            dec Wn
+          end if
+          ShowCounts
+        end if
+      end if
+      PuffStep
+      update sprites
+    end if
+  next
+  B[Tg] = Gt
+  Qa = Tg
+  DrawAt
+  set sprite 2 to 192,0,0,0
+  set sprite 3 to 192,0,0,0
+  update sprites
+  inc Mvn
+  Lf = Fr
+  Lt = Tg
+  Lk = Kk
+  return
+end sub
+
+sub PuffStep:
+  if Uf = 0 then
+    set sprite 4 to 192,0,0,0
+    return
+  end if
+  dec Uf
+  V = SPuf1
+  if Uf < 16 then V = SPuf2
+  if Uf < 8 then V = SPuf3
+  set sprite 4 to Uy,Ux,V,14
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' DrawAt: point Qa as it is (a moonstone, a witch or a ghost)
+sub DrawAt:
+  X = Pc[Qa] * 4
+  X = X + 7
+  Y = Pr[Qa] * 4
+  Y = Y + 3
+  V = TNode00
+  if B[Qa] = 1 then V = TWit00
+  if B[Qa] = 3 then V = TGha00
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  inc V
+  dec X
+  inc Y
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  return
+end sub
+
+sub DrawBoard:
+  NewScreen
+  Night
+  ' the lines: along the rows, down the columns, and the diagonals where
+  ' the board has them (one per square, from the even points)
+  for Y = 0 to 4
+    for X = 0 to 3
+      J = X * 4
+      J = J + 9
+      K = Y * 4
+      K = K + 3
+      put char THla at J,K
+      inc J
+      put char THla at J,K
+      inc K
+      dec J
+      put char THlb at J,K
+      inc J
+      put char THlb at J,K
+    next
+  next
+  for Y = 0 to 3
+    for X = 0 to 4
+      J = X * 4
+      J = J + 7
+      K = Y * 4
+      K = K + 5
+      put char TVla at J,K
+      inc K
+      put char TVla at J,K
+      inc J
+      put char TVlb at J,K
+      dec K
+      put char TVlb at J,K
+    next
+  next
+  for Y = 0 to 3
+    for X = 0 to 3
+      J = X * 4
+      J = J + 9
+      K = Y * 4
+      K = K + 5
+      V = X + Y
+      V = V & 1
+      if V = 0 then
+        put char TDdn at J,K
+        inc J
+        inc K
+        put char TDdn at J,K
+      else
+        inc J
+        put char TDup at J,K
+        dec J
+        inc K
+        put char TDup at J,K
+      end if
+    next
+  next
+  for J = 7 to 35
+    if Start[J] <> 2 then
+      Qa = J
+      DrawAt
+    end if
+  next
+  ' the sides: the moon, a witch and a ghost with their counts and players
+  DrawMoon(2,2)
+  put char TWit00 at 3,9
+  put char TWit01 at 4,9
+  put char TWit10 at 3,10
+  put char TWit11 at 4,10
+  put char TGha00 at 27,9
+  put char TGha01 at 28,9
+  put char TGha10 at 27,10
+  put char TGha11 at 28,10
+  print at 2,12, "WITCH"
+  print at 25,12, "GHOST"
+  if Mode = 0 then
+    print at 3,15, "YOU"
+    print at 26,15, "CPU"
+  end if
+  if Mode = 1 then
+    print at 3,15, "P 1"
+    print at 26,15, "P 2"
+  end if
+  if Mode = 2 then
+    print at 3,15, "CPU"
+    print at 26,15, "CPU"
+    print at 26,17, "DEMO"
+  end if
+  ShowCounts
+  Brd = 1
+  Vw = 0
+  Vg = 0
+  Aw = 0
+  Ag = 10
+  return
+end sub
+
+sub ShowCounts:
+  NumU = Wn
+  print at 3,13, digits$(NumU, 2)
+  NumU = Gn
+  print at 27,13, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowTurn:
+  if S = 1 then
+    print at 8,1, "  WITCHES MOVE  "
+  else
+    print at 8,1, "  GHOSTS  MOVE  "
+  end if
+  return
+end sub
+
+
+' Night: stars over the sides and the top, trees along the bottom
+sub Night:
+  for J = 0 to 23
+    X = StarX[J]
+    Y = StarY[J]
+    V = J & 1
+    V = V + TSt1
+    if J > 19 then V = TSt3
+    put char V at X,Y
+  next
+  for X = 0 to 31
+    V = X & 3
+    W = V + TTree00
+    put char W at X,21
+    W = V + TTree10
+    put char W at X,22
+    put char TTree12 at X,23
+  next
+  return
+end sub
+
+sub DrawMoon(u8 Mx, u8 My):
+  V = TMoon00
+  for K = 0 to 3
+    for J = 0 to 3
+      X = Mx + J
+      Y = My + K
+      put char V at X,Y
+      inc V
+    next
+  next
+  return
+end sub
+
+' Sway: the witches' and ghosts' tiles change view now and then (their
+' patterns copied over the board's codes, in each third of the screen)
+sub Sway:
+  inc Aw
+  if Aw >= 26 then
+    Aw = 0
+    Vw = Vw ^ 1
+    Ad = 80
+    if Vw = 1 then Ad = 112
+    copy TilePat + Ad count 32 to vram.pattern + 1104
+    copy TilePat + Ad count 32 to vram.pattern + 3152
+    copy TilePat + Ad count 32 to vram.pattern + 5200
+    copy TileCol + Ad count 32 to vram.color + 1104
+  end if
+  inc Ag
+  if Ag >= 20 then
+    Ag = 0
+    Vg = Vg ^ 1
+    Ad = 144
+    if Vg = 1 then Ad = 176
+    copy TilePat + Ad count 32 to vram.pattern + 1168
+    copy TilePat + Ad count 32 to vram.pattern + 3216
+    copy TilePat + Ad count 32 to vram.pattern + 5264
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frames, input, screens
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: let the NMI run during the wait, then keep it off
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  if Brd = 1 then Sway
+  return
+end sub
+
+' ReadPad: Pp 0 either controller, 1 or 2 only that one
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  if Pp <> 2 then
+    if joypad(1).left then Lf1 = 1
+    if joypad(1).right then Rt1 = 1
+    if joypad(1).up then Up1 = 1
+    if joypad(1).down then Dn1 = 1
+    if joypad(1).button1 then Btn = 1
+    if joypad(1).button2 then Btn = 1
+  end if
+  if Pp <> 1 then
+    if joypad(2).left then Lf1 = 1
+    if joypad(2).right then Rt1 = 1
+    if joypad(2).up then Up1 = 1
+    if joypad(2).down then Dn1 = 1
+    if joypad(2).button1 then Btn = 1
+    if joypad(2).button2 then Btn = 1
+  end if
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every new screen starts here: wait, NMI off, display off, tiles, cls
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  Brd = 0
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the moon, a witch flying across it, a joystick menu; then who
+' goes first
+sub TitlePage:
+  NewScreen
+  Night
+  DrawMoon(14,5)
+  print at 7,2, "THE WITCHING HOUR"
+  print at 11,11, "1 PLAYER"
+  print at 11,12, "2 PLAYERS"
+  print at 11,13, "DEMO"
+  print at 11,14, "CREDITS"
+  print at 5,17, "WITCHES AGAINST GHOSTS"
+  print at 5,19, "AFTER A GAME BY BRIAN"
+  print at 5,20, "FLYNN, COMPUTE! 1985"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Pp = 0
+  MenuArrow(4)
+  Tx = 0
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  FlyWitch
+  V = 255
+  if Up1 = 1 then V = 0
+  if Dn1 = 1 then V = 1
+  if V < 2 then
+    if WasStick = 0 then
+      if V = 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      MenuArrow(4)
+      play sound SndStep
+    end if
+    WasStick = 1
+  else
+    WasStick = 0
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu = 3 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+    mute all
+    TzOn = 0
+    CreditsPage
+    return
+  end if
+  Mode = Menu
+  ' who goes first
+  for Y = 11 to 14
+    print at 9,Y, "            "
+  next
+  print at 9,10, "WHO GOES FIRST?"
+  print at 11,12, "WITCHES"
+  print at 11,13, "GHOSTS"
+  Menu = 0
+  MenuArrow(2)
+tf_loop:
+  Frame1
+  ReadPad
+  FlyWitch
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      MenuArrow(2)
+      play sound SndStep
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tf_loop
+  Fs = 1
+  if Menu = 1 then Fs = 3
+  Menu = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  return
+end sub
+
+sub MenuArrow(u8 Count):
+  for J = 0 to 3
+    Y = J + 11
+    if Count = 2 then Y = J + 12
+    if J < Count then
+      put char 32 at 9,Y
+      if J = Menu then put char 62 at 9,Y
+    end if
+  next
+  return
+end sub
+
+' FlyWitch: a witch crosses the sky past the moon, bobbing
+sub FlyWitch:
+  inc Tx
+  V = Tick >> 3
+  V = V & 7
+  Y = Bob[V]
+  set sprite 2 to Y,Tx,SWface,3
+  set sprite 3 to Y,Tx,SWbody,13
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  Night
+  DrawMoon(25,2)
+  print at 4,2, "THE WITCHING HOUR"
+  print at 3,5, "BASED ON THE WITCHING HOUR"
+  print at 3,6, "BY BRIAN FLYNN, COMPUTE!"
+  print at 3,7, "OCTOBER 1985 (VERSIONS BY"
+  print at 3,8, "KEVIN MYKYTYN, KEVIN MARTIN"
+  print at 3,9, "AND PATRICK PARRISH)."
+  print at 3,11, "MADE FOR THE COLECOVISION"
+  print at 3,12, "BY CLAUDE (AN AI MADE BY"
+  print at 3,13, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,14, "2026, IN AMY BY AMY"
+  print at 3,15, "BIENVENU."
+  print at 3,17, "MUSIC: MIDNIGHT BELLS AND"
+  print at 3,18, "MOONLIT BOARD"
+  ShowScreen
+  Pp = 0
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $C0,$60,$30,$18,$0C,$06,$03,$01
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $00,$00,$00,$00,$03,$04,$08,$08
+  $00,$00,$00,$00,$C0,$20,$10,$10
+  $08,$08,$04,$03,$00,$00,$00,$00
+  $10,$10,$20,$C0,$00,$00,$00,$00
+  $00,$01,$03,$E0,$01,$01,$03,$07
+  $C0,$E0,$E0,$07,$C0,$60,$E0,$F0
+  $F0,$00,$E0,$F0,$05,$00,$00,$00
+  $07,$01,$09,$18,$40,$00,$00,$00
+  $00,$00,$01,$03,$E0,$01,$01,$03
+  $00,$C0,$E0,$E0,$07,$C0,$A0,$E0
+  $07,$F0,$00,$E0,$07,$02,$00,$00
+  $F0,$04,$01,$09,$F0,$A0,$00,$00
+  $00,$07,$E0,$C0,$CC,$CC,$C0,$C1
+  $00,$E0,$07,$03,$CC,$CC,$03,$83
+  $C1,$C0,$C0,$C0,$C8,$22,$00,$00
+  $83,$03,$03,$03,$8B,$20,$00,$00
+  $00,$07,$E0,$C0,$C6,$C6,$C0,$C1
+  $00,$E0,$07,$03,$E4,$E4,$03,$83
+  $C1,$C0,$C0,$C0,$D1,$04,$00,$00
+  $83,$03,$03,$03,$13,$44,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$40,$00
+  $00,$00,$08,$1C,$08,$00,$00,$00
+  $00,$00,$03,$07,$F0,$E0,$C0,$C0
+  $E0,$00,$00,$00,$00,$70,$07,$07
+  $07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$F0,$F0,$07,$07
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $70,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C3,$81,$81,$C3
+  $03,$01,$01,$01,$01,$00,$00,$00
+  $00,$00,$01,$83,$83,$81,$80,$C0
+  $00,$00,$C0,$E0,$E0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$01,$03
+  $C0,$E0,$F0,$07,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$00
+  $0E,$E0,$E0,$0E,$00,$00,$07,$00
+  $03,$07,$F0,$E0,$C0,$00,$00,$00
+  $10,$10,$38,$38,$83,$83,$01,$01
+  $01,$03,$07,$F0,$E0,$E0,$C0,$80
+  $01,$83,$38,$38,$30,$10,$10,$10
+  $01,$81,$C3,$C3,$18,$18,$08,$04
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$05
+  $05,$04,$04,$04,$04,$04,$04,$04
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $04,$04,$04,$04,$54,$54,$54,$54
+  $04,$04,$04,$04,$54,$54,$54,$54
+  $54,$54,$54,$54,$04,$04,$04,$04
+  $54,$54,$54,$54,$04,$04,$04,$04
+  $04,$D4,$D4,$4D,$34,$34,$34,$D4
+  $D4,$D4,$D4,$4D,$34,$34,$34,$D4
+  $4D,$0A,$4D,$4D,$D4,$04,$04,$04
+  $4D,$4A,$4D,$4D,$D4,$04,$04,$04
+  $04,$04,$D4,$D4,$4D,$34,$34,$34
+  $04,$D4,$D4,$D4,$4D,$34,$34,$34
+  $D4,$4D,$0A,$4D,$D4,$D4,$04,$04
+  $D4,$4D,$4A,$4D,$D4,$D4,$04,$04
+  $04,$F4,$4F,$4F,$4F,$4F,$4F,$4F
+  $04,$F4,$4F,$4F,$F4,$F4,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$F4,$04,$04
+  $4F,$4F,$4F,$4F,$4F,$F4,$04,$04
+  $04,$F4,$4F,$4F,$4F,$4F,$4F,$4F
+  $04,$F4,$4F,$4F,$F4,$F4,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$F4,$04,$04
+  $4F,$4F,$4F,$4F,$4F,$F4,$04,$04
+  $04,$04,$04,$F4,$04,$04,$04,$04
+  $04,$B4,$04,$04,$04,$04,$F4,$04
+  $04,$04,$54,$F4,$54,$04,$04,$04
+  $04,$04,$B4,$B4,$4B,$4B,$4B,$4B
+  $4B,$0B,$0B,$0B,$0B,$4B,$B4,$B4
+  $4B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $04,$04,$B4,$B4,$B4,$B4,$4B,$4B
+  $4B,$4B,$4B,$0B,$0B,$0B,$0B,$0B
+  $4B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$B4,$B4,$B4,$B4
+  $4B,$4B,$4B,$4B,$4B,$0B,$0B,$0B
+  $0B,$0B,$4B,$4B,$4B,$4B,$4B,$4B
+  $0B,$0B,$4B,$4B,$4B,$4B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$4B,$4B,$4B,$4B,$4B
+  $4B,$4B,$4B,$B4,$B4,$04,$04,$04
+  $0B,$0B,$0B,$0B,$0B,$0B,$4B,$04
+  $4B,$B4,$B4,$4B,$0B,$0B,$4B,$04
+  $4B,$4B,$B4,$B4,$B4,$04,$04,$04
+  $C4,$C4,$C4,$C4,$4C,$4C,$4C,$4C
+  $C4,$C4,$C4,$4C,$4C,$4C,$4C,$4C
+  $C4,$C4,$4C,$4C,$4C,$4C,$4C,$4C
+  $C4,$C4,$C4,$C4,$4C,$4C,$4C,$4C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $4C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $04,$04,$04,$04,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $F0,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$F0
+  $0F,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$0F
+  $00,$01,$03,$1F,$00,$00,$00,$07,$0F,$00,$1F,$0F,$05,$00,$00,$00
+  $C0,$E0,$E0,$F8,$00,$00,$00,$F0,$F8,$00,$F6,$E7,$40,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$03,$00,$00,$FF,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$60,$E0,$00,$00,$FE,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$3F,$33,$33,$3F,$3E,$3E,$3F,$3F,$3F,$37,$22,$00,$00
+  $00,$E0,$F8,$FC,$CC,$CC,$FC,$7C,$7C,$FC,$FC,$FC,$74,$20,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$0C,$1E,$1F,$0F,$1F,$3C,$3C,$1F,$0F,$1F,$1E,$0C,$00,$00
+  $00,$00,$30,$78,$F8,$F0,$F8,$3C,$3C,$F8,$F0,$F8,$78,$30,$00,$00
+  $20,$00,$88,$02,$20,$00,$80,$00,$00,$80,$00,$20,$02,$88,$00,$41
+  $82,$00,$08,$40,$04,$00,$01,$00,$00,$01,$00,$04,$40,$08,$00,$04
+end data
+
+' the board's border (2), the ghosts (3) and the witches (1) at the start
+' (the listing's lines 720-750, with B(42) set: see Liberties)
+data Start bytes 2,2,2,2,2,2,2, 3,3,3,3,3,2, 3,3,3,3,3,2, 3,3,0,1,1,2, 1,1,1,1,1,2, 1,1,1,1,1,2, 2,2,2,2,2,2
+' the listing's D: 3 where a point has only the four straight lines, 7
+' where it has the diagonals too (directions 0-3 or 0-7 of M)
+data Dd bytes 7,3,7,3,7,0, 3,7,3,7,3,0, 7,3,7,3,7,0, 3,7,3,7,3,0, 7,3,7,3,7
+' the listing's M: up, right, down, left, then the diagonals (-6, 1, 6,
+' -1, -5, 7, 5, -7 as bytes)
+data Mv bytes 250,1,6,255,251,7,5,249
+' each point's row and column
+data Pr bytes 0,0,0,0,0,0,0, 0,0,0,0,0,0, 1,1,1,1,1,0, 2,2,2,2,2,0, 3,3,3,3,3,0, 4,4,4,4,4,0, 0,0,0,0,0,0
+data Pc bytes 0,0,0,0,0,0,0, 0,1,2,3,4,0, 0,1,2,3,4,0, 0,1,2,3,4,0, 0,1,2,3,4,0, 0,1,2,3,4,0, 0,0,0,0,0,0
+' a leap's height over its 32 frames
+data Arc bytes 0,3,6,8,10,12,14,15,16,17,18,19,19,20,20,20,20,20,20,20,19,19,18,17,16,15,14,12,10,8,6,3,0
+data Bob bytes 30,31,32,33,33,32,31,30
+data StarX bytes 6,9,13,20,24,27,30,2,5,3,26,29,25,6,28,4,27,2,29,5,23,11,18,30
+data StarY bytes 2,1,2,1,2,1,2,7,6,17,7,5,19,19,17,19,18,13,11,8,1,2,2,14
+
+asm {
+WhPuff:
+    db $00,$00,$04,$02,$00,$00,$25,$04,$00,$00,$46,$06,$00,$00,$76,$0A,$10
+WhPick:
+    db $40,$47,$10,$01,$40,$35,$30,$02,$50
+WhDrop:
+    db $40,$6B,$10,$01,$40,$8F,$30,$02,$50
+WhGlide:
+    db $80,$1D,$41,$03,$80,$FE,$50,$03,$80,$E2,$50,$03,$80,$D6,$60,$04,$90
+WhLeap:
+    db $80,$D6,$30,$02,$80,$AA,$30,$02,$80,$8F,$30,$02,$80,$6B,$40,$02,$80,$8F,$50,$03,$80,$D6,$60,$04
+    db $90
+WhBuzz:
+    db $40,$F9,$13,$06,$40,$FF,$23,$06,$50
+WhStep:
+    db $40,$55,$40,$01,$50
+WhWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$8F,$20,$06,$40,$6B,$30,$10
+    db $50
+WhLose:
+    db $40,$1D,$21,$0A,$40,$2E,$31,$0A,$40,$41,$31,$0A,$40,$53,$41,$18,$50
+
+WhSoundTable:
+    dw WhTuneMel,$702B
+    dw WhTuneBass,$7035
+    dw WhNiteMel,$702B
+    dw WhNiteBass,$7035
+    dw WhPuff,$703F
+    dw WhPick,$7049
+    dw WhDrop,$7049
+    dw WhGlide,$7053
+    dw WhLeap,$7053
+    dw WhBuzz,$7049
+    dw WhStep,$7049
+    dw WhWin,$7049
+    dw WhLose,$7049
+; Midnight Bells (original)
+; Tiny Sound, 7 frames per step
+WhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$21,$01,$1C,$01,$18,$01,$1C,$01,$21,$01,$23,$01
+    db $24,$01,$01,$01,$23,$01,$21,$01,$20,$01,$1C,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$29,$01,$28,$01,$24,$01
+    db $21,$01,$01,$01,$23,$01,$20,$01,$1C,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+WhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$09,$01,$01,$01,$09,$01,$01,$01,$04,$01,$01,$01
+    db $04,$01,$01,$01,$05,$01,$01,$01,$05,$01,$01,$01,$04,$01,$01,$01
+    db $04,$01,$01,$01,$0E,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01
+    db $05,$01,$01,$01,$04,$01,$01,$01,$04,$01,$01,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Moonlit Board (original)
+; Tiny Sound, 9 frames per step
+WhNiteMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$80,$1A,$21,$01,$01,$01,$01,$28,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$24,$01,$01,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$28,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$29,$01,$01,$01,$28,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+WhNiteBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$90,$18,$32,$09,$01,$01,$01,$08,$01,$01,$01,$09,$01,$01,$01
+    db $0C,$01,$01,$01,$0B,$01,$01,$01,$0A,$01,$01,$01,$0B,$01,$01,$01
+    db $04,$01,$01,$01,$09,$01,$01,$01,$08,$01,$01,$01,$09,$01,$01,$01
+    db $0E,$01,$01,$01,$0C,$01,$01,$01,$0B,$01,$01,$01,$04,$01,$01,$01
+    db $08,$01,$01,$01
+    db $FF
+}

@@ -7113,5 +7113,28 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "witchinghour",
+    "label": "The Witching Hour (October 1985)",
+    "detail": "A ColecoVision reimagining of Brian Flynn's COMPUTE! Alquerque game, with witches, ghosts, mandatory chained jumps, computer play and an animated moonlit board.",
+    "projectName": "The Witching Hour",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "game",
+      "strategy",
+      "board-game",
+      "alquerque",
+      "ibm-pc",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];
