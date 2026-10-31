@@ -7530,5 +7530,121 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "skidders",
+    "label": "Skidders (April 1987)",
+    "detail": "I. J. Lyles Jr.'s COMPUTE!'s Gazette survival game, preserving its wraparound arena, four accelerating skidders, slowing central wall and forty-second challenge.",
+    "projectName": "Skidders",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "faithful-adaptation",
+      "game",
+      "arcade",
+      "survival",
+      "commodore-128",
+      "music",
+      "compute!"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "omicron",
+    "label": "Omicron (April 1987)",
+    "detail": "A ColecoVision reimagining of Sean Wagle's COMPUTE!'s Gazette space game, with sixteen waves, momentum flight, independent aiming and rotating sprite priority.",
+    "projectName": "Omicron",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "space",
+      "commodore-64",
+      "music",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "improvisor",
+    "label": "Improvisor (April 1987)",
+    "detail": "Donald Eddington's COMPUTE!'s Gazette music toy, preserving its random, composed, play-along and short-tune modes with sixteen generated improvisations.",
+    "projectName": "Improvisor",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Music",
+    "tags": [
+      "amy",
+      "gazette",
+      "faithful-adaptation",
+      "music",
+      "toy",
+      "sequencer",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "squeeze",
+    "label": "Squeeze (July 1987)",
+    "detail": "A ColecoVision reimagining of Stephen Shull's COMPUTE!'s Gazette light-trail duel, with wraparound play, switchable trails, increasing speed and a computer opponent.",
+    "projectName": "Squeeze",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "light-cycles",
+      "two-player",
+      "commodore-64",
+      "music",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "basketball-sam-ed",
+    "label": "Basketball Sam & Ed (July 1987)",
+    "detail": "A ColecoVision reimagining of Rhett Anderson and David Hensley Jr.'s COMPUTE!'s Gazette basketball game, with bouncing players, four periods and overtime.",
+    "projectName": "Basketball Sam & Ed",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "sports",
+      "basketball",
+      "two-player",
+      "commodore-64",
+      "music",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

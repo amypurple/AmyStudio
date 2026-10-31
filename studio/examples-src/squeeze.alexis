@@ -1,0 +1,1223 @@
+cartridge "SQUEEZE/STEPHEN SHULL, GAZETTE/1987"
+
+' SQUEEZE
+' Based on "Squeeze" by Stephen Shull, COMPUTE!'s Gazette, July 1987
+' (Commodore 64, machine language). Made for the ColecoVision by Claude
+' (an AI made by Anthropic) for Amy Studio, 2026, in Amy by Amy Bienvenu.
+' The listing is machine code (MLX), so the game is built from the
+' article's rules (scans in orig/), not ported from the code.
+'
+' The game: two fireflies, green (starting at the left) and purple (at the
+' right), each leave a deadly path of light. Force the other to bump into
+' a path (its own or yours) and you score. The fireflies wrap round the
+' edges; hold the button to turn your light off and leave holes in your
+' path (anyone may slip through them). The fireflies speed up as a round
+' goes on. The first round waits for a button, later rounds start by
+' themselves after a crash. First to 10 wins; the screen turns red (a
+' steady tint, no flashing) and the button plays again.
+'
+' Controls: green is joystick 1, purple joystick 2 (the C64 had green on
+' port 2; here player one is joystick 1, as everywhere on this machine).
+' Against the computer (1 PLAYER), either joystick steers green. The
+' stick turns (no reversing); hold either button for the light off.
+'
+' Made for this machine: the field is 56 x 42 cells of 4 x 4 pixels, two
+' by two in a tile (81 tiles, 3^4 states: a tile row of two cells never
+' needs more than two colours, empty being transparent). The name table
+' is the field itself: a cell is read back with vpeek. The heads are
+' sprites gliding between cells every frame (60 a second), a glow ring
+' blinking softly round a core, the core grey with the light off.
+'
+' Rules in numbers: a step every Per frames, Per 7 at a round's start and
+' one less every 300 frames of play, down to 2; a step writes the cell
+' each head leaves (light on), then a head crashes into a cell that is
+' not empty, a cell the other head enters too, or when the two swap.
+' Both crashing: no point. The computer looks 8 cells ahead straight, left
+' and right, scores 4 a free cell, 2 for keeping on, 3 for heading at
+' green when the way is open, plus 0-3 at random.
+'
+' House rules kept: text in columns 2-29; tiles from code 128; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait.
+
+const TF00 = 128
+const TF01 = 129
+const TF02 = 130
+const TF03 = 131
+const TF04 = 132
+const TF05 = 133
+const TF06 = 134
+const TF07 = 135
+const TF08 = 136
+const TF09 = 137
+const TF10 = 138
+const TF11 = 139
+const TF12 = 140
+const TF13 = 141
+const TF14 = 142
+const TF15 = 143
+const TF16 = 144
+const TF17 = 145
+const TF18 = 146
+const TF19 = 147
+const TF20 = 148
+const TF21 = 149
+const TF22 = 150
+const TF23 = 151
+const TF24 = 152
+const TF25 = 153
+const TF26 = 154
+const TF27 = 155
+const TF28 = 156
+const TF29 = 157
+const TF30 = 158
+const TF31 = 159
+const TF32 = 160
+const TF33 = 161
+const TF34 = 162
+const TF35 = 163
+const TF36 = 164
+const TF37 = 165
+const TF38 = 166
+const TF39 = 167
+const TF40 = 168
+const TF41 = 169
+const TF42 = 170
+const TF43 = 171
+const TF44 = 172
+const TF45 = 173
+const TF46 = 174
+const TF47 = 175
+const TF48 = 176
+const TF49 = 177
+const TF50 = 178
+const TF51 = 179
+const TF52 = 180
+const TF53 = 181
+const TF54 = 182
+const TF55 = 183
+const TF56 = 184
+const TF57 = 185
+const TF58 = 186
+const TF59 = 187
+const TF60 = 188
+const TF61 = 189
+const TF62 = 190
+const TF63 = 191
+const TF64 = 192
+const TF65 = 193
+const TF66 = 194
+const TF67 = 195
+const TF68 = 196
+const TF69 = 197
+const TF70 = 198
+const TF71 = 199
+const TF72 = 200
+const TF73 = 201
+const TF74 = 202
+const TF75 = 203
+const TF76 = 204
+const TF77 = 205
+const TF78 = 206
+const TF79 = 207
+const TF80 = 208
+const TBar = 209
+const SCore = 0
+const SHalo = 4
+const SSpk1 = 8
+const SSpk2 = 12
+const SSpk3 = 16
+const NTiles8 = 656
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndCrash = 5
+const SndHum7 = 6
+const SndHum6 = 7
+const SndHum5 = 8
+const SndHum4 = 9
+const SndHum3 = 10
+const SndHum2 = 11
+const SndPoint = 12
+const SndGo = 13
+const SndWin = 14
+const SndTick = 15
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the fireflies (0 green, 1 purple): cell (Px, Py), previous cell (Ox, Oy),
+' direction Pd (0 up, 1 right, 2 down, 3 left), next direction Nd, light
+' Lt (1 on), the cell it steps to (Nx, Ny), crashed Cr
+u8 Px[2]
+u8 Py[2]
+u8 Ox[2]
+u8 Oy[2]
+u8 Pd[2]
+u8 Nd[2]
+u8 Lt[2]
+u8 Nx[2]
+u8 Ny[2]
+u8 Cr[2]
+u8 Sc[2]
+' Ph: 0 waiting for the first button, 1 playing, 2 crashed, 3 over
+u8 Ph = 0
+' Mode: 1 one player (purple is the computer), 2 two players
+u8 Mode = 1
+u8 Per = 7
+u8 Tm = 0
+u16 Sp = 0
+' cells: CellGet reads (Ccx, Ccy) into Cst (0 empty, 1 green, 2 purple)
+u8 Ccx = 0
+u8 Ccy = 0
+u8 Cst = 0
+u8 Cco = 0
+u8 Chf = 0
+u16 Ca = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Idle = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 Rw = 0
+u8 Best = 0
+u8 Bdir = 0
+u8 Cnt = 0
+u8 Cd = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Nt = 0
+
+u16 NumU = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Fc = 0
+u8 P = 0
+u8 Q = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 A = 0
+u8 B = 0
+u8 C = 0
+
+  tile screen
+  set sound table SqSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  Sc[0] = 0
+  Sc[1] = 0
+  NewScreen
+  ClearField
+  ShowHud
+  NewRound
+  ShowScreen
+  print at 9,12, "PRESS A BUTTON"
+  Ph = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+first_wait:
+  Frame1
+  ReadPads
+  Heads
+  Rnd16
+  if Press = 0 then goto first_wait
+  print at 9,12, "              "
+  ' the text row is the field: put its tiles back (all empty)
+  for X = 9 to 22
+    put char 128 at X,12
+  next
+  goto go_round
+
+next_round:
+  ClearField
+  NewRound
+  print at 12,12, "READY"
+  for Fc = 1 to 60
+    Frame1
+    Heads
+  next
+  for X = 12 to 16
+    put char 128 at X,12
+  next
+
+go_round:
+  play sound SndGo
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+play_loop:
+  Frame1
+  ReadPads
+  inc Tm
+  inc Sp
+  if Sp >= 300 then
+    Sp = 0
+    if Per > 2 then
+      dec Per
+      play sound SndTick
+    end if
+  end if
+  if Tm >= Per then
+    Tm = 0
+    Advance
+    V = Cr[0] | Cr[1]
+    if V = 1 then goto crashed
+  end if
+  Heads
+  goto play_loop
+
+crashed:
+  Ph = 2
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndCrash
+  Heads
+  if Cr[0] = 1 then
+    if Cr[1] = 0 then inc Sc[1]
+  end if
+  if Cr[1] = 1 then
+    if Cr[0] = 0 then inc Sc[0]
+  end if
+  ShowHud
+  for Fc = 0 to 47
+    Frame1
+    Sparks
+  next
+  HideSprites
+  V = Cr[0] ^ Cr[1]
+  if V = 1 then play sound SndPoint
+  if Sc[0] >= 10 then goto over
+  if Sc[1] >= 10 then goto over
+  goto next_round
+
+over:
+  Ph = 3
+  play sound SndWin
+  ' the screen turns red: a steady tint (the backdrop shows through the
+  ' empty cells), never flashing
+  backdrop dark red
+  Heads
+  if Sc[0] >= 10 then
+    print at 10,11, "GREEN WINS!"
+  else
+    print at 10,11, "PURPLE WINS!"
+  end if
+  print at 5,13, "BUTTON: PLAY AGAIN"
+  print at 5,14, "DOWN: TITLE"
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+over_wait:
+  Frame1
+  ReadPads
+  Rnd16
+  if Dn1 = 1 then
+    backdrop black
+    goto title
+  end if
+  if Press = 0 then goto over_wait
+  backdrop black
+  goto new_game
+
+' NewRound: both fireflies home, the slow speed
+sub NewRound:
+  Px[0] = 8
+  Py[0] = 20
+  Pd[0] = 1
+  Px[1] = 47
+  Py[1] = 20
+  Pd[1] = 3
+  for P = 0 to 1
+    Ox[P] = Px[P]
+    Oy[P] = Py[P]
+    Nd[P] = Pd[P]
+    Lt[P] = 1
+    Cr[P] = 0
+  next
+  Per = 7
+  Tm = 0
+  Sp = 0
+  return
+end sub
+
+' ReadPads: each player's stick and button (the computer steers purple in
+' Advance); the button held turns the light off
+sub ReadPads:
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  for P = 0 to 1
+    Q = P + 1
+    if Mode = 1 then
+      if P = 1 then goto rp_next
+    end if
+    A = 0
+    B = 0
+    C = 9
+    if Q = 1 then
+      if joypad(1).up then C = 0
+      if joypad(1).down then C = 2
+      if joypad(1).left then C = 3
+      if joypad(1).right then C = 1
+      if joypad(1).button1 then A = 1
+      if joypad(1).button2 then A = 1
+    end if
+    if Mode = 1 then
+      if joypad(2).up then C = 0
+      if joypad(2).down then C = 2
+      if joypad(2).left then C = 3
+      if joypad(2).right then C = 1
+      if joypad(2).button1 then A = 1
+      if joypad(2).button2 then A = 1
+    else
+      if Q = 2 then
+        if joypad(2).up then C = 0
+        if joypad(2).down then C = 2
+        if joypad(2).left then C = 3
+        if joypad(2).right then C = 1
+        if joypad(2).button1 then A = 1
+        if joypad(2).button2 then A = 1
+      end if
+    end if
+    if C = 0 then Up1 = 1
+    if C = 2 then Dn1 = 1
+    if A = 1 then Btn = 1
+    ' a turn, never straight back
+    if C < 4 then
+      V = Pd[P] + 2
+      V = V & 3
+      if C <> V then Nd[P] = C
+    end if
+    Lt[P] = A ^ 1
+rp_next:
+  next
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' Advance: one step of both fireflies
+sub Advance:
+  if Mode = 1 then Brain
+  for P = 0 to 1
+    Pd[P] = Nd[P]
+    NextCell(Px[P], Py[P], Pd[P])
+    Nx[P] = Qx
+    Ny[P] = Qy
+  next
+  ' the paths: the cell each head leaves, light on
+  for P = 0 to 1
+    if Lt[P] = 1 then
+      Ccx = Px[P]
+      Ccy = Py[P]
+      CellGet
+      V = P + 1
+      CellSet(V)
+    end if
+  next
+  ' the crashes
+  for P = 0 to 1
+    Q = P ^ 1
+    Ccx = Nx[P]
+    Ccy = Ny[P]
+    CellGet
+    if Cst <> 0 then Cr[P] = 1
+    if Nx[P] = Nx[Q] then
+      if Ny[P] = Ny[Q] then Cr[P] = 1
+    end if
+    if Nx[P] = Px[Q] then
+      if Ny[P] = Py[Q] then
+        if Nx[Q] = Px[P] then
+          if Ny[Q] = Py[P] then Cr[P] = 1
+        end if
+      end if
+    end if
+  next
+  for P = 0 to 1
+    Ox[P] = Px[P]
+    Oy[P] = Py[P]
+    Px[P] = Nx[P]
+    Py[P] = Ny[P]
+  next
+  V = 7 - Per
+  V = V + SndHum7
+  play sound V
+  return
+end sub
+
+' Brain: the computer chooses purple's next direction: straight, left or
+' right, each scored by the free cells ahead (up to 8), 2 for keeping on,
+' 3 for heading at green when the way is open, 0-3 at random
+sub Brain:
+  Best = 0
+  Bdir = Pd[1]
+  for K = 0 to 2
+    Cd = Pd[1]
+    if K = 1 then Cd = Cd + 1
+    if K = 2 then Cd = Cd + 3
+    Cd = Cd & 3
+    Sx = Px[1]
+    Sy = Py[1]
+    Cnt = 0
+    for J = 1 to 8
+      NextCell(Sx, Sy, Cd)
+      Sx = Qx
+      Sy = Qy
+      Ccx = Sx
+      Ccy = Sy
+      CellGet
+      if Cst <> 0 then goto br_end
+      if Sx = Px[0] then
+        if Sy = Py[0] then goto br_end
+      end if
+      inc Cnt
+    next
+br_end:
+    W = 0
+    if Cnt > 0 then
+      W = Cnt << 2
+      if K = 0 then W = W + 2
+      if Cnt = 8 then
+        ' heading at green
+        if Cd = 0 then
+          if Py[0] < Py[1] then W = W + 3
+        end if
+        if Cd = 2 then
+          if Py[0] > Py[1] then W = W + 3
+        end if
+        if Cd = 1 then
+          if Px[0] > Px[1] then W = W + 3
+        end if
+        if Cd = 3 then
+          if Px[0] < Px[1] then W = W + 3
+        end if
+      end if
+      Rnd16
+      V = Rw & 3
+      W = W + V
+    end if
+    if W > Best then
+      Best = W
+      Bdir = Cd
+    end if
+  next
+  Nd[1] = Bdir
+  return
+end sub
+
+' NextCell(X, Y, D): the cell next to (X, Y) going D, wrapping round
+sub NextCell(u8 Nxx, u8 Nyy, u8 Ndd):
+  Qx = Nxx
+  Qy = Nyy
+  if Ndd = 0 then
+    if Qy = 0 then
+      Qy = 41
+    else
+      dec Qy
+    end if
+  end if
+  if Ndd = 2 then
+    inc Qy
+    if Qy = 42 then Qy = 0
+  end if
+  if Ndd = 3 then
+    if Qx = 0 then
+      Qx = 55
+    else
+      dec Qx
+    end if
+  end if
+  if Ndd = 1 then
+    inc Qx
+    if Qx = 56 then Qx = 0
+  end if
+  return
+end sub
+
+' CellGet: the cell (Ccx, Ccy): its tile's address Ca, code Cco (less
+' 128), the half Chf it is in and its state Cst
+sub CellGet:
+  V = Ccx >> 1
+  V = V + 2
+  W = Ccy >> 1
+  W = W + 2
+  Ca = W
+  Ca = Ca << 5
+  Ca = Ca + V
+  vpeek vram.name + Ca into Cco
+  Cco = Cco - 128
+  V = Ccy & 1
+  if V = 0 then
+    Chf = D9[Cco]
+  else
+    Chf = M9[Cco]
+  end if
+  V = Ccx & 1
+  if V = 0 then
+    Cst = D3[Chf]
+  else
+    Cst = M3[Chf]
+  end if
+  return
+end sub
+
+' CellSet(S): after CellGet, the cell becomes S
+sub CellSet(u8 Snew):
+  A = D3[Chf]
+  B = M3[Chf]
+  V = Ccx & 1
+  if V = 0 then
+    A = Snew
+  else
+    B = Snew
+  end if
+  C = A + A
+  C = C + A
+  C = C + B
+  A = D9[Cco]
+  B = M9[Cco]
+  V = Ccy & 1
+  if V = 0 then
+    A = C
+  else
+    B = C
+  end if
+  C = A << 3
+  C = C + A
+  C = C + B
+  C = C + 128
+  vpoke vram.name + Ca, C
+  return
+end sub
+
+' Heads: both fireflies' sprites, gliding from the last cell to the new
+' one; the glow ring blinks softly, the core turns grey with the light off
+sub Heads:
+  for P = 0 to 1
+    X = Ox[P] << 2
+    X = X + 14
+    Y = Oy[P] << 2
+    Y = Y + 13
+    V = Per << 3
+    V = V + Tm
+    K = Ofs[V]
+    if Ph <> 1 then K = 4
+    ' a wrap: straight to the new cell
+    V = Px[P] - Ox[P]
+    if V > 1 then
+      if V < 255 then K = 99
+    end if
+    V = Py[P] - Oy[P]
+    if V > 1 then
+      if V < 255 then K = 99
+    end if
+    if K = 99 then
+      X = Px[P] << 2
+      X = X + 14
+      Y = Py[P] << 2
+      Y = Y + 13
+    else
+      V = Pd[P]
+      if V = 0 then Y = Y - K
+      if V = 2 then Y = Y + K
+      if V = 1 then X = X + K
+      if V = 3 then X = X - K
+    end if
+    J = P << 1
+    V = Tick & 16
+    if P = 0 then
+      A = 3
+      B = 2
+      if V = 0 then B = 12
+    else
+      A = 13
+      B = 5
+      if V = 0 then B = 4
+    end if
+    if Lt[P] = 0 then
+      A = 14
+      B = 0
+    end if
+    set sprite J to Y,X,SCore,A
+    inc J
+    set sprite J to Y,X,SHalo,B
+  next
+  update sprites
+  return
+end sub
+
+' Sparks: the crash, three frames of sparks at each crashed head
+sub Sparks:
+  V = Fc >> 4
+  K = SSpk1
+  if V = 1 then K = SSpk2
+  if V = 2 then K = SSpk3
+  J = 4
+  for P = 0 to 1
+    if Cr[P] = 1 then
+      X = Px[P] << 2
+      X = X + 14
+      Y = Py[P] << 2
+      Y = Y + 13
+      V = Fc & 2
+      A = 11
+      if V = 0 then A = 15
+      set sprite J to Y,X,K,A
+    else
+      set sprite J to 192,0,0,0
+    end if
+    inc J
+  next
+  update sprites
+  return
+end sub
+
+' ClearField: rows 2-22, columns 2-29 all empty cells (with the screen
+' off: called between Frame1 waits)
+sub ClearField:
+  Rearm
+  wait
+  nmi off
+  for Y = 2 to 22
+    Ca = Y
+    Ca = Ca << 5
+    Ca = Ca + 2
+    copy EmptyRow count 28 to vram.name + Ca
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "GREEN"
+  NumU = Sc[0]
+  print at 8,1, digits$(NumU, 2)
+  print at 12,1, "TO 10"
+  print at 19,1, "PURPLE"
+  NumU = Sc[1]
+  print at 26,1, digits$(NumU, 2)
+  return
+end sub
+
+' Rnd16: a 16-bit xorshift (7 9 8), Rw the new value
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a firefly drawing its path round the name, a joystick menu
+sub TitlePage:
+tp_top:
+  NewScreen
+  for X = 2 to 29
+    put char TBar at X,2
+    put char TBar at X,21
+  next
+  print at 9,5, "S Q U E E Z E"
+  print at 4,8, "TRAP THE OTHER FIREFLY"
+  print at 4,9, "IN A PATH OF LIGHT"
+  print at 4,10, "HOLD THE BUTTON: LIGHT OFF"
+  print at 11,13, "1 PLAYER"
+  print at 11,14, "2 PLAYERS"
+  print at 11,15, "CREDITS"
+  print at 5,18, "FIRST TO 10 POINTS WINS"
+  Menu = Mode - 1
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Rnd16
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn = 1
+  if joypad(2).button2 then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then
+    CreditsPage
+    goto tp_top
+  end if
+  Mode = Menu + 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,14
+  put char 32 at 9,15
+  V = Menu + 13
+  put char 62 at 9,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  for X = 2 to 29
+    put char TBar at X,2
+    put char TBar at X,21
+  next
+  print at 11,4, "SQUEEZE"
+  print at 3,6, "BASED ON SQUEEZE BY"
+  print at 3,7, "STEPHEN SHULL, COMPUTE!'S"
+  print at 3,8, "GAZETTE, JULY 1987"
+  print at 3,9, "(COMMODORE 64)."
+  print at 3,11, "MADE FOR THE COLECOVISION"
+  print at 3,12, "BY CLAUDE (AN AI MADE BY"
+  print at 3,13, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,14, "2026, IN AMY BY AMY"
+  print at 3,15, "BIENVENU."
+  print at 3,17, "MUSIC: FIREFLY NIGHT,"
+  print at 10,18, "GLOW TRAIL"
+  print at 8,20, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  Rnd16
+  Btn = 0
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn = 1
+  if joypad(2).button2 then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' a field row: 28 empty tiles
+data EmptyRow bytes
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$08,$00,$00
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$00,$30,$30,$30,$30
+  $00,$00,$00,$00,$D0,$D0,$D0,$D0
+  $00,$00,$00,$00,$30,$30,$30,$30
+  $00,$00,$00,$00,$30,$30,$30,$30
+  $00,$00,$00,$00,$3D,$3D,$3D,$3D
+  $00,$00,$00,$00,$D0,$D0,$D0,$D0
+  $00,$00,$00,$00,$D3,$D3,$D3,$D3
+  $00,$00,$00,$00,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$00,$00,$00,$00
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$3D,$3D,$3D,$3D
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$D3,$D3,$D3,$D3
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$00,$00,$00,$00
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$3D,$3D,$3D,$3D
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D3,$D3,$D3,$D3
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$00,$00,$00,$00
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$3D,$3D,$3D,$3D
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$D3,$D3,$D3,$D3
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$00,$00,$00,$00
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$3D,$3D,$3D,$3D
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $30,$30,$30,$30,$D3,$D3,$D3,$D3
+  $30,$30,$30,$30,$D0,$D0,$D0,$D0
+  $3D,$3D,$3D,$3D,$00,$00,$00,$00
+  $3D,$3D,$3D,$3D,$30,$30,$30,$30
+  $3D,$3D,$3D,$3D,$D0,$D0,$D0,$D0
+  $3D,$3D,$3D,$3D,$30,$30,$30,$30
+  $3D,$3D,$3D,$3D,$30,$30,$30,$30
+  $3D,$3D,$3D,$3D,$3D,$3D,$3D,$3D
+  $3D,$3D,$3D,$3D,$D0,$D0,$D0,$D0
+  $3D,$3D,$3D,$3D,$D3,$D3,$D3,$D3
+  $3D,$3D,$3D,$3D,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$00,$00,$00,$00
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$3D,$3D,$3D,$3D
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D3,$D3,$D3,$D3
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D3,$D3,$D3,$D3,$00,$00,$00,$00
+  $D3,$D3,$D3,$D3,$30,$30,$30,$30
+  $D3,$D3,$D3,$D3,$D0,$D0,$D0,$D0
+  $D3,$D3,$D3,$D3,$30,$30,$30,$30
+  $D3,$D3,$D3,$D3,$30,$30,$30,$30
+  $D3,$D3,$D3,$D3,$3D,$3D,$3D,$3D
+  $D3,$D3,$D3,$D3,$D0,$D0,$D0,$D0
+  $D3,$D3,$D3,$D3,$D3,$D3,$D3,$D3
+  $D3,$D3,$D3,$D3,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$00,$00,$00,$00
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$30,$30,$30,$30
+  $D0,$D0,$D0,$D0,$3D,$3D,$3D,$3D
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D3,$D3,$D3,$D3
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $03,$03,$01,$01,$0D,$0D,$01,$01
+end data
+data SpritePat bytes
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $66,$81,$81,$00,$00,$81,$81,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$54,$38,$FE,$38,$54,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$00,$10,$AA,$10,$00,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $82,$00,$00,$00,$00,$00,$82,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data D9 bytes
+  0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+  1,1,2,2,2,2,2,2,2,2,2,3,3,3,3,3
+  3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5
+  5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,7
+  7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8
+  8
+end data
+data M9 bytes
+  0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6
+  7,8,0,1,2,3,4,5,6,7,8,0,1,2,3,4
+  5,6,7,8,0,1,2,3,4,5,6,7,8,0,1,2
+  3,4,5,6,7,8,0,1,2,3,4,5,6,7,8,0
+  1,2,3,4,5,6,7,8,0,1,2,3,4,5,6,7
+  8
+end data
+data D3 bytes
+  0,0,0,1,1,1,2,2,2
+end data
+data M3 bytes
+  0,1,2,0,1,2,0,1,2
+end data
+data Ofs bytes
+  0,0,0,0,0,0,0,0,0,4,8,12,16,20,24,28
+  0,2,4,6,8,10,12,14,0,1,2,4,5,6,8,9
+  0,1,2,3,4,5,6,7,0,0,1,2,3,4,4,5
+  0,0,1,2,2,3,4,4,0,0,1,1,2,2,3,4
+  0,0,1,1,2,2,3,3,0,0,0,1,1,2,2,3
+end data
+
+asm {
+SqCrash:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$46,$08,$00,$00,$67,$0C,$00,$00,$97,$0E,$10
+SqHum7:
+    db $40,$FC,$51,$01,$40,$FC,$61,$01,$50
+SqHum6:
+    db $40,$AB,$51,$01,$40,$AB,$61,$01,$50
+SqHum5:
+    db $40,$68,$51,$01,$40,$68,$61,$01,$50
+SqHum4:
+    db $40,$2E,$51,$01,$40,$2E,$61,$01,$50
+SqHum3:
+    db $40,$FE,$50,$01,$40,$FE,$60,$01,$50
+SqHum2:
+    db $40,$D6,$50,$01,$40,$D6,$60,$01,$50
+SqPoint:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$30,$06,$50
+SqGo:
+    db $40,$D6,$20,$04,$40,$8F,$20,$04,$40,$6B,$30,$08,$50
+SqWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$12
+    db $50
+SqTick:
+    db $40,$47,$30,$01,$40,$47,$70,$01,$50
+
+SqSoundTable:
+    dw SqTuneMel,$702B
+    dw SqTuneBass,$7035
+    dw SqRunMel,$702B
+    dw SqRunBass,$7035
+    dw SqCrash,$703F
+    dw SqHum7,$7049
+    dw SqHum6,$7049
+    dw SqHum5,$7049
+    dw SqHum4,$7049
+    dw SqHum3,$7049
+    dw SqHum2,$7049
+    dw SqPoint,$7049
+    dw SqGo,$7049
+    dw SqWin,$7049
+    dw SqTick,$7049
+; Firefly Night (original)
+; Tiny Sound, 6 frames per step
+SqTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$23,$01,$26,$01,$2A,$01,$01,$01,$28,$01,$26,$01
+    db $25,$01,$01,$01,$23,$01,$21,$01,$1E,$01,$01,$01,$21,$01,$23,$01
+    db $00,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$25,$01,$23,$01
+    db $21,$01,$01,$01,$1E,$01,$21,$01,$25,$01,$01,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SqTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12
+    db $FF
+
+; Glow Trail (original)
+; Tiny Sound, 5 frames per step
+SqRunMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$50,$1A,$21,$1E,$01,$25,$01,$21,$01,$25,$01,$1E,$01,$25,$01
+    db $21,$01,$23,$01,$1A,$01,$21,$01,$1E,$01,$21,$01,$1C,$01,$23,$01
+    db $20,$01,$23,$01,$1E,$01,$25,$01,$21,$01,$25,$01,$1A,$01,$21,$01
+    db $1E,$01,$21,$01,$19,$01,$20,$01,$1D,$01,$20,$01,$1E,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+SqRunBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$70,$18,$32,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12,$0D,$19,$0D,$19,$0D,$19,$0D,$19,$0D,$19,$0D,$19
+    db $0D,$19,$0D,$19
+    db $FF
+}

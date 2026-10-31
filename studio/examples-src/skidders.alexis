@@ -1,0 +1,977 @@
+cartridge "SKIDDERS/I. J. LYLES, JR., GAZETTE/1987"
+
+' SKIDDERS
+' Based on "Skidders" by I. J. Lyles, Jr., COMPUTE!'s Gazette April 1987
+' (pages 52 and 101), a Commodore 128 BASIC 7.0 game. Made for the
+' ColecoVision by Claude (an AI made by Anthropic) for Amy Studio, 2026,
+' in Amy by Amy Bienvenu. Not a line port: the rules are the listing's,
+' the screen, motion and sound are made for this machine.
+'
+' The game: you are the light blue skidder in a closed universe. Four
+' others fly about at high speed, faster and faster; one touch and you
+' lose. Off any edge you come back on the opposite one. A striped yellow
+' wall surrounds the middle: it slows you down while you cross it
+' (STUCK), the others stream through it untouched. Last 40 seconds to win.
+'
+' Rules in numbers (from the listing): speeds in the C128's MOVSPR units,
+' one unit 28/64 pixel a frame here; you move at 2 units in the stick's
+' direction (no stick: you stop); the others start at 2 units heading
+' down (135-224 degrees, line 80). Every 8 frames (about one pass of the
+' C128's BASIC loop) one of them is picked at random (line 140); if it is near the
+' left or right side (x < 40 or x > 215) it gains a unit, up to 12, and
+' takes a new random heading (lines 300-310). In the wall you move a
+' quarter as far (the C128 stopped you at every BUMP, line 100). The
+' clock counts 40 seconds; a cell of the bar fills every two.
+'
+' Changes, noted: line 140 picks sprites 1-4, so the player could be
+' "sped up" and the fifth skidder never; here the four others (1-4 of the
+' table, after you at 0) are picked. The sprite shapes (DATA 350-500 are
+' sprite data, not a tune) are redrawn as shiny spheres.
+'
+' Controls (either joystick): the stick moves you; the button starts and
+' answers ANOTHER TRY (left/right choose YES or NO).
+'
+' House rules: text in columns 2-29, tiles from code 128, every screen
+' drawn with the NMI off after a wait, an original title tune once.
+
+const TW0 = 128
+const TW1 = 129
+const TW2 = 130
+const TW3 = 131
+const TW4 = 132
+const TW5 = 133
+const TW6 = 134
+const TW7 = 135
+const TW8 = 136
+const TW9 = 137
+const TW10 = 138
+const TW11 = 139
+const TW12 = 140
+const TW13 = 141
+const TW14 = 142
+const TW15 = 143
+const TW16 = 144
+const TW17 = 145
+const TW18 = 146
+const TW19 = 147
+const TW20 = 148
+const TW21 = 149
+const TW22 = 150
+const TW23 = 151
+const TW24 = 152
+const TW25 = 153
+const TBar0 = 154
+const TBar1 = 155
+const TBar2 = 156
+const SBall = 0
+const SGlint = 4
+const STrail = 8
+const SBang1 = 12
+const SBang2 = 16
+const NTiles8 = 232
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndWhoosh = 5
+const SndBoom = 6
+const SndCrash = 7
+const SndTick = 8
+const SndStuck = 9
+const SndGo = 10
+const SndWin = 11
+const SndPick = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the five skidders (0 = you): place in 1/64 pixel (x 0-16383, y 0-9727
+' for screen rows 16-167), heading 0-31, speed in units, centre in pixels
+u16 Xs[5]
+u16 Ys[5]
+u8 Dr[5]
+u8 Sp[5]
+u8 Cx[5]
+u8 Cy[5]
+' trail history: the last 8 centres of the four others
+u8 Hx[32]
+u8 Hy[32]
+' Ph: 0 waiting, 1 playing, 2 crashed, 3 won; InW 1 while you are in the
+' wall; Stk the label shown (0 none yet, 1 UNSTUCK, 2 STUCK)
+u8 Ph = 0
+u8 InW = 0
+u8 Stk = 0
+u8 Hit = 0
+u8 Hn = 0
+u8 Fr60 = 0
+u8 Sec = 0
+u8 Wh = 0
+u8 Jd = 255
+u16 Rs = $1D3B
+u16 T16 = 0
+u8 Ans = 0
+u8 Idle = 0
+
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u8 Mn = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Lf = 0
+u8 Rt = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 Kk = 0
+u8 Nn = 0
+u8 D = 0
+u8 M = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Sl = 0
+u8 Nr = 0
+
+  tile screen
+  set sound table SkSoundTable areas 6
+  sprites 16x16
+  set sprite count 16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Mn = 1 then goto title
+
+new_game:
+  DrawField
+  ResetPlay
+  ShowScreen
+  Ph = 0
+  print at 11,11, "GET READY"
+  for Tm = 1 to 60
+    Frame1
+    DrawAll
+  next
+  print at 11,11, "         "
+  play sound SndGo
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+
+skid:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawAll
+  if Hit = 1 then goto crashed
+  ' the clock
+  inc Fr60
+  if Fr60 = 60 then
+    Fr60 = 0
+    inc Sec
+    ShowTime
+    if Sec = 40 then goto won
+    play sound SndTick
+  end if
+  ' a whoosh when one passes near
+  if Wh > 0 then dec Wh
+  if Wh = 0 then
+    CheckNear
+    if Nr = 1 then
+      play sound SndWhoosh
+      Wh = 40
+    end if
+  end if
+  goto skid
+
+crashed:
+  Ph = 2
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  play sound SndBoom
+  play sound SndCrash
+  X = Cx[0] - 8
+  Y = Cy[0] - 8
+  for Tm = 0 to 47
+    Frame1
+    V = Tm & 8
+    W = SBang1
+    if V > 0 then W = SBang2
+    V = Tm & 4
+    K = 11
+    if V > 0 then K = 9
+    set sprite 0 to Y,X,W,K
+    set sprite 1 to 192,0,0,0
+    update sprites
+  next
+  print at 11,9, "TOUGH LUCK"
+  goto another
+
+won:
+  Ph = 3
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  play sound SndWin
+  HideOthers
+  ' the listing turns your sprite through colours 2-8, a note each
+  for Tm = 0 to 119
+    Frame1
+    V = Tm >> 4
+    V = V + 2
+    X = Cx[0] - 8
+    Y = Cy[0] - 8
+    set sprite 0 to Y,X,SGlint,15
+    set sprite 1 to Y,X,SBall,V
+    update sprites
+  next
+  print at 11,9, "YOU WIN!!"
+
+another:
+  print at 7,11, "ANOTHER TRY?"
+  Ans = 0
+  ShowAns
+  WasBtn = 1
+another_loop:
+  Frame1
+  ReadPad
+  V = Lf | Rt
+  if V = 1 then
+    if WasStick = 0 then
+      Ans = Ans ^ 1
+      ShowAns
+      play sound SndPick
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto another_loop
+  HideSprites
+  if Ans = 0 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' ResetPlay: you in the middle standing still, the four others along the
+' top heading down at speed 2 (lines 70-80), the clock at 40
+sub ResetPlay:
+  Xs[0] = 8192
+  Ys[0] = 4864
+  Dr[0] = 0
+  Sp[0] = 0
+  for I = 1 to 4
+    W16 = I * 40
+    W16 = W16 << 6
+    Xs[I] = W16
+    Ys[I] = 128
+    Rnd
+    V = Rs & 7
+    Dr[I] = V + 12
+    Sp[I] = 2
+  next
+  Centres
+  for I = 0 to 31
+    J = I >> 3
+    inc J
+    Hx[I] = Cx[J]
+    Hy[I] = Cy[J]
+  next
+  InW = 0
+  Stk = 0
+  Hit = 0
+  Fr60 = 0
+  Sec = 0
+  Wh = 0
+  ShowStuck
+  ShowTime
+  return
+end sub
+
+' PlayStep: one frame of the rules (the bot's model follows it exactly)
+sub PlayStep:
+  ' you: the stick's heading at 2 units, or still; a quarter as far in
+  ' the wall (you move on every fourth frame only)
+  if Jd = 255 then
+    Sp[0] = 0
+  else
+    Dr[0] = Jd
+    Sp[0] = 2
+    V = Tick & 3
+    if InW = 0 then V = 0
+    if V = 0 then MoveObj(0)
+  end if
+  for I = 1 to 4
+    MoveObj(I)
+  next
+  Centres
+  CheckWall
+  if InW = 0 then
+    if Stk <> 1 then ShowStuck
+  else
+    if Stk <> 2 then
+      ShowStuck
+      play sound SndStuck
+    end if
+  end if
+  ' one pass of the BASIC loop every 8 frames: one of the others, if near
+  ' a side, speeds up and turns at random
+  V = Tick & 7
+  if V = 0 then SpeedUp
+  Collide
+  return
+end sub
+
+' MoveObj(N): skidder N moves Sp units along heading Dr, wrapping
+sub MoveObj(u8 N):
+  D = Dr[N]
+  Nn = Sp[N]
+  if Nn = 0 then return
+  M = VxM[D]
+  W16 = 0
+  for Kk = 1 to Nn
+    W16 = W16 + M
+  next
+  V = VxS[D]
+  if V = 0 then
+    Xs[N] = Xs[N] + W16
+    if Xs[N] >= 16384 then Xs[N] = Xs[N] - 16384
+  else
+    if Xs[N] < W16 then
+      A16 = Xs[N] + 16384
+      Xs[N] = A16 - W16
+    else
+      Xs[N] = Xs[N] - W16
+    end if
+  end if
+  M = VyM[D]
+  W16 = 0
+  for Kk = 1 to Nn
+    W16 = W16 + M
+  next
+  V = VyS[D]
+  if V = 0 then
+    Ys[N] = Ys[N] + W16
+    if Ys[N] >= 9728 then Ys[N] = Ys[N] - 9728
+  else
+    if Ys[N] < W16 then
+      A16 = Ys[N] + 9728
+      Ys[N] = A16 - W16
+    else
+      Ys[N] = Ys[N] - W16
+    end if
+  end if
+  return
+end sub
+
+' Centres: every skidder's centre in pixels (y on screen rows 16-167)
+sub Centres:
+  for J = 0 to 4
+    W16 = Xs[J] >> 6
+    V = W16
+    Cx[J] = V
+    W16 = Ys[J] >> 6
+    V = W16
+    Cy[J] = V + 16
+  next
+  return
+end sub
+
+' CheckWall: InW 1 if your centre is in the striped band (x 16-239, y 16-167,
+' outside the open field x 48-207, y 40-143)
+sub CheckWall:
+  InW = 0
+  X = Cx[0]
+  Y = Cy[0]
+  if X < 16 then return
+  if X >= 240 then return
+  InW = 1
+  if X < 48 then return
+  if X >= 208 then return
+  if Y < 40 then return
+  if Y >= 144 then return
+  InW = 0
+  return
+end sub
+
+' SpeedUp: pick one of the four (line 140); near a side it gains a unit
+' (up to 12) and a new heading (lines 300-310)
+sub SpeedUp:
+  Rnd
+  K = Rs & 3
+  inc K
+  X = Cx[K]
+  V = 0
+  if X < 40 then V = 1
+  if X > 215 then V = 1
+  if V = 0 then return
+  if Sp[K] < 12 then Sp[K] = Sp[K] + 1
+  Rnd
+  V = Rs & 31
+  Dr[K] = V
+  return
+end sub
+
+' Collide: Hit 1 if a sphere touches yours (centres closer than 11
+' pixels, measured round the wrap)
+sub Collide:
+  Hit = 0
+  for J = 1 to 4
+    Dx = Cx[0] - Cx[J]
+    if Dx > 128 then Dx = 0 - Dx
+    V = Cy[0]
+    W = Cy[J]
+    if V >= W then
+      Dy = V - W
+    else
+      Dy = W - V
+    end if
+    if Dy > 76 then Dy = 152 - Dy
+    if Dx < 11 then
+      if Dy < 11 then
+        V = Sq[Dx]
+        W = Sq[Dy]
+        V = V + W
+        if V < 121 then
+          Hit = 1
+          Hn = J
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' CheckNear: Nr 1 if one of the others is within 28 pixels (for the whoosh)
+sub CheckNear:
+  Nr = 0
+  for J = 1 to 4
+    Dx = Cx[0] - Cx[J]
+    if Dx > 128 then Dx = 0 - Dx
+    V = Cy[0]
+    W = Cy[J]
+    if V >= W then
+      Dy = V - W
+    else
+      Dy = W - V
+    end if
+    if Dx < 28 then
+      if Dy < 28 then Nr = 1
+    end if
+  next
+  return
+end sub
+
+' Rnd: a 16-bit xorshift (7, 9, 8)
+sub Rnd:
+  T16 = Rs << 7
+  Rs = Rs ^ T16
+  T16 = Rs >> 9
+  Rs = Rs ^ T16
+  T16 = Rs << 8
+  Rs = Rs ^ T16
+  return
+end sub
+
+' DrawAll: you first (sprites 0-1, always in front), the four others in
+' pairs whose order turns every frame, their trails last (12-15): with
+' more than four on a line the trails go first, then the others flicker
+sub DrawAll:
+  X = Cx[0] - 8
+  Y = Cy[0] - 8
+  set sprite 0 to Y,X,SGlint,15
+  set sprite 1 to Y,X,SBall,5
+  for I = 1 to 4
+    J = I + Tick
+    J = J & 3
+    J = J * 2
+    J = J + 2
+    K = J + 1
+    X = Cx[I] - 8
+    Y = Cy[I] - 8
+    V = BallCol[I]
+    set sprite J to Y,X,SGlint,15
+    set sprite K to Y,X,SBall,V
+    ' the trail: where it was 7 frames ago
+    W = I - 1
+    W = W << 3
+    V = Tick & 7
+    Sl = W + V
+    Hx[Sl] = Cx[I]
+    Hy[Sl] = Cy[I]
+    V = V + 1
+    V = V & 7
+    Sl = W + V
+    X = Hx[Sl] - 8
+    Y = Hy[Sl] - 8
+    J = I + 11
+    set sprite J to Y,X,STrail,14
+  next
+  update sprites
+  return
+end sub
+
+sub HideOthers:
+  for J = 2 to 15
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub HideSprites:
+  for J = 0 to 31
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub ShowStuck:
+  if InW = 0 then
+    print at 2,1, "UNSTUCK"
+    Stk = 1
+  else
+    print at 2,1, "  STUCK"
+    Stk = 2
+  end if
+  return
+end sub
+
+' ShowTime: the seconds left and the bar (a half cell a second)
+sub ShowTime:
+  V = 40 - Sec
+  NumU = V
+  print at 28,1, digits$(NumU, 2)
+  if Sec = 0 then return
+  V = Sec - 1
+  V = V >> 1
+  V = V + 6
+  W = Sec & 1
+  K = TBar2
+  if W = 1 then K = TBar1
+  put char K at V,21
+  return
+end sub
+
+sub ShowAns:
+  print at 9,13, " YES    NO "
+  if Ans = 0 then
+    put char 62 at 9,13
+  else
+    put char 62 at 16,13
+  end if
+  return
+end sub
+
+' DrawField: the wall, the HUD and the bar
+sub DrawField:
+  NewScreen
+  DrawWall
+  print at 11,1, "- SKIDDERS -"
+  print at 22,1, "TIME :"
+  for X = 6 to 25
+    put char TBar0 at X,21
+  next
+  print at 5,22, "0%"
+  print at 14,22, "50%"
+  print at 24,22, "100%"
+  return
+end sub
+
+sub DrawWall:
+  for Y = 0 to 18
+    W16 = Y * 28
+    A16 = Y + 2
+    A16 = A16 << 5
+    A16 = A16 + 2
+    copy FrameMap + W16 count 28 to vram.name + A16
+  next
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: either joystick; Jd the stick's heading (0 up, 4 up-right ...
+' 28 up-left; 255 none), Press 1 on a new press of either button
+sub ReadPad:
+  V = joypad(1).up | joypad(2).up
+  W = joypad(1).down | joypad(2).down
+  Lf = joypad(1).left | joypad(2).left
+  Rt = joypad(1).right | joypad(2).right
+  Jd = 255
+  if V = 1 then Jd = 0
+  if W = 1 then Jd = 16
+  if Rt = 1 then
+    Jd = 8
+    if V = 1 then Jd = 4
+    if W = 1 then Jd = 12
+  end if
+  if Lf = 1 then
+    Jd = 24
+    if V = 1 then Jd = 28
+    if W = 1 then Jd = 20
+  end if
+  V = joypad(1).button1 | joypad(2).button1
+  W = joypad(1).button2 | joypad(2).button2
+  Btn = V | W
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' the title: the others skid through the wall behind the menu
+sub TitlePage:
+  DrawField
+  ResetPlay
+  Xs[0] = 0
+  Ys[0] = 9600
+  print at 2,1, "       "
+  print at 9,6, "S K I D D E R S"
+  print at 10,8, "LAST 40 SECONDS"
+  print at 10,9, "TOUCH NO ONE"
+  print at 13,12, "START"
+  print at 13,13, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Mn = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  for I = 1 to 4
+    MoveObj(I)
+  next
+  Centres
+  V = Tick & 7
+  if V = 0 then SpeedUp
+  DrawAll
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  ' stir the random numbers while waiting
+  Rnd
+  V = joypad(1).up | joypad(2).up
+  W = joypad(1).down | joypad(2).down
+  V = V | W
+  if V = 1 then
+    if WasStick = 0 then
+      Mn = Mn ^ 1
+      ShowMenu
+      play sound SndPick
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Mn = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,12
+  put char 32 at 11,13
+  V = Mn + 12
+  put char 62 at 11,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "SKIDDERS"
+  print at 3,4, "BASED ON SKIDDERS BY"
+  print at 3,5, "I. J. LYLES, JR.,"
+  print at 3,6, "COMPUTE!'S GAZETTE APRIL"
+  print at 3,7, "1987 (COMMODORE 128)."
+  print at 3,9, "MADE FOR THE COLECOVISION"
+  print at 3,10, "BY CLAUDE (AN AI MADE BY"
+  print at 3,11, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,12, "2026, IN AMY BY AMY"
+  print at 3,13, "BIENVENU."
+  print at 3,15, "MUSIC (ORIGINAL): CLOSED"
+  print at 3,16, "UNIVERSE, RICOCHET"
+  print at 3,18, "STICK: SKID. LAST 40"
+  print at 3,19, "SECONDS, TOUCH NO ONE."
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadPad
+  Rnd
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' the four others' colours: light red, magenta, light green, dark yellow
+data BallCol bytes
+  5,9,13,3,10
+end data
+
+data VxM bytes
+  0,5,11,16,20,23,26,27,28,27,26,23,20,16,11,5,0,5,11,16,20,23,26,27,28,27,26,23,20,16,11,5
+end data
+data VyM bytes
+  28,27,26,23,20,16,11,5,0,5,11,16,20,23,26,27,28,27,26,23,20,16,11,5,0,5,11,16,20,23,26,27
+end data
+data VxS bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+end data
+data VyS bytes
+  1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+end data
+data Sq bytes
+  0,1,4,9,16,25,36,49,64,81,100
+end data
+' the wall: 28 x 19 name-table codes (columns 2-29, rows 2-20)
+data FrameMap bytes
+  128,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,132
+  133,134,135,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,137,138,139
+  133,133,133,140,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,142,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,133,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,143,139,139,139,139
+  133,133,133,144,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,145,139,139,139
+  133,146,147,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,148,149,139
+  150,151,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,152,153
+end data
+data TilePat bytes
+  $00,$80,$80,$70,$88,$88,$88,$88
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$01,$01,$0E,$11,$11,$11,$11
+  $88,$88,$88,$88,$88,$88,$88,$88
+  $80,$70,$88,$88,$88,$88,$88,$88
+  $00,$00,$00,$00,$00,$80,$80,$70
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$0E
+  $01,$0E,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $00,$00,$00,$80,$80,$70,$88,$88
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$0E,$11,$11
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $88,$88,$70,$80,$80,$00,$00,$00
+  $11,$11,$0E,$01,$01,$00,$00,$00
+  $88,$88,$88,$88,$88,$88,$70,$80
+  $70,$80,$80,$00,$00,$00,$00,$00
+  $0E,$01,$01,$00,$00,$00,$00,$00
+  $11,$11,$11,$11,$11,$11,$0E,$01
+  $88,$88,$88,$88,$70,$80,$80,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $11,$11,$11,$11,$0E,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $0B,$B1,$B1,$1B,$B1,$B1,$B1,$B1
+  $0B,$01,$01,$0B,$01,$01,$0B,$B1
+  $0B,$01,$01,$0B,$01,$01,$0B,$01
+  $0B,$01,$01,$0B,$01,$01,$0B,$B1
+  $0B,$B1,$B1,$1B,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$1B,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$0B,$01,$01,$0B,$B1,$B1,$1B
+  $01,$0B,$01,$01,$0B,$01,$01,$0B
+  $01,$0B,$01,$01,$0B,$B1,$B1,$1B
+  $B1,$1B,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$0B,$B1,$B1,$1B,$B1,$B1
+  $01,$01,$0B,$01,$01,$0B,$01,$01
+  $01,$01,$0B,$B1,$B1,$1B,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$1B,$B1,$B1,$0B,$01,$01
+  $B1,$B1,$1B,$B1,$B1,$0B,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$B1
+  $1B,$B1,$B1,$0B,$01,$01,$0B,$01
+  $1B,$B1,$B1,$0B,$01,$01,$0B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$B1
+  $B1,$B1,$B1,$B1,$1B,$B1,$B1,$0B
+  $B1,$0B,$01,$01,$0B,$01,$01,$0B
+  $B1,$0B,$01,$01,$0B,$01,$01,$0B
+  $B1,$B1,$B1,$B1,$1B,$B1,$B1,$0B
+  $01,$04,$04,$04,$04,$04,$04,$01
+  $01,$34,$34,$34,$34,$34,$34,$01
+  $01,$43,$43,$43,$43,$43,$43,$01
+end data
+data SpritePat bytes
+  $00,$00,$03,$03,$03,$17,$3F,$3F,$3F,$3F,$1F,$1F,$0F,$03,$00,$00
+  $00,$00,$C0,$F0,$F8,$F8,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$C0,$00,$00
+  $00,$00,$00,$0C,$1C,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$07,$0F,$0F,$07,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$E0,$F0,$F0,$E0,$E0,$80,$00,$00,$00,$00
+  $00,$00,$11,$09,$05,$03,$3F,$03,$05,$09,$11,$00,$00,$00,$00,$00
+  $00,$00,$10,$20,$40,$80,$FC,$80,$40,$20,$10,$00,$00,$00,$00,$00
+  $81,$41,$21,$00,$09,$00,$F8,$00,$09,$00,$21,$41,$81,$00,$00,$00
+  $02,$04,$08,$00,$20,$00,$3E,$00,$20,$00,$08,$04,$02,$00,$00,$00
+end data
+
+asm {
+SkWhoosh:
+    db $00,$00,$76,$03,$00,$00,$45,$04,$00,$00,$55,$05,$00,$00,$74,$06,$00,$00,$A4,$06,$10
+SkBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$66,$0E,$00,$00,$97,$10,$10
+SkCrash:
+    db $40,$5F,$10,$03,$40,$7F,$20,$03,$40,$BF,$30,$03,$40,$1D,$41,$04,$40,$AB,$51,$06,$40,$F9,$72,$0A
+    db $50
+SkTick:
+    db $40,$47,$60,$01,$40,$47,$A0,$02,$50
+SkStuck:
+    db $40,$3B,$42,$02,$40,$A6,$62,$03,$50
+SkGo:
+    db $40,$AA,$20,$04,$40,$71,$20,$04,$40,$55,$30,$08,$50
+SkWin:
+    db $40,$AA,$10,$08,$40,$AA,$C0,$04,$40,$AA,$10,$08,$40,$AA,$C0,$04,$40,$AA,$10,$08,$40,$AA,$C0,$04
+    db $40,$AA,$10,$08,$40,$AA,$C0,$04,$40,$AA,$10,$08,$40,$AA,$C0,$04,$40,$AA,$10,$08,$40,$AA,$C0,$04
+    db $40,$AA,$10,$08,$40,$AA,$C0,$04,$40,$39,$21,$1E,$50
+SkPick:
+    db $40,$6B,$40,$02,$50
+
+SkSoundTable:
+    dw SkTuneMel,$702B
+    dw SkTuneBass,$7035
+    dw SkRunMel,$702B
+    dw SkRunBass,$7035
+    dw SkWhoosh,$703F
+    dw SkBoom,$703F
+    dw SkCrash,$7049
+    dw SkTick,$7049
+    dw SkStuck,$7049
+    dw SkGo,$7049
+    dw SkWin,$7049
+    dw SkPick,$7049
+; Closed Universe (original)
+; Tiny Sound, 6 frames per step
+SkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$23,$01,$1E,$01,$23,$01,$26,$01,$2A,$01,$01,$01
+    db $28,$01,$26,$01,$25,$01,$21,$01,$25,$01,$28,$01,$26,$01,$01,$01
+    db $00,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$2B,$01,$2A,$01,$28,$01
+    db $26,$01,$23,$01,$22,$01,$25,$01,$2A,$01,$01,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15
+    db $09,$15,$09,$15,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12
+    db $FF
+
+; Ricochet (original)
+; Tiny Sound, 5 frames per step
+SkRunMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$50,$1A,$21,$1C,$1F,$23,$1F,$1C,$01,$23,$01,$21,$24,$28,$24
+    db $21,$01,$28,$01,$1F,$23,$26,$23,$1F,$01,$26,$01,$1E,$21,$23,$27
+    db $23,$01,$01,$01,$1C,$1F,$23,$1F,$1C,$01,$23,$01,$24,$28,$2B,$28
+    db $24,$01,$2B,$01,$23,$21,$1F,$1E,$1F,$21,$23,$27,$28,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+SkRunBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$70,$18,$32,$04,$10,$04,$10,$04,$10,$04,$10,$09,$15,$09,$15
+    db $09,$15,$09,$15,$07,$13,$07,$13,$07,$13,$07,$13,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$04,$10,$04,$10,$04,$10,$04,$10,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$04,$10,$04,$10
+    db $04,$10,$04,$10
+    db $FF
+}

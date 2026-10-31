@@ -1,0 +1,2162 @@
+cartridge "OMICRON/SEAN WAGLE, COMPUTE!/1987"
+
+' OMICRON
+' Based on "Omicron" by Sean Wagle, COMPUTE!'s Gazette April 1987 (pages
+' 44-46, Commodore 64). Made for the ColecoVision by Claude (an AI made by
+' Anthropic) for Amy Studio, 2026, in Amy by Amy Bienvenu. The original's
+' action is machine language (MLX); this game is built from the article's
+' rules, not from its code.
+'
+' The rules kept: survive 16 waves of 15 enemies; four skill levels
+' (ROOKIE, ADVANCED, PRO, EXPERT); your ship starts at the top left;
+' everything moves freely and bounces off the screen's edges and off the
+' status board in the middle (score, level, ships); the ship drifts on its
+' momentum (the stick thrusts), and its facing turns only while the button
+' is held with the stick pushed, so you can fly one way and shoot another;
+' the button fires; clear all 15 to finish a level; a lost ship starts the
+' level again; 1000 points for a level cleared on the first try; a bonus
+' ship after levels 4, 8 and 12. The enemies' life: dark blue drifters
+' (harmless, 200), cyan bombers (200) leaving mines, nets and bombs behind
+' them, yellow destroyers (400, twice as fast, firing at you, turning
+' toward you at every wall), and, for the last three, orange battle
+' satellites (600) that fire, bomb and bounce fast. The bombs: argon mine
+' 10, ricochet net 20 (it drifts), splinter bomb 50, fusion bomb 100,
+' indestructo (cannot be shot), mystery mine 10-100.
+'
+' Made for this machine: a starfield inside the overscan with the status
+' board in tiles; the ship in 16 headings (two sprites: hull and cockpit);
+' enemies, bombs and missiles as sprites; positions in 1/16 pixel at 60
+' frames a second. Up to 16 objects fly at once besides the ship (6
+' enemies, 6 bombs, 2 missiles, 2 enemy shots): the hardware shows 4
+' sprites on a line, so the objects' sprite order turns by one every
+' frame and a crowded line flickers instead of hiding the same object for
+' good. The ship is always drawn first. At most 6 of a wave's 15 enemies
+' fly at once; the others come in as places free up.
+'
+' Controls (either joystick): the stick thrusts; hold the left button and
+' push the stick to turn (the ship turns a sixteenth every 3 frames), and
+' the left button fires (again every 12 frames while held); the right
+' button pauses. Keypad not used.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait; an original title tune played once and a
+' credits page.
+
+const TSt1 = 128
+const TSt2 = 129
+const TSt3 = 130
+const TTw = 131
+const TBt = 132
+const TBb = 133
+const TBl = 134
+const TBr = 135
+const TBtl = 136
+const TBtr = 137
+const TBbl = 138
+const TBbr = 139
+const SSh0 = 0
+const SSh1 = 4
+const SSh2 = 8
+const SSh3 = 12
+const SSh4 = 16
+const SSh5 = 20
+const SSh6 = 24
+const SSh7 = 28
+const SSh8 = 32
+const SSh9 = 36
+const SSh10 = 40
+const SSh11 = 44
+const SSh12 = 48
+const SSh13 = 52
+const SSh14 = 56
+const SSh15 = 60
+const SCk0 = 64
+const SCk1 = 68
+const SCk2 = 72
+const SCk3 = 76
+const SCk4 = 80
+const SCk5 = 84
+const SCk6 = 88
+const SCk7 = 92
+const SCk8 = 96
+const SCk9 = 100
+const SCk10 = 104
+const SCk11 = 108
+const SCk12 = 112
+const SCk13 = 116
+const SCk14 = 120
+const SCk15 = 124
+const SDr0 = 128
+const SDr1 = 132
+const SBo0 = 136
+const SBo1 = 140
+const SDe0 = 144
+const SDe1 = 148
+const SSa0 = 152
+const SSa1 = 156
+const SB0 = 160
+const SB1 = 164
+const SB2 = 168
+const SB3 = 172
+const SB4 = 176
+const SB5 = 180
+const SMi = 184
+const SX0 = 188
+const SX1 = 192
+const SX2 = 196
+const NTiles8 = 96
+const SprBytes = 1600
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndBoom = 5
+const SndPop = 6
+const SndFire = 7
+const SndZap = 8
+const SndDrop = 9
+const SndClear = 10
+const SndLost = 11
+const SndExtra = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the ship: place (1/16 pixel, its sprite's top left), speed (128 = still),
+' heading 0-15, Ht the heading it turns to, Inv its safe frames at a start
+u16 Sx = 384
+u16 Sy = 320
+u8 Svx = 128
+u8 Svy = 128
+u8 Hd = 2
+u8 Ht = 2
+u8 Inv = 0
+' the enemies: Es 0 none, 1 drifter, 2 bomber, 3 destroyer, 4 satellite,
+' 5 exploding; Et its change timer, Ef its fire/bomb timer
+u8 Es[6]
+u16 Ex[6]
+u16 Ey[6]
+u8 Evx[6]
+u8 Evy[6]
+u16 Et[6]
+u8 Ef[6]
+' their places in pixels (kept by Move, read by DrawAll and Collide)
+u8 E8x[6]
+u8 E8y[6]
+' the bombs: Bk kind 0-5 (255 none), place in pixels, Bv a net's drift,
+' Bm a mystery mine's value
+u8 Bk[6]
+u8 Bx[6]
+u8 By[6]
+u8 Bv[6]
+u8 Bm[6]
+' your missiles and the enemies' shots: Ml / Ql frames left (0 none)
+u16 Mx[2]
+u16 My[2]
+u8 Mvx[2]
+u8 Mvy[2]
+u8 Ml[2]
+u8 M8x[2]
+u8 M8y[2]
+u16 Qx[2]
+u16 Qy[2]
+u8 Qvx[2]
+u8 Qvy[2]
+u8 Ql[2]
+u8 Q8x[2]
+u8 Q8y[2]
+' the sprite table, written here and copied to VRAM once a frame (18
+' sprites and the end mark); Oy Ox Op Oc the 16 objects in fixed order,
+' put into it in turning order by the asm routine OmSpr
+u8 SprTab[76]
+u8 Oy[16]
+u8 Ox[16]
+u8 Op[16]
+u8 Oc[16]
+u8 T3 = 0
+' the game: Lv level 0-15, Kc killed this wave, Sp spawned this wave, Sat 1
+' once the last three became satellites, Lost 1 if a ship was lost on this
+' level, Skill 0-3, Score in tens
+u8 Lv = 0
+u8 Kc = 0
+u8 Sp = 0
+u8 Sat = 0
+u8 Lost = 0
+u8 Skill = 0
+u8 Ships = 3
+u16 Score = 0
+u16 Hi = 0
+u8 Ph = 0
+u8 Hit = 0
+u8 Pz = 0
+u8 Gun = 0
+u8 Spn = 0
+u8 Idle = 0
+' the moving thing being worked on (Move): place, speed, Gb 1 if it
+' bounced
+u16 Gx = 0
+u16 Gy = 0
+u8 Gvx = 0
+u8 Gvy = 0
+u8 Gb = 0
+u8 Gs = 0
+u8 Gi = 0
+
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u8 Menu = 0
+u8 Dir = 255
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasB2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 Rot = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 X2 = 0
+u8 Y2 = 0
+u8 D = 0
+u8 E = 0
+u8 Pts = 0
+
+  tile screen
+  set sound table OmSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+  Skill = Menu
+
+new_game:
+  Score = 0
+  Ships = 3
+  Lv = 0
+  Lost = 0
+
+new_level:
+  DrawField
+  ShowBoard
+  ShowScreen
+  StartLevel
+  print at 10,6, "WAVE"
+  NumU = Lv + 1
+  print at 15,6, digits$(NumU, 2)
+  print at 10,16, "GET READY"
+  for Tm = 1 to 90
+    Frame1
+    Twinkle
+    DrawAll
+  next
+  print at 10,6, "       "
+  print at 10,16, "         "
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+
+fly:
+  Frame1
+  Twinkle
+  ReadPad
+  if Press2 = 1 then
+    Pz = Pz ^ 1
+    if Pz = 1 then
+      print at 12,6, "PAUSED"
+      mute all
+    else
+      print at 12,6, "      "
+      play sound SndRunA
+      play sound SndRunB
+    end if
+  end if
+  if Pz = 1 then goto fly
+  MoveShip
+  Shoot
+  MoveMissiles
+  MoveEnemies
+  MoveShots
+  MoveBombs
+  Collide
+  Spawn
+  DrawAll
+  if Hit = 1 then goto crash
+  if Kc = 15 then goto cleared
+  goto fly
+
+cleared:
+  Ph = 0
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndClear
+  HideObjects
+  print at 9,6, "WAVE CLEARED"
+  if Lost = 0 then
+    Score = Score + 100
+    ShowScore
+    print at 6,16, "FIRST TRY BONUS 1000"
+  end if
+  V = Lv + 1
+  W = V & 3
+  if W = 0 then
+    if V < 16 then
+      inc Ships
+      ShowShips
+      print at 9,17, "BONUS SHIP"
+      play sound SndExtra
+    end if
+  end if
+  for Tm = 1 to 150
+    Frame1
+    Twinkle
+    DrawShipOnly
+  next
+  Lost = 0
+  inc Lv
+  if Lv < 16 then goto new_level
+  goto won
+
+crash:
+  Ph = 2
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  play sound SndBoom
+  play sound SndLost
+  HideObjects
+  W16 = Sx >> 4
+  X = W16
+  W16 = Sy >> 4
+  Y = W16
+  for Tm = 0 to 44
+    Frame1
+    Twinkle
+    V = Tm / 15
+    V = V * 4
+    V = V + SX0
+    W = Tm & 2
+    E = 11
+    if W = 0 then E = 8
+    set sprite 0 to Y,X,V,E
+    set sprite 1 to 192,0,0,0
+    update sprites
+  next
+  set sprite 0 to 192,0,0,0
+  update sprites
+  dec Ships
+  Lost = 1
+  ShowShips
+  for Tm = 1 to 30
+    Frame1
+    Twinkle
+  next
+  if Ships > 0 then goto new_level
+  goto game_over
+
+won:
+  HideObjects
+  if Score > Hi then Hi = Score
+  print at 5,6, "YOU SURVIVED OMICRON!"
+  play sound SndExtra
+  goto end_wait
+
+game_over:
+  if Score > Hi then Hi = Score
+  play sound SndLost
+  print at 10,6, "GAME OVER"
+
+end_wait:
+  Ph = 3
+  print at 7,16, "FIRE: PLAY AGAIN"
+  print at 7,17, "DOWN: TITLE"
+  for Tm = 1 to 60
+    Frame1
+    Twinkle
+  next
+  WasBtn = 1
+ew_loop:
+  Frame1
+  Twinkle
+  ReadPad
+  if Dir = 4 then goto title
+  if Press = 0 then goto ew_loop
+  goto new_game
+
+' ---------------------------------------------------------------------------
+
+' StartLevel: the wave from the start, the ship at the top left
+sub StartLevel:
+  Kc = 0
+  Sp = 0
+  Sat = 0
+  Hit = 0
+  Pz = 0
+  Gun = 0
+  Spn = 0
+  Sx = 384
+  Sy = 320
+  Svx = 128
+  Svy = 128
+  Hd = 2
+  Ht = 2
+  Inv = 90
+  for I = 0 to 5
+    Es[I] = 0
+    Bk[I] = 255
+  next
+  Ml[0] = 0
+  Ml[1] = 0
+  Ql[0] = 0
+  Ql[1] = 0
+  ' four drifters come in at once, the rest as places free up
+  for I = 0 to 3
+    NewEnemy(I)
+  next
+  return
+end sub
+
+' NewEnemy(S): slot S gets a new enemy of this wave, away from the ship
+sub NewEnemy(u8 Slot):
+  inc Sp
+  Es[Slot] = 1
+  if Sat = 1 then Es[Slot] = 4
+  W16 = Sx >> 4
+  X = W16
+  W16 = Sy >> 4
+  Y = W16
+  if X < 120 then
+    V = random(150, 220)
+  else
+    V = random(18, 70)
+  end if
+  if Y < 90 then
+    W = random(125, 165)
+  else
+    W = random(14, 55)
+  end if
+  W16 = V
+  W16 = W16 << 4
+  Ex[Slot] = W16
+  W16 = W
+  W16 = W16 << 4
+  Ey[Slot] = W16
+  E8x[Slot] = V
+  E8y[Slot] = W
+  Gs = Es[Slot]
+  NewDir(Slot)
+  V = TurnT[Lv]
+  W16 = V
+  V = random(0, 200)
+  A16 = V
+  Et[Slot] = W16 + A16
+  Ef[Slot] = BGap[Lv]
+  return
+end sub
+
+' Speed: the speed (1/16 pixel a frame) of state Gs on this level
+sub Speed:
+  V = Lv << 2
+  V = V + Gs
+  dec V
+  N = SpdT[V]
+  W = Skill << 1
+  N = N + W
+  return
+end sub
+
+' NewDir(S): enemy S flies off at its speed in one of 8 directions
+sub NewDir(u8 Slot):
+  Speed
+  W = N >> 1
+  D = random(0, 7)
+  V = DxT[D]
+  if V = 0 then Evx[Slot] = 128
+  if V = 1 then Evx[Slot] = 128 + N
+  if V = 2 then Evx[Slot] = 128 - N
+  if V = 3 then Evx[Slot] = 128 + W
+  if V = 4 then Evx[Slot] = 128 - W
+  V = DyT[D]
+  if V = 0 then Evy[Slot] = 128
+  if V = 1 then Evy[Slot] = 128 + N
+  if V = 2 then Evy[Slot] = 128 - N
+  if V = 3 then Evy[Slot] = 128 + W
+  if V = 4 then Evy[Slot] = 128 - W
+  return
+end sub
+
+' Aim(Spd): Gvx, Gvy toward the ship from Gx, Gy at about Spd
+sub Aim(u8 Spd):
+  W16 = Gx >> 4
+  X = W16
+  W16 = Gy >> 4
+  Y = W16
+  W16 = Sx >> 4
+  X2 = W16
+  W16 = Sy >> 4
+  Y2 = W16
+  if X2 > X then
+    D = X2 - X
+  else
+    D = X - X2
+  end if
+  if Y2 > Y then
+    E = Y2 - Y
+  else
+    E = Y - Y2
+  end if
+  N = Spd
+  W = Spd >> 2
+  W = Spd - W
+  Gvx = 128
+  Gvy = 128
+  V = E << 1
+  K = D << 1
+  if D > V then
+    if X2 > X then
+      Gvx = 128 + N
+    else
+      Gvx = 128 - N
+    end if
+    return
+  end if
+  if E > K then
+    if Y2 > Y then
+      Gvy = 128 + N
+    else
+      Gvy = 128 - N
+    end if
+    return
+  end if
+  if X2 > X then
+    Gvx = 128 + W
+  else
+    Gvx = 128 - W
+  end if
+  if Y2 > Y then
+    Gvy = 128 + W
+  else
+    Gvy = 128 - W
+  end if
+  return
+end sub
+
+' Move: Gx, Gy on by Gvx, Gvy (128 = still); bounce off the screen's edges
+' (x 16-224, y 12-168) and off the board (x 80-175, y 72-119, a body 2-13
+' inside the sprite), Gb 1 if it bounced; X, Y its place in pixels after.
+' In asm (OmMove): it runs for every moving thing every frame.
+sub Move:
+  call asm OmMove
+  return
+end sub
+
+' MoveE(S): enemy S moved in place (OmMoveE: its arrays through Gx..Gvy)
+sub MoveE(u8 Slot):
+  Gi = Slot
+  call asm OmMoveE
+  return
+end sub
+
+' MoveShip: thrust by the stick; turn while the button is held; drift,
+' a little friction every 8 frames, a top speed
+sub MoveShip:
+  if Inv > 0 then dec Inv
+  if Dir < 16 then
+    Svx = Svx + ThX[Dir]
+    Svx = Svx - 128
+    Svy = Svy + ThY[Dir]
+    Svy = Svy - 128
+    if Btn = 1 then Ht = Dir
+  end if
+  if Svx > 164 then Svx = 164
+  if Svx < 92 then Svx = 92
+  if Svy > 164 then Svy = 164
+  if Svy < 92 then Svy = 92
+  V = Tick & 7
+  if V = 0 then
+    if Svx > 128 then dec Svx
+    if Svx < 128 then inc Svx
+    if Svy > 128 then dec Svy
+    if Svy < 128 then inc Svy
+  end if
+  ' turning: a sixteenth every 3 frames, the short way round
+  inc T3
+  if T3 >= 3 then
+    T3 = 0
+    if Hd <> Ht then
+      V = Ht - Hd
+      V = V & 15
+      if V < 8 then
+        inc Hd
+      else
+        dec Hd
+      end if
+      Hd = Hd & 15
+    end if
+  end if
+  Gx = Sx
+  Gy = Sy
+  Gvx = Svx
+  Gvy = Svy
+  Move
+  Sx = Gx
+  Sy = Gy
+  Svx = Gvx
+  Svy = Gvy
+  return
+end sub
+
+' Shoot: a missile at a press, then every 12 frames while held
+sub Shoot:
+  if Gun > 0 then dec Gun
+  if Btn = 0 then return
+  if Press = 0 then
+    if Gun > 0 then return
+  end if
+  for I = 0 to 1
+    if Ml[I] = 0 then
+      Mx[I] = Sx
+      My[I] = Sy
+      Mvx[I] = HdX[Hd]
+      Mvy[I] = HdY[Hd]
+      Ml[I] = 40
+      W16 = Sx >> 4
+      M8x[I] = W16
+      W16 = Sy >> 4
+      M8y[I] = W16
+      Gun = 12
+      play sound SndFire
+      return
+    end if
+  next
+  return
+end sub
+
+' MoveMissiles: 4 pixels a frame; gone at an edge or the board
+sub MoveMissiles:
+  for I = 0 to 1
+    if Ml[I] > 0 then
+      dec Ml[I]
+      Gx = Mx[I]
+      Gy = My[I]
+      Gvx = Mvx[I]
+      Gvy = Mvy[I]
+      Move
+      Mx[I] = Gx
+      My[I] = Gy
+      M8x[I] = X
+      M8y[I] = Y
+      if Gb = 1 then Ml[I] = 0
+    end if
+  next
+  for I = 0 to 1
+    if Ql[I] > 0 then
+      dec Ql[I]
+    end if
+  next
+  return
+end sub
+
+' MoveEnemies: each moves, bounces, grows up and fires or bombs
+sub MoveEnemies:
+  for I = 0 to 5
+    Gs = Es[I]
+    if Gs = 5 then
+      dec Ef[I]
+      if Ef[I] = 0 then Es[I] = 0
+    end if
+    if Gs >= 1 then
+      if Gs <= 4 then MoveOne(I)
+    end if
+  next
+  ' the last three become battle satellites
+  if Sat = 0 then
+    V = 15 - Kc
+    if V <= 3 then
+      Sat = 1
+      for I = 0 to 5
+        V = Es[I]
+        if V >= 1 then
+          if V <= 4 then
+            Es[I] = 4
+            Gs = 4
+            NewDir(I)
+            Ef[I] = 40
+          end if
+        end if
+      next
+    end if
+  end if
+  return
+end sub
+
+sub MoveOne(u8 Slot):
+  MoveE(Slot)
+  ' a destroyer turns toward you at every wall
+  if Gb = 1 then
+    if Gs = 3 then
+      Gx = Ex[Slot]
+      Gy = Ey[Slot]
+      Speed
+      Aim(N)
+      Evx[Slot] = Gvx
+      Evy[Slot] = Gvy
+    end if
+  end if
+  ' growing up: drifter -> bomber -> destroyer
+  if Gs <= 2 then
+    W16 = Et[Slot]
+    if W16 > 0 then
+      dec W16
+      Et[Slot] = W16
+    else
+      inc Gs
+      Es[Slot] = Gs
+      NewDir(Slot)
+      Et[Slot] = 480
+      Ef[Slot] = 30
+    end if
+  end if
+  if Gs = 1 then return
+  dec Ef[Slot]
+  if Ef[Slot] > 0 then return
+  ' bombers and satellites bomb; destroyers and satellites fire
+  if Gs = 2 then
+    DropBomb(Slot)
+    Ef[Slot] = BGap[Lv]
+    return
+  end if
+  if Gs = 3 then
+    EnemyShot(Slot)
+    Ef[Slot] = FGap[Lv]
+    return
+  end if
+  V = Tick & 1
+  if V = 0 then
+    DropBomb(Slot)
+  else
+    EnemyShot(Slot)
+  end if
+  V = FGap[Lv]
+  V = V >> 1
+  Ef[Slot] = V + 20
+  return
+end sub
+
+sub DropBomb(u8 Slot):
+  for J = 0 to 5
+    if Bk[J] = 255 then
+      V = BMax[Lv]
+      K = random(0, V)
+      Bk[J] = K
+      Bx[J] = E8x[Slot]
+      By[J] = E8y[Slot]
+      Bv[J] = 128
+      if K = 1 then
+        V = Tick & 1
+        Bv[J] = 127
+        if V = 0 then Bv[J] = 129
+      end if
+      V = random(1, 10)
+      Bm[J] = V
+      play sound SndDrop
+      return
+    end if
+  next
+  return
+end sub
+
+sub EnemyShot(u8 Slot):
+  for J = 0 to 1
+    if Ql[J] = 0 then
+      Gx = Ex[Slot]
+      Gy = Ey[Slot]
+      Aim(40)
+      Qx[J] = Gx
+      Qy[J] = Gy
+      Qvx[J] = Gvx
+      Qvy[J] = Gvy
+      Ql[J] = 70
+      Q8x[J] = E8x[Slot]
+      Q8y[J] = E8y[Slot]
+      play sound SndZap
+      return
+    end if
+  next
+  return
+end sub
+
+' MoveShots: the enemy's shots fly straight, gone at a wall
+sub MoveShots:
+  for I = 0 to 1
+    if Ql[I] > 0 then
+      Gx = Qx[I]
+      Gy = Qy[I]
+      Gvx = Qvx[I]
+      Gvy = Qvy[I]
+      Move
+      Qx[I] = Gx
+      Qy[I] = Gy
+      Q8x[I] = X
+      Q8y[I] = Y
+      if Gb = 1 then Ql[I] = 0
+    end if
+  next
+  return
+end sub
+
+' MoveBombs: the ricochet nets drift a pixel every 2 frames
+sub MoveBombs:
+  V = Tick & 1
+  if V = 1 then return
+  for I = 0 to 5
+    if Bk[I] = 1 then
+      W16 = Bx[I]
+      W16 = W16 << 4
+      Gx = W16
+      W16 = By[I]
+      W16 = W16 << 4
+      Gy = W16
+      V = Bv[I]
+      Gvx = 128
+      if V = 127 then Gvx = 112
+      if V = 129 then Gvx = 144
+      Gvy = 128
+      Move
+      W16 = Gx >> 4
+      Bx[I] = W16
+      W16 = Gy >> 4
+      By[I] = W16
+      Bv[I] = 127
+      if Gvx > 128 then Bv[I] = 129
+    end if
+  next
+  return
+end sub
+
+' Near: V 1 if boxes at X,Y and X2,Y2 are within 10 pixels both ways
+sub Near:
+  call asm OmNear
+  return
+end sub
+
+' Collide: missiles against enemies and bombs; the ship against enemies
+' (not drifters), bombs and shots. The scans are asm (OmScanE, OmScanB,
+' OmScanQ: Gi the first one near X,Y, or 255)
+sub Collide:
+  for I = 0 to 1
+    if Ml[I] > 0 then
+      X = M8x[I]
+      Y = M8y[I]
+      Gs = 1
+      call asm OmScanE
+      if Gi < 6 then
+        Ml[I] = 0
+        E = Es[Gi]
+        Pts = EPts[E]
+        AddPts
+        Es[Gi] = 5
+        Ef[Gi] = 24
+        inc Kc
+        play sound SndBoom
+      else
+        call asm OmScanB
+        if Gi < 6 then
+          Ml[I] = 0
+          K = Bk[Gi]
+          if K <> 4 then
+            Pts = BPts[K]
+            if K = 5 then Pts = Bm[Gi]
+            AddPts
+            Bk[Gi] = 255
+            play sound SndPop
+          end if
+        end if
+      end if
+    end if
+  next
+  if Inv > 0 then return
+  W16 = Sx >> 4
+  X = W16
+  W16 = Sy >> 4
+  Y = W16
+  Gs = 2
+  call asm OmScanE
+  if Gi < 6 then Hit = 1
+  call asm OmScanB
+  if Gi < 6 then Hit = 1
+  call asm OmScanQ
+  if Gi < 6 then Hit = 1
+  return
+end sub
+
+sub AddPts:
+  W16 = Pts
+  Score = Score + W16
+  ShowScore
+  return
+end sub
+
+' Spawn: a new enemy in a free place every 40 frames, 6 at once at most,
+' until the wave's 15 have come
+sub Spawn:
+  if Sp >= 15 then return
+  inc Spn
+  if Spn < 40 then return
+  Spn = 0
+  for I = 0 to 5
+    if Es[I] = 0 then
+      NewEnemy(I)
+      return
+    end if
+  next
+  return
+end sub
+
+' DrawAll: the ship first (sprites 0, 1), then the 16 objects (6 enemies,
+' 6 bombs, 2 missiles, 2 shots) into sprites 2-17 in an order that turns
+' by one every frame (OmSpr), then the table to VRAM in one copy
+sub DrawAll:
+  ShipTab
+  Rot = Rot + 1
+  Rot = Rot & 15
+  call asm OmDraw
+  call asm OmSpr
+  SprTab[72] = 208
+  call asm OmCopy
+  return
+end sub
+
+' ShipTab: the ship's two entries of the sprite table (blinking when safe)
+sub ShipTab:
+  W16 = Sx >> 4
+  X = W16
+  W16 = Sy >> 4
+  Y = W16
+  V = Hd << 2
+  W = V + SSh0
+  V = V + SCk0
+  K = 0
+  if Inv > 0 then
+    K = Tick & 4
+  end if
+  if K > 0 then Y = 192
+  SprTab[0] = Y
+  SprTab[1] = X
+  SprTab[2] = V
+  SprTab[3] = 8
+  SprTab[4] = Y
+  SprTab[5] = X
+  SprTab[6] = W
+  SprTab[7] = 14
+  return
+end sub
+
+sub DrawShipOnly:
+  ShipTab
+  for I = 8 to 71
+    SprTab[I] = 0
+  next
+  for I = 2 to 17
+    J = I << 2
+    SprTab[J] = 192
+  next
+  SprTab[72] = 208
+  call asm OmCopy
+  return
+end sub
+
+sub HideObjects:
+  for J = 2 to 17
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Twinkle: the twinkling star changes colour every 8 frames
+sub Twinkle:
+  V = Tick & 7
+  if V <> 0 then return
+  V = Tick >> 3
+  V = V & 3
+  W = TwC[V]
+  vpoke vram.color + 1051, W
+  return
+end sub
+
+' the field: stars, then the status board
+sub DrawField:
+  NewScreen
+  for I = 1 to 70
+    X = random(2, 29)
+    Y = random(1, 22)
+    V = random(0, 3)
+    V = V + TSt1
+    put char V at X,Y
+  next
+  put char TBtl at 10,9
+  put char TBtr at 21,9
+  put char TBbl at 10,14
+  put char TBbr at 21,14
+  for X = 11 to 20
+    put char TBt at X,9
+    put char TBb at X,14
+    for Y = 10 to 13
+      put char 32 at X,Y
+    next
+  next
+  for Y = 10 to 13
+    put char TBl at 10,Y
+    put char TBr at 21,Y
+  next
+  return
+end sub
+
+sub ShowBoard:
+  print at 11,10, "SC"
+  ShowScore
+  print at 11,11, "LEVEL"
+  NumU = Lv + 1
+  print at 18,11, digits$(NumU, 2)
+  print at 11,12, "SHIPS"
+  ShowShips
+  SkillAt(11, 13)
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 14,10, digits$(NumU, 5)
+  print at 19,10, "0"
+  return
+end sub
+
+sub ShowShips:
+  NumU = Ships
+  print at 18,12, digits$(NumU, 2)
+  return
+end sub
+
+sub SkillAt(u8 C, u8 R):
+  if Skill = 0 then print at C,R, "ROOKIE"
+  if Skill = 1 then print at C,R, "ADVANCED"
+  if Skill = 2 then print at C,R, "PRO"
+  if Skill = 3 then print at C,R, "EXPERT"
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: Dir the stick's heading (0-14 even, 255 none), Btn the left
+' button, Press a new press, Press2 a new press of the right button
+sub ReadPad:
+  V = 0
+  if joypad(1).right then V = V | 1
+  if joypad(2).right then V = V | 1
+  if joypad(1).down then V = V | 2
+  if joypad(2).down then V = V | 2
+  if joypad(1).left then V = V | 4
+  if joypad(2).left then V = V | 4
+  if joypad(1).up then V = V | 8
+  if joypad(2).up then V = V | 8
+  Dir = DMap[V]
+  Btn = 0
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  Btn2 = 0
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 18
+  for J = 0 to 17
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the stars, the enemies' table, a skill menu
+sub TitlePage:
+  NewScreen
+  for I = 1 to 50
+    X = random(2, 29)
+    Y = random(1, 22)
+    V = random(0, 3)
+    V = V + TSt1
+    put char V at X,Y
+  next
+  print at 9,2, "O M I C R O N"
+  print at 4,4, "SURVIVE 16 WAVES OF 15"
+  print at 10,7, "ROOKIE"
+  print at 10,8, "ADVANCED"
+  print at 10,9, "PRO"
+  print at 10,10, "EXPERT"
+  print at 10,11, "CREDITS"
+  print at 4,13, "DRIFTER 200"
+  print at 20,13, "BOMBER 200"
+  print at 4,15, "DESTROYER 400"
+  print at 20,15, "SATELLITE"
+  print at 20,16, "600"
+  print at 3,17, "STICK: THRUST"
+  print at 3,18, "HOLD FIRE + STICK: TURN"
+  print at 3,19, "FIRE: SHOOT  RIGHT: PAUSE"
+  print at 11,21, "HI"
+  NumU = Hi
+  print at 14,21, digits$(NumU, 5)
+  print at 19,21, "0"
+  ShowMenu
+  ' the four forms beside their names
+  set sprite 2 to 99,14,SDr0,4
+  set sprite 3 to 99,142,SBo0,7
+  set sprite 4 to 115,14,SDe0,11
+  set sprite 5 to 115,142,SSa0,9
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Twinkle
+  ReadPad
+  V = Tick & 8
+  W = SDr0
+  if V > 0 then W = SDr1
+  set sprite 2 to 99,14,W,4
+  update sprites
+  if Dir = 12 then
+    if WasStick = 0 then
+      if Menu > 0 then dec Menu
+      ShowMenu
+    end if
+  end if
+  if Dir = 4 then
+    if WasStick = 0 then
+      if Menu < 4 then inc Menu
+      ShowMenu
+    end if
+  end if
+  WasStick = 0
+  if Dir < 16 then WasStick = 1
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 4 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for I = 0 to 4
+    Y = I + 7
+    if I = Menu then
+      print at 8,Y, ">"
+    else
+      print at 8,Y, " "
+    end if
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "O M I C R O N"
+  print at 3,5, "BASED ON OMICRON BY SEAN"
+  print at 3,6, "WAGLE, COMPUTE!'S GAZETTE"
+  print at 3,7, "APRIL 1987 (COMMODORE 64)."
+  print at 3,9, "MADE FOR THE COLECOVISION"
+  print at 3,10, "BY CLAUDE (AN AI MADE BY"
+  print at 3,11, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,12, "2026, IN AMY BY AMY"
+  print at 3,13, "BIENVENU."
+  print at 3,15, "MUSIC: OMICRON RISING AND"
+  print at 3,16, "SWARM (ORIGINAL)"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' NewDir's directions: 0 none, 1 +full, 2 -full, 3 +half, 4 -half
+data DxT bytes
+  1,2,0,0,3,4,3,4
+end data
+data DyT bytes
+  0,0,1,2,3,3,4,4
+end data
+' the twinkling star's colours
+data TwC bytes
+  $41,$51,$F1,$71
+end data
+
+data SpdT bytes
+  8,10,16,16,8,10,16,16,9,11,18,17,9,11,18,17,10,12,20,19,10,12,20,19,11,13,22,20,11,13,22,20,12,14,24,22,12,14,24,22,13,15,26,23,17,19,34,29,18,20,36,31,18,20,36,31,19,21,38,32,19,21,38,32
+end data
+data BMax bytes
+  0,0,1,1,2,2,3,3,4,4,5,5,5,5,5,5
+end data
+data TurnT bytes
+  200,191,182,173,164,155,146,137,128,119,110,101,92,83,74,65
+end data
+data FGap bytes
+  110,107,104,101,98,95,92,89,66,63,60,57,54,51,48,45
+end data
+data BGap bytes
+  130,125,120,115,110,105,100,95,90,85,80,75,70,65,60,55
+end data
+data HdX bytes
+  192,187,173,152,128,104,83,69,64,69,83,104,128,152,173,187
+end data
+data HdY bytes
+  128,152,173,187,192,187,173,152,128,104,83,69,64,69,83,104
+end data
+data ThX bytes
+  130,130,130,129,128,127,126,126,126,126,126,127,128,129,130,130
+end data
+data ThY bytes
+  128,129,130,130,130,130,130,129,128,127,126,126,126,126,126,127
+end data
+data DMap bytes
+  255,0,4,2,8,255,6,255,12,14,255,255,10,255,255,255
+end data
+data EPts bytes
+  0,20,20,40,60
+end data
+data BPts bytes
+  1,2,5,10,0,0
+end data
+data ECol bytes
+  0,4,7,11,9
+end data
+data BCol bytes
+  7,3,13,11,10,7
+end data
+data TilePat bytes
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $00,$80,$80,$60,$60,$60,$60,$60
+  $00,$01,$01,$06,$06,$06,$06,$06
+  $60,$60,$60,$60,$60,$80,$80,$00
+  $06,$06,$06,$06,$06,$01,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$41,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$51,$01,$01,$01,$01
+  $01,$07,$07,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$07,$07,$01
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $01,$17,$17,$71,$71,$71,$71,$71
+  $01,$17,$17,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$17,$17,$01
+  $71,$71,$71,$71,$71,$17,$17,$01
+end data
+data SpritePat bytes
+  $00,$20,$38,$1E,$1F,$0F,$0E,$04,$0E,$0F,$1F,$1E,$38,$20,$00,$00
+  $00,$00,$00,$00,$80,$E0,$78,$1E,$78,$E0,$80,$00,$00,$00,$00,$00
+  $0C,$06,$07,$07,$07,$07,$06,$0E,$1E,$7F,$FF,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$60,$30,$18,$FC,$F8,$00,$00,$00,$00,$00
+  $01,$01,$01,$03,$03,$03,$1F,$FE,$FC,$1F,$03,$00,$00,$00,$00,$00
+  $80,$80,$80,$C0,$C0,$C0,$60,$60,$20,$30,$F0,$70,$08,$00,$00,$00
+  $00,$00,$00,$00,$81,$FF,$7F,$3C,$0C,$06,$03,$01,$00,$00,$00,$00
+  $20,$60,$60,$E0,$E0,$E0,$E0,$60,$60,$60,$60,$E0,$E0,$40,$00,$00
+  $00,$00,$60,$38,$3E,$1F,$1F,$0C,$0C,$06,$06,$03,$03,$01,$01,$00
+  $00,$00,$0C,$38,$F8,$F0,$F0,$60,$60,$C0,$C0,$80,$80,$00,$00,$00
+  $08,$0C,$0C,$0E,$0F,$0F,$0F,$0C,$0C,$0C,$0D,$0F,$0E,$04,$00,$00
+  $00,$00,$00,$00,$03,$FE,$FC,$78,$60,$C0,$80,$00,$00,$00,$00,$00
+  $03,$03,$03,$07,$07,$07,$0D,$0C,$08,$19,$1F,$1C,$20,$00,$00,$00
+  $00,$00,$00,$80,$80,$80,$F0,$FF,$7E,$F0,$80,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$03,$07,$0C,$18,$30,$7F,$3F,$00,$00,$00,$00,$00
+  $60,$C0,$C0,$C0,$C0,$C0,$C0,$E0,$F0,$FC,$FE,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0F,$3C,$F0,$3C,$0F,$03,$00,$00,$00,$00,$00
+  $00,$08,$38,$F0,$F0,$E0,$E0,$C0,$E0,$E0,$F0,$F0,$38,$08,$00,$00
+  $00,$00,$00,$00,$3F,$7F,$30,$18,$0C,$07,$03,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$FE,$FC,$F0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$60,$20
+  $00,$00,$20,$1C,$1F,$19,$08,$0C,$0D,$07,$07,$07,$03,$03,$03,$01
+  $00,$00,$00,$00,$80,$F0,$7E,$FF,$F0,$80,$80,$80,$00,$00,$00,$00
+  $00,$04,$0E,$0F,$0D,$0C,$0C,$0C,$0F,$0F,$0F,$0E,$0C,$0C,$08,$00
+  $00,$00,$00,$00,$80,$C0,$60,$78,$FC,$FE,$03,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$06,$06,$0C,$0C,$1F,$1F,$3E,$38,$60,$00,$00,$00
+  $00,$00,$80,$80,$C0,$C0,$60,$60,$F0,$F0,$F8,$38,$0C,$00,$00,$00
+  $00,$00,$00,$01,$03,$06,$0C,$3C,$7F,$FF,$81,$00,$00,$00,$00,$00
+  $00,$40,$E0,$E0,$60,$60,$60,$60,$E0,$E0,$E0,$E0,$60,$60,$20,$00
+  $00,$00,$00,$00,$03,$1F,$FC,$FE,$1F,$03,$03,$03,$01,$01,$01,$01
+  $00,$00,$08,$70,$F0,$30,$20,$60,$60,$C0,$C0,$C0,$80,$80,$80,$00
+  $00,$00,$00,$00,$FF,$7F,$1E,$0E,$06,$07,$07,$07,$07,$06,$0C,$08
+  $00,$00,$00,$00,$F8,$FC,$18,$30,$60,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$E0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$03,$07,$06,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$0F,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$07,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$06,$07,$03,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$0F,$1F,$1F,$3E,$3C,$3C,$3E,$1F,$1F,$0F,$03,$00,$00
+  $00,$00,$C0,$F0,$F8,$F8,$7C,$3C,$3C,$7C,$F8,$F8,$F0,$C0,$00,$00
+  $00,$00,$00,$03,$0F,$0C,$18,$18,$18,$18,$0C,$0F,$03,$00,$00,$00
+  $00,$00,$00,$C0,$F0,$30,$18,$18,$18,$18,$30,$F0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$1F,$0F,$0F,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F0,$F0,$F8,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$04,$0F,$07,$0F,$0F,$0F,$0F,$1F,$0B,$00,$00,$00,$00
+  $00,$00,$00,$00,$D0,$F8,$F0,$F0,$F0,$F0,$E0,$F0,$20,$00,$00,$00
+  $00,$00,$80,$60,$38,$1E,$0F,$1F,$1F,$0F,$1E,$38,$60,$80,$00,$00
+  $00,$00,$01,$06,$1C,$78,$F0,$F8,$F8,$F0,$78,$1C,$06,$01,$00,$00
+  $00,$00,$01,$01,$03,$03,$3F,$FF,$FF,$3F,$03,$03,$01,$01,$00,$00
+  $00,$00,$80,$80,$C0,$C0,$FC,$FF,$FF,$FC,$C0,$C0,$80,$80,$00,$00
+  $00,$0C,$07,$0F,$1F,$1C,$38,$78,$38,$38,$1E,$1F,$0F,$1B,$00,$00
+  $00,$00,$D8,$F0,$F8,$78,$1C,$1C,$1E,$1C,$38,$F8,$F0,$E0,$30,$00
+  $00,$00,$03,$2F,$3F,$1C,$3C,$38,$38,$38,$7C,$5F,$0F,$03,$01,$00
+  $00,$80,$C0,$F0,$FA,$3E,$1C,$1C,$1C,$3C,$38,$FC,$F4,$C0,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$0F,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$3F,$00,$3F,$00,$3F,$00,$3F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FC,$00,$FC,$00,$FC,$00,$FC,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$04,$02,$1F,$02,$04,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$40,$80,$F0,$80,$40,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$08,$0F,$08,$0F,$08,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$40,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$0F,$1F,$1F,$1F,$1F,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F0,$F8,$F8,$F8,$F8,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$0C,$00,$00,$01,$01,$00,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$30,$30,$E0,$80,$80,$00,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$1B,$0F,$0C,$1A,$38,$18,$1A,$0C,$1F,$13,$01,$00,$00
+  $00,$00,$80,$C8,$F8,$30,$58,$18,$1C,$58,$30,$F0,$D8,$00,$00,$00
+  $02,$07,$0C,$70,$30,$60,$40,$40,$40,$C0,$60,$20,$18,$1C,$17,$00
+  $00,$E8,$38,$18,$04,$06,$03,$02,$02,$02,$06,$0C,$0E,$30,$E0,$40
+end data
+
+asm {
+; OmSpr: the 16 objects (Oy Ox Op Oc, fixed order) into sprite table
+; entries 2-17 of SprTab, object k at entry 2 + ((k + Rot) and 15)
+OmSpr:
+    push ix
+    ld a,(AMY_UVAR_Rot)
+    ld c,a
+    ld b,0
+OmSprL:
+    ld a,b
+    add a,c
+    and 15
+    add a,2
+    add a,a
+    add a,a
+    ld e,a
+    ld d,0
+    ld ix,AMY_UVAR_SprTab
+    add ix,de
+    ld e,b
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld a,(hl)
+    ld (ix+0),a
+    ld hl,AMY_UVAR_Ox
+    add hl,de
+    ld a,(hl)
+    ld (ix+1),a
+    ld hl,AMY_UVAR_Op
+    add hl,de
+    ld a,(hl)
+    ld (ix+2),a
+    ld hl,AMY_UVAR_Oc
+    add hl,de
+    ld a,(hl)
+    ld (ix+3),a
+    inc b
+    ld a,b
+    cp 16
+    jr nz,OmSprL
+    pop ix
+    ret
+; OmCopy: SprTab (76 bytes) to the sprite attribute table at $1B00, at 32
+; cycles a byte (outi, nop): safe in the active display with the NMI off
+OmCopy:
+    ld a,$00
+    out (VDP_CTRL_PORT),a
+    ld a,$5B
+    out (VDP_CTRL_PORT),a
+    ld hl,AMY_UVAR_SprTab
+    ld b,76
+    ld c,$BE
+OmCopyL:
+    outi
+    nop
+    jr nz,OmCopyL
+    ret
+; OmMove: see sub Move (Gx Gy Gvx Gvy -> X Y Gb)
+OmMove:
+    xor a
+    ld (AMY_UVAR_Gb),a
+    ld hl,(AMY_UVAR_Gx)
+    ld a,(AMY_UVAR_Gvx)
+    call OmAddV
+    ld (AMY_UVAR_Gx),hl
+    call OmPix
+    ld (AMY_UVAR_X),a
+    ld hl,(AMY_UVAR_Gy)
+    ld a,(AMY_UVAR_Gvy)
+    call OmAddV
+    ld (AMY_UVAR_Gy),hl
+    call OmPix
+    ld (AMY_UVAR_Y),a
+    ; x edges
+    ld a,(AMY_UVAR_X)
+    cp 241
+    jr c,OmMx1
+    xor a
+OmMx1:
+    cp 16
+    jr nc,OmMx2
+    ld hl,256
+    ld (AMY_UVAR_Gx),hl
+    ld a,16
+    ld (AMY_UVAR_X),a
+    ld a,(AMY_UVAR_Gvx)
+    cp 128
+    call c,OmNegX
+    call OmBnc
+    jr OmMy
+OmMx2:
+    cp 225
+    jr c,OmMy
+    ld hl,3584
+    ld (AMY_UVAR_Gx),hl
+    ld a,224
+    ld (AMY_UVAR_X),a
+    ld a,(AMY_UVAR_Gvx)
+    cp 129
+    call nc,OmNegX
+    call OmBnc
+OmMy:
+    ld a,(AMY_UVAR_Y)
+    cp 241
+    jr c,OmMy1
+    xor a
+OmMy1:
+    cp 12
+    jr nc,OmMy2
+    ld hl,192
+    ld (AMY_UVAR_Gy),hl
+    ld a,12
+    ld (AMY_UVAR_Y),a
+    ld a,(AMY_UVAR_Gvy)
+    cp 128
+    call c,OmNegY
+    call OmBnc
+    jr OmMb
+OmMy2:
+    cp 169
+    jr c,OmMb
+    ld hl,2688
+    ld (AMY_UVAR_Gy),hl
+    ld a,168
+    ld (AMY_UVAR_Y),a
+    ld a,(AMY_UVAR_Gvy)
+    cp 129
+    call nc,OmNegY
+    call OmBnc
+OmMb:
+    ; the board: out if X+13 <= 80, X+2 >= 176, Y+13 <= 72, Y+2 >= 120
+    ld a,(AMY_UVAR_X)
+    cp 68
+    ret c
+    cp 174
+    ret nc
+    ld a,(AMY_UVAR_Y)
+    cp 60
+    ret c
+    cp 118
+    ret nc
+    call OmBnc
+    ld a,(AMY_UVAR_X)
+    add a,8
+    cp 80
+    jr nc,OmMb2
+    ld hl,1056
+    ld (AMY_UVAR_Gx),hl
+    ld a,66
+    ld (AMY_UVAR_X),a
+    ld a,(AMY_UVAR_Gvx)
+    cp 129
+    ret c
+    jp OmNegX
+OmMb2:
+    cp 176
+    jr c,OmMb3
+    ld hl,2784
+    ld (AMY_UVAR_Gx),hl
+    ld a,174
+    ld (AMY_UVAR_X),a
+    ld a,(AMY_UVAR_Gvx)
+    cp 128
+    ret nc
+    jp OmNegX
+OmMb3:
+    ld a,(AMY_UVAR_Y)
+    add a,8
+    cp 96
+    jr nc,OmMb4
+    ld hl,928
+    ld (AMY_UVAR_Gy),hl
+    ld a,58
+    ld (AMY_UVAR_Y),a
+    ld a,(AMY_UVAR_Gvy)
+    cp 129
+    ret c
+    jp OmNegY
+OmMb4:
+    ld hl,1888
+    ld (AMY_UVAR_Gy),hl
+    ld a,118
+    ld (AMY_UVAR_Y),a
+    ld a,(AMY_UVAR_Gvy)
+    cp 128
+    ret nc
+    jp OmNegY
+OmBnc:
+    ld a,1
+    ld (AMY_UVAR_Gb),a
+    ret
+OmNegX:
+    ld a,(AMY_UVAR_Gvx)
+    neg
+    ld (AMY_UVAR_Gvx),a
+    ret
+OmNegY:
+    ld a,(AMY_UVAR_Gvy)
+    neg
+    ld (AMY_UVAR_Gvy),a
+    ret
+; OmAddV: HL += A - 128 (A a biased speed)
+OmAddV:
+    sub 128
+    ld e,a
+    ld d,0
+    bit 7,a
+    jr z,OmAddV1
+    dec d
+OmAddV1:
+    add hl,de
+    ret
+; OmPix: A = low byte of HL >> 4
+OmPix:
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    ret
+; OmMoveE: enemy Gi's arrays (Ex Ey Evx Evy) through OmMove, back, and
+; its pixel place into E8x E8y
+OmMoveE:
+    ld a,(AMY_UVAR_Gi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Ex
+    add hl,de
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Gx),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_Gx+1),a
+    ld hl,AMY_UVAR_Ey
+    add hl,de
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Gy),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_Gy+1),a
+    ld hl,AMY_UVAR_Evx
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Gvx),a
+    ld hl,AMY_UVAR_Evy
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Gvy),a
+    call OmMove
+    ld a,(AMY_UVAR_Gi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Ex
+    add hl,de
+    add hl,de
+    ld a,(AMY_UVAR_Gx)
+    ld (hl),a
+    inc hl
+    ld a,(AMY_UVAR_Gx+1)
+    ld (hl),a
+    ld hl,AMY_UVAR_Ey
+    add hl,de
+    add hl,de
+    ld a,(AMY_UVAR_Gy)
+    ld (hl),a
+    inc hl
+    ld a,(AMY_UVAR_Gy+1)
+    ld (hl),a
+    ld hl,AMY_UVAR_Evx
+    add hl,de
+    ld a,(AMY_UVAR_Gvx)
+    ld (hl),a
+    ld hl,AMY_UVAR_Evy
+    add hl,de
+    ld a,(AMY_UVAR_Gvy)
+    ld (hl),a
+    ld hl,AMY_UVAR_E8x
+    add hl,de
+    ld a,(AMY_UVAR_X)
+    ld (hl),a
+    ld hl,AMY_UVAR_E8y
+    add hl,de
+    ld a,(AMY_UVAR_Y)
+    ld (hl),a
+    ret
+; OmNear: V = 1 if |X-X2| < 10 and |Y-Y2| < 10
+OmNear:
+    xor a
+    ld (AMY_UVAR_V),a
+    ld a,(AMY_UVAR_X)
+    ld hl,AMY_UVAR_X2
+    sub (hl)
+    jr nc,OmN1
+    neg
+OmN1:
+    cp 10
+    ret nc
+    ld a,(AMY_UVAR_Y)
+    ld hl,AMY_UVAR_Y2
+    sub (hl)
+    jr nc,OmN2
+    neg
+OmN2:
+    cp 10
+    ret nc
+    ld a,1
+    ld (AMY_UVAR_V),a
+    ret
+; OmScanE: Gi = the first enemy J with Gs <= Es[J] <= 4 near X,Y, or 255
+OmScanE:
+    ld b,0
+OmSE1:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Es
+    add hl,de
+    ld a,(hl)
+    cp 5
+    jr nc,OmSE2
+    ld hl,AMY_UVAR_Gs
+    cp (hl)
+    jr c,OmSE2
+    ld hl,AMY_UVAR_E8x
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UVAR_E8y
+    add hl,de
+    ld a,(hl)
+    call OmNr
+    jr c,OmSHit
+OmSE2:
+    inc b
+    ld a,b
+    cp 6
+    jr nz,OmSE1
+OmSNone:
+    ld a,255
+    ld (AMY_UVAR_Gi),a
+    ret
+OmSHit:
+    ld a,b
+    ld (AMY_UVAR_Gi),a
+    ret
+; OmScanB: the first bomb near X,Y
+OmScanB:
+    ld b,0
+OmSB1:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Bk
+    add hl,de
+    ld a,(hl)
+    cp 255
+    jr z,OmSB2
+    ld hl,AMY_UVAR_Bx
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UVAR_By
+    add hl,de
+    ld a,(hl)
+    call OmNr
+    jr c,OmSHit
+OmSB2:
+    inc b
+    ld a,b
+    cp 6
+    jr nz,OmSB1
+    jr OmSNone
+; OmScanQ: the first enemy shot near X,Y
+OmScanQ:
+    ld b,0
+OmSQ1:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Ql
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,OmSQ2
+    ld hl,AMY_UVAR_Q8x
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UVAR_Q8y
+    add hl,de
+    ld a,(hl)
+    call OmNr
+    jr c,OmSHit
+OmSQ2:
+    inc b
+    ld a,b
+    cp 2
+    jr nz,OmSQ1
+    jr OmSNone
+; OmNr: carry if |X - C| < 10 and |Y - A| < 10 (keeps B, DE)
+OmNr:
+    ld hl,AMY_UVAR_Y
+    sub (hl)
+    jr nc,OmNr1
+    neg
+OmNr1:
+    cp 10
+    ret nc
+    ld a,(AMY_UVAR_X)
+    sub c
+    jr nc,OmNr2
+    neg
+OmNr2:
+    cp 10
+    ret
+; OmDraw: the 16 objects' sprites into Oy Ox Op Oc (fixed order: enemies,
+; bombs, missiles, shots). Patterns: SDr0 128, SB0 160, SMi 184, SX0 188
+; (build.py checks them against gfxconst.txt)
+OmDraw:
+    ld b,0
+OmD1:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Es
+    add hl,de
+    ld a,(hl)
+    or a
+    jr nz,OmD2
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld (hl),192
+    jr OmD9
+OmD2:
+    ld c,a
+    ld hl,AMY_UVAR_E8y
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld (hl),a
+    ld hl,AMY_UVAR_E8x
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_Ox
+    add hl,de
+    ld (hl),a
+    ld a,c
+    cp 5
+    jr nz,OmD3
+    ld hl,AMY_UVAR_Ef
+    add hl,de
+    ld a,(hl)
+    srl a
+    srl a
+    srl a
+    ld c,a
+    ld a,2
+    sub c
+    add a,a
+    add a,a
+    add a,188
+    ld hl,AMY_UVAR_Op
+    add hl,de
+    ld (hl),a
+    ld hl,AMY_UVAR_Oc
+    add hl,de
+    ld (hl),11
+    jr OmD9
+OmD3:
+    push bc
+    ld hl,AMY_UDATA_ECol
+    ld b,0
+    add hl,bc
+    ld a,(hl)
+    pop bc
+    ld hl,AMY_UVAR_Oc
+    add hl,de
+    ld (hl),a
+    ld a,c
+    dec a
+    add a,a
+    add a,a
+    add a,a
+    add a,128
+    ld c,a
+    ld a,(AMY_UVAR_Tick)
+    and 8
+    jr z,OmD4
+    ld a,4
+OmD4:
+    add a,c
+    ld hl,AMY_UVAR_Op
+    add hl,de
+    ld (hl),a
+OmD9:
+    inc b
+    ld a,b
+    cp 6
+    jr nz,OmD1
+    ; the bombs: objects 6-11
+    ld b,0
+OmDB1:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Bk
+    add hl,de
+    ld a,(hl)
+    ld c,a
+    ld e,b
+    ld a,b
+    add a,6
+    ld e,a
+    cp a
+    ld a,c
+    cp 255
+    jr nz,OmDB2
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld (hl),192
+    jr OmDB9
+OmDB2:
+    push bc
+    ld b,0
+    ld hl,AMY_UDATA_BCol
+    add hl,bc
+    ld a,(hl)
+    pop bc
+    ld hl,AMY_UVAR_Oc
+    add hl,de
+    ld (hl),a
+    ld a,c
+    add a,a
+    add a,a
+    add a,160
+    ld hl,AMY_UVAR_Op
+    add hl,de
+    ld (hl),a
+    push de
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Bx
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UVAR_By
+    add hl,de
+    ld a,(hl)
+    pop de
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld (hl),a
+    ld hl,AMY_UVAR_Ox
+    add hl,de
+    ld (hl),c
+OmDB9:
+    inc b
+    ld a,b
+    cp 6
+    jr nz,OmDB1
+    ; missiles 12-13, shots 14-15
+    ld b,0
+OmDM1:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Ml
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_M8x
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UVAR_M8y
+    add hl,de
+    ld h,(hl)
+    push af
+    ld a,b
+    add a,12
+    ld e,a
+    pop af
+    ld l,15
+    call OmDObj
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_Ql
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_Q8x
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UVAR_Q8y
+    add hl,de
+    ld h,(hl)
+    push af
+    ld a,b
+    add a,14
+    ld e,a
+    pop af
+    ld l,10
+    call OmDObj
+    inc b
+    ld a,b
+    cp 2
+    jr nz,OmDM1
+    ret
+; OmDObj: object E: hidden if A = 0, else at y H, x C, colour L, SMi
+OmDObj:
+    ld d,0
+    or a
+    jr nz,OmDO1
+    push hl
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld (hl),192
+    pop hl
+    ret
+OmDO1:
+    ld a,h
+    push hl
+    ld hl,AMY_UVAR_Oy
+    add hl,de
+    ld (hl),a
+    ld hl,AMY_UVAR_Ox
+    add hl,de
+    ld (hl),c
+    ld hl,AMY_UVAR_Op
+    add hl,de
+    ld (hl),184
+    pop hl
+    ld a,l
+    ld hl,AMY_UVAR_Oc
+    add hl,de
+    ld (hl),a
+    ret
+OmBoom:
+    db $00,$00,$04,$02,$00,$00,$25,$04,$00,$00,$46,$06,$00,$00,$67,$0A,$00,$00,$97,$0C,$10
+OmPop:
+    db $00,$00,$05,$02,$00,$00,$26,$03,$00,$00,$56,$04,$10
+OmFire:
+    db $40,$40,$10,$01,$40,$4C,$20,$01,$40,$5A,$30,$01,$40,$6B,$50,$02,$50
+OmZap:
+    db $40,$FE,$20,$01,$40,$D6,$20,$01,$40,$1D,$31,$01,$40,$53,$51,$02,$50
+OmDrop:
+    db $80,$AB,$31,$02,$80,$FC,$41,$02,$80,$3B,$52,$03,$90
+OmClear:
+    db $80,$D6,$10,$04,$80,$AA,$10,$04,$80,$8F,$10,$04,$80,$6B,$10,$04,$80,$55,$20,$0C,$90
+OmLost:
+    db $80,$1D,$11,$04,$80,$41,$21,$04,$80,$53,$31,$04,$80,$7C,$41,$06,$80,$AB,$51,$0C,$90
+OmExtra:
+    db $80,$6B,$10,$03,$80,$55,$10,$03,$80,$47,$10,$03,$80,$35,$20,$08,$90
+
+OmSoundTable:
+    dw OmTuneMel,$702B
+    dw OmTuneBass,$7035
+    dw OmRunMel,$702B
+    dw OmRunBass,$7035
+    dw OmBoom,$703F
+    dw OmPop,$703F
+    dw OmFire,$7049
+    dw OmZap,$7049
+    dw OmDrop,$7053
+    dw OmClear,$7053
+    dw OmLost,$7053
+    dw OmExtra,$7053
+; Omicron Rising (original)
+; Tiny Sound, 6 frames per step
+OmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$23,$01,$1E,$01,$23,$01,$26,$01,$2A,$01,$01,$01
+    db $28,$01,$01,$01,$26,$01,$25,$01,$23,$01,$21,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$2B,$01,$2A,$01,$28,$01
+    db $26,$01,$25,$01,$26,$01,$23,$01,$22,$01,$25,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+OmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12
+    db $FF
+
+; Swarm (original)
+; Tiny Sound, 6 frames per step
+OmRunMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$50,$1A,$21,$23,$01,$01,$01,$01,$01,$1E,$01,$01,$01,$26,$01
+    db $01,$01,$25,$01,$01,$01,$01,$01,$01,$01,$21,$01,$01,$01,$23,$01
+    db $01,$01,$01,$01,$1F,$01,$01,$01,$01,$01,$1A,$01,$01,$01,$23,$01
+    db $01,$01,$22,$01,$01,$01,$01,$01,$01,$01,$1E,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+OmRunBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12
+    db $FF
+}
