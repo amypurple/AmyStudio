@@ -275,6 +275,7 @@ export function createInlineStatementCompiler(ctx) {
           }
           const inlinePrintLiteral = inlineStmt.match(/^print\s+"([^"]*)"\s+at\s+(.+?)\s*,\s*(.+?)\s*$/i);
           if (inlinePrintLiteral) {
+            if (inlinePrintLiteral[1].length === 0) return { ok: true, lines: [], log: "" };
             const literal = emitTextLiteral(inlinePrintLiteral[1]);
             const loadY = emitLoadInt8ValueInto("d", inlinePrintLiteral[3]);
             const loadX = emitLoadInt8ValueInto("e", inlinePrintLiteral[2]);

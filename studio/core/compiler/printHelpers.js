@@ -567,6 +567,7 @@ export function createPrintHelpers(ctx) {
   }
 
   function emitPrintLiteralAt(literalText, xToken, yToken) {
+    if (String(literalText || "").length === 0) return { lines: [], width: 0 };
     const literal = emitTextLiteral(literalText);
     const loadY = emitLoadInt8ValueInto("d", yToken);
     const loadX = emitLoadInt8ValueInto("e", xToken);
@@ -765,6 +766,10 @@ export function createPrintHelpers(ctx) {
       const itemX = xAdvance === 0 ? xToken : normalizeExpression(`(${xToken})+${xAdvance}`);
       const literalMatch = segment.match(/^"([^"]*)"$/);
       if (literalMatch) {
+        if (literalMatch[1].length === 0) {
+          handledAny = true;
+          continue;
+        }
         const printed = emitPrintLiteralAt(literalMatch[1], itemX, yToken);
         if (!printed) return null;
         lines.push(...printed.lines);
@@ -802,6 +807,7 @@ export function createPrintHelpers(ctx) {
     for (const segment of segments) {
       const literalMatch = segment.match(/^"([^"]*)"$/);
       if (literalMatch) {
+        if (literalMatch[1].length === 0) continue;
         const literal = emitTextLiteral(literalMatch[1]);
         prepared.push({ kind: "literal", label: literal.label, width: literal.length });
         totalWidth += literal.length;

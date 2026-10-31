@@ -15,6 +15,7 @@ const cases = [
   { id: "baseline", expected: "" },
   { id: "literal-text", expected: "SCORE" },
   { id: "literal-one-character", expected: "A" },
+  { id: "print-empty-literal", expected: "", fullNameTile: 42 },
   { id: "single-character", expected: "A" },
   { id: "put-char-variable-coordinates", expected: "A" },
   { id: "put-char-variable-value", expected: "A" },
@@ -143,6 +144,11 @@ try {
         if (fixture.extra) assertVramText(core, fixture.extra.address, fixture.extra.expected, `${fixture.id}/${profile} extra`);
         for (const [index, check] of (fixture.checks || []).entries()) {
           assertVramText(core, check.address, check.expected, `${fixture.id}/${profile} check ${index + 1}`);
+        }
+        if (Number.isInteger(fixture.fullNameTile)) {
+          const nameTable = core.readVram(0x1800, 32 * 24);
+          assert.equal(nameTable.length, 32 * 24, `${fixture.id}/${profile} Name Table length`);
+          assert.ok([...nameTable].every((value) => value === fixture.fullNameTile), `${fixture.id}/${profile} empty print changed the Name Table`);
         }
         results.push({ fixture: fixture.id, profile, romBytes: rom.length, cycles });
       } finally {
