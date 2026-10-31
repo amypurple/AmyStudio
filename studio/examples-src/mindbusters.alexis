@@ -1,0 +1,1028 @@
+cartridge "MINDBUSTERS/NED W. SCHULTZ, COMPUTE!/1985"
+
+' MINDBUSTERS
+' A ColecoVision game based on "Mindbusters" by Ned W. Schultz, COMPUTE!,
+' April 1985 (pages 44-57: the Commodore 64 original, and versions for the
+' VIC-20, Atari, IBM PC/PCjr, Apple II and TI-99/4A), made for the
+' ColecoVision by Claude (an AI made by Anthropic) for Amy Studio, 2026,
+' in Amy, the language by Amy Bienvenu. Not a line-for-line port: the
+' rules are the article's, the screen, sound and feel are new.
+'
+' The game: copy a picture. The target (top) is 8 rows of 12 pieces, each
+' row a window into a 68-piece string (at offsets 1-56, chosen at random).
+' Your grid (bottom) has the same rows at other offsets. Pick a row with
+' the stick (up and down: the arrow follows), slide it with left and right
+' (left shows the pieces further along the string, as the C64's J and K
+' keys did), until every row matches. The clock runs until the picture is
+' solved; the best time of each puzzle is kept for the session.
+' Three puzzles, as in the article: BEND YOUR MIND (blocks, the easiest),
+' BRUISE YOUR MIND (pipes) and BLOW YOUR MIND (two diagonal weaves, the
+' hardest). The strings are the TI-99/4A version's (art.py).
+'
+' Controls (either joystick): up and down pick a row, left and right slide
+' it (held: it keeps sliding); the right button gives up (back to the
+' menu). On the menu, up and down choose the puzzle, the left button
+' starts it. Once solved: the left button plays the same puzzle again,
+' the stick left goes back to the menu. Keypad not used.
+'
+' Made for the ColecoVision:
+' - The whole screen: the target and your grid one above the other in
+'   frames, the clock, best time and rows matched beside them.
+' - Each puzzle its own colours; the row you are on lights up.
+' - The slide is smooth: the selected row is drawn with its own 12 tile
+'   codes (230-241) whose patterns are made every frame, shifted 2 pixels
+'   at a time (MbShift, in assembly below), so a row glides 8 pixels in
+'   4 frames instead of jumping a piece.
+' - A sprite arrow that glides from row to row.
+' - A green diamond beside each row that matches, a ping when a row first
+'   matches, a fanfare when the picture is solved.
+' - Quiet music while you think ("Thinking Cap"), under the effects (music
+'   first in the sound table at $702B/$7035, effects after, by channel).
+' - A row is matched when its pieces are the same as the target's, not
+'   only when its offset is (the listings compared offsets, so a row
+'   showing the same pieces from elsewhere in the string did not count).
+' - A new puzzle never starts with a row already matched.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from 128;
+' every screen is drawn with the NMI off after a wait; an original title
+' tune that plays once ("Busted Gears"), and a credits page.
+
+const TPiece = 128
+const TFtl = 146
+const TFtr = 147
+const TFbl = 148
+const TFbr = 149
+const TFh = 150
+const TFv = 151
+const TMark = 152
+const TDot = 153
+const TLit = 230
+const NTiles8 = 208
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndThinkA = 3
+const SndThinkB = 4
+const SndSlide = 5
+const SndStep = 6
+const SndPing = 7
+const SndFan = 8
+const SndPick = 9
+const SndBump = 10
+
+' Ph: 0 credits, 1 menu, 2 solving, 3 solved (for the test bot too)
+u8 Ph = 0
+u8 Pz = 0
+u8 Sel = 0
+u8 Off[8]
+u8 Tof[8]
+u8 Mt[8]
+u8 Nm = 0
+u16 Sec = 0
+u8 Fc = 0
+u16 Best[3]
+u8 NewBest = 0
+u8 Moves = 0
+' for MbShift (assembly): the 13 pieces from the row's offset, the shift,
+' the 96 pattern bytes made, the VRAM address (W16), its temporaries
+u8 Pcs[13]
+u8 Buf[96]
+u8 Nb[12]
+u8 Sh = 0
+u8 Cnt = 0
+u16 Pa = 0
+u16 Pb = 0
+u16 W16 = 0
+' the arrow sprite
+u8 Ay = 0
+u8 Ty = 0
+u8 Ax = 0
+' the stick
+u8 Dir = 0
+u8 Prev = 0
+u8 Rep = 0
+u8 Fr = 0
+u8 Fr2 = 0
+u8 Any = 0
+u8 Tick = 0
+u8 Lf = 0
+' scratch, each kept to its own sub
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 K8 = 0
+u8 Sa = 0
+u8 Sb = 0
+u8 Sk = 0
+u8 Sv = 0
+u8 Dr = 0
+u8 Dc = 0
+u8 Dk = 0
+u8 Db = 0
+u8 Tm = 0
+u8 Ts = 0
+u8 Tc = 0
+u16 Tt = 0
+u8 Gr = 0
+u8 Mr = 0
+u16 Rs = $6D2B
+u16 Rt = 0
+u16 Rw = 0
+u16 Rv = 0
+u32 Uq = 0
+u32 Uq2 = 0
+
+  tile screen
+  sprites 16x16
+  set sound table MbSoundTable areas 6
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  set sprite count 1
+  set sprite 0 to 192,0,0,15
+  update sprites
+  screen on
+
+credits:
+  CreditsPage
+
+menu:
+  MenuPage
+  NewPuzzle
+
+solve:
+  Ph = 2
+  play song MbThink
+solve_loop:
+  Frame1
+  GlideArrow
+  ReadStick
+  if Fr2 = 1 then
+    stop song
+    WaitLetGo
+    goto menu
+  end if
+  if Dir = 0 then
+    Prev = 0
+    goto solve_loop
+  end if
+  ' a push acts at once; held, it repeats (after 14 frames, then every 5)
+  V = 0
+  if Dir <> Prev then
+    V = 1
+    Rep = 14
+  else
+    dec Rep
+    if Rep = 0 then
+      V = 1
+      Rep = 5
+    end if
+  end if
+  Prev = Dir
+  if V = 0 then goto solve_loop
+  if Dir = 1 then RowUp
+  if Dir = 2 then RowDown
+  if Dir = 3 then SlideLeft
+  if Dir = 4 then SlideRight
+  if Nm = 8 then goto solved
+  goto solve_loop
+
+solved:
+  Ph = 3
+  stop song
+  play sound SndFan
+  ' the lit row goes back to its colours: the picture is whole
+  DrawRow(Sel, 1, 0)
+  set sprite 0 to 192,0,0,15
+  update sprites
+  NewBest = 0
+  W16 = Best[Pz]
+  if W16 = 0 then NewBest = 1
+  if Sec < W16 then NewBest = 1
+  if NewBest = 1 then
+    Best[Pz] = Sec
+    ShowTime(Sec, 8)
+  end if
+  print at 2,1, "                            "
+  print at 2,2, "                            "
+  if NewBest = 1 then
+    print at 5,1, "SOLVED!  A NEW BEST TIME"
+  else
+    print at 10,1, "SOLVED!"
+  end if
+  print at 4,2, "FIRE: AGAIN   LEFT: MENU"
+  WaitLetGo
+sv_wait:
+  Frame1
+  ReadStick
+  if Fr = 1 then
+    WaitLetGo
+    NewPuzzle
+    goto solve
+  end if
+  if Dir = 3 then
+    WaitLetGo
+    goto menu
+  end if
+  goto sv_wait
+
+' --- the puzzle -----------------------------------------------------------
+
+' NewPuzzle: offsets for the target and your rows (none matched at the
+' start), then the screen
+sub NewPuzzle:
+  for J8 = 0 to 7
+    RndK(56)
+    Tof[J8] = Rv
+np_again:
+    RndK(56)
+    Off[J8] = Rv
+    Same(J8)
+    if Sv = 1 then goto np_again
+    Mt[J8] = 0
+  next
+  Nm = 0
+  Sel = 0
+  Sec = 0
+  Fc = 0
+  Moves = 0
+  Rep = 0
+  Prev = 0
+  DrawPuzzle
+  return
+end sub
+
+' Same(r): Sv 1 when your row r shows the target's pieces
+sub Same(u8 Sr):
+  Sa = Pz * 68
+  Sb = Sa + Tof[Sr]
+  Sa = Sa + Off[Sr]
+  Sv = 1
+  for Sk = 0 to 11
+    V = Strs[Sa]
+    W = Strs[Sb]
+    if V <> W then Sv = 0
+    inc Sa
+    inc Sb
+  next
+  return
+end sub
+
+sub DrawPuzzle:
+  NewScreen
+  ' the selected row's colours for this puzzle
+  W16 = Pz * 8
+  for J8 = 0 to 11
+    Tt = J8 * 8
+    Tt = Tt + 1840
+    copy LitCol + W16 count 8 to vram.color + Tt
+  next
+  print at 10,1, "MINDBUSTERS"
+  if Pz = 0 then print at 8,2, "BEND YOUR MIND"
+  if Pz = 1 then print at 7,2, "BRUISE YOUR MIND"
+  if Pz = 2 then print at 8,2, "BLOW YOUR MIND"
+  DrawFrame(3)
+  DrawFrame(13)
+  print at 2,7, "COPY"
+  print at 2,8, "THIS"
+  print at 2,17, "IN"
+  print at 2,18, "YOURS"
+  print at 24,4, "TIME"
+  print at 24,7, "BEST"
+  print at 24,10, "ROWS"
+  ShowTime(0, 5)
+  W16 = Best[Pz]
+  if W16 = 0 then
+    print at 24,8, "--:--"
+  else
+    ShowTime(W16, 8)
+  end if
+  for J8 = 0 to 7
+    DrawRow(J8, 0, 0)
+    DrawRow(J8, 1, 0)
+    put char TDot at 8,J8 + 14
+  next
+  ShowRows
+  DrawRow(0, 1, 1)
+  Ty = 107
+  Ay = 107
+  Ax = 184
+  set sprite 0 to Ay,Ax,0,15
+  update sprites
+  ShowScreen
+  return
+end sub
+
+' DrawFrame(top): a frame of 14 x 10 cells round a grid, from row top
+sub DrawFrame(u8 Ft):
+  put char TFtl at 9,Ft
+  put char TFtr at 22,Ft
+  W = Ft + 9
+  put char TFbl at 9,W
+  put char TFbr at 22,W
+  for K8 = 10 to 21
+    put char TFh at K8,Ft
+    put char TFh at K8,W
+  next
+  V = Ft + 1
+  for K8 = 1 to 8
+    put char TFv at 9,V
+    put char TFv at 22,V
+    inc V
+  next
+  return
+end sub
+
+' DrawRow(r, grid, lit): row r of the target (grid 0) or yours (1); lit 1
+' draws your row with the selected row's codes and makes their patterns
+sub DrawRow(u8 Dr2, u8 Dg, u8 Dl):
+  Db = Pz * 68
+  if Dg = 0 then
+    Db = Db + Tof[Dr2]
+    Dr = Dr2 + 4
+  else
+    Db = Db + Off[Dr2]
+    Dr = Dr2 + 14
+  end if
+  for Dk = 0 to 11
+    if Dl = 1 then
+      Nb[Dk] = TLit + Dk
+    else
+      V = Strs[Db]
+      Nb[Dk] = TPiece + V
+    end if
+    inc Db
+  next
+  if Dl = 1 then
+    Sh = 0
+    MakeLit(0)
+  end if
+  W16 = Dr * 32
+  W16 = W16 + 10
+  call asm MbNames
+  return
+end sub
+
+' MakeLit(back): the lit row's patterns: the 13 pieces from your row
+' Sel's offset (one piece back when back is 1, for a slide right),
+' shifted Sh pixels
+sub MakeLit(u8 Mf):
+  Db = Pz * 68
+  Db = Db + Off[Sel]
+  if Mf = 1 then dec Db
+  for Dk = 0 to 12
+    Pcs[Dk] = Strs[Db]
+    inc Db
+  next
+  call asm MbShift
+  ' the row's third of the pattern tables (rows 14-15: the middle third,
+  ' 16-21 the bottom)
+  W16 = 2048 + 1840
+  Dc = Sel + 14
+  if Dc >= 16 then W16 = 4096 + 1840
+  call asm MbPat
+  return
+end sub
+
+sub RowUp:
+  if Sel = 0 then
+    play sound SndBump
+    return
+  end if
+  DrawRow(Sel, 1, 0)
+  dec Sel
+  DrawRow(Sel, 1, 1)
+  play sound SndStep
+  return
+end sub
+
+sub RowDown:
+  if Sel = 7 then
+    play sound SndBump
+    return
+  end if
+  DrawRow(Sel, 1, 0)
+  inc Sel
+  DrawRow(Sel, 1, 1)
+  play sound SndStep
+  return
+end sub
+
+' SlideLeft: the row glides left a piece (its window one further along)
+sub SlideLeft:
+  V = Off[Sel]
+  if V >= 55 then
+    play sound SndBump
+    return
+  end if
+  play sound SndSlide
+  Sh = 2
+  for Mr = 1 to 3
+    MakeLit(0)
+    Frame1
+    GlideArrow
+    Sh = Sh + 2
+  next
+  V = Off[Sel]
+  inc V
+  Off[Sel] = V
+  Sh = 0
+  MakeLit(0)
+  AfterSlide
+  return
+end sub
+
+' SlideRight: the row glides right a piece (its window one back)
+sub SlideRight:
+  V = Off[Sel]
+  if V = 0 then
+    play sound SndBump
+    return
+  end if
+  play sound SndSlide
+  Sh = 6
+  for Mr = 1 to 3
+    MakeLit(1)
+    Frame1
+    GlideArrow
+    Sh = Sh - 2
+  next
+  V = Off[Sel]
+  dec V
+  Off[Sel] = V
+  Sh = 0
+  MakeLit(0)
+  AfterSlide
+  return
+end sub
+
+' AfterSlide: is the row matched now?
+sub AfterSlide:
+  if Moves < 255 then inc Moves
+  Same(Sel)
+  W = Mt[Sel]
+  Gr = Sel + 14
+  if Sv = 1 then
+    if W = 0 then
+      Mt[Sel] = 1
+      inc Nm
+      put char TMark at 8,Gr
+      if Nm < 8 then play sound SndPing
+      ShowRows
+    end if
+  else
+    if W = 1 then
+      Mt[Sel] = 0
+      dec Nm
+      put char TDot at 8,Gr
+      ShowRows
+    end if
+  end if
+  return
+end sub
+
+sub ShowRows:
+  V = 48 + Nm
+  put char V at 24,11
+  put char 47 at 25,11
+  put char 56 at 26,11
+  return
+end sub
+
+' ShowTime(seconds, row): MM:SS at column 24
+sub ShowTime(u16 Tv, u8 Tr):
+  Tt = Tv / 60
+  Tm = lowbyte Tt
+  Tt = Tt * 60
+  Tt = Tv - Tt
+  Ts = lowbyte Tt
+  Tc = Tm / 10
+  V = Tc + 48
+  put char V at 24,Tr
+  Tc = Tc * 10
+  Tc = Tm - Tc
+  V = Tc + 48
+  put char V at 25,Tr
+  put char 58 at 26,Tr
+  Tc = Ts / 10
+  V = Tc + 48
+  put char V at 27,Tr
+  Tc = Tc * 10
+  Tc = Ts - Tc
+  V = Tc + 48
+  put char V at 28,Tr
+  return
+end sub
+
+' GlideArrow: the arrow slides to its row 4 pixels a frame, and bobs
+sub GlideArrow:
+  Ty = Sel * 8
+  Ty = Ty + 107
+  if Ay < Ty then
+    Ay = Ay + 4
+    if Ay > Ty then Ay = Ty
+  end if
+  if Ay > Ty then
+    Ay = Ay - 4
+    if Ay < Ty then Ay = Ty
+  end if
+  V = Tick >> 3
+  V = V & 1
+  Ax = 184 + V
+  set sprite 0 to Ay,Ax,0,15
+  update sprites
+  return
+end sub
+
+' --- the pages ------------------------------------------------------------
+
+sub MenuPage:
+  Ph = 1
+  stop song
+  NewScreen
+  print at 10,2, "MINDBUSTERS"
+  print at 6,4, "CHOOSE YOUR PUZZLE"
+  print at 4,7, "1 BEND YOUR MIND"
+  print at 4,11, "2 BRUISE YOUR MIND"
+  print at 4,15, "3 BLOW YOUR MIND"
+  ' a strip of each puzzle's pieces, and its best time
+  for J8 = 0 to 2
+    Db = J8 * 68
+    Dr = J8 * 4
+    Dr = Dr + 9
+    for Dk = 0 to 11
+      V = Strs[Db]
+      V = V + TPiece
+      W = Dk + 6
+      put char V at W,Dr
+      inc Db
+    next
+    W16 = Best[J8]
+    if W16 = 0 then
+      print at 24,Dr, "--:--"
+    else
+      ShowTime(W16, Dr)
+    end if
+  next
+  print at 23,6, "BEST"
+  print at 4,19, "STICK: CHOOSE  FIRE: GO"
+  print at 3,21, "SLIDE THE ROWS OF YOUR GRID"
+  print at 3,22, "TO COPY THE PICTURE ABOVE"
+  ShowScreen
+  WaitLetGo
+mp_loop:
+  Frame1
+  ' the arrow beside the chosen puzzle's strip
+  Ty = Pz * 32
+  Ty = Ty + 67
+  Ay = Ty
+  V = Tick >> 3
+  V = V & 1
+  Ax = 152 + V
+  set sprite 0 to Ay,Ax,0,15
+  update sprites
+  ReadStick
+  if Dir = 0 then Prev = 0
+  if Dir <> Prev then
+    Prev = Dir
+    if Dir = 1 then
+      if Pz > 0 then
+        dec Pz
+        play sound SndStep
+      end if
+    end if
+    if Dir = 2 then
+      if Pz < 2 then
+        inc Pz
+        play sound SndStep
+      end if
+    end if
+  end if
+  if Fr = 0 then goto mp_loop
+  play sound SndPick
+  ' the time spent here seeds the puzzles
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $6D2B
+  WaitLetGo
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  print at 10,2, "MINDBUSTERS"
+  print at 2,4, "BASED ON MINDBUSTERS BY"
+  print at 2,5, "NED W. SCHULTZ, COMPUTE!,"
+  print at 2,6, "APRIL 1985 (COMMODORE 64,"
+  print at 2,7, "VIC-20, ATARI, APPLE II,"
+  print at 2,8, "IBM PC AND TI-99/4A)."
+  print at 2,10, "MADE FOR THE COLECOVISION BY"
+  print at 2,11, "CLAUDE (AN AI MADE BY"
+  print at 2,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "2026, IN AMY, THE LANGUAGE"
+  print at 2,14, "BY AMY BIENVENU."
+  print at 2,16, "MUSIC: BUSTED GEARS AND"
+  print at 2,17, "THINKING CAP (ORIGINAL)."
+  print at 8,21, "PRESS THE BUTTON"
+  ShowScreen
+  play song MbSong once
+  WaitLetGo
+cp_wait:
+  Frame1
+  ReadStick
+  if Fr = 0 then goto cp_wait
+  Rs = Rs ^ Tick
+  WaitLetGo
+  return
+end sub
+
+' --- the machine ----------------------------------------------------------
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  backdrop black
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  cls
+  set sprite 0 to 192,0,0,15
+  update sprites
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ReadStick: Dir 1 up, 2 down, 3 left, 4 right (0 none or a diagonal);
+' Fr the left button, Fr2 the right
+sub ReadStick:
+  Dir = 0
+  Any = 0
+  V = joypad(1).up | joypad(2).up
+  if V = 1 then
+    Dir = 1
+    inc Any
+  end if
+  V = joypad(1).down | joypad(2).down
+  if V = 1 then
+    Dir = 2
+    inc Any
+  end if
+  V = joypad(1).left | joypad(2).left
+  if V = 1 then
+    Dir = 3
+    inc Any
+  end if
+  V = joypad(1).right | joypad(2).right
+  if V = 1 then
+    Dir = 4
+    inc Any
+  end if
+  if Any > 1 then Dir = 0
+  Fr = joypad(1).button1 | joypad(2).button1
+  Fr2 = joypad(1).button2 | joypad(2).button2
+  return
+end sub
+
+sub WaitLetGo:
+wl_loop:
+  Frame1
+  ReadStick
+  V = Dir | Fr
+  V = V | Fr2
+  if V > 0 then goto wl_loop
+  Prev = 0
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  call asm MbLost
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  ' the clock, while solving (slides included): a second every 60 frames;
+  ' a frame that went by while the last pass was still working (the VDP's
+  ' frame flag, read before the wait) counts too, so the clock keeps real
+  ' time
+  if Ph = 2 then
+    if Lf <> 0 then ClockTick
+    ClockTick
+  end if
+  return
+end sub
+
+sub ClockTick:
+  inc Fc
+  if Fc >= 60 then
+    Fc = 0
+    if Sec < 5999 then inc Sec
+    ShowTime(Sec, 5)
+  end if
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' RndK: Rv = INT(RND(1) * Kn)
+sub RndK(u8 Kn):
+  Rnd16
+  Uq = Rw
+  Uq2 = Kn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+  $18,$18,$18,$1F,$1F,$18,$18,$18
+  $18,$18,$18,$F8,$F8,$18,$18,$18
+  $00,$00,$00,$FF,$FF,$18,$18,$18
+  $18,$18,$18,$FF,$FF,$00,$00,$00
+  $00,$00,$00,$1F,$1F,$18,$18,$18
+  $00,$00,$00,$F8,$F8,$18,$18,$18
+  $18,$18,$18,$1F,$1F,$00,$00,$00
+  $18,$18,$18,$F8,$F8,$00,$00,$00
+  $CC,$99,$33,$66,$CC,$99,$33,$66
+  $33,$99,$CC,$66,$33,$99,$CC,$66
+  $00,$00,$00,$1F,$1F,$18,$18,$18
+  $00,$00,$00,$F8,$F8,$18,$18,$18
+  $18,$18,$18,$1F,$1F,$00,$00,$00
+  $18,$18,$18,$F8,$F8,$00,$00,$00
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$18,$3C,$7E,$7E,$3C,$18,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+end data
+data TileCol bytes
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $B4,$B4,$B4,$B4,$A4,$A4,$A4,$A4
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $D4,$D4,$D4,$D4,$94,$94,$94,$94
+  $D4,$D4,$D4,$D4,$94,$94,$94,$94
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $31,$31,$31,$31,$31,$31,$31,$31
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$07,$0F,$1F
+  $1F,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FC,$FC
+  $FC,$FC,$00,$00,$00,$00,$00,$00
+end data
+data LitCol bytes
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+end data
+data Strs bytes
+  6,4,0,5,4,1,5,5,0,6,3,0,5,4,1,5,5
+  0,6,0,5,4,1,5,0,3,0,3,0,4,4,5,0,3
+  3,3,6,0,5,4,5,0,6,5,0,6,2,4,3,4,3
+  0,5,0,5,4,1,3,5,2,2,6,4,3,4,0,5,3
+  12,13,7,11,15,7,15,7,8,11,14,13,15,10,7,10,11
+  11,8,15,10,11,13,15,15,13,15,7,12,8,14,15,9,13
+  12,8,9,13,7,15,14,11,15,9,13,12,11,7,8,15,7
+  15,7,12,14,12,13,15,14,15,12,7,14,15,8,7,15,13
+  17,16,16,16,16,17,16,16,17,16,17,16,17,16,17,16,17
+  17,17,17,17,16,16,17,16,16,17,16,17,17,17,17,17,16
+  17,16,17,16,16,16,16,16,17,16,17,17,17,17,16,17,16
+  17,16,17,16,17,17,17,17,17,17,16,17,16,17,17,17,17
+end data
+
+asm {
+; MbShift: the lit row's 96 pattern bytes. Cell k (0-11) shows piece
+; Pcs[k] moved Sh pixels left with the start of Pcs[k+1] coming in on the
+; right: each byte is the high byte of (a * 256 + b) << Sh.
+MbShift:
+    push ix
+    ld ix,AMY_UVAR_Pcs
+    ld de,AMY_UVAR_Buf
+    ld a,12
+    ld (AMY_UVAR_Cnt),a
+MbShC:
+    ld l,(ix+0)
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld bc,AMY_UDATA_TilePat
+    add hl,bc
+    ld (AMY_UVAR_Pa),hl
+    ld l,(ix+1)
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld bc,AMY_UDATA_TilePat
+    add hl,bc
+    ld (AMY_UVAR_Pb),hl
+    ld c,8
+MbShR:
+    ld hl,(AMY_UVAR_Pa)
+    ld a,(hl)
+    inc hl
+    ld (AMY_UVAR_Pa),hl
+    ld b,a
+    ld hl,(AMY_UVAR_Pb)
+    ld a,(hl)
+    inc hl
+    ld (AMY_UVAR_Pb),hl
+    ld l,a
+    ld h,b
+    ld a,(AMY_UVAR_Sh)
+    or a
+    jr z,MbShN
+    ld b,a
+MbShL:
+    add hl,hl
+    djnz MbShL
+MbShN:
+    ld a,h
+    ld (de),a
+    inc de
+    dec c
+    jr nz,MbShR
+    inc ix
+    ld a,(AMY_UVAR_Cnt)
+    dec a
+    ld (AMY_UVAR_Cnt),a
+    jr nz,MbShC
+    pop ix
+    ret
+; MbLost: Lf = the VDP's frame flag (a frame went by with the NMI off)
+MbLost:
+    in a,($BF)
+    and $80
+    ld (AMY_UVAR_Lf),a
+    ret
+; MbPat: Buf (96 bytes) to the pattern table at W16 (NMI off)
+MbPat:
+    ld hl,(AMY_UVAR_W16)
+    ld de,VRAM_PATTERN
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_Buf
+    ld b,96
+    ld c,$BE
+MbPatL:
+    outi
+    nop
+    jr nz,MbPatL
+    ret
+; MbNames: Nb (12 codes) to the name table at W16 (NMI off)
+MbNames:
+    ld hl,(AMY_UVAR_W16)
+    ld de,VRAM_NAME
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_Nb
+    ld b,12
+    ld c,$BE
+MbNamL:
+    outi
+    nop
+    jr nz,MbNamL
+    ret
+MbSlide:
+    db $40,$5D,$30,$01,$40,$7C,$50,$02,$50
+MbStep:
+    db $40,$A9,$40,$02,$50
+MbPing:
+    db $40,$55,$20,$03,$40,$40,$20,$03,$40,$35,$40,$06,$50
+MbFan:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$20,$12
+    db $50
+MbPick:
+    db $40,$7F,$20,$03,$40,$55,$30,$06,$50
+MbBump:
+    db $00,$00,$35,$03,$10
+
+MbSoundTable:
+    dw MbTuneMel,$702B
+    dw MbTuneBass,$7035
+    dw MbThinkMel,$702B
+    dw MbThinkBass,$7035
+    dw MbSlide,$7049
+    dw MbStep,$7049
+    dw MbPing,$7049
+    dw MbFan,$7049
+    dw MbPick,$7049
+    dw MbBump,$703F
+; Busted Gears (original)
+; Tiny Sound, 7 frames per step
+MbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$23,$01,$1E,$01,$1A,$01,$1E,$01,$23,$01,$25,$01
+    db $26,$01,$01,$01,$25,$01,$21,$01,$1C,$01,$21,$01,$25,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1E,$01,$21,$01
+    db $25,$01,$21,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$01,$01,$01,$06,$01,$01,$01,$07,$01,$01,$01
+    db $0E,$01,$01,$01,$09,$01,$01,$01,$04,$01,$01,$01,$06,$01,$01,$01
+    db $06,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$06,$01,$01,$01
+    db $0D,$01,$01,$01,$09,$01,$01,$01,$06,$01,$01,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Thinking Cap (original)
+; Tiny Sound, 9 frames per step
+MbThinkMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$80,$F1,$22,$1C,$01,$01,$01,$1F,$01,$01,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$21,$01,$01,$01,$24,$01,$01,$01,$28,$01,$01,$01
+    db $01,$01,$01,$01,$1A,$01,$01,$01,$1E,$01,$01,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+MbThinkBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$A0,$18,$32,$04,$01,$01,$01,$01,$01,$01,$01,$10,$01,$01,$01
+    db $01,$01,$01,$01,$09,$01,$01,$01,$01,$01,$01,$01,$09,$01,$01,$01
+    db $01,$01,$01,$01,$0E,$01,$01,$01,$01,$01,$01,$01,$0E,$01,$01,$01
+    db $01,$01,$01,$01,$04,$01,$01,$01,$01,$01,$01,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+MbSong:
+    dw $0001
+    db $40+1,2
+    dw $0000
+MbThink:
+    dw $0001
+    db $40+3,4
+    dw $0000
+}

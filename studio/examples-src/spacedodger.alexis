@@ -1,0 +1,888 @@
+cartridge "SPACE DODGER/MATTHEW MARULIO, COMPUTE!/1985"
+
+' SPACE DODGER
+' Based on "Space Dodger" by Matthew Marulio, COMPUTE! May 1985 (pages
+' 40-51; TI-99/4A Extended BASIC, with Commodore 64 and VIC-20 versions by
+' Kevin Mykytyn, Apple by Rob Terrell and Tim Victor, Atari by Kevin
+' Mykytyn). Made for the ColecoVision in Amy (the language by Amy
+' Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port (orig/ has the scans): a ColecoVision game on
+' the article's rules. Kept: your ship on the left over a starfield, a
+' lineup of alien ships on the right that fly at you at different speeds,
+' the stick up and down to dodge (no left or right), the top and bottom
+' guarded by cuboids zipping along (touch them and you are lost), a score
+' that grows the longer you live, ranks (SPACE CADET, CORPORAL, SERGEANT,
+' then LIEUTENANT, CAPTAIN, MAJOR, COLONEL, GENERAL, MASTER, after the
+' Commodore and Atari versions) with a pause and faster aliens at each,
+' three ships, the final score and rank at the end, the high score.
+' Made for this machine: the full screen inside the overscan; a starfield
+' in three layers scrolling at three speeds and the cuboid lanes, both by
+' rewriting a few tile patterns a frame (the name table never changes);
+' eight lanes of aliens, six kinds, each two overlapped sprites of
+' different colours (the Atari version's trick), one alien a lane so a
+' scan line never holds more than four sprites; your ship two sprites
+' with a glowing engine; pixel motion at 60 frames a second, aliens in
+' 1/16 pixel steps; a blast in three frames; the music "Evasive" under
+' the game, quieter than the effects (music first in the sound table);
+' an original title tune, "Starlane".
+'
+' Rules in numbers: the ship moves 2 pixels a frame; the score gains 1 +
+' rank every 15 frames (shown times ten); a rank lasts 30 seconds of
+' flying (1800 frames); an alien's speed is 12-28 sixteenths of a pixel a
+' frame plus 6 per rank.
+'
+' Controls (either joystick): up and down move the ship; the button
+' starts and plays again (stick down at the end goes to the title).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TSf1 = 128
+const TSf2 = 129
+const TSm1 = 130
+const TSm2 = 131
+const TSn1 = 132
+const TSn2 = 133
+const TCube0 = 134
+const TCube1 = 135
+const TCube2 = 136
+const TCube3 = 137
+const TRule = 138
+const SShip = 0
+const STrim = 4
+const SFire1 = 8
+const SSaua = 12
+const SSaub = 16
+const SDara = 20
+const SDarb = 24
+const SRoca = 28
+const SRocb = 32
+const SBuga = 36
+const SBugb = 40
+const SCrua = 44
+const SCrub = 48
+const SOrba = 52
+const SOrbb = 56
+const SBl1a = 60
+const SBl1b = 64
+const SBl2a = 68
+const SBl2b = 72
+const SBl3a = 76
+const SBl3b = 80
+const NTiles8 = 88
+const SprBytes = 672
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndBoom = 5
+const SndFall = 6
+const SndRank = 7
+const SndGo = 8
+const SndOver = 9
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the ship's top (pixels); its x is always 24
+u8 Sy = 88
+' the aliens, one a lane: Ax their x in 1/16 pixels (more than 240 * 16:
+' waiting off the right edge), Vs their speed, Kd their kind (0-5)
+u16 Ax[8]
+u8 Vs[8]
+u8 Kd[8]
+' Ph: 1 flying, 2 crashed, 3 game over, 0 waiting (lineup, rank pause)
+u8 Ph = 0
+u16 Score = 0
+u16 Hi = 0
+u8 Ships = 0
+u8 Rank = 0
+u16 Rt = 0
+u8 St = 0
+u8 Hit = 0
+' the starfield's layers (quarter pixels, 0-31) and the cuboids' place
+u8 P1 = 0
+u8 P2 = 0
+u8 P3 = 0
+u8 Cp = 0
+u8 Idle = 0
+
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Ay = 0
+u8 Ab = 0
+
+  tile screen
+  set sound table SdSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  Ships = 3
+  Rank = 0
+  Rt = 0
+  St = 0
+  DrawField
+  ShowHud
+  ShowRank
+  ShowScreen
+
+launch:
+  ' the lineup on the right, the ship in the middle, a moment to look
+  Ph = 0
+  Sy = 88
+  Lineup
+  print at 11,11, "GET READY"
+  for Tm = 1 to 70
+    Frame1
+    Scenery
+    DrawShip
+    DrawAliens
+  next
+  print at 11,11, "         "
+  play sound SndGo
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+
+fly:
+  Frame1
+  Scenery
+  ReadPad
+  if Up1 = 1 then
+    if Sy > 13 then Sy = Sy - 2
+  end if
+  if Dn1 = 1 then
+    if Sy < 163 then Sy = Sy + 2
+  end if
+  MoveAliens
+  Collide
+  DrawShip
+  DrawAliens
+  if Hit = 1 then goto crash
+  ' the score: 1 + rank every 15 frames
+  inc St
+  if St = 15 then
+    St = 0
+    if Score < 6400 then
+      V = Rank + 1
+      Score = Score + V
+      ShowScore
+    end if
+  end if
+  ' the rank: every 30 seconds of flying
+  inc Rt
+  if Rt = 1800 then
+    Rt = 0
+    if Rank < 8 then goto promote
+  end if
+  goto fly
+
+promote:
+  inc Rank
+  Ph = 0
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndRank
+  HideAliens
+  ShowRank
+  print at 10,10, "PROMOTED TO"
+  RankAt(10, 12)
+  for Tm = 1 to 120
+    Frame1
+    Scenery
+    DrawShip
+  next
+  print at 10,10, "           "
+  print at 10,12, "           "
+  goto launch
+
+crash:
+  Ph = 2
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  play sound SndBoom
+  play sound SndFall
+  for Tm = 0 to 35
+    Frame1
+    Scenery
+    V = Tm / 12
+    V = V * 8
+    V = V + SBl1a
+    W = V + 4
+    set sprite 0 to Sy,24,V,11
+    set sprite 1 to Sy,24,W,8
+    update sprites
+  next
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  dec Ships
+  ShowHud
+  for Tm = 1 to 40
+    Frame1
+    Scenery
+  next
+  if Ships > 0 then
+    HideAliens
+    goto launch
+  end if
+
+  ' the end: the final score, the rank, the high score
+  Ph = 3
+  HideAliens
+  if Score > Hi then Hi = Score
+  ShowHud
+  play sound SndOver
+  print at 11,8, "GAME OVER"
+  print at 8,10, "FINAL SCORE"
+  NumU = Score
+  print at 20,10, digits$(NumU, 5)
+  print at 25,10, "0"
+  print at 8,12, "RANK"
+  RankAt(13, 12)
+  print at 6,15, "FIRE: FLY AGAIN"
+  print at 6,16, "DOWN: TITLE"
+  for Tm = 1 to 60
+    Frame1
+    Scenery
+  next
+  WasBtn = 1
+over_wait:
+  Frame1
+  Scenery
+  ReadPad
+  if Dn1 = 1 then goto title
+  if Press = 0 then goto over_wait
+  goto new_game
+
+' ---------------------------------------------------------------------------
+
+' Lineup: every lane's alien waits at the right edge, a new kind and speed
+sub Lineup:
+  for I = 0 to 7
+    Ax[I] = 3584
+    NewAlien(I)
+  next
+  return
+end sub
+
+' NewAlien(L): lane L gets a kind and a speed for this rank
+sub NewAlien(u8 L):
+  Kd[L] = random(0, 5)
+  V = random(12, 28)
+  W = Rank * 6
+  Vs[L] = V + W
+  return
+end sub
+
+' MoveAliens: each flies left at its speed; past the left edge it comes
+' back off the right edge, a little apart from the others, new
+sub MoveAliens:
+  for I = 0 to 7
+    W16 = Vs[I]
+    if Ax[I] < W16 then
+      V = random(0, 63)
+      A16 = V
+      A16 = A16 << 3
+      Ax[I] = 3968 + A16
+      NewAlien(I)
+    else
+      Ax[I] = Ax[I] - W16
+    end if
+  next
+  return
+end sub
+
+' Collide: Hit 1 if the ship's body meets an alien's or a cuboid lane.
+' The ship's box: x 26-39, y Sy+3 - Sy+12; an alien's: x+2 - x+13,
+' y+3 - y+12 (lane L's top is 25 + 18 L). The lanes are 18 pixels apart
+' and the boxes 10 high: there is no hiding between two lanes.
+sub Collide:
+  Hit = 0
+  if Sy < 21 then Hit = 1
+  if Sy > 155 then Hit = 1
+  for I = 0 to 7
+    if Ax[I] < 608 then
+      if Ax[I] >= 208 then
+        Ay = I * 18
+        Ay = Ay + 25
+        V = Ay + 9
+        if Sy <= V then
+          V = Sy + 9
+          if V >= Ay then Hit = 1
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawShip:
+  ' the trim's engine glows: red and yellow by turns
+  V = Tick & 4
+  W = 8
+  if V = 0 then W = 11
+  if Ph = 0 then W = 6
+  set sprite 0 to Sy,24,STrim,W
+  set sprite 1 to Sy,24,SShip,14
+  return
+end sub
+
+sub DrawAliens:
+  for I = 0 to 7
+    N = I * 2
+    N = N + 2
+    J = N + 1
+    if Ax[I] > 3840 then
+      set sprite N to 192,0,0,0
+      set sprite J to 192,0,0,0
+    else
+      W16 = Ax[I] >> 4
+      X = W16
+      Ay = I * 18
+      Ay = Ay + 24
+      K = Kd[I]
+      V = K * 8
+      V = V + SSaua
+      Ab = V + 4
+      W = KcA[K]
+      set sprite J to Ay,X,V,W
+      W = KcB[K]
+      set sprite N to Ay,X,Ab,W
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub HideAliens:
+  for J = 2 to 17
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Scenery: the three star layers and the cuboids move: only the patterns
+' of their tiles change (stars in all three thirds; the cuboid lanes are
+' rows 2 and 21, the first and last thirds)
+sub Scenery:
+  P1 = P1 + 1
+  P1 = P1 & 31
+  P2 = P2 + 2
+  P2 = P2 & 31
+  P3 = P3 + 4
+  P3 = P3 & 31
+  V = P1 >> 2
+  V = Dot[V]
+  StarRow(TSf1, 2, V)
+  StarRow(TSf2, 6, V)
+  V = P2 >> 2
+  V = Dot[V]
+  StarRow(TSm1, 1, V)
+  StarRow(TSm2, 4, V)
+  V = P3 >> 2
+  V = Dot[V]
+  StarRow(TSn1, 3, V)
+  StarRow(TSn2, 7, V)
+  ' the cuboids: 3 pixels left a frame, a 32-pixel strip of 4 tiles
+  Cp = Cp + 29
+  Cp = Cp & 31
+  K = Cp * 4
+  for J = 0 to 3
+    V = CubeTab[K]
+    W16 = TCube0 + J
+    W16 = W16 << 3
+    for N = 1 to 6
+      A16 = W16 + N
+      vpoke vram.pattern + A16, V
+      A16 = A16 + 4096
+      vpoke vram.pattern + A16, V
+    next
+    inc K
+  next
+  return
+end sub
+
+' StarRow(T, R, B): row R of tile T becomes B, in the three thirds
+sub StarRow(u8 T, u8 R, u8 B):
+  A16 = T
+  A16 = A16 << 3
+  A16 = A16 + R
+  vpoke vram.pattern + A16, B
+  A16 = A16 + 2048
+  vpoke vram.pattern + A16, B
+  A16 = A16 + 2048
+  vpoke vram.pattern + A16, B
+  return
+end sub
+
+' the field: the cuboid lanes (rows 2 and 21) and the stars (rows 3-20)
+sub DrawField:
+  NewScreen
+  for X = 0 to 31
+    V = X & 3
+    V = V + TCube0
+    put char V at X,2
+    put char V at X,21
+  next
+  for Y = 3 to 20
+    for X = 1 to 30
+      V = random(0, 31)
+      if V < 6 then
+        V = V + TSf1
+        put char V at X,Y
+      end if
+    next
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  ShowScore
+  print at 18,1, "HI"
+  NumU = Hi
+  print at 21,1, digits$(NumU, 5)
+  print at 26,1, "0"
+  print at 21,22, "SHIPS"
+  NumU = Ships
+  print at 27,22, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 13,1, "0"
+  return
+end sub
+
+sub ShowRank:
+  print at 2,22, "           "
+  RankAt(2, 22)
+  return
+end sub
+
+' RankAt(C, R): the rank's name at column C, row R
+sub RankAt(u8 C, u8 R):
+  if Rank = 0 then print at C,R, "SPACE CADET"
+  if Rank = 1 then print at C,R, "CORPORAL"
+  if Rank = 2 then print at C,R, "SERGEANT"
+  if Rank = 3 then print at C,R, "LIEUTENANT"
+  if Rank = 4 then print at C,R, "CAPTAIN"
+  if Rank = 5 then print at C,R, "MAJOR"
+  if Rank = 6 then print at C,R, "COLONEL"
+  if Rank = 7 then print at C,R, "GENERAL"
+  if Rank = 8 then print at C,R, "MASTER"
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn = 1
+  if joypad(2).button2 then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 18
+  for J = 0 to 17
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the starfield running, the aliens' lineup, a joystick menu
+sub TitlePage:
+  NewScreen
+  for X = 0 to 31
+    V = X & 3
+    V = V + TCube0
+    put char V at X,2
+    put char V at X,21
+  next
+  for Y = 3 to 20
+    for X = 1 to 30
+      V = random(0, 31)
+      if V < 6 then
+        V = V + TSf1
+        put char V at X,Y
+      end if
+    next
+  next
+  print at 9,5, "S P A C E"
+  print at 8,7, "D O D G E R"
+  print at 5,10, "DODGE THE ALIEN SHIPS"
+  print at 5,11, "KEEP OFF THE CUBOIDS"
+  print at 12,14, "START"
+  print at 12,15, "CREDITS"
+  print at 10,18, "HI"
+  NumU = Hi
+  print at 13,18, digits$(NumU, 5)
+  print at 18,18, "0"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Menu = 0
+  Rank = 0
+  Sy = 120
+  Ph = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Scenery
+  ReadPad
+  ' a lone alien crosses under the menu now and then
+  MoveTitle
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the title's parade: lane 7's alien flies across (sprites 16, 17)
+sub MoveTitle:
+  W16 = Vs[7]
+  if Ax[7] < W16 then
+    Ax[7] = 3968
+    NewAlien(7)
+  else
+    Ax[7] = Ax[7] - W16
+  end if
+  if Ax[7] > 3840 then
+    set sprite 16 to 192,0,0,0
+    set sprite 17 to 192,0,0,0
+  else
+    W16 = Ax[7] >> 4
+    X = W16
+    K = Kd[7]
+    V = K * 8
+    V = V + SSaua
+    Ab = V + 4
+    W = KcA[K]
+    set sprite 17 to 150,X,V,W
+    W = KcB[K]
+    set sprite 16 to 150,X,Ab,W
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,14
+  put char 32 at 10,15
+  V = Menu + 14
+  put char 62 at 10,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  for X = 2 to 29
+    V = X & 3
+    V = V + TCube0
+    put char V at X,2
+    put char V at X,21
+  next
+  print at 10,4, "SPACE DODGER"
+  print at 3,6, "BASED ON SPACE DODGER BY"
+  print at 3,7, "MATTHEW MARULIO, COMPUTE!"
+  print at 3,8, "MAY 1985 (TI-99/4A, OTHER"
+  print at 3,9, "VERSIONS BY KEVIN MYKYTYN,"
+  print at 3,10, "ROB TERRELL, TIM VICTOR)."
+  print at 3,12, "MADE FOR THE COLECOVISION"
+  print at 3,13, "BY CLAUDE (AN AI MADE BY"
+  print at 3,14, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,15, "2026, IN AMY BY AMY"
+  print at 3,16, "BIENVENU."
+  print at 3,18, "MUSIC: STARLANE, EVASIVE"
+  print at 8,20, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  Scenery
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' the kinds' colours: body (A) and detail (B)
+data KcA bytes
+  14,9,13,3,5,10
+end data
+data KcB bytes
+  11,15,11,8,15,15
+end data
+' a star's dot in column 7, 6 .. 0 (it moves left)
+data Dot bytes
+  $01,$02,$04,$08,$10,$20,$40,$80
+end data
+
+data TilePat bytes
+  $00,$00,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $00,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$41,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$41,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$E1,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$F1
+  $01,$F1,$71,$71,$71,$71,$41,$01
+  $01,$F1,$71,$71,$71,$71,$41,$01
+  $01,$F1,$71,$71,$71,$71,$41,$01
+  $01,$F1,$71,$71,$71,$71,$41,$01
+  $01,$01,$01,$04,$05,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$38,$3E,$1F,$0F,$3F,$3F,$3F,$3F,$0F,$1F,$3E,$38,$00,$00
+  $00,$00,$00,$00,$C0,$CC,$87,$07,$07,$87,$CC,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$30,$78,$F8,$F8,$78,$30,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0F,$3F,$CC,$CC,$3F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$FC,$CC,$CC,$FC,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$33,$33,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$33,$33,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$13,$E1,$E1,$13,$07,$01,$00,$00,$00,$00
+  $00,$00,$18,$78,$F8,$FE,$FF,$FF,$FF,$FF,$FE,$F8,$78,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$0C,$1E,$1E,$0C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0F,$3F,$FF,$FF,$3F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$F0,$FC,$F0,$F0,$FC,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0F,$0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$08,$07,$1F,$33,$73,$7F,$3F,$1F,$07,$08,$10,$00,$00
+  $00,$00,$08,$10,$E0,$F8,$CC,$CE,$FE,$FC,$F8,$E0,$10,$08,$00,$00
+  $00,$00,$00,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$30,$30,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C1,$E3,$FF,$D5,$EA,$FF,$E3,$C1,$80,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$FF,$57,$AB,$FF,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$2A,$15,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$A8,$54,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$1F,$31,$60,$61,$F3,$FF,$7F,$7F,$3F,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$FC,$FE,$FE,$FF,$FF,$FE,$FE,$FC,$F8,$E0,$00,$00
+  $00,$00,$00,$00,$0E,$1F,$1E,$0C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$0F,$0F,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$F0,$F0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$10,$20,$00,$00,$20,$10,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$08,$04,$00,$00,$04,$08,$10,$00,$00,$00,$00
+  $00,$00,$00,$06,$0E,$1E,$3E,$00,$00,$3E,$1E,$0E,$06,$00,$00,$00
+  $00,$00,$00,$60,$70,$78,$7C,$00,$00,$7C,$78,$70,$60,$00,$00,$00
+  $00,$81,$40,$20,$00,$00,$00,$80,$80,$00,$00,$00,$20,$40,$81,$00
+  $00,$81,$02,$04,$00,$00,$00,$01,$01,$00,$00,$00,$04,$02,$81,$00
+  $00,$00,$00,$00,$08,$00,$02,$08,$08,$02,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$00,$40,$10,$10,$40,$00,$10,$00,$00,$00,$00
+  $80,$00,$21,$00,$00,$80,$00,$00,$00,$00,$80,$00,$00,$21,$00,$80
+  $01,$00,$84,$00,$00,$01,$00,$00,$00,$00,$01,$00,$00,$84,$00,$01
+end data
+data CubeTab bytes
+  $FE,$00,$00,$00,$7F,$00,$00,$00,$3F,$80,$00,$00,$1F,$C0,$00,$00
+  $0F,$E0,$00,$00,$07,$F0,$00,$00,$03,$F8,$00,$00,$01,$FC,$00,$00
+  $00,$FE,$00,$00,$00,$7F,$00,$00,$00,$3F,$80,$00,$00,$1F,$C0,$00
+  $00,$0F,$E0,$00,$00,$07,$F0,$00,$00,$03,$F8,$00,$00,$01,$FC,$00
+  $00,$00,$FE,$00,$00,$00,$7F,$00,$00,$00,$3F,$80,$00,$00,$1F,$C0
+  $00,$00,$0F,$E0,$00,$00,$07,$F0,$00,$00,$03,$F8,$00,$00,$01,$FC
+  $00,$00,$00,$FE,$00,$00,$00,$7F,$80,$00,$00,$3F,$C0,$00,$00,$1F
+  $E0,$00,$00,$0F,$F0,$00,$00,$07,$F8,$00,$00,$03,$FC,$00,$00,$01
+end data
+
+asm {
+SdBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$66,$0E,$00,$00,$97,$10,$10
+SdFall:
+    db $40,$7F,$10,$03,$40,$A9,$20,$03,$40,$E2,$30,$03,$40,$2E,$41,$04,$40,$C5,$51,$06,$40,$A6,$72,$0A
+    db $50
+SdRank:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$05,$40,$6B,$10,$10
+    db $50
+SdGo:
+    db $40,$8F,$20,$03,$40,$5F,$20,$03,$40,$47,$30,$06,$50
+SdOver:
+    db $40,$1D,$11,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$42,$1A,$50
+
+SdSoundTable:
+    dw SdTuneMel,$702B
+    dw SdTuneBass,$7035
+    dw SdRunMel,$702B
+    dw SdRunBass,$7035
+    dw SdBoom,$703F
+    dw SdFall,$7049
+    dw SdRank,$7049
+    dw SdGo,$7049
+    dw SdOver,$7049
+; Starlane (original)
+; Tiny Sound, 6 frames per step
+SdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$21,$01,$1C,$01,$21,$01,$25,$01,$28,$01,$01,$01
+    db $25,$01,$01,$01,$26,$01,$23,$01,$20,$01,$23,$01,$28,$01,$01,$01
+    db $00,$01,$01,$01,$1E,$01,$21,$01,$26,$01,$2A,$01,$28,$01,$25,$01
+    db $21,$01,$25,$01,$23,$01,$1C,$01,$20,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15
+    db $09,$15,$09,$15,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10
+    db $FF
+
+; Evasive (original)
+; Tiny Sound, 5 frames per step
+SdRunMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$50,$1A,$21,$1C,$01,$1F,$01,$23,$01,$1F,$01,$1C,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$1C,$01,$1F,$01,$1C,$01,$23,$01,$01,$01
+    db $21,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$1F,$01,$1C,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$1C,$01,$21,$01,$1F,$01,$1E,$01,$1B,$01
+    db $17,$01,$01,$01
+    db $FF
+SdRunBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$70,$18,$32,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10,$0C,$18,$0C,$18,$0C,$18,$0C,$18,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17
+    db $FF
+}

@@ -7045,5 +7045,49 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mindbusters",
+    "label": "Mind Busters (April 1985)",
+    "detail": "A ColecoVision reimagining of Ned W. Schultz's COMPUTE! picture puzzle, featuring three sliding-row challenges, smooth movement, timing and session records.",
+    "projectName": "Mind Busters",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "game",
+      "puzzle",
+      "commodore-64",
+      "ti-99-4a",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "spacedodger",
+    "label": "Space Dodger (May 1985)",
+    "detail": "A ColecoVision reimagining of Matthew Marulio's COMPUTE! survival game, featuring layered starfields, ranked difficulty, eight alien lanes and smooth sprite motion.",
+    "projectName": "Space Dodger",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "space",
+      "ti-99-4a",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];
