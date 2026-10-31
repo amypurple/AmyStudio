@@ -270,15 +270,19 @@ loop forever
   );
 });
 
-check("word-valued and/or reports Amy value-operator syntax", () => {
+check("word-valued and/or lower as typed bitwise aliases", () => {
   const logicalWords = transpileAmy(`u16 A = 1
 u16 B = 2
 u16 C = 0
 C = A and B
+C = A or B
 loop forever
 `);
-  assert.equal(logicalWords.ok, false);
-  assert.match(String(logicalWords.log || ""), /value expressions use '&' and '\|'.*and.*or.*conditions/i);
+  assert.equal(logicalWords.ok, true, logicalWords.log || "word bitwise aliases failed");
+  const logicalAsm = String(logicalWords.asmBody || "");
+  assert.match(logicalAsm, /\band\s+d\b/i, "word AND alias did not use the typed 16-bit bitwise path");
+  assert.match(logicalAsm, /\bor\s+d\b/i, "word OR alias did not use the typed 16-bit bitwise path");
+  assert.doesNotMatch(logicalAsm, /ld hl,.*\b(?:and|or)\b/i, "word aliases leaked into an assembler immediate");
 });
 
 check("put frame accepts a table entry as source", () => {

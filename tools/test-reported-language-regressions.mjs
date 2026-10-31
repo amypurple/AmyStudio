@@ -14,6 +14,7 @@ const source = `
 u8 I = 0, ByteCount = 0, ByteStepCount = 0, Finished = 0
 u16 W = 0, WordCount = 0
 u16 RandomValue = 0, RandomHigh = 0
+u16 BitsA = $F0F0, BitsB = $0FF0, BitsAnd = 0, BitsOr = 0
 u8 RandomSmall = 0
 i8 SignedByteLow = -5, SignedByteHigh = 40, SignedByteKeep = 7
 i16 SignedWordLow = -5, SignedWordHigh = 40, SignedWordKeep = 7
@@ -33,6 +34,8 @@ i16 SignedWordLow = -5, SignedWordHigh = 40, SignedWordKeep = 7
   clamp SignedWordLow between 0 and 31
   clamp SignedWordHigh between 0 and 31
   clamp SignedWordKeep between 0 and 31
+  BitsAnd = BitsA and BitsB
+  BitsOr = BitsA or BitsB
   for W = 1 to 300
     RandomValue = random(1000)
     if RandomValue > RandomHigh then RandomHigh = RandomValue
@@ -102,6 +105,8 @@ try {
       assert.equal(word("SignedWordLow"), 0, `${profile}: low i16 clamp`);
       assert.equal(word("SignedWordHigh"), 31, `${profile}: high i16 clamp`);
       assert.equal(word("SignedWordKeep"), 7, `${profile}: in-range i16 clamp`);
+      assert.equal(word("BitsAnd"), 0x00F0, `${profile}: word-valued AND alias`);
+      assert.equal(word("BitsOr"), 0xFFF0, `${profile}: word-valued OR alias`);
       assert.ok(word("RandomHigh") > 255 && word("RandomHigh") < 1000, `${profile}: bounded u16 random range`);
       assert.ok(byte("RandomSmall") < 10, `${profile}: bounded u8 random range`);
     } finally {

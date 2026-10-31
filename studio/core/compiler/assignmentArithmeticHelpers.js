@@ -1153,10 +1153,13 @@ export function createAssignmentArithmeticHelpers({
     const targetType = resolveValueType(target);
     if (opToken === "=") {
       const valueText = String(valueToken || "").trim();
-      // `and`/`or` are condition combinators, not value operators. Reject them
-      // here before the generic store can mistake the whole expression for an
-      // assembler immediate. Bitwise value expressions use `&` and `|`.
-      if (/\b(?:and|or)\b/i.test(valueText)) return null;
+      // In conditions, `and`/`or` remain short-circuit combinators. In a
+      // numeric assignment, accept their traditional BASIC bitwise meaning
+      // and lower them through the same typed path as `&` and `|`.
+      if (/\b(?:and|or)\b/i.test(valueText)) {
+        const bitwiseText = valueText.replace(/\band\b/gi, "&").replace(/\bor\b/gi, "|");
+        return emitFormulaAssignment(target, opToken, bitwiseText);
+      }
 
       const addressMatch = String(valueToken || "").trim().match(/^address\s+of\s+(.+)$/i);
       if (addressMatch) {

@@ -1663,9 +1663,10 @@ Result <<= 4
 Result = Flags >> ShiftCount
 ```
 
-Use the symbols `&`, `|`, `^`, and `~` in value expressions. The words `and`,
-`or`, and `not` combine boolean conditions in `if`, `while`, and related control
-flow; they are not aliases for integer bitwise operators.
+Use the canonical symbols `&`, `|`, `^`, and `~` in value expressions. For
+compatibility with traditional BASIC listings, `and` and `or` are accepted as
+bitwise aliases when the surrounding assignment is numeric. In `if`, `while`,
+and related control flow, the words keep their short-circuit boolean meaning.
 
 The same operations accept `u32`/`i32` globals, array elements, record fields,
 and qualified overlay fields. Bitwise operations preserve raw two's-complement
