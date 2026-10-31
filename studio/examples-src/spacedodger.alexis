@@ -106,6 +106,18 @@ u8 P1 = 0
 u8 P2 = 0
 u8 P3 = 0
 u8 Cp = 0
+' the 48 stars: column and row of each (16 a layer: far, middle, near);
+' a star crosses into the next cell to its left when its layer's dot
+' wraps, so the field really scrolls instead of each star sliding
+' 8 pixels and jumping back (Starry 1 while the field has stars)
+u8 Sxs[48]
+u8 Sys[48]
+u8 Starry = 0
+u8 Si = 0
+u8 Se = 0
+u8 Sl = 0
+u8 Sv = 0
+u16 Sa = 0
 u8 Idle = 0
 
 u16 NumU = 0
@@ -407,14 +419,17 @@ sub Scenery:
   V = Dot[V]
   StarRow(TSf1, 2, V)
   StarRow(TSf2, 6, V)
+  if P1 = 0 then ShiftLayer(0)
   V = P2 >> 2
   V = Dot[V]
   StarRow(TSm1, 1, V)
   StarRow(TSm2, 4, V)
+  if P2 = 0 then ShiftLayer(1)
   V = P3 >> 2
   V = Dot[V]
   StarRow(TSn1, 3, V)
   StarRow(TSn2, 7, V)
+  if P3 = 0 then ShiftLayer(2)
   ' the cuboids: 3 pixels left a frame, a 32-pixel strip of 4 tiles
   Cp = Cp + 29
   Cp = Cp & 31
@@ -432,6 +447,63 @@ sub Scenery:
     inc K
   next
   return
+end sub
+
+' PlaceStars: 16 stars a layer at random cells of rows 3-20
+sub PlaceStars:
+  for Si = 0 to 47
+    Sv = random(1, 30)
+    Sxs[Si] = Sv
+    Sv = random(3, 20)
+    Sys[Si] = Sv
+    StarCell
+    Sv = StarTile(Si)
+    if Sl = 32 then vpoke vram.name + Sa, Sv
+  next
+  Starry = 1
+  return
+end sub
+
+' StarCell: Sa the name-table offset of star Si, Sl the code there
+sub StarCell:
+  Sa = Sys[Si]
+  Sa = Sa << 5
+  Sa = Sa + Sxs[Si]
+  vpeek vram.name + Sa into Sl
+  return
+end sub
+
+' StarTile(N): the tile of star N (its layer's two tiles, alternating)
+function StarTile(u8 N) as u8
+  Sv = N >> 4
+  Sv = Sv << 1
+  Sv = Sv + TSf1
+  if N & 1 then Sv = Sv + 1
+  return Sv
+
+' ShiftLayer(L): every star of layer L moves one cell left (wrapping);
+' a cell holding text is left alone (the star passes behind it)
+sub ShiftLayer(u8 L):
+  if Starry = 0 then return
+  Si = L << 4
+  Se = Si + 15
+shift_next:
+  StarCell
+  Sv = StarTile(Si)
+  if Sl = Sv then vpoke vram.name + Sa, 32
+  Sv = Sxs[Si]
+  if Sv = 1 then
+    Sv = 30
+  else
+    dec Sv
+  end if
+  Sxs[Si] = Sv
+  StarCell
+  Sv = StarTile(Si)
+  if Sl = 32 then vpoke vram.name + Sa, Sv
+  if Si = Se then return
+  inc Si
+  goto shift_next
 end sub
 
 ' StarRow(T, R, B): row R of tile T becomes B, in the three thirds
@@ -456,15 +528,7 @@ sub DrawField:
     put char V at X,2
     put char V at X,21
   next
-  for Y = 3 to 20
-    for X = 1 to 30
-      V = random(0, 31)
-      if V < 6 then
-        V = V + TSf1
-        put char V at X,Y
-      end if
-    next
-  next
+  PlaceStars
   return
 end sub
 
@@ -563,6 +627,7 @@ sub HideSprites:
 end sub
 
 sub NewScreen:
+  Starry = 0
   Rearm
   wait
   nmi off
@@ -596,15 +661,7 @@ sub TitlePage:
     put char V at X,2
     put char V at X,21
   next
-  for Y = 3 to 20
-    for X = 1 to 30
-      V = random(0, 31)
-      if V < 6 then
-        V = V + TSf1
-        put char V at X,Y
-      end if
-    next
-  next
+  PlaceStars
   print at 9,5, "S P A C E"
   print at 8,7, "D O D G E R"
   print at 5,10, "DODGE THE ALIEN SHIPS"

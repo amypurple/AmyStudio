@@ -7089,5 +7089,29 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "animator",
+    "label": "Animator (August 1985)",
+    "detail": "A ColecoVision reimagining of Steve Johnson's COMPUTE! animation tool, with twenty editable sprite frames, drawing operations, demos, playback speed and per-frame sounds.",
+    "projectName": "Animator",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Graphics",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined-adaptation",
+      "graphics",
+      "animation",
+      "tool",
+      "ibm-pc",
+      "atari",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

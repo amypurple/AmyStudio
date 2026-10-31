@@ -1,0 +1,1379 @@
+cartridge "ANIMATOR/STEVE JOHNSON, COMPUTE!/1985"
+
+' ANIMATOR
+' Based on "Animator" by Steve Johnson, COMPUTE! August 1985 (pages
+' 42-60; IBM PC/PCjr original, with 64 Animator and Atari Animator by
+' Kevin Mykytyn, Apple Animator by Tim Victor, TI Animator by Patrick
+' Parrish). Made for the ColecoVision in Amy (the language by Amy
+' Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Not a line-for-line port (orig/ has the scans): a cartoon maker built
+' for this machine on the article's ideas. Kept: 20 picture frames shown
+' as numbered thumbnails; an edit grid with a blinking cursor; dots drawn
+' and erased with the stick and button (held: draw or erase a line, as
+' the Atari and Apple versions); clear, invert, mirror, rotate and shift
+' (the 64 and TI ideas); copy a picture into a buffer and put it into
+' another frame; insert and delete frames (frame 20 is lost or blank);
+' start and end frames; the animation with a speed (-15 to 15: the figure
+' runs left or right across the screen) and a pause; a colour for the
+' figure; a sound per frame (the 64's drum and eight notes).
+' Made for this machine: the 20 frames are 16 x 16 sprite patterns (the
+' edit grid is 16 x 16 because that is the ColecoVision's sprite: what you
+' draw is the sprite itself, no conversion), the thumbnails are tiles
+' copied from them, the animation is that sprite gliding over a scenery
+' strip, single or double size; joystick-only menus. No disk: the frames
+' live in video memory for the session, and three demo cartoons (a
+' runner, a bird, a bouncing ball) load from the menu (one at start).
+'
+' Controls (either joystick): the right button switches between the grid
+' and the menu. Grid: the stick moves the cursor, the left button sets or
+' clears a dot (hold it and move to draw or erase a line). Menu: up and
+' down choose, left and right change a value, the left button does it.
+' Play: left and right the speed, up and down the pause, the right button
+' the size, the left button back to the editor.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128 (the thumbnails are codes 160-239); every screen is drawn with the
+' NMI off after a wait; an original title tune that plays once.
+
+const TOff = 128
+const TOn = 129
+const TEdge = 130
+const TCl0 = 131
+const TCl1 = 132
+const THup = 133
+const THdn = 134
+const THil = 135
+const TGrass = 136
+const TEarth = 137
+const TSky = 138
+const TFlw = 139
+const TBar = 140
+const SCursor = 0
+const SBox = 4
+const NTiles8 = 104
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrum = 3
+const SndN1 = 4
+const SndN2 = 5
+const SndN3 = 6
+const SndN4 = 7
+const SndN5 = 8
+const SndN6 = 9
+const SndN7 = 10
+const SndN8 = 11
+const SndDot = 12
+const SndBlip = 13
+const SndDone = 14
+const SndWipe = 15
+' sprite patterns: the 20 frames are 0-79, then the cursor and the box
+const SprBase = 80
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the picture being edited (the frame's 32 sprite bytes: rows 0-15 of the
+' left half, then rows 0-15 of the right half), the copy buffer, a work
+' buffer, one grid row of tile codes
+u8 Wk[32]
+u8 Bf[32]
+u8 Nw[32]
+u8 Rw[16]
+' a sound per frame: 0 none, 1 drum, 2-9 the notes C D E F G A B C
+u8 Snd[20]
+' Cur the frame (0-19); Cx Cy the cursor; Md 0 grid, 1 menu, 2 shift;
+' Item the menu's line; Sf Ef the start and end frames; Spd the speed
+' (15 still, 0 fastest left, 30 fastest right); Pse the pause (0-15);
+' Fc the figure's colour; Dm the demo chosen (3 blank)
+u8 Cur = 0
+u8 Cx = 7
+u8 Cy = 7
+u8 Md = 0
+u8 Item = 0
+u8 Sf = 0
+u8 Ef = 5
+u8 Spd = 19
+u8 Pse = 1
+u8 Fc = 15
+u8 Dm = 0
+u8 Pen = 0
+u8 Big = 0
+u8 Pf = 0
+u8 Pc = 0
+u16 X4 = 0
+u8 Idle = 0
+u8 Ops = 0
+
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Dir = 0
+u8 LastDir = 0
+u8 Rep = 0
+u8 Mv = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Ha = 0
+u8 Hb = 0
+u8 Pv = 0
+u8 Ff = 0
+u16 NumU = 0
+u16 A16 = 0
+u16 B16 = 0
+
+  tile screen
+  set sound table AnSoundTable areas 6
+  sprites 16x16
+  nmi off
+  fill 0 count 640 to vram.spr_pat
+  copy SpritePat count SprBytes to vram.spr_pat + 640
+  HideSprites
+  Dm = 0
+  LoadDemo
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  ' the editor
+  Md = 0
+  Item = 0
+  Cur = 0
+  LoadWk
+  EditScreen
+
+ed_loop:
+  Frame1
+  ReadPad
+  ' the right button: grid <-> menu (and out of shift)
+  if P2 = 1 then
+    if Md = 0 then
+      Md = 1
+    else
+      Md = 0
+    end if
+    play sound SndBlip
+    ShowHint
+    ShowMarker
+  end if
+  if Md = 0 then
+    GridStep
+  elseif Md = 1 then
+    MenuStep
+  else
+    ShiftStep
+  end if
+  DrawCursor
+  if Ff = 1 then
+    Ff = 0
+    PlayScreen
+    EditScreen
+  end if
+  goto ed_loop
+
+' ---------------------------------------------------------------------------
+' the grid: move the cursor; the button sets or clears a dot, and held, it
+' paints the same value along the way
+sub GridStep:
+  if Mv = 1 then
+    if Dir = 1 then
+      if Cy = 0 then
+        Cy = 15
+      else
+        dec Cy
+      end if
+    end if
+    if Dir = 2 then
+      inc Cy
+      Cy = Cy & 15
+    end if
+    if Dir = 3 then
+      if Cx = 0 then
+        Cx = 15
+      else
+        dec Cx
+      end if
+    end if
+    if Dir = 4 then
+      inc Cx
+      Cx = Cx & 15
+    end if
+  end if
+  if B1 = 0 then return
+  if P1 = 1 then
+    GetPx(Cx, Cy)
+    Pen = Pv ^ 1
+    PaintCell
+    return
+  end if
+  if Mv = 1 then PaintCell
+  return
+end sub
+
+' PaintCell: the cursor's dot becomes Pen (on screen and in the frame)
+sub PaintCell:
+  SetPx(Cx, Cy, Pen)
+  V = TOff
+  if Pen = 1 then V = TOn
+  X = Cx + 2
+  Y = Cy + 2
+  put char V at X,Y
+  Commit
+  inc Ops
+  play sound SndDot
+  return
+end sub
+
+' the menu: up and down choose a line, left and right change its value,
+' the button does it
+sub MenuStep:
+  if Mv = 1 then
+    if Dir = 1 then
+      if Item = 0 then
+        Item = 15
+      else
+        dec Item
+      end if
+      ShowMarker
+    end if
+    if Dir = 2 then
+      inc Item
+      Item = Item & 15
+      ShowMarker
+    end if
+    if Dir = 3 then Adjust(0)
+    if Dir = 4 then Adjust(1)
+  end if
+  if P1 = 1 then DoItem
+  return
+end sub
+
+' shift: the stick moves the whole picture (round the edges); the button
+' ends it
+sub ShiftStep:
+  if Mv = 1 then
+    if Dir = 1 then ShiftUp
+    if Dir = 2 then ShiftDown
+    if Dir = 3 then ShiftLeft
+    if Dir = 4 then ShiftRight
+    Commit
+    DrawGrid
+    inc Ops
+    play sound SndDot
+  end if
+  if P1 = 1 then
+    Md = 1
+    ShowHint
+    ShowMarker
+  end if
+  return
+end sub
+
+' Adjust(Up): left (0) or right (1) on a value line
+sub Adjust(u8 Up):
+  if Item = 0 then
+    if Up = 1 then
+      if Cur < 19 then inc Cur
+    else
+      if Cur > 0 then dec Cur
+    end if
+    LoadWk
+    DrawGrid
+    ShowItem(0)
+    ShowItem(13)
+  end if
+  if Item = 11 then
+    if Up = 1 then
+      if Sf < Ef then inc Sf
+    else
+      if Sf > 0 then dec Sf
+    end if
+    ShowItem(11)
+    RangeColors
+  end if
+  if Item = 12 then
+    if Up = 1 then
+      if Ef < 19 then inc Ef
+    else
+      if Ef > Sf then dec Ef
+    end if
+    ShowItem(12)
+    RangeColors
+  end if
+  if Item = 13 then
+    V = Snd[Cur]
+    if Up = 1 then
+      inc V
+      if V = 10 then V = 0
+    else
+      if V = 0 then
+        V = 9
+      else
+        dec V
+      end if
+    end if
+    Snd[Cur] = V
+    ShowItem(13)
+    FrameSound(V)
+  end if
+  if Item = 14 then
+    if Up = 1 then
+      inc Fc
+      if Fc = 16 then Fc = 2
+    else
+      dec Fc
+      if Fc = 1 then Fc = 15
+    end if
+    ShowItem(14)
+  end if
+  if Item = 15 then
+    if Up = 1 then
+      inc Dm
+      Dm = Dm & 3
+    else
+      dec Dm
+      Dm = Dm & 3
+    end if
+    ShowItem(15)
+  end if
+  play sound SndBlip
+  return
+end sub
+
+' DoItem: the button on a menu line
+sub DoItem:
+  if Item = 1 then
+    Ff = 1
+    return
+  end if
+  if Item = 2 then
+    for I = 0 to 31
+      Wk[I] = 0
+    next
+  end if
+  if Item = 3 then
+    for I = 0 to 31
+      Wk[I] = Wk[I] ^ 255
+    next
+  end if
+  if Item = 4 then
+    for I = 0 to 15
+      Ha = Wk[I]
+      J = I + 16
+      Hb = Wk[J]
+      Wk[I] = Rev[Hb]
+      Wk[J] = Rev[Ha]
+    next
+  end if
+  if Item = 5 then Rotate
+  if Item = 6 then
+    Md = 2
+    ShowHint
+    ShowMarker
+    play sound SndBlip
+    return
+  end if
+  if Item = 7 then
+    for I = 0 to 31
+      Bf[I] = Wk[I]
+    next
+    inc Ops
+    play sound SndDone
+    return
+  end if
+  if Item = 8 then
+    for I = 0 to 31
+      Wk[I] = Bf[I]
+    next
+  end if
+  if Item = 9 then
+    InsertFrame
+    return
+  end if
+  if Item = 10 then
+    DeleteFrame
+    return
+  end if
+  if Item = 13 then
+    V = Snd[Cur]
+    FrameSound(V)
+    return
+  end if
+  if Item = 15 then
+    LoadDemo
+    Cur = 0
+    LoadWk
+    EditScreen
+    play sound SndDone
+    inc Ops
+    return
+  end if
+  ' 0, 11, 12, 14: values only (left and right)
+  if Item = 0 then return
+  if Item > 10 then return
+  ' 2-5, 8: the picture changed
+  Commit
+  DrawGrid
+  inc Ops
+  play sound SndWipe
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the picture's dots: column C, row R is bit C & 7 of byte R (left half,
+' C 0-7) or R + 16 (right half)
+sub GetPx(u8 C, u8 R):
+  K = R
+  if C > 7 then K = R + 16
+  V = C & 7
+  V = Bit[V]
+  Pv = 0
+  W = Wk[K] & V
+  if W > 0 then Pv = 1
+  return
+end sub
+
+sub SetPx(u8 C, u8 R, u8 P):
+  K = R
+  if C > 7 then K = R + 16
+  V = C & 7
+  V = Bit[V]
+  W = Wk[K] | V
+  if P = 0 then W = W ^ V
+  Wk[K] = W
+  return
+end sub
+
+' Rotate: a quarter turn clockwise: the new dot (X, Y) is the old (Y, 15 - X)
+sub Rotate:
+  for I = 0 to 31
+    Nw[I] = 0
+  next
+  for Y = 0 to 15
+    for X = 0 to 15
+      N = 15 - X
+      GetPx(Y, N)
+      if Pv = 1 then
+        K = Y
+        if X > 7 then K = Y + 16
+        V = X & 7
+        V = Bit[V]
+        Nw[K] = Nw[K] | V
+      end if
+    next
+  next
+  for I = 0 to 31
+    Wk[I] = Nw[I]
+  next
+  return
+end sub
+
+' the shifts go round: what leaves one side comes back on the other
+sub ShiftLeft:
+  for I = 0 to 15
+    J = I + 16
+    Ha = Wk[I]
+    Hb = Wk[J]
+    V = Ha << 1
+    W = Hb >> 7
+    Wk[I] = V | W
+    V = Hb << 1
+    W = Ha >> 7
+    Wk[J] = V | W
+  next
+  return
+end sub
+
+sub ShiftRight:
+  for I = 0 to 15
+    J = I + 16
+    Ha = Wk[I]
+    Hb = Wk[J]
+    V = Ha >> 1
+    W = Hb << 7
+    Wk[I] = V | W
+    V = Hb >> 1
+    W = Ha << 7
+    Wk[J] = V | W
+  next
+  return
+end sub
+
+sub ShiftUp:
+  Ha = Wk[0]
+  Hb = Wk[16]
+  for I = 0 to 14
+    J = I + 1
+    Wk[I] = Wk[J]
+    K = I + 16
+    J = J + 16
+    Wk[K] = Wk[J]
+  next
+  Wk[15] = Ha
+  Wk[31] = Hb
+  return
+end sub
+
+sub ShiftDown:
+  Ha = Wk[15]
+  Hb = Wk[31]
+  I = 15
+sd_loop:
+  J = I - 1
+  Wk[I] = Wk[J]
+  K = I + 16
+  J = J + 16
+  Wk[K] = Wk[J]
+  dec I
+  if I > 0 then goto sd_loop
+  Wk[0] = Ha
+  Wk[16] = Hb
+  return
+end sub
+
+' InsertFrame: a blank frame at Cur; the later ones move up (frame 20 is lost)
+sub InsertFrame:
+  I = 19
+if_loop:
+  if I > Cur then
+    J = I - 1
+    A16 = J * 32
+    B16 = A16 + 32
+    copy vram.spr_pat + A16 count 32 to vram.spr_pat + B16
+    Snd[I] = Snd[J]
+    dec I
+    goto if_loop
+  end if
+  A16 = Cur * 32
+  fill 0 count 32 to vram.spr_pat + A16
+  Snd[Cur] = 0
+  FramesChanged
+  return
+end sub
+
+' DeleteFrame: Cur goes; the later ones move down (frame 20 is blank)
+sub DeleteFrame:
+  I = Cur
+df_loop:
+  if I < 19 then
+    J = I + 1
+    A16 = I * 32
+    B16 = A16 + 32
+    copy vram.spr_pat + B16 count 32 to vram.spr_pat + A16
+    Snd[I] = Snd[J]
+    inc I
+    goto df_loop
+  end if
+  fill 0 count 32 to vram.spr_pat + 608
+  Snd[19] = 0
+  FramesChanged
+  return
+end sub
+
+sub FramesChanged:
+  for N = 0 to 19
+    Thumb(N)
+  next
+  LoadWk
+  DrawGrid
+  ShowItem(13)
+  inc Ops
+  play sound SndWipe
+  return
+end sub
+
+' LoadDemo: demo Dm into the frames (3: all blank)
+sub LoadDemo:
+  fill 0 count 640 to vram.spr_pat
+  for I = 0 to 19
+    Snd[I] = 0
+  next
+  if Dm = 3 then
+    Sf = 0
+    Ef = 19
+    Spd = 15
+    Pse = 2
+    Fc = 15
+    return
+  end if
+  if Dm = 0 then
+    copy DemoRun count 192 to vram.spr_pat
+  end if
+  if Dm = 1 then
+    copy DemoBird count 128 to vram.spr_pat
+  end if
+  if Dm = 2 then
+    copy DemoBall count 256 to vram.spr_pat
+  end if
+  K = Dm * 4
+  N = DemoInfo[K]
+  Sf = 0
+  Ef = N - 1
+  inc K
+  Spd = DemoInfo[K]
+  inc K
+  Pse = DemoInfo[K]
+  inc K
+  Fc = DemoInfo[K]
+  K = Dm * 8
+  for I = 0 to 7
+    Snd[I] = DemoSnd[K]
+    inc K
+  next
+  return
+end sub
+
+' the frame's picture into Wk, and Wk back into the frame and its thumbnail
+sub LoadWk:
+  A16 = Cur * 32
+  copy vram.spr_pat + A16 count 32 to Wk
+  return
+end sub
+
+sub Commit:
+  A16 = Cur * 32
+  copy Wk count 32 to vram.spr_pat + A16
+  Thumb(Cur)
+  return
+end sub
+
+' Thumb(F): frame F's sprite bytes become its four thumbnail tiles (codes
+' 160 + 4F, in the bottom third where the thumbnails are)
+sub Thumb(u8 F):
+  A16 = F * 32
+  B16 = A16 + 5376
+  copy vram.spr_pat + A16 count 32 to vram.pattern + B16
+  return
+end sub
+
+' FrameSound(S): a frame's sound (0 none, 1 drum, 2-9 notes)
+sub FrameSound(u8 S):
+  if S = 0 then return
+  V = S + 2
+  play sound V
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the editor's screen: the grid (columns 2-17, rows 2-17), the menu
+' (columns 19-29), the hint (row 18), the thumbnails (rows 19-22), the
+' frame itself at its real size (bottom right)
+sub EditScreen:
+  NewScreen
+  backdrop black
+  print at 2,1, "ANIMATOR"
+  for N = 0 to 19
+    Thumb(N)
+    X = N
+    Y = 19
+    if N > 9 then
+      X = N - 10
+      Y = 21
+    end if
+    X = X * 2
+    X = X + 2
+    V = N * 4
+    V = V + 160
+    put char V at X,Y
+    inc V
+    J = Y + 1
+    put char V at X,J
+    inc V
+    K = X + 1
+    put char V at K,Y
+    inc V
+    put char V at K,J
+  next
+  for N = 0 to 15
+    ShowItem(N)
+  next
+  print at 23,19, "NOW"
+  RangeColors
+  DrawGrid
+  ShowHint
+  ShowMarker
+  DrawCursor
+  ShowScreen
+  return
+end sub
+
+' DrawGrid: the 16 x 16 cells from Wk, a row of 16 names at a time
+sub DrawGrid:
+  for Y = 0 to 15
+    for Ha = 0 to 1
+      K = Ha * 16
+      K = K + Y
+      W = Wk[K]
+      N = Ha * 8
+      for X = 0 to 7
+        V = Bit[X]
+        V = W & V
+        J = N + X
+        if V > 0 then
+          Rw[J] = TOn
+        else
+          Rw[J] = TOff
+        end if
+      next
+    next
+    A16 = Y + 2
+    A16 = A16 * 32
+    A16 = A16 + 2
+    copy Rw count 16 to vram.name + A16
+  next
+  return
+end sub
+
+' RangeColors: thumbnails from start to end in white on blue, the others
+' grey on black
+sub RangeColors:
+  for N = 0 to 19
+    V = $E1
+    if N >= Sf then
+      if N <= Ef then V = $F4
+    end if
+    A16 = N * 32
+    A16 = A16 + 1280
+    fill V count 32 to vram.color + A16
+  next
+  return
+end sub
+
+' DrawCursor: the blinking cursor (sprite 1, grid only), the box on the
+' frame's thumbnail (sprite 2), the frame at its real size (sprite 0)
+sub DrawCursor:
+  if Md = 0 then
+    X = Cx + 2
+    X = X * 8
+    Y = Cy + 2
+    Y = Y * 8
+    dec Y
+    V = Tick & 8
+    W = 11
+    if V = 0 then W = 8
+    if B1 = 1 then W = 15
+    set sprite 1 to Y,X,SprBase,W
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  X = Cur
+  Y = 19
+  if Cur > 9 then
+    X = Cur - 10
+    Y = 21
+  end if
+  X = X * 2
+  X = X + 2
+  X = X * 8
+  Y = Y * 8
+  dec Y
+  V = SprBase + SBox
+  set sprite 2 to Y,X,V,9
+  V = Cur * 4
+  set sprite 0 to 159,208,V,Fc
+  update sprites
+  return
+end sub
+
+sub ShowMarker:
+  for N = 2 to 17
+    put char 32 at 19,N
+  next
+  if Md = 0 then return
+  V = Item + 2
+  W = 62
+  if Md = 2 then W = 42
+  put char W at 19,V
+  return
+end sub
+
+sub ShowHint:
+  print at 2,18, "                           "
+  if Md = 0 then print at 2,18, "FIRE: DOT   RIGHT BTN: MENU"
+  if Md = 1 then print at 2,18, "FIRE: DO IT RIGHT BTN: GRID"
+  if Md = 2 then print at 2,18, "STICK: SHIFT  FIRE: DONE"
+  return
+end sub
+
+' ShowItem(L): menu line L at row L + 2, columns 20-29
+sub ShowItem(u8 L):
+  Y = L + 2
+  print at 20,Y, "          "
+  if L = 0 then
+    print at 20,Y, "FRAME"
+    NumU = Cur + 1
+    print at 26,Y, digits$(NumU, 2)
+  end if
+  if L = 1 then print at 20,Y, "PLAY"
+  if L = 2 then print at 20,Y, "CLEAR"
+  if L = 3 then print at 20,Y, "INVERT"
+  if L = 4 then print at 20,Y, "MIRROR"
+  if L = 5 then print at 20,Y, "ROTATE"
+  if L = 6 then print at 20,Y, "SHIFT"
+  if L = 7 then print at 20,Y, "COPY"
+  if L = 8 then print at 20,Y, "PASTE"
+  if L = 9 then print at 20,Y, "INSERT"
+  if L = 10 then print at 20,Y, "DELETE"
+  if L = 11 then
+    print at 20,Y, "START"
+    NumU = Sf + 1
+    print at 26,Y, digits$(NumU, 2)
+  end if
+  if L = 12 then
+    print at 20,Y, "END"
+    NumU = Ef + 1
+    print at 26,Y, digits$(NumU, 2)
+  end if
+  if L = 13 then
+    print at 20,Y, "SOUND"
+    V = Snd[Cur]
+    if V = 0 then print at 26,Y, "--"
+    if V = 1 then print at 26,Y, "DRUM"
+    if V = 2 then print at 26,Y, "C"
+    if V = 3 then print at 26,Y, "D"
+    if V = 4 then print at 26,Y, "E"
+    if V = 5 then print at 26,Y, "F"
+    if V = 6 then print at 26,Y, "G"
+    if V = 7 then print at 26,Y, "A"
+    if V = 8 then print at 26,Y, "B"
+    if V = 9 then print at 26,Y, "C+"
+  end if
+  if L = 14 then
+    print at 20,Y, "COLOR"
+    NumU = Fc
+    print at 26,Y, digits$(NumU, 2)
+  end if
+  if L = 15 then
+    print at 20,Y, "DEMO"
+    if Dm = 0 then print at 25,Y, "RUN"
+    if Dm = 1 then print at 25,Y, "BIRD"
+    if Dm = 2 then print at 25,Y, "BALL"
+    if Dm = 3 then print at 25,Y, "BLANK"
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the animation: frames Sf to Ef in turn, a step every (Pse + 1) * 3
+' frames, the figure gliding at Spd - 15 quarter pixels a frame
+sub PlayScreen:
+  Scenery
+  print at 2,1, "SPEED"
+  print at 13,1, "PAUSE"
+  print at 22,1, "FRAME"
+  print at 2,3, "LEFT, RIGHT: SPEED"
+  print at 2,4, "UP, DOWN: PAUSE"
+  print at 2,5, "RIGHT BTN: SIZE  FIRE: EDIT"
+  ShowPlayHud
+  ShowScreen
+  X4 = 400
+  Pf = Sf
+  Pc = 0
+  V = Snd[Pf]
+  FrameSound(V)
+  WasB1 = 1
+pa_loop:
+  Frame1
+  ReadPad
+  if Mv = 1 then
+    if Dir = 3 then
+      if Spd > 0 then dec Spd
+    end if
+    if Dir = 4 then
+      if Spd < 30 then inc Spd
+    end if
+    if Dir = 1 then
+      if Pse > 0 then dec Pse
+    end if
+    if Dir = 2 then
+      if Pse < 15 then inc Pse
+    end if
+    ShowPlayHud
+  end if
+  if P2 = 1 then
+    Big = Big ^ 1
+    if Big = 1 then
+      sprites double
+    else
+      sprites simple
+    end if
+  end if
+  if P1 = 1 then
+    sprites simple
+    Big = 0
+    HideSprites
+    return
+  end if
+  ' the glide
+  if Spd > 15 then
+    V = Spd - 15
+    X4 = X4 + V
+  end if
+  if Spd < 15 then
+    V = 15 - Spd
+    X4 = X4 + 1024
+    X4 = X4 - V
+  end if
+  X4 = X4 & 1023
+  ' the next frame
+  inc Pc
+  V = Pse + 1
+  V = V * 3
+  if Pc >= V then
+    Pc = 0
+    if Pf >= Ef then
+      Pf = Sf
+    else
+      inc Pf
+    end if
+    V = Snd[Pf]
+    FrameSound(V)
+    NumU = Pf + 1
+    print at 28,1, digits$(NumU, 2)
+  end if
+  A16 = X4 >> 2
+  X = A16
+  Y = 103
+  if Big = 1 then Y = 87
+  V = Pf * 4
+  set sprite 0 to Y,X,V,Fc
+  update sprites
+  goto pa_loop
+end sub
+
+sub ShowPlayHud:
+  if Spd >= 15 then
+    print at 8,1, "+"
+    NumU = Spd - 15
+  else
+    print at 8,1, "-"
+    NumU = 15 - Spd
+  end if
+  print at 9,1, digits$(NumU, 2)
+  NumU = Pse
+  print at 19,1, digits$(NumU, 2)
+  NumU = Pf + 1
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+' Scenery: sky, clouds, hills, grass, earth (rows 1-22)
+sub Scenery:
+  NewScreen
+  backdrop sky blue
+  for X = 0 to 31
+    put char TGrass at X,15
+    for Y = 16 to 23
+      put char TEarth at X,Y
+    next
+  next
+  for X = 0 to 31
+    V = X & 15
+    if V = 2 then
+      put char THup at X,13
+      put char THil at X,14
+    end if
+    if V > 2 then
+      if V < 8 then
+        put char THil at X,13
+        put char THil at X,14
+      end if
+    end if
+    if V = 3 then put char THup at X,12
+    if V = 4 then put char THil at X,12
+    if V = 5 then put char THil at X,12
+    if V = 6 then put char THdn at X,12
+    if V = 8 then
+      put char THdn at X,13
+      put char THil at X,14
+    end if
+    if V = 9 then put char THdn at X,14
+    if V = 1 then put char THup at X,14
+    if V = 12 then put char TFlw at X,14
+  next
+  put char TCl0 at 6,8
+  put char TCl1 at 7,8
+  put char TCl0 at 19,7
+  put char TCl1 at 20,7
+  put char TCl0 at 26,9
+  put char TCl1 at 27,9
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  B1 = 0
+  B2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then B1 = 1
+  if joypad(2).button1 then B1 = 1
+  if joypad(1).button2 then B2 = 1
+  if joypad(2).button2 then B2 = 1
+  P1 = 0
+  if B1 = 1 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  WasB1 = B1
+  P2 = 0
+  if B2 = 1 then
+    if WasB2 = 0 then P2 = 1
+  end if
+  WasB2 = B2
+  ' the stick: one direction, a step at the push, then repeats
+  Dir = 0
+  if Rt1 = 1 then Dir = 4
+  if Lf1 = 1 then Dir = 3
+  if Dn1 = 1 then Dir = 2
+  if Up1 = 1 then Dir = 1
+  Mv = 0
+  if Dir <> LastDir then
+    if Dir > 0 then Mv = 1
+    Rep = 14
+  else
+    if Dir > 0 then
+      dec Rep
+      if Rep = 0 then
+        Mv = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  LastDir = Dir
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the runner crossing the meadow, a two-line menu, the tune once
+sub TitlePage:
+  Scenery
+  print at 9,3, "A N I M A T O R"
+  print at 7,5, "MAKE YOUR OWN CARTOONS"
+  print at 13,8, "START"
+  print at 13,9, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 390
+  TzOn = 1
+  Menu = 0
+  X4 = 0
+  Pf = 0
+  Pc = 0
+  WasB1 = 1
+  WasB2 = 1
+tp_loop:
+  Frame1
+  ReadPad
+  if Mv = 1 then
+    if Dir < 3 then
+      Menu = Menu ^ 1
+      ShowMenu
+      play sound SndBlip
+    end if
+  end if
+  ' the demo runner, double size
+  X4 = X4 + 5
+  X4 = X4 & 1023
+  inc Pc
+  if Pc >= 6 then
+    Pc = 0
+    inc Pf
+    if Pf > 5 then Pf = 0
+  end if
+  sprites double
+  A16 = X4 >> 2
+  X = A16
+  V = Pf * 4
+  set sprite 0 to 87,X,V,15
+  update sprites
+  V = P1 | P2
+  if V = 0 then goto tp_loop
+  sprites simple
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,8
+  put char 32 at 11,9
+  V = Menu + 8
+  put char 62 at 11,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 11,2, "ANIMATOR"
+  print at 3,4, "BASED ON ANIMATOR BY"
+  print at 3,5, "STEVE JOHNSON, COMPUTE!"
+  print at 3,6, "AUGUST 1985 (IBM PC; OTHER"
+  print at 3,7, "VERSIONS BY KEVIN MYKYTYN,"
+  print at 3,8, "TIM VICTOR AND P. PARRISH)."
+  print at 3,10, "MADE FOR THE COLECOVISION"
+  print at 3,11, "BY CLAUDE (AN AI MADE BY"
+  print at 3,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,13, "2026, IN AMY BY AMY"
+  print at 3,14, "BIENVENU."
+  print at 3,16, "MUSIC: FLIP BOOK"
+  print at 3,18, "DEMOS: RUNNER, BIRD, BALL"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  WasB1 = 1
+  WasB2 = 1
+cr_loop:
+  Frame1
+  ReadPad
+  V = P1 | P2
+  if V = 0 then goto cr_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$C3,$81,$00,$00,$81,$00
+  $00,$00,$70,$07,$03,$00,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $44,$29,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$38,$10,$10,$30,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$54,$54,$04,$04,$04
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $05,$F5,$5F,$5F,$0F,$0F,$5F,$05
+  $05,$05,$F5,$5F,$5F,$0F,$5F,$05
+  $C5,$C5,$C5,$5C,$5C,$5C,$5C,$0C
+  $C5,$C5,$C5,$C5,$5C,$5C,$5C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $23,$32,$02,$02,$0A,$0A,$0A,$0A
+  $0A,$6A,$0A,$6A,$0A,$6A,$0A,$0A
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$85,$85,$85,$25,$25,$25,$25
+  $06,$06,$06,$06,$06,$06,$06,$06
+end data
+data SpritePat bytes
+  $FF,$81,$81,$81,$81,$81,$81,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+end data
+data DemoRun bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$04,$00,$01,$02,$02,$04,$04,$00,$E0,$E0,$E0,$40,$40,$78,$80,$80,$80,$80,$40,$20,$10,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$00,$01,$01,$01,$02,$02,$00,$E0,$E0,$E0,$40,$40,$40,$B0,$80,$80,$80,$40,$40,$40,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$40,$40,$40,$C0,$C0,$C0,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$04,$00,$01,$02,$02,$04,$04,$00,$E0,$E0,$E0,$40,$40,$78,$80,$80,$80,$80,$40,$20,$10,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$00,$01,$01,$01,$02,$02,$00,$E0,$E0,$E0,$40,$40,$40,$B0,$80,$80,$80,$40,$40,$40,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$40,$40,$40,$C0,$C0,$C0,$80,$80,$80,$80,$80,$80
+end data
+data DemoBird bytes
+  $00,$00,$09,$05,$05,$3A,$7B,$BF,$0F,$07,$01,$00,$00,$00,$00,$00,$00,$00,$20,$20,$20,$C0,$C1,$F6,$F8,$FC,$C3,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$38,$7D,$BF,$0F,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E1,$F6,$F8,$FC,$C3,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$38,$79,$BF,$0F,$07,$05,$05,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C1,$F6,$F8,$FC,$E3,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$38,$7D,$BF,$0F,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E1,$F6,$F8,$FC,$C3,$00,$00,$00,$00,$00
+end data
+data DemoBall bytes
+  $00,$00,$03,$03,$07,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$E0,$F0,$E0,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$E0,$F0,$E0,$E0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$0F,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$F8,$F0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$E0,$F0,$E0,$E0,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+data DemoInfo bytes
+  6,19,1,15, 4,9,2,9, 8,17,0,11
+end data
+data DemoSnd bytes
+  1,0,0,1,0,0,0,0, 0,0,7,0,0,0,0,0, 0,0,0,0,1,4,0,0
+end data
+data Bit bytes
+  $80,$40,$20,$10,$08,$04,$02,$01
+end data
+data Rev bytes
+  $00,$80,$40,$C0,$20,$A0,$60,$E0,$10,$90,$50,$D0,$30,$B0,$70,$F0
+  $08,$88,$48,$C8,$28,$A8,$68,$E8,$18,$98,$58,$D8,$38,$B8,$78,$F8
+  $04,$84,$44,$C4,$24,$A4,$64,$E4,$14,$94,$54,$D4,$34,$B4,$74,$F4
+  $0C,$8C,$4C,$CC,$2C,$AC,$6C,$EC,$1C,$9C,$5C,$DC,$3C,$BC,$7C,$FC
+  $02,$82,$42,$C2,$22,$A2,$62,$E2,$12,$92,$52,$D2,$32,$B2,$72,$F2
+  $0A,$8A,$4A,$CA,$2A,$AA,$6A,$EA,$1A,$9A,$5A,$DA,$3A,$BA,$7A,$FA
+  $06,$86,$46,$C6,$26,$A6,$66,$E6,$16,$96,$56,$D6,$36,$B6,$76,$F6
+  $0E,$8E,$4E,$CE,$2E,$AE,$6E,$EE,$1E,$9E,$5E,$DE,$3E,$BE,$7E,$FE
+  $01,$81,$41,$C1,$21,$A1,$61,$E1,$11,$91,$51,$D1,$31,$B1,$71,$F1
+  $09,$89,$49,$C9,$29,$A9,$69,$E9,$19,$99,$59,$D9,$39,$B9,$79,$F9
+  $05,$85,$45,$C5,$25,$A5,$65,$E5,$15,$95,$55,$D5,$35,$B5,$75,$F5
+  $0D,$8D,$4D,$CD,$2D,$AD,$6D,$ED,$1D,$9D,$5D,$DD,$3D,$BD,$7D,$FD
+  $03,$83,$43,$C3,$23,$A3,$63,$E3,$13,$93,$53,$D3,$33,$B3,$73,$F3
+  $0B,$8B,$4B,$CB,$2B,$AB,$6B,$EB,$1B,$9B,$5B,$DB,$3B,$BB,$7B,$FB
+  $07,$87,$47,$C7,$27,$A7,$67,$E7,$17,$97,$57,$D7,$37,$B7,$77,$F7
+  $0F,$8F,$4F,$CF,$2F,$AF,$6F,$EF,$1F,$9F,$5F,$DF,$3F,$BF,$7F,$FF
+end data
+
+asm {
+AnDrum:
+    db $00,$00,$04,$01,$00,$00,$25,$02,$00,$00,$56,$03,$10
+AnN1:
+    db $40,$D6,$10,$02,$40,$D6,$30,$03,$40,$D6,$60,$04,$50
+AnN2:
+    db $40,$BF,$10,$02,$40,$BF,$30,$03,$40,$BF,$60,$04,$50
+AnN3:
+    db $40,$AA,$10,$02,$40,$AA,$30,$03,$40,$AA,$60,$04,$50
+AnN4:
+    db $40,$A0,$10,$02,$40,$A0,$30,$03,$40,$A0,$60,$04,$50
+AnN5:
+    db $40,$8F,$10,$02,$40,$8F,$30,$03,$40,$8F,$60,$04,$50
+AnN6:
+    db $40,$7F,$10,$02,$40,$7F,$30,$03,$40,$7F,$60,$04,$50
+AnN7:
+    db $40,$71,$10,$02,$40,$71,$30,$03,$40,$71,$60,$04,$50
+AnN8:
+    db $40,$6B,$10,$02,$40,$6B,$30,$03,$40,$6B,$60,$04,$50
+AnDot:
+    db $40,$47,$30,$01,$40,$40,$60,$01,$50
+AnBlip:
+    db $40,$6B,$40,$01,$50
+AnDone:
+    db $40,$8F,$20,$03,$40,$6B,$20,$03,$40,$55,$30,$06,$50
+AnWipe:
+    db $00,$00,$23,$04,$00,$00,$53,$06,$10
+
+AnSoundTable:
+    dw AnTuneMel,$702B
+    dw AnTuneBass,$7035
+    dw AnDrum,$703F
+    dw AnN1,$7049
+    dw AnN2,$7049
+    dw AnN3,$7049
+    dw AnN4,$7049
+    dw AnN5,$7049
+    dw AnN6,$7049
+    dw AnN7,$7049
+    dw AnN8,$7049
+    dw AnDot,$7049
+    dw AnBlip,$7049
+    dw AnDone,$7049
+    dw AnWipe,$703F
+; Flip Book (original)
+; Tiny Sound, 6 frames per step
+AnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$24,$21,$01,$23,$01,$26,$2B,$01,$26,$23,$01,$21,$01,$1A,$1E
+    db $21,$01,$01,$01,$1F,$01,$23,$26,$01,$23,$1F,$01,$24,$01,$28,$2B
+    db $01,$28,$24,$01,$23,$01,$21,$01,$1A,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+AnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0E,$01,$09,$01
+    db $0E,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}
