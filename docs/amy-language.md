@@ -1283,6 +1283,13 @@ next
 
 `next I` is preferred when the loop variable is useful documentation. The opening `for` line may end with `:` if desired.
 
+Amy evaluates the start value, end bound, and step once when execution enters the
+`for`, in that order. Changing a variable used by the bound or step inside the loop
+does not alter the active loop. Reaching the same `for` again, including an inner
+loop during a later outer iteration, evaluates those values again. Compile-time
+constant bounds retain their compact immediate form; runtime bounds and steps use
+collision-safe internal storage selected by loop nesting depth.
+
 Fixed global and local primitive arrays, plus qualified overlay record-array fields,
 support element iteration. Omit the index when the body does not need it:
 

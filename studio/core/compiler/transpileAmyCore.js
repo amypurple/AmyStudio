@@ -1568,6 +1568,8 @@ export function transpileAmyCore(sourceText, deps) {
   let fp5FriendlyDotName = null;
   let fp5FriendlyLastFracName = null;
   const forStack = [];
+  const forRuntimeValueSlots = new Map();
+  let nextForRuntimeValueSlot = 0;
   const whileStack = [];
   const doStack = [];
   const selectStack = [];
@@ -3416,6 +3418,38 @@ export function transpileAmyCore(sourceText, deps) {
       direction: defaultDirection,
       magnitudeToken: stepToken
     };
+  }
+
+  function captureForRuntimeValue(kind, depth, token, type, declaredType) {
+    const procName = currentProc || "Start";
+    const slotKey = `${procName}:${kind}:${depth}`;
+    let slot = forRuntimeValueSlots.get(slotKey);
+    if (!slot) {
+      const frame = ensureProcFrame(procName);
+      frame.size += 2;
+      frame.usesIxFrame = true;
+      slot = { id: nextForRuntimeValueSlot++, offset: -frame.size, aliases: new Map() };
+      forRuntimeValueSlots.set(slotKey, slot);
+    }
+    const normalizedDeclared = normalizeDeclaredType(declaredType || (type === "int8" ? "u8" : "u16"));
+    const aliasKey = `${type}:${normalizedDeclared}`;
+    let alias = slot.aliases.get(aliasKey);
+    if (!alias) {
+      alias = `AMY_FOR_${String(kind).toUpperCase()}_${slot.id}_${String(normalizedDeclared).toUpperCase()}`;
+      runtimeVars.set(alias, {
+        type,
+        declaredType: normalizedDeclared,
+        kind: normalizedDeclared,
+        scope: procName,
+        storage: "stack",
+        offset: slot.offset,
+        internal: true
+      });
+      slot.aliases.set(aliasKey, alias);
+    }
+    const lines = emitRuntimeStore(alias, token);
+    if (!lines) return { error: `Unsupported runtime FOR ${kind} value: ${token}` };
+    return { token: alias, lines };
   }
 
   function emitRandomBetweenInto(minToken, maxToken, target) {
@@ -6090,6 +6124,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadInt16IntoHL,
         emitStoreInt16FromHL,
         isAnyFixedDeclaredType,
+        captureForRuntimeValue,
         useConstantDownStep: semanticOptimizerOptions.constantDownStep !== false
       });
       if (forStmt.handled) {

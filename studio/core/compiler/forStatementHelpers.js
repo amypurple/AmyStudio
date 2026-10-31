@@ -20,6 +20,7 @@ export function handleForStatement({
   emitLoadInt16IntoHL,
   emitStoreInt16FromHL,
   isAnyFixedDeclaredType,
+  captureForRuntimeValue,
   useConstantDownStep = true
 }) {
   const _dep = checkForDeprecation(line, rawLine);
@@ -80,10 +81,21 @@ export function handleForStatement({
       ? tryEvaluateCompileTimeNumericExpression(normalizeExpression(forDownto[3]))
       : null;
     const omitInitialBoundCheck = !isSignedDeclaredType(declaredType) && endValue === 0;
+    const endToken = normalizeExpression(forDownto[3]);
+    const capturedEnd = endValue === null && typeof captureForRuntimeValue === "function"
+      ? captureForRuntimeValue("bound", forStack.length, endToken, info.type, declaredType)
+      : null;
+    const capturedStep = stepValue === null && typeof captureForRuntimeValue === "function"
+      ? captureForRuntimeValue("step", forStack.length, stepAnalysis.magnitudeToken, info.type, declaredType)
+      : null;
+    if (capturedEnd?.error) return { ok: false, handled: true, log: capturedEnd.error };
+    if (capturedStep?.error) return { ok: false, handled: true, log: capturedStep.error };
+    const stableEndToken = capturedEnd?.token || endToken;
+    const stableStepToken = capturedStep?.token || stepAnalysis.magnitudeToken;
     forStack.push({
       name: forDownto[1],
-      endToken: normalizeExpression(forDownto[3]),
-      stepToken: stepAnalysis.magnitudeToken,
+      endToken: stableEndToken,
+      stepToken: stableStepToken,
       type: info.type,
       declaredType,
       loopLabel,
@@ -92,11 +104,16 @@ export function handleForStatement({
       direction: "down",
       constantStep: Number.isInteger(stepValue) ? stepValue : null
     });
-    const lines = [...initCode, `${loopLabel}:`];
+    const lines = [
+      ...initCode,
+      ...(capturedEnd?.lines || []),
+      ...(capturedStep?.lines || []),
+      `${loopLabel}:`
+    ];
     // An unsigned byte/word can never be below zero. The subtraction at NEXT
     // already exits on borrow, so a zero lower bound needs no per-iteration test.
     if (!omitInitialBoundCheck) {
-      const exitCode = emitCompareGoto(forDownto[1], "<", normalizeExpression(forDownto[3]), exitLabel);
+      const exitCode = emitCompareGoto(forDownto[1], "<", stableEndToken, exitLabel);
       if (!exitCode) return { ok: false, handled: true, log: `Unsupported downto-loop bound comparison: ${rawLine}` };
       lines.push(...exitCode);
     }
@@ -143,10 +160,21 @@ export function handleForStatement({
     const omitInitialDownBoundCheck = stepAnalysis.direction === "down"
       && !isSignedDeclaredType(declaredType)
       && endValue === 0;
+    const endToken = normalizeExpression(forDecl[3]);
+    const capturedEnd = endValue === null && typeof captureForRuntimeValue === "function"
+      ? captureForRuntimeValue("bound", forStack.length, endToken, info.type, declaredType)
+      : null;
+    const capturedStep = stepValue === null && typeof captureForRuntimeValue === "function"
+      ? captureForRuntimeValue("step", forStack.length, stepAnalysis.magnitudeToken, info.type, declaredType)
+      : null;
+    if (capturedEnd?.error) return { ok: false, handled: true, log: capturedEnd.error };
+    if (capturedStep?.error) return { ok: false, handled: true, log: capturedStep.error };
+    const stableEndToken = capturedEnd?.token || endToken;
+    const stableStepToken = capturedStep?.token || stepAnalysis.magnitudeToken;
     forStack.push({
       name: forDecl[1],
-      endToken: normalizeExpression(forDecl[3]),
-      stepToken: stepAnalysis.magnitudeToken,
+      endToken: stableEndToken,
+      stepToken: stableStepToken,
       type: info.type,
       declaredType,
       loopLabel,
@@ -159,12 +187,17 @@ export function handleForStatement({
         exclusiveEnd: endValue + 1
       } : null
     });
-    const lines = [...initCode, `${loopLabel}:`];
+    const lines = [
+      ...initCode,
+      ...(capturedEnd?.lines || []),
+      ...(capturedStep?.lines || []),
+      `${loopLabel}:`
+    ];
     if (!canUseSmallU8Loop && !omitInitialDownBoundCheck) {
       const exitCode = emitCompareGoto(
         forDecl[1],
         stepAnalysis.direction === "down" ? "<" : ">",
-        normalizeExpression(forDecl[3]),
+        stableEndToken,
         exitLabel
       );
       if (!exitCode) return { ok: false, handled: true, log: `Unsupported for-loop bound comparison: ${rawLine}` };
