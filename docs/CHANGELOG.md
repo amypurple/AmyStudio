@@ -12,6 +12,13 @@
 - Rebuilt the Visual Studio Code extension with these compiler fixes and added
   runtime regressions across all five optimization profiles. The six-sample
   comparison total remains **7,372 occupied bytes**.
+- Added seven Ahoy! adaptations: **Crazy Joe**, **Head-On**, **Nebergall
+  Run**, **Escape from Skull Castle**, **Flap!**, **Meteor Run** and **Step
+  On It**, with publication dates, authorship and adaptation provenance.
+- Updated 21 existing games with a consistent game-over flow that waits for
+  input, supports Amy's screen saver and returns cleanly to the title screen.
+- Expanded the example catalogue to **442 programs** and revalidated the
+  affected sources with the Balanced compiler profile.
 
 ## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations
 

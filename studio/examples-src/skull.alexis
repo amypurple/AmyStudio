@@ -1,0 +1,1155 @@
+cartridge "SKULL CASTLE/JAMES C. HILTY, AHOY!/1986"
+
+' ESCAPE FROM SKULL CASTLE
+' A ColecoVision game based on "Escape From Skull Castle" by James C.
+' Hilty, Ahoy! July 1986 (Commodore 64, BASIC with a machine-language
+' sprite mover). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the article's and the listing's,
+' the game is built for the ColecoVision (smooth sprites, a stone room with
+' a skull door, music under play). The drawings are original, after the
+' look of the listing's custom characters.
+'
+' The story: the old mansion on the hill, Skull Castle, has a poster on
+' the wall: "TONIGHT ONLY - SEE THE DANCING SKELETTES!" The people trapped
+' inside call for help. Find four keys to unlock their doors.
+'
+' The game: you start at the bottom left with four men. A red key waits on
+' the right side. Get four keys before the clock runs out, touching
+' nothing but the key. Skull chasers patrol along the four walls, skeletons
+' pace across the room, skelettes (skull-like creatures, each its own
+' colour) bob up and down. The rugs are safe: no patrol passes over them.
+' Caught: the skelettes sprout arms and legs and dance while you lose a
+' man. Each key: 100 points, and you start again from the corner. Four
+' keys: the time left as a bonus, the clock set back, and a faster castle.
+' The clock running out ends the game, as in the listing (line 55: IF
+' TM=0 THEN 400, the game over).
+'
+' From the listing (orig/): TM=2500, the clock; M=4 men; SC=SC+100 a key;
+' at four keys SC=SC+TM and TM=2500; caught: the dancing skelettes, M=M-1.
+'
+' Controls (either joystick): the stick walks in eight directions. The
+' button starts and plays again; on the title, left and right choose START
+' or CREDITS.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table ($702B,
+' $7035), effects after, by channel. `set sprite count` is always given
+' (bug 25). Nothing flashes faster than 3 times a second.
+
+const TWall = 128
+const TFloor = 129
+const TRug00 = 130
+const TRug01 = 131
+const TRug10 = 132
+const TRug11 = 133
+const TDoor00 = 134
+const TDoor01 = 135
+const TDoor02 = 136
+const TDoor03 = 137
+const TDoor04 = 138
+const TDoor05 = 139
+const TDoor10 = 140
+const TDoor11 = 141
+const TDoor12 = 142
+const TDoor13 = 143
+const TDoor14 = 144
+const TDoor15 = 145
+const TDoor20 = 146
+const TDoor21 = 147
+const TDoor22 = 148
+const TDoor23 = 149
+const TDoor24 = 150
+const TDoor25 = 151
+const TKeyOn = 152
+const TKeyOff = 153
+const TPic0 = 154
+const TPic1 = 155
+const TPic2 = 156
+const TPic3 = 157
+const TPic4 = 158
+const TPic5 = 159
+const TPic6 = 160
+const TPic7 = 161
+const TPic8 = 162
+const TPic9 = 163
+const TPic10 = 164
+const TPic11 = 165
+const TPic12 = 166
+const TPic13 = 167
+const TPic14 = 168
+const TPic15 = 169
+const TPic16 = 170
+const TPic17 = 171
+const TPic18 = 172
+const TPic19 = 173
+const TPic20 = 174
+const TPic21 = 175
+const TPic22 = 176
+const TPic23 = 177
+const TPic24 = 178
+const TPic25 = 179
+const TPic26 = 180
+const TPic27 = 181
+const TPic28 = 182
+const TPic29 = 183
+const TPic30 = 184
+const TPic31 = 185
+const TPic32 = 186
+const TPic33 = 187
+const TPic34 = 188
+const TPic35 = 189
+const TPic36 = 190
+const TPic37 = 191
+const TPic38 = 192
+const TPic39 = 193
+const TPic40 = 194
+const TPic41 = 195
+const TPic42 = 196
+const TPic43 = 197
+const TPic44 = 198
+const TPic45 = 199
+const TPic46 = 200
+const TPic47 = 201
+const TPic48 = 202
+const TPic49 = 203
+const TPic50 = 204
+const TPic51 = 205
+const TPic52 = 206
+const TPic53 = 207
+const TPic54 = 208
+const TPic55 = 209
+const TPic56 = 210
+const TPic57 = 211
+const TPic58 = 212
+const TPic59 = 213
+const TPic60 = 214
+const TPic61 = 215
+const TPic62 = 216
+const TPic63 = 217
+const TPic64 = 218
+const SFace = 0
+const SHero = 4
+const SHero2 = 8
+const SSkullA = 12
+const SSkullB = 16
+const SSkelA = 20
+const SSkelB = 24
+const SSette = 28
+const SDanceA = 32
+const SDanceB = 36
+const SKey = 40
+const NTiles8 = 728
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndKey = 5
+const SndBonus = 6
+const SndDance = 7
+const SndRattle = 8
+const SndStart = 9
+const SndOver = 10
+const SndTick = 11
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u16 Score = 0
+u16 Hi = 0
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 B16 = 0
+u16 Rs = 1
+u16 Tm = 2500
+u8 Men = 4
+u8 Keys = 0
+u8 Rnd = 0
+' Gs 0 playing, 1 the skelettes dance; Gt the clock's frame, Dt the dance
+u8 Gs = 0
+u8 Gt = 0
+u8 Dt = 0
+u8 Over = 0
+u8 Why = 0
+' you: place in 1/16 pixel (top-left of the 16 x 16 sprite)
+u16 Px = 384
+u16 Py = 2432
+' the ten patrols: 0-3 skull chasers, 4-6 skeletons, 7-9 skelettes
+u16 Ex[10]
+u16 Ey[10]
+u8 Ev[10]
+u8 Ed[10]
+' the key (x is always 208)
+u8 Ky = 104
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Rot = 0
+' scratch
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 T = 0
+u8 X = 0
+u8 Y = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Hit = 0
+
+  tile screen
+  set sound table ScSoundTable areas 6
+  sprites 16x16
+  set sprite count 13
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  Men = 4
+  Keys = 0
+  Rnd = 0
+  Tm = 2500
+  Over = 0
+  Why = 0
+  NewKey
+  ResetPatrols
+  DrawRoom
+  StartRun
+
+play_loop:
+  Frame1
+  ReadPad
+  if Gs = 0 then
+    PlayStep
+  else
+    DanceStep
+  end if
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  stop sound SndRunA
+  stop sound SndRunB
+  if Score > Hi then Hi = Score
+  print at 9,11, "            "
+  if Why = 1 then
+    print at 9,12, " TIME IS UP "
+  else
+    print at 9,12, " GAME  OVER "
+  end if
+  print at 9,13, "            "
+  ' (the dance message off row 22 before the counts go back on it)
+  print at 2,22, "                            "
+  ShowHud
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: you, the patrols, the clock, the key, a touch
+
+sub PlayStep:
+  MoveHero
+  MoveEnemies
+  inc Gt
+  if Gt >= 2 then
+    Gt = 0
+    dec Tm
+    ShowTime
+    if Tm = 0 then
+      Why = 1
+      Over = 1
+      return
+    end if
+  end if
+  CheckKey
+  CheckHit
+  return
+end sub
+
+' the stick walks you 1.5 pixels a frame, inside the room's walls
+sub MoveHero:
+  if Lf1 = 1 then
+    if Px >= 408 then
+      Px = Px - 24
+    else
+      Px = 384
+    end if
+  end if
+  if Rt1 = 1 then
+    if Px <= 3432 then
+      Px = Px + 24
+    else
+      Px = 3456
+    end if
+  end if
+  if Up1 = 1 then
+    if Py >= 664 then
+      Py = Py - 24
+    else
+      Py = 640
+    end if
+  end if
+  if Dn1 = 1 then
+    if Py <= 2408 then
+      Py = Py + 24
+    else
+      Py = 2432
+    end if
+  end if
+  return
+end sub
+
+' each patrol goes back and forth on its line, between its two ends
+sub MoveEnemies:
+  for I = 0 to 9
+    T = Ev[I]
+    A16 = T
+    if EAx[I] = 0 then
+      W16 = Ex[I]
+    else
+      W16 = Ey[I]
+    end if
+    if Ed[I] = 0 then
+      W16 = W16 + A16
+      T = EHi[I]
+      B16 = T
+      B16 = B16 << 4
+      if W16 >= B16 then
+        W16 = B16
+        Ed[I] = 1
+      end if
+    else
+      W16 = W16 - A16
+      T = ELo[I]
+      B16 = T
+      B16 = B16 << 4
+      if W16 <= B16 then
+        W16 = B16
+        Ed[I] = 0
+      end if
+    end if
+    if EAx[I] = 0 then
+      Ex[I] = W16
+    else
+      Ey[I] = W16
+    end if
+  next
+  return
+end sub
+
+' Dist(A, B): how far apart two bytes are
+function Dist(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+' you and the key: the centres within 12 pixels
+sub CheckKey:
+  W16 = Px >> 4
+  Cx = W16
+  W16 = Py >> 4
+  Cy = W16
+  V = Dist(Cx, 208)
+  if V >= 12 then return
+  V = Dist(Cy, Ky)
+  if V >= 12 then return
+  Score = Score + 100
+  inc Keys
+  if Keys >= 4 then
+    Score = Score + Tm
+    Tm = 2500
+    Keys = 0
+    if Rnd < 8 then inc Rnd
+    SetSpeeds
+    play sound SndBonus
+  else
+    play sound SndKey
+  end if
+  NewKey
+  Px = 384
+  Py = 2432
+  ShowHud
+  return
+end sub
+
+' a patrol within 11 pixels of you (centre to centre) catches you
+sub CheckHit:
+  W16 = Px >> 4
+  Cx = W16
+  W16 = Py >> 4
+  Cy = W16
+  Hit = 0
+  for I = 0 to 9
+    W16 = Ex[I] >> 4
+    X = W16
+    V = Dist(Cx, X)
+    if V < 11 then
+      W16 = Ey[I] >> 4
+      Y = W16
+      V = Dist(Cy, Y)
+      if V < 11 then Hit = 1
+    end if
+  next
+  if Hit = 0 then return
+  Gs = 1
+  Dt = 0
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndRattle
+  play sound SndDance
+  print at 2,22, "                            "
+  print at 4,22, "THE SKELETTES DANCE!"
+  return
+end sub
+
+' the dance: 150 frames, the patrols still, then a man less
+sub DanceStep:
+  inc Dt
+  if Dt < 150 then return
+  dec Men
+  Gs = 0
+  if Men = 0 then
+    Over = 1
+    return
+  end if
+  Px = 384
+  Py = 2432
+  print at 2,22, "                            "
+  ShowHud
+  play sound SndRunA
+  play sound SndRunB
+  return
+end sub
+
+' NewKey: the key's height on the right side, at random
+sub NewKey:
+  Rand
+  V = Rs & 7
+  Ky = KeyYT[V]
+  return
+end sub
+
+sub ResetPatrols:
+  for I = 0 to 9
+    T = EX0[I]
+    W16 = T
+    Ex[I] = W16 << 4
+    T = EY0[I]
+    W16 = T
+    Ey[I] = W16 << 4
+    T = ED0[I]
+    Ed[I] = T
+  next
+  SetSpeeds
+  return
+end sub
+
+' the patrols' speeds: 1/16 pixel a frame, 3 more each round of four keys
+sub SetSpeeds:
+  V = Rnd * 3
+  for I = 0 to 9
+    T = ESp[I]
+    Ev[I] = T + V
+  next
+  return
+end sub
+
+sub StartRun:
+  Px = 384
+  Py = 2432
+  Gs = 0
+  Gt = 0
+  Dt = 0
+  ShowScreen
+  play sound SndStart
+  play sound SndRunA
+  play sound SndRunB
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites 0-1: you; 2-12: the ten patrols and the key, their order turned
+' every frame so a crowded line flickers instead of losing one for good
+sub DrawSprites:
+  W16 = Py >> 4
+  W16 = W16 - 1
+  Y = W16
+  W16 = Px >> 4
+  X = W16
+  K = SHero
+  if Gs = 0 then
+    V = Lf1 | Rt1
+    V = V | Up1
+    V = V | Dn1
+    if V = 1 then
+      V = Tick & 8
+      if V > 0 then K = SHero2
+    end if
+  end if
+  set sprite 0 to Y,X,SFace,11
+  set sprite 1 to Y,X,K,5
+  inc Rot
+  if Rot >= 11 then Rot = 0
+  for I = 0 to 10
+    J = I + Rot
+    J = Mod11[J]
+    J = J + 2
+    if I = 10 then
+      Y = Ky - 1
+      set sprite J to Y,208,SKey,9
+    else
+      W16 = Ey[I] >> 4
+      W16 = W16 - 1
+      Y = W16
+      W16 = Ex[I] >> 4
+      X = W16
+      if I < 4 then
+        K = SSkullA
+        V = Tick & 16
+        if V > 0 then K = SSkullB
+      elseif I < 7 then
+        K = SSkelA
+        if Gs = 0 then
+          V = Tick & 8
+          if V > 0 then K = SSkelB
+        end if
+      else
+        K = SSette
+        if Gs = 1 then
+          K = SDanceA
+          V = Tick & 8
+          if V > 0 then K = SDanceB
+        end if
+      end if
+      T = ECol[I]
+      set sprite J to Y,X,K,T
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the room: stone walls (the top wall thick, with the skull door), the
+' flagstone floor, the safe rugs
+sub DrawRoom:
+  NewScreen
+  for Y = 2 to 21
+    for X = 2 to 29
+      K = TWall
+      if Y >= 5 then
+        if Y <= 20 then
+          if X >= 3 then
+            if X <= 28 then K = TFloor
+          end if
+        end if
+      end if
+      put char K at X,Y
+    next
+  next
+  N = TDoor00
+  for J = 0 to 2
+    Y = J + 2
+    for K = 0 to 5
+      X = K + 13
+      put char N at X,Y
+      inc N
+    next
+  next
+  for J = 0 to 6
+    X = RugX[J]
+    Y = RugY[J]
+    put char TRug00 at X,Y
+    inc X
+    put char TRug01 at X,Y
+    inc Y
+    put char TRug11 at X,Y
+    dec X
+    put char TRug10 at X,Y
+  next
+  ShowHud
+  return
+end sub
+
+' row 1: the score and the best; row 22: keys, men, the clock
+sub ShowHud:
+  print at 2,1, "SCORE"
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 17,1, "HI"
+  NumU = Hi
+  print at 20,1, digits$(NumU, 5)
+  print at 2,22, "KEYS"
+  for J = 0 to 3
+    X = J + 7
+    if J < Keys then
+      put char TKeyOn at X,22
+    else
+      put char TKeyOff at X,22
+    end if
+  next
+  print at 12,22, "MEN"
+  NumU = Men
+  print at 16,22, digits$(NumU, 1)
+  print at 19,22, "TIME"
+  ShowTime
+  return
+end sub
+
+sub ShowTime:
+  if Gs = 1 then return
+  NumU = Tm
+  print at 24,22, digits$(NumU, 4)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 13
+  for J = 0 to 12
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the castle on its hill, the tune once, START / CREDITS
+sub TitlePage:
+  NewScreen
+  for J = 0 to 10
+    W16 = J * 24
+    A16 = J + 1
+    A16 = A16 << 5
+    A16 = A16 + 4
+    copy TitleMap + W16 count 24 to vram.name + A16
+  next
+  print at 10,13, "ESCAPE FROM"
+  print at 9,14, "SKULL  CASTLE"
+  print at 3,16, "FIND FOUR KEYS BEFORE THE"
+  print at 3,17, "CLOCK RUNS OUT. TOUCH ONLY"
+  print at 3,18, "THE KEY. RUGS ARE SAFE."
+  print at 2,22, "HI"
+  NumU = Hi
+  print at 5,22, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Lf1 | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  print at 13,22, " START   CREDITS"
+  if Menu = 0 then
+    put char 62 at 13,22
+  else
+    put char 62 at 21,22
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 7,2, "ESCAPE FROM SKULL"
+  print at 12,3, "CASTLE"
+  print at 2,5, "BASED ON ESCAPE FROM SKULL"
+  print at 2,6, "CASTLE BY JAMES C. HILTY,"
+  print at 2,7, "AHOY! JULY 1986"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SKULL HILL,"
+  print at 2,19, "BONE SHUFFLE"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $08,$08,$08,$00,$40,$40,$40,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$88,$84,$82,$81,$81
+  $00,$01,$01,$11,$21,$41,$81,$81
+  $81,$81,$82,$84,$88,$80,$80,$00
+  $81,$81,$41,$21,$11,$01,$01,$00
+  $08,$08,$08,$00,$40,$40,$40,$03
+  $08,$F0,$C0,$00,$00,$E0,$C0,$C0
+  $08,$00,$00,$00,$00,$C0,$E0,$E0
+  $08,$00,$00,$00,$00,$03,$07,$07
+  $08,$F0,$03,$00,$00,$07,$03,$03
+  $08,$80,$80,$00,$04,$04,$04,$C0
+  $08,$08,$08,$03,$40,$40,$40,$00
+  $C0,$E0,$00,$00,$00,$00,$00,$80
+  $E0,$C0,$01,$03,$07,$00,$00,$00
+  $07,$03,$80,$C0,$E0,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$00,$01
+  $C0,$C0,$C0,$C0,$04,$04,$04,$00
+  $08,$08,$08,$00,$40,$40,$40,$00
+  $07,$04,$04,$38,$02,$03,$07,$03
+  $00,$92,$92,$00,$49,$00,$00,$00
+  $00,$49,$49,$00,$24,$00,$00,$00
+  $E0,$20,$20,$E1,$80,$E0,$07,$F0
+  $40,$40,$40,$00,$08,$08,$08,$00
+  $00,$60,$60,$60,$9A,$00,$00,$00
+  $00,$60,$60,$60,$9A,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$00
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $CC,$CC,$00,$00,$00,$00,$00,$00
+  $08,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$E0,$C0,$80
+  $00,$00,$00,$80,$07,$03,$01,$00
+  $00,$00,$20,$00,$00,$00,$00,$00
+  $00,$00,$CC,$CC,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$08,$00
+  $00,$00,$03,$03,$03,$03,$03,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$00,$00,$00
+  $00,$00,$01,$03,$07,$80,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$CC,$CC,$00,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$03,$03,$03,$03
+  $00,$00,$00,$00,$C0,$C0,$C0,$C0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $02,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $03,$00,$01,$01,$01,$00,$00,$92
+  $C0,$00,$80,$80,$80,$00,$00,$49
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+  $92,$00,$00,$00,$00,$00,$00,$00
+  $49,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$C0
+  $00,$00,$00,$00,$01,$C0,$00,$00
+  $00,$00,$00,$E0,$00,$00,$00,$00
+  $00,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$07,$07,$F0,$F0,$F0
+  $00,$00,$E0,$E0,$E0,$F0,$F0,$F0
+  $00,$F0,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$01
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$07,$C0,$00
+  $00,$00,$01,$F0,$00,$00,$00,$00
+  $03,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$C0,$C0,$C0,$80,$80
+  $07,$07,$07,$03,$03,$03,$01,$01
+  $E0,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$F0,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0
+  $F0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$03
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$80,$C0
+  $07,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $41,$41,$41,$41,$41,$41,$41,$04
+  $0B,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0B,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$0B
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$0B
+  $1E,$1E,$1E,$01,$1F,$1F,$1F,$F1
+  $1E,$EF,$EF,$0F,$0F,$F8,$F8,$F8
+  $1E,$0F,$0F,$0F,$0F,$8F,$8F,$8F
+  $1E,$0F,$0F,$0F,$0F,$8F,$8F,$8F
+  $1E,$FE,$EF,$0F,$0F,$F8,$F8,$F8
+  $1E,$1E,$1E,$01,$1F,$1F,$1F,$F1
+  $1F,$1F,$1F,$F1,$1F,$1F,$1E,$01
+  $F8,$F8,$0F,$0F,$0F,$0F,$0F,$1F
+  $8F,$8F,$1F,$1F,$1F,$0F,$0F,$0F
+  $8F,$8F,$1F,$1F,$1F,$0F,$0F,$0F
+  $F8,$F8,$0F,$0F,$0F,$0F,$0F,$1F
+  $FE,$FE,$FE,$F1,$1F,$1F,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1F,$1F,$1F,$F1,$1F,$1F,$FE,$F1
+  $01,$1F,$1F,$01,$1F,$01,$0F,$0F
+  $01,$1F,$1F,$01,$1F,$01,$0F,$0F
+  $1F,$1F,$1F,$1F,$1F,$1F,$EF,$F1
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $01,$81,$18,$18,$18,$01,$01,$01
+  $01,$E1,$1E,$1E,$1E,$01,$01,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$F4,$04
+  $04,$04,$04,$04,$F4,$04,$04,$04
+  $04,$04,$04,$04,$04,$F4,$04,$04
+  $04,$04,$04,$04,$04,$04,$F4,$04
+  $E4,$E4,$0E,$0E,$0E,$0E,$0E,$0E
+  $F4,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$4B,$4B,$4B,$4B
+  $04,$04,$04,$B4,$4B,$4B,$4B,$0B
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $04,$04,$E4,$E4,$0E,$0E,$0E,$0E
+  $BE,$BE,$BE,$BE,$BE,$0E,$0E,$0E
+  $BE,$BE,$BE,$BE,$BE,$0E,$0E,$0E
+  $04,$04,$04,$04,$B4,$04,$04,$04
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $04,$04,$04,$04,$04,$04,$F4,$04
+  $0E,$0E,$BE,$BE,$BE,$BE,$BE,$0E
+  $0E,$0E,$BE,$BE,$BE,$BE,$BE,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0B,$4B,$4B,$4B,$4B,$04,$04,$04
+  $0B,$0B,$4B,$4B,$4B,$B4,$04,$04
+  $B4,$04,$04,$04,$04,$04,$04,$04
+  $0E,$0E,$E4,$E4,$0E,$0E,$0E,$0E
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0F,$0F,$0F,$0F,$F1,$F1,$F1,$F1
+  $0F,$0F,$0F,$0F,$F1,$F1,$F1,$F1
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $F4,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $F1,$0F,$1F,$1F,$1F,$0F,$0F,$1F
+  $F1,$0F,$1F,$1F,$1F,$0F,$0F,$1F
+  $EF,$EF,$0E,$0E,$0E,$0E,$0E,$0E
+  $1F,$01,$0E,$0E,$0E,$0E,$0E,$0E
+  $1F,$01,$0E,$0E,$0E,$0E,$0E,$0E
+  $FE,$FE,$0E,$0E,$0E,$0E,$0E,$0E
+  $04,$04,$04,$04,$04,$04,$C4,$4C
+  $04,$04,$04,$04,$C4,$4C,$0C,$0C
+  $04,$04,$04,$4C,$0C,$0C,$0C,$0C
+  $0E,$CE,$0C,$0C,$0C,$0C,$0C,$0C
+  $0E,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0E,$0C,$AC,$AC,$AC,$CA,$CA,$CA
+  $0E,$0C,$AC,$AC,$AC,$AC,$AC,$AC
+  $0E,$CE,$0C,$0C,$0C,$0C,$0C,$0C
+  $04,$04,$C4,$4C,$0C,$0C,$0C,$0C
+  $04,$04,$04,$04,$C4,$4C,$0C,$0C
+  $04,$04,$04,$04,$04,$04,$C4,$4C
+  $04,$04,$04,$04,$04,$04,$04,$C4
+  $04,$04,$04,$04,$04,$C4,$4C,$0C
+  $04,$04,$C4,$4C,$0C,$0C,$0C,$0C
+  $C4,$4C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+  $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+  $C4,$4C,$0C,$0C,$0C,$0C,$0C,$0C
+  $04,$04,$C4,$4C,$0C,$0C,$0C,$0C
+  $04,$04,$04,$04,$C4,$C4,$4C,$0C
+  $04,$04,$04,$04,$04,$04,$04,$C4
+  $4C,$4C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$AC,$AC,$AC,$AC
+  $CA,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $CA,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0C,$0C,$0C,$0C,$AC,$AC,$AC,$AC
+  $4C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+end data
+data SpritePat bytes
+  $03,$07,$07,$03,$00,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$0F,$1F,$37,$37,$07,$07,$06,$06,$0E,$00,$00
+  $00,$00,$00,$00,$80,$F0,$F8,$EC,$EC,$E0,$E0,$60,$60,$70,$00,$00
+  $00,$00,$00,$00,$01,$0F,$1F,$37,$37,$07,$07,$06,$0C,$1C,$00,$00
+  $00,$00,$00,$00,$80,$F0,$F8,$EC,$EC,$E0,$E0,$30,$18,$1C,$00,$00
+  $00,$00,$0F,$1F,$3F,$33,$21,$33,$3E,$1F,$0A,$0F,$00,$00,$00,$00
+  $00,$00,$F0,$F8,$FC,$CC,$84,$CC,$7C,$F8,$50,$F0,$00,$00,$00,$00
+  $00,$00,$0F,$1F,$3F,$33,$21,$33,$3E,$1F,$0A,$00,$0F,$00,$00,$00
+  $00,$00,$F0,$F8,$FC,$CC,$84,$CC,$7C,$F8,$50,$00,$F0,$00,$00,$00
+  $03,$05,$07,$02,$01,$1F,$27,$24,$27,$04,$03,$04,$04,$0C,$00,$00
+  $C0,$A0,$E0,$40,$80,$F8,$E4,$24,$E4,$20,$C0,$20,$20,$30,$00,$00
+  $03,$05,$07,$02,$01,$1F,$27,$24,$27,$04,$03,$02,$04,$18,$00,$00
+  $C0,$A0,$E0,$40,$80,$F8,$E4,$24,$E4,$20,$C0,$40,$20,$18,$00,$00
+  $00,$00,$00,$07,$0F,$1F,$13,$13,$1F,$1E,$0F,$05,$07,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$F8,$C8,$C8,$F8,$78,$F0,$A0,$E0,$00,$00,$00
+  $83,$4F,$3F,$13,$13,$1F,$1E,$0F,$05,$07,$02,$04,$08,$10,$30,$00
+  $F1,$F4,$F0,$C8,$C8,$F8,$78,$F0,$A0,$E0,$40,$20,$10,$08,$0C,$00
+  $00,$07,$0F,$9F,$53,$33,$1F,$1E,$0F,$05,$07,$02,$04,$02,$06,$00
+  $00,$E0,$F0,$F9,$CA,$CC,$F8,$78,$F0,$A0,$E0,$40,$20,$40,$60,$00
+  $00,$00,$00,$1E,$21,$40,$40,$21,$1E,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$FF,$FF,$0A,$0A,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  154,155,154,154,154,154,156,154,154,154,154,154,154,157,154,154,154,154,154,154,154,154,154,154
+  154,154,154,154,158,154,154,154,154,154,154,159,159,154,154,154,154,160,154,161,162,154,163,154
+  154,154,154,154,154,154,154,164,164,154,154,165,166,154,154,164,164,154,167,168,168,169,154,154
+  154,154,170,154,154,154,154,171,172,154,154,173,173,154,154,171,172,154,154,174,175,176,154,154
+  154,154,154,154,154,154,154,173,177,164,164,173,173,164,164,177,173,154,154,154,154,154,154,178
+  154,154,154,154,154,154,154,171,172,173,179,180,181,182,173,171,172,154,183,154,154,154,154,154
+  184,154,154,154,154,154,154,173,173,173,179,185,186,182,173,173,173,154,154,154,154,154,154,155
+  154,154,154,154,154,154,154,173,173,173,187,188,189,190,173,173,173,154,154,154,154,154,154,154
+  154,154,154,154,191,192,193,194,195,195,195,196,197,195,195,195,198,199,200,201,154,154,154,154
+  202,203,204,205,206,206,206,206,206,206,206,207,208,206,206,206,206,206,206,206,209,210,211,212
+  213,206,206,206,206,206,206,206,206,206,214,215,216,217,206,206,206,206,206,206,206,206,206,218
+end data
+
+' the patrols: axis (0 across, 1 up and down), start, ends, first
+' direction (0 toward the high end), speed, colour
+data EAx bytes
+  0,0,1,1,0,0,0,1,1,1
+end data
+data EX0 bytes
+  40,200,24,216,48,192,120,72,128,176
+end data
+data EY0 bytes
+  40,152,136,56,72,104,136,64,144,100
+end data
+data ELo bytes
+  40,40,56,56,48,48,48,64,64,64
+end data
+data EHi bytes
+  200,200,136,136,192,192,192,144,144,144
+end data
+data ED0 bytes
+  0,1,1,0,0,1,0,0,1,0
+end data
+data ESp bytes
+  20,22,20,22,14,18,22,16,12,20
+end data
+data ECol bytes
+  14,14,14,14,15,15,15,7,13,3
+end data
+' the key's heights on the right side
+data KeyYT bytes
+  56,72,88,104,120,136,72,104
+end data
+' the safe rugs (tile column and row of their top-left)
+data RugX bytes
+  3,27,3,27,13,19,6
+end data
+data RugY bytes
+  5,5,19,19,11,15,15
+end data
+data Mod11 bytes
+  0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4,5,6,7,8,9,10
+end data
+
+asm {
+ScKey:
+    db $40,$55,$10,$02,$40,$47,$10,$02,$40,$35,$20,$03,$40,$2A,$30,$04,$50
+ScBonus:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$10,$04,$40,$2A,$30,$0C,$50
+ScDance:
+    db $40,$D6,$10,$08,$40,$AA,$20,$08,$40,$8F,$10,$08,$40,$AA,$20,$08,$40,$D6,$10,$08,$40,$AA,$20,$08
+    db $40,$8F,$10,$08,$40,$6B,$20,$08,$40,$71,$10,$08,$40,$8F,$20,$08,$40,$7F,$10,$08,$40,$A0,$20,$08
+    db $40,$8F,$10,$08,$40,$AA,$20,$08,$40,$D6,$10,$0C,$40,$1D,$31,$0C,$50
+ScRattle:
+    db $00,$00,$15,$03,$00,$00,$36,$03,$00,$00,$25,$04,$00,$00,$56,$06,$10
+ScStart:
+    db $40,$1D,$21,$04,$40,$D6,$20,$04,$40,$AA,$20,$08,$50
+ScOver:
+    db $40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+ScTick:
+    db $00,$00,$31,$01,$00,$00,$71,$02,$10
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneBass,$7035
+    dw ScRunMel,$702B
+    dw ScRunBass,$7035
+    dw ScKey,$7049
+    dw ScBonus,$7049
+    dw ScDance,$7049
+    dw ScRattle,$703F
+    dw ScStart,$7049
+    dw ScOver,$7049
+    dw ScTick,$703F
+; Skull Hill (original)
+; Tiny Sound, 7 frames per step
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$21,$01,$01,$24,$01,$28,$01,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$20,$01,$01,$23,$01,$28,$01,$01,$26,$01,$23,$01
+    db $21,$01,$01,$01,$24,$01,$01,$28,$01,$2D,$01,$01,$2B,$01,$28,$01
+    db $29,$01,$01,$01,$26,$01,$23,$01,$20,$01,$1C,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$08,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Bone Shuffle (original)
+; Tiny Sound, 8 frames per step
+ScRunMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$21,$01,$24,$01,$23,$01,$21,$01,$20,$01,$01,$01
+    db $1C,$01,$01,$01,$21,$01,$24,$01,$28,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$23,$01,$21,$01,$1F,$01
+    db $1D,$01,$1C,$01,$1A,$01,$1C,$01,$1D,$01,$20,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScRunBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $04,$01,$0B,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$09,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$01,$01
+    db $FF
+}

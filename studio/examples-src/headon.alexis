@@ -1,0 +1,1044 @@
+cartridge "HEAD-ON/JOHN FEDOR, AHOY!/1986"
+
+' HEAD-ON
+' Based on "Head-On" by John Fedor, Ahoy! July 1986 (Commodore 64,
+' machine language). Made for the ColecoVision by Claude (an AI made by
+' Anthropic) for Amy Studio, 2026, in Amy by Amy Bienvenu. The listing is
+' machine code (Flankspeed), so the game is built from the article's
+' rules (scan in orig/), not ported from the code.
+'
+' The game: two helicopters duel over a long field of hills, Spy vs. Spy
+' style, on a split screen. Player 1 flies in the top half, player 2 (or
+' the computer) in the bottom half. Each half follows its own helicopter:
+' moving left or right, your copter stays in place and the hills scroll
+' by. The field is three screens long (768 pixels, wrapping round); when
+' the copters get close, each shows up in the other player's half too.
+' The button fires a large bullet the way you face. Each copter can take
+' three hits (the hearts); the third ends the game. A head-on crash of
+' the two copters costs each a hit. A game lasts about 20-30 seconds.
+'
+' Controls: player 1 joystick 1, player 2 joystick 2. The stick flies
+' (up, down, left, right), either button fires.
+'
+' Made for this machine: each half has two scrolling bands, near hills at
+' the camera's speed and far mountains at half of it (parallax). Their
+' tiles' patterns are rewritten every frame from 32 pre-shifted copies
+' (tab.py), in each half's own screen third, so the two halves scroll on
+' their own and the name table never changes. The copters (spinning
+' rotors), bullets and blasts are sprites, 4 a half, never more than 4 on
+' a line. A radar strip in the middle shows both copters on the field.
+'
+' Rules in numbers: a copter flies 2 pixels a frame across, 1 up or down
+' (its height 0-38 in a 56-pixel band); a bullet flies 4 pixels a frame
+' for 60 frames, one per copter at a time, from the copter's nose. A hit:
+' the bullet's 6 x 6 box meets the copter's body box (x 1-14, y 3-12). A
+' crash: the copters closer than 12 across and 8 up or down; each loses
+' a hit and they are pushed 24 pixels apart. After a hit everything
+' stops for 45 frames (the blast), the bullets are gone, then the copters
+' start a new pass half the field (384 pixels) apart, facing in, so every
+' hit needs a new approach (that is what makes a game 20-30 seconds). The computer (EASY: it decides every 4th frame and aims within 6
+' pixels; HARD: every frame, within 3, and it dodges your bullets) closes
+' in, keeps 56-140 pixels off, lines up and fires.
+'
+' House rules kept: text in columns 2-29; tiles from code 128; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait; set sprite count is always given.
+
+const TNear0 = 128
+const TNear1 = 129
+const TNear2 = 130
+const TNear3 = 131
+const TNear4 = 132
+const TNear5 = 133
+const TNear6 = 134
+const TNear7 = 135
+const TFar0 = 136
+const TFar1 = 137
+const TFar2 = 138
+const TFar3 = 139
+const TStar = 140
+const TStar2 = 141
+const TRad = 142
+const TRad1 = 143
+const TRad2 = 144
+const TRad3 = 145
+const THeart = 146
+const TBar = 147
+const SCopr0 = 0
+const SCopr1 = 4
+const SCopl0 = 8
+const SCopl1 = 12
+const SBall = 16
+const SBoom1 = 20
+const SBoom2 = 24
+const NTiles8 = 160
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndBoom = 5
+const SndBump = 6
+const SndFire = 7
+const SndGo = 8
+const SndWin = 9
+const SndTick = 10
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the copters (0 top, 1 bottom): place Cx (0-767), height Cy, facing Cf
+' (0 right, 1 left), hits left Hp; the bullets: Bx, By, direction Bd,
+' frames left Bl (0: none); In the inputs of the frame (1 up, 2 down,
+' 4 left, 8 right, 16 fire)
+u16 Cx[2]
+u8 Cy[2]
+u8 Cf[2]
+u8 Hp[2]
+u16 Bx[2]
+u8 By[2]
+u8 Bd[2]
+u8 Bl[2]
+u8 In[2]
+' Ph: 0 get ready, 1 flying, 2 a blast, 3 over; Pt its frames; Bv who
+' was hit (1 top, 2 bottom); Bc 1 a crash
+u8 Ph = 0
+u8 Pt = 0
+u8 Bv = 0
+u8 Bc = 0
+' Mode: 1 computer EASY, 2 computer HARD, 3 two players
+u8 Mode = 1
+u8 Ai = 0
+' the radar cells shown (Ro) and now (Rn)
+u8 Ro[2]
+u8 Rn[2]
+u8 Idle = 0
+u16 D16 = 0
+u16 W16 = 0
+u16 A16 = 0
+u8 H = 0
+u8 Hb = 0
+u8 Sn = 0
+u8 Sx = 0
+u8 Pat = 0
+u8 Col = 0
+u8 Dy = 0
+u8 Dist8 = 0
+u8 Tow = 0
+
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table HoSoundTable areas 6
+  sprites 16x16
+  set sprite count 8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewScreen
+  DrawField
+  Cx[0] = 0
+  Cx[1] = 384
+  Cy[0] = 16
+  Cy[1] = 16
+  Cf[0] = 0
+  Cf[1] = 1
+  Hp[0] = 3
+  Hp[1] = 3
+  Bl[0] = 0
+  Bl[1] = 0
+  In[0] = 0
+  In[1] = 0
+  Ai = 0
+  Ro[0] = 255
+  Ro[1] = 255
+  ShowHearts
+  Radar
+  Hills
+  DrawAll
+  print at 11,10, "GET READY"
+  ShowScreen
+  Ph = 0
+  Pt = 90
+
+play_loop:
+  Frame1
+  Hills
+  ReadPads
+  if Ph = 0 then
+    dec Pt
+    if Pt = 0 then
+      Ph = 1
+      print at 11,10, "         "
+      play sound SndGo
+      play sound SndRunA
+      play sound SndRunB
+    end if
+  elseif Ph = 1 then
+    Movers
+    Hits
+  elseif Ph = 2 then
+    dec Pt
+    if Pt = 0 then
+      Ph = 1
+      V = Hp[0] * Hp[1]
+      if V = 0 then
+        Ph = 3
+      else
+        ' the next pass: the copters half the field apart, facing in
+        Cx[1] = Cx[0] + 384
+        if Cx[1] >= 768 then Cx[1] = Cx[1] - 768
+        Cf[0] = 0
+        Cf[1] = 1
+      end if
+    end if
+  end if
+  Radar
+  DrawAll
+  if Ph = 3 then goto game_over
+  goto play_loop
+
+game_over:
+  stop sound SndRunA
+  stop sound SndRunB
+  play sound SndWin
+  if Hp[1] = 0 then
+    if Hp[0] = 0 then
+      print at 12,10, "A DRAW!"
+    else
+      print at 9,10, "PLAYER 1 WINS!"
+    end if
+  else
+    if Mode = 3 then
+      print at 9,10, "PLAYER 2 WINS!"
+    else
+      print at 8,10, "THE COMPUTER WINS"
+    end if
+  end if
+  print at 9,12, "PRESS A BUTTON"
+  for K = 1 to 60
+    Frame1
+    Hills
+  next
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+go_wait:
+  Frame1
+  Hills
+  ReadButtons
+  if Press = 0 then goto go_wait
+  goto title
+
+' ReadPads: In[0] from joystick 1, In[1] from joystick 2 or the computer
+sub ReadPads:
+  V = 0
+  if joypad(1).up then V = V | 1
+  if joypad(1).down then V = V | 2
+  if joypad(1).left then V = V | 4
+  if joypad(1).right then V = V | 8
+  if joypad(1).button1 then V = V | 16
+  if joypad(1).button2 then V = V | 16
+  In[0] = V
+  if Mode = 3 then
+    V = 0
+    if joypad(2).up then V = V | 1
+    if joypad(2).down then V = V | 2
+    if joypad(2).left then V = V | 4
+    if joypad(2).right then V = V | 8
+    if joypad(2).button1 then V = V | 16
+    if joypad(2).button2 then V = V | 16
+    In[1] = V
+  else
+    Brain
+    In[1] = Ai
+  end if
+  return
+end sub
+
+' Brain: the computer's stick (copter 1): EASY decides every 4th frame
+sub Brain:
+  if Mode = 1 then
+    V = Tick & 3
+    if V <> 0 then return
+  end if
+  Ai = 0
+  ' up or down to the other's height
+  if Cy[0] > Cy[1] then
+    Dy = Cy[0] - Cy[1]
+    if Dy > 1 then Ai = 2
+  else
+    Dy = Cy[1] - Cy[0]
+    if Dy > 1 then Ai = 1
+  end if
+  ' how far, and which way it lies (Tow 0 right, 1 left)
+  D16 = Cx[0] + 768
+  D16 = D16 - Cx[1]
+  if D16 >= 768 then D16 = D16 - 768
+  Tow = 0
+  if D16 >= 384 then
+    Tow = 1
+    D16 = 768 - D16
+  end if
+  Dist8 = 255
+  if D16 < 255 then Dist8 = D16
+  if Dist8 > 140 then
+    if Tow = 0 then
+      Ai = Ai | 8
+    else
+      Ai = Ai | 4
+    end if
+  elseif Dist8 < 56 then
+    if Tow = 0 then
+      Ai = Ai | 4
+    else
+      Ai = Ai | 8
+    end if
+  else
+    if Cf[1] <> Tow then
+      if Tow = 0 then
+        Ai = Ai | 8
+      else
+        Ai = Ai | 4
+      end if
+    end if
+  end if
+  ' fire when facing it, lined up and in reach
+  if Cf[1] = Tow then
+    if Dist8 < 230 then
+      W = 6
+      if Mode = 2 then W = 3
+      if Dy < W then Ai = Ai | 16
+    end if
+  end if
+  ' HARD: dodge a bullet coming its way at its height
+  if Mode = 2 then
+    if Bl[0] > 0 then
+      V = By[0] + 3
+      W = Cy[1] + 15
+      if V >= Cy[1] then
+        if V < W then
+          D16 = Bx[0] + 768
+          D16 = D16 - Cx[1]
+          if D16 >= 768 then D16 = D16 - 768
+          K = 0
+          if Bd[0] = 0 then
+            if D16 >= 648 then K = 1
+          else
+            if D16 < 120 then K = 1
+          end if
+          if K = 1 then
+            Ai = Ai & 28
+            if Cy[1] > 18 then
+              Ai = Ai | 1
+            else
+              Ai = Ai | 2
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Movers: the copters fly, fire; the bullets fly
+sub Movers:
+  for J = 0 to 1
+    V = In[J]
+    W = V & 4
+    if W > 0 then
+      Cf[J] = 1
+      if Cx[J] < 2 then
+        Cx[J] = Cx[J] + 766
+      else
+        Cx[J] = Cx[J] - 2
+      end if
+    end if
+    W = V & 8
+    if W > 0 then
+      Cf[J] = 0
+      Cx[J] = Cx[J] + 2
+      if Cx[J] >= 768 then Cx[J] = Cx[J] - 768
+    end if
+    W = V & 1
+    if W > 0 then
+      if Cy[J] > 0 then Cy[J] = Cy[J] - 1
+    end if
+    W = V & 2
+    if W > 0 then
+      if Cy[J] < 38 then Cy[J] = Cy[J] + 1
+    end if
+    W = V & 16
+    if W > 0 then
+      if Bl[J] = 0 then
+        Bl[J] = 60
+        Bd[J] = Cf[J]
+        By[J] = Cy[J] + 5
+        if Cf[J] = 0 then
+          Bx[J] = Cx[J] + 14
+        else
+          Bx[J] = Cx[J] + 762
+        end if
+        if Bx[J] >= 768 then Bx[J] = Bx[J] - 768
+        play sound SndFire
+      end if
+    end if
+  next
+  for J = 0 to 1
+    if Bl[J] > 0 then
+      dec Bl[J]
+      if Bd[J] = 0 then
+        Bx[J] = Bx[J] + 4
+      else
+        Bx[J] = Bx[J] + 764
+      end if
+      if Bx[J] >= 768 then Bx[J] = Bx[J] - 768
+    end if
+  next
+  return
+end sub
+
+' Hits: bullets on copters, the two copters crashing
+sub Hits:
+  Bv = 0
+  Bc = 0
+  for J = 0 to 1
+    if Bl[J] > 0 then
+      K = 1 - J
+      D16 = Bx[J] + 768
+      D16 = D16 - Cx[K]
+      if D16 >= 768 then D16 = D16 - 768
+      V = 0
+      if D16 < 15 then V = 1
+      if D16 > 763 then V = 1
+      if V = 1 then
+        W = By[J] + 3
+        X = Cy[K] + 13
+        if W > Cy[K] then
+          if By[J] < X then
+            Bl[J] = 0
+            V = K + 1
+            Bv = Bv | V
+          end if
+        end if
+      end if
+    end if
+  next
+  D16 = Cx[0] + 768
+  D16 = D16 - Cx[1]
+  if D16 >= 768 then D16 = D16 - 768
+  V = 0
+  if D16 < 12 then V = 1
+  if D16 > 756 then V = 1
+  if V = 1 then
+    if Cy[0] > Cy[1] then
+      W = Cy[0] - Cy[1]
+    else
+      W = Cy[1] - Cy[0]
+    end if
+    if W < 8 then
+      Bc = 1
+      Bv = 3
+      if D16 < 12 then
+        Cx[0] = Cx[0] + 24
+        Cx[1] = Cx[1] + 744
+      else
+        Cx[0] = Cx[0] + 744
+        Cx[1] = Cx[1] + 24
+      end if
+      if Cx[0] >= 768 then Cx[0] = Cx[0] - 768
+      if Cx[1] >= 768 then Cx[1] = Cx[1] - 768
+    end if
+  end if
+  if Bv = 0 then return
+  V = Bv & 1
+  if V > 0 then dec Hp[0]
+  V = Bv & 2
+  if V > 0 then dec Hp[1]
+  Bl[0] = 0
+  Bl[1] = 0
+  Ph = 2
+  Pt = 45
+  if Bc = 1 then play sound SndBump
+  play sound SndBoom
+  ShowHearts
+  return
+end sub
+
+' DrawAll: each half (H 0 top, 1 bottom) shows both copters and bullets
+' seen from its own copter (always at x 120)
+sub DrawAll:
+  for H = 0 to 1
+    Hb = 7
+    if H = 1 then Hb = 127
+    for I = 0 to 1
+      Sn = H * 4
+      Sn = Sn + I
+      D16 = Cx[I] + 768
+      D16 = D16 - Cx[H]
+      if D16 >= 768 then D16 = D16 - 768
+      SeeX
+      Pat = SCopr0
+      if Cf[I] = 1 then Pat = SCopl0
+      V = Tick & 2
+      if V > 0 then Pat = Pat + 4
+      if Ph >= 2 then
+        V = I + 1
+        V = V & Bv
+        if V > 0 then
+          Pat = SBoom1
+          V = Pt & 4
+          if V > 0 then Pat = SBoom2
+          if Ph = 3 then Pat = SBoom2
+        end if
+      end if
+      Col = 11
+      if I = 1 then Col = 7
+      Y = Hb + Cy[I]
+      if Sx = 255 then Y = 192
+      set sprite Sn to Y,Sx,Pat,Col
+      Sn = Sn + 2
+      Y = 192
+      if Bl[I] > 0 then
+        D16 = Bx[I] + 768
+        D16 = D16 - Cx[H]
+        if D16 >= 768 then D16 = D16 - 768
+        SeeX
+        Y = Hb + By[I]
+        if Sx = 255 then Y = 192
+      end if
+      set sprite Sn to Y,Sx,SBall,15
+    next
+  next
+  update sprites
+  return
+end sub
+
+' SeeX: Sx the screen x of a point D16 pixels ahead of the camera's copter
+' (255: not on screen)
+sub SeeX:
+  Sx = 255
+  if D16 < 136 then
+    W16 = D16 + 120
+    Sx = W16
+  end if
+  if D16 >= 648 then
+    W16 = D16 - 648
+    Sx = W16
+  end if
+  return
+end sub
+
+' Hills: each half's bands rewritten for its camera (near at its speed,
+' far at half)
+sub Hills:
+  ' the top half (third 1)
+  A16 = Cx[0] + 648
+  if A16 >= 768 then A16 = A16 - 768
+  W16 = A16 & 31
+  W16 = W16 << 6
+  copy NearPat + W16 count 64 to vram.pattern + 1024
+  W16 = A16 >> 1
+  W16 = W16 & 31
+  W16 = W16 << 5
+  copy FarPat + W16 count 32 to vram.pattern + 1088
+  ' the bottom half (third 3)
+  A16 = Cx[1] + 648
+  if A16 >= 768 then A16 = A16 - 768
+  W16 = A16 & 31
+  W16 = W16 << 6
+  copy NearPat + W16 count 64 to vram.pattern + 5120
+  W16 = A16 >> 1
+  W16 = W16 & 31
+  W16 = W16 << 5
+  copy FarPat + W16 count 32 to vram.pattern + 5184
+  return
+end sub
+
+' Radar: the strip on row 11 (columns 4-27, 32 pixels a cell)
+sub Radar:
+  for J = 0 to 1
+    W16 = Cx[J] >> 5
+    Rn[J] = W16
+  next
+  if Rn[0] = Ro[0] then
+    if Rn[1] = Ro[1] then return
+  end if
+  for J = 0 to 1
+    if Ro[J] < 24 then
+      X = Ro[J] + 4
+      put char TRad at X,11
+    end if
+  next
+  X = Rn[0] + 4
+  if Rn[0] = Rn[1] then
+    put char TRad3 at X,11
+  else
+    put char TRad1 at X,11
+    X = Rn[1] + 4
+    put char TRad2 at X,11
+  end if
+  Ro[0] = Rn[0]
+  Ro[1] = Rn[1]
+  return
+end sub
+
+sub ShowHearts:
+  for J = 0 to 2
+    X = J + 6
+    V = TStar
+    if J < Hp[0] then V = THeart
+    put char V at X,9
+    V = TStar
+    if J < Hp[1] then V = THeart
+    put char V at X,13
+  next
+  return
+end sub
+
+' DrawField: the stars, the bands, the middle (names, hearts, radar)
+sub DrawField:
+  for Y = 1 to 4
+    for X = 0 to 31
+      V = X * 7
+      W = Y * 13
+      V = V + W
+      V = V & 15
+      W = 0
+      if V = 3 then W = TStar
+      if V = 11 then W = TStar2
+      if W > 0 then
+        put char W at X,Y
+        K = Y + 15
+        put char W at X,K
+      end if
+    next
+  next
+  for X = 0 to 31
+    V = X & 3
+    W = V + TFar0
+    put char W at X,5
+    put char W at X,20
+    W = V + TNear0
+    put char W at X,6
+    put char W at X,21
+    W = W + 4
+    put char W at X,7
+    put char W at X,22
+  next
+  print at 2,9, "P1"
+  if Mode = 3 then
+    print at 2,13, "P2"
+  else
+    print at 2,13, "CPU"
+  end if
+  print at 20,9, "HEAD-ON"
+  if Mode = 1 then print at 22,13, "EASY"
+  if Mode = 2 then print at 22,13, "HARD"
+  for X = 4 to 27
+    put char TRad at X,11
+  next
+  return
+end sub
+
+sub ReadButtons:
+  Btn = 0
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn = 1
+  if joypad(2).button2 then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+tp_top:
+  NewScreen
+  for X = 2 to 29
+    put char TBar at X,2
+    put char TBar at X,21
+  next
+  print at 12,5, "HEAD-ON"
+  print at 4,7, "A HELICOPTER DUEL OVER"
+  print at 4,8, "THE HILLS, SPLIT SCREEN"
+  print at 9,11, "1 PLAYER  EASY"
+  print at 9,12, "1 PLAYER  HARD"
+  print at 9,13, "2 PLAYERS"
+  print at 9,14, "CREDITS"
+  print at 4,17, "THREE HITS AND YOU'RE OUT"
+  print at 4,19, "STICK FLIES, BUTTON FIRES"
+  Menu = Mode - 1
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Up1 = 0
+  Dn1 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  ReadButtons
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 3 then
+    CreditsPage
+    goto tp_top
+  end if
+  Mode = Menu + 1
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 3
+    Y = J + 11
+    if J = Menu then
+      print at 7,Y, ">"
+    else
+      print at 7,Y, " "
+    end if
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  for X = 2 to 29
+    put char TBar at X,2
+    put char TBar at X,21
+  next
+  print at 12,4, "HEAD-ON"
+  print at 3,6, "BASED ON HEAD-ON BY"
+  print at 3,7, "JOHN FEDOR, AHOY! JULY 1986"
+  print at 3,8, "(COMMODORE 64)."
+  print at 3,10, "MADE FOR THE COLECOVISION"
+  print at 3,11, "BY CLAUDE (AN AI MADE BY"
+  print at 3,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,13, "2026, IN AMY BY AMY"
+  print at 3,14, "BIENVENU."
+  print at 3,16, "MUSIC: ROTOR DUEL,"
+  print at 10,17, "LOW PASS"
+  print at 8,19, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadButtons
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$C3,$C3,$C3,$18,$00,$00
+  $00,$18,$C3,$C3,$C3,$18,$00,$00
+  $00,$18,$C3,$C1,$C1,$18,$00,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$E1,$01,$01,$01
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$BC,$CB,$CB,$CB,$BC,$0C,$0C
+  $0C,$7C,$C7,$C7,$C7,$7C,$0C,$0C
+  $0C,$BC,$CB,$C7,$C7,$7C,$0C,$0C
+  $01,$18,$18,$18,$18,$81,$81,$01
+  $0E,$0E,$01,$04,$04,$01,$0E,$0E
+end data
+data SpritePat bytes
+  $00,$FF,$01,$01,$07,$8F,$DF,$FF,$DF,$87,$01,$0F,$00,$00,$00,$00
+  $00,$FC,$80,$80,$E0,$F0,$F8,$F6,$F8,$F0,$20,$F8,$00,$00,$00,$00
+  $00,$3C,$01,$01,$07,$8F,$DF,$FF,$DF,$87,$01,$0F,$00,$00,$00,$00
+  $00,$3C,$80,$80,$E0,$F0,$F8,$F6,$F8,$F0,$20,$F8,$00,$00,$00,$00
+  $00,$3F,$01,$01,$07,$0F,$1F,$6F,$1F,$0F,$04,$1F,$00,$00,$00,$00
+  $00,$FF,$80,$80,$E0,$F1,$FB,$FF,$FB,$E1,$80,$F0,$00,$00,$00,$00
+  $00,$3C,$01,$01,$07,$0F,$1F,$6F,$1F,$0F,$04,$1F,$00,$00,$00,$00
+  $00,$3C,$80,$80,$E0,$F1,$FB,$FF,$FB,$E1,$80,$F0,$00,$00,$00,$00
+  $78,$FC,$FC,$FC,$FC,$78,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$11,$0B,$07,$3F,$07,$0B,$11,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$A0,$C0,$F8,$C0,$A0,$10,$00,$00,$00,$00,$00,$00,$00
+  $81,$21,$00,$08,$80,$00,$08,$21,$81,$00,$00,$00,$00,$00,$00,$00
+  $02,$08,$00,$20,$01,$00,$20,$08,$02,$00,$00,$00,$00,$00,$00,$00
+end data
+data NearPat bytes
+  0,0,0,0,6,15,31,31,0,0,1,3,3,7,135,207,0,0,128,192,192,224,224,240,0,0,0,0,0,0,0,0,63,63,127,255,255,255,255,255,255,255,255,255,255,255,255,255,240,248,252,254,255,255,255,255,0,0,0,57,255,255,255,255
+  0,0,0,0,12,30,63,63,0,0,3,7,7,15,15,159,0,0,0,128,128,192,192,224,0,0,0,0,0,0,0,0,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,224,240,248,252,255,255,255,255,0,0,0,115,255,255,255,255
+  0,0,0,0,24,60,126,127,0,0,6,15,15,31,31,63,0,0,0,0,0,128,128,192,0,0,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,192,224,240,248,255,255,255,255,0,0,1,231,255,255,255,255
+  0,0,0,0,48,120,252,254,0,0,12,30,30,63,63,127,0,0,0,0,0,0,0,128,0,0,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,128,192,224,241,255,255,255,255,1,1,3,207,255,255,255,255
+  0,0,0,0,96,240,248,252,0,0,24,60,60,126,126,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,128,192,227,255,255,255,255,3,3,7,159,255,255,255,255
+  0,0,0,0,192,224,240,249,0,0,48,120,120,252,252,254,0,0,0,0,0,0,0,0,0,0,0,0,0,1,3,3,255,255,255,255,255,255,255,255,254,255,255,255,255,255,255,255,0,0,128,199,255,255,255,255,7,7,15,63,255,255,255,255
+  0,0,0,0,128,193,225,243,0,0,96,240,240,248,248,252,0,0,0,0,0,0,0,0,0,0,0,0,1,3,7,7,255,255,255,255,255,255,255,255,252,254,255,255,255,255,255,255,0,0,0,142,255,255,255,255,15,15,31,127,255,255,255,255
+  0,0,0,1,1,131,195,231,0,0,192,224,224,240,240,248,0,0,0,0,0,0,0,0,0,0,0,0,3,7,15,15,255,255,255,255,255,255,255,255,248,252,254,255,255,255,255,255,0,0,0,28,255,255,255,255,31,31,63,255,255,255,255,255
+  0,0,1,3,3,7,135,207,0,0,128,192,192,224,224,240,0,0,0,0,0,0,0,0,0,0,0,0,6,15,31,31,255,255,255,255,255,255,255,255,240,248,252,254,255,255,255,255,0,0,0,57,255,255,255,255,63,63,127,255,255,255,255,255
+  0,0,3,7,7,15,15,159,0,0,0,128,128,192,192,224,0,0,0,0,0,0,0,0,0,0,0,0,12,30,63,63,255,255,255,255,255,255,255,255,224,240,248,252,255,255,255,255,0,0,0,115,255,255,255,255,127,127,255,255,255,255,255,255
+  0,0,6,15,15,31,31,63,0,0,0,0,0,128,128,192,0,0,0,0,0,0,0,0,0,0,0,0,24,60,126,127,255,255,255,255,255,255,255,255,192,224,240,248,255,255,255,255,0,0,1,231,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,12,30,30,63,63,127,0,0,0,0,0,0,0,128,0,0,0,0,0,0,0,0,0,0,0,0,48,120,252,254,255,255,255,255,255,255,255,255,128,192,224,241,255,255,255,255,1,1,3,207,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,24,60,60,126,126,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,96,240,248,252,255,255,255,255,255,255,255,255,0,128,192,227,255,255,255,255,3,3,7,159,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,48,120,120,252,252,254,0,0,0,0,0,0,0,0,0,0,0,0,0,1,3,3,0,0,0,0,192,224,240,249,254,255,255,255,255,255,255,255,0,0,128,199,255,255,255,255,7,7,15,63,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,96,240,240,248,248,252,0,0,0,0,0,0,0,0,0,0,0,0,1,3,7,7,0,0,0,0,128,193,225,243,252,254,255,255,255,255,255,255,0,0,0,142,255,255,255,255,15,15,31,127,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,192,224,224,240,240,248,0,0,0,0,0,0,0,0,0,0,0,0,3,7,15,15,0,0,0,1,1,131,195,231,248,252,254,255,255,255,255,255,0,0,0,28,255,255,255,255,31,31,63,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,128,192,192,224,224,240,0,0,0,0,0,0,0,0,0,0,0,0,6,15,31,31,0,0,1,3,3,7,135,207,240,248,252,254,255,255,255,255,0,0,0,57,255,255,255,255,63,63,127,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,128,128,192,192,224,0,0,0,0,0,0,0,0,0,0,0,0,12,30,63,63,0,0,3,7,7,15,15,159,224,240,248,252,255,255,255,255,0,0,0,115,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,128,128,192,0,0,0,0,0,0,0,0,0,0,0,0,24,60,126,127,0,0,6,15,15,31,31,63,192,224,240,248,255,255,255,255,0,0,1,231,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,128,0,0,0,0,0,0,0,0,0,0,0,0,48,120,252,254,0,0,12,30,30,63,63,127,128,192,224,241,255,255,255,255,1,1,3,207,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,96,240,248,252,0,0,24,60,60,126,126,255,0,128,192,227,255,255,255,255,3,3,7,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,1,3,3,0,0,0,0,192,224,240,249,0,0,48,120,120,252,252,254,0,0,128,199,255,255,255,255,7,7,15,63,255,255,255,255,255,255,255,255,255,255,255,255,254,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,1,3,7,7,0,0,0,0,128,193,225,243,0,0,96,240,240,248,248,252,0,0,0,142,255,255,255,255,15,15,31,127,255,255,255,255,255,255,255,255,255,255,255,255,252,254,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,3,7,15,15,0,0,0,1,1,131,195,231,0,0,192,224,224,240,240,248,0,0,0,28,255,255,255,255,31,31,63,255,255,255,255,255,255,255,255,255,255,255,255,255,248,252,254,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,6,15,31,31,0,0,1,3,3,7,135,207,0,0,128,192,192,224,224,240,0,0,0,57,255,255,255,255,63,63,127,255,255,255,255,255,255,255,255,255,255,255,255,255,240,248,252,254,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,12,30,63,63,0,0,3,7,7,15,15,159,0,0,0,128,128,192,192,224,0,0,0,115,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,224,240,248,252,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,24,60,126,127,0,0,6,15,15,31,31,63,0,0,0,0,0,128,128,192,0,0,1,231,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,192,224,240,248,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,48,120,252,254,0,0,12,30,30,63,63,127,0,0,0,0,0,0,0,128,1,1,3,207,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,128,192,224,241,255,255,255,255
+  0,0,0,0,0,0,1,1,0,0,0,0,96,240,248,252,0,0,24,60,60,126,126,255,0,0,0,0,0,0,0,0,3,3,7,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,128,192,227,255,255,255,255
+  0,0,0,0,0,1,3,3,0,0,0,0,192,224,240,249,0,0,48,120,120,252,252,254,0,0,0,0,0,0,0,0,7,7,15,63,255,255,255,255,255,255,255,255,255,255,255,255,254,255,255,255,255,255,255,255,0,0,128,199,255,255,255,255
+  0,0,0,0,1,3,7,7,0,0,0,0,128,193,225,243,0,0,96,240,240,248,248,252,0,0,0,0,0,0,0,0,15,15,31,127,255,255,255,255,255,255,255,255,255,255,255,255,252,254,255,255,255,255,255,255,0,0,0,142,255,255,255,255
+  0,0,0,0,3,7,15,15,0,0,0,1,1,131,195,231,0,0,192,224,224,240,240,248,0,0,0,0,0,0,0,0,31,31,63,255,255,255,255,255,255,255,255,255,255,255,255,255,248,252,254,255,255,255,255,255,0,0,0,28,255,255,255,255
+end data
+data FarPat bytes
+  2,7,15,31,63,127,255,255,0,0,129,195,231,255,255,255,0,0,128,192,224,243,255,255,0,0,0,0,128,192,241,255
+  4,14,31,63,127,255,255,255,0,0,3,135,207,255,255,255,0,0,0,128,193,231,255,255,0,0,0,0,0,128,227,255
+  8,28,62,127,255,255,255,255,0,0,6,15,159,255,255,255,0,0,0,0,130,207,255,255,0,0,0,0,0,1,199,255
+  16,56,124,254,255,255,255,255,0,0,12,30,63,255,255,255,0,0,0,0,4,158,255,255,0,0,0,0,1,3,143,255
+  32,112,248,252,254,255,255,255,0,0,24,60,126,255,255,255,0,0,0,0,8,60,255,255,0,0,0,1,3,7,31,255
+  64,224,240,248,252,255,255,255,0,0,48,120,252,254,255,255,0,0,0,0,16,120,254,255,0,0,1,3,7,15,63,255
+  128,192,224,240,249,255,255,255,0,0,96,240,248,252,255,255,0,0,0,0,32,240,252,255,0,1,3,7,15,31,127,255
+  0,128,192,225,243,255,255,255,0,0,192,224,240,249,255,255,0,0,0,0,64,224,248,255,1,3,7,15,31,63,255,255
+  0,0,129,195,231,255,255,255,0,0,128,192,224,243,255,255,0,0,0,0,128,192,241,255,2,7,15,31,63,127,255,255
+  0,0,3,135,207,255,255,255,0,0,0,128,193,231,255,255,0,0,0,0,0,128,227,255,4,14,31,63,127,255,255,255
+  0,0,6,15,159,255,255,255,0,0,0,0,130,207,255,255,0,0,0,0,0,1,199,255,8,28,62,127,255,255,255,255
+  0,0,12,30,63,255,255,255,0,0,0,0,4,158,255,255,0,0,0,0,1,3,143,255,16,56,124,254,255,255,255,255
+  0,0,24,60,126,255,255,255,0,0,0,0,8,60,255,255,0,0,0,1,3,7,31,255,32,112,248,252,254,255,255,255
+  0,0,48,120,252,254,255,255,0,0,0,0,16,120,254,255,0,0,1,3,7,15,63,255,64,224,240,248,252,255,255,255
+  0,0,96,240,248,252,255,255,0,0,0,0,32,240,252,255,0,1,3,7,15,31,127,255,128,192,224,240,249,255,255,255
+  0,0,192,224,240,249,255,255,0,0,0,0,64,224,248,255,1,3,7,15,31,63,255,255,0,128,192,225,243,255,255,255
+  0,0,128,192,224,243,255,255,0,0,0,0,128,192,241,255,2,7,15,31,63,127,255,255,0,0,129,195,231,255,255,255
+  0,0,0,128,193,231,255,255,0,0,0,0,0,128,227,255,4,14,31,63,127,255,255,255,0,0,3,135,207,255,255,255
+  0,0,0,0,130,207,255,255,0,0,0,0,0,1,199,255,8,28,62,127,255,255,255,255,0,0,6,15,159,255,255,255
+  0,0,0,0,4,158,255,255,0,0,0,0,1,3,143,255,16,56,124,254,255,255,255,255,0,0,12,30,63,255,255,255
+  0,0,0,0,8,60,255,255,0,0,0,1,3,7,31,255,32,112,248,252,254,255,255,255,0,0,24,60,126,255,255,255
+  0,0,0,0,16,120,254,255,0,0,1,3,7,15,63,255,64,224,240,248,252,255,255,255,0,0,48,120,252,254,255,255
+  0,0,0,0,32,240,252,255,0,1,3,7,15,31,127,255,128,192,224,240,249,255,255,255,0,0,96,240,248,252,255,255
+  0,0,0,0,64,224,248,255,1,3,7,15,31,63,255,255,0,128,192,225,243,255,255,255,0,0,192,224,240,249,255,255
+  0,0,0,0,128,192,241,255,2,7,15,31,63,127,255,255,0,0,129,195,231,255,255,255,0,0,128,192,224,243,255,255
+  0,0,0,0,0,128,227,255,4,14,31,63,127,255,255,255,0,0,3,135,207,255,255,255,0,0,0,128,193,231,255,255
+  0,0,0,0,0,1,199,255,8,28,62,127,255,255,255,255,0,0,6,15,159,255,255,255,0,0,0,0,130,207,255,255
+  0,0,0,0,1,3,143,255,16,56,124,254,255,255,255,255,0,0,12,30,63,255,255,255,0,0,0,0,4,158,255,255
+  0,0,0,1,3,7,31,255,32,112,248,252,254,255,255,255,0,0,24,60,126,255,255,255,0,0,0,0,8,60,255,255
+  0,0,1,3,7,15,63,255,64,224,240,248,252,255,255,255,0,0,48,120,252,254,255,255,0,0,0,0,16,120,254,255
+  0,1,3,7,15,31,127,255,128,192,224,240,249,255,255,255,0,0,96,240,248,252,255,255,0,0,0,0,32,240,252,255
+  1,3,7,15,31,63,255,255,0,128,192,225,243,255,255,255,0,0,192,224,240,249,255,255,0,0,0,0,64,224,248,255
+end data
+
+asm {
+HoBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$57,$0A,$00,$00,$77,$0E,$00,$00,$97,$10
+    db $10
+HoBump:
+    db $00,$00,$15,$02,$00,$00,$36,$04,$00,$00,$67,$06,$10
+HoFire:
+    db $40,$6B,$10,$01,$40,$7F,$20,$01,$40,$A0,$30,$02,$40,$D6,$40,$02,$50
+HoGo:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$30,$08,$50
+HoWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$12
+    db $50
+HoTick:
+    db $40,$47,$30,$01,$40,$47,$70,$01,$50
+
+HoSoundTable:
+    dw HoTuneMel,$702B
+    dw HoTuneBass,$7035
+    dw HoRunMel,$702B
+    dw HoRunBass,$7035
+    dw HoBoom,$703F
+    dw HoBump,$703F
+    dw HoFire,$7049
+    dw HoGo,$7049
+    dw HoWin,$7049
+    dw HoTick,$7049
+; Rotor Duel (original)
+; Tiny Sound, 6 frames per step
+HoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$21,$01,$21,$01,$1C,$01,$21,$01,$24,$01,$01,$01
+    db $23,$01,$21,$01,$1F,$01,$01,$01,$1C,$01,$1F,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$01,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$1C,$01,$20,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+HoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15
+    db $09,$15,$09,$15,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$05,$11,$05,$11,$05,$11,$05,$11,$05,$11,$05,$11
+    db $05,$11,$05,$11,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10
+    db $FF
+
+; Low Pass (original)
+; Tiny Sound, 5 frames per step
+HoRunMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$50,$1A,$21,$1C,$01,$23,$01,$1C,$01,$1F,$01,$1C,$01,$23,$01
+    db $21,$01,$1F,$01,$18,$01,$1F,$01,$18,$01,$1C,$01,$1A,$01,$21,$01
+    db $1E,$01,$1A,$01,$1C,$01,$23,$01,$1C,$01,$1F,$01,$1C,$01,$23,$01
+    db $21,$01,$1F,$01,$17,$01,$1E,$01,$1B,$01,$1E,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+HoRunBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$70,$18,$32,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10,$0C,$18,$0C,$18,$0C,$18,$0C,$18,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17
+    db $FF
+}

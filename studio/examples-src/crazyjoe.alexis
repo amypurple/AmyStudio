@@ -1,0 +1,854 @@
+cartridge "CRAZY JOE/CHRIS GREACEN, AHOY!/1986"
+
+' CRAZY JOE
+' Based on "Crazy Joe" by Chris Greacen, Ahoy! July 1986 (Commodore 64,
+' BASIC with a little machine language), made for the ColecoVision by
+' Claude (an AI made by Anthropic) for Amy Studio, 2026, in Amy by Amy
+' Bienvenu. Not a line-for-line port: the rules are the listing's
+' (orig/crazyjoe-c64.bas), the screen is built for this machine.
+'
+' The game: Joe rides a motorcycle with no brakes up a six-lane
+' interstate, faster than all the cars. The stick moves him left and
+' right; the button is the throttle, it carries him up the screen (let go
+' and he drifts back down). Stay on the road and miss the cars. Every pass
+' (8 frames) the score goes up by one and the traffic a little faster.
+' EASY, NORMAL or DIFFICULT sets the starting speed.
+'
+' Controls (either joystick): left and right steer, either button is the
+' throttle. On the menus: up and down choose, a button picks.
+'
+' Rules from the listing, in this machine's numbers:
+' - six cars, car m (1-6) in its own lane (lanes dealt at random), moving
+'   down m * R / 8 pixels a frame (in 1/64 pixel: m * Rq / 8); a car past
+'   the bottom starts again at the top in a new random colour (line 400);
+' - Rq starts at 79, 157 or 262 (R = 1.5, 3, 5) and grows by 1 a pass
+'   (F = .02); the score grows by 1 a pass (line 380);
+' - Joe: 1.2 pixels a frame sideways (the C64's IRQ moved him 2 a frame
+'   on a wider screen); with the button he climbs 1 pixel a frame, up to
+'   y 8; without it he drifts down 1 a frame, to y 168 (lines 878-901 of
+'   the machine language);
+' - off the road (Joe's x at the edge, as PEEK(V)=20 or 244) or hitting a
+'   car once the score is past 3 (line 420) ends the game.
+'
+' Made for this machine: a black six-lane road between grass verges, its
+' lane dashes and the grass scrolling smoothly (only two road tiles' and
+' one grass tile's patterns are rewritten, the name table never changes),
+' Joe and the cars as sprites (Joe always drawn first; the six cars' order
+' turns every frame, so a line with more than four sprites flickers
+' instead of losing a car), a speedometer, the engine's growl pitched by
+' the speed, a crash burst, music under the play, quieter than the
+' effects (music first in the sound table).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait; `set sprite count` is always set.
+
+const TGrass = 128
+const TRoad = 129
+const TDasha = 130
+const TDashb = 131
+const TEdgel = 132
+const TEdger = 133
+const TStar = 134
+const SBike = 0
+const SJoe = 4
+const SCar = 8
+const SBoom1 = 12
+const SBoom1b = 16
+const SBoom2 = 20
+const SBoom2b = 24
+const NTiles8 = 56
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndEng0 = 5
+const SndEng1 = 6
+const SndEng2 = 7
+const SndEng3 = 8
+const SndGun = 9
+const SndPass = 10
+const SndBoom = 11
+const SndFall = 12
+const SndBeep = 13
+const SndGo = 14
+const SndPick = 15
+const SndOver = 16
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' Joe: Jx16 his left edge in 1/16 pixel, Jy his top (pixels)
+u16 Jx16 = 1600
+u8 Jx = 100
+u8 Jy = 124
+' the six cars: Cy their place in 1/64 pixel (0: the car's top at y -16;
+' 13312: past the bottom), Ln the lane of car m, Cc its colour
+u16 Cy[6]
+u8 Ln[6]
+u8 Cc[6]
+' the speed (Rq, in 1/64 pixel for car 1 every 8 frames), the level
+' (0 easy, 1 normal, 2 difficult), the road's place (1/64 pixel)
+u16 Rq = 79
+u8 Lvl = 0
+u16 RoadP = 0
+' Ph: 0 waiting, 1 riding, 2 crashed; Hit: 1 off the road, 2 a car
+u8 Ph = 0
+u8 Hit = 0
+u8 Pass = 0
+u16 Score = 0
+u16 Hi = 0
+' the random numbers (xorshift, stirred on the title)
+u16 Rs = 4321
+u8 Rot = 0
+u8 Idle = 0
+u8 Mph = 0
+
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 T16 = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf = 0
+u8 Rg = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 M = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CjSoundTable areas 6
+  sprites 16x16
+  set sprite count 8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  Lvl = Menu
+
+new_game:
+  Score = 0
+  Pass = 0
+  Rq = StartR[Lvl]
+  Hit = 0
+  Ph = 0
+  ' the lanes dealt at random (the C64 drew a lane for each car, line 230)
+  for I = 0 to 5
+    Ln[I] = I
+    Cy[I] = 0
+  next
+  for I = 0 to 5
+    RndMod(10)
+    Cc[I] = CarCol[V]
+  next
+  I = 5
+deal:
+  K = I + 1
+  RndMod(K)
+  W = Ln[I]
+  Ln[I] = Ln[V]
+  Ln[V] = W
+  dec I
+  if I > 0 then goto deal
+  ' Joe at a random place across the road (line 190), near the bottom
+  RndMod(102)
+  V = V + 64
+  Jx16 = V
+  Jx16 = Jx16 << 4
+  Jx = V
+  Jy = 124
+  DrawField
+  ShowHud
+  ShowScreen
+  ' the cars line up with a beep each, as on the C64 (lines 230-260)
+  for I = 0 to 5
+    play sound SndBeep
+    for Tm = 1 to 10
+      Frame1
+      Scenery
+      DrawAll
+    next
+  next
+  ' the cars set off from where they lined up (y 8)
+  for I = 0 to 5
+    Cy[I] = 1536
+  next
+  play sound SndGo
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+
+ride:
+  Frame1
+  ReadPad
+  ' (either button is the throttle; nothing quits mid-ride)
+  if Btn2 = 1 then Btn = 1
+  StepGame
+  Scenery
+  DrawAll
+  if Hit > 0 then goto crash
+  if Pass = 0 then ShowScore
+  Noises
+  goto ride
+
+crash:
+  Ph = 2
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  play sound SndBoom
+  play sound SndFall
+  for Tm = 0 to 59
+    Frame1
+    V = Tm >> 3
+    V = V & 1
+    if V = 0 then
+      set sprite 0 to Jy,Jx,SBoom1b,11
+      set sprite 1 to Jy,Jx,SBoom1,8
+    else
+      set sprite 0 to Jy,Jx,SBoom2b,11
+      set sprite 1 to Jy,Jx,SBoom2,8
+    end if
+    update sprites
+  next
+  if Score > Hi then Hi = Score
+  play sound SndOver
+  ' the end (lines 510-570): the scores, why, and fire to ride again
+  NewScreen
+  StarRows
+  print at 6,6, "SCORE"
+  NumU = Score
+  print at 12,6, digits$(NumU, 5)
+  print at 6,8, "HIGH SCORE"
+  NumU = Hi
+  print at 17,8, digits$(NumU, 5)
+  if Hit = 1 then
+    print at 5,11, "YOU RAN OFF THE ROAD!"
+  end if
+  if Hit = 2 then
+    print at 5,11, "YOU RAN INTO A CAR!"
+  end if
+  print at 8,15, "PRESS A BUTTON"
+  ShowScreen
+  for Tm = 1 to 40
+    Frame1
+  next
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' StepGame: one frame of riding (the bot's model, model.mjs, does the same)
+sub StepGame:
+  ' Joe: sideways, and the throttle carries him up the screen
+  if Lf = 1 then Jx16 = Jx16 - 19
+  if Rg = 1 then Jx16 = Jx16 + 19
+  W16 = Jx16 >> 4
+  Jx = W16
+  if Btn = 1 then
+    if Jy > 8 then dec Jy
+  else
+    if Jy < 168 then inc Jy
+  end if
+  ' a pass: the score and the traffic's speed
+  inc Pass
+  if Pass = 8 then
+    Pass = 0
+    if Score < 65000 then inc Score
+    inc Rq
+  end if
+  ' off the road
+  if Jx <= 52 then
+    Hit = 1
+    return
+  end if
+  if Jx >= 188 then
+    Hit = 1
+    return
+  end if
+  ' the cars: car m moves m * Rq / 8 (in 1/64 pixel)
+  T16 = 0
+  for M = 0 to 5
+    T16 = T16 + Rq
+    W16 = T16 >> 3
+    Cy[M] = Cy[M] + W16
+    if Cy[M] >= 13312 then
+      Cy[M] = 0
+      RndMod(10)
+      Cc[M] = CarCol[V]
+    end if
+  next
+  ' the road: Joe's own speed, one car faster than the fastest
+  T16 = T16 + Rq
+  W16 = T16 >> 3
+  RoadP = RoadP + W16
+  ' a car: boxes (Joe x+4..x+11, y+1..y+14; a car x+2..x+13, all 16 rows)
+  if Score <= 3 then return
+  for M = 0 to 5
+    W16 = Cy[M] >> 6
+    Y = W16
+    V = Jy + 2
+    if Y >= V then
+      V = Jy + 30
+      if Y <= V then
+        X = Ln[M] * 24
+        X = X + 60
+        V = X + 9
+        if Jx <= V then
+          V = Jx + 9
+          if V >= X then
+            Hit = 2
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Rnd16: the next random number (xorshift 7, 9, 8)
+sub Rnd16:
+  A16 = Rs << 7
+  Rs = Rs ^ A16
+  A16 = Rs >> 9
+  Rs = Rs ^ A16
+  A16 = Rs << 8
+  Rs = Rs ^ A16
+  return
+end sub
+
+' RndMod(N): V = a random number 0 .. N-1 (from the low 7 bits)
+sub RndMod(u8 N):
+  Rnd16
+  W16 = Rs & 127
+  V = W16
+rm_loop:
+  if V >= N then
+    V = V - N
+    goto rm_loop
+  end if
+  return
+end sub
+
+' DrawAll: Joe (sprites 0 and 1, always first) and the cars (2-7, their
+' order turning every frame)
+sub DrawAll:
+  set sprite 0 to Jy,Jx,SBike,9
+  set sprite 1 to Jy,Jx,SJoe,15
+  inc Rot
+  if Rot = 6 then Rot = 0
+  K = Rot
+  for M = 0 to 5
+    J = K + 2
+    W16 = Cy[M] >> 6
+    Y = W16
+    X = Ln[M] * 24
+    X = X + 60
+    if Y < 16 then
+      ' coming in at the top: the sprite's y wraps (240-255)
+      Y = Y + 240
+    else
+      Y = Y - 16
+    end if
+    if Ph = 0 then
+      ' lining up: shown one by one at the top
+      Y = 192
+      if I >= M then Y = 8
+    end if
+    V = Cc[M]
+    set sprite J to Y,X,SCar,V
+    inc K
+    if K = 6 then K = 0
+  next
+  update sprites
+  return
+end sub
+
+' Scenery: the lane dashes and the grass scroll down at Joe's speed: only
+' the patterns of tiles TDasha, TDashb and TGrass change (in the three
+' thirds)
+sub Scenery:
+  W16 = RoadP >> 6
+  V = W16 & 15
+  V = 16 - V
+  V = V & 15
+  A16 = V
+  W16 = TDasha * 8
+  copy DashSeq + A16 count 8 to vram.pattern + W16
+  W16 = W16 + 2048
+  copy DashSeq + A16 count 8 to vram.pattern + W16
+  W16 = W16 + 2048
+  copy DashSeq + A16 count 8 to vram.pattern + W16
+  A16 = A16 + 8
+  W16 = TDashb * 8
+  copy DashSeq + A16 count 8 to vram.pattern + W16
+  W16 = W16 + 2048
+  copy DashSeq + A16 count 8 to vram.pattern + W16
+  W16 = W16 + 2048
+  copy DashSeq + A16 count 8 to vram.pattern + W16
+  V = V & 7
+  A16 = V
+  W16 = TGrass * 8
+  copy GrassSeq + A16 count 8 to vram.pattern + W16
+  W16 = W16 + 2048
+  copy GrassSeq + A16 count 8 to vram.pattern + W16
+  W16 = W16 + 2048
+  copy GrassSeq + A16 count 8 to vram.pattern + W16
+  return
+end sub
+
+' Noises: the engine every 8 frames, pitched by the speed; the wind
+' while the throttle is open
+sub Noises:
+  V = Tick & 7
+  if V = 0 then
+    if Rq < 120 then
+      play sound SndEng0
+    else
+      if Rq < 200 then
+        play sound SndEng1
+      else
+        if Rq < 300 then
+          play sound SndEng2
+        else
+          play sound SndEng3
+        end if
+      end if
+    end if
+  end if
+  if V = 4 then
+    if Btn = 1 then
+      if Jy > 8 then play sound SndGun
+    end if
+  end if
+  return
+end sub
+
+' the road: grass verges (columns 0-6, 25-31), the yellow left edge
+' (7), the lanes (8-23, dashes in 10, 13, 16, 19, 22), the white right
+' edge (24); the dash tiles alternate by row (a 16-pixel period)
+sub DrawField:
+  NewScreen
+  for Y = 0 to 23
+    for X = 0 to 6
+      put char TGrass at X,Y
+    next
+    for X = 25 to 31
+      put char TGrass at X,Y
+    next
+    put char TEdgel at 7,Y
+    put char TEdger at 24,Y
+    V = Y & 1
+    K = TDasha + V
+    for X = 8 to 23
+      put char TRoad at X,Y
+    next
+    for X = 10 to 22 step 3
+      put char K at X,Y
+    next
+  next
+  ' the road tiles' colours (their patterns change, the colours stay)
+  W16 = TRoad * 8
+  fill $11 count 8 to vram.color + W16
+  W16 = TDasha * 8
+  fill $F1 count 16 to vram.color + W16
+  W16 = TGrass * 8
+  fill $3C count 8 to vram.color + W16
+  W16 = TEdgel * 8
+  fill $B1 count 8 to vram.color + W16
+  W16 = TEdger * 8
+  fill $F1 count 8 to vram.color + W16
+  backdrop dark green
+  return
+end sub
+
+' the side panels on the grass: speed and level on the left, score and
+' high score on the right
+sub ShowHud:
+  print at 2,2, "MPH"
+  print at 2,6, "LEVEL"
+  if Lvl = 0 then
+    print at 2,7, "EASY"
+  end if
+  if Lvl = 1 then
+    print at 2,7, "NORM"
+  end if
+  if Lvl = 2 then
+    print at 2,7, "DIFF"
+  end if
+  print at 25,2, "SC"
+  print at 25,6, "HI"
+  NumU = Hi
+  print at 25,7, digits$(NumU, 5)
+  ShowScore
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 25,3, digits$(NumU, 5)
+  ' the speedometer: 60 + Rq / 2 miles an hour, more with the throttle
+  W16 = Rq >> 1
+  W16 = W16 + 60
+  if Btn = 1 then W16 = W16 + 20
+  if W16 > 999 then W16 = 999
+  NumU = W16
+  print at 2,3, digits$(NumU, 3)
+  return
+end sub
+
+' the title's rows of stars (as the C64 title's [s *] rows)
+sub StarRows:
+  for X = 2 to 29
+    put char TStar at X,2
+    put char TStar at X,4
+    put char TStar at X,20
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf = 0
+  Rg = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf = 1
+  if joypad(2).left then Lf = 1
+  if joypad(1).right then Rg = 1
+  if joypad(2).right then Rg = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  V = Btn | Btn2
+  if V = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title (lines 90-150): the banner, the three levels, and the credits
+sub TitlePage:
+  NewScreen
+  StarRows
+  print at 11,3, "CRAZY JOE"
+  print at 4,6, "NO BRAKES, NO FEAR, JUST"
+  print at 4,7, "SIX LANES OF INTERSTATE."
+  print at 11,10, "EASY"
+  print at 11,11, "NORMAL"
+  print at 11,12, "DIFFICULT"
+  print at 11,13, "CREDITS"
+  print at 5,16, "STICK: STEER  FIRE: GAS"
+  print at 10,18, "HI"
+  NumU = Hi
+  print at 13,18, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 400
+  TzOn = 1
+  Ph = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Rnd16
+  ReadPad
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      play sound SndPick
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Rs = 0 then Rs = 4321
+  return
+end sub
+
+sub ShowMenu:
+  for Y = 10 to 13
+    put char 32 at 9,Y
+  next
+  V = Menu + 10
+  put char 62 at 9,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  StarRows
+  print at 11,3, "CRAZY JOE"
+  print at 3,6, "BASED ON CRAZY JOE BY"
+  print at 3,7, "CHRIS GREACEN, AHOY!"
+  print at 3,8, "JULY 1986 (COMMODORE 64)."
+  print at 3,10, "MADE FOR THE COLECOVISION"
+  print at 3,11, "BY CLAUDE (AN AI MADE BY"
+  print at 3,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,13, "2026, IN AMY BY AMY"
+  print at 3,14, "BIENVENU."
+  print at 3,16, "MUSIC: FULL THROTTLE AND"
+  print at 3,17, "INTERSTATE (ORIGINAL)"
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  Rnd16
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' the starting speeds (R = 1.5, 3, 5 in 1/64 pixel, scaled to this screen)
+data StartR words
+  79, 157, 262
+end data
+' the cars' colours: ten bright colours that stand out on the black road
+' (the C64's black, dark blue and brown cars would vanish on it)
+data CarCol bytes
+  15, 2, 7, 13, 3, 5, 11, 10, 14, 8
+end data
+' the dashes: 10 rows on, 6 off, twice
+data DashSeq bytes
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,0,0,0,0,0,0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,0,0,0,0,0,0
+end data
+' the grass's tufts, twice
+data GrassSeq bytes
+  0,$10,0,$82,0,$08,$40,0,0,$10,0,$82,0,$08,$40,0
+end data
+
+data TilePat bytes
+  $00,$10,$00,$82,$00,$08,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $00,$10,$54,$38,$54,$10,$00,$00
+end data
+data TileCol bytes
+  $0C,$3C,$0C,$3C,$0C,$3C,$3C,$0C
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $BE,$BE,$BE,$BE,$BE,$BE,$BE,$BE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $01,$41,$41,$41,$41,$41,$01,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$01,$0F,$00,$01,$00,$00,$00,$00,$00,$01,$01,$01,$00
+  $00,$80,$80,$80,$F0,$00,$80,$00,$00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$03,$02,$07,$0F,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$40,$E0,$F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $1F,$3F,$3F,$38,$30,$3F,$3F,$3F,$3F,$3F,$30,$38,$3F,$3F,$3F,$1F
+  $F8,$FC,$FC,$1C,$0C,$FC,$FC,$FC,$FC,$FC,$0C,$1C,$FC,$FC,$FC,$F8
+  $00,$00,$00,$00,$02,$01,$07,$03,$03,$07,$01,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$E0,$C0,$C0,$E0,$80,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$02,$02,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$40,$40,$80,$00,$00,$00,$00,$00,$00
+  $81,$41,$27,$1F,$1C,$38,$F8,$F0,$F0,$F8,$38,$1C,$1F,$27,$41,$81
+  $81,$82,$E4,$F8,$38,$1C,$1F,$0F,$0F,$1F,$1C,$38,$F8,$E4,$82,$81
+  $00,$00,$00,$00,$0C,$18,$10,$30,$30,$10,$18,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$18,$08,$0C,$0C,$08,$18,$30,$00,$00,$00,$00
+end data
+
+asm {
+CjEng0:
+    db $40,$FF,$53,$09,$50
+CjEng1:
+    db $40,$FF,$53,$09,$50
+CjEng2:
+    db $40,$C4,$53,$09,$50
+CjEng3:
+    db $40,$F9,$52,$09,$50
+CjGun:
+    db $00,$00,$76,$04,$00,$00,$76,$04,$10
+CjPass:
+    db $00,$00,$44,$02,$00,$00,$54,$04,$10
+CjBoom:
+    db $00,$00,$05,$03,$00,$00,$16,$06,$00,$00,$36,$0A,$00,$00,$57,$0E,$00,$00,$77,$14,$10
+CjFall:
+    db $40,$A9,$10,$03,$40,$E2,$20,$04,$40,$2E,$31,$05,$40,$AB,$41,$06,$40,$F9,$62,$0C,$50
+CjBeep:
+    db $40,$7F,$20,$03,$40,$7F,$F0,$01,$50
+CjGo:
+    db $40,$AA,$20,$04,$40,$7F,$20,$04,$40,$55,$30,$0A,$50
+CjPick:
+    db $40,$47,$40,$01,$50
+CjOver:
+    db $40,$1D,$21,$08,$40,$53,$31,$08,$40,$AB,$31,$08,$40,$3B,$42,$16,$50
+
+CjSoundTable:
+    dw CjTuneMel,$702B
+    dw CjTuneBass,$7035
+    dw CjRunMel,$702B
+    dw CjRunBass,$7035
+    dw CjEng0,$7049
+    dw CjEng1,$7049
+    dw CjEng2,$7049
+    dw CjEng3,$7049
+    dw CjGun,$703F
+    dw CjPass,$703F
+    dw CjBoom,$703F
+    dw CjFall,$7049
+    dw CjBeep,$7049
+    dw CjGo,$7049
+    dw CjPick,$7049
+    dw CjOver,$7049
+; Full Throttle (original)
+; Tiny Sound, 6 frames per step
+CjTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$23,$01,$23,$01,$26,$01,$23,$01,$28,$01,$26,$01
+    db $23,$01,$21,$01,$23,$01,$01,$01,$1E,$01,$21,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$28,$01,$28,$01,$2B,$01,$28,$01,$2A,$01,$28,$01
+    db $26,$01,$23,$01,$2A,$01,$28,$01,$26,$01,$25,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+CjTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$01,$0F,$01,$12,$01,$0F,$01,$0B,$01,$0F,$01
+    db $12,$01,$0F,$01,$10,$01,$14,$01,$17,$01,$14,$01,$0B,$01,$0F,$01
+    db $12,$01,$0F,$01,$12,$01,$16,$01,$19,$01,$16,$01,$10,$01,$14,$01
+    db $17,$01,$14,$01,$0B,$01,$0F,$01,$12,$01,$0F,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Interstate (original)
+; Tiny Sound, 5 frames per step
+CjRunMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$50,$1A,$21,$1C,$01,$01,$01,$1F,$01,$1C,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$1A,$01,$01,$01,$1C,$01,$1F,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$01,$01,$21,$01,$1F,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$1A,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+CjRunBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$70,$18,$32,$10,$01,$13,$01,$17,$01,$13,$01,$10,$01,$13,$01
+    db $17,$01,$13,$01,$0E,$01,$12,$01,$15,$01,$12,$01,$0E,$01,$12,$01
+    db $15,$01,$12,$01,$0C,$01,$10,$01,$13,$01,$10,$01,$0C,$01,$10,$01
+    db $13,$01,$10,$01,$0B,$01,$0F,$01,$12,$01,$0F,$01,$0B,$01,$0F,$01
+    db $12,$01,$0F,$01
+    db $FF
+}

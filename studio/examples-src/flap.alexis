@@ -1,0 +1,1147 @@
+cartridge "FLAP!/ANDREW VAJOCZKI, AHOY!/1986"
+
+' FLAP!
+' Based on "Flap!" by Andrew Vajoczki, Ahoy! August 1986 (page 36,
+' Commodore 64; the listing is machine code typed in with Flankspeed, so
+' this game is built from the article's rules). Made for the ColecoVision
+' by Claude (an AI made by Anthropic) for Amy Studio, 2026, in Amy by Amy
+' Bienvenu.
+'
+' The game (the article's): you lead a squadron of four birds of the
+' Flap league on the planet Arion. Flying is done by pressing the button
+' again and again, pointing the stick left or right, against gravity.
+' The enemy drones can only be beaten from above, and they beat you the
+' same way. Land on the flashing targ pad for energy; every eight
+' landings bring 60 seconds more and the next level, harder. If the time
+' runs out you lose a bird. Scoring: 50 a drone, 40 a targ landing, both
+' 10 more for every level up; 10 points a second left at a new level.
+'
+' The look follows the C64 game (from screenshots of it running): a black
+' sky, eight thin lavender ledges in a diamond-like spread, the targ
+' ledge glowing gold and brown, fin-shaped birds (you white, the drones
+' grey), the status band along the bottom (SCORE, TIME, TARG landings
+' left, BIRDS). Made for this machine on top of that: faint stars;
+' your skyrider and the drones are two-colour sprites with real flap
+' physics (an upward kick per press, gravity, momentum, wrapping round
+' the sides); the targ pad blinks gently (once a second); two birds at
+' the same height bounce off each other; music under the play, quieter
+' than the effects (music first in the sound table).
+'
+' Controls (either joystick): the button flaps (with the stick left or
+' right it also pushes that way); on a ledge the stick walks; the right
+' button pauses.
+'
+' The whole screen wraps: off a side you come back on the other, off the
+' bottom back at the top (the article does not say; this keeps the C64
+' screen's open sky).
+'
+' Rules in numbers (1/16 pixel a frame): gravity 2, a flap kicks 36 up
+' (at most 48 up), a flap with the stick pushes 10 sideways (at most 40),
+' falling at most 48; walking 20. Drones: 1 + level of them, at most 4,
+' their sideways speed 8 + 2 a level (at most 30).
+'
+' House rules kept: text in columns 2-29; every screen is drawn with the
+' NMI off after a wait; an original title tune played once (Wings of
+' Arion), "Night Thermals" quietly under play; a credits page.
+
+const TLedgel = 128
+const TLedgem = 129
+const TLedgen = 130
+const TLedger = 131
+const TTargl = 132
+const TTargm = 133
+const TTargn = 134
+const TTargr = 135
+const TSky = 136
+const TStar1 = 137
+const TStar2 = 138
+const SUpr = 0
+const SUpl = 4
+const SDnr = 8
+const SDnl = 12
+const SBeakr = 16
+const SBeakl = 20
+const SPuff = 24
+const NTiles8 = 88
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSkyA = 3
+const SndSkyB = 4
+const SndPuff = 5
+const SndLost = 6
+const SndFlap = 7
+const SndBonk = 8
+const SndTarg = 9
+const SndHit = 10
+const SndLevel = 11
+const SndTick = 12
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the bodies: 0 your bird, 1-4 the drones. Ox the x in 1/16 pixel (0-4095,
+' wrapping), Oy the y in 1/16 pixel, Ovx Ovy the speeds; Ost 0 gone,
+' 1 flying, 2 standing (you only), 3 a puff; Ot a timer (puff frames,
+' or frames to come back), Oface 0 right 1 left, Ofl wing-down frames
+u16 Ox[5]
+i16 Oy[5]
+i16 Ovx[5]
+i16 Ovy[5]
+u8 Ost[5]
+u8 Ot[5]
+u8 Oface[5]
+u8 Ofl[5]
+' the ledge you stand on, the new-press flag, the stick
+u8 OnL = 0
+u8 Lft = 0
+u8 Rgt = 0
+' the game: Score in tens, Lives, Level, Secs, Lands (since the level),
+' Tg the ledge with the targ pad, Inv frames you can't be hit
+u16 Score = 0
+u16 Hi = 0
+u8 Lives = 4
+u8 Level = 1
+u8 Secs = 60
+u8 Sfr = 0
+u8 Lands = 0
+u8 Tg = 7
+u8 Inv = 0
+u8 Nd = 2
+u8 Dsp = 8
+u8 Dead = 0
+u8 Paused = 0
+u8 Grey = 0
+' for the bot: Kills and Targs since the start, Ev events this frame
+' (1 a kill, 2 a targ, 4 you lost a bird, 8 a bounce, 16 level up)
+u16 Kills = 0
+u16 Targs = 0
+u8 Ev = 0
+u16 Rs = $3A71
+u16 T16 = 0
+
+' work
+u8 Bi = 0
+u8 Li = 0
+u8 Bx = 0
+u8 By = 0
+u8 Fx = 0
+u8 Fy = 0
+u8 Ny = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Ax = 0
+u8 Ay = 0
+i16 T = 0
+i16 T2 = 0
+u16 W16 = 0
+u16 NumU = 0
+u8 Menu = 0
+u8 Idle = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Btn2 = 0
+u8 WasBtn2 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 J = 0
+u8 Lw = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table FlSoundTable areas 6
+  sprites 16x16
+  set sprite count 10
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  Lives = 4
+  Level = 1
+  Secs = 60
+  Sfr = 0
+  Lands = 0
+  Kills = 0
+  Targs = 0
+  Tg = 7
+  DrawField
+  ShowHud
+  ShowScreen
+  play sound SndSkyA
+  play sound SndSkyB
+
+new_level:
+  Nd = Level + 1
+  if Nd > 4 then Nd = 4
+  Dsp = Level * 2
+  Dsp = Dsp + 8
+  if Dsp > 30 then Dsp = 30
+  for Bi = 1 to 4
+    Ost[Bi] = 0
+    Ot[Bi] = Bi * 30
+  next
+  Lands = 0
+  ShowHud
+  ShowTarg
+
+new_bird:
+  ' on the top ledge, as the C64 game starts
+  Ox[0] = 1920
+  Oy[0] = 288
+  Ovx[0] = 0
+  Ovy[0] = 0
+  Ost[0] = 2
+  OnL = 0
+  Oface[0] = 0
+  Inv = 90
+  Dead = 0
+
+play_loop:
+  Frame1
+  Ev = 0
+  ReadPad
+  if Paused = 1 then
+    if Press2 = 1 then
+      Paused = 0
+      print at 11,12, "        "
+      ShowField
+    end if
+    goto play_loop
+  end if
+  if Press2 = 1 then
+    Paused = 1
+    print at 11,12, " PAUSED "
+    goto play_loop
+  end if
+  BlinkTarg
+  if Dead > 0 then
+    dec Dead
+    Drones
+    DrawAll
+    if Dead > 0 then goto play_loop
+    if Lives = 0 then goto game_over
+    goto new_bird
+  end if
+  ' the clock: a second every 60 frames; out of time costs a bird
+  inc Sfr
+  if Sfr >= 60 then
+    Sfr = 0
+    dec Secs
+    ShowTime
+    if Secs <= 10 then
+      if Secs > 0 then play sound SndTick
+    end if
+    if Secs = 0 then
+      Secs = 60
+      ShowTime
+      LoseBird
+      goto play_loop
+    end if
+  end if
+  if Inv > 0 then dec Inv
+  You
+  Drones
+  Meet
+  DrawAll
+  if Lands >= 8 then
+    ' eight landings: the next level, 60 seconds more, 10 a second left
+    Lands = 0
+    W16 = Secs
+    Score = Score + W16
+    ShowScore
+    V = Secs
+    if V > 195 then V = 195
+    Secs = V + 60
+    inc Level
+    Ev = Ev | 16
+    play sound SndLevel
+    print at 11,12, "LEVEL "
+    NumU = Level
+    print at 17,12, digits$(NumU, 2)
+    ' (Lw counts: DrawAll uses J)
+    for Lw = 1 to 90
+      Frame1
+      BlinkTarg
+      DrawAll
+    next
+    print at 11,12, "        "
+    ShowField
+    goto new_level
+  end if
+  goto play_loop
+
+game_over:
+  stop sound SndSkyA
+  stop sound SndSkyB
+  if Score > Hi then Hi = Score
+  print at 10,10, "GAME OVER"
+  print at 6,12, "HIGH SCORE "
+  NumU = Hi
+  print at 17,12, digits$(NumU, 5)
+  print at 22,12, "0"
+  print at 8,14, "PRESS A BUTTON"
+  HideSprites
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' You: the stick and the button move your bird, then its body moves
+sub You:
+  Lft = 0
+  Rgt = 0
+  if joypad(1).left then Lft = 1
+  if joypad(2).left then Lft = 1
+  if joypad(1).right then Rgt = 1
+  if joypad(2).right then Rgt = 1
+  if Lft = 1 then Oface[0] = 1
+  if Rgt = 1 then Oface[0] = 0
+  if Press = 1 then
+    ' a flap: a kick up, and a push the way the stick points
+    T = Ovy[0] - 36
+    if T < -48 then T = -48
+    Ovy[0] = T
+    T = Ovx[0]
+    if Lft = 1 then T = T - 10
+    if Rgt = 1 then T = T + 10
+    if T < -40 then T = -40
+    if T > 40 then T = 40
+    Ovx[0] = T
+    Ost[0] = 1
+    Ofl[0] = 6
+    play sound SndFlap
+  else
+    if Ost[0] = 2 then
+      ' walking on a ledge: toward 20 the way the stick points, or a stop
+      T2 = 0
+      if Lft = 1 then T2 = -20
+      if Rgt = 1 then T2 = 20
+      T = Ovx[0]
+      if T < T2 then
+        T = T + 4
+        if T > T2 then T = T2
+      end if
+      if T > T2 then
+        T = T - 4
+        if T < T2 then T = T2
+      end if
+      Ovx[0] = T
+    end if
+  end if
+  Bi = 0
+  Body
+  return
+end sub
+
+' Body: body Bi moves one frame: gravity, the move, the ceiling, the
+' ledges (landing on a top, a bump under one), wrapping round the sides
+sub Body:
+  if Ofl[Bi] > 0 then dec Ofl[Bi]
+  W16 = Oy[Bi] >> 4
+  ' (the belly, row 11 of the sprite, lands: the wing above it may
+  ' overlap a ledge, the bird stands on its feet and belly)
+  Fy = W16
+  Fy = Fy + 11
+  if Ost[Bi] = 2 then
+    ' standing: still over the ledge?
+    W16 = Ox[Bi] >> 4
+    Fx = W16
+    Fx = Fx + 8
+    Li = OnL
+    if Fx < LedX0[Li] then Ost[Bi] = 1
+    if Fx > LedX1[Li] then Ost[Bi] = 1
+  end if
+  if Ost[Bi] = 1 then
+    T = Ovy[Bi] + 2
+    if T > 48 then T = 48
+    Ovy[Bi] = T
+  end if
+  W16 = Ox[Bi] + Ovx[Bi]
+  Ox[Bi] = W16 & 4095
+  ' the screen wraps top to bottom (192 rows)
+  T = Oy[Bi] + Ovy[Bi]
+  if T < 0 then T = T + 3072
+  if T >= 3072 then T = T - 3072
+  Oy[Bi] = T
+  if Ost[Bi] <> 1 then return
+  W16 = Ox[Bi] >> 4
+  Fx = W16
+  Fx = Fx + 8
+  W16 = Oy[Bi] >> 4
+  Ny = W16
+  Ny = Ny + 11
+  ' falling (or still): a landing; going up: a bump (the head, 2 pixels
+  ' into the sprite, meets a ledge's underside, 3 pixels below its top).
+  ' The rows are tested first, the cheaper test.
+  T = Ovy[Bi]
+  if T >= 0 then
+    for Li = 0 to 7
+      V = LedY[Li]
+      if Ny >= V then
+        if Fy <= V then
+          if Fx >= LedX0[Li] then
+            if Fx <= LedX1[Li] then
+              ' landed on top
+              W16 = V - 11
+              W16 = W16 << 4
+              Oy[Bi] = W16
+              Ovy[Bi] = 0
+              if Bi = 0 then
+                Ost[0] = 2
+                OnL = Li
+                Landed
+              else
+                ' a drone springs off
+                Ovy[Bi] = -30
+              end if
+              return
+            end if
+          end if
+        end if
+      end if
+    next
+  else
+    ' (the back, row 8, bumps a ledge's underside; the wing tip may pass)
+    K = Fy - 3
+    N = Ny - 3
+    for Li = 0 to 7
+      W = LedY[Li] + 3
+      if K >= W then
+        if N < W then
+          if Fx >= LedX0[Li] then
+            if Fx <= LedX1[Li] then
+              W16 = W - 8
+              W16 = W16 << 4
+              Oy[Bi] = W16
+              Ovy[Bi] = 0
+              if Bi = 0 then play sound SndBonk
+              return
+            end if
+          end if
+        end if
+      end if
+    next
+  end if
+  return
+end sub
+
+' Landed: on the targ pad? (your foot within the pad's two tiles)
+sub Landed:
+  if OnL <> Tg then return
+  ' energy: 40 and 10 a level up
+  W16 = Level + 3
+  Score = Score + W16
+  ShowScore
+  inc Lands
+  inc Targs
+  if Lands < 8 then ShowTargs
+  Ev = Ev | 2
+  play sound SndTarg
+  ' the pad moves to another ledge
+  HideTarg
+  Rnd16
+  V = Rs & 7
+  if V = Tg then
+    inc V
+    V = V & 7
+  end if
+  Tg = V
+  ShowTarg
+  return
+end sub
+
+' Drones: each drone flies at you (or waits to come back, or puffs)
+sub Drones:
+  for Bi = 1 to 4
+    if Ost[Bi] = 0 then
+      if Bi <= Nd then
+        if Ot[Bi] > 0 then
+          dec Ot[Bi]
+        else
+          ' in from the top, at a random place
+          Rnd16
+          W16 = Rs & 4095
+          Ox[Bi] = W16
+          Oy[Bi] = 0
+          Ovy[Bi] = 0
+          Ovx[Bi] = 0
+          Ost[Bi] = 1
+        end if
+      end if
+    else
+      if Ost[Bi] = 3 then
+        dec Ot[Bi]
+        if Ot[Bi] = 0 then
+          Ost[Bi] = 0
+          Ot[Bi] = 120
+        end if
+      else
+        Brain
+        Body
+      end if
+    end if
+  next
+  return
+end sub
+
+' Brain: drone Bi flaps to get above you, and heads your way
+sub Brain:
+  W16 = Oy[0] >> 4
+  Ay = W16
+  W16 = Oy[Bi] >> 4
+  Dy = W16
+  Rnd16
+  V = Rs & 15
+  K = 0
+  ' below you (or near the lava): flap more often
+  if Dy + 6 > Ay then
+    if V < 6 then K = 1
+  else
+    if V = 0 then K = 1
+  end if
+  if Ovy[Bi] < -20 then K = 0
+  if K = 1 then
+    T = Ovy[Bi] - 30
+    if T < -40 then T = -40
+    Ovy[Bi] = T
+    Ofl[Bi] = 6
+    ' toward you, the short way round
+    W16 = Ox[0] >> 4
+    Ax = W16
+    W16 = Ox[Bi] >> 4
+    Dx = W16
+    V = Ax - Dx
+    T = Dsp
+    if V >= 128 then T = 0 - T
+    Ovx[Bi] = T
+    Oface[Bi] = 0
+    if T < 0 then Oface[Bi] = 1
+  end if
+  return
+end sub
+
+' Meet: your bird against each flying drone. Higher by more than 4
+' pixels wins; at the same height both bounce off.
+sub Meet:
+  if Ost[0] = 3 then return
+  W16 = Ox[0] >> 4
+  Ax = W16
+  W16 = Oy[0] >> 4
+  Ay = W16
+  for Bi = 1 to 4
+    if Ost[Bi] = 1 then
+      W16 = Ox[Bi] >> 4
+      Dx = W16
+      W16 = Oy[Bi] >> 4
+      Dy = W16
+      V = Ax - Dx
+      if V >= 128 then V = 0 - V
+      W = Ay - Dy
+      if W >= 128 then W = 0 - W
+      if V < 12 then
+        if W < 12 then
+          V = Ay + 4
+          W = Dy + 4
+          if V < Dy then
+            ' from above: the drone is beaten
+            Ost[Bi] = 3
+            Ot[Bi] = 20
+            W16 = Level + 4
+            Score = Score + W16
+            ShowScore
+            inc Kills
+            Ev = Ev | 1
+            play sound SndPuff
+            play sound SndHit
+          else
+            if W < Ay then
+              if Inv = 0 then
+                LoseBird
+                return
+              end if
+            else
+              ' the same height: both bounce off
+              T = Ovx[0]
+              T2 = Ovx[Bi]
+              Ovx[0] = T2
+              Ovx[Bi] = T
+              if Ax < Dx then
+                T = Ovx[0]
+                if T > -12 then Ovx[0] = -12
+                T = Ovx[Bi]
+                if T < 12 then Ovx[Bi] = 12
+              else
+                T = Ovx[0]
+                if T < 12 then Ovx[0] = 12
+                T = Ovx[Bi]
+                if T > -12 then Ovx[Bi] = -12
+              end if
+              W16 = Ox[0] + Ovx[0]
+              Ox[0] = W16 & 4095
+              W16 = Ox[Bi] + Ovx[Bi]
+              Ox[Bi] = W16 & 4095
+              Ev = Ev | 8
+              play sound SndBonk
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub LoseBird:
+  Ost[0] = 3
+  Dead = 60
+  dec Lives
+  Ev = Ev | 4
+  ShowLives
+  play sound SndLost
+  return
+end sub
+
+' DrawAll: your bird (sprites 0-1), the drones (2-9, their order turning
+' every frame so a crowded line flickers instead of losing one for good)
+sub DrawAll:
+  W16 = Ox[0] >> 4
+  X = W16
+  W16 = Oy[0] >> 4
+  Y = W16
+  if Ost[0] = 3 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to Y,X,SPuff,15
+  else
+    K = SBeakr
+    N = SUpr
+    if Ofl[0] > 0 then N = SDnr
+    if Ost[0] = 2 then N = SDnr
+    if Oface[0] = 1 then
+      K = SBeakl
+      N = N + 4
+    end if
+    V = Inv & 4
+    if V = 0 then
+      set sprite 0 to Y,X,K,11
+      set sprite 1 to Y,X,N,15
+    else
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+    end if
+  end if
+  for Bi = 1 to 4
+    J = Bi + Tick
+    J = J & 3
+    J = J * 2
+    J = J + 2
+    K = J + 1
+    if Ost[Bi] = 0 then
+      set sprite J to 192,0,0,0
+      set sprite K to 192,0,0,0
+    else
+      W16 = Ox[Bi] >> 4
+      X = W16
+      W16 = Oy[Bi] >> 4
+      Y = W16
+      if Ost[Bi] = 3 then
+        set sprite J to 192,0,0,0
+        set sprite K to Y,X,SPuff,15
+      else
+        N = SUpr
+        if Ofl[Bi] > 0 then N = SDnr
+        W = SBeakr
+        if Oface[Bi] = 1 then
+          N = N + 4
+          W = SBeakl
+        end if
+        set sprite J to Y,X,W,11
+        set sprite K to Y,X,N,14
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the targ ledge: drawn with the targ tiles (the others plain)
+sub ShowTarg:
+  Li = Tg
+  K = TTargl
+  DrawLedge
+  return
+end sub
+
+sub HideTarg:
+  Li = Tg
+  K = TLedgel
+  DrawLedge
+  return
+end sub
+
+' DrawLedge: ledge Li in tiles K (end), K+1, K+2 (middle), K+3 (end)
+sub DrawLedge:
+  X = LedC0[Li]
+  Y = LedR[Li]
+  put char K at X,Y
+  inc X
+  V = K + 1
+  put char V at X,Y
+  inc X
+  V = K + 2
+  put char V at X,Y
+  inc X
+  V = K + 3
+  put char V at X,Y
+  return
+end sub
+
+' BlinkTarg: the targ ledge changes from gold to brown and back once a
+' second (half and half; no fast flashing)
+sub BlinkTarg:
+  V = Tick & 63
+  if V = 0 then
+    copy TargOn count 32 to vram.color + 1056
+  end if
+  if V = 32 then
+    copy TargOff count 32 to vram.color + 1056
+  end if
+  return
+end sub
+
+sub Rnd16:
+  T16 = Rs << 7
+  Rs = Rs ^ T16
+  T16 = Rs >> 9
+  Rs = Rs ^ T16
+  T16 = Rs << 8
+  Rs = Rs ^ T16
+  return
+end sub
+
+sub DrawField:
+  Grey = 1
+  NewScreen
+  ShowField
+  return
+end sub
+
+' ShowField: the sky (rows 0-21 black), the stars, the ledges, the
+' status band (row 22, grey)
+sub ShowField:
+  for J = 0 to 21
+    fill TSky count 32 at 0,J
+  next
+  for J = 1 to 30
+    Rnd16
+    V = Rs & 31
+    if V < 2 then V = 2
+    if V > 29 then V = 29
+    W16 = Rs >> 8
+    W = W16
+    W = W & 15
+    W = W + 2
+    K = J & 1
+    K = K + TStar1
+    put char K at V,W
+  next
+  for Li = 0 to 7
+    K = TLedgel
+    if Li = Tg then K = TTargl
+    DrawLedge
+  next
+  print at 0,22, "                                "
+  ShowHud
+  copy TargOn count 32 to vram.color + 1056
+  return
+end sub
+
+' the status band (as the C64's, shortened to fit 28 columns):
+' SC 000000 TIME 060 TARG 8 B4
+sub ShowHud:
+  print at 2,22, "SC"
+  ShowScore
+  print at 12,22, "TIME"
+  ShowTime
+  print at 21,22, "TARG"
+  ShowTargs
+  print at 28,22, "B"
+  ShowLives
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 5,22, digits$(NumU, 5)
+  print at 10,22, "0"
+  return
+end sub
+
+sub ShowTime:
+  NumU = Secs
+  print at 17,22, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowTargs:
+  V = 8 - Lands
+  NumU = V
+  print at 26,22, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 29,22, digits$(NumU, 1)
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  ' the font's colours: black on grey in play (the status band), white
+  ' on black on the other pages (this fills the whole colour table, so
+  ' it comes before the tiles' colours)
+  if Grey = 1 then
+    fill mode 2 text color with $1E
+  else
+    fill mode 2 text color with $F0
+  end if
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  Grey = 0
+  NewScreen
+  ' the ledges, and FLAP! in the middle, as the C64 game's title
+  Tg = 7
+  for Li = 0 to 7
+    K = TLedgel
+    if Li = 7 then K = TTargl
+    DrawLedge
+  next
+  copy TargOn count 32 to vram.color + 1056
+  print at 13,5, "FLAP!"
+  print at 5,9, "BEAT DRONES FROM ABOVE"
+  print at 4,10, "LAND ON THE GLOWING TARG"
+  print at 12,13, "START"
+  print at 12,14, "CREDITS"
+  print at 4,21, "BUTTON FLAPS, STICK STEERS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 450
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  Rnd16
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  if Menu = 0 then
+    print at 10,13, ">"
+    print at 10,14, " "
+  else
+    print at 10,13, " "
+    print at 10,14, ">"
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  Grey = 0
+  NewScreen
+  print at 12,2, "F L A P !"
+  print at 4,4, "BASED ON FLAP! BY ANDREW"
+  print at 4,5, "VAJOCZKI, AHOY! AUGUST"
+  print at 4,6, "1986 (COMMODORE 64)."
+  print at 4,8, "MADE FOR THE COLECOVISION"
+  print at 4,9, "BY CLAUDE (AN AI MADE BY"
+  print at 4,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 4,11, "2026, IN AMY BY AMY"
+  print at 4,12, "BIENVENU."
+  print at 4,14, "MUSIC (ORIGINAL):"
+  print at 4,15, "WINGS OF ARION,"
+  print at 4,16, "NIGHT THERMALS"
+  print at 8,20, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' the ledges (as the C64 screen's, scaled into columns 2-29): 0 the top,
+' 1-2 the second row, 3-4 the far ones, 5 right, 6 lower, 7 the bottom.
+' LedY the top line's pixel row, LedX0 LedX1 the foot's range (pixels),
+' LedR LedC0 the tile row and first column (4 tiles each)
+data LedY bytes
+  29, 61, 61, 93, 93, 117, 133, 157
+end data
+data LedX0 bytes
+  108, 44, 124, 28, 188, 180, 92, 76
+end data
+data LedX1 bytes
+  147, 83, 163, 67, 227, 219, 131, 115
+end data
+data LedR bytes
+  3, 7, 7, 11, 11, 14, 16, 19
+end data
+data LedC0 bytes
+  14, 6, 16, 4, 24, 23, 12, 10
+end data
+data TargOn bytes
+  $01,$01,$01,$01,$01,$0B,$1A,$A1
+  $01,$01,$01,$01,$01,$0B,$0A,$0A
+  $01,$01,$01,$01,$01,$0B,$0A,$0A
+  $01,$01,$01,$01,$01,$0B,$1A,$A1
+end data
+data TargOff bytes
+  $01,$01,$01,$01,$01,$0A,$1A,$A1
+  $01,$01,$01,$01,$01,$0A,$0A,$0A
+  $01,$01,$01,$01,$01,$0A,$0A,$0A
+  $01,$01,$01,$01,$01,$0A,$1A,$A1
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$C0,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$C0
+  $00,$00,$00,$00,$00,$00,$C0,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$0F,$15,$51
+  $01,$01,$01,$01,$01,$0F,$05,$05
+  $01,$01,$01,$01,$01,$0F,$05,$05
+  $01,$01,$01,$01,$01,$0F,$15,$51
+  $01,$01,$01,$01,$01,$0B,$1A,$A1
+  $01,$01,$01,$01,$01,$0B,$0A,$0A
+  $01,$01,$01,$01,$01,$0B,$0A,$0A
+  $01,$01,$01,$01,$01,$0B,$1A,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$02,$03,$03,$03,$07,$07,$0F,$1F,$FF,$3F,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$C0,$E0,$E0,$C0,$E0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$03,$07,$07,$03,$07,$0F,$00,$00,$00,$00,$00
+  $00,$40,$C0,$C0,$C0,$E0,$E0,$F0,$F8,$FF,$FC,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$3F,$0F,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F0,$E0,$C0,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$0F,$07,$03,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FC,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$04,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$22,$08,$40,$03,$14,$04,$24,$03,$40,$08,$22,$04,$00,$00
+  $00,$20,$44,$10,$00,$C2,$20,$24,$20,$C0,$00,$12,$40,$20,$00,$00
+end data
+
+asm {
+FlPuff:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$04,$00,$00,$76,$05,$10
+FlLost:
+    db $00,$00,$05,$04,$00,$00,$26,$08,$00,$00,$47,$0A,$00,$00,$77,$0E,$10
+FlFlap:
+    db $40,$FC,$31,$01,$40,$6D,$52,$01,$50
+FlBonk:
+    db $40,$F9,$22,$02,$40,$F9,$53,$03,$50
+FlTarg:
+    db $80,$6B,$10,$03,$80,$55,$10,$03,$80,$47,$30,$06,$90
+FlHit:
+    db $80,$47,$10,$02,$80,$5F,$20,$02,$80,$8F,$40,$03,$90
+FlLevel:
+    db $C0,$D6,$10,$05,$C0,$AA,$10,$05,$C0,$8F,$10,$05,$C0,$6B,$10,$05,$C0,$55,$20,$0E,$D0
+FlTick:
+    db $C0,$40,$30,$02,$D0
+
+FlSoundTable:
+    dw FlTuneMel,$702B
+    dw FlTuneBass,$7035
+    dw FlSkyMel,$702B
+    dw FlSkyBass,$7035
+    dw FlPuff,$703F
+    dw FlLost,$703F
+    dw FlFlap,$7049
+    dw FlBonk,$7049
+    dw FlTarg,$7053
+    dw FlHit,$7053
+    dw FlLevel,$705D
+    dw FlTick,$705D
+; Wings of Arion (original)
+; Tiny Sound, 7 frames per step
+FlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$21,$01,$01,$01,$1C,$01,$21,$01,$25,$01,$01,$01
+    db $23,$01,$21,$01,$1E,$01,$01,$01,$21,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$01,$01,$28,$01,$01,$01,$25,$01,$21,$01,$26,$01,$01,$01
+    db $23,$01,$20,$01,$21,$01,$23,$01,$25,$01,$28,$01,$2D,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+FlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Night Thermals (original)
+; Tiny Sound, 8 frames per step
+FlSkyMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$23,$01,$01,$26,$01,$01,$2A,$01,$28,$01,$26,$01
+    db $25,$01,$01,$01,$23,$01,$01,$26,$01,$01,$2A,$01,$2D,$01,$2A,$01
+    db $28,$01,$01,$01,$2B,$01,$01,$2A,$01,$01,$28,$01,$26,$01,$25,$01
+    db $23,$01,$01,$01,$21,$01,$25,$01,$28,$01,$26,$01,$25,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+FlSkyBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$A0,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01
+    db $FF
+}
