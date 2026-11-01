@@ -537,8 +537,7 @@ binary `+`/`-`, fitting integer literals, and `inc`/`dec` through complete recor
 overlay-qualified names.
 Qualified byte fields are also valid where the regular typed operand pipeline is used,
 including canonical `Field = get char at X,Y`, `play sound Field`, `stop sound Field`,
-and canonical typed printing such as `print Field at X,Y`. Legacy `get ... into Field`
-is accepted for migration but still reports the canonical assignment form.
+and canonical typed printing such as `print Field at X,Y`.
 
 Amy currently supports one overlay group per program. Raw overlays provide allocation,
 qualified access, aliases, and accurate RAM accounting. The program must use only the
@@ -1339,7 +1338,8 @@ qualified. It therefore allocates no hidden alias pointer, but repeated field ac
 may recompute the indexed address. Use `for each` for clarity and measure very hot loops.
 
 Qualified primitive `u8` array fields can also act as buffers for VRAM reads, including
-`Buffer = get count N at X,Y`, `get frame ... into Buffer`, and `read vram ... into Buffer`.
+`Buffer = get count N at X,Y`, `Buffer = get frame size W,H at X,Y`, and
+`copy vram.name + Offset count N to Buffer`.
 For constant frame dimensions, the compiler verifies that the buffer contains at least
 `width * height` bytes and rejects undersized destinations before assembly.
 
@@ -2524,7 +2524,7 @@ For `put Name at X,Y` and `put Name centered at Y`, `Name` must be a known-lengt
 `u8[]` buffer or ROM `data` block. The compiler infers the count; centered uses
 `ceil((32 - length) / 2)`.
 
-Removed forms: `put tile`, `put chars Name at X,Y count N`, `put at X,Y Name count N`, `get char at X,Y into Var`, `read tile at X,Y into Var`. See [amy-removed-forms.md](amy-removed-forms.md).
+Historical syntax is catalogued separately in [amy-removed-forms.md](amy-removed-forms.md).
 
 ---
 
