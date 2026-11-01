@@ -14,6 +14,7 @@ u8 Enabled = 0
 sub start:
   text screen
   cls with 0
+  if Enabled then copy CopySource count 4 to vram.name + 20
   if Enabled then put char 99 at 1,1
   if Enabled then fill 99 count 3 at 2,2
   if Enabled then vpoke vram.name + 3, 99
@@ -23,9 +24,12 @@ sub start:
   if Enabled then fill 66 count 3 at 5,5
   if Enabled then vpoke vram.name + 7, 67
   if Enabled then backdrop blue
+  if Enabled then copy CopySource count 4 to vram.name + 24
   screen on
   loop forever
 end sub
+
+data CopySource bytes 10,20,30,40
 `;
 
 function compile(sourcePath, asmPath, romPath, profile) {
@@ -36,12 +40,6 @@ function compile(sourcePath, asmPath, romPath, profile) {
     child.on("error", rejectRun);
     child.on("exit", (code) => code === 0 ? resolveRun() : rejectRun(new Error(`Compilation failed: ${code}`)));
   });
-}
-
-function parseEqu(asm, name) {
-  const match = asm.match(new RegExp(`^${name}\\s+EQU\\s+\\$([0-9A-Fa-f]+)`, "m"));
-  assert.ok(match, `Missing ${name}`);
-  return Number.parseInt(match[1], 16);
 }
 
 const outputDir = await mkdtemp(join(tmpdir(), "amy-inline-simple-"));
@@ -58,6 +56,7 @@ try {
     assert.match(asm, /call AMY_FILL_AT/i, `${profile}: inline fill`);
     assert.match(asm, /call AMY_VPOKE/i, `${profile}: inline vpoke`);
     assert.match(asm, /call WRITE_REGISTER/i, `${profile}: inline backdrop`);
+    assert.match(asm, /call WRITE_VRAM/i, `${profile}: inline copy`);
 
     const rom = new Uint8Array(romFile);
     rom[0] = 0x55;
@@ -75,6 +74,8 @@ try {
       assert.deepEqual([...core.readVram(nameBase + 165, 3)], [66, 66, 66], `${profile}: true fill ran`);
       assert.equal(core.readVram(nameBase + 7, 1)[0], 67, `${profile}: true vpoke ran`);
       assert.equal(core.getVdpRegisters()[7] & 0x0f, 4, `${profile}: true backdrop ran`);
+      assert.deepEqual([...core.readVram(nameBase + 20, 4)], [0, 0, 0, 0], `${profile}: false copy stayed skipped`);
+      assert.deepEqual([...core.readVram(nameBase + 24, 4)], [10, 20, 30, 40], `${profile}: true copy ran`);
     } finally {
       core.destroy();
     }

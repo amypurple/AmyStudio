@@ -1173,6 +1173,7 @@ if Hit then play sound 2
 if Announce then play voxpcm VoiceReady
 if DebugMark then vpoke vram.name + 31, 65
 if Alert then backdrop red
+if Refresh then copy Tiles count 32 to vram.pattern + 256
 ```
 
 The guarded statement uses the same compiler implementation as its standalone form.

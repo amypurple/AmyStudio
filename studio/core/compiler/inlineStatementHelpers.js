@@ -70,7 +70,7 @@ export function createInlineStatementCompiler(ctx) {
           : { ok: false, lines: [], log: displayResult.log };
       }
     }
-    if (/^(?:put\s+char|fill\s+|backdrop\b)/i.test(inlineStmt)) {
+    if (/^(?:put\s+char|fill\s+|backdrop\b|copy\s+)/i.test(inlineStmt)) {
       const vramTextResult = compileVramTextStatement?.(inlineStmt, rawLineText);
       if (vramTextResult?.handled) {
         return vramTextResult.ok
