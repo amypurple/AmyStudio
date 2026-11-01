@@ -1,0 +1,1622 @@
+cartridge "SACK RACE/JOHN FEDOR/1988"
+
+' SACK RACE
+' A ColecoVision game based on "Sack Race" programmed by John Fedor,
+' concept by Tom Gauthier and John Fedor, Ahoy! November 1988 (Commodore
+' 64, machine code). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/sack-ml.dis), the game is rebuilt for the
+' ColecoVision: groceries drawn as tiles that slide a pixel at a time (so
+' that seven on one counter never meet the four-sprites-a-line limit), a
+' moving belt, a bagger in layered sprites, sound effects.
+'
+' The game: groceries slide down four checkout counters from the right. You
+' are the bagger: walk along the counters and hop from one to another; every
+' grocery that reaches your sack is bagged (1 point). One that slides off
+' the end of a counter costs a bag (three bags each). Bag 14 x the level's
+' number of groceries to finish the level; the groceries come faster every
+' second level. Start at any level from 1 to 25 for a bonus of
+' 7 x L x (L - 1) points, paid when that first level is finished.
+'
+' From the original (orig/): four counters; seven grocery places on each;
+' five groceries (banana, can, cabbage, ketchup, fish); a try for a new
+' grocery every few passes, with a coin toss, on the counters in turn, and
+' 3 tries in 8 come to nothing; 14 x level groceries a level; a grocery steps
+' a pixel every 25 - min(level, 44) / 2 passes; the bagger walks left and
+' right (a pixel every 6 passes) and hops up and down a counter at a time,
+' round from the top to the bottom; a grocery is bagged when it is on the
+' bagger's counter and left of his sack (behind him too); one past the end
+' of a counter loses a bag and ends the turn (the level starts again with
+' all its groceries); a finished level goes on with the next one; starting
+' level 1-25 for each player and the bonus 7 x L x (L - 1); 1 point a
+' grocery; one or two players taking turns after every lost bag; scores of
+' seven digits.
+'
+' Liberties: the screen is redrawn for the 32-column screen (counters from
+' column 4, the bagger walks columns 3-20 as on the C64's proportions);
+' speeds are in sixtieths of a second (the C64's loop ran about 3.5 passes a
+' frame: a grocery moves 806 / (25 - min(L,44) / 2) / 256 pixels a frame,
+' the bagger 160 / 256); a new grocery waits until the last one on its
+' counter is 24 pixels along (the C64 piled them on top of each other); a
+' grocery can always be bagged at the end of the counter (on the C64 the can
+' and the bottle fell before the bagger at the far left could reach them,
+' a side effect of their sprite margins); a player with no bags left is
+' skipped (the C64 gave him more turns); the C64's SHIFT key pause is a
+' side button; a computer can play player 2; the lost grocery tumbles off
+' the counter and blinks at 2.5 times a second (the C64 flashed it 4 times a
+' second); belt, scanner and sounds are new.
+'
+' Controls: joystick only. Left and right walk, up and down hop to another
+' counter, a side button pauses. Player 1 uses controller 1, player 2
+' controller 2 (one player: either). On the title, up and down choose,
+' left, right or a button change the players, a button starts. On the
+' level page up and down choose the starting level, a button is ready.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TBanana00 = 128
+const TBanana01 = 129
+const TBanana02 = 130
+const TBanana10 = 131
+const TBanana11 = 132
+const TBanana12 = 133
+const TBanana20 = 134
+const TBanana21 = 135
+const TBanana22 = 136
+const TBanana30 = 137
+const TBanana31 = 138
+const TBanana32 = 139
+const TBanana40 = 140
+const TBanana41 = 141
+const TBanana42 = 142
+const TBanana50 = 143
+const TBanana51 = 144
+const TBanana52 = 145
+const TBanana60 = 146
+const TBanana61 = 147
+const TBanana62 = 148
+const TBanana70 = 149
+const TBanana71 = 150
+const TBanana72 = 151
+const TCan00 = 152
+const TCan01 = 153
+const TCan02 = 154
+const TCan10 = 155
+const TCan11 = 156
+const TCan12 = 157
+const TCan20 = 158
+const TCan21 = 159
+const TCan22 = 160
+const TCan30 = 161
+const TCan31 = 162
+const TCan32 = 163
+const TCan40 = 164
+const TCan41 = 165
+const TCan42 = 166
+const TCan50 = 167
+const TCan51 = 168
+const TCan52 = 169
+const TCan60 = 170
+const TCan61 = 171
+const TCan62 = 172
+const TCan70 = 173
+const TCan71 = 174
+const TCan72 = 175
+const TLettuce00 = 176
+const TLettuce01 = 177
+const TLettuce02 = 178
+const TLettuce10 = 179
+const TLettuce11 = 180
+const TLettuce12 = 181
+const TLettuce20 = 182
+const TLettuce21 = 183
+const TLettuce22 = 184
+const TLettuce30 = 185
+const TLettuce31 = 186
+const TLettuce32 = 187
+const TLettuce40 = 188
+const TLettuce41 = 189
+const TLettuce42 = 190
+const TLettuce50 = 191
+const TLettuce51 = 192
+const TLettuce52 = 193
+const TLettuce60 = 194
+const TLettuce61 = 195
+const TLettuce62 = 196
+const TLettuce70 = 197
+const TLettuce71 = 198
+const TLettuce72 = 199
+const TKetchup00 = 200
+const TKetchup01 = 201
+const TKetchup02 = 202
+const TKetchup10 = 203
+const TKetchup11 = 204
+const TKetchup12 = 205
+const TKetchup20 = 206
+const TKetchup21 = 207
+const TKetchup22 = 208
+const TKetchup30 = 209
+const TKetchup31 = 210
+const TKetchup32 = 211
+const TKetchup40 = 212
+const TKetchup41 = 213
+const TKetchup42 = 214
+const TKetchup50 = 215
+const TKetchup51 = 216
+const TKetchup52 = 217
+const TKetchup60 = 218
+const TKetchup61 = 219
+const TKetchup62 = 220
+const TKetchup70 = 221
+const TKetchup71 = 222
+const TKetchup72 = 223
+const TFish00 = 224
+const TFish01 = 225
+const TFish02 = 226
+const TFish10 = 227
+const TFish11 = 228
+const TFish12 = 229
+const TFish20 = 230
+const TFish21 = 231
+const TFish22 = 232
+const TFish30 = 233
+const TFish31 = 234
+const TFish32 = 235
+const TFish40 = 236
+const TFish41 = 237
+const TFish42 = 238
+const TFish50 = 239
+const TFish51 = 240
+const TFish52 = 241
+const TFish60 = 242
+const TFish61 = 243
+const TFish62 = 244
+const TFish70 = 245
+const TFish71 = 246
+const TFish72 = 247
+const TBelt = 248
+const TBeltl = 249
+const TFront = 250
+const TFrontl = 251
+const TScanl = 252
+const TScanr = 253
+const TBag = 254
+const SCap = 0
+const SFace = 4
+const SShirt = 8
+const SSack = 12
+const SLegs = 16
+const SLegs2 = 20
+const SGbanana = 24
+const SGcan = 28
+const SGlettuce = 32
+const SGketchup = 36
+const SGfish = 40
+const NTiles8 = 1016
+const SprBytes = 352
+const TGroc = 128
+const TitleRows = 16
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBeep = 3
+const SndBag = 4
+const SndRustle = 5
+const SndStep = 6
+const SndHop = 7
+const SndCrash = 8
+const SndFall = 9
+const SndClear = 10
+const SndTurn = 11
+const SndPause = 12
+const SndOver = 13
+const SndPick = 14
+const NSlot = 28
+const MinX = 24
+const MaxX = 160
+const MinP = 6144
+const MaxP = 40960
+const PSpd = 160
+const FallX = 34
+const EntryX = 248
+const RoomX = 224
+const Reach = 12
+const MsgRow = 13
+
+' sprite layers: 0 a grocery in the air, 1-3 the bagger's top (cap, face,
+' shirt), 4-5 his bottom (sack, trousers)
+data TopMeta metasprite layers 3
+  frame SCap,15, SFace,9, SShirt,2
+  frame SCap,15, SFace,9, SShirt,5
+end data
+data BotMeta metasprite layers 2
+  frame SSack,10, SLegs,4
+  frame SSack,10, SLegs2,4
+end data
+data GrocSpr bytes SGbanana,SGcan,SGlettuce,SGketchup,SGfish
+data GrocCol bytes 11,8,3,8,7
+data LaneBit bytes 1,2,4,8
+' the y of the bagger's top on each counter (one less than the screen row)
+data LaneY bytes 31,71,111,151
+
+data TilePat bytes
+  $00,$00,$80,$C0,$70,$C0,$E0,$07
+  $02,$06,$0C,$1C,$87,$F0,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$60,$38,$E0,$F0,$03
+  $01,$03,$06,$0E,$C3,$07,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$20,$30,$1C,$F0,$07,$01
+  $00,$01,$03,$07,$E1,$03,$07,$F0
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$18,$0E,$07,$03,$00
+  $00,$00,$01,$03,$F0,$01,$03,$07
+  $40,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$08,$0C,$07,$03,$01,$00
+  $00,$00,$00,$01,$07,$00,$01,$83
+  $20,$60,$C0,$C0,$80,$00,$00,$00
+  $00,$00,$04,$06,$03,$01,$00,$00
+  $00,$00,$00,$00,$83,$00,$00,$C1
+  $10,$30,$60,$E0,$C0,$80,$00,$00
+  $00,$00,$02,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$C1,$00,$80,$E0
+  $08,$18,$30,$70,$E0,$C0,$80,$00
+  $00,$00,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$80,$E0,$80,$C0,$F0
+  $04,$0C,$18,$38,$F0,$E0,$C0,$80
+  $E0,$C0,$C0,$C0,$C0,$C0,$C0,$E0
+  $07,$03,$03,$03,$03,$03,$03,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$E0,$E0,$E0,$E0,$E0,$E0,$F0
+  $03,$01,$01,$01,$01,$01,$01,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$F0,$F0,$F0,$F0,$F0,$F0,$07
+  $01,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$07,$07,$07,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $01,$03,$03,$03,$03,$03,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$C0,$C0,$C0,$C0,$C0,$80
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$E0,$E0,$E0,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$80
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$80,$80,$80,$80,$80,$80,$C0
+  $F0,$07,$07,$07,$07,$07,$07,$F0
+  $07,$E0,$C4,$81,$88,$C0,$E0,$07
+  $E0,$07,$23,$81,$11,$03,$07,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$F0,$E2,$C0,$C4,$E0,$F0,$03
+  $F0,$03,$11,$C0,$08,$01,$03,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$07,$0E,$E0,$E2,$F0,$07,$01
+  $07,$01,$08,$60,$04,$00,$01,$07
+  $00,$00,$00,$80,$80,$00,$00,$00
+  $00,$03,$07,$F0,$0E,$07,$03,$00
+  $03,$00,$84,$30,$02,$00,$00,$03
+  $00,$00,$80,$C0,$C0,$80,$00,$00
+  $00,$01,$03,$07,$07,$03,$01,$00
+  $81,$00,$42,$18,$81,$00,$00,$81
+  $00,$80,$C0,$E0,$E0,$C0,$80,$00
+  $00,$00,$01,$03,$03,$01,$00,$00
+  $C0,$00,$21,$0C,$40,$00,$00,$C0
+  $00,$C0,$E0,$F0,$70,$E0,$C0,$00
+  $00,$00,$00,$01,$01,$00,$00,$00
+  $E0,$80,$10,$06,$20,$00,$80,$E0
+  $80,$E0,$70,$07,$B8,$F0,$E0,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$C0,$88,$03,$10,$80,$C0,$F0
+  $C0,$F0,$B8,$03,$23,$07,$F0,$C0
+  $01,$01,$03,$07,$07,$07,$07,$03
+  $80,$80,$C0,$E0,$E0,$E0,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$03,$03,$03,$01
+  $C0,$C0,$E0,$F0,$F0,$F0,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$01,$00
+  $60,$60,$F0,$07,$07,$07,$07,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $30,$30,$87,$03,$03,$03,$03,$87
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$C3,$81,$81,$81,$81,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$0C,$E1,$C0,$C0,$C0,$C0,$E1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $06,$06,$F0,$E0,$E0,$E0,$E0,$F0
+  $00,$00,$00,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$07,$F0,$F0,$F0,$F0,$07
+  $00,$00,$80,$C0,$C0,$C0,$C0,$80
+  $00,$E0,$80,$20,$00,$80,$E0,$00
+  $00,$81,$1C,$01,$01,$1C,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$F0,$C0,$90,$80,$C0,$F0,$00
+  $00,$C0,$0E,$00,$00,$0E,$C0,$00
+  $00,$80,$80,$00,$00,$80,$80,$00
+  $00,$07,$E0,$C8,$C0,$E0,$07,$00
+  $00,$E0,$07,$00,$00,$07,$E0,$00
+  $00,$40,$C0,$80,$80,$C0,$40,$00
+  $00,$03,$F0,$E4,$E0,$F0,$03,$00
+  $00,$F0,$03,$00,$00,$03,$F0,$00
+  $00,$20,$60,$C0,$C0,$60,$20,$00
+  $00,$01,$07,$0D,$F0,$07,$01,$00
+  $00,$07,$01,$00,$00,$01,$07,$00
+  $00,$10,$30,$E0,$E0,$30,$10,$00
+  $00,$00,$03,$06,$07,$03,$00,$00
+  $00,$03,$00,$00,$00,$00,$03,$00
+  $00,$08,$18,$F0,$F0,$18,$08,$00
+  $00,$00,$01,$03,$03,$01,$00,$00
+  $00,$81,$00,$80,$00,$00,$81,$00
+  $00,$04,$8C,$07,$07,$8C,$04,$00
+  $00,$00,$00,$01,$01,$00,$00,$00
+  $00,$C0,$00,$40,$00,$00,$C0,$00
+  $00,$02,$C6,$03,$03,$C6,$02,$00
+  $00,$22,$00,$00,$00,$00,$00,$00
+  $80,$11,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$80,$80,$80,$00,$C0,$00
+  $80,$80,$01,$01,$01,$00,$03,$00
+  $00,$81,$99,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $01,$01,$B1,$B1,$B1,$1B,$1B,$B1
+  $A1,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$1B,$1B,$B1
+  $A1,$B1,$B1,$B1,$1B,$1B,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$1B,$B1,$B1
+  $01,$B1,$B1,$B1,$1B,$1B,$1B,$B1
+  $A1,$B1,$01,$01,$01,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$01,$B1,$B1,$1B,$1B,$1B,$1B
+  $A1,$B1,$B1,$B1,$01,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$01,$01,$B1,$B1,$0B,$1B,$1B
+  $A1,$B1,$B1,$B1,$B1,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$B1,$01,$01
+  $01,$01,$01,$01,$B1,$0B,$0B,$1B
+  $A1,$B1,$B1,$B1,$B1,$B1,$01,$01
+  $01,$01,$B1,$B1,$B1,$01,$01,$01
+  $01,$01,$01,$01,$B1,$0B,$1B,$1B
+  $A1,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$01,$B1,$B1,$01,$01,$01,$01
+  $01,$01,$01,$B1,$B1,$1B,$1B,$1B
+  $A1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $1F,$1E,$18,$1F,$18,$18,$1E,$1E
+  $1F,$1E,$18,$1F,$18,$18,$1E,$1E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1E,$18,$1F,$18,$18,$1E,$1E
+  $1F,$1E,$18,$1F,$18,$18,$1E,$1E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$1E,$18,$1F,$18,$18,$1E,$E1
+  $1F,$0E,$08,$0F,$08,$08,$0E,$1E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$E1,$81,$F1,$81,$81,$E1,$E1
+  $0F,$0E,$08,$0F,$08,$08,$0E,$0E
+  $01,$E1,$81,$F1,$81,$81,$E1,$01
+  $F1,$E1,$81,$F1,$81,$81,$E1,$E1
+  $0F,$0E,$08,$0F,$08,$08,$0E,$0E
+  $F1,$E1,$81,$F1,$81,$81,$E1,$E1
+  $01,$E1,$81,$F1,$81,$81,$E1,$01
+  $0F,$0E,$08,$0F,$08,$08,$0E,$0E
+  $F1,$E1,$81,$F1,$81,$81,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$0E,$08,$0F,$08,$08,$0E,$1E
+  $F1,$E1,$81,$F1,$81,$81,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1E,$18,$1F,$18,$18,$1E,$1E
+  $F1,$1E,$18,$1F,$18,$18,$1E,$E1
+  $C1,$13,$13,$13,$13,$13,$1C,$C1
+  $C1,$13,$13,$13,$13,$13,$1C,$C1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $C1,$13,$13,$13,$13,$13,$1C,$C1
+  $C1,$13,$13,$13,$13,$13,$1C,$C1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $C1,$31,$31,$13,$13,$13,$C1,$C1
+  $1C,$13,$13,$13,$13,$03,$1C,$1C
+  $01,$01,$01,$31,$31,$01,$01,$01
+  $01,$31,$31,$13,$31,$31,$C1,$01
+  $1C,$03,$13,$13,$13,$03,$0C,$1C
+  $01,$01,$31,$31,$31,$31,$01,$01
+  $01,$31,$31,$31,$31,$31,$C1,$01
+  $1C,$03,$13,$13,$13,$03,$0C,$1C
+  $01,$31,$31,$31,$31,$31,$C1,$01
+  $01,$01,$31,$31,$31,$31,$01,$01
+  $1C,$03,$13,$13,$13,$03,$0C,$1C
+  $01,$31,$31,$31,$31,$31,$C1,$01
+  $01,$01,$01,$31,$31,$01,$01,$01
+  $1C,$13,$13,$13,$13,$03,$1C,$1C
+  $C1,$31,$31,$13,$31,$31,$C1,$C1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1C,$13,$13,$13,$13,$13,$1C,$1C
+  $C1,$31,$31,$13,$13,$13,$C1,$C1
+  $F1,$81,$81,$81,$F1,$81,$81,$81
+  $F1,$81,$81,$81,$F1,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$81,$81,$F1,$81,$81,$81
+  $F1,$81,$81,$81,$F1,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$81,$F1,$81,$81,$01
+  $F1,$81,$81,$18,$1F,$18,$18,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$81,$18,$18,$1F,$18,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$81,$18,$18,$1F,$18,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$81,$18,$18,$1F,$18,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$81,$18,$18,$1F,$18,$18,$18
+  $01,$01,$01,$81,$F1,$81,$81,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$81,$81,$18,$1F,$18,$18,$81
+  $01,$01,$81,$81,$F1,$81,$81,$81
+  $01,$15,$17,$17,$07,$17,$15,$01
+  $01,$51,$17,$17,$17,$17,$51,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$15,$17,$17,$17,$17,$15,$01
+  $01,$51,$17,$07,$07,$17,$51,$01
+  $01,$51,$71,$01,$01,$71,$51,$01
+  $01,$51,$17,$17,$17,$17,$51,$01
+  $01,$51,$17,$07,$07,$17,$51,$01
+  $01,$51,$71,$71,$71,$71,$51,$01
+  $01,$51,$17,$17,$17,$17,$51,$01
+  $01,$51,$17,$07,$07,$17,$51,$01
+  $01,$51,$71,$71,$71,$71,$51,$01
+  $01,$51,$71,$71,$17,$71,$51,$01
+  $01,$15,$17,$07,$07,$17,$15,$01
+  $01,$51,$71,$71,$71,$71,$51,$01
+  $01,$01,$71,$71,$71,$71,$01,$01
+  $01,$15,$07,$07,$07,$07,$15,$01
+  $01,$51,$71,$71,$71,$71,$51,$01
+  $01,$01,$71,$71,$71,$71,$01,$01
+  $01,$15,$07,$17,$07,$07,$15,$01
+  $01,$51,$71,$17,$17,$71,$51,$01
+  $01,$01,$01,$71,$71,$01,$01,$01
+  $01,$15,$07,$17,$07,$07,$15,$01
+  $01,$51,$71,$17,$17,$71,$51,$01
+  $0E,$4E,$04,$0F,$0A,$06,$0A,$0A
+  $1E,$4E,$14,$1F,$1A,$16,$1A,$1A
+  $0A,$0A,$06,$0A,$0A,$0A,$06,$01
+  $1A,$1A,$16,$1A,$1A,$1A,$16,$01
+  $E1,$E1,$1E,$EF,$EF,$0E,$18,$01
+  $E1,$E1,$1E,$EF,$EF,$0E,$18,$01
+  $01,$1B,$1A,$1A,$1A,$1A,$1A,$01
+end data
+data SpritePat bytes
+  $03,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$07,$0F,$0F
+  $C0,$E0,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$F0,$F0
+  $00,$00,$00,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$60,$E0,$C0,$00,$00,$00,$00,$00,$00,$06,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$0F,$1F,$1F,$18,$18,$08,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$F0,$F8,$FC,$1C,$1E,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$12,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$1E,$1E
+  $E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$F0,$F0
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$1C,$38,$38,$70,$F0,$F0
+  $E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$70,$38,$38,$1C,$1E,$0F
+  $00,$00,$80,$C0,$70,$3F,$1F,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$06,$0C,$1C,$78,$F0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $1F,$3F,$3F,$3F,$3F,$3F,$3F,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+  $F8,$FC,$FC,$FC,$FC,$FC,$FC,$F8,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$1F,$3B,$7E,$77,$3F,$1F,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F8,$DC,$7E,$EE,$FC,$F8,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$1F,$7F,$DF,$FF,$7F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$E3,$FE,$FE,$E3,$81,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data BeltAnim bytes
+  $00,$11,$00,$00,$00,$00,$00,$00
+  $00,$22,$00,$00,$00,$00,$00,$00
+  $00,$44,$00,$00,$00,$00,$00,$00
+  $00,$88,$00,$00,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  32,32,32,32,32,254,254,254,254,32,32,254,254,254,32,32,32,254,254,254,254,32,254,32,32,32,254,32,32,32,32,32
+  32,32,32,32,254,32,32,32,32,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,32,254,32,32,32,32,32,32
+  32,32,32,32,254,32,32,32,32,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,254,32,32,32,32,32,32,32
+  32,32,32,32,32,254,254,254,32,32,254,254,254,254,254,32,254,32,32,32,32,32,254,254,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,254,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,254,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,254,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,32,254,32,32,32,32,32,32
+  32,32,32,32,254,254,254,254,32,32,254,32,32,32,254,32,32,254,254,254,254,32,254,32,32,32,254,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,254,254,254,254,32,32,32,254,254,254,32,32,32,254,254,254,254,32,254,254,254,254,254,32,32,32,32,32
+  32,32,32,32,254,32,32,32,254,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,32,32,32,32,32,32,32,32
+  32,32,32,32,254,32,32,32,254,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,32,32,32,32,32,32,32,32
+  32,32,32,32,254,254,254,254,32,32,254,254,254,254,254,32,254,32,32,32,32,32,254,254,254,254,32,32,32,32,32,32
+  32,32,32,32,254,32,254,32,32,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,32,32,32,32,32,32,32,32
+  32,32,32,32,254,32,32,254,32,32,254,32,32,32,254,32,254,32,32,32,32,32,254,32,32,32,32,32,32,32,32,32
+  32,32,32,32,254,32,32,32,254,32,254,32,32,32,254,32,32,254,254,254,254,32,254,254,254,254,254,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+
+record Groc:
+  u8 Kind
+  u8 X
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Va = 0
+' players
+bcd digits 7 Score[2]
+bcd digits 7 Bonus[2]
+' a scalar copy for printing (an element with a variable index prints
+' wrongly: bugs/sack-print-bcd-var-index.alexis)
+bcd digits 7 Shown
+' and the sums go through scalars too (an element with a variable index
+' loses its carries: bugs/sack-bcd-element-carry.alexis)
+bcd digits 7 Sum
+u8 Lev[2]
+u8 Bags[2]
+u8 NPl = 1
+u8 Cpu = 0
+u8 Cur = 0
+u8 Over = 0
+' the turn
+Groc Gr[28]
+u8 RowB[32]
+u16 BagP = 0
+u8 BagX = 24
+u8 Lane = 0
+u8 Stride = 0
+u8 StrideC = 0
+u16 Acc = 0
+u16 Spd = 0
+u16 Left = 0
+u8 SpL = 3
+u8 Phase = 0
+u8 Dirty = 0
+u8 BeltF = 0
+u8 BeltD = 0
+u8 Paused = 0
+u8 Stp = 0
+' a caught grocery flying into the sack, a lost one falling
+u8 Fly = 0
+u8 FlyK = 0
+u8 FlyX = 0
+u8 FlyL = 0
+u8 MissK = 0
+u8 MissX = 0
+u8 MissL = 0
+' the computer's player
+u8 AiT = 0
+u8 AiL = 0
+u8 AiX = 24
+u8 AiHold = 0
+u8 AiWait = 0
+' input: J the stick of the player at play (1 up, 2 down, 4 left, 8
+' right, 16 a button), OldJ last pass's, the edges
+u8 J = 0
+u8 OldJ = 0
+u8 Press = 0
+u8 UpE = 0
+u8 DnE = 0
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Sel = 0
+u16 Caught = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Si = 0
+u8 Mi = 0
+u8 Li = 0
+u8 Ai = 0
+u8 Ti = 0
+u8 Bi = 0
+u8 Pi = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Free = 0
+u8 Far = 0
+u8 Base = 0
+u8 Kd = 0
+
+  tile screen
+  set sound table SrSoundTable areas 6
+  sprites 16x16
+  sprites stable 1 to 5
+  sprites flicker on
+  set sprite count 6
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 2 then goto title
+  LevelPages
+  NewGame
+
+turn_loop:
+  RunTurn
+  if Phase = 3 then
+    LevelUp
+  else
+    LoseBag
+  end if
+  if Over = 0 then goto turn_loop
+
+  ' the end: GAME OVER over the counters, then back to the title on a press
+  HideSprites
+  print at 6,8, "                    "
+  print at 6,MsgRow, "     GAME  OVER     "
+  print at 6,18, "                    "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one turn: the counters drawn, PLAYER n, then play until a grocery is lost
+' (Phase 2) or the level is finished (Phase 3)
+
+sub RunTurn:
+  DrawField
+  SetLevel
+  ShowStatus
+  N = Cur + 1
+  print at 8,MsgRow, "PLAYER " + digits$(N, 1)
+  print at 17,MsgRow, "LEVEL " + digits$(Lev[Cur], 2)
+  DrawSprites
+  ShowScreen
+  play sound SndTurn
+  for Ti = 1 to 100
+    Frame1
+  next
+  print at 8,MsgRow, "                    "
+  Phase = 1
+  OldJ = 31
+rt_loop:
+  Frame1
+  GetInput
+  PlayStep
+  DrawAll
+  if Phase = 1 then goto rt_loop
+  if Phase = 2 then
+    MissAnim
+  else
+    ClearAnim
+  end if
+  return
+end sub
+
+sub SetLevel:
+  for Si = 0 to NSlot - 1
+    Gr[Si].Kind = 0
+    Gr[Si].X = 0
+  next
+  ' 14 x level groceries; a step every 25 - min(L, 44) / 2 C64 passes
+  W16 = Lev[Cur]
+  Left = W16 * 14
+  V = Lev[Cur]
+  if V > 44 then V = 44
+  V = 25 - (V >> 1)
+  Spd = 806 / V
+  Acc = 0
+  BagP = MinP
+  BagX = MinX
+  Lane = 0
+  SpL = 3
+  Stride = 0
+  StrideC = 0
+  Paused = 0
+  Fly = 0
+  Dirty = 15
+  BeltF = 0
+  BeltD = 1
+  AiT = 0
+  AiHold = 0
+  AiWait = 0
+  Phase = 0
+  return
+end sub
+
+' one pass of play: pause, the bagger, bagging, the belt, new groceries
+sub PlayStep:
+  if Press = 1 then
+    Paused = Paused ^ 1
+    play sound SndPause
+    if Paused = 1 then
+      print at 12,MsgRow, "PAUSED"
+    else
+      print at 12,MsgRow, "      "
+    end if
+  end if
+  if Paused = 1 then return
+  MoveBagger
+  CatchCheck
+  MoveGroc
+  if Phase <> 1 then return
+  V = Tick & 1
+  if V = 0 then SpawnTry
+  if Left = 0 then
+    if CountGroc() = 0 then Phase = 3
+  end if
+  return
+end sub
+
+sub MoveBagger:
+  if (J & 4) <> 0 then
+    if BagP >= MinP + PSpd then
+      BagP = BagP - PSpd
+    else
+      BagP = MinP
+    end if
+  end if
+  if (J & 8) <> 0 then
+    if BagP + PSpd <= MaxP then
+      BagP = BagP + PSpd
+    else
+      BagP = MaxP
+    end if
+  end if
+  X = BagP >> 8
+  if X <> BagX then
+    inc StrideC
+    if StrideC >= 6 then
+      StrideC = 0
+      Stride = Stride ^ 1
+      if Stride = 1 then play sound SndStep
+    end if
+    BagX = X
+  end if
+  ' up and down hop a counter, round from the top to the bottom
+  if UpE = 1 then
+    Lane = (Lane + 3) & 3
+    play sound SndHop
+  end if
+  if DnE = 1 then
+    Lane = (Lane + 1) & 3
+    play sound SndHop
+  end if
+  return
+end sub
+
+' every grocery on the bagger's counter left of his sack is bagged
+sub CatchCheck:
+  Base = Lane * 7
+  N = BagX + Reach
+  for Ci = 0 to 6
+    K = Base + Ci
+    if Gr[K].Kind > 0 then
+      if Gr[K].X <= N then BagIt(K)
+    end if
+  next
+  return
+end sub
+
+sub BagIt(u8 Slot):
+  FlyK = Gr[Slot].Kind
+  FlyX = Gr[Slot].X
+  FlyL = Lane
+  Fly = 10
+  Gr[Slot].Kind = 0
+  Dirty = Dirty | LaneBit[Lane]
+  Sum = Score[Cur]
+  inc Sum
+  Score[Cur] = Sum
+  inc Caught
+  ' the computer stops to fold the bag
+  AiWait = 8
+  play sound SndBag
+  play sound SndRustle
+  return
+end sub
+
+' the belt: Spd / 256 pixel a pass for every grocery; one past the end
+' of its counter ends the turn
+sub MoveGroc:
+  Acc = Acc + Spd
+  Stp = Acc >> 8
+  Acc = Acc & 255
+  if Stp = 0 then return
+  BeltF = (BeltF + Stp) & 3
+  BeltD = 1
+  Dirty = 15
+  for Mi = 0 to NSlot - 1
+    if Gr[Mi].Kind > 0 then
+      Gr[Mi].X -= Stp
+      if Gr[Mi].X < FallX then
+        if Phase = 1 then
+          Phase = 2
+          MissK = Gr[Mi].Kind
+          MissX = Gr[Mi].X
+          MissL = LaneOf(Mi)
+          Gr[Mi].Kind = 0
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+function LaneOf(u8 Slot) as u8
+  return Slot / 7
+
+function CountGroc as u8
+  N = 0
+  for Ci = 0 to NSlot - 1
+    if Gr[Ci].Kind > 0 then inc N
+  next
+  return N
+
+' a try for a new grocery every second pass: a coin toss, the next counter
+' in turn, a free place there with room at the entry, then 3 kinds in 8
+' are nothing (as on the C64)
+sub SpawnTry:
+  Rand
+  if (Rs & 1) = 0 then return
+  SpL = (SpL + 1) & 3
+  Base = SpL * 7
+  Free = 255
+  Far = 0
+  for Si = 0 to 6
+    K = Base + Si
+    if Gr[K].Kind = 0 then
+      if Free = 255 then Free = K
+    else
+      if Gr[K].X > Far then Far = Gr[K].X
+    end if
+  next
+  if Free = 255 then return
+  if Far > RoomX then return
+  Kd = (Rs >> 1) & 7
+  if Kd >= 5 then return
+  if Left = 0 then return
+  dec Left
+  Gr[Free].Kind = Kd + 1
+  Gr[Free].X = EntryX
+  Dirty = Dirty | LaneBit[SpL]
+  play sound SndBeep
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input: the player at play's controller, or the computer
+
+sub GetInput:
+  ReadPads
+  if Cur = 1 then
+    if Cpu = 1 then
+      J = AiPad() | (Pads & 16)
+    else
+      J = PadOf(2)
+    end if
+  else
+    if NPl = 1 then
+      J = Pads
+    else
+      J = PadOf(1)
+    end if
+  end if
+  Press = 0
+  UpE = 0
+  DnE = 0
+  if (J & 16) <> 0 then
+    if (OldJ & 16) = 0 then Press = 1
+  end if
+  if (J & 1) <> 0 then
+    if (OldJ & 1) = 0 then UpE = 1
+  end if
+  if (J & 2) <> 0 then
+    if (OldJ & 2) = 0 then DnE = 1
+  end if
+  OldJ = J
+  return
+end sub
+
+' Pads: both controllers together (menus, one player)
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' the computer: every few passes it looks for the grocery nearest the end
+' of its counter, hops there and walks to meet it; it pauses a moment after
+' every bag
+function AiPad as u8
+  V = 0
+  if AiWait > 0 then
+    dec AiWait
+    return 0
+  end if
+  if AiT = 0 then
+    AiT = 12
+    Far = 255
+    AiL = Lane
+    for Ai = 0 to NSlot - 1
+      if Gr[Ai].Kind > 0 then
+        if Gr[Ai].X < Far then
+          Far = Gr[Ai].X
+          AiL = LaneOf(Ai)
+        end if
+      end if
+    next
+    if Far = 255 then
+      AiX = 40
+    else
+      if Far > MaxX + 40 then
+        AiX = MaxX
+      else
+        if Far > MinX + 40 then
+          AiX = Far - 40
+        else
+          AiX = MinX
+        end if
+      end if
+    end if
+  end if
+  dec AiT
+  if AiL <> Lane then
+    if AiHold = 0 then
+      N = (AiL - Lane) & 3
+      if N = 3 then
+        V = 1
+      else
+        V = 2
+      end if
+      AiHold = 1
+    else
+      AiHold = 0
+    end if
+  else
+    AiHold = 0
+  end if
+  if BagX + 2 < AiX then V = V | 8
+  if BagX > AiX + 2 then V = V | 4
+  return V
+
+' ---------------------------------------------------------------------------
+' the end of a turn
+
+' the lost grocery tumbles off the end of its counter and lies blinking
+sub MissAnim:
+  play sound SndCrash
+  play sound SndFall
+  X = MissX
+  Y = LaneY[MissL] + 16
+  for Ti = 0 to 159
+    if Ti < 24 then
+      if X > 8 then X = X - 1
+      Y = Y + (Ti >> 3)
+    end if
+    V = Ti % 24
+    if V < 12 then
+      set sprite 0 to Y,X,GrocSpr[MissK - 1],GrocCol[MissK - 1]
+    else
+      set sprite 0 to 207,0,0,0
+    end if
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub ClearAnim:
+  play sound SndClear
+  print at 7,MsgRow, "LEVEL " + digits$(Lev[Cur], 2) + " FINISHED"
+  for Ti = 1 to 120
+    Frame1
+    DrawSprites
+  next
+  return
+end sub
+
+' a finished level: the next one, and the starting bonus the first time
+sub LevelUp:
+  if Lev[Cur] < 99 then inc Lev[Cur]
+  Sum = Score[Cur]
+  Shown = Bonus[Cur]
+  Sum += Shown
+  Score[Cur] = Sum
+  Bonus[Cur] = 0
+  return
+end sub
+
+' a lost bag: the other player's turn if he has bags left
+sub LoseBag:
+  Pi = Cur
+  dec Bags[Pi]
+  if NPl = 2 then
+    N = 1 - Pi
+    if Bags[N] > 0 then
+      Cur = N
+      return
+    end if
+  end if
+  if Bags[Pi] = 0 then Over = 1
+  return
+end sub
+
+sub NewGame:
+  Score[0] = 0
+  Score[1] = 0
+  Bags[0] = 3
+  Bags[1] = 0
+  if NPl = 2 then Bags[1] = 3
+  Cur = 0
+  Over = 0
+  Caught = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawField:
+  NewScreen
+  for Li = 0 to 3
+    Y = Li * 5 + 4
+    put char TScanl at 27,Y
+    put char TScanr at 28,Y
+    Y = Y + 2
+    put char TBeltl at 4,Y
+    fill TBelt count 27 at 5,Y
+    Y = Y + 1
+    put char TFrontl at 4,Y
+    fill TFront count 27 at 5,Y
+  next
+  return
+end sub
+
+' rebuild the grocery row of counter L in RowB and copy it to the screen
+sub DrawRow(u8 L):
+  BuildRow(L)
+  Va = L * 160 + 160
+  copy RowB count 32 to vram.name + Va
+  return
+end sub
+
+sub BuildRow(u8 L):
+  fill array RowB with 32
+  Base = L * 7
+  for Bi = 0 to 6
+    K = Base + Bi
+    Kd = Gr[K].Kind
+    if Kd > 0 then
+      X = Gr[K].X
+      C = X >> 3
+      T = TGroc + (Kd - 1) * 24 + (X & 7) * 3
+      RowB[C] = T
+      if C < 31 then RowB[C + 1] = T + 1
+      if C < 30 then RowB[C + 2] = T + 2
+    end if
+  next
+  return
+end sub
+
+sub DrawAll:
+  if BeltD = 1 then
+    BeltD = 0
+    Va = BeltF * 8
+    copy BeltAnim + Va count 8 to vram.pattern + TBelt * 8
+    copy BeltAnim + Va count 8 to vram.pattern + 2048 + TBelt * 8
+    copy BeltAnim + Va count 8 to vram.pattern + 4096 + TBelt * 8
+  end if
+  for Li = 0 to 3
+    if (Dirty & LaneBit[Li]) <> 0 then DrawRow(Li)
+  next
+  Dirty = 0
+  DrawSprites
+  return
+end sub
+
+sub DrawSprites:
+  Y = LaneY[Lane]
+  set metasprite TopMeta frame Cur to Y,BagX using sprite 1
+  set metasprite BotMeta frame Stride to Y + 16,BagX using sprite 4
+  if Fly > 0 then
+    ' up out of the belt and into the sack
+    dec Fly
+    FlyArc
+  else
+    set sprite 0 to 207,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub FlyArc:
+  i16 Fx = 0
+  i16 Dx = 0
+  Fx = FlyX
+  Dx = BagX + 4
+  Dx = Dx - Fx
+  Dx = Dx * (10 - Fly)
+  ' Fx + Dx / 10 in one line is refused (bugs/sack-div-in-sum.alexis)
+  Dx = Dx / 10
+  Fx = Fx + Dx
+  T = Fly
+  if T > 5 then T = 10 - T
+  Y = LaneY[FlyL] + 8 - T * 3
+  X = Fx
+  set sprite 0 to Y,X,GrocSpr[FlyK - 1],GrocCol[FlyK - 1]
+  return
+end sub
+
+' rows 1 and 2: > at play, score, level, bags
+sub ShowStatus:
+  for Pi = 0 to 1
+    Y = Pi + 1
+    if Pi < NPl then
+      put char 32 at 2,Y
+      if Pi = Cur then put char 62 at 2,Y
+      if Pi = 1 and Cpu = 1 then
+        print at 3,Y, "CP"
+      else
+        N = Pi + 1
+        print at 3,Y, "P" + digits$(N, 1)
+      end if
+      Shown = Score[Pi]
+      print Shown at 6,Y
+      print at 14,Y, "LEVEL " + digits$(Lev[Pi], 2)
+      print at 23,Y, "BAGS"
+      for Bi = 0 to 2
+        if Bi < Bags[Pi] then
+          put char TBag at 27 + Bi,Y
+        else
+          put char 32 at 27 + Bi,Y
+        end if
+      next
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for K = 0 to 5
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: SACK RACE in paper bags, a counter with groceries sliding to
+' a bagger, START / PLAYERS / CREDITS, the tune once
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 512 to vram.name + 32
+  put char TScanl at 27,16
+  put char TScanr at 28,16
+  put char TBeltl at 4,18
+  fill TBelt count 27 at 5,18
+  put char TFrontl at 4,19
+  fill TFront count 27 at 5,19
+  for Si = 0 to 6
+    Gr[Si].Kind = 0
+  next
+  Cur = 0
+  Lane = 0
+  BagX = MinX
+  Stride = 0
+  Fly = 0
+  AiT = 40
+  Sel = 0
+  ShowMenu
+  DrawTitleSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  TitleDemo
+  N = Pads & (Pads ^ OldPads)
+  if (N & 1) <> 0 then
+    if Sel > 0 then dec Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 2) <> 0 then
+    if Sel < 2 then inc Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if Sel = 1 then
+    if (N & 28) <> 0 then
+      Cycle(NPl, 3)
+      play sound SndPick
+      ShowMenu
+    end if
+  else
+    if (N & 16) <> 0 then goto tp_done
+  end if
+  goto tp_loop
+tp_done:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  ' NPl 3 is player 2 played by the computer
+  Cpu = 0
+  if NPl = 3 then Cpu = 1
+  if Sel = 2 then
+    CreditsPage
+  end if
+  return
+end sub
+
+' V goes round 1 .. Top
+sub Cycle(ref u8 Vr, u8 Top):
+  inc Vr
+  if Vr > Top then Vr = 1
+  return
+end sub
+
+sub ShowMenu:
+  for Si = 0 to 2
+    put char 32 at 9,Si + 20
+  next
+  put char 62 at 9,Sel + 20
+  print at 11,20, "START"
+  select case NPl
+  case 1
+    print at 11,21, "ONE PLAYER     "
+  case 2
+    print at 11,21, "TWO PLAYERS    "
+  case else
+    print at 11,21, "ONE VS COMPUTER"
+  end select
+  print at 11,22, "CREDITS"
+  return
+end sub
+
+' groceries slide along the title's counter (row 17) to the bagger, a
+' pixel a frame, a new one every 48 frames
+sub TitleDemo:
+  for Si = 0 to 6
+    if Gr[Si].Kind > 0 then
+      Gr[Si].X -= 1
+      if Gr[Si].X <= MinX + Reach then
+        FlyK = Gr[Si].Kind
+        FlyX = Gr[Si].X
+        FlyL = 0
+        Fly = 10
+        Gr[Si].Kind = 0
+        play sound SndBag
+      end if
+    end if
+  next
+  inc AiT
+  if AiT >= 48 then
+    AiT = 0
+    for Si = 0 to 6
+      if Gr[Si].Kind = 0 then
+        Rand
+        Gr[Si].Kind = (Rs >> 3) % 5 + 1
+        Gr[Si].X = EntryX
+        exit for
+      end if
+    next
+  end if
+  BuildRow(0)
+  copy RowB count 32 to vram.name + 544
+  DrawTitleSprites
+  return
+end sub
+
+sub DrawTitleSprites:
+  set metasprite TopMeta frame 0 to 127,BagX using sprite 1
+  set metasprite BotMeta frame 0 to 143,BagX using sprite 4
+  if Fly > 0 then
+    dec Fly
+    T = Fly
+    if T > 5 then T = 10 - T
+    Y = 135 - T * 3
+    set sprite 0 to Y,FlyX,GrocSpr[FlyK - 1],GrocCol[FlyK - 1]
+  else
+    set sprite 0 to 207,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' the starting level of every player (the computer takes player 1's)
+sub LevelPages:
+  Lev[0] = 1
+  Lev[1] = 1
+  LevelPage(0)
+  if NPl = 2 then LevelPage(1)
+  if NPl = 3 then
+    Lev[1] = Lev[0]
+    Bonus[1] = Bonus[0]
+    NPl = 2
+  end if
+  return
+end sub
+
+sub LevelPage(u8 P):
+  NewScreen
+  N = P + 1
+  print at 12,4, "PLAYER " + digits$(N, 1)
+  print at 4,7, "CHOOSE THE STARTING LEVEL"
+  print at 10,10, "LEVEL"
+  print at 10,12, "BONUS"
+  print at 4,17, "UP OR DOWN: THE LEVEL"
+  print at 4,18, "BUTTON: READY"
+  put char TBag at 8,10
+  put char TBag at 23,10
+  ShowBonus(P)
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+  Ti = 0
+lp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  N = Pads & 3
+  if N = 0 then
+    Ti = 0
+  else
+    ' a step on the push, then every 8 frames while held
+    inc Ti
+    if Ti >= 24 then Ti = 16
+    if Ti = 1 or Ti = 16 then
+      if N = 1 then
+        if Lev[P] >= 25 then Lev[P] = 1 else inc Lev[P]
+      else
+        if Lev[P] <= 1 then Lev[P] = 25 else dec Lev[P]
+      end if
+      play sound SndPick
+      ShowBonus(P)
+    end if
+  end if
+  N = Pads & (Pads ^ OldPads)
+  if (N & 16) = 0 then goto lp_loop
+  play sound SndTurn
+  return
+end sub
+
+' the bonus for starting at level L: 7 x L x (L - 1), added up in BCD
+sub ShowBonus(u8 P):
+  ' worked out in a u16, then turned into BCD a decimal digit at a time
+  ' (`Sum += V` with a u8 V adds 1 V times: slow for 25 x 168)
+  Sum = 0
+  V = Lev[P] - 1
+  W16 = Lev[P] * 7
+  W16 = W16 * V
+  while W16 >= 1000
+    Sum += 1000
+    W16 = W16 - 1000
+  end while
+  while W16 >= 100
+    Sum += 100
+    W16 = W16 - 100
+  end while
+  while W16 >= 10
+    Sum += 10
+    W16 = W16 - 10
+  end while
+  V = W16
+  Sum += V
+  Bonus[P] = Sum
+  print at 16,10, digits$(Lev[P], 2)
+  print Sum at 16,12
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "SACK  RACE"
+  print at 2,5, "BASED ON SACK RACE,"
+  print at 2,6, "PROGRAMMED BY JOHN FEDOR,"
+  print at 2,7, "CONCEPT: TOM GAUTHIER AND"
+  print at 2,8, "JOHN FEDOR. AHOY! NOVEMBER"
+  print at 2,9, "1988 (COMMODORE 64)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: CHECKOUT SHUFFLE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SrBeep:
+    db $40,$39,$70,$03,$40,$39,$F0,$01,$50
+SrBag:
+    db $40,$8F,$20,$02,$40,$5F,$20,$02,$40,$47,$30,$03,$50
+SrRustle:
+    db $00,$00,$44,$02,$00,$00,$65,$03,$00,$00,$96,$02,$10
+SrStep:
+    db $00,$00,$96,$01,$00,$00,$F6,$01,$10
+SrHop:
+    db $40,$D6,$40,$02,$40,$AA,$50,$02,$50
+SrCrash:
+    db $00,$00,$14,$03,$00,$00,$25,$04,$00,$00,$46,$06,$00,$00,$77,$08,$10
+SrFall:
+    db $40,$7F,$20,$03,$40,$97,$20,$03,$40,$B4,$30,$03,$40,$D6,$30,$03,$40,$FE,$40,$04,$40,$53,$51,$06
+    db $50
+SrClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$04,$40,$6B,$20,$10
+    db $50
+SrTurn:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0C,$50
+SrPause:
+    db $40,$6B,$30,$03,$40,$8F,$40,$03,$50
+SrOver:
+    db $40,$AA,$10,$0A,$40,$BF,$20,$0A,$40,$D6,$20,$0A,$40,$E2,$20,$0A,$40,$1D,$31,$1E,$50
+SrPick:
+    db $40,$55,$40,$02,$50
+
+SrSoundTable:
+    dw SrTuneMel,$702B
+    dw SrTuneBass,$7035
+    dw SrBeep,$7049
+    dw SrBag,$7049
+    dw SrRustle,$703F
+    dw SrStep,$703F
+    dw SrHop,$7049
+    dw SrCrash,$703F
+    dw SrFall,$7049
+    dw SrClear,$7049
+    dw SrTurn,$7049
+    dw SrPause,$7049
+    dw SrOver,$7049
+    dw SrPick,$7049
+; Checkout Shuffle (original)
+; Tiny Sound, 8 frames per step
+SrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2B,$01,$26,$01,$28,$01,$26,$01
+    db $23,$01,$01,$01,$21,$01,$23,$01,$24,$01,$21,$01,$1A,$01,$01,$01
+    db $1E,$01,$21,$01,$23,$01,$26,$01,$2B,$01,$26,$01,$28,$01,$26,$01
+    db $23,$01,$1F,$01,$21,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$12,$01
+    db $0E,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$10,$01
+    db $0C,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}
+
+

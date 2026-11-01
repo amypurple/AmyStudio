@@ -1,0 +1,1496 @@
+cartridge "PIZZA BOY/C.M. BLAKEMORE/1987"
+
+' PIZZA BOY
+' A ColecoVision game based on "Pizza Boy" by Cleveland M. Blakemore,
+' Ahoy! December 1987 (Commodore 128 BASIC 7.0: SPRITE, MOVSPR, BUMP,
+' PLAY; orig/ has the program from the Ahoy! disk, its detokenized
+' listing, the play screen as text and the sprites and characters as
+' text). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' The story (from the disk's blurb): Pizza Boy has to find his way through
+' a neighbourhood full of speeding cars and rabid dogs to deliver his pies
+' before they get cold.
+'
+' Not a line-by-line port: the rules are the listing's, the game is built
+' for the ColecoVision: smooth 16 x 16 sprites moving every frame, a town
+' drawn in tiles (brick, stone, picket and hedge fences around the yards,
+' asphalt streets with centre lines, the pizza shop with its awning, oven,
+' cook and counter), sound effects and a title tune.
+'
+' From the original (lines 210-390, 600-690): the town of the C-128 screen
+' (the shop in the top-left block, eight fenced yards with the same gaps,
+' two streets across and two down, walled at the edges); a customer
+' waits in one of the eight yards, chosen at random; the pizza waits on
+' the shop counter, and a button at the counter takes it; touching the
+' customer with the pizza delivers it; the pizza cools from the moment it
+' is ready, slowly (5) while it waits and faster (9) once it is carried
+' (the listing's I = .005 and .009); a pizza gone cold costs a life; the
+' pizza boy shows how hot the pie is in five colours (yellow, light red,
+' red, brown, blue); the tip is 40 x heat / 10 dollars (4 x heat, up to
+' $24.00, the listing's CS = CS + 40 * (H * .1)), and the score is money
+' with cents (PRINT USING "###.##"); a dog trots left along the lower
+' street, a car drives right along the upper one, two cars drive down and
+' one up the side streets, all through the walls and round again; touching
+' any of them costs a life; three lives; after a lost life the boy is back
+' in the shop and a new customer waits; after the 5th, 10th and 15th
+' delivery two of the cars (the left street's down car and the upper
+' street's car) drive faster (the listing's GOSUB 390: sprites 3 and 5);
+' the fences stop the boy (BUMP(2) and MOVSPR back); GAME OVER, then the
+' title.
+'
+' Liberties: the speeds are set for a human player, not measured (the
+' C-128 original runs MOVSPR speeds 3 for the boy and 1 for the others,
+' in BASIC): the boy walks 1.25 pixels a frame, the others start at 7/16
+' and the faster cars gain 7/16 each time, up to 1.75 pixels a frame
+' (the original's ratio of 3 to 1, then 4/3 of the boy's speed); the
+' pizza is cold after 75 seconds waiting or 42 carried; the boy
+' walks while the stick is held (MOVSPR kept him going until a wall);
+' a button takes the pizza with the stick held too; the fences are judged
+' at the boy's feet (8 x 8), and he slides round a corner he is nearly
+' past; the cook bakes the pizza in two seconds while the boy is free to
+' walk (the original froze the game for its chimes and cook animation),
+' and the heat clock starts when the pizza is ready; the world stops for
+' the tip (counted into the score) and for a lost life; a thermometer
+' beside the lives shows the heat too, and the carried pizza box takes the
+' heat colour (the C-128 coloured the whole boy); a warning beep when the
+' pizza is nearly cold; a high score; the town is 28 columns wide and 22
+' rows high instead of 40 x 25 (the gaps are 2 or 3 cells wide).
+'
+' Controls: the joystick (either controller) walks; either button takes
+' the pizza at the counter. On the title, up and down choose, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given, again
+' after every `clear sprites`. Own xorshift random numbers. Nothing
+' flashes faster than 3 Hz (the knocked-down boy changes colour 5 times a
+' second, the cook and the oven fire every 8 frames are motion, not
+' flashes).
+
+const TAsph = 128
+const TDashl = 129
+const TDashr = 130
+const TDashh = 131
+const TGrass = 132
+const TFloor = 133
+const TOuter = 134
+const TBrick = 135
+const TStone = 136
+const TPicket = 137
+const THedge = 138
+const TFacade = 139
+const TPanel = 140
+const TAwning = 141
+const TOven0 = 142
+const TOven1 = 143
+const TOven1b = 144
+const TOven2 = 145
+const TCook0 = 146
+const TCook0b = 147
+const TCook1 = 148
+const TCupb = 149
+const TCnt0 = 150
+const TCnt1 = 151
+const TCnt1p = 152
+const TCnt2 = 153
+const TLife = 154
+const TTh0 = 155
+const TTh1 = 156
+const TTh2 = 157
+const TTh3 = 158
+const TTh4 = 159
+const TTh5 = 160
+const TTh6 = 161
+const TTh7 = 162
+const TTh8 = 163
+const TFlame = 164
+const TTtlP00 = 165
+const TTtlP01 = 166
+const TTtlP10 = 167
+const TTtlP11 = 168
+const TTtlI00 = 169
+const TTtlI01 = 170
+const TTtlI10 = 171
+const TTtlI11 = 172
+const TTtlZ00 = 173
+const TTtlZ01 = 174
+const TTtlZ10 = 175
+const TTtlZ11 = 176
+const TTtlA00 = 177
+const TTtlA01 = 178
+const TTtlA10 = 179
+const TTtlA11 = 180
+const TTtlB00 = 181
+const TTtlB01 = 182
+const TTtlB10 = 183
+const TTtlB11 = 184
+const TTtlO00 = 185
+const TTtlO01 = 186
+const TTtlO10 = 187
+const TTtlO11 = 188
+const TTtlY00 = 189
+const TTtlY01 = 190
+const TTtlY10 = 191
+const TTtlY11 = 192
+const TPz00 = 193
+const TPz01 = 194
+const TPz02 = 195
+const TPz03 = 196
+const TPz10 = 197
+const TPz11 = 198
+const TPz12 = 199
+const TPz13 = 200
+const TPz20 = 201
+const TPz21 = 202
+const TPz22 = 203
+const TPz23 = 204
+const TPz30 = 205
+const TPz31 = 206
+const TPz32 = 207
+const TPz33 = 208
+const SBoyra = 0
+const SBoyrb = 4
+const SBoyla = 8
+const SBoylb = 12
+const SBoxr = 16
+const SBoxl = 20
+const SSplat = 24
+const SCard = 28
+const SCaru = 32
+const SCarr = 36
+const SDoga = 40
+const SDogb = 44
+const SCusta = 48
+const SCustb = 52
+const NTiles8 = 648
+const SprBytes = 448
+const TSolid = 134
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCrash = 3
+const SndBark = 4
+const SndChime = 5
+const SndCook = 6
+const SndReady = 7
+const SndPick = 8
+const SndTip = 9
+const SndCoin = 10
+const SndCold = 11
+const SndWarn = 12
+const SndHorn = 13
+const SndStart = 14
+const SndOver = 15
+const NSpr = 8
+const PSpd = 20
+const HeatFull = 54000
+const HeatOne = 9000
+const HeatLow = 18000
+const DrainWait = 10
+const DrainCarry = 18
+const CookF = 120
+const DieF = 96
+const Faster = 7
+const StartX = 56
+const StartY = 32
+const MsgRow = 9
+const ThOff = TTh0 * 8
+
+' the customers' places in the eight yards (sprite corner)
+data CustX bytes
+  128,224,16,128,224,16,128,224
+end data
+data CustY bytes
+  8,8,96,96,96,168,168,168
+end data
+' the pizza's heat colours, cold to hot: light blue, dark red (brown), red,
+' light red, light yellow (the listing's 7, 10, 3, 11, 8)
+data HeatCol bytes
+  5,6,8,9,11
+end data
+' the dog, the left street's down car and up car, the upper street's car,
+' the right street's down car: direction (0 up, 1 right, 2 down, 3 left),
+' lane (the fixed coordinate), start, colour
+data MobDir bytes
+  3,2,0,1,2
+end data
+data MobLane bytes
+  132,89,103,68,176
+end data
+data MobCol bytes
+  10,8,5,7,3
+end data
+data MobT0 words
+  3200,0,2048,0,1024
+end data
+' each direction's hit box in its sprite: left, right, top, bottom
+data BoxL bytes
+  3,1,3,1
+end data
+data BoxR bytes
+  12,14,12,14
+end data
+data BoxT bytes
+  1,3,1,6
+end data
+data BoxB bytes
+  14,12,14,14
+end data
+
+record Mob:
+  u16 T
+  u16 Len
+  u8 Lane
+  u8 Dir
+  u8 Spd
+  u8 Col
+end record
+
+Mob Mobs[5]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 H16 = HeatFull
+u16 Tc16 = 0
+bcd digits 6 Score = 0
+bcd digits 6 Best = 0
+u8 SBuf[6]
+u8 Lives = 3
+u8 Del = 0
+u8 Over = 0
+u8 Ev = 0
+u8 Why = 0
+u8 Phase = 0
+' the boy: sprite corner, sub-pixel steps, facing (0 right, 1 left), walk
+' counter, carrying, the stick's directions this frame
+u8 Px = StartX
+u8 Py = StartY
+u8 Pacc = 0
+u8 Face = 0
+u8 Wk = 0
+u8 Carry = 0
+u8 Dx = 0
+u8 Dy = 0
+' the order: customer (0-7), cooking frames left, pizza on the counter,
+' heat level shown (0-4) and thermometer fill (0-32)
+u8 Cust = 0
+u8 Cook = 0
+u8 Ready = 0
+u8 Lvl = 4
+u8 ThFill = 32
+u8 WarnT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+' loop counters (never shared with the helpers)
+u8 Mi = 0
+u8 Si = 0
+u8 Gi = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+i16 Sc16 = 0
+
+  tile screen
+  set sound table PzSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Ev = 1 then DieSeq
+  if Ev = 2 then DeliverSeq
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER and the takings, then back to the title on a press
+  Phase = 4
+  if Score > Best then Best = Score
+  mute all
+  print at 2,MsgRow, "                            "
+  print at 10,MsgRow, "GAME  OVER"
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the town
+
+' 1 when the pixel is on a fence, a wall or the shop (the map in ROM)
+function Wall(u8 Wx, u8 Wy) as u8
+  u16 Ix = 0
+  Ix = (Wy >> 3) * 32 + (Wx >> 3)
+  if MapT[Ix] >= TSolid then return 1
+  return 0
+
+' 1 when the boy's feet (8 x 8 at the bottom middle of his sprite) would
+' touch a fence at sprite corner Nx, Ny
+function Blocked(u8 Nx, u8 Ny) as u8
+  u8 L = Nx + 4
+  u8 R = Nx + 11
+  u8 T = Ny + 8
+  u8 B = Ny + 15
+  if Wall(L, T) = 1 then return 1
+  if Wall(R, T) = 1 then return 1
+  if Wall(L, B) = 1 then return 1
+  if Wall(R, B) = 1 then return 1
+  return 0
+
+' a step that a fence stops: 1 to slide up (or left), 2 down (or right)
+' when the way is free within 5 pixels that side; 0 to stay
+function Nudge(u8 Ax, u8 Ay, u8 Horiz) as u8
+  u8 Dd = 0
+  u8 Ux = 0
+  u8 Uy = 0
+  for Dd = 1 to 5
+    if Horiz = 1 then
+      Uy = Ay - Dd
+      if Blocked(Ax, Uy) = 0 then return 1
+      Uy = Ay + Dd
+      if Blocked(Ax, Uy) = 0 then return 2
+    else
+      Ux = Ax - Dd
+      if Blocked(Ux, Ay) = 0 then return 1
+      Ux = Ax + Dd
+      if Blocked(Ux, Ay) = 0 then return 2
+    end if
+  next
+  return 0
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  Ev = 0
+  inc Anim
+  MoveMobs
+  CookStep
+  if Ready = 1 then
+    Drain(DrainWait)
+  elseif Carry = 1 then
+    Drain(DrainCarry)
+  end if
+  if H16 < HeatOne then
+    Ev = 1
+    Why = 3
+    return
+  end if
+  MoveBoy
+  if Press = 1 then TryPick
+  for Mi = 0 to 4
+    if HitMob(Mi) = 1 then
+      Ev = 1
+      Why = 1
+      if Mi = 0 then Why = 2
+      return
+    end if
+  next
+  if Carry = 1 then
+    if NearCust = 1 then Ev = 2
+  end if
+  return
+end sub
+
+' the dog and the cars go round: their track positions in 1/16 pixel
+sub MoveMobs:
+  u16 Sp = 0
+  for Mi = 0 to 4
+    with Mobs[Mi] as Mb
+      Sp = Mb.Spd
+      select case Mb.Dir
+      case 1, 2
+        Mb.T = Mb.T + Sp
+        if Mb.T >= Mb.Len then Mb.T = Mb.T - Mb.Len
+      case else
+        if Mb.T < Sp then Mb.T = Mb.T + Mb.Len
+        Mb.T = Mb.T - Sp
+      end select
+    end with
+  next
+  return
+end sub
+
+' the cook at work; the pizza on the counter when it is ready
+sub CookStep:
+  if Cook = 0 then return
+  dec Cook
+  V = Cook & 7
+  if V = 0 then
+    V = Cook & 8
+    if V = 0 then
+      put char TCook0 at 3,4
+      put char TOven1 at 2,5
+    else
+      put char TCook0b at 3,4
+      put char TOven1b at 2,5
+    end if
+  end if
+  V = Cook & 31
+  if V = 16 then play sound SndCook
+  if Cook > 0 then return
+  Ready = 1
+  H16 = HeatFull
+  put char TCnt1p at 4,5
+  put char TCook0 at 3,4
+  put char TOven1 at 2,5
+  play sound SndReady
+  return
+end sub
+
+sub Drain(u8 Amt):
+  H16 = H16 - Amt
+  if H16 < HeatLow then
+    inc WarnT
+    if WarnT >= 40 then
+      WarnT = 0
+      play sound SndWarn
+    end if
+  end if
+  ShowHeat
+  return
+end sub
+
+' the stick walks the boy: one pixel at a time, across then down, each
+' stopped by the fences, sliding round a corner he is nearly past
+sub MoveBoy:
+  u8 Steps = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Ng = 0
+  Dx = 0
+  Dy = 0
+  V = Pad & 4
+  if V > 0 then Dx = 255
+  V = Pad & 8
+  if V > 0 then Dx = 1
+  V = Pad & 1
+  if V > 0 then Dy = 255
+  V = Pad & 2
+  if V > 0 then Dy = 1
+  if Dx = 1 then Face = 0
+  if Dx = 255 then Face = 1
+  ' (no early return here: a sub whose FOR has a variable end keeps the end
+  ' in a stack frame, and an early return skips the frame's epilogue,
+  ' bugs/actnaut-for-end-return.alexis)
+  V = Dx | Dy
+  if V = 0 then
+    Pacc = 0
+  else
+    Pacc = Pacc + PSpd
+  end if
+  Steps = Pacc >> 4
+  Pacc = Pacc & 15
+  for Si = 1 to Steps
+    if Dx <> 0 then
+      Nx = Px + Dx
+      if Blocked(Nx, Py) = 0 then
+        Px = Nx
+        inc Wk
+      elseif Dy = 0 then
+        Ng = Nudge(Nx, Py, 1)
+        if Ng = 1 then
+          if Blocked(Px, Py - 1) = 0 then dec Py
+        elseif Ng = 2 then
+          if Blocked(Px, Py + 1) = 0 then inc Py
+        end if
+      end if
+    end if
+    if Dy <> 0 then
+      Ny = Py + Dy
+      if Blocked(Px, Ny) = 0 then
+        Py = Ny
+        inc Wk
+      elseif Dx = 0 then
+        Ng = Nudge(Px, Ny, 0)
+        if Ng = 1 then
+          if Blocked(Px - 1, Py) = 0 then dec Px
+        elseif Ng = 2 then
+          if Blocked(Px + 1, Py) = 0 then inc Px
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' a button at the counter takes the pizza
+sub TryPick:
+  if Ready = 0 then return
+  if Px >= 46 then return
+  if Py >= 48 then return
+  Ready = 0
+  Carry = 1
+  put char TCnt1 at 4,5
+  play sound SndPick
+  return
+end sub
+
+' 1 when the boy (8 x 13) touches mob I's box
+function HitMob(u8 I) as u8
+  i16 Ax0 = 0
+  i16 Ax1 = 0
+  i16 Ay0 = 0
+  i16 Ay1 = 0
+  i16 Bx0 = 0
+  i16 Bx1 = 0
+  i16 By0 = 0
+  i16 By1 = 0
+  i16 Pos = 0
+  i16 Ln = 0
+  u8 D = 0
+  D = Mobs[I].Dir
+  W16 = Mobs[I].T >> 4
+  Pos = W16
+  Pos = Pos - 32
+  Ln = Mobs[I].Lane
+  Ax0 = Px + 4
+  Ax1 = Px + 11
+  Ay0 = Py + 3
+  Ay1 = Py + 15
+  V = D & 1
+  if V = 0 then
+    Bx0 = Ln + BoxL[D]
+    Bx1 = Ln + BoxR[D]
+    By0 = Pos + BoxT[D]
+    By1 = Pos + BoxB[D]
+  else
+    Bx0 = Pos + BoxL[D]
+    Bx1 = Pos + BoxR[D]
+    By0 = Ln + BoxT[D]
+    By1 = Ln + BoxB[D]
+  end if
+  if Bx0 > Ax1 then return 0
+  if Bx1 < Ax0 then return 0
+  if By0 > Ay1 then return 0
+  if By1 < Ay0 then return 0
+  return 1
+
+' 1 when the boy touches the customer
+function NearCust as u8
+  u8 Qx = 0
+  u8 Qy = 0
+  Qx = CustX[Cust]
+  Qy = CustY[Cust]
+  if Px + 11 < Qx + 2 then return 0
+  if Px + 4 > Qx + 13 then return 0
+  if Py + 15 < Qy + 1 then return 0
+  if Py + 3 > Qy + 15 then return 0
+  return 1
+
+' ---------------------------------------------------------------------------
+' a delivery, a lost life
+
+sub DeliverSeq:
+  u8 Dol = 0
+  u8 Cnt = 0
+  Phase = 3
+  Carry = 0
+  inc Del
+  ' the tip: 4 x heat dollars, in cents (heat 9000 a unit: 400 / 9000)
+  Tc16 = H16 / 45
+  Tc16 = Tc16 * 2
+  Dol = Tc16 / 100
+  Cnt = Tc16 % 100
+  play sound SndTip
+  HideTraffic
+  print at 2,MsgRow, "    DELIVERED! TIP $  .     "
+  NumU = Dol
+  print at 22,MsgRow, digits$(NumU, 2)
+  NumU = Cnt
+  print at 25,MsgRow, digits$(NumU, 2)
+  set sprite 0 to 192,0,0,0
+  update sprites
+  for Gi = 0 to 39
+    Frame1
+  next
+  Score += Cnt
+  ShowScore
+  for Gi = 1 to Dol
+    Score += 100
+    ShowScore
+    V = Gi & 1
+    if V = 1 then play sound SndCoin
+    Frame1
+    Frame1
+  next
+  for Gi = 0 to 29
+    Frame1
+  next
+  if Del = 5 then SpeedUp
+  if Del = 10 then SpeedUp
+  if Del = 15 then SpeedUp
+  RowBack(MsgRow)
+  NewOrder
+  Phase = 1
+  return
+end sub
+
+sub SpeedUp:
+  Mobs[1].Spd = Mobs[1].Spd + Faster
+  Mobs[3].Spd = Mobs[3].Spd + Faster
+  print at 2,MsgRow, "  THE TRAFFIC GETS FASTER!  "
+  play sound SndHorn
+  for Gi = 0 to 89
+    Frame1
+  next
+  return
+end sub
+
+sub DieSeq:
+  Phase = 2
+  Carry = 0
+  Ready = 0
+  Cook = 0
+  HideTraffic
+  select case Why
+  case 1
+    print at 2,MsgRow, "           CRASH!           "
+    play sound SndCrash
+  case 2
+    print at 2,MsgRow, "     THE DOG BIT YOU!       "
+    play sound SndBark
+  case else
+    print at 2,MsgRow, "    THE PIZZA WENT COLD!    "
+    play sound SndCold
+  end select
+  for Gi = 0 to DieF
+    V = Gi / 12
+    V = V & 7
+    C = SplatCol[V]
+    Y = Py - 1
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to Y,Px,SSplat,C
+    update sprites
+    Frame1
+  next
+  dec Lives
+  ShowLives
+  RowBack(MsgRow)
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  Px = StartX
+  Py = StartY
+  Face = 0
+  NewOrder
+  Phase = 1
+  return
+end sub
+
+' the customer, the dog and the cars hidden while a message shows
+sub HideTraffic:
+  for J = 2 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+data SplatCol bytes
+  15,11,9,8,13,7,5,14
+end data
+
+' a new customer in a yard picked at random; the cook starts the pizza
+sub NewOrder:
+  Rand
+  V = Rs & 7
+  Cust = V
+  Ready = 0
+  Carry = 0
+  Cook = CookF
+  H16 = HeatFull
+  WarnT = 0
+  put char TCnt1 at 4,5
+  ShowHeat
+  play sound SndChime
+  return
+end sub
+
+' a row of the town drawn again from the map (after a message)
+sub RowBack(u8 Rw):
+  W16 = Rw * 32
+  copy MapT + W16 count 32 to vram.name + W16
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the status panel in the shop window: takings, lives, thermometer
+
+sub ShowScore:
+  format Score into SBuf
+  put char 36 at 2,1
+  put SBuf count 4 at 3,1
+  put char 46 at 7,1
+  put SBuf + 4 count 2 at 8,1
+  return
+end sub
+
+sub ShowLives:
+  for Gi = 0 to 2
+    X = Gi + 2
+    if Gi < Lives then
+      put char TLife at X,2
+    else
+      put char TPanel at X,2
+    end if
+  next
+  return
+end sub
+
+' the heat level (0 cold .. 4 hot) colours the thermometer, which shows
+' the heat in 32 steps
+sub ShowHeat:
+  u8 Nl = 0
+  u8 Nf = 0
+  u8 Part = 0
+  if H16 < HeatOne then
+    Nl = 0
+    Nf = 0
+  else
+    W16 = H16 - HeatOne
+    W16 = W16 / HeatOne
+    Nl = W16
+    if Nl > 4 then Nl = 4
+    W16 = H16 - HeatOne
+    W16 = W16 / 1407
+    Nf = W16
+    if Nf > 32 then Nf = 32
+  end if
+  if Nl <> Lvl then
+    Lvl = Nl
+    V = HeatCol[Lvl]
+    V = V << 4
+    V = V | 1
+    fill V count 72 to vram.color + ThOff
+  end if
+  if Nf = ThFill then return
+  ThFill = Nf
+  for Ci = 0 to 3
+    K = Ci * 8
+    if ThFill <= K then
+      Part = 0
+    else
+      Part = ThFill - K
+      if Part > 8 then Part = 8
+    end if
+    V = TTh0 + Part
+    X = Ci + 6
+    put char V at X,2
+  next
+  return
+end sub
+
+sub ShowHud:
+  ShowScore
+  ShowLives
+  put char TFlame at 5,2
+  ThFill = 99
+  Lvl = 99
+  ShowHeat
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the sprites: 0 the pizza box (heat colour), 1 the boy, 2 the customer,
+' 3-7 the dog and the cars
+
+sub DrawSprites:
+  Y = Py - 1
+  if Carry = 1 then
+    K = SBoxr
+    if Face = 1 then K = SBoxl
+    C = HeatCol[Lvl]
+    set sprite 0 to Y,Px,K,C
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  V = Wk >> 2
+  V = V & 1
+  K = SBoyra + V * 4
+  if Face = 1 then K = K + 8
+  set sprite 1 to Y,Px,K,15
+  V = Anim >> 4
+  V = V & 1
+  K = SCusta + V * 4
+  X = CustX[Cust]
+  Y = CustY[Cust] - 1
+  set sprite 2 to Y,X,K,13
+  for Mi = 0 to 4
+    DrawMob
+  next
+  update sprites
+  return
+end sub
+
+sub DrawMob:
+  u8 Sn = 0
+  u8 Pt = 0
+  u8 Cl = 0
+  u8 Ln = 0
+  Sn = Mi + 3
+  W16 = Mobs[Mi].T >> 4
+  Sc16 = W16
+  Sc16 = Sc16 - 32
+  Ln = Mobs[Mi].Lane
+  Cl = Mobs[Mi].Col
+  select case Mobs[Mi].Dir
+  case 0
+    Pt = SCaru
+  case 1
+    Pt = SCarr
+  case 2
+    Pt = SCard
+  case else
+    V = Anim >> 3
+    V = V & 1
+    Pt = SDoga + V * 4
+  end select
+  V = Mobs[Mi].Dir & 1
+  if V = 0 then
+    ' up and down: hidden above row -15 and below row 191
+    if Sc16 < -15 then
+      set sprite Sn to 192,0,0,0
+    elseif Sc16 > 191 then
+      set sprite Sn to 192,0,0,0
+    else
+      Sc16 = Sc16 - 1
+      Y = Sc16
+      set sprite Sn to Y,Ln,Pt,Cl
+    end if
+  else
+    ' across: left of the screen with the early clock (32 pixels)
+    Y = Ln - 1
+    if Sc16 < 0 then
+      Sc16 = Sc16 + 32
+      X = Sc16
+      Cl = Cl | 128
+      set sprite Sn to Y,X,Pt,Cl
+    else
+      X = Sc16
+      set sprite Sn to Y,X,Pt,Cl
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a new game
+
+sub NewGame:
+  Score = 0
+  Lives = 3
+  Del = 0
+  Over = 0
+  Px = StartX
+  Py = StartY
+  Face = 0
+  Wk = 0
+  Pacc = 0
+  Anim = 0
+  for Mi = 0 to 4
+    Mobs[Mi].T = MobT0[Mi]
+    Mobs[Mi].Dir = MobDir[Mi]
+    Mobs[Mi].Lane = MobLane[Mi]
+    Mobs[Mi].Col = MobCol[Mi]
+    Mobs[Mi].Spd = Faster
+    V = MobDir[Mi] & 1
+    if V = 0 then
+      Mobs[Mi].Len = 4096
+    else
+      Mobs[Mi].Len = 4608
+    end if
+  next
+  NewScreen
+  DrawTown
+  ShowHud
+  NewOrder
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 30 frames
+  nmi off
+  Phase = 1
+  return
+end sub
+
+sub DrawTown:
+  copy MapT count 768 to vram.name
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: PIZZA BOY, the author, a pizza, the high score, START /
+' CREDITS, and a car and the boy passing in the street below
+sub TitlePage:
+  u8 Bx = 0
+  u8 Cx = 0
+  Phase = 5
+  NewScreen
+  DrawLogo
+  print at 3,6, "BY CLEVELAND M. BLAKEMORE"
+  print at 6,7, "AHOY! DECEMBER 1987"
+  for Gi = 0 to 3
+    X = Gi + 14
+    V = TPz00 + Gi
+    put char V at X,9
+    V = TPz10 + Gi
+    put char V at X,10
+    V = TPz20 + Gi
+    put char V at X,11
+    V = TPz30 + Gi
+    put char V at X,12
+  next
+  print at 9,14, "HIGH $"
+  format Best into SBuf
+  put SBuf count 4 at 15,14
+  put char 46 at 19,14
+  put SBuf + 4 count 2 at 20,14
+  print at 13,16, "START"
+  print at 13,17, "CREDITS"
+  fill TAsph count 32 at 0,19
+  fill TDashh count 32 at 0,20
+  fill TAsph count 32 at 0,21
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 679
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 6
+  Bx = 200
+  Cx = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  inc Anim
+  dec Bx
+  Cx = Cx + 2
+  V = Anim >> 3
+  V = V & 1
+  K = SBoyla + V * 4
+  set sprite 1 to 147,Bx,K,15
+  set sprite 0 to 147,Bx,SBoxl,11
+  set sprite 3 to 159,Cx,SCarr,8
+  update sprites
+  V = Pad & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' PIZZA BOY in 2 x 2 tile letters on rows 3 and 4
+data LogoT bytes
+  0,1,2,2,3,255,4,5,6
+end data
+
+sub DrawLogo:
+  u8 Lt = 0
+  u8 Base = 0
+  for Gi = 0 to 8
+    Lt = LogoT[Gi]
+    X = Gi * 2 + 7
+    if Lt < 255 then
+      Base = TTtlP00 + Lt * 4
+      put char Base at X,3
+      V = Base + 1
+      put char V at X + 1,3
+      V = Base + 2
+      put char V at X,4
+      V = Base + 3
+      put char V at X + 1,4
+    end if
+  next
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,16
+  put char 32 at 11,17
+  J = Menu + 16
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "PIZZA BOY"
+  print at 2,5, "BASED ON PIZZA BOY BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! DECEMBER 1987"
+  print at 2,8, "(COMMODORE 128)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: EXTRA CHEESE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 8
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$04,$00,$00,$40,$00
+  $00,$01,$01,$01,$01,$00,$00,$00
+  $00,$80,$80,$80,$80,$00,$00,$00
+  $00,$00,$00,$87,$00,$00,$00,$00
+  $08,$40,$02,$20,$00,$84,$00,$10
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $10,$10,$00,$01,$01,$00,$10,$00
+  $10,$11,$0E,$F0,$08,$07,$20,$D8
+  $44,$11,$11,$00,$11,$11,$00,$11
+  $99,$24,$42,$08,$41,$10,$04,$99
+  $00,$11,$00,$88,$00,$11,$00,$88
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$44
+  $00,$C3,$81,$00,$00,$00,$00,$00
+  $00,$C3,$81,$4A,$4A,$00,$00,$00
+  $00,$C3,$81,$24,$24,$81,$00,$00
+  $00,$AA,$00,$AA,$00,$AA,$00,$00
+  $81,$81,$C3,$C3,$A5,$81,$99,$C3
+  $81,$81,$C3,$C3,$81,$A5,$42,$C3
+  $C3,$81,$81,$81,$81,$81,$81,$81
+  $00,$81,$42,$4A,$42,$81,$00,$00
+  $00,$00,$81,$81,$00,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$81,$42,$81,$00,$00,$00
+  $00,$81,$81,$00,$81,$81,$00,$00
+  $C3,$81,$80,$50,$83,$38,$83,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$F8,$F8,$F8,$F8,$F8,$F8,$00
+  $00,$FC,$FC,$FC,$FC,$FC,$FC,$00
+  $00,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $10,$30,$C5,$81,$91,$46,$91,$C3
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $F0,$F0,$C3,$C3,$C3,$C3,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $03,$03,$C3,$C3,$F0,$F0,$C0,$C0
+  $F0,$F0,$C3,$C3,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $F0,$F0,$C3,$C3,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$03,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $F0,$F0,$C3,$C3,$C3,$C3,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$F0,$F0
+  $C0,$C0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$C3,$C3,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$F0,$F0,$C0,$C0
+  $C3,$C3,$C3,$C3,$C3,$C3,$F0,$F0
+  $F0,$F0,$F0,$F0,$C3,$C3,$F0,$F0
+  $C3,$C3,$C3,$C3,$F0,$F0,$C0,$C0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $00,$E0,$00,$F0,$C0,$00,$00,$70
+  $00,$07,$00,$0E,$02,$03,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $38,$38,$30,$70,$60,$60,$60,$60
+  $07,$07,$01,$80,$E0,$E0,$0E,$00
+  $30,$30,$E0,$E0,$C0,$38,$00,$01
+  $00,$00,$0C,$C1,$06,$06,$06,$C0
+  $60,$60,$60,$03,$03,$C3,$07,$38
+  $07,$F0,$30,$10,$18,$E0,$C0,$00
+  $03,$83,$83,$81,$00,$00,$00,$38
+  $E1,$E1,$E1,$C0,$0E,$0C,$1C,$1C
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$C0,$F0,$00,$E0,$00
+  $83,$83,$83,$38,$F0,$00,$07,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$E1,$01,$01,$E1,$01
+  $01,$B1,$B1,$B1,$B1,$01,$01,$01
+  $01,$B1,$B1,$B1,$B1,$01,$01,$01
+  $01,$01,$01,$1B,$01,$01,$01,$01
+  $2C,$2C,$2C,$2C,$0C,$2C,$0C,$2C
+  $41,$41,$41,$41,$14,$14,$14,$14
+  $0E,$E1,$1E,$1E,$1E,$1E,$E1,$0E
+  $68,$68,$06,$68,$68,$06,$68,$06
+  $1E,$1E,$E1,$E1,$1E,$E1,$1E,$E1
+  $F1,$1F,$1F,$0F,$1F,$1F,$0F,$1F
+  $1C,$3C,$3C,$3C,$3C,$3C,$3C,$1C
+  $09,$96,$09,$96,$09,$96,$09,$96
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$81
+  $01,$1E,$1E,$0E,$0E,$0E,$0E,$0E
+  $0E,$E1,$E1,$81,$B8,$0B,$0E,$0E
+  $0E,$E1,$E1,$81,$B8,$8B,$0E,$0E
+  $0E,$E1,$0E,$1E,$0E,$E1,$0E,$0E
+  $1F,$1F,$1F,$19,$19,$19,$19,$19
+  $1F,$1F,$1F,$19,$19,$19,$91,$19
+  $1F,$9F,$9F,$1F,$1F,$1F,$1F,$1F
+  $0A,$A1,$1A,$1A,$1A,$A1,$0A,$01
+  $0B,$0A,$A1,$A1,$0A,$A1,$A1,$0A
+  $0B,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0F,$0F,$F8,$8F,$F8,$0F,$0A,$0A
+  $0A,$A1,$A1,$0A,$A1,$A1,$0A,$01
+  $1F,$1F,$1F,$F1,$1F,$F1,$1F,$1F
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$F1,$1F,$1F
+  $0B,$0B,$B1,$B1,$B1,$B1,$0B,$0B
+  $B1,$B1,$1B,$1B,$1B,$1B,$B1,$B1
+  $A1,$A1,$A1,$A1,$81,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$1A,$1A,$18,$18,$08,$08
+  $01,$01,$01,$01,$01,$01,$81,$81
+  $0B,$0B,$01,$01,$01,$01,$B1,$B1
+  $1B,$1B,$1B,$1B,$B1,$B1,$B1,$B1
+  $1A,$1A,$1A,$1A,$81,$81,$08,$08
+  $01,$01,$01,$01,$01,$01,$18,$18
+  $1B,$1B,$1B,$1B,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$1B,$1B,$1B,$1B
+  $0A,$0A,$A1,$A1,$81,$81,$81,$81
+  $1A,$1A,$1A,$1A,$18,$18,$18,$18
+  $0B,$0B,$B1,$B1,$B1,$B1,$0B,$0B
+  $B1,$B1,$1B,$1B,$1B,$1B,$B1,$B1
+  $A1,$A1,$A1,$A1,$81,$81,$08,$08
+  $1A,$1A,$1A,$1A,$18,$18,$81,$81
+  $1B,$1B,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$1B,$1B,$1B,$1B,$1B,$1B
+  $A1,$A1,$A1,$A1,$81,$81,$18,$18
+  $1A,$1A,$1A,$1A,$18,$18,$81,$81
+  $B1,$B1,$B1,$B1,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$B1,$B1,$B1,$B1
+  $1A,$1A,$1A,$1A,$18,$18,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$A1,$A1,$A1,$1A,$1A
+  $01,$1A,$0A,$AB,$AB,$0B,$0B,$8B
+  $01,$1A,$0A,$AB,$AB,$1B,$1B,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $B8,$B8,$B8,$B8,$B8,$B8,$8B,$0B
+  $81,$81,$B1,$B1,$B1,$1B,$0B,$8B
+  $01,$01,$A1,$1A,$AB,$AB,$AB,$8B
+  $AB,$AB,$AB,$8B,$8A,$8B,$BA,$AB
+  $8B,$B8,$B8,$B8,$B8,$8B,$8B,$0B
+  $8B,$8B,$8B,$8B,$0B,$0B,$0B,$8B
+  $8B,$8B,$8B,$8B,$AB,$AB,$AB,$AB
+  $1A,$1A,$A1,$A1,$A1,$01,$01,$01
+  $0B,$0B,$0B,$AB,$AB,$0A,$1A,$01
+  $B8,$B8,$B8,$8B,$BA,$0A,$1A,$01
+  $1A,$A1,$A1,$A1,$A1,$01,$01,$01
+end data
+data SpritePat bytes
+  $03,$07,$07,$07,$07,$03,$07,$0F,$0D,$0D,$07,$06,$06,$0C,$0C,$1C
+  $C0,$E0,$F8,$40,$C0,$80,$C0,$E0,$E0,$E0,$C0,$C0,$60,$30,$30,$38
+  $03,$07,$07,$07,$07,$03,$07,$0F,$0D,$0D,$07,$06,$03,$03,$03,$07
+  $C0,$E0,$F8,$40,$C0,$80,$C0,$E0,$E0,$E0,$C0,$C0,$C0,$40,$40,$60
+  $03,$07,$1F,$02,$03,$01,$03,$07,$07,$07,$03,$03,$06,$0C,$0C,$1C
+  $C0,$E0,$E0,$E0,$E0,$C0,$E0,$F0,$B0,$B0,$E0,$60,$60,$30,$30,$38
+  $03,$07,$1F,$02,$03,$01,$03,$07,$07,$07,$03,$03,$03,$02,$02,$06
+  $C0,$E0,$E0,$E0,$E0,$C0,$E0,$F0,$B0,$B0,$E0,$60,$C0,$C0,$C0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$7E,$7E,$7E,$7E,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$7E,$7E,$7E,$7E,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$21,$11,$09,$05,$23,$1F,$03,$6F,$0B,$12,$22,$02,$06,$00,$00
+  $00,$04,$08,$10,$A0,$C6,$B8,$C0,$D0,$88,$84,$40,$20,$30,$00,$00
+  $0F,$1F,$78,$78,$1F,$1F,$1F,$1F,$18,$18,$78,$7F,$1F,$17,$0F,$00
+  $F0,$F8,$1E,$1E,$F8,$F8,$F8,$F8,$18,$18,$1E,$FE,$F8,$E8,$F0,$00
+  $00,$0F,$17,$1F,$7F,$78,$18,$18,$1F,$1F,$1F,$1F,$78,$78,$1F,$0F
+  $00,$F0,$E8,$F8,$FE,$1E,$18,$18,$F8,$F8,$F8,$F8,$1E,$1E,$F8,$F0
+  $00,$30,$30,$7F,$FF,$CF,$CF,$CF,$CF,$CF,$CF,$FF,$7F,$30,$30,$00
+  $00,$30,$30,$FC,$FA,$1E,$1E,$1E,$1E,$1E,$1E,$FA,$FC,$30,$30,$00
+  $00,$00,$00,$00,$00,$30,$78,$F8,$3F,$1F,$1F,$14,$14,$36,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$08,$10,$F8,$F8,$28,$28,$6C,$00,$00
+  $00,$00,$00,$00,$00,$30,$78,$F8,$3F,$1F,$1F,$14,$22,$41,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$08,$10,$F8,$F8,$28,$44,$82,$06,$00
+  $03,$07,$05,$07,$86,$43,$3F,$07,$07,$07,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$A0,$E0,$61,$C2,$FC,$E0,$E0,$E0,$E0,$60,$60,$60,$70,$00
+  $03,$07,$05,$07,$06,$03,$1F,$2F,$2F,$2F,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$A0,$E0,$60,$C0,$F8,$F4,$F4,$F4,$E0,$60,$60,$60,$70,$00
+end data
+data MapT bytes
+  134,139,139,139,139,139,139,139,139,139,139,134,134,134,134,135,135,135,135,135,135,134,134,134,134,136,136,136,136,136,136,134
+  134,139,140,140,140,140,140,140,140,140,139,128,129,130,128,135,132,132,132,132,135,128,129,130,128,136,132,132,132,132,136,134
+  134,139,140,140,140,140,140,140,140,140,139,128,129,130,128,135,132,132,132,132,132,128,129,130,128,136,132,132,132,132,136,134
+  134,141,141,141,141,141,141,141,141,141,141,128,129,130,128,135,132,132,132,132,132,128,129,130,128,136,132,132,132,132,136,134
+  134,139,142,146,150,133,133,133,133,133,139,128,129,130,128,135,132,132,132,132,132,128,129,130,128,132,132,132,132,132,136,134
+  134,139,143,148,151,133,133,133,133,133,133,128,129,130,128,135,132,132,132,132,135,128,129,130,128,132,132,132,132,132,136,134
+  134,139,145,149,153,133,133,133,133,133,133,128,129,130,128,135,132,132,132,132,135,128,129,130,128,132,132,132,132,132,136,134
+  134,139,139,139,139,139,133,133,133,139,139,128,129,130,128,135,135,135,135,135,135,128,129,130,128,136,136,136,136,136,136,134
+  134,134,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,134,134
+  134,134,131,131,131,131,131,131,131,131,131,128,128,128,128,131,131,131,131,131,131,128,128,128,128,131,131,131,131,131,134,134
+  134,134,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,134,134
+  134,137,137,137,137,137,137,137,137,137,137,128,129,130,128,138,138,138,138,138,138,128,129,130,128,137,137,137,137,137,137,134
+  134,137,132,132,132,132,132,132,132,132,137,128,129,130,128,138,132,132,132,132,138,128,129,130,128,137,132,132,132,132,137,134
+  134,137,132,132,132,132,132,132,132,132,137,128,129,130,128,138,132,132,132,132,138,128,129,130,128,137,132,132,132,132,137,134
+  134,137,132,132,132,132,132,132,132,132,137,128,129,130,128,138,132,132,132,132,138,128,129,130,128,137,132,132,132,132,137,134
+  134,137,137,137,137,132,132,132,137,137,137,128,129,130,128,138,138,132,132,138,138,128,129,130,128,137,137,132,132,137,137,134
+  134,134,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,134,134
+  134,134,131,131,131,131,131,131,131,131,131,128,128,128,128,131,131,131,131,131,131,128,128,128,128,131,131,131,131,131,134,134
+  134,134,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,134,134
+  134,136,136,136,136,132,132,132,136,136,136,128,129,130,128,135,135,132,132,135,135,128,129,130,128,138,138,132,132,138,138,134
+  134,136,132,132,132,132,132,132,132,132,136,128,129,130,128,135,132,132,132,132,135,128,129,130,128,138,132,132,132,132,138,134
+  134,136,132,132,132,132,132,132,132,132,132,128,129,130,128,135,132,132,132,132,132,128,129,130,128,138,132,132,132,132,138,134
+  134,136,132,132,132,132,132,132,132,132,132,128,129,130,128,135,132,132,132,132,132,128,129,130,128,138,132,132,132,132,138,134
+  134,136,136,136,136,136,136,136,136,136,136,134,134,134,134,135,135,135,135,135,135,134,134,134,134,138,138,138,138,138,138,134
+end data
+
+asm {
+PzCrash:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$66,$0A,$00,$00,$97,$0A,$10
+PzBark:
+    db $40,$53,$11,$03,$40,$FC,$31,$02,$40,$75,$21,$03,$40,$3B,$42,$06,$50
+PzChime:
+    db $40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$AA,$20,$0A,$40,$D6,$40,$14,$50
+PzCook:
+    db $40,$7F,$60,$02,$40,$97,$70,$02,$40,$71,$60,$02,$40,$A9,$80,$02,$50
+PzReady:
+    db $40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$30,$08,$50
+PzPick:
+    db $40,$8F,$20,$02,$40,$6B,$20,$02,$40,$55,$30,$04,$50
+PzTip:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$0E
+    db $50
+PzCoin:
+    db $40,$40,$40,$01,$40,$30,$60,$01,$50
+PzCold:
+    db $40,$D6,$20,$08,$40,$E2,$20,$08,$40,$FE,$30,$08,$40,$1D,$31,$08,$40,$AB,$41,$14,$50
+PzWarn:
+    db $40,$5F,$40,$03,$40,$5F,$F0,$06,$50
+PzHorn:
+    db $40,$1D,$21,$0A,$40,$1D,$F1,$04,$40,$1D,$21,$10,$50
+PzStart:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$30,$0C,$50
+PzOver:
+    db $40,$D6,$20,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$24,$50
+
+PzSoundTable:
+    dw PzTuneMel,$702B
+    dw PzTuneBass,$7035
+    dw PzCrash,$703F
+    dw PzBark,$7049
+    dw PzChime,$7049
+    dw PzCook,$7049
+    dw PzReady,$7049
+    dw PzPick,$7049
+    dw PzTip,$7049
+    dw PzCoin,$7049
+    dw PzCold,$7049
+    dw PzWarn,$7049
+    dw PzHorn,$7049
+    dw PzStart,$7049
+    dw PzOver,$7049
+; Extra Cheese (original)
+; Tiny Sound, 7 frames per step
+PzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$70,$F1,$22,$23,$01,$1F,$1A,$01,$1F,$23,$01,$26,$01,$01,$01
+    db $24,$01,$21,$1C,$01,$21,$24,$01,$28,$01,$01,$01,$26,$01,$23,$1F
+    db $01,$23,$26,$01,$2B,$01,$2A,$28,$26,$01,$24,$23,$01,$21,$1F,$01
+    db $01,$01,$00,$01,$23,$01,$1F,$1A,$01,$1F,$23,$01,$26,$01,$01,$01
+    db $28,$01,$24,$21,$01,$24,$28,$01,$2B,$01,$01,$01,$2A,$01,$26,$21
+    db $01,$26,$24,$01,$21,$1E,$01,$21,$1F,$01,$01,$01,$1A,$01,$1F,$01
+    db $01,$01,$00,$01,$01
+    db $FF
+PzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$90,$18,$32,$13,$01,$1A,$13,$01,$1A,$13,$01,$1A,$17,$01,$1A
+    db $15,$01,$1C,$15,$01,$1C,$15,$01,$1C,$18,$01,$1C,$13,$01,$1A,$13
+    db $01,$1A,$10,$01,$17,$10,$01,$17,$0C,$01,$13,$0E,$01,$15,$13,$01
+    db $1A,$13,$01,$01,$13,$01,$1A,$13,$01,$1A,$13,$01,$1A,$17,$01,$1A
+    db $0C,$01,$13,$0C,$01,$13,$0C,$01,$13,$10,$01,$13,$0E,$01,$15,$0E
+    db $01,$15,$0E,$01,$15,$12,$01,$15,$13,$01,$1A,$17,$01,$1A,$13,$01
+    db $01,$01,$00,$01,$01
+    db $FF
+}
+
+

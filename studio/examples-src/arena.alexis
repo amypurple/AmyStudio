@@ -1,0 +1,953 @@
+cartridge "ARENA/AHOY!/1986"
+
+' ARENA
+' A ColecoVision game based on "Arena", Ahoy! February 1986 (Commodore 64
+' machine language, ARENA at $C000, started by the two-line BASIC loader
+' ARENA BOOT; the program and the disk do not name the author). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/arena.dis), the game is built for the ColecoVision:
+' a stone-walled pit with torches, a spinning two-colour baton, the ten
+' foe shapes re-cut as 16 x 16 sprites, bursts, sound effects and a tune.
+'
+' The game: you are a spinning baton in an arena with six foes that drift
+' and bounce off the walls. The baton never stops: the stick turns it up,
+' down, left or right, and it bounces off the walls by itself. Hold the
+' button and push the stick to throw a shot that way (one shot at a time).
+' Touch a live foe and you lose a life and the whole wave comes back. Clear
+' all six for the next level: new foe shapes, a faster game, and each foe
+' worth more (as many points as the level number). Three lives.
+'
+' From the original (orig/): the main loop's order (shot a pixel, hit
+' test, shot a pixel, hit test, every foe a pixel, the baton a pixel, the
+' stick); its delay loop, speed choice SLOW/MEDIUM/FAST (12/10/8 outer
+' passes) and the 10 speed-ups (inner count 255 down to 155 by 10 a
+' level), worked out into pixels per frame for the 60 Hz C64 (SpdT); a
+' foe's direction on each axis is none, minus or plus by thirds of a random
+' byte; a foe that meets a wall turns back on that axis and takes a random
+' direction on the other; the baton turns back at a wall; the shot moves
+' 2 pixels a pass and stops at the walls; a foe hit bursts for 25 passes
+' and is gone; the wave restarts in full after a death; level N's foes are
+' worth N points; ten foe shapes in turn; the start places (three foes in
+' two rows on the left, the baton at the left wall, middle, heading
+' right, every foe heading right); 3 lives; a high score; past 9999 the
+' original said "I GIVE UP!!! - YOU WIN!!!".
+'
+' Liberties: the arena is 224 x 152 pixels (the C64's was 230 x 191);
+' start places and speeds scaled to it (9/10 of the C64's pixels); box
+' collision tests (the C64 used the sprite collision register); each
+' burst has its own 25-pass clock (the C64 had one for all) and a burst
+' cannot hurt the baton (on the C64 the debris still could); the button
+' alone throws a shot the way the baton is heading (on the C64 it needed
+' a direction); the score, level, lives and best on a status line at the
+' top (the C64 had a column on the right); the C64's speed question is the
+' title menu; GAME OVER (and the win message) then the title (the C64
+' waited for fire or asked to quit).
+'
+' Controls: controller 1 (or 2): the stick turns the baton; the button
+' (either) throws a shot, aimed with the stick. On the title, up and down
+' choose a speed or the credits, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TFl0 = 128
+const TFl1 = 129
+const TFl2 = 130
+const TFl3 = 131
+const TWall0 = 132
+const TWall1 = 133
+const TTorch = 134
+const TLife = 135
+const TTst = 136
+const SBat0 = 0
+const SBat1 = 4
+const SBat2 = 8
+const SBat3 = 12
+const SKnob0 = 16
+const SKnob1 = 20
+const SKnob2 = 24
+const SKnob3 = 28
+const SShot = 32
+const SBur0 = 36
+const SBur1 = 40
+const SFoe0 = 44
+const SFoe1 = 48
+const SFoe2 = 52
+const SFoe3 = 56
+const SFoe4 = 60
+const SFoe5 = 64
+const SFoe6 = 68
+const SFoe7 = 72
+const SFoe8 = 76
+const SFoe9 = 80
+const NTiles8 = 72
+const SprBytes = 672
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndBoom = 4
+const SndDie = 5
+const SndLevel = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 9
+const XMin = 16
+const XMax = 224
+const YMin = 24
+const YMax = 160
+const BurstLen = 25
+const HoldLen = 40
+
+' C64 pixels a pass x 0.9, per frame x 256: SLOW, MEDIUM, FAST, 11 steps
+data SpdT words 223,231,239,248,258,269,280,293,307,322,338,261,270,280,290,301,313,326,340,356,373,391,315,325,336,348,361,375,390,406,424,443,464
+data FoeCol bytes 7,13,5,7,13,5
+data BatEnd bytes 11,11,11,11
+
+record Foe:
+  u8 X
+  u8 Y
+  i8 Vx
+  i8 Vy
+  u8 St
+  u8 Tm
+end record
+
+' the start of every wave (St 1 = alive); Vy is drawn at random
+data FoeStart records Foe
+  38,64,1,0,1,0
+  83,64,1,0,1,0
+  128,64,1,0,1,0
+  38,124,1,0,1,0
+  83,124,1,0,1,0
+  128,124,1,0,1,0
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$10,$30,$00,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $10,$10,$10,$00,$01,$01,$01,$00
+  $10,$10,$10,$10,$10,$00,$00,$00
+  $00,$80,$40,$20,$10,$08,$04,$00
+  $01,$80,$01,$01,$01,$01,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$41,$01,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$41,$01
+  $01,$01,$01,$01,$41,$41,$01,$01
+  $EF,$1E,$1E,$01,$EF,$1E,$1E,$01
+  $EF,$1E,$1E,$01,$EF,$1E,$1E,$01
+  $8F,$98,$B1,$91,$EF,$0E,$0E,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $1F,$F5,$45,$45,$45,$45,$04,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$7F,$7F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FE,$FE,$00,$00,$00,$00,$00,$00,$00
+  $00,$60,$30,$18,$0C,$06,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$60,$30,$18,$0C,$06,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$06,$0C,$18,$30,$60
+  $00,$00,$03,$06,$0C,$18,$30,$60,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$07
+  $03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03
+  $80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0
+  $07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$21,$11,$08,$00,$62,$03,$62,$00,$08,$11,$21,$00,$00,$00
+  $00,$00,$08,$10,$20,$00,$8C,$80,$8C,$00,$20,$10,$08,$00,$00,$00
+  $81,$40,$00,$00,$00,$00,$80,$00,$80,$00,$00,$00,$00,$40,$81,$00
+  $02,$04,$00,$00,$00,$00,$01,$00,$01,$00,$00,$00,$00,$04,$02,$00
+  $00,$00,$7F,$7F,$7F,$7F,$7F,$7F,$01,$01,$01,$01,$01,$00,$00,$00
+  $00,$00,$80,$80,$80,$80,$80,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$7F,$7F,$7F,$03,$03,$03,$03,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$E0,$FF,$FF,$FF,$E0,$E0,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$03,$07,$0F,$1F,$3F,$7F,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$E0,$F0,$F8,$FC,$FE,$FF,$00,$00,$00,$00
+  $00,$00,$7C,$3E,$1F,$0F,$07,$03,$07,$0F,$1F,$3E,$7C,$00,$00,$00
+  $00,$00,$1F,$3E,$7C,$F8,$F0,$E0,$F0,$F8,$7C,$3E,$1F,$00,$00,$00
+  $00,$00,$01,$07,$1F,$1F,$7F,$7F,$7F,$1F,$1F,$07,$01,$00,$00,$00
+  $00,$00,$C0,$F0,$FC,$FC,$FF,$FF,$FF,$FC,$FC,$F0,$C0,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$0F,$0F,$1F,$3F,$3F,$7F,$7F,$00,$00,$00
+  $00,$00,$80,$E0,$E0,$F0,$F8,$F8,$FC,$FE,$FE,$FF,$FF,$00,$00,$00
+  $00,$00,$03,$07,$0F,$1F,$3F,$7F,$3F,$1F,$0F,$07,$03,$00,$00,$00
+  $00,$00,$E0,$F0,$F8,$FC,$FE,$FF,$FE,$FC,$F8,$F0,$E0,$00,$00,$00
+  $00,$00,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$00,$00,$00
+  $00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$1F,$7F,$1F,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$FC,$FF,$FC,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$03,$07,$0F,$1F,$3F,$7F,$7F,$00,$00,$00
+  $00,$00,$7F,$FF,$FE,$FC,$F8,$F0,$E0,$E0,$C0,$80,$00,$00,$00,$00
+end data
+
+data ArenaMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$84,$85,$84,$85,$84,$86,$84,$85,$84,$85,$84,$85,$84,$85,$86,$85,$84,$85,$84,$85,$84,$85,$84,$86,$84,$85,$84,$85,$84,$85,$20
+  $20,$85,$83,$80,$81,$83,$80,$80,$83,$80,$80,$80,$80,$83,$83,$82,$82,$82,$80,$83,$80,$80,$82,$80,$80,$81,$80,$81,$83,$81,$84,$20
+  $20,$84,$81,$81,$83,$80,$83,$82,$80,$80,$80,$80,$81,$80,$80,$81,$80,$83,$80,$82,$82,$80,$83,$81,$80,$81,$80,$80,$80,$80,$85,$20
+  $20,$85,$83,$80,$80,$80,$80,$81,$80,$83,$82,$80,$80,$80,$82,$80,$80,$82,$82,$80,$81,$80,$81,$81,$80,$80,$82,$80,$80,$80,$84,$20
+  $20,$84,$80,$81,$80,$83,$80,$80,$81,$83,$80,$80,$81,$80,$83,$83,$80,$80,$80,$80,$80,$82,$80,$80,$81,$80,$81,$82,$80,$80,$85,$20
+  $20,$85,$82,$83,$80,$81,$83,$80,$80,$81,$81,$81,$80,$80,$80,$80,$83,$83,$82,$80,$83,$82,$83,$83,$82,$80,$82,$80,$82,$81,$84,$20
+  $20,$84,$80,$80,$80,$81,$81,$81,$81,$82,$82,$80,$80,$80,$80,$80,$82,$80,$81,$80,$83,$81,$80,$80,$83,$81,$81,$80,$82,$80,$85,$20
+  $20,$85,$80,$80,$80,$80,$81,$80,$80,$82,$80,$83,$83,$80,$83,$83,$83,$80,$81,$81,$80,$80,$82,$82,$83,$82,$80,$80,$80,$81,$84,$20
+  $20,$84,$81,$81,$80,$80,$81,$80,$80,$80,$80,$83,$80,$81,$80,$80,$80,$80,$80,$80,$82,$83,$83,$80,$83,$82,$80,$82,$80,$82,$85,$20
+  $20,$85,$80,$83,$80,$80,$81,$80,$80,$83,$81,$83,$83,$83,$81,$80,$81,$81,$80,$81,$81,$83,$81,$82,$80,$80,$80,$80,$80,$80,$84,$20
+  $20,$84,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$82,$80,$83,$80,$80,$80,$80,$80,$83,$80,$80,$80,$82,$80,$85,$20
+  $20,$85,$80,$81,$80,$81,$82,$83,$80,$82,$81,$83,$80,$83,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$83,$80,$83,$80,$80,$80,$84,$20
+  $20,$84,$80,$80,$83,$81,$80,$81,$80,$80,$82,$81,$83,$80,$81,$80,$80,$80,$83,$80,$82,$83,$80,$80,$80,$80,$83,$83,$82,$82,$85,$20
+  $20,$85,$80,$82,$80,$82,$80,$81,$80,$82,$80,$81,$82,$82,$83,$80,$80,$81,$80,$83,$80,$81,$80,$80,$83,$83,$80,$83,$82,$80,$84,$20
+  $20,$84,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$83,$81,$80,$81,$80,$81,$80,$80,$80,$80,$83,$80,$80,$85,$20
+  $20,$85,$80,$80,$82,$80,$81,$82,$80,$80,$80,$80,$80,$80,$80,$80,$81,$83,$82,$82,$81,$80,$80,$81,$80,$82,$82,$80,$80,$82,$84,$20
+  $20,$84,$83,$80,$81,$83,$80,$82,$83,$82,$81,$80,$82,$80,$81,$80,$80,$80,$80,$83,$81,$80,$81,$81,$80,$80,$81,$82,$83,$80,$85,$20
+  $20,$85,$80,$80,$83,$80,$80,$80,$81,$83,$81,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$83,$80,$82,$80,$80,$80,$80,$81,$84,$20
+  $20,$84,$83,$82,$83,$83,$81,$80,$80,$82,$80,$82,$80,$83,$82,$80,$82,$80,$82,$80,$80,$80,$82,$83,$80,$80,$83,$80,$80,$80,$85,$20
+  $20,$85,$82,$83,$81,$80,$80,$80,$82,$80,$83,$83,$82,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$82,$80,$80,$84,$20
+  $20,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$84,$85,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$88,$88,$88,$20,$88,$88,$20,$20,$88,$88,$88,$20,$88,$20,$88,$20,$88,$88,$88,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$88,$20,$88,$20,$88,$20,$88,$20,$88,$20,$20,$20,$88,$88,$88,$20,$88,$20,$88,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$88,$88,$88,$20,$88,$88,$20,$20,$88,$88,$20,$20,$88,$88,$88,$20,$88,$88,$88,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$88,$20,$88,$20,$88,$20,$88,$20,$88,$20,$20,$20,$88,$88,$88,$20,$88,$20,$88,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$88,$20,$88,$20,$88,$20,$88,$20,$88,$88,$88,$20,$88,$20,$88,$20,$88,$20,$88,$20,$20,$20,$20,$20,$20,$20
+end data
+
+Foe Foes[6]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Spd = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the baton: place, heading (1 up, 2 down, 4 left, 8 right)
+u8 PX = 16
+u8 PY = 92
+u8 PD = 8
+' the shot: place and heading (0 = none)
+u8 MX = 0
+u8 MY = 0
+u8 MD = 0
+u8 Frac = 0
+u8 Steps = 0
+u8 Sp = 0
+u8 Lv = 1
+u8 Lives = 3
+u8 Shape = 0
+u8 Hold = 0
+u8 HoldK = 0
+u8 Over = 0
+u8 Won = 0
+u8 Kills = 0
+u8 Deaths = 0
+u8 Spin = 0
+u8 SpinT = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Df = 0
+u8 Li = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table ArSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER (or the original's surrender), then the title
+  mute all
+  if Won = 1 then
+    print at 6,10, "                    "
+    print at 6,11, " I GIVE UP!!!       "
+    print at 6,12, "       YOU WIN!!!   "
+    print at 6,13, "                    "
+    play sound SndLevel
+  else
+    print at 9,10, "             "
+    print at 9,11, "  GAME OVER  "
+    print at 9,12, "             "
+    play sound SndOver
+  end if
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: a death's or a cleared wave's pause, else the stick
+' and as many passes of the C64's loop as the speed gives
+sub PlayStep:
+  if Hold > 0 then
+    dec Hold
+    if Hold = 0 then EndHold
+    return
+  end if
+  Steer
+  W16 = Frac
+  W16 = W16 + Spd
+  Steps = W16 >> 8
+  Frac = W16 & 255
+  while Steps > 0
+    DoPass
+    dec Steps
+    if Hold > 0 then Steps = 0
+  end while
+  inc SpinT
+  if SpinT >= 3 then
+    SpinT = 0
+    Spin = (Spin + 1) & 3
+  end if
+  return
+end sub
+
+' the stick: a plain direction turns the baton; the button throws a shot
+' (the stick's way if pushed, else the baton's heading)
+sub Steer:
+  K = J1 & 15
+  V = 0
+  select case K
+    case 1, 2, 4, 8
+      V = K
+  end select
+  if Btn = 0 then
+    if V > 0 then PD = V
+    return
+  end if
+  if MD > 0 then return
+  if V = 0 then V = PD
+  MD = V
+  MX = PX
+  MY = PY
+  play sound SndShot
+  return
+end sub
+
+' one pass of the original's loop
+sub DoPass:
+  MoveShot
+  ShotHits
+  MoveShot
+  ShotHits
+  MoveFoes
+  MoveBaton
+  Touch
+  return
+end sub
+
+sub MoveShot:
+  select case MD
+    case 0
+      return
+    case 1
+      if MY <= 18 then
+        MD = 0
+      else
+        dec MY
+      end if
+    case 2
+      if MY >= 166 then
+        MD = 0
+      else
+        inc MY
+      end if
+    case 4
+      if MX <= 10 then
+        MD = 0
+      else
+        dec MX
+      end if
+    case 8
+      if MX >= 230 then
+        MD = 0
+      else
+        inc MX
+      end if
+  end select
+  return
+end sub
+
+' |A - B|
+function Dist(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+' a random direction for one axis: none, minus or plus by thirds
+function RandDir as i8
+  Rand
+  u8 R = Rs & 255
+  if R < 85 then return 0
+  if R < 170 then return -1
+  return 1
+
+sub ShotHits:
+  if MD = 0 then return
+  for Fi = 0 to 5
+    if Foes[Fi].St = 1 then
+      if Dist(MX, Foes[Fi].X) < 8 then
+        if Dist(MY, Foes[Fi].Y) < 7 then
+          Foes[Fi].St = 2
+          Foes[Fi].Tm = BurstLen
+          MD = 0
+          Score += Lv
+          if Score > Hi then Hi = Score
+          inc Kills
+          play sound SndBoom
+          ShowScore
+          if Score >= 10000 then
+            Won = 1
+            Over = 1
+          end if
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' every foe a pixel; a wall turns it back on that axis and picks the other
+' axis at random; bursts drift on and fade after 25 passes
+sub MoveFoes:
+  u8 Left = 0
+  for Fi = 0 to 5
+    if Foes[Fi].St > 0 then
+      inc Left
+      if Foes[Fi].St = 2 then
+        dec Foes[Fi].Tm
+        if Foes[Fi].Tm = 0 then Foes[Fi].St = 0
+      end if
+      select case Foes[Fi].Vx
+        case -1
+          if Foes[Fi].X <= XMin then
+            Foes[Fi].Vx = 1
+            Foes[Fi].Vy = RandDir()
+          else
+            dec Foes[Fi].X
+          end if
+        case 1
+          if Foes[Fi].X >= XMax then
+            Foes[Fi].Vx = -1
+            Foes[Fi].Vy = RandDir()
+          else
+            inc Foes[Fi].X
+          end if
+      end select
+      select case Foes[Fi].Vy
+        case -1
+          if Foes[Fi].Y <= YMin then
+            Foes[Fi].Vy = 1
+            Foes[Fi].Vx = RandDir()
+          else
+            dec Foes[Fi].Y
+          end if
+        case 1
+          if Foes[Fi].Y >= YMax then
+            Foes[Fi].Vy = -1
+            Foes[Fi].Vx = RandDir()
+          else
+            inc Foes[Fi].Y
+          end if
+      end select
+    end if
+  next
+  if Left = 0 then
+    if Hold = 0 then
+      Hold = HoldLen
+      HoldK = 2
+      play sound SndLevel
+    end if
+  end if
+  return
+end sub
+
+sub MoveBaton:
+  select case PD
+    case 1
+      if PY <= YMin then
+        PD = 2
+      else
+        dec PY
+      end if
+    case 2
+      if PY >= YMax then
+        PD = 1
+      else
+        inc PY
+      end if
+    case 4
+      if PX <= XMin then
+        PD = 8
+      else
+        dec PX
+      end if
+    case 8
+      if PX >= XMax then
+        PD = 4
+      else
+        inc PX
+      end if
+  end select
+  return
+end sub
+
+' a live foe touching the baton (middle 10 x 10 boxes)
+sub Touch:
+  if Hold > 0 then return
+  for Fi = 0 to 5
+    if Foes[Fi].St = 1 then
+      if Dist(PX, Foes[Fi].X) < 10 then
+        if Dist(PY, Foes[Fi].Y) < 10 then
+          Hold = HoldLen
+          HoldK = 1
+          inc Deaths
+          play sound SndDie
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the end of a pause: after a death a life goes and the wave restarts in
+' full; after a cleared wave, the next level
+sub EndHold:
+  if HoldK = 1 then
+    dec Lives
+    ShowLives
+    if Lives = 0 then
+      Over = 1
+      return
+    end if
+  else
+    inc Lv
+    ShowLevel
+  end if
+  StartWave
+  return
+end sub
+
+sub StartWave:
+  copy FoeStart to Foes
+  for Fi = 0 to 5
+    Foes[Fi].Vy = RandDir()
+  next
+  K = Lv - 1
+  if K > 10 then K = 10
+  J = Sp * 11 + K
+  Spd = SpdT[J]
+  Shape = Lv - 1
+  while Shape >= 10
+    Shape -= 10
+  end while
+  PX = XMin
+  PY = 92
+  PD = 8
+  MD = 0
+  Frac = 0
+  Hold = 0
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the baton (knobs, staff), 2 the shot, 3-8 the foes
+sub DrawSprites:
+  K = Spin * 4
+  if HoldK = 1 then
+    if Hold > 0 then
+      ' the fallen baton blinks its knobs (twice a second)
+      V = Hold & 16
+      if V > 0 then K = 255
+    end if
+  end if
+  if K = 255 then
+    set sprite 0 to 192,0,0,0
+  else
+    set sprite 0 to PY - 1,PX,SKnob0 + K,BatEnd[Spin]
+  end if
+  K = Spin * 4
+  set sprite 1 to PY - 1,PX,SBat0 + K,15
+  if MD > 0 then
+    set sprite 2 to MY - 1,MX,SShot,9
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for Df = 0 to 5
+    J = Df + 3
+    select case Foes[Df].St
+      case 0
+        set sprite J to 192,0,0,0
+      case 1
+        K = Shape * 4 + SFoe0
+        set sprite J to Foes[Df].Y - 1,Foes[Df].X,K,FoeCol[Df]
+      case 2
+        if Foes[Df].Tm > 12 then
+          set sprite J to Foes[Df].Y - 1,Foes[Df].X,SBur0,11
+        else
+          set sprite J to Foes[Df].Y - 1,Foes[Df].X,SBur1,9
+        end if
+    end select
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 4,1, Score
+  print at 18,1, Hi
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 13,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 3 at 26,1
+  ' (no early return before this loop: bugs/jake-return-before-for.alexis)
+  if Lives > 0 then
+    C = 25 + Lives
+    for Li = 26 to C
+      put char TLife at Li,1
+    next
+  end if
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy ArenaMap count 768 to vram.name
+  print at 2,1, "SC"
+  print at 11,1, "LV"
+  print at 16,1, "HI"
+  Score = 0
+  Lv = 1
+  Lives = 3
+  Over = 0
+  Won = 0
+  Kills = 0
+  Deaths = 0
+  Spin = 0
+  SpinT = 0
+  HoldK = 0
+  StartWave
+  ShowScore
+  ShowLevel
+  ShowLives
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: ARENA in carved stones, a spinning baton, the speed menu, the
+' best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 6,1, "AHOY! FEBRUARY 1986"
+  copy TitleMap count 160 to vram.name + 96
+  print at 4,10, "SHOOT THE SIX, MIND THE"
+  print at 4,11, "WALLS. THE BATON SPINS!"
+  print at 13,14, "SLOW"
+  print at 13,15, "MEDIUM"
+  print at 13,16, "FAST"
+  print at 13,17, "CREDITS"
+  if Hi > 0 then
+    print at 9,20, "BEST ", Hi
+  end if
+  if Menu > 2 then Menu = Sp
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then
+    CreditsPage
+  else
+    Sp = Menu
+  end if
+  return
+end sub
+
+' the baton spins beside the menu
+sub TitleAnim:
+  inc SpinT
+  if SpinT >= 3 then
+    SpinT = 0
+    Spin = (Spin + 1) & 3
+  end if
+  K = Spin * 4
+  J = Menu * 8 + 107
+  set sprite 0 to J,64,SKnob0 + K,11
+  set sprite 1 to J,64,SBat0 + K,15
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 14 to 17
+    put char 32 at 11,Li
+  next
+  J = Menu + 14
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "ARENA"
+  print at 2,5, "BASED ON ARENA, AHOY!"
+  print at 2,6, "FEBRUARY 1986 (COMMODORE 64"
+  print at 2,7, "MACHINE LANGUAGE; THE"
+  print at 2,8, "AUTHOR IS NOT NAMED)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: INTO THE PIT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+ArShot:
+    db $40,$3E,$20,$01,$40,$49,$30,$01,$40,$56,$30,$01,$40,$65,$40,$01,$40,$77,$40,$01,$40,$8C,$50,$01
+    db $50
+ArBoom:
+    db $00,$00,$05,$03,$00,$00,$26,$04,$00,$00,$36,$06,$00,$00,$57,$08,$00,$00,$77,$08,$10
+ArDie:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$26,$0A,$00,$00,$47,$0C,$00,$00,$67,$0E,$00,$00,$87,$10
+    db $10
+ArLevel:
+    db $C0,$D6,$20,$05,$C0,$AA,$20,$05,$C0,$8F,$20,$05,$C0,$6B,$20,$05,$C0,$55,$20,$10,$D0
+ArStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+ArOver:
+    db $40,$FE,$10,$0A,$40,$1D,$21,$0A,$40,$41,$21,$0A,$40,$53,$21,$0A,$40,$FC,$31,$1E,$50
+
+ArSoundTable:
+    dw ArTuneMel,$702B
+    dw ArTuneBass,$7035
+    dw ArShot,$7049
+    dw ArBoom,$703F
+    dw ArDie,$703F
+    dw ArLevel,$705D
+    dw ArStart,$7049
+    dw ArOver,$7049
+; Into the Pit (original)
+; Tiny Sound, 8 frames per step
+ArTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$1E,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$21,$23,$01,$25,$01,$26,$01,$01,$01
+    db $25,$01,$01,$01,$23,$01,$01,$1E,$23,$01,$26,$01,$2A,$01,$28,$01
+    db $26,$01,$25,$01,$23,$01,$26,$01,$25,$01,$21,$01,$23,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+ArTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0E,$01,$09,$01
+    db $10,$01,$0B,$01,$07,$01,$0E,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $0B,$01,$00,$01
+    db $FF
+}
+
+

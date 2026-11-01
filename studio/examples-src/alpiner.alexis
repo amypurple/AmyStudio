@@ -1,0 +1,1181 @@
+cartridge "ALPINER/BOB LLORET/1984"
+
+' ALPINER
+' A ColecoVision game based on "Alpiner" by Bob Lloret, Ahoy! June 1984
+' (Commodore 64, BASIC with a 19-byte joystick routine in machine code).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/alpiner.bas), the game is built for the ColecoVision:
+' smooth 16 x 16 skier sprites, tiled forest, flags, rocks and logs, the
+' course scrolled on two name pages (composed hidden, then swapped), sound
+' effects and an original title tune.
+'
+' The game: a downhill slalom in three legs. The course runs up the screen
+' between two ragged lines of firs; the skier moves with the stick in all
+' four directions. Gates of two flags appear at a regular spacing; from
+' the second leg a rock appears between the gates, and in the third leg a
+' fallen log as well. Every touch of a tree, flag, rock or log is a fall
+' and costs points: 150 in the first leg, 250 in the second, 350 in the
+' third, from a starting score of 50,000. One to four players; each skis
+' all three legs in turn, with the results of everyone so far after each
+' leg, and the final results after the last player.
+'
+' From the original: the three legs of 600, 700 and 800 course lines and
+' the run-out after each; the course edge drawn at a random offset each
+' line (11 places on the C64's 40 columns, 8 here on 28) with the second
+' tree line a fixed width away; a gate of two flags 5 columns apart every
+' S lines (S = 13, 12, 10 for AMATEUR, PROFESSIONAL, ALPINER) at a random
+' column; the obstacle line OBS lines after each gate (OBS = 6, 5, 3), a
+' rock in leg 2, a rock and a three-wide log in leg 3; the penalties 150,
+' 250, 350 per fall from 50,000; free movement in four directions at the
+' C64 rate (4 pixels a course line); the course speed measured in jsc64
+' (11.2 lines a second); 1-4 players, each skiing all three legs before
+' the next; the results after each leg for the players so far (gates,
+' obstacles hit, total score) and the messages NEXT LEG COMING UP, NEXT
+' PLAYER PLEASE, FINAL RESULTS.
+'
+' Liberties: the listing counts every gate it prints, and only in the first
+' leg; here a gate counts when the skier passes between its flags (all
+' legs), shown as "passed of set". On the C64 a touch takes points on
+' every pass while the skier overlaps (and the fallen picture stays until
+' the next gate); here a fall takes the penalty once and the skier lies in
+' the snow for 2/3 second, unable to fall again (the stick still steers,
+' as on the C64). The space outside the two tree lines is solid forest
+' (on the C64 it is empty but crossed by a tree every line). The log is on
+' the rock's line, not the line above. The skier stays between rows 3 and
+' 19 (the C64 lets him leave the screen). Player names are PLAYER 1-4
+' (no keyboard). The C64's continuous noise is a soft swish on each turn;
+' falls, gates, the start and the finish have sounds. The results wait for
+' a press (8 seconds at most) instead of a fixed delay; the final results
+' name the winner.
+'
+' Controls: either controller. The stick steers the skier. On the title,
+' up and down choose a line, a button starts or changes the line's value
+' (players 1-4, level). A press skips the waits between legs.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers (bug 36). Nothing flashes.
+
+const TSnow = 128
+const TBump = 129
+const TTrack = 130
+const TFora = 131
+const TForb = 132
+const TTree = 133
+const TFlagr = 134
+const TFlagb = 135
+const TFlagn = 136
+const TFlagm = 137
+const TRock = 138
+const TLoga = 139
+const TLogb = 140
+const TLogc = 141
+const TFina = 142
+const TSky = 143
+const TRockf = 144
+const TSnowl = 145
+const TSnowr = 146
+const SSts = 0
+const SStg = 4
+const SRts = 8
+const SRtg = 12
+const SLts = 16
+const SLtg = 20
+const SFls = 24
+const SFlg = 28
+const NTiles8 = 152
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSwish = 3
+const SndCrash = 4
+const SndGate = 5
+const SndGo = 6
+const SndFinish = 7
+const SndFinal = 8
+const NRow = 21
+const FallN = 40
+const RateA = 56
+const RateT = 300
+const RunOut = 20
+const PxMin = 12
+const PxMax = 228
+const PyMin = 24
+const PyMax = 144
+const NSpr = 4
+
+' per level: gate spacing S and obstacle line OBS
+data GapT bytes
+  13, 12, 10
+end data
+data ObsT bytes
+  6, 5, 3
+end data
+
+record Racer:
+  u16 Score
+  u8 Gates
+  u8 Set
+  u8 Hits
+end record
+
+Racer Rc[4]
+
+record CourseLine:
+  u8 T
+  u8 G
+  u8 R
+  u8 L
+end record
+
+CourseLine Nx
+CourseLine Nd
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Acc = 0
+u16 Sc = 0
+u16 Pen = 150
+u16 RowsLeft = 0
+u16 SOff = 0
+u16 DOff = 0
+u16 ShnOff = 0
+u16 HidOff = 1024
+' the course ring: row 2 of the screen is slot Hd; per slot the left tree
+' column, the gate (column + 64 for a blue gate + 128 once judged), the
+' rock column (255 the finish line), the log column (0 none)
+u8 RT[21]
+u8 RG[21]
+u8 RR[21]
+u8 RL[21]
+u8 Hd = 0
+u8 Prep = 0
+u8 NP = 1
+u8 Diff = 0
+u8 Gap = 13
+u8 Obs = 6
+u8 Pl = 0
+u8 Leg = 1
+u8 Bc = 0
+u8 GateN = 0
+u8 Gt = 0
+u8 Gset = 0
+u8 Ht = 0
+u8 FinLeft = 0
+u8 Phase = 0
+u8 Safe = 0
+u8 LegOver = 0
+' the skier: sprite corner, frames left lying in the snow, pose, last turn
+u8 Px = 120
+u8 Py = 40
+u8 FallT = 0
+u8 Pose = 0
+u8 LastH = 0
+u8 HudOn = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Sk = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Pi = 0
+u8 Ci = 0
+u16 Wt = 0
+' scratch
+u8 C = 0
+u8 G = 0
+u8 J = 0
+u8 K = 0
+u8 L = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table AlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  set screen pages vram.name and vram $1C00
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  ' a race: every player skis the three legs, results after each
+  for Pi = 0 to 3
+    if Pi < NP then
+      Pl = Pi
+      Rc[Pl].Score = 50000
+      Rc[Pl].Gates = 0
+      Rc[Pl].Set = 0
+      Rc[Pl].Hits = 0
+      for Leg = 1 to 3
+        RunLeg
+        Results
+      next
+    end if
+  next
+
+  ' the end: the final results stay up; a press goes back to the title;
+  ' left alone, Amy's sleep blanks the screen after 30 seconds
+  mute all
+  Rearm
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one leg
+
+sub RunLeg:
+  select case Leg
+  case 1
+    Pen = 150
+    RowsLeft = 600
+  case 2
+    Pen = 250
+    RowsLeft = 700
+  case else
+    Pen = 350
+    RowsLeft = 800
+  end select
+  Sc = Rc[Pl].Score
+  Gt = Rc[Pl].Gates
+  Gset = Rc[Pl].Set
+  Ht = 0
+  Bc = 0
+  Phase = 0
+  Safe = 0
+  FinLeft = 0
+  LegOver = 0
+  Acc = 0
+  FallT = 0
+  Px = 120
+  Py = 40
+  Pose = 0
+  LastH = 0
+  Hd = 0
+  Prep = 0
+  ' a clean course to start: tree lines only
+  for Ri = 0 to 20
+    RT[Ri] = 2 + RandN(8)
+    RG[Ri] = 0
+    RR[Ri] = 0
+    RL[Ri] = 0
+  next
+  NewScreen
+  DrawCourse
+  print at 6,10, "                   "
+  print at 6,11, " GET READY,        "
+  NumU = Pl + 1
+  print at 6,12, " PLAYER ", digits$(NumU, 1), "          "
+  print at 6,13, "                   "
+  ShowHud
+  swap screens
+  SwapOffs
+  DrawCourse
+  ShowHud
+  ShowScreen
+  Wt = 0
+  Rearm
+  wait no fire
+  nmi off
+  while Wt < 150
+    Frame1
+    ReadPad
+    inc Wt
+    if Press = 1 then Wt = 150
+  end while
+  ' the hidden page is clean: show it with the skier
+  swap screens
+  SwapOffs
+  DrawCourse
+  ShowHud
+  HudOn = 1
+  DrawSkier
+  play sound SndGo
+  while LegOver = 0
+    Frame1
+    ReadPad
+    PlayStep
+    DrawSkier
+  end while
+  HideSprites
+  Rc[Pl].Score = Sc
+  Rc[Pl].Gates = Gt
+  Rc[Pl].Set = Gset
+  V = Rc[Pl].Hits + Ht
+  Rc[Pl].Hits = V
+  play sound SndFinish
+  for Ri = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+' one frame of play
+sub PlayStep:
+  MoveSkier
+  if FallT > 0 then dec FallT
+  PrepStep
+  Acc = Acc + RateA
+  if Acc >= RateT then
+    Acc = Acc - RateT
+    Scroll
+  end if
+  if Safe = 0 then
+    if FallT = 0 then Collide
+  end if
+  Judge
+  return
+end sub
+
+' the stick: 3 pixels in 4 frames each way (4 pixels a course line on the
+' C64); a swish on each new turn
+sub MoveSkier:
+  K = J1 | J2
+  N = 1
+  V = Tick & 3
+  if V = 3 then N = 0
+  Pose = 0
+  U = 0
+  V = K & 4
+  if V > 0 then
+    U = 4
+    Pose = 2
+    if Px >= PxMin + N then Px = Px - N
+  end if
+  V = K & 8
+  if V > 0 then
+    U = 8
+    Pose = 1
+    if Px + N <= PxMax then Px = Px + N
+  end if
+  V = K & 1
+  if V > 0 then
+    if Py >= PyMin + N then Py = Py - N
+  end if
+  V = K & 2
+  if V > 0 then
+    if Py + N <= PyMax then Py = Py + N
+  end if
+  if U > 0 then
+    if U <> LastH then play sound SndSwish
+  end if
+  LastH = U
+  if FallT > 0 then Pose = 3
+  return
+end sub
+
+' the course moves up a line. The hidden page is prepared over the frames
+' after each swap (Prep): step 0 draws the next line (already chosen) on
+' its row 22, steps 1-3 copy the shown rows 1 and 3-22 to rows 1 and 2-21,
+' 7, 7 and 6 rows (copying all at once took more than a frame). The
+' swap itself only stores the line in the ring and shows the page.
+sub PrepStep:
+  if Prep = 0 then
+    NewLine
+    DrawLine(22)
+    SOff = ShnOff + 32
+    DOff = HidOff + 32
+    copy vram.name + SOff count 32 to vram.name + DOff
+    SOff = SOff + 64
+    DOff = DOff + 32
+    Prep = 1
+  elseif Prep < 4 then
+    N = 7
+    if Prep = 3 then N = 6
+    for Ci = 1 to N
+      copy vram.name + SOff count 32 to vram.name + DOff
+      SOff = SOff + 32
+      DOff = DOff + 32
+    next
+    inc Prep
+  end if
+  return
+end sub
+
+sub Scroll:
+  while Prep < 4
+    PrepStep
+  end while
+  Hd = Hd + 1
+  if Hd >= NRow then Hd = 0
+  K = Slot(22)
+  RT[K] = Nx.T
+  RG[K] = Nx.G
+  RR[K] = Nx.R
+  RL[K] = Nx.L
+  if HudOn = 2 then
+    ShowHud
+    HudOn = 1
+  end if
+  swap screens
+  SwapOffs
+  Prep = 0
+  if Phase = 2 then
+    dec FinLeft
+    if FinLeft = 0 then LegOver = 1
+  end if
+  return
+end sub
+
+sub SwapOffs:
+  swap ShnOff with HidOff
+  return
+end sub
+
+' the next course line (Nx): the listing's gate counter B and obstacle
+' line OBS
+sub NewLine:
+  Nx.T = 2 + RandN(8)
+  Nx.G = 0
+  Nx.R = 0
+  Nx.L = 0
+  if Phase = 1 then
+    Nx.R = 255
+    Phase = 2
+    FinLeft = RunOut
+    return
+  end if
+  if Phase = 2 then return
+  if Bc = Obs then
+    if Leg = 2 then Nx.R = 10 + RandN(12)
+    if Leg = 3 then
+      V = 9 + RandN(9)
+      Nx.R = V
+      Nx.L = V + 4
+    end if
+  end if
+  inc Bc
+  if Bc >= Gap then
+    Bc = 0
+    V = 10 + RandN(7)
+    U = GateN & 1
+    if U = 1 then V = V + 64
+    Nx.G = V
+    inc GateN
+    inc Gset
+  end if
+  dec RowsLeft
+  if RowsLeft = 0 then Phase = 1
+  return
+end sub
+
+' the ring slot of screen row R (2-22)
+function Slot(u8 R) as u8
+  u8 S = 0
+  S = Hd + R - 2
+  if S >= NRow then S = S - NRow
+  return S
+
+' a random number 0..N-1 (N up to 255)
+function RandN(u8 N) as u8
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * N
+  W16 = W16 >> 8
+  u8 Q = 0
+  Q = W16
+  return Q
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the skier's box (6 x 10 pixels in the middle of the sprite) against the
+' course lines it covers
+sub Collide:
+  Got = 0
+  C = Px + 5
+  C = C >> 3
+  U = Px + 10
+  U = U >> 3
+  Y = Py + 4
+  Y = Y >> 3
+  T = Py + 13
+  T = T >> 3
+  for R = Y to T
+    CellHit
+  next
+  if Got = 1 then
+    FallT = FallN
+    Pose = 3
+    inc Ht
+    HudOn = 2
+    if Sc > Pen then
+      Sc = Sc - Pen
+    else
+      Sc = 0
+    end if
+    play sound SndCrash
+  end if
+  return
+end sub
+
+' Got = 1 when columns C..U of screen row R hold a tree, flag, rock or log
+sub CellHit:
+  K = Slot(R)
+  L = RT[K]
+  if C <= L then Got = 1
+  V = L + 20
+  if U >= V then Got = 1
+  G = RG[K] & 31
+  if G > 0 then
+    if C <= G then
+      if U >= G then Got = 1
+    end if
+    V = G + 5
+    if C <= V then
+      if U >= V then Got = 1
+    end if
+  end if
+  V = RR[K]
+  if V > 0 then
+    if V < 255 then
+      if C <= V then
+        if U >= V then Got = 1
+      end if
+    end if
+  end if
+  V = RL[K]
+  if V > 0 then
+    if C <= V + 2 then
+      if U >= V then Got = 1
+    end if
+  end if
+  return
+end sub
+
+' gates and the finish line reaching the skier's middle row (or the row
+' above, in case he moved down as the course moved up)
+sub Judge:
+  X = Px + 8
+  X = X >> 3
+  Y = Py + 8
+  Y = Y >> 3
+  for Ci = 0 to 1
+    R = Y - Ci
+    K = Slot(R)
+    if RR[K] = 255 then Safe = 1
+    V = RG[K]
+    if V > 0 then
+      if V < 128 then
+        RG[K] = V + 128
+        G = V & 31
+        if X > G then
+          if X < G + 5 then
+            inc Gt
+            HudOn = 2
+            play sound SndGate
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' screen row R of the course on the page being written
+sub DrawRow(u8 R):
+  u8 Sl = 0
+  Sl = Slot(R)
+  Nd.T = RT[Sl]
+  Nd.G = RG[Sl]
+  Nd.R = RR[Sl]
+  Nd.L = RL[Sl]
+  DrawFrom(R)
+  return
+end sub
+
+' the pending line Nx on row R
+sub DrawLine(u8 R):
+  Nd.T = Nx.T
+  Nd.G = Nx.G
+  Nd.R = Nx.R
+  Nd.L = Nx.L
+  DrawFrom(R)
+  return
+end sub
+
+' line Nd on row R of the page being written
+sub DrawFrom(u8 Rw):
+  u8 Lc = 0
+  u8 Fo = 0
+  u8 Gc = 0
+  Lc = Nd.T
+  Fo = TFora
+  V = Lc & 1
+  if V = 1 then Fo = TForb
+  fill Fo count Lc at 0,Rw
+  put char TTree at Lc,Rw
+  V = Lc + 1
+  fill TSnow count 20 at V,Rw
+  V = Lc + 21
+  N = 11 - Lc
+  fill Fo count N at V,Rw
+  ' a few ski tracks and bumps on the snow
+  V = Rw * 7 + Lc
+  V = V + Tick
+  V = V & 15
+  if V < 3 then
+    U = Lc + 3 + V * 5
+    put char TTrack at U,Rw
+  end if
+  if V = 9 then
+    U = Lc + 12
+    put char TBump at U,Rw
+  end if
+  Gc = Nd.G & 127
+  if Gc > 0 then
+    if Gc >= 64 then
+      Gc = Gc - 64
+      put char TFlagn at Gc,Rw
+      V = Gc + 5
+      put char TFlagm at V,Rw
+    else
+      put char TFlagr at Gc,Rw
+      V = Gc + 5
+      put char TFlagb at V,Rw
+    end if
+  end if
+  V = Nd.R
+  if V = 255 then
+    U = Lc + 1
+    fill TFina count 19 at U,Rw
+  elseif V > 0 then
+    put char TRock at V,Rw
+  end if
+  V = Nd.L
+  if V > 0 then
+    put char TLoga at V,Rw
+    inc V
+    put char TLogb at V,Rw
+    inc V
+    put char TLogc at V,Rw
+  end if
+  ' the right tree line last: a log reaching it goes under the tree
+  V = Lc + 20
+  put char TTree at V,Rw
+  return
+end sub
+
+sub DrawCourse:
+  fill 32 count 32 at 0,0
+  fill 32 count 32 at 0,1
+  for Ri = 2 to 22
+    DrawRow(Ri)
+  next
+  fill 32 count 32 at 0,23
+  return
+end sub
+
+sub ShowHud:
+  NumU = Pl + 1
+  print at 2,1, "P", digits$(NumU, 1)
+  NumU = Leg
+  print at 6,1, "LEG ", digits$(NumU, 1)
+  NumU = Gt
+  print at 13,1, "GATES ", digits$(NumU, 3)
+  print Sc at 25,1 digits 5
+  return
+end sub
+
+' sprites 0 and 1: the skier (suit, then skis, poles and cap)
+sub DrawSkier:
+  Y = Py - 1
+  K = Pose << 3
+  V = K + 4
+  set sprite 0 to Y,Px,K,8
+  set sprite 1 to Y,Px,V,1
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' results after each leg
+
+
+sub Results:
+  NewScreen
+  select case Leg
+  case 1
+    print at 5,2, "* FIRST LEG RESULTS *"
+  case 2
+    print at 5,2, "* SECOND LEG RESULTS *"
+  case else
+    print at 5,2, "* THIRD LEG RESULTS *"
+  end select
+  for Ci = 0 to Pl
+    ShowRacer(Ci)
+  next
+  if Leg < 3 then
+    print at 7,21, "NEXT LEG COMING UP"
+  elseif Pl + 1 < NP then
+    print at 7,21, "NEXT PLAYER PLEASE"
+  else
+    print at 7,20, "* FINAL RESULTS *"
+    if NP > 1 then
+      Winner
+      NumU = K + 1
+      print at 7,22, "WINNER: PLAYER ", digits$(NumU, 1)
+    end if
+  end if
+  swap screens
+  SwapOffs
+  ShowScreen
+  Wt = 0
+  if Leg = 3 then
+    if Pl + 1 >= NP then
+      play sound SndFinal
+      Wt = 480
+    end if
+  end if
+  Rearm
+  wait no fire
+  nmi off
+  while Wt < 480
+    Frame1
+    ReadPad
+    inc Wt
+    if Press = 1 then
+      if Wt > 30 then Wt = 480
+    end if
+  end while
+  return
+end sub
+
+' four lines for racer P from row 4
+sub ShowRacer(u8 P):
+  u8 Row = 0
+  Row = P * 4 + 4
+  NumU = P + 1
+  print at 3,Row, "PLAYER ", digits$(NumU, 1), ":"
+  inc Row
+  print at 5,Row, "GATES PASSED....", Rc[P].Gates, " OF ", Rc[P].Set
+  inc Row
+  print at 5,Row, "OBSTACLES HIT...", Rc[P].Hits
+  inc Row
+  NumU = Rc[P].Score
+  print at 5,Row, "TOTAL SCORE.....", digits$(NumU, 5)
+  return
+end sub
+
+' K = the player with the best score (the first of equals)
+sub Winner:
+  K = 0
+  W16 = Rc[0].Score
+  for Ci = 1 to 3
+    if Ci < NP then
+      if Rc[Ci].Score > W16 then
+        W16 = Rc[Ci].Score
+        K = Ci
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every new screen: both name pages blank, the tiles in all three thirds
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  HudOn = 0
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  swap screens
+  SwapOffs
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title, drawn on both pages: a snowy range under a blue sky, the
+' name, the menu; the tune once
+sub TitlePage:
+  NewScreen
+  DrawTitle
+  swap screens
+  SwapOffs
+  DrawTitle
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 660
+  TzOn = 1
+  TitleOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Sk = J1 | J2
+  Sk = Sk & 3
+  if Sk > 0 then
+    if WasStick = 0 then
+      K = Sk & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      MenuBoth
+    end if
+  end if
+  WasStick = Sk
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    inc NP
+    if NP > 4 then NP = 1
+    MenuBoth
+    goto tp_loop
+  end if
+  if Menu = 2 then
+    inc Diff
+    if Diff > 2 then Diff = 0
+    MenuBoth
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  Gap = GapT[Diff]
+  Obs = ObsT[Diff]
+  GateN = 0
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub DrawTitle:
+  for Ri = 1 to 7
+    fill TSky count 32 at 0,Ri
+  next
+  ' three peaks: snowy slopes
+  for Ri = 0 to 3
+    X = 4 - Ri
+    Y = Ri + 4
+    U = 3 + Ri * 2
+    put char TSnowl at X,Y
+    V = X + 1
+    fill TSnow count U at V,Y
+    V = V + U
+    put char TSnowr at V,Y
+  next
+  for Ri = 0 to 4
+    X = 15 - Ri
+    Y = Ri + 3
+    U = 1 + Ri * 2
+    put char TSnowl at X,Y
+    V = X + 1
+    fill TSnow count U at V,Y
+    V = V + U
+    put char TSnowr at V,Y
+  next
+  for Ri = 0 to 2
+    X = 25 - Ri
+    Y = Ri + 5
+    U = 2 + Ri * 2
+    put char TSnowl at X,Y
+    V = X + 1
+    fill TSnow count U at V,Y
+    V = V + U
+    put char TSnowr at V,Y
+  next
+  fill TSnow count 32 at 0,8
+  for Ri = 0 to 31
+    V = Ri & 3
+    if V = 1 then put char TTree at Ri,8
+  next
+  print at 14,10, "THE"
+  print at 9,11, "A L P I N E R"
+  print at 10,13, "BY BOB LLORET"
+  print at 9,15, "START"
+  print at 9,16, "PLAYERS"
+  print at 9,17, "LEVEL"
+  print at 9,18, "CREDITS"
+  print at 8,21, "AHOY! JUNE 1984"
+  ShowMenu
+  return
+end sub
+
+data LevelNames chars
+  "AMATEUR     "
+  "PROFESSIONAL"
+  "ALPINER     "
+end data
+
+sub ShowMenu:
+  for Ri = 15 to 18
+    put char 32 at 7,Ri
+  next
+  V = Menu + 15
+  put char 62 at 7,V
+  NumU = NP
+  print at 17,16, digits$(NumU, 1)
+  V = Diff * 12
+  put LevelNames + V count 12 at 15,17
+  return
+end sub
+
+sub MenuBoth:
+  ShowMenu
+  swap screens
+  SwapOffs
+  ShowMenu
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "ALPINER"
+  print at 2,5, "BASED ON ALPINER BY"
+  print at 2,6, "BOB LLORET, AHOY! JUNE 1984"
+  print at 2,7, "(COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: FIRST TRACKS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  swap screens
+  SwapOffs
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$24,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$40,$00,$00
+  $20,$70,$07,$02,$07,$F0,$40,$E0
+  $04,$0E,$A0,$E0,$F0,$00,$02,$07
+  $10,$38,$38,$83,$38,$01,$10,$10
+  $83,$81,$83,$40,$40,$40,$40,$E0
+  $C1,$81,$C1,$02,$02,$02,$02,$07
+  $83,$81,$83,$40,$40,$40,$40,$E0
+  $C1,$81,$C1,$02,$02,$02,$02,$07
+  $00,$18,$C3,$91,$81,$00,$81,$C3
+  $00,$C0,$60,$90,$60,$60,$C0,$00
+  $00,$00,$04,$00,$00,$10,$00,$00
+  $00,$03,$01,$01,$07,$01,$03,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$04,$00,$40,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+end data
+data TileCol bytes
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$EF,$EF,$0F,$0F,$0F,$0F
+  $0F,$EF,$0F,$0F,$0F,$EF,$0F,$0F
+  $2C,$2C,$C2,$2C,$2C,$C2,$2C,$2C
+  $2C,$2C,$C2,$2C,$2C,$0C,$2C,$2C
+  $CF,$CF,$CF,$FC,$CF,$FC,$6F,$6F
+  $F8,$F8,$F8,$1F,$1F,$1F,$1F,$1F
+  $F8,$F8,$F8,$1F,$1F,$1F,$1F,$1F
+  $F4,$F4,$F4,$1F,$1F,$1F,$1F,$1F
+  $F4,$F4,$F4,$1F,$1F,$1F,$1F,$1F
+  $0F,$EF,$FE,$FE,$FE,$0E,$FE,$F1
+  $0F,$FA,$6A,$A6,$6A,$6A,$FA,$0F
+  $0F,$0A,$6A,$06,$0A,$6A,$0A,$0F
+  $0F,$FA,$FA,$A6,$6A,$FA,$FA,$0F
+  $1F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $0E,$FE,$0E,$FE,$0E,$FE,$0E,$0E
+  $F5,$F5,$F5,$5F,$5F,$5F,$5F,$0F
+  $F5,$F5,$F5,$F5,$5F,$5F,$5F,$0F
+end data
+data SpritePat bytes
+  $00,$03,$03,$01,$07,$0F,$0B,$03,$03,$02,$02,$02,$00,$00,$00,$00
+  $00,$C0,$C0,$80,$E0,$F0,$D0,$C0,$C0,$40,$40,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$10,$10,$10,$10,$00,$02,$02,$02,$00
+  $00,$00,$00,$00,$00,$00,$08,$08,$08,$08,$08,$00,$40,$40,$40,$00
+  $00,$01,$01,$00,$03,$07,$05,$03,$03,$04,$04,$04,$00,$00,$00,$00
+  $00,$E0,$E0,$C0,$F0,$F8,$E8,$C0,$C0,$80,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$10,$10,$20,$29,$12,$12,$24,$24,$00
+  $00,$00,$00,$00,$00,$00,$04,$08,$08,$10,$10,$00,$00,$00,$00,$00
+  $00,$07,$07,$03,$0F,$1F,$17,$03,$03,$01,$01,$01,$00,$00,$00,$00
+  $00,$80,$80,$00,$C0,$E0,$A0,$C0,$C0,$20,$20,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$10,$10,$08,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$08,$08,$04,$94,$48,$48,$24,$24,$00
+  $00,$00,$00,$00,$00,$03,$07,$3F,$3F,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$C0,$DC,$7E,$3C,$00,$00,$00,$00
+  $00,$00,$10,$08,$04,$00,$00,$00,$00,$00,$00,$C0,$3E,$01,$1F,$F8
+  $00,$00,$10,$20,$40,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$C0,$00
+end data
+
+asm {
+AlSwish:
+    db $00,$00,$96,$03,$00,$00,$B6,$05,$00,$00,$D6,$06,$10
+AlCrash:
+    db $00,$00,$04,$03,$00,$00,$25,$04,$00,$00,$46,$06,$00,$00,$76,$0C,$10
+AlGate:
+    db $40,$47,$30,$03,$40,$35,$40,$06,$50
+AlGo:
+    db $40,$D6,$20,$0A,$40,$D6,$F0,$0A,$40,$D6,$20,$0A,$40,$D6,$F0,$0A,$40,$6B,$10,$18,$50
+AlFinish:
+    db $40,$8F,$10,$06,$40,$71,$10,$06,$40,$5F,$10,$06,$40,$47,$20,$14,$50
+AlFinal:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$20,$1E
+    db $50
+
+AlSoundTable:
+    dw AlTuneMel,$702B
+    dw AlTuneBass,$7035
+    dw AlSwish,$703F
+    dw AlCrash,$703F
+    dw AlGate,$7049
+    dw AlGo,$7049
+    dw AlFinish,$7049
+    dw AlFinal,$7049
+; First Tracks (original)
+; Tiny Sound, 9 frames per step
+AlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$25,$28,$01,$25,$26,$01,$23,$20,$01,$23
+    db $21,$01,$1C,$1E,$01,$21,$23,$01,$26,$25,$01,$21,$23,$01,$20,$1C
+    db $01,$01,$1E,$01,$21,$26,$01,$25,$23,$01,$21,$20,$01,$23,$28,$01
+    db $26,$25,$01,$23,$21,$01,$25,$23,$01,$20,$21,$01,$01,$1C,$01,$01
+    db $1E,$20,$21,$23,$01,$20,$21,$01,$01,$01,$00,$01
+    db $FF
+AlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$10,$01,$01,$0E,$01,$15,$10,$01,$01
+    db $09,$01,$10,$0E,$01,$01,$10,$01,$17,$09,$01,$10,$10,$01,$17,$0D
+    db $01,$01,$0E,$01,$15,$0E,$01,$01,$10,$01,$17,$10,$01,$01,$0D,$01
+    db $14,$09,$01,$10,$0E,$01,$15,$10,$01,$17,$09,$01,$10,$0D,$01,$01
+    db $0E,$01,$01,$10,$01,$01,$09,$01,$01,$01,$00,$01
+    db $FF
+}
+
+

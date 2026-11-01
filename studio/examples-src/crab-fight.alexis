@@ -1,0 +1,1420 @@
+cartridge "CRAB FIGHT/BUCK CHILDRESS/1986"
+
+' CRAB FIGHT
+' A ColecoVision game based on "Crabfight" by Buck Childress, Ahoy!
+' February 1986 (Commodore 64 machine language at $C000-$CB07, POKEd in
+' by a four-line BASIC loader; author from LaunchBox, the listing names
+' none). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/crab.dis), the game is built for the ColecoVision: a
+' sandy beach between rocks with a coral pool and a kelp pool at the ends,
+' two smooth crabs that scuttle and snap their claws, a clam, wiggling
+' octopuses, sound effects.
+'
+' The game: a red crab (top) and a purple crab (bottom) race for the clam
+' in the middle. The crab that touches it holds it, and must throw it
+' within three seconds (the clock beside the field runs down) or the other
+' crab gets 10 points and the clam goes back to the middle. A thrown clam
+' bounces off the rocks at the sides; when it reaches the far end wall the
+' thrower scores 5, and when it hits one of the two octopuses in the other
+' crab's pool the thrower scores 20 (that octopus hides until the clam is
+' back in the middle of the beach, and the clam turns back). Each crab
+' stays in its half. The first to 200 points wins.
+'
+' From the original (orig/): the loop's step that moves the clam 1 pixel
+' up or down and 2 sideways in one of six directions, the crabs 2 pixels
+' sideways and 1 up or down per step; the throw codes (button + forward,
+' left or right; no movement while the button is held); the bounces and
+' their scoring (5 at an end wall, 20 an octopus with the clam sent back,
+' the octopus back when the clam is in the middle band); possession by
+' touch; the clock of three
+' digits; 10 to the other crab when it runs out, then a new serve with
+' five beeps; first to 200. The computer (one player) is the original's
+' red crab: it follows the clam sideways, backs off when the clam is in
+' its half, comes forward to the middle (or all the way at a serve), goes
+' to the middle when the other crab holds the clam, and when it holds the
+' clam it backs off, sweeps from side to side and throws when the jiffy
+' clock's low byte is under 96, straight or diagonally at random; its
+' level makes it skip one step in 3, 4 or 5 (EASY, MEDIUM, HARD).
+'
+' Liberties: the C64's loop ran 5.5, 3.5 or 2.5 steps a frame (levels 1-3,
+' worked out from its delay loops); here SLOW, MEDIUM and FAST run 1.5,
+' 2 and 2.5 (FAST is the C64's slowest), checked with a human-paced bot;
+' the field is 160 x 176 pixels (the C64's 168 x 184), the crabs 24 x 16
+' and the clam 12 x 12, touches are box tests (the C64 used its sprite
+' collision register); a clam touching both crabs goes to each in turn
+' (the C64 gave it to neither, which could stall a serve for ever); the clock counts whole seconds (the C64 counted 256
+' steps a digit); the computer keeps inside the rocks and its throws start
+' on an even pixel; the crab opens its claws while the button is held (the
+' C64 turned it blue); one player uses either controller and plays the
+' purple crab, as on the C64's port 2; the C64's pause key (RUN/STOP, then
+' N new or C continue) is left out; the winner's message, the number of
+' throws, then the title (the C64 asked N or C).
+'
+' Controls: one player: controller 1 or 2, the purple crab (bottom). Two
+' players: controller 1 the purple crab, controller 2 the red crab (top).
+' Stick: move. Hold a button and push the stick forward, left or right to
+' throw the clam. On the title: up and down choose a line, left and right
+' (or a button) change it, a button on START plays.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TSand0 = 128
+const TSand1 = 129
+const TSand2 = 130
+const TSand3 = 131
+const TMid0 = 132
+const TMid1 = 133
+const TPoolR = 134
+const TPoolR2 = 135
+const TPoolM = 136
+const TPoolM2 = 137
+const TRock0 = 138
+const TRock1 = 139
+const TSea0 = 140
+const TSea1 = 141
+const TSea2 = 142
+const TDr0 = 143
+const TDr1 = 144
+const TDr2 = 145
+const TDr3 = 146
+const TDr4 = 147
+const TDr5 = 148
+const TDr6 = 149
+const TDr7 = 150
+const TDr8 = 151
+const TDr9 = 152
+const TDm0 = 153
+const TDm1 = 154
+const TDm2 = 155
+const TDm3 = 156
+const TDm4 = 157
+const TDm5 = 158
+const TDm6 = 159
+const TDm7 = 160
+const TDm8 = 161
+const TDm9 = 162
+const TIcr00 = 163
+const TIcr01 = 164
+const TIcm00 = 165
+const TIcm01 = 166
+const TGlass = 167
+const TQr0 = 168
+const TQr1 = 169
+const TQr2 = 170
+const TQr3 = 171
+const TQr4 = 172
+const TQr5 = 173
+const TQr6 = 174
+const TQr7 = 175
+const TQr8 = 176
+const TQr9 = 177
+const TQr10 = 178
+const TQr11 = 179
+const TQr12 = 180
+const TQr13 = 181
+const TQr14 = 182
+const TQr15 = 183
+const TQm0 = 184
+const TQm1 = 185
+const TQm2 = 186
+const TQm3 = 187
+const TQm4 = 188
+const TQm5 = 189
+const TQm6 = 190
+const TQm7 = 191
+const TQm8 = 192
+const TQm9 = 193
+const TQm10 = 194
+const TQm11 = 195
+const TQm12 = 196
+const TQm13 = 197
+const TQm14 = 198
+const TQm15 = 199
+const SCm00a = 0
+const SCm00b = 4
+const SCr00a = 8
+const SCr00b = 12
+const SCm01a = 16
+const SCm01b = 20
+const SCr01a = 24
+const SCr01b = 28
+const SCm10a = 32
+const SCm10b = 36
+const SCr10a = 40
+const SCr10b = 44
+const SCm11a = 48
+const SCm11b = 52
+const SCr11a = 56
+const SCr11b = 60
+const SClam = 64
+const SOct0 = 68
+const SOct1 = 72
+const NTiles8 = 576
+const SprBytes = 608
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSide = 3
+const SndWall = 4
+const SndGrab = 5
+const SndThrow = 6
+const SndOcto = 7
+const SndBeep = 8
+const SndGo = 9
+const SndTock = 10
+const SndLate = 11
+const SndWin = 12
+const NSpr = 9
+' the field's top left corner on the screen (sprite Y is one less)
+const FX = 48
+const FY = 7
+' the clam's clock: frames a digit
+const DigitF = 60
+const WinPts = 200
+
+' steps a frame x 256 (SLOW, MEDIUM, FAST) and the computer's moves between
+' skips (EASY, MEDIUM, HARD)
+data SpdT words 384,512,640
+data FeT bytes 2,3,4
+' the crabs' highest and lowest Y (red, purple)
+data TopY bytes 25,90
+data BotY bytes 70,135
+' the octopuses: top left, top right (red's pool), bottom left, bottom right
+data OxT bytes 22,122,22,122
+data OyT bytes 4,4,156,156
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$40,$00,$00
+  $00,$00,$20,$00,$02,$00,$00,$10
+  $00,$00,$18,$C3,$2C,$00,$00,$00
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$00
+  $00,$20,$62,$06,$00,$08,$18,$81
+  $00,$04,$0C,$40,$C0,$00,$10,$30
+  $00,$04,$0C,$40,$C0,$00,$10,$30
+  $00,$20,$62,$06,$00,$08,$18,$81
+  $04,$20,$05,$C1,$20,$02,$08,$88
+  $20,$04,$C0,$06,$40,$08,$08,$60
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$99,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C1,$C9,$00
+  $00,$38,$44,$4C,$54,$64,$44,$38
+  $00,$10,$30,$10,$10,$10,$10,$38
+  $00,$38,$44,$04,$08,$10,$20,$83
+  $00,$83,$08,$10,$08,$04,$44,$38
+  $00,$08,$18,$28,$48,$83,$08,$08
+  $00,$83,$40,$87,$04,$04,$44,$38
+  $00,$18,$20,$40,$87,$44,$44,$38
+  $00,$83,$04,$08,$10,$20,$20,$20
+  $00,$38,$44,$44,$38,$44,$44,$38
+  $00,$38,$44,$44,$C3,$04,$08,$30
+  $00,$38,$44,$4C,$54,$64,$44,$38
+  $00,$10,$30,$10,$10,$10,$10,$38
+  $00,$38,$44,$04,$08,$10,$20,$83
+  $00,$83,$08,$10,$08,$04,$44,$38
+  $00,$08,$18,$28,$48,$83,$08,$08
+  $00,$83,$40,$87,$04,$04,$44,$38
+  $00,$18,$20,$40,$87,$44,$44,$38
+  $00,$83,$04,$08,$10,$20,$20,$20
+  $00,$38,$44,$44,$38,$44,$44,$38
+  $00,$38,$44,$44,$C3,$04,$08,$30
+  $00,$30,$28,$E4,$F0,$C0,$14,$00
+  $00,$0C,$14,$D8,$F0,$03,$28,$00
+  $00,$30,$28,$E4,$F0,$C0,$14,$00
+  $00,$0C,$14,$D8,$F0,$03,$28,$00
+  $81,$C3,$18,$18,$18,$C3,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$BA,$0A,$0A,$0A,$BA,$0A,$0A
+  $0A,$0A,$BA,$0A,$BA,$0A,$0A,$BA
+  $0A,$0A,$FA,$AF,$FA,$0A,$0A,$0A
+  $0A,$0A,$BA,$0A,$0A,$0A,$0A,$0F
+  $0F,$0A,$0A,$0A,$BA,$0A,$0A,$0A
+  $08,$98,$98,$98,$08,$98,$98,$98
+  $08,$98,$98,$98,$98,$08,$98,$98
+  $0D,$5D,$5D,$5D,$5D,$0D,$5D,$5D
+  $0D,$5D,$5D,$5D,$0D,$5D,$5D,$5D
+  $1E,$FE,$1E,$1E,$1E,$FE,$1E,$1E
+  $1E,$FE,$1E,$1E,$FE,$1E,$1E,$1E
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$54,$45,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$45,$04
+  $01,$91,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$91,$91,$91,$19
+  $01,$19,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$91,$19,$91,$91
+  $01,$19,$91,$19,$91,$91,$91,$91
+  $01,$91,$91,$91,$19,$91,$91,$91
+  $01,$19,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$19,$91,$91,$91
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$1D
+  $01,$1D,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$1D,$D1,$D1
+  $01,$1D,$D1,$1D,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$1D,$D1,$D1,$D1
+  $01,$1D,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$1D,$D1,$D1,$D1
+  $01,$91,$91,$19,$19,$19,$91,$01
+  $01,$91,$91,$91,$91,$19,$91,$01
+  $01,$D1,$D1,$1D,$1D,$1D,$D1,$01
+  $01,$D1,$D1,$D1,$D1,$1D,$D1,$01
+  $1F,$1B,$B1,$F1,$B1,$1B,$1F,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $81,$81,$81,$81,$01,$01,$01,$01
+  $18,$18,$18,$18,$01,$01,$01,$01
+  $08,$08,$08,$08,$01,$01,$01,$01
+  $01,$01,$01,$01,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $18,$18,$18,$18,$81,$81,$81,$81
+  $08,$08,$08,$08,$81,$81,$81,$81
+  $01,$01,$01,$01,$18,$18,$18,$18
+  $81,$81,$81,$81,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $08,$08,$08,$08,$18,$18,$18,$18
+  $01,$01,$01,$01,$08,$08,$08,$08
+  $81,$81,$81,$81,$08,$08,$08,$08
+  $18,$18,$18,$18,$08,$08,$08,$08
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $D1,$D1,$D1,$D1,$01,$01,$01,$01
+  $1D,$1D,$1D,$1D,$01,$01,$01,$01
+  $0D,$0D,$0D,$0D,$01,$01,$01,$01
+  $01,$01,$01,$01,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $1D,$1D,$1D,$1D,$D1,$D1,$D1,$D1
+  $0D,$0D,$0D,$0D,$D1,$D1,$D1,$D1
+  $01,$01,$01,$01,$1D,$1D,$1D,$1D
+  $D1,$D1,$D1,$D1,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0D,$0D,$0D,$0D,$1D,$1D,$1D,$1D
+  $01,$01,$01,$01,$0D,$0D,$0D,$0D
+  $D1,$D1,$D1,$D1,$0D,$0D,$0D,$0D
+  $1D,$1D,$1D,$1D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+end data
+data SpritePat bytes
+  $30,$78,$78,$78,$3B,$19,$0D,$0F,$DF,$3F,$DF,$3D,$DF,$0F,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$7E,$FF,$FF,$FF,$FF,$FF,$FF
+  $0C,$1E,$1E,$1E,$DC,$98,$B0,$F0,$FB,$FC,$FB,$BC,$FB,$F0,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$DF,$3D,$DF,$3F,$DF,$0F,$0D,$19,$3B,$78,$78,$78,$30
+  $FF,$FF,$FF,$FF,$FF,$FF,$7E,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$FB,$BC,$FB,$FC,$FB,$F0,$B0,$98,$DC,$1E,$1E,$1E,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$78,$78,$78,$3B,$19,$0D,$1F,$3F,$DF,$3F,$DD,$3F,$CF,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$7E,$FF,$FF,$FF,$FF,$FF,$FF
+  $0C,$1E,$1E,$1E,$DC,$98,$B0,$F8,$FC,$FB,$FC,$BB,$FC,$F3,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$CF,$3F,$DD,$3F,$DF,$3F,$1F,$0D,$19,$3B,$78,$78,$78,$30
+  $FF,$FF,$FF,$FF,$FF,$FF,$7E,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F3,$FC,$BB,$FC,$FB,$FC,$F8,$B0,$98,$DC,$1E,$1E,$1E,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $28,$68,$68,$78,$3B,$19,$0D,$0F,$DF,$3F,$DF,$3D,$DF,$0F,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$7E,$FF,$FF,$FF,$FF,$FF,$FF
+  $14,$16,$16,$1E,$DC,$98,$B0,$F0,$FB,$FC,$FB,$BC,$FB,$F0,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$DF,$3D,$DF,$3F,$DF,$0F,$0D,$19,$3B,$78,$68,$68,$28
+  $FF,$FF,$FF,$FF,$FF,$FF,$7E,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$FB,$BC,$FB,$FC,$FB,$F0,$B0,$98,$DC,$1E,$16,$16,$14
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $28,$68,$68,$78,$3B,$19,$0D,$1F,$3F,$DF,$3F,$DD,$3F,$CF,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$7E,$FF,$FF,$FF,$FF,$FF,$FF
+  $14,$16,$16,$1E,$DC,$98,$B0,$F8,$FC,$FB,$FC,$BB,$FC,$F3,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$CF,$3F,$DD,$3F,$DF,$3F,$1F,$0D,$19,$3B,$78,$68,$68,$28
+  $FF,$FF,$FF,$FF,$FF,$FF,$7E,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F3,$FC,$BB,$FC,$FB,$FC,$F8,$B0,$98,$DC,$1E,$16,$16,$14
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$0F,$1F,$15,$3F,$2B,$3F,$1F,$17,$0F,$07,$03,$00,$00
+  $00,$00,$C0,$F0,$F8,$A8,$FC,$D4,$FC,$F8,$E8,$F0,$E0,$C0,$00,$00
+  $00,$07,$1F,$3F,$39,$39,$3F,$1F,$17,$25,$49,$49,$24,$24,$49,$00
+  $00,$E0,$F8,$FC,$9C,$9C,$FC,$F8,$E8,$A4,$92,$12,$A4,$A4,$12,$00
+  $00,$07,$1F,$3F,$39,$39,$3F,$1F,$17,$15,$25,$29,$49,$45,$24,$00
+  $00,$E0,$F8,$FC,$9C,$9C,$FC,$F8,$E8,$A8,$A4,$14,$24,$22,$92,$00
+end data
+
+data FieldMap bytes
+  $8E,$8C,$8C,$8E,$8C,$8A,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8A,$8B,$8A,$8A,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8C,$8C,$8C,$8E,$8C
+  $8E,$8D,$8C,$8C,$8C,$8A,$86,$87,$87,$87,$87,$86,$87,$86,$86,$87,$87,$86,$87,$86,$87,$86,$87,$86,$86,$87,$8B,$8C,$8C,$8C,$8C,$8E
+  $8D,$8C,$8C,$8C,$8D,$8A,$87,$86,$86,$86,$86,$86,$87,$87,$86,$87,$87,$87,$87,$87,$86,$86,$87,$86,$87,$87,$8B,$8E,$8C,$8C,$8C,$8C
+  $8E,$8E,$8C,$8C,$8C,$8A,$86,$87,$87,$87,$87,$86,$87,$86,$86,$87,$87,$87,$87,$87,$87,$86,$87,$87,$86,$87,$8A,$8C,$8C,$8C,$8E,$8E
+  $8D,$8C,$8E,$8D,$8E,$8B,$82,$80,$83,$80,$82,$80,$80,$80,$80,$80,$82,$80,$82,$80,$80,$80,$81,$81,$80,$82,$8B,$8C,$8C,$8C,$8E,$8C
+  $8C,$8C,$8E,$8C,$8C,$8A,$80,$80,$82,$81,$80,$80,$80,$80,$80,$81,$82,$81,$80,$80,$82,$80,$80,$80,$80,$80,$8B,$8C,$8D,$8D,$8E,$8D
+  $8C,$8C,$8C,$8C,$8C,$8B,$81,$80,$82,$82,$80,$82,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$8A,$8D,$8C,$8D,$8C,$8D
+  $8C,$8E,$8C,$8C,$8C,$8A,$82,$82,$80,$81,$81,$80,$80,$81,$81,$81,$80,$81,$81,$80,$80,$83,$80,$83,$80,$80,$8B,$8C,$8C,$8C,$8E,$8C
+  $8C,$8C,$8C,$8C,$8C,$8B,$80,$80,$80,$80,$80,$80,$81,$82,$80,$83,$80,$81,$83,$82,$80,$80,$80,$81,$80,$81,$8B,$8C,$8D,$8E,$8C,$8D
+  $8C,$8E,$8C,$8E,$8C,$8A,$83,$80,$81,$80,$81,$82,$80,$80,$81,$82,$83,$80,$80,$82,$82,$80,$83,$81,$80,$82,$8B,$8C,$8D,$8C,$8E,$8C
+  $8C,$8C,$8C,$8C,$8E,$8B,$80,$82,$80,$80,$80,$80,$82,$81,$80,$80,$81,$80,$82,$81,$80,$82,$80,$82,$80,$80,$8A,$8D,$8E,$8C,$8C,$8C
+  $8C,$8E,$8C,$8C,$8C,$8B,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$8B,$8E,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8B,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$8A,$8C,$8C,$8C,$8C,$8D
+  $8D,$8C,$8C,$8D,$8E,$8B,$80,$80,$83,$80,$80,$82,$80,$80,$83,$80,$82,$81,$80,$80,$80,$81,$80,$80,$83,$80,$8B,$8C,$8C,$8D,$8E,$8C
+  $8C,$8C,$8E,$8C,$8C,$8A,$80,$80,$82,$80,$80,$80,$81,$82,$81,$82,$80,$82,$80,$80,$80,$80,$81,$80,$80,$82,$8A,$8C,$8E,$8D,$8E,$8E
+  $8C,$8C,$8C,$8D,$8C,$8B,$80,$80,$81,$81,$82,$82,$80,$82,$80,$82,$80,$80,$80,$80,$80,$80,$82,$80,$81,$81,$8B,$8C,$8C,$8C,$8D,$8C
+  $8E,$8E,$8D,$8D,$8D,$8B,$80,$80,$81,$81,$80,$80,$80,$82,$80,$80,$81,$80,$80,$80,$80,$82,$82,$80,$82,$81,$8B,$8C,$8C,$8C,$8C,$8E
+  $8C,$8C,$8D,$8C,$8E,$8A,$80,$80,$80,$80,$81,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$82,$80,$82,$80,$80,$8A,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8E,$8A,$80,$80,$81,$80,$80,$80,$81,$81,$82,$81,$80,$80,$80,$81,$80,$83,$83,$80,$80,$80,$8A,$8C,$8D,$8C,$8C,$8D
+  $8D,$8C,$8C,$8D,$8E,$8B,$80,$80,$80,$82,$80,$82,$81,$81,$80,$82,$83,$80,$81,$80,$80,$81,$82,$82,$82,$81,$8A,$8E,$8C,$8D,$8E,$8C
+  $8C,$8E,$8C,$8D,$8D,$8B,$88,$89,$88,$89,$89,$88,$89,$89,$88,$88,$89,$89,$88,$89,$88,$88,$88,$88,$88,$88,$8A,$8D,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8D,$8C,$8A,$89,$89,$88,$89,$88,$89,$88,$89,$89,$89,$89,$89,$89,$88,$89,$88,$88,$88,$89,$88,$8A,$8C,$8E,$8C,$8C,$8C
+  $8E,$8D,$8C,$8C,$8D,$8B,$89,$89,$89,$89,$89,$88,$89,$89,$88,$89,$89,$88,$89,$88,$88,$88,$89,$89,$89,$89,$8A,$8C,$8C,$8C,$8C,$8E
+  $8C,$8C,$8C,$8D,$8C,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8A,$8A,$8A,$8A,$8A,$8B,$8A,$8B,$8A,$8C,$8C,$8C,$8D,$8C
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$AE,$AB,$AC,$AF,$AB,$AC,$AE,$AB,$AC,$AF,$AB,$AC,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$AD,$20,$20,$B5,$B4,$A9,$B5,$B4,$AD,$B5,$B4,$A9,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$AD,$20,$AC,$AD,$B1,$20,$AD,$20,$AD,$AD,$20,$AD,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$AA,$AB,$20,$A9,$20,$A9,$A9,$20,$A9,$AB,$AB,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$BF,$BB,$B9,$C3,$B9,$BE,$BB,$BC,$BD,$20,$BD,$BB,$BF,$B9,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$C5,$C4,$20,$C2,$20,$BD,$C4,$BC,$C5,$C4,$BD,$20,$BD,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$BD,$20,$20,$C2,$20,$BD,$20,$BD,$BD,$20,$BD,$20,$BD,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$B9,$20,$20,$BB,$B9,$BA,$BB,$B9,$B9,$20,$B9,$20,$B9,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record Crab:
+  u8 X
+  u8 Y
+  u8 Claw
+end record
+
+Crab Cr[2]
+u16 Sc[2]
+u8 Pad[2]
+bcd digits 4 Throws = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Spd = 0
+' the clam: position, direction (0 up, 1 up-left, 2 up-right, 3 down,
+' 4 down-left, 5 down-right, 6 resting), holder (0 none, 1 red, 2 purple)
+u8 Bx = 74
+u8 By = 82
+u8 Fc = 6
+u8 Hold = 0
+' the clock: digit and frames left in it
+u8 Tm = 3
+u8 Tf = 0
+' the octopus that is hiding (0 none, 1-4)
+u8 Gone = 0
+' who gets the clam next when both crabs touch it
+u8 Tie = 1
+u8 Win = 0
+u8 Over = 0
+u8 Freeze = 0
+u8 Cd = 0
+u8 Frac = 0
+u8 Steps = 0
+u8 PassEnd = 0
+' the computer: moves before a skip (Fd counts down from Fe), sweep way
+u8 Fd = 0
+u8 Fe = 3
+u8 Af = 0
+' the title's choices
+u8 Np = 1
+u8 Lv = 1
+u8 Ai = 1
+u8 Mi = 3
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TaX = 40
+u8 TaD = 1
+' loop counters (never shared with the helpers)
+u8 Dp = 0
+u8 Oc = 0
+u8 Ln = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Mi = 4 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPads
+  PlayFrame
+  DrawSprites
+  if Win > 0 then
+    if Freeze = 0 then Over = 1
+  end if
+  if Over = 0 then goto play_loop
+
+  ' the end: who won, then back to the title on a press
+  for Ln = 8 to 14
+    print at 6,Ln, "                    "
+  next
+  if Np = 1 then
+    if Win = 2 then
+      print at 12,10, "YOU WIN!"
+    else
+      print at 8,10, "THE COMPUTER WINS"
+    end if
+  else
+    if Win = 1 then
+      print at 9,10, "RED CRAB WINS!"
+    else
+      print at 8,10, "PURPLE CRAB WINS!"
+    end if
+  end if
+  NumU = Sc[0]
+  print at 9,12, "RED    ", width$(NumU, 3)
+  NumU = Sc[1]
+  print at 9,13, "PURPLE ", width$(NumU, 3)
+  print at 9,14, "THROWS ", Throws
+  mute all
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: a pause after a late throw, the serve's beeps, or as
+' many steps of the C64's loop as the speed gives, then the clock
+sub PlayFrame:
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 0 then
+      if Win = 0 then Serve
+    end if
+    return
+  end if
+  if Cd > 0 then
+    V = Cd % 12
+    if V = 0 then
+      if Cd = 12 then
+        play sound SndGo
+      else
+        play sound SndBeep
+      end if
+    end if
+    dec Cd
+    return
+  end if
+  W16 = Frac
+  W16 = W16 + Spd
+  Steps = W16 >> 8
+  Frac = W16 & 255
+  while Steps > 0
+    DoPass
+    dec Steps
+    if Win > 0 then Steps = 0
+  end while
+  if Win = 0 then Clock
+  return
+end sub
+
+' one pass of the C64's loop: the clam, the red crab (a player), the purple
+' crab, the computer (one player), then touches and octopuses
+sub DoPass:
+  PassEnd = 0
+  if Hold = 0 then MoveBall
+  if Np = 2 then
+    HumanPass(0)
+    if PassEnd = 1 then return
+  end if
+  HumanPass(1)
+  if PassEnd = 1 then return
+  if Np = 1 then
+    CompPass
+    if PassEnd = 1 then return
+  end if
+  if Hold > 0 then
+    FollowBall
+    return
+  end if
+  CatchOrHit
+  return
+end sub
+
+' the clam's step: 1 pixel up or down, 2 sideways; the side rocks turn it,
+' the end walls turn it and score 5 for the crab at the other end
+sub MoveBall:
+  select case Fc
+  case 0
+    if By >= 1 then
+      dec By
+    else
+      Fc = 3
+      EndWall(1)
+    end if
+  case 1
+    if Bx < 2 then
+      Fc = 2
+      play sound SndSide
+      return
+    end if
+    Bx -= 2
+    if By >= 1 then
+      dec By
+    else
+      Fc = 4
+      EndWall(1)
+    end if
+  case 2
+    if Bx >= 148 then
+      Fc = 1
+      play sound SndSide
+      return
+    end if
+    Bx += 2
+    if By >= 1 then
+      dec By
+    else
+      Fc = 5
+      EndWall(1)
+    end if
+  case 3
+    if By < 164 then
+      inc By
+    else
+      Fc = 0
+      EndWall(0)
+    end if
+  case 4
+    if Bx < 2 then
+      Fc = 5
+      play sound SndSide
+      return
+    end if
+    Bx -= 2
+    if By < 164 then
+      inc By
+    else
+      Fc = 1
+      EndWall(0)
+    end if
+  case 5
+    if Bx >= 148 then
+      Fc = 4
+      play sound SndSide
+      return
+    end if
+    Bx += 2
+    if By < 164 then
+      inc By
+    else
+      Fc = 2
+      EndWall(0)
+    end if
+  end select
+  return
+end sub
+
+sub EndWall(u8 P):
+  AddScore(P, 5)
+  play sound SndWall
+  return
+end sub
+
+' a player's crab: the stick moves it unless a button is held; button and
+' forward, left or right throws the clam it holds
+sub HumanPass(u8 P):
+  u8 Pj = 0
+  u8 Pd = 0
+  Pj = Pad[P]
+  Pd = Pj & 16
+  if Pd = 0 then
+    Pd = Pj & 4
+    if Pd > 0 then
+      if Cr[P].X >= 2 then Cr[P].X -= 2
+    end if
+    Pd = Pj & 8
+    if Pd > 0 then
+      if Cr[P].X < 135 then Cr[P].X += 2
+    end if
+    Pd = Pj & 1
+    if Pd > 0 then
+      if Cr[P].Y > TopY[P] then dec Cr[P].Y
+    end if
+    Pd = Pj & 2
+    if Pd > 0 then
+      if Cr[P].Y < BotY[P] then inc Cr[P].Y
+    end if
+    return
+  end if
+  if Hold <> P + 1 then return
+  Pd = Pj & 15
+  select case (P, Pd)
+  case (0, 2)
+    Fc = 3
+  case (0, 4)
+    Fc = 4
+  case (0, 8)
+    Fc = 5
+  case (1, 1)
+    Fc = 0
+  case (1, 4)
+    Fc = 1
+  case (1, 8)
+    Fc = 2
+  case else
+    return
+  end select
+  Throw(P)
+  return
+end sub
+
+' the clam leaves the crab's claws, a few pixels in front of it
+sub Throw(u8 P):
+  Bx = Cr[P].X + 6
+  Bx = Bx & 254
+  if P = 0 then
+    By = Cr[0].Y + 22
+  else
+    By = Cr[1].Y - 18
+  end if
+  Hold = 0
+  Tm = 3
+  ' four BCD digits: stop at 9999
+  if Throws < 9999 then Throws += 1
+  ShowClocks
+  play sound SndThrow
+  PassEnd = 1
+  return
+end sub
+
+' the held clam sits in the holder's claws
+sub FollowBall:
+  if Hold = 1 then
+    Bx = Cr[0].X + 6
+    By = Cr[0].Y + 8
+  else
+    Bx = Cr[1].X + 6
+    By = Cr[1].Y - 4
+  end if
+  return
+end sub
+
+' 1 when the clam's box touches crab P's box
+function Touch(u8 P) as u8
+  if Bx + 11 < Cr[P].X then return 0
+  if Bx > Cr[P].X + 23 then return 0
+  if By + 11 < Cr[P].Y then return 0
+  if By > Cr[P].Y + 15 then return 0
+  return 1
+
+' 1 when the clam's box touches octopus O's box
+function OctoHit(u8 O) as u8
+  u8 Ox = 0
+  u8 Oy = 0
+  Ox = OxT[O]
+  Oy = OyT[O]
+  if Bx + 11 < Ox + 1 then return 0
+  if Bx > Ox + 14 then return 0
+  if By + 11 < Oy + 1 then return 0
+  if By > Oy + 14 then return 0
+  return 1
+
+' a free clam: a crab that touches it (alone) takes it; else the octopuses
+sub CatchOrHit:
+  u8 T0 = 0
+  u8 T1 = 0
+  T0 = Touch(0)
+  T1 = Touch(1)
+  if T0 = 1 then
+    if T1 = 0 then
+      Grab(0)
+    else
+      ' both touch it (the C64 gave it to nobody, and two crabs pushing
+      ' on a resting clam waited for ever): it goes to each in turn
+      Tie = 1 - Tie
+      Grab(Tie)
+    end if
+    return
+  end if
+  if T1 = 1 then
+    Grab(1)
+    return
+  end if
+  if Gone > 0 then
+    ' the octopus comes back when the clam is in the middle band
+    if By >= 61 then
+      if By <= 103 then Gone = 0
+    end if
+    return
+  end if
+  for Oc = 0 to 3
+    if OctoHit(Oc) = 1 then
+      Gone = Oc + 1
+      if Oc < 2 then
+        AddScore(1, 20)
+        Fc = 3
+      else
+        AddScore(0, 20)
+        Fc = 0
+      end if
+      play sound SndOcto
+      return
+    end if
+  next
+  return
+end sub
+
+sub Grab(u8 P):
+  Hold = P + 1
+  FollowBall
+  Tm = 3
+  Tf = DigitF
+  play sound SndGrab
+  return
+end sub
+
+' the computer's red crab (the C64's moves, a skip every Fe moves)
+sub CompPass:
+  i16 Tq = 0
+  u8 Tx = 0
+  if Hold = 1 then
+    CompHold
+    return
+  end if
+  if Fd = 0 then
+    Fd = Fe
+    return
+  end if
+  if Hold = 2 then
+    ' the other crab has it: to the middle
+    if Cr[0].Y < 63 then inc Cr[0].Y
+    if Cr[0].X < 68 then
+      inc Cr[0].X
+    elseif Cr[0].X > 68 then
+      dec Cr[0].X
+    end if
+    dec Fd
+    return
+  end if
+  ' sideways under the clam, 2 pixels, never past it
+  Tq = Bx
+  Tq = Tq - 6
+  if Tq < 0 then Tq = 0
+  if Tq > 136 then Tq = 136
+  Tx = Tq
+  if Cr[0].X > Tx then
+    dec Cr[0].X
+    if Cr[0].X <> Tx then dec Cr[0].X
+  elseif Cr[0].X < Tx then
+    inc Cr[0].X
+    if Cr[0].X <> Tx then inc Cr[0].X
+  end if
+  if By < 82 then
+    if Cr[0].Y >= 26 then dec Cr[0].Y
+  elseif Fc = 6 then
+    if Cr[0].Y < 70 then inc Cr[0].Y
+  else
+    if Cr[0].Y < 50 then inc Cr[0].Y
+  end if
+  dec Fd
+  return
+end sub
+
+' the computer holds the clam: back off, sweep from side to side, throw
+' when the jiffy clock is under 96 (straight or diagonal at random)
+sub CompHold:
+  if Cr[0].Y >= 38 then dec Cr[0].Y
+  if Af <> 0 then
+    if Cr[0].X < 136 then
+      inc Cr[0].X
+      CompThrow
+      return
+    end if
+    Af = 0
+  end if
+  if Cr[0].X >= 2 then
+    dec Cr[0].X
+  else
+    Af = 1
+    inc Cr[0].X
+  end if
+  CompThrow
+  return
+end sub
+
+sub CompThrow:
+  FollowBall
+  if Tick >= 96 then return
+  Rand
+  W16 = Rs >> 8
+  V = W16
+  if V >= 160 then
+    Fc = 4
+  elseif V < 96 then
+    Fc = 5
+  else
+    Fc = 3
+  end if
+  Throw(0)
+  return
+end sub
+
+' the clock of the crab that holds the clam: a digit a second; at 0 the
+' other crab scores 10 and the clam is served again
+sub Clock:
+  if Hold = 0 then return
+  dec Tf
+  if Tf > 0 then return
+  Tf = DigitF
+  dec Tm
+  ShowClocks
+  if Tm > 0 then
+    play sound SndTock
+    return
+  end if
+  K = 2 - Hold
+  AddScore(K, 10)
+  play sound SndLate
+  Hold = 0
+  Freeze = 54
+  return
+end sub
+
+sub AddScore(u8 P, u8 N):
+  Sc[P] = Sc[P] + N
+  if Sc[P] >= WinPts then Win = P + 1
+  ShowScore(P)
+  return
+end sub
+
+' a new serve: crabs home, the clam resting in the middle, five beeps
+sub Serve:
+  Cr[0].X = 68
+  Cr[0].Y = 25
+  Cr[1].X = 68
+  Cr[1].Y = 135
+  Bx = 74
+  By = 82
+  Fc = 6
+  Hold = 0
+  Gone = 0
+  Tm = 3
+  Cd = 60
+  ShowClocks
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: sprite 0 the clam, 1-2 purple, 3-4 red, 5-8 the octopuses
+sub DrawSprites:
+  u8 Pat = 0
+  u8 Leg = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  set sprite 0 to By + FY,Bx + FX,SClam,15
+  for Dp = 0 to 1
+    Cr[Dp].Claw = Pad[Dp] >> 4
+    if Np = 1 then
+      if Dp = 0 then
+        Cr[0].Claw = 0
+        if Hold = 1 then Cr[0].Claw = 1
+      end if
+    end if
+    Leg = Cr[Dp].X + Cr[Dp].Y
+    Leg = (Leg >> 2) & 1
+    Pat = Cr[Dp].Claw * 2 + Leg
+    Pat = Pat * 2 + 1 - Dp
+    Pat = Pat * 8 + SCm00a
+    Sx = Cr[Dp].X + FX
+    Sy = Cr[Dp].Y + FY
+    K = 3 - Dp * 2
+    if Dp = 0 then
+      set sprite K to Sy,Sx,Pat,8
+      set sprite K + 1 to Sy,Sx + 16,Pat + 4,8
+    else
+      set sprite K to Sy,Sx,Pat,13
+      set sprite K + 1 to Sy,Sx + 16,Pat + 4,13
+    end if
+  next
+  Pat = Tick >> 4
+  Pat = Pat & 1
+  Pat = Pat * 4 + SOct0
+  for Oc = 0 to 3
+    if Gone = Oc + 1 then
+      set sprite Oc + 5 to 192,0,0,0
+    else
+      set sprite Oc + 5 to OyT[Oc] + FY,OxT[Oc] + FX,Pat,7
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' a score in the crab's colour: three digit tiles
+sub ShowScore(u8 P):
+  u16 N = 0
+  u8 D = 0
+  u8 Base = 0
+  u8 Row = 4
+  N = Sc[P]
+  Base = TDr0
+  if P = 1 then
+    Base = TDm0
+    Row = 19
+  end if
+  D = N / 100
+  put char Base + D at 2,Row
+  N = N % 100
+  D = N / 10
+  put char Base + D at 3,Row
+  D = N % 10
+  put char Base + D at 4,Row
+  return
+end sub
+
+' the clocks: the holder's digit counts down, the other shows 3
+sub ShowClocks:
+  V = 3
+  if Hold = 1 then V = Tm
+  put char TDr0 + V at 28,8
+  V = 3
+  if Hold = 2 then V = Tm
+  put char TDm0 + V at 28,16
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy FieldMap count 768 to vram.name
+  put char TIcr00 at 2,2
+  put char TIcr01 at 3,2
+  put char TIcm00 at 2,21
+  put char TIcm01 at 3,21
+  put char TGlass at 28,7
+  put char TGlass at 28,15
+  Sc[0] = 0
+  Sc[1] = 0
+  Throws = 0
+  ShowScore(0)
+  ShowScore(1)
+  Spd = SpdT[Lv]
+  Fe = FeT[Ai]
+  Fd = Fe
+  Af = 0
+  Frac = 0
+  Win = 0
+  Over = 0
+  Freeze = 0
+  Serve
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' controller 1 is purple; controller 2 is red with two players, and
+' purple's too with one
+sub ReadPads:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  J2 = 0
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  if Np = 1 then
+    Pad[1] = J1 | J2
+    Pad[0] = 0
+  else
+    Pad[1] = J1
+    Pad[0] = J2
+  end if
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 4
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: CRAB FIGHT in coral and kelp letters, two crabs scuttling,
+' the choices, the tune once
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 288 to vram.name + 64
+  print at 7,20, "AHOY! FEBRUARY 1986"
+  print at 8,21, "BY BUCK CHILDRESS"
+  Mi = 3
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  TitleAnim
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then MenuStick
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Mi < 3 then
+    MenuChange(1)
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Mi = 4 then CreditsPage
+  return
+end sub
+
+sub MenuStick:
+  K = V & 1
+  if K > 0 then
+    if Mi > 0 then dec Mi
+    if Mi = 2 then
+      if Np = 2 then dec Mi
+    end if
+  end if
+  K = V & 2
+  if K > 0 then
+    if Mi < 4 then inc Mi
+    if Mi = 2 then
+      if Np = 2 then inc Mi
+    end if
+  end if
+  K = V & 4
+  if K > 0 then MenuChange(2)
+  K = V & 8
+  if K > 0 then MenuChange(1)
+  ShowMenu
+  return
+end sub
+
+' change the value on the cursor's line: +1 (D = 1) or -1 (D = 2)
+sub MenuChange(u8 D):
+  select case Mi
+  case 0
+    Np = 3 - Np
+  case 1
+    if D = 1 then
+      Lv = (Lv + 1) % 3
+    else
+      Lv = (Lv + 2) % 3
+    end if
+  case 2
+    if D = 1 then
+      Ai = (Ai + 1) % 3
+    else
+      Ai = (Ai + 2) % 3
+    end if
+  case else
+    return
+  end select
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  NumU = Np
+  print at 8,14, "PLAYERS   ", digits$(NumU, 1)
+  print at 8,15, "SPEED     "
+  select case Lv
+  case 0
+    print at 18,15, "SLOW  "
+  case 1
+    print at 18,15, "MEDIUM"
+  case else
+    print at 18,15, "FAST  "
+  end select
+  print at 8,16, "COMPUTER  "
+  if Np = 2 then
+    print at 18,16, "NONE  "
+  else
+    select case Ai
+    case 0
+      print at 18,16, "EASY  "
+    case 1
+      print at 18,16, "MEDIUM"
+    case else
+      print at 18,16, "HARD  "
+    end select
+  end if
+  print at 8,17, "START"
+  print at 8,18, "CREDITS"
+  for Ln = 14 to 18
+    put char 32 at 6,Ln
+  next
+  put char 62 at 6,Mi + 14
+  return
+end sub
+
+' two crabs scuttle sideways across the title, a pixel a frame
+sub TitleAnim:
+  u8 Lg = 0
+  if TaD = 1 then
+    inc TaX
+    if TaX >= 200 then TaD = 2
+  else
+    dec TaX
+    if TaX <= 16 then TaD = 1
+  end if
+  Lg = (TaX >> 2) & 1
+  K = Lg * 16 + SCm00a
+  set sprite 1 to 87,TaX,K,13
+  set sprite 2 to 87,TaX + 16,K + 4,13
+  W16 = 216 - TaX
+  X = W16
+  K = Lg * 16 + SCr00a
+  set sprite 3 to 87,X,K,8
+  set sprite 4 to 87,X + 16,K + 4,8
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "CRAB FIGHT"
+  print at 2,4, "BASED ON CRABFIGHT BY BUCK"
+  print at 2,5, "CHILDRESS, AHOY! FEBRUARY"
+  print at 2,6, "1986 (COMMODORE 64 MACHINE"
+  print at 2,7, "LANGUAGE)."
+  print at 2,9, "COLECOVISION GAME, MUSIC"
+  print at 2,10, "AND PICTURES BY CLAUDE"
+  print at 2,11, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "IN AMY BY AMY BIENVENU,"
+  print at 2,13, "2026."
+  print at 2,15, "MUSIC: SIDEWAYS SHUFFLE"
+  print at 2,16, "(ORIGINAL)"
+  print at 2,18, "GRAB THE CLAM, THEN HOLD A"
+  print at 2,19, "BUTTON AND PUSH THE STICK."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+CfSide:
+    db $40,$7F,$30,$02,$40,$A9,$50,$02,$50
+CfWall:
+    db $40,$FC,$21,$03,$40,$3B,$32,$03,$40,$A6,$42,$04,$50
+CfGrab:
+    db $40,$6B,$20,$03,$40,$55,$30,$03,$50
+CfThrow:
+    db $00,$00,$34,$02,$00,$00,$55,$03,$00,$00,$86,$04,$10
+CfOcto:
+    db $40,$47,$10,$03,$40,$5F,$20,$03,$40,$47,$20,$03,$40,$5F,$20,$03,$40,$8F,$30,$08,$50
+CfBeep:
+    db $40,$D6,$30,$06,$50
+CfGo:
+    db $40,$6B,$20,$0C,$50
+CfTock:
+    db $40,$40,$40,$02,$50
+CfLate:
+    db $40,$53,$11,$06,$40,$AB,$21,$06,$40,$3B,$22,$0E,$50
+CfWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$10,$40,$8F,$20,$08,$40,$6B,$20,$18
+    db $50
+
+CfSoundTable:
+    dw CfTuneMel,$702B
+    dw CfTuneBass,$7035
+    dw CfSide,$7049
+    dw CfWall,$7049
+    dw CfGrab,$7049
+    dw CfThrow,$703F
+    dw CfOcto,$7049
+    dw CfBeep,$7049
+    dw CfGo,$7049
+    dw CfTock,$7049
+    dw CfLate,$7049
+    dw CfWin,$7049
+; Sideways Shuffle (original)
+; Tiny Sound, 8 frames per step
+CfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$01,$1E,$1F,$01,$1C,$01,$19,$1C
+    db $01,$1A,$01,$01,$1E,$01,$21,$26,$01,$21,$23,$01,$1F,$01,$1C,$1F
+    db $01,$1E,$01,$01,$1A,$01,$1E,$21,$01,$1E,$1F,$01,$23,$01,$1F,$1C
+    db $01,$19,$01,$01,$15,$01,$19,$1C,$01,$1F,$1E,$01,$1C,$01,$19,$01
+    db $1A,$01,$00,$01
+    db $FF
+CfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$15,$01,$10,$01
+    db $15,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$13,$01,$0E,$01
+    db $15,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$0E,$01
+    db $15,$01,$10,$01,$15,$01,$10,$01,$15,$01,$19,$01,$15,$01,$15,$01
+    db $0E,$01,$00,$01
+    db $FF
+}
+
+

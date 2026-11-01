@@ -1,0 +1,1121 @@
+cartridge "BRICKBUSTERS/P.SEEBURGER/1986"
+
+' BRICKBUSTERS
+' A ColecoVision game based on "Brickbusters" by Paul Seeburger, Ahoy!
+' March 1986 (Commodore 64 machine language at $C000, started with
+' SYS 49152). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/brickbusters.dis), the game is built for the
+' ColecoVision: bevelled bricks in the original's thirteen colours, a
+' riveted steel frame, a smooth sprite ball and paddle, a sound for every
+' event, a title tune.
+'
+' The game: knock every brick out of the wall with the ball. Each brick is
+' worth a point. Miss the ball and it is lost; the last one ends that
+' player's game. Clear the wall and the next player takes a turn on a fresh
+' wall; when every player has had a turn the level goes up: the next of
+' the four walls, a faster ball, and one more ball for everybody.
+'
+' From the original (orig/): the four options (ball speed 0-4, paddle
+' ("board") speed 0-9, paddle size small or large, 1 to 4 players, taking
+' turns); the four walls and their row colours (8, 10, 13 and 13 lines with
+' gaps: 6, 8, 9 and 13 rows of bricks), cycling with the level; three balls
+' a player, one more for each player at every new level; a point a brick,
+' seven-digit scores and a high score kept between games; a player's turn
+' lasts until the wall is clear or the last ball is lost, a fresh wall for
+' every turn; the serve: the ball starts low at a random place and leaves
+' upward with one of sixteen directions drawn at random (the C64's table:
+' sideways speed -4..4 against an upward speed of 2, or +-1 against 2, 3 or
+' 4); a brick or the paddle turns the ball's vertical direction, walls turn
+' it; on the paddle the stick adds "English": moving left sends the ball
+' left one step faster, moving right sends it right, standing still keeps
+' its angle; PLAYER n before each turn, GAME OVER FOR PLAYER n; pause.
+'
+' Liberties: the field is 14 bricks wide (the C64's 20 did not fit in
+' columns 2-29) and scaled to 224 x 140 pixels; speeds are in 1/16 pixel
+' a frame: ball speed 0-4 gives 5-9 sixteenths per step of the C64's
+' direction table (a vertical step of 2-4), and the ball gains one more
+' every second level up to four more (the C64's delay loop shrank by a
+' unit a round and its fastest settings ran far too fast for a person);
+' paddle speed 0-9 is 0.75-6.4 pixels a frame (the C64 moved 1-10 pixels a
+' 60th of a second); the paddles are 16 and 32 pixels wide (18 and 36 on a
+' 320-pixel C64 field), the default speed is 5; the paddle's English stops
+' at a sideways speed of 5 (the C64's grew without limit); the paddle only
+' bounces a ball that is falling; collisions are tests on the ball's
+' corners and the paddle's box (the C64 read its collision registers);
+' the right button pauses (the C64 used SHIFT), the menu replaces the typed
+' answers, the keyboard choice and RUN/STOP are gone; the ball waits on the
+' paddle's row for a button (the C64 waited for the fire button too);
+' sounds for bricks, walls, paddle, serve, a cleared wall; the end: GAME
+' OVER, then the title (the C64 went back to its questions).
+'
+' Controls: controller 1 (or 2): the stick moves the paddle left and
+' right, a button serves, the right button pauses. On the title, up and
+' down choose a line, left and right change it, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TK1a = 128
+const TK1b = 129
+const TK2a = 130
+const TK2b = 131
+const TK3a = 132
+const TK3b = 133
+const TK4a = 134
+const TK4b = 135
+const TK5a = 136
+const TK5b = 137
+const TK6a = 138
+const TK6b = 139
+const TK7a = 140
+const TK7b = 141
+const TK8a = 142
+const TK8b = 143
+const TK9a = 144
+const TK9b = 145
+const TK10a = 146
+const TK10b = 147
+const TK11a = 148
+const TK11b = 149
+const TK12a = 150
+const TK12b = 151
+const TK13a = 152
+const TK13b = 153
+const TWtop = 154
+const TWtl = 155
+const TWtr = 156
+const TWl = 157
+const TWr = 158
+const TTl1 = 159
+const TTl2 = 160
+const TTl3 = 161
+const TTl4 = 162
+const TTl5 = 163
+const SBall = 0
+const SPads = 4
+const SPadl = 8
+const SPadr = 12
+const NTiles8 = 288
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBrick = 3
+const SndWall = 4
+const SndPad = 5
+const SndServe = 6
+const SndLost = 7
+const SndClear = 8
+const SndTurn = 9
+const SndOver = 10
+const SndCrunch = 11
+const NSpr = 4
+' the field in 1/16 pixels: the ball (4 x 4) between x 16 and 236, below y 32
+const FieldL = 256
+const FieldR = 3776
+const FieldT = 512
+' the ball is lost below y 186
+const LostY = 186
+const PadY = 172
+const BrTop = 32
+const NCols = 14
+const NRows = 13
+' the serve: the ball waits at y 166
+const ServeY = 2656
+
+' the four walls, 13 lines each: the colour of each line (0 a gap); from the
+' C64's tables at $C526, $C56E, $C5B8, $C5EB
+data LayT bytes
+  1,2,3,0,0,4,5,6,0,0,0,0,0
+  1,2,3,4,0,0,5,6,7,8,0,0,0
+  1,2,3,0,0,4,5,6,0,0,7,8,9
+  1,2,3,10,11,4,5,6,12,13,7,8,9
+end data
+' the serve's sixteen directions (the C64's at $CC0F): sideways + 8, upward
+data LaunchDx bytes 9,7,10,6,11,5,8,12,4,9,7,9,7,9,7,7
+data LaunchDy bytes 2,2,2,2,2,2,2,2,2,2,2,3,3,4,4,4
+' sixteenths of a pixel a step for ball speed 0-4
+data SpdBase bytes 5,6,7,8,9
+
+data TilePat bytes
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$80,$40,$48,$40,$40,$40,$40
+  $00,$01,$02,$12,$02,$02,$02,$02
+  $40,$40,$40,$48,$40,$40,$40,$40
+  $02,$02,$02,$12,$02,$02,$02,$02
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $19,$18,$18,$18,$18,$18,$16,$01
+  $69,$68,$68,$68,$68,$68,$06,$01
+  $1F,$17,$17,$17,$17,$17,$15,$01
+  $5F,$57,$57,$57,$57,$57,$05,$01
+  $19,$1D,$1D,$1D,$1D,$1D,$16,$01
+  $69,$6D,$6D,$6D,$6D,$6D,$06,$01
+  $13,$12,$12,$12,$12,$12,$1C,$01
+  $C3,$C2,$C2,$C2,$C2,$C2,$0C,$01
+  $17,$15,$15,$15,$15,$15,$14,$01
+  $47,$45,$45,$45,$45,$45,$04,$01
+  $1F,$1B,$1B,$1B,$1B,$1B,$1A,$01
+  $AF,$AB,$AB,$AB,$AB,$AB,$0A,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$16,$01
+  $6B,$6A,$6A,$6A,$6A,$6A,$06,$01
+  $18,$16,$16,$16,$16,$16,$01,$01
+  $18,$16,$16,$16,$16,$16,$01,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$01,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$01,$01
+  $15,$14,$14,$14,$14,$14,$01,$01
+  $15,$14,$14,$14,$14,$14,$01,$01
+  $1F,$19,$19,$19,$19,$19,$18,$01
+  $8F,$89,$89,$89,$89,$89,$08,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1E,$01
+  $EF,$EF,$EF,$EF,$EF,$EF,$0E,$01
+  $12,$1C,$1C,$1C,$1C,$1C,$01,$01
+  $12,$1C,$1C,$1C,$1C,$1C,$01,$01
+  $0E,$0F,$0E,$FE,$0E,$0E,$01,$01
+  $0E,$EF,$FE,$FE,$FE,$FE,$FE,$FE
+  $0E,$EF,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $19,$18,$18,$18,$18,$18,$16,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$16,$01
+  $1F,$1B,$1B,$1B,$1B,$1B,$1A,$01
+  $13,$12,$12,$12,$12,$12,$1C,$01
+  $1F,$17,$17,$17,$17,$17,$15,$01
+end data
+data SpritePat bytes
+  $60,$F0,$F0,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$FF,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$FF,$FF,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$FF,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$FF,$FF,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$9F,$9F,$20,$20,$9F,$9F,$20,$20,$9F,$9F,$9F,$20,$9F,$9F,$9F,$20,$9F,$20,$9F,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A0,$20,$A0,$20,$A0,$20,$A0,$20,$20,$A0,$20,$20,$A0,$20,$20,$20,$A0,$20,$A0,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A1,$A1,$20,$20,$A1,$A1,$20,$20,$20,$A1,$20,$20,$A1,$20,$20,$20,$A1,$A1,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A2,$20,$A2,$20,$A2,$20,$A2,$20,$20,$A2,$20,$20,$A2,$20,$20,$20,$A2,$20,$A2,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A3,$A3,$20,$20,$A3,$20,$A3,$20,$A3,$A3,$A3,$20,$A3,$A3,$A3,$20,$A3,$20,$A3,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$9F,$9F,$20,$20,$9F,$20,$9F,$20,$9F,$9F,$9F,$20,$9F,$9F,$9F,$20,$9F,$9F,$9F,$20,$9F,$9F,$20,$20,$9F,$9F,$9F,$20,$20
+  $20,$20,$20,$A0,$20,$A0,$20,$A0,$20,$A0,$20,$A0,$20,$20,$20,$20,$A0,$20,$20,$A0,$20,$20,$20,$A0,$20,$A0,$20,$A0,$20,$20,$20,$20
+  $20,$20,$20,$A1,$A1,$20,$20,$A1,$20,$A1,$20,$A1,$A1,$A1,$20,$20,$A1,$20,$20,$A1,$A1,$20,$20,$A1,$A1,$20,$20,$A1,$A1,$A1,$20,$20
+  $20,$20,$20,$A2,$20,$A2,$20,$A2,$20,$A2,$20,$20,$20,$A2,$20,$20,$A2,$20,$20,$A2,$20,$20,$20,$A2,$20,$A2,$20,$20,$20,$A2,$20,$20
+  $20,$20,$20,$A3,$A3,$20,$20,$A3,$A3,$A3,$20,$A3,$A3,$A3,$20,$20,$A3,$20,$20,$A3,$A3,$A3,$20,$A3,$20,$A3,$20,$A3,$A3,$A3,$20,$20
+end data
+
+record Player:
+  u8 Balls
+  u8 Out
+  bcd digits 7 Score
+end record
+Player Pl[4]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the ball (1/16 pixels) and its speed
+u16 Bx = 0
+u16 By = 0
+u16 OldBy = 0
+i16 Dx = 0
+i16 Dy = 0
+i8 Dxc = 0
+i8 Dyc = 0
+' the paddle (1/16 pixels), its speed and right limit
+u16 Pxf = 0
+u16 PadSpd = 0
+u16 PMax = 0
+u16 BI = 0
+bcd digits 7 CurSc = 0
+bcd digits 7 Hi = 0
+' the wall: colour index per brick, 13 rows of 14
+u8 Brk[182]
+' options
+u8 BallSpd = 2
+u8 PadOpt = 5
+u8 Big = 1
+u8 NPl = 1
+u8 Sel = 0
+' game state
+u8 Cur = 0
+u8 Lv = 1
+u8 Lay = 1
+u8 Spd = 5
+u8 BLeft = 0
+u8 Px = 0
+u8 PadW = 32
+u8 Mv = 0
+u8 Ev = 0
+u8 Phase = 0
+u8 Paused = 0
+u8 Alive = 0
+u8 Hits = 0
+u8 Bounces = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 B2 = 0
+u8 WasB2 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Row = 0
+u8 Col = 0
+u8 Pn = 0
+u8 Tries = 0
+' scratch
+u8 C = 0
+u8 R = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Xp = 0
+u8 Yp = 0
+u8 Got = 0
+
+  tile screen
+  set sound table BkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+turn:
+  PlayerIntro
+  DrawBoard
+
+serve:
+  ServeBall
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Ev = 0 then goto play_loop
+
+  select case Ev
+  case 1
+    LoseBall
+    if Pl[Cur].Out = 0 then goto serve
+    CountAlive
+    if Alive = 0 then goto game_end
+    PlayerOver
+    NextTurn
+    goto turn
+  case else
+    WallClear
+    NextTurn
+    goto turn
+  end select
+
+game_end:
+  ' the last player is out: GAME OVER, then back to the title on a press
+  Phase = 5
+  HideSprites
+  print at 8,8, "                "
+  print at 8,9, "   GAME  OVER   "
+  NumU = Cur + 1
+  print at 8,10, "  FOR PLAYER ", digits$(NumU, 1), "  "
+  print at 8,11, "                "
+  print at 8,12, "  HIGH ", Hi, "  "
+  print at 8,13, "                "
+  mute all
+  TzOn = 0
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: pause, the paddle, the ball
+sub PlayStep:
+  Ev = 0
+  if Paused = 1 then
+    if Press2 = 1 then
+      Paused = 0
+      fill 32 count 5 at 13,19
+    end if
+    return
+  end if
+  if Press2 = 1 then
+    Paused = 1
+    print at 13,19, "PAUSE"
+    return
+  end if
+  MovePaddle
+  MoveBall
+  return
+end sub
+
+' the stick moves the paddle PadSpd sixteenths; Mv = 1 left, 2 right when
+' it really moved (the C64's $0371 / $0372, read by the English)
+sub MovePaddle:
+  Mv = 0
+  K = J1 & 12
+  if K = 4 then
+    if Pxf > FieldL then
+      Mv = 1
+      W16 = FieldL + PadSpd
+      if Pxf < W16 then
+        Pxf = FieldL
+      else
+        Pxf = Pxf - PadSpd
+      end if
+    end if
+  end if
+  if K = 8 then
+    if Pxf < PMax then
+      Mv = 2
+      W16 = PMax - PadSpd
+      if Pxf > W16 then
+        Pxf = PMax
+      else
+        Pxf = Pxf + PadSpd
+      end if
+    end if
+  end if
+  Px = Pxf >> 4
+  return
+end sub
+
+' Dx, Dy from the direction steps and the speed
+sub SetVel:
+  Dx = Dxc * Spd
+  Dy = Dyc * Spd
+  return
+end sub
+
+sub MoveBall:
+  Bx = Bx + Dx
+  if Bx < FieldL then
+    Bx = FieldL
+    Dxc = -Dxc
+    SetVel
+    play sound SndWall
+  end if
+  if Bx > FieldR then
+    Bx = FieldR
+    Dxc = -Dxc
+    SetVel
+    play sound SndWall
+  end if
+  OldBy = By
+  By = By + Dy
+  if By < FieldT then
+    By = FieldT
+    Dyc = -Dyc
+    SetVel
+    play sound SndWall
+  end if
+  HitBricks
+  HitPaddle
+  Yp = By >> 4
+  if Yp >= LostY then Ev = 1
+  return
+end sub
+
+' the brick under the ball's leading corners (top when rising, bottom when
+' falling), left corner first; one brick a frame
+sub HitBricks:
+  Yp = By >> 4
+  if Dy > 0 then Yp = Yp + 3
+  if Yp < BrTop then return
+  R = (Yp - BrTop) >> 3
+  if R >= NRows then return
+  Xp = Bx >> 4
+  Got = TryBrick(Xp)
+  if Got = 1 then return
+  Got = TryBrick(Xp + 3)
+  return
+end sub
+
+' 1 when the column under pixel Xq of row R holds a brick (and knocks it out)
+function TryBrick(u8 Xq) as u8
+  u8 Res = 0
+  C = (Xq - 16) >> 4
+  BI = R * NCols
+  BI = BI + C
+  if Brk[BI] > 0 then
+    KillBrick
+    Res = 1
+  end if
+  return Res
+
+sub KillBrick:
+  Brk[BI] = 0
+  X = C * 2 + 2
+  Y = R + 4
+  put char 32 at X,Y
+  put char 32 at X + 1,Y
+  CurSc += 1
+  if CurSc > Hi then Hi = CurSc
+  inc Hits
+  dec BLeft
+  ShowScore
+  ShowLeft
+  Dyc = -Dyc
+  SetVel
+  By = OldBy
+  play sound SndBrick
+  play sound SndCrunch
+  if BLeft = 0 then Ev = 2
+  return
+end sub
+
+' a falling ball that meets the paddle goes back up, with the English
+sub HitPaddle:
+  if Dy <= 0 then return
+  Yp = By >> 4
+  if Yp + 3 < PadY then return
+  if Yp > PadY + 3 then return
+  Xp = Bx >> 4
+  if Xp + 3 < Px then return
+  if Xp >= Px + PadW then return
+  Dyc = -Dyc
+  select case Mv
+  case 1
+    if Dxc > 0 then Dxc = -Dxc
+    Dxc = Dxc - 1
+    if Dxc < -5 then Dxc = -5
+  case 2
+    if Dxc < 0 then Dxc = -Dxc
+    Dxc = Dxc + 1
+    if Dxc > 5 then Dxc = 5
+  end select
+  SetVel
+  By = (PadY - 4) * 16
+  inc Bounces
+  play sound SndPad
+  return
+end sub
+
+' the ball waits low at a random place; the paddle moves; a button serves
+sub ServeBall:
+  Phase = 1
+  Rand
+  W16 = Rs & 2047
+  Bx = W16 + 512
+  W16 = Rs >> 5
+  W16 = W16 & 1023
+  Bx = Bx + W16
+  By = ServeY
+  Dxc = 0
+  Dyc = 0
+  SetVel
+  Paused = 0
+  print at 6,19, "PRESS BUTTON TO SERVE"
+  DrawSprites
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+serve_loop:
+  Frame1
+  ReadPad
+  MovePaddle
+  Rand
+  DrawSprites
+  if Press = 0 then goto serve_loop
+  fill 32 count 21 at 6,19
+  K = Rs >> 12
+  V = LaunchDx[K]
+  Dxc = V
+  Dxc = Dxc - 8
+  V = LaunchDy[K]
+  Dyc = V
+  Dyc = -Dyc
+  SetVel
+  play sound SndServe
+  Phase = 2
+  return
+end sub
+
+sub LoseBall:
+  play sound SndLost
+  dec Pl[Cur].Balls
+  if Pl[Cur].Balls = 0 then Pl[Cur].Out = 1
+  Pl[Cur].Score = CurSc
+  ShowBalls
+  HideBall
+  Rearm
+  wait 60 frames
+  nmi off
+  return
+end sub
+
+sub HideBall:
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub CountAlive:
+  Alive = 0
+  for Pn = 0 to NPl - 1
+    if Pl[Pn].Out = 0 then inc Alive
+  next
+  return
+end sub
+
+' a cleared wall: a fanfare, then the next turn
+sub WallClear:
+  Pl[Cur].Score = CurSc
+  HideBall
+  print at 10,19, "WALL CLEAR!"
+  play sound SndClear
+  Phase = 4
+  Rearm
+  wait 120 frames
+  nmi off
+  return
+end sub
+
+' GAME OVER FOR PLAYER n when others still play: wait for a press
+sub PlayerOver:
+  Phase = 4
+  HideSprites
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  NumU = Cur + 1
+  print at 8,11, "  FOR PLAYER ", digits$(NumU, 1), "  "
+  print at 8,12, "                "
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the next player still in the game; passing the last player ends the round
+' (the C64's $C361): level up, the next wall, one more ball each
+sub NextTurn:
+  inc Cur
+  if Cur >= NPl then RoundUp
+  Tries = 0
+  while Tries < NPl
+    if Pl[Cur].Out = 0 then
+      Tries = NPl
+    else
+      inc Cur
+      if Cur >= NPl then RoundUp
+      inc Tries
+    end if
+  end while
+  return
+end sub
+
+sub RoundUp:
+  Cur = 0
+  if Lv < 99 then inc Lv
+  inc Lay
+  if Lay > 4 then Lay = 1
+  for Pn = 0 to 3
+    if Pl[Pn].Balls < 9 then inc Pl[Pn].Balls
+  next
+  SetSpeed
+  return
+end sub
+
+' the ball's speed: the option's base, one more every second level, at
+' most four more
+sub SetSpeed:
+  K = Lv - 1
+  K = K >> 1
+  if K > 4 then K = 4
+  Spd = SpdBase[BallSpd] + K
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprite 0 the ball, 1-2 the paddle
+sub DrawSprites:
+  Xp = Bx >> 4
+  Yp = By >> 4
+  set sprite 0 to Yp - 1,Xp,SBall,15
+  if Big = 1 then
+    set sprite 1 to PadY - 1,Px,SPadl,11
+    set sprite 2 to PadY - 1,Px + 16,SPadr,11
+  else
+    set sprite 1 to PadY - 1,Px,SPads,11
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, CurSc
+  print at 23,1, Hi
+  return
+end sub
+
+sub ShowLeft:
+  NumU = BLeft
+  print at 27,2, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowBalls:
+  NumU = Pl[Cur].Balls
+  print at 19,2, digits$(NumU, 1)
+  return
+end sub
+
+sub NewGame:
+  for Pn = 0 to 3
+    Pl[Pn].Balls = 3
+    Pl[Pn].Out = 1
+    Pl[Pn].Score = 0
+  next
+  for Pn = 0 to NPl - 1
+    Pl[Pn].Out = 0
+  next
+  Cur = 0
+  Lv = 1
+  Lay = 1
+  SetSpeed
+  if Big = 1 then
+    PadW = 32
+  else
+    PadW = 16
+  end if
+  W16 = 240 - PadW
+  PMax = W16 << 4
+  PadSpd = PadOpt * 10 + 12
+  Hits = 0
+  Bounces = 0
+  return
+end sub
+
+' PLAYER n and the level, with a jingle (the C64 played a note per letter)
+sub PlayerIntro:
+  Phase = 3
+  NewScreen
+  NumU = Cur + 1
+  print at 12,9, "PLAYER ", digits$(NumU, 1)
+  NumU = Lv
+  print at 12,12, "LEVEL ", digits$(NumU, 2)
+  ShowScreen
+  play sound SndTurn
+  for J = 1 to 80
+    Frame1
+  next
+  return
+end sub
+
+' the steel frame, the status lines and a fresh wall
+sub DrawBoard:
+  NewScreen
+  print at 2,1, "SCORE"
+  print at 18,1, "HIGH"
+  print at 2,2, "LV"
+  NumU = Lv
+  print at 5,2, digits$(NumU, 2)
+  NumU = Cur + 1
+  print at 9,2, "P", digits$(NumU, 1)
+  print at 13,2, "BALLS"
+  print at 22,2, "LEFT"
+  put char TWtl at 1,3
+  fill TWtop count 28 at 2,3
+  put char TWtr at 30,3
+  for Row = 4 to 23
+    put char TWl at 1,Row
+    put char TWr at 30,Row
+  next
+  BLeft = 0
+  W16 = Lay - 1
+  W16 = W16 * NRows
+  for Row = 0 to NRows - 1
+    V = LayT[W16]
+    inc W16
+    Y = Row + 4
+    for Col = 0 to NCols - 1
+      BI = Row * NCols
+      BI = BI + Col
+      Brk[BI] = V
+      if V > 0 then
+        X = Col * 2 + 2
+        K = V - 1
+        K = K * 2 + TK1a
+        put char K at X,Y
+        put char K + 1 at X + 1,Y
+        inc BLeft
+      end if
+    next
+  next
+  CurSc = Pl[Cur].Score
+  ShowScore
+  ShowLeft
+  ShowBalls
+  W16 = 240 - PadW
+  W16 = W16 >> 1
+  Pxf = W16 << 4
+  Px = Pxf >> 4
+  Bx = 2048
+  By = ServeY
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  if joypad(2).button2 then J1 = J1 | 32
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  B2 = J1 & 32
+  Press2 = 0
+  if B2 > 0 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: BRICK / BUSTERS in bricks, the four options, START, CREDITS,
+' the high score, the tune once
+sub TitlePage:
+tp_start:
+  Phase = 0
+  NewScreen
+  print at 8,1, "AHOY! MARCH 1986"
+  copy TitleMap count 352 to vram.name + 64
+  print at 7,13, "BY PAUL SEEBURGER"
+  print at 7,15, "BALL SPEED"
+  print at 7,16, "PADDLE SPEED"
+  print at 7,17, "PADDLE SIZE"
+  print at 7,18, "PLAYERS"
+  print at 7,19, "START"
+  print at 7,20, "CREDITS"
+  if Hi > 0 then
+    print at 9,22, "HIGH ", Hi
+  end if
+  ShowOpts
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 528
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then MenuMove
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Sel = 5 then
+    StopTune
+    CreditsPage
+    goto tp_start
+  end if
+  StopTune
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub StopTune:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  return
+end sub
+
+' up / down choose a line, left / right change it
+sub MenuMove:
+  select case V
+  case 1
+    if Sel > 0 then dec Sel
+  case 2
+    if Sel < 5 then inc Sel
+  case 4
+    select case Sel
+    case 0
+      if BallSpd > 0 then dec BallSpd
+    case 1
+      if PadOpt > 0 then dec PadOpt
+    case 2
+      Big = 1 - Big
+    case 3
+      if NPl > 1 then dec NPl
+    end select
+  case 8
+    select case Sel
+    case 0
+      if BallSpd < 4 then inc BallSpd
+    case 1
+      if PadOpt < 9 then inc PadOpt
+    case 2
+      Big = 1 - Big
+    case 3
+      if NPl < 4 then inc NPl
+    end select
+  end select
+  ShowOpts
+  return
+end sub
+
+sub ShowOpts:
+  for J = 15 to 20
+    put char 32 at 5,J
+  next
+  put char 62 at 5,Sel + 15
+  NumU = BallSpd
+  print at 22,15, digits$(NumU, 1)
+  NumU = PadOpt
+  print at 22,16, digits$(NumU, 1)
+  if Big = 1 then
+    print at 22,17, "LARGE"
+  else
+    print at 22,17, "SMALL"
+  end if
+  NumU = NPl
+  print at 22,18, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 6
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "BRICKBUSTERS"
+  print at 2,5, "BASED ON BRICKBUSTERS BY"
+  print at 2,6, "PAUL SEEBURGER, AHOY!"
+  print at 2,7, "MARCH 1986 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: BRICK BY BRICK"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+BkBrick:
+    db $40,$55,$10,$02,$40,$6B,$30,$03,$50
+BkWall:
+    db $40,$1D,$31,$02,$50
+BkPad:
+    db $40,$AB,$11,$02,$40,$53,$31,$03,$50
+BkServe:
+    db $40,$D6,$20,$03,$40,$8F,$30,$05,$50
+BkLost:
+    db $40,$7F,$10,$03,$40,$91,$10,$03,$40,$A4,$20,$03,$40,$BA,$20,$03,$40,$D4,$20,$03,$40,$F1,$20,$03
+    db $40,$11,$31,$03,$40,$37,$31,$03,$40,$62,$31,$03,$40,$91,$31,$03,$40,$C9,$41,$03,$40,$06,$42,$03
+    db $50
+BkClear:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$05,$40,$6B,$20,$10
+    db $50
+BkTurn:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E
+    db $50
+BkOver:
+    db $40,$D6,$10,$0A,$40,$E2,$20,$0A,$40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$AB,$31,$1E,$50
+BkCrunch:
+    db $00,$00,$35,$02,$00,$00,$56,$03,$10
+
+BkSoundTable:
+    dw BkTuneMel,$702B
+    dw BkTuneBass,$7035
+    dw BkBrick,$7049
+    dw BkWall,$7049
+    dw BkPad,$7049
+    dw BkServe,$7049
+    dw BkLost,$7049
+    dw BkClear,$7049
+    dw BkTurn,$7049
+    dw BkOver,$7049
+    dw BkCrunch,$703F
+; Brick by Brick (original)
+; Tiny Sound, 8 frames per step
+BkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$01,$21,$01,$1E,$01,$1A,$01,$1E,$01
+    db $21,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$1F,$01,$1C,$01,$1F,$01
+    db $23,$01,$01,$01,$1E,$01,$21,$01,$26,$01,$21,$01,$1F,$01,$23,$01
+    db $28,$01,$23,$01,$21,$01,$25,$01,$28,$01,$25,$01,$26,$01,$01,$01
+    db $21,$01,$26,$01,$00,$01
+    db $FF
+BkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$01,$01
+    db $09,$01,$0E,$01,$00,$01
+    db $FF
+}
+
+

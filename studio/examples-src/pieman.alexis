@@ -1,0 +1,959 @@
+cartridge "PIEMAN/B.BLACKMER/1987"
+
+' PIEMAN
+' A ColecoVision game based on "Pieman" by Bob Blackmer, Ahoy! April 1987
+' (Commodore 64 machine language, PIEMAN.ML at $C000, started by a
+' two-line BASIC loader with SYS 49152). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/pieman-ml.dis, and the magazine's instructions), the
+' game is rebuilt for the ColecoVision: a pie shop under a marquee of
+' chasing bulbs, a tiled kitchen wall, a conveyor belt that really moves,
+' a glowing pie oven, a wooden counter, a counterman in a white cap and
+' apron and customers in hats as smooth two-colour sprites, sound effects.
+'
+' The game: you are the new counterman at the pie emporium. Pies come out
+' of the oven on a conveyor belt. Walk up to the belt and hold the button
+' as a pie passes under your hands to take it, carry it down to the counter
+' and hold the button in front of the customer to sell it. A pie nobody
+' takes falls off the end of the belt and is smashed. Every 25 pies sold
+' the belt runs faster. When 30 pies are smashed the shop closes for the
+' cleanup.
+'
+' From the original (orig/): two pies on the belt; the second starts when
+' the first has gone part of the way, both start again when the second is
+' done; a pie moves one pixel a belt step and, past the end of the belt,
+' one pixel down and one along a step until it lands; the belt makes one
+' step per pass at first and one more per pass every 25 pies sold (a
+' pass is about two frames on the C64); the counterman moves 2 pixels a
+' pass in four directions, cannot walk back up while carrying a pie, takes
+' a pie with the button held when he is at the top and touches it, sells
+' it with the button held at the bottom while he and the pie touch a
+' customer who is standing at the counter; the customer walks away with
+' the pie and a new one comes up at a random place; 30 smashed pies end
+' the game; the counts of pies sold and smashed.
+'
+' Liberties: one pass a frame with the belt's steps counted in half steps
+' (the same speeds, smooth); the belt is 160 pixels long (the C64's 194)
+' and a pie falls for 28 steps, as on the C64, onto a heap that grows; the
+' second pie starts halfway (94 steps; the C64's 110 of 222); touching is
+' a distance test (10 pixels) instead of the C64's sprite collision
+' register; a pie cannot be taken while one is carried (the C64 swapped
+' them, losing the first without a count); the belt's speed stops at 8;
+' the customer comes up 1 pixel a frame and leaves 2 (the C64: 0.5 and 1);
+' pies are lemon or berry at random (the C64's board: TODAY'S SPECIAL
+' LEMON BERRY); sounds for taking, selling, a faster belt, a customer and
+' the start (the C64 had the splat and a sale tone); a best count; GAME
+' OVER then the title (the C64 showed CLOSED and waited for the button).
+'
+' Controls: controller 1 (or 2): the stick walks, either button held takes
+' or sells a pie. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TBulbA = 128
+const TBulbB = 129
+const TSignL = 130
+const TWall = 131
+const TWallB = 132
+const TBelt0 = 133
+const TBelt1 = 134
+const TBelt2 = 135
+const TBelt3 = 136
+const TBeltL = 137
+const TLeg = 138
+const TFloor = 139
+const TOvT = 140
+const TOv = 141
+const TOvM0 = 142
+const TOvB = 143
+const TGoo1 = 144
+const TGoo2 = 145
+const TGoo3 = 146
+const TGooF = 147
+const TCtrT = 148
+const TCtrF = 149
+const TPave = 150
+const TCrust = 151
+const TDot = 152
+const SPb0p = 0
+const SPb0w = 4
+const SPb1p = 8
+const SPb1w = 12
+const SPf0p = 16
+const SPf0w = 20
+const SPf1p = 24
+const SPf1w = 28
+const SPie = 32
+const SSplat = 36
+const SCuP = 40
+const SCuC = 44
+const NTiles8 = 200
+const SprBytes = 384
+const SndTuneA = 1
+const SndTuneB = 2
+const SndGrab = 3
+const SndSell = 4
+const SndSplat = 5
+const SndFaster = 6
+const SndHello = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 8
+' the pies: start, the end of the belt, steps of a pie, the second's start
+const X0 = 200
+const Y0 = 56
+const FallX = 40
+const PieLen = 188
+const Stagger = 94
+' the counterman's walk
+const PXMin = 24
+const PXMax = 208
+const YTop = 72
+const YBot = 128
+const YServe = 120
+const Reach = 10
+' the customer stands with the top of the hat here
+const CStand = 160
+const MaxSpd = 8
+const PerSpd = 25
+const SmashMax = 30
+
+data PieColT bytes 11,13
+data CColT bytes 8,7,3,13,5,10
+' the marquee's bulbs, lit and dim (colour rows of the bulb tiles)
+data BulbLit bytes $11,$B1,$B1,$B1,$B1,$E1,$11,$11
+data BulbDim bytes $11,$A1,$A1,$A1,$A1,$E1,$11,$11
+
+data TilePat bytes
+  $00,$30,$87,$87,$30,$30,$00,$00
+  $00,$30,$87,$87,$30,$30,$00,$00
+  $00,$80,$40,$40,$40,$40,$80,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $00,$03,$03,$03,$03,$00,$49,$00
+  $00,$0C,$0C,$0C,$0C,$00,$49,$00
+  $00,$30,$30,$30,$30,$00,$49,$00
+  $00,$C0,$C0,$C0,$C0,$00,$49,$00
+  $C0,$80,$10,$38,$10,$80,$C6,$00
+  $18,$18,$18,$18,$18,$18,$18,$C3
+  $00,$00,$00,$00,$01,$00,$00,$00
+  $00,$81,$00,$42,$00,$00,$00,$00
+  $00,$42,$00,$00,$00,$00,$42,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$42,$00,$00,$42,$42,$42,$99
+  $00,$00,$00,$00,$18,$83,$01,$00
+  $00,$10,$38,$83,$01,$00,$00,$00
+  $10,$38,$83,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$81,$42,$42
+  $42,$42,$42,$42,$81,$00,$00,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $81,$81,$91,$85,$00,$81,$C3,$00
+  $00,$00,$00,$18,$C3,$18,$00,$00
+end data
+data TileCol bytes
+  $01,$B1,$1B,$1B,$B1,$E1,$01,$01
+  $01,$B1,$1B,$1B,$B1,$E1,$01,$01
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $05,$57,$57,$57,$57,$57,$57,$57
+  $57,$57,$57,$57,$57,$57,$0E,$01
+  $0F,$1E,$1E,$1E,$1E,$0E,$E1,$01
+  $0F,$1E,$1E,$1E,$1E,$0E,$E1,$01
+  $0F,$1E,$1E,$1E,$1E,$0E,$E1,$01
+  $0F,$1E,$1E,$1E,$1E,$0E,$E1,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$1E
+  $04,$01,$01,$01,$41,$01,$01,$01
+  $0E,$EF,$0E,$1E,$0E,$0E,$0E,$0E
+  $0E,$1E,$0E,$0E,$0E,$0E,$1E,$0E
+  $01,$08,$08,$09,$0B,$09,$08,$01
+  $0E,$1E,$0E,$01,$E1,$E1,$E1,$1E
+  $01,$01,$01,$01,$B1,$1B,$1D,$0B
+  $01,$D1,$D1,$1B,$1D,$0B,$0D,$0B
+  $B1,$B1,$1D,$1B,$0D,$0B,$0D,$0B
+  $0D,$0B,$0D,$0B,$0D,$0B,$0D,$0B
+  $0B,$0A,$0A,$06,$01,$6A,$A6,$A6
+  $A6,$A6,$A6,$A6,$6A,$06,$01,$01
+  $E1,$E1,$E1,$0E,$E1,$E1,$E1,$0E
+  $1A,$AB,$AB,$AB,$0A,$6A,$6A,$01
+  $01,$01,$01,$B1,$1B,$B1,$01,$01
+end data
+data SpritePat bytes
+  $30,$30,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$0C,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$37,$37,$30,$30,$3F,$1F,$1F,$0F,$0F,$0F,$06,$06,$06,$0E
+  $00,$E0,$EC,$EC,$0C,$0C,$FC,$F8,$F8,$F0,$F0,$F0,$60,$60,$60,$70
+  $30,$30,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$0C,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$37,$37,$30,$30,$3F,$1F,$1F,$0F,$0F,$0F,$06,$0C,$18,$38
+  $00,$E0,$EC,$EC,$0C,$0C,$FC,$F8,$F8,$F0,$F0,$F0,$60,$30,$18,$1C
+  $00,$00,$00,$00,$07,$05,$07,$03,$00,$20,$20,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$A0,$E0,$C0,$00,$04,$04,$04,$00,$00,$00,$00
+  $07,$0F,$0F,$07,$00,$00,$00,$00,$1F,$1F,$1F,$0F,$07,$06,$06,$0E
+  $E0,$F0,$F0,$E0,$00,$00,$00,$00,$F8,$F8,$F8,$F0,$E0,$60,$60,$70
+  $00,$00,$00,$00,$07,$05,$07,$03,$00,$20,$20,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$A0,$E0,$C0,$00,$04,$04,$04,$00,$00,$00,$00
+  $07,$0F,$0F,$07,$00,$00,$00,$00,$1F,$1F,$1F,$0F,$07,$0C,$18,$38
+  $E0,$F0,$F0,$E0,$00,$00,$00,$00,$F8,$F8,$F8,$F0,$E0,$30,$18,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$1F,$2D,$7F,$FF,$7F,$3F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F8,$B4,$FE,$FF,$FE,$FC
+  $00,$00,$00,$00,$00,$00,$00,$00,$22,$14,$47,$2F,$FF,$7F,$BF,$36
+  $00,$00,$00,$00,$00,$00,$00,$00,$24,$14,$E2,$F4,$FD,$FE,$FD,$6C
+  $00,$00,$00,$00,$07,$05,$07,$06,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$A0,$E0,$60,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$3F,$00,$00,$00,$00,$00,$0F,$3F,$7F,$7F,$77,$77,$77
+  $00,$E0,$F0,$FC,$00,$00,$00,$00,$00,$F0,$FC,$FE,$FE,$EE,$EE,$EE
+end data
+
+data ShopMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$20
+  $20,$80,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$80,$20
+  $20,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$8C,$8C,$8C,$8C,$83,$83
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8D,$8D,$8D,$8D,$20,$20
+  $83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$8D,$8D,$8D,$8D,$83,$83
+  $84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$8D,$8D,$8D,$8D,$84,$84
+  $8B,$8B,$8B,$8B,$8B,$8B,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$8E,$8E,$8E,$8E,$20,$20
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8F,$8F,$8F,$8F,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8B,$8A,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94
+  $95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95
+  $96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96
+  $96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96
+  $96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96
+  $96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$97,$97,$97,$20,$97,$97,$97,$20,$97,$97,$97,$20,$97,$20,$97,$20,$97,$97,$97,$20,$97,$20,$97,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$97,$20,$97,$20,$20,$97,$20,$20,$97,$20,$20,$20,$97,$97,$97,$20,$97,$20,$97,$20,$97,$97,$97,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$97,$97,$97,$20,$20,$97,$20,$20,$97,$97,$20,$20,$97,$97,$97,$20,$97,$97,$97,$20,$97,$97,$97,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$97,$20,$20,$20,$20,$97,$20,$20,$97,$20,$20,$20,$97,$20,$97,$20,$97,$20,$97,$20,$97,$97,$97,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$97,$20,$20,$20,$97,$97,$97,$20,$97,$97,$97,$20,$97,$20,$97,$20,$97,$20,$97,$20,$97,$20,$97,$20,$20,$20,$20,$20
+end data
+
+record PieRec:
+  u8 Xp
+  u8 Yp
+  u8 Cnt
+  u8 Live
+  u8 Kind
+end record
+
+PieRec Pies[2]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 4 Sold = 0
+bcd digits 4 Best = 0
+' the counterman: place, facing (0 up, 1 down), stride, the pie carried
+u8 PX = 40
+u8 PY = 100
+u8 Face = 1
+u8 WalkF = 0
+u8 WalkC = 0
+u8 Carry = 0
+u8 CarryKind = 0
+' the customer: place, state (0 waiting, 1 leaving, 2 coming), coat colour,
+' the pie taken away
+u8 CX = 0
+u8 CY = 192
+u8 CState = 2
+u8 CCi = 0
+u8 CPie = 0
+u8 CPieKind = 0
+' the belt: steps a pass x 2, half steps left over, the slats' phase
+u8 Spd = 1
+u8 Acc = 0
+u8 BeltPh = 0
+u8 ShownPh = 0
+u8 Smashed = 0
+u8 SellCnt = 0
+u8 SplX = 0
+u8 SplT = 0
+u8 BulbT = 0
+u8 BulbPh = 0
+u8 Over = 0
+u8 Sales = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TbX = 40
+u8 TbD = 1
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Ds = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 D = 0
+
+  tile screen
+  set sound table PmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  MovePlayer
+  MoveCustomer
+  RunBelt
+  Decor
+  DrawSprites
+  if Smashed >= SmashMax then Over = 1
+  if Over = 0 then goto play_loop
+
+  ' the end: the shop closes, then back to the title on a press
+  if Sold > Best then Best = Sold
+  HideSprites
+  print at 6,10, "                    "
+  print at 6,11, "  30 PIES SMASHED!  "
+  print at 6,12, "                    "
+  print at 6,13, "  THE SHOP IS CLOSED"
+  print at 6,14, "   FOR THE CLEANUP  "
+  print at 6,15, "                    "
+  print at 6,16, "  PIES SOLD  ", Sold, "   "
+  print at 6,17, "  BEST       ", Best, "   "
+  print at 6,18, "                    "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the counterman: up (not with a pie), down, left, right, then the button
+sub MovePlayer:
+  u8 Moved = 0
+  V = J1 & 1
+  if V > 0 then
+    if Carry = 0 then
+      if PY > YTop then
+        dec PY
+        Face = 0
+        Moved = 1
+      end if
+    end if
+  end if
+  V = J1 & 2
+  if V > 0 then
+    if PY < YBot then
+      inc PY
+      Face = 1
+      Moved = 1
+    end if
+  end if
+  V = J1 & 4
+  if V > 0 then
+    if PX > PXMin then
+      dec PX
+      Moved = 1
+    end if
+  end if
+  V = J1 & 8
+  if V > 0 then
+    if PX < PXMax then
+      inc PX
+      Moved = 1
+    end if
+  end if
+  if Moved = 1 then
+    inc WalkC
+    if WalkC >= 8 then
+      WalkC = 0
+      WalkF = WalkF ^ 1
+    end if
+  end if
+  V = J1 & 16
+  if V > 0 then Serve
+  return
+end sub
+
+function AbsDiff(u8 A, u8 B) as u8
+  if A >= B then
+    return A - B
+  end if
+  return B - A
+
+' the button held: take a pie at the belt or sell one at the counter
+sub Serve:
+  if Carry = 0 then
+    if PY > YTop + 1 then return
+    for Gi = 0 to 1
+      if Pies[Gi].Live = 1 then
+        if Pies[Gi].Cnt < PieLen then
+          if Pies[Gi].Yp < Y0 + 12 then
+            D = AbsDiff(Pies[Gi].Xp, PX)
+            if D <= Reach then
+              Pies[Gi].Live = 0
+              Carry = 1
+              CarryKind = Pies[Gi].Kind
+              Face = 1
+              play sound SndGrab
+              return
+            end if
+          end if
+        end if
+      end if
+    next
+    return
+  end if
+  if PY < YServe then return
+  if CState <> 0 then return
+  D = AbsDiff(CX, PX)
+  if D > Reach then return
+  Carry = 0
+  CState = 1
+  CPie = 1
+  CPieKind = CarryKind
+  Face = 0
+  Sold += 1
+  inc Sales
+  inc SellCnt
+  if SellCnt = PerSpd then
+    SellCnt = 0
+    if Spd < MaxSpd then inc Spd
+    play sound SndFaster
+  else
+    play sound SndSell
+  end if
+  ShowStatus
+  return
+end sub
+
+' the customer comes up to the counter, waits, walks away with the pie
+sub MoveCustomer:
+  select case CState
+    case 2
+      dec CY
+      if CY <= CStand then
+        CY = CStand
+        CState = 0
+      end if
+    case 1
+      CY = CY + 2
+      if CY >= 192 then NewCustomer
+  end select
+  return
+end sub
+
+function Pick(u8 N) as u8
+  u8 R = 0
+  Rand
+  R = Rs & 255
+  while R >= N
+    R = R - N
+  end while
+  return R
+
+sub NewCustomer:
+  CX = Pick(177) + PXMin
+  CY = 192
+  CState = 2
+  CPie = 0
+  inc CCi
+  if CCi >= 6 then CCi = 0
+  play sound SndHello
+  return
+end sub
+
+' the belt: Spd half steps a frame
+sub RunBelt:
+  Acc = Acc + Spd
+  while Acc >= 2
+    Acc = Acc - 2
+    DoStep
+  end while
+  return
+end sub
+
+' one step of the C64's belt loop: the first pie, and the second once the
+' first has gone Stagger steps (or is done); both again when the second is
+sub DoStep:
+  inc BeltPh
+  if Pies[0].Cnt < PieLen then
+    MovePie(0)
+    if Pies[0].Cnt < Stagger then return
+  end if
+  MovePie(1)
+  if Pies[1].Cnt = PieLen then StartPies
+  return
+end sub
+
+sub MovePie(u8 I)
+  Pies[I].Xp = Pies[I].Xp - 1
+  if Pies[I].Xp < FallX then
+    Pies[I].Yp = Pies[I].Yp + 1
+  end if
+  Pies[I].Cnt = Pies[I].Cnt + 1
+  if Pies[I].Cnt = PieLen then
+    if Pies[I].Live = 1 then
+      Smash(I)
+    end if
+    Pies[I].Live = 0
+  end if
+  return
+end sub
+
+sub StartPies:
+  Rand
+  for Gi = 0 to 1
+    Pies[Gi].Xp = X0
+    Pies[Gi].Yp = Y0
+    Pies[Gi].Cnt = 0
+    Pies[Gi].Live = 1
+  next
+  Pies[0].Kind = Rs & 1
+  V = Rs >> 1
+  Pies[1].Kind = V & 1
+  return
+end sub
+
+sub Smash(u8 I)
+  inc Smashed
+  SplX = Pies[I].Xp
+  SplT = 30
+  play sound SndSplat
+  DrawPile
+  ShowStatus
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the heap of smashed pies at the end of the belt
+sub DrawPile:
+  select case Smashed
+    case 0
+      fill TFloor count 3 at 2,12
+      fill TFloor count 3 at 2,13
+    case 1 to 7
+      put char TGoo1 at 3,13
+    case 8 to 15
+      put char TGoo2 at 2,13
+      put char TGooF at 3,13
+      put char TGoo2 at 4,13
+    case 16 to 23
+      put char TGoo1 at 3,12
+      put char TGooF at 3,13
+    case else
+      fill TGoo3 count 3 at 2,12
+      fill TGooF count 3 at 2,13
+  end select
+  return
+end sub
+
+' the belt's slats, the splat's time, the marquee's chase (1.25 Hz)
+sub Decor:
+  V = BeltPh >> 1
+  V = V & 3
+  if V <> ShownPh then
+    ShownPh = V
+    K = TBelt0 + V
+    fill K count 20 at 6,9
+  end if
+  if SplT > 0 then dec SplT
+  inc BulbT
+  if BulbT >= 24 then
+    BulbT = 0
+    BulbPh = BulbPh ^ 1
+    if BulbPh = 0 then
+      copy BulbLit count 8 to vram.color + 1024
+      copy BulbDim count 8 to vram.color + 1032
+    else
+      copy BulbDim count 8 to vram.color + 1024
+      copy BulbLit count 8 to vram.color + 1032
+    end if
+  end if
+  return
+end sub
+
+' sprites 0-1 the counterman (face and hands, clothes), 2 the pie carried
+' (or taken away), 3-4 the customer, 5-6 the pies, 7 the splat
+sub DrawSprites:
+  K = Face * 2 + WalkF
+  K = K * 8 + SPb0p
+  set sprite 0 to PY - 1,PX,K,9
+  set sprite 1 to PY - 1,PX,K + 4,15
+  if Carry = 1 then
+    set sprite 2 to PY + 1,PX,SPie,PieColT[CarryKind]
+  else
+    if CPie = 1 then
+      set sprite 2 to CY - 5,CX,SPie,PieColT[CPieKind]
+    else
+      set sprite 2 to 192,0,0,0
+    end if
+  end if
+  if CY < 192 then
+    set sprite 3 to CY - 1,CX,SCuP,9
+    set sprite 4 to CY - 1,CX,SCuC,CColT[CCi]
+  else
+    set sprite 3 to 192,0,0,0
+    set sprite 4 to 192,0,0,0
+  end if
+  for Ds = 0 to 1
+    J = Ds + 5
+    if Pies[Ds].Live = 1 then
+      K = Pies[Ds].Kind
+      set sprite J to Pies[Ds].Yp - 1,Pies[Ds].Xp,SPie,PieColT[K]
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if SplT > 0 then
+    set sprite 7 to Y0 + 27,SplX,SSplat,11
+  else
+    set sprite 7 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,4, "SOLD ", Sold
+  NumU = Spd
+  print at 13,4, "SPD ", digits$(NumU, 1)
+  NumU = Smashed
+  print at 19,4, "SMASHED ", digits$(NumU, 2)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy ShopMap count 768 to vram.name
+  print at 2,2, "AHOY! PIE EMPORIUM 24 HOURS"
+  print at 2,6, "TODAY: LEMON, BERRY PIES"
+  print at 28,5, "P"
+  print at 28,6, "I"
+  print at 28,7, "E"
+  print at 28,8, "S"
+  Sold = 0
+  Sales = 0
+  Smashed = 0
+  SellCnt = 0
+  Spd = 1
+  Acc = 0
+  BeltPh = 0
+  ShownPh = 0
+  SplT = 0
+  BulbT = 0
+  BulbPh = 0
+  Over = 0
+  PX = 40
+  PY = 100
+  Face = 1
+  WalkF = 0
+  WalkC = 0
+  Carry = 0
+  CCi = 5
+  NewCustomer
+  CX = 196
+  StartPies
+  ShowStatus
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy BulbLit count 8 to vram.color + 1024
+  copy BulbDim count 8 to vram.color + 1032
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: PIEMAN in pie-crust letters, the counterman carrying a pie
+' along the floor, START / CREDITS, the best count, the tune once
+sub TitlePage:
+  NewScreen
+  print at 8,1, "AHOY! APRIL 1987"
+  copy TitleMap count 160 to vram.name + 96
+  print at 9,9, "BY BOB BLACKMER"
+  fill TFloor count 32 at 0,14
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  if Best > 0 then
+    print at 11,20, "BEST ", Best
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 500
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the counterman walks the title's floor with a lemon pie
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then
+    if TbD = 1 then
+      inc TbX
+      if TbX >= 216 then TbD = 2
+    else
+      dec TbX
+      if TbX <= 24 then TbD = 1
+    end if
+  end if
+  K = TbX >> 3
+  K = K & 1
+  K = K * 8 + SPf0p
+  set sprite 0 to 95,TbX,K,9
+  set sprite 1 to 95,TbX,K + 4,15
+  set sprite 2 to 97,TbX,SPie,11
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  J = Menu + 17
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,1, "PIEMAN"
+  print at 2,3, "BASED ON PIEMAN BY BOB"
+  print at 2,4, "BLACKMER, AHOY! APRIL 1987"
+  print at 2,5, "(COMMODORE 64 MACHINE"
+  print at 2,6, "LANGUAGE)."
+  print at 2,8, "TAKE PIES OFF THE BELT WITH"
+  print at 2,9, "THE BUTTON HELD, SELL THEM"
+  print at 2,10, "TO THE CUSTOMER AT THE"
+  print at 2,11, "COUNTER. 30 SMASHED PIES"
+  print at 2,12, "AND THE SHOP CLOSES."
+  print at 2,14, "COLECOVISION GAME, MUSIC"
+  print at 2,15, "AND PICTURES BY CLAUDE"
+  print at 2,16, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,17, "IN AMY BY AMY BIENVENU 2026."
+  print at 2,19, "MUSIC: FRESH FROM THE OVEN"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+PmGrab:
+    db $40,$7F,$20,$02,$40,$5F,$30,$03,$50
+PmSell:
+    db $40,$55,$10,$03,$40,$6B,$20,$03,$40,$47,$30,$08,$50
+PmSplat:
+    db $00,$00,$05,$03,$00,$00,$16,$04,$00,$00,$36,$06,$00,$00,$57,$08,$00,$00,$77,$08,$10
+PmFaster:
+    db $40,$AA,$20,$04,$40,$8F,$20,$04,$40,$71,$20,$04,$40,$55,$20,$0A,$50
+PmHello:
+    db $40,$D6,$50,$03,$40,$AA,$60,$05,$50
+PmStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+PmOver:
+    db $40,$8F,$10,$0A,$40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$1D,$21,$0A,$40,$AB,$31,$1E,$50
+
+PmSoundTable:
+    dw PmTuneMel,$702B
+    dw PmTuneBass,$7035
+    dw PmGrab,$7049
+    dw PmSell,$7049
+    dw PmSplat,$703F
+    dw PmFaster,$7049
+    dw PmHello,$7049
+    dw PmStart,$7049
+    dw PmOver,$7049
+; Fresh From the Oven (original)
+; Tiny Sound, 8 frames per step
+PmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$24,$01,$28,$01,$24,$01,$2B,$01,$28,$01
+    db $24,$01,$01,$26,$01,$28,$01,$29,$01,$26,$01,$23,$01,$1F,$01,$26
+    db $01,$01,$28,$01,$29,$01,$2B,$01,$28,$01,$2D,$01,$2B,$01,$29,$01
+    db $28,$01,$26,$01,$23,$01,$24,$01,$26,$01,$24,$01,$01,$01,$01,$01
+    db $00,$01
+    db $FF
+PmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$01,$01
+    db $00,$01
+    db $FF
+}
+
+

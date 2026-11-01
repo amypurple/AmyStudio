@@ -1,0 +1,1071 @@
+cartridge "MOUSE IN THE HOUSE/J.C. HILTY/1986"
+
+' MOUSE IN THE HOUSE
+' A ColecoVision game based on "Mouse in the House" by J.C. Hilty, Ahoy!
+' December 1986 (Commodore 64, BASIC with a small machine-language sprite
+' mover). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' The game (the original's rules, read from its listing, orig/mouse.bas):
+' a mouse and a cat on a floor scattered with mousetraps. The mouse wants
+' the cheese, the cat wants the mouse. Once pushed, each keeps running in
+' its direction until the stick turns it (it never stops). Scoring, 10
+' points each:
+'   - the mouse reaches the cheese: MOUSE + 10;
+'   - the cat catches the mouse (also when both touch the cheese): CAT + 10;
+'   - the mouse runs into a trap or a wall: CAT + 10;
+'   - the cat runs into a trap or a wall: MOUSE + 10.
+' After each point the traps are laid out anew (16 to 25 drops on a 7 x 5
+' grid in the original, some on the same spot) and both animals go back to
+' their corners. The cheese changes colour when it is about to move, then
+' jumps somewhere else. The clock counts down from 1000; at 0 the game is
+' over and the scores are shown.
+'
+' Liberties: the floor is a 5 x 4 grid of trap places (the C64 had 7 x 5
+' on a wider screen) and 10 to 15 drops are made (the original's 16 to 25
+' scaled to the grid). The clock ticks 12 times a second (the BASIC loop's
+' speed, about 80 seconds a game); the cheese turns stale after 50 ticks
+' and moves after 71 as in the listing. The cheese is placed in a lane
+' between the traps (the original could put it on a trap). Collisions are
+' between boxes a little smaller than the drawings, and with the trap and
+' wall tiles. Turning near a lane slides the animal up to 4 pixels into
+' it (the C64 version had no such help and was very hard with a stick).
+' Added: a one-player game with a computer cat (as fast as the mouse;
+' it stops in front of traps), a winner line, a
+' title tune, sound effects, the PLAY AGAIN question replaced by the
+' title. Scores stop at 990 (three digits on the status line).
+'
+' Controls: two players: controller 1 is the mouse, controller 2 the cat.
+' One player: either controller is the mouse. The stick turns (diagonals
+' are ignored, as on the C64). On the title, up and down choose, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes faster than 2.5 Hz.
+
+const TFloor0 = 128
+const TFloor1 = 129
+const TWallt = 130
+const TWallb = 131
+const TWalll = 132
+const TWallr = 133
+const TCornr = 134
+const TTrap00 = 135
+const TTrap01 = 136
+const TTrap10 = 137
+const TTrap11 = 138
+const TWedge00 = 139
+const TWedge01 = 140
+const TWedge02 = 141
+const TWedge03 = 142
+const TWedge10 = 143
+const TWedge11 = 144
+const TWedge12 = 145
+const TWedge13 = 146
+const TWedge20 = 147
+const TWedge21 = 148
+const TWedge22 = 149
+const TWedge23 = 150
+const SMouser0 = 0
+const SMouser1 = 4
+const SMousel0 = 8
+const SMousel1 = 12
+const SCatr0 = 16
+const SCatr1 = 20
+const SCatl0 = 24
+const SCatl1 = 28
+const SCheese = 32
+const SMouseeye = 36
+const SMouseeyel = 40
+const NTiles8 = 184
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndNibble = 3
+const SndPounce = 4
+const SndSnap = 5
+const SndStart = 6
+const SndMove = 7
+const SndOver = 8
+const NSpr = 4
+const PauseN = 72
+const MouseC = 14
+const CatC = 10
+const CheeseC = 11
+const StaleC = 2
+
+' where the cheese may be (sprite X): the middle of the six lanes
+data ChXT bytes
+  20, 60, 100, 140, 180, 212
+end data
+
+' what each tile column and row of the floor is (see Solid)
+data ColS bytes
+  254, 254, 254, 255, 255, 0, 0, 255, 255, 255, 1, 1, 255, 255, 255, 2
+  2, 255, 255, 255, 3, 3, 255, 255, 255, 4, 4, 255, 255, 254, 254, 254
+end data
+data RowS bytes
+  254, 254, 254, 255, 255, 0, 0, 255, 255, 5, 5, 255, 255, 10, 10, 255
+  255, 15, 15, 255, 255, 255, 254, 254
+end data
+
+record Actor:
+  u8 X
+  u8 Y
+  u8 Dir
+  u8 Anim
+  u8 Face
+end record
+
+Actor Mo
+Actor Ct
+Actor Ch
+' the trap places: 5 columns x 4 rows
+u8 Tr[20]
+u8 Cand[4]
+bcd digits 4 Tm = 1000
+bcd digits 3 MsPts, CtPts
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u8 Players = 1
+u8 Lp = 0
+u8 Sub5 = 0
+u8 Stale = 0
+u8 Ev = 0
+u8 PauseT = 0
+u8 Over = 0
+u8 Mv = 0
+u8 SnapX = 0
+u8 SnapY = 0
+u8 Drops = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 D1 = 0
+u8 D2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InPlay = 0
+' the page shown, for the bots: 1 credits, 2 title, 3 play, 4 game over
+u8 Page = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Di = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 V = 0
+
+  tile screen
+  set sound table MhSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Players = Menu + 1
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the scores, then back to the title on a press
+  InPlay = 0
+  mute all
+  play sound SndOver
+  GameOverPage
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' one pass of play (a frame)
+sub PlayStep:
+  if PauseT > 0 then
+    dec PauseT
+    if PauseT = 0 then NewRound
+    return
+  end if
+  inc Mv
+  ' the mouse: controller 1 (in a one-player game either controller)
+  if Players = 1 then
+    V = D1
+    if V = 0 then V = D2
+  else
+    V = D1
+  end if
+  if V > 0 then TryTurn(Mo, V)
+  ' the cat: controller 2, or the computer
+  if Players = 2 then
+    if D2 > 0 then TryTurn(Ct, D2)
+    MoveActor(Ct)
+  else
+    CatThink
+    MoveActor(Ct)
+  end if
+  MoveActor(Mo)
+  ' the clock: a tick every 5 frames
+  inc Sub5
+  if Sub5 >= 5 then
+    Sub5 = 0
+    Tm -= 1
+    ShowTime
+    inc Lp
+    if Lp = 50 then Stale = 1
+    if Lp > 70 then
+      PlaceCheese
+    end if
+    if Tm = 0 then
+      Over = 1
+      return
+    end if
+  end if
+  ' sprite collisions first: the mouse with the cat or the cheese
+  if Near(Mo.X, Ct.X, 10) = 1 then
+    if Near(Mo.Y, Ct.Y, 10) = 1 then
+      Score(2)
+      return
+    end if
+  end if
+  if Near(Mo.X, Ch.X, 9) = 1 then
+    if Near(Mo.Y, Ch.Y, 9) = 1 then
+      Score(1)
+      return
+    end if
+  end if
+  ' then the traps and walls: the mouse is tested first
+  if Hits(Mo.X, Mo.Y) = 1 then
+    Score(3)
+    return
+  end if
+  if Hits(Ct.X, Ct.Y) = 1 then Score(4)
+  return
+end sub
+
+' a point: 1 mouse ate, 2 cat caught, 3 mouse trapped, 4 cat trapped
+sub Score(u8 What):
+  Ev = What
+  PauseT = PauseN
+  select case What
+  case 1
+    if MsPts < 990 then MsPts += 10
+    play sound SndNibble
+  case 2
+    if CtPts < 990 then CtPts += 10
+    play sound SndPounce
+  case 3
+    if CtPts < 990 then CtPts += 10
+    play sound SndSnap
+  case else
+    if MsPts < 990 then MsPts += 10
+    play sound SndSnap
+  end select
+  ShowScores
+  return
+end sub
+
+' 1 when two coordinates are less than Lim apart
+function Near(u8 A, u8 B, u8 Lim) as u8
+  u8 Df = 0
+  if A >= B then
+    Df = A - B
+  else
+    Df = B - A
+  end if
+  if Df < Lim then return 1
+  return 0
+
+' 1 when the pixel Px, Py is on a wall or a trap (ColS/RowS: 254 a wall,
+' 255 a lane, else the trap place's column / row * 5)
+function Solid(u8 Px, u8 Py) as u8
+  u8 Cs = 0
+  u8 Rw = 0
+  Cs = ColS[Px >> 3]
+  if Cs = 254 then return 1
+  Rw = RowS[Py >> 3]
+  if Rw = 254 then return 1
+  if Cs = 255 then return 0
+  if Rw = 255 then return 0
+  return Tr[Cs + Rw]
+
+' 1 when the box of an animal at sprite corner Px, Py (pixels 3 to 12 both
+' ways) touches a wall or a trap
+function Hits(u8 Px, u8 Py) as u8
+  u8 L = 0
+  u8 T = 0
+  L = Px + 3
+  T = Py + 3
+  if Solid(L, T) = 1 then return 1
+  if Solid(L + 9, T) = 1 then return 1
+  if Solid(L, T + 9) = 1 then return 1
+  if Solid(L + 9, T + 9) = 1 then return 1
+  return 0
+
+' SnapX, SnapY: where the animal may turn to D, sliding up to 4 pixels
+' along its way (ahead first); 1 when found
+function FindSnap(ref Actor A, u8 D) as u8
+  u8 Kk = 0
+  u8 Sg = 0
+  u8 Lim = 4
+  u8 Px = 0
+  u8 Py = 0
+  u8 Ax = 0
+  if A.Dir = 0 then Lim = 0
+  ' turning along the same axis needs no slide
+  if A.Dir <= 2 then
+    if D <= 2 then Lim = 0
+    Ax = 1
+  else
+    if D >= 3 then Lim = 0
+  end if
+  for Kk = 0 to Lim
+    for Sg = 0 to 1
+      Px = A.X
+      Py = A.Y
+      if Ax = 1 then
+        if A.Dir = 1 then
+          if Sg = 0 then Py = Py - Kk else Py = Py + Kk
+        else
+          if Sg = 0 then Py = Py + Kk else Py = Py - Kk
+        end if
+      else
+        if A.Dir = 3 then
+          if Sg = 0 then Px = Px - Kk else Px = Px + Kk
+        else
+          if Sg = 0 then Px = Px + Kk else Px = Px - Kk
+        end if
+      end if
+      SnapX = Px
+      SnapY = Py
+      if Hits(Px, Py) = 0 then
+        select case D
+        case 1
+          dec Py
+        case 2
+          inc Py
+        case 3
+          dec Px
+        case else
+          inc Px
+        end select
+        if Hits(Px, Py) = 0 then return 1
+      end if
+    next
+  next
+  return 0
+
+' the stick turns the animal (it always turns: into a trap if need be)
+sub TryTurn(ref Actor A, u8 D):
+  if D = A.Dir then exit sub
+  if FindSnap(A, D) = 1 then
+    A.X = SnapX
+    A.Y = SnapY
+  end if
+  A.Dir = D
+  if D = 3 then A.Face = 1
+  if D = 4 then A.Face = 0
+  return
+end sub
+
+sub MoveActor(ref Actor A):
+  select case A.Dir
+  case 0
+    exit sub
+  case 1
+    A.Y -= 1
+  case 2
+    A.Y += 1
+  case 3
+    A.X -= 1
+  case 4
+    A.X += 1
+  end select
+  inc A.Anim
+  return
+end sub
+
+' the computer cat: heads for the mouse along the longer distance first;
+' it thinks every 4 frames or when a trap is just ahead, and stops rather
+' than run into one
+sub CatThink:
+  u8 Ah = 0
+  u8 Pr = 0
+  u8 Se = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 Rv = 0
+  u8 Got = 0
+  if Ct.Dir > 0 then
+    if Ahead(Ct.Dir) = 1 then Ah = 1
+  end if
+  V = Mv & 3
+  if Ah = 0 then
+    if V <> 0 then exit sub
+  end if
+  ' the four ways, best first
+  if Mo.X >= Ct.X then
+    Dx = Mo.X - Ct.X
+    Pr = 4
+  else
+    Dx = Ct.X - Mo.X
+    Pr = 3
+  end if
+  if Mo.Y >= Ct.Y then
+    Dy = Mo.Y - Ct.Y
+    Se = 2
+  else
+    Dy = Ct.Y - Mo.Y
+    Se = 1
+  end if
+  if Dy > Dx then
+    Ci = Pr
+    Pr = Se
+    Se = Ci
+  end if
+  Cand[0] = Pr
+  Cand[1] = Se
+  Cand[2] = Opp(Se)
+  Cand[3] = Opp(Pr)
+  Rv = Opp(Ct.Dir)
+  for Di = 0 to 3
+    if Got = 0 then
+      K = Cand[Di]
+      if K <> Rv then
+        if Safe(K) = 1 then
+          TryTurn(Ct, K)
+          Got = 1
+        end if
+      end if
+    end if
+  next
+  if Got = 1 then exit sub
+  if Ah = 0 then exit sub
+  if Ct.Dir > 0 then
+    if Safe(Rv) = 1 then
+      TryTurn(Ct, Rv)
+      exit sub
+    end if
+  end if
+  ' nowhere safe: wait
+  Ct.Dir = 0
+  return
+end sub
+
+
+function Opp(u8 D) as u8
+  select case D
+  case 1
+    return 2
+  case 2
+    return 1
+  case 3
+    return 4
+  case 4
+    return 3
+  end select
+  return 0
+
+' 1 when the cat may turn to D and the next 4 pixels that way are clear
+function Safe(u8 D) as u8
+  u8 Px = 0
+  u8 Py = 0
+  if D = Ct.Dir then
+    if Ahead(D) = 1 then return 0
+    return 1
+  end if
+  if FindSnap(Ct, D) = 0 then return 0
+  Px = SnapX
+  Py = SnapY
+  select case D
+  case 1
+    Py -= 4
+  case 2
+    Py += 4
+  case 3
+    Px -= 4
+  case else
+    Px += 4
+  end select
+  if Hits(Px, Py) = 1 then return 0
+  return 1
+
+' 1 when the cat would touch something within 2 pixels going D
+function Ahead(u8 D) as u8
+  u8 Px = 0
+  u8 Py = 0
+  Px = Ct.X
+  Py = Ct.Y
+  select case D
+  case 1
+    Py -= 2
+  case 2
+    Py += 2
+  case 3
+    Px -= 2
+  case else
+    Px += 2
+  end select
+  return Hits(Px, Py)
+
+' new traps, both animals in their corners, a new cheese
+sub NewRound:
+  fill array Tr with 0
+  Rand
+  V = Rs & 255
+  Drops = 9 + V % 6
+  for Ri = 0 to Drops
+    Rand
+    V = Rs & 255
+    K = V % 20
+    Tr[K] = 1
+  next
+  Mo.X = 21
+  Mo.Y = 21
+  Mo.Dir = 0
+  Mo.Face = 0
+  Ct.X = 219
+  Ct.Y = 21
+  Ct.Dir = 0
+  Ct.Face = 1
+  Ev = 0
+  PlaceCheese
+  DrawTraps
+  return
+end sub
+
+sub PlaceCheese:
+  Rand
+  V = Rs & 255
+  K = V % 6
+  Ch.X = ChXT[K]
+  Rand
+  V = Rs & 127
+  Ch.Y = V + 20
+  Lp = 0
+  Stale = 0
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the floor and the traps inside the walls
+sub DrawTraps:
+  for Ri = 3 to 21
+    V = Ri & 1
+    fill TFloor0 + V count 26 at 3,Ri
+  next
+  for Di = 0 to 19
+    if Tr[Di] = 1 then
+      C = Di % 5
+      C = C * 5 + 5
+      R = Di / 5
+      R = (R << 2) + 5
+      put char TTrap00 at C,R
+      put char TTrap01 at C + 1,R
+      put char TTrap10 at C,R + 1
+      put char TTrap11 at C + 1,R + 1
+    end if
+  next
+  return
+end sub
+
+sub DrawWalls:
+  fill TWallt count 28 at 2,2
+  fill TWallb count 28 at 2,22
+  for Ri = 3 to 21
+    put char TWalll at 2,Ri
+    put char TWallr at 29,Ri
+  next
+  return
+end sub
+
+sub ShowTime:
+  print at 7,1, Tm
+  return
+end sub
+
+sub ShowScores:
+  print at 18,1, MsPts
+  print at 26,1, CtPts
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "TIME"
+  print at 12,1, "MOUSE"
+  print at 22,1, "CAT"
+  ShowTime
+  ShowScores
+  return
+end sub
+
+' sprite 0 the mouse's eye, 1 the mouse, 2 the cat, 3 the cheese; during
+' the pause after a point the one who lost it blinks (2.5 times a second)
+sub DrawSprites:
+  u8 Blink = 0
+  u8 Pat = 0
+  u8 Col = 0
+  u8 Sy = 0
+  if PauseT > 0 then
+    V = PauseT / 12
+    Blink = V & 1
+  end if
+  ' the mouse
+  Sy = Mo.Y - 1
+  V = Mo.Anim >> 3
+  V = V & 1
+  Pat = Mo.Face << 3
+  Pat = Pat + (V << 2) + SMouser0
+  Col = MouseC
+  if Blink = 1 then
+    if Ev = 2 then Col = 0
+    if Ev = 3 then Col = 0
+  end if
+  if Col = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    if Mo.Face = 0 then K = SMouseeye else K = SMouseeyel
+    set sprite 0 to Sy,Mo.X,K,1
+    set sprite 1 to Sy,Mo.X,Pat,Col
+  end if
+  ' the cat
+  Sy = Ct.Y - 1
+  V = Ct.Anim >> 3
+  V = V & 1
+  Pat = Ct.Face << 3
+  Pat = Pat + (V << 2) + SCatr0
+  Col = CatC
+  if Blink = 1 then
+    if Ev = 4 then Col = 0
+  end if
+  if Col = 0 then
+    set sprite 2 to 192,0,0,0
+  else
+    set sprite 2 to Sy,Ct.X,Pat,Col
+  end if
+  ' the cheese (gone while the mouse eats it)
+  Sy = Ch.Y - 1
+  Col = CheeseC
+  if Stale = 1 then Col = StaleC
+  if Ev = 1 then
+    set sprite 3 to 192,0,0,0
+  else
+    set sprite 3 to Sy,Ch.X,SCheese,Col
+  end if
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  Tm = 1000
+  MsPts = 0
+  CtPts = 0
+  Over = 0
+  PauseT = 0
+  Sub5 = 0
+  Mv = 0
+  Mo.Anim = 0
+  Ct.Anim = 0
+  NewScreen
+  DrawWalls
+  NewRound
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+  Page = 3
+  return
+end sub
+
+sub GameOverPage:
+  NewScreen
+  fill mode 2 text color with $F1
+  print at 9,5, "G A M E  O V E R"
+  print at 8,9, "MOUSE SCORE"
+  print at 20,9, MsPts
+  print at 8,11, "CAT SCORE"
+  print at 20,11, CtPts
+  if MsPts > CtPts then
+    print at 8,14, "THE MOUSE WINS!"
+  elseif CtPts > MsPts then
+    print at 9,14, "THE CAT WINS!"
+  else
+    print at 11,14, "A DRAW!"
+  end if
+  print at 7,20, "PRESS THE BUTTON"
+  set sprite 1 to 135,92,SMouser0,MouseC
+  set sprite 0 to 135,92,SMouseeye,1
+  set sprite 2 to 135,148,SCatl0,CatC
+  update sprites
+  ShowScreen
+  Page = 4
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' the sticks as the C64 read them: only a straight direction counts
+function StickDir(u8 B) as u8
+  select case B & 15
+  case 8
+    return 4
+  case 4
+    return 3
+  case 2
+    return 2
+  case 1
+    return 1
+  end select
+  return 0
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  D1 = StickDir(J1)
+  D2 = StickDir(J2)
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the cheese, the mouse and the cat, the listing's two lines,
+' the tune once; 1 PLAYER / 2 PLAYERS / CREDITS
+sub TitlePage:
+  NewScreen
+  print at 6,2, "MOUSE IN THE HOUSE"
+  print at 9,4, "BY J.C. HILTY"
+  for Ri = 0 to 2
+    for Ci = 0 to 3
+      V = Ri * 4 + Ci
+      put char TWedge00 + V at Ci + 14,Ri + 7
+    next
+  next
+  print at 2,12, "THERE ARE A LOT OF TRAPS"
+  print at 2,13, "AROUND HERE!! BUT I SURE DO"
+  print at 2,14, "LOVE THAT CHEESE!!"
+  print at 8,17, "1 PLAYER"
+  print at 8,18, "2 PLAYERS"
+  print at 8,19, "CREDITS"
+  print at 8,21, "AHOY! DEC 1986"
+  ShowMenu
+  set sprite 1 to 71,84,SMouser0,MouseC
+  set sprite 0 to 71,84,SMouseeye,1
+  set sprite 2 to 71,156,SCatl0,CatC
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Page = 2
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+      play sound SndMove
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 2
+    put char 32 at 6,J + 17
+  next
+  put char 62 at 6,Menu + 17
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 6,2, "MOUSE IN THE HOUSE"
+  print at 2,5, "BASED ON MOUSE IN THE HOUSE"
+  print at 2,6, "BY J.C. HILTY, AHOY!"
+  print at 2,7, "DECEMBER 1986, COMMODORE 64."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: CHEESE ON THE COUNTER"
+  print at 2,17, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Page = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$80,$C0,$20,$20,$20,$C0,$01
+  $03,$01,$03,$08,$08,$08,$03,$80
+  $03,$01,$07,$07,$07,$00,$80,$00
+  $C0,$80,$E0,$E0,$E0,$00,$01,$00
+  $00,$00,$00,$00,$00,$E0,$80,$80
+  $00,$00,$00,$07,$00,$00,$00,$00
+  $00,$01,$C0,$00,$00,$00,$00,$00
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $06,$F0,$F0,$06,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$38
+  $00,$00,$60,$F0,$F0,$60,$00,$00
+  $60,$F0,$60,$00,$00,$00,$01,$00
+  $00,$00,$00,$80,$80,$80,$00,$00
+  $83,$83,$38,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$C3,$18,$01,$01,$01,$00,$00
+end data
+data TileCol bytes
+  $06,$06,$06,$01,$06,$06,$06,$01
+  $06,$16,$06,$01,$06,$06,$16,$01
+  $0F,$0F,$0E,$0F,$0F,$0E,$01,$01
+  $01,$0E,$0F,$0F,$0E,$0F,$0F,$0F
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $1A,$1A,$AE,$EA,$EA,$EA,$AE,$EA
+  $1A,$1A,$AE,$EA,$EA,$EA,$AE,$EA
+  $EA,$EA,$BA,$BA,$BA,$0A,$1A,$01
+  $EA,$EA,$BA,$BA,$BA,$0A,$1A,$01
+  $01,$01,$01,$01,$01,$1B,$1A,$1B
+  $01,$01,$01,$B1,$0B,$0B,$0A,$0B
+  $01,$B1,$1B,$0B,$0B,$0B,$0A,$0B
+  $B1,$1B,$1B,$1B,$1B,$1B,$1A,$1B
+  $AB,$BA,$BA,$AB,$0B,$0B,$1B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$AB
+  $0B,$0B,$AB,$AB,$AB,$AB,$0B,$0B
+  $AB,$AB,$AB,$0B,$0B,$0B,$1B,$0B
+  $0B,$0B,$0B,$1B,$1B,$1A,$01,$01
+  $BA,$BA,$AB,$0B,$0B,$0A,$01,$01
+  $0B,$0B,$0B,$0B,$0B,$0A,$01,$01
+  $AB,$BA,$AB,$1B,$1B,$1A,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$43,$6F,$2F,$2F,$2F,$17,$04,$0C
+  $00,$00,$00,$00,$30,$78,$78,$70,$F0,$F8,$FC,$FA,$FC,$F8,$10,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$43,$6F,$2F,$2F,$2F,$17,$02,$06
+  $00,$00,$00,$00,$30,$78,$78,$70,$F0,$F8,$FC,$FA,$FC,$F8,$40,$60
+  $00,$00,$00,$00,$0C,$1E,$1E,$0E,$0F,$1F,$3F,$5F,$3F,$1F,$08,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$C2,$F6,$F4,$F4,$F4,$E8,$20,$30
+  $00,$00,$00,$00,$0C,$1E,$1E,$0E,$0F,$1F,$3F,$5F,$3F,$1F,$02,$06
+  $00,$00,$00,$00,$00,$00,$00,$00,$C2,$F6,$F4,$F4,$F4,$E8,$40,$60
+  $00,$00,$00,$00,$00,$00,$00,$20,$4F,$5F,$5F,$2F,$1B,$0A,$0A,$1B
+  $00,$14,$1C,$1E,$1A,$1F,$0E,$FC,$FC,$FC,$FC,$FC,$F4,$14,$14,$36
+  $00,$00,$00,$00,$00,$00,$00,$20,$4F,$5F,$5F,$2F,$14,$14,$14,$36
+  $00,$14,$1C,$1E,$1A,$1F,$0E,$FC,$FC,$FC,$FC,$FC,$90,$90,$90,$D8
+  $00,$28,$38,$78,$58,$F8,$70,$3F,$3F,$3F,$3F,$3F,$2F,$28,$28,$6C
+  $00,$00,$00,$00,$00,$00,$00,$04,$F2,$FA,$FA,$F4,$D8,$50,$50,$D8
+  $00,$28,$38,$78,$58,$F8,$70,$3F,$3F,$3F,$3F,$3F,$09,$09,$09,$1B
+  $00,$00,$00,$00,$00,$00,$00,$04,$F2,$FA,$FA,$F4,$28,$28,$28,$6C
+  $00,$00,$00,$00,$00,$00,$03,$0F,$0F,$0E,$0F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$F8,$FC,$BC,$FC,$FC,$DC,$FC,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0C,$00,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+MhNibble:
+    db $40,$47,$10,$03,$40,$35,$20,$03,$40,$47,$10,$03,$40,$35,$20,$03,$40,$2A,$20,$06,$50
+MhPounce:
+    db $40,$FC,$11,$04,$40,$53,$11,$04,$40,$FE,$10,$04,$40,$53,$11,$04,$40,$FC,$21,$0C,$50
+MhSnap:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$36,$06,$00,$00,$66,$0A,$10
+MhStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+MhMove:
+    db $40,$71,$40,$02,$50
+MhOver:
+    db $40,$8F,$10,$0C,$40,$AA,$20,$0C,$40,$D6,$20,$0C,$40,$1D,$21,$1E,$50
+
+MhSoundTable:
+    dw MhTuneMel,$702B
+    dw MhTuneBass,$7035
+    dw MhNibble,$7049
+    dw MhPounce,$7049
+    dw MhSnap,$703F
+    dw MhStart,$7049
+    dw MhMove,$7049
+    dw MhOver,$7049
+; Cheese on the Counter (original)
+; Tiny Sound, 7 frames per step
+MhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$01,$26,$23,$1F,$01,$1A,$01,$1C,$01,$1F,$1C
+    db $1A,$01,$01,$01,$23,$01,$26,$23,$1F,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01,$24,$01,$28,$24,$21,$01,$1C,$01,$1E,$01,$21,$1E
+    db $1A,$01,$01,$01,$1F,$01,$23,$26,$1E,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$0B,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}
+
+

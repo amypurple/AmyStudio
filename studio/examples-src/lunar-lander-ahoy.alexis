@@ -1,0 +1,960 @@
+cartridge "LUNAR LANDER/ANTHONY WOOD/1984"
+
+' LUNAR LANDER
+' A ColecoVision game based on "Lunar Lander" by Anthony Wood, Ahoy!
+' April 1984 (Commodore 64 BASIC, (C) 1983). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the listing's (orig/lander.bas),
+' rebuilt for the ColecoVision: a smooth 16 x 16 lander with a flickering
+' flame, tiled moon rock and cave, sound effects and an original title tune.
+'
+' The game: choose a gravity (low, medium, high). The lander starts at the
+' top of a moonscape drifting right. Hold a button to fire the engine (the
+' flame grows after a moment), push left or right to change the sideways
+' speed. Touch down gently, both feet on a pad: the valley pad scores 100,
+' the narrow ledge on the mountain 500. Anything else - too fast, too
+' sideways, a slope, a wall - is a crash. When both pads have been landed
+' on, the valley floor opens: fall through it into the cave, find the way
+' down the shaft, across the lower cavern, up the far shaft and land on the
+' 1000 pad in the upper chamber. That refuels the lander (4500) and brings
+' it back to the surface with both pads to do again. A crash in the cave
+' starts again at the top of the cave. When the fuel is gone after a
+' landing or a crash, the game is over.
+'
+' From the original (orig/lander.bas): the physics step by step (vertical
+' speed E += gravity - M * 1.65 with M = 1 off, 2 after one step of thrust,
+' 3 from the sixth; Y += E / 5; sideways H +/- 1 a step, X += H / 6), the
+' three gravities 3, 3.6 and 4.25, the fuel (5000; 10 per step of small
+' flame, 20 of big flame, 1 per sideways push; no control at all on an
+' empty tank), the start (H = 15, E = 5, random X in the left part), the
+' top of the screen (Y held there and E set to 3), the landing limits
+' (E <= 9, |H| <= 10, 11 in the cave), the scores 100, 500, 1000 and the
+' flags: 100 no longer counts once both are done, the hole under the
+' valley, the cave entry keeping the lander's speeds, the restart at the
+' cave top after a crash there, the refuel to 4500, game over on an empty
+' tank, the "<<" / ">>" signs, LANDED!! and the wait for a key.
+'
+' Liberties: one physics step every 14 frames (the listing's loop ran
+' about 4.2 times a second in jsc64), the lander moving smoothly in
+' between (sub-pixel speeds instead of INT(E/5) and INT(H/6) jumps);
+' horizontal speeds scaled by 0.8 for the 256-pixel screen. Collisions are
+' tested at six points of the lander (two feet, top, two sides, the
+' nozzle) against the tiles' shapes; a landing needs both feet on the same
+' pad, which replaces the listing's X/Y windows. The landscapes are
+' redrawn for 32 columns after the listing's (valley pad between a hill
+' and a mountain, ledge on its left flank; a cave of a left shaft, a lower
+' cavern and a right shaft up to a chamber). The listing's RU=5000 on
+' entering the cave (a variable never used) is left out. CRASHED is
+' printed after the explosion, and the key F7 is a button. The play-again
+' question is replaced by the house end: a message, then the title.
+'
+' Controls: either controller; a button fires the engine, the stick left
+' and right pushes sideways. On the title, up and down choose a gravity
+' or the credits, a button selects.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes faster than 3 Hz (the flame
+' changes shape, it never blinks out).
+
+const TStar = 128
+const TStar2 = 129
+const TRock = 130
+const TRock2 = 131
+const TRtop = 132
+const TSup = 133
+const TSdn = 134
+const TPad1 = 135
+const TPad5 = 136
+const TG1 = 137
+const TG0 = 138
+const TG5 = 139
+const TCave = 140
+const TCup = 141
+const TCdn = 142
+const TCul = 143
+const TCur = 144
+const TPad10 = 145
+const TC1 = 146
+const TC0 = 147
+const SLander = 0
+const SFlm1a = 4
+const SFlm1b = 8
+const SFlm2a = 12
+const SFlm2b = 16
+const SBoom1 = 20
+const SBoom2 = 24
+const SBoom3 = 28
+const NTiles8 = 160
+const SprBytes = 256
+const NKind = 20
+const SndTuneA = 1
+const SndTuneB = 2
+const SndJet1 = 3
+const SndJet2 = 4
+const SndSide = 5
+const SndBoom = 6
+const SndLand = 7
+const SndCave = 8
+const SndStart = 9
+const SndOver = 10
+const StepN = 14
+const YDiv = 7000
+const XDiv = 105
+const TopY = 16
+const MaxX = 240
+const NSpr = 2
+
+record Craft:
+  u8 X
+  u8 Y
+  i16 E
+  i16 H
+  i16 Ya
+  i16 Xa
+  u8 M
+  u8 B
+end record
+
+Craft Ship
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Fuel = 5000
+bcd digits 6 Score = 0
+i16 Gr = 300
+u8 Grav = 1
+u8 L1 = 0
+u8 L2 = 0
+u8 InCave = 0
+u8 StepT = 0
+u8 Phase = 0
+u8 Result = 0
+u8 BoomT = 0
+u8 SideF = 0
+u8 TitleOn = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jn = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+' collision results (kinds of the six points)
+u8 KF1 = 0
+u8 KF2 = 0
+u8 KBody = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Si = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table LlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+surface:
+  DrawSurface
+  StartSurface
+
+fly:
+  Phase = 0
+  Result = 0
+  StepT = 0
+fly_loop:
+  Frame1
+  ReadPad
+  FlyPass
+  DrawShip
+  if Result = 0 then goto fly_loop
+
+  if Result = 3 then
+    ' through the hole: the cave, speeds kept
+    InCave = 1
+    DrawCave
+    Ship.X = 24
+    Ship.Y = TopY
+    play sound SndCave
+    goto fly
+  end if
+
+  if Result = 1 then
+    play sound SndLand
+    print at 11,4, "LANDED!!"
+  else
+    Explode
+    print at 11,4, "CRASHED"
+  end if
+  ShowHud
+  print at 9,6, "PRESS BUTTON"
+  WaitPress
+  if Fuel = 0 then goto game_over
+  if Result = 1 then
+    if InCave = 1 then
+      InCave = 0
+    end if
+    goto surface
+  end if
+  if InCave = 1 then
+    DrawCave
+    StartCave
+    goto fly
+  end if
+  goto surface
+
+game_over:
+  HideSprites
+  mute all
+  print at 7,9, "                "
+  print at 7,10, "  OUT OF FUEL   "
+  print at 7,11, "                "
+  print at 7,12, "   GAME  OVER   "
+  print at 7,13, "                "
+  print at 7,14, "  SCORE ", Score, "  "
+  print at 7,15, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' flight
+
+' one frame: a physics step every StepN frames, then the move and the tests
+sub FlyPass:
+  if StepT = 0 then DoStep
+  inc StepT
+  if StepT >= StepN then StepT = 0
+  MoveShip
+  if InCave = 0 then
+    if Ship.Y >= 180 then
+      Result = 3
+      return
+    end if
+  end if
+  Collide
+  return
+end sub
+
+' the listing's lines 200-240
+sub DoStep:
+  SideF = 0
+  if Fuel = 0 then
+    Ship.B = 0
+    Ship.M = 1
+  else
+    if Btn > 0 then
+      if Ship.B < 200 then inc Ship.B
+    else
+      Ship.B = 0
+      Ship.M = 1
+    end if
+    V = Jn & 4
+    if V > 0 then
+      Ship.H = Ship.H - 1
+      Burn(1)
+      SideF = 1
+    end if
+    V = Jn & 8
+    if V > 0 then
+      Ship.H = Ship.H + 1
+      Burn(1)
+      SideF = 2
+    end if
+    select case Ship.B
+    case 1, 6
+      inc Ship.M
+    end select
+  end if
+  Ship.E = Ship.E + Gr - Ship.M * 165
+  K = Ship.M - 1
+  Burn(K * 10)
+  select case Ship.M
+  case 2
+    play sound SndJet1
+  case 3
+    play sound SndJet2
+  case else
+    if SideF > 0 then play sound SndSide
+  end select
+  ShowFuel
+  return
+end sub
+
+sub Burn(u8 Amt):
+  if Amt = 0 then return
+  if Fuel <= Amt then
+    Fuel = 0
+    return
+  end if
+  Fuel = Fuel - Amt
+  return
+end sub
+
+' sub-pixel motion: Y by E / 5 a step, X by H / 6 * 0.8 a step
+sub MoveShip:
+  Ship.Ya = Ship.Ya + Ship.E
+  while Ship.Ya >= YDiv
+    Ship.Ya = Ship.Ya - YDiv
+    inc Ship.Y
+  end while
+  while Ship.Ya <= -YDiv
+    Ship.Ya = Ship.Ya + YDiv
+    dec Ship.Y
+  end while
+  if Ship.Y < TopY then
+    Ship.Y = TopY
+    Ship.E = 300
+    Ship.Ya = 0
+  end if
+  Ship.Xa = Ship.Xa + Ship.H
+  while Ship.Xa >= XDiv
+    Ship.Xa = Ship.Xa - XDiv
+    if Ship.X < MaxX then inc Ship.X
+  end while
+  while Ship.Xa <= -XDiv
+    Ship.Xa = Ship.Xa + XDiv
+    if Ship.X > 0 then dec Ship.X
+  end while
+  return
+end sub
+
+' solid kind of the screen pixel Qx, Qy (0: free)
+function PixAt(u8 Qx, u8 Qy) as u8
+  u8 T = 0
+  u8 Kd = 0
+  u8 Fx = 0
+  u8 Fy = 0
+  if Qy >= 192 then return 0
+  Fx = Qx >> 3
+  Fy = Qy >> 3
+  T = get char at Fx,Fy
+  if T < 128 then return 0
+  Kd = KindT[T - 128]
+  Fx = Qx & 7
+  Fy = Qy & 7
+  select case Kd
+  case 2
+    if Fx + Fy < 7 then Kd = 0
+  case 3
+    if Fy < Fx then Kd = 0
+  case 4
+    if Fx + Fy > 7 then Kd = 0
+  case 5
+    if Fy > Fx then Kd = 0
+  end select
+  return Kd
+
+' the lander's six points; a landing needs both feet on one pad, slowly
+sub Collide:
+  X = Ship.X
+  Y = Ship.Y
+  KF1 = PixAt(X + 1, Y + 12)
+  KF2 = PixAt(X + 14, Y + 12)
+  KBody = PixAt(X + 7, Y)
+  KBody = KBody | PixAt(X + 2, Y + 6)
+  KBody = KBody | PixAt(X + 13, Y + 6)
+  KBody = KBody | PixAt(X + 7, Y + 10)
+  V = KF1 | KF2
+  V = V | KBody
+  if V = 0 then return
+  Result = 2
+  if KBody > 0 then return
+  if KF1 < 6 then return
+  if KF1 <> KF2 then return
+  if Ship.E > 900 then return
+  K = 10
+  if KF1 = 8 then K = 11
+  W16 = abs(Ship.H)
+  if W16 > K then return
+  select case KF1
+  case 6
+    if L1 = 1 then
+      if L2 = 1 then return
+    end if
+    Score += 100
+    L2 = 1
+  case 7
+    Score += 500
+    L1 = 1
+  case 8
+    Score += 1000
+    L1 = 0
+    L2 = 0
+    Fuel = 4500
+  end select
+  Result = 1
+  return
+end sub
+
+sub StartSurface:
+  Rand
+  V = Rs & 127
+  if V >= 80 then V = V - 48
+  Ship.X = V + 24
+  Ship.Y = TopY
+  Ship.E = 500
+  Ship.H = 15
+  Ship.Ya = 0
+  Ship.Xa = 0
+  Ship.M = 1
+  Ship.B = 0
+  return
+end sub
+
+sub StartCave:
+  Ship.X = 24
+  Ship.Y = TopY
+  Ship.E = 500
+  Ship.H = 0
+  Ship.Ya = 0
+  Ship.Xa = 0
+  Ship.M = 1
+  return
+end sub
+
+' the explosion: three frames, then nothing
+sub Explode:
+  Phase = 1
+  play sound SndBoom
+  for BoomT = 0 to 47
+    Frame1
+    DrawShip
+  next
+  Phase = 2
+  DrawShip
+  return
+end sub
+
+sub WaitPress:
+  Phase = 2
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawShip:
+  X = Ship.X
+  Y = Ship.Y - 1
+  if Phase = 1 then
+    K = BoomT >> 4
+    K = K << 2
+    K = K + SBoom1
+    set sprite 0 to Y,X,K,9
+    set sprite 1 to 192,0,0,0
+  elseif Phase = 2 then
+    if Result = 2 then set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    set sprite 0 to Y,X,SLander,15
+    if Ship.M < 2 then
+      set sprite 1 to 192,0,0,0
+    else
+      V = Tick >> 2
+      V = V & 1
+      K = Ship.M - 2
+      K = K << 3
+      V = V << 2
+      K = K + V + SFlm1a
+      Y = Y + 11
+      set sprite 1 to Y,X,K,11
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE ", Score
+  ShowFuel
+  return
+end sub
+
+sub ShowFuel:
+  print at 20,1, "FUEL ", digits$(Fuel, 4)
+  select case SideF
+  case 1
+    print at 15,1, "<<"
+  case 2
+    print at 15,1, ">>"
+  case else
+    print at 15,1, "  "
+  end select
+  return
+end sub
+
+sub DrawStars:
+  for Ri = 2 to 10
+    Rand
+    V = Rs & 15
+    if V < 11 then
+      Rand
+      X = Rs & 31
+      if X < 2 then X = X + 2
+      if X > 29 then X = X - 4
+      K = get char at X,Ri
+      if K = 32 then
+        V = Rs >> 8
+        V = V & 1
+        V = V + TStar
+        put char V at X,Ri
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawSurface:
+  NewScreen
+  copy SurfMap count 768 to vram.name
+  if L1 = 1 then
+    if L2 = 1 then
+      for Ri = 21 to 23
+        fill 32 count 4 at 10,Ri
+      next
+    end if
+  end if
+  DrawStars
+  SideF = 0
+  ShowHud
+  DrawShip
+  ShowScreen
+  return
+end sub
+
+sub DrawCave:
+  NewScreen
+  copy CaveMap count 768 to vram.name
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+sub NewGame:
+  Fuel = 5000
+  Score = 0
+  L1 = 0
+  L2 = 0
+  InCave = 0
+  select case Grav
+  case 1
+    Gr = 300
+  case 2
+    Gr = 360
+  case else
+    Gr = 425
+  end select
+  play sound SndStart
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Jn = J1 | J2
+  Btn = Jn & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the moonscape, the lander hovering, the tune once; a gravity
+' starts the game
+sub TitlePage:
+  L1 = 0
+  L2 = 0
+  NewScreen
+  copy SurfMap count 768 to vram.name
+  DrawStars
+  for Ri = 2 to 11
+    fill 32 count 20 at 5,Ri
+  next
+  print at 8,2, "LUNAR  LANDER"
+  print at 7,3, "BY ANTHONY WOOD"
+  print at 8,7, "LOW GRAVITY"
+  print at 8,8, "MEDIUM GRAVITY"
+  print at 8,9, "HIGH GRAVITY"
+  print at 8,10, "CREDITS"
+  print at 8,4, "AHOY! APRIL 1984"
+  ShowMenu
+  TitleOn = 1
+  Phase = 0
+  Ship.X = 216
+  Ship.Y = 40
+  Ship.M = 2
+  DrawShip
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 650
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  DrawShip
+  V = Jn & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then
+    CreditsPage
+  else
+    Grav = Menu + 1
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  for Si = 7 to 10
+    put char 32 at 6,Si
+  next
+  J = Menu + 7
+  put char 62 at 6,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "LUNAR LANDER"
+  print at 2,5, "BASED ON LUNAR LANDER BY"
+  print at 2,6, "ANTHONY WOOD, AHOY! APRIL"
+  print at 2,7, "1984 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: TRANQUILITY DRIFT"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$00,$00
+  $00,$02,$40,$00,$00,$04,$20,$00
+  $00,$10,$00,$42,$00,$00,$08,$00
+  $00,$02,$40,$00,$00,$04,$20,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$20,$00,$04,$00,$00
+  $00,$00,$00,$20,$00,$04,$00,$00
+  $00,$18,$38,$18,$18,$18,$C3,$00
+  $00,$C3,$99,$99,$99,$99,$C3,$00
+  $00,$81,$60,$83,$06,$99,$C3,$00
+  $00,$20,$00,$00,$02,$00,$40,$08
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$00,$00,$20,$02,$00,$40,$00
+  $00,$18,$38,$18,$18,$18,$C3,$00
+  $00,$C3,$99,$99,$99,$99,$C3,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $0E,$1E,$1E,$0E,$0E,$1E,$1E,$0E
+  $0E,$1E,$0E,$1E,$0E,$0E,$1E,$0E
+  $0F,$1E,$1E,$0E,$0E,$1E,$1E,$0E
+  $E1,$E1,$E1,$1E,$1E,$1E,$1E,$0E
+  $E1,$E1,$E1,$E1,$1E,$1E,$1E,$0E
+  $0B,$0B,$0A,$1E,$0E,$1E,$0E,$0E
+  $0B,$0B,$0A,$1E,$0E,$1E,$0E,$0E
+  $0E,$1E,$1E,$1E,$1E,$1E,$E1,$0E
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $0E,$E1,$1E,$E1,$1E,$E1,$E1,$0E
+  $0A,$6A,$0A,$0A,$6A,$0A,$6A,$6A
+  $A1,$A1,$A1,$1A,$1A,$1A,$1A,$0A
+  $A1,$A1,$A1,$A1,$1A,$1A,$1A,$0A
+  $0A,$1A,$1A,$1A,$A1,$A1,$A1,$A1
+  $0A,$1A,$1A,$1A,$1A,$A1,$A1,$A1
+  $0F,$0B,$06,$6A,$6A,$0A,$6A,$0A
+  $0A,$6A,$6A,$6A,$6A,$6A,$A6,$0A
+  $0A,$A6,$A6,$A6,$A6,$A6,$A6,$0A
+end data
+data SpritePat bytes
+  $03,$06,$04,$06,$03,$3F,$2A,$3F,$0C,$19,$33,$60,$E0,$00,$00,$00
+  $C0,$60,$20,$60,$C0,$FC,$54,$FC,$30,$98,$CC,$06,$07,$00,$00,$00
+  $00,$03,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$03,$03,$01,$01,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$C0,$C0,$80,$80,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$03,$03,$01,$01,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$E0,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$05,$0D,$07,$1B,$05,$09,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$A0,$B0,$E0,$D8,$A0,$90,$40,$00,$00,$00,$00,$00
+  $00,$10,$01,$24,$02,$48,$0A,$20,$08,$45,$02,$20,$00,$00,$00,$00
+  $00,$08,$80,$24,$40,$12,$50,$04,$10,$A2,$40,$04,$01,$00,$00,$00
+  $80,$02,$20,$00,$84,$00,$10,$00,$40,$00,$08,$80,$00,$02,$00,$00
+  $01,$40,$04,$00,$21,$00,$08,$00,$02,$00,$10,$01,$00,$40,$00,$00
+end data
+data KindT bytes
+  0,0,1,1,1,2,3,6,7,1,1,1,1,2,3,4,5,8,1,1
+end data
+data SurfMap bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,133,132,134,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,133,130,131,130,134,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,133,130,131,130,130,131,134,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,133,130,131,130,130,131,130,130,134
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,133,130,131,130,130,131,130,130,131,130
+  32,32,32,133,132,134,32,32,32,32,32,32,32,32,32,32,32,32,133,136,136,136,130,131,130,130,131,130,130,131,130,130
+  32,32,133,130,131,130,134,32,32,32,32,32,32,32,32,32,32,133,130,139,138,138,131,130,130,131,130,130,131,130,130,131
+  32,133,130,131,130,130,131,134,32,32,32,32,32,32,32,32,133,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130
+  133,130,131,130,130,131,130,130,134,32,32,32,32,32,32,133,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130
+  130,131,130,130,131,130,130,131,130,134,32,32,32,32,133,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131
+  131,130,130,131,130,130,131,130,130,131,135,135,135,135,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130
+  130,130,131,130,130,131,130,130,131,130,130,137,138,138,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130
+  130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131,130,130,131
+end data
+data CaveMap bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,143,32,32,32,32,32,32,32,32,144,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,32,32,32,32,32,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,32,32,32,32,32,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,32,32,32,32,32,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,32,32,32,32,32,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,145,145,145,145,140,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,146,147,147,147,140,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,144,143,144,143,144,143,144,143,144,143,144,143,144,143,144,143,144,143,140,32,32,32,32,140,140,140
+  140,140,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,140,140,140
+  140,140,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,141,140,140,140
+  140,140,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,141,140,140,140,140
+  140,140,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,141,140,140,140,140,140
+  140,140,32,32,32,32,32,32,32,32,32,32,141,142,32,32,32,32,32,32,32,32,32,32,32,141,140,140,140,140,140,140
+  140,140,32,32,32,32,32,32,32,32,32,141,140,140,142,32,32,32,32,32,32,32,32,32,141,140,140,140,140,140,140,140
+  140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140
+  140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140,140
+end data
+
+asm {
+LlJet1:
+    db $00,$00,$56,$0E,$10
+LlJet2:
+    db $00,$00,$36,$0E,$10
+LlSide:
+    db $40,$40,$70,$02,$50
+LlBoom:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$57,$0E,$00,$00,$77,$14,$10
+LlLand:
+    db $40,$8F,$10,$05,$40,$71,$10,$05,$40,$5F,$10,$05,$40,$47,$20,$10,$50
+LlCave:
+    db $40,$7F,$20,$04,$40,$97,$20,$04,$40,$B4,$20,$04,$40,$D6,$20,$04,$40,$FE,$30,$04,$40,$2E,$31,$0A
+    db $50
+LlStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0C,$50
+LlOver:
+    db $40,$D6,$10,$0C,$40,$FE,$20,$0C,$40,$41,$21,$0C,$40,$AB,$21,$1E,$50
+
+LlSoundTable:
+    dw LlTuneMel,$702B
+    dw LlTuneBass,$7035
+    dw LlJet1,$703F
+    dw LlJet2,$703F
+    dw LlSide,$7049
+    dw LlBoom,$703F
+    dw LlLand,$7049
+    dw LlCave,$7049
+    dw LlStart,$7049
+    dw LlOver,$7049
+; Tranquility Drift (original)
+; Tiny Sound, 9 frames per step
+LlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$01,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$21,$01,$01,$1C,$01,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$01,$01,$28,$01,$01,$26,$01,$24,$01,$23,$01,$24,$01,$21
+    db $01,$01,$01,$1D,$01,$1F,$01,$21,$01,$23,$01,$1F,$01,$1C,$01,$01
+    db $01,$21,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+LlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$15,$01,$10,$01,$11,$01,$18,$01
+    db $11,$01,$18,$01,$09,$01,$10,$01,$15,$01,$10,$01,$07,$01,$0E,$01
+    db $13,$01,$0E,$01,$0C,$01,$13,$01,$18,$01,$13,$01,$11,$01,$18,$01
+    db $11,$01,$18,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$14,$01,$09,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}
+
+
