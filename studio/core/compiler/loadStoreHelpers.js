@@ -5,6 +5,8 @@ export function createLoadStoreHelpers(ctx) {
     getRuntimeInfo,
     normalizeExpression,
     resolveValueType,
+    parseExpressionAst,
+    resolveExpressionAstValueType,
     runtimeTypeSize,
     isIndexedByteReadable,
     formatHex16,
@@ -66,7 +68,10 @@ export function createLoadStoreHelpers(ctx) {
         else if (offset) lines.push(`    ld de,${offset}`, "    add hl,de");
         return lines;
       }
-      const indexType = resolveValueType(normalizedIndex);
+      const indexAst = parseExpressionAst?.(normalizedIndex);
+      const indexType = indexAst
+        ? resolveExpressionAstValueType?.(indexAst)
+        : resolveValueType(normalizedIndex);
       if (indexType === "int16") {
         const loadIndex = emitLoadInt16IntoHL(normalizedIndex);
         const scale = emitScaleUnsignedWordHLIntoDE(fieldInfo.elementSize);
@@ -116,7 +121,10 @@ export function createLoadStoreHelpers(ctx) {
         }
         return [`    ld hl,${formatHex16(base + numericIndex * stride)}`];
       }
-      const indexType = resolveValueType(normalizedIndex);
+      const indexAst = parseExpressionAst?.(normalizedIndex);
+      const indexType = indexAst
+        ? resolveExpressionAstValueType?.(indexAst)
+        : resolveValueType(normalizedIndex);
       if (indexType === "int16") {
         const lines = emitLoadInt16IntoHL(normalizedIndex);
         const scaleLines = emitScaleUnsignedWordHLIntoDE(stride);

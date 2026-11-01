@@ -1176,7 +1176,7 @@ export function createExpressionComputeHelpers({
           ? normalizeDeclaredType(leftDeclaredType)
           : isAnyFixedDeclaredType(rightDeclaredType)
             ? normalizeDeclaredType(rightDeclaredType)
-            : resolveDeclaredValueType(renderExpressionAst(node));
+            : resolveExpressionAstComputationType(node, preferredDeclaredType)?.declaredType;
       if (!isAnyFixedDeclaredType(arithmeticContext)) {
         const leftValue = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.left));
         const rightValue = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.right));

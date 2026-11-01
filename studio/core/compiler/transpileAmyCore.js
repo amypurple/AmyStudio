@@ -4132,6 +4132,8 @@ export function transpileAmyCore(sourceText, deps) {
     getRuntimeInfo,
     normalizeExpression,
     resolveValueType,
+    parseExpressionAst,
+    resolveExpressionAstValueType,
     runtimeTypeSize,
     isIndexedByteReadable,
     formatHex16,

@@ -3751,11 +3751,12 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 
 ### Arrays
 
-Byte-sized index expressions are accepted consistently in reads, comparisons, and
-routine arguments. For example, both `if Board[(Y << 3) + X] = 0 then` and
-`IsEnemy(Side, Board[(Y << 3) + X])` are valid; a temporary index is optional, not a
-required workaround. Runtime indexes remain the programmer's responsibility and are not
-implicitly bounds-checked.
+Byte- and word-sized index expressions are accepted consistently in reads, writes,
+comparisons, and routine arguments. For example, both
+`if Board[(Y << 3) + X] = 0 then` and `Value = Buffer[Base + Offset]` are valid when
+`Base + Offset` is `u16`; a temporary index is optional, not a required workaround.
+Runtime indexes remain the programmer's responsibility and are not implicitly
+bounds-checked.
 
 Primitive arrays may declare two dimensions and use row/column
 indexing. Storage is row-major, so `Board[Y,X]` is equivalent to

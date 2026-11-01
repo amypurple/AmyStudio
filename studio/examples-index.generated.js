@@ -7962,5 +7962,122 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "space-hunt",
+    "label": "Space Hunt (April 1985)",
+    "detail": "A ColecoVision reimagining of Anthony Wood's Ahoy! space adventure, with planetary exploration, hazards, equipment and a mission across an alien world.",
+    "projectName": "Space Hunt",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "adventure",
+      "space",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hanger-14",
+    "label": "Hanger 14 (January 1987)",
+    "detail": "A ColecoVision reimagining of Justin Luton's Ahoy! platform game, with moving hangers, hazards and increasingly demanding climbs.",
+    "projectName": "Hanger 14",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "platform",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "flash-flood",
+    "label": "Flash Flood (November 1987)",
+    "detail": "A ColecoVision reimagining of Tony Brantner's Ahoy! flood-survival game, with rising water, rescues and arcade action.",
+    "projectName": "Flash Flood",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "rescue",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "snap-snake",
+    "label": "Snap Snake (June 1988)",
+    "detail": "A ColecoVision reimagining of Cleveland M. Blakemore's Ahoy! arcade game, with a snapping snake, roaming rats and protected sprite flicker.",
+    "projectName": "Snap Snake",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "snake",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lunar-buggy",
+    "label": "Lunar Buggy (July 1988)",
+    "detail": "A ColecoVision reimagining of Cleveland M. Blakemore's Ahoy! lunar-driving game, with scrolling terrain, obstacles and a multi-sprite buggy.",
+    "projectName": "Lunar Buggy",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "driving",
+      "space",
+      "commodore-64",
+      "sprites",
+      "scrolling",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

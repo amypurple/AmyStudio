@@ -1,0 +1,1425 @@
+cartridge "FLASH FLOOD/TONY BRANTNER/1987"
+
+' FLASH FLOOD
+' A ColecoVision game based on "Flash Flood" by Tony Brantner, Ahoy!
+' November 1987 (Commodore 64, machine code started by a two-line BASIC
+' loader). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/), the game is built for the ColecoVision: smooth
+' 16 x 16 sprites, a basement drawn in tiles, a pool that rises under the
+' catwalk, sound effects and an original title tune.
+'
+' The game: water drips from the ceiling of your basement. Walk under the
+' drops with the bucket on your head and catch them; a full bucket (23
+' drops) catches no more: empty it into the drain at the right edge. Each
+' drop that reaches the floor raises the water in the pool under the
+' catwalk; when it rises past the catwalk (26 drops missed) the round ends
+' and the game is over. Every 10,000 points the basement drains. A level
+' is 24 to 31 drops; each level the drops fall faster (20 levels).
+'
+' From the original (orig/ff.dis): four drops at most, one new drop every
+' 31 drop steps into a free slot at a random place (sprite X 40-295), each
+' drop one pixel a step, the step every 29 - level passes of its main loop;
+' 24-31 drops a level ((random and 7) or 24); the walk one pixel every four
+' passes (X 25-315); a catch when a drop at Y 124-134 touches the bucket
+' (the touch windows below are worked out from the C64 sprites' pixels),
+' at most 23 drops in the bucket, 10 x level points a drop; the bucket
+' emptied when the man touches the drain (X 310 and more); a drop that
+' reaches Y 188 raises the water one line (207 down to 182: spawning stops
+' when it passes 182 and the round ends as a lost game once the drops are
+' gone); the water back to 207 whenever the score's ten-thousands digit
+' changes; the level number kept up to 20; the walk-in at the start and the
+' walk-out at the end; a high score.
+'
+' Liberties: one pass of play a frame, the drop steps counted out at the
+' C64's rate (about 28.3 main-loop passes a frame, measured in jsc64: 558
+' cycles a pass); the walk speeds up over two frames (2, 3, then 3.5 C64
+' pixels a frame, half the original's top speed of 7) so short taps can place the
+' bucket; the C64 coordinates are kept in the rules and scaled to the
+' screen (x 0.7 across, the drops' fall by 7/8); a drop that reaches the
+' pool's surface splashes there (the level rises when it reaches the
+' original's floor line); the level-start jingle and the title tune are
+' new (original); the high score is kept at the game's end (the C64 did it
+' at the next start); no pause key (the C64 paused on SHIFT).
+'
+' Controls: the stick left and right walks (either controller). A button
+' starts. After the game a press returns to the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers (the bot predicts them). Nothing
+' flashes; the waves move three times a second.
+
+const TBlk = 128
+const TSlab = 129
+const TSlab2 = 130
+const TPipe = 131
+const TPipej = 132
+const TPipes = 133
+const TEdge = 134
+const TEdgew = 135
+const TEdgew2 = 136
+const TWa = 137
+const TWb = 138
+const TWin000 = 139
+const TWin001 = 140
+const TWin002 = 141
+const TWin010 = 142
+const TWin011 = 143
+const TWin012 = 144
+const TWin100 = 145
+const TWin101 = 146
+const TWin102 = 147
+const TWin110 = 148
+const TWin111 = 149
+const TWin112 = 150
+const TCord = 151
+const TBulb = 152
+const TDrain00 = 153
+const TDrain01 = 154
+const TDrain10 = 155
+const TDrain11 = 156
+const TGrate = 157
+const TPost = 158
+const TPit = 159
+const TWat0 = 160
+const TWat1 = 161
+const TSf00 = 162
+const TSf01 = 163
+const TSf02 = 164
+const TSf03 = 165
+const TSf04 = 166
+const TSf05 = 167
+const TSf06 = 168
+const TSf07 = 169
+const TSf10 = 170
+const TSf11 = 171
+const TSf12 = 172
+const TSf13 = 173
+const TSf14 = 174
+const TSf15 = 175
+const TSf16 = 176
+const TSf17 = 177
+const TSurf = 178
+const TBk0 = 179
+const TBk1 = 180
+const TBk2 = 181
+const TBk3 = 182
+const TBk4 = 183
+const TFl0 = 184
+const TFl1 = 185
+const TFl2 = 186
+const TFl3 = 187
+const TFl4 = 188
+const TFr0 = 189
+const TFr1 = 190
+const TFr2 = 191
+const TFr3 = 192
+const TFr4 = 193
+const TIbuck = 194
+const TIwave = 195
+const TIhead = 196
+const TLF00 = 197
+const TLF01 = 198
+const TLF10 = 199
+const TLF11 = 200
+const TLL00 = 201
+const TLL01 = 202
+const TLL10 = 203
+const TLL11 = 204
+const TLA00 = 205
+const TLA01 = 206
+const TLA10 = 207
+const TLA11 = 208
+const TLS00 = 209
+const TLS01 = 210
+const TLS10 = 211
+const TLS11 = 212
+const TLH00 = 213
+const TLH01 = 214
+const TLH10 = 215
+const TLH11 = 216
+const TLO00 = 217
+const TLO01 = 218
+const TLO10 = 219
+const TLO11 = 220
+const TLD00 = 221
+const TLD01 = 222
+const TLD10 = 223
+const TLD11 = 224
+const SBucket = 0
+const SWb1 = 4
+const SWb2 = 8
+const SWb3 = 12
+const SWb4 = 16
+const SSkin = 20
+const SSkinl = 24
+const SBody0 = 28
+const SBody1 = 32
+const SBody2 = 36
+const SBody3 = 40
+const SBodyl0 = 44
+const SBodyl1 = 48
+const SBodyl2 = 52
+const SBodyl3 = 56
+const SDrop = 60
+const SSpl0 = 64
+const SSpl1 = 68
+const SSpl2 = 72
+const SPlink = 76
+const NTiles8 = 776
+const SprBytes = 640
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCatch = 3
+const SndSplash = 4
+const SndPour = 5
+const SndFull = 6
+const SndDrain = 7
+const SndLevel = 8
+const SndClear = 9
+const SndWarn = 10
+const SndEnd = 11
+const XLo = 25
+const XHi = 315
+const DrainX = 310
+const StartX = 176
+const FloodTop = 207
+const FloodEnd = 182
+const BucketMax = 23
+const DropY0 = 29
+const DropFloor = 188
+
+' the title's letters, 0 a space
+data Word bytes
+  TLF00, TLL00, TLA00, TLS00, TLH00, 0, TLF00, TLL00, TLO00, TLO00, TLD00
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Px = 176
+u16 S10 = 0
+u16 Hi10 = 0
+u16 OldK = 0
+u16 NewK = 0
+' the drops: place (C64 sprite coordinates; Dy 0 = no drop), hidden
+' (splashed on the pool)
+u16 Dx[4]
+u8 Dy[4]
+u8 Dh[4]
+' the rules' state
+u8 Run = 0
+u8 Face = 0
+u8 WalkT = 0
+u8 Cnt4 = 0
+u8 Left = 0
+u8 Flood = 207
+u8 Bucket = 0
+u8 Level = 1
+u8 TickAcc = 0
+u8 T3 = 84
+u8 Over = 0
+u8 Phase = 0
+' looks: splashes, the sparkle, waves, the banner
+u8 Spl[2]
+u8 SplX[2]
+u8 SplY[2]
+u8 Plink = 0
+u8 WavT = 0
+u8 WavPh = 0
+u8 SurfY = 0
+u8 SurfDrawn = 0
+u8 Banner = 0
+u8 TDy = 0
+u8 TDx = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Dj = 0
+u8 Di = 0
+u8 Wr = 0
+u8 Wc = 0
+u8 Bt = 0
+u8 Si = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 D = 0
+u8 H = 0
+u8 J = 0
+u8 K = 0
+u8 L = 0
+u8 N = 0
+u8 Q = 0
+u8 S = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table FfSoundTable areas 6
+  sprites 16x16
+  set sprite count 11
+  sprites stable 0 to 4
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewGame
+  WalkIn
+  StartLevel
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Animate
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the round is over: lost when the water passed the line, else the next
+  ' level after a pause (the C64 waited 70 jiffies)
+  Phase = 0
+  if Flood >= FloodEnd then
+    play sound SndClear
+    Banner = 0
+    print at 9,8, " LEVEL    CLEAR "
+    NumU = Level
+    print at 16,8, digits$(NumU, 2)
+    for Bt = 1 to 70
+      Frame1
+      Animate
+      DrawSprites
+    next
+    if Level < 20 then inc Level
+    StartLevel
+    goto play_loop
+  end if
+
+  ' the end: the man walks out, then the message
+  play sound SndEnd
+  WalkOut
+  if S10 > Hi10 then Hi10 = S10
+  ShowHud
+  print at 3,7, "                        "
+  print at 3,8, "  YOUR BASEMENT IS      "
+  print at 3,9, "  FLOODED! GAME OVER    "
+  print at 3,10, "                        "
+  print at 3,11, "  SCORE                 "
+  print at 3,12, "                        "
+  NumU = S10
+  print at 12,11, digits$(NumU, 5)
+  print at 17,11, "0"
+  if S10 = Hi10 then
+    if S10 > 0 then print at 3,12, "  A NEW HIGH SCORE!     "
+  end if
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: walk, the drop steps due this frame, the drain, the
+' catches, the end of the round
+
+sub PlayStep:
+  MoveMan
+  TickAcc = TickAcc + 43
+  while TickAcc >= T3
+    TickAcc = TickAcc - T3
+    DoTick
+  end while
+  if Px >= DrainX then
+    if Bucket > 0 then
+      Bucket = 0
+      play sound SndPour
+      ShowBars
+    end if
+  end if
+  CatchDrops
+  Got = 0
+  for Dj = 0 to 3
+    if Dy[Dj] > 0 then Got = 1
+  next
+  if Left = 0 then
+    if Got = 0 then Over = 1
+  end if
+  return
+end sub
+
+' the stick walks: 2, 3, then 3/4 in turn (half the C64's 7) a frame, within X 25-315
+sub MoveMan:
+  D = 0
+  V = J1 & 8
+  if V > 0 then D = 1
+  V = J1 & 4
+  if V > 0 then D = 2
+  if D = 0 then
+    Run = 0
+    return
+  end if
+  V = D - 1
+  if Run > 0 then
+    if V = Face then
+      if Run < 3 then
+        inc Run
+      elseif Run = 3 then
+        Run = 4
+      else
+        Run = 3
+      end if
+    else
+      Run = 1
+    end if
+  else
+    Run = 1
+  end if
+  Face = V
+  ' half the C64's speed: 2, 3, then 3 and 4 in turn (3.5 a frame)
+  S = 4
+  if Run = 1 then S = 2
+  if Run = 2 then S = 3
+  if Run = 3 then S = 3
+  if D = 1 then
+    Px = Px + S
+    if Px > XHi then Px = XHi
+  elseif Px >= S + XLo then
+    Px = Px - S
+  else
+    Px = XLo
+  end if
+  WalkT = WalkT + S
+  return
+end sub
+
+' one drop step (the C64's routine at $C1B9): every drop one pixel down; a
+' drop at the floor raises the water; a free slot gets a new drop when
+' the step counter is a multiple of 32
+sub DoTick:
+  inc Cnt4
+  for Di = 3 to 0 step -1
+    Got = 0
+    V = Dy[Di]
+    if V > 0 then
+      inc V
+      if V < DropFloor then
+        Dy[Di] = V
+        Got = 1
+      else
+        dec Flood
+        if Flood < FloodEnd then Left = 0
+        Dy[Di] = 0
+        if Dh[Di] = 0 then
+          Dh[Di] = 1
+          SplashAt
+        end if
+        if Flood < 192 then play sound SndWarn
+        DrawWater
+        ShowBars
+      end if
+    end if
+    if Got = 0 then
+      V = Cnt4 & 31
+      if V = 0 then
+        if Left > 0 then
+          dec Left
+          Cnt4 = 1
+          Rand
+          V = Rs & 255
+          Dx[Di] = V
+          if V < 40 then Dx[Di] = V + 256
+          Dy[Di] = DropY0
+          Dh[Di] = 0
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' a drop at Y 124-134 touching the bucket is caught (the touch windows
+' from the C64 sprites' pixels: X - 11 .. X + 10 at Y 124, wider to
+' X - 14 .. X + 13 from Y 127); a full bucket catches nothing
+function Reach(u8 Yd) as u8
+  if Yd = 124 then return 11
+  if Yd = 125 then return 12
+  if Yd = 126 then return 13
+  return 14
+
+sub CatchDrops:
+  if Bucket >= BucketMax then return
+  for Di = 3 to 0 step -1
+    Y = Dy[Di]
+    if Y >= 124 and Y <= 134 then
+      L = Reach(Y)
+      H = L - 1
+      if Dx[Di] + L >= Px and Dx[Di] <= Px + H then
+        Dy[Di] = 0
+        inc Bucket
+        Plink = 8
+        play sound SndCatch
+        AddScore
+        if Bucket = BucketMax then play sound SndFull
+        ShowBars
+      end if
+    end if
+  next
+  return
+end sub
+
+' 10 x level points (the score is kept in tens); the basement drains
+' whenever the ten-thousands digit changes
+sub AddScore:
+  OldK = S10 / 1000
+  if S10 < 65000 then S10 = S10 + Level
+  if S10 / 1000 <> OldK then
+    Flood = FloodTop
+    play sound SndDrain
+    print at 7,8, " THE WATER DRAINS "
+    Banner = 120
+    DrawWater
+  end if
+  ShowScore
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a new level: no drops, 24-31 to come, the step rate for the level
+sub StartLevel:
+  for Dj = 0 to 3
+    Dy[Dj] = 0
+    Dh[Dj] = 1
+  next
+  Rand
+  Left = (Rs & 7) | 24
+  T3 = (29 - Level) * 3
+  TickAcc = 0
+  Over = 0
+  Run = 0
+  ShowHud
+  print at 9,8, "     LEVEL      "
+  NumU = Level
+  print at 20,8, digits$(NumU, 2)
+  Banner = 120
+  play sound SndLevel
+  Phase = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' looks
+
+' the water's surface on screen: 166 at the start (207), the catwalk at
+' 182, rows 18-20
+sub SurfOf:
+  if Flood >= FloodEnd then
+    W16 = Flood - FloodEnd
+    SurfY = (W16 * 235 >> 8) + 144
+  else
+    SurfY = 143
+  end if
+  return
+end sub
+
+sub DrawWater:
+  SurfOf
+  if SurfY = SurfDrawn then return
+  SurfDrawn = SurfY
+  for Wr = 18 to 20
+    T = Wr << 3
+    U = T + 8
+    if SurfY >= U then
+      fill TPit count 32 at 0,Wr
+    elseif SurfY <= T then
+      fill TWat0 count 32 at 0,Wr
+    else
+      fill TSurf count 32 at 0,Wr
+      Q = SurfY - T
+      SetSurf
+    end if
+  next
+  return
+end sub
+
+' copy the surface tile for depth Q and the wave phase into TSurf
+sub SetSurf:
+  W16 = (WavPh * 8 + Q + TSf00 - 128) * 8
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + TSurf * 8
+  copy TileCol + W16 count 8 to vram.color + TSurf * 8
+  return
+end sub
+
+' a splash on the pool under drop Di
+sub SplashAt:
+  Si = 0
+  if Spl[0] > 0 then Si = 1
+  if Spl[1] > 0 then
+    if Spl[0] > 0 then
+      Si = 0
+      if Spl[1] < Spl[0] then Si = 1
+    end if
+  end if
+  SplX[Si] = ((Dx[Di] - 12) * 179 >> 8) + 8
+  SplY[Si] = SurfY - 12
+  Spl[Si] = 12
+  play sound SndSplash
+  return
+end sub
+
+' every frame: drops reaching the pool's surface splash and vanish, the
+' splashes and the sparkle fade, the waves and the rain move (every 20
+' frames), the banner goes away
+sub Animate:
+  SurfOf
+  for Dj = 0 to 3
+    V = Dy[Dj]
+    if V > 0 then
+      if Dh[Dj] = 0 then
+        W16 = V - DropY0
+        V = (W16 * 7 >> 3) + 27
+        if V >= SurfY then
+          Dh[Dj] = 1
+          Di = Dj
+          SplashAt
+        end if
+      end if
+    end if
+  next
+  if Spl[0] > 0 then dec Spl[0]
+  if Spl[1] > 0 then dec Spl[1]
+  if Plink > 0 then dec Plink
+  inc WavT
+  if WavT >= 20 then
+    WavT = 0
+    V = WavPh + 1
+    WavPh = V & 1
+    W16 = TWat0 - 128 + WavPh
+    W16 = W16 << 3
+    A16 = TWat0
+    A16 = A16 << 3
+    copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+    for Wr = 18 to 20
+      T = Wr << 3
+      U = T + 8
+      if SurfY > T then
+        if SurfY < U then
+          Q = SurfY - T
+          SetSurf
+        end if
+      end if
+    next
+    Rain
+  end if
+  if Banner > 0 then
+    dec Banner
+    if Banner = 0 then
+      Wr = 8
+      WallRow
+    end if
+  end if
+  return
+end sub
+
+sub Rain:
+  if TitleOn = 1 then return
+  K = TWin000
+  if WavPh = 1 then K = TWin100
+  for Wc = 0 to 2
+    V = K + Wc
+    X = Wc + 4
+    put char V at X,4
+    V = V + 3
+    put char V at X,5
+  next
+  return
+end sub
+
+' sprites: 0 the sparkle, 1 the man's skin, 2 the bucket, 3 the water in
+' it, 4 his clothes, 5-8 the drops, 9-10 the splashes
+sub DrawSprites:
+  X = ((Px - 12) * 179 >> 8) + 8
+  if Plink > 0 then
+    set sprite 0 to 99,X,SPlink,15
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  if Face = 0 then
+    set sprite 1 to 111,X,SSkin,9
+  else
+    set sprite 1 to 111,X,SSkinl,9
+  end if
+  set sprite 2 to 103,X,SBucket,14
+  if Bucket = 0 then
+    set sprite 3 to 192,0,0,0
+  else
+    K = SWb1
+    if Bucket >= 12 then K = SWb2
+    if Bucket >= 18 then K = SWb3
+    if Bucket >= BucketMax then K = SWb4
+    set sprite 3 to 103,X,K,7
+  end if
+  V = 0
+  if Run > 0 then
+    V = WalkT >> 4
+    V = V & 3
+  end if
+  V = V << 2
+  K = SBody0 + V
+  if Face = 1 then K = SBodyl0 + V
+  set sprite 4 to 119,X,K,4
+  for Dj = 0 to 3
+    J = Dj + 5
+    V = Dy[Dj]
+    if V = 0 then
+      set sprite J to 192,0,0,0
+    elseif Dh[Dj] = 1 then
+      set sprite J to 192,0,0,0
+    else
+      W16 = V - DropY0
+      Y = (W16 * 7 >> 3) + 21
+      X = ((Dx[Dj] - 12) * 179 >> 8) + 14
+      set sprite J to Y,X,SDrop,7
+    end if
+  next
+  for Si = 0 to 1
+    J = Si + 9
+    V = Spl[Si]
+    if V = 0 then
+      set sprite J to 192,0,0,0
+    else
+      K = SSpl2
+      if V > 4 then K = SSpl1
+      if V > 8 then K = SSpl0
+      set sprite J to SplY[Si],SplX[Si],K,15
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 32 at 0,21
+  fill 32 count 32 at 0,22
+  print at 2,21, "SCORE"
+  print at 18,21, "HIGH"
+  NumU = Hi10
+  print at 23,21, digits$(NumU, 5)
+  print at 28,21, "0"
+  print at 2,22, "LEVEL"
+  NumU = Level
+  print at 8,22, digits$(NumU, 2)
+  put char TIbuck at 12,22
+  put char TIwave at 21,22
+  ShowScore
+  ShowBars
+  return
+end sub
+
+sub ShowScore:
+  NumU = S10
+  print at 8,21, digits$(NumU, 5)
+  print at 13,21, "0"
+  return
+end sub
+
+' the bucket (6 tiles of 4) and the water missed (7 tiles of 4, the last
+' two red)
+sub ShowBars:
+  for Bt = 0 to 5
+    T = Bt << 2
+    U = T + 4
+    Q = 0
+    if Bucket >= U then
+      Q = 4
+    elseif Bucket > T then
+      Q = Bucket - T
+    end if
+    V = TBk0 + Q
+    X = Bt + 13
+    put char V at X,22
+  next
+  N = FloodTop - Flood
+  for Bt = 0 to 6
+    T = Bt << 2
+    U = T + 4
+    Q = 0
+    if N >= U then
+      Q = 4
+    elseif N > T then
+      Q = N - T
+    end if
+    V = TFl0 + Q
+    if Bt >= 5 then V = TFr0 + Q
+    X = Bt + 22
+    put char V at X,22
+  next
+  return
+end sub
+
+' a row of the wall (Wr): blocks 16 pixels wide, every other row offset
+sub WallRow:
+  for Wc = 0 to 31
+    V = Wc + Wr
+    V = V & 1
+    T = TWa
+    if V = 1 then T = TWb
+    put char T at Wc,Wr
+  next
+  return
+end sub
+
+' the basement: ceiling with a pipe and wet stains, the wall, a window, a
+' light bulb, the drain, the catwalk and the pool
+sub DrawScene:
+  for Wc = 0 to 31
+    V = Wc & 1
+    T = TSlab + V
+    put char T at Wc,0
+    V = Wc % 6
+    T = TPipe
+    if V = 0 then T = TPipej
+    if V = 3 then T = TPipes
+    put char T at Wc,1
+    V = Wc % 5
+    T = TEdge
+    if V = 2 then T = TEdgew
+    if Wc = 9 then T = TEdgew2
+    if Wc = 20 then T = TEdgew2
+    put char T at Wc,2
+  next
+  for Wr = 3 to 16
+    WallRow
+  next
+  WavPh = 0
+  Rain
+  put char TCord at 16,3
+  put char TBulb at 16,4
+  put char TDrain00 at 28,15
+  put char TDrain01 at 29,15
+  put char TDrain10 at 28,16
+  put char TDrain11 at 29,16
+  fill TGrate count 32 at 0,17
+  SurfDrawn = 0
+  DrawWater
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  Flood = FloodTop
+  DrawScene
+  S10 = 0
+  Level = 1
+  Flood = FloodTop
+  Bucket = 0
+  Px = 12
+  Face = 0
+  Run = 0
+  WalkT = 0
+  Cnt4 = 0
+  Over = 0
+  Phase = 0
+  Banner = 0
+  Plink = 0
+  Spl[0] = 0
+  Spl[1] = 0
+  for Dj = 0 to 3
+    Dy[Dj] = 0
+    Dh[Dj] = 1
+  next
+  DrawWater
+  ShowHud
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the man walks in from the left edge to X 176, and out at the end
+sub WalkIn:
+  Face = 0
+  Run = 2
+  while Px < StartX
+    Px = Px + 3
+    if Px > StartX then Px = StartX
+    WalkT = WalkT + 3
+    Frame1
+    Animate
+    DrawSprites
+  end while
+  Run = 0
+  return
+end sub
+
+sub WalkOut:
+  Face = 1
+  Run = 2
+  while Px > 12
+    if Px >= 15 then
+      Px = Px - 3
+    else
+      Px = 12
+    end if
+    WalkT = WalkT + 3
+    Frame1
+    Animate
+    DrawSprites
+  end while
+  Run = 0
+  HideSprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  V = J1 & 12
+  if V = 12 then J1 = J1 & 19
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 11
+  for J = 0 to 10
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the basement, big dripping letters, a drop falling now and
+' then, the tune once
+sub TitlePage:
+  NewScreen
+  TitleOn = 1
+  Flood = FloodTop
+  DrawScene
+  BigWord
+  print at 9,8, "TONY BRANTNER"
+  print at 6,9, "AHOY! NOVEMBER 1987"
+  print at 7,12, "PRESS THE BUTTON"
+  Flood = FloodTop
+  Bucket = 0
+  Px = StartX
+  Face = 0
+  Run = 0
+  Plink = 0
+  Spl[0] = 0
+  Spl[1] = 0
+  for Dj = 0 to 3
+    Dy[Dj] = 0
+    Dh[Dj] = 1
+  next
+  Level = 1
+  ShowHud
+  fill 32 count 32 at 0,22
+  TDy = 0
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  TitleOn = 0
+  HideSprites
+  return
+end sub
+
+' F L A S H   F L O O D in 2 x 2 tiles, rows 4-5, columns 5-26
+sub BigWord:
+  for Wc = 0 to 10
+    K = Word[Wc]
+    if K > 0 then
+      X = Wc << 1
+      X = X + 5
+      put char K at X,4
+      V = K + 1
+      inc X
+      put char V at X,4
+      dec X
+      V = K + 2
+      put char V at X,5
+      V = K + 3
+      inc X
+      put char V at X,5
+    end if
+  next
+  return
+end sub
+
+' a drop falls from the ceiling and splashes, again and again
+sub TitleAnim:
+  Animate
+  if TDy = 0 then
+    Rand
+    V = Rs & 255
+    TDx = V / 2
+    TDx = TDx + 40
+    TDy = 22
+  else
+    TDy = TDy + 2
+    V = TDy + 5
+    if V >= SurfY then
+      Spl[0] = 12
+      SplX[0] = TDx - 6
+      SplY[0] = SurfY - 12
+      TDy = 0
+    end if
+  end if
+  if TDy > 0 then
+    V = TDy - 1
+    set sprite 5 to V,TDx,SDrop,7
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  if Spl[0] > 0 then
+    K = SSpl2
+    if Spl[0] > 4 then K = SSpl1
+    if Spl[0] > 8 then K = SSpl0
+    set sprite 9 to SplY[0],SplX[0],K,15
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "FLASH FLOOD"
+  print at 2,5, "BASED ON FLASH FLOOD BY"
+  print at 2,6, "TONY BRANTNER, AHOY!"
+  print at 2,7, "NOVEMBER 1987, COMMODORE 64."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: RAIN ON THE ROOF"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$02,$00,$40,$04,$00,$00
+  $00,$04,$00,$40,$00,$08,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $42,$42,$00,$42,$00,$42,$00,$00
+  $18,$18,$00,$00,$00,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $21,$22,$02,$00,$00,$00,$00,$00
+  $46,$42,$40,$00,$00,$00,$00,$00
+  $AA,$01,$01,$01,$01,$01,$01,$01
+  $AA,$00,$00,$04,$00,$00,$00,$00
+  $00,$00,$00,$24,$00,$00,$49,$00
+  $00,$00,$00,$92,$00,$00,$24,$00
+  $00,$00,$00,$48,$00,$00,$92,$00
+  $00,$12,$00,$00,$24,$00,$00,$00
+  $00,$41,$00,$00,$92,$00,$00,$00
+  $00,$24,$00,$00,$48,$00,$00,$00
+  $00,$00,$00,$00,$12,$00,$00,$24
+  $00,$00,$00,$00,$41,$00,$00,$92
+  $00,$00,$00,$00,$24,$00,$00,$48
+  $00,$00,$49,$00,$00,$12,$00,$00
+  $00,$00,$24,$00,$00,$41,$00,$00
+  $00,$00,$92,$00,$00,$24,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $38,$38,$83,$01,$01,$01,$83,$38
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C1,$D1,$D1,$D1,$D1,$D1,$80,$80
+  $00,$00,$C0,$2A,$15,$F0,$01,$01
+  $D1,$D1,$01,$AA,$54,$07,$C0,$C0
+  $00,$00,$44,$00,$44,$44,$00,$44
+  $00,$00,$38,$38,$38,$38,$38,$38
+  $00,$04,$00,$40,$00,$02,$00,$20
+  $80,$00,$04,$20,$00,$01,$08,$40
+  $01,$08,$40,$00,$02,$10,$80,$00
+  $98,$00,$04,$20,$00,$01,$08,$40
+  $00,$31,$04,$20,$00,$01,$08,$40
+  $00,$04,$9C,$20,$00,$01,$08,$40
+  $00,$04,$00,$98,$00,$01,$08,$40
+  $00,$04,$00,$40,$31,$01,$08,$40
+  $00,$04,$00,$40,$00,$9C,$08,$40
+  $00,$04,$00,$40,$00,$02,$98,$40
+  $00,$04,$00,$40,$00,$02,$00,$31
+  $9C,$08,$40,$00,$02,$10,$80,$00
+  $00,$C6,$40,$00,$02,$10,$80,$00
+  $00,$04,$8C,$00,$02,$10,$80,$00
+  $00,$04,$00,$9C,$02,$10,$80,$00
+  $00,$04,$00,$40,$C6,$10,$80,$00
+  $00,$04,$00,$40,$00,$8C,$80,$00
+  $00,$04,$00,$40,$00,$02,$9C,$00
+  $00,$04,$00,$40,$00,$02,$00,$C6
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$C3,$C3,$C3,$C3,$18,$00
+  $00,$20,$8D,$8D,$00,$00,$00,$00
+  $00,$C3,$C3,$A5,$C3,$81,$81,$00
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $03,$03,$00,$00,$00,$00,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$00,$00
+  $F0,$F0,$C3,$C3,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $03,$03,$C3,$C3,$C3,$C3,$08,$08
+  $C0,$C0,$F0,$F0,$F0,$F0,$C0,$C0
+  $F0,$F0,$C3,$C3,$00,$00,$F0,$F0
+  $00,$00,$F0,$F0,$C0,$C0,$00,$00
+  $0C,$0C,$C3,$C3,$F0,$F0,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$03,$03
+  $F0,$F0,$F0,$F0,$F0,$F0,$20,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$00,$00
+  $C0,$C0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$C3,$C3,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$C0,$C0,$02,$00
+  $C3,$C3,$C3,$C3,$F0,$F0,$00,$00
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$C3,$C3,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$00,$00,$10,$10
+  $C3,$C3,$C3,$C3,$F0,$F0,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$FE,$1E,$0E,$1E,$FE,$0E,$01
+  $0E,$1E,$0E,$FE,$0E,$1E,$0E,$01
+  $01,$0F,$0E,$0E,$0E,$01,$01,$01
+  $E1,$EF,$0E,$1E,$0E,$E1,$01,$01
+  $E1,$EF,$0E,$0E,$0E,$E1,$01,$01
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $4E,$41,$41,$01,$01,$01,$01,$01
+  $4E,$41,$41,$01,$01,$01,$01,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$01,$01,$41,$01,$01,$01,$01
+  $0E,$04,$04,$54,$04,$04,$54,$04
+  $0E,$04,$04,$54,$04,$04,$54,$04
+  $0E,$04,$04,$54,$04,$04,$54,$04
+  $0E,$54,$04,$04,$54,$04,$04,$0E
+  $0E,$54,$04,$04,$54,$04,$04,$0E
+  $0E,$54,$04,$04,$54,$04,$04,$0E
+  $0E,$04,$04,$04,$54,$04,$04,$54
+  $0E,$04,$04,$04,$54,$04,$04,$54
+  $0E,$04,$04,$04,$54,$04,$04,$54
+  $0E,$04,$54,$04,$04,$54,$04,$0E
+  $0E,$04,$54,$04,$04,$54,$04,$0E
+  $0E,$04,$54,$04,$04,$54,$04,$0E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$1B,$1B,$1B,$1B,$1B,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $01,$01,$1E,$E1,$E1,$1E,$E1,$E1
+  $1E,$1E,$1E,$E1,$E1,$1E,$E1,$E1
+  $0B,$0A,$E1,$0E,$E1,$E1,$0E,$E1
+  $0B,$0A,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$41,$01,$41,$01,$41,$01,$41
+  $54,$04,$54,$54,$04,$54,$54,$54
+  $54,$54,$54,$04,$54,$54,$54,$04
+  $F5,$04,$54,$54,$04,$54,$54,$54
+  $01,$F5,$54,$54,$04,$54,$54,$54
+  $01,$41,$5F,$54,$04,$54,$54,$54
+  $01,$41,$01,$F5,$04,$54,$54,$54
+  $01,$41,$01,$41,$F5,$54,$54,$54
+  $01,$41,$01,$41,$01,$5F,$54,$54
+  $01,$41,$01,$41,$01,$41,$F5,$54
+  $01,$41,$01,$41,$01,$41,$01,$F5
+  $5F,$54,$54,$04,$54,$54,$54,$04
+  $01,$F5,$54,$04,$54,$54,$54,$04
+  $01,$41,$F5,$04,$54,$54,$54,$04
+  $01,$41,$01,$5F,$54,$54,$54,$04
+  $01,$41,$01,$41,$F5,$54,$54,$04
+  $01,$41,$01,$41,$01,$F5,$54,$04
+  $01,$41,$01,$41,$01,$41,$5F,$04
+  $01,$41,$01,$41,$01,$41,$01,$F5
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$51,$51,$51,$51,$51,$51,$0E
+  $0E,$51,$51,$51,$51,$51,$51,$0E
+  $0E,$15,$15,$15,$15,$15,$15,$0E
+  $0E,$05,$05,$05,$05,$05,$05,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$41,$41,$41,$41,$41,$41,$0E
+  $0E,$41,$41,$41,$41,$41,$41,$0E
+  $0E,$14,$14,$14,$14,$14,$14,$0E
+  $0E,$04,$04,$04,$04,$04,$04,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$18,$18,$18,$18,$18,$18,$0E
+  $0E,$08,$08,$08,$08,$08,$08,$0E
+  $01,$1E,$15,$1E,$1E,$1E,$E1,$01
+  $01,$F1,$1F,$F5,$05,$04,$04,$01
+  $01,$1E,$19,$19,$19,$14,$14,$01
+  $0F,$0F,$F1,$71,$71,$71,$07,$05
+  $1F,$1F,$01,$01,$01,$01,$71,$51
+  $51,$51,$51,$51,$51,$41,$41,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$F1,$F1,$71,$71,$71,$71,$51
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $51,$51,$51,$51,$05,$04,$01,$01
+  $01,$01,$01,$01,$15,$14,$01,$01
+  $1F,$1F,$1F,$17,$71,$71,$71,$51
+  $F1,$F1,$F1,$71,$17,$17,$17,$15
+  $05,$05,$51,$51,$51,$41,$01,$01
+  $15,$15,$15,$15,$15,$14,$41,$41
+  $1F,$1F,$F1,$71,$71,$71,$17,$15
+  $F1,$F1,$1F,$17,$01,$01,$71,$51
+  $01,$01,$51,$51,$15,$14,$01,$01
+  $51,$51,$15,$15,$51,$41,$01,$01
+  $F1,$F1,$F1,$71,$71,$71,$07,$05
+  $1F,$1F,$1F,$17,$17,$17,$17,$15
+  $51,$51,$51,$51,$51,$41,$41,$01
+  $15,$15,$15,$15,$15,$14,$01,$01
+  $1F,$1F,$F1,$71,$71,$71,$71,$51
+  $F1,$F1,$1F,$17,$17,$17,$17,$15
+  $51,$51,$51,$51,$15,$14,$41,$01
+  $15,$15,$15,$15,$51,$41,$01,$01
+  $0F,$0F,$F1,$71,$71,$71,$71,$51
+  $F1,$F1,$1F,$17,$17,$17,$17,$15
+  $51,$51,$51,$51,$05,$04,$41,$41
+  $15,$15,$15,$15,$51,$41,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$3F,$40,$7F,$2F,$3F,$2F,$1F,$17,$1F,$0F,$00,$00
+  $00,$00,$00,$00,$FC,$02,$FE,$F4,$FC,$F4,$F8,$E8,$F8,$F0,$00,$00
+  $00,$00,$00,$00,$00,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$1F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$F8,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$1F,$3F,$3F,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F8,$FC,$FC,$01,$01,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$C0,$40,$47,$4F,$0D,$0F,$0F,$06,$03,$01,$00,$00
+  $00,$01,$03,$03,$03,$02,$E2,$F2,$B0,$F4,$F0,$60,$C0,$80,$00,$00
+  $00,$80,$C0,$C0,$C0,$40,$47,$4F,$0D,$2F,$0F,$06,$03,$01,$00,$00
+  $00,$01,$03,$03,$03,$02,$E2,$F2,$B0,$F0,$F0,$60,$C0,$80,$00,$00
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$1E
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$70,$70,$70,$78
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$0E,$1C,$38,$30
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$38,$38,$3C,$1C
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$1E
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$70,$70,$70,$78
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$1C,$1C,$3C,$38
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$70,$38,$1C,$0C
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$1E
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$70,$70,$70,$78
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$1C,$1C,$3C,$38
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$70,$38,$1C,$0C
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$1E
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$70,$70,$70,$78
+  $20,$30,$30,$30,$38,$3D,$1F,$1B,$0F,$0F,$0F,$0E,$0E,$1C,$38,$30
+  $04,$0C,$0C,$0C,$1C,$BC,$F8,$D8,$F0,$F0,$F0,$70,$38,$38,$3C,$1C
+  $20,$20,$70,$F8,$F8,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$07,$1F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$F8,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$22,$01,$30,$60,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$44,$80,$0C,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$01,$00,$00,$00,$00,$00
+  $00,$01,$11,$07,$11,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$C0,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+FfCatch:
+    db $40,$40,$10,$01,$40,$30,$20,$02,$40,$35,$40,$03,$40,$35,$80,$03,$50
+FfSplash:
+    db $00,$00,$35,$02,$00,$00,$56,$03,$00,$00,$86,$04,$10
+FfPour:
+    db $00,$00,$27,$04,$00,$00,$37,$06,$00,$00,$57,$08,$00,$00,$77,$08,$00,$00,$A7,$06,$10
+FfFull:
+    db $40,$3B,$22,$03,$40,$3B,$F2,$02,$40,$A6,$32,$03,$50
+FfDrain:
+    db $40,$D6,$10,$03,$40,$AA,$10,$03,$40,$8F,$10,$03,$40,$6B,$10,$03,$40,$8F,$20,$03,$40,$6B,$20,$03
+    db $40,$55,$20,$0C,$50
+FfLevel:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$E2,$20,$06,$40,$8F,$20,$10,$50
+FfClear:
+    db $40,$AA,$20,$04,$40,$8F,$20,$04,$40,$71,$20,$04,$40,$55,$20,$0C,$50
+FfWarn:
+    db $40,$F9,$22,$03,$40,$25,$43,$03,$50
+FfEnd:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$AB,$21,$0A,$40,$3B,$32,$1E,$50
+
+FfSoundTable:
+    dw FfTuneMel,$702B
+    dw FfTuneBass,$7035
+    dw FfCatch,$7049
+    dw FfSplash,$703F
+    dw FfPour,$703F
+    dw FfFull,$7049
+    dw FfDrain,$7049
+    dw FfLevel,$7049
+    dw FfClear,$7049
+    dw FfWarn,$7049
+    dw FfEnd,$7049
+; Rain on the Roof (original)
+; Tiny Sound, 8 frames per step
+FfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$F1,$22,$23,$01,$1F,$01,$1C,$01,$1F,$01,$23,$01,$21,$01
+    db $1F,$01,$1E,$01,$1C,$01,$1E,$01,$1F,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$21,$01,$23,$01,$26,$01
+    db $23,$01,$21,$01,$1F,$01,$1E,$01,$1A,$01,$1C,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+FfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$04,$01,$0B,$01,$04,$01,$0B,$01,$0C,$01,$07,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$07,$01,$0B,$01,$06,$01,$04,$01,$0B,$01
+    db $04,$01,$00,$01
+    db $FF
+}
