@@ -19,7 +19,8 @@ export function handleVramPixelInputStatement({
   resolveAddressSymbol = (name) => name,
   getDataByteLength = () => null,
   nmiKnownOff = false,
-  nativeEos = false
+  nativeEos = false,
+  splitTopLevelArgs = null
 }) {
   const _dep = checkVramPixelDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -35,10 +36,11 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const vpoke = line.match(/^vpoke\s+(.+)\s*,\s*(.+)$/i);
-  if (vpoke) {
-    const loadAddress = emitLoadVramAddressIntoHL(vpoke[1]);
-    const loadValue = emitLoadInt8ValueInto("a", vpoke[2]);
+  const vpokeText = line.match(/^vpoke\s+(.+)$/i);
+  if (vpokeText) {
+    const parts = typeof splitTopLevelArgs === "function" ? splitTopLevelArgs(vpokeText[1]) : [];
+    const loadAddress = parts.length === 2 ? emitLoadVramAddressIntoHL(parts[0]) : null;
+    const loadValue = parts.length === 2 ? emitLoadInt8ValueInto("a", parts[1]) : null;
     if (!loadAddress || !loadValue) {
       return { handled: true, ok: false, log: `vpoke requires a valid VRAM destination and byte value: ${rawLine}` };
     }

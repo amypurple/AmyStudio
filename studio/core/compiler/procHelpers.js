@@ -61,7 +61,10 @@ export function createProcHelpers({
       lines.push("    pop ix");
     }
     lines.push("    ret");
-    return lines;
+    // A later local declaration or dynamic FOR bound may still add an IX
+    // frame. Finalization replaces this marked provisional epilogue after the
+    // complete routine has been seen.
+    return [`; AMY_PROC_RETURN ${currentProc} ${lines.length}`, ...lines];
   }
 
   function bodyAlreadyEndsWith(lines) {

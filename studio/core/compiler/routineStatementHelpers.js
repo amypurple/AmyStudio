@@ -136,6 +136,10 @@ export function handleRoutineStatement({
     let returnLines = null;
     if (returnType === "int8") {
       returnLines = emitLoadInt8Into("a", valueToken);
+      if (!returnLines) {
+        const loadWord = emitLoadInt16IntoHL(valueToken);
+        if (loadWord) returnLines = [...loadWord, "    ld a,l"];
+      }
     } else if (returnType === "int16") {
       returnLines = emitLoadInt16IntoHL(valueToken, currentFunction.declaredType);
     } else if (returnType === "u32" || returnType === "i32") {

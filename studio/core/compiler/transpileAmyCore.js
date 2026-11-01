@@ -2473,8 +2473,11 @@ export function transpileAmyCore(sourceText, deps) {
         const arrayLength = hasArrayLength
           ? resolveEarlyNumericConstant(fieldMatch[3], earlyCompileTimeConstants)
           : null;
-        if (!isValidSymbolName(fieldName) || isReservedAmyIdentifier(fieldName) || fields.has(fieldName)) {
+        if (!isValidSymbolName(fieldName) || fields.has(fieldName)) {
           return `Invalid or duplicate record field '${fieldName}': ${fieldRaw}`;
+        }
+        if (isReservedAmyIdentifier(fieldName)) {
+          return `Record field '${fieldName}' collides with a reserved Amy keyword or builtin: ${fieldRaw}`;
         }
         if (hasArrayLength && (!Number.isInteger(arrayLength) || arrayLength < 1 || arrayLength > 255)) {
           return `Record array fields require a compile-time constant length from 1 to 255: ${fieldRaw}`;
@@ -5807,6 +5810,26 @@ export function transpileAmyCore(sourceText, deps) {
           }
           continue;
         }
+
+        const targetDeclaredType = String(resolveDeclaredValueType(formulaAssignment.target) || "").toLowerCase();
+        if (["bool", "boolean"].includes(targetDeclaredType) && /(?:<=|>=|<>|!=|==|=|<|>)/.test(formulaAssignment.value)) {
+          const falseLabel = makeGeneratedLabel("BoolAssignFalse");
+          const doneLabel = makeGeneratedLabel("BoolAssignDone");
+          const conditionCode = emitConditionalJump(formulaAssignment.value, falseLabel, true);
+          const storeTrue = emitRuntimeStore(formulaAssignment.target, "1");
+          const storeFalse = emitRuntimeStore(formulaAssignment.target, "0");
+          if (conditionCode.ok && storeTrue && storeFalse) {
+            body.push(
+              ...conditionCode.lines,
+              ...storeTrue,
+              `    jp ${doneLabel}`,
+              `${falseLabel}:`,
+              ...storeFalse,
+              `${doneLabel}:`
+            );
+            continue;
+          }
+        }
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
       if (!assignmentCode) {
@@ -5847,7 +5870,8 @@ export function transpileAmyCore(sourceText, deps) {
         resolveAddressSymbol,
         getDataByteLength: getDeclaredDataByteLength,
         nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0,
-        nativeEos: !!buildContext?.capabilities?.includes("eos") && !buildContext.capabilities.includes("os7")
+        nativeEos: !!buildContext?.capabilities?.includes("eos") && !buildContext.capabilities.includes("os7"),
+        splitTopLevelArgs
       });
       if (vramPixelInputStmt.handled) {
         if (!vramPixelInputStmt.ok) return { ok: false, asmBody: "", log: vramPixelInputStmt.log };
@@ -6023,7 +6047,8 @@ export function transpileAmyCore(sourceText, deps) {
           resolveAddressSymbol,
           getDataByteLength: getDeclaredDataByteLength,
           nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0,
-          nativeEos: !!buildContext?.capabilities?.includes("eos") && !buildContext.capabilities.includes("os7")
+          nativeEos: !!buildContext?.capabilities?.includes("eos") && !buildContext.capabilities.includes("os7"),
+          splitTopLevelArgs
         });
         return result.handled && result.ok ? { ...result, lines: inlineBody } : result;
       },

@@ -103,7 +103,13 @@ export function createInlineStatementCompiler(ctx) {
         if (!currentFunction) return { ok: false, lines: [], log: `Only functions can return a value: ${rawLineText}` };
         const valueToken = normalizeExpression(inlineReturnValue[1].trim());
         const returnType = currentFunction.returnType;
-        if (returnType === "int8") inlineLines = emitLoadInt8Into("a", valueToken);
+        if (returnType === "int8") {
+          inlineLines = emitLoadInt8Into("a", valueToken);
+          if (!inlineLines) {
+            const loadWord = emitLoadInt16IntoHL(valueToken);
+            if (loadWord) inlineLines = [...loadWord, "    ld a,l"];
+          }
+        }
         else if (returnType === "int16") inlineLines = emitLoadInt16IntoHL(valueToken, currentFunction.declaredType);
         else if (returnType === "u32" || returnType === "i32") {
           ensureCompareScratch32();

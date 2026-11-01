@@ -826,6 +826,22 @@ export function finalizeAmyTranspile({
     body.splice(frame.insertIndex, 0, ...prologue);
   }
 
+  for (let index = 0; index < body.length; index += 1) {
+    const marker = String(body[index] || "").match(/^; AMY_PROC_RETURN ([A-Za-z_][A-Za-z0-9_]*) (\d+)$/);
+    if (!marker) continue;
+    const frame = procFrames.get(marker[1]);
+    const provisionalLength = Number.parseInt(marker[2], 10);
+    const epilogue = [];
+    if (frame?.usesIxAlias && !frame.usesIxFrame && frame.size === 0) {
+      epilogue.push("    pop ix");
+    } else if (frame && (frame.usesIxFrame || frame.size > 0)) {
+      epilogue.push("    ld sp,ix", "    pop ix");
+    }
+    epilogue.push("    ret");
+    body.splice(index, provisionalLength + 1, ...epilogue);
+    index += epilogue.length - 1;
+  }
+
   for (const [packLabel, bitmask] of boolPackInits) {
     if (!bitmask) continue;
     runtimeInit.unshift(`    ld (${packLabel}),a`);

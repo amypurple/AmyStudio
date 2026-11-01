@@ -570,8 +570,18 @@ export function createControlFlowHelpers(ctx) {
     const computedSigned = compareMode === "signed"
       || preserveSignedMixedCompare
       || (compareMode === "auto" && (isSignedDeclaredType(leftComputedDeclared) || isSignedDeclaredType(rightComputedDeclared)));
+    const signedOperandWidth = Math.max(
+      isSignedDeclaredType(leftComputedDeclared) ? declaredTypeBitWidth(leftComputedDeclared) : 0,
+      isSignedDeclaredType(rightComputedDeclared) ? declaredTypeBitWidth(rightComputedDeclared) : 0
+    );
+    const unsignedOperandWidth = Math.max(
+      !isSignedDeclaredType(leftComputedDeclared) ? declaredTypeBitWidth(leftComputedDeclared) : 0,
+      !isSignedDeclaredType(rightComputedDeclared) ? declaredTypeBitWidth(rightComputedDeclared) : 0
+    );
     const promotedCompareWidth = computedMixedSignedness && compareMode === "auto"
-      ? Math.min(32, Math.max(16, computedWidth * 2))
+      ? (signedOperandWidth > unsignedOperandWidth
+          ? computedWidth
+          : Math.min(32, Math.max(16, computedWidth * 2)))
       : Math.max(computedWidth, 8);
     const promotedCompareDeclared = preserveSignedMixedCompare
       ? null

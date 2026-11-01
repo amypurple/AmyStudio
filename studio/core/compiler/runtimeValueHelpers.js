@@ -1057,10 +1057,14 @@ export function createRuntimeValueHelpers({
         return [`    ld hl,${formatHex16(widened & 0xFFFF)}`, "    push hl"];
       }
       const loadArg = emitLoadInt8Into("a", token);
-      if (!loadArg) return null;
+      const narrowedLoad = loadArg || (() => {
+        const loadWord = emitLoadInt16IntoHL(token);
+        return loadWord ? [...loadWord, "    ld a,l"] : null;
+      })();
+      if (!narrowedLoad) return null;
       if (isSignedDeclaredType(declaredType)) {
         return [
-          ...loadArg,
+          ...narrowedLoad,
           "    ld l,a",
           "    add a,a",
           "    sbc a,a",
@@ -1069,7 +1073,7 @@ export function createRuntimeValueHelpers({
         ];
       }
       return [
-        ...loadArg,
+        ...narrowedLoad,
         "    ld l,a",
         "    ld h,0",
         "    push hl"

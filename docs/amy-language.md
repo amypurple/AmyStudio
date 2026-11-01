@@ -799,6 +799,7 @@ The `N` in `bcd digits N` may likewise be a literal or named numeric constant fr
 1 to 12. It determines RAM layout at compile time and therefore cannot be a variable.
 
 Global `bool` variables are bit-packed: up to 8 globals share one byte. Source code uses them as normal named flags.
+Comparisons may be assigned directly to a flag, for example `Hit = Row > 4`; the result is normalized to `true` or `false`.
 
 Legacy scalar aliases such as `byte`, `word`, `integer`, `char`, `int`, `long`, and `boolean` are removed. Use canonical typed names only.
 

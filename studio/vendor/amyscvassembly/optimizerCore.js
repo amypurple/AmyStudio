@@ -2440,6 +2440,15 @@ export class Z80Optimizer {
                             for (let j = i + 3; j < tokens.length; j++) {
                                 const candidate = tokens[j];
                                 if (j > i + 3 && candidate.label) {
+                                    const isLocalControlTarget = tokens.slice(i + 3, j).some((bodyToken) => {
+                                        if (!(bodyToken instanceof Instruction)) return false;
+                                        const bodyMnemonic = bodyToken.mnemonic.toLowerCase();
+                                        if (!["jp", "jr", "djnz"].includes(bodyMnemonic)) return false;
+                                        return bodyToken.operands.some((operand) =>
+                                            operand.type === "symbol" && operand.value === candidate.label
+                                        );
+                                    });
+                                    if (isLocalControlTarget) continue;
                                     routineEnd = j - 1;
                                     break;
                                 }
