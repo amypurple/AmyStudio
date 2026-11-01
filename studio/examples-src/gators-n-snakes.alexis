@@ -1,0 +1,1203 @@
+cartridge "GATORS N SNAKES/JIM SANDERS/1985"
+
+' GATORS N SNAKES
+' A ColecoVision game based on "Gators N Snakes" by Jim Sanders, Ahoy!
+' August 1985 (Commodore 64, BASIC with a small machine-language core).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/), the game is built for the ColecoVision: smooth 16 x 16
+' sprites, a beetle that walks from cell to cell, tiled swamp scenery with
+' rippling water, sound effects and an original title tune.
+'
+' The game: four beetles wait on stones on the left bank. Walk the one in
+' play across the swamp to one of the four burrows on the right bank. A
+' reed barrier stands in the middle: pass it through one of its two gaps or
+' round its ends (the top and bottom rows). Snakes and gators swim up and
+' down the swamp in eight lanes; touching one costs the beetle, and the
+' next one on the bank takes over. A beetle that gets home is back on its
+' own stone. Fill all four burrows to reach the next level: all four
+' beetles come back, and from level 2 some creatures grow twice as long.
+' Every step to the right scores the level's number. Lose the four beetles
+' and the game is over; finish level 10 and you are a remarkable player.
+'
+' From the original (orig/gators.bas): the field (start stones, barrier
+' with two gaps and open ends, four burrows), moves of one cell, the
+' blocked cells (the other waiting beetles, a filled burrow, the barrier),
+' four beetles each starting from its own stone, a beetle home goes back
+' to its stone, four burrows a level, the beetles restored each level, 10
+' levels and the congratulation; eight creatures, even ones swimming down,
+' odd ones up, in the lanes of the C64 sprite positions; the speeds 0, 1, 4
+' or 5 pixels a pass, all drawn again whenever creature 0 reaches line 200
+' (start 4, 5, 5, 5 down and 5 up); the creatures stretched by the C64's
+' Y expansion (level 2 creature 0; 4: 0, 2; 6: 0, 1, 4; 8: 0, 1, 4, 5);
+' the score of the level's number for each step right; a high score.
+'
+' Liberties: the speeds are the C64's measured in jsc64 (about 38 passes a
+' second); the listing pokes the delay of 11 - level into its machine code
+' only at the start, so on the C64 the game never speeds up; here it does
+' as the listing intended (up to 1.8 times at level 10). Collisions are
+' between the beetle and the creature shapes, not with the scenery. The
+' beetle walks a cell in 8 frames instead of jumping. The border flash of
+' a new level is a banner and a fanfare. The stick moves in its first
+' free direction (up, down, right, left) instead of ignoring diagonals.
+'
+' Controls: either controller; the stick moves the beetle one cell at a
+' time (hold to keep walking). On the title, up and down choose, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers (bug 36). Nothing flashes.
+
+const TWa = 128
+const TWb = 129
+const TWa0 = 130
+const TWa1 = 131
+const TWb0 = 132
+const TWb1 = 133
+const TReedl = 134
+const TReedr = 135
+const TReedtl = 136
+const TReedtr = 137
+const TReedbl = 138
+const TReedbr = 139
+const TGrass = 140
+const TEdgel = 141
+const TEdger = 142
+const TStone = 143
+const TBugw = 144
+const THole = 145
+const THolebug = 146
+const TFringeb = 147
+const SBug00 = 0
+const SBug01 = 4
+const SBug10 = 8
+const SBug11 = 12
+const SBug20 = 16
+const SBug21 = 20
+const SBug30 = 24
+const SBug31 = 28
+const SSplat = 32
+const SSnakeu0 = 36
+const SSnakeu1 = 40
+const SSnaked0 = 44
+const SSnaked1 = 48
+const SGatoru0 = 52
+const SGatoru1 = 56
+const SGatord0 = 60
+const SGatord1 = 64
+const SLsnakeu0a = 68
+const SLsnakeu1a = 72
+const SLsnaked0a = 76
+const SLsnaked1a = 80
+const SLsnakeu0b = 84
+const SLsnakeu1b = 88
+const SLsnaked0b = 92
+const SLsnaked1b = 96
+const SLgatoru0a = 100
+const SLgatoru1a = 104
+const SLgatord0a = 108
+const SLgatord1a = 112
+const SLgatoru0b = 116
+const SLgatoru1b = 120
+const SLgatord0b = 124
+const SLgatord1b = 128
+const NTiles8 = 160
+const SprBytes = 1056
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHop = 3
+const SndSplat = 4
+const SndHome = 5
+const SndLevel = 6
+const SndStart = 7
+const SndOver = 8
+const SndWin = 9
+const HopN = 8
+const DeadN = 45
+const MsgN = 100
+const WallL = 13
+const WallR = 14
+const HomeC = 29
+const NSpr = 17
+
+' creature lanes (sprite X), colours, kinds (0 snake, 1 gator)
+data XT bytes
+  24, 80, 52, 128, 156, 182, 200, 216
+end data
+data ColT bytes
+  15, 15, 10, 10, 15, 15, 3, 14
+end data
+data KindT bytes
+  0, 0, 1, 1, 0, 0, 1, 1
+end data
+data Bit bytes
+  1, 2, 4, 8, 16, 32, 64, 128
+end data
+' long creatures by level (bit i: creature i)
+data LongM bytes
+  0, 0, 1, 1, 5, 5, 19, 19, 51, 51, 51
+end data
+data StartR bytes
+  7, 11, 15, 19
+end data
+data HomeR bytes
+  5, 10, 15, 20
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Hi = 0
+u8 Lv = 1
+u8 LvB = 4
+u8 Lm = 0
+u8 Over = 0
+' the creatures: Y (C64-style, 0-255 around), sub-pixel, speed index
+u8 Cy[8]
+u8 Cf[8]
+u8 Cs[8]
+u8 Old0 = 0
+' the beetle: cell, pixel position (sprite corner), facing (0 up, 1 right,
+' 2 down, 3 left), frames left of the step
+u8 Pc = 2
+u8 Pr = 7
+u8 Px = 12
+u8 Py = 52
+u8 Pd = 1
+u8 Ph = 0
+' the beetle in play (0-3), burrows filled this level, the burrows
+u8 Kb = 0
+u8 Ht = 0
+u8 Hf[4]
+u8 DeadT = 0
+u8 MsgT = 0
+u8 WaveT = 0
+u8 WaveF = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ri = 0
+u8 Hi4 = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 D = 0
+u8 H = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 S = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+u8 Sy = 0
+u8 Qc = 0
+u8 Qr = 0
+
+  tile screen
+  set sound table GnSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Animate
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  if Over = 2 then
+    print at 4,9, "                        "
+    print at 4,10, " YOU ARE A REMARKABLE   "
+    print at 4,11, "        PLAYER...       "
+    print at 4,12, "                        "
+    print at 4,13, "    CONGRATULATIONS!    "
+    print at 4,14, "                        "
+    play sound SndWin
+  else
+    print at 8,10, "                "
+    print at 8,11, "   GAME  OVER   "
+    print at 8,12, "                "
+    play sound SndOver
+  end if
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveCreatures
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      inc Kb
+      if Kb >= 4 then
+        Over = 1
+      else
+        AtStart
+        DrawBank
+      end if
+    end if
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      for Ri = 10 to 13
+        DrawRow
+      next
+    end if
+    return
+  end if
+  if Ph = 0 then TryMove
+  if Ph > 0 then
+    if Pd = 0 then dec Py
+    if Pd = 1 then inc Px
+    if Pd = 2 then inc Py
+    if Pd = 3 then dec Px
+    dec Ph
+    if Ph = 0 then
+      if Pc = HomeC then
+        Arrive
+        return
+      end if
+    end if
+  end if
+  Collide
+  return
+end sub
+
+' the creatures: even ones swim down, odd ones up; when creature 0 reaches
+' line 200 every speed is drawn again (0, 1, 4 or 5)
+sub MoveCreatures:
+  Old0 = Cy[0]
+  for Ci = 0 to 7
+    V = Ci & 1
+    if V = 0 then
+      MoveOne
+    end if
+  next
+  ' (on the C64 a speed of 0 kept creature 0 on line 200, so the speeds
+  ' were drawn again at the next pass: the same here)
+  Got = 0
+  V = Cy[0]
+  if V = 200 then Got = 1
+  if Cs[0] = 0 then Got = 1
+  if Old0 < 200 then
+    if V >= 200 then Got = 1
+  end if
+  if Got = 1 then
+    for Ci = 0 to 7
+      Rand
+      V = Rs & 5
+      U = V & 1
+      V = V >> 1
+      U = U | V
+      Cs[Ci] = U
+    next
+  end if
+  for Ci = 0 to 7
+    V = Ci & 1
+    if V = 1 then
+      MoveOne
+    end if
+  next
+  return
+end sub
+
+sub MoveOne:
+  V = Cs[Ci]
+  V = V + LvB
+  S = SpdT[V]
+  V = Cf[Ci] + S
+  N = V >> 4
+  V = V & 15
+  Cf[Ci] = V
+  U = Ci & 1
+  if U = 0 then
+    V = Cy[Ci] + N
+  else
+    V = Cy[Ci] - N
+  end if
+  Cy[Ci] = V
+  return
+end sub
+
+' the stick: the first free direction of up, down, right, left
+sub TryMove:
+  K = J1 | J2
+  Got = 0
+  V = K & 1
+  if V > 0 then
+    Qc = Pc
+    Qr = Pr - 1
+    Legal
+    if R = 1 then
+      Got = 1
+      Pd = 0
+    end if
+  end if
+  if Got = 0 then
+    V = K & 2
+    if V > 0 then
+      Qc = Pc
+      Qr = Pr + 1
+      Legal
+      if R = 1 then
+        Got = 1
+        Pd = 2
+      end if
+    end if
+  end if
+  if Got = 0 then
+    V = K & 8
+    if V > 0 then
+      Qc = Pc + 1
+      Qr = Pr
+      Legal
+      if R = 1 then
+        Got = 1
+        Pd = 1
+      end if
+    end if
+  end if
+  if Got = 0 then
+    V = K & 4
+    if V > 0 then
+      Qc = Pc - 1
+      Qr = Pr
+      Legal
+      if R = 1 then
+        Got = 1
+        Pd = 3
+      end if
+    end if
+  end if
+  if Got = 0 then return
+  Pc = Qc
+  Pr = Qr
+  Ph = HopN
+  if Pd = 1 then
+    W16 = Lv
+    Sc = Sc + W16
+    ShowScore
+  end if
+  play sound SndHop
+  return
+end sub
+
+' R = 1 when the beetle may step on cell Qc, Qr
+sub Legal:
+  R = 0
+  if Qr < 2 then return
+  if Qr > 22 then return
+  if Qc < 2 then return
+  if Qc > HomeC then return
+  if Qc = 2 then
+    for Hi4 = 0 to 3
+      if StartR[Hi4] = Qr then
+        if Hi4 <= Kb then R = 1
+      end if
+    next
+    return
+  end if
+  if Qc = HomeC then
+    for Hi4 = 0 to 3
+      if HomeR[Hi4] = Qr then
+        if Hf[Hi4] = 0 then R = 1
+      end if
+    next
+    return
+  end if
+  if Qc >= WallL then
+    if Qc <= WallR then
+      if Qr = 2 then R = 1
+      if Qr = 5 then R = 1
+      if Qr = 15 then R = 1
+      if Qr = 22 then R = 1
+      return
+    end if
+  end if
+  R = 1
+  return
+end sub
+
+' the beetle in play on its stone
+sub AtStart:
+  Pc = 2
+  Pr = StartR[Kb]
+  Pd = 1
+  Ph = 0
+  V = Pc << 3
+  Px = V - 4
+  V = Pr << 3
+  Py = V - 4
+  return
+end sub
+
+' home in a burrow: fill it; four filled is the next level
+sub Arrive:
+  for Hi4 = 0 to 3
+    if HomeR[Hi4] = Pr then Hf[Hi4] = 1
+  next
+  inc Ht
+  DrawHomes
+  if Ht >= 4 then
+    inc Lv
+    if Lv > 10 then
+      Lv = 10
+      Over = 2
+      return
+    end if
+    SetLevel
+    Ht = 0
+    Kb = 0
+    for Hi4 = 0 to 3
+      Hf[Hi4] = 0
+    next
+    AtStart
+    MsgT = MsgN
+    DrawHomes
+    DrawBank
+    ShowHud
+    print at 9,11, "              "
+    print at 9,12, "   LEVEL      "
+    NumU = Lv
+    print at 18,12, digits$(NumU, 2)
+    print at 9,13, "              "
+    play sound SndLevel
+    return
+  end if
+  play sound SndHome
+  AtStart
+  return
+end sub
+
+sub SetLevel:
+  V = Lv << 2
+  LvB = V
+  Lm = LongM[Lv]
+  return
+end sub
+
+' the beetle (a box of 6 x 6 in the middle of its sprite) against the
+' creatures it can see
+sub Collide:
+  for Ci = 0 to 7
+    if DeadT = 0 then
+      CreatureBox
+      if Got = 1 then
+        Got = 0
+        V = Px + 5
+        if V < D then
+          V = Px + 11
+          if C < V then
+            V = Py + 5
+            if V < U then
+              V = Py + 11
+              if T < V then Got = 1
+            end if
+          end if
+        end if
+        if Got = 1 then
+          DeadT = DeadN
+          Ph = 0
+          play sound SndSplat
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' creature Ci: Got = 1 when on screen, Sy its top line, H its height, box
+' C..D (x) and T..U (y)
+sub CreatureBox:
+  H = 16
+  V = Bit[Ci]
+  V = V & Lm
+  if V > 0 then H = 32
+  V = Cy[Ci]
+  Sy = V - 32
+  Got = 0
+  if Sy < 16 then return
+  V = 184 - H
+  if Sy > V then return
+  Got = 1
+  X = XT[Ci]
+  if KindT[Ci] = 0 then
+    C = X + 5
+    D = X + 11
+  else
+    C = X + 3
+    D = X + 13
+  end if
+  T = Sy + 1
+  V = Sy + H
+  U = V - 1
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the water ripples: the two water tiles change frame every half second
+sub Animate:
+  inc WaveT
+  if WaveT < 30 then return
+  WaveT = 0
+  V = WaveF + 1
+  WaveF = V & 1
+  W16 = TWa0 - 128 + WaveF
+  W16 = W16 << 3
+  A16 = TWa << 3
+  copy TilePat + W16 count 8 to vram.pattern + A16
+  copy TilePat + W16 count 8 to vram.pattern + 2048 + A16
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  copy TileCol + W16 count 8 to vram.color + A16
+  W16 = TWb0 - 128 + WaveF
+  W16 = W16 << 3
+  A16 = TWb << 3
+  copy TilePat + W16 count 8 to vram.pattern + A16
+  copy TilePat + W16 count 8 to vram.pattern + 2048 + A16
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  copy TileCol + W16 count 8 to vram.color + A16
+  return
+end sub
+
+' sprite 0 the beetle (or the splat), 1-8 the creatures, 9-16 the tails of
+' long creatures
+sub DrawSprites:
+  Y = Py - 1
+  if DeadT > 0 then
+    set sprite 0 to Y,Px,SSplat,9
+  elseif TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    V = Px + Py
+    V = V >> 2
+    V = V & 1
+    K = Pd << 3
+    V = V << 2
+    K = K + V
+    set sprite 0 to Y,Px,K,9
+  end if
+  for Ci = 0 to 7
+    J = Ci + 1
+    N = Ci + 9
+    CreatureBox
+    if TitleOn = 1 then
+      if Ci > 0 then
+        if Ci < 6 then Got = 0
+      end if
+    end if
+    if Got = 0 then
+      set sprite J to 192,0,0,0
+      set sprite N to 192,0,0,0
+    else
+      ' pattern: kind, up (odd) or down (even), stroke
+      V = Tick >> 3
+      V = V + Ci
+      V = V & 1
+      K = V << 2
+      V = Ci & 1
+      if V = 0 then K = K + 8
+      B = ColT[Ci]
+      Y = Sy - 1
+      if H = 16 then
+        if KindT[Ci] = 0 then
+          K = K + SSnakeu0
+        else
+          K = K + SGatoru0
+        end if
+        set sprite J to Y,X,K,B
+        set sprite N to 192,0,0,0
+      else
+        if KindT[Ci] = 0 then
+          K = K + SLsnakeu0a
+        else
+          K = K + SLgatoru0a
+        end if
+        set sprite J to Y,X,K,B
+        K = K + 16
+        Y = Y + 16
+        set sprite N to Y,X,K,B
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 12,1, "HI"
+  print at 22,1, "LEVEL"
+  ShowScore
+  NumU = Hi
+  print at 15,1, digits$(NumU, 5)
+  NumU = Lv
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScore:
+  NumU = Sc
+  print at 5,1, digits$(NumU, 5)
+  return
+end sub
+
+' one row of the swamp (Ri): banks, water, the barrier
+sub DrawRow:
+  fill TGrass count 2 at 0,Ri
+  fill TGrass count 2 at 30,Ri
+  put char TEdgel at 2,Ri
+  put char TEdger at 29,Ri
+  for J = 3 to 28
+    V = J + Ri
+    V = V & 1
+    T = TWa + V
+    put char T at J,Ri
+  next
+  Got = 1
+  if Ri = 2 then Got = 0
+  if Ri = 5 then Got = 0
+  if Ri = 15 then Got = 0
+  if Ri = 22 then Got = 0
+  if Got = 1 then
+    T = TReedl
+    U = TReedr
+    if Ri = 3 then
+      T = TReedtl
+      U = TReedtr
+    end if
+    if Ri = 6 then
+      T = TReedtl
+      U = TReedtr
+    end if
+    if Ri = 16 then
+      T = TReedtl
+      U = TReedtr
+    end if
+    if Ri = 4 then
+      T = TReedbl
+      U = TReedbr
+    end if
+    if Ri = 14 then
+      T = TReedbl
+      U = TReedbr
+    end if
+    if Ri = 21 then
+      T = TReedbl
+      U = TReedbr
+    end if
+    put char T at WallL,Ri
+    put char U at WallR,Ri
+  end if
+  for Hi4 = 0 to 3
+    if StartR[Hi4] = Ri then DrawStone
+    if HomeR[Hi4] = Ri then DrawHole
+  next
+  return
+end sub
+
+sub DrawStone:
+  Y = StartR[Hi4]
+  T = TStone
+  if Hi4 > Kb then T = TBugw
+  put char T at 2,Y
+  return
+end sub
+
+sub DrawHole:
+  Y = HomeR[Hi4]
+  T = THole
+  if Hf[Hi4] = 1 then T = THolebug
+  put char T at HomeC,Y
+  return
+end sub
+
+sub DrawBank:
+  for Hi4 = 0 to 3
+    DrawStone
+  next
+  return
+end sub
+
+sub DrawHomes:
+  for Hi4 = 0 to 3
+    DrawHole
+  next
+  return
+end sub
+
+sub DrawField:
+  for Ri = 2 to 22
+    DrawRow
+  next
+  fill TFringeb count 32 at 0,23
+  return
+end sub
+
+' the creatures at the start: all on line 100, speeds 4, 5, 5, 5 down and
+' 5 up (indexes 2 and 3)
+sub ResetCreatures:
+  for Ci = 0 to 7
+    Cy[Ci] = 100
+    Cf[Ci] = 0
+    Cs[Ci] = 3
+  next
+  Cs[0] = 2
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lv = 1
+  SetLevel
+  Kb = 0
+  Ht = 0
+  for Hi4 = 0 to 3
+    Hf[Hi4] = 0
+  next
+  NewScreen
+  DrawField
+  ShowHud
+  ResetCreatures
+  AtStart
+  DeadT = 0
+  MsgT = 0
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 16
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the swamp, three creatures swimming, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  Lv = 1
+  SetLevel
+  Kb = 0
+  for Hi4 = 0 to 3
+    Hf[Hi4] = 0
+  next
+  NewScreen
+  DrawField
+  for Ri = 6 to 16
+    fill 32 count 18 at 7,Ri
+  next
+  print at 9,7, "GATORS N SNAKES"
+  print at 11,9, "BY JIM SANDERS"
+  print at 10,13, "START GAME"
+  print at 10,14, "CREDITS"
+  print at 2,1, "HI"
+  NumU = Hi
+  print at 5,1, digits$(NumU, 5)
+  print at 15,1, "AHOY! AUG 1985"
+  ShowMenu
+  ResetCreatures
+  TitleOn = 1
+  DeadT = 0
+  Px = 0
+  Py = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  MoveCreatures
+  Animate
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,13
+  put char 32 at 8,14
+  J = Menu + 13
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "GATORS N SNAKES"
+  print at 2,5, "BASED ON GATORS N SNAKES"
+  print at 2,6, "BY JIM SANDERS, AHOY!"
+  print at 2,7, "AUGUST 1985 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: BAYOU CROSSING"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$30,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$80,$00
+  $00,$00,$30,$08,$00,$00,$00,$00
+  $00,$00,$00,$18,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$80,$00
+  $00,$00,$00,$00,$00,$00,$03,$80
+  $4A,$52,$92,$32,$22,$A5,$A5,$95
+  $52,$96,$A5,$96,$8C,$49,$A6,$99
+  $08,$08,$08,$48,$4A,$52,$92,$32
+  $20,$22,$22,$52,$96,$96,$A5,$96
+  $22,$A5,$A5,$00,$00,$00,$00,$00
+  $8C,$49,$A6,$00,$00,$00,$00,$00
+  $08,$40,$02,$20,$00,$84,$00,$10
+  $03,$01,$07,$03,$01,$07,$01,$03
+  $C0,$80,$E0,$C0,$80,$E0,$80,$C0
+  $C3,$81,$00,$20,$00,$00,$81,$C3
+  $C3,$30,$83,$02,$02,$83,$30,$C3
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+  $C3,$20,$83,$01,$01,$83,$20,$C3
+  $44,$00,$29,$44,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$54,$54,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$54,$04
+  $04,$04,$54,$54,$04,$04,$04,$04
+  $04,$04,$04,$54,$54,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$54,$04
+  $04,$04,$04,$04,$04,$04,$54,$54
+  $24,$C4,$42,$4C,$42,$4C,$42,$4C
+  $24,$C4,$24,$4C,$42,$4C,$24,$4C
+  $A4,$A4,$A4,$24,$24,$C4,$42,$4C
+  $A4,$A4,$A4,$24,$24,$C4,$24,$4C
+  $42,$4C,$42,$05,$04,$04,$04,$04
+  $42,$4C,$24,$05,$04,$04,$04,$04
+  $2C,$2C,$2C,$2C,$0C,$2C,$0C,$2C
+  $AC,$AC,$AC,$A2,$AC,$AC,$AC,$AC
+  $AC,$AC,$AC,$A2,$AC,$AC,$AC,$AC
+  $CE,$CE,$0E,$FE,$0E,$0E,$CE,$CE
+  $CE,$9E,$E9,$E9,$E9,$E9,$9E,$CE
+  $A1,$A1,$01,$01,$01,$01,$A1,$A1
+  $A1,$91,$19,$19,$19,$19,$91,$A1
+  $2C,$0C,$1C,$C1,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$02,$01,$13,$0B,$07,$17,$0F,$07,$17,$0B,$00,$00,$00
+  $00,$00,$00,$40,$80,$C8,$D0,$E0,$E8,$F0,$E0,$E8,$D0,$00,$00,$00
+  $00,$00,$00,$04,$02,$01,$23,$17,$07,$3F,$07,$07,$23,$00,$00,$00
+  $00,$00,$00,$20,$40,$80,$C4,$E8,$E0,$FC,$E0,$E0,$C4,$00,$00,$00
+  $00,$00,$00,$09,$12,$0F,$1F,$1F,$1F,$1F,$0F,$12,$09,$00,$00,$00
+  $00,$00,$00,$20,$40,$80,$E8,$F0,$F0,$E8,$80,$40,$20,$00,$00,$00
+  $00,$00,$12,$02,$02,$0F,$1F,$1F,$1F,$1F,$0F,$02,$02,$12,$00,$00
+  $00,$00,$40,$80,$00,$88,$D0,$E0,$E0,$D0,$88,$00,$80,$40,$00,$00
+  $00,$00,$00,$0B,$17,$07,$0F,$17,$07,$0B,$13,$01,$02,$00,$00,$00
+  $00,$00,$00,$D0,$E8,$E0,$F0,$E8,$E0,$D0,$C8,$80,$40,$00,$00,$00
+  $00,$00,$00,$23,$07,$07,$3F,$07,$17,$23,$01,$02,$04,$00,$00,$00
+  $00,$00,$00,$C4,$E0,$E0,$FC,$E0,$E8,$C4,$80,$40,$20,$00,$00,$00
+  $00,$00,$00,$04,$02,$01,$17,$0F,$0F,$17,$01,$02,$04,$00,$00,$00
+  $00,$00,$00,$90,$48,$F0,$F8,$F8,$F8,$F8,$F0,$48,$90,$00,$00,$00
+  $00,$00,$02,$01,$00,$11,$0B,$07,$07,$0B,$11,$00,$01,$02,$00,$00
+  $00,$00,$48,$40,$40,$F0,$F8,$F8,$F8,$F8,$F0,$40,$40,$48,$00,$00
+  $00,$00,$21,$11,$09,$05,$23,$1F,$03,$6F,$0B,$12,$22,$02,$00,$00
+  $00,$00,$04,$08,$10,$A0,$C6,$B8,$C0,$D0,$88,$84,$40,$20,$00,$00
+  $03,$07,$05,$03,$01,$06,$06,$06,$01,$00,$00,$00,$01,$06,$04,$04
+  $80,$C0,$40,$80,$80,$00,$00,$00,$80,$60,$60,$60,$80,$00,$00,$00
+  $03,$07,$05,$03,$01,$00,$00,$00,$01,$06,$06,$06,$01,$00,$00,$00
+  $80,$C0,$40,$80,$80,$60,$60,$60,$80,$00,$00,$00,$80,$60,$40,$40
+  $04,$04,$06,$01,$00,$00,$00,$01,$06,$06,$06,$01,$03,$05,$07,$03
+  $00,$00,$00,$80,$60,$60,$60,$80,$00,$00,$00,$80,$80,$40,$C0,$80
+  $00,$00,$00,$01,$06,$06,$06,$01,$00,$00,$00,$01,$03,$05,$07,$03
+  $40,$40,$60,$80,$00,$00,$00,$80,$60,$60,$60,$80,$80,$40,$C0,$80
+  $01,$03,$03,$05,$07,$17,$0F,$03,$03,$0F,$13,$01,$01,$00,$00,$00
+  $80,$C0,$C0,$A0,$E0,$E8,$F0,$C0,$C0,$F0,$C8,$C0,$80,$C0,$C0,$40
+  $01,$03,$03,$05,$17,$0F,$0F,$03,$03,$0F,$07,$09,$01,$03,$03,$02
+  $80,$C0,$C0,$A0,$E8,$E0,$F0,$C0,$C0,$F0,$E0,$C4,$80,$00,$00,$00
+  $00,$00,$00,$01,$01,$13,$0F,$03,$03,$0F,$17,$07,$05,$03,$03,$01
+  $40,$C0,$C0,$80,$C0,$C8,$F0,$C0,$C0,$F0,$E8,$E0,$A0,$C0,$C0,$80
+  $02,$03,$03,$01,$09,$07,$0F,$03,$03,$0F,$0F,$17,$05,$03,$03,$01
+  $00,$00,$00,$80,$C4,$E0,$F0,$C0,$C0,$F0,$E0,$E8,$A0,$C0,$C0,$80
+  $03,$03,$07,$07,$05,$05,$03,$03,$01,$01,$06,$06,$06,$06,$06,$06
+  $80,$80,$C0,$C0,$40,$40,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00
+  $03,$03,$07,$07,$05,$05,$03,$03,$01,$01,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$C0,$40,$40,$80,$80,$80,$80,$60,$60,$60,$60,$60,$60
+  $04,$04,$04,$04,$06,$06,$01,$01,$00,$00,$00,$00,$00,$00,$01,$01
+  $00,$00,$00,$00,$00,$00,$80,$80,$60,$60,$60,$60,$60,$60,$80,$80
+  $00,$00,$00,$00,$00,$00,$01,$01,$06,$06,$06,$06,$06,$06,$01,$01
+  $40,$40,$40,$40,$60,$60,$80,$80,$00,$00,$00,$00,$00,$00,$80,$80
+  $01,$01,$00,$00,$00,$00,$00,$00,$01,$01,$06,$06,$04,$04,$04,$04
+  $80,$80,$60,$60,$60,$60,$60,$60,$80,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$06,$06,$06,$06,$06,$06,$01,$01,$00,$00,$00,$00,$00,$00
+  $80,$80,$00,$00,$00,$00,$00,$00,$80,$80,$60,$60,$40,$40,$40,$40
+  $06,$06,$06,$06,$06,$06,$01,$01,$03,$03,$05,$05,$07,$07,$03,$03
+  $00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$40,$40,$C0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$01,$01,$03,$03,$05,$05,$07,$07,$03,$03
+  $60,$60,$60,$60,$60,$60,$80,$80,$80,$80,$40,$40,$C0,$C0,$80,$80
+  $01,$01,$03,$03,$03,$03,$05,$05,$07,$07,$17,$17,$0F,$0F,$03,$03
+  $80,$80,$C0,$C0,$C0,$C0,$A0,$A0,$E0,$E0,$E8,$E8,$F0,$F0,$C0,$C0
+  $01,$01,$03,$03,$03,$03,$05,$05,$17,$17,$0F,$0F,$0F,$0F,$03,$03
+  $80,$80,$C0,$C0,$C0,$C0,$A0,$A0,$E8,$E8,$E0,$E0,$F0,$F0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$13,$13,$0F,$0F,$03,$03
+  $40,$40,$C0,$C0,$C0,$C0,$80,$80,$C0,$C0,$C8,$C8,$F0,$F0,$C0,$C0
+  $02,$02,$03,$03,$03,$03,$01,$01,$09,$09,$07,$07,$0F,$0F,$03,$03
+  $00,$00,$00,$00,$00,$00,$80,$80,$C4,$C4,$E0,$E0,$F0,$F0,$C0,$C0
+  $03,$03,$0F,$0F,$13,$13,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$F0,$F0,$C8,$C8,$C0,$C0,$80,$80,$C0,$C0,$C0,$C0,$40,$40
+  $03,$03,$0F,$0F,$07,$07,$09,$09,$01,$01,$03,$03,$03,$03,$02,$02
+  $C0,$C0,$F0,$F0,$E0,$E0,$C4,$C4,$80,$80,$00,$00,$00,$00,$00,$00
+  $03,$03,$0F,$0F,$17,$17,$07,$07,$05,$05,$03,$03,$03,$03,$01,$01
+  $C0,$C0,$F0,$F0,$E8,$E8,$E0,$E0,$A0,$A0,$C0,$C0,$C0,$C0,$80,$80
+  $03,$03,$0F,$0F,$0F,$0F,$17,$17,$05,$05,$03,$03,$03,$03,$01,$01
+  $C0,$C0,$F0,$F0,$E0,$E0,$E8,$E8,$A0,$A0,$C0,$C0,$C0,$C0,$80,$80
+end data
+data SpdT bytes
+  0,10,41,51
+  0,10,41,51
+  0,11,43,53
+  0,11,45,56
+  0,12,48,60
+  0,13,51,63
+  0,14,54,68
+  0,14,58,72
+  0,16,62,78
+  0,17,68,84
+  0,18,74,92
+end data
+
+asm {
+GnHop:
+    db $40,$55,$20,$02,$40,$40,$40,$02,$50
+GnSplat:
+    db $00,$00,$04,$03,$00,$00,$25,$04,$00,$00,$36,$06,$00,$00,$66,$0A,$10
+GnHome:
+    db $40,$8F,$10,$04,$40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$20,$0C,$50
+GnLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+GnStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+GnOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+GnWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+GnSoundTable:
+    dw GnTuneMel,$702B
+    dw GnTuneBass,$7035
+    dw GnHop,$7049
+    dw GnSplat,$703F
+    dw GnHome,$7049
+    dw GnLevel,$7049
+    dw GnStart,$7049
+    dw GnOver,$7049
+    dw GnWin,$7049
+; Bayou Crossing (original)
+; Tiny Sound, 8 frames per step
+GnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$01,$21,$1F,$01,$1C,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$21,$01,$01,$24,$01,$23,$01,$21,$1F,$01,$01,$1C
+    db $01,$1E,$01,$1F,$01,$23,$01,$21,$01,$1E,$01,$1A,$01,$1C,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+GnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$10,$01,$17,$01,$0C,$01,$13,$01
+    db $0E,$01,$15,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0B,$01,$12,$01,$0B,$01,$0F,$01,$10,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

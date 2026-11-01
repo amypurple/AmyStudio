@@ -1,0 +1,1732 @@
+cartridge "GRAVINAUTS/CLEVELAND M. BLAKEMORE/1985"
+
+' GRAVINAUTS
+' A ColecoVision game based on "Gravinauts" by Cleveland M. Blakemore,
+' Ahoy! October 1985 (Commodore 64, machine language poked from BASIC
+' DATA). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/), the game is built for the ColecoVision: smooth
+' sub-pixel flight, drawn glaciers, a rippling acid sea, sound.
+'
+' The game: on Arkion an acid sea covers everything; gravinauts stay up on
+' rocket packs. The button fires your pack (up; with the stick left or
+' right, up and sideways); it burns fuel, and gravity pulls you down. Rest
+' on the ice glaciers or the launch pad to save fuel. Three rival
+' gravinauts chase you: collide with one from above (or level) and its
+' pack explodes (250 points); collide from below and yours does. A rival
+' that falls into the acid explodes too (250). Fuel tanks stand on the
+' glaciers: 5, 10, 15 and 20 units (grey, green, red, gold). When every
+' rival is gone and every tank taken, the next wave comes, faster. Touch
+' the acid (anywhere but the pad) or run out of fuel: the game is over.
+'
+' From the original (orig/): one gravinaut, 50 fuel at the start, one unit
+' burnt every second thrust step, fuel 0 = your pack explodes; three
+' rivals steer toward you (up/down always, sideways on half the steps,
+' slower top speed than yours) and never feel gravity; a collision is won
+' by the higher one (a tie is yours); rivals in the acid explode; each
+' rival 250; four tanks of 5/10/15/20 fuel; the wave ends when all seven
+' (three rivals, four tanks) are gone; fuel carries over; each wave is
+' faster with a new sky colour; the safe pad in the middle of the sea.
+'
+' Liberties: smooth motion at 60 steps a second in 1/128 pixels instead
+' of the C64's slow whole-pixel steps (thrust three times gravity, a
+' little heavier than the C64's four, so you can brake; rivals slower); bounces off ice slide and
+' settle (you can stand on a glacier) instead of a random reversal; four
+' glacier fields in turn instead of one; the rivals, not you, get faster
+' each wave; a rival that lands on ice or hits it from below goes off
+' sideways at random (the C64's random bounce); the wall on the right bounces like the left one (the C64
+' version wrapped there); a wave banner and a short pause at the start of
+' each wave.
+'
+' Controls (either joystick): the button (either) fires the rocket pack;
+' the stick left or right while firing steers. On the title, left and
+' right choose START or CREDITS, the button takes it.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table ($702B,
+' $7035), effects after; the title tune plays once. `set sprite count`
+' after every `clear sprites`. Own xorshift random numbers. Nothing
+' flashes: the acid ripples (a pattern shift every 12 frames), the flame
+' changes shape every 10 frames.
+
+const TSky = 128
+const TStar1 = 129
+const TStar2 = 130
+const TStar3 = 131
+const TCapL = 132
+const TCap = 133
+const TCap2 = 134
+const TCapR = 135
+const TBodyL = 136
+const TBody = 137
+const TBody2 = 138
+const TBodyR = 139
+const TKeelL = 140
+const TKeel = 141
+const TKeel2 = 142
+const TKeelR = 143
+const TIce1 = 144
+const TIce2 = 145
+const TAcid = 146
+const TAcidD = 147
+const TPadL = 148
+const TPad = 149
+const TPadR = 150
+const TLeg = 151
+const TTank0t = 152
+const TTank0b = 153
+const TTank1t = 154
+const TTank1b = 155
+const TTank2t = 156
+const TTank2b = 157
+const TTank3t = 158
+const TTank3b = 159
+const TDrop = 160
+const TLG00 = 161
+const TLG01 = 162
+const TLG10 = 163
+const TLG11 = 164
+const TLR00 = 165
+const TLR01 = 166
+const TLR10 = 167
+const TLR11 = 168
+const TLA00 = 169
+const TLA01 = 170
+const TLA10 = 171
+const TLA11 = 172
+const TLV00 = 173
+const TLV01 = 174
+const TLV10 = 175
+const TLV11 = 176
+const TLI00 = 177
+const TLI01 = 178
+const TLI10 = 179
+const TLI11 = 180
+const TLN00 = 181
+const TLN01 = 182
+const TLN10 = 183
+const TLN11 = 184
+const TLU00 = 185
+const TLU01 = 186
+const TLU10 = 187
+const TLU11 = 188
+const TLT00 = 189
+const TLT01 = 190
+const TLT10 = 191
+const TLT11 = 192
+const TLS00 = 193
+const TLS01 = 194
+const TLS10 = 195
+const TLS11 = 196
+const SSuitR = 0
+const SDetR = 4
+const SDetFR = 8
+const SSuitL = 12
+const SDetL = 16
+const SDetFL = 20
+const SFlame1R = 24
+const SFlame2R = 28
+const SFlame1L = 32
+const SFlame2L = 36
+const SBoom1 = 40
+const SBoom2 = 44
+const SBoom3 = 48
+const NTiles8 = 552
+const SprBytes = 416
+const SndTuneA = 1
+const SndTuneB = 2
+const SndJet = 3
+const SndBump = 4
+const SndFuel = 5
+const SndPop = 6
+const SndPopT = 7
+const SndBoom = 8
+const SndLow = 9
+const SndWave = 10
+const SndClear = 11
+const SndOver = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u16 Score = 0
+u16 Hi = 0
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 Rs = 1
+' you: position and speed in 1/128 pixel
+i16 Px = 0
+i16 Py = 0
+i16 Vx = 0
+i16 Vy = 0
+' the rivals
+i16 EX[3]
+i16 EY[3]
+i16 EVX[3]
+i16 EVY[3]
+u8 EOn[3]
+u8 EBt[3]
+u8 EF[3]
+' the body being moved (MoveBody)
+i16 Bpx = 0
+i16 Bpy = 0
+i16 Bvx = 0
+i16 Bvy = 0
+i16 Nq = 0
+i16 W = 0
+i16 Lim = 0
+i16 Lmn = 0
+i16 EMax = 56
+i16 EMin = -56
+i16 EAcc = 1
+' i16 constants: comparing an i16 with a variable is a 16-bit test, with a
+' literal a 32-bit one (bug 37), and MoveBody runs four times a frame
+i16 K0 = 0
+i16 K2048 = 2048
+i16 K28672 = 28672
+i16 K48 = 48
+i16 K8 = 8
+i16 KM16 = -16
+i16 KM24 = -24
+i16 KM48 = -48
+i16 KM8 = -8
+' the field: 8 solid rectangles in pixels (slab and keel of 4 glaciers)
+u8 RL[8]
+u8 RR[8]
+u8 RT[8]
+u8 RB[8]
+' the tanks
+u8 TOn[4]
+u8 TCc[4]
+u8 TRr[4]
+u8 TanksLeft = 0
+u8 Fuel = 50
+u8 FuelT = 0
+u8 WaveN = 1
+u8 Lay = 0
+' Gs 0 wave intro, 1 flying, 2 your pack exploded, 3 wave clear
+u8 Gs = 0
+u8 St = 0
+u8 Over = 0
+u8 Thr = 0
+u8 Face = 0
+u8 Gnd = 0
+u8 Land = 0
+u8 Acid = 0
+u8 Bump = 0
+u8 Hit = 0
+u8 Xp = 0
+u8 Yp = 0
+u8 Bx0 = 0
+u8 Bx1 = 0
+u8 By0 = 0
+u8 By1 = 0
+u8 Ei = 0
+u8 Ti = 0
+u8 Ba = 0
+u8 Bb = 0
+u8 Ex8 = 0
+u8 Ey8 = 0
+u8 Fx8 = 0
+u8 Fy8 = 0
+' sound and look
+u8 JetT = 0
+u8 LowT = 0
+u8 BoomT = 0
+u8 FlT = 0
+u8 AcT = 0
+u8 AcPh = 0
+' input
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Gc = 0
+u8 Gw = 0
+u8 Gr = 0
+u8 Gi = 0
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$28,$10,$28,$00,$00,$00
+  $E0,$C0,$80,$C0,$80,$00,$00,$00
+  $00,$00,$08,$61,$00,$00,$00,$00
+  $00,$00,$40,$C6,$00,$00,$00,$00
+  $07,$03,$01,$03,$01,$00,$00,$00
+  $00,$04,$06,$00,$80,$C0,$F0,$80
+  $00,$20,$00,$02,$06,$00,$40,$F0
+  $00,$00,$08,$18,$00,$02,$00,$F0
+  $00,$20,$60,$00,$01,$07,$F0,$01
+  $C0,$E0,$F0,$07,$03,$01,$00,$00
+  $00,$08,$1C,$81,$C3,$81,$C3,$18
+  $00,$40,$E0,$01,$83,$01,$81,$C3
+  $03,$07,$F0,$E0,$C0,$80,$00,$00
+  $30,$30,$20,$20,$00,$00,$00,$00
+  $04,$04,$04,$00,$00,$00,$00,$00
+  $00,$30,$02,$80,$08,$00,$81,$48
+  $91,$20,$04,$80,$11,$00,$82,$00
+  $E0,$C0,$80,$AA,$AA,$00,$80,$C8
+  $00,$00,$00,$AA,$AA,$00,$00,$CC
+  $07,$03,$01,$AA,$AA,$00,$01,$13
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $C3,$18,$81,$40,$40,$00,$40,$40
+  $40,$A5,$40,$40,$00,$40,$81,$00
+  $C3,$18,$81,$40,$40,$00,$40,$40
+  $40,$A5,$40,$40,$00,$40,$81,$00
+  $C3,$18,$81,$40,$40,$00,$40,$40
+  $40,$A5,$40,$40,$00,$40,$81,$00
+  $C3,$18,$81,$40,$40,$00,$40,$40
+  $40,$A5,$40,$40,$00,$40,$81,$00
+  $10,$10,$38,$38,$83,$83,$83,$38
+  $00,$00,$C0,$80,$E0,$E0,$E0,$1C
+  $00,$00,$C0,$E0,$70,$00,$00,$F0
+  $1C,$E0,$E0,$80,$C0,$00,$00,$00
+  $F0,$70,$70,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$00,$00
+  $00,$00,$C0,$E0,$70,$70,$E0,$C0
+  $E1,$E0,$E0,$E0,$E0,$00,$00,$00
+  $C0,$E0,$70,$70,$38,$00,$00,$00
+  $00,$00,$F0,$E0,$C6,$70,$E0,$E0
+  $00,$00,$00,$80,$C0,$E0,$70,$70
+  $00,$00,$E0,$E0,$E0,$00,$00,$00
+  $F0,$F0,$70,$70,$70,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$70,$70,$C6
+  $00,$00,$70,$70,$70,$E0,$E0,$C0
+  $C6,$E0,$E0,$F0,$06,$00,$00,$00
+  $C0,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$1C,$1C,$1C,$1C
+  $00,$00,$80,$80,$00,$00,$00,$00
+  $1C,$1C,$1C,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$11,$18
+  $00,$00,$70,$70,$70,$70,$70,$70
+  $1C,$E1,$E0,$E0,$E0,$00,$00,$00
+  $F0,$F0,$F0,$70,$70,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$70,$70,$70,$70,$70,$70
+  $E0,$E0,$F0,$80,$C0,$00,$00,$00
+  $70,$70,$F0,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$0E,$0E,$0E,$0E
+  $00,$00,$E0,$E0,$00,$00,$00,$00
+  $0E,$0E,$0E,$0E,$0E,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$80,$E0,$E0,$80,$C0
+  $00,$00,$E0,$F0,$00,$00,$C0,$E0
+  $00,$00,$C0,$00,$80,$00,$00,$00
+  $70,$70,$70,$E0,$C0,$00,$00,$00
+end data
+data TileCol bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$A0,$00,$00
+  $00,$00,$E0,$E0,$E0,$00,$00,$00
+  $0F,$0F,$0F,$F7,$F7,$07,$07,$07
+  $0F,$0F,$7F,$F7,$07,$07,$07,$07
+  $0F,$0F,$7F,$7F,$07,$07,$07,$07
+  $0F,$0F,$0F,$F7,$F7,$07,$07,$07
+  $07,$57,$57,$07,$57,$57,$57,$05
+  $07,$F7,$07,$57,$57,$07,$57,$57
+  $07,$07,$57,$57,$07,$F7,$07,$75
+  $07,$57,$57,$07,$57,$57,$75,$05
+  $05,$05,$05,$50,$50,$50,$00,$00
+  $07,$57,$57,$57,$57,$05,$05,$50
+  $07,$57,$57,$57,$57,$05,$05,$05
+  $05,$05,$50,$50,$50,$50,$00,$00
+  $50,$50,$50,$50,$00,$00,$00,$00
+  $50,$50,$50,$00,$00,$00,$00,$00
+  $00,$80,$08,$98,$98,$08,$68,$68
+  $68,$68,$98,$68,$68,$08,$68,$08
+  $0F,$0E,$0E,$B1,$1B,$0E,$01,$01
+  $0F,$0E,$0E,$B1,$1B,$0E,$01,$10
+  $0F,$0E,$0E,$B1,$1B,$0E,$01,$01
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $0E,$E0,$0E,$FE,$FE,$01,$FE,$FE
+  $FE,$E1,$FE,$FE,$01,$FE,$01,$00
+  $0E,$E0,$02,$F2,$F2,$0C,$F2,$F2
+  $F2,$21,$F2,$F2,$0C,$F2,$0C,$00
+  $0E,$E0,$09,$F9,$F9,$06,$F9,$F9
+  $F9,$91,$F9,$F9,$06,$F9,$06,$00
+  $0E,$E0,$0B,$FB,$FB,$0A,$FB,$FB
+  $FB,$B1,$FB,$FB,$0A,$FB,$0A,$00
+  $B0,$B0,$B0,$B0,$0B,$0B,$0B,$B0
+  $00,$00,$0B,$0B,$B0,$A0,$A0,$0A
+  $00,$00,$B0,$B0,$B0,$00,$00,$A0
+  $08,$80,$80,$08,$06,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $00,$00,$0B,$0B,$B0,$A0,$0A,$0A
+  $00,$00,$B0,$B0,$B0,$A0,$A0,$A0
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $00,$00,$0B,$0B,$0B,$A0,$A0,$A0
+  $00,$00,$00,$B0,$B0,$A0,$A0,$A0
+  $08,$08,$80,$80,$60,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $00,$00,$B0,$B0,$B0,$A0,$A0,$0A
+  $00,$00,$B0,$B0,$B0,$A0,$A0,$A0
+  $08,$08,$08,$08,$60,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$0B,$0B,$B0,$A0,$A0,$A0
+  $00,$00,$B0,$B0,$00,$00,$00,$00
+  $80,$80,$80,$08,$06,$00,$00,$00
+  $00,$00,$00,$80,$60,$00,$00,$00
+  $00,$00,$B0,$B0,$0B,$0A,$0A,$0A
+  $00,$00,$B0,$B0,$B0,$A0,$A0,$A0
+  $08,$80,$80,$80,$60,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $00,$00,$B0,$B0,$B0,$A0,$A0,$A0
+  $00,$00,$B0,$B0,$B0,$A0,$A0,$A0
+  $80,$80,$80,$08,$06,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $00,$00,$0B,$0B,$B0,$A0,$A0,$A0
+  $00,$00,$B0,$B0,$00,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$0B,$0B,$B0,$A0,$0A,$0A
+  $00,$00,$B0,$B0,$00,$00,$A0,$A0
+  $00,$00,$80,$08,$06,$00,$00,$00
+  $80,$80,$80,$80,$60,$00,$00,$00
+end data
+data SpritePat bytes
+  $03,$07,$0F,$0E,$0E,$07,$07,$0F,$07,$07,$03,$12,$02,$06,$00,$00
+  $C0,$E0,$F0,$10,$10,$E0,$E0,$F4,$EC,$E0,$C0,$40,$40,$60,$00,$00
+  $00,$00,$00,$01,$01,$00,$60,$70,$70,$70,$70,$20,$00,$00,$00,$00
+  $00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$00,$60,$70,$70,$70,$70,$20,$20,$70,$20,$00
+  $00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$08,$08,$07,$07,$2F,$37,$07,$03,$02,$02,$06,$00,$00
+  $C0,$E0,$F0,$70,$70,$E0,$E0,$F0,$E0,$E0,$C0,$48,$40,$60,$00,$00
+  $00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$06,$0E,$0E,$0E,$0E,$04,$00,$00,$00,$00
+  $00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$06,$0E,$0E,$0E,$0E,$04,$04,$0E,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$70,$30,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$70,$60,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$06,$0E,$0C,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$0E,$06,$02
+  $00,$00,$00,$00,$02,$01,$07,$03,$07,$01,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$E0,$C0,$E0,$80,$40,$00,$00,$00,$00,$00
+  $00,$00,$08,$04,$13,$02,$1C,$02,$13,$04,$08,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$88,$80,$70,$80,$88,$40,$20,$00,$00,$00,$00,$00
+  $00,$41,$00,$10,$00,$80,$00,$00,$02,$10,$00,$41,$00,$00,$00,$00
+  $00,$04,$00,$10,$00,$00,$01,$00,$00,$10,$00,$02,$00,$00,$00,$00
+end data
+data AcidAnim bytes
+  $00,$30,$02,$80,$08,$00,$81,$48
+  $00,$C0,$08,$02,$02,$00,$60,$12
+  $00,$03,$20,$08,$80,$00,$18,$84
+  $00,$0C,$80,$20,$20,$00,$06,$21
+end data
+data FieldG bytes
+  5,5,6,15,9,7,6,7,13,20,6,15
+  3,6,5,22,6,5,11,9,10,4,6,15
+  3,5,16,10,5,12,17,5,8,23,6,4
+  3,4,9,12,8,4,25,4,9,11,10,14
+end data
+data FieldT bytes
+  21,13,22,5,9,11,7,4
+  5,13,12,8,24,3,5,3
+  4,14,12,10,19,6,27,2
+  26,7,14,12,4,7,17,2
+end data
+data LogoMap bytes
+  161,162,163,164
+  165,166,167,168
+  169,170,171,172
+  173,174,175,176
+  177,178,179,180
+  181,182,183,184
+  169,170,171,172
+  185,186,187,188
+  189,190,191,192
+  193,194,195,196
+end data
+data TankFuel bytes
+  5,10,15,20
+end data
+
+' the rivals' top speed and steering per wave (1/128 pixel a frame)
+data SpeedT bytes
+  56,64,72,80,88,96,104,112
+end data
+' where the rivals appear: none straight above the pad
+data SpawnX bytes
+  24,64,200
+end data
+data AccT bytes
+  1,1,1,2,2,2,2,3
+end data
+
+
+  tile screen
+  set sound table GvSoundTable areas 6
+  sprites 16x16
+  set sprite count 9
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  Fuel = 50
+  FuelT = 0
+  WaveN = 1
+  Over = 0
+  NewWave
+
+play_loop:
+  Frame1
+  ReadPad
+  if Gs = 1 then
+    PlayStep
+  elseif Gs = 0 then
+    IntroStep
+  elseif Gs = 2 then
+    DeadStep
+  else
+    ClearStep
+  end if
+  Sounds
+  Ripple
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  if Score > Hi then Hi = Score
+  print at 9,10, "             "
+  print at 9,11, "  GAME OVER  "
+  print at 9,12, "             "
+  ShowHud
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of flight
+
+sub PlayStep:
+  PlayerStep
+  if Gs <> 1 then return
+  for Ei = 0 to 2
+    if EOn[Ei] = 1 then EnemyStep
+  next
+  Ba = 0
+  Bb = 1
+  BumpPair
+  Bb = 2
+  BumpPair
+  Ba = 1
+  BumpPair
+  Fights
+  if Gs <> 1 then return
+  Tanks
+  N = 0
+  for Ei = 0 to 2
+    if EOn[Ei] = 2 then
+      V = EBt[Ei] + 1
+      EBt[Ei] = V
+      if V >= 36 then EOn[Ei] = 0
+    end if
+    if EOn[Ei] <> 0 then inc N
+  next
+  if N = 0 then
+    if TanksLeft = 0 then
+      Gs = 3
+      St = 0
+      play sound SndClear
+      Banner
+      print at 9,1, "WAVE CLEAR!"
+    end if
+  end if
+  return
+end sub
+
+' you: the button fires the pack (stick left/right steers), gravity pulls
+sub PlayerStep:
+  Thr = 0
+  if Btn = 1 then
+    Thr = 1
+    Vy = Vy - 6
+    if Lf1 = 1 then
+      Vx = Vx - 4
+      Face = 1
+    end if
+    if Rt1 = 1 then
+      Vx = Vx + 4
+      Face = 0
+    end if
+    inc FuelT
+    if FuelT >= 10 then
+      FuelT = 0
+      dec Fuel
+      ShowFuel
+      if Fuel = 0 then
+        Die
+        return
+      end if
+    end if
+  end if
+  Vy = Vy + 2
+  Bpx = Px
+  Bpy = Py
+  Bvx = Vx
+  Bvy = Vy
+  Lim = 192
+  Lmn = -192
+  ClampB
+  MoveBody
+  Px = Bpx
+  Py = Bpy
+  Vx = Bvx
+  Vy = Bvy
+  if Bump = 1 then play sound SndBump
+  if Acid = 1 then
+    Die
+    return
+  end if
+  ' standing on the pad or on a glacier: stop sinking, slide to a halt
+  W = Px << 1
+  Xp = highbyte W
+  W = Py << 1
+  Yp = highbyte W
+  Gnd = 0
+  if Yp = 152 then
+    V = Xp + 8
+    if V >= 104 then
+      if V <= 151 then Gnd = 1
+    end if
+  end if
+  if Gnd = 0 then
+    X = Xp
+    Y = Yp + 1
+    BoxAt
+    IceHit
+    if Hit <> 255 then Gnd = 1
+  end if
+  if Gnd = 1 then
+    if Vy > K0 then
+      Vy = 0
+      W = Yp
+      Py = W << 7
+    end if
+    if Thr = 0 then
+      ' W = Vx / 8, rounded toward zero, by a shift
+      W = Vx
+      if W < K0 then W = W + 7
+      W = W >> 3
+      Vx = Vx - W
+      if Vx > KM8 then
+        if Vx < K8 then Vx = 0
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Die:
+  Gs = 2
+  St = 0
+  Thr = 0
+  BoomT = 60
+  play sound SndBoom
+  return
+end sub
+
+' a rival steers toward you: up/down every frame, sideways on half the
+' frames (the game's own random numbers); no gravity
+sub EnemyStep:
+  Bpx = EX[Ei]
+  Bpy = EY[Ei]
+  Bvx = EVX[Ei]
+  Bvy = EVY[Ei]
+  Rand
+  V = Rs & 1
+  if V = 1 then
+    if Bpx < Px then
+      Bvx = Bvx + EAcc
+    else
+      Bvx = Bvx - EAcc
+    end if
+  end if
+  if Bpy < Py then
+    Bvy = Bvy + EAcc
+  else
+    Bvy = Bvy - EAcc
+  end if
+  Lim = EMax
+  Lmn = EMin
+  ClampB
+  MoveBody
+  ' landed on ice (or the pad), or hit ice from below: off one way or the
+  ' other at random, as the C64 game's random bounce did, so a rival never
+  ' sits on a glacier or stays caught under one
+  if Land > 0 then
+    Rand
+    V = Rs & 2
+    if V = 0 then
+      Bvx = EMin
+    else
+      Bvx = EMax
+    end if
+  end if
+  EX[Ei] = Bpx
+  EY[Ei] = Bpy
+  EVX[Ei] = Bvx
+  EVY[Ei] = Bvy
+  EF[Ei] = 0
+  if Bpx > Px then EF[Ei] = 1
+  if Acid = 1 then
+    EOn[Ei] = 2
+    EBt[Ei] = 0
+    Score = Score + 250
+    ShowScore
+    play sound SndPop
+    BoomT = 30
+  end if
+  return
+end sub
+
+sub ClampB:
+  if Bvx > Lim then Bvx = Lim
+  if Bvx < Lmn then Bvx = Lmn
+  if Bvy > Lim then Bvy = Lim
+  if Bvy < Lmn then Bvy = Lmn
+  return
+end sub
+
+' move the body (Bpx, Bpy by Bvx, Bvy) one axis at a time; ice stops it at
+' its edge and bounces it back (half speed; a third, then settling, when
+' it lands); the walls and the sky bounce; the sea is acid but for the pad
+sub MoveBody:
+  Bump = 0
+  Acid = 0
+  Land = 0
+  Nq = Bpx + Bvx
+  W = Nq << 1
+  X = highbyte W
+  W = Bpy << 1
+  Y = highbyte W
+  BoxAt
+  IceHit
+  if Hit <> 255 then
+    if Bvx > K0 then
+      V = RL[Hit]
+      X = V - 13
+    else
+      V = RR[Hit]
+      X = V - 2
+    end if
+    W = X
+    Nq = W << 7
+    if Bvx > K48 then Bump = 1
+    if Bvx < KM48 then Bump = 1
+    Bvx = 0 - Bvx
+    if Bvx < K0 then Bvx = Bvx + 1
+    Bvx = Bvx >> 1
+  end if
+  Bpx = Nq
+  if Bpx < K2048 then
+    Bpx = 2048
+    if Bvx < K0 then
+      Bvx = 0 - Bvx
+      if Bvx < K0 then Bvx = Bvx + 1
+      Bvx = Bvx >> 1
+    end if
+  end if
+  if Bpx > K28672 then
+    Bpx = 28672
+    if Bvx > K0 then
+      Bvx = 0 - Bvx
+      if Bvx < K0 then Bvx = Bvx + 1
+      Bvx = Bvx >> 1
+    end if
+  end if
+  Nq = Bpy + Bvy
+  W = Nq << 1
+  Y = highbyte W
+  W = Bpx << 1
+  X = highbyte W
+  BoxAt
+  IceHit
+  if Hit <> 255 then
+    if Bvy > K0 then
+      V = RT[Hit]
+      Y = V - 16
+      Land = 1
+      if Bvy > K48 then Bump = 1
+      ' about a third (Bvy is positive here): * 85 / 256
+      Bvy = Bvy * 85
+      Bvy = Bvy >> 8
+      Bvy = 0 - Bvy
+      if Bvy > KM24 then Bvy = 0
+      W = Bvx
+      if W < K0 then W = W + 3
+      W = W >> 2
+      Bvx = Bvx - W
+    else
+      V = RB[Hit]
+      Y = V - 1
+      Land = 2
+      if Bvy < KM48 then Bump = 1
+      Bvy = 0 - Bvy
+      if Bvy < K0 then Bvy = Bvy + 1
+      Bvy = Bvy >> 1
+    end if
+    W = Y
+    Nq = W << 7
+  end if
+  Bpy = Nq
+  if Bpy < K2048 then
+    Bpy = 2048
+    if Bvy < K0 then Bvy = 32
+  end if
+  W = Bpy << 1
+  Y = highbyte W
+  if Y >= 153 then
+    V = X + 8
+    Acid = 1
+    if V >= 104 then
+      if V <= 151 then Acid = 0
+    end if
+    if Acid = 0 then
+      Bpy = 19456
+      if Bvy > K0 then
+        if Bvy > K48 then Bump = 1
+        Bvy = 0
+      end if
+      Land = 1
+    end if
+  end if
+  return
+end sub
+
+' the box of a gravinaut whose sprite is at X, Y
+sub BoxAt:
+  Bx0 = X + 3
+  Bx1 = X + 12
+  By0 = Y + 2
+  By1 = Y + 15
+  return
+end sub
+
+' IceHit: the first ice rectangle the box touches (Hit), or 255 (GvIce,
+' in Z80 below: the hottest test of the frame)
+sub IceHit:
+  call asm GvIce
+  return
+end sub
+
+' two rivals that meet push apart
+sub BumpPair:
+  if EOn[Ba] <> 1 then return
+  if EOn[Bb] <> 1 then return
+  W = EX[Ba] << 1
+  Ex8 = highbyte W
+  W = EX[Bb] << 1
+  Fx8 = highbyte W
+  W = EY[Ba] << 1
+  Ey8 = highbyte W
+  W = EY[Bb] << 1
+  Fy8 = highbyte W
+  if Ex8 >= Fx8 then
+    T = Ex8 - Fx8
+  else
+    T = Fx8 - Ex8
+  end if
+  if Ey8 >= Fy8 then
+    U = Ey8 - Fy8
+  else
+    U = Fy8 - Ey8
+  end if
+  if T >= 12 then return
+  if U >= 12 then return
+  if Ex8 < Fx8 then
+    EVX[Ba] = -48
+    EVX[Bb] = 48
+  else
+    EVX[Ba] = 48
+    EVX[Bb] = -48
+  end if
+  if Ey8 < Fy8 then
+    EVY[Ba] = -48
+    EVY[Bb] = 48
+  else
+    EVY[Ba] = 48
+    EVY[Bb] = -48
+  end if
+  return
+end sub
+
+' you meet a rival: the higher one wins (a tie is yours)
+sub Fights:
+  W = Px << 1
+  Xp = highbyte W
+  W = Py << 1
+  Yp = highbyte W
+  for Ei = 0 to 2
+    if EOn[Ei] = 1 then
+      W = EX[Ei] << 1
+      Ex8 = highbyte W
+      W = EY[Ei] << 1
+      Ey8 = highbyte W
+      if Xp >= Ex8 then
+        T = Xp - Ex8
+      else
+        T = Ex8 - Xp
+      end if
+      if Yp >= Ey8 then
+        U = Yp - Ey8
+      else
+        U = Ey8 - Yp
+      end if
+      if T < 10 then
+        if U < 14 then
+          if Yp <= Ey8 then
+            EOn[Ei] = 2
+            EBt[Ei] = 0
+            Score = Score + 250
+            ShowScore
+            Vy = -96
+            play sound SndPopT
+            play sound SndPop
+            BoomT = 30
+          else
+            Die
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' a fuel tank you touch is yours
+sub Tanks:
+  X = Xp
+  Y = Yp
+  BoxAt
+  for Ti = 0 to 3
+    if TOn[Ti] = 1 then
+      V = TCc[Ti]
+      V = V << 3
+      R = V + 6
+      inc V
+      if Bx1 >= V then
+        if Bx0 <= R then
+          V = TRr[Ti]
+          V = V << 3
+          R = V + 15
+          V = V + 2
+          if By1 >= V then
+            if By0 <= R then
+              TOn[Ti] = 0
+              dec TanksLeft
+              V = TankFuel[Ti]
+              W16 = V
+              W16 = W16 + Fuel
+              if W16 > 255 then W16 = 255
+              Fuel = W16
+              ShowFuel
+              C = TCc[Ti]
+              R = TRr[Ti]
+              put char TSky at C,R
+              inc R
+              put char TSky at C,R
+              play sound SndFuel
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub IntroStep:
+  inc St
+  if St < 90 then return
+  Gs = 1
+  St = 0
+  ShowHud
+  return
+end sub
+
+sub DeadStep:
+  inc St
+  if St >= 70 then Over = 1
+  return
+end sub
+
+sub ClearStep:
+  inc St
+  if St < 100 then return
+  if WaveN < 99 then inc WaveN
+  NewWave
+  return
+end sub
+
+sub Rand:
+  call asm GvRand
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a wave: the field, the rivals, the speed
+
+sub NewWave:
+  NewScreen
+  Lay = WaveN - 1
+  Lay = Lay & 3
+  V = WaveN - 1
+  V = V & 3
+  if V = 0 then
+    backdrop dark blue
+  elseif V = 1 then
+    backdrop black
+  elseif V = 2 then
+    backdrop dark green
+  else
+    backdrop dark yellow
+  end if
+  V = WaveN
+  if V > 8 then V = 8
+  dec V
+  V = SpeedT[V]
+  W = V
+  EMax = W
+  EMin = 0 - W
+  V = WaveN
+  if V > 8 then V = 8
+  dec V
+  V = AccT[V]
+  W = V
+  EAcc = W
+  DrawField
+  Px = 15360
+  Py = 19456
+  Vx = 0
+  Vy = 0
+  Face = 0
+  Thr = 0
+  for Ei = 0 to 2
+    V = SpawnX[Ei]
+    W = V
+    EX[Ei] = W << 7
+    V = Ei & 1
+    W = 2048
+    if V = 1 then W = 3072
+    EY[Ei] = W
+    EVX[Ei] = 0
+    EVY[Ei] = 0
+    EOn[Ei] = 1
+    EBt[Ei] = 0
+    EF[Ei] = 0
+  next
+  Gs = 0
+  St = 0
+  Banner
+  print at 7,1, "WAVE"
+  NumU = WaveN
+  print at 12,1, digits$(NumU, 2)
+  print at 15,1, "GET READY"
+  DrawSprites
+  ShowScreen
+  play sound SndWave
+  return
+end sub
+
+' the sky with stars, the glaciers (and their rectangles), the tanks, the
+' acid sea and the pad
+sub DrawField:
+  for Y = 2 to 20
+    fill TSky count 32 at 0,Y
+  next
+  for Y = 3 to 20
+    for X = 2 to 29
+      V = X * 7
+      R = Y * 11
+      V = V + R
+      V = V & 31
+      if V = 0 then
+        put char TStar1 at X,Y
+      elseif V = 13 then
+        put char TStar2 at X,Y
+      elseif V = 22 then
+        V = X & 1
+        if V = 0 then put char TStar3 at X,Y
+      end if
+    next
+  next
+  for Gi = 0 to 3
+    V = Lay * 12
+    R = Gi * 3
+    V = V + R
+    Gc = FieldG[V]
+    inc V
+    Gw = FieldG[V]
+    inc V
+    Gr = FieldG[V]
+    DrawGlacier
+  next
+  TanksLeft = 4
+  for Ti = 0 to 3
+    V = Lay << 3
+    R = Ti << 1
+    V = V + R
+    C = FieldT[V]
+    inc V
+    R = FieldT[V]
+    TCc[Ti] = C
+    TRr[Ti] = R
+    TOn[Ti] = 1
+    V = Ti << 1
+    T = TTank0t + V
+    put char T at C,R
+    inc T
+    inc R
+    put char T at C,R
+  next
+  fill TAcid count 32 at 0,21
+  fill TAcidD count 32 at 0,22
+  put char TPadL at 13,21
+  fill TPad count 4 at 14,21
+  put char TPadR at 18,21
+  put char TLeg at 14,22
+  put char TLeg at 17,22
+  return
+end sub
+
+' glacier Gi at column Gc, width Gw, row Gr
+sub DrawGlacier:
+  R = Gc + Gw
+  dec R
+  put char TCapL at Gc,Gr
+  put char TCapR at R,Gr
+  Y = Gr + 1
+  put char TBodyL at Gc,Y
+  put char TBodyR at R,Y
+  Y = Gr + 2
+  put char TKeelL at Gc,Y
+  put char TKeelR at R,Y
+  X = Gc + 1
+  while X < R
+    V = X & 1
+    T = TCap + V
+    if V = 1 then T = TCap2
+    put char T at X,Gr
+    Y = Gr + 1
+    T = TBody
+    if V = 1 then T = TBody2
+    put char T at X,Y
+    Y = Gr + 2
+    T = TKeel
+    if V = 1 then T = TKeel2
+    put char T at X,Y
+    Y = Gr + 3
+    T = TIce1
+    if V = 1 then T = TIce2
+    put char T at X,Y
+    inc X
+  end while
+  ' slab: rows Gr and Gr+1, full width; keel: row Gr+2, one in each side
+  K = Gi << 1
+  V = Gc << 3
+  RL[K] = V
+  V = R << 3
+  V = V + 7
+  RR[K] = V
+  V = Gr << 3
+  RT[K] = V
+  V = V + 15
+  RB[K] = V
+  inc K
+  V = Gc + 1
+  V = V << 3
+  RL[K] = V
+  V = R << 3
+  dec V
+  RR[K] = V
+  V = Gr + 2
+  V = V << 3
+  RT[K] = V
+  V = V + 7
+  RB[K] = V
+  return
+end sub
+
+' the acid surface ripples: its pattern (bottom screen third) shifts
+' every 12 frames
+sub Ripple:
+  inc AcT
+  if AcT < 12 then return
+  AcT = 0
+  V = AcPh + 1
+  AcPh = V & 3
+  V = AcPh << 3
+  W16 = V
+  A16 = TAcid << 3
+  A16 = A16 + 4096
+  copy AcidAnim + W16 count 8 to vram.pattern + A16
+  return
+end sub
+
+' the pack's hiss while it fires; a beep when fuel is low
+sub Sounds:
+  if BoomT > 0 then dec BoomT
+  if Thr = 1 then
+    if JetT = 0 then
+      if BoomT = 0 then play sound SndJet
+      JetT = 6
+    end if
+  end if
+  if JetT > 0 then dec JetT
+  if Gs <> 1 then return
+  if Fuel > 10 then
+    LowT = 0
+    return
+  end if
+  inc LowT
+  if LowT < 45 then return
+  LowT = 0
+  play sound SndLow
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-2: you (visor and pack, suit, flame); 3-8: the rivals
+
+sub DrawSprites:
+  W = Px << 1
+  X = highbyte W
+  W = Py << 1
+  Y = highbyte W
+  Y = Y - 1
+  if Gs = 2 then
+    set sprite 0 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+    if St < 8 then
+      set sprite 1 to Y,X,SBoom1,11
+    elseif St < 20 then
+      set sprite 1 to Y,X,SBoom2,9
+    elseif St < 40 then
+      set sprite 1 to Y,X,SBoom3,14
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  else
+    if Face = 0 then
+      set sprite 0 to Y,X,SDetR,5
+      set sprite 1 to Y,X,SSuitR,15
+    else
+      set sprite 0 to Y,X,SDetL,5
+      set sprite 1 to Y,X,SSuitL,15
+    end if
+    inc FlT
+    if FlT >= 20 then FlT = 0
+    if Thr = 1 then
+      T = SFlame1R
+      if FlT >= 10 then T = SFlame2R
+      if Face = 1 then T = T + 8
+      set sprite 2 to Y,X,T,11
+    else
+      set sprite 2 to 192,0,0,0
+    end if
+  end if
+  for J = 0 to 2
+    K = J << 1
+    K = K + 3
+    N = K + 1
+    if EOn[J] = 0 then
+      set sprite K to 192,0,0,0
+      set sprite N to 192,0,0,0
+    else
+      W = EX[J] << 1
+      X = highbyte W
+      W = EY[J] << 1
+      Y = highbyte W
+      Y = Y - 1
+      if EOn[J] = 2 then
+        V = EBt[J]
+        set sprite K to 192,0,0,0
+        if V < 8 then
+          set sprite N to Y,X,SBoom1,11
+        elseif V < 18 then
+          set sprite N to Y,X,SBoom2,9
+        else
+          set sprite N to Y,X,SBoom3,14
+        end if
+      else
+        T = SDetR
+        U = SSuitR
+        W = EVY[J]
+        if W < KM16 then T = SDetFR
+        if EF[J] = 1 then
+          T = T + 12
+          U = SSuitL
+        end if
+        set sprite K to Y,X,T,11
+        set sprite N to Y,X,U,13
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' row 1: the score, the best, the fuel
+
+sub Banner:
+  fill 32 count 28 at 2,1
+  return
+end sub
+
+sub ShowHud:
+  Banner
+  print at 2,1, "SCORE"
+  ShowScore
+  print at 15,1, "HI"
+  NumU = Hi
+  print at 18,1, digits$(NumU, 5)
+  put char TDrop at 25,1
+  ShowFuel
+  return
+end sub
+
+' the figures are printed by subtraction (digits$ divides; cheap enough
+' here, but this keeps the frame loop's worst pass short)
+sub ShowScore:
+  if Gs = 0 then return
+  if Gs = 3 then return
+  W16 = Score
+  X = 8
+  A16 = 10000
+  PutDigit
+  A16 = 1000
+  PutDigit
+  A16 = 100
+  PutDigit
+  A16 = 10
+  PutDigit
+  A16 = 1
+  PutDigit
+  return
+end sub
+
+' PutDigit: the digit of W16 for the power A16 at X,1 (W16 keeps the rest)
+sub PutDigit:
+  T = 48
+  while W16 >= A16
+    W16 = W16 - A16
+    inc T
+  end while
+  put char T at X,1
+  inc X
+  return
+end sub
+
+sub ShowFuel:
+  if Gs = 0 then return
+  if Gs = 3 then return
+  W16 = Fuel
+  X = 26
+  A16 = 100
+  PutDigit
+  A16 = 10
+  PutDigit
+  A16 = 1
+  PutDigit
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 9
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo, a gravinaut over the pad, the tune once,
+' START / CREDITS
+sub TitlePage:
+  NewScreen
+  backdrop dark blue
+  print at 2,1, "HI"
+  NumU = Hi
+  print at 5,1, digits$(NumU, 5)
+  for J = 0 to 9
+    V = J << 2
+    X = J << 1
+    X = X + 6
+    T = LogoMap[V]
+    put char T at X,3
+    inc V
+    inc X
+    T = LogoMap[V]
+    put char T at X,3
+    inc V
+    dec X
+    T = LogoMap[V]
+    put char T at X,4
+    inc V
+    inc X
+    T = LogoMap[V]
+    put char T at X,4
+  next
+  Gi = 0
+  Gc = 4
+  Gw = 6
+  Gr = 7
+  DrawGlacier
+  Gc = 21
+  Gw = 7
+  Gr = 8
+  DrawGlacier
+  put char TTank3t at 24,6
+  put char TTank3b at 24,7
+  put char TStar1 at 14,7
+  put char TStar2 at 18,9
+  put char TStar3 at 12,10
+  put char TStar1 at 27,5
+  print at 3,12, "FLY YOUR ROCKET PACK OVER"
+  print at 3,13, "THE ACID SEA OF ARKION."
+  print at 3,14, "KNOCK RIVALS FROM ABOVE,"
+  print at 3,15, "TAKE EVERY FUEL TANK."
+  fill TAcid count 32 at 0,21
+  fill TAcidD count 32 at 0,22
+  put char TPadL at 13,21
+  fill TPad count 4 at 14,21
+  put char TPadR at 18,21
+  put char TLeg at 14,22
+  put char TLeg at 17,22
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleSprites
+  Ripple
+  V = Lf1 | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the title's gravinauts: you hover over the pad, two rivals drift
+sub TitleSprites:
+  V = Tick >> 2
+  V = V & 31
+  if V >= 16 then V = 31 - V
+  V = V >> 1
+  Y = 143 + V
+  set sprite 0 to Y,120,SDetR,5
+  set sprite 1 to Y,120,SSuitR,15
+  T = SFlame1R
+  V = Tick & 16
+  if V > 0 then T = SFlame2R
+  set sprite 2 to Y,120,T,11
+  V = Tick >> 3
+  V = V & 15
+  if V >= 8 then V = 15 - V
+  Y = 39 + V
+  X = 46
+  set sprite 3 to Y,X,SDetR,11
+  set sprite 4 to Y,X,SSuitR,13
+  Y = 47 - V
+  X = 196
+  set sprite 5 to Y,X,SDetL,11
+  set sprite 6 to Y,X,SSuitL,13
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  print at 8,17, " START   CREDITS"
+  if Menu = 0 then
+    put char 62 at 8,17
+  else
+    put char 62 at 16,17
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 10,2, "GRAVINAUTS"
+  print at 2,5, "BASED ON GRAVINAUTS BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! OCTOBER 1985"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: ARKION ASCENT"
+  print at 8,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; GvIce: Hit = the first K (0-7) with Bx1 >= RL[K], Bx0 <= RR[K],
+; By1 >= RT[K], By0 <= RB[K]; else 255. Same as the Amy loop it replaces.
+GvIce:
+    push ix
+    ld ix,AMY_UVAR_RL
+    ld a,(AMY_UVAR_Bx0)
+    ld c,a
+    ld a,(AMY_UVAR_Bx1)
+    ld d,a
+    ld a,(AMY_UVAR_By0)
+    ld e,a
+    ld a,(AMY_UVAR_By1)
+    ld h,a
+    ld b,0
+gvi_loop:
+    ld a,d
+    cp (ix+0)
+    jr c,gvi_next
+    ld a,(ix+AMY_UVAR_RR-AMY_UVAR_RL)
+    cp c
+    jr c,gvi_next
+    ld a,h
+    cp (ix+AMY_UVAR_RT-AMY_UVAR_RL)
+    jr c,gvi_next
+    ld a,(ix+AMY_UVAR_RB-AMY_UVAR_RL)
+    cp e
+    jr c,gvi_next
+    ld a,b
+    jr gvi_done
+gvi_next:
+    inc ix
+    inc b
+    ld a,b
+    cp 8
+    jr nz,gvi_loop
+    ld a,255
+gvi_done:
+    ld (AMY_UVAR_Hit),a
+    pop ix
+    ret
+; GvRand: the 16-bit xorshift Rs ^= Rs << 7, Rs ^= Rs >> 9, Rs ^= Rs << 8
+; (the same numbers as the Amy version it replaces)
+GvRand:
+    ld hl,(AMY_UVAR_Rs)
+    ld a,h
+    rra
+    ld a,l
+    rra
+    ld b,a
+    ld a,0
+    rra
+    xor l
+    ld l,a
+    ld a,b
+    xor h
+    ld h,a
+    ld a,h
+    srl a
+    xor l
+    ld l,a
+    ld a,l
+    xor h
+    ld h,a
+    ld (AMY_UVAR_Rs),hl
+    ret
+GvJet:
+    db $00,$00,$36,$03,$00,$00,$56,$03,$10
+GvBump:
+    db $40,$53,$31,$02,$40,$C5,$61,$03,$50
+GvFuel:
+    db $40,$8F,$10,$03,$40,$71,$10,$03,$40,$5F,$10,$03,$40,$47,$20,$08,$50
+GvPop:
+    db $00,$00,$04,$03,$00,$00,$15,$06,$00,$00,$46,$0A,$00,$00,$77,$0A,$10
+GvPopT:
+    db $40,$55,$10,$03,$40,$71,$20,$03,$40,$AA,$30,$06,$50
+GvBoom:
+    db $00,$00,$04,$06,$00,$00,$05,$0C,$00,$00,$26,$10,$00,$00,$47,$18,$00,$00,$87,$1E,$10
+GvLow:
+    db $40,$40,$40,$04,$40,$40,$F0,$06,$40,$40,$40,$04,$50
+GvWave:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+GvClear:
+    db $40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$55,$20,$14
+    db $50
+GvOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$AB,$31,$0C,$40,$3B,$32,$28,$50
+
+GvSoundTable:
+    dw GvTuneMel,$702B
+    dw GvTuneBass,$7035
+    dw GvJet,$703F
+    dw GvBump,$7049
+    dw GvFuel,$7049
+    dw GvPop,$703F
+    dw GvPopT,$7049
+    dw GvBoom,$703F
+    dw GvLow,$7049
+    dw GvWave,$7049
+    dw GvClear,$7049
+    dw GvOver,$7049
+; Arkion Ascent (original)
+; Tiny Sound, 8 frames per step
+GvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$1A,$21,$1C,$01,$1F,$01,$23,$01,$01,$28,$26,$01,$23,$01
+    db $21,$01,$23,$01,$1F,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01
+    db $23,$01,$01,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$21,$01,$01,$1E
+    db $1A,$01,$1E,$01,$1F,$01,$1E,$01,$1C,$01,$1B,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+GvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$04,$01,$0B,$01,$10,$01,$0B,$01,$04,$01,$0B,$01
+    db $10,$01,$0B,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$04,$01,$0B,$01
+    db $04,$01,$00,$01
+    db $FF
+}

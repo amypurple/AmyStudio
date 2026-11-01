@@ -97,6 +97,11 @@ export function createAddressHelpers(ctx) {
     if (!lines) return null;
     const expressionAst = parseExpressionAst(offsetToken);
     const exprType = expressionAst ? resolveExpressionAstValueType(expressionAst) : null;
+    if (expressionAst?.kind === "binary" || expressionAst?.kind === "unary") {
+      const loadOffset = emitLoadInt16IntoHL(offsetToken, "u16");
+      if (!loadOffset) return null;
+      return [...lines, "    push hl", ...loadOffset, "    ex de,hl", "    pop hl", "    add hl,de"];
+    }
     if (exprType === "int8") {
       const loadOffset = emitLoadInt8ValueInto("a", offsetToken);
       if (!loadOffset) return null;
@@ -126,6 +131,16 @@ export function createAddressHelpers(ctx) {
       if (constantOffset !== null) return [`    ld de,${baseLabel} + ${constantOffset}`];
       const expressionAst = parseExpressionAst(offsetToken);
       const exprType = expressionAst ? resolveExpressionAstValueType(expressionAst) : null;
+      if (expressionAst?.kind === "binary" || expressionAst?.kind === "unary") {
+        const loadOffset = emitLoadInt16IntoHL(offsetToken, "u16");
+        if (!loadOffset) return null;
+        return [
+          ...loadOffset,
+          `    ld de,${baseLabel}`,
+          "    add hl,de",
+          "    ex de,hl"
+        ];
+      }
       if (exprType === "int8") {
         const loadOffset = emitLoadInt8ValueInto("a", offsetToken);
         if (!loadOffset) return null;
@@ -178,6 +193,15 @@ export function createAddressHelpers(ctx) {
       if (constantOffset !== null) return [`    ld hl,${baseLabel} + ${constantOffset}`];
       const expressionAst = parseExpressionAst(offsetToken);
       const exprType = expressionAst ? resolveExpressionAstValueType(expressionAst) : null;
+      if (expressionAst?.kind === "binary" || expressionAst?.kind === "unary") {
+        const loadOffset = emitLoadInt16IntoHL(offsetToken, "u16");
+        if (!loadOffset) return null;
+        return [
+          ...loadOffset,
+          `    ld de,${baseLabel}`,
+          "    add hl,de"
+        ];
+      }
       if (exprType === "int8") {
         const loadOffset = emitLoadInt8ValueInto("a", offsetToken);
         if (!loadOffset) return null;

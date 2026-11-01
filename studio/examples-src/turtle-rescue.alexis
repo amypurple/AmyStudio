@@ -1,0 +1,1292 @@
+cartridge "TURTLE RESCUE/B. JAMSHIDI/1987"
+
+' TURTLE RESCUE
+' A ColecoVision game based on "Turtle Rescue" by Behzad Jamshidi, Ahoy!
+' February 1987 (Commodore 64, machine code). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' machine code, orig/tr.dis), the game is built for the ColecoVision: a
+' painted night scene in tiles, smooth 16 x 16 sprites, spider threads that
+' reach only down to their spider, sound effects and a title tune.
+'
+' The game: the baby turtles wait in their nest on the left; their mother
+' waits on a ledge on the right. Walk to the nest to take a baby on your
+' back, walk to the foot of the cliff to set it in the crevice below its
+' mother. Ten babies make a family: the round is won and the next one is
+' faster. Five spiders bob up and down on their threads: one touching you
+' knocks the baby off (it runs back to the nest). Drops of poison fall from
+' the vine above: a drop that hits a spider sends it down its thread, a
+' drop that hits you ends the game.
+'
+' From the original (orig/, its machine code): the turtle walks left and
+' right only; a baby is taken at the left edge, set down at the right edge;
+' ten per round, then a heart for the mother, the stack cleared, the next
+' round one step faster (its delay loop one count shorter); five spiders at
+' fixed columns, each moving a pixel a step between a top and a bottom
+' height, turning at each end; one drop at a time from the top at a random
+' column, a pixel a step; a drop touching a spider turns it downward and
+' starts a new drop; a drop touching the turtle ends the game; a spider
+' touching the turtle takes its baby; the spiders change legs every 20
+' steps; level 1, 2 or 3 at the start (33.8, 43 and 84 steps a second,
+' measured in jsc64, orig/c64run-turtle.mjs); the count of families saved.
+'
+' Liberties: one step of the original is 0.8 pixel here (the field is 184
+' pixels wide instead of 230), moved with a sub-pixel accumulator at 60
+' passes a second; the spiders pause a step at the top as well as at the
+' bottom (Amy's bounce); diagonals on the stick also walk (the C64 code wanted an
+' exact left or right); the drop forms on the vine for 60 steps before it
+' falls (on the C64 it fell for 40 steps above the screen, unseen); speed
+' stops growing after round 19 (the C64 delay wrapped round to its slowest);
+' the game ends with a message instead of starting over at once; best score.
+'
+' Controls: either controller. The stick walks left and right. On the
+' title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers (bug 36). Nothing flashes.
+
+const TBg0 = 128
+const TBg1 = 129
+const TBg2 = 130
+const TBg3 = 131
+const TBg4 = 132
+const TBg5 = 133
+const TBg6 = 134
+const TBg7 = 135
+const TBg8 = 136
+const TBg9 = 137
+const TBg10 = 138
+const TBg11 = 139
+const TBg12 = 140
+const TBg13 = 141
+const TBg14 = 142
+const TBg15 = 143
+const TBg16 = 144
+const TBg17 = 145
+const TBg18 = 146
+const TBg19 = 147
+const TBg20 = 148
+const TBg21 = 149
+const TBg22 = 150
+const TBg23 = 151
+const TBg24 = 152
+const TBg25 = 153
+const TBg26 = 154
+const TBg27 = 155
+const TBg28 = 156
+const TBg29 = 157
+const TBg30 = 158
+const TBg31 = 159
+const TBg32 = 160
+const TBg33 = 161
+const TBg34 = 162
+const TBg35 = 163
+const TBg36 = 164
+const TBg37 = 165
+const TBg38 = 166
+const TBg39 = 167
+const TBg40 = 168
+const TBg41 = 169
+const TBg42 = 170
+const TBg43 = 171
+const TBg44 = 172
+const TBg45 = 173
+const TBg46 = 174
+const TBg47 = 175
+const TBg48 = 176
+const TBg49 = 177
+const TBg50 = 178
+const TBg51 = 179
+const TBabyL = 180
+const TBabyR = 181
+const TMom00 = 182
+const TMom01 = 183
+const TMom02 = 184
+const TMom03 = 185
+const TMom10 = 186
+const TMom11 = 187
+const TMom12 = 188
+const TMom13 = 189
+const TMomeye = 190
+const STrw1s = 0
+const STrw1k = 4
+const STlw1s = 8
+const STlw1k = 12
+const SCrw1s = 16
+const SCrw1k = 20
+const SClw1s = 24
+const SClw1k = 28
+const STrw2s = 32
+const STrw2k = 36
+const STlw2s = 40
+const STlw2k = 44
+const SCrw2s = 48
+const SCrw2k = 52
+const SClw2s = 56
+const SClw2k = 60
+const SHides = 64
+const SHidek = 68
+const SSp1 = 72
+const SSp2 = 76
+const SDr0 = 80
+const SDr1 = 84
+const SDr2 = 88
+const SDrop = 92
+const SSpl1 = 96
+const SSpl2 = 100
+const SHeart1 = 104
+const SHeart2 = 108
+const SLb1 = 112
+const SLb2 = 116
+const NTiles8 = 504
+const SprBytes = 960
+const NBg = 52
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSplash = 3
+const SndStep = 4
+const SndPick = 5
+const SndHome = 6
+const SndLost = 7
+const SndPlip = 8
+const SndPoison = 9
+const SndCheer = 10
+const SndPip = 11
+const SndStart = 12
+const XMin = 16
+const XMax = 200
+const PlY = 147
+const SpTop = 36
+const SpBot = 148
+const DropY0 = 22
+const DropEnd = 151
+const FormT = 60
+const NMin = 5
+
+data SpX bytes = 36, 68, 100, 132, 164
+data SpCol bytes = 5, 9, 13, 17, 21
+data SpY0 bytes = 131, 91, 50, 75, 83
+' steps of the original per frame, in 1/256 of a step of 0.8 pixel, for its
+' delay count N (5-23): 1 / (0.00061 + 0.00126 N) steps a second
+data SpdTab words = 0, 0, 0, 0, 0, 494, 418, 362, 319, 286, 258, 236, 217, 201, 187, 175, 164, 155, 147, 139, 132, 126, 120, 115
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Acc = 0
+u16 Spd = 0
+' the turtle: x, facing (0 right, 1 left), carrying, walk counters
+u8 Px = 20
+u8 Pd = 0
+u8 Carry = 0
+u8 Wf = 0
+u8 Wph = 0
+u8 StepC = 0
+' the spiders: height, step (1 down, -1 up), the lowest thread row drawn
+u8 Sy[5]
+i8 Sd[5]
+u8 Tr[5]
+u8 SpA = 0
+u8 SpPose = 0
+' the drop: phase (0 forming, 1 falling), forming time, x, y
+u8 Dp = 0
+u8 Dt = 0
+u8 Dx = 0
+u8 Dy = 0
+' the game
+u8 HomeN = 0
+u8 Round = 1
+u8 NStart = 23
+u8 Saved = 0
+u8 Best = 0
+u8 Over = 0
+u8 Menu = 0
+' where the program is, for the tests: 0 title, 1 playing, 2 a family
+' home, 3 the game over
+u8 Mode = 0
+' the lost baby running home, the splash, the mother's blink
+u8 LbOn = 0
+u8 LbX = 0
+u8 LbF = 0
+u8 Spl = 0
+u8 SplX = 0
+u8 SplY = 0
+u8 Blink = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Si = 0
+u8 Ti = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 H = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 S = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table TrSoundTable areas 6
+  sprites 16x16
+  set sprite count 10
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+  select case Menu
+  case 0
+    NStart = 23
+  case 1
+    NStart = 18
+  case else
+    NStart = 9
+  end select
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  Acc = Acc + Spd
+  while Acc >= 256
+    Acc = Acc - 256
+    PlayTick
+  end while
+  DrawThreads
+  Animate
+  DrawSprites
+  if Over = 1 then goto game_over
+  if HomeN >= 10 then Celebrate
+  goto play_loop
+
+game_over:
+  ' the drop got the turtle: it hides in its shell, then the message, then
+  ' back to the title on a press
+  Mode = 3
+  mute all
+  play sound SndPoison
+  Spl = 12
+  SplX = Px
+  SplY = PlY
+  Dp = 2
+  for Ri = 0 to 59
+    Frame1
+    Animate
+    DrawSprites
+  next
+  if Saved > Best then Best = Saved
+  ShowHud
+  print at 7,8, "                  "
+  print at 7,9, "  A POISON DROP!  "
+  print at 7,10, "                  "
+  print at 7,11, "  FAMILIES SAVED  "
+  NumU = Saved
+  print at 23,11, digits$(NumU, 2)
+  print at 7,12, "                  "
+  print at 7,13, "  BEST            "
+  NumU = Best
+  print at 14,13, digits$(NumU, 2)
+  print at 7,14, "                  "
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one step of the original's main loop
+
+sub PlayTick:
+  if Over = 1 then return
+  if HomeN >= 10 then return
+  MovePlayer
+  for Si = 0 to 4
+    MoveSpider
+  next
+  inc SpA
+  if SpA >= 20 then
+    SpA = 0
+    SpPose = SpPose ^ 1
+  end if
+  MoveDrop
+  HitPlayer
+  return
+end sub
+
+' the stick walks a step (right first, as the C64 checked); at the left edge
+' a baby climbs on, at the right edge it is set in the crevice
+sub MovePlayer:
+  K = J1 & 12
+  if K = 0 then return
+  V = K & 8
+  if V > 0 then
+    Pd = 0
+    inc Px
+    if Px >= XMax then
+      Px = XMax
+      if Carry = 1 then Deliver
+    end if
+  else
+    Pd = 1
+    dec Px
+    if Px <= XMin then
+      Px = XMin
+      if Carry = 0 then
+        Carry = 1
+        play sound SndPick
+      end if
+    end if
+  end if
+  inc Wf
+  if Wf >= 4 then
+    Wf = 0
+    Wph = Wph ^ 1
+  end if
+  inc StepC
+  if StepC >= 8 then
+    StepC = 0
+    play sound SndStep
+  end if
+  return
+end sub
+
+sub Deliver:
+  Carry = 0
+  inc HomeN
+  R = 20 - HomeN
+  put char TBabyL at 27,R
+  put char TBabyR at 28,R
+  play sound SndHome
+  return
+end sub
+
+' a spider (Si): a falling drop touching it turns it downward; it moves a
+' pixel, and at each end it stays a step while it turns
+sub MoveSpider:
+  if Dp = 1 then
+    X = SpX[Si]
+    Y = Sy[Si]
+    Got = 0
+    ' the drop's box (5 x 7) against the spider's body (12 x 8)
+    if box Dx + 5,Dy + 6 size 5,7 collides with box X + 2,Y + 4 size 12,8 then Got = 1
+    if Got = 1 then
+      Sd[Si] = 1
+      play sound SndPlip
+      Spl = 10
+      SplX = Dx
+      SplY = Dy
+      NewDrop
+    end if
+  end if
+  bounce Sy[Si] by Sd[Si] between SpTop and SpBot
+  return
+end sub
+
+' the drop forms on the vine, then falls a pixel a step to the ground
+sub MoveDrop:
+  if Dp = 0 then
+    inc Dt
+    if Dt >= FormT then Dp = 1
+    return
+  end if
+  inc Dy
+  if Dy >= DropEnd then
+    Spl = 10
+    SplX = Dx
+    SplY = DropEnd
+    play sound SndSplash
+    NewDrop
+  end if
+  return
+end sub
+
+sub NewDrop:
+  Rand
+  V = Rs & 255
+  V = V % 185
+  Dx = V + 16
+  Dy = DropY0
+  Dp = 0
+  Dt = 0
+  return
+end sub
+
+' the drop touching the turtle (or the baby on its back) ends the game; a
+' spider touching it knocks the baby off
+sub HitPlayer:
+  ' the turtle's box: 14 wide, from its shell (or the baby's) to its feet
+  T = 6
+  if Carry = 1 then T = 2
+  H = 14 - T
+  Y = PlY + T
+  X = Px + 1
+  if Dp = 1 then
+    if box Dx + 5,Dy + 6 size 5,7 collides with box X,Y size 14,H then
+      Over = 1
+      return
+    end if
+  end if
+  if Carry = 0 then return
+  for Ti = 0 to 4
+    if Carry = 1 then
+      U = SpX[Ti] + 2
+      V = Sy[Ti] + 4
+      if box U,V size 12,8 collides with box X,Y size 14,H then
+        Carry = 0
+        LbOn = 1
+        LbX = Px
+        LbF = 0
+        play sound SndLost
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a family is home: a heart for the mother, the babies go up one by one,
+' the next round one step faster
+
+sub Celebrate:
+  Mode = 2
+  mute all
+  play sound SndCheer
+  set sprite 2 to 192,0,0,0
+  set sprite 3 to 192,0,0,0
+  Y = 44
+  for Ri = 0 to 179
+    Frame1
+    V = Ri & 3
+    if V = 0 then
+      if Y > 20 then dec Y
+    end if
+    K = SHeart1
+    V = Ri / 20
+    V = V & 1
+    if V = 1 then K = SHeart2
+    set sprite 9 to Y,212,K,9
+    ' from the 60th frame the babies leave the crevice, the top one first
+    if Ri >= 60 then
+      V = Ri - 60
+      U = V % 12
+      if U = 0 then
+        R = V / 12
+        R = R + 10
+        if R <= 19 then
+          ' the offsets in u16 first: `copy SceneMap + (R - 1) * 32 + 27`
+          ' works the offset out in 8 bits (bugs/turtle-copy-offset-8bit)
+          W16 = R - 1
+          W16 = W16 << 5
+          W16 = W16 + 27
+          A16 = R
+          A16 = A16 << 5
+          A16 = A16 + 27
+          copy SceneMap + W16 count 2 to vram.name + A16
+          play sound SndPip
+        end if
+      end if
+    end if
+    update sprites
+  next
+  set sprite 9 to 192,0,0,0
+  inc Saved
+  Best = max(Best, Saved)
+  inc Round
+  SetupRound
+  DrawThreads
+  ShowHud
+  print at 10,10, "            "
+  print at 10,11, "  ROUND     "
+  NumU = Round
+  print at 18,11, digits$(NumU, 2)
+  print at 10,12, "            "
+  DrawSprites
+  play sound SndStart
+  for Ri = 0 to 89
+    Frame1
+  next
+  for Ri = 10 to 12
+    RestoreRow
+  next
+  Mode = 1
+  return
+end sub
+
+' the scene's row Ri back from the map, with the silk of the threads that
+' reach it
+sub RestoreRow:
+  W16 = Ri - 1
+  W16 = W16 << 5
+  A16 = Ri
+  A16 = A16 << 5
+  copy SceneMap + W16 count 32 to vram.name + A16
+  for Ti = 0 to 4
+    if Ri <= Tr[Ti] then
+      V = ThrTile(Ti, Ri)
+      C = SpCol[Ti]
+      put char V at C,Ri
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' each thread down to its spider: tiles with silk above, plain below
+sub DrawThreads:
+  for Ti = 0 to 4
+    V = Sy[Ti] - 1
+    R = V >> 3
+    if R > 19 then R = 19
+    T = Tr[Ti]
+    if R <> T then
+      C = SpCol[Ti]
+      if R > T then
+        J = T + 1
+        while J <= R
+          V = ThrTile(Ti, J)
+          put char V at C,J
+          inc J
+        end while
+      else
+        J = R + 1
+        while J <= T
+          W16 = J - 1
+          W16 = W16 << 5
+          W16 = W16 + C
+          V = SceneMap[W16]
+          put char V at C,J
+          inc J
+        end while
+      end if
+      Tr[Ti] = R
+    end if
+  next
+  return
+end sub
+
+' the tile with silk for thread I at screen row Row
+function ThrTile(u8 I, u8 Row) as u8
+  return ThrMap[I * 21 + Row - 1]
+
+' the splash fades, the lost baby runs home, the mother blinks now and then
+sub Animate:
+  if Spl > 0 then dec Spl
+  if LbOn = 1 then
+    inc LbF
+    if LbX <= 18 then
+      LbOn = 0
+    else
+      LbX = LbX - 2
+    end if
+  end if
+  inc Blink
+  if Blink = 200 then put char TMomeye at 29,7
+  if Blink >= 208 then
+    Blink = 0
+    put char TMom03 at 29,7
+  end if
+  return
+end sub
+
+' sprites 0-1 the turtle (shell over skin), 2 the drop, 3 the lost baby,
+' 4-8 the spiders, 9 the splash
+sub DrawSprites:
+  Y = PlY - 1
+  if Over = 1 then
+    set sprite 0 to Y,Px,SHides,10
+    set sprite 1 to Y,Px,SHidek,3
+  else
+    ' the patterns go: right, left; with a baby; second step (tilekit order)
+    K = (Wph * 8 + Carry * 4 + Pd * 2) * 4
+    T = K + 4
+    set sprite 0 to Y,Px,K,10
+    set sprite 1 to Y,Px,T,3
+  end if
+  if Dp = 0 then
+    V = Dt / 20
+    K = V << 2
+    K = K + SDr0
+    Y = Dy - 1
+    set sprite 2 to Y,Dx,K,7
+  elseif Dp = 1 then
+    Y = Dy - 1
+    set sprite 2 to Y,Dx,SDrop,7
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  if LbOn = 1 then
+    K = SLb1
+    V = LbF & 4
+    if V > 0 then K = SLb2
+    Y = PlY - 1
+    set sprite 3 to Y,LbX,K,3
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  K = SSp1
+  if SpPose = 1 then K = SSp2
+  for Ti = 0 to 4
+    J = Ti + 4
+    X = SpX[Ti]
+    Y = Sy[Ti] - 1
+    set sprite J to Y,X,K,13
+  next
+  if Spl > 0 then
+    K = SSpl2
+    if Spl > 5 then K = SSpl1
+    Y = SplY - 1
+    set sprite 9 to Y,SplX,K,7
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 32 at 0,22
+  print at 2,22, "SAVED"
+  NumU = Saved
+  print at 8,22, digits$(NumU, 2)
+  print at 12,22, "ROUND"
+  NumU = Round
+  print at 18,22, digits$(NumU, 2)
+  print at 22,22, "BEST"
+  NumU = Best
+  print at 27,22, digits$(NumU, 2)
+  return
+end sub
+
+' the scene, the mother, the babies already home
+sub DrawScene:
+  copy SceneMap count 672 to vram.name + 32
+  put char TMom00 at 26,7
+  put char TMom01 at 27,7
+  put char TMom02 at 28,7
+  put char TMom03 at 29,7
+  put char TMom10 at 26,8
+  put char TMom11 at 27,8
+  put char TMom12 at 28,8
+  put char TMom13 at 29,8
+  for Ti = 0 to 4
+    Tr[Ti] = 3
+  next
+  return
+end sub
+
+sub SetupRound:
+  HomeN = 0
+  Carry = 0
+  Px = 20
+  Pd = 0
+  Wf = 0
+  Wph = 0
+  StepC = 0
+  for Si = 0 to 4
+    Sy[Si] = SpY0[Si]
+    Sd[Si] = 1
+  next
+  SpA = 0
+  SpPose = 0
+  Dx = 106
+  Dy = DropY0
+  Dp = 0
+  Dt = 0
+  LbOn = 0
+  Spl = 0
+  ' one delay count less a round, down to NMin
+  V = Round - 1
+  T = NStart - NMin
+  if V >= T then
+    N = NMin
+  else
+    N = NStart - V
+  end if
+  Spd = SpdTab[N]
+  Acc = 0
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  DrawScene
+  Saved = 0
+  Round = 1
+  Over = 0
+  SetupRound
+  ShowHud
+  DrawThreads
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  Mode = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  ' left and right at once (two controllers): neither
+  V = J1 & 12
+  if V = 12 then J1 = J1 & 243
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the scene, the turtle strolling, three babies home, the tune
+' once, LEVEL 1 / LEVEL 2 / LEVEL 3 / CREDITS
+sub TitlePage:
+  Mode = 0
+  NewScreen
+  DrawScene
+  for R = 17 to 19
+    put char TBabyL at 27,R
+    put char TBabyR at 28,R
+  next
+  print at 7,6, "                  "
+  print at 7,7, "  TURTLE  RESCUE  "
+  print at 7,8, "                  "
+  print at 7,9, "   START LEVEL 1  "
+  print at 7,10, "   START LEVEL 2  "
+  print at 7,11, "   START LEVEL 3  "
+  print at 7,12, "   CREDITS        "
+  print at 7,13, "                  "
+  fill 32 count 32 at 0,22
+  print at 2,22, "AHOY! FEB 1987"
+  print at 22,22, "BEST"
+  NumU = Best
+  print at 27,22, digits$(NumU, 2)
+  ShowMenu
+  Px = 60
+  Pd = 0
+  Carry = 0
+  Over = 0
+  LbOn = 0
+  Spl = 0
+  Dp = 2
+  for Ti = 0 to 4
+    Sy[Ti] = 193
+  next
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  Animate
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+' the turtle strolls to and fro at the bottom, a baby on its back going
+' right
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then
+    if Pd = 0 then
+      inc Px
+      if Px >= 190 then Pd = 1
+    else
+      dec Px
+      if Px <= 30 then Pd = 0
+    end if
+    inc Wf
+    if Wf >= 4 then
+      Wf = 0
+      Wph = Wph ^ 1
+    end if
+  end if
+  Carry = 1
+  if Pd = 1 then Carry = 0
+  DrawSprites
+  return
+end sub
+
+sub ShowMenu:
+  for J = 9 to 12
+    put char 32 at 9,J
+  next
+  J = Menu + 9
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "TURTLE  RESCUE"
+  print at 2,5, "BASED ON TURTLE RESCUE BY"
+  print at 2,6, "BEHZAD JAMSHIDI, AHOY!"
+  print at 2,7, "FEBRUARY 1987 (COMMODORE"
+  print at 2,8, "64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SLOW AND STEADY"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$18,$C3,$C1,$E1,$0C,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$C3,$C1,$E1,$0C
+  $00,$00,$20,$02,$10,$00,$00,$00
+  $00,$00,$20,$02,$10,$00,$00,$C0
+  $00,$00,$00,$02,$10,$81,$00,$00
+  $00,$00,$00,$02,$10,$81,$00,$C0
+  $01,$01,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$60,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$03,$03
+  $00,$00,$C3,$00,$03,$01,$00,$80
+  $00,$00,$00,$00,$80,$80,$C0,$C0
+  $03,$03,$01,$01,$00,$00,$00,$00
+  $00,$10,$00,$40,$00,$C3,$00,$00
+  $C0,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$00,$00
+  $00,$00,$00,$00,$00,$20,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$00
+  $88,$11,$22,$18,$07,$00,$20,$00
+  $88,$11,$22,$F0,$00,$C0,$40,$40
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$10
+  $00,$00,$08,$01,$06,$38,$C0,$80
+  $01,$02,$04,$C4,$38,$0C,$03,$00
+  $80,$40,$30,$F0,$00,$C0,$40,$40
+  $00,$00,$E0,$18,$07,$00,$20,$00
+  $00,$00,$08,$00,$00,$00,$00,$00
+  $10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$F0
+  $00,$00,$00,$00,$F0,$00,$08,$02
+  $00,$00,$00,$00,$C0,$03,$08,$02
+  $00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$03,$F0,$C0,$C0,$00,$80
+  $F0,$00,$40,$10,$04,$01,$00,$80
+  $C0,$03,$40,$10,$04,$01,$00,$80
+  $00,$00,$00,$C0,$F0,$F0,$03,$80
+  $C0,$C0,$40,$10,$04,$01,$00,$80
+  $00,$00,$40,$10,$04,$01,$00,$80
+  $F0,$F0,$03,$10,$04,$01,$00,$80
+  $20,$08,$02,$00,$00,$40,$10,$04
+  $03,$F0,$C1,$83,$07,$F0,$F0,$00
+  $00,$00,$07,$03,$01,$00,$00,$00
+  $01,$C0,$F0,$03,$00,$00,$80,$00
+  $01,$00,$80,$20,$08,$02,$00,$00
+  $00,$00,$10,$92,$44,$92,$00,$00
+  $00,$80,$20,$08,$02,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$E0,$10,$18,$12
+  $10,$10,$50,$10,$14,$11,$10,$90
+  $30,$18,$12,$10,$10,$50,$10,$14
+  $11,$10,$90,$30,$18,$12,$10,$10
+  $E0,$10,$50,$10,$14,$11,$10,$90
+  $00,$07,$E0,$C0,$C0,$80,$24,$00
+  $00,$E0,$07,$00,$01,$00,$24,$00
+  $00,$00,$00,$01,$03,$07,$0E,$F0
+  $00,$00,$C0,$08,$08,$1C,$1C,$10
+  $00,$00,$C0,$F0,$07,$03,$C3,$23
+  $00,$00,$00,$00,$00,$1C,$C1,$C8
+  $E0,$E0,$F0,$90,$07,$00,$00,$00
+  $10,$10,$00,$00,$80,$00,$00,$00
+  $11,$11,$01,$E1,$F0,$00,$00,$00
+  $80,$03,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$1C,$C1,$C0
+end data
+data TileCol bytes
+  $01,$21,$12,$12,$12,$21,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$21,$12,$12,$12,$21
+  $01,$06,$6A,$6A,$6A,$06,$01,$01
+  $01,$06,$6A,$6A,$6A,$06,$01,$21
+  $01,$01,$06,$6A,$6A,$6A,$06,$01
+  $01,$01,$06,$6A,$6A,$6A,$06,$21
+  $21,$21,$01,$01,$01,$01,$01,$01
+  $21,$21,$21,$21,$01,$01,$01,$01
+  $01,$01,$01,$01,$B1,$B1,$B1,$B1
+  $01,$01,$1B,$0B,$FB,$FB,$0B,$AB
+  $01,$01,$01,$01,$B1,$B1,$F1,$B1
+  $B1,$B1,$B1,$B1,$01,$01,$01,$01
+  $0B,$AB,$0B,$AB,$0B,$1B,$01,$01
+  $B1,$B1,$B1,$B1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $32,$32,$32,$1E,$1E,$0E,$FE,$0E
+  $32,$32,$32,$E1,$0E,$1E,$1E,$1E
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$F1
+  $0E,$0E,$FE,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1F,$0E
+  $1F,$1E,$1E,$E1,$0E,$1E,$1E,$1E
+  $0E,$0E,$1E,$1E,$1E,$0E,$FE,$0E
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $F1,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$C1,$1C
+  $01,$01,$01,$01,$1C,$0C,$2C,$2C
+  $01,$01,$01,$01,$C1,$1C,$2C,$2C
+  $01,$01,$01,$01,$01,$01,$01,$C1
+  $01,$01,$C1,$1C,$1C,$1C,$0C,$2C
+  $1C,$0C,$2C,$2C,$2C,$2C,$0C,$2C
+  $C1,$1C,$2C,$2C,$2C,$2C,$0C,$2C
+  $01,$01,$01,$C1,$C1,$C1,$1C,$2C
+  $1C,$1C,$2C,$2C,$2C,$2C,$0C,$2C
+  $0C,$0C,$2C,$2C,$2C,$2C,$0C,$2C
+  $C1,$C1,$1C,$2C,$2C,$2C,$0C,$2C
+  $2C,$2C,$2C,$0C,$0C,$2C,$2C,$2C
+  $BC,$CB,$2B,$1B,$1B,$B1,$B1,$0B
+  $0B,$0B,$B1,$B1,$B1,$01,$01,$0B
+  $2C,$BC,$BC,$CB,$0B,$0B,$1B,$0B
+  $2C,$0C,$2C,$2C,$2C,$2C,$0C,$0C
+  $0C,$0C,$3C,$2C,$C2,$32,$02,$02
+  $0A,$6A,$6A,$6A,$6A,$0A,$0A,$0A
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$1C,$EC,$2C,$2C
+  $EC,$EC,$2C,$EC,$2C,$2C,$EC,$2C
+  $2C,$2C,$2C,$EC,$EC,$2C,$EC,$2C
+  $2C,$EC,$2C,$2C,$2C,$2C,$EC,$EC
+  $1C,$EC,$2C,$EC,$2C,$2C,$EC,$2C
+  $0E,$AE,$EA,$EA,$EA,$E3,$3E,$0E
+  $0E,$AE,$EA,$0A,$EA,$03,$3E,$0E
+  $01,$01,$01,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$1A,$1A,$1A,$1A,$A1,$1A
+  $01,$01,$A1,$A1,$1A,$1A,$1A,$1A
+  $01,$01,$01,$01,$01,$31,$13,$13
+  $1A,$1A,$1A,$13,$31,$01,$01,$01
+  $1A,$1A,$0A,$01,$31,$01,$01,$01
+  $1A,$1A,$1A,$13,$13,$01,$01,$01
+  $13,$13,$31,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$31,$13,$13
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$04,$04,$03,$08,$08,$FF,$60,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$23,$C3,$11,$11,$FF,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$04,$C4,$C3,$88,$88,$FF,$60,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$20,$C0,$10,$10,$FF,$06,$00,$00
+  $00,$03,$07,$0D,$0F,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$C0,$E0,$B0,$F0,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0B,$00,$04,$04,$03,$08,$08,$FF,$60,$00,$00
+  $00,$00,$00,$0C,$0C,$40,$00,$20,$23,$C3,$11,$11,$FF,$06,$00,$00
+  $00,$03,$07,$0D,$0F,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$C0,$E0,$B0,$F0,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$30,$30,$02,$00,$04,$C4,$C3,$88,$88,$FF,$60,$00,$00
+  $00,$00,$00,$00,$00,$D0,$00,$20,$20,$C0,$10,$10,$FF,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$04,$04,$03,$08,$08,$BF,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$23,$C3,$11,$11,$FE,$0C,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$04,$C4,$C3,$88,$88,$7F,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$20,$C0,$10,$10,$FD,$0C,$00,$00
+  $00,$03,$07,$0D,$0F,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$C0,$E0,$B0,$F0,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0B,$00,$04,$04,$03,$08,$08,$BF,$30,$00,$00
+  $00,$00,$00,$0C,$0C,$40,$00,$20,$23,$C3,$11,$11,$FE,$0C,$00,$00
+  $00,$03,$07,$0D,$0F,$00,$07,$1B,$3B,$3C,$77,$77,$00,$00,$00,$00
+  $00,$C0,$E0,$B0,$F0,$00,$E0,$D8,$DC,$3C,$EE,$EE,$00,$00,$00,$00
+  $00,$00,$00,$30,$30,$02,$00,$04,$C4,$C3,$88,$88,$7F,$30,$00,$00
+  $00,$00,$00,$00,$00,$D0,$00,$20,$20,$C0,$10,$10,$FD,$0C,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$0D,$1D,$3D,$3F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$B0,$B8,$BC,$FC,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$00,$00,$00
+  $01,$01,$01,$23,$47,$95,$A7,$2F,$57,$93,$A2,$20,$40,$00,$00,$00
+  $00,$00,$00,$88,$C4,$52,$CA,$E8,$D4,$92,$8A,$08,$04,$00,$00,$00
+  $01,$01,$01,$03,$87,$55,$27,$5F,$97,$23,$42,$A0,$00,$00,$00,$00
+  $00,$00,$00,$80,$C2,$54,$C8,$EA,$D2,$88,$84,$0A,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$03,$03,$07,$06,$05,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$C0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$11,$48,$26,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$24,$C8,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$82,$20,$10,$00,$70,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$11,$12,$10,$00,$1C,$00,$00
+  $00,$00,$00,$00,$18,$3D,$3F,$3F,$1F,$0F,$07,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$38,$7D,$7F,$7F,$3F,$1F,$0F,$07,$02,$00,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$F0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$2F,$3F,$14,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$F0,$A0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$2F,$3F,$0B,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$F0,$40,$00
+end data
+data SceneMap bytes
+  128,129,130,129,128,129,130,129,128,129,130,129,128,129,130,129
+  128,129,130,129,128,129,130,129,128,129,130,129,128,129,130,129
+  131,132,131,131,133,134,133,133,131,132,131,131,133,134,133,133
+  131,132,131,131,133,134,133,133,131,132,131,131,133,134,133,133
+  135,136,129,129,135,136,129,129,135,136,129,129,135,136,129,129
+  135,136,129,129,135,136,129,129,135,136,129,129,135,136,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,137,138,139,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,140,141,142,129,129,129,129,129,129,129,143,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,144,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,145,129,129,129,129,129,146,147,146,147,146,147
+  129,129,129,129,129,129,148,129,129,129,129,129,129,129,129,129
+  129,129,149,129,129,129,129,129,129,129,129,150,151,150,151,150
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,152,153,152,153,152
+  129,129,129,129,154,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,150,151,150,151,150
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,152,153,152,153,152
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  155,129,129,129,129,129,129,129,129,129,129,150,151,150,151,150
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,152,153,152,153,152
+  129,129,129,129,156,157,158,159,129,129,129,129,129,129,129,129
+  156,157,158,159,129,129,129,129,129,129,129,150,151,150,151,150
+  160,161,162,163,164,165,165,166,160,161,162,163,160,161,162,163
+  164,165,165,166,160,161,162,163,160,161,162,152,153,152,153,152
+  167,167,167,167,167,167,167,167,167,167,167,167,167,167,167,167
+  167,167,167,167,167,167,167,167,167,167,167,150,151,150,151,150
+  168,169,170,171,171,171,171,171,171,171,171,171,171,171,171,171
+  171,171,171,171,171,171,171,171,171,171,171,152,153,152,153,152
+  172,172,172,172,172,172,172,172,172,172,172,172,172,172,172,172
+  172,172,172,172,172,172,172,172,172,172,172,150,151,150,151,150
+  173,173,173,173,173,173,173,173,173,173,173,173,173,173,173,173
+  173,173,173,173,173,173,173,173,173,173,173,173,173,173,173,173
+end data
+data ThrMap bytes
+  129,134,136,174,174,174,174,174,174,174,174,174,174,174,174,175,176,177,178,172,173
+  129,132,136,174,174,174,174,174,174,174,174,174,174,174,174,174,179,177,178,172,173
+  129,134,136,174,174,174,174,174,174,174,174,174,174,174,174,174,179,177,178,172,173
+  129,132,136,174,174,174,174,174,174,174,174,174,174,174,174,175,176,177,178,172,173
+  129,134,136,174,174,174,174,174,174,174,174,174,174,174,174,174,179,177,178,172,173
+end data
+
+asm {
+TrSplash:
+    db $00,$00,$54,$02,$00,$00,$75,$03,$00,$00,$A6,$04,$10
+TrStep:
+    db $00,$00,$96,$01,$10
+TrPick:
+    db $40,$A9,$20,$03,$40,$7F,$20,$03,$40,$55,$30,$05,$50
+TrHome:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$20,$0A,$50
+TrLost:
+    db $40,$8F,$20,$04,$40,$BF,$20,$04,$40,$FE,$30,$04,$40,$53,$31,$0A,$50
+TrPlip:
+    db $40,$40,$20,$02,$40,$55,$30,$02,$40,$71,$50,$04,$50
+TrPoison:
+    db $40,$7F,$10,$06,$40,$A0,$20,$06,$40,$CA,$20,$06,$40,$FE,$30,$06,$40,$53,$31,$18,$50
+TrCheer:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+TrPip:
+    db $40,$47,$20,$03,$40,$35,$50,$04,$50
+TrStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0E,$50
+
+TrSoundTable:
+    dw TrTuneMel,$702B
+    dw TrTuneBass,$7035
+    dw TrSplash,$703F
+    dw TrStep,$703F
+    dw TrPick,$7049
+    dw TrHome,$7049
+    dw TrLost,$7049
+    dw TrPlip,$7049
+    dw TrPoison,$7049
+    dw TrCheer,$7049
+    dw TrPip,$7049
+    dw TrStart,$7049
+; Slow and Steady (original)
+; Tiny Sound, 9 frames per step
+TrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$18,$01,$1C,$01,$1F,$01,$01,$1C,$1D,$01,$1A,$01
+    db $01,$01,$17,$01,$18,$01,$1A,$01,$1C,$01,$01,$18,$1A,$01,$17,$01
+    db $13,$01,$01,$01,$18,$01,$1C,$01,$1F,$01,$21,$01,$1F,$01,$1C,$01
+    db $18,$01,$1A,$01,$1C,$01,$1A,$01,$17,$01,$1A,$01,$18,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0C,$01,$07,$01,$0C,$01,$07,$01,$05,$01,$0C,$01
+    db $07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$07,$01
+    db $0C,$01,$07,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0B,$01,$0C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

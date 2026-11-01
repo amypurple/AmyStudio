@@ -7846,5 +7846,121 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gators-n-snakes",
+    "label": "Gators N Snakes (August 1985)",
+    "detail": "A ColecoVision reimagining of Jim Sanders' Ahoy! swamp-crossing game, preserving its four beetles, moving snakes and gators, barriers, burrows and ten levels.",
+    "projectName": "Gators N Snakes",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "swamp",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gravinauts",
+    "label": "Gravinauts (October 1985)",
+    "detail": "A ColecoVision reimagining of Cleveland M. Blakemore's Ahoy! rocket-pack game, with smooth gravity flight, rival gravinauts, fuel tanks, glaciers and an acid sea.",
+    "projectName": "Gravinauts",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "gravity",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chopper-flight",
+    "label": "Chopper Flight (November 1985)",
+    "detail": "A ColecoVision reimagining of Michael Buhidar Jr. and Kevin Woram's Ahoy! rescue game, with smooth tower scrolling, ledge rescues, missiles, fuel and timed landings.",
+    "projectName": "Chopper Flight",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "helicopter",
+      "commodore-64",
+      "sprites",
+      "scrolling",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "air-rescue",
+    "label": "Air Rescue (April 1986)",
+    "detail": "A ColecoVision reimagining of Ahoy!'s disk game, with a smoothly scrolling city, helicopter rescues, fires, planes, missiles, bombs and fuel drops.",
+    "projectName": "Air Rescue",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "helicopter",
+      "commodore-64",
+      "sprites",
+      "scrolling",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "turtle-rescue",
+    "label": "Turtle Rescue (February 1987)",
+    "detail": "A ColecoVision reimagining of Behzad Jamshidi's Ahoy! game, preserving its turtle families, five moving spiders, poison drops and increasing speed.",
+    "projectName": "Turtle Rescue",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "arcade",
+      "commodore-64",
+      "sprites",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

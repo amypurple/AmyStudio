@@ -2204,6 +2204,10 @@ decompress Level to vram.spr_attr + 128  ' unpack at $1B80
 copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 ```
 
+Source and destination address expressions use 16-bit arithmetic. For example,
+`copy Big + Row * 32 count 32 to vram.name + Row * 32` reaches rows beyond 7
+without wrapping the computed offset at 255; no temporary `u16` is required.
+
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
