@@ -323,7 +323,7 @@ export function createLoadStoreHelpers(ctx) {
   }
 
   function addressLoadClobbersA(lines) {
-    const clobberRe = /^\s*(?:ld\s+a\s*,|pop\s+af\b|ex\s+af\b|xor\s+a\b|add\s+a\b|adc\s+a\b|sub\b|sbc\s+a\b|and\b|or\b|cp\b|inc\s+a\b|dec\s+a\b|neg\b)/i;
+    const clobberRe = /^\s*(?:ld\s+a\s*,|pop\s+af\b|ex\s+af\b|xor\s+a\b|add\s+a\b|adc\s+a\b|sub\b|sbc\s+a\b|and\b|or\b|cp\b|inc\s+a\b|dec\s+a\b|neg\b|call\b|rst\b)/i;
     return (lines || []).some((line) => clobberRe.test(line));
   }
   function emitStoreInt8FromA(target) {

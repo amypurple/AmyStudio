@@ -17,6 +17,7 @@ const suite = suiteIndex >= 0 ? String(process.argv[suiteIndex + 1] || "").trim(
 const biosPath = process.env.AMY_COLECO_BIOS || resolve(root, "studio", "bios", "colecovision.rom");
 const hasBios = existsSync(biosPath);
 const tests = [
+  { file: "test-ahoy-final-regressions.mjs", area: "ahoy-final-runtime-regressions", evidence: "rom", suite: "language", timeoutMs: 180_000 },
   { file: "test-amyc-json-report.mjs", area: "compiler-machine-report", evidence: "compile+assemble", suite: "studio" },
   { file: "vscode-amy-studio/test/extension-model.test.mjs", area: "vscode-project-model", evidence: "unit", suite: "studio" },
   { file: "test-example-sound-tables.mjs", area: "example-sound-table-contract", evidence: "static", suite: "studio" },

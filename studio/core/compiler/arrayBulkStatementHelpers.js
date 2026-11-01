@@ -179,15 +179,14 @@ export function handleArrayBulkStatement({
       const byteLoop = makeGeneratedLabel("FillArrayByteLoop");
       const fixedValueText = String(fillArray[2]).trim();
       const fixedValue = /^\$[0-9A-Fa-f]+$/.test(fixedValueText) || /^[0-9]+$/.test(fixedValueText);
-      const loadFillValue = fixedValue
-        ? ["    ld d," + symbolOrValue(fixedValueText)]
-        : [...loadValue, "    ld d,a"];
+      const prepareFillValue = fixedValue
+        ? [...baseAddress, "    ld d," + symbolOrValue(fixedValueText)]
+        : [...loadValue, "    push af", ...baseAddress, "    pop af", "    ld d,a"];
       return {
         ok: true,
         handled: true,
         lines: [
-          ...loadFillValue,
-          ...baseAddress,
+          ...prepareFillValue,
           "    ld b," + symbolOrValue(fixedCount),
           byteLoop + ":",
           "    ld (hl),d",
@@ -201,8 +200,10 @@ export function handleArrayBulkStatement({
       handled: true,
       lines: [
         ...loadValue,
-        "    ld d,a",
+        "    push af",
         ...baseAddress,
+        "    pop af",
+        "    ld d,a",
         `    ld bc,${countVal}`,
         `${fillLoop}:`,
         "    ld a,b",
