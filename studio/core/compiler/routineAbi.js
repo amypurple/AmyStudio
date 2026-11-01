@@ -197,6 +197,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_SET_GRAPHICS_MODE1_BITMAP: abi({ inputs: { a: "default color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_GRAPHICS_MODE1_TEXT: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_GRAPHICS_MODE2_TEXT: abi({ clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_SET_GRAPHICS_MODE2_RAW: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_GRAPHICS_MODE3_MULTICOLOR: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR_FULL: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),

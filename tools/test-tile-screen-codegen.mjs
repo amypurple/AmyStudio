@@ -15,4 +15,16 @@ assert.deepEqual(result.lines, [
   "    ld hl,VRAM_COLOR", "    ld de,$0800", "    ld a,$F0", "    call FILL_VRAM",
   "    ld hl,(VDP_NAME_SHADOW)", "    ld de,$0300", "    ld a,$20", "    call FILL_VRAM"
 ]);
+
+const rawMode2Result = handleDisplayGraphicsSpriteStatement({
+  line: "mode 2 screen",
+  rawLine: "mode 2 screen",
+  preferScreenOnNoNmi: false,
+  currentGraphicsMode: null,
+  emitLoadInt8Into: () => null,
+  emitLoadInt8ValueInto: () => null,
+  tryEvaluateConstantExpression: () => null,
+  formatHex16: (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`
+});
+assert.deepEqual(rawMode2Result.lines, ["    call AMY_SET_GRAPHICS_MODE2_RAW"]);
 console.log("tile screen codegen: PASS");

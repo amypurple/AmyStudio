@@ -412,6 +412,27 @@ export function createControlFlowHelpers(ctx) {
     return lines;
   }
 
+  function literalFitsWordDomain(value, declared) {
+    if (!Number.isInteger(value)) return false;
+    const type = String(declared || "").toLowerCase();
+    if (type === "u16") return value >= 0 && value <= 0xFFFF;
+    if (type === "i16") return value >= -0x8000 && value <= 0x7FFF;
+    return false;
+  }
+
+  function emitWordLiteralCompareGoto(wordToken, operator, literalToken, asmLabel, wordDeclared) {
+    const numericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression
+      : tryEvaluateConstantExpression;
+    const literalValue = numericEvaluator(literalToken);
+    if (!literalFitsWordDomain(literalValue, wordDeclared)) return null;
+    const loadWord = emitLoadInt16IntoHL(wordToken);
+    if (!loadWord) return null;
+    const lines = [...loadWord, `    ld de,${symbolOrValue(literalToken)}`];
+    if (!emitPreparedWordCompareBranch(lines, operator, asmLabel, isSignedDeclaredType(wordDeclared))) return null;
+    return lines;
+  }
+
   function emitWideZeroCompareGoto(token, operator, asmLabel, declared) {
     const info = getI32Info(token) || getU32Info(token);
     if (!info?.asmName || info.storage === "stack") return null;
@@ -555,6 +576,17 @@ export function createControlFlowHelpers(ctx) {
     const promotedCompareDeclared = preserveSignedMixedCompare
       ? null
       : declaredTypeForWidth(promotedCompareWidth, computedSigned);
+    if (declaredTypeBitWidth(leftDeclared) === 16 && initialRightDeclared === null) {
+      const wordLiteralCompare = emitWordLiteralCompareGoto(leftToken, effectiveOperator, rightToken, asmLabel, leftDeclared);
+      if (wordLiteralCompare) return wordLiteralCompare;
+    }
+    if (declaredTypeBitWidth(rightDeclared) === 16 && initialLeftDeclared === null) {
+      const swappedOperator = reverseOperator(effectiveOperator);
+      const wordLiteralCompare = swappedOperator
+        ? emitWordLiteralCompareGoto(rightToken, swappedOperator, leftToken, asmLabel, rightDeclared)
+        : null;
+      if (wordLiteralCompare) return wordLiteralCompare;
+    }
     const mixedSignedUnsignedCompare = emitMixedSignedUnsignedCompareGoto(leftToken, effectiveOperator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode);
     if (mixedSignedUnsignedCompare) return mixedSignedUnsignedCompare;
     const mixedByteWordCompare = emitMixedByteWordCompareGoto(leftToken, effectiveOperator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode);

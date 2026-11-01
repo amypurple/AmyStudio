@@ -86,7 +86,7 @@ export function handleDisplayGraphicsSpriteStatement({
   }
 
   if (/^mode\s+2\s+screen$/i.test(line)) {
-    return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE2_TEXT"] };
+    return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE2_RAW"] };
   }
 
   if (/^tile\s+screen$/i.test(line)) {

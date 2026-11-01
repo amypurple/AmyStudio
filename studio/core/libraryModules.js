@@ -248,6 +248,7 @@ const splitLibraryCatalog = {
       symbols: ["AMY_SET_BITMAP_GRAPHICS_MODE", "AMY_SET_GRAPHICS_MODE2_TEXT", "AMY_SET_GRAPHICS_MODE1_TEXT", "AMY_SET_GRAPHICS_MODE3_MULTICOLOR", "AMY_FILL_MODE2_TEXT_COLOR_FIRST_THIRD", "AMY_DUPLICATE_COLOR_THIRDS", "AMY_FILL_MODE2_TEXT_COLOR", "AMY_FILL_MODE2_TEXT_COLOR_FULL", "AMY_LOAD_MODE2_TEXT_COLORS_32", "AMY_DUPLICATE_PATTERN_THIRDS"],
       deps: ["src/alexis_lib/coleco_vdp_core.asm"]
     },
+    { path: "src/alexis_lib/coleco_vdp_mode2_raw.asm", symbols: ["AMY_SET_GRAPHICS_MODE2_RAW"] },
     { path: "src/alexis_lib/coleco_vdp_screen.asm", symbols: ["AMY_SCREEN_OFF_NO_NMI", "AMY_SCREEN_ON_NMI"] },
     { path: "src/alexis_lib/coleco_vdp_screen_ext.asm", symbols: ["AMY_SCREEN_ON_NO_NMI"] },
     { path: "src/alexis_lib/coleco_nmi.asm", symbols: ["AMY_DISABLE_NMI", "AMY_ENABLE_NMI"] },

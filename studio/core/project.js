@@ -74,6 +74,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const usesFormatFx16   = /\bAMY_(?:FX16_16_TO_ASCII9|FX16_16_TO_ASCII11|FX16_16_FRAC_TO_HUNDREDTHS|FX16_16_FRAC_TO_TEN_THOUSANDTHS)\b/.test(asmBody);
   const usesFormatFp5    = /\bAMY_FP5_TO_ASCII16\b/.test(asmBody);
   const usesVramUpload   = /\bAMY_VRAM_(?:BEGIN|END)\b/.test(asmBody);
+  const usesRawMode2     = /\bAMY_SET_GRAPHICS_MODE2_RAW\b/.test(asmBody);
   const usesCompareU32   = /\bAMY_CMP_U32_MEM\b/.test(asmBody);
   const usesCompareS32   = /\bAMY_CMP_S32_MEM\b/.test(asmBody);
   const usesCompareSmall = /\bAMY_(?:CMP_U8|CMP_S8|CMP_U16|CMP_S16)\b/.test(asmBody);
@@ -88,6 +89,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const needsU32Sub     = usesU32Sub || needsFormatU32;          // format_u32/i32/fp5 call AMY_U32_SUB
   // Emit in dependency order (u32/compare before format)
   if (usesVramUpload) resolved.add("src/alexis_lib/coleco_vram_upload.asm");
+  if (usesRawMode2) resolved.add("src/alexis_lib/coleco_vdp_mode2_raw.asm");
   if (usesRandomU8)    resolved.add("src/alexis_lib/coleco_random.asm");
   if (usesSqrt)         resolved.add("src/alexis_lib/coleco_math_sqrt.asm");
   if (usesU32Zero || usesFx16Div || usesFx16Sqrt || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_u32_zero.asm");
