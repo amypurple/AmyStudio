@@ -394,7 +394,7 @@ export function createExpressionComputeHelpers({
   function emitLoadInt16RuntimeDivideAstIntoHL(node, preferredDeclaredType = null) {
     const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
     const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
-    if (leftType?.runtimeType !== "int16" || rightType?.runtimeType !== "int16") return null;
+    if (leftType?.runtimeType !== "int16" || !["int8", "int16"].includes(rightType?.runtimeType)) return null;
     const fixedType = isAnyFixedDeclaredType(preferredDeclaredType)
       ? normalizeDeclaredType(preferredDeclaredType)
       : null;

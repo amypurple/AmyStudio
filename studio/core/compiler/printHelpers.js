@@ -22,6 +22,7 @@ export function createPrintHelpers(ctx) {
     resolveDeclaredValueType,
     isSignedDeclaredType,
     resolveExpressionAstComputationType,
+    emitComputeExpressionAst,
     parseExpressionAst,
     parseNumericLiteral,
     resolveValueType,
@@ -626,6 +627,26 @@ export function createPrintHelpers(ctx) {
     return null;
   }
 
+  function resolveNumericExpressionType(valueToken) {
+    const directType = resolveDeclaredValueType(valueToken);
+    if (directType) return directType;
+    const ast = parseExpressionAst(valueToken);
+    return ast ? resolveExpressionAstComputationType(ast)?.declaredType || null : null;
+  }
+
+  function emitLoadIntegerExpression(valueToken, declaredType) {
+    const ast = parseExpressionAst(valueToken);
+    if (!ast) return null;
+    const computed = emitComputeExpressionAst(ast, declaredType);
+    if (!computed || computed.runtimeType !== "int16" || computed.register !== "hl") return null;
+    return computed.lines;
+  }
+
+  function isDirectNumericValue(valueToken) {
+    const ast = parseExpressionAst(valueToken);
+    return ast && ["number", "identifier", "index", "subscript", "member"].includes(ast.kind);
+  }
+
   function splitTopLevelPlus(text) {
     const source = String(text || "").trim();
     if (!source) return [];
@@ -1058,11 +1079,15 @@ export function createPrintHelpers(ctx) {
 
   function emitLoadUnsignedInt16ValueIntoHL(token) {
     const valueType = resolveValueType(token);
-    const declaredType = resolveDeclaredValueType(token);
+    const declaredType = resolveNumericExpressionType(token);
     if (!valueType) {
       const numeric = parseNumericLiteral(token);
-      if (numeric === null || numeric < 0 || numeric > 0xFFFF) return null;
-      return [`    ld hl,${formatHex16(numeric)}`];
+      if (numeric !== null) {
+        if (numeric < 0 || numeric > 0xFFFF) return null;
+        return [`    ld hl,${formatHex16(numeric)}`];
+      }
+      if (declaredType !== "u16") return null;
+      return emitLoadIntegerExpression(token, declaredType);
     }
     if (valueType === "int8") {
       if (isSignedDeclaredType(declaredType)) return null;
@@ -1072,7 +1097,9 @@ export function createPrintHelpers(ctx) {
     }
     if (valueType === "int16") {
       if (isSignedDeclaredType(declaredType) || isAnyFixedDeclaredType(declaredType)) return null;
-      return emitLoadInt16IntoHL(token);
+      return isDirectNumericValue(token)
+        ? emitLoadInt16IntoHL(token)
+        : emitLoadIntegerExpression(token, declaredType);
     }
     return null;
   }
@@ -1156,11 +1183,13 @@ export function createPrintHelpers(ctx) {
   }
 
   function emitFormatI16IntoBuffer(valueToken, bufferToken, digitsToken, widthMode = false) {
-    const declaredType = resolveDeclaredValueType(valueToken);
+    const declaredType = resolveNumericExpressionType(valueToken);
     if (declaredType !== "i16") return null;
     const digits = Number.parseInt(String(digitsToken), 10);
     if (!Number.isInteger(digits) || digits < 2 || digits > 6) return null;
-    const loadHL = emitLoadInt16IntoHL(valueToken);
+    const loadHL = isDirectNumericValue(valueToken)
+      ? emitLoadInt16IntoHL(valueToken)
+      : emitLoadIntegerExpression(valueToken, declaredType);
     const bufferInfo = getByteArrayBufferInfoLocal(bufferToken, digits);
     if (!loadHL || !bufferInfo) return null;
     const lines = [
@@ -1395,7 +1424,7 @@ export function createPrintHelpers(ctx) {
   }
 
   function emitFormatAutoIntoBuffer(valueToken, bufferToken, digitsToken, widthMode = false) {
-    const declaredType = resolveDeclaredValueType(valueToken);
+    const declaredType = resolveNumericExpressionType(valueToken);
     if (declaredType === "bcd") return emitFormatBcdIntoBuffer(valueToken, bufferToken);
     if (isFp5DeclaredType(declaredType) || resolveValueType(valueToken) === "fp5") return emitFormatFp5IntoBuffer(valueToken, bufferToken, digitsToken);
     if (isFix16_16DeclaredType(declaredType)) return emitFormatFix16_16IntoBuffer(valueToken, bufferToken, digitsToken);

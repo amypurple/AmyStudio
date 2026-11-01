@@ -4373,6 +4373,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitPrepareI32Source: (...args) => emitPrepareI32Source(...args),
     resolveDeclaredValueType,
     resolveExpressionAstComputationType,
+    emitComputeExpressionAst: (...args) => emitComputeExpressionAst(...args),
     parseExpressionAst,
     parseNumericLiteral,
     resolveValueType,
