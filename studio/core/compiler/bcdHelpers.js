@@ -196,9 +196,9 @@ export function createBcdHelpers(ctx) {
     const lines = [...loadCount, "    ld b,a", "    ld a,b", "    or a", `    jr z,${done}`];
     if (signedValue) {
       lines.push("    bit 7,a", `    jr z,${positiveStart}`, "    neg", "    ld b,a");
-      lines.push(`${negativeLoop}:`, ...negativeBody, `    djnz ${negativeLoop}`, `    jr ${done}`);
+      lines.push(`${negativeLoop}:`, ...negativeBody, "    dec b", `    jp nz,${negativeLoop}`, `    jr ${done}`);
     }
-    lines.push(`${positiveStart}:`, `${positiveLoop}:`, ...positiveBody, `    djnz ${positiveLoop}`);
+    lines.push(`${positiveStart}:`, `${positiveLoop}:`, ...positiveBody, "    dec b", `    jp nz,${positiveLoop}`);
     lines.push(`${done}:`);
     return lines;
   }

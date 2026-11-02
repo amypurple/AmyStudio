@@ -1087,6 +1087,14 @@ export function createAssignmentArithmeticHelpers({
     if (targetType !== "u32" && targetType !== "i32") return null;
     const isCompatibleOperand = (token) => {
       if (resolveValueType(token) === targetType) return true;
+      const folded = typeof tryEvaluateCompileTimeNumericExpression === "function"
+        ? tryEvaluateCompileTimeNumericExpression(token)
+        : null;
+      if (Number.isInteger(folded)) {
+        return targetType === "u32"
+          ? folded >= 0 && folded <= 0xFFFFFFFF
+          : folded >= -0x80000000 && folded <= 0x7FFFFFFF;
+      }
       if (resolveValueType(token)) return false;
       const numeric = parseNumericLiteral(token);
       if (!Number.isInteger(numeric)) return false;

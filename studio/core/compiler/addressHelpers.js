@@ -30,6 +30,23 @@ export function createAddressHelpers(ctx) {
       if (constantIndex < 0 || constantIndex >= table.length) return null;
       return [`    ld hl,${table.entries[constantIndex]}`];
     }
+    const indexAst = parseExpressionAst(normalizedIndex);
+    const indexType = indexAst ? resolveExpressionAstValueType(indexAst) : null;
+    if (indexType === "int16") {
+      const loadIndex = emitLoadInt16IntoHL(normalizedIndex, "u16");
+      if (!loadIndex) return null;
+      return [
+        ...loadIndex,
+        "    add hl,hl",
+        "    ex de,hl",
+        `    ld hl,${resolveAddressSymbol(name)}`,
+        "    add hl,de",
+        "    ld e,(hl)",
+        "    inc hl",
+        "    ld d,(hl)",
+        "    ex de,hl"
+      ];
+    }
     const loadIndex = emitLoadInt8ValueInto("a", normalizedIndex);
     if (!loadIndex) return null;
     return [

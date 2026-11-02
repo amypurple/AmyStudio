@@ -230,6 +230,35 @@ Done = 1
 loop forever
 `;
 
+const wideNamedConstantSource = `
+const Funeral = 12495
+const Small = 5
+u32 Fe = 12495
+i32 Q = 5
+Fe = Fe + 12495
+Fe = Fe - 12495
+Fe = Fe + Funeral
+Q = Q + Small
+loop forever
+`;
+
+const wordTableU16IndexSource = `
+u16 W = 0
+u16 J = 1
+W = Tab[J]
+loop forever
+data Tab words 100,300,500
+`;
+
+const bcdLongLoopSource = `
+bcd digits 7 S[2]
+u8 P = 1
+u8 V = 98
+S[P] += V
+S[1] += V
+loop forever
+`;
+
 try {
   for (const profile of profiles) {
     let artifact = build("bcd-addressing", bcdSource, profile);
@@ -314,6 +343,23 @@ try {
       assert.equal(core.readRam(addressOf(artifact.asm, "Result"), 1)[0], 4, `${profile}: function-call division preserves divisor`);
       assert.equal(core.readRam(addressOf(artifact.asm, "Done"), 1)[0], 1, `${profile}: function-call division completes`);
     } finally { core.destroy(); }
+
+    artifact = build("wide-named-constant", wideNamedConstantSource, profile);
+    core = await start(artifact);
+    try {
+      assert.deepEqual([...core.readRam(addressOf(artifact.asm, "Fe"), 4)], [0x9E, 0x61, 0, 0], `${profile}: u32 named constant add`);
+      assert.deepEqual([...core.readRam(addressOf(artifact.asm, "Q"), 4)], [10, 0, 0, 0], `${profile}: i32 named constant add`);
+    } finally { core.destroy(); }
+
+    artifact = build("word-table-u16-index", wordTableU16IndexSource, profile);
+    core = await start(artifact);
+    try {
+      assert.deepEqual([...core.readRam(addressOf(artifact.asm, "W"), 2)], [0x2C, 0x01], `${profile}: word table u16 index`);
+    } finally { core.destroy(); }
+
+    artifact = build("bcd-long-loop", bcdLongLoopSource, profile);
+    core = await start(artifact);
+    core.destroy();
   }
   console.log(`Ahoy reported regressions: PASS (${profiles.length} profiles)`);
 } finally {
