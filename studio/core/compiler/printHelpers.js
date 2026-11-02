@@ -1085,6 +1085,11 @@ export function createPrintHelpers(ctx) {
         if (numeric < 0 || numeric > 0xFFFF) return null;
         return [`    ld hl,${formatHex16(numeric)}`];
       }
+      if (declaredType === "u8" || declaredType === "boolean") {
+        const loadA = emitLoadInt8ValueInto("a", token);
+        if (!loadA) return null;
+        return [...loadA, "    ld l,a", "    ld h,0"];
+      }
       if (declaredType !== "u16") return null;
       return emitLoadIntegerExpression(token, declaredType);
     }
