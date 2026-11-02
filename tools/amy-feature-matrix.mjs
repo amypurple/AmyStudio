@@ -18,6 +18,8 @@ const biosPath = process.env.AMY_COLECO_BIOS || resolve(root, "studio", "bios", 
 const hasBios = existsSync(biosPath);
 const tests = [
   { file: "test-ahoy-final-regressions.mjs", area: "ahoy-final-runtime-regressions", evidence: "rom", suite: "language", timeoutMs: 180_000 },
+  { file: "test-ahoy-reported-regressions.mjs", area: "ahoy-reported-runtime-regressions", evidence: "rom", suite: "language", timeoutMs: 180_000 },
+  { file: "test-optimizer-af-flag-preservation.mjs", area: "optimizer-af-flag-liveness", evidence: "unit", suite: "language" },
   { file: "test-amyc-json-report.mjs", area: "compiler-machine-report", evidence: "compile+assemble", suite: "studio" },
   { file: "vscode-amy-studio/test/extension-model.test.mjs", area: "vscode-project-model", evidence: "unit", suite: "studio" },
   { file: "test-example-sound-tables.mjs", area: "example-sound-table-contract", evidence: "static", suite: "studio" },

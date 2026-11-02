@@ -570,9 +570,8 @@ export function createPrintHelpers(ctx) {
   function emitPrintLiteralAt(literalText, xToken, yToken) {
     if (String(literalText || "").length === 0) return { lines: [], width: 0 };
     const literal = emitTextLiteral(literalText);
-    const loadY = emitLoadInt8ValueInto("d", yToken);
-    const loadX = emitLoadInt8ValueInto("e", xToken);
-    if (!loadY || !loadX) return null;
+    const loadCoords = emitLoadTextCoordsIntoDE(xToken, yToken);
+    if (!loadCoords) return null;
     const constY = tryEvaluateByteConstantExpression(yToken);
     const constX = tryEvaluateByteConstantExpression(xToken);
     const screenOffset = constY !== null && constX !== null ? (constY << 5) + constX : null;
@@ -586,8 +585,7 @@ export function createPrintHelpers(ctx) {
       lines.push("    ld hl,(VDP_NAME_SHADOW)");
       lines.push("    add hl,de");
     } else {
-      lines.push(...loadY);
-      lines.push(...loadX);
+      lines.push(...loadCoords);
       lines.push("    call CALC_OFFSET");
       lines.push("    push de");
       lines.push("    ld hl,(VDP_NAME_SHADOW)");
@@ -726,6 +724,7 @@ export function createPrintHelpers(ctx) {
   }
 
   function parseNumericTextCall(segment) {
+    if (splitTopLevelPlus(segment).length !== 1) return null;
     const call = String(segment || "").trim().match(/^(str\$|digits\$|width\$)\s*\((.*)\)$/i)
       || String(segment || "").trim().match(/^(str\$)\s+(.+)$/i);
     if (!call) return null;
@@ -1131,10 +1130,10 @@ export function createPrintHelpers(ctx) {
     if (constY !== null && constX !== null) {
       return [`    ld de,${formatHex16((((constY & 0xFF) << 8) | (constX & 0xFF)) & 0xFFFF)}`];
     }
-    const loadY = emitLoadInt8ValueInto("d", yToken);
+    const loadY = emitLoadInt8ValueInto("a", yToken);
     const loadX = emitLoadInt8ValueInto("e", xToken);
     if (!loadY || !loadX) return null;
-    return [...loadY, ...loadX];
+    return [...loadY, "    push af", ...loadX, "    pop af", "    ld d,a"];
   }
 
   function emitFormatI8IntoBuffer(valueToken, bufferToken, digitsToken, widthMode = false) {

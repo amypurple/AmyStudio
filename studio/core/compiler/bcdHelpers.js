@@ -105,6 +105,22 @@ export function createBcdHelpers(ctx) {
     return [`    ld (${dst}),a`];
   }
 
+  function preserveFlagsAroundBcdLoad(loadLines) {
+    if (!loadLines) return null;
+    // Address calculations may use ADD HL and destroy the decimal carry from
+    // the preceding DAA. Keep both AF and BC while C temporarily holds the
+    // loaded byte; LD and POP restore A without changing the saved flags.
+    return [
+      "    push bc",
+      "    push af",
+      ...loadLines,
+      "    ld c,a",
+      "    pop af",
+      "    ld a,c",
+      "    pop bc"
+    ];
+  }
+
   function emitBcdNormalize(varName) {
     const info = getBcdInfo(varName);
     if (!info) return null;
@@ -125,7 +141,7 @@ export function createBcdHelpers(ctx) {
       const loadDst = emitLoadBcdInt8IntoA(varName, i);
       const storeDst = emitStoreAToBcdInt8(varName, i);
       if (!loadDst || !storeDst) return null;
-      lines.push(...loadDst);
+      lines.push(...preserveFlagsAroundBcdLoad(loadDst));
       lines.push(`    ${i === 0 ? "add a,$01" : "adc a,$00"}`);
       lines.push("    daa");
       lines.push(...storeDst);
@@ -144,7 +160,7 @@ export function createBcdHelpers(ctx) {
       const loadDst = emitLoadBcdInt8IntoA(varName, i);
       const storeDst = emitStoreAToBcdInt8(varName, i);
       if (!loadDst || !storeDst) return null;
-      lines.push(...loadDst);
+      lines.push(...preserveFlagsAroundBcdLoad(loadDst));
       lines.push(`    ${i === 0 ? "sub $01" : "sbc a,$00"}`);
       lines.push("    daa");
       lines.push(...storeDst);
@@ -204,9 +220,9 @@ export function createBcdHelpers(ctx) {
         const loadDst = emitLoadBcdInt8IntoA(varName, i);
         const storeDst = emitStoreAToBcdInt8(varName, i);
         if (!loadSrc || !loadDst || !storeDst) return null;
-        lines.push(...loadSrc);
+        lines.push(...preserveFlagsAroundBcdLoad(loadSrc));
         lines.push("    ld b,a");
-        lines.push(...loadDst);
+        lines.push(...preserveFlagsAroundBcdLoad(loadDst));
         lines.push(`    ${i === 0 ? "add a,b" : "adc a,b"}`);
         lines.push("    daa");
         lines.push(...storeDst);
@@ -227,7 +243,7 @@ export function createBcdHelpers(ctx) {
       const storeDst = emitStoreAToBcdInt8(varName, i);
       if (!loadDst || !storeDst) return null;
       const bv = `$${bcdBytes[i].toString(16).toUpperCase().padStart(2, "0")}`;
-      lines.push(...loadDst);
+      lines.push(...preserveFlagsAroundBcdLoad(loadDst));
       lines.push(`    ${i === 0 ? `add a,${bv}` : `adc a,${bv}`}`);
       lines.push("    daa");
       lines.push(...storeDst);
@@ -256,9 +272,9 @@ export function createBcdHelpers(ctx) {
         const loadDst = emitLoadBcdInt8IntoA(varName, i);
         const storeDst = emitStoreAToBcdInt8(varName, i);
         if (!loadSrc || !loadDst || !storeDst) return null;
-        lines.push(...loadSrc);
+        lines.push(...preserveFlagsAroundBcdLoad(loadSrc));
         lines.push("    ld b,a");
-        lines.push(...loadDst);
+        lines.push(...preserveFlagsAroundBcdLoad(loadDst));
         lines.push(`    ${i === 0 ? "sub b" : "sbc a,b"}`);
         lines.push("    daa");
         lines.push(...storeDst);
@@ -275,7 +291,7 @@ export function createBcdHelpers(ctx) {
         const storeDst = emitStoreAToBcdInt8(varName, i);
         if (!loadDst || !storeDst) return null;
         const bv = `$${bcdBytes[i].toString(16).toUpperCase().padStart(2, "0")}`;
-        lines.push(...loadDst);
+        lines.push(...preserveFlagsAroundBcdLoad(loadDst));
         lines.push(`    ${i === 0 ? `sub ${bv}` : `sbc a,${bv}`}`);
         lines.push("    daa");
         lines.push(...storeDst);
@@ -339,15 +355,19 @@ export function createBcdHelpers(ctx) {
       const loadSrc = emitLoadBcdInt8IntoA(varName, i);
       if (!loadSrc) return null;
       if (!(oddDigits && i === byteCount - 1)) {
-        lines.push(...emitLoadCoordsForColumn(col));
         lines.push(...loadSrc);
+        lines.push("    push af");
+        lines.push(...emitLoadCoordsForColumn(col));
+        lines.push("    pop af");
         lines.push("    rrca", "    rrca", "    rrca", "    rrca", "    and $0F");
         lines.push(`    add a,${offset}`);
         lines.push("    call AMY_PUT_CHAR_AT");
         col += 1;
       }
-      lines.push(...emitLoadCoordsForColumn(col));
       lines.push(...loadSrc);
+      lines.push("    push af");
+      lines.push(...emitLoadCoordsForColumn(col));
+      lines.push("    pop af");
       lines.push("    and $0F");
       lines.push(`    add a,${offset}`);
       lines.push("    call AMY_PUT_CHAR_AT");
@@ -461,13 +481,19 @@ export function createBcdHelpers(ctx) {
       return emitBcdCompareGoto(rightToken, flipOperator(operator), leftToken, asmLabel);
     }
     if (!leftInfo || leftInfo.kind !== "bcd") return null;
-    const byteCount = leftInfo.byteCount;
-    const digitCount = getBcdDigitCount(leftInfo);
-    const oddDigits = digitCount % 2 === 1;
+    let byteCount = leftInfo.byteCount;
+    let digitCount = getBcdDigitCount(leftInfo);
+    let leftByteCount = byteCount;
+    let rightByteCount = 0;
+    let leftOddDigits = digitCount % 2 === 1;
+    let rightOddDigits = false;
     let rightAsm = null;
     let rightLiteralBytes = null;
     if (rightInfo?.kind === "bcd") {
-      if (getBcdDigitCount(rightInfo) !== digitCount) return null;
+      rightByteCount = rightInfo.byteCount;
+      rightOddDigits = getBcdDigitCount(rightInfo) % 2 === 1;
+      byteCount = Math.max(leftByteCount, rightByteCount);
+      digitCount = Math.max(digitCount, getBcdDigitCount(rightInfo));
       rightAsm = rightToken;
     } else if (/^[0-9]+$/.test(rightToken)) {
       if (!doesDecimalFitBcdDigits(Number.parseInt(rightToken, 10), digitCount)) return null;
@@ -488,7 +514,7 @@ export function createBcdHelpers(ctx) {
         const loadLeft = emitLoadBcdInt8IntoA(leftToken, i);
         if (!loadLeft) return null;
         lines.push(...loadLeft);
-        if (oddDigits && i === byteCount - 1) lines.push("    and $0F");
+        if (leftOddDigits && i === leftByteCount - 1) lines.push("    and $0F");
         else lines.push("    or a");
         lines.push(`    jp nz,${branchOnNonZero ? asmLabel : doneLabel}`);
       }
@@ -504,19 +530,27 @@ export function createBcdHelpers(ctx) {
     const doneLabel = makeGeneratedLabel("BcdDone");
     const lines = [];
     for (let i = byteCount - 1; i >= 0; i--) {
-      const loadLeft = emitLoadBcdInt8IntoA(leftToken, i);
-      if (!loadLeft) return null;
-      lines.push(...loadLeft);
-      if (oddDigits && i === byteCount - 1) lines.push("    and $0F");
+      if (i < leftByteCount) {
+        const loadLeft = emitLoadBcdInt8IntoA(leftToken, i);
+        if (!loadLeft) return null;
+        lines.push(...loadLeft);
+        if (leftOddDigits && i === leftByteCount - 1) lines.push("    and $0F");
+      } else {
+        lines.push("    xor a");
+      }
       if (rightAsm) {
-        const loadRight = emitLoadBcdInt8IntoA(rightAsm, i);
-        if (!loadRight) return null;
+        lines.push("    push af");
+        if (i < rightByteCount) {
+          const loadRight = emitLoadBcdInt8IntoA(rightAsm, i);
+          if (!loadRight) return null;
+          lines.push(...loadRight);
+          if (rightOddDigits && i === rightByteCount - 1) lines.push("    and $0F");
+        } else {
+          lines.push("    xor a");
+        }
         lines.push("    ld c,a");
-        lines.push(...loadRight);
-        if (oddDigits && i === byteCount - 1) lines.push("    and $0F");
-        lines.push("    ld b,a");
-        lines.push("    ld a,c");
-        lines.push("    cp b");
+        lines.push("    pop af");
+        lines.push("    cp c");
       } else {
         const lit = `$${rightLiteralBytes[i].toString(16).toUpperCase().padStart(2, "0")}`;
         lines.push(`    cp ${lit}`);

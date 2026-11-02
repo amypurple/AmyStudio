@@ -174,11 +174,21 @@ export function handleVramPixelInputStatement({
     const waitLabel = makeGeneratedLabel("WaitFire");
     const pad = waitFire[2] || null;
     body.push(`${waitLabel}:`);
-    body.push("    halt");
-    if (pad) {
+    if (nmiKnownOff && !nativeEos) {
+      const rawPairs = pad === "1"
+        ? ["$73EE", "$73F0"]
+        : pad === "2"
+          ? ["$73EF", "$73F1"]
+          : ["$73EE", "$73F0", "$73EF", "$73F1"];
+      body.push("    call UPDATE_CONTROLLERS", `    ld a,(${rawPairs[0]})`);
+      for (const address of rawPairs.slice(1)) body.push("    ld d,a", `    ld a,(${address})`, "    or d");
+      body.push("    and $40");
+    } else if (pad) {
+      body.push("    halt");
       body.push(`    ld a,(JOYPAD_${pad})`);
       body.push("    and $F0");
     } else {
+      body.push("    halt");
       body.push("    ld a,(JOYPAD_1)");
       body.push("    and $F0");
       body.push("    ld d,a");

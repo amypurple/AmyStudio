@@ -214,7 +214,10 @@ export function createControlFlowHelpers(ctx) {
   }
 
   function loadLinesClobberB(lines) {
-    return Array.isArray(lines) && lines.some((line) => /\b(?:b|bc)\b/i.test(String(line || "").replace(/;.*/, "")));
+    return Array.isArray(lines) && lines.some((line) => {
+      const code = String(line || "").replace(/;.*/, "");
+      return /\b(?:b|bc)\b/i.test(code) || /^\s*(?:call|rst)\b/i.test(code);
+    });
   }
 
   function emitUnsignedFixedWholeByteCompareGoto(fixedToken, byteToken, operator, asmLabel, fixedOnLeft = true) {

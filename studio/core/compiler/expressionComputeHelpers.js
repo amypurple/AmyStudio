@@ -323,13 +323,14 @@ export function createExpressionComputeHelpers({
     const finishLabel = makeGeneratedLabel("Div8ExprFinish");
     return [
       ...loadRight,
-      "    ld b,a",
       "    or a",
       `    jr nz,${nonZeroLabel}`,
       "    xor a",
       `    jr ${finishLabel}`,
       `${nonZeroLabel}:`,
+      "    push af",
       ...loadLeft,
+      "    pop bc",
       "    ld c,0",
       `${loopLabel}:`,
       "    cp b",
@@ -442,6 +443,11 @@ export function createExpressionComputeHelpers({
     if (node.kind === "identifier") return emitLoadInt8Into("a", node.name);
     if (node.kind === "call") {
       const callName = node.name.toLowerCase();
+      if ((callName === "highbyte" || callName === "lowbyte") && node.args.length === 1) {
+        const loadWord = emitLoadInt16AstIntoHL(node.args[0]);
+        if (!loadWord) return null;
+        return [...loadWord, callName === "highbyte" ? "    ld a,h" : "    ld a,l"];
+      }
       if (callName === "random" && node.args.length === 1) {
         return emitRandomCountIntoA(renderExpressionAst(node.args[0]));
       }
@@ -739,7 +745,8 @@ export function createExpressionComputeHelpers({
           : (isSignedDeclaredType(declaredType) ? "sra a" : "srl a");
         if (shiftCount === null) {
           const countDeclared = resolveDeclaredValueType(renderExpressionAst(node.right));
-          const countType = resolveValueType(renderExpressionAst(node.right));
+          const countType = resolveValueType(renderExpressionAst(node.right))
+            || runtimeTypeForDeclaredType(countDeclared);
           const loadCount = emitLoadInt8AstIntoA(node.right);
           if (countType !== "int8" || isSignedDeclaredType(countDeclared) || !loadCount) return null;
           const countReady = makeGeneratedLabel("Shift8CountReady");
@@ -1052,7 +1059,8 @@ export function createExpressionComputeHelpers({
             : ["    srl h", "    rr l"];
         if (shiftCount === null) {
           const countDeclared = resolveDeclaredValueType(renderExpressionAst(node.right));
-          const countType = resolveValueType(renderExpressionAst(node.right));
+          const countType = resolveValueType(renderExpressionAst(node.right))
+            || runtimeTypeForDeclaredType(countDeclared);
           const loadCount = emitLoadInt8AstIntoA(node.right);
           if (countType !== "int8" || isSignedDeclaredType(countDeclared) || !loadCount) return null;
           const countReady = makeGeneratedLabel("Shift16ExprCountReady");

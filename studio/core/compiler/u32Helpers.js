@@ -10,6 +10,7 @@ export function createU32Helpers({
   resolveDeclaredValueType,
   isSignedDeclaredType,
   parseNumericLiteral,
+  tryEvaluateCompileTimeNumericExpression,
   emitStoreImmediate32,
   emitLoadInt8Into,
   emitLoadInt16IntoHL,
@@ -256,7 +257,11 @@ export function createU32Helpers({
     const signExtend = allowSignExtend && isSignedDeclaredType(declaredType);
     if (!valueType) {
       const raw = parseRawIntegerLiteral(token);
-      const numeric = raw !== null ? raw : parseNumericLiteral(token);
+      const literal = parseNumericLiteral(token);
+      const folded = typeof tryEvaluateCompileTimeNumericExpression === "function"
+        ? tryEvaluateCompileTimeNumericExpression(token)
+        : null;
+      const numeric = raw !== null ? raw : (literal !== null ? literal : folded);
       if (numeric === null) return emitStoreWideExpression(token, baseLabel, expectedType);
       return emitStoreImmediate32(baseLabel, numeric);
     }

@@ -437,6 +437,14 @@ export function parseExpressionAst(expr, normalizeExpression) {
   }
   function parseUnary() {
     const token = peek();
+    if (token?.type === "identifier"
+        && /^(?:highbyte|lowbyte)$/i.test(String(token.value || ""))
+        && peek(1)?.type !== "(") {
+      consume();
+      const operand = parseUnary();
+      if (!operand) return null;
+      return { kind: "call", name: token.value, args: [operand] };
+    }
     if (token && (token.type === "+" || token.type === "-" || token.type === "~")) {
       consume();
       const operand = parseUnary();

@@ -192,6 +192,11 @@ export function createTypeInferenceHelpers({
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
     }
     if (node.kind === "call") {
+      if (/^(?:highbyte|lowbyte)$/i.test(String(node.name || "")) && node.args.length === 1) {
+        const argType = resolveExpressionAstComputationType(node.args[0]);
+        if (!argType || argType.runtimeType !== "int16") return null;
+        return { declaredType: "u8", runtimeType: "int8" };
+      }
       if (String(node.name || "").toLowerCase() === "peek" && node.args.length === 1) {
         return { declaredType: "u8", runtimeType: "int8" };
       }

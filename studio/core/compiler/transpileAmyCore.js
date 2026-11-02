@@ -826,6 +826,17 @@ export function transpileAmyCore(sourceText, deps) {
       }
 
       if (dead) {
+        // A function may use an unconditional GOTO as its main loop and keep
+        // an unreachable return value afterward to declare its fallback exit.
+        // Preserve that structural return even though ordinary dead statements
+        // after the jump are removed; function validation still requires it.
+        if (/^return\s+.+$/i.test(line) && /^function\b/i.test(strippedLine(routineKey))) {
+          inRoutine = false;
+          routineKey = -1;
+          dead = false;
+          blockDepth = 0;
+          continue;
+        }
         if (topLevelDirective(line)) {
           inRoutine = false;
           routineKey = -1;
@@ -2473,11 +2484,11 @@ export function transpileAmyCore(sourceText, deps) {
         const arrayLength = hasArrayLength
           ? resolveEarlyNumericConstant(fieldMatch[3], earlyCompileTimeConstants)
           : null;
-        if (!isValidSymbolName(fieldName) || fields.has(fieldName)) {
-          return `Invalid or duplicate record field '${fieldName}': ${fieldRaw}`;
-        }
         if (isReservedAmyIdentifier(fieldName)) {
           return `Record field '${fieldName}' collides with a reserved Amy keyword or builtin: ${fieldRaw}`;
+        }
+        if (!isValidSymbolName(fieldName) || fields.has(fieldName)) {
+          return `Invalid or duplicate record field '${fieldName}': ${fieldRaw}`;
         }
         if (hasArrayLength && (!Number.isInteger(arrayLength) || arrayLength < 1 || arrayLength > 255)) {
           return `Record array fields require a compile-time constant length from 1 to 255: ${fieldRaw}`;
@@ -3439,10 +3450,19 @@ export function transpileAmyCore(sourceText, deps) {
     const slotKey = `${procName}:${kind}:${depth}`;
     let slot = forRuntimeValueSlots.get(slotKey);
     if (!slot) {
-      const frame = ensureProcFrame(procName);
-      frame.size += 2;
-      frame.usesIxFrame = true;
-      slot = { id: nextForRuntimeValueSlot++, offset: -frame.size, aliases: new Map() };
+      const id = nextForRuntimeValueSlot++;
+      if (lowerName(procName) === "start") {
+        const asmName = `AMY_FOR_SLOT_${id}`;
+        const address = reserveRam(asmName, 2, `main-program FOR ${kind}`);
+        runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
+        hasRuntimeRamDeclarations = true;
+        slot = { id, address, asmName, aliases: new Map() };
+      } else {
+        const frame = ensureProcFrame(procName);
+        frame.size += 2;
+        frame.usesIxFrame = true;
+        slot = { id, offset: -frame.size, aliases: new Map() };
+      }
       forRuntimeValueSlots.set(slotKey, slot);
     }
     const normalizedDeclared = normalizeDeclaredType(declaredType || (type === "int8" ? "u8" : "u16"));
@@ -3450,15 +3470,26 @@ export function transpileAmyCore(sourceText, deps) {
     let alias = slot.aliases.get(aliasKey);
     if (!alias) {
       alias = `AMY_FOR_${String(kind).toUpperCase()}_${slot.id}_${String(normalizedDeclared).toUpperCase()}`;
-      runtimeVars.set(alias, {
-        type,
-        declaredType: normalizedDeclared,
-        kind: normalizedDeclared,
-        scope: procName,
-        storage: "stack",
-        offset: slot.offset,
-        internal: true
-      });
+      runtimeVars.set(alias, slot.asmName
+        ? {
+            type,
+            declaredType: normalizedDeclared,
+            kind: normalizedDeclared,
+            scope: "global",
+            storage: "ram",
+            address: slot.address,
+            asmName: slot.asmName,
+            internal: true
+          }
+        : {
+            type,
+            declaredType: normalizedDeclared,
+            kind: normalizedDeclared,
+            scope: procName,
+            storage: "stack",
+            offset: slot.offset,
+            internal: true
+          });
       slot.aliases.set(aliasKey, alias);
     }
     const lines = emitRuntimeStore(alias, token);
@@ -4437,6 +4468,7 @@ export function transpileAmyCore(sourceText, deps) {
     resolveDeclaredValueType,
     isSignedDeclaredType,
     parseNumericLiteral,
+    tryEvaluateCompileTimeNumericExpression,
     emitStoreImmediate32,
     emitLoadInt8Into,
     emitLoadInt16IntoHL,

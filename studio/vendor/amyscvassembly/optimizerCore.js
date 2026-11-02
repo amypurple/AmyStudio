@@ -1594,7 +1594,15 @@ export class Z80Optimizer {
                     if (inst.label) return true;
                     return instructionCanClobberRegister(inst, regName);
                 };
-                const instructionSafeBetweenPushPop = (inst, savedPair, allowReadOnlyPairUse = false) => {
+                const instructionPreservesAllFlags = (inst) => {
+                    if (!(inst instanceof Instruction)) return false;
+                    const m = inst.mnemonic.toLowerCase();
+                    return m === 'ld' || m === 'nop' || m === 'di' || m === 'ei' || m === 'out' ||
+                        ((m === 'inc' || m === 'dec') &&
+                            inst.operands.length === 1 &&
+                            inst.operands[0].type === 'register_pair');
+                };
+                const instructionSafeBetweenPushPop = (inst, savedPair, allowReadOnlyPairUse = false, allowFlagChanges = false) => {
                     if (!(inst instanceof Instruction) || inst.label) return false;
                     const m = inst.mnemonic.toLowerCase();
                     if (savedPair === 'af' && ['rld', 'rrd'].includes(m)) {
@@ -1603,6 +1611,11 @@ export class Z80Optimizer {
                     if (['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt', 'push', 'pop', 'ex', 'exx'].includes(m)) {
                         return false;
                     }
+                    // AF preservation includes every flag bit, not only A. Instructions
+                    // such as ADD HL,DE, INC r and IN r,(C) modify some flags even though
+                    // they do not write the AF register pair explicitly. Removing the
+                    // save/restore around them can therefore lose a live DAA carry.
+                    if (savedPair === 'af' && !allowFlagChanges && !instructionPreservesAllFlags(inst)) return false;
                     // Reading the saved pair is harmless. Reject only writes to the
                     // pair and any explicit stack access while its saved value is live.
                     if (instructionTouchesRegister(inst, 'sp')) return false;
@@ -2443,9 +2456,9 @@ export class Z80Optimizer {
                                     const isLocalControlTarget = tokens.slice(i + 3, j).some((bodyToken) => {
                                         if (!(bodyToken instanceof Instruction)) return false;
                                         const bodyMnemonic = bodyToken.mnemonic.toLowerCase();
-                                        if (!["jp", "jr", "djnz"].includes(bodyMnemonic)) return false;
+                                        if (!['jp', 'jr', 'djnz'].includes(bodyMnemonic)) return false;
                                         return bodyToken.operands.some((operand) =>
-                                            operand.type === "symbol" && operand.value === candidate.label
+                                            operand.type === 'symbol' && operand.value === candidate.label
                                         );
                                     });
                                     if (isLocalControlTarget) continue;
@@ -5201,6 +5214,7 @@ export class Z80Optimizer {
                         }
                         const buffered = [];
                         let popIndex = -1;
+                        let changesSavedFlags = false;
 
                         for (let j = i + 1; j < tokens.length && j <= i + SHORT_PUSH_POP_WINDOW; j++) {
                             const midTok = tokens[j];
@@ -5214,7 +5228,10 @@ export class Z80Optimizer {
                                 break;
                             }
 
-                            let safe = instructionSafeBetweenPushPop(midTok, savedPair, this.config.speculativeValueReuse);
+                            let safe = instructionSafeBetweenPushPop(midTok, savedPair, this.config.speculativeValueReuse, savedPair === 'af');
+                            if (safe && savedPair === 'af' && !instructionPreservesAllFlags(midTok)) {
+                                changesSavedFlags = true;
+                            }
                             if (!safe && savedImmediate !== null && savedLayout &&
                                 midTok.mnemonic.toLowerCase() === 'ld' &&
                                 midTok.operands.length === 2 &&
@@ -5233,7 +5250,8 @@ export class Z80Optimizer {
                             buffered.push(midTok);
                         }
 
-                        if (popIndex !== -1 && buffered.length > 0) {
+                        if (popIndex !== -1 && buffered.length > 0 &&
+                            (!changesSavedFlags || this.areFlagsDeadBeforeNextUse(tokens, popIndex))) {
                             for (let k = 0; k < buffered.length; k++) {
                                 const midTok = buffered[k];
                                 optimized.push(new Instruction(

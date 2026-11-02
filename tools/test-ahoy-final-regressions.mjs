@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
 
 const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
+const biosPath = process.env.AMY_COLECO_BIOS || join(root, "studio", "bios", "colecovision.rom");
+if (!existsSync(biosPath)) {
+  console.log("SKIP Ahoy final regressions: ColecoVision BIOS not configured (set AMY_COLECO_BIOS).");
+  process.exit(0);
+}
 const temp = mkdtempSync(join(tmpdir(), "amy-ahoy-final-"));
-const bios = readFileSync(join(root, "studio", "bios", "colecovision.rom"));
+const bios = readFileSync(biosPath);
 const source = `
 u8 FillResult = 0
 u8 IndexResult = 0
