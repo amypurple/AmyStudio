@@ -8,6 +8,12 @@ export function createExamplePickerHelpers({
   getExampleTagFilter,
   getExampleSearchFilter
 }) {
+  const publicationTagLabels = new Map([
+    ["ahoy!", "Ahoy!"],
+    ["compute!", "COMPUTE!"],
+    ["gazette", "COMPUTE!'s Gazette"]
+  ]);
+
   function getExampleTagOrder() {
     const originOrder = [
       "faithful-adaptation",
@@ -59,8 +65,11 @@ export function createExamplePickerHelpers({
     els.exampleDetail.textContent = meta.detail || "Load a built-in demo.";
     const parts = [`Category: ${meta.category}`];
     if (meta.originLabel) parts.push(`Origin: ${meta.originLabel}`);
+    const publicationTags = (meta.tags || []).filter((tag) => publicationTagLabels.has(tag));
+    if (publicationTags.length) parts.push(`Publication: ${publicationTags.map((tag) => publicationTagLabels.get(tag)).join(", ")}`);
     if (meta.benchmark) parts.push("Benchmark: ROM/RAM panel");
-    if (meta.tags?.length) parts.push(`Tags: ${meta.tags.join(", ")}`);
+    const ordinaryTags = (meta.tags || []).filter((tag) => !publicationTagLabels.has(tag));
+    if (ordinaryTags.length) parts.push(`Tags: ${ordinaryTags.join(", ")}`);
     if (meta.selectedLibs?.length) parts.push(`Libs: ${getManifestLabels("libs", meta.selectedLibs).join(", ")}`);
     if (meta.selectedBundles?.length) parts.push(`Bundles: ${getManifestLabels("bundles", meta.selectedBundles).join(", ")}`);
     els.exampleMeta.textContent = parts.join(" | ");

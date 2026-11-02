@@ -100,6 +100,13 @@ function collectSourceTags(id, inferPublication = true) {
   return tags;
 }
 
+function normalizeDeclaredTag(tag) {
+  const lowered = String(tag || "").trim().toLowerCase();
+  if (lowered === "compute") return "compute!";
+  if (lowered === "ahoy") return "ahoy!";
+  return tag;
+}
+
 function classifyOrigin(entry, tags) {
   if (entry.originKind) return entry.originKind;
   if (tags.includes("inspired")) return "inspired";
@@ -126,7 +133,7 @@ const manifest = index.map((entry) => {
   item.category = entry.category || categorizeExample(item.id);
   const declaredTags = entry.tags || collectExampleTags(item);
   item.tags = [...new Set([
-    ...declaredTags.map((tag) => tag === "compute" ? "compute!" : tag),
+    ...declaredTags.map(normalizeDeclaredTag),
     ...collectSourceTags(item.id, entry.originKind !== "original")
   ])];
   item.originKind = classifyOrigin(entry, item.tags);

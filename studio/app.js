@@ -472,7 +472,13 @@ function refreshExampleBrowserUi() {
         const originLabel = exampleManifest.find((item) => item.originKind === originKind)?.originLabel || originKind;
         option.textContent = `Origin: ${originLabel}`;
       } else {
-        option.textContent = `Tag: ${tag}`;
+        const publicationLabels = {
+          "ahoy!": "Magazine: Ahoy!",
+          "compute!": "Magazine: COMPUTE!",
+          gazette: "Magazine: COMPUTE!'s Gazette"
+        };
+        const count = exampleManifest.filter((item) => (item.tags || []).includes(tag)).length;
+        option.textContent = `${publicationLabels[tag] || `Tag: ${tag}`} (${count})`;
       }
       if (tag === exampleTagFilter) option.selected = true;
       els.exampleTagSelect.appendChild(option);

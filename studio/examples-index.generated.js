@@ -7322,7 +7322,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "reimagined-adaptation",
       "game",
       "arcade",
@@ -7344,7 +7344,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "reimagined-adaptation",
       "game",
       "arcade",
@@ -7389,7 +7389,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "faithful-adaptation",
       "game",
       "arcade",
@@ -7411,7 +7411,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "reimagined-adaptation",
       "game",
       "arcade",
@@ -7434,7 +7434,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "expanded-adaptation",
       "game",
       "arcade",
@@ -7456,7 +7456,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "faithful-adaptation",
       "game",
       "arcade",
@@ -7478,7 +7478,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "reimagined-adaptation",
       "game",
       "arcade",
@@ -7500,7 +7500,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "reimagined-adaptation",
       "game",
       "arcade",
@@ -7522,7 +7522,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ahoy",
+      "ahoy!",
       "faithful-adaptation",
       "game",
       "arcade",
