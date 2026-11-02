@@ -1,0 +1,3312 @@
+cartridge "MANSION MURDER/AHOY! MAR. 1985/1985"
+
+' THE MANSION MURDER
+' Based on "Mansion" ("Solve the Mansion Murder"), Ahoy! March 1985
+' (Commodore 64 BASIC: MANSION GAME and MANSION SETUP; orig/ has the
+' listings and pictures of its twelve screens). The magazine's disk and
+' listing name no author. Made for the ColecoVision in Amy (the language
+' by Amy Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' The listing is a mansion to walk through: twelve screens of floor plan
+' (52 rooms, doorways, stairs, a lawn, a hot tub, secret passages, three
+' different passage set-ups chosen at random), 1-6 players taking turns of
+' 75 steps, the room's name shown as you enter it. Its title says "please
+' find the murderer in the mansion" but the program holds no mystery: the
+' players were left to make one up. Here the mystery is built in.
+'
+' Kept from the listing: the twelve screens cell for cell (MAP bytes are
+' its DATA lines 52000-53123, the tiles its own glyphs, DATA 63000+), its
+' wing table, its stairway and secret-passage rules (lines 300-390 and
+' 600-750) with the random set-up SP, its start squares, its turns
+' (a turn ends when the step count passes 75; stairs, passages and
+' screen changes cost no step), and its room names.
+' Changed (noted): the room you land in after the stairs or a passage is
+' yours at once (the listing waited for your next step).
+'
+' Added: a murder. One of six suspects, with one of six weapons, in one
+' of nine rooms, chosen at random. The eighteen other cards are clues
+' hidden one to a room around the mansion; you find one by walking into
+' its room, and it goes into your notebook. A suspect may be questioned in
+' his or her own room (once per player, 20 steps): an innocent one tells
+' you a clue you have not found; the murderer saw nothing. Accuse from
+' the menu: right, and you have solved it; wrong, and you are out.
+'
+' Made for this machine: the dark house - every room is black until your
+' lamp lights it in the listing's own brown on yellow; a view that
+' follows you over the 40-column screens; the players as figures;
+' portraits of the suspects; the notebook; sounds; a quiet loop under play
+' ("Footsteps on the Landing") and an original title tune ("Who Turned
+' the Key?").
+'
+' Controls (either joystick): the stick walks; the right button opens the
+' menu (notebook, question, accuse, end turn, end game); in menus the stick
+' chooses and the left button picks.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; every screen drawn with the NMI off after a wait; at the end a
+' press goes back to the title, and the screen sleeps after 30 seconds.
+
+const TPaper = 219
+const TFh = 220
+const TFb = 221
+const TFl = 222
+const TFr = 223
+const TFtl = 224
+const TFtr = 225
+const TFbl = 226
+const TFbr = 227
+const TTick = 228
+const TQm = 229
+const TDot = 230
+const TMoon00 = 231
+const TMoon01 = 232
+const TMoon10 = 233
+const TMoon11 = 234
+const TCand00 = 235
+const TCand01 = 236
+const TCand10 = 237
+const TCand11 = 238
+const TRoofl = 239
+const TRoofr = 240
+const TRoof = 241
+const TWall = 242
+const TWin = 243
+const TWind = 244
+const TDoor = 245
+const SPlayer = 0
+const SGhost = 4
+const SArrow = 8
+const SButlerd0 = 12
+const SButlerd1 = 16
+const SButlerd2 = 20
+const SButlerd3 = 24
+const SButlers0 = 28
+const SButlers1 = 32
+const SButlers2 = 36
+const SButlers3 = 40
+const SMaidd0 = 44
+const SMaidd1 = 48
+const SMaidd2 = 52
+const SMaidd3 = 56
+const SMaids0 = 60
+const SMaids1 = 64
+const SMaids2 = 68
+const SMaids3 = 72
+const SChauffeurd0 = 76
+const SChauffeurd1 = 80
+const SChauffeurd2 = 84
+const SChauffeurd3 = 88
+const SChauffeurs0 = 92
+const SChauffeurs1 = 96
+const SChauffeurs2 = 100
+const SChauffeurs3 = 104
+const SGovernessd0 = 108
+const SGovernessd1 = 112
+const SGovernessd2 = 116
+const SGovernessd3 = 120
+const SGovernesss0 = 124
+const SGovernesss1 = 128
+const SGovernesss2 = 132
+const SGovernesss3 = 136
+const SCecild0 = 140
+const SCecild1 = 144
+const SCecild2 = 148
+const SCecild3 = 152
+const SCecils0 = 156
+const SCecils1 = 160
+const SCecils2 = 164
+const SCecils3 = 168
+const SFreddyd0 = 172
+const SFreddyd1 = 176
+const SFreddyd2 = 180
+const SFreddyd3 = 184
+const SFreddys0 = 188
+const SFreddys1 = 192
+const SFreddys2 = 196
+const SFreddys3 = 200
+const NTiles8 = 944
+const SprBytes = 1632
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndStep = 5
+const SndBump = 6
+const SndCreak = 7
+const SndWhoosh = 8
+const SndClue = 9
+const SndTick = 10
+const SndNope = 11
+const SndGasp = 12
+const SndWin = 13
+const SndLose = 14
+const NClueRm = 51
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the case: Ss suspect, Sw weapon, Sr murder room (0-8, MRm); Sp the
+' listing's passage set-up (1-3)
+u8 Ss = 0
+u8 Sw = 0
+u8 Sr = 0
+u8 Sp = 1
+' ClueAt(room) = clue item + 1 (0 none); items 0-5 suspects, 6-11
+' weapons, 12-20 murder rooms. Nb(player * 21 + item) 1 when found.
+' Qd(player * 6 + suspect) 1 when questioned.
+u8 ClueAt[53]
+u8 Nb[126]
+u8 Qd[36]
+' the players: screen, column, row, room (the listing's PW, H, V, PR), out
+u8 Pw[6]
+u8 Ph[6]
+u8 Pv[6]
+u8 Pr[6]
+u8 Pout[6]
+u8 Np = 1
+u8 Cp = 0
+' the player now walking (copied in and out of the arrays)
+u8 Cw = 0
+u8 Ch = 0
+u8 Cv = 0
+u8 Cr = 0
+u8 T = 0
+u8 MvN = 0
+' the view: Cx, Cy the map cell at the window's top left; Lit the lit room
+u8 Cx = 0
+u8 Cy = 0
+u8 Lit = 0
+u8 MsgT = 0
+u8 Over = 0
+' Ph8: 1 walking, 2 menu, 3 notebook, 4 accuse, 5 hand-over, 6 the end,
+' 7 title, 8 credits, 9 suspects page, 10 rules, 11 verdict page (bot)
+u8 Pg = 0
+u8 Idle = 0
+' movement work
+u8 Dh = 0
+u8 Dv = 0
+u8 Nh = 0
+u8 Nv = 0
+u8 Oh = 0
+u8 Ov = 0
+u8 Xc = 0
+u8 Res = 0
+u8 OldR = 0
+u8 Gw = 0
+u8 Gv = 0
+u8 Gh = 0
+u8 Tw = 0
+u8 Tv = 0
+u8 Th = 0
+u8 Nw = 0
+u8 Qn = 0
+' text work: PrTab prints Ln characters of entry Xn of table Tb (0 rooms,
+' 1 suspects, 2 weapons), skipping Ofs, at Px, Py
+u8 Tb = 0
+u8 Xn = 0
+u8 Ln = 0
+u8 Ofs = 0
+u8 Px = 0
+u8 Py = 0
+' accuse picks
+u8 Aa = 0
+u8 Aw = 0
+u8 Ar = 0
+u8 Row = 0
+u8 Menu = 0
+u8 Mi = 0
+u8 Pic = 0
+u16 Rs = 1
+u16 Rw = 0
+u16 Rn = 0
+u8 Rv = 0
+u16 A16 = 0
+u16 B16 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 S = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+data Wing bytes
+  0,2,0,0,1, 1,3,1,0,1, 2,2,0,2,3, 3,3,1,2,3, 4,4,4,4,5, 5,5,5,4,5
+  6,8,6,6,7, 7,7,7,6,7, 8,8,6,8,8, 9,11,9,9,10, 10,10,10,9,10, 11,11,9,11,11
+end data
+data StartH bytes 5,9,13,17,21,25
+data PCol bytes 9,14,3,5,8,15
+data MRm bytes 10,11,12,13,17,18,19,21,25
+data SusRm bytes 31,30,29,48,46,45
+data DkCol bytes 1,4,12,13,6,10
+
+  tile screen
+  set sound table MmSoundTable areas 6
+  sprites 16x16
+  set sprite count 8
+  nmi off
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    SuspectsPage
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+  play sound SndRunA
+  play sound SndRunB
+  Cp = 0
+  LoadCur
+  T = 0
+  if Np > 1 then HandOver
+  DrawPlay
+  Msg2
+  print at 2,21, "SOMEONE IN THE HOUSE IS DEAD."
+  print at 2,22, "FIND THE MURDERER."
+  MsgT = 200
+
+play_loop:
+  Pg = 1
+  Frame1
+  ReadPad
+  PlayStep
+  if Over = 0 then goto play_loop
+
+  ' the end: the verdict, then a press goes back to the title
+  stop sound SndRunA
+  stop sound SndRunB
+  Reveal
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------
+' the case
+
+sub Roll:
+  Rw = Rs << 7
+  Rs = Rs ^ Rw
+  Rw = Rs >> 9
+  Rs = Rs ^ Rw
+  Rw = Rs << 8
+  Rs = Rs ^ Rw
+  Rw = Rs >> 8
+  Rw = Rw * Rn
+  Rw = Rw >> 8
+  Rv = Rw
+  return
+end sub
+
+' IsClue: Res 1 when item Xn is not part of the solution
+sub IsClue:
+  Res = 1
+  if Xn < 6 then
+    if Xn = Ss then Res = 0
+    return
+  end if
+  if Xn < 12 then
+    V = Xn - 6
+    if V = Sw then Res = 0
+    return
+  end if
+  V = Xn - 12
+  if V = Sr then Res = 0
+  return
+end sub
+
+sub NewGame:
+  Rn = 6
+  Roll
+  Ss = Rv
+  Roll
+  Sw = Rv
+  Rn = 9
+  Roll
+  Sr = Rv
+  Rn = 3
+  Roll
+  Sp = Rv + 1
+  fill array ClueAt with 0
+  fill array Nb with 0
+  fill array Qd with 0
+  fill array Pout with 0
+  Rn = NClueRm
+  for Xn = 0 to 20
+    IsClue
+    if Res = 1 then PickRoom
+  next
+  for I = 0 to 5
+    Pw[I] = 0
+    V = StartH[I]
+    Ph[I] = V
+    Pv[I] = 15
+    Gw = 0
+    Gv = 15
+    Gh = V
+    GetCell
+    Pr[I] = Xc
+  next
+  Over = 0
+  MsgT = 0
+  return
+end sub
+
+' a free room for clue Xn
+sub PickRoom:
+pk_lp:
+  Roll
+  R = ClueRm[Rv]
+  if ClueAt[R] > 0 then goto pk_lp
+  ClueAt[R] = Xn + 1
+  return
+end sub
+
+sub LoadCur:
+  Cw = Pw[Cp]
+  Ch = Ph[Cp]
+  Cv = Pv[Cp]
+  Cr = Pr[Cp]
+  return
+end sub
+
+sub SaveCur:
+  Pw[Cp] = Cw
+  Ph[Cp] = Ch
+  Pv[Cp] = Cv
+  Pr[Cp] = Cr
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' moving (the listing's lines 100-390, 600-750, 900-930)
+
+sub GetCell:
+  A16 = Gw
+  A16 = A16 * 960
+  B16 = Gv
+  B16 = B16 * 40
+  A16 = A16 + B16
+  A16 = A16 + Gh
+  Xc = Map[A16]
+  Xc = Xc - 128
+  return
+end sub
+
+' Res: 0 blocked, 1 a step, 2 the stairs or a new screen, 3 a passage
+sub TryMove:
+  Oh = Ch
+  Ov = Cv
+  Nh = Ch + Dh
+  Nv = Cv + Dv
+  Gw = Cw
+  Gv = Nv
+  Gh = Nh
+  GetCell
+  Res = 0
+  if Xc > 85 then
+    Secret
+    if Res > 0 then Res = 3
+    return
+  end if
+  if Xc = 62 then
+    if Cr = 1 then
+      Stairs
+      return
+    end if
+  end if
+  if Xc = 63 then
+    if Cr = 1 then
+      Stairs
+      return
+    end if
+  end if
+  if Xc > 61 then return
+  if Xc = 0 then return
+  if Nv = 0 then
+    J = Cw * 5
+    J = J + 1
+    Nw = Wing[J]
+    if Nw = Cw then return
+    Tw = Nw
+    Tv = 22
+    Th = Nh
+    Jump
+    return
+  end if
+  if Nv > 22 then
+    J = Cw * 5
+    J = J + 2
+    Nw = Wing[J]
+    if Nw = Cw then return
+    Tw = Nw
+    Tv = 1
+    Th = Nh
+    Jump
+    return
+  end if
+  if Nh = 0 then
+    J = Cw * 5
+    J = J + 4
+    Nw = Wing[J]
+    if Nw = Cw then return
+    Tv = Nv
+    if Cw = 4 then Tv = 6
+    Tw = Nw
+    Th = 38
+    Jump
+    return
+  end if
+  if Nh > 38 then
+    J = Cw * 5
+    J = J + 3
+    Nw = Wing[J]
+    if Nw = Cw then return
+    Tv = Nv
+    if Cw = 5 then Tv = 16
+    Tw = Nw
+    Th = 1
+    Jump
+    return
+  end if
+  Ch = Nh
+  Cv = Nv
+  Cr = Xc
+  Res = 1
+  return
+end sub
+
+sub Jump:
+  Cw = Tw
+  Cv = Tv
+  Ch = Th
+  Land
+  Res = 2
+  return
+end sub
+
+' line 915-920: off the floor, one down and one right (wrapping)
+sub Land:
+land_lp:
+  Gw = Cw
+  Gv = Cv
+  Gh = Ch
+  GetCell
+  if Xc > 0 then
+    if Xc < 62 then
+      Cr = Xc
+      return
+    end if
+  end if
+  if Ch > 37 then
+    Ch = Ch - 37
+  else
+    inc Ch
+  end if
+  if Cv > 21 then
+    Cv = Cv - 21
+  else
+    inc Cv
+  end if
+  goto land_lp
+end sub
+
+sub Go3:
+  Tw = X
+  Tv = Y
+  Th = W
+  Jump
+  return
+end sub
+
+' lines 300-390
+sub Stairs:
+  if Cw = 11 then
+    X = 6
+    Y = 7
+    W = 17
+    Go3
+    return
+  end if
+  if Cw = 8 then
+    if Oh > 12 then
+      X = 0
+      Y = 14
+      W = 16
+    else
+      X = 2
+      Y = 21
+      W = 9
+    end if
+    Go3
+    return
+  end if
+  if Cw = 7 then
+    X = 1
+    Y = 3
+    W = 23
+    Go3
+    return
+  end if
+  if Cw = 6 then
+    X = 11
+    Y = 19
+    W = 16
+    Go3
+    return
+  end if
+  if Cw = 5 then
+    X = 1
+    Y = 15
+    W = 23
+    Go3
+    return
+  end if
+  if Cw = 4 then
+    X = 2
+    Y = 20
+    W = 16
+    Go3
+    return
+  end if
+  if Cw = 2 then
+    if Oh > 12 then
+      X = 4
+      Y = 10
+      W = 15
+    else
+      X = 8
+      Y = 21
+      W = 7
+    end if
+    Go3
+    return
+  end if
+  if Cw = 1 then
+    if Ov > 9 then
+      X = 5
+      Y = 3
+      W = 23
+    else
+      X = 7
+      Y = 16
+      W = 23
+    end if
+    Go3
+    return
+  end if
+  if Cw = 0 then
+    X = 8
+    Y = 20
+    W = 16
+    Go3
+  end if
+  return
+end sub
+
+' lines 600-750: the fixed passages, then set-up SP
+sub Secret:
+  if Cw = 3 then
+    X = 10
+    Y = 5
+    W = 14
+    Go3
+    return
+  end if
+  if Cw = 10 then
+    if Nh < 18 then
+      X = 3
+      Y = 22
+      W = 29
+      Go3
+      return
+    end if
+  end if
+  if Cw = 6 then
+    X = 5
+    Y = 10
+    W = 20
+    Go3
+    return
+  end if
+  if Cw = 5 then
+    if Oh < 22 then
+      X = 6
+      Y = 3
+      W = 14
+      Go3
+      return
+    end if
+    if Nv < 4 then
+      X = 8
+      Y = 7
+      W = 5
+      Go3
+      return
+    end if
+  end if
+  if Cw = 8 then
+    if Ov = 6 then
+      X = 5
+      Y = 2
+      W = 37
+      Go3
+      return
+    end if
+  end if
+  if Sp = 1 then
+    Secret1
+    return
+  end if
+  if Sp = 2 then
+    Secret2
+    return
+  end if
+  Secret3
+  return
+end sub
+
+sub Secret1:
+  if Cw = 11 then
+    if Cr = 52 then
+      X = 8
+      Y = 22
+      W = 3
+    else
+      X = 11
+      Y = Nv
+      W = 21
+    end if
+    Go3
+    return
+  end if
+  if Cw = 9 then
+    if Cr = 4 then
+      X = 4
+      Y = 8
+      W = 2
+    else
+      X = 5
+      Y = 9
+      W = 36
+    end if
+    Go3
+    return
+  end if
+  if Cw = 10 then
+    if Cr = 4 then
+      X = 1
+      Y = 13
+      W = 28
+    else
+      X = 11
+      Y = 6
+      W = 31
+    end if
+    Go3
+    return
+  end if
+  if Cw = 4 then
+    X = 11
+    Y = 8
+    W = 3
+    Go3
+    return
+  end if
+  if Cw = 7 then
+    X = 10
+    Y = 6
+    W = 38
+    Go3
+    return
+  end if
+  if Cw = 5 then
+    if Oh > 32 then
+      X = 7
+      Y = 6
+      W = 8
+      Go3
+    end if
+    return
+  end if
+  if Cw = 1 then
+    X = 9
+    Y = 16
+    W = 25
+    Go3
+    return
+  end if
+  if Cw = 8 then
+    if Cr = 41 then
+      X = 3
+      Y = 5
+      W = 7
+      Go3
+    end if
+  end if
+  return
+end sub
+
+sub Secret2:
+  if Cw = 11 then
+    if Cr = 52 then
+      X = 9
+      Y = 2
+      W = 2
+    else
+      X = 11
+      Y = Nv
+      W = 21
+    end if
+    Go3
+    return
+  end if
+  if Cw = 9 then
+    if Cr = 4 then
+      X = 9
+      Y = 13
+      W = Nh
+    else
+      X = 0
+      Y = 5
+      W = 16
+    end if
+    Go3
+    return
+  end if
+  if Cw = 10 then
+    if Cr = 4 then
+      X = 5
+      Y = 9
+      W = 37
+    else
+      X = 8
+      Y = 17
+      W = 2
+    end if
+    Go3
+    return
+  end if
+  if Cw = 4 then
+    X = 10
+    Y = 17
+    W = 12
+    Go3
+    return
+  end if
+  if Cw = 7 then
+    X = 1
+    Y = 12
+    W = 27
+    Go3
+    return
+  end if
+  if Cw = 5 then
+    if Oh > 32 then
+      X = 11
+      Y = 22
+      W = 27
+      Go3
+    end if
+    return
+  end if
+  if Cw = 1 then
+    X = 7
+    Y = 6
+    W = 12
+    Go3
+    return
+  end if
+  if Cw = 8 then
+    if Cr = 41 then
+      X = 7
+      Y = 2
+      W = 27
+      Go3
+    end if
+  end if
+  return
+end sub
+
+sub Secret3:
+  if Cw = 11 then
+    if Cr = 52 then
+      X = 5
+      Y = 9
+      W = 37
+    else
+      X = 11
+      Y = Nv
+      W = 21
+    end if
+    Go3
+    return
+  end if
+  if Cw = 9 then
+    if Cr = 4 then
+      X = 7
+      Y = 6
+      W = 12
+    else
+      X = 8
+      Y = 10
+      W = 15
+    end if
+    Go3
+    return
+  end if
+  if Cw = 10 then
+    if Cr = 4 then
+      X = 10
+      Y = 6
+      W = Nh
+    else
+      X = 9
+      Y = 17
+      W = 2
+    end if
+    Go3
+    return
+  end if
+  if Cw = 4 then
+    X = 9
+    Y = 2
+    W = 27
+    Go3
+    return
+  end if
+  if Cw = 7 then
+    X = 10
+    Y = 2
+    W = 12
+    Go3
+    return
+  end if
+  if Cw = 5 then
+    if Oh > 32 then
+      X = 8
+      Y = 18
+      W = 3
+      Go3
+    end if
+    return
+  end if
+  if Cw = 1 then
+    X = 4
+    Y = 7
+    W = 2
+    Go3
+    return
+  end if
+  if Cw = 8 then
+    if Cr = 41 then
+      X = 11
+      Y = 22
+      W = 21
+      Go3
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' walking
+
+sub PlayStep:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ShowHud
+  end if
+  if Press2 = 1 then
+    MenuPage
+    return
+  end if
+  StickDir
+  if Rep = 0 then return
+  Dh = 0
+  Dv = 0
+  if Up1 = 1 then
+    Dv = 255
+  else
+    if Dn1 = 1 then
+      Dv = 1
+    else
+      if Lf1 = 1 then
+        Dh = 255
+      else
+        Dh = 1
+      end if
+    end if
+  end if
+  OldR = Cr
+  TryMove
+  if Res = 0 then
+    play sound SndBump
+    return
+  end if
+  inc MvN
+  if Res = 1 then
+    inc T
+    play sound SndStep
+    Fit
+  else
+    if Res = 3 then
+      play sound SndWhoosh
+    else
+      play sound SndCreak
+    end if
+    FitNow
+    DrawMap
+  end if
+  Arrive
+  if MsgT = 0 then ShowSteps
+  DoSprites
+  if T > 75 then EndTurn
+  return
+end sub
+
+' a new room: its name, the lamp, a clue, a suspect at home
+sub Arrive:
+  if Cr = OldR then return
+  if MsgT = 0 then ShowName
+  if Cr > 52 then return
+  if Cr = 34 then return
+  LampOn
+  for S = 0 to 5
+    if SusRm[S] = Cr then
+      J = Cp * 6
+      J = J + S
+      if Qd[J] = 0 then
+        Msg2
+        Tb = 1
+        Xn = S
+        Ofs = 0
+        Ln = 14
+        Px = 2
+        Py = 21
+        PrTab
+        print at 2,22, "IS HERE. RIGHT BUTTON: ASK."
+        MsgT = 150
+      end if
+    end if
+  next
+  V = ClueAt[Cr]
+  if V > 0 then
+    Xn = V - 1
+    J = Cp * 21
+    J = J + Xn
+    if Nb[J] = 0 then
+      Nb[J] = 1
+      Msg2
+      print at 2,21, "A CLUE!"
+      ShowClue
+      play sound SndClue
+    end if
+  end if
+  return
+end sub
+
+' ShowClue: item Xn on row 22
+sub ShowClue:
+  if Xn < 12 then
+    print at 2,22, "IT WAS NOT"
+    Px = 13
+    Py = 22
+    Ofs = 0
+    if Xn < 6 then
+      Tb = 1
+      Ln = 14
+    else
+      Tb = 2
+      Ln = 17
+      Xn = Xn - 6
+    end if
+    PrTab
+  else
+    print at 2,22, "NOT IN THE"
+    V = Xn - 12
+    Xn = MRm[V]
+    Tb = 0
+    Ln = 17
+    Ofs = 0
+    Px = 13
+    Py = 22
+    PrTab
+  end if
+  MsgT = 200
+  return
+end sub
+
+sub EndTurn:
+  SaveCur
+  if Np = 1 then
+    T = 0
+    Msg2
+    print at 2,21, "THE HALL CLOCK STRIKES."
+    print at 2,22, "A NEW TURN BEGINS."
+    MsgT = 150
+    return
+  end if
+  NextPlayer
+  return
+end sub
+
+sub NextPlayer:
+np_lp:
+  inc Cp
+  if Cp >= Np then Cp = 0
+  if Pout[Cp] = 1 then goto np_lp
+  LoadCur
+  T = 0
+  MsgT = 0
+  HandOver
+  DrawPlay
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the view
+
+sub LampOn:
+  if Lit = Cr then return
+  if Lit > 0 then
+    V = DimC[Lit]
+    A16 = Lit
+    A16 = A16 + 128
+    A16 = A16 << 3
+    fill V count 8 to vram.color + A16
+  end if
+  Lit = Cr
+  V = LitC[Lit]
+  A16 = Lit
+  A16 = A16 + 128
+  A16 = A16 << 3
+  fill V count 8 to vram.color + A16
+  return
+end sub
+
+' Fit: keep the walker away from the window's edges
+sub Fit:
+  R = 0
+  V = Cx + 5
+  if Ch < V then R = 1
+  V = Cx + 22
+  if Ch > V then R = 1
+  V = Cy + 4
+  if Cv < V then R = 1
+  V = Cy + 15
+  if Cv > V then R = 1
+  if R = 0 then return
+  X = Cx
+  Y = Cy
+  FitNow
+  if X <> Cx then
+    DrawMap
+    return
+  end if
+  if Y <> Cy then DrawMap
+  return
+end sub
+
+sub FitNow:
+  if Ch < 14 then
+    Cx = 0
+  else
+    Cx = Ch - 14
+  end if
+  if Cx > 12 then Cx = 12
+  if Cv < 10 then
+    Cy = 0
+  else
+    Cy = Cv - 10
+  end if
+  if Cy > 4 then Cy = 4
+  return
+end sub
+
+' the window: map rows Cy to Cy + 19, columns Cx to Cx + 27, on screen
+' rows 1-20, columns 2-29
+sub DrawMap:
+  for R = 0 to 19
+    A16 = Cw
+    A16 = A16 * 960
+    B16 = Cy + R
+    B16 = B16 * 40
+    A16 = A16 + B16
+    A16 = A16 + Cx
+    B16 = R + 1
+    B16 = B16 << 5
+    B16 = B16 + 2
+    copy Map + A16 count 28 to vram.name + B16
+  next
+  return
+end sub
+
+sub DoSprites:
+  S = 1
+  for I = 0 to 5
+    if I = Cp then
+      K = 0
+      X = Ch
+      Y = Cv
+      W = Cw
+    else
+      K = S
+      inc S
+      X = Ph[I]
+      Y = Pv[I]
+      W = Pw[I]
+    end if
+    V = 0
+    if I < Np then
+      if W = Cw then V = 1
+    end if
+    X = X - Cx
+    Y = Y - Cy
+    if X > 27 then V = 0
+    if Y > 19 then V = 0
+    if V = 1 then
+      X = X + 2
+      X = X << 3
+      Y = Y + 1
+      Y = Y << 3
+      dec Y
+      W = PCol[I]
+      set sprite K to Y,X,SPlayer,W
+    else
+      set sprite K to 192,0,0,0
+    end if
+  next
+  set sprite 6 to 192,0,0,0
+  set sprite 7 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub ShowName:
+  Tb = 0
+  Xn = Cr
+  Ofs = 0
+  Ln = 20
+  Px = 2
+  Py = 21
+  PrTab
+  print at 22,21, "PLAYER"
+  V = Cp + 1
+  print V at 29,21 width 1
+  return
+end sub
+
+sub ShowSteps:
+  print at 2,22, "STEPS LEFT"
+  V = 76 - T
+  print V at 13,22 width 2
+  print at 15,22, "  MENU: RIGHT"
+  return
+end sub
+
+sub ShowHud:
+  ShowName
+  ShowSteps
+  return
+end sub
+
+sub Msg2:
+  print at 2,21, "                            "
+  print at 2,22, "                            "
+  return
+end sub
+
+sub PrTab:
+  if Tb = 0 then
+    A16 = Xn
+    A16 = A16 * 20
+  end if
+  if Tb = 1 then
+    A16 = Xn
+    A16 = A16 * 14
+  end if
+  if Tb = 2 then
+    A16 = Xn
+    A16 = A16 * 18
+  end if
+  A16 = A16 + Ofs
+  for K = 1 to Ln
+    if Tb = 0 then V = RmName[A16]
+    if Tb = 1 then V = SusName[A16]
+    if Tb = 2 then V = WepName[A16]
+    put char V at Px,Py
+    inc A16
+    inc Px
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  Lit = 0
+  if Cr < 53 then
+    if Cr <> 34 then LampOn
+  end if
+  FitNow
+  DrawMap
+  ShowHud
+  DoSprites
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the menu (right button)
+
+sub MenuPage:
+  Qn = 255
+  for S = 0 to 5
+    if SusRm[S] = Cr then Qn = S
+  next
+  NewScreen
+  backdrop dark blue
+  print at 9,2, "WHAT NOW?"
+  print at 6,5, "BACK TO THE HOUSE"
+  print at 6,7, "READ THE NOTEBOOK"
+  if Qn < 6 then
+    print at 6,9, "QUESTION"
+    Tb = 1
+    Xn = Qn
+    Ofs = 0
+    Ln = 14
+    Px = 15
+    Py = 9
+    PrTab
+  else
+    print at 6,9, "(NO ONE TO QUESTION)"
+  end if
+  print at 6,11, "ACCUSE SOMEONE"
+  print at 6,13, "END MY TURN"
+  print at 6,15, "GIVE UP THE CASE"
+  print at 2,19, "STEPS LEFT"
+  V = 76 - T
+  print V at 13,19 width 2
+  ShowScreen
+  Menu = 0
+  Mi = 6
+  MenuCursor
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+mp_loop:
+  Pg = 2
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 5 then inc Menu
+    end if
+    MenuCursor
+    play sound SndTick
+  end if
+  if Press2 = 1 then
+    Menu = 0
+    goto mp_go
+  end if
+  if Press = 0 then goto mp_loop
+mp_go:
+  if Menu = 1 then
+    NotePage
+    DrawPlay
+    return
+  end if
+  if Menu = 2 then
+    if Qn > 5 then
+      play sound SndNope
+      goto mp_loop
+    end if
+    DrawPlay
+    Question
+    return
+  end if
+  if Menu = 3 then
+    AccusePage
+    return
+  end if
+  if Menu = 4 then
+    EndTurnNow
+    return
+  end if
+  if Menu = 5 then
+    GiveUpPage
+    return
+  end if
+  DrawPlay
+  return
+end sub
+
+sub EndTurnNow:
+  SaveCur
+  if Np = 1 then
+    T = 0
+    DrawPlay
+    Msg2
+    print at 2,21, "YOU REST A WHILE."
+    print at 2,22, "A NEW TURN BEGINS."
+    MsgT = 150
+    return
+  end if
+  NextPlayer
+  return
+end sub
+
+' a cursor at column 4 of rows 5, 7, ... (Mi items)
+sub MenuCursor:
+  for K = 0 to 5
+    Y = K << 1
+    Y = Y + 5
+    if K < Mi then put char 32 at 4,Y
+  next
+  Y = Menu << 1
+  Y = Y + 5
+  put char 62 at 4,Y
+  return
+end sub
+
+sub Question:
+  J = Cp * 6
+  J = J + Qn
+  Msg2
+  Tb = 1
+  Xn = Qn
+  Ofs = 0
+  Ln = 14
+  Px = 2
+  Py = 21
+  PrTab
+  if Qd[J] = 1 then
+    print at 2,22, "HAS NOTHING MORE TO SAY."
+    MsgT = 150
+    play sound SndNope
+    return
+  end if
+  Qd[J] = 1
+  T = T + 20
+  if Qn = Ss then
+    print at 2,22, "SAW NOTHING. NOTHING AT ALL."
+    MsgT = 200
+    play sound SndGasp
+    QEnd
+    return
+  end if
+  ' an innocent one tells a clue you have not found, from a random start
+  Rn = 21
+  Roll
+  W = Rv
+  for K = 0 to 20
+    Xn = W
+    IsClue
+    if Res = 1 then
+      J = Cp * 21
+      J = J + Xn
+      if Nb[J] = 0 then
+        Nb[J] = 1
+        ShowClue
+        play sound SndClue
+        QEnd
+        return
+      end if
+    end if
+    inc W
+    if W > 20 then W = 0
+  next
+  print at 2,22, "KNOWS NOTHING MORE."
+  MsgT = 150
+  QEnd
+  return
+end sub
+
+sub QEnd:
+  if T > 75 then
+    Rearm
+    wait 120 frames
+    nmi off
+    MsgT = 0
+    EndTurn
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the notebook
+
+sub NotePage:
+  NewScreen
+  backdrop dark blue
+  print at 2,1, "NOTEBOOK OF PLAYER"
+  V = Cp + 1
+  print V at 21,1 width 1
+  print at 3,3, "SUSPECTS"
+  print at 17,3, "WEAPONS"
+  print at 3,11, "ROOMS"
+  for I = 0 to 20
+    J = Cp * 21
+    J = J + I
+    V = TQm
+    if Nb[J] = 1 then V = TTick
+    if I < 6 then
+      X = 2
+      Y = I + 4
+      Tb = 1
+      Xn = I
+      Ofs = 0
+      if I < 4 then Ofs = 4
+    else
+      if I < 12 then
+        X = 16
+        Y = I - 2
+        Tb = 2
+        Xn = I - 6
+        Ofs = 4
+      else
+        X = 2
+        Y = I
+        Tb = 0
+        W = I - 12
+        Xn = MRm[W]
+        Ofs = 0
+      end if
+    end if
+    put char V at X,Y
+    Px = X + 1
+    Py = Y
+    Ln = 13
+    if I < 6 then Ln = 14 - Ofs
+    if Ln > 13 then Ln = 13
+    PrTab
+  next
+  put char TTick at 16,13
+  print at 18,13, "CLEARED"
+  put char TQm at 16,15
+  print at 18,15, "UNKNOWN"
+  print at 16,18, "ONE OF EACH"
+  print at 16,19, "IS GUILTY."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Pg = 3
+  WaitPress
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' accusing
+
+' a portrait of suspect Pic, sprites 0-7, top left at tile X, Y
+sub Portrait:
+  for J = 0 to 5
+    W = Y + J
+    W = W - 1
+    for K = 0 to 5
+      V = TPaper
+      if J = 0 then V = TFh
+      if J = 5 then V = TFb
+      if K = 0 then
+        V = TFl
+        if J = 0 then V = TFtl
+        if J = 5 then V = TFbl
+      end if
+      if K = 5 then
+        V = TFr
+        if J = 0 then V = TFtr
+        if J = 5 then V = TFbr
+      end if
+      R = X + K
+      R = R - 1
+      put char V at R,W
+    next
+  next
+  PortraitSpr
+  return
+end sub
+
+sub PortraitSpr:
+  ' the dark layer (sprites 0-3) over the face (4-7)
+  W = Pic << 5
+  W = W + SButlerd0
+  S = DkCol[Pic]
+  for K = 0 to 3
+    Px = K & 1
+    Px = Px << 4
+    R = X << 3
+    Px = Px + R
+    Py = K & 2
+    Py = Py << 3
+    R = Y << 3
+    Py = Py + R
+    dec Py
+    set sprite K to Py,Px,W,S
+    R = K + 4
+    J = W + 16
+    set sprite R to Py,Px,J,9
+    W = W + 4
+  next
+  update sprites
+  return
+end sub
+
+sub AccusePage:
+  NewScreen
+  backdrop dark red
+  print at 4,1, "MAKE YOUR ACCUSATION"
+  print at 2,4, "WHO"
+  print at 2,7, "WEAPON"
+  print at 2,10, "ROOM"
+  print at 4,15, "ACCUSE!"
+  print at 4,17, "NOT YET"
+  print at 2,21, "STICK: CHOOSE. BUTTON: PICK"
+  Aa = 0
+  Aw = 0
+  Ar = 0
+  Row = 0
+  ShowAccuse
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+ap_loop:
+  Pg = 4
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Up1 = 1 then
+      if Row > 0 then dec Row
+    end if
+    if Dn1 = 1 then
+      if Row < 4 then inc Row
+    end if
+    if Rt1 = 1 then
+      if Row = 0 then
+        inc Aa
+        if Aa > 5 then Aa = 0
+      end if
+      if Row = 1 then
+        inc Aw
+        if Aw > 5 then Aw = 0
+      end if
+      if Row = 2 then
+        inc Ar
+        if Ar > 8 then Ar = 0
+      end if
+    end if
+    if Lf1 = 1 then
+      if Row = 0 then
+        if Aa = 0 then Aa = 6
+        dec Aa
+      end if
+      if Row = 1 then
+        if Aw = 0 then Aw = 6
+        dec Aw
+      end if
+      if Row = 2 then
+        if Ar = 0 then Ar = 9
+        dec Ar
+      end if
+    end if
+    ShowAccuse
+    play sound SndTick
+  end if
+  if Press2 = 1 then
+    DrawPlay
+    return
+  end if
+  if Press = 0 then goto ap_loop
+  if Row < 3 then
+    inc Row
+    ShowAccuse
+    play sound SndTick
+    goto ap_loop
+  end if
+  if Row = 4 then
+    DrawPlay
+    return
+  end if
+  ' the verdict
+  R = 0
+  if Aa = Ss then
+    if Aw = Sw then
+      if Ar = Sr then R = 1
+    end if
+  end if
+  if R = 1 then
+    Over = 1
+    return
+  end if
+  Pout[Cp] = 1
+  SaveCur
+  R = 0
+  for I = 0 to 5
+    if I < Np then
+      if Pout[I] = 0 then inc R
+    end if
+  next
+  if R = 0 then
+    Over = 2
+    return
+  end if
+  HideSprites
+  NewScreen
+  backdrop dark red
+  print at 9,6, "W R O N G !"
+  print at 4,9, "PLAYER"
+  V = Cp + 1
+  print V at 11,9 width 1
+  print at 13,9, "IS OUT OF THE"
+  print at 4,10, "GAME. THE OTHERS PLAY ON."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  play sound SndLose
+  Pg = 11
+  WaitPress
+  NextPlayer
+  return
+end sub
+
+sub ShowAccuse:
+  for K = 0 to 4
+    Y = K * 3
+    Y = Y + 4
+    if K > 2 then
+      Y = K << 1
+      Y = Y + 9
+    end if
+    V = 32
+    if K = Row then V = 62
+    if K < 3 then
+      put char V at 1,Y
+    else
+      put char V at 2,Y
+    end if
+  next
+  Tb = 1
+  Xn = Aa
+  Ofs = 0
+  Ln = 14
+  Px = 9
+  Py = 4
+  PrTab
+  Tb = 2
+  Xn = Aw
+  Ln = 18
+  Px = 9
+  Py = 7
+  PrTab
+  Tb = 0
+  Xn = MRm[Ar]
+  Ln = 20
+  Px = 9
+  Py = 10
+  PrTab
+  Pic = Aa
+  X = 22
+  Y = 14
+  Portrait
+  return
+end sub
+
+sub GiveUpPage:
+  NewScreen
+  backdrop dark blue
+  print at 5,5, "GIVE UP THE CASE?"
+  print at 6,9, "NO, KEEP LOOKING"
+  print at 6,11, "YES, TELL ME WHO"
+  ShowScreen
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+gu_loop:
+  Pg = 2
+  put char 32 at 4,9
+  put char 32 at 4,11
+  Y = Menu << 1
+  Y = Y + 9
+  put char 62 at 4,Y
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Up1 = 1 then Menu = 0
+    if Dn1 = 1 then Menu = 1
+    play sound SndTick
+  end if
+  if Press = 0 then goto gu_loop
+  if Menu = 1 then
+    Over = 2
+    return
+  end if
+  DrawPlay
+  return
+end sub
+
+' the end: who, with what, where
+sub Reveal:
+  NewScreen
+  if Over = 1 then
+    backdrop dark blue
+    print at 2,1, "PLAYER"
+    V = Cp + 1
+    print V at 9,1 width 1
+    print at 11,1, "SOLVED THE CASE!"
+    play sound SndWin
+  else
+    backdrop dark red
+    print at 2,1, "THE MURDERER GOES FREE..."
+    play sound SndLose
+  end if
+  print at 2,4, "IT WAS"
+  Tb = 1
+  Xn = Ss
+  Ofs = 0
+  Ln = 14
+  Px = 2
+  Py = 6
+  PrTab
+  print at 2,8, "WITH"
+  Tb = 2
+  Xn = Sw
+  Ln = 18
+  Px = 2
+  Py = 10
+  PrTab
+  print at 2,12, "IN THE"
+  Tb = 0
+  Xn = MRm[Sr]
+  Ln = 20
+  Px = 2
+  Py = 14
+  PrTab
+  print at 7,21, "PRESS THE BUTTON"
+  Pic = Ss
+  X = 22
+  Y = 6
+  Portrait
+  ShowScreen
+  Pg = 6
+  return
+end sub
+
+' the lamp passes on
+sub HandOver:
+  NewScreen
+  backdrop black
+  print at 10,6, "PLAYER"
+  V = Cp + 1
+  print V at 17,6 width 1
+  print at 6,9, "TAKE THE LAMP."
+  print at 6,10, "YOUR TURN: 76 STEPS."
+  print at 7,21, "PRESS THE BUTTON"
+  V = PCol[Cp]
+  set sprite 0 to 103,120,SPlayer,V
+  update sprites
+  ShowScreen
+  Pg = 5
+  WaitPress
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' title, rules, suspects, credits
+
+' the house on the hill: rows 3-9
+sub House:
+  put char TMoon00 at 24,1
+  put char TMoon01 at 25,1
+  put char TMoon10 at 24,2
+  put char TMoon11 at 25,2
+  for K = 0 to 3
+    X = 9 + K
+    Y = 7 - K
+    put char TRoofl at X,Y
+    X = 22 - K
+    put char TRoofr at X,Y
+  next
+  for Y = 5 to 7
+    X = 13
+    W = 18
+    if Y = 6 then
+      X = 12
+      W = 19
+    end if
+    if Y = 7 then
+      X = 10
+      W = 21
+    end if
+    for K = X to W
+      put char TRoof at K,Y
+    next
+  next
+  for Y = 8 to 11
+    for X = 9 to 22
+      V = TWall
+      R = X & 1
+      if R = 0 then
+        if Y < 11 then V = TWind
+      end if
+      put char V at X,Y
+    next
+  next
+  put char TWin at 12,9
+  put char TDoor at 15,11
+  put char TDoor at 16,11
+  put char TCand00 at 4,9
+  put char TCand01 at 5,9
+  put char TCand10 at 4,10
+  put char TCand11 at 5,10
+  return
+end sub
+
+sub TitlePage:
+  Pg = 7
+  NewScreen
+  backdrop black
+  House
+  print at 6,13, "THE MANSION MURDER"
+  print at 8,15, "START THE CASE"
+  print at 8,16, "PLAYERS:"
+  print at 8,17, "HOW TO PLAY"
+  print at 8,18, "THE SUSPECTS"
+  print at 8,19, "CREDITS"
+  print at 3,21, "LEFT AND RIGHT: PLAYERS"
+  Menu = 0
+  ShowTitleMenu
+  X = 40
+  set sprite 2 to 20,X,SGhost,15
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasStk = 1
+tp_loop:
+  Frame1
+  ReadPad
+  Rs = Rs + Tick
+  if Rs = 0 then Rs = 1
+  ' the ghost drifts across the sky, one pixel every fourth frame
+  V = Tick & 3
+  if V = 0 then
+    inc X
+    if X > 200 then X = 40
+    set sprite 2 to 20,X,SGhost,15
+    update sprites
+  end if
+  StickDir
+  if Rep = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 4 then inc Menu
+    end if
+    if Rt1 = 1 then
+      if Np < 6 then inc Np
+    end if
+    if Lf1 = 1 then
+      if Np > 1 then dec Np
+    end if
+    ShowTitleMenu
+    play sound SndTick
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub ShowTitleMenu:
+  for K = 15 to 19
+    put char 32 at 6,K
+  next
+  V = Menu + 15
+  put char 62 at 6,V
+  print Np at 17,16 width 1
+  return
+end sub
+
+sub RulesPage:
+  Pg = 10
+  NewScreen
+  backdrop dark blue
+  print at 6,1, "THE MANSION MURDER"
+  print at 2,3, "SOMEONE KILLED THE MASTER"
+  print at 2,4, "OF THE HOUSE: ONE OF SIX"
+  print at 2,5, "SUSPECTS, WITH ONE OF SIX"
+  print at 2,6, "WEAPONS, IN ONE OF NINE ROOMS."
+  print at 2,8, "WALK THE DARK HOUSE WITH THE"
+  print at 2,9, "STICK. EIGHTEEN CLUES ARE"
+  print at 2,10, "HIDDEN, ONE TO A ROOM: WALK IN"
+  print at 2,11, "TO FIND ONE. ASK A SUSPECT IN"
+  print at 2,12, "HIS OR HER ROOM FOR A CLUE"
+  print at 2,13, "(20 STEPS). A TURN IS 76 STEPS."
+  print at 2,15, "STAIRS ARE TAKEN FROM THE"
+  print at 2,16, "STAIRWAY. SOME WALLS HIDE"
+  print at 2,17, "PASSAGES: TRY THEM."
+  print at 2,19, "RIGHT BUTTON: THE MENU. ACCUSE"
+  print at 2,20, "WRONGLY AND YOU ARE OUT."
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub SuspectsPage:
+  Pic = 0
+  NewScreen
+  backdrop dark blue
+  print at 7,1, "THE SUSPECTS"
+  print at 2,21, "STICK: NEXT. BUTTON: BACK"
+  ShowSuspect
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+sp_loop:
+  Pg = 9
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Rt1 = 1 then
+      inc Pic
+      if Pic > 5 then Pic = 0
+    end if
+    if Lf1 = 1 then
+      if Pic = 0 then Pic = 6
+      dec Pic
+    end if
+    ShowSuspect
+    play sound SndTick
+  end if
+  if Press = 0 then goto sp_loop
+  return
+end sub
+
+sub ShowSuspect:
+  print at 2,12, "                            "
+  print at 2,13, "                            "
+  print at 2,15, "                            "
+  Tb = 1
+  Xn = Pic
+  Ofs = 0
+  Ln = 14
+  Px = 9
+  Py = 12
+  PrTab
+  print at 2,15, "LIVES IN THE"
+  Tb = 0
+  Xn = SusRm[Pic]
+  Ln = 15
+  Px = 15
+  Py = 15
+  PrTab
+  W = Pic
+  X = 14
+  Y = 5
+  Portrait
+  return
+end sub
+
+sub CreditsPage:
+  Pg = 8
+  NewScreen
+  backdrop dark blue
+  print at 6,2, "THE MANSION MURDER"
+  print at 2,5, "BASED ON MANSION (SOLVE THE"
+  print at 2,6, "MANSION MURDER), AHOY! MARCH"
+  print at 2,7, "1985 (COMMODORE 64). THE"
+  print at 2,8, "MAGAZINE NAMES NO AUTHOR."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: WHO TURNED THE KEY?,"
+  print at 2,18, "FOOTSTEPS ON THE LANDING"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' screens and the frame
+
+sub WaitPress:
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 1 then return
+  if Press2 = 1 then return
+  goto wp_loop
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub StickDir:
+  Stk = Up1 | Dn1
+  Stk = Stk | Lf1
+  Stk = Stk | Rt1
+  Rep = 0
+  if Stk = 0 then
+    WasStk = 0
+    return
+  end if
+  if WasStk = 0 then
+    Rep = 1
+    WasStk = 12
+    return
+  end if
+  dec WasStk
+  if WasStk = 0 then
+    Rep = 1
+    WasStk = 6
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy SpritePat count SprBytes to vram.spr_pat
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $1A,$1A,$26,$58,$98,$24,$24,$24
+  $00,$FF,$FF,$00,$00,$FF,$FF,$00
+  $33,$33,$CC,$CC,$33,$33,$CC,$CC
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$02,$04,$08,$10,$20,$40,$80
+  $08,$80,$08,$80,$08,$80,$08,$80
+  $77,$88,$88,$88,$77,$88,$88,$88
+  $12,$82,$A4,$34,$10,$42,$4B,$19
+  $22,$88,$22,$88,$22,$88,$22,$88
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $05,$02,$05,$00,$50,$20,$50,$00
+  $05,$02,$05,$00,$50,$20,$50,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$07,$18,$07,$E0,$18,$07,$38
+  $28,$54,$28,$10,$D6,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$01,$FF,$20,$FF,$02,$FF,$04
+  $60,$60,$06,$06,$C0,$C0,$0C,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $94,$F4,$94,$9C,$94,$97,$94,$94
+  $88,$48,$64,$12,$89,$8C,$42,$35
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$FB,$00,$00,$20,$DF
+  $00,$00,$14,$3E,$1C,$08,$00,$00
+  $04,$0A,$42,$42,$B1,$48,$04,$04
+  $02,$54,$A8,$01,$2A,$54,$80,$01
+  $02,$54,$A8,$01,$2A,$54,$80,$01
+  $41,$50,$14,$05,$41,$50,$14,$05
+  $C0,$07,$18,$07,$E0,$18,$07,$38
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $28,$7C,$28,$7C,$28,$7C,$28,$7C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $94,$2F,$52,$A4,$4F,$92,$25,$4A
+  $45,$7C,$45,$54,$45,$54,$47,$54
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$30,$30,$60,$60,$C0,$C0
+  $C0,$C0,$60,$60,$30,$30,$18,$18
+  $18,$18,$0C,$0C,$06,$06,$03,$03
+  $03,$03,$06,$06,$0C,$0C,$18,$18
+  $00,$00,$00,$C0,$F0,$3C,$0F,$03
+  $00,$00,$00,$03,$0F,$3C,$F0,$C0
+  $03,$0F,$3C,$F0,$C0,$00,$00,$00
+  $C0,$F0,$3C,$0F,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$1C,$22,$41,$FF,$FF,$00
+  $00,$FF,$FF,$41,$22,$1C,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $00,$00,$FF,$FF,$FF,$FF,$00,$00
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $00,$00,$FF,$00,$00,$FF,$00,$00
+  $3C,$3C,$FF,$FF,$FF,$FF,$00,$00
+  $00,$00,$FF,$FF,$FF,$FF,$3C,$3C
+  $00,$00,$3F,$3F,$3F,$3F,$3C,$3C
+  $00,$00,$FC,$FC,$FC,$FC,$3C,$3C
+  $3C,$3C,$FC,$FC,$FC,$FC,$00,$00
+  $3C,$3C,$3F,$3F,$3F,$3F,$00,$00
+  $3C,$3C,$3F,$3F,$3F,$3F,$3C,$3C
+  $3C,$3C,$FC,$FC,$FC,$FC,$3C,$3C
+  $3C,$3C,$FF,$FF,$FF,$FF,$3C,$3C
+  $3C,$3F,$3F,$3C,$3C,$3F,$3F,$3C
+  $3C,$FC,$FC,$3C,$3C,$FC,$FC,$3C
+  $7E,$7E,$18,$24,$24,$18,$00,$00
+  $00,$C0,$DC,$E2,$E2,$DC,$C0,$00
+  $FF,$AB,$D5,$AB,$D5,$AB,$D5,$FF
+  $D5,$FF,$C3,$C3,$C3,$C3,$FF,$AB
+  $E1,$B3,$1F,$CE,$5C,$7E,$F7,$31
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $00,$00,$FF,$FF,$FF,$FF,$00,$00
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $00,$00,$FF,$00,$00,$FF,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $40,$04,$00,$20,$02,$40,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $00,$80,$40,$A0,$50,$50,$50,$50
+  $00,$01,$02,$05,$0A,$0A,$0A,$0A
+  $50,$50,$50,$50,$A0,$40,$80,$00
+  $0A,$0A,$0A,$0A,$05,$02,$01,$00
+  $00,$01,$03,$06,$8C,$D8,$70,$20
+  $00,$C3,$99,$06,$0C,$18,$00,$18
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $03,$F0,$E0,$C0,$80,$80,$00,$00
+  $C0,$F0,$07,$03,$01,$01,$10,$00
+  $03,$03,$80,$80,$C0,$E0,$F0,$03
+  $00,$00,$01,$01,$03,$07,$F0,$C0
+  $01,$03,$03,$07,$07,$03,$01,$07
+  $00,$00,$80,$80,$80,$00,$00,$80
+  $07,$07,$07,$07,$07,$07,$E0,$F0
+  $80,$80,$80,$80,$80,$80,$E0,$C0
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$02,$00,$00
+  $00,$93,$93,$00,$93,$93,$00,$00
+  $00,$93,$93,$00,$93,$93,$00,$00
+  $C3,$81,$00,$00,$04,$00,$00,$00
+end data
+data TileCol bytes
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $4E,$4E,$0E,$4E,$4E,$4E,$4E,$0E
+  $01,$0A,$01,$0A,$01,$01,$01,$01
+  $01,$01,$01,$01,$0A,$01,$0A,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$1A,$A1,$1A,$A1,$A1,$A1,$A1
+  $01,$1A,$A1,$1A,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$1A,$A1,$1A,$01
+  $A1,$A1,$A1,$A1,$1A,$A1,$1A,$01
+  $01,$31,$31,$31,$31,$31,$31,$31
+  $01,$15,$15,$51,$51,$51,$01,$51
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $B1,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $B1,$B1,$1B,$1B,$1B,$1B,$EB,$0B
+  $EB,$EB,$1B,$1B,$1B,$1B,$1B,$B1
+  $0B,$0B,$1B,$1B,$1B,$1B,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$E1,$F1
+  $01,$01,$B1,$B1,$B1,$01,$01,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$1A,$1A
+  $F1,$F1,$F1,$F1,$F1,$F1,$A1,$A1
+  $E1,$E1,$E1,$1E,$1E,$1E,$1E,$0E
+  $E1,$E1,$E1,$E1,$1E,$1E,$1E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $04,$04,$04,$14,$04,$14,$04,$04
+  $04,$4B,$4B,$04,$4B,$4B,$04,$04
+  $04,$41,$41,$04,$41,$41,$04,$04
+  $46,$46,$06,$06,$B6,$06,$06,$06
+end data
+data SpritePat bytes
+  $30,$30,$78,$B4,$30,$48,$48,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$1F,$3F,$73,$73,$7F,$FF,$FE,$FC,$FF,$FF,$FF,$FF,$DE,$8C,$00
+  $E0,$F8,$FC,$CE,$CE,$FE,$FF,$7F,$3F,$FF,$FF,$FF,$FF,$7B,$31,$00
+  $80,$C0,$E0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$DC,$C0,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$3B,$03,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$3F,$FF
+  $00,$00,$01,$00,$0F,$10,$00,$00,$00,$00,$00,$FE,$FF,$FE,$F8,$F8
+  $00,$00,$80,$00,$F0,$08,$00,$00,$00,$00,$00,$7F,$FF,$7F,$1F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$07,$1F,$1F,$3F,$3F,$3F,$23,$3F,$E7
+  $00,$00,$00,$00,$00,$00,$00,$E0,$F8,$F8,$FC,$FC,$FC,$C4,$FC,$E7
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FE,$7F,$70,$2F,$1F,$1F,$07,$03,$03,$01,$00,$01,$07,$07
+  $FF,$FF,$7F,$FE,$0E,$F4,$F8,$F8,$E0,$C0,$C0,$80,$00,$80,$E0,$E0
+  $80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$AA,$55,$FF,$7F,$FF,$C0,$C0,$C0,$F8,$C0,$D8
+  $00,$00,$00,$00,$00,$AA,$55,$FF,$FE,$FF,$03,$03,$03,$1F,$03,$1B
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$03,$0F,$3F,$FF
+  $C0,$C0,$C1,$C0,$C0,$C7,$C0,$C0,$C0,$00,$00,$F0,$F0,$FF,$FF,$FF
+  $03,$03,$83,$03,$03,$E3,$03,$03,$03,$00,$00,$0F,$0F,$FF,$7F,$FF
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$00,$00,$00,$C0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$3F,$3F,$07,$3F,$27
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$FC,$E0,$FC,$E4
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$3E,$3F,$3F,$38,$1F,$1F,$07,$03,$03,$0F,$0F,$00,$00,$00
+  $FC,$FC,$7C,$FC,$FC,$1C,$F8,$F8,$E0,$C0,$C0,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$01,$01,$01,$01,$01,$07,$07,$00,$00,$00,$00,$00
+  $00,$00,$FF,$FF,$FE,$FE,$FE,$FF,$FF,$FF,$FF,$00,$00,$3C,$00,$18
+  $00,$00,$FF,$FF,$7F,$7F,$7F,$FF,$FF,$FF,$FF,$00,$00,$3C,$00,$18
+  $00,$00,$80,$80,$80,$80,$80,$80,$80,$E0,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$3F,$FF
+  $00,$00,$01,$00,$00,$07,$0F,$0F,$0C,$0C,$0C,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$00,$00,$E0,$F0,$F0,$30,$30,$30,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7F,$7F,$43,$7F,$E7
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FE,$FE,$C2,$FE,$E7
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FE,$7F,$7F,$38,$10,$10,$03,$03,$03,$00,$00,$00,$00,$00
+  $FF,$FF,$7F,$FE,$FE,$1C,$08,$08,$C0,$C0,$C0,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$0F,$0F,$0F,$07,$7F,$7E,$FF,$C0,$C0,$FC,$C2,$C3,$DA
+  $00,$E0,$F0,$F0,$F0,$F0,$E0,$FE,$7E,$FF,$03,$03,$3F,$43,$C3,$5B
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$3F,$FF
+  $42,$3C,$01,$00,$00,$03,$00,$00,$00,$00,$03,$FF,$FF,$FF,$FF,$FF
+  $42,$3C,$80,$00,$00,$C0,$00,$00,$00,$00,$C0,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$3F,$3F,$03,$3D,$3C,$25
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$FC,$FC,$C0,$BC,$3C,$A4
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $BD,$C3,$FE,$7F,$7F,$3C,$1F,$1F,$07,$03,$00,$00,$00,$00,$00,$00
+  $BD,$C3,$7F,$FE,$FE,$3C,$F8,$F8,$E0,$C0,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$3F,$3F,$3F,$3F,$00,$3F,$FF,$FF,$00,$00,$00,$1C,$00,$18
+  $FC,$FC,$FC,$FC,$FC,$FC,$00,$FC,$FF,$FF,$00,$00,$18,$24,$42,$5A
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$3F,$FF
+  $00,$00,$01,$00,$00,$03,$00,$00,$00,$00,$03,$FF,$FF,$FE,$FF,$FF
+  $24,$1A,$82,$02,$22,$E2,$02,$00,$00,$00,$C0,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$3F,$00,$00,$00,$3F,$7F,$7F,$63,$7F,$E7
+  $00,$00,$00,$00,$00,$00,$FC,$00,$00,$00,$FC,$FE,$E6,$DA,$BC,$A5
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FE,$7F,$7F,$3C,$1F,$1F,$07,$03,$00,$00,$00,$00,$00,$00
+  $DB,$E5,$7D,$FC,$DC,$1C,$F8,$F8,$E0,$C0,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$49,$6D,$FF,$FF,$FF,$FF,$FF,$80,$80,$BC,$BC,$80,$18
+  $00,$00,$00,$24,$B6,$FF,$FF,$FF,$FF,$FF,$01,$01,$3D,$3D,$01,$18
+  $00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$3F,$FF
+  $00,$00,$01,$7F,$7F,$78,$7F,$7F,$3F,$1F,$0F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$FE,$FE,$1E,$FE,$FE,$FC,$F8,$F0,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$7F,$43,$43,$7F,$E7
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$FE,$C2,$C2,$FE,$E7
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FE,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$7F,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data LitC bytes
+  107,107,107,107,107,107,107,60,107,107,107,107,107,107,107,107,107,107,107,107,60,43,107,245,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107,107
+end data
+data DimC bytes
+  17,65,65,65,65,65,65,193,65,65,65,65,65,65,65,65,65,65,65,65,193,193,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65,65
+end data
+data Map bytes
+  205,194,194,194,194,194,185,189,189,186,194,194,194,198,194,194,194,194,198,194
+  194,194,194,185,189,189,186,194,194,194,194,194,204,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,193,131,131,131,131,193,140
+  140,140,140,140,140,140,140,140,140,140,140,140,193,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,193,131,131,131,131,193,140
+  140,140,140,140,140,140,140,140,140,140,140,140,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,181,131,131,131,131,193,140
+  140,140,140,140,140,140,140,140,140,140,140,140,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,189,131,131,131,131,193,140
+  140,140,140,140,140,140,140,140,140,140,140,140,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,189,131,131,131,131,193,140
+  140,140,140,140,140,140,140,140,140,140,140,140,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,182,131,131,131,131,193,140
+  140,140,140,140,140,140,140,140,140,140,140,140,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,206,190,190,190,190,207,140
+  140,140,140,140,140,140,140,140,140,140,140,140,195,135,135,135,135,135,135,135
+  183,139,139,139,139,139,139,139,139,139,139,139,139,206,129,129,129,129,207,140
+  140,140,140,140,140,140,140,140,140,140,140,140,193,135,135,135,135,135,135,135
+  189,139,139,139,139,139,139,139,139,139,139,139,139,206,129,129,129,129,207,194
+  194,194,194,185,189,189,186,194,194,194,194,194,204,135,135,135,135,135,135,135
+  189,139,139,139,139,139,139,139,139,139,139,139,139,206,129,129,129,129,207,138
+  138,138,138,138,138,138,138,138,138,138,138,138,193,135,135,135,135,135,135,135
+  184,139,139,139,139,139,139,139,139,139,139,139,139,206,129,129,129,129,207,138
+  138,138,138,138,138,138,138,138,138,138,138,138,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,206,129,129,129,129,207,138
+  138,138,138,138,138,138,138,138,138,138,138,138,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,206,129,129,129,129,207,138
+  138,138,138,138,138,138,138,138,138,138,138,138,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,139,139,139,138,138,138,138
+  138,138,138,138,138,138,138,138,138,138,138,138,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,139,139,139,138,138,138,138
+  138,138,138,138,138,138,138,138,138,138,138,138,195,135,135,135,135,135,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,139,139,139,138,138,138,138
+  138,138,138,138,138,138,138,138,138,138,138,138,193,134,134,134,134,134,135,135
+  193,139,139,139,139,139,139,139,139,139,139,139,139,139,139,139,138,138,138,138
+  138,138,138,138,138,138,138,138,138,138,138,138,193,134,134,134,134,134,135,135
+  197,194,194,194,196,196,196,196,196,196,194,194,194,194,187,189,189,188,194,194
+  194,194,196,196,196,196,196,196,194,194,194,194,201,134,134,134,134,134,135,135
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,135,135
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,135,135
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,135,135
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,135,135
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,135,135
+  135,135,135,135,135,135,135,199,196,196,196,196,196,194,185,189,189,186,194,194
+  197,194,194,185,189,194,194,194,194,194,194,197,194,194,189,186,194,194,194,205
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,144,142,142,142,142,141,141,141,141,141,141,210,210,210,193
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,144,142,142,142,142,141,141,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,199,142,142,142,142,200,141,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,129,129,129,207,142,142,142,142,193,210,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,129,129,129,207,142,142,142,142,193,210,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,129,129,129,207,142,142,142,142,193,210,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,191,191,191,203,194,194,194,194,204,211,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,181,131,131,131,193,143,143,143,143,214,211,141,141,141,141,141,141,141,181
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,189,131,131,131,193,143,143,143,143,193,210,141,141,141,141,141,141,141,189
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,182,131,131,131,193,143,143,143,143,193,210,141,141,141,141,141,141,141,189
+  135,135,135,135,135,135,135,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,190,190,190,207,143,143,143,143,193,210,141,141,141,141,141,141,141,182
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,129,129,129,207,143,143,143,143,193,210,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,129,129,129,207,143,143,143,143,193,210,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,206,129,129,129,207,143,143,143,143,193,210,141,141,141,141,141,141,210,193
+  135,135,135,135,135,135,135,195,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,202,194,187,189,194,201,141,141,141,141,141,141,141,211,193
+  135,135,134,134,134,134,134,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,144,141,141,141,141,141,141,141,141,141,141,141,141,211,193
+  135,135,134,134,134,134,134,193,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,144,141,141,141,141,141,141,141,141,210,210,210,210,210,193
+  135,135,134,134,134,134,134,202,194,194,194,194,196,196,196,196,196,196,194,194
+  194,194,187,189,189,188,194,194,194,194,196,196,196,196,196,196,194,194,194,197
+  135,135,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  135,135,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  135,135,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  135,135,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  135,135,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,135,135,135
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,135,135,135
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,135,135,135
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,135,135,135
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,135,135,135
+  199,196,196,196,194,196,196,196,198,194,196,196,194,198,194,187,189,189,188,187
+  189,189,188,187,189,189,188,187,189,189,188,194,200,133,133,133,133,135,135,135
+  195,146,146,146,146,146,146,146,193,209,130,130,130,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,133,133,133,133,135,135,135
+  195,146,146,146,146,146,146,146,203,194,194,130,130,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,133,133,133,133,135,135,135
+  193,146,146,146,146,146,146,146,193,210,130,130,130,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  183,146,146,146,146,146,146,146,193,211,130,130,130,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  189,146,146,146,146,146,146,146,193,211,130,130,130,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  193,146,146,146,146,146,146,146,193,210,130,130,130,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  203,194,194,194,194,189,188,194,197,194,194,189,188,204,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  193,147,147,147,147,147,147,147,147,147,147,147,147,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  195,147,147,147,147,147,147,147,147,147,147,147,147,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  193,147,147,147,147,147,147,147,147,147,147,147,147,193,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  183,147,147,147,147,147,147,147,147,147,147,147,147,181,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  189,147,147,147,147,147,147,147,147,147,147,147,147,189,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  189,147,147,147,147,147,147,147,147,147,147,147,147,189,145,145,145,145,145,145
+  145,145,145,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  184,147,147,147,147,147,147,147,206,190,207,147,147,182,145,145,145,145,145,210
+  210,210,210,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  193,147,147,147,147,147,147,147,206,129,207,147,147,193,145,145,145,145,145,210
+  145,145,210,145,145,145,145,145,145,145,145,145,195,135,135,135,135,135,135,135
+  195,147,147,147,147,147,147,147,147,147,147,147,147,206,129,129,129,129,207,211
+  145,145,145,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  193,147,147,147,147,147,147,147,147,147,147,147,147,206,129,129,129,129,207,210
+  210,210,210,145,145,145,145,145,145,145,145,145,193,135,135,135,135,135,135,135
+  205,194,194,194,194,194,185,189,189,186,194,194,194,205,191,191,191,191,205,194
+  194,194,194,185,189,189,186,194,194,194,194,194,204,135,135,135,135,135,135,135
+  150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  150,150,150,150,150,150,151,151,151,150,150,150,150,150,150,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  150,150,150,150,150,150,151,151,151,150,150,150,150,150,150,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  150,150,150,150,151,151,151,151,151,151,151,150,150,150,150,133,133,133,133,133
+  133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133,133
+  150,150,150,150,151,151,151,151,151,151,151,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,199
+  150,150,150,150,151,151,151,151,151,151,151,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,195
+  150,150,150,150,150,150,151,151,151,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,195
+  150,150,150,150,150,150,151,151,151,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,193
+  150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,183
+  150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,189
+  150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,193
+  150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,203
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  150,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,148,193
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  199,196,196,196,196,196,196,196,196,196,196,200,148,148,148,148,148,148,148,195
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,193
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,183
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,189
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,189
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,184
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,193
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,195,148,148,148,148,148,148,148,195
+  135,135,135,135,135,135,135,150,150,150,150,150,150,150,150,150,150,150,150,150
+  195,149,149,149,149,149,149,149,149,149,149,216,148,148,148,148,148,148,148,193
+  135,135,135,135,135,135,135,199,196,196,196,196,196,194,185,189,189,186,194,194
+  197,194,194,185,189,194,194,194,194,194,194,197,194,194,189,186,194,194,194,205
+  193,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  193,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  193,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  203,194,194,194,194,194,194,194,185,189,189,186,194,198,194,194,194,194,200,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  204,155,155,155,155,155,155,155,155,155,155,155,155,206,190,190,190,190,207,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  193,155,155,155,155,155,155,155,155,155,155,155,155,206,129,129,129,129,207,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  193,155,155,155,155,155,155,155,155,155,155,155,155,206,129,129,129,129,207,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  193,155,155,155,155,155,155,155,155,155,155,155,155,206,129,129,129,129,207,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  214,155,155,155,155,155,155,155,155,155,155,155,155,206,129,129,129,129,207,152
+  152,152,152,152,152,152,152,152,152,152,152,152,193,212,212,212,212,212,212,212
+  203,194,194,194,194,194,194,194,187,189,189,188,194,201,154,154,154,154,203,194
+  194,194,194,194,194,194,189,186,194,194,194,194,204,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  189,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  182,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,183,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,189,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,189,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,184,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  193,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,193,153
+  153,153,153,153,153,153,153,153,153,153,153,153,193,212,212,212,212,212,212,212
+  197,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,197,194
+  194,194,194,194,194,194,194,194,194,194,194,194,201,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,199,194,194,194,194,194,194,194,194,194,194,194,194
+  194,198,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,204
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,159,159,159,159,159
+  159,181,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,218,193
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,159,159,159,159,159
+  159,189,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,193
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,199,194,189,186,194
+  194,204,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,156,193
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,193,209,130,130,130
+  130,206,129,129,129,207,156,156,156,156,156,156,156,156,156,156,156,156,156,193
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,193,211,130,130,130
+  130,206,129,129,129,207,156,156,156,156,156,156,156,156,156,156,156,156,156,193
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,193,210,130,130,130
+  130,206,129,129,129,207,156,156,156,156,156,156,156,156,156,156,156,156,156,189
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,203,194,194,194,194
+  194,206,129,129,129,207,156,156,156,156,156,156,156,156,156,156,156,156,156,182
+  212,212,212,212,212,212,212,193,159,159,159,159,159,159,159,193,210,130,130,130
+  130,206,129,129,129,207,156,156,199,194,198,185,189,194,198,194,194,194,194,204
+  212,212,212,212,212,212,212,203,194,194,187,189,188,194,194,204,211,130,130,130
+  130,206,191,191,191,207,156,156,193,208,193,130,130,211,214,131,131,131,131,193
+  212,212,212,212,212,212,212,193,131,131,131,131,131,131,131,193,209,130,130,130
+  130,214,131,131,131,193,156,156,193,130,130,130,130,211,203,185,189,189,186,204
+  212,212,212,212,212,212,212,203,194,194,194,194,194,194,194,197,194,189,188,194
+  194,197,185,189,186,204,156,156,203,194,194,194,194,194,204,157,157,157,157,193
+  212,212,212,212,212,212,212,193,158,158,158,158,158,158,158,158,158,158,158,158
+  158,158,158,158,158,181,156,156,193,209,130,130,130,130,193,157,157,157,157,193
+  212,212,212,212,212,212,212,193,158,158,158,158,158,158,158,158,158,158,158,158
+  158,158,158,158,158,189,156,156,193,211,130,130,130,130,193,157,157,157,157,193
+  212,212,212,212,212,212,212,193,158,158,158,158,158,158,158,158,158,158,158,158
+  158,158,158,158,158,203,185,189,204,210,130,130,130,130,193,157,157,157,157,193
+  212,212,212,212,212,212,212,193,158,158,158,158,158,158,158,158,158,158,158,158
+  158,158,158,158,158,193,157,157,202,194,189,188,194,194,201,157,157,157,157,193
+  212,212,212,212,212,212,212,193,158,158,158,158,158,158,158,158,158,158,158,158
+  158,158,158,158,158,193,157,157,157,157,157,157,157,157,157,157,157,157,157,193
+  212,212,212,212,212,212,212,193,158,158,158,158,158,158,158,158,158,158,158,158
+  158,158,158,158,158,193,157,157,157,157,157,157,157,157,157,157,157,157,157,193
+  212,212,212,212,212,212,212,202,194,194,194,194,194,194,194,194,194,194,194,194
+  194,194,194,194,194,197,194,194,194,194,194,194,194,194,194,194,194,194,194,197
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212,212
+  205,194,194,194,194,194,194,194,194,194,194,194,194,205,215,204,190,190,207,137
+  137,137,203,194,194,194,194,194,194,194,194,194,204,136,136,136,136,213,213,213
+  193,160,160,160,160,160,160,160,160,160,160,160,160,193,131,206,129,129,207,137
+  137,137,193,163,163,163,163,163,163,163,163,163,193,136,136,136,136,213,213,213
+  193,160,160,160,160,160,160,160,160,160,160,160,160,181,131,206,129,129,207,137
+  137,137,193,163,163,163,163,163,163,163,163,163,183,136,136,136,136,213,213,213
+  193,160,160,160,160,160,160,160,160,160,160,160,160,189,131,206,129,129,207,137
+  137,137,183,163,163,163,163,163,163,163,163,163,189,136,136,136,136,213,213,213
+  193,160,160,160,160,160,160,160,160,160,160,160,160,182,131,206,129,129,207,137
+  137,137,189,163,163,163,163,163,163,163,163,163,189,136,136,136,136,213,213,213
+  193,160,160,160,160,160,160,160,160,160,160,160,160,193,131,206,129,129,207,137
+  137,137,193,163,163,163,163,163,163,163,163,163,184,136,136,136,136,213,213,213
+  197,194,194,194,194,194,194,194,194,194,185,189,186,197,194,197,189,186,201,137
+  137,137,193,163,163,163,163,163,163,163,163,163,183,136,136,136,136,213,213,213
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  137,137,193,163,163,163,163,163,163,163,163,163,189,136,136,136,136,213,213,213
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  137,137,193,163,163,163,163,163,163,163,163,163,189,136,136,136,136,213,213,213
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  137,137,193,163,163,163,163,163,163,163,163,163,184,136,136,136,136,213,213,213
+  198,194,194,198,194,194,194,194,194,194,194,194,194,194,189,186,198,194,194,194
+  198,194,204,163,163,163,163,163,163,163,163,163,193,136,136,136,136,213,213,213
+  193,131,131,193,161,161,161,161,161,161,161,161,161,161,161,161,193,210,211,210
+  193,208,193,163,163,163,163,163,163,163,163,163,193,136,136,136,136,213,213,213
+  193,131,131,193,161,161,161,161,161,161,161,161,161,161,161,161,193,130,130,130
+  130,130,193,163,163,163,163,163,163,163,163,163,195,136,136,136,136,213,213,213
+  193,131,131,183,161,161,161,161,161,161,161,161,161,161,161,161,189,130,130,130
+  130,130,189,163,163,163,163,163,163,163,163,163,195,136,136,136,136,213,213,213
+  193,131,131,189,161,161,161,161,161,161,161,161,161,161,161,161,184,130,130,130
+  130,130,182,163,163,163,163,163,163,163,163,163,195,136,136,136,136,213,213,213
+  193,131,131,184,161,161,161,161,161,161,161,161,161,161,161,161,193,130,130,130
+  130,130,203,194,194,194,187,189,188,194,194,194,204,136,136,136,136,213,213,213
+  193,131,131,193,161,161,161,161,161,161,161,161,161,161,161,161,193,130,130,130
+  130,130,193,131,131,131,131,131,131,131,131,131,193,136,136,136,136,213,213,213
+  193,131,131,193,161,161,161,161,161,161,161,161,161,161,161,161,193,130,130,130
+  130,130,193,131,131,131,131,131,131,131,131,131,193,136,136,136,136,213,213,213
+  197,194,194,197,196,196,196,194,185,189,189,186,185,189,189,186,197,194,196,196
+  196,194,197,194,194,194,194,194,194,194,194,194,201,136,136,136,136,213,213,213
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,213,213,213
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,213,213,213
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,136,136,136,136,199,194,194,196,196,196,194,194,198,194,194,194,194
+  194,198,194,194,194,196,196,196,196,194,194,194,198,194,194,196,196,194,194,205
+  213,213,213,136,136,136,136,193,130,130,130,130,130,130,208,193,210,211,210,211
+  210,193,164,164,164,164,164,164,164,164,164,164,193,209,130,130,130,130,130,193
+  213,213,213,136,136,136,136,193,130,130,130,130,130,130,130,193,167,167,167,167
+  167,193,164,164,164,164,164,164,164,164,164,164,203,194,130,130,130,130,130,193
+  213,213,213,136,136,136,136,193,130,130,130,130,130,130,130,189,167,167,167,167
+  167,189,164,164,164,164,164,164,164,164,164,164,193,210,130,130,130,130,130,193
+  213,213,213,136,136,136,136,193,130,130,130,130,130,130,130,182,167,167,167,167
+  167,184,164,164,164,164,164,164,164,164,164,164,193,211,130,130,130,130,130,193
+  213,213,213,136,136,136,136,203,194,194,194,194,194,194,194,204,167,167,167,167
+  167,203,187,189,188,200,164,164,164,164,164,164,193,210,130,130,130,130,130,193
+  213,213,213,136,136,136,136,193,131,131,131,131,131,131,218,193,167,167,167,167
+  167,203,194,198,194,205,194,194,189,188,194,194,197,194,189,188,194,194,194,197
+  213,213,213,136,136,136,136,203,185,189,186,194,185,189,186,201,167,167,167,167
+  167,181,131,193,131,183,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  213,213,213,136,136,136,136,181,166,166,166,166,166,166,166,166,166,166,166,166
+  166,189,131,193,131,189,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  213,213,213,136,136,136,136,189,166,166,166,166,166,166,166,166,166,166,166,166
+  166,182,131,193,131,184,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  213,213,213,136,136,136,136,189,166,166,166,166,166,166,166,166,166,166,166,166
+  166,206,190,190,190,207,137,137,199,194,194,194,194,194,194,189,186,198,194,198
+  213,213,213,136,136,136,136,182,166,166,166,166,166,166,166,166,166,166,166,166
+  166,206,129,129,129,207,137,137,193,165,165,165,165,165,165,165,165,181,131,193
+  213,213,213,136,136,136,136,181,166,166,166,166,166,166,166,166,166,166,166,166
+  166,206,129,129,129,207,137,137,193,165,165,165,165,165,165,165,165,189,131,193
+  213,213,213,136,136,136,136,189,166,166,166,166,166,166,166,166,166,166,166,166
+  166,206,129,129,129,207,137,137,193,165,165,165,165,165,165,165,165,193,131,193
+  213,213,213,136,136,136,136,189,166,166,166,166,166,166,166,166,166,166,166,166
+  166,206,129,129,129,207,137,137,193,165,165,165,165,165,165,165,165,193,131,193
+  213,213,213,136,136,136,136,182,166,166,166,166,166,166,166,166,166,166,166,166
+  166,181,137,137,137,137,137,137,193,165,165,165,165,165,165,165,165,193,131,193
+  213,213,213,136,136,136,136,193,166,166,166,166,166,166,166,166,166,166,166,166
+  166,189,137,137,137,137,137,137,193,165,165,165,165,165,165,165,165,189,131,193
+  213,213,213,136,136,136,136,193,166,166,166,166,166,166,166,166,166,166,166,166
+  166,182,137,137,137,137,137,137,193,165,165,165,165,165,165,165,165,182,131,193
+  213,213,213,136,136,136,136,202,194,194,196,196,196,194,194,194,196,196,196,194
+  194,197,194,185,189,189,186,194,197,185,189,189,186,185,189,189,186,197,194,197
+  213,213,213,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  213,213,213,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  213,213,213,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,213,213,213
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,213,213,213
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136
+  136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,136,213,213,213
+  199,194,194,196,217,196,194,194,189,186,194,198,194,198,194,194,196,196,194,194
+  194,194,198,187,189,189,188,187,189,189,188,194,200,136,136,136,136,213,213,213
+  193,170,170,170,170,170,170,170,170,170,170,193,131,193,130,130,130,130,130,208
+  211,210,193,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,170,170,170,170,170,170,170,170,170,170,181,131,193,130,130,130,130,130,130
+  130,130,189,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,170,170,170,170,170,170,170,170,170,170,189,131,193,130,130,130,130,130,130
+  130,130,182,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,170,170,170,170,170,170,170,170,170,170,189,131,193,130,151,151,151,130,199
+  194,194,204,168,168,168,168,168,168,168,168,168,195,136,136,136,136,213,213,213
+  193,170,170,170,170,170,170,170,170,170,170,182,131,193,130,151,151,151,130,193
+  209,130,181,168,168,168,168,168,168,168,168,168,195,136,136,136,136,213,213,213
+  193,170,170,170,170,170,170,170,170,170,170,193,131,193,130,151,151,151,130,193
+  211,130,189,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  203,194,194,194,187,189,194,194,194,194,194,197,194,205,194,194,194,194,194,197
+  194,194,204,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,169,169,169,169,169,169,169,169,169,169,169,169,193,131,131,131,131,131,131
+  131,131,193,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  195,169,169,169,169,169,169,169,169,169,169,169,169,193,131,131,131,131,131,131
+  131,131,193,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,169,169,213,213,213,213,213,213,213,213,169,169,203,185,189,189,186,185,189
+  189,186,204,168,168,168,168,168,168,168,168,168,195,136,136,136,136,213,213,213
+  193,169,169,213,213,213,213,213,213,213,213,169,169,193,137,137,137,137,137,137
+  137,137,193,168,168,168,168,168,168,168,168,168,195,136,136,136,136,213,213,213
+  195,169,169,213,213,213,213,213,213,213,213,169,169,189,137,137,137,137,137,137
+  137,137,189,168,168,168,168,168,168,168,168,168,195,136,136,136,136,213,213,213
+  195,169,169,213,213,213,213,213,213,213,213,169,169,182,137,137,137,137,137,137
+  137,137,184,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,169,169,213,213,213,206,190,207,213,213,169,169,193,137,137,137,137,137,137
+  137,137,193,168,168,168,168,168,168,168,168,168,193,136,136,136,136,213,213,213
+  193,169,169,213,213,213,206,129,207,213,213,169,169,193,137,137,137,137,137,137
+  137,137,203,194,187,189,188,194,187,189,188,194,204,136,136,136,136,213,213,213
+  195,169,169,169,169,169,169,169,169,169,169,169,169,206,129,129,129,129,207,137
+  137,137,193,131,131,131,131,131,131,131,131,131,193,136,136,136,136,213,213,213
+  214,169,169,169,169,169,169,169,169,169,169,169,169,206,129,129,129,129,207,137
+  137,137,193,131,131,131,131,131,131,131,131,131,193,136,136,136,136,213,213,213
+  205,194,194,194,194,194,194,194,194,194,194,198,194,204,191,191,191,191,207,137
+  137,137,203,194,194,194,194,194,194,194,194,194,204,136,136,136,136,213,213,213
+  201,132,132,132,132,132,203,194,194,194,194,204,137,137,137,203,194,194,205,194
+  194,194,194,194,194,194,204,132,132,132,132,132,193,213,213,213,213,213,213,213
+  132,132,132,132,132,132,193,130,130,130,208,193,137,137,137,193,131,131,193,171
+  171,171,171,171,171,171,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  132,132,132,132,132,132,193,130,130,130,130,181,137,137,137,193,131,131,183,171
+  171,171,171,171,171,171,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  132,132,132,132,132,132,193,130,130,130,130,189,137,137,137,193,131,131,189,171
+  171,171,171,171,171,171,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  198,194,194,194,194,194,204,130,130,130,211,193,137,137,137,193,131,131,184,171
+  171,171,171,171,171,171,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,173,173,173,173,173,203,194,194,194,194,204,137,137,137,203,194,194,201,171
+  171,171,171,171,199,194,197,194,194,194,194,194,204,213,213,213,213,213,213,213
+  193,173,173,173,173,173,193,130,130,130,130,193,137,137,137,183,171,171,171,171
+  171,171,171,171,193,172,172,172,172,172,172,172,193,213,213,213,213,213,213,213
+  193,173,173,173,173,173,193,130,130,130,130,193,137,137,137,189,171,171,171,171
+  171,171,171,171,193,172,172,172,172,172,172,172,195,213,213,213,213,213,213,213
+  203,187,189,200,173,173,193,130,130,130,130,193,137,137,137,193,171,171,171,171
+  171,171,171,171,193,172,172,172,172,172,172,172,195,213,213,213,213,213,213,213
+  193,131,131,193,173,173,193,209,130,130,211,193,137,137,137,193,171,171,171,171
+  171,171,171,171,193,172,172,172,172,172,172,172,193,213,213,213,213,213,213,213
+  197,194,194,197,189,188,197,194,189,188,194,201,137,137,137,202,194,194,194,194
+  194,194,194,194,201,172,172,172,172,172,172,172,193,213,213,213,213,213,213,213
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,172,172,172,172,172
+  172,172,172,172,172,172,172,172,172,172,172,172,195,213,213,213,213,213,213,213
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,172,172,172,172,172
+  172,172,172,172,172,172,172,172,172,172,172,172,195,213,213,213,213,213,213,213
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,172,172,172,172,172
+  172,172,172,172,172,172,172,172,172,172,172,172,193,213,213,213,213,213,213,213
+  194,194,194,194,194,200,137,137,199,194,194,194,194,194,200,137,137,199,194,194
+  194,194,194,200,172,172,199,194,194,194,194,194,204,213,213,213,213,213,213,213
+  132,132,132,132,132,202,196,196,201,132,132,132,132,132,202,196,196,201,132,132
+  132,132,132,202,196,217,201,132,132,132,132,132,193,213,213,213,213,213,213,213
+  132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132
+  132,132,132,132,132,132,132,132,132,132,132,132,193,213,213,213,213,213,213,213
+  132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132
+  132,132,132,132,132,132,132,132,132,132,132,132,193,213,213,213,213,213,213,213
+  194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194
+  194,194,194,194,194,194,194,194,194,194,194,194,201,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,199,194,194,194,194,194,194,194,194,194,194,194,194
+  194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,201
+  213,213,213,213,213,213,213,193,132,132,132,132,132,132,132,132,132,132,132,132
+  132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132
+  213,213,213,213,213,213,213,193,132,132,132,132,132,132,132,132,132,132,132,132
+  132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132
+  213,213,213,213,213,213,213,193,132,132,132,132,132,199,196,196,200,132,132,132
+  132,132,199,196,196,200,132,132,132,132,132,199,196,196,200,132,132,132,132,132
+  213,213,213,213,213,213,213,203,194,194,194,194,194,201,218,177,202,194,194,194
+  198,194,201,174,174,202,194,198,194,198,194,201,175,175,202,194,198,194,215,198
+  213,213,213,213,213,213,213,193,177,177,177,177,177,177,177,177,177,177,177,177
+  193,174,174,174,174,174,174,193,131,183,175,175,175,175,175,175,193,176,176,193
+  213,213,213,213,213,213,213,193,177,177,177,177,177,177,177,177,177,177,177,177
+  193,174,174,174,174,174,174,193,131,189,175,175,175,175,175,175,193,176,176,193
+  213,213,213,213,213,213,213,193,177,177,177,177,177,177,177,177,177,177,177,177
+  193,174,174,174,174,174,174,203,194,204,175,175,175,175,175,175,193,176,176,193
+  213,213,213,213,213,213,213,195,177,177,177,177,177,177,177,177,177,177,177,177
+  193,174,174,174,174,174,174,189,131,193,175,175,175,175,175,175,193,176,176,193
+  213,213,213,213,213,213,213,195,177,177,177,177,177,177,177,177,177,177,177,177
+  193,174,174,174,174,174,174,182,131,193,175,175,175,175,175,175,193,176,176,193
+  213,213,213,213,213,213,213,195,177,177,177,177,177,177,177,177,177,177,177,177
+  202,194,194,194,194,189,188,197,194,197,187,189,194,194,194,194,197,187,189,197
+  213,213,213,213,213,213,213,193,177,177,177,177,177,177,177,177,177,177,177,177
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  213,213,213,213,213,213,213,193,177,177,177,177,177,177,177,177,177,177,177,177
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  213,213,213,213,213,213,213,193,177,177,177,177,177,177,177,177,177,177,177,177
+  137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137,137
+  213,213,213,213,213,213,213,203,194,194,194,194,194,200,177,177,199,194,194,194
+  194,194,200,137,137,199,194,194,194,194,194,200,137,137,199,194,194,194,194,194
+  213,213,213,213,213,213,213,193,132,132,132,132,132,202,196,196,201,132,132,132
+  132,132,202,196,196,201,132,132,132,132,132,202,196,196,201,132,132,132,132,132
+  213,213,213,213,213,213,213,193,132,132,132,132,132,132,132,132,132,132,132,132
+  132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132
+  213,213,213,213,213,213,213,193,132,132,132,132,132,132,132,132,132,132,132,132
+  132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132,132
+  213,213,213,213,213,213,213,202,194,194,194,194,194,194,194,194,194,194,194,194
+  194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194,194
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,179,179,179,179,179,179,179,179,179,179,179,179
+  179,179,179,179,179,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,179,179,179,179,179,179,179,179,179,179,179,179
+  179,179,179,179,179,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  213,213,213,213,213,213,213,213,179,179,179,179,179,179,179,179,179,179,179,179
+  179,179,179,179,179,213,213,213,213,213,213,213,213,213,213,213,213,213,213,213
+  199,194,194,194,194,194,198,194,194,196,196,196,196,194,194,185,189,186,194,194
+  196,196,196,196,194,194,198,194,194,194,194,194,200,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,199,194,201,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,202,194,200,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,195,178,178,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,178,178,195,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,195,178,178,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,178,178,195,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,202,194,200,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,199,194,201,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,199,194,201,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,202,194,200,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,195,178,178,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,178,178,195,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,195,178,178,178,178,178,178,178,178,178,178,178,178,178,178,178
+  178,178,178,178,178,178,178,178,195,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,202,194,200,178,178,178,178,178,178,178,178,206,129,129,203,194
+  194,194,194,194,194,194,198,194,201,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,206,129,129,207,180
+  180,180,180,180,180,180,193,132,132,132,132,132,193,213,213,213,213,213,213,213
+  193,132,132,132,132,132,193,178,178,178,178,178,178,178,178,206,129,129,207,180
+  180,180,180,180,180,180,214,132,132,132,132,132,193,213,213,213,213,213,213,213
+  201,132,132,132,132,132,203,194,194,194,194,200,137,137,137,206,191,191,203,194
+  194,194,194,194,194,194,204,132,132,132,132,132,193,213,213,213,213,213,213,213
+end data
+data RmName bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  83,84,65,73,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32
+  87,65,84,69,82,32,67,76,79,83,69,84,32,32,32,32,32,32,32,32
+  67,76,79,83,69,84,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  67,82,65,87,76,32,83,80,65,67,69,32,32,32,32,32,32,32,32,32
+  80,79,82,84,73,67,79,32,32,32,32,32,32,32,32,32,32,32,32,32
+  80,79,82,67,72,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  76,65,87,78,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  66,65,76,67,79,78,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  72,65,76,76,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  80,65,82,76,79,82,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,73,78,73,78,71,32,82,79,79,77,32,32,32,32,32,32,32,32,32
+  67,79,78,83,69,82,86,65,84,79,82,89,32,32,32,32,32,32,32,32
+  75,73,84,67,72,69,78,32,32,32,32,32,32,32,32,32,32,32,32,32
+  76,65,85,78,68,82,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  80,65,78,84,82,89,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  70,65,77,73,76,89,32,80,65,82,76,79,82,32,32,32,32,32,32,32
+  66,65,76,76,32,82,79,79,77,32,32,32,32,32,32,32,32,32,32,32
+  83,84,85,68,89,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  76,73,66,82,65,82,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  84,69,65,32,71,65,82,68,69,78,32,32,32,32,32,32,32,32,32,32
+  71,82,69,69,78,72,79,85,83,69,32,32,32,32,32,32,32,32,32,32
+  68,69,67,75,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  72,79,84,32,84,85,66,32,32,32,32,32,32,32,32,32,32,32,32,32
+  71,65,82,65,71,69,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  66,73,76,76,73,65,82,68,32,82,79,79,77,32,32,32,32,32,32,32
+  68,69,78,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  87,79,82,75,83,72,79,80,32,32,32,32,32,32,32,32,32,32,32,32
+  70,85,82,78,65,67,69,32,82,79,79,77,32,32,32,32,32,32,32,32
+  67,72,65,85,70,70,69,85,82,39,83,32,82,79,79,77,32,32,32,32
+  77,65,73,68,39,83,32,82,79,79,77,32,32,32,32,32,32,32,32,32
+  66,85,84,76,69,82,39,83,32,82,79,79,77,32,32,32,32,32,32,32
+  83,65,85,78,65,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  84,65,80,69,83,84,82,89,32,82,79,79,77,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  87,89,69,84,72,32,82,79,79,77,32,32,32,32,32,32,32,32,32,32
+  78,85,82,83,69,82,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  80,73,67,65,83,83,79,32,82,79,79,77,32,32,32,32,32,32,32,32
+  86,69,82,77,69,69,82,32,82,79,79,77,32,32,32,32,32,32,32,32
+  68,82,69,83,83,73,78,71,32,82,79,79,77,32,32,32,32,32,32,32
+  86,65,78,32,71,79,71,72,32,82,79,79,77,32,32,32,32,32,32,32
+  76,73,66,82,65,82,89,32,66,65,76,67,79,78,89,32,32,32,32,32
+  67,79,77,80,85,84,69,82,32,82,79,79,77,32,32,32,32,32,32,32
+  84,82,65,73,78,32,82,79,79,77,32,32,32,32,32,32,32,32,32,32
+  80,76,65,89,32,82,79,79,77,32,32,32,32,32,32,32,32,32,32,32
+  70,82,69,68,68,89,39,83,32,82,79,79,77,32,32,32,32,32,32,32
+  67,69,67,73,76,39,83,32,82,79,79,77,32,32,32,32,32,32,32,32
+  65,77,89,39,83,32,82,79,79,77,32,32,32,32,32,32,32,32,32,32
+  71,79,86,69,82,78,69,83,83,39,32,67,85,80,66,79,65,82,68,32
+  83,67,72,79,79,76,32,82,79,79,77,32,32,32,32,32,32,32,32,32
+  83,84,85,68,73,79,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  72,73,71,72,32,66,65,76,67,79,78,89,32,32,32,32,32,32,32,32
+  83,69,67,82,69,84,32,82,79,79,77,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  68,79,79,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32,32
+  83,84,65,73,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32
+  83,84,65,73,82,87,65,89,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+data SusName bytes
+  84,72,69,32,66,85,84,76,69,82,32,32,32,32,84,72,69,32,77,65
+  73,68,32,32,32,32,32,32,84,72,69,32,67,72,65,85,70,70,69,85
+  82,32,84,72,69,32,71,79,86,69,82,78,69,83,83,32,67,79,85,83
+  73,78,32,67,69,67,73,76,32,32,85,78,67,76,69,32,70,82,69,68
+  68,89,32,32
+end data
+data WepName bytes
+  84,72,69,32,80,79,75,69,82,32,32,32,32,32,32,32,32,32,84,72
+  69,32,80,82,85,78,73,78,71,32,75,78,73,70,69,32,84,72,69,32
+  66,73,76,76,73,65,82,68,32,67,85,69,32,32,84,72,69,32,80,79
+  73,83,79,78,32,32,32,32,32,32,32,32,84,72,69,32,72,65,84,80
+  73,78,32,32,32,32,32,32,32,32,84,72,69,32,66,82,79,78,90,69
+  32,66,85,83,84,32,32,32
+end data
+data ClueRm bytes
+  1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+  21,22,23,24,25,26,27,28,29,30,31,32,33,35,36,37,38,39,40,41
+  42,43,44,45,46,47,48,49,50,51,52
+end data
+
+asm {
+MmStep:
+    db $00,$00,$86,$01,$00,$00,$B6,$02,$10
+MmBump:
+    db $40,$FF,$53,$02,$40,$FF,$83,$03,$50
+MmCreak:
+    db $40,$F9,$42,$04,$40,$CD,$42,$04,$40,$A6,$42,$05,$40,$7F,$52,$06,$40,$25,$73,$08,$50
+MmWhoosh:
+    db $00,$00,$54,$04,$00,$00,$35,$05,$00,$00,$46,$06,$00,$00,$77,$08,$10
+MmClue:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$47,$30,$04,$40,$35,$40,$0C,$50
+MmTick:
+    db $40,$55,$50,$01,$40,$6B,$80,$02,$50
+MmNope:
+    db $40,$3B,$32,$05,$40,$5D,$52,$08,$50
+MmGasp:
+    db $40,$C5,$21,$06,$40,$E0,$21,$06,$40,$FC,$31,$06,$40,$1A,$42,$12,$50
+MmWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08
+    db $40,$55,$20,$1E,$50
+MmLose:
+    db $40,$C5,$11,$0C,$40,$E0,$21,$0C,$40,$FC,$21,$0C,$40,$1A,$32,$0C,$40,$3B,$42,$1E,$50
+
+MmSoundTable:
+    dw MmTuneMel,$702B
+    dw MmTuneBass,$7035
+    dw MmRunMel,$702B
+    dw MmRunBass,$7035
+    dw MmStep,$703F
+    dw MmBump,$7049
+    dw MmCreak,$7049
+    dw MmWhoosh,$703F
+    dw MmClue,$7049
+    dw MmTick,$7049
+    dw MmNope,$7049
+    dw MmGasp,$7049
+    dw MmWin,$7049
+    dw MmLose,$7049
+; Who Turned the Key? (original)
+; Tiny Sound, 8 frames per step
+MmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$F1,$22,$21,$01,$24,$01,$28,$01,$01,$26,$24,$01,$23,$01
+    db $21,$01,$01,$01,$20,$01,$23,$01,$28,$01,$01,$26,$23,$01,$20,$01
+    db $1C,$01,$01,$01,$21,$01,$24,$01,$28,$01,$2D,$01,$2B,$01,$29,$01
+    db $28,$01,$26,$01,$24,$01,$23,$01,$26,$01,$20,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$04,$01,$08,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$08,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Footsteps on the Landing (original)
+; Tiny Sound, 14 frames per step
+MmRunMel:
+    db $44
+    dw sndtiny_1
+    db 14
+    db $02,$B0,$1A,$21,$01,$01,$01,$01,$1C,$00,$00,$00,$01,$01,$01,$01
+    db $1D,$00,$00,$00,$01,$01,$01,$01,$1C,$00,$00,$00,$01,$01,$01,$01
+    db $1A,$00,$18,$00,$01,$01,$01,$01,$15,$00,$00,$00,$01,$01,$01,$01
+    db $17,$00,$00,$00,$01,$01,$01,$01,$18,$00,$17,$00,$01,$01,$01,$01
+    db $14,$00,$00,$00
+    db $FF
+MmRunBass:
+    db $84
+    dw sndtiny_2
+    db 14
+    db $02,$A0,$18,$32,$09,$00,$00,$00,$00,$00,$00,$00,$09,$00,$00,$00
+    db $00,$00,$00,$00,$05,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+    db $00,$00,$00,$00,$09,$00,$00,$00,$00,$00,$00,$00,$07,$00,$00,$00
+    db $00,$00,$00,$00,$05,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}

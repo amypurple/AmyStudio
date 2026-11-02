@@ -1,0 +1,1002 @@
+cartridge "STARFIGHTER/M.J. CARSTON/1987"
+
+' STARFIGHTER
+' A ColecoVision game based on "Starfighter" by Michael J. Carston, Ahoy!
+' January 1987 (Commodore 64 BASIC with a machine-language interrupt
+' routine and game loop in DATA; author from the program's title screen
+' "BY MICHAEL J. CARSTON"). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing and its machine code, orig/starfighter.bas), the game is built
+' for the ColecoVision: smooth 16 x 16 sprites, a star field scrolled by
+' rotating tile patterns (two layers), sound effects and an original title
+' tune.
+'
+' The game: your starfighter flies up through a field of stars. Six
+' attackers dive down the screen, evenly spaced, and each one that is
+' still far to your side turns towards you as it comes. Move left and
+' right and fire the laser (one bolt at a time, straight up). A hit is
+' worth 100 points. An attacker that rams you costs a ship. Three ships;
+' every 10,000 points gives a ship and makes the attackers faster and
+' sharper. At the end a bonus of a tenth of the score is added.
+'
+' From the original: the star field scrolling down one line a frame by
+' rotating six tile patterns stacked in columns (the C64 rotated its star
+' characters 250-255 in the interrupt); six attackers spaced evenly down
+' the screen that all fall at the same speed and wrap round to the top,
+' taking a new random column when they come back in; the homing rule
+' (an attacker in the field more than 20 pixels to the side moves one
+' pixel towards the fighter on every other frame, on every frame after
+' 10,000); the fighter's 2 pixels a frame; one laser bolt at a time that
+' flies until it hits or leaves the top; a hit attacker leaves the field
+' until it wraps; 100 points a hit, also for an attacker that rams you
+' (the C64 scored every sprite collision); 3 ships (SHIPS 2 spare); a
+' ship and the faster attackers at each 10,000; the bonus of score / 10
+' and the high score at the end.
+'
+' Liberties: the attackers fall at 1.25 pixels a frame, rising by 1/8 of
+' a pixel every 10 hits up to 2 pixels, and 2.5 after 10,000 (the C64's
+' 2.5 then 3 pixels a frame gave a person about a second to react, too
+' fast for the TV screen). The field starts empty and attackers dive in
+' from the top as they wrap (on the C64 they sat at the left edge until
+' then); after a lost ship the field is cleared and the fighter comes back
+' in the middle (the C64 put it at the right edge with the attackers where
+' they were). The laser bolt flies 8 pixels a frame (about the C64's
+' speed) and, unlike the C64's, the game does not stop while it flies. A
+' crash shows an explosion for a second while everything waits. The far
+' stars (blue) scroll at half speed. The high-score table of five became
+' one high score. Holding the button fires again as soon as the bolt is
+' gone, as on the C64; standing still is not safe, because attackers that
+' come in less than 20 pixels to the side never turn and the laser's
+' column misses them.
+'
+' Controls: either controller; the stick left and right moves the
+' fighter, either button fires. On the title, up and down choose, a
+' button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TSky = 128
+const TSt0 = 129
+const TSt1 = 130
+const TSt2 = 131
+const TSt3 = 132
+const TSt4 = 133
+const TSt5 = 134
+const TSd0 = 135
+const TSd1 = 136
+const TSd2 = 137
+const TSd3 = 138
+const TSd4 = 139
+const TSd5 = 140
+const TLg0 = 141
+const TLg1 = 142
+const TLg2 = 143
+const TLg3 = 144
+const TLg4 = 145
+const TLg5 = 146
+const TLg6 = 147
+const TLg7 = 148
+const TLg8 = 149
+const TLg9 = 150
+const TLg10 = 151
+const TLg11 = 152
+const TLg12 = 153
+const TLg13 = 154
+const TLg14 = 155
+const TLg15 = 156
+const TLg16 = 157
+const TLg17 = 158
+const TLg18 = 159
+const TLg19 = 160
+const TLg20 = 161
+const TLg21 = 162
+const TLg22 = 163
+const TLg23 = 164
+const TLg24 = 165
+const TLg25 = 166
+const TLg26 = 167
+const TRule = 168
+const SShipd = 0
+const SShip = 4
+const SLaser = 8
+const SFoe = 12
+const SBoom0 = 16
+const SBoom1 = 20
+const NTiles8 = 328
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndBoom = 4
+const SndCrash = 5
+const SndExtra = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 9
+const NFoe = 6
+const PlY = 160
+const PxMin = 16
+const PxMax = 224
+const PSpd = 2
+const LSpd = 8
+const LTop = 24
+const Cycle = 1600
+const Gap = 266
+const FTop = 16
+const FBot = 176
+const Turn = 20
+const DeadN = 60
+const BoomN = 16
+const SpBase = 10
+
+record Foe:
+  u8 X
+  u16 Y8
+  u8 Live
+  u8 Boom
+end record
+
+Foe Fo[6]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Kills = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+bcd digits 6 Bn = 0
+u8 Spare = 2
+u8 Fast = 0
+u8 Over = 0
+u8 Sp = 10
+' the fighter
+u8 Px = 112
+' the laser bolt
+u8 Lon = 0
+u8 Lx = 0
+u8 Ly = 0
+' the end of a ship: frames left
+u8 DeadT = 0
+' homing every other frame
+u8 HPh = 0
+' the star field's two phases (0-47)
+u8 Ph = 0
+u8 Ph2 = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  ScrollStars
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the bonus, a message, then back to the title on a press
+  mute all
+  HideSprites
+  AddBonus
+  if Sc > Hi then Hi = Sc
+  print at 6,8, "                  "
+  print at 6,9, "  G A M E  O V E R "
+  print at 6,10, "                  "
+  print at 6,11, "  BONUS           "
+  print at 6,12, "  SCORE           "
+  print at 6,13, "  HIGH SCORE      "
+  print at 6,14, "                  "
+  print at 19,11, Bn
+  print at 19,12, Sc
+  print at 19,13, Hi
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      if Spare = 0 then
+        Over = 1
+        return
+      end if
+      dec Spare
+      ShowHud
+      NewRound
+    end if
+    return
+  end if
+  HPh = HPh ^ 1
+  MovePlayer
+  MoveFoes
+  LaserStep
+  if Lon = 1 then LaserHits
+  CrashCheck
+  return
+end sub
+
+' the stick: left and right, 2 pixels a frame
+sub MovePlayer:
+  K = J1 | J2
+  V = K & 4
+  if V > 0 then
+    if Px >= PxMin + PSpd then
+      Px = Px - PSpd
+    else
+      Px = PxMin
+    end if
+  end if
+  V = K & 8
+  if V > 0 then
+    Px = Px + PSpd
+    if Px > PxMax then Px = PxMax
+  end if
+  return
+end sub
+
+' the attackers' speed in eighths of a pixel a frame
+function Speed as u8
+  u8 Lv = 0
+  W16 = Kills / 10
+  if W16 > 6 then
+    Lv = 6
+  else
+    Lv = W16
+  end if
+  select case Fast
+  case 0
+    return SpBase + Lv
+  case else
+    return SpBase + Lv + 4
+  end select
+  return SpBase
+
+' an attacker's screen row from its position in eighths
+function FoeY(u8 Which) as u8
+  u16 Q = 0
+  u8 R = 0
+  Q = Fo[Which].Y8
+  Q = Q >> 3
+  R = Q
+  return R
+
+' a random column for an attacker coming back in at the top
+function RandX as u8
+  u8 R = 0
+  Rand
+  W16 = Rs & 127
+  R = W16
+  W16 = Rs >> 7
+  W16 = W16 & 63
+  R = R + W16
+  W16 = Rs >> 13
+  R = R + W16
+  return R + 16
+
+' all six fall at the same speed; one that wraps comes back in at the top
+sub MoveFoes:
+  u16 Yw = 0
+  u8 Fx = 0
+  u8 Fy = 0
+  Sp = Speed
+  for Fi = 0 to NFoe - 1
+    Yw = Fo[Fi].Y8 + Sp
+    if Yw >= Cycle then
+      Yw = Yw - Cycle
+      Fo[Fi].Live = 1
+      Fo[Fi].Boom = 0
+      Fo[Fi].X = RandX
+    end if
+    Fo[Fi].Y8 = Yw
+    if Fo[Fi].Boom > 0 then dec Fo[Fi].Boom
+    if Fo[Fi].Live = 0 then continue for
+    if HPh = 0 then
+      if Fast = 0 then continue for
+    end if
+    Fy = FoeY(Fi)
+    if Fy < FTop then continue for
+    if Fy > FBot then continue for
+    Fx = Fo[Fi].X
+    if Fx + Turn < Px then
+      inc Fx
+    elseif Fx >= Px + Turn then
+      dec Fx
+    end if
+    Fo[Fi].X = Fx
+  next
+  return
+end sub
+
+' the laser bolt flies up; with none in the air the button fires one
+sub LaserStep:
+  if Lon = 1 then
+    Ly = Ly - LSpd
+    if Ly < LTop then Lon = 0
+    return
+  end if
+  K = J1 | J2
+  V = K & 16
+  if V = 0 then return
+  Lon = 1
+  Lx = Px
+  Ly = PlY - 8
+  play sound SndZap
+  return
+end sub
+
+' the bolt (pixels Lx+7..8, rows Ly+3..12) against each attacker
+sub LaserHits:
+  i16 Dx = 0
+  i16 Dy = 0
+  for Fi = 0 to NFoe - 1
+    if Fo[Fi].Live = 0 then continue for
+    Dx = Lx
+    Dx = Dx - Fo[Fi].X
+    if Dx < -6 then continue for
+    if Dx > 6 then continue for
+    Dy = Ly
+    Dy = Dy - FoeY(Fi)
+    if Dy < -11 then continue for
+    if Dy > 10 then continue for
+    Fo[Fi].Live = 0
+    Fo[Fi].Boom = BoomN
+    Lon = 0
+    Scored
+    play sound SndBoom
+    exit for
+  next
+  return
+end sub
+
+' an attacker on the fighter: the ship is lost (the C64 scored it too)
+sub CrashCheck:
+  i16 Dx = 0
+  i16 Dy = 0
+  for Fi = 0 to NFoe - 1
+    if Fo[Fi].Live = 0 then continue for
+    Dx = Px
+    Dx = Dx - Fo[Fi].X
+    if Dx < -11 then continue for
+    if Dx > 11 then continue for
+    Dy = PlY
+    Dy = Dy - FoeY(Fi)
+    if Dy < -12 then continue for
+    if Dy > 12 then continue for
+    Fo[Fi].Live = 0
+    Fo[Fi].Boom = BoomN
+    Lon = 0
+    DeadT = DeadN
+    Scored
+    play sound SndCrash
+    exit for
+  next
+  return
+end sub
+
+' 100 points; every 10,000 a ship and the fast attackers
+sub Scored:
+  Sc += 100
+  inc Kills
+  ShowScore
+  W16 = Kills mod 100
+  if W16 <> 0 then return
+  Fast = 1
+  if Spare < 9 then inc Spare
+  ShowHud
+  play sound SndExtra
+  return
+end sub
+
+' the end bonus: a tenth of the score (10 a hit)
+sub AddBonus:
+  u16 Q = 0
+  Bn = 0
+  if Kills > 0 then
+    for Q = 1 to Kills
+      Bn += 10
+    next
+  end if
+  Sc += Bn
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the field is cleared: the attackers come back in from the top in turn
+sub NewRound:
+  u16 Yw = 0
+  for Fi = 0 to NFoe - 1
+    Fo[Fi].X = 0
+    Fo[Fi].Y8 = Yw
+    Fo[Fi].Live = 0
+    Fo[Fi].Boom = 0
+    Yw = Yw + Gap
+  next
+  Px = 112
+  Lon = 0
+  HPh = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the star field's tile for column Col, row Row: bright stars in even
+' columns, far (blue) stars in odd ones, each column a run of the six
+' strip tiles from its own start, with gaps
+function StarAt(u8 Col, u8 Row) as u8
+  u8 H = 0
+  u8 S = 0
+  H = Col * 7
+  H = H + Row * 13
+  H = H + Col * Row
+  H = H & 15
+  if H < 3 then return TSky
+  S = Col * 5
+  S = S + Row
+  S = S % 6
+  V = Col & 1
+  if V = 0 then return TSt0 + S
+  return TSd0 + S
+
+' the stars move down: rotate the strip tiles' patterns in all three
+' thirds, the far ones every other frame
+sub ScrollStars:
+  u16 Off = 0
+  u16 Base = 0
+  inc Ph
+  if Ph >= 48 then Ph = 0
+  V = Tick & 1
+  if V = 0 then
+    inc Ph2
+    if Ph2 >= 48 then Ph2 = 0
+  end if
+  for Ci = 0 to 2
+    Base = Ci
+    Base = Base << 11
+    Off = 48 - Ph
+    copy StarStrip + Off count 48 to vram.pattern + Base + 1032
+    Off = 48 - Ph2
+    copy StarStrip + Off count 48 to vram.pattern + Base + 1080
+  next
+  return
+end sub
+
+' sprites 0-1 the fighter, 2 the laser, 3-8 the attackers
+sub DrawSprites:
+  u8 Fy = 0
+  Y = PlY - 1
+  if DeadT > 0 then
+    V = DeadT >> 3
+    V = V & 1
+    K = V << 2
+    K = K + SBoom0
+    set sprite 0 to Y,Px,K,11
+    set sprite 1 to Y,Px,SShip,6
+  else
+    set sprite 0 to Y,Px,SShipd,7
+    set sprite 1 to Y,Px,SShip,14
+  end if
+  if Lon = 1 then
+    Y = Ly - 1
+    set sprite 2 to Y,Lx,SLaser,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for Fi = 0 to NFoe - 1
+    J = Fi + 3
+    Fy = FoeY(Fi)
+    if Fy < FTop then
+      set sprite J to 192,0,0,0
+      continue for
+    end if
+    if Fy > FBot then
+      set sprite J to 192,0,0,0
+      continue for
+    end if
+    Y = Fy - 1
+    X = Fo[Fi].X
+    if Fo[Fi].Live = 1 then
+      set sprite J to Y,X,SFoe,13
+    elseif Fo[Fi].Boom > 0 then
+      V = Fo[Fi].Boom >> 3
+      K = V << 2
+      K = K + SBoom0
+      set sprite J to Y,X,K,10
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 21,1, "SHIPS"
+  ShowScore
+  NumU = Spare
+  print at 27,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Sc
+  return
+end sub
+
+' the star field, rows 2-22
+sub DrawField:
+  for Ri = 2 to 22
+    for Ci = 2 to 29
+      T = StarAt(Ci, Ri)
+      put char T at Ci,Ri
+    next
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Spare = 2
+  Kills = 0
+  Fast = 0
+  NewScreen
+  DrawField
+  ShowHud
+  NewRound
+  DeadT = 0
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the big STARFIGHTER letters (two tiles by two each) at row 4
+sub DrawLogo:
+  u16 Ix = 0
+  u8 L = 0
+  u8 Lx2 = 0
+  u8 Col = 0
+  for L = 0 to 10
+    Col = L * 2
+    Col = Col + 5
+    for Lx2 = 0 to 3
+      Ix = L * 4
+      Ix = Ix + Lx2
+      T = LogoT[Ix]
+      X = Lx2 & 1
+      X = X + Col
+      Y = Lx2 >> 1
+      Y = Y + 4
+      put char T at X,Y
+    next
+  next
+  fill TRule count 22 at 5,6
+  return
+end sub
+
+' the title: the logo over the moving stars, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawField
+  for Ri = 3 to 19
+    fill 32 count 24 at 4,Ri
+  next
+  DrawLogo
+  print at 5,8, "BY MICHAEL J. CARSTON"
+  print at 10,12, "START GAME"
+  print at 10,13, "CREDITS"
+  print at 7,17, "AHOY! JANUARY 1987"
+  print at 2,1, "HIGH SCORE"
+  print at 13,1, Hi
+  ShowMenu
+  TitleOn = 1
+  DeadT = 0
+  Lon = 0
+  Px = 112
+  NewRound
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  ScrollStars
+  Y = PlY - 1
+  set sprite 0 to Y,Px,SShipd,7
+  set sprite 1 to Y,Px,SShip,14
+  update sprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,12
+  put char 32 at 8,13
+  J = Menu + 12
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "STARFIGHTER"
+  print at 2,5, "BASED ON STARFIGHTER BY"
+  print at 2,6, "MICHAEL J. CARSTON, AHOY!"
+  print at 2,7, "JANUARY 1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: NIGHT SORTIE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$00,$00
+  $00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$08,$00,$00,$40,$00,$00,$40
+  $00,$00,$20,$00,$00,$10,$00,$00
+  $00,$00,$00,$00,$00,$10,$00,$00
+  $00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$08,$00,$00,$40,$00,$00,$40
+  $00,$00,$20,$00,$00,$10,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$01,$01,$00,$00,$00,$00,$F0
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $F0,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$03,$03,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$01
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$1C,$1C,$E0,$E0,$E0,$E0,$00
+  $F0,$80,$80,$70,$70,$0E,$0E,$00
+  $F0,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$00,$00,$00
+  $80,$80,$80,$80,$80,$01,$01,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$1C
+  $00,$F0,$F0,$0E,$0E,$00,$00,$01
+  $1C,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $01,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $00,$E0,$E0,$E0,$E0,$00,$00,$00
+  $F0,$00,$00,$00,$00,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$F1,$01,$01,$F1,$01,$01,$F1
+  $01,$01,$F1,$01,$01,$F1,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$51,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$51,$01,$01,$51,$01,$01,$51
+  $01,$01,$51,$01,$01,$51,$01,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$91,$19
+  $01,$1B,$1B,$01,$01,$01,$01,$91
+  $18,$01,$01,$01,$01,$06,$06,$01
+  $81,$81,$81,$61,$61,$61,$61,$01
+  $01,$0B,$0B,$B1,$A1,$A1,$91,$91
+  $01,$1B,$1B,$B1,$A1,$A1,$91,$91
+  $81,$81,$81,$61,$61,$61,$61,$01
+  $81,$81,$81,$61,$61,$61,$61,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$91,$09
+  $01,$B1,$B1,$B1,$A1,$A1,$91,$19
+  $08,$81,$81,$61,$61,$61,$61,$01
+  $18,$81,$81,$61,$61,$61,$61,$01
+  $01,$0B,$0B,$B1,$A1,$A1,$91,$09
+  $01,$B1,$B1,$B1,$A1,$A1,$91,$91
+  $08,$18,$18,$61,$61,$61,$61,$01
+  $81,$81,$81,$61,$61,$61,$61,$01
+  $81,$01,$01,$01,$01,$01,$01,$01
+  $81,$81,$81,$61,$61,$06,$06,$01
+  $81,$81,$81,$61,$61,$16,$16,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$91,$19
+  $01,$B1,$B1,$B1,$A1,$01,$01,$19
+  $18,$81,$81,$61,$61,$16,$16,$01
+  $18,$81,$81,$61,$61,$61,$61,$01
+  $01,$B1,$B1,$B1,$A1,$A1,$91,$09
+  $01,$B1,$B1,$B1,$A1,$A1,$91,$19
+  $08,$81,$81,$61,$61,$06,$06,$01
+  $81,$01,$01,$01,$01,$16,$16,$01
+  $01,$01,$01,$04,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02
+  $00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40
+  $01,$01,$03,$02,$02,$07,$47,$4F,$6F,$7F,$FF,$FF,$DF,$87,$00,$00
+  $80,$80,$C0,$40,$40,$E0,$E2,$F2,$F6,$FE,$FF,$FF,$FB,$E1,$00,$00
+  $00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00
+  $00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$00,$00,$00
+  $00,$80,$C0,$E7,$7E,$3F,$1F,$0E,$07,$03,$03,$01,$01,$01,$00,$00
+  $00,$01,$03,$E7,$7E,$FC,$F8,$70,$E0,$C0,$C0,$80,$80,$80,$00,$00
+  $00,$00,$02,$11,$05,$0C,$25,$03,$03,$25,$0C,$05,$11,$02,$00,$00
+  $00,$00,$40,$88,$A0,$30,$A4,$C0,$C0,$A4,$30,$A0,$88,$40,$00,$00
+  $80,$10,$42,$00,$28,$80,$04,$20,$82,$10,$01,$48,$02,$20,$84,$00
+  $81,$10,$04,$80,$12,$20,$01,$48,$01,$10,$44,$01,$10,$08,$82,$10
+end data
+data StarStrip bytes
+  0,0,0,0,0,16,0,0,0,1,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0
+  0,8,0,0,64,0,0,64,0,0,32,0,0,16,0,0
+  0,0,0,0,0,16,0,0,0,1,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0
+  0,8,0,0,64,0,0,64,0,0,32,0,0,16,0,0
+end data
+data LogoT bytes
+  141,142,143,144
+  145,146,147,148
+  149,150,151,152
+  153,154,155,156
+  153,142,151,157
+  145,146,158,159
+  160,161,162,163
+  164,165,151,152
+  145,146,147,148
+  153,142,166,167
+  153,154,155,156
+end data
+
+asm {
+SfZap:
+    db $40,$47,$00,$02,$40,$55,$10,$02,$40,$6B,$20,$02,$40,$7F,$30,$02,$40,$A0,$50,$02,$50
+SfBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$56,$0A,$10
+SfCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$26,$0A,$00,$00,$56,$18,$10
+SfExtra:
+    db $40,$AA,$10,$04,$40,$7F,$10,$04,$40,$6B,$10,$04,$40,$55,$20,$0A,$50
+SfStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+SfOver:
+    db $40,$E2,$10,$0C,$40,$FE,$20,$0C,$40,$2E,$21,$0C,$40,$C5,$21,$1E,$50
+
+SfSoundTable:
+    dw SfTuneMel,$702B
+    dw SfTuneBass,$7035
+    dw SfZap,$7049
+    dw SfBoom,$703F
+    dw SfCrash,$703F
+    dw SfExtra,$7049
+    dw SfStart,$7049
+    dw SfOver,$7049
+; Night Sortie (original)
+; Tiny Sound, 8 frames per step
+SfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$23,$01,$28,$01,$26,$23,$01,$21,$01
+    db $1F,$01,$21,$23,$01,$01,$26,$01,$23,$1F,$01,$21,$01,$23,$01,$26
+    db $28,$01,$01,$01,$2B,$01,$2A,$28,$01,$26,$01,$23,$01,$26,$28,$01
+    db $23,$01,$21,$01,$1F,$01,$21,$01,$23,$01,$1E,$01,$1F,$01,$1C,$01
+    db $00,$01,$01,$01
+    db $FF
+SfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$04,$01,$0B,$01,$04,$01,$0B,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$0B,$01,$12,$01,$04,$01,$0B,$01
+    db $04,$01,$00,$01
+    db $FF
+}

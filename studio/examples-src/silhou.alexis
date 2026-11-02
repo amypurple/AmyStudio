@@ -1,0 +1,1236 @@
+cartridge "SILHOUETTE/CURTIS F. KAYLOR/1987"
+
+' SILHOUETTE
+' A ColecoVision game based on "Silhouette" by Curtis F. Kaylor, Ahoy!
+' December 1987 (Commodore 64 BASIC with a sprite file, SILSPRITES).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a fairground rifle range, then Silhouette City, and round
+' again for as long as your guns last. Metal silhouettes pop up: shoot the
+' CHICKEN, the PIG and the RAM; spare the OWL, the CAT and the RABBIT.
+' RIFLE RANGE: seven rounds; three targets stand on the rail at a time
+' (always one to spare and one to shoot, the third either). Push the stick
+' left or right to aim at the left or right target (centre when released)
+' and press a button to fire. SILHOUETTE CITY: five streets of five
+' targets; one target at a time appears in a window of the two buildings
+' (a one-storey building has only its lower window). Aim with the
+' diagonals (up-left, down-left, up-right, down-right) and fire.
+' A hit scores 10 and the targets come up faster. Shooting a target you
+' should spare, or letting one you should shoot go down, is a MISS and
+' costs a gun; a miss slows the targets down again. Shooting a target to
+' spare also ends that round. You have five guns; the game ends when the
+' last is gone.
+'
+' From the original (orig/silhouette.bas): the two scenes and their order
+' (7 range rounds, then 5 x 5 city targets, then the range again, without
+' end); three good and three bad shapes; the range round's draw (one good,
+' one bad in random order, a third any other); three aiming positions on
+' the range from the stick (left, centre, right); four city windows on the
+' diagonals, centre otherwise; a city target appears on a random side, in
+' the upper window only when that building has an upper storey, and is any
+' of the six shapes; 10 points a hit; a hit shortens the time (TM - 1 down
+' to 10), a miss lengthens it (TM + 1); the city time is half the range
+' time; a bad target left standing at the end of the time is a miss, a
+' good target shot is a miss and ends the range round; five guns; MISS
+' shown at the target with a falling tune; a tune between scenes.
+'
+' Liberties: the targets are animal silhouettes, as on a metal-silhouette
+' range, instead of the original's policemen, professor, young lady and
+' gangsters. Targets pop up from the rail or a window sill instead of
+' sliding in from the screen edge. The gun and the city sight glide to
+' their position (8 pixels a frame) instead of jumping. Times are in
+' frames and set for people: the range window starts at 110 frames (about
+' 1.8 s), minus 3 a hit down to 50, plus 3 a miss; the city window is half
+' of it plus 15 frames; each time round the two scenes the shortest
+' range window drops by 6 frames, down to 32 (the BASIC loops started near 1 s and went down to
+' about 0.2 s). One press is one shot, with a short reload (the listing
+' fired every pass while the button was held, and a fallen target still
+' scored 10 when shot again: neither is kept). A range round ends as soon
+' as every target to shoot is down. The game ends with a message and goes
+' back to the title (no PLAY AGAIN question). A high score.
+'
+' Controls: either controller. Range: stick left / right aims, centre when
+' released. City: the stick's diagonals aim at the four windows. Either
+' side button fires. A button starts from the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' frame loop protected from the NMI; screens drawn with the NMI off after a
+' wait, display off. Music first in the sound table, effects after; the
+' title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TAwna = 128
+const TAwnb = 129
+const TWall = 130
+const TRail = 131
+const TCnt = 132
+const TCurt = 133
+const TFloor = 134
+const TMark = 135
+const TSky = 136
+const TStar = 137
+const TBrick = 138
+const TRoof = 139
+const TWin00 = 140
+const TWin01 = 141
+const TWin10 = 142
+const TWin11 = 143
+const TShut00 = 144
+const TShut01 = 145
+const TShut10 = 146
+const TShut11 = 147
+const TPave = 148
+const TLamp = 149
+const TPost = 150
+const SOwl0 = 0
+const SOwl1 = 4
+const SOwl2 = 8
+const SOwl3 = 12
+const SCat0 = 16
+const SCat1 = 20
+const SCat2 = 24
+const SCat3 = 28
+const SRabbit0 = 32
+const SRabbit1 = 36
+const SRabbit2 = 40
+const SRabbit3 = 44
+const SChicken0 = 48
+const SChicken1 = 52
+const SChicken2 = 56
+const SChicken3 = 60
+const SPig0 = 64
+const SPig1 = 68
+const SPig2 = 72
+const SPig3 = 76
+const SRam0 = 80
+const SRam1 = 84
+const SRam2 = 88
+const SRam3 = 92
+const SGun = 96
+const SSight = 100
+const SFlash = 104
+const SPuff = 108
+const NTiles8 = 184
+const SprBytes = 896
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndClang = 4
+const SndMiss = 5
+const SndUp = 6
+const SndStart = 7
+const SndStage = 8
+const SndOver = 9
+const NSpr = 8
+const WinStart = 110
+const WinMin = 50
+const WinMax = 160
+const WinLast = 32
+const WinLapStep = 6
+const WinStep = 3
+const CoolN = 10
+const MissN = 50
+const GapN = 24
+const StageN = 120
+const RangeRounds = 7
+const CityStreets = 5
+const CityTargets = 5
+const GunY = 143
+const RangeTY = 88
+' play modes
+const MRise = 0
+const MUp = 1
+const MMiss = 2
+const MDrop = 3
+const MGap = 4
+const MStage = 5
+
+' range slots (sprite X); city windows 0 left top, 1 left bottom, 2 right
+' top, 3 right bottom, 4 the resting centre: sight X / Y, target Y
+data SlotX bytes
+  48, 120, 192
+end data
+data WinX bytes
+  56, 56, 184, 184, 120
+end data
+data WinSY bytes
+  71, 135, 71, 135, 95
+end data
+data WinTY bytes
+  70, 134, 70, 134, 0
+end data
+' target colours by kind (spare 0-2, shoot 3-5): colour tells nothing
+data KindCol bytes
+  4, 1, 6, 6, 4, 1
+end data
+data Bit bytes
+  1, 2, 4
+end data
+
+record Target:
+  u8 Kind
+  u8 X
+  u8 Y
+  u8 F
+  u8 St
+end record
+' St: 0 gone, 1 rising, 2 up, 3 going down
+
+Target Tg[3]
+bcd digits 6 Score
+bcd digits 6 Hi
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Stage = 0
+u8 Mode = 0
+u8 Rd = 0
+u8 Street = 0
+u8 Ck = 0
+u8 Guns = 5
+u8 Win = WinStart
+u8 WinLo = WinMin
+u8 Lap = 1
+u8 RT = 0
+u8 RoundHits = 0
+u8 PendM = 0
+u8 Ms = 0
+u8 MissT = 0
+u8 GapT = 0
+u8 FlashT = 0
+u8 CoolT = 0
+u8 Over = 0
+u8 Aim = 1
+u8 GunX = 120
+u8 SightX = 120
+u8 SightY = 95
+u8 Wn = 0
+u8 TallL = 0
+u8 TallR = 0
+u8 Si = 0
+u8 Shots = 0
+u8 Hits = 0
+u8 Misses = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ti = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 LoB = 0
+
+  tile screen
+  set sound table ShSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score > Hi then Hi = Score
+  HideSprites
+  ShowHud
+  mute all
+  print at 8,8, "                "
+  print at 8,9, "   GAME  OVER   "
+  print at 8,10, "                "
+  print at 8,11, "  SCORE         "
+  print at 16,11, Score
+  print at 8,12, "  HITS          "
+  NumU = Hits
+  print at 16,12, digits$(NumU, 3)
+  print at 8,13, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  AnimTargets
+  MoveAim
+  if FlashT > 0 then dec FlashT
+  if CoolT > 0 then dec CoolT
+  select case Mode
+  case MRise
+    TryFire
+    if Mode = MRise then
+      if Rising = 0 then
+        Mode = MUp
+        RT = RoundTime(Stage)
+      end if
+    end if
+  case MUp
+    TryFire
+    if Mode = MUp then
+      if RT > 0 then dec RT
+      if RoundHits > 0 then
+        if ToShoot = 0 then
+          BeginDrop
+          return
+        end if
+      end if
+      if RT = 0 then TimeUp
+    end if
+  case MMiss
+    dec MissT
+    if MissT = 0 then MissDone
+  case MDrop
+    if Standing = 0 then
+      Mode = MGap
+      GapT = GapN
+    end if
+  case MGap
+    dec GapT
+    if GapT = 0 then NextRound
+  case MStage
+    dec GapT
+    if GapT = 0 then StageChange
+  end select
+  return
+end sub
+
+' the time a target stays up: range Win, city Win / 2 + 15
+function RoundTime(u8 Sg) as u8
+  u8 Tw = Win
+  if Sg = 1 then
+    Tw = Win / 2
+    Tw = Tw + 15
+  end if
+  return Tw
+
+' how many targets are still rising
+function Rising as u8
+  N = 0
+  for Ti = 0 to 2
+    if Tg[Ti].St = 1 then inc N
+  next
+  return N
+
+' how many targets are not gone
+function Standing as u8
+  N = 0
+  for Ti = 0 to 2
+    if Tg[Ti].St > 0 then inc N
+  next
+  return N
+
+' how many targets to shoot are still standing (rising or up)
+function ToShoot as u8
+  N = 0
+  for Ti = 0 to 2
+    K = Tg[Ti].St
+    if K = 1 or K = 2 then
+      if Tg[Ti].Kind >= 3 then inc N
+    end if
+  next
+  return N
+
+' rising and going down: one frame every two passes
+sub AnimTargets:
+  V = Tick & 1
+  if V = 1 then return
+  for Ti = 0 to 2
+    K = Tg[Ti].St
+    T = Tg[Ti].F
+    if K = 1 then
+      if T < 3 then inc T
+      if T = 3 then Tg[Ti].St = 2
+      Tg[Ti].F = T
+    elseif K = 3 then
+      if T = 0 then
+        Tg[Ti].St = 0
+      else
+        dec T
+        Tg[Ti].F = T
+      end if
+    end if
+  next
+  return
+end sub
+
+' the stick: the gun's slot on the range, a window (or the centre) in town
+sub MoveAim:
+  if Stage = 0 then
+    select case Stick
+    case 4 to 6
+      Aim = 0
+    case 8 to 10
+      Aim = 2
+    case else
+      Aim = 1
+    end select
+    GunX = Glide(GunX, SlotX[Aim])
+  else
+    select case Stick
+    case 5
+      Aim = 0
+    case 6
+      Aim = 1
+    case 9
+      Aim = 2
+    case 10
+      Aim = 3
+    case else
+      Aim = 4
+    end select
+    SightX = Glide(SightX, WinX[Aim])
+    SightY = Glide(SightY, WinSY[Aim])
+  end if
+  return
+end sub
+
+' one step of 8 pixels from P toward Q
+function Glide(u8 P, u8 Q) as u8
+  u8 G = P
+  if P < Q then G = P + 8
+  if P > Q then G = P - 8
+  return G
+
+sub TryFire:
+  if Press = 0 then return
+  if CoolT > 0 then return
+  if TitleOn = 1 then return
+  CoolT = CoolN
+  FlashT = 5
+  play sound SndShot
+  inc Shots
+  Si = 255
+  if Stage = 0 then
+    if GunX = SlotX[Aim] then Si = Aim
+  else
+    if Aim < 4 then
+      if SightX = WinX[Aim] then
+        if SightY = WinSY[Aim] then
+          if Wn = Aim then Si = 0
+        end if
+      end if
+    end if
+  end if
+  if Si = 255 then return
+  K = Tg[Si].St
+  if K = 0 then return
+  if K = 3 then return
+  if K = 1 then
+    if Tg[Si].F < 2 then return
+  end if
+  ShootTarget
+  return
+end sub
+
+' target Si is hit
+sub ShootTarget:
+  play sound SndClang
+  if Tg[Si].Kind >= 3 then
+    Score += 10
+    inc Hits
+    inc RoundHits
+    Tg[Si].St = 3
+    V = WinLo + WinStep
+    if Win >= V then
+      Win = Win - WinStep
+    else
+      Win = WinLo
+    end if
+    ShowScore
+    return
+  end if
+  ' a target to spare: a miss, and the round ends
+  PendM = Bit[Si]
+  Tg[Si].St = 2
+  StartMiss
+  return
+end sub
+
+' the time is up: every target to shoot still standing is a miss
+sub TimeUp:
+  PendM = 0
+  for Ti = 0 to 2
+    K = Tg[Ti].St
+    if K = 1 or K = 2 then
+      if Tg[Ti].Kind >= 3 then PendM = PendM | Bit[Ti]
+    end if
+  next
+  if PendM = 0 then
+    BeginDrop
+  else
+    StartMiss
+  end if
+  return
+end sub
+
+' show the next pending MISS (the lowest slot first)
+sub StartMiss:
+  Ms = 0
+  V = PendM & 1
+  if V = 0 then
+    Ms = 1
+    V = PendM & 2
+    if V = 0 then Ms = 2
+  end if
+  V = Bit[Ms] ^ 255
+  PendM = PendM & V
+  Mode = MMiss
+  MissT = MissN
+  if Guns > 0 then dec Guns
+  inc Misses
+  if Win <= WinMax - WinStep then Win = Win + WinStep
+  MissText(1)
+  ShowGuns
+  play sound SndMiss
+  return
+end sub
+
+sub MissDone:
+  MissText(0)
+  if Guns = 0 then
+    Over = 1
+    return
+  end if
+  if PendM > 0 then
+    StartMiss
+  else
+    BeginDrop
+  end if
+  return
+end sub
+
+' MISS under the range slot Ms (or in the city's sky); Shown 0 erases it
+sub MissText(u8 Shown)
+  u8 Mc = 15
+  u8 Mr = 12
+  if Stage = 0 then
+    Mc = SlotX[Ms] / 8
+    Mc = Mc - 1
+    Mr = 17
+  end if
+  if Shown = 1 then
+    print at Mc,Mr, "MISS"
+  elseif Stage = 0 then
+    fill TFloor count 4 at Mc,Mr
+  else
+    fill TSky count 4 at Mc,Mr
+  end if
+end sub
+
+sub BeginDrop:
+  for Ti = 0 to 2
+    K = Tg[Ti].St
+    if K = 1 or K = 2 then Tg[Ti].St = 3
+  next
+  Mode = MDrop
+  return
+end sub
+
+sub NextRound:
+  if Stage = 0 then
+    inc Rd
+    if Rd > RangeRounds then
+      StageBanner
+      return
+    end if
+    StartRangeRound
+    return
+  end if
+  inc Ck
+  if Ck > CityTargets then
+    Ck = 1
+    inc Street
+    if Street > CityStreets then
+      StageBanner
+      return
+    end if
+    NewStreet
+  end if
+  StartCityTarget
+  return
+end sub
+
+sub StageBanner:
+  Mode = MStage
+  GapT = StageN
+  if Stage = 0 then
+    print at 6,8, "                    "
+    print at 6,9, "     WELL SHOT!     "
+    print at 6,10, "  ON TO SILHOUETTE  "
+    print at 6,11, "        CITY        "
+    print at 6,12, "                    "
+  else
+    print at 6,8, "                    "
+    print at 6,9, "  BACK TO THE RIFLE "
+    print at 6,10, "   RANGE, FASTER!   "
+    print at 6,11, "                    "
+  end if
+  play sound SndStage
+  return
+end sub
+
+sub StageChange:
+  if Stage = 0 then
+    Stage = 1
+    Street = 1
+    Ck = 1
+    DrawCity
+    StartCityTarget
+  else
+    Stage = 0
+    Rd = 1
+    inc Lap
+    if WinLo >= WinLast + WinLapStep then WinLo = WinLo - WinLapStep
+    DrawRange
+    StartRangeRound
+  end if
+  return
+end sub
+
+' a range round: one to spare, one to shoot (random order), a third any
+' other shape; slots right, middle, left as the C64's sprites 1, 2, 3
+sub StartRangeRound:
+  C = RndN(3)
+  J = RndN(3) + 3
+  V = RndN(2)
+  if V = 1 then
+    swap C with J
+  end if
+  K = RndN(6)
+  while K = C or K = J
+    K = RndN(6)
+  end while
+  Tg[2].Kind = C
+  Tg[1].Kind = J
+  Tg[0].Kind = K
+  for Ti = 0 to 2
+    Tg[Ti].X = SlotX[Ti]
+    Tg[Ti].Y = RangeTY
+    Tg[Ti].F = 0
+    Tg[Ti].St = 1
+  next
+  RoundHits = 0
+  Mode = MRise
+  play sound SndUp
+  return
+end sub
+
+' a city target: a random side, the upper window only in a tall building,
+' any of the six shapes
+sub StartCityTarget:
+  X = RndN(2)
+  T = TallL
+  if X = 1 then T = TallR
+  Y = 1
+  if T = 1 then
+    if RndN(2) = 1 then Y = 0
+  end if
+  V = X << 1
+  Wn = V + Y
+  Tg[0].Kind = RndN(6)
+  Tg[0].X = WinX[Wn]
+  Tg[0].Y = WinTY[Wn]
+  Tg[0].F = 0
+  Tg[0].St = 1
+  Tg[1].St = 0
+  Tg[2].St = 0
+  RoundHits = 0
+  Mode = MRise
+  play sound SndUp
+  return
+end sub
+
+' xorshift random numbers; RndN(n) gives 0 .. n - 1
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function RndN(u8 Lim) as u8
+  Rand
+  LoB = Rs & 255
+  return LoB % Lim
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the gun or the sight, 1 the shot, 2-4 the targets
+sub DrawSprites:
+  if TitleOn = 1 then return
+  if Stage = 0 then
+    set sprite 0 to GunY,GunX,SGun,14
+    if FlashT > 0 then
+      Y = GunY - 14
+      set sprite 1 to Y,GunX,SFlash,11
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  else
+    set sprite 0 to SightY,SightX,SSight,8
+    if FlashT > 0 then
+      set sprite 1 to SightY,SightX,SPuff,15
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  end if
+  for Ti = 0 to 2
+    J = Ti + 2
+    K = Tg[Ti].St
+    if K = 0 then
+      set sprite J to 192,0,0,0
+    else
+      R = Tg[Ti].Kind
+      V = R << 4
+      T = Tg[Ti].F << 2
+      V = V + T
+      C = KindCol[R]
+      X = Tg[Ti].X
+      Y = Tg[Ti].Y
+      set sprite J to Y,X,V,C
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 13,1, "HI"
+  print at 24,1, "GUNS"
+  ShowScore
+  print at 16,1, Hi
+  ShowGuns
+  return
+end sub
+
+sub ShowScore:
+  print at 5,1, Score
+  return
+end sub
+
+sub ShowGuns:
+  NumU = Guns
+  print at 29,1, digits$(NumU, 1)
+  return
+end sub
+
+' the rifle range: awning, plank wall, curtains, rail, counter, floor
+sub DrawRange:
+  NewScreen
+  print at 10,2, "RIFLE  RANGE"
+  for Ri = 3 to 4
+    fill TAwna count 32 at 0,Ri
+  next
+  fill TAwnb count 32 at 0,4
+  for Ri = 5 to 12
+    fill TCurt count 4 at 0,Ri
+    fill TWall count 24 at 4,Ri
+    fill TCurt count 4 at 28,Ri
+  next
+  fill TRail count 32 at 0,13
+  fill TCnt count 32 at 0,14
+  fill TCnt count 32 at 0,15
+  for Ri = 16 to 22
+    fill TFloor count 32 at 0,Ri
+  next
+  for Ri = 0 to 2
+    X = SlotX[Ri] / 8
+    fill TMark count 2 at X,21
+  next
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' Silhouette City: night sky, a street lamp, two buildings
+sub DrawCity:
+  NewScreen
+  for Ri = 2 to 21
+    fill TSky count 32 at 0,Ri
+  next
+  print at 8,2, "SILHOUETTE  CITY"
+  put char TStar at 3,4
+  put char TStar at 14,3
+  put char TStar at 27,5
+  put char TStar at 17,7
+  put char TStar at 9,4
+  put char TStar at 22,3
+  fill TPave count 32 at 0,22
+  put char TLamp at 15,15
+  put char TLamp at 16,15
+  for Ri = 16 to 21
+    put char TPost at 15,Ri
+    put char TPost at 16,Ri
+  next
+  ShowHud
+  DrawBuildings
+  ShowScreen
+  return
+end sub
+
+' a new street: two new buildings (drawn between targets)
+sub NewStreet:
+  Rearm
+  wait
+  nmi off
+  for Ri = 5 to 21
+    fill TSky count 10 at 3,Ri
+    fill TSky count 10 at 19,Ri
+  next
+  DrawBuildings
+  return
+end sub
+
+sub DrawBuildings:
+  TallL = RndN(2)
+  TallR = RndN(2)
+  Building(3, TallL)
+  Building(19, TallR)
+  return
+end sub
+
+' a building of 10 columns from column Bc; tall ones have an upper storey
+sub Building(u8 Bc, u8 Tall)
+  u8 Top = 13
+  u8 Wc = Bc + 4
+  u8 Lc = Bc + 1
+  u8 Rc = Bc + 7
+  if Tall = 1 then Top = 6
+  fill TRoof count 10 at Bc,Top
+  Ri = Top + 1
+  while Ri <= 21
+    fill TBrick count 10 at Bc,Ri
+    inc Ri
+  end while
+  Window(Wc, 17, 0)
+  Window(Lc, 17, 1)
+  Window(Rc, 17, 1)
+  if Tall = 1 then
+    Window(Wc, 9, 0)
+    Window(Lc, 9, 1)
+    Window(Rc, 9, 1)
+  end if
+end sub
+
+' a 2 x 2 window at Wx, Wy: lit (0) or shuttered (1)
+sub Window(u8 Wx, u8 Wy, u8 Shut)
+  u8 Base = TWin00
+  u8 Wx1 = Wx + 1
+  u8 Wy1 = Wy + 1
+  if Shut = 1 then Base = TShut00
+  put char Base at Wx,Wy
+  inc Base
+  put char Base at Wx1,Wy
+  inc Base
+  put char Base at Wx,Wy1
+  inc Base
+  put char Base at Wx1,Wy1
+end sub
+
+sub NewGame:
+  Score = 0
+  Guns = 5
+  Win = WinStart
+  WinLo = WinMin
+  Lap = 1
+  Stage = 0
+  Rd = 1
+  Over = 0
+  Shots = 0
+  Hits = 0
+  Misses = 0
+  FlashT = 0
+  CoolT = 0
+  Aim = 1
+  GunX = 120
+  SightX = 120
+  SightY = 95
+  TitleOn = 0
+  for Ti = 0 to 2
+    Tg[Ti].St = 0
+  next
+  DrawRange
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+  StartRangeRound
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Stick = V & 15
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the six shapes on two rails, the tune once
+sub TitlePage:
+  TitleOn = 1
+  NewScreen
+  fill TAwna count 32 at 0,3
+  fill TAwnb count 32 at 0,4
+  print at 11,6, "SILHOUETTE"
+  print at 6,7, "BY CURTIS F. KAYLOR"
+  for Ri = 9 to 11
+    fill TWall count 18 at 7,Ri
+    fill TWall count 18 at 7,Ri + 6
+  next
+  fill TRail count 18 at 7,12
+  fill TRail count 18 at 7,18
+  print at 7,13, "SHOOT THESE THREE"
+  print at 7,19, "SPARE THESE THREE"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  print at 16,1, "AHOY! DEC 1987"
+  print at 8,21, "PRESS THE BUTTON"
+  for Ti = 0 to 2
+    X = Ti * 40
+    X = X + 80
+    V = Ti + 3
+    V = V << 4
+    V = V + 12
+    C = KindCol[Ti + 3]
+    J = Ti + 2
+    set sprite J to 80,X,V,C
+    V = Ti << 4
+    V = V + 12
+    C = KindCol[Ti]
+    J = Ti + 5
+    set sprite J to 128,X,V,C
+  next
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "SILHOUETTE"
+  print at 2,5, "BASED ON SILHOUETTE BY"
+  print at 2,6, "CURTIS F. KAYLOR, AHOY!"
+  print at 2,7, "DECEMBER 1987 (COMMODORE 64)"
+  print at 2,9, "THE TARGETS ARE METAL ANIMAL"
+  print at 2,10, "SILHOUETTES HERE."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: SHOOTING GALLERY"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$60,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$01,$00,$00,$00
+  $22,$22,$44,$44,$22,$22,$44,$44
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$81,$42,$42,$81,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$10,$10,$00,$00,$01,$01,$00
+  $00,$00,$00,$00,$00,$10,$10,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$81
+  $00,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$00,$00
+  $81,$81,$81,$81,$81,$81,$00,$00
+  $00,$00,$00,$08,$00,$00,$80,$00
+  $18,$C3,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+end data
+data TileCol bytes
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$81,$81,$01,$01,$01
+  $0B,$0B,$0B,$0A,$0B,$AB,$0B,$0A
+  $0E,$0F,$0E,$0E,$01,$06,$06,$06
+  $0A,$06,$A6,$06,$A6,$06,$06,$01
+  $98,$98,$98,$98,$98,$98,$98,$98
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$4F,$F4,$F4,$4F,$04,$04
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $06,$16,$16,$01,$06,$16,$16,$01
+  $0E,$0F,$0E,$01,$06,$16,$16,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1B,$0E,$0F
+  $1B,$1B,$1B,$1B,$1B,$1B,$0E,$0F
+  $01,$12,$1C,$12,$1C,$12,$1C,$12
+  $01,$12,$1C,$12,$1C,$12,$1C,$12
+  $1C,$12,$1C,$12,$1C,$12,$0E,$0F
+  $1C,$12,$1C,$12,$1C,$12,$0E,$0F
+  $0E,$0F,$0E,$1E,$0E,$0E,$1E,$0E
+  $B1,$1B,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$0C,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$30,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$0C,$0F,$19,$16,$19,$1E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$30,$F0,$98,$68,$98,$78
+  $00,$00,$00,$00,$00,$08,$0C,$0F,$19,$16,$19,$1E,$1D,$1F,$1F,$0F
+  $00,$00,$00,$00,$00,$10,$30,$F0,$98,$68,$98,$78,$B8,$F8,$F8,$F0
+  $00,$08,$0C,$0F,$19,$16,$19,$1E,$1D,$1F,$1F,$0F,$0F,$07,$05,$00
+  $00,$10,$30,$F0,$98,$68,$98,$78,$B8,$F8,$F8,$F0,$F0,$E0,$A0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$0D,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$0D,$0F,$0A,$0F,$07,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$00,$80
+  $00,$00,$00,$00,$00,$08,$0D,$0F,$0A,$0F,$07,$0F,$1F,$1F,$1F,$1F
+  $00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$00,$80,$C0,$C4,$E4,$E4
+  $00,$08,$0D,$0F,$0A,$0F,$07,$0F,$1F,$1F,$1F,$1F,$1F,$1F,$0E,$00
+  $00,$80,$80,$80,$80,$80,$00,$80,$C0,$C4,$E4,$E4,$F4,$F8,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$04,$04,$06
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$04,$04,$04,$06,$03,$07,$05,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$C0,$C0,$E0,$E0,$C0
+  $00,$00,$00,$00,$04,$04,$04,$06,$03,$07,$05,$03,$07,$0F,$1F,$1F
+  $00,$00,$00,$00,$80,$80,$80,$C0,$C0,$E0,$E0,$C0,$E0,$F0,$F8,$F8
+  $04,$04,$04,$06,$03,$07,$05,$03,$07,$0F,$1F,$1F,$0F,$0F,$0E,$00
+  $80,$80,$80,$C0,$C0,$E0,$E0,$C0,$E0,$F0,$F8,$F8,$F0,$F8,$70,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$A0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$07,$03,$63,$77
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$A0,$F0,$D0,$C0,$E0
+  $00,$00,$00,$00,$00,$01,$03,$03,$07,$03,$63,$77,$7F,$3F,$1F,$0F
+  $00,$00,$00,$00,$00,$80,$C0,$A0,$F0,$D0,$C0,$E0,$F0,$F0,$F0,$E0
+  $00,$01,$03,$03,$07,$03,$63,$77,$7F,$3F,$1F,$0F,$07,$02,$06,$00
+  $00,$80,$C0,$A0,$F0,$D0,$C0,$E0,$F0,$F0,$F0,$E0,$C0,$40,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$5F,$5F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$18,$3C,$FC,$FE
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$5F,$5F,$3F,$3F,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$18,$3C,$FC,$FE,$FE,$FE,$FC,$F8
+  $00,$00,$00,$00,$00,$20,$5F,$5F,$3F,$3F,$3F,$1F,$1B,$1B,$1B,$00
+  $00,$00,$00,$00,$18,$3C,$FC,$FE,$FE,$FE,$FC,$F8,$34,$34,$34,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$3E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$3E,$67,$57,$3F,$EC
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$7F,$7F,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$1C,$3E,$67,$57,$3F,$EC,$F8,$F8,$F8,$F8
+  $00,$00,$00,$00,$00,$00,$00,$3F,$7F,$7F,$3F,$1F,$18,$18,$18,$00
+  $00,$00,$1C,$3E,$67,$57,$3F,$EC,$F8,$F8,$F8,$F8,$30,$30,$30,$00
+  $01,$01,$01,$01,$01,$03,$03,$03,$03,$07,$07,$07,$0F,$0F,$07,$00
+  $80,$80,$80,$80,$80,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$F0,$F0,$E0,$00
+  $00,$01,$01,$07,$09,$10,$10,$70,$10,$10,$09,$07,$01,$01,$00,$00
+  $00,$00,$00,$C0,$20,$10,$10,$1C,$10,$10,$20,$C0,$00,$00,$00,$00
+  $00,$11,$09,$05,$03,$7F,$03,$05,$09,$11,$00,$00,$00,$00,$00,$00
+  $00,$10,$20,$40,$80,$FC,$80,$40,$20,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$08,$01,$10,$04,$09,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$20,$00,$10,$40,$20,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+ShShot:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$66,$06,$10
+ShClang:
+    db $40,$39,$00,$02,$40,$47,$10,$03,$40,$39,$30,$04,$40,$47,$50,$08,$40,$39,$70,$0A,$50
+ShMiss:
+    db $40,$53,$11,$08,$40,$53,$21,$08,$40,$7C,$21,$08,$40,$AB,$21,$08,$40,$3B,$32,$10,$50
+ShUp:
+    db $40,$7F,$50,$02,$40,$5F,$60,$02,$50
+ShStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+ShStage:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+ShOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+
+ShSoundTable:
+    dw ShTuneMel,$702B
+    dw ShTuneBass,$7035
+    dw ShShot,$703F
+    dw ShClang,$7049
+    dw ShMiss,$7049
+    dw ShUp,$7049
+    dw ShStart,$7049
+    dw ShStage,$7049
+    dw ShOver,$7049
+; Shooting Gallery (original)
+; Tiny Sound, 8 frames per step
+ShTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$18,$01,$1E,$01,$21,$01,$24,$01,$21,$01,$1E,$01
+    db $1F,$01,$01,$01,$23,$01,$23,$24,$26,$01,$23,$01,$21,$01,$21,$23
+    db $24,$01,$21,$01,$1F,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ShTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$13,$01,$1A,$01,$13,$01,$1A,$01,$13,$01,$1A,$01
+    db $0E,$01,$1A,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$13,$01,$1A,$01,$13,$01,$1A,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$13,$01,$17,$01,$0E,$01,$12,$01,$13,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

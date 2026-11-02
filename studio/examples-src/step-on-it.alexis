@@ -1,0 +1,1068 @@
+cartridge "STEP ON IT/PENNY DEGROFF, AHOY!/1986"
+
+' STEP ON IT
+' A ColecoVision game based on "Step On It" by Penny DeGroff, Ahoy!
+' August 1986 (Commodore 64, BASIC with sprites). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the listing's, the game is built
+' for the ColecoVision (a boot that hops in an arc, animated sprites,
+' music under play). The drawings are original.
+'
+' The story: the Whappie Manufacturing Company was built on an old forest.
+' The Ums, fuzzy creatures that multiply fast, never left. Mr. Wooder
+' hires you to clear them from each level of the plant so the stock can
+' go on the platforms; pesticides are banned, so Spabber hands you four
+' boots. Step on each baby Um.
+'
+' The game: a lattice of platforms (a platform where column + row is
+' even), so every move is a diagonal hop, as in the listing (its moves of
+' 3 columns and 3 rows: +-117 and +-123 on the C64's 40-column screen).
+' Each baby Um you land on: 25 tebos. The mother Um hops from platform to
+' platform; touching her costs a boot (you start with four). When she
+' lands on an empty platform, a new baby Um appears there 1 time in 3 (1
+' in 2 after level 3), as the listing's PE.
+' Clear a level of babies for 100 x level bonus tebos, and a bonus boot if
+' you lost none on that level (nine at most). The listing's three layouts
+' (16, 12 and 7 babies), then again with a faster mother. The final and high scores at the end; the
+' button plays again.
+'
+' Controls (either joystick): the four diagonals hop (straight pushes do
+' nothing, as in the listing, which reads only the diagonal codes). The
+' button starts and plays again; on the title, left and right choose
+' START or CREDITS.
+'
+' From the listing (lines 10-720, orig/): 25 tebos a baby (SC=SC+25),
+' four boots (LI=4), a boot lost on touching the mother, a new baby now
+' and then where she lands, the bonus boot when no boot was lost on the
+' level (up to nine, IFLI>9THENLI=9), the bonus of 100 x level tebos
+' (BO=LE*100), the final and high scores, FIRE to play again.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table ($702B,
+' $7035), effects after, by channel. `set sprite count` is always given
+' (bug 25).
+
+const TPlatL = 128
+const TPlatM = 129
+const TPlatR = 130
+const TRivet = 131
+const TFloor = 132
+const TBab00 = 133
+const TBab01 = 134
+const TBab10 = 135
+const TBab11 = 136
+const TBabA00 = 137
+const TBabA01 = 138
+const TBabA10 = 139
+const TBabA11 = 140
+const TBabB00 = 141
+const TBabB01 = 142
+const TBabB10 = 143
+const TBabB11 = 144
+const SLace = 0
+const SBoot = 4
+const SLaceSq = 8
+const SBootSq = 12
+const SEyesA = 16
+const SMomA = 20
+const SEyesB = 24
+const SMomB = 28
+const SPuff1 = 32
+const SPuff2 = 36
+const NTiles8 = 136
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndHop = 5
+const SndSquish = 6
+const SndPop = 7
+const SndMom = 8
+const SndBaby = 9
+const SndLost = 10
+const SndClear = 11
+const SndBonus = 12
+const SndOver = 13
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u16 Score = 0
+u16 Hi = 0
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 Rs = 1
+u16 Px16 = 0
+u16 Py16 = 0
+u8 Lev = 1
+u8 Boots = 4
+u8 Lost = 0
+u8 Nb = 0
+' the lattice: 7 columns x 5 rows, cell N = row * 7 + column
+u8 Pl[35]
+u8 Ub[35]
+' the boot: Bs 0 standing, 1 hopping, 2 caught, 3 level cleared; Bp its
+' cell, Tp the hop's goal, Ht the hop's frame (0-11), St a timer, Sq the
+' squash after landing, B0 the start cell
+u8 Bs = 0
+u8 Bp = 0
+u8 Tp = 0
+u8 Ht = 0
+u8 St = 0
+u8 Sq = 0
+u8 B0 = 0
+' the mother: Mp her cell, Mn the next, Mt the frame of her period Mper,
+' M0 her start cell
+u8 Mp = 0
+u8 Mn = 0
+u8 Mt = 0
+u8 Mper = 60
+u8 M0 = 0
+' the puff: Pf frames left, Pc its cell
+u8 Pf = 0
+u8 Pc = 0
+u8 Over = 0
+u8 Bonus = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 D = 0
+u8 Cc = 0
+u8 Cr = 0
+u8 Gc = 0
+u8 Gr = 0
+
+  tile screen
+  set sound table SoSoundTable areas 6
+  sprites 16x16
+  set sprite count 5
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  Lev = 1
+  Boots = 4
+  Over = 0
+  SetupLevel
+
+play_loop:
+  Frame1
+  ReadPad
+  BootStep
+  if Bs <= 1 then MomStep
+  if Pf > 0 then dec Pf
+  if Sq > 0 then dec Sq
+  Babies
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  stop sound SndRunA
+  stop sound SndRunB
+  if Score > Hi then Hi = Score
+  print at 10,10, "          "
+  print at 10,11, "GAME  OVER"
+  print at 10,12, "          "
+  print at 2,22, "FINAL"
+  NumU = Score
+  print at 8,22, digits$(NumU, 5)
+  print at 15,22, "HIGH "
+  NumU = Hi
+  print at 20,22, digits$(NumU, 5)
+  ShowHud
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  wait no fire
+  nmi off
+  print at 4,14, "PRESS A BUTTON  "
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the boot
+
+sub BootStep:
+  if Bs = 0 then
+    D = 0
+    if Up1 = 1 then
+      if Lf1 = 1 then D = 1
+      if Rt1 = 1 then D = 2
+    end if
+    if Dn1 = 1 then
+      if Lf1 = 1 then D = 3
+      if Rt1 = 1 then D = 4
+    end if
+    if D = 0 then return
+    Neighbour(Bp, D)
+    if N = 255 then return
+    Tp = N
+    Bs = 1
+    Ht = 0
+    play sound SndHop
+    return
+  end if
+  if Bs = 1 then
+    inc Ht
+    if Ht < 12 then return
+    Bp = Tp
+    Bs = 0
+    Sq = 6
+    ' the mother sitting there (not leaving): a boot lost
+    if Bp = Mp then
+      V = Mper - 12
+      if Mt < V then
+        Caught
+        return
+      end if
+    end if
+    if Ub[Bp] = 1 then
+      Ub[Bp] = 0
+      dec Nb
+      Score = Score + 25
+      Pf = 12
+      Pc = Bp
+      DrawCell(Bp)
+      play sound SndSquish
+      ShowScore
+      if Nb = 0 then Cleared
+    end if
+    return
+  end if
+  if Bs = 2 then
+    inc St
+    if St < 90 then return
+    if Boots = 0 then
+      Over = 1
+      return
+    end if
+    Bp = B0
+    if Mp = B0 then
+      Mp = M0
+      Mt = 0
+    end if
+    Bs = 0
+    ClearMsg
+    return
+  end if
+  ' Bs 3: the level cleared
+  inc St
+  if St < 120 then return
+  inc Lev
+  SetupLevel
+  return
+end sub
+
+sub Caught:
+  dec Boots
+  Lost = 1
+  Bs = 2
+  St = 0
+  play sound SndLost
+  ShowBoots
+  print at 11,22, "OUCH! A BOOT LOST"
+  return
+end sub
+
+sub Cleared:
+  W16 = Lev
+  W16 = W16 * 100
+  Score = Score + W16
+  Bonus = 0
+  if Lost = 0 then
+    if Boots < 9 then
+      inc Boots
+      Bonus = 1
+    end if
+  end if
+  Bs = 3
+  St = 0
+  ShowScore
+  ShowBoots
+  if Bonus = 1 then
+    print at 11,22, "CLEAR! BONUS BOOT"
+    play sound SndBonus
+  else
+    print at 11,22, "LEVEL CLEAR!"
+    play sound SndClear
+  end if
+  return
+end sub
+
+' Neighbour(C, D): N the platform one hop from cell C in direction D
+' (1 up-left, 2 up-right, 3 down-left, 4 down-right), or 255
+sub Neighbour(u8 Nc, u8 Nd):
+  N = 255
+  Cr = Nc / 7
+  V = Cr * 7
+  Cc = Nc - V
+  Gc = Cc
+  Gr = Cr
+  if Nd = 1 then
+    if Cc = 0 then return
+    if Cr = 0 then return
+    dec Gc
+    dec Gr
+  end if
+  if Nd = 2 then
+    if Cc = 6 then return
+    if Cr = 0 then return
+    inc Gc
+    dec Gr
+  end if
+  if Nd = 3 then
+    if Cc = 0 then return
+    if Cr = 4 then return
+    dec Gc
+    inc Gr
+  end if
+  if Nd = 4 then
+    if Cc = 6 then return
+    if Cr = 4 then return
+    inc Gc
+    inc Gr
+  end if
+  V = Gr * 7
+  V = V + Gc
+  if Pl[V] = 0 then return
+  N = V
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the mother Um: sits, then hops (the last 12 frames of her period) to a
+' random neighbouring platform
+
+sub MomStep:
+  inc Mt
+  V = Mper - 12
+  if Mt = V then
+    Rand
+    K = Rs & 3
+    Mn = Mp
+    for J = 1 to 4
+      inc K
+      if K > 4 then K = 1
+      if Mn = Mp then
+        Neighbour(Mp, K)
+        if N <> 255 then Mn = N
+      end if
+    next
+    if Mn <> Mp then play sound SndMom
+    return
+  end if
+  if Mt < Mper then return
+  Mt = 0
+  Mp = Mn
+  if Mp = Bp then
+    if Bs = 0 then
+      Caught
+      return
+    end if
+  end if
+  if Ub[Mp] = 0 then
+    if Mp <> Bp then
+      ' a baby 1 time in 3, 1 in 2 after level 3 (the listing's PE)
+      Rand
+      V = Rs & 255
+      K = 85
+      if Lev > 3 then K = 128
+      if V < K then
+        Ub[Mp] = 1
+        inc Nb
+        DrawCell(Mp)
+        play sound SndBaby
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' CellXY(C): Px16 Py16 the sprite place of cell C (standing on its slab)
+sub CellXY(u8 Xc):
+  Cr = Xc / 7
+  V = Cr * 7
+  Cc = Xc - V
+  Px16 = Cc
+  Px16 = Px16 << 5
+  Px16 = Px16 + 24
+  Py16 = Cr
+  Py16 = Py16 << 5
+  Py16 = Py16 + 24
+  return
+end sub
+
+' HopXY(from, to, frame): the place on the arc
+sub HopXY(u8 Fa, u8 Fb, u8 Ft):
+  CellXY(Fb)
+  X = Cc
+  Y = Cr
+  CellXY(Fa)
+  V = HopD[Ft]
+  if X > Cc then
+    Px16 = Px16 + V
+  else
+    Px16 = Px16 - V
+  end if
+  if Y > Cr then
+    Py16 = Py16 + V
+  else
+    Py16 = Py16 - V
+  end if
+  V = Arc[Ft]
+  Py16 = Py16 - V
+  return
+end sub
+
+sub PutSpr(u8 Ps, u8 Pn, u8 Pk):
+  W16 = Py16 - 1
+  Y = W16
+  X = Px16
+  set sprite Ps to Y,X,Pn,Pk
+  return
+end sub
+
+sub DrawSprites:
+  ' the boot (sprites 0 laces, 1 boot)
+  if Bs = 1 then
+    HopXY(Bp, Tp, Ht)
+  else
+    CellXY(Bp)
+  end if
+  K = SLace
+  N = SBoot
+  if Sq > 0 then
+    K = SLaceSq
+    N = SBootSq
+  end if
+  V = 1
+  if Bs = 2 then
+    V = Tick & 4
+  end if
+  if V = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    PutSpr(0, K, 14)
+    PutSpr(1, N, 10)
+  end if
+  ' the mother (sprites 2 eyes, 3 body)
+  V = Mper - 12
+  if Mt >= V then
+    J = Mt - V
+    HopXY(Mp, Mn, J)
+    K = SEyesB
+    N = SMomB
+  else
+    CellXY(Mp)
+    V = Tick & 16
+    K = SEyesA
+    N = SMomA
+    if V > 0 then
+      K = SEyesB
+      N = SMomB
+    end if
+  end if
+  PutSpr(2, K, 15)
+  PutSpr(3, N, 13)
+  ' the puff (sprite 4)
+  if Pf > 0 then
+    CellXY(Pc)
+    N = SPuff2
+    if Pf > 8 then N = SPuff1
+    PutSpr(4, N, 15)
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' the babies wriggle: their four tiles take pose A or B every 16 frames
+sub Babies:
+  V = Tick & 15
+  if V <> 0 then return
+  V = Tick & 16
+  W16 = TBabA00 - 128
+  if V > 0 then W16 = TBabB00 - 128
+  W16 = W16 << 3
+  A16 = TBab00 - 128
+  A16 = A16 << 3
+  A16 = A16 + 1024
+  copy TilePat + W16 count 32 to vram.pattern + A16
+  A16 = A16 + 2048
+  copy TilePat + W16 count 32 to vram.pattern + A16
+  A16 = A16 + 2048
+  copy TilePat + W16 count 32 to vram.pattern + A16
+  return
+end sub
+
+' DrawCell(C): the platform of cell C and its baby (or blank)
+sub DrawCell(u8 Dc):
+  Cr = Dc / 7
+  V = Cr * 7
+  Cc = Dc - V
+  X = Cc << 2
+  X = X + 2
+  Y = Cr << 2
+  Y = Y + 3
+  K = X + 1
+  if Ub[Dc] = 1 then
+    put char TBab00 at K,Y
+    Gc = K + 1
+    put char TBab01 at Gc,Y
+    inc Y
+    put char TBab10 at K,Y
+    put char TBab11 at Gc,Y
+  else
+    put char 32 at K,Y
+    Gc = K + 1
+    put char 32 at Gc,Y
+    inc Y
+    put char 32 at K,Y
+    put char 32 at Gc,Y
+  end if
+  inc Y
+  put char TPlatL at X,Y
+  inc X
+  put char TPlatM at X,Y
+  inc X
+  put char TPlatM at X,Y
+  inc X
+  put char TPlatR at X,Y
+  return
+end sub
+
+sub SetupLevel:
+  NewScreen
+  ' the layout: (level - 1) mod 3, as the listing's PP cycles 1-3
+  V = Lev - 1
+lay_wrap:
+  if V > 29 then
+    V = V - 3
+    goto lay_wrap
+  end if
+  V = Mod3[V]
+  W16 = V
+  W16 = W16 * 35
+  for J = 0 to 34
+    A16 = W16 + J
+    Pl[J] = Lay[A16]
+    Ub[J] = 0
+  next
+  ' the boot starts on the bottom row's first platform, the mother on
+  ' the top row's last
+  B0 = 255
+  for J = 28 to 34
+    if B0 = 255 then
+      if Pl[J] = 1 then B0 = J
+    end if
+  next
+  M0 = 0
+  for J = 0 to 6
+    if Pl[J] = 1 then M0 = J
+  next
+  Nb = 0
+  for J = 0 to 34
+    if Pl[J] = 1 then
+      if J <> B0 then
+        if J <> M0 then
+          Ub[J] = 1
+          inc Nb
+        end if
+      end if
+    end if
+  next
+  for J = 0 to 34
+    if Pl[J] = 1 then DrawCell(J)
+  next
+  Bp = B0
+  Bs = 0
+  Ht = 0
+  St = 0
+  Sq = 0
+  Mp = M0
+  Mn = M0
+  Mt = 0
+  ' the mother: a hop every 60 frames, 4 fewer each round of the three
+  ' layouts, 36 at least (the listing kept her pace)
+  V = Lev - 1
+  if V > 20 then V = 20
+  V = Div3[V]
+  if V > 6 then V = 6
+  V = V << 2
+  Mper = 60 - V
+  Pf = 0
+  Lost = 0
+  ShowHud
+  ShowScreen
+  play sound SndRunA
+  play sound SndRunB
+  return
+end sub
+
+' the factory wall: rivets in a grid, the floor on row 23
+sub DrawWall:
+  for Y = 2 to 21
+    for X = 1 to 30
+      V = X & 3
+      K = Y & 3
+      if V = 0 then
+        if K = 2 then put char TRivet at X,Y
+      end if
+    next
+  next
+  for X = 0 to 31
+    put char TFloor at X,23
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the score line (row 1) and the boots line (row 22)
+
+sub ShowHud:
+  print at 2,1, "TEBOS"
+  ShowScore
+  print at 15,1, "HI"
+  NumU = Hi
+  print at 18,1, digits$(NumU, 5)
+  print at 24,1, "LV"
+  NumU = Lev
+  print at 27,1, digits$(NumU, 2)
+  ShowBoots
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowBoots:
+  if Over = 1 then return
+  print at 2,22, "BOOTS"
+  NumU = Boots
+  print at 8,22, digits$(NumU, 1)
+  return
+end sub
+
+sub ClearMsg:
+  print at 11,22, "                 "
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  DrawWall
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' title: a level-1 floor, the intro, the tune once, START / CREDITS
+sub TitlePage:
+  NewScreen
+  print at 10,1, "STEP  ON  IT"
+  print at 3,3, "WHAPPIE MANUFACTURING IS"
+  print at 3,4, "OVERRUN WITH UMS. MR."
+  print at 3,5, "WOODER NEEDS THE PLATFORMS"
+  print at 3,6, "CLEAR, AND PESTICIDES ARE"
+  print at 3,7, "BANNED. HERE ARE FOUR"
+  print at 3,8, "BOOTS. STEP ON THE BABIES,"
+  print at 3,9, "KEEP AWAY FROM THEIR MOM!"
+  print at 3,11, "25 TEBOS A BABY UM. HOP"
+  print at 3,12, "WITH THE STICK'S DIAGONALS."
+  for J = 0 to 34
+    Pl[J] = 0
+    Ub[J] = 0
+  next
+  Pl[29] = 1
+  Ub[29] = 1
+  Pl[31] = 1
+  Pl[33] = 1
+  Ub[33] = 1
+  Pl[23] = 1
+  DrawCell(29)
+  DrawCell(31)
+  DrawCell(33)
+  DrawCell(23)
+  print at 2,22, "HI"
+  NumU = Hi
+  print at 5,22, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  Bp = 31
+  Bs = 0
+  Sq = 0
+  Mp = 23
+  Mn = 23
+  Mt = 0
+  Mper = 200
+  Pf = 0
+  DrawSprites
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Lf1 | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  Babies
+  DrawSprites
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  print at 14,22, " START   CREDITS"
+  if Menu = 0 then
+    put char 62 at 14,22
+  else
+    put char 62 at 22,22
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  cls
+  backdrop dark blue
+  print at 10,2, "STEP  ON  IT"
+  print at 2,5, "BASED ON STEP ON IT BY"
+  print at 2,6, "PENNY DEGROFF, AHOY!"
+  print at 2,7, "AUGUST 1986 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: CLOCK IN,"
+  print at 2,18, "TIPTOE SHIFT"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$80,$99,$4C,$19,$00,$80,$00
+  $00,$00,$CC,$99,$CC,$00,$00,$00
+  $00,$01,$98,$32,$99,$00,$01,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$AA,$AA,$00,$00,$00,$00,$00
+  $00,$00,$02,$0B,$E0,$C0,$CC,$8C
+  $00,$00,$40,$D0,$07,$01,$CC,$31
+  $80,$C1,$80,$C0,$E0,$15,$00,$00
+  $01,$83,$01,$03,$07,$A8,$00,$00
+  $00,$00,$02,$0B,$E0,$C0,$CC,$8C
+  $00,$00,$40,$D0,$07,$01,$CC,$31
+  $80,$C1,$80,$C0,$E0,$15,$00,$00
+  $01,$83,$01,$03,$07,$A8,$00,$00
+  $00,$00,$00,$05,$E0,$C0,$8C,$8C
+  $00,$00,$00,$A0,$07,$03,$31,$31
+  $00,$83,$00,$80,$C0,$2A,$00,$00
+  $00,$C1,$00,$01,$03,$54,$00,$00
+end data
+data TileCol bytes
+  $01,$1E,$1B,$B1,$B1,$0E,$1E,$01
+  $01,$0E,$B1,$B1,$1B,$0E,$0E,$01
+  $01,$1E,$B1,$B1,$1B,$0E,$1E,$01
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $0E,$E1,$1E,$01,$01,$01,$01,$01
+  $01,$01,$31,$31,$13,$13,$13,$13
+  $01,$01,$31,$31,$13,$13,$31,$13
+  $13,$13,$13,$13,$13,$31,$01,$01
+  $13,$13,$13,$13,$13,$31,$01,$01
+  $01,$01,$31,$31,$13,$13,$13,$13
+  $01,$01,$31,$31,$13,$13,$31,$13
+  $13,$13,$13,$13,$13,$31,$01,$01
+  $13,$13,$13,$13,$13,$31,$01,$01
+  $01,$01,$01,$31,$13,$13,$13,$13
+  $01,$01,$01,$31,$13,$13,$13,$13
+  $03,$13,$03,$13,$13,$31,$01,$01
+  $03,$13,$03,$13,$13,$31,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$03,$01,$03,$01,$03,$00,$00,$00,$00,$00,$00,$3F,$3F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00
+  $00,$0F,$0C,$0E,$0C,$0E,$0C,$0F,$1F,$1F,$3F,$3F,$3F,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$E0,$E0,$F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$3F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$00,$0F,$0F,$1F,$3F,$3F,$3F,$3F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$F8,$FC,$FE,$FF,$FF,$00,$00,$00
+  $00,$00,$00,$00,$1C,$14,$1C,$00,$00,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$38,$28,$38,$00,$00,$C0,$00,$00,$00,$00,$00,$00
+  $09,$4F,$3F,$7F,$E3,$EB,$E3,$FF,$FF,$FC,$7F,$FF,$7F,$3F,$15,$28
+  $90,$F2,$FC,$FE,$C7,$D7,$C7,$FF,$FF,$3F,$FE,$FF,$FE,$FC,$A8,$14
+  $00,$00,$00,$00,$00,$00,$1C,$14,$1C,$00,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$38,$28,$38,$00,$C0,$00,$00,$00,$00,$00
+  $00,$00,$49,$3F,$7F,$FF,$E3,$EB,$E3,$FF,$FC,$FF,$7F,$3F,$55,$00
+  $00,$00,$92,$FC,$FE,$FF,$C7,$D7,$C7,$FF,$3F,$FF,$FE,$FC,$AA,$00
+  $00,$00,$00,$00,$03,$07,$0F,$1F,$0F,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B0,$F8,$F8,$F8,$F0,$00,$00,$00,$00,$00,$00
+  $00,$20,$0C,$5E,$3F,$7F,$FF,$7F,$BF,$3F,$4F,$11,$00,$00,$00,$00
+  $00,$84,$08,$C0,$D8,$E8,$FA,$F8,$FA,$F0,$E4,$10,$00,$00,$00,$00
+end data
+data Lay bytes
+  1,0,1,0,1,0,1
+  0,1,0,1,0,1,0
+  1,0,1,0,1,0,1
+  0,1,0,1,0,1,0
+  1,0,1,0,1,0,1
+  0,0,1,0,1,0,0
+  0,1,0,1,0,1,0
+  1,0,1,0,1,0,1
+  0,1,0,1,0,1,0
+  0,0,1,0,1,0,0
+  0,0,1,0,1,0,0
+  0,1,0,1,0,1,0
+  0,0,1,0,1,0,0
+  0,0,0,1,0,0,0
+  0,0,1,0,0,0,0
+end data
+
+' a hop of 12 frames: 32 pixels across and down, lifted in an arc
+' (level - 1) mod 3 and div 3, levels 1-255
+data Mod3 bytes
+  0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2
+end data
+data Div3 bytes
+  0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,9,9,9
+end data
+data HopD bytes
+  0,3,5,8,11,13,16,19,21,24,27,29
+end data
+data Arc bytes
+  0,5,9,12,14,15,15,14,12,9,5,2
+end data
+
+asm {
+SoHop:
+    db $40,$D6,$20,$01,$40,$AA,$20,$01,$40,$8F,$30,$02,$50
+SoSquish:
+    db $00,$00,$14,$02,$00,$00,$25,$03,$00,$00,$46,$04,$10
+SoPop:
+    db $80,$47,$10,$02,$80,$35,$20,$02,$80,$2A,$30,$03,$90
+SoMom:
+    db $80,$7C,$31,$02,$80,$C5,$41,$03,$90
+SoBaby:
+    db $80,$40,$20,$02,$80,$35,$20,$02,$80,$40,$30,$03,$90
+SoLost:
+    db $40,$8F,$20,$04,$40,$AA,$20,$04,$40,$D6,$20,$04,$40,$FE,$20,$04,$40,$53,$31,$06,$40,$AB,$41,$0A
+    db $50
+SoClear:
+    db $80,$8F,$20,$05,$80,$71,$20,$05,$80,$5F,$20,$05,$80,$47,$20,$05,$80,$5F,$20,$05,$80,$47,$30,$0E
+    db $90
+SoBonus:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$47,$20,$04,$40,$35,$30,$0A,$50
+SoOver:
+    db $80,$FE,$20,$0A,$80,$1D,$21,$0A,$80,$41,$21,$0A,$80,$AB,$31,$1A,$90
+
+SoSoundTable:
+    dw SoTuneMel,$702B
+    dw SoTuneBass,$7035
+    dw SoRunMel,$702B
+    dw SoRunBass,$7035
+    dw SoHop,$7049
+    dw SoSquish,$703F
+    dw SoPop,$7053
+    dw SoMom,$7053
+    dw SoBaby,$7053
+    dw SoLost,$7049
+    dw SoClear,$7053
+    dw SoBonus,$7049
+    dw SoOver,$7053
+; Clock In (original)
+; Tiny Sound, 7 frames per step
+SoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$F1,$22,$1F,$01,$23,$01,$26,$01,$23,$01,$1F,$01,$01,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$01,$24,$01,$28,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$24,$01,$28,$01,$24,$01,$21,$01,$01,$01
+    db $1E,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$07,$13,$0E,$13,$07,$13,$0E,$13,$0C,$18,$13,$18
+    db $0C,$18,$13,$18,$0E,$1A,$15,$1A,$0E,$1A,$15,$1A,$07,$13,$0E,$13
+    db $07,$13,$0E,$13,$09,$15,$10,$15,$09,$15,$10,$15,$0E,$1A,$15,$1A
+    db $0E,$1A,$15,$1A,$07,$13,$0E,$13,$07,$13,$0E,$13,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Tiptoe Shift (original)
+; Tiny Sound, 8 frames per step
+SoRunMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$80,$1A,$21,$1C,$01,$01,$1F,$01,$01,$23,$01,$21,$01,$01,$01
+    db $1F,$01,$1E,$01,$1C,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$18,$01,$01,$1C,$01,$01,$1F,$01,$1E,$01,$01,$01
+    db $1C,$01,$1B,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+SoRunBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$04,$01,$0B,$01,$04,$01,$0B,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$0F,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01
+    db $FF
+}

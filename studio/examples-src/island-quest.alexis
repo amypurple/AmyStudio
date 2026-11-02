@@ -1,0 +1,1216 @@
+cartridge "ISLAND QUEST/B.BLACKMER/1988"
+
+' ISLAND QUEST
+' A ColecoVision game based on "Island Quest" by Bob Blackmer, Ahoy!
+' November 1988 (Commodore 64 machine language, ISLAND QUEST.ML at $C000,
+' started by a two-line BASIC loader). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/islandquest-ml.dis), the game is built for the
+' ColecoVision: big 16 x 16 map cells (grass, palms, rocks, sea, sand
+' mounds, a hut), a two-colour pirate sprite that walks, a sector map with
+' a cursor sprite, treasure chests for the booty, sound effects.
+'
+' The game: you are stranded on a big island. Six treasures are buried
+' under six of thirteen sand mounds, your home lies under another, six are
+' plain dirt. Walk the island and dig. Shells hidden in the grass are
+' clues: each one found gives the sector map square of the next treasure.
+' Dig up all six treasures, find your home and stand on it with the booty
+' to win, before the clock reaches 60 minutes.
+'
+' From the original (orig/): the island of 110 x 110 cells inside the sea
+' (rows 8-119, columns 9-118; a row of trees along the top and bottom
+' shores), three random grass kinds; a 10 x 5 grid of places (rows 18, 28
+' ... 108, columns 18, 38 ... 98) of which 19 different ones are drawn at
+' random: 13 sites (trees above, sea left and right, the mound in the
+' middle, trees below: the first is home, the next six hold the treasures,
+' the last six dirt) and 6 clue spots that look almost like grass; the
+' player starts at row 9, column 9 and walks one cell at a time in eight
+' directions (the C64 read up/down and left/right separately) inside rows
+' and columns 9-118; a clue is found by stepping on it, the n-th clue tells
+' where treasure n is; digging works only on a mound; with six treasures,
+' the button on the found home wins; the clock counts up minutes and
+' seconds and ends the game at 60:00; the messages (YOU FOUND TREASURE!,
+' NOTHING BUT DIRT!, YOU FOUND A CLUE!, YOU FOUND YOUR HOME!, YOU'RE A
+' WINNER, MATE!, YOU RAN OUT OF TIME!); the 10 x 10 sector map with rows
+' 0-9 and columns A-J and its cursor moving one square every 12 steps.
+'
+' Liberties: the view shows 7 x 7 cells of 16 pixels (the C64 showed 9 x 7
+' cells of 8 pixels in a small window); a clue now names the sector map
+' square the treasure's mound is really in (the C64 computed the clue from
+' the grid place with a different rounding, so a clue could point one
+' square off its cursor); dug mounds are marked on the sector map; digging
+' anywhere else gives a thud (the C64 did nothing); the messages stay on the
+' bottom line while you walk on (the C64 waited for the trigger after each
+' one); digging up home with the six treasures already found wins at once
+' (the C64 wanted one more press); a step every 9 frames while the stick is
+' held (the C64's two delay loops gave about 3.4 steps a second); the sea
+' around the island is plain sea (the C64 put random grass in its corners);
+' the best time is kept for the title; the game end message, then the
+' title (the C64 waited for the trigger and built a new island).
+'
+' Controls: controller 1 (or 2): the stick walks, a button digs. On the
+' title, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TGr000 = 128
+const TGr001 = 129
+const TGr010 = 130
+const TGr011 = 131
+const TGr100 = 132
+const TGr101 = 133
+const TGr110 = 134
+const TGr111 = 135
+const TGr200 = 136
+const TGr201 = 137
+const TGr210 = 138
+const TGr211 = 139
+const TPalm000 = 140
+const TPalm001 = 141
+const TPalm010 = 142
+const TPalm011 = 143
+const TPalm100 = 144
+const TPalm101 = 145
+const TPalm110 = 146
+const TPalm111 = 147
+const TPalm200 = 148
+const TPalm201 = 149
+const TPalm210 = 150
+const TPalm211 = 151
+const TRk000 = 152
+const TRk001 = 153
+const TRk010 = 154
+const TRk011 = 155
+const TRk100 = 156
+const TRk101 = 157
+const TRk110 = 158
+const TRk111 = 159
+const TRk200 = 160
+const TRk201 = 161
+const TRk210 = 162
+const TRk211 = 163
+const TSea00 = 164
+const TSea01 = 165
+const TSea10 = 166
+const TSea11 = 167
+const TMound00 = 168
+const TMound01 = 169
+const TMound10 = 170
+const TMound11 = 171
+const THole00 = 172
+const THole01 = 173
+const THole10 = 174
+const THole11 = 175
+const THut00 = 176
+const THut01 = 177
+const THut10 = 178
+const THut11 = 179
+const TClue00 = 180
+const TClue01 = 181
+const TClue10 = 182
+const TClue11 = 183
+const TFrH = 184
+const TFrV = 185
+const TMapc = 186
+const TMapx = 187
+const TMaph = 188
+const TChest00 = 189
+const TChest01 = 190
+const TChest10 = 191
+const TChest11 = 192
+const TEmpty00 = 193
+const TEmpty01 = 194
+const TEmpty10 = 195
+const TEmpty11 = 196
+const TTsand = 197
+const TTsea0 = 198
+const TTsea1 = 199
+const SPd0 = 0
+const SPw0 = 4
+const SPp0 = 8
+const SPr0 = 12
+const SPd1 = 16
+const SPw1 = 20
+const SPp1 = 24
+const SPr1 = 28
+const SCur = 32
+const SDot = 36
+const NTiles8 = 576
+const SprBytes = 320
+const NCell = 14
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDig = 3
+const SndThud = 4
+const SndDirt = 5
+const SndGold = 6
+const SndClue = 7
+const SndHome = 8
+const SndWin = 9
+const SndOver = 10
+const NSpr = 8
+const StepRate = 9
+const MsgTime = 150
+
+data TilePat bytes
+  $00,$02,$02,$00,$20,$20,$00,$00
+  $20,$20,$00,$00,$00,$00,$00,$08
+  $00,$00,$09,$80,$80,$00,$80,$80
+  $02,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$40,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$40,$00,$04,$00,$00,$00
+  $00,$10,$04,$04,$00,$00,$A0,$A0
+  $00,$00,$00,$20,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$00,$01
+  $00,$20,$D8,$E0,$02,$00,$00,$00
+  $00,$00,$E0,$07,$08,$00,$00,$10
+  $00,$0E,$C0,$80,$18,$8C,$00,$00
+  $00,$70,$03,$01,$31,$31,$00,$C0
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $C0,$80,$80,$80,$80,$80,$80,$00
+  $00,$07,$E0,$C0,$8C,$C6,$00,$00
+  $00,$38,$01,$00,$18,$18,$00,$60
+  $00,$00,$01,$01,$01,$01,$01,$00
+  $60,$C0,$80,$80,$80,$80,$80,$00
+  $00,$1C,$80,$00,$30,$18,$00,$01
+  $00,$E0,$07,$03,$62,$9C,$00,$80
+  $01,$03,$01,$01,$01,$01,$01,$00
+  $80,$00,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $C0,$80,$80,$00,$00,$00,$80,$00
+  $E0,$F0,$07,$03,$01,$01,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0E,$C0,$80,$00,$00,$80,$C0,$00
+  $E0,$07,$03,$01,$01,$03,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$F0,$E0,$C0,$80,$C0,$00
+  $00,$80,$C0,$19,$10,$00,$21,$00
+  $00,$30,$87,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$F0,$00
+  $00,$0C,$E1,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$C3,$00
+  $00,$00,$00,$00,$03,$F0,$E0,$C0
+  $00,$00,$00,$00,$00,$80,$C0,$E0
+  $C0,$80,$C0,$07,$00,$00,$00,$00
+  $F0,$07,$F0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$07,$03
+  $C0,$C0,$E0,$00,$00,$00,$00,$00
+  $03,$03,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$F0,$C0,$00,$00
+  $00,$00,$00,$C0,$F0,$03,$00,$00
+  $01,$01,$01,$01,$01,$00,$00,$00
+  $80,$80,$80,$80,$80,$00,$00,$00
+  $00,$02,$02,$00,$20,$20,$00,$00
+  $20,$20,$00,$00,$00,$00,$00,$08
+  $00,$00,$09,$80,$80,$00,$80,$80
+  $02,$18,$C3,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $00,$42,$00,$10,$00,$40,$04,$00
+  $00,$99,$C3,$18,$C3,$99,$00,$00
+  $00,$18,$C3,$81,$C3,$C3,$C3,$00
+  $00,$C0,$80,$80,$00,$01,$01,$80
+  $00,$03,$01,$01,$00,$80,$80,$01
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $01,$01,$00,$00,$00,$00,$00,$00
+  $00,$C0,$40,$40,$40,$40,$40,$40
+  $00,$03,$02,$02,$02,$02,$02,$02
+  $40,$40,$80,$00,$00,$00,$00,$00
+  $02,$02,$01,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$70,$88,$00,$00,$06,$09
+  $00,$0C,$12,$00,$00,$C0,$20,$00
+end data
+data TileCol bytes
+  $02,$32,$32,$02,$32,$32,$02,$02
+  $32,$32,$02,$02,$02,$02,$02,$32
+  $02,$02,$32,$32,$32,$02,$32,$32
+  $32,$02,$02,$02,$02,$02,$02,$02
+  $02,$C2,$C2,$02,$02,$C2,$C2,$02
+  $02,$02,$02,$02,$02,$C2,$02,$02
+  $02,$02,$C2,$02,$C2,$02,$02,$02
+  $02,$C2,$C2,$C2,$02,$02,$C2,$C2
+  $02,$02,$02,$32,$32,$02,$02,$02
+  $02,$02,$02,$02,$02,$32,$02,$32
+  $02,$32,$2C,$2C,$32,$02,$02,$02
+  $02,$02,$C2,$2C,$32,$02,$02,$32
+  $0A,$CA,$AC,$AC,$AC,$CA,$0A,$0A
+  $0A,$CA,$AC,$AC,$AC,$CA,$0A,$6A
+  $0A,$6A,$6A,$6A,$6A,$6A,$6A,$0A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$0A
+  $0A,$CA,$AC,$AC,$AC,$CA,$0A,$0A
+  $0A,$CA,$AC,$0C,$AC,$CA,$0A,$6A
+  $0A,$0A,$6A,$6A,$6A,$6A,$6A,$0A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$0A
+  $0A,$CA,$AC,$0C,$AC,$CA,$0A,$6A
+  $0A,$CA,$AC,$AC,$AC,$AC,$0A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$0A
+  $6A,$0A,$6A,$6A,$6A,$6A,$6A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$AE
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$EA
+  $AE,$AE,$AE,$0E,$0E,$0E,$A1,$0A
+  $EA,$EA,$AE,$AE,$AE,$AE,$A1,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $CA,$AC,$AC,$0C,$0C,$AC,$A1,$0A
+  $CA,$AC,$AC,$AC,$AC,$AC,$A1,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$EA,$AE,$AE,$AE,$AE,$A1,$0A
+  $0A,$EA,$EA,$AE,$AE,$0E,$A1,$0A
+  $04,$54,$45,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$54,$04
+  $04,$54,$45,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$45,$04
+  $0A,$0A,$0A,$0A,$BA,$AB,$AB,$AB
+  $0A,$0A,$0A,$0A,$0A,$BA,$BA,$BA
+  $AB,$AB,$AB,$BA,$0A,$0A,$0A,$0A
+  $BA,$AB,$BA,$BA,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$A1,$A1
+  $0A,$0A,$0A,$0A,$0A,$0A,$A1,$A1
+  $A1,$A1,$A1,$0A,$0A,$0A,$0A,$0A
+  $A1,$A1,$A1,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$BA,$AB,$AB,$0A,$06
+  $0A,$0A,$0A,$BA,$BA,$AB,$0A,$06
+  $16,$16,$16,$16,$16,$01,$0A,$0A
+  $16,$16,$16,$16,$16,$01,$0A,$0A
+  $02,$32,$32,$02,$32,$32,$02,$02
+  $32,$32,$02,$02,$02,$02,$02,$32
+  $02,$02,$32,$32,$32,$02,$32,$32
+  $32,$F2,$2F,$F2,$02,$02,$02,$02
+  $01,$0A,$0B,$0A,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $0A,$BA,$0A,$BA,$0A,$BA,$BA,$0A
+  $0A,$A6,$A6,$6A,$A6,$A6,$0A,$0A
+  $0A,$8A,$A8,$A8,$A6,$A6,$A6,$0A
+  $01,$18,$18,$18,$0B,$B8,$B8,$18
+  $01,$18,$18,$18,$0B,$B8,$B8,$18
+  $18,$18,$0B,$01,$01,$01,$01,$01
+  $18,$18,$0B,$01,$01,$01,$01,$01
+  $01,$1E,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$1E,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$1E,$01,$01,$01,$01,$01
+  $E1,$E1,$1E,$01,$01,$01,$01,$01
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$0A
+  $04,$04,$54,$54,$04,$04,$54,$54
+  $04,$54,$54,$04,$04,$54,$54,$04
+end data
+data SpritePat bytes
+  $00,$00,$3F,$00,$06,$00,$1F,$00,$07,$00,$07,$00,$00,$00,$00,$00
+  $00,$00,$F0,$00,$00,$00,$E0,$00,$E0,$00,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$3F,$00,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$00,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0F,$09,$07,$00,$00,$30,$30,$00,$00,$00,$00,$06,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$0C,$0C,$00,$00,$00,$00,$60,$00
+  $0F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$06,$06,$00,$0E
+  $C0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$60,$60,$00,$70
+  $00,$00,$3F,$00,$06,$00,$1F,$00,$07,$00,$07,$00,$00,$00,$00,$00
+  $00,$00,$F0,$00,$00,$00,$E0,$00,$E0,$00,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$3F,$00,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$00,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0F,$09,$07,$00,$00,$30,$30,$00,$00,$00,$00,$18,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$0C,$0C,$00,$00,$00,$00,$18,$00
+  $0F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$0C,$18,$00,$38
+  $C0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$30,$18,$00,$1C
+  $FF,$81,$81,$81,$81,$81,$81,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$78,$78,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data Ha bytes
+  61,75,38,95,254,227,134,156,25,55,135,177,195,60,80,94
+  99,105,57,57,246,211,216,194,102,191,130,64,5,92,196,40
+  5,67,167,192,27,150,33,199,21,84,115,62,244,126,83,111
+  36,92,80,67,42,210,84,191,121,172,236,87,149,174,175,79
+  204,86,146,96,94,204,62,153,96,236,130,238,235,161,169,229
+  80,253,210,133,221,22,10,46,143,71,78,148,176,146,68,111
+  175,141,249,64,169,2,13,52,255,85,239,199,34,110,112,218
+  186,76,175,156,103,53,205,255,180,33,172,90,133,185,84,114
+end data
+data Hb bytes
+  190,190,221,205,99,113,220,75,97,68,250,108,96,130,232,189
+  221,178,138,45,80,238,160,183,135,75,96,185,249,3,16,229
+  140,245,187,210,37,237,204,184,133,255,28,194,58,225,42,9
+  74,179,209,156,9,109,176,230,145,202,79,202,29,179,64,225
+  215,57,64,40,213,163,125,85,3,168,104,255,8,174,167,130
+  121,196,172,105,101,49,100,183,77,177,241,100,81,56,252,49
+  118,142,72,163,207,74,106,252,202,240,47,31,69,74,99,59
+  108,222,133,90,173,30,132,169,216,33,27,243,218,94,83,81
+end data
+data M3 bytes
+  0,1,1,0,0,1,0,0,1,2,0,0,1,1,0,0
+  2,0,0,0,0,0,0,1,0,1,0,2,1,0,1,2
+  1,0,0,0,1,2,0,0,0,0,0,1,0,1,1,0
+  0,0,0,1,0,1,0,1,1,0,1,0,0,0,2,0
+  0,0,0,0,2,0,0,0,0,1,0,0,0,0,2,0
+  0,0,0,0,0,1,0,1,2,0,0,2,0,1,1,2
+  2,0,1,2,0,1,0,1,1,0,0,1,0,1,2,0
+  0,0,2,0,1,0,0,0,1,0,1,0,0,0,2,0
+  1,0,0,0,2,1,0,1,1,0,1,0,0,0,1,0
+  2,1,0,0,1,0,0,0,2,0,0,2,0,0,0,0
+  0,0,1,0,0,0,1,2,1,0,0,0,0,0,0,0
+  2,2,0,0,0,2,0,1,2,0,1,2,0,0,1,0
+  2,0,1,0,1,0,1,0,2,1,1,2,1,1,0,0
+  0,1,0,0,0,1,0,2,0,1,1,1,1,2,0,2
+  2,1,2,1,1,1,0,0,2,0,1,0,1,0,1,0
+  0,1,2,1,1,1,2,0,1,1,0,1,0,0,1,1
+end data
+
+data TitleMap bytes
+  $C7,$C6,$C6,$C7,$C5,$C5,$C5,$C6,$C5,$C5,$C5,$C6,$C5,$C6,$C6,$C7,$C5,$C5,$C5,$C6,$C5,$C7,$C5,$C6,$C5,$C5,$C6,$C7,$C6,$C6,$C7,$C6
+  $C6,$C6,$C7,$C6,$C6,$C5,$C6,$C6,$C5,$C6,$C6,$C7,$C5,$C6,$C7,$C6,$C5,$C7,$C5,$C6,$C5,$C5,$C5,$C7,$C5,$C6,$C5,$C6,$C6,$C7,$C6,$C6
+  $C6,$C7,$C6,$C6,$C7,$C5,$C6,$C7,$C5,$C5,$C5,$C6,$C5,$C7,$C6,$C6,$C5,$C5,$C5,$C7,$C5,$C5,$C5,$C6,$C5,$C7,$C5,$C6,$C7,$C6,$C6,$C7
+  $C7,$C6,$C6,$C7,$C6,$C5,$C7,$C6,$C6,$C7,$C5,$C6,$C5,$C6,$C6,$C7,$C5,$C6,$C5,$C6,$C5,$C5,$C5,$C6,$C5,$C6,$C5,$C7,$C6,$C6,$C7,$C6
+  $C6,$C6,$C7,$C6,$C5,$C5,$C5,$C6,$C5,$C5,$C5,$C7,$C5,$C5,$C5,$C6,$C5,$C7,$C5,$C6,$C5,$C6,$C5,$C7,$C5,$C5,$C7,$C6,$C6,$C7,$C6,$C6
+  $C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7
+  $C7,$C6,$C6,$C7,$C6,$C6,$C5,$C5,$C5,$C7,$C5,$C6,$C5,$C6,$C5,$C5,$C5,$C6,$C5,$C5,$C5,$C7,$C5,$C5,$C5,$C6,$C6,$C7,$C6,$C6,$C7,$C6
+  $C6,$C6,$C7,$C6,$C6,$C7,$C5,$C6,$C5,$C6,$C5,$C7,$C5,$C6,$C5,$C6,$C6,$C7,$C5,$C6,$C7,$C6,$C6,$C5,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6
+  $C6,$C7,$C6,$C6,$C7,$C6,$C5,$C7,$C5,$C6,$C5,$C6,$C5,$C7,$C5,$C5,$C7,$C6,$C5,$C5,$C5,$C6,$C7,$C5,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C7
+  $C7,$C6,$C6,$C7,$C6,$C6,$C5,$C5,$C5,$C7,$C5,$C6,$C5,$C6,$C5,$C7,$C6,$C6,$C7,$C6,$C5,$C7,$C6,$C5,$C7,$C6,$C6,$C7,$C6,$C6,$C7,$C6
+  $C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6,$C5,$C6,$C5,$C5,$C5,$C6,$C5,$C5,$C5,$C7,$C5,$C5,$C5,$C6,$C6,$C5,$C6,$C6,$C7,$C6,$C6,$C7,$C6,$C6
+end data
+
+' a site's tree rows (kinds of the left, middle and right cells)
+data SiteTop bytes 6,8,7
+data SiteBot bytes 3,5,4
+
+record Clock:
+  u8 Mins
+  u8 Secs
+  u8 Fr
+end record
+
+Clock Clk
+Clock Best
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 Seed0 = 1
+u16 W16 = 0
+u16 NumU = 0
+' the 50 grid places: kind (0 none, 1 home, 2 treasure, 3 dirt, 4 clue)
+' plus 8 when dug or found
+u8 GS[50]
+' the treasures' places in clue order
+u8 TrG[6]
+' per drawn row and column: grid place (255 none) and offset in it
+u8 RQ[7]
+u8 RM[7]
+u8 CQ[7]
+u8 CM[7]
+u8 RowBuf[14]
+u8 RowBot[14]
+u8 Hr = 0
+u8 Fast = 0
+u8 Pending = 0
+u8 Pr = 9
+u8 Pc = 9
+u8 StepT = 0
+u8 Walk = 0
+u8 Booty = 0
+u8 NClue = 0
+u8 HomeOk = 0
+u8 Over = 0
+u8 TLim = 60
+u8 MsgT = 0
+u8 Moves = 0
+u8 Digs = 0
+u8 HaveBest = 0
+u8 GameOn = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Blink = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Cj = 0
+u8 Gk = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Q = 0
+u8 M = 0
+
+  tile screen
+  set sound table IqSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  GameOn = 0
+  mute all
+  if Over = 1 then
+    BestCheck
+    ShowMsg(5)
+    play sound SndWin
+    print at 8,9, "              "
+    print at 8,10, "  WELL DONE!  "
+    print at 8,11, "  TIME ", digits$(Clk.Mins, 2), ":", digits$(Clk.Secs, 2), " "
+    print at 8,12, "              "
+  else
+    ShowMsg(7)
+    play sound SndOver
+    print at 8,9, "              "
+    print at 8,10, "   TIME UP!   "
+    print at 8,11, "  BOOTY ", Booty, " OF 6"
+    print at 8,12, "              "
+  end if
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the grid place whose top left cell is R,C (255 when none)
+function GridAt(u8 R, u8 C2) as u8
+  u8 Qr
+  u8 Qc
+  if R < 18 then return 255
+  if C2 < 18 then return 255
+  R = R - 18
+  C2 = C2 - 18
+  Qr = R / 10
+  if Qr > 9 then return 255
+  if Qr * 10 <> R then return 255
+  Qc = C2 / 20
+  if Qc > 4 then return 255
+  if Qc * 20 <> C2 then return 255
+  return Qr * 5 + Qc
+
+' the sector map square (row or column 0-9) of a map row or column
+function Sector(u8 P) as u8
+  return (P - 4) / 12
+
+' one frame of play: the clock, the stick, the button, the message
+sub PlayStep:
+  select case Pending
+    case 2
+      DrawRows(2, 4)
+      Pending = 1
+    case 1
+      DrawRows(5, 6)
+      Pending = 0
+  end select
+  inc Clk.Fr
+  if Clk.Fr >= 60 then
+    Clk.Fr = 0
+    inc Clk.Secs
+    if Clk.Secs >= 60 then
+      Clk.Secs = 0
+      inc Clk.Mins
+      if Clk.Mins >= TLim then Over = 2
+    end if
+    ShowTime
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 28 at 2,22
+  end if
+  K = J1 & 15
+  if K = 0 then
+    StepT = 0
+  else
+    if StepT > 0 then
+      dec StepT
+    else
+      StepT = StepRate
+      TryMove
+    end if
+  end if
+  if Press = 1 then DoDig
+  return
+end sub
+
+' the cell under the pirate again (after a dig)
+sub DrawCentre:
+  Ri = 3
+  Cj = 3
+  K = CellKind(Pr, Pc) * 4 + 128
+  put char K at 8,9
+  put char K + 1 at 9,9
+  put char K + 2 at 8,10
+  put char K + 3 at 9,10
+  return
+end sub
+
+' a step in the stick's direction(s), kept inside rows and columns 9-118
+sub TryMove:
+  u8 Moved
+  Moved = 0
+  V = J1 & 1
+  if V > 0 then
+    if Pr > 9 then
+      dec Pr
+      Moved = 1
+    end if
+  end if
+  V = J1 & 2
+  if V > 0 then
+    if Pr < 118 then
+      inc Pr
+      Moved = 1
+    end if
+  end if
+  V = J1 & 4
+  if V > 0 then
+    if Pc > 9 then
+      dec Pc
+      Moved = 1
+    end if
+  end if
+  V = J1 & 8
+  if V > 0 then
+    if Pc < 118 then
+      inc Pc
+      Moved = 1
+    end if
+  end if
+  if Moved = 0 then return
+  inc Moves
+  Walk = Walk ^ 1
+  CheckClue
+  DrawView
+  return
+end sub
+
+' a clue spot under the pirate is found: it tells where the next treasure is
+sub CheckClue:
+  Gk = GridAt(Pr, Pc)
+  if Gk = 255 then return
+  V = GS[Gk]
+  if V <> 4 then return
+  GS[Gk] = 12
+  if NClue < 6 then
+    ShowClue(NClue)
+    inc NClue
+  end if
+  ShowMsg(3)
+  play sound SndClue
+  return
+end sub
+
+' the button: dig the mound under the pirate
+sub DoDig:
+  inc Digs
+  Gk = GridAt(Pr - 1, Pc - 1)
+  if Gk = 255 then
+    WinCheck
+    if Over = 0 then play sound SndThud
+    return
+  end if
+  V = GS[Gk]
+  if V >= 8 then
+    WinCheck
+    if Over = 0 then play sound SndThud
+    return
+  end if
+  if V = 4 then
+    play sound SndThud
+    return
+  end if
+  GS[Gk] = V + 8
+  select case V
+    case 1
+      HomeOk = 1
+      ShowMsg(4)
+      play sound SndHome
+      MapMark(Gk, TMaph)
+    case 2
+      inc Booty
+      AddChest
+      ShowMsg(1)
+      play sound SndGold
+      MapMark(Gk, TMapx)
+    case else
+      ShowMsg(2)
+      play sound SndDirt
+      MapMark(Gk, 45)
+  end select
+  DrawCentre
+  WinCheck
+  return
+end sub
+
+' six treasures and standing on the found home: the game is won
+sub WinCheck:
+  if Booty < 6 then return
+  if HomeOk = 0 then return
+  Gk = GridAt(Pr - 1, Pc - 1)
+  if Gk = 255 then return
+  if GS[Gk] = 9 then Over = 1
+  return
+end sub
+
+' the sector map square of grid place G gets tile T
+sub MapMark(u8 G, u8 T)
+  Y = G / 5
+  X = G - Y * 5
+  Y = Sector(Y * 10 + 19) + 4
+  X = Sector(X * 20 + 19) + 19
+  put char T at X,Y
+  return
+end sub
+
+' clue N: "row-column" of treasure N's mound on the sector map
+sub ShowClue(u8 N)
+  u8 G
+  G = TrG[N]
+  Y = G / 5
+  X = G - Y * 5
+  Q = Sector(Y * 10 + 19)
+  M = Sector(X * 20 + 19)
+  X = N
+  Y = 20
+  if X >= 3 then
+    X = X - 3
+    Y = 21
+  end if
+  X = X * 4 + 9
+  put char Q + 48 at X,Y
+  put char 45 at X + 1,Y
+  put char M + 65 at X + 2,Y
+  return
+end sub
+
+sub ShowMsg(u8 N)
+  select case N
+    case 1
+      print at 2,22, "    YOU FOUND TREASURE!     "
+    case 2
+      print at 2,22, "     NOTHING BUT DIRT!      "
+    case 3
+      print at 2,22, "     YOU FOUND A CLUE!      "
+    case 4
+      print at 2,22, "    YOU FOUND YOUR HOME!    "
+    case 5
+      print at 2,22, "   YOU'RE A WINNER, MATE!   "
+    case 6
+      print at 2,22, "   BUILDING A NEW WORLD..   "
+    case 7
+      print at 2,22, "    YOU RAN OUT OF TIME!    "
+  end select
+  MsgT = MsgTime
+  return
+end sub
+
+' a faster win is the new best time
+sub BestCheck:
+  u16 Now
+  u16 Old
+  Now = Clk.Mins * 60 + Clk.Secs
+  Old = Best.Mins * 60 + Best.Secs
+  if HaveBest = 1 then
+    if Now >= Old then return
+  end if
+  Best.Mins = Clk.Mins
+  Best.Secs = Clk.Secs
+  HaveBest = 1
+  return
+end sub
+
+sub ShowTime:
+  print at 23,15, digits$(Clk.Mins, 2), ":", digits$(Clk.Secs, 2)
+  return
+end sub
+
+' the newest chest of the booty row
+sub AddChest:
+  X = Booty * 2 + 7
+  put char TChest00 at X,18
+  put char TChest01 at X + 1,18
+  return
+end sub
+
+sub ShowBooty:
+  for Cj = 0 to 5
+    X = Cj * 2 + 9
+    K = TEmpty00
+    if Cj < Booty then K = TChest00
+    put char K at X,18
+    put char K + 1 at X + 1,18
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the 7 x 7 cells around the pirate (rows 3-16, columns 2-15)
+sub DrawView:
+  u8 R
+  u8 Cc
+  ' which grid place each drawn row and column falls in
+  for Ri = 0 to 6
+    R = Pr + Ri - 3
+    RQ[Ri] = 255
+    if R >= 18 then
+      R = R - 18
+      Q = R / 10
+      M = R - Q * 10
+      if Q < 10 then
+        if M <= 2 then
+          RQ[Ri] = Q
+          RM[Ri] = M
+        end if
+      end if
+    end if
+    Cc = Pc + Ri - 3
+    CQ[Ri] = 255
+    if Cc >= 18 then
+      Cc = Cc - 18
+      Q = Cc / 20
+      M = Cc - Q * 20
+      if Q < 5 then
+        if M <= 2 then
+          CQ[Ri] = Q
+          CM[Ri] = M
+        end if
+      end if
+    end if
+  next
+  DrawRows(0, 1)
+  Pending = 2
+  return
+end sub
+
+' view rows A to B (drawn in three parts: rows 0-1 with the
+' step, 2-4 and 5-6 on the next two passes, so that no pass runs past a frame)
+sub DrawRows(u8 A, u8 B)
+  u8 R
+  u8 Cc
+  for Ri = A to B
+    R = Pr + Ri - 3
+    ' the fast way for plain grass rows; CellKind for the shores, the sea
+    ' and the grid places
+    Hr = 0
+    if R >= 9 then
+      if R <= 118 then
+        Hr = Ha[R]
+        Fast = 1
+        if RQ[Ri] < 255 then Fast = 0
+      else
+        Fast = 0
+      end if
+    else
+      Fast = 0
+    end if
+    for Cj = 0 to 6
+      Cc = Pc + Cj - 3
+      K = 255
+      if Fast = 1 then
+        if Cc >= 9 then
+          if Cc <= 118 then
+            V = Hr ^ Hb[Cc]
+            K = M3[V]
+          end if
+        end if
+      end if
+      if K = 255 then K = CellKind(R, Cc)
+      K = K * 4 + 128
+      J = Cj * 2
+      RowBuf[J] = K
+      RowBot[J] = K + 2
+      inc J
+      RowBuf[J] = K + 1
+      RowBot[J] = K + 3
+    next
+    W16 = Ri * 64 + 98
+    copy RowBuf count 14 to vram.name + W16
+    W16 = W16 + 32
+    copy RowBot count 14 to vram.name + W16
+  next
+  return
+end sub
+
+' the kind of the cell at map row R, column Cc (row Ri, column Cj drawn)
+function CellKind(u8 R, u8 Cc) as u8
+  u8 G
+  u8 S
+  if R < 8 then return 9
+  if R > 119 then return 9
+  if Cc < 9 then return 9
+  if Cc > 118 then return 9
+  if R = 8 then return M3[Ha[Cc]] + 3
+  if R = 119 then return M3[Hb[Cc]] + 6
+  if RQ[Ri] < 255 then
+    if CQ[Cj] < 255 then
+      G = RQ[Ri] * 5 + CQ[Cj]
+      S = GS[G]
+      V = S & 7
+      if V = 4 then
+        if S = 4 then
+          if RM[Ri] = 0 then
+            if CM[Cj] = 0 then return 13
+          end if
+        end if
+      end if
+      if V >= 1 then
+        if V <= 3 then
+          select case RM[Ri]
+            case 0
+              return SiteTop[CM[Cj]]
+            case 2
+              return SiteBot[CM[Cj]]
+          end select
+          if CM[Cj] <> 1 then return 9
+          if S < 8 then return 10
+          if V = 1 then return 12
+          return 11
+        end if
+      end if
+    end if
+  end if
+  V = Ha[R] ^ Hb[Cc]
+  return M3[V]
+
+' ---------------------------------------------------------------------------
+' a new island: 19 different grid places drawn at random
+sub MakeIsland:
+  fill array GS with 0
+  for Gk = 0 to 18
+    Pick
+    if Gk = 0 then
+      GS[V] = 1
+    else
+      if Gk <= 6 then
+        GS[V] = 2
+        TrG[Gk - 1] = V
+      else
+        if Gk <= 12 then
+          GS[V] = 3
+        else
+          GS[V] = 4
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' V = a free grid place 0-49
+sub Pick:
+pk_again:
+  Rand
+  V = Rs & 63
+  if V >= 50 then goto pk_again
+  if GS[V] > 0 then goto pk_again
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' sprite 0 the map cursor (first, so the 4-sprites-per-line limit never hides
+' it), sprites 1-4 the pirate (detail, shirt, skin, red). Where the cursor
+' shares lines with the pirate, only the pirate's small red layer drops out.
+sub DrawSprites:
+  inc Blink
+  if Blink >= 24 then Blink = 0
+  if Blink < 16 then
+    X = Sector(Pc) * 8 + 152
+    Y = Sector(Pr) * 8 + 31
+    set sprite 0 to Y,X,SCur,15
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  K = Walk * 16
+  set sprite 1 to 71,64,SPd0 + K,1
+  set sprite 2 to 71,64,SPw0 + K,15
+  set sprite 3 to 71,64,SPp0 + K,9
+  set sprite 4 to 71,64,SPr0 + K,6
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  ShowMsg(6)
+  ShowScreen
+  Seed0 = Rs
+  MakeIsland
+  Rearm
+  wait
+  nmi off
+  display off
+  print at 2,1, "ISLAND QUEST"
+  fill TFrH count 14 at 2,2
+  fill TFrH count 14 at 2,17
+  print at 19,2, "SECTOR MAP"
+  for J = 0 to 9
+    put char J + 48 at 18,J + 4
+    put char J + 65 at J + 19,3
+    fill TMapc count 10 at 19,J + 4
+  next
+  print at 18,15, "TIME"
+  print at 2,18, "BOOTY"
+  print at 2,20, "CLUES"
+  Pr = 9
+  Pc = 9
+  StepT = 0
+  Walk = 0
+  Booty = 0
+  NClue = 0
+  HomeOk = 0
+  Over = 0
+  Moves = 0
+  Digs = 0
+  Clk.Mins = 0
+  Clk.Secs = 0
+  Clk.Fr = 0
+  ShowTime
+  ShowBooty
+  DrawView
+  DrawRows(2, 6)
+  Pending = 0
+  fill 32 count 28 at 2,22
+  MsgT = 0
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  GameOn = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: ISLAND QUEST in sand letters on the sea, the pirate, the tune
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 352 to vram.name + 64
+  print at 7,14, "AHOY! NOVEMBER 1988"
+  print at 8,16, "BY BOB BLACKMER"
+  print at 4,18, "SIX TREASURES. ONE HOME."
+  print at 7,20, "PRESS THE BUTTON"
+  if HaveBest = 1 then
+    print at 9,22, "BEST ", digits$(Best.Mins, 2), ":", digits$(Best.Secs, 2)
+  end if
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "ISLAND QUEST"
+  print at 2,5, "BASED ON ISLAND QUEST BY"
+  print at 2,6, "BOB BLACKMER, AHOY!"
+  print at 2,7, "NOVEMBER 1988 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SHELL BEACH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+IqDig:
+    db $00,$00,$15,$03,$00,$00,$36,$03,$00,$00,$55,$04,$10
+IqThud:
+    db $00,$00,$46,$02,$00,$00,$77,$03,$10
+IqDirt:
+    db $40,$3B,$22,$06,$40,$7F,$22,$06,$40,$F9,$32,$0C,$50
+IqGold:
+    db $40,$8F,$10,$04,$40,$71,$10,$04,$40,$5F,$10,$04,$40,$47,$10,$04,$40,$5F,$20,$04,$40,$47,$20,$10
+    db $50
+IqClue:
+    db $40,$AA,$20,$05,$40,$7F,$20,$05,$40,$55,$20,$0C,$50
+IqHome:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$12,$50
+IqWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+IqOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$53,$21,$0C,$40,$AB,$31,$24,$50
+
+IqSoundTable:
+    dw IqTuneMel,$702B
+    dw IqTuneBass,$7035
+    dw IqDig,$703F
+    dw IqThud,$703F
+    dw IqDirt,$7049
+    dw IqGold,$7049
+    dw IqClue,$7049
+    dw IqHome,$7049
+    dw IqWin,$7049
+    dw IqOver,$7049
+; Shell Beach (original)
+; Tiny Sound, 8 frames per step
+IqTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$26,$01,$01,$28,$2A,$01,$28,$26,$01,$23
+    db $21,$01,$01,$01,$26,$01,$2A,$01,$01,$2B,$2D,$01,$2B,$2A,$01,$28
+    db $26,$01,$01,$01,$23,$01,$26,$01,$01,$28,$2A,$01,$26,$23,$01,$21
+    db $1E,$01,$01,$01,$21,$01,$26,$01,$28,$01,$2A,$01,$28,$01,$25,$01
+    db $26,$01,$01,$00
+    db $FF
+IqTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0B,$01
+    db $09,$01,$01,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0B,$01,$12,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$01,$01
+    db $0E,$01,$01,$00
+    db $FF
+}

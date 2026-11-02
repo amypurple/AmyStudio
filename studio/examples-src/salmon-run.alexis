@@ -1,0 +1,1344 @@
+cartridge "SALMON RUN/MIKE WACKER/1985"
+
+' SALMON RUN
+' A ColecoVision game based on "Salmon Run" by Mike Wacker, Ahoy! March
+' 1985 (Commodore 64, BASIC with a machine-language core). Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/), the game is built for the ColecoVision: smooth
+' 16 x 16 sprites, salmon that leap in a real arc, a waterfall that runs,
+' tile scenery, sound effects, and a computer eagle for one player.
+'
+' The game: two eagles, blue (left nest) and black (right nest), fish for
+' salmon swimming up the river. Salmon come from the left, swim through the
+' pool, leap up the waterfall and swim away upstream; now and then one
+' leaps on its own. An eagle catches a salmon only in a dive: a dive can
+' start only high in the sky, goes straight down to the water and cannot be
+' steered. A caught salmon is carried home: fly to your nest, at the edge
+' of the screen on your side, high up. Each salmon brought home is a point.
+' A big salmon (one in five) is heavy: carrying it, you fly slowly. A
+' diving eagle can snatch a salmon from the other eagle's talons. The round
+' lasts three minutes; most salmon wins.
+'
+' From the original (orig/, its machine code): the dive only above a
+' height and straight to the bottom, no control while diving; a catch only
+' while diving and touching the fish; one point a fish when its carrier is
+' high at its own edge of the screen; one fish in five heavy (slower flight);
+' a diving eagle takes a carried fish (blue checked first); three fish at
+' once, a new one sooner the more slots are free; fish leap at the falls and
+' at random; fish that get past the right edge are gone; the speeds (fly,
+' heavy, dive, swim) measured from the code's loop counts; a fixed round
+' (about three minutes on the C64), a high score.
+'
+' Liberties: the pool is lower than the river above the falls (on the C64
+' the levels are the other way round); a fish too low at the falls bounces
+' back into the pool; the dive ends at the water's level under the eagle;
+' an eagle that loses its fish is no longer slowed by it (on the C64 it
+' stayed slow until its next delivery); one player against a computer
+' eagle, or two players.
+'
+' Controls: controller 1 flies the blue eagle, controller 2 the black one
+' (in one-player games either controller flies blue). The stick flies, a
+' button dives. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers (the test bot replays them). Nothing flashes.
+'
+' Workarounds for Amy bugs 25 (sprite count) removed 2026-11-01.
+
+const TSky = 128
+const TCl00 = 129
+const TCl10 = 130
+const TCl01 = 131
+const TCl11 = 132
+const TCl02 = 133
+const TCl12 = 134
+const TCl03 = 135
+const TCl13 = 136
+const TPinetop = 137
+const TPinetop2 = 138
+const TForest = 139
+const TSurf = 140
+const TWater = 141
+const TWater2 = 142
+const TBed = 143
+const TRock = 144
+const TRock2 = 145
+const TLip = 146
+const TFa0 = 147
+const TFa1 = 148
+const TFa2 = 149
+const TFa3 = 150
+const TFb0 = 151
+const TFb1 = 152
+const TFb2 = 153
+const TFb3 = 154
+const TFoam0 = 155
+const TFoam1 = 156
+const TTrunk = 157
+const TTrunkw = 158
+const TTwig = 159
+const TTwigr = 160
+const TNest00 = 161
+const TNest01 = 162
+const TNest02 = 163
+const TNest10 = 164
+const TNest11 = 165
+const TNest12 = 166
+const THblue = 167
+const THblack = 168
+const SEup = 0
+const SEmid = 4
+const SEdn = 8
+const SEdive = 12
+const SEhead = 16
+const SEheadv = 20
+const SFish1 = 24
+const SFish2 = 28
+const SFishup = 32
+const SFishdn = 36
+const SBig1 = 40
+const SBig2 = 44
+const SBigup = 48
+const SBigdn = 52
+const SSplash1 = 56
+const SSplash2 = 60
+const NTiles8 = 328
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDive = 3
+const SndSplash = 4
+const SndLeap = 5
+const SndCatch = 6
+const SndSteal = 7
+const SndHome = 8
+const SndTick = 9
+const SndStart = 10
+const SndEnd = 11
+const XMin = 16
+const XMax = 224
+const YTop = 16
+const DiveY = 52
+const BotPool = 140
+const BotUp = 116
+const NestY = 40
+const PoolY = 148
+const UpY = 124
+const FallX = 104
+const FaceX = 116
+const ExitX = 240
+const AimX = 126
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u8 Hi = 0
+u8 Players = 1
+u8 Over = 0
+u8 Secs = 180
+u8 Fr60 = 0
+u8 SpawnT = 20
+u8 AiCool = 0
+' the eagles: position, sub-pixel step, diving, heavy, wing beat, score,
+' the stick this frame (1 up, 2 down, 4 left, 8 right, 16 a button)
+u8 Ex[2]
+u8 Ey[2]
+u8 Ax[2]
+u8 Ed[2]
+u8 Eh[2]
+u8 Ef[2]
+u8 Es[2]
+u8 Ein[2]
+' the salmon: state (0 none, 1 swimming, 2 leaping, 3 carried), position,
+' sub-pixel, level (0 the pool, 1 above the falls), leap frame, big,
+' carrier, tail beat
+u8 Fs[3]
+u8 Fx[3]
+u8 Ff[3]
+u8 Fy[3]
+u8 Fb[3]
+u8 Ft[3]
+u8 Fk[3]
+u8 Fw[3]
+u8 Fa[3]
+' splash, falls, title
+u8 Spl = 0
+u8 SplX = 0
+u8 SplY = 0
+u8 FallPh = 0
+u8 FallT = 0
+u8 TAx = 0
+u8 TAd = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ei = 0
+u8 Fi = 0
+u8 Ce = 0
+u8 Ns = 0
+u8 Ai = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 D = 0
+u8 H = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 S = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table SrSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 3
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Players = Menu + 1
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Animate
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the winner, then back to the title on a press
+  if Es[0] > Hi then Hi = Es[0]
+  if Es[1] > Hi then Hi = Es[1]
+  ShowHud
+  print at 6,9, "                    "
+  print at 6,10, "     TIME IS UP     "
+  print at 6,11, "                    "
+  print at 6,12, "                    "
+  print at 6,13, "                    "
+  if Es[0] > Es[1] then
+    if Players = 1 then
+      print at 6,12, "      YOU WIN!      "
+    else
+      print at 6,12, "  BLUE EAGLE WINS!  "
+    end if
+  elseif Es[1] > Es[0] then
+    if Players = 1 then
+      print at 6,12, "  THE COMPUTER WINS "
+    else
+      print at 6,12, " BLACK EAGLE WINS!  "
+    end if
+  else
+    print at 6,12, "    IT'S A TIE!     "
+  end if
+  print at 6,14, "      BEST    "
+  NumU = Hi
+  print at 18,14, digits$(NumU, 2)
+  print at 20,14, "      "
+  mute all
+  play sound SndEnd
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  Ein[0] = J1
+  Ein[1] = J2
+  if Players = 1 then
+    V = J1 | J2
+    Ein[0] = V
+    AiThink
+    Ein[1] = Ai
+  end if
+  for Ei = 0 to 1
+    MoveEagle
+  next
+  Spawn
+  for Fi = 0 to 2
+    MoveFish
+  next
+  Catch
+  Deliver
+  Eh[0] = 0
+  Eh[1] = 0
+  for Fi = 0 to 2
+    if Fs[Fi] = 3 then
+      if Fk[Fi] = 1 then
+        C = Fw[Fi]
+        Eh[C] = 1
+      end if
+    end if
+  next
+  inc Fr60
+  if Fr60 >= 60 then
+    Fr60 = 0
+    dec Secs
+    ShowTime
+    if Secs <= 10 then
+      if Secs > 0 then play sound SndTick
+    end if
+    if Secs = 0 then Over = 1
+  end if
+  return
+end sub
+
+' the water level under an eagle at X (B): the dive ends there
+sub BotOf:
+  if X < 120 then
+    B = BotPool
+  else
+    B = BotUp
+  end if
+  return
+end sub
+
+' an eagle (Ei): a dive goes straight down; else the stick moves it, 22/16
+' pixel a frame (12/16 with a heavy salmon); a button dives when high
+sub MoveEagle:
+  K = Ein[Ei]
+  X = Ex[Ei]
+  BotOf
+  if Ed[Ei] = 1 then
+    Y = Ey[Ei]
+    if Y >= B then
+      Ed[Ei] = 0
+      Spl = 12
+      SplX = X
+      SplY = B + 4
+      play sound SndSplash
+    else
+      Y = Y + 4
+      if Y > B then Y = B
+      Ey[Ei] = Y
+    end if
+    return
+  end if
+  S = 22
+  if Eh[Ei] = 1 then S = 12
+  V = Ax[Ei] + S
+  N = V >> 4
+  V = V & 15
+  Ax[Ei] = V
+  Ns = N
+  while Ns > 0
+    dec Ns
+    Y = Ey[Ei]
+    V = K & 1
+    if V > 0 then
+      if Y > YTop then dec Y
+    end if
+    V = K & 2
+    if V > 0 then inc Y
+    X = Ex[Ei]
+    BotOf
+    if Y > B then Y = B
+    Ey[Ei] = Y
+    V = K & 4
+    if V > 0 then
+      if X > XMin then dec X
+    end if
+    V = K & 8
+    if V > 0 then
+      if X < XMax then
+        inc X
+        if X >= 120 then
+          if Y > BotUp then dec X
+        end if
+      end if
+    end if
+    Ex[Ei] = X
+  end while
+  V = K & 16
+  if V > 0 then
+    if Ey[Ei] < DiveY then
+      Ed[Ei] = 1
+      play sound SndDive
+    end if
+  end if
+  V = Ef[Ei] + 1
+  if V >= 24 then V = 0
+  Ef[Ei] = V
+  return
+end sub
+
+' a new salmon: sooner the more slots are free
+sub Spawn:
+  N = 0
+  for Fi = 0 to 2
+    if Fs[Fi] = 0 then inc N
+  next
+  if N = 0 then return
+  if SpawnT > N then
+    SpawnT = SpawnT - N
+    return
+  end if
+  SpawnT = 45
+  Got = 0
+  for Fi = 0 to 2
+    if Got = 0 then
+      if Fs[Fi] = 0 then
+        Got = 1
+        Fs[Fi] = 1
+        Fx[Fi] = 0
+        Ff[Fi] = 0
+        Fy[Fi] = PoolY
+        Fb[Fi] = 0
+        Ft[Fi] = 0
+        Fw[Fi] = 0
+        Fa[Fi] = 0
+        Rand
+        V = Rs & 255
+        V = V % 5
+        Fk[Fi] = 0
+        if V = 0 then Fk[Fi] = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' a salmon (Fi): swims 15/16 pixel a frame; leaps at the falls and now
+' and then on its own; a leap follows the Arc table
+sub MoveFish:
+  S = Fs[Fi]
+  if S = 0 then return
+  V = Fa[Fi] + 1
+  Fa[Fi] = V
+  if S = 3 then
+    C = Fw[Fi]
+    Fx[Fi] = Ex[C]
+    V = Ey[C] + 9
+    Fy[Fi] = V
+    return
+  end if
+  if S = 1 then
+    Got = 0
+    if Fb[Fi] = 0 then
+      if Fx[Fi] >= FallX then Got = 1
+    end if
+    if Got = 0 then
+      Rand
+      V = Rs & 63
+      if V = 0 then Got = 1
+    end if
+    if Got = 1 then
+      Fs[Fi] = 2
+      Ft[Fi] = 0
+      if Fx[Fi] > 8 then play sound SndLeap
+    end if
+    FishAdv
+    return
+  end if
+  ' leaping
+  T = Ft[Fi] + 1
+  Ft[Fi] = T
+  H = Arc[T]
+  if T > 37 then
+    if Fb[Fi] = 0 then
+      if Fx[Fi] >= FaceX then
+        if H <= 24 then
+          Fb[Fi] = 1
+          Fs[Fi] = 1
+          Fy[Fi] = UpY
+          Ft[Fi] = 0
+          FishLand
+          FishAdv
+          return
+        end if
+      end if
+    end if
+    if H = 0 then
+      Fs[Fi] = 1
+      Ft[Fi] = 0
+      V = PoolY
+      if Fb[Fi] = 1 then V = UpY
+      Fy[Fi] = V
+      FishLand
+      FishAdv
+      return
+    end if
+  end if
+  V = PoolY
+  if Fb[Fi] = 1 then V = UpY
+  V = V - H
+  Fy[Fi] = V
+  if Fb[Fi] = 0 then
+    if H < 24 then
+      if Fx[Fi] >= 115 then return
+    end if
+  end if
+  FishAdv
+  return
+end sub
+
+sub FishLand:
+  Spl = 10
+  SplX = Fx[Fi]
+  V = Fy[Fi]
+  SplY = V + 2
+  return
+end sub
+
+' 15/16 pixel to the right; gone past the right edge
+sub FishAdv:
+  V = Ff[Fi] + 15
+  if V >= 16 then
+    V = V - 16
+    U = Fx[Fi] + 1
+    Fx[Fi] = U
+  end if
+  Ff[Fi] = V
+  if Fx[Fi] >= ExitX then Fs[Fi] = 0
+  return
+end sub
+
+' a diving eagle touching a leaping salmon, or one the other eagle holds,
+' takes it (blue first)
+sub Catch:
+  for Fi = 0 to 2
+    S = Fs[Fi]
+    Got = 0
+    if S >= 2 then
+      for Ce = 0 to 1
+        if Got = 0 then
+          if Ed[Ce] = 1 then
+            Ok2
+            if R = 1 then
+              Got = 1
+              if S = 3 then
+                play sound SndSteal
+              else
+                play sound SndCatch
+              end if
+              Fs[Fi] = 3
+              Fw[Fi] = Ce
+            end if
+          end if
+        end if
+      next
+    end if
+  next
+  return
+end sub
+
+' R = 1 when eagle Ce can take salmon Fi
+sub Ok2:
+  R = 0
+  if S = 3 then
+    if Fw[Fi] = Ce then return
+  end if
+  X = Ex[Ce]
+  T = Dist(Fx[Fi], X)
+  if T >= 10 then return
+  V = Ey[Ce] + 6
+  U = Dist(Fy[Fi], V)
+  if U >= 10 then return
+  R = 1
+  return
+end sub
+
+function Dist(u8 P, u8 Q) as u8
+  if P >= Q then return P - Q
+  return Q - P
+
+' a carried salmon is home when its eagle is high at its own edge
+sub Deliver:
+  for Fi = 0 to 2
+    if Fs[Fi] = 3 then
+      C = Fw[Fi]
+      Got = 0
+      if Ey[C] <= NestY then
+        if C = 0 then
+          if Ex[0] <= XMin then Got = 1
+        else
+          if Ex[1] >= XMax then Got = 1
+        end if
+      end if
+      if Got = 1 then
+        Fs[Fi] = 0
+        V = Es[C]
+        if V < 99 then Es[C] = V + 1
+        play sound SndHome
+        ShowScores
+      end if
+    end if
+  next
+  return
+end sub
+
+' the computer's eagle (black, one player): home with a catch; else wait
+' high over the falls and dive when a salmon reaches them (one time in four
+' it hesitates), or dive on the blue eagle passing under with a salmon
+sub AiThink:
+  Ai = 0
+  if AiCool > 0 then dec AiCool
+  if Ed[1] = 1 then return
+  Got = 0
+  for Fi = 0 to 2
+    if Fs[Fi] = 3 then
+      if Fw[Fi] = 1 then Got = 1
+    end if
+  next
+  if Got = 1 then
+    Ai = 8
+    if Ey[1] > 24 then Ai = 9
+    return
+  else
+    X = AimX
+    Y = 36
+    if AiCool = 0 then
+      if Ey[1] < DiveY then
+        D = 0
+        T = Dist(Ex[1], X)
+        if T <= 3 then
+          for Fi = 0 to 2
+            if Fs[Fi] = 1 then
+              if Fb[Fi] = 0 then
+                V = Fx[Fi]
+                if V >= 102 then
+                  if V <= FallX then D = 1
+                end if
+              end if
+            end if
+          next
+        end if
+        for Fi = 0 to 2
+          if Fs[Fi] = 3 then
+            if Fw[Fi] = 0 then
+              T = Dist(Fx[Fi], Ex[1])
+              if T < 6 then
+                V = Fy[Fi]
+                if V > Ey[1] then D = 1
+              end if
+            end if
+          end if
+        next
+        if D = 1 then
+          AiCool = 40
+          Rand
+          V = Rs & 3
+          if V > 0 then Ai = 16
+        end if
+      end if
+    end if
+  end if
+  V = X - 1
+  if Ex[1] < V then Ai = Ai | 8
+  V = X + 1
+  if Ex[1] > V then Ai = Ai | 4
+  V = Y - 1
+  if Ey[1] < V then Ai = Ai | 2
+  V = Y + 1
+  if Ey[1] > V then Ai = Ai | 1
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the falls run (a new frame every 8), the foam churns (every 12), the
+' splash fades
+sub Animate:
+  if Spl > 0 then dec Spl
+  inc FallT
+  V = FallT & 7
+  if V = 0 then
+    V = FallPh + 1
+    FallPh = V & 3
+    W16 = TFa0 - 128 + FallPh
+    W16 = W16 << 3
+    A16 = TFa0 << 3
+    copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+    W16 = TFb0 - 128 + FallPh
+    W16 = W16 << 3
+    A16 = TFb0 << 3
+    copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  end if
+  if FallT = 12 then
+    W16 = TFoam1 - 128
+    W16 = W16 << 3
+    A16 = TFoam0 << 3
+    copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  end if
+  if FallT >= 24 then
+    FallT = 0
+    W16 = TFoam0 - 128
+    W16 = W16 << 3
+    A16 = TFoam0 << 3
+    copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  end if
+  return
+end sub
+
+' sprites 0-1 the blue eagle (head over body), 2-3 the black, 4-6 the
+' salmon, 7 the splash
+sub DrawSprites:
+  for Ei = 0 to 1
+    X = Ex[Ei]
+    Y = Ey[Ei] - 1
+    if Ed[Ei] = 1 then
+      K = SEdive
+      T = SEheadv
+    else
+      V = Ef[Ei] / 6
+      K = SEmid
+      if V = 0 then K = SEup
+      if V = 2 then K = SEdn
+      T = SEhead
+    end if
+    U = 4
+    if Ei = 1 then U = 1
+    J = Ei << 1
+    set sprite J to Y,X,T,15
+    inc J
+    set sprite J to Y,X,K,U
+  next
+  for Fi = 0 to 2
+    J = Fi + 4
+    S = Fs[Fi]
+    if S = 0 then
+      set sprite J to 192,0,0,0
+    else
+      X = Fx[Fi]
+      Y = Fy[Fi] - 1
+      V = Fa[Fi] & 8
+      K = SFish1
+      if V > 0 then K = SFish2
+      if S = 2 then
+        K = SFishup
+        if Ft[Fi] > 37 then K = SFishdn
+      end if
+      if S = 3 then
+        V = Fa[Fi] & 4
+        K = SFishup
+        if V > 0 then K = SFishdn
+      end if
+      U = 9
+      if Fk[Fi] = 1 then
+        K = K + 16
+        U = 8
+      end if
+      set sprite J to Y,X,K,U
+    end if
+  next
+  if Spl > 0 then
+    K = SSplash2
+    if Spl > 6 then K = SSplash1
+    Y = SplY - 1
+    set sprite 7 to Y,SplX,K,15
+  else
+    set sprite 7 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 32 at 0,1
+  put char THblue at 2,1
+  print at 3,1, "BLUE"
+  put char THblack at 21,1
+  print at 22,1, "BLACK"
+  ShowScores
+  ShowTime
+  return
+end sub
+
+sub ShowScores:
+  NumU = Es[0]
+  print at 8,1, digits$(NumU, 2)
+  NumU = Es[1]
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowTime:
+  V = Secs / 60
+  W16 = V
+  W16 = W16 * 60
+  V = Secs - W16
+  NumU = Secs / 60
+  print at 14,1, digits$(NumU, 1)
+  print at 15,1, ":"
+  NumU = V
+  print at 16,1, digits$(NumU, 2)
+  return
+end sub
+
+' the river, the falls, the forest, the clouds and the nests
+sub DrawScene:
+  for J = 2 to 23
+    fill TSky count 32 at 0,J
+  next
+  for J = 0 to 3
+    X = J + 8
+    V = J << 1
+    V = V + TCl00
+    put char V at X,3
+    inc V
+    put char V at X,4
+    X = J + 19
+    dec V
+    put char V at X,4
+    inc V
+    put char V at X,5
+  next
+  ' the forest behind the pool, and behind the upper river
+  for J = 0 to 14
+    V = J & 1
+    T = TPinetop + V
+    put char T at J,15
+    for K = 16 to 18
+      put char TForest at J,K
+    next
+  next
+  for J = 15 to 31
+    V = J & 1
+    T = TPinetop + V
+    put char T at J,12
+    for K = 13 to 15
+      put char TForest at J,K
+    next
+  next
+  ' the upper river and its cliff
+  fill TSurf count 15 at 17,16
+  fill TWater count 15 at 17,17
+  fill TLip count 15 at 17,18
+  for K = 19 to 23
+    V = K & 1
+    T = TRock + V
+    fill T count 15 at 17,K
+  next
+  ' the falls
+  for K = 16 to 18
+    put char TFa0 at 15,K
+    put char TFb0 at 16,K
+  next
+  ' the pool
+  fill TSurf count 14 at 0,19
+  fill TFoam0 count 3 at 14,19
+  for K = 20 to 22
+    for J = 0 to 16
+      V = J + K
+      V = V & 1
+      T = TWater + V
+      put char T at J,K
+    next
+  next
+  fill TBed count 17 at 0,23
+  ' the nests on dead trees
+  for J = 0 to 2
+    X = J + 2
+    T = TNest00 + J
+    put char T at X,6
+    T = TNest10 + J
+    put char T at X,7
+    X = J + 27
+    T = TNest00 + J
+    put char T at X,6
+    T = TNest10 + J
+    put char T at X,7
+  next
+  for K = 8 to 14
+    put char TTrunk at 3,K
+  next
+  for K = 8 to 11
+    put char TTrunk at 28,K
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  DrawScene
+  Es[0] = 0
+  Es[1] = 0
+  Ex[0] = 64
+  Ex[1] = 176
+  for Ei = 0 to 1
+    Ey[Ei] = 72
+    Ax[Ei] = 0
+    Ed[Ei] = 0
+    Eh[Ei] = 0
+    Ef[Ei] = 0
+  next
+  Ef[1] = 12
+  for Fi = 0 to 2
+    Fs[Fi] = 0
+  next
+  Secs = 180
+  Fr60 = 0
+  SpawnT = 20
+  AiCool = 0
+  Over = 0
+  Spl = 0
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the river scene, an eagle gliding, a salmon leaping, the tune
+' once, ONE PLAYER / TWO PLAYERS / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawScene
+  print at 9,8, "              "
+  print at 9,9, "  SALMON RUN  "
+  print at 9,10, "              "
+  print at 9,11, "  ONE PLAYER  "
+  print at 9,12, "  TWO PLAYERS "
+  print at 9,13, "  CREDITS     "
+  print at 9,14, "              "
+  print at 2,1, "BEST"
+  NumU = Hi
+  print at 7,1, digits$(NumU, 2)
+  print at 16,1, "AHOY! MAR 1985"
+  ShowMenu
+  TAx = 40
+  TAd = 1
+  Fs[0] = 0
+  Fx[0] = 60
+  Ft[0] = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  Animate
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+' an eagle glides to and fro, a salmon leaps the falls again and again
+sub TitleAnim:
+  inc Ef[0]
+  if Ef[0] >= 24 then Ef[0] = 0
+  V = Tick & 1
+  if V = 0 then
+    if TAd = 1 then
+      inc TAx
+      if TAx >= 200 then TAd = 0
+    else
+      dec TAx
+      if TAx <= 40 then TAd = 1
+    end if
+  end if
+  V = Ef[0] / 6
+  K = SEmid
+  if V = 0 then K = SEup
+  if V = 2 then K = SEdn
+  set sprite 0 to 31,TAx,SEhead,15
+  set sprite 1 to 31,TAx,K,4
+  ' the salmon: swim to the falls, leap, then start again
+  T = Ft[0]
+  if T = 0 then
+    inc Fx[0]
+    if Fx[0] >= FallX then Ft[0] = 1
+    Y = PoolY
+    K = SFish1
+    V = Tick & 8
+    if V > 0 then K = SFish2
+  else
+    inc T
+    Ft[0] = T
+    H = Arc[T]
+    Y = PoolY - H
+    inc Fx[0]
+    K = SFishup
+    if T > 37 then K = SFishdn
+    if T > 37 then
+      if H <= 24 then
+        Ft[0] = 0
+        Fx[0] = 40
+      end if
+    end if
+  end if
+  Y = Y - 1
+  set sprite 4 to Y,Fx[0],K,9
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for J = 11 to 13
+    put char 32 at 10,J
+  next
+  J = Menu + 11
+  put char 62 at 10,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "SALMON  RUN"
+  print at 2,5, "BASED ON SALMON RUN BY"
+  print at 2,6, "MIKE WACKER, AHOY! MARCH"
+  print at 2,7, "1985 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: UPSTREAM (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$F0,$E0,$C0,$80
+  $80,$80,$C0,$F0,$01,$00,$00,$00
+  $00,$F0,$E0,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$00,$00,$00
+  $00,$80,$38,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$07,$03
+  $01,$01,$03,$F0,$80,$00,$00,$00
+  $10,$10,$38,$38,$83,$82,$00,$00
+  $00,$04,$84,$8E,$31,$20,$00,$00
+  $00,$42,$00,$10,$01,$00,$84,$00
+  $31,$9C,$00,$00,$10,$00,$00,$80
+  $00,$06,$00,$00,$00,$60,$00,$00
+  $00,$00,$20,$00,$02,$00,$00,$10
+  $00,$10,$62,$08,$00,$44,$00,$20
+  $08,$08,$08,$00,$40,$40,$40,$00
+  $20,$20,$20,$00,$02,$02,$02,$00
+  $00,$00,$80,$04,$00,$08,$08,$00
+  $20,$24,$10,$02,$64,$2C,$93,$B2
+  $93,$B2,$20,$24,$10,$02,$64,$2C
+  $64,$2C,$93,$B2,$20,$24,$10,$02
+  $10,$02,$64,$2C,$93,$B2,$20,$24
+  $08,$01,$04,$20,$80,$10,$26,$64
+  $26,$64,$08,$01,$04,$20,$80,$10
+  $80,$10,$26,$64,$08,$01,$04,$20
+  $04,$20,$80,$10,$26,$64,$08,$01
+  $22,$84,$00,$91,$34,$08,$00,$80
+  $88,$21,$00,$25,$58,$10,$00,$02
+  $81,$81,$83,$81,$C1,$81,$81,$81
+  $C3,$C3,$34,$34,$C3,$1C,$C3,$2C
+  $00,$00,$00,$00,$00,$00,$80,$60
+  $00,$00,$00,$00,$00,$00,$01,$06
+  $00,$00,$80,$40,$30,$E0,$00,$AA
+  $00,$00,$00,$C9,$00,$00,$00,$AA
+  $00,$00,$02,$04,$0C,$07,$00,$AA
+  $00,$24,$C0,$E0,$03,$00,$00,$00
+  $00,$92,$00,$00,$00,$81,$81,$81
+  $00,$48,$03,$07,$C0,$00,$00,$00
+  $38,$83,$81,$30,$83,$01,$83,$00
+  $38,$83,$81,$30,$83,$01,$83,$00
+end data
+data TileCol bytes
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$F7,$7F,$7F,$7F,$7F
+  $7F,$7F,$7E,$7E,$E7,$07,$07,$07
+  $07,$7F,$7F,$7F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0E,$0E,$7E,$07,$07,$07
+  $07,$F7,$7F,$7F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0E,$0E,$7E,$07,$07,$07
+  $07,$07,$F7,$F7,$F7,$F7,$7F,$7F
+  $7F,$7F,$7E,$E7,$E7,$07,$07,$07
+  $C7,$C7,$C7,$C7,$7C,$7C,$0C,$0C
+  $07,$C7,$C7,$C7,$7C,$7C,$0C,$0C
+  $0C,$2C,$0C,$2C,$2C,$0C,$2C,$0C
+  $45,$45,$04,$04,$54,$04,$04,$54
+  $04,$54,$04,$04,$04,$54,$04,$04
+  $04,$04,$54,$04,$54,$04,$04,$54
+  $04,$E4,$E4,$4E,$0E,$1E,$0E,$1E
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $04,$04,$54,$54,$01,$1E,$1E,$01
+  $5F,$5F,$F5,$F5,$F5,$F5,$F5,$F5
+  $F5,$F5,$5F,$5F,$F5,$F5,$F5,$F5
+  $F5,$F5,$F5,$F5,$5F,$5F,$F5,$F5
+  $F5,$F5,$F5,$F5,$F5,$F5,$5F,$5F
+  $F5,$F5,$5F,$5F,$F5,$F5,$F5,$F5
+  $F5,$F5,$F5,$F5,$5F,$5F,$F5,$F5
+  $F5,$F5,$F5,$F5,$F5,$F5,$5F,$5F
+  $5F,$5F,$F5,$F5,$F5,$F5,$F5,$F5
+  $5F,$5F,$0F,$4F,$F4,$F4,$04,$54
+  $5F,$5F,$0F,$4F,$F4,$F4,$04,$54
+  $7A,$7A,$7A,$7A,$7A,$7A,$7A,$7A
+  $4A,$4A,$A4,$A4,$4A,$A4,$4A,$A4
+  $07,$07,$07,$07,$07,$07,$A7,$A7
+  $07,$07,$07,$07,$07,$07,$A7,$A7
+  $07,$07,$A7,$A7,$A7,$7A,$0A,$BA
+  $07,$07,$07,$7F,$0F,$0F,$0A,$BA
+  $07,$07,$A7,$A7,$A7,$7A,$0A,$BA
+  $0A,$BA,$7A,$7A,$A7,$07,$07,$07
+  $0A,$BA,$0A,$0A,$0A,$7A,$7A,$7A
+  $0A,$BA,$7A,$7A,$A7,$07,$07,$07
+  $F1,$1F,$1F,$F1,$14,$14,$14,$01
+  $F1,$1F,$1F,$F1,$1E,$1E,$1E,$01
+end data
+data SpritePat bytes
+  $00,$80,$C3,$67,$77,$3F,$3F,$1F,$0F,$07,$07,$03,$07,$06,$04,$00
+  $00,$01,$C3,$E6,$EE,$FC,$FC,$F8,$F0,$E0,$E0,$C0,$E0,$60,$20,$00
+  $00,$00,$03,$07,$07,$FF,$FF,$7F,$1F,$07,$07,$03,$07,$06,$04,$00
+  $00,$00,$C0,$E0,$E0,$FF,$FF,$FE,$F8,$E0,$E0,$C0,$E0,$60,$20,$00
+  $00,$00,$03,$07,$07,$1F,$3F,$7F,$EF,$C7,$87,$03,$07,$06,$04,$00
+  $00,$00,$C0,$E0,$E0,$F8,$FC,$FE,$F7,$E3,$E1,$C0,$E0,$60,$20,$00
+  $80,$C0,$60,$33,$1B,$0F,$07,$07,$07,$03,$03,$05,$09,$18,$10,$00
+  $01,$03,$06,$CC,$D8,$F0,$E0,$E0,$E0,$C0,$C0,$A0,$90,$18,$08,$00
+  $00,$00,$03,$07,$06,$00,$00,$00,$00,$00,$00,$03,$07,$00,$00,$00
+  $00,$00,$C0,$E0,$60,$00,$00,$00,$00,$00,$00,$C0,$E0,$00,$00,$00
+  $00,$00,$00,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$23,$37,$3F,$37,$23,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$F8,$FE,$FE,$FC,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$43,$27,$1F,$27,$43,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$F8,$FE,$FE,$FC,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$18,$39,$3F,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$F0,$F8,$F8,$FC,$50,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$01,$07,$03,$27,$3F,$1C,$08,$00,$00,$00
+  $00,$00,$00,$00,$BC,$FC,$FC,$F8,$F8,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$41,$67,$7F,$7F,$6F,$47,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$78,$FE,$FE,$FF,$FF,$FE,$FC,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$81,$47,$3F,$3F,$4F,$87,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$78,$FE,$FE,$FF,$FF,$FE,$FC,$E0,$00,$00,$00,$00
+  $00,$00,$18,$18,$38,$7F,$6F,$0F,$0F,$07,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$F8,$FC,$FC,$FE,$FE,$FE,$FE,$08,$00,$00
+  $00,$00,$00,$01,$01,$03,$03,$07,$07,$6F,$7F,$39,$18,$18,$00,$00
+  $00,$00,$58,$FE,$FE,$FE,$FC,$FC,$F8,$F8,$E0,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$12,$0A,$26,$17,$3F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$40,$48,$50,$64,$E8,$FC,$00,$00
+  $00,$00,$00,$00,$00,$21,$08,$22,$12,$8A,$44,$1F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$84,$10,$44,$48,$51,$22,$F8,$00,$00,$00,$00
+end data
+data Arc bytes
+  0,2,4,6,8,10,12,14,16,18,20,21,23,24,26
+  27,29,30,31,32,33,34,35,36,37,38,39,39,40,40
+  41,41,42,42,42,42,42,42,42,42,42,42,42,41,41
+  40,40,39,39,38,37,36,35,34,33,32,31,30,29,27
+  26,24,23,21,20,18,16,14,12,10,8,6,4,2,0
+end data
+
+asm {
+SrDive:
+    db $00,$00,$54,$03,$00,$00,$45,$04,$00,$00,$35,$05,$00,$00,$46,$06,$10
+SrSplash:
+    db $00,$00,$14,$02,$00,$00,$25,$04,$00,$00,$46,$06,$00,$00,$76,$08,$10
+SrLeap:
+    db $00,$00,$75,$02,$00,$00,$96,$04,$10
+SrCatch:
+    db $40,$7F,$10,$03,$40,$5F,$10,$03,$40,$4C,$10,$03,$40,$40,$20,$06,$50
+SrSteal:
+    db $40,$4C,$10,$03,$40,$5F,$10,$03,$40,$4C,$10,$03,$40,$5F,$20,$06,$50
+SrHome:
+    db $40,$8F,$10,$04,$40,$71,$10,$04,$40,$5F,$10,$04,$40,$47,$10,$04,$40,$39,$20,$0C,$50
+SrTick:
+    db $40,$35,$30,$02,$40,$35,$70,$02,$50
+SrStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+SrEnd:
+    db $40,$8F,$10,$0A,$40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$AA,$20,$0A,$40,$8F,$30,$1E,$50
+
+SrSoundTable:
+    dw SrTuneMel,$702B
+    dw SrTuneBass,$7035
+    dw SrDive,$703F
+    dw SrSplash,$703F
+    dw SrLeap,$703F
+    dw SrCatch,$7049
+    dw SrSteal,$7049
+    dw SrHome,$7049
+    dw SrTick,$7049
+    dw SrStart,$7049
+    dw SrEnd,$7049
+; Upstream (original)
+; Tiny Sound, 8 frames per step
+SrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$01,$21,$01,$01,$1E,$01,$21,$01,$26
+    db $01,$01,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$01,$1C,$01,$1E,$01
+    db $1A,$01,$01,$01,$23,$01,$01,$21,$01,$1E,$01,$21,$01,$01,$26,$01
+    db $25,$01,$28,$01,$01,$26,$01,$21,$01,$1E,$01,$1C,$01,$1A,$01,$01
+    db $01,$00,$01,$01,$01
+    db $FF
+SrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0B,$01,$12,$01
+    db $09,$01,$10,$01,$09,$01,$01,$01,$0E,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01,$01
+    db $FF
+}

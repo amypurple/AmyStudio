@@ -1,0 +1,1130 @@
+cartridge "MARAUDER/C.M.BLAKEMORE/1988"
+
+' MARAUDER
+' A ColecoVision game based on "Marauder" by Cleveland M. Blakemore,
+' Ahoy! February 1988 (Commodore 64 machine language, 2,145 bytes at
+' $C000, started by a two-line BASIC loader; the author is named on the
+' issue's contents page: "Marauder for the C-64 by Cleveland M.
+' Blakemore"). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/dis.txt), the game is rebuilt for the ColecoVision:
+' red cave rock with cracked tiles and sloping walls, a two-colour
+' helicopter with a turning rotor, five coloured missiles as smooth
+' sprites, a fuel gauge, bursts, sound effects and a title tune.
+'
+' The game: fly a helicopter through a tunnel that scrolls towards you.
+' Five missiles stream across from the right; shoot all five to clear a
+' tunnel. Each hit refuels you a little. Touch the rock or a missile and
+' you crash; run dry and you fall. Clear the chosen number of tunnels
+' (1 to 4: the C64's F1/F3/F5/F7 skill keys) to save the base.
+'
+' From the original (orig/): the tunnel is a pair of walls one column
+' wide, a fixed gap apart, drawn by a walk: the lower wall's row goes down
+' below row 12 of 24, up from row 23, otherwise up or down at random, one
+' row a column, a peak or valley keeping its row when the walk turns; the
+' gap is 11 rows (10 for the hardest skill) and narrows by one row for
+' every tunnel cleared, the new width coming in with the new columns;
+' missile N (1-5) flies left N pixels a step and comes back in from the
+' right when it leaves; the helicopter moves 2 pixels a step in eight
+' directions inside a box; one shell at a time, 8 pixels a step, fired
+' while the button is held; a hit missile is gone, scores N hundred
+' points and gives 3 of the gauge's 52 units of fuel; fuel drops a unit
+' every 26 steps; when it runs out the helicopter falls to the bottom and
+' crashes; when the five are gone a new five come, one tunnel fewer is
+' left (shown as TUNNEL n) and at none the base is saved
+' (CONGRATULATIONS!! YOU HAVE SAVED BASE!); touching the rock or a missile
+' ends the game; the game waits for the stick before the tunnel moves;
+' score and high score (shown as hundreds, BCD).
+'
+' Liberties: the C64 scrolled a column every pass of its loop (about 48
+' a second, 8 pixels each, four times the helicopter's climb: too fast to
+' fly); here a column every 4 frames (2 pixels a frame, as fast as the
+' helicopter climbs), the missiles 0.5, 0.75, 1, 1.5 and 2 pixels a frame,
+' the helicopter 2 pixels a frame as on the C64 and the shell 5, so
+' speeds keep the original's order and the game is humanly playable; the
+' shell is 3 pixels high and the helicopter's box a little smaller than
+' its picture, so a missile that can touch you can mostly be shot; the tunnel is 20 rows high (rows
+' 2-21), the walk's limits move to rows 13 and 21 and the gap is 10 rows
+' (9 at skill 4), narrowing by one row a tunnel down to 6; a missile that
+' comes back in takes a new height inside the tunnel's gap at the right
+' edge (on the C64 it kept its height and flew through the rock); the
+' walls are solid rock (the C64 drew two lines of slash characters);
+' collisions are box tests (the C64 used its sprite collision registers);
+' a hit shows a burst where the missile was (the C64 flashed the whole
+' screen); the skill is chosen with the stick on the title (1-4 tunnels)
+' instead of the function keys; the fuel gauge turns red and beeps when
+' low; game end shows a message and goes back to the title (the C64
+' restarted at once).
+'
+' Controls: controller 1 (or 2): the stick flies the helicopter, either
+' button fires. On the title: up and down choose START, TUNNELS or
+' CREDITS; left and right change the number of tunnels; a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers (the test bot replays them).
+'
+' Workarounds for Amy bugs 25 (sprite count) removed 2026-11-01.
+
+const TRk0 = 128
+const TRk1 = 129
+const TTd = 130
+const TTu = 131
+const TBd = 132
+const TBu = 133
+const TG0 = 134
+const TG1 = 135
+const TG2 = 136
+const TG3 = 137
+const TG4 = 138
+const TH0 = 139
+const TH1 = 140
+const TH2 = 141
+const TH3 = 142
+const TH4 = 143
+const TQ0 = 144
+const TQ1 = 145
+const TQ2 = 146
+const TQ3 = 147
+const TQ4 = 148
+const TQ5 = 149
+const TQ6 = 150
+const TQ7 = 151
+const TQ8 = 152
+const TQ9 = 153
+const TQ10 = 154
+const TQ11 = 155
+const TQ12 = 156
+const TQ13 = 157
+const TQ14 = 158
+const TQ15 = 159
+const SHb = 0
+const SHc0 = 4
+const SHc1 = 8
+const SMs = 12
+const SSh = 16
+const SEx0 = 20
+const SEx1 = 24
+const NTiles8 = 256
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndHit = 4
+const SndBurst = 5
+const SndCrash = 6
+const SndLow = 7
+const SndClear = 8
+const SndStart = 9
+const SndWon = 10
+const SndOver = 11
+const NSpr = 9
+const ScPer = 4
+const FuelMax = 52
+const FuelPer = 32
+const TopRow = 2
+const MidRow = 12
+
+data TilePat bytes
+  $00,$20,$10,$02,$04,$80,$40,$00
+  $04,$00,$40,$30,$00,$02,$80,$00
+  $80,$80,$C0,$E0,$F0,$07,$03,$01
+  $01,$01,$03,$07,$F0,$E0,$C0,$80
+  $80,$C0,$E0,$F0,$07,$03,$01,$01
+  $01,$03,$07,$F0,$E0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $06,$16,$16,$16,$16,$16,$16,$06
+  $86,$06,$16,$16,$06,$16,$86,$06
+  $86,$18,$18,$18,$18,$81,$81,$81
+  $86,$18,$18,$18,$81,$81,$81,$81
+  $81,$81,$81,$81,$18,$18,$18,$86
+  $81,$81,$81,$18,$18,$18,$18,$86
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$B1,$B1,$B1,$B1,$B1,$B1,$0E
+  $0E,$B1,$B1,$B1,$B1,$B1,$B1,$0E
+  $0E,$1B,$1B,$1B,$1B,$1B,$1B,$0E
+  $0E,$0B,$0B,$0B,$0B,$0B,$0B,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$18,$18,$18,$18,$18,$18,$0E
+  $0E,$08,$08,$08,$08,$08,$08,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$A1,$01,$01,$01,$01
+  $1B,$1B,$1B,$1A,$01,$01,$01,$01
+  $0B,$0B,$0B,$0A,$01,$01,$01,$01
+  $01,$01,$01,$01,$A1,$81,$81,$61
+  $B1,$B1,$B1,$A1,$A1,$81,$81,$61
+  $1B,$1B,$1B,$1A,$A1,$81,$81,$61
+  $0B,$0B,$0B,$0A,$A1,$81,$81,$61
+  $01,$01,$01,$01,$1A,$18,$18,$16
+  $B1,$B1,$B1,$A1,$1A,$18,$18,$16
+  $1B,$1B,$1B,$1A,$1A,$18,$18,$16
+  $0B,$0B,$0B,$0A,$1A,$18,$18,$16
+  $01,$01,$01,$01,$0A,$08,$08,$06
+  $B1,$B1,$B1,$A1,$0A,$08,$08,$06
+  $1B,$1B,$1B,$1A,$0A,$08,$08,$06
+  $0B,$0B,$0B,$0A,$0A,$08,$08,$06
+end data
+data SpritePat bytes
+  $00,$00,$00,$01,$07,$09,$11,$11,$0F,$07,$02,$1F,$00,$00,$00,$00
+  $00,$00,$00,$80,$E0,$F1,$FF,$F1,$F0,$E0,$40,$F8,$00,$00,$00,$00
+  $00,$00,$3F,$00,$00,$06,$0E,$0E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$00,$00,$06,$0E,$0E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$7F,$FF,$7F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$26,$FA,$FE,$FA,$26,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FC,$FC,$FC,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$01,$05,$0F,$05,$01,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$A0,$F0,$A0,$80,$40,$00,$00,$00,$00,$00
+  $00,$10,$09,$05,$23,$1F,$0F,$BF,$0F,$1F,$23,$05,$09,$10,$00,$00
+  $00,$08,$90,$A0,$C4,$F8,$F0,$FD,$F0,$F8,$C4,$A0,$90,$08,$00,$00
+end data
+
+data TitleMap bytes
+  $9D,$95,$97,$95,$97,$94,$97,$95,$95,$95,$97,$94,$97,$91,$97,$94
+  $97,$95,$97,$95,$97,$94,$97,$95,$95,$95,$95,$95,$97,$20,$97,$94
+  $91,$91,$91,$91,$91,$91,$91,$91,$93,$91,$93,$20,$93,$91,$91,$91
+end data
+
+' the five missiles: X in quarter pixels, Y in pixels, alive
+record Missile:
+  u16 X
+  u8 Y
+  u8 Alive
+end record
+Missile Ms[5]
+data MsCol bytes 13,7,3,9,15
+' quarter pixels a frame (the C64: N pixels a step for missile N)
+data MsSpd bytes 2,3,4,6,8
+
+' the tunnel, one entry a screen column (ring, Head = screen column 0):
+' top wall row, bottom wall row, slope (0 '\' down, 1 '/' up)
+u8 ColU[32]
+u8 ColL[32]
+u8 ColD[32]
+u8 ScBuf[32]
+' the next column's 20 tiles (rows 2-21)
+u8 ScCol[20]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 HXq = 0
+u16 HYq = 0
+u16 ScAddr = 0
+u16 ColP = 0
+u8 ScOff = 0
+bcd digits 4 Score = 0
+bcd digits 4 Hi = 0
+u8 Pts = 0
+u8 HX = 0
+u8 HY = 0
+u8 BX = 0
+u8 BY = 0
+u8 Head = 0
+u8 ColSeq = 0
+u8 Ptr = 0
+u8 Prev = 0
+u8 Gap = 0
+u8 NU = 0
+u8 NL = 0
+u8 ND = 0
+u8 ScT = 0
+u8 Fuel = 0
+u8 FuelT = 0
+u8 Skill = 1
+u8 TunLeft = 0
+u8 Left = 0
+u8 ExX = 0
+u8 ExY = 0
+u8 ExT = 0
+u8 Over = 0
+u8 Won = 0
+u8 Falling = 0
+u8 Started = 0
+u8 Shots = 0
+u8 Kills = 0
+u8 Cleared = 0
+' the score and gauge wait for a frame without scrolling to be redrawn
+u8 Dirty = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Mi = 0
+u8 Ri = 0
+u8 Di = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MdSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+  ' the stick (or a button) starts the tunnel, as on the C64
+wait_loop:
+  Frame1
+  ReadPad
+  DrawSprites
+  if J1 = 0 then goto wait_loop
+  Started = 1
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ShowScore
+  ShowFuel
+  if Won = 0 then Crash
+  HideSprites
+  for Ri = 9 to 17
+    print at 7,Ri, "                  "
+  next
+  if Won = 1 then
+    mute all
+    play sound SndWon
+    print at 8,10, "CONGRATULATIONS!"
+    print at 8,12, "YOU HAVE SAVED"
+    print at 8,13, "THE BASE!"
+  else
+    ' after the crash's burst (3 Hz, sub Crash)
+    mute all
+    play sound SndOver
+    print at 11,11, "GAME  OVER"
+  end if
+  print at 9,15, "SCORE ", Score, "00"
+  print at 9,16, "BEST  ", Hi, "00"
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  MoveHeli
+  MoveShell
+  MoveMissiles
+  if Over = 1 then return
+  ScrollStep
+  FuelStep
+  if Dirty = 1 then
+    if ScT = 0 then
+      ShowScore
+      ShowFuel
+      Dirty = 0
+    end if
+  end if
+  if WallHit() = 1 then Over = 1
+  if ExT > 0 then dec ExT
+  return
+end sub
+
+' 2 pixels a frame in eight directions inside the box; falling when dry
+sub MoveHeli:
+  if Falling = 1 then
+    HYq = HYq + 4
+    HY = HYq >> 2
+    return
+  end if
+  if (J1 & 1) > 0 then
+    if HYq > 38 then HYq = HYq - 8
+  end if
+  if (J1 & 2) > 0 then
+    if HYq < 674 then HYq = HYq + 8
+  end if
+  if (J1 & 4) > 0 then
+    if HXq > 64 then HXq = HXq - 8
+  end if
+  if (J1 & 8) > 0 then
+    if HXq < 826 then HXq = HXq + 8
+  end if
+  HX = HXq >> 2
+  HY = HYq >> 2
+  return
+end sub
+
+' one shell at a time, fired while the button is held
+sub MoveShell:
+  if BX = 0 then
+    if (J1 & 16) > 0 then
+      if Falling = 0 then
+        BX = HX + 12
+        BY = HY
+        inc Shots
+        play sound SndZap
+      end if
+    end if
+    return
+  end if
+  BX = BX + 5
+  if BX > 222 then
+    BX = 0
+    return
+  end if
+  ShellHit
+  return
+end sub
+
+' the shell against the missiles (boxes)
+sub ShellHit:
+  u8 Sy = BY + 7
+  u8 Mx = 0
+  for Mi = 0 to 4
+    if Ms[Mi].Alive = 1 then
+      Mx = Ms[Mi].X >> 2
+      if BX + 5 >= Mx then
+        if BX <= Mx + 15 then
+          if Sy + 2 >= Ms[Mi].Y + 5 then
+            if Sy <= Ms[Mi].Y + 9 then
+              Kill(Mi)
+              BX = 0
+              exit for
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' missile N is gone: N hundred points, 3 units of fuel, a burst
+sub Kill(u8 N):
+  Ms[N].Alive = 0
+  ExX = Ms[N].X >> 2
+  ExY = Ms[N].Y
+  ExT = 12
+  ' the score is kept in hundreds, as on the C64 (printed with 00)
+  Pts = N + 1
+  Score += Pts
+  if Score > Hi then Hi = Score
+  Fuel = Fuel + 3
+  if Fuel > FuelMax then Fuel = FuelMax
+  inc Kills
+  dec Left
+  Dirty = 1
+  if Left = 0 then
+    dec TunLeft
+    if TunLeft = 0 then
+      Won = 1
+      Over = 1
+    else
+      inc Cleared
+      if Gap > 6 then dec Gap
+      NewWave
+      ShowTunnel
+      play sound SndClear
+    end if
+  else
+    play sound SndHit
+  end if
+  play sound SndBurst
+  return
+end sub
+
+' missile N flies left (0.5 to 2 pixels a frame) and comes back in at the
+' right, at a new height inside the gap there
+sub MoveMissiles:
+  u8 Mx = 0
+  for Mi = 0 to 4
+    if Ms[Mi].Alive = 1 then
+      Ms[Mi].X -= MsSpd[Mi]
+      if Ms[Mi].X < 64 then
+        Ms[Mi].X = 896
+        Ms[Mi].Y = SpawnY()
+      end if
+      Mx = Ms[Mi].X >> 2
+      if HitHeli(Mx, Ms[Mi].Y) = 1 then Over = 1
+    end if
+  next
+  return
+end sub
+
+' 1 when a missile at X,Y touches the helicopter
+function HitHeli(u8 Mx, u8 My) as u8
+  u8 R = 0
+  if HX + 14 >= Mx + 1 then
+    if HX + 3 <= Mx + 14 then
+      if HY + 10 >= My + 5 then
+        if HY + 5 <= My + 9 then R = 1
+      end if
+    end if
+  end if
+  return R
+
+' a random height inside the gap at the right edge (screen column 28)
+function SpawnY as u8
+  u8 Kk = (Head + 28) & 31
+  u8 Top = ColU[Kk] * 8 + 5
+  u8 Room = ColL[Kk] - ColU[Kk]
+  Room = Room * 8 - 17
+  return Top + RandBelow(Room)
+
+function RandBelow(u8 N) as u8
+  Rand
+  V = Rs & 255
+  return V mod N
+
+' the walls against the helicopter's box, in the 2 or 3 columns it covers
+function WallHit as u8
+  u8 Hit = 0
+  u8 Cc = (HX + 3) >> 3
+  u8 C1 = (HX + 13) >> 3
+  u8 Kk = 0
+  u8 Ty = HY + 4
+  u8 Bt = HY + 11
+  while Cc <= C1
+    Kk = (Head + Cc) & 31
+    if Ty <= ColU[Kk] * 8 + 3 then Hit = 1
+    if Bt >= ColL[Kk] * 8 + 4 then Hit = 1
+    inc Cc
+  end while
+  return Hit
+
+' the tunnel: every ScPer frames a column; the top half of the rows moves
+' in the first frame, the bottom half and the walls' table in the second,
+' the next column is worked out in the third (the asm writes it in)
+sub ScrollStep:
+  inc ScT
+  select case ScT
+    case 1
+      ScAddr = TopRow * 32 + $1800
+      ScOff = 0
+      call asm MdShift
+    case 2
+      ScAddr = MidRow * 32 + $1800
+      ScOff = 10
+      call asm MdShift
+      Head = (Head + 1) & 31
+      K = (Head + 31) & 31
+      ColU[K] = NU
+      ColL[K] = NL
+      ColD[K] = ND
+      inc ColSeq
+    case 3
+      NewColumn
+      BuildColumn
+    case ScPer
+      ScT = 0
+  end select
+  return
+end sub
+
+' the original's walk for the next column (into NU, NL, ND)
+sub NewColumn:
+  u8 Dn = 0
+  if Ptr < 13 then
+    Dn = 1
+  elseif Ptr >= 21 then
+    Dn = 0
+  else
+    Rand
+    Dn = (Rs >> 7) & 1
+  end if
+  if Dn = 1 then
+    if Prev <> 0 then inc Ptr
+    NL = Ptr
+    ND = 0
+    inc Ptr
+    Prev = 0
+  else
+    if Prev <> 1 then dec Ptr
+    NL = Ptr
+    ND = 1
+    dec Ptr
+    Prev = 1
+  end if
+  NU = NL - Gap
+  return
+end sub
+
+' the tile for row R of the column NU/NL/ND (column number Sq)
+function CellTile(u8 R, u8 Sq) as u8
+  u8 T = 32
+  if R < NU then
+    T = TRk0
+    if ((R + Sq) & 3) = 0 then T = TRk1
+  elseif R = NU then
+    T = TTd + ND
+  elseif R < NL then
+    T = 32
+  elseif R = NL then
+    T = TBd + ND
+  else
+    T = TRk0
+    if ((R * 3 + Sq) & 3) = 1 then T = TRk1
+  end if
+  return T
+
+' the 20 tiles of the new column into ScCol
+sub BuildColumn:
+  u8 Rr = 0
+  for Rr = 0 to 19
+    ScCol[Rr] = CellTile(Rr + TopRow, ColSeq)
+  next
+  return
+end sub
+
+' a unit every FuelPer frames; when empty the helicopter falls
+sub FuelStep:
+  inc FuelT
+  if FuelT < FuelPer then return
+  FuelT = 0
+  if Fuel > 0 then
+    dec Fuel
+    Dirty = 1
+    if Fuel < 9 then play sound SndLow
+    if Fuel = 0 then Falling = 1
+  end if
+  return
+end sub
+
+sub NewWave:
+  for Mi = 0 to 4
+    Ms[Mi].Alive = 1
+    Ms[Mi].X = 896
+    Ms[Mi].Y = SpawnY()
+  next
+  Left = 5
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the burst after a crash: 60 frames, the picture changing every 10
+sub Crash:
+  play sound SndCrash
+  ExX = HX
+  ExY = HY
+  for Di = 1 to 60
+    Frame1
+    K = (Di / 10) & 1
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+    if K = 0 then
+      set sprite 8 to ExY - 1,ExX,SEx1,11
+    else
+      set sprite 8 to ExY - 1,ExX,SEx0,9
+    end if
+    update sprites
+  next
+  set sprite 8 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the helicopter (canopy and rotor, body), 2 the shell,
+' 3-7 the missiles, 8 a burst
+sub DrawSprites:
+  K = (Tick >> 1) & 1
+  K = K * 4 + SHc0
+  set sprite 0 to HY - 1,HX,K,7
+  set sprite 1 to HY - 1,HX,SHb,11
+  if BX > 0 then
+    set sprite 2 to BY - 1,BX,SSh,15
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for Di = 0 to 4
+    J = Di + 3
+    if Ms[Di].Alive = 1 then
+      X = Ms[Di].X >> 2
+      set sprite J to Ms[Di].Y - 1,X,SMs,MsCol[Di]
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if ExT > 0 then
+    K = SEx1
+    if ExT > 8 then K = SEx0
+    set sprite 8 to ExY - 1,ExX,K,11
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score, "00"
+  print at 24,1, Hi, "00"
+  return
+end sub
+
+' 13 cells of 4 units; red from 12 units down
+sub ShowFuel:
+  u8 F = Fuel
+  u8 Base = TG0
+  u8 Cell = 0
+  if Fuel < 13 then Base = TH0
+  for Cell = 0 to 12
+    if F >= 4 then
+      put char Base + 4 at Cell + 7,22
+      F = F - 4
+    else
+      put char Base + F at Cell + 7,22
+      F = 0
+    end if
+  next
+  return
+end sub
+
+sub ShowTunnel:
+  NumU = Skill - TunLeft + 1
+  print at 22,22, "TUN ", digits$(NumU, 1), "/", digits$(Skill, 1)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  print at 2,1, "SCORE"
+  print at 21,1, "HI"
+  print at 2,22, "FUEL"
+  Score = 0
+  Gap = 10
+  if Skill = 4 then Gap = 9
+  ' the walk starts low, going up, as on the C64
+  Ptr = 21
+  Prev = 1
+  Head = 0
+  ColSeq = 0
+  for Ri = 0 to 31
+    NewColumn
+    ColU[Ri] = NU
+    ColL[Ri] = NL
+    ColD[Ri] = ND
+    for Di = TopRow to 21
+      put char CellTile(Di, ColSeq) at Ri,Di
+    next
+    inc ColSeq
+  next
+  NewColumn
+  BuildColumn
+  ' the helicopter in the middle of the gap at column 6
+  HXq = 40 * 4
+  W16 = ColU[6] + ColL[6]
+  W16 = W16 * 4 - 4
+  HYq = W16 * 4
+  HX = HXq >> 2
+  HY = HYq >> 2
+  TunLeft = Skill
+  NewWave
+  BX = 0
+  ScT = 0
+  Fuel = FuelMax
+  FuelT = 0
+  ExT = 0
+  Over = 0
+  Won = 0
+  Falling = 0
+  Started = 0
+  Shots = 0
+  Kills = 0
+  Cleared = 0
+  ShowScore
+  ShowFuel
+  ShowTunnel
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: MARAUDER in block letters over a strip of cave, the
+' helicopter crossing, START / TUNNELS / CREDITS, the best score, the tune
+sub TitlePage:
+  NewScreen
+  print at 7,1, "AHOY! FEBRUARY 1988"
+  copy TitleMap count 16 to vram.name + 104
+  copy TitleMap + 16 count 16 to vram.name + 136
+  copy TitleMap + 32 count 16 to vram.name + 168
+  print at 5,7, "BY CLEVELAND M. BLAKEMORE"
+  for J = 0 to 31
+    V = J & 3
+    if V = 0 then
+      put char TRk1 at J,9
+    else
+      put char TRk0 at J,9
+    end if
+    K = TTd + (J & 1)
+    put char K at J,10
+    K = TBu - (J & 1)
+    put char K at J,14
+    put char TRk0 at J,15
+  next
+  print at 12,17, "START"
+  print at 12,18, "TUNNELS"
+  print at 12,19, "CREDITS"
+  if Hi > 0 then
+    print at 9,21, "BEST ", Hi, "00"
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 450
+  TzOn = 1
+  HX = 16
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ' the generator turns every title frame: the wait seeds the game
+  Rand
+  ReadPad
+  TitleAnim
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      select case V
+        case 1
+          if Menu > 0 then dec Menu
+        case 2
+          if Menu < 2 then inc Menu
+        case 4
+          if Menu = 1 then
+            if Skill > 1 then dec Skill
+          end if
+        case 8
+          if Menu = 1 then
+            if Skill < 4 then inc Skill
+          end if
+      end select
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+' the helicopter flies across the title's cave strip
+sub TitleAnim:
+  inc HX
+  if HX > 224 then HX = 16
+  K = (Tick >> 1) & 1
+  K = K * 4 + SHc0
+  set sprite 0 to 94,HX,K,7
+  set sprite 1 to 94,HX,SHb,11
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,17
+  put char 32 at 10,18
+  put char 32 at 10,19
+  J = Menu + 17
+  put char 62 at 10,J
+  NumU = Skill
+  print at 20,18, "< ", digits$(NumU, 1), " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "MARAUDER"
+  print at 2,5, "BASED ON MARAUDER BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! FEBRUARY 1988"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: LOW PASS (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; MdShift: ten name-table rows from ScAddr (column 0) move one column
+; left (columns 1-31 to 0-30) and column 31 takes the next tile of
+; ScCol from ScOff on; 37 cycles or more between VDP accesses
+MdShift:
+    ld a,(AMY_UVAR_ScOff)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_ScCol
+    add hl,de
+    ld (AMY_UVAR_ColP),hl
+    ld hl,(AMY_UVAR_ScAddr)
+    ld b,10
+MdShRow:
+    push bc
+    push hl
+    inc hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld de,AMY_UVAR_ScBuf
+    ld b,31
+MdShRd:
+    in a,($BE)
+    ld (de),a
+    inc de
+    nop
+    djnz MdShRd
+    pop hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld de,AMY_UVAR_ScBuf
+    ld b,31
+MdShWr:
+    ld a,(de)
+    out ($BE),a
+    inc de
+    nop
+    djnz MdShWr
+    ld de,(AMY_UVAR_ColP)
+    ld a,(de)
+    out ($BE),a
+    inc de
+    ld (AMY_UVAR_ColP),de
+    ld de,32
+    add hl,de
+    pop bc
+    djnz MdShRow
+    ret
+MdZap:
+    db $40,$3E,$30,$01,$40,$4E,$40,$01,$40,$61,$40,$01,$40,$79,$50,$01,$40,$98,$50,$01,$40,$BE,$60,$01
+    db $50
+MdHit:
+    db $40,$7F,$20,$03,$40,$D6,$30,$04,$50
+MdBurst:
+    db $00,$00,$15,$03,$00,$00,$36,$05,$00,$00,$57,$08,$10
+MdCrash:
+    db $00,$00,$06,$06,$00,$00,$17,$08,$00,$00,$37,$0A,$00,$00,$57,$0E,$00,$00,$77,$10,$10
+MdLow:
+    db $40,$FE,$30,$04,$40,$FF,$F3,$04,$40,$FE,$30,$04,$50
+MdClear:
+    db $40,$AA,$20,$05,$40,$8F,$20,$05,$40,$71,$20,$05,$40,$55,$20,$0C,$50
+MdStart:
+    db $40,$53,$21,$06,$40,$FE,$20,$06,$40,$AA,$20,$0C,$50
+MdWon:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$20,$18,$50
+MdOver:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$AB,$31,$1E,$50
+
+MdSoundTable:
+    dw MdTuneMel,$702B
+    dw MdTuneBass,$7035
+    dw MdZap,$7049
+    dw MdHit,$7049
+    dw MdBurst,$703F
+    dw MdCrash,$703F
+    dw MdLow,$7049
+    dw MdClear,$7049
+    dw MdStart,$7049
+    dw MdWon,$7049
+    dw MdOver,$7049
+; Low Pass (original)
+; Tiny Sound, 7 frames per step
+MdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$01,$01,$26,$01,$01,$2A,$01,$28,$01,$26,$01
+    db $25,$01,$23,$01,$21,$01,$01,$23,$01,$01,$26,$01,$25,$01,$01,$01
+    db $21,$01,$1E,$01,$23,$01,$01,$26,$01,$01,$2A,$01,$2D,$01,$2A,$01
+    db $28,$01,$26,$01,$28,$01,$2A,$01,$01,$01,$26,$01,$23,$01,$01,$01
+    db $2F,$01,$00,$01
+    db $FF
+MdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0B,$0B,$12,$0B,$0B,$12,$0B,$12,$09,$09,$10,$09
+    db $09,$10,$09,$10,$07,$07,$0E,$07,$09,$09,$10,$09,$06,$06,$0D,$06
+    db $06,$0D,$06,$0D,$0B,$0B,$12,$0B,$0B,$12,$0B,$12,$07,$07,$0E,$07
+    db $09,$09,$10,$09,$06,$06,$0D,$06,$09,$09,$10,$09,$0B,$01,$01,$01
+    db $06,$01,$00,$01
+    db $FF
+}

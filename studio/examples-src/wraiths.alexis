@@ -1,0 +1,1065 @@
+cartridge "WRAITHS/C. M. BLAKEMORE/1987"
+
+' WRAITHS
+' A ColecoVision game based on "Wraiths" by Cleveland M. Blakemore, Ahoy!
+' June 1987 (Commodore 128, BASIC 7.0 with sprite motion and a small
+' raster routine). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/wraiths.bas), the game is built for the ColecoVision:
+' smooth 16 x 16 sprites in eight directions, spinning wraiths, a starry
+' sector, sound effects and an original title tune.
+'
+' The game: your rocket sits in the middle of a sector. Six wraiths wait
+' around it, then start to drift, each changing course at random every so
+' often, faster and faster. Turn, thrust and fire; a wraith hit by your
+' shot is gone (level x 100 points). Destroy all six to reach the next
+' level. A wraith touching your rocket costs a ship and the level starts
+' again with the wraiths that are left. Three ships; no end but the last
+' ship.
+'
+' From the original: the rocket in the middle, turned one step of 45
+' degrees at a time; a thrust that sets the rocket moving for good at its
+' slowest speed in the direction it faces (there is no brake: it coasts
+' and wraps round the sector); one shot on screen, fired from the rocket
+' in its direction at eight times the rocket's speed, a new shot replacing
+' the old (see liberties); six wraiths placed round the rocket at 90, 135, 180, 225, 270
+' and 315 degrees, standing still until chance moves them; each pass one
+' wraith picked at random (dead ones too) is given a random one of the
+' eight directions at the current speed; the speed starts at 1, 2 or 3 by
+' level (1-3, 4-5, 6 on) and grows a little every pass; 100 x level points
+' a wraith; three ships; losing one puts everything back in place at the
+' start speed; the messages WRAITHS ANNIHILATED!, PREPARE FOR LEVEL and WRAITHS
+' INVADE SECTOR!; the sprites wrap round the edges.
+'
+' Liberties: the controls are mapped to the stick (left/right turn, up
+' thrusts, a button fires) instead of the C128's fire + stick-in-the-
+' facing-direction thrust and stick-only turning (right half clockwise,
+' left half anticlockwise). Speeds in pixels a frame: rocket 1, shot 4,
+' wraiths from 6/16, 10/16 or 14/16 by level, plus 1/16 every 256
+' frames, up to 28/16. One wraith changes course every 4 frames. One shot
+' at a time: a new one only when the last has hit or faded, after 36
+' frames (144 pixels); on the C128 it flew round the screen until it hit
+' something, so one shot left flying cleared a level by itself, and a new
+' shot replaced the old, so spinning and firing beat aiming (fix as in
+' Sack Race: no winning by standing still or repeating one move). A shot
+' needs a fresh press. Losing a ship keeps the wraiths already destroyed
+' destroyed (C128: all six came back), so a player with human reactions
+' gets through the levels (bot.mjs, 15- and 25-frame reaction delays).
+' The sector wraps inside the visible area (columns 2-29, rows 2-22), not
+' round the C128's 512-pixel sprite space; the wraiths are placed 64
+' pixels from the rocket (C128: 120 units, mostly off the small screen).
+' Collisions are boxes round the sprites' centres instead of the VIC's
+' pixel coincidence. The colour-cycling death and kill effects (far
+' faster than 3 Hz) are bursts. A short GET READY pause before each life.
+' A high score. The title and credits pages and the tune are new.
+'
+' Controls: either controller; stick left/right turns, up thrusts, either
+' side button fires. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+'
+' Workarounds for Amy bugs jake-return-before-for removed 2026-11-01.
+
+const TSp = 128
+const TSt1 = 129
+const TSt2 = 130
+const TSt3 = 131
+const TRule = 132
+const TLife = 133
+const TBigW00 = 134
+const TBigW01 = 135
+const TBigW10 = 136
+const TBigW11 = 137
+const TBigR00 = 138
+const TBigR01 = 139
+const TBigR10 = 140
+const TBigR11 = 141
+const TBigA00 = 142
+const TBigA01 = 143
+const TBigA10 = 144
+const TBigA11 = 145
+const TBigI00 = 146
+const TBigI01 = 147
+const TBigI10 = 148
+const TBigI11 = 149
+const TBigT00 = 150
+const TBigT01 = 151
+const TBigT10 = 152
+const TBigT11 = 153
+const TBigH00 = 154
+const TBigH01 = 155
+const TBigH10 = 156
+const TBigH11 = 157
+const TBigS00 = 158
+const TBigS01 = 159
+const TBigS10 = 160
+const TBigS11 = 161
+const SShip0 = 0
+const SShip1 = 4
+const SShip2 = 8
+const SShip3 = 12
+const SShip4 = 16
+const SShip5 = 20
+const SShip6 = 24
+const SShip7 = 28
+const SShot = 32
+const SWr0 = 36
+const SWr1 = 40
+const SWr2 = 44
+const SWr3 = 48
+const SBoom0 = 52
+const SBoom1 = 56
+const SBoom2 = 60
+const NTiles8 = 272
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndTurn = 4
+const SndThrust = 5
+const SndZap = 6
+const SndCrash = 7
+const SndLevel = 8
+const SndStart = 9
+const SndOver = 10
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+const NSpr = 8
+const RotN = 6
+const MisN = 36
+const ShipSp = 16
+const MisSp = 64
+const WsMax = 28
+const DeadN = 90
+const ReadyN = 60
+const ClearN = 150
+const ShipR = 8
+const MisR = 6
+const XLo = 256
+const XHi = 3584
+const XW = 3328
+const YLo = 256
+const YHi = 2688
+const YH = 2432
+
+' direction tables (0 up, clockwise), 16 x the unit step, biased by 16
+data DXB bytes
+  16, 27, 32, 27, 16, 5, 0, 5
+end data
+data DYB bytes
+  0, 5, 16, 27, 32, 27, 16, 5
+end data
+' the wraiths' starting places (pixels): 90 .. 315 degrees, 64 out
+data WSX bytes
+  176, 157, 112, 67, 48, 67
+end data
+data WSY bytes
+  88, 133, 152, 133, 88, 43
+end data
+' start speed by level (1/16 pixel a frame)
+data WsLv bytes
+  6, 6, 6, 6, 10, 10, 14
+end data
+data WrCol bytes
+  7, 5, 7, 5, 7, 5
+end data
+
+' every moving thing: 0 the rocket, 1 the shot, 2-7 the wraiths;
+' positions and speeds in 1/16 pixel (speeds two's complement)
+record Obj:
+  u16 X
+  u16 Y
+  u16 Vx
+  u16 Vy
+  u8 Live
+  u8 Boom
+end record
+Obj Ob[8]
+
+bcd digits 6 Score
+bcd digits 6 Hi
+bcd digits 6 Pts
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Mode = 0
+u8 Lv = 1
+u8 Ships = 3
+u8 Phase = 0
+u8 MsgT = 0
+u8 DeadT = 0
+u8 Dir = 0
+u8 RotT = 0
+u8 MisT = 0
+u8 Ws = 6
+u8 PlayT = 0
+u8 Left = 6
+u8 Full = 1
+u8 Over = 0
+u8 Pick = 0
+u8 PDir = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Oi = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 Sx = 0
+u8 Sy = 0
+
+  tile screen
+  set sound table WrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  Mode = 4
+  if Score > Hi then Hi = Score
+  ShowHud
+  mute all
+  TzOn = 0
+  print at 4,10, "                        "
+  print at 4,11, " WRAITHS INVADE SECTOR! "
+  print at 4,12, "                        "
+  print at 4,13, "       GAME  OVER       "
+  print at 4,14, "                        "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  select case Phase
+  case 0
+    ' GET READY: the wraiths spin in place
+    dec MsgT
+    if MsgT = 0 then
+      Phase = 1
+      ClearMsg
+    end if
+  case 1
+    Control
+    MoveAll
+    Collide
+  case 2
+    ' the rocket bursts; the wraiths drift on
+    Wander
+    MoveWraiths
+    Booms
+    dec DeadT
+    if DeadT = 0 then
+      dec Ships
+      if Ships = 0 then
+        Over = 1
+      else
+        ' (liberty: the wraiths already destroyed stay destroyed)
+        Full = 0
+        StartLife
+      end if
+    end if
+  case 3
+    ' all six gone: the next level
+    Booms
+    dec MsgT
+    if MsgT = 0 then
+      if Lv < 99 then inc Lv
+      Pts += 100
+      Full = 1
+      StartLife
+    end if
+  end select
+  return
+end sub
+
+' the stick turns and thrusts, a fresh press fires
+sub Control:
+  V = Stick & 12
+  if V = 0 then
+    RotT = 0
+  else
+    if RotT = 0 then
+      if V = 4 then
+        Dir = Dir - 1
+      else
+        Dir = Dir + 1
+      end if
+      Dir = Dir & 7
+      RotT = RotN
+      play sound SndTurn
+    else
+      dec RotT
+    end if
+  end if
+  V = Stick & 1
+  if V > 0 then
+    Ob[0].Vx = Vel(DXB[Dir], ShipSp)
+    Ob[0].Vy = Vel(DYB[Dir], ShipSp)
+    V = PlayT & 7
+    if V = 0 then play sound SndThrust
+  end if
+  if Press = 1 and Ob[1].Live = 0 then
+    Ob[1].X = Ob[0].X
+    Ob[1].Y = Ob[0].Y
+    Ob[1].Vx = Vel(DXB[Dir], MisSp)
+    Ob[1].Vy = Vel(DYB[Dir], MisSp)
+    Ob[1].Live = 1
+    MisT = MisN
+    play sound SndShot
+  end if
+  return
+end sub
+
+' a unit step (biased by 16) times a speed, in 1/16 pixel, two's complement
+function Vel(u8 B, u8 S) as u16
+  u16 Wv = 0
+  Wv = B
+  Wv = Wv * S
+  Wv = Wv >> 4
+  return Wv - S
+
+sub MoveAll:
+  Wander
+  ' the wraiths speed up a little every 256 frames
+  if PlayT = 0 then
+    if Ws < WsMax then inc Ws
+  end if
+  MoveObj(0)
+  if Ob[1].Live = 1 then
+    MoveObj(1)
+    dec MisT
+    if MisT = 0 then Ob[1].Live = 0
+  end if
+  MoveWraiths
+  Booms
+  return
+end sub
+
+' every 4 frames one wraith (picked at random, dead or not) gets a new
+' course at the current speed
+sub Wander:
+  inc PlayT
+  V = PlayT & 3
+  if V <> 0 then return
+  Rand
+  Pick = Rs % 6
+  W16 = Rs >> 8
+  PDir = W16 & 7
+  Oi = Pick + 2
+  Ob[Oi].Vx = Vel(DXB[PDir], Ws)
+  Ob[Oi].Vy = Vel(DYB[PDir], Ws)
+  return
+end sub
+
+sub MoveWraiths:
+  for Oi = 2 to 7
+    if Ob[Oi].Live = 1 then MoveObj(Oi)
+  next
+  return
+end sub
+
+sub Booms:
+  for Oi = 0 to 7
+    if Ob[Oi].Boom > 0 then Ob[Oi].Boom = Ob[Oi].Boom - 1
+  next
+  return
+end sub
+
+' one step, wrapping round the sector
+sub MoveObj(u8 I):
+  u16 Nx = 0
+  u16 Ny = 0
+  Nx = Ob[I].X + Ob[I].Vx
+  if Nx < XLo then Nx = Nx + XW
+  if Nx >= XHi then Nx = Nx - XW
+  Ny = Ob[I].Y + Ob[I].Vy
+  if Ny < YLo then Ny = Ny + YH
+  if Ny >= YHi then Ny = Ny - YH
+  Ob[I].X = Nx
+  Ob[I].Y = Ny
+  return
+end sub
+
+' 1 when the centres of A and B are less than R pixels apart on both axes
+function Near(u8 A, u8 B, u8 R) as u8
+  u8 Ax = 0
+  u8 Bx = 0
+  u8 Res = 0
+  u16 Wa = 0
+  Wa = Ob[A].X >> 4
+  Ax = Wa
+  Wa = Ob[B].X >> 4
+  Bx = Wa
+  if absdiff(Ax, Bx) < R then
+    Wa = Ob[A].Y >> 4
+    Ax = Wa
+    Wa = Ob[B].Y >> 4
+    Bx = Wa
+    if absdiff(Ax, Bx) < R then Res = 1
+  end if
+  return Res
+
+sub Collide:
+  for Ci = 2 to 7
+    if Ob[Ci].Live = 1 then
+      if Ob[1].Live = 1 then
+        if Near(1, Ci, MisR) = 1 then
+          Ob[Ci].Live = 0
+          Ob[Ci].Boom = 24
+          Ob[1].Live = 0
+          Score += Pts
+          dec Left
+          ShowScore
+          play sound SndZap
+        end if
+      end if
+    end if
+    if Phase = 1 then
+      if Ob[Ci].Live = 1 then
+        if Near(0, Ci, ShipR) = 1 then
+          Phase = 2
+          DeadT = DeadN
+          Ob[0].Boom = DeadN
+          Ob[1].Live = 0
+          play sound SndCrash
+        end if
+      end if
+    end if
+  next
+  if Phase = 1 then
+    if Left = 0 then
+      Phase = 3
+      MsgT = ClearN
+      print at 5,10, "                    "
+      print at 5,11, "WRAITHS ANNIHILATED!"
+      print at 5,12, "                    "
+      NumU = Lv + 1
+      print at 5,13, " PREPARE FOR LEVEL" + digits$(NumU, 2)
+      print at 5,14, "                    "
+      play sound SndLevel
+    end if
+  end if
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a new life (or level): the rocket in the middle, all six wraiths round it
+sub StartLife:
+  Ob[0].X = 1792
+  Ob[0].Y = 1408
+  Ob[0].Vx = 0
+  Ob[0].Vy = 0
+  Ob[0].Live = 1
+  Ob[0].Boom = 0
+  Ob[1].Live = 0
+  Ob[1].Boom = 0
+  PlaceWraiths
+  Dir = 0
+  RotT = 0
+  MisT = 0
+  PlayT = 0
+  if Full = 1 then Left = 6
+  V = Lv
+  if V > 6 then V = 6
+  Ws = WsLv[V]
+  Phase = 0
+  MsgT = ReadyN
+  ClearMsg
+  ShowHud
+  NumU = Lv
+  print at 10,11, "  LEVEL " + digits$(NumU, 2) + "  "
+  print at 10,13, " GET READY  "
+  return
+end sub
+
+sub PlaceWraiths:
+  for Oi = 2 to 7
+    K = Oi - 2
+    W16 = WSX[K]
+    Ob[Oi].X = W16 << 4
+    W16 = WSY[K]
+    Ob[Oi].Y = W16 << 4
+    Ob[Oi].Vx = 0
+    Ob[Oi].Vy = 0
+    if Full = 1 then Ob[Oi].Live = 1
+    Ob[Oi].Boom = 0
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawSprites:
+  ' the rocket (or its burst)
+  if Mode <> 3 then
+    set sprite 0 to 192,0,0,0
+  else
+    W16 = Ob[0].X >> 4
+    Sx = W16
+    W16 = Ob[0].Y >> 4
+    Sy = W16 - 1
+    if Phase = 2 then
+      K = BoomPat(Ob[0].Boom)
+      if Ob[0].Boom < 30 then
+        set sprite 0 to 192,0,0,0
+      else
+        set sprite 0 to Sy,Sx,K,9
+      end if
+    else
+      K = Dir << 2
+      set sprite 0 to Sy,Sx,K,15
+    end if
+  end if
+  ' the shot
+  if Ob[1].Live = 1 then
+    W16 = Ob[1].X >> 4
+    Sx = W16
+    W16 = Ob[1].Y >> 4
+    Sy = W16 - 1
+    set sprite 1 to Sy,Sx,SShot,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for Si = 2 to 7
+    W16 = Ob[Si].X >> 4
+    Sx = W16
+    W16 = Ob[Si].Y >> 4
+    Sy = W16 - 1
+    if Ob[Si].Live = 1 then
+      V = Tick >> 3
+      V = V + Si
+      V = V & 3
+      K = V << 2
+      K = K + SWr0
+      C = WrCol[Si - 2]
+      set sprite Si to Sy,Sx,K,C
+    elseif Ob[Si].Boom > 0 then
+      K = BoomPat(Ob[Si].Boom)
+      set sprite Si to Sy,Sx,K,11
+    else
+      set sprite Si to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the burst pattern for a countdown (24 frames for a wraith, 90 the rocket)
+function BoomPat(u8 Bt) as u8
+  u8 P = SBoom2
+  select case Bt
+  case 17 to 24
+    P = SBoom0
+  case 9 to 16
+    P = SBoom1
+  case 75 to 90
+    P = SBoom0
+  case 60 to 74
+    P = SBoom1
+  end select
+  return P
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 15,1, "LEVEL"
+  ShowScore
+  NumU = Lv
+  print at 21,1, digits$(NumU, 2)
+  fill 32 count 6 at 24,1
+  if Ships < 2 then return
+  for Ri = 2 to Ships
+    J = 22 + Ri
+    put char TLife at J,1
+  next
+  return
+end sub
+
+sub ShowScore:
+  print Score at 8,1
+  return
+end sub
+
+' a row of the sector's stars (Ri); always the same stars
+sub StarRow:
+  for J = 0 to 31
+    V = J * 7
+    V = V + Ri * 13
+    V = V ^ (J * Ri)
+    V = V & 31
+    select case V
+    case 3
+      T = TSt1
+    case 11
+      T = TSt3
+    case 22
+      T = TSt2
+    case 27
+      T = TSt1
+    case else
+      T = TSp
+    end select
+    put char T at J,Ri
+  next
+  return
+end sub
+
+sub DrawField:
+  for Ri = 2 to 22
+    StarRow
+  next
+  return
+end sub
+
+sub ClearMsg:
+  for Ri = 10 to 14
+    StarRow
+  next
+  return
+end sub
+
+sub NewGame:
+  Mode = 3
+  Score = 0
+  Pts = 100
+  Lv = 1
+  Ships = 3
+  Over = 0
+  Full = 1
+  NewScreen
+  DrawField
+  StartLife
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Stick = V & 15
+  ' left and right together: neither
+  if Stick & 12 = 12 then Stick = Stick & 3
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub BigWord:
+  ' W R A I T H S, two tiles wide with a gap
+  BigAt(TBigW00, 6)
+  BigAt(TBigR00, 9)
+  BigAt(TBigA00, 12)
+  BigAt(TBigI00, 15)
+  BigAt(TBigT00, 18)
+  BigAt(TBigH00, 21)
+  BigAt(TBigS00, 24)
+  return
+end sub
+
+sub BigAt(u8 Tb, u8 Col):
+  put char Tb at Col,4
+  put char Tb + 1 at Col + 1,4
+  put char Tb + 2 at Col,5
+  put char Tb + 3 at Col + 1,5
+  return
+end sub
+
+' the title: the name, six wraiths drifting, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  Mode = 2
+  NewScreen
+  DrawField
+  for Ri = 3 to 18
+    fill 32 count 24 at 4,Ri
+  next
+  BigWord
+  print at 4,8, "BY CLEVELAND M. BLAKEMORE"
+  print at 8,10, "AHOY! JUNE 1987"
+  print at 11,13, "START GAME"
+  print at 11,15, "CREDITS"
+  print at 7,17, "HI"
+  print Hi at 10,17
+  ShowMenu
+  Lv = 1
+  Ws = 10
+  Full = 1
+  PlaceWraiths
+  Ob[0].Live = 0
+  Ob[1].Live = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Wander
+  MoveWraiths
+  DrawSprites
+  V = Stick & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,15
+  J = Menu + Menu
+  J = J + 13
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  Mode = 1
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "WRAITHS"
+  print at 2,5, "BASED ON WRAITHS BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! JUNE 1987"
+  print at 2,8, "(COMMODORE 128)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SECTOR HAUNT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$20,$70,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$38,$38,$83,$01,$92,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$1C
+  $00,$0E,$0E,$0E,$0E,$0E,$0E,$8E
+  $1C,$1C,$1C,$03,$03,$E0,$E0,$00
+  $8E,$8E,$8E,$81,$81,$0E,$0E,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$1C,$1C,$E0,$E0,$E0,$E0,$00
+  $F0,$80,$80,$70,$70,$0E,$0E,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$01
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$00,$00,$00
+  $80,$80,$80,$80,$80,$01,$01,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$03,$03,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$01,$01,$00,$00,$00,$00,$F0
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $F0,$0E,$0E,$0E,$0E,$F0,$F0,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$01,$01,$04,$05,$01,$01,$01
+  $F1,$F1,$F1,$F1,$1F,$1F,$F1,$01
+  $01,$F1,$F1,$F1,$71,$71,$71,$17
+  $01,$F1,$F1,$F1,$71,$71,$71,$71
+  $17,$17,$15,$15,$15,$51,$41,$01
+  $71,$71,$51,$15,$15,$51,$41,$01
+  $01,$0F,$0F,$F1,$71,$71,$71,$07
+  $01,$F1,$F1,$F1,$71,$71,$71,$71
+  $07,$17,$15,$51,$51,$51,$41,$01
+  $71,$71,$51,$51,$51,$51,$41,$01
+  $01,$1F,$1F,$F1,$71,$71,$71,$07
+  $01,$F1,$F1,$F1,$71,$71,$71,$17
+  $07,$71,$51,$51,$51,$51,$41,$01
+  $17,$71,$51,$51,$51,$51,$41,$01
+  $01,$0F,$0F,$F1,$71,$71,$71,$71
+  $01,$1F,$1F,$F1,$71,$71,$71,$71
+  $71,$71,$51,$51,$51,$05,$04,$01
+  $71,$71,$51,$51,$51,$15,$14,$01
+  $01,$0F,$0F,$F1,$71,$71,$71,$71
+  $01,$1F,$1F,$F1,$71,$71,$71,$71
+  $71,$71,$51,$51,$51,$51,$41,$01
+  $71,$71,$51,$51,$51,$51,$41,$01
+  $01,$F1,$F1,$F1,$71,$71,$71,$07
+  $01,$F1,$F1,$F1,$71,$71,$71,$17
+  $07,$71,$51,$51,$51,$51,$41,$01
+  $17,$71,$51,$51,$51,$51,$41,$01
+  $01,$1F,$1F,$F1,$71,$71,$71,$17
+  $01,$1F,$1F,$01,$01,$01,$01,$71
+  $17,$01,$01,$01,$01,$05,$04,$01
+  $71,$71,$51,$51,$51,$51,$41,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$03,$03,$02,$07,$07,$0F,$1F,$3B,$33,$23,$02,$06,$00
+  $00,$80,$80,$C0,$C0,$40,$E0,$E0,$F0,$F8,$DC,$CC,$C4,$40,$60,$00
+  $00,$00,$00,$00,$00,$00,$01,$13,$1F,$0F,$07,$0D,$18,$30,$00,$00
+  $00,$02,$06,$1E,$3E,$FC,$F8,$E0,$E0,$E0,$E0,$E0,$E0,$60,$40,$00
+  $00,$00,$1C,$0E,$07,$43,$7F,$1F,$1F,$7F,$43,$07,$0E,$1C,$00,$00
+  $00,$00,$00,$00,$00,$C0,$F8,$DE,$DE,$F8,$C0,$00,$00,$00,$00,$00
+  $00,$00,$20,$31,$1B,$0F,$07,$0F,$1F,$7F,$3F,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$00,$80,$C0,$E0,$E0,$F0,$78,$78,$3C,$1E,$00
+  $00,$06,$02,$23,$33,$3B,$1F,$0F,$07,$07,$02,$03,$03,$01,$01,$00
+  $00,$60,$40,$C4,$CC,$DC,$F8,$F0,$E0,$E0,$40,$C0,$C0,$80,$80,$00
+  $00,$02,$06,$07,$07,$07,$07,$07,$07,$1F,$3F,$7C,$78,$60,$40,$00
+  $00,$00,$0C,$18,$B0,$E0,$F0,$F8,$C8,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$1F,$7B,$7B,$1F,$03,$00,$00,$00,$00,$00
+  $00,$00,$38,$70,$E0,$C2,$FE,$F8,$F8,$FE,$C2,$E0,$70,$38,$00,$00
+  $00,$78,$3C,$1E,$1E,$0F,$07,$07,$03,$01,$00,$00,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$FC,$FE,$F8,$F0,$E0,$F0,$D8,$8C,$04,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$1C,$18,$32,$30,$38,$38,$3C,$1F,$07,$03,$00
+  $00,$00,$00,$C0,$C0,$00,$00,$40,$07,$0E,$0E,$3C,$FC,$F8,$E0,$00
+  $00,$00,$0F,$1F,$1E,$38,$70,$72,$70,$70,$78,$38,$3E,$1F,$07,$00
+  $00,$00,$80,$E0,$70,$38,$18,$58,$18,$18,$00,$00,$00,$80,$80,$80
+  $00,$07,$1F,$3F,$3C,$70,$70,$62,$E0,$00,$00,$03,$03,$00,$00,$00
+  $00,$C0,$E0,$F8,$3C,$1C,$1C,$4C,$0C,$18,$38,$F0,$E0,$00,$00,$00
+  $01,$01,$01,$00,$00,$00,$18,$1A,$18,$18,$1C,$0E,$07,$01,$00,$00
+  $00,$E0,$F8,$7C,$1C,$1E,$0E,$4E,$0E,$0E,$1C,$78,$F8,$F0,$00,$00
+  $00,$00,$00,$00,$00,$03,$02,$06,$07,$02,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$C0,$60,$60,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$02,$00,$04,$00,$10,$08,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$10,$08,$00,$20,$00,$40,$80,$00,$00,$00
+  $00,$04,$00,$08,$00,$10,$00,$40,$00,$20,$00,$08,$00,$01,$08,$00
+  $00,$00,$20,$84,$00,$00,$08,$00,$08,$00,$04,$00,$40,$08,$00,$00
+end data
+
+asm {
+WrShot:
+    db $40,$40,$10,$02,$40,$50,$20,$02,$40,$5F,$30,$02,$40,$71,$50,$03,$50
+WrTurn:
+    db $40,$FC,$61,$01,$50
+WrThrust:
+    db $00,$00,$46,$03,$00,$00,$66,$03,$10
+WrZap:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$56,$0A,$10
+WrCrash:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$26,$0A,$00,$00,$46,$0E,$00,$00,$67,$14,$10
+WrLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$14,$50
+WrStart:
+    db $40,$53,$21,$06,$40,$FE,$20,$06,$40,$CA,$20,$06,$40,$AA,$20,$0E,$50
+WrOver:
+    db $40,$FE,$10,$0C,$40,$0E,$21,$0C,$40,$1D,$21,$0C,$40,$3B,$22,$1E,$50
+
+WrSoundTable:
+    dw WrTuneMel,$702B
+    dw WrTuneBass,$7035
+    dw WrShot,$7049
+    dw WrTurn,$7049
+    dw WrThrust,$703F
+    dw WrZap,$703F
+    dw WrCrash,$703F
+    dw WrLevel,$7049
+    dw WrStart,$7049
+    dw WrOver,$7049
+; Sector Haunt (original)
+; Tiny Sound, 8 frames per step
+WrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$1E,$01,$01,$1A,$01,$19,$01,$1A,$01
+    db $1E,$01,$23,$01,$21,$01,$01,$1C,$01,$01,$19,$01,$17,$01,$19,$01
+    db $1C,$01,$21,$01,$1F,$01,$01,$1A,$01,$17,$01,$1A,$01,$1E,$01,$01
+    db $22,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$1A,$01,$19,$01,$17,$01
+    db $01,$01,$00,$01
+    db $FF
+WrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$0E,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

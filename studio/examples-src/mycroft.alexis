@@ -1,0 +1,2505 @@
+cartridge "MYCROFT MEWS/JOHN R. PRAGER/1985"
+
+' MYSTERY AT MYCROFT MEWS - a whodunit for 1 to 6 detectives
+' A ColecoVision game based on "Mystery at Mycroft Mews" by John R.
+' Prager, Ahoy! October 1985 (Commodore 64, BASIC).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/mycroft.bas), the game is rebuilt for the ColecoVision: a
+' drawn lane of sixteen shops at night, a detective who walks from door to
+' door, a gliding hand in the menus, sound effects and an original tune.
+'
+' The game: someone in the Mews has been murdered. Each turn a detective
+' walks to one of the sixteen buildings (the map keeps their places
+' secret until visited), sees who and what is there, and does one thing:
+' search, interrogate a suspect (three questions), take, drop or hide an
+' item, read the coroner's report (morgue), examine records (law office,
+' clinic, bank), read the victim's papers, fingerprint an item or accuse
+' (police station). To win, accuse at the police station with the right
+' victim, murderer, weapon and motive; a wrong accusation puts the
+' detective out of the game. Suspects wander between turns.
+'
+' From the original: the twelve suspects, their hobbies, the twelve
+' weapons (four ways to kill), the ledger / will / diary and the three
+' motives (blackmail, inheritance, madness), the master key, magnifying
+' lens and police badge at the police station; the victim's building
+' locked except to the key holder; weapons hidden at their owner's place
+' (the murder weapon never at the murderer's), the papers hidden at the
+' victim's; searching finds each hidden item 6 times in 10 (always with
+' the lens); one item carried; suspects answer truthfully 3 times in 4,
+' refuse 1 time in 5 unless you hold the badge, and the murderer always
+' denies owning the weapon or that it was the weapon; every answer table
+' of lines 2200-4090 with the listing's odds; alibis (the murderer's is
+' never a confirmable one), bank levels, will and clinic files (lines
+' 230-290); suspects move at random after each round, the owner stays at
+' home while a detective is in his building; a false arrest eliminates;
+' the solution at the end.
+'
+' Liberties:
+' - Hand-the-controller flow instead of secret codes. The C64 asked each
+'   player for a two-key secret code on the shared screen so nobody could
+'   take another's turn; on one controller that protects nothing. Before
+'   each turn (with two or more detectives) a blank screen asks to pass
+'   the controller to DETECTIVE #n and press the button when ready, and
+'   at the end of a turn the screen is cleared before the next hand-off,
+'   so no one's findings stay on screen.
+' - Solo play: one detective plays alone (the listing allowed 1 player);
+'   the game counts the rounds and gives a rating when the case is solved.
+' - The map labels a building with a short name once any detective has
+'   entered it (the C64 showed nothing: players had to remember the
+'   shuffled places), and names it on the bottom line under the walker.
+' - The walker hops from door to door (one building per stick tap)
+'   instead of drifting in quarter steps.
+' - Fixed listing bugs: "<suspect> OWNS" always named the elephant gun
+'   when truthful (A=-1*YN): here the truthful answer names a weapon the
+'   suspect owns (or the new car if none). "I THINK THAT PLAYER #X HAS"
+'   picked X from 1-57 when lying: here from the players in the game.
+' - Text re-wrapped for 28 columns; the C64's jingles replaced by own
+'   sounds; menus driven by the stick, YES / NO as a menu.
+'
+' Controls: either controller. Map: the stick walks to the next building
+' (left, right, up, down), a side button enters. Menus: up/down and a
+' button. Interrogation: the last line switches between asking about
+' suspects and about items.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes.
+
+const TCobble = 128
+const TKerb = 129
+const TRoofl_red = 130
+const TRoofm_red = 131
+const TRoofr_red = 132
+const TRoofl_blue = 133
+const TRoofm_blue = 134
+const TRoofr_blue = 135
+const TRoofl_green = 136
+const TRoofm_green = 137
+const TRoofr_green = 138
+const TRoofl_mag = 139
+const TRoofm_mag = 140
+const TRoofr_mag = 141
+const TWall = 142
+const TWinlit = 143
+const TWindark = 144
+const TDoorl = 145
+const TDoorr = 146
+const TLamp = 147
+const TRule = 148
+const TMoon = 149
+const TStar = 150
+const SCoat = 0
+const SFace = 4
+const SHand = 8
+const NTiles8 = 184
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndTick = 4
+const SndPick = 5
+const SndDoor = 6
+const SndKnock = 7
+const SndChime = 8
+const SndSiren = 9
+const SndWin = 10
+const SndLose = 11
+data TilePat bytes
+  $00,$99,$99,$00,$99,$99,$00,$00
+  $00,$00,$99,$99,$00,$99,$99,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$81,$00,$00,$10,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$81,$00,$00,$10,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$81,$00,$00,$10,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$81,$00,$00,$10,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$10,$10,$00,$01,$01,$01,$00
+  $00,$00,$99,$99,$00,$99,$00,$00
+  $00,$00,$99,$99,$00,$99,$00,$00
+  $01,$03,$07,$07,$07,$07,$07,$07
+  $80,$C0,$E0,$E0,$E0,$E0,$E0,$E0
+  $18,$C3,$18,$18,$18,$18,$18,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $1C,$C1,$87,$70,$70,$87,$C1,$1C
+  $00,$00,$10,$38,$10,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$1E,$1E,$01,$E1,$E1,$01,$01
+  $0E,$01,$1E,$1E,$01,$E1,$E1,$01
+  $81,$81,$81,$18,$18,$18,$16,$0E
+  $08,$08,$68,$08,$08,$68,$06,$0E
+  $81,$81,$81,$81,$18,$18,$16,$0E
+  $51,$51,$51,$15,$15,$15,$14,$0E
+  $05,$05,$45,$05,$05,$45,$04,$0E
+  $51,$51,$51,$51,$15,$15,$14,$0E
+  $31,$31,$31,$13,$13,$13,$1C,$0E
+  $03,$03,$C3,$03,$03,$C3,$0C,$0E
+  $31,$31,$31,$31,$13,$13,$1C,$0E
+  $D1,$D1,$D1,$1D,$1D,$1D,$16,$0E
+  $0D,$0D,$6D,$0D,$0D,$6D,$06,$0E
+  $D1,$D1,$D1,$D1,$1D,$1D,$16,$0E
+  $0A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0A,$06,$6B,$6B,$06,$6B,$06,$0A
+  $0A,$06,$64,$64,$06,$64,$06,$0A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $B1,$1B,$B1,$E1,$E1,$E1,$E1,$1E
+  $01,$01,$01,$0B,$0A,$01,$01,$01
+  $B1,$1B,$1B,$B1,$B1,$1B,$1B,$B1
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+end data
+data SpritePat bytes
+  $03,$07,$00,$00,$07,$0F,$1B,$1B,$03,$03,$03,$02,$02,$02,$06,$00
+  $C0,$E0,$00,$00,$E0,$F0,$D8,$D8,$C0,$C0,$C0,$40,$40,$40,$60,$00
+  $00,$00,$03,$01,$00,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$80,$00,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$FF,$FF,$FF,$03,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$F8,$FC,$F8,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+const XS1 = 0
+const XS2 = 1
+const XS3 = 2
+const XS4 = 3
+const XS5 = 4
+const XS6 = 5
+const XS7 = 6
+const XS8 = 7
+const XS9 = 8
+const XS10 = 9
+const XS11 = 10
+const XS12 = 11
+const XH0 = 12
+const XH1 = 13
+const XH2 = 14
+const XH3 = 15
+const XH4 = 16
+const XH5 = 17
+const XH6 = 18
+const XH7 = 19
+const XH8 = 20
+const XH9 = 21
+const XH10 = 22
+const XH11 = 23
+const XH12 = 24
+const XB1 = 25
+const XB2 = 26
+const XB3 = 27
+const XB4 = 28
+const XB5 = 29
+const XB6 = 30
+const XB7 = 31
+const XB8 = 32
+const XB9 = 33
+const XB10 = 34
+const XB11 = 35
+const XB12 = 36
+const XB13 = 37
+const XB14 = 38
+const XB15 = 39
+const XB16 = 40
+const XI1 = 41
+const XI2 = 42
+const XI3 = 43
+const XI4 = 44
+const XI5 = 45
+const XI6 = 46
+const XI7 = 47
+const XI8 = 48
+const XI9 = 49
+const XI10 = 50
+const XI11 = 51
+const XI12 = 52
+const XI13 = 53
+const XI14 = 54
+const XI15 = 55
+const XI16 = 56
+const XD1 = 57
+const XD2 = 58
+const XD3 = 59
+const XP0 = 60
+const XP1 = 61
+const XP2 = 62
+const XP3 = 63
+const XP4 = 64
+const XP5 = 65
+const XP6 = 66
+const XP7 = 67
+const XA0 = 68
+const XA1 = 69
+const XA2 = 70
+const XA3 = 71
+const XA4 = 72
+const XA5 = 73
+const XF0 = 74
+const XF1 = 75
+const XF2 = 76
+const XF3 = 77
+const XF4 = 78
+const XF5 = 79
+const XF6 = 80
+const XF7 = 81
+const XF8 = 82
+const XF9 = 83
+const XF10 = 84
+const XKv0 = 85
+const XKv1 = 86
+const XKv2 = 87
+const XKv3 = 88
+const XKm0 = 89
+const XKm1 = 90
+const XKm2 = 91
+const XKm3 = 92
+const XBk0 = 93
+const XBk1 = 94
+const XBk2 = 95
+const XBk3 = 96
+const XBk4 = 97
+const XBk5 = 98
+const XBk6 = 99
+const XYouAre = 100
+const XYouHave = 101
+const XNoItem = 102
+const XYouSee = 103
+const XThe = 104
+const XPlayer = 105
+const XWithItem = 106
+const XNothing = 107
+const XDot = 108
+const XComma = 109
+const XColon = 110
+const XQuest = 111
+const XApos = 112
+const XOptions = 113
+const XSearch = 114
+const XInterro = 115
+const XTake = 116
+const XFinger = 117
+const XAccuse = 118
+const XCoroner = 119
+const XRead = 120
+const XDrop = 121
+const XExamine = 122
+const XRecords = 123
+const XReport = 124
+const XChoose = 125
+const XYouFind = 126
+const XNoInt = 127
+const XTakeQ = 128
+const XYes = 129
+const XNo = 130
+const XWhichOne = 131
+const XLabRep = 132
+const XBears = 133
+const XNoSusp = 134
+const XCorRep = 135
+const XSubjIs = 136
+const XFemale = 137
+const XMale = 138
+const XApprox = 139
+const XYearsOld = 140
+const XSubjWas = 141
+const XByA = 142
+const XHideQ = 143
+const XYouDrop = 144
+const XHidden = 145
+const XYouTake = 146
+const XItemOf = 147
+const XExtract = 148
+const XOf = 149
+const XAboutWho = 150
+const XAboutWhat = 151
+const XAnItem = 152
+const XASuspect = 153
+const XOn = 154
+const XNotRec = 155
+const XNewWill = 156
+const XNewWill2 = 157
+const XInherit1 = 158
+const XInherit2 = 159
+const XInherit3 = 160
+const XNotFiles = 161
+const XPara1 = 162
+const XPara2 = 163
+const XPara3 = 164
+const XPara4 = 165
+const XAccount = 166
+const XInterr = 167
+const XGossip = 168
+const XNoTime = 169
+const XNoTime2 = 170
+const XIWasWith = 171
+const XOnNight = 172
+const XCantConf = 173
+const XAlibi = 174
+const XDidIt = 175
+const XOwns = 176
+const XNewCar = 177
+const XIs = 178
+const XTragic = 179
+const XGone = 180
+const XSuicide = 181
+const XIThink = 182
+const XMurdered = 183
+const XIHeard = 184
+const XWasKilled = 185
+const XWas = 186
+const XIOwn = 187
+const XIWas = 188
+const XOnCrime = 189
+const XIAm = 190
+const XI = 191
+const XDoNot = 192
+const XOwn = 193
+const XNotSure = 194
+const XYouHaveT = 195
+const XDontYou = 196
+const XIThinkP = 197
+const XHas = 198
+const XIveGot = 199
+const XISaw = 200
+const XNot = 201
+const XTheWeapon = 202
+const XAccuse2 = 203
+const XWhoKilled = 204
+const XWhoKill = 205
+const XWhatWeap = 206
+const XUse = 207
+const XWhyDid = 208
+const XCommit = 209
+const XArrest = 210
+const XDots = 211
+const XFalse1 = 212
+const XFalse2 = 213
+const XFalse3 = 214
+const XAllOut = 215
+const XAllOut2 = 216
+const XNobody = 217
+const XCracked = 218
+const XCase = 219
+const XWins = 220
+const XSolution = 221
+const XUsing = 222
+const XBecause = 223
+const XEndTurn = 224
+const XPress = 225
+const XLocked = 226
+const XTryAnother = 227
+const XMoveTo = 228
+const XUnknown = 229
+const XForOpts = 230
+const XTurnOf = 231
+const XPassTo = 232
+const XLookAway = 233
+const XWhenReady = 234
+const XTurn = 235
+const XSolvedIn = 236
+const XTurns = 237
+const XRating = 238
+const XRateA = 239
+const XRateB = 240
+const XRateC = 241
+data DocFirst bytes
+  0, 0, 7, 11
+end data
+data DocCount bytes
+  0, 7, 4, 8
+end data
+data DocTxt chars
+  "I HAVE THREATENED TO TELL   "
+  "THE POLICE ALL THAT I KNOW  "
+  "ABOUT THEIR CRIMINAL        "
+  "ACTIVITIES IF ANY OF THESE  "
+  "PEOPLE DOESN'T PAY ME       "
+  "ANOTHER $9000 BY            "
+  "MIDNIGHT SUNDAY...          "
+  "I HEREBY BEQUEATH ONE       "
+  "HUNDRED MILLION DOLLARS TO  "
+  "EACH OF THESE LOYAL AND     "
+  "FAITHFUL FRIENDS...         "
+  "DEAR DIARY---               "
+  "I FOUND ANOTHER ANONYMOUS   "
+  "LETTER IN THE MAIL THIS     "
+  "MORNING. MY LIFE IS IN      "
+  "DANGER FROM A JEALOUS       "
+  "LUNATIC. THE HANDWRITING    "
+  "COULD BE THAT OF ANY OF     "
+  "THESE PEOPLE...             "
+end data
+data ShortN chars
+  "LAW   "
+  "CLINIC"
+  "DELI  "
+  "THEATR"
+  "HOTEL "
+  "GALLRY"
+  "BANK  "
+  "LIBRY "
+  "BAKERY"
+  "PAWN  "
+  "CHURCH"
+  "PUB   "
+  "MALL  "
+  "MORGUE"
+  "WAREHS"
+  "POLICE"
+end data
+data Txt chars
+  "PHYLLIS WRITDR. WILMA LIBIDOHANNAH NOSHEDITH SCRIMCHERYL VAL"
+  "ISEDESIREE OCHREEMILIO LUCREMORTON SCREEDJOSEPH CRULLERNORMA"
+  "N HOCKREV. ARTHUR TRANSEPTEDGAR QUAFFA STAMP COLLECTORA BIG-"
+  "GAME HUNTERAN ARCHERY EXPERTA SPORTS FANA PEST EXTERMINATORA"
+  " GUN COLLECTORA MASTER FENCERA CANDELABRA FANCIERAN INSOMNIA"
+  "CA MARKSMANA CHAMPION KNITTERA TOOL COLLECTORA HERPETOLOGIST"
+  "LAW OFFICEMENTAL HEALTH CLINICDELICATESSENTHEATREHOTELART GA"
+  "LLERYBANKLIBRARYBAKERYPAWN SHOPCHURCHPUBSHOPPING MALLMORGUEW"
+  "AREHOUSEPOLICE STATIONELEPHANT GUNANTIQUE CROSSBOWBASEBALL B"
+  "ATBOX OF RAT POISONARQUEBUSSCIMITARBRASS CANDLESTICKJAR OF S"
+  "LEEPING PILLS.45 AUTOMATICKNITTING NEEDLEBALL-PEEN HAMMERVIA"
+  "L OF SNAKE VENOMLEDGERMASTER KEYMAGNIFYING LENSPOLICE BADGEL"
+  "EDGERWILLDIARYSHEHEHERHIMHERHISSHE'SHE'SAT HOME ALONESICK IN"
+  " BEDOUT OF TOWNAT A PARTYAT THE THEATREIN CHURCHWAS BEING BL"
+  "ACKMAILEDHAS NO SECRETS TO HIDEWILL INHERIT MILLIONSIS NOT A"
+  " LEGATEEIS A HOMICIDAL MANIACIS AS SANE AS I AMA BLACKMAILER"
+  "EXTREMELY WEALTHYRECEIVING DEATH THREATSI DON'T KNOW WHERE T"
+  "HATOBJECT IS.POISONEDSHOTIMPALEDBLUDGEONEDAN UNIDENTIFIED TO"
+  "XINA GUNA SHARP WEAPONA BLUNT INSTRUMENTNOOVERDRAWNMINIMUMAV"
+  "ERAGESIGNIFICANTSUBSTANTIALMAXIMUMYOU ARE AT THEYOU HAVENO I"
+  "TEM.YOU SEE:THEDETECTIVE #(WITH AN ITEM)NOTHING WORTH MENTIO"
+  "NING..,:?'STURN OPTIONSSEARCHINTERROGATE SUSPECTTAKE ITEMFIN"
+  "GERPRINT ITEMACCUSE A SUSPECTREAD CORONER'S REPORTREADDROP O"
+  "R HIDE ITEMEXAMINERECORDSREPORTCHOOSE ONEYOU FIND:NOTHING OF"
+  " INTEREST.TAKE AN ITEM?YESNOWHICH ONE?LAB REPORT:BEARS THE F"
+  "INGERPRINTS OFNO SUSPECT.CORONER'S REPORT:SUBJECT ISFEMALEMA"
+  "LEAPPROXIMATELYYEARS OF AGE.SUBJECT APPARENTLY WASBYDO YOU W"
+  "ANT TO HIDE THEYOU DROP THEITEM HIDDEN.YOU TAKE THEITEMEXTRA"
+  "CT FROM THEOFABOUT WHOM?ABOUT WHAT ITEM?(AN ITEM)(A SUSPECT)"
+  "ONSUBJECT NOT IN RECORDS.SUBJECT RECENTLY DREW UP ANEW WILL."
+  "SUBJECT CAN EXPECT TOINHERIT SUBSTANTIAL WEALTHIN THE NEAR F"
+  "UTURE.SUBJECT NOT IN FILES.PATIENT SEVERELY PARANOIAC,ENVIOU"
+  "S AND RESENTFUL OFOTHERS. MAY SHOW SUDDENHOMICIDAL FURY.ACCO"
+  "UNTINTERROGATEI NEVER GOSSIP.I DON'T HAVE TIME TO TALKNOW.I "
+  "WAS WITHON THE NIGHT OF THE MURDER.I CAN'T CONFIRMALIBI.DID "
+  "IT, I'M SURE!OWNSA NEW CAR.ISHOW TRAGIC THATGONE.I THINK IT "
+  "WAS SUICIDE.I THINK THATMURDEREDI HEARD THATWAS KILLEDWASI O"
+  "WNI WASON THE NIGHT OF THE CRIME.I AMIDO NOTOWNI'M NOT SURE "
+  "WHO OWNSYOU HAVE THEDON'T YOU?I THINK THAT DETECTIVE #HASI'V"
+  "E GOT THEI SAW THAT AT THENOTTHE MURDER WEAPON.ACCUSE!WHO WA"
+  "S KILLED?WHO KILLEDWHAT WEAPON DIDUSE?WHY DIDCOMMIT MURDER?T"
+  "HE POLICE ARE ARRESTING.....NO... THAT WAS A FALSEARREST. YO"
+  "U'RE OUT OF THEGAME!ALL DETECTIVES HAVE BEENELIMINATED!NOBOD"
+  "Y WINS!YES... YOU'VE CRACKED THECASE!WINS THE GAME!HERE IS T"
+  "HE SOLUTION:USING THEBECAUSEBUTTON: END YOUR TURNPRESS THE B"
+  "UTTONTHAT BUILDING IS LOCKED.TRY ANOTHER.MOVE TO A BUILDING,"
+  " BUTTONNOT VISITED YETBUTTON: TURN OPTIONSEND OF TURNPASS TH"
+  "E CONTROLLER TOEVERYONE ELSE, LOOK AWAY.PRESS THE BUTTON WHE"
+  "N READY.TURNSOLVED INTURNS.RATING:MASTER SLEUTHSHARP INSPECT"
+  "ORPLODDING CONSTABLE"
+end data
+data TxtLo bytes
+  0, 12, 28, 39, 50, 63, 76, 88, 101, 115, 126, 146, 157, 174, 191, 208
+  220, 239, 254, 13, 33, 45, 55, 73, 89, 104, 114, 134, 146, 153, 158, 169
+  173, 180, 186, 195, 201, 204, 217, 223, 232, 246, 2, 18, 30, 47, 55, 63
+  80, 101, 114, 129, 145, 164, 170, 180, 195, 207, 213, 217, 222, 225, 227, 230
+  233, 236, 239, 244, 248, 5, 16, 27, 37, 51, 60, 81, 103, 124, 140, 161
+  179, 192, 209, 232, 255, 9, 17, 21, 28, 38, 59, 64, 78, 96, 98, 107
+  114, 121, 132, 143, 150, 164, 172, 180, 188, 191, 202, 216, 241, 242, 243, 244
+  245, 247, 3, 9, 28, 37, 53, 69, 90, 94, 111, 118, 125, 131, 141, 150
+  170, 183, 186, 188, 198, 209, 234, 245, 6, 16, 22, 26, 39, 52, 74, 76
+  99, 111, 123, 135, 139, 155, 157, 168, 184, 193, 204, 206, 229, 255, 8, 29
+  55, 74, 95, 122, 146, 169, 184, 191, 202, 217, 242, 246, 0, 27, 42, 48
+  65, 69, 79, 81, 96, 101, 124, 136, 144, 156, 166, 169, 174, 179, 205, 209
+  210, 216, 219, 240, 252, 6, 30, 33, 45, 62, 65, 83, 90, 105, 115, 130
+  134, 141, 155, 179, 184, 206, 231, 236, 4, 15, 27, 52, 57, 71, 92, 101
+  108, 129, 145, 169, 181, 207, 222, 242, 253, 19, 44, 72, 76, 85, 91, 98
+  111, 126
+end data
+data TxtHi bytes
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+  3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
+  5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8
+  8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9
+  9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10
+  10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11
+  11, 11
+end data
+data TxtLn bytes
+  12, 16, 11, 11, 13, 13, 12, 13, 14, 11, 20, 11, 17, 17, 17, 12
+  19, 15, 15, 20, 12, 10, 18, 16, 15, 10, 20, 12, 7, 5, 11, 4
+  7, 6, 9, 6, 3, 13, 6, 9, 14, 12, 16, 12, 17, 8, 8, 17
+  21, 13, 15, 16, 19, 6, 10, 15, 12, 6, 4, 5, 3, 2, 3, 3
+  3, 3, 5, 4, 13, 11, 11, 10, 14, 9, 21, 22, 21, 16, 21, 18
+  13, 17, 23, 23, 10, 8, 4, 7, 10, 21, 5, 14, 18, 2, 9, 7
+  7, 11, 11, 7, 14, 8, 8, 8, 3, 11, 14, 25, 1, 1, 1, 1
+  2, 12, 6, 19, 9, 16, 16, 21, 4, 17, 7, 7, 6, 10, 9, 20
+  13, 3, 2, 10, 11, 25, 11, 17, 10, 6, 4, 13, 13, 22, 2, 23
+  12, 12, 12, 4, 16, 2, 11, 16, 9, 11, 2, 23, 26, 9, 21, 26
+  19, 21, 27, 24, 23, 15, 7, 11, 15, 25, 4, 10, 27, 15, 6, 17
+  4, 10, 2, 15, 5, 23, 12, 8, 12, 10, 3, 5, 5, 26, 4, 1
+  6, 3, 21, 12, 10, 24, 3, 12, 17, 3, 18, 7, 15, 10, 15, 4
+  7, 14, 24, 5, 22, 25, 5, 24, 11, 12, 25, 5, 14, 21, 9, 7
+  21, 16, 24, 12, 26, 15, 20, 11, 22, 25, 28, 4, 9, 6, 7, 13
+  15, 18
+end data
+const NSpr = 4
+const Hid = 64
+const Held = 100
+const TuneLen = 660
+
+data BitT bytes
+  0, 16, 32, 64
+end data
+
+u16 Rs = 1
+u16 W16 = 0
+u16 TzLeft = 0
+u16 Rounds = 0
+' the case
+u8 Mv = 0
+u8 Mr = 0
+u8 Mw = 0
+u8 Mx = 0
+u8 Age = 0
+u8 Gos = 0
+' suspects 1-12: place (0 nowhere), alibi, hobby, flags (bank 1-7, 8 new
+' will, 16 blackmail list, 32 legatee, 64 clinic file)
+u8 SLoc[13]
+u8 Al[13]
+u8 Hob[13]
+u8 Gf[13]
+' items 1-16: place (1-16 in sight, 64 + b hidden, 100 + p carried), owner
+u8 ILoc[17]
+u8 Own[13]
+' the map: building in each cell, building's cell, entered yet
+u8 GridB[16]
+u8 Known[17]
+' detectives 1-6: building (0 out, 17 in the street), cell, item
+u8 PLoc[7]
+u8 PCell[7]
+u8 PItem[7]
+u8 Np = 1
+u8 Act = 1
+u8 Pl = 1
+u8 Bd = 0
+u8 Over = 0
+' what was seen on arrival
+u8 SeenS = 0
+u8 SeenI = 0
+u8 SeenPI = 0
+u8 LastS = 0
+' menus: values of the rows, count, choice
+u8 MenuV[14]
+u8 MenuN = 0
+u8 Ch = 0
+u8 HandY = 0
+' text cursor
+u8 Cx = 2
+u8 Cy = 1
+u8 Fresh = 1
+' the walker on the map
+u8 Mc = 5
+u8 Sx = 0
+u8 Sy = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Walk = 0
+' interrogation
+u8 Q1 = 0
+u8 Q2 = 0
+u8 Q3 = 0
+u8 QMode = 0
+u8 QLeft = 0
+u8 Yn = 0
+' what the game waits for (for the bots): 1 menu, 3 a press, 4 map
+u8 Ui = 0
+u8 Stage = 0
+' input
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 HoldT = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 TitleOn = 0
+u8 TzOn = 0
+u8 Asking = 0
+' loop counters (never shared with the helpers)
+u8 Ji = 0
+u8 Pi = 0
+u8 Ri = 0
+' scratch
+u8 A = 0
+u8 C = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MySoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+  AskPlayers
+  NewCase
+  Rounds = 1
+  Pl = 1
+  while Over = 0
+    if PLoc[Pl] > 0 then
+      PlayTurn
+    end if
+    if Over = 0 then
+      inc Pl
+      if Pl > Np then
+        Pl = 1
+        EndRound
+        inc Rounds
+      end if
+    end if
+  end while
+  ShowEnding
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: a 16-bit xorshift; Rnd(N) is 0..N-1, Fnr(N) 1..N
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function Rnd(u8 N) as u8
+  u8 Q = 0
+  Rand
+  Q = lowbyte Rs
+  return Q % N
+
+function Fnr(u8 N) as u8
+  return Rnd(N) + 1
+
+' 1 for a man (suspects 7-12), 0 for a woman (FNSX)
+function Sex(u8 S) as u8
+  if S > 6 then return 1
+  return 0
+
+' ---------------------------------------------------------------------------
+' a new case (lines 170-290)
+
+sub NewCase:
+  u8 Cell = 0
+  u8 K = 0
+  u8 Bit = 0
+  Mx = Fnr(3)
+  Mv = Fnr(12)
+  Mw = Fnr(12)
+  Mr = Mv
+  while Mr = Mv
+    Mr = Fnr(12)
+  end while
+  for K = 0 to 15
+    GridB[K] = 0
+  next
+  for K = 1 to 16
+    ' a free cell for building K
+    Cell = Rnd(16)
+    while GridB[Cell] > 0
+      Cell = Rnd(16)
+    end while
+    GridB[Cell] = K
+    Known[K] = 0
+    ILoc[K] = 16
+    if K <= 12 then
+      SLoc[K] = K
+      Al[K] = Rnd(6)
+      Hob[K] = Fnr(12)
+      Own[K] = Fnr(15)
+      ILoc[K] = Own[K] + Hid
+      Bit = Fnr(7)
+      if Rnd(2) = 1 then Bit = Bit | 16
+      if Rnd(2) = 1 then Bit = Bit | 32
+      if Rnd(2) = 1 then Bit = Bit | 64
+      Gf[K] = Bit
+    end if
+  next
+  Age = Fnr(40) + 20
+  SLoc[Mv] = 0
+  ILoc[13] = Mv + Hid
+  Al[Mr] = Rnd(3)
+  Own[Mw] = Mr
+  ' the murder weapon is never hidden at the murderer's own place
+  while ILoc[Mw] = Mr + Hid
+    ILoc[Mw] = Fnr(15) + Hid
+  end while
+  Bit = Fnr(7)
+  if Mx = 2 then Bit = Bit + 8
+  if Mx < 3 then Bit = Bit | 6
+  Gf[Mv] = Bit
+  Bit = Gf[Mr] | BitT[Mx]
+  if Mx < 3 then Bit = Bit & 251
+  Gf[Mr] = Bit
+  Gos = 0
+  Over = 0
+  for K = 1 to 6
+    PLoc[K] = 0
+    PItem[K] = 0
+    PCell[K] = 5
+  next
+  for Pi = 1 to Np
+    PLoc[Pi] = 17
+  next
+  Act = Np
+  return
+end sub
+
+' after every round the suspects wander (lines 950-970)
+sub EndRound:
+  u8 K = 0
+  u8 B = 0
+  for K = 1 to 12
+    B = Fnr(16)
+    if B = Mv then B = K
+    SLoc[K] = B
+  next
+  for K = 1 to 6
+    B = PLoc[K]
+    if B >= 1 then
+      if B <= 12 then SLoc[B] = B
+    end if
+  next
+  SLoc[Mv] = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' text: pieces joined with a space, wrapped between pieces
+
+sub NL:
+  Cx = 2
+  Fresh = 1
+  if Cy < 21 then inc Cy
+  return
+end sub
+
+sub At(u8 Ax, u8 Ay):
+  Cx = Ax
+  Cy = Ay
+  Fresh = 1
+  return
+end sub
+
+sub PutT(u8 Id):
+  u8 Ln = 0
+  Ln = TxtLn[Id]
+  if Cx + Ln > 30 then NL
+  W16 = TxtHi[Id]
+  W16 = W16 << 8
+  W16 = W16 + TxtLo[Id]
+  put Txt + W16 count Ln at Cx,Cy
+  Cx = Cx + Ln
+  Fresh = 0
+  return
+end sub
+
+' a piece after a space
+sub Wr(u8 Id):
+  if Fresh = 0 then
+    if Cx + TxtLn[Id] < 30 then
+      inc Cx
+    else
+      NL
+    end if
+  end if
+  PutT(Id)
+  return
+end sub
+
+' a piece glued to the last one (punctuation)
+sub WrNs(u8 Id):
+  PutT(Id)
+  return
+end sub
+
+sub WrNum(u8 N):
+  if N >= 10 then
+    put char 48 + N / 10 at Cx,Cy
+    inc Cx
+  end if
+  put char 48 + N % 10 at Cx,Cy
+  inc Cx
+  Fresh = 0
+  return
+end sub
+
+sub WrLine(u8 Id):
+  Wr(Id)
+  NL
+  return
+end sub
+
+' "THE <item>"
+sub WrItem(u8 I):
+  Wr(XThe)
+  if I = 13 then
+    Wr(XD1 + Mx - 1)
+  else
+    Wr(XI1 + I - 1)
+  end if
+  return
+end sub
+
+sub WrPlayer(u8 N):
+  Wr(XPlayer)
+  WrNum(N)
+  return
+end sub
+
+sub ClearRows(u8 R0, u8 R1):
+  for Ri = R0 to R1
+    fill 32 count 28 at 2,Ri
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one detective's turn
+
+sub PlayTurn:
+  if Act > 1 then HandOff
+  MapWalk
+  Arrive
+  DoOptions
+  if Over = 0 then
+    print at 5,22, "BUTTON: END YOUR TURN"
+    WaitPress
+  end if
+  return
+end sub
+
+sub HandOff:
+  NewScreen
+  fill TRule count 28 at 2,4
+  fill TRule count 28 at 2,17
+  At(4,7)
+  Wr(XPassTo)
+  At(10,9)
+  WrPlayer(Pl)
+  At(3,12)
+  Wr(XLookAway)
+  At(2,14)
+  Wr(XWhenReady)
+  At(10,19)
+  Wr(XTurn)
+  W16 = Rounds
+  print at 15,19, width$(W16, 3)
+  ShowScreen
+  play sound SndChime
+  Stage = 1
+  WaitPressQuiet
+  return
+end sub
+
+' --- the map ---------------------------------------------------------------
+
+function CellCol(u8 Cl) as u8
+  return 2 + (Cl & 3) * 7
+
+function CellRow(u8 Cl) as u8
+  return 3 + (Cl >> 2) * 5
+
+sub DrawBuilding(u8 Cl):
+  u8 Bc = 0
+  u8 Br = 0
+  u8 Rf = 0
+  u8 B = 0
+  Bc = CellCol(Cl)
+  Br = CellRow(Cl)
+  Rf = (Cl + (Cl >> 2)) & 3
+  Rf = Rf * 3 + TRoofl_red
+  put char Rf at Bc,Br
+  fill Rf + 1 count 4 at Bc + 1,Br
+  put char Rf + 2 at Bc + 5,Br
+  put char TWall at Bc,Br + 1
+  put char TWinlit at Bc + 1,Br + 1
+  put char TWindark at Bc + 2,Br + 1
+  put char TWinlit at Bc + 3,Br + 1
+  put char TWindark at Bc + 4,Br + 1
+  put char TWall at Bc + 5,Br + 1
+  put char TWall at Bc,Br + 2
+  put char TWindark at Bc + 1,Br + 2
+  put char TDoorl at Bc + 2,Br + 2
+  put char TDoorr at Bc + 3,Br + 2
+  put char TWinlit at Bc + 4,Br + 2
+  put char TWall at Bc + 5,Br + 2
+  B = GridB[Cl]
+  if Known[B] = 1 then
+    W16 = B - 1
+    W16 = W16 * 6
+    put ShortN + W16 count 6 at Bc,Br + 3
+  else
+    print at Bc + 2,Br + 3, "??"
+  end if
+  return
+end sub
+
+sub DrawMap:
+  u8 Cl = 0
+  NewScreen
+  for Ri = 2 to 21
+    fill TCobble count 28 at 2,Ri
+  next
+  for Cl = 0 to 15
+    DrawBuilding(Cl)
+  next
+  put char TLamp at 8,7
+  put char TLamp at 15,12
+  put char TLamp at 22,17
+  At(2,1)
+  WrPlayer(Pl)
+  print at 18,1, "ROUND"
+  W16 = Rounds
+  print at 24,1, width$(W16, 3)
+  ShowScreen
+  return
+end sub
+
+' the walker's place in front of a door
+sub CellXY(u8 Cl):
+  Tx = CellCol(Cl) * 8 + 8
+  Ty = CellRow(Cl) * 8 + 7
+  return
+end sub
+
+sub ShowWalker:
+  u8 Fr = 0
+  Fr = Sy
+  if Walk > 0 then
+    if Tick & 4 then Fr = Fr - 1
+  end if
+  set sprite 0 to Fr,Sx,SFace,9
+  set sprite 1 to Fr,Sx,SCoat,7
+  update sprites
+  return
+end sub
+
+sub ShowCellName:
+  u8 B = 0
+  fill 32 count 28 at 2,22
+  B = GridB[Mc]
+  At(2,22)
+  if Known[B] = 1 then
+    Wr(XB1 + B - 1)
+  else
+    Wr(XUnknown)
+  end if
+  return
+end sub
+
+sub MapWalk:
+  u8 Nc = 0
+  u8 B = 0
+  u8 Ok = 0
+  DrawMap
+  Mc = PCell[Pl]
+  CellXY(Mc)
+  Sx = Tx
+  Sy = Ty
+  Walk = 0
+  ShowCellName
+  ShowWalker
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 1
+  Asking = 1
+  Ui = 4
+  while Asking = 1
+    Frame1
+    ReadPad
+    if Walk = 0 then
+      if Rep = 1 then
+        Nc = Mc
+        if Stick & 1 then
+          if Mc >= 4 then Nc = Mc - 4
+        end if
+        if Stick & 4 then
+          if Mc < 12 then Nc = Mc + 4
+        end if
+        if Stick & 8 then
+          if Mc & 3 then Nc = Mc - 1
+        end if
+        if Stick & 2 then
+          V = Mc & 3
+          if V < 3 then Nc = Mc + 1
+        end if
+        if Nc <> Mc then
+          Mc = Nc
+          CellXY(Mc)
+          Walk = 1
+          play sound SndStep
+        end if
+      end if
+      if Press = 1 then
+        B = GridB[Mc]
+        Ok = 1
+        if B = Mv then
+          Ok = 0
+          if ILoc[14] = Held + Pl then Ok = 1
+          if ILoc[14] = Mv then Ok = 1
+          if ILoc[14] = Mv + Hid then Ok = 1
+        end if
+        if Ok = 1 then
+          Asking = 0
+        else
+          play sound SndKnock
+          fill 32 count 28 at 2,22
+          At(2,22)
+          Wr(XLocked)
+          Known[B] = 1
+        end if
+      end if
+    end if
+    if Walk = 1 then
+      MoveWalker
+    end if
+    ShowWalker
+  end while
+  Ui = 0
+  Bd = GridB[Mc]
+  PCell[Pl] = Mc
+  PLoc[Pl] = Bd
+  Known[Bd] = 1
+  HideSprites
+  return
+end sub
+
+' four pixels a frame toward the next door
+sub MoveWalker:
+  if Sx < Tx then Sx = Sx + 4
+  if Sx > Tx then Sx = Sx - 4
+  if Sy < Ty then
+    Sy = Sy + 4
+    if Sy > Ty then Sy = Ty
+  end if
+  if Sy > Ty then
+    Sy = Sy - 4
+    if Sy < Ty then Sy = Ty
+  end if
+  if Sx = Tx then
+    if Sy = Ty then
+      Walk = 0
+      ShowCellName
+    end if
+  end if
+  return
+end sub
+
+' --- arriving (lines 600-695) ---------------------------------------------
+
+sub Arrive:
+  u8 K = 0
+  u8 It = 0
+  NewScreen
+  play sound SndDoor
+  At(2,1)
+  Wr(XYouAre)
+  NL
+  Wr(XB1 + Bd - 1)
+  WrNs(XDot)
+  At(2,4)
+  Wr(XYouHave)
+  It = PItem[Pl]
+  if It > 0 then
+    WrItem(It)
+    WrNs(XDot)
+  else
+    Wr(XNoItem)
+  end if
+  At(2,6)
+  Wr(XYouSee)
+  NL
+  SeenS = 0
+  SeenI = 0
+  SeenPI = 0
+  for K = 1 to 12
+    if SLoc[K] = Bd then
+      Wr(XS1 + K - 1)
+      NL
+      inc SeenS
+      LastS = K
+    end if
+  next
+  for K = 1 to 16
+    if ILoc[K] = Bd then
+      WrItem(K)
+      NL
+      inc SeenI
+    end if
+  next
+  for K = 1 to 6
+    if K <> Pl then
+      if PLoc[K] = Bd then
+        WrPlayer(K)
+        if PItem[K] > 0 then
+          Wr(XWithItem)
+          inc SeenPI
+        end if
+        NL
+      end if
+    end if
+  next
+  if SeenS + SeenI = 0 then
+    if Cy = 7 then
+      if Cx = 2 then Wr(XNothing)
+    end if
+  end if
+  ShowScreen
+  print at 5,22, "BUTTON: TURN OPTIONS"
+  WaitPress
+  return
+end sub
+
+' --- the turn options (lines 700-810) --------------------------------------
+
+sub AddOpt(u8 Code, u8 Id):
+  MenuV[MenuN] = Code
+  At(5,MenuN + 5)
+  Wr(Id)
+  inc MenuN
+  return
+end sub
+
+sub DoOptions:
+  NewScreen
+  At(2,1)
+  Wr(XOptions)
+  MenuN = 0
+  AddOpt(1, XSearch)
+  if SeenS > 0 then AddOpt(2, XInterro)
+  if SeenI + SeenPI > 0 then AddOpt(3, XTake)
+  if Bd = 16 then
+    if SeenI > 0 then
+      AddOpt(4, XFinger)
+    else
+      if PItem[Pl] > 0 then AddOpt(4, XFinger)
+    end if
+    AddOpt(5, XAccuse)
+  end if
+  if Bd = 14 then AddOpt(6, XCoroner)
+  V = 0
+  if ILoc[13] = Held + Pl then V = 1
+  if ILoc[13] = Bd then V = 1
+  if V = 1 then
+    AddOpt(7, XRead)
+    Wr(XD1 + Mx - 1)
+  end if
+  if PItem[Pl] > 0 then AddOpt(8, XDrop)
+  V = 0
+  if Bd <= 2 then V = 1
+  if Bd = 7 then V = 1
+  if V = 1 then
+    AddOpt(9, XExamine)
+    Wr(XRecords)
+  end if
+  At(2,3)
+  Wr(XChoose)
+  ShowScreen
+  DoMenu(MenuN, 5)
+  V = MenuV[Ch]
+  select case V
+    case 1
+      DoSearch
+    case 2
+      DoInterrogate
+    case 3
+      DoTake(1)
+    case 4
+      DoPrints
+    case 5
+      DoAccuse
+    case 6
+      DoCoroner
+    case 7
+      DoReadDoc
+    case 8
+      DoDrop
+    case 9
+      DoRecords
+  end select
+  return
+end sub
+
+' a screen with a heading
+sub Heading(u8 Id):
+  NewScreen
+  At(2,1)
+  Wr(Id)
+  return
+end sub
+
+' --- search (lines 1000-1050) ----------------------------------------------
+
+sub DoSearch:
+  u8 K = 0
+  u8 Found = 0
+  Heading(XSearch)
+  At(2,3)
+  Wr(XYouFind)
+  NL
+  for K = 1 to 16
+    if ILoc[K] = Bd + Hid then
+      V = 0
+      if Rnd(10) < 6 then V = 1
+      if PItem[Pl] = 15 then V = 1
+      if V = 1 then
+        ILoc[K] = Bd
+        WrItem(K)
+        NL
+        Found = 1
+      end if
+    end if
+  next
+  if Found = 0 then
+    Wr(XNoInt)
+    ShowScreen
+    return
+  end if
+  inc Cy
+  At(2,Cy)
+  Wr(XTakeQ)
+  ShowScreen
+  if YesNo = 1 then
+    DoTake(0)
+  end if
+  return
+end sub
+
+' YES / NO menu under the last line; 1 for yes
+function YesNo as u8
+  u8 R0 = 0
+  R0 = Cy + 2
+  print at 5,R0, "YES"
+  print at 5,R0 + 1, "NO"
+  DoMenu(2, R0)
+  if Ch = 0 then return 1
+  return 0
+
+' --- take (lines 1400-1470); Others = 1 lists the other detectives' items --
+
+sub DoTake(u8 Others):
+  u8 K = 0
+  u8 I = 0
+  u8 J2 = 0
+  Heading(XTake)
+  At(2,3)
+  Wr(XWhichOne)
+  MenuN = 0
+  for K = 1 to 16
+    if ILoc[K] = Bd then
+      MenuV[MenuN] = K
+      At(5,MenuN + 5)
+      WrItem(K)
+      inc MenuN
+    end if
+  next
+  if Others = 1 then
+    for K = 1 to 6
+      if K <> Pl then
+        if PLoc[K] = Bd then
+          if PItem[K] > 0 then
+            if MenuN < 13 then
+              MenuV[MenuN] = Held + K
+              At(5,MenuN + 5)
+              WrPlayer(K)
+              WrNs(XApos)
+              Wr(XItemOf)
+              inc MenuN
+            end if
+          end if
+        end if
+      end if
+    next
+  end if
+  ShowScreen
+  if MenuN = 0 then return
+  DoMenu(MenuN, 5)
+  I = MenuV[Ch]
+  if I > Held then
+    J2 = I - Held
+    I = PItem[J2]
+    PItem[J2] = 0
+  end if
+  NewScreen
+  At(2,3)
+  K = PItem[Pl]
+  if K > 0 then
+    Wr(XYouDrop)
+    WrItem(K)
+    WrNs(XDot)
+    ILoc[K] = Bd
+    NL
+  end if
+  Wr(XYouTake)
+  WrItem(I)
+  WrNs(XDot)
+  PItem[Pl] = I
+  ILoc[I] = Held + Pl
+  ShowScreen
+  play sound SndPick
+  return
+end sub
+
+' --- fingerprints (lines 1100-1170) ----------------------------------------
+
+sub DoPrints:
+  u8 K = 0
+  u8 I = 0
+  Heading(XFinger)
+  At(2,3)
+  Wr(XWhichOne)
+  MenuN = 0
+  for K = 1 to 16
+    if ILoc[K] = Bd then
+      MenuV[MenuN] = K
+      At(5,MenuN + 5)
+      WrItem(K)
+      inc MenuN
+    end if
+  next
+  K = PItem[Pl]
+  if K > 0 then
+    MenuV[MenuN] = K
+    At(5,MenuN + 5)
+    WrItem(K)
+    inc MenuN
+  end if
+  ShowScreen
+  DoMenu(MenuN, 5)
+  I = MenuV[Ch]
+  NewScreen
+  At(2,1)
+  Wr(XLabRep)
+  At(2,3)
+  WrItem(I)
+  NL
+  Wr(XBears)
+  NL
+  ILoc[I] = Bd
+  if PItem[Pl] = I then PItem[Pl] = 0
+  V = 0
+  if I < 13 then
+    if Own[I] < 13 then V = Own[I]
+  end if
+  if I = 13 then V = Mv
+  if V > 0 then
+    Wr(XS1 + V - 1)
+    WrNs(XDot)
+  else
+    Wr(XNoSusp)
+  end if
+  ShowScreen
+  play sound SndPick
+  return
+end sub
+
+' --- coroner (lines 1200-1230) ---------------------------------------------
+
+sub DoCoroner:
+  u8 Mt = 0
+  Heading(XCorRep)
+  Mt = Mw & 3
+  At(2,4)
+  Wr(XSubjIs)
+  Wr(XFemale + Sex(Mv))
+  WrNs(XComma)
+  NL
+  Wr(XApprox)
+  inc Cx
+  WrNum(Age)
+  Wr(XYearsOld)
+  NL
+  NL
+  Wr(XSubjWas)
+  NL
+  Wr(XKv0 + Mt)
+  Wr(XByA)
+  Wr(XKm0 + Mt)
+  WrNs(XDot)
+  ShowScreen
+  return
+end sub
+
+' --- the victim's papers (lines 1500-1540) ---------------------------------
+
+sub DoReadDoc:
+  u8 K = 0
+  u8 Fl = 0
+  u8 Nln = 0
+  Heading(XExtract)
+  Wr(XD1 + Mx - 1)
+  NL
+  Wr(XOf)
+  Wr(XS1 + Mv - 1)
+  WrNs(XColon)
+  NL
+  NL
+  K = DocFirst[Mx]
+  Nln = DocCount[Mx]
+  for Ri = 1 to Nln
+    W16 = K * 28
+    put DocTxt + W16 count 28 at 2,Cy
+    inc Cy
+    inc K
+  next
+  inc Cy
+  Fl = BitT[Mx]
+  for K = 1 to 12
+    V = Gf[K] & Fl
+    if V > 0 then
+      At(6,Cy)
+      Wr(XS1 + K - 1)
+      if Cy < 21 then inc Cy
+    end if
+  next
+  ShowScreen
+  return
+end sub
+
+' --- drop or hide (lines 1300-1340) ----------------------------------------
+
+sub DoDrop:
+  u8 I = 0
+  Heading(XDrop)
+  I = PItem[Pl]
+  At(2,3)
+  Wr(XHideQ)
+  NL
+  Wr(XI1 + I - 1)
+  if I = 13 then
+    At(2,Cy)
+    fill 32 count 28 at 2,Cy
+    Wr(XD1 + Mx - 1)
+  end if
+  WrNs(XQuest)
+  ShowScreen
+  Yn = YesNo
+  PItem[Pl] = 0
+  NewScreen
+  At(2,3)
+  Wr(XYouDrop)
+  WrItem(I)
+  WrNs(XDot)
+  ILoc[I] = Bd
+  if Yn = 1 then
+    ILoc[I] = Bd + Hid
+    NL
+    Wr(XHidden)
+  end if
+  ShowScreen
+  return
+end sub
+
+' --- records (lines 1600-1720) ---------------------------------------------
+
+sub SuspectMenu(u8 R0):
+  u8 K = 0
+  for K = 1 to 12
+    At(5,R0 + K - 1)
+    Wr(XS1 + K - 1)
+  next
+  return
+end sub
+
+sub DoRecords:
+  u8 S = 0
+  u8 G = 0
+  Heading(XExamine)
+  Wr(XB1 + Bd - 1)
+  At(2,3)
+  Wr(XAboutWho)
+  SuspectMenu(5)
+  ShowScreen
+  DoMenu(12, 5)
+  S = Ch + 1
+  G = Gf[S]
+  NewScreen
+  At(2,1)
+  Wr(XB1 + Bd - 1)
+  Wr(XReport)
+  NL
+  Wr(XOn)
+  Wr(XS1 + S - 1)
+  WrNs(XColon)
+  At(2,5)
+  if Bd = 1 then
+    V = G & 40
+    if V = 0 then
+      Wr(XNotRec)
+    else
+      V = G & 8
+      if V > 0 then
+        WrLine(XNewWill)
+        Wr(XNewWill2)
+      else
+        WrLine(XInherit1)
+        WrLine(XInherit2)
+        Wr(XInherit3)
+      end if
+    end if
+  end if
+  if Bd = 2 then
+    V = G & 64
+    if V = 0 then
+      Wr(XNotFiles)
+    else
+      WrLine(XPara1)
+      WrLine(XPara2)
+      WrLine(XPara3)
+      Wr(XPara4)
+    end if
+  end if
+  if Bd = 7 then
+    V = G & 7
+    if V > 0 then dec V
+    Wr(XBk0 + V)
+    Wr(XAccount)
+  end if
+  ShowScreen
+  return
+end sub
+
+' --- accuse (lines 5000-5210) ----------------------------------------------
+
+sub DoAccuse:
+  u8 Ok = 1
+  u8 Vi = 0
+  u8 Ki = 0
+  u8 K = 0
+  u8 Sx2 = 0
+  Heading(XAccuse2)
+  At(2,3)
+  Wr(XWhoKilled)
+  SuspectMenu(5)
+  ShowScreen
+  DoMenu(12, 5)
+  Vi = Ch + 1
+  if Vi <> Mv then Ok = 0
+  Heading(XAccuse2)
+  At(2,3)
+  Wr(XWhoKill)
+  Wr(XS1 + Vi - 1)
+  WrNs(XQuest)
+  SuspectMenu(5)
+  ShowScreen
+  DoMenu(12, 5)
+  Ki = Ch + 1
+  if Ki <> Mr then Ok = 0
+  Heading(XAccuse2)
+  At(2,2)
+  Wr(XWhatWeap)
+  NL
+  Wr(XS1 + Ki - 1)
+  Wr(XUse)
+  for K = 1 to 12
+    At(5,K + 4)
+    WrItem(K)
+  next
+  ShowScreen
+  DoMenu(12, 5)
+  if Ch + 1 <> Mw then Ok = 0
+  Heading(XAccuse2)
+  At(2,2)
+  Wr(XWhyDid)
+  Wr(XS1 + Ki - 1)
+  NL
+  Wr(XCommit)
+  Sx2 = Sex(Ki)
+  for K = 0 to 2
+    At(5,K + 5)
+    Wr(XP0 + Sx2)
+    Wr(XF0 + K * 2)
+  next
+  ShowScreen
+  DoMenu(3, 5)
+  if Ch + 1 <> Mx then Ok = 0
+  ' the arrest
+  NewScreen
+  At(2,3)
+  Wr(XArrest)
+  NL
+  Wr(XS1 + Ki - 1)
+  WrNs(XDots)
+  ShowScreen
+  play sound SndSiren
+  Hold(150)
+  At(2,7)
+  if Ok = 1 then
+    WrLine(XCracked)
+    Wr(XCase)
+    NL
+    WrPlayer(Pl)
+    Wr(XWins)
+    Over = 1
+    play sound SndWin
+  else
+    WrLine(XFalse1)
+    WrLine(XFalse2)
+    Wr(XFalse3)
+    play sound SndLose
+    PLoc[Pl] = 0
+    K = PItem[Pl]
+    if K > 0 then
+      ILoc[K] = Bd
+      PItem[Pl] = 0
+    end if
+    dec Act
+    if Act = 0 then Over = 2
+  end if
+  Hold(60)
+  return
+end sub
+
+' --- the end: verdict and the solution (lines 5160-5320) ------------------
+
+sub ShowEnding:
+  u8 Sx2 = 0
+  print at 2,22, "                            "
+  At(2,12)
+  if Over = 2 then
+    WrLine(XAllOut)
+    Wr(XAllOut2)
+    NL
+    Wr(XNobody)
+    NL
+  else
+    if Np = 1 then
+      Wr(XSolvedIn)
+      W16 = Rounds
+      print at Cx + 1,Cy, width$(W16, 3)
+      Cx = Cx + 4
+      Wr(XTurns)
+      NL
+      Wr(XRating)
+      if Rounds <= 25 then
+        Wr(XRateA)
+      else
+        if Rounds <= 45 then
+          Wr(XRateB)
+        else
+          Wr(XRateC)
+        end if
+      end if
+      NL
+    end if
+  end if
+  inc Cy
+  At(2,Cy)
+  Wr(XSolution)
+  NL
+  Wr(XS1 + Mr - 1)
+  Wr(XMurdered)
+  NL
+  Wr(XS1 + Mv - 1)
+  Wr(XUsing)
+  NL
+  Wr(XI1 + Mw - 1)
+  WrNs(XComma)
+  Wr(XBecause)
+  NL
+  Sx2 = Sex(Mr)
+  Wr(XP0 + Sx2)
+  Wr(XF0 + Mx * 2 - 2)
+  WrNs(XDot)
+  Stage = 9
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' interrogation (lines 2000-4090)
+
+sub DoInterrogate:
+  u8 K = 0
+  if SeenS = 1 then
+    Q1 = LastS
+  else
+    Heading(XInterro)
+    At(2,3)
+    Wr(XWhichOne)
+    MenuN = 0
+    for K = 1 to 12
+      if SLoc[K] = Bd then
+        MenuV[MenuN] = K
+        At(5,MenuN + 5)
+        Wr(XS1 + K - 1)
+        inc MenuN
+      end if
+    next
+    ShowScreen
+    DoMenu(MenuN, 5)
+    Q1 = MenuV[Ch]
+  end if
+  QMode = 0
+  QLeft = 3
+  DrawAsk
+  while QLeft > 0
+    DoMenu(13, 4)
+    if Ch = 12 then
+      QMode = QMode ^ 1
+      DrawAsk
+    else
+      Q2 = Ch + 1
+      dec QLeft
+      ClearRows(18, 22)
+      At(2,19)
+      Yn = 0
+      if Rnd(4) < 3 then Yn = 1
+      if QMode = 0 then
+        AskSuspect
+      else
+        AskItem
+      end if
+      ShowLeft
+      Hold(20)
+    end if
+  end while
+  return
+end sub
+
+sub ShowLeft:
+  print at 2,17, "QUESTIONS LEFT:"
+  put char 48 + QLeft at 18,17
+  return
+end sub
+
+sub DrawAsk:
+  u8 K = 0
+  NewScreen
+  At(2,1)
+  Wr(XInterr)
+  Wr(XS1 + Q1 - 1)
+  At(2,2)
+  if QMode = 0 then
+    Wr(XAboutWho)
+    SuspectMenu(4)
+    At(5,16)
+    Wr(XAnItem)
+  else
+    Wr(XAboutWhat)
+    for K = 1 to 12
+      At(5,K + 3)
+      WrItem(K)
+    next
+    At(5,16)
+    Wr(XASuspect)
+  end if
+  ShowLeft
+  ShowScreen
+  return
+end sub
+
+' a weapon Q owns, picked at random among them (line 20900); 0 if none
+function OwnedBy(u8 Q) as u8
+  u8 Pick = 0
+  u8 Seen = 0
+  u8 K = 0
+  for K = 1 to 12
+    if Own[K] = Q then
+      inc Seen
+      if Rnd(Seen) = 0 then Pick = K
+    end if
+  next
+  return Pick
+
+' a fact line (line 20800): FACTS piece + "."
+sub Fact(u8 F):
+  Wr(XF0 + F)
+  WrNs(XDot)
+  return
+end sub
+
+sub AskSuspect:
+  u8 Sx2 = 0
+  u8 R = 0
+  u8 I = 0
+  Q3 = Fnr(12)
+  while Q3 = Mv or Q3 = Q1
+    Q3 = Fnr(12)
+  end while
+  ' "I never gossip" 1 time in 5, unless you hold the badge
+  if Rnd(5) = 0 then
+    if ILoc[16] <> Held + Pl then
+      Gos = Gos ^ 1
+      if Gos = 1 then
+        Wr(XGossip)
+      else
+        WrLine(XNoTime)
+        Wr(XNoTime2)
+      end if
+      return
+    end if
+  end if
+  Sx2 = Sex(Q2)
+  if Q2 = Q1 then
+    AskSelf
+    return
+  end if
+  if Q2 = Mv then
+    AskVictim(Sx2)
+    return
+  end if
+  R = Fnr(7)
+  select case R
+    case 1
+      Wr(XS1 + Q2 - 1)
+      Wr(XDidIt)
+    case 2, 3
+      ' a truthful fact about Q2's secrets
+      WrLine(XS1 + Q2 - 1)
+      I = Fnr(3)
+      V = I * 2 - 1
+      R = Gf[Q2] & BitT[I]
+      if R > 0 then dec V
+      Fact(V)
+    case 4, 5
+      A = OwnedBy(Q2)
+      if Rnd(2) = 0 then
+        WrLine(XS1 + Q2 - 1)
+        Wr(XIs)
+        Wr(XH0 + A)
+        WrNs(XDot)
+      else
+        WrLine(XS1 + Q2 - 1)
+        Wr(XOwns)
+        if Yn = 0 then A = 0
+        if A = 0 then
+          Wr(XNewCar)
+        else
+          WrItem(A)
+          WrNs(XDot)
+        end if
+      end if
+    case 6
+      WrLine(XS1 + Q2 - 1)
+      Wr(XIs)
+      Wr(XH0 + Hob[Q2])
+      WrNs(XDot)
+    case 7
+      V = 0
+      if Al[Q1] >= 3 then
+        if Al[Q1] = Al[Q2] then V = 1
+      end if
+      if V = 1 then
+        Wr(XIWasWith)
+        Wr(XS1 + Q2 - 1)
+        NL
+        Wr(XOnNight)
+      else
+        Wr(XCantConf)
+        Wr(XP4 + Sx2)
+        Wr(XAlibi)
+      end if
+  end select
+  return
+end sub
+
+sub AskVictim(u8 Sx2):
+  u8 I = 0
+  select case Fnr(3)
+    case 1
+      I = Rnd(4)
+      if Yn = 1 then I = Mw & 3
+      Wr(XIHeard)
+      Wr(XP0 + Sx2)
+      Wr(XWasKilled)
+      NL
+      Wr(XByA)
+      Wr(XKm0 + I)
+      WrNs(XDot)
+    case 2
+      I = Fnr(3)
+      if Yn = 1 then I = Mx
+      Wr(XIHeard)
+      Wr(XP0 + Sx2)
+      Wr(XWas)
+      NL
+      Fact(I + 5)
+    case 3
+      if Rnd(3) = 0 then
+        WrLine(XTragic)
+        Wr(XP6 + Sx2)
+        Wr(XGone)
+      else
+        if Rnd(2) = 0 then
+          Wr(XSuicide)
+        else
+          Wr(XIThink)
+          Wr(XS1 + Q3 - 1)
+          NL
+          Wr(XMurdered)
+          Wr(XP2 + Sx2)
+          WrNs(XDot)
+        end if
+      end if
+  end select
+  return
+end sub
+
+sub AskSelf:
+  select case Fnr(4)
+    case 1
+      Wr(XIWas)
+      Wr(XA0 + Al[Q1])
+      NL
+      Wr(XOnCrime)
+    case 2
+      Wr(XIAm)
+      Wr(XH0 + Hob[Q1])
+      WrNs(XDot)
+    case 3
+      A = OwnedBy(Q1)
+      Wr(XIAm)
+      Wr(XH0 + A)
+      WrNs(XDot)
+    case 4
+      A = OwnedBy(Q1)
+      Wr(XIOwn)
+      if A = 0 then
+        Wr(XNewCar)
+      else
+        WrItem(A)
+        WrNs(XDot)
+      end if
+  end select
+  return
+end sub
+
+sub DontKnow:
+  WrLine(XF9)
+  Wr(XF10)
+  return
+end sub
+
+sub AskItem:
+  u8 X2 = 0
+  u8 O = 0
+  u8 K = 0
+  O = Own[Q2]
+  select case Fnr(5)
+    case 1
+      ' who owns it (line 3030)
+      V = 0
+      if Yn = 0 then V = 1
+      if Q2 = Mw then
+        if Q1 = Mr then V = 1
+      end if
+      if O > 12 then V = 1
+      if V = 1 then
+        WrLine(XNotSure)
+        WrItem(Q2)
+        WrNs(XDot)
+        return
+      end if
+      if O = Q1 then
+        IOwnIt
+        return
+      end if
+      WrLine(XS1 + O - 1)
+      Wr(XOwns)
+      WrItem(Q2)
+      WrNs(XDot)
+    case 2
+      ' where it is (lines 3060-4020)
+      X2 = ILoc[Q2]
+      if X2 >= Held then
+        X2 = X2 - Held
+        if Yn = 0 then X2 = Rnd(Np) + 1
+        if X2 = Pl then
+          WrLine(XYouHaveT)
+          Wr(XI1 + Q2 - 1)
+          WrNs(XComma)
+          Wr(XDontYou)
+        else
+          Wr(XIThinkP)
+          WrNum(X2)
+          Wr(XHas)
+          NL
+          WrItem(Q2)
+          WrNs(XDot)
+        end if
+        return
+      end if
+      if X2 >= Hid then X2 = X2 - Hid
+      V = 0
+      if Yn = 0 then V = 1
+      if Q2 = Mw then
+        if Q1 = Mr then V = 1
+      end if
+      if V = 1 then
+        DontKnow
+        return
+      end if
+      if X2 = Q1 then
+        WrLine(XIveGot)
+        Wr(XI1 + Q2 - 1)
+        WrNs(XDot)
+      else
+        WrLine(XISaw)
+        Wr(XB1 + X2 - 1)
+        WrNs(XDot)
+      end if
+    case 3
+      ' the murder weapon? (line 4030)
+      WrItem(Q2)
+      Wr(XWas)
+      V = 0
+      if Q2 = Mw then V = 1
+      if V <> Yn then V = 2
+      if Q1 = Mr then V = 2
+      if V = 2 then Wr(XNot)
+      NL
+      Wr(XTheWeapon)
+    case 4
+      ' who collects such things (line 4050)
+      X2 = 0
+      for K = 1 to 12
+        if Hob[K] = Q2 then
+          if Rnd(2) = 0 then X2 = K
+        end if
+      next
+      if O > 12 then O = 0
+      if Rnd(2) = 0 then X2 = O
+      if X2 = 0 then
+        DontKnow
+        return
+      end if
+      WrLine(XS1 + X2 - 1)
+      Wr(XIs)
+      Wr(XH0 + Q2)
+      WrNs(XDot)
+    case 5
+      IOwnIt
+  end select
+  return
+end sub
+
+' "I DO / DO NOT OWN THE ..." (line 3010): the murderer always denies
+sub IOwnIt:
+  Wr(XI)
+  V = 0
+  if Own[Q2] <> Q1 then V = 1
+  if Q1 = Mr then V = 1
+  if V = 1 then Wr(XDoNot)
+  Wr(XOwn)
+  NL
+  WrItem(Q2)
+  WrNs(XDot)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' menus and waiting
+
+sub DoMenu(u8 N, u8 R0):
+  u8 Want = 0
+  Ch = 0
+  HandY = R0 << 3
+  HandY = HandY - 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 1
+  Asking = 1
+  Ui = 1
+  while Asking = 1
+    Frame1
+    Rand
+    ReadPad
+    if Rep = 1 then
+      if Stick & 1 then
+        if Ch = 0 then
+          Ch = N - 1
+        else
+          dec Ch
+        end if
+        play sound SndTick
+      end if
+      if Stick & 4 then
+        inc Ch
+        if Ch = N then Ch = 0
+        play sound SndTick
+      end if
+    end if
+    Want = Ch + R0
+    Want = Want << 3
+    Want = Want - 1
+    if HandY < Want then
+      HandY = HandY + 4
+      if HandY > Want then HandY = Want
+    end if
+    if HandY > Want then
+      HandY = HandY - 4
+      if HandY < Want then HandY = Want
+    end if
+    set sprite 2 to HandY,20,SHand,11
+    update sprites
+    if Press = 1 then Asking = 0
+  end while
+  Ui = 0
+  play sound SndPick
+  set sprite 2 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub WaitPress:
+  Ui = 3
+  WaitPressQuiet
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub WaitPressQuiet:
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  Asking = 1
+  Ui = 3
+  while Asking = 1
+    Frame1
+    ReadPad
+    if Press = 1 then Asking = 0
+  end while
+  Ui = 0
+  Stage = 0
+  return
+end sub
+
+sub Hold(u8 N):
+  for Ji = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Btn = 0
+  if joypad(1).fire then Btn = 16
+  if joypad(2).fire then Btn = 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  if joypad(1).up then Stick = Stick | 1
+  if joypad(1).right then Stick = Stick | 2
+  if joypad(1).down then Stick = Stick | 4
+  if joypad(1).left then Stick = Stick | 8
+  if joypad(2).up then Stick = Stick | 1
+  if joypad(2).right then Stick = Stick | 2
+  if joypad(2).down then Stick = Stick | 4
+  if joypad(2).left then Stick = Stick | 8
+  Rep = 0
+  if Stick = 0 then
+    HoldT = 0
+  else
+    if WasStick = 0 then
+      Rep = 1
+      HoldT = 0
+    else
+      if HoldT < 250 then inc HoldT
+      if HoldT >= 18 then
+        V = HoldT & 7
+        if V = 0 then Rep = 1
+      end if
+    end if
+  end if
+  WasStick = Stick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' title, players, credits
+
+sub DrawLane(u8 R0):
+  u8 Cl = 0
+  u8 Bc = 0
+  u8 Rf = 0
+  for Cl = 0 to 3
+    Bc = Cl * 7 + 2
+    Rf = Cl * 3 + TRoofl_red
+    put char Rf at Bc,R0
+    fill Rf + 1 count 4 at Bc + 1,R0
+    put char Rf + 2 at Bc + 5,R0
+    put char TWall at Bc,R0 + 1
+    put char TWinlit at Bc + 1,R0 + 1
+    put char TDoorl at Bc + 2,R0 + 1
+    put char TDoorr at Bc + 3,R0 + 1
+    put char TWindark at Bc + 4,R0 + 1
+    put char TWall at Bc + 5,R0 + 1
+  next
+  fill TKerb count 28 at 2,R0 + 2
+  return
+end sub
+
+sub TitlePage:
+  Stage = 0
+  TitleOn = 1
+  NewScreen
+  put char TMoon at 25,2
+  put char TStar at 5,3
+  put char TStar at 14,2
+  put char TStar at 20,4
+  print at 11,5, "MYSTERY AT"
+  print at 8,7, "MYCROFT  MEWS"
+  fill TRule count 18 at 7,8
+  DrawLane(10)
+  print at 4,14, "A WHODUNIT FOR 1-6 PLAYERS"
+  print at 6,16, "BY JOHN R. PRAGER"
+  print at 7,17, "AHOY! OCTOBER 1985"
+  print at 11,20, "START GAME"
+  print at 11,21, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 1
+  Asking = 1
+  while Asking = 1
+    Frame1
+    Rand
+    ReadPad
+    if Rep = 1 then
+      if Stick & 1 then Menu = 0
+      if Stick & 4 then Menu = 1
+      ShowMenu
+    end if
+    if Press = 1 then Asking = 0
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,20
+  put char 32 at 9,21
+  J = Menu + 20
+  put char 62 at 9,J
+  return
+end sub
+
+sub AskPlayers:
+  NewScreen
+  print at 6,2, "HOW MANY DETECTIVES?"
+  print at 5,5, "1  SOLO CASE"
+  print at 5,6, "2  DETECTIVES"
+  print at 5,7, "3  DETECTIVES"
+  print at 5,8, "4  DETECTIVES"
+  print at 5,9, "5  DETECTIVES"
+  print at 5,10, "6  DETECTIVES"
+  print at 2,13, "WITH TWO OR MORE, PASS THE"
+  print at 2,14, "CONTROLLER AT EACH TURN: A"
+  print at 2,15, "BLANK SCREEN WAITS FOR THE"
+  print at 2,16, "NEXT DETECTIVE'S BUTTON."
+  ShowScreen
+  DoMenu(6, 5)
+  Np = Ch + 1
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 5,2, "MYSTERY AT MYCROFT MEWS"
+  print at 2,5, "BASED ON THE GAME BY"
+  print at 2,6, "JOHN R. PRAGER, AHOY!"
+  print at 2,7, "OCTOBER 1985 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: FOG ON THE MEWS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+MyStep:
+    db $00,$00,$45,$02,$00,$00,$75,$02,$10
+MyTick:
+    db $40,$40,$30,$02,$50
+MyPick:
+    db $40,$55,$20,$03,$40,$71,$30,$03,$40,$A9,$40,$04,$50
+MyDoor:
+    db $40,$53,$31,$03,$40,$68,$31,$03,$40,$7C,$41,$03,$40,$AB,$41,$04,$40,$C5,$51,$06,$50
+MyKnock:
+    db $00,$00,$16,$03,$00,$00,$A6,$06,$00,$00,$16,$03,$00,$00,$A6,$04,$10
+MyChime:
+    db $40,$8F,$20,$06,$40,$AA,$20,$06,$40,$D6,$30,$0A,$50
+MySiren:
+    db $40,$A0,$20,$08,$40,$D7,$20,$08,$40,$A0,$20,$08,$40,$D7,$20,$08,$40,$A0,$20,$08,$40,$D7,$20,$08
+    db $40,$A0,$30,$08,$40,$D7,$40,$08,$50
+MyWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$10,$0C,$40,$8F,$20,$06,$40,$6B,$20,$12
+    db $50
+MyLose:
+    db $40,$1D,$21,$0A,$40,$2E,$31,$0A,$40,$41,$31,$0A,$40,$53,$41,$14,$50
+
+MySoundTable:
+    dw MyTuneMel,$702B
+    dw MyTuneBass,$7035
+    dw MyStep,$703F
+    dw MyTick,$7049
+    dw MyPick,$7049
+    dw MyDoor,$7049
+    dw MyKnock,$703F
+    dw MyChime,$7049
+    dw MySiren,$7049
+    dw MyWin,$7049
+    dw MyLose,$7049
+; Fog on the Mews (original)
+; Tiny Sound, 10 frames per step
+MyTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$01,$01,$18,$01,$1A,$01,$1C,$01
+    db $01,$01,$00,$01,$1F,$01,$01,$1D,$01,$01,$1A,$01,$1C,$01,$18,$01
+    db $01,$01,$00,$01,$21,$01,$01,$23,$01,$01,$24,$01,$23,$01,$21,$01
+    db $20,$01,$01,$01,$21,$01,$01,$1C,$01,$01,$18,$01,$17,$01,$15,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+MyTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$08,$01,$10,$01
+    db $08,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0E,$01
+    db $04,$01,$0B,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$10,$01,$04,$01,$10,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01,$01,$01
+    db $FF
+}

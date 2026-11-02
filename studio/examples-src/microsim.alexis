@@ -1,0 +1,1473 @@
+cartridge "MICROSIM/TIM GERCHMEZ/1986"
+
+' MICROSIM
+' A ColecoVision game based on "Micro Flight Simulator" by Tim Gerchmez,
+' Ahoy! January 1986 (Commodore 64, BASIC, file MICROSIM on disk
+' ahoy1986-01; author from the listing's REM, line 15).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the flight rules are the original's (read from
+' its listing, orig/microsim.bas); the C64 showed only numbers in boxes,
+' here a windscreen view (the horizon moves with the elevator, fields, a
+' runway on the ground, cloud when inside the cloud layer, the other
+' aircraft growing ahead) sits over an instrument panel with gauges,
+' lamps and a switch row, with sound effects and an original title tune.
+'
+' The game: a tournament of three flights. Open the throttle on the
+' runway, take off, fly, land and roll to a stop; the miles of a flight
+' are banked when the aircraft stops after a safe landing. A crash ends
+' the tournament with the miles banked so far. Session best kept.
+'
+' From the original (orig/microsim.bas, the pass at lines 450-600 and the
+' flight model at 745-795):
+'  - throttle: + adds power (on the ground +1 MPH ground speed; in the air
+'    +3 to the power speed Q0, max 120, airspeed never below Q0), - takes
+'    it off; RPM follows the throttle (20 a step; the SID pitch, lines
+'    680-740), capped at the top (F2 >= 5) and bottom (F2 <= .25)
+'  - every pass with 12% odds the engine loses a little: -1 MPH ground,
+'    -2 Q0, -20 RPM (line 500); in the air airspeed drifts -1, +1 at 30%,
+'    +1 more at 20% (line 590), max 120
+'  - take off: on the ground, flaps DOWN, elevator above 20, ground speed
+'    above 60 -> airborne at 30 ft (line 575)
+'  - altitude a pass: sgn(EL) x AS / 10 + 2.5 x EL + random 0-1 (line 750);
+'    +2 with flaps down, -2 with rudder past 30; EL -1 holds (0-1 ft
+'    down); EL 0 holds, -0..4 below 40 knots, +0..4 above 95; below 30
+'    knots level flight sinks 30 - AS a pass (lines 750-780)
+'  - heading += AS / 100 x rudder (line 770)
+'  - stall below 10 knots or above 40 elevator: falling 15, 39, 63 ...
+'    feet a pass (lines 515-570)
+'  - landing: elevator -4..4, below 80 knots, under 20 ft, flaps UP and
+'    gear down; rudder past 15 there is a crash (lines 745, 790)
+'  - crashes: altitude 0 in the air; 40 knots or less with elevator past
+'    30; rudder past 40 above 50 knots; engine failure above 31,000 ft,
+'    above 100 knots with elevator past 30, or RPM below 300 in the air;
+'    gear raised on the ground; a mid-air collision; fuel gone
+'  - fuel: two tanks of 3 units, one unit used every 300 passes in the
+'    air from the selected tank; a burn from an empty tank is FUEL GONE;
+'    refuel on the ground only (lines 585, 605, 800-815)
+'  - traffic: above 5,000 ft, 2% a pass, another aircraft ahead on your
+'    heading; turn more than 1-10 degrees off it within 120 - AS passes or
+'    collide (lines 490, 910-920)
+'  - a cloud layer 1,000-9,000 ft give or take 200-455 (line 446)
+'  - ATIS: temperature, visibility, information letter (lines 635-665)
+'
+' Liberties:
+'  - Joystick instead of the keyboard; one original pass is 15 frames.
+'  - No demo flight, no day/night switch (cosmetic on the C64), no oil
+'    temperature arrow; the landing-light switch (2) is left out.
+'  - The C64's boost switch (3: +80 RPM, more fuel) and economy switches
+'    (5-7: slower fuel use) are one MIX switch: LEAN uses fuel at half
+'    the rate but takes 80 RPM off (RICH is the original's plain state).
+'  - ATIS also reads out the cloud layer (base and tops), so a first-time
+'    pilot can know where cloud is.
+'  - Traffic gives at least 16 passes (4 s) to turn away (the original's
+'    120 - AS left 0-1 passes at full speed); the heading difference is
+'    taken the short way round 360.
+'  - Scoring: the C64 counted tournament miles (TNMT, a running
+'    integral) with no end; here miles are AS / 14,400 nautical miles a
+'    pass (4 passes a second), banked on a safe stop, three flights.
+'  - The crash dive (lines 845-865) is a short sound and the CRASH
+'    message.
+'  - Not trivial by standing still: on the ground nothing is scored; in
+'    the air fuel runs out, the engine slowly loses power and traffic
+'    comes above 5,000 ft.
+'
+' Controls: either controller. Stick up/down: elevator (nose up/down),
+' left/right: rudder (hold to keep moving, one step every 6 frames).
+' Left button held + stick up/down: throttle. Right button: move the
+' switch cursor (FLAP, GEAR, TANK, MIX, FILL, WX); left button tapped
+' with the stick centred: work that switch. On the title, up and down
+' choose, a button confirms.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TSky = 128
+const TPuffl = 129
+const TPuffr = 130
+const THor0 = 131
+const THor1 = 132
+const THor2 = 133
+const THor3 = 134
+const THor4 = 135
+const THor5 = 136
+const THor6 = 137
+const THor7 = 138
+const TGnd = 139
+const TCloud = 140
+const TRwl = 141
+const TRwe = 142
+const TRwr = 143
+const TRwc = 144
+const TPtl = 145
+const TPt = 146
+const TPtr = 147
+const TPl = 148
+const TPr = 149
+const TPbl = 150
+const TPb = 151
+const TPbr = 152
+const TDash = 153
+const TFe = 154
+const TFf = 155
+const TLoff = 156
+const TLred = 157
+const TLgrn = 158
+const TTrk = 159
+const TMrk = 160
+const TMid = 161
+const TCur = 162
+const SFar = 0
+const SNear = 4
+const SSide = 8
+const SWin = 12
+const NTiles8 = 280
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndSwitch = 4
+const SndEngine = 5
+const SndStall = 6
+const SndTraffic = 7
+const SndTouch = 8
+const SndCrash = 9
+const SndLanded = 10
+const SndFuel = 11
+const SndBuzz = 12
+const TickN = 15
+const RepN = 6
+const NSpr = 3
+const MsgN = 150
+const MileD = 1440
+const Flights = 3
+const NSw = 6
+
+' sky puffs: column, row (rows 0-8 of the view)
+data PuffT bytes
+  4, 1, 20, 2, 11, 0, 26, 3
+end data
+' switch cursor columns
+data SwC bytes
+  2, 7, 12, 17, 21, 26
+end data
+
+record Bogey:
+  u8 Live
+  i16 Hd
+  u8 Band
+  u8 Age
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the aircraft
+u8 Th = 48
+i16 Er = 710
+u8 As = 0
+u8 Gs = 0
+u8 Q0 = 0
+i16 At = 0
+i8 Ru = 0
+i8 El = 0
+i16 He = 90
+u8 Fp = 1
+u8 Gr = 1
+u8 Gd = 1
+u8 Si = 0
+u8 D9 = 15
+u8 Tk = 0
+u8 Fu[2]
+u16 Kx = 0
+u8 Mix = 0
+u8 Cl = 0
+i16 Y1 = 0
+i16 Y2 = 0
+Bogey Bg
+' the tournament
+u8 Flight = 1
+u8 Landed = 0
+u16 MiT = 0
+u16 Acc = 0
+u16 Banked = 0
+u16 Best = 0
+u8 Over = 0
+u8 Why = 0
+' clock: frames, BCD minutes and seconds of the flight
+u8 Ft = 0
+bcd digits 2 Sec = 0
+bcd digits 2 Mins = 0
+u8 Clock = 0
+' the pass counter within a tick, the switch cursor, key repeat
+u8 Fs = 0
+u8 Sel = 0
+u8 Rep = 0
+u8 Msg = 0
+u8 MsgT = 0
+u8 Dirty = 0
+u8 VKey = 255
+u8 R1 = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Hold1 = 0
+u8 Was1 = 0
+u8 Was2 = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+u8 Px = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+i16 Ai = 0
+i16 Bi = 0
+
+  tile screen
+  set sound table MsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if Dirty = 1 then ShowPanel
+  DrawView
+  if Over = 0 then goto play_loop
+
+  ' the end: why, the miles, the best, then back to the title on a press
+  if Over = 1 then play sound SndCrash
+  if Over = 2 then play sound SndLanded
+  if Banked > Best then Best = Banked
+  ShowPanel
+  DrawView
+  for Ri = 2 to 6
+    fill 32 count 24 at 4,Ri
+  next
+  select case Why
+  case 1
+    print at 6,3, "CRASH! ON THE GROUND"
+  case 2
+    print at 6,3, "CRASH! STALL AND SPIN"
+  case 3
+    print at 6,3, "CRASH! WINGS FAILED"
+  case 4
+    print at 6,3, "ENGINE FAILURE!"
+  case 5
+    print at 6,3, "CRASH! GEAR COLLAPSED"
+  case 6
+    print at 6,3, "COLLISION!"
+  case 7
+    print at 6,3, "CRASH! FUEL GONE!"
+  case 8
+    print at 6,3, "CRASH! GROUND LOOP"
+  case 9
+    print at 6,3, "TOURNAMENT COMPLETE"
+  end select
+  print at 6,4, "MILES BANKED"
+  PrTenths(20, 4, Banked)
+  print at 6,5, "BEST"
+  PrTenths(20, 5, Best)
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: messages, controls, every TickN frames a pass
+
+sub PlayFrame:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      Msg = 0
+      Dirty = 1
+    end if
+  end if
+  RunClock
+  Controls
+  if Over > 0 then return
+  inc Fs
+  if Fs < TickN then return
+  Fs = 0
+  SimPass
+  Dirty = 1
+  return
+end sub
+
+' the flight's clock: minutes and seconds in BCD, running in the air
+sub RunClock:
+  if Clock = 0 then return
+  inc Ft
+  if Ft < 60 then return
+  Ft = 0
+  if Mins = 99 then return
+  inc Sec
+  if Sec = 60 then
+    Sec = 0
+    inc Mins
+  end if
+  Dirty = 1
+  return
+end sub
+
+sub Controls:
+  V = J1 | J2
+  V = V & 15
+  if Press2 = 1 then
+    inc Sel
+    if Sel >= NSw then Sel = 0
+    play sound SndClick
+    Dirty = 1
+  end if
+  if Press1 = 1 then
+    if V = 0 then Switch
+  end if
+  if V = 0 then
+    Rep = 0
+    return
+  end if
+  if Rep > 0 then
+    dec Rep
+    return
+  end if
+  Rep = RepN
+  Dirty = 1
+  if Hold1 = 1 then
+    if V & 1 then ThrUp
+    if V & 2 then ThrDn
+    return
+  end if
+  if V & 1 then
+    if El < 45 then inc El
+  end if
+  if V & 2 then
+    if El > -45 then dec El
+  end if
+  if V & 4 then
+    if Ru > -45 then dec Ru
+  end if
+  if V & 8 then
+    if Ru < 45 then inc Ru
+  end if
+  return
+end sub
+
+' throttle up / down (lines 680-740)
+sub ThrUp:
+  if Th >= 128 then return
+  inc Th
+  SetRpm
+  if Gd = 1 then
+    inc Gs
+    Q0 = 0
+    return
+  end if
+  Q0 = Q0 + 3
+  if Q0 > 120 then Q0 = 120
+  if Q0 >= As then As = Q0
+  return
+end sub
+
+sub ThrDn:
+  if Th <= 6 then return
+  if Gd = 1 then
+    if Gs > 0 then dec Gs
+    As = 0
+    Q0 = 0
+  else
+    if Q0 >= 3 then
+      Q0 = Q0 - 3
+    else
+      Q0 = 0
+    end if
+  end if
+  dec Th
+  SetRpm
+  return
+end sub
+
+' RPM: 20 a throttle step, 80 less when lean
+sub SetRpm:
+  Er = Th
+  Er = Er * 20
+  Er = Er - 250
+  if Mix = 1 then Er = Er - 80
+  if Er < 0 then Er = 0
+  return
+end sub
+
+' the selected switch
+sub Switch:
+  play sound SndSwitch
+  Dirty = 1
+  select case Sel
+  case 0
+    Fp = 1 - Fp
+  case 1
+    Gr = 1 - Gr
+    if Gr = 0 then
+      if Gd = 1 then Crash(5)
+    end if
+  case 2
+    Tk = 1 - Tk
+  case 3
+    Mix = 1 - Mix
+    SetRpm
+  case 4
+    if Gd = 1 then
+      Fu[0] = 3
+      Fu[1] = 3
+      Say(2)
+      play sound SndFuel
+    else
+      Say(3)
+      play sound SndBuzz
+    end if
+  case 5
+    Say(4)
+  end select
+  return
+end sub
+
+sub Say(u8 Code):
+  Msg = Code
+  MsgT = MsgN
+  if Code = 4 then MsgT = 240
+  Dirty = 1
+  return
+end sub
+
+sub Crash(u8 Reason):
+  Why = Reason
+  Over = 1
+  Clock = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one pass of the original's loop (lines 450-600)
+
+sub SimPass:
+  Rand
+  R1 = Rs & 255
+  if At > 31000 then
+    Crash(4)
+    return
+  end if
+  if As > 100 then
+    if El > 30 then
+      Crash(4)
+      return
+    end if
+  end if
+  if Th < 26 then Gs = 0
+  if Mix = 1 then
+    inc Kx
+  else
+    Kx = Kx + 2
+  end if
+  TrafficPass
+  if Over > 0 then return
+  ' the engine loses a little (line 500)
+  Got = 0
+  if Gs > 1 then Got = 1
+  if As > 1 then Got = 1
+  if Got = 1 then
+    if R1 >= 225 then
+      if Gs > 0 then dec Gs
+      if Q0 >= 2 then
+        Q0 = Q0 - 2
+      else
+        Q0 = 0
+      end if
+      if Th > 0 then dec Th
+      SetRpm
+    end if
+  end if
+  ' stall: falling ever faster (lines 515-525)
+  if Si = 1 then
+    if At > 0 then
+      Ai = D9
+      At = At - Ai
+    end if
+    D9 = D9 + 24
+    if D9 > 200 then D9 = 200
+  else
+    D9 = 15
+  end if
+  if Gd = 0 then
+    AirPass
+    if Over > 0 then return
+    if Gd = 0 then
+      Si = 0
+      if As < 10 then Si = 1
+      if As < 30 then
+        if El > 20 then Si = 1
+      end if
+    end if
+  end if
+  if Gd = 0 then
+    if Er < 300 then
+      Crash(4)
+      return
+    end if
+    if At <= 0 then
+      Crash(1)
+      return
+    end if
+  end if
+  if As < Q0 then As = Q0
+  if Gd = 0 then
+    if El > 40 then Si = 1
+    Gs = 0
+    if At <= 10 then At = 10
+  end if
+  if El <= 40 then
+    if As >= 10 then Si = 0
+  end if
+  ' take off (line 575)
+  if Gd = 1 then
+    if Fp = 0 then
+      if El > 20 then
+        if Gs > 60 then TakeOff
+      end if
+    end if
+  end if
+  if At <= 0 then At = 0
+  FuelPass
+  if Over > 0 then return
+  if Gd = 0 then
+    if As > 0 then dec As
+    if R1 >= 179 then inc As
+    if R1 >= 205 then inc As
+    if As > 120 then As = 120
+    Acc = Acc + As
+    while Acc >= MileD
+      Acc = Acc - MileD
+      inc MiT
+    end while
+  end if
+  ' a landing ends when the aircraft stands still
+  if Landed = 1 then
+    if Gs = 0 then FlightDone
+  end if
+  return
+end sub
+
+sub TakeOff:
+  Gd = 0
+  At = 30
+  As = Gs
+  Gs = 0
+  Q0 = As
+  Landed = 0
+  MiT = 0
+  Acc = 0
+  Ft = 0
+  Sec = 0
+  Mins = 0
+  Clock = 1
+  play sound SndEngine
+  return
+end sub
+
+sub FlightDone:
+  Landed = 0
+  Banked = Banked + MiT
+  MiT = 0
+  play sound SndLanded
+  if Flight >= Flights then
+    Why = 9
+    Over = 2
+    return
+  end if
+  inc Flight
+  Say(5)
+  return
+end sub
+
+' one fuel unit every 300 passes (600 half-units) in the air (lines 585,
+' 800-815)
+sub FuelPass:
+  if Kx < 600 then return
+  Kx = 0
+  if Gd = 1 then return
+  K = Tk
+  if Fu[K] = 0 then
+    Crash(7)
+    return
+  end if
+  N = Fu[K] - 1
+  Fu[K] = N
+  if N = 0 then Say(6)
+  return
+end sub
+
+' the shorter way from heading B to heading A, -180..179
+function HdgDiff(i16 A, i16 B) as i16
+  i16 D = 0
+  D = A - B
+  if D >= 180 then D = D - 360
+  if D < -180 then D = D + 360
+  return D
+
+' traffic (lines 490, 910-920)
+sub TrafficPass:
+  u8 Lim = 0
+  if Bg.Live = 0 then
+    if R1 >= 251 then
+      if At > 5000 then
+        Bg.Live = 1
+        Bg.Hd = He
+        Bg.Age = 0
+        Rand
+        V = Rs & 255
+        while V >= 10
+          V = V - 10
+        end while
+        Bg.Band = V + 1
+        Say(7)
+        play sound SndTraffic
+      end if
+    end if
+  else
+    Bg.Age = Bg.Age + 1
+    Ai = HdgDiff(He, Bg.Hd)
+    Ai = abs(Ai)
+    Bi = Bg.Band
+    if Ai > Bi then
+      Bg.Live = 0
+      Say(8)
+    else
+      Lim = 16
+      if As < 104 then Lim = 120 - As
+      if Bg.Age >= Lim then Crash(6)
+    end if
+  end if
+  return
+end sub
+
+' the flight model (lines 745-795)
+sub AirPass:
+  i16 Z7 = 0
+  i16 Dv = 0
+  i16 Ev = 0
+  ' landing
+  Got = 0
+  if El >= -4 then
+    if El <= 4 then
+      if As < 80 then
+        if At < 20 then
+          if Fp = 1 then
+            if Gr = 1 then Got = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  if Got = 1 then
+    Gd = 1
+    Gs = As
+    As = 0
+    Q0 = 0
+    At = 0
+    Si = 0
+    Landed = 1
+    Clock = 0
+    Bg.Live = 0
+    play sound SndTouch
+    Ev = Ru
+    Ev = abs(Ev)
+    if Ev > 15 then Crash(8)
+  else
+    Z7 = At
+    Ev = El
+    Dv = As / 10
+    if El < 0 then Dv = 0 - Dv
+    if El = 0 then Dv = 0
+    Ev = Ev * 5
+    Ev = Ev / 2
+    At = At + Dv + Ev
+    if R1 >= 128 then inc At
+    if At > 32000 then At = 32000
+    if Fp = 0 then At = At + 2
+    if Ru < -30 then At = At - 2
+    if Ru > 30 then At = At - 2
+    if El = -1 then
+      At = Z7
+      if R1 >= 128 then dec At
+    end if
+    if As < 40 then
+      if El > 30 then Crash(2)
+    end if
+    Ev = Ru
+    Ev = abs(Ev)
+    if Ev > 40 then
+      if As > 50 then Crash(3)
+    end if
+    if El = 0 then
+      At = Z7
+      W16 = R1 * 5
+      Dv = W16 >> 8
+      if As < 40 then At = At - Dv
+      if As > 95 then At = At + Dv
+    end if
+    Cl = 0
+    if At < Y1 then
+      if At > Y2 then Cl = 1
+    end if
+    ' heading
+    Dv = As
+    Ev = Ru
+    Dv = Dv * Ev
+    Dv = Dv / 100
+    He = He + Dv
+    if He < 0 then He = He + 360
+    if He > 359 then He = He - 360
+    if As < 30 then
+      if El = 0 then
+        Dv = 30 - As
+        At = At - Dv
+      end if
+    end if
+  end if
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' a tenths value (u16) as 000.0
+sub PrTenths(u8 Cx, u8 Ry, u16 Val):
+  u16 Wh = 0
+  u16 Fr = 0
+  Wh = Val / 10
+  Fr = Val - Wh * 10
+  print at Cx,Ry, digits$(Wh, 3)
+  Cx = Cx + 3
+  print at Cx,Ry, "."
+  Cx = Cx + 1
+  print at Cx,Ry, digits$(Fr, 1)
+end sub
+
+' a signed control position as +00 / -00
+sub PrSigned(u8 Cx, u8 Ry, i8 Val):
+  i16 Mag = 0
+  Mag = Val
+  if Val < 0 then
+    print at Cx,Ry, "-"
+    Mag = 0 - Mag
+  else
+    print at Cx,Ry, "+"
+  end if
+  NumU = Mag
+  Cx = Cx + 1
+  print at Cx,Ry, digits$(NumU, 2)
+end sub
+
+' a control scale: 11 cells, the marker at 5 + Val / 9
+sub Scale(u8 Ry, i8 Val):
+  i8 Q = 0
+  u8 Mc = 0
+  fill TTrk count 11 at 7,Ry
+  put char TMid at 12,Ry
+  Q = Val / 9
+  Mc = 12 + Q
+  put char TMrk at Mc,Ry
+end sub
+
+sub ShowPanel:
+  Dirty = 0
+  NumU = At
+  print at 6,11, digits$(NumU, 5)
+  NumU = He
+  print at 17,11, digits$(NumU, 3)
+  print Mins at 23,11
+  print Sec at 26,11
+  NumU = As
+  print at 6,12, digits$(NumU, 3)
+  NumU = Gs
+  print at 15,12, digits$(NumU, 3)
+  NumU = Er
+  print at 24,12, digits$(NumU, 4)
+  Scale(14, El)
+  PrSigned(19, 14, El)
+  Scale(15, Ru)
+  PrSigned(19, 15, Ru)
+  if Fp = 1 then
+    print at 8,17, "UP"
+  else
+    print at 8,17, "DN"
+  end if
+  T = TLoff
+  if Gr = 1 then T = TLgrn
+  put char T at 17,17
+  T = TLoff
+  if Si = 1 then T = TLred
+  put char T at 26,17
+  ' fuel: L cells 9-11, R cells 16-18, the pointer at the selected tank
+  for Ci = 0 to 1
+    N = Fu[Ci]
+    X = 9
+    if Ci = 1 then X = 16
+    for J = 1 to 3
+      T = TFe
+      if J <= N then T = TFf
+      put char T at X,18
+      inc X
+    next
+  next
+  put char 32 at 8,18
+  put char 32 at 15,18
+  X = 8
+  if Tk = 1 then X = 15
+  put char TCur at X,18
+  if Mix = 1 then
+    print at 25,18, "LEAN"
+  else
+    print at 25,18, "RICH"
+  end if
+  ' the switch cursor
+  for Ci = 0 to 5
+    X = SwC[Ci]
+    put char 32 at X,19
+  next
+  X = SwC[Sel]
+  put char TCur at X,19
+  ShowMsg
+  NumU = Flight
+  print at 6,21, digits$(NumU, 1)
+  PrTenths(13, 21, MiT)
+  PrTenths(23, 21, Banked)
+end sub
+
+sub ShowMsg:
+  fill 32 count 28 at 2,20
+  select case Msg
+  case 0
+    if Bg.Live = 1 then
+      print at 2,20, "TRAFFIC AHEAD! TURN AWAY"
+    else
+      if Gd = 1 then
+        if Landed = 1 then
+          print at 2,20, "LANDED: ROLL TO A STOP"
+        else
+          print at 2,20, "ON THE GROUND"
+        end if
+      else
+        if Cl = 1 then print at 2,20, "IN CLOUD"
+      end if
+    end if
+  case 2
+    print at 2,20, "BOTH TANKS FULL"
+  case 3
+    print at 2,20, "GROUND ONLY"
+  case 4
+    print at 2,20, "CLOUD"
+    NumU = Y2
+    print at 8,20, digits$(NumU, 5)
+    print at 13,20, "-"
+    NumU = Y1
+    print at 14,20, digits$(NumU, 5)
+    print at 20,20, "FT INFO"
+    V = Rs & 3
+    if V = 0 then print at 28,20, "A"
+    if V = 1 then print at 28,20, "B"
+    if V >= 2 then print at 28,20, "C"
+  case 5
+    print at 2,20, "MILES BANKED! TAKE OFF"
+  case 6
+    print at 2,20, "TANK EMPTY: SWITCH TANKS"
+  case 7
+    print at 2,20, "TRAFFIC AHEAD! TURN AWAY"
+  case 8
+    print at 2,20, "TRAFFIC CLEAR"
+  end select
+end sub
+
+' the view, rows 0-8: sky, horizon at pixel line H, fields, runway; cloud
+sub DrawView:
+  u8 H = 0
+  i16 Hh = 0
+  Hh = El
+  Hh = Hh + 36
+  if Gd = 1 then Hh = 28
+  if Hh < 1 then Hh = 1
+  if Hh > 70 then Hh = 70
+  H = Hh
+  if Cl = 1 then
+    if Gd = 0 then H = 200
+  end if
+  if TitleOn = 1 then H = 52
+  if H <> VKey then
+    VKey = H
+    PaintView
+  end if
+  DrawSprites
+end sub
+
+sub PaintView:
+  u8 Hr = 0
+  u8 Top = 0
+  u8 Lc = 0
+  for Ri = 0 to 8
+    Top = Ri << 3
+    if VKey = 200 then
+      fill TCloud count 32 at 0,Ri
+    else
+      if VKey >= Top + 8 then
+        fill TSky count 32 at 0,Ri
+      else
+        if VKey < Top then
+          fill TGnd count 32 at 0,Ri
+          ' the runway, widening towards the bottom
+          if Gd = 1 then
+            if TitleOn = 0 then
+              Hr = Ri - 3
+              Lc = 16 - Hr
+              fill TRwl count Hr * 2 at Lc,Ri
+              put char TRwe at Lc,Ri
+              Lc = 15 + Hr
+              put char TRwr at Lc,Ri
+              put char TRwc at 16,Ri
+            end if
+          end if
+        else
+          Hr = VKey - Top
+          fill THor0 + Hr count 32 at 0,Ri
+        end if
+      end if
+    end if
+  next
+  if VKey = 200 then return
+  for Ci = 0 to 3
+    K = Ci << 1
+    X = PuffT[K]
+    Y = PuffT[K + 1]
+    if VKey >= Y * 8 + 8 then
+      put char TPuffl at X,Y
+      X = X + 1
+      put char TPuffr at X,Y
+    end if
+  next
+end sub
+
+' sprites: 0 the other aircraft (or the title's), 1 its windows
+sub DrawSprites:
+  i16 Sx = 0
+  if TitleOn = 1 then
+    set sprite 0 to 40,Px,SSide,15
+    set sprite 1 to 40,Px,SWin,4
+    update sprites
+    return
+  end if
+  if Bg.Live = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    update sprites
+    return
+  end if
+  Sx = HdgDiff(He, Bg.Hd)
+  Sx = Sx * 6
+  Sx = 120 - Sx
+  if Sx < 16 then Sx = 16
+  if Sx > 224 then Sx = 224
+  X = Sx
+  Y = VKey - 9
+  if VKey = 200 then Y = 28
+  K = SFar
+  if Bg.Age >= 8 then K = SNear
+  set sprite 0 to Y,X,K,1
+  set sprite 1 to 192,0,0,0
+  update sprites
+end sub
+
+' the panel frame and labels
+sub DrawPanel:
+  fill TDash count 32 at 0,9
+  put char TPtl at 1,10
+  fill TPt count 28 at 2,10
+  put char TPtr at 30,10
+  for Ri = 11 to 21
+    put char TPl at 1,Ri
+    put char TPr at 30,Ri
+  next
+  put char TPbl at 1,22
+  fill TPb count 28 at 2,22
+  put char TPbr at 30,22
+  print at 2,11, "ALT"
+  print at 13,11, "HDG"
+  print at 21,11, "T"
+  print at 25,11, ":"
+  print at 2,12, "KTS"
+  print at 11,12, "MPH"
+  print at 20,12, "RPM"
+  print at 2,14, "ELEV"
+  print at 2,15, "RUDR"
+  print at 2,17, "FLAPS"
+  print at 12,17, "GEAR"
+  print at 20,17, "STALL"
+  print at 2,18, "FUEL L"
+  print at 14,18, "R"
+  print at 21,18, "MIX"
+  print at 3,19, "FLAP"
+  print at 8,19, "GEAR"
+  print at 13,19, "TANK"
+  print at 18,19, "MIX"
+  print at 22,19, "FILL"
+  print at 27,19, "WX"
+  print at 2,21, "FLT  /3"
+  print at 10,21, "MI"
+  print at 19,21, "TOT"
+end sub
+
+' a new tournament: on the runway, heading 90, engine idling after the
+' warm-up (the listing's start-up loop, lines 320-375)
+sub NewGame:
+  Th = 48
+  SetRpm
+  As = 0
+  Gs = 0
+  Q0 = 0
+  At = 0
+  Ru = 0
+  El = 0
+  He = 90
+  Fp = 1
+  Gr = 1
+  Gd = 1
+  Si = 0
+  D9 = 15
+  Tk = 0
+  Fu[0] = 3
+  Fu[1] = 3
+  Kx = 0
+  Mix = 0
+  Cl = 0
+  Bg.Live = 0
+  Bg.Age = 0
+  Flight = 1
+  Landed = 0
+  MiT = 0
+  Acc = 0
+  Banked = 0
+  Over = 0
+  Why = 0
+  Ft = 0
+  Sec = 0
+  Mins = 0
+  Clock = 0
+  Fs = 0
+  Sel = 0
+  Rep = 0
+  Msg = 0
+  MsgT = 0
+  ' the cloud layer (line 446)
+  Rand
+  W16 = Rs & 8191
+  if W16 >= 8000 then W16 = W16 - 8000
+  W16 = W16 + 1000
+  Y1 = W16
+  Y2 = W16
+  Rand
+  W16 = Rs & 255
+  W16 = W16 + 200
+  Y1 = Y1 + W16
+  Y2 = Y2 - W16
+  NewScreen
+  DrawPanel
+  TitleOn = 0
+  VKey = 255
+  DrawView
+  ShowPanel
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Was1 = 0
+  Was2 = 0
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' the sticks (1 up, 2 down, 4 left, 8 right), the left button held, and
+' presses of each button
+sub ReadPad:
+  u8 B1 = 0
+  u8 B2 = 0
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(1).button1 then B1 = 1
+  if joypad(2).button1 then B1 = 1
+  if joypad(1).button2 then B2 = 1
+  if joypad(2).button2 then B2 = 1
+  Hold1 = B1
+  Press1 = 0
+  Press2 = 0
+  if B1 = 1 then
+    if Was1 = 0 then Press1 = 1
+  end if
+  if B2 = 1 then
+    if Was2 = 0 then Press2 = 1
+  end if
+  Was1 = B1
+  Was2 = B2
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: sky and fields, an aircraft crossing, the tune once,
+' START / ABOUT
+sub TitlePage:
+  NewScreen
+  TitleOn = 1
+  Gd = 0
+  Cl = 0
+  El = 0
+  VKey = 255
+  Px = 0
+  DrawView
+  print at 11,12, "MICROSIM"
+  print at 4,14, "MICRO FLIGHT SIMULATOR"
+  print at 4,15, "BY TIM GERCHMEZ"
+  print at 13,17, "START"
+  print at 13,18, "ABOUT"
+  print at 4,21, "AHOY! JANUARY 1986"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Tick & 1
+  if V = 0 then inc Px
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  V = Press1 | Press2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  J = Menu + 17
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,1, "MICROSIM"
+  print at 2,3, "BASED ON MICRO FLIGHT"
+  print at 2,4, "SIMULATOR BY TIM GERCHMEZ,"
+  print at 2,5, "AHOY! JANUARY 1986 (C-64)."
+  print at 2,7, "FLY THREE FLIGHTS. MILES"
+  print at 2,8, "COUNT WHEN YOU LAND SAFELY."
+  print at 2,10, "STICK: ELEVATOR AND RUDDER"
+  print at 2,11, "LEFT BUTTON + UP/DOWN:"
+  print at 2,12, "THROTTLE. RIGHT BUTTON:"
+  print at 2,13, "PICK A SWITCH, LEFT: USE IT"
+  print at 2,14, "TAKE OFF: FLAPS DN, ELEV 21+"
+  print at 2,15, "61 MPH. LAND: FLAPS UP, GEAR"
+  print at 2,16, "DOWN, ELEV -4..4, UNDER 80"
+  print at 2,18, "GAME BY CLAUDE (ANTHROPIC)"
+  print at 2,19, "FOR AMY STUDIO, IN AMY BY"
+  print at 2,20, "AMY BIENVENU, 2026. MUSIC:"
+  print at 2,21, "CLEAR FOR TAKEOFF (NEW)"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$E0,$C0,$00,$00,$00
+  $00,$00,$C0,$07,$03,$00,$00,$00
+  $00,$11,$22,$44,$88,$11,$22,$44
+  $00,$00,$22,$44,$88,$11,$22,$44
+  $00,$00,$00,$44,$88,$11,$22,$44
+  $00,$00,$00,$00,$88,$11,$22,$44
+  $00,$00,$00,$00,$00,$11,$22,$44
+  $00,$00,$00,$00,$00,$00,$22,$44
+  $00,$00,$00,$00,$00,$00,$00,$44
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $88,$11,$22,$44,$88,$11,$22,$44
+  $10,$00,$40,$02,$00,$20,$00,$05
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $18,$18,$18,$00,$00,$18,$18,$18
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$C3,$81,$00,$00,$81,$C3,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$10,$18,$03,$03,$18,$10,$00
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$F5,$5F,$5F,$05,$05,$05
+  $05,$05,$F5,$5F,$5F,$05,$05,$05
+  $07,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $05,$07,$C2,$C2,$C2,$C2,$C2,$C2
+  $05,$05,$07,$C2,$C2,$C2,$C2,$C2
+  $05,$05,$05,$07,$C2,$C2,$C2,$C2
+  $05,$05,$05,$05,$07,$C2,$C2,$C2
+  $05,$05,$05,$05,$05,$07,$C2,$C2
+  $05,$05,$05,$05,$05,$05,$07,$C2
+  $05,$05,$05,$05,$05,$05,$05,$07
+  $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $EF,$0F,$EF,$EF,$0F,$EF,$0F,$EF
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$0E,$0E,$FE,$FE,$FE
+  $0E,$0F,$F1,$F1,$F1,$F1,$F1,$F1
+  $0E,$0F,$01,$01,$01,$01,$01,$01
+  $0E,$EF,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$0E,$0E
+  $E1,$E1,$E1,$E1,$E1,$E1,$0E,$0E
+  $0E,$01,$0E,$0E,$0E,$0E,$01,$01
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $01,$1E,$1B,$1B,$1A,$1A,$1E,$01
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$12,$12,$12,$12,$12,$12,$01
+  $01,$01,$01,$0E,$0E,$01,$01,$01
+  $B1,$1B,$1B,$0B,$0B,$1B,$1B,$B1
+  $F1,$F1,$F1,$FE,$FE,$F1,$F1,$F1
+  $01,$B1,$B1,$1B,$1B,$B1,$B1,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$02,$3F,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$FC,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$03,$82,$FF,$FF,$03,$01,$01,$07,$00,$00,$00,$00
+  $00,$00,$80,$80,$C0,$41,$FF,$FF,$C0,$80,$80,$E0,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F1,$FF,$7F,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$F8,$E7,$FF,$F8,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+MsClick:
+    db $40,$40,$20,$02,$50
+MsSwitch:
+    db $40,$7F,$10,$02,$40,$55,$20,$03,$50
+MsEngine:
+    db $40,$FF,$43,$04,$40,$F9,$53,$04,$40,$FF,$53,$04,$50
+MsStall:
+    db $40,$6B,$10,$06,$40,$FF,$F3,$06,$40,$6B,$10,$06,$40,$FF,$F3,$06,$50
+MsTraffic:
+    db $40,$47,$10,$05,$40,$5F,$10,$05,$40,$47,$10,$05,$40,$5F,$10,$05,$50
+MsTouch:
+    db $00,$00,$25,$03,$00,$00,$46,$06,$10
+MsCrash:
+    db $00,$00,$04,$06,$00,$00,$15,$0A,$00,$00,$36,$10,$00,$00,$67,$14,$10
+MsLanded:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$20,$14,$50
+MsFuel:
+    db $40,$53,$21,$04,$40,$1D,$21,$04,$40,$E2,$20,$04,$40,$AA,$20,$0A,$50
+MsBuzz:
+    db $40,$7F,$22,$04,$40,$A6,$32,$08,$50
+
+MsSoundTable:
+    dw MsTuneMel,$702B
+    dw MsTuneBass,$7035
+    dw MsClick,$7049
+    dw MsSwitch,$7049
+    dw MsEngine,$7049
+    dw MsStall,$7049
+    dw MsTraffic,$7049
+    dw MsTouch,$703F
+    dw MsCrash,$703F
+    dw MsLanded,$7049
+    dw MsFuel,$7049
+    dw MsBuzz,$7049
+; Clear for Takeoff (original)
+; Tiny Sound, 8 frames per step
+MsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$24,$01,$28,$01,$2B,$01,$01,$01,$28,$01
+    db $26,$01,$24,$01,$26,$01,$28,$01,$01,$01,$24,$01,$01,$01,$21,$01
+    db $26,$01,$29,$01,$2D,$01,$01,$01,$29,$01,$28,$01,$26,$01,$23,$01
+    db $26,$01,$24,$01,$01,$01,$00,$01,$01,$01,$00,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+MsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$10,$01
+    db $13,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$11,$01,$18,$01
+    db $13,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01
+    db $0C,$01,$00,$01
+    db $FF
+}

@@ -1,0 +1,1000 @@
+cartridge "GEEHONK CAVERNS/JOHN FEDOR/1987"
+
+' GEEHONK CAVERNS
+' A ColecoVision game based on "Caverns of Geehonk" by John Fedor (Ranger
+' Software), Ahoy! March 1987 (Commodore 64, machine language with a BASIC
+' loader). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' machine code, orig/ml.dis), the game is built for the ColecoVision:
+' smooth 16 x 16 sprites, tiled cavern and ice stalactites, sound effects
+' and an original title tune.
+'
+' The game: you fly a gun pod inside a cavern. Stalactites keep growing
+' down from the ceiling, one block at a time in random columns. Touching a
+' stalactite destroys the pod. The pod fires in the direction it faces
+' (up, down, left or right); a shot that hits a stalactite breaks it from
+' that block down to its tip, 5 points per block. Geehonks drift in from
+' the left wall, zigzag across the cavern, bounce off the right wall and
+' leave by the left; they cannot be shot, and touching one destroys the
+' pod. Each lost pod starts a fresh cavern. The game ends when the pods
+' are gone.
+'
+' From the original (orig/ml.dis): the cavern 26 columns wide, growth of
+' one block in a random column at a fixed pace (a full column stops
+' growing), the four-way facing with the stick's last direction winning
+' in the order down, right, up, left; one shot at a time, fired while the
+' button is held; a hit breaks the stalactite from the hit block to its
+' tip for 5 points a block; pod destroyed by a stalactite or a Geehonk;
+' Geehonks entering at the left at a random height, moving one pixel
+' sideways and one up or down per step (the zigzag turns every 15 steps,
+' shared by all), turning back at the right edge and vanishing at the
+' left; at most one Geehonk per 1000 points, up to six; a fresh cavern
+' and a button press for each pod; lives 3 or 6; the high score.
+'
+' Liberties: one player (the original also has two players taking turns
+' or playing at once). The original's LEVEL 1-7 set which Geehonks pass
+' behind the stalactites (a C64 sprite priority trick); here LEVEL sets
+' how fast the stalactites grow, and they grow a little faster as you
+' break more. The C64 version ran as fast as its machine code could; the
+' speeds here are set for a human: the pod moves 1.5 pixels a frame, the
+' Geehonks half a pixel, a shot 4 pixels. There is always at least one
+' Geehonk (the original had none below 1000 points, which let a pod sit
+' under one column and shoot it for ever); Geehonks never appear right
+' next to the pod. The stalactites keep their colour (the C64 cycled the
+' colours of every column).
+'
+' Controls: either controller; the stick flies the pod, either button
+' fires (hold to keep firing). On the title, up and down choose a line,
+' left and right change LEVEL and LIVES, a button starts or shows the
+' credits.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TRock = 128
+const TRockb = 129
+const TWalll = 130
+const TWallr = 131
+const TFloor = 132
+const TBg = 133
+const TBgd = 134
+const TStc = 135
+const TTpc = 136
+const TStb = 137
+const TTpb = 138
+const TStw = 139
+const TTpw = 140
+const TLife = 141
+const SPod0 = 0
+const SPod1 = 4
+const SPod2 = 8
+const SPod3 = 12
+const SCab0 = 16
+const SCab1 = 20
+const SCab2 = 24
+const SCab3 = 28
+const SBoom0 = 32
+const SBoom1 = 36
+const SGee0 = 40
+const SGee1 = 44
+const SGee2 = 48
+const SGee3 = 52
+const SShot = 56
+const NTiles8 = 112
+const SprBytes = 480
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndCrack = 4
+const SndBoom = 5
+const SndHonk = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 9
+const NCol = 26
+const MaxH = 20
+const DeadN = 70
+const NFoe = 6
+const PxMin = 20
+const PxMax = 220
+const PyMin = 20
+const PyMax = 172
+const StartX = 120
+const StartY = 172
+
+record Foe:
+  u8 X
+  u8 Y
+  u8 D
+  u8 Act
+end record
+
+Foe Fo[NFoe]
+u8 H[NCol]
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u16 Broken = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the pod: sprite corner, facing (0 up, 1 right, 2 down, 3 left)
+u8 Px = StartX
+u8 Py = StartY
+u8 Pf = 0
+u8 DeadT = 0
+u8 Lives = 3
+u8 Over = 0
+u8 Playing = 0
+' the shot: centre, direction, on
+u8 Sx = 0
+u8 Sy = 0
+u8 Sd = 0
+u8 Son = 0
+' settings and pacing
+u8 Lvl = 1
+u8 LivesSet = 3
+u8 GrowT = 0
+u8 GrowN = 24
+u8 ZigC = 0
+u8 ZigUp = 0
+u8 FoeT = 0
+u8 Emax = 1
+u8 Menu = 0
+u8 TitleOn = 0
+u8 WaitBtn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Fi = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table GkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score > Hi then Hi = Score
+  Playing = 0
+  HideSprites
+  ShowHud
+  mute all
+  print at 8,10, "                "
+  print at 8,11, "   GAME  OVER   "
+  print at 8,12, "                "
+  play sound SndOver
+  Playing = 0
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveFoes
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then LosePod
+    return
+  end if
+  MovePod
+  MoveShot
+  if Son = 0 then
+    if Btn > 0 then FireShot
+  end if
+  inc GrowT
+  if GrowT >= GrowN then
+    GrowT = 0
+    GrowOne
+  end if
+  SpawnFoe
+  if HitRock(Px, Py) = 1 then KillPod
+  if HitFoe = 1 then KillPod
+  return
+end sub
+
+sub KillPod:
+  if DeadT > 0 then return
+  DeadT = DeadN
+  Son = 0
+  play sound SndBoom
+  return
+end sub
+
+sub LosePod:
+  dec Lives
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  FreshCave
+  return
+end sub
+
+' the stick: the pod moves 1.5 pixels a frame; the facing follows the last
+' of down, right, up, left that is held (as on the C64)
+sub MovePod:
+  u8 Sp = 1
+  K = J1 | J2
+  Sp = 1 + (Tick & 1)
+  V = K & 2
+  if V > 0 then
+    Pf = 2
+    Py = Py + Sp
+  end if
+  V = K & 8
+  if V > 0 then
+    Pf = 1
+    Px = Px + Sp
+  end if
+  V = K & 1
+  if V > 0 then
+    Pf = 0
+    Py = Py - Sp
+  end if
+  V = K & 4
+  if V > 0 then
+    Pf = 3
+    Px = Px - Sp
+  end if
+  clamp Px between PxMin and PxMax
+  clamp Py between PyMin and PyMax
+  return
+end sub
+
+' the pod's centre box (pixels 4-11 of the sprite) against the stalactites
+function HitRock(u8 Ax, u8 Ay) as u8
+  u8 Hc = 0
+  u8 Top = 0
+  u8 Res = 0
+  Top = (Ay + 4) >> 3
+  for Hc = (Ax + 4) >> 3 to (Ax + 11) >> 3
+    if Hc >= 3 then
+      if Hc <= 28 then
+        if Top <= H[Hc - 3] + 2 then Res = 1
+      end if
+    end if
+  next
+  return Res
+
+' the pod against the Geehonks (10 x 10 around their centres)
+function HitFoe as u8
+  i16 Dx = 0
+  i16 Dy = 0
+  u8 Res = 0
+  for Fi = 0 to NFoe - 1
+    if Fo[Fi].Act = 1 then
+      Dx = Fo[Fi].X - Px
+      Dy = Fo[Fi].Y - Py
+      if Dx > -10 then
+        if Dx < 10 then
+          if Dy > -10 then
+            if Dy < 10 then Res = 1
+          end if
+        end if
+      end if
+    end if
+  next
+  return Res
+
+sub FireShot:
+  Son = 1
+  Sd = Pf
+  Sx = Px + 8
+  Sy = Py + 8
+  select case Pf
+  case 0
+    Sy = Sy - 8
+  case 1
+    Sx = Sx + 8
+  case 2
+    Sy = Sy + 8
+  case else
+    Sx = Sx - 8
+  end select
+  play sound SndZap
+  ShotCell
+  return
+end sub
+
+sub MoveShot:
+  if Son = 0 then return
+  select case Sd
+  case 0
+    Sy = Sy - 4
+  case 1
+    Sx = Sx + 4
+  case 2
+    Sy = Sy + 4
+  case 3
+    Sx = Sx - 4
+  end select
+  ShotCell
+  return
+end sub
+
+' the shot leaves the cavern, or breaks a stalactite from the block it
+' hits down to its tip (5 points a block)
+sub ShotCell:
+  u8 Sc = 0
+  u8 Sr = 0
+  u8 Si = 0
+  u8 Old = 0
+  u8 Gone = 0
+  u8 Pts = 0
+  if Sx < 24 then Son = 0
+  if Sx > 231 then Son = 0
+  if Sy < 24 then Son = 0
+  if Sy > 183 then Son = 0
+  if Son = 0 then return
+  Sc = Sx >> 3
+  Sr = Sy >> 3
+  Si = Sc - 3
+  Old = H[Si]
+  if Sr > Old + 2 then return
+  Son = 0
+  Gone = Old + 3 - Sr
+  H[Si] = Sr - 3
+  Broken = Broken + Gone
+  Pts = Gone * 5
+  Score += Pts
+  CutColumn(Si, Old)
+  SetPace
+  ShowScore
+  play sound SndCrack
+  return
+end sub
+
+' redraw column Ci after a cut from height Old to its new height
+sub CutColumn(u8 Col, u8 Old):
+  u8 Nh = 0
+  u8 Rr = 0
+  u8 Cc = 0
+  Nh = H[Col]
+  Cc = Col + 3
+  for Rr = Nh + 3 to Old + 2
+    put char BgAt(Cc, Rr) at Cc,Rr
+  next
+  if Nh > 0 then
+    put char TipOf(Col) at Cc,Nh + 2
+  end if
+  return
+end sub
+
+function BgAt(u8 Bc, u8 Br) as u8
+  if ((Bc * 3 + Br * 5) & 15) = 0 then return TBgd
+  return TBg
+
+function TipOf(u8 Col) as u8
+  return BodyOf(Col) + 1
+
+function BodyOf(u8 Col) as u8
+  u8 F = 0
+  F = Col % 3
+  return TStc + F + F
+
+' one block grows in a random column (a full column stays as it is)
+sub GrowOne:
+  u8 Gc = 0
+  u8 Gh = 0
+  Gc = RandCol
+  Gh = H[Gc]
+  if Gh >= MaxH then return
+  if Gh > 0 then
+    put char BodyOf(Gc) at Gc + 3,Gh + 2
+  end if
+  inc Gh
+  H[Gc] = Gh
+  put char TipOf(Gc) at Gc + 3,Gh + 2
+  return
+end sub
+
+function RandCol as u8
+  Rand
+  V = Rs & 255
+  return V % NCol
+
+' growth pace: by LEVEL, a little faster for every 100 blocks broken;
+' Geehonks: one more per 1000 points (200 blocks), at least one, at most 6
+sub SetPace:
+  u16 Steps = 0
+  u8 Sp = 0
+  Steps = Broken / 100
+  if Steps > 8 then Steps = 8
+  Sp = Steps
+  GrowN = 28 - Lvl * 2 - Sp
+  if GrowN < 8 then GrowN = 8
+  W16 = Broken / 200
+  inc W16
+  if W16 > NFoe then W16 = NFoe
+  Emax = W16
+  return
+end sub
+
+' a Geehonk enters at the left now and then, never right next to the pod
+sub SpawnFoe:
+  u8 Live = 0
+  u8 Free = 255
+  for Fi = 0 to NFoe - 1
+    if Fo[Fi].Act = 1 then
+      inc Live
+    else
+      if Free = 255 then Free = Fi
+    end if
+  next
+  if Live >= Emax then return
+  Rand
+  V = Rs & 63
+  if V <> 0 then return
+  Rand
+  Y = (Rs & 127) + (Rs >> 11)
+  Y = Y + 24
+  if Y > 170 then Y = 170
+  if Px < 70 then
+    if Y < Py + 36 then
+      if Y + 36 > Py then return
+    end if
+  end if
+  Fo[Free].Act = 1
+  Fo[Free].X = 20
+  Fo[Free].Y = Y
+  Fo[Free].D = 0
+  play sound SndHonk
+  return
+end sub
+
+' every second frame: a pixel sideways, a pixel up or down (the zigzag
+' turns every 15 steps for all of them)
+sub MoveFoes:
+  u8 Fx = 0
+  u8 Fy = 0
+  inc FoeT
+  if FoeT < 2 then return
+  FoeT = 0
+  inc ZigC
+  if ZigC >= 15 then
+    ZigC = 0
+    ZigUp = ZigUp ^ 1
+  end if
+  for Fi = 0 to NFoe - 1
+    if Fo[Fi].Act = 1 then
+      Fx = Fo[Fi].X
+      Fy = Fo[Fi].Y
+      if Fo[Fi].D = 0 then
+        inc Fx
+        if Fx >= 216 then Fo[Fi].D = 1
+      else
+        dec Fx
+        if Fx <= 18 then Fo[Fi].Act = 0
+      end if
+      if ZigUp = 1 then
+        if Fy > 22 then dec Fy
+      else
+        if Fy < 170 then inc Fy
+      end if
+      Fo[Fi].X = Fx
+      Fo[Fi].Y = Fy
+    end if
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the cockpit lights, 1 the pod (or the burst), 2 the shot, 3-8
+' the Geehonks
+sub DrawSprites:
+  Y = Py - 1
+  if DeadT > 0 then
+    set sprite 0 to 192,0,0,0
+    K = SBoom0
+    if DeadT < 50 then K = SBoom1
+    if DeadT < 20 then
+      set sprite 1 to 192,0,0,0
+    else
+      set sprite 1 to Y,Px,K,11
+    end if
+  elseif Playing = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    K = Pf << 2
+    set sprite 0 to Y,Px,SCab0 + K,8
+    set sprite 1 to Y,Px,K,10
+  end if
+  if Son = 1 then
+    X = Sx - 7
+    Y = Sy - 8
+    set sprite 2 to Y,X,SShot,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for Fi = 0 to NFoe - 1
+    J = Fi + 3
+    if Fo[Fi].Act = 1 then
+      V = (Tick >> 3) + Fi
+      V = V & 3
+      K = SGee0 + V * 4
+      X = Fo[Fi].X - 7
+      Y = Fo[Fi].Y - 8
+      set sprite J to Y,X,K,Fi + 2
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 15,1, "HI"
+  ShowScore
+  print at 18,1, Hi
+  fill 32 count 6 at 24,1
+  if Lives > 0 then
+    fill TLife count Lives at 24,1
+  end if
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+' the empty cavern: ceiling, walls, floor
+sub DrawCave:
+  for Ri = 0 to 23
+    fill TRock count 3 at 0,Ri
+    fill TRock count 3 at 29,Ri
+    put char TWalll at 2,Ri
+    put char TWallr at 29,Ri
+  next
+  fill TRock count 32 at 0,0
+  fill 32 count 32 at 0,1
+  fill TRockb count 26 at 3,2
+  put char TRock at 2,2
+  put char TRock at 29,2
+  for Ri = 3 to 22
+    for Ci = 3 to 28
+      put char BgAt(Ci, Ri) at Ci,Ri
+    next
+  next
+  fill TFloor count 26 at 3,23
+  return
+end sub
+
+' a fresh cavern: no stalactites, no Geehonks, the pod at the bottom; it
+' waits for a button
+sub FreshCave:
+  fill array H with 0
+  for Fi = 0 to NFoe - 1
+    Fo[Fi].Act = 0
+  next
+  Px = StartX
+  Py = StartY
+  Pf = 0
+  Son = 0
+  GrowT = 0
+  FoeT = 0
+  NewScreen
+  DrawCave
+  ShowHud
+  DrawSprites
+  print at 9,11, "PRESS BUTTON"
+  ShowScreen
+  WaitBtn = 1
+  Rearm
+  wait no fire
+  nmi off
+fc_wait:
+  Frame1
+  inc Rs
+  ReadPad
+  if Press = 0 then goto fc_wait
+  WaitBtn = 0
+  fill 32 count 12 at 9,11
+  for Ci = 9 to 20
+    put char BgAt(Ci, 11) at Ci,11
+  next
+  play sound SndStart
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Broken = 0
+  Lives = LivesSet
+  Over = 0
+  DeadT = 0
+  ZigC = 0
+  ZigUp = 0
+  SetPace
+  Playing = 1
+  TitleOn = 0
+  FreshCave
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a cavern with a few stalactites, Geehonks drifting, the tune
+' once; START GAME / LEVEL / LIVES / CREDITS
+sub TitlePage:
+  Playing = 0
+  TitleOn = 1
+  for Fi = 0 to NFoe - 1
+    Fo[Fi].Act = 0
+  next
+  NewScreen
+  DrawCave
+  fill array H with 0
+  for Ci = 0 to 40
+    GrowOne
+  next
+  for Ri = 6 to 18
+    fill 32 count 20 at 6,Ri
+  next
+  print at 8,7, "C A V E R N S"
+  print at 14,8, "OF"
+  print at 8,9, "G E E H O N K"
+  print at 9,11, "BY JOHN FEDOR"
+  print at 10,14, "START GAME"
+  print at 10,15, "LEVEL"
+  print at 10,16, "LIVES"
+  print at 10,17, "CREDITS"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  print at 15,1, "AHOY! MAR 1987"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Emax = 3
+  SpawnFoe
+  MoveFoes
+  DrawSprites
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then MenuKey
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  if Menu = 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub MenuKey:
+  select case V
+  case 1
+    if Menu > 0 then dec Menu
+  case 2
+    if Menu < 3 then inc Menu
+  case 4
+    if Menu = 1 then
+      if Lvl > 1 then dec Lvl
+    end if
+    if Menu = 2 then LivesSet = 3
+  case 8
+    if Menu = 1 then
+      if Lvl < 7 then inc Lvl
+    end if
+    if Menu = 2 then LivesSet = 6
+  end select
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 14 to 17
+    put char 32 at 8,Ri
+  next
+  put char 62 at 8,Menu + 14
+  NumU = Lvl
+  print at 17,15, digits$(NumU, 1)
+  NumU = LivesSet
+  print at 17,16, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "GEEHONK CAVERNS"
+  print at 2,5, "BASED ON CAVERNS OF GEEHONK"
+  print at 2,6, "BY JOHN FEDOR (RANGER"
+  print at 2,7, "SOFTWARE), AHOY! MARCH 1987"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: DRIPSTONE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $10,$61,$04,$8C,$20,$02,$48,$01
+  $22,$84,$10,$88,$26,$04,$00,$00
+  $13,$23,$87,$0B,$23,$07,$43,$13
+  $C4,$D0,$C1,$D0,$C4,$E0,$C2,$C8
+  $00,$42,$20,$04,$40,$08,$01,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$40,$00,$00
+  $81,$85,$81,$A1,$81,$81,$89,$81
+  $81,$83,$C3,$38,$18,$10,$10,$00
+  $81,$85,$81,$A1,$81,$81,$89,$81
+  $81,$83,$C3,$38,$18,$10,$10,$00
+  $81,$85,$81,$A1,$81,$81,$89,$81
+  $81,$83,$C3,$38,$18,$10,$10,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+end data
+data TileCol bytes
+  $AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE
+  $AE,$AE,$AE,$1E,$E1,$E1,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $01,$E1,$AE,$AE,$AE,$AE,$AE,$AE
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$41,$01,$01,$41,$01,$01
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $17,$17,$17,$71,$71,$71,$71,$01
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$51,$51,$51,$51,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$E1,$E1,$E1,$E1,$01
+  $01,$18,$18,$18,$18,$81,$81,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$01,$01,$13,$17,$1F,$1D,$1D,$1F,$17,$12,$00,$00,$00
+  $00,$80,$80,$80,$80,$C8,$E8,$F8,$B8,$B8,$F8,$E8,$48,$00,$00,$00
+  $00,$00,$00,$1F,$07,$0F,$1C,$0F,$0F,$1C,$0F,$07,$1F,$00,$00,$00
+  $00,$00,$00,$E0,$80,$C0,$E0,$FE,$FE,$E0,$C0,$80,$E0,$00,$00,$00
+  $00,$00,$00,$12,$17,$1F,$1D,$1D,$1F,$17,$13,$01,$01,$01,$01,$00
+  $00,$00,$00,$48,$E8,$F8,$B8,$B8,$F8,$E8,$C8,$80,$80,$80,$80,$00
+  $00,$00,$00,$07,$01,$03,$07,$7F,$7F,$07,$03,$01,$07,$00,$00,$00
+  $00,$00,$00,$F8,$E0,$F0,$38,$F0,$F0,$38,$F0,$E0,$F8,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$40,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$00,$00,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$00,$00,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$12,$0B,$02,$3D,$02,$0B,$12,$02,$00,$00,$00,$00,$00
+  $00,$00,$40,$48,$D0,$40,$BC,$40,$D0,$48,$40,$00,$00,$00,$00,$00
+  $40,$20,$00,$08,$00,$01,$C0,$00,$02,$00,$08,$00,$20,$40,$00,$00
+  $81,$82,$00,$08,$00,$40,$03,$00,$80,$00,$08,$00,$82,$81,$00,$00
+  $00,$01,$01,$03,$1F,$0F,$05,$07,$06,$0F,$1F,$03,$01,$01,$00,$00
+  $00,$80,$80,$C0,$F8,$F0,$A0,$E0,$60,$F0,$F8,$C0,$80,$80,$00,$00
+  $00,$18,$1C,$0E,$07,$05,$03,$06,$07,$0E,$1C,$18,$00,$00,$00,$00
+  $00,$18,$38,$70,$E0,$A0,$C0,$60,$E0,$70,$38,$18,$00,$00,$00,$00
+  $00,$01,$01,$03,$1F,$0F,$05,$07,$06,$0F,$1F,$03,$01,$01,$00,$00
+  $00,$80,$80,$C0,$F8,$F0,$A0,$E0,$60,$F0,$F8,$C0,$80,$80,$00,$00
+  $00,$18,$1C,$0E,$07,$05,$03,$06,$07,$0E,$1C,$18,$00,$00,$00,$00
+  $00,$18,$38,$70,$E0,$A0,$C0,$60,$E0,$70,$38,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+GkZap:
+    db $40,$40,$20,$02,$40,$55,$30,$02,$40,$71,$40,$02,$50
+GkCrack:
+    db $00,$00,$13,$02,$00,$00,$24,$03,$00,$00,$55,$04,$10
+GkBoom:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$0C,$00,$00,$86,$0C,$10
+GkHonk:
+    db $40,$FC,$21,$05,$40,$5D,$22,$07,$50
+GkStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+GkOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$3B,$22,$1E,$50
+
+GkSoundTable:
+    dw GkTuneMel,$702B
+    dw GkTuneBass,$7035
+    dw GkZap,$7049
+    dw GkCrack,$703F
+    dw GkBoom,$703F
+    dw GkHonk,$7049
+    dw GkStart,$7049
+    dw GkOver,$7049
+; Dripstone (original)
+; Tiny Sound, 8 frames per step
+GkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$1A,$01,$1E,$23,$01,$25,$26,$01
+    db $25,$01,$23,$01,$21,$01,$1E,$01,$01,$01,$1F,$01,$23,$01,$28,$01
+    db $26,$25,$01,$23,$01,$21,$01,$25,$01,$28,$01,$26,$01,$25,$23,$01
+    db $22,$01,$1E,$01,$23,$01,$26,$01,$25,$01,$22,$01,$1E,$01,$23,$01
+    db $01,$01,$00,$01,$01
+    db $FF
+GkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$07,$01,$0E,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01,$01
+    db $FF
+}

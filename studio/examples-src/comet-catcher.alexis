@@ -1,0 +1,1577 @@
+cartridge "COMET CATCHER/D.RUPERT/1986"
+
+' COMET CATCHER
+' A ColecoVision game based on "Cometcatcher" (The Rupert Report #28) by
+' Dale Rupert, Ahoy! April 1986 (Commodore 128 BASIC 7.0, orig/). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' The original is not a game but "a real-world simulation of astronomical
+' proportions": a comet starts 3 AU left of the Sun and 1.2 AU up at
+' 12.55 km/s, and every step (10 days) the listing works out the Sun's pull
+' (G M / r^2 along the line to the Sun), updates the velocity and the
+' position and plots a point of the orbit, printing the escape velocity,
+' the speed, the distance in AU and the days gone by. Keys pause it,
+' switch SLOW/FAST and make the time step 10% longer or shorter.
+'
+' Here the same physics runs as a game: comets come in from the edge of
+' the field and swing round the Sun on real inverse-square orbits (the
+' first one of every game is the listing's comet), with their tails always
+' pointing away from the Sun. Fly the catcher into a comet to catch it:
+' it is worth its speed in km/s times the wave number, so a comet caught
+' fast near the Sun pays most. A comet that falls into the Sun or flies off
+' the field is a miss, and so is flying the catcher into the Sun's corona;
+' the fifth miss ends the game. Eight comets a wave; every wave the clock
+' runs about 10% faster (the listing's "speed up" key), and from wave 3
+' three comets can be in the field at once. Hold a button to slow time to
+' half speed (the listing's "slow down" key) while the gauge lasts.
+'
+' From the original: the inverse-square pull, G M of the Sun, the first
+' comet's start (-3, 1.2) AU and 12.55 km/s, the screen 4 AU high (here the
+' 168-pixel field, 42 pixels an AU), the readouts R (AU) and V (km/s) of the
+' comet nearest the catcher (the listing printed them for its one comet),
+' a faster or slower clock.
+'
+' Liberties: the listing is a simulation with no goal; the catcher,
+' scoring, misses, waves and the launch table (launch.py: 32 orbits checked
+' with the game's own integer step, entries 0-3 the listing's comet and its
+' mirror images) are new. The step is one day (the listing's 10, much too
+' coarse for comets that pass close to the Sun) in fixed point: 1/256
+' pixel positions, 1/4096 pixel a step velocities, the pull read from a
+' table of G M / r^3 by r^2 bands (phys.py). The orbit trail the listing
+' plotted is left out (comet tails instead). The escape velocity and day
+' count readouts are dropped for room. A comet closer than 6 pixels
+' (0.14 AU) falls into the Sun. The catcher flies straight (no gravity) so a
+' human can steer it; its 14-pixel corona keeps it from camping at the Sun
+' where every falling comet passes.
+' The orbit step and an 8 x 16 multiply are in Z80 (CcStep, CcMul) so
+' three comets at the fastest clock fit in one frame; a caught comet's
+' points are added a frame or two later (ScoreGot) and the status line is
+' redrawn on quiet frames, for the same reason. Points are whole km/s
+' (x 330 / 256 of the 1/32-pixel speed). Waves add 26/256 to the clock
+' up to 448/256 (wave 9). Diagonals move the catcher on both axes.
+'
+' Controls: controller 1 (or 2): the stick flies the catcher, either
+' button slows time. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TSp0 = 128
+const TSp1 = 129
+const TSp2 = 130
+const TSp3 = 131
+const TSp4 = 132
+const TSp5 = 133
+const TSun00 = 134
+const TSun01 = 135
+const TSun02 = 136
+const TSun03 = 137
+const TSun10 = 138
+const TSun11 = 139
+const TSun12 = 140
+const TSun13 = 141
+const TSun20 = 142
+const TSun21 = 143
+const TSun22 = 144
+const TSun23 = 145
+const TSun30 = 146
+const TSun31 = 147
+const TSun32 = 148
+const TSun33 = 149
+const TMiss = 150
+const TSlot = 151
+const TBar0 = 152
+const TBar1 = 153
+const TBar2 = 154
+const TBar3 = 155
+const TBar4 = 156
+const TBar5 = 157
+const TBar6 = 158
+const TBar7 = 159
+const TBar8 = 160
+const TTbk = 161
+const SCring = 0
+const SCnet = 4
+const SHead = 8
+const STail0 = 12
+const STail1 = 16
+const STail2 = 20
+const STail3 = 24
+const STail4 = 28
+const STail5 = 32
+const STail6 = 36
+const STail7 = 40
+const SSpark = 44
+const SFlare = 48
+const NTiles8 = 272
+const SprBytes = 416
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCatch = 3
+const SndLost = 4
+const SndBurn = 5
+const SndSpawn = 6
+const SndWave = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 10
+const NCom = 3
+const PerWave = 8
+const MaxMiss = 5
+' the catcher's centre in 1/256 pixels: x 16-240, y 16-176
+const CXMin = 4096
+const CXMax = 61440
+const CYMin = 4096
+const CYMax = 45056
+const CSpd = 320
+' the field, 1/256 pixel from the Sun (120 and 85 pixels)
+const XLim = 30720
+const YLim = 21760
+const BrakeMax = 240
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$40,$00,$00
+  $00,$10,$38,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$0A,$01
+  $00,$00,$AA,$05,$AA,$AA,$0A,$E0
+  $00,$00,$AA,$50,$AA,$AA,$A0,$0B
+  $00,$00,$00,$00,$80,$00,$A0,$40
+  $2A,$05,$D4,$01,$03,$E8,$03,$E8
+  $F0,$E0,$07,$E0,$E0,$03,$07,$07
+  $F0,$07,$E0,$07,$07,$C0,$E0,$E0
+  $A8,$40,$A8,$D0,$15,$C0,$15,$C0
+  $03,$E8,$03,$E8,$D4,$01,$2A,$05
+  $07,$07,$03,$E0,$E0,$07,$E0,$F0
+  $E0,$E0,$C0,$07,$07,$E0,$07,$F0
+  $15,$C0,$15,$C0,$AA,$D0,$A8,$40
+  $0A,$01,$02,$00,$00,$00,$00,$00
+  $D0,$05,$AA,$15,$AA,$00,$0A,$00
+  $07,$50,$AA,$54,$AA,$00,$A8,$00
+  $A8,$00,$A0,$00,$80,$00,$00,$00
+  $00,$06,$F0,$E0,$C1,$87,$E0,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$80,$80,$18,$C3,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$E1,$01
+  $01,$01,$01,$51,$01,$01,$01,$01
+  $01,$01,$B1,$01,$01,$E1,$01,$01
+  $01,$F1,$F1,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$61,$01,$61,$61
+  $01,$01,$61,$61,$61,$16,$86,$68
+  $01,$01,$61,$61,$61,$16,$86,$68
+  $01,$01,$01,$01,$61,$01,$61,$61
+  $61,$61,$16,$81,$81,$16,$81,$16
+  $8A,$8A,$BA,$AB,$AB,$FB,$FB,$FB
+  $A8,$8A,$BA,$AB,$AB,$FB,$FB,$FB
+  $61,$61,$61,$61,$16,$81,$16,$81
+  $81,$16,$81,$16,$16,$81,$61,$61
+  $FB,$FB,$FB,$AB,$AB,$BA,$8A,$8A
+  $FB,$FB,$FB,$AB,$AB,$BA,$8A,$A8
+  $16,$81,$16,$81,$61,$61,$61,$61
+  $61,$61,$61,$01,$01,$01,$01,$01
+  $68,$86,$61,$61,$61,$01,$61,$01
+  $68,$86,$61,$61,$61,$01,$61,$01
+  $61,$01,$61,$01,$61,$01,$01,$01
+  $01,$81,$18,$18,$18,$18,$81,$01
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $0E,$04,$04,$04,$04,$04,$04,$0E
+  $0E,$74,$74,$74,$74,$74,$74,$0E
+  $0E,$74,$74,$74,$74,$74,$74,$0E
+  $0E,$74,$74,$74,$74,$74,$74,$0E
+  $0E,$74,$74,$74,$74,$74,$74,$0E
+  $0E,$47,$47,$47,$47,$47,$47,$0E
+  $0E,$47,$47,$47,$47,$47,$47,$0E
+  $0E,$47,$47,$47,$47,$47,$47,$0E
+  $0E,$07,$07,$07,$07,$07,$07,$0E
+  $1F,$F7,$F7,$57,$75,$07,$04,$01
+end data
+data SpritePat bytes
+  $00,$0F,$1E,$38,$70,$60,$60,$40,$40,$60,$60,$70,$38,$1E,$0F,$00
+  $00,$F0,$78,$1C,$0E,$06,$06,$02,$02,$06,$06,$0E,$1C,$78,$F0,$00
+  $00,$00,$01,$02,$04,$09,$12,$24,$09,$12,$04,$09,$02,$00,$00,$00
+  $00,$00,$00,$40,$90,$20,$48,$90,$24,$48,$90,$20,$40,$80,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$7E,$7D,$7E,$7D,$60,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$60,$F0,$F8,$F8,$FC,$7A,$14,$0A,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$03,$03,$03,$02,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$60,$E0,$E0,$C0,$C0,$C0,$80,$40
+  $00,$00,$00,$00,$00,$00,$04,$06,$0F,$1F,$1F,$1F,$2E,$50,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$06,$BE,$7E,$BF,$7F,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$50,$28,$5E,$3F,$1F,$1F,$0F,$06,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$01,$03,$03,$03,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$40,$C0,$C0,$C0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$0A,$74,$F8,$F8,$F8,$F0,$60,$20,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$11,$09,$04,$00,$70,$00,$04,$09,$11,$01,$01,$00,$00
+  $00,$00,$00,$10,$20,$40,$00,$1C,$00,$40,$20,$10,$00,$00,$00,$00
+  $00,$0F,$1F,$3F,$7F,$7C,$78,$78,$78,$78,$7C,$7F,$3F,$1F,$0F,$00
+  $00,$F0,$F8,$FC,$FE,$3E,$1E,$1E,$1E,$1E,$3E,$FE,$FC,$F8,$F0,$00
+end data
+
+data GameMap bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  131,128,128,128,128,128,131,132,128,128,128,128,128,128,128,130,128,128,128,128,128,128,129,131,128,128,128,128,128,128,128,128
+  128,128,128,128,128,130,131,128,128,130,128,129,130,131,128,128,128,131,131,129,128,128,128,128,128,128,128,131,128,128,128,131
+  128,128,129,128,128,130,131,128,131,130,132,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,129,128,128,128
+  128,128,131,128,131,130,128,128,128,130,129,128,128,128,128,128,128,128,128,128,128,128,128,131,128,128,128,129,128,132,128,128
+  128,130,130,128,128,128,130,128,128,128,128,128,128,130,128,131,128,128,132,129,128,128,131,130,128,130,128,128,128,128,131,128
+  128,128,128,128,128,128,131,128,128,128,128,130,128,128,128,131,128,128,129,128,129,128,128,128,130,130,128,130,128,129,132,128
+  128,128,131,128,128,128,132,128,128,128,128,131,128,128,128,128,131,128,129,129,128,128,128,129,128,128,128,128,132,128,128,128
+  128,128,128,130,129,132,131,131,128,128,130,128,129,128,131,128,128,128,128,128,128,128,128,128,131,128,128,131,129,128,128,128
+  128,130,128,128,128,128,128,128,128,128,128,128,128,128,134,135,136,137,130,128,128,131,128,129,129,130,128,128,130,128,128,130
+  128,128,132,128,131,128,128,132,128,128,131,128,130,128,138,139,140,141,128,128,128,128,128,128,128,132,131,128,128,131,131,128
+  131,128,130,128,128,128,128,128,132,130,128,130,128,131,142,143,144,145,128,131,128,128,128,132,128,130,128,131,128,128,133,130
+  128,128,128,128,130,128,128,128,128,128,132,128,130,131,146,147,148,149,128,129,128,128,128,131,130,128,128,129,128,128,129,131
+  128,130,128,131,130,131,128,131,128,131,128,128,128,128,128,128,131,128,128,132,130,132,128,128,128,128,131,132,128,130,128,128
+  128,128,128,129,128,128,128,128,128,128,128,128,128,130,129,128,128,132,129,128,128,132,128,128,130,131,128,128,128,130,128,128
+  128,128,128,129,128,128,128,128,130,128,128,128,128,128,128,132,130,128,128,128,128,128,130,131,128,128,132,128,128,131,128,128
+  128,128,129,130,128,128,128,128,131,128,128,128,128,130,128,128,130,128,128,128,128,130,128,131,130,128,128,130,129,130,128,131
+  128,132,128,128,128,128,128,128,132,128,131,128,128,128,128,128,128,128,131,128,128,128,128,128,128,128,128,128,130,128,130,128
+  128,128,128,128,128,128,128,128,128,128,132,128,131,128,128,128,128,132,128,131,128,128,128,129,128,130,128,128,128,132,128,128
+  128,128,128,128,132,128,131,129,128,128,128,128,128,128,128,128,130,128,128,128,132,128,131,128,130,128,128,128,128,128,128,128
+  128,128,128,131,128,128,128,128,128,132,128,130,129,128,128,128,128,131,130,128,128,128,128,128,128,128,128,131,128,128,128,128
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+
+data TitleMap bytes
+  128,130,129,129,128,128,161,161,161,128,161,161,161,131,161,128,161,128,161,161,161,128,161,161,161,130,128,132,129,128,130,128
+  128,128,128,128,128,130,161,129,128,128,161,128,161,130,161,161,161,128,161,128,128,130,128,161,128,128,128,128,131,129,128,129
+  128,128,131,128,128,128,161,128,131,128,161,129,161,132,161,161,161,128,161,161,129,128,128,161,131,132,132,132,131,130,130,128
+  128,132,129,128,128,128,161,130,129,132,161,129,161,129,161,128,161,128,161,128,128,128,128,161,129,128,129,128,128,128,128,128
+  129,130,128,129,129,128,161,161,161,130,161,161,161,129,161,130,161,128,161,161,161,132,130,161,128,128,128,131,132,128,130,129
+  129,128,128,128,128,131,129,129,128,128,129,128,131,130,132,128,129,130,128,129,128,129,131,130,132,129,128,128,128,130,128,129
+  131,131,161,161,161,128,161,161,161,131,161,161,161,129,161,161,161,130,161,129,161,128,161,161,161,128,161,161,130,130,128,130
+  132,132,161,128,129,128,161,128,161,128,132,161,128,128,161,128,128,128,161,132,161,132,161,128,128,129,161,128,161,128,129,130
+  128,128,161,128,132,128,161,161,161,129,130,161,128,128,161,128,128,131,161,161,161,128,161,161,129,128,161,161,130,130,128,129
+  128,128,161,131,128,128,161,128,161,129,128,161,128,128,161,129,129,128,161,128,161,128,161,129,128,129,161,128,161,130,128,130
+  128,131,161,161,161,130,161,130,161,131,128,161,128,131,161,161,161,131,161,128,161,130,161,161,161,132,161,128,161,128,130,128
+  128,128,129,131,132,128,128,128,128,132,128,128,130,128,131,130,128,129,128,128,128,128,131,128,131,130,130,128,128,132,128,128
+end data
+
+data FALo bytes
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  215,213,125,88,5,58,187,87,230,70,93,19,85,18,61,201
+  173,222,85,12,252,32,115,241,150,96,75,84,121,184,16,125
+  255,148,60,243,187,145,116,100,97,104,122,150,187,234,32,95
+  165,242,70,160,0,102,209,65,183,49,176,50,185,68,211,101
+  250,147,47,206,112,20,187,101,17,191,112,35,216,143,72,2
+  191,125,61,254,193,134,76,19,220,166,113,62,12,218,170,123
+  78,33,245,202,160,119,78,39,0,218,181,145,109,74,40,7
+  230,197,166,135,104,74,45,16,244,216,189,162,136,110,85,60
+  35,11,244,220,198,175,153,131,110,89,68,48,28,8,244,225
+  207,188,170,152,134,117,99,83,66,49,33,17,2,242,227,212
+  197,182,168,154,140,126,112,99,86,72,60,47,34,22,10,253
+  241,230,218,207,195,184,173,162,151,141,130,120,110,99,89,80
+  70,60,51,41,32,23,14,5,252,243,234,226,217,209,200,192
+  184,176,168,160,152,145,137,130,122,115,108,100,93,86,79,72
+  66,59,52,45,39,32,26,20,13,7,1,251,245,239,233,227
+end data
+
+data FAHi bytes
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  236,216,199,184,171,159,148,139,130,123,116,110,104,99,94,89
+  85,81,78,75,71,69,66,63,61,59,57,55,53,51,50,48
+  46,45,44,42,41,40,39,38,37,36,35,34,33,32,32,31
+  30,29,29,28,28,27,26,26,25,25,24,24,23,23,22,22
+  21,21,21,20,20,20,19,19,19,18,18,18,17,17,17,17
+  16,16,16,15,15,15,15,15,14,14,14,14,14,13,13,13
+  13,13,12,12,12,12,12,12,12,11,11,11,11,11,11,11
+  10,10,10,10,10,10,10,10,9,9,9,9,9,9,9,9
+  9,9,8,8,8,8,8,8,8,8,8,8,8,8,7,7
+  7,7,7,7,7,7,7,7,7,7,7,7,7,6,6,6
+  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,5
+  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5
+  5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4
+  4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+  4,4,4,4,4,4,4,4,4,4,4,3,3,3,3,3
+end data
+
+data FBLo bytes
+  255,255,121,35,125,99,85,40,79,245,158,253,224,37,181,127
+  120,149,209,38,143,9,147,40,201,115,36,221,156,97,42,248
+  201,158,118,81,46,14,240,211,185,160,136,114,93,73,54,37
+  20,4,244,230,216,203,190,178,167,156,145,135,126,116,107,99
+  91,83,75,68,61,54,47,41,35,29,23,18,12,7,2,253
+  249,244,240,235,231,227,223,219,216,212,209,205,202,199,195,192
+  189,187,184,181,178,176,173,171,168,166,163,161,159,157,155,153
+  151,149,147,145,143,141,139,137,136,134,132,131,129,128,126,125
+  123,122,120,119,118,116,115,114,113,111,110,109,108,107,106,104
+  103,102,101,100,99,98,97,96,95,94,94,93,92,91,90,89
+  88,88,87,86,85,84,84,83,82,81,81,80,79,79,78,77
+  77,76,75,75,74,73,73,72,72,71,71,70,69,69,68,68
+  67,67,66,66,65,65,64,64,63,63,62,62,61,61,61,60
+  60,59,59,58,58,58,57,57,56,56,56,55,55,54,54,54
+  53,53,53,52,52,52,51,51,51,50,50,50,49,49,49,48
+  48,48,48,47,47,47,46,46,46,46,45,45,45,44,44,44
+end data
+
+data FBHi bytes
+  255,255,177,107,73,54,42,34,28,23,20,17,15,14,12,11
+  10,9,8,8,7,7,6,6,5,5,5,4,4,4,4,3
+  3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,2
+  2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+data FCLo bytes
+  177,224,216,188,63,103,223,130,64,15,233,204,180,160,144,130
+  118,108,100,92,86,80,74,70,65,62,58,55,52,50,47,45
+  43,41,39,38,36,35,33,32,31,30,29,28,27,26,25,24
+  23,23,22,21,21,20,20,19,19,18,18,17,17,16,16,16
+  15,15,15,14,14,14,13,13,13,13,12,12,12,12,11,11
+  11,11,11,10,10,10,10,10,10,9,9,9,9,9,9,9
+  8,8,8,8,8,8,8,8,7,7,7,7,7,7,7,7
+  7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5
+  5,5,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+  4,4,4,4,4,4,4,4,4,4,4,4,4,3,3,3
+end data
+
+data FCHi bytes
+  87,16,7,4,3,2,1,1,1,1,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+data LPx words
+  34816,30720,34816,30720,40704,25600,35328,30208
+  30208,35328,20480,35328,21504,28160,30208,35328
+  30208,44288,28160,35328,30208,30208,36608,30208
+  35328,43776,35328,30208,64768,30208,28928,18432
+end data
+
+data LPy words
+  52634,52634,12902,12902,20992,44544,7424,1024
+  12800,6656,44544,64512,20992,20992,19712,18688
+  61184,20992,20992,18432,6656,17152,44544,256
+  57856,20992,1792,10752,44544,51200,20992,44544
+end data
+
+data LVx words
+  1247,64289,1247,64289,1134,64875,1148,64061
+  64764,621,64668,792,64875,64074,64768,1410
+  63868,1640,64102,1614,64584,64926,1301,63711
+  1526,1476,1625,64546,921,64326,63536,64011
+end data
+
+data LVy words
+  0,0,0,0,65161,305,64462,659
+  64608,65309,1827,148,63873,65242,65021,65098
+  65071,64877,65212,0,64744,64508,264,64744
+  65395,64978,64756,64363,1418,1234,65102,591
+end data
+
+data SqT words
+  0,1,4,9,16,25,36,49
+  64,81,100,121,144,169,196,225
+  256,289,324,361,400,441,484,529
+  576,625,676,729,784,841,900,961
+  1024,1089,1156,1225,1296,1369,1444,1521
+  1600,1681,1764,1849,1936,2025,2116,2209
+  2304,2401,2500,2601,2704,2809,2916,3025
+  3136,3249,3364,3481,3600,3721,3844,3969
+  4096,4225,4356,4489,4624,4761,4900,5041
+  5184,5329,5476,5625,5776,5929,6084,6241
+  6400,6561,6724,6889,7056,7225,7396,7569
+  7744,7921,8100,8281,8464,8649,8836,9025
+  9216,9409,9604,9801,10000,10201,10404,10609
+  10816,11025,11236,11449,11664,11881,12100,12321
+  12544,12769,12996,13225,13456,13689,13924,14161
+  14400,14641,14884,15129,15376,15625,15876,16129
+end data
+
+record Comet:
+  u8 Act
+  i16 Px
+  i16 Py
+  i16 Vx
+  i16 Vy
+  u8 Sx
+  u8 Sy
+end record
+
+Comet Cm[NCom]
+' caught comets waiting for their points
+Comet Got[NCom]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Spd = 256
+u16 CXf = 0
+u16 CYf = 0
+u16 Pts = 0
+u16 Caught = 0
+u16 NumR = 0
+u16 NumV = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 CX = 0
+u8 CY = 0
+u8 Frac = 0
+u8 Steps = 0
+u8 Wave = 0
+u8 Misses = 0
+u8 Spawned = 0
+u8 Live = 0
+u8 MaxLive = 2
+u8 SpawnT = 0
+u8 Banner = 0
+u8 BurnT = 0
+u8 SparkT = 0
+u8 SparkX = 0
+u8 SparkY = 0
+u8 Brake = 0
+u8 Braking = 0
+u8 LIdx = 0
+u8 First = 0
+u8 Over = 0
+u8 Tgt = 0
+u8 Dirty = 0
+u8 NGot = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TbX = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Si = 0
+u8 Ds = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Res = 0
+' CcMul: MulR = MulA * (MulFH:MulFL) / 256 (MulFL, MulFH next to each other)
+u8 MulA = 0
+u8 CcIdx = 0
+u8 MulFL = 0
+u8 MulFH = 0
+u16 MulR = 0
+
+  tile screen
+  set sound table CcSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  while NGot > 0
+    ScoreGot
+  end while
+  HideSprites
+  print at 8,5, "                "
+  print at 8,6, "   GAME  OVER   "
+  print at 8,7, "                "
+  print at 8,15, "                "
+  print at 8,16, "  SCORE ", Score, "  "
+  print at 8,17, "  BEST  ", Hi, "  "
+  NumU = Caught
+  print at 8,18, "  CAUGHT ", digits$(NumU, 3), "   "
+  print at 8,19, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  ' a comet caught on an earlier frame is scored on a frame without a
+  ' readout job (DrawSprites)
+  if NGot > 0 then
+    V = Tick & 15
+    select case V
+      case 4, 6, 8, 10
+      case else
+        ScoreGot
+    end select
+  end if
+  if BurnT > 0 then
+    dec BurnT
+    if BurnT = 0 then
+      CXf = 32768
+      CYf = 40960
+      CX = 128
+      CY = 160
+    end if
+  else
+    MoveCatcher
+  end if
+  if SparkT > 0 then dec SparkT
+  if Banner > 0 then
+    dec Banner
+    if Banner = 0 then ClearBanner
+    return
+  end if
+  ' the time brake: a button halves the clock while the gauge lasts
+  Braking = 0
+  if Btn > 0 then
+    if Brake >= 2 then
+      Brake = Brake - 2
+      Braking = 1
+    end if
+  else
+    V = Tick & 1
+    if V = 0 then
+      if Brake < BrakeMax then inc Brake
+    end if
+  end if
+  W16 = Spd
+  if Braking = 1 then W16 = W16 >> 1
+  W16 = W16 + Frac
+  Steps = W16 >> 8
+  Frac = W16 & 255
+  while Steps > 0
+    for Ci = 0 to NCom - 1
+      if Cm[Ci].Act = 1 then
+        Res = MoveComet(Ci)
+        if Res > 0 then CometLost
+      end if
+    next
+    dec Steps
+  end while
+  for Ci = 0 to NCom - 1
+    if Cm[Ci].Act = 1 then
+      if BurnT = 0 then TryCatch
+    end if
+  next
+  if BurnT = 0 then Corona
+  SpawnStep
+  if Misses >= MaxMiss then Over = 1
+  return
+end sub
+
+' the stick flies the catcher 1.25 pixels a frame
+sub MoveCatcher:
+  K = J1 & 12
+  select case K
+    case 4
+      if CXf < CXMin + CSpd then
+        CXf = CXMin
+      else
+        CXf = CXf - CSpd
+      end if
+    case 8
+      if CXf > CXMax - CSpd then
+        CXf = CXMax
+      else
+        CXf = CXf + CSpd
+      end if
+  end select
+  K = J1 & 3
+  select case K
+    case 1
+      if CYf < CYMin + CSpd then
+        CYf = CYMin
+      else
+        CYf = CYf - CSpd
+      end if
+    case 2
+      if CYf > CYMax - CSpd then
+        CYf = CYMax
+      else
+        CYf = CYf + CSpd
+      end if
+  end select
+  CX = CXf >> 8
+  CY = CYf >> 8
+  return
+end sub
+
+' one day of comet C's orbit (phys.py; CcStep below does the work in Z80
+' to keep three comets inside the frame): the Sun's pull from the r^2
+' table, then the velocity, then the position, then the screen position.
+' 0 still flying, 1 into the Sun, 2 gone.
+function MoveComet(u8 C) as u8
+  CcIdx = C
+  call asm CcStep
+  return Res
+
+' comet Ci is gone (Res 1 into the Sun, 2 off the field): a miss
+sub CometLost:
+  Cm[Ci].Act = 0
+  dec Live
+  inc Misses
+  Dirty = Dirty | 2
+  play sound SndLost
+  return
+end sub
+
+' the comet's screen position (its head's middle)
+sub Place(u8 C)
+  i16 Q = 0
+  Q = Cm[C].Px >> 8
+  Q = Q + 128
+  Cm[C].Sx = Q
+  Q = Cm[C].Py >> 8
+  Q = Q + 96
+  Cm[C].Sy = Q
+  return
+end sub
+
+' how far apart two screen coordinates are
+function Gap(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+' the catcher touches comet Ci: caught, worth its km/s times the wave
+sub TryCatch:
+  if Gap(Cm[Ci].Sx, CX) >= 9 then return
+  if Gap(Cm[Ci].Sy, CY) >= 9 then return
+  Cm[Ci].Act = 0
+  dec Live
+  inc Caught
+  ' the points are worked out on a later, quieter frame (ScoreGot)
+  if NGot < NCom then
+    Got[NGot] = Cm[Ci]
+    inc NGot
+  end if
+  SparkX = Cm[Ci].Sx
+  SparkY = Cm[Ci].Sy
+  SparkT = 20
+  play sound SndCatch
+  return
+end sub
+
+' the catcher too close to the Sun burns up (and counts as a miss)
+sub Corona:
+  X = Gap(CX, 128)
+  Y = Gap(CY, 96)
+  if X >= 14 then return
+  if Y >= 14 then return
+  W16 = SqT[X] + SqT[Y]
+  if W16 >= 196 then return
+  BurnT = 60
+  inc Misses
+  Dirty = Dirty | 2
+  play sound SndBurn
+  return
+end sub
+
+' integer square root of a u16 (bit by bit)
+function ISqrt(u16 N) as u16
+  u16 R = 0
+  u16 B = 16384
+  u16 T = 0
+  while B > N
+    B = B >> 2
+  end while
+  while B > 0
+    T = R + B
+    if N >= T then
+      N = N - T
+      R = R >> 1
+      R = R + B
+    else
+      R = R >> 1
+    end if
+    B = B >> 2
+  end while
+  return R
+
+' a speed from a velocity: Kms10 gives km/s x 10 (1/32 pixel a day x
+' 12.875 = x 3296 / 256), with Per = 330 whole km/s (x 330 / 256)
+function Kms10(i16 Wx, i16 Wy, u16 Per) as u16
+  i16 A = 0
+  u8 Sa = 0
+  u16 T = 0
+  A = Wx >> 7
+  if A < 0 then A = 0 - A
+  if A > 127 then A = 127
+  Sa = A
+  T = SqT[Sa]
+  A = Wy >> 7
+  if A < 0 then A = 0 - A
+  if A > 127 then A = 127
+  Sa = A
+  T = T + SqT[Sa]
+  MulA = ISqrt(T)
+  MulFL = Per & 255
+  MulFH = Per >> 8
+  call asm CcMul
+  return MulR
+
+' the points of the last caught comet: its whole km/s (at least 5) x the wave
+sub ScoreGot:
+  dec NGot
+  Pts = Kms10(Got[NGot].Vx, Got[NGot].Vy, 330)
+  if Pts < 5 then Pts = 5
+  ' x the wave: CcMul with the wave as the high byte
+  MulA = Pts
+  MulFL = 0
+  MulFH = Wave
+  call asm CcMul
+  Pts = MulR
+  ' BCD takes u8 additions: add the points in pieces of 200
+  W16 = Pts
+  while W16 > 200
+    Score += 200
+    W16 = W16 - 200
+  end while
+  K = W16
+  Score += K
+  if Score > Hi then Hi = Score
+  Dirty = Dirty | 1
+  return
+end sub
+
+' new comets: one every so often up to the wave's eight, the next wave
+' when all are done
+sub SpawnStep:
+  if SpawnT > 0 then dec SpawnT
+  if Spawned < PerWave then
+    if Live < MaxLive then
+      if SpawnT = 0 then Launch
+    end if
+    return
+  end if
+  if Live = 0 then NextWave
+  return
+end sub
+
+sub Launch:
+  for Si = 0 to NCom - 1
+    if Cm[Si].Act = 0 then
+      if First = 1 then
+        First = 0
+        LIdx = 0
+      else
+        Rand
+        LIdx = Rs & 31
+      end if
+      Cm[Si].Px = LPx[LIdx]
+      Cm[Si].Py = LPy[LIdx]
+      Cm[Si].Vx = LVx[LIdx]
+      Cm[Si].Vy = LVy[LIdx]
+      Cm[Si].Act = 1
+      Place(Si)
+      inc Live
+      inc Spawned
+      SpawnT = 75
+      play sound SndSpawn
+      return
+    end if
+  next
+  return
+end sub
+
+sub NextWave:
+  inc Wave
+  if Wave > 1 then
+    if Spd < 448 then Spd = Spd + 26
+    play sound SndWave
+  end if
+  MaxLive = 2
+  if Wave >= 3 then MaxLive = 3
+  Spawned = 0
+  SpawnT = 30
+  Banner = 90
+  NumU = Wave
+  print at 11,7, " WAVE ", digits$(NumU, 2), " "
+  Dirty = Dirty | 4
+  return
+end sub
+
+' put the stars back where the banner was
+sub ClearBanner:
+  copy GameMap + 235 count 10 to vram.name + 235
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the catcher (ring, net), 2-7 the comets (head, tail), 8 the
+' catch sparkle, 9 spare
+sub DrawSprites:
+  if BurnT > 0 then
+    V = BurnT & 16
+    if V > 0 then
+      K = 8
+    else
+      K = 10
+    end if
+    set sprite 0 to CY - 9,CX - 8,SFlare,K
+    set sprite 1 to 192,0,0,0
+  else
+    set sprite 0 to CY - 9,CX - 8,SCring,15
+    set sprite 1 to CY - 9,CX - 8,SCnet,5
+  end if
+  for Ds = 0 to NCom - 1
+    J = Ds * 2 + 2
+    if Cm[Ds].Act = 1 then
+      X = Cm[Ds].Sx - 8
+      Y = Cm[Ds].Sy - 9
+      K = TailDir(Ds) * 4 + STail0
+      set sprite J to Y,X,SHead,15
+      set sprite J + 1 to Y,X,K,7
+    else
+      set sprite J to 192,0,0,0
+      set sprite J + 1 to 192,0,0,0
+    end if
+  next
+  if SparkT > 0 then
+    set sprite 8 to SparkY - 9,SparkX - 8,SSpark,11
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  V = Tick & 15
+  select case V
+    case 0
+      PickTgt
+    case 4
+      ShowR
+    case 6
+      if Tgt < 255 then ShowFix(4, NumR, 100)
+    case 8
+      ShowV
+    case 10
+      if Tgt < 255 then ShowFix(15, NumV, 10)
+    case 12
+      ShowGauge
+    case 2, 14
+      ShowDirty
+  end select
+  return
+end sub
+
+' the tail points away from the Sun: eight directions, 0 right, clockwise
+function TailDir(u8 C) as u8
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Q = 0
+  Q = 0
+  if Cm[C].Sx >= 128 then
+    Ax = Cm[C].Sx - 128
+  else
+    Ax = 128 - Cm[C].Sx
+    Q = Q | 1
+  end if
+  if Cm[C].Sy >= 96 then
+    Ay = Cm[C].Sy - 96
+  else
+    Ay = 96 - Cm[C].Sy
+    Q = Q | 2
+  end if
+  if Ax > Ay * 2 then
+    if Q & 1 then return 4
+    return 0
+  end if
+  if Ay > Ax * 2 then
+    if Q & 2 then return 6
+    return 2
+  end if
+  select case Q
+    case 0
+      return 1
+    case 1
+      return 3
+    case 3
+      return 5
+  end select
+  return 7
+
+' R (AU) and V (km/s) of the comet nearest the catcher, as the listing
+' printed them, and the brake gauge; one job every 4 frames
+sub PickTgt:
+  Tgt = 255
+  V = 255
+  for Ds = 0 to NCom - 1
+    if Cm[Ds].Act = 1 then
+      X = Gap(Cm[Ds].Sx, CX)
+      Y = Gap(Cm[Ds].Sy, CY)
+      W16 = X + Y
+      if W16 > 254 then W16 = 254
+      K = W16
+      if K < V then
+        V = K
+        Tgt = Ds
+      end if
+    end if
+  next
+  if Tgt = 255 then print at 2,22, "R -.-- AU  V ---.- KM/S"
+  return
+end sub
+
+sub ShowR:
+  if Tgt = 255 then return
+  if Cm[Tgt].Act = 0 then return
+  X = Gap(Cm[Tgt].Sx, 128)
+  Y = Gap(Cm[Tgt].Sy, 96)
+  W16 = SqT[X & 127] + SqT[Y & 127]
+  ' r pixels x 610 / 256 = AU x 100 (42 pixels an AU)
+  MulA = ISqrt(W16)
+  MulFL = 98
+  MulFH = 2
+  call asm CcMul
+  NumR = MulR
+  return
+end sub
+
+sub ShowV:
+  if Tgt = 255 then return
+  if Cm[Tgt].Act = 0 then return
+  NumV = Kms10(Cm[Tgt].Vx, Cm[Tgt].Vy, 3296)
+  return
+end sub
+
+' the gauge: four tiles, 8 columns each
+sub ShowGauge:
+  V = Brake >> 3
+  for Ds = 0 to 3
+    if V >= 8 then
+      K = 8
+      V = V - 8
+    else
+      K = V
+      V = 0
+    end if
+    put char TBar0 + K at 26 + Ds,22
+  next
+  return
+end sub
+
+' a readout value with a decimal point: R (hundredths) or V (tenths)
+sub ShowFix(u8 Col, u16 Val, u16 Div)
+  u16 Ip = 0
+  u16 Fp = 0
+  Ip = Val / Div
+  Fp = Val mod Div
+  if Div = 100 then
+    print at Col,22, digits$(Ip, 1), ".", digits$(Fp, 2)
+  else
+    print at Col,22, digits$(Ip, 3), ".", digits$(Fp, 1)
+  end if
+  return
+end sub
+
+' the status line, redrawn on a quiet frame after it changed (a catch
+' frame plus a readout frame did not fit in one frame)
+sub ShowDirty:
+  V = Dirty & 1
+  if V > 0 then
+    ShowScore
+    Dirty = Dirty & 6
+    return
+  end if
+  V = Dirty & 2
+  if V > 0 then
+    ShowMisses
+    Dirty = Dirty & 5
+    return
+  end if
+  V = Dirty & 4
+  if V > 0 then
+    ShowWave
+    Dirty = Dirty & 3
+  end if
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+sub ShowWave:
+  NumU = Wave
+  print at 20,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowMisses:
+  for Ds = 0 to MaxMiss - 1
+    if Ds < Misses then
+      put char TMiss at 24 + Ds,1
+    else
+      put char TSlot at 24 + Ds,1
+    end if
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 2,1, "SCORE"
+  print at 15,1, "WAVE"
+  print at 2,22, "R -.-- AU  V ---.- KM/S"
+  for Si = 0 to NCom - 1
+    Cm[Si].Act = 0
+  next
+  Score = 0
+  Caught = 0
+  NGot = 0
+  Wave = 0
+  Misses = 0
+  Live = 0
+  Spd = 256
+  Frac = 0
+  Brake = BrakeMax
+  BurnT = 0
+  SparkT = 0
+  First = 1
+  Over = 0
+  CXf = 32768
+  CYf = 40960
+  CX = 128
+  CY = 160
+  ShowScore
+  ShowMisses
+  NextWave
+  ShowWave
+  Dirty = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: COMET CATCHER in icy blocks over the stars, a comet drifting
+' across, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 9,1, "AHOY! APRIL 1986"
+  copy TitleMap count 384 to vram.name + 64
+  print at 8,15, "BY DALE RUPERT"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Hi > 0 then
+    print at 9,21, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a comet drifts across under the title, a pixel every other frame
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then inc TbX
+  set sprite 2 to 102,TbX,SHead,15
+  set sprite 3 to 102,TbX,STail4,7
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "COMET CATCHER"
+  print at 2,5, "BASED ON COMETCATCHER, THE"
+  print at 2,6, "RUPERT REPORT #28 BY DALE"
+  print at 2,7, "RUPERT, AHOY! APRIL 1986"
+  print at 2,8, "(COMMODORE 128 BASIC), AN"
+  print at 2,9, "ORBIT SIMULATION."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: PERIHELION"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; CcStep: one day for comet CcIdx (record: Act 0, Px 1, Py 3, Vx 5, Vy 7,
+; Sx 9, Sy 10; 11 bytes). Exactly phys.py's step. Res = 0, 1 Sun, 2 gone.
+CcStep:
+    push ix
+    ld ix,AMY_UVAR_Cm
+    ld a,(AMY_UVAR_CcIdx)
+    ld de,11
+    or a
+    jr z,CcSt1
+CcStIx:
+    add ix,de
+    dec a
+    jr nz,CcStIx
+CcSt1:
+    ld a,(ix+2)
+    call CcAbs
+    call CcSq
+    push hl
+    ld a,(ix+4)
+    call CcAbs
+    call CcSq
+    pop de
+    add hl,de
+    ld a,h
+    or a
+    jr nz,CcStNs
+    ld a,l
+    cp 36
+    jr nc,CcStNs
+    ld a,1
+    jp CcStEnd
+CcStNs:
+    ld a,h
+    cp 2
+    jr nc,CcStB
+    srl h
+    rr l
+    ld de,AMY_UDATA_FALo
+    ld bc,AMY_UDATA_FAHi
+    jr CcStF
+CcStB:
+    cp 16
+    jr nc,CcStC
+    ld a,l
+    rrca
+    rrca
+    rrca
+    rrca
+    and $0F
+    ld l,a
+    ld a,h
+    rlca
+    rlca
+    rlca
+    rlca
+    and $F0
+    or l
+    ld l,a
+    ld de,AMY_UDATA_FBLo
+    ld bc,AMY_UDATA_FBHi
+    jr CcStF
+CcStC:
+    ld a,l
+    rla
+    ld a,h
+    rla
+    ld l,a
+    ld de,AMY_UDATA_FCLo
+    ld bc,AMY_UDATA_FCHi
+CcStF:
+    ld h,0
+    push hl
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_MulFL),a
+    pop hl
+    add hl,bc
+    ld a,(hl)
+    ld (AMY_UVAR_MulFH),a
+    ld l,(ix+1)
+    ld h,(ix+2)
+    ld e,(ix+5)
+    ld d,(ix+6)
+    call CcAxis
+    ld (ix+5),e
+    ld (ix+6),d
+    ld l,(ix+3)
+    ld h,(ix+4)
+    ld e,(ix+7)
+    ld d,(ix+8)
+    call CcAxis
+    ld (ix+7),e
+    ld (ix+8),d
+    ld l,(ix+1)
+    ld h,(ix+2)
+    ld e,(ix+5)
+    ld d,(ix+6)
+    call CcAdv
+    ld (ix+1),l
+    ld (ix+2),h
+    ld l,(ix+3)
+    ld h,(ix+4)
+    ld e,(ix+7)
+    ld d,(ix+8)
+    call CcAdv
+    ld (ix+3),l
+    ld (ix+4),h
+    ld a,(ix+2)
+    add a,128
+    ld (ix+9),a
+    ld a,(ix+4)
+    add a,96
+    ld (ix+10),a
+    ld l,(ix+1)
+    ld h,(ix+2)
+    ld de,30720
+    call CcOut
+    jr c,CcStGone
+    ld l,(ix+3)
+    ld h,(ix+4)
+    ld de,21760
+    call CcOut
+    jr c,CcStGone
+    xor a
+    jr CcStEnd
+CcStGone:
+    ld a,2
+CcStEnd:
+    ld (AMY_UVAR_Res),a
+    pop ix
+    ret
+; a = |a|
+CcAbs:
+    or a
+    ret p
+    neg
+    ret
+; hl = SqT[a]
+CcSq:
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,AMY_UDATA_SqT
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ret
+; one axis: hl = P, de = V; returns de = V +- |P >> 7| x F / 256
+CcAxis:
+    push de
+    ld a,h
+    push af
+    add hl,hl
+    ld a,h
+    jr nc,CcAxP
+    neg
+CcAxP:
+    ld (AMY_UVAR_MulA),a
+    call CcMul
+    ld bc,(AMY_UVAR_MulR)
+    pop af
+    pop hl
+    bit 7,a
+    jr z,CcAxS
+    add hl,bc
+    ex de,hl
+    ret
+CcAxS:
+    or a
+    sbc hl,bc
+    ex de,hl
+    ret
+; hl = P + (V >> 4), de = V
+CcAdv:
+    sra d
+    rr e
+    sra d
+    rr e
+    sra d
+    rr e
+    sra d
+    rr e
+    add hl,de
+    ret
+; carry when hl (signed) is beyond +-de
+CcOut:
+    ld a,h
+    or a
+    jp p,CcOutP
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+CcOutP:
+    ex de,hl
+    or a
+    sbc hl,de
+    ret
+; MulR = MulA x MulF >> 8, MulF the word at MulFL (8 x 16 bits, 24-bit sum)
+CcMul:
+    ld a,(AMY_UVAR_MulA)
+    ld c,a
+    ld de,(AMY_UVAR_MulFL)
+    ld hl,0
+    ld b,h
+    ld a,8
+CcMulLp:
+    add hl,hl
+    rl b
+    sla c
+    jr nc,CcMulNx
+    add hl,de
+    jr nc,CcMulNx
+    inc b
+CcMulNx:
+    dec a
+    jr nz,CcMulLp
+    ld l,h
+    ld h,b
+    ld (AMY_UVAR_MulR),hl
+    ret
+CcCatch:
+    db $40,$6B,$20,$02,$40,$55,$20,$02,$40,$47,$20,$02,$40,$35,$30,$04,$50
+CcLost:
+    db $40,$7C,$20,$02,$40,$8A,$20,$02,$40,$99,$30,$02,$40,$AB,$30,$02,$40,$BE,$30,$02,$40,$D3,$30,$02
+    db $40,$EA,$40,$02,$40,$04,$41,$02,$40,$21,$41,$02,$40,$41,$41,$02,$40,$64,$51,$02,$40,$8D,$51,$02
+    db $50
+CcBurn:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$0A,$00,$00,$77,$0C,$10
+CcSpawn:
+    db $40,$2A,$50,$02,$40,$24,$60,$02,$40,$2A,$70,$02,$50
+CcWave:
+    db $40,$AA,$20,$05,$40,$8F,$20,$05,$40,$71,$20,$05,$40,$55,$20,$05,$40,$47,$20,$0E,$50
+CcStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+CcOver:
+    db $40,$8F,$10,$0A,$40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$1D,$31,$1E,$50
+
+CcSoundTable:
+    dw CcTuneMel,$702B
+    dw CcTuneBass,$7035
+    dw CcCatch,$7049
+    dw CcLost,$7049
+    dw CcBurn,$703F
+    dw CcSpawn,$7049
+    dw CcWave,$7049
+    dw CcStart,$7049
+    dw CcOver,$7049
+; Perihelion (original)
+; Tiny Sound, 8 frames per step
+CcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$28,$01,$01,$26,$01,$23
+    db $01,$21,$01,$23,$01,$1F,$01,$21,$01,$23,$01,$26,$01,$01,$28,$01
+    db $26,$01,$23,$01,$24,$01,$28,$01,$2B,$01,$01,$2A,$01,$28,$01,$26
+    db $01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01,$23,$01,$28
+    db $01,$01,$00,$01
+    db $FF
+CcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$13,$01,$1A,$01,$13,$01,$1A,$01,$1A,$01,$15,$01
+    db $1A,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$17,$01,$12,$01
+    db $17,$01,$12,$01,$15,$01,$10,$01,$17,$01,$12,$01,$10,$01,$01,$01
+    db $17,$01,$00,$01
+    db $FF
+}

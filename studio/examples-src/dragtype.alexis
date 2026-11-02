@@ -1,0 +1,1162 @@
+cartridge "DRAGON TYPE/BOB SPIRKO/1985"
+
+' DRAGON TYPE
+' A ColecoVision game based on "Dragon Type" by Bob Spirko, Ahoy!
+' September 1985 (Commodore 64: two BASIC programs, the first one pokes a
+' 795-byte machine-code routine to $C000 that walks the dragon sprite and
+' reads the keys). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' listings and the disassembly, orig/), the game is built for the
+' ColecoVision: a smooth dragon sprite, castle-hall tiles, big letter
+' sprites, sound effects and an original title tune.
+'
+' The game: lines of words from the original's 100-word list fill the
+' page. A dragon walks along each line and eats it letter by letter, but
+' only when you give it the right letter: the four letters in the box at
+' the bottom (one for each push of the stick) hold the next letter of the
+' line and three others; push toward the right one. A wrong push counts an
+' error. When the eight lines are eaten, your speed in words a minute and
+' your errors make the score: speed x 90 - errors x 20, as in the original,
+' with a high score.
+'
+' From the original (orig/dragontype*.bas, dragontype-ml.dis): the word
+' list (DATA 2000-2045) and the random lines of random words, the dragon
+' walking in at the start of each line and eating every character it is
+' given (the eaten character vanishes, the dragon steps one cell), a chomp
+' sound for a right letter and a buzz with a red border for a wrong one,
+' the three speeds (the chomp lasts longer at the slower speeds, as the
+' original's delay of 1, 2 or 3 x 30 loops did), errors counted, timing
+' from the first line to the last, SPEED = words / minutes rounded, SCORE
+' = SPEED x 90 - 20 x ERRORS, the high score, the end page with SPEED,
+' ERRORS, SCORE and HIGH SCORE.
+'
+' Liberties:
+' - Typing is replaced by a joystick matching game (Amy's request: keyboard
+'   games adapted to controllers): the next letter of the line is one of
+'   the letters shown in the choice box, at a random place; the others are
+'   different random letters. You still have to recognise each letter of
+'   each word, in order.
+' - The speed choice also sets how many letters the box offers: FAST 4
+'   (every direction), MEDIUM 3 (left, right, up), SLOW 2 (left, right). On
+'   the C64 it only changed the dragon's delays.
+' - Spaces are eaten by the dragon on its own (no key for them on a
+'   controller); the original made you type each space.
+' - Lines are 25 columns of whole words (the C64 lines were 30 columns,
+'   cut in the middle of a word); 8 lines instead of 9. The speed counts
+'   the words really shown (the original always divided 47 words).
+' - A wrong push locks the stick for a quarter second (the C64 buzz lasted
+'   1/17 second) so that pushing every way at random cannot pay; the
+'   score never goes below 0 (the C64 printed a negative one).
+' - A push made while the dragon chews is kept and used as soon as it has
+'   finished, like the C64 keyboard buffer.
+' - No abort key (the C64's F7): the game ends after the eighth line. At
+'   the end, a press goes back to the title (no SPACE/RETURN choice).
+'
+' Controls: either controller. In play, push the stick toward the letter
+' the dragon must eat next (left, right, up, down). On the title, up and
+' down choose FAST, MEDIUM, SLOW or CREDITS, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes (one red border of a quarter second on an error).
+
+const TStone = 128
+const TStonet = 129
+const TStoneb = 130
+const TTorch0 = 131
+const TBoxtl = 132
+const TBoxt = 133
+const TBoxtr = 134
+const TBoxl = 135
+const TBoxc = 136
+const TBoxr = 137
+const TBoxbl = 138
+const TBoxb = 139
+const TBoxbr = 140
+const TArru = 141
+const TFlame = 142
+const SDrag0 = 0
+const SDrag1 = 4
+const SDragc = 8
+const SDet = 12
+const SDetc = 16
+const SLetA = 20
+const SLetB = 24
+const SLetC = 28
+const SLetD = 32
+const SLetE = 36
+const SLetF = 40
+const SLetG = 44
+const SLetH = 48
+const SLetI = 52
+const SLetJ = 56
+const SLetK = 60
+const SLetL = 64
+const SLetM = 68
+const SLetN = 72
+const SLetO = 76
+const SLetP = 80
+const SLetQ = 84
+const SLetR = 88
+const SLetS = 92
+const SLetT = 96
+const SLetU = 100
+const SLetV = 104
+const SLetW = 108
+const SLetX = 112
+const SLetY = 116
+const SLetZ = 120
+const NTiles8 = 120
+const SprBytes = 992
+const SndTuneA = 1
+const SndTuneB = 2
+const SndChomp = 3
+const SndBuzz = 4
+const SndLine = 5
+const SndStart = 6
+const SndDone = 7
+const SndPick = 8
+const NLines = 8
+const LineW = 25
+const TextC = 5
+const NSpr = 6
+const LockN = 15
+const WalkX = 24
+const OffX = 224
+
+' the chomp's frames by speed (FAST, MEDIUM, SLOW), the letters offered
+data ChompT bytes 6, 9, 12
+data NChT bytes 4, 3, 2
+' slot order: left, right, up, down (the first NCh are in play)
+data SlotOrd bytes 2, 3, 0, 1
+' slot positions (sprite corner) and stick bits; slot 0 up, 1 down,
+' 2 left, 3 right
+data SlotX bytes 120, 120, 100, 140
+data SlotY bytes 147, 168, 157, 157
+data SlotBit bytes 1, 2, 4, 8
+
+record Slot:
+  u8 X
+  u8 Y
+  u8 Letter
+  u8 Live
+  u8 Col
+end record
+
+Slot Slots[4]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Frames = 0
+u16 Secs = 0
+u16 Hi = 0
+u16 Speed = 0
+u16 Score = 0
+u16 Pen = 0
+bcd digits 4 Errs = 0
+u16 E = 0
+u8 Sp = 0
+u8 NCh = 4
+u8 ChompN = 6
+u8 Over = 0
+u8 Mode = 0
+u8 Ln = 0
+u8 Pos = 0
+u8 Target = 0
+u8 Cur = 0
+u8 Words = 0
+u8 Dx = 16
+u8 Dy = 0
+u8 Base = 0
+u8 Ct = 0
+u8 Lock = 0
+u8 Pend = 0
+u8 SecT = 0
+u8 Page[200]
+u8 LLen[8]
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 PickD = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Li = 0
+u8 Si = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table DtSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the original's results page, then back to the title on a press
+  mute all
+  Results
+  play sound SndDone
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc Frames
+  inc SecT
+  if SecT >= 60 then
+    SecT = 0
+    inc Secs
+    ShowTime
+  end if
+  select case Mode
+  case 0
+    ' the dragon walks in to the first letter of the line
+    inc Dx
+    if Dx >= WalkX then
+      Mode = 1
+      ShowChoices
+    end if
+  case 1
+    if PickD > 0 then TryPick
+  case 2
+    Chew
+  case 3
+    ' the line is eaten: the dragon walks off to the right
+    Dx = Dx + 4
+    if Dx >= OffX then NextLine
+  case 4
+    dec Lock
+    if Lock = 0 then
+      Mode = 1
+      backdrop dark green
+      ResetColours
+    end if
+  end select
+  return
+end sub
+
+' one frame of chewing; a push now is kept for later (the C64 key buffer)
+sub Chew:
+  if PickD > 0 then Pend = PickD
+  inc Ct
+  Dx = Ct * 8 / ChompN + Base
+  if Ct < ChompN then return
+  inc Pos
+  if Pos >= LLen[Ln] then
+    Mode = 3
+    play sound SndLine
+    return
+  end if
+  if Pos < Target then
+    ' a space: the dragon eats it on its own
+    EatChar
+    return
+  end if
+  Mode = 1
+  if Pend > 0 then
+    PickD = Pend
+    Pend = 0
+    TryPick
+  end if
+  return
+end sub
+
+' the push PickD (a stick bit): right letter, wrong letter or no letter
+sub TryPick:
+  Got = 255
+  for Si = 0 to 3
+    if Slots[Si].Live = 1 then
+      if SlotBit[Si] = PickD then Got = Si
+    end if
+  next
+  if Got = 255 then return
+  if Slots[Got].Letter = Cur then
+    play sound SndChomp
+    EatChar
+    FindTarget
+    if Target < LLen[Ln] then
+      ShowChoices
+    else
+      HideChoices
+    end if
+  else
+    if E < 3000 then
+      inc E
+      Errs += 1
+    end if
+    ShowErrors
+    Slots[Got].Col = 8
+    Lock = LockN
+    Mode = 4
+    backdrop dark red
+    play sound SndBuzz
+  end if
+  return
+end sub
+
+' the dragon eats the character at Pos: it vanishes, the chew begins
+sub EatChar:
+  Y = Ln * 2 + 3
+  X = Pos + TextC
+  put char 32 at X,Y
+  Base = Dx
+  Ct = 0
+  Mode = 2
+  return
+end sub
+
+' Target: the next letter at or after Pos + 1 (skipping spaces), Cur its
+' character
+sub FindTarget:
+  W16 = Ln * LineW
+  Target = Pos + 1
+  N = LLen[Ln]
+  Got = 0
+  while Got = 0
+    if Target >= N then
+      Got = 1
+    else
+      Cur = Page[W16 + Target]
+      if Cur <> 32 then
+        Got = 1
+      else
+        inc Target
+      end if
+    end if
+  end while
+  return
+end sub
+
+sub NextLine:
+  inc Ln
+  if Ln >= NLines then
+    Over = 1
+    HideChoices
+    return
+  end if
+  ShowLine
+  Dx = 16
+  Dy = Ln * 16 + 16
+  Pos = 0
+  Pend = 0
+  W16 = Ln * LineW
+  Cur = Page[W16]
+  Target = 0
+  Mode = 0
+  return
+end sub
+
+' the choice box: Cur at a random slot in play, other letters elsewhere
+sub ShowChoices:
+  for Si = 0 to 3
+    Slots[Si].Live = 0
+    Slots[Si].Letter = 0
+  next
+  K = NCh
+  Rand
+  R = Rs % K
+  for Si = 0 to 3
+    if Si < K then
+      J = SlotOrd[Si]
+      Slots[J].Live = 1
+      if Si = R then
+        Slots[J].Letter = Cur
+      else
+        Slots[J].Letter = OtherLetter()
+      end if
+    end if
+  next
+  ResetColours
+  play sound SndPick
+  return
+end sub
+
+' a random letter that is neither Cur nor one already in the box
+function OtherLetter as u8
+  u8 L = 0
+  u8 Ok = 0
+  while Ok = 0
+    Rand
+    L = Rs % 26
+    L = L + 65
+    Ok = 1
+    if L = Cur then Ok = 0
+    for Ci = 0 to 3
+      if Slots[Ci].Letter = L then Ok = 0
+    next
+  end while
+  return L
+
+sub HideChoices:
+  for Si = 0 to 3
+    Slots[Si].Live = 0
+  next
+  return
+end sub
+
+sub ResetColours:
+  for Si = 0 to 3
+    Slots[Si].Col = 15
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the lines: random words of the original's list, whole words, one space
+' between, at most LineW characters
+
+sub MakeLines:
+  Words = 0
+  for Li = 0 to 7
+    MakeLine
+  next
+  return
+end sub
+
+sub MakeLine:
+  u16 At = 0
+  u16 Wo = 0
+  u8 Len = 0
+  u8 Wl = 0
+  u8 Wi = 0
+  u8 Full = 0
+  At = Li * LineW
+  while Full = 0
+    Rand
+    Wi = Rs % 100
+    Wl = WLenT[Wi]
+    if Len > 0 then
+      if Len + Wl + 1 > LineW then
+        Full = 1
+      end if
+    end if
+    if Full = 0 then
+      if Len > 0 then
+        Page[At + Len] = 32
+        inc Len
+      end if
+      Wo = Wi * 8
+      for Ci = 1 to Wl
+        Page[At + Len] = WordT[Wo]
+        inc Wo
+        inc Len
+      next
+      inc Words
+    end if
+  end while
+  LLen[Li] = Len
+  ' the rest of the line: spaces
+  while Len < LineW
+    Page[At + Len] = 32
+    inc Len
+  end while
+  return
+end sub
+
+sub DrawLines:
+  for Li = 0 to 7
+    Y = Li * 2 + 3
+    W16 = Li * LineW
+    put Page + W16 count LineW at TextC,Y
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the dragon's details, 1 its body, 2-5 the letters
+sub DrawSprites:
+  Y = Dy - 1
+  if TitleOn = 0 then
+    if Over = 1 then Y = 192
+  end if
+  if Mode = 2 then
+    set sprite 0 to Y,Dx,SDetc,11
+    set sprite 1 to Y,Dx,SDragc,12
+  else
+    V = Dx >> 2
+    V = V & 1
+    K = V << 2
+    K = K + SDrag0
+    set sprite 0 to Y,Dx,SDet,11
+    set sprite 1 to Y,Dx,K,12
+  end if
+  for Si = 0 to 3
+    J = Si + 2
+    if Slots[Si].Live = 1 then
+      C = Slots[Si].Letter - 65
+      K = C * 4 + SLetA
+      X = Slots[Si].X
+      Y = Slots[Si].Y - 1
+      N = Slots[Si].Col
+      set sprite J to Y,X,K,N
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "LINE"
+  print at 10,1, "ERRORS"
+  print at 22,1, "TIME"
+  ShowLine
+  ShowErrors
+  ShowTime
+  return
+end sub
+
+sub ShowLine:
+  NumU = Ln + 1
+  if NumU > NLines then NumU = NLines
+  print at 7,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowErrors:
+  print Errs at 17,1
+  return
+end sub
+
+sub ShowTime:
+  NumU = Secs
+  print at 27,1, digits$(NumU, 3)
+  return
+end sub
+
+' the hall: stone rows 0, 2 and 23, torches on the sides, the choice box
+sub DrawHall:
+  fill TStoneb count 32 at 0,0
+  fill TStonet count 32 at 0,2
+  fill TStone count 32 at 0,23
+  for Li = 1 to 22
+    put char TStone at 0,Li
+    put char TStone at 1,Li
+    put char TStone at 30,Li
+    put char TStone at 31,Li
+  next
+  put char TTorch0 at 1,6
+  put char TTorch0 at 30,6
+  put char TTorch0 at 1,14
+  put char TTorch0 at 30,14
+  ' the choice box, columns 11-20, rows 18-22
+  put char TBoxtl at 11,18
+  fill TBoxt count 8 at 12,18
+  put char TBoxtr at 20,18
+  for Li = 19 to 21
+    put char TBoxl at 11,Li
+    fill TBoxc count 8 at 12,Li
+    put char TBoxr at 20,Li
+  next
+  put char TBoxbl at 11,22
+  fill TBoxb count 8 at 12,22
+  put char TBoxbr at 20,22
+  return
+end sub
+
+sub Results:
+  ' speed: words a minute, rounded (the original: INT(47 / T + .5));
+  ' tenths of seconds keep the sum inside 16 bits
+  W16 = Frames / 6
+  if W16 = 0 then W16 = 1
+  NumU = Words
+  Speed = NumU * 600 + W16 / 2
+  Speed = Speed / W16
+  ' (the errors stop counting at 3000, so 20 x errors fits 16 bits)
+  Pen = E * 20
+  Score = Speed * 90
+  if Pen >= Score then
+    Score = 0
+  else
+    Score = Score - Pen
+  end if
+  if Score > Hi then Hi = Score
+  for Li = 4 to 16
+    fill 32 count 25 at 5,Li
+  next
+  print at 9,5, "SPEED ......."
+  NumU = Speed
+  print at 23,5, digits$(NumU, 3)
+  print at 9,7, "ERRORS ......"
+  print Errs at 23,7
+  print at 9,9, "SCORE ......"
+  NumU = Score
+  print at 21,9, digits$(NumU, 5)
+  print at 9,11, "HIGH SCORE ."
+  NumU = Hi
+  print at 21,11, digits$(NumU, 5)
+  print at 7,15, "WORDS A MINUTE X 90"
+  print at 7,16, "MINUS 20 AN ERROR"
+  for Li = 18 to 22
+    fill 32 count 10 at 11,Li
+  next
+  print at 8,20, "PRESS THE BUTTON"
+  return
+end sub
+
+sub NewGame:
+  Over = 0
+  E = 0
+  Errs = 0
+  Frames = 0
+  Secs = 0
+  SecT = 0
+  NCh = NChT[Sp]
+  ChompN = ChompT[Sp]
+  MakeLines
+  NewScreen
+  DrawHall
+  DrawLines
+  Ln = 255
+  NextLine
+  ShowHud
+  HideChoices
+  ResetColours
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' the stick and buttons; PickD = a new push in one of the four directions
+' (diagonals do not count), after the stick was let go
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  K = V & 15
+  PickD = 0
+  if WasStick = 0 then
+    select case K
+    case 1, 2, 4, 8
+      PickD = K
+    end select
+  end if
+  WasStick = K
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $4E
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the dragon walks in and eats the line of flames under the
+' name, the tune once, FAST / MEDIUM / SLOW / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawHall
+  print at 10,4, "DRAGON TYPE"
+  print at 10,6, "BY BOB SPIRKO"
+  fill TFlame count 18 at 8,8
+  print at 7,11, "CHOOSE YOUR SPEED"
+  print at 12,13, "FAST"
+  print at 12,14, "MEDIUM"
+  print at 12,15, "SLOW"
+  print at 12,16, "CREDITS"
+  print at 3,1, "HIGH"
+  NumU = Hi
+  print at 8,1, digits$(NumU, 5)
+  print at 15,1, "AHOY! SEP 1985"
+  for Si = 0 to 3
+    Slots[Si].X = SlotX[Si]
+    Slots[Si].Y = SlotY[Si]
+    Slots[Si].Live = 0
+  next
+  ShowMenu
+  TitleOn = 1
+  Over = 0
+  Mode = 0
+  Dx = 16
+  Dy = 56
+  Pos = 0
+  Ct = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleDragon
+  DrawSprites
+  if PickD = 1 then
+    if Menu > 0 then dec Menu
+    ShowMenu
+  end if
+  if PickD = 2 then
+    if Menu < 3 then inc Menu
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then
+    CreditsPage
+  else
+    Sp = Menu
+  end if
+  return
+end sub
+
+' the title dragon: walks along row 8 eating the flames, then off and back
+sub TitleDragon:
+  inc Ct
+  if Ct < 4 then return
+  Ct = 0
+  inc Dx
+  inc Dx
+  V = Dx + 16
+  X = V >> 3
+  if X >= 8 then
+    if X < 26 then put char 32 at X,8
+  end if
+  if Dx >= OffX then
+    Dx = 16
+    fill TFlame count 18 at 8,8
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  for J = 13 to 16
+    put char 32 at 10,J
+  next
+  J = Menu + 13
+  put char 62 at 10,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "DRAGON TYPE"
+  print at 2,5, "BASED ON DRAGON TYPE"
+  print at 2,6, "BY BOB SPIRKO, AHOY!"
+  print at 2,7, "SEPTEMBER 1985 (C-64)."
+  print at 2,9, "TYPING BECOMES A MATCH: PUSH"
+  print at 2,10, "THE STICK TOWARD THE LETTER"
+  print at 2,11, "THE DRAGON MUST EAT NEXT."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,18, "MUSIC: THE DRAGON'S LETTERS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$00,$00
+  $00,$00,$01,$01,$00,$10,$10,$00
+  $10,$38,$38,$10,$10,$10,$38,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$10,$38,$83,$00,$00,$00,$00
+  $00,$22,$88,$22,$88,$88,$88,$00
+end data
+data TileCol bytes
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$01,$0E
+  $0E,$01,$1E,$1E,$01,$1E,$1E,$01
+  $8E,$8E,$8E,$8E,$AE,$AE,$AE,$01
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$04,$04,$04,$04,$04,$04,$04
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $04,$04,$04,$04,$04,$04,$04,$05
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $04,$54,$54,$45,$04,$04,$04,$04
+  $0E,$8E,$E8,$B8,$8B,$8B,$E8,$0E
+end data
+data SpritePat bytes
+  $03,$06,$0F,$0F,$1F,$9F,$FE,$7C,$3C,$3E,$1F,$0F,$0C,$18,$18,$38
+  $F0,$F8,$FE,$F8,$C0,$C0,$40,$00,$00,$20,$60,$E0,$60,$30,$30,$70
+  $03,$06,$0F,$0F,$1F,$9F,$FE,$7C,$3C,$3E,$1F,$0F,$0C,$07,$07,$0F
+  $F0,$F8,$FE,$F8,$C0,$C0,$40,$00,$00,$20,$60,$E0,$C0,$80,$00,$00
+  $03,$06,$0F,$0F,$1F,$9F,$FE,$7C,$3C,$3E,$1F,$0F,$0C,$18,$18,$38
+  $F0,$FC,$FC,$C0,$80,$C0,$40,$00,$00,$20,$60,$E0,$60,$30,$30,$70
+  $00,$01,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$01,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$28,$15,$0A,$80,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$F8,$F8,$18,$18,$18,$18,$18,$18,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$00,$00,$00,$00,$00,$00,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$19,$19,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$00,$00,$F8,$F8,$18,$18,$18,$18,$F8,$F8,$00
+  $00,$18,$18,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$F8,$F8,$18,$18,$18,$18,$18,$18,$00
+  $00,$07,$07,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$07,$07,$00
+  $00,$E0,$E0,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$E0,$E0,$00
+  $00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$18,$18,$07,$07,$00
+  $00,$F8,$F8,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$80,$80,$00
+  $00,$18,$18,$18,$18,$19,$19,$1E,$1E,$19,$19,$18,$18,$18,$18,$00
+  $00,$18,$18,$60,$60,$80,$80,$00,$00,$80,$80,$60,$60,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$18,$18,$1E,$1E,$19,$19,$19,$19,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$78,$78,$98,$98,$98,$98,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$1E,$1E,$19,$19,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$98,$98,$78,$78,$18,$18,$18,$18,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$19,$19,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$98,$98,$60,$60,$98,$98,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$19,$19,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$80,$80,$60,$60,$18,$18,$00
+  $00,$07,$07,$18,$18,$18,$18,$07,$07,$00,$00,$00,$00,$1F,$1F,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$F8,$F8,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$06,$06,$01,$01,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$60,$60,$80,$80,$00
+  $00,$18,$18,$18,$18,$18,$18,$19,$19,$19,$19,$1E,$1E,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$98,$98,$98,$98,$78,$78,$18,$18,$00
+  $00,$18,$18,$18,$18,$06,$06,$01,$01,$06,$06,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$60,$60,$80,$80,$60,$60,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$06,$06,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$18,$18,$18,$18,$60,$60,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$1F,$1F,$00,$00,$00,$00,$01,$01,$06,$06,$18,$18,$1F,$1F,$00
+  $00,$F8,$F8,$18,$18,$60,$60,$80,$80,$00,$00,$00,$00,$F8,$F8,$00
+end data
+data WordT bytes
+  75,78,73,71,72,84,0,0
+  77,65,73,68,69,78,0,0
+  75,73,78,71,0,0,0,0
+  81,85,69,69,78,0,0,0
+  80,82,73,78,67,69,0,0
+  83,87,79,82,68,0,0,0
+  90,69,66,82,65,0,0,0
+  86,73,83,69,0,0,0,0
+  80,69,65,83,65,78,84,0
+  75,78,65,86,69,0,0,0
+  76,65,78,67,69,0,0,0
+  66,85,67,75,69,84,0,0
+  81,85,73,76,84,0,0,0
+  70,76,65,71,79,78,0,0
+  87,73,90,65,82,68,0,0
+  66,73,82,68,0,0,0,0
+  72,85,84,0,0,0,0,0
+  66,82,73,68,71,69,0,0
+  80,73,75,69,0,0,0,0
+  77,65,78,0,0,0,0,0
+  72,69,88,0,0,0,0,0
+  67,72,73,76,68,0,0,0
+  82,73,86,69,82,0,0,0
+  67,72,69,83,84,0,0,0
+  71,79,76,68,0,0,0,0
+  83,73,76,86,69,82,0,0
+  67,79,73,78,0,0,0,0
+  67,65,83,84,76,69,0,0
+  84,85,78,73,67,0,0,0
+  83,80,69,65,82,0,0,0
+  80,65,84,72,0,0,0,0
+  77,65,73,76,0,0,0,0
+  74,79,75,69,82,0,0,0
+  72,69,76,77,69,84,0,0
+  70,76,65,83,75,0,0,0
+  66,69,65,83,84,0,0,0
+  65,78,73,77,65,76,0,0
+  77,65,90,69,0,0,0,0
+  66,65,89,0,0,0,0,0
+  76,79,82,68,0,0,0,0
+  84,79,82,67,72,0,0,0
+  84,65,66,76,69,0,0,0
+  67,72,65,73,82,0,0,0
+  83,84,65,66,76,69,0,0
+  72,79,82,83,69,0,0,0
+  66,73,83,72,79,80,0,0
+  74,69,83,84,69,82,0,0
+  67,82,79,87,78,0,0,0
+  71,65,77,69,0,0,0,0
+  66,79,79,75,0,0,0,0
+  89,69,79,77,65,78,0,0
+  88,69,66,69,67,0,0,0
+  71,79,82,71,69,0,0,0
+  80,73,84,0,0,0,0,0
+  83,72,73,69,76,68,0,0
+  65,82,77,79,85,82,0,0
+  84,72,73,69,70,0,0,0
+  89,65,77,0,0,0,0,0
+  67,79,79,75,0,0,0,0
+  83,72,79,69,0,0,0,0
+  76,73,86,69,82,0,0,0
+  77,65,76,76,69,84,0,0
+  67,65,82,84,0,0,0,0
+  84,65,88,0,0,0,0,0
+  82,65,86,73,78,69,0,0
+  81,85,65,73,76,0,0,0
+  66,79,87,0,0,0,0,0
+  65,82,82,79,87,0,0,0
+  72,69,78,0,0,0,0,0
+  70,73,82,69,0,0,0,0
+  66,65,66,89,0,0,0,0
+  87,73,78,69,0,0,0,0
+  74,69,87,69,76,0,0,0
+  68,85,78,71,69,79,78,0
+  75,78,73,70,69,0,0,0
+  83,69,82,70,0,0,0,0
+  67,82,79,83,83,0,0,0
+  68,65,77,83,69,76,0,0
+  81,85,73,86,69,82,0,0
+  72,65,90,69,0,0,0,0
+  86,73,80,69,82,0,0,0
+  76,73,79,78,0,0,0,0
+  68,79,71,0,0,0,0,0
+  67,65,78,68,76,69,0,0
+  87,79,76,70,0,0,0,0
+  83,72,73,80,0,0,0,0
+  76,79,71,0,0,0,0,0
+  71,82,65,84,69,0,0,0
+  78,85,84,0,0,0,0,0
+  67,65,78,78,79,78,0,0
+  81,85,65,82,82,89,0,0
+  73,66,69,88,0,0,0,0
+  75,69,89,0,0,0,0,0
+  75,73,68,0,0,0,0,0
+  66,65,90,65,65,82,0,0
+  67,76,79,65,75,0,0,0
+  71,69,77,0,0,0,0,0
+  76,65,78,84,69,82,78,0
+  83,84,65,71,0,0,0,0
+  83,67,65,82,70,0,0,0
+end data
+data WLenT bytes
+  6,6,4,5,6,5,5,4,7,5,5,6,5,6,6,4,3,6,4,3
+  3,5,5,5,4,6,4,6,5,5,4,4,5,6,5,5,6,4,3,4
+  5,5,5,6,5,6,6,5,4,4,6,5,5,3,6,6,5,3,4,4
+  5,6,4,3,6,5,3,5,3,4,4,4,5,7,5,4,5,6,6,4
+  5,4,3,6,4,4,3,5,3,6,6,4,3,3,6,5,3,7,4,5
+end data
+
+asm {
+DtChomp:
+    db $00,$00,$15,$02,$00,$00,$36,$02,$00,$00,$66,$02,$10
+DtBuzz:
+    db $40,$F9,$12,$04,$40,$25,$23,$04,$40,$56,$33,$06,$50
+DtLine:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$08,$50
+DtStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+DtDone:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$18,$40,$6B,$20,$1E
+    db $50
+DtPick:
+    db $40,$47,$40,$02,$50
+
+DtSoundTable:
+    dw DtTuneMel,$702B
+    dw DtTuneBass,$7035
+    dw DtChomp,$703F
+    dw DtBuzz,$7049
+    dw DtLine,$7049
+    dw DtStart,$7049
+    dw DtDone,$7049
+    dw DtPick,$7049
+; The Dragon's Letters (original)
+; Tiny Sound, 8 frames per step
+DtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$21,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$1C,$01,$1D,$01,$1F,$01,$21,$01,$01,$01,$1C,$01,$01,$01
+    db $24,$01,$26,$01,$28,$01,$01,$01,$26,$24,$23,$01,$21,$01,$1F,$01
+    db $01,$01,$23,$01,$26,$01,$24,$01,$23,$01,$21,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+DtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $0C,$01,$13,$01,$05,$01,$0C,$01,$0E,$01,$15,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$10,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $04,$01,$0B,$01,$05,$01,$0C,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$01,$01
+    db $FF
+}

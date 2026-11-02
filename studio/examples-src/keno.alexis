@@ -1,0 +1,1373 @@
+cartridge "KENO/VALERIE JEAN KRAMER/1986"
+
+' KENO
+' A ColecoVision game based on "Keno" ("KENO GAME" on the disk) by Valerie
+' Jean Kramer, Ahoy! June 1986 (COMAL 0.14 for the Commodore 64, disk
+' ahoy1986-06, files KENO'GAME and the intro text KENO GAME; orig/).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game (the original's rules, read from its tokenized COMAL program,
+' whose strings, constants and CASE table were recovered byte by byte):
+' "Valerie's casino" has a hopper of 80 balls numbered 1-80. Each game you
+' bet a whole amount from 1 to 50 (the house limit), mark 10 numbers, and
+' the house draws 20 balls. Catching at least 5 of your 10 pays, for each
+' unit bet: 5 -> 2, 6 -> 18, 7 -> 180, 8 -> 1,300, 9 -> 2,600,
+' 10 -> 10,000 (the original's table, which is a real casino 10-spot
+' table). The bet is always taken; the payout is added. The account starts
+' at 0 and may run into a tab. Each result has the original's remark (TOO
+' BAD ... YOU JUST BROKE THE BANK!!), and when you leave, the house sends
+' you off by the state of your account (a tab, a win, or even).
+'
+' Keno is a game of chance and this one is honest: the 20 balls are drawn
+' without replacement from 80 with a 16-bit xorshift (no bias toward any
+' number), and with this table the house keeps about 21% of what is bet
+' over time (the return is 79.3%: the rules page shows it). Nothing
+' you do with the stick changes the odds; the game cannot be beaten by
+' playing the same numbers or any other pattern. Play chips only.
+'
+' Liberties:
+' - Chips instead of dollars, and no real-money talk: the original's
+'   "YOU OWE ME $..." and its request to mail the money (with the author's
+'   address) are gone; a tab is "YOU OWE THE HOUSE ... CHIPS".
+' - The ticket is marked with the stick on an 8 x 10 keno ticket (1-40 over
+'   41-80, as real tickets) instead of typing ten numbers; the original's
+'   typing errors (out of range, picked twice, "I don't monkey with
+'   change") cannot happen. A marked number can be unmarked.
+' - "Play the same numbers?" is simply the ticket staying marked after each
+'   game (CLEAR THE TICKET wipes it); the bet stays too.
+' - The original's bet question becomes a BET line changed with the stick
+'   (1-50, the house limit).
+' - "Do you wish to play again (Y/N)?" becomes LEAVE THE CASINO on the
+'   menu; the goodbye page, then the title (no play-again question).
+' - Drawn balls fly from a hopper to the ticket (the original moved sprites
+'   and drew circles): drawn numbers turn blue, catches yellow with a gong.
+' - The K E N O sprites of the original's title glide in; the welcome to
+'   Valerie's casino stays. The rules page shows the odds and the return.
+' - The account is kept in 32 bits (the original's float): a full bet of 50
+'   on a 10 catch pays 500,000.
+'
+' Controls: the stick moves the frame over the ticket and the button marks
+' or unmarks a number; down past the ticket goes to the menu (BET: left and
+' right change it, hold to repeat; DRAW THE BALLS; CLEAR THE TICKET; LEAVE
+' THE CASINO), up from the menu's top goes back to the ticket. Either
+' button, either controller. Title: up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off after a
+' wait, display off. Music first in the sound table; the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes faster than 3 Hz.
+
+const TC0l0 = 128
+const TC0l1 = 129
+const TC0l2 = 130
+const TC0l3 = 131
+const TC0l4 = 132
+const TC0l5 = 133
+const TC0l6 = 134
+const TC0l7 = 135
+const TC0l8 = 136
+const TC0l9 = 137
+const TC0r0 = 138
+const TC0r1 = 139
+const TC0r2 = 140
+const TC0r3 = 141
+const TC0r4 = 142
+const TC0r5 = 143
+const TC0r6 = 144
+const TC0r7 = 145
+const TC0r8 = 146
+const TC0r9 = 147
+const TC1l0 = 148
+const TC1l1 = 149
+const TC1l2 = 150
+const TC1l3 = 151
+const TC1l4 = 152
+const TC1l5 = 153
+const TC1l6 = 154
+const TC1l7 = 155
+const TC1l8 = 156
+const TC1l9 = 157
+const TC1r0 = 158
+const TC1r1 = 159
+const TC1r2 = 160
+const TC1r3 = 161
+const TC1r4 = 162
+const TC1r5 = 163
+const TC1r6 = 164
+const TC1r7 = 165
+const TC1r8 = 166
+const TC1r9 = 167
+const TC2l0 = 168
+const TC2l1 = 169
+const TC2l2 = 170
+const TC2l3 = 171
+const TC2l4 = 172
+const TC2l5 = 173
+const TC2l6 = 174
+const TC2l7 = 175
+const TC2l8 = 176
+const TC2l9 = 177
+const TC2r0 = 178
+const TC2r1 = 179
+const TC2r2 = 180
+const TC2r3 = 181
+const TC2r4 = 182
+const TC2r5 = 183
+const TC2r6 = 184
+const TC2r7 = 185
+const TC2r8 = 186
+const TC2r9 = 187
+const TC3l0 = 188
+const TC3l1 = 189
+const TC3l2 = 190
+const TC3l3 = 191
+const TC3l4 = 192
+const TC3l5 = 193
+const TC3l6 = 194
+const TC3l7 = 195
+const TC3l8 = 196
+const TC3l9 = 197
+const TC3r0 = 198
+const TC3r1 = 199
+const TC3r2 = 200
+const TC3r3 = 201
+const TC3r4 = 202
+const TC3r5 = 203
+const TC3r6 = 204
+const TC3r7 = 205
+const TC3r8 = 206
+const TC3r9 = 207
+const TSplit = 208
+const TRule = 209
+const TFelt = 210
+const TStar = 211
+const THop00 = 212
+const THop01 = 213
+const THop02 = 214
+const THop03 = 215
+const THop10 = 216
+const THop11 = 217
+const THop12 = 218
+const THop13 = 219
+const THop20 = 220
+const THop21 = 221
+const THop22 = 222
+const THop23 = 223
+const SFrame = 0
+const SShine = 4
+const SBall = 8
+const SBigK = 12
+const SBigE = 16
+const SBigN = 20
+const SBigO = 24
+const NTiles8 = 768
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndMark = 4
+const SndUnmark = 5
+const SndBad = 6
+const SndBeep = 7
+const SndPop = 8
+const SndGong = 9
+const SndWin = 10
+const SndLose = 11
+const SndBang = 12
+const NSpr = 6
+const TickX = 6
+const TickY = 3
+const MenuY = 14
+const MsgY = 19
+const HopX = 26
+const HopY = 14
+
+' what a catch pays for each chip bet (the original's table)
+data PayTab words
+  0,0,0,0,0,2,18,180,1300,2600,10000
+end data
+' ball colours as they fly
+data BallCol bytes
+  11,9,3,7,15,13,10,5
+end data
+
+' cell states: bit 0 marked, bit 1 drawn
+u8 St[80]
+u8 Drawn[20]
+i32 Bal = 0
+i32 Paid = 0
+i32 Num32 = 0
+i32 Q32 = 0
+i32 Bet32 = 0
+i32 Rate32 = 0
+u16 Games = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 DrawSeed = 0
+u8 Dg[8]
+u8 NMarked = 0
+u8 NDrawn = 0
+u8 Catch = 0
+u8 Bet = 1
+u8 Cx = 0
+u8 Cy = 0
+u8 InMenu = 0
+u8 Menu = 0
+u8 Stage = 0
+u8 Tick = 0
+u8 Asking = 0
+u8 TMenu = 0
+' input
+u8 J1 = 0
+u8 Pj = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 LastDir = 0
+u8 Rep = 0
+u8 Held = 0
+u8 RepN = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Bi = 0
+u8 Li = 0
+' scratch
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table KnSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Stage = 1
+  CreditsPage
+
+title:
+  TitlePage
+  if TMenu = 1 then
+    RulesPage
+    goto title
+  end if
+  if TMenu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  NewVisit
+  TicketPage
+
+play_loop:
+  MarkTicket
+  if Menu = 3 then goto leave
+  DrawGame
+  ResultLine
+  WaitButton
+  ClearDrawn
+  goto play_loop
+
+leave:
+  EndPage
+  Stage = 6
+  Pause(60)
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the visit
+
+sub NewVisit:
+  Bal = 0
+  Games = 0
+  Bet = 1
+  NMarked = 0
+  NDrawn = 0
+  Catch = 0
+  Cx = 0
+  Cy = 0
+  InMenu = 0
+  Menu = 0
+  fill array St with 0
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a ball not drawn yet, 0-79, with no bias (values from 65520 up are
+' thrown back: 65520 = 80 x 819)
+function NewBall() as u8
+  u8 Nb = 0
+  do
+    Rand
+    if Rs < 65520 then
+      Nb = Rs % 80
+      if St[Nb] & 2 = 0 then return Nb
+    end if
+  loop
+  return 0
+
+' ---------------------------------------------------------------------------
+' the ticket
+
+function CellCol(u8 N) as u8
+  return (N % 10) * 2 + TickX
+
+function CellRow(u8 N) as u8
+  if N >= 40 then return N / 10 + TickY + 1
+  return N / 10 + TickY
+
+sub DrawCell(u8 N):
+  u8 Base = 0
+  u8 Nu = 0
+  u8 Px = 0
+  u8 Py = 0
+  Base = (St[N] & 3) * 20 + TC0l0
+  Nu = N + 1
+  Px = CellCol(N)
+  Py = CellRow(N)
+  put char Base + Nu / 10 at Px,Py
+  put char Base + 10 + Nu % 10 at Px + 1,Py
+  return
+end sub
+
+sub DrawTicket:
+  for Ci = 0 to 79
+    DrawCell(Ci)
+  next
+  fill TSplit count 20 at TickX,TickY + 4
+  return
+end sub
+
+' the frame round the cell under the cursor (hidden in the menu)
+sub ShowCursor:
+  u8 Fy = 0
+  u8 Fx = 0
+  u8 N = 0
+  if InMenu = 1 then
+    set sprite 0 to 192,0,SFrame,13
+  else
+    N = Cy * 10 + Cx
+    Fy = CellRow(N) * 8 - 2
+    Fx = Cx * 16 + TickX * 8
+    set sprite 0 to Fy,Fx,SFrame,13
+  end if
+  update sprites
+  return
+end sub
+
+' a signed number from Num32, then " CHIPS" when Ch = 1, at Nx,Ny; 14
+' columns are cleared first
+sub ShowNum(u8 Nx, u8 Ny, u8 Ch):
+  u8 Nd = 0
+  u8 Neg = 0
+  u8 Ox = 0
+  fill 32 count 14 at Nx,Ny
+  if Num32 < 0 then
+    Neg = 1
+    Num32 = 0 - Num32
+  end if
+  do
+    Q32 = Num32 % 10
+    W16 = lowword Q32
+    Dg[Nd] = W16
+    inc Nd
+    Num32 = Num32 / 10
+  loop until Num32 = 0
+  Ox = Nx
+  if Neg = 1 then
+    put char 45 at Ox,Ny
+    inc Ox
+  end if
+  while Nd > 0
+    dec Nd
+    put char Dg[Nd] + 48 at Ox,Ny
+    inc Ox
+  end while
+  if Ch = 1 then print at Ox + 1,Ny, "CHIPS"
+  return
+end sub
+
+sub ShowBalance:
+  Num32 = Bal
+  ShowNum(16, 1, 0)
+  return
+end sub
+
+sub ShowMarked:
+  print NMarked at 9,13 digits 2
+  return
+end sub
+
+sub ShowBet:
+  print Bet at 18,MenuY digits 2
+  return
+end sub
+
+sub ShowGames:
+  print Games at 8,22 digits 5
+  return
+end sub
+
+sub ShowMenuMark:
+  for J = 0 to 3
+    put char 32 at 3,MenuY + J
+  next
+  if InMenu = 1 then
+    put char 62 at 3,MenuY + Menu
+  end if
+  return
+end sub
+
+sub ClearMsg:
+  for J = MsgY to MsgY + 2
+    fill 32 count 28 at 2,J
+  next
+  return
+end sub
+
+sub DrawMenu:
+  for J = MenuY to MenuY + 3
+    fill 32 count 22 at 2,J
+  next
+  print at 5,MenuY, "BET"
+  print at 16,MenuY, "<"
+  print at 21,MenuY, ">"
+  print at 5,MenuY + 1, "DRAW THE BALLS"
+  print at 5,MenuY + 2, "CLEAR THE TICKET"
+  print at 5,MenuY + 3, "LEAVE THE CASINO"
+  ShowBet
+  ShowMenuMark
+  return
+end sub
+
+sub DrawHopper:
+  for J = 0 to 2
+    for K = 0 to 3
+      put char THop00 + J * 4 + K at HopX + K,HopY + J
+    next
+  next
+  return
+end sub
+
+sub TicketPage:
+  NewScreen
+  print at 2,1, "KENO"
+  print at 8,1, "ACCOUNT"
+  ShowBalance
+  fill TRule count 28 at 2,2
+  DrawTicket
+  fill TRule count 28 at 2,12
+  print at 2,13, "MARKED"
+  print at 12,13, "OF 10"
+  ShowMarked
+  DrawMenu
+  DrawHopper
+  print at 2,22, "GAMES"
+  ShowGames
+  ShowCursor
+  ShowScreen
+  Stage = 3
+  return
+end sub
+
+' the stick: Held = the direction (bit 1 up, 2 down, 4 left, 8 right)
+' when it acts this frame (at once, then repeated); 0 otherwise
+sub StickRep:
+  D = Pj & 15
+  Held = 0
+  if D = 0 then
+    LastDir = 0
+  else
+    if D <> LastDir then
+      Held = D
+      Rep = 16
+      RepN = 0
+    else
+      dec Rep
+      if Rep = 0 then
+        Held = D
+        Rep = 5
+        if RepN < 6 then
+          inc RepN
+        else
+          Rep = 2
+        end if
+      end if
+    end if
+    LastDir = D
+  end if
+  return
+end sub
+
+' mark or unmark the number under the cursor
+sub Toggle:
+  u8 N = 0
+  N = Cy * 10 + Cx
+  if St[N] & 1 then
+    St[N] = 0
+    dec NMarked
+    play sound SndUnmark
+  else
+    if NMarked >= 10 then
+      ClearMsg
+      print at 2,MsgY, "YOU HAVE 10 NUMBERS."
+      print at 2,MsgY + 1, "UNMARK ONE TO CHANGE IT."
+      play sound SndBad
+    else
+      St[N] = 1
+      inc NMarked
+      play sound SndMark
+      ClearMsg
+    end if
+  end if
+  DrawCell(N)
+  ShowMarked
+  return
+end sub
+
+' the stick on the ticket
+sub MoveTicket:
+  if Held & 1 then
+    if Cy > 0 then dec Cy
+  end if
+  if Held & 2 then
+    if Cy < 7 then
+      inc Cy
+    else
+      InMenu = 1
+      Menu = 0
+    end if
+  end if
+  if Held & 4 then
+    if Cx > 0 then
+      dec Cx
+    else
+      Cx = 9
+    end if
+  end if
+  if Held & 8 then
+    if Cx < 9 then
+      inc Cx
+    else
+      Cx = 0
+    end if
+  end if
+  play sound SndTick
+  ShowCursor
+  ShowMenuMark
+  return
+end sub
+
+' the stick on the menu
+sub MoveMenu:
+  if Held & 1 then
+    if Menu > 0 then
+      dec Menu
+    else
+      InMenu = 0
+    end if
+  end if
+  if Held & 2 then
+    if Menu < 3 then inc Menu
+  end if
+  if Menu = 0 then
+    if Held & 4 then
+      if Bet > 1 then dec Bet
+    end if
+    if Held & 8 then
+      if Bet < 50 then inc Bet
+    end if
+    ShowBet
+  end if
+  play sound SndTick
+  ShowCursor
+  ShowMenuMark
+  return
+end sub
+
+' the ticket and the menu until DRAW (with 10 marked) or LEAVE
+sub MarkTicket:
+  u8 Done = 0
+  ReadPad
+  LastDir = 0
+  Asking = 1
+  while Done = 0
+    Frame1
+    inc Rs
+    ReadPad
+    StickRep
+    if Held > 0 then
+      if InMenu = 1 then
+        MoveMenu
+      else
+        MoveTicket
+      end if
+    end if
+    if Press = 1 then
+      if InMenu = 0 then
+        Toggle
+      else
+        select case Menu
+        case 1
+          if NMarked = 10 then
+            Done = 1
+          else
+            ClearMsg
+            print at 2,MsgY, "MARK 10 NUMBERS FIRST."
+            play sound SndBad
+          end if
+        case 2
+          fill array St with 0
+          NMarked = 0
+          DrawTicket
+          ShowMarked
+          ClearMsg
+          play sound SndUnmark
+        case 3
+          Done = 1
+        case else
+          ' the button on BET goes on to DRAW
+          Menu = 1
+          ShowMenuMark
+          play sound SndTick
+        end select
+      end if
+    end if
+  end while
+  Asking = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the draw
+
+' one ball from the hopper to cell N in 20 frames
+sub FlyBall(u8 N, u8 Col):
+  i16 Hx = 0
+  i16 Hy = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Ix = 0
+  i16 Iy = 0
+  u8 Fr = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  Hx = HopX * 8 + 8
+  Hy = HopY * 8 - 6
+  Dx = CellCol(N) * 8
+  Dx = Dx - Hx
+  Dy = CellRow(N) * 8 - 3
+  Dy = Dy - Hy
+  for Fr = 0 to 20
+    Ix = Dx * Fr / 20 + Hx
+    Iy = Dy * Fr / 20 + Hy
+    Sx = Ix
+    Sy = Iy
+    set sprite 1 to Sy,Sx,SShine,15
+    set sprite 2 to Sy,Sx,SBall,Col
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub ShowDrawCount:
+  print NDrawn at 7,MenuY digits 2
+  print Catch at 24,MenuY digits 2
+  return
+end sub
+
+sub DrawGame:
+  u8 N = 0
+  ' take the bet
+  Bet32 = Bet
+  Bal = Bal - Bet32
+  inc Games
+  ShowBalance
+  ShowGames
+  InMenu = 1
+  ShowCursor
+  ClearMsg
+  for J = MenuY to MenuY + 3
+    fill 32 count 22 at 2,J
+  next
+  print at 2,MenuY, "BALL"
+  print at 10,MenuY, "OF 20"
+  print at 17,MenuY, "CAUGHT"
+  NDrawn = 0
+  Catch = 0
+  ShowDrawCount
+  Stage = 4
+  DrawSeed = Rs
+  for Bi = 0 to 19
+    N = NewBall()
+    Drawn[Bi] = N
+    play sound SndPop
+    FlyBall(N, BallCol[Bi & 7])
+    St[N] = St[N] | 2
+    inc NDrawn
+    if St[N] & 1 then
+      inc Catch
+      play sound SndGong
+    else
+      play sound SndBeep
+    end if
+    DrawCell(N)
+    set sprite 1 to 192,0,SShine,15
+    set sprite 2 to 192,0,SBall,15
+    update sprites
+    ShowDrawCount
+    Pause(10)
+  next
+  ' pay
+  W16 = PayTab[Catch]
+  Rate32 = W16
+  Paid = Bet32 * Rate32
+  Bal = Bal + Paid
+  ShowBalance
+  Stage = 5
+  return
+end sub
+
+' the original's remark for the catch, and what it paid
+sub ResultLine:
+  ClearMsg
+  select case Catch
+  case 5
+    print at 2,MsgY, "YOU WON'T GET RICH THAT WAY,"
+    print at 2,MsgY + 1, "BUT IT SURE BEATS LOSING!"
+  case 6
+    print at 2,MsgY, "NOT BAD! CAN YOU KEEP IT UP?"
+  case 7
+    print at 2,MsgY, "HAVE YOU BEEN PRACTICING?"
+  case 8
+    print at 2,MsgY, "ARE YOU SURE YOU AREN'T"
+    print at 2,MsgY + 1, "CHEATING? I NEVER DID TRUST"
+  case 9
+    print at 2,MsgY, "OUCH! THAT HURT! DO YOU KNOW"
+    print at 2,MsgY + 1, "HOW MANY GAMES THAT TAKES?"
+  case 10
+    print at 2,MsgY, "CONGRATULATIONS!"
+    print at 2,MsgY + 1, "YOU JUST BROKE THE BANK!!"
+  case else
+    print at 2,MsgY, "TOO BAD. BETTER LUCK"
+    print at 2,MsgY + 1, "NEXT TIME."
+  end select
+  if Catch >= 5 then
+    print at 2,MsgY + 2, "PAID"
+    Num32 = Paid
+    ShowNum(7, MsgY + 2, 1)
+    if Catch = 10 then
+      play sound SndBang
+    else
+      play sound SndWin
+    end if
+  else
+    play sound SndLose
+  end if
+  return
+end sub
+
+' back to the ticket: the marks stay, the drawn balls go
+sub ClearDrawn:
+  for Ci = 0 to 79
+    if St[Ci] & 2 then
+      St[Ci] = St[Ci] & 1
+      DrawCell(Ci)
+    end if
+  next
+  ClearMsg
+  print at 2,13, "MARKED"
+  DrawMenu
+  Menu = 1
+  InMenu = 1
+  ShowMenuMark
+  ShowCursor
+  Stage = 3
+  return
+end sub
+
+sub WaitButton:
+  print at 2,MenuY + 2, "PRESS THE BUTTON"
+  ReadPad
+  Asking = 2
+  do
+    Frame1
+    inc Rs
+    ReadPad
+  loop until Press = 1
+  Asking = 0
+  play sound SndTick
+  fill 32 count 22 at 2,MenuY + 2
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' leaving
+
+sub EndPage:
+  NewScreen
+  fill mode 2 text color with $F1
+  print at 2,1, "VALERIE'S CASINO"
+  fill TRule count 28 at 2,2
+  print at 2,4, "GAMES PLAYED"
+  print Games at 16,4 digits 5
+  if Bal < 0 then
+    print at 2,6, "I'M SORRY. I'M AFRAID I'LL"
+    print at 2,7, "HAVE TO ASK YOU TO LEAVE THE"
+    print at 2,8, "CASINO UNTIL YOU SETTLE YOUR"
+    print at 2,9, "ACCOUNT WITH US."
+    print at 2,10, "YOU HAVE RUN UP QUITE A TAB."
+    print at 2,12, "YOU OWE THE HOUSE"
+    Num32 = 0 - Bal
+    ShowNum(2, 13, 1)
+    print at 2,15, "WE'VE ENJOYED HAVING YOU AND"
+    print at 2,16, "YOU ARE WELCOME TO RETURN AS"
+    print at 2,17, "SOON AS YOU HAVE ATTENDED TO"
+    print at 2,18, "THIS LITTLE DETAIL."
+    play sound SndLose
+  else
+    if Bal > 0 then
+      print at 2,6, "CONGRATULATIONS! VERY FEW"
+      print at 2,7, "PEOPLE EVER LEAVE HERE A"
+      print at 2,8, "WINNER!"
+      print at 2,10, "YOU TAKE HOME"
+      Num32 = Bal
+      ShowNum(2, 11, 1)
+      play sound SndWin
+    else
+      print at 2,6, "YOU LEAVE EXACTLY EVEN."
+      print at 2,7, "THE HOUSE HAS NOTHING ON YOU"
+      play sound SndTick
+    end if
+  end if
+  print at 2,20, "I HOPE YOU ENJOYED YOUR"
+  print at 2,21, "VISIT TO MY CASINO."
+  print at 2,22, "        - VALERIE"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Nf):
+  u8 Pk = 0
+  for Pk = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up or joypad(2).up then J1 = J1 | 1
+  if joypad(1).down or joypad(2).down then J1 = J1 | 2
+  if joypad(1).left or joypad(2).left then J1 = J1 | 4
+  if joypad(1).right or joypad(2).right then J1 = J1 | 8
+  if joypad(1).fire or joypad(2).fire then J1 = J1 | 16
+  Pj = J1
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowTitleMenu:
+  for J = 0 to 2
+    put char 32 at 8,J + 15
+  next
+  put char 62 at 8,TMenu + 15
+  return
+end sub
+
+' the title: K E N O glide in from the sides, the welcome, the tune once,
+' the menu
+sub TitlePage:
+  u8 Tf = 0
+  u8 Lx = 0
+  u8 Sl = 0
+  NewScreen
+  for J = 2 to 29
+    put char TStar at J,1
+    put char TStar at J,12
+  next
+  print at 12,8, "WELCOME"
+  print at 10,9, "TO VALERIE'S"
+  print at 12,10, "CASINO"
+  print at 10,15, "PLAY KENO"
+  print at 10,16, "HOW TO PLAY"
+  print at 10,17, "CREDITS"
+  print at 5,20, "BY VALERIE JEAN KRAMER"
+  print at 8,21, "AHOY! JUNE 1986"
+  ShowTitleMenu
+  ShowScreen
+  Stage = 2
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 590
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 0
+  Tf = 0
+  do
+    Frame1
+    inc Rs
+    ' the letters slide in to x = 88, 108, 128, 148 (K and E from the left)
+    if Tf < 100 then inc Tf
+    for Sl = 0 to 3
+      Lx = Sl * 20 + 88
+      if Sl < 2 then
+        if Tf < 88 then Lx = Lx - 88 + Tf
+      else
+        if Tf < 88 then Lx = Lx + 88 - Tf
+      end if
+      set sprite Sl + 1 to 31,Lx,SBigK + Sl * 4,BallCol[Sl]
+    next
+    update sprites
+    ReadPad
+    V = J1 & 15
+    if V > 0 then
+      if WasStick = 0 then
+        if V & 1 then
+          if TMenu > 0 then dec TMenu
+        end if
+        if V & 2 then
+          if TMenu < 2 then inc TMenu
+        end if
+        ShowTitleMenu
+        play sound SndTick
+      end if
+    end if
+    WasStick = V
+  loop until Press = 1
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 2,1, "HOW TO PLAY KENO"
+  fill TRule count 28 at 2,2
+  print at 2,3, "THE HOPPER HOLDS 80 BALLS,"
+  print at 2,4, "NUMBERED 1 THRU 80. BET 1-50"
+  print at 2,5, "CHIPS AND MARK 10 NUMBERS."
+  print at 2,6, "THE HOUSE DRAWS 20 BALLS."
+  print at 2,7, "CATCH 5 OR MORE TO BE PAID,"
+  print at 2,8, "FOR EACH CHIP BET:"
+  print at 3,10, "5 CAUGHT     2"
+  print at 3,11, "6 CAUGHT    18"
+  print at 3,12, "7 CAUGHT   180"
+  print at 3,13, "8 CAUGHT  1300"
+  print at 3,14, "9 CAUGHT  2600"
+  print at 2,15, "10 CAUGHT 10000"
+  print at 2,17, "ONE GAME IN 15.5 PAYS. OVER"
+  print at 2,18, "TIME THE HOUSE KEEPS ABOUT"
+  print at 2,19, "21 CHIPS OF EVERY 100 BET:"
+  print at 2,20, "NO SYSTEM CAN BEAT IT."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Stage = 7
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,1, "KENO"
+  print at 2,3, "BASED ON KENO BY VALERIE"
+  print at 2,4, "JEAN KRAMER, AHOY! JUNE 1986"
+  print at 2,5, "(COMAL, COMMODORE 64)."
+  print at 2,7, "MARK 10 NUMBERS OF 80, THE"
+  print at 2,8, "HOUSE DRAWS 20, AND CATCHES"
+  print at 2,9, "OF 5 OR MORE PAY. A GAME OF"
+  print at 2,10, "CHANCE FOR PLAY CHIPS ONLY."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: LUCKY NUMBERS"
+  print at 2,19, "(ORIGINAL)"
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Stage = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$18,$08,$08,$1C,$00
+  $00,$00,$1C,$02,$0C,$10,$E1,$00
+  $00,$00,$1C,$02,$0C,$02,$1C,$00
+  $00,$00,$12,$12,$E1,$02,$02,$00
+  $00,$00,$E1,$10,$1C,$02,$1C,$00
+  $00,$00,$0C,$10,$1C,$12,$0C,$00
+  $00,$00,$E1,$02,$04,$08,$08,$00
+  $00,$00,$0C,$12,$0C,$12,$0C,$00
+  $00,$00,$0C,$12,$0E,$02,$0C,$00
+  $00,$01,$31,$49,$49,$49,$31,$01
+  $00,$01,$21,$61,$21,$21,$8E,$01
+  $00,$01,$8E,$09,$31,$41,$86,$01
+  $00,$01,$8E,$09,$31,$09,$8E,$01
+  $00,$01,$49,$49,$86,$09,$09,$01
+  $00,$01,$86,$41,$8E,$09,$8E,$01
+  $00,$01,$31,$41,$8E,$49,$31,$01
+  $00,$01,$86,$09,$11,$21,$21,$01
+  $00,$01,$31,$49,$31,$49,$31,$01
+  $00,$01,$31,$49,$C6,$09,$31,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$18,$08,$08,$1C,$00
+  $00,$00,$1C,$02,$0C,$10,$E1,$00
+  $00,$00,$1C,$02,$0C,$02,$1C,$00
+  $00,$00,$12,$12,$E1,$02,$02,$00
+  $00,$00,$E1,$10,$1C,$02,$1C,$00
+  $00,$00,$0C,$10,$1C,$12,$0C,$00
+  $00,$00,$E1,$02,$04,$08,$08,$00
+  $00,$00,$0C,$12,$0C,$12,$0C,$00
+  $00,$00,$0C,$12,$0E,$02,$0C,$00
+  $00,$01,$31,$49,$49,$49,$31,$01
+  $00,$01,$21,$61,$21,$21,$8E,$01
+  $00,$01,$8E,$09,$31,$41,$86,$01
+  $00,$01,$8E,$09,$31,$09,$8E,$01
+  $00,$01,$49,$49,$86,$09,$09,$01
+  $00,$01,$86,$41,$8E,$09,$8E,$01
+  $00,$01,$31,$41,$8E,$49,$31,$01
+  $00,$01,$86,$09,$11,$21,$21,$01
+  $00,$01,$31,$49,$31,$49,$31,$01
+  $00,$01,$31,$49,$C6,$09,$31,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$18,$08,$08,$1C,$00
+  $00,$00,$1C,$02,$0C,$10,$E1,$00
+  $00,$00,$1C,$02,$0C,$02,$1C,$00
+  $00,$00,$12,$12,$E1,$02,$02,$00
+  $00,$00,$E1,$10,$1C,$02,$1C,$00
+  $00,$00,$0C,$10,$1C,$12,$0C,$00
+  $00,$00,$E1,$02,$04,$08,$08,$00
+  $00,$00,$0C,$12,$0C,$12,$0C,$00
+  $00,$00,$0C,$12,$0E,$02,$0C,$00
+  $00,$01,$31,$49,$49,$49,$31,$01
+  $00,$01,$21,$61,$21,$21,$8E,$01
+  $00,$01,$8E,$09,$31,$41,$86,$01
+  $00,$01,$8E,$09,$31,$09,$8E,$01
+  $00,$01,$49,$49,$86,$09,$09,$01
+  $00,$01,$86,$41,$8E,$09,$8E,$01
+  $00,$01,$31,$41,$8E,$49,$31,$01
+  $00,$01,$86,$09,$11,$21,$21,$01
+  $00,$01,$31,$49,$31,$49,$31,$01
+  $00,$01,$31,$49,$C6,$09,$31,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$18,$08,$08,$1C,$00
+  $00,$00,$1C,$02,$0C,$10,$E1,$00
+  $00,$00,$1C,$02,$0C,$02,$1C,$00
+  $00,$00,$12,$12,$E1,$02,$02,$00
+  $00,$00,$E1,$10,$1C,$02,$1C,$00
+  $00,$00,$0C,$10,$1C,$12,$0C,$00
+  $00,$00,$E1,$02,$04,$08,$08,$00
+  $00,$00,$0C,$12,$0C,$12,$0C,$00
+  $00,$00,$0C,$12,$0E,$02,$0C,$00
+  $00,$01,$31,$49,$49,$49,$31,$01
+  $00,$01,$21,$61,$21,$21,$8E,$01
+  $00,$01,$8E,$09,$31,$41,$86,$01
+  $00,$01,$8E,$09,$31,$09,$8E,$01
+  $00,$01,$49,$49,$86,$09,$09,$01
+  $00,$01,$86,$41,$8E,$09,$8E,$01
+  $00,$01,$31,$41,$8E,$49,$31,$01
+  $00,$01,$86,$09,$11,$21,$21,$01
+  $00,$01,$31,$49,$31,$49,$31,$01
+  $00,$01,$31,$49,$C6,$09,$31,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$00,$00,$02,$00
+  $00,$10,$10,$83,$38,$28,$44,$00
+  $00,$F0,$00,$00,$18,$C3,$C3,$18
+  $00,$00,$00,$18,$C3,$C3,$18,$00
+  $00,$00,$00,$00,$00,$18,$C3,$C3
+  $00,$F0,$00,$18,$C3,$C3,$18,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$18
+  $00,$18,$C3,$C3,$18,$00,$18,$C3
+  $18,$00,$00,$18,$C3,$C3,$18,$18
+  $00,$18,$C3,$C3,$18,$00,$18,$C3
+  $C3,$C3,$18,$00,$00,$00,$00,$01
+  $C3,$18,$00,$00,$00,$F0,$C0,$00
+  $C3,$C3,$18,$00,$00,$F0,$03,$00
+  $C3,$18,$00,$00,$00,$00,$00,$80
+end data
+data TileCol bytes
+  $01,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $01,$0F,$1F,$1F,$1F,$1F,$1F,$0F
+  $01,$0F,$1F,$1F,$1F,$1F,$F1,$0F
+  $01,$0F,$1F,$1F,$1F,$1F,$1F,$0F
+  $01,$0F,$1F,$1F,$F1,$1F,$1F,$0F
+  $01,$0F,$F1,$1F,$1F,$1F,$1F,$0F
+  $01,$0F,$1F,$1F,$1F,$1F,$1F,$0F
+  $01,$0F,$F1,$1F,$1F,$1F,$1F,$0F
+  $01,$0F,$1F,$1F,$1F,$1F,$1F,$0F
+  $01,$0F,$1F,$1F,$1F,$1F,$1F,$0F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$F1,$1F
+  $01,$1F,$F1,$1F,$1F,$1F,$F1,$1F
+  $01,$1F,$F1,$1F,$1F,$1F,$F1,$1F
+  $01,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $01,$1F,$F1,$1F,$F1,$1F,$F1,$1F
+  $01,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $01,$1F,$F1,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $01,$09,$09,$09,$09,$09,$09,$09
+  $01,$09,$19,$19,$19,$19,$19,$09
+  $01,$09,$19,$19,$19,$19,$91,$09
+  $01,$09,$19,$19,$19,$19,$19,$09
+  $01,$09,$19,$19,$91,$19,$19,$09
+  $01,$09,$91,$19,$19,$19,$19,$09
+  $01,$09,$19,$19,$19,$19,$19,$09
+  $01,$09,$91,$19,$19,$19,$19,$09
+  $01,$09,$19,$19,$19,$19,$19,$09
+  $01,$09,$19,$19,$19,$19,$19,$09
+  $01,$19,$19,$19,$19,$19,$19,$19
+  $01,$19,$19,$19,$19,$19,$91,$19
+  $01,$19,$91,$19,$19,$19,$91,$19
+  $01,$19,$91,$19,$19,$19,$91,$19
+  $01,$19,$19,$19,$91,$19,$19,$19
+  $01,$19,$91,$19,$91,$19,$91,$19
+  $01,$19,$19,$19,$91,$19,$19,$19
+  $01,$19,$91,$19,$19,$19,$19,$19
+  $01,$19,$19,$19,$19,$19,$19,$19
+  $01,$19,$19,$19,$91,$19,$19,$19
+  $01,$05,$05,$05,$05,$05,$05,$05
+  $01,$05,$15,$15,$15,$15,$15,$05
+  $01,$05,$15,$15,$15,$15,$51,$05
+  $01,$05,$15,$15,$15,$15,$15,$05
+  $01,$05,$15,$15,$51,$15,$15,$05
+  $01,$05,$51,$15,$15,$15,$15,$05
+  $01,$05,$15,$15,$15,$15,$15,$05
+  $01,$05,$51,$15,$15,$15,$15,$05
+  $01,$05,$15,$15,$15,$15,$15,$05
+  $01,$05,$15,$15,$15,$15,$15,$05
+  $01,$15,$15,$15,$15,$15,$15,$15
+  $01,$15,$15,$15,$15,$15,$51,$15
+  $01,$15,$51,$15,$15,$15,$51,$15
+  $01,$15,$51,$15,$15,$15,$51,$15
+  $01,$15,$15,$15,$51,$15,$15,$15
+  $01,$15,$51,$15,$51,$15,$51,$15
+  $01,$15,$15,$15,$51,$15,$15,$15
+  $01,$15,$51,$15,$15,$15,$15,$15
+  $01,$15,$15,$15,$15,$15,$15,$15
+  $01,$15,$15,$15,$51,$15,$15,$15
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $01,$0B,$1B,$1B,$1B,$1B,$1B,$0B
+  $01,$0B,$1B,$1B,$1B,$1B,$B1,$0B
+  $01,$0B,$1B,$1B,$1B,$1B,$1B,$0B
+  $01,$0B,$1B,$1B,$B1,$1B,$1B,$0B
+  $01,$0B,$B1,$1B,$1B,$1B,$1B,$0B
+  $01,$0B,$1B,$1B,$1B,$1B,$1B,$0B
+  $01,$0B,$B1,$1B,$1B,$1B,$1B,$0B
+  $01,$0B,$1B,$1B,$1B,$1B,$1B,$0B
+  $01,$0B,$1B,$1B,$1B,$1B,$1B,$0B
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $01,$1B,$1B,$1B,$1B,$1B,$B1,$1B
+  $01,$1B,$B1,$1B,$1B,$1B,$B1,$1B
+  $01,$1B,$B1,$1B,$1B,$1B,$B1,$1B
+  $01,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $01,$1B,$B1,$1B,$B1,$1B,$B1,$1B
+  $01,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $01,$1B,$B1,$1B,$1B,$1B,$1B,$1B
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $01,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $01,$01,$01,$08,$08,$01,$01,$01
+  $01,$01,$01,$0A,$0B,$01,$01,$01
+  $0C,$0C,$2C,$0C,$0C,$0C,$2C,$0C
+  $01,$B1,$B1,$1B,$B1,$B1,$B1,$01
+  $01,$17,$01,$01,$B1,$1B,$1B,$B1
+  $01,$07,$01,$F1,$1F,$1F,$F1,$01
+  $01,$07,$01,$01,$01,$91,$19,$19
+  $01,$71,$01,$31,$13,$13,$31,$01
+  $01,$01,$91,$19,$19,$91,$01,$51
+  $01,$51,$15,$15,$51,$01,$31,$13
+  $91,$01,$01,$B1,$1B,$1B,$B1,$F1
+  $01,$F1,$1F,$1F,$F1,$01,$91,$19
+  $15,$15,$51,$01,$01,$01,$01,$E1
+  $13,$31,$01,$07,$01,$1E,$1E,$0E
+  $1F,$1F,$F1,$07,$01,$E1,$1E,$0E
+  $19,$91,$01,$01,$01,$01,$01,$E1
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$FF,$00,$00,$00,$00,$00,$00
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$FF,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$38,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$3F,$67,$47,$CF,$FF,$FF,$FF,$7F,$7F,$3F,$0F,$00,$00,$00,$00
+  $C0,$F0,$F8,$F8,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$C0,$00,$00,$00,$00
+  $00,$18,$18,$18,$18,$19,$19,$1E,$1E,$19,$19,$18,$18,$18,$18,$00
+  $00,$18,$18,$60,$60,$80,$80,$00,$00,$80,$80,$60,$60,$18,$18,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$18,$18,$1E,$1E,$19,$19,$19,$19,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$98,$98,$98,$98,$78,$78,$18,$18,$18,$18,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+end data
+
+asm {
+KnTick:
+    db $40,$40,$30,$02,$50
+KnMark:
+    db $40,$55,$20,$02,$40,$40,$20,$03,$50
+KnUnmark:
+    db $40,$55,$20,$02,$40,$7F,$30,$03,$50
+KnBad:
+    db $40,$CD,$12,$06,$40,$FF,$F3,$03,$40,$F9,$12,$0A,$50
+KnBeep:
+    db $40,$35,$20,$04,$50
+KnPop:
+    db $00,$00,$34,$01,$00,$00,$65,$02,$10
+KnGong:
+    db $40,$3B,$02,$03,$40,$3B,$22,$06,$40,$3B,$32,$08,$40,$3B,$52,$0A,$40,$3B,$62,$0C,$50
+KnWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$1E
+    db $50
+KnLose:
+    db $40,$1D,$21,$0A,$40,$2E,$21,$0A,$40,$53,$21,$14,$50
+KnBang:
+    db $00,$00,$04,$02,$00,$00,$26,$08,$00,$00,$56,$0C,$10
+
+KnSoundTable:
+    dw KnTuneMel,$702B
+    dw KnTuneBass,$7035
+    dw KnTick,$7049
+    dw KnMark,$7049
+    dw KnUnmark,$7049
+    dw KnBad,$7049
+    dw KnBeep,$7049
+    dw KnPop,$703F
+    dw KnGong,$7049
+    dw KnWin,$7049
+    dw KnLose,$7049
+    dw KnBang,$703F
+; Lucky Numbers (original)
+; Tiny Sound, 8 frames per step
+KnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$24,$01,$28,$2B,$01,$28,$26,$01,$24,$01,$21,$01
+    db $1F,$01,$01,$01,$21,$01,$24,$28,$01,$26,$24,$01,$23,$01,$26,$01
+    db $2B,$01,$01,$01,$28,$01,$2B,$2D,$01,$2B,$28,$01,$26,$01,$23,$01
+    db $1F,$01,$21,$23,$24,$01,$28,$26,$01,$23,$1F,$01,$24,$01,$01,$01
+    db $01,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+KnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$10,$01,$13,$01,$10,$01,$11,$01,$09,$01
+    db $0C,$01,$09,$01,$09,$01,$0C,$01,$10,$01,$0C,$01,$07,$01,$0B,$01
+    db $0E,$01,$0B,$01,$0C,$01,$10,$01,$15,$01,$10,$01,$07,$01,$0E,$01
+    db $0B,$01,$07,$01,$11,$01,$07,$01,$0B,$01,$07,$01,$0C,$01,$07,$01
+    db $0C,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+}

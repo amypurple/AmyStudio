@@ -1,0 +1,1464 @@
+cartridge "DISCS OF DAEDALUS/G. DECKER/1986"
+
+' DISCS OF DAEDALUS
+' A ColecoVision game based on "Discs of Daedalus" by George Decker, Ahoy!
+' November 1986 (Commodore 64 machine code, file DISCOFDAEDALUS on the
+' magazine's disk; orig/ has the program, its disassembly and jsc64
+' screenshots). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are read from the machine code, the
+' game is rebuilt for the ColecoVision: every sprite moves smoothly each
+' frame in 1/64 pixel steps, the barrier slides a pixel at a time, tile
+' graphics over a field of stars, sound effects and a title tune.
+'
+' From the original (the C64 code at $C341-$CC4B), five scenarios a level:
+'  1. THE MINEFIELD, top to bottom: a press of the button sets the spaceman
+'     walking down; he can't stop, the stick steers him left and right;
+'     touching a mine costs a life and the crossing starts again on a new
+'     field; each crossing is a new field (32 mines on the C64, 26 here);
+'     level N needs N crossings.
+'  2. THE DISC DUEL: the spaceman roams a band at the top (all four
+'     directions); a drone walks the ground at the bottom, turning at
+'     random; a patrol ship goes up and down the right edge and fires bolts
+'     across the screen at its own height. The button throws a disc
+'     straight down (one at a time). A disc that hits the drone stuns it
+'     and it floats up: touch it before it reaches the top of the band, or
+'     lose a life. A bolt that hits the spaceman costs a life. A catch
+'     scores (1 point on the C64) and ends the duel.
+'  3. THE MINEFIELD again, bottom to top, N crossings.
+'  4. THE DRIFT: the spaceman stands at the right edge and moves up and
+'     down only; rocks drift to the right one cell at a time, each going
+'     on from the left of the next row when it leaves the right edge (the
+'     C64 rolled the whole screen one character). Survive until the clock
+'     runs out (it ticks on half of the drifts at random, from the level's
+'     speed value up to 64). A rock costs a life and the drift starts over.
+'  5. THE GATE: the spaceman walks right to left by himself (a press
+'     starts the first walk) and steers up and down; a barrier column of
+'     ten blocks rolls up through a gap of eleven; touching it costs a life
+'     and the walk starts again. N crossings.
+'  Then the next level: everything faster (the speed value 50 drops by
+'  one each level down to 25), one more crossing per field, and a life
+'  back (up to 3 in reserve). Three men in reserve at the start; GAME OVER
+'  when a life is lost with none left.
+'
+' Liberties: crossings per field grow to 5 at most (20 on the C64: 20
+' crossings of each field, five times over, is a test of patience more
+' than of skill); scores: 100 for a catch, 10 for each crossing, 50 for a
+' drift survived, 200 for a level, and a high score; a bolt only hurts
+' the spaceman (on the C64 a bolt hitting the drone or the disc also cost
+' a life, from the sprite collision register); the stunned drone drifts
+' sideways as it rises, a pixel every other frame (on the C64 it rose
+' straight up into the man who had just dropped the disc on it, so
+' standing still and throwing won every duel); the disc falls at 1.5
+' pixels a frame and bolts fly at 2 (about 1 and 1.7 on the C64); the
+' drone turns at random about four times a second (the C64 at every
+' pass, a jitter); a short scene title before each scenario; mine and
+' rock collisions use a box a little smaller than the drawings, so a
+' graze is forgiven; the minefield keeps the two rows next to the start
+' free of mines; the playfield is 28 columns wide.
+' Humanly playable: a reaction-delayed bot (bot.mjs) checks the walking
+' speeds against the hazards; nothing can be won by standing still (the
+' walks don't stop, bolts follow the ship, rocks reach every row).
+'
+' Controls: the joystick (either controller) moves; either side button
+' starts a walk and throws the disc. On the title, up and down choose, a
+' button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz.
+
+const TSky = 128
+const TStar1 = 129
+const TStar2 = 130
+const TStar3 = 131
+const TBar = 132
+const TGround = 133
+const TMine = 134
+const TRock1 = 135
+const TRock2 = 136
+const TGate = 137
+const TGateT1 = 138
+const TGateT2 = 139
+const TGateT3 = 140
+const TGateT4 = 141
+const TGateT5 = 142
+const TGateT6 = 143
+const TGateT7 = 144
+const TGateB1 = 145
+const TGateB2 = 146
+const TGateB3 = 147
+const TGateB4 = 148
+const TGateB5 = 149
+const TGateB6 = 150
+const TGateB7 = 151
+const TTtl00 = 152
+const TTtl01 = 153
+const TTtl02 = 154
+const TTtl03 = 155
+const TTtl04 = 156
+const TTtl05 = 157
+const TTtl06 = 158
+const TTtl07 = 159
+const TTtl08 = 160
+const TTtl09 = 161
+const TTtl010 = 162
+const TTtl011 = 163
+const TTtl012 = 164
+const TTtl013 = 165
+const TTtl014 = 166
+const TTtl015 = 167
+const TTtl10 = 168
+const TTtl11 = 169
+const TTtl12 = 170
+const TTtl13 = 171
+const TTtl14 = 172
+const TTtl15 = 173
+const TTtl16 = 174
+const TTtl17 = 175
+const TTtl18 = 176
+const TTtl19 = 177
+const TTtl110 = 178
+const TTtl111 = 179
+const TTtl112 = 180
+const TTtl113 = 181
+const TTtl114 = 182
+const TTtl115 = 183
+const SManD0 = 0
+const SManB0 = 4
+const SManD1 = 8
+const SManB1 = 12
+const SDisc0 = 16
+const SDisc1 = 20
+const SDrone0 = 24
+const SDrone1 = 28
+const SShip = 32
+const SBolt = 36
+const NTiles8 = 448
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBoom = 3
+const SndStep = 4
+const SndThrow = 5
+const SndZap = 6
+const SndHit = 7
+const SndCatch = 8
+const SndCross = 9
+const SndDrift = 10
+const SndScene = 11
+const SndOver = 12
+const NSpr = 6
+const NMine = 26
+const NRock = 28
+const Half = 14
+const TopY = 24
+const BotY = 168
+const GateC = 8
+const GateLen = 80
+const GateWrap = 160
+
+' scenes
+const ScMineDn = 1
+const ScDuel = 2
+const ScMineUp = 3
+const ScDrift = 4
+const ScGate = 5
+
+record Obj:
+  u8 C
+  u8 R
+end record
+
+data SceneRow bytes
+  0,10,10,10,10,10
+end data
+
+Obj Objs[NRock]
+bcd digits 6 Score = 0
+bcd digits 6 HiScore = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 12345
+u16 Rt = 0
+u16 NumU = 0
+u16 W16 = 0
+' the man: position in 1/64 pixel, and in pixels
+u16 Px16 = 0
+u16 Py16 = 0
+u8 Pxp = 0
+u8 Pyp = 0
+u8 Walk = 0
+u8 WalkF = 0
+' speeds (1/64 pixel a frame) worked out from the level's delay value
+u8 Dl = 50
+u8 Spd = 38
+u8 Hs = 64
+u8 Lv = 1
+u8 Need = 1
+u8 Left = 0
+u8 Lives = 3
+u8 Over = 0
+u8 Dead = 0
+u8 Auto = 0
+u8 Done = 0
+u8 Scene = 0
+' the duel
+u8 Dx = 0
+u8 Dy = 0
+u8 Ddir = 0
+u8 Cap = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Sdir = 0
+u8 Bx = 0
+u8 By = 0
+u8 Bon = 0
+u8 Cx = 0
+u16 Cy16 = 0
+u8 Con = 0
+' the drift
+u8 StepT = 10
+u8 Stc = 0
+u8 Prog = 0
+' the gate: the band's top, in 1/64 pixel, relative to the field's top
+u16 Gy16 = 0
+u8 Gy = 0
+u8 GyWas = 255
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Oi = 0
+u8 Fr = 0
+u8 Fc = 0
+u8 Gi = 0
+u8 Hr = 0
+u8 Res = 0
+' scratch
+u8 C = 0
+u8 F = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Rb = 0
+
+  tile screen
+  set sound table DdSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+level_loop:
+  for Scene = 1 to 5
+    RunScene
+    if Over = 1 then goto game_over
+  next
+  LevelUp
+  goto level_loop
+
+game_over:
+  Phase = 4
+  HideSprites
+  if Score > HiScore then HiScore = Score
+  print at 11,11, "GAME OVER"
+  print at 11,13, "SCORE"
+  print at 17,13, Score
+  mute all
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: a 16-bit xorshift, stirred on the title
+
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' a number from 0 to Lim - 1
+function RandBelow(u8 Lim) as u8
+  u8 Q = 0
+  Rnd
+  Q = Rb % Lim
+  return Q
+
+' ---------------------------------------------------------------------------
+' the field
+
+' the background tile of a cell: stars here and there
+function BgAt(u8 Bc, u8 Br) as u8
+  u8 Hh = 0
+  Hh = Bc * 5 + Br * 11
+  Hh = Hh + (Br >> 2)
+  Hh = Hh & 31
+  select case Hh
+  case 3
+    return TStar1
+  case 17
+    return TStar2
+  case 26
+    return TStar3
+  end select
+  return TSky
+
+sub DrawField:
+  for Fr = 3 to 22
+    for Fc = 0 to 31
+      V = BgAt(Fc, Fr)
+      put char V at Fc,Fr
+    next
+  next
+  fill TBar count 32 at 0,2
+  return
+end sub
+
+' 1 when the man's box (columns 4-11, rows 2-15 of his sprite) meets the
+' middle of a cell (pixels 1-6 both ways)
+function HitCell(u8 Hc, u8 Hrw) as u8
+  u8 Mx = 0
+  u8 My = 0
+  Mx = Hc * 8
+  My = Hrw * 8
+  if Pxp + 4 > Mx + 6 then return 0
+  if Pxp + 11 < Mx + 1 then return 0
+  if Pyp + 2 > My + 6 then return 0
+  if Pyp + 15 < My + 1 then return 0
+  return 1
+
+' ---------------------------------------------------------------------------
+' one scenario, until it is won or the game is over
+
+sub RunScene:
+  Done = 0
+  Left = Need
+  if Scene = ScDuel then Left = 1
+  if Scene = ScDrift then Left = 1
+  NewScreen
+  DrawField
+  ShowHud
+  ShowScreen
+  SceneTitle
+  Auto = 0
+  while Done = 0
+    StartTry
+    PlayTry
+    if Over = 1 then return
+    if Dead = 1 then
+      Auto = 0
+      LoseLife
+      if Over = 1 then return
+    else
+      ScoreTry
+      Auto = 1
+      dec Left
+      ShowInfo
+      if Left = 0 then Done = 1
+    end if
+  end while
+  return
+end sub
+
+' the scene's name in the middle of the field for a second and a half
+sub SceneTitle:
+  Phase = 3
+  HideSprites
+  select case Scene
+  case ScMineDn, ScMineUp
+    print at 9,10, "THE MINEFIELD"
+  case ScDuel
+    print at 9,10, "THE DISC DUEL"
+  case ScDrift
+    print at 11,10, "THE DRIFT"
+  case else
+    print at 11,10, "THE GATE"
+  end select
+  play sound SndScene
+  for Gi = 0 to 89
+    Frame1
+  next
+  ' put the stars back
+  Hr = 10
+  for Fc = 9 to 22
+    V = BgAt(Fc, Hr)
+    put char V at Fc,Hr
+  next
+  return
+end sub
+
+' a new try: a new minefield or rock field, everything at its start
+sub StartTry:
+  Dead = 0
+  Walk = Auto
+  select case Scene
+  case ScMineDn
+    MakeMines
+    PlaceMan(120, TopY)
+  case ScMineUp
+    MakeMines
+    PlaceMan(120, BotY)
+  case ScDuel
+    StartDuel
+  case ScDrift
+    StartDrift
+  case else
+    StartGate
+  end select
+  DrawSprites
+  return
+end sub
+
+sub PlaceMan(u8 Ax, u8 Ay):
+  Pxp = Ax
+  Pyp = Ay
+  Px16 = Ax * 64
+  Py16 = Ay * 64
+  return
+end sub
+
+' the frames of one try, until it is won (Dead = 0) or lost (Dead = 1)
+sub PlayTry:
+  Phase = 1
+  Res = 0
+  while Res = 0
+    Frame1
+    ReadPad
+    inc Anim
+    select case Scene
+    case ScMineDn, ScMineUp
+      Res = MineStep()
+    case ScDuel
+      Res = DuelStep()
+    case ScDrift
+      Res = DriftStep()
+    case else
+      Res = GateStep()
+    end select
+    DrawSprites
+  end while
+  if Res = 2 then Dead = 1
+  return
+end sub
+
+' points for a try won
+sub ScoreTry:
+  Phase = 9
+  select case Scene
+  case ScDuel
+    Score += 100
+    play sound SndCatch
+  case ScDrift
+    Score += 50
+    play sound SndCatch
+  case else
+    Score += 10
+    play sound SndCross
+  end select
+  ShowScore
+  for Gi = 0 to 29
+    Frame1
+  next
+  return
+end sub
+
+' a life lost: the man blinks out over a boom, then a reserve man or the end
+sub LoseLife:
+  Phase = 2
+  play sound SndBoom
+  for Gi = 0 to 59
+    Frame1
+    inc Anim
+    V = Gi & 16
+    if V = 0 then
+      DrawSprites
+    else
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+      update sprites
+    end if
+  next
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  dec Lives
+  ShowLives
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the minefield
+
+' NMine mines at random in rows 5-20 (the two rows by each start are kept
+' free)
+sub MakeMines:
+  for Oi = 0 to NMine - 1
+    V = Objs[Oi].C
+    if V > 0 then
+      R = Objs[Oi].R
+      F = BgAt(V, R)
+      put char F at V,R
+    end if
+  next
+  for Oi = 0 to NMine - 1
+    C = RandBelow(28) + 2
+    R = RandBelow(16) + 5
+    Objs[Oi].C = C
+    Objs[Oi].R = R
+    put char TMine at C,R
+  next
+  return
+end sub
+
+' the walk: down or up at the level's speed once started, steered left and
+' right; 1 when across, 2 on a mine
+function MineStep() as u8
+  if Walk = 0 then
+    if Press = 0 then return 0
+    Walk = 1
+  end if
+  Steer
+  if Scene = ScMineDn then
+    Py16 = Py16 + Spd
+  else
+    Py16 = Py16 - Spd
+  end if
+  Pyp = Py16 >> 6
+  StepSound
+  for Oi = 0 to NMine - 1
+    if HitCell(Objs[Oi].C, Objs[Oi].R) = 1 then return 2
+  next
+  if Scene = ScMineDn then
+    if Pyp >= BotY then return 1
+  else
+    if Pyp <= TopY then return 1
+  end if
+  return 0
+
+' left and right on the stick, inside columns 2-29
+sub Steer:
+  V = Pad & 4
+  if V > 0 then
+    if Px16 >= 1088 + Hs then Px16 = Px16 - Hs
+  end if
+  V = Pad & 8
+  if V > 0 then
+    if Px16 + Hs <= 14336 then Px16 = Px16 + Hs
+  end if
+  Pxp = Px16 >> 6
+  return
+end sub
+
+sub StepSound:
+  inc WalkF
+  V = WalkF & 15
+  if V = 0 then play sound SndStep
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the disc duel
+
+sub StartDuel:
+  ' the ground under the drone
+  fill TGround count 32 at 0,22
+  PlaceMan(120, 32)
+  Dx = 40
+  Dy = 160
+  Ddir = 0
+  Cap = 0
+  Sx = 216
+  Sy = 100
+  Sdir = 0
+  Bon = 0
+  Con = 0
+  return
+end sub
+
+' 1 after a catch, 2 when hit or when the drone got away
+function DuelStep() as u8
+  i16 Ddx = 0
+  i16 Ddy = 0
+  ' the man, all four ways inside his band
+  V = Pad & 1
+  if V > 0 then
+    if Pyp > 32 then dec Pyp
+  end if
+  V = Pad & 2
+  if V > 0 then
+    if Pyp < 72 then inc Pyp
+  end if
+  V = Pad & 4
+  if V > 0 then
+    if Pxp > 16 then dec Pxp
+  end if
+  V = Pad & 8
+  if V > 0 then
+    if Pxp < 208 then inc Pxp
+  end if
+  ' the disc
+  if Press = 1 then
+    if Con = 0 then
+      if Cap = 0 then
+        Con = 1
+        Cx = Pxp
+        Cy16 = Pyp + 12
+        Cy16 = Cy16 * 64
+        play sound SndThrow
+      end if
+    end if
+  end if
+  if Con = 1 then
+    Cy16 = Cy16 + 96
+    if Cy16 >= 11264 then Con = 0
+  end if
+  ' the drone: turns now and then, walks, floats up when stunned
+  if Cap = 0 then
+    if RandBelow(16) = 0 then Ddir = Ddir ^ 1
+    if Ddir = 0 then
+      inc Dx
+      if Dx >= 208 then Ddir = 1
+    else
+      dec Dx
+      if Dx <= 16 then Ddir = 0
+    end if
+    if Con = 1 then
+      Ddx = Cx
+      Ddx = Ddx - Dx
+      W16 = Cy16 >> 6
+      Ddy = W16
+      Ddy = Ddy - Dy
+      if abs(Ddx) < 12 then
+        if abs(Ddy) < 10 then
+          Cap = 1
+          Con = 0
+          play sound SndHit
+        end if
+      end if
+    end if
+  else
+    ' stunned, it floats up and drifts aside (a pixel every other frame,
+    ' bouncing off the sides), so the man has to go and get it
+    dec Dy
+    if Dy <= 32 then return 2
+    V = Dy & 1
+    if V = 0 then
+      if Ddir = 0 then
+        inc Dx
+        if Dx >= 208 then Ddir = 1
+      else
+        dec Dx
+        if Dx <= 16 then Ddir = 0
+      end if
+    end if
+    Ddx = Pxp
+    Ddx = Ddx - Dx
+    Ddy = Pyp
+    Ddy = Ddy - Dy
+    if abs(Ddx) < 12 then
+      if abs(Ddy) < 14 then return 1
+    end if
+  end if
+  ' the ship and its bolt
+  if Sdir = 0 then
+    dec Sy
+    if Sy <= 32 then Sdir = 1
+  else
+    inc Sy
+    if Sy >= 150 then Sdir = 0
+  end if
+  if Bon = 0 then
+    if RandBelow(8) = 0 then
+      Bon = 1
+      Bx = Sx - 12
+      By = Sy
+      play sound SndZap
+    end if
+  else
+    Bx = Bx - 2
+    if Bx < 8 then Bon = 0
+    ' the bolt is a line on row 7 of its sprite, the man's box rows 2-15
+    if Bx + 15 >= Pxp + 4 then
+      if Bx <= Pxp + 11 then
+        V = By + 7
+        if V >= Pyp + 2 then
+          if V <= Pyp + 15 then return 2
+        end if
+      end if
+    end if
+  end if
+  return 0
+
+' ---------------------------------------------------------------------------
+' the drift
+
+sub StartDrift:
+  for Oi = 0 to NRock - 1
+    V = Objs[Oi].C
+    if V > 0 then
+      R = Objs[Oi].R
+      F = BgAt(V, R)
+      put char F at V,R
+    end if
+  next
+  for Oi = 0 to NRock - 1
+    ' the columns by the man are clear at the start
+    C = RandBelow(22) + 2
+    R = RandBelow(20) + 3
+    Objs[Oi].C = C
+    Objs[Oi].R = R
+    DrawRock(Oi)
+  next
+  PlaceMan(224, 96)
+  Prog = Dl
+  Stc = 0
+  ShowInfo
+  return
+end sub
+
+sub DrawRock(u8 Ri):
+  u8 Rc = 0
+  u8 Rr = 0
+  u8 Tt = TRock1
+  Rc = Objs[Ri].C
+  Rr = Objs[Ri].R
+  Tt = Ri & 1
+  Tt = Tt + TRock1
+  put char Tt at Rc,Rr
+  return
+end sub
+
+' rocks First to Last one cell to the right, on into the next row
+sub ShiftRocks(u8 First, u8 Last):
+  for Oi = First to Last
+    C = Objs[Oi].C
+    R = Objs[Oi].R
+    V = BgAt(C, R)
+    put char V at C,R
+    inc C
+    if C > 29 then
+      C = 2
+      inc R
+      if R > 22 then R = 3
+    end if
+    Objs[Oi].C = C
+    Objs[Oi].R = R
+    DrawRock(Oi)
+  next
+  return
+end sub
+
+' 1 when the clock has run out, 2 on a rock
+function DriftStep() as u8
+  V = Pad & 1
+  if V > 0 then
+    if Pyp > TopY then dec Pyp
+  end if
+  V = Pad & 2
+  if V > 0 then
+    if Pyp < BotY then inc Pyp
+  end if
+  ' the rocks drift in two halves on two frames (all 28 in one frame
+  ' would overrun it)
+  inc Stc
+  if Stc = StepT then ShiftRocks(0, Half - 1)
+  if Stc > StepT then
+    Stc = 0
+    ShiftRocks(Half, NRock - 1)
+    play sound SndDrift
+    if RandBelow(2) = 0 then
+      inc Prog
+      ShowInfo
+      if Prog >= 64 then return 1
+    end if
+  end if
+  for Oi = 0 to NRock - 1
+    C = Objs[Oi].C
+    if C >= 27 then
+      if HitCell(C, Objs[Oi].R) = 1 then return 2
+    end if
+  next
+  return 0
+
+' ---------------------------------------------------------------------------
+' the gate
+
+sub StartGate:
+  PlaceMan(224, 96)
+  Gy16 = 0
+  GyWas = 255
+  DrawGate
+  return
+end sub
+
+' the barrier's column: each cell full, empty or cut where the band of
+' GateLen pixels (starting Gy pixels below the field's top) begins or ends.
+' The whole column at the start (GyWas = 255), after that only the cells
+' at the band's two ends, the only ones that change (it moves less than a
+' cell a frame)
+sub DrawGate:
+  u8 Gr = 0
+  u8 Ge = 0
+  Gy = Gy16 >> 6
+  if Gy = GyWas then return
+  if GyWas = 255 then
+    for Gr = 0 to 19
+      GateCell(Gr)
+    next
+    GyWas = Gy
+    return
+  end if
+  GyWas = Gy
+  Gr = Gy >> 3
+  GateCell(Gr)
+  Ge = Gr + 1
+  if Ge >= 20 then Ge = 0
+  GateCell(Ge)
+  Ge = Gr + 10
+  if Ge >= 20 then Ge = Ge - 20
+  GateCell(Ge)
+  inc Ge
+  if Ge >= 20 then Ge = 0
+  GateCell(Ge)
+  return
+end sub
+
+' the tile of one cell of the barrier's column
+sub GateCell(u8 Cr):
+  u8 Ss = 0
+  u8 Gt = 0
+  u8 Cy = 0
+  Ss = InSpan(Cr * 8)
+  if Ss <= 72 then
+    Gt = TGate
+  elseif Ss < 80 then
+    Gt = TGateT1 + 79 - Ss
+  elseif Ss <= 152 then
+    Gt = TSky
+  else
+    Gt = TGateB1 + Ss - 153
+  end if
+  Cy = Cr + 3
+  put char Gt at GateC,Cy
+  return
+end sub
+
+' how far the pixel row Yr of the field (0 = its top) is below the band's
+' top, round the 160 rows
+function InSpan(u8 Yr) as u8
+  u8 Sp = 0
+  if Yr >= Gy then
+    Sp = Yr - Gy
+  else
+    Sp = Yr + GateWrap - Gy
+  end if
+  return Sp
+
+' 1 when the pixel row Yr of the field is in the band
+function InBand(u8 Yr) as u8
+  if InSpan(Yr) < GateLen then return 1
+  return 0
+
+' 1 at the left edge, 2 on the barrier
+function GateStep() as u8
+  u16 Gs = 0
+  ' the band rolls up at the man's walking speed
+  Gs = Spd
+  if Gy16 < Gs then Gy16 = Gy16 + 10240
+  Gy16 = Gy16 - Gs
+  DrawGate
+  if Walk = 0 then
+    if Press = 0 then return 0
+    Walk = 1
+  end if
+  V = Pad & 1
+  if V > 0 then
+    if Py16 >= 1536 + Hs then Py16 = Py16 - Hs
+  end if
+  V = Pad & 2
+  if V > 0 then
+    if Py16 + Hs <= 10752 then Py16 = Py16 + Hs
+  end if
+  Pyp = Py16 >> 6
+  Px16 = Px16 - Spd
+  Pxp = Px16 >> 6
+  StepSound
+  if Pxp <= 16 then return 1
+  ' the barrier's cells are pixels 64-71 across
+  if Pxp + 11 >= 64 then
+    if Pxp + 4 <= 71 then
+      V = Pyp - TopY + 2
+      if InBand(V) = 1 then return 2
+      V = V + 13
+      if InBand(V) = 1 then return 2
+    end if
+  end if
+  return 0
+
+' ---------------------------------------------------------------------------
+' levels
+
+sub NewGame:
+  Score = 0
+  Lives = 3
+  Lv = 1
+  Dl = 50
+  Need = 1
+  Over = 0
+  for Oi = 0 to NRock - 1
+    Objs[Oi].C = 0
+  next
+  SetSpeeds
+  return
+end sub
+
+sub SetSpeeds:
+  W16 = 1920 / Dl
+  Spd = W16
+  W16 = 3200 / Dl
+  Hs = W16
+  StepT = Dl / 5
+  return
+end sub
+
+sub LevelUp:
+  Score += 200
+  if Dl > 25 then dec Dl
+  if Need < 5 then inc Need
+  if Lives < 3 then inc Lives
+  if Lv < 99 then inc Lv
+  SetSpeeds
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the status line: score, level, the scene's count, men in reserve
+
+sub ShowHud:
+  print at 9,1, "LV"
+  print at 23,1, "MEN"
+  ShowScore
+  NumU = Lv
+  print at 11,1, digits$(NumU, 2)
+  ShowInfo
+  ShowLives
+  return
+end sub
+
+sub ShowScore:
+  print at 2,1, Score
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 27,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowInfo:
+  select case Scene
+  case ScDuel
+    print at 14,1, "CATCH  "
+  case ScDrift
+    V = 64 - Prog
+    NumU = V
+    print at 14,1, "TIME ", digits$(NumU, 2)
+  case else
+    NumU = Left
+    print at 14,1, "LEFT ", digits$(NumU, 2)
+  end select
+  return
+end sub
+
+' sprites 0-1 the man (visor over suit), 2 the disc, 3 the drone, 4 the
+' ship, 5 its bolt
+sub DrawSprites:
+  F = 0
+  if Walk = 1 then
+    V = Anim >> 3
+    F = V & 1
+  end if
+  if Scene = ScDuel then
+    V = Pad & 15
+    if V > 0 then
+      V = Anim >> 3
+      F = V & 1
+    end if
+  end if
+  if Scene = ScDrift then
+    V = Pad & 3
+    if V > 0 then
+      V = Anim >> 3
+      F = V & 1
+    end if
+  end if
+  K = F << 3
+  set sprite 0 to Pyp,Pxp,K,7
+  K = K + 4
+  set sprite 1 to Pyp,Pxp,K,15
+  if Scene = ScDuel then
+    if Con = 1 then
+      V = Anim >> 2
+      V = V & 1
+      K = SDisc0 + V * 4
+      W16 = Cy16 >> 6
+      Y = W16
+      set sprite 2 to Y,Cx,K,11
+    else
+      set sprite 2 to 192,0,0,0
+    end if
+    V = Anim >> 3
+    V = V & 1
+    if Cap = 1 then V = 0
+    K = SDrone0 + V * 4
+    C = 9
+    if Cap = 1 then C = 13
+    set sprite 3 to Dy,Dx,K,C
+    set sprite 4 to Sy,Sx,SShip,3
+    if Bon = 1 then
+      set sprite 5 to By,Bx,SBolt,5
+    else
+      set sprite 5 to 192,0,0,0
+    end if
+  else
+    for J = 2 to 5
+      set sprite J to 192,0,0,0
+    next
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name in tall letters, the man walking under it with a
+' disc spinning by, the tune once, START / CREDITS
+sub TitlePage:
+  Phase = 5
+  Scene = 0
+  NewScreen
+  DrawField
+  print at 12,4, "DISCS OF"
+  for Gi = 0 to 15
+    V = TTtl00 + Gi
+    X = Gi + 8
+    put char V at X,6
+    V = TTtl10 + Gi
+    put char V at X,7
+  next
+  print at 7,10, "AHOY! NOVEMBER 1986"
+  print at 11,13, "HIGH"
+  print at 16,13, HiScore
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  ShowMenu
+  PlaceMan(40, 160)
+  Walk = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 704
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 6
+tp_loop:
+  Frame1
+  ReadPad
+  Rnd
+  inc Anim
+  V = Anim & 1
+  if V = 0 then
+    inc Pxp
+    if Pxp > 216 then Pxp = 24
+  end if
+  DrawSprites
+  V = Anim >> 2
+  V = V & 1
+  K = SDisc0 + V * 4
+  X = Pxp + 20
+  set sprite 2 to 150,X,K,11
+  update sprites
+  V = Pad & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  Walk = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 12,17
+  put char 32 at 12,18
+  J = Menu + 17
+  put char 62 at 12,J
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 7,2, "DISCS OF DAEDALUS"
+  print at 2,5, "BASED ON DISCS OF DAEDALUS"
+  print at 2,6, "BY GEORGE DECKER, AHOY!"
+  print at 2,7, "NOVEMBER 1986 (COMMODORE 64)"
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: THE LABYRINTH GATE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 8
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$00,$00
+  $00,$02,$07,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$88,$00,$42,$00,$10,$00,$81
+  $10,$A3,$C1,$18,$18,$83,$14,$00
+  $00,$38,$81,$40,$10,$81,$C3,$00
+  $00,$18,$81,$80,$01,$81,$1C,$00
+  $00,$AA,$00,$AA,$00,$AA,$00,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$AA,$00,$00,$00,$00,$00,$00
+  $00,$AA,$00,$00,$00,$00,$00,$00
+  $00,$AA,$00,$AA,$00,$00,$00,$00
+  $00,$AA,$00,$AA,$00,$00,$00,$00
+  $00,$AA,$00,$AA,$00,$AA,$00,$00
+  $00,$AA,$00,$AA,$00,$AA,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$AA
+  $00,$00,$00,$00,$00,$00,$00,$AA
+  $00,$00,$00,$00,$00,$AA,$00,$AA
+  $00,$00,$00,$00,$00,$AA,$00,$AA
+  $00,$00,$00,$AA,$00,$AA,$00,$AA
+  $00,$00,$00,$AA,$00,$AA,$00,$AA
+  $00,$AA,$00,$AA,$00,$AA,$00,$AA
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $F0,$F0,$C3,$C3,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $03,$03,$00,$00,$00,$00,$F0,$F0
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $F0,$F0,$C3,$C3,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C0,$C0,$F0,$F0,$F0,$F0,$C0,$C0
+  $F0,$F0,$C3,$C3,$00,$00,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $C3,$C3,$C3,$C3,$F0,$F0,$C0,$C0
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$03,$C3,$C3,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $C3,$C3,$C3,$C3,$F0,$F0,$C0,$C0
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$03,$C3,$C3,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $F0,$F0,$F0,$F0,$C3,$C3,$F0,$F0
+  $C3,$C3,$C3,$C3,$F0,$F0,$C0,$C0
+  $00,$00,$00,$00,$F0,$F0,$C0,$C0
+  $0C,$0C,$F0,$F0,$C3,$C3,$F0,$F0
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$51,$51,$51,$01,$01,$01,$01
+  $01,$01,$01,$04,$05,$04,$01,$01
+  $0A,$BA,$0A,$1A,$0A,$1A,$0A,$1A
+  $E1,$1E,$1E,$8E,$8E,$1E,$E1,$01
+  $01,$A1,$1A,$BA,$6A,$1A,$1A,$01
+  $01,$E1,$1E,$1E,$1E,$1E,$E1,$01
+  $0D,$9D,$0D,$D9,$0D,$9D,$0D,$D9
+  $0D,$01,$01,$01,$01,$01,$01,$01
+  $0D,$9D,$01,$01,$01,$01,$01,$01
+  $0D,$9D,$0D,$01,$01,$01,$01,$01
+  $0D,$9D,$0D,$D9,$01,$01,$01,$01
+  $0D,$9D,$0D,$D9,$0D,$01,$01,$01
+  $0D,$9D,$0D,$D9,$0D,$9D,$01,$01
+  $0D,$9D,$0D,$D9,$0D,$9D,$0D,$01
+  $01,$01,$01,$01,$01,$01,$01,$D9
+  $01,$01,$01,$01,$01,$01,$0D,$D9
+  $01,$01,$01,$01,$01,$9D,$0D,$D9
+  $01,$01,$01,$01,$0D,$9D,$0D,$D9
+  $01,$01,$01,$D9,$0D,$9D,$0D,$D9
+  $01,$01,$0D,$D9,$0D,$9D,$0D,$D9
+  $01,$9D,$0D,$D9,$0D,$9D,$0D,$D9
+  $0B,$0B,$B1,$B1,$B1,$B1,$A1,$A1
+  $B1,$B1,$B1,$B1,$1B,$1B,$1A,$1A
+  $1B,$1B,$1B,$1B,$B1,$B1,$A1,$A1
+  $B1,$B1,$B1,$B1,$1B,$1B,$1A,$1A
+  $0B,$0B,$B1,$B1,$B1,$B1,$0A,$0A
+  $1B,$1B,$01,$01,$01,$01,$A1,$A1
+  $0B,$0B,$B1,$B1,$B1,$B1,$A1,$A1
+  $B1,$B1,$B1,$B1,$1B,$1B,$1A,$1A
+  $1B,$1B,$1B,$1B,$B1,$B1,$A1,$A1
+  $B1,$B1,$B1,$B1,$1B,$1B,$1A,$1A
+  $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1
+  $1B,$1B,$1B,$1B,$1B,$1B,$1A,$1A
+  $1B,$1B,$B1,$B1,$B1,$B1,$1A,$1A
+  $B1,$B1,$1B,$1B,$01,$01,$A1,$A1
+  $A1,$A1,$A1,$81,$81,$81,$06,$06
+  $1A,$1A,$1A,$18,$81,$81,$61,$61
+  $0A,$0A,$A1,$81,$81,$81,$61,$61
+  $1A,$1A,$1A,$18,$18,$18,$16,$16
+  $A1,$A1,$A1,$81,$81,$81,$06,$06
+  $01,$01,$01,$01,$01,$01,$16,$16
+  $A1,$A1,$A1,$81,$81,$81,$06,$06
+  $1A,$1A,$1A,$18,$81,$81,$61,$61
+  $0A,$0A,$A1,$81,$81,$81,$61,$61
+  $1A,$1A,$1A,$18,$18,$18,$16,$16
+  $A1,$A1,$A1,$81,$81,$81,$06,$06
+  $01,$01,$01,$01,$01,$01,$16,$16
+  $A1,$A1,$A1,$81,$18,$18,$16,$16
+  $1A,$1A,$1A,$18,$81,$81,$61,$61
+  $01,$01,$01,$01,$81,$81,$16,$16
+  $A1,$A1,$1A,$18,$18,$18,$61,$61
+end data
+data SpritePat bytes
+  $00,$00,$03,$03,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$0C,$1C
+  $00,$00,$C0,$C0,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$18,$1C
+  $03,$07,$04,$04,$03,$1F,$37,$26,$27,$07,$06,$06,$06,$0C,$00,$00
+  $C0,$E0,$20,$20,$C0,$F8,$EC,$64,$E4,$E0,$60,$60,$30,$30,$00,$00
+  $00,$00,$03,$03,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$18,$38
+  $00,$00,$C0,$C0,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$30,$70
+  $03,$07,$04,$04,$03,$1F,$37,$26,$27,$07,$06,$06,$0C,$0C,$00,$00
+  $C0,$E0,$20,$20,$C0,$F8,$EC,$64,$E4,$E0,$60,$60,$C0,$60,$00,$00
+  $00,$00,$00,$00,$00,$03,$0C,$10,$0C,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$30,$08,$30,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F8,$F0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$0F,$1B,$3F,$2A,$1F,$0F,$07,$08,$10,$20,$60,$00,$00
+  $00,$00,$C0,$F0,$D8,$FC,$54,$F8,$F0,$E0,$10,$08,$04,$06,$00,$00
+  $00,$00,$03,$0F,$1B,$3F,$2A,$1F,$0F,$07,$04,$04,$08,$18,$00,$00
+  $00,$00,$C0,$F0,$D8,$FC,$54,$F8,$F0,$E0,$20,$20,$10,$18,$00,$00
+  $00,$00,$00,$00,$00,$0F,$3F,$FF,$3F,$0F,$00,$00,$00,$00,$00,$00
+  $00,$00,$3C,$7E,$9E,$FE,$FF,$FF,$FF,$FE,$9E,$7E,$3C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$5F,$DF,$5F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FC,$FF,$FC,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+DdBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$57,$0A,$00,$00,$87,$0A,$10
+DdStep:
+    db $40,$FC,$71,$01,$40,$FC,$F1,$01,$50
+DdThrow:
+    db $40,$5D,$30,$02,$40,$4B,$40,$02,$40,$3E,$50,$02,$40,$35,$60,$02,$50
+DdZap:
+    db $40,$2F,$40,$02,$40,$3B,$50,$02,$40,$4B,$50,$02,$40,$5D,$60,$02,$40,$76,$80,$02,$50
+DdHit:
+    db $40,$BA,$20,$03,$40,$7C,$20,$03,$40,$BA,$30,$03,$40,$7C,$30,$03,$50
+DdCatch:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$20,$03,$40,$47,$20,$03,$40,$39,$20,$08,$50
+DdCross:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$30,$08,$50
+DdDrift:
+    db $40,$53,$81,$01,$40,$53,$F1,$01,$50
+DdScene:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$30,$0C,$50
+DdOver:
+    db $40,$D6,$20,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$53,$21,$24,$50
+
+DdSoundTable:
+    dw DdTuneMel,$702B
+    dw DdTuneBass,$7035
+    dw DdBoom,$703F
+    dw DdStep,$7049
+    dw DdThrow,$7049
+    dw DdZap,$7049
+    dw DdHit,$7049
+    dw DdCatch,$7049
+    dw DdCross,$7049
+    dw DdDrift,$7049
+    dw DdScene,$7049
+    dw DdOver,$7049
+; The Labyrinth Gate (original)
+; Tiny Sound, 8 frames per step
+DdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$F1,$22,$17,$01,$1A,$01,$1E,$01,$23,$01,$22,$01,$1E,$01
+    db $19,$01,$1E,$01,$1A,$01,$01,$01,$17,$01,$01,$01,$1C,$01,$1F,$01
+    db $23,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$1C,$01,$1E,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$25,$01,$26,$01,$2A,$01,$28,$01,$26,$01
+    db $25,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$1E,$01,$01,$01
+    db $22,$01,$01,$01,$23,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+DdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

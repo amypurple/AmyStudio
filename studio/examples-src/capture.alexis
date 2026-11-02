@@ -1,0 +1,1018 @@
+cartridge "CAPTURE/MICHAEL HOYT/1988"
+
+' CAPTURE
+' A ColecoVision game based on "Capture" by Michael Hoyt, Ahoy! October
+' 1988 (Commodore 64, BASIC with a small machine-language core).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/capture.bas), the game is built for the ColecoVision:
+' racers that glide smoothly from cell to cell as sprites, tiled walls,
+' spheres and trails, a rolling striped border, sound effects and an
+' original title tune.
+'
+' The game: one or two racers never stop moving. Each leaves a solid
+' trail behind it. Steer with the stick round the maze walls and pick up
+' the yellow spheres. Running into a wall, the border, any trail or the
+' other racer costs a life: the trails are wiped and both racers start
+' again from their corners (the spheres and walls stay). Take every sphere
+' to finish the level: a bonus for the player who took the last one and a
+' new maze with more walls and spheres. Three lives each; when a player
+' loses the last one, the game is over.
+'
+' From the original (orig/capture.bas): the racers that always move, the
+' trails, crashing into anything that is not empty floor (walls, border,
+' trails, the other racer, reversing onto your own trail in the original),
+' the starting directions (player 1 right, player 2 left), random wall
+' segments (12 + 2 x size + level of them) and 3 + 3 x level spheres; a
+' sphere scores 5 x level; a crash gives the OTHER player 100 x level (in
+' a two-player game); the trails are cleared after a crash, walls and
+' spheres stay; the last sphere brings a bonus of 25 to 25 x level + 24 and
+' the next level, after level 8 back to 1; a start level from 1 to 8;
+' three lives each, the game ends when one player has none; a high score.
+'
+' Liberties: one shared arena of 26 x 18 cells on screen instead of two
+' scrolling 19 x 19 windows on a maze of up to 140 x 110 (so the original's
+' maze width and height questions are gone); therefore 8 + level wall
+' segments of 1 to 6 cells. The wall segments never touch each other or
+' the border, so every sphere can always be reached (the original's random
+' walls could close a sphere in). Pulling the stick straight back is
+' ignored instead of crashing into your own trail. The speed rises with the
+' level, from 6 to 10 cells a second (the C-64 BASIC loop ran at one speed).
+' A turn pressed between two cells is remembered until the next cell. The
+' start corners are kept clear of walls. Messages on the bottom line.
+'
+' Controls: one player: either controller. Two players: controller 1 is
+' the green racer, controller 2 the blue one. The stick steers. On the
+' title, up and down choose a line, left and right change the number of
+' players or the start level, a button starts (or shows the credits).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes faster than 3 Hz (the crash
+' blinks every 12 frames).
+
+const TFloor = 128
+const TBord = 129
+const TBord0 = 130
+const TBord1 = 131
+const TBord2 = 132
+const TBord3 = 133
+const TBord4 = 134
+const TBord5 = 135
+const TBord6 = 136
+const TBord7 = 137
+const TWall = 138
+const TOrb = 139
+const TTrail1 = 140
+const TTrail2 = 141
+const TLife1 = 142
+const TLife2 = 143
+const SHead0 = 0
+const SHead1 = 4
+const SHead2 = 8
+const SHead3 = 12
+const SCrash0 = 16
+const SCrash1 = 20
+const NTiles8 = 128
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndOrb = 3
+const SndCrash = 4
+const SndLevel = 5
+const SndStart = 6
+const SndOver = 7
+const SndTick = 8
+const NSpr = 2
+const CrashN = 72
+const ReadyN = 90
+const ColL = 3
+const ColR = 28
+const RowT = 3
+const RowB = 20
+
+' frames per cell by level (index 1-8)
+data SpdT bytes
+  10, 10, 9, 9, 8, 8, 7, 7, 6
+end data
+' moves by direction: 0 up, 1 right, 2 down, 3 left
+data DCol bytes
+  0, 1, 0, 255
+end data
+data DRow bytes
+  255, 0, 1, 0
+end data
+' start cells and directions of the two racers
+data StC bytes
+  6, 25
+end data
+data StR bytes
+  6, 17
+end data
+data StD bytes
+  1, 3
+end data
+' the title's big letters, 3 x 5 each: C A P T U R E (a row of bits a letter)
+data BigT bytes
+  7, 4, 4, 4, 7
+  7, 5, 7, 5, 5
+  7, 5, 7, 4, 4
+  7, 2, 2, 2, 2
+  5, 5, 5, 5, 7
+  7, 5, 6, 5, 5
+  7, 4, 6, 4, 7
+end data
+
+record Racer:
+  u8 C
+  u8 R
+  u8 D
+  u8 Want
+  u8 Lives
+  u8 Pc
+  u8 Pr
+end record
+
+Racer Pl[2]
+bcd digits 6 Score[2] = 0
+bcd digits 6 Hi = 0
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Np = 1
+u8 Lv = 1
+u8 StartLv = 1
+u8 Sn = 10
+u8 Ph = 0
+u8 Orbs = 0
+u8 CrashT = 0
+u8 Who = 255
+u8 Blink = 0
+u8 BlinkT = 0
+u8 MsgT = 0
+u8 Over = 0
+u8 LevelUp = 0
+u8 Bonus = 0
+u8 BordT = 0
+u8 BordF = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Ri = 0
+u8 Cj = 0
+u8 Wi = 0
+u8 Li = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Nc = 0
+u8 Nr = 0
+u8 Hit = 0
+u8 Pts = 0
+u8 Left = 0
+
+  tile screen
+  set sound table CpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  AnimBorder
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score[0] > Hi then Hi = Score[0]
+  if Score[1] > Hi then Hi = Score[1]
+  ShowHud
+  mute all
+  print at 9,10, "            "
+  print at 9,11, "  GAME OVER "
+  print at 9,12, "            "
+  print at 9,13, " HI         "
+  print at 13,13, Hi
+  print at 9,14, "            "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if CrashT > 0 then
+    CrashStep
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ClearMsg
+    return
+  end if
+  TakeInput
+  inc Ph
+  if Ph < Sn then return
+  Ph = 0
+  Pi = 0
+  StepOne
+  if Np = 2 then
+    if Who = 255 then
+      Pi = 1
+      StepOne
+    end if
+  end if
+  if LevelUp = 1 then NextLevel
+  return
+end sub
+
+' the sticks: a direction pressed is kept until the racer's next cell
+sub TakeInput:
+  K = J1
+  if Np = 1 then K = J1 | J2
+  D = Pl[0].D
+  V = StickDir(K, D)
+  if V < 4 then Pl[0].Want = V
+  if Np = 2 then
+    D = Pl[1].D
+    V = StickDir(J2, D)
+    if V < 4 then Pl[1].Want = V
+  end if
+  return
+end sub
+
+' the direction of stick bits B (1 up, 2 down, 4 left, 8 right); with a
+' diagonal, the one that turns the racer (Cur its direction); 255 none
+function StickDir(u8 B, u8 Cur) as u8
+  u8 Res = 255
+  u8 Hz = 255
+  u8 Vt = 255
+  if B & 1 then Vt = 0
+  if B & 2 then Vt = 2
+  if B & 4 then Hz = 3
+  if B & 8 then Hz = 1
+  select case Cur
+  case 0, 2
+    Res = Hz
+    if Res = 255 then Res = Vt
+  case else
+    Res = Vt
+    if Res = 255 then Res = Hz
+  end select
+  return Res
+
+' one cell for racer Pi: turn, leave the trail, look at the next cell
+sub StepOne:
+  C = Pl[Pi].C
+  R = Pl[Pi].R
+  D = Pl[Pi].D
+  W = Pl[Pi].Want
+  if W < 4 then
+    V = D ^ 2
+    if W <> V then D = W
+  end if
+  Pl[Pi].Want = 255
+  Pl[Pi].D = D
+  T = TTrail1 + Pi
+  put char T at C,R
+  Pl[Pi].Pc = C
+  Pl[Pi].Pr = R
+  Nc = C + DCol[D]
+  Nr = R + DRow[D]
+  Pl[Pi].C = Nc
+  Pl[Pi].R = Nr
+  K = get char at Nc,Nr
+  Hit = 0
+  select case K
+  case TFloor
+    Hit = 0
+  case TOrb
+    GotOrb
+  case else
+    Hit = 1
+  end select
+  if Np = 2 then
+    V = 1 - Pi
+    if Pl[V].C = Nc then
+      if Pl[V].R = Nr then Hit = 1
+    end if
+  end if
+  if Hit = 1 then StartCrash
+  return
+end sub
+
+sub GotOrb:
+  put char TFloor at Nc,Nr
+  Pts = Lv * 5
+  Score[Pi] += Pts
+  dec Orbs
+  play sound SndOrb
+  ShowScores
+  ShowOrbs
+  if Orbs = 0 then LevelUp = 1
+  return
+end sub
+
+' racer Pi crashed: the other player scores 100 x level
+sub StartCrash:
+  Who = Pi
+  CrashT = CrashN
+  Blink = 0
+  BlinkT = 0
+  LevelUp = 0
+  play sound SndCrash
+  if Np = 2 then
+    V = 1 - Pi
+    for Li = 1 to Lv
+      Score[V] += 100
+    next
+    ShowScores
+  end if
+  return
+end sub
+
+sub CrashStep:
+  inc BlinkT
+  if BlinkT >= 12 then
+    BlinkT = 0
+    Blink = Blink ^ 1
+  end if
+  dec CrashT
+  if CrashT > 0 then return
+  V = Who
+  Left = Pl[V].Lives - 1
+  Pl[V].Lives = Left
+  Who = 255
+  ShowLives
+  if Left = 0 then
+    Over = 1
+    return
+  end if
+  ClearTrails
+  PlaceRacers
+  MsgT = ReadyN
+  print at 11,22, "GET READY"
+  return
+end sub
+
+' the last sphere: a bonus of 25 to 25 x level + 24, the next level
+sub NextLevel:
+  LevelUp = 0
+  V = Lv * 25
+  Bonus = Rnd(V) + 25
+  Score[Pi] += Bonus
+  ShowScores
+  play sound SndLevel
+  print at 11,22, "BONUS "
+  NumU = Bonus
+  print at 17,22, digits$(NumU, 3)
+  for Wi = 1 to 120
+    Frame1
+    AnimBorder
+  next
+  inc Lv
+  if Lv > 8 then Lv = 1
+  NewRound
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the maze
+
+' a new maze for level Lv: border, walls, spheres, the racers
+sub NewRound:
+  Sn = SpdT[Lv]
+  NewScreen
+  fill TBord count 28 at 2,2
+  fill TBord count 28 at 2,21
+  for Ri = RowT to RowB
+    put char TBord at 2,Ri
+    fill TFloor count 26 at ColL,Ri
+    put char TBord at 29,Ri
+  next
+  V = 8 + Lv
+  for Wi = 1 to V
+    MakeWall
+  next
+  Orbs = Lv * 3
+  Orbs = Orbs + 3
+  for Wi = 1 to Orbs
+    PlaceOrb
+  next
+  PlaceRacers
+  ShowHud
+  DrawSprites
+  ShowScreen
+  MsgT = ReadyN
+  print at 11,22, "GET READY"
+  play sound SndStart
+  return
+end sub
+
+' one wall segment of 1 to 6 cells, across or down; it stops before it
+' would touch another wall, the border or a start corner
+sub MakeWall:
+  X = Rnd(24) + 4
+  Y = Rnd(16) + 4
+  K = Rnd(2)
+  N = Rnd(6)
+  Nc = 0
+  Nr = 0
+  for Li = 0 to N
+    Hit = WallOk(X, Y, Nc, Nr)
+    if Hit = 1 then
+      put char TWall at X,Y
+      Nc = X
+      Nr = Y
+      if K = 0 then
+        inc X
+      else
+        inc Y
+      end if
+    else
+      Li = 9
+    end if
+  next
+  return
+end sub
+
+' 1 when a wall may go on cell Cx, Cy: inside 4..27 x 4..19, away from the
+' start corners, and no wall in the 3 x 3 around it but the cell Ox, Oy
+function WallOk(u8 Cx, u8 Cy, u8 Ox, u8 Oy) as u8
+  u8 Ok = 1
+  u8 Rr = 0
+  u8 Cc = 0
+  u8 Ch = 0
+  u8 Lo = 0
+  u8 Hiy = 0
+  if Cx < 4 then Ok = 0
+  if Cx > 27 then Ok = 0
+  if Cy < 4 then Ok = 0
+  if Cy > 19 then Ok = 0
+  if Cx < 13 then
+    if Cy < 9 then Ok = 0
+  end if
+  if Cx > 18 then
+    if Cy > 14 then Ok = 0
+  end if
+  if Ok = 1 then
+    Lo = Cy - 1
+    Hiy = Cy + 1
+    for Rr = Lo to Hiy
+      for Cc = Cx - 1 to Cx + 1
+        Ch = get char at Cc,Rr
+        if Ch = TWall then
+          if Cc <> Ox then
+            Ok = 0
+          elseif Rr <> Oy then
+            Ok = 0
+          end if
+        end if
+      next
+    next
+  end if
+  return Ok
+
+' one sphere on a free floor cell (not a start cell)
+sub PlaceOrb:
+  Hit = 1
+  while Hit = 1
+    X = Rnd(26) + ColL
+    Y = Rnd(18) + RowT
+    Hit = 0
+    K = get char at X,Y
+    if K <> TFloor then Hit = 1
+    if Y = 6 then
+      if X < 12 then Hit = 1
+    end if
+    if Y = 17 then
+      if X > 19 then Hit = 1
+    end if
+  end while
+  put char TOrb at X,Y
+  return
+end sub
+
+' the trails go, walls and spheres stay
+sub ClearTrails:
+  for Ri = RowT to RowB
+    for Cj = ColL to ColR
+      K = get char at Cj,Ri
+      if K = TTrail1 then put char TFloor at Cj,Ri
+      if K = TTrail2 then put char TFloor at Cj,Ri
+    next
+  next
+  return
+end sub
+
+sub PlaceRacers:
+  for Li = 0 to 1
+    Pl[Li].C = StC[Li]
+    Pl[Li].R = StR[Li]
+    Pl[Li].D = StD[Li]
+    Pl[Li].Pc = StC[Li]
+    Pl[Li].Pr = StR[Li]
+    Pl[Li].Want = 255
+  next
+  Ph = Sn - 1
+  Who = 255
+  CrashT = 0
+  LevelUp = 0
+  return
+end sub
+
+function Rnd(u8 Lim) as u8
+  u8 Lo = 0
+  Rand
+  Lo = Rs & 255
+  return Lo % Lim
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the border stripes roll one line every 8 frames
+sub AnimBorder:
+  inc BordT
+  if BordT < 8 then return
+  BordT = 0
+  V = BordF + 1
+  BordF = V & 7
+  W16 = TBord0 - 128 + BordF
+  W16 = W16 << 3
+  copy TilePat + W16 count 8 to vram.pattern + 1032
+  copy TilePat + W16 count 8 to vram.pattern + 3080
+  copy TilePat + W16 count 8 to vram.pattern + 5128
+  return
+end sub
+
+' sprite 0 racer 1, sprite 1 racer 2; each glides from its last cell to
+' its cell during the Sn frames of a step
+sub DrawSprites:
+  for Li = 0 to 1
+    V = Np - 1
+    if Li > V then
+      set sprite Li to 192,0,0,0
+    elseif TitleOn = 1 then
+      set sprite Li to 192,0,0,0
+    elseif Who = Li then
+      X = Pl[Li].Pc << 3
+      X = X - 4
+      Y = Pl[Li].Pr << 3
+      Y = Y - 5
+      K = SCrash0
+      T = 9
+      if Blink = 1 then
+        K = SCrash1
+        T = 11
+      end if
+      set sprite Li to Y,X,K,T
+    else
+      X = Pl[Li].C << 3
+      Y = Pl[Li].R << 3
+      D = Pl[Li].D
+      V = Sn - 1
+      V = V - Ph
+      V = V << 3
+      N = V / Sn
+      select case D
+      case 0
+        Y = Y + N
+      case 1
+        X = X - N
+      case 2
+        Y = Y - N
+      case else
+        X = X + N
+      end select
+      Y = Y - 1
+      K = D << 2
+      T = 3
+      if Li = 1 then T = 7
+      set sprite Li to Y,X,K,T
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,22
+  ShowScores
+  ShowLives
+  print at 14,1, "LV"
+  NumU = Lv
+  print at 16,1, digits$(NumU, 1)
+  print at 2,22, "ORBS"
+  ShowOrbs
+  return
+end sub
+
+sub ShowScores:
+  print Score[0] at 2,1
+  if Np = 2 then print Score[1] at 23,1
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 3 at 9,1
+  N = Pl[0].Lives
+  if N > 0 then fill TLife1 count N at 9,1
+  if Np = 2 then
+    fill 32 count 3 at 19,1
+    N = Pl[1].Lives
+    if N > 0 then fill TLife2 count N at 19,1
+  end if
+  return
+end sub
+
+sub ShowOrbs:
+  NumU = Orbs
+  print at 7,22, digits$(NumU, 2)
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 19 at 11,22
+  return
+end sub
+
+sub NewGame:
+  Score[0] = 0
+  Score[1] = 0
+  Pl[0].Lives = 3
+  Pl[1].Lives = 3
+  Lv = StartLv
+  Over = 0
+  TitleOn = 0
+  NewRound
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: big letters drawn in trail blocks, the menu, the tune once
+sub TitlePage:
+  NewScreen
+  fill TBord count 28 at 2,1
+  fill TBord count 28 at 2,22
+  for Li = 0 to 6
+    for Ri = 0 to 4
+      V = Li * 5
+      V = V + Ri
+      K = BigT[V]
+      X = Li << 2
+      X = X + 2
+      Y = Ri + 4
+      T = TTrail1
+      V = Li & 1
+      if V = 1 then T = TTrail2
+      if K & 4 then put char T at X,Y
+      inc X
+      if K & 2 then put char T at X,Y
+      inc X
+      if K & 1 then put char T at X,Y
+    next
+  next
+  print at 6,11, "BY MICHAEL HOYT"
+  print at 6,12, "AHOY! OCTOBER 1988"
+  print at 9,15, "PLAYERS"
+  print at 9,16, "LEVEL"
+  print at 9,17, "START GAME"
+  print at 9,18, "CREDITS"
+  print at 9,20, "HI"
+  print at 13,20, Hi
+  put char TOrb at 4,11
+  put char TOrb at 27,11
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 560
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  AnimBorder
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then MenuMove
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu < 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+' the stick on the title (V: the stick bits)
+sub MenuMove:
+  if V & 1 then
+    if Menu > 0 then dec Menu
+  end if
+  if V & 2 then
+    if Menu < 3 then inc Menu
+  end if
+  if V & 4 then
+    if Menu = 0 then Np = 1
+    if Menu = 1 then
+      if StartLv > 1 then dec StartLv
+    end if
+  end if
+  if V & 8 then
+    if Menu = 0 then Np = 2
+    if Menu = 1 then
+      if StartLv < 8 then inc StartLv
+    end if
+  end if
+  play sound SndTick
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 15 to 18
+    put char 32 at 7,Li
+  next
+  Y = Menu + 15
+  put char 62 at 7,Y
+  NumU = Np
+  print at 20,15, digits$(NumU, 1)
+  NumU = StartLv
+  print at 20,16, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "CAPTURE"
+  print at 2,5, "BASED ON CAPTURE BY"
+  print at 2,6, "MICHAEL HOYT, AHOY!"
+  print at 2,7, "OCTOBER 1988 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: GRID RUNNER"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $60,$30,$18,$0C,$06,$03,$80,$C0
+  $60,$30,$18,$0C,$06,$03,$80,$C0
+  $C0,$60,$30,$18,$0C,$06,$03,$80
+  $80,$C0,$60,$30,$18,$0C,$06,$03
+  $03,$80,$C0,$60,$30,$18,$0C,$06
+  $06,$03,$80,$C0,$60,$30,$18,$0C
+  $0C,$06,$03,$80,$C0,$60,$30,$18
+  $18,$0C,$06,$03,$80,$C0,$60,$30
+  $30,$18,$0C,$06,$03,$80,$C0,$60
+  $01,$80,$00,$24,$00,$48,$01,$80
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$10,$38,$28,$81,$A5,$00,$00
+  $00,$10,$38,$28,$81,$A5,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$41
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $EF,$FE,$0E,$4E,$0E,$4E,$4E,$E4
+  $01,$1F,$1B,$1B,$1B,$1A,$1A,$01
+  $03,$32,$32,$32,$32,$32,$32,$03
+  $05,$54,$54,$54,$54,$54,$54,$05
+  $01,$31,$31,$31,$13,$13,$01,$01
+  $01,$51,$51,$51,$15,$15,$01,$01
+end data
+data SpritePat bytes
+  $18,$3C,$24,$66,$7E,$DB,$DB,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F8,$9E,$F3,$F3,$9E,$F8,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$DB,$DB,$7E,$66,$24,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$1F,$79,$CF,$CF,$79,$1F,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$08,$04,$22,$11,$0B,$7F,$0B,$11,$22,$04,$08,$10,$00,$00
+  $00,$84,$88,$90,$A2,$C4,$E8,$FC,$E8,$C4,$A2,$90,$88,$84,$00,$00
+  $00,$81,$41,$20,$03,$07,$0C,$E8,$0C,$07,$03,$20,$41,$81,$00,$00
+  $00,$02,$04,$08,$80,$C0,$60,$2E,$60,$C0,$80,$08,$04,$02,$00,$00
+end data
+
+asm {
+CpOrb:
+    db $40,$6B,$10,$03,$40,$47,$10,$03,$40,$35,$20,$06,$50
+CpCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$56,$10,$10
+CpLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+CpStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+CpOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+CpTick:
+    db $40,$7F,$30,$02,$50
+
+CpSoundTable:
+    dw CpTuneMel,$702B
+    dw CpTuneBass,$7035
+    dw CpOrb,$7049
+    dw CpCrash,$703F
+    dw CpLevel,$7049
+    dw CpStart,$7049
+    dw CpOver,$7049
+    dw CpTick,$7049
+; Grid Runner (original)
+; Tiny Sound, 8 frames per step
+CpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$23,$21,$01,$1F,$1E,$01,$01,$1C,$01
+    db $1E,$01,$23,$01,$26,$01,$2A,$01,$28,$26,$25,$01,$21,$01,$23,$01
+    db $25,$01,$26,$01,$01,$25,$01,$22,$01,$23,$01,$01,$01,$01,$01,$00
+    db $01,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+CpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$04,$01,$0B,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$04,$01,$0B,$01,$06,$01,$0D,$01
+    db $0B,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

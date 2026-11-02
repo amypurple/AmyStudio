@@ -1,0 +1,1169 @@
+cartridge "CAVE OF THE ICE APE/J.C. HILTY/1987"
+
+' CAVE OF THE ICE APE
+' A ColecoVision game based on "Cave of the Ice Ape" by J. C. Hilty, Ahoy!
+' June 1987 (Commodore 64 BASIC with sprites, a small machine-code joystick
+' mover and a music routine; orig/ has the files from the Ahoy! disk: the
+' boot program with the story, the game, the music and title picture, a
+' jsc64 screenshot). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The story (from the boot program): your true love Maxine vanished on a
+' trip to the Himalayas; months later you hear a scream from a cave and
+' find her held prisoner by a large ape-like creature.
+'
+' From the original (CAVEAPE lines 20-1150): an ice cave of five corridors
+' between jagged ledges, each ledge with gaps (right; left and middle;
+' right; left and middle); the explorer starts at the bottom right and
+' moves freely with the stick (diagonals too); touching the ice is death;
+' the ape's snowball rolls along the corridors in turn (right, left, right,
+' left, right), dropping to the next one at each end, then starts again at
+' the top; touching it is death; a box of TNT waits at one of 14 places
+' (three in each corridor, two in the bottom one) and a new one appears
+' when it is picked up; three TNT rescue Maxine ("MY HERO!!"): 100 points,
+' and the snowball is faster (the listing's Z 4 up to 12: here Z / 8
+' pixel a frame against the explorer's 10 / 8, the C64's ratio, measured in
+' jsc64: Z = 4 rolled 0.6 pixel a jiffy); 40 seconds for each rescue (dead
+' when the timer passes 40); four lives; a death drops the explorer to the
+' floor and loses the TNT collected; GAME OVER with the high score.
+'
+' Liberties: the cave is 20 columns wide (the C64's 29) and the corridors 3
+' rows high, as on the C64; the snowball falls through the ledge gaps it
+' drops by (the C64 moved it down at once), and after the bottom corridor
+' it rolls into the wall and the ape throws a new one from the top left
+' 3/4 second later (the C64 put it back at once); the snowball starts
+' again from the ape after a death or a rescue; the timer counts down from
+' 40; a new box of TNT never appears within reach of the explorer; ice
+' kills only where it is drawn (the icicle tips' empty pixels are safe, as
+' the C64's sprite collision was by pixel); the ape and its snowball pile
+' are drawn in tiles, Maxine waves; a round counter.
+'
+' Controls: the joystick (either controller) moves the explorer. On the
+' title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz (Maxine waves at 1 Hz).
+
+const TIceA = 128
+const TIceB = 129
+const TWall = 130
+const TFloor = 131
+const THeart = 132
+const TApeA00 = 133
+const TApeA01 = 134
+const TApeA02 = 135
+const TApeA10 = 136
+const TApeA11 = 137
+const TApeA12 = 138
+const TApeB00 = 139
+const TApeB01 = 140
+const TApeB02 = 141
+const TApeB10 = 142
+const TApeB11 = 143
+const TApeB12 = 144
+const TPile00 = 145
+const TPile01 = 146
+const TPile02 = 147
+const TPile10 = 148
+const TPile11 = 149
+const TPile12 = 150
+const TTtl00 = 151
+const TTtl01 = 152
+const TTtl02 = 153
+const TTtl03 = 154
+const TTtl04 = 155
+const TTtl05 = 156
+const TTtl06 = 157
+const TTtl07 = 158
+const TTtl08 = 159
+const TTtl09 = 160
+const TTtl010 = 161
+const TTtl011 = 162
+const TTtl012 = 163
+const TTtl013 = 164
+const TTtl10 = 165
+const TTtl11 = 166
+const TTtl12 = 167
+const TTtl13 = 168
+const TTtl14 = 169
+const TTtl15 = 170
+const TTtl16 = 171
+const TTtl17 = 172
+const TTtl18 = 173
+const TTtl19 = 174
+const TTtl110 = 175
+const TTtl111 = 176
+const TTtl112 = 177
+const TTtl113 = 178
+const SP0d0 = 0
+const SP0b0 = 4
+const SP1d0 = 8
+const SP1b0 = 12
+const SP0d1 = 16
+const SP0b1 = 20
+const SP1d1 = 24
+const SP1b1 = 28
+const SP0d2 = 32
+const SP0b2 = 36
+const SP1d2 = 40
+const SP1b2 = 44
+const SBall0 = 48
+const SBall1 = 52
+const STnt = 56
+const SMaxD0 = 60
+const SMaxB0 = 64
+const SMaxD1 = 68
+const SMaxB1 = 72
+const NTiles8 = 408
+const SprBytes = 608
+const LeftOff = 8
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCrash = 3
+const SndThrow = 4
+const SndGrab = 5
+const SndFall = 6
+const SndHero = 7
+const SndTick = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 6
+const StPlay = 1
+const StDie = 2
+const StWin = 3
+const PSpeed = 10
+const StartX = 156
+const StartY = 168
+const BallL = 24
+const BallR = 168
+const ThrowF = 45
+const ZMax = 12
+
+' the TNT places: three in each corridor (two in the bottom one), on the
+' ice of the corridor's floor (never over a gap)
+data TntX bytes
+  32,96,136, 64,120,160, 32,96,136, 64,120,160, 32,96
+end data
+data TntY bytes
+  40,40,40, 72,72,72, 104,104,104, 136,136,136, 168,168
+end data
+' the snowball's height in each corridor
+data LaneY bytes
+  36,68,100,132,164
+end data
+
+record Roller:
+  u8 X
+  u8 Y
+  u8 Lane
+  u8 Mode
+  u8 Acc
+  u8 Hold
+end record
+
+Roller Ball
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+bcd digits 2 Secs = 40
+u8 SecF = 0
+u8 Lives = 4
+u8 Round = 1
+u8 Z8 = 4
+u8 Over = 0
+' the explorer: state, position (sprite's top left), sub-pixel
+' accumulators, facing left, walk counter
+u8 St = StPlay
+u8 Px = StartX
+u8 Py = StartY
+u8 Ax = 0
+u8 Ay = 0
+u8 Face = 1
+u8 WalkT = 0
+u8 DieT = 0
+u8 Why = 0
+' TNT: collected, place
+u8 TnHave = 0
+u8 TnSpot = 0
+u8 Tx = 0
+u8 Ty = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Phase = 0
+u8 Mix = 0
+u8 ApeUp = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Hr = 0
+' scratch
+u8 F = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 1 then goto game_over
+  if St = StWin then RoundWon
+  goto play_loop
+
+game_over:
+  Phase = 4
+  if Score > Hi then
+    Hi = Score
+    ShowHi
+  end if
+  print at 8,9, "GAME OVER"
+  mute all
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the cave
+
+' 1 when the pixel at Qx, Qy is ice: the walls, the floor, the top ledge,
+' and the solid part (rows 0-5) of each ledge outside its gaps
+function CaveAt(u8 Qx, u8 Qy) as u8
+  u8 Tc = 0
+  u8 Tr = 0
+  u8 Fy = 0
+  Tc = Qx >> 3
+  Tr = Qy >> 3
+  Fy = Qy & 7
+  if Tc <= 2 then return 1
+  if Tc >= 23 then return 1
+  if Tr >= 23 then return 1
+  if Tr < 3 then return 1
+  if Fy >= 6 then return 0
+  select case Tr
+  case 3
+    return 1
+  case 7, 15
+    if Tc < 20 then return 1
+  case 11, 19
+    if Tc < 6 then return 0
+    if Tc < 11 then return 1
+    if Tc < 14 then return 0
+    return 1
+  end select
+  return 0
+
+' the tile drawn at a cell of the cave
+function CaveTile(u8 Cc, u8 Cr) as u8
+  u8 Kind = 0
+  if Cc = 2 then return TWall
+  if Cc = 23 then return TWall
+  if Cr < 3 then return 32
+  Kind = CaveAt(Cc * 8, Cr * 8)
+  if Kind = 0 then return 32
+  if Cr = 23 then return TFloor
+  V = Cc + Cr
+  V = V & 1
+  if V = 1 then return TIceB
+  return TIceA
+
+' the walls, the ledges and the floor, the ape and its pile
+sub DrawCave:
+  u8 Cc = 0
+  for Hr = 1 to 23
+    for Cc = 2 to 23
+      V = CaveTile(Cc, Hr)
+      put char V at Cc,Hr
+    next
+  next
+  DrawApe(0)
+  for Gi = 0 to 2
+    V = TPile00 + Gi
+    X = Gi + 6
+    put char V at X,1
+    V = TPile10 + Gi
+    put char V at X,2
+  next
+  return
+end sub
+
+' the ape at columns 3-5 (Arm 1: the throwing arm up)
+sub DrawApe(u8 Arm):
+  u8 Base = 0
+  Base = TApeA00
+  if Arm = 1 then Base = TApeB00
+  for Gi = 0 to 2
+    V = Base + Gi
+    X = Gi + 3
+    put char V at X,1
+    V = V + 3
+    put char V at X,2
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc Anim
+  if St = StDie then
+    DieStep
+    return
+  end if
+  if St <> StPlay then return
+  MoveBall
+  inc SecF
+  if SecF >= 60 then
+    SecF = 0
+    Secs -= 1
+    ShowTime
+    if Secs = 0 then
+      StartDie(2)
+      return
+    end if
+    if Secs <= 5 then play sound SndTick
+  end if
+  MovePlayer
+  if CaveHit() = 1 then
+    StartDie(0)
+    return
+  end if
+  if BallHit() = 1 then
+    StartDie(1)
+    return
+  end if
+  CheckTnt
+  return
+end sub
+
+' the snowball: rolls Z8 / 8 pixel a frame along its corridor, falls 4
+' pixels a frame through the gap at the end, and after the bottom corridor
+' waits for the ape's next throw
+sub MoveBall:
+  select case Ball.Mode
+  case 0
+    Ball.Acc = Ball.Acc + Z8
+    while Ball.Acc >= 8
+      Ball.Acc = Ball.Acc - 8
+      V = Ball.Lane & 1
+      if V = 0 then
+        inc Ball.X
+      else
+        dec Ball.X
+      end if
+    end while
+    V = Ball.Lane & 1
+    if V = 0 then
+      if Ball.X >= BallR then
+        Ball.X = BallR
+        if Ball.Lane = 4 then
+          Ball.Mode = 2
+          Ball.Hold = ThrowF
+        else
+          Ball.Mode = 1
+        end if
+      end if
+    elseif Ball.X <= BallL then
+      Ball.X = BallL
+      Ball.Mode = 1
+    end if
+  case 1
+    Ball.Y = Ball.Y + 4
+    V = Ball.Lane + 1
+    if Ball.Y >= LaneY[V] then
+      Ball.Y = LaneY[V]
+      Ball.Lane = V
+      Ball.Mode = 0
+    end if
+  case else
+    dec Ball.Hold
+    if Ball.Hold = 0 then ThrowBall
+  end select
+  return
+end sub
+
+sub ThrowBall:
+  Ball.Lane = 0
+  Ball.X = BallL
+  Ball.Y = LaneY[0]
+  Ball.Mode = 0
+  Ball.Acc = 0
+  play sound SndThrow
+  return
+end sub
+
+' the stick moves the explorer 10 / 8 pixel a frame on each axis
+sub MovePlayer:
+  V = Pad & 15
+  if V = 0 then return
+  inc WalkT
+  V = Pad & 12
+  if V > 0 then
+    Ax = Ax + PSpeed
+    while Ax >= 8
+      Ax = Ax - 8
+      V = Pad & 4
+      if V > 0 then
+        dec Px
+        Face = 1
+      else
+        inc Px
+        Face = 0
+      end if
+    end while
+  end if
+  V = Pad & 3
+  if V > 0 then
+    Ay = Ay + PSpeed
+    while Ay >= 8
+      Ay = Ay - 8
+      V = Pad & 1
+      if V > 0 then
+        dec Py
+      else
+        inc Py
+      end if
+    end while
+  end if
+  return
+end sub
+
+' the explorer's body (x + 3 to x + 12, y + 1 to y + 15) against the ice:
+' corners and the middle of each side
+function CaveHit() as u8
+  u8 L = 0
+  u8 R = 0
+  u8 T = 0
+  u8 B = 0
+  u8 M = 0
+  L = Px + 3
+  R = Px + 12
+  T = Py + 1
+  B = Py + 15
+  M = Py + 8
+  if CaveAt(L, T) = 1 then return 1
+  if CaveAt(R, T) = 1 then return 1
+  if CaveAt(L, B) = 1 then return 1
+  if CaveAt(R, B) = 1 then return 1
+  if CaveAt(L, M) = 1 then return 1
+  if CaveAt(R, M) = 1 then return 1
+  return 0
+
+' the snowball within 10 pixels across and 13 up or down
+function BallHit() as u8
+  i16 Dx = 0
+  i16 Dy = 0
+  if Ball.Mode = 2 then return 0
+  Dx = Px - Ball.X
+  Dy = Py
+  Dy = Dy - Ball.Y
+  if abs(Dx) > 10 then return 0
+  if abs(Dy) > 13 then return 0
+  return 1
+
+' the TNT box: 11 pixels across, 13 above or 12 below
+sub CheckTnt:
+  i16 Dx = 0
+  i16 Dy = 0
+  Dx = Px
+  Dx = Dx - Tx
+  Dy = Py
+  Dy = Dy - Ty
+  if abs(Dx) > 11 then return
+  if Dy > 13 then return
+  if Dy < -12 then return
+  inc TnHave
+  ShowTnt
+  play sound SndGrab
+  if TnHave >= 3 then
+    St = StWin
+    return
+  end if
+  PlaceTnt
+  return
+end sub
+
+' a new place for the TNT: not the old one, and not within 40 pixels of
+' the explorer in the same corridor
+sub PlaceTnt:
+  u8 Old = 0
+  u8 Tries = 0
+  u16 Wi = 0
+  i16 Ddx = 0
+  i16 Ddy = 0
+  Old = TnSpot
+  do
+    inc Mix
+    V = random(0, 13)
+    TnSpot = V + Mix
+    while TnSpot >= 14
+      TnSpot = TnSpot - 14
+    end while
+    Wi = TnSpot
+    Tx = TntX[Wi]
+    Ty = TntY[Wi]
+    Ddx = Tx
+    Ddx = Ddx - Px
+    Ddy = Ty
+    Ddy = Ddy - Py
+    inc Tries
+    if Tries > 40 then exit do
+    if TnSpot = Old then continue do
+    if abs(Ddy) < 24 then
+      if abs(Ddx) < 40 then continue do
+    end if
+    exit do
+  loop
+  return
+end sub
+
+' a death (Kind 0 ice, 1 snowball, 2 time): the explorer drops to the floor
+sub StartDie(u8 Kind):
+  St = StDie
+  Why = Kind
+  DieT = 0
+  if Kind = 1 then play sound SndCrash
+  play sound SndFall
+  return
+end sub
+
+sub DieStep:
+  if Py < StartY then
+    Py = Py + 2
+    if Py > StartY then Py = StartY
+    return
+  end if
+  inc DieT
+  if DieT >= 40 then LoseLife
+  return
+end sub
+
+sub LoseLife:
+  dec Lives
+  ShowLives
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  ResetRound
+  return
+end sub
+
+' the explorer back at the bottom right, the TNT count lost, the timer at
+' 40 and the ape about to throw
+sub ResetRound:
+  St = StPlay
+  Px = StartX
+  Py = StartY
+  Ax = 0
+  Ay = 0
+  Face = 1
+  TnHave = 0
+  Secs = 40
+  SecF = 0
+  Ball.Mode = 2
+  Ball.Hold = ThrowF
+  Ball.Lane = 4
+  Ball.X = BallR
+  Ball.Y = LaneY[4]
+  Ball.Acc = 0
+  PlaceTnt
+  ShowTnt
+  ShowTime
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a rescue
+
+sub RoundWon:
+  Phase = 3
+  Score += 100
+  ShowScore
+  if Score > Hi then
+    Hi = Score
+    ShowHi
+  end if
+  Px = 72
+  Py = 8
+  Face = 0
+  Ball.Mode = 2
+  put char THeart at 11,1
+  print at 14,1, "MY HERO!!"
+  play sound SndHero
+  for Gi = 0 to 149
+    inc Anim
+    DrawSprites
+    Frame1
+  next
+  put char 32 at 11,1
+  print at 14,1, "HELP ME!!"
+  if Z8 < ZMax then inc Z8
+  if Round < 99 then inc Round
+  ShowRound
+  ResetRound
+  Phase = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' games and drawing
+
+sub NewGame:
+  Score = 0
+  Lives = 4
+  Round = 1
+  Z8 = 4
+  Over = 0
+  Phase = 2
+  NewScreen
+  DrawCave
+  print at 14,1, "HELP ME!!"
+  ResetRound
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 50 frames
+  nmi off
+  Phase = 1
+  return
+end sub
+
+sub ShowHud:
+  print at 24,1, "TIME"
+  print at 24,4, "TNT"
+  print at 24,7, "LIVES"
+  print at 24,10, "ROUND"
+  print at 24,13, "SCORE"
+  print at 24,16, "HIGH"
+  ShowTime
+  ShowTnt
+  ShowLives
+  ShowRound
+  ShowScore
+  ShowHi
+  return
+end sub
+
+sub ShowTime:
+  print at 24,2, Secs
+  return
+end sub
+
+sub ShowTnt:
+  NumU = TnHave
+  print at 24,5, digits$(NumU, 1), "/3"
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 24,8, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowRound:
+  NumU = Round
+  print at 24,11, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScore:
+  print at 24,14, Score
+  return
+end sub
+
+sub ShowHi:
+  print at 24,17, Hi
+  return
+end sub
+
+' sprites 0-1 the explorer (detail over body), 2 the snowball, 3 the TNT,
+' 4-5 Maxine; the ape's arm is up while it throws
+sub DrawSprites:
+  X = Px
+  Y = Py - 1
+  F = 0
+  if St = StDie then
+    F = 2
+  elseif St = StPlay then
+    V = WalkT >> 3
+    F = V & 1
+  end if
+  K = F << 4
+  if Face = 1 then K = K + LeftOff
+  set sprite 0 to Y,X,K,11
+  K = K + 4
+  set sprite 1 to Y,X,K,8
+  if Ball.Mode = 2 then
+    set sprite 2 to 192,0,0,0
+  else
+    V = Ball.X >> 2
+    V = V & 1
+    K = SBall0 + V * 4
+    Y = Ball.Y - 1
+    set sprite 2 to Y,Ball.X,K,15
+  end if
+  if St = StWin then
+    set sprite 3 to 192,0,0,0
+  else
+    Y = Ty - 1
+    set sprite 3 to Y,Tx,STnt,9
+  end if
+  V = Anim >> 5
+  V = V & 1
+  K = SMaxD0 + V * 8
+  set sprite 4 to 7,96,K,11
+  K = K + 4
+  set sprite 5 to 7,96,K,13
+  update sprites
+  V = 0
+  if Ball.Mode = 2 then
+    if Ball.Hold < 20 then V = 1
+  elseif Ball.Lane = 0 then
+    if Ball.X < 40 then V = 1
+  end if
+  if V <> ApeUp then
+    ApeUp = V
+    DrawApe(V)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  ApeUp = 0
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name in tall ice letters, the ape on its pile, the tune
+' once, START / CREDITS
+sub TitlePage:
+  Phase = 5
+  NewScreen
+  print at 10,3, "CAVE OF THE"
+  for Gi = 0 to 13
+    V = TTtl00 + Gi
+    X = Gi + 9
+    put char V at X,5
+    V = TTtl10 + Gi
+    put char V at X,6
+  next
+  for Gi = 0 to 2
+    V = TApeA00 + Gi
+    X = Gi + 12
+    put char V at X,9
+    V = V + 3
+    put char V at X,10
+    V = TPile00 + Gi
+    X = Gi + 15
+    put char V at X,9
+    V = TPile10 + Gi
+    put char V at X,10
+  next
+  fill TFloor count 12 at 10,11
+  print at 11,13, "HIGH ", Hi
+  print at 6,14, "AHOY! JUNE 1987"
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 720
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 6
+tp_loop:
+  Frame1
+  ReadPad
+  inc Anim
+  inc Mix
+  V = Pad & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 12,17
+  put char 32 at 12,18
+  J = Menu + 17
+  put char 62 at 12,J
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 6,2, "CAVE OF THE ICE APE"
+  print at 2,4, "BASED ON CAVE OF THE ICE"
+  print at 2,5, "APE BY J. C. HILTY, AHOY!"
+  print at 2,6, "JUNE 1987 (COMMODORE 64)."
+  print at 2,8, "COLECOVISION GAME, MUSIC"
+  print at 2,9, "AND PICTURES BY CLAUDE"
+  print at 2,10, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "IN AMY BY AMY BIENVENU,"
+  print at 2,12, "2026."
+  print at 2,14, "MUSIC: SNOWBOUND (ORIGINAL)"
+  print at 2,16, "GRAB THREE TNT TO FREE"
+  print at 2,17, "MAXINE. DODGE THE SNOWBALL"
+  print at 2,18, "AND NEVER TOUCH THE ICE!"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 8
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$41,$1C,$00,$99,$24
+  $00,$00,$00,$08,$1C,$00,$31,$84
+  $10,$10,$10,$00,$40,$40,$40,$00
+  $00,$22,$00,$44,$00,$44,$00,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+  $01,$03,$06,$07,$07,$F0,$E0,$C0
+  $01,$00,$86,$00,$03,$A8,$00,$00
+  $00,$00,$80,$80,$80,$C0,$E0,$F0
+  $84,$8C,$0C,$1C,$03,$07,$F0,$E0
+  $00,$00,$00,$00,$30,$87,$87,$87
+  $87,$38,$C3,$1C,$00,$80,$E0,$F0
+  $01,$03,$06,$07,$07,$F0,$E0,$C0
+  $01,$00,$86,$00,$03,$A8,$00,$00
+  $1C,$C1,$41,$9C,$98,$07,$F0,$E0
+  $84,$8C,$0C,$1C,$03,$07,$F0,$E0
+  $00,$00,$00,$00,$30,$87,$87,$87
+  $00,$00,$00,$00,$00,$80,$E0,$F0
+  $00,$03,$07,$07,$F0,$07,$07,$03
+  $00,$C3,$18,$18,$00,$18,$18,$C3
+  $00,$C0,$E0,$E0,$F0,$E0,$E0,$C0
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$C3,$C3,$F0,$F0,$F0,$F0
+  $F0,$F0,$C3,$C3,$00,$00,$00,$00
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $03,$03,$00,$00,$00,$00,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$C3,$C3,$F0,$F0,$F0,$F0
+  $C0,$C0,$F0,$F0,$C3,$C3,$C3,$C3
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $F0,$F0,$C3,$C3,$C3,$C3,$F0,$F0
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $03,$03,$00,$00,$00,$00,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0
+  $F0,$F0,$F0,$F0,$C3,$C3,$F0,$F0
+  $00,$00,$00,$00,$C3,$C3,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$03,$C3,$C3,$C3,$C3,$C3,$C3
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+end data
+data TileCol bytes
+  $0F,$07,$07,$57,$75,$05,$15,$51
+  $0F,$07,$07,$57,$57,$05,$15,$51
+  $45,$45,$45,$04,$45,$45,$45,$04
+  $0F,$7F,$07,$57,$05,$45,$04,$04
+  $01,$18,$18,$18,$18,$81,$81,$01
+  $F1,$F1,$F1,$F1,$F1,$1F,$1F,$1F
+  $1F,$0F,$1F,$0F,$F1,$1F,$0F,$0F
+  $01,$01,$F1,$F1,$F1,$F1,$F1,$F1
+  $1F,$1F,$17,$57,$F1,$F1,$17,$17
+  $0F,$0F,$07,$07,$1F,$F1,$71,$71
+  $1F,$F1,$17,$71,$01,$F1,$71,$71
+  $F1,$F1,$F1,$F1,$F1,$1F,$1F,$1F
+  $1F,$0F,$1F,$0F,$F1,$1F,$0F,$0F
+  $F1,$1F,$1F,$F1,$F1,$1F,$F1,$F1
+  $1F,$1F,$17,$57,$F1,$F1,$17,$17
+  $0F,$0F,$07,$07,$1F,$F1,$71,$71
+  $01,$01,$01,$01,$01,$F1,$71,$71
+  $01,$F1,$F1,$F1,$1F,$71,$71,$71
+  $01,$F1,$1F,$1F,$0F,$17,$17,$71
+  $01,$F1,$F1,$F1,$F1,$71,$71,$71
+  $F1,$1F,$1F,$0F,$0F,$17,$17,$71
+  $F1,$1F,$1F,$0F,$0F,$17,$17,$71
+  $F1,$1F,$1F,$0F,$0F,$17,$17,$71
+  $0F,$0F,$1F,$1F,$1F,$1F,$17,$17
+  $F1,$F1,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$1F,$1F,$F1,$F1,$71,$71
+  $F1,$F1,$1F,$1F,$01,$01,$01,$01
+  $0F,$0F,$F1,$F1,$F1,$F1,$07,$07
+  $1F,$1F,$01,$01,$01,$01,$71,$71
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$1F,$1F,$F1,$F1,$71,$71
+  $F1,$F1,$F1,$F1,$1F,$1F,$17,$17
+  $0F,$0F,$F1,$F1,$F1,$F1,$07,$07
+  $F1,$F1,$1F,$1F,$1F,$1F,$71,$71
+  $0F,$0F,$F1,$F1,$F1,$F1,$07,$07
+  $1F,$1F,$01,$01,$01,$01,$71,$71
+  $17,$17,$17,$17,$15,$15,$05,$05
+  $01,$01,$01,$01,$01,$01,$51,$51
+  $71,$71,$71,$71,$15,$15,$15,$15
+  $01,$01,$01,$01,$15,$15,$51,$51
+  $71,$71,$71,$71,$51,$51,$05,$05
+  $01,$01,$01,$01,$01,$01,$15,$15
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $07,$07,$71,$71,$51,$51,$51,$51
+  $17,$17,$17,$17,$15,$15,$15,$15
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $71,$71,$71,$71,$51,$51,$05,$05
+  $01,$01,$01,$01,$01,$01,$15,$15
+end data
+data SpritePat bytes
+  $00,$00,$03,$06,$03,$00,$00,$00,$30,$30,$00,$00,$00,$00,$0E,$0E
+  $00,$00,$C0,$A0,$C0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$70,$70
+  $03,$07,$0C,$08,$0C,$07,$0F,$1F,$0F,$07,$07,$06,$06,$06,$00,$00
+  $C0,$E0,$30,$10,$30,$E0,$F0,$F8,$F0,$E0,$E0,$60,$60,$60,$00,$00
+  $00,$00,$03,$05,$03,$00,$00,$00,$30,$30,$00,$00,$00,$00,$0E,$0E
+  $00,$00,$C0,$60,$C0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$70,$70
+  $03,$07,$0C,$08,$0C,$07,$0F,$1F,$0F,$07,$07,$06,$06,$06,$00,$00
+  $C0,$E0,$30,$10,$30,$E0,$F0,$F8,$F0,$E0,$E0,$60,$60,$60,$00,$00
+  $00,$00,$03,$06,$03,$00,$00,$00,$30,$30,$00,$00,$00,$00,$38,$38
+  $00,$00,$C0,$A0,$C0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$1C,$1C
+  $03,$07,$0C,$08,$0C,$07,$0F,$1F,$0F,$07,$07,$0C,$18,$18,$00,$00
+  $C0,$E0,$30,$10,$30,$E0,$F0,$F8,$F0,$E0,$E0,$30,$18,$18,$00,$00
+  $00,$00,$03,$05,$03,$00,$00,$00,$30,$30,$00,$00,$00,$00,$38,$38
+  $00,$00,$C0,$60,$C0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$1C,$1C
+  $03,$07,$0C,$08,$0C,$07,$0F,$1F,$0F,$07,$07,$0C,$18,$18,$00,$00
+  $C0,$E0,$30,$10,$30,$E0,$F0,$F8,$F0,$E0,$E0,$30,$18,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$30,$00,$0F,$1A,$CF,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$18,$00,$00,$80,$07,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$1F,$30,$60,$30,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$D0,$FC,$7E,$F0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$18,$00,$00,$01,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$0C,$00,$F0,$58,$F3,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$0B,$3F,$7E,$0F,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$F8,$0C,$06,$0C,$F8,$00,$00,$00
+  $00,$07,$1F,$3F,$7D,$7B,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$FE,$FE,$FF,$FF,$F7,$EF,$EE,$FE,$FC,$F8,$E0,$00
+  $00,$07,$1F,$3F,$7F,$7F,$FF,$FF,$EF,$F7,$77,$7F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$BE,$DE,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$E0,$00
+  $00,$00,$00,$01,$0F,$01,$01,$7F,$7F,$45,$6C,$6D,$6D,$7F,$7F,$00
+  $00,$00,$00,$80,$F0,$80,$80,$FE,$FE,$A2,$B6,$36,$B6,$FE,$FE,$00
+  $03,$07,$06,$07,$07,$00,$00,$00,$18,$10,$00,$00,$00,$00,$02,$06
+  $C0,$E0,$60,$E0,$F0,$00,$00,$00,$18,$08,$00,$00,$00,$00,$40,$60
+  $00,$00,$00,$00,$00,$03,$07,$0F,$07,$07,$0F,$0F,$1F,$1F,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$F0,$E0,$E0,$F0,$F0,$F8,$F8,$00,$00
+  $03,$07,$06,$07,$07,$00,$00,$00,$18,$10,$00,$00,$00,$00,$02,$06
+  $C0,$E0,$60,$E0,$F0,$0C,$18,$00,$00,$00,$00,$00,$00,$00,$40,$60
+  $00,$00,$00,$00,$00,$03,$07,$0F,$07,$07,$0F,$0F,$1F,$1F,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$F0,$F0,$F8,$F8,$00,$00
+end data
+
+asm {
+CaCrash:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$46,$08,$00,$00,$76,$0A,$10
+CaThrow:
+    db $00,$00,$31,$02,$00,$00,$52,$03,$00,$00,$82,$03,$10
+CaGrab:
+    db $40,$5D,$20,$02,$40,$46,$20,$02,$40,$38,$30,$03,$40,$2F,$40,$04,$50
+CaFall:
+    db $40,$50,$20,$03,$40,$59,$30,$03,$40,$66,$30,$03,$40,$76,$30,$03,$40,$88,$40,$03,$40,$A0,$40,$03
+    db $40,$BA,$50,$03,$40,$DB,$50,$03,$40,$04,$61,$03,$40,$37,$71,$03,$40,$75,$81,$03,$50
+CaHero:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$40,$8F,$20,$06,$40,$6B,$20,$12
+    db $50
+CaTick:
+    db $40,$40,$40,$01,$40,$40,$F0,$01,$50
+CaStart:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$30,$0C,$50
+CaOver:
+    db $40,$D6,$20,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$53,$21,$24,$50
+
+CaSoundTable:
+    dw CaTuneMel,$702B
+    dw CaTuneBass,$7035
+    dw CaCrash,$703F
+    dw CaThrow,$703F
+    dw CaGrab,$7049
+    dw CaFall,$7049
+    dw CaHero,$7049
+    dw CaTick,$7049
+    dw CaStart,$7049
+    dw CaOver,$7049
+; Snowbound (original)
+; Tiny Sound, 8 frames per step
+CaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$F1,$22,$23,$01,$1E,$01,$1A,$01,$1E,$01,$23,$01,$25,$01
+    db $26,$01,$01,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$01,$01,$1F,$01
+    db $23,$01,$28,$01,$26,$01,$25,$01,$23,$01,$22,$01,$25,$01,$1E,$01
+    db $01,$01,$01,$01,$01,$01,$23,$01,$26,$01,$2A,$01,$28,$01,$26,$01
+    db $25,$01,$23,$01,$21,$01,$1F,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $01,$01,$22,$01,$01,$01,$23,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+CaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$0E,$01,$09,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$12,$01,$0D,$01,$12,$01,$0D,$01,$12,$01,$0D,$01
+    db $0A,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$12,$01,$0D,$01
+    db $12,$01,$0D,$01,$0B,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1036 @@
+cartridge "BARRICADE/T.BRANTNER/1988"
+
+' BARRICADE
+' A ColecoVision game based on "Barricade" by Tony Brantner, Ahoy! April
+' 1988 (issue 52; Commodore 64 machine language, BARRICADE ML at $C000,
+' started by a two-line BASIC loader). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/barricade-ml.dis, and watched in jsc64), the game is
+' built for the ColecoVision: wooden crates on a dark warehouse floor inside
+' a steel fence, a worker in a hard hat and little box robots as sprites
+' that glide from cell to cell, big crate letters on the title, sounds.
+'
+' The game: four to eight robots hunt you across a yard full of crates.
+' Push crates (a whole row of them at once, in eight directions) to build
+' pens around the robots. When no robot can take a single step, the level
+' is won: 100 points for each robot, plus the bonus, which runs down from
+' 100 while you play. A robot that reaches you costs a life (four in all);
+' each level the robots step more often.
+'
+' From the original: the yard (crates on every other cell, a free lane
+' around them, the worker in the middle, the robots in the corners and the
+' middles of the sides, in the C64's order); the worker walks in eight
+' directions and pushes the row of crates in front of him when there is a
+' free cell at its end (the first crate goes to that cell); the robots step
+' together, each one heading for the worker (the stick direction toward
+' him, then the neighbouring directions in the C64's order 0,-1,+1,-2,+2,
+' -3,+3,4) onto a free cell or the worker; a robot with no free cell around
+' it is trapped, and when all are trapped at once the level ends; a robot
+' that steps onto the worker catches him; the board, the bonus (100) and
+' the robots start again after a catch; 100 a robot, then the bonus point
+' by point; 20 levels, the last one repeating; the robots' step every
+' (21 - level) x 8 passes of the C64's loop (about 2.5 frames each:
+' 50 frames at level 1), the worker's every 16 passes (5 frames); the bonus
+' loses a point every 256 passes (81 frames); the number of robots (4-8)
+' chosen on the title.
+'
+' Liberties: the yard is 26 x 17 cells (the C64's was 38 x 19) so that it
+' fits the ColecoVision's safe columns; the worker steps every 6 frames
+' and moves at once when the stick is pushed (the C64 read it every fifth
+' frame); the robots never step more often than the worker (the C64's
+' robots were as fast at level 19 and twice as fast at level 20: here
+' level 18 on all step every 6 frames); robots and worker glide between
+' cells; a trapped robot shows crossed-out eyes; the high score; the
+' robots appear one by one, faster than on the C64; GAME OVER then the
+' title (the C64 asked PRESS FIRE TO PLAY AGAIN and showed the robot
+' menu again).
+'
+' Controls: controller 1 (or 2): the stick walks and pushes. On the title
+' the stick chooses (up/down a line, left/right the number of robots) and
+' a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFloor = 128
+const TCrate = 129
+const TFenceh = 130
+const TFencev = 131
+const TFencec = 132
+const TLife = 133
+const TLB00 = 134
+const TLB01 = 135
+const TLB10 = 136
+const TLB11 = 137
+const TLB20 = 138
+const TLB21 = 139
+const TLA00 = 140
+const TLA01 = 141
+const TLA10 = 142
+const TLA11 = 143
+const TLA20 = 144
+const TLA21 = 145
+const TLR00 = 146
+const TLR01 = 147
+const TLR10 = 148
+const TLR11 = 149
+const TLR20 = 150
+const TLR21 = 151
+const TLI00 = 152
+const TLI01 = 153
+const TLI10 = 154
+const TLI11 = 155
+const TLI20 = 156
+const TLI21 = 157
+const TLC00 = 158
+const TLC01 = 159
+const TLC10 = 160
+const TLC11 = 161
+const TLC20 = 162
+const TLC21 = 163
+const TLD00 = 164
+const TLD01 = 165
+const TLD10 = 166
+const TLD11 = 167
+const TLD20 = 168
+const TLD21 = 169
+const TLE00 = 170
+const TLE01 = 171
+const TLE10 = 172
+const TLE11 = 173
+const TLE20 = 174
+const TLE21 = 175
+const SWk0h = 0
+const SWk0b = 4
+const SWk1h = 8
+const SWk1b = 12
+const SWk2h = 16
+const SWk2b = 20
+const SRb0 = 24
+const SRb1 = 28
+const SRbx = 32
+const SZap = 36
+const NTiles8 = 384
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndPush = 4
+const SndCaught = 5
+const SndPing = 6
+const SndBonus = 7
+const SndStart = 8
+const SndOver = 9
+' the yard: cells inside the fence
+const FC0 = 3
+const FC1 = 28
+const FR0 = 2
+const FR1 = 18
+const NSpr = 10
+const PStep = 6
+const BonusTime = 81
+
+' starts (worker, then robots 1-8 in the C64's order), robot colours
+data StR bytes 10,2,2,18,18,10,2,10,18
+data StC bytes 15,28,3,3,28,28,15,3,15
+data RCol bytes 11,7,3,13,15,10,8,9,5
+' the eight directions: up, up-right, right, down-right, down, down-left,
+' left, up-left (255 is -1)
+data DR bytes 255,255,0,1,1,1,0,255
+data DC bytes 0,1,1,1,0,255,255,255
+' the C64's order of tries around the wanted direction
+data TryO bytes 0,7,1,6,2,5,3,4
+' the wanted direction from the signs of the row and column differences,
+' (row sign + 1) x 3 + column sign + 1
+data DirOf bytes 7,0,1,6,0,2,5,4,3
+
+data TilePat bytes
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$42,$24,$18,$24,$42,$00
+  $00,$00,$00,$22,$22,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $81,$81,$40,$40,$40,$40,$81,$81
+  $00,$C3,$81,$81,$81,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$F0,$0E,$0E,$0E,$0E
+  $E0,$E0,$00,$00,$00,$E0,$E0,$E0
+  $0E,$0E,$F0,$F0,$F0,$0E,$0E,$0E
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $0E,$0E,$0E,$F0,$F0,$F0,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$F0,$0E,$0E,$0E,$0E
+  $E0,$E0,$00,$00,$00,$E0,$E0,$E0
+  $0E,$0E,$01,$01,$01,$0E,$0E,$0E
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $0E,$0E,$0E,$0E,$0E,$0E,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$F0,$0E,$0E,$0E,$0E
+  $E0,$E0,$00,$00,$00,$1C,$1C,$1C
+  $0E,$0E,$F0,$F0,$F0,$80,$80,$80
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $70,$70,$70,$0E,$0E,$0E,$00,$00
+  $00,$E0,$E0,$E0,$03,$03,$03,$03
+  $00,$F0,$F0,$F0,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $03,$03,$03,$E0,$E0,$E0,$00,$00
+  $80,$80,$80,$F0,$F0,$F0,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$F0,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $0E,$0E,$0E,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$F0,$0E,$0E,$0E,$0E
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $0E,$0E,$0E,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0
+  $00,$01,$01,$01,$00,$00,$00,$00
+  $E0,$E0,$00,$00,$00,$E0,$E0,$E0
+  $00,$00,$F0,$F0,$F0,$00,$00,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$00,$00
+end data
+data TileCol bytes
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0A,$6A,$6A,$6A,$6A,$6A,$06
+  $0E,$0F,$0E,$E1,$E1,$0E,$0F,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$EF,$FE,$FE,$FE,$FE,$E1,$1E
+  $01,$1B,$1B,$1B,$1B,$0B,$0A,$01
+  $01,$0B,$0B,$0A,$A1,$A1,$A1,$A1
+  $01,$B1,$B1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$0A,$0A,$0A,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$61,$61,$06,$06,$06,$01,$01
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $01,$1B,$1B,$1A,$A1,$A1,$A1,$A1
+  $01,$B1,$B1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$0A,$0A,$0A,$A1,$A1,$A1
+  $A1,$A1,$1A,$1A,$1A,$A1,$A1,$A1
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $01,$0B,$0B,$0A,$A1,$A1,$A1,$A1
+  $01,$B1,$B1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$0A,$0A,$0A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $01,$1B,$1B,$1A,$A1,$A1,$A1,$A1
+  $01,$B1,$B1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$61,$61,$16,$16,$16,$01,$01
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $01,$1B,$1B,$1A,$A1,$A1,$A1,$A1
+  $01,$B1,$B1,$A1,$A1,$A1,$A1,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$61,$61,$16,$16,$16,$01,$01
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $01,$0B,$0B,$0A,$A1,$A1,$A1,$A1
+  $01,$B1,$B1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$61,$61,$06,$06,$06,$01,$01
+  $A1,$61,$61,$61,$61,$61,$01,$01
+  $01,$0B,$0B,$0A,$A1,$A1,$A1,$A1
+  $01,$1B,$1B,$1A,$01,$01,$01,$01
+  $A1,$A1,$0A,$0A,$0A,$A1,$A1,$A1
+  $01,$01,$A1,$A1,$A1,$01,$01,$01
+  $A1,$61,$61,$06,$06,$06,$01,$01
+  $01,$01,$01,$16,$16,$16,$01,$01
+end data
+data SpritePat bytes
+  $3C,$7E,$3C,$28,$00,$81,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$7E,$3C,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$3C,$28,$01,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$7E,$3C,$28,$6C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$3C,$28,$80,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$7E,$3C,$14,$36,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$7E,$5A,$7E,$3C,$7E,$42,$C3,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$7E,$5A,$7E,$3C,$7E,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $81,$7E,$66,$7E,$BD,$7E,$42,$C3,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$F7,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $86,$87,$20,$8C,$8D,$20,$92,$93,$20,$92,$93,$20,$98,$99,$20,$9E,$9F,$20,$8C,$8D,$20,$A4,$A5,$20,$AA,$AB
+  $88,$89,$20,$8E,$8F,$20,$94,$95,$20,$94,$95,$20,$9A,$9B,$20,$A0,$A1,$20,$8E,$8F,$20,$A6,$A7,$20,$AC,$AD
+  $8A,$8B,$20,$90,$91,$20,$96,$97,$20,$96,$97,$20,$9C,$9D,$20,$A2,$A3,$20,$90,$91,$20,$A8,$A9,$20,$AE,$AF
+end data
+
+record Ent:
+  u8 R
+  u8 C
+  u8 Wr0
+  u8 Wc0
+  u8 Stuck
+  u8 Alive
+end record
+
+Ent Ents[9]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 NRob = 4
+u8 Lv = 1
+u8 Lives = 4
+u8 Bonus = 100
+u8 BonT = 0
+u8 PT = 0
+u8 RT = 0
+u8 RPer = 50
+u8 RDur = 12
+u8 Won = 0
+u8 Dead = 0
+u8 Over = 0
+u8 Trapped = 0
+u8 Moved = 0
+u8 Pushed = 0
+u8 Steps = 0
+u8 RSteps = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ti = 0
+u8 Di = 0
+u8 Li = 0
+u8 Ds = 0
+u8 Ts = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Dd = 0
+
+  tile screen
+  set sound table BcSoundTable areas 6
+  sprites 8x8
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if Won = 1 then
+    LevelDone
+  end if
+  if Dead = 1 then
+    Caught
+  end if
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  Phase = 3
+  HideSprites
+  print at 9,9, "           "
+  print at 9,10, " GAME OVER "
+  print at 9,11, "           "
+  if Score > Hi then Hi = Score
+  ShowScore
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' what is in a cell: 0 floor, 1 crate, 2 fence, 3 robot, 4 the worker
+function Cell(u8 Cc, u8 Rc) as u8
+  if Cc < FC0 then return 2
+  if Cc > FC1 then return 2
+  if Rc < FR0 then return 2
+  if Rc > FR1 then return 2
+  V = get char at Cc,Rc
+  if V = TCrate then return 1
+  K = 0
+  for J = 1 to 8
+    if Ents[J].Alive = 1 then
+      if Ents[J].R = Rc then
+        if Ents[J].C = Cc then K = 3
+      end if
+    end if
+  next
+  if K = 3 then return 3
+  if Ents[0].R = Rc then
+    if Ents[0].C = Cc then return 4
+  end if
+  return 0
+
+' the stick as a direction 0-7, 8 for none
+function StickDir as u8
+  select case J1 & 15
+    case 1
+      return 0
+    case 9
+      return 1
+    case 8
+      return 2
+    case 10
+      return 3
+    case 2
+      return 4
+    case 6
+      return 5
+    case 4
+      return 6
+    case 5
+      return 7
+  end select
+  return 8
+
+' one frame of play: the bonus clock, the worker, the robots
+sub PlayFrame:
+  inc BonT
+  if BonT >= BonusTime then
+    BonT = 0
+    if Bonus > 0 then
+      dec Bonus
+      ShowBonus
+    end if
+  end if
+  if PT > 0 then dec PT
+  if PT = 0 then
+    Dd = StickDir
+    if Dd < 8 then
+      TryWalk(Dd)
+      if Moved = 1 then PT = PStep
+    end if
+  end if
+  inc RT
+  if RT >= RPer then
+    RT = 0
+    RobotStep
+  end if
+  return
+end sub
+
+' the worker walks one cell in direction D, pushing the crates in front of
+' him when there is a free cell after the last one
+sub TryWalk(u8 D)
+  u8 Wr = 0
+  u8 Wc = 0
+  u8 N = 0
+  u8 What = 0
+  Moved = 0
+  Wr = Ents[0].R + DR[D]
+  Wc = Ents[0].C + DC[D]
+  What = Cell(Wc, Wr)
+  while What = 1
+    inc N
+    Wr = Wr + DR[D]
+    Wc = Wc + DC[D]
+    What = Cell(Wc, Wr)
+  end while
+  if What <> 0 then return
+  Ents[0].Wr0 = Ents[0].R
+  Ents[0].Wc0 = Ents[0].C
+  Ents[0].R = Ents[0].R + DR[D]
+  Ents[0].C = Ents[0].C + DC[D]
+  if N > 0 then
+    put char TCrate at Wc,Wr
+    put char TFloor at Ents[0].C,Ents[0].R
+    inc Pushed
+    play sound SndPush
+  end if
+  inc Steps
+  Moved = 1
+  return
+end sub
+
+' every robot steps toward the worker (the last first, as on the C64)
+sub RobotStep:
+  u8 Pr = 0
+  u8 Pc = 0
+  u8 Want = 0
+  u8 Tr = 0
+  u8 Tc = 0
+  u8 Gone = 0
+  Trapped = 0
+  Pr = Ents[0].R
+  Pc = Ents[0].C
+  Ri = NRob
+  while Ri > 0
+    Tr = Ents[Ri].R
+    Tc = Ents[Ri].C
+    Want = 4
+    if Tr < Pr then Want = 7
+    if Tr > Pr then Want = 1
+    if Tc < Pc then Want = Want + 1
+    if Tc > Pc then Want = Want - 1
+    Want = DirOf[Want]
+    Gone = 0
+    for Ti = 0 to 7
+      if Gone = 0 then
+        Di = Want + TryO[Ti]
+        Di = Di & 7
+        V = Cell(Tc + DC[Di], Tr + DR[Di])
+        if V = 0 or V = 4 then
+          Ents[Ri].Wr0 = Tr
+          Ents[Ri].Wc0 = Tc
+          Ents[Ri].R = Tr + DR[Di]
+          Ents[Ri].C = Tc + DC[Di]
+          Gone = 1
+        end if
+      end if
+    next
+    if Gone = 1 then
+      Ents[Ri].Stuck = 0
+    else
+      Ents[Ri].Wr0 = Tr
+      Ents[Ri].Wc0 = Tc
+      Ents[Ri].Stuck = 1
+      inc Trapped
+    end if
+    dec Ri
+  end while
+  inc RSteps
+  if Trapped = NRob then
+    Won = 1
+  else
+    play sound SndTick
+  end if
+  for Ri = 1 to 8
+    if Ents[Ri].Alive = 1 then
+      if Ents[Ri].R = Pr then
+        if Ents[Ri].C = Pc then Dead = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' a level won: each robot taken away for 100, then the bonus point by point
+sub LevelDone:
+  Phase = 4
+  Ri = NRob
+  while Ri > 0
+    Wait1(20)
+    Ents[Ri].Alive = 0
+    Score += 100
+    ShowScore
+    play sound SndPing
+    DrawSprites
+    dec Ri
+  end while
+  Wait1(30)
+  while Bonus > 0
+    dec Bonus
+    Score += 1
+    ShowScore
+    ShowBonus
+    play sound SndBonus
+    Wait1(2)
+  end while
+  Wait1(40)
+  if Lv < 20 then inc Lv
+  StartLevel
+  return
+end sub
+
+' caught: the worker zapped, a life gone, the level again or the end
+sub Caught:
+  Phase = 5
+  mute all
+  play sound SndCaught
+  X = Ents[0].C * 8
+  Y = Ents[0].R * 8 - 1
+  set sprite 0 to Y,X,SZap,15
+  set sprite 1 to Y,X,SZap,8
+  update sprites
+  Wait1(70)
+  dec Lives
+  ShowLives
+  Wait1(20)
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  StartLevel
+  return
+end sub
+
+sub Wait1(u8 Nf)
+  for Li = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: a gliding position, 8 pixels a cell
+function Glide(u8 A, u8 B, u8 T, u8 D) as u8
+  u8 Off = 0
+  if T >= D then return B * 8
+  Off = T * 8
+  Off = Off / D
+  if B > A then return A * 8 + Off
+  if B < A then return A * 8 - Off
+  return A * 8
+
+' sprites 0-1 the worker (hat and face, body), 2-9 the robots
+sub DrawSprites:
+  u8 Gt = 0
+  u8 Fr = 0
+  Gt = PStep - PT
+  X = Glide(Ents[0].Wc0, Ents[0].C, Gt, PStep)
+  Y = Glide(Ents[0].Wr0, Ents[0].R, Gt, PStep)
+  Fr = 0
+  if PT > 0 then Fr = (Ents[0].C + Ents[0].R) & 1 + 1
+  Fr = Fr * 8
+  set sprite 0 to Y - 1,X,SWk0h + Fr,11
+  set sprite 1 to Y - 1,X,SWk0b + Fr,5
+  for Ds = 1 to 8
+    C = Ds + 1
+    if Ents[Ds].Alive = 1 then
+      X = Glide(Ents[Ds].Wc0, Ents[Ds].C, RT, RDur)
+      Y = Glide(Ents[Ds].Wr0, Ents[Ds].R, RT, RDur)
+      if Ents[Ds].Stuck = 1 then
+        K = SRbx
+      else
+        K = Ents[Ds].C + Ents[Ds].R
+        K = K & 1
+        K = K * 4 + SRb0
+      end if
+      set sprite C to Y - 1,X,K,RCol[Ds]
+    else
+      set sprite C to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,20, Score
+  print at 8,22, Hi
+  return
+end sub
+
+sub ShowBonus:
+  NumU = Bonus
+  print at 27,20, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 8,21, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLives:
+  for J = 0 to 3
+    X = J * 2 + 22
+    if J < Lives then
+      put char TLife at X,21
+    else
+      put char 32 at X,21
+    end if
+  next
+  return
+end sub
+
+' the yard: fence, floor, crates on every other cell inside the free lane
+sub DrawYard:
+  put char TFencec at 2,1
+  put char TFencec at 29,1
+  put char TFencec at 2,19
+  put char TFencec at 29,19
+  fill TFenceh count 26 at 3,1
+  fill TFenceh count 26 at 3,19
+  for Y = FR0 to FR1
+    put char TFencev at 2,Y
+    put char TFencev at 29,Y
+    fill TFloor count 26 at 3,Y
+  next
+  for Y = 3 to 17
+    for X = 4 to 27
+      K = X + Y
+      K = K & 1
+      if K = 0 then put char TCrate at X,Y
+    next
+  next
+  return
+end sub
+
+' a new board for the level: the yard, then the robots one by one
+sub StartLevel:
+  Phase = 6
+  NewScreen
+  DrawYard
+  print at 2,20, "SCORE"
+  print at 21,20, "BONUS"
+  print at 2,21, "LEVEL"
+  print at 2,22, "HI"
+  Bonus = 100
+  BonT = 0
+  PT = 0
+  RT = 0
+  Won = 0
+  Dead = 0
+  K = 21 - Lv
+  RPer = K * 5 / 2
+  if RPer < PStep then RPer = PStep
+  RDur = RPer
+  if RDur > 12 then RDur = 12
+  for Ri = 0 to 8
+    Ents[Ri].R = StR[Ri]
+    Ents[Ri].C = StC[Ri]
+    Ents[Ri].Wr0 = StR[Ri]
+    Ents[Ri].Wc0 = StC[Ri]
+    Ents[Ri].Stuck = 0
+    Ents[Ri].Alive = 0
+  next
+  Ents[0].Alive = 1
+  ShowScore
+  ShowBonus
+  ShowLevel
+  ShowLives
+  DrawSprites
+  ShowScreen
+  for Ri = 1 to 8
+    if Ri <= NRob then
+      Ents[Ri].Alive = 1
+      DrawSprites
+      play sound SndPing
+      Wait1(12)
+    end if
+  next
+  RT = 0
+  Phase = 2
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lv = 1
+  Lives = 4
+  Steps = 0
+  Pushed = 0
+  RSteps = 0
+  Over = 0
+  play sound SndStart
+  StartLevel
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: BARRICADE in crate letters, a row of robots and the worker,
+' START / ROBOTS / CREDITS, the best score, the tune once
+sub TitlePage:
+  Phase = 1
+  NewScreen
+  copy TitleMap count 26 to vram.name + 99
+  copy TitleMap + 26 count 26 to vram.name + 131
+  copy TitleMap + 52 count 26 to vram.name + 163
+  print at 7,7, "AHOY! APRIL 1988"
+  print at 7,8, "BY TONY BRANTNER"
+  fill TCrate count 26 at 3,10
+  fill TCrate count 26 at 3,14
+  print at 4,16, "PEN EVERY ROBOT IN CRATES"
+  print at 12,18, "START"
+  print at 12,19, "ROBOTS"
+  print at 12,20, "CREDITS"
+  if Hi > 0 then
+    print at 9,22, "BEST ", Hi
+  end if
+  ShowMenu
+  TitleSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 528
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Menu = 0
+tp_loop:
+  Frame1
+  ReadPad
+  TitleSprites
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      MenuMove(V)
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub MenuMove(u8 S)
+  if S = 1 then
+    if Menu > 0 then dec Menu
+  end if
+  if S = 2 then
+    if Menu < 2 then inc Menu
+  end if
+  if Menu = 1 then
+    if S = 4 then
+      if NRob > 4 then dec NRob
+    end if
+    if S = 8 then
+      if NRob < 8 then inc NRob
+    end if
+  end if
+  ShowMenu
+  return
+end sub
+
+' robots marching between the two rows of crates on the title
+sub TitleSprites:
+  for Ts = 0 to 7
+    X = Ts * 27 + Tick
+    while X >= 216
+      X = X - 216
+    end while
+    X = X + 16
+    K = Tick >> 3
+    K = K & 1
+    K = K * 4 + SRb0
+    if Ts < NRob then
+      set sprite Ts + 2 to 95,X,K,RCol[Ts + 1]
+    else
+      set sprite Ts + 2 to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for J = 18 to 20
+    put char 32 at 10,J
+  next
+  J = Menu + 18
+  put char 62 at 10,J
+  NumU = NRob
+  print at 19,19, digits$(NumU, 1)
+  if Menu = 1 then
+    put char 60 at 21,19
+    put char 62 at 22,19
+  else
+    put char 32 at 21,19
+    put char 32 at 22,19
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "BARRICADE"
+  print at 2,5, "BASED ON BARRICADE BY TONY"
+  print at 2,6, "BRANTNER, AHOY! APRIL 1988"
+  print at 2,7, "(COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: CRATES AND GEARS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+BcTick:
+    db $00,$00,$65,$01,$00,$00,$95,$01,$10
+BcPush:
+    db $00,$00,$46,$02,$00,$00,$76,$02,$10
+BcCaught:
+    db $40,$46,$10,$02,$40,$4E,$10,$02,$40,$56,$10,$02,$40,$60,$10,$02,$40,$6B,$20,$02,$40,$76,$20,$02
+    db $40,$84,$20,$02,$40,$92,$20,$02,$40,$A2,$20,$02,$40,$B4,$20,$02,$40,$C8,$20,$02,$40,$DF,$20,$02
+    db $40,$F7,$30,$02,$40,$13,$31,$02,$40,$32,$31,$02,$40,$54,$31,$02,$40,$7A,$31,$02,$40,$A3,$31,$02
+    db $40,$D2,$31,$02,$40,$06,$32,$02,$40,$3E,$42,$02,$40,$7F,$42,$02,$40,$C4,$42,$02,$40,$14,$43,$02
+    db $50
+BcPing:
+    db $40,$55,$20,$03,$40,$40,$30,$03,$40,$35,$50,$06,$50
+BcBonus:
+    db $40,$2A,$40,$01,$50
+BcStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+BcOver:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+
+BcSoundTable:
+    dw BcTuneMel,$702B
+    dw BcTuneBass,$7035
+    dw BcTick,$703F
+    dw BcPush,$703F
+    dw BcCaught,$7049
+    dw BcPing,$7049
+    dw BcBonus,$7049
+    dw BcStart,$7049
+    dw BcOver,$7049
+; Crates and Gears (original)
+; Tiny Sound, 8 frames per step
+BcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $1F,$01,$21,$01,$23,$01,$01,$01,$21,$01,$1F,$01,$1E,$01,$1F,$01
+    db $21,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$28,$01,$2A,$01,$26,$01
+    db $23,$01,$26,$01,$28,$01,$01,$01,$23,$01,$1F,$01,$1E,$01,$1C,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+BcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0B,$01,$06,$01
+    db $10,$01,$01,$00,$01,$01
+    db $FF
+}

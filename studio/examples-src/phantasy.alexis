@@ -1,0 +1,1478 @@
+cartridge "PHANTASY/C. M. BLAKEMORE/1988"
+
+' PHANTASY
+' A ColecoVision game based on "Phantasy" by Cleveland M. Blakemore,
+' Ahoy! March 1988 (Commodore 128, BASIC 7.0). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: you are dreaming, lost in a maze of nine screens that wrap
+' round at the edges. Two keys lie somewhere in the maze; you can carry
+' one at a time. Two locked doors in the room where you start bar the way
+' to your bed. Each key opens one door. Reach the bed to wake up (ESCAPED);
+' a phantom that touches you ends the dream (CAPTURED). Phantoms drift
+' through the walls at random and never enter the starting room. Five
+' skill levels: the keys lie in different places, from level 2 there are
+' two phantoms, from level 3 they are faster.
+'
+' From the original (orig/phantasy.bas, orig/phantasy-in.txt): the nine
+' rooms and their walls (lines 740-960), the wrap-round between rooms, the
+' start (room 9, MOVSPR 1,200,160), the two locked doors and the bed
+' behind them, the key places for the five levels (lines 1010-1090), one
+' key carried at a time, a key used up on a door, one phantom at level 1
+' and two above, their speed 1 at levels 1-2 and 3 at levels 3-5 against
+' the dreamer's 5, a new random heading for a phantom now and then,
+' phantoms absent from the starting room, each room keeping its phantoms'
+' places when you leave it, CAPTURED and ESCAPED, then back to the title.
+'
+' Liberties: the 40 x 25 screens are redrawn on a grid of 4-pixel blocks
+' (56 x 42) so they fit the TV-safe area; the walls keep their layout.
+' Room memory uses one slot per room (the C-128's index (RX+1)*(RY+1)*4
+' made some rooms share a slot). Phantoms bounce inside the visible area
+' (on the C-128 they wandered off the screen and wrapped round) and a
+' phantom that would appear on top of the dreamer as a room is entered is
+' moved across the room. A blocked dreamer slides along a wall on the
+' free axis instead of stopping; a locked door simply blocks instead of
+' pushing the dreamer back. Speeds: the dreamer 1 pixel a frame, phantoms
+' 1/4 (levels 1-2) or 5/8 (levels 3-5), the original's 5:1 and 5:3 ratios
+' tempered so a careful human can slip past. A status line (skill, a
+' 3 x 3 map of the current room, the key carried, doors still locked) is
+' added. The phantoms keep a heading for 1/3 to 1 second instead of
+' turning at every BASIC pass.
+'
+' Controls: either controller; the stick walks the dreamer in eight
+' directions. On the title, up and down choose, left and right set the
+' skill level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes.
+
+const TMap0 = 128
+const TMap1 = 129
+const TMap2 = 130
+const TMap3 = 131
+const TMap4 = 132
+const TMap5 = 133
+const TMap6 = 134
+const TMap7 = 135
+const TMap8 = 136
+const TKeyi = 137
+const TStar = 138
+const TMoon = 139
+const TWall1 = 140
+const TWall2 = 141
+const TWall3 = 142
+const TWall4 = 143
+const TWall5 = 144
+const TWall6 = 145
+const TWall7 = 146
+const TWall8 = 147
+const TWall9 = 148
+const TWall10 = 149
+const TWall11 = 150
+const TWall12 = 151
+const TWall13 = 152
+const TWall14 = 153
+const TWall15 = 154
+const SBoy0 = 0
+const SBoy1 = 4
+const SGhost0 = 8
+const SGhost1 = 12
+const SKey = 16
+const SDoort = 20
+const SDoorb = 24
+const SBed = 28
+const NTiles8 = 216
+const SprBytes = 256
+const GateY0 = 108
+const GateY1 = 131
+const Gate0X = 81
+const Gate1X = 109
+const BedX = 135
+const BedY = 114
+const StartX = 141
+const StartY = 110
+const SndTuneA = 1
+const SndTuneB = 2
+const SndKey = 3
+const SndUnlock = 4
+const SndBump = 5
+const SndRoom = 6
+const SndCaught = 7
+const SndEscape = 8
+const SndStart = 9
+const SndTick = 10
+const NSpr = 9
+const RoomBytes = 672
+const CollBytes = 294
+const HomeRm = 8
+const BedRm = 7
+const PlayX0 = 12
+const PlayX1 = 228
+const PlayY0 = 12
+const PlayY1 = 170
+
+' phantom headings: 16 directions, x and y steps in 1/16 pixel + 64,
+' slow (levels 1-2) then fast (levels 3-5)
+data DXT bytes
+  68,68,67,66,64,62,61,60,60,60,61,62,64,66,67,68
+  74,73,71,68,64,60,57,55,54,55,57,60,64,68,71,73
+end data
+data DYT bytes
+  64,66,67,68,68,68,67,66,64,62,61,60,60,60,61,62
+  64,68,71,73,74,73,71,68,64,60,57,55,54,55,57,60
+end data
+data Bit bytes
+  128, 64, 32, 16, 8, 4, 2, 1
+end data
+data GhCol bytes
+  15, 7
+end data
+
+record Spook:
+  u16 X
+  u16 Y
+  u8 D
+  u8 T
+end record
+
+Spook Gh[2]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 CollAt = 0
+u16 NumU = 0
+' the room's phantom places (pixels), one pair a room
+u8 GRx[18]
+u8 GRy[18]
+u8 Lv = 1
+u8 Rm = 8
+u8 NG = 1
+u8 SpdOff = 0
+u8 Px = 0
+u8 Py = 0
+u8 Pf = 0
+u8 Walk = 0
+u8 Held = 0
+u8 KGot[2]
+u8 GOpen[2]
+u8 KeyK = 0
+u8 Over = 0
+u8 BumpT = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Ki = 0
+u8 Ri = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Got = 0
+
+  tile screen
+  set sound table PhSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  select case Over
+  case 1
+    print at 6,10, "                    "
+    print at 6,11, "     CAPTURED!      "
+    print at 6,12, "                    "
+    play sound SndCaught
+  case else
+    print at 5,10, "                      "
+    print at 5,11, "  ESCAPED! YOU WAKE   "
+    print at 5,12, "  SAFE IN YOUR BED.   "
+    print at 5,13, "                      "
+    play sound SndEscape
+  end select
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the maze
+
+' 1 when block Bx, By of the current room is a wall
+function Solid(u8 Bx, u8 By) as u8
+  u16 A = 0
+  u8 M = 0
+  A = By * 7
+  A = A + CollAt + (Bx >> 3)
+  M = peek(A) & Bit[Bx & 7]
+  if M > 0 then return 1
+  return 0
+
+' what the dreamer would touch with the sprite corner at Qx, Qy: 0 nothing,
+' 1 a wall, 2 or 3 a locked door (0 or 1)
+function Touch(u8 Qx, u8 Qy) as u8
+  u8 Res = 0
+  u8 Bx0 = 0
+  u8 Bx1 = 0
+  u8 By0 = 0
+  u8 By1 = 0
+  u8 Bx = 0
+  u8 By = 0
+  u8 Ex = 0
+  Bx0 = (Qx - 12) >> 2
+  Bx1 = (Qx - 5) >> 2
+  By0 = (Qy - 12) >> 2
+  By1 = (Qy - 3) >> 2
+  for By = By0 to By1
+    for Bx = Bx0 to Bx1
+      if Solid(Bx, By) = 1 then Res = 1
+    next
+  next
+  if Res = 0 then
+    if Rm = HomeRm then
+      if Qy + 4 <= GateY1 then
+        if Qy + 13 >= GateY0 then
+          Ex = Qx + 11
+          if GOpen[0] = 0 then
+            if Ex >= Gate0X then
+              if Qx + 4 <= Gate0X + 7 then Res = 2
+            end if
+          end if
+          if GOpen[1] = 0 then
+            if Ex >= Gate1X then
+              if Qx + 4 <= Gate1X + 7 then Res = 3
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  return Res
+
+' the room's walls into the name table (rows 2-22)
+sub DrawRoom:
+  W16 = Rm * RoomBytes
+  copy RoomMap + W16 count RoomBytes to vram.name + 64
+  W16 = Rm * CollBytes
+  CollAt = address of RoomColl
+  CollAt = CollAt + W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if BumpT > 0 then dec BumpT
+  MoveDreamer
+  if Over > 0 then return
+  if Rm <> HomeRm then MoveGhosts
+  Collide
+  return
+end sub
+
+sub MoveDreamer:
+  Walk = 0
+  K = Stick
+  ' left / right
+  Nx = Px
+  V = K & 4
+  if V > 0 then Nx = Px - 1
+  V = K & 8
+  if V > 0 then Nx = Px + 1
+  if Nx <> Px then
+    Walk = 1
+    if Nx < PlayX0 then
+      ChangeRoom(0)
+      return
+    end if
+    if Nx > PlayX1 then
+      ChangeRoom(1)
+      return
+    end if
+    R = Touch(Nx, Py)
+    if R = 0 then
+      Px = Nx
+    else
+      Blocked
+    end if
+  end if
+  ' up / down
+  Ny = Py
+  V = K & 1
+  if V > 0 then Ny = Py - 1
+  V = K & 2
+  if V > 0 then Ny = Py + 1
+  if Ny <> Py then
+    Walk = 1
+    if Ny < PlayY0 then
+      ChangeRoom(2)
+      return
+    end if
+    if Ny > PlayY1 then
+      ChangeRoom(3)
+      return
+    end if
+    R = Touch(Px, Ny)
+    if R = 0 then
+      Py = Ny
+    else
+      Blocked
+    end if
+  end if
+  if Walk = 1 then inc Pf
+  return
+end sub
+
+' R: what stopped the dreamer; a key opens a locked door
+sub Blocked:
+  if R >= 2 then
+    if Held = 1 then
+      J = R - 2
+      GOpen[J] = 1
+      Held = 0
+      play sound SndUnlock
+      ShowHud
+      return
+    end if
+  end if
+  if BumpT = 0 then
+    play sound SndBump
+    BumpT = 20
+  end if
+  return
+end sub
+
+' leave the room by an edge (0 left, 1 right, 2 up, 3 down); the maze
+' wraps round. If the way in is blocked the dreamer stays.
+sub ChangeRoom(u8 Dir):
+  u8 Rx = 0
+  u8 Ry = 0
+  u8 Old = 0
+  u8 Ox = 0
+  u8 Oy = 0
+  Old = Rm
+  Ox = Px
+  Oy = Py
+  Rx = Rm % 3
+  Ry = Rm / 3
+  select case Dir
+  case 0
+    if Rx = 0 then Rx = 3
+    dec Rx
+    Px = PlayX1
+  case 1
+    inc Rx
+    if Rx = 3 then Rx = 0
+    Px = PlayX0
+  case 2
+    if Ry = 0 then Ry = 3
+    dec Ry
+    Py = PlayY1
+  case else
+    inc Ry
+    if Ry = 3 then Ry = 0
+    Py = PlayY0
+  end select
+  SaveGhosts
+  Rm = Ry * 3 + Rx
+  DrawRoom
+  if Touch(Px, Py) > 0 then
+    Rm = Old
+    Px = Ox
+    Py = Oy
+    DrawRoom
+  else
+    play sound SndRoom
+  end if
+  EnterRoom
+  return
+end sub
+
+sub SaveGhosts:
+  for Gi = 0 to 1
+    J = Rm * 2 + Gi
+    W16 = Gh[Gi].X >> 4
+    GRx[J] = W16
+    W16 = Gh[Gi].Y >> 4
+    GRy[J] = W16
+  next
+  return
+end sub
+
+' a new room: its phantoms (not too close to the dreamer), the key, the
+' map; drawn with the display on during the NMI-free part of the frame
+sub EnterRoom:
+  for Gi = 0 to 1
+    J = Rm * 2 + Gi
+    X = GRx[J]
+    Y = GRy[J]
+    if Near(X, Y, 48) = 1 then
+      X = 224 - X
+      if Near(X, Y, 48) = 1 then
+        Y = Y + 80
+        if Y > 168 then Y = Y - 152
+      end if
+    end if
+    W16 = X
+    Gh[Gi].X = W16 << 4
+    W16 = Y
+    Gh[Gi].Y = W16 << 4
+    Gh[Gi].T = 1
+  next
+  ' the key shown in this room (if not taken)
+  KeyK = 255
+  for Ki = 0 to 1
+    J = Lv - 1
+    J = J * 2 + Ki
+    if KeyRm[J] = Rm then
+      if KGot[Ki] = 0 then KeyK = Ki
+    end if
+  next
+  ShowHud
+  return
+end sub
+
+' 1 when the point X, Y (a sprite corner) is within Dist of the dreamer
+function Near(u8 Qx, u8 Qy, u8 Dist) as u8
+  u8 Dx = 0
+  u8 Dy = 0
+  if Qx > Px then
+    Dx = Qx - Px
+  else
+    Dx = Px - Qx
+  end if
+  if Qy > Py then
+    Dy = Qy - Py
+  else
+    Dy = Py - Qy
+  end if
+  if Dx < Dist then
+    if Dy < Dist then return 1
+  end if
+  return 0
+
+' the phantoms drift at random through the walls, bouncing inside the
+' visible area; each keeps a heading for 20 to 59 frames
+sub MoveGhosts:
+  u16 Ax = 0
+  u16 Ay = 0
+  u8 Hd = 0
+  u8 Tm = 0
+  for Gi = 0 to NG - 1
+    Ax = Gh[Gi].X
+    Ay = Gh[Gi].Y
+    Hd = Gh[Gi].D
+    Tm = Gh[Gi].T
+    dec Tm
+    if Tm = 0 then
+      Rand
+      Hd = Rs & 15
+      W16 = Rs >> 8
+      Tm = W16 & 31
+      Tm = Tm + 20
+      Tm = Tm + (Rs & 7)
+    end if
+    J = Hd + SpdOff
+    Ax = Ax + DXT[J] - 64
+    Ay = Ay + DYT[J] - 64
+    ' bounce: x 16..224, y 16..168 (pixels)
+    if Ax < 256 then
+      Ax = 256
+      Hd = (Hd + 8) & 15
+    end if
+    if Ax > 3584 then
+      Ax = 3584
+      Hd = (Hd + 8) & 15
+    end if
+    if Ay < 256 then
+      Ay = 256
+      Hd = (Hd + 8) & 15
+    end if
+    if Ay > 2688 then
+      Ay = 2688
+      Hd = (Hd + 8) & 15
+    end if
+    Gh[Gi].X = Ax
+    Gh[Gi].Y = Ay
+    Gh[Gi].D = Hd
+    Gh[Gi].T = Tm
+  next
+  return
+end sub
+
+' the dreamer against the phantoms, the key and the bed
+sub Collide:
+  if Rm <> HomeRm then
+    for Gi = 0 to NG - 1
+      W16 = Gh[Gi].X >> 4
+      X = W16
+      W16 = Gh[Gi].Y >> 4
+      Y = W16
+      ' dreamer box Px+4..Px+11, Py+4..Py+13; phantom X+3..X+12, Y+2..Y+13
+      if Px + 4 <= X + 12 then
+        if X + 3 <= Px + 11 then
+          if Py + 4 <= Y + 13 then
+            if Y + 2 <= Py + 13 then Over = 1
+          end if
+        end if
+      end if
+    next
+  end if
+  if KeyK < 2 then
+    if Held = 0 then
+      J = Lv - 1
+      J = J * 2 + KeyK
+      X = KeyX[J]
+      Y = KeyY[J]
+      if Px + 4 <= X + 15 then
+        if X + 1 <= Px + 11 then
+          if Py + 4 <= Y + 10 then
+            if Y + 5 <= Py + 13 then
+              KGot[KeyK] = 1
+              KeyK = 255
+              Held = 1
+              play sound SndKey
+              ShowHud
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  if Rm = BedRm then
+    if Px + 4 <= BedX + 14 then
+      if BedX + 1 <= Px + 11 then
+        if Py + 4 <= BedY + 11 then
+          if BedY + 2 <= Py + 13 then Over = 2
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the dreamer, 1-2 the phantoms, 3 the key, 4-7 the doors, 8 the bed
+sub DrawSprites:
+  Y = Py - 1
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    V = Pf >> 3
+    V = V & 1
+    K = V << 2
+    K = K + SBoy0
+    C = 11
+    if Over = 1 then C = 6
+    set sprite 0 to Y,Px,K,C
+  end if
+  for Gi = 0 to 1
+    J = Gi + 1
+    Got = 1
+    if Rm = HomeRm then Got = 0
+    if Gi >= NG then Got = 0
+    if Got = 0 then
+      set sprite J to 192,0,0,0
+    else
+      W16 = Gh[Gi].X >> 4
+      X = W16
+      W16 = Gh[Gi].Y >> 4
+      Y = W16 - 1
+      V = Tick >> 4
+      V = V + Gi
+      V = V & 1
+      K = V << 2
+      K = K + SGhost0
+      C = GhCol[Gi]
+      set sprite J to Y,X,K,C
+    end if
+  next
+  if KeyK < 2 then
+    J = Lv - 1
+    J = J * 2 + KeyK
+    Y = KeyY[J] - 1
+    set sprite 3 to Y,KeyX[J],SKey,10
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  for Gi = 0 to 1
+    J = Gi * 2 + 4
+    N = J + 1
+    Got = 0
+    if Rm = HomeRm then
+      if GOpen[Gi] = 0 then Got = 1
+    end if
+    if Got = 1 then
+      X = Gate0X - 4
+      if Gi = 1 then X = Gate1X - 4
+      Y = GateY0 - 1
+      set sprite J to Y,X,SDoort,13
+      Y = Y + 8
+      set sprite N to Y,X,SDoorb,13
+    else
+      set sprite J to 192,0,0,0
+      set sprite N to 192,0,0,0
+    end if
+  next
+  if Rm = BedRm then
+    set sprite 8 to BedY - 1,BedX,SBed,9
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SKILL"
+  NumU = Lv
+  print at 8,1, digits$(NumU, 1)
+  V = TMap0 + Rm
+  put char V at 11,1
+  print at 13,1, "KEY"
+  if Held = 1 then
+    put char TKeyi at 17,1
+  else
+    put char 45 at 17,1
+  end if
+  print at 20,1, "LOCKS"
+  V = 2 - GOpen[0] - GOpen[1]
+  NumU = V
+  print at 26,1, digits$(NumU, 1)
+  return
+end sub
+
+sub NewGame:
+  Rm = HomeRm
+  Px = StartX
+  Py = StartY
+  Pf = 0
+  Held = 0
+  Over = 0
+  BumpT = 0
+  TitleOn = 0
+  for Gi = 0 to 1
+    KGot[Gi] = 0
+    GOpen[Gi] = 0
+  next
+  NG = 2
+  if Lv = 1 then NG = 1
+  SpdOff = 0
+  if Lv >= 3 then SpdOff = 16
+  ' every room's phantoms start in the middle (C-128: 170,140)
+  for Ri = 0 to 17
+    GRx[Ri] = 112
+    GRy[Ri] = 92
+  next
+  for Gi = 0 to 1
+    Gh[Gi].D = Gi * 5 + 2
+    Gh[Gi].T = 1
+  next
+  NewScreen
+  DrawRoom
+  EnterRoom
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Stick = V & 15
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a night sky, a phantom drifting, the tune once,
+' START GAME / CREDITS and the skill level
+sub TitlePage:
+  NewScreen
+  for Ri = 0 to 11
+    Rand
+    V = Rs & 31
+    if V < 2 then V = V + 2
+    if V > 29 then V = V - 4
+    W16 = Rs >> 8
+    N = W16 & 7
+    N = N + 2
+    if Ri >= 6 then N = N + 13
+    put char TStar at V,N
+  next
+  put char TMoon at 26,3
+  print at 11,5, "P H A N T A S Y"
+  print at 15,7, "BY"
+  print at 4,8, "CLEVELAND M. BLAKEMORE"
+  print at 10,12, "START GAME"
+  print at 10,13, "CREDITS"
+  print at 9,16, "SKILL LEVEL"
+  print at 6,20, "AHOY! MARCH 1988"
+  ShowSkill
+  ShowMenu
+  TitleOn = 1
+  Rm = 0
+  KeyK = 255
+  NG = 1
+  Gh[0].X = 400
+  Gh[0].Y = 1600
+  Gh[0].D = 1
+  Gh[0].T = 40
+  SpdOff = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  MoveGhosts
+  DrawSprites
+  V = Stick & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+      play sound SndTick
+    end if
+  end if
+  V = Stick & 12
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 4
+      if K > 0 then
+        dec Lv
+        if Lv = 0 then Lv = 5
+      else
+        inc Lv
+        if Lv = 6 then Lv = 1
+      end if
+      ShowSkill
+      play sound SndTick
+    end if
+  end if
+  WasStick = Stick
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowSkill:
+  print at 21,16, "<"
+  NumU = Lv
+  print at 23,16, digits$(NumU, 1)
+  print at 25,16, ">"
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,12
+  put char 32 at 8,13
+  J = Menu + 12
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "P H A N T A S Y"
+  print at 2,5, "BASED ON PHANTASY BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! MARCH 1988 (C-128)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: NIGHT CORRIDORS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $D2,$C0,$00,$92,$00,$00,$92,$00
+  $9A,$18,$00,$92,$00,$00,$92,$00
+  $93,$03,$00,$92,$00,$00,$92,$00
+  $92,$00,$00,$D2,$C0,$00,$92,$00
+  $92,$00,$00,$9A,$18,$00,$92,$00
+  $92,$00,$00,$93,$03,$00,$92,$00
+  $92,$00,$00,$92,$00,$00,$D2,$C0
+  $92,$00,$00,$92,$00,$00,$9A,$18
+  $92,$00,$00,$92,$00,$00,$93,$03
+  $00,$60,$90,$60,$9A,$00,$00,$00
+  $00,$00,$10,$38,$10,$00,$00,$00
+  $38,$70,$E0,$E0,$E0,$E0,$70,$38
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $B1,$B1,$01,$B1,$01,$01,$B1,$01
+  $B1,$B1,$01,$B1,$01,$01,$B1,$01
+  $B1,$B1,$01,$B1,$01,$01,$B1,$01
+  $B1,$01,$01,$B1,$B1,$01,$B1,$01
+  $B1,$01,$01,$B1,$B1,$01,$B1,$01
+  $B1,$01,$01,$B1,$B1,$01,$B1,$01
+  $B1,$01,$01,$B1,$01,$01,$B1,$B1
+  $B1,$01,$01,$B1,$01,$01,$B1,$B1
+  $B1,$01,$01,$B1,$01,$01,$B1,$B1
+  $01,$B1,$B1,$1B,$1B,$01,$01,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $51,$41,$41,$41,$01,$01,$01,$01
+  $15,$14,$14,$14,$01,$01,$01,$01
+  $05,$04,$04,$04,$01,$01,$01,$01
+  $01,$01,$01,$01,$51,$41,$41,$41
+  $51,$41,$41,$41,$51,$41,$41,$41
+  $15,$14,$14,$14,$51,$41,$41,$41
+  $05,$04,$04,$04,$51,$41,$41,$41
+  $01,$01,$01,$01,$15,$14,$14,$14
+  $51,$41,$41,$41,$15,$14,$14,$14
+  $15,$14,$14,$14,$15,$14,$14,$14
+  $05,$04,$04,$04,$15,$14,$14,$14
+  $01,$01,$01,$01,$05,$04,$04,$04
+  $51,$41,$41,$41,$05,$04,$04,$04
+  $15,$14,$14,$14,$05,$04,$04,$04
+  $05,$04,$04,$04,$05,$04,$04,$04
+end data
+data SpritePat bytes
+  $03,$07,$05,$07,$03,$0F,$1F,$37,$27,$07,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$A0,$E0,$C0,$F0,$F8,$EC,$E4,$E0,$E0,$60,$60,$30,$38,$00
+  $03,$07,$05,$07,$03,$0F,$1F,$37,$27,$07,$07,$06,$06,$0C,$1C,$00
+  $C0,$E0,$A0,$E0,$C0,$F0,$F8,$EC,$E4,$E0,$E0,$60,$60,$60,$70,$00
+  $03,$0F,$1F,$39,$39,$3F,$7F,$7E,$7C,$7F,$7F,$FF,$FF,$DD,$88,$00
+  $C0,$F0,$F8,$9C,$9C,$FC,$FE,$7E,$3E,$FE,$FE,$FF,$FF,$BB,$89,$00
+  $03,$0F,$1F,$39,$39,$3F,$7F,$7E,$7C,$7F,$7F,$FF,$FF,$76,$22,$00
+  $C0,$F0,$F8,$9C,$9C,$FC,$FE,$7E,$3E,$FE,$FE,$FF,$FF,$ED,$22,$00
+  $00,$00,$00,$00,$38,$44,$83,$82,$82,$44,$38,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$2A,$2A,$00,$00,$00,$00,$00,$00,$00
+  $FF,$80,$BF,$A0,$A0,$A0,$A3,$A7,$A7,$A3,$A1,$A3,$A7,$A0,$A0,$A0
+  $FF,$01,$FD,$05,$05,$05,$C5,$E5,$E5,$C5,$85,$C5,$E5,$05,$05,$05
+  $A7,$A3,$A1,$A3,$A7,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$BF,$80,$FF
+  $E5,$C5,$85,$C5,$E5,$05,$05,$05,$05,$05,$05,$05,$05,$FD,$01,$FF
+  $00,$C0,$C0,$C1,$C3,$FF,$DF,$FF,$FF,$FF,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$FC,$7E,$FF,$FF,$FD,$03,$03,$00,$00,$00,$00
+end data
+data RoomMap bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,151,151,151,151,151,151,151,151,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,142,142,142,142,144,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,144,32,147,151,151,151,151,151,151,151,151,151,151,153,151,151,151,151,151,151,143,32,32,32,32,32
+  32,32,32,32,32,32,144,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,142,142,142,142,142,142,150,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,144,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,147,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,142,142,142,142,142,142,142,142,142,142,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,141,142,142,142,142,142,142,142,142,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,151,151,151,153,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,142,142,142,142,142,142,142,142,142,142,142,32,32,32,143,32,32,32,32,141,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,149,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,32,32,32,32,32,147,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,147,32,32,32,32,32,147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,151,151,151,151,151,151,151,151,151,151,151,143,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,152,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,151,151,143,32,32,32,32,32,151,151,151,151,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,152,151,151,151,151,143,32,32,32,147,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,151,151,151,151,151,151,151,143,32,32,32,147,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,143,32,32,32,147,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,141,142,142,142,142,142,142,142,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,153,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,141,32,32,32,32,32,141,141,142,142,142,150,142,142,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,141,142,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,151,151,151,151,151,151,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,142,142,142,142,142,142,150,32,32,32,32,32,32,32,140,142,142,142,142,142,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,142,142,142,142,142,142,149,32,32,32,32,32,32,32,142,142,142,142,142,142,142,142,142,142,142,142,142,142,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,151,151,151,151,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,142,142,142,142,142,142,141,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,144,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,142,142,142,142,142,142,142,142,142,142,142,142,142,142,140,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32
+  32,32,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,151,153,151,151,151,151,151,151,151,151,151,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,149,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+data RoomColl bytes
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,255,255,0,16,0,0
+  0,128,0,0,16,0,0,0,128,0,0,16,0,0
+  0,128,0,0,16,0,0,0,128,0,0,16,0,0
+  255,128,0,0,16,0,0,0,128,0,0,16,0,0
+  0,128,0,0,16,0,0,0,135,255,255,255,255,128
+  0,132,0,64,16,0,128,0,132,0,64,16,0,128
+  0,4,0,64,16,0,128,0,4,0,64,16,0,128
+  0,4,0,64,16,0,128,0,4,0,64,16,0,128
+  0,4,0,64,16,0,128,0,4,0,64,16,0,128
+  0,4,0,64,16,0,128,0,4,0,64,16,0,128
+  255,252,0,64,16,0,128,0,4,0,64,16,0,128
+  0,4,0,64,16,0,128,0,4,0,64,16,0,128
+  0,4,0,64,16,0,128,0,4,0,64,16,0,128
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,7,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,47,255,255,255,255,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,5,255,255,255,255,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,255,255,252,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  255,255,252,0,1,255,255,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,0,4,0,64,16,0,0
+  0,4,0,64,16,0,0,255,244,0,64,16,0,0
+  0,0,0,64,16,0,0,0,0,0,64,16,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,255,252,0,127,255,255,255
+  0,0,0,0,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,127,255,255,128
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,63,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,255,255,224,3,255,255,255
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,32,0,0,0,0
+  0,0,32,0,0,0,0,0,0,63,248,7,255,255
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,0,0,0,0,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,255,255,255,248,7,255,255
+  0,0,0,0,0,0,0,0,0,0,8,4,0,0
+  0,0,0,8,4,0,0,0,0,0,8,4,0,0
+  0,0,0,8,4,0,0,0,0,0,8,4,0,0
+  0,7,255,248,4,0,0,0,0,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,255,252,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,64,0,0,0,0,4,0,64,0,0,0
+  0,4,0,95,255,255,255,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,23,255,255,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,255,255,255,192,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,0,16,0,0,0,0,0,0,16,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  0,0,0,8,0,0,0,0,0,0,8,0,0,0
+  255,252,0,11,255,255,255,0,4,0,0,0,0,0
+  0,4,0,0,0,0,0,0,4,0,0,0,0,0
+  0,4,0,0,0,0,0,0,4,0,0,0,0,0
+  0,4,0,0,0,0,0,0,4,0,0,0,0,0
+  255,244,0,15,255,255,255,0,4,0,0,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,11,255,255,255
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,0,0,0,0,4,0,8,0,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  0,4,0,8,4,0,0,0,4,0,8,4,0,0
+  255,244,0,8,4,0,0,0,0,0,8,4,0,0
+  0,0,0,8,4,0,0,0,0,0,8,4,0,0
+  0,0,0,8,4,0,0,0,0,0,8,4,0,0
+  0,0,0,8,4,0,0,0,0,0,8,4,0,0
+  255,255,255,248,4,0,0,0,0,0,0,4,0,0
+  0,0,0,0,4,0,0,0,0,0,0,4,0,0
+  0,0,0,0,4,0,0,0,0,0,0,4,0,0
+  0,0,0,0,4,0,0,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+  0,0,4,0,0,0,0,0,0,4,0,0,0,0
+end data
+data KeyRm bytes
+  2,4,4,7,3,7,6,8,5,6
+end data
+data KeyX bytes
+  75,123,47,106,101,106,191,62,33,131
+end data
+data KeyY bytes
+  100,52,104,85,114,110,136,152,140,31
+end data
+
+asm {
+PhKey:
+    db $40,$47,$10,$03,$40,$35,$10,$03,$40,$2A,$10,$03,$40,$24,$20,$08,$50
+PhUnlock:
+    db $40,$1D,$11,$04,$40,$FF,$F3,$03,$40,$D6,$10,$04,$40,$8F,$20,$0A,$50
+PhBump:
+    db $00,$00,$25,$02,$00,$00,$56,$04,$10
+PhRoom:
+    db $40,$53,$41,$03,$40,$7C,$51,$03,$40,$AB,$61,$03,$50
+PhCaught:
+    db $40,$AA,$10,$0A,$40,$B4,$10,$0A,$40,$BF,$20,$0A,$40,$CA,$20,$0A,$40,$D6,$20,$1E,$50
+PhEscape:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+PhStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+PhTick:
+    db $40,$6B,$30,$02,$50
+
+PhSoundTable:
+    dw PhTuneMel,$702B
+    dw PhTuneBass,$7035
+    dw PhKey,$7049
+    dw PhUnlock,$7049
+    dw PhBump,$703F
+    dw PhRoom,$7049
+    dw PhCaught,$7049
+    dw PhEscape,$7049
+    dw PhStart,$7049
+    dw PhTick,$7049
+; Night Corridors (original)
+; Tiny Sound, 10 frames per step
+PhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$60,$F1,$22,$23,$01,$01,$26,$01,$2A,$28,$01,$26,$25,$01,$01
+    db $23,$01,$01,$21,$01,$23,$25,$01,$01,$1E,$01,$01,$1F,$01,$23,$28
+    db $01,$26,$25,$01,$21,$23,$01,$01,$26,$01,$01,$25,$01,$23,$22,$01
+    db $01,$23,$01,$01,$00,$01,$01
+    db $FF
+PhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$80,$18,$32,$0B,$12,$0E,$0B,$12,$0E,$09,$10,$0D,$06,$0D,$12
+    db $0B,$12,$0E,$06,$0D,$0A,$06,$0D,$12,$0B,$12,$0E,$04,$0B,$10,$07
+    db $0E,$13,$09,$10,$0D,$0B,$12,$0E,$07,$0E,$0B,$06,$0D,$12,$06,$0D
+    db $0A,$0B,$01,$01,$00,$01,$01
+    db $FF
+}

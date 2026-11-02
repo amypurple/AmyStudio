@@ -1,0 +1,1289 @@
+cartridge "WIZARD TAG II/BOB BLACKMER/1987"
+
+' WIZARD TAG II
+' A ColecoVision game based on "Wizard Tag II" by Bob Blackmer, Ahoy! July
+' 1987 (Commodore 64, machine code at $C000; the sequel to his Wizard Tag,
+' games/wtag). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (from the article
+' and its castle map, checked against the machine code, orig/wtag2-ml.dis),
+' rebuilt for the ColecoVision with Wizard Tag's tiles, layered sprites and
+' sound effects.
+'
+' The game: a castle of twelve floors joined by ladders. Gather the eight
+' keys, then climb to the top floor and tag the wizard, all against the
+' clock: 2:30 to start. Snakes travel the length of floors 2, 6 and 10:
+' one trips you and drags you along with it (time lost). Thrashing vines
+' sweep part of floors 4 and 8: one flings you down to the ground floor.
+' The keys of those two floors lie at the far ends, past the vine's sweep:
+' work out when to slip by. Tag the wizard and he plays his guitar while
+' time is added (less each level); then the snakes and vines are faster.
+' Tag him on level 9 and you are the winner. The score is the levels
+' completed and the time left.
+'
+' From the original (orig/): twelve floors; ladders between every pair,
+' three (left, middle, right: C64 columns 17, 54, 91) and two (34, 74) in
+' turn, three between the ground floor and floor 2 and between floors 11
+' and 12; walking only on a floor, climbing only at a ladder; the hero
+' starts on the ground floor near the right end; six keys at random places
+' on floors 1, 3, 5, 7, 9, 11 and two fixed ones: floor 4 at the right end
+' (its vine sweeps right over C64 columns 77-106), floor 8 at the left end
+' (its vine sweeps left over columns 32-4); the vine is safe up to the key
+' and the ladder outside its sweep, but the ladder inside it is the only
+' way to the key without crossing the vine; three snakes on floors 2, 6, 10
+' moving together left to right and starting again at the left; the
+' wizard on the top floor at a random place, tagged only with all eight
+' keys; on the ladders nothing can touch you; a snake drags the hero along
+' until it reaches the right wall; a vine carries him to the end of its
+' sweep, then he falls to the ground floor; 2:30 on the clock, real
+' seconds, running while he is dragged or falls; after a tag 100 seconds
+' are added, 10 less each level; the snakes and vines step every 8 passes
+' at level 1, one pass sooner each level down to every pass; the keys are
+' scattered again and the hero starts again on the ground floor; on level
+' 9 the tag wins ("WE HAVE A WINNER !"); out of time ends the game.
+'
+' Liberties: the C64 scrolled a 22 x 13 window round the hero; here the
+' castle is drawn the full width of the screen, six floors at a time, and
+' the view moves three floors when he climbs near its edge (rows 3-20); a
+' castle gauge (row 21) shows all twelve floors: keys still there, snakes,
+' vines, the wizard and the hero, as the article's map does (the original
+' had none: the map was in the magazine); the castle's 107 C64 columns are
+' 208 pixels, smooth: the hero walks 0.75 pixel and climbs 1.5 pixels a
+' frame (the C64's loop ran about 22 times a second, a column or a row a
+' pass); the snakes and vines move by fractions of a pixel at the same pace
+' as on the C64 (0.09 pixel a frame at level 1), but the vines never faster
+' than their level 5 pace (0.19 a frame), so that slipping past them stays
+' possible for a human (on the C64 at full speed it took a pixel-perfect
+' swap); he steps onto a ladder
+' within 6 pixels of it; the snake drags him while it crosses the floor, so
+' a snake at level 1 costs up to 40 seconds as on the C64; touching the
+' wizard without the eight keys says so; a side button pauses; the end
+' shows the levels completed and the time left, the best kept on the
+' title; title tune, guitar riff and sounds are new; the mail-in contest
+' of the article is left out.
+'
+' Controls: joystick only. Left and right walk along a floor, up and down
+' climb a ladder (stand at it), a side button pauses and starts the next
+' level. Either controller. On the title, up and down choose, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait. Music first in the sound table, effects after; the title
+' tune is played once. `set sprite count` after every `clear sprites`. Own
+' xorshift random numbers.
+
+const TBg = 128
+const TFloor = 129
+const TCeil = 130
+const TLadl = 131
+const TLadr = 132
+const THolel = 133
+const THoler = 134
+const TRimL = 135
+const TRimR = 136
+const TKeyl = 137
+const TKeyr = 138
+const TTorch = 139
+const TBrick = 140
+const THudkey = 141
+const THudno = 142
+const TGkey = 143
+const TGsnake = 144
+const TGvine = 145
+const TGnone = 146
+const TGwiz = 147
+const TGhere = 148
+const SHb0 = 0
+const SHd0 = 4
+const SHb1 = 8
+const SHd1 = 12
+const SHb2 = 16
+const SHd2 = 20
+const SHb3 = 24
+const SHd3 = 28
+const SHb4 = 32
+const SHd4 = 36
+const SSn0 = 40
+const SSn1 = 44
+const SVn0 = 48
+const SVn1 = 52
+const SWr0 = 56
+const SWd0 = 60
+const SWr1 = 64
+const SWd1 = 68
+const SWr2 = 72
+const SWd2 = 76
+const SWr3 = 80
+const SWd3 = 84
+const NTiles8 = 168
+const SprBytes = 704
+const SndTuneA = 1
+const SndTuneB = 2
+const SndKey = 3
+const SndRung = 4
+const SndMagic = 5
+const SndRiff = 6
+const SndTrip = 7
+const SndLash = 8
+const SndFall = 9
+const SndTick = 10
+const SndOver = 11
+const SndWin = 12
+const SndPick = 13
+const MinX = 16
+const MaxX = 224
+const MsgRow = 22
+const GaugeRow = 21
+const NSpr = 9
+const NKeys = 8
+const TopF = 11
+const StartX = 208
+const VineCap = 48
+const SnMin = 16
+const SnMax = 224
+
+' the snakes' and vines' pace, 256ths of a pixel a frame, by level
+data SpdTab bytes 22,25,30,36,45,60,90,181,181
+' seconds added after a tag, by level
+data AddTab bytes 100,90,80,70,60,50,40,30,20
+' ladders: gap g (between floor g and g + 1) even: three, odd: two
+data LadE bytes 48,120,192
+data LadO bytes 80,160,0
+' each floor: 0 plain, 1 key, 2 snake, 3 vine (and key), 4 wizard
+data FloorKind bytes 1,2,1,3,1,2,1,3,1,2,1,4
+' the floors of the eight keys (the last two fixed)
+data KeyFloor bytes 0,2,4,6,8,10,3,7
+data HeroB bytes SHb0,SHb1,SHb2,SHb3,SHb4
+data HeroD bytes SHd0,SHd1,SHd2,SHd3,SHd4
+
+data TilePat bytes
+  $00,$00,$00,$80,$00,$00,$00,$08
+  $00,$00,$10,$10,$00,$01,$01,$00
+  $00,$08,$08,$00,$20,$20,$00,$00
+  $40,$40,$80,$40,$40,$40,$80,$40
+  $02,$02,$01,$02,$02,$02,$01,$02
+  $40,$40,$80,$40,$40,$40,$80,$40
+  $02,$02,$01,$02,$02,$02,$01,$02
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$70,$70,$70,$70,$00
+  $00,$00,$00,$00,$03,$03,$28,$28
+  $10,$38,$38,$10,$38,$10,$10,$00
+  $00,$80,$00,$08,$00,$00,$01,$00
+  $00,$60,$60,$9A,$60,$00,$00,$00
+  $00,$60,$60,$9A,$60,$00,$00,$00
+  $00,$00,$60,$61,$95,$00,$00,$00
+  $00,$00,$04,$2A,$50,$00,$00,$00
+  $00,$10,$08,$10,$20,$10,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$18,$38,$38,$38,$83,$00
+  $00,$00,$18,$C3,$18,$24,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$41,$01,$01,$01,$41
+  $0B,$0A,$6A,$6A,$06,$6A,$6A,$06
+  $0E,$4E,$4E,$04,$4E,$4E,$04,$01
+  $B1,$B1,$1B,$B1,$B1,$B1,$1B,$B1
+  $B1,$B1,$1B,$B1,$B1,$B1,$1B,$B1
+  $B1,$B1,$1B,$B1,$B1,$B1,$1B,$B1
+  $B1,$B1,$1B,$B1,$B1,$B1,$1B,$B1
+  $1B,$1A,$1A,$1A,$16,$1A,$1A,$16
+  $1B,$1A,$1A,$1A,$16,$1A,$1A,$16
+  $01,$01,$01,$B1,$1B,$1B,$B1,$01
+  $01,$01,$01,$01,$1B,$1B,$B1,$B1
+  $81,$81,$B1,$81,$E1,$E1,$E1,$01
+  $06,$86,$01,$86,$06,$01,$86,$01
+  $01,$B1,$1B,$B1,$B1,$01,$01,$01
+  $01,$E1,$1E,$E1,$E1,$01,$01,$01
+  $0E,$01,$B1,$1B,$1B,$01,$01,$0E
+  $0E,$01,$31,$31,$31,$01,$01,$0E
+  $0E,$C1,$C1,$C1,$C1,$C1,$C1,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$D1,$D1,$D1,$F1,$D1,$1D,$0E
+  $05,$01,$51,$15,$51,$51,$01,$05
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$1B,$03,$03,$03,$03,$06,$06,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F8,$D8,$C0,$C0,$C0,$60,$30,$30,$00
+  $03,$07,$07,$07,$07,$03,$00,$00,$00,$18,$00,$00,$00,$00,$00,$0E
+  $C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$18,$00,$00,$00,$00,$00,$38
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$1B,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F8,$D8,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $03,$07,$07,$07,$07,$03,$00,$00,$00,$18,$00,$00,$00,$00,$00,$03
+  $C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$18,$00,$00,$00,$00,$00,$C0
+  $00,$18,$18,$18,$1C,$0F,$0F,$07,$03,$03,$03,$06,$06,$06,$00,$00
+  $00,$18,$18,$18,$38,$F0,$F0,$E0,$C0,$C0,$C0,$60,$60,$00,$00,$00
+  $1B,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$00
+  $D8,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$70,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$03,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$F8,$F8,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$7C,$7C,$7C,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$06,$06,$00,$C0,$00
+  $00,$18,$18,$18,$00,$00,$00,$0F,$0F,$07,$03,$06,$0C,$18,$00,$00
+  $00,$18,$18,$00,$00,$00,$00,$F0,$F0,$E0,$C0,$60,$30,$18,$00,$00
+  $18,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$38,$00
+  $18,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$1C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$63,$94,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$3E,$37,$9C,$58,$30,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E3,$1C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$3E,$37,$38,$B0,$60,$00
+  $03,$06,$06,$03,$01,$03,$06,$2C,$1C,$0C,$06,$03,$01,$01,$03,$02
+  $00,$00,$40,$C0,$80,$00,$00,$00,$00,$00,$00,$20,$E0,$80,$00,$00
+  $00,$00,$02,$03,$01,$00,$00,$00,$00,$00,$00,$04,$07,$01,$00,$00
+  $C0,$60,$60,$C0,$80,$C0,$60,$34,$38,$30,$60,$C0,$80,$80,$C0,$40
+  $01,$03,$06,$0F,$3F,$00,$00,$00,$08,$1C,$3E,$1F,$1F,$1F,$3F,$00
+  $80,$C0,$E0,$F0,$FC,$00,$00,$00,$10,$38,$7C,$F8,$F8,$F8,$FC,$00
+  $00,$00,$01,$00,$00,$07,$07,$07,$07,$03,$01,$20,$00,$00,$00,$3C
+  $00,$00,$00,$00,$00,$E0,$E0,$E0,$E2,$C7,$82,$06,$02,$02,$02,$3E
+  $01,$03,$06,$0F,$3F,$00,$00,$00,$08,$1C,$3E,$1F,$1F,$1F,$3F,$00
+  $80,$C0,$E0,$F0,$FC,$00,$00,$00,$10,$38,$7C,$F8,$F8,$F8,$FC,$00
+  $00,$00,$01,$00,$00,$07,$07,$07,$07,$03,$01,$20,$00,$00,$00,$3C
+  $00,$00,$00,$00,$00,$E0,$E0,$E4,$EE,$C4,$82,$06,$02,$02,$02,$3C
+  $01,$03,$06,$0F,$3F,$00,$00,$00,$08,$1C,$06,$03,$00,$03,$07,$00
+  $80,$C0,$E0,$F0,$FC,$00,$00,$00,$10,$38,$70,$E0,$18,$F8,$FC,$00
+  $00,$00,$01,$00,$00,$07,$07,$07,$07,$03,$39,$7C,$7F,$7C,$38,$3C
+  $00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$C2,$8C,$18,$E0,$00,$00,$3C
+  $01,$03,$06,$0F,$3F,$00,$00,$00,$08,$1C,$06,$03,$00,$03,$07,$00
+  $80,$C0,$E0,$F0,$FC,$00,$00,$00,$10,$28,$5C,$D0,$18,$F8,$FC,$00
+  $00,$00,$01,$00,$00,$07,$07,$07,$07,$03,$39,$7C,$7F,$7C,$38,$3C
+  $00,$00,$00,$00,$00,$E0,$E0,$E4,$E8,$D0,$A0,$28,$E0,$00,$00,$3C
+end data
+data TitleMap bytes
+  32,32,32,140,32,32,32,140,32,140,32,140,140,140,140,32,32,140,140,32,32,140,140,140,32,32,140,140,140,32,32,32
+  32,32,32,140,32,32,32,140,32,140,32,32,32,32,140,32,140,32,32,140,32,140,32,32,140,32,140,32,32,140,32,32
+  32,32,32,140,32,32,32,140,32,140,32,32,32,140,32,32,140,32,32,140,32,140,32,32,140,32,140,32,32,140,32,32
+  32,32,32,140,32,140,32,140,32,140,32,32,140,32,32,32,140,140,140,140,32,140,140,140,32,32,140,32,32,140,32,32
+  32,32,32,140,32,140,32,140,32,140,32,140,32,32,32,32,140,32,32,140,32,140,32,140,32,32,140,32,32,140,32,32
+  32,32,32,140,140,32,140,140,32,140,32,140,32,32,32,32,140,32,32,140,32,140,32,32,140,32,140,32,32,140,32,32
+  32,32,32,140,32,32,32,140,32,140,32,140,140,140,140,32,140,32,32,140,32,140,32,32,140,32,140,140,140,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,140,140,140,140,32,32,140,140,32,32,32,140,140,140,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,140,140,32,32,140,32,32,140,32,140,32,32,32,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,140,140,32,32,140,32,32,140,32,140,32,32,32,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,140,140,32,32,140,140,140,140,32,140,32,140,140,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,140,140,32,32,140,32,32,140,32,140,32,32,140,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,140,140,32,32,140,32,32,140,32,140,32,32,140,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,140,140,32,32,140,32,32,140,32,32,140,140,32,32,32,32,140,32,140,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+' the game
+u8 Level = 1
+u8 BestLev = 0
+u16 BestSec = 0
+u16 Secs = 150
+u8 Fr = 0
+u8 PX = StartX
+u16 H = 0
+u8 PF = 0
+u8 Mode = 0
+u8 WAcc = 0
+u8 CAcc = 0
+u8 Stride = 0
+u8 StrideC = 0
+u8 Pose = 0
+u8 Keys = 0
+u8 KC[8]
+u8 KOn[8]
+u8 WX = 120
+u8 WHint = 0
+u8 SnX = SnMin
+u8 SnA = 0
+u8 SnD = 0
+u8 SnWrap = 0
+u8 VnP = 0
+u8 VnA = 0
+u8 VnD = 0
+u8 VnWrap = 0
+u8 Spd = 22
+u8 VSpd = 22
+u8 CamB = 0
+u8 Anim = 0
+u8 State = 0
+u8 Paused = 0
+' input: J the stick (1 up, 2 down, 4 left, 8 right, 16 a button)
+u8 J = 0
+u8 OldJ = 0
+u8 Press = 0
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Sel = 0
+' loop counters (never shared with the helpers)
+u8 Ki = 0
+u8 Si = 0
+u8 Ti = 0
+u8 Fi = 0
+u8 Gi = 0
+u8 Gj = 0
+u8 Kj = 0
+u8 GPF = 255
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table WuSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 1
+  sprites flicker on
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 1 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+  RunGame
+  ' the end: the message, the levels completed and the time left, then the
+  ' title on a press
+  HideSprites
+  mute all
+  for Ti = 19 to 22
+    fill 32 count 28 at 2,Ti
+  next
+  if State = 5 then
+    print at 6,19, "WE HAVE A WINNER !"
+    play sound SndWin
+  else
+    print at 4,19, "YOU RAN OUT OF TIME!"
+    play sound SndOver
+  end if
+  ShowScore
+  Rearm
+  wait 120 frames
+  nmi off
+  print at 4,22, "PRESS FIRE TO GO AGAIN"
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a game: levels until the time runs out or the ninth tag
+
+sub NewGame:
+  Level = 1
+  Secs = 150
+  Fr = 0
+  Paused = 0
+  State = 0
+  return
+end sub
+
+sub RunGame:
+  NewScreen
+  StartLevel
+rg_level:
+  play sound SndMagic
+  print at 2,MsgRow, " GATHER 8 KEYS, TAG HIM!   "
+  for Ti = 1 to 90
+    Frame1
+    DrawSprites
+  next
+  ClearMsg
+  State = 1
+  OldJ = 31
+rg_loop:
+  Frame1
+  GetInput
+  PlayStep
+  DrawSprites
+  if State = 1 then goto rg_loop
+  if State <> 4 then return
+  ' tagged: on level 9 the winner, else time added and the next level
+  if Level >= 9 then
+    State = 5
+    GuitarFor(90)
+    return
+  end if
+  AddTime
+  inc Level
+  StartLevel
+  goto rg_level
+end sub
+
+' a new level: the hero on the ground floor, the keys scattered, the
+' snakes and vines back at their starts and faster
+sub StartLevel:
+  PX = StartX
+  H = 0
+  PF = 0
+  Mode = 0
+  WAcc = 0
+  CAcc = 0
+  Pose = 0
+  Keys = 0
+  WHint = 0
+  SnX = SnMin
+  SnA = 0
+  VnP = 0
+  VnA = 0
+  CamB = 0
+  GPF = 255
+  Spd = SpdTab[Level - 1]
+  VSpd = Spd
+  if VSpd > VineCap then VSpd = VineCap
+  for Ki = 0 to NKeys - 1
+    PlaceKey(Ki)
+  next
+  PlaceWizard
+  DrawCastle
+  ShowStatus
+  ShowGauge
+  ShowScreen
+  return
+end sub
+
+' key I: the six on the odd floors at a random column away from the
+' ladders that go up from that floor (and from the hero's start), the
+' floor 4 key at the right end, the floor 8 key at the left end
+sub PlaceKey(u8 I):
+  u8 Ok = 0
+  u8 Kf = 0
+  Kf = KeyFloor[I]
+  KOn[I] = 1
+  if I = 6 then
+    KC[I] = 28
+    return
+  end if
+  if I = 7 then
+    KC[I] = 2
+    return
+  end if
+  while Ok = 0
+    Rand
+    KC[I] = (Rs >> 6) % 24 + 3
+    Ok = KeyColOk(Kf, KC[I])
+  end while
+  return
+end sub
+
+' 1 if a key at column Col on floor Kf clears the ladders going up and the
+' hero's start
+function KeyColOk(u8 Kf, u8 Col) as u8
+  u8 Lc = 0
+  for Si = 0 to 2
+    Lc = LadderX(Kf, Si) >> 3
+    if Lc > 0 then
+      if Col + 1 >= Lc and Col <= Lc + 1 then return 0
+    end if
+  next
+  if Kf = 0 and Col >= 23 then return 0
+  return 1
+
+' the x of ladder I (0-2) in gap G, 0 if none (and none above the top)
+function LadderX(u8 G, u8 I) as u8
+  if G >= TopF then return 0
+  if (G & 1) = 0 then return LadE[I]
+  return LadO[I]
+
+sub PlaceWizard:
+  Rand
+  WX = (Rs >> 5) % 184 + 24
+  return
+end sub
+
+' one frame of play: pause, the clock, the snakes and vines, the hero
+sub PlayStep:
+  if Press = 1 then
+    Paused = Paused ^ 1
+    play sound SndPick
+    if Paused = 1 then
+      print at 12,MsgRow, "PAUSED"
+    else
+      ClearMsg
+    end if
+  end if
+  if Paused = 1 then return
+  inc Anim
+  Clock
+  if State <> 1 then return
+  MoveHazards
+  select case Mode
+  case 0
+    MoveHero
+    if (H % 24) = 0 then
+      PF = H / 24
+      CheckKeys
+      CheckWizard
+      CheckHazards
+    end if
+  case 1
+    ' dragged by the snake to the right wall
+    if SnWrap = 1 then
+      Mode = 0
+      Pose = 0
+    else
+      PX = PX + SnD
+      if PX > MaxX then PX = MaxX
+    end if
+  case 2
+    ' carried by the vine to the end of its sweep, then the fall
+    Pose = 4 - ((Anim >> 3) & 1) * 2
+    if VnWrap = 1 then
+      Mode = 3
+      play sound SndFall
+    else
+      if PF = 3 then
+        PX = PX + VnD
+        if PX > MaxX then PX = MaxX
+      else
+        PX = PX - VnD
+        if PX < MinX then PX = MinX
+      end if
+    end if
+  case else
+    ' falling to the ground floor
+    Pose = 4
+    if H <= 2 then
+      H = 0
+      PF = 0
+      Mode = 0
+      Pose = 0
+    else
+      H = H - 2
+      PF = H / 24
+    end if
+  end select
+  Camera
+  return
+end sub
+
+' the clock: a second every 60 frames
+sub Clock:
+  inc Fr
+  if Fr < 60 then return
+  Fr = 0
+  if Secs > 0 then dec Secs
+  ShowTime
+  if Secs = 0 then State = 3
+  return
+end sub
+
+' the snakes move together left to right and start again at the left; the
+' vines sweep their part of floors 4 (right) and 8 (left) and start again
+sub MoveHazards:
+  u16 Sum = 0
+  Sum = SnA + Spd
+  SnD = Sum >> 8
+  SnA = Sum & 255
+  SnWrap = 0
+  SnX = SnX + SnD
+  if SnX >= SnMax then
+    SnX = SnMin
+    SnWrap = 1
+  end if
+  Sum = VnA + VSpd
+  VnD = Sum >> 8
+  VnA = Sum & 255
+  VnWrap = 0
+  VnP = VnP + VnD
+  if VnP > 48 then
+    VnP = 0
+    VnWrap = 1
+  end if
+  return
+end sub
+
+' the hero walks only on a floor and climbs only at a ladder
+sub MoveHero:
+  if (H % 24) = 0 then
+    ' standing on floor PF
+    if (J & 1) <> 0 then
+      X = LadderNear(PF)
+      if X > 0 then
+        PX = X
+        Climb(0)
+        return
+      end if
+    end if
+    if (J & 2) <> 0 and PF > 0 then
+      X = LadderNear(PF - 1)
+      if X > 0 then
+        PX = X
+        Climb(1)
+        return
+      end if
+    end if
+    Pose = 0
+    if (J & 12) = 0 then return
+    WAcc = WAcc + 192
+    if WAcc >= 192 then return
+    if (J & 4) <> 0 and PX > MinX then
+      dec PX
+      Walk
+    end if
+    if (J & 8) <> 0 and PX < MaxX then
+      inc PX
+      Walk
+    end if
+  else
+    ' on a ladder: up or down only
+    if (J & 1) <> 0 then
+      Climb(0)
+    else
+      if (J & 2) <> 0 then Climb(1)
+    end if
+  end if
+  return
+end sub
+
+' the x of a ladder within reach in gap G, or 0
+function LadderNear(u8 G) as u8
+  u8 Lx = 0
+  for Si = 0 to 2
+    Lx = LadderX(G, Si)
+    if Lx > 0 then
+      if PX + 6 >= Lx and PX <= Lx + 6 then return Lx
+    end if
+  next
+  return 0
+
+' 1.5 pixels a frame on a ladder (Down 1 or 0), stopping at each floor
+sub Climb(u8 Down):
+  Pose = 2
+  ClimbPx(Down)
+  CAcc = CAcc + 128
+  if CAcc >= 128 then return
+  if (H % 24) <> 0 then ClimbPx(Down)
+  return
+end sub
+
+sub ClimbPx(u8 Down):
+  if Down = 1 then
+    dec H
+  else
+    inc H
+  end if
+  if (H & 7) = 0 then play sound SndRung
+  PF = H / 24
+  return
+end sub
+
+sub Walk:
+  inc StrideC
+  if StrideC >= 6 then
+    StrideC = 0
+    Stride = Stride ^ 1
+  end if
+  Pose = Stride
+  return
+end sub
+
+sub CheckKeys:
+  u8 Kx = 0
+  for Ki = 0 to NKeys - 1
+    if KOn[Ki] = 1 and KeyFloor[Ki] = PF then
+      Kx = KC[Ki] * 8
+      T = PX + 8
+      if T >= Kx and T < Kx + 16 then
+        KOn[Ki] = 0
+        inc Keys
+        EraseKey(Ki)
+        if Keys = NKeys then
+          play sound SndMagic
+        else
+          play sound SndKey
+        end if
+        ShowStatus
+        ShowGauge
+      end if
+    end if
+  next
+  return
+end sub
+
+' the wizard on the top floor: tagged with all eight keys
+sub CheckWizard:
+  if PF <> TopF then return
+  if PX + 10 < WX + 2 or PX + 5 > WX + 13 then return
+  if Keys = NKeys then
+    State = 4
+    return
+  end if
+  if WHint = 0 then
+    WHint = 1
+    print at 2,MsgRow, "  BRING ALL 8 KEYS FIRST!  "
+    play sound SndPick
+  end if
+  return
+end sub
+
+' a snake trips the hero, a vine catches him (on a floor only)
+sub CheckHazards:
+  i16 Vx = 0
+  select case FloorKind[PF]
+  case 2
+    if PX + 10 >= SnX + 1 and PX + 5 <= SnX + 14 then
+      Mode = 1
+      Pose = 3
+      play sound SndTrip
+    end if
+  case 3
+    Vx = VineX(PF)
+    if PX + 10 >= Vx + 4 and PX + 5 <= Vx + 11 then
+      Mode = 2
+      Pose = 4
+      play sound SndLash
+    end if
+  end select
+  return
+end sub
+
+' the vine's x on floor F (3: sweeping right, 7: sweeping left)
+function VineX(u8 F) as u8
+  if F = 3 then return 168 + VnP
+  return 72 - VnP
+
+' the view: six floors from CamB up; it moves three floors when the hero
+' climbs near its top or below its bottom
+sub Camera:
+  i16 Rel = 0
+  Rel = H
+  Rel = Rel - CamB * 24
+  if Rel > 108 and CamB < 6 then
+    CamB = CamB + 3
+    DrawCastle
+  else
+    if Rel < 12 and CamB > 0 then
+      CamB = CamB - 3
+      DrawCastle
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a tag: the guitar, the time added, the next level on a press
+
+' the wizard plays his guitar for N frames (strums at 3 a second)
+sub GuitarFor(u8 N):
+  play sound SndRiff
+  print at 2,MsgRow, "     TAGGED! HE PLAYS!     "
+  for Ti = 1 to N
+    Frame1
+    inc Anim
+    DrawSprites
+  next
+  return
+end sub
+
+sub AddTime:
+  u8 Add = 0
+  Add = AddTab[Level - 1]
+  GuitarFor(90)
+  print at 2,MsgRow, "        ADDING TIME        "
+  for Fi = 1 to Add
+    Frame1
+    inc Anim
+    DrawSprites
+    Frame1
+    inc Anim
+    DrawSprites
+    inc Secs
+    play sound SndTick
+    ShowTime
+  next
+  print at 2,MsgRow, "  PRESS FIRE WHEN READY!   "
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+ad_wait:
+  Frame1
+  inc Anim
+  DrawSprites
+  ReadPads
+  N = Pads & (Pads ^ OldPads)
+  if (N & 16) = 0 then goto ad_wait
+  ClearMsg
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub GetInput:
+  ReadPads
+  J = Pads
+  Press = 0
+  if (J & 16) <> 0 then
+    if (OldJ & 16) = 0 then Press = 1
+  end if
+  OldJ = J
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the screen row of floor F's flagstones (floor CamB at row 20)
+function FloorRow(u8 F) as u8
+  return 20 - (F - CamB) * 3
+
+' the castle as seen from CamB: row 2 the ceiling or the floor above, six
+' floors (corridor, corridor, flagstones), ladders, torches and keys
+sub DrawCastle:
+  u8 Top = 0
+  Rearm
+  wait
+  nmi off
+  Top = CamB + 5
+  if Top = TopF then
+    fill TCeil count 28 at 2,2
+  else
+    fill TFloor count 28 at 2,2
+    DrawHoles(Top, 2)
+  end if
+  for Fi = CamB to Top
+    Y = FloorRow(Fi)
+    fill TBg count 28 at 2,Y - 2
+    fill TBg count 28 at 2,Y - 1
+    fill TFloor count 28 at 2,Y
+    put char TTorch at 13,Y - 2
+    put char TTorch at 18,Y - 2
+    if Fi > 0 then DrawHoles(Fi - 1, Y)
+  next
+  for Fi = CamB to Top
+    if Fi < TopF then DrawLadders(Fi, FloorRow(Fi) - 3)
+  next
+  for Ki = 0 to NKeys - 1
+    if KOn[Ki] = 1 then DrawKey(Ki)
+  next
+  return
+end sub
+
+' holes for the ladders of gap G in the flagstone row R
+sub DrawHoles(u8 G, u8 R):
+  u8 Lx = 0
+  for Si = 0 to 2
+    Lx = LadderX(G, Si)
+    if Lx > 0 then
+      C = Lx >> 3
+      put char TRimL at C - 1,R
+      put char THolel at C,R
+      put char THoler at C + 1,R
+      put char TRimR at C + 2,R
+    end if
+  next
+  return
+end sub
+
+' the ladders of gap G, through the flagstones (row R) and down the
+' corridor below
+sub DrawLadders(u8 G, u8 R):
+  u8 Lx = 0
+  for Si = 0 to 2
+    Lx = LadderX(G, Si)
+    if Lx > 0 then
+      C = Lx >> 3
+      put char TLadl at C,R + 1
+      put char TLadr at C + 1,R + 1
+      put char TLadl at C,R + 2
+      put char TLadr at C + 1,R + 2
+    end if
+  next
+  return
+end sub
+
+' a key lies in the lower corridor row of its floor (when in view)
+sub DrawKey(u8 I):
+  u8 Kf = 0
+  Kf = KeyFloor[I]
+  if Kf < CamB or Kf > CamB + 5 then return
+  Y = FloorRow(Kf) - 1
+  put char TKeyl at KC[I],Y
+  put char TKeyr at KC[I] + 1,Y
+  return
+end sub
+
+sub EraseKey(u8 I):
+  u8 Kf = 0
+  Kf = KeyFloor[I]
+  if Kf < CamB or Kf > CamB + 5 then return
+  Y = FloorRow(Kf) - 1
+  fill TBg count 2 at KC[I],Y
+  return
+end sub
+
+' row 1: the clock, the level, the keys held
+sub ShowStatus:
+  ShowTime
+  print at 13,1, "LEVEL " + digits$(Level, 1)
+  print at 22,1, "KEYS " + digits$(Keys, 1)
+  put char THudkey at 29,1
+  return
+end sub
+
+sub ShowTime:
+  u16 Mm = 0
+  u16 Ss = 0
+  Mm = Secs / 60
+  Ss = Secs - Mm * 60
+  print at 2,1, "TIME " + digits$(Mm, 1) + ":" + digits$(Ss, 2)
+  return
+end sub
+
+' row 21: the castle, ground floor at the left: keys still there, snakes,
+' vines, the wizard; the hero's floor marked
+sub ShowGauge:
+  print at 2,GaugeRow, "MAP"
+  for Gj = 0 to TopF
+    T = TGnone
+    select case FloorKind[Gj]
+    case 2
+      T = TGsnake
+    case 3
+      T = TGvine
+    case 4
+      T = TGwiz
+    end select
+    for Kj = 0 to NKeys - 1
+      if KOn[Kj] = 1 and KeyFloor[Kj] = Gj then T = TGkey
+    next
+    if Gj = PF then T = TGhere
+    put char T at 6 + Gj,GaugeRow
+  next
+  ' (an expression inside digits$ after a string is refused:
+  ' bugs/wtag-digits-expr-concat, still open)
+  T = PF + 1
+  print at 19,GaugeRow, "FLOOR " + digits$(T, 2)
+  return
+end sub
+
+sub ShowScore:
+  u16 Mm = 0
+  u16 Ss = 0
+  T = Level - 1
+  if State = 5 then T = Level
+  Mm = Secs / 60
+  Ss = Secs - Mm * 60
+  print at 3,20, "LEVELS " + digits$(T, 1) + "   TIME LEFT " + digits$(Mm, 1) + ":" + digits$(Ss, 2)
+  if T > BestLev or (T = BestLev and Secs > BestSec) then
+    BestLev = T
+    BestSec = Secs
+  end if
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,MsgRow
+  return
+end sub
+
+' the y of a sprite standing on floor F, 207 when out of view
+function SprY(u8 F) as u8
+  if F < CamB or F > CamB + 5 then return 207
+  return 143 - (F - CamB) * 24
+
+sub DrawSprites:
+  i16 Hy = 0
+  Hy = H
+  Hy = 143 - (Hy - CamB * 24)
+  Y = Hy
+  if Hy < 0 or Hy > 160 then Y = 207
+  V = HeroB[Pose]
+  K = HeroD[Pose]
+  set sprite 0 to Y,PX,K,9
+  set sprite 1 to Y,PX,V,5
+  N = (Anim >> 3) & 1
+  ' the wizard (with his guitar after a tag, strumming 3 times a second)
+  Y = SprY(TopF)
+  if State >= 4 then
+    N = 2 + (Anim / 10) % 2
+  end if
+  set sprite 2 to Y,WX,SWd0 + N * 8,15
+  set sprite 3 to Y,WX,SWr0 + N * 8,13
+  N = (Anim >> 3) & 1
+  ' the snakes
+  for Gi = 0 to 2
+    Y = SprY(Gi * 4 + 1)
+    set sprite 4 + Gi to Y,SnX,SSn0 + N * 4,3
+  next
+  ' the vines
+  Y = SprY(3)
+  set sprite 7 to Y,VineX(3),SVn0 + N * 4,12
+  Y = SprY(7)
+  set sprite 8 to Y,VineX(7),SVn0 + N * 4,12
+  update sprites
+  if PF <> GPF then
+    GPF = PF
+    ShowGauge
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for K = 0 to NSpr - 1
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: WIZARD TAG II in castle bricks, the hero chasing the wizard
+' along a floor with a snake behind, START / CREDITS, the tune once
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 512 to vram.name + 32
+  fill TFloor count 28 at 2,19
+  if BestLev > 0 or BestSec > 0 then
+    W16 = BestSec / 60
+    T = BestSec % 60
+    print at 4,21, "BEST " + digits$(BestLev, 1) + " LEVELS, " + digits$(W16, 1) + ":" + digits$(T, 2) + " LEFT"
+  end if
+  Sel = 0
+  ShowMenu
+  PX = 40
+  WX = 120
+  SnX = 0
+  Anim = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 459
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  TitleDemo
+  N = Pads & (Pads ^ OldPads)
+  if (N & 3) <> 0 then
+    Sel = Sel ^ 1
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 16) = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,16
+  put char 32 at 10,17
+  put char 62 at 10,Sel + 16
+  print at 12,16, "START"
+  print at 12,17, "CREDITS"
+  return
+end sub
+
+' the hero chases the wizard round the floor at row 18, a snake behind
+sub TitleDemo:
+  inc Anim
+  inc PX
+  if (Anim & 1) = 0 then inc WX
+  if (Anim & 3) = 0 then inc SnX
+  if PX > 239 then PX = 0
+  if WX > 239 then WX = 0
+  if SnX > 239 then SnX = 0
+  N = (Anim >> 3) & 1
+  V = HeroB[N]
+  K = HeroD[N]
+  set sprite 0 to 135,PX,K,9
+  set sprite 1 to 135,PX,V,5
+  set sprite 2 to 135,WX,SWd0 + N * 8,15
+  set sprite 3 to 135,WX,SWr0 + N * 8,13
+  set sprite 4 to 135,SnX,SSn0 + N * 4,3
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "WIZARD  TAG II"
+  print at 2,5, "BASED ON WIZARD TAG II BY"
+  print at 2,6, "BOB BLACKMER, AHOY! JULY"
+  print at 2,7, "1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: TWELVE FLOORS UP"
+  print at 2,17, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+WuKey:
+    db $40,$55,$20,$03,$40,$40,$20,$03,$40,$2A,$30,$06,$50
+WuRung:
+    db $00,$00,$A6,$01,$00,$00,$F6,$01,$10
+WuMagic:
+    db $40,$D6,$30,$03,$40,$8F,$30,$03,$40,$6B,$30,$03,$40,$47,$30,$03,$40,$35,$30,$03,$40,$47,$40,$08
+    db $50
+WuRiff:
+    db $40,$53,$21,$05,$40,$1D,$21,$05,$40,$FE,$20,$05,$40,$E2,$20,$0A,$40,$FE,$20,$05,$40,$1D,$21,$05
+    db $40,$FE,$20,$05,$40,$53,$21,$05,$40,$7C,$21,$05,$40,$53,$21,$05,$40,$1D,$31,$14,$50
+WuTrip:
+    db $00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$47,$06,$10
+WuLash:
+    db $00,$00,$14,$02,$00,$00,$26,$02,$00,$00,$24,$03,$00,$00,$45,$06,$10
+WuFall:
+    db $40,$7F,$30,$04,$40,$8F,$30,$04,$40,$A0,$30,$04,$40,$B4,$30,$04,$40,$CA,$40,$04,$40,$E2,$40,$04
+    db $40,$FE,$50,$04,$40,$1D,$51,$06,$50
+WuTick:
+    db $40,$40,$40,$01,$40,$40,$80,$01,$50
+WuOver:
+    db $40,$E2,$20,$0C,$40,$F0,$20,$0C,$40,$FE,$20,$0C,$40,$53,$31,$24,$50
+WuWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+WuPick:
+    db $40,$6B,$40,$02,$50
+
+WuSoundTable:
+    dw WuTuneMel,$702B
+    dw WuTuneBass,$7035
+    dw WuKey,$7049
+    dw WuRung,$703F
+    dw WuMagic,$7049
+    dw WuRiff,$7049
+    dw WuTrip,$703F
+    dw WuLash,$703F
+    dw WuFall,$7049
+    dw WuTick,$7049
+    dw WuOver,$7049
+    dw WuWin,$7049
+    dw WuPick,$7049
+; Twelve Floors Up (original)
+; Tiny Sound, 9 frames per step
+WuTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$24,$01,$23,$01,$26,$01
+    db $29,$01,$26,$01,$24,$01,$28,$01,$2B,$01,$28,$01,$26,$01,$29,$01
+    db $2D,$01,$01,$2B,$01,$28,$01,$24,$01,$26,$01,$23,$01,$1F,$01,$21
+    db $01,$01,$01,$00,$01,$01,$01
+    db $FF
+WuTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$01,$00,$01,$01,$01
+    db $FF
+}

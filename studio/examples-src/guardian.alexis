@@ -1,0 +1,1401 @@
+cartridge "GUARDIAN/AHOY!/1986"
+
+' GUARDIAN
+' A ColecoVision game based on "Guardian", Ahoy! November 1986
+' (Commodore 64 machine language at $C000, started by the two-line
+' GUARDIAN BOOT loader). The program and the disk carry no author's name
+' and none was found, so it is credited to the magazine. Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/guardian.dis, and watched in jsc64), the game is
+' built for the ColecoVision: a canyon of nested ledges whose colour bands
+' roll toward you, Earth and a dark moon drifting together in the night
+' sky, a smooth two-sprite hover guardian with its shadow, saucers and
+' pods that grow as they dive, an alien tower drawn in tiles, sounds.
+'
+' The game: alien ships rise from the far end of the canyon and dive at
+' you, dropping two bombs each. Shoot them, but a shot only counts when
+' your guardian flies at the ship's height (watch the gap between a ship
+' and its shadow). Meanwhile the aliens raise a tower out there, one
+' course every 16 seconds; when it is complete its red core is open for
+' 16 seconds: hit it and Earth is saved (the next level is faster). Miss,
+' and the tower fires: Earth is destroyed and the game is over. Three
+' ships; a bomb, or a ship at the end of its dive, costs one.
+'
+' From the original (orig/): the main loop's pass (here two passes a
+' frame, about what the NTSC C64 managed between raster line 256 and the
+' next frame): one pixel of movement a pass in X 80-250 and height
+' 170-215; one shot at a time, from the ship's middle, two pixels up every
+' other pass (one above Y 140), drifting one pixel toward the middle when
+' fired from left of X 122 or right of X 203, gone above Y 100; the alien
+' ship moved every 5 passes (one less each level): rising from (171,138)
+' to Y 120, then a dive of five 20-move stages (table at $C8DD: sizes,
+' bombs in stages 2 and 4, a 12-pixel shift when it doubles in stage 3),
+' steering one pixel a move toward your X from stage 1, until its shadow
+' wraps to Y 8; its height 0-31 at random (pods always 5), hit only when
+' height < (your Y - 170) <= height + 15; 50, 100, 150, 200 x 10 points
+' by kind (the C64 printed a 0 after the score); bombs fall two pixels a
+' move with the ship's steering; the tower: first course after 12 s, then
+' one every 16 s, nine courses, the core open while the ninth stands, the
+' tenth second-count destroys Earth; Earth and the moon move one pixel a
+' second toward each other; three ships, no extra ships.
+'
+' Liberties: pushing the stick up raises the guardian (the C64 had pilot
+' controls: up moved it down the screen); diagonals and moving while the
+' button is held work (the C64 moved only on a plain direction); collisions
+' are box tests on the original sprites' drawn areas, the guardian's being
+' its solid body (the C64 used its pixel-exact sprite collision register); the field is scaled to the ColecoVision
+' screen (positions and rules stay in C64 pixels); an alien ship blows up
+' while play goes on (the C64 stopped everything for 1.5 s); the ship
+' speed stops rising at level 4 (one move every 2 passes; the C64 went on
+' to every pass at level 5, where its bombs steered as fast as the player
+' could move and could not be escaped); the canyon's colour bands roll
+' three times a second (the C64 cycled them ten times a second); after the
+' game the title (the C64 asked PRESS FIRE BUTTON TO PLAY AGAIN).
+'
+' Controls: controller 1 (or 2): the stick flies the guardian (left,
+' right, up, down), a button fires. On the title, up and down choose, a
+' button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TSky3 = 131
+const TBand0 = 132
+const TLip0 = 133
+const TSidl0 = 134
+const TSidr0 = 135
+const TBand1 = 136
+const TLip1 = 137
+const TSidl1 = 138
+const TSidr1 = 139
+const TBand2 = 140
+const TLip2 = 141
+const TSidl2 = 142
+const TSidr2 = 143
+const TFloor = 144
+const TTwa = 145
+const TTwl = 146
+const TTwr = 147
+const TTwb = 148
+const TTwc = 149
+const TLife = 150
+const TTli = 151
+const TTl = 152
+const SPll = 0
+const SPlr = 4
+const SPsl = 8
+const SPsr = 12
+const SShot = 16
+const SBomb = 20
+const SE0s0 = 24
+const SE0s1 = 28
+const SE0s2 = 32
+const SE0w0l = 36
+const SE0w0r = 40
+const SE0w1l = 44
+const SE0w1r = 48
+const SE1s0 = 52
+const SE1s1 = 56
+const SE1s2 = 60
+const SE1w0l = 64
+const SE1w0r = 68
+const SE1w1l = 72
+const SE1w1r = 76
+const SSh0 = 80
+const SSh1 = 84
+const SSh2l = 88
+const SSh2r = 92
+const SSh3l = 96
+const SSh3r = 100
+const SEarthl = 104
+const SEartho = 108
+const SMoon = 112
+const SRing = 116
+const SBoom0 = 120
+const SBoom1 = 124
+const NTiles8 = 200
+const SprBytes = 1024
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndDrop = 4
+const SndBoom = 5
+const SndKill = 6
+const SndRise = 7
+const SndSaved = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 14
+const ScoreCap = 997999
+const ScoreMax = 999999
+
+' the dive's five stages (index = stage 0-5): bomb, doubled, shift, the
+' ship's frame, the shadow's frame
+data PhBomb bytes 0,0,1,0,1,0
+data PhExp bytes 0,0,0,1,1,1
+data PhD bytes 0,0,0,244,0,0
+data PhF3 bytes 0,1,2,1,2,2
+data PhF5 bytes 0,0,1,0,1,1
+' the ship's drawn box in its C64 sprite (group x 3 + frame), not doubled
+data BoxX0 bytes 8,4,0,8,6,3
+data BoxX1 bytes 14,18,23,14,17,19
+data BoxY0 bytes 8,7,5,6,4,0
+data BoxY1 bytes 11,15,16,13,16,20
+' the kinds' colours (light red, cyan, light green, dark yellow; the C64's
+' white one is light red here, the guardian being white)
+data KindCol bytes 9,7,3,10
+' the canyon's three band colours for each level (four sets)
+data BandPal bytes 14,4,1, 7,4,1, 3,12,1, 9,6,1
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$AA,$AA,$00
+  $00,$18,$18,$C3,$C3,$81,$81,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$42,$00,$18,$00,$42,$00,$00
+  $00,$C3,$C3,$81,$81,$C3,$C3,$00
+  $00,$18,$C3,$81,$00,$99,$81,$00
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$51,$01
+  $01,$01,$01,$01,$B1,$01,$01,$01
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $01,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $01,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $01,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$01,$41,$14,$04
+  $01,$B1,$D1,$1D,$1D,$1D,$1D,$0D
+  $D1,$D1,$D1,$1D,$1D,$1D,$1D,$0D
+  $D1,$D1,$D1,$D1,$1D,$1D,$1D,$0D
+  $0D,$6D,$0D,$BD,$0D,$6D,$0D,$06
+  $0D,$D8,$D8,$D8,$D8,$D8,$D8,$06
+  $01,$F1,$1F,$1F,$0F,$1E,$E1,$01
+  $D1,$D1,$D1,$D1,$61,$61,$61,$01
+  $1D,$1D,$1D,$1D,$16,$16,$16,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$08,$18,$3C,$7F,$FF,$CF,$7F,$1F,$06,$0F,$00,$00
+  $00,$03,$06,$0F,$1F,$7F,$FF,$FF,$FF,$3C,$FF,$FF,$18,$3C,$00,$00
+  $00,$C0,$60,$F0,$F8,$FE,$FF,$FF,$FF,$3C,$FF,$FF,$18,$3C,$00,$00
+  $00,$00,$00,$00,$10,$18,$3C,$FE,$FF,$F3,$FF,$F8,$60,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$1F,$3F,$1F,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F8,$FC,$F8,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$05,$03,$0F,$03,$05,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$80,$E0,$80,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$0A,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$50,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$0C,$1F,$35,$7F,$24,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$30,$F8,$AC,$FE,$24,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$0F,$18,$3F,$6D,$FF,$FF,$6E,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$F0,$18,$FC,$B6,$FF,$FF,$76,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0C,$1F,$3F,$1C,$30,$60,$40,$00,$00,$00
+  $00,$00,$00,$FF,$80,$FF,$CC,$FF,$FF,$7F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F0,$1C,$FE,$CF,$FF,$FF,$E3,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$F0,$80,$60,$30,$10,$00,$00,$00
+  $00,$00,$00,$01,$07,$0C,$3F,$7F,$FF,$79,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$7F,$C0,$FF,$E7,$FF,$FF,$FF,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$FE,$03,$FF,$9C,$FF,$FF,$FF,$7E,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$E0,$E0,$FC,$FE,$FF,$78,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$03,$01,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$C0,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$0D,$03,$01,$03,$01,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$E0,$B0,$C0,$80,$C0,$80,$C0,$00,$00,$00,$00
+  $00,$00,$04,$0F,$19,$1F,$4F,$C7,$01,$03,$01,$07,$0F,$00,$00,$00
+  $00,$00,$20,$F0,$98,$F8,$F2,$E3,$80,$C0,$80,$E0,$F0,$00,$00,$00
+  $00,$00,$00,$01,$01,$30,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$60,$FF,$CF,$FF,$FF,$7F,$01,$03,$03,$01,$07,$0F,$1F,$00,$00
+  $00,$60,$F0,$38,$F8,$F0,$E1,$80,$C0,$C0,$80,$E0,$F0,$F8,$00,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$38,$78,$38,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$30,$7F,$F3,$FF,$7F,$3F,$3F,$01,$03,$03,$01,$07,$0F,$3F,$00
+  $00,$0C,$FE,$CF,$FF,$FE,$FC,$FC,$80,$C0,$C0,$80,$E0,$F0,$FC,$00
+  $00,$00,$00,$00,$00,$1C,$1E,$1C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0F,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$FF,$3F,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FC,$FF,$FC,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$1F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$F8,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$FF,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$3F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FC,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$FF,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$06,$1F,$1E,$1C,$08,$01,$00,$18,$1E,$0F,$07,$00,$00,$00
+  $00,$00,$00,$00,$10,$78,$F8,$F0,$E0,$40,$00,$80,$00,$00,$00,$00
+  $00,$07,$19,$20,$21,$63,$77,$7E,$7F,$67,$21,$30,$18,$07,$00,$00
+  $00,$E0,$F0,$F8,$E8,$84,$04,$0C,$1C,$BC,$FC,$78,$F8,$E0,$00,$00
+  $00,$07,$1F,$3D,$38,$7D,$7F,$7F,$7E,$7F,$3F,$3B,$1F,$07,$00,$00
+  $00,$E0,$F8,$FC,$FC,$FE,$FE,$3E,$1E,$3E,$FC,$FC,$F8,$E0,$00,$00
+  $03,$0C,$10,$22,$40,$43,$84,$88,$88,$84,$43,$40,$22,$10,$0C,$03
+  $C0,$30,$08,$44,$02,$C2,$21,$11,$11,$21,$C2,$02,$44,$08,$30,$C0
+  $01,$10,$05,$23,$0A,$4C,$12,$86,$12,$4C,$0A,$23,$05,$10,$01,$00
+  $00,$10,$40,$88,$A0,$64,$90,$C2,$90,$64,$A0,$88,$40,$10,$00,$00
+  $80,$08,$40,$02,$20,$82,$10,$00,$42,$08,$80,$12,$40,$02,$90,$01
+  $81,$04,$88,$09,$08,$20,$04,$41,$00,$24,$20,$02,$10,$42,$02,$10
+end data
+
+data GameMap bytes
+  $80,$80,$81,$82,$80,$81,$80,$80,$80,$80,$80,$80,$83,$80,$83,$83,$83,$81,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$83,$81,$82,$80
+  $80,$81,$80,$80,$81,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$83,$80,$82,$83,$81,$80,$80,$82,$80,$80
+  $80,$81,$80,$80,$80,$80,$83,$82,$80,$81,$80,$80,$80,$80,$82,$80,$82,$80,$80,$83,$83,$80,$82,$80,$80,$81,$80,$80,$83,$80,$80,$83
+  $80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$81,$81,$82,$83,$83,$80,$80,$80,$80,$80,$80,$80,$83,$80,$81,$80,$80,$80,$80
+  $82,$80,$80,$80,$82,$80,$80,$80,$82,$83,$83,$80,$83,$80,$80,$80,$80,$80,$82,$80,$80,$81,$80,$80,$80,$82,$80,$80,$80,$81,$83,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$83,$80,$80,$83,$80,$80,$82,$80,$82,$80,$81,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80
+  $81,$80,$83,$80,$81,$80,$82,$80,$81,$81,$80,$82,$82,$82,$80,$80,$80,$80,$82,$83,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$82
+  $80,$80,$80,$80,$82,$80,$80,$81,$83,$81,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$83,$80,$80,$82,$80,$80,$80,$80,$80,$82,$80,$82
+  $80,$80,$80,$83,$80,$80,$80,$80,$82,$80,$80,$83,$81,$83,$80,$80,$83,$80,$82,$80,$82,$82,$80,$83,$80,$81,$80,$80,$80,$80,$83,$80
+  $8D,$8D,$89,$89,$85,$85,$8D,$8D,$89,$89,$85,$85,$90,$90,$90,$90,$90,$90,$90,$90,$90,$85,$85,$89,$89,$8D,$8D,$85,$85,$89,$89,$8D
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8F,$88,$8B,$84,$87,$90,$90,$90,$90,$90,$90,$90,$90,$90,$86,$84,$8A,$88,$8E,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8F,$88,$8B,$84,$87,$90,$90,$90,$90,$90,$90,$90,$90,$90,$86,$84,$8A,$88,$8E,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8F,$88,$8B,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$8A,$88,$8E,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8F,$88,$8B,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$8A,$88,$8E,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8F,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$8E,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8F,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$8E,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$87,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$86,$84,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$85,$8A,$88,$8E
+  $8C,$8F,$88,$8B,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$8A,$88,$8E
+  $8C,$8F,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$8E
+  $8C,$8F,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$8E
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+end data
+
+data TitleMap bytes
+  $80,$80,$80,$82,$80,$81,$80,$80,$80,$80,$80,$82,$81,$82,$82,$80,$80,$80,$81,$80,$81,$80,$82,$81,$80,$81,$80,$81,$80,$80,$80,$81
+  $82,$80,$98,$98,$98,$80,$98,$81,$98,$80,$98,$98,$98,$81,$98,$98,$82,$81,$98,$98,$80,$97,$80,$98,$98,$98,$80,$98,$82,$98,$80,$80
+  $81,$80,$98,$80,$80,$80,$98,$80,$98,$82,$98,$80,$98,$80,$98,$80,$98,$81,$98,$82,$98,$97,$81,$98,$80,$98,$80,$98,$98,$98,$80,$82
+  $80,$80,$98,$80,$98,$80,$98,$80,$98,$80,$98,$98,$98,$80,$98,$98,$80,$80,$98,$82,$98,$97,$81,$98,$98,$98,$82,$98,$98,$98,$80,$80
+  $80,$82,$98,$80,$98,$80,$98,$80,$98,$82,$98,$81,$98,$80,$98,$81,$98,$80,$98,$82,$98,$97,$81,$98,$81,$98,$81,$98,$98,$98,$80,$80
+  $80,$80,$98,$98,$98,$82,$98,$98,$98,$82,$98,$80,$98,$82,$98,$80,$98,$80,$98,$98,$80,$97,$82,$98,$80,$98,$81,$98,$81,$98,$80,$80
+  $82,$80,$80,$80,$82,$82,$82,$80,$81,$80,$81,$80,$80,$80,$80,$80,$80,$80,$81,$80,$82,$82,$81,$80,$80,$80,$82,$81,$80,$80,$80,$80
+end data
+
+record Ship:
+  u8 X3
+  u8 Y3
+  u8 X5
+  u8 Y5
+  u8 Dx
+  u8 Asc
+  u8 Cnt
+  u8 Ph
+  u8 Kind
+  u8 Alt
+  u8 Dbl
+  u8 F3
+  u8 F5
+end record
+
+Ship E
+u8 EOn = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A0 = 0
+u16 A1 = 0
+u16 B0 = 0
+u16 B1 = 0
+u16 NumU = 0
+u16 SkyE = 5
+u16 SkyM = 336
+u16 Off = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 Buf[32]
+' the guardian (C64 sprite coordinates)
+u8 PX = 160
+u8 PY = 210
+' the shot
+u8 BOn = 0
+u8 BX = 0
+u8 BY = 0
+u8 BDy = 0
+u8 BDx = 0
+u8 BExp = 0
+u8 BPh = 0
+' the bomb
+u8 MbOn = 0
+u8 MbX = 0
+u8 MbY = 0
+' the ship's move clock and speed (passes a move)
+u8 ETk = 12
+u8 ESpd = 5
+' the tower: seconds to the next course, its top row, courses up
+u8 PyT = 12
+u8 PyRow = 11
+u8 PyN = 0
+u8 Sec = 0
+u8 Lv = 0
+u8 Lives = 3
+u8 Over = 0
+u8 Won = 0
+u8 Freeze = 0
+u8 FrzWhy = 0
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 Kills = 0
+u8 Deaths = 0
+u8 BandT = 0
+u8 BandPh = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ps = 0
+u8 Tr = 0
+u8 Bc = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Cv = 0
+u8 Cb = 0
+' the ship's art group in DrawShip (ShipBox uses K)
+u8 Kg = 0
+
+  tile screen
+  set sound table GdSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the message, then back to the title on a press
+  mute all
+  play sound SndOver
+  if Won = 2 then
+    print at 3,13, "                          "
+    print at 3,14, " THE EARTH HAS BEEN       "
+    print at 3,15, "       DESTROYED !        "
+    print at 3,16, "                          "
+  else
+    print at 8,14, "                "
+    print at 8,15, "   GAME  OVER   "
+    print at 8,16, "                "
+  end if
+  if Score > Hi then Hi = Score
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame: the clocks (the C64's raster interrupt kept them running
+' through every freeze), then a freeze or two passes of the main loop
+sub PlayFrame:
+  Clocks
+  if Over = 1 then return
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 0 then EndFreeze
+    return
+  end if
+  for Ps = 1 to 2
+    if Freeze = 0 then Pass
+  next
+  return
+end sub
+
+' the seconds: Earth and the moon close in, the tower's clock; the band
+' colours roll every 20 frames; the explosion sprite's clock
+sub Clocks:
+  inc BandT
+  if BandT >= 20 then
+    BandT = 0
+    inc BandPh
+    if BandPh = 3 then BandPh = 0
+    SetBands
+  end if
+  if BoomT > 0 then dec BoomT
+  inc Sec
+  if Sec < 60 then return
+  Sec = 0
+  inc SkyE
+  dec SkyM
+  if PyT = 0 then return
+  dec PyT
+  if PyT > 0 then return
+  dec PyRow
+  inc PyN
+  if PyN = 10 then
+    ' the tower fires: Earth is destroyed
+    FrzWhy = 2
+    Freeze = 90
+    BoomX = 0
+    play sound SndBoom
+    return
+  end if
+  DrawTower
+  PyT = 16
+  play sound SndRise
+  return
+end sub
+
+sub EndFreeze:
+  select case FrzWhy
+    case 1
+      dec Lives
+      ShowLives
+      if Lives = 0 then
+        Over = 1
+        return
+      end if
+      ResetField
+    case 2
+      Won = 2
+      Over = 1
+    case 3
+      NextLevel
+  end select
+  return
+end sub
+
+' one pass of the C64's main loop
+sub Pass:
+  MovePlayer
+  if BOn = 1 then MoveShot
+  dec ETk
+  if ETk = 0 then
+    ShipMove
+    ETk = ESpd
+  end if
+  Checks
+  return
+end sub
+
+sub MovePlayer:
+  K = J1 & 16
+  if K > 0 then
+    if BOn = 0 then
+      BOn = 1
+      BX = PX + 12
+      BY = PY - 15
+      BExp = 1
+      BDy = 2
+      BPh = 2
+      BDx = 0
+      if PX < 122 then
+        BDx = 1
+      else
+        if PX >= 204 then BDx = 255
+      end if
+      play sound SndShot
+    end if
+  end if
+  K = J1 & 4
+  if K > 0 then
+    if PX <> 80 then dec PX
+  end if
+  K = J1 & 8
+  if K > 0 then
+    if PX <> 250 then inc PX
+  end if
+  K = J1 & 2
+  if K > 0 then
+    if PY <> 215 then inc PY
+  end if
+  K = J1 & 1
+  if K > 0 then
+    if PY <> 170 then dec PY
+  end if
+  return
+end sub
+
+sub MoveShot:
+  dec BPh
+  if BPh > 0 then return
+  BPh = 2
+  if BY < 140 then
+    BExp = 0
+    BDy = 1
+  end if
+  BY = BY - BDy
+  if BY >= 100 then
+    BX = BX + BDx
+  else
+    BOn = 0
+  end if
+  return
+end sub
+
+' one move of the alien ship ($C33F)
+sub ShipMove:
+  if EOn = 0 then Spawn
+  if E.Asc = 1 then
+    E.X5 = E.X5 + E.Dx
+    dec E.Y5
+    if E.Y5 < 120 then Levelled
+  else
+    E.X3 = E.X3 + E.Dx
+    inc E.Y3
+    E.X5 = E.X5 + E.Dx
+    inc E.Y5
+    dec E.Cnt
+    if E.Cnt = 0 then
+      E.Cnt = 20
+      if E.Ph <> 5 then NextStage
+    end if
+  end if
+  if E.Ph >= 1 then
+    if E.X3 = PX then
+      E.Dx = 0
+    else
+      if E.X3 < PX then
+        E.Dx = 1
+      else
+        E.Dx = 255
+      end if
+    end if
+  end if
+  if E.Y5 = 8 then EOn = 0
+  if MbOn = 1 then
+    MbY = MbY + 2
+    MbX = MbX + E.Dx
+    if MbY < 128 then MbOn = 0
+  end if
+  return
+end sub
+
+sub Spawn:
+  EOn = 1
+  E.Cnt = 10
+  E.Ph = 0
+  MbOn = 0
+  Rand
+  E.Kind = Rs & 3
+  E.Asc = 1
+  E.X3 = 160
+  E.Y3 = 138
+  E.X5 = 171
+  E.Y5 = 138
+  E.Dx = 0
+  E.Dbl = 0
+  E.F3 = 0
+  E.F5 = 0
+  E.Alt = 0
+  return
+end sub
+
+' the top of the climb: the ship levels out over its shadow
+sub Levelled:
+  E.Asc = 0
+  E.X3 = E.X5
+  if E.Kind >= 2 then
+    E.Alt = 5
+    E.Y3 = E.Y5 - 5
+  else
+    Rand
+    E.Alt = Rs & 31
+    E.Y3 = E.Y5 - 31 + E.Alt
+  end if
+  return
+end sub
+
+sub NextStage:
+  inc E.Ph
+  C = E.Ph
+  if MbOn = 0 then
+    if PhBomb[C] = 1 then
+      MbOn = 1
+      MbX = E.X3 + 9
+      MbY = E.Y3 + 11
+      play sound SndDrop
+    end if
+  end if
+  E.Dbl = PhExp[C]
+  V = PhD[C]
+  E.X3 = E.X3 + V
+  E.Y3 = E.Y3 + V
+  E.X5 = E.X5 + V
+  E.Y5 = E.Y5 + V
+  E.F3 = PhF3[C]
+  E.F5 = PhF5[C]
+  return
+end sub
+
+' A0-A1 x B0-B1 against the box in W16 / Off (x0,x1 in A, y in B)
+function Overlap(u16 Ax0, u16 Ax1, u16 Ay0, u16 Ay1) as u8
+  if Ax1 < A0 then return 0
+  if Ax0 > A1 then return 0
+  if Ay1 < B0 then return 0
+  if Ay0 > B1 then return 0
+  return 1
+
+' the ship's drawn box into A0, A1, B0, B1 (C64 pixels, 16 bits)
+sub ShipBox:
+  K = E.Kind >> 1
+  K = K * 3 + E.F3
+  A0 = BoxX0[K]
+  A1 = BoxX1[K]
+  B0 = BoxY0[K]
+  B1 = BoxY1[K]
+  if E.Dbl = 1 then
+    A0 = A0 * 2
+    A1 = A1 * 2 + 1
+    B0 = B0 * 2
+    B1 = B1 * 2 + 1
+  end if
+  A0 = A0 + E.X3
+  A1 = A1 + E.X3
+  B0 = B0 + E.Y3
+  B1 = B1 + E.Y3
+  return
+end sub
+
+' the collisions after a pass: a bomb or a ship at the end of its dive
+' on the guardian, the shot on a ship (at the right height), the shot on
+' the open core
+sub Checks:
+  if MbOn = 1 then
+    A0 = MbX + 7
+    A1 = MbX + 15
+    B0 = MbY + 7
+    B1 = MbY + 11
+    W16 = PX
+    Off = PY
+    if Overlap(W16 + 6, W16 + 41, Off + 8, Off + 17) = 1 then
+      Hit
+      return
+    end if
+  end if
+  if EOn = 1 then
+    if E.Asc = 0 then
+      ShipBox
+      if E.Ph = 5 then
+        W16 = PX
+        Off = PY
+        if Overlap(W16 + 6, W16 + 41, Off + 8, Off + 17) = 1 then
+          Hit
+          return
+        end if
+      end if
+      if BOn = 1 then
+        W16 = BX + 12
+        Off = BY + 8
+        if BExp = 1 then Off = BY + 16
+        if Overlap(W16, W16, Off, Off + 3 + BExp * 4) = 1 then
+          Cb = PY - 170
+          if E.Alt < Cb then
+            V = E.Alt + 15
+            if Cb <= V then Shot
+          end if
+        end if
+      end if
+    end if
+  end if
+  if PyN = 9 then
+    if BOn = 1 then
+      if BX >= 166 then
+        if BX < 178 then
+          if BY >= 130 then
+            if BY < 138 then Saved
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the guardian is hit: 1.5 s of explosion, then a ship is lost
+sub Hit:
+  FrzWhy = 1
+  Freeze = 90
+  BoomX = PX + 12
+  BoomY = PY
+  BoomT = 90
+  inc Deaths
+  play sound SndBoom
+  return
+end sub
+
+' a ship shot down: 50 to 200 (x 10) by kind
+sub Shot:
+  BOn = 0
+  EOn = 0
+  MbOn = 0
+  BoomX = E.X3 + 6
+  BoomY = E.Y3
+  if E.Dbl = 1 then BoomX = BoomX + 12
+  BoomT = 30
+  inc Kills
+  for Bc = 0 to E.Kind
+    if Score > ScoreCap then
+      Score = ScoreMax
+    else
+      Score += 500
+    end if
+  next
+  if Score > Hi then Hi = Score
+  ShowScore
+  play sound SndKill
+  return
+end sub
+
+' the core is hit: Earth is saved
+sub Saved:
+  BOn = 0
+  EOn = 0
+  MbOn = 0
+  FrzWhy = 3
+  Freeze = 200
+  BoomX = 160
+  BoomY = 112
+  BoomT = 60
+  mute all
+  play sound SndSaved
+  print at 8,14, " YOU HAVE SAVED "
+  print at 7,15, " THE PLANET EARTH! "
+  return
+end sub
+
+' after a lost ship ($CA8F): the guardian back in the middle, the sky clear
+sub ResetField:
+  PX = 160
+  PY = 210
+  BOn = 0
+  EOn = 0
+  MbOn = 0
+  BoomT = 0
+  return
+end sub
+
+' a new level (also the first): the tower and the clocks start again, the
+' ships move one pass sooner (to every 2 passes at most here)
+sub NextLevel:
+  inc Lv
+  if Lv = 1 then
+    ESpd = 5
+  else
+    if ESpd > 2 then dec ESpd
+  end if
+  ResetField
+  ETk = 12
+  PyT = 12
+  PyRow = 11
+  PyN = 0
+  Sec = 0
+  SkyE = 5
+  SkyM = 336
+  DrawField
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: C64 sprite coordinates to the screen
+function CvX(u16 Px) as u8
+  if Px < 24 then return 0
+  Px = Px - 24
+  Px = Px * 179
+  Cv = Px >> 8
+  return Cv + 16
+
+function CvY(u16 Py) as u8
+  if Py < 50 then return 200
+  Py = Py - 50
+  Py = Py * 7
+  Py = Py >> 3
+  if Py > 190 then return 200
+  Cv = Py
+  return Cv + 8
+
+' sprites: 0-1 the guardian, 2 the shot, 3 the bomb, 4-5 the alien ship,
+' 6-7 its shadow, 8-9 the guardian's shadow, 10-11 Earth, 12 the moon,
+' 13 an explosion
+sub DrawSprites:
+  W16 = PX + 24
+  X = CvX(W16) - 16
+  W16 = PY + 12
+  Y = CvY(W16) - 8
+  if FrzWhy = 1 then
+    if Freeze > 0 then Y = 192
+  end if
+  set sprite 0 to Y - 1,X,SPll,15
+  set sprite 1 to Y - 1,X + 16,SPlr,15
+  W16 = 242
+  Y = CvY(W16) - 12
+  set sprite 8 to Y - 1,X,SPsl,1
+  set sprite 9 to Y - 1,X + 16,SPsr,1
+  if BOn = 1 then
+    W16 = BX + 12
+    X = CvX(W16) - 8
+    W16 = BY + 10
+    if BExp = 1 then W16 = BY + 20
+    Y = CvY(W16) - 8
+    set sprite 2 to Y - 1,X,SShot,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  if MbOn = 1 then
+    W16 = MbX + 11
+    X = CvX(W16) - 7
+    W16 = MbY + 9
+    Y = CvY(W16) - 7
+    if Y < 192 then
+      set sprite 3 to Y - 1,X,SBomb,9
+    else
+      set sprite 3 to 192,0,0,0
+    end if
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  DrawShip
+  DrawSky
+  if BoomT > 0 then
+    W16 = BoomX + 12
+    X = CvX(W16) - 8
+    W16 = BoomY + 12
+    Y = CvY(W16) - 8
+    K = BoomT >> 3
+    K = K & 1
+    K = K * 4 + SBoom0
+    set sprite 13 to Y - 1,X,K,11
+  else
+    set sprite 13 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawShip:
+  if EOn = 0 then
+    set sprite 4 to 192,0,0,0
+    set sprite 5 to 192,0,0,0
+    set sprite 6 to 192,0,0,0
+    set sprite 7 to 192,0,0,0
+    return
+  end if
+  C = KindCol[E.Kind]
+  Kg = E.Kind >> 1
+  if E.Asc = 1 then
+    ' climbing out of the canyon: the small ship only
+    W16 = E.X5 + 11
+    X = CvX(W16) - 8
+    W16 = E.Y5 + 10
+    Y = CvY(W16) - 8
+    V = Kg * 28 + SE0s0
+    set sprite 4 to Y - 1,X,V,C
+    set sprite 5 to 192,0,0,0
+    set sprite 6 to 192,0,0,0
+    set sprite 7 to 192,0,0,0
+    return
+  end if
+  ShipBox
+  W16 = A0 + A1
+  W16 = W16 >> 1
+  X = CvX(W16)
+  W16 = B0 + B1
+  W16 = W16 >> 1
+  Y = CvY(W16)
+  if Y >= 192 then
+    set sprite 4 to 192,0,0,0
+    set sprite 5 to 192,0,0,0
+  else
+    if E.Dbl = 0 then
+      V = Kg * 28 + E.F3 * 4 + SE0s0
+      set sprite 4 to Y - 9,X - 8,V,C
+      set sprite 5 to 192,0,0,0
+    else
+      V = E.F3 - 1
+      V = Kg * 28 + V * 8 + SE0w0l
+      set sprite 4 to Y - 9,X - 16,V,C
+      set sprite 5 to Y - 9,X,V + 4,C
+    end if
+  end if
+  ' the shadow: C64 box x 5-17 / 0-23, bottom rows 19-20 / 17-20
+  W16 = E.X5 + 12
+  if E.Dbl = 1 then W16 = E.X5 + 24
+  X = CvX(W16)
+  W16 = E.Y5 + 19
+  if E.Dbl = 1 then W16 = E.Y5 + 38
+  Y = CvY(W16)
+  if Y >= 192 then
+    set sprite 6 to 192,0,0,0
+    set sprite 7 to 192,0,0,0
+    return
+  end if
+  if E.Dbl = 0 then
+    V = E.F5 * 4 + SSh0
+    set sprite 6 to Y - 9,X - 8,V,1
+    set sprite 7 to 192,0,0,0
+  else
+    V = E.F5 * 8 + SSh2l
+    set sprite 6 to Y - 9,X - 16,V,1
+    set sprite 7 to Y - 9,X,V + 4,1
+  end if
+  return
+end sub
+
+' Earth (from the left) and the dark moon (from the right), Y 70
+sub DrawSky:
+  Y = 25
+  if SkyE > 40 then
+    W16 = SkyE + 12
+    X = CvX(W16) - 8
+    if FrzWhy = 2 then
+      if Freeze > 0 then
+        set sprite 10 to 192,0,0,0
+        set sprite 11 to Y - 1,X,SBoom0,8
+        goto ds_moon
+      end if
+    end if
+    set sprite 10 to Y - 1,X,SEarthl,12
+    set sprite 11 to Y - 1,X,SEartho,4
+  else
+    set sprite 10 to 192,0,0,0
+    set sprite 11 to 192,0,0,0
+  end if
+ds_moon:
+  if SkyM < 330 then
+    W16 = SkyM + 12
+    X = CvX(W16) - 8
+    V = SMoon
+    C = 13
+    if PyN = 9 then
+      V = SRing
+      C = 9
+    end if
+    set sprite 12 to Y - 1,X,V,C
+  else
+    set sprite 12 to 192,0,0,0
+  end if
+  return
+end sub
+
+' the tower: courses 0 (sky) to PyN from row PyRow down (columns 12-20)
+sub DrawTower:
+  for Tr = 0 to PyN
+    Y = PyRow + Tr
+    TowerLine(Tr, Y)
+  next
+  return
+end sub
+
+sub TowerLine(u8 Ln, u8 Row):
+  Off = Row * 32 + 12
+  select case Ln
+    case 0
+      copy GameMap + Off count 9 to vram.name + Off
+    case 1
+      put char TTwa at 16,Row
+    case 2
+      put char TTwl at 15,Row
+      put char TTwb at 16,Row
+      put char TTwr at 17,Row
+    case 3
+      put char TTwl at 14,Row
+      fill TTwb count 3 at 15,Row
+      put char TTwr at 18,Row
+    case 4
+      put char TTwl at 13,Row
+      fill TTwb count 5 at 14,Row
+      put char TTwr at 19,Row
+    case 5
+      put char TTwl at 12,Row
+      fill TTwb count 7 at 13,Row
+      put char TTwr at 20,Row
+    case 9
+      fill TTwb count 9 at 12,Row
+      put char TTwc at 16,Row
+    case else
+      fill TTwb count 9 at 12,Row
+  end select
+  return
+end sub
+
+' the band colours: class c gets BandPal[set * 3 + (c + phase) mod 3]
+sub SetBands:
+  for Bc = 0 to 2
+    K = Bc + BandPh
+    if K >= 3 then K = K - 3
+    V = Lv - 1
+    V = V & 3
+    K = V * 3 + K
+    C = BandPal[K]
+    for J = 0 to 7
+      Buf[J] = C
+      Buf[J + 8] = C
+      Buf[J + 16] = $10 | C
+      Buf[J + 24] = $10 | C
+    next
+    Buf[8] = 1
+    Off = Bc * 32
+    Off = Off + TBand0 * 8
+    copy Buf count 32 to vram.color + Off
+  next
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 3 at 26,1
+  if Lives > 0 then fill TLife count Lives at 26,1
+  return
+end sub
+
+' the play screen for a level: canyon, sky, status
+sub DrawField:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  fill 32 count 32 at 0,1
+  print at 2,1, "SCORE"
+  print at 15,1, "LV"
+  NumU = Lv
+  print at 18,1, digits$(NumU, 2)
+  print at 21,1, "SHIPS"
+  ShowScore
+  ShowLives
+  SetBands
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lv = 0
+  Lives = 3
+  Over = 0
+  Won = 0
+  Freeze = 0
+  FrzWhy = 0
+  Kills = 0
+  Deaths = 0
+  BandPh = 0
+  BandT = 0
+  NextLevel
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 13
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: GUARDIAN in stone letters, the tower and the guardian below,
+' START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 224 to vram.name + 32
+  print at 6,9, "AHOY! NOVEMBER 1986"
+  Lv = 1
+  BandPh = 0
+  SetBands
+  copy GameMap + 384 count 192 to vram.name + 384
+  for Tr = 5 to 9
+    Y = Tr + 6
+    TowerLine(Tr, Y)
+  next
+  fill 32 count 32 at 0,18
+  fill 32 count 32 at 0,19
+  fill 32 count 32 at 0,20
+  fill 32 count 32 at 0,21
+  fill 32 count 32 at 0,22
+  print at 13,19, "START"
+  print at 13,20, "CREDITS"
+  if Hi > 0 then
+    print at 10,22, "BEST ", Hi
+  end if
+  ShowMenu
+  set sprite 0 to 127,96,SPll,15
+  set sprite 1 to 127,112,SPlr,15
+  set sprite 10 to 89,40,SEarthl,12
+  set sprite 11 to 89,40,SEartho,4
+  set sprite 12 to 89,200,SMoon,13
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 567
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,19
+  put char 32 at 11,20
+  J = Menu + 19
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "GUARDIAN"
+  print at 2,5, "BASED ON GUARDIAN, AHOY!"
+  print at 2,6, "NOVEMBER 1986 (COMMODORE 64"
+  print at 2,7, "MACHINE LANGUAGE). AUTHOR"
+  print at 2,8, "NOT NAMED ON THE DISK."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: WATCH OVER EARTH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+GdShot:
+    db $40,$3E,$20,$01,$40,$48,$30,$01,$40,$54,$30,$01,$40,$62,$40,$01,$40,$72,$40,$01,$40,$84,$50,$01
+    db $40,$9A,$50,$01,$40,$B3,$60,$01,$50
+GdDrop:
+    db $80,$4B,$50,$02,$80,$4F,$50,$02,$80,$54,$50,$02,$80,$5A,$50,$02,$80,$60,$50,$02,$80,$66,$50,$02
+    db $80,$6C,$50,$02,$80,$73,$50,$02,$80,$7A,$60,$02,$80,$82,$60,$02,$80,$8A,$60,$02,$80,$93,$60,$02
+    db $90
+GdBoom:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$27,$08,$00,$00,$47,$0A,$00,$00,$57,$0E,$00,$00,$77,$10
+    db $10
+GdKill:
+    db $00,$00,$15,$03,$00,$00,$36,$05,$00,$00,$57,$08,$00,$00,$77,$0A,$10
+GdRise:
+    db $C0,$3B,$32,$06,$C0,$7F,$42,$06,$C0,$F9,$42,$0C,$D0
+GdSaved:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$20,$18,$50
+GdStart:
+    db $40,$FE,$20,$06,$40,$AA,$20,$06,$40,$7F,$20,$0E,$50
+GdOver:
+    db $40,$FE,$10,$0C,$40,$1D,$21,$0C,$40,$41,$21,$0C,$40,$53,$21,$0C,$40,$FC,$31,$24,$50
+
+GdSoundTable:
+    dw GdTuneMel,$702B
+    dw GdTuneBass,$7035
+    dw GdShot,$7049
+    dw GdDrop,$7053
+    dw GdBoom,$703F
+    dw GdKill,$703F
+    dw GdRise,$705D
+    dw GdSaved,$7049
+    dw GdStart,$7049
+    dw GdOver,$7049
+; Watch Over Earth (original)
+; Tiny Sound, 9 frames per step
+GdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1C,$01,$01,$23,$01,$01,$21,$1F,$1E,$01,$1F,$01
+    db $21,$01,$01,$01,$23,$01,$01,$28,$01,$01,$26,$23,$24,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$01,$21,$01,$01,$23,$26,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$01,$1F,$01,$01,$21,$1E,$1C,$01,$01,$01
+    db $00,$01,$01
+    db $FF
+GdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$10,$01,$1C,$01,$10,$01,$1C,$01,$0E,$01,$1A,$01
+    db $0E,$01,$1A,$01,$0C,$01,$18,$01,$0C,$01,$18,$01,$0B,$01,$17,$01
+    db $0B,$01,$17,$01,$09,$01,$15,$01,$09,$01,$15,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$0C,$01,$13,$01,$0B,$01,$12,$01,$10,$01,$17,$01
+    db $10,$00,$01
+    db $FF
+}

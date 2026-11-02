@@ -1,0 +1,1417 @@
+cartridge "TUBULAR!/BOB BLACKMER/1988"
+
+' TUBULAR!
+' A ColecoVision game based on "Tubular!" by Bob Blackmer, Ahoy! December
+' 1988 (Commodore 64 machine code, SYS 49152; orig/ has the two files from
+' the Ahoy! disk ahoy1988-12, the disassembly, the level extractor and
+' jsc64 dumps). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' The story (from the disk's blurb): collect 14 bells and make it to the
+' top of the pyramid before time is out.
+'
+' Not a line-by-line port: the rules are the original's, the game is built
+' for the ColecoVision: a 28 x 20 window on the pyramid (the C64's was
+' 11 x 9) that follows the explorer, who walks smoothly a pixel or two a
+' frame and glides up and down the tubes, tiles for the casing, the
+' chambers, the slabs, the tubes and the bells (which swing), a night sky
+' round the pyramid, sound effects and a title tune.
+'
+' From the original (the machine code at $C000-$C817, the level tables at
+' $CA00-$CF3F, all sixteen levels used as they are): the pyramid has
+' fourteen floors four rows apart (row 21 at the top to row 73, 128-column
+' map); the explorer starts each level on the bottom floor at column 115
+' and walks left and right between the floor's limits (the original's
+' tables); 16 up tubes, 12 trap tubes and 14 bells a level; walking under
+' an up tube (its mouth at head height) carries the explorer up a floor,
+' walking onto a trap tube drops him a floor, walking over a bell rings it;
+' coming out of a tube with the stick held left or right he walks off its
+' end (the C64 moved him a cell before looking again), standing still
+' there he takes whatever tube is at that cell next;
+' the fourteenth bell opens the tube at column 63 under the top, and going
+' up it finishes the level (a man more, at most 9); 90 seconds a level,
+' counted down each second; when time runs out the man is lost and the
+' level starts again from the bottom with all its bells; after the
+' sixteenth level "AWESOME" and "16 NEW LEVELS COMING SOON".
+'
+' Liberties: three men at the start (the C64 gave one, plus one a level);
+' 120 seconds a level (the C64's 90 are enough only for a player who
+' already knows the order to take the bells in);
+' the explorer walks 1.5 pixels a frame (about 11 cells a second, the C64's
+' pace) instead of a cell at a time, and a tube or bell counts when his
+' middle is over its cell; "PRESS FIRE"
+' before each level and each new try as on the C64, but a button press
+' (either side) instead of the fire button alone; a clock tick in the last
+' ten seconds; a jingle and "LEVEL CLEAR" between levels.
+'
+' Controls: the joystick (either controller) walks left and right; a
+' button starts. On the title, up and down choose, a button confirms.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz (the bells swing at 2.5 Hz).
+'
+' Workarounds for Amy bugs bombs-return-u16 removed 2026-11-01.
+
+const TSky = 128
+const TStar1 = 129
+const TStar2 = 130
+const TSandT = 131
+const TSand = 132
+const TInA = 133
+const TInB = 134
+const TFloor = 135
+const TSlopeL = 136
+const TSlopeR = 137
+const TUpTop = 138
+const TUpBot = 139
+const TDnTop = 140
+const TDnBot = 141
+const TExTop = 142
+const TExBot = 143
+const TBell0 = 144
+const TBell1 = 145
+const TFrH = 146
+const TTtl00 = 147
+const TTtl01 = 148
+const TTtl02 = 149
+const TTtl03 = 150
+const TTtl04 = 151
+const TTtl05 = 152
+const TTtl06 = 153
+const TTtl07 = 154
+const TTtl08 = 155
+const TTtl09 = 156
+const TTtl010 = 157
+const TTtl011 = 158
+const TTtl012 = 159
+const TTtl013 = 160
+const TTtl014 = 161
+const TTtl015 = 162
+const TTtl10 = 163
+const TTtl11 = 164
+const TTtl12 = 165
+const TTtl13 = 166
+const TTtl14 = 167
+const TTtl15 = 168
+const TTtl16 = 169
+const TTtl17 = 170
+const TTtl18 = 171
+const TTtl19 = 172
+const TTtl110 = 173
+const TTtl111 = 174
+const TTtl112 = 175
+const TTtl113 = 176
+const TTtl114 = 177
+const TTtl115 = 178
+const SHead0 = 0
+const SBody0 = 4
+const SHead1 = 8
+const SBody1 = 12
+const SHeadL0 = 16
+const SBodyL0 = 20
+const SHeadL1 = 24
+const SBodyL1 = 28
+const SHeadC = 32
+const SBodyC = 36
+const SSpark = 40
+const NTiles8 = 408
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndBell = 4
+const SndOpen = 5
+const SndUp = 6
+const SndDown = 7
+const SndTick = 8
+const SndClear = 9
+const SndLost = 10
+const SndReady = 11
+const NSpr = 4
+const NItems = 43
+const KUp = 1
+const KDown = 2
+const KBell = 3
+const KExit = 4
+const StWalk = 0
+const StClimb = 1
+const StDrop = 2
+const StWin = 3
+const StDead = 4
+const TopFl = 13
+const StartCol = 115
+const ViewW = 28
+const ViewH = 20
+const ClockStart = 120
+
+record Item:
+  u8 R
+  u8 C
+  u8 K
+end record
+
+Item It[NItems]
+u8 Buf[ViewW]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+' the explorer: map position in pixels (Px: the left of his cell, Py: the
+' top of the floor row he stands on), floor (0 bottom .. 13 top), the cell
+' his middle is over, facing, state, glide frames
+u16 Px = 0
+u16 Py = 0
+u8 Fl = 0
+u8 Pcol = 0
+u8 LastCol = 0
+u8 Face = 0
+u8 St = StWalk
+u8 MvK = 0
+u8 Acc = 0
+u8 Walking = 0
+' 1 just out of a tube with the stick held: the cell is looked at only if
+' he stops on it (on the C64 the stick moved him a cell before the look)
+u8 Grace = 0
+' the window: map column and row at its top left
+u8 CamX = 0
+u8 CamY = 0
+u8 Lv = 0
+u8 Men = 3
+u8 Bells = 0
+bcd digits 3 Clock = ClockStart
+u8 SecT = 0
+u8 Over = 0
+u8 Won = 0
+u8 SparkT = 0
+u8 SparkX = 0
+u8 SparkY = 0
+u8 BellPh = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Ri = 0
+u8 Ii = 0
+' scratch
+u8 F = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+level_start:
+  StartLevel
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if St = StWin then goto level_done
+  if St = StDead then goto man_lost
+  goto play_loop
+
+level_done:
+  LevelDone
+  if Won = 1 then goto game_end
+  goto level_start
+
+man_lost:
+  ManLost
+  if Over = 1 then goto game_end
+  goto level_start
+
+game_end:
+  Phase = 4
+  mute all
+  if Won = 1 then
+    print at 11,10, "AWESOME"
+    print at 3,12, "16 NEW LEVELS COMING SOON"
+    play sound SndClear
+  else
+    print at 11,10, "GAME OVER"
+    play sound SndLost
+  end if
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the pyramid
+
+' the left casing column of a map row (the right one is Row + 46)
+function LeftEdge(u8 Rr) as u8
+  return 81 - Rr
+
+' 1 when a map row is a floor (rows 21, 25, ... 73)
+function IsFloor(u8 Rr) as u8
+  u8 Q = 0
+  if Rr < 21 then return 0
+  if Rr > 73 then return 0
+  Q = Rr - 21
+  Q = Q & 3
+  if Q = 0 then return 1
+  return 0
+
+' the tile of a map cell without the items
+function BaseTile(u8 Rr, u8 Cc) as u8
+  u8 Le = 0
+  u8 Re = 0
+  u8 Hs = 0
+  if Rr >= 75 then return TSand
+  if Rr = 74 then return TSandT
+  if Rr >= 19 then
+    Le = LeftEdge(Rr)
+    Re = Rr + 46
+    if Cc >= Le then
+      if Cc <= Re then
+        if IsFloor(Rr) = 1 then
+          if Cc < Re then return TFloor
+          return TSlopeR
+        end if
+        if Cc = Le then return TSlopeL
+        if Cc = Re then return TSlopeR
+        Hs = Rr & 1
+        if Hs = 1 then return TInB
+        return TInA
+      end if
+    end if
+  end if
+  Hs = Cc * 5 + Rr * 11
+  Hs = Hs & 31
+  if Hs = 3 then return TStar1
+  if Hs = 17 then return TStar2
+  return TSky
+
+' one row of the window (window row Vr): the same tiles as BaseTile, put
+' as runs straight into the name table (sky, casing, inside or floor,
+' casing, sky), then the stars (BaseTile for every cell through a buffer
+' took three frames for a window)
+sub DrawRow(u8 Vr):
+  u8 Rr = 0
+  u8 Le = 0
+  u8 Re = 0
+  u8 Inner = 0
+  u8 LeT = 0
+  u8 Tt = 0
+  u8 Sk = 0
+  u16 Base = 0
+  i16 L0 = 0
+  i16 R0 = 0
+  Rr = CamY + Vr
+  Base = Vr + 2
+  Base = Base * 32 + 2
+  Sk = TSky
+  if Rr = 74 then Sk = TSandT
+  if Rr >= 75 then Sk = TSand
+  Le = 0
+  Re = 0
+  if Rr >= 19 then
+    if Rr < 74 then
+      Le = 81 - Rr
+      Re = Rr + 46
+    end if
+  end if
+  if Re = 0 then
+    fill Sk count ViewW to vram.name + Base
+  else
+    if IsFloor(Rr) = 1 then
+      Inner = TFloor
+      LeT = TFloor
+    else
+      Inner = TInA
+      Tt = Rr & 1
+      if Tt = 1 then Inner = TInB
+      LeT = TSlopeL
+    end if
+    L0 = Le
+    L0 = L0 - CamX
+    R0 = Re
+    R0 = R0 - CamX
+    FillRun(Base, 0, L0, Sk)
+    FillRun(Base, L0, L0 + 1, LeT)
+    FillRun(Base, L0 + 1, R0, Inner)
+    FillRun(Base, R0, R0 + 1, TSlopeR)
+    FillRun(Base, R0 + 1, ViewW, Sk)
+  end if
+  ' the stars: (5 * column + 11 * row) mod 32 = 3 or 17 in the sky
+  if Sk = TSky then
+    PutStar(Rr, 3, Le, Re, TStar1)
+    PutStar(Rr, 17, Le, Re, TStar2)
+  end if
+end sub
+
+' window columns A to B - 1 (cut to the window) of a row get tile Tf
+sub FillRun(u16 Base, i16 A, i16 B, u8 Tf):
+  u8 N = 0
+  u16 Ad = 0
+  if A < 0 then A = 0
+  if B > ViewW then B = ViewW
+  if B <= A then return
+  N = B - A
+  Ad = A
+  Ad = Ad + Base
+  fill Tf count N to vram.name + Ad
+end sub
+
+' the columns c with 5c + 11r = H (mod 32): c = 13 (H - 11r) mod 32
+sub PutStar(u8 Rr, u8 H, u8 Le, u8 Re, u8 Ts):
+  u8 Cs = 0
+  u8 Wx = 0
+  u8 Sy = 0
+  Cs = Rr * 11
+  Cs = H - Cs
+  Cs = Cs * 13
+  Cs = Cs & 31
+  while Cs < 128
+    if Cs >= CamX then
+      Wx = Cs - CamX
+      if Wx < ViewW then
+        Sy = Rr - CamY
+        Sy = Sy + 2
+        Wx = Wx + 2
+        if Re = 0 then
+          put char Ts at Wx,Sy
+        elseif Cs < Le then
+          put char Ts at Wx,Sy
+        elseif Cs > Re then
+          put char Ts at Wx,Sy
+        end if
+      end if
+    end if
+    Cs = Cs + 32
+  end while
+end sub
+
+' the tile an item shows at map row Rr (tubes are two cells high)
+function ItemTile(u8 Ki, u8 Lower) as u8
+  select case Ki
+  case KUp
+    if Lower = 1 then return TUpBot
+    return TUpTop
+  case KDown
+    if Lower = 1 then return TDnBot
+    return TDnTop
+  case KExit
+    if Lower = 1 then return TExBot
+    return TExTop
+  case KBell
+    return TBell0
+  end select
+  return TSky
+
+' puts one cell of the map on the screen if it is in the window
+sub PutCell(u8 Rr, u8 Cc, u8 Tt):
+  u8 Sx = 0
+  u8 Sy = 0
+  if Rr < CamY then return
+  if Cc < CamX then return
+  Sy = Rr - CamY
+  Sx = Cc - CamX
+  if Sy >= ViewH then return
+  if Sx >= ViewW then return
+  Sx = Sx + 2
+  Sy = Sy + 2
+  put char Tt at Sx,Sy
+end sub
+
+' the items of the level over the drawn window
+sub DrawItems:
+  u8 Ki = 0
+  u8 Ir = 0
+  u8 Ic = 0
+  u8 Tt = 0
+  for Ii = 0 to NItems - 1
+    Ki = It[Ii].K
+    if Ki = 0 then continue for
+    Ir = It[Ii].R
+    Ic = It[Ii].C
+    Tt = ItemTile(Ki, 0)
+    PutCell(Ir, Ic, Tt)
+    if Ki <> KBell then
+      Tt = ItemTile(Ki, 1)
+      Ir = Ir + 1
+      PutCell(Ir, Ic, Tt)
+    end if
+  next
+end sub
+
+sub DrawView:
+  for Ri = 0 to ViewH - 1
+    DrawRow(Ri)
+  next
+  DrawItems
+end sub
+
+' the item covering a map cell, the last one placed winning as on the C64
+' (bells, then trap tubes, then up tubes); NItems when none
+function FindItem(u8 Rr, u8 Cc) as u8
+  u8 Ki = 0
+  u8 Ir = 0
+  Ii = NItems
+  while Ii > 0
+    dec Ii
+    Ki = It[Ii].K
+    if Ki <> 0 then
+      if It[Ii].C = Cc then
+        Ir = It[Ii].R
+        if Ir = Rr then return Ii
+        if Ki <> KBell then
+          Ir = Ir + 1
+          if Ir = Rr then return Ii
+        end if
+      end if
+    end if
+  end while
+  return NItems
+
+' the level's items from the original's tables
+sub LoadLevel:
+  u16 Base = 0
+  u8 Ix = 0
+  Base = Lv * 16
+  for Ix = 0 to 15
+    It[Ix].R = UpR[Base + Ix]
+    It[Ix].C = UpC[Base + Ix]
+    It[Ix].K = KUp
+  next
+  Base = Lv * 12
+  for Ix = 0 to 11
+    J = Ix + 16
+    It[J].R = DnR[Base + Ix]
+    It[J].C = DnC[Base + Ix]
+    It[J].K = KDown
+  next
+  Base = Lv * 14
+  for Ix = 0 to 13
+    J = Ix + 28
+    It[J].R = BlR[Base + Ix]
+    It[J].C = BlC[Base + Ix]
+    It[J].K = KBell
+  next
+  ' the way out under the top, closed until the fourteenth bell
+  It[42].R = 21
+  It[42].C = 63
+  It[42].K = 0
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc Anim
+  SwingBells
+  if SparkT > 0 then dec SparkT
+  inc SecT
+  if SecT >= 60 then
+    SecT = 0
+    if Clock = 0 then
+      St = StDead
+      return
+    end if
+    dec Clock
+    ShowClock
+    if Clock <= 10 then play sound SndTick
+  end if
+  select case St
+  case StWalk
+    MovePlayer
+  case StClimb
+    Py = Py - 2
+    inc MvK
+    if MvK >= 16 then
+      St = StWalk
+      inc Fl
+      Arrive
+    end if
+  case StDrop
+    Py = Py + 2
+    inc MvK
+    if MvK >= 16 then
+      St = StWalk
+      dec Fl
+      Arrive
+    end if
+  end select
+  FollowCam
+end sub
+
+' the bells swing: their tile's pattern changes every 12 frames
+sub SwingBells:
+  V = Anim % 12
+  if V <> 0 then return
+  BellPh = BellPh ^ 1
+  W16 = TBell0 - 128
+  if BellPh = 1 then W16 = TBell1 - 128
+  W16 = W16 * 8
+  copy TilePat + W16 count 8 to vram.pattern + 1024 + (TBell0 - 128) * 8
+  copy TilePat + W16 count 8 to vram.pattern + 3072 + (TBell0 - 128) * 8
+  copy TilePat + W16 count 8 to vram.pattern + 5120 + (TBell0 - 128) * 8
+end sub
+
+' left and right, 1 and 2 pixels in turn, between the floor's limits
+function MinCol() as u8
+  return Fl * 4 + 11
+
+function MaxCol() as u8
+  u8 Q = 0
+  Q = Fl * 4
+  return 115 - Q
+
+sub MovePlayer:
+  u8 Dx = 0
+  u16 Lim = 0
+  Walking = 0
+  if Pad & 4 then
+    Face = 1
+    Dx = 1
+  elseif Pad & 8 then
+    Face = 0
+    Dx = 2
+  end if
+  if Dx > 0 then
+    Acc = Acc + 3
+    V = Acc >> 1
+    Acc = Acc & 1
+    if Dx = 1 then
+      Lim = MinCol() * 8
+      if Px >= Lim + V then
+        Px = Px - V
+        Walking = 1
+      else
+        Px = Lim
+      end if
+    else
+      Lim = MaxCol() * 8
+      if Px + V <= Lim then
+        Px = Px + V
+        Walking = 1
+      else
+        Px = Lim
+      end if
+    end if
+  end if
+  W16 = Px + 4
+  W16 = W16 >> 3
+  Pcol = W16
+  if Pcol <> LastCol then
+    LastCol = Pcol
+    Grace = 0
+    if Walking = 1 then
+      V = Pcol & 1
+      if V = 0 then play sound SndStep
+    end if
+    CheckCell
+  elseif Grace = 1 then
+    if Dx = 0 then
+      Grace = 0
+      CheckCell
+    end if
+  end if
+end sub
+
+' arriving at a floor: the top finishes the level, else the cell counts
+sub Arrive:
+  u8 Lr = 0
+  if Fl >= TopFl then
+    St = StWin
+    return
+  end if
+  Grace = 0
+  Lr = Pad & 12
+  if Lr > 0 then
+    Grace = 1
+    LastCol = Pcol
+    return
+  end if
+  CheckCell
+end sub
+
+' what is at the explorer's cell (the C64's order): an up tube at head
+' height, a trap tube under his feet, a bell at his feet; one pass over
+' the items (the last one placed at a cell wins, as on the C64)
+sub CheckCell:
+  u8 Fr = 0
+  u8 Ki = 0
+  u8 Ir = 0
+  u8 Head = NItems
+  u8 Feet = NItems
+  u8 Bel = NItems
+  Fr = 73 - Fl * 4
+  Ii = NItems
+  while Ii > 0
+    dec Ii
+    Ki = It[Ii].K
+    if Ki = 0 then continue while
+    if It[Ii].C <> Pcol then continue while
+    Ir = It[Ii].R
+    if Ki = KBell then
+      if Ir + 1 = Fr then
+        if Bel = NItems then Bel = Ii
+      end if
+    else
+      ' a tube covers rows Ir and Ir + 1
+      if Ir + 4 = Fr then
+        if Head = NItems then Head = Ii
+      elseif Ir + 3 = Fr then
+        if Head = NItems then Head = Ii
+      end if
+      if Ir = Fr then
+        if Feet = NItems then Feet = Ii
+      elseif Ir + 1 = Fr then
+        if Feet = NItems then Feet = Ii
+      end if
+    end if
+  end while
+  if Head < NItems then
+    Ki = It[Head].K
+    if Ki = KUp then
+      StartTube(StClimb)
+    elseif Ki = KExit then
+      StartTube(StClimb)
+    end if
+  end if
+  if St = StWalk then
+    if Feet < NItems then
+      if It[Feet].K = KDown then StartTube(StDrop)
+    end if
+  end if
+  if St = StWalk then
+    if Bel < NItems then RingBell(Bel)
+  end if
+end sub
+
+' into a tube: the explorer is lined up with it and glides 32 pixels
+sub StartTube(u8 Way):
+  St = Way
+  MvK = 0
+  Px = Pcol * 8
+  if Way = StClimb then
+    play sound SndUp
+  else
+    play sound SndDown
+  end if
+end sub
+
+sub RingBell(u8 Hb):
+  u8 Br = 0
+  u8 Tt = 0
+  It[Hb].K = 0
+  Br = It[Hb].R
+  Tt = BaseTile(Br, Pcol)
+  PutCell(Br, Pcol, Tt)
+  inc Bells
+  ShowBells
+  SparkT = 16
+  SparkX = Pcol - CamX
+  SparkX = SparkX * 8 + 12
+  SparkY = Br - CamY
+  SparkY = SparkY * 8 + 8
+  if Bells = 14 then
+    It[42].K = KExit
+    PutCell(21, 63, TExTop)
+    PutCell(22, 63, TExBot)
+    play sound SndOpen
+    ClearMsg
+    print at 2,22, "THE WAY OUT IS OPEN"
+  else
+    play sound SndBell
+  end if
+end sub
+
+' the window follows: when the explorer comes within 7 columns of a side
+' it is drawn again with him in the middle (a VRAM shift of the window
+' every column took more than a frame with the rest of the play); up and
+' down it keeps his floor 14 rows from the top, drawn again on arriving
+sub FollowCam:
+  u8 Want = 0
+  u8 Redraw = 0
+  i16 Nx = 0
+  W16 = CamX * 8
+  W16 = Px - W16
+  if W16 < 56 then Redraw = 1
+  if W16 > 160 then Redraw = 1
+  if St = StWalk then
+    Want = CamWant()
+    if Want <> CamY then
+      CamY = Want
+      Redraw = 1
+    end if
+  end if
+  if Redraw = 0 then return
+  Nx = Pcol
+  Nx = Nx - 14
+  clamp Nx between 0 and 100
+  CamX = Nx
+  DrawView
+end sub
+
+function CamWant() as u8
+  u16 Rw = 0
+  u8 Rb = 0
+  Rw = Py >> 3
+  if Rw < 30 then return 16
+  Rw = Rw - 14
+  if Rw > 56 then return 56
+  return Rw
+
+' ---------------------------------------------------------------------------
+' levels, lives and drawing
+
+sub NewGame:
+  Men = 3
+  Lv = 0
+  Over = 0
+  Won = 0
+end sub
+
+sub StartLevel:
+  Phase = 2
+  NewScreen
+  LoadLevel
+  Bells = 0
+  Clock = ClockStart
+  SecT = 0
+  Fl = 0
+  St = StWalk
+  MvK = 0
+  Acc = 0
+  Walking = 0
+  Grace = 0
+  Face = 1
+  Px = StartCol * 8
+  Py = 73 * 8
+  Pcol = StartCol
+  LastCol = StartCol
+  CamX = 100
+  CamY = CamWant()
+  SparkT = 0
+  DrawView
+  ShowHud
+  print at 6,22, "PRESS FIRE"
+  DrawSprites
+  ShowScreen
+  play sound SndReady
+  Rearm
+  wait no fire
+  nmi off
+  ReadPad
+  Phase = 3
+sl_wait:
+  Frame1
+  ReadPad
+  inc Anim
+  SwingBells
+  if Press = 0 then goto sl_wait
+  ClearMsg
+  Phase = 1
+end sub
+
+sub LevelDone:
+  Phase = 5
+  DrawSprites
+  play sound SndClear
+  ClearMsg
+  print at 5,22, "LEVEL CLEAR!"
+  if Men < 9 then inc Men
+  ShowMen
+  for Gi = 0 to 119
+    Frame1
+    inc Anim
+    SwingBells
+  next
+  inc Lv
+  if Lv >= 16 then Won = 1
+end sub
+
+sub ManLost:
+  Phase = 6
+  mute all
+  play sound SndLost
+  ClearMsg
+  print at 5,22, "OUT OF TIME!"
+  for Gi = 0 to 89
+    Frame1
+    DrawSprites
+  next
+  dec Men
+  ShowMen
+  if Men = 0 then Over = 1
+end sub
+
+sub ShowHud:
+  print at 2,1, "TIME"
+  print at 11,1, "BELLS"
+  print at 23,1, "MEN"
+  print at 22,22, "LEVEL"
+  ShowClock
+  ShowBells
+  ShowMen
+  NumU = Lv + 1
+  print at 28,22, digits$(NumU, 2)
+end sub
+
+' row 22: messages in columns 2-20, the level in 22-29
+sub ClearMsg:
+  fill row 22 from 2 count 19 with 32
+end sub
+
+sub ShowClock:
+  print Clock at 7,1
+end sub
+
+sub ShowBells:
+  NumU = Bells
+  print at 17,1, digits$(NumU, 2)
+end sub
+
+sub ShowMen:
+  NumU = Men
+  print at 27,1, digits$(NumU, 1)
+end sub
+
+' sprites 0-1 the explorer (helmet and face over the body), 2 a bell's
+' sparkle
+sub DrawSprites:
+  u16 Sx = 0
+  u16 Sy = 0
+  u8 Col = 10
+  W16 = CamX * 8
+  Sx = Px - W16
+  Sx = Sx + 12
+  W16 = CamY * 8
+  Sy = Py - W16
+  X = Sx
+  Y = Sy
+  if St = StClimb then
+    F = 4
+  elseif St = StDrop then
+    F = 4
+  elseif St = StWin then
+    F = 4
+  else
+    F = 0
+    if Walking = 1 then
+      V = Px >> 2
+      F = V & 1
+    end if
+    if Face = 1 then F = F + 2
+  end if
+  if St = StDead then
+    Col = 14
+    V = Anim >> 4
+    V = V & 1
+    if V = 1 then Col = 4
+  end if
+  K = F * 8
+  set sprite 0 to Y,X,K,15
+  K = K + 4
+  set sprite 1 to Y,X,K,Col
+  if SparkT > 0 then
+    set sprite 2 to SparkY,SparkX,SSpark,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  set sprite 3 to 192,0,0,0
+  update sprites
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+end sub
+
+' the title: the name in tall letters over the top of a pyramid, the tune
+' once, START / CREDITS
+sub TitlePage:
+  Phase = 7
+  NewScreen
+  Lv = 0
+  LoadLevel
+  CamX = 49
+  CamY = 16
+  for Ri = 0 to ViewH - 1
+    DrawRow(Ri)
+  next
+  DrawItems
+  for Gi = 0 to 15
+    V = TTtl00 + Gi
+    X = Gi + 8
+    put char V at X,3
+    V = TTtl10 + Gi
+    put char V at X,4
+  next
+  print at 7,6, "AHOY! DECEMBER 1988"
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 760
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  ReadPad
+  Phase = 8
+tp_loop:
+  Frame1
+  ReadPad
+  inc Anim
+  SwingBells
+  V = Pad & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  J = Menu + 17
+  put char 62 at 11,J
+end sub
+
+sub CreditsPage:
+  Phase = 9
+  NewScreen
+  fill mode 2 text color with $B1
+  backdrop dark blue
+  print at 11,2, "TUBULAR!"
+  print at 2,5, "BASED ON TUBULAR! BY BOB"
+  print at 2,6, "BLACKMER, AHOY! DECEMBER"
+  print at 2,7, "1988 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026. THE SIXTEEN PYRAMIDS"
+  print at 2,15, "ARE THE ORIGINAL'S."
+  print at 2,18, "MUSIC: BELLS IN THE PYRAMID"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 10
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$03,$C0,$00,$00,$10,$00,$02
+  $00,$40,$00,$04,$00,$00,$20,$00
+  $00,$00,$00,$00,$00,$10,$00,$00
+  $00,$01,$00,$00,$00,$00,$00,$00
+  $00,$01,$81,$00,$02,$80,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $83,$93,$93,$81,$93,$93,$93,$83
+  $83,$93,$44,$00,$93,$93,$01,$00
+  $83,$93,$93,$44,$93,$83,$83,$83
+  $83,$83,$93,$93,$44,$93,$01,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $83,$93,$44,$00,$93,$83,$01,$00
+  $10,$38,$83,$83,$83,$01,$10,$00
+  $08,$1C,$C1,$C1,$C1,$80,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$C3,$C3,$C3,$C3,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$99,$99,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$C3,$C3,$C3,$C3,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$81,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$81,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $D8,$D8,$CC,$CC,$C6,$C6,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$00,$00,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$F4,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$04,$04
+  $04,$A4,$4A,$0A,$0A,$BA,$0A,$BA
+  $0A,$BA,$0A,$BA,$0A,$0A,$BA,$0A
+  $01,$01,$01,$06,$01,$61,$01,$01
+  $01,$61,$01,$06,$01,$01,$01,$01
+  $0B,$AB,$AB,$0A,$6A,$6A,$0A,$06
+  $B4,$B4,$B4,$4B,$4B,$4B,$4B,$0B
+  $B4,$B4,$B4,$B4,$4B,$4B,$4B,$0B
+  $B3,$A3,$A3,$A3,$A3,$A3,$A3,$63
+  $13,$13,$31,$01,$13,$13,$13,$01
+  $B8,$A8,$A8,$8A,$A8,$A8,$A8,$68
+  $18,$18,$18,$18,$81,$18,$18,$01
+  $BF,$AF,$AF,$AF,$AF,$AF,$AF,$6F
+  $1F,$1F,$F1,$01,$1F,$1F,$1F,$01
+  $B1,$B1,$1B,$1B,$1B,$1B,$A1,$01
+  $B1,$B1,$1B,$1B,$1B,$1B,$A1,$01
+  $01,$01,$01,$0E,$0F,$0E,$01,$01
+  $0B,$0B,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1B,$1B,$B1,$B1,$B1,$B1,$1B,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1B,$1B,$1B,$1B,$B1,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1B,$1B,$B1,$B1,$B1,$B1,$1B,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$08,$08
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0A,$0A,$A1,$A1,$81,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$01,$01,$81,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $03,$07,$1F,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F8,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$02,$06,$04,$0C,$08,$18
+  $00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$40,$60,$20,$30,$10,$18
+  $03,$07,$1F,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F8,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$02,$02,$02,$03,$02,$03
+  $00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$40,$40,$40,$40,$60,$00
+  $03,$07,$1F,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F8,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$02,$06,$04,$0C,$08,$18
+  $00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$40,$60,$20,$30,$10,$18
+  $03,$07,$1F,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F8,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$02,$02,$02,$02,$06,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$40,$40,$40,$C0,$40,$C0
+  $03,$07,$1F,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F8,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$17,$1F,$03,$03,$03,$02,$02,$06,$04,$04,$0C
+  $00,$00,$00,$00,$00,$E8,$F8,$C0,$C0,$C0,$40,$40,$60,$20,$20,$30
+  $00,$01,$01,$11,$08,$00,$70,$00,$08,$11,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$10,$20,$00,$1C,$00,$20,$10,$00,$00,$00,$00,$00,$00
+end data
+data UpR bytes
+  69,65,61,57,53,53,49,45,41,37,33,29,25,25,25,25
+  69,65,61,57,53,49,45,45,41,37,33,29,25,25,25,25
+  69,65,61,57,53,53,49,45,41,37,33,29,29,25,25,25
+  69,65,65,61,57,53,49,45,41,41,37,33,29,25,25,25
+  69,65,65,61,57,53,49,45,41,37,33,29,25,25,25,25
+  69,65,61,57,57,53,49,49,45,41,37,33,29,25,25,25
+  69,65,61,57,57,53,53,49,49,45,41,37,33,33,29,25
+  69,65,61,57,53,53,49,49,49,45,45,41,37,33,29,25
+  69,65,61,57,53,49,45,41,41,37,37,33,29,25,25,25
+  69,65,61,61,57,53,53,49,49,45,45,41,37,33,29,25
+  69,65,61,57,53,49,45,41,37,33,29,25,25,25,25,25
+  69,65,61,57,53,49,45,41,37,33,33,29,29,29,25,25
+  69,69,65,65,61,61,57,53,49,45,41,37,37,33,29,25
+  69,65,61,61,57,57,57,53,53,49,45,41,37,33,29,25
+  69,65,65,61,57,57,53,49,49,45,41,37,33,29,25,25
+  69,65,65,61,57,57,53,53,49,45,41,37,37,33,29,25
+end data
+data UpC bytes
+  64,55,45,57,41,63,47,55,61,55,67,65,65,65,65,65
+  42,90,53,66,80,44,60,80,71,58,72,60,64,64,64,64
+  97,97,97,85,43,59,47,63,63,67,64,61,69,59,59,59
+  81,29,69,75,63,63,53,73,55,79,73,63,67,59,59,59
+  63,63,85,85,85,63,63,73,73,63,63,67,61,61,61,61
+  35,41,27,32,63,63,53,63,49,57,63,63,63,63,63,63
+  55,55,55,55,65,60,73,41,67,47,52,60,52,63,57,59
+  79,77,75,73,36,71,38,65,69,42,62,57,57,57,57,59
+  65,68,72,78,86,63,63,63,71,63,71,51,71,59,59,59
+  63,63,41,67,71,67,67,63,71,41,53,53,53,72,68,65
+  63,63,63,63,63,63,63,63,63,63,63,63,63,63,63,63
+  91,89,87,85,83,84,63,63,64,54,76,68,70,72,63,63
+  45,80,42,82,39,84,73,70,67,64,61,48,60,51,54,59
+  73,73,47,77,47,57,97,47,91,75,47,63,59,63,63,63
+  55,55,79,79,65,79,65,47,65,48,65,61,65,65,65,65
+  61,59,90,90,30,43,43,84,78,78,56,56,78,67,67,59
+end data
+data DnR bytes
+  69,57,53,53,53,37,37,37,37,37,37,37,69,65,61,57
+  57,53,45,33,25,25,25,25,65,61,61,57,53,53,41,29
+  29,29,29,29,65,61,53,53,49,45,41,41,41,41,41,41
+  69,65,65,61,61,57,53,49,41,33,33,29,69,69,65,65
+  61,61,57,57,53,45,41,37,61,57,57,53,49,45,41,37
+  37,37,37,37,69,65,61,57,53,53,49,41,37,33,33,45
+  69,65,65,61,61,57,57,53,53,49,49,49,57,57,53,53
+  49,49,45,45,41,37,33,33,69,69,65,65,65,65,61,61
+  61,61,57,57,69,65,65,61,57,57,53,45,41,33,29,29
+  69,65,65,61,61,53,49,45,45,41,37,37,65,61,61,57
+  57,57,53,37,33,33,33,33,69,65,65,65,61,57,57,57
+  53,49,49,49,69,69,69,65,65,61,57,57,53,49,41,37
+end data
+data DnC bytes
+  83,65,37,49,65,70,70,70,70,70,70,70,26,104,31,28
+  98,94,69,75,67,67,67,67,81,37,81,37,37,51,68,66
+  66,66,66,66,43,81,37,73,41,43,49,49,49,49,49,49
+  87,75,87,43,87,43,49,55,77,59,70,70,48,85,48,85
+  48,85,48,85,85,71,71,71,59,59,63,62,62,62,62,62
+  62,62,62,62,76,74,72,70,39,68,67,54,54,54,54,67
+  94,37,94,37,94,37,94,37,94,37,37,37,55,74,57,74
+  45,74,49,74,74,74,74,74,39,90,37,43,86,92,37,43
+  86,92,40,89,63,62,74,63,62,74,63,56,55,61,69,71
+  67,32,93,33,92,58,58,53,58,58,58,58,52,51,53,50
+  52,90,74,48,75,75,75,75,101,53,57,101,101,49,76,82
+  49,49,49,49,28,92,107,24,107,32,32,81,91,91,65,65
+end data
+data BlR bytes
+  72,72,72,68,64,60,60,56,52,48,44,36,32,24,72,72
+  68,68,64,60,60,56,52,48,44,36,32,28,68,68,68,64
+  64,56,56,52,48,44,40,36,32,24,72,68,64,64,64,56
+  56,52,48,44,40,36,32,24,68,68,64,60,60,56,52,52
+  52,44,44,36,36,28,72,68,64,64,60,60,56,56,52,48
+  48,44,40,28,72,68,64,64,56,56,56,48,48,44,40,36
+  32,28,68,68,64,64,60,60,56,56,52,52,48,48,56,44
+  68,68,64,64,60,60,60,56,56,56,48,40,28,24,68,64
+  64,60,60,56,56,56,52,52,48,40,40,24,68,68,64,64
+  60,60,52,48,44,40,36,32,28,24,68,68,64,60,60,56
+  52,52,44,36,32,32,32,28,68,68,64,64,60,60,56,52
+  48,44,40,36,32,24,68,68,68,64,64,60,60,56,56,56
+  48,40,40,36,68,68,64,60,60,56,56,52,48,48,44,44
+  28,24,72,64,60,60,56,56,48,48,44,44,40,36,32,24
+end data
+data BlC bytes
+  71,93,107,57,47,55,62,43,43,53,59,57,66,64,34,80
+  97,106,42,30,77,86,60,64,75,74,66,65,72,84,93,84
+  93,45,71,45,58,65,65,65,68,66,87,57,36,78,93,59
+  65,47,42,52,76,67,61,66,62,64,86,84,86,45,51,62
+  64,72,74,62,64,69,59,47,28,47,47,49,62,64,55,51
+  62,51,62,64,59,77,41,54,57,61,72,42,61,42,53,61
+  53,58,75,78,73,76,71,74,69,72,67,70,66,68,38,64
+  69,95,73,95,36,79,95,30,87,95,64,72,64,64,65,43
+  65,53,69,57,73,82,35,70,61,51,82,64,40,89,40,89
+  40,89,64,62,64,62,64,62,64,62,64,88,64,64,84,64
+  64,81,55,55,69,71,75,70,41,84,38,85,36,87,79,76
+  73,70,67,47,52,67,53,71,75,51,53,52,69,30,56,92
+  48,45,82,64,54,56,55,78,80,78,80,64,37,90,41,64
+  55,64,17,106,47,85,30,85,39,90,75,80,45,79,52,63
+end data
+
+asm {
+TbStep:
+    db $40,$7C,$70,$01,$40,$A0,$A0,$01,$50
+TbBell:
+    db $40,$47,$10,$03,$40,$35,$20,$03,$40,$47,$30,$04,$40,$35,$50,$08,$50
+TbOpen:
+    db $40,$D6,$20,$04,$40,$8F,$20,$04,$40,$6B,$20,$04,$40,$47,$20,$04,$40,$35,$20,$0C,$50
+TbUp:
+    db $00,$00,$34,$03,$00,$00,$35,$03,$00,$00,$35,$03,$00,$00,$46,$03,$00,$00,$56,$04,$10
+TbDown:
+    db $40,$7F,$20,$02,$40,$97,$30,$02,$40,$B4,$30,$02,$40,$D6,$30,$02,$40,$FE,$40,$02,$40,$2E,$41,$02
+    db $40,$68,$51,$02,$40,$AB,$51,$04,$50
+TbTick:
+    db $40,$40,$40,$01,$40,$40,$F0,$01,$50
+TbClear:
+    db $40,$AA,$20,$05,$40,$8F,$20,$05,$40,$71,$20,$05,$40,$55,$20,$05,$40,$71,$20,$05,$40,$55,$20,$14
+    db $50
+TbLost:
+    db $40,$1D,$21,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$53,$21,$1E,$50
+TbReady:
+    db $40,$8F,$30,$04,$40,$FF,$F3,$04,$40,$6B,$30,$08,$50
+
+TbSoundTable:
+    dw TbTuneMel,$702B
+    dw TbTuneBass,$7035
+    dw TbStep,$7049
+    dw TbBell,$7049
+    dw TbOpen,$7049
+    dw TbUp,$703F
+    dw TbDown,$7049
+    dw TbTick,$7049
+    dw TbClear,$7049
+    dw TbLost,$7049
+    dw TbReady,$7049
+; Bells in the Pyramid (original)
+; Tiny Sound, 8 frames per step
+TbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$F1,$22,$1C,$01,$1F,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1F,$01,$1C,$01,$1B,$01,$1E,$01,$23,$01,$01,$01,$21,$01,$01,$01
+    db $1F,$01,$23,$01,$28,$01,$26,$01,$24,$01,$23,$01,$21,$01,$24,$01
+    db $23,$01,$01,$01,$01,$01,$01,$01,$28,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$1B,$01
+    db $1C,$01,$01,$01,$23,$01,$01,$01,$28,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+TbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$04,$01,$0B,$01,$04,$01,$0B,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$00,$01,$01,$01
+    db $FF
+}

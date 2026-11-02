@@ -1,0 +1,1596 @@
+cartridge "AHOY! COLUMN GAMES/COMMODARES/1988"
+
+' AHOY! COLUMN GAMES
+' Four small games from the "Commodares" programming-challenge column of
+' Ahoy! magazine (Commodore 64 and 128 BASIC), rebuilt for the ColecoVision
+' on one cartridge with a joystick menu. Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' SKI SCROLL - Commodares problem #18-3, readers' solutions in Ahoy!
+'   October 1985 (CD22-4 Sheldon C. Wotring, CD22-5 Paul T. Dawson, CD22-6
+'   Larry Snyder). One game made of all three: the slope scrolls up past the
+'   skier (all three); a border of trees at both edges and clusters of four
+'   trees (Dawson's "^^^^"), single trees (Snyder, Wotring); the skier turns
+'   its skis left or right as it steers (Dawson's G/M/N/H shapes); the run is
+'   500 rows long, the score starts at 500 and every tree hit costs 40
+'   (Snyder); a crash stops the run for a moment (Dawson froze the game).
+'   Liberties: smooth sideways moves, the run speeds up every 100 rows, a
+'   flagged finish line, a crash can't cost again for two rows, a score of
+'   0 ends the run (WIPED OUT), best score kept, mixed rows (empty, single
+'   tree, cluster) with clusters getting more common.
+' GENERIC GAME - Commodares #29-2, Ahoy! September 1986, solution by Mark
+'   Breault. The computer picks four different digits; guess them. Each
+'   guess is answered with DIGITS (how many of your digits are in the code,
+'   counted as the listing does) and PLACES (how many are in the right
+'   place), and the guess count; four places wins. Liberties: digits picked
+'   on an on-screen pad (button 1 types, button 2 erases), a guess is sent
+'   by its fourth digit, at most 20 guesses (then the code is shown),
+'   fewest guesses kept.
+' SIMPLE SIMON - Commodares #50-4, Ahoy! July 1988, solutions by Judy
+'   Groth (C-64) and Charles Kluepfel (C-128). A number is shown for a
+'   time that grows with its length, then hidden; type it back. It starts
+'   at three digits and grows by one each round (Groth); a mistake shows
+'   the right number (Kluepfel, "NO, IT IS"). 10 points a round (Groth's
+'   SCORE). Liberties: digits 0-9 (Kluepfel; Groth used 1-9), each digit
+'   has its own tone, typing on the pad, a wrong digit ends the round at
+'   once, 26 digits (a full line) is a win, best score kept.
+' BOUNCING BALLS - Commodares #33-3, Ahoy! January 1987, C-128 solution by
+'   Jim Speers. A chain of eight balls bounces round the screen; steer the
+'   head 15 degrees at a time (the listing's Z and / keys); hitting one of
+'   the 12 targets scores a point and knocks the head up to 60 degrees off
+'   course; two minutes; the speed can be changed while playing (the
+'   listing's 0-9 keys). Liberties: a hit target disappears and a new one
+'   appears elsewhere (on the C-128 the head could score again and again on
+'   the same X); the chain follows the head's path; five speeds; the arena
+'   has a brick wall; best score kept. It is playable with a goal (score in
+'   two minutes), so it is a game here, not a toy.
+'
+' Controls: either controller. Menu: up/down, a button. Ski: left/right.
+' Digit pad: the stick moves the cursor, left button types the digit,
+' right button erases (Generic Game). Balls: left/right turn (hold to keep
+' turning), up/down speed.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off after a wait, display off; the title tune
+' plays once (music first in the sound table, quieter); `set sprite count`
+' given after every `clear sprites`; nothing flashes; each game ends with a
+' message, then a press (sleep after 30 seconds) goes back to the title.
+
+const TSnow = 128
+const TSnow2 = 129
+const TTree = 130
+const TEdge = 131
+const TFin = 132
+const TDrift = 133
+const TBrick = 134
+const TTarg = 135
+const TFloor = 136
+const TRope = 137
+const TRopev = 138
+const TKnot = 139
+const TKeyl = 140
+const TKeyr = 141
+const SSkis = 0
+const SSkil = 4
+const SSkir = 8
+const SSkisk = 12
+const SSkilk = 16
+const SSkirk = 20
+const SCrash = 24
+const SCrashk = 28
+const SBall = 32
+const SCur = 36
+const NTiles8 = 112
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndOk = 4
+const SndBad = 5
+const SndCrash = 6
+const SndHit = 7
+const SndBump = 8
+const SndStart = 9
+const SndOver = 10
+const SndWin = 11
+const SndDig0 = 12
+const SndDig1 = 13
+const SndDig2 = 14
+const SndDig3 = 15
+const SndDig4 = 16
+const SndDig5 = 17
+const SndDig6 = 18
+const SndDig7 = 19
+const SndDig8 = 20
+const SndDig9 = 21
+const NSpr = 10
+const SkiRows = 21
+const FeetI = 4
+const SkiLen = 500
+const NTarg = 12
+const MaxSeq = 26
+const MaxGuess = 20
+const BalTime = 7200
+
+' Bouncing Balls: 24 headings, 15 degrees apart, 0 = up, clockwise;
+' x and y steps in 1/256 pixel for 1 pixel a frame (negative steps as
+' $FFxx: a words table refuses -66, see bugs/ahoyminis-words-negative)
+data DxT words
+  0, 66, 128, 181, 222, 247, 256, 247, 222, 181, 128, 66, 0, $FFBE, $FF80, $FF4B, $FF22, $FF09, $FF00, $FF09, $FF22, $FF4B, $FF80, $FFBE
+end data
+data DyT words
+  $FF00, $FF09, $FF22, $FF4B, $FF80, $FFBE, 0, 66, 128, 181, 222, 247, 256, 247, 222, 181, 128, 66, 0, $FFBE, $FF80, $FF4B, $FF22, $FF09
+end data
+' snow: specks scattered at random (made once in Python); each slope row
+' reads 26 of them from (world row x 11) & 31
+data SnowPat bytes
+  129, 129, 129, 129, 129, 129, 128, 129, 129, 129, 129, 128, 129, 129, 129, 129, 128, 129, 129, 129, 129, 129, 129, 129, 129, 128, 128, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129, 128, 129, 129, 128, 129, 129, 129, 129, 129, 129, 129, 129, 128, 129, 128, 129
+
+' the balls' colours, head first
+data BallCol bytes
+  15, 11, 10, 9, 8, 13, 7, 3
+end data
+' digit pad: the screen column of each key
+data PadCol bytes
+  6, 11, 16, 21, 26
+end data
+
+record Pt:
+  u8 X
+  u8 Y
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u8 Game = 0
+u8 InPlay = 0
+u8 Over = 0
+u8 Sel = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 OnTitle = 0
+u8 SimPh = 0
+' input
+u8 Stk = 0
+u8 WasStk = 0
+u8 StkNew = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Press = 0
+u8 Hold = 0
+' best scores
+bcd digits 3 SkiHi = 0
+u8 GenBest = 0
+u16 SimHi = 0
+u16 BalHi = 0
+
+' --- ski
+u8 RowA[21]
+u8 RowB[21]
+u8 RowBuf[32]
+bcd digits 3 SkiSc = 500
+u16 Left = 500
+u8 Sx = 120
+u8 Sd = 0
+u8 ScrT = 0
+u8 ScrN = 8
+u8 Crash = 0
+u8 Inv = 0
+u8 Hits = 0
+u8 Wrow = 0
+u8 FinI = 255
+u8 Ri = 0
+u8 SkFrom = 0
+u8 SkCnt = 21
+u8 SkHalf = 0
+' --- digit pad (Generic Game, Simple Simon)
+u8 PcX = 0
+u8 PcY = 0
+u8 Key = 255
+' --- generic game
+u8 Code[4]
+u8 Gs[4]
+u8 Gn = 0
+u8 Nd = 0
+u8 Np = 0
+u8 Kg = 0
+' --- simple simon
+u8 Seq[26]
+u8 SLen = 3
+u8 SPos = 0
+u16 SimSc = 0
+' --- bouncing balls
+Pt Hist[128]
+u8 HP = 0
+u16 Hx = 0
+u16 Hy = 0
+u8 Hd = 0
+u8 Spd = 3
+u8 Gap = 9
+u16 TimeF = 0
+u8 Secs = 120
+u8 Sec60 = 60
+u16 BalSc = 0
+u8 TurnT = 0
+u8 Bi = 0
+u8 NeedT = 0
+' loop counters
+u8 Li = 0
+u8 Lj = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+i16 Vx = 0
+i16 Vy = 0
+
+  tile screen
+  set sound table AmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 4 then
+    CreditsPage
+    goto title
+  end if
+  Game = Sel + 1
+  Over = 0
+  select case Game
+  case 1
+    SkiGame
+  case 2
+    GenGame
+  case 3
+    SimGame
+  case else
+    BalGame
+  end select
+  InPlay = 0
+  ' the end: a message is on screen; a press goes back to the title, and
+  ' left alone Amy's sleep blanks the screen after 30 seconds
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ===========================================================================
+' SKI SCROLL
+
+sub SkiGame:
+  NewScreen
+  fill mode 2 text color with $4F
+  TileColors
+  backdrop white
+  SkiSc = 500
+  Left = SkiLen
+  Sx = 120
+  Sd = 0
+  ScrT = 0
+  ScrN = 8
+  Crash = 0
+  Inv = 0
+  Hits = 0
+  Wrow = 0
+  FinI = 255
+  for Li = 0 to 20
+    RowA[Li] = 0
+    RowB[Li] = 0
+  next
+  fill TEdge count 32 at 0,0
+  fill TSnow2 count 32 at 0,1
+  fill TEdge count 32 at 0,23
+  DrawSlope
+  SkiHud
+  SkiSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+ski_loop:
+  Frame1
+  ReadPad
+  SkiStep
+  SkiSprites
+  if Over = 0 then goto ski_loop
+  InPlay = 0
+  mute all
+  if SkiSc > SkiHi then SkiHi = SkiSc
+  if Over = 2 then
+    print at 8,10, "              "
+    print at 8,11, "   FINISH!    "
+    print at 8,12, "  SCORE       "
+    print SkiSc at 16,12
+    print at 8,13, "              "
+    play sound SndWin
+  else
+    print at 8,10, "              "
+    print at 8,11, "  WIPED OUT!  "
+    print at 8,12, "              "
+    play sound SndOver
+  end if
+  return
+end sub
+
+' one frame of the run
+sub SkiStep:
+  if Crash > 0 then
+    dec Crash
+    return
+  end if
+  Sd = 0
+  V = Stk & 4
+  if V > 0 then
+    if Sx > 20 then Sx = Sx - 2
+    Sd = 1
+  end if
+  V = Stk & 8
+  if V > 0 then
+    if Sx < 212 then Sx = Sx + 2
+    Sd = 2
+  end if
+  ' the redraw after a scroll is spread over the next two passes
+  if SkHalf = 1 then
+    DrawBottom
+  elseif SkHalf = 2 then
+    DrawTop
+  end if
+  inc ScrT
+  if ScrT >= ScrN then
+    ScrT = 0
+    SkiScroll
+  end if
+  SkiCheck
+  return
+end sub
+
+' the tree under the skier's feet (row 6, the column of the sprite's middle)
+sub SkiCheck:
+  if Over > 0 then return
+  if Inv > 0 then return
+  if TreeAt(FeetI, FeetCol()) = 0 then return
+  Crash = 40
+  Inv = 2
+  inc Hits
+  SkiSc -= 40
+  play sound SndCrash
+  SkiHud
+  if SkiSc = 0 then Over = 1
+  return
+end sub
+
+function FeetCol as u8
+  return (Sx + 8) >> 3
+
+' 1 when ring row I has a tree in screen column Col
+function TreeAt(u8 I, u8 Col) as u8
+  u8 Res = 0
+  u8 A = RowA[I]
+  u8 B = RowB[I]
+  if Col <= 2 then Res = 1
+  if Col >= 29 then Res = 1
+  if A > 0 then
+    if A < 255 then
+      if Col >= A then
+        if Col < A + 4 then Res = 1
+      end if
+    end if
+  end if
+  if B = Col then Res = 1
+  return Res
+
+' the slope moves up a row: a new row at the bottom
+sub SkiScroll:
+  for Li = 0 to 19
+    Lj = Li + 1
+    RowA[Li] = RowA[Lj]
+    RowB[Li] = RowB[Lj]
+  next
+  if FinI < 255 then dec FinI
+  if Inv > 0 then dec Inv
+  inc Wrow
+  RowA[20] = 0
+  RowB[20] = 0
+  if Left > 0 then
+    dec Left
+    if Left = 0 then
+      RowA[20] = 255
+      FinI = 20
+    else
+      SkiNewRow
+    end if
+  end if
+  ' faster every 100 rows: 8, 7, 6, 5, 4 frames a row
+  W16 = Left / 100
+  ScrN = W16 + 4
+  if ScrN > 8 then ScrN = 8
+  SkHalf = 2
+  NumU = Left
+  print at 23,1, digits$(NumU, 3)
+  if FinI = FeetI then Over = 2
+  return
+end sub
+
+' a new bottom row: empty, one tree, or a cluster of four
+sub SkiNewRow:
+  u8 Lv = 0
+  u8 Roll = 0
+  W16 = SkiLen - Left
+  W16 = W16 / 100
+  Lv = W16
+  Roll = Rnd(100)
+  K = 30 - Lv * 4
+  N = 65 - Lv * 6
+  if Roll < K then return
+  if Roll >= N then
+    RowA[20] = 3 + Rnd(23)
+  else
+    RowB[20] = 3 + Rnd(26)
+  end if
+  return
+end sub
+
+' the whole slope (21 rows) straight to the name table: a Z80 routine
+' (SkiDraw, in the asm block) builds each row in RowBuf and sends it; the
+' Amy version took two frames per scroll
+sub DrawSlope:
+  SkFrom = 0
+  SkCnt = 21
+  call asm SkiDraw
+  return
+end sub
+
+' the pass after a scroll draws the top 11 rows, the next pass the other 10
+' (the scroll and a whole redraw in one pass missed frames)
+sub DrawTop:
+  SkFrom = 0
+  SkCnt = 11
+  call asm SkiDraw
+  SkHalf = 1
+  return
+end sub
+
+sub DrawBottom:
+  SkFrom = 11
+  SkCnt = 10
+  call asm SkiDraw
+  SkHalf = 0
+  return
+end sub
+
+sub SkiHud:
+  print at 2,1, "SCORE"
+  print SkiSc at 8,1
+  print at 13,1, "ROWS LEFT"
+  NumU = Left
+  print at 23,1, digits$(NumU, 3)
+  return
+end sub
+
+sub SkiSprites:
+  if Crash > 0 then
+    set sprite 0 to 39,Sx,SCrash,8
+    set sprite 1 to 39,Sx,SCrashk,1
+  else
+    select case Sd
+    case 1
+      set sprite 0 to 39,Sx,SSkil,8
+      set sprite 1 to 39,Sx,SSkilk,1
+    case 2
+      set sprite 0 to 39,Sx,SSkir,8
+      set sprite 1 to 39,Sx,SSkirk,1
+    case else
+      set sprite 0 to 39,Sx,SSkis,8
+      set sprite 1 to 39,Sx,SSkisk,1
+    end select
+  end if
+  update sprites
+  return
+end sub
+
+' ===========================================================================
+' GENERIC GAME
+
+sub GenGame:
+  NewScreen
+  DigitScreen
+  print at 9,2, "GENERIC GAME"
+  print at 4,3, "GUESS 4 DIFFERENT DIGITS"
+  print at 3,5, "GUESS D P"
+  print at 16,5, "GUESS D P"
+  print at 3,16, "YOUR GUESS"
+  DrawPad
+  ' four different digits (the listing's lines 10)
+  for Li = 0 to 3
+gen_pick:
+    V = Rnd(10)
+    for Lj = 0 to 3
+      if Lj < Li then
+        if Code[Lj] = V then goto gen_pick
+      end if
+    next
+    Code[Li] = V
+  next
+  Gn = 0
+  Kg = 0
+  GenEntry
+  PadSprite
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+gen_loop:
+  Frame1
+  ReadPad
+  PadStep
+  PadSprite
+  if Key < 10 then
+    if Gn < 4 then
+      Gs[Gn] = Key
+      inc Gn
+      play sound SndMove
+      GenEntry
+      if Gn = 4 then GenScore
+    end if
+  elseif Key = 10 then
+    if Gn > 0 then
+      dec Gn
+      GenEntry
+    end if
+  end if
+  if Over = 0 then goto gen_loop
+  InPlay = 0
+  HideSprites
+  fill 32 count 26 at 3,16
+  if Over = 2 then
+    if GenBest = 0 then GenBest = Kg
+    if Kg < GenBest then GenBest = Kg
+    print at 4,13, "CRACKED IN    GUESSES!  "
+    NumU = Kg
+    print at 15,13, digits$(NumU, 2)
+    play sound SndWin
+  else
+    print at 4,13, "NO MORE ROOM. CODE:     "
+    for Li = 0 to 3
+      X = 24 + Li
+      V = Code[Li] + 48
+      put char V at X,13
+    next
+    play sound SndOver
+  end if
+  return
+end sub
+
+' DIGITS (the listing's N: every pair of a code digit and a guess digit
+' that are equal) and PLACES (P), then the line in the table
+sub GenScore:
+  Nd = 0
+  Np = 0
+  for Li = 0 to 3
+    for Lj = 0 to 3
+      if Code[Li] = Gs[Lj] then
+        inc Nd
+        if Li = Lj then inc Np
+      end if
+    next
+  next
+  ' table: 10 lines in each of two columns
+  X = 3
+  Y = Kg + 6
+  if Kg >= 10 then
+    X = 16
+    Y = Kg - 4
+  end if
+  for Li = 0 to 3
+    V = Gs[Li] + 48
+    U = X + Li
+    put char V at U,Y
+  next
+  U = X + 6
+  V = Nd + 48
+  put char V at U,Y
+  U = X + 8
+  V = Np + 48
+  put char V at U,Y
+  inc Kg
+  Gn = 0
+  GenEntry
+  if Np = 4 then
+    Over = 2
+  elseif Kg >= MaxGuess then
+    Over = 1
+  else
+    play sound SndOk
+  end if
+  return
+end sub
+
+sub GenEntry:
+  for Li = 0 to 3
+    X = 15 + Li * 2
+    V = 45
+    if Li < Gn then V = Gs[Li] + 48
+    put char V at X,16
+  next
+  print at 23,16, "#"
+  NumU = Kg + 1
+  if Kg >= MaxGuess then NumU = MaxGuess
+  print at 24,16, digits$(NumU, 2)
+  return
+end sub
+
+' ===========================================================================
+' SIMPLE SIMON
+
+sub SimGame:
+  NewScreen
+  DigitScreen
+  print at 9,2, "SIMPLE SIMON"
+  print at 3,4, "WATCH THE NUMBER, THEN"
+  print at 3,5, "TYPE IT BACK"
+  DrawPad
+  SLen = 3
+  SimSc = 0
+  for Li = 0 to 2
+    Seq[Li] = Rnd(10)
+  next
+  SimHud
+  PadSprite
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 60 frames
+  nmi off
+  InPlay = 1
+sim_round:
+  SimShow
+  SPos = 0
+  SimPh = 1
+  print at 3,13, "YOUR TURN     "
+sim_loop:
+  Frame1
+  ReadPad
+  PadStep
+  PadSprite
+  if Key < 10 then
+    PlayDigit(Key)
+    X = SPos + 3
+    V = Key + 48
+    put char V at X,9
+    if Key <> Seq[SPos] then
+      Over = 1
+    else
+      inc SPos
+      if SPos >= SLen then
+        SimSc = SimSc + 10
+        SimHud
+        if SLen >= MaxSeq then
+          Over = 2
+        else
+          print at 3,13, "RIGHT!        "
+          play sound SndOk
+          Seq[SLen] = Rnd(10)
+          inc SLen
+          Rearm
+          wait 40 frames
+          nmi off
+          goto sim_round
+        end if
+      end if
+    end if
+  end if
+  if Over = 0 then goto sim_loop
+  InPlay = 0
+  HideSprites
+  if SimSc > SimHi then SimHi = SimSc
+  if Over = 2 then
+    print at 3,13, "PERFECT MEMORY!"
+    play sound SndWin
+  else
+    print at 3,13, "NO, IT IS:    "
+    for Li = 0 to SLen - 1
+      X = Li + 3
+      V = Seq[Li] + 48
+      put char V at X,15
+    next
+    play sound SndOver
+  end if
+  return
+end sub
+
+' the number appears with a tone per digit, stays for a time that grows
+' with its length (Groth: a delay of 300 x length), then goes
+sub SimShow:
+  SimPh = 0
+  print at 3,13, "WATCH         "
+  fill 32 count 26 at 3,9
+  fill 32 count 26 at 3,15
+  for Li = 0 to SLen - 1
+    X = Li + 3
+    V = Seq[Li] + 48
+    put char V at X,9
+    PlayDigit(Seq[Li])
+    Rearm
+    wait 12 frames
+    nmi off
+  next
+  Rearm
+  wait 40 frames
+  nmi off
+  fill 32 count 26 at 3,9
+  return
+end sub
+
+sub PlayDigit(u8 D):
+  select case D
+  case 0
+    play sound SndDig0
+  case 1
+    play sound SndDig1
+  case 2
+    play sound SndDig2
+  case 3
+    play sound SndDig3
+  case 4
+    play sound SndDig4
+  case 5
+    play sound SndDig5
+  case 6
+    play sound SndDig6
+  case 7
+    play sound SndDig7
+  case 8
+    play sound SndDig8
+  case else
+    play sound SndDig9
+  end select
+  return
+end sub
+
+sub SimHud:
+  print at 3,7, "SCORE"
+  NumU = SimSc
+  print at 9,7, digits$(NumU, 3)
+  print at 16,7, "DIGITS"
+  NumU = SLen
+  print at 23,7, digits$(NumU, 2)
+  return
+end sub
+
+' ===========================================================================
+' the digit pad
+
+sub DigitScreen:
+  fill mode 2 text color with $F4
+  TileColors
+  backdrop dark blue
+  RopeBox
+  return
+end sub
+
+sub DrawPad:
+  for Li = 0 to 4
+    X = PadCol[Li]
+    V = Li + 48
+    put char V at X,18
+    V = Li + 53
+    put char V at X,20
+  next
+  PcX = 0
+  PcY = 0
+  return
+end sub
+
+' the stick moves the cursor; Key = digit typed (button 1), 10 erase
+' (button 2), 255 nothing
+sub PadStep:
+  Key = 255
+  V = StkNew & 4
+  if V > 0 then
+    if PcX > 0 then dec PcX
+  end if
+  V = StkNew & 8
+  if V > 0 then
+    if PcX < 4 then inc PcX
+  end if
+  V = StkNew & 1
+  if V > 0 then PcY = 0
+  V = StkNew & 2
+  if V > 0 then PcY = 1
+  if B1 = 1 then Key = PcY * 5 + PcX
+  if B2 = 1 then Key = 10
+  return
+end sub
+
+sub PadSprite:
+  X = PadCol[PcX]
+  X = X << 3
+  X = X - 4
+  Y = PcY << 4
+  Y = Y + 141
+  set sprite 0 to Y,X,SCur,11
+  update sprites
+  return
+end sub
+
+' ===========================================================================
+' BOUNCING BALLS
+
+sub BalGame:
+  NewScreen
+  fill mode 2 text color with $F1
+  TileColors
+  backdrop black
+  fill TBrick count 32 at 0,2
+  fill TBrick count 32 at 0,22
+  for Li = 3 to 21
+    fill TBrick count 3 at 0,Li
+    fill TFloor count 26 at 3,Li
+    fill TBrick count 3 at 29,Li
+  next
+  fill TBrick count 32 at 0,23
+  for Bi = 1 to NTarg
+    NewTarget
+  next
+  Spd = 3
+  SetGap
+  BalSc = 0
+  TimeF = BalTime
+  Secs = 120
+  Sec60 = 60
+  Hx = 120 << 8
+  Hy = 100 << 8
+  Hd = Rnd(24)
+  for Li = 0 to 127
+    Hist[Li].X = 120
+    Hist[Li].Y = 100
+  next
+  HP = 0
+  TurnT = 0
+  NeedT = 0
+  BalHud
+  BalSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+bal_loop:
+  Frame1
+  ReadPad
+  BalStep
+  BalSprites
+  if Over = 0 then goto bal_loop
+  InPlay = 0
+  mute all
+  if BalSc > BalHi then BalHi = BalSc
+  print at 9,11, "            "
+  print at 9,12, "  TIME UP!  "
+  print at 9,13, "  HITS      "
+  NumU = BalSc
+  print at 16,13, digits$(NumU, 3)
+  print at 9,14, "            "
+  play sound SndOver
+  return
+end sub
+
+sub SetGap:
+  V = Spd + 2
+  Gap = 48 / V
+  return
+end sub
+
+' a target on a free floor cell (columns 4-27, rows 4-20), away from the
+' head
+sub NewTarget:
+bal_try:
+  X = 4 + Rnd(24)
+  Y = 4 + Rnd(17)
+  V = get char at X,Y
+  if V <> TFloor then goto bal_try
+  if InPlay = 1 then
+    U = Hx >> 11
+    if X + 3 > U then
+      if X < U + 5 then
+        T = Hy >> 11
+        if Y + 3 > T then
+          if Y < T + 5 then goto bal_try
+        end if
+      end if
+    end if
+  end if
+  put char TTarg at X,Y
+  return
+end sub
+
+sub BalStep:
+  ' a new target, the pass after a hit (both in one pass missed a frame)
+  if NeedT = 1 then
+    NeedT = 0
+    NewTarget
+  end if
+  ' turning: a press turns 15 degrees, held it turns again every 8 frames
+  V = Stk & 12
+  if V = 0 then
+    TurnT = 0
+  else
+    if TurnT = 0 then
+      V = Stk & 4
+      if V > 0 then
+        Hd = Hd + 23
+      else
+        Hd = Hd + 1
+      end if
+      Hd = Hd % 24
+      TurnT = 8
+    end if
+    dec TurnT
+  end if
+  V = StkNew & 1
+  if V > 0 then
+    if Spd < 5 then
+      inc Spd
+      SetGap
+      BalSpeed
+    end if
+  end if
+  V = StkNew & 2
+  if V > 0 then
+    if Spd > 1 then
+      dec Spd
+      SetGap
+      BalSpeed
+    end if
+  end if
+  ' move: step = table x (speed + 2) / 4
+  Vx = DxT[Hd]
+  Vy = DyT[Hd]
+  K = Spd + 2
+  Vx = Vx * K
+  Vx = Vx / 4
+  Vy = Vy * K
+  Vy = Vy / 4
+  Hx = Hx + Vx
+  Hy = Hy + Vy
+  ' the walls (inside: x 24-216, y 24-160 for the sprite corner)
+  X = Hx >> 8
+  Y = Hy >> 8
+  if X < 24 then
+    if Hd > 12 then
+      Hd = 24 - Hd
+      play sound SndBump
+    end if
+    Hx = 24 << 8
+  end if
+  if X > 216 then
+    if Hd > 0 then
+      if Hd < 12 then
+        Hd = 24 - Hd
+        play sound SndBump
+      end if
+    end if
+    Hx = 216 << 8
+  end if
+  if Y < 24 then
+    if Hd > 18 then
+      Hd = 36 - Hd
+      play sound SndBump
+    elseif Hd < 6 then
+      Hd = 12 - Hd
+      play sound SndBump
+    end if
+    Hy = 24 << 8
+  end if
+  if Y > 160 then
+    if Hd > 6 then
+      if Hd < 18 then
+        Hd = 36 - Hd
+        Hd = Hd % 24
+        play sound SndBump
+      end if
+    end if
+    Hy = 160 << 8
+  end if
+  Hd = Hd % 24
+  ' the path for the chain
+  inc HP
+  HP = HP & 127
+  Hist[HP].X = Hx >> 8
+  Hist[HP].Y = Hy >> 8
+  ' a target under the middle of the head
+  X = Hx >> 8
+  X = X + 8
+  X = X >> 3
+  Y = Hy >> 8
+  Y = Y + 8
+  Y = Y >> 3
+  V = get char at X,Y
+  if V = TTarg then
+    put char TFloor at X,Y
+    inc BalSc
+    ' knocked off course by up to 60 degrees (the listing's +-60)
+    V = Rnd(9)
+    Hd = Hd + 20 + V
+    Hd = Hd % 24
+    play sound SndHit
+    NeedT = 1
+    BalHits
+  end if
+  dec TimeF
+  dec Sec60
+  if Sec60 = 0 then
+    Sec60 = 60
+    dec Secs
+    BalClock
+  end if
+  if TimeF = 0 then Over = 1
+  return
+end sub
+
+sub BalSprites:
+  for Bi = 0 to 7
+    V = Bi * Gap
+    V = HP - V
+    V = V & 127
+    X = Hist[V].X
+    Y = Hist[V].Y
+    Y = Y - 1
+    T = BallCol[Bi]
+    set sprite Bi to Y,X,SBall,T
+  next
+  update sprites
+  return
+end sub
+
+sub BalHud:
+  print at 2,1, "HITS"
+  print at 11,1, "TIME"
+  print at 17,1, ":"
+  print at 21,1, "SPEED"
+  BalHits
+  BalClock
+  BalSpeed
+  return
+end sub
+
+sub BalHits:
+  NumU = BalSc
+  print at 7,1, digits$(NumU, 3)
+  return
+end sub
+
+' minutes and seconds from Secs (seconds left, u8)
+sub BalClock:
+  NumU = Secs / 60
+  print at 16,1, digits$(NumU, 1)
+  NumU = Secs % 60
+  print at 18,1, digits$(NumU, 2)
+  return
+end sub
+
+sub BalSpeed:
+  NumU = Spd
+  print at 27,1, digits$(NumU, 1)
+  return
+end sub
+
+' ===========================================================================
+' shared
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number 0..N-1 (N up to 255)
+function Rnd(u8 N) as u8
+  u8 Lo = 0
+  Rand
+  Lo = Rs >> 3
+  return Lo % N
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Stk = 0
+  Hold = 0
+  if joypad(1).up then Stk = Stk | 1
+  if joypad(1).down then Stk = Stk | 2
+  if joypad(1).left then Stk = Stk | 4
+  if joypad(1).right then Stk = Stk | 8
+  if joypad(2).up then Stk = Stk | 1
+  if joypad(2).down then Stk = Stk | 2
+  if joypad(2).left then Stk = Stk | 4
+  if joypad(2).right then Stk = Stk | 8
+  if joypad(1).button1 then Hold = Hold | 1
+  if joypad(2).button1 then Hold = Hold | 1
+  if joypad(1).button2 then Hold = Hold | 2
+  if joypad(2).button2 then Hold = Hold | 2
+  V = WasStk ^ 255
+  StkNew = Stk & V
+  WasStk = Stk
+  B1 = 0
+  B2 = 0
+  V = Hold & 1
+  if V > 0 then
+    if WasB1 = 0 then B1 = 1
+  end if
+  WasB1 = V
+  V = Hold & 2
+  if V > 0 then
+    if WasB2 = 0 then B2 = 1
+  end if
+  WasB2 = V
+  Press = B1 | B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  TileColors
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub TileColors:
+  copy TileCol count NTiles8 to vram.color + 1024
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the rope frame: rows 1 and 22, columns 2 and 29
+sub RopeBox:
+  fill TRope count 26 at 3,1
+  fill TRope count 26 at 3,22
+  for Li = 2 to 21
+    put char TRopev at 2,Li
+    put char TRopev at 29,Li
+  next
+  put char TKnot at 2,1
+  put char TKnot at 29,1
+  put char TKnot at 2,22
+  put char TKnot at 29,22
+  return
+end sub
+
+' the title and its menu
+sub TitlePage:
+  NewScreen
+  RopeBox
+  print at 7,3, "AHOY! COLUMN GAMES"
+  print at 5,5, "FROM THE COMMODARES"
+  print at 5,6, "PROGRAMMING CHALLENGES"
+  print at 6,9, "SKI SCROLL"
+  print at 6,11, "GENERIC GAME"
+  print at 6,13, "SIMPLE SIMON"
+  print at 6,15, "BOUNCING BALLS"
+  print at 6,17, "CREDITS"
+  print at 22,8, "BEST"
+  print SkiHi at 23,9
+  NumU = GenBest
+  print at 24,11, digits$(NumU, 2)
+  NumU = SimHi
+  print at 23,13, digits$(NumU, 3)
+  NumU = BalHi
+  print at 23,15, digits$(NumU, 3)
+  print at 5,20, "UP/DOWN, THEN A BUTTON"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 424
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  OnTitle = 1
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = StkNew & 1
+  if V > 0 then
+    if Sel > 0 then
+      dec Sel
+      ShowMenu
+    end if
+  end if
+  V = StkNew & 2
+  if V > 0 then
+    if Sel < 4 then
+      inc Sel
+      ShowMenu
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  OnTitle = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 0 to 4
+    Y = Li * 2 + 9
+    put char 32 at 4,Y
+  next
+  Y = Sel * 2 + 9
+  put char 62 at 4,Y
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  RopeBox
+  print at 7,2, "AHOY! COLUMN GAMES"
+  print at 4,3, "FROM AHOY!'S COMMODARES"
+  print at 4,4, "COLUMN (C-64 AND C-128):"
+  print at 4,6, "SKI SCROLL #18-3 OCT 85"
+  print at 4,7, "S.C. WOTRING, P.T. DAWSON"
+  print at 4,8, "AND LARRY SNYDER"
+  print at 4,9, "GENERIC GAME #29-2 SEP 86"
+  print at 4,10, "MARK BREAULT"
+  print at 4,11, "SIMPLE SIMON #50-4 JUL 88"
+  print at 4,12, "JUDY GROTH, C. KLUEPFEL"
+  print at 4,13, "BOUNCING BALLS JAN 87"
+  print at 4,14, "#33-3 JIM SPEERS"
+  print at 4,16, "COLECOVISION VERSION AND"
+  print at 4,17, "MUSIC: CLAUDE (ANTHROPIC)"
+  print at 4,18, "IN AMY BY AMY BIENVENU,"
+  print at 4,19, "2026. TUNE: FOUR BELLS"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$04,$00,$00,$00,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$38,$38,$83,$83,$01,$10,$10
+  $24,$81,$81,$00,$24,$00,$24,$24
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$18,$C3,$91,$00,$00,$00,$00
+  $01,$01,$00,$10,$10,$00,$01,$01
+  $81,$42,$24,$18,$18,$24,$42,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$99,$99,$24,$99,$99,$00,$00
+  $38,$1C,$1C,$38,$38,$1C,$1C,$38
+  $18,$C3,$99,$C3,$C3,$99,$C3,$18
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data TileCol bytes
+  $0F,$0F,$5F,$0F,$0F,$0F,$5F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $CF,$CF,$CF,$FC,$FC,$FC,$AF,$AF
+  $CF,$FC,$FC,$0C,$2C,$0C,$AF,$AF
+  $8F,$8F,$8F,$8F,$F8,$F8,$F8,$F8
+  $0F,$EF,$FE,$FE,$0E,$0F,$0F,$0F
+  $16,$18,$01,$16,$18,$01,$16,$18
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$4B,$BA,$BA,$BA,$4B,$04,$04
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$4B,$4B,$B4,$B4,$4B,$4B,$B4
+  $4F,$F4,$F4,$F4,$F4,$F4,$F4,$41
+  $4F,$14,$14,$14,$14,$14,$14,$41
+end data
+data SpritePat bytes
+  $03,$07,$07,$03,$07,$0F,$0F,$07,$06,$06,$06,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$C0,$E0,$F0,$F0,$E0,$60,$60,$60,$00,$00,$00,$00,$00
+  $0F,$1F,$1F,$0F,$0F,$1F,$1F,$0F,$06,$03,$01,$00,$00,$00,$00,$00
+  $00,$80,$80,$00,$C0,$E0,$E0,$C0,$C0,$60,$B0,$00,$00,$00,$00,$00
+  $00,$01,$01,$00,$03,$07,$07,$03,$03,$06,$0D,$00,$00,$00,$00,$00
+  $F0,$F8,$F8,$F0,$F0,$F8,$F8,$F0,$60,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$10,$10,$14,$04,$04,$04,$04,$04,$0C
+  $00,$00,$00,$00,$00,$00,$08,$08,$08,$28,$20,$20,$20,$20,$20,$30
+  $00,$00,$00,$00,$00,$00,$20,$20,$10,$10,$08,$04,$02,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$08,$04,$14,$04,$02,$01,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$10,$10,$20,$28,$20,$40,$80,$00,$01,$03
+  $00,$00,$00,$00,$00,$00,$04,$04,$08,$08,$10,$20,$40,$80,$00,$00
+  $00,$00,$00,$00,$03,$0F,$1F,$0F,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F8,$F0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$40,$20,$10,$08,$04,$04,$08,$10,$20,$40,$80,$00,$00
+  $00,$00,$01,$02,$04,$08,$10,$20,$20,$10,$08,$04,$02,$01,$00,$00
+  $00,$00,$03,$0F,$1F,$1F,$3F,$3F,$3F,$3F,$1F,$1F,$0F,$03,$00,$00
+  $00,$00,$C0,$F0,$F8,$F8,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$C0,$00,$00
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF,$00,$00,$00,$00,$00
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF,$00,$00,$00,$00,$00
+end data
+
+asm {
+; SkiDraw: SkCnt rows of the name table from ring row SkFrom (screen row
+; SkFrom + 2) of RowA/RowB:
+; tree edges in columns 0-2 and 29-31, snow specks (SnowPat from
+; ((Wrow + row) x 11) & 31), a cluster of four trees at RowA (255 = the finish
+; line), one tree at RowB. Writes are 30 cycles apart (display on).
+SkiDraw:
+    push ix
+    ld a,(AMY_UVAR_SkFrom)
+    ld e,a
+    ld d,0
+    ld ix,AMY_UVAR_RowA
+    add ix,de
+    ld l,e
+    ld h,d
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1840
+    add hl,de
+    ex de,hl
+    ld a,(AMY_UVAR_Wrow)
+    ld hl,AMY_UVAR_SkFrom
+    add a,(hl)
+    ld c,a
+    ld a,(AMY_UVAR_SkCnt)
+    ld b,a
+SkdRow:
+    push bc
+    push de
+    ld hl,AMY_UVAR_RowBuf
+    ld a,TEdge
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    inc hl
+    ld a,c
+    add a,a
+    add a,a
+    add a,a
+    add a,c
+    add a,c
+    add a,c
+    and 31
+    add a,3
+    push hl
+    ld hl,AMY_UDATA_SnowPat
+    ld e,a
+    ld d,0
+    add hl,de
+    pop de
+    ld bc,26
+    ldir
+    ex de,hl
+    ld a,TEdge
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ld a,(ix+0)
+    or a
+    jr z,SkdB
+    cp 255
+    jr nz,SkdClu
+    ld hl,AMY_UVAR_RowBuf+3
+    ld b,26
+SkdFin:
+    ld (hl),TFin
+    inc hl
+    djnz SkdFin
+    jr SkdB
+SkdClu:
+    ld hl,AMY_UVAR_RowBuf
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,TTree
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),a
+SkdB:
+    ld a,(ix+21)
+    or a
+    jr z,SkdOut
+    ld hl,AMY_UVAR_RowBuf
+    ld e,a
+    ld d,0
+    add hl,de
+    ld (hl),TTree
+SkdOut:
+    pop de
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_RowBuf
+    ld bc,$20BE
+SkdByte:
+    outi
+    nop
+    jp nz,SkdByte
+    ld hl,32
+    add hl,de
+    ex de,hl
+    inc ix
+    pop bc
+    inc c
+    dec b
+    jp nz,SkdRow
+    pop ix
+    ret
+AmMove:
+    db $40,$47,$30,$02,$50
+AmOk:
+    db $40,$6B,$20,$03,$40,$55,$20,$06,$50
+AmBad:
+    db $40,$3B,$12,$06,$40,$F9,$22,$0C,$50
+AmCrash:
+    db $00,$00,$04,$03,$00,$00,$25,$04,$00,$00,$36,$06,$00,$00,$66,$0A,$10
+AmHit:
+    db $40,$40,$10,$02,$40,$35,$30,$04,$50
+AmBump:
+    db $40,$1D,$31,$02,$50
+AmStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+AmOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+AmWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+AmDig0:
+    db $40,$AB,$11,$0E,$40,$AB,$31,$06,$50
+AmDig1:
+    db $40,$7C,$11,$0E,$40,$7C,$31,$06,$50
+AmDig2:
+    db $40,$53,$11,$0E,$40,$53,$31,$06,$50
+AmDig3:
+    db $40,$41,$11,$0E,$40,$41,$31,$06,$50
+AmDig4:
+    db $40,$1D,$11,$0E,$40,$1D,$31,$06,$50
+AmDig5:
+    db $40,$FE,$10,$0E,$40,$FE,$30,$06,$50
+AmDig6:
+    db $40,$E2,$10,$0E,$40,$E2,$30,$06,$50
+AmDig7:
+    db $40,$D6,$10,$0E,$40,$D6,$30,$06,$50
+AmDig8:
+    db $40,$BF,$10,$0E,$40,$BF,$30,$06,$50
+AmDig9:
+    db $40,$AA,$10,$0E,$40,$AA,$30,$06,$50
+
+AmSoundTable:
+    dw AmTuneMel,$702B
+    dw AmTuneBass,$7035
+    dw AmMove,$7049
+    dw AmOk,$7049
+    dw AmBad,$7049
+    dw AmCrash,$703F
+    dw AmHit,$7049
+    dw AmBump,$7049
+    dw AmStart,$7049
+    dw AmOver,$7049
+    dw AmWin,$7049
+    dw AmDig0,$7049
+    dw AmDig1,$7049
+    dw AmDig2,$7049
+    dw AmDig3,$7049
+    dw AmDig4,$7049
+    dw AmDig5,$7049
+    dw AmDig6,$7049
+    dw AmDig7,$7049
+    dw AmDig8,$7049
+    dw AmDig9,$7049
+; Four Bells (original)
+; Tiny Sound, 8 frames per step
+AmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$25,$28,$01,$25,$26,$01,$23,$20,$01,$23
+    db $21,$01,$25,$28,$01,$2D,$2A,$01,$26,$28,$01,$01,$01,$2A,$01,$26
+    db $28,$01,$25,$26,$01,$23,$25,$01,$21,$23,$01,$20,$21,$01,$23,$25
+    db $01,$23,$21,$01,$01,$01,$00,$01,$01
+    db $FF
+AmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$15,$01,$10,$0E,$01,$15,$10,$01,$17
+    db $09,$01,$10,$15,$01,$10,$0E,$01,$15,$09,$01,$10,$01,$0E,$01,$15
+    db $09,$01,$10,$0B,$01,$12,$10,$01,$17,$12,$01,$19,$10,$01,$17,$10
+    db $01,$17,$09,$01,$01,$01,$00,$01,$01
+    db $FF
+}

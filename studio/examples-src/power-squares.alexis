@@ -1,0 +1,1346 @@
+cartridge "POWER SQUARES/JOHN FEDOR/1987"
+
+' POWER SQUARES
+' A ColecoVision game based on "Power Squares" by John Fedor, Ahoy! June
+' 1987 (Commodore 64, BASIC). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game (the original's rules, read from its listing, orig/powsq.bas):
+' a 5 x 5 board holds 12 blue and 12 red squares in a checker, with the
+' centre empty. Blue moves first. On your turn pick one of your squares in
+' the same row or column as the empty cell: it and every square between it
+' and the gap slide one cell toward the gap, and the gap takes its place
+' (a 15-puzzle move). A square that is not yours, or not in line with the
+' gap, can't be moved. When the next player has no square in line with
+' the gap, the turn passes back. Blue wins by filling the top two rows and
+' the two left cells of the middle row; red by filling the bottom two rows
+' and the two right cells of the middle row (12 cells each).
+'
+' From the original: the board, the checker start (cell 1,1 red), the
+' slide (lines 430-480), the pass rule (500-550), the two goals and the
+' win test (560-570), blue first, one or two players or the computer
+' playing both (the "D" demo), red the computer in a one-player game.
+'
+' Liberties: the original has no end but a full goal, and in simulation
+' (model.mjs) no game between sensible players ever got there: every move
+' also slides the other side's squares, so a defender can always spoil a
+' goal; random players, greedy players and four-move searches all played
+' 600-1000 moves without a winner. So a game here also ends after 100
+' moves (50 each), won by whoever has more squares in their goal (equal
+' is a draw); a full goal still wins at once. The computer looks two moves
+' ahead (its slide and the best answer; scored by squares home, distances
+' to the goal and a little chance) instead of picking a random square,
+' which a player beat by doing nothing in particular. The slide is
+' animated a tile at a time and the cursor glides from cell to cell; the
+' goals are shown by the colour round each cell and a goal map, with the
+' move count and squares home; a message says why a pick is refused or
+' that a turn passes. The border-flash ending is a message and a fanfare.
+' In a one-player game either controller plays blue.
+'
+' Controls: the stick moves the cursor one cell (hold to repeat), either
+' button picks the square under it. Two players: controller 1 blue,
+' controller 2 red. In the demo a button goes back to the title. On the
+' title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off after a
+' wait, display off. Music first in the sound table; the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes.
+
+const TSet0000 = 128
+const TSet0001 = 129
+const TSet0002 = 130
+const TSet0010 = 131
+const TSet0011 = 132
+const TSet0012 = 133
+const TSet0020 = 134
+const TSet0021 = 135
+const TSet0022 = 136
+const TSet0100 = 137
+const TSet0101 = 138
+const TSet0102 = 139
+const TSet0110 = 140
+const TSet0111 = 141
+const TSet0112 = 142
+const TSet0120 = 143
+const TSet0121 = 144
+const TSet0122 = 145
+const TSet0200 = 146
+const TSet0201 = 147
+const TSet0202 = 148
+const TSet0210 = 149
+const TSet0211 = 150
+const TSet0212 = 151
+const TSet0220 = 152
+const TSet0221 = 153
+const TSet0222 = 154
+const TSet1000 = 155
+const TSet1001 = 156
+const TSet1002 = 157
+const TSet1010 = 158
+const TSet1011 = 159
+const TSet1012 = 160
+const TSet1020 = 161
+const TSet1021 = 162
+const TSet1022 = 163
+const TSet1100 = 164
+const TSet1101 = 165
+const TSet1102 = 166
+const TSet1110 = 167
+const TSet1111 = 168
+const TSet1112 = 169
+const TSet1120 = 170
+const TSet1121 = 171
+const TSet1122 = 172
+const TSet1200 = 173
+const TSet1201 = 174
+const TSet1202 = 175
+const TSet1210 = 176
+const TSet1211 = 177
+const TSet1212 = 178
+const TSet1220 = 179
+const TSet1221 = 180
+const TSet1222 = 181
+const TSet2000 = 182
+const TSet2001 = 183
+const TSet2002 = 184
+const TSet2010 = 185
+const TSet2011 = 186
+const TSet2012 = 187
+const TSet2020 = 188
+const TSet2021 = 189
+const TSet2022 = 190
+const TSet2100 = 191
+const TSet2101 = 192
+const TSet2102 = 193
+const TSet2110 = 194
+const TSet2111 = 195
+const TSet2112 = 196
+const TSet2120 = 197
+const TSet2121 = 198
+const TSet2122 = 199
+const TSet2200 = 200
+const TSet2201 = 201
+const TSet2202 = 202
+const TSet2210 = 203
+const TSet2211 = 204
+const TSet2212 = 205
+const TSet2220 = 206
+const TSet2221 = 207
+const TSet2222 = 208
+const TFtl = 209
+const TFt = 210
+const TFtr = 211
+const TFl = 212
+const TFr = 213
+const TFbl = 214
+const TFb = 215
+const TFbr = 216
+const TMn = 217
+const TMb = 218
+const TMr = 219
+const TRule = 220
+const SCtl = 0
+const SCtr = 4
+const SCbl = 8
+const SCbr = 12
+const NTiles8 = 744
+const SprBytes = 128
+const TSets = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndSlide = 4
+const SndBad = 5
+const SndPass = 6
+const SndStart = 7
+const SndWin = 8
+const BX = 3
+const BY = 5
+const NSpr = 4
+const MaxMoves = 100
+
+' cell -> row, column, zone (0 neutral, 1 blue goal, 2 red goal)
+data RowOf bytes
+  0,0,0,0,0, 1,1,1,1,1, 2,2,2,2,2, 3,3,3,3,3, 4,4,4,4,4
+end data
+data ColOf bytes
+  0,1,2,3,4, 0,1,2,3,4, 0,1,2,3,4, 0,1,2,3,4, 0,1,2,3,4
+end data
+data ZoneOf bytes
+  1,1,1,1,1, 1,1,1,1,1, 1,1,0,2,2, 2,2,2,2,2, 2,2,2,2,2
+end data
+' distance of a cell to the nearest goal cell: blue's 25, then red's 25
+data DistT bytes
+  0,0,0,0,0, 0,0,0,0,0, 0,0,1,1,1, 1,1,2,2,2, 2,2,3,3,3
+  3,3,3,2,2, 2,2,2,1,1, 1,1,1,0,0, 0,0,0,0,0, 0,0,0,0,0
+end data
+
+record Cursor:
+  u8 Cx
+  u8 Cy
+  u8 Sx
+  u8 Sy
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 K16 = 0
+Cursor Cur
+bcd digits 4 Moves
+u8 Bd[25]
+u8 Sv[25]
+u8 Sv2[25]
+u8 HomeB = 6
+u8 HomeR = 6
+u8 Gp = 12
+u8 Tu = 1
+u8 Pl = 1
+u8 Over = 0
+u8 Stage = 0
+u8 Menu = 0
+u8 LastC = 0
+u8 AiC = 0
+u8 Cpu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 MsgT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pj = 0
+u8 WasPj = 16
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 LastDir = 0
+u8 Rep = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ai = 0
+u8 Bi = 0
+u8 Fi = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Stage = 1
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+turn_loop:
+  V = Winner
+  if V > 0 then
+    Over = V
+    goto game_end
+  end if
+  if Moves >= MaxMoves then
+    ' time is up: the most squares home wins (5 a draw)
+    Over = 5
+    if HomeB > HomeR then Over = 1
+    if HomeR > HomeB then Over = 2
+    goto game_end
+  end if
+  ShowTurn
+  Cpu = 0
+  if Pl = 0 then Cpu = 1
+  if Pl = 1 then
+    if Tu = 2 then Cpu = 1
+  end if
+  if Cpu = 1 then
+    ComputerTurn
+  else
+    HumanTurn
+  end if
+  if Over = 4 then goto title
+  AnimSlide(LastC)
+  Slide(LastC)
+  DrawLine(LastC)
+  inc Moves
+  print at 25,1, Moves
+  ShowHome
+  ' the next player; when none of theirs is in line with the gap, the turn
+  ' passes back (a gap's row and column always hold someone's square)
+  Tu = 3 - Tu
+  V = HasMove(Tu)
+  if V = 0 then
+    ShowTurn
+    if Tu = 1 then
+      print at 2,22, "  BLUE CANNOT MOVE: PASS   "
+    else
+      print at 2,22, "  RED CANNOT MOVE: PASS    "
+    end if
+    play sound SndPass
+    Pause(70)
+    ClearMsg
+    Tu = 3 - Tu
+  end if
+  goto turn_loop
+
+game_end:
+  HideCursor
+  ShowTurn
+  mute all
+  select case Over
+  case 1
+    print at 2,22, "      BLUE WINS!!!         "
+    play sound SndWin
+  case 2
+    print at 2,22, "      RED WINS!!!          "
+    play sound SndWin
+  case else
+    print at 2,22, "   100 MOVES: A DRAW       "
+  end select
+  Stage = 4
+  Pause(60)
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' 1 when the player to move may slide the square at cell C
+function InLine(u8 Cl) as u8
+  if Bd[Cl] <> Tu then return 0
+  if Cl = Gp then return 0
+  if RowOf[Cl] = RowOf[Gp] then return 1
+  if ColOf[Cl] = ColOf[Gp] then return 1
+  return 0
+
+' 1 when player P has a square in line with the gap
+function HasMove(u8 P) as u8
+  u8 Hk = 0
+  u8 Res = 0
+  for Hk = 0 to 24
+    if Bd[Hk] = P then
+      if RowOf[Hk] = RowOf[Gp] then Res = 1
+      if ColOf[Hk] = ColOf[Gp] then Res = 1
+    end if
+  next
+  return Res
+
+' 1 blue has filled its goal, 2 red has, else 0
+function Winner as u8
+  u8 Wk = 0
+  u8 Wb = 1
+  u8 Wr = 1
+  for Wk = 0 to 11
+    if Bd[Wk] <> 1 then Wb = 0
+  next
+  for Wk = 13 to 24
+    if Bd[Wk] <> 2 then Wr = 0
+  next
+  if Wb = 1 then return 1
+  if Wr = 1 then return 2
+  return 0
+
+' the slide: the square at Cl and those up to the gap move one cell toward
+' it, and the gap is at Cl
+sub Slide(u8 Cl):
+  u8 Dl = 0
+  u8 Kl = 0
+  u8 Nl = 0
+  if RowOf[Cl] = RowOf[Gp] then
+    Dl = 1
+  else
+    Dl = 5
+  end if
+  if Gp < Cl then Dl = 0 - Dl
+  Kl = Gp
+  while Kl <> Cl
+    Nl = Kl - Dl
+    Bd[Kl] = Bd[Nl]
+    Kl = Nl
+  end while
+  Bd[Cl] = 0
+  Gp = Cl
+  return
+end sub
+
+' squares home: HomeB and HomeR
+sub CountHome:
+  u8 Hc = 0
+  HomeB = 0
+  HomeR = 0
+  for Hc = 0 to 11
+    if Bd[Hc] = 1 then inc HomeB
+  next
+  for Hc = 13 to 24
+    if Bd[Hc] = 2 then inc HomeR
+  next
+  return
+end sub
+
+' how good the board is for player P: 8 for each square home more than the
+' other side, the other side's distances to its goal minus P's own; a win
+' 5000, a loss -5000
+function Score(u8 P) as i16
+  i16 Ev = 0
+  u8 Ek = 0
+  u8 Ed = 0
+  u8 Eo = 0
+  Eo = 3 - P
+  Ed = Winner
+  if Ed = P then return 5000
+  if Ed = Eo then return -5000
+  CountHome
+  if P = 1 then
+    Ev = HomeB - HomeR
+  else
+    Ev = HomeR - HomeB
+  end if
+  Ev = Ev * 8
+  for Ek = 0 to 24
+    if Bd[Ek] = P then
+      K16 = P - 1
+      K16 = K16 * 25 + Ek
+      Ed = DistT[K16]
+      Ev = Ev - Ed
+    elseif Bd[Ek] = Eo then
+      K16 = Eo - 1
+      K16 = K16 * 25 + Ek
+      Ed = DistT[K16]
+      Ev = Ev + Ed
+    end if
+  next
+  return Ev
+
+' the computer's choice for Tu, two moves deep: every legal slide, and the
+' other side's best answer to it (its worst for us), scored; plus a chance
+' of 0-3 (the score counts four times)
+sub ChooseMove:
+  i16 Best = -30000
+  i16 Va = 0
+  i16 Wst = 0
+  u8 Sg = 0
+  u8 Sg2 = 0
+  u8 Me = 0
+  u8 Any = 0
+  AiC = 255
+  Me = Tu
+  copy Bd to Sv
+  Sg = Gp
+  for Ai = 0 to 24
+    Tu = Me
+    V = InLine(Ai)
+    if V = 1 then
+      Slide(Ai)
+      copy Bd to Sv2
+      Sg2 = Gp
+      Wst = 30000
+      V = Winner
+      if V = Me then
+        Wst = 5000
+      else
+        Tu = 3 - Me
+        Any = 0
+        for Bi = 0 to 24
+          V = InLine(Bi)
+          if V = 1 then
+            Any = 1
+            Slide(Bi)
+            Va = Score(Me)
+            if Va < Wst then Wst = Va
+            copy Sv2 to Bd
+            Gp = Sg2
+          end if
+        next
+        if Any = 0 then Wst = Score(Me)
+      end if
+      Tu = Me
+      copy Sv to Bd
+      Gp = Sg
+      Rand
+      V = Rs & 3
+      Va = Wst * 4 + V
+      if Va > Best then
+        Best = Va
+        AiC = Ai
+      end if
+    end if
+  next
+  Tu = Me
+  return
+end sub
+
+sub ShowHome:
+  CountHome
+  print at 3,21, "HOME  BLUE"
+  print HomeB at 14,21 digits 2
+  print at 18,21, "RED"
+  print HomeR at 22,21 digits 2
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' turns
+
+sub ComputerTurn:
+  ChooseMove
+  LastC = AiC
+  ' the cursor walks to the chosen square, a cell at a time
+  Tx = ColOf[AiC]
+  Ty = RowOf[AiC]
+  for Fi = 1 to 6
+    if Cur.Cx < Tx then inc Cur.Cx
+    if Cur.Cx > Tx then dec Cur.Cx
+    if Cur.Cy < Ty then inc Cur.Cy
+    if Cur.Cy > Ty then dec Cur.Cy
+    for Si = 1 to 7
+      Frame1
+      ReadPad
+      if Pl = 0 then
+        if Press = 1 then
+          Over = 4
+          return
+        end if
+      end if
+      Glide
+    next
+  next
+  return
+end sub
+
+sub HumanTurn:
+  LastDir = 0
+  Rep = 0
+  WasPj = 16
+  Rearm
+  wait no fire
+  nmi off
+hu_loop:
+  Frame1
+  ReadPad
+  Pj = J1 | J2
+  if Pl = 2 then
+    if Tu = 1 then
+      Pj = J1
+    else
+      Pj = J2
+    end if
+  end if
+  Btn = Pj & 16
+  Press = 0
+  if Btn > 0 then
+    if WasPj = 0 then Press = 1
+  end if
+  WasPj = Btn
+  StickMove
+  Glide
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ClearMsg
+  end if
+  if Press = 0 then goto hu_loop
+  C = Cur.Cy * 5 + Cur.Cx
+  if Bd[C] <> Tu then
+    play sound SndBad
+    if Tu = 1 then
+      print at 2,22, "  PICK A BLUE SQUARE       "
+    else
+      print at 2,22, "  PICK A RED SQUARE        "
+    end if
+    MsgT = 90
+    goto hu_loop
+  end if
+  V = InLine(C)
+  if V = 0 then
+    play sound SndBad
+    print at 2,22, "  IT MUST LINE UP WITH GAP "
+    MsgT = 90
+    goto hu_loop
+  end if
+  ClearMsg
+  MsgT = 0
+  LastC = C
+  return
+end sub
+
+' the stick: a cell at once, then again every 7 frames while held
+sub StickMove:
+  D = Pj & 15
+  if D = 0 then
+    LastDir = 0
+    return
+  end if
+  K = 0
+  if D <> LastDir then
+    K = 1
+    Rep = 14
+  else
+    dec Rep
+    if Rep = 0 then
+      K = 1
+      Rep = 7
+    end if
+  end if
+  LastDir = D
+  if K = 0 then return
+  V = D & 1
+  if V > 0 then
+    if Cur.Cy > 0 then dec Cur.Cy
+  end if
+  V = D & 2
+  if V > 0 then
+    if Cur.Cy < 4 then inc Cur.Cy
+  end if
+  V = D & 4
+  if V > 0 then
+    if Cur.Cx > 0 then dec Cur.Cx
+  end if
+  V = D & 8
+  if V > 0 then
+    if Cur.Cx < 4 then inc Cur.Cx
+  end if
+  play sound SndTick
+  return
+end sub
+
+' the cursor's sprites move 4 pixels a frame toward its cell
+sub Glide:
+  X = Cur.Cx * 24 + 22
+  Y = Cur.Cy * 24 + 38
+  if Cur.Sx < X then Cur.Sx = Cur.Sx + 4
+  if Cur.Sx > X then Cur.Sx = Cur.Sx - 4
+  if Cur.Sy < Y then Cur.Sy = Cur.Sy + 4
+  if Cur.Sy > Y then Cur.Sy = Cur.Sy - 4
+  DrawCursor
+  return
+end sub
+
+sub DrawCursor:
+  T = 15
+  if Cpu = 1 then T = 11
+  X = Cur.Sx
+  Y = Cur.Sy - 1
+  set sprite 0 to Y,X,SCtl,T
+  X = X + 12
+  set sprite 1 to Y,X,SCtr,T
+  Y = Y + 12
+  set sprite 3 to Y,X,SCbr,T
+  X = X - 12
+  set sprite 2 to Y,X,SCbl,T
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' a 3 x 3 cell picture: set St at tile column Col, row Rw
+sub DrawSet(u8 St, u8 Col, u8 Rw):
+  u8 Tt = 0
+  u8 Dy = 0
+  u8 Yy = 0
+  Tt = St * 9 + TSets
+  for Dy = 0 to 2
+    Yy = Rw + Dy
+    put char Tt at Col,Yy
+    inc Tt
+    put char Tt at Col + 1,Yy
+    inc Tt
+    put char Tt at Col + 2,Yy
+    inc Tt
+  next
+  return
+end sub
+
+' cell Ck as it stands on the board
+sub DrawCell(u8 Ck):
+  u8 Sc = 0
+  u8 Cc = 0
+  u8 Rr = 0
+  Sc = Bd[Ck] * 3 + ZoneOf[Ck]
+  Cc = ColOf[Ck] * 3 + BX
+  Rr = RowOf[Ck] * 3 + BY
+  DrawSet(Sc, Cc, Rr)
+  return
+end sub
+
+sub DrawBoard:
+  for Ci = 0 to 24
+    DrawCell(Ci)
+  next
+  return
+end sub
+
+' every cell from Cl to the gap (after the slide: from the gap to the old
+' gap, which is the same line)
+sub DrawLine(u8 Cl):
+  u8 Lk = 0
+  for Lk = 0 to 24
+    if RowOf[Lk] = RowOf[Cl] then
+      DrawCell(Lk)
+    elseif ColOf[Lk] = ColOf[Cl] then
+      DrawCell(Lk)
+    end if
+  next
+  return
+end sub
+
+' the slide shown a tile at a time: two in-between pictures, 4 frames each
+sub AnimSlide(u8 Cl):
+  u8 Ad = 0
+  u8 Ak = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Hz = 0
+  u8 Sp = 0
+  u8 Lo = 0
+  u8 Hi = 0
+  play sound SndSlide
+  Hz = 0
+  if RowOf[Cl] = RowOf[Gp] then Hz = 1
+  Lo = Cl
+  Hi = Gp
+  if Gp < Cl then
+    Lo = Gp
+    Hi = Cl
+  end if
+  Ad = 5
+  if Hz = 1 then Ad = 1
+  for Sp = 1 to 2
+    Rearm
+    wait
+    nmi off
+    ' the line, empty
+    Ak = Lo
+    while Ak <= Hi
+      Ax = ColOf[Ak] * 3 + BX
+      Ay = RowOf[Ak] * 3 + BY
+      V = ZoneOf[Ak]
+      DrawSet(V, Ax, Ay)
+      Ak = Ak + Ad
+    end while
+    ' the moving squares, Sp tiles toward the gap
+    Ak = Lo
+    while Ak <= Hi
+      if Ak <> Gp then
+        Ax = ColOf[Ak] * 3 + BX
+        Ay = RowOf[Ak] * 3 + BY
+        if Hz = 1 then
+          if Gp > Cl then
+            Ax = Ax + Sp
+          else
+            Ax = Ax - Sp
+          end if
+        else
+          if Gp > Cl then
+            Ay = Ay + Sp
+          else
+            Ay = Ay - Sp
+          end if
+        end if
+        V = Bd[Ak] * 3 + ZoneOf[Ak]
+        DrawSet(V, Ax, Ay)
+      end if
+      Ak = Ak + Ad
+    end while
+    Pause(3)
+  next
+  Rearm
+  wait
+  nmi off
+  return
+end sub
+
+sub ShowTurn:
+  print at 22,13, "TURN"
+  V = Tu * 3
+  DrawSet(V, 23, 15)
+  if Tu = 1 then
+    print at 20,19, "  BLUE  "
+  else
+    print at 20,19, "  RED   "
+  end if
+  select case Pl
+  case 0
+    print at 20,20, "COMPUTER"
+  case 1
+    if Tu = 1 then
+      print at 20,20, "  YOU   "
+    else
+      print at 20,20, "COMPUTER"
+    end if
+  case else
+    if Tu = 1 then
+      print at 20,20, "PLAYER 1"
+    else
+      print at 20,20, "PLAYER 2"
+    end if
+  end select
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' the board's frame, the goal map and the headings
+sub DrawTable:
+  print at 2,1, "POWER SQUARES"
+  fill TRule count 28 at 2,2
+  put char TFtl at 2,4
+  fill TFt count 15 at 3,4
+  put char TFtr at 18,4
+  for Ci = 5 to 19
+    put char TFl at 2,Ci
+    put char TFr at 18,Ci
+  next
+  put char TFbl at 2,20
+  fill TFb count 15 at 3,20
+  put char TFbr at 18,20
+  print at 22,5, "GOALS"
+  for Ci = 0 to 24
+    T = TMn
+    V = ZoneOf[Ci]
+    if V = 1 then T = TMb
+    if V = 2 then T = TMr
+    X = ColOf[Ci] + 22
+    Y = RowOf[Ci] + 7
+    put char T at X,Y
+  next
+  return
+end sub
+
+sub NewBoard:
+  ' the checker of the listing (lines 100-140): cell 1,1 red
+  for Ci = 0 to 24
+    V = RowOf[Ci] + ColOf[Ci]
+    V = V & 1
+    if V = 0 then
+      Bd[Ci] = 2
+    else
+      Bd[Ci] = 1
+    end if
+  next
+  Bd[12] = 0
+  Gp = 12
+  Tu = 1
+  return
+end sub
+
+sub NewGame:
+  NewBoard
+  Moves = 0
+  Over = 0
+  MsgT = 0
+  NewScreen
+  DrawTable
+  DrawBoard
+  print at 20,1, "MOVE"
+  print at 25,1, Moves
+  ShowHome
+  Cur.Cx = 2
+  Cur.Cy = 2
+  Cur.Sx = 70
+  Cur.Sy = 86
+  Cpu = 0
+  ShowTurn
+  ShowScreen
+  Stage = 3
+  play sound SndStart
+  DrawCursor
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Nf):
+  u8 Pk = 0
+  for Pk = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the board as it starts, the tune once, the menu
+sub TitlePage:
+  NewBoard
+  NewScreen
+  DrawTable
+  DrawBoard
+  print at 16,1, "BY JOHN FEDOR"
+  fill 32 count 10 at 20,5
+  for Ci = 7 to 11
+    fill 32 count 5 at 22,Ci
+  next
+  print at 20,5, "AHOY! JUN"
+  print at 23,6, "1987"
+  print at 21,10, "1 PLAYER"
+  print at 21,11, "2 PLAYERS"
+  print at 21,12, "DEMO"
+  print at 21,13, "CREDITS"
+  print at 2,22, "BLUE: UP   RED: DOWN"
+  ShowMenu
+  ShowScreen
+  Stage = 2
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 504
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+      play sound SndTick
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  select case Menu
+  case 0
+    Pl = 1
+  case 1
+    Pl = 2
+  case 2
+    Pl = 0
+  case 3
+    Stage = 1
+    CreditsPage
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for J = 10 to 13
+    put char 32 at 20,J
+  next
+  J = Menu + 10
+  put char 62 at 20,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,1, "POWER SQUARES"
+  print at 2,3, "BASED ON POWER SQUARES BY"
+  print at 2,4, "JOHN FEDOR, AHOY! JUNE 1987"
+  print at 2,5, "(COMMODORE 64)."
+  print at 2,7, "SLIDE ONE OF YOUR SQUARES"
+  print at 2,8, "IN LINE WITH THE GAP: IT"
+  print at 2,9, "AND THOSE BEYOND MOVE ONE"
+  print at 2,10, "CELL. BLUE FILLS THE TOP"
+  print at 2,11, "12 CELLS, RED THE BOTTOM 12."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: SLIDING SQUARES"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$03,$07,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C1
+  $00,$00,$00,$00,$83,$87,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$03,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C0,$C0,$E0,$F0,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C1
+  $00,$00,$00,$00,$83,$87,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$03,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C0,$C0,$E0,$F0,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C1
+  $00,$00,$00,$00,$83,$87,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$03,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C0,$C0,$E0,$F0,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C1
+  $00,$00,$00,$00,$83,$87,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$03,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C0,$C0,$E0,$F0,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C1
+  $00,$00,$00,$00,$83,$87,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$03,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C0,$C0,$E0,$F0,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C1
+  $00,$00,$00,$00,$83,$87,$00,$00
+  $00,$00,$E0,$F0,$07,$03,$03,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C0,$C0,$E0,$F0,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$C0,$C0,$C0,$38,$38,$38
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$1C,$1C,$1C
+  $38,$38,$38,$38,$38,$38,$38,$38
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $38,$38,$38,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $1C,$1C,$1C,$03,$03,$03,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0E,$0E,$0E,$0E,$1E,$1E,$E1,$E1
+  $0E,$0E,$0E,$0E,$01,$01,$01,$01
+  $0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$1E,$1E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$01,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$0E,$0E,$0E,$0E
+  $04,$04,$04,$04,$14,$14,$41,$41
+  $04,$04,$04,$04,$01,$01,$01,$01
+  $04,$04,$04,$04,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$14,$14,$04,$04,$04,$04
+  $01,$01,$01,$01,$04,$04,$04,$04
+  $14,$14,$14,$14,$04,$04,$04,$04
+  $06,$06,$06,$06,$16,$16,$61,$61
+  $06,$06,$06,$06,$01,$01,$01,$01
+  $06,$06,$06,$06,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$16,$16,$06,$06,$06,$06
+  $01,$01,$01,$01,$06,$06,$06,$06
+  $16,$16,$16,$16,$06,$06,$06,$06
+  $0E,$0E,$5E,$E5,$E5,$E5,$E5,$E5
+  $0E,$0E,$05,$05,$5F,$5F,$05,$0E
+  $0E,$0E,$5E,$5E,$E5,$E5,$E5,$E5
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $E5,$E5,$E5,$E5,$E5,$5E,$0E,$0E
+  $0E,$05,$05,$05,$05,$05,$0E,$0E
+  $E5,$E5,$E5,$E5,$5E,$5E,$0E,$0E
+  $04,$04,$54,$45,$45,$45,$45,$45
+  $04,$04,$05,$05,$5F,$5F,$05,$04
+  $04,$04,$54,$54,$45,$45,$45,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $45,$45,$45,$45,$45,$54,$04,$04
+  $04,$05,$05,$05,$05,$05,$04,$04
+  $45,$45,$45,$45,$54,$54,$04,$04
+  $06,$06,$56,$65,$65,$65,$65,$65
+  $06,$06,$05,$05,$5F,$5F,$05,$06
+  $06,$06,$56,$56,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$56,$06,$06
+  $06,$05,$05,$05,$05,$05,$06,$06
+  $65,$65,$65,$65,$56,$56,$06,$06
+  $0E,$0E,$9E,$E9,$E9,$E9,$E9,$E9
+  $0E,$0E,$09,$09,$9F,$9F,$09,$0E
+  $0E,$0E,$9E,$9E,$E9,$E9,$E9,$E9
+  $E9,$E9,$E9,$E9,$E9,$E9,$E9,$E9
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $E9,$E9,$E9,$E9,$E9,$E9,$E9,$E9
+  $E9,$E9,$E9,$E9,$E9,$9E,$0E,$0E
+  $0E,$09,$09,$09,$09,$09,$0E,$0E
+  $E9,$E9,$E9,$E9,$9E,$9E,$0E,$0E
+  $04,$04,$94,$49,$49,$49,$49,$49
+  $04,$04,$09,$09,$9F,$9F,$09,$04
+  $04,$04,$94,$94,$49,$49,$49,$49
+  $49,$49,$49,$49,$49,$49,$49,$49
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $49,$49,$49,$49,$49,$49,$49,$49
+  $49,$49,$49,$49,$49,$94,$04,$04
+  $04,$09,$09,$09,$09,$09,$04,$04
+  $49,$49,$49,$49,$94,$94,$04,$04
+  $06,$06,$96,$69,$69,$69,$69,$69
+  $06,$06,$09,$09,$9F,$9F,$09,$06
+  $06,$06,$96,$96,$69,$69,$69,$69
+  $69,$69,$69,$69,$69,$69,$69,$69
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $69,$69,$69,$69,$69,$69,$69,$69
+  $69,$69,$69,$69,$69,$96,$06,$06
+  $06,$09,$09,$09,$09,$09,$06,$06
+  $69,$69,$69,$69,$96,$96,$06,$06
+  $01,$01,$1A,$1A,$1A,$A1,$A1,$A1
+  $01,$01,$0A,$0A,$0A,$01,$01,$01
+  $01,$01,$1A,$1A,$1A,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$1A,$1A,$1A,$01,$01
+  $01,$01,$01,$0A,$0A,$0A,$01,$01
+  $A1,$A1,$A1,$1A,$1A,$1A,$01,$01
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$15,$15,$15,$15,$15,$15,$01
+  $01,$19,$19,$19,$19,$19,$19,$01
+  $01,$01,$01,$0B,$0A,$01,$01,$01
+end data
+data SpritePat bytes
+  $FE,$FE,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$7F,$03,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$FE,$FE
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$03,$7F,$7F
+end data
+
+asm {
+PsTick:
+    db $40,$40,$30,$02,$50
+PsSlide:
+    db $00,$00,$15,$03,$00,$00,$25,$03,$00,$00,$35,$03,$00,$00,$56,$04,$10
+PsBad:
+    db $40,$F9,$12,$05,$40,$FF,$F3,$03,$40,$56,$13,$08,$50
+PsPass:
+    db $40,$AA,$20,$06,$40,$E2,$20,$0A,$50
+PsStart:
+    db $40,$1D,$21,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+PsWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$1E
+    db $50
+
+PsSoundTable:
+    dw PsTuneMel,$702B
+    dw PsTuneBass,$7035
+    dw PsTick,$7049
+    dw PsSlide,$703F
+    dw PsBad,$7049
+    dw PsPass,$7049
+    dw PsStart,$7049
+    dw PsWin,$7049
+; Sliding Squares (original)
+; Tiny Sound, 8 frames per step
+PsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$25,$01,$28,$01,$25,$01,$23,$01,$26,$01
+    db $2A,$01,$26,$01,$25,$01,$28,$01,$2D,$01,$28,$01,$26,$01,$25,$01
+    db $23,$01,$01,$1E,$01,$21,$01,$26,$01,$21,$01,$20,$01,$23,$01,$28
+    db $01,$23,$01,$21,$01,$25,$01,$23,$01,$20,$01,$21,$01,$01,$01,$00
+    db $01,$01,$01
+    db $FF
+PsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$0D,$01,$14,$01,$0D,$01,$14,$01,$0E,$01,$15,$01
+    db $10,$01,$17,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$12,$01,$19,$01,$10,$01,$17,$01,$09,$01,$01,$00
+    db $01,$01,$01
+    db $FF
+}

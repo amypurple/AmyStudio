@@ -1,0 +1,1426 @@
+cartridge "ATTACK FORCE/AHOY! OCT. 1986/2026"
+
+' ATTACK FORCE
+' A ColecoVision game based on "Attack Force", Ahoy! October 1986
+' (Commodore 64, BASIC with machine-language helpers; no author named in
+' the listing). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/attackf.bas), rebuilt for the ColecoVision: smooth 16 x 16
+' sprites, a corridor of walls and laser fences that scrolls one pixel at
+' a time, tile graphics, sound effects and an original title tune.
+'
+' The game: fly your fighter up a corridor that scrolls towards you. Walls
+' with gaps and laser fences with openings cross it: pass through the
+' openings, touching them destroys the ship. Shoot the enemy towers (250
+' points); destroy the number the mission asks (mission + 4) to complete
+' it. Saucers sweep from side to side as they come (10 + 10 x mission
+' points), and touching one or a tower is fatal. Now and then the scanner
+' shows where an enemy bomb will fall: about two seconds later it bursts
+' just in front of the ship in that fifth of the corridor and drifts down
+' with the ground. Fuel runs out with time: when the gauge is empty the
+' ship is lost; every new try at a mission fills it, and the fuel left at
+' the end of a mission is a bonus of 10 points a unit. Four ships (three
+' spares). Finish mission 9 to free your people.
+'
+' From the original (orig/attackf.bas): the walls (nine layouts) and laser
+' fences (eight), one of each, a tower and a saucer every 35 - mission
+' rows, starting 9, 16, 24 and 22 rows in; mission + 4 towers; 250 points
+' a tower, 10 + 10 x mission a saucer; nine fuel units, one lost every
+' 40 + 2 x mission rows; the fuel bonus; the bomb: a 1 in 30 chance each
+' row while none is falling, a warning in one of five scanner zones, the
+' burst twelve rows later just above the ship; three spare ships; the
+' mission choice (1-9) on the title; the speeds measured in jsc64 (the
+' corridor scrolls about 5.6 rows a second, the ship moves 2 pixels a
+' frame across and 1 up and down in the lower band, the shot 3 pixels a
+' frame, the saucer about 2 to 3).
+'
+' Liberties: the bonus is really added (the C64 printed it but never added
+' it to the score). Wrecked towers and saucers are harmless (on the C64 the
+' wreck sprite still collided). The bomb burst is a sprite, not text
+' characters. The walls all share one colour (the C64 gave each wall a
+' random colour). The playfield is 20 columns wide instead of 29, the gap
+' and fence positions re-spaced to fit. The ship's death is an explosion,
+' not a fast colour flash. Collisions use boxes a little smaller than the
+' sprites instead of the VIC-II's pixel collisions. The mission is chosen
+' with the stick on the title instead of F1. Not trivial by standing still
+' or repeating a move: the original's rules already prevent it (every
+' wall and fence row is drawn at random and no column is open in all of
+' them, and fuel runs out unless towers are shot); checked with bot.mjs
+' (a still ship, a ship sweeping left and right, and a ship that only
+' fires all lose every ship within a minute or two).
+'
+' Controls: either controller. The stick flies the ship (left, right, and
+' up and down in the lower part of the screen), a side button fires (one
+' shot on screen; release to fire again). On the title, up and down
+' choose, left and right change the mission, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers (bug 36). Nothing flashes faster than
+' 3 Hz.
+
+const TTwall = 128
+const TTwend = 129
+const TTwbeg = 130
+const TTbeam = 131
+const TTemil = 132
+const TTemir = 133
+const TBwall = 134
+const TBwend = 135
+const TBwbeg = 136
+const TBbeam = 137
+const TBemil = 138
+const TBemir = 139
+const TFrame = 140
+const THline = 141
+const TFuel0 = 142
+const TFuel1 = 143
+const TFuel2 = 144
+const TScan0 = 145
+const TScan1 = 146
+const TStar = 147
+const SShip = 0
+const SShipd = 4
+const SShot = 8
+const SSaucer = 12
+const SSaucer2 = 16
+const STower = 20
+const SWreck = 24
+const SBlast = 28
+const SBlast2 = 32
+const SBoom1 = 36
+const SBoom2 = 40
+const NTiles8 = 160
+const SprBytes = 352
+const NLay = 17
+const NWall = 9
+const NLaser = 8
+const LayW = 20
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndHit = 4
+const SndSaucer = 5
+const SndBoom = 6
+const SndWarn = 7
+const SndBomb = 8
+const SndBeep = 9
+const SndDone = 10
+const SndFuel = 11
+const SndOver = 12
+const SndWin = 13
+const NSpr = 6
+const PfL = 16
+const ShipXR = 160
+const ShipYT = 112
+const ShipYB = 160
+const DeadN = 100
+const NRows = 24
+
+' an object that scrolls with the ground: Y is its top line + 16 (so it
+' can start above the screen), Act 0 none, 1 alive, 2 wrecked
+record Obj:
+  u8 X
+  u8 Y
+  u8 Act
+  u8 Dx
+end record
+
+Obj Tow
+Obj Sau
+Obj Bla
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 L16 = 0
+u16 Ix16 = 0
+u16 NumU = 0
+bcd digits 6 Sc
+bcd digits 6 Hi
+' terrain rows on screen (0 none, 1-9 walls, 10-17 laser fences)
+u8 Td[24]
+u8 Off = 0
+u8 SubP = 0
+u8 Stepped = 0
+u8 Shifted = 0
+' row counters: walls, towers, saucers, lasers; their period; fuel
+u8 Gy = 0
+u8 Gt = 0
+u8 Gc = 0
+u8 Gl = 0
+u8 Per = 34
+u8 Fc = 0
+u8 Fuel = 9
+u8 Ms = 1
+u8 Tw = 0
+u8 Need = 5
+u8 Ships = 3
+' the ship and its shot
+u8 Px = 88
+u8 Py = 152
+u8 Mx = 0
+u8 My = 0
+u8 Mon = 0
+u8 Held = 0
+' the bomb: falling (1), warning count, column x, zone
+u8 Bs = 0
+u8 Bf = 0
+u8 Bx = 0
+u8 Bz = 0
+u8 DeadT = 0
+u8 Phase = 0
+u8 Over = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 S = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table AfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+mission:
+  PrepMission
+play_loop:
+  Frame1
+  Upload
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Phase = 2 then goto play_loop
+  if Phase = 3 then goto play_loop
+  if Phase = 1 then goto mission
+  if Phase = 4 then
+    MissionDone
+    if Over = 0 then goto mission
+  end if
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  HideSprites
+  mute all
+  if Over = 2 then
+    BoxText
+    print at 3,8, "YOU HAVE DESTROYED"
+    print at 3,9, "ALL OF THE ENEMY"
+    print at 3,10, "INSTALLATIONS."
+    print at 3,12, "YOUR PEOPLE ARE"
+    print at 3,13, "FREE ONCE AGAIN..."
+    play sound SndWin
+  else
+    BoxText
+    print at 7,10, "GAME OVER"
+    play sound SndOver
+  end if
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      if Ships = 0 then
+        Over = 1
+        Phase = 5
+      else
+        dec Ships
+        Phase = 1
+      end if
+    end if
+    return
+  end if
+  MoveShip
+  MoveShot
+  ' the corridor: 3/4 of a pixel a frame
+  Stepped = 0
+  Shifted = 0
+  SubP = SubP + 3
+  if SubP >= 4 then
+    SubP = SubP - 4
+    Stepped = 1
+    inc Off
+    ScrollObj(Tow)
+    ScrollObj(Sau)
+    ScrollObj(Bla)
+    if Off = 8 then
+      Off = 0
+      RowStep
+    end if
+  end if
+  MoveSaucer
+  ShotHits
+  if Phase <> 2 then return
+  ShipHits
+  return
+end sub
+
+sub MoveShip:
+  K = J1 | J2
+  V = K & 4
+  if V > 0 then
+    if Px > PfL then Px = Px - 2
+  end if
+  V = K & 8
+  if V > 0 then
+    if Px < ShipXR then Px = Px + 2
+  end if
+  V = K & 1
+  if V > 0 then
+    if Py > ShipYT then dec Py
+  end if
+  V = K & 2
+  if V > 0 then
+    if Py < ShipYB then inc Py
+  end if
+  ' one shot at a time, and the button must be let go between shots
+  if Btn = 0 then Held = 0
+  if Btn > 0 then
+    if Held = 0 then
+      if Mon = 0 then
+        Mon = 1
+        Mx = Px
+        My = Py - 6
+        Held = 1
+        play sound SndShot
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub MoveShot:
+  if Mon = 0 then return
+  if My < 8 then
+    Mon = 0
+    return
+  end if
+  My = My - 3
+  X = Mx + 7
+  Y = My + 6
+  if TerrHit(X, X, My, Y) = 1 then Mon = 0
+  return
+end sub
+
+' an object moves down with the ground; gone below the screen
+sub ScrollObj(ref Obj O):
+  if O.Act = 0 then return
+  O.Y += 1
+  if O.Y >= 208 then O.Act = 0
+  return
+end sub
+
+sub MoveSaucer:
+  if Sau.Act <> 1 then return
+  if Sau.Dx = 0 then
+    Sau.X += 2
+    if Sau.X >= ShipXR then Sau.Dx = 1
+  else
+    Sau.X -= 2
+    if Sau.X <= PfL then Sau.Dx = 0
+  end if
+  return
+end sub
+
+' a whole row has passed: the rows move down, the counters decide what
+' comes in at the top (the original's lines 300-390), the fuel and the bomb
+sub RowStep:
+  for Ri = 23 to 1 step -1
+    V = Ri - 1
+    Td[Ri] = Td[V]
+  next
+  Td[0] = 0
+  Shifted = 1
+  inc Gy
+  if Gy >= Per then
+    Gy = 0
+    V = Rnd(NWall)
+    Td[0] = V + 1
+  end if
+  inc Gt
+  if Gt >= Per then
+    Gt = 0
+    V = Rnd(144)
+    Tow.X = V + PfL
+    Tow.Y = 0
+    Tow.Act = 1
+  end if
+  inc Gc
+  if Gc >= Per then
+    Gc = 0
+    V = Rnd(144)
+    Sau.X = V + PfL
+    Sau.Y = 0
+    Sau.Act = 1
+    V = Rs & 1
+    Sau.Dx = V
+  end if
+  inc Gl
+  if Gl >= Per then
+    Gl = 0
+    V = Rnd(NLaser)
+    Td[0] = V + NWall + 1
+  end if
+  ' fuel: one unit every 40 + 2 x mission rows
+  inc Fc
+  V = Ms << 1
+  V = V + 40
+  if Fc >= V then
+    Fc = 0
+    if Fuel > 0 then dec Fuel
+    ShowFuel
+    play sound SndFuel
+    if Fuel = 0 then KillShip
+  end if
+  BombStep
+  return
+end sub
+
+' the bomb (lines 120, 130, 460-490): a 1 in 30 chance a row; warned in
+' the scanner, it bursts twelve rows later just above the ship
+sub BombStep:
+  if Bs = 0 then
+    if Rnd(30) = 1 then
+      Bs = 1
+      Bf = 150
+      V = Rnd(19)
+      Bx = V << 3
+      Bx = Bx + PfL
+      Bz = V >> 2
+      if Bz > 4 then Bz = 4
+      ShowScan
+      play sound SndWarn
+    end if
+    return
+  end if
+  Bf = Bf - 5
+  if Bf > 90 then return
+  Bs = 0
+  Bla.X = Bx
+  Bla.Y = Py + 8
+  Bla.Act = 1
+  ShowScan
+  play sound SndBomb
+  return
+end sub
+
+' the shot against the tower and the saucer
+sub ShotHits:
+  if Mon = 0 then return
+  if Tow.Act = 1 then
+    if Near(Mx, My, Tow.X, Tow.Y - 16, 9) = 1 then
+      Mon = 0
+      Tow.Act = 2
+      Sc += 250
+      inc Tw
+      play sound SndHit
+      ShowHud
+      if Tw >= Need then Phase = 4
+      return
+    end if
+  end if
+  if Sau.Act = 1 then
+    if Near(Mx, My, Sau.X, Sau.Y - 16, 9) = 1 then
+      Mon = 0
+      Sau.Act = 2
+      AddPoints(Ms + 1)
+      play sound SndSaucer
+      ShowScore
+    end if
+  end if
+  return
+end sub
+
+' the ship against the walls and fences, the tower, the saucer, the bomb
+sub ShipHits:
+  X = Px + 3
+  Y = Px + 12
+  U = Py + 3
+  V = Py + 13
+  Got = TerrHit(X, Y, U, V)
+  S = Py + 16
+  if Tow.Act = 1 then
+    if Near(Px, S, Tow.X, Tow.Y, 11) = 1 then Got = 1
+  end if
+  if Sau.Act = 1 then
+    if Near(Px, S, Sau.X, Sau.Y, 10) = 1 then Got = 1
+  end if
+  if Bla.Act = 1 then
+    if Near(Px, S, Bla.X, Bla.Y, 11) = 1 then Got = 1
+  end if
+  if Got = 1 then KillShip
+  return
+end sub
+
+sub KillShip:
+  if Phase <> 2 then return
+  Phase = 3
+  DeadT = DeadN
+  Mon = 0
+  play sound SndBoom
+  return
+end sub
+
+' N x 10 points (a BCD score takes no variable amounts: add 10 N times)
+sub AddPoints(u8 Nt):
+  u8 Ap = 0
+  for Ap = 1 to Nt
+    Sc += 10
+  next
+  return
+end sub
+
+' 1 when two 16 x 16 sprites (top-left corners) are closer than D both ways
+function Near(u8 Ax, u8 Ay, u8 Bx, u8 By, u8 D) as u8
+  u8 Dx = 0, Dy = 0
+  if Ax > Bx then
+    Dx = Ax - Bx
+  else
+    Dx = Bx - Ax
+  end if
+  if Ay > By then
+    Dy = Ay - By
+  else
+    Dy = By - Ay
+  end if
+  u8 Res = 0
+  if Dx < D then
+    if Dy < D then Res = 1
+  end if
+  return Res
+
+' 1 when the box XL..XR, YT..YB (screen pixels) touches a solid part of a
+' wall or fence row. Row R is drawn from line 8R + Off; a fence's beam
+' fills lines 2-6 of its row. Wall ends are solid on their outer five
+' pixels only.
+function TerrHit(u8 XL, u8 XR, u8 YT, u8 YB) as u8
+  u8 Res = 0
+  u8 Ra = 0, Rb = 0, Ca = 0, Cb = 0, Top = 0, Bot = 0, Cx = 0, Q = 0, Rr = 0, Cc = 0
+  Ra = YT >> 3
+  if Ra > 0 then dec Ra
+  Rb = YB >> 3
+  if Rb > 23 then Rb = 23
+  Ca = XL - PfL
+  Ca = Ca >> 3
+  Cb = XR - PfL
+  Cb = Cb >> 3
+  if Cb > 19 then Cb = 19
+  for Rr = Ra to Rb
+    Q = Td[Rr]
+    if Q > 0 then
+      Top = Rr << 3
+      Top = Top + Off
+      Bot = Top + 7
+      if Q > NWall then
+        Top = Top + 2
+        Bot = Top + 4
+      end if
+      if YB >= Top then
+        if YT <= Bot then
+          L16 = Q - 1
+          L16 = L16 * LayW
+          for Cc = Ca to Cb
+            Ix16 = L16 + Cc
+            Cx = Cc << 3
+            Cx = Cx + PfL
+            select case LaySol[Ix16]
+            case 1
+              Res = 1
+            case 2
+              Cx = Cx + 4
+              if XL <= Cx then Res = 1
+            case 3
+              Cx = Cx + 3
+              if XR >= Cx then Res = 1
+            end select
+          next
+        end if
+      end if
+    end if
+  next
+  return Res
+
+' xorshift (bug 36: random() repeats in short cycles)
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function Rnd(u8 Lim) as u8
+  Rand
+  u8 Rv = 0
+  W16 = Rs >> 4
+  Rv = W16 & 255
+  return Rv % Lim
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the VRAM work of the frame, right after the wait: the 12 scrolling
+' patterns for the new offset, and the rows when a whole row has passed
+sub Upload:
+  if Stepped = 0 then return
+  Stepped = 0
+  W16 = Off
+  W16 = W16 * 96
+  copy ShP + W16 count 96 to vram.pattern + 1024
+  copy ShP + W16 count 96 to vram.pattern + 3072
+  copy ShP + W16 count 96 to vram.pattern + 5120
+  copy ShC + W16 count 96 to vram.color + 1024
+  if Shifted = 0 then return
+  Shifted = 0
+  for Ci = 0 to 23
+    Got = Td[Ci]
+    if Ci > 0 then
+      V = Ci - 1
+      Got = Got | Td[V]
+    end if
+    if Ci < 23 then
+      V = Ci + 1
+      Got = Got | Td[V]
+    end if
+    if Got > 0 then DrawTRow
+  next
+  return
+end sub
+
+' screen row Ci: the top part of its own terrain row, or the bottom part of
+' the row above, or nothing
+sub DrawTRow:
+  A16 = Ci
+  A16 = A16 << 5
+  A16 = A16 + 2
+  V = Td[Ci]
+  if V > 0 then
+    L16 = V - 1
+    L16 = L16 * LayW
+    copy LayT + L16 count LayW to vram.name + A16
+    return
+  end if
+  if Ci > 0 then
+    U = Ci - 1
+    V = Td[U]
+    if V > 0 then
+      L16 = V - 1
+      L16 = L16 * LayW
+      copy LayB + L16 count LayW to vram.name + A16
+      return
+    end if
+  end if
+  fill 32 count LayW at 2,Ci
+  return
+end sub
+
+' sprites: 0 the ship's canopy and flame, 1 the ship, 2 the shot,
+' 3 the saucer, 4 the tower, 5 the bomb burst
+sub DrawSprites:
+  Y = Py - 1
+  if Phase = 3 then
+    V = DeadN - DeadT
+    if V < 60 then
+      K = SBoom1
+      if V >= 12 then K = SBoom2
+      if V >= 24 then K = SBoom1
+      if V >= 36 then K = SBoom2
+      set sprite 0 to Y,Px,K,9
+      set sprite 1 to 192,0,0,0
+    else
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+    end if
+  elseif Phase = 2 then
+    set sprite 0 to Y,Px,SShipd,9
+    set sprite 1 to Y,Px,SShip,15
+  else
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  end if
+  if Mon = 1 then
+    V = My - 1
+    set sprite 2 to V,Mx,SShot,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  select case Sau.Act
+  case 1
+    K = SSaucer
+    V = Tick & 8
+    if V > 0 then K = SSaucer2
+    V = Sau.Y - 17
+    set sprite 3 to V,Sau.X,K,13
+  case 2
+    V = Sau.Y - 17
+    set sprite 3 to V,Sau.X,SWreck,6
+  case else
+    set sprite 3 to 192,0,0,0
+  end select
+  if Tow.Act = 0 then
+    set sprite 4 to 192,0,0,0
+  else
+    V = Tow.Y - 17
+    if Tow.Act = 1 then
+      set sprite 4 to V,Tow.X,STower,10
+    else
+      set sprite 4 to V,Tow.X,SWreck,6
+    end if
+  end if
+  if Bla.Act = 1 then
+    V = Bla.Y - 17
+    ' the burst changes shape and colour every 12 frames (2.5 Hz)
+    K = Tick & 16
+    if K > 0 then
+      set sprite 5 to V,Bla.X,SBlast2,10
+    else
+      set sprite 5 to V,Bla.X,SBlast,9
+    end if
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print Sc at 23,2
+  return
+end sub
+
+sub ShowHud:
+  ShowScore
+  print Hi at 23,5
+  NumU = Ms
+  print at 23,8, digits$(NumU, 1)
+  NumU = Ships
+  print at 23,11, digits$(NumU, 1)
+  V = Need - Tw
+  NumU = V
+  print at 23,14, digits$(NumU, 2), " LEFT"
+  ShowFuel
+  ShowScan
+  return
+end sub
+
+' the gauge: nine units in five cells (two a cell)
+sub ShowFuel:
+  for Ci = 0 to 4
+    V = Ci << 1
+    T = TFuel0
+    if Fuel > V then T = TFuel1
+    V = V + 1
+    if Fuel > V then T = TFuel2
+    X = Ci + 23
+    put char T at X,17
+  next
+  return
+end sub
+
+sub ShowScan:
+  for Ci = 0 to 4
+    T = TScan0
+    if Bs = 1 then
+      if Ci = Bz then T = TScan1
+    end if
+    X = Ci + 24
+    put char T at X,20
+  next
+  return
+end sub
+
+sub DrawFrame:
+  for Ri = 0 to 23
+    put char TFrame at 1,Ri
+    put char TFrame at 22,Ri
+  next
+  fill THline count 7 at 23,0
+  print at 23,1, "SCORE"
+  print at 23,4, "HIGH"
+  print at 23,7, "MISSION"
+  print at 23,10, "SHIPS"
+  print at 23,13, "TOWERS"
+  print at 23,16, "FUEL"
+  print at 23,19, "SCANNER"
+  fill THline count 7 at 23,22
+  return
+end sub
+
+sub BoxText:
+  for Ri = 7 to 14
+    fill 32 count 18 at 3,Ri
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Tw = 0
+  Ships = 3
+  Over = 0
+  return
+end sub
+
+' "PREPARE FOR MISSION", the corridor emptied, the ship at the bottom
+' (lines 500-565)
+sub PrepMission:
+  Phase = 1
+  NewScreen
+  DrawFrame
+  Need = Ms + 4
+  Per = 35 - Ms
+  Gy = 25
+  Gt = 10
+  Gl = 18
+  Gc = 12
+  Fc = 0
+  Fuel = 9
+  Bs = 0
+  Off = 0
+  SubP = 0
+  fill array Td with 0
+  Tow.Act = 0
+  Sau.Act = 0
+  Bla.Act = 0
+  Mon = 0
+  Held = 1
+  Px = 88
+  Py = ShipYB
+  DeadT = 0
+  ShowHud
+  W16 = 0
+  copy ShP count 96 to vram.pattern + 1024
+  copy ShP count 96 to vram.pattern + 3072
+  copy ShP count 96 to vram.pattern + 5120
+  copy ShC count 96 to vram.color + 1024
+  print at 6,9, "PREPARE FOR"
+  print at 7,10, "MISSION"
+  NumU = Ms
+  print at 15,10, digits$(NumU, 1)
+  V = Need - Tw
+  NumU = V
+  print at 5,12, "DESTROY"
+  print at 13,12, digits$(NumU, 1)
+  if V > 1 then
+    print at 15,12, "TOWERS"
+  else
+    print at 15,12, "TOWER"
+  end if
+  DrawSprites
+  ShowScreen
+  for Ki = 1 to 3
+    play sound SndBeep
+    Rearm
+    wait 40 frames
+    nmi off
+  next
+  Rearm
+  wait 20 frames
+  nmi off
+  for Ri = 9 to 12
+    fill 32 count 20 at 2,Ri
+  next
+  Phase = 2
+  Stepped = 0
+  Shifted = 0
+  return
+end sub
+
+' "MISSION n COMPLETED", the bonus, the next mission (lines 570-590)
+sub MissionDone:
+  mute all
+  HideSprites
+  BoxText
+  print at 5,9, "MISSION"
+  NumU = Ms
+  print at 13,9, digits$(NumU, 1)
+  print at 5,10, "COMPLETED"
+  play sound SndDone
+  Rearm
+  wait 60 frames
+  nmi off
+  inc Ms
+  if Ms >= 10 then
+    Ms = 9
+    Over = 2
+    Phase = 5
+    return
+  end if
+  V = Fuel * 10
+  NumU = V
+  print at 5,12, "BONUS:"
+  print at 12,12, digits$(NumU, 2), " PTS."
+  AddPoints(Fuel)
+  ShowHud
+  Rearm
+  wait 120 frames
+  nmi off
+  Tw = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name, a ship, START GAME / MISSION n / CREDITS, the tune
+sub TitlePage:
+  Phase = 0
+  NewScreen
+  for Ri = 0 to 23
+    put char TFrame at 1,Ri
+    put char TFrame at 30,Ri
+  next
+  for Ci = 0 to 13
+    Ri = Rnd(23)
+    X = Rnd(26)
+    X = X + 3
+    put char TStar at X,Ri
+  next
+  print at 10,3, "ATTACK FORCE"
+  fill THline count 16 at 8,4
+  print at 10,13, "START GAME"
+  print at 10,15, "MISSION"
+  print at 10,17, "CREDITS"
+  print at 4,20, "AHOY! OCTOBER 1986"
+  print at 23,1, "HI"
+  print Hi at 23,2
+  ShowMenu
+  TitleOn = 1
+  set sprite 0 to 72,120,SShipd,9
+  set sprite 1 to 72,120,SShip,15
+  set sprite 4 to 40,60,STower,10
+  set sprite 3 to 50,180,SSaucer,13
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 540
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      end if
+      K = V & 2
+      if K > 0 then
+        if Menu < 2 then inc Menu
+      end if
+      if Menu = 1 then
+        K = V & 8
+        if K > 0 then inc Ms
+        K = V & 4
+        if K > 0 then dec Ms
+        if Ms = 0 then Ms = 9
+        if Ms >= 10 then Ms = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    inc Ms
+    if Ms >= 10 then Ms = 1
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,13
+  put char 32 at 8,15
+  put char 32 at 8,17
+  J = Menu << 1
+  J = J + 13
+  put char 62 at 8,J
+  NumU = Ms
+  print at 18,15, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "ATTACK FORCE"
+  print at 2,5, "BASED ON ATTACK FORCE,"
+  print at 2,6, "AHOY! OCTOBER 1986"
+  print at 2,7, "(COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: SCRAMBLE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 9
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$42,$00,$00,$42,$00,$00
+  $F0,$07,$07,$07,$07,$07,$07,$F0
+  $F0,$E0,$E0,$E0,$E0,$E0,$E0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$40,$40,$40,$40,$81,$00
+  $00,$81,$70,$70,$70,$70,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$00,$00,$08,$00,$00
+end data
+data TileCol bytes
+  $0F,$0E,$4E,$0E,$0E,$4E,$0E,$04
+  $F1,$1E,$1E,$1E,$1E,$1E,$1E,$41
+  $1F,$1E,$1E,$1E,$1E,$1E,$1E,$14
+  $01,$01,$08,$0B,$0F,$0B,$08,$01
+  $F1,$E1,$E8,$EB,$EF,$EB,$E8,$41
+  $F1,$E1,$E8,$EB,$EF,$EB,$E8,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $01,$01,$01,$04,$05,$04,$01,$01
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $01,$1E,$21,$21,$21,$21,$1E,$01
+  $01,$1E,$12,$12,$12,$12,$1E,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$94,$49,$49,$94,$04,$04
+  $01,$01,$01,$01,$01,$E1,$01,$01
+end data
+data SpritePat bytes
+  $01,$03,$01,$03,$07,$0E,$1E,$3F,$7F,$FF,$EF,$C7,$83,$02,$00,$00
+  $80,$C0,$80,$C0,$E0,$70,$78,$FC,$FE,$FF,$F7,$E3,$C1,$40,$00,$00
+  $00,$00,$02,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$01,$02
+  $00,$00,$40,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$80,$40
+  $01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0D,$3F,$5B,$FF,$3F,$0C,$18,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$B0,$FC,$DA,$FF,$FC,$30,$18,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0D,$3F,$6D,$FF,$3F,$0C,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$B0,$FC,$B6,$FF,$FC,$30,$60,$00,$00,$00,$00,$00
+  $01,$02,$01,$07,$05,$07,$0F,$0A,$0F,$1F,$16,$1F,$3F,$36,$7F,$FF
+  $80,$40,$80,$E0,$A0,$E0,$F0,$50,$F0,$F8,$68,$F8,$FC,$6C,$FE,$FF
+  $00,$00,$00,$00,$00,$02,$11,$05,$09,$1B,$16,$37,$2D,$6F,$B5,$FF
+  $00,$00,$00,$00,$00,$40,$88,$A0,$48,$D0,$68,$D8,$2C,$EE,$AD,$FF
+  $02,$07,$0D,$07,$0F,$5F,$FF,$7F,$7F,$FF,$5F,$0F,$07,$0D,$07,$02
+  $40,$E0,$B0,$E0,$F0,$FA,$FF,$FE,$FE,$FF,$FA,$F0,$E0,$B0,$E0,$40
+  $11,$0B,$07,$1F,$3F,$FF,$7F,$FF,$FF,$7F,$BF,$3F,$1F,$07,$0B,$11
+  $88,$D0,$E0,$F8,$FC,$FD,$FE,$FF,$FF,$FE,$FF,$FC,$F8,$E0,$D0,$88
+  $00,$00,$08,$05,$13,$0F,$3F,$1F,$7F,$1F,$2F,$0F,$12,$04,$00,$00
+  $00,$00,$20,$40,$88,$F0,$F4,$F8,$F8,$F8,$F4,$E0,$90,$40,$00,$00
+  $80,$22,$09,$4A,$15,$A4,$12,$48,$24,$8A,$25,$49,$0A,$22,$80,$00
+  $81,$24,$50,$4A,$A8,$25,$50,$12,$24,$51,$A4,$12,$50,$24,$81,$00
+end data
+data ShP bytes
+  $00,$00,$42,$00,$00,$42,$00,$00,$F0,$07,$07,$07,$07,$07,$07,$F0
+  $F0,$E0,$E0,$E0,$E0,$E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$07,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$42,$00,$00,$42,$00,$00,$F0,$07,$07,$07,$07,$07,$07
+  $00,$F0,$E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$00,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$F0,$00,$00,$00,$00,$00,$00,$00
+  $F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$42,$00,$00,$42,$00,$00,$F0,$07,$07,$07,$07,$07
+  $00,$00,$F0,$E0,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$F0,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$00,$00,$00,$00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$42,$00,$00,$00,$00,$00,$F0,$07,$07,$07,$07
+  $00,$00,$00,$F0,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$E0,$00,$00,$00,$07,$07,$07,$07,$07
+  $42,$00,$00,$00,$00,$00,$00,$00,$07,$07,$F0,$00,$00,$00,$00,$00
+  $E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00,$07,$07,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$42,$00,$00,$00,$00,$00,$F0,$07,$07,$07
+  $00,$00,$00,$00,$F0,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$07,$07,$07,$07
+  $00,$42,$00,$00,$00,$00,$00,$00,$07,$07,$07,$F0,$00,$00,$00,$00
+  $E0,$E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$00,$00,$00,$00,$07,$07,$07,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$42,$00,$00,$00,$00,$00,$F0,$07,$07
+  $00,$00,$00,$00,$00,$F0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$E0,$E0,$00,$00,$00,$00,$00,$07,$07,$07
+  $00,$00,$42,$00,$00,$00,$00,$00,$07,$07,$07,$07,$F0,$00,$00,$00
+  $E0,$E0,$E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$00,$00,$00,$07,$07,$07,$07,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$07
+  $00,$00,$00,$00,$00,$00,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$07,$07
+  $42,$00,$00,$42,$00,$00,$00,$00,$07,$07,$07,$07,$07,$F0,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$07,$07,$07,$07,$07,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0
+  $00,$00,$00,$00,$00,$00,$00,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$07
+  $00,$42,$00,$00,$42,$00,$00,$00,$07,$07,$07,$07,$07,$07,$F0,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$00,$07,$07,$07,$07,$07,$07,$07,$00
+end data
+data ShC bytes
+  $0F,$0E,$4E,$0E,$0E,$4E,$0E,$04,$F1,$1E,$1E,$1E,$1E,$1E,$1E,$41
+  $1F,$1E,$1E,$1E,$1E,$1E,$1E,$14,$01,$01,$08,$0B,$0F,$0B,$08,$01
+  $F1,$E1,$E8,$EB,$EF,$EB,$E8,$41,$F1,$E1,$E8,$EB,$EF,$EB,$E8,$41
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$0F,$0E,$4E,$0E,$0E,$4E,$0E,$11,$F1,$1E,$1E,$1E,$1E,$1E,$1E
+  $11,$1F,$1E,$1E,$1E,$1E,$1E,$1E,$11,$01,$01,$08,$0B,$0F,$0B,$08
+  $11,$F1,$E1,$E8,$EB,$EF,$EB,$E8,$11,$F1,$E1,$E8,$EB,$EF,$EB,$E8
+  $04,$11,$11,$11,$11,$11,$11,$11,$41,$11,$11,$11,$11,$11,$11,$11
+  $14,$11,$11,$11,$11,$11,$11,$11,$01,$11,$11,$11,$11,$11,$11,$11
+  $41,$11,$11,$11,$11,$11,$11,$11,$41,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$0F,$0E,$4E,$0E,$0E,$4E,$11,$11,$F1,$1E,$1E,$1E,$1E,$1E
+  $11,$11,$1F,$1E,$1E,$1E,$1E,$1E,$11,$11,$01,$01,$08,$0B,$0F,$0B
+  $11,$11,$F1,$E1,$E8,$EB,$EF,$EB,$11,$11,$F1,$E1,$E8,$EB,$EF,$EB
+  $0E,$04,$11,$11,$11,$11,$11,$11,$1E,$41,$11,$11,$11,$11,$11,$11
+  $1E,$14,$11,$11,$11,$11,$11,$11,$08,$01,$11,$11,$11,$11,$11,$11
+  $E8,$41,$11,$11,$11,$11,$11,$11,$E8,$41,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$0F,$0E,$4E,$0E,$0E,$11,$11,$11,$F1,$1E,$1E,$1E,$1E
+  $11,$11,$11,$1F,$1E,$1E,$1E,$1E,$11,$11,$11,$01,$01,$08,$0B,$0F
+  $11,$11,$11,$F1,$E1,$E8,$EB,$EF,$11,$11,$11,$F1,$E1,$E8,$EB,$EF
+  $4E,$0E,$04,$11,$11,$11,$11,$11,$1E,$1E,$41,$11,$11,$11,$11,$11
+  $1E,$1E,$14,$11,$11,$11,$11,$11,$0B,$08,$01,$11,$11,$11,$11,$11
+  $EB,$E8,$41,$11,$11,$11,$11,$11,$EB,$E8,$41,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$0F,$0E,$4E,$0E,$11,$11,$11,$11,$F1,$1E,$1E,$1E
+  $11,$11,$11,$11,$1F,$1E,$1E,$1E,$11,$11,$11,$11,$01,$01,$08,$0B
+  $11,$11,$11,$11,$F1,$E1,$E8,$EB,$11,$11,$11,$11,$F1,$E1,$E8,$EB
+  $0E,$4E,$0E,$04,$11,$11,$11,$11,$1E,$1E,$1E,$41,$11,$11,$11,$11
+  $1E,$1E,$1E,$14,$11,$11,$11,$11,$0F,$0B,$08,$01,$11,$11,$11,$11
+  $EF,$EB,$E8,$41,$11,$11,$11,$11,$EF,$EB,$E8,$41,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$0F,$0E,$4E,$11,$11,$11,$11,$11,$F1,$1E,$1E
+  $11,$11,$11,$11,$11,$1F,$1E,$1E,$11,$11,$11,$11,$11,$01,$01,$08
+  $11,$11,$11,$11,$11,$F1,$E1,$E8,$11,$11,$11,$11,$11,$F1,$E1,$E8
+  $0E,$0E,$4E,$0E,$04,$11,$11,$11,$1E,$1E,$1E,$1E,$41,$11,$11,$11
+  $1E,$1E,$1E,$1E,$14,$11,$11,$11,$0B,$0F,$0B,$08,$01,$11,$11,$11
+  $EB,$EF,$EB,$E8,$41,$11,$11,$11,$EB,$EF,$EB,$E8,$41,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$0F,$0E,$11,$11,$11,$11,$11,$11,$F1,$1E
+  $11,$11,$11,$11,$11,$11,$1F,$1E,$11,$11,$11,$11,$11,$11,$01,$01
+  $11,$11,$11,$11,$11,$11,$F1,$E1,$11,$11,$11,$11,$11,$11,$F1,$E1
+  $4E,$0E,$0E,$4E,$0E,$04,$11,$11,$1E,$1E,$1E,$1E,$1E,$41,$11,$11
+  $1E,$1E,$1E,$1E,$1E,$14,$11,$11,$08,$0B,$0F,$0B,$08,$01,$11,$11
+  $E8,$EB,$EF,$EB,$E8,$41,$11,$11,$E8,$EB,$EF,$EB,$E8,$41,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$0F,$11,$11,$11,$11,$11,$11,$11,$F1
+  $11,$11,$11,$11,$11,$11,$11,$1F,$11,$11,$11,$11,$11,$11,$11,$01
+  $11,$11,$11,$11,$11,$11,$11,$F1,$11,$11,$11,$11,$11,$11,$11,$F1
+  $0E,$4E,$0E,$0E,$4E,$0E,$04,$11,$1E,$1E,$1E,$1E,$1E,$1E,$41,$11
+  $1E,$1E,$1E,$1E,$1E,$1E,$14,$11,$01,$08,$0B,$0F,$0B,$08,$01,$11
+  $E1,$E8,$EB,$EF,$EB,$E8,$41,$11,$E1,$E8,$EB,$EF,$EB,$E8,$41,$11
+end data
+data LayT bytes
+  $80,$81,$20,$20,$20,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$81,$20,$20,$20,$82,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$20
+  $20,$20,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$81,$20,$20,$20,$82,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$20,$20,$20
+  $82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$81,$20,$20,$20,$82,$80,$80,$81,$20,$20,$20,$82,$80,$80
+  $81,$20,$20,$20,$82,$80,$81,$20,$20,$20,$82,$80,$20,$20,$20,$82
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$20,$20,$20
+  $80,$81,$20,$20,$20,$82,$80,$80,$80,$80,$80,$80,$80,$80,$81,$20
+  $20,$20,$82,$80,$20,$84,$83,$83,$83,$83,$83,$83,$83,$83,$85,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$84,$83,$83,$83,$83,$85,$20
+  $20,$20,$84,$83,$83,$83,$85,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$84,$83,$83,$83,$83,$83,$83,$83,$83,$85,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$84,$83,$83,$83,$83,$83,$83
+  $83,$83,$85,$20,$20,$84,$83,$85,$20,$20,$84,$83,$85,$20,$20,$84
+  $83,$85,$20,$20,$84,$83,$85,$20,$20,$20,$84,$83,$83,$83,$83,$83
+  $83,$83,$83,$83,$83,$83,$83,$83,$83,$85,$20,$20,$84,$83,$83,$83
+  $85,$20,$20,$84,$83,$83,$83,$83,$85,$20,$20,$84,$83,$83,$83,$85
+  $20,$84,$83,$85,$20,$84,$83,$85,$20,$20,$84,$83,$85,$20,$20,$84
+  $83,$83,$85,$20
+end data
+data LayB bytes
+  $86,$87,$20,$20,$20,$88,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  $86,$86,$86,$86,$86,$86,$86,$87,$20,$20,$20,$88,$86,$86,$86,$86
+  $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$87,$20
+  $20,$20,$88,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  $86,$86,$86,$86,$86,$87,$20,$20,$20,$88,$86,$86,$86,$86,$86,$86
+  $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$87,$20,$20,$20
+  $88,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  $86,$86,$87,$20,$20,$20,$88,$86,$86,$87,$20,$20,$20,$88,$86,$86
+  $87,$20,$20,$20,$88,$86,$87,$20,$20,$20,$88,$86,$20,$20,$20,$88
+  $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$87,$20,$20,$20
+  $86,$87,$20,$20,$20,$88,$86,$86,$86,$86,$86,$86,$86,$86,$87,$20
+  $20,$20,$88,$86,$20,$8A,$89,$89,$89,$89,$89,$89,$89,$89,$8B,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$8A,$89,$89,$89,$89,$8B,$20
+  $20,$20,$8A,$89,$89,$89,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$8A,$89,$89,$89,$89,$89,$89,$89,$89,$8B,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$8A,$89,$89,$89,$89,$89,$89
+  $89,$89,$8B,$20,$20,$8A,$89,$8B,$20,$20,$8A,$89,$8B,$20,$20,$8A
+  $89,$8B,$20,$20,$8A,$89,$8B,$20,$20,$20,$8A,$89,$89,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$8B,$20,$20,$8A,$89,$89,$89
+  $8B,$20,$20,$8A,$89,$89,$89,$89,$8B,$20,$20,$8A,$89,$89,$89,$8B
+  $20,$8A,$89,$8B,$20,$8A,$89,$8B,$20,$20,$8A,$89,$8B,$20,$20,$8A
+  $89,$89,$8B,$20
+end data
+data LaySol bytes
+  $01,$02,$00,$00,$00,$03,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$02,$00,$00,$00,$03,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$02,$00
+  $00,$00,$03,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$02,$00,$00,$00,$03,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$02,$00,$00,$00
+  $03,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$02,$00,$00,$00,$03,$01,$01,$02,$00,$00,$00,$03,$01,$01
+  $02,$00,$00,$00,$03,$01,$02,$00,$00,$00,$03,$01,$00,$00,$00,$03
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$02,$00,$00,$00
+  $01,$02,$00,$00,$00,$03,$01,$01,$01,$01,$01,$01,$01,$01,$02,$00
+  $00,$00,$03,$01,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$00,$00,$01,$01,$01,$00,$00,$01,$01,$01,$00,$00,$01
+  $01,$01,$00,$00,$01,$01,$01,$00,$00,$00,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$01,$01,$01,$01
+  $01,$00,$00,$01,$01,$01,$01,$01,$01,$00,$00,$01,$01,$01,$01,$01
+  $00,$01,$01,$01,$00,$01,$01,$01,$00,$00,$01,$01,$01,$00,$00,$01
+  $01,$01,$01,$00
+end data
+
+asm {
+AfShot:
+    db $40,$40,$10,$01,$40,$47,$20,$01,$40,$50,$20,$01,$40,$5F,$30,$01,$40,$71,$40,$02,$50
+AfHit:
+    db $00,$00,$05,$03,$00,$00,$16,$04,$00,$00,$36,$06,$00,$00,$57,$08,$10
+AfSaucer:
+    db $40,$55,$10,$02,$40,$6B,$20,$02,$40,$55,$20,$02,$40,$47,$30,$04,$50
+AfBoom:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$26,$0A,$00,$00,$47,$0E,$00,$00,$67,$14,$10
+AfWarn:
+    db $40,$47,$30,$04,$40,$4C,$30,$04,$40,$50,$30,$04,$40,$55,$40,$04,$40,$5A,$40,$04,$40,$5F,$40,$04
+    db $40,$65,$40,$04,$40,$6B,$40,$04,$50
+AfBomb:
+    db $00,$00,$14,$04,$00,$00,$25,$06,$00,$00,$36,$0A,$00,$00,$57,$0C,$10
+AfBeep:
+    db $40,$7F,$20,$0A,$40,$7F,$60,$04,$50
+AfDone:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$14,$50
+AfFuel:
+    db $40,$53,$21,$03,$40,$7C,$31,$03,$50
+AfOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+AfWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+AfSoundTable:
+    dw AfTuneMel,$702B
+    dw AfTuneBass,$7035
+    dw AfShot,$7049
+    dw AfHit,$703F
+    dw AfSaucer,$7049
+    dw AfBoom,$703F
+    dw AfWarn,$7049
+    dw AfBomb,$703F
+    dw AfBeep,$7049
+    dw AfDone,$7049
+    dw AfFuel,$7049
+    dw AfOver,$7049
+    dw AfWin,$7049
+; Scramble (original)
+; Tiny Sound, 8 frames per step
+AfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$21,$1C,$21,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$1C,$01,$1D,$01,$1D,$1A,$1D,$01,$21,$01,$1F,$01,$1D,$01
+    db $1C,$01,$01,$01,$21,$01,$21,$1C,$21,$01,$24,$01,$26,$01,$24,$01
+    db $23,$01,$21,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$20,$01,$1C,$01
+    db $21,$01,$01,$01,$00,$01,$01
+    db $FF
+AfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$0C,$01,$13,$01
+    db $10,$01,$13,$01,$09,$01,$10,$01,$09,$01,$10,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$04,$01,$0B,$01
+    db $09,$01,$01,$01,$00,$01,$01
+    db $FF
+}

@@ -1,0 +1,3133 @@
+cartridge "TOMB OF HORROR/CLEVELAND M. BLAKEMORE/1988"
+
+' TOMB OF HORROR
+' A ColecoVision game based on "Tomb of Horror" by Cleveland M.
+' Blakemore, Ahoy! July 1988 (Commodore 64, BASIC with a machine-language
+' helper, TOMB.OBJ). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: a 3-D crawl through three levels of a tomb (the Catacombs,
+' the Sepulchre, the Barrow), each a 16 x 8 maze from the listing's DATA.
+' Find the coal the Demon King guards in the Barrow, turn it to iron and
+' the iron to the Alchemy Stone with incantations, then climb back to the
+' shaft where you came in. Monsters drop the gear you need: the steel hook
+' and the coil of rope (both needed for every shaft), the compass, the
+' scroll (a map), the mithril ring (opens false walls), the holy symbol
+' (calms the undead), the black cloak (no one fights while you wear it),
+' weapons and armour. Traps hide in the floors; SEARCH finds them.
+'
+' Rules from the listing (orig/tomb-c64.bas): 20 hit points, regained
+' slowly; 8 monsters a level, hit points slot * 4 * (level + 1); your blow
+' weapon + 2 * quality + HP / 8; a monster in your cell strikes for twice
+' its rank, less with armour; a kill gives its rank in HP, a cache of
+' treasure and the slot's item. Ten traps a level, damage up to 10 *
+' (level + 1). The monsters creep one cell toward you now and then.
+'
+' A fix: the listing's Sepulchre has no shaft up, so the stone could
+' never be carried out; here the cell under the Catacombs' shaft (level 1,
+' cell 104) leads up again.
+'
+' Controls (either joystick): up walks forward, down steps back, left and
+' right turn. Left button: strike the monster in your cell. Right button
+' (or left button with the stick down, as in the original): the command
+' menu; up and down choose, the left button picks, the right one leaves.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off; music first in the sound table, effects
+' after; `set sprite count` always given (bug 25); nothing flashes faster
+' than 3 times a second. Free VRAM ($2800-$2FFF, after the 2K colour
+' table) holds the maze, the items and the monster map.
+
+const TCeil = 128
+const TFloor = 129
+const TDark = 130
+const TUp = 131
+const TDown = 132
+const TFlame = 133
+const TSconce = 135
+const TSide = 136
+const TFace = 156
+const TFrTL = 160
+const TFrTR = 161
+const TFrBL = 162
+const TFrBR = 163
+const TFrH = 164
+const TFrV = 165
+const TFrHB = 166
+const TSkull = 167
+const TBar = 168
+const TBarBk = 172
+const NTiles8 = 872
+const TitleW = 28
+const TitleH = 12
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrnA = 3
+const SndDrnB = 4
+const SndStep = 5
+const SndBump = 6
+const SndSwing = 7
+const SndHit = 8
+const SndHurt = 9
+const SndKill = 10
+const SndTrap = 11
+const SndTake = 12
+const SndMagic = 13
+const SndQuaff = 14
+const SndShaft = 15
+const SndClimb = 16
+const SndTick = 17
+const SndGrowl = 18
+const SndHeart = 19
+const SndNope = 20
+const SndDie = 21
+const SndWin = 22
+const SndCreep = 23
+' VRAM stores, as offsets from vram.color: the maze (value | 128 for a
+' trap), the item type in a cell, its count (low, high), the monster slot
+const OMap = 2048
+const OItm = 2432
+const OQlo = 2816
+const OQhi = 3200
+const OMon = 3584
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' you
+u8 Lvl = 0
+u8 Cd = 2
+u16 Cl = 17
+u16 Hp = 20
+u8 Ar = 0
+u8 Cu = 0
+u8 We = 0
+u16 Inv[31]
+' the monsters, slots 1-24 (slot 0 unused): cell, hit points, type
+' (bit 7: calmed)
+u16 MCell[25]
+u16 MHp[25]
+u8 MTy[25]
+' the view
+u8 ColTop[24]
+u8 ColT[24]
+u8 ColD[24]
+u8 RowB[24]
+u16 Ca[5]
+u8 Front = 0
+u8 SeeM = 0
+u8 SeeD = 0
+u8 SeeI = 0
+u8 SeeID = 0
+u8 MonLoaded = 0
+u8 Bob = 0
+u8 Spark = 0
+u8 Torch = 0
+u8 TorchL = 0
+u8 TorchR = 0
+' timers
+u16 MoveT = 600
+u16 RegT = 0
+u8 AtkT = 0
+u8 BeatT = 0
+u8 CoolT = 0
+u8 HurtT = 0
+u8 RepT = 0
+u8 Over = 0
+u8 Redraw = 0
+' menus
+u8 Opt[16]
+u8 NOpt = 0
+u8 Kd = 0
+u8 Sel = 0
+u8 Pick = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 NewStk = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' scratch
+u16 Q = 0
+u16 Q2 = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 B16 = 0
+u16 NumU = 0
+u16 Rs = 1
+u16 Rw = 0
+u8 Rn = 2
+u8 Rv = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 T = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 D = 0
+u8 E = 0
+u8 Sd = 0
+u8 Ld = 0
+u8 Rd = 0
+u8 Hm = 0
+
+  tile screen
+  set sound table ThSoundTable areas 6
+  sprites 16x16
+  set sprite count 12
+  nmi off
+  copy ItemPat count 96 to vram.spr_pat + 512
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+  IntroPage
+
+new_game:
+  NewGame
+  DrawPlay
+  play sound SndDrnA
+  play sound SndDrnB
+  ClrMsg
+  print at 2,18, "YOU ENTER THE CATACOMBS."
+  print at 2,19, "FIND THE ALCHEMY STONE."
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Redraw = 1 then
+    Redraw = 0
+    DrawView
+    ShowStatus
+  end if
+  DoSprites
+  if Over = 0 then goto play_loop
+
+  stop sound SndDrnA
+  stop sound SndDrnB
+  HideSprites
+  backdrop black
+  EndView
+  if Over = 1 then
+    play sound SndDie
+    print at 6,6, "T H O U   A R T"
+    print at 8,8, "S L A I N !"
+    ClrMsg
+    print at 2,18, "THE TOMB CLAIMS ANOTHER SOUL"
+  else
+    play sound SndWin
+    print at 6,5, "YOU HAVE ESCAPED"
+    print at 6,6, "THE TOMB WITH"
+    print at 6,7, "THE ALCHEMY STONE!"
+    ClrMsg
+    print at 2,18, "DEMONS WILL HUNT YOU FOR IT."
+  end if
+  NumU = 0
+  for I = 26 to 30
+    NumU = NumU + Inv[I]
+  next
+  print at 6,11, "TREASURE"
+  print NumU at 15,11 width 5
+  print at 2,19, "PRESS THE BUTTON."
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a new game: the maze into VRAM, traps, monsters, the two starting items
+
+sub NewGame:
+  Rearm
+  wait
+  nmi off
+  copy TombMap count 384 to vram.color + OMap
+  fill 0 count 1536 to vram.color + OItm
+  ' the fix: a way up from the Sepulchre under the Catacombs' shaft
+  vpoke vram.color + OMap + 232, 4
+  for I = 0 to 30
+    Inv[I] = 0
+  next
+  ' ten traps a level (never on the starting cells)
+  for D = 0 to 2
+    for K = 1 to 10
+      PickCell
+      vpeek vram.color + OMap + Q into V
+      V = V | 128
+      vpoke vram.color + OMap + Q, V
+    next
+  next
+  ' eight monsters a level
+  MCell[0] = 0
+  MHp[0] = 0
+  MTy[0] = 0
+  for J = 1 to 24
+    D = J - 1
+    D = D >> 3
+    PickCell
+    MCell[J] = Q
+    vpoke vram.color + OMon + Q, J
+    MTy[J] = MonTyD[J]
+    W16 = J
+    W16 = W16 << 2
+    A16 = D + 1
+    MHp[J] = W16 * A16
+  next
+  ' a dagger at the start, a buckler one step south
+  vpoke vram.color + OItm + 17, 1
+  vpoke vram.color + OQlo + 17, 1
+  vpoke vram.color + OItm + 33, 10
+  vpoke vram.color + OQlo + 33, 1
+  Lvl = 0
+  Cl = 17
+  Cd = 2
+  Hp = 20
+  Ar = 0
+  Cu = 0
+  We = 0
+  Over = 0
+  MoveT = 600
+  RegT = 0
+  AtkT = 0
+  BeatT = 0
+  CoolT = 0
+  HurtT = 0
+  Spark = 0
+  MonLoaded = 0
+  return
+end sub
+
+' a random open cell of level D, rows 1-6, no trap, no monster, not the
+' first two cells; Q = the cell
+sub PickCell:
+pc_again:
+  Rn = 96
+  Roll
+  Q = Rv
+  W16 = D
+  W16 = W16 << 7
+  Q = Q + 16
+  Q = Q + W16
+  if Q = 17 then goto pc_again
+  if Q = 33 then goto pc_again
+  vpeek vram.color + OMap + Q into V
+  if V = 0 then goto pc_again
+  if V >= 128 then goto pc_again
+  vpeek vram.color + OMon + Q into V
+  if V <> 0 then goto pc_again
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if CoolT > 0 then dec CoolT
+  if HurtT > 0 then
+    dec HurtT
+    if HurtT = 12 then backdrop black
+  end if
+  if Spark > 0 then dec Spark
+  ' the stick: a fresh push acts at once, a held one repeats slowly
+  V = 0
+  if NewStk <> 0 then
+    V = 1
+    RepT = 18
+  else
+    if Stk <> 0 then
+      if RepT > 0 then
+        dec RepT
+      else
+        V = 1
+        RepT = 12
+      end if
+    end if
+  end if
+  if P2 = 1 then
+    DoMenu
+    return
+  end if
+  if B1 = 1 then
+    if Dn1 = 1 then
+      if NewStk <> 0 then
+        DoMenu
+        return
+      end if
+      if P1 = 1 then
+        DoMenu
+        return
+      end if
+    end if
+  end if
+  if V = 1 then
+    if B1 = 0 then
+      if Up1 = 1 then
+        GoForward
+      else
+        if Dn1 = 1 then
+          GoBack
+        else
+          if Lf1 = 1 then
+            Cd = Cd - 1
+            if Cd = 0 then Cd = 4
+            play sound SndStep
+            Redraw = 1
+          else
+            if Rt1 = 1 then
+              inc Cd
+              if Cd = 5 then Cd = 1
+              play sound SndStep
+              Redraw = 1
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  if P1 = 1 then
+    if Dn1 = 0 then Attack
+  end if
+  if Over <> 0 then return
+  ' a monster in your cell may strike (about ten chances a second)
+  inc AtkT
+  if AtkT >= 6 then
+    AtkT = 0
+    MonsterStrike
+    if Over <> 0 then return
+  end if
+  ' the slow return of strength
+  inc RegT
+  if RegT >= 1200 then
+    RegT = 0
+    inc Hp
+    ShowHp
+  end if
+  ' a heartbeat when you are weak (once a second)
+  if Hp < 8 then
+    inc BeatT
+    if BeatT >= 60 then
+      BeatT = 0
+      play sound SndHeart
+    end if
+  end if
+  ' the monsters creep toward you now and then
+  dec MoveT
+  if MoveT = 0 then
+    MoveT = 600
+    MoveMonsters
+  end if
+  ' the torch flame flickers twice a second (a tile swap, no flash)
+  inc Torch
+  if Torch >= 15 then
+    Torch = 0
+    Bob = Bob ^ 1
+    FlickTorch
+  end if
+  return
+end sub
+
+sub GoForward:
+  Q = Cl + DirD[Cd]
+  vpeek vram.color + OMap + Q into V
+  V = V & 15
+  if V = 0 then
+    play sound SndBump
+    return
+  end if
+  Cl = Q
+  Entered
+  return
+end sub
+
+sub GoBack:
+  Q = Cl - DirD[Cd]
+  vpeek vram.color + OMap + Q into V
+  V = V & 15
+  if V = 0 then
+    play sound SndBump
+    return
+  end if
+  Cl = Q
+  Entered
+  return
+end sub
+
+' you stepped into a new cell: a trap, a monster, an item
+sub Entered:
+  play sound SndStep
+  Redraw = 1
+  ClrMsg
+  vpeek vram.color + OMap + Cl into V
+  if V >= 128 then
+    V = V & 127
+    vpoke vram.color + OMap + Cl, V
+    play sound SndTrap
+    Rn = 6
+    Roll
+    T = Rv
+    W16 = T * 14
+    put TrapN + W16 count 14 at 2,18
+    print at 16,18, "!!"
+    A16 = Lvl + 1
+    A16 = A16 * 10
+    T = A16
+    Rn = T
+    Roll
+    T = Rv
+    print at 2,19, "YOU TAKE"
+    NumU = T
+    print NumU at 11,19 width 2
+    print at 14,19, "HP DAMAGE!"
+    Hurt
+    return
+  end if
+  vpeek vram.color + OMon + Cl into V
+  if V <> 0 then
+    J = V
+    T = MTy[J] & 127
+    W16 = T * 13
+    print at 2,18, "THE"
+    put MonN + W16 count 13 at 6,18
+    print at 2,19, "BARS YOUR WAY!"
+    return
+  end if
+  vpeek vram.color + OItm + Cl into V
+  if V <> 0 then
+    print at 2,18, "THERE IS SOMETHING HERE:"
+    W16 = V * 15
+    put ItemN + W16 count 15 at 2,19
+  end if
+  return
+end sub
+
+' T = damage taken
+sub Hurt:
+  play sound SndHurt
+  ' a red pulse of 8 frames, at most one in 20 frames (under 3 a second)
+  if HurtT = 0 then
+    backdrop dark red
+    HurtT = 20
+  end if
+  if T >= Hp then
+    Hp = 0
+    Over = 1
+  else
+    Hp = Hp - T
+  end if
+  ShowHp
+  return
+end sub
+
+' the left button: strike the monster in your cell
+sub Attack:
+  if CoolT > 0 then return
+  CoolT = 12
+  vpeek vram.color + OMon + Cl into V
+  if V = 0 then
+    play sound SndSwing
+    return
+  end if
+  J = V
+  if Cu = 20 then
+    ClrMsg
+    print at 2,18, "THE BLACK CLOAK STAYS"
+    print at 2,19, "YOUR HAND."
+    play sound SndNope
+    return
+  end if
+  if Ar = 0 then
+    ClrMsg
+    print at 2,18, "YOU HOLD NO WEAPON!"
+    print at 2,19, "TRY THE LEFT HAND COMMAND."
+    play sound SndNope
+    return
+  end if
+  ' weapon + 2 * quality + HP / 8
+  W16 = Inv[Ar]
+  W16 = W16 << 1
+  W16 = W16 + Ar
+  A16 = Hp >> 3
+  W16 = W16 + A16
+  play sound SndHit
+  Spark = 10
+  if W16 < MHp[J] then
+    MHp[J] = MHp[J] - W16
+    ClrMsg
+    print at 2,18, "YOU STRIKE FOR"
+    NumU = W16
+    print NumU at 17,18 width 3
+    print at 21,18, "POINTS."
+    return
+  end if
+  ' slain
+  MHp[J] = 0
+  vpoke vram.color + OMon + Cl, 0
+  T = MTy[J] & 127
+  Hp = Hp + T
+  play sound SndKill
+  ClrMsg
+  W16 = T * 13
+  print at 2,18, "THE"
+  put MonN + W16 count 13 at 6,18
+  print at 20,18, "IS SLAIN"
+  ' the treasure: a cache, a chest or a crate
+  Rn = 5
+  Roll
+  X = Rv + 26
+  Rn = 50
+  Roll
+  A16 = Rv
+  A16 = A16 * T
+  B16 = Lvl + 1
+  A16 = A16 * B16
+  Inv[X] = Inv[X] + A16
+  Rn = 3
+  Roll
+  K = Rv
+  W16 = K * 10
+  put RichN + W16 count 10 at 2,19
+  Rn = 3
+  Roll
+  K = Rv
+  W16 = K * 5
+  put BoxN + W16 count 5 at 13,19
+  print at 19,19, "OF"
+  W16 = X - 26
+  W16 = W16 << 3
+  put TreasN + W16 count 8 at 22,19
+  ' the slot's item falls nearby
+  E = DropD[J]
+  DropNear
+  Redraw = 1
+  return
+end sub
+
+' E = item type: put it on the nearest open cell without an item
+sub DropNear:
+  for K = 0 to 3
+    for D = 1 to 4
+      W16 = K
+      Q = DirD[D] * W16
+      Q = Cl + Q
+      W16 = Lvl
+      W16 = W16 << 7
+      A16 = W16 + 127
+      if Q >= W16 then
+        if Q <= A16 then
+          vpeek vram.color + OMap + Q into V
+          V = V & 15
+          if V <> 0 then
+            vpeek vram.color + OItm + Q into V
+            if V = 0 then
+              vpoke vram.color + OItm + Q, E
+              V = 1
+              if E < 15 then
+                Rn = 3
+                Roll
+                V = Rv + 1
+              end if
+              vpoke vram.color + OQlo + Q, V
+              vpoke vram.color + OQhi + Q, 0
+              return
+            end if
+          end if
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+sub MonsterStrike:
+  vpeek vram.color + OMon + Cl into V
+  if V = 0 then return
+  J = V
+  T = MTy[J]
+  if T >= 128 then return
+  if Cu = 20 then return
+  ' rnd + rank / 50 > .94
+  Rn = 100
+  Roll
+  V = Rv
+  K = T << 1
+  K = K + 6
+  if V >= K then return
+  ' twice the rank, less with armour: * (15 - armour) / 10
+  W16 = T << 1
+  if We <> 0 then
+    A16 = 15 - We
+    W16 = W16 * A16
+    W16 = W16 + 5
+    W16 = W16 / 10
+  end if
+  ClrMsg
+  B16 = T * 13
+  print at 2,18, "THE"
+  put MonN + B16 count 13 at 6,18
+  print at 20,18, "STRIKES!"
+  if W16 = 0 then
+    print at 2,19, "YOUR ARMOUR HOLDS."
+    play sound SndSwing
+    return
+  end if
+  T = W16
+  print at 2,19, "YOU LOSE"
+  NumU = W16
+  print NumU at 11,19 width 2
+  print at 14,19, "HIT POINTS."
+  Hurt
+  return
+end sub
+
+' every monster of your level steps one cell toward you
+sub MoveMonsters:
+  Hm = 0
+  D = Lvl << 3
+  inc D
+  E = D + 7
+  for J = D to E
+    if MHp[J] <> 0 then
+      Q = MCell[J]
+      Q2 = 65535
+      W16 = Q - 8
+      A16 = Q + 8
+      if Cl < W16 then Q2 = Q - 16
+      if Cl > A16 then Q2 = Q + 16
+      if Cl > Q then
+        if Cl < A16 then Q2 = Q + 1
+      end if
+      if Cl < Q then
+        if Cl > W16 then Q2 = Q - 1
+      end if
+      if Q2 < 384 then
+        vpeek vram.color + OMap + Q2 into V
+        V = V & 15
+        if V <> 0 then
+          vpeek vram.color + OMon + Q2 into V
+          if V = 0 then
+            vpoke vram.color + OMon + Q, 0
+            vpoke vram.color + OMon + Q2, J
+            MCell[J] = Q2
+            if Q2 = Cl then Hm = J
+          end if
+        end if
+      end if
+    end if
+  next
+  Redraw = 1
+  if Hm <> 0 then
+    play sound SndCreep
+    ClrMsg
+    T = MTy[Hm] & 127
+    W16 = T * 13
+    print at 2,18, "THE"
+    put MonN + W16 count 13 at 6,18
+    print at 2,19, "IS UPON YOU!"
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the command menu
+
+sub DoMenu:
+  play sound SndTick
+  for I = 0 to 13
+    Opt[I] = I + 1
+  next
+  NOpt = 14
+  Kd = 0
+  PickList
+  if Pick = 0 then
+    Redraw = 1
+    return
+  end if
+  if Pick = 14 then
+    Redraw = 1
+    return
+  end if
+  ClrMsg
+  select case Pick
+  case 1
+    CmdTake
+  case 2
+    CmdDrop
+  case 3
+    CmdEquip
+  case 4
+    CmdEquip
+  case 5
+    CmdEquip
+  case 6
+    CmdAscend
+  case 7
+    CmdDescend
+  case 8
+    CmdExamine
+  case 9
+    CmdIncant
+  case 10
+    CmdQuaff
+  case 11
+    CmdHail
+  case 12
+    CmdSearch
+  case 13
+    CmdInventory
+  end select
+  Redraw = 1
+  return
+end sub
+
+sub CmdTake:
+  vpeek vram.color + OItm + Cl into V
+  if V = 0 then
+    print at 2,18, "NOTHING HERE!"
+    play sound SndNope
+    return
+  end if
+  E = V
+  W16 = E * 15
+  if E < 15 then
+    if Inv[E] <> 0 then
+      print at 2,18, "YOU HAVE A"
+      put ItemN + W16 count 15 at 2,19
+      play sound SndNope
+      return
+    end if
+  end if
+  vpeek vram.color + OQlo + Cl into V
+  A16 = V
+  vpeek vram.color + OQhi + Cl into V
+  B16 = V
+  B16 = B16 << 8
+  A16 = A16 + B16
+  Inv[E] = Inv[E] + A16
+  vpoke vram.color + OItm + Cl, 0
+  put ItemN + W16 count 15 at 2,18
+  print at 2,19, "TAKEN!"
+  play sound SndTake
+  return
+end sub
+
+sub CmdDrop:
+  vpeek vram.color + OItm + Cl into V
+  if V <> 0 then
+    print at 2,18, "NOT ENOUGH ROOM HERE."
+    play sound SndNope
+    return
+  end if
+  NOpt = 0
+  for I = 1 to 30
+    if Inv[I] <> 0 then
+      Opt[NOpt] = I
+      if NOpt < 14 then inc NOpt
+    end if
+  next
+  if NOpt = 0 then
+    print at 2,18, "YOU ARE CARRYING NOTHING."
+    play sound SndNope
+    return
+  end if
+  Kd = 1
+  PickList
+  if Pick = 0 then return
+  E = Pick
+  vpoke vram.color + OItm + Cl, E
+  A16 = Inv[E]
+  V = A16
+  vpoke vram.color + OQlo + Cl, V
+  A16 = A16 >> 8
+  V = A16
+  vpoke vram.color + OQhi + Cl, V
+  Inv[E] = 0
+  if Ar = E then Ar = 0
+  if Cu = E then Cu = 0
+  if We = E then We = 0
+  W16 = E * 15
+  put ItemN + W16 count 15 at 2,18
+  print at 2,19, "DROPPED."
+  play sound SndTake
+  return
+end sub
+
+' LEFT HAND (weapons 1-9), RIGHT HAND (items 15-24), ARMOR (10-14)
+sub CmdEquip:
+  if Pick = 3 then
+    X = 1
+    Y = 9
+  end if
+  if Pick = 4 then
+    X = 15
+    Y = 24
+  end if
+  if Pick = 5 then
+    X = 10
+    Y = 14
+  end if
+  C = Pick
+  NOpt = 0
+  for I = X to Y
+    if Inv[I] <> 0 then
+      Opt[NOpt] = I
+      inc NOpt
+    end if
+  next
+  if NOpt = 0 then
+    if C = 3 then print at 2,18, "YOU HAVE NO WEAPON."
+    if C = 4 then print at 2,18, "YOU HAVE NOTHING TO HOLD."
+    if C = 5 then print at 2,18, "YOU HAVE NO ARMOR."
+    play sound SndNope
+    return
+  end if
+  Kd = 1
+  PickList
+  if Pick = 0 then return
+  if C = 3 then
+    Ar = Pick
+    print at 2,18, "IN YOUR LEFT HAND:"
+  end if
+  if C = 4 then
+    Cu = Pick
+    print at 2,18, "IN YOUR RIGHT HAND:"
+  end if
+  if C = 5 then
+    We = Pick
+    print at 2,18, "YOU WEAR THE"
+  end if
+  W16 = Pick * 15
+  put ItemN + W16 count 15 at 2,19
+  play sound SndTake
+  return
+end sub
+
+' shafts need the rope and the hook
+sub NeedGear:
+  Sd = 0
+  if Inv[19] = 0 then
+    print at 2,18, "YOU DON'T HAVE THE"
+    print at 2,19, "COIL OF ROPE!"
+    play sound SndNope
+    return
+  end if
+  if Inv[17] = 0 then
+    print at 2,18, "YOU DON'T HAVE THE"
+    print at 2,19, "STEEL HOOK!"
+    play sound SndNope
+    return
+  end if
+  Sd = 1
+  return
+end sub
+
+sub CmdAscend:
+  vpeek vram.color + OMap + Cl into V
+  V = V & 4
+  if V = 0 then
+    print at 2,18, "NO SHAFT LEADING UP HERE."
+    play sound SndNope
+    return
+  end if
+  NeedGear
+  if Sd = 0 then return
+  if Lvl = 0 then
+    if Inv[25] = 0 then
+      print at 2,18, "YOU DO NOT HAVE THE"
+      print at 2,19, "ALCHEMY STONE!"
+      play sound SndNope
+      return
+    end if
+    Over = 2
+    return
+  end if
+  dec Lvl
+  Cl = Cl - 128
+  play sound SndClimb
+  NewLevel
+  return
+end sub
+
+sub CmdDescend:
+  vpeek vram.color + OMap + Cl into V
+  V = V & 2
+  if V = 0 then
+    print at 2,18, "NO SHAFT LEADING DOWN HERE."
+    play sound SndNope
+    return
+  end if
+  NeedGear
+  if Sd = 0 then return
+  inc Lvl
+  Cl = Cl + 128
+  play sound SndShaft
+  NewLevel
+  return
+end sub
+
+sub NewLevel:
+  MoveT = 600
+  DrawPlay
+  ClrMsg
+  W16 = Lvl * 14
+  print at 2,18, "YOU ENTER"
+  put LvlN + W16 count 14 at 11,18
+  return
+end sub
+
+sub CmdExamine:
+  NOpt = 0
+  for I = 1 to 30
+    if Inv[I] <> 0 then
+      Opt[NOpt] = I
+      if NOpt < 14 then inc NOpt
+    end if
+  next
+  if NOpt = 0 then
+    print at 2,18, "YOU HAVE NOTHING TO EXAMINE."
+    play sound SndNope
+    return
+  end if
+  Kd = 1
+  PickList
+  if Pick = 0 then return
+  E = Pick
+  W16 = E * 15
+  if E < 15 then
+    print at 2,18, "THE"
+    put ItemN + W16 count 15 at 6,18
+    print at 22,18, "IS OF"
+    V = Inv[E]
+    if V > 3 then V = 3
+    W16 = V - 1
+    W16 = W16 * 10
+    put QualN + W16 count 10 at 2,19
+    print at 12,19, "WORKMANSHIP."
+    return
+  end if
+  if E = 16 then
+    ShowScroll
+    return
+  end if
+  print at 2,18, "YOU HAVE"
+  NumU = Inv[E]
+  print NumU at 11,18 width 5
+  put ItemN + W16 count 15 at 2,19
+  return
+end sub
+
+' the scroll: the level's map, you as an arrow
+sub ShowScroll:
+  print at 2,18, "UNROLLING PARCHMENT..."
+  play sound SndTick
+  HideSprites
+  MenuBox
+  W16 = Lvl
+  W16 = W16 << 7
+  for Y = 0 to 7
+    for X = 0 to 15
+      Q = Y << 4
+      Q = Q + X
+      Q = Q + W16
+      vpeek vram.color + OMap + Q into V
+      V = V & 15
+      T = 32
+      if V = 0 then T = TFace
+      if V = 8 then T = TFace
+      if V = 2 then T = 68
+      if V = 4 then T = 85
+      if Q = Cl then T = 88
+      RowB[X] = T
+    next
+    K = Y + 5
+    put RowB count 16 at 8,K
+  next
+  print at 7,3, "THE SCROLL SHOWS"
+  print at 7,14, "X YOU  U UP  D DOWN"
+  WaitPress
+  return
+end sub
+
+sub CmdIncant:
+  if Cu = 0 then
+    print at 2,18, "YOU ARE EMPTY HANDED."
+    play sound SndNope
+    return
+  end if
+  if Cu < 21 then
+    print at 2,18, "NOTHING HAPPENS."
+    play sound SndNope
+    return
+  end if
+  play sound SndMagic
+  Q = Cl + DirD[Cd]
+  if Cu = 21 then
+    print at 2,18, "A SPRAY OF WHITE LIGHT."
+    vpeek vram.color + OMap + Q into V
+    T = V & 15
+    if T = 8 then
+      V = V & 128
+      V = V | 1
+      vpoke vram.color + OMap + Q, V
+      print at 2,19, "THE WALL AHEAD FADES AWAY!"
+    end if
+    return
+  end if
+  if Cu = 22 then
+    print at 2,18, "A CHORUS OF ANGELIC VOICES."
+    vpeek vram.color + OMon + Q into V
+    if V <> 0 then
+      J = V
+      T = MTy[J] & 127
+      if T = 8 then Calm
+      if T = 9 then Calm
+      if T = 13 then Calm
+    end if
+    return
+  end if
+  if Cu = 23 then
+    print at 2,18, "IT TRANSFORMS IN YOUR HAND!"
+    Inv[23] = 0
+    Inv[24] = 1
+    Cu = 0
+    return
+  end if
+  if Cu = 24 then
+    print at 2,18, "A BLAST OF SPARKS..."
+    print at 2,19, "CHECK INVENTORY."
+    Inv[24] = 0
+    Inv[25] = 1
+    Cu = 0
+  end if
+  return
+end sub
+
+' the monster J lets you pass
+sub Calm:
+  MTy[J] = MTy[J] | 128
+  ClrMsg
+  print at 2,18, "'PASS BY, KNIGHT ERRANT,'"
+  W16 = T * 13
+  print at 2,19, "MURMURS THE"
+  put MonN + W16 count 13 at 14,19
+  return
+end sub
+
+sub CmdQuaff:
+  if Inv[18] = 0 then
+    print at 2,18, "YOU'RE OUT OF HEALING"
+    print at 2,19, "ELIXIR."
+    play sound SndNope
+    return
+  end if
+  Inv[18] = Inv[18] - 1
+  Hp = Hp + 10
+  print at 2,18, "YOUR BODY IS FLOODED"
+  print at 2,19, "WITH STRENGTH."
+  play sound SndQuaff
+  return
+end sub
+
+sub CmdHail:
+  Q = Cl + DirD[Cd]
+  vpeek vram.color + OMon + Q into V
+  if V = 0 then
+    vpeek vram.color + OMon + Cl into V
+  end if
+  if V = 0 then
+    print at 2,18, "YOUR VOICE ECHOES EMPTILY."
+    return
+  end if
+  J = V
+  T = MTy[J] & 127
+  if T < 5 then
+    print at 2,18, "THE IGNORANT BRUTE IS SILENT."
+    return
+  end if
+  if T = 7 then
+    print at 2,18, "THE IGNORANT BRUTE IS SILENT."
+    return
+  end if
+  W16 = T * 10
+  Rn = 10
+  Roll
+  K = Rv
+  if Hp >= W16 then
+    if T <= 11 then
+      if K >= 8 then
+        Calm
+        return
+      end if
+    end if
+  end if
+  play sound SndGrowl
+  print at 2,18, "'I'LL"
+  Rn = 4
+  Roll
+  K = Rv
+  W16 = K * 22
+  put ThreatN + W16 count 22 at 8,18
+  Rn = 4
+  Roll
+  K = Rv
+  W16 = K * 8
+  put RoarN + W16 count 8 at 2,19
+  W16 = T * 13
+  print at 10,19, "THE"
+  put MonN + W16 count 13 at 14,19
+  return
+end sub
+
+sub CmdSearch:
+  N = 0
+  Q = Cl
+  for K = 0 to 3
+    W16 = Lvl
+    W16 = W16 << 7
+    A16 = W16 + 127
+    if Q >= W16 then
+      if Q <= A16 then
+        vpeek vram.color + OMap + Q into V
+        if V >= 128 then
+          V = V & 127
+          vpoke vram.color + OMap + Q, V
+          inc N
+        end if
+      end if
+    end if
+    Q = Q + DirD[Cd]
+  next
+  if N = 0 then
+    print at 2,18, "NO TRAPS AHEAD."
+    return
+  end if
+  Rn = 6
+  Roll
+  T = Rv
+  W16 = T * 14
+  put TrapN + W16 count 14 at 2,18
+  print at 16,18, "!!"
+  print at 2,19, "YOU AVOID TRAPS."
+  play sound SndTake
+  return
+end sub
+
+sub CmdInventory:
+  HideSprites
+  MenuBox
+  N = 0
+  print at 7,2, "YOU CARRY:"
+  Y = 3
+  for I = 1 to 30
+    if Inv[I] <> 0 then
+      if Y > 15 then
+        print at 7,15, "MORE... PRESS"
+        WaitPress
+        MenuBox
+        print at 7,2, "YOU CARRY:"
+        Y = 3
+      end if
+      W16 = I * 15
+      put ItemN + W16 count 15 at 7,Y
+      if I >= 15 then
+        NumU = Inv[I]
+        print NumU at 22,Y width 4
+      end if
+      if I = Ar then put char 76 at 6,Y
+      if I = Cu then put char 82 at 6,Y
+      if I = We then put char 87 at 6,Y
+      inc Y
+      inc N
+    end if
+  next
+  if N = 0 then print at 7,4, "NOTHING."
+  WaitPress
+  return
+end sub
+
+' a press of either button (the view comes back afterwards)
+sub WaitPress:
+wp_loop:
+  Frame1
+  ReadPad
+  if P1 = 1 then return
+  if P2 = 1 then return
+  goto wp_loop
+end sub
+
+' the menu box over the view: rows 1-16, columns 5-26
+sub MenuBox:
+  HideSprites
+  for Y = 1 to 16
+    fill 32 count 22 at 5,Y
+    put char TFrV at 5,Y
+    put char TFrV at 26,Y
+  next
+  fill TFrH count 20 at 6,1
+  fill TFrH count 20 at 6,16
+  put char TFrTL at 5,1
+  put char TFrTR at 26,1
+  put char TFrBL at 5,16
+  put char TFrBR at 26,16
+  return
+end sub
+
+' choose one of Opt[0..NOpt-1] (Kd 0 commands, 1 items); Pick = the
+' choice, 0 when the right button cancels
+sub PickList:
+  MenuBox
+  for I = 0 to NOpt - 1
+    Y = I + 2
+    T = Opt[I]
+    if Kd = 0 then
+      W16 = T * 10
+      put CmdN + W16 count 10 at 8,Y
+    else
+      W16 = T * 15
+      put ItemN + W16 count 15 at 7,Y
+      if T >= 15 then
+        NumU = Inv[T]
+        if NumU > 1 then print NumU at 22,Y width 4
+      end if
+    end if
+  next
+  Sel = 0
+  put char 62 at 6,2
+  Rearm
+  wait no fire
+  nmi off
+pl_loop:
+  Frame1
+  ReadPad
+  if NewStk <> 0 then
+    Y = Sel + 2
+    put char 32 at 6,Y
+    if Up1 = 1 then
+      if Sel = 0 then
+        Sel = NOpt - 1
+      else
+        dec Sel
+      end if
+    end if
+    if Dn1 = 1 then
+      inc Sel
+      if Sel >= NOpt then Sel = 0
+    end if
+    Y = Sel + 2
+    put char 62 at 6,Y
+    play sound SndTick
+  end if
+  if P2 = 1 then
+    Pick = 0
+    goto pl_done
+  end if
+  if P1 = 0 then goto pl_loop
+  Pick = Opt[Sel]
+pl_done:
+  Rearm
+  wait no fire
+  nmi off
+  WasB1 = 0
+  WasB2 = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the view
+
+' the play screen: the level's colours, the frame, the status, the view
+sub DrawPlay:
+  ' (not NewScreen: its text colour fill would wipe the VRAM stores)
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  backdrop black
+  cls
+  if Lvl = 0 then
+    copy TileCol0 count NTiles8 to vram.color + 1024
+  end if
+  if Lvl = 1 then
+    copy TileCol1 count NTiles8 to vram.color + 1024
+  end if
+  if Lvl = 2 then
+    copy TileCol2 count NTiles8 to vram.color + 1024
+  end if
+  for Y = 1 to 16
+    put char TFrV at 3,Y
+    put char TFrV at 28,Y
+  next
+  put char TFrTL at 1,17
+  fill TFrH count 28 at 2,17
+  put char TFrTR at 30,17
+  put char TFrV at 1,18
+  put char TFrV at 30,18
+  put char TFrV at 1,19
+  put char TFrV at 30,19
+  put char TFrV at 1,20
+  put char TFrV at 30,20
+  put char TFrV at 1,21
+  put char TFrV at 30,21
+  put char TFrBL at 1,22
+  fill TFrH count 28 at 2,22
+  put char TFrBR at 30,22
+  put char TSkull at 1,8
+  put char TSkull at 30,8
+  DrawView
+  ShowStatus
+  ShowScreen
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,20, "HP"
+  ShowHp
+  W16 = 0
+  if Cu = 15 then W16 = Cd * 5
+  put DirN + W16 count 5 at 9,20
+  W16 = Lvl * 14
+  put LvlN + W16 count 14 at 16,20
+  W16 = Ar * 15
+  put ItemN + W16 count 12 at 2,21
+  W16 = Cu * 15
+  put ItemN + W16 count 15 at 15,21
+  return
+end sub
+
+sub ShowHp:
+  NumU = Hp
+  print NumU at 5,20 width 3
+  return
+end sub
+
+sub ClrMsg:
+  print at 2,18, "                            "
+  print at 2,19, "                            "
+  return
+end sub
+
+' a column descriptor: columns X..Y get top row V, body tile T, edge E
+sub SetCols:
+  for C = X to Y
+    ColTop[C] = V
+    ColT[C] = T
+    ColD[C] = E
+  next
+  return
+end sub
+
+' Q = a cell: Sd = 1 when it looks solid (rock or a false wall)
+sub Solid:
+  vpeek vram.color + OMap + Q into V
+  V = V & 15
+  Sd = 0
+  if V = 0 then Sd = 1
+  if V = 8 then Sd = 1
+  return
+end sub
+
+sub DrawView:
+  Ld = Cd - 1
+  if Ld = 0 then Ld = 4
+  Rd = Cd + 1
+  if Rd = 5 then Rd = 1
+  Ca[0] = Cl
+  for K = 1 to 4
+    Ca[K] = Ca[K - 1] + DirD[Cd]
+  next
+  ' the first solid cell ahead
+  Front = 0
+  for K = 1 to 4
+    if Front = 0 then
+      Q = Ca[K]
+      Solid
+      if Sd = 1 then Front = K
+    end if
+  next
+  for C = 0 to 23
+    ColTop[C] = 8
+    ColT[C] = TCeil
+    ColD[C] = 0
+  next
+  ' the far face, or darkness
+  if Front = 0 then
+    X = 7
+    Y = 16
+    V = 7
+    T = TDark
+    E = 0
+    SetCols
+    N = 4
+  else
+    X = PlaneX[Front]
+    Y = 23 - X
+    V = X
+    T = TFace + Front
+    T = T - 1
+    E = 0
+    SetCols
+    N = Front
+  end if
+  ' the side slabs nearer than that
+  TorchL = 0
+  TorchR = 0
+  for K = 0 to N - 1
+    D = K * 5
+    ' left
+    Q = Ca[K] + DirD[Ld]
+    Solid
+    X = PlaneX[K]
+    Y = PlaneX[K + 1]
+    Y = Y - 1
+    if Sd = 1 then
+      T = TSide + D
+      E = T + 1
+      for C = X to Y
+        ColTop[C] = C
+        ColT[C] = T
+        ColD[C] = E
+      next
+      if K = 0 then TorchL = 1
+    else
+      Q = Ca[K + 1] + DirD[Ld]
+      Solid
+      if Sd = 1 then
+        V = PlaneX[K + 1]
+        T = TFace + K
+      else
+        V = 7
+        T = TDark
+      end if
+      E = 0
+      SetCols
+    end if
+    ' right (mirrored)
+    Q = Ca[K] + DirD[Rd]
+    Solid
+    I = Y
+    Y = 23 - X
+    X = 23 - I
+    if Sd = 1 then
+      T = TSide + D
+      E = T + 3
+      for C = X to Y
+        ColTop[C] = 23 - C
+        ColT[C] = T
+        ColD[C] = E
+      next
+      if K = 0 then TorchR = 1
+    else
+      Q = Ca[K + 1] + DirD[Rd]
+      Solid
+      if Sd = 1 then
+        V = PlaneX[K + 1]
+        T = TFace + K
+      else
+        V = 7
+        T = TDark
+      end if
+      E = 0
+      SetCols
+    end if
+  next
+  ' torches only on alternate cells, so the corridors do not look alike
+  W16 = Cl + Cd
+  V = W16 & 1
+  if V = 1 then
+    TorchL = 0
+  else
+    TorchR = 0
+  end if
+  ' the rows: the top half, then the bottom half as its mirror
+  vpeek vram.color + OMap + Cl into Hm
+  Hm = Hm & 15
+  for Y = 0 to 7
+    for C = 0 to 23
+      V = ColTop[C]
+      if Y < V then
+        T = TCeil
+        if Hm = 4 then
+          if Y < 2 then
+            if C >= 9 then
+              if C <= 14 then T = TUp
+            end if
+          end if
+        end if
+      else
+        T = ColT[C]
+        if Y = V then
+          if ColD[C] <> 0 then T = ColD[C]
+        end if
+      end if
+      RowB[C] = T
+    next
+    if Y = 4 then
+      if TorchL = 1 then RowB[1] = TFlame
+      if TorchR = 1 then RowB[22] = TFlame
+    end if
+    if Y = 5 then
+      if TorchL = 1 then RowB[1] = TSconce
+      if TorchR = 1 then RowB[22] = TSconce
+    end if
+    K = Y + 1
+    put RowB count 24 at 4,K
+  next
+  for Y = 0 to 7
+    I = 7 - Y
+    for C = 0 to 23
+      V = ColTop[C]
+      if I < V then
+        T = TFloor
+        if Hm = 2 then
+          if I < 2 then
+            if C >= 9 then
+              if C <= 14 then T = TDown
+            end if
+          end if
+        end if
+      else
+        T = ColT[C]
+        if I = V then
+          if ColD[C] <> 0 then
+            T = ColD[C] + 1
+          end if
+        end if
+      end if
+      RowB[C] = T
+    next
+    K = Y + 9
+    put RowB count 24 at 4,K
+  next
+  ' what stands in the corridor: the nearest monster and the nearest item
+  SeeM = 0
+  SeeI = 0
+  K = N
+  if K > 4 then K = 4
+  for D = 0 to K - 1
+    Q = Ca[D]
+    if SeeM = 0 then
+      vpeek vram.color + OMon + Q into V
+      if V <> 0 then
+        SeeM = V
+        SeeD = D
+      end if
+    end if
+    if SeeI = 0 then
+      vpeek vram.color + OItm + Q into V
+      if V <> 0 then
+        if D < 3 then
+          SeeI = V
+          SeeID = D
+        end if
+      end if
+    end if
+  next
+  if SeeM <> 0 then
+    T = MTy[SeeM] & 127
+    if T <> MonLoaded then
+      MonLoaded = T
+      W16 = T - 1
+      W16 = W16 << 9
+      copy MonPat + W16 count 512 to vram.spr_pat
+    end if
+  end if
+  return
+end sub
+
+' the torch flames swap their two frames
+sub FlickTorch:
+  T = TFlame + Bob
+  if TorchL = 1 then put char T at 5,5
+  if TorchR = 1 then put char T at 26,5
+  return
+end sub
+
+' the sprites: the monster (four sizes), the item chest, the blow
+sub DoSprites:
+  clear sprites
+  set sprite count 12
+  for I = 0 to 11
+    set sprite I to 192,0,0,0
+  next
+  if SeeM <> 0 then
+    T = MonLoaded - 1
+    T = T << 1
+    C = MonCol[T]
+    E = MonCol[T + 1]
+    Y = Bob
+    if SeeD = 0 then
+      Y = Y + 95
+      set sprite 0 to Y,96,16,E
+      set sprite 1 to Y,112,20,E
+      set sprite 4 to Y,96,0,C
+      set sprite 5 to Y,112,4,C
+      Y = Y + 16
+      set sprite 2 to Y,96,24,E
+      set sprite 3 to Y,112,28,E
+      set sprite 6 to Y,96,8,C
+      set sprite 7 to Y,112,12,C
+    end if
+    if SeeD = 1 then
+      Y = Y + 95
+      set sprite 0 to Y,120,36,E
+      set sprite 1 to Y,120,32,C
+    end if
+    if SeeD = 2 then
+      Y = Y + 84
+      set sprite 0 to Y,120,44,E
+      set sprite 1 to Y,120,40,C
+    end if
+    if SeeD = 3 then
+      Y = Y + 72
+      set sprite 0 to Y,120,52,E
+      set sprite 1 to Y,120,48,C
+    end if
+    if Spark > 0 then
+      if SeeD = 0 then set sprite 10 to 100,120,68,11
+    end if
+  end if
+  if SeeI <> 0 then
+    V = 0
+    if SeeM <> 0 then
+      if SeeD = SeeID then V = 1
+    end if
+    if V = 0 then
+      if SeeID = 0 then set sprite 8 to 119,120,64,10
+      if SeeID = 1 then set sprite 8 to 104,120,64,10
+      if SeeID = 2 then set sprite 8 to 92,120,64,10
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+' the end: the view goes dark
+sub EndView:
+  for Y = 1 to 16
+    fill TDark count 24 at 4,Y
+  next
+  return
+end sub
+
+' a 16-bit xorshift: Rv = 0..Rn-1 (Amy's random(N) reaches only the
+' lower half of the range: bug 36)
+sub Roll:
+  Rw = Rs << 7
+  Rs = Rs ^ Rw
+  Rw = Rs >> 9
+  Rs = Rs ^ Rw
+  Rw = Rs << 8
+  Rs = Rs ^ Rw
+  Rw = Rs >> 8
+  Rw = Rw * Rn
+  Rw = Rw >> 8
+  Rv = Rw
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = joypad(1).up | joypad(2).up
+  Dn1 = joypad(1).down | joypad(2).down
+  Lf1 = joypad(1).left | joypad(2).left
+  Rt1 = joypad(1).right | joypad(2).right
+  B1 = joypad(1).button1 | joypad(2).button1
+  B2 = joypad(1).button2 | joypad(2).button2
+  P1 = 0
+  if B1 = 1 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  WasB1 = B1
+  P2 = 0
+  if B2 = 1 then
+    if WasB2 = 0 then P2 = 1
+  end if
+  WasB2 = B2
+  Stk = Up1 | Dn1
+  Stk = Stk | Lf1
+  Stk = Stk | Rt1
+  NewStk = 0
+  if Stk = 1 then
+    if WasStk = 0 then NewStk = 1
+  end if
+  WasStk = Stk
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 12
+  for J = 0 to 11
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  ' the font's colours; this fill covers all 6K of the colour area, so
+  ' it also clears the VRAM stores: never during a game
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol0 count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the tomb under the moon, the tune once, START / CREDITS
+sub TitlePage:
+  NewScreen
+  for J = 0 to TitleH - 1
+    W16 = J * TitleW
+    A16 = J + 1
+    A16 = A16 << 5
+    A16 = A16 + 2
+    copy TitleMap + W16 count TitleW to vram.name + A16
+  next
+  print at 8,14, "T O M B   O F"
+  print at 9,15, "H O R R O R"
+  print at 3,17, "THREE LEVELS DOWN LIES THE"
+  print at 3,18, "ALCHEMY STONE. BRING IT UP."
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if NewStk = 1 then
+    if Up1 = 0 then
+      if Dn1 = 0 then
+        Menu = Menu ^ 1
+        ShowMenu
+      end if
+    end if
+  end if
+  if P1 = 1 then goto tp_go
+  if P2 = 1 then goto tp_go
+  goto tp_loop
+tp_go:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  W16 = W16 << 8
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  print at 9,21, " START   CREDITS"
+  if Menu = 0 then
+    put char 62 at 9,21
+  else
+    put char 62 at 17,21
+  end if
+  return
+end sub
+
+' the story, a line at a time (the intro program's text, shortened)
+sub IntroPage:
+  NewScreen
+  ShowScreen
+  for I = 0 to 15
+    W16 = I * 28
+    Y = I + 2
+    put StoryN + W16 count 28 at 2,Y
+    for K = 1 to 25
+      Frame1
+      ReadPad
+      if P1 = 1 then goto ip_skip
+      if P2 = 1 then goto ip_skip
+    next
+  next
+  print at 7,21, "PRESS THE BUTTON"
+  WaitPress
+ip_skip:
+  Rearm
+  wait no fire
+  nmi off
+  WasB1 = 0
+  WasB2 = 0
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 9,2, "TOMB OF HORROR"
+  print at 2,5, "BASED ON TOMB OF HORROR BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! JULY 1988"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: LANTERN DOWN THE"
+  print at 2,18, "STAIR, UNDER THE BARROW"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WaitPress
+  Rearm
+  wait no fire
+  nmi off
+  WasB1 = 0
+  WasB2 = 0
+  return
+end sub
+
+data TilePat bytes
+  $80,$00,$00,$08,$00,$00,$00,$00
+  $80,$00,$40,$00,$20,$00,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$04,$00,$08,$00,$10,$00,$20
+  $80,$00,$00,$01,$10,$00,$00,$00
+  $10,$30,$38,$78,$7C,$7C,$38,$10
+  $08,$18,$38,$3C,$7C,$7C,$38,$10
+  $38,$10,$10,$FF,$10,$10,$10,$38
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $22,$FF,$88,$FF,$22,$FF,$88,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $80,$40,$A0,$50,$A8,$54,$AA,$55
+  $AA,$54,$A8,$50,$A0,$40,$80,$00
+  $00,$01,$02,$05,$0A,$15,$2A,$55
+  $AA,$55,$2A,$15,$0A,$05,$02,$01
+  $AA,$00,$AA,$00,$AA,$00,$AA,$00
+  $80,$00,$A0,$00,$A8,$00,$AA,$00
+  $AA,$00,$A8,$00,$A0,$00,$80,$00
+  $00,$00,$02,$00,$0A,$00,$2A,$00
+  $AA,$00,$2A,$00,$0A,$00,$02,$00
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $22,$FF,$88,$FF,$22,$FF,$88,$FF
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $AA,$00,$AA,$00,$AA,$00,$AA,$00
+  $00,$00,$00,$1F,$10,$17,$14,$14
+  $00,$00,$00,$F8,$08,$E8,$28,$28
+  $14,$14,$17,$10,$1F,$00,$00,$00
+  $28,$28,$E8,$08,$F8,$00,$00,$00
+  $00,$00,$00,$FF,$00,$FF,$00,$00
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $00,$00,$FF,$00,$FF,$00,$00,$00
+  $3C,$7E,$5A,$7E,$3C,$24,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$FC,$FC,$FC,$FC,$FC,$FC,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$FF,$00,$00,$00,$00,$FF,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$20,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$F0,$7C,$3E,$1F,$1F,$0F,$0F
+  $00,$00,$00,$00,$00,$80,$C0,$E0
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$00
+  $0F,$0F,$07,$0F,$0F,$0F,$0F,$1F
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$00,$00,$00,$01,$02,$44,$C8
+  $00,$00,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$30,$1F,$0F
+  $00,$00,$00,$00,$01,$07,$7F,$FF
+  $E0,$C0,$80,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$E0,$E0,$C0,$80
+  $D0,$E0,$C0,$40,$C0,$C1,$C6,$D8
+  $00,$01,$06,$18,$60,$80,$00,$00
+  $60,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $87,$03,$01,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$7F,$00,$00,$00,$00
+  $FF,$FE,$FC,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$30,$0C
+  $60,$C0,$C0,$C0,$C0,$40,$C0,$C0
+  $00,$00,$00,$00,$00,$01,$0F,$7F
+  $FF,$FF,$FF,$F8,$C0,$00,$00,$00
+  $FC,$E0,$00,$00,$00,$00,$00,$00
+  $1F,$03,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$7F,$0F,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$F8,$FF
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $06,$01,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0D,$0F,$06,$03,$02,$00,$00,$00
+  $B0,$F0,$60,$C0,$40,$00,$00,$00
+  $C0,$C0,$C0,$C0,$40,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$01,$07,$1F,$7F,$FF
+  $00,$00,$00,$C0,$F0,$FC,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$C0
+  $C0,$40,$C0,$C0,$C0,$C0,$40,$C0
+  $07,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$00,$00,$FF,$FF
+  $C0,$C0,$C0,$40,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$00,$1E,$1E,$00,$00
+  $80,$80,$80,$C0,$C0,$C0,$C0,$C0
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $80,$80,$80,$C0,$C0,$C0,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $FF,$FF,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+end data
+data TileCol0 bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $BE,$BE,$BE,$BE,$BE,$BE,$BE,$BE
+  $9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+end data
+data TileCol1 bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $DC,$DC,$DC,$DC,$DC,$DC,$DC,$DC
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $DC,$DC,$DC,$DC,$DC,$DC,$DC,$DC
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $DC,$DC,$DC,$DC,$DC,$DC,$DC,$DC
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $DC,$DC,$DC,$DC,$DC,$DC,$DC,$DC
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+end data
+data TileCol2 bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $9A,$9A,$9A,$9A,$9A,$9A,$9A,$9A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+end data
+data TitleMap bytes
+  $AD,$AE,$AE,$AE,$AE,$AF,$AE,$AE,$AE,$AE,$B0,$AE,$AE,$AE
+  $AE,$B1,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE
+  $B2,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$B0
+  $AE,$AE,$AE,$AE,$B3,$AE,$AE,$AE,$AE,$B4,$B5,$B6,$AE,$AE
+  $AE,$AE,$AE,$B7,$AE,$AE,$AE,$AE,$B8,$AE,$AE,$AE,$AE,$AE
+  $AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$B9,$BA,$BB,$AE
+  $AE,$AE,$BC,$BD,$AE,$AE,$B2,$AE,$AE,$AE,$AE,$BE,$AE,$AE
+  $AE,$AE,$BF,$AE,$AE,$AE,$AE,$AE,$C0,$C1,$C2,$C3,$AE,$AE
+  $AE,$AE,$C4,$C5,$C6,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE
+  $AE,$AE,$AE,$AE,$AE,$C7,$AE,$AE,$C8,$C9,$CA,$AE,$AE,$AE
+  $AE,$CB,$CC,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$CD,$CE,$CF
+  $D0,$D1,$D2,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$D3,$AE,$AE
+  $AE,$D4,$D5,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$CF,$D6,$D6,$D7
+  $D8,$D6,$D6,$D0,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE
+  $AE,$AE,$D9,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$D6,$D6,$DA,$DB
+  $DC,$DD,$D6,$D6,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE
+  $AE,$AE,$DE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$D6,$D6,$DF,$AE
+  $AE,$E0,$D6,$D6,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE,$AE
+  $E1,$AE,$E2,$E1,$E3,$E4,$E1,$AE,$AE,$E1,$D6,$D6,$E5,$AE
+  $AE,$E0,$D6,$D6,$E1,$AE,$E3,$E6,$AE,$AE,$E1,$E3,$E4,$E1
+  $E7,$E7,$E7,$E7,$D6,$E8,$E7,$E7,$E7,$E7,$D6,$D6,$E5,$AE
+  $AE,$E0,$D6,$D6,$E7,$E7,$D6,$E8,$E7,$E7,$E7,$D6,$E8,$E7
+  $E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7,$E9,$E9,$EA,$EB
+  $EB,$EC,$E9,$E9,$E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7
+end data
+data MonPat bytes
+  $00,$00,$00,$00,$C0,$C0,$F0,$F0,$FC,$FC,$FF,$FF,$3F,$3F,$0F,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0F,$0F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$03,$03,$0F,$0F,$3F,$3F,$FF,$FF,$FC,$FC,$F0,$F0
+  $03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$3F,$3F,$0F,$0F,$03,$03,$03,$03,$03,$03,$00,$00,$00,$00
+  $FF,$FF,$FC,$FC,$F0,$F0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0C,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$30,$30
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E1,$F3,$7F,$3F,$1F,$07,$03,$01,$01,$01,$00,$00
+  $00,$00,$01,$03,$87,$CF,$FE,$FC,$F8,$E0,$C0,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$02,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$40,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$0D,$07,$03,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$B0,$E0,$C0,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$30,$0C,$0C,$03,$03,$C0,$C0,$30,$30,$0C,$0C
+  $00,$00,$00,$00,$0F,$0F,$3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$F0,$F0,$FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$0C,$0C,$30,$30,$00,$00,$03,$03,$0C,$0C,$30,$30
+  $03,$03,$30,$30,$C3,$C3,$0C,$0C,$30,$30,$C0,$C0,$03,$03,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$3F,$3F,$33,$33,$C3,$C3,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FC,$FC,$CC,$CC,$C3,$C3,$00,$00,$00,$00
+  $C0,$C0,$0C,$0C,$C3,$C3,$30,$30,$0C,$0C,$03,$03,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$43,$27,$1F,$8F,$4F,$2F,$1F,$4F,$9F,$27,$45,$89,$10,$00
+  $00,$00,$C2,$E4,$F0,$F1,$F2,$F4,$F8,$F2,$F9,$E4,$A2,$91,$08,$00
+  $00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03,$07,$0B,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$E0,$D0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$0F,$0F,$0F,$0F,$0F,$0F,$03,$03,$00,$00,$03,$03,$3F,$3F
+  $FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FC,$FC,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$3F,$3F,$0F,$0F,$00,$00
+  $FF,$FF,$FC,$FC,$FF,$FF,$3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$FF,$FF,$FF,$FF,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$01,$00,$01,$07,$0F,$0E,$0F,$07,$3F,$7F,$3F,$00
+  $E0,$F0,$F0,$F0,$E0,$C0,$C0,$C0,$00,$00,$80,$F8,$FF,$FF,$FC,$00
+  $00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$01,$03,$03,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$80,$80,$00,$C0,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$01,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$3F,$3F,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00
+  $FF,$FF,$3F,$3F,$0F,$0F,$0F,$0F,$03,$03,$03,$03,$0F,$0F,$00,$00
+  $F3,$F3,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$C0,$C0,$C3,$C3,$00,$00
+  $FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F0,$F0,$F3,$F3,$00,$00
+  $00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$30
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$30,$78,$FC,$FD,$7F,$3F,$3F,$1F,$18,$39,$00
+  $00,$00,$00,$00,$00,$08,$10,$10,$E0,$FE,$FE,$FE,$FC,$CC,$DC,$00
+  $00,$00,$00,$00,$00,$00,$00,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$0E,$0F,$07,$07,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$F0,$E0,$A0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0F,$0F
+  $0F,$0F,$3F,$3F,$3F,$3F,$3F,$3F,$0F,$0F,$FF,$FF,$FF,$FF,$CF,$CF
+  $F0,$F0,$FC,$FC,$FC,$FC,$FC,$FC,$F0,$F0,$FF,$FF,$FF,$FF,$F3,$F3
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0
+  $0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$3F,$3F,$3C,$3C,$3C,$3C,$3C,$3C,$FC,$FC,$00,$00
+  $F0,$F0,$F0,$F0,$FC,$FC,$3C,$3C,$3C,$3C,$3C,$3C,$3F,$3F,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$0F,$3F,$3F,$33,$33,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$FC,$FC,$CC,$CC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$07,$03,$0F,$1F,$3B,$33,$03,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$E0,$E0,$C0,$F0,$F8,$DC,$CC,$C0,$E0,$60,$60,$60,$70,$00
+  $03,$07,$05,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$A0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$07,$05,$03,$03,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$E0,$A0,$C0,$C0,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0F,$0F
+  $C0,$C0,$F3,$F3,$3F,$3F,$3F,$3F,$3F,$3F,$0F,$0F,$FF,$FF,$FF,$FF
+  $03,$03,$CF,$CF,$FC,$FC,$FC,$FC,$FC,$FC,$F0,$F0,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0
+  $3F,$3F,$3C,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00
+  $3F,$3F,$3F,$3F,$3F,$3F,$3C,$3C,$FC,$FC,$F0,$F0,$F0,$F0,$00,$00
+  $FC,$FC,$FC,$FC,$FC,$FC,$3C,$3C,$3F,$3F,$0F,$0F,$0F,$0F,$00,$00
+  $FC,$FC,$3C,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0C,$0C,$00,$00,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$30,$30,$00,$00,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$0D,$07,$07,$07,$03,$1F,$3F,$77,$67,$07,$06,$0E,$0C,$1C,$00
+  $10,$B0,$E0,$E0,$E0,$C0,$F8,$FC,$EE,$E6,$E0,$60,$70,$30,$38,$00
+  $00,$00,$00,$02,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$03,$01,$07,$0F,$03,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$40,$C0,$80,$E0,$F0,$C0,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03,$0F,$0F,$3F,$3F,$3F,$3F,$3F,$3F
+  $00,$00,$00,$00,$3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0,$FC,$FC,$FC,$FC,$FC,$FC
+  $0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00
+  $FF,$FF,$0F,$0F,$0F,$0F,$0F,$0F,$3F,$3F,$FF,$FF,$FF,$FF,$00,$00
+  $FF,$FF,$F0,$F0,$F0,$F0,$F0,$F0,$FC,$FC,$FF,$FF,$FF,$FF,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$30,$30,$00,$00,$C0,$C0,$00,$00,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$0C,$0C,$00,$00,$03,$03,$00,$00,$0C,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$1F,$3F,$7F,$7F,$7F,$3F,$03,$03,$03,$07,$0F,$1F,$00
+  $00,$00,$E0,$F8,$FC,$FE,$FE,$FE,$FC,$C0,$C0,$C0,$E0,$F0,$F8,$00
+  $00,$00,$00,$04,$00,$08,$00,$09,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$10,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F,$07,$01,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$E0,$80,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$3F,$3F,$33,$33
+  $3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$33,$33,$FF,$FF,$FF,$FF,$FF,$FF
+  $FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$CC,$CC,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$FC,$FC,$CC,$CC
+  $33,$33,$33,$33,$03,$03,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $CC,$CC,$CC,$CC,$C0,$C0,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$3C,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$3C,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$0F,$0F,$0F,$05,$3F,$7F,$5F,$5F,$5F,$1F,$0E,$0E,$0E,$1E,$00
+  $E0,$F0,$F0,$F0,$A0,$FC,$FE,$FA,$FA,$FA,$F8,$70,$70,$70,$78,$00
+  $00,$00,$06,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$60,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$07,$0F,$0F,$03,$03,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$E0,$F0,$F0,$C0,$C0,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$03,$03,$03,$03,$03,$03,$0F,$0F,$0F,$0F
+  $3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$F0,$F0,$F0,$F0
+  $3F,$3F,$3F,$3F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0C,$0C,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$CF,$CF,$0C,$0C,$0C,$0C,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F3,$F3,$30,$30,$30,$30,$00,$00
+  $FC,$FC,$FC,$FC,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$30,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$00,$00,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$0F,$1F,$1F,$1F,$1F,$3F,$3F,$7F,$7F,$3F,$3F,$3B,$32,$22,$00
+  $E0,$F0,$F8,$F8,$F8,$F8,$FC,$FC,$FE,$FE,$FC,$FC,$DC,$4C,$44,$00
+  $00,$00,$00,$0C,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$30,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$07,$0F,$07,$05,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$F0,$E0,$A0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00
+  $3F,$3F,$FF,$FF,$FF,$FF,$3F,$3F,$0F,$0F,$FF,$FF,$FF,$FF,$FF,$FF
+  $FC,$FC,$FF,$FF,$FF,$FF,$FC,$FC,$F0,$F0,$FF,$FF,$FF,$FF,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$3F,$3F,$3F,$3F,$3C,$3C,$3C,$3C,$FC,$FC,$F0,$F0,$00,$00
+  $FF,$FF,$FC,$FC,$FC,$FC,$3C,$3C,$0F,$0F,$0F,$0F,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$30,$30,$00,$00,$0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$0C,$0C,$00,$00,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$0F,$0F,$07,$03,$FF,$0F,$0F,$0F,$07,$07,$06,$06,$0E,$0C,$00
+  $E0,$F0,$F0,$E0,$C0,$F0,$F0,$EE,$F0,$E0,$E0,$60,$30,$38,$18,$00
+  $00,$04,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0F,$03,$03,$03,$03,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$E0,$C0,$C0,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$F0,$F0,$FC,$FC,$FF,$FF,$FF,$FF,$3F,$3F,$0F,$0F,$00,$00
+  $00,$00,$00,$00,$0F,$0F,$3F,$3F,$CF,$CF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$F0,$F0,$FC,$FC,$F3,$F3,$FF,$FF,$FF,$FF,$FF,$FF
+  $03,$03,$0F,$0F,$3F,$3F,$FF,$FF,$FF,$FF,$FC,$FC,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$3C,$3C,$FC,$FC,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$FC,$3C,$3C,$3F,$3F,$0F,$0F,$3F,$3F,$0F,$0F,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$C0,$C0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0C,$0C,$00,$00,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$30,$30,$00,$00,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$E3,$F7,$FB,$7F,$3F,$0F,$07,$06,$0E,$1C,$00,$00,$00,$00
+  $01,$03,$C7,$EF,$DF,$FE,$FC,$F0,$E0,$60,$70,$38,$70,$38,$1C,$00
+  $00,$00,$00,$02,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$08,$0D,$0F,$07,$03,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$B0,$F0,$E0,$C0,$40,$40,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03
+  $0F,$0F,$3F,$3F,$3F,$3F,$3F,$3F,$0F,$0F,$3F,$3F,$FF,$FF,$FC,$FC
+  $F0,$F0,$FC,$FC,$FC,$FC,$FC,$FC,$F0,$F0,$FC,$FC,$FF,$FF,$3F,$3F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$0F,$03,$03,$00,$00,$03,$03,$0F,$0F,$3F,$3F,$FF,$FF,$3F,$3F
+  $F0,$F0,$FC,$FC,$FF,$FF,$FC,$FC,$F0,$F0,$C0,$C0,$00,$00,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0C,$0C,$00,$00,$03,$03,$00,$00,$03,$03,$00,$00
+  $00,$00,$00,$00,$30,$30,$00,$00,$C0,$C0,$00,$00,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$07,$03,$07,$0F,$1E,$03,$01,$00,$01,$03,$07,$0F,$07
+  $C0,$E0,$E0,$E0,$C0,$E0,$F0,$78,$C0,$E0,$F0,$E0,$C0,$80,$00,$F0
+  $00,$00,$02,$00,$01,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$00,$80,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$03,$01,$00,$01,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$C0,$80,$C0,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$F0,$F0,$3C,$3C,$0F,$0F,$03,$03,$00,$00,$3F,$3F,$FF,$FF
+  $00,$00,$0F,$0F,$3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$F0,$F0,$FC,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $03,$03,$0F,$0F,$3C,$3C,$F0,$F0,$C0,$C0,$00,$00,$F0,$F0,$FC,$FC
+  $F3,$F3,$C3,$C3,$03,$03,$00,$00,$00,$00,$03,$03,$0F,$0F,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $3C,$3C,$0C,$0C,$00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3C,$3C,$00,$00,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3C,$3C,$00,$00,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C3,$67,$3F,$1F,$0F,$7F,$FF,$DF,$9F,$1F,$0E,$0E,$1E,$3E,$00
+  $01,$C3,$E6,$FC,$F8,$F0,$FC,$FE,$F6,$F2,$F0,$70,$70,$78,$7C,$00
+  $00,$00,$00,$06,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$60,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$09,$07,$03,$0F,$0F,$03,$03,$06
+  $00,$00,$00,$00,$00,$00,$00,$00,$90,$E0,$C0,$E0,$D0,$C0,$C0,$60
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data MonCol bytes
+  $06,$0B,$0D,$0F,$02,$0B,$0E,$08,$04,$0F,$0C,$08,$08
+  $0F,$0E,$07,$05,$01,$03,$06,$06,$0A,$02,$0B,$08,$0B
+end data
+data ItemPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$1F,$3F,$20,$3F,$3E,$3F,$3F,$3F,$00
+  $00,$00,$00,$00,$00,$00,$00,$F8,$FC,$04,$FC,$7C,$FC,$FC,$FC,$00
+  $00,$01,$01,$11,$09,$05,$03,$7F,$03,$05,$09,$11,$01,$01,$00,$00
+  $00,$00,$00,$10,$20,$40,$80,$FC,$80,$40,$20,$10,$00,$00,$00,$00
+  $80,$C0,$E0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TombMap bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,4,1,1,1,1,1,1,0,1,1,0,1,1,1,0
+  0,1,0,1,0,1,0,1,1,1,0,0,0,0,1,0
+  0,1,0,1,1,0,1,0,0,1,1,0,1,1,1,0
+  0,1,1,1,0,1,1,1,0,1,0,0,1,0,1,0
+  0,0,0,1,0,1,0,1,0,1,1,1,1,1,1,0
+  0,1,1,1,1,1,0,1,2,0,1,0,1,0,1,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,2,1,1,0,1,1,1,1,1,0,1,1,1,1,0
+  0,0,0,1,0,1,0,1,0,1,1,1,0,0,1,0
+  0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,0
+  0,0,0,1,0,1,0,1,0,1,0,1,0,1,0,0
+  0,1,1,1,1,1,0,1,0,1,1,1,0,1,1,0
+  0,1,0,0,1,0,1,1,1,1,0,1,0,0,2,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,4,1,8,1,1,1,0,1,0,1,1,8,1,1,0
+  0,1,0,1,0,0,1,0,1,0,1,0,8,0,1,0
+  0,1,0,1,0,0,1,1,1,0,8,0,1,0,1,0
+  0,8,1,1,8,1,1,0,1,1,1,0,1,1,1,0
+  0,1,0,1,0,0,1,1,0,1,0,0,1,0,1,0
+  0,1,0,8,1,1,1,0,0,1,1,1,1,0,4,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+' the steps of the four directions (1 east, 2 south, 3 west, 4 north)
+data DirD words = 0, 1, 16, 65535, 65520
+' the left edge of the view's planes at depth 0-4
+data PlaneX bytes = 0, 2, 4, 6, 7, 7
+' the monster in each slot (listing line 411) and what it drops (413)
+data MonTyD bytes
+  0,1,2,2,3,3,4,4,5,6,6,7,7,8,8,9,10,10,10,10,11,11,11,12,13
+end data
+data DropD bytes
+  18,18,17,2,15,21,19,18,16,3,6,11,18,4,5,22,8,12,7,13,14,20,18,9,23
+end data
+data ItemN chars
+  "               "
+  "DAGGER         "
+  "HAND AXE       "
+  "LANCE          "
+  "MORNING STAR   "
+  "SCIMITAR       "
+  "BROADSWORD     "
+  "WAR HAMMER     "
+  "DRAGONSLAYER   "
+  "EXCALIBUR      "
+  "BUCKLER        "
+  "LEATHER JERKIN "
+  "CHAINMAIL      "
+  "IRON PLATE     "
+  "MITHRIL PLATE  "
+  "COMPASS        "
+  "SCROLL         "
+  "STEEL HOOK     "
+  "PINTS OF ELIXIR"
+  "COIL OF ROPE   "
+  "BLACK CLOAK    "
+  "MITHRIL RING   "
+  "HOLY SYMBOL    "
+  "LUMP OF COAL   "
+  "LUMP OF IRON   "
+  "ALCHEMY STONE  "
+  "GEMS           "
+  "JEWELS         "
+  "GOLD           "
+  "SILVER         "
+  "RARE SPICES    "
+end data
+data MonN chars
+  "             "
+  "STIRGES      "
+  "GIANT SPIDER "
+  "CONSTRICTOR  "
+  "GRAVE RAT    "
+  "DROW ELF     "
+  "HOBGOBLIN    "
+  "FUNGUS       "
+  "LICH PALADIN "
+  "SPECTER      "
+  "REVENANT     "
+  "WYVERN       "
+  "GUARDIAN NAGA"
+  "DEMON KING   "
+end data
+data CmdN chars
+  "          "
+  "TAKE      "
+  "DROP      "
+  "LEFT HAND "
+  "RIGHT HAND"
+  "ARMOR     "
+  "ASCEND    "
+  "DESCEND   "
+  "EXAMINE   "
+  "INCANT    "
+  "QUAFF     "
+  "HAIL      "
+  "SEARCH    "
+  "INVENTORY "
+  "EXIT MENU "
+end data
+data TrapN chars
+  "POISON DARTS  "
+  "TRIPWIRE      "
+  "BEAR TRAP     "
+  "SPIKED PITFALL"
+  "TRAPDOOR      "
+  "SNARE NOOSE   "
+end data
+data LvlN chars
+  " THE CATACOMBS"
+  " THE SEPULCHRE"
+  "    THE BARROW"
+end data
+data DirN chars
+  "     EAST SOUTHWEST NORTH"
+end data
+data QualN chars
+  "COMMON    GOOD      EXCELLENT "
+end data
+data RichN chars
+  "PRECIOUS  GLITTERINGFABULOUS  "
+end data
+data BoxN chars
+  "CACHECHESTCRATE"
+end data
+data TreasN chars
+  "GEMS    JEWELS  GOLD    SILVER  SPICES  "
+end data
+data ThreatN chars
+  "KNOCK YOU SILLY!'     "
+  "BASH YOUR BRAINS IN!' "
+  "GRIND YOU TO DOGMEAT!'"
+  "TEAR YOU TO RIBBONS!' "
+end data
+data RoarN chars
+  "GROWLS  BELLOWS BARKS   ROARS   "
+end data
+data StoryN chars
+  "DEEP UNDER THE SUNLIT WORLD "
+  "LIES THE PLACE OF NIGHTMARE,"
+  "KNOWN TO MORTALS AS THE TOMB"
+  "OF HORROR. ALL SHADOWS DWELL"
+  "THERE, IN THE COOL PASSAGES."
+  "                            "
+  "IF YOU ARE STERN OF HEART,  "
+  "YOU MIGHT FIND A STONE MADE "
+  "BY ALCHEMISTS IN THE MISTS  "
+  "OF ANTIQUITY, A STONE THAT  "
+  "DEMONS LUSTED FOR...        "
+  "                            "
+  "    THE ALCHEMY STONE.      "
+  "                            "
+  "ENTER NOW, ADVENTURER, AND  "
+  "FIND DEATH, OR DESTINY.     "
+end data
+
+asm {
+ThStep:
+    db $00,$00,$66,$02,$00,$00,$96,$03,$10
+ThBump:
+    db $00,$00,$25,$03,$00,$00,$56,$05,$10
+ThSwing:
+    db $00,$00,$44,$02,$00,$00,$35,$03,$00,$00,$76,$03,$10
+ThHit:
+    db $40,$FC,$11,$02,$40,$A6,$22,$03,$40,$F9,$43,$04,$50
+ThHurt:
+    db $40,$FF,$03,$03,$40,$FF,$13,$03,$40,$FF,$23,$04,$40,$FF,$53,$06,$50
+ThKill:
+    db $40,$1D,$11,$06,$40,$D6,$10,$06,$40,$AA,$10,$06,$40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$20,$0E
+    db $50
+ThTrap:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$46,$0A,$10
+ThTake:
+    db $40,$7F,$20,$03,$40,$5F,$20,$03,$40,$40,$40,$06,$50
+ThMagic:
+    db $40,$47,$30,$03,$40,$35,$30,$03,$40,$40,$30,$03,$40,$30,$30,$03,$40,$39,$40,$03,$40,$2A,$40,$03
+    db $40,$35,$40,$03,$40,$24,$50,$06,$50
+ThQuaff:
+    db $40,$53,$31,$04,$40,$1D,$31,$04,$40,$E2,$30,$04,$40,$AA,$30,$0A,$50
+ThShaft:
+    db $40,$D6,$20,$06,$40,$F0,$20,$06,$40,$0E,$31,$06,$40,$2E,$31,$06,$40,$53,$31,$06,$40,$7C,$41,$06
+    db $40,$AB,$41,$06,$40,$FC,$51,$0C,$50
+ThClimb:
+    db $40,$FC,$21,$06,$40,$AB,$21,$06,$40,$7C,$31,$06,$40,$53,$31,$06,$40,$2E,$31,$06,$40,$0E,$41,$06
+    db $40,$F0,$40,$06,$40,$D6,$50,$0C,$50
+ThTick:
+    db $40,$55,$50,$01,$40,$6B,$80,$02,$50
+ThGrowl:
+    db $00,$00,$27,$06,$00,$00,$16,$08,$00,$00,$37,$0A,$00,$00,$66,$0A,$10
+ThHeart:
+    db $40,$FF,$23,$03,$40,$FF,$83,$06,$40,$FF,$43,$03,$40,$FF,$A3,$0A,$50
+ThNope:
+    db $40,$3B,$32,$05,$40,$5D,$52,$08,$50
+ThDie:
+    db $40,$C5,$11,$0C,$40,$E0,$21,$0C,$40,$FC,$21,$0C,$40,$1A,$32,$0C,$40,$3B,$42,$1E,$50
+ThWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08
+    db $40,$55,$20,$1E,$50
+ThCreep:
+    db $00,$00,$77,$04,$00,$00,$A7,$06,$10
+
+ThSoundTable:
+    dw ThTuneMel,$702B
+    dw ThTuneBass,$7035
+    dw ThDrnMel,$702B
+    dw ThDrnBass,$7035
+    dw ThStep,$703F
+    dw ThBump,$703F
+    dw ThSwing,$703F
+    dw ThHit,$7049
+    dw ThHurt,$7049
+    dw ThKill,$7049
+    dw ThTrap,$703F
+    dw ThTake,$7049
+    dw ThMagic,$7049
+    dw ThQuaff,$7049
+    dw ThShaft,$7049
+    dw ThClimb,$7049
+    dw ThTick,$7049
+    dw ThGrowl,$703F
+    dw ThHeart,$7049
+    dw ThNope,$7049
+    dw ThDie,$7049
+    dw ThWin,$7049
+    dw ThCreep,$703F
+; Lantern Down the Stair (original)
+; Tiny Sound, 8 frames per step
+ThTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$F1,$22,$23,$01,$01,$26,$01,$2A,$01,$01,$28,$01,$26,$01
+    db $25,$01,$01,$01,$22,$01,$01,$25,$01,$2A,$01,$01,$28,$01,$25,$01
+    db $23,$01,$01,$01,$26,$01,$01,$2A,$01,$2F,$01,$01,$2D,$01,$2A,$01
+    db $2B,$01,$01,$01,$28,$01,$25,$01,$22,$01,$1E,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ThTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$06,$01,$0D,$01,$06,$01,$0A,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Under the Barrow (original)
+; Tiny Sound, 14 frames per step
+ThDrnMel:
+    db $44
+    dw sndtiny_1
+    db 14
+    db $02,$B0,$1A,$21,$01,$01,$01,$01,$1E,$00,$00,$00,$01,$01,$01,$01
+    db $1F,$00,$00,$00,$01,$01,$01,$01,$1E,$00,$00,$00,$01,$01,$01,$01
+    db $1C,$00,$1A,$00,$01,$01,$01,$01,$17,$00,$00,$00,$01,$01,$01,$01
+    db $19,$00,$00,$00,$01,$01,$01,$01,$1A,$00,$19,$00,$01,$01,$01,$01
+    db $16,$00,$00,$00
+    db $FF
+ThDrnBass:
+    db $84
+    dw sndtiny_2
+    db 14
+    db $02,$A0,$18,$32,$0B,$00,$00,$00,$00,$00,$00,$00,$0B,$00,$00,$00
+    db $00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+    db $00,$00,$00,$00,$0B,$00,$00,$00,$00,$00,$00,$00,$09,$00,$00,$00
+    db $00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00,$06,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}

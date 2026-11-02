@@ -1,0 +1,967 @@
+cartridge "TRAP SHOOT/MATT PIERCE/1988"
+
+' TRAP SHOOT
+' A ColecoVision game based on "Trap Shoot" by Matt Pierce, Ahoy!
+' September 1988 (Commodore 64, BASIC + sprite data TRAP.SPRTS; author
+' from the article's byline in the issue scan).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/trapshoot.bas), the game is built for the ColecoVision:
+' smooth sprites, a tiled trap range, sound effects and an original title
+' tune.
+'
+' The game: you stand behind the station of a trap range. Clays fly out
+' of one of the two trap houses, away from you, towards a random point
+' on the far side of the field: they climb, hang, then drop to the grass,
+' getting smaller with the distance, their shadow running on the field
+' below. Aim the sight with the stick and shoot with a button. You have
+' 1 to 4 shells per clay (chosen on the title); a round is 30 clays. At
+' the end: the share of clays hit, the share of shells that hit, and a
+' verdict from TERRIBLE to LIKE A PRO.
+'
+' From the original: the two trap houses and a random landing point on a
+' straight line from the house; the clay's ground speed slowing (x 0.93 a
+' step), its height climbing at a random rate (0.4 to 1.4) while near,
+' held in the middle distance, then falling faster and faster (x 1.1 a
+' step) when far; three sizes by distance, with the hit window shrinking
+' with them; the shadow on the ground; difficulty 1-4 (faster clays,
+' faster climb, faster sight: 3 + DF / 2) and 1-4 shells per target,
+' defaults 1 and 2; 30 targets; the sight stays where it was between
+' clays; the results screen (targets hit %, shells hit %, the verdict from
+' (A% + W%) / 50).
+'
+' Liberties: the motion is per frame (the BASIC stepped about 12 times a
+' second, estimated): ground speed 0.82 to 0.98 pixel a frame slowing by
+' 1/64 a frame, the climb 0.27 to 1.2 pixels a frame, the fall growing by
+' 1/32 a frame. The hit windows are slightly larger than the listing's
+' (its far window was all but impossible), measured from the centre of
+' the sight. A clay can't be hit for its first 16 frames, still at the trap
+' house: parking the sight on a house and firing would otherwise win half
+' the clays (the original allowed it). With no shell fired the shells % is
+' 0 (the listing divided by zero). The menu is driven by the joystick, the
+' score line names the best round (hits), and a hit clay breaks into
+' pieces. The sight moves 2.5 to 3.25 pixels a frame (three times the
+' clay's starting ground speed, as in the listing: 3 + DF / 2 a pass
+' against the clay's 3 + DF / 2 every third pass).
+'
+' Controls: either controller; the stick aims, either side button shoots.
+' On the title: up and down choose, left and right (or a button) change a
+' setting, a button on START begins.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+'
+' Workarounds for Amy bugs telep-call-compare-clobber removed 2026-11-01.
+
+const TSky1 = 128
+const TSky2 = 129
+const TSky3 = 130
+const TSky4 = 131
+const TTree1 = 132
+const TTree2 = 133
+const THedge = 134
+const TF1 = 135
+const TF2 = 136
+const THl0 = 137
+const THm0 = 138
+const THr0 = 139
+const THl1 = 140
+const THm1 = 141
+const THr1 = 142
+const TBoard = 143
+const TShell1 = 144
+const TShell0 = 145
+const TIcon = 146
+const SCross = 0
+const SClay0 = 4
+const SClay1 = 8
+const SClay2 = 12
+const SShad0 = 16
+const SShad1 = 20
+const SShad2 = 24
+const SFlash = 28
+const SBrk0 = 32
+const SBrk1 = 36
+const SBrk2 = 40
+const NTiles8 = 152
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndBreak = 4
+const SndPull = 5
+const SndLost = 6
+const SndClick = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 4
+const NClays = 30
+const GroundY = 160
+const HouseL = 84
+const HouseR = 172
+const LineDrop = 55
+const NearDrop = 28
+const FarDrop = 43
+const Shy = 16
+const SxMin = 17
+const SxMax = 223
+const SyMin = 17
+const SyMax = 159
+
+state machine Phase:
+  Waiting calls DoWait
+  Flying calls DoFly
+  Breaking calls DoBreak
+end state machine
+
+record Clay:
+  u16 Ys
+  u16 Vy
+  u16 H
+  u16 Vh
+  u8 Hx
+  u8 Wx
+  u8 Age
+  u8 Band
+end record
+
+Clay Cl
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Cx = 0
+u16 Cy = 0
+u16 Gs = 0
+bcd digits 2 HitB = 0
+bcd digits 2 Best = 0
+u8 Ph = 0
+u8 Df = 1
+u8 Tc = 2
+u8 Tt = 0
+u8 Ht = 0
+u8 Ts = 0
+u8 Sh = 0
+u8 WaitT = 0
+u8 BrkT = 0
+u8 FlashT = 0
+u8 Kx = 0
+u8 Ky = 0
+u8 Gy = 0
+u8 Over = 0
+u8 Scr = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+' loop counters
+u8 Li = 0
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  MoveSight
+  dispatch Ph using Phase
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the results, then back to the title on a press
+  Scr = 4
+  HideSprites
+  if HitB > Best then Best = HitB
+  ShowHud
+  mute all
+  ShowResults
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' play
+
+' the sight (8.8 fixed point) moves Gs a frame; a press fires a shell
+sub MoveSight:
+  K = J1 | J2
+  V = K & 1
+  if V > 0 then
+    Cy -= Gs
+    if Cy < SyMin * 256 then Cy = SyMin * 256
+  end if
+  V = K & 2
+  if V > 0 then
+    Cy += Gs
+    if Cy > SyMax * 256 then Cy = SyMax * 256
+  end if
+  V = K & 4
+  if V > 0 then
+    Cx -= Gs
+    if Cx < SxMin * 256 then Cx = SxMin * 256
+  end if
+  V = K & 8
+  if V > 0 then
+    Cx += Gs
+    if Cx > SxMax * 256 then Cx = SxMax * 256
+  end if
+  if FlashT > 0 then dec FlashT
+  if Press = 0 then return
+  if Ph <> Phase.Flying then return
+  if Sh >= Tc then
+    play sound SndClick
+    return
+  end if
+  inc Sh
+  if Ts < 250 then inc Ts
+  FlashT = 6
+  play sound SndShot
+  ShowShells
+  if HitClay = 1 then
+    inc Ht
+    HitB += 1
+    BrkT = 0
+    Ph = Phase.Breaking
+    play sound SndBreak
+    ShowHud
+  end if
+  return
+end sub
+
+' the difference of two bytes, always positive
+function Dist(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' 1 when the sight's centre is inside the clay's window for its size
+function HitClay as u8
+  u8 Px = 0, Py = 0, Ww = 0, Hh = 0, Dd = 0
+  if Cl.Age < Shy then return 0
+  Px = Cx >> 8
+  Py = Cy >> 8
+  Px = Px + 7
+  Py = Py + 7
+  select case Cl.Band
+  case 0
+    Ww = 6
+    Hh = 4
+  case 1
+    Ww = 4
+    Hh = 3
+  case else
+    Ww = 2
+    Hh = 2
+  end select
+  if Dist(Px, Kx) > Ww then return 0
+  if Dist(Py, Ky) > Hh then return 0
+  return 1
+
+sub DoWait:
+  dec WaitT
+  if WaitT > 0 then return
+  Launch
+  return
+end sub
+
+' a clay from a random house towards a random point on the far side
+sub Launch:
+  u16 R16 = 0
+  Ph = Phase.Flying
+  inc Tt
+  Sh = 0
+  V = RandIn(0, 2)
+  if V = 0 then
+    Cl.Hx = HouseL
+  else
+    Cl.Hx = HouseR
+  end if
+  Cl.Wx = RandIn(56, 145)
+  Cl.Ys = GroundY * 256
+  Cl.Vy = Df * 14 + 196
+  Cl.H = 0
+  R16 = RandIn(68, 172)
+  Cl.Vh = R16 * (Df + 9) / 10
+  Cl.Age = 0
+  Cl.Band = 0
+  Place
+  play sound SndPull
+  ShowHud
+  ShowShells
+  return
+end sub
+
+' the clay's screen place from its ground place and height
+sub Place:
+  u8 Drop = 0
+  i16 Dxi = 0, Pxi = 0, Txi = 0
+  Gy = Cl.Ys >> 8
+  Drop = GroundY - Gy
+  Dxi = Cl.Wx
+  Dxi = Dxi - Cl.Hx
+  Pxi = Dxi * Drop
+  Pxi = Pxi / LineDrop
+  Txi = Cl.Hx
+  Txi = Txi + Pxi
+  Kx = Txi
+  W16 = Cl.H >> 8
+  Ky = Gy - W16
+  return
+end sub
+
+sub DoFly:
+  u8 Drop = 0
+  u16 Ys = 0, Vy = 0, H = 0, Vh = 0
+  Ys = Cl.Ys
+  Vy = Cl.Vy
+  H = Cl.H
+  Vh = Cl.Vh
+  if Cl.Age < 250 then Cl.Age = Cl.Age + 1
+  Ys = Ys - Vy
+  W16 = Vy >> 6
+  Vy = Vy - W16
+  W16 = Ys >> 8
+  Drop = GroundY - W16
+  if Drop < NearDrop then
+    Cl.Band = 0
+    H = H + Vh
+  else
+    if Drop < FarDrop then
+      Cl.Band = 1
+    else
+      Cl.Band = 2
+      W16 = Vh >> 5
+      Vh = Vh + W16 + 3
+      if H < Vh then
+        ' down on the grass
+        Ph = Phase.Waiting
+        WaitT = 60
+        if TitleOn = 0 then play sound SndLost
+        NextOrEnd
+        return
+      end if
+      H = H - Vh
+    end if
+  end if
+  Cl.Ys = Ys
+  Cl.Vy = Vy
+  Cl.H = H
+  Cl.Vh = Vh
+  Place
+  return
+end sub
+
+sub DoBreak:
+  inc BrkT
+  if BrkT < 24 then return
+  Ph = Phase.Waiting
+  WaitT = 60
+  NextOrEnd
+  return
+end sub
+
+sub NextOrEnd:
+  if Tt >= NClays then Over = 1
+  return
+end sub
+
+' a number from Lo to Lo + Span - 1
+function RandIn(u8 Lo, u8 Span) as u8
+  u8 Q = 0
+  Rand
+  W16 = Rs % Span
+  Q = W16
+  return Lo + Q
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' 0 the sight, 1 the flash, 2 the clay (or its pieces), 3 the shadow
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    X = Cx >> 8
+    Y = Cy >> 8
+    Y = Y - 1
+    set sprite 0 to Y,X,SCross,15
+    if FlashT > 0 then
+      set sprite 1 to Y,X,SFlash,11
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  end if
+  X = Kx - 8
+  Y = Ky - 9
+  select case Ph
+  case Phase.Flying
+    K = SClay0 + Cl.Band * 4
+    set sprite 2 to Y,X,K,9
+    Y = Gy - 9
+    K = SShad0 + Cl.Band * 4
+    set sprite 3 to Y,X,K,1
+  case Phase.Breaking
+    V = BrkT >> 3
+    K = SBrk0 + V * 4
+    set sprite 2 to Y,X,K,9
+    set sprite 3 to 192,0,0,0
+  case else
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  end select
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  NumU = Tt
+  print at 2,1, "CLAY ", digits$(NumU, 2), "/30"
+  print at 14,1, "HIT ", HitB
+  print at 22,1, "BEST ", Best
+  return
+end sub
+
+' the shells left for this clay, then the spent ones; the total fired
+sub ShowShells:
+  u8 Left = 0
+  print at 2,22, "SHELLS"
+  fill 32 count 4 at 9,22
+  Left = Tc - Sh
+  for Ci = 1 to Tc
+    J = 8 + Ci
+    if Ci <= Left then
+      put char TShell1 at J,22
+    else
+      put char TShell0 at J,22
+    end if
+  next
+  NumU = Ts
+  print at 19,22, "FIRED ", digits$(NumU, 3)
+  return
+end sub
+
+' a whole number percent of A out of B (0 when B is 0)
+function Pct(u8 A, u8 B) as u8
+  u16 Q = 0
+  u8 R = 0
+  if B = 0 then return 0
+  Q = A
+  Q = Q * 100
+  Q = Q / B
+  R = Q
+  return R
+
+sub ShowResults:
+  u8 Pt = 0, Ps = 0, Ix = 0
+  for Ri = 3 to 10
+    fill TSky1 count 28 at 2,Ri
+  next
+  Pt = Pct(Ht, Tt)
+  Ps = Pct(Ht, Ts)
+  print at 10,3, "ROUND OVER"
+  NumU = Pt
+  print at 2,5, "YOU SHOT ", width$(NumU, 3), "% OF THE CLAYS"
+  NumU = Ps
+  print at 3,7, width$(NumU, 3), "% OF YOUR SHELLS HIT"
+  Ix = Pt / 2
+  V = Ps / 2
+  Ix = Ix + V
+  Ix = Ix / 25
+  select case Ix
+  case 0
+    print at 6,9, "YOU SHOOT TERRIBLE."
+  case 1
+    print at 8,9, "YOU SHOOT BAD."
+  case 2
+    print at 3,9, "YOU SHOOT ABOUT AVERAGE."
+  case 3
+    print at 7,9, "YOU SHOOT WELL."
+  case else
+    print at 5,9, "YOU SHOOT LIKE A PRO."
+  end select
+  return
+end sub
+
+' the range: sky, trees, hedge, the mown field, two trap houses, boards
+sub DrawRange:
+  for Ri = 2 to 6
+    fill TSky1 count 32 at 0,Ri
+  next
+  fill TSky2 count 32 at 0,7
+  fill TSky3 count 32 at 0,8
+  for Ri = 9 to 11
+    fill TSky4 count 32 at 0,Ri
+  next
+  for J = 0 to 31
+    V = (J * 5) & 3
+    if V = 1 then
+      put char TTree2 at J,12
+    else
+      put char TTree1 at J,12
+    end if
+  next
+  fill THedge count 32 at 0,13
+  for Ri = 14 to 20
+    for J = 0 to 31
+      V = J >> 2
+      V = V & 1
+      put char TF1 + V at J,Ri
+    next
+  next
+  DrawHouse(9)
+  DrawHouse(20)
+  fill TBoard count 32 at 0,21
+  return
+end sub
+
+sub DrawHouse(u8 Col):
+  put char THl0 at Col,19
+  put char THl1 at Col,20
+  Col = Col + 1
+  put char THm0 at Col,19
+  put char THm1 at Col,20
+  Col = Col + 1
+  put char THr0 at Col,19
+  put char THr1 at Col,20
+  return
+end sub
+
+sub NewGame:
+  Tt = 0
+  Ht = 0
+  Ts = 0
+  Sh = 0
+  HitB = 0
+  Over = 0
+  TitleOn = 0
+  FlashT = 0
+  Cx = 120 * 256
+  Cy = 112 * 256
+  Gs = Df * 64 + 576
+  Ph = Phase.Waiting
+  WaitT = 90
+  NewScreen
+  DrawRange
+  ShowHud
+  ShowShells
+  DrawSprites
+  ShowScreen
+  Scr = 3
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the range, a clay crossing the sky, the tune once, the menu
+sub TitlePage:
+  NewScreen
+  DrawRange
+  print at 11,3, "TRAP SHOOT"
+  put char TIcon at 9,3
+  put char TIcon at 22,3
+  print at 8,5, "BY MATT PIERCE"
+  print at 2,1, "BEST ", Best
+  print at 15,1, "AHOY! SEP 1988"
+  print at 6,22, "JOYSTICK AND BUTTON"
+  ShowMenu
+  TitleOn = 1
+  Ph = Phase.Waiting
+  ShowScreen
+  Scr = 2
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleClay
+  DrawSprites
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then MenuStick
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  select case Menu
+  case 1, 2
+    MenuChange(1)
+    goto tp_loop
+  end select
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+' the title's clay: one after another, from alternate houses
+sub TitleClay:
+  if Ph = Phase.Waiting then
+    if Tick = 0 then
+      Ph = Phase.Flying
+      if Cl.Hx = HouseL then
+        Cl.Hx = HouseR
+        Cl.Wx = 96
+      else
+        Cl.Hx = HouseL
+        Cl.Wx = 160
+      end if
+      Cl.Ys = GroundY * 256
+      Cl.Vy = 220
+      Cl.H = 0
+      Cl.Vh = 200
+      Cl.Age = 0
+      Cl.Band = 0
+    end if
+    return
+  end if
+  DoFly
+  return
+end sub
+
+' up / down move the cursor; left / right change a setting
+sub MenuStick:
+  K = V & 1
+  if K > 0 then
+    if Menu > 0 then dec Menu
+    ShowMenu
+    return
+  end if
+  K = V & 2
+  if K > 0 then
+    if Menu < 3 then inc Menu
+    ShowMenu
+    return
+  end if
+  if Menu = 0 then return
+  if Menu = 3 then return
+  K = V & 4
+  if K > 0 then
+    MenuChange(3)
+  else
+    MenuChange(1)
+  end if
+  return
+end sub
+
+' add By (1, or 3 for one down) to the setting, 1 to 4 round
+sub MenuChange(u8 By):
+  if Menu = 1 then
+    Df = Df + By - 1
+    Df = Df & 3
+    Df = Df + 1
+  else
+    Tc = Tc + By - 1
+    Tc = Tc & 3
+    Tc = Tc + 1
+  end if
+  play sound SndClick
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  NumU = Df
+  print at 8,8, "START"
+  print at 8,9, "DIFFICULTY  ", digits$(NumU, 1)
+  NumU = Tc
+  print at 8,10, "SHELLS      ", digits$(NumU, 1)
+  print at 8,11, "CREDITS"
+  for Li = 8 to 11
+    put char 32 at 6,Li
+  next
+  J = Menu + 8
+  put char 62 at 6,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "TRAP SHOOT"
+  print at 2,5, "BASED ON TRAP SHOOT BY"
+  print at 2,6, "MATT PIERCE, AHOY!"
+  print at 2,7, "SEPTEMBER 1988 (C-64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: EARLY FROST"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Scr = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$00,$41,$00,$22,$88
+  $AA,$AA,$22,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$44,$00,$AA,$AA
+  $00,$10,$38,$83,$81,$00,$00,$00
+  $00,$00,$04,$86,$30,$00,$00,$00
+  $00,$21,$00,$24,$00,$00,$00,$00
+  $00,$00,$08,$00,$00,$00,$80,$00
+  $00,$00,$08,$00,$00,$00,$80,$00
+  $00,$00,$C0,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$01,$01,$00,$00,$00
+  $00,$00,$10,$00,$01,$00,$00,$00
+  $00,$00,$04,$00,$40,$00,$00,$00
+  $00,$00,$08,$00,$80,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $18,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$C3,$24,$24,$C3,$00
+  $00,$00,$C3,$81,$00,$81,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$54,$04,$54,$04,$54,$54
+  $45,$54,$45,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$75,$05,$75,$57
+  $07,$C7,$C7,$7C,$7C,$0C,$0C,$0C
+  $07,$07,$C7,$C7,$7C,$0C,$0C,$0C
+  $0C,$2C,$0C,$C2,$02,$02,$02,$02
+  $02,$02,$C2,$02,$02,$02,$C2,$02
+  $03,$03,$23,$03,$03,$03,$23,$03
+  $02,$02,$2E,$2E,$EF,$0E,$0E,$0E
+  $02,$02,$0E,$0E,$0F,$0E,$01,$01
+  $02,$02,$2E,$2E,$EF,$0E,$0E,$0E
+  $0E,$0E,$1E,$0E,$1E,$0E,$01,$0C
+  $0E,$0E,$1E,$0E,$1E,$0E,$01,$0C
+  $0E,$0E,$1E,$0E,$1E,$0E,$01,$0C
+  $0B,$0A,$0A,$1A,$0A,$0A,$01,$01
+  $84,$48,$48,$48,$48,$48,$4B,$4B
+  $04,$04,$04,$4E,$E4,$E4,$4E,$04
+  $04,$04,$49,$49,$09,$48,$04,$04
+end data
+data SpritePat bytes
+  $00,$01,$01,$01,$07,$09,$10,$F1,$10,$09,$07,$01,$01,$01,$00,$00
+  $00,$00,$00,$00,$C0,$20,$10,$1E,$10,$20,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$0F,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$09,$05,$03,$0E,$03,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$80,$E0,$80,$40,$20,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$06,$00,$0C,$00,$06,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$60,$00,$30,$00,$60,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$21,$00,$08,$00,$20,$00,$08,$00,$21,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$20,$00,$08,$00,$20,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$00,$00,$01,$00,$00,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$00
+end data
+
+asm {
+TpShot:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$47,$06,$10
+TpBreak:
+    db $00,$00,$12,$02,$00,$00,$13,$03,$00,$00,$24,$04,$00,$00,$45,$06,$10
+TpPull:
+    db $40,$3B,$12,$02,$40,$F9,$22,$03,$40,$F9,$33,$05,$50
+TpLost:
+    db $40,$7C,$21,$06,$40,$FC,$31,$0A,$50
+TpClick:
+    db $40,$40,$30,$02,$50
+TpStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+TpOver:
+    db $40,$D6,$10,$0C,$40,$1D,$21,$0C,$40,$53,$21,$0C,$40,$AB,$21,$1E,$50
+
+TpSoundTable:
+    dw TpTuneMel,$702B
+    dw TpTuneBass,$7035
+    dw TpShot,$703F
+    dw TpBreak,$703F
+    dw TpPull,$7049
+    dw TpLost,$7049
+    dw TpClick,$7049
+    dw TpStart,$7049
+    dw TpOver,$7049
+; Early Frost (original)
+; Tiny Sound, 8 frames per step
+TpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$21,$25,$01,$28,$28,$01,$25,$21,$01,$01
+    db $23,$01,$1C,$20,$01,$23,$23,$01,$20,$1C,$01,$01,$21,$01,$25,$28
+    db $01,$2D,$2A,$01,$28,$26,$01,$25,$23,$01,$25,$26,$01,$23,$21,$01
+    db $01,$01,$01,$01,$25,$01,$23,$21,$01,$20,$1E,$01,$20,$21,$01,$01
+    db $23,$01,$21,$20,$01,$1C,$21,$01,$01,$01,$00,$01
+    db $FF
+TpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$1C,$01,$15,$01,$1C,$01,$1C,$01
+    db $10,$01,$17,$01,$17,$01,$10,$01,$17,$01,$17,$01,$15,$01,$1C,$01
+    db $1C,$01,$0E,$01,$15,$01,$15,$01,$10,$01,$17,$01,$17,$01,$15,$01
+    db $19,$01,$1C,$01,$12,$01,$19,$01,$19,$01,$0E,$01,$15,$01,$15,$01
+    db $10,$01,$17,$01,$1C,$01,$15,$01,$01,$01,$00,$01
+    db $FF
+}

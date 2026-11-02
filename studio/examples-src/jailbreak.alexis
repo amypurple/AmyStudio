@@ -1,0 +1,1082 @@
+cartridge "JAILBREAK/B.BLACKMER/1987"
+
+' JAILBREAK
+' A ColecoVision game based on "Jailbreak" by Bob Blackmer, Ahoy!
+' February 1987 (Commodore 64 machine language at $C000, started by a
+' two-line BASIC boot). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/jailbreak.dis), the game is built for the
+' ColecoVision: a prison yard with dirt paths, nine brick cells with
+' barred doors, a striped prisoner and a guard as smooth two-colour
+' sprites, case files and a lawyer drawn in tiles, sound effects and a
+' title tune.
+'
+' The game: you were framed. Nine cells stand in a 3 x 3 block, with paths
+' between them. Seven cells hold a piece of evidence; your lawyer waits in
+' the bottom right cell. Walk the paths, step into a cell through its door
+' when the door is open, and pick up the evidence: each piece adds a word
+' of YOU HAVE THE EVIDENCE TO CLEAR YOURSELF! at the top. With all seven,
+' walk into the lawyer's cell and you are free. Doors open at random and
+' now and then all slam shut at once. A guard walks the paths at random:
+' if he catches you, you are back in the middle cell, every door slams
+' shut and the guard walks faster (four speeds). The clock runs all the
+' time: your score is your time, and the best one is kept.
+'
+' From the original (orig/): the 3 x 3 cells with doors on their left
+' side, a 4 x 4 grid of path crossings; up and down only on a path column,
+' left and right only on a path row, or into a cell from its door row when
+' the door is open (and out again only through an open door); seven files
+' in cells 1-4 and 6-8, the lawyer ('L' on the C64) in cell 9, the start
+' in cell 5 with its door open and all the others shut; the guard picks a
+' random direction at every crossing (any of the four, the way back too)
+' and walks to the next one; caught: back to cell 5, guard speed +1 up to
+' 4 (the player's own speed), all doors shut; random openings of one door
+' at a time; a rare slam of every door (1 chance in 32 every 256 passes);
+' the word list; the elapsed time (mm:ss, the C64's CIA clock); entering
+' the lawyer's cell with fewer than seven files does nothing.
+'
+' Liberties: the player walks 2 pixels a frame and the guard 1/2, 1, 1 1/2
+' and 2 (the C64's 4 pixels a loop against 1 to 4, run at about 50 loops a
+' second, was too fast for the ColecoVision's smaller yard); doors open
+' about twice as often (one door every two seconds or so, any of nine) so
+' a player shut in a cell is not kept waiting for a minute; the walk into
+' and out of a cell is animated (the C64 jumped); a short pause after a
+' capture; corner help: holding a direction that is blocked slides you
+' onto the nearest path within 10 pixels; diagonals work (the vertical
+' part is tried first); a chime for each file, a click when a door opens,
+' a fanfare when you are free; the best time is kept; the end shows your
+' time, then the title (the C64 showed PRESS FIRE and started again).
+' Hiding in a cell is safe, as on the C64, but the clock keeps running,
+' so it never pays.
+'
+' Controls: controller 1 (or 2): the stick walks. On the title, up and
+' down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TPath0 = 128
+const TPath1 = 129
+const TStone = 130
+const TBrick0 = 131
+const TBrick1 = 132
+const TFloor = 133
+const TDcT = 134
+const TDcB = 135
+const TDoT = 136
+const TDoB = 137
+const TFile00 = 138
+const TFile01 = 139
+const TFile10 = 140
+const TFile11 = 141
+const TLaw00 = 142
+const TLaw01 = 143
+const TLaw10 = 144
+const TLaw11 = 145
+const TClock = 146
+const TFicon = 147
+const TTbr = 148
+const TTbar = 149
+const SPd0 = 0
+const SPb0 = 4
+const SPd1 = 8
+const SPb1 = 12
+const SGd0 = 16
+const SGb0 = 20
+const SGd1 = 24
+const SGb1 = 28
+const NTiles8 = 176
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSlam = 3
+const SndClank = 4
+const SndFile = 5
+const SndSiren = 6
+const SndOpen = 7
+const SndNope = 8
+const SndFree = 9
+const SndStart = 10
+const NSpr = 4
+const WalkN = 12
+const FreezeN = 60
+
+data LaneX bytes 24,88,152,216
+data LaneY bytes 24,72,120,168
+
+data TilePat bytes
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$00,$04,$00,$20,$00,$01,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $10,$10,$10,$00,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$AA,$AA,$AA,$00,$AA,$AA,$AA
+  $AA,$AA,$AA,$00,$AA,$AA,$AA,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$E1,$C0,$E0,$12,$E0,$14
+  $00,$00,$00,$03,$07,$98,$07,$58
+  $E0,$11,$E0,$C0,$C0,$00,$00,$00
+  $07,$38,$07,$03,$03,$00,$00,$00
+  $00,$03,$07,$05,$03,$F0,$E0,$E0
+  $00,$C0,$C0,$A0,$C0,$F0,$07,$07
+  $E0,$E4,$07,$06,$06,$06,$0E,$00
+  $07,$D8,$E0,$60,$60,$60,$70,$C1
+  $C3,$91,$10,$1C,$00,$00,$81,$C3
+  $00,$60,$01,$82,$45,$82,$01,$00
+  $00,$00,$01,$00,$00,$08,$08,$00
+  $44,$44,$44,$44,$44,$44,$44,$44
+end data
+data TileCol bytes
+  $0A,$6A,$0A,$6A,$0A,$6A,$0A,$0A
+  $0A,$0A,$6A,$0A,$6A,$0A,$6A,$0A
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $69,$69,$69,$06,$69,$69,$69,$06
+  $69,$69,$69,$06,$69,$69,$69,$06
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $06,$E1,$E1,$E1,$0E,$E1,$E1,$E1
+  $E1,$E1,$E1,$0E,$E1,$E1,$E1,$06
+  $06,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$06
+  $01,$01,$1B,$1B,$BF,$FB,$BF,$FB
+  $01,$01,$01,$1B,$BF,$FB,$BF,$FB
+  $BF,$FB,$BF,$1B,$1A,$01,$01,$01
+  $BF,$FB,$BF,$1B,$1A,$01,$01,$01
+  $01,$61,$91,$91,$91,$1E,$1E,$1E
+  $01,$61,$91,$91,$91,$E1,$1E,$1E
+  $1E,$1E,$E1,$E1,$E1,$E1,$E1,$01
+  $1E,$E1,$E1,$E1,$E1,$E1,$E1,$1A
+  $1F,$1F,$1F,$1F,$0F,$0F,$1F,$1F
+  $01,$B1,$1B,$B1,$1B,$B1,$1B,$01
+  $09,$09,$69,$06,$09,$69,$69,$06
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+end data
+data SpritePat bytes
+  $03,$04,$02,$00,$00,$0F,$00,$1F,$00,$1F,$00,$0F,$00,$0E,$00,$1E
+  $C0,$20,$40,$00,$00,$F0,$00,$F8,$00,$F8,$00,$F0,$00,$70,$00,$78
+  $00,$03,$05,$07,$03,$00,$1F,$00,$1F,$00,$0F,$00,$0E,$00,$0E,$00
+  $00,$C0,$A0,$E0,$C0,$00,$F8,$00,$F8,$00,$F0,$00,$70,$00,$70,$00
+  $03,$04,$02,$00,$00,$0F,$00,$1F,$00,$1F,$00,$0F,$00,$1C,$00,$78
+  $C0,$20,$40,$00,$00,$F0,$00,$F8,$00,$F8,$00,$F0,$00,$38,$00,$1E
+  $00,$03,$05,$07,$03,$00,$1F,$00,$1F,$00,$0F,$00,$1C,$00,$38,$00
+  $00,$C0,$A0,$E0,$C0,$00,$F8,$00,$F8,$00,$F0,$00,$38,$00,$1C,$00
+  $00,$00,$00,$07,$05,$03,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$A0,$C0,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00
+  $07,$0F,$1F,$00,$02,$00,$0F,$1F,$37,$07,$07,$07,$06,$06,$06,$0E
+  $E0,$F0,$F8,$00,$40,$00,$F0,$F8,$EC,$E0,$E0,$70,$30,$30,$30,$38
+  $00,$00,$00,$07,$05,$03,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$A0,$C0,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00
+  $07,$0F,$1F,$00,$02,$00,$0F,$1F,$37,$07,$07,$07,$0C,$18,$18,$38
+  $E0,$F0,$F8,$00,$40,$00,$F0,$F8,$EC,$E0,$E0,$70,$18,$0C,$0C,$0E
+end data
+
+data YardMap bytes
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$82,$82
+  $82,$82,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$82,$82
+  $82,$82,$82,$80,$80,$81,$81,$80,$81,$81,$80,$81,$81,$80,$81,$80,$80,$81,$80,$81,$80,$80,$80,$80,$80,$81,$80,$80,$81,$82,$82,$82
+  $82,$82,$82,$81,$81,$80,$80,$80,$81,$80,$81,$81,$80,$81,$80,$80,$80,$80,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$81,$83,$83,$83,$83,$83,$83,$80,$80,$83,$83,$83,$83,$83,$83,$80,$81,$83,$83,$83,$83,$83,$83,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$80,$86,$85,$85,$85,$85,$84,$80,$80,$86,$85,$85,$85,$85,$84,$81,$80,$86,$85,$85,$85,$85,$84,$81,$80,$82,$82,$82
+  $82,$82,$82,$81,$80,$87,$85,$85,$85,$85,$83,$81,$80,$87,$85,$85,$85,$85,$83,$81,$80,$87,$85,$85,$85,$85,$83,$80,$80,$82,$82,$82
+  $82,$82,$82,$81,$81,$84,$84,$84,$84,$84,$84,$80,$80,$84,$84,$84,$84,$84,$84,$80,$80,$84,$84,$84,$84,$84,$84,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$81,$80,$80,$80,$80,$81,$80,$80,$81,$80,$80,$81,$80,$81,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$81,$80,$81,$80,$80,$80,$81,$80,$81,$81,$80,$80,$81,$81,$81,$81,$80,$80,$81,$80,$81,$81,$80,$80,$81,$82,$82,$82
+  $82,$82,$82,$81,$81,$83,$83,$83,$83,$83,$83,$80,$81,$83,$83,$83,$83,$83,$83,$80,$80,$83,$83,$83,$83,$83,$83,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$81,$86,$85,$85,$85,$85,$84,$80,$81,$86,$85,$85,$85,$85,$84,$80,$80,$86,$85,$85,$85,$85,$84,$80,$81,$82,$82,$82
+  $82,$82,$82,$80,$80,$87,$85,$85,$85,$85,$83,$81,$81,$87,$85,$85,$85,$85,$83,$81,$81,$87,$85,$85,$85,$85,$83,$81,$80,$82,$82,$82
+  $82,$82,$82,$81,$80,$84,$84,$84,$84,$84,$84,$80,$81,$84,$84,$84,$84,$84,$84,$81,$80,$84,$84,$84,$84,$84,$84,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$80,$80,$81,$81,$81,$80,$81,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$80,$81,$81,$81,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$80,$81,$80,$80,$81,$80,$80,$80,$80,$81,$81,$81,$80,$80,$81,$80,$80,$80,$81,$80,$81,$81,$81,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$81,$83,$83,$83,$83,$83,$83,$80,$80,$83,$83,$83,$83,$83,$83,$80,$80,$83,$83,$83,$83,$83,$83,$80,$80,$82,$82,$82
+  $82,$82,$82,$81,$80,$86,$85,$85,$85,$85,$84,$80,$81,$86,$85,$85,$85,$85,$84,$80,$81,$86,$85,$85,$85,$85,$84,$81,$80,$82,$82,$82
+  $82,$82,$82,$80,$81,$87,$85,$85,$85,$85,$83,$80,$80,$87,$85,$85,$85,$85,$83,$80,$80,$87,$85,$85,$85,$85,$83,$81,$80,$82,$82,$82
+  $82,$82,$82,$80,$80,$84,$84,$84,$84,$84,$84,$80,$81,$84,$84,$84,$84,$84,$84,$80,$80,$84,$84,$84,$84,$84,$84,$80,$80,$82,$82,$82
+  $82,$82,$82,$80,$80,$81,$80,$80,$80,$81,$80,$80,$80,$81,$81,$80,$80,$80,$80,$80,$81,$81,$81,$80,$80,$80,$80,$81,$81,$82,$82,$82
+  $82,$82,$82,$80,$81,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$81,$81,$80,$81,$81,$80,$80,$80,$80,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$94,$20,$94,$94,$94,$20,$94,$94,$94,$20,$94,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$94,$20,$94,$20,$94,$20,$20,$94,$20,$20,$94,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$94,$20,$94,$94,$94,$20,$20,$94,$20,$20,$94,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$94,$20,$94,$20,$94,$20,$94,$20,$20,$94,$20,$20,$94,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$94,$94,$94,$20,$94,$20,$94,$20,$94,$94,$94,$20,$94,$94,$94,$20,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$94,$94,$20,$20,$94,$94,$20,$20,$94,$94,$94,$20,$94,$94,$94,$20,$94,$20,$94,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$94,$20,$94,$20,$94,$20,$94,$20,$94,$20,$20,$20,$94,$20,$94,$20,$94,$20,$94,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$94,$94,$20,$20,$94,$94,$20,$20,$94,$94,$20,$20,$94,$94,$94,$20,$94,$94,$20,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$94,$20,$94,$20,$94,$20,$94,$20,$94,$20,$20,$20,$94,$20,$94,$20,$94,$20,$94,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$94,$94,$20,$20,$94,$20,$94,$20,$94,$94,$94,$20,$94,$20,$94,$20,$94,$20,$94,$95,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$95,$20,$20,$20,$20,$20
+end data
+
+record CellRec:
+  u8 Door
+  u8 Item
+end record
+
+CellRec Cells[9]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 NumV = 0
+u16 Best = 0
+u16 Total = 0
+i16 Dx = 0
+i16 Dy = 0
+bcd digits 2 Catches = 0
+' the player: X, Y, mode (0 path, 1 walking in, 2 in a cell, 3 walking
+' out), frames of walk left, the cell, the walk animation counter
+u8 PX = 0
+u8 PY = 0
+u8 PM = 0
+u8 PW = 0
+u8 PC = 0
+u8 PAn = 0
+' the guard: X, Y, the crossing he walks to (column, row, pixels), speed in
+' quarter pixels a frame, the fraction
+u8 GX = 0
+u8 GY = 0
+u8 GI = 0
+u8 GJ = 0
+u8 GTx = 0
+u8 GTy = 0
+u8 GSpd = 2
+u8 GF = 0
+u8 Gn = 0
+u8 Ev = 0
+u8 Won = 0
+u8 Freeze = 0
+u8 DoorT = 0
+u8 TFr = 0
+u8 TSec = 0
+u8 TMin = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+' title animation
+u8 TbX = 0
+' loop counters (never shared with the helpers)
+u8 Dc = 0
+u8 Ds = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Ok = 0
+
+  tile screen
+  set sound table JbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Won = 0 then goto play_loop
+
+  ' free: the sentence, the time, the best time, then the title on a press
+  mute all
+  play sound SndFree
+  Total = TMin * 60
+  Total = Total + TSec
+  if Best = 0 then Best = Total
+  if Total < Best then Best = Total
+  for Dc = 10 to 15
+    fill 32 count 24 at 4,Dc
+  next
+  print at 7,10, "YOU ARE FREE!"
+  print at 6,12, "TIME  "
+  PrintTime(Total, 12, 12)
+  print at 6,13, "BEST  "
+  PrintTime(Best, 12, 13)
+  print at 6,14, "CAUGHT ", Catches, " TIMES"
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the clock always, then (unless the capture pause runs)
+' the player, the guard, the capture test and the doors
+sub PlayStep:
+  TickClock
+  if Freeze > 0 then
+    dec Freeze
+    return
+  end if
+  MovePlayer
+  if Won = 1 then return
+  MoveGuard
+  Collide
+  Doors
+  return
+end sub
+
+sub TickClock:
+  inc TFr
+  if TFr < 60 then return
+  TFr = 0
+  if TMin = 99 then
+    if TSec = 59 then return
+  end if
+  inc TSec
+  if TSec = 60 then
+    TSec = 0
+    inc TMin
+  end if
+  ShowTime
+  return
+end sub
+
+' the lane index + 1 of a coordinate, 0 when it is not on a lane
+function LaneAtX(u8 Pv) as u8
+  u8 Li = 0
+  for Li = 0 to 3
+    if LaneX[Li] = Pv then return Li + 1
+  next
+  return 0
+
+function LaneAtY(u8 Pv) as u8
+  u8 Li = 0
+  for Li = 0 to 3
+    if LaneY[Li] = Pv then return Li + 1
+  next
+  return 0
+
+' the door row index + 1 (cell row), 0 when not on a door row
+function DoorRow(u8 Pv) as u8
+  u8 Li = 0
+  for Li = 0 to 2
+    if LaneY[Li] + 24 = Pv then return Li + 1
+  next
+  return 0
+
+' 2 pixels toward the nearest lane coordinate within 10, 0 if none
+function Nudge(u8 Pv, u8 Axis) as u8
+  u8 Li = 0
+  u8 Lv = 0
+  i16 Dd = 0
+  for Li = 0 to 3
+    if Axis = 0 then
+      Lv = LaneX[Li]
+    else
+      Lv = LaneY[Li]
+    end if
+    Dd = Lv - Pv
+    if Dd > 0 then
+      if Dd <= 10 then return Pv + 2
+    end if
+    if Dd < 0 then
+      if Dd >= -10 then return Pv - 2
+    end if
+  next
+  return Pv
+
+sub MovePlayer:
+  u8 Lx = 0
+  u8 Ly = 0
+  u8 Dr = 0
+  u8 Vs = 0
+  u8 Hs = 0
+  u8 Moved = 0
+  Vs = J1 & 3
+  Hs = J1 & 12
+  select case PM
+    case 1
+      PX = PX + 2
+      inc PAn
+      dec PW
+      if PW = 0 then
+        PM = 2
+        Arrive
+      end if
+      return
+    case 3
+      PX = PX - 2
+      inc PAn
+      dec PW
+      if PW = 0 then PM = 0
+      return
+    case 2
+      if Hs = 4 then
+        if Cells[PC].Door = 1 then
+          PM = 3
+          PW = WalkN
+        end if
+      end if
+      return
+  end select
+  ' on the paths
+  Lx = LaneAtX(PX)
+  Ly = LaneAtY(PY)
+  if Vs > 0 then
+    if Lx > 0 then
+      if Vs = 1 then
+        if PY > 24 then
+          PY = PY - 2
+          Moved = 1
+        end if
+      else
+        if PY < 168 then
+          PY = PY + 2
+          Moved = 1
+        end if
+      end if
+    end if
+  end if
+  if Moved = 0 then
+    if Hs > 0 then
+      if Ly > 0 then
+        if Hs = 4 then
+          if PX > 24 then
+            PX = PX - 2
+            Moved = 1
+          end if
+        else
+          if PX < 216 then
+            PX = PX + 2
+            Moved = 1
+          end if
+        end if
+      else
+        Dr = DoorRow(PY)
+        if Dr > 0 then
+          if Hs = 8 then
+            if Lx > 0 then
+              if Lx < 4 then
+                C = (Dr - 1) * 3 + Lx - 1
+                if Cells[C].Door = 1 then
+                  PC = C
+                  PM = 1
+                  PW = WalkN
+                end if
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  ' corner help: slide onto a lane near by
+  if Moved = 0 then
+    if Vs > 0 then
+      if Lx = 0 then
+        if Ly > 0 then
+          V = Nudge(PX, 0)
+          if V <> PX then
+            PX = V
+            Moved = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  if Moved = 0 then
+    if Hs > 0 then
+      if Ly = 0 then
+        if Lx > 0 then
+          if DoorRow(PY) = 0 then
+            V = Nudge(PY, 1)
+            if V <> PY then
+              PY = V
+              Moved = 1
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  if Moved = 1 then inc PAn
+  return
+end sub
+
+' the player has walked into cell PC
+sub Arrive:
+  select case Cells[PC].Item
+    case 1
+      Cells[PC].Item = 0
+      inc Ev
+      DrawItem(PC)
+      ShowWord(Ev)
+      ShowCount
+      play sound SndFile
+    case 2
+      if Ev = 7 then
+        Won = 1
+      else
+        play sound SndNope
+      end if
+  end select
+  return
+end sub
+
+' the guard: speed in quarter pixels, a pixel at a time
+sub MoveGuard:
+  GF = GF + GSpd
+  Gn = GF >> 2
+  GF = GF & 3
+  while Gn > 0
+    GuardPixel
+    dec Gn
+  end while
+  return
+end sub
+
+sub GuardPixel:
+  if GX = GTx then
+    if GY = GTy then PickDir
+  end if
+  if GX < GTx then inc GX
+  if GX > GTx then dec GX
+  if GY < GTy then inc GY
+  if GY > GTy then dec GY
+  return
+end sub
+
+' any of the four ways at random, again until it stays on the grid
+sub PickDir:
+  Ok = 0
+  while Ok = 0
+    Rand
+    K = Rs & 3
+    Ok = TryDir(K)
+  end while
+  GTx = LaneX[GI]
+  GTy = LaneY[GJ]
+  return
+end sub
+
+function TryDir(u8 D) as u8
+  select case D
+    case 0
+      if GJ = 0 then return 0
+      dec GJ
+    case 1
+      if GI = 3 then return 0
+      inc GI
+    case 2
+      if GJ = 3 then return 0
+      inc GJ
+    case else
+      if GI = 0 then return 0
+      dec GI
+  end select
+  return 1
+
+sub Collide:
+  if PM = 2 then return
+  Dx = PX - GX
+  Dy = PY - GY
+  if Dx >= 12 then return
+  if Dx <= -12 then return
+  if Dy >= 12 then return
+  if Dy <= -12 then return
+  ' caught: back to the middle cell, the guard faster, every door shut
+  play sound SndSiren
+  if Catches < 99 then inc Catches
+  if GSpd < 8 then GSpd = GSpd + 2
+  PM = 2
+  PC = 4
+  PX = LaneX[1] + 24
+  PY = LaneY[1] + 24
+  CloseAll
+  Freeze = FreezeN
+  return
+end sub
+
+' doors: every 256 passes 1 chance in 32 that all slam; each pass 1 in 64
+' that a door (0-15, only 0-8 exist) opens
+sub Doors:
+  inc DoorT
+  Rand
+  if DoorT = 0 then
+    V = Rs & 31
+    if V = 0 then
+      CloseAll
+      return
+    end if
+  end if
+  V = Rs & 63
+  if V > 0 then return
+  W16 = Rs >> 8
+  K = W16 & 15
+  if K < 9 then
+    if Cells[K].Door = 0 then
+      Cells[K].Door = 1
+      DrawDoor(K)
+      play sound SndOpen
+    end if
+  end if
+  return
+end sub
+
+sub CloseAll:
+  for Dc = 0 to 8
+    Cells[Dc].Door = 0
+    DrawDoor(Dc)
+  next
+  play sound SndSlam
+  play sound SndClank
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+function CellCol(u8 Cn) as u8
+  return (Cn mod 3) * 8 + 5
+
+function CellRow(u8 Cn) as u8
+  return (Cn / 3) * 6 + 6
+
+sub DrawDoor(u8 Cn):
+  X = CellCol(Cn)
+  Y = CellRow(Cn)
+  if Cells[Cn].Door = 1 then
+    put char TDoT at X,Y
+    put char TDoB at X,Y + 1
+  else
+    put char TDcT at X,Y
+    put char TDcB at X,Y + 1
+  end if
+  return
+end sub
+
+sub DrawItem(u8 Cn):
+  X = CellCol(Cn) + 3
+  Y = CellRow(Cn)
+  select case Cells[Cn].Item
+    case 1
+      put char TFile00 at X,Y
+      put char TFile01 at X + 1,Y
+      put char TFile10 at X,Y + 1
+      put char TFile11 at X + 1,Y + 1
+    case 2
+      put char TLaw00 at X,Y
+      put char TLaw01 at X + 1,Y
+      put char TLaw10 at X,Y + 1
+      put char TLaw11 at X + 1,Y + 1
+    case else
+      fill TFloor count 2 at X,Y
+      fill TFloor count 2 at X,Y + 1
+  end select
+  return
+end sub
+
+' the words of the sentence, one for each file
+sub ShowWord(u8 Wn):
+  select case Wn
+    case 1
+      print at 2,1, "YOU"
+    case 2
+      print at 6,1, "HAVE"
+    case 3
+      print at 11,1, "THE"
+    case 4
+      print at 15,1, "EVIDENCE"
+    case 5
+      print at 2,2, "TO"
+    case 6
+      print at 5,2, "CLEAR"
+    case 7
+      print at 11,2, "YOURSELF!"
+  end select
+  return
+end sub
+
+sub ShowCount:
+  NumU = Ev
+  print at 25,2, digits$(NumU, 1), "/7"
+  return
+end sub
+
+sub ShowTime:
+  NumU = TMin
+  NumV = TSec
+  print at 25,1, digits$(NumU, 2), ":", digits$(NumV, 2)
+  return
+end sub
+
+' seconds as mm:ss at a place
+sub PrintTime(u16 Secs, u8 Col, u8 Row):
+  NumU = Secs / 60
+  NumV = Secs mod 60
+  print at Col,Row, digits$(NumU, 2), ":", digits$(NumV, 2)
+  return
+end sub
+
+' sprites 0-1 the prisoner (stripes, suit), 2-3 the guard (face, uniform)
+sub DrawSprites:
+  K = PAn >> 2
+  K = K & 1
+  K = K * 8
+  Y = PY - 1
+  if Freeze > 0 then
+    V = Freeze / 15
+    V = V & 1
+    if V = 1 then Y = 192
+  end if
+  set sprite 0 to Y,PX,SPd0 + K,1
+  set sprite 1 to Y,PX,SPb0 + K,15
+  K = GX + GY
+  K = K >> 3
+  K = K & 1
+  K = K * 8
+  set sprite 2 to GY - 1,GX,SGd0 + K,9
+  set sprite 3 to GY - 1,GX,SGb0 + K,4
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy YardMap count 768 to vram.name
+  for Dc = 0 to 8
+    Cells[Dc].Door = 0
+    Cells[Dc].Item = 1
+  next
+  Cells[4].Item = 0
+  Cells[4].Door = 1
+  Cells[8].Item = 2
+  for Dc = 0 to 8
+    DrawDoor(Dc)
+    DrawItem(Dc)
+  next
+  put char TClock at 23,1
+  put char TFicon at 23,2
+  Ev = 0
+  TFr = 0
+  TSec = 0
+  TMin = 0
+  ShowTime
+  ShowCount
+  PM = 2
+  PC = 4
+  PX = LaneX[1] + 24
+  PY = LaneY[1] + 24
+  PW = 0
+  PAn = 0
+  GI = 2
+  GJ = 2
+  GX = LaneX[2]
+  GY = LaneY[2]
+  GTx = GX
+  GTy = GY
+  GSpd = 2
+  GF = 0
+  Won = 0
+  Freeze = 0
+  DoorT = 0
+  Catches = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  ' up and down together, or left and right, count as neither
+  V = J1 & 3
+  if V = 3 then J1 = J1 & 252
+  V = J1 & 12
+  if V = 12 then J1 = J1 & 243
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: JAIL BREAK in brick letters behind bars, the guard chasing the
+' prisoner along the bottom, START / CREDITS, the best time, the tune once
+sub TitlePage:
+  NewScreen
+  print at 6,1, "AHOY! FEBRUARY 1987"
+  copy TitleMap count 384 to vram.name + 96
+  print at 8,16, "BY BOB BLACKMER"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Best > 0 then
+    print at 10,21, "BEST"
+    PrintTime(Best, 15, 21)
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  TbX = 16
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the prisoner runs right along the bottom, the guard 40 pixels behind
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then
+    inc TbX
+    if TbX > 230 then TbX = 16
+  end if
+  K = TbX >> 2
+  K = K & 1
+  K = K * 8
+  if TbX < 200 then
+    set sprite 0 to 175,TbX + 24,SPd0 + K,1
+    set sprite 1 to 175,TbX + 24,SPb0 + K,15
+  else
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  end if
+  if TbX > 16 then
+    set sprite 2 to 175,TbX - 16,SGd0 + K,9
+    set sprite 3 to 175,TbX - 16,SGb0 + K,4
+  else
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "JAILBREAK"
+  print at 2,5, "BASED ON JAILBREAK BY BOB"
+  print at 2,6, "BLACKMER, AHOY! FEBRUARY"
+  print at 2,7, "1987 (COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: LIGHTS OUT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+JbSlam:
+    db $00,$00,$15,$02,$00,$00,$36,$03,$00,$00,$66,$03,$10
+JbClank:
+    db $40,$5D,$20,$02,$40,$7C,$40,$03,$40,$BA,$70,$04,$50
+JbFile:
+    db $40,$7F,$20,$03,$40,$5F,$20,$03,$40,$40,$30,$06,$50
+JbSiren:
+    db $40,$BA,$20,$02,$40,$A7,$20,$02,$40,$97,$20,$02,$40,$8A,$20,$02,$40,$7F,$20,$02,$40,$76,$20,$02
+    db $40,$6E,$20,$02,$40,$67,$20,$02,$40,$60,$20,$02,$40,$5B,$20,$02,$40,$56,$20,$02,$40,$52,$20,$02
+    db $40,$BA,$20,$02,$40,$A7,$20,$02,$40,$97,$20,$02,$40,$8A,$20,$02,$40,$7F,$20,$02,$40,$76,$20,$02
+    db $40,$6E,$20,$02,$40,$67,$20,$02,$40,$60,$20,$02,$40,$5B,$20,$02,$40,$56,$20,$02,$40,$52,$20,$02
+    db $50
+JbOpen:
+    db $40,$4B,$50,$02,$40,$3E,$60,$02,$50
+JbNope:
+    db $40,$FC,$31,$05,$40,$3B,$42,$05,$50
+JbFree:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$20,$18
+    db $50
+JbStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$0C,$50
+
+JbSoundTable:
+    dw JbTuneMel,$702B
+    dw JbTuneBass,$7035
+    dw JbSlam,$703F
+    dw JbClank,$7049
+    dw JbFile,$7049
+    dw JbSiren,$7049
+    dw JbOpen,$7049
+    dw JbNope,$7049
+    dw JbFree,$7049
+    dw JbStart,$7049
+; Lights Out (original)
+; Tiny Sound, 8 frames per step
+JbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$01,$21,$01,$1F,$01,$1E
+    db $01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$23,$01,$21,$01,$01,$01,$1E
+    db $01,$1A,$01,$1C,$01,$1F,$01,$23,$01,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$21,$01,$1F,$1E,$1C,$01,$23,$01,$28,$01
+    db $01,$00,$01
+    db $FF
+JbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$10,$01,$17,$01,$10,$01,$17,$01,$15,$01,$10,$01
+    db $15,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$0E,$01,$10,$01,$01,$0B
+    db $01,$00,$01
+    db $FF
+}

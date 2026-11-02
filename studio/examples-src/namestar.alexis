@@ -1,0 +1,1558 @@
+cartridge "NAME THAT STAR/BOB LLORET/1984"
+
+' NAME THAT STAR
+' A ColecoVision game based on "Name That Star" V2.0 by Bob Lloret, Ahoy!
+' April 1984 (Commodore 64 BASIC, disk ahoy1984-jan-jun, orig/).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a TV game show. Fill in the contestant's application (your
+' first name), and the host welcomes you and offers to explain the game.
+' Forty mystery names of famous people follow, one at a time. The name is
+' shown jumbled on the marquee and the host gives a clue in his speech
+' balloon. You get three guesses at each name; after the third wrong
+' guess the host tells you who it was. At the end the host says goodbye
+' and tells you how many stars you named.
+'
+' From the original (orig/name that star.bas): the application, the
+' acceptance, the host's dialogue (welcome, "let's welcome our player",
+' the offer to explain, the four explanation pages, "if you're ready to
+' go... let's play Name That Star", "our first / next mystery name is",
+' "correct, you now have n correct", "wrong, you have 2 guesses left",
+' "wrong again", "I'm sorry, but this famous person is", the closing
+' lines), the 40 mystery names with their jumbled forms and clues, three
+' guesses a name, the count of names guessed, the rising jingle on a
+' correct answer, the light-bulb marquee and the speech balloon.
+'
+' Liberties:
+' - Typed answers become joystick choices: six names (the right one and
+'   five other stars of the 40, drawn at random) under the clue; a wrong
+'   choice is crossed out and the pointer moves on. With choices, three
+'   guesses would be too easy, so a guess also scores points: 3 for the
+'   first guess, 2 for the second, 1 for the third (120 at most); the
+'   original's count of names guessed is kept beside it. Random guessing
+'   averages about 40 points.
+' - The first name is spelled on a letter board (up to 8 letters).
+' - The 40 names come in a new random order each game (the original
+'   always asked them in the same order); the best score is kept on the
+'   title.
+' - "Type C to continue" is a press of a button; the delay loops are
+'   short pauses or a press.
+' - Facts corrected (stars.py lists each): Brando's clue (his roles, not
+'   his heritage: he was not Italian), Gracie Allen (her character was
+'   the scatterbrain), Chaplin (baggy pants, not tails), Oliver Hardy (a
+'   film comic, not TV), Harrison Ford (Harrison is not a state: his
+'   hero was named Indiana; WOOKIEE), Bill Bixby (David Banner turned
+'   into the Hulk), Bob Denver (the beatnik and the castaway were two
+'   roles), Leonard Nimoy (the nerve pinch knocks out, not paralyzes),
+'   Clint Eastwood (Clyde was an orangutan, not a monkey), Boris Karloff
+'   (not the first screen Frankenstein monster: Charles Ogle, 1910), and
+'   the jumble of Danny Thomas (YANDY had a Y for an N).
+'
+' Controls: either controller. Stick up/down chooses, a button picks. On
+' the letter board the stick moves in four directions; DEL rubs out a
+' letter, END finishes. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table; the title
+' tune is played once. `set sprite count` is given after every `clear
+' sprites`. Own xorshift random numbers. The marquee bulbs change once a
+' second (nothing flashes faster than 3 Hz).
+
+const TMt = 128
+const TMb = 129
+const TMl = 130
+const TMr = 131
+const TMtl = 132
+const TMtr = 133
+const TMbl = 134
+const TMbr = 135
+const TMtd = 136
+const TMbd = 137
+const TMld = 138
+const TMrd = 139
+const TMtld = 140
+const TMtrd = 141
+const TMbld = 142
+const TMbrd = 143
+const TCurt = 144
+const TVal = 145
+const TFloor = 146
+const TBtl = 147
+const TBtr = 148
+const TBbl = 149
+const TBbr = 150
+const TBt = 151
+const TBb = 152
+const TBl = 153
+const TBr = 154
+const TBtail = 155
+const THost00 = 156
+const THost01 = 157
+const THost02 = 158
+const THost03 = 159
+const THost10 = 160
+const THost11 = 161
+const THost12 = 162
+const THost13 = 163
+const THost20 = 164
+const THost21 = 165
+const THost22 = 166
+const THost23 = 167
+const THost30 = 168
+const THost31 = 169
+const THost32 = 170
+const THost33 = 171
+const THost40 = 172
+const THost41 = 173
+const THost42 = 174
+const THost43 = 175
+const TStar = 176
+const TCross = 177
+const TTick = 178
+const TUnder = 179
+const TCone = 180
+const SPtr = 0
+const SSpark = 4
+const NTiles8 = 424
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndPick = 4
+const SndRight = 5
+const SndWrong = 6
+const SndLose = 7
+const SndTalk = 8
+const SndEnd = 9
+const NSpr = 5
+const NStars = 40
+const NCh = 6
+const ChRow = 14
+const ChCol = 8
+const MaxName = 8
+const TuneLen = 536
+
+' generated by stars.py: 40 names (16 columns), jumbled names, clues (5 x 20)
+data QName chars
+  "MICK JAGGER     "
+  "ELVIS PRESLEY   "
+  "SPENCER TRACY   "
+  "MARLON BRANDO   "
+  "JAMES ARNESS    "
+  "JOHN WAYNE      "
+  "GRACIE ALLEN    "
+  "BABE RUTH       "
+  "CHARLIE CHAPLIN "
+  "OLIVER HARDY    "
+  "JACKIE GLEASON  "
+  "RONALD REAGAN   "
+  "HARRISON FORD   "
+  "GROUCHO MARX    "
+  "JACK KLUGMAN    "
+  "DANNY THOMAS    "
+  "LEE MAJORS      "
+  "BILL BIXBY      "
+  "HENRY WINKLER   "
+  "BOB DENVER      "
+  "ROB REINER      "
+  "JOHN FORSYTHE   "
+  "MARY TYLER MOORE"
+  "GAVIN MACLEOD   "
+  "DEMOND WILSON   "
+  "PETER FALK      "
+  "LOU COSTELLO    "
+  "RICHARD DREYFUSS"
+  "LEONARD NIMOY   "
+  "TELLY SAVALAS   "
+  "JOHN TRAVOLTA   "
+  "MICHAEL LANDON  "
+  "JOHNNY CARSON   "
+  "CLINT EASTWOOD  "
+  "BORIS KARLOFF   "
+  "SOUPY SALES     "
+  "MICKEY MOUSE    "
+  "ROBIN WILLIAMS  "
+  "HOWARD COSELL   "
+  "PERRY COMO      "
+end data
+data QJumb chars
+  "KMCI RAGEJG     "
+  "SVILE SPLEREY   "
+  "NEPCERS CARYT   "
+  "RONLAM RODBAN   "
+  "MAJES SNARES    "
+  "NJHO YENAW      "
+  "CRAEGI NEALL    "
+  "ABBE HURT       "
+  "CLAREIH PHLANCI "
+  "ROVELI YRHDA    "
+  "KEAJIC SNOGELA  "
+  "DALNOR GRANEA   "
+  "RASHNOIR OFDR   "
+  "CHOUGRO AXRM    "
+  "KJAC GULKNAM    "
+  "NANDY MOTSAH    "
+  "ELE JAMROS      "
+  "LILB BYIXB      "
+  "RNEYH LEWNIKR   "
+  "OBB RENDEV      "
+  "BOR NEERIR      "
+  "HONJ THORSYFE   "
+  "RAYM TERLY ROEMO"
+  "VAING DOMLACE   "
+  "NOMDED WINSLO   "
+  "TREEP KLAF      "
+  "OLU STOLLECO    "
+  "CHRIDAR SEYDURFS"
+  "NEORDAL YINOM   "
+  "LYTLE LAVSAAS   "
+  "HONJ LAVRATTO   "
+  "CHAMIEL NODNAL  "
+  "HONNJY ROSNAC   "
+  "TNICL SOOTDAWE  "
+  "ROSBI FALKROF   "
+  "POUSY LASES     "
+  "KIMECY SMUEO    "
+  "NOBIR LIAMSWIL  "
+  "RAWHOD CLESOL   "
+  "REPRY MOOC      "
+end data
+data QClue chars
+  "HE'S A HARD PERSON  "
+  "TO SATISFY... WHO IS"
+  "THIS FAMOUS PERSON? "
+  "                    "
+  "                    "
+  "HIS TITLE IS KING   "
+  "BUT HE HAS PASSED.  "
+  "WHO IS THIS FAMOUS  "
+  "RECORDING STAR?     "
+  "                    "
+  "HIS FAMOUS PARTNER  "
+  "WAS {34}KATE{34}... WHO IS"
+  "THIS FAMOUS ACTOR?  "
+  "                    "
+  "                    "
+  "WORKED THE DOCKS,   "
+  "DID A TANGO IN      "
+  "PARIS, PLAYED THE   "
+  "GODFATHER. WHO IS   "
+  "HE?                 "
+  "THAT {34}THING'S{34}      "
+  "SCARY. WORE A SIX   "
+  "SHOOTER. WHO IS THIS"
+  "FAMOUS ACTOR?       "
+  "                    "
+  "HIS TITLE WAS DUKE. "
+  "SAT TALL IN THE     "
+  "SADDLE. WHO IS HE?  "
+  "                    "
+  "                    "
+  "SHE WAS MARRIED TO  "
+  "HER STRAIGHT MAN.   "
+  "PLAYED A            "
+  "SCATTERBRAIN. WHO IS"
+  "SHE?                "
+  "CARRIED BIG STICK.  "
+  "BULGING WAIST LINE. "
+  "KNOWN FOR RECORDS.  "
+  "WHO IS THIS STAR?   "
+  "                    "
+  "A DERBY, A CANE AND "
+  "BAGGY PANTS WERE    "
+  "THIS MAN'S          "
+  "TRADEMARK. WHO IS   "
+  "HE?                 "
+  "HE WAS ALWAYS IN    "
+  "ANOTHER FINE MESS.  "
+  "NAME THIS FAMOUS    "
+  "FILM COMIC.         "
+  "                    "
+  "ONLY HIS SIZE OUT-  "
+  "WEIGHED HIS COMEDY. "
+  "WHO IS THIS WELL    "
+  "KNOWN STAR?         "
+  "                    "
+  "THIS MAN'S CAREER   "
+  "WENT FROM HOLLYWOOD "
+  "TO WASHINGTON... WHO"
+  "IS THIS STAR?       "
+  "                    "
+  "PLAYED A HERO NAMED "
+  "AFTER A STATE. HAS A"
+  "WOOKIEE FOR CO-     "
+  "PILOT...            "
+  "                    "
+  "SMOKED A BIG CIGAR. "
+  "HEAVY EYEBROWS AND  "
+  "MUSTACHE... WHO IS  "
+  "HE?                 "
+  "                    "
+  "SLOPPY ROOM MATE.   "
+  "MEDICAL EXAMINER.   "
+  "LOVES THE HORSES.   "
+  "WHO IS THIS ACTOR?  "
+  "                    "
+  "THERE WAS ALWAYS    "
+  "ROOM FOR DADDY. WHO "
+  "IS THIS BIG NOSED TV"
+  "ACTOR?              "
+  "                    "
+  "WAS MARRIED TO AN   "
+  "ANGEL. KEEPS ON     "
+  "FALLING. WHO IS THIS"
+  "STAR?               "
+  "                    "
+  "TURNED INTO A HULK  "
+  "WHEN ANGRY. HAD A   "
+  "FAVORITE MARTIAN.   "
+  "WHO IS HE?          "
+  "                    "
+  "HIS THUMBS ARE HIS  "
+  "TRADEMARK. HIS DAYS "
+  "WERE ALWAYS HAPPY.  "
+  "WHO IS THIS ACTOR?  "
+  "                    "
+  "PLAYED A BEATNIK,   "
+  "THEN GOT SHIPWRECKED"
+  "ON AN ISLAND... WHO "
+  "IS HE?              "
+  "                    "
+  "HIS FATHER-IN-LAW   "
+  "CALLED HIM MEATHEAD."
+  "FATHER'S NAME CARL. "
+  "WHO IS HE?          "
+  "                    "
+  "HIS BACHELORHOOD LED"
+  "TO A DYNASTY. WHO IS"
+  "THIS FAMOUS TV      "
+  "ACTOR?              "
+  "                    "
+  "RHODA'S BEST FRIEND."
+  "ROB'S WIFE. FAMOUS  "
+  "TV AND MOVIE        "
+  "ACTRESS?            "
+  "                    "
+  "LOVES HIS BOAT.     "
+  "WORKED FOR LOU. WHO "
+  "IS THIS WELL KNOWN  "
+  "TV ACTOR?           "
+  "                    "
+  "HIS LAZY FATHER     "
+  "BUILT A JUNK EMPIRE."
+  "THIS TV ACTOR WAS   "
+  "ALSO VERY ODD.      "
+  "                    "
+  "HIS RAINCOAT WAS A  "
+  "TRADEMARK... LOOKED "
+  "FROM ONE SIDE. A    "
+  "FAMOUS MOVIE STAR.  "
+  "                    "
+  "NEVER KNEW THE NAMES"
+  "OF THE BASEBALL     "
+  "TEAM... WHO WAS THIS"
+  "STAR?               "
+  "                    "
+  "LOOKED AT A LARGE   "
+  "SET OF JAWS. HAD A  "
+  "CLOSE ENCOUNTER. A  "
+  "FAMOUS ACTOR.       "
+  "                    "
+  "A STARSHIP WAS HIS  "
+  "ENTERPRISE. HIS     "
+  "PINCH KNOCKS YOU    "
+  "OUT. A FAMOUS ACTOR."
+  "                    "
+  "A BALD DETECTIVE.   "
+  "LOVED A LOLLIPOP.   "
+  "GREEK HERITAGE...   "
+  "WHO IS THIS ACTOR?  "
+  "                    "
+  "RAN A HIGH TEMP. ON "
+  "SAT. NIGHT BUT      "
+  "STAYED ALIVE. WHO IS"
+  "HE?                 "
+  "                    "
+  "WENT FROM A LARGE   "
+  "RANCH TO A LITTLE   "
+  "HOUSE... WHO IS THIS"
+  "FAMOUS ACTOR?       "
+  "                    "
+  "SIDEKICKS DOC AND ED"
+  "HELPED GET HIM      "
+  "THROUGH TONIGHT. WHO"
+  "IS HE?              "
+  "                    "
+  "AN ORANGUTAN WAS HIS"
+  "PAL. THIS TOUGH GUY "
+  "WAS NEVER CLEAN. WHO"
+  "IS THIS STAR?       "
+  "                    "
+  "THIS MONSTER OF AN  "
+  "ACTOR WAS THE MOST  "
+  "FAMOUS OF HIS BREED."
+  "WHO IS HE?          "
+  "                    "
+  "HIS STRAIGHT MAN WAS"
+  "FANG. LOVED TO      "
+  "RECEIVE PIES. WHO IS"
+  "HE?                 "
+  "                    "
+  "WALT'S FAVORITE     "
+  "CHARACTER ALTHOUGH  "
+  "HE WASN'T GOOFY. WHO"
+  "IS HE?              "
+  "                    "
+  "HE WAS OUT OF THIS  "
+  "WORLD BUT MINDY     "
+  "LOVED HIM. WHO IS   "
+  "THIS ACTOR?         "
+  "                    "
+  "A WIG AND MOUTH ARE "
+  "HIS TRADEMARKS...   "
+  "VERY SARCASTIC. WHO "
+  "IS HE?              "
+  "                    "
+  "LOTS OF LETTERS WERE"
+  "RECEIVED FOR THIS   "
+  "CROONER. WHO IS HE? "
+  "                    "
+  "                    "
+end data
+data QShe bytes
+  0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+' the letter board: 26 letters, DEL, END in 7 columns x 4 rows
+data BoardCh bytes
+  65,66,67,68,69,70,71, 72,73,74,75,76,77,78, 79,80,81,82,83,84,85, 86,87,88,89,90,0,0
+end data
+
+record RoundRec
+  u8 Star
+  u8 Guess
+  u8 Slot
+  u8 Cur
+end record
+
+RoundRec Rd
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 RsStart = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Off = 0
+bcd digits 3 Score = 0
+bcd digits 3 Best = 0
+u8 Ord[40]
+u8 Ch[6]
+u8 Wr[6]
+u8 PName[8]
+u8 PLen = 0
+u8 Rnd = 0
+u8 Ok = 0
+u8 Res = 0
+u8 Gs = 0
+u8 BulbT = 0
+u8 BulbP = 0
+u8 SparkT = 0
+u8 SpX = 0
+u8 SpY = 0
+u8 TitleOn = 0
+u8 Phase = 0
+u8 Ans = 0
+' what the game waits for (for the bots): 1 a press, 2 yes/no, 3 a guess,
+' 4 the letter board, 0 busy
+u8 Wt = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 RepT = 0
+u8 Mv = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Li = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table NsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NameEntry
+  NewGame
+  StageScreen
+  HostIntro
+
+next_star:
+  PlayRound
+  inc Rnd
+  if Rnd < NStars then goto next_star
+
+  ' the closing dialogue (lines 750-830), then back to the title
+  Phase = 3
+  ClearBalloon
+  print at 9,7, "WELL, "
+  NameAt(15, 7, 44)
+  print at 9,8, "IT'S TIME FOR US TO"
+  print at 9,9, "BE LEAVING YOU, BUT"
+  print at 9,10, "BEFORE WE GO..."
+  WaitPress
+  if Score > Best then Best = Score
+  ClearBalloon
+  ClearChoices
+  print at 9,7, "MAY I SAY THAT YOU"
+  print at 9,8, "HAVE BEEN A WONDER-"
+  print at 9,9, "FUL GUEST AND A"
+  print at 9,10, "GOOD SPORT."
+  print at 9,11, "SO LONG!"
+  print at 6,15, "STARS NAMED"
+  NumU = Ok
+  print at 18,15, digits$(NumU, 2), " OF 40"
+  print at 6,17, "POINTS"
+  print at 18,17, Score, " OF 120"
+  fill 32 count 28 at 2,21
+  Phase = 4
+  play sound SndEnd
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a game
+
+sub NewGame:
+  Score = 0
+  Ok = 0
+  Rnd = 0
+  RsStart = Rs
+  Shuffle
+  return
+end sub
+
+' Fisher-Yates over the 40 names
+sub Shuffle:
+  for Ci = 0 to 39
+    Ord[Ci] = Ci
+  next
+  for Ci = 0 to 38
+    K = 39 - Ci
+    J = RandN(K + 1)
+    swap Ord[K] with Ord[J]
+  next
+  return
+end sub
+
+function RandN(u8 Lim) as u8
+  u8 Lo = 0
+  Rand
+  W16 = Rs >> 3
+  Lo = W16 & 255
+  return Lo % Lim
+
+' is star S already one of the choices?
+function Used(u8 S) as u8
+  u8 Hit = 0
+  u8 Ui = 0
+  for Ui = 0 to 5
+    if Ch[Ui] = S then Hit = 1
+  next
+  return Hit
+
+' six choices: the star at a random slot, five others not repeated
+sub BuildChoices:
+  for Ci = 0 to 5
+    Ch[Ci] = 255
+    Wr[Ci] = 0
+  next
+  Rd.Slot = RandN(NCh)
+  Ch[Rd.Slot] = Rd.Star
+  for Ci = 0 to 5
+    if Ch[Ci] = 255 then
+      Got = 1
+      while Got = 1
+        N = RandN(NStars)
+        Got = Used(N)
+      end while
+      Ch[Ci] = N
+    end if
+  next
+  return
+end sub
+
+sub PlayRound:
+  Rd.Star = Ord[Rnd]
+  Rd.Guess = 1
+  Rd.Cur = 0
+  Res = 0
+  BuildChoices
+  ShowHud
+  ' "our first / next mystery name is...."
+  Phase = 1
+  ClearChoices
+  ShowJumble
+  ClearBalloon
+  if Rnd = 0 then
+    print at 9,8, "OUR FIRST MYSTERY"
+  else
+    print at 9,8, "OUR NEXT MYSTERY"
+  end if
+  print at 9,9, "NAME IS...."
+  fill 32 count 28 at 2,21
+  Pause(60)
+  ShowClue
+  DrawChoices
+  Phase = 2
+  GuessLine
+  while Res = 0
+    Wt = 3
+    Frame1
+    ReadPad
+    Animate
+    MoveCursor
+    PlacePtr
+    if Press = 1 then
+      Wt = 0
+      Pick
+    end if
+  end while
+  Wt = 0
+  HidePtr
+  WaitPress
+  return
+end sub
+
+' the stick moves the pointer (repeat while held), a button picks
+sub MoveCursor:
+  if Mv = 1 then
+    if Rd.Cur > 0 then
+      dec Rd.Cur
+    else
+      Rd.Cur = NCh - 1
+    end if
+    play sound SndMove
+  end if
+  if Mv = 2 then
+    inc Rd.Cur
+    if Rd.Cur >= NCh then Rd.Cur = 0
+    play sound SndMove
+  end if
+  return
+end sub
+
+sub Pick:
+  K = Rd.Cur
+  if Wr[K] = 1 then return
+  if K = Rd.Slot then
+    ' right (lines 535-550): 3, 2 or 1 points
+    N = 4 - Rd.Guess
+    Score += N
+    inc Ok
+    Res = 1
+    put char TTick at ChCol - 2,ChRow + K
+    ShowName
+    ShowHud
+    play sound SndRight
+    SpX = 40
+    Y = ChRow + K
+    SpY = Y * 8 - 5
+    SparkT = 40
+    ClearBalloon
+    print at 9,7, "CORRECT, "
+    NameAt(18, 7, 33)
+    print at 9,8, "YOU NOW HAVE"
+    NumU = Ok
+    print at 22,8, digits$(NumU, 2)
+    print at 9,9, "CORRECT."
+    NumU = N
+    print at 9,11, "+", digits$(NumU, 1), " POINTS"
+    return
+  end if
+  ' wrong (lines 590-720)
+  Wr[K] = 1
+  put char TCross at ChCol - 2,ChRow + K
+  inc Rd.Guess
+  NextFree
+  if Rd.Guess > 3 then
+    Res = 2
+    put char TTick at ChCol - 2,ChRow + Rd.Slot
+    ShowName
+    play sound SndLose
+    ClearBalloon
+    print at 9,7, "I'M SORRY, "
+    NameAt(20, 7, 44)
+    print at 9,8, "BUT THIS FAMOUS"
+    print at 9,9, "PERSON IS..."
+    Off = Rd.Star * 16
+    put QName + Off count 16 at 9,11
+    return
+  end if
+  play sound SndWrong
+  WrongTalk
+  Pause(100)
+  ShowClue
+  GuessLine
+  return
+end sub
+
+sub WrongTalk:
+  ClearBalloon
+  select case Rd.Guess
+  case 2
+    print at 9,7, "WRONG, "
+    NameAt(16, 7, 46)
+    print at 9,8, "YOU HAVE 2 GUESSES"
+    print at 9,9, "LEFT."
+  case else
+    print at 9,7, "WRONG AGAIN, "
+    NameAt(22, 7, 46)
+    print at 9,8, "YOU HAVE 1 GUESS"
+    print at 9,9, "LEFT."
+  end select
+  print at 9,10, "LET'S TRY AGAIN.."
+  return
+end sub
+
+' the pointer moves on to the next choice not crossed out
+sub NextFree:
+  for Ki = 1 to 5
+    K = Rd.Cur + 1
+    if K >= NCh then K = 0
+    Rd.Cur = K
+    if Wr[K] = 0 then exit for
+  next
+  return
+end sub
+
+sub GuessLine:
+  fill 32 count 28 at 2,21
+  NumU = Rd.Guess
+  print at 9,21, "GUESS ", digits$(NumU, 1), " OF 3"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the host's opening dialogue (lines 100-440)
+
+sub HostIntro:
+  Phase = 1
+  ClearBalloon
+  print at 9,7, "HELLO LADIES AND"
+  print at 9,8, "GENTLEMEN. WELCOME"
+  print at 9,9, "TO NAME THAT STAR."
+  WaitPress
+  ClearBalloon
+  print at 9,7, "LET'S WELCOME OUR"
+  print at 9,8, "PLAYER, "
+  NameAt(17, 8, 33)
+  WaitPress
+  ClearBalloon
+  print at 9,7, "DO YOU WANT ME TO"
+  print at 9,8, "EXPLAIN THE GAME,"
+  NameAt(9, 9, 63)
+  Ans = AskYesNo
+  if Ans = 0 then
+    ClearBalloon
+    print at 9,7, "I WILL DISPLAY A"
+    print at 9,8, "FAMOUS NAME WHERE"
+    print at 9,9, "IT SAYS  NAME ."
+    put char 34 at 17,9
+    put char 34 at 22,9
+    WaitPress
+    ClearBalloon
+    print at 9,7, "THE NAME WILL BE"
+    print at 9,8, "JUMBLED SO YOU CAN"
+    print at 9,9, "NOT READ IT..."
+    WaitPress
+    ClearBalloon
+    print at 9,7, "I WILL GIVE YOU A"
+    print at 9,8, "CLUE AND SIX NAMES."
+    print at 9,9, "PICK THE STAR WITH"
+    print at 9,10, "THE STICK AND A"
+    print at 9,11, "BUTTON."
+    WaitPress
+    ClearBalloon
+    print at 9,7, "YOU'LL ONLY GET 3"
+    print at 9,8, "TRIES AT EACH NAME:"
+    print at 9,9, "3 POINTS FOR THE"
+    print at 9,10, "FIRST, 2 FOR THE"
+    print at 9,11, "SECOND, 1 THE THIRD"
+    WaitPress
+  end if
+  ClearBalloon
+  print at 9,7, "IF YOU'RE READY"
+  print at 9,8, "TO GO..."
+  print at 9,10, "  LET'S PLAY"
+  print at 9,11, "  NAME THAT STAR!"
+  play sound SndPick
+  WaitPress
+  return
+end sub
+
+' YES / NO in the choice area; returns 0 for YES
+function AskYesNo as u8
+  ClearChoices
+  print at ChCol,ChRow, "YES"
+  print at ChCol,ChRow + 1, "NO"
+  Rd.Cur = 0
+  fill 32 count 28 at 2,21
+  Press = 0
+  Wt = 2
+  while Press = 0
+    Frame1
+    ReadPad
+    Animate
+    if Mv > 0 then
+      Rd.Cur = Rd.Cur ^ 1
+      play sound SndMove
+    end if
+    PlacePtr
+  end while
+  Wt = 0
+  play sound SndPick
+  HidePtr
+  ClearChoices
+  return Rd.Cur
+
+' ---------------------------------------------------------------------------
+' the contestant's application (lines 60-90): a letter board
+
+sub NameEntry:
+  NewScreen
+  DrawStage
+  print at 4,3, "CONTESTANT'S APPLICATION"
+  print at 5,7, "FIRST NAME:"
+  print at 3,20, "STICK: LETTER  BUTTON: OK"
+  for Li = 0 to 27
+    BoardPos(Li)
+    if Li < 26 then
+      put char BoardCh[Li] at X,Y
+    end if
+  next
+  print at 21,17, "DEL"
+  print at 25,17, "END"
+  ShowEntered
+  ShowScreen
+  Rd.Cur = 0
+  Got = 0
+  while Got = 0
+    Wt = 4
+    Frame1
+    inc Rs
+    ReadPad
+    BoardMove
+    BoardPos(Rd.Cur)
+    X = X * 8 - 18
+    Y = Y * 8 - 5
+    set sprite 0 to Y,X,SPtr,11
+    update sprites
+    if Press = 1 then BoardPick
+  end while
+  Wt = 0
+  HidePtr
+  ' lines 85-90
+  print at 5,11, "                         "
+  for Li = 13 to 20
+    fill 32 count 28 at 2,Li
+  next
+  print at 5,11, "CONGRATULATIONS..."
+  NameAt(5, 12, 44)
+  print at 5,13, "YOU HAVE BEEN ACCEPTED."
+  play sound SndPick
+  WaitPressPlain
+  return
+end sub
+
+sub BoardPos(u8 Bi):
+  K = Bi % 7
+  X = K * 3 + 6
+  K = Bi / 7
+  Y = K * 2 + 11
+  if Bi = 27 then X = 25
+  return
+end sub
+
+sub BoardMove:
+  K = Rd.Cur % 7
+  N = Rd.Cur / 7
+  if Mv = 1 then
+    if N > 0 then dec N else N = 3
+  end if
+  if Mv = 2 then
+    inc N
+    if N > 3 then N = 0
+  end if
+  if Mv = 3 then
+    if K > 0 then dec K else K = 6
+  end if
+  if Mv = 4 then
+    inc K
+    if K > 6 then K = 0
+  end if
+  if Mv > 0 then play sound SndMove
+  Rd.Cur = N * 7 + K
+  return
+end sub
+
+sub BoardPick:
+  select case Rd.Cur
+  case 26
+    if PLen > 0 then dec PLen
+  case 27
+    if PLen = 0 then
+      ' no name: the host calls you PLAYER
+      PName[0] = 80
+      PName[1] = 76
+      PName[2] = 65
+      PName[3] = 89
+      PName[4] = 69
+      PName[5] = 82
+      PLen = 6
+    end if
+    Got = 1
+  case else
+    if PLen < MaxName then
+      PName[PLen] = BoardCh[Rd.Cur]
+      inc PLen
+    end if
+  end select
+  play sound SndPick
+  ShowEntered
+  return
+end sub
+
+sub ShowEntered:
+  for Li = 0 to 7
+    if Li < PLen then
+      put char PName[Li] at 17 + Li,7
+    else
+      put char TUnder at 17 + Li,7
+    end if
+  next
+  return
+end sub
+
+' the name, then one character (, ! ? .) right after it
+sub NameAt(u8 Nx, u8 Ny, u8 Tail):
+  put PName count PLen at Nx,Ny
+  put char Tail at Nx + PLen,Ny
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the stage
+
+sub StageScreen:
+  NewScreen
+  DrawStage
+  DrawMarquee
+  print at 5,2, "     NAME THAT STAR   "
+  DrawBalloon
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+sub DrawStage:
+  fill TVal count 32 at 0,0
+  for Li = 1 to 23
+    put char TCurt at 0,Li
+    put char TCurt at 1,Li
+    put char TCurt at 30,Li
+    put char TCurt at 31,Li
+  next
+  fill TFloor count 28 at 2,23
+  return
+end sub
+
+sub DrawMarquee:
+  put char TMtl at 4,1
+  fill TMt count 22 at 5,1
+  put char TMtr at 27,1
+  put char TMl at 4,2
+  put char TMr at 27,2
+  put char TMbl at 4,3
+  fill TMb count 22 at 5,3
+  put char TMbr at 27,3
+  return
+end sub
+
+sub DrawBalloon:
+  put char TBtl at 7,6
+  fill TBt count 21 at 8,6
+  put char TBtr at 29,6
+  for Li = 7 to 11
+    put char TBl at 7,Li
+    put char TBr at 29,Li
+  next
+  put char TBtail at 7,9
+  put char TBbl at 7,12
+  fill TBb count 21 at 8,12
+  put char TBbr at 29,12
+  for Li = 0 to 4
+    K = THost00 + Li * 4
+    Y = 7 + Li
+    put char K at 2,Y
+    put char K + 1 at 3,Y
+    put char K + 2 at 4,Y
+    put char K + 3 at 5,Y
+  next
+  return
+end sub
+
+sub ClearBalloon:
+  for Li = 7 to 11
+    fill 32 count 20 at 9,Li
+  next
+  return
+end sub
+
+sub ClearChoices:
+  for Li = 14 to 19
+    fill 32 count 20 at 6,Li
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,4, "STAR"
+  NumU = Rnd + 1
+  if NumU > 40 then NumU = 40
+  print at 7,4, digits$(NumU, 2), " OF 40"
+  print at 19,4, "SCORE ", Score
+  return
+end sub
+
+sub ShowJumble:
+  print at 5,2, " NAME: "
+  Off = Rd.Star * 16
+  put QJumb + Off count 16 at 12,2
+  return
+end sub
+
+sub ShowName:
+  print at 5,2, " STAR: "
+  Off = Rd.Star * 16
+  put QName + Off count 16 at 12,2
+  return
+end sub
+
+sub ShowClue:
+  ClearBalloon
+  Off = Rd.Star * 100
+  for Li = 0 to 4
+    put QClue + Off count 20 at 9,7 + Li
+    Off = Off + 20
+  next
+  return
+end sub
+
+sub DrawChoices:
+  ClearChoices
+  for Li = 0 to 5
+    Off = Ch[Li] * 16
+    put QName + Off count 16 at ChCol,ChRow + Li
+  next
+  return
+end sub
+
+sub PlacePtr:
+  Y = ChRow + Rd.Cur
+  Y = Y * 8 - 5
+  set sprite 0 to Y,32,SPtr,11
+  update sprites
+  return
+end sub
+
+sub HidePtr:
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' waiting: the bulbs keep blinking, the sparkle flies
+
+sub Pause(u8 Nf):
+  for Ki = 1 to Nf
+    Frame1
+    ReadPad
+    Animate
+  next
+  return
+end sub
+
+sub WaitPress:
+  fill 32 count 28 at 2,21
+  print at 8,21, "PRESS THE BUTTON"
+  WaitPressPlain
+  fill 32 count 28 at 2,21
+  return
+end sub
+
+sub WaitPressPlain:
+  Press = 0
+  Pause(20)
+  Press = 0
+  Wt = 1
+  while Press = 0
+    Frame1
+    ReadPad
+    Animate
+  end while
+  Wt = 0
+  play sound SndTalk
+  return
+end sub
+
+sub Animate:
+  inc BulbT
+  if BulbT >= 30 then
+    BulbT = 0
+    BulbP = BulbP ^ 1
+    if BulbP = 1 then
+      copy TileCol + 64 count 64 to vram.color + 1024
+    else
+      copy TileCol count 64 to vram.color + 1024
+    end if
+  end if
+  if SparkT > 0 then
+    dec SparkT
+    K = 40 - SparkT
+    K = K >> 1
+    if SparkT = 0 then
+      for Li = 1 to 4
+        set sprite Li to 192,0,0,0
+      next
+    else
+      ' four sparkles fly out from the pointer
+      X = SpX + K
+      Y = SpY - K
+      set sprite 1 to Y,X,SSpark,11
+      X = SpX - K
+      if K > SpX then X = 0
+      set sprite 2 to Y,X,SSpark,15
+      Y = SpY + K
+      set sprite 3 to Y,X,SSpark,11
+      X = SpX + K
+      set sprite 4 to Y,X,SSpark,15
+    end if
+    update sprites
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Mv: 1 up, 2 down, 3 left, 4 right (on a new push, and repeated while
+' held: after 16 frames, then every 8)
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stk = V & 15
+  Mv = 0
+  if Stk = 0 then
+    RepT = 0
+  else
+    if Stk <> WasStk then
+      RepT = 16
+      Mv = StickDir(Stk)
+    else
+      dec RepT
+      if RepT = 0 then
+        RepT = 8
+        Mv = StickDir(Stk)
+      end if
+    end if
+  end if
+  WasStk = Stk
+  return
+end sub
+
+function StickDir(u8 Sv) as u8
+  if Sv & 1 then return 1
+  if Sv & 2 then return 2
+  if Sv & 4 then return 3
+  return 4
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  SparkT = 0
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  BulbP = 0
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the stage, the marquee, the host, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawStage
+  DrawMarquee
+  print at 9,2, "NAME THAT STAR"
+  DrawBalloon
+  print at 9,7, "A GAME SHOW OF"
+  print at 9,8, "FAMOUS NAMES"
+  print at 9,10, "BY BOB LLORET"
+  print at 9,11, "AHOY! APRIL 1984"
+  print at 11,15, "START GAME"
+  print at 11,16, "CREDITS"
+  print at 8,20, "BEST SCORE ", Best
+  put char TStar at 6,20
+  put char TStar at 25,20
+  ShowMenu
+  TitleOn = 1
+  Phase = 0
+  PLen = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Press = 0
+  while Press = 0
+    Frame1
+    inc Rs
+    ReadPad
+    Animate
+    if Mv = 1 then
+      Menu = 0
+      ShowMenu
+    end if
+    if Mv = 2 then
+      Menu = 1
+      ShowMenu
+    end if
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,15
+  put char 32 at 9,16
+  J = Menu + 15
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "NAME THAT STAR"
+  print at 2,5, "BASED ON NAME THAT STAR"
+  print at 2,6, "V2.0 BY BOB LLORET, AHOY!"
+  print at 2,7, "APRIL 1984 (COMMODORE 64)."
+  print at 2,9, "COLECOVISION GAME, MUSIC"
+  print at 2,10, "AND PICTURES BY CLAUDE"
+  print at 2,11, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "IN AMY BY AMY BIENVENU,"
+  print at 2,13, "2026."
+  print at 2,15, "A FEW 1984 CLUES WERE"
+  print at 2,16, "CORRECTED FOR ACCURACY."
+  print at 2,18, "MUSIC: STUDIO LIGHTS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$99,$99,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$99,$99,$00
+  $00,$30,$30,$00,$00,$30,$30,$00
+  $00,$0C,$0C,$00,$00,$0C,$0C,$00
+  $00,$99,$99,$00,$00,$60,$60,$00
+  $00,$99,$99,$00,$00,$06,$06,$00
+  $00,$60,$60,$00,$00,$99,$99,$00
+  $00,$06,$06,$00,$00,$99,$99,$00
+  $00,$99,$99,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$99,$99,$00
+  $00,$30,$30,$00,$00,$30,$30,$00
+  $00,$0C,$0C,$00,$00,$0C,$0C,$00
+  $00,$99,$99,$00,$00,$60,$60,$00
+  $00,$99,$99,$00,$00,$06,$06,$00
+  $00,$60,$60,$00,$00,$99,$99,$00
+  $00,$06,$06,$00,$00,$99,$99,$00
+  $22,$22,$44,$44,$22,$22,$44,$44
+  $00,$00,$00,$88,$22,$99,$22,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$20,$40,$40,$80,$80,$80
+  $00,$07,$04,$02,$02,$01,$01,$01
+  $80,$80,$80,$40,$40,$20,$E0,$00
+  $01,$01,$01,$02,$02,$04,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$E0,$30,$0C,$03,$04,$08
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$C0,$80,$60,$40,$98,$98
+  $00,$E0,$F0,$07,$07,$07,$98,$98
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$60,$38,$E0,$F0,$07
+  $07,$07,$F0,$C0,$E0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$F0,$F0,$F0,$F0
+  $38,$07,$0D,$07,$07,$07,$07,$07
+  $E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$C0,$C0
+  $F0,$F0,$F0,$F0,$03,$03,$03,$03
+  $07,$07,$07,$07,$07,$07,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$07,$F0,$30,$30,$80
+  $03,$03,$03,$01,$01,$01,$00,$00
+  $00,$00,$00,$01,$01,$01,$00,$00
+  $00,$00,$00,$80,$80,$80,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $10,$10,$38,$01,$83,$93,$C6,$00
+  $00,$C6,$93,$38,$93,$C6,$00,$00
+  $00,$03,$06,$CC,$87,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $06,$6B,$6B,$06,$01,$01,$01,$01
+  $01,$01,$01,$01,$06,$6B,$6B,$06
+  $06,$B6,$B6,$06,$06,$B6,$B6,$06
+  $06,$B6,$B6,$06,$06,$B6,$B6,$06
+  $06,$6B,$6B,$06,$06,$B6,$B6,$06
+  $06,$6B,$6B,$06,$06,$B6,$B6,$06
+  $06,$B6,$B6,$06,$06,$6B,$6B,$06
+  $06,$B6,$B6,$06,$06,$6B,$6B,$06
+  $06,$6A,$6A,$06,$01,$01,$01,$01
+  $01,$01,$01,$01,$06,$6A,$6A,$06
+  $06,$A6,$A6,$06,$06,$A6,$A6,$06
+  $06,$A6,$A6,$06,$06,$A6,$A6,$06
+  $06,$6A,$6A,$06,$06,$A6,$A6,$06
+  $06,$6A,$6A,$06,$06,$A6,$A6,$06
+  $06,$A6,$A6,$06,$06,$6A,$6A,$06
+  $06,$A6,$A6,$06,$06,$6A,$6A,$06
+  $68,$68,$68,$68,$68,$68,$68,$68
+  $0A,$08,$08,$68,$86,$16,$61,$01
+  $0E,$01,$0E,$01,$01,$0E,$01,$01
+  $01,$1F,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$1F,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$1F,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$1F,$01
+  $01,$0F,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$0F,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$1A,$1A,$1A,$A9,$A9,$19,$19
+  $01,$A1,$A1,$1A,$19,$19,$91,$91
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $09,$09,$89,$98,$98,$19,$19,$91
+  $19,$19,$91,$81,$91,$91,$91,$F1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$41,$41,$41,$14,$14,$14,$14
+  $F8,$84,$F4,$F4,$F4,$F4,$F4,$F4
+  $F1,$F4,$F4,$04,$04,$04,$04,$04
+  $01,$01,$01,$01,$41,$41,$41,$41
+  $14,$14,$14,$14,$41,$41,$41,$41
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $4E,$4E,$41,$19,$91,$E1,$E1,$41
+  $41,$41,$41,$41,$41,$41,$01,$0E
+  $04,$04,$04,$14,$14,$14,$01,$0E
+  $04,$04,$04,$14,$14,$14,$01,$0E
+  $41,$41,$41,$01,$01,$01,$01,$0E
+  $B1,$B1,$B1,$1B,$1B,$1B,$B1,$01
+  $01,$81,$18,$81,$18,$81,$01,$01
+  $01,$31,$31,$31,$13,$31,$01,$01
+  $01,$01,$01,$01,$01,$01,$05,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$01,$01,$03,$03,$FF,$7F,$3F,$1F,$1F,$3C,$38,$60,$00,$00
+  $00,$00,$80,$80,$C0,$C0,$FC,$F8,$F0,$E0,$E0,$F0,$70,$18,$00,$00
+  $00,$00,$00,$00,$01,$01,$09,$05,$3E,$05,$09,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$40,$F8,$40,$20,$00,$00,$00,$00,$00
+end data
+
+asm {
+NsMove:
+    db $40,$47,$30,$02,$50
+NsPick:
+    db $40,$71,$20,$03,$40,$55,$20,$03,$50
+NsRight:
+    db $40,$D6,$10,$03,$40,$AA,$10,$03,$40,$8F,$10,$03,$40,$6B,$10,$03,$40,$AA,$10,$03,$40,$8F,$10,$03
+    db $40,$6B,$10,$03,$40,$55,$10,$03,$40,$47,$20,$0C,$50
+NsWrong:
+    db $40,$3B,$12,$08,$40,$F9,$22,$10,$50
+NsLose:
+    db $40,$1D,$11,$0A,$40,$53,$21,$0A,$40,$AB,$21,$0A,$40,$3B,$22,$18,$50
+NsTalk:
+    db $40,$7F,$50,$02,$50
+NsEnd:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+
+NsSoundTable:
+    dw NsTuneMel,$702B
+    dw NsTuneBass,$7035
+    dw NsMove,$7049
+    dw NsPick,$7049
+    dw NsRight,$7049
+    dw NsWrong,$7049
+    dw NsLose,$7049
+    dw NsTalk,$7049
+    dw NsEnd,$7049
+; Studio Lights (original)
+; Tiny Sound, 8 frames per step
+NsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01
+    db $26,$01,$28,$01,$26,$01,$01,$01,$23,$01,$1F,$01,$21,$01,$23,$01
+    db $21,$01,$01,$01,$24,$01,$01,$23,$01,$21,$01,$1F,$01,$01,$1C,$01
+    db $1E,$01,$1F,$01,$21,$01,$23,$01,$26,$01,$01,$01,$2B,$01,$01,$01
+    db $26,$01,$2B,$01,$00,$01,$01
+    db $FF
+NsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$13,$01,$0E,$01,$07,$01,$0E,$01
+    db $13,$01,$0E,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $13,$01,$00,$01,$01,$01,$01
+    db $FF
+}

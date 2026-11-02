@@ -1,0 +1,1314 @@
+cartridge "ELMAC PLAYS NIM/DALE RUPERT/1986"
+
+' ELMAC PLAYS NIM
+' A ColecoVision game based on "ELMAC Plays NIM" by Dale Rupert, The
+' Rupert Report #26 ("ELMAC: The Computer Teaches Itself"), Ahoy!
+' February 1986 (Commodore 64 BASIC, disk ahoy1986-02). Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: Nim with three rows of 3, 4 and 5 counters. Players take turns;
+' a turn takes one or more counters from one row. Whoever takes the last
+' counter wins. ELMAC, the Elementary Learning Machine, starts out knowing
+' nothing but the legal moves: it picks among them at random, weighted by
+' what it has learned. When it wins, every move it made that game gains
+' weight; when it loses, the last move it made is forgotten for good (its
+' weight drops to zero). When every move from a position has been
+' forgotten, ELMAC knows the position is lost and resigns. Play it, or let
+' the random player train it for hundreds of games, and watch it improve.
+'
+' From the original (orig/elmac.bas): the 3-4-5 rows, last counter wins,
+' who moves first decided by a coin toss each game, the move table of
+' weights (all 1 at the start, one per legal move of each position), the
+' weighted random choice, the reward (+1 to every ELMAC move of a won
+' game), the punishment (the last ELMAC move of a lost game set to 0, also
+' after a resignation), the resignation when all weights are 0, the random
+' trainer (a random non-empty row, then 1 to all of it), the tally of
+' games, ELMAC's wins and losses, its win percentage, the current and
+' longest win streaks, and a view of the move table.
+'
+' Liberties: the weights are kept as 4-bit values (the C-64 kept real
+' numbers; 720 bytes would not fit in the ColecoVision's 1 KB): when a
+' weight at 15 must grow, every non-zero weight of that position is halved
+' (rounding up) first, which keeps their proportions. Disk save and load
+' are gone (no disk); the memory page shows one position at a time, chosen
+' with the stick. A lost game with no ELMAC move yet punishes nothing (the
+' listing reused the previous game's move; this cannot happen from 3-4-5).
+' Playing is one game, then the result and back to the title; training
+' runs until a button (hold the stick right to train at full speed). The
+' moves are animated: ELMAC thinks, shows its pick, and counters fly off.
+'
+' Controls: either controller. Your turn: up and down choose the row, left
+' takes more counters, right fewer (the picked ones light up), a button
+' takes them. Title: up and down choose, a button starts. Memory page:
+' left and right choose a row, up and down change its count, a button
+' returns.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off after a wait, display off; music first in
+' the sound table; the title tune played once; `set sprite count` given
+' after every `clear sprites`; the eyes blink no faster than 2.5 Hz.
+
+const TBead00 = 128
+const TBead01 = 129
+const TBead10 = 130
+const TBead11 = 131
+const TBeadl00 = 132
+const TBeadl01 = 133
+const TBeadl10 = 134
+const TBeadl11 = 135
+const THole00 = 136
+const THole01 = 137
+const THole10 = 138
+const THole11 = 139
+const TFelt = 140
+const TWoodh = 141
+const TWoodb = 142
+const TWoodv = 143
+const TWoodc = 144
+const TBar = 145
+const TBarx = 146
+const TRobot00 = 147
+const TRobot01 = 148
+const TRobot02 = 149
+const TRobot03 = 150
+const TRobot04 = 151
+const TRobot05 = 152
+const TRobot10 = 153
+const TRobot11 = 154
+const TRobot12 = 155
+const TRobot13 = 156
+const TRobot14 = 157
+const TRobot15 = 158
+const TRobot20 = 159
+const TRobot21 = 160
+const TRobot22 = 161
+const TRobot23 = 162
+const TRobot24 = 163
+const TRobot25 = 164
+const TRobot30 = 165
+const TRobot31 = 166
+const TRobot32 = 167
+const TRobot33 = 168
+const TRobot34 = 169
+const TRobot35 = 170
+const TRobot40 = 171
+const TRobot41 = 172
+const TRobot42 = 173
+const TRobot43 = 174
+const TRobot44 = 175
+const TRobot45 = 176
+const TEyel = 177
+const TEyer = 178
+const SHand = 0
+const SFly = 4
+const NTiles8 = 408
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndTake = 4
+const SndThink = 5
+const SndFly = 6
+const SndWin = 7
+const SndLose = 8
+const SndLearn = 9
+const NSpr = 6
+const RobX = 3
+const RobY = 1
+const TrayTop = 8
+const TrayBot = 19
+
+data RowMax bytes
+  3, 4, 5
+end data
+
+data PosBase words
+  0, 0, 1, 3, 6, 10, 15, 16, 18, 21, 25, 30
+  36, 38, 41, 45, 50, 56, 63, 66, 70, 75, 81, 88
+  96, 100, 105, 111, 118, 126, 135, 136, 138, 141, 145, 150
+  156, 158, 161, 165, 170, 176, 183, 186, 190, 195, 201, 208
+  216, 220, 225, 231, 238, 246, 255, 260, 266, 273, 281, 290
+  300, 302, 305, 309, 314, 320, 327, 330, 334, 339, 345, 352
+  360, 364, 369, 375, 382, 390, 399, 404, 410, 417, 425, 434
+  444, 450, 457, 465, 474, 484, 495, 498, 502, 507, 513, 520
+  528, 532, 537, 543, 550, 558, 567, 572, 578, 585, 593, 602
+  612, 618, 625, 633, 642, 652, 663, 670, 678, 687, 697, 708
+end data
+
+record Mv:
+  u8 Pos
+  u8 K
+end record
+
+' ELMAC's memory: 720 weights, two to a byte (low nibble first)
+u8 Wt[360]
+Mv Hist[7]
+u8 Mn = 0
+u8 Hp[3]
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Tm = 0
+u16 Rn = 0
+u16 Bs = 0
+u16 NG = 0
+u16 NW = 0
+u16 NL = 0
+u16 Streak = 0
+u16 Best = 0
+bcd digits 4 GamesB = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Menu = 0
+u8 Train = 0
+u8 Fast = 0
+u8 StopReq = 0
+u8 Turn = 0
+u8 Over = 0
+u8 Won = 0
+u8 Resign = 0
+u8 Cr = 0
+u8 Ct = 1
+u8 Sel = 0
+u8 SelRow = 0
+u8 Mk = 0
+u8 Pos = 0
+u8 EyeOn = 0
+u8 Phase = 0
+u8 Mc = 0
+u8 Mh[3]
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Edge = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Fi = 0
+u8 Hi = 0
+u8 Gi = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table ElSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  fill array Wt with $11
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  select case Menu
+  case 0
+    PlayMode
+  case 1
+    TrainMode
+  case 2
+    MemoryPage
+  case else
+    CreditsPage
+  end select
+  goto title
+
+' ---------------------------------------------------------------------------
+' ELMAC's memory
+
+' the position's number: X * 30 + Y * 6 + Z
+function PosOf(u8 A, u8 B2, u8 C2) as u8
+  return A * 30 + B2 * 6 + C2
+
+' a weight (0-15) from the packed table
+function GetW(u16 S) as u8
+  u8 Wb = 0
+  u16 Q = 0
+  Q = S >> 1
+  Wb = Wt[Q]
+  if (S & 1) = 1 then
+    Wb = Wb >> 4
+  else
+    Wb = Wb & 15
+  end if
+  return Wb
+
+sub SetW(u16 S, u8 Val):
+  u8 Wb = 0
+  u16 Q = 0
+  Q = S >> 1
+  Wb = Wt[Q]
+  if (S & 1) = 1 then
+    Wb = (Wb & 15) | (Val << 4)
+  else
+    Wb = (Wb & $F0) | Val
+  end if
+  Wt[Q] = Wb
+  return
+
+' the counters left in a position
+function CountOf(u8 P) as u8
+  u8 Hx = 0
+  u8 Hy = 0
+  u8 Hz = 0
+  Hx = P / 30
+  Hy = (P / 6) % 5
+  Hz = P % 6
+  return Hx + Hy + Hz
+
+function Left as u8
+  return Hp[0] + Hp[1] + Hp[2]
+
+' halve every non-zero weight of position P (rounding up)
+sub Halve(u8 P):
+  u8 Nm = 0
+  u8 Wv = 0
+  u8 Kk = 0
+  u16 Ps = 0
+  Nm = CountOf(P)
+  Ps = PosBase[P]
+  for Kk = 1 to Nm
+    Wv = GetW(Ps)
+    if Wv > 0 then SetW(Ps, (Wv + 1) >> 1)
+    inc Ps
+  next
+  return
+
+' ELMAC picks a move: Mk (the slot), Cr and Ct; Resign = 1 when every
+' weight of the position is 0
+sub Pick:
+  Pos = PosOf(Hp[0], Hp[1], Hp[2])
+  Bs = PosBase[Pos]
+  N = Left
+  Tm = 0
+  for Ci = 0 to N - 1
+    W16 = Bs + Ci
+    Tm += GetW(W16)
+  next
+  Resign = 0
+  if Tm = 0 then
+    Resign = 1
+  else
+    Rand
+    Rn = Rs % Tm
+    inc Rn
+    W16 = 0
+    Mk = 255
+    for Ci = 0 to N - 1
+      if Mk = 255 then
+        NumU = Bs + Ci
+        W16 += GetW(NumU)
+        if W16 >= Rn then Mk = Ci
+      end if
+    next
+    ' record the move
+    Hist[Mn].Pos = Pos
+    Hist[Mn].K = Mk
+    inc Mn
+    SlotMove
+  end if
+  return
+
+' slot Mk of the current position -> row Cr, count Ct
+sub SlotMove:
+  select case Mk
+  case 0 to 11
+    if Mk < Hp[0] then
+      Cr = 0
+      Ct = Mk + 1
+    else
+      V = Mk - Hp[0]
+      if V < Hp[1] then
+        Cr = 1
+        Ct = V + 1
+      else
+        Cr = 2
+        Ct = V - Hp[1] + 1
+      end if
+    end if
+  end select
+  return
+
+' the end of a game: ELMAC learns, the tally
+sub Learn:
+  inc NG
+  GamesB += 1
+  if Won = 1 then
+    inc NW
+    inc Streak
+    if Streak > Best then Best = Streak
+    for Gi = 0 to Mn - 1
+      Pos = Hist[Gi].Pos
+      K = Hist[Gi].K
+      W16 = PosBase[Pos] + K
+      V = GetW(W16)
+      if V >= 15 then
+        Halve(Pos)
+        V = GetW(W16)
+      end if
+      SetW(W16, V + 1)
+    next
+  else
+    inc NL
+    Streak = 0
+    if Mn > 0 then
+      J = Mn - 1
+      Pos = Hist[J].Pos
+      W16 = PosBase[Pos] + Hist[J].K
+      SetW(W16, 0)
+    end if
+  end if
+  return
+
+' ELMAC's win percentage
+function Pct as u8
+  u16 P16 = 0
+  if NG > 0 then
+    if NW < 600 then
+      P16 = NW * 100
+      P16 = P16 / NG
+    else
+      P16 = NG / 100
+      P16 = NW / P16
+      if P16 > 100 then P16 = 100
+    end if
+  end if
+  return P16
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+
+' the random trainer: a non-empty row, then 1 to all of it
+sub RandomMove:
+  Cr = 3
+  while Cr = 3
+    Rand
+    V = Rs % 3
+    if Hp[V] > 0 then Cr = V
+  end while
+  Rand
+  W16 = Hp[Cr]
+  W16 = Rs % W16
+  Ct = W16 + 1
+  return
+
+' ---------------------------------------------------------------------------
+' a game
+
+sub PlayMode:
+  Train = 0
+  BoardScreen
+  PlayGame
+  ShowStats
+  mute all
+  print at 2,6, "                            "
+  if Won = 1 then
+    Say(1)
+    print at 7,7, "ELMAC WINS THIS ONE"
+    play sound SndLose
+  else
+    Say(2)
+    print at 9,7, "YOU WIN THIS ONE"
+    play sound SndWin
+  end if
+  HideSprites
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  return
+
+sub TrainMode:
+  Train = 1
+  StopReq = 0
+  BoardScreen
+  Say(3)
+  while StopReq = 0
+    PlayGame
+    ShowStats
+    if Fast = 0 then
+      Hold(20)
+    else
+      Hold(1)
+    end if
+  end while
+  mute all
+  HideSprites
+  print at 2,6, "                            "
+  print at 8,7, "TRAINING STOPPED"
+  Say(4)
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  return
+
+sub PlayGame:
+  Hp[0] = 3
+  Hp[1] = 4
+  Hp[2] = 5
+  Mn = 0
+  Over = 0
+  Sel = 0
+  for Ri = 0 to 2
+    DrawHeap(Ri)
+  next
+  Rand
+  Turn = Rs & 1
+  if Train = 0 then
+    print at 2,7, "                            "
+    if Turn = 1 then
+      print at 8,7, "ELMAC GOES FIRST"
+    else
+      print at 9,7, "YOU GO FIRST"
+    end if
+    Hold(70)
+    print at 2,7, "                            "
+  end if
+  while Over = 0
+    if Turn = 0 then
+      if Train = 1 then
+        RandomMove
+        if Fast = 0 then ShowPick(8)
+      else
+        HumanTurn
+      end if
+      TakeCounters
+      if Left = 0 then
+        Over = 1
+        Won = 0
+      end if
+    else
+      ElmacTurn
+      if Resign = 1 then
+        Over = 1
+        Won = 0
+      else
+        if Left = 0 then
+          Over = 1
+          Won = 1
+        end if
+      end if
+    end if
+    Turn = 1 - Turn
+  end while
+  Learn
+  return
+
+sub ElmacTurn:
+  if Train = 0 then
+    Say(5)
+    play sound SndThink
+    for Fi = 0 to 47
+      Frame1
+      V = Fi % 24
+      if V = 0 then Eyes(1)
+      if V = 12 then Eyes(0)
+    next
+  end if
+  Pick
+  if Resign = 1 then
+    if Train = 0 then
+      Say(6)
+      Hold(60)
+    end if
+    return
+  end if
+  if Train = 0 then
+    Say(7)
+    print Ct at 18,3 digits 1
+    print Cr + 1 at 29,3 digits 1
+    Eyes(1)
+    ShowPick(50)
+    Eyes(0)
+  else
+    if Fast = 0 then ShowPick(8)
+  end if
+  TakeCounters
+  return
+
+' light the picked counters for N frames
+sub ShowPick(u8 Nf):
+  Sel = Ct
+  DrawHeap(Cr)
+  Hold(Nf)
+  return
+
+' your move: choose a row and a count with the stick, a button takes
+sub HumanTurn:
+  Say(8)
+  Cr = 0
+  while Hp[Cr] = 0
+    inc Cr
+  end while
+  Ct = 1
+  Sel = 1
+  DrawHeap(Cr)
+  ShowTake
+  Rearm
+  wait no fire
+  nmi off
+  Press = 0
+  while Press = 0
+    Frame1
+    ReadPad
+    StickEdge
+    if Edge > 0 then
+      V = Cr
+      if (Edge & 1) > 0 then
+        R = Cr
+        while R > 0
+          dec R
+          if Hp[R] > 0 then
+            Cr = R
+            R = 0
+          end if
+        end while
+      end if
+      if (Edge & 2) > 0 then
+        R = Cr + 1
+        while R < 3
+          if Hp[R] > 0 then
+            Cr = R
+            R = 3
+          else
+            inc R
+          end if
+        end while
+      end if
+      if (Edge & 4) > 0 then
+        if Ct < Hp[Cr] then inc Ct
+      end if
+      if (Edge & 8) > 0 then
+        if Ct > 1 then dec Ct
+      end if
+      if Ct > Hp[Cr] then Ct = Hp[Cr]
+      if V <> Cr then
+        Sel = 0
+        DrawHeap(V)
+      end if
+      Sel = Ct
+      DrawHeap(Cr)
+      ShowTake
+      play sound SndTick
+    end if
+    ' the hand points at the row, nudging every 16 frames
+    X = 48
+    if (Tick & 16) > 0 then X = 50
+    Y = Cr * 24
+    Y = Y + 79
+    set sprite 0 to Y,X,SHand,15
+    update sprites
+  end while
+  set sprite 0 to 192,0,0,0
+  update sprites
+  print at 2,7, "                            "
+  return
+
+sub ShowTake:
+  print at 2,7, "                            "
+  print at 6,7, "TAKE"
+  print Ct at 11,7 digits 1
+  print at 13,7, "FROM ROW"
+  print Cr + 1 at 22,7 digits 1
+  return
+
+' the counters Ct of row Cr leave the tray
+sub TakeCounters:
+  if Train = 0 then FlyAway
+  Hp[Cr] = Hp[Cr] - Ct
+  Sel = 0
+  DrawHeap(Cr)
+  return
+
+sub FlyAway:
+  play sound SndTake
+  ' counter i (0 = the rightmost) starts at frame i * 6 and rises 2
+  ' pixels a frame for 20 frames
+  Y = Cr * 24
+  Y = Y + 79
+  N = Ct - 1
+  N = N * 6
+  N = N + 21
+  for Fi = 0 to N
+    Frame1
+    for Ci = 0 to 4
+      J = Ci + 1
+      if Ci < Ct then
+        V = Ci * 6
+        if Fi >= V then
+          K = Fi - V
+          if K = 0 then
+            ' the counter leaves its place
+            R = Hp[Cr] - 1 - Ci
+            C = R * 3
+            C = C + 9
+            R = Cr * 3
+            R = R + 10
+            PutBead(C, R, THole00)
+            if Ci = 0 then play sound SndFly
+          end if
+          if K < 20 then
+            C = Hp[Cr] - 1 - Ci
+            C = C * 24
+            C = C + 72
+            R = K << 1
+            R = Y - R
+            B = 11
+            if K >= 12 then B = 10
+            set sprite J to R,C,SFly,B
+          else
+            set sprite J to 192,0,0,0
+          end if
+        end if
+      end if
+    next
+    update sprites
+  next
+  for Ci = 1 to 5
+    set sprite Ci to 192,0,0,0
+  next
+  update sprites
+  return
+
+' wait N frames (training: a button asks to stop, the stick right is fast)
+sub Hold(u8 Nf):
+  u8 Hk = 0
+  for Hk = 1 to Nf
+    Frame1
+    ReadPad
+    if Train = 1 then
+      if Press = 1 then StopReq = 1
+    end if
+  next
+  return
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub PutBead(u8 Cx, u8 Cy, u8 T):
+  put char T at Cx,Cy
+  put char T + 1 at Cx + 1,Cy
+  put char T + 2 at Cx,Cy + 1
+  put char T + 3 at Cx + 1,Cy + 1
+  return
+
+' one row of the tray: counters (the last Sel lit on row SelRow), holes
+sub DrawHeap(u8 Hr):
+  u8 Hn = 0
+  u8 Hm = 0
+  u8 Hc = 9
+  u8 Hy = 0
+  u8 Hs = 0
+  u8 Ht = 0
+  Hy = Hr * 3 + 10
+  Hn = Hp[Hr]
+  Hm = RowMax[Hr]
+  Hs = 255
+  if Sel > 0 then
+    if Hr = Cr then Hs = Hn - Sel
+  end if
+  for Hi = 0 to Hm - 1
+    if Hi < Hn then
+      Ht = TBead00
+      if Hi >= Hs then Ht = TBeadl00
+    else
+      Ht = THole00
+    end if
+    PutBead(Hc, Hy, Ht)
+    Hc += 3
+  next
+  return
+
+sub Eyes(u8 Lit):
+  if Lit = 1 then
+    put char TEyel at RobX + 1,RobY + 2
+    put char TEyer at RobX + 4,RobY + 2
+  else
+    put char TRobot21 at RobX + 1,RobY + 2
+    put char TRobot24 at RobX + 4,RobY + 2
+  end if
+  return
+
+sub DrawRobot(u8 Rx, u8 Ry):
+  u8 Tt = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  Tt = TRobot00
+  for Dy = 0 to 4
+    for Dx = 0 to 5
+      put char Tt at Rx + Dx,Ry + Dy
+      inc Tt
+    next
+  next
+  return
+
+sub DrawTray:
+  put char TWoodc at 5,TrayTop
+  put char TWoodc at 26,TrayTop
+  put char TWoodc at 5,TrayBot
+  put char TWoodc at 26,TrayBot
+  fill TWoodh count 20 at 6,TrayTop
+  fill TWoodb count 20 at 6,TrayBot
+  for Ri = 9 to 18
+    put char TWoodv at 5,Ri
+    fill TFelt count 20 at 6,Ri
+    put char TWoodv at 26,Ri
+  next
+  return
+
+' ELMAC's words, rows 2-4 beside it
+sub Say(u8 M):
+  for Ri = 2 to 4
+    fill 32 count 19 at 11,Ri
+  next
+  select case M
+  case 1
+    print at 11,2, "I WON. I WILL"
+    print at 11,3, "REMEMBER THOSE"
+    print at 11,4, "MOVES."
+  case 2
+    print at 11,2, "YOU WON. I WILL"
+    print at 11,3, "NEVER MAKE MY LAST"
+    print at 11,4, "MOVE AGAIN."
+  case 3
+    print at 11,2, "TRAINING AGAINST"
+    print at 11,3, "THE RANDOM PLAYER"
+    print at 11,4, "(STICK RIGHT: FAST)"
+  case 4
+    print at 11,2, "THANK YOU FOR"
+    print at 11,3, "THE PRACTICE."
+  case 5
+    print at 11,2, "LET ME THINK..."
+  case 6
+    print at 11,2, "EVERY MOVE HERE"
+    print at 11,3, "HAS LOST BEFORE."
+    print at 11,4, "I GIVE UP!"
+  case 7
+    print at 11,2, "MY MOVE:"
+    print at 11,3, "I TAKE   FROM ROW"
+  case 8
+    print at 11,2, "YOUR MOVE."
+    print at 11,3, "STICK TO CHOOSE,"
+    print at 11,4, "BUTTON TO TAKE."
+  case 9
+    print at 11,2, "THIS IS WHAT I"
+    print at 11,3, "HAVE LEARNED."
+  end select
+  return
+
+sub ShowStats:
+  print at 2,20, "GAMES"
+  print GamesB at 8,20
+  print at 14,20, "ELMAC WON"
+  NumU = NW
+  print at 24,20, digits$(NumU, 4)
+  print at 2,21, "LOST"
+  NumU = NL
+  print at 8,21, digits$(NumU, 4)
+  print at 14,21, "WIN RATE"
+  V = Pct
+  print V at 24,21 width 3
+  print at 27,21, "%"
+  print at 2,22, "STREAK"
+  NumU = Streak
+  print at 9,22, digits$(NumU, 4)
+  print at 14,22, "LONGEST"
+  NumU = Best
+  print at 22,22, digits$(NumU, 4)
+  return
+
+sub BoardScreen:
+  NewScreen
+  DrawRobot(RobX, RobY)
+  DrawTray
+  ShowStats
+  ShowScreen
+  return
+
+' ---------------------------------------------------------------------------
+' the memory page: one position at a time
+
+sub MemoryPage:
+  NewScreen
+  DrawRobot(RobX, RobY)
+  Say(9)
+  print at 2,6, "ROWS"
+  print at 2,22, "STICK: POSITION BUTTON: DONE"
+  ' how many moves ELMAC has forgotten
+  NumU = 0
+  for W16 = 0 to 719
+    if GetW(W16) = 0 then inc NumU
+  next
+  print at 2,21, "FORGOTTEN MOVES"
+  print at 18,21, digits$(NumU, 3)
+  print at 22,21, "OF 720"
+  Mh[0] = 3
+  Mh[1] = 4
+  Mh[2] = 5
+  Mc = 0
+  MemList
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Press = 0
+  while Press = 0
+    Frame1
+    ReadPad
+    StickEdge
+    if Edge > 0 then
+      if (Edge & 4) > 0 then
+        if Mc > 0 then dec Mc
+      end if
+      if (Edge & 8) > 0 then
+        if Mc < 2 then inc Mc
+      end if
+      if (Edge & 1) > 0 then
+        if Mh[Mc] < RowMax[Mc] then inc Mh[Mc]
+      end if
+      if (Edge & 2) > 0 then
+        if Mh[Mc] > 0 then dec Mh[Mc]
+      end if
+      MemList
+      play sound SndTick
+    end if
+  end while
+  return
+
+sub MemList:
+  for Ri = 0 to 2
+    C = Ri * 4
+    C = C + 8
+    put char 32 at C - 1,6
+    print Mh[Ri] at C,6 digits 1
+  next
+  C = Mc * 4
+  C = C + 7
+  put char 62 at C,6
+  for Ri = 8 to 19
+    fill 32 count 28 at 2,Ri
+  next
+  Pos = PosOf(Mh[0], Mh[1], Mh[2])
+  N = Mh[0] + Mh[1] + Mh[2]
+  if N = 0 then
+    print at 2,8, "NO COUNTERS: THE GAME IS"
+    print at 2,9, "OVER HERE."
+  else
+    MemMoves
+  end if
+  return
+
+sub MemMoves:
+  print at 2,8, "MOVE         WEIGHT"
+  Bs = PosBase[Pos]
+  for Ri = 0 to N - 1
+    Mk = Ri
+    Hp[0] = Mh[0]
+    Hp[1] = Mh[1]
+    Hp[2] = Mh[2]
+    SlotMove
+    R = Ri + 9
+    print at 2,R, "ROW"
+    print Cr + 1 at 6,R digits 1
+    print at 8,R, "TAKE"
+    print Ct at 13,R digits 1
+    W16 = Bs + Ri
+    V = GetW(W16)
+    if V = 0 then
+      put char TBarx at 15,R
+    else
+      ' (bars of up to 12 tiles: 15 -> 12)
+      K = V - V / 5
+      fill TBar count K at 15,R
+    end if
+    NumU = V
+    print at 28,R, digits$(NumU, 2)
+  next
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Stick = V & 15
+  Fast = 0
+  if Train = 1 then
+    if Stick = 8 then Fast = 1
+  end if
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' Edge: the stick directions pressed now, repeating every 10 frames after
+' a 20-frame hold
+sub StickEdge:
+  Edge = 0
+  if Stick = 0 then
+    Rep = 0
+  else
+    if Stick <> WasStick then
+      Edge = Stick
+      Rep = 20
+    else
+      dec Rep
+      if Rep = 0 then
+        Edge = Stick
+        Rep = 10
+      end if
+    end if
+  end if
+  WasStick = Stick
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+
+' the title: ELMAC, the menu, the tune once
+sub TitlePage:
+  Train = 0
+  NewScreen
+  DrawRobot(13, 1)
+  print at 14,7, "ELMAC"
+  print at 3,9, "ELEMENTARY LEARNING MACHINE"
+  print at 11,10, "PLAYS NIM"
+  print at 8,13, "PLAY AGAINST ELMAC"
+  print at 8,14, "WATCH ELMAC TRAIN"
+  print at 8,15, "ELMAC'S MEMORY"
+  print at 8,16, "CREDITS"
+  print at 6,19, "GAMES PLAYED"
+  print GamesB at 19,19
+  print at 2,21, "AHOY! FEB 1986, DALE RUPERT"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 470
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Press = 0
+  Phase = 0
+  while Press = 0
+    Frame1
+    inc Rs
+    if Rs = 0 then Rs = 1
+    ReadPad
+    StickEdge
+    if (Edge & 1) > 0 then
+      if Menu > 0 then dec Menu
+      ShowMenu
+    end if
+    if (Edge & 2) > 0 then
+      if Menu < 3 then inc Menu
+      ShowMenu
+    end if
+    ' the eyes blink slowly
+    inc Phase
+    if Phase = 50 then put char TEyel at 14,3
+    if Phase = 50 then put char TEyer at 17,3
+    if Phase = 70 then
+      put char TRobot21 at 14,3
+      put char TRobot24 at 17,3
+      Phase = 0
+    end if
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+
+sub ShowMenu:
+  for J = 13 to 16
+    put char 32 at 6,J
+  next
+  J = Menu + 13
+  put char 62 at 6,J
+  return
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "ELMAC PLAYS NIM"
+  print at 2,5, "BASED ON ELMAC PLAYS NIM BY"
+  print at 2,6, "DALE RUPERT, THE RUPERT"
+  print at 2,7, "REPORT #26, AHOY! FEBRUARY"
+  print at 2,8, "1986 (COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: COUNTING MACHINE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+
+data TilePat bytes
+  $00,$F0,$C0,$80,$E1,$C1,$38,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$F0,$00
+  $00,$00,$1C,$83,$01,$03,$F0,$00
+  $00,$F0,$C0,$80,$E1,$C1,$38,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$F0,$00
+  $00,$00,$1C,$83,$01,$03,$F0,$00
+  $00,$00,$00,$00,$00,$01,$03,$07
+  $00,$00,$00,$00,$00,$80,$C0,$E0
+  $07,$03,$01,$00,$00,$00,$00,$00
+  $E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$04,$00,$40,$00,$02,$00,$10
+  $00,$00,$20,$00,$06,$00,$00,$00
+  $00,$00,$04,$00,$60,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$00,$00
+  $00,$42,$24,$18,$18,$24,$42,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$01,$01,$01,$07,$07
+  $80,$C0,$C0,$80,$80,$80,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$E0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $F0,$07,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$00,$00,$00,$00,$00
+  $80,$80,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$E0,$F0,$00
+  $C0,$22,$22,$C0,$40,$00,$00,$00
+  $00,$22,$22,$00,$00,$00,$00,$00
+  $00,$22,$22,$00,$00,$00,$00,$00
+  $03,$22,$22,$03,$02,$00,$00,$00
+  $03,$03,$03,$03,$03,$07,$F0,$00
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+end data
+data TileCol bytes
+  $0C,$C5,$C5,$C5,$5F,$5F,$F5,$05
+  $0C,$5C,$C5,$C5,$05,$05,$05,$05
+  $05,$05,$05,$05,$C5,$C5,$C5,$0C
+  $05,$05,$45,$54,$C5,$C5,$5C,$0C
+  $0C,$CB,$CB,$CB,$BF,$BF,$FB,$0B
+  $0C,$BC,$CB,$CB,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$CB,$CB,$CB,$0C
+  $0B,$0B,$AB,$BA,$CB,$CB,$BC,$0C
+  $0C,$0C,$0C,$0C,$0C,$1C,$1C,$1C
+  $0C,$0C,$0C,$0C,$0C,$1C,$1C,$1C
+  $1C,$1C,$1C,$0C,$0C,$0C,$0C,$0C
+  $1C,$1C,$1C,$0C,$0C,$0C,$0C,$0C
+  $0C,$2C,$0C,$2C,$0C,$2C,$0C,$2C
+  $0B,$0A,$BA,$0A,$BA,$0A,$0A,$01
+  $0B,$0A,$BA,$0A,$BA,$0A,$0A,$01
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $04,$43,$43,$42,$42,$43,$04,$04
+  $04,$84,$84,$84,$84,$84,$84,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $B4,$B4,$B4,$B4,$E4,$E4,$E4,$E4
+  $B4,$B4,$B4,$B4,$E4,$E4,$E4,$E4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $0E,$0E,$1E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$1E,$0E,$0E,$0E,$0E,$0E
+  $E4,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $1E,$1E,$1E,$1E,$1E,$1E,$4E,$4E
+  $E1,$E1,$01,$01,$01,$01,$E1,$E1
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $E1,$E1,$01,$01,$01,$01,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$4E,$4E
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$0E,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$04
+  $E1,$1E,$1E,$E1,$1E,$0E,$0E,$04
+  $01,$1E,$1E,$01,$0E,$0E,$0E,$04
+  $01,$1E,$1E,$01,$0E,$0E,$0E,$04
+  $E1,$1E,$1E,$E1,$1E,$0E,$0E,$04
+  $4E,$4E,$4E,$4E,$4E,$4E,$E4,$04
+  $E8,$E8,$08,$08,$08,$08,$E8,$E8
+  $E8,$E8,$08,$08,$08,$08,$E8,$E8
+end data
+data SpritePat bytes
+  $00,$00,$00,$0F,$1F,$3F,$3F,$3F,$3F,$3F,$3F,$1F,$0F,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F0,$FE,$FF,$FF,$FE,$F0,$E0,$C0,$00,$00,$00
+  $00,$0F,$3F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$3F,$0F,$00
+  $00,$F0,$FC,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FC,$F0,$00
+end data
+
+asm {
+ElTick:
+    db $40,$47,$40,$02,$50
+ElTake:
+    db $40,$7F,$20,$02,$40,$5F,$30,$02,$40,$47,$40,$02,$40,$35,$50,$03,$50
+ElThink:
+    db $40,$AA,$50,$03,$40,$71,$50,$03,$40,$8F,$50,$03,$50
+ElFly:
+    db $00,$00,$35,$03,$00,$00,$55,$04,$00,$00,$76,$05,$10
+ElWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$20,$12,$50
+ElLose:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$21,$18,$50
+ElLearn:
+    db $40,$6B,$30,$04,$40,$55,$30,$04,$40,$47,$40,$08,$50
+
+ElSoundTable:
+    dw ElTuneMel,$702B
+    dw ElTuneBass,$7035
+    dw ElTick,$7049
+    dw ElTake,$7049
+    dw ElThink,$7049
+    dw ElFly,$703F
+    dw ElWin,$7049
+    dw ElLose,$7049
+    dw ElLearn,$7049
+; Counting Machine (original)
+; Tiny Sound, 9 frames per step
+ElTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1F,$23,$26,$01,$1F,$23,$28,$01,$1F,$24,$28,$01
+    db $1E,$21,$26,$01,$23,$01,$21,$1F,$21,$01,$1A,$01,$1C,$1E,$1F,$21
+    db $23,$01,$01,$01,$24,$01,$23,$21,$23,$01,$1F,$01,$21,$01,$1E,$1A
+    db $1F,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+ElTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$13,$01,$1A,$01,$10,$01,$17,$01,$0C,$01,$13,$01
+    db $0E,$01,$15,$01,$13,$01,$1A,$01,$12,$01,$1A,$01,$10,$01,$17,$01
+    db $13,$01,$1A,$01,$0C,$01,$13,$01,$0B,$01,$10,$01,$0E,$01,$15,$01
+    db $13,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

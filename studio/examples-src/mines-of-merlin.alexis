@@ -1,0 +1,1941 @@
+cartridge "MINES OF MERLIN/C.M.BLAKEMORE/1988"
+
+' MINES OF MERLIN
+' A ColecoVision game based on "Mines of Merlin" by Cleveland M.
+' Blakemore, Ahoy! June 1988 (Commodore 64 BASIC; the listing's REM says
+' "VAULT OF TERROR" V4.8, the title screen "MINES OF MERLIN", (C) 1988
+' Nemesis Software). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: King Arthur's crown lies somewhere in the two levels of
+' Merlin's mine. Walk the corridors in a first-person view, fight the
+' creatures, take the relics they drop, open locked doors, go down the
+' shafts on a rope and climb back up the ladders, and bring the crown
+' back to the shaft you came down by (the start).
+'
+' Kept from the original (orig/merlin.txt): the 16 x 16 cell map, two
+' levels of 16 x 8 (lines 4530-4680): corridors, coffins, shafts, ceiling
+' exits, ladders, doors and their locks, each lock barring one direction;
+' the crown at cell 204, the start at cell 17 facing south; the 16
+' creatures of 8 kinds (1 1 2 2 3 3 4 5 5 on the upper level placed at
+' random in cells 34-126, 6 6 6 7 7 7 8 on the lower in 142-237), each
+' with X * 4 + 1 hit points; their move rule (towards the player by cell
+' number: north when more than 6 below, south when more than 6 above,
+' else east or west), one cell a tick, never onto another creature; the
+' attack chance (5 + kind)% a turn, damage kind / (shield ? 5 : 1) +
+' 1..3; the sword's miss when RND + LIFE / 100 < .5, its damage
+' RND + 2 + LIFE / 5; a kill gives kind / 4 life and drops relic
+' kind - 1; the wraith (kind 6) steals every relic but the torch, rope and
+' crown and leaves them in its lair (cell 157, below the shaft at 29,
+' locked on all four sides); the wand opens every lock of the cell ahead
+' and strikes a wraith; the key opens a door's lock on your side; the
+' rope goes down a shaft, up a ladder under a ceiling exit; life starts
+' at 10, grows .4 a tick up to 60; the torch fades through five stages
+' (6, 12, 18, 24, 30 ticks) and burns out; you cannot step back into a
+' door. Win and loss screens with the original's words.
+'
+' Liberties: drawn in tiles with depth shading and stepped edges instead
+' of PETSCII; creatures are smooth sprites in four sizes by distance;
+' one tick is 8 seconds (the C64's 1000 jiffies were 16.7) and life
+' grows every 2 seconds (the amulet doubles it) so that fights can be
+' recovered from; life starts at 15, and a creature waits 3/4 of a
+' second before its first attack (time to react); you start with the sword as well as the torch (in the
+' original the only sword is a relic dropped by a creature that can only
+' be killed with a sword); relics are picked up when you enter a cell
+' (the C64 used a command bar); a burnt-out torch narrows the view to
+' your own cell, and a spider's torch relights it; the ring makes you
+' unseen for 10 seconds and then needs 40 to recharge (the C64's ring
+' lasted for ever, which made the game safe); the win is bringing the
+' crown to the start and using the rope there (the C64 asked for all
+' nine relics at once, but its torches burn out); the wraith leaves you
+' your sword (in the original a robbed player could be left with no way
+' to fight or to reach the lair); creatures cry when
+' they reach you; no save/load (no disk). Monster kinds are named
+' spider, scorpion, rat, bat, goblin, wraith, serpent and naga (the
+' listing names spiders, rats, goblins, serpents and the naga by their
+' sounds).
+'
+' Controls: controller 1 (or 2): up walks forward, down steps back,
+' left and right turn. Left button: use the selected relic (the sword
+' attacks). Right button: select the next relic you carry.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers.
+
+const TCeil0 = 128
+const TCeil1 = 129
+const TCeil2 = 130
+const TCeil3 = 131
+const TCeil4 = 132
+const TFloor0 = 133
+const TFloor1 = 134
+const TFloor2 = 135
+const TFloor3 = 136
+const TFloor4 = 137
+const TWall0 = 138
+const TWall1 = 139
+const TWall2 = 140
+const TWall3 = 141
+const TWall4 = 142
+const TDoor = 143
+const TDoorT = 144
+const TLock = 145
+const TLockT = 146
+const TLockK = 147
+const TPit = 148
+const TPitT = 149
+const THole = 150
+const TLadL = 151
+const TLadR = 152
+const TCofT = 153
+const TCof = 154
+const TFrm = 155
+const TTorch00 = 156
+const TTorch01 = 157
+const TTorch10 = 158
+const TTorch11 = 159
+const TSword00 = 160
+const TSword01 = 161
+const TSword10 = 162
+const TSword11 = 163
+const TShield00 = 164
+const TShield01 = 165
+const TShield10 = 166
+const TShield11 = 167
+const TRing00 = 168
+const TRing01 = 169
+const TRing10 = 170
+const TRing11 = 171
+const TRope00 = 172
+const TRope01 = 173
+const TRope10 = 174
+const TRope11 = 175
+const TWand00 = 176
+const TWand01 = 177
+const TWand10 = 178
+const TWand11 = 179
+const TKey00 = 180
+const TKey01 = 181
+const TKey10 = 182
+const TKey11 = 183
+const TAmulet00 = 184
+const TAmulet01 = 185
+const TAmulet10 = 186
+const TAmulet11 = 187
+const TCrown00 = 188
+const TCrown01 = 189
+const TCrown10 = 190
+const TCrown11 = 191
+const TSlot00 = 192
+const TSlot01 = 193
+const TSlot10 = 194
+const TSlot11 = 195
+const TQ1 = 196
+const TQ2 = 197
+const TQ3 = 198
+const TQ4 = 199
+const TQ5 = 200
+const TQ6 = 201
+const TQ7 = 202
+const TQ8 = 203
+const TQ9 = 204
+const TQ10 = 205
+const TQ11 = 206
+const TQ12 = 207
+const TQ13 = 208
+const TQ14 = 209
+const TQ15 = 210
+const SCursor = 0
+const SSpiderTL = 4
+const SSpiderTR = 8
+const SSpiderBL = 12
+const SSpiderBR = 16
+const SSpiderS = 20
+const SSpiderM = 24
+const SSpiderT = 28
+const SScorpionTL = 32
+const SScorpionTR = 36
+const SScorpionBL = 40
+const SScorpionBR = 44
+const SScorpionS = 48
+const SScorpionM = 52
+const SScorpionT = 56
+const SRatTL = 60
+const SRatTR = 64
+const SRatBL = 68
+const SRatBR = 72
+const SRatS = 76
+const SRatM = 80
+const SRatT = 84
+const SBatTL = 88
+const SBatTR = 92
+const SBatBL = 96
+const SBatBR = 100
+const SBatS = 104
+const SBatM = 108
+const SBatT = 112
+const SGoblinTL = 116
+const SGoblinTR = 120
+const SGoblinBL = 124
+const SGoblinBR = 128
+const SGoblinS = 132
+const SGoblinM = 136
+const SGoblinT = 140
+const SWraithTL = 144
+const SWraithTR = 148
+const SWraithBL = 152
+const SWraithBR = 156
+const SWraithS = 160
+const SWraithM = 164
+const SWraithT = 168
+const SSerpentTL = 172
+const SSerpentTR = 176
+const SSerpentBL = 180
+const SSerpentBR = 184
+const SSerpentS = 188
+const SSerpentM = 192
+const SSerpentT = 196
+const SNagaTL = 200
+const SNagaTR = 204
+const SNagaBL = 208
+const SNagaBR = 212
+const SNagaS = 216
+const SNagaM = 220
+const SNagaT = 224
+const NTiles8 = 664
+const SprBytes = 1824
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndBump = 4
+const SndBeep = 5
+const SndSlash = 6
+const SndHurt = 7
+const SndOuch = 8
+const SndDied = 9
+const SndMagic = 10
+const SndDown = 11
+const SndUp = 12
+const SndGet = 13
+const SndGrowl = 14
+const SndHiss = 15
+const SndWon = 16
+const SndLost = 17
+const NSpr = 8
+const StartCell = 17
+const CrownCell = 204
+const LairCell = 157
+const TickLen = 480
+const RegenLen = 120
+const RingLen = 600
+const RingRest = 2400
+const NoCell = 255
+
+data Feat bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,8,2,1,2,1,0,1,1,1,0,1,32,4,2,0
+  0,1,0,16,0,1,0,1,0,1,32,1,0,2,2,0
+  0,1,0,1,1,2,16,1,0,1,0,1,0,0,1,0
+  0,4,1,2,0,1,0,1,2,1,1,2,1,0,4,0
+  0,1,0,1,0,1,1,1,0,0,0,0,1,0,0,0
+  0,2,1,1,1,1,32,1,1,4,1,2,1,1,34,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,2,1,1,2,16,2,1,1,1,0,2,2,2,2,0
+  0,1,0,1,0,1,0,1,0,1,1,1,1,24,2,0
+  0,2,1,1,0,1,2,1,2,1,0,32,2,2,2,0
+  0,0,0,2,0,1,0,1,0,1,0,1,0,0,0,0
+  0,24,1,1,1,1,0,2,1,1,0,1,1,0,24,0
+  0,1,0,0,1,0,1,1,0,1,0,1,0,0,1,0
+  0,1,2,2,1,2,1,0,0,40,0,1,2,1,1,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+' direction 0 north, 1 east, 2 south, 3 west: the cell step, the lock bit
+' that bars entering a cell while facing that way (C64 bits 512, 64, 128,
+' 256 shifted down by 6), the letter
+data DirStep bytes 240,1,16,255
+data DirLock bytes 8,1,2,4
+data DirName bytes 78,69,83,87
+' the creatures' kinds (C64 line 4800)
+data MonKind bytes 1,1,2,2,3,3,4,5,5,6,6,6,7,7,7,8
+' attack chance a frame, out of 1024 (the C64's (5 + kind)% a turn at
+' about nine turns a second of play)
+data AtkP bytes 0,7,8,9,10,11,12,14,15
+' the cells that have locks, and their locks
+data LockCell bytes 28,157,187,204,233,235
+data LockInit bytes 5,15,2,1,2,2
+
+data TilePat bytes
+  $00,$70,$00,$04,$00,$20,$00,$02
+  $00,$70,$00,$04,$00,$20,$00,$02
+  $00,$70,$00,$04,$00,$20,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$81,$00,$06,$00,$40
+  $00,$10,$00,$81,$00,$06,$00,$40
+  $00,$10,$00,$81,$00,$06,$00,$40
+  $00,$10,$00,$81,$00,$06,$00,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $11,$11,$00,$44,$44,$00,$11,$00
+  $AA,$00,$AA,$00,$AA,$00,$AA,$00
+  $99,$99,$99,$99,$99,$99,$99,$99
+  $00,$00,$99,$99,$99,$99,$99,$99
+  $99,$99,$00,$99,$99,$99,$00,$99
+  $00,$00,$99,$00,$99,$99,$99,$99
+  $99,$18,$24,$C3,$18,$18,$18,$99
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$AA,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$AA,$00,$00
+  $60,$60,$80,$80,$60,$60,$80,$80
+  $06,$06,$01,$01,$06,$06,$01,$01
+  $00,$00,$00,$00,$10,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$80,$80,$80,$80,$80,$00,$00
+  $00,$02,$07,$F0,$F0,$07,$03,$07
+  $00,$00,$00,$80,$80,$80,$00,$80
+  $03,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$0C,$1C,$38,$70,$E0,$C0,$80
+  $07,$C9,$1C,$1C,$C9,$60,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$03,$03,$03,$03,$03,$03,$03
+  $C0,$E0,$E0,$F0,$07,$03,$01,$00
+  $03,$07,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$03,$07,$03,$03,$0C,$10
+  $00,$00,$C0,$E0,$C0,$C0,$30,$08
+  $10,$10,$10,$0C,$03,$00,$00,$00
+  $08,$08,$08,$30,$C0,$00,$00,$00
+  $00,$07,$18,$D8,$28,$D4,$2A,$29
+  $00,$C0,$30,$C8,$28,$A8,$A8,$28
+  $26,$10,$F0,$00,$00,$00,$00,$00
+  $C8,$10,$E8,$04,$02,$02,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$10,$38,$14,$20,$60,$C0,$80
+  $03,$06,$0C,$18,$30,$20,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E1,$21,$21,$21,$21,$E1
+  $00,$00,$00,$00,$00,$01,$14,$14
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$04,$02,$01,$03,$07,$F0
+  $00,$10,$20,$40,$80,$C0,$E0,$F0
+  $F0,$F0,$07,$03,$00,$00,$00,$00
+  $F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$21,$CC,$C4,$C0,$C0,$C0
+  $00,$00,$08,$98,$B8,$07,$07,$07
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $07,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$41,$01,$41,$01,$41,$01,$41
+  $01,$41,$01,$41,$01,$41,$01,$41
+  $01,$41,$01,$41,$01,$41,$01,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0A,$6A,$0A,$6A,$0A,$6A,$0A,$6A
+  $06,$A6,$06,$A6,$06,$A6,$06,$A6
+  $06,$16,$06,$16,$06,$16,$06,$16
+  $01,$61,$01,$61,$01,$61,$01,$61
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $EF,$1E,$1E,$01,$EF,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$01,$1E,$1E,$01,$1E,$01
+  $41,$01,$14,$01,$41,$01,$14,$01
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $0E,$01,$A6,$A6,$A6,$A6,$A6,$A6
+  $86,$86,$01,$86,$86,$86,$01,$86
+  $0E,$01,$86,$01,$86,$86,$86,$86
+  $86,$B8,$B1,$8B,$B8,$B8,$B1,$86
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0A,$06,$61,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$41,$04,$0E
+  $A1,$A1,$1A,$1A,$A1,$A1,$1A,$1A
+  $A1,$A1,$1A,$1A,$A1,$A1,$1A,$1A
+  $01,$06,$0A,$06,$B6,$B6,$B6,$06
+  $06,$06,$01,$06,$06,$06,$06,$01
+  $1F,$FE,$FE,$FE,$FE,$FE,$01,$01
+  $01,$B1,$B1,$1B,$19,$91,$81,$E1
+  $01,$01,$01,$B1,$B1,$B1,$01,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$61,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$F1,$E1
+  $01,$F1,$F1,$F1,$F1,$F1,$E1,$F1
+  $F1,$1B,$B1,$B1,$16,$61,$61,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$1E,$15,$15,$15,$1B,$1B,$15
+  $01,$1E,$15,$15,$15,$1B,$1B,$15
+  $15,$15,$15,$15,$51,$E1,$E1,$01
+  $15,$15,$15,$51,$51,$E1,$E1,$01
+  $01,$01,$71,$71,$71,$B1,$B1,$B1
+  $01,$01,$71,$71,$71,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$01,$01,$01
+  $01,$A1,$A1,$1A,$A1,$1A,$A1,$A1
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$1A,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$01,$D1
+  $01,$F1,$F1,$F1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$1B,$B1,$B1,$B1,$B1,$1B
+  $01,$01,$01,$01,$01,$1B,$B1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$31,$71,$17
+  $01,$A1,$A1,$A1,$A1,$31,$71,$71
+  $17,$17,$71,$31,$01,$01,$01,$01
+  $71,$71,$71,$31,$01,$01,$01,$01
+  $01,$01,$B1,$1B,$1B,$1B,$1B,$1B
+  $01,$01,$B1,$B1,$B1,$1B,$1B,$1B
+  $1B,$1A,$01,$01,$01,$01,$01,$01
+  $1B,$1A,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$41
+  $01,$01,$01,$01,$01,$01,$01,$41
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $F1,$B1,$B1,$A1,$01,$01,$01,$01
+  $1F,$1B,$1B,$1A,$01,$01,$01,$01
+  $0F,$0B,$0B,$0A,$01,$01,$01,$01
+  $01,$01,$01,$01,$F1,$B1,$B1,$A1
+  $F1,$B1,$B1,$A1,$F1,$B1,$B1,$A1
+  $1F,$1B,$1B,$1A,$F1,$B1,$B1,$A1
+  $0F,$0B,$0B,$0A,$F1,$B1,$B1,$A1
+  $01,$01,$01,$01,$1F,$1B,$1B,$1A
+  $F1,$B1,$B1,$A1,$1F,$1B,$1B,$1A
+  $1F,$1B,$1B,$1A,$1F,$1B,$1B,$1A
+  $0F,$0B,$0B,$0A,$1F,$1B,$1B,$1A
+  $01,$01,$01,$01,$0F,$0B,$0B,$0A
+  $F1,$B1,$B1,$A1,$0F,$0B,$0B,$0A
+  $1F,$1B,$1B,$1A,$0F,$0B,$0B,$0A
+  $0F,$0B,$0B,$0A,$0F,$0B,$0B,$0A
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $00,$00,$0C,$0E,$07,$03,$01,$00,$C0,$E0,$70,$39,$1F,$0F,$00,$00
+  $00,$00,$00,$00,$07,$8F,$CF,$CF,$FF,$FF,$CC,$CC,$CF,$CF,$FF,$FF
+  $00,$00,$00,$00,$E0,$F1,$F3,$F3,$FF,$FF,$33,$33,$F3,$F3,$FF,$FF
+  $00,$00,$30,$70,$E0,$C0,$80,$00,$03,$07,$0E,$9C,$F8,$F0,$00,$00
+  $0F,$1F,$38,$70,$E3,$C3,$03,$07,$0E,$0C,$0C,$1C,$38,$30,$00,$00
+  $CF,$CF,$FF,$7F,$9F,$07,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $F3,$F3,$FF,$FE,$F9,$E0,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F8,$1C,$0E,$C7,$C3,$C0,$E0,$70,$30,$30,$38,$1C,$0C,$00,$00
+  $00,$20,$13,$0B,$8F,$4A,$3B,$0F,$3B,$4F,$93,$11,$20,$20,$40,$00
+  $00,$04,$C8,$D0,$F1,$52,$DC,$F0,$DC,$F2,$C9,$88,$04,$04,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$0B,$07,$07,$05,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$D0,$E0,$E0,$A0,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$1E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$03,$07,$0E,$0C,$0C,$0E,$07,$03,$00,$00,$03,$07,$7F,$FF
+  $00,$00,$E0,$F0,$70,$30,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$80
+  $33,$73,$C0,$C0,$71,$33,$03,$05,$0C,$1C,$33,$33,$00,$00,$00,$00
+  $07,$9F,$7F,$FF,$FF,$FF,$FF,$FF,$CE,$CC,$38,$30,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$73,$33,$1C,$0C,$00,$00,$00,$00
+  $F0,$F8,$CC,$CE,$E3,$F3,$FE,$FC,$30,$30,$CC,$CC,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$53,$8F,$5F,$1F,$2A,$54,$00,$00
+  $00,$1C,$24,$20,$10,$08,$10,$F0,$FC,$FA,$FD,$FE,$54,$2A,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0B,$07,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$40,$00,$C0,$E0,$F0,$60,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$00,$80,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$06,$1F,$1F,$3F,$33,$73,$FF,$FF,$7F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$E0,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F8,$3C,$3C,$F8,$F0
+  $1F,$07,$07,$01,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$CE,$CC,$38,$30,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$33,$33,$CE,$CC,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$E0,$C0,$80,$3E,$3F,$07,$03,$03,$07,$0E,$0C,$00,$00,$00,$00
+  $00,$00,$00,$30,$78,$5F,$FF,$7F,$3F,$1F,$0A,$14,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$FC,$F6,$FC,$FC,$F8,$57,$A1,$01,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$0F,$0F,$07,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$D0,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$60,$F8,$FE,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$0C,$0E,$0F,$17,$33,$33,$3F,$3F,$FF,$FF,$FC,$F8
+  $00,$00,$00,$00,$30,$70,$F0,$E8,$CC,$CC,$FC,$FC,$FF,$FF,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$06,$1F,$7F,$FF,$FF,$FF,$FF,$FF
+  $CF,$C7,$C7,$C1,$C1,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F1,$E3,$E3,$C1,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $8F,$C7,$C7,$83,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F3,$E3,$E3,$83,$83,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$03,$C5,$F7,$FF,$FE,$BD,$99,$88,$00,$00,$00,$00,$00
+  $00,$00,$40,$C0,$A3,$EF,$FF,$7F,$BD,$99,$11,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$0F,$0F,$0F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$F0,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$00,$00,$00
+  $00,$00,$30,$70,$F0,$F9,$7F,$1F,$01,$00,$00,$00,$01,$07,$07,$1F
+  $07,$1F,$3F,$7F,$CF,$CF,$FF,$FF,$F3,$73,$3F,$3F,$FF,$FF,$FF,$FF
+  $E0,$F8,$FC,$FE,$F3,$F3,$FF,$FF,$CF,$CE,$FC,$FC,$FF,$FF,$FF,$FF
+  $00,$00,$0C,$0E,$0F,$97,$F8,$F0,$80,$00,$00,$00,$80,$E0,$E0,$F8
+  $1C,$78,$78,$E0,$E0,$C0,$00,$00,$00,$00,$00,$01,$03,$03,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$7F,$7E,$3C,$3C,$7C,$7C,$FC,$FC,$F8,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FE,$7E,$3C,$3C,$3E,$3E,$3F,$3F,$1F,$00,$00
+  $38,$1E,$1E,$07,$07,$03,$00,$00,$00,$00,$00,$80,$C0,$C0,$00,$00
+  $03,$47,$CB,$7F,$0D,$07,$1F,$3F,$6F,$CF,$8F,$06,$06,$0E,$1E,$00
+  $C0,$E2,$D3,$FC,$B0,$E0,$F8,$FC,$F6,$F3,$F1,$60,$60,$70,$78,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$0F,$03,$07,$0B,$03,$03,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$F0,$C0,$E0,$D0,$C0,$C0,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$05,$03,$07,$07,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$07,$1F
+  $07,$1F,$1F,$7F,$73,$F3,$FF,$FF,$F0,$70,$3F,$3F,$FF,$FF,$FF,$FF
+  $E0,$F8,$F8,$FE,$CE,$CF,$FF,$FF,$0F,$0E,$FC,$FC,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$E0,$F8
+  $3C,$78,$E0,$C0,$00,$01,$01,$03,$03,$07,$0E,$0C,$0C,$0C,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$3C,$38,$38,$30,$30,$30,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F3,$E3,$E3,$C3,$C0,$C0,$00,$00
+  $3C,$1E,$07,$03,$00,$80,$C0,$E0,$30,$38,$1C,$0C,$0C,$0C,$00,$00
+  $03,$07,$0D,$0F,$0C,$07,$1F,$3F,$6F,$8F,$0F,$1F,$16,$24,$24,$00
+  $C0,$E0,$B0,$F0,$30,$E0,$F8,$FC,$F6,$F1,$F0,$F8,$D4,$92,$82,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$07,$0B,$03,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$E0,$D0,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$07,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$80,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$03,$03,$01,$00,$00,$07,$1F,$1F,$7F,$7F,$FF
+  $00,$00,$FF,$FF,$3C,$3C,$FF,$FF,$FF,$FE,$F8,$E0,$E0,$80,$80,$00
+  $00,$00,$00,$80,$C0,$C0,$C0,$A0,$30,$30,$30,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$0F,$0F,$07,$01,$00,$00
+  $FF,$7F,$7F,$1F,$07,$01,$00,$00,$80,$E0,$E0,$F9,$FF,$FF,$1F,$07
+  $00,$80,$E0,$F8,$FE,$FF,$0F,$0F,$1F,$7F,$7F,$FF,$FF,$FF,$FF,$FE
+  $00,$00,$00,$00,$00,$80,$E0,$F0,$F0,$E0,$C0,$C0,$F0,$F0,$80,$00
+  $00,$00,$01,$01,$00,$03,$07,$0F,$0F,$07,$01,$00,$18,$3C,$1F,$03
+  $00,$F0,$68,$F8,$F4,$C4,$80,$00,$00,$C0,$F0,$3C,$7C,$F8,$FC,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$03,$03,$00,$06,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$00,$80,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$00,$80,$C0,$80
+  $00,$00,$00,$00,$00,$00,$03,$07,$0C,$0C,$0C,$0C,$00,$00,$00,$00
+  $0F,$1F,$33,$33,$3F,$1F,$0F,$8F,$7F,$FF,$FF,$FF,$FF,$7F,$7F,$3F
+  $F0,$F8,$CC,$CC,$FC,$F8,$F0,$F1,$FE,$FF,$FF,$FF,$FF,$FE,$FE,$FC
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$30,$30,$30,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$0F,$0F,$07,$01,$00,$00
+  $3F,$1F,$1F,$07,$07,$01,$01,$00,$80,$E0,$E0,$F9,$FF,$FF,$7F,$1F
+  $FC,$F8,$F0,$F0,$F8,$FE,$FE,$7F,$3F,$3F,$7F,$FF,$FF,$FF,$FE,$F8
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$00,$00,$C0,$C0,$00,$00
+  $03,$05,$07,$13,$2F,$2F,$0F,$07,$07,$03,$01,$00,$18,$3C,$1F,$07
+  $C0,$A0,$E0,$C8,$F4,$F4,$F0,$E0,$E0,$C0,$E0,$F0,$78,$F0,$F8,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$07,$03,$01,$00,$06,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$E0,$C0,$80,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$80,$80,$00
+end data
+data BandOf bytes 0,0,0,1,1,1,2,2,3,3,4,4,4,4,3,3,2,2,1,1,1,0,0,0
+data ColTop bytes 0,1,2,2,3,4,4,5,5,6,6,7,7,6,6,5,5,4,4,3,2,2,1,0
+data ColBot bytes 15,14,13,13,12,11,11,10,10,9,9,8,8,9,9,10,10,11,11,12,13,13,14,15
+data RowK bytes 0,0,1,1,2,3,4,4,4,4,3,2,1,1,0,0
+data BoxX0 bytes 0,3,6,8,10,11
+data BoxX1 bytes 23,20,17,15,13,12
+data BoxY0 bytes 0,2,4,5,6,7
+data BoxY1 bytes 15,13,11,10,9,8
+data TitleMap bytes
+  32,32,32,32,32,32,32,32,208,203,200,198,202,196,208,32,200,202,198,196,201,198,196,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,200,200,200,32,200,32,200,200,200,208,207,32,204,207,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,200,32,200,32,200,32,200,197,200,200,32,32,32,32,200,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,196,32,196,198,198,196,196,32,196,198,198,196,198,198,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,201,198,199,202,198,196,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,200,32,200,208,207,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,200,32,200,200,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,197,198,32,196,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,208,203,200,202,198,196,202,198,199,200,32,32,198,202,196,208,32,200,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,200,200,200,208,207,32,208,207,196,200,32,32,32,200,32,200,200,200,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,200,32,200,200,32,32,200,204,32,200,32,32,32,200,32,200,197,200,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,196,32,196,198,198,196,196,32,196,198,198,196,198,198,196,196,32,196,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+data MonCol bytes 13,9,14,5,3,15,11,8
+
+record Mon:
+  u8 Cell
+  u8 Kind
+  u16 Hp
+end record
+Mon Mons[16]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Life = 100
+u16 Inv = 0
+u16 MonT = 0
+u16 RingT = 0
+u8 LockB[6]
+u8 ItemAt[9]
+u8 RowBuf[24]
+' the view: cells ahead, side openings, visible length, the front
+u8 VCell[5]
+u8 VLeft[5]
+u8 VRight[5]
+u8 VN = 0
+u8 Front = 0
+u8 LadK = 0
+u8 LadTop = 0
+u8 LadBot = 0
+u8 MaxD = 4
+' the player
+u8 Cl = StartCell
+u8 Dir = 2
+u8 Sel = 1
+u8 Light = 1
+u8 Vs = 0
+u8 RingOn = 0
+u8 RegenT = 0
+u8 MoveT = 0
+u8 SwordT = 0
+u8 Flash = 0
+u8 Over = 0
+u8 Won = 0
+u8 Redraw = 0
+u8 Here = 0
+u8 Kills = 0
+u8 GraceT = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InPlay = 0
+' loop counters (never shared with the helpers)
+u8 Mi = 0
+u8 Vr = 0
+u8 Vc = 0
+u8 Ii = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 T = 0
+
+  tile screen
+  set sound table MmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Redraw = 1 then
+    BuildView
+    Redraw = 0
+  end if
+  if Over = 0 then goto play_loop
+
+  InPlay = 0
+  mute all
+  HideSprites
+  if Won = 1 then
+    WinPage
+  else
+    LosePage
+  end if
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if MoveT > 0 then dec MoveT
+  if SwordT > 0 then dec SwordT
+  if Flash > 0 then
+    dec Flash
+    if Flash = 0 then backdrop black
+  end if
+  ' the stick: walk, step back, turn (a step every 12 frames when held)
+  V = J1 & 15
+  if V = 0 then MoveT = 0
+  if V > 0 then
+    if MoveT = 0 then
+      MoveT = 12
+      if V & 1 then
+        Walk(Dir)
+      else
+        if V & 2 then
+          K = (Dir + 2) & 3
+          BackStep(K)
+        else
+          if V & 4 then
+            Dir = (Dir + 3) & 3
+            Redraw = 1
+            Turned
+          end if
+          if V & 8 then
+            Dir = (Dir + 1) & 3
+            Redraw = 1
+            Turned
+          end if
+        end if
+      end if
+    end if
+  end if
+  if Press = 1 then UseRelic
+  if Press2 = 1 then NextRelic
+  ' a creature in your cell attacks
+  Here = MonAt(Cl)
+  if GraceT > 0 then
+    dec GraceT
+  else
+    if Here > 0 then MonAttack
+  end if
+  if Over = 1 then return
+  ' the clocks: life, the ring, the creatures' tick
+  inc RegenT
+  if RegenT >= RegenLen then
+    RegenT = 0
+    V = 4
+    if Inv & 128 then V = 8
+    Life = Life + V
+    if Life > 600 then Life = 600
+    ShowLife
+  end if
+  if RingT > 0 then
+    dec RingT
+    if RingOn = 1 then
+      if RingT = RingRest then
+        RingOn = 0
+        Say(9)
+        backdrop black
+      end if
+    end if
+  end if
+  inc MonT
+  if MonT >= TickLen then
+    MonT = 0
+    MonTick
+  end if
+  return
+end sub
+
+' one step to the cell in direction D, unless it is rock or locked this way
+sub Walk(u8 D):
+  u8 Nc = 0
+  Nc = Cl + DirStep[D]
+  if Feat[Nc] = 0 then
+    play sound SndBump
+    return
+  end if
+  if LockAt(Nc) & DirLock[D] then
+    play sound SndBump
+    Say(1)
+    return
+  end if
+  Cl = Nc
+  Entered
+  return
+end sub
+
+' a step back (the C64 refused to back into a door)
+sub BackStep(u8 D):
+  u8 Nc = 0
+  Nc = Cl + DirStep[D]
+  V = Feat[Nc]
+  if V = 0 then
+    play sound SndBump
+    return
+  end if
+  if V & 32 then
+    play sound SndBump
+    return
+  end if
+  if LockAt(Nc) & DirLock[D] then
+    play sound SndBump
+    return
+  end if
+  Cl = Nc
+  Entered
+  return
+end sub
+
+sub Turned:
+  ShowDir
+  Say(0)
+  return
+end sub
+
+' a new cell: pick up its relics, say what is here, show it
+sub Entered:
+  play sound SndStep
+  Redraw = 1
+  Say(0)
+  PickUp
+  Here = MonAt(Cl)
+  if Here > 0 then
+    Cry(Here)
+  end if
+  ShowDir
+  return
+end sub
+
+' the relics lying in your cell are yours
+sub PickUp:
+  for Ii = 0 to 8
+    if ItemAt[Ii] = Cl then
+      ItemAt[Ii] = NoCell
+      Gain(Ii)
+    end if
+  next
+  return
+end sub
+
+sub Gain(u8 It):
+  W16 = 1 << It
+  Inv = Inv | W16
+  if It = 0 then
+    Light = 1
+    Vs = 0
+    MaxD = 4
+  end if
+  play sound SndGet
+  Say(It + 20)
+  ShowInv
+  return
+end sub
+
+' the creature in cell Cc, as its number + 1 (0: none)
+function MonAt(u8 Cc) as u8
+  u8 Mq = 0
+  for Mq = 0 to 15
+    if Mons[Mq].Kind > 0 then
+      if Mons[Mq].Cell = Cc then return Mq + 1
+    end if
+  next
+  return 0
+
+' the locks of cell Cc (bit 0 east, 1 south, 2 west, 3 north)
+function LockAt(u8 Cc) as u8
+  u8 Lq = 0
+  for Lq = 0 to 5
+    if LockCell[Lq] = Cc then return LockB[Lq]
+  next
+  return 0
+
+sub SetLock(u8 Cc, u8 Bits):
+  u8 Lq = 0
+  for Lq = 0 to 5
+    if LockCell[Lq] = Cc then LockB[Lq] = Bits
+  next
+  return
+end sub
+
+' a creature cries when it reaches you
+sub Cry(u8 Mn):
+  GraceT = 45
+  K = Mons[Mn - 1].Kind
+  select case K
+    case 2, 7, 8
+      play sound SndHiss
+    case else
+      play sound SndGrowl
+  end select
+  Say(K + 40)
+  return
+end sub
+
+' a creature in your cell: the C64's chance and damage each turn
+sub MonAttack:
+  u8 Kd = 0
+  u16 Dm = 0
+  Kd = Mons[Here - 1].Kind
+  Rand
+  W16 = Rs & 1023
+  if W16 >= AtkP[Kd] then return
+  if Kd = 6 then
+    ' the wraith takes every relic but the torch, rope and crown to its lair
+    W16 = Inv & 236
+    if W16 > 0 then
+      for Ii = 1 to 7
+        V = Ii
+        W16 = 1 << V
+        W16 = W16 & Inv
+        if W16 > 0 then
+          if V <> 4 then
+            if V <> 1 then ItemAt[Ii] = LairCell
+          end if
+        end if
+      next
+      Inv = Inv & 275
+      Sel = 1
+      ShowInv
+      Say(10)
+    end if
+  end if
+  if RingOn = 1 then return
+  Rand
+  V = Rs & 3
+  if V = 0 then V = 1
+  Dm = Kd * 10
+  if Inv & 4 then Dm = Dm / 5
+  Dm = Dm + V * 10
+  play sound SndOuch
+  backdrop dark red
+  Flash = 10
+  if Dm >= Life then
+    Life = 0
+    ShowLife
+    Over = 1
+    return
+  end if
+  Life = Life - Dm
+  ShowLife
+  return
+end sub
+
+' the creatures' tick: those on your level move towards you; the light
+' fades (C64 lines 2370-2390, 3080-3160)
+sub MonTick:
+  u8 Lo = 0
+  u8 Hi = 8
+  i16 Dl = 0
+  u8 Tg = 0
+  if Cl >= 128 then
+    Lo = 9
+    Hi = 15
+  end if
+  for Mi = Lo to Hi
+    if Mons[Mi].Kind > 0 then
+      Dl = Cl
+      Dl = Dl - Mons[Mi].Cell
+      Tg = Mons[Mi].Cell
+      if Dl < -6 then Tg = Tg - 16
+      if Dl > 6 then Tg = Tg + 16
+      if Dl > 0 then
+        if Dl < 6 then inc Tg
+      end if
+      if Dl < 0 then
+        if Dl > -6 then dec Tg
+      end if
+      if Tg <> Mons[Mi].Cell then
+        if Feat[Tg] > 0 then
+          if MonAt(Tg) = 0 then
+            Mons[Mi].Cell = Tg
+            Redraw = 1
+            if Tg = Cl then Cry(Mi + 1)
+          end if
+        end if
+      end if
+    end if
+  next
+  ' the torch: stage Light lasts Light * 6 ticks; at stage 6 it is gone
+  if Inv & 1 then
+    inc Vs
+    V = Light * 6
+    if Vs >= V then
+      Vs = 0
+      if Light < 6 then inc Light
+      if Light = 6 then
+        Inv = Inv & 510
+        if Sel = 0 then Sel = 1
+        ShowInv
+        Say(8)
+      end if
+      Redraw = 1
+    end if
+  end if
+  MaxD = LightDepth(Light)
+  return
+end sub
+
+function LightDepth(u8 Lt) as u8
+  select case Lt
+    case 1 to 3
+      return 4
+    case 4
+      return 3
+    case 5
+      return 2
+  end select
+  return 1
+
+' ---------------------------------------------------------------------------
+' the relics
+sub UseRelic:
+  W16 = 1 << Sel
+  W16 = W16 & Inv
+  if W16 = 0 then return
+  select case Sel
+    case 0
+      Say(11)
+    case 1
+      Strike
+    case 2
+      Say(12)
+    case 3
+      UseRing
+    case 4
+      UseRope
+    case 5
+      UseWand
+    case 6
+      UseKey
+    case 7
+      Say(13)
+    case 8
+      Say(14)
+  end select
+  return
+end sub
+
+' the next relic carried
+sub NextRelic:
+  for Ii = 1 to 9
+    V = Sel + Ii
+    if V > 8 then V = V - 9
+    W16 = 1 << V
+    W16 = W16 & Inv
+    if W16 > 0 then
+      Sel = V
+      play sound SndBeep
+      ShowCursor
+      return
+    end if
+  next
+  return
+end sub
+
+' the sword (and the wand against a wraith): miss when RND + LIFE/100 < .5
+sub Strike:
+  u8 Mn = 0
+  u16 Dm = 0
+  if SwordT > 0 then return
+  SwordT = 15
+  play sound SndSlash
+  Mn = MonAt(Cl)
+  if Mn = 0 then
+    Say(15)
+    return
+  end if
+  Rand
+  W16 = Rs & 127
+  if W16 > 99 then W16 = W16 - 28
+  NumU = Life / 10
+  W16 = W16 + NumU
+  if W16 < 50 then
+    Say(16)
+    return
+  end if
+  Rand
+  Dm = Rs & 7
+  NumU = Life / 5
+  Dm = Dm + 20 + NumU
+  if Dm >= Mons[Mn - 1].Hp then
+    MonDies(Mn - 1)
+    return
+  end if
+  Mons[Mn - 1].Hp = Mons[Mn - 1].Hp - Dm
+  play sound SndHurt
+  Say(17)
+  return
+end sub
+
+sub MonDies(u8 Mq):
+  u8 Kd = 0
+  u8 It = 0
+  Kd = Mons[Mq].Kind
+  Mons[Mq].Kind = 0
+  inc Kills
+  play sound SndDied
+  Life = Life + Kd * 5 / 2
+  if Life > 600 then Life = 600
+  ShowLife
+  Say(18)
+  ' it drops relic kind - 1 (unless you carry it or it lies elsewhere;
+  ' a torch is always dropped)
+  It = Kd - 1
+  W16 = 1 << It
+  W16 = W16 & Inv
+  if It = 0 then W16 = 0
+  if W16 = 0 then
+    if It = 0 then
+      ItemAt[0] = Cl
+    else
+      if ItemAt[It] = NoCell then ItemAt[It] = Cl
+    end if
+  end if
+  PickUp
+  Redraw = 1
+  return
+end sub
+
+sub UseRing:
+  if RingOn = 1 then
+    Say(19)
+    return
+  end if
+  if RingT > 0 then
+    Say(7)
+    return
+  end if
+  RingOn = 1
+  RingT = RingLen + RingRest
+  play sound SndMagic
+  backdrop dark blue
+  Say(6)
+  return
+end sub
+
+sub UseRope:
+  V = Feat[Cl]
+  if Cl < 128 then
+    if V & 4 then
+      Cl = Cl + 128
+      play sound SndDown
+      Say(2)
+      LevelChanged
+      return
+    end if
+  else
+    K = V & 24
+    if K = 24 then
+      Cl = Cl - 128
+      play sound SndUp
+      Say(3)
+      LevelChanged
+      return
+    end if
+  end if
+  if Cl = StartCell then
+    if Inv & 256 then
+      Won = 1
+      Over = 1
+      return
+    end if
+    Say(4)
+    return
+  end if
+  play sound SndBump
+  Say(5)
+  return
+end sub
+
+sub LevelChanged:
+  MonT = 0
+  Redraw = 1
+  PickUp
+  ShowDir
+  return
+end sub
+
+' the wand: strikes a wraith, else every lock of the cell ahead falls
+sub UseWand:
+  u8 Ah = 0
+  Here = MonAt(Cl)
+  if Here > 0 then
+    if Mons[Here - 1].Kind = 6 then
+      play sound SndMagic
+      SwordT = 0
+      Strike
+      return
+    end if
+  end if
+  Ah = Cl + DirStep[Dir]
+  play sound SndMagic
+  if LockAt(Ah) > 0 then
+    SetLock(Ah, 0)
+    Say(30)
+    Redraw = 1
+    return
+  end if
+  Say(31)
+  return
+end sub
+
+' the key: a door's lock on your side
+sub UseKey:
+  u8 Ah = 0
+  Ah = Cl + DirStep[Dir]
+  V = Feat[Ah]
+  if V & 32 then
+    K = LockAt(Ah)
+    T = DirLock[Dir]
+    if K & T then
+      K = K - T
+      SetLock(Ah, K)
+      play sound SndGet
+      Say(32)
+      Redraw = 1
+      return
+    end if
+  end if
+  play sound SndBump
+  Say(33)
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the first-person view: 24 x 16 tiles at column 4, row 2
+sub BuildView:
+  u8 Lc = 0
+  u8 Rc = 0
+  u8 Fc = 0
+  u16 Off = 0
+  ' walk ahead: cells, side openings; stop at rock, a door or the light
+  Fc = Cl
+  VN = 0
+  Front = 1
+  LadK = NoCell
+  for Vc = 0 to 4
+    VCell[Vc] = Fc
+    Lc = Fc + DirStep[(Dir + 3) & 3]
+    Rc = Fc + DirStep[(Dir + 1) & 3]
+    VLeft[Vc] = Feat[Lc]
+    VRight[Vc] = Feat[Rc]
+    if Vc > 0 then
+      V = Feat[Fc]
+      if V = 0 then goto bv_end
+      if V & 32 then
+        Front = 2
+        if LockAt(Fc) & DirLock[Dir] then Front = 3
+        goto bv_end
+      end if
+    end if
+    if Vc >= MaxD then
+      Front = 0
+      goto bv_end
+    end if
+    V = Feat[Fc]
+    if LadK = NoCell then
+      if V & 16 then LadK = Vc
+    end if
+    VN = Vc + 1
+    Fc = Fc + DirStep[Dir]
+  next
+bv_end:
+  if VN = 0 then VN = 1
+  if LadK <> NoCell then
+    LadTop = BoxY0[LadK] + BoxY0[LadK + 1]
+    LadTop = LadTop >> 1
+    LadBot = BoxY1[LadK] + BoxY1[LadK + 1]
+    LadBot = LadBot >> 1
+  end if
+  Off = 68
+  for Vr = 0 to 15
+    for Vc = 0 to 23
+      RowBuf[Vc] = ViewTile(Vc, Vr)
+    next
+    copy RowBuf count 24 to vram.name + Off
+    Off = Off + 32
+  next
+  DrawMonsters
+  return
+end sub
+
+' the tile at view column Tc, row Tr
+function ViewTile(u8 Tc, u8 Tr) as u8
+  u8 Bk = 0
+  u8 Op = 0
+  if LadK <> NoCell then
+    if Tc >= 11 then
+      if Tc <= 12 then
+        if Tr >= LadTop then
+          if Tr <= LadBot then return TLadL + Tc - 11
+        end if
+      end if
+    end if
+  end if
+  Bk = BandOf[Tc]
+  if Bk >= VN then
+    if Tr < BoxY0[VN] then return CeilFloor(Tc, Tr)
+    if Tr > BoxY1[VN] then return CeilFloor(Tc, Tr)
+    return FrontTile(Tc, Tr)
+  end if
+  if Tc < 12 then
+    Op = VLeft[Bk]
+  else
+    Op = VRight[Bk]
+  end if
+  if Op = 0 then
+    if Tr < ColTop[Tc] then return CeilFloor(Tc, Tr)
+    if Tr > ColBot[Tc] then return CeilFloor(Tc, Tr)
+    return TWall0 + Bk
+  end if
+  if Tr < BoxY0[Bk + 1] then return CeilFloor(Tc, Tr)
+  if Tr > BoxY1[Bk + 1] then return CeilFloor(Tc, Tr)
+  return TWall0 + Bk + 1
+
+' the ceiling or floor at a cell, with its shaft, exit or coffin
+function CeilFloor(u8 Tc, u8 Tr) as u8
+  u8 Rk = 0
+  u8 Fv = 0
+  Rk = RowK[Tr]
+  if Rk >= VN then return TPit
+  Fv = 0
+  if BandOf[Tc] > Rk then Fv = Feat[VCell[Rk]]
+  if Tr < 8 then
+    if Fv & 8 then return THole
+    return TCeil0 + Rk
+  end if
+  if Fv & 4 then
+    if Tr = BoxY1[Rk + 1] + 1 then return TPitT
+    return TPit
+  end if
+  if Fv & 2 then
+    if BandOf[Tc] > Rk + 1 then
+      if Tr = BoxY1[Rk + 1] + 1 then return TCofT
+      return TCof
+    end if
+  end if
+  return TFloor0 + Rk
+
+' the face that ends the view: dark, a wall, a door or a locked door
+function FrontTile(u8 Tc, u8 Tr) as u8
+  u8 Dk = 0
+  if Front = 0 then return TPit
+  if Front = 1 then return TWall0 + VN
+  Dk = VN + 1
+  if BandOf[Tc] < Dk then return TWall0 + VN
+  if Tr < BoxY0[Dk] then return TWall0 + VN
+  if Front = 2 then
+    if Tr = BoxY0[Dk] then return TDoorT
+    return TDoor
+  end if
+  if Tr = BoxY0[Dk] then return TLockT
+  if Tc = 12 then
+    if Tr = BoxY0[Dk] + 1 then return TLockK
+  end if
+  return TLock
+
+' the creatures in sight: the nearest two, sized by distance
+sub DrawMonsters:
+  u8 Shown = 0
+  u8 Mn = 0
+  u8 Pb = 0
+  u8 Cc = 0
+  for J = 1 to 6
+    set sprite J to 192,0,0,0
+  next
+  Shown = 0
+  for Vc = 0 to 3
+    if Vc < VN then
+      if Shown < 2 then
+        Mn = MonAt(VCell[Vc])
+        if Mn > 0 then
+          K = Mons[Mn - 1].Kind
+          Pb = (K - 1) * 28 + SSpiderTL
+          Cc = MonCol[K - 1]
+          select case Vc
+            case 0
+              set sprite 1 to 99,112,Pb,Cc
+              set sprite 2 to 99,128,Pb + 4,Cc
+              set sprite 3 to 115,112,Pb + 8,Cc
+              set sprite 4 to 115,128,Pb + 12,Cc
+            case 1
+              set sprite 5 + Shown to 99,120,Pb + 16,Cc
+            case 2
+              set sprite 5 + Shown to 87,120,Pb + 20,Cc
+            case 3
+              set sprite 5 + Shown to 79,120,Pb + 24,Cc
+          end select
+          inc Shown
+        end if
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the status lines
+sub ShowLife:
+  NumU = Life / 10
+  print at 2,19, "LIFE ", digits$(NumU, 2)
+  return
+end sub
+
+sub ShowDir:
+  V = 1
+  if Cl >= 128 then V = 2
+  NumU = V
+  print at 11,19, "LEVEL ", digits$(NumU, 1)
+  put char DirName[Dir] at 29,19
+  print at 21,19, "FACING"
+  return
+end sub
+
+' the relics carried, in their slots, and the cursor
+sub ShowInv:
+  for Ii = 0 to 8
+    X = Ii * 3 + 2
+    W16 = 1 << Ii
+    W16 = W16 & Inv
+    if W16 > 0 then
+      T = Ii * 4 + TTorch00
+    else
+      T = TSlot00
+    end if
+    put char T at X,21
+    put char T + 1 at X + 1,21
+    put char T + 2 at X,22
+    put char T + 3 at X + 1,22
+  next
+  ShowCursor
+  return
+end sub
+
+sub ShowCursor:
+  X = Sel * 24 + 16
+  set sprite 0 to 167,X,SCursor,15
+  update sprites
+  return
+end sub
+
+' the message line (row 20)
+sub Say(u8 M):
+  print at 2,20, "                            "
+  select case M
+    case 0
+      if Feat[Cl] & 4 then print at 2,20, "A SHAFT GOES DOWN HERE"
+      if Feat[Cl] & 8 then print at 2,20, "AN EXIT IN THE CEILING"
+      if Feat[Cl] & 2 then print at 2,20, "A COFFIN LIES HERE"
+    case 1
+      print at 2,20, "THE WAY IS LOCKED"
+    case 2
+      print at 2,20, "DOWN THE ROPE..."
+    case 3
+      print at 2,20, "UP THE LADDER..."
+    case 4
+      print at 2,20, "NOT WITHOUT THE CROWN!"
+    case 5
+      print at 2,20, "NOWHERE TO CLIMB HERE"
+    case 6
+      print at 2,20, "YOU FADE FROM SIGHT"
+    case 7
+      print at 2,20, "THE RING IS RESTING"
+    case 8
+      print at 2,20, "YOUR TORCH BURNS OUT!"
+    case 9
+      print at 2,20, "YOU ARE SEEN AGAIN"
+    case 10
+      print at 2,20, "THE WRAITH ROBS YOU!"
+    case 11
+      print at 2,20, "YOUR TORCH FLICKERS"
+    case 12
+      print at 2,20, "YOUR SHIELD IS READY"
+    case 13
+      print at 2,20, "THE AMULET IS WARM"
+    case 14
+      print at 2,20, "THE CROWN OF ARTHUR!"
+    case 15
+      print at 2,20, "YOU SWING AT THE AIR"
+    case 16
+      print at 2,20, "YOU MISS"
+    case 17
+      print at 2,20, "A HIT!"
+    case 18
+      print at 2,20, "IT IS SLAIN!"
+    case 19
+      print at 2,20, "YOU ARE ALREADY UNSEEN"
+    case 20
+      print at 2,20, "A FRESH TORCH!"
+    case 21
+      print at 2,20, "YOU FIND A SWORD"
+    case 22
+      print at 2,20, "YOU FIND A SHIELD"
+    case 23
+      print at 2,20, "YOU FIND A MAGIC RING"
+    case 24
+      print at 2,20, "YOU FIND A ROPE"
+    case 25
+      print at 2,20, "YOU FIND A WAND"
+    case 26
+      print at 2,20, "YOU FIND A KEY"
+    case 27
+      print at 2,20, "YOU FIND AN AMULET"
+    case 28
+      print at 2,20, "THE CROWN OF ARTHUR!"
+    case 30
+      print at 2,20, "THE LOCKS FALL AWAY"
+    case 31
+      print at 2,20, "SPARKS, BUT NOTHING"
+    case 32
+      print at 2,20, "CLICK! UNLOCKED"
+    case 33
+      print at 2,20, "NO LOCK FOR THE KEY"
+    case 41
+      print at 2,20, "A SPIDER!"
+    case 42
+      print at 2,20, "A SCORPION!"
+    case 43
+      print at 2,20, "A GIANT RAT!"
+    case 44
+      print at 2,20, "A BAT!"
+    case 45
+      print at 2,20, "A GOBLIN!"
+    case 46
+      print at 2,20, "A WRAITH!"
+    case 47
+      print at 2,20, "A SERPENT!"
+    case 48
+      print at 2,20, "THE NAGA!"
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub NewGame:
+  u8 Cc = 0
+  u8 Lo = 0
+  u8 Span = 0
+  NewScreen
+  ' the frame around the view
+  fill TFrm count 26 at 3,1
+  fill TFrm count 26 at 3,18
+  for Vr = 2 to 17
+    put char TFrm at 3,Vr
+    put char TFrm at 28,Vr
+  next
+  ' the creatures at random cells of their level (C64 lines 2010-2060)
+  for Mi = 0 to 15
+    Mons[Mi].Kind = 0
+  next
+  for Mi = 0 to 15
+    if Mi < 9 then
+      Lo = 34
+      Span = 93
+    else
+      Lo = 142
+      Span = 96
+    end if
+    Cc = 0
+    while Cc = 0
+      Rand
+      W16 = Rs & 127
+      if W16 < Span then
+        Cc = Lo + W16
+        if Feat[Cc] = 0 then Cc = 0
+        if Cc > 0 then
+          if MonAt(Cc) > 0 then Cc = 0
+        end if
+      end if
+    end while
+    Mons[Mi].Cell = Cc
+    Mons[Mi].Hp = Mi * 40 + 10
+    Mons[Mi].Kind = MonKind[Mi]
+  next
+  for Ii = 0 to 8
+    ItemAt[Ii] = NoCell
+  next
+  ItemAt[8] = CrownCell
+  for Ii = 0 to 5
+    LockB[Ii] = LockInit[Ii]
+  next
+  Cl = StartCell
+  Dir = 2
+  Inv = 3
+  Sel = 1
+  Life = 150
+  Light = 1
+  Vs = 0
+  MaxD = 4
+  RingOn = 0
+  RingT = 0
+  MonT = 0
+  RegenT = 0
+  Over = 0
+  Won = 0
+  Kills = 0
+  Flash = 0
+  ShowLife
+  ShowDir
+  ShowInv
+  Say(0)
+  BuildView
+  ShowScreen
+  InPlay = 1
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).button1 then J1 = J1 | 16
+  if joypad(2).button2 then J1 = J1 | 32
+  Btn = J1 & 48
+  Press = 0
+  Press2 = 0
+  V = Btn & 16
+  if V > 0 then
+    V = WasBtn & 16
+    if V = 0 then Press = 1
+  end if
+  V = Btn & 32
+  if V > 0 then
+    V = WasBtn & 32
+    if V = 0 then Press2 = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 4
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: MINES OF MERLIN in gold blocks, a spider on its thread,
+' START / CREDITS, the tune once
+sub TitlePage:
+  u8 Sy = 40
+  u8 Sd = 1
+  NewScreen
+  copy TitleMap count 480 to vram.name + 32
+  print at 3,17, "BY CLEVELAND M. BLAKEMORE"
+  print at 13,19, "START"
+  print at 13,20, "CREDITS"
+  print at 8,22, "AHOY! JUNE 1988"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 650
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  ' the spider climbs and drops on its thread at the right
+  V = Tick & 3
+  if V = 0 then
+    if Sd = 1 then
+      inc Sy
+      if Sy >= 100 then Sd = 0
+    else
+      dec Sy
+      if Sy <= 30 then Sd = 1
+    end if
+  end if
+  set sprite 1 to Sy,212,SSpiderS,13
+  set sprite 2 to Sy,36,SSpiderS,13
+  update sprites
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,19
+  put char 32 at 11,20
+  J = Menu + 19
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $B0
+  print at 8,2, "MINES OF MERLIN"
+  print at 2,5, "BASED ON MINES OF MERLIN"
+  print at 2,6, "BY CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! JUNE 1988 (COMMODORE"
+  print at 2,8, "64 BASIC), (C) 1988 NEMESIS"
+  print at 2,9, "SOFTWARE."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: DOWN THE OLD SHAFT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub WinPage:
+  NewScreen
+  fill mode 2 text color with $B0
+  print at 5,3, "YOU HAVE SURVIVED THE"
+  print at 7,4, "MINES OF MERLIN!"
+  print at 3,8, "THE CROWN OF KING ARTHUR"
+  print at 3,9, "HAS BEEN RETURNED TO ITS"
+  print at 3,10, "PROPER RESTING PLACE IN"
+  print at 3,11, "THE SECRET DRUID NEMETON"
+  print at 3,12, "IN IRELAND!"
+  NumU = Kills
+  print at 3,15, "CREATURES SLAIN ", digits$(NumU, 2)
+  put char TCrown00 at 14,17
+  put char TCrown01 at 15,17
+  put char TCrown10 at 14,18
+  put char TCrown11 at 15,18
+  ShowScreen
+  play sound SndWon
+  return
+end sub
+
+sub LosePage:
+  NewScreen
+  fill mode 2 text color with $90
+  print at 3,3, "ALAS, WARRIOR... THOU"
+  print at 3,4, "HAST BEEN SLAIN"
+  print at 3,5, "(RATHER BRUTALLY, I MIGHT"
+  print at 3,6, "ADD)"
+  print at 3,9, "THE ADVENTURERS UNION"
+  print at 3,10, "FOUND YOUR SOMEWHAT"
+  print at 3,11, "DISFIGURED REMAINS STUFFED"
+  print at 3,12, "HASTILY IN ONE OF THE"
+  print at 3,13, "COFFINS INSIDE THE MINE,"
+  print at 3,14, "AND RETURNED YOUR BODY TO"
+  print at 3,15, "YOUR RELATIVES FOR A"
+  print at 3,16, "BURIAL FITTING A KNIGHT"
+  print at 3,17, "ERRANT SLAIN ON A NOBLE"
+  print at 3,18, "QUEST....."
+  ShowScreen
+  play sound SndLost
+  return
+end sub
+
+asm {
+MmStep:
+    db $00,$00,$66,$02,$00,$00,$96,$02,$10
+MmBump:
+    db $40,$F9,$23,$03,$40,$FF,$43,$04,$50
+MmBeep:
+    db $40,$7F,$20,$06,$50
+MmSlash:
+    db $00,$00,$14,$02,$00,$00,$25,$02,$00,$00,$46,$03,$00,$00,$76,$04,$10
+MmHurt:
+    db $40,$BA,$10,$02,$40,$E8,$20,$02,$40,$21,$21,$02,$40,$69,$31,$02,$40,$C1,$41,$02,$40,$2F,$42,$02
+    db $50
+MmOuch:
+    db $00,$00,$07,$03,$00,$00,$26,$04,$00,$00,$57,$06,$10
+MmDied:
+    db $40,$7C,$10,$02,$40,$8E,$20,$02,$40,$A3,$20,$02,$40,$BA,$20,$02,$40,$D5,$20,$02,$40,$F3,$30,$02
+    db $40,$16,$31,$02,$40,$3F,$31,$02,$40,$6C,$31,$02,$40,$A0,$41,$02,$40,$DC,$41,$02,$40,$22,$42,$02
+    db $40,$6D,$42,$02,$40,$C8,$52,$02,$40,$31,$53,$02,$40,$A4,$53,$02,$50
+MmMagic:
+    db $40,$75,$21,$02,$40,$53,$21,$02,$40,$34,$21,$02,$40,$18,$21,$02,$40,$FF,$20,$02,$40,$E8,$20,$02
+    db $40,$D3,$20,$02,$40,$C0,$20,$02,$40,$AF,$20,$02,$40,$9F,$30,$02,$40,$91,$30,$02,$40,$84,$30,$02
+    db $40,$78,$30,$02,$40,$6D,$30,$02,$40,$63,$30,$02,$40,$5A,$30,$02,$40,$52,$30,$02,$40,$4B,$30,$02
+    db $50
+MmDown:
+    db $40,$46,$20,$02,$40,$4E,$20,$02,$40,$57,$20,$02,$40,$61,$20,$02,$40,$6C,$20,$02,$40,$79,$30,$02
+    db $40,$87,$30,$02,$40,$96,$30,$02,$40,$A8,$30,$02,$40,$BB,$30,$02,$40,$D1,$30,$02,$40,$E9,$30,$02
+    db $40,$04,$41,$02,$40,$22,$41,$02,$40,$43,$41,$02,$40,$69,$41,$02,$40,$92,$41,$02,$40,$C1,$41,$02
+    db $40,$F6,$51,$02,$40,$2F,$52,$02,$50
+MmUp:
+    db $40,$2F,$22,$02,$40,$F6,$21,$02,$40,$C1,$21,$02,$40,$92,$21,$02,$40,$69,$21,$02,$40,$43,$31,$02
+    db $40,$22,$31,$02,$40,$04,$31,$02,$40,$E9,$30,$02,$40,$D1,$30,$02,$40,$BB,$30,$02,$40,$A8,$30,$02
+    db $40,$96,$40,$02,$40,$87,$40,$02,$40,$79,$40,$02,$40,$6C,$40,$02,$40,$61,$40,$02,$40,$57,$40,$02
+    db $40,$4E,$50,$02,$40,$46,$50,$02,$50
+MmGet:
+    db $40,$8F,$20,$03,$40,$6B,$20,$03,$40,$47,$30,$06,$50
+MmGrowl:
+    db $40,$1F,$23,$03,$40,$56,$33,$03,$40,$8D,$33,$03,$40,$C4,$43,$03,$40,$FF,$43,$03,$40,$FF,$43,$03
+    db $40,$FF,$53,$03,$40,$FF,$53,$03,$50
+MmHiss:
+    db $00,$00,$34,$04,$00,$00,$54,$06,$00,$00,$74,$08,$10
+MmWon:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$20,$18,$50
+MmLost:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$AB,$31,$24,$50
+
+MmSoundTable:
+    dw MmTuneMel,$702B
+    dw MmTuneBass,$7035
+    dw MmStep,$703F
+    dw MmBump,$7049
+    dw MmBeep,$7049
+    dw MmSlash,$703F
+    dw MmHurt,$7049
+    dw MmOuch,$703F
+    dw MmDied,$7049
+    dw MmMagic,$7049
+    dw MmDown,$7049
+    dw MmUp,$7049
+    dw MmGet,$7049
+    dw MmGrowl,$7049
+    dw MmHiss,$703F
+    dw MmWon,$7049
+    dw MmLost,$7049
+; Down the Old Shaft (original)
+; Tiny Sound, 10 frames per step
+MmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$60,$F1,$22,$1C,$01,$01,$1F,$23,$01,$01,$21,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$1A,$01,$01,$1E,$21,$01,$01,$1F,$1E,$01,$1C,$01
+    db $1B,$01,$01,$01,$1C,$01,$01,$1F,$23,$01,$28,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$24,$01,$23,$01,$1F,$01,$1E,$01,$1B,$01
+    db $1C,$01,$00,$01
+    db $FF
+MmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$80,$18,$32,$04,$01,$0B,$01,$04,$01,$0B,$01,$0C,$01,$07,$01
+    db $0C,$01,$0B,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0B,$01,$06,$01
+    db $0B,$01,$06,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$04,$01
+    db $07,$01,$0E,$01,$09,$01,$04,$01,$0B,$01,$06,$01,$0B,$01,$0B,$01
+    db $04,$01,$00,$01
+    db $FF
+}

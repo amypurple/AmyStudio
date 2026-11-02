@@ -1,0 +1,1038 @@
+cartridge "DISINTEGRATOR/B.SCHULAK/1985"
+
+' DISINTEGRATOR
+' A ColecoVision game based on "Disintegrator" by Barbara Schulak, Ahoy!
+' August 1985 (Commodore 64 machine language at $C000, 1,824 bytes, loaded
+' and started by the one-line DSNTGRTOR BOOT). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/disintegrator.dis), the game is built for the
+' ColecoVision: a starry night over red desert ground, eight domed silos,
+' a magenta alien pod as a smooth two-colour sprite, missiles with a
+' flame, blasts, sound effects and a title tune.
+'
+' The game: alien pods drop one at a time from the sky above one of your
+' eight underground silos. Launch a missile from the silo under the pod
+' before it touches down. Fifteen pods destroyed clear a level; each level
+' they fall faster. A pod that reaches the silos costs one of three lives.
+' Clear level 9 to save the silos.
+'
+' From the original (orig/): each pod falls straight down from the top
+' above a silo picked at random, never the same silo twice in a row; a
+' missile launched from that silo always meets it, a launch from another
+' silo does nothing (the C64 ignored the other keys); 10 points a pod (the
+' C64 counted three digits and printed a fixed 0 after them); 15 pods a
+' level, a pod touching the silos (the C64's sprite-background collision)
+' costs a life and the hit count carries on; 3 lives; the fall delay starts
+' at 9 and loses 1 a level, the game ending after level 9 (delay 0); the
+' fall speed from the C64 step loop's cycles: a pod falls one pixel per
+' step of about 1290 x delay + 200 cycles, on a 60 Hz C64 with about
+' 15,600 free cycles a frame 1.32 pixels a frame at level 1 (SpdT); the
+' 107-pixel drop (C64 Y 50 down to the silo row) is kept: Y 16 to 123.
+'
+' Liberties: the stick picks the silo (a marker slides under it, a step
+' every 3 frames when held) and a button launches, instead of the number
+' keys 1-8; a missile from the wrong silo flies up and misses, and only
+' one missile is in the air at a time, so sweeping and firing at random
+' wastes time; the missile flies 6 pixels a frame (the C64's crept one
+' pixel a step as the pod still fell); from level 6 the C64's speed (3 to
+' 10 pixels a frame, faster than anyone can react with a stick) is capped
+' at 2.5 to 2.8 pixels a frame (SpdT); a blast where a pod touches down
+' and a single border flash (the C64 cycled the border colours); a row of
+' 15 markers shows the pods left in the level; the wave counter starts
+' again on a new level as on the C64; no pause key (the C64's space bar);
+' ALL SILOS SAVED or GAME OVER then the title (the C64 asked PLAY AGAIN
+' Y/N); the title letters appear one by one with a tick, as on the C64.
+'
+' Controls: controller 1 (or 2): the stick (left and right) chooses the
+' silo, either button launches. On the title, up and down choose, a
+' button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TSky3 = 131
+const THill0 = 132
+const THill1 = 133
+const THill2 = 134
+const THill3 = 135
+const THillf = 136
+const TGnd0 = 137
+const TGnd1 = 138
+const TGnd2 = 139
+const TEdge = 140
+const TSilo00 = 141
+const TSilo01 = 142
+const TSilo10 = 143
+const TSilo11 = 144
+const TSiloe00 = 145
+const TSiloe01 = 146
+const TSiloe10 = 147
+const TSiloe11 = 148
+const TPip = 149
+const TPipx = 150
+const TLD00 = 151
+const TLD01 = 152
+const TLD10 = 153
+const TLD11 = 154
+const TLI00 = 155
+const TLI01 = 156
+const TLI10 = 157
+const TLI11 = 158
+const TLS00 = 159
+const TLS01 = 160
+const TLS10 = 161
+const TLS11 = 162
+const TLN00 = 163
+const TLN01 = 164
+const TLN10 = 165
+const TLN11 = 166
+const TLT00 = 167
+const TLT01 = 168
+const TLT10 = 169
+const TLT11 = 170
+const TLE00 = 171
+const TLE01 = 172
+const TLE10 = 173
+const TLE11 = 174
+const TLG00 = 175
+const TLG01 = 176
+const TLG10 = 177
+const TLG11 = 178
+const TLR00 = 179
+const TLR01 = 180
+const TLR10 = 181
+const TLR11 = 182
+const TLA00 = 183
+const TLA01 = 184
+const TLA10 = 185
+const TLA11 = 186
+const TLO00 = 187
+const TLO01 = 188
+const TLO10 = 189
+const TLO11 = 190
+const SPod0y = 0
+const SPod0m = 4
+const SPod1y = 8
+const SPod1m = 12
+const SMis = 16
+const SFlame = 20
+const SEx0 = 24
+const SEx1 = 28
+const SMark = 32
+const NTiles8 = 504
+const SprBytes = 288
+const SndTuneA = 1
+const SndTuneB = 2
+const SndLaunch = 3
+const SndBlast = 4
+const SndRumble = 5
+const SndLetter = 6
+const SndMove = 7
+const SndLevel = 8
+const SndStart = 9
+const SndOver = 10
+const SndWin = 11
+const SndWarn = 12
+const NSpr = 8
+const NSilo = 8
+const PodTop = 16
+const PodLand = 123
+const MisTop = 130
+const MisSpd = 6
+const CurSpd = 8
+const PerLevel = 15
+const LastLevel = 9
+
+' fall speed in pixels a frame x 256, levels 1-9
+data SpdT words 338,380,433,503,600,630,660,690,720
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$E0,$80
+  $00,$00,$10,$38,$83,$01,$00,$00
+  $00,$00,$00,$00,$00,$80,$E0,$06
+  $00,$00,$00,$00,$00,$00,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$00,$02,$00,$00
+  $00,$40,$00,$00,$08,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$40,$00
+  $00,$00,$00,$00,$10,$00,$00,$00
+  $00,$00,$01,$03,$03,$03,$07,$E0
+  $00,$00,$80,$C0,$C0,$C0,$E0,$07
+  $00,$00,$00,$07,$07,$00,$00,$02
+  $00,$00,$00,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$06,$1C
+  $00,$00,$00,$00,$00,$00,$60,$38
+  $07,$07,$07,$07,$07,$00,$00,$02
+  $E0,$E0,$E0,$E0,$E0,$00,$00,$00
+  $00,$C3,$81,$81,$81,$24,$42,$00
+  $00,$00,$24,$18,$18,$24,$00,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$0E
+  $E0,$E0,$E0,$E0,$E0,$00,$00,$00
+  $0E,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$00,$00,$00
+  $80,$80,$80,$80,$80,$01,$01,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$01,$01,$00,$00,$00,$00,$F0
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $F0,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$E0,$E0,$03,$03,$1C,$1C,$1C
+  $00,$0E,$0E,$0E,$0E,$8E,$8E,$8E
+  $1C,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $8E,$81,$81,$0E,$0E,$0E,$0E,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$03,$03,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$00
+  $00,$01,$01,$00,$00,$00,$00,$F0
+  $00,$E0,$E0,$E0,$E0,$00,$00,$00
+  $F0,$00,$00,$00,$00,$01,$01,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$1C
+  $00,$F0,$F0,$0E,$0E,$00,$00,$01
+  $1C,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $01,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$1C,$1C,$E0,$E0,$E0,$E0,$00
+  $F0,$80,$80,$70,$70,$0E,$0E,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$01
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$0E
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $0E,$0E,$0E,$0E,$0E,$F0,$F0,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$51,$01
+  $01,$01,$01,$51,$01,$01,$01,$01
+  $01,$01,$01,$01,$41,$41,$14,$14
+  $01,$01,$41,$41,$14,$14,$04,$04
+  $01,$01,$01,$01,$01,$41,$41,$14
+  $01,$01,$01,$01,$01,$01,$41,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $06,$06,$86,$06,$06,$86,$06,$06
+  $06,$86,$06,$06,$86,$06,$06,$06
+  $06,$06,$06,$16,$06,$06,$16,$06
+  $08,$09,$06,$06,$86,$06,$06,$06
+  $01,$01,$F1,$F1,$F1,$F1,$E1,$1E
+  $01,$01,$F1,$F1,$F1,$F1,$E1,$1E
+  $0E,$0F,$0E,$1E,$1E,$0E,$06,$86
+  $0E,$0F,$0E,$1E,$1E,$0E,$06,$06
+  $01,$01,$01,$01,$01,$01,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$E1,$E1
+  $1E,$1F,$1E,$1E,$1E,$0E,$06,$86
+  $1E,$1F,$1E,$1E,$1E,$0E,$06,$06
+  $06,$6D,$6D,$6B,$6D,$B6,$B6,$06
+  $06,$06,$86,$86,$86,$86,$06,$06
+  $01,$0B,$0B,$B1,$A1,$A1,$A1,$81
+  $01,$B1,$B1,$B1,$A1,$A1,$A1,$81
+  $81,$81,$91,$81,$81,$08,$06,$01
+  $81,$81,$91,$81,$81,$81,$61,$01
+  $01,$0B,$0B,$B1,$A1,$A1,$A1,$81
+  $01,$1B,$1B,$B1,$A1,$A1,$A1,$81
+  $81,$81,$91,$81,$81,$08,$06,$01
+  $81,$81,$91,$81,$81,$18,$16,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$A1,$18
+  $01,$1B,$1B,$01,$01,$01,$01,$81
+  $18,$01,$01,$01,$01,$08,$06,$01
+  $81,$81,$91,$81,$81,$81,$61,$01
+  $01,$B1,$B1,$1B,$1A,$1A,$1A,$18
+  $01,$B1,$B1,$B1,$A1,$A1,$A1,$81
+  $18,$81,$91,$81,$81,$81,$61,$01
+  $81,$18,$19,$81,$81,$81,$61,$01
+  $01,$0B,$0B,$B1,$A1,$A1,$A1,$81
+  $01,$1B,$1B,$B1,$A1,$A1,$A1,$81
+  $81,$81,$91,$81,$81,$81,$61,$01
+  $81,$81,$91,$81,$81,$81,$61,$01
+  $01,$0B,$0B,$B1,$A1,$A1,$A1,$08
+  $01,$1B,$1B,$01,$01,$01,$01,$81
+  $08,$81,$91,$81,$81,$08,$06,$01
+  $81,$01,$01,$01,$01,$18,$16,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$A1,$18
+  $01,$B1,$B1,$B1,$A1,$01,$01,$18
+  $18,$81,$91,$81,$81,$18,$16,$01
+  $18,$81,$91,$81,$81,$81,$61,$01
+  $01,$0B,$0B,$B1,$A1,$A1,$A1,$08
+  $01,$B1,$B1,$B1,$A1,$A1,$A1,$81
+  $08,$18,$19,$81,$81,$81,$61,$01
+  $81,$81,$91,$81,$81,$81,$61,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$A1,$08
+  $01,$B1,$B1,$B1,$A1,$A1,$A1,$18
+  $08,$81,$91,$81,$81,$81,$61,$01
+  $18,$81,$91,$81,$81,$81,$61,$01
+  $01,$1B,$1B,$B1,$A1,$A1,$A1,$81
+  $01,$B1,$B1,$B1,$A1,$A1,$A1,$81
+  $81,$81,$91,$81,$81,$18,$16,$01
+  $81,$81,$91,$81,$81,$81,$61,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$00,$03,$07,$03,$01,$00
+  $00,$00,$00,$00,$C8,$C8,$00,$00,$00,$00,$00,$C0,$E0,$C0,$80,$00
+  $03,$0F,$1F,$3F,$33,$73,$FF,$FF,$7F,$1D,$0D,$00,$00,$00,$00,$00
+  $C0,$F0,$F8,$FC,$34,$36,$FF,$FF,$FE,$B8,$B0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$13,$13,$00,$00,$00,$00,$00,$01,$03,$07,$03,$00
+  $00,$00,$00,$00,$30,$30,$00,$00,$00,$00,$00,$80,$C0,$E0,$C0,$00
+  $03,$0F,$1F,$3F,$2C,$6C,$FF,$FF,$7F,$1D,$0D,$00,$00,$00,$00,$00
+  $C0,$F0,$F8,$FC,$CC,$CE,$FF,$FF,$FE,$B8,$B0,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$07,$0D,$01,$02,$01,$00,$00,$00,$00
+  $80,$C0,$C0,$C0,$C0,$C0,$C0,$E0,$B0,$80,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$80,$00,$00
+  $00,$00,$02,$13,$0F,$1F,$3F,$3F,$1F,$0F,$13,$02,$00,$00,$00,$00
+  $00,$00,$40,$C8,$F0,$F8,$FC,$FC,$F8,$F0,$C8,$40,$00,$00,$00,$00
+  $81,$21,$08,$41,$03,$17,$87,$07,$13,$41,$08,$21,$81,$00,$00,$00
+  $01,$04,$20,$82,$C0,$E8,$E1,$E0,$C8,$82,$10,$04,$01,$00,$00,$00
+  $00,$01,$03,$07,$0F,$1C,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$38,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data GameMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$80,$80,$82,$80,$80,$81,$82,$82,$83,$80,$80,$80,$82,$80,$80,$83,$80,$83,$80,$80,$80,$80,$80,$80,$82,$80,$80,$83,$83,$80
+  $80,$81,$80,$81,$80,$82,$83,$80,$80,$80,$80,$83,$80,$83,$80,$80,$82,$83,$80,$80,$82,$80,$80,$82,$80,$81,$82,$83,$82,$83,$80,$83
+  $80,$81,$81,$80,$82,$80,$80,$83,$80,$80,$83,$83,$83,$81,$80,$83,$82,$80,$80,$80,$82,$81,$81,$80,$80,$80,$80,$80,$83,$81,$80,$80
+  $82,$80,$82,$80,$82,$80,$81,$81,$83,$82,$80,$82,$80,$80,$82,$82,$80,$83,$83,$82,$80,$82,$80,$80,$80,$81,$80,$80,$80,$80,$82,$80
+  $80,$82,$82,$81,$80,$80,$82,$80,$80,$80,$81,$82,$81,$80,$80,$81,$80,$81,$82,$80,$83,$83,$80,$81,$83,$80,$80,$83,$83,$80,$81,$80
+  $81,$80,$82,$80,$80,$80,$80,$80,$82,$81,$83,$82,$80,$83,$80,$81,$80,$80,$80,$82,$82,$83,$80,$83,$83,$80,$83,$80,$81,$80,$82,$83
+  $82,$80,$82,$81,$80,$80,$80,$80,$81,$83,$83,$80,$83,$83,$80,$80,$80,$81,$81,$83,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$83,$80
+  $80,$80,$80,$80,$82,$80,$81,$80,$80,$80,$82,$83,$82,$80,$81,$80,$83,$80,$82,$81,$80,$80,$82,$80,$83,$80,$82,$83,$80,$80,$80,$80
+  $81,$80,$83,$80,$82,$80,$80,$80,$82,$83,$80,$80,$80,$80,$83,$80,$83,$80,$80,$80,$80,$80,$81,$80,$81,$83,$80,$80,$80,$83,$81,$83
+  $81,$80,$83,$80,$80,$80,$83,$80,$80,$80,$83,$81,$80,$80,$81,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80
+  $83,$82,$80,$81,$80,$83,$80,$83,$83,$80,$80,$81,$81,$81,$81,$83,$82,$80,$83,$83,$80,$80,$82,$82,$83,$83,$82,$81,$83,$80,$80,$81
+  $80,$83,$82,$80,$80,$82,$83,$80,$80,$81,$83,$82,$82,$80,$80,$83,$82,$82,$81,$83,$81,$80,$80,$80,$80,$80,$81,$80,$82,$82,$80,$80
+  $81,$80,$82,$80,$80,$82,$82,$82,$83,$80,$80,$80,$82,$82,$80,$80,$82,$82,$80,$82,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$83
+  $80,$81,$82,$82,$80,$81,$81,$81,$80,$83,$80,$82,$80,$80,$82,$82,$83,$81,$83,$80,$80,$81,$81,$80,$80,$81,$80,$81,$81,$82,$83,$80
+  $85,$85,$86,$86,$86,$85,$84,$84,$85,$87,$84,$86,$84,$87,$84,$85,$84,$86,$86,$84,$87,$86,$87,$84,$85,$86,$85,$86,$85,$85,$87,$85
+  $88,$88,$88,$88,$8D,$8E,$88,$8D,$8E,$88,$8D,$8E,$88,$8D,$8E,$88,$8D,$8E,$88,$8D,$8E,$88,$8D,$8E,$88,$8D,$8E,$88,$88,$88,$88,$88
+  $8C,$8C,$8C,$8C,$8F,$90,$8C,$8F,$90,$8C,$8F,$90,$8C,$8F,$90,$8C,$8F,$90,$8C,$8F,$90,$8C,$8F,$90,$8C,$8F,$90,$8C,$8C,$8C,$8C,$8C
+  $8B,$89,$89,$8B,$89,$89,$8A,$8B,$8B,$89,$8B,$8A,$89,$89,$89,$89,$8A,$8B,$89,$8A,$8B,$89,$89,$8A,$89,$8A,$8A,$8A,$89,$8A,$8B,$89
+  $8A,$89,$89,$89,$8A,$8B,$8B,$8B,$89,$8B,$8A,$8B,$89,$8A,$8B,$8A,$8A,$89,$89,$8A,$8B,$89,$89,$89,$89,$89,$8B,$8A,$8B,$8A,$8A,$8A
+  $8A,$8B,$89,$8B,$89,$89,$89,$89,$89,$8A,$89,$89,$89,$89,$8B,$89,$8B,$89,$89,$89,$89,$8B,$8B,$89,$8B,$8B,$89,$8B,$89,$8A,$8A,$8A
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+data TitleW0 bytes
+  $97,$98,$9B,$9C,$9F,$A0,$9B,$9C,$A3,$A4,$A7,$A8,$AB,$AC,$AF,$B0,$B3,$B4,$B7,$B8,$A7,$A8,$BB,$BC,$B3,$B4
+end data
+data TitleW1 bytes
+  $99,$9A,$9D,$9E,$A1,$A2,$9D,$9E,$A5,$A6,$A9,$AA,$AD,$AE,$B1,$B2,$B5,$B6,$B9,$BA,$A9,$AA,$BD,$BE,$B5,$B6
+end data
+
+record Shot:
+  u8 Live
+  u8 Col
+  u8 Y
+end record
+
+Shot Ms
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Spd = 0
+u16 EYf = 0
+bcd digits 5 Score = 0
+bcd digits 5 Hi = 0
+u8 EY = 0
+u8 Col = 0
+u8 PrevCol = 0
+u8 Phase = 0
+u8 PT = 0
+u8 Lv = 0
+u8 Lives = 0
+u8 Hits = 0
+u8 Sel = 0
+u8 CurX = 0
+u8 RepT = 0
+u8 WasDir = 0
+u8 Over = 0
+u8 Landed = 0
+u8 Shots = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+' loop counters (never shared with the helpers)
+u8 Si = 0
+u8 Li = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DiSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  print at 7,9, "                  "
+  if Over = 2 then
+    print at 7,10, " ALL SILOS SAVED! "
+    play sound SndWin
+  else
+    print at 7,10, "    GAME  OVER    "
+    play sound SndOver
+  end if
+  print at 7,11, "                  "
+  print at 7,12, "   SCORE ", Score, "   "
+  print at 7,13, "   BEST  ", Hi, "   "
+  print at 7,14, "                  "
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if Phase <> 3 then MoveSel
+  if Press = 1 then
+    if Phase = 0 then
+      if Ms.Live = 0 then Launch
+    end if
+  end if
+  if Ms.Live = 1 then MoveMissile
+  select case Phase
+    case 0
+      Fall
+    case 1
+      dec PT
+      if PT = 0 then
+        if Hits >= PerLevel then
+          LevelDone
+        else
+          Spawn
+        end if
+      end if
+    case 2
+      dec PT
+      if PT = 44 then backdrop black
+      if PT = 0 then
+        if Lives = 0 then
+          Over = 1
+        else
+          Spawn
+        end if
+      end if
+    case 3
+      dec PT
+      if PT = 0 then
+        copy GameMap + 320 count 32 to vram.name + 320
+        if Lv >= LastLevel then
+          Over = 2
+        else
+          NextLevel
+          Spawn
+        end if
+      end if
+  end select
+  return
+end sub
+
+' the stick steps the chosen silo; held, it repeats every 3 frames after 7; the
+' marker slides 8 pixels a frame to it
+sub MoveSel:
+  K = J1 & 12
+  if K = 0 then
+    WasDir = 0
+  else
+    if WasDir = 0 then
+      StepSel(K)
+      RepT = 7
+      WasDir = 1
+    else
+      dec RepT
+      if RepT = 0 then
+        StepSel(K)
+        RepT = 3
+      end if
+    end if
+  end if
+  X = SiloX(Sel)
+  if CurX < X then
+    CurX = CurX + CurSpd
+    if CurX > X then CurX = X
+  end if
+  if CurX > X then
+    CurX = CurX - CurSpd
+    if CurX < X then CurX = X
+  end if
+  return
+end sub
+
+sub StepSel(u8 Dir)
+  if Dir = 4 then
+    if Sel > 0 then dec Sel
+  end if
+  if Dir = 8 then
+    if Sel < NSilo - 1 then inc Sel
+  end if
+  return
+end sub
+
+function SiloX(u8 N) as u8
+  return N * 24 + 40
+
+' a missile leaves the chosen silo (its hatch opens)
+sub Launch:
+  Ms.Live = 1
+  Ms.Col = Sel
+  Ms.Y = MisTop
+  inc Shots
+  SiloTiles(Sel, TSiloe00)
+  play sound SndLaunch
+  return
+end sub
+
+sub MoveMissile:
+  if Ms.Y < 12 then
+    EndMissile
+  else
+    Ms.Y = Ms.Y - MisSpd
+  end if
+  return
+end sub
+
+sub EndMissile:
+  Ms.Live = 0
+  SiloTiles(Ms.Col, TSilo00)
+  return
+end sub
+
+' the pod falls; a missile in its column that reaches it destroys it; at
+' the silo row it touches down
+sub Fall:
+  EYf = EYf + Spd
+  EY = EYf >> 8
+  if Ms.Live = 1 then
+    if Ms.Col = Col then
+      V = EY + 13
+      if Ms.Y <= V then
+        Hit
+        return
+      end if
+    end if
+  end if
+  if EY >= PodLand then
+    EY = PodLand
+    Phase = 2
+    PT = 60
+    dec Lives
+    inc Landed
+    if Ms.Live = 1 then EndMissile
+    play sound SndRumble
+    backdrop dark red
+    ShowLives
+  end if
+  return
+end sub
+
+sub Hit:
+  EndMissile
+  Phase = 1
+  PT = 24
+  Score += 10
+  if Score > Hi then Hi = Score
+  inc Hits
+  play sound SndBlast
+  ShowScore
+  ShowPips
+  return
+end sub
+
+sub LevelDone:
+  Phase = 3
+  PT = 150
+  print at 8,10, "LEVEL COMPLETE"
+  play sound SndLevel
+  return
+end sub
+
+sub NextLevel:
+  inc Lv
+  Spd = SpdT[Lv - 1]
+  Hits = 0
+  ShowLevel
+  ShowPips
+  return
+end sub
+
+' a new pod above a random silo, never the last one's
+sub Spawn:
+  Col = PickCol(PrevCol)
+  PrevCol = Col
+  EYf = PodTop * 256
+  EY = PodTop
+  Phase = 0
+  play sound SndWarn
+  return
+end sub
+
+function PickCol(u8 Last) as u8
+  Rand
+  W16 = Rs >> 4
+  W16 = W16 % 7
+  K = W16
+  K = Last + 1 + K
+  return K & 7
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' silo N's four tiles from the given first code (full or empty)
+sub SiloTiles(u8 N, u8 T0)
+  u8 Cx = 0
+  Cx = N * 3 + 4
+  put char T0 at Cx,17
+  put char T0 + 1 at Cx + 1,17
+  put char T0 + 2 at Cx,18
+  put char T0 + 3 at Cx + 1,18
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 the marker, 1-2 the missile and its flame, 3-4 the pod
+' (eyes, shell), 5 a blast
+sub DrawSprites:
+  set sprite 0 to 151,CurX - 8,SMark,11
+  if Ms.Live = 1 then
+    X = SiloX(Ms.Col) - 8
+    Y = Ms.Y - 1
+    set sprite 1 to Y,X,SMis,15
+    set sprite 2 to Y,X,SFlame,10
+  else
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  end if
+  inc Anim
+  if Anim >= 24 then Anim = 0
+  X = SiloX(Col) - 8
+  Y = EY - 1
+  if Phase = 0 then
+    K = SPod0y
+    if Anim >= 12 then K = SPod1y
+    set sprite 3 to Y,X,K,11
+    set sprite 4 to Y,X,K + 4,13
+    set sprite 5 to 192,0,0,0
+  else
+    set sprite 3 to 192,0,0,0
+    set sprite 4 to 192,0,0,0
+    if PT >= 36 then
+      Blast(X, Y)
+    else
+      if Phase = 1 then
+        Blast(X, Y)
+      else
+        set sprite 5 to 192,0,0,0
+      end if
+    end if
+  end if
+  if Phase = 3 then set sprite 5 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub Blast(u8 Bx, u8 By)
+  u8 Pat = 0
+  u8 Cl = 0
+  Pat = SEx0
+  Cl = 11
+  if PT < 12 then
+    Pat = SEx1
+    Cl = 9
+  end if
+  if Phase = 2 then
+    if PT < 48 then
+      Pat = SEx1
+      Cl = 9
+    end if
+  end if
+  set sprite 5 to By,Bx,Pat,Cl
+  return
+end sub
+
+sub ShowScore:
+  print at 17,1, Score
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 8,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 29,1, digits$(NumU, 1)
+  return
+end sub
+
+' the 15 markers: pods still to come, then crossed-out ones
+sub ShowPips:
+  for Li = 0 to PerLevel - 1
+    X = Li + 8
+    if Li < Hits then
+      put char TPipx at X,22
+    else
+      put char TPip at X,22
+    end if
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 2,1, "LEVEL"
+  print at 11,1, "SCORE"
+  print at 23,1, "LIVES"
+  Score = 0
+  Lv = 0
+  Lives = 3
+  Ms.Live = 0
+  Ms.Col = 0
+  Ms.Y = 0
+  Sel = 3
+  CurX = SiloX(Sel)
+  WasDir = 0
+  RepT = 0
+  Over = 0
+  Landed = 0
+  Shots = 0
+  Anim = 0
+  PrevCol = Rs & 7
+  NextLevel
+  ShowScore
+  ShowLives
+  Spawn
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the silos and the night sky, DISINTEGRATOR appearing letter
+' by letter (as on the C64), START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  copy GameMap + 512 count 256 to vram.name + 512
+  print at 7,2, "AHOY! AUGUST 1985"
+  print at 6,8, "BY BARBARA SCHULAK"
+  print at 13,11, "START"
+  print at 13,12, "CREDITS"
+  if Hi > 0 then
+    print at 10,14, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  ' the letters, one every 8 frames
+  for Li = 0 to 12
+    for Si = 0 to 7
+      Frame1
+    next
+    X = Li * 2 + 3
+    K = Li * 2
+    put char TitleW0[K] at X,4
+    put char TitleW0[K + 1] at X + 1,4
+    put char TitleW1[K] at X,5
+    put char TitleW1[K + 1] at X + 1,5
+    play sound SndLetter
+  next
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Anim = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a pod drifts slowly down over the silos and starts again
+sub TitleAnim:
+  V = Tick & 3
+  if V = 0 then
+    inc Anim
+    if Anim > 50 then Anim = 0
+  end if
+  Y = Anim + 75
+  K = SPod0y
+  V = Tick & 16
+  if V > 0 then K = SPod1y
+  set sprite 3 to Y,208,K,11
+  set sprite 4 to Y,208,K + 4,13
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,11
+  put char 32 at 11,12
+  J = Menu + 11
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "DISINTEGRATOR"
+  print at 2,5, "BASED ON DISINTEGRATOR BY"
+  print at 2,6, "BARBARA SCHULAK, AHOY!"
+  print at 2,7, "AUGUST 1985 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SILO WATCH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+DiLaunch:
+    db $40,$75,$21,$02,$40,$1F,$21,$02,$40,$E9,$30,$02,$40,$C4,$30,$02,$40,$A9,$30,$02,$40,$95,$30,$02
+    db $40,$85,$40,$02,$40,$78,$40,$02,$40,$6E,$40,$02,$40,$65,$40,$02,$50
+DiBlast:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$56,$08,$00,$00,$77,$08,$10
+DiRumble:
+    db $00,$00,$06,$06,$00,$00,$17,$08,$00,$00,$27,$0A,$00,$00,$37,$0C,$00,$00,$57,$0E,$00,$00,$77,$10
+    db $10
+DiLetter:
+    db $40,$40,$20,$02,$40,$55,$30,$02,$40,$7F,$50,$02,$50
+DiMove:
+    db $40,$A9,$50,$01,$50
+DiLevel:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$10,$50
+DiStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$8F,$20,$0C,$50
+DiOver:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$AB,$31,$1E,$50
+DiWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$20,$18
+    db $50
+DiWarn:
+    db $40,$50,$50,$02,$40,$57,$60,$02,$40,$60,$60,$02,$40,$6C,$70,$02,$40,$7A,$70,$02,$40,$8C,$80,$02
+    db $50
+
+DiSoundTable:
+    dw DiTuneMel,$702B
+    dw DiTuneBass,$7035
+    dw DiLaunch,$7049
+    dw DiBlast,$703F
+    dw DiRumble,$703F
+    dw DiLetter,$7049
+    dw DiMove,$7049
+    dw DiLevel,$7049
+    dw DiStart,$7049
+    dw DiOver,$7049
+    dw DiWin,$7049
+    dw DiWarn,$7049
+; Silo Watch (original)
+; Tiny Sound, 8 frames per step
+DiTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$1E,$23,$01,$26,$01,$25,$01,$01,$21
+    db $01,$01,$1E,$01,$23,$01,$01,$1E,$23,$01,$26,$01,$28,$01,$26,$01
+    db $25,$01,$21,$01,$1F,$01,$01,$1A,$1F,$01,$23,$01,$21,$01,$01,$1E
+    db $01,$01,$1A,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01,$23,$01,$01,$1E
+    db $23,$01,$00,$01
+    db $FF
+DiTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$0B,$01,$0B,$01,$0B,$01,$09,$01,$09,$01
+    db $09,$01,$09,$01,$0B,$01,$0B,$01,$0B,$01,$0B,$01,$09,$01,$09,$01
+    db $12,$01,$12,$01,$07,$01,$07,$01,$07,$01,$07,$01,$0E,$01,$0E,$01
+    db $0E,$01,$0E,$01,$10,$01,$10,$01,$12,$01,$12,$01,$0B,$01,$01,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

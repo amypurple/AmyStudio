@@ -1,0 +1,1007 @@
+cartridge "GUERILLA/CLEVE BLAKEMORE/1988"
+
+' GUERILLA
+' A ColecoVision game based on "Guerilla" by Cleve Blakemore, Ahoy! July
+' 1988 (Commodore 64, BASIC with a small machine-language joystick routine).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/guerilla.bas), the game is built for the ColecoVision:
+' smooth sprites, a tiled jungle and stone wall, rockets you can see fly,
+' sound effects and an original title tune.
+'
+' The game: you hold the top of a fortress wall above a jungle. Raiders
+' with rocket tubes rise behind seven rocks. Move the sight with the stick
+' and press a button to shoot one before its time runs out; a raider left
+' alone fires a rocket into the wall and leaves. The wall takes 103 rockets;
+' you have four crates of 50 rounds. Every raider shot makes them come more
+' often and fire sooner, and raises the level (2, 3, 4) after 18, 34 and 48
+' hits. Shoot 150 raiders and the fortress is saved; lose the wall or run
+' out of rounds and it falls.
+'
+' From the original: seven fixed raider places (the layout of the C64
+' sprite positions); each pass, one in 1..M picks a free place (M from 90
+' down to 7, one less per hit); a raider's count of 30 - INT(I) ticks, one
+' tick every seven passes (the places taken in turn); I from 1 by 0.5 a
+' hit up to 26, levels at I = 10, 18, 25; a raider at the end of its count
+' fires: one damage of 103, a crater in the wall; points 150 x level a hit;
+' 50 rounds a crate, four crates, the game over when the last is used; 150
+' hits win; the sight moves about 3 C64 pixels a frame (2.5 here).
+'
+' Liberties: one press is one shot (the C64 fired every pass while the
+' button was held, which emptied a crate in a couple of seconds). A shot
+' hits a raider when the sight's centre is on his body (the C64 used the
+' sprite collision of the whole cross). A pass of the listing's loop is three
+' frames here (at two, even a perfect bot lost). The rocket flies 24 frames to the wall before the damage
+' (the C64 drew the crater at once). Each new level brings one crate back
+' (up to four). The listing's "communist hordes" are plain jungle raiders
+' (dark silhouettes, no flags, uniforms or insignia of any real army). The
+' level fanfare plays over a banner. A high score is kept. The raider
+' raises his tube on his last tick (a warning the C64 did not give).
+'
+' Controls: either controller; the stick moves the sight, either side
+' button shoots. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TSky = 128
+const TCloudl = 129
+const TCloudr = 130
+const THilla = 131
+const THillb = 132
+const THillc = 133
+const TTreetop = 134
+const TJunga = 135
+const TJungb = 136
+const TLeaf = 137
+const TFern = 138
+const TPalml = 139
+const TPalmr = 140
+const TTrunk = 141
+const TRockl = 142
+const TRockr = 143
+const TEdge = 144
+const TMerlon = 145
+const TCrenel = 146
+const TBricka = 147
+const TBrickb = 148
+const TCrater = 149
+const TBar0 = 150
+const TBar1 = 151
+const TBar2 = 152
+const TBar3 = 153
+const TBar4 = 154
+const TBar5 = 155
+const TBar6 = 156
+const TBar7 = 157
+const TBar8 = 158
+const TCrate = 159
+const TNocrate = 160
+const SCross = 0
+const SFire = 4
+const SRaider0 = 8
+const SRaider1 = 12
+const SHit = 16
+const SRocket = 20
+const SBoom = 24
+const NTiles8 = 264
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndHit = 4
+const SndLaunch = 5
+const SndBoom = 6
+const SndCrate = 7
+const SndLevel = 8
+const SndStart = 9
+const SndFall = 10
+const SndWin = 11
+const NSpr = 15
+const PassN = 3
+const FlightN = 24
+const BoomN = 12
+const HitN = 20
+const FlashN = 4
+const LvN = 120
+const WinKills = 150
+const DmStart = 103
+const PerCrate = 50
+
+' the seven raider places (sprite corner)
+data PlX bytes
+  40, 184, 104, 32, 200, 128, 56
+end data
+data PlY bytes
+  40, 48, 64, 80, 88, 104, 104
+end data
+' jungle tiles by (col + row) and 3
+data JungT bytes
+  TJunga, TJungb, TLeaf, TFern
+end data
+
+record Foe:
+  u8 St
+  u8 T
+  u8 Ht
+  u8 X
+  u8 Y
+end record
+
+record Rocket:
+  u8 Live
+  u8 T
+  i16 X16
+  i16 Y16
+  i16 Dx
+  i16 Dy
+  u8 Col
+  u8 Row
+end record
+
+Foe Fs[7]
+Rocket Rk[7]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the sight (sprite corner), its step toggle, the flash after a shot
+u8 Cx = 120
+u8 Cy = 80
+u8 Mv = 0
+u8 FlashT = 0
+' the listing's variables: M, I (twice I here), LV, TH (kills), DM, AM, BM
+u8 M = 90
+u8 I2 = 2
+u8 Lv = 1
+u8 Kills = 0
+u8 Dm = DmStart
+u8 Am = 0
+u8 Bm = 4
+u8 Xc = 0
+u8 Pass = 0
+u8 LvT = 0
+u8 Over = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 Bi = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+i16 Sa = 0
+i16 Sb = 0
+
+  tile screen
+  set sound table GuSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score > Hi then Hi = Score
+  mute all
+  HideSprites
+  for Ri = 8 to 14
+    fill 32 count 26 at 3,Ri
+  next
+  if Over = 3 then
+    print at 6,9, "ENEMY DEFEATED..."
+    print at 6,10, "FORTRESS SAVED!!"
+    play sound SndWin
+  else
+    if Over = 2 then
+      print at 6,9, "OUT OF AMMUNITION"
+    else
+      print at 6,9, "THE WALL IS DOWN"
+    end if
+    print at 6,10, "YOUR FORTRESS FELL"
+    play sound SndFall
+  end if
+  print at 6,12, "FINAL SCORE"
+  print at 18,12, Score
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if LvT > 0 then
+    dec LvT
+    if LvT = 0 then DrawSkyRow
+    return
+  end if
+  MoveSight
+  if FlashT > 0 then dec FlashT
+  if Press = 1 then Shoot
+  if Over > 0 then return
+  inc Pass
+  if Pass >= PassN then
+    Pass = 0
+    ListingPass
+  end if
+  for Fi = 0 to 6
+    if Fs[Fi].St = 2 then
+      dec Fs[Fi].Ht
+      if Fs[Fi].Ht = 0 then Fs[Fi].St = 0
+    end if
+  next
+  MoveRockets
+  return
+end sub
+
+' the sight: 2 and 3 pixels in turn (2.5 a frame), diagonals too
+sub MoveSight:
+  K = J1 | J2
+  inc Mv
+  N = Mv & 1
+  N = N + 2
+  V = K & 4
+  if V > 0 then
+    if Cx >= 12 + N then
+      Cx = Cx - N
+    else
+      Cx = 12
+    end if
+  end if
+  V = K & 8
+  if V > 0 then
+    Cx = Cx + N
+    if Cx > 228 then Cx = 228
+  end if
+  V = K & 1
+  if V > 0 then
+    if Cy >= 16 + N then
+      Cy = Cy - N
+    else
+      Cy = 16
+    end if
+  end if
+  V = K & 2
+  if V > 0 then
+    Cy = Cy + N
+    if Cy > 136 then Cy = 136
+  end if
+  return
+end sub
+
+' a shot: one round; the 50th empties a crate, the last crate ends it
+sub Shoot:
+  FlashT = FlashN
+  play sound SndShot
+  inc Am
+  if Am = PerCrate then
+    Am = 0
+    dec Bm
+    DrawAmmo
+    if Bm = 0 then
+      Over = 2
+      return
+    end if
+  end if
+  ShowRounds
+  for Fi = 0 to 6
+    if Fs[Fi].St = 1 then
+      if OnFoe(Fi) = 1 then KillFoe
+    end if
+  next
+  return
+end sub
+
+' 1 when the sight's centre is on raider F's body
+function OnFoe(u8 F) as u8
+  u8 Hx = Cx + 7
+  u8 Hy = Cy + 7
+  u8 Fx = Fs[F].X
+  u8 Fy = Fs[F].Y
+  if Hx < Fx + 2 then return 0
+  if Hx > Fx + 13 then return 0
+  if Hy < Fy + 1 then return 0
+  if Hy > Fy + 15 then return 0
+  return 1
+
+sub KillFoe:
+  Fs[Fi].St = 2
+  Fs[Fi].Ht = HitN
+  play sound SndHit
+  for K = 1 to Lv
+    Score += 150
+  next
+  if M > 7 then dec M
+  if I2 < 52 then inc I2
+  inc Kills
+  ShowHud
+  select case I2
+  case 20, 36, 50
+    LevelUp
+  end select
+  if Kills >= WinKills then Over = 3
+  return
+end sub
+
+sub LevelUp:
+  inc Lv
+  if Bm < 4 then inc Bm
+  DrawAmmo
+  ShowHud
+  fill 32 count 28 at 2,2
+  print at 9,2, "LEVEL "
+  NumU = Lv
+  print at 15,2, digits$(NumU, 1)
+  print at 17,2, "+ CRATE"
+  play sound SndLevel
+  LvT = LvN
+  return
+end sub
+
+' one pass of the listing's loop: the next place's count, then a new raider
+sub ListingPass:
+  inc Xc
+  if Xc >= 7 then Xc = 0
+  if Fs[Xc].St = 1 then
+    dec Fs[Xc].T
+    if Fs[Xc].T = 0 then Launch(Xc)
+  end if
+  Rand
+  C = Rs % M
+  if C < 7 then
+    if Fs[C].St = 0 then
+      Fs[C].St = 1
+      V = I2 >> 1
+      Fs[C].T = 30 - V
+    end if
+  end if
+  return
+end sub
+
+' raider P fires: the rocket flies FlightN frames to a random brick
+sub Launch(u8 P):
+  Fs[P].St = 0
+  Rand
+  W16 = Rs % 26
+  T = W16
+  Rk[P].Col = T + 3
+  V = Rs >> 8
+  V = V & 3
+  Rk[P].Row = V + 18
+  Rk[P].Live = 1
+  Rk[P].T = FlightN
+  Sa = Fs[P].X
+  Sb = Fs[P].Y
+  Rk[P].X16 = Sa * 16
+  Rk[P].Y16 = Sb * 16
+  T = Rk[P].Col
+  Sa = T * 8 - 3 - Sa
+  Rk[P].Dx = Sa * 16 / FlightN
+  T = Rk[P].Row
+  Sb = T * 8 - 3 - Sb
+  Rk[P].Dy = Sb * 16 / FlightN
+  play sound SndLaunch
+  return
+end sub
+
+sub MoveRockets:
+  for Ci = 0 to 6
+    if Rk[Ci].Live = 1 then
+      Rk[Ci].X16 += Rk[Ci].Dx
+      Rk[Ci].Y16 += Rk[Ci].Dy
+      dec Rk[Ci].T
+      if Rk[Ci].T = 0 then Impact
+    elseif Rk[Ci].Live = 2 then
+      dec Rk[Ci].T
+      if Rk[Ci].T = 0 then Rk[Ci].Live = 0
+    end if
+  next
+  return
+end sub
+
+sub Impact:
+  Rk[Ci].Live = 2
+  Rk[Ci].T = BoomN
+  X = Rk[Ci].Col
+  Y = Rk[Ci].Row
+  put char TCrater at X,Y
+  play sound SndBoom
+  dec Dm
+  DrawBar
+  if Dm = 0 then Over = 1
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the sight, 1-7 the raiders, 8-14 the rockets and their blasts
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  elseif FlashT > 0 then
+    set sprite 0 to Cy - 1,Cx,SFire,11
+  else
+    set sprite 0 to Cy - 1,Cx,SCross,15
+  end if
+  for Fi = 0 to 6
+    J = Fi + 1
+    N = Fi + 8
+    X = Fs[Fi].X
+    Y = Fs[Fi].Y - 1
+    select case Fs[Fi].St
+    case 1
+      K = SRaider0
+      if Fs[Fi].T = 1 then K = SRaider1
+      set sprite J to Y,X,K,1
+    case 2
+      set sprite J to Y,X,SHit,11
+    case else
+      set sprite J to 192,0,0,0
+    end select
+    select case Rk[Fi].Live
+    case 1
+      Sa = Rk[Fi].X16 / 16
+      Sb = Rk[Fi].Y16 / 16
+      X = Sa
+      Y = Sb - 1
+      set sprite N to Y,X,SRocket,11
+    case 2
+      X = Rk[Fi].Col << 3
+      X = X - 4
+      Y = Rk[Fi].Row << 3
+      Y = Y - 5
+      set sprite N to Y,X,SBoom,9
+    case else
+      set sprite N to 192,0,0,0
+    end select
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 5,1, Score
+  print at 13,1, "LV"
+  NumU = Lv
+  print at 16,1, digits$(NumU, 1)
+  print at 19,1, "HITS"
+  NumU = Kills
+  print at 24,1, digits$(NumU, 3)
+  return
+end sub
+
+' the wall's strength: 13 cells of 8 (104 pixels for 103 hits)
+sub DrawBar:
+  N = Dm
+  for Bi = 0 to 12
+    if N >= 8 then
+      T = TBar8
+      N = N - 8
+    else
+      T = TBar0 + N
+      N = 0
+    end if
+    C = Bi + 7
+    put char T at C,22
+  next
+  return
+end sub
+
+sub DrawAmmo:
+  for K = 0 to 3
+    T = TNocrate
+    if K < Bm then T = TCrate
+    C = K + 21
+    put char T at C,22
+  next
+  ShowRounds
+  return
+end sub
+
+sub ShowRounds:
+  NumU = PerCrate - Am
+  if Bm = 0 then NumU = 0
+  print at 26,22, digits$(NumU, 2)
+  return
+end sub
+
+sub DrawSkyRow:
+  fill TSky count 32 at 0,2
+  put char TCloudl at 6,2
+  put char TCloudr at 7,2
+  put char TCloudl at 20,2
+  put char TCloudr at 21,2
+  return
+end sub
+
+sub DrawField:
+  DrawSkyRow
+  fill TSky count 32 at 0,3
+  put char TCloudl at 12,3
+  put char TCloudr at 13,3
+  put char TCloudl at 26,3
+  put char TCloudr at 27,3
+  for Ci = 0 to 31
+    V = Ci & 3
+    select case V
+    case 0, 1
+      T = THilla + V
+    case else
+      T = THillc
+    end select
+    put char T at Ci,4
+    put char TTreetop at Ci,5
+  next
+  for Ri = 6 to 15
+    for Ci = 0 to 31
+      V = Ci * 3
+      V = V + Ri
+      V = V & 3
+      T = JungT[V]
+      put char T at Ci,Ri
+    next
+  next
+  ' palms
+  put char TPalml at 10,6
+  put char TPalmr at 11,6
+  put char TTrunk at 10,7
+  put char TTrunk at 10,8
+  put char TPalml at 19,10
+  put char TPalmr at 20,10
+  put char TTrunk at 19,11
+  put char TTrunk at 19,12
+  put char TPalml at 27,6
+  put char TPalmr at 28,6
+  put char TTrunk at 27,7
+  ' a rock under each raider place
+  for Fi = 0 to 6
+    X = PlX[Fi] >> 3
+    Y = PlY[Fi] >> 3
+    Y = Y + 2
+    put char TRockl at X,Y
+    inc X
+    put char TRockr at X,Y
+  next
+  fill TEdge count 32 at 0,16
+  for Ci = 0 to 31
+    V = Ci & 1
+    T = TMerlon + V
+    put char T at Ci,17
+  next
+  for Ri = 18 to 21
+    V = Ri & 1
+    T = TBricka + V
+    fill T count 32 at 0,Ri
+  next
+  return
+end sub
+
+sub DrawStatus:
+  print at 2,22, "WALL"
+  DrawBar
+  DrawAmmo
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  M = 90
+  I2 = 2
+  Lv = 1
+  Kills = 0
+  Dm = DmStart
+  Am = 0
+  Bm = 4
+  Xc = 0
+  Pass = 0
+  LvT = 0
+  FlashT = 0
+  Cx = 120
+  Cy = 80
+  for Fi = 0 to 6
+    Fs[Fi].St = 0
+    Fs[Fi].T = 0
+    Fs[Fi].Ht = 0
+    Fs[Fi].X = PlX[Fi]
+    Fs[Fi].Y = PlY[Fi]
+    Rk[Fi].Live = 0
+    Rk[Fi].T = 0
+  next
+  NewScreen
+  DrawField
+  ShowHud
+  DrawStatus
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 14
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the jungle and the wall, START GAME / CREDITS, the tune once
+sub TitlePage:
+  for Fi = 0 to 6
+    Fs[Fi].St = 0
+    Rk[Fi].Live = 0
+  next
+  NewScreen
+  DrawField
+  for Ri = 7 to 14
+    fill 32 count 20 at 6,Ri
+  next
+  print at 12,8, "GUERILLA"
+  print at 7,9, "BY CLEVE BLAKEMORE"
+  print at 11,11, "START GAME"
+  print at 11,12, "CREDITS"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  print at 15,1, "AHOY! JULY 1988"
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,11
+  put char 32 at 9,12
+  J = Menu + 11
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "GUERILLA"
+  print at 2,5, "BASED ON GUERILLA BY"
+  print at 2,6, "CLEVE BLAKEMORE, AHOY!"
+  print at 2,7, "JULY 1988 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: HOLD THE WALL"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$E0,$80,$00,$80,$00,$00
+  $00,$C0,$07,$03,$00,$01,$00,$00
+  $00,$00,$00,$03,$F0,$C0,$00,$00
+  $00,$00,$E0,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$30,$84,$00,$20,$02,$00,$00
+  $08,$40,$02,$20,$00,$84,$00,$10
+  $00,$10,$62,$00,$08,$00,$41,$00
+  $10,$38,$83,$38,$91,$C3,$99,$00
+  $00,$81,$42,$24,$99,$A5,$38,$10
+  $00,$87,$CC,$03,$07,$01,$00,$00
+  $00,$E1,$CC,$C0,$E0,$80,$00,$00
+  $03,$01,$03,$03,$03,$01,$03,$03
+  $00,$07,$E0,$C0,$80,$00,$80,$80
+  $00,$C0,$F0,$07,$03,$01,$01,$03
+  $00,$44,$22,$22,$00,$88,$00,$00
+  $01,$01,$80,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$00,$01,$01,$01,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $38,$81,$10,$38,$10,$81,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$42,$24,$18,$24,$00,$00
+  $00,$00,$81,$81,$81,$81,$00,$00
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$F5,$5F,$5F,$0F,$5F,$05,$05
+  $05,$F5,$5F,$5F,$0F,$5F,$05,$05
+  $05,$05,$05,$E5,$5E,$5E,$0E,$0E
+  $05,$05,$E5,$5E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$CE,$EC,$0C,$2C,$2C,$0C,$0C
+  $2C,$2C,$2C,$2C,$0C,$2C,$0C,$2C
+  $0C,$2C,$2C,$0C,$2C,$0C,$2C,$0C
+  $3C,$3C,$C3,$3C,$3C,$3C,$C3,$0C
+  $0C,$3C,$3C,$3C,$3C,$C3,$3C,$3C
+  $0C,$C3,$3C,$AC,$AC,$AC,$0C,$0C
+  $0C,$C3,$C3,$AC,$AC,$AC,$0C,$0C
+  $AC,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $0C,$EC,$CE,$CE,$CE,$0E,$1E,$C1
+  $0C,$EC,$EC,$CE,$CE,$CE,$1E,$C1
+  $0C,$2C,$C2,$2A,$0A,$1A,$0A,$01
+  $1E,$1F,$FE,$1E,$1E,$1E,$1E,$01
+  $01,$01,$01,$01,$01,$0E,$0E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$E1,$61,$61,$61,$E1,$E1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$08,$08,$08,$08,$08,$08,$01
+  $01,$0A,$1A,$1A,$1A,$1A,$0A,$01
+  $01,$0E,$E1,$E1,$E1,$E1,$0E,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$01,$01,$00,$00,$F8,$00,$00,$01,$01,$01,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00
+  $11,$09,$01,$01,$03,$17,$07,$F6,$07,$17,$03,$01,$01,$09,$11,$00
+  $10,$20,$00,$00,$80,$D0,$C0,$DE,$C0,$D0,$80,$00,$00,$20,$10,$00
+  $03,$07,$0F,$03,$03,$7F,$7F,$0F,$1D,$19,$03,$07,$0F,$1E,$3E,$00
+  $C0,$E0,$F0,$C0,$C0,$FE,$FE,$F0,$E0,$E0,$E0,$F0,$78,$3C,$3E,$00
+  $03,$07,$0F,$03,$03,$0F,$3F,$FB,$DD,$19,$03,$07,$0F,$1E,$3E,$00
+  $C0,$E0,$F3,$CF,$FC,$E0,$80,$F0,$E0,$E0,$E0,$F0,$78,$3C,$3E,$00
+  $00,$21,$11,$08,$03,$04,$E8,$04,$03,$08,$11,$21,$00,$00,$00,$00
+  $00,$08,$10,$20,$80,$40,$2E,$40,$80,$20,$10,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $02,$26,$1E,$3F,$7D,$3C,$F0,$70,$78,$F0,$3C,$7D,$1F,$1E,$26,$02
+  $40,$64,$78,$F8,$BE,$3C,$0F,$02,$07,$0F,$3C,$BE,$F8,$78,$64,$40
+end data
+
+asm {
+GuShot:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$04,$10
+GuHit:
+    db $40,$7F,$10,$03,$40,$A9,$20,$03,$40,$FE,$30,$06,$50
+GuLaunch:
+    db $40,$FC,$41,$03,$40,$AE,$41,$03,$40,$75,$51,$03,$50
+GuBoom:
+    db $00,$00,$04,$03,$00,$00,$16,$06,$00,$00,$37,$08,$00,$00,$67,$0C,$10
+GuCrate:
+    db $40,$53,$21,$04,$40,$C5,$31,$08,$50
+GuLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+GuStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+GuFall:
+    db $00,$00,$04,$0A,$00,$00,$16,$14,$00,$00,$37,$1E,$00,$00,$67,$28,$10
+GuWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+GuSoundTable:
+    dw GuTuneMel,$702B
+    dw GuTuneBass,$7035
+    dw GuShot,$703F
+    dw GuHit,$7049
+    dw GuLaunch,$7049
+    dw GuBoom,$703F
+    dw GuCrate,$7049
+    dw GuLevel,$7049
+    dw GuStart,$7049
+    dw GuFall,$703F
+    dw GuWin,$7049
+; Hold the Wall (original)
+; Tiny Sound, 8 frames per step
+GuTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$21,$24,$28,$01,$01,$26,$24,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$1F,$23,$26,$01,$01,$24,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$21,$01,$24,$01,$28,$01,$2D,$01,$2B,$01,$28,$01
+    db $26,$01,$24,$01,$23,$01,$26,$01,$24,$23,$21,$01,$20,$01,$21,$01
+    db $01,$01,$00,$01
+    db $FF
+GuTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$09,$01,$10,$01,$09,$01,$10,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$0E,$01,$15,$01,$04,$01,$0B,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

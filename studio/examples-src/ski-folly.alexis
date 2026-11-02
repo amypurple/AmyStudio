@@ -1,0 +1,981 @@
+cartridge "SKI FOLLY/AHOY! MAY 1986/2026"
+
+' SKI FOLLY
+' A ColecoVision game based on "Ski Folly", Ahoy! May 1986 (Commodore 64
+' BASIC with a small machine-language interrupt routine; no author named
+' in the listing, on the disk or in the sources checked). Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/skifolly.bas, and timed in jsc64), the game is built for
+' the ColecoVision: smooth 16 x 16 sprites, a two-colour skier who leans
+' into his turns, snow and woods that scroll with the speed, sound effects
+' and an original title tune.
+'
+' The game: you are on holiday at the Mt. Kendall ski lodge and have taken
+' "Dead Man's Slope" by mistake. Pine trees rush up the slope at you; steer
+' left and right between them for 400 feet. The slope gets steeper: FAST
+' at the start, REAL FAST after 11 seconds, VERY FAST! after 49 seconds
+' ("SLOPE STEEPENING!" warns two seconds before). Holding the button brakes
+' (WHOA!!!!!!): the trees slow to a crawl but you gain no ground while the
+' clock runs. Touch a tree and you crash. Score = (300 - time) x feet / 2,
+' +500 for reaching the bottom; the time is the C64's TI$ clock read as a
+' number (1:27 counts as 127). Best score kept.
+'
+' From the original: the skier near the bottom moving 1 pixel a frame,
+' seven trees falling at 2, 3 or 4 pixels a frame (1 braking), each BASIC
+' pass (one every 13 frames, measured in jsc64: 400 feet in about 87 s)
+' picks one tree at random and, if it has left the bottom, sends it back
+' to the top; a foot of slope a pass unless braking; the speed steps at
+' 11 s and 49 s and the warnings at 9-12 s and 47-50 s; the speed names;
+' the crash on any touch; the score formula and the +500; the best score;
+' no crash checks once the bottom is reached.
+'
+' Liberties: trees come back at a random column instead of seven fixed
+' ones (with fixed columns a skier could find a safe lane and wait), and
+' the first seven are staggered instead of arriving in one row. The
+' original's ABS() made a long brake pay: past 3:00 the time term turned
+' positive and grew without end, so braking forever was the best play;
+' here the time term stops at 0. Speeds are scaled to the shorter screen
+' (0.9) and the brake is read every frame, not every BASIC pass.
+' Collisions are boxes inside the shapes, not the C64's pixel test. The
+' finish is a pair of gate flags; the made-it tune, the crash sound and the
+' hiss are new. No play-again question: a press returns to the title.
+'
+' Controls: either controller; the stick steers left and right, either
+' button brakes while held. On the title, up and down choose, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TSnow = 128
+const TSpeck = 129
+const TSpeck2 = 130
+const TWood = 131
+const TRopel = 132
+const TRoper = 133
+const TBand = 134
+const TBandb = 135
+const TMtl = 136
+const TMtr = 137
+const TMtl2 = 138
+const TMtr2 = 139
+const TRock = 140
+const TSky = 141
+const SSkiink = 0
+const SSkired = 4
+const SSkilink = 8
+const SSkilred = 12
+const SSkirink = 16
+const SSkirred = 20
+const SSkibink = 24
+const SSkibred = 28
+const SCrashink = 32
+const SCrashred = 36
+const SPine = 40
+const SPine2 = 44
+const SFlag = 48
+const NTiles8 = 112
+const SprBytes = 416
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHiss1 = 3
+const SndHiss2 = 4
+const SndHiss3 = 5
+const SndHiss4 = 6
+const SndCrash = 7
+const SndScrape = 8
+const SndSteep = 9
+const SndStart = 10
+const SndThud = 11
+const SndWin = 12
+const NSpr = 11
+const NTree = 7
+const PassN = 13
+const SlopeFt = 400
+const SkiY = 152
+const Park = 4000
+const CrashN = 90
+const FinN = 2
+
+' tree speed in 1/16 pixel a frame by the C64 speed 1-4 (index 0 unused)
+data SpdT bytes
+  0, 14, 29, 43, 58
+end data
+
+record Tree:
+  u8 X
+  u16 Y
+  u8 Pat
+  u8 Col
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+Tree Trees[NTree]
+' the skier: x, lean (0 straight, 1 left, 2 right), brake, crash frames
+u8 Sx = 112
+u8 Lean = 0
+u8 Brake = 0
+u8 CrashT = 0
+' speed (C64 value 1-4), the current base speed (2-4), feet skied
+u8 G = 2
+u8 Gb = 2
+u16 Di = 0
+' frames to the next BASIC pass, finish gate (virtual y, 1/16 px)
+u8 PassT = PassN
+u8 Fin = 0
+u16 FinY = 0
+' the clock: frames, BCD minutes and seconds, binary copies, TI$ value
+u8 Ft = 0
+bcd digits 2 Sec = 0
+bcd digits 2 Mins = 0
+u8 SecB = 0
+u8 MinB = 0
+u16 Tn = 0
+u16 Sc = 0
+u16 Hi = 0
+u8 Over = 0
+u8 Warn = 0
+u8 HissT = 0
+u8 Scroll = 0
+u8 ScrollF = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ti = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  ScrollSnow
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, the score, then back to the title on a press
+  mute all
+  Sc = Score(Tn, Di, Over)
+  if Sc > Hi then Hi = Sc
+  if Over = FinN then
+    print at 6,7, "                  "
+    print at 6,8, "  YOU MADE IT!!!  "
+    play sound SndWin
+  else
+    print at 6,7, "                  "
+    print at 6,8, "   YOU CRASHED!   "
+  end if
+  print at 6,9, "                  "
+  print at 6,10, "    GAME OVER!    "
+  print at 6,11, "                  "
+  print at 6,12, " YOUR SCORE       "
+  NumU = Sc
+  print at 18,12, digits$(NumU, 5)
+  print at 6,13, " BEST SCORE       "
+  NumU = Hi
+  print at 18,13, digits$(NumU, 5)
+  print at 6,14, "                  "
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' INT((300 - T) * D / 2), at least 0, + 500 for the bottom of the slope
+function Score(u16 T, u16 D, u8 How) as u16
+  u16 Q = 0
+  u16 R = 0
+  if T >= 300 then
+    R = 0
+  else
+    Q = 300 - T
+    R = D >> 1
+    R = R * Q
+    if D & 1 then R = R + (Q >> 1)
+  end if
+  if How = FinN then R = R + 500
+  return R
+
+' the speed name the C64 printed for speed S
+sub ShowSpeed(u8 S)
+  select case S
+  case 1
+    print at 19,1, "WHOA!!!!!!"
+  case 2
+    print at 19,1, "FAST      "
+  case 3
+    print at 19,1, "REAL FAST "
+  case else
+    print at 19,1, "VERY FAST!"
+  end select
+  return
+end sub
+
+sub PlayStep:
+  if CrashT > 0 then
+    dec CrashT
+    if CrashT = 0 then Over = 1
+    return
+  end if
+  Clock
+  ' the brake (either button) and the stick, every frame
+  Lean = 0
+  V = J1 | J2
+  K = V & 4
+  if K > 0 then
+    Lean = 1
+    if Sx > 20 then dec Sx
+  end if
+  K = V & 8
+  if K > 0 then
+    Lean = 2
+    if Sx < 220 then inc Sx
+  end if
+  if Fin > 0 then
+    Brake = 0
+    G = Gb
+  else
+    J = G
+    if Btn > 0 then
+      Brake = 1
+      G = 1
+    else
+      Brake = 0
+      G = Gb
+    end if
+    if G <> J then ShowSpeed(G)
+  end if
+  MoveTrees
+  Sounds
+  if Fin > 0 then
+    FinY = FinY + SpdT[G]
+    W16 = FinY >> 4
+    if W16 >= 168 then Over = FinN
+    return
+  end if
+  Collide
+  dec PassT
+  if PassT = 0 then
+    PassT = PassN
+    BasicPass
+  end if
+  return
+end sub
+
+' one pass of the C64's BASIC loop: a random tree back to the top if it has
+' left the bottom, a foot of slope (none while braking), the end
+sub BasicPass:
+  u8 A = 0
+  Rand
+  A = Rs & 7
+  if A = 7 then A = Tick % 7
+  if Trees[A].Y = Park then
+    Trees[A].Y = 0
+    Rand
+    V = Rs & 127
+    K = Rs >> 8
+    K = K & 63
+    Trees[A].X = 18 + V + K
+    Trees[A].Pat = SPine
+    K = Rs >> 8
+    V = K & 1
+    if V > 0 then Trees[A].Pat = SPine2
+    Trees[A].Col = 12
+    V = K & 2
+    if V > 0 then Trees[A].Col = 2
+  end if
+  if Brake = 0 then
+    inc Di
+    ShowFeet
+    if Di >= SlopeFt then
+      Fin = 1
+      FinY = 0
+      Warn = 0
+      fill TSnow count 19 at 7,4
+    end if
+  end if
+  return
+end sub
+
+' the clock (TI$ minutes and seconds) and the slope steepening
+sub Clock:
+  inc Ft
+  if Ft < 60 then return
+  Ft = 0
+  if Tn >= 5959 then return
+  inc Sec
+  inc SecB
+  inc Tn
+  if SecB = 60 then
+    Sec = 0
+    SecB = 0
+    inc Mins
+    inc MinB
+    Tn = Tn + 40
+  end if
+  ShowTime
+  if Fin > 0 then return
+  ' TI$ = 000009 / 000047: the warning; 11 / 49: steeper; 12 / 50: clear
+  select case Tn
+  case 9, 47
+    print at 7,4, " SLOPE STEEPENING! "
+    play sound SndSteep
+  case 11
+    Gb = 3
+  case 49
+    Gb = 4
+  case 12, 50
+    fill TSnow count 19 at 7,4
+  end select
+  if Brake = 0 then
+    if G <> Gb then
+      G = Gb
+      ShowSpeed(G)
+    end if
+  end if
+  return
+end sub
+
+sub MoveTrees:
+  u8 Sp = 0
+  u16 Ty = 0
+  Sp = SpdT[G]
+  for Ti = 0 to NTree - 1
+    Ty = Trees[Ti].Y
+    if Ty <> Park then
+      Ty = Ty + Sp
+      ' gone past the bottom (screen line 192 = virtual 208)
+      if Ty >= 3328 then Ty = Park
+      Trees[Ti].Y = Ty
+    end if
+  next
+  return
+end sub
+
+' the skier's box (x+5..x+10, lines 155..167) against each tree's box
+' (x+4..x+11, its lines 2..14)
+sub Collide:
+  u16 Ty = 0
+  u8 Tx = 0
+  for Ti = 0 to NTree - 1
+    Ty = Trees[Ti].Y >> 4
+    if Ty > 157 then
+      if Ty < 181 then
+        Tx = Trees[Ti].X
+        V = Sx + 5
+        K = Tx + 11
+        if V < K then
+          V = Tx + 4
+          K = Sx + 10
+          if V < K then
+            if CrashT = 0 then
+              CrashT = CrashN
+              play sound SndCrash
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Sounds:
+  if HissT > 0 then
+    dec HissT
+    return
+  end if
+  if Brake = 1 then
+    HissT = 5
+    play sound SndScrape
+    return
+  end if
+  HissT = 7
+  select case G
+  case 2
+    play sound SndHiss2
+  case 3
+    play sound SndHiss3
+  case else
+    play sound SndHiss4
+  end select
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the snow specks and the woods roll down with the trees' speed
+sub ScrollSnow:
+  if TitleOn = 1 then return
+  if CrashT > 0 then return
+  ScrollF = ScrollF + SpdT[G]
+  V = ScrollF >> 4
+  ScrollF = ScrollF & 15
+  Scroll = Scroll - V
+  Scroll = Scroll & 7
+  V = Scroll + 1
+  copy SpeckP + V count 8 to vram.pattern + 1032
+  copy SpeckP + V count 8 to vram.pattern + 3080
+  copy SpeckP + V count 8 to vram.pattern + 5128
+  copy Speck2P + V count 8 to vram.pattern + 1040
+  copy Speck2P + V count 8 to vram.pattern + 3088
+  copy Speck2P + V count 8 to vram.pattern + 5136
+  copy WoodP + V count 8 to vram.pattern + 1048
+  copy WoodP + V count 8 to vram.pattern + 3096
+  copy WoodP + V count 8 to vram.pattern + 5144
+  copy WoodC + V count 8 to vram.color + 1048
+  return
+end sub
+
+' sprites 0-1 the skier, 2-8 the trees, 9-10 the finish gate
+sub DrawSprites:
+  u16 Ty = 0
+  Y = SkiY - 1
+  if CrashT > 0 then
+    set sprite 0 to Y,Sx,SCrashink,1
+    set sprite 1 to Y,Sx,SCrashred,8
+  elseif TitleOn = 1 then
+    set sprite 0 to 129,120,SSkiink,1
+    set sprite 1 to 129,120,SSkired,8
+  else
+    K = SSkiink
+    if Lean = 1 then K = SSkilink
+    if Lean = 2 then K = SSkirink
+    if Brake = 1 then K = SSkibink
+    set sprite 0 to Y,Sx,K,1
+    K = K + 4
+    set sprite 1 to Y,Sx,K,8
+  end if
+  for Ti = 0 to NTree - 1
+    J = Ti + 2
+    Ty = Trees[Ti].Y
+    if Ty = Park then
+      set sprite J to 192,0,0,0
+    else
+      ' virtual line v = Ty / 16 is screen line v - 16; sprite Y is one less
+      Ty = Ty >> 4
+      V = Ty
+      V = V - 17
+      X = Trees[Ti].X
+      K = Trees[Ti].Pat
+      C = Trees[Ti].Col
+      set sprite J to V,X,K,C
+    end if
+  next
+  if Fin > 0 then
+    W16 = FinY >> 4
+    V = W16
+    V = V - 17
+    set sprite 9 to V,40,SFlag,8
+    set sprite 10 to V,200,SFlag,4
+  else
+    set sprite 9 to 192,0,0,0
+    set sprite 10 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowFeet:
+  NumU = SlopeFt - Di
+  print at 8,1, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowTime:
+  print Mins at 23,22
+  print Sec at 26,22
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SLOPE     FT"
+  ShowFeet
+  ShowSpeed(G)
+  print at 2,22, "BEST"
+  NumU = Hi
+  print at 7,22, digits$(NumU, 5)
+  print at 18,22, "TIME"
+  print at 25,22, ":"
+  ShowTime
+  return
+end sub
+
+' the slope: woods down both edges, rope lines, snow with specks
+sub DrawSlope:
+  fill TBand count 32 at 0,0
+  fill TBand count 32 at 0,1
+  fill TBand count 32 at 0,22
+  fill TBandb count 32 at 0,23
+  for Ri = 2 to 21
+    fill TWood count 2 at 0,Ri
+    fill TWood count 2 at 30,Ri
+    put char TRopel at 2,Ri
+    put char TRoper at 29,Ri
+    fill TSnow count 26 at 3,Ri
+    V = Ri * 5
+    V = V % 7
+    J = V + 4
+    put char TSpeck at J,Ri
+    J = J + 9
+    put char TSpeck2 at J,Ri
+    J = J + 8
+    put char TSpeck at J,Ri
+    V = Ri & 3
+    J = 26 - V
+    put char TSpeck2 at J,Ri
+  next
+  return
+end sub
+
+sub ResetTrees:
+  for Ti = 0 to NTree - 1
+    Trees[Ti].Y = Park
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  ' no trees yet: the BASIC passes send them in one by one
+  ResetTrees
+  Sx = 112
+  Lean = 0
+  Brake = 0
+  CrashT = 0
+  G = 2
+  Gb = 2
+  Di = 0
+  PassT = PassN
+  Fin = 0
+  FinY = 0
+  Ft = 0
+  Sec = 0
+  Mins = 0
+  SecB = 0
+  MinB = 0
+  Tn = 0
+  Sc = 0
+  Over = 0
+  Warn = 0
+  HissT = 0
+  TitleOn = 0
+  DrawSlope
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: mountains, the story, a skier among the pines, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  for Ri = 0 to 23
+    fill TSky count 32 at 0,Ri
+  next
+  for Ri = 7 to 9
+    fill TSnow count 32 at 0,Ri
+  next
+  ' three peaks
+  put char TMtl at 6,6
+  put char TMtr at 7,6
+  put char TMtl at 5,7
+  put char TMtr at 8,7
+  put char TMtl2 at 12,6
+  put char TMtr2 at 13,6
+  put char TMtl at 20,5
+  put char TMtr at 21,5
+  put char TMtl at 19,6
+  put char TMtr at 22,6
+  put char TMtl at 18,7
+  put char TMtr at 23,7
+  fill TSnow count 2 at 20,6
+  fill TSnow count 4 at 19,7
+  fill TSnow count 2 at 6,7
+  for Ri = 10 to 23
+    fill TSnow count 32 at 0,Ri
+  next
+  print at 11,2, "SKI  FOLLY"
+  print at 9,4, "AHOY! MAY 1986"
+  print at 3,11, "YOU'RE ON A SKI HOLIDAY"
+  print at 3,12, "AT THE MT. KENDALL LODGE"
+  print at 3,13, "AND TOOK DEAD MAN'S SLOPE"
+  print at 3,14, "BY MISTAKE! STEER, BRAKE"
+  print at 3,15, "AND SAVE YOUR LIFE!"
+  print at 10,19, "START GAME"
+  print at 10,20, "CREDITS"
+  print at 2,22, "BEST"
+  NumU = Hi
+  print at 7,22, digits$(NumU, 5)
+  ShowMenu
+  ResetTrees
+  Trees[0].Y = 2320
+  Trees[0].X = 48
+  Trees[0].Pat = SPine
+  Trees[0].Col = 12
+  Trees[1].Y = 2240
+  Trees[1].X = 192
+  Trees[1].Pat = SPine2
+  Trees[1].Col = 2
+  TitleOn = 1
+  CrashT = 0
+  Fin = 0
+  G = 2
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char TSnow at 8,19
+  put char TSnow at 8,20
+  J = Menu + 19
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "SKI  FOLLY"
+  print at 2,5, "BASED ON SKI FOLLY, AHOY!"
+  print at 2,6, "MAY 1986 (COMMODORE 64)."
+  print at 2,7, "NO AUTHOR IS NAMED IN THE"
+  print at 2,8, "LISTING OR ON THE DISK."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: DEAD MAN'S SLOPE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$40,$00,$00
+  $00,$00,$10,$00,$00,$00,$01,$00
+  $10,$38,$83,$01,$10,$02,$07,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$5F,$0F,$0F,$0F,$5F,$0F,$0F
+  $0F,$0F,$5F,$0F,$0F,$0F,$EF,$0F
+  $CF,$CF,$FC,$FC,$6F,$CF,$CF,$FC
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $05,$04,$04,$04,$04,$04,$04,$04
+  $F4,$F4,$F4,$4F,$4F,$4F,$4F,$0F
+  $F4,$F4,$F4,$F4,$4F,$4F,$4F,$0F
+  $E4,$E4,$E4,$4E,$4E,$4E,$4E,$0E
+  $E4,$E4,$E4,$E4,$4E,$4E,$4E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $04,$04,$04,$04,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $00,$03,$03,$00,$10,$10,$10,$10,$10,$10,$14,$14,$04,$04,$04,$04
+  $00,$C0,$C0,$00,$08,$08,$08,$08,$08,$08,$28,$28,$20,$20,$20,$20
+  $00,$00,$00,$03,$07,$0F,$0F,$0B,$03,$02,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F0,$F0,$D0,$C0,$40,$40,$00,$00,$00,$00,$00
+  $00,$07,$07,$00,$20,$20,$20,$20,$40,$48,$48,$10,$10,$20,$20,$41
+  $00,$80,$80,$00,$08,$04,$04,$02,$02,$22,$20,$40,$40,$80,$80,$00
+  $00,$00,$00,$07,$0F,$1F,$1F,$17,$07,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F0,$E8,$C0,$40,$40,$00,$00,$00,$00,$00
+  $00,$01,$01,$00,$10,$20,$20,$40,$40,$44,$04,$02,$02,$01,$01,$00
+  $00,$E0,$E0,$00,$04,$04,$04,$04,$02,$12,$12,$08,$08,$04,$04,$82
+  $00,$00,$00,$01,$03,$07,$0F,$17,$03,$02,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$F8,$F8,$E8,$E0,$20,$20,$00,$00,$00,$00,$00
+  $00,$03,$03,$00,$10,$10,$10,$10,$10,$08,$08,$04,$04,$08,$10,$20
+  $00,$C0,$C0,$00,$08,$08,$08,$08,$08,$10,$10,$20,$20,$10,$08,$04
+  $00,$00,$00,$03,$07,$0F,$0F,$0B,$03,$02,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F0,$F0,$D0,$C0,$40,$40,$00,$00,$00,$00,$00
+  $00,$00,$40,$20,$10,$08,$04,$02,$01,$02,$04,$18,$00,$03,$03,$00
+  $00,$00,$04,$08,$10,$20,$40,$80,$00,$80,$40,$30,$00,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$3C,$7E,$7F,$3F,$1E,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$70,$00,$00,$00
+  $01,$03,$07,$03,$07,$0F,$07,$0F,$1F,$3F,$0F,$1F,$3F,$7F,$01,$01
+  $80,$C0,$E0,$C0,$E0,$F0,$E0,$F0,$F8,$FC,$F0,$F8,$FC,$FE,$80,$80
+  $00,$01,$03,$07,$0F,$03,$07,$0F,$1F,$07,$0F,$1F,$3F,$7F,$03,$03
+  $00,$00,$80,$C0,$E0,$80,$C0,$E0,$F0,$C0,$E0,$F0,$F8,$FC,$80,$80
+  $20,$3F,$3F,$3F,$3F,$3F,$20,$20,$20,$20,$20,$20,$20,$20,$70,$00
+  $00,$00,$C0,$F0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data SpeckP bytes
+  $00,$04,$00,$00,$00,$40,$00,$00,$00,$04,$00,$00,$00,$40,$00,$00
+end data
+data SpeckC bytes
+  $0F,$5F,$0F,$0F,$0F,$5F,$0F,$0F,$0F,$5F,$0F,$0F,$0F,$5F,$0F,$0F
+end data
+data Speck2P bytes
+  $00,$00,$10,$00,$00,$00,$01,$00,$00,$00,$10,$00,$00,$00,$01,$00
+end data
+data Speck2C bytes
+  $0F,$0F,$5F,$0F,$0F,$0F,$EF,$0F,$0F,$0F,$5F,$0F,$0F,$0F,$EF,$0F
+end data
+data WoodP bytes
+  $10,$38,$83,$01,$10,$02,$07,$F0,$10,$38,$83,$01,$10,$02,$07,$F0
+end data
+data WoodC bytes
+  $CF,$CF,$FC,$FC,$6F,$CF,$CF,$FC,$CF,$CF,$FC,$FC,$6F,$CF,$CF,$FC
+end data
+
+asm {
+SfHiss1:
+    db $00,$00,$B7,$08,$10
+SfHiss2:
+    db $00,$00,$96,$08,$10
+SfHiss3:
+    db $00,$00,$85,$08,$10
+SfHiss4:
+    db $00,$00,$74,$08,$10
+SfCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$66,$0E,$10
+SfScrape:
+    db $40,$3B,$52,$03,$40,$5D,$62,$03,$50
+SfSteep:
+    db $40,$5F,$20,$06,$40,$FF,$F3,$04,$40,$5F,$20,$06,$40,$FF,$F3,$04,$40,$47,$20,$06,$50
+SfStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+SfThud:
+    db $40,$FC,$11,$06,$40,$A6,$22,$06,$40,$F9,$33,$0C,$50
+SfWin:
+    db $40,$AA,$10,$08,$40,$8F,$10,$08,$40,$71,$10,$08,$40,$55,$10,$08,$40,$5F,$20,$06,$40,$55,$10,$18
+    db $50
+
+SfSoundTable:
+    dw SfTuneMel,$702B
+    dw SfTuneBass,$7035
+    dw SfHiss1,$703F
+    dw SfHiss2,$703F
+    dw SfHiss3,$703F
+    dw SfHiss4,$703F
+    dw SfCrash,$703F
+    dw SfScrape,$7049
+    dw SfSteep,$7049
+    dw SfStart,$7049
+    dw SfThud,$7049
+    dw SfWin,$7049
+; Dead Man's Slope (original)
+; Tiny Sound, 8 frames per step
+SfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$25,$01,$28,$01,$01,$25,$26,$01,$23,$01
+    db $20,$01,$01,$01,$21,$01,$25,$01,$28,$01,$2D,$01,$2A,$01,$28,$01
+    db $25,$01,$01,$01,$26,$01,$2A,$01,$28,$01,$25,$23,$01,$01,$21,$01
+    db $23,$01,$25,$01,$28,$26,$25,$23,$21,$20,$1E,$1C,$21,$01,$01,$01
+    db $00,$01,$01
+    db $FF
+SfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$1C,$01,$17,$01
+    db $1C,$01,$17,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$0E,$01,$15,$01
+    db $1E,$01,$19,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$17,$01,$1E,$01,$1C,$01,$17,$01,$15,$01,$01,$01
+    db $00,$01,$01
+    db $FF
+}

@@ -1,0 +1,1351 @@
+cartridge "LAST NINJA (AHOY! 1986)/C.M.BLAKEMORE/1986"
+
+' LAST NINJA (AHOY! 1986)
+' A ColecoVision game based on "The Last Ninja" by Cleveland M. Blakemore,
+' Ahoy! September 1986 (Commodore 64 machine language at $C000, loaded and
+' started by the two-line LAST NINJA BOOT). Ahoy!'s own type-in, not System
+' 3's commercial game of the same name: nothing of that game is used here.
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (watched in jsc64,
+' numbers read from its machine code, orig/ninja.dis); the game is drawn
+' for the ColecoVision: a moonlit castle gallery that scrolls as the hero
+' advances, a masked hero in light blue (two-colour sprite), rival fighters
+' with staffs and fantasy dragons, chi gauge, sound effects, a title tune.
+'
+' The game: walk right through the gallery. Missiles fly in from the right
+' (a wisp and a spinning star); open pits in the floor must be leapt. Every
+' 2048 pixels of progress a foe comes: ten foes, each tougher than the
+' last (fighters, then dragons, then the master), each needing one more
+' hit than the one before. Hits, missiles and pits drain your chi; beating
+' a foe gives some back. Beat all ten, or lose your chi, and the game tells
+' you the rank you reached: ADEPT, SHUGYO, YUDANSHA, TIGER, DRAGON, NINJA,
+' SHINOBI, SENSEI, SHIDOSHI, JONIN (the original's ranks).
+'
+' From the original (orig/): one pass of its main loop per frame does it
+' all: the wisp moves 3 pixels a pass and the star 2, each coming back at a
+' random height when it leaves; the hero walks 1 pixel a pass between X 16
+' and 112 (C64 $19-$82) and pushes the gallery along at the right; up+right
+' is a leap that scrolls a pixel every pass, rising 10 pixels at passes 20,
+' 45 and 70 and landing at 95; up+left jumps in place (rising at 20, 40,
+' 60, landing at 80); down crouches; up shows a star and the button throws
+' it (6 pixels a pass; the hero waits until it is gone); the button strikes
+' with the sword: no harm comes while striking, and a strike or a star
+' takes one hit off a foe. A foe has as many hit points as its number
+' (0-9; one more hit beats it), walks 1 pixel every 7,7,6,6,5,5,4,4,3,3
+' passes and throws a missile at speed number/2 + 1; touching it pushes it
+' back 10 pixels, and the hero too (unless striking). Chi 38 (the C64's
+' gauge from X 195 down to 157): a missile or a touch costs 1, a pit 10,
+' a beaten foe gives back its number. A pit every 512 pixels, 48 wide; the
+' C64's gallery shifted a column every 8 pixels and a new foe came every
+' 256 columns. The rank names and their order.
+'
+' Liberties: the gallery scrolls a whole column (8 pixels) at a time (the
+' C64 scrolled smoothly); the C64 ran its loop about twice a frame, so the
+' port, at one pass a frame, plays at about half the C64's speed (a human-
+' paced bot finds that fair); the button alone strikes (the C64 needed
+' fire+right) and a strike lasts 12 frames, then the button must be let go
+' and 16 frames pass before the next (the C64 protected the hero for as
+' long as the button was held, which made the foes harmless); the star
+' flies straight (the C64's slope came from the walking counter); a star
+' that meets a foe's missile stops there and the missile forms again at
+' the foe (the C64's missile flew on unseen), and a foe within 40
+' pixels of the hero throws no new missile (on the C64 a missile re-formed
+' at a close foe's side, already touching the hero); a pit the hero falls into
+' closes behind him (the C64 moved it away) and he stands up at X 76; a
+' hit in the air does not knock him back (on the C64 it could drop him
+' into the pit he was leaping); chi
+' stops at 38; collisions are boxes on the drawn shapes (the C64 used its
+' sprite collision register, which missed two things at once); a foe that
+' gets past the hero simply leaves, as on the C64; beating the tenth foe
+' ends the game at JONIN with a message (the C64 went back to its title);
+' a beaten foe gives back its number + 5 chi (the C64: its number; at
+' half speed even a near-perfect player rarely got past foe 4 that way:
+' sim.mjs, 4 wins in 20; with +5 a 12-frame-late player wins 12 in 20).
+'
+' Controls: controller 1 (or 2). Stick right/left walk, up+right leap,
+' up+left jump, down crouch, up + button throw a star, button strike. On
+' the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TRoof0 = 131
+const TRoof1 = 132
+const TRoof2 = 133
+const TRoof3 = 134
+const TMoon00 = 135
+const TMoon01 = 136
+const TMoon10 = 137
+const TMoon11 = 138
+const TEave0 = 139
+const TBeam = 140
+const TLat0 = 141
+const TLat1 = 142
+const TRail = 143
+const TBase = 144
+const TPostL = 145
+const TPostR = 146
+const TLan00 = 147
+const TLan01 = 148
+const TLan10 = 149
+const TLan11 = 150
+const TWin00 = 151
+const TWin01 = 152
+const TWin10 = 153
+const TWin11 = 154
+const TFl0 = 155
+const TFl1 = 156
+const TFl2 = 157
+const TPitL = 158
+const TPitM = 159
+const TPitR = 160
+const TPitB = 161
+const TG0 = 162
+const TG1 = 163
+const TG2 = 164
+const TGE = 165
+const TFoe = 166
+const TDone = 167
+const TTl = 168
+const SHstandb = 0
+const SHstandd = 4
+const SHstrikeb = 8
+const SHstriked = 12
+const SHreadyb = 16
+const SHreadyd = 20
+const SLstand = 24
+const SLwalk1 = 28
+const SLwalk2 = 32
+const SLcrouch = 36
+const SLtuck = 40
+const SFt = 44
+const SFts = 48
+const SFb1 = 52
+const SFb2 = 56
+const SDt = 60
+const SDb1 = 64
+const SDb2 = 68
+const SStar = 72
+const SStar2 = 76
+const SWisp = 80
+const SPuff = 84
+const SFire = 88
+const NTiles8 = 328
+const SprBytes = 736
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndLeap = 4
+const SndSwish = 5
+const SndThrow = 6
+const SndHurt = 7
+const SndHit = 8
+const SndClang = 9
+const SndFall = 10
+const SndBeat = 11
+const SndFoe = 12
+const SndStart = 13
+const SndOver = 14
+const SndWin = 15
+const NSpr = 8
+const HeroY = 114
+const MaxLife = 38
+const NXMin = 16
+const NXMax = 112
+const PitL = 324
+const PitR = 364
+const FoeY = 114
+const MisY = 116
+
+' the foes, by number 0-9: frames between steps, colour, missile, its colour
+data EDel bytes 7,7,6,6,5,5,4,4,3,3
+data FCol bytes 10,14,9,3,7,8,13,11,2,15
+data PPat bytes 76,76,76,76,84,84,84,88,88,88
+data PCol bytes 15,15,15,15,9,9,9,8,8,11
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$01,$07,$E0
+  $00,$00,$00,$81,$C1,$C0,$00,$00
+  $00,$00,$00,$00,$80,$E0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$F0,$E0,$C0,$C0,$80,$80
+  $00,$C0,$F0,$07,$03,$03,$01,$01
+  $80,$80,$C0,$C0,$E0,$F0,$03,$00
+  $01,$01,$03,$03,$07,$F0,$C0,$00
+  $00,$00,$00,$00,$00,$AA,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$88,$88,$88,$00,$88,$88,$88
+  $00,$80,$80,$80,$00,$80,$80,$80
+  $00,$00,$00,$00,$22,$22,$22,$22
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$E0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$07,$03,$03,$03,$03,$03
+  $C0,$C0,$E0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$07,$03,$03,$03,$03,$03
+  $00,$00,$00,$07,$F0,$E0,$E0,$C0
+  $00,$00,$00,$E0,$F0,$07,$07,$03
+  $C0,$E0,$E0,$F0,$07,$00,$00,$00
+  $03,$07,$07,$F0,$E0,$00,$00,$00
+  $00,$00,$00,$01,$01,$00,$00,$00
+  $00,$00,$10,$10,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$F0,$F0,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$10,$18,$81,$C3,$18,$10,$00
+  $00,$10,$18,$81,$C3,$18,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $04,$54,$04,$04,$04,$04,$54,$04
+  $04,$04,$04,$04,$04,$14,$14,$41
+  $04,$04,$01,$41,$41,$41,$01,$01
+  $04,$04,$04,$04,$14,$14,$41,$01
+  $04,$04,$04,$04,$04,$04,$01,$01
+  $04,$B4,$4B,$4B,$4B,$4B,$4B,$4B
+  $04,$B4,$B4,$4B,$4B,$4B,$4B,$4B
+  $4B,$4B,$4B,$4B,$4B,$4B,$B4,$04
+  $4B,$4B,$4B,$4B,$4B,$B4,$B4,$04
+  $0E,$0F,$0E,$0E,$01,$E1,$01,$01
+  $06,$0A,$06,$06,$06,$06,$01,$04
+  $01,$14,$14,$14,$01,$14,$14,$14
+  $01,$14,$14,$14,$01,$14,$14,$14
+  $06,$0A,$06,$01,$61,$61,$61,$61
+  $06,$06,$0A,$06,$06,$06,$01,$01
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $A6,$A6,$18,$18,$1B,$18,$1B,$18
+  $16,$16,$18,$18,$1B,$18,$1B,$18
+  $1B,$18,$18,$A6,$A6,$A6,$A6,$A6
+  $1B,$18,$18,$16,$16,$16,$16,$16
+  $0A,$0A,$0A,$1A,$A1,$A1,$A1,$A1
+  $0A,$0A,$0A,$1A,$1A,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$1A,$0A,$0A,$0A
+  $A1,$A1,$A1,$1A,$1A,$0A,$0A,$0A
+  $0B,$0A,$0A,$6A,$6A,$0A,$0A,$06
+  $0B,$0A,$6A,$6A,$0A,$0A,$0A,$06
+  $06,$0A,$0A,$6A,$0A,$0A,$01,$01
+  $1B,$1A,$1A,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $61,$61,$61,$61,$16,$16,$16,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$06,$01,$01,$01,$01,$06,$01
+  $01,$06,$81,$81,$81,$81,$06,$01
+  $01,$06,$08,$08,$08,$08,$06,$01
+  $01,$61,$61,$61,$61,$61,$61,$01
+  $01,$E1,$E1,$1E,$1E,$E1,$E1,$01
+  $01,$B1,$B1,$1B,$1B,$B1,$B1,$01
+  $0F,$05,$05,$05,$05,$05,$04,$01
+end data
+data SpritePat bytes
+  $03,$07,$00,$07,$05,$03,$01,$0F,$1F,$37,$37,$30,$37,$07,$07,$07
+  $C0,$E0,$00,$E0,$A0,$C0,$80,$F0,$F8,$EC,$EC,$0C,$EC,$E0,$E0,$E0
+  $00,$00,$07,$00,$02,$00,$00,$00,$00,$00,$00,$07,$00,$30,$00,$00
+  $00,$00,$F8,$0C,$44,$00,$00,$00,$00,$00,$00,$E0,$00,$0C,$00,$00
+  $03,$07,$00,$07,$05,$03,$01,$0F,$1F,$37,$37,$30,$37,$07,$07,$07
+  $C0,$E0,$00,$E0,$A0,$C0,$80,$FC,$F0,$E0,$E0,$00,$E0,$E0,$E0,$E0
+  $00,$00,$1F,$30,$22,$00,$00,$00,$00,$00,$00,$07,$00,$30,$00,$00
+  $00,$00,$E0,$00,$40,$00,$00,$03,$03,$06,$0C,$F8,$10,$00,$00,$00
+  $03,$07,$00,$07,$05,$03,$01,$0F,$1F,$37,$37,$30,$37,$07,$07,$07
+  $C0,$E0,$00,$EA,$AC,$CC,$98,$F8,$F0,$E0,$E0,$00,$E0,$E0,$E0,$E0
+  $00,$00,$07,$00,$02,$00,$00,$00,$00,$00,$00,$07,$00,$30,$00,$00
+  $04,$0E,$FF,$04,$40,$00,$00,$00,$00,$00,$00,$E0,$00,$00,$00,$00
+  $07,$0F,$0E,$0E,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$1C,$3C,$00,$00
+  $E0,$F0,$70,$70,$30,$30,$30,$30,$30,$30,$30,$30,$38,$3C,$00,$00
+  $07,$0F,$0E,$1C,$18,$38,$30,$30,$60,$60,$60,$60,$E0,$E0,$00,$00
+  $E0,$F0,$70,$38,$18,$18,$0C,$0C,$0C,$06,$06,$06,$0F,$00,$00,$00
+  $07,$0F,$06,$06,$06,$06,$03,$03,$03,$03,$03,$03,$07,$0F,$00,$00
+  $E0,$F0,$60,$60,$60,$60,$60,$60,$60,$60,$30,$30,$38,$3C,$00,$00
+  $07,$0F,$1F,$3C,$38,$38,$3C,$7C,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F8,$3C,$1C,$1C,$1E,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$0F,$1F,$3C,$38,$3C,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$FC,$7C,$38,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$05,$07,$03,$01,$1F,$3F,$6F,$8F,$8F,$8F,$8F,$8F,$8F
+  $C0,$E0,$F0,$B0,$F0,$E0,$80,$F0,$F8,$EC,$E6,$E2,$E0,$E0,$E0,$E0
+  $83,$47,$27,$15,$0F,$07,$03,$1F,$3F,$37,$27,$07,$07,$07,$07,$07
+  $C0,$E0,$F0,$B0,$F0,$E0,$80,$F0,$F8,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $8F,$9F,$9C,$9C,$98,$98,$98,$98,$98,$98,$98,$98,$B8,$78,$00,$00
+  $E0,$F0,$70,$70,$30,$30,$30,$30,$30,$30,$30,$30,$70,$F0,$00,$00
+  $0F,$1F,$1C,$38,$30,$70,$60,$60,$C0,$C0,$C0,$C0,$E0,$E0,$00,$00
+  $E0,$F0,$70,$38,$18,$18,$0C,$0C,$0C,$06,$06,$06,$07,$00,$00,$00
+  $00,$0F,$1F,$3D,$7F,$FF,$E0,$F8,$60,$03,$07,$0D,$19,$11,$03,$03
+  $00,$00,$C8,$F8,$FC,$FC,$FE,$FE,$FF,$FF,$FE,$FE,$FE,$FC,$FC,$FC
+  $07,$07,$03,$03,$07,$06,$0E,$0C,$0C,$1C,$18,$18,$38,$78,$00,$00
+  $FC,$FC,$FE,$FF,$33,$31,$31,$30,$38,$18,$18,$18,$38,$78,$00,$00
+  $07,$07,$03,$03,$03,$03,$03,$03,$07,$06,$06,$06,$0E,$1E,$00,$00
+  $FC,$FC,$FE,$FF,$73,$61,$61,$30,$30,$30,$30,$18,$38,$78,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$0F,$03,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$03,$03,$03,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$C0,$C0,$C0,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$1F,$3F,$1F,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$E6,$F8,$FA,$F8,$E6,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0B,$2F,$7F,$3F,$7F,$2F,$0B,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F8,$FC,$FC,$FC,$F8,$F0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$1F,$3F,$1F,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$14,$D5,$E8,$F5,$E8,$D5,$14,$00,$00,$00,$00
+end data
+
+data SceneMap bytes
+  $81,$82,$80,$80,$80,$87,$88,$81,$80,$80,$80,$80,$82,$80,$82,$80,$81,$80,$81,$82,$80,$81,$80,$80,$82,$82,$80,$82,$80,$82,$81,$80,$81,$82,$80,$80,$80,$87,$88,$81,$80,$80,$80,$80,$82,$80,$82,$80,$81,$80,$81,$82,$80,$81,$80,$80,$82,$82,$80,$82,$80,$82,$81,$80
+  $80,$82,$82,$80,$80,$89,$8A,$81,$82,$80,$80,$81,$82,$80,$80,$82,$81,$80,$81,$80,$81,$81,$80,$81,$81,$82,$80,$80,$80,$80,$81,$82,$80,$82,$82,$80,$80,$89,$8A,$81,$82,$80,$80,$81,$82,$80,$80,$82,$81,$80,$81,$80,$81,$81,$80,$81,$81,$82,$80,$80,$80,$80,$81,$82
+  $86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86,$86,$83,$84,$84,$85,$86,$86,$86
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C,$91,$92,$8C,$8C,$8C,$8C,$8C,$8C
+  $91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E
+  $91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$97,$98,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$97,$98,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$97,$98,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$97,$98,$8E,$8D,$8E
+  $93,$94,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$99,$9A,$8E,$8D,$8E,$93,$94,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$99,$9A,$8E,$8D,$8E,$93,$94,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$99,$9A,$8E,$8D,$8E,$93,$94,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$99,$9A,$8E,$8D,$8E
+  $95,$96,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$95,$96,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$95,$96,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$95,$96,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E
+  $91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E
+  $91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E
+  $91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E,$91,$92,$8D,$8E,$8D,$8E,$8D,$8E
+  $91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F
+  $91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F,$91,$92,$8F,$8F,$8F,$8F,$8F,$8F
+  $91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90,$91,$92,$90,$90,$90,$90,$90,$90
+end data
+
+data FloorMap bytes
+  $9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B,$9C,$9B,$9B,$9B
+  $9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$20,$A8,$A8,$A8,$20,$A8,$A8,$A8,$20,$A8,$A8,$A8,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$20,$A8,$20,$A8,$20,$A8,$20,$20,$20,$20,$A8,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$20,$A8,$A8,$A8,$20,$A8,$A8,$A8,$20,$20,$A8,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$20,$A8,$20,$A8,$20,$20,$20,$A8,$20,$20,$A8,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$A8,$A8,$A8,$20,$A8,$20,$A8,$20,$A8,$A8,$A8,$20,$20,$A8,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$A8,$20,$A8,$20,$A8,$20,$20,$A8,$20,$20,$20,$A8,$20,$A8,$A8,$A8,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A8,$A8,$20,$A8,$20,$A8,$20,$A8,$A8,$20,$A8,$20,$20,$20,$A8,$20,$A8,$20,$A8,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A8,$20,$A8,$A8,$20,$A8,$20,$A8,$20,$A8,$A8,$20,$20,$20,$A8,$20,$A8,$A8,$A8,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$A8,$20,$A8,$20,$A8,$20,$20,$A8,$20,$A8,$20,$A8,$20,$A8,$20,$A8,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A8,$20,$20,$A8,$20,$A8,$20,$A8,$20,$20,$A8,$20,$A8,$A8,$A8,$20,$A8,$20,$A8,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record Dart:
+  u8 X
+  u8 Y
+  u8 Spd
+end record
+
+Dart Darts[2]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Col = 0
+u16 PitSkip = 65535
+u16 PitK = 0
+u16 NumU = 0
+u8 Fine = 0
+u8 NeedDraw = 0
+u8 NX = 96
+u8 Lift = 0
+u8 Crouch = 0
+u8 Act = 0
+u8 ActT = 0
+u8 Pose = 0
+u8 WalkC = 10
+u8 WalkF = 0
+u8 StrT = 0
+u8 StrCd = 0
+u8 StX = 0
+u8 StY = 0
+u8 Phase = 0
+u8 Lv = 255
+u8 StartLv = 255
+u8 EX = 0
+u8 EHp = 0
+u8 ETm = 0
+u8 EAn = 0
+u8 PX = 0
+u8 PSp = 1
+u8 Life = 38
+u8 HurtT = 0
+u8 Over = 0
+u8 Beaten = 0
+u8 BestRank = 0
+u8 Played = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Dl = 0
+u8 Gc = 0
+u8 Rw = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Ht = 0
+u8 Hb = 0
+u8 FloorBuf[32]
+
+  tile screen
+  set sound table NjSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if NeedDraw > 0 then DrawScene
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the rank reached, then back to the title on a press
+  mute all
+  BestRank = RankOf(Lv)
+  Played = 1
+  if Over = 2 then
+    BestRank = 9
+    print at 4,9, "  ALL TEN FOES BEATEN  "
+    play sound SndWin
+  else
+    print at 4,9, "    YOUR CHI IS GONE   "
+    play sound SndOver
+  end if
+  print at 4,10, "                       "
+  print at 4,11, " YOU HAVE ATTAINED THE "
+  print at 4,12, "                       "
+  print at 4,13, "      RANK OF          "
+  print at 4,14, "                       "
+  RankName(BestRank, 11, 14)
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play (one pass of the C64's main loop)
+sub PlayStep:
+  if HurtT > 0 then dec HurtT
+  if StrT > 0 then
+    dec StrT
+    if StrT = 0 then StrCd = 16
+  else
+    if StrCd > 0 then dec StrCd
+  end if
+  Hero
+  if Phase = 0 then
+    MoveDarts
+  else
+    MoveFoe
+  end if
+  MoveStar
+  Collide
+  if Life = 0 then Over = 1
+  return
+end sub
+
+' the hero's moves: a jump, a leap, a fall, or the stick on the ground
+sub Hero:
+  select case Act
+  case 1
+    inc ActT
+    select case ActT
+    case 20, 40, 60
+      Lift = Lift + 10
+    case 80
+      Land
+    end select
+  case 2
+    Advance
+    inc ActT
+    select case ActT
+    case 20, 45, 70
+      Lift = Lift + 10
+    case 95
+      Land
+    end select
+    if Lift = 0 then PitTest
+  case 4
+    inc ActT
+    if ActT = 48 then
+      Act = 0
+      Lift = 0
+      PitSkip = PitK
+      NeedDraw = 1
+      NX = 76
+      Drain(10)
+    end if
+  case else
+    Ground
+  end select
+  return
+end sub
+
+sub Land:
+  Act = 0
+  Lift = 0
+  ActT = 0
+  PitTest
+  return
+end sub
+
+sub Ground:
+  Crouch = 0
+  Pose = 0
+  ' the C64 hero waits while his star flies
+  if StX > 0 then
+    Pose = 2
+    return
+  end if
+  if StrT > 0 then
+    Pose = 1
+    return
+  end if
+  K = J1 & 15
+  select case K
+  case 5
+    Act = 1
+    ActT = 0
+    play sound SndLeap
+    return
+  case 9
+    Act = 2
+    ActT = 0
+    play sound SndLeap
+    return
+  case 1
+    Pose = 2
+    if Press = 1 then
+      StX = NX + 12
+      StY = HeroY + 2
+      play sound SndThrow
+    end if
+    return
+  case 2, 6, 10
+    Crouch = 1
+    return
+  end select
+  if Press = 1 then
+    if StrCd = 0 then
+      StrT = 12
+      Pose = 1
+      play sound SndSwish
+      return
+    end if
+  end if
+  V = K & 12
+  if V = 4 then
+    if NX > NXMin then dec NX
+    WalkStep
+  end if
+  if V = 8 then
+    if NX < NXMax then
+      inc NX
+    else
+      Advance
+    end if
+    WalkStep
+    PitTest
+  end if
+  return
+end sub
+
+sub WalkStep:
+  dec WalkC
+  if WalkC = 0 then
+    WalkC = 10
+    WalkF = WalkF ^ 1
+    play sound SndStep
+  end if
+  return
+end sub
+
+' one pixel of progress: a column every 8, a foe every 256 columns
+sub Advance:
+  inc Fine
+  if Fine < 8 then return
+  Fine = 0
+  inc Col
+  NeedDraw = 1
+  W16 = Col & 255
+  if W16 = 0 then LevelUp
+  return
+end sub
+
+' feet over an open pit (the middle 40 of its 48 pixels): fall
+sub PitTest:
+  W16 = Col << 3
+  W16 = W16 + NX + 8
+  PitK = W16 >> 9
+  if PitK = PitSkip then return
+  W16 = W16 & 511
+  if W16 < PitL then return
+  if W16 >= PitR then return
+  Act = 4
+  ActT = 0
+  Lift = 0
+  Crouch = 0
+  StrT = 0
+  play sound SndFall
+  return
+end sub
+
+sub LevelUp:
+  inc Lv
+  if Lv = 10 then
+    Over = 2
+    return
+  end if
+  Phase = 1
+  EX = 224
+  EHp = Lv
+  ETm = EDel[Lv]
+  EAn = 0
+  PX = EX - 8
+  PSp = Lv >> 1
+  inc PSp
+  ShowRank
+  play sound SndFoe
+  return
+end sub
+
+' the wisp (3 pixels a frame) and the star (2): back at the right edge at a
+' random height when they leave
+sub MoveDarts:
+  for Dl = 0 to 1
+    V = Darts[Dl].Spd + 16
+    if Darts[Dl].X < V then
+      NewDart(Dl)
+    else
+      Darts[Dl].X -= Darts[Dl].Spd
+    end if
+  next
+  return
+end sub
+
+sub NewDart(u8 D)
+  Rand
+  Darts[D].X = 224
+  V = Rs & 127
+  Darts[D].Y = V + 24
+  if D = 1 then
+    if Lv < 10 then Darts[D].Y = Darts[D].Y + Lv
+  end if
+  return
+end sub
+
+sub MoveFoe:
+  dec ETm
+  if ETm = 0 then
+    ETm = EDel[Lv]
+    if EX <= NXMin then
+      ' it got past: it leaves, as on the C64
+      Phase = 0
+      ResetDarts
+      return
+    end if
+    dec EX
+    if Lv <= 4 then EAn = EAn ^ 1
+  end if
+  ' the missile; a new one only while the foe is 40 pixels or more away
+  V = PSp + 16
+  if PX < V then
+    PX = 0
+    V = NX + 40
+    if EX >= V then PX = EX - 8
+  else
+    PX = PX - PSp
+  end if
+  return
+end sub
+
+sub MoveStar:
+  if StX = 0 then return
+  StX = StX + 6
+  if StX >= 226 then StX = 0
+  return
+end sub
+
+' 1-D overlap of A0..A1 and B0..B1
+function Hits(u8 A0, u8 A1, u8 B0, u8 B1) as u8
+  if A1 < B0 then return 0
+  if B1 < A0 then return 0
+  return 1
+
+function HeroTop as u8
+  Ht = HeroY - Lift
+  if Crouch = 1 then Ht = Ht + 14
+  return Ht
+
+function RankOf(u8 L) as u8
+  if L >= 10 then return 0
+  return L
+
+sub Collide:
+  if Act = 4 then return
+  Ht = HeroTop
+  Hb = 143 - Lift
+  X = NX + 4
+  if Phase = 0 then
+    for Gc = 0 to 1
+      J = Darts[Gc].X
+      K = Darts[Gc].Y
+      if Hits(X, X + 7, J + 4, J + 11) = 1 then
+        if Hits(Ht, Hb, K + 6, K + 9) = 1 then
+          NewDart(Gc)
+          if StrT = 0 then
+            Hurt
+          else
+            play sound SndClang
+          end if
+        end if
+      end if
+      if StX > 0 then
+        J = Darts[Gc].X
+        K = Darts[Gc].Y
+        if Hits(StX + 5, StX + 10, J + 4, J + 11) = 1 then
+          if Hits(StY + 5, StY + 10, K + 6, K + 9) = 1 then
+            NewDart(Gc)
+            play sound SndClang
+          end if
+        end if
+      end if
+    next
+    return
+  end if
+  ' a foe: its missile, then the foe itself
+  if PX = 0 then goto no_missile
+  if Hits(X, X + 7, PX + 4, PX + 11) = 1 then
+    if Hits(Ht, Hb, MisY + 5, MisY + 10) = 1 then
+      PX = 0
+      if StrT = 0 then
+        Hurt
+      else
+        play sound SndClang
+      end if
+    end if
+  end if
+  if StX > 0 then
+    if Hits(StX + 5, StX + 10, PX + 4, PX + 11) = 1 then
+      StX = 0
+      PX = 0
+      play sound SndClang
+    end if
+  end if
+no_missile:
+  if StX > 0 then
+    if Hits(StX + 5, StX + 10, EX + 3, EX + 12) = 1 then
+      StX = 0
+      FoeHit
+      if Phase = 0 then return
+    end if
+  end if
+  if Hits(X, X + 7, EX + 3, EX + 12) = 1 then
+    if Hits(Ht, Hb, FoeY, FoeY + 29) = 1 then
+      if EX < 214 then
+        EX = EX + 10
+      else
+        EX = 224
+      end if
+      if PX > EX then PX = EX - 8
+      if StrT > 0 then
+        FoeHit
+      else
+        Hurt
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub FoeHit:
+  if EHp = 0 then
+    ' beaten: chi back by its number
+    ' chi back: its number + 5 (a liberty; the C64 gave its number)
+    V = MaxLife - Life
+    K = Lv + 5
+    if K < V then
+      Life = Life + K
+    else
+      Life = MaxLife
+    end if
+    inc Beaten
+    Phase = 0
+    ResetDarts
+    ShowLife
+    ShowRank
+    play sound SndBeat
+    return
+  end if
+  dec EHp
+  play sound SndHit
+  return
+end sub
+
+sub Hurt:
+  Drain(1)
+  HurtT = 10
+  play sound SndHurt
+  ' knocked back 10 pixels, but not in the air (a liberty)
+  if Act <> 0 then return
+  if NX >= 26 then
+    NX = NX - 10
+  else
+    NX = NXMin
+  end if
+  return
+end sub
+
+sub Drain(u8 N)
+  if Life <= N then
+    Life = 0
+  else
+    Life = Life - N
+  end if
+  ShowLife
+  return
+end sub
+
+sub ResetDarts:
+  NewDart(0)
+  NewDart(1)
+  Darts[1].X = 160
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the gallery, rows 3-17 from SceneMap at the scroll column, the floor rows
+' with the open pits (world columns 40-45 of every 64, not the closed one)
+sub DrawScene:
+  W16 = Col & 31
+  if NeedDraw = 1 then
+    ' first frame: the sky and the top of the gallery
+    for Rw = 0 to 7
+      NumU = Rw * 64
+      NumU = NumU + W16
+      copy SceneMap + NumU count 32 to vram.name + (Rw + 3) * 32
+    next
+    NeedDraw = 2
+    return
+  end if
+  ' second frame: the rest and the floor
+  NeedDraw = 0
+  for Rw = 8 to 14
+    NumU = Rw * 64
+    NumU = NumU + W16
+    copy SceneMap + NumU count 32 to vram.name + (Rw + 3) * 32
+  next
+  FloorRow(0)
+  copy FloorBuf count 32 to vram.name + 576
+  FloorRow(1)
+  copy FloorBuf count 32 to vram.name + 608
+  return
+end sub
+
+sub FloorRow(u8 R)
+  u16 Pk = 0
+  i16 S = 0
+  u8 T = 0
+  NumU = R * 64
+  NumU = NumU + (Col & 3)
+  copy FloorMap + NumU count 32 to FloorBuf
+  ' the pits of this 64-column stretch and the next
+  Pk = Col >> 6
+  for Gc = 0 to 1
+    if Pk <> PitSkip then
+      S = Pk * 64
+      S = S + 40
+      S = S - Col
+      for Rw = 0 to 5
+        if S >= 0 then
+          if S < 32 then
+            T = TPitM
+            if Rw = 0 then T = TPitL
+            if Rw = 5 then T = TPitR
+            if R = 1 then T = TPitB
+            FloorBuf[S] = T
+          end if
+        end if
+        inc S
+      next
+    end if
+    inc Pk
+  next
+  return
+end sub
+
+' sprites: 0-2 the hero (detail, body top, legs), 3 his star, 4-5 the
+' missiles (wisp and star, or the foe's), 6-7 the foe
+sub DrawSprites:
+  Y = HeroTop
+  V = 5
+  if HurtT > 0 then V = 8
+  if Act = 4 then
+    ' sinking into the pit
+    K = ActT >> 1
+    Y = HeroY + K
+    if ActT < 30 then
+      set sprite 0 to Y - 1,NX,SHreadyd,15
+      set sprite 1 to Y - 1,NX,SHreadyb,V
+      set sprite 2 to Y + 15,NX,SLtuck,V
+    else
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+      set sprite 2 to 192,0,0,0
+    end if
+  else
+    K = Pose * 8
+    set sprite 0 to Y - 1,NX,SHstandd + K,15
+    set sprite 1 to Y - 1,NX,SHstandb + K,V
+    if Crouch = 1 then
+      set sprite 2 to 135,NX,SLcrouch,V
+    else
+      J = SLstand
+      if Lift > 0 then
+        J = SLtuck
+      else
+        V = J1 & 12
+        if V > 0 then
+          if Pose = 0 then J = SLwalk1 + WalkF * 4
+        end if
+      end if
+      V = 5
+      if HurtT > 0 then V = 8
+      Y = Y + 16
+      set sprite 2 to Y - 1,NX,J,V
+    end if
+  end if
+  if StX > 0 then
+    set sprite 3 to StY - 1,StX,SStar,15
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  if Phase = 0 then
+    set sprite 4 to Darts[0].Y - 1,Darts[0].X,SWisp,3
+    set sprite 5 to Darts[1].Y - 1,Darts[1].X,SStar2,15
+    set sprite 6 to 192,0,0,0
+    set sprite 7 to 192,0,0,0
+  else
+    if PX > 0 then
+      set sprite 4 to MisY - 1,PX,PPat[Lv],PCol[Lv]
+    else
+      set sprite 4 to 192,0,0,0
+    end if
+    set sprite 5 to 192,0,0,0
+    FoeSprites
+  end if
+  update sprites
+  return
+end sub
+
+sub FoeSprites:
+  V = FCol[Lv]
+  select case Lv
+  case 0
+    J = SFt
+    K = SFb1 + EAn * 4
+  case 5 to 8
+    J = SDt
+    K = SDb1 + (EX & 4)
+  case else
+    J = SFts
+    K = SFb1 + EAn * 4
+  end select
+  set sprite 6 to FoeY - 1,EX,J,V
+  set sprite 7 to FoeY + 15,EX,K,V
+  return
+end sub
+
+sub ShowLife:
+  for Gc = 0 to 18
+    V = Gc * 2
+    if Life >= V + 2 then
+      put char TG2 at Gc + 6,22
+    else
+      if Life > V then
+        put char TG1 at Gc + 6,22
+      else
+        put char TG0 at Gc + 6,22
+      end if
+    end if
+  next
+  put char TGE at 25,22
+  return
+end sub
+
+sub ShowRank:
+  fill 32 count 10 at 2,1
+  RankName(RankOf(Lv), 2, 1)
+  for Gc = 0 to 9
+    if Gc < Beaten then
+      put char TDone at Gc + 19,1
+    else
+      put char TFoe at Gc + 19,1
+    end if
+  next
+  return
+end sub
+
+' the rank's name at Cx,Row
+sub RankName(u8 R, u8 Cx, u8 Row)
+  select case R
+  case 0
+    print at Cx,Row, "ADEPT"
+  case 1
+    print at Cx,Row, "SHUGYO"
+  case 2
+    print at Cx,Row, "YUDANSHA"
+  case 3
+    print at Cx,Row, "TIGER"
+  case 4
+    print at Cx,Row, "DRAGON"
+  case 5
+    print at Cx,Row, "NINJA"
+  case 6
+    print at Cx,Row, "SHINOBI"
+  case 7
+    print at Cx,Row, "SENSEI"
+  case 8
+    print at Cx,Row, "SHIDOSHI"
+  case else
+    print at Cx,Row, "JONIN"
+  end select
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  Col = 0
+  Fine = 0
+  PitSkip = 65535
+  NX = 96
+  Lift = 0
+  Crouch = 0
+  Act = 0
+  ActT = 0
+  Pose = 0
+  WalkC = 10
+  WalkF = 0
+  StrT = 0
+  StrCd = 0
+  StX = 0
+  Phase = 0
+  Lv = StartLv
+  Life = MaxLife
+  ' tests only: StartLv (written by bot.mjs) starts just before foe StartLv + 1
+  if Lv < 10 then
+    W16 = Lv
+    Col = W16 << 8
+    Col = Col + 200
+  end if
+  HurtT = 0
+  Over = 0
+  Beaten = 0
+  Darts[0].Spd = 3
+  Darts[1].Spd = 2
+  ResetDarts
+  NeedDraw = 1
+  DrawScene
+  DrawScene
+  print at 2,22, "CHI"
+  ShowLife
+  ShowRank
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: LAST NINJA in light-blue blocks, (AHOY! 1986), the author,
+' START / CREDITS, the last rank reached, the tune once
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 384 to vram.name + 64
+  print at 9,15, "(AHOY! 1986)"
+  print at 3,17, "BY CLEVELAND M. BLAKEMORE"
+  print at 13,19, "START"
+  print at 13,20, "CREDITS"
+  if Played = 1 then
+    print at 6,22, "LAST RANK:"
+    RankName(BestRank, 17, 22)
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,19
+  put char 32 at 11,20
+  J = Menu + 19
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 4,2, "LAST NINJA (AHOY! 1986)"
+  print at 2,5, "BASED ON THE LAST NINJA BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! SEPTEMBER 1986"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE). NOT RELATED TO"
+  print at 2,10, "SYSTEM 3'S GAME OF THE"
+  print at 2,11, "SAME NAME."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: NIGHT GALLERY"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+NjStep:
+    db $00,$00,$55,$01,$00,$00,$85,$02,$10
+NjLeap:
+    db $40,$75,$31,$02,$40,$18,$31,$02,$40,$D7,$40,$02,$40,$A9,$40,$02,$40,$88,$50,$03,$50
+NjSwish:
+    db $00,$00,$34,$02,$00,$00,$54,$02,$00,$00,$74,$03,$10
+NjThrow:
+    db $40,$50,$30,$02,$40,$42,$40,$02,$40,$38,$50,$02,$40,$31,$70,$02,$50
+NjHurt:
+    db $40,$6D,$12,$03,$40,$EA,$22,$03,$40,$A4,$33,$04,$50
+NjHit:
+    db $40,$7F,$20,$02,$40,$A9,$20,$02,$40,$71,$30,$03,$50
+NjClang:
+    db $40,$40,$20,$02,$40,$40,$50,$04,$50
+NjFall:
+    db $40,$7C,$20,$03,$40,$8A,$20,$03,$40,$99,$20,$03,$40,$AB,$20,$03,$40,$BE,$30,$03,$40,$D3,$30,$03
+    db $40,$EA,$30,$03,$40,$04,$31,$03,$40,$21,$31,$03,$40,$41,$31,$03,$40,$64,$31,$03,$40,$8D,$31,$03
+    db $40,$B8,$41,$03,$40,$E8,$41,$03,$40,$1F,$42,$03,$40,$5D,$42,$03,$50
+NjBeat:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$37,$08,$00,$00,$57,$0C,$10
+NjFoe:
+    db $40,$FC,$21,$06,$40,$1A,$22,$06,$40,$3B,$22,$06,$40,$A6,$22,$10,$50
+NjStart:
+    db $40,$FE,$20,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$7F,$20,$0E,$50
+NjOver:
+    db $40,$FE,$10,$0A,$40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$7C,$21,$0A,$40,$FC,$31,$1E,$50
+NjWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$20,$1E,$50
+
+NjSoundTable:
+    dw NjTuneMel,$702B
+    dw NjTuneBass,$7035
+    dw NjStep,$703F
+    dw NjLeap,$7049
+    dw NjSwish,$703F
+    dw NjThrow,$7049
+    dw NjHurt,$7049
+    dw NjHit,$7049
+    dw NjClang,$7049
+    dw NjFall,$7049
+    dw NjBeat,$703F
+    dw NjFoe,$7049
+    dw NjStart,$7049
+    dw NjOver,$7049
+    dw NjWin,$7049
+; Night Gallery (original)
+; Tiny Sound, 8 frames per step
+NjTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$01,$21,$01,$1F,$01,$1E
+    db $01,$1A,$01,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01,$01,$01,$23,$01
+    db $21,$01,$1E,$01,$1C,$01,$1F,$01,$23,$01,$01,$26,$01,$24,$01,$23
+    db $01,$21,$01,$1F,$01,$1E,$01,$1B,$01,$1C,$01,$01,$01,$23,$01,$28
+    db $01,$01,$00,$01
+    db $FF
+NjTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$1A,$01,$15,$01
+    db $1A,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$10,$01,$17,$01,$10,$01,$17,$01,$13,$01,$1A,$01
+    db $15,$01,$10,$01,$0C,$01,$13,$01,$0B,$01,$12,$01,$10,$01,$01,$01
+    db $17,$01,$00,$01
+    db $FF
+}

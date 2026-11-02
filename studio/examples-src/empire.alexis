@@ -1,0 +1,1519 @@
+cartridge "EMPIRE/C. M. BLAKEMORE/1986"
+
+' EMPIRE - a trading adventure
+' A ColecoVision game based on "Empire" by Cleveland M. Blakemore,
+' Ahoy! October 1987 (Commodore 128, BASIC 7.0).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/empire.bas), the game is rebuilt for the ColecoVision:
+' a drawn realm map with seasonal grass and moving water, a gliding
+' traveller who takes a boat on the water, a gliding hand in the menus,
+' sound effects and an original title tune.
+'
+' The game: one year (four seasons of 251 steps of travel each) to buy as
+' much of the realm's land as you can. Walk the map to the eight
+' kingdoms; at a gate press the button to trade with its ruler. Each
+' kingdom sells one speciality (and its land shares) and buys the other
+' goods according to its demand. Haggle over every price. At year's end
+' your land shares out of the realm's 2700 furlongs are your share of
+' the empire.
+'
+' From the original: start with $500; the eight kingdoms, rulers,
+' specialities and stocks (fabrics 400, food 250, horses 840, artifacts
+' 220, weapons 325, (slaves) 500, rare metals 900, armor 475); demand 1-8
+' drawn at random for the other goods, none for the speciality and the
+' land; average prices and the four seasons' changes (DATA 2110-2190);
+' the menus BUY, SELL, SEASONAL CHANGES, INQUIRE, INVENTORY, BID
+' FAREWELL; buying: the asking price starts at P + 8 x (P/8), an offer
+' within half a step (P/8) is taken, an offer within four steps brings
+' the ask down to the offer plus one step, ten offers at most, the
+' ruler's remarks graded by the offer; selling: the ruler takes demand x
+' 12.4% of your stock, offers P - P/8, an offer within half a step is
+' taken, within three steps the offer rises a step, ten tries; after a
+' sale the demand falls to negligible; land cannot be bought on debt
+' notes, other goods on up to $5000 of debt; land cannot be sold; time
+' runs only on the map (a step each pass); year's end: inventory, cash and
+' the share of the empire (land / 2700).
+'
+' Liberties: the realm is redrawn for 28 x 20 cells (same kinds of
+' ground: grass, roads, marsh, water crossed by boat; trees, mountains and
+' castle walls block), the eight kingdoms in the original's places
+' roughly. A step every 8 frames (about 33 seconds a season). The buying
+' ask never falls below P - 2 x (P/8): in the listing a patient haggler
+' talked any price down to almost nothing (offer the ask minus four steps
+' plus one, five or six times). The listing's "slaves" are SPICES. The
+' joystick number entry counts up with up (+10) and right (+1), down
+' with down and left, and runs faster when held. The offer round is shown
+' (ROUND n OF 10). Prices are shown in whole dollars (the C-128 added
+' random cents to the INQUIRE table). A title by your share at year's end.
+' The original's ending fanfare is replaced by an own short fanfare.
+'
+' Controls: either controller. Map: the stick walks (eight ways), a side
+' button at a kingdom's gate enters. Menus: up/down and a button. Numbers:
+' up/down +-10, right/left +-1, a button confirms.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TGrass = 128
+const TRoad = 129
+const TMarsh = 130
+const TWater = 131
+const TBridge = 132
+const TGate1 = 133
+const TGate2 = 134
+const TGate3 = 135
+const TGate4 = 136
+const TGate5 = 137
+const TGate6 = 138
+const TGate7 = 139
+const TGate8 = 140
+const TTree = 141
+const TMount = 142
+const TTowl = 143
+const TTowm = 144
+const TTowr = 145
+const TWall = 146
+const TRule = 147
+const TBrick = 148
+const TBricks = 149
+const TCrown = 150
+const SBody = 0
+const SFace = 4
+const SBoat = 8
+const SBoatman = 12
+const SHand = 16
+const NTiles8 = 184
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndTick = 4
+const SndPick = 5
+const SndNay = 6
+const SndAye = 7
+const SndCoin = 8
+const SndBell = 9
+const SndFanfare = 10
+const SndBump = 11
+data TilePat bytes
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$02,$00,$40,$00,$04,$00,$20
+  $00,$40,$06,$00,$30,$01,$00,$08
+  $00,$60,$90,$00,$06,$09,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$10,$30,$10,$10,$38
+  $00,$C3,$81,$30,$08,$10,$20,$38
+  $00,$C3,$81,$30,$08,$10,$08,$30
+  $00,$C3,$81,$28,$28,$38,$08,$08
+  $00,$C3,$81,$38,$20,$30,$08,$30
+  $00,$C3,$81,$18,$20,$38,$28,$38
+  $00,$C3,$81,$38,$08,$10,$10,$10
+  $00,$C3,$81,$38,$28,$38,$28,$38
+  $18,$C3,$81,$00,$81,$00,$18,$18
+  $00,$18,$C3,$C1,$81,$84,$10,$00
+  $00,$AA,$00,$00,$40,$40,$00,$00
+  $10,$1C,$10,$AA,$00,$18,$18,$00
+  $00,$AA,$00,$00,$02,$02,$00,$00
+  $00,$88,$00,$22,$00,$88,$00,$22
+  $00,$00,$00,$00,$92,$00,$00,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$49,$94,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $02,$C2,$02,$C2,$02,$C2,$02,$C2
+  $0A,$1A,$0A,$1A,$0A,$1A,$0A,$1A
+  $02,$52,$52,$02,$52,$52,$02,$52
+  $04,$54,$54,$04,$54,$54,$04,$04
+  $04,$06,$0A,$06,$0A,$06,$04,$04
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $0E,$E1,$E1,$B1,$B1,$B1,$B1,$B1
+  $C2,$2C,$2C,$0C,$2C,$0C,$62,$62
+  $02,$F2,$2F,$2E,$2E,$1E,$1E,$0E
+  $01,$1E,$0E,$0E,$1E,$1E,$0E,$0E
+  $81,$81,$E1,$E1,$0E,$1E,$1E,$0E
+  $01,$E1,$0E,$0E,$1E,$1E,$0E,$0E
+  $0E,$1E,$0E,$1E,$0E,$1E,$0E,$1E
+  $01,$01,$0B,$0A,$1A,$0A,$01,$01
+  $18,$18,$18,$01,$18,$18,$18,$01
+  $16,$16,$16,$01,$16,$16,$16,$01
+  $01,$B1,$1B,$1B,$1B,$18,$1B,$01
+end data
+data SpritePat bytes
+  $1C,$3E,$00,$3E,$6B,$5D,$14,$36,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$7F,$3E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1C,$3E,$00,$3E,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$FF,$FF,$FF,$03,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$F8,$FC,$F8,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data MapT bytes
+  141, 141, 141, 128, 128, 128, 128, 141, 141, 128, 128, 141, 141, 128, 128, 128, 128, 128, 142, 142, 142, 142, 128, 128, 141, 141, 141, 141
+  141, 141, 128, 128, 143, 144, 145, 128, 143, 144, 145, 128, 128, 141, 128, 128, 128, 142, 142, 142, 142, 142, 128, 128, 128, 141, 141, 141
+  141, 128, 128, 128, 146, 133, 146, 128, 146, 134, 146, 129, 129, 129, 129, 129, 129, 129, 129, 129, 142, 142, 128, 128, 128, 128, 128, 141
+  141, 128, 128, 128, 128, 128, 129, 128, 128, 128, 128, 128, 141, 141, 128, 128, 128, 128, 128, 129, 128, 142, 128, 128, 141, 141, 128, 141
+  128, 128, 141, 141, 128, 128, 129, 128, 128, 141, 141, 141, 141, 128, 128, 128, 128, 128, 128, 129, 128, 128, 143, 144, 145, 128, 141, 141
+  128, 141, 141, 141, 128, 128, 129, 128, 128, 128, 141, 141, 128, 128, 128, 128, 128, 128, 128, 129, 129, 129, 146, 135, 146, 128, 131, 131
+  128, 128, 141, 128, 128, 128, 129, 128, 128, 128, 128, 128, 130, 130, 128, 128, 128, 128, 128, 128, 128, 128, 141, 128, 128, 131, 131, 131
+  128, 128, 128, 128, 128, 128, 129, 128, 128, 128, 128, 130, 130, 130, 130, 128, 128, 141, 141, 128, 128, 128, 128, 128, 131, 131, 131, 131
+  128, 141, 141, 128, 128, 128, 129, 128, 128, 128, 128, 128, 130, 130, 128, 128, 141, 141, 141, 141, 128, 128, 128, 131, 131, 131, 131, 141
+  141, 141, 128, 128, 143, 144, 145, 128, 128, 128, 128, 128, 128, 128, 128, 128, 141, 141, 128, 128, 128, 131, 131, 143, 144, 145, 131, 141
+  141, 128, 128, 128, 146, 138, 146, 128, 128, 128, 128, 128, 128, 143, 144, 145, 128, 128, 128, 128, 128, 131, 131, 146, 136, 146, 131, 131
+  141, 141, 128, 128, 128, 129, 128, 128, 128, 128, 128, 128, 128, 146, 137, 146, 129, 129, 129, 129, 129, 132, 131, 131, 131, 131, 131, 131
+  128, 141, 128, 128, 128, 129, 128, 128, 141, 141, 128, 128, 128, 128, 128, 128, 128, 129, 128, 128, 128, 131, 131, 131, 131, 131, 131, 128
+  142, 142, 128, 128, 128, 129, 128, 141, 141, 141, 141, 128, 128, 128, 128, 128, 128, 129, 128, 128, 131, 131, 131, 131, 131, 128, 128, 128
+  142, 142, 142, 128, 128, 129, 128, 128, 141, 141, 128, 128, 128, 128, 130, 130, 128, 129, 128, 131, 131, 131, 131, 128, 128, 141, 141, 128
+  142, 142, 128, 142, 128, 129, 128, 128, 128, 128, 128, 128, 130, 130, 130, 130, 128, 129, 131, 131, 131, 131, 128, 128, 128, 128, 128, 128
+  142, 128, 143, 144, 145, 142, 128, 142, 142, 128, 128, 128, 128, 128, 130, 130, 128, 128, 131, 131, 131, 128, 143, 144, 145, 128, 128, 141
+  142, 128, 146, 139, 146, 128, 128, 142, 142, 142, 128, 128, 128, 128, 128, 128, 128, 128, 128, 131, 131, 128, 146, 140, 146, 128, 128, 128
+  142, 142, 128, 128, 128, 142, 142, 142, 142, 128, 128, 128, 141, 141, 128, 128, 128, 128, 128, 131, 131, 128, 128, 128, 128, 128, 141, 141
+  142, 142, 142, 142, 142, 142, 142, 142, 128, 128, 141, 141, 141, 141, 128, 128, 128, 131, 131, 131, 131, 131, 128, 128, 141, 141, 141, 141
+end data
+data WaterB bytes
+  $00, $06, $09, $00, $60, $90, $00, $00
+end data
+data GrassCol bytes
+  $02, $C2, $02, $C2, $02, $C2, $02, $C2
+  $0C, $2C, $0C, $2C, $0C, $2C, $0C, $2C
+  $0A, $6A, $0A, $6A, $0A, $6A, $0A, $6A
+  $0F, $EF, $0F, $EF, $0F, $EF, $0F, $EF
+end data
+data GrassPat bytes
+  $00, $10, $00, $02, $00, $40, $00, $08
+  $00, $10, $00, $02, $00, $40, $00, $08
+  $00, $10, $00, $02, $00, $40, $00, $08
+  $00, $10, $00, $02, $00, $40, $00, $08
+end data
+const TitleW = 25
+data TitleBig bytes
+  148, 148, 148, 32, 148, 32, 32, 32, 148, 32, 148, 148, 148, 32, 148, 148, 148, 32, 148, 148, 32, 32, 148, 148, 148
+  148, 32, 32, 32, 148, 148, 32, 148, 148, 32, 148, 32, 148, 32, 32, 148, 32, 32, 148, 32, 148, 32, 148, 32, 32
+  148, 148, 32, 32, 148, 32, 148, 32, 148, 32, 148, 148, 148, 32, 32, 148, 32, 32, 148, 148, 32, 32, 148, 148, 32
+  148, 32, 32, 32, 148, 32, 32, 32, 148, 32, 148, 32, 32, 32, 32, 148, 32, 32, 148, 32, 148, 32, 148, 32, 32
+  148, 148, 148, 32, 148, 32, 32, 32, 148, 32, 148, 32, 32, 32, 148, 148, 148, 32, 148, 32, 148, 32, 148, 148, 148
+end data
+const NSpr = 4
+const StepF = 8
+const SeasonDays = 250
+const StartCash = 500
+const DebtMax = 5000
+
+' kingdoms (20 wide), rulers (15 wide), goods (13 wide)
+data TownN chars "CLERIC'S TEMPLE     MONK'S STOREHOUSE   CASTLE GOHOLLA      MERLIN'S KEEP       WARLORD'S HOLD      ZOMBIE TOWER        MOUNTAINS OF FIRE   KINGDOM OF THE ORCS "
+data RepN chars "CLERIC         MONK           EMPEROR GOHOLLA MERLIN         WARLORD AKUZA  ZOMBIE MASTER  DWARVE RULER   ORC KING       "
+data ItemN chars "ARTIFACTS    WEAPONS      ARMOR        RARE METALS  HORSES       SPICES       FOOD PRODUCTS FABRICS      LAND SHARES  "
+' the trading remarks A$(9..17) (24 wide)
+data RemN chars "GET THEE HENCE,FOOL!    SO BE IT.               WELL IT IS.             WELL AND GOOD.          FINE,THO...             THOU ART A SHREWD ROGUE.YEA GODS!               A POX ON THEE!          CURSE THOU!             "
+' demand A$(35..43) (10 wide)
+data DemN chars "NO        NEGLIGIBLESLIGHT    LOW       MEDIOCRE  HIGH      VERY HIGH EXTREME   INCREDIBLE"
+' bargaining openers A$(50..53) (25 wide)
+data PhrN chars "I LET THEM GO AT         I GIVE THEM AWAY AT      I TAKE OFF YOUR HANDS AT I CONSENT TO GRANT YOU   "
+data SeaN chars "SPRINGSUMMERFALL  WINTER"
+' prices: average + the season's change (DATA 2110-2190), season x 9 goods
+data PriceT words
+  30, 50, 50, 400, 200, 350, 85, 15, 525
+  60, 75, 75, 500, 150, 200, 40, 10, 350
+  100, 100, 100, 575, 100, 150, 10, 40, 400
+  150, 175, 175, 450, 400, 50, 260, 240, 250
+end data
+data AvgT words
+  50, 75, 75, 500, 100, 150, 60, 40, 400
+end data
+' specialities and stocks (DATA 2090), land per kingdom (DATA 2220)
+data SpecT bytes
+  7, 6, 4, 0, 1, 5, 3, 2
+end data
+data SpecQ words
+  400, 250, 840, 220, 325, 500, 900, 475
+end data
+data LandT words
+  75, 175, 400, 250, 125, 325, 800, 550
+end data
+
+u16 Rs = 1
+u16 W16 = 0
+u16 V16 = 0
+u16 Bp = 0
+u16 Ic = 0
+u16 Ask = 0
+u16 Floor0 = 0
+u16 Bg = 0
+u16 Ul = 0
+u16 Ni = 0
+u16 Land = 0
+u16 TzLeft = 0
+i32 Cash = 0
+i32 T32 = 0
+i32 P32 = 0
+u16 Have[9]
+u16 Stock[72]
+u8 Dem[72]
+u8 Buf[28]
+' the traveller
+u8 Px = 0
+u8 Py = 0
+u8 Sx = 0
+u8 Sy = 0
+i8 Mdx = 0
+i8 Mdy = 0
+u8 Mv = 0
+u8 Boat = 0
+u8 Here = 0
+u8 HandY = 0
+u8 HandT = 0
+' the year
+u8 Ss = 0
+u8 Days = 0
+u8 Sf = 0
+u8 Wv = 0
+u8 Tw = 0
+u8 It = 0
+u8 Ch = 0
+u8 Wr = 0
+u8 Sr = 0
+u8 Deal = 0
+u8 Phase = 0
+u8 Over = 0
+u8 InTown = 0
+u8 Asking = 0
+' what the game waits for (for the bots): 1 menu, 2 number, 3 a press
+u8 Ui = 0
+' input
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 TitleOn = 0
+u8 TzOn = 0
+' loop counters (never shared with the helpers)
+u8 Hc = 0
+u8 Ri = 0
+u8 Li = 0
+u8 Ti = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table EmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+  for Ss = 0 to 3
+    PlaySeason
+  next
+  YearEnd
+  Over = 1
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: a 16-bit xorshift; Rnd(N) is 0..N-1
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function Rnd(u8 N) as u8
+  u8 Q = 0
+  Rand
+  Q = lowbyte Rs
+  return Q % N
+
+' ---------------------------------------------------------------------------
+' a new year: cash, stocks and demands (lines 190, 260-270)
+
+sub NewGame:
+  u8 Tt = 0
+  u8 Ii = 0
+  u8 Sp = 0
+  u8 Base = 0
+  Cash = StartCash
+  Over = 0
+  Land = 0
+  for Ii = 0 to 8
+    Have[Ii] = 0
+  next
+  for Tt = 0 to 7
+    Sp = SpecT[Tt]
+    Base = Tt * 9
+    for Ii = 0 to 8
+      Stock[Base + Ii] = 0
+      Dem[Base + Ii] = Rnd(8) + 1
+    next
+    Dem[Base + Sp] = 0
+    Dem[Base + 8] = 0
+    Stock[Base + Sp] = SpecQ[Tt]
+    Stock[Base + 8] = LandT[Tt]
+  next
+  Px = 2
+  Py = 3
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one season on the map: 251 steps (FOR SC = 0 TO 250)
+
+sub PlaySeason:
+  Phase = 1
+  DrawMap
+  play sound SndBell
+  Days = SeasonDays
+  Sf = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  while Phase = 1
+    Frame1
+    ReadPad
+    MapStep
+    inc Sf
+    if Sf = StepF then
+      Sf = 0
+      if Days = 0 then
+        Phase = 2
+      else
+        dec Days
+        ShowDays
+      end if
+    end if
+    if Phase = 1 then
+      if InTown = 1 then
+        InTown = 0
+        VisitTown
+        DrawMap
+        Rearm
+        wait no fire
+        nmi off
+        WasBtn = 16
+      end if
+    end if
+  end while
+  ' let a move in progress finish
+  Phase = 2
+  return
+end sub
+
+' a frame on the map: glide, start a step, the gate, the water
+sub MapStep:
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Tc = 0
+  if Mv > 0 then
+    Sx = Sx + Mdx
+    Sy = Sy + Mdy
+    dec Mv
+    if Mv = 0 then
+      Px = Px + Mdx
+      Py = Py + Mdy
+      ShowHere
+    end if
+  end if
+  if Mv = 0 then
+    if Press = 1 then
+      if Here > 0 then InTown = 1
+    end if
+    if InTown = 0 then
+      if Stick > 0 then
+        Mdx = 0
+        Mdy = 0
+        if Stick & 1 then Mdy = -1
+        if Stick & 4 then Mdy = 1
+        if Stick & 8 then Mdx = -1
+        if Stick & 2 then Mdx = 1
+        Nx = Px + Mdx
+        Ny = Py + Mdy
+        Tc = 0
+        if Nx < 28 then
+          if Ny < 20 then
+            Tc = get char at Nx + 2,Ny + 2
+          end if
+        end if
+        if Tc >= TGrass then
+          if Tc <= TGate8 then
+            Mv = 8
+            Boat = 0
+            if Tc = TWater then Boat = 1
+            play sound SndStep
+          end if
+        end if
+      end if
+    end if
+  end if
+  inc Wv
+  if Wv = 24 then
+    Wv = 0
+    WaterLook(1)
+  end if
+  if Wv = 12 then WaterLook(0)
+  ShowTraveller
+  return
+end sub
+
+' the gate under the traveller (the hint on row 22)
+sub ShowHere:
+  u8 Tc = 0
+  Tc = get char at Px + 2,Py + 2
+  fill 32 count 28 at 2,22
+  Here = 0
+  if Tc >= TGate1 then
+    if Tc <= TGate8 then
+      Here = Tc - TGate1 + 1
+      W16 = Here - 1
+      W16 = W16 * 20
+      put TownN + W16 count 20 at 2,22
+      print at 23,22, "ENTER!"
+    end if
+  end if
+  return
+end sub
+
+sub ShowTraveller:
+  X = Sx + 16
+  Y = Sy + 15
+  if Boat = 1 then
+    set sprite 0 to Y,X,SFace,9
+    set sprite 1 to Y,X,SBoatman,4
+    set sprite 2 to Y,X,SBoat,6
+  else
+    set sprite 0 to Y,X,SFace,9
+    set sprite 1 to Y,X,SBody,4
+    set sprite 2 to 192,0,0,0
+  end if
+  set sprite 3 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub WaterLook(u8 Wk):
+  if Wk = 1 then
+    copy WaterB count 8 to vram.pattern + 1048
+    copy WaterB count 8 to vram.pattern + 3096
+    copy WaterB count 8 to vram.pattern + 5144
+  else
+    copy TilePat + 24 count 8 to vram.pattern + 1048
+    copy TilePat + 24 count 8 to vram.pattern + 3096
+    copy TilePat + 24 count 8 to vram.pattern + 5144
+  end if
+  return
+end sub
+
+sub DrawMap:
+  u8 Ry = 0
+  NewScreen
+  W16 = Ss
+  W16 = W16 << 3
+  copy GrassCol + W16 count 8 to vram.color + 1024
+  select case Ss
+  case 0
+    backdrop dark green
+  case 1
+    backdrop dark yellow
+  case 2
+    backdrop dark red
+  case else
+    backdrop gray
+  end select
+  W16 = 0
+  for Ry = 0 to 19
+    put MapT + W16 count 28 at 2,Ry + 2
+    W16 = W16 + 28
+  next
+  W16 = Ss
+  W16 = W16 * 6
+  put SeaN + W16 count 6 at 2,1
+  print at 10,1, "DAYS"
+  ShowDays
+  ShowCash(19, 1)
+  Mv = 0
+  Mdx = 0
+  Mdy = 0
+  Sx = Px << 3
+  Sy = Py << 3
+  Wv = 0
+  V = get char at Px + 2,Py + 2
+  Boat = 0
+  if V = TWater then Boat = 1
+  ShowHere
+  ShowTraveller
+  ShowScreen
+  return
+end sub
+
+sub ShowDays:
+  print Days at 15,1 width 3
+  return
+end sub
+
+' cash as up to seven digits and a sign, right-aligned in 9 cells after
+' a "$" at Cx
+sub ShowCash(u8 Cx, u8 Cy):
+  u8 Ci = 8
+  u8 Dg = 0
+  u8 Neg = 0
+  T32 = Cash
+  if T32 < 0 then
+    Neg = 1
+    T32 = 0 - T32
+  end if
+  for Dg = 0 to 8
+    Buf[Dg] = 32
+  next
+  do
+    P32 = T32 % 10
+    W16 = lowword P32
+    Dg = W16
+    Buf[Ci] = 48 + Dg
+    T32 = T32 / 10
+    dec Ci
+  loop until T32 = 0
+  if Neg = 1 then Buf[Ci] = 45
+  put char 36 at Cx,Cy
+  put Buf count 9 at Cx + 1,Cy
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a kingdom (lines 490-530)
+
+sub VisitTown:
+  Tw = Here - 1
+  Phase = 3
+  DrawTown
+  Deal = 0
+  while Deal = 0
+    MainMenu
+    ClearConv
+    select case Ch
+    case 0
+      if PickItem = 1 then DoBuy
+    case 1
+      if PickItem = 1 then DoSell
+    case 2
+      if PickItem = 1 then DoSeasons
+    case 3
+      if PickItem = 1 then DoInquire
+    case 4
+      DoInventory
+    case else
+      Deal = 1
+    end select
+  end while
+  HideSprites
+  Phase = 1
+  return
+end sub
+
+sub DrawTown:
+  u8 Ln = 0
+  NewScreen
+  backdrop black
+  W16 = Tw
+  W16 = W16 * 20
+  copy TownN + W16 count 20 to Buf
+  Ln = TrimLen(20)
+  X = (28 - Ln) >> 1
+  put char TCrown at X,1
+  put char TCrown at X + Ln + 3,1
+  put TownN + W16 count Ln at X + 2,1
+  print at 2,2, "REPRESENTATIVE"
+  W16 = Tw
+  W16 = W16 * 15
+  put RepN + W16 count 15 at 17,2
+  fill TRule count 28 at 2,3
+  fill TRule count 28 at 2,14
+  ShowScreen
+  return
+end sub
+
+' the length of Buf[0..N-1] without trailing spaces
+function TrimLen(u8 N) as u8
+  u8 Tl = 0
+  Tl = N
+  while Tl > 1
+    if Buf[Tl - 1] <> 32 then exit while
+    dec Tl
+  end while
+  return Tl
+
+sub ClearArea:
+  for Ri = 4 to 13
+    fill 32 count 28 at 2,Ri
+  next
+  return
+end sub
+
+sub ClearConv:
+  for Ri = 15 to 22
+    fill 32 count 28 at 2,Ri
+  next
+  return
+end sub
+
+sub MainMenu:
+  ClearArea
+  print at 10,4, "MERCHANTRY"
+  print at 10,6, "BUY"
+  print at 10,7, "SELL"
+  print at 10,8, "SEASONAL CHANGES"
+  print at 10,9, "INQUIRE"
+  print at 10,10, "INVENTORY"
+  print at 10,11, "BID FAREWELL"
+  DoMenu(6, 6)
+  return
+end sub
+
+' the goods menu; 1 if one was chosen
+function PickItem as u8
+  ClearArea
+  print at 10,4, "COMMERCE"
+  W16 = 0
+  for Ri = 0 to 8
+    put ItemN + W16 count 13 at 10,Ri + 5
+    W16 = W16 + 13
+  next
+  DoMenu(9, 5)
+  It = Ch
+  ClearArea
+  return 1
+
+' the gliding hand: Ch from 0 to N-1, rows from R0
+sub DoMenu(u8 N, u8 R0):
+  u8 Want = 0
+  Ch = 0
+  HandY = R0 << 3
+  HandY = HandY - 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 1
+  Asking = 1
+  Ui = 1
+  while Asking = 1
+    Frame1
+    ReadPad
+    if Rep = 1 then
+      if Stick & 1 then
+        if Ch = 0 then
+          Ch = N - 1
+        else
+          dec Ch
+        end if
+        play sound SndTick
+      end if
+      if Stick & 4 then
+        inc Ch
+        if Ch = N then Ch = 0
+        play sound SndTick
+      end if
+    end if
+    Want = Ch + R0
+    Want = Want << 3
+    Want = Want - 1
+    if HandY < Want then
+      HandY = HandY + 2
+      if HandY > Want then HandY = Want
+    end if
+    if HandY > Want then
+      HandY = HandY - 2
+      if HandY < Want then HandY = Want
+    end if
+    set sprite 0 to HandY,56,SHand,11
+    update sprites
+    if Press = 1 then Asking = 0
+  end while
+  Ui = 0
+  play sound SndPick
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' a number from 0 to Ul into Bg, shown at Nx,22
+sub GetNum(u8 Nx):
+  u16 Stp = 0
+  Bg = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 1
+  Asking = 1
+  Ui = 2
+  while Asking = 1
+    print Bg at Nx,22 width 5
+    Frame1
+    ReadPad
+    if Rep = 1 then
+      Stp = 10
+      if HandT > 60 then Stp = 100
+      if Stick & 1 then
+        Bg = Bg + Stp
+        if Bg > Ul then Bg = Ul
+      end if
+      if Stick & 4 then
+        if Bg < Stp then
+          Bg = 0
+        else
+          Bg = Bg - Stp
+        end if
+      end if
+      Stp = 1
+      if HandT > 60 then Stp = 10
+      if Stick & 2 then
+        Bg = Bg + Stp
+        if Bg > Ul then Bg = Ul
+      end if
+      if Stick & 8 then
+        if Bg < Stp then
+          Bg = 0
+        else
+          Bg = Bg - Stp
+        end if
+      end if
+      play sound SndTick
+    end if
+    if Press = 1 then Asking = 0
+  end while
+  Ui = 0
+  print Bg at Nx,22 width 5
+  play sound SndPick
+  return
+end sub
+
+' "<RULER> SAYS..." on the first line of the talk
+sub Says:
+  u8 Ln = 0
+  ClearConv
+  W16 = Tw
+  W16 = W16 * 15
+  copy RepN + W16 count 15 to Buf
+  Ln = TrimLen(15)
+  put RepN + W16 count Ln at 2,15
+  print at Ln + 2,15, " SAYS..."
+  return
+end sub
+
+sub PutItem(u8 Ix, u8 Iy):
+  W16 = It
+  W16 = W16 * 13
+  put ItemN + W16 count 13 at Ix,Iy
+  return
+end sub
+
+sub PutRemark(u8 Rk, u8 Ry):
+  W16 = Rk
+  W16 = W16 * 24
+  put RemN + W16 count 24 at 4,Ry
+  return
+end sub
+
+' the price of good It this season, its step
+sub SetPrice:
+  V = Ss * 9 + It
+  Bp = PriceT[V]
+  Ic = Bp >> 3
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' BUY (lines 550-680)
+
+sub DoBuy:
+  u8 Ix = 0
+  u8 Accepted = 0
+  Ix = Tw * 9 + It
+  Says
+  if It = 8 then
+    if Cash < 0 then
+      print at 2,16, "YOU CANNOT BUY LAND ON"
+      print at 2,17, "DEBT NOTES."
+      Wait2
+      return
+    end if
+  end if
+  if Dem[Ix] <> 0 then
+    print at 2,16, "WE DO NOT DEAL IN"
+    PutItem(2, 17)
+    Wait2
+    return
+  end if
+  if Stock[Ix] = 0 then
+    print at 2,16, "WE HAVE NONE LEFT."
+    Wait2
+    return
+  end if
+  print at 2,16, "WE HAVE"
+  print Stock[Ix] at 10,16 width 4
+  PutItem(15, 16)
+  print at 2,17, "TO SELL. HOW MANY?"
+  print at 2,22, "SELECT # ITEMS"
+  Ul = Stock[Ix]
+  GetNum(17)
+  if Bg = 0 then
+    print at 2,19, "AH, WELL..."
+    Wait2
+    return
+  end if
+  Ni = Bg
+  SetPrice
+  Ask = Bp + Ic * 8
+  Floor0 = Bp - Ic * 2
+  Accepted = 0
+  Wr = 0
+  while Wr < 10
+    Haggle(0)
+    Ul = Bp + Ic * 8
+    GetNum(17)
+    ' an offer within half a step is taken
+    W16 = Bg << 1
+    V16 = Ask << 1
+    V16 = V16 - Ic
+    if W16 >= V16 then
+      Accepted = 1
+      exit while
+    end if
+    if Bg + Ic * 4 > Ask then
+      Ask = Bg + Ic
+      if Ask < Floor0 then Ask = Floor0
+    end if
+    play sound SndNay
+    Sr = BuyGrade
+    print at 2,19, "NAY,"
+    PutRemark(8 - Sr, 20)
+    inc Wr
+    Hold(50)
+  end while
+  if Accepted = 0 then
+    Says
+    print at 2,16, "NAY! ENOUGH OF THIS"
+    print at 2,17, "BARGAINING!"
+    play sound SndNay
+    Wait2
+    return
+  end if
+  ' the cost
+  P32 = Ni
+  T32 = Bg
+  P32 = P32 * T32
+  T32 = Cash - P32
+  Says
+  if It = 8 then
+    if T32 < 0 then
+      print at 2,16, "I DO NOT ACCEPT DEBT"
+      print at 2,17, "NOTES ON LAND, MY FRIEND."
+      play sound SndNay
+      Wait2
+      return
+    end if
+  end if
+  if T32 < -5000 then
+    print at 2,16, "THE MERCHANT GUILD CAN"
+    print at 2,17, "ISSUE YOU NO MORE THAN"
+    print at 2,18, "5000 DOLLARS WORTH OF"
+    print at 2,19, "DEBT NOTES."
+    play sound SndNay
+    Wait2
+    return
+  end if
+  Sr = BuyGrade
+  print at 2,16, "AYE,"
+  PutRemark(8 - Sr, 17)
+  print at 2,19, "SOLD."
+  Stock[Ix] = Stock[Ix] - Ni
+  Cash = T32
+  Have[It] = Have[It] + Ni
+  if It = 8 then Land = Have[8]
+  play sound SndAye
+  Hold(90)
+  DoInventory
+  return
+end sub
+
+' the remark grade of a buying offer: offer / step, at most 8
+function BuyGrade as u8
+  u8 G = 8
+  W16 = Ic * 8
+  if Bg <= W16 then
+    W16 = Bg / Ic
+    G = W16
+  end if
+  return G
+
+' the remark grade of a selling offer: (offer - P) / step, 0..8
+function SellGrade as u8
+  u8 G = 0
+  W16 = Bp + Ic * 8
+  if Bg > W16 then
+    G = 8
+  else
+    if Bg > Bp then
+      W16 = Bg - Bp
+      W16 = W16 / Ic
+      G = W16
+    end if
+  end if
+  return G
+
+' the ruler's ask: opener, price, round
+sub Haggle(u8 Sell):
+  Says
+  V = Rnd(2) + Sell
+  W16 = V
+  W16 = W16 * 25
+  put PhrN + W16 count 25 at 2,16
+  print Ask at 2,17 width 5
+  print at 8,17, "EACH."
+  print at 16,15, "ROUND"
+  V = Wr + 1
+  print V at 22,15 width 2
+  print at 25,15, "/10"
+  print at 2,22, "YOUR OFFER? $"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' SELL (lines 710-820)
+
+sub DoSell:
+  u8 Ix = 0
+  u8 Accepted = 0
+  Ix = Tw * 9 + It
+  Says
+  if Have[It] = 0 then
+    print at 2,16, "YOU DO NOT HAVE ANY"
+    PutItem(2, 17)
+    Wait2
+    return
+  end if
+  ' NI = INT(N * (T * .124))
+  Ni = SellQty(Have[It], Dem[Ix])
+  if Ni = 0 then
+    print at 2,16, "NO THANKS."
+    Wait2
+    return
+  end if
+  print at 2,16, "WE WILL BUY"
+  print Ni at 14,16 width 4
+  PutItem(2, 17)
+  print at 16,17, "FROM YOU."
+  Hold(90)
+  SetPrice
+  Ask = Bp - Ic
+  Accepted = 0
+  Wr = 0
+  while Wr < 10
+    Haggle(2)
+    Ul = Bp + Ic * 8
+    Bg = 0
+    while Bg = 0
+      GetNum(17)
+    end while
+    W16 = Bg << 1
+    V16 = Ask << 1
+    V16 = V16 + Ic
+    if W16 <= V16 then
+      Accepted = 1
+      exit while
+    end if
+    if Bg <= Ask + Ic * 3 then Ask = Ask + Ic
+    play sound SndNay
+    Sr = SellGrade
+    print at 2,19, "NAY,"
+    PutRemark(Sr, 20)
+    inc Wr
+    Hold(50)
+  end while
+  Says
+  if Accepted = 0 then
+    print at 2,16, "NAY! ENOUGH OF THIS"
+    print at 2,17, "BARGAINING!"
+    play sound SndNay
+    Wait2
+    return
+  end if
+  Sr = SellGrade
+  print at 2,16, "AYE,"
+  PutRemark(Sr, 17)
+  print at 2,19, "SOLD."
+  Stock[Ix] = Stock[Ix] + Ni
+  Dem[Ix] = 1
+  P32 = Ni
+  T32 = Bg
+  P32 = P32 * T32
+  Cash = Cash + P32
+  Have[It] = Have[It] - Ni
+  play sound SndCoin
+  Hold(90)
+  DoInventory
+  return
+end sub
+
+' how many a ruler with demand Dm takes of Hn goods: INT(Hn * Dm * .124)
+function SellQty(u16 Hn, u8 Dm) as u16
+  u32 Q32 = 0
+  u32 D32 = 0
+  Q32 = Hn
+  D32 = Dm
+  Q32 = Q32 * D32
+  Q32 = Q32 * 124
+  Q32 = Q32 / 1000
+  return lowword Q32
+
+' ---------------------------------------------------------------------------
+' SEASONAL CHANGES, INQUIRE, INVENTORY (lines 840-980)
+
+sub DoSeasons:
+  u8 Sn = 0
+  i16 Chg = 0
+  i16 Avg = 0
+  ClearArea
+  PutItem(10, 4)
+  for Sn = 0 to 3
+    W16 = Sn
+    W16 = W16 * 6
+    put SeaN + W16 count 6 at 4,Sn + 6
+    V = Sn * 9 + It
+    Chg = PriceT[V]
+    Avg = AvgT[It]
+    Chg = Chg - Avg
+    if Chg < 0 then
+      W16 = 0 - Chg
+      print at 21,Sn + 6, "LOSS!"
+    else
+      W16 = Chg
+      if Chg = 0 then
+        print at 21,Sn + 6, "NO CHANGE."
+      else
+        print at 21,Sn + 6, "GAIN!"
+      end if
+    end if
+    print W16 at 14,Sn + 6 width 4
+    if Sn = Ss then put char 62 at 2,Sn + 6
+  next
+  WaitPress
+  return
+end sub
+
+sub DoInquire:
+  u8 Ix = 0
+  Ix = Tw * 9 + It
+  Says
+  if It < 8 then
+    V = Dem[Ix]
+    W16 = V
+    W16 = W16 * 10
+    put DemN + W16 count 10 at 2,16
+    print at 13,16, "DEMAND."
+  else
+    print Stock[Ix] at 2,16 width 3
+    print at 6,16, "FURLONGS AT $"
+    SetPrice
+    print Bp at 19,16 width 3
+    print at 2,17, "APIECE."
+  end if
+  ClearArea
+  print at 2,4, "PER ITEM"
+  print at 16,4, "REALM VALUE"
+  W16 = 0
+  for Li = 0 to 8
+    put ItemN + W16 count 13 at 3,Li + 5
+    W16 = W16 + 13
+    V = Ss * 9 + Li
+    put char 36 at 19,Li + 5
+    print PriceT[V] at 20,Li + 5 width 4
+    if Li = It then put char 60 at 25,Li + 5
+  next
+  WaitPress
+  return
+end sub
+
+sub DoInventory:
+  ClearArea
+  print at 2,4, "COMMERCE"
+  print at 18,4, "IN STOCK"
+  ShowGoods
+  ClearConv
+  print at 8,16, "CASH ON HAND"
+  ShowCash(9, 17)
+  if Cash < 0 then
+    print at 11,18, "!DEBT!"
+  else
+    print at 11,18, "CREDIT"
+  end if
+  WaitPress
+  return
+end sub
+
+sub ShowGoods:
+  W16 = 0
+  for Li = 0 to 8
+    put ItemN + W16 count 13 at 3,Li + 5
+    W16 = W16 + 13
+    print Have[Li] at 20,Li + 5 width 5
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' year's end (lines 370-380)
+
+sub YearEnd:
+  u16 Pct = 0
+  Phase = 4
+  NewScreen
+  backdrop dark blue
+  fill TRule count 28 at 2,1
+  print at 6,2, "YEAR'S END RESULTS"
+  fill TRule count 28 at 2,3
+  print at 2,4, "COMMERCE"
+  print at 18,4, "IN STOCK"
+  ShowGoods
+  print at 4,15, "CASH"
+  ShowCash(9, 15)
+  ' tenths of a percent: land x 1000 / 2700
+  Pct = Land * 10
+  Pct = Pct / 27
+  V16 = Pct / 10
+  print at 2,17, "YOU HAVE ACQUIRED"
+  print V16 at 20,17 width 3
+  put char 46 at 23,17
+  V16 = Pct % 10
+  print V16 at 24,17 digits 1
+  put char 37 at 25,17
+  print at 2,18, "OF THE EMPIRE!"
+  print at 2,20, "THE REALM NAMES YOU"
+  if Pct < 50 then
+    print at 2,21, "A HUMBLE PEDDLER."
+  elseif Pct < 150 then
+    print at 2,21, "A TRAVELLING MERCHANT."
+  elseif Pct < 300 then
+    print at 2,21, "A LANDHOLDER."
+  elseif Pct < 500 then
+    print at 2,21, "BARON OF THE REALM."
+  elseif Pct < 750 then
+    print at 2,21, "DUKE OF THE REALM."
+  else
+    print at 2,21, "EMPEROR!"
+  end if
+  ShowScreen
+  play sound SndFanfare
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Wait2:
+  Hold(30)
+  WaitPress
+  return
+end sub
+
+sub WaitPress:
+  print at 7,22, "PRESS THE BUTTON"
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  Asking = 1
+  Ui = 3
+  while Asking = 1
+    Frame1
+    ReadPad
+    if Press = 1 then Asking = 0
+  end while
+  Ui = 0
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub Hold(u8 N):
+  for Hc = 1 to N
+    Frame1
+    ReadPad
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' buttons (Press on a new press) and the stick (Rep on a new push, then
+' every 4 frames after 16; HandT counts the frames held)
+sub ReadPad:
+  Btn = 0
+  if joypad(1).fire then Btn = 16
+  if joypad(2).fire then Btn = 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  if joypad(1).up then Stick = Stick | 1
+  if joypad(1).right then Stick = Stick | 2
+  if joypad(1).down then Stick = Stick | 4
+  if joypad(1).left then Stick = Stick | 8
+  if joypad(2).up then Stick = Stick | 1
+  if joypad(2).right then Stick = Stick | 2
+  if joypad(2).down then Stick = Stick | 4
+  if joypad(2).left then Stick = Stick | 8
+  Rep = 0
+  if Stick = 0 then
+    HandT = 0
+  else
+    if WasStick = 0 then
+      Rep = 1
+      HandT = 0
+    else
+      if HandT < 250 then inc HandT
+      if HandT >= 16 then
+        V = HandT & 3
+        if V = 0 then Rep = 1
+      end if
+    end if
+  end if
+  WasStick = Stick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: EMPIRE in bricks, the tune once, START GAME / CREDITS
+sub TitlePage:
+  u8 Ty = 0
+  TitleOn = 1
+  NewScreen
+  backdrop black
+  fill TBricks count 28 at 2,2
+  fill TBricks count 28 at 2,10
+  W16 = 0
+  for Ty = 0 to 4
+    put TitleBig + W16 count TitleW at 4,Ty + 4
+    W16 = W16 + TitleW
+  next
+  print at 9,12, "A TRADING ADVENTURE"
+  print at 3,14, "BY CLEVELAND M. BLAKEMORE"
+  print at 6,15, "AHOY! OCTOBER 1987"
+  print at 11,18, "START GAME"
+  print at 11,19, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 1
+  Asking = 1
+  while Asking = 1
+    Frame1
+    Rand
+    ReadPad
+    if Rep = 1 then
+      if Stick & 1 then Menu = 0
+      if Stick & 4 then Menu = 1
+      ShowMenu
+    end if
+    if Press = 1 then Asking = 0
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,18
+  put char 32 at 9,19
+  J = Menu + 18
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "EMPIRE"
+  print at 2,5, "BASED ON EMPIRE BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! OCTOBER 1987"
+  print at 2,8, "(COMMODORE 128)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: CARAVAN ROAD"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+EmStep:
+    db $40,$5D,$50,$01,$40,$7C,$70,$01,$50
+EmTick:
+    db $40,$40,$30,$02,$50
+EmPick:
+    db $40,$55,$20,$03,$40,$71,$30,$03,$40,$A9,$40,$04,$50
+EmNay:
+    db $40,$F9,$22,$06,$40,$25,$33,$06,$40,$56,$43,$08,$50
+EmAye:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$0A,$50
+EmCoin:
+    db $40,$47,$20,$03,$40,$35,$30,$06,$50
+EmBell:
+    db $40,$7F,$10,$06,$40,$7F,$30,$08,$40,$7F,$50,$0C,$40,$7F,$70,$10,$50
+EmFanfare:
+    db $40,$1D,$21,$08,$40,$D6,$20,$08,$40,$AA,$20,$08,$40,$8F,$10,$10,$40,$AA,$20,$08,$40,$8F,$20,$18
+    db $50
+EmBump:
+    db $00,$00,$36,$03,$00,$00,$66,$03,$10
+
+EmSoundTable:
+    dw EmTuneMel,$702B
+    dw EmTuneBass,$7035
+    dw EmStep,$7049
+    dw EmTick,$7049
+    dw EmPick,$7049
+    dw EmNay,$7049
+    dw EmAye,$7049
+    dw EmCoin,$7049
+    dw EmBell,$7049
+    dw EmFanfare,$7049
+    dw EmBump,$703F
+; Caravan Road (original)
+; Tiny Sound, 9 frames per step
+EmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1A,$01,$1D,$01,$21,$01,$01,$1F,$1D,$01,$1C,$01
+    db $1A,$01,$01,$01,$18,$01,$1C,$01,$1F,$01,$01,$1D,$1C,$01,$1A,$01
+    db $18,$01,$01,$01,$1A,$01,$1D,$01,$21,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$21,$01,$1F,$01,$1D,$01,$1C,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+EmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$11,$01,$18,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$15,$01,$1C,$01,$09,$01,$10,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

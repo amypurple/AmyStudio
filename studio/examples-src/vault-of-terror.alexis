@@ -1,0 +1,2557 @@
+cartridge "VAULT OF TERROR/C. M. BLAKEMORE/1986"
+
+' VAULT OF TERROR
+' A ColecoVision game based on "Vault of Terror" by C. M. Blakemore, Ahoy!
+' December 1986 (Commodore 64, "VAULT V2.6"). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu. The listing, its
+' map DATA and screenshots of the original are in orig/.
+'
+' Not a line-by-line port: the rules, the two levels of the vault and the
+' monsters come from the listing; the screens are made for the
+' ColecoVision. You stand in the dark vault with a torch. Light it, find
+' your way through the corridors in 3-D, kill the monsters (each leaves a
+' treasure), take the crown of Sarnoth from the deep level and come back to
+' the rope you came down with all nine treasures.
+'
+' Controls (either joystick): up walks forward, down steps back, left and
+' right turn; the left button uses the thing in your hand (torch: light it
+' or strike, sword: strike, ring: invisible on/off, rope: climb stairs,
+' staff: break locks, key: open a locked door); the right button opens the
+' treasures: left and right choose, up takes it from the floor, down drops
+' it, the left button takes it in hand, the right button closes.
+'
+' From the listing (line numbers of VAULT V2.6): the map DATA (142); 16
+' monsters of 8 kinds, 9 on the top level and 7 below, health 1-61 (146-151);
+' a monster in your cell strikes when RND + kind/100 > .95 (167), for
+' kind/(1 or 5 with the helm) + 1-3 (202); the thief takes all but the
+' torch, rope and crown to its lair (200); your blow lands when RND +
+' life/100 >= .5 and takes RND + 2 (sword) + life/5 (211-214); a dead
+' monster leaves the treasure of its kind - 1 and gives life kind/4 (218);
+' every tick the monsters step toward you, the torch burns down six levels
+' and is gone, life comes back by .2 up to 60 (181-182, 247-255); locks
+' and doors (170-173, 227-230); the rope on stairs, the crown and the gold
+' too heavy to climb together, the win with all nine at the start (221-224).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off; music first in the sound table ($702B,
+' $7035) and quieter than the effects.
+
+const TCeil = 128
+const TFloor = 129
+const TFar = 130
+const TSide = 131
+const TFront = 167
+const TFrame = 173
+const TCorner = 174
+const TBlank = 175
+const TMap = 176
+const TIcon = 208
+const TGauge = 244
+const NTiles8 = 960
+const SprBytes = 1440
+const SArrow = 128
+const SFeat = 144
+const SFeatS = 160
+const SCursor = 176
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDeepA = 3
+const SndDeepB = 4
+const SndStep = 5
+const SndBump = 6
+const SndTurn = 7
+const SndSwing = 8
+const SndHit = 9
+const SndKill = 10
+const SndOuch = 11
+const SndTake = 12
+const SndDrop = 13
+const SndTorch = 14
+const SndRing = 15
+const SndDown = 16
+const SndUp = 17
+const SndUnlock = 18
+const SndThief = 19
+const SndGrowl = 20
+const SndFizz = 21
+const SndSlain = 22
+const SndWin = 23
+const SndTick = 24
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' you: Cl the cell (row * 16 + column; the deep level is 128 on), Cd the
+' heading 1 east 2 south 3 west 4 north, Lf10 life in tenths, Dd the light
+' (1 bright .. 6 dark), Vs ticks at this light, Hand the thing in hand
+u8 Cl = 17
+u8 Cd = 2
+u8 Lev = 0
+u16 Lf10 = 100
+u8 Dd = 6
+u8 Vs = 0
+u8 Hand = 0
+u8 Invis = 0
+u8 Inv[9]
+u8 Won = 0
+u8 Dead = 0
+u8 Slain = 0
+u16 Tm = 0
+u8 Ak = 0
+' the monsters: cell (0 dead) and health
+u8 Mc[16]
+u8 Mh[16]
+u16 Rs = 1
+u16 Seed = 1
+' for the test bot: Idle 1 waiting for the stick in the vault, InvM 1 in
+' the treasures, Ix the treasure marked there
+u8 Idle = 0
+u8 InvM = 0
+u8 Ix = 0
+u16 Moves = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Menu = 0
+' the 3-D view (16 x 16 tiles) before it goes to the screen
+u8 Vb[256]
+' what the view shows: Mn the monster (index + 1), Mk 1 in your cell 2 one
+' ahead, Ft the feature sprite (0 none, 1 stairs down, 2 up, 3 lock, 4
+' treasure on the floor)
+u8 Mn = 0
+u8 Mk = 0
+u8 Ft = 0
+' scratch
+u16 A16 = 0
+u16 W16 = 0
+u16 Dm = 0
+u16 NumU = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Cx = 0
+u8 Cn = 0
+u8 Tc = 0
+u8 Tr = 0
+u8 Bk = 0
+u8 R = 0
+u8 Rb = 0
+u8 V1 = 0
+u8 V2 = 0
+u8 Busy = 0
+u8 Ri = 0
+u8 Rj = 0
+u8 Ca = 0
+u8 Lo = 0
+u8 Hi = 0
+u8 Got = 0
+
+  tile screen
+  set sound table VtSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+  GameScreen
+  play sound SndDeepA
+  play sound SndDeepB
+  print at 2,21, "IT IS DARK. THE LEFT BUTTON"
+  print at 2,22, "LIGHTS YOUR TORCH."
+
+play_loop:
+  Idle = 1
+  Frame1
+  ReadPad
+  inc Tm
+  ' the tick waits for a frame with no button press, so no press is lost
+  V = P1 | P2
+  if V = 1 then
+    if Tm >= 600 then Tm = 599
+  end if
+  if Tm >= 600 then
+    Tm = 0
+    Idle = 0
+    TimerTick
+    if Dead = 1 then goto game_lost
+    goto play_loop
+  end if
+  inc Ak
+  if Ak >= 60 then
+    Ak = 0
+    MonStrike
+    if Dead = 1 then goto game_lost
+  end if
+  if P2 = 1 then
+    Idle = 0
+    Treasures
+    goto play_loop
+  end if
+  if P1 = 1 then
+    Idle = 0
+    UseHand
+    if Dead = 1 then goto game_lost
+    if Won = 1 then goto game_won
+    goto play_loop
+  end if
+  if Stk = 0 then goto play_loop
+  ' one move a push; walking repeats while held
+  if WasStk = 1 then
+    V = Up1 | Dn1
+    if V = 0 then goto play_loop
+    inc Rep
+    if Rep < 12 then goto play_loop
+  end if
+  Rep = 0
+  WasStk = 1
+  Idle = 0
+  if Up1 = 1 then
+    Walk(0)
+  elseif Dn1 = 1 then
+    Walk(1)
+  elseif Lf1 = 1 then
+    Cd = Cd - 1
+    if Cd = 0 then Cd = 4
+    play sound SndTurn
+    ClearMsg
+    ShowAll
+  elseif Rt1 = 1 then
+    Cd = Cd + 1
+    if Cd = 5 then Cd = 1
+    play sound SndTurn
+    ClearMsg
+    ShowAll
+  end if
+  goto play_loop
+
+game_lost:
+  Idle = 0
+  mute all
+  play sound SndSlain
+  EndPage
+  goto title
+
+game_won:
+  Idle = 0
+  mute all
+  play sound SndWin
+  EndPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' moving
+
+' Walk(0) forward, Walk(1) back: forward is barred by a lock on the cell
+' ahead for this heading (line 170), back by a door behind (line 172)
+sub Walk(u8 Back):
+  if Back = 0 then
+    Cn = Cl + DStep[Cd]
+  else
+    Cn = Cl - DStep[Cd]
+  end if
+  ClearMsg
+  CellLH(Cn)
+  V = Hi & 3
+  V = V | Lo
+  if V = 0 then
+    play sound SndBump
+    print at 2,21, "A STONE WALL."
+    return
+  end if
+  if Back = 0 then
+    if Locked(Cn, Cd) = 1 then
+      play sound SndBump
+      print at 2,21, "A LOCKED DOOR."
+      return
+    end if
+  else
+    V = Lo & 32
+    if V > 0 then
+      play sound SndBump
+      print at 2,21, "YOU CANNOT BACK THROUGH"
+      print at 2,22, "A DOOR."
+      return
+    end if
+  end if
+  Cl = Cn
+  inc Moves
+  play sound SndStep
+  MarkSeen
+  ShowAll
+  Arrive
+  return
+end sub
+
+' Arrive: what is in the cell just entered
+sub Arrive:
+  if Mn > 0 then
+    if Mk = 1 then
+      play sound SndGrowl
+      V = Mn - 1
+      PrintMon(2, 21, MType[V])
+      print at 12,21, "IS HERE!"
+      return
+    end if
+  end if
+  if Ft = 1 then print at 2,21, "STAIRS GO DOWN HERE."
+  if Ft = 2 then
+    if Cl = 17 then
+      print at 2,21, "YOUR ROPE TO THE WORLD ABOVE."
+    else
+      print at 2,21, "STAIRS GO UP HERE."
+    end if
+  end if
+  if Ft = 4 then print at 2,21, "SOMETHING LIES HERE."
+  return
+end sub
+
+' Locked(cell, heading): 1 when the cell is barred against coming in that
+' way (bits 6-9 of the map)
+function Locked(u8 Kc, u8 Kd) as u8
+  CellLH(Kc)
+  Rb = 0
+  if Kd = 1 then Rb = Lo & 64
+  if Kd = 2 then Rb = Lo & 128
+  if Kd = 3 then Rb = Hi & 1
+  if Kd = 4 then Rb = Hi & 2
+  if Rb > 0 then Rb = 1
+  return Rb
+
+' ---------------------------------------------------------------------------
+' the vault in VRAM, a byte a cell: $3000 the map's low byte, $3100 bits
+' 8-9 (bit 7: seen), $3200 the monster (index + 1), $3300 the treasures on
+' the floor 0-7, $3400 bit 0 the crown
+
+sub CellLH(u8 Lc):
+  A16 = Lc
+  A16 = A16 + 12288
+  vpeek vram.pattern + A16 into Lo
+  A16 = A16 + 256
+  vpeek vram.pattern + A16 into Hi
+  return
+end sub
+
+function MonAt(u8 Mc0) as u8
+  A16 = Mc0
+  A16 = A16 + 12800
+  vpeek vram.pattern + A16 into Rb
+  return Rb
+
+sub MonSet(u8 Ms, u8 Mv):
+  A16 = Ms
+  A16 = A16 + 12800
+  vpoke vram.pattern + A16, Mv
+  return
+end sub
+
+' FloorHas(cell, treasure) 1 or 0
+function FloorHas(u8 Fc, u8 Fi) as u8
+  A16 = Fc
+  if Fi = 8 then
+    A16 = A16 + 13312
+    vpeek vram.pattern + A16 into Rb
+    Rb = Rb & 1
+    return Rb
+  end if
+  A16 = A16 + 13056
+  vpeek vram.pattern + A16 into Rb
+  V1 = BitT[Fi]
+  Rb = Rb & V1
+  if Rb > 0 then Rb = 1
+  return Rb
+
+sub FloorSet(u8 Fc, u8 Fi, u8 Fv):
+  A16 = Fc
+  if Fi = 8 then
+    A16 = A16 + 13312
+    vpoke vram.pattern + A16, Fv
+    return
+  end if
+  A16 = A16 + 13056
+  vpeek vram.pattern + A16 into Rb
+  V1 = BitT[Fi]
+  if Fv = 1 then
+    Rb = Rb | V1
+  else
+    V1 = V1 ^ 255
+    Rb = Rb & V1
+  end if
+  vpoke vram.pattern + A16, Rb
+  return
+end sub
+
+' FloorAny(cell): 1 when any treasure lies there
+function FloorAny(u8 Fc) as u8
+  A16 = Fc
+  A16 = A16 + 13056
+  vpeek vram.pattern + A16 into Rb
+  A16 = A16 + 256
+  vpeek vram.pattern + A16 into V1
+  Rb = Rb | V1
+  if Rb > 0 then Rb = 1
+  return Rb
+
+sub MarkSeen:
+  A16 = Cl
+  A16 = A16 + 12544
+  vpeek vram.pattern + A16 into Rb
+  Rb = Rb | 128
+  vpoke vram.pattern + A16, Rb
+  V = Cl & 15
+  Tc = V >> 1
+  V = Cl & 127
+  V = V >> 4
+  Tr = V >> 1
+  MapTile
+  return
+end sub
+
+' Vault: the map, the monsters (9 on the top level in cells 34-126, 7
+' below in 142-237, never two in a cell; the demon guards the crown), the
+' crown at 204
+sub Vault:
+  copy DlLo count 240 to vram.pattern + 12288
+  fill 0 count 16 to vram.pattern + 12528
+  copy DlHi count 240 to vram.pattern + 12544
+  fill 0 count 16 to vram.pattern + 12784
+  fill 0 count 768 to vram.pattern + 12800
+  for J = 0 to 15
+    Mh[J] = J << 2
+    Mh[J] = Mh[J] + 1
+  next
+  for J = 0 to 15
+    if J = 15 then
+      Cn = 204
+    else
+vault_again:
+      if J < 9 then
+        R = Rnd(93)
+        Cn = R + 34
+      else
+        R = Rnd(96)
+        Cn = R + 142
+      end if
+      CellLH(Cn)
+      V = Hi & 3
+      V = V | Lo
+      if V = 0 then goto vault_again
+      if Cn = 17 then goto vault_again
+      if Cn = 204 then goto vault_again
+      if MonAt(Cn) > 0 then goto vault_again
+    end if
+    Mc[J] = Cn
+    V = J + 1
+    MonSet(Cn, V)
+  next
+  FloorSet(204, 8, 1)
+  return
+end sub
+
+' Rnd(n): 0 to n-1 from the high byte of (random byte) x n
+function Rnd(u8 Rn) as u8
+  call asm VtRnd
+  Rb = Rs
+  W16 = Rb * Rn
+  W16 = W16 >> 8
+  Rb = W16
+  return Rb
+
+' ---------------------------------------------------------------------------
+' time: every 600 frames (10 seconds) the monsters move, the torch burns,
+' life comes back (lines 181-182, 247-255)
+
+sub TimerTick:
+  inc Vs
+  V = Dd * 6
+  if Vs >= V then
+    Vs = 0
+    if Dd < 6 then
+      inc Dd
+      if Dd = 6 then
+        if Inv[0] = 1 then
+          Inv[0] = 0
+          ClearMsg
+          play sound SndFizz
+          print at 2,21, "YOUR TORCH BURNS OUT!"
+        end if
+      end if
+    else
+      if Inv[0] = 1 then
+        Inv[0] = 0
+        ClearMsg
+        play sound SndFizz
+        print at 2,21, "YOUR TORCH HAS ROTTED AWAY."
+      end if
+    end if
+  end if
+  if Lf10 < 600 then Lf10 = Lf10 + 2
+  if Inv[0] = 0 then Dd = 6
+  MonMove
+  SetDim
+  ShowAll
+  DrawIcons
+  if Mn > 0 then
+    if Mk = 1 then play sound SndGrowl
+  end if
+  return
+end sub
+
+' MonMove: each monster of your level steps toward you (the listing's
+' rule on the cell numbers: more than 6 before or after you a row, nearer
+' a column), into an open cell with no monster
+sub MonMove:
+  J = 0
+  K = 8
+  if Cl >= 128 then
+    J = 9
+    K = 15
+  end if
+  for X = J to K
+    Cx = Mc[X]
+    if Cx > 0 then
+      Cn = Cx
+      V = Cx - 6
+      W = Cx + 6
+      if Cl < V then
+        Cn = Cx - 16
+      elseif Cl > W then
+        Cn = Cx + 16
+      elseif Cl > Cx then
+        if Cl < W then Cn = Cx + 1
+      elseif Cl < Cx then
+        if Cl > V then Cn = Cx - 1
+      end if
+      if Cn <> Cx then
+        V = Cn & 128
+        W = Cx & 128
+        if V = W then
+          CellLH(Cn)
+          V = Hi & 3
+          V = V | Lo
+          if V > 0 then
+            if MonAt(Cn) = 0 then
+              MonSet(Cx, 0)
+              V = X + 1
+              MonSet(Cn, V)
+              Mc[X] = Cn
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' fighting
+
+' MonStrike: once a second the monster in your cell may strike
+' (line 167: RND + kind/100 > .95); the thief robs you first (line 200);
+' invisible, nothing else can touch you (201)
+sub MonStrike:
+  N = MonAt(Cl)
+  if N = 0 then return
+  V = N - 1
+  Bk = MType[V]
+  R = Rnd(100)
+  V = R + Bk
+  if V < 95 then return
+  ClearMsg
+  if Bk = 6 then
+    Got = 0
+    for J = 1 to 7
+      if Inv[J] = 1 then
+        if J <> 4 then
+          Inv[J] = 0
+          FloorSet(157, J, 1)
+          Got = 1
+        end if
+      end if
+    next
+    Hand = 0
+    if Got = 1 then
+      play sound SndThief
+      print at 2,21, "THE THIEF STOLE YOUR THINGS!"
+      DrawIcons
+      ShowHud
+    end if
+  end if
+  if Invis = 1 then return
+  ' kind / (1, or 5 with the helm) + 1-3, in tenths
+  R = Rnd(3)
+  R = R + 1
+  Dm = Bk
+  if Inv[2] = 1 then
+    Dm = Dm * 2
+  else
+    Dm = Dm * 10
+  end if
+  W16 = R
+  W16 = W16 * 10
+  Dm = Dm + W16
+  play sound SndOuch
+  PrintMon(2, 22, Bk)
+  print at 12,22, "STRIKES YOU!"
+  if Dm >= Lf10 then
+    Lf10 = 0
+    Dead = 1
+    ShowHud
+    return
+  end if
+  Lf10 = Lf10 - Dm
+  ShowHud
+  return
+end sub
+
+' Strike(sure): your blow at the monster here (lines 211-218)
+sub Strike(u8 Sure):
+  ClearMsg
+  N = MonAt(Cl)
+  if N = 0 then
+    play sound SndSwing
+    print at 2,21, "YOU STRIKE AT THE DARKNESS."
+    return
+  end if
+  X = N - 1
+  Bk = MType[X]
+  W16 = Lf10 / 10
+  V = W16
+  if Sure = 0 then
+    R = Rnd(100)
+    W16 = R
+    W16 = W16 + V
+    if W16 < 50 then
+      play sound SndSwing
+      print at 2,21, "YOU MISS."
+      return
+    end if
+  end if
+  ' RND + 2 with the sword + life / 5
+  R = Rnd(2)
+  W = V / 5
+  W = W + R
+  if Inv[1] = 1 then W = W + 2
+  if W = 0 then W = 1
+  play sound SndHit
+  if W < Mh[X] then
+    Mh[X] = Mh[X] - W
+    print at 2,21, "A HIT!"
+    PrintMon(9, 21, Bk)
+    print at 19,21, "REELS."
+    return
+  end if
+  ' dead: it leaves the treasure of its kind - 1 and gives life kind / 4
+  Mh[X] = 0
+  Mc[X] = 0
+  MonSet(Cl, 0)
+  inc Slain
+  W16 = Bk
+  W16 = W16 * 5
+  W16 = W16 >> 1
+  Lf10 = Lf10 + W16
+  if Lf10 > 990 then Lf10 = 990
+  V = Bk - 1
+  FloorSet(Cl, V, 1)
+  play sound SndKill
+  ClearMsg
+  print at 2,21, "THE"
+  PrintMon(6, 21, Bk)
+  print at 16,21, "IS DEAD!"
+  print at 2,22, "IT LEAVES A"
+  PrintItem(14, 22, V)
+  ShowAll
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the thing in hand (line 176)
+
+sub UseHand:
+  if Hand = 0 then
+    if Dd = 6 then
+      if Inv[0] = 1 then
+        Vs = 0
+        Dd = 1
+        play sound SndTorch
+        ClearMsg
+        print at 2,21, "THE TORCH FLARES UP."
+        SetDim
+        MarkAhead
+        ShowAll
+        return
+      end if
+    end if
+    Strike(0)
+    return
+  end if
+  if Hand = 1 then
+    Strike(0)
+    return
+  end if
+  ClearMsg
+  if Hand = 2 then
+    print at 2,21, "THE HELM GUARDS YOU FROM"
+    print at 2,22, "FOUR FIFTHS OF EACH BLOW."
+    return
+  end if
+  if Hand = 3 then
+    Invis = Invis ^ 1
+    play sound SndRing
+    if Invis = 1 then
+      backdrop magenta
+      print at 2,21, "YOU FADE FROM SIGHT."
+    else
+      backdrop black
+      print at 2,21, "YOU ARE SEEN AGAIN."
+    end if
+    ShowHud
+    return
+  end if
+  if Hand = 4 then
+    Rope
+    return
+  end if
+  if Hand = 5 then
+    N = MonAt(Cl)
+    if N > 0 then
+      V = N - 1
+      if MType[V] = 6 then
+        Strike(1)
+        return
+      end if
+    end if
+    Cn = Cl + DStep[Cd]
+    A16 = Cn
+    A16 = A16 + 12288
+    vpeek vram.pattern + A16 into Lo
+    A16 = A16 + 256
+    vpeek vram.pattern + A16 into Hi
+    V = Hi & 3
+    W = Lo & 192
+    V = V | W
+    if V = 0 then
+      print at 2,21, "THE STAFF GLOWS. NOTHING"
+      print at 2,22, "HAPPENS."
+      return
+    end if
+    Lo = Lo & 63
+    Hi = Hi & 128
+    vpoke vram.pattern + A16, Hi
+    A16 = A16 - 256
+    vpoke vram.pattern + A16, Lo
+    play sound SndUnlock
+    print at 2,21, "THE STAFF BREAKS THE LOCKS!"
+    ShowAll
+    return
+  end if
+  if Hand = 6 then
+    Cn = Cl + DStep[Cd]
+    CellLH(Cn)
+    V = Lo & 32
+    if V = 0 then
+      print at 2,21, "NO DOOR AHEAD."
+      return
+    end if
+    if Locked(Cn, Cd) = 0 then
+      print at 2,21, "THE DOOR IS NOT LOCKED."
+      return
+    end if
+    A16 = Cn
+    A16 = A16 + 12288
+    if Cd = 1 then Lo = Lo & 191
+    if Cd = 2 then Lo = Lo & 127
+    if Cd = 3 then Hi = Hi & 254
+    if Cd = 4 then Hi = Hi & 253
+    vpoke vram.pattern + A16, Lo
+    A16 = A16 + 256
+    vpoke vram.pattern + A16, Hi
+    play sound SndUnlock
+    print at 2,21, "THE KEY TURNS. UNLOCKED!"
+    ShowAll
+    return
+  end if
+  if Hand = 7 then
+    print at 2,21, "GOLD, BUT IT BUYS NOTHING"
+    print at 2,22, "DOWN HERE."
+    return
+  end if
+  print at 2,21, "THE CROWN OF SARNOTH! TAKE"
+  print at 2,22, "IT UP YOUR ROPE."
+  return
+end sub
+
+' Rope: the stairs (line 221-224)
+sub Rope:
+  CellLH(Cl)
+  V = Lo & 4
+  if V > 0 then
+    Cl = Cl + 128
+    Lev = 1
+    play sound SndDown
+    Moved
+    print at 2,21, "YOU CLIMB DOWN TO THE DEEP"
+    print at 2,22, "VAULT."
+    return
+  end if
+  V = Lo & 24
+  if V = 24 then
+    if Inv[7] = 1 then
+      if Inv[8] = 1 then
+        Inv[8] = 0
+        FloorSet(Cl, 8, 1)
+        if Hand = 8 then Hand = 0
+        Cl = Cl - 128
+        Lev = 0
+        play sound SndUp
+        Moved
+        print at 2,21, "THE CROWN AND GOLD ARE TOO"
+        print at 2,22, "HEAVY. THE CROWN FELL BACK."
+        return
+      end if
+    end if
+    Cl = Cl - 128
+    Lev = 0
+    play sound SndUp
+    Moved
+    print at 2,21, "YOU CLIMB UP TO THE TOP"
+    print at 2,22, "LEVEL."
+    return
+  end if
+  if Cl = 17 then
+    Got = 0
+    for J = 0 to 8
+      Got = Got + Inv[J]
+    next
+    if Got = 9 then
+      Won = 1
+      return
+    end if
+    print at 2,21, "BRING ALL NINE TREASURES TO"
+    print at 2,22, "CLIMB OUT."
+    return
+  end if
+  print at 2,21, "NO STAIRS HERE."
+  return
+end sub
+
+sub Moved:
+  ClearMsg
+  MarkSeen
+  DrawMap
+  ShowAll
+  DrawIcons
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the treasures: a column each, carried above, on the floor below
+
+sub Treasures:
+  InvM = 1
+  Ix = Hand
+  ClearMsg
+  print at 2,21, "UP TAKES, DOWN DROPS, BUTTON"
+  print at 2,22, "HOLDS IT. RIGHT BUTTON: BACK"
+  PutCursor
+  WasStk = 1
+tr_loop:
+  Frame1
+  ReadPad
+  if P2 = 1 then goto tr_done
+  if P1 = 1 then
+    if Inv[Ix] = 1 then
+      Hand = Ix
+      play sound SndTick
+      goto tr_done
+    end if
+  end if
+  if Stk = 0 then goto tr_loop
+  if WasStk = 1 then goto tr_loop
+  WasStk = 1
+  if Lf1 = 1 then
+    if Ix = 0 then
+      Ix = 8
+    else
+      dec Ix
+    end if
+    play sound SndTick
+  end if
+  if Rt1 = 1 then
+    inc Ix
+    if Ix = 9 then Ix = 0
+    play sound SndTick
+  end if
+  if Up1 = 1 then
+    if FloorHas(Cl, Ix) = 1 then
+      FloorSet(Cl, Ix, 0)
+      Inv[Ix] = 1
+      play sound SndTake
+      DrawIcons
+    end if
+  end if
+  if Dn1 = 1 then
+    if Inv[Ix] = 1 then
+      Inv[Ix] = 0
+      FloorSet(Cl, Ix, 1)
+      Hand = 0
+      play sound SndDrop
+      if Inv[0] = 0 then
+        Dd = 6
+        SetDim
+        ShowAll
+      end if
+      DrawIcons
+    end if
+  end if
+  PutCursor
+  goto tr_loop
+tr_done:
+  InvM = 0
+  ClearMsg
+  DrawIcons
+  ShowAll
+  WasStk = 1
+  return
+end sub
+
+sub PutCursor:
+  V = Ix * 24
+  V = V + 16
+  if InvM = 1 then
+    set sprite 3 to 135,V,SCursor,11
+  else
+    set sprite 3 to 135,V,SCursor,15
+  end if
+  update sprites
+  return
+end sub
+
+' DrawIcons: the nine treasures carried (rows 17-18) and on the floor
+' here (rows 19-20)
+sub DrawIcons:
+  for J = 0 to 8
+    X = J * 3
+    X = X + 2
+    V = J << 2
+    V = V + TIcon
+    if Inv[J] = 1 then
+      put char V at X,17
+      W = X + 1
+      V = V + 1
+      put char V at W,17
+      V = V + 1
+      put char V at X,18
+      V = V + 1
+      put char V at W,18
+    else
+      put char TBlank at X,17
+      W = X + 1
+      put char TBlank at W,17
+      put char 32 at X,18
+      put char 32 at W,18
+    end if
+    V = J << 2
+    V = V + TIcon
+    if FloorHas(Cl, J) = 1 then
+      put char V at X,19
+      W = X + 1
+      V = V + 1
+      put char V at W,19
+      V = V + 1
+      put char V at X,20
+      V = V + 1
+      put char V at W,20
+    else
+      W = X + 1
+      put char 32 at X,19
+      put char 32 at W,19
+      put char 32 at X,20
+      put char 32 at W,20
+    end if
+  next
+  PutCursor
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the map: the 16 x 8 cells of your level, 4 x 4 pixels each, in 8 x 4
+' tiles at columns 20-27, rows 3-6
+
+sub MapTile:
+  V1 = 0
+  V2 = 0
+  Cx = Tr << 5
+  V = Tc << 1
+  Cx = Cx + V
+  if Lev = 1 then Cx = Cx + 128
+  A16 = Cx
+  A16 = A16 + 12544
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V1 = $E0
+  A16 = A16 + 1
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V1 = V1 | $0E
+  A16 = A16 + 16
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V2 = $0E
+  A16 = A16 - 1
+  vpeek vram.pattern + A16 into V
+  if V >= 128 then V2 = V2 | $E0
+  V = Tr << 3
+  V = V + Tc
+  V = V + TMap
+  A16 = V
+  A16 = A16 << 3
+  for J = 0 to 2
+    vpoke vram.pattern + A16, V1
+    inc A16
+  next
+  vpoke vram.pattern + A16, 0
+  inc A16
+  for J = 0 to 2
+    vpoke vram.pattern + A16, V2
+    inc A16
+  next
+  vpoke vram.pattern + A16, 0
+  return
+end sub
+
+sub DrawMap:
+  for Tr = 0 to 3
+    for Tc = 0 to 7
+      MapTile
+    next
+  next
+  return
+end sub
+
+' MarkAhead: with light, the cells you can see ahead go on the map too
+sub MarkAhead:
+  if Dd = 6 then return
+  Cx = Cl
+  for K = 0 to 2
+    Cx = Cx + DStep[Cd]
+    CellLH(Cx)
+    V = Hi & 3
+    V = V | Lo
+    if V = 0 then return
+    A16 = Cx
+    A16 = A16 + 12544
+    Hi = Hi | 128
+    vpoke vram.pattern + A16, Hi
+    V = Cx & 15
+    Tc = V >> 1
+    V = Cx & 127
+    V = V >> 4
+    Tr = V >> 1
+    MapTile
+    if Locked(Cx, Cd) = 1 then return
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the 3-D view: 16 x 16 tiles at columns 2-17, rows 1-16, built in Vb.
+' Depth k (0-2) is the cell k ahead: its side walls fill columns 2k-2k+1
+' (left) and 14-2k-15-2k (right); the walls of a cell with a door are
+' wood; a wall, or a door locked against you, closes the corridor.
+
+sub DrawView:
+  for J = 0 to 127
+    Vb[J] = TCeil
+  next
+  for J = 128 to 255
+    Vb[J] = TFloor
+  next
+  Cx = Cl
+  Mn = MonAt(Cl)
+  Mk = 0
+  if Mn > 0 then Mk = 1
+  Ft = 0
+  CellLH(Cl)
+  V = Lo & 4
+  if V > 0 then Ft = 1
+  V = Lo & 24
+  if V = 24 then Ft = 2
+  if Cl = 17 then Ft = 2
+  if Ft = 0 then
+    if FloorAny(Cl) = 1 then Ft = 4
+  end if
+  for K = 0 to 2
+    CellLH(Cx)
+    W = 0
+    V = Lo & 32
+    if V > 0 then W = 2
+    Ca = W
+    ' left of cell k
+    V = Cd + 2
+    if V > 4 then V = V - 4
+    V = V + 1
+    if V > 4 then V = V - 4
+    ' V is the heading to the left
+    Cn = Cx + DStep[V]
+    CellLH(Cn)
+    V = Hi & 3
+    V = V | Lo
+    if V = 0 then
+      SideL(Ca)
+    else
+      SideL(1)
+    end if
+    V = Cd + 1
+    if V > 4 then V = V - 4
+    Cn = Cx + DStep[V]
+    CellLH(Cn)
+    V = Hi & 3
+    V = V | Lo
+    if V = 0 then
+      SideR(Ca)
+    else
+      SideR(1)
+    end if
+    ' the cell ahead
+    Cx = Cx + DStep[Cd]
+    CellLH(Cx)
+    V = Hi & 3
+    V = V | Lo
+    if V = 0 then
+      Front(K, 0)
+      goto view_done
+    end if
+    if Locked(Cx, Cd) = 1 then
+      Front(K, 1)
+      if K = 0 then Ft = 3
+      goto view_done
+    end if
+    if K = 0 then
+      if Mn = 0 then
+        Mn = MonAt(Cx)
+        if Mn > 0 then Mk = 2
+      end if
+    end if
+  next
+  Rect(6, 6, 9, 9, TFar)
+view_done:
+  call asm VtBlit
+  return
+end sub
+
+sub Rect(u8 C0, u8 R0, u8 C1, u8 R1, u8 Rt):
+  for Rj = R0 to R1
+    Rb = Rj << 4
+    Rb = Rb + C0
+    for Ri = C0 to C1
+      Vb[Rb] = Rt
+      inc Rb
+    next
+  next
+  return
+end sub
+
+' SideL(kind): the left side of depth K: 0 a stone wall, 2 a wooden one,
+' 1 an opening (the far wall of the side passage)
+sub SideL(u8 Sk):
+  N = K << 1
+  if Sk = 0 then
+    W = 0
+  elseif Sk = 2 then
+    W = 1
+  else
+    W = K << 1
+    W = W + TFront
+    V1 = N + 2
+    V2 = 13 - N
+    V = N + 1
+    Rect(N, V1, V, V2, W)
+    return
+  end if
+  W = W + N
+  W = W * 6
+  W = W + TSide
+  V = N << 4
+  V = V + N
+  V1 = W + 1
+  Vb[V] = V1
+  V = V + 16
+  Vb[V] = W
+  inc V
+  Vb[V] = V1
+  V1 = N + 2
+  V2 = 13 - N
+  V = N + 1
+  Rect(N, V1, V, V2, W)
+  V = 14 - N
+  V = V << 4
+  V = V + N
+  Vb[V] = W
+  V2 = W + 2
+  inc V
+  Vb[V] = V2
+  V = V + 15
+  Vb[V] = V2
+  return
+end sub
+
+sub SideR(u8 Sk):
+  N = K << 1
+  Ca = 15 - N
+  if Sk = 0 then
+    W = 0
+  elseif Sk = 2 then
+    W = 1
+  else
+    W = K << 1
+    W = W + TFront
+    V1 = N + 2
+    V2 = 13 - N
+    V = Ca - 1
+    Rect(V, V1, Ca, V2, W)
+    return
+  end if
+  W = W + N
+  W = W * 6
+  W = W + TSide
+  W = W + 3
+  V = N << 4
+  V = V + Ca
+  V1 = W + 1
+  Vb[V] = V1
+  V = V + 16
+  Vb[V] = W
+  dec V
+  Vb[V] = V1
+  V1 = N + 2
+  V2 = 13 - N
+  V = Ca - 1
+  Rect(V, V1, Ca, V2, W)
+  V = 14 - N
+  V = V << 4
+  V = V + Ca
+  Vb[V] = W
+  V2 = W + 2
+  dec V
+  Vb[V] = V2
+  V = V + 17
+  Vb[V] = V2
+  return
+end sub
+
+' Front(depth, door): the wall closing the corridor after depth k
+sub Front(u8 Fk, u8 Fd):
+  N = Fk << 1
+  W = N + TFront
+  W = W + Fd
+  V1 = N + 2
+  V2 = 13 - N
+  Rect(V1, V1, V2, V2, W)
+  return
+end sub
+
+' SetDim: the colours of the corridor tiles for the light
+sub SetDim:
+  if Dd = 1 then
+    copy Dim0 count 360 to vram.color + 1024
+  end if
+  if Dd = 2 then
+    copy Dim1 count 360 to vram.color + 1024
+  end if
+  if Dd = 3 then
+    copy Dim2 count 360 to vram.color + 1024
+  end if
+  if Dd = 4 then
+    copy Dim3 count 360 to vram.color + 1024
+  end if
+  if Dd = 5 then
+    copy Dim4 count 360 to vram.color + 1024
+  end if
+  if Dd = 6 then
+    copy Dim5 count 360 to vram.color + 1024
+  end if
+  return
+end sub
+
+' ShowAll: the view, the sprites and the panel
+sub ShowAll:
+  MarkAhead
+  DrawView
+  DrawSprites
+  ShowHud
+  return
+end sub
+
+sub DrawSprites:
+  ' the arrow on the map
+  V = ArrowP[Cd]
+  X = Cl & 15
+  X = X << 2
+  X = X + 159
+  Y = Cl & 127
+  Y = Y >> 4
+  Y = Y << 2
+  Y = Y + 22
+  set sprite 0 to Y,X,V,15
+  if Mn = 0 then
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  else
+    V = Mn - 1
+    Bk = MType[V]
+    N = Bk - 1
+    N = N << 4
+    V1 = MTopC[Bk]
+    V2 = MBodyC[Bk]
+    if Mk = 1 then
+      Y = 96
+    else
+      N = N + 8
+      Y = 64
+    end if
+    set sprite 1 to Y,72,N,V1
+    N = N + 4
+    ' in the dark only the eyes show
+    if Dd = 6 then
+      set sprite 2 to 192,0,0,0
+    else
+      set sprite 2 to Y,72,N,V2
+    end if
+  end if
+  if Ft = 0 then
+    set sprite 4 to 192,0,0,0
+  elseif Dd = 6 then
+    set sprite 4 to 192,0,0,0
+  elseif Ft = 3 then
+    V = SFeatS + 8
+    set sprite 4 to 64,72,V,11
+  elseif Ft = 4 then
+    V = SFeat + 12
+    set sprite 4 to 112,100,V,10
+  else
+    V = Ft - 1
+    V = V << 2
+    V = V + SFeat
+    set sprite 4 to 112,40,V,14
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 19,1, "LEVEL"
+  V = Lev + 1
+  NumU = V
+  print at 25,1, digits$(NumU, 1)
+  V = FaceC[Cd]
+  put char V at 28,1
+  print at 19,8, "LIFE"
+  W16 = Lf10 / 10
+  NumU = W16
+  print at 27,8, digits$(NumU, 2)
+  print at 19,10, "LIGHT"
+  if Dd = 1 then print at 19,11, "BRIGHT   "
+  if Dd = 2 then print at 19,11, "STEADY   "
+  if Dd = 3 then print at 19,11, "DIMMING  "
+  if Dd = 4 then print at 19,11, "LOW      "
+  if Dd = 5 then print at 19,11, "FLICKERS "
+  if Dd = 6 then print at 19,11, "DARK     "
+  print at 19,13, "IN HAND"
+  fill 32 count 10 at 19,14
+  if Inv[Hand] = 1 then
+    PrintItem(19, 14, Hand)
+  else
+    print at 19,14, "NOTHING"
+  end if
+  fill 32 count 10 at 19,15
+  fill 32 count 10 at 19,16
+  if Mn > 0 then
+    V = Mn - 1
+    PrintMon(19, 15, MType[V])
+    if Mk = 2 then print at 19,16, "AHEAD"
+  end if
+  if Invis = 1 then print at 19,16, "INVISIBLE"
+  return
+end sub
+
+sub PrintItem(u8 Wx, u8 Wy, u8 Wi):
+  if Wi = 0 then print at Wx,Wy, "TORCH"
+  if Wi = 1 then print at Wx,Wy, "SWORD"
+  if Wi = 2 then print at Wx,Wy, "HELM"
+  if Wi = 3 then print at Wx,Wy, "RING"
+  if Wi = 4 then print at Wx,Wy, "ROPE"
+  if Wi = 5 then print at Wx,Wy, "STAFF"
+  if Wi = 6 then print at Wx,Wy, "KEY"
+  if Wi = 7 then print at Wx,Wy, "GOLD"
+  if Wi = 8 then print at Wx,Wy, "CROWN"
+  return
+end sub
+
+sub PrintMon(u8 Wx, u8 Wy, u8 Wi):
+  if Wi = 1 then print at Wx,Wy, "BAT"
+  if Wi = 2 then print at Wx,Wy, "SKELETON"
+  if Wi = 3 then print at Wx,Wy, "GOBLIN"
+  if Wi = 4 then print at Wx,Wy, "GHOST"
+  if Wi = 5 then print at Wx,Wy, "SPIDER"
+  if Wi = 6 then print at Wx,Wy, "THIEF"
+  if Wi = 7 then print at Wx,Wy, "TROLL"
+  if Wi = 8 then print at Wx,Wy, "DEMON"
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens
+
+sub NewGame:
+  Cl = 17
+  Cd = 2
+  Lev = 0
+  Lf10 = 100
+  Dd = 6
+  Vs = 0
+  Hand = 0
+  Invis = 0
+  for J = 0 to 8
+    Inv[J] = 0
+  next
+  Inv[0] = 1
+  Won = 0
+  Dead = 0
+  Slain = 0
+  Tm = 0
+  Ak = 0
+  Moves = 0
+  InvM = 0
+  Rs = Seed
+  return
+end sub
+
+sub GameScreen:
+  NewScreen
+  backdrop black
+  for Tr = 0 to 3
+    for Tc = 0 to 7
+      V = Tr << 3
+      V = V + Tc
+      V = V + TMap
+      X = Tc + 20
+      Y = Tr + 3
+      put char V at X,Y
+    next
+  next
+  print at 2,21, "OPENING THE DUNGEON..."
+  Vault
+  ClearMsg
+  SetDim
+  MarkSeen
+  DrawMap
+  ShowAll
+  DrawIcons
+  ShowScreen
+  return
+end sub
+
+sub EndPage:
+  NewScreen
+  backdrop black
+  if Won = 1 then
+    print at 4,3, "THE CROWN OF SARNOTH"
+    print at 4,4, "HAS BEEN RETURNED!"
+    print at 4,7, "NOBLE WARRIOR, YOU HAVE"
+    print at 4,8, "SURVIVED THE VAULT."
+  else
+    print at 6,4, "THOU ART SLAIN!!!"
+    print at 4,7, "THE VAULT KEEPS ANOTHER"
+    print at 4,8, "BRAVE WARRIOR."
+  end if
+  print at 4,11, "MONSTERS SLAIN"
+  NumU = Slain
+  print at 22,11, digits$(NumU, 2)
+  Got = 0
+  for J = 0 to 8
+    Got = Got + Inv[J]
+  next
+  print at 4,12, "TREASURES"
+  NumU = Got
+  print at 22,12, digits$(NumU, 1)
+  print at 24,12, "OF 9"
+  print at 4,13, "STEPS"
+  NumU = Moves
+  print at 22,13, digits$(NumU, 5)
+  print at 7,20, "PRESS THE BUTTON"
+  ShowScreen
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  return
+end sub
+
+' title: the tune once, START / CREDITS; the time spent here seeds the
+' random numbers
+sub TitlePage:
+  NewScreen
+  backdrop black
+  print at 3,2, "PREPARE THYSELF, BRAVE"
+  print at 3,3, "WARRIOR..."
+  print at 8,5, "VAULT OF TERROR"
+  print at 6,7, "BY C. M. BLAKEMORE"
+  ' the nine treasures, as on the original title
+  for J = 0 to 8
+    X = J * 3
+    X = X + 3
+    V = J << 2
+    V = V + TIcon
+    put char V at X,10
+    W = X + 1
+    V = V + 1
+    put char V at W,10
+    V = V + 1
+    put char V at X,11
+    V = V + 1
+    put char V at W,11
+  next
+  print at 3,13, "FIND THE CROWN OF SARNOTH"
+  print at 3,14, "AND ALL NINE TREASURES."
+  print at 12,17, "START"
+  print at 12,18, "CREDITS"
+  ' a ghost and a bat watch
+  set sprite 1 to 30,16,48,1
+  set sprite 2 to 30,16,52,15
+  set sprite 3 to 30,224,0,9
+  set sprite 4 to 30,224,4,13
+  ShowMenu
+  ShowScreen
+  update sprites
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasStk = 1
+  W16 = 0
+tp_loop:
+  Frame1
+  inc W16
+  ReadPad
+  if Stk = 0 then WasStk = 0
+  if Stk = 1 then
+    if WasStk = 0 then
+      WasStk = 1
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  if P1 = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  Seed = W16 * 251
+  Seed = Seed ^ $5A3C
+  if Seed = 0 then Seed = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,17
+  put char 32 at 10,18
+  V = Menu + 17
+  put char 62 at 10,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop black
+  print at 8,2, "VAULT OF TERROR"
+  print at 2,5, "BASED ON VAULT OF TERROR BY"
+  print at 2,6, "C. M. BLAKEMORE, AHOY!"
+  print at 2,7, "DECEMBER 1986"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: SARNOTH'S LAMENT,"
+  print at 2,18, "DRIPS IN THE VAULT"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  B1 = 0
+  B2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  V = joypad(1).button1 | joypad(2).button1
+  if V = 1 then B1 = 1
+  V = joypad(1).button2 | joypad(2).button2
+  if V = 1 then B2 = 1
+  P1 = 0
+  if B1 = 1 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  WasB1 = B1
+  P2 = 0
+  if B2 = 1 then
+    if WasB2 = 0 then P2 = 1
+  end if
+  WasB2 = B2
+  Stk = Up1 | Dn1
+  Stk = Stk | Lf1
+  Stk = Stk | Rt1
+  if Stk = 0 then
+    WasStk = 0
+    Rep = 0
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Busy = 1
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Busy = 0
+  return
+end sub
+
+data TilePat bytes
+  $80,$08,$00,$00,$00,$00,$40,$04
+  $80,$10,$02,$00,$00,$20,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $08,$08,$08,$FF,$80,$80,$80,$FF
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $88,$11,$22,$44,$88,$11,$22,$44
+  $92,$92,$92,$FF,$92,$B2,$92,$92
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$03,$01,$03,$01,$01
+  $80,$C0,$E0,$60,$C0,$E0,$C0,$C0
+  $03,$03,$07,$07,$0E,$0E,$1C,$00
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$11
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $0B,$07,$06,$09,$10,$30,$60,$00
+  $80,$00,$00,$00,$80,$00,$00,$00
+  $03,$0F,$1F,$3F,$3F,$33,$33,$3F
+  $C0,$F0,$F8,$FC,$FC,$CC,$CC,$FC
+  $3E,$3C,$38,$38,$30,$10,$00,$00
+  $7C,$3C,$1C,$1C,$0C,$08,$00,$00
+  $03,$04,$03,$07,$0C,$18,$10,$10
+  $C0,$20,$C0,$E0,$30,$18,$08,$08
+  $10,$18,$0C,$07,$00,$00,$00,$00
+  $08,$18,$30,$E0,$00,$00,$00,$00
+  $03,$0C,$13,$24,$2B,$2A,$2B,$24
+  $C0,$30,$C8,$24,$D4,$54,$D4,$24
+  $13,$0C,$03,$00,$00,$00,$00,$00
+  $C8,$30,$D0,$08,$04,$02,$02,$00
+  $03,$04,$05,$03,$01,$01,$01,$01
+  $C0,$20,$A0,$C0,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $0F,$19,$10,$19,$0F,$06,$06,$06
+  $00,$80,$80,$80,$00,$00,$00,$00
+  $07,$06,$07,$06,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $02,$01,$03,$07,$0F,$1F,$3D,$3A
+  $40,$80,$C0,$E0,$F0,$F8,$BC,$5C
+  $3D,$3A,$3D,$1F,$0F,$00,$00,$00
+  $BC,$5C,$BC,$F8,$F0,$00,$00,$00
+  $00,$00,$21,$33,$3B,$3F,$36,$3F
+  $00,$00,$84,$CC,$DC,$FC,$6C,$FC
+  $3F,$1F,$00,$00,$00,$00,$00,$00
+  $FC,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$FC,$FC,$FC,$FC,$FC,$FC,$00
+end data
+data TileCol bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $26,$26,$26,$26,$26,$26,$26,$26
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$91,$91,$81,$61,$91,$91
+  $B1,$B1,$91,$91,$81,$61,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$E1
+  $E1,$B1,$B1,$91,$91,$91,$91,$91
+  $E1,$B1,$B1,$91,$91,$91,$91,$91
+  $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+  $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $D1,$D1,$71,$B1,$B1,$B1,$B1,$B1
+  $D1,$D1,$71,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $71,$71,$71,$71,$D1,$D1,$D1,$D1
+  $71,$71,$71,$71,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $91,$91,$B1,$B1,$B1,$B1,$B1,$A1
+  $91,$91,$B1,$B1,$B1,$B1,$B1,$A1
+  $B1,$A1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$A1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$81,$B1,$B1,$B1,$41,$B1
+  $B1,$B1,$81,$B1,$B1,$B1,$41,$B1
+  $A1,$A1,$B1,$B1,$B1,$B1,$B1,$B1
+  $A1,$A1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+end data
+data Dim0 bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B6,$B6,$B6,$B6,$B6,$B6,$B6,$B6
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B6,$B6,$B6,$B6,$B6,$B6,$B6,$B6
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $46,$46,$46,$46,$46,$46,$46,$46
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $46,$46,$46,$46,$46,$46,$46,$46
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+end data
+data Dim1 bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $19,$19,$19,$19,$19,$19,$19,$19
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $96,$96,$96,$96,$96,$96,$96,$96
+  $19,$19,$19,$19,$19,$19,$19,$19
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $96,$96,$96,$96,$96,$96,$96,$96
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $46,$46,$46,$46,$46,$46,$46,$46
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $46,$46,$46,$46,$46,$46,$46,$46
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $19,$19,$19,$19,$19,$19,$19,$19
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+end data
+data Dim2 bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $76,$76,$76,$76,$76,$76,$76,$76
+  $19,$19,$19,$19,$19,$19,$19,$19
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $96,$96,$96,$96,$96,$96,$96,$96
+  $19,$19,$19,$19,$19,$19,$19,$19
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $96,$96,$96,$96,$96,$96,$96,$96
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $56,$56,$56,$56,$56,$56,$56,$56
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $56,$56,$56,$56,$56,$56,$56,$56
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $46,$46,$46,$46,$46,$46,$46,$46
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $46,$46,$46,$46,$46,$46,$46,$46
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $66,$66,$66,$66,$66,$66,$66,$66
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $19,$19,$19,$19,$19,$19,$19,$19
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+end data
+data Dim3 bytes
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $11,$11,$11,$11,$11,$11,$11,$11
+end data
+data Dim4 bytes
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $16,$16,$16,$16,$16,$16,$16,$16
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+end data
+data Dim5 bytes
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$02,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C2,$E5,$FF,$F7,$E2,$C1,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$43,$A7,$FF,$EF,$47,$83,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$08,$0F,$0F,$0D,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$F0,$F0,$B0,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$1B,$13,$17,$0A,$07,$00,$2F,$25,$2F,$0A,$03,$06,$04,$0C,$1C
+  $F0,$D8,$C8,$E8,$50,$E0,$00,$F4,$A4,$F4,$50,$C0,$60,$20,$30,$38
+  $00,$00,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$07,$03,$07,$07,$03,$03,$06,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$C0,$E0,$E0,$C0,$C0,$60,$00,$00,$00,$00
+  $00,$00,$04,$00,$07,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$20,$00,$E0,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C7,$6B,$1F,$08,$05,$1F,$3F,$37,$37,$07,$06,$06,$0E,$00,$00
+  $01,$E3,$D6,$F8,$10,$A0,$F8,$FC,$EC,$EC,$E0,$60,$60,$70,$00,$00
+  $00,$00,$00,$00,$00,$02,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0B,$0F,$03,$07,$07,$03,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$D0,$F0,$C0,$E0,$E0,$C0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$06,$06,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$60,$60,$00,$80,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $07,$1F,$3F,$39,$79,$7F,$7E,$7C,$7E,$7F,$7F,$7F,$7F,$6E,$44,$00
+  $E0,$F8,$FC,$9C,$9E,$FE,$7E,$3E,$7E,$FE,$FE,$FE,$FE,$76,$22,$00
+  $00,$00,$00,$00,$00,$03,$03,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$07,$0F,$0F,$0F,$0F,$0F,$0A,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$F0,$F0,$F0,$F0,$F0,$50,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$02,$00,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$40,$00,$00,$80,$00,$00,$00,$00,$00,$00
+  $80,$40,$23,$17,$8F,$7D,$0D,$3F,$5F,$8E,$13,$20,$40,$80,$00,$00
+  $01,$02,$C4,$E8,$F1,$B6,$B0,$FC,$FA,$71,$C8,$04,$02,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$07,$0F,$07,$0F,$05,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$E0,$F0,$E0,$F0,$A0,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$05,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$A0,$00,$00,$00,$80,$80,$80,$00,$00,$00,$00,$00,$00
+  $07,$0F,$0F,$08,$07,$03,$0F,$1F,$3D,$3D,$0E,$0E,$0E,$0E,$1E,$00
+  $E0,$F0,$F0,$10,$E0,$C0,$F0,$78,$3C,$3C,$70,$70,$70,$70,$78,$00
+  $00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$03,$07,$07,$03,$03,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$C0,$E0,$60,$C0,$C0,$E0,$00,$00,$00,$00
+  $00,$00,$0C,$00,$0F,$05,$00,$00,$00,$00,$00,$00,$18,$00,$00,$00
+  $00,$00,$30,$00,$F0,$A0,$00,$00,$00,$00,$00,$00,$18,$00,$00,$00
+  $0F,$1F,$13,$1F,$10,$0A,$7F,$FF,$FF,$EF,$EF,$0E,$06,$0E,$1E,$00
+  $F0,$F8,$C8,$F8,$08,$50,$FE,$FF,$FF,$F7,$F7,$70,$60,$70,$78,$00
+  $00,$00,$00,$00,$00,$02,$03,$00,$00,$00,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$C0,$00,$00,$00,$60,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$07,$07,$0F,$0F,$0F,$03,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$F0,$F0,$F0,$C0,$E0,$00,$00,$00,$00
+  $20,$30,$00,$04,$04,$00,$03,$00,$00,$00,$00,$00,$00,$00,$18,$00
+  $04,$0C,$00,$20,$20,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$18,$00
+  $00,$00,$1F,$3B,$3B,$3F,$1C,$8F,$DF,$FF,$EF,$CF,$0E,$0E,$00,$00
+  $00,$00,$F8,$DC,$DC,$FC,$38,$F1,$FB,$FF,$F7,$F3,$70,$70,$00,$00
+  $00,$00,$00,$00,$04,$02,$02,$01,$00,$00,$00,$06,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$40,$80,$00,$00,$00,$60,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$07,$0F,$0F,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$E0,$F0,$F0,$F0,$C0,$00,$00,$00,$00,$00
+  $20,$70,$F8,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$30,$F8,$30,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$20,$F8,$70,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$60,$F8,$60,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$80,$FF,$80,$FF,$80,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$40,$F0,$10,$FC,$04,$FF,$00
+  $00,$00,$00,$00,$00,$00,$03,$02,$0F,$08,$3F,$20,$FF,$80,$FF,$00
+  $00,$00,$00,$00,$FF,$81,$FF,$01,$FF,$01,$FF,$01,$FF,$01,$FF,$00
+  $00,$00,$00,$00,$00,$03,$04,$04,$0F,$0E,$0E,$0F,$0F,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$20,$20,$F0,$70,$70,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$0F,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F0,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$02,$03,$03,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$40,$C0,$C0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$00,$00,$00,$00
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+end data
+' the vault from the listing's DATA: 15 rows of 16 cells (low byte, bits 8-9)
+data DlLo bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,8,2,1,2,1,0,1,1,1,0,1,96,4,2,0
+  0,1,0,16,0,1,0,1,0,1,32,1,0,2,2,0
+  0,1,0,1,1,2,16,1,0,1,0,1,0,0,1,0
+  0,4,1,2,0,1,0,1,2,1,1,2,1,0,4,0
+  0,1,0,1,0,1,1,1,0,0,0,0,1,0,0,0
+  0,2,1,1,1,1,32,1,1,4,1,2,1,1,34,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,2,1,1,2,16,2,1,1,1,0,2,2,2,2,0
+  0,1,0,1,0,1,0,1,0,1,1,1,1,216,2,0
+  0,2,1,1,0,1,2,1,2,1,0,32,2,2,2,0
+  0,0,0,2,0,1,0,1,0,1,0,129,0,0,0,0
+  0,24,1,1,1,1,0,2,1,1,0,1,65,0,24,0
+  0,1,0,0,1,0,1,1,0,1,0,1,0,0,1,0
+  0,1,2,2,1,2,1,0,0,168,0,129,2,1,1,0
+end data
+data DlHi bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+' a step for each heading (1 east, 2 south, 3 west, 4 north); 255 is -1
+data DStep bytes
+  0,1,16,255,240
+end data
+' the arrow sprite for each heading, the letter for it
+data ArrowP bytes
+  0,132,136,140,128
+end data
+data FaceC bytes
+  32,69,83,87,78
+end data
+data BitT bytes
+  1,2,4,8,16,32,64,128
+end data
+' the kinds of the 16 monsters (line 144): 1 bat, 2 skeleton, 3 goblin,
+' 4 ghost, 5 spider, 6 thief, 7 troll, 8 demon
+data MType bytes
+  1,1,2,2,3,3,4,5,5,6,6,6,7,7,7,8
+end data
+' monster colours by kind: the top layer (eyes) and the body
+data MTopC bytes
+  0,9,6,11,1,8,15,8,11
+end data
+data MBodyC bytes
+  0,13,14,12,15,9,4,2,8
+end data
+
+asm {
+; VtRnd: 16-bit xorshift (7, 9, 8) on Rs
+VtRnd:
+  ld hl,(AMY_UVAR_Rs)
+  ld a,h
+  rra
+  ld a,l
+  rra
+  xor h
+  ld h,a
+  ld a,l
+  rra
+  ld a,h
+  rra
+  xor l
+  ld l,a
+  xor h
+  ld h,a
+  ld (AMY_UVAR_Rs),hl
+  ret
+
+; VtBlit: the 16 x 16 view buffer Vb to the name table, columns 2-17 of
+; rows 1-16 (called with the NMI off)
+VtBlit:
+  ld hl,AMY_UVAR_Vb
+  ld de,$5822
+  ld c,16
+VtBlitRow:
+  ld a,e
+  out ($BF),a
+  ld a,d
+  out ($BF),a
+  ld b,16
+VtBlitCol:
+  ld a,(hl)
+  out ($BE),a
+  inc hl
+  djnz VtBlitCol
+  ld a,e
+  add a,32
+  ld e,a
+  jr nc,VtBlitNc
+  inc d
+VtBlitNc:
+  dec c
+  jr nz,VtBlitRow
+  ret
+VtStep:
+    db $00,$00,$23,$01,$00,$00,$53,$02,$10
+VtBump:
+    db $40,$FF,$13,$03,$40,$FF,$33,$05,$50
+VtTurn:
+    db $80,$7F,$50,$01,$80,$7F,$70,$01,$90
+VtSwing:
+    db $00,$00,$31,$01,$00,$00,$22,$02,$00,$00,$53,$03,$10
+VtHit:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$05,$10
+VtKill:
+    db $40,$1D,$11,$03,$40,$53,$21,$03,$40,$AB,$21,$03,$40,$3B,$32,$04,$40,$56,$43,$0A,$50
+VtOuch:
+    db $40,$FC,$11,$02,$40,$5D,$22,$03,$40,$F9,$32,$06,$50
+VtTake:
+    db $80,$8F,$20,$02,$80,$6B,$20,$02,$80,$55,$40,$04,$90
+VtDrop:
+    db $80,$D6,$30,$02,$80,$1D,$41,$04,$90
+VtTorch:
+    db $00,$00,$27,$02,$00,$00,$36,$04,$00,$00,$57,$08,$00,$00,$67,$08,$10
+VtRing:
+    db $80,$47,$30,$03,$80,$35,$30,$03,$80,$47,$40,$03,$80,$35,$40,$03,$80,$2A,$50,$06,$90
+VtDown:
+    db $40,$D6,$20,$03,$40,$FE,$20,$03,$40,$41,$21,$03,$40,$7C,$21,$03,$40,$FC,$31,$08,$50
+VtUp:
+    db $40,$FC,$21,$03,$40,$7C,$21,$03,$40,$41,$21,$03,$40,$FE,$20,$03,$40,$D6,$30,$08,$50
+VtUnlock:
+    db $80,$5F,$20,$02,$80,$FF,$83,$04,$80,$47,$20,$02,$80,$5F,$40,$06,$90
+VtThief:
+    db $80,$55,$20,$02,$80,$5F,$20,$02,$80,$6B,$20,$02,$80,$7F,$30,$02,$80,$8F,$30,$02,$80,$AA,$50,$06
+    db $90
+VtGrowl:
+    db $40,$F9,$23,$04,$40,$FF,$23,$04,$40,$FF,$33,$04,$40,$FF,$43,$08,$50
+VtFizz:
+    db $00,$00,$37,$03,$00,$00,$57,$06,$10
+VtSlain:
+    db $40,$7C,$21,$0C,$40,$94,$21,$0C,$40,$AB,$31,$0C,$40,$F9,$42,$24,$50
+VtWin:
+    db $80,$BF,$10,$06,$80,$97,$10,$06,$80,$7F,$10,$06,$80,$5F,$10,$06,$80,$7F,$10,$06,$80,$5F,$30,$18
+    db $90
+VtTick:
+    db $80,$40,$30,$01,$80,$40,$60,$02,$90
+
+VtSoundTable:
+    dw VtTuneMel,$702B
+    dw VtTuneBass,$7035
+    dw VtDeepMel,$702B
+    dw VtDeepBass,$7035
+    dw VtStep,$703F
+    dw VtBump,$7049
+    dw VtTurn,$7053
+    dw VtSwing,$703F
+    dw VtHit,$703F
+    dw VtKill,$7049
+    dw VtOuch,$7049
+    dw VtTake,$7053
+    dw VtDrop,$7053
+    dw VtTorch,$703F
+    dw VtRing,$7053
+    dw VtDown,$7049
+    dw VtUp,$7049
+    dw VtUnlock,$7053
+    dw VtThief,$7053
+    dw VtGrowl,$7049
+    dw VtFizz,$703F
+    dw VtSlain,$7049
+    dw VtWin,$7053
+    dw VtTick,$7053
+; Sarnoth's Lament (original)
+; Tiny Sound, 8 frames per step
+VtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$1A,$21,$15,$01,$01,$18,$01,$1C,$01,$1A,$01,$18,$01,$17
+    db $01,$01,$01,$14,$01,$17,$01,$1C,$01,$01,$01,$1A,$01,$18,$01,$17
+    db $01,$15,$01,$1C,$01,$01,$1D,$01,$1C,$01,$1A,$01,$18,$01,$9A,$01
+    db $01,$01,$17,$01,$18,$01,$15,$01,$14,$01,$10,$01,$15,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+VtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$18,$32,$09,$01,$04,$01,$09,$01,$04,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$04,$01,$0B,$01,$04,$01,$08,$01,$09,$01,$04,$01
+    db $09,$01,$01,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$04,$01
+    db $09,$01,$01,$01
+    db $FF
+
+; Drips in the Vault (original)
+; Tiny Sound, 8 frames per step
+VtDeepMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$90,$1A,$21,$01,$01,$01,$01,$01,$01,$01,$01,$28,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $24,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $23,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$21,$01
+    db $01,$01,$01,$01
+    db $FF
+VtDeepBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$09,$01,$09,$01,$01,$01,$01,$01,$09,$01,$09,$01
+    db $01,$01,$01,$01,$09,$01,$09,$01,$01,$01,$01,$01,$08,$01,$08,$01
+    db $01,$01,$01,$01,$05,$01,$05,$01,$01,$01,$01,$01,$05,$01,$05,$01
+    db $01,$01,$01,$01,$04,$01,$04,$01,$01,$01,$01,$01,$04,$01,$04,$01
+    db $01,$01,$01,$01
+    db $FF
+}

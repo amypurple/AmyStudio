@@ -1,0 +1,1180 @@
+cartridge "SPRAY-CAM/BOB BLACKMER/1987"
+
+' SPRAY-CAM
+' A ColecoVision game based on "Spray-Cam" by Bob Blackmer, Ahoy! October
+' 1987 (Commodore 64, machine code with a one-line BASIC loader). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' The game: an exhaust plant has four tanks, and somewhere on their inside
+' walls are ten cracks. A camera hangs from a trolley on an overhead rail.
+' Roll the trolley over a tank, lower the camera in, look round the four
+' walls and up and down them on the monitor, and when a crack sits in the
+' middle of the picture, spray it shut. When every crack is sealed, bring
+' the camera home to the dock at the right end of the rail: ALL CLEAR.
+'
+' From the original (orig/, read from its machine code, spray-ml.dis, and
+' played in jsc64): four tanks under one rail, the trolley parked at the
+' right end; the camera can roll only while it is up and can go down only
+' when it is right over a tank's hatch; a tank's inside is four walls, each
+' five cells across and fifty rows deep, seen three rows at a time; down
+' at the bottom of the drop scrolls deeper, up scrolls back and, at the top
+' row, raises the camera; four view directions; cracks only in the middle
+' column of a wall, on rows 2-44, ten placed at random in the four tanks;
+' spraying (only with the camera all the way down) seals whatever is in
+' the middle of the picture; the monitor shows static while the camera is
+' out of a tank; the game is won by sealing every crack and parking the
+' camera home; ALL CLEAR, then a new plant.
+'
+' Liberties: joystick control instead of the C64's on-screen button panel
+' (SPRAY-CAM < > down up, VIEW N/E/S/W, REPAIR chosen with the stick and
+' pressed with fire): the stick rolls, lowers, scrolls and turns the
+' camera, the button sprays; left and right turn the view a quarter at a
+' time (the C64 picked one of four directly); pressing down near a tank
+' slides the trolley onto its hatch (the C64 needed the exact position);
+' the C64 could place two cracks on the same spot (nine to find), here
+' there are always ten; a row of lamps shows the cracks left, and spraying
+' a sound wall says so (the C64 gave no count and no message: the player
+' learnt that cracks remained only when parking home did nothing); the
+' camera's depth is shown by a marker on the tank's side (the C64 drew a
+' mark into the tank picture); a shift clock and a spray count are shown
+' and the best time is kept (the C64 had no clock or score: there is no way
+' to lose, as in the original); the monitor's cells are 2 x 2 tiles
+' (steel plates, welded seams, a glowing crack, a green patch), the
+' static changes three times a second; speeds in sixtieths of a second:
+' the trolley rolls a pixel a frame (the C64 about 1.1), the camera drops
+' a pixel a frame, a held stick scrolls a row every 4 frames after a
+' first step; sounds and the title tune are new (the C64 only hissed).
+'
+' Controls: joystick only (either controller). Camera up: left and right
+' roll the trolley, down lowers the camera into the tank below. Camera
+' down: down and up look deeper and higher (up at the top raises the
+' camera), left and right turn the view, a side button sprays.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TCplateA00 = 128
+const TCplateA01 = 129
+const TCplateA10 = 130
+const TCplateA11 = 131
+const TCplateB00 = 132
+const TCplateB01 = 133
+const TCplateB10 = 134
+const TCplateB11 = 135
+const TCseam00 = 136
+const TCseam01 = 137
+const TCseam10 = 138
+const TCseam11 = 139
+const TCcrack00 = 140
+const TCcrack01 = 141
+const TCcrack10 = 142
+const TCcrack11 = 143
+const TCpatch00 = 144
+const TCpatch01 = 145
+const TCpatch10 = 146
+const TCpatch11 = 147
+const TCstaticA00 = 148
+const TCstaticA01 = 149
+const TCstaticA10 = 150
+const TCstaticA11 = 151
+const TCstaticB00 = 152
+const TCstaticB01 = 153
+const TCstaticB10 = 154
+const TCstaticB11 = 155
+const TCmistA00 = 156
+const TCmistA01 = 157
+const TCmistA10 = 158
+const TCmistA11 = 159
+const TCmistB00 = 160
+const TCmistB01 = 161
+const TCmistB10 = 162
+const TCmistB11 = 163
+const TRail = 164
+const TPost = 165
+const TDock = 166
+const TLidl = 167
+const THatchl = 168
+const THatchr = 169
+const TLidr = 170
+const TWalll = 171
+const TWallm = 172
+const TBand = 173
+const TBandl = 174
+const TWallr = 175
+const TBandr = 176
+const TBase = 177
+const TFloor = 178
+const TPipe = 179
+const TBz_tl = 180
+const TBz_t = 181
+const TBz_tr = 182
+const TBz_l = 183
+const TBz_r = 184
+const TBz_bl = 185
+const TBz_b = 186
+const TBz_br = 187
+const TAimr = 188
+const TAiml = 189
+const TAimd = 190
+const TLampon = 191
+const TLampoff = 192
+const TBlk = 193
+const STrolley = 0
+const SCamN = 4
+const SCamE = 8
+const SCamS = 12
+const SCamW = 16
+const SCable = 20
+const SMark = 24
+const NTiles8 = 528
+const SprBytes = 224
+const TCell = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRoll = 3
+const SndWinch = 4
+const SndClick = 5
+const SndTurn = 6
+const SndSpray = 7
+const SndFixed = 8
+const SndNope = 9
+const SndDock = 10
+const SndStart = 11
+const SndClear = 12
+const NCrack = 10
+const TxMin = 16
+const TxHome = 212
+const CamLow = 40
+const MaxDep = 47
+const RailY = 19
+const CamY = 31
+const TankTop = 63
+const MonRow = 16
+const MonCol = 4
+const MsgRow = 21
+' cell kinds (art.py order)
+const CPlateA = 0
+const CPlateB = 1
+const CSeam = 2
+const CCrack = 3
+const CPatch = 4
+const CStatA = 5
+const CStatB = 6
+const CMistA = 7
+const CMistB = 8
+
+' the trolley's x over each tank's hatch, the tanks' first columns
+data TankX bytes 32,80,128,176
+data TankCol bytes 3,9,15,21
+data CamSpr bytes SCamN,SCamE,SCamS,SCamW
+
+data TilePat bytes
+  $00,$60,$60,$00,$00,$00,$00,$00
+  $00,$06,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$60,$00
+  $00,$00,$00,$00,$00,$06,$06,$00
+  $00,$60,$60,$00,$00,$00,$00,$00
+  $00,$06,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$60,$00
+  $00,$00,$00,$00,$00,$06,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$AA
+  $00,$00,$00,$00,$00,$00,$00,$AA
+  $AA,$00,$00,$00,$00,$00,$00,$00
+  $AA,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$02,$06,$0C,$03
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $02,$03,$0D,$1A,$0E,$00,$00,$00
+  $80,$80,$00,$00,$80,$C0,$00,$00
+  $00,$07,$07,$C0,$C0,$0C,$80,$80
+  $00,$E0,$07,$03,$03,$02,$02,$02
+  $80,$80,$C0,$C0,$07,$07,$00,$00
+  $02,$02,$03,$03,$07,$E0,$00,$00
+  $20,$04,$40,$00,$11,$00,$80,$08
+  $42,$00,$88,$00,$01,$20,$04,$00
+  $00,$20,$02,$00,$40,$04,$00,$40
+  $80,$08,$00,$02,$40,$00,$10,$01
+  $04,$40,$00,$08,$40,$00,$00,$10
+  $08,$00,$20,$01,$00,$88,$00,$01
+  $01,$00,$80,$08,$00,$20,$00,$04
+  $00,$10,$00,$40,$04,$00,$80,$02
+  $00,$00,$00,$03,$07,$F0,$E0,$E0
+  $00,$00,$00,$80,$C0,$E0,$F0,$F0
+  $E0,$F0,$07,$03,$00,$00,$00,$00
+  $F0,$E0,$C0,$80,$00,$00,$00,$00
+  $03,$F0,$E0,$C0,$80,$80,$00,$00
+  $C0,$F0,$07,$03,$01,$01,$00,$00
+  $00,$00,$80,$80,$C0,$E0,$F0,$03
+  $00,$00,$01,$01,$03,$07,$F0,$C0
+  $00,$00,$81,$42,$24,$18,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$00,$07,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$C0,$C0,$C0,$00
+  $00,$00,$00,$00,$03,$03,$03,$00
+  $00,$00,$E0,$07,$03,$02,$02,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$00,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$AA,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$60,$60,$60,$60,$60
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$02,$06,$06,$06,$06,$06
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $60,$60,$60,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $06,$06,$06,$02,$01,$00,$00,$00
+  $60,$68,$93,$91,$91,$93,$68,$60
+  $06,$16,$C9,$89,$89,$C9,$16,$06
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $01,$82,$40,$40,$40,$40,$01,$00
+end data
+data TileCol bytes
+  $0E,$FE,$FE,$0E,$0E,$0E,$0E,$0E
+  $0E,$FE,$FE,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$FE,$FE,$01
+  $0E,$0E,$0E,$0E,$0E,$FE,$FE,$01
+  $07,$F7,$F7,$07,$07,$07,$07,$07
+  $07,$F7,$F7,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$F7,$F7,$01
+  $07,$07,$07,$07,$07,$F7,$F7,$01
+  $0E,$0E,$0E,$0E,$0E,$01,$0A,$BA
+  $0E,$0E,$0E,$0E,$0E,$01,$0A,$BA
+  $AB,$0A,$01,$0E,$0E,$0E,$0E,$01
+  $AB,$0A,$01,$0E,$0E,$0E,$0E,$01
+  $0E,$06,$B6,$B6,$B6,$B6,$B6,$86
+  $0E,$06,$06,$06,$06,$06,$B6,$B6
+  $B6,$86,$B6,$B6,$B6,$06,$06,$01
+  $86,$B6,$06,$06,$B6,$B6,$06,$01
+  $0E,$CE,$2E,$E2,$E2,$32,$E2,$E2
+  $0E,$CE,$E2,$E2,$E2,$C2,$C2,$C2
+  $E2,$E2,$E2,$E2,$2E,$CE,$0E,$01
+  $C2,$C2,$E2,$E2,$E2,$CE,$0E,$01
+  $E1,$E1,$F1,$01,$E1,$01,$E1,$F1
+  $F1,$01,$E1,$01,$E1,$E1,$F1,$01
+  $01,$E1,$F1,$01,$F1,$E1,$01,$E1
+  $E1,$E1,$01,$F1,$E1,$01,$F1,$E1
+  $F1,$E1,$01,$E1,$F1,$01,$01,$E1
+  $E1,$01,$F1,$E1,$01,$F1,$01,$F1
+  $F1,$01,$E1,$F1,$01,$E1,$01,$F1
+  $01,$E1,$01,$E1,$F1,$01,$E1,$E1
+  $0E,$0E,$0E,$FE,$FE,$EF,$EF,$EF
+  $0E,$0E,$0E,$FE,$FE,$FE,$FE,$FE
+  $EF,$EF,$FE,$FE,$0E,$0E,$0E,$01
+  $FE,$FE,$FE,$FE,$0E,$0E,$0E,$01
+  $FE,$EF,$EF,$EF,$EF,$EF,$0F,$0F
+  $FE,$FE,$EF,$EF,$EF,$EF,$0F,$0F
+  $0F,$0F,$EF,$EF,$EF,$EF,$EF,$FE
+  $0F,$0F,$EF,$EF,$EF,$EF,$FE,$FE
+  $0E,$0F,$E1,$E1,$E1,$E1,$0E,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$1B,$B1,$B1,$B1,$B1,$1B,$01
+  $01,$01,$81,$19,$19,$19,$19,$89
+  $01,$01,$08,$09,$91,$91,$91,$09
+  $01,$01,$08,$09,$91,$91,$91,$09
+  $01,$01,$81,$19,$19,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $09,$08,$06,$09,$09,$09,$09,$09
+  $89,$08,$86,$89,$89,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89
+  $89,$08,$86,$89,$89,$89,$89,$89
+  $06,$06,$0E,$0E,$01,$01,$01,$01
+  $0E,$01,$E1,$01,$01,$01,$01,$01
+  $01,$01,$0E,$0F,$0E,$0E,$01,$01
+  $01,$1E,$1F,$E1,$E1,$E1,$E1,$E1
+  $01,$0E,$0F,$01,$01,$01,$01,$01
+  $01,$1E,$EF,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$1F,$1E,$01,$01,$01
+  $01,$01,$01,$0F,$0E,$01,$01,$01
+  $F1,$F1,$F1,$EF,$1E,$01,$01,$01
+  $E1,$E1,$1B,$1B,$1B,$1B,$E1,$E1
+  $F1,$B1,$1B,$1B,$1B,$1B,$B1,$F1
+  $01,$01,$01,$0F,$0E,$01,$01,$01
+  $01,$12,$13,$13,$13,$13,$12,$01
+  $01,$16,$18,$18,$18,$18,$16,$01
+  $1E,$EF,$FE,$FE,$FE,$FE,$1E,$01
+end data
+data SpritePat bytes
+  $3F,$6F,$47,$00,$00,$3F,$3F,$3F,$03,$01,$01,$03,$02,$00,$00,$00
+  $FC,$F6,$E2,$00,$00,$FC,$FC,$FC,$C0,$80,$80,$C0,$40,$00,$00,$00
+  $00,$0F,$1F,$3F,$3F,$3F,$37,$37,$3F,$3F,$3F,$1F,$0F,$06,$0C,$00
+  $00,$F0,$F8,$FC,$FC,$FC,$EC,$EC,$FC,$FC,$FC,$F8,$F0,$60,$30,$00
+  $00,$03,$07,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$07,$03,$01,$03,$00,$00
+  $00,$F8,$FC,$FC,$DE,$8E,$8E,$8E,$DE,$FC,$FC,$F8,$B0,$18,$00,$00
+  $00,$0F,$1F,$3F,$3C,$38,$38,$38,$38,$3C,$3F,$1F,$0F,$06,$0C,$00
+  $00,$F0,$F8,$FC,$3C,$1C,$1C,$1C,$1C,$3C,$FC,$F8,$F0,$60,$30,$00
+  $00,$1F,$3F,$3F,$7B,$71,$71,$71,$7B,$3F,$3F,$1F,$0D,$18,$00,$00
+  $00,$C0,$E0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$C0,$80,$C0,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$C0,$E0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  32,32,32,32,32,193,193,193,32,193,193,193,32,32,193,193,193,32,32,32,193,193,32,32,193,32,32,193,32,32,32,32
+  32,32,32,32,193,32,32,32,32,193,32,32,193,32,193,32,32,193,32,193,32,32,193,32,193,32,32,193,32,32,32,32
+  32,32,32,32,193,32,32,32,32,193,32,32,193,32,193,32,32,193,32,193,32,32,193,32,193,32,32,193,32,32,32,32
+  32,32,32,32,32,193,193,32,32,193,193,193,32,32,193,193,193,32,32,193,193,193,193,32,32,193,193,193,32,32,32,32
+  32,32,32,32,32,32,32,193,32,193,32,32,32,32,193,32,193,32,32,193,32,32,193,32,32,32,32,193,32,32,32,32
+  32,32,32,32,32,32,32,193,32,193,32,32,32,32,193,32,32,193,32,193,32,32,193,32,32,32,32,193,32,32,32,32
+  32,32,32,32,193,193,193,32,32,193,32,32,32,32,193,32,32,193,32,193,32,32,193,32,193,193,193,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,193,193,193,32,32,193,193,32,32,193,32,32,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,193,32,32,32,32,193,32,32,193,32,193,193,193,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,193,32,32,32,32,193,32,32,193,32,193,193,193,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,193,193,193,32,32,193,32,32,32,32,193,193,193,193,32,193,32,32,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,193,32,32,32,32,193,32,32,193,32,193,32,32,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,193,32,32,32,32,193,32,32,193,32,193,32,32,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,193,193,193,32,193,32,32,193,32,193,32,32,193,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+
+record Crack:
+  u8 Tank
+  u8 Face
+  u8 Row
+  u8 Sealed
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Va = 0
+Crack Ck[10]
+u8 ViewB[60]
+' the camera
+u8 Tx = 212
+u8 CamD = 0
+u8 Dep = 0
+u8 Face = 0
+u8 Tank = 0
+u8 Spr = 0
+u8 Left = 10
+u8 Won = 0
+u8 Static = 0
+u8 ViewOn = 0
+u8 MsgT = 0
+u8 RollC = 0
+u8 Hold = 0
+' the clock
+u8 Fr = 0
+u16 Secs = 0
+u16 Best = 0
+bcd digits 4 Sprays
+' input: J the stick (1 up, 2 down, 4 left, 8 right, 16 a button), the
+' edges, the auto-repeat counter
+u8 J = 0
+u8 OldJ = 0
+u8 Press = 0
+u8 LfE = 0
+u8 RtE = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Ki = 0
+u8 Ti = 0
+u8 Li = 0
+' the row DrawView is drawing
+u8 Vr = 0
+u8 Kr = 0
+u8 Qr = 0
+u8 Sm = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table ScSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 1
+  sprites flicker on
+  set sprite count 6
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+  DrawPlant
+  ShowScreen
+  play sound SndStart
+  Phase = 1
+  OldJ = 31
+
+play_loop:
+  Frame1
+  GetInput
+  PlayStep
+  DrawSprites
+  if Won = 0 then goto play_loop
+
+  ' ALL CLEAR on the monitor, the shift's time and sprays, then the title
+  Phase = 2
+  play sound SndClear
+  WinScreen
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a new plant: ten cracks at random places, all different
+
+sub NewGame:
+  for Ki = 0 to NCrack - 1
+    Ck[Ki].Row = 255
+  next
+  for Ki = 0 to NCrack - 1
+    PlaceCrack(Ki)
+  next
+  Tx = TxHome
+  CamD = 0
+  Dep = 0
+  Face = 0
+  Tank = 0
+  Spr = 0
+  Left = NCrack
+  Won = 0
+  Fr = 0
+  Secs = 0
+  Sprays = 0
+  MsgT = 0
+  Hold = 0
+  ViewOn = 0
+  return
+end sub
+
+' crack I: tank, wall and row 2-44 (as on the C64), again until the spot
+' is free
+sub PlaceCrack(u8 I):
+  u8 Tk = 0
+  u8 Fc = 0
+  u8 Rw = 0
+  do
+    Rand
+    Tk = Rs & 3
+    Fc = (Rs >> 2) & 3
+    Rw = (Rs >> 4) % 43
+    Rw = Rw + 2
+  loop while CrackAt(Tk, Fc, Rw) <> 255
+  Ck[I].Tank = Tk
+  Ck[I].Face = Fc
+  Ck[I].Row = Rw
+  Ck[I].Sealed = 0
+  return
+end sub
+
+' the crack placed at tank Tk, wall Fc, row Rw, or 255 (only the cracks
+' placed so far count while a plant is made: the rest are parked at row 255)
+function CrackAt(u8 Tk, u8 Fc, u8 Rw) as u8
+  for Li = 0 to NCrack - 1
+    if Ck[Li].Row = Rw then
+      if Ck[Li].Tank = Tk and Ck[Li].Face = Fc then return Li
+    end if
+  next
+  return 255
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  Clock
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then print at 16,MsgRow, "             "
+  end if
+  if Spr > 0 then
+    SprayStep
+    return
+  end if
+  if CamD = 0 then
+    Rolling
+  else
+    if CamD < CamLow then
+      Winching
+    else
+      Looking
+    end if
+  end if
+  ' the monitor: static out of the tank, three times a second
+  if CamD < CamLow then
+    ViewOn = 0
+    V = Tick % 20
+    if V = 0 then
+      Static = Static ^ 1
+      DrawStatic
+    end if
+  else
+    if ViewOn = 0 then
+      ViewOn = 1
+      DrawView
+      ShowInfo
+    end if
+  end if
+  ' every crack sealed and the camera home: the shift is over
+  if Left = 0 and CamD = 0 then
+    if Tx = TxHome then Won = 1
+  end if
+  return
+end sub
+
+' camera up: roll along the rail; down over (or near) a hatch lowers
+sub Rolling:
+  if (J & 4) <> 0 then
+    if Tx > TxMin then
+      dec Tx
+      RollTick
+    end if
+  end if
+  if (J & 8) <> 0 then
+    if Tx < TxHome then
+      inc Tx
+      RollTick
+      if Tx = TxHome then play sound SndDock
+    end if
+  end if
+  if (J & 2) <> 0 then
+    T = NearTank()
+    if T < 4 then
+      X = TankX[T]
+      if Tx < X then
+        inc Tx
+      elseif Tx > X then
+        dec Tx
+      else
+        Tank = T
+        Dep = 0
+        CamD = 1
+        ShowInfo
+      end if
+    end if
+  end if
+  if Press = 1 then Say(1)
+  return
+end sub
+
+' the tank whose hatch is within 10 pixels of the trolley, or 255
+function NearTank as u8
+  for Ti = 0 to 3
+    X = TankX[Ti]
+    if Tx + 10 >= X and Tx <= X + 10 then return Ti
+  next
+  return 255
+
+sub RollTick:
+  inc RollC
+  if RollC >= 8 then
+    RollC = 0
+    play sound SndRoll
+  end if
+  return
+end sub
+
+' the camera on its way down or up: the stick holds it
+sub Winching:
+  if (J & 2) <> 0 then inc CamD
+  if (J & 1) <> 0 then dec CamD
+  if (J & 3) <> 0 then
+    V = CamD & 7
+    if V = 0 then play sound SndWinch
+  end if
+  if CamD = 0 then ShowInfo
+  if Press = 1 then Say(1)
+  return
+end sub
+
+' camera down: scroll, turn, spray
+sub Looking:
+  N = J & 3
+  if N = 0 then
+    Hold = 0
+  else
+    inc Hold
+    if Hold >= 16 then Hold = 12
+    if Hold = 1 or Hold = 12 then
+      if N = 2 then
+        if Dep < MaxDep then
+          inc Dep
+          play sound SndClick
+          DrawView
+          ShowDepth
+        end if
+      else
+        if Dep > 0 then
+          dec Dep
+          play sound SndClick
+          DrawView
+          ShowDepth
+        else
+          dec CamD
+          play sound SndWinch
+        end if
+      end if
+    end if
+  end if
+  if LfE = 1 then
+    Face = (Face + 3) & 3
+    Turned
+  end if
+  if RtE = 1 then
+    Face = (Face + 1) & 3
+    Turned
+  end if
+  if Press = 1 then
+    Spr = 40
+    inc Sprays
+    ShowSprays
+    play sound SndSpray
+  end if
+  return
+end sub
+
+sub Turned:
+  play sound SndTurn
+  DrawView
+  ShowInfo
+  return
+end sub
+
+' the spray: a puff, a cloud, then whatever is in the middle is sealed
+sub SprayStep:
+  dec Spr
+  select case Spr
+  case 39
+    PutCell(1, 2, CMistA)
+  case 20
+    PutCell(1, 2, CMistB)
+  case 0
+    Seal
+  end select
+  return
+end sub
+
+sub Seal:
+  K = CrackAt(Tank, Face, Dep + 1)
+  if K = 255 then
+    Say(2)
+    play sound SndNope
+  elseif Ck[K].Sealed = 1 then
+    Say(2)
+    play sound SndNope
+  else
+    Ck[K].Sealed = 1
+    dec Left
+    Say(3)
+    play sound SndFixed
+    ShowLamps
+  end if
+  DrawView
+  return
+end sub
+
+' the clock: seconds of the shift, up to 99:59
+sub Clock:
+  inc Fr
+  if Fr >= 60 then
+    Fr = 0
+    if Secs < 5999 then
+      inc Secs
+      ShowTime(Secs, 25, 1)
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input: both controllers together
+
+sub GetInput:
+  J = PadOf(1) | PadOf(2)
+  Press = 0
+  LfE = 0
+  RtE = 0
+  V = J & (J ^ OldJ)
+  if (V & 16) <> 0 then Press = 1
+  if (V & 4) <> 0 then LfE = 1
+  if (V & 8) <> 0 then RtE = 1
+  OldJ = J
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the kind of cell in column Cl of the row being drawn (DrawView sets Kr,
+' the crack on that row or 255, Qr the row / 3 and Sm the row mod 6)
+function CellOf(u8 Cl) as u8
+  if Cl = 2 and Kr <> 255 then
+    if Ck[Kr].Sealed = 1 then return CPatch
+    return CCrack
+  end if
+  if Sm = 5 then return CSeam
+  V = Qr + Cl + Face
+  return V & 1
+
+' cell Kd into the RAM picture at row R, column Cl (2 x 2 tiles)
+sub SetCell(u8 R, u8 Cl, u8 Kd):
+  u16 P = 0
+  P = R * 20 + Cl * 2
+  T = TCell + Kd * 4
+  ViewB[P] = T
+  ViewB[P + 1] = T + 1
+  ViewB[P + 10] = T + 2
+  ViewB[P + 11] = T + 3
+  return
+end sub
+
+' the monitor from the wall: rows Dep to Dep + 2
+sub DrawView:
+  for Ri = 0 to 2
+    Vr = Dep + Ri
+    Kr = CrackAt(Tank, Face, Vr)
+    Qr = Vr / 3
+    Sm = Vr - (Qr >> 1) * 6
+    for Ci = 0 to 4
+      SetCell(Ri, Ci, CellOf(Ci))
+    next
+  next
+  CopyView
+  return
+end sub
+
+sub DrawStatic:
+  for Ri = 0 to 2
+    for Ci = 0 to 4
+      V = (Ri + Ci + Static) & 1
+      SetCell(Ri, Ci, CStatA + V)
+    next
+  next
+  CopyView
+  return
+end sub
+
+' one cell straight to the screen (the spray)
+sub PutCell(u8 R, u8 Cl, u8 Kd):
+  SetCell(R, Cl, Kd)
+  CopyView
+  return
+end sub
+
+sub CopyView:
+  for Ri = 0 to 5
+    Va = (MonRow + Ri) * 32 + MonCol
+    W16 = Ri * 10
+    copy ViewB + W16 count 10 to vram.name + Va
+  next
+  return
+end sub
+
+sub DrawSprites:
+  Y = CamY + CamD
+  if Phase = 1 then
+    set sprite 0 to Y,Tx,CamSpr[Face],14
+  else
+    set sprite 0 to 207,0,0,0
+  end if
+  set sprite 1 to RailY,Tx,STrolley,11
+  ' the cable: a piece for every 16 pixels of drop, behind the camera
+  for Ki = 0 to 2
+    N = Ki * 16
+    if CamD > N then
+      set sprite 2 + Ki to CamY + 1 + N,Tx,SCable,1
+    else
+      set sprite 2 + Ki to 207,0,0,0
+    end if
+  next
+  ' the depth marker beside the tank in use
+  if CamD >= CamLow then
+    X = TankCol[Tank] * 8 - 8
+    set sprite 5 to TankTop + Dep - 2,X,SMark,11
+  else
+    set sprite 5 to 207,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' the plant: rail, dock, tanks, floor, monitor, lamps, clock
+sub DrawPlant:
+  NewScreen
+  print at 2,1, "CRACKS"
+  ShowLamps
+  print at 20,1, "TIME"
+  ShowTime(0, 25, 1)
+  fill TRail count 28 at 2,3
+  print at 25,7, "DOCK"
+  put char TDock at 26,8
+  put char TDock at 27,8
+  for Ti = 0 to 3
+    DrawTank(TankCol[Ti])
+  next
+  fill TPipe count 3 at 26,12
+  fill TFloor count 28 at 2,14
+  for Ti = 0 to 3
+    C = TankCol[Ti]
+    fill TBase count 4 at C,14
+  next
+  DrawBezel
+  print at 16,MonRow, "TANK"
+  print at 16,MonRow + 1, "VIEW"
+  print at 16,MonRow + 2, "DEPTH"
+  print at 16,MonRow + 3, "SPRAYS"
+  ShowInfo
+  ShowSprays
+  Static = 0
+  DrawStatic
+  DrawSprites
+  return
+end sub
+
+' a tank whose left column is Cl: lid with a hatch, body with two bands,
+' pipes to its neighbour
+sub DrawTank(u8 Cl):
+  put char TLidl at Cl,7
+  put char THatchl at Cl + 1,7
+  put char THatchr at Cl + 2,7
+  put char TLidr at Cl + 3,7
+  for Ri = 8 to 13
+    if Ri = 9 or Ri = 12 then
+      put char TBandl at Cl,Ri
+      fill TBand count 2 at Cl + 1,Ri
+      put char TBandr at Cl + 3,Ri
+    else
+      put char TWalll at Cl,Ri
+      fill TWallm count 2 at Cl + 1,Ri
+      put char TWallr at Cl + 3,Ri
+    end if
+  next
+  fill TPipe count 2 at Cl + 4,12
+  return
+end sub
+
+sub DrawBezel:
+  put char TBz_tl at MonCol - 1,MonRow - 1
+  fill TBz_t count 10 at MonCol,MonRow - 1
+  put char TBz_tr at MonCol + 10,MonRow - 1
+  for Ri = 0 to 5
+    Y = MonRow + Ri
+    if Ri = 2 or Ri = 3 then
+      put char TAimr at MonCol - 1,Y
+      put char TAiml at MonCol + 10,Y
+    else
+      put char TBz_l at MonCol - 1,Y
+      put char TBz_r at MonCol + 10,Y
+    end if
+  next
+  put char TBz_bl at MonCol - 1,MonRow + 6
+  fill TBz_b count 10 at MonCol,MonRow + 6
+  put char TBz_br at MonCol + 10,MonRow + 6
+  return
+end sub
+
+' the lamps: green for a sealed crack, red for one still open
+sub ShowLamps:
+  for Ti = 0 to NCrack - 1
+    if Ti < NCrack - Left then
+      put char TLampon at 9 + Ti,1
+    else
+      put char TLampoff at 9 + Ti,1
+    end if
+  next
+  return
+end sub
+
+' seconds S as m:ss at column X, row Y
+sub ShowTime(u16 S, u8 X, u8 Y):
+  u16 M = 0
+  u16 Sc = 0
+  M = S / 60
+  Sc = S - M * 60
+  print at X,Y, digits$(M, 2) + ":" + digits$(Sc, 2)
+  return
+end sub
+
+sub ShowInfo:
+  if CamD = 0 then
+    print at 23,MonRow, "-"
+  else
+    N = Tank + 1
+    print at 23,MonRow, digits$(N, 1)
+  end if
+  select case Face
+  case 0
+    print at 23,MonRow + 1, "NORTH"
+  case 1
+    print at 23,MonRow + 1, "EAST "
+  case 2
+    print at 23,MonRow + 1, "SOUTH"
+  case else
+    print at 23,MonRow + 1, "WEST "
+  end select
+  ShowDepth
+  return
+end sub
+
+sub ShowDepth:
+  N = Dep + 1
+  print at 23,MonRow + 2, digits$(N, 2)
+  return
+end sub
+
+sub ShowSprays:
+  print Sprays at 23,MonRow + 3
+  return
+end sub
+
+' a message under the panel for two seconds
+sub Say(u8 M):
+  select case M
+  case 1
+    print at 16,MsgRow, "LOWER FIRST! "
+  case 2
+    print at 16,MsgRow, "WALL IS SOUND"
+  case 3
+    print at 16,MsgRow, "CRACK SEALED!"
+  end select
+  MsgT = 120
+  return
+end sub
+
+sub WinScreen:
+  HideSprites
+  fill 32 count 10 at MonCol,MonRow
+  fill 32 count 10 at MonCol,MonRow + 1
+  fill 32 count 10 at MonCol,MonRow + 2
+  fill 32 count 10 at MonCol,MonRow + 3
+  fill 32 count 10 at MonCol,MonRow + 4
+  fill 32 count 10 at MonCol,MonRow + 5
+  print at MonCol + 3,MonRow + 1, "ALL"
+  print at MonCol + 3,MonRow + 3, "CLEAR"
+  print at 16,MsgRow, "SHIFT OVER   "
+  if Best = 0 or Secs < Best then
+    Best = Secs
+    print at 16,MsgRow + 1, "BEST TIME!"
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for K = 0 to 5
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub TitlePage:
+  Phase = 0
+  NewScreen
+  copy TitleMap count 512 to vram.name + 32
+  print at 4,18, "SEAL THE TEN CRACKS IN"
+  print at 4,19, "THE EXHAUST TANKS"
+  print at 8,21, "PRESS THE BUTTON"
+  if Best > 0 then
+    print at 9,22, "BEST"
+    ShowTime(Best, 14, 22)
+  end if
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  OldJ = 31
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  GetInput
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "SPRAY-CAM"
+  print at 2,5, "BASED ON SPRAY-CAM BY"
+  print at 2,6, "BOB BLACKMER, AHOY!"
+  print at 2,7, "OCTOBER 1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: NIGHT SHIFT"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+ScRoll:
+    db $40,$F9,$A3,$01,$40,$FF,$C3,$01,$50
+ScWinch:
+    db $40,$3B,$82,$02,$40,$FC,$91,$02,$50
+ScClick:
+    db $40,$47,$70,$01,$40,$47,$F0,$01,$50
+ScTurn:
+    db $40,$AA,$50,$02,$40,$7F,$60,$03,$50
+ScSpray:
+    db $00,$00,$27,$0A,$00,$00,$37,$0A,$00,$00,$47,$0A,$00,$00,$67,$0A,$10
+ScFixed:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$55,$20,$08,$50
+ScNope:
+    db $40,$F9,$32,$06,$40,$56,$43,$08,$50
+ScDock:
+    db $40,$D6,$40,$03,$40,$1D,$41,$06,$50
+ScStart:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$0A,$50
+ScClear:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneBass,$7035
+    dw ScRoll,$7049
+    dw ScWinch,$7049
+    dw ScClick,$7049
+    dw ScTurn,$7049
+    dw ScSpray,$703F
+    dw ScFixed,$7049
+    dw ScNope,$7049
+    dw ScDock,$7049
+    dw ScStart,$7049
+    dw ScClear,$7049
+; Night Shift (original)
+; Tiny Sound, 8 frames per step
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$01,$01,$21,$01,$1F,$01
+    db $1E,$01,$01,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$24,$01,$23,$01,$21,$01,$01,$01,$1F,$01,$1E,$01
+    db $1A,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$1A,$01,$15,$01
+    db $1A,$01,$15,$01,$10,$01,$17,$01,$10,$01,$17,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$15,$01,$1C,$01,$15,$01,$10,$01,$1A,$01,$15,$01
+    db $1A,$01,$15,$01,$17,$01,$1E,$01,$17,$01,$1E,$01,$10,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

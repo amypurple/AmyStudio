@@ -1,0 +1,1401 @@
+cartridge "DESERT FRONT/A.THOMASON/1987"
+
+' DESERT FRONT
+' A ColecoVision game based on "Desert Front" by Alan Thomason, Ahoy!
+' November 1987 (Commodore 64 machine language, DESERT FRONT ML at $C000,
+' started by a two-line BASIC loader). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/desert-ml.dis), the game is built for the
+' ColecoVision: a desert horizon of dunes, red mesas, rocks and cacti all
+' the way round, a sandbagged twin gun seen from behind, a grey raider with
+' no markings, smooth sprites, sound effects.
+'
+' The game: you are the lone outpost on the desert front. A raider circles
+' you. Turn the gun (the horizon turns with it), set the height where your
+' shells burst, and fire. Shoot it down before your TIME runs out; every
+' bomb it drops on you adds to the DAMAGE; firing heats the gun (TEMP).
+' Let any of the three gauges run out and the battle is lost. Each raider
+' shot down is worth 100 points plus one point for every step left on the
+' three gauges; then they are reset and the next raider, a little faster,
+' comes in.
+'
+' From the original (orig/): the panoramic horizon that the stick turns
+' (one column a step; the raider and its bomb shift with it); up and down
+' set the shell's burst height and the gun's barrel pose (six poses); the
+' button fires when no shell is in the air, and keeps firing while held;
+' the shell climbs from the gun in the middle of the view and shrinks, and
+' only hits near the end of its climb; the three gauges (TEMP, DAMAGE,
+' TIME) of four cells with eight steps each: TEMP starts at 1 step and
+' rises a step a shot, falls a step every 25 passes while the gun is idle
+' and the button is up, never below 1; DAMAGE starts at 1, TIME starts
+' full and loses a step at a steady pace (about 28 seconds a raider); a
+' full TEMP or DAMAGE or an empty TIME ends the game. The raider: it flies
+' left or right; its turn counter (0-139) rises every step, twice as fast
+' while it is in the middle of the view, where reaching 110 makes it turn
+' round and drop a bomb; at 135 it turns back if it is at the left or
+' right of the view and flying out; a turn shows it head-on for a moment.
+' It shies away from your aim: when it is more than a set height below the
+' burst height it dives, otherwise it climbs, between a ceiling and a
+' floor. Out of view it flies back towards you the short way round. The
+' bomb grows as it comes at you and hits the outpost. A kill: 100 points,
+' the raider burns and falls, the gauges are counted into the score one
+' step at a time (DAMAGE up to full, TIME down to empty, TEMP up to full),
+' then reset; each raider flies faster (the C64 cut its step delay by 5,
+' from 180).
+'
+' Liberties: the horizon is 256 columns all the way round (the C64 read
+' past its 256-byte table into other data at the far end); the raider and
+' its bomb shift a whole column (8 pixels) with the horizon (the C64 moved
+' them 6 pixels for an 8-pixel column); speeds are worked out for a human
+' player: the horizon turns a column every 3 frames (the C64 turned one a
+' pass, about 55 a second), the burst height moves a pixel a frame, the
+' shell climbs in 12 to 18 frames (the C64 took about a quarter of a
+' second), the bomb takes 96 frames to arrive (the C64's grew in 7 passes,
+' about an eighth of a second, too fast to see) and can be shot down for
+' 10 points (on the C64 a far shell touching the bomb counted as the
+' raider shot down); a bomb adds 3 steps of DAMAGE (the C64 added 1, which
+' never mattered before TIME ran out); the raider's speed rises to at
+' most 1.9 pixels a frame (from the 11th raider; the C64's delay wrapped round to slow
+' after 36); the next raider comes in from the far side of the horizon
+' (the C64 started it at column 0); a sight shows where the shell will
+' burst and arrows at the horizon's edges point to a raider out of view
+' (the C64 had neither: only the barrel's pose); the raider shies from the
+' sight only when it is within 20 pixels of it, and otherwise flies at a
+' cruising height it picks at random at each turn (the C64's raider
+' always climbed unless the aim was far above it, so a gun left aimed at
+' the ceiling met it there every time); the turn in the middle of the
+' view comes when the counter reaches 110 or 111 (the C64 tested 110 only,
+' and the counter, rising by two there, could miss it for ever, so a
+' raider that the gun followed never turned or bombed); collisions are box tests
+' (the C64 used its sprite collision register); GAME OVER says which gauge
+' ran out; the best score is kept. The C64's space-bar pause is left out
+' (no keypad).
+'
+' Controls: controller 1 (or 2): left and right turn the gun, up and down
+' raise and lower the burst height, either button fires. On the title, up
+' and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TSky3 = 131
+const TArL = 132
+const TArR = 133
+const TFlat = 134
+const TDuneL = 135
+const TDuneM = 136
+const TDuneR = 137
+const TMesaL = 138
+const TMesaM = 139
+const TMesaR = 140
+const TRock = 141
+const TCactus = 142
+const TRuin = 143
+const TSand0 = 144
+const TSand1 = 145
+const TSand2 = 146
+const TBagT = 147
+const TBag = 148
+const TGt0L = 149
+const TGt0R = 150
+const TGt1L = 151
+const TGt1R = 152
+const TGt2L = 153
+const TGt2R = 154
+const TGt3L = 155
+const TGt3R = 156
+const TGt4L = 157
+const TGt4R = 158
+const TGt5L = 159
+const TGt5R = 160
+const TGt6L = 161
+const TGt6R = 162
+const TGt7L = 163
+const TGt7R = 164
+const TGt8L = 165
+const TGt8R = 166
+const TGd0L = 167
+const TGd0R = 168
+const TGd1L = 169
+const TGd1R = 170
+const TGd2L = 171
+const TGd2R = 172
+const TGd3L = 173
+const TGd3R = 174
+const TGd4L = 175
+const TGd4R = 176
+const TGd5L = 177
+const TGd5R = 178
+const TGd6L = 179
+const TGd6R = 180
+const TGd7L = 181
+const TGd7R = 182
+const TGd8L = 183
+const TGd8R = 184
+const TGm0L = 185
+const TGm0R = 186
+const TGm1L = 187
+const TGm1R = 188
+const TGm2L = 189
+const TGm2R = 190
+const TGm3L = 191
+const TGm3R = 192
+const TGm4L = 193
+const TGm4R = 194
+const TGm5L = 195
+const TGm5R = 196
+const TGm6L = 197
+const TGm6R = 198
+const TGm7L = 199
+const TGm7R = 200
+const TGm8L = 201
+const TGm8R = 202
+const TGtop = 203
+const TGbot = 204
+const TTbk = 205
+const SGund = 0
+const SGunb = 4
+const SBar0 = 8
+const SBar1 = 12
+const SBar2 = 16
+const SBar3 = 20
+const SBar4 = 24
+const SBar5 = 28
+const SSight = 32
+const SSh0 = 36
+const SSh1 = 40
+const SSh2 = 44
+const SSh3 = 48
+const SPf0 = 52
+const SPf1 = 56
+const SPrd = 60
+const SPrb = 64
+const SPld = 68
+const SPlb = 72
+const SPfd = 76
+const SPfb = 80
+const SBm0 = 84
+const SBm1 = 88
+const SBm2 = 92
+const SBm3 = 96
+const SEx0i = 100
+const SEx0o = 104
+const SEx1i = 108
+const SEx1o = 112
+const NTiles8 = 624
+const SprBytes = 928
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndPop = 4
+const SndWhistle = 5
+const SndBoom = 6
+const SndDown = 7
+const SndTick = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 10
+const AimMin = 12
+const AimMax = 92
+const PyMin = 160
+const PyMax = 1344
+const GaugeTop = 32
+const TimeRate = 54
+const CoolRate = 25
+const BombTime = 96
+const Shy = 15
+
+' the gauges: tile base and screen column
+data GBase bytes 149,167,185
+data GCol bytes 4,12,19
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$44,$00,$11,$AA,$AA,$44
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$44,$00,$AA
+  $00,$10,$30,$81,$81,$30,$10,$00
+  $00,$08,$0C,$81,$81,$0C,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$F0,$80,$00
+  $00,$00,$00,$C3,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$01,$00
+  $00,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$20,$02,$00,$81,$00
+  $00,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$18,$C3,$81,$00
+  $00,$10,$14,$54,$A3,$70,$10,$10
+  $00,$00,$30,$32,$8D,$81,$80,$00
+  $00,$00,$10,$00,$00,$00,$80,$00
+  $00,$60,$00,$00,$06,$00,$00,$00
+  $00,$00,$00,$08,$1C,$00,$00,$00
+  $00,$00,$81,$00,$00,$00,$00,$10
+  $08,$08,$00,$20,$20,$00,$04,$04
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$21,$01,$05,$01,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$54,$04,$54,$54,$45,$45
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$F5,$05,$F5,$05,$F5
+  $05,$F5,$F5,$5F,$5F,$F5,$F5,$05
+  $05,$F5,$F5,$5F,$5F,$F5,$F5,$05
+  $05,$05,$05,$05,$05,$0A,$0B,$0B
+  $05,$05,$05,$05,$B5,$5B,$5B,$0B
+  $05,$05,$05,$5B,$0B,$0B,$0B,$0B
+  $05,$05,$05,$05,$B5,$B5,$5B,$0B
+  $05,$65,$85,$58,$58,$58,$58,$0A
+  $05,$06,$08,$68,$68,$08,$68,$0A
+  $05,$65,$85,$85,$58,$58,$58,$0A
+  $05,$05,$05,$05,$E5,$5E,$5E,$0A
+  $05,$25,$25,$25,$52,$25,$25,$2A
+  $05,$05,$E5,$E5,$5E,$5E,$5E,$0A
+  $0B,$0B,$AB,$0B,$0B,$0B,$AB,$0B
+  $0B,$AB,$0B,$0B,$AB,$0B,$0B,$0B
+  $0B,$0B,$0B,$EB,$EB,$0B,$0B,$0B
+  $0B,$0B,$BA,$0A,$0A,$0A,$01,$1A
+  $1A,$1A,$01,$1A,$1A,$01,$1A,$1A
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E8
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E8
+  $E1,$E1,$E1,$E1,$E1,$E1,$E8,$E8
+  $E1,$E1,$E1,$E1,$E1,$E1,$E8,$E8
+  $E1,$E1,$E1,$E1,$E1,$E8,$E8,$E8
+  $E1,$E1,$E1,$E1,$E1,$E8,$E8,$E8
+  $E1,$E1,$E1,$E1,$E8,$E8,$E8,$E8
+  $E1,$E1,$E1,$E1,$E8,$E8,$E8,$E8
+  $E1,$E1,$E1,$E8,$E8,$E8,$E8,$E8
+  $E1,$E1,$E1,$E8,$E8,$E8,$E8,$E8
+  $E1,$E1,$E8,$E8,$E8,$E8,$E8,$E8
+  $E1,$E1,$E8,$E8,$E8,$E8,$E8,$E8
+  $E1,$E8,$E8,$E8,$E8,$E8,$E8,$E8
+  $E1,$E8,$E8,$E8,$E8,$E8,$E8,$E8
+  $E8,$E8,$E8,$E8,$E8,$E8,$E8,$E8
+  $E8,$E8,$E8,$E8,$E8,$E8,$E8,$E8
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$ED
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$ED
+  $E1,$E1,$E1,$E1,$E1,$E1,$ED,$ED
+  $E1,$E1,$E1,$E1,$E1,$E1,$ED,$ED
+  $E1,$E1,$E1,$E1,$E1,$ED,$ED,$ED
+  $E1,$E1,$E1,$E1,$E1,$ED,$ED,$ED
+  $E1,$E1,$E1,$E1,$ED,$ED,$ED,$ED
+  $E1,$E1,$E1,$E1,$ED,$ED,$ED,$ED
+  $E1,$E1,$E1,$ED,$ED,$ED,$ED,$ED
+  $E1,$E1,$E1,$ED,$ED,$ED,$ED,$ED
+  $E1,$E1,$ED,$ED,$ED,$ED,$ED,$ED
+  $E1,$E1,$ED,$ED,$ED,$ED,$ED,$ED
+  $E1,$ED,$ED,$ED,$ED,$ED,$ED,$ED
+  $E1,$ED,$ED,$ED,$ED,$ED,$ED,$ED
+  $ED,$ED,$ED,$ED,$ED,$ED,$ED,$ED
+  $ED,$ED,$ED,$ED,$ED,$ED,$ED,$ED
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E2
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E2
+  $E1,$E1,$E1,$E1,$E1,$E1,$E2,$E2
+  $E1,$E1,$E1,$E1,$E1,$E1,$E2,$E2
+  $E1,$E1,$E1,$E1,$E1,$E2,$E2,$E2
+  $E1,$E1,$E1,$E1,$E1,$E2,$E2,$E2
+  $E1,$E1,$E1,$E1,$E2,$E2,$E2,$E2
+  $E1,$E1,$E1,$E1,$E2,$E2,$E2,$E2
+  $E1,$E1,$E1,$E2,$E2,$E2,$E2,$E2
+  $E1,$E1,$E1,$E2,$E2,$E2,$E2,$E2
+  $E1,$E1,$E2,$E2,$E2,$E2,$E2,$E2
+  $E1,$E1,$E2,$E2,$E2,$E2,$E2,$E2
+  $E1,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $E1,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $E2,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $E2,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $01,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $AB,$AB,$AB,$AB,$AB,$AB,$0A,$01
+end data
+data SpritePat bytes
+  $00,$02,$02,$07,$00,$03,$03,$01,$00,$30,$30,$00,$7F,$30,$30,$00
+  $00,$40,$40,$E0,$00,$C0,$C0,$80,$00,$0C,$0C,$00,$FE,$0C,$0C,$00
+  $00,$00,$00,$00,$0F,$1C,$3C,$3E,$7F,$4F,$4F,$FF,$80,$00,$00,$00
+  $00,$00,$00,$00,$F0,$38,$3C,$7C,$FE,$F2,$F2,$FF,$01,$00,$00,$00
+  $00,$07,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+  $00,$E0,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$07,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+  $00,$00,$00,$E0,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$07,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+  $00,$00,$00,$00,$00,$E0,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$07,$02,$02,$02,$02,$02,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$E0,$40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$02,$02,$02,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$02,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$40,$40,$40,$40
+  $00,$00,$00,$0C,$08,$00,$00,$00,$00,$00,$08,$0C,$00,$00,$00,$00
+  $00,$00,$00,$30,$10,$00,$00,$80,$00,$00,$10,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$0F,$0F,$07,$0B,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$E0,$F0,$F0,$E0,$D0,$40,$00,$00,$00,$00,$00
+  $00,$00,$08,$01,$24,$08,$10,$20,$10,$08,$24,$01,$08,$00,$00,$00
+  $00,$00,$10,$80,$24,$10,$08,$04,$08,$10,$24,$80,$10,$00,$00,$00
+  $00,$00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$30,$C0,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$70,$7F,$3F,$03,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$38,$FE,$FC,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0C,$03,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$1C,$7F,$3F,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$06,$0E,$FE,$FC,$C0,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$02,$00,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$40,$00,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$FF,$03,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$FF,$C0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$0F,$0F,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$F0,$F0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$03,$07,$0F,$1F,$1F,$1F,$0F,$07,$03,$00,$00,$00
+  $00,$00,$80,$80,$C0,$E0,$F0,$F8,$F8,$F8,$F0,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$07,$0F,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$E0,$F0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$05,$0E,$18,$30,$18,$38,$1C,$0F,$05,$00,$00,$00
+  $00,$00,$00,$80,$A0,$70,$18,$0C,$18,$1C,$38,$F0,$A0,$00,$00,$00
+  $00,$00,$00,$01,$07,$0F,$1F,$1F,$1F,$1F,$0F,$07,$01,$00,$00,$00
+  $00,$00,$00,$80,$E0,$F0,$F8,$F8,$F8,$F8,$F0,$E0,$80,$00,$00,$00
+  $02,$23,$1B,$0E,$78,$30,$E0,$60,$20,$60,$F0,$38,$1E,$27,$45,$00
+  $40,$C4,$D8,$70,$1E,$0C,$07,$06,$04,$06,$0F,$1C,$78,$E4,$A2,$00
+end data
+
+data Pano bytes
+  $86,$86,$87,$88,$88,$88,$89,$8A,$8B,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8B
+  $8B,$8B,$8B,$8C,$86,$86,$86,$86,$86,$86,$86,$86,$86,$8A,$8B,$8B,$8B,$8B,$8C,$8D,$8E,$86,$87,$88,$88,$89,$87,$88,$88,$88,$89,$8A
+  $8B,$8B,$8B,$8B,$8C,$87,$88,$88,$89,$87,$88,$88,$89,$8D,$8E,$86,$86,$86,$86,$86,$87,$88,$88,$89,$87,$88,$89,$87,$88,$88,$88,$89
+  $86,$8E,$86,$86,$8A,$8B,$8B,$8B,$8B,$8C,$87,$88,$88,$88,$89,$8F,$86,$8D,$86,$86,$86,$86,$86,$87,$88,$89,$86,$86,$86,$86,$86,$86
+  $86,$87,$88,$88,$88,$89,$86,$86,$86,$8D,$86,$86,$8D,$8A,$8B,$8B,$8C,$86,$86,$86,$86,$86,$86,$8A,$8B,$8B,$8C,$8A,$8B,$8B,$8B,$8B
+  $8B,$8C,$8D,$86,$86,$8E,$86,$8A,$8B,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8E,$86,$8E,$86,$8E,$86,$8A,$8B,$8B,$8B,$8B,$8C,$87,$88,$88
+  $88,$89,$86,$86,$86,$87,$88,$88,$89,$8A,$8B,$8B,$8B,$8B,$8C,$8E,$86,$87,$88,$88,$89,$86,$86,$87,$88,$88,$89,$86,$86,$86,$86,$86
+  $86,$86,$86,$8A,$8B,$8B,$8B,$8C,$86,$86,$86,$8D,$8A,$8B,$8B,$8B,$8C,$8A,$8B,$8B,$8B,$8C,$87,$88,$88,$88,$89,$87,$88,$88,$89,$86
+  $86,$86,$87,$88,$88,$88,$89,$8A,$8B,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8B
+end data
+
+data GameMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83
+  $86,$86,$87,$88,$88,$88,$89,$8A,$8B,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8C,$8A,$8B,$8B,$8B,$8B,$8C,$8A,$8B,$8B
+  $92,$92,$91,$92,$92,$91,$91,$92,$90,$91,$91,$91,$90,$92,$92,$91,$91,$90,$91,$90,$92,$90,$92,$92,$91,$90,$90,$92,$91,$91,$90,$90
+  $90,$92,$92,$90,$91,$90,$91,$90,$90,$92,$91,$90,$93,$93,$93,$93,$93,$93,$93,$93,$90,$91,$92,$92,$91,$92,$90,$92,$90,$92,$92,$90
+  $90,$90,$91,$91,$91,$90,$92,$91,$90,$91,$91,$92,$94,$94,$94,$94,$94,$94,$94,$94,$92,$92,$91,$90,$92,$90,$91,$91,$90,$90,$92,$91
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$CC,$CC,$20,$20,$20,$20,$20,$20,$CC,$CC,$20,$20,$20,$20,$20,$CC,$CC,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+data TitleMap bytes
+  $80,$80,$80,$80,$CD,$CD,$80,$80,$CD,$CD,$CD,$80,$CD,$CD,$CD,$80,$CD,$CD,$CD,$80,$CD,$CD,$80,$80,$CD,$CD,$CD,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$CD,$80,$CD,$80,$CD,$80,$80,$80,$CD,$80,$80,$80,$CD,$80,$80,$80,$CD,$80,$CD,$80,$80,$CD,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$CD,$80,$CD,$80,$CD,$CD,$80,$80,$CD,$CD,$CD,$80,$CD,$CD,$80,$80,$CD,$CD,$80,$80,$80,$CD,$80,$80,$80,$80,$80,$80
+  $81,$81,$81,$81,$CD,$81,$CD,$81,$CD,$81,$81,$81,$81,$81,$CD,$81,$CD,$81,$81,$81,$CD,$81,$CD,$81,$81,$CD,$81,$81,$81,$81,$81,$81
+  $82,$82,$82,$82,$CD,$CD,$82,$82,$CD,$CD,$CD,$82,$CD,$CD,$CD,$82,$CD,$CD,$CD,$82,$CD,$82,$CD,$82,$82,$CD,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$CD,$CD,$CD,$82,$CD,$CD,$82,$82,$CD,$CD,$CD,$82,$CD,$82,$CD,$82,$CD,$CD,$CD,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$CD,$82,$82,$82,$CD,$82,$CD,$82,$CD,$82,$CD,$82,$CD,$CD,$CD,$82,$82,$CD,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$CD,$CD,$82,$82,$CD,$CD,$82,$82,$CD,$82,$CD,$82,$CD,$CD,$CD,$82,$82,$CD,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$CD,$82,$82,$82,$CD,$82,$CD,$82,$CD,$82,$CD,$82,$CD,$CD,$CD,$82,$82,$CD,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$CD,$82,$82,$82,$CD,$82,$CD,$82,$CD,$CD,$CD,$82,$CD,$82,$CD,$82,$82,$CD,$82,$82,$82,$82,$82,$82,$82,$82
+  $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+  $83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83
+  $86,$86,$86,$86,$86,$8A,$8B,$8B,$8B,$8B,$8C,$8D,$8E,$86,$87,$88,$88,$89,$87,$88,$88,$88,$89,$8A,$8B,$8B,$8B,$8B,$8C,$87,$88,$88
+end data
+
+record Shell:
+  u8 Live
+  u8 T
+  u8 F
+  u8 Y
+end record
+
+Shell Sh
+
+u16 TzLeft = 0
+u16 Rs = 1
+u8 CruY = 40
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 View = 0
+u16 PWX = 0
+u16 PYf = 0
+u16 PSpd = 21
+u16 BmWX = 0
+u16 Sx16 = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the raider: screen x, centre y, visible, direction (1 right, 2 left),
+' turn frames left, the direction after the turn, turn counter, state
+' (0 flying, 1 falling, 2 counting the gauges), falling frames
+u8 PSX = 0
+u8 PY = 0
+u8 PVis = 0
+u8 PDir = 1
+u8 PTurn = 0
+u8 PNext = 1
+u8 PE = 0
+u8 PState = 0
+u8 FallT = 0
+' the bomb: on, frames, start y, screen x and y
+u8 BmOn = 0
+u8 BmT = 0
+u8 BmY0 = 0
+u8 BSX = 0
+u8 BSY = 0
+u8 BVis = 0
+' the blast where a bomb lands (frames, screen x)
+u8 BlastT = 0
+u16 BlastWX = 0
+' the gun
+u8 Aim = 52
+u8 Pose = 0
+u8 PanC = 0
+u8 Temp = 1
+u8 Dmg = 1
+u8 TimeL = 32
+u8 TimeC = 0
+u8 CoolC = 0
+u8 Kills = 0
+u8 Over = 0
+u8 Why = 0
+u8 Shots = 0
+u8 Hits = 0
+u8 Bombs = 0
+u8 BombsShot = 0
+u8 HzDirty = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawAll
+  if Over = 0 then goto play_loop
+
+  ' the end: why, the score, then back to the title on a press
+  print at 7,4, "                  "
+  print at 7,5, "     GAME OVER    "
+  select case Why
+    case 1
+      print at 7,6, "  GUN OVERHEATED  "
+    case 2
+      print at 7,6, " OUTPOST DESTROYED"
+    case else
+      print at 7,6, "   OUT OF TIME    "
+  end select
+  print at 7,7, "                  "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  TurnGun
+  if PState = 0 then
+    Trigger
+    Clocks
+  end if
+  select case PState
+    case 0
+      FlyRaider
+    case 1
+      FallRaider
+    case 2
+      Tally
+  end select
+  ShellStep
+  BombStep
+  if BlastT > 0 then dec BlastT
+  return
+end sub
+
+' left / right turn the horizon a column every 3 frames; up / down move the
+' burst height a pixel a frame
+sub TurnGun:
+  if PanC > 0 then dec PanC
+  K = J1 & 12
+  if PanC = 0 then
+    if K = 4 then
+      View = View - 1
+      View = View & 255
+      PanC = 3
+      HzDirty = 1
+    end if
+    if K = 8 then
+      View = View + 1
+      View = View & 255
+      PanC = 3
+      HzDirty = 1
+    end if
+  end if
+  K = J1 & 3
+  if K = 1 then
+    if Aim > AimMin then dec Aim
+  end if
+  if K = 2 then
+    if Aim < AimMax then inc Aim
+  end if
+  Pose = (Aim - AimMin) / 14
+  if Pose > 5 then Pose = 5
+  return
+end sub
+
+' the button fires when no shell is in the air (held, it keeps firing)
+sub Trigger:
+  if Sh.Live = 1 then return
+  if Btn = 0 then return
+  Sh.Live = 1
+  Sh.T = 0
+  V = 108 - Aim
+  Sh.F = V / 16 + 12
+  Sh.Y = 108
+  inc Shots
+  play sound SndShot
+  inc Temp
+  if Temp >= GaugeTop then
+    Temp = GaugeTop
+    Over = 1
+    Why = 1
+  end if
+  return
+end sub
+
+' TIME runs down; an idle gun with the button up cools
+sub Clocks:
+  inc TimeC
+  if TimeC >= TimeRate then
+    TimeC = 0
+    dec TimeL
+    if TimeL = 0 then
+      Over = 1
+      Why = 3
+    end if
+  end if
+  if Sh.Live = 0 then
+    if Btn = 0 then
+      inc CoolC
+      if CoolC >= CoolRate then
+        CoolC = 0
+        if Temp > 1 then dec Temp
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the raider's screen x from its place on the horizon (2048 pixels round)
+function ScreenX(u16 Wx) as u16
+  u16 Vx = View << 3
+  return (Wx - Vx) & 2047
+
+function RaiderSpeed(u8 N) as u16
+  if N >= 11 then return 30
+  u16 Dv = 180 - N * 5
+  return 3780 / Dv
+
+sub FlyRaider:
+  ' it shies away from the sight when it comes near, else it makes for its
+  ' cruising height
+  if Near(PY, Aim, 20) = 1 then
+    if PY > Aim + Shy then
+      PYf = PYf + 6
+      if PYf > PyMax then PYf = PyMax
+    else
+      PYf = PYf - 6
+      if PYf < PyMin then PYf = PyMin
+    end if
+  elseif PY < CruY then
+    PYf = PYf + 6
+  elseif PY > CruY then
+    PYf = PYf - 6
+  end if
+  PY = PYf >> 4
+  if PTurn > 0 then
+    dec PTurn
+    if PTurn = 0 then PDir = PNext
+  else
+    if PDir = 1 then
+      PWX = PWX + PSpd
+    else
+      PWX = PWX - PSpd
+    end if
+    PWX = PWX & 32767
+  end if
+  W16 = PWX >> 4
+  Sx16 = ScreenX(W16)
+  if Sx16 < 241 then
+    PVis = 1
+    PSX = Sx16
+    if PTurn = 0 then RaiderTurns
+  else
+    ' out of view: back towards the middle of the view the short way
+    PVis = 0
+    PTurn = 0
+    W16 = Sx16 - 128
+    W16 = W16 & 2047
+    if W16 < 1024 then
+      PDir = 2
+    else
+      PDir = 1
+    end if
+  end if
+  return
+end sub
+
+' the turn counter: in the middle of the view a turn and a bomb at 110, at
+' the sides a turn back at 135
+sub RaiderTurns:
+  inc PE
+  if PE >= 140 then PE = 0
+  X = PSX + 8
+  if X >= 104 then
+    if X <= 152 then
+      inc PE
+      K = PE - 110
+      if K < 2 then
+        TurnRound
+        DropBomb
+      end if
+      return
+    end if
+  end if
+  if PE <> 135 then return
+  if X < 104 then
+    if PDir = 2 then TurnRound
+  end if
+  if X > 186 then
+    if PDir = 1 then TurnRound
+  end if
+  return
+end sub
+
+sub TurnRound:
+  PNext = 3 - PDir
+  PTurn = 22
+  Rand
+  CruY = Rs & 63
+  CruY = CruY + 16
+  return
+end sub
+
+' 16-bit xorshift
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub DropBomb:
+  if BmOn = 1 then return
+  BmOn = 1
+  BmT = 0
+  BmWX = PWX >> 4
+  BmY0 = PY + 4
+  inc Bombs
+  play sound SndWhistle
+  return
+end sub
+
+' shot down: it burns and falls
+sub FallRaider:
+  PYf = PYf + 16
+  PY = PYf >> 4
+  W16 = PWX >> 4
+  Sx16 = ScreenX(W16)
+  PVis = 0
+  if Sx16 < 241 then
+    PVis = 1
+    PSX = Sx16
+  end if
+  dec FallT
+  if FallT = 0 then PState = 2
+  return
+end sub
+
+' the gauges counted into the score, a step a frame
+sub Tally:
+  if Dmg < GaugeTop then
+    inc Dmg
+  elseif TimeL > 0 then
+    dec TimeL
+  elseif Temp < GaugeTop then
+    inc Temp
+  else
+    NextRaider
+    return
+  end if
+  AddScore(1)
+  V = Tick & 1
+  if V = 0 then play sound SndTick
+  return
+end sub
+
+sub AddScore(u8 N):
+  if Score > 999800 then
+    Score = 999999
+  else
+    Score += N
+  end if
+  if Score > Hi then Hi = Score
+  print at 23,18, Score
+  return
+end sub
+
+sub NextRaider:
+  Temp = 1
+  Dmg = 1
+  TimeL = GaugeTop
+  TimeC = 0
+  CoolC = 0
+  PState = 0
+  PSpd = RaiderSpeed(Kills)
+  ' it comes in from the far side of the horizon
+  W16 = View << 3
+  W16 = W16 + 640
+  W16 = W16 & 2047
+  PWX = W16 << 4
+  PYf = 640
+  PY = 40
+  CruY = 40
+  PE = 0
+  PTurn = 0
+  PVis = 0
+  return
+end sub
+
+' the shell climbs and shrinks; it bursts at the aimed height and hits
+' there for four frames
+sub ShellStep:
+  if Sh.Live = 0 then return
+  inc Sh.T
+  if Sh.T <= Sh.F then
+    W16 = 108 - Aim
+    W16 = W16 * Sh.T
+    W16 = W16 / Sh.F
+    V = W16
+    Sh.Y = 108 - V
+    return
+  end if
+  Sh.Y = Aim
+  if PState = 0 then
+    if PVis = 1 then
+      if Near(PSX + 8, 128, 9) = 1 then
+        if Near(PY, Aim, 6) = 1 then
+          Kill
+          return
+        end if
+      end if
+    end if
+  end if
+  if BmOn = 1 then
+    if BVis = 1 then
+      if Near(BSX + 8, 128, 8) = 1 then
+        if Near(BSY, Aim, 8) = 1 then
+          BmOn = 0
+          inc BombsShot
+          play sound SndPop
+          AddScore(10)
+        end if
+      end if
+    end if
+  end if
+  K = Sh.F + 4
+  if Sh.T >= K then Sh.Live = 0
+  return
+end sub
+
+' 1 when A and B are at most D apart
+function Near(u8 A, u8 B, u8 D) as u8
+  u8 Df = 0
+  if A >= B then
+    Df = A - B
+  else
+    Df = B - A
+  end if
+  if Df <= D then return 1
+  return 0
+
+sub Kill:
+  Sh.Live = 0
+  PState = 1
+  FallT = 48
+  inc Kills
+  inc Hits
+  play sound SndDown
+  AddScore(100)
+  NumU = Kills
+  print at 28,22, digits$(NumU, 2)
+  return
+end sub
+
+' the bomb comes at the outpost, growing; it hits after 96 frames
+sub BombStep:
+  if BmOn = 0 then return
+  inc BmT
+  if BmT >= BombTime then
+    BmOn = 0
+    BlastT = 24
+    BlastWX = BmWX
+    play sound SndBoom
+    Dmg = Dmg + 3
+    if Dmg >= GaugeTop then
+      Dmg = GaugeTop
+      if PState = 0 then
+        Over = 1
+        Why = 2
+      end if
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: the horizon when it turned, the gauges, the radar arrows, the
+' sprites. 0-1 gun, 2 barrel, 3 sight, 4 shell, 5-6 raider, 7 bomb,
+' 8-9 blast
+sub DrawAll:
+  if HzDirty = 1 then
+    HzDirty = 0
+    copy Pano + View count 32 to vram.name + 416
+  end if
+  for Gi = 0 to 2
+    select case Gi
+      case 0
+        V = Temp
+      case 1
+        V = Dmg
+      case else
+        V = TimeL
+    end select
+    DrawGauge(GCol[Gi], GBase[Gi], V)
+  next
+  V = TSky3
+  K = TSky3
+  if PState = 0 then
+    if PVis = 0 then
+      if PDir = 1 then
+        V = TArL
+      else
+        K = TArR
+      end if
+    end if
+  end if
+  put char V at 2,12
+  put char K at 29,12
+  DrawSprites
+  return
+end sub
+
+sub DrawGauge(u8 Gx, u8 Base, u8 Val):
+  u8 Rw = 0
+  u8 Lo = 0
+  u8 Lv = 0
+  u8 Tc = 0
+  for Rw = 0 to 3
+    Lo = (3 - Rw) * 8
+    if Val <= Lo then
+      Lv = 0
+    else
+      Lv = Val - Lo
+      if Lv > 8 then Lv = 8
+    end if
+    Tc = Lv * 2 + Base
+    put char Tc at Gx,Rw + 18
+    put char Tc + 1 at Gx + 1,Rw + 18
+  next
+  return
+end sub
+
+sub DrawSprites:
+  set sprite 0 to 111,120,SGund,1
+  set sprite 1 to 111,120,SGunb,14
+  K = Pose * 4 + SBar0
+  set sprite 2 to 95,120,K,1
+  set sprite 3 to Aim - 9,120,SSight,15
+  if Sh.Live = 1 then
+    if Sh.T <= Sh.F then
+      K = Sh.T * 4
+      K = K / Sh.F
+      if K > 3 then K = 3
+      K = K * 4 + SSh0
+      set sprite 4 to Sh.Y - 9,120,K,11
+    else
+      K = Sh.T - Sh.F
+      K = K >> 1
+      K = K * 4 + SPf0
+      set sprite 4 to Aim - 9,120,K,15
+    end if
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  select case PState
+    case 0
+      if PVis = 1 then
+        if PTurn > 0 then
+          K = SPfd
+        elseif PDir = 1 then
+          K = SPrd
+        else
+          K = SPld
+        end if
+        set sprite 5 to PY - 9,PSX,K,1
+        set sprite 6 to PY - 9,PSX,K + 4,14
+      else
+        set sprite 5 to 192,0,0,0
+        set sprite 6 to 192,0,0,0
+      end if
+    case 1
+      if PVis = 1 then
+        K = FallT / 12
+        K = K & 1
+        K = K * 8 + SEx0i
+        set sprite 5 to PY - 9,PSX,K,11
+        set sprite 6 to PY - 9,PSX,K + 4,8
+      else
+        set sprite 5 to 192,0,0,0
+        set sprite 6 to 192,0,0,0
+      end if
+    case else
+      set sprite 5 to 192,0,0,0
+      set sprite 6 to 192,0,0,0
+  end select
+  BVis = 0
+  if BmOn = 1 then
+    Sx16 = ScreenX(BmWX)
+    if Sx16 < 241 then
+      BVis = 1
+      BSX = Sx16
+      W16 = 100 - BmY0
+      W16 = W16 * BmT
+      W16 = W16 / BombTime
+      V = W16
+      BSY = BmY0 + V
+      K = BmT / 24
+      K = K * 4 + SBm0
+      set sprite 7 to BSY - 9,BSX,K,1
+    else
+      set sprite 7 to 192,0,0,0
+    end if
+  else
+    set sprite 7 to 192,0,0,0
+  end if
+  if BlastT > 0 then
+    Sx16 = ScreenX(BlastWX)
+    if Sx16 < 241 then
+      X = Sx16
+      K = SEx0i
+      if BlastT < 14 then K = SEx1i
+      set sprite 8 to 87,X,K,11
+      set sprite 9 to 87,X,K + 4,8
+    else
+      set sprite 8 to 192,0,0,0
+      set sprite 9 to 192,0,0,0
+    end if
+  else
+    set sprite 8 to 192,0,0,0
+    set sprite 9 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  View = 0
+  copy Pano count 32 to vram.name + 416
+  print at 3,17, "TEMP"
+  print at 10,17, "DAMAGE"
+  print at 18,17, "TIME"
+  print at 23,17, "SCORE"
+  print at 23,20, "BEST"
+  print at 23,21, Hi
+  print at 23,22, "DOWN 00"
+  Score = 0
+  print at 23,18, Score
+  Kills = 0
+  Over = 0
+  Why = 0
+  Shots = 0
+  Hits = 0
+  Bombs = 0
+  BombsShot = 0
+  Aim = 52
+  PanC = 0
+  Sh.Live = 0
+  BmOn = 0
+  BlastT = 0
+  HzDirty = 0
+  NextRaider
+  DrawAll
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: DESERT FRONT in sandstone blocks over the sky and the horizon,
+' the raider crossing, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 448 to vram.name + 32
+  for J = 15 to 16
+    fill TSand0 + J - 15 count 32 at 0,J
+  next
+  print at 7,18, "BY ALAN THOMASON"
+  print at 13,20, "START"
+  print at 13,21, "CREDITS"
+  if Hi > 0 then
+    print at 10,22, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  PSX = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Tick & 1
+  if V = 0 then inc PSX
+  set sprite 5 to 87,PSX,SPrd,1
+  set sprite 6 to 87,PSX,SPrb,14
+  update sprites
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,20
+  put char 32 at 11,21
+  J = Menu + 20
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "DESERT FRONT"
+  print at 2,5, "BASED ON DESERT FRONT BY"
+  print at 2,6, "ALAN THOMASON, AHOY!"
+  print at 2,7, "NOVEMBER 1987 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: HEAT HAZE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+DfShot:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$04,$10
+DfPop:
+    db $40,$7F,$30,$02,$40,$FE,$50,$03,$50
+DfWhistle:
+    db $40,$3B,$50,$03,$40,$3E,$50,$03,$40,$41,$50,$03,$40,$45,$50,$03,$40,$48,$60,$03,$40,$4C,$60,$03
+    db $40,$50,$60,$03,$40,$54,$60,$03,$40,$59,$60,$03,$40,$5D,$60,$03,$40,$62,$60,$03,$40,$67,$60,$03
+    db $40,$6D,$70,$03,$40,$73,$70,$03,$40,$79,$70,$03,$40,$7F,$70,$03,$50
+DfBoom:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$27,$08,$00,$00,$47,$0A,$00,$00,$77,$0C,$10
+DfDown:
+    db $00,$00,$06,$04,$00,$00,$16,$04,$00,$00,$16,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$36,$04
+    db $00,$00,$37,$04,$00,$00,$47,$04,$00,$00,$47,$04,$00,$00,$57,$04,$00,$00,$57,$04,$00,$00,$67,$04
+    db $10
+DfTick:
+    db $40,$47,$30,$01,$40,$47,$60,$01,$50
+DfStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+DfOver:
+    db $40,$D6,$10,$0A,$40,$F0,$20,$0A,$40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$1E,$50
+
+DfSoundTable:
+    dw DfTuneMel,$702B
+    dw DfTuneBass,$7035
+    dw DfShot,$703F
+    dw DfPop,$7049
+    dw DfWhistle,$7049
+    dw DfBoom,$703F
+    dw DfDown,$703F
+    dw DfTick,$7049
+    dw DfStart,$7049
+    dw DfOver,$7049
+; Heat Haze (original)
+; Tiny Sound, 9 frames per step
+DfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$23,$01,$01,$1E,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$21,$23,$01,$1E,$01,$1C,$01,$1A,$01
+    db $1C,$01,$1E,$01,$23,$01,$01,$1E,$23,$01,$26,$01,$28,$01,$2A,$01
+    db $01,$28,$26,$01,$25,$01,$01,$26,$25,$01,$21,$01,$23,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+DfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$12,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

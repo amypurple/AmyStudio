@@ -1,0 +1,1141 @@
+cartridge "LIGHTS OUT/WALTER E. MEYERS/1987"
+
+' LIGHTS OUT
+' A ColecoVision game based on "Lights Out!" by Walter E. Meyers, Ahoy!
+' March 1987 (Commodore 64, BASIC with a 20-byte machine-language check).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/lights.bas), the game is built for the ColecoVision: an
+' electrician who walks and climbs smoothly from window to window, a
+' gremlin who flies to each window before putting it out, a tiled brick
+' building at night, sound effects and an original title tune.
+'
+' The game: a building has nine windows in three floors. The electrician
+' starts at the fuse box (bottom right). Walk to a dark window and press a
+' button to switch its light on. A gremlin visits the windows one after
+' the other in a shuffled order and puts each one out. Get all nine lit at
+' the same moment to finish the round. Five rounds; the gremlin is faster
+' each round. The clock runs from the first round; at the end you see your
+' time and the best time of the session.
+'
+' From the original (orig/lights.bas): nine windows in a 3 x 3 grid and
+' the fuse box start (position 0, line 160), the moves (left adds one,
+' right subtracts one, up adds three, down subtracts three, the blocked
+' edges of lines 210-240), the button lighting the window you stand at
+' (line 250, never at the fuse box), the gremlin's order (a random
+' permutation of 1-9 per round, lines 170-180, visited in a cycle, line
+' 310), a window put out whether it was lit or not (line 330, with its
+' zap), the round won when all nine are lit (the USR check, line 260),
+' all windows dark and the electrician back at the fuse box for the next
+' round (lines 160, 420), five rounds (line 400), the gremlin's interval
+' 15, 13, 11, 9, 7 player passes (GS - 2 each round, line 410), the time
+' in minutes and seconds and the session's best time (lines 430-460).
+'
+' Liberties: the original's player jumps a window per pass of its BASIC
+' loop; here a move glides in 8 frames, and one original pass counts as
+' those 8 frames: round 1's gremlin interval is the original's 15 passes,
+' 120 frames. The original's later rounds (13, 11, 9, 7 passes, down to
+' 56 frames) were beyond a player with a human reaction time (a bot that
+' reacts 0.3 s late never finished round 5), so the interval shrinks by
+' 10 frames a round: 120, 110, 100, 90, 80. The gremlin hovers 12 frames
+' at a window and flies the rest, so a player can see where it is going.
+' A button pressed while walking is remembered and used on arrival. From the fuse box only left
+' leads out (the listing's up went to window 3 and right to "window -1").
+' Diagonals use the first of left, right, up, down. The clock stops during
+' the round banners (the C64's ran on). The colour flash between rounds is
+' a banner and a fanfare; the title's lightning-and-fireworks intro is a
+' slow sweep of the windows. No "play again?" question: the title follows.
+' Not trivial by standing still: one window can be relit, but all nine
+' must be lit at once while the gremlin keeps moving (as in the original).
+'
+' Controls: either controller; the stick moves from window to window
+' (hold to keep moving), a button switches the light on. On the title, up
+' and down choose, a button confirms.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given (bug
+' 25). Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+'
+' Workarounds for Amy bugs bombs-return-u16 removed 2026-11-01.
+
+const TSky = 128
+const TStar1 = 129
+const TStar2 = 130
+const TStar3 = 131
+const TMoon00 = 132
+const TMoon01 = 133
+const TMoon10 = 134
+const TMoon11 = 135
+const TCornice = 136
+const TBrick = 137
+const TFtl = 138
+const TFt = 139
+const TFtr = 140
+const TFl = 141
+const TFr = 142
+const TSl = 143
+const TSm = 144
+const TSr = 145
+const TGd00 = 146
+const TGd01 = 147
+const TGd02 = 148
+const TGd03 = 149
+const TGd10 = 150
+const TGd11 = 151
+const TGd12 = 152
+const TGd13 = 153
+const TGd20 = 154
+const TGd21 = 155
+const TGd22 = 156
+const TGd23 = 157
+const TGl00 = 158
+const TGl01 = 159
+const TGl02 = 160
+const TGl03 = 161
+const TGl10 = 162
+const TGl11 = 163
+const TGl12 = 164
+const TGl13 = 165
+const TGl20 = 166
+const TGl21 = 167
+const TGl22 = 168
+const TGl23 = 169
+const TFuse00 = 170
+const TFuse01 = 171
+const TFuse02 = 172
+const TFuse03 = 173
+const TFuse10 = 174
+const TFuse11 = 175
+const TFuse12 = 176
+const TFuse13 = 177
+const TFuse20 = 178
+const TFuse21 = 179
+const TFuse22 = 180
+const TFuse23 = 181
+const TFuse30 = 182
+const TFuse31 = 183
+const TFuse32 = 184
+const TFuse33 = 185
+const TBase = 186
+const TWalk = 187
+const TKerb = 188
+const TPtop = 189
+const TPbot = 190
+const SBstandr = 0
+const SBstandl = 4
+const SBstepr = 8
+const SBstepl = 12
+const SBreachr = 16
+const SBreachl = 20
+const SHeadr = 24
+const SHeadl = 28
+const SGrem0 = 32
+const SGrem1 = 36
+const SEyes = 40
+const NTiles8 = 504
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndTap = 4
+const SndZap = 5
+const SndBuzz = 6
+const SndRound = 7
+const SndStart = 8
+const SndWin = 9
+const StepN = 8
+const ReachN = 8
+const HoverN = 12
+const BannerN = 120
+const NSpr = 4
+const NoMove = 255
+const Rounds = 5
+
+' window positions 0 (fuse box) to 9: tile column and row of the frame's
+' top left corner, the electrician's sprite X / Y there
+data WinC bytes
+  24, 17, 10, 3, 17, 10, 3, 17, 10, 3
+end data
+data WinR bytes
+  15, 15, 15, 15, 9, 9, 9, 3, 3, 3
+end data
+data PosX bytes
+  208, 152, 96, 40, 152, 96, 40, 152, 96, 40
+end data
+data PosY bytes
+  136, 136, 136, 136, 88, 88, 88, 40, 40, 40
+end data
+' the gremlin's interval in frames, by round
+data GapT bytes
+  120, 110, 100, 90, 80
+end data
+' stars in the sky: column, row
+data StarT bytes
+  3, 0, 7, 1, 12, 0, 16, 1, 20, 0, 23, 1, 9, 1, 30, 1
+end data
+
+record Imp:
+  u8 X
+  u8 Y
+  u8 Sx
+  u8 Sy
+  u8 Tx
+  u8 Ty
+  u8 T
+  u8 N
+  u8 Hover
+  u8 Win
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+Imp Grem
+' windows: 1 lit; Lit[0] (the fuse box) is unused
+u8 Lit[10]
+u8 LitN = 0
+u8 Order[10]
+u8 Gi = 0
+u8 Gm = 1
+u8 Gap = 90
+' the electrician: position, pixels, step deltas, frames left of a move,
+' reach (arm up) frames, facing (0 right, 1 left), a remembered press
+u8 Pp = 0
+u8 Px = 208
+u8 Py = 136
+i8 Dx = 0
+i8 Dy = 0
+u8 Mv = 0
+u8 Reach = 0
+u8 Face = 1
+u8 Want = 0
+u8 Banner = 0
+u8 Over = 0
+u8 TitleOn = 0
+' the clock: frames, BCD minutes and seconds, total seconds; the best
+u8 Ft = 0
+bcd digits 2 Sec = 0
+bcd digits 2 Mins = 0
+u16 TotS = 0
+u16 BestS = 0
+bcd digits 2 BSec = 0
+bcd digits 2 BMins = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Tk = 0
+u8 TStep = 0
+' loop counters (never shared with the helpers)
+u8 Wi = 0
+u8 Ri = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table LoSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the time, the best time, then back to the title on a press
+  mute all
+  Got = 0
+  if BestS = 0 then Got = 1
+  if TotS < BestS then Got = 1
+  if Got = 1 then
+    BestS = TotS
+    BSec = Sec
+    BMins = Mins
+  end if
+  ShowHud
+  for Ri = 9 to 14
+    fill 32 count 20 at 3,Ri
+  next
+  print at 4,10, "ALL FIVE ROUNDS"
+  print at 4,11, "ARE LIT!"
+  print at 4,12, "YOUR TIME"
+  ShowTime(15, 12, 0)
+  print at 4,13, "BEST TIME"
+  ShowTime(15, 13, 1)
+  if Got = 1 then print at 4,14, "A NEW BEST TIME!"
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one pass of play
+
+sub PlayStep:
+  if Banner > 0 then
+    dec Banner
+    if Banner = 0 then
+      if Gm >= Rounds then
+        Over = 1
+      else
+        inc Gm
+        NewRound
+      end if
+    end if
+    return
+  end if
+  Clock
+  PlayerStep
+  if Banner > 0 then return
+  ImpStep
+  return
+end sub
+
+' the clock: minutes and seconds in BCD (stops at 99:59)
+sub Clock:
+  inc Ft
+  if Ft < 60 then return
+  Ft = 0
+  if TotS >= 5999 then return
+  inc TotS
+  inc Sec
+  if Sec = 60 then
+    Sec = 0
+    inc Mins
+  end if
+  ShowTime(25, 8, 0)
+  return
+end sub
+
+' where a move from P in direction D (4 left, 8 right, 1 up, 2 down) leads,
+' or NoMove (the listing's edges; from the fuse box only left)
+function NextPos(u8 P, u8 D) as u8
+  select case D
+  case 4
+    if P = 3 then return NoMove
+    if P = 6 then return NoMove
+    if P = 9 then return NoMove
+    return P + 1
+  case 8
+    if P = 0 then return NoMove
+    if P = 1 then return NoMove
+    if P = 4 then return NoMove
+    if P = 7 then return NoMove
+    return P - 1
+  case 1
+    if P = 0 then return NoMove
+    if P >= 7 then return NoMove
+    return P + 3
+  case 2
+    if P <= 3 then return NoMove
+    return P - 3
+  end select
+  return NoMove
+
+' the first direction held, in the order left, right, up, down
+function StickDir(u8 B) as u8
+  if B & 4 then return 4
+  if B & 8 then return 8
+  if B & 1 then return 1
+  if B & 2 then return 2
+  return 0
+
+sub PlayerStep:
+  if Press = 1 then Want = 1
+  if Mv > 0 then
+    Px = Px + Dx
+    Py = Py + Dy
+    dec Mv
+    return
+  end if
+  if Reach > 0 then
+    dec Reach
+    return
+  end if
+  if Want = 1 then
+    Want = 0
+    SwitchOn
+    return
+  end if
+  K = StickDir(J1 | J2)
+  if K = 0 then return
+  N = NextPos(Pp, K)
+  if N = NoMove then return
+  ' the step: the pixel distances are multiples of StepN
+  Dx = (PosX[N] - Px) / StepN
+  Dy = (PosY[N] - Py) / StepN
+  if K = 4 then Face = 1
+  if K = 8 then Face = 0
+  Pp = N
+  Mv = StepN
+  return
+end sub
+
+' the button at a window: light it (a tap when it is already lit; nothing
+' at the fuse box)
+sub SwitchOn:
+  if Pp = 0 then return
+  Reach = ReachN
+  if Lit[Pp] = 1 then
+    play sound SndTap
+    return
+  end if
+  Lit[Pp] = 1
+  inc LitN
+  Wi = Pp
+  DrawGlass
+  play sound SndClick
+  if LitN >= 9 then RoundWon
+  return
+end sub
+
+sub RoundWon:
+  Banner = BannerN
+  Want = 0
+  print at 2,1, "ROUND"
+  NumU = Gm
+  print at 8,1, digits$(NumU, 1)
+  print at 10,1, "COMPLETE!"
+  play sound SndRound
+  return
+end sub
+
+' a value from A to B, T steps of N along the way
+function Lerp(u8 A, u8 B, u8 T0, u8 N0) as u8
+  i16 D = 0
+  D = B
+  D = D - A
+  D = D * T0
+  D = D / N0
+  return A + D
+
+' the gremlin: flies to its next window, puts it out on arrival (lit or
+' not), hovers, then flies on
+sub ImpStep:
+  u8 Hv = 0
+  u8 Tt = 0
+  Hv = Grem.Hover
+  if Hv > 0 then
+    dec Hv
+    Grem.Hover = Hv
+    if Hv = 0 then AimImp
+    return
+  end if
+  Tt = Grem.T + 1
+  Grem.T = Tt
+  Grem.X = Lerp(Grem.Sx, Grem.Tx, Tt, Grem.N)
+  Grem.Y = Lerp(Grem.Sy, Grem.Ty, Tt, Grem.N)
+  if Tt < Grem.N then return
+  ' arrived: the window goes out
+  Wi = Grem.Win
+  if Lit[Wi] = 1 then
+    Lit[Wi] = 0
+    dec LitN
+    DrawGlass
+  end if
+  play sound SndZap
+  Grem.Hover = HoverN
+  return
+end sub
+
+' the next window of the order (1-9 in a cycle)
+sub AimImp:
+  inc Gi
+  if Gi > 9 then Gi = 1
+  K = Order[Gi]
+  Grem.Win = K
+  Grem.Sx = Grem.X
+  Grem.Sy = Grem.Y
+  Grem.Tx = PosX[K]
+  Grem.Ty = PosY[K] - 12
+  Grem.T = 0
+  Grem.N = Gap - HoverN
+  return
+end sub
+
+' a new order: a shuffle of 1-9 (Fisher-Yates with the xorshift)
+sub Shuffle:
+  for Si = 1 to 9
+    Order[Si] = Si
+  next
+  for Si = 9 downto 2
+    Rand
+    V = Rs & 255
+    while V >= Si
+      V = V - Si
+    end while
+    V = V + 1
+    T = Order[Si]
+    Order[Si] = Order[V]
+    Order[V] = T
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites: 0 head, 1 body (the electrician), 2 eyes, 3 the gremlin
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    K = SBstandr
+    if Mv > 0 then
+      V = Mv & 4
+      if V > 0 then K = SBstepr
+    end if
+    if Reach > 0 then K = SBreachr
+    if Face = 1 then K = K + 4
+    V = SHeadr
+    if Face = 1 then V = SHeadl
+    set sprite 0 to Py,Px,V,9
+    set sprite 1 to Py,Px,K,5
+  end if
+  if Banner > 0 then
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  else
+    V = Tick >> 3
+    V = V & 1
+    K = SGrem0
+    if V = 1 then K = SGrem1
+    X = Grem.X
+    Y = Grem.Y
+    set sprite 2 to Y,X,SEyes,11
+    set sprite 3 to Y,X,K,13
+  end if
+  update sprites
+  return
+end sub
+
+' the glass of window Wi, lit or dark
+sub DrawGlass:
+  X = WinC[Wi] + 1
+  Y = WinR[Wi] + 1
+  T = TGd00
+  if Lit[Wi] = 1 then T = TGl00
+  for R = 0 to 2
+    for C = 0 to 3
+      put char T at X,Y
+      inc T
+      inc X
+    next
+    X = X - 4
+    inc Y
+  next
+  return
+end sub
+
+' the frame and sill of window Wi
+sub DrawFrame:
+  X = WinC[Wi]
+  Y = WinR[Wi]
+  put char TFtl at X,Y
+  V = X + 1
+  fill TFt count 4 at V,Y
+  V = X + 5
+  put char TFtr at V,Y
+  for R = 1 to 3
+    J = Y + R
+    put char TFl at X,J
+    V = X + 5
+    put char TFr at V,J
+  next
+  J = Y + 4
+  put char TSl at X,J
+  V = X + 1
+  fill TSm count 4 at V,J
+  V = X + 5
+  put char TSr at V,J
+  return
+end sub
+
+sub DrawBuilding:
+  for Ri = 0 to 1
+    fill TSky count 32 at 0,Ri
+  next
+  for Si = 0 to 7
+    K = Si << 1
+    X = StarT[K]
+    Y = StarT[K + 1]
+    V = Si & 1
+    T = TStar1 + V
+    if Si = 6 then T = TStar3
+    put char T at X,Y
+  next
+  put char TMoon00 at 26,0
+  put char TMoon01 at 27,0
+  put char TMoon10 at 26,1
+  put char TMoon11 at 27,1
+  fill TCornice count 32 at 0,2
+  for Ri = 3 to 19
+    fill TBrick count 32 at 0,Ri
+  next
+  fill TBase count 32 at 0,20
+  fill TWalk count 32 at 0,21
+  fill TKerb count 32 at 0,22
+  fill TSky count 32 at 0,23
+  for Wi = 1 to 9
+    DrawFrame
+    DrawGlass
+  next
+  ' the sign panel
+  fill TPtop count 6 at 24,3
+  for Ri = 4 to 12
+    fill 32 count 6 at 24,Ri
+  next
+  fill TPbot count 6 at 24,13
+  ' the fuse box
+  T = TFuse00
+  for Ri = 15 to 18
+    for C = 25 to 28
+      put char T at C,Ri
+      inc T
+    next
+  next
+  return
+end sub
+
+' the time (Which 0) or the best time (1) at column Cx, row Ry
+sub ShowTime(u8 Cx, u8 Ry, u8 Which):
+  if Which = 1 then
+    if BestS = 0 then
+      print at Cx,Ry, "--:--"
+      return
+    end if
+    print BMins at Cx,Ry
+    Cx = Cx + 2
+    print at Cx,Ry, ":"
+    Cx = Cx + 1
+    print BSec at Cx,Ry
+    return
+  end if
+  print Mins at Cx,Ry
+  Cx = Cx + 2
+  print at Cx,Ry, ":"
+  Cx = Cx + 1
+  print Sec at Cx,Ry
+  return
+end sub
+
+sub ShowHud:
+  print at 25,4, "ROUND"
+  NumU = Gm
+  print at 25,5, digits$(NumU, 1)
+  print at 26,5, "/5"
+  print at 25,7, "TIME"
+  ShowTime(25, 8, 0)
+  print at 25,10, "BEST"
+  ShowTime(25, 11, 1)
+  return
+end sub
+
+' a round: every window dark, the electrician at the fuse box, a new order
+' for the gremlin, which flies in from the sky
+sub NewRound:
+  fill 32 count 28 at 2,1
+  for Wi = 1 to 9
+    Lit[Wi] = 0
+    DrawGlass
+  next
+  LitN = 0
+  Pp = 0
+  Px = PosX[0]
+  Py = PosY[0]
+  Mv = 0
+  Reach = 0
+  Want = 0
+  Face = 1
+  Gap = GapT[Gm - 1]
+  Shuffle
+  Gi = 0
+  Grem.X = 120
+  Grem.Y = 4
+  Grem.Hover = 0
+  AimImp
+  ShowHud
+  play sound SndStart
+  return
+end sub
+
+sub NewGame:
+  Gm = 1
+  Ft = 0
+  Sec = 0
+  Mins = 0
+  TotS = 0
+  NewScreen
+  DrawBuilding
+  Over = 0
+  Banner = 0
+  TitleOn = 0
+  NewRound
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the building, its windows lighting one by one (a window
+' every 20 frames, then out again), the gremlin by the moon, the tune once,
+' START / ABOUT
+sub TitlePage:
+  for Wi = 1 to 9
+    Lit[Wi] = 0
+  next
+  NewScreen
+  DrawBuilding
+  print at 2,1, "BY WALTER E. MEYERS"
+  print at 24,5, "LIGHTS"
+  print at 24,6, " OUT!"
+  print at 25,9, "START"
+  print at 25,10, "ABOUT"
+  print at 2,22, "AHOY! MARCH 1987"
+  ShowMenu
+  TitleOn = 1
+  Banner = 0
+  Grem.X = 184
+  Grem.Y = 0
+  Tk = 0
+  TStep = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 536
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleLights
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' every 20 frames the next window: on for steps 0-8, off for 9-17
+sub TitleLights:
+  inc Tk
+  if Tk < 20 then return
+  Tk = 0
+  if TStep < 9 then
+    Wi = TStep + 1
+    Lit[Wi] = 1
+  else
+    Wi = TStep - 8
+    Lit[Wi] = 0
+  end if
+  DrawGlass
+  inc TStep
+  if TStep >= 18 then TStep = 0
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 24,9
+  put char 32 at 24,10
+  J = Menu + 9
+  put char 62 at 24,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "LIGHTS OUT"
+  print at 2,4, "BASED ON LIGHTS OUT!"
+  print at 2,5, "BY WALTER E. MEYERS, AHOY!"
+  print at 2,6, "MARCH 1987 (COMMODORE 64)."
+  print at 2,8, "LIGHT ALL NINE WINDOWS AT"
+  print at 2,9, "ONCE, FIVE TIMES, BEFORE THE"
+  print at 2,10, "GREMLIN PUTS THEM OUT."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: NIGHT SHIFT"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$03,$F0,$E1,$C3,$C3,$87,$87
+  $00,$C0,$00,$00,$00,$00,$00,$00
+  $87,$83,$C3,$C1,$E0,$F0,$03,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$00
+  $00,$00,$00,$00,$AA,$00,$00,$10
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$80,$40,$00,$F0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$0E,$06,$06,$06
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $00,$00,$00,$00,$01,$01,$01,$00
+  $00,$00,$00,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$01,$01,$01,$00
+  $07,$D8,$07,$07,$D8,$07,$07,$D8
+  $01,$01,$01,$01,$07,$F0,$E0,$C0
+  $00,$00,$00,$00,$E0,$F0,$07,$03
+  $E0,$E4,$E0,$E0,$E4,$E0,$E0,$E4
+  $07,$07,$D8,$07,$07,$D8,$07,$07
+  $00,$00,$00,$00,$0C,$18,$30,$60
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E4,$E0,$E0,$E4,$E0,$E0
+  $00,$07,$03,$23,$03,$03,$23,$03
+  $00,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$C0,$C4,$C0,$C0,$C4,$C0
+  $07,$D8,$07,$07,$D8,$07,$07,$D8
+  $01,$01,$01,$01,$07,$F0,$E0,$C0
+  $00,$00,$00,$00,$E0,$F0,$07,$03
+  $E0,$E4,$E0,$E0,$E4,$E0,$E0,$E4
+  $07,$07,$D8,$07,$07,$D8,$07,$07
+  $00,$11,$22,$44,$00,$00,$00,$00
+  $00,$10,$22,$44,$00,$00,$00,$00
+  $E0,$E0,$E4,$E0,$E0,$E4,$E0,$E0
+  $00,$07,$03,$23,$03,$03,$23,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$C0,$C4,$C0,$C0,$C4,$C0
+  $00,$00,$00,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$01,$03,$06
+  $00,$00,$00,$00,$00,$80,$00,$00
+  $00,$01,$01,$06,$06,$06,$06,$06
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$1C
+  $F0,$01,$03,$06,$00,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $06,$06,$06,$06,$06,$06,$01,$38
+  $1C,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$03,$03,$03,$00,$00
+  $38,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$01,$01,$00,$10,$10,$00
+  $00,$00,$00,$00,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$51,$01,$01,$01,$01,$01,$01
+  $01,$B1,$1B,$1B,$1B,$1B,$1B,$1B
+  $01,$B1,$01,$01,$01,$01,$01,$01
+  $1B,$1B,$1B,$1B,$1B,$1B,$B1,$01
+  $01,$01,$01,$01,$01,$B1,$B1,$01
+  $01,$0E,$0F,$0E,$E1,$0E,$01,$16
+  $16,$16,$16,$01,$16,$16,$16,$01
+  $0E,$EF,$FE,$0E,$E1,$E1,$E1,$E1
+  $0E,$0F,$0E,$0E,$01,$01,$01,$01
+  $0E,$1F,$1E,$1E,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0F,$0E,$0E,$01,$16,$16,$16,$01
+  $0F,$0E,$0E,$01,$16,$16,$16,$01
+  $1F,$1E,$1E,$01,$16,$16,$16,$01
+  $41,$14,$41,$41,$14,$41,$41,$14
+  $14,$14,$14,$14,$14,$41,$41,$41
+  $04,$04,$04,$04,$14,$14,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$14,$41,$41,$14,$41,$41
+  $04,$04,$04,$04,$54,$54,$54,$54
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $0E,$41,$41,$41,$41,$41,$41,$41
+  $0E,$54,$04,$04,$04,$04,$04,$04
+  $0E,$04,$04,$04,$04,$04,$04,$04
+  $0E,$41,$41,$41,$41,$41,$41,$41
+  $B9,$9B,$B9,$B9,$9B,$B9,$B9,$9B
+  $AB,$AB,$AB,$AB,$AB,$BA,$BA,$BA
+  $0B,$0B,$0B,$0B,$AB,$AB,$BA,$BA
+  $B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $B9,$B9,$9B,$B9,$B9,$9B,$B9,$B9
+  $0B,$FB,$FB,$FB,$0B,$0B,$0B,$0B
+  $0B,$FB,$FB,$FB,$0B,$0B,$0B,$0B
+  $B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $0E,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $0E,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0E,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0E,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $0E,$0E,$0E,$E1,$E1,$E1,$E1,$E1
+  $0E,$0E,$0E,$01,$01,$A1,$A1,$A1
+  $0E,$0E,$0E,$01,$01,$A1,$01,$01
+  $0E,$1E,$1E,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$0E,$8E
+  $1A,$A1,$A1,$A1,$01,$01,$0E,$0E
+  $A1,$A1,$01,$01,$01,$01,$0E,$0E
+  $E1,$E1,$E1,$E1,$E1,$E1,$1E,$2E
+  $8E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$E1,$E1,$E1,$0E,$0E
+  $0E,$0E,$0E,$E1,$E1,$E1,$0E,$0E
+  $2E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $0E,$01,$16,$16,$01,$16,$16,$01
+  $0E,$0F,$0E,$0E,$1E,$1E,$1E,$01
+  $0F,$0E,$01,$01,$01,$01,$01,$01
+  $01,$0A,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$0A,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$03,$02,$02,$06,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$C0,$40,$40,$60,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$03,$02,$02,$06,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$C0,$40,$40,$60,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$13,$03,$03,$03,$04,$08,$18,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$D0,$C8,$C0,$C0,$20,$10,$18,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$0B,$13,$03,$03,$04,$08,$18,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$C8,$C0,$C0,$C0,$20,$10,$18,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$0B,$0B,$03,$03,$02,$02,$06,$00
+  $0C,$18,$30,$00,$00,$00,$F0,$E0,$C0,$C0,$C0,$C0,$40,$40,$60,$00
+  $30,$18,$0C,$00,$00,$00,$0F,$07,$03,$03,$03,$03,$02,$02,$06,$00
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$D0,$D0,$C0,$C0,$40,$40,$60,$00
+  $00,$03,$07,$07,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$F8,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$1F,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$E0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$18,$0F,$8D,$CF,$EE,$7F,$3F,$0F,$07,$04,$0C,$00,$00,$00
+  $00,$08,$18,$F0,$B1,$F3,$77,$FE,$FC,$F0,$E0,$20,$30,$00,$00,$00
+  $00,$10,$18,$0F,$0D,$0F,$1E,$3F,$7F,$CF,$87,$04,$0C,$00,$00,$00
+  $00,$08,$18,$F0,$B0,$F0,$78,$FC,$FE,$F3,$E1,$20,$30,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+LoClick:
+    db $40,$47,$10,$02,$40,$35,$20,$03,$50
+LoTap:
+    db $40,$1D,$51,$02,$50
+LoZap:
+    db $00,$00,$11,$02,$00,$00,$22,$03,$00,$00,$43,$04,$10
+LoBuzz:
+    db $40,$FC,$21,$03,$40,$3B,$32,$03,$40,$7F,$52,$04,$50
+LoRound:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+LoStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+LoWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+LoSoundTable:
+    dw LoTuneMel,$702B
+    dw LoTuneBass,$7035
+    dw LoClick,$7049
+    dw LoTap,$7049
+    dw LoZap,$703F
+    dw LoBuzz,$7049
+    dw LoRound,$7049
+    dw LoStart,$7049
+    dw LoWin,$7049
+; Night Shift (original)
+; Tiny Sound, 8 frames per step
+LoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2B,$01,$26,$01,$28,$01,$01,$26
+    db $23,$01,$1F,$01,$21,$01,$23,$01,$24,$01,$28,$01,$26,$01,$01,$01
+    db $23,$01,$01,$01,$24,$01,$28,$01,$2D,$01,$28,$01,$2A,$01,$01,$28
+    db $26,$01,$23,$01,$24,$01,$21,$01,$1E,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01,$00,$01,$01
+    db $FF
+LoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$00,$01,$01,$01,$01
+    db $FF
+}

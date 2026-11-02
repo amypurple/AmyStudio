@@ -1,0 +1,1110 @@
+cartridge "PIG IN A POKE/ORSON SCOTT CARD/1985"
+
+' PIG IN A POKE
+' A ColecoVision game based on "Pig in a Poke" by Orson Scott Card, Ahoy!
+' September 1985 (Commodore 64 BASIC, the example game of his article
+' "Rockets, Boats, & Pigs in Pokes" in the column "Creating Your Own Games
+' on the VIC and 64"). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: a pig trots left and right near the bottom of a muddy pen.
+' Rows of wooden fence rise from below, each with gaps in it. Be in a gap
+' when a fence reaches you: a fence that touches the pig pushes it up, and
+' a pig standing on a fence is carried up with it until it trots off into
+' a gap. Pushed out of the top of the pen, the game is over. Every fence
+' row that comes in scores 100; at the end of a field the pig's height
+' left scores 10 a notch. Gaps narrow as the field goes on and the rows
+' come closer together.
+'
+' From the original (orig/pig.bas): the pig moving left and right only,
+' the rising rows (one text row a second), the wall string WS$ (twelve
+' units, unit I is 5+I fence then 15-I gap), each new row a window of it
+' starting at WL(DL)+INT(19*RND), DL stepping 0-8 one row at a time and,
+' each time it wraps, the rows coming one text row closer (DS 5, 4, 3, 2,
+' 1, 0); a collision pushes the pig up one row's height (again while it
+' still touches); pushed past the top ends the game; 50 rows a field;
+' the score RT*100 + VP*10 (rows plus height left); the pig's two
+' facings.
+'
+' Liberties:
+' - The fences rise smoothly a pixel at a time, and the pig is pushed up a
+'   pixel at a time while it touches a fence (same total as the
+'   original's 8-pixel pushes, but smooth).
+' - The screen is 28 columns, so a row shows 28 characters of the window
+'   instead of 40; the pig is 2 characters wide instead of 3.
+' - The pig stops at the pen's sides instead of wrapping around (the
+'   original's wrap passes the TV-cropped border).
+' - Height: 15 notches instead of 19 (a shorter screen).
+' - Three fields instead of one: the original's 50-row course, then again
+'   faster (1.5 and 2 times the speed); finishing the third wins. The pig
+'   starts each field at the bottom again.
+' - Apples: every third fence row carries an apple in one of its gaps,
+'   worth 50 when the pig trots into it (a reason to move between rows).
+' - A field ends when its last row has risen past the pig (nine rows
+'   later), not at the moment the row appears.
+' - Joystick for the SHIFT and COMMODORE keys; no keyboard quit.
+'
+' Controls: either controller; the stick moves the pig left and right. On
+' the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TMud = 128
+const TWa = 129
+const TWb = 130
+const TWc = 131
+const TDark = 132
+const TRail = 133
+const TMete = 134
+const TMetf = 135
+const SPigr0 = 0
+const SPigr1 = 4
+const SPigl0 = 8
+const SPigl1 = 12
+const SDetr0 = 16
+const SDetr1 = 20
+const SDetl0 = 24
+const SDetl1 = 28
+const SApple = 32
+const SLeaf = 36
+const SPuff = 40
+const NTiles8 = 64
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBump = 3
+const SndOink = 4
+const SndApple = 5
+const SndRow = 6
+const SndField = 7
+const SndStart = 8
+const SndOver = 9
+const SndWin = 10
+const NSpr = 5
+const PigX0 = 112
+const PigY0 = 130
+const PigTop = 10
+const PxMin = 16
+const PxMax = 224
+const RowsField = 50
+const NField = 3
+
+record Fruit:
+  u8 Live
+  u8 Row
+  u8 Col
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Best = 0
+' the field: fence row start in WS$ (0 none) for name rows 0-24
+u8 RowS[25]
+u8 Buf[28]
+' scroll: phase 0-7, sub-pixel accumulator and speed (1/64 pixel a frame)
+u8 Ph = 0
+u8 Acc = 0
+u8 Spd = 9
+' the original's counters: RC, RT, DL, DS, and the field
+u8 Rc = 0
+u8 Rt = 0
+u8 Dl = 0
+i8 Ds = 5
+u8 Fld = 1
+u8 EndT = 0
+u8 FDone = 0
+u8 PendPh = 0
+u8 PendSh = 0
+' the pig
+u8 Px = PigX0
+u8 Py = PigY0
+u8 Fd = 0
+u8 Fa = 0
+u8 Moved = 0
+u8 Vp = 15
+u8 OldVp = 0
+u8 BumpT = 0
+Fruit Ap
+u8 Over = 0
+u8 MsgT = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Pi = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 H = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table PkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  Flush
+  ReadPad
+  PlayTick
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score > Best then Best = Score
+  mute all
+  for Ri = 8 to 14
+    fill 32 count 24 at 4,Ri
+  next
+  if Over = 2 then
+    print at 6,9, "THE PIG IS SAFE!"
+    print at 6,10, "ALL THREE FIELDS"
+    play sound SndWin
+  else
+    print at 6,9, "PUSHED OUT OF"
+    print at 6,10, "THE PEN!"
+    play sound SndOver
+  end if
+  print at 6,12, "FINAL SCORE"
+  print at 18,12, Score
+  print at 6,13, "BEST"
+  print at 18,13, Best
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayTick:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ClearMsg
+    exit sub
+  end if
+  if BumpT > 0 then dec BumpT
+  MovePig
+  Acc = Acc + Spd
+  while Acc >= 64
+    Acc = Acc - 64
+    ScrollPixel
+  end while
+  PushPig
+  TakeApple
+  Vp = Height(Py)
+  if Vp <> OldVp then DrawMeter
+  if Py < PigTop then
+    Over = 1
+    exit sub
+  end if
+  if FDone = 1 then
+    FDone = 0
+    NextField
+  end if
+end sub
+
+' the height left, in notches (the original's VP)
+function Height(u8 Yp) as u8
+  u8 Hv = 0
+  if Yp >= PigTop then
+    Hv = Yp - PigTop
+    Hv = Hv >> 3
+  end if
+  return Hv
+
+' left and right, one pixel a frame, stopping at the pen's sides
+sub MovePig:
+  K = J1 | J2
+  Moved = 0
+  V = K & 4
+  if V > 0 then
+    Fd = 1
+    if Px > PxMin then
+      dec Px
+      Moved = 1
+    end if
+  else
+    V = K & 8
+    if V > 0 then
+      Fd = 0
+      if Px < PxMax then
+        inc Px
+        Moved = 1
+      end if
+    end if
+  end if
+  if Moved = 1 then inc Fa
+end sub
+
+' one pixel of scrolling: the next phase of the three fence codes; every
+' 8 pixels the rows move up one name row and a new row may come in
+sub ScrollPixel:
+  inc Ph
+  PendPh = 1
+  if Ph >= 8 then
+    Ph = 0
+    ShiftRows
+    PendSh = 1
+  end if
+end sub
+
+' the VRAM work of the last pass, done first thing after the frame's wait
+' (in the vertical blank, before the beam draws the top of the pen)
+sub Flush:
+  if PendPh = 1 then
+    SetPhase
+    PendPh = 0
+  end if
+  if PendSh = 1 then
+    DrawShifted
+    PendSh = 0
+  end if
+end sub
+
+sub SetPhase:
+  W16 = Ph * 24
+  A16 = TWa * 8
+  copy WallPat + W16 count 24 to vram.pattern + A16
+  copy WallPat + W16 count 24 to vram.pattern + 2048 + A16
+  copy WallPat + W16 count 24 to vram.pattern + 4096 + A16
+  copy WallCol + W16 count 24 to vram.color + A16
+end sub
+
+' the original's scroll routine (lines 500-590): a simple jump, or a new
+' row when RC reaches DS
+sub ShiftRows:
+  ' (row 1 keeps the row that leaves, for DrawShifted, which clears it)
+  for Ri = 1 to 23
+    RowS[Ri] = RowS[Ri + 1]
+  next
+  RowS[24] = 0
+  if EndT > 0 then
+    dec EndT
+    if EndT = 0 then FDone = 1
+  end if
+  if Ap.Live = 1 then
+    dec Ap.Row
+    if Ap.Row < 2 then Ap.Live = 0
+  end if
+  if Rt >= RowsField then exit sub
+  if Rc < Ds then
+    inc Rc
+    exit sub
+  end if
+  Rc = 0
+  Rand
+  V = Rs & 31
+  while V > 18
+    V = V - 19
+  end while
+  T = Dl * 20
+  RowS[24] = T + 1 + V
+  inc Rt
+  Score += 100
+  ShowScore
+  play sound SndRow
+  inc Dl
+  if Dl > 8 then
+    Dl = 0
+    Ds = Ds - 1
+    if Ds < 0 then Ds = 0
+  end if
+  N = Rt % 3
+  if N = 1 then PlaceApple
+  if Rt >= RowsField then EndT = 9
+  ShowRows
+end sub
+
+' an apple in a gap of the new row (row 24): the first two-cell gap from
+' a random column
+sub PlaceApple:
+  u8 S0 = 0
+  u8 Cn = 0
+  u8 Tries = 0
+  if Ap.Live = 1 then Tries = 99
+  S0 = RowS[24]
+  Rand
+  Cn = Rs & 15
+  Cn = Cn + 4
+  while Tries < 26
+    Tries = Tries + 1
+    U = S0 + Cn
+    U = U - 2
+    if WsA[U] = 0 then
+      if WsA[U + 1] = 0 then
+        Ap.Live = 1
+        Ap.Row = 24
+        Ap.Col = Cn
+        Tries = 99
+      end if
+    end if
+    Cn = Cn + 1
+    if Cn > 27 then Cn = 3
+  end while
+end sub
+
+' 1 when the fence of name row Rn covers screen column Cn
+function WallAt(u8 Rn, u8 Cn) as u8
+  u8 Si = 0
+  u8 Rv = 0
+  Si = RowS[Rn]
+  if Si > 0 then
+    if Cn >= 2 then
+      if Cn <= 29 then
+        Si = Si + Cn - 2
+        Rv = WsA[Si]
+      end if
+    end if
+  end if
+  return Rv
+
+' 1 when the pig's box (x Px+3..Px+12, y Py+6..Py+14) touches a fence
+' (a fence row at name row n covers y 8n-Ph+1 .. 8n-Ph+6)
+function PigHits as u8
+  u8 Hit = 0
+  u8 Ra = 0
+  u8 Rb = 0
+  u8 Ca = 0
+  u8 Cb = 0
+  u8 Rn = 0
+  u8 Cn = 0
+  u16 Top = 0
+  u16 Y0 = 0
+  u16 Y1 = 0
+  Y0 = Py + 6
+  Y1 = Py + 14
+  Ra = Y0 + Ph
+  Ra = Ra >> 3
+  if Ra < 2 then Ra = 2
+  Rb = Ra + 1
+  Ca = Px + 3
+  Ca = Ca >> 3
+  Cb = Px + 12
+  Cb = Cb >> 3
+  for Rn = Ra to Rb
+    if RowS[Rn] > 0 then
+      Top = Rn * 8
+      Top = Top - Ph
+      if Top + 1 <= Y1 then
+        if Top + 6 >= Y0 then
+          for Cn = Ca to Cb
+            if WallAt(Rn, Cn) = 1 then Hit = 1
+          next
+        end if
+      end if
+    end if
+  next
+  return Hit
+
+' a fence touching the pig pushes it up until it touches no more
+sub PushPig:
+  Got = 0
+  while PigHits = 1
+    Got = 1
+    if Py > 0 then
+      dec Py
+    else
+      exit while
+    end if
+  end while
+  if Got = 1 then
+    if BumpT = 0 then
+      play sound SndBump
+    end if
+    BumpT = 20
+  end if
+end sub
+
+sub TakeApple:
+  if Ap.Live = 0 then exit sub
+  ' apple box: x col*8 .. col*8+7, y 8*row-Ph .. +7
+  W16 = Ap.Row * 8
+  W16 = W16 - Ph
+  A16 = Py + 4
+  if W16 + 7 < A16 then exit sub
+  A16 = Py + 14
+  if W16 > A16 then exit sub
+  X = Ap.Col * 8
+  V = Px + 2
+  if X + 7 < V then exit sub
+  V = Px + 13
+  if X > V then exit sub
+  Ap.Live = 0
+  Score += 50
+  ShowScore
+  play sound SndApple
+end sub
+
+sub NextField:
+  B = Vp * 10
+  Score += B
+  ShowScore
+  if Fld >= NField then
+    Over = 2
+    exit sub
+  end if
+  inc Fld
+  SetField
+  play sound SndField
+  for Ri = 9 to 12
+    fill 32 count 20 at 6,Ri
+  next
+  print at 9,10, "FIELD"
+  NumU = Fld
+  print at 15,10, digits$(NumU, 1)
+  print at 7,11, "HEIGHT BONUS"
+  NumU = B
+  print at 20,11, digits$(NumU, 3)
+  MsgT = 120
+  ShowHud
+end sub
+
+' a field's start: the original's DL, DS, RC, RT, an empty pen, the pig at
+' the bottom; the speed rises with the field
+sub SetField:
+  select case Fld
+  case 1
+    Spd = 9
+  case 2
+    Spd = 13
+  case else
+    Spd = 17
+  end select
+  Dl = 0
+  Ds = 5
+  Rc = 0
+  Rt = 0
+  EndT = 0
+  FDone = 0
+  Acc = 0
+  Ph = 0
+  PendPh = 0
+  PendSh = 0
+  fill array RowS with 0
+  ' the original starts with six rows already on screen (line 950)
+  for Pi = 0 to 5
+    Rand
+    V = Rs & 31
+    while V > 18
+      V = V - 19
+    end while
+    R = Pi * 6
+    R = R + 3
+    if R >= 6 then
+      if R <= 24 then RowS[R] = 1 + V
+    end if
+  next
+  Px = PigX0
+  Py = PigY0
+  Fd = 0
+  Ap.Live = 0
+  OldVp = 99
+  SetPhase
+  DrawField
+end sub
+
+sub ClearMsg:
+  DrawField
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' every name row of the pen: cell = mud + fence top of this row (1) +
+' fence of the row below's top part (2)
+sub DrawField:
+  for Ri = 2 to 23
+    DrawRow(Ri)
+  next
+end sub
+
+' after a shift only rows near a fence change: a row stays all mud when
+' it and its neighbours (its old contents) hold no fence
+sub DrawShifted:
+  for Ri = 2 to 23
+    V = RowS[Ri - 1] | RowS[Ri]
+    V = V | RowS[Ri + 1]
+    if V > 0 then DrawRow(Ri)
+  next
+  RowS[1] = 0
+end sub
+
+sub DrawRow(u8 Rn):
+  u8 Sa = 0
+  u8 Sb = 0
+  u8 Cn = 0
+  u16 Ad = 0
+  Sa = RowS[Rn]
+  Sb = RowS[Rn + 1]
+  Ad = Rn * 32
+  Ad = Ad + 2
+  ' (no early exit: this sub has an IX frame)
+  V = Sa | Sb
+  if V = 0 then
+    fill TMud count 28 to vram.name + Ad
+  elseif Sb = 0 then
+    W16 = Sa
+    copy WsTa + W16 count 28 to vram.name + Ad
+  elseif Sa = 0 then
+    W16 = Sb
+    copy WsTb + W16 count 28 to vram.name + Ad
+  else
+    for Cn = 0 to 27
+      V = TMud
+      if Sa > 0 then V = V + WsA[Sa + Cn]
+      if Sb > 0 then V = V + WsB[Sb + Cn]
+      Buf[Cn] = V
+    next
+    copy Buf count 28 to vram.name + Ad
+  end if
+end sub
+
+' sprite 0 the pig's hooves and eye, 1 its body, 2 the leaf, 3 the apple
+sub DrawSprites:
+  if TitleOn = 1 then
+    Y = 150
+  else
+    Y = Py - 1
+  end if
+  V = Fa >> 3
+  V = V & 1
+  K = Fd << 1
+  K = K + V
+  K = K << 2
+  T = K + SDetr0
+  set sprite 0 to Y,Px,T,1
+  set sprite 1 to Y,Px,K,9
+  if Ap.Live = 1 then
+    W16 = Ap.Row * 8
+    W16 = W16 - Ph
+    W16 = W16 - 8
+    Y = W16
+    X = Ap.Col * 8
+    X = X - 4
+    if Ap.Row > 23 then Y = 192
+    if W16 < 16 then Y = 192
+    set sprite 2 to Y,X,SLeaf,2
+    set sprite 3 to Y,X,SApple,8
+  else
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  end if
+  if BumpT > 12 then
+    Y = Py - 1
+    set sprite 4 to Y,Px,SPuff,15
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  update sprites
+end sub
+
+sub ShowHud:
+  fill TDark count 32 at 0,0
+  fill TDark count 32 at 0,1
+  ShowScore
+  print at 9,1, "F"
+  NumU = Fld
+  print at 10,1, digits$(NumU, 1)
+  ShowRows
+  DrawMeter
+end sub
+
+sub ShowScore:
+  print at 2,1, Score
+end sub
+
+sub ShowRows:
+  NumU = RowsField - Rt
+  print at 28,1, digits$(NumU, 2)
+end sub
+
+' the height meter: Vp notches full of 15
+sub DrawMeter:
+  u8 Mx = 0
+  OldVp = Vp
+  for Mx = 0 to 14
+    T = TMete
+    if Mx < Vp then T = TMetf
+    C = Mx + 12
+    put char T at C,1
+  next
+end sub
+
+sub NewGame:
+  Score = 0
+  Fld = 1
+  Over = 0
+  MsgT = 0
+  BumpT = 0
+  TitleOn = 0
+  NewScreen
+  SetField
+  Vp = Height(Py)
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+end sub
+
+' the title: the pen with a few fences, the pig trotting, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  Fld = 1
+  NewScreen
+  SetField
+  for Ri = 6 to 15
+    fill 32 count 20 at 6,Ri
+  next
+  print at 9,7, "PIG IN A POKE"
+  print at 7,9, "BY ORSON SCOTT CARD"
+  print at 10,12, "START GAME"
+  print at 10,13, "CREDITS"
+  print at 8,15, "AHOY! SEPT 1985"
+  fill TDark count 32 at 0,1
+  print at 2,1, "BEST"
+  print at 7,1, Best
+  ShowMenu
+  TitleOn = 1
+  Px = 40
+  Fd = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  ' the pig trots across under the box
+  if Fd = 0 then
+    inc Px
+    if Px >= PxMax then Fd = 1
+  else
+    dec Px
+    if Px <= PxMin then Fd = 0
+  end if
+  inc Fa
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,12
+  put char 32 at 8,13
+  J = Menu + 12
+  put char 62 at 8,J
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "PIG IN A POKE"
+  print at 2,5, "BASED ON PIG IN A POKE BY"
+  print at 2,6, "ORSON SCOTT CARD, AHOY!"
+  print at 2,7, "SEPTEMBER 1985: THE EXAMPLE"
+  print at 2,8, "GAME OF HIS ARTICLE"
+  print at 2,9, "ROCKETS, BOATS, AND PIGS IN"
+  print at 2,10, "POKES (COMMODORE 64)."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: MUD PEN POLKA"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+end sub
+
+data TilePat bytes
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$81,$91,$81,$00,$85,$81,$00
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$81,$91,$81,$00,$85,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $0A,$8A,$0A,$8A,$0A,$8A,$0A,$8A
+  $01,$6B,$6B,$6B,$06,$6B,$6B,$01
+  $0A,$8A,$0A,$8A,$0A,$8A,$0A,$8A
+  $01,$6B,$6B,$6B,$06,$6B,$6B,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$06,$0B,$06,$0A,$0A,$8A,$0A
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $01,$19,$19,$19,$19,$19,$19,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$4F,$BF,$7F,$3F,$3F,$3F,$18,$18,$00,$00
+  $00,$00,$00,$00,$08,$1C,$F8,$EB,$FD,$FD,$FC,$F8,$18,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$4F,$BF,$7F,$3F,$3F,$3F,$0C,$0C,$00,$00
+  $00,$00,$00,$00,$08,$1C,$F8,$EB,$FD,$FD,$FC,$F8,$30,$30,$00,$00
+  $00,$00,$00,$00,$10,$38,$1F,$D7,$BF,$BF,$3F,$1F,$18,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$F2,$FD,$FE,$FC,$FC,$FC,$18,$18,$00,$00
+  $00,$00,$00,$00,$10,$38,$1F,$D7,$BF,$BF,$3F,$1F,$0C,$0C,$00,$00
+  $00,$00,$00,$00,$00,$00,$F2,$FD,$FE,$FC,$FC,$FC,$30,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$14,$00
+  $00,$00,$00,$00,$00,$00,$00,$10,$00,$02,$00,$00,$00,$00,$14,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0A,$00
+  $00,$00,$00,$00,$00,$00,$00,$10,$00,$02,$00,$00,$00,$00,$28,$00
+  $00,$00,$00,$00,$00,$00,$00,$08,$00,$40,$00,$00,$00,$00,$28,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$28,$00
+  $00,$00,$00,$00,$00,$00,$00,$08,$00,$40,$00,$00,$00,$00,$14,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$50,$00
+  $00,$00,$00,$00,$00,$00,$00,$02,$07,$0F,$0F,$0F,$0F,$07,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$60,$E0,$F0,$E8,$F0,$F0,$E0,$40,$00
+  $00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$25,$5A,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$A4,$5A,$00
+end data
+data WallPat bytes
+  $00,$81,$91,$81,$00,$85,$81,$00
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$81,$91,$81,$00,$85,$81,$00
+  $81,$91,$81,$00,$85,$81,$00,$08
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $81,$91,$81,$00,$85,$81,$00,$00
+  $91,$81,$00,$85,$81,$00,$00,$08
+  $00,$10,$00,$02,$00,$40,$00,$81
+  $91,$81,$00,$85,$81,$00,$00,$81
+  $81,$00,$85,$81,$00,$40,$00,$08
+  $00,$10,$00,$02,$00,$00,$81,$91
+  $81,$00,$85,$81,$00,$00,$81,$91
+  $00,$85,$81,$00,$00,$40,$00,$08
+  $00,$10,$00,$02,$00,$81,$91,$81
+  $00,$85,$81,$00,$00,$81,$91,$81
+  $85,$81,$00,$02,$00,$40,$00,$08
+  $00,$10,$00,$00,$81,$91,$81,$00
+  $85,$81,$00,$00,$81,$91,$81,$00
+  $81,$00,$00,$02,$00,$40,$00,$08
+  $00,$10,$00,$81,$91,$81,$00,$85
+  $81,$00,$00,$81,$91,$81,$00,$85
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$00,$81,$91,$81,$00,$85,$81
+  $00,$00,$81,$91,$81,$00,$85,$81
+end data
+data WallCol bytes
+  $01,$6B,$6B,$6B,$06,$6B,$6B,$01
+  $0A,$8A,$0A,$8A,$0A,$8A,$0A,$8A
+  $01,$6B,$6B,$6B,$06,$6B,$6B,$01
+  $6B,$6B,$6B,$06,$6B,$6B,$01,$8A
+  $0A,$8A,$0A,$8A,$0A,$8A,$0A,$01
+  $6B,$6B,$6B,$06,$6B,$6B,$01,$01
+  $6B,$6B,$06,$6B,$6B,$01,$0A,$8A
+  $0A,$8A,$0A,$8A,$0A,$8A,$01,$6B
+  $6B,$6B,$06,$6B,$6B,$01,$01,$6B
+  $6B,$06,$6B,$6B,$01,$8A,$0A,$8A
+  $0A,$8A,$0A,$8A,$0A,$01,$6B,$6B
+  $6B,$06,$6B,$6B,$01,$01,$6B,$6B
+  $06,$6B,$6B,$01,$0A,$8A,$0A,$8A
+  $0A,$8A,$0A,$8A,$01,$6B,$6B,$6B
+  $06,$6B,$6B,$01,$01,$6B,$6B,$6B
+  $6B,$6B,$01,$8A,$0A,$8A,$0A,$8A
+  $0A,$8A,$0A,$01,$6B,$6B,$6B,$06
+  $6B,$6B,$01,$01,$6B,$6B,$6B,$06
+  $6B,$01,$0A,$8A,$0A,$8A,$0A,$8A
+  $0A,$8A,$01,$6B,$6B,$6B,$06,$6B
+  $6B,$01,$01,$6B,$6B,$6B,$06,$6B
+  $01,$8A,$0A,$8A,$0A,$8A,$0A,$8A
+  $0A,$01,$6B,$6B,$6B,$06,$6B,$6B
+  $01,$01,$6B,$6B,$6B,$06,$6B,$6B
+end data
+data WsA bytes
+  0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1
+  1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0
+  0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0
+  0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1
+  0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+  1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1
+  1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0
+  0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+  0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data WsB bytes
+  0,2,2,2,2,2,2,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,2,2,2,2,2,2,2,0,0,0,0
+  0,0,0,0,0,0,0,0,0,2,2,2,2,2,2,2
+  2,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2
+  2,2,2,2,2,2,0,0,0,0,0,0,0,0,0,0
+  0,2,2,2,2,2,2,2,2,2,2,0,0,0,0,0
+  0,0,0,0,0,2,2,2,2,2,2,2,2,2,2,2
+  0,0,0,0,0,0,0,0,0,2,2,2,2,2,2,2
+  2,2,2,2,2,0,0,0,0,0,0,0,0,2,2,2
+  2,2,2,2,2,2,2,2,2,2,0,0,0,0,0,0
+  0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0
+  0,0,0,0,0,2,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,0,0,0,0,0,2,2,2,2,2,2,2
+  2,2,2,2,2,2,2,2,2,0,0,0,0,2,2,2
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data WsTa bytes
+  128,129,129,129,129,129,129,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,129,129,129,129,129,129,129,128,128,128,128
+  128,128,128,128,128,128,128,128,128,129,129,129,129,129,129,129
+  129,128,128,128,128,128,128,128,128,128,128,128,128,129,129,129
+  129,129,129,129,129,129,128,128,128,128,128,128,128,128,128,128
+  128,129,129,129,129,129,129,129,129,129,129,128,128,128,128,128
+  128,128,128,128,128,129,129,129,129,129,129,129,129,129,129,129
+  128,128,128,128,128,128,128,128,128,129,129,129,129,129,129,129
+  129,129,129,129,129,128,128,128,128,128,128,128,128,129,129,129
+  129,129,129,129,129,129,129,129,129,129,128,128,128,128,128,128
+  128,129,129,129,129,129,129,129,129,129,129,129,129,129,129,128
+  128,128,128,128,128,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,128,128,128,128,128,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,128,128,128,128,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+end data
+data WsTb bytes
+  128,130,130,130,130,130,130,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,130,130,130,130,130,130,130,128,128,128,128
+  128,128,128,128,128,128,128,128,128,130,130,130,130,130,130,130
+  130,128,128,128,128,128,128,128,128,128,128,128,128,130,130,130
+  130,130,130,130,130,130,128,128,128,128,128,128,128,128,128,128
+  128,130,130,130,130,130,130,130,130,130,130,128,128,128,128,128
+  128,128,128,128,128,130,130,130,130,130,130,130,130,130,130,130
+  128,128,128,128,128,128,128,128,128,130,130,130,130,130,130,130
+  130,130,130,130,130,128,128,128,128,128,128,128,128,130,130,130
+  130,130,130,130,130,130,130,130,130,130,128,128,128,128,128,128
+  128,130,130,130,130,130,130,130,130,130,130,130,130,130,130,128
+  128,128,128,128,128,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,128,128,128,128,128,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,128,128,128,128,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+end data
+
+asm {
+PkBump:
+    db $00,$00,$15,$02,$00,$00,$36,$03,$00,$00,$66,$04,$10
+PkOink:
+    db $40,$53,$21,$03,$40,$7C,$11,$03,$40,$AB,$21,$04,$40,$C5,$31,$03,$50
+PkApple:
+    db $40,$6B,$10,$03,$40,$55,$10,$03,$40,$47,$20,$08,$50
+PkRow:
+    db $40,$40,$50,$02,$50
+PkField:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$14,$50
+PkStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+PkOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$AB,$21,$1E,$50
+PkWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+PkSoundTable:
+    dw PkTuneMel,$702B
+    dw PkTuneBass,$7035
+    dw PkBump,$703F
+    dw PkOink,$7049
+    dw PkApple,$7049
+    dw PkRow,$7049
+    dw PkField,$7049
+    dw PkStart,$7049
+    dw PkOver,$7049
+    dw PkWin,$7049
+; Mud Pen Polka (original)
+; Tiny Sound, 8 frames per step
+PkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$26,$01,$21,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$19,$01,$1C,$1F,$21,$01,$1F,$01,$1E,$01,$1C,$01
+    db $1A,$01,$01,$01,$1A,$01,$1E,$21,$26,$01,$21,$01,$23,$01,$26,$01
+    db $23,$01,$1F,$01,$1E,$01,$21,$01,$1C,$01,$19,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+PkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

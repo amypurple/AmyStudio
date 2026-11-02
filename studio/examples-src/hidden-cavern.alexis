@@ -1,0 +1,1340 @@
+cartridge "HIDDEN CAVERN/J.C.HILTY/1986"
+
+' HIDDEN CAVERN - Land of the Cave Globs
+' A ColecoVision game based on "Hidden Cavern" by James C. Hilty, Ahoy!
+' April 1986 (Commodore 64 BASIC with a machine-code character scroller
+' and sprite mover in DATA lines; the author's name is in the listing's
+' REM lines). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from the
+' listing, orig/hiddencavern.txt), the game is built for the ColecoVision:
+' a banded red cave with dripping ceilings and crystal floors that slides
+' smoothly one pixel at a time, a grey cave cruiser, green cave globs and
+' loose rock spikes as smooth sprites, sound effects.
+'
+' The game: your cave cruiser holds the right side of a cavern that keeps
+' flowing towards it. Steer it up and down to stay clear of the rock, the
+' cave globs and the loose spikes that slide along the ceiling and the
+' floor, and torpedo the globs.
+'
+' From the original: the cruiser sits at the right and moves only up and
+' down; the cavern scrolls past it, faster after 500 points and faster
+' again after 2500; two cave globs bounce about the cave; two stalactites
+' slide along the ceiling and two stalagmites along the floor (here one of
+' each, see below); touching rock, a glob or a spike loses a ship and
+' starts the cave again; three ships. The button fires a torpedo to the
+' left (one at a time): a glob hit is worth 250 and the glob comes back at
+' the left; a torpedo that reaches the left edge is a MISS, and three
+' misses end the game as surely as losing three ships. A point for every
+' step of the scroll. GAME OVER says which of the two ended it, the score
+' and the high score.
+'
+' Liberties: the cave is drawn as a smooth pixel scroll of a random cave
+' (the C64 scrolled a fixed screen picture a character at a time): the
+' ceiling and floor wander a row at a time and always leave at least
+' seven rows of air; the cave moves 3/4 pixel a frame, 1 after 500 points
+' and 1 1/2 after 2500, a point every 8 pixels; the C64 stopped the whole
+' game while a torpedo flew (only the torpedo moved): here only the globs
+' hold still (so aiming is as on the C64), the cave and the spikes keep
+' going and the cruiser can still steer; the torpedo flies 6 pixels a
+' frame; one ceiling spike and one floor spike instead of two of each
+' (sprites per line), and they hug the rock under them and slide 1 1/2
+' times as fast as the cave; the globs bounce inside the cave's width up
+' to the cruiser (one 1/2 pixel a frame across and up, the other 1/2
+' across and 1 down, after the C64's 2,-2 and 1,3), wobble slowly and
+' come back at the left after a short pause; collisions are box tests on
+' the drawn shapes; the score, high score, ships and misses are shown during play; GAME OVER then the
+' title (the C64 asked PLAY AGAIN Y OR N); a title screen, credits and a
+' title tune.
+'
+' Standing still cannot last: the ceiling and floor keep wandering, the
+' spikes sweep every height next to the rock and the globs bounce up to
+' the cruiser's column; firing at random runs into the three-miss limit.
+'
+' Controls: controller 1 (or 2): stick up and down steer the cruiser,
+' either button fires. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers.
+
+const TCvAA = 128
+const TCvAR = 129
+const TCvAC = 130
+const TCvAF = 131
+const TCvRA = 132
+const TCvRR = 133
+const TCvRC = 134
+const TCvRF = 135
+const TCvCA = 136
+const TCvCR = 137
+const TCvCC = 138
+const TCvCF = 139
+const TCvFA = 140
+const TCvFR = 141
+const TCvFC = 142
+const TCvFF = 143
+const TLife = 144
+const TMiss = 145
+const TBlk = 146
+const TBlc = 147
+const TBar = 148
+const SHull = 0
+const SCanopy = 4
+const STorp = 8
+const SGlob0 = 12
+const SGlob1 = 16
+const SSpkc = 20
+const SSpkf = 24
+const SEx0i = 28
+const SEx0o = 32
+const SEx1i = 36
+const SEx1o = 40
+const NTiles8 = 168
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFire = 3
+const SndGlob = 4
+const SndBoom = 5
+const SndMiss = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 7
+const ShipX = 208
+const PyMin = 24
+const PyMax = 172
+const GxMin = 20
+const GxMax = 214
+const GyMin = 28
+const GyMax = 164
+const TopMin = 4
+const TopMax = 12
+const BotMin = 13
+const BotMax = 21
+const MinGap = 6
+' speeds in 1/16 pixel a frame
+const Spd1 = 12
+const Spd2 = 16
+const Spd3 = 24
+const ScoreCap = 999000
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $00,$04,$00,$40,$00,$22,$48,$08
+  $10,$C6,$44,$00,$20,$00,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $00,$04,$00,$40,$00,$22,$48,$08
+  $10,$C6,$44,$00,$20,$00,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $00,$04,$00,$40,$00,$22,$48,$08
+  $10,$C6,$44,$00,$20,$00,$04,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $00,$04,$00,$40,$00,$22,$48,$08
+  $10,$C6,$44,$00,$20,$00,$04,$00
+  $00,$06,$0E,$C1,$81,$81,$00,$00
+  $00,$00,$40,$03,$40,$00,$00,$00
+  $01,$21,$05,$41,$01,$09,$01,$00
+  $01,$21,$05,$41,$01,$09,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $06,$16,$08,$16,$16,$06,$18,$06
+  $06,$16,$08,$16,$06,$16,$81,$61
+  $61,$16,$18,$06,$16,$06,$18,$06
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $06,$16,$08,$16,$16,$06,$18,$06
+  $06,$16,$08,$16,$06,$16,$81,$61
+  $61,$16,$18,$06,$16,$06,$18,$06
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $06,$16,$08,$16,$16,$06,$18,$06
+  $06,$16,$08,$16,$06,$16,$81,$61
+  $61,$16,$18,$06,$16,$06,$18,$06
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $06,$16,$08,$16,$16,$06,$18,$06
+  $06,$16,$08,$16,$06,$16,$81,$61
+  $61,$16,$18,$06,$16,$06,$18,$06
+  $01,$F1,$F1,$1F,$EF,$1E,$01,$01
+  $01,$01,$91,$19,$91,$01,$01,$01
+  $18,$68,$68,$68,$68,$68,$68,$06
+  $47,$47,$47,$47,$47,$47,$47,$04
+  $01,$01,$01,$0E,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$01,$02,$3F,$6D,$FF,$3F,$0C,$00,$00,$00
+  $00,$00,$00,$FC,$70,$F0,$30,$30,$FC,$B6,$FE,$FC,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$12,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$00,$48,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$7F,$FF,$7F,$20,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$F8,$FC,$F8,$20,$00,$00,$00,$00,$00
+  $00,$00,$07,$1F,$3D,$39,$7F,$7F,$77,$3B,$1F,$36,$64,$00,$00,$00
+  $00,$00,$E0,$F8,$BC,$9C,$FE,$FE,$EE,$DC,$F8,$6C,$26,$00,$00,$00
+  $00,$00,$00,$0F,$3F,$7B,$73,$FF,$FF,$7B,$38,$1F,$26,$00,$00,$00
+  $00,$00,$00,$F0,$FC,$DE,$CE,$FF,$FF,$DE,$1C,$F8,$64,$00,$00,$00
+  $FF,$7F,$7F,$3F,$3F,$1F,$1F,$0F,$0F,$07,$06,$02,$02,$00,$00,$00
+  $FF,$FE,$FC,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$02,$06,$07,$0F,$0F,$1F,$1F,$3F,$3F,$7F,$7F,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $00,$00,$00,$00,$00,$01,$07,$0F,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$E0,$F0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$05,$0E,$18,$30,$18,$38,$1C,$0F,$05,$00,$00,$00
+  $00,$00,$00,$00,$A0,$70,$18,$0C,$18,$1C,$38,$F0,$A0,$00,$00,$00
+  $00,$00,$00,$01,$07,$0F,$1F,$1F,$1F,$1F,$0F,$07,$01,$00,$00,$00
+  $00,$00,$00,$80,$E0,$F0,$F8,$F8,$F8,$F8,$F0,$E0,$80,$00,$00,$00
+  $02,$23,$1B,$0E,$78,$30,$E0,$60,$20,$60,$F0,$38,$1E,$27,$45,$00
+  $40,$C4,$D8,$70,$1E,$0C,$07,$06,$04,$06,$0F,$1C,$78,$E4,$A2,$00
+end data
+
+data CavPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF
+  $FF,$FB,$FF,$BF,$FF,$DD,$48,$08,$10,$39,$BB,$FF,$DF,$FF,$FB,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF
+  $FF,$FB,$FF,$BF,$FF,$DD,$48,$08,$10,$39,$BB,$FF,$DF,$FF,$FB,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF
+  $FF,$FB,$FF,$BF,$FF,$DD,$48,$08,$10,$39,$BB,$FF,$DF,$FF,$FB,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF
+  $FF,$FB,$FF,$BF,$FF,$DD,$48,$08,$10,$39,$BB,$FF,$DF,$FF,$FB,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$7F,$77,$7F,$7E,$5F,$7F,$7B,$7F
+  $7F,$7D,$7F,$5F,$7F,$6E,$24,$04,$08,$1C,$5D,$7F,$6F,$7F,$7D,$7F
+  $80,$80,$80,$80,$80,$80,$80,$80,$FF,$F7,$FF,$FE,$DF,$FF,$FB,$FF
+  $FF,$FD,$FF,$DF,$FF,$EE,$A4,$84,$88,$9C,$DD,$FF,$EF,$FF,$FD,$FF
+  $80,$80,$80,$80,$80,$80,$00,$00,$FF,$F7,$FF,$FE,$DF,$FF,$7B,$7F
+  $FF,$FD,$FF,$DF,$FF,$EE,$24,$04,$88,$9C,$DD,$FF,$EF,$FF,$7D,$7F
+  $00,$80,$80,$80,$80,$80,$80,$80,$7F,$F7,$FF,$FE,$DF,$FF,$FB,$FF
+  $7F,$FD,$FF,$DF,$FF,$EE,$A4,$84,$08,$9C,$DD,$FF,$EF,$FF,$FD,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$3F,$3B,$3F,$3F,$2F,$3F,$3D,$3F
+  $3F,$3E,$3F,$2F,$3F,$37,$12,$02,$04,$0E,$2E,$3F,$37,$3F,$3E,$3F
+  $C0,$C0,$C0,$40,$C0,$C0,$C0,$C0,$FF,$FB,$FF,$7F,$EF,$FF,$FD,$FF
+  $FF,$FE,$FF,$6F,$FF,$F7,$D2,$C2,$C4,$CE,$EE,$7F,$F7,$FF,$FE,$FF
+  $C0,$C0,$C0,$C0,$C0,$40,$00,$00,$FF,$FB,$FF,$FF,$EF,$7F,$3D,$3F
+  $FF,$FE,$FF,$EF,$FF,$77,$12,$02,$C4,$CE,$EE,$FF,$F7,$7F,$3E,$3F
+  $00,$40,$C0,$C0,$C0,$C0,$C0,$C0,$3F,$7B,$FF,$FF,$EF,$FF,$FD,$FF
+  $3F,$7E,$FF,$EF,$FF,$F7,$D2,$C2,$04,$4E,$EE,$FF,$F7,$FF,$FE,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$1F,$1D,$1F,$1F,$17,$1F,$1E,$1F
+  $1F,$1F,$1F,$17,$1F,$1B,$09,$01,$02,$07,$17,$1F,$1B,$1F,$1F,$1F
+  $E0,$E0,$E0,$A0,$E0,$E0,$E0,$E0,$FF,$FD,$FF,$BF,$F7,$FF,$FE,$FF
+  $FF,$FF,$FF,$B7,$FF,$FB,$E9,$E1,$E2,$E7,$F7,$BF,$FB,$FF,$FF,$FF
+  $E0,$60,$E0,$E0,$E0,$A0,$00,$00,$FF,$7D,$FF,$FF,$F7,$BF,$1E,$1F
+  $FF,$7F,$FF,$F7,$FF,$BB,$09,$01,$E2,$67,$F7,$FF,$FB,$BF,$1F,$1F
+  $00,$20,$60,$E0,$E0,$E0,$60,$E0,$1F,$3D,$7F,$FF,$F7,$FF,$7E,$FF
+  $1F,$3F,$7F,$F7,$FF,$FB,$69,$E1,$02,$27,$77,$FF,$FB,$FF,$7F,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$0F,$0E,$0F,$0F,$0B,$0F,$0F,$0F
+  $0F,$0F,$0F,$0B,$0F,$0D,$04,$00,$01,$03,$0B,$0F,$0D,$0F,$0F,$0F
+  $F0,$F0,$F0,$D0,$F0,$F0,$70,$F0,$FF,$FE,$FF,$DF,$FB,$FF,$7F,$FF
+  $FF,$FF,$FF,$DB,$FF,$FD,$74,$F0,$F1,$F3,$FB,$DF,$FD,$FF,$7F,$FF
+  $F0,$B0,$F0,$F0,$F0,$D0,$80,$80,$FF,$BE,$FF,$FF,$FB,$DF,$8F,$8F
+  $FF,$BF,$FF,$FB,$FF,$DD,$84,$80,$F1,$B3,$FB,$FF,$FD,$DF,$8F,$8F
+  $00,$90,$B0,$F0,$F0,$F0,$B0,$F0,$0F,$9E,$BF,$FF,$FB,$FF,$BF,$FF
+  $0F,$9F,$BF,$FB,$FF,$FD,$B4,$F0,$01,$93,$BB,$FF,$FD,$FF,$BF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$07,$07,$05,$07,$07,$07
+  $07,$07,$07,$05,$07,$06,$02,$00,$00,$01,$05,$07,$06,$07,$07,$07
+  $F8,$78,$F8,$E8,$F8,$F8,$B8,$F8,$FF,$7F,$FF,$EF,$FD,$FF,$BF,$FF
+  $FF,$7F,$FF,$ED,$FF,$FE,$BA,$F8,$F8,$79,$FD,$EF,$FE,$FF,$BF,$FF
+  $F8,$D8,$F8,$F8,$F8,$E8,$40,$40,$FF,$DF,$FF,$FF,$FD,$EF,$47,$47
+  $FF,$DF,$FF,$FD,$FF,$EE,$42,$40,$F8,$D9,$FD,$FF,$FE,$EF,$47,$47
+  $80,$C8,$D8,$F8,$F8,$F8,$D8,$F8,$87,$CF,$DF,$FF,$FD,$FF,$DF,$FF
+  $87,$CF,$DF,$FD,$FF,$FE,$DA,$F8,$80,$C9,$DD,$FF,$FE,$FF,$DF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$02,$03,$03,$03
+  $03,$03,$03,$02,$03,$03,$01,$00,$00,$00,$02,$03,$03,$03,$03,$03
+  $FC,$BC,$FC,$F4,$FC,$FC,$DC,$FC,$FF,$BF,$FF,$F7,$FE,$FF,$DF,$FF
+  $FF,$BF,$FF,$F6,$FF,$FF,$DD,$FC,$FC,$BC,$FE,$F7,$FF,$FF,$DF,$FF
+  $FC,$EC,$FC,$FC,$FC,$74,$20,$20,$FF,$EF,$FF,$FF,$FE,$77,$23,$23
+  $FF,$EF,$FF,$FE,$FF,$77,$21,$20,$FC,$EC,$FE,$FF,$FF,$77,$23,$23
+  $40,$E4,$EC,$FC,$7C,$FC,$EC,$FC,$43,$E7,$EF,$FF,$7E,$FF,$EF,$FF
+  $43,$E7,$EF,$FE,$7F,$FF,$ED,$FC,$40,$E4,$EE,$FF,$7F,$FF,$EF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01
+  $FE,$DE,$FE,$FA,$7E,$FE,$EE,$FE,$FF,$DF,$FF,$FB,$7F,$FF,$EF,$FF
+  $FF,$DF,$FF,$FB,$7F,$FF,$EE,$FE,$FE,$DE,$FF,$FB,$7F,$FF,$EF,$FF
+  $FE,$F6,$FE,$7E,$FE,$BA,$90,$10,$FF,$F7,$FF,$7F,$FF,$BB,$91,$11
+  $FF,$F7,$FF,$7F,$FF,$BB,$90,$10,$FE,$F6,$FF,$7F,$FF,$BB,$91,$11
+  $20,$72,$76,$FE,$BE,$FE,$F6,$FE,$21,$73,$77,$FF,$BF,$FF,$F7,$FF
+  $21,$73,$77,$FF,$BF,$FF,$F6,$FE,$20,$72,$77,$FF,$BF,$FF,$F7,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF,$FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF
+  $FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF,$FF,$EF,$FF,$FD,$BF,$FF,$F7,$FF
+  $FF,$FB,$FF,$BF,$FF,$DD,$48,$08,$FF,$FB,$FF,$BF,$FF,$DD,$48,$08
+  $FF,$FB,$FF,$BF,$FF,$DD,$48,$08,$FF,$FB,$FF,$BF,$FF,$DD,$48,$08
+  $10,$39,$BB,$FF,$DF,$FF,$FB,$FF,$10,$39,$BB,$FF,$DF,$FF,$FB,$FF
+  $10,$39,$BB,$FF,$DF,$FF,$FB,$FF,$10,$39,$BB,$FF,$DF,$FF,$FB,$FF
+end data
+data CavCol bytes
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+  $61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61,$61,$61,$81,$61
+end data
+data TitleMap bytes
+  $20,$20,$20,$20,$92,$20,$92,$20,$92,$92,$92,$20,$92,$92,$20,$20,$92,$92,$20,$20,$92,$92,$92,$20,$92,$92,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$92,$20,$92,$20,$20,$92,$20,$20,$92,$20,$92,$20,$92,$20,$92,$20,$92,$20,$20,$20,$92,$20,$92,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$92,$92,$92,$20,$20,$92,$20,$20,$92,$20,$92,$20,$92,$20,$92,$20,$92,$92,$20,$20,$92,$20,$92,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$92,$20,$92,$20,$20,$92,$20,$20,$92,$20,$92,$20,$92,$20,$92,$20,$92,$20,$20,$20,$92,$20,$92,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$92,$20,$92,$20,$92,$92,$92,$20,$92,$92,$20,$20,$92,$92,$20,$20,$92,$92,$92,$20,$92,$20,$92,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$93,$93,$20,$93,$93,$93,$20,$93,$20,$93,$20,$93,$93,$93,$20,$93,$93,$20,$20,$93,$93,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$20,$20,$93,$20,$93,$20,$93,$20,$93,$20,$93,$20,$20,$20,$93,$20,$93,$20,$93,$20,$93,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$20,$20,$93,$93,$93,$20,$93,$20,$93,$20,$93,$93,$20,$20,$93,$93,$20,$20,$93,$20,$93,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$20,$20,$93,$20,$93,$20,$93,$20,$93,$20,$93,$20,$20,$20,$93,$20,$93,$20,$93,$20,$93,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$93,$93,$20,$93,$20,$93,$20,$20,$93,$20,$20,$93,$93,$93,$20,$93,$20,$93,$20,$93,$20,$93,$20,$20,$20,$20,$20
+end data
+
+record Glob:
+  u8 X
+  u8 Y
+  i8 Dx
+  i8 Dy
+  u8 St
+  u8 Per
+end record
+
+Glob Gb[2]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the cave: Cav[0..29] the first air row of each cell column, Cav[30..59]
+' the last air row; cell column c is at screen x 8 c + Ofs
+u8 Cav[60]
+u8 Ofs = 0
+u8 Frac = 0
+u8 Spd = 0
+u8 Moved = 0
+u8 NeedDraw = 0
+u8 Cols = 0
+u8 RowBuf[27]
+u8 HcR[4]
+u8 HcRow = 0
+u8 LostT = 0
+u8 LostB = 0
+u8 HcLo = 3
+u8 HcHi = 23
+u8 Pend = 0
+u16 CavBase = 0
+u16 PatA = 0
+u16 PatB = 0
+u8 ScDirty = 0
+' the cruiser, its torpedo, the spikes (0 ceiling, 1 floor)
+u8 Py = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 TOn = 0
+u8 SkX[2]
+u8 SkY[2]
+u8 SkF[2]
+u8 Ships = 0
+u8 Misses = 0
+u8 Dead = 0
+u8 Over = 0
+u8 Why = 0
+u8 Hits = 0
+u8 Crashes = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Si = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 Steps = 0
+u8 Res = 0
+
+  tile screen
+  CavBase = address of CavPat
+  set sound table HcSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  DrawFrame
+  ReadPad
+  PlayStep
+  if Over = 0 then goto play_loop
+
+  ' the end: why, the score and the high score, then the title on a press
+  if Score > Hi then Hi = Score
+  print at 4,8, "                        "
+  print at 4,9, "       GAME  OVER       "
+  if Why = 1 then
+    print at 4,10, "  YOU MISSED 3 SHOTS    "
+  else
+    print at 4,10, "  YOU LOST 3 SHIPS      "
+  end if
+  print at 4,11, "                        "
+  print at 4,12, "     SCORE ", Score, "   "
+  print at 4,13, "     HIGH  ", Hi, "   "
+  print at 4,14, "                        "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if Dead > 0 then
+    dec Dead
+    if Dead = 0 then
+      if Ships = 0 then
+        Over = 1
+      else
+        ResetField
+      end if
+    end if
+    return
+  end if
+  MoveShip
+  if Press = 1 then
+    if TOn = 0 then
+      TOn = 1
+      Tx = ShipX - 12
+      Ty = Py
+      play sound SndFire
+    end if
+  end if
+  Scroll
+  MoveGlobs
+  MoveSpikes
+  MoveTorp
+  if Misses >= 3 then
+    Why = 1
+    Over = 1
+    return
+  end if
+  if ShipHit() = 1 then Crash
+  return
+end sub
+
+' the cave flows right Spd/16 pixel a frame; a new cell column every 8
+sub Scroll:
+  Frac = Frac + Spd
+  Steps = Frac >> 4
+  Frac = Frac & 15
+  while Steps > 0
+    inc Ofs
+    Moved = 1
+    if Ofs = 8 then
+      Ofs = 0
+      LostT = Cav[29]
+      LostB = Cav[59]
+      shift array Cav down 1
+      NewCol
+      NeedDraw = 1
+      AddScore(1)
+      ' the rest waits for the next frame (one new column a frame)
+      dec Steps
+      Frac = Frac + Steps * 16
+      Steps = 0
+    else
+      dec Steps
+    end if
+  end while
+  return
+end sub
+
+' cell column 0 from column 1: ceiling and floor each wander a row or stay
+sub NewCol:
+  u8 T = 0, B = 0, R = 0
+  Rand
+  R = Rs >> 8
+  T = Cav[1]
+  B = Cav[31]
+  select case R & 3
+    case 0
+      if T > TopMin then dec T
+    case 1
+      if T < TopMax then inc T
+  end select
+  select case (R >> 2) & 3
+    case 0
+      if B > BotMin then dec B
+    case 1
+      if B < BotMax then inc B
+  end select
+  if B - T < MinGap then
+    T = Cav[1]
+    B = Cav[31]
+  end if
+  Cav[0] = T
+  Cav[30] = B
+  inc Cols
+  return
+end sub
+
+' score: N points (BCD); the speed steps at 500 and 2500
+sub AddScore(u8 N)
+  if Score > ScoreCap then return
+  Score += N
+  ScDirty = 1
+  if Score >= 2500 then
+    Spd = Spd3
+  else
+    if Score >= 500 then Spd = Spd2
+  end if
+  return
+end sub
+
+sub Crash:
+  Dead = 60
+  dec Ships
+  inc Crashes
+  TOn = 0
+  play sound SndBoom
+  return
+end sub
+
+' up and down 2 pixels a frame
+sub MoveShip:
+  K = J1 & 3
+  select case K
+    case 1
+      if Py > PyMin + 2 then
+        Py = Py - 2
+      else
+        Py = PyMin
+      end if
+    case 2
+      if Py < PyMax - 2 then
+        Py = Py + 2
+      else
+        Py = PyMax
+      end if
+  end select
+  return
+end sub
+
+' the globs bounce; a hit glob bursts, hides and comes back at the left
+sub MoveGlobs:
+  u8 X = 0, Y = 0, M = 0
+  i8 Dx = 0, Dy = 0
+  for Gi = 0 to 1
+    if Gb[Gi].St > 0 then
+      dec Gb[Gi].St
+      if Gb[Gi].St = 0 then RespawnGlob(Gi)
+    else
+      ' as on the C64, the globs hold still while a torpedo flies
+      M = Tick & Gb[Gi].Per
+      M = M | TOn
+      if M = 0 then
+        X = Gb[Gi].X
+        Y = Gb[Gi].Y
+        Dx = Gb[Gi].Dx
+        Dy = Gb[Gi].Dy
+        X = X + Dx
+        Y = Y + Dy
+        if X < GxMin then
+          X = GxMin
+          Dx = 0 - Dx
+        end if
+        if X > GxMax then
+          X = GxMax
+          Dx = 0 - Dx
+        end if
+        if Y < GyMin then
+          Y = GyMin
+          Dy = 0 - Dy
+        end if
+        if Y > GyMax then
+          Y = GyMax
+          Dy = 0 - Dy
+        end if
+        Gb[Gi].X = X
+        Gb[Gi].Y = Y
+        Gb[Gi].Dx = Dx
+        Gb[Gi].Dy = Dy
+      end if
+    end if
+  next
+  return
+end sub
+
+sub RespawnGlob(u8 N)
+  Rand
+  Gb[N].X = GxMin
+  V = Rs & 127
+  Gb[N].Y = GyMin + 12 + V
+  if N = 0 then
+    Gb[N].Dx = 1
+    Gb[N].Dy = -1
+  else
+    Gb[N].Dx = 1
+    Gb[N].Dy = 2
+  end if
+  if Rs > 32767 then Gb[N].Dy = 0 - Gb[N].Dy
+  return
+end sub
+
+' the spikes slide right 1 1/2 times as fast as the cave and settle on the
+' rock under them a pixel a frame
+sub MoveSpikes:
+  u8 Tg = 0, C = 0, X = 0, F = 0
+  for Si = 0 to 1
+    X = SkX[Si]
+    F = SkF[Si] + Spd + (Spd >> 1)
+    X = X + (F >> 4)
+    SkF[Si] = F & 15
+    if X > 226 then X = 16
+    SkX[Si] = X
+    C = CellAt(X + 8)
+    if Si = 0 then
+      Tg = Cav[C] * 8 - 3
+    else
+      Tg = Cav[C + 30] * 8 - 5
+    end if
+    if SkY[Si] < Tg then inc SkY[Si]
+    if SkY[Si] > Tg then dec SkY[Si]
+  next
+  return
+end sub
+
+' the cell column under screen x (0-29)
+function CellAt(u8 Xs) as u8
+  if Xs < Ofs then return 0
+  Res = (Xs - Ofs) >> 3
+  if Res > 29 then Res = 29
+  return Res
+
+' the torpedo: 6 pixels a frame to the left; a glob hit or a miss
+sub MoveTorp:
+  if TOn = 0 then return
+  if Tx < 26 then
+    TOn = 0
+    inc Misses
+    play sound SndMiss
+    ShowCounts
+    return
+  end if
+  Tx = Tx - 6
+  for Gi = 0 to 1
+    if Gb[Gi].St = 0 then
+      if Overlap(Tx, Ty + 5, Tx + 13, Ty + 11, Gi) = 1 then
+        Gb[Gi].St = 60
+        TOn = 0
+        inc Hits
+        AddScore(250)
+        play sound SndGlob
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' 1 when the box L,T-R,B meets glob G's body (x+2..x+13, y+3..y+12)
+function Overlap(u8 L, u8 T, u8 R, u8 B, u8 G) as u8
+  u8 Gx = 0, Gy = 0
+  Gx = Gb[G].X
+  Gy = Gb[G].Y
+  if R < Gx + 2 then return 0
+  if L > Gx + 13 then return 0
+  if B < Gy + 3 then return 0
+  if T > Gy + 12 then return 0
+  return 1
+
+' 1 when the cruiser (x+2..x+13, y+4..y+11) touches rock, a glob or a spike
+function ShipHit as u8
+  u8 L = 0, R = 0, Top = 0, Bot = 0, C = 0
+  Top = (Py + 4) >> 3
+  Bot = (Py + 11) >> 3
+  L = CellAt(ShipX + 2)
+  R = CellAt(ShipX + 13)
+  for C = L to R
+    if Cav[C] > Top then return 1
+    if Cav[C + 30] < Bot then return 1
+  next
+  for C = 0 to 1
+    if Gb[C].St = 0 then
+      if Overlap(ShipX + 2, Py + 4, ShipX + 13, Py + 11, C) = 1 then return 1
+    end if
+  next
+  ' spikes: x+4..x+11; the ceiling one y..y+10, the floor one y+5..y+15
+  if ShipX + 13 >= SkX[0] + 4 then
+    if ShipX + 2 <= SkX[0] + 11 then
+      if Py + 4 <= SkY[0] + 10 then return 1
+    end if
+  end if
+  if ShipX + 13 >= SkX[1] + 4 then
+    if ShipX + 2 <= SkX[1] + 11 then
+      if Py + 11 >= SkY[1] + 5 then return 1
+    end if
+  end if
+  return 0
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: the 16 cave patterns when the cave moved, the cave's names when
+' a new cell column came in, then the sprites
+sub DrawFrame:
+  u8 O2 = 0, Sh = 0
+  ' a new cell column: the rows of the top two screen thirds move right a
+  ' tile now (HcShift), the bottom third's next frame; until then the bottom
+  ' third shows offset 8, the same picture as its moved names at offset 0
+  if NeedDraw = 1 then
+    HcLo = 3
+    HcHi = 16
+    Sh = 1
+    NeedDraw = 0
+    Pend = 1
+    Moved = 1
+  else
+    if Pend = 1 then
+      HcLo = 16
+      HcHi = 23
+      Sh = 1
+      Pend = 0
+      Moved = 1
+    end if
+  end if
+  ' the 16 cave patterns first, while the screen is blank (HcPat)
+  if Moved = 1 then
+    W16 = Ofs
+    W16 = W16 << 7
+    PatA = CavBase + W16
+    O2 = Ofs
+    if Pend = 1 then O2 = 8
+    W16 = O2
+    W16 = W16 << 7
+    PatB = CavBase + W16
+    call asm HcPat
+    Moved = 0
+  end if
+  if Sh = 1 then
+    call asm HcShift
+  end if
+  ' after a reset the whole cave is drawn (HcDraw)
+  if NeedDraw = 2 then
+    call asm HcDraw
+    NeedDraw = 0
+  end if
+  DrawSprites
+  return
+end sub
+
+' sprites 0-1 the cruiser (hull, canopy) or its blast, 2 the torpedo, 3-4
+' the globs, 5-6 the spikes
+sub DrawSprites:
+  u8 P = 0, Cl = 0
+  if Dead > 0 then
+    K = SEx1i
+    if Dead > 44 then K = SEx0i
+    set sprite 0 to Py - 1,ShipX,K,11
+    set sprite 1 to Py - 1,ShipX,K + 4,8
+  else
+    set sprite 0 to Py - 1,ShipX,SHull,14
+    set sprite 1 to Py - 1,ShipX,SCanopy,7
+  end if
+  if TOn = 1 then
+    set sprite 2 to Ty - 1,Tx,STorp,15
+  else
+    set sprite 2 to 192,0,STorp,15
+  end if
+  for Gi = 0 to 1
+    V = Gb[Gi].St
+    if V = 0 then
+      P = SGlob0
+      K = Tick + Gi * 16
+      K = K & 32
+      if K > 0 then P = SGlob1
+      Cl = 3
+      if Gi = 1 then Cl = 2
+      set sprite 3 + Gi to Gb[Gi].Y - 1,Gb[Gi].X,P,Cl
+    else
+      if V > 44 then
+        P = SEx0o
+        if V < 52 then P = SEx1o
+        set sprite 3 + Gi to Gb[Gi].Y - 1,Gb[Gi].X,P,9
+      else
+        set sprite 3 + Gi to 192,0,SGlob0,3
+      end if
+    end if
+  next
+  set sprite 5 to SkY[0] - 1,SkX[0],SSpkc,9
+  set sprite 6 to SkY[1] - 1,SkX[1],SSpkf,9
+  update sprites
+  if ScDirty = 1 then
+    print at 8,1, Score
+    ScDirty = 0
+  end if
+  return
+end sub
+
+sub ShowCounts:
+  print at 8,2, Ships
+  print at 23,2, Misses
+  print at 21,1, Hi
+  return
+end sub
+
+' a wide open cave, the cruiser in the middle, the globs and spikes at the
+' left; the miss count carries on (as on the C64)
+sub ResetField:
+  Rearm
+  wait
+  nmi off
+  for Ci = 0 to 29
+    Cav[Ci] = 6
+    Cav[Ci + 30] = 19
+  next
+  Ofs = 0
+  Frac = 0
+  Py = 96
+  TOn = 0
+  Gb[0].X = GxMin
+  Gb[0].Y = 40
+  Gb[0].Dx = 1
+  Gb[0].Dy = -1
+  Gb[0].St = 0
+  Gb[0].Per = 1
+  Gb[1].X = 80
+  Gb[1].Y = 120
+  Gb[1].Dx = 1
+  Gb[1].Dy = 2
+  Gb[1].St = 0
+  Gb[1].Per = 1
+  SkX[0] = 40
+  SkX[1] = 120
+  SkY[0] = 45
+  SkY[1] = 147
+  SkF[0] = 0
+  SkF[1] = 0
+  Moved = 1
+  NeedDraw = 2
+  Pend = 0
+  ScDirty = 1
+  ShowCounts
+  DrawFrame
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  print at 2,1, "SCORE"
+  print at 18,1, "HI"
+  print at 2,2, "SHIPS"
+  print at 16,2, "MISSES"
+  Score = 0
+  Spd = Spd1
+  Ships = 3
+  Misses = 0
+  Dead = 0
+  Over = 0
+  Why = 0
+  Hits = 0
+  Crashes = 0
+  Cols = 0
+  ResetField
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy CavCol count 128 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: HIDDEN CAVERN in rock and crystal letters, a glob bouncing
+' along the bottom, START / CREDITS, the high score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 7,1, "AHOY! APRIL 1986"
+  copy TitleMap count 352 to vram.name + 64
+  print at 4,15, "LAND OF THE CAVE GLOBS"
+  print at 6,17, "BY JAMES C. HILTY"
+  print at 13,19, "START"
+  print at 13,20, "CREDITS"
+  if Hi > 0 then
+    print at 8,22, "HIGH ", Hi
+  end if
+  ShowMenu
+  Gb[0].X = GxMin
+  Gb[0].Dx = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a glob bounces back and forth under the menu, hopping as it goes
+sub TitleAnim:
+  if Gb[0].Dx = 1 then
+    inc Gb[0].X
+    if Gb[0].X >= GxMax then Gb[0].Dx = -1
+  else
+    dec Gb[0].X
+    if Gb[0].X <= GxMin then Gb[0].Dx = 1
+  end if
+  K = Gb[0].X & 15
+  if K >= 8 then K = 15 - K
+  K = 104 - (K >> 1)
+  V = SGlob0
+  J = Gb[0].X & 16
+  if J > 0 then V = SGlob1
+  set sprite 3 to K,Gb[0].X,V,3
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,19
+  put char 32 at 11,20
+  J = Menu + 19
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "HIDDEN CAVERN"
+  print at 2,5, "BASED ON HIDDEN CAVERN BY"
+  print at 2,6, "JAMES C. HILTY, AHOY!"
+  print at 2,7, "APRIL 1986 (COMMODORE 64"
+  print at 2,8, "BASIC AND MACHINE CODE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: DRIP AND GLOW"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; HcDraw: the cave's names, rows 3-22, columns 2-29. Tile x shows the end
+; of cell column x-1 and the start of cell column x: code 128 + 4 L + R,
+; each cell air (0), rock (1), ceiling lip (2) or floor lip (3) in its row.
+HcDraw:
+    ld c,3
+HcDrRow:
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1802
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_Cav+1
+    call HcCls
+    ld d,a
+    ld b,28
+HcDrCol:
+    inc hl
+    call HcCls
+    ld e,a
+    ld a,d
+    add a,a
+    add a,a
+    add a,e
+    add a,128
+    out ($BE),a
+    ld d,e
+    djnz HcDrCol
+    inc c
+    ld a,c
+    cp 23
+    jr nz,HcDrRow
+    ret
+; HcShift: after the cell columns moved right one place, each row's names
+; move right one tile: columns 2-28 are read and written back at 3-29, and
+; column 2 gets its new tile. Only the rows that are not all rock or all
+; air change: the ceiling band (first air rows - 1 of cell columns 1-29 and
+; of the column that just left, LostT) and the floor band. 30 cycles or
+; more between VDP accesses.
+HcShift:
+    ld hl,AMY_UVAR_Cav+1
+    ld a,(AMY_UVAR_LostT)
+    call HcMinMax
+    dec d
+    dec e
+    ld a,d
+    ld (AMY_UVAR_HcR),a
+    ld a,e
+    ld (AMY_UVAR_HcR+1),a
+    ld hl,AMY_UVAR_Cav+31
+    ld a,(AMY_UVAR_LostB)
+    call HcMinMax
+    inc d
+    inc e
+    ld a,d
+    ld (AMY_UVAR_HcR+2),a
+    ld a,e
+    ld (AMY_UVAR_HcR+3),a
+    ld a,(AMY_UVAR_HcLo)
+    ld (AMY_UVAR_HcRow),a
+HcShRow:
+    ld a,(AMY_UVAR_HcRow)
+    ld c,a
+    ld hl,AMY_UVAR_HcR
+    cp (hl)
+    jr c,HcShT2
+    inc hl
+    ld a,(hl)
+    cp c
+    jr nc,HcShDo
+HcShT2:
+    ld hl,AMY_UVAR_HcR+2
+    ld a,c
+    cp (hl)
+    jr c,HcShNext
+    inc hl
+    ld a,(hl)
+    cp c
+    jr c,HcShNext
+HcShDo:
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1802
+    add hl,de
+    push hl
+    ld hl,AMY_UVAR_Cav+1
+    call HcCls
+    add a,a
+    add a,a
+    ld d,a
+    inc hl
+    call HcCls
+    add a,d
+    add a,128
+    ld e,a
+    pop hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    push hl
+    ld hl,AMY_UVAR_RowBuf
+    ld bc,$1BBE
+HcShRd:
+    ini
+    nop
+    jr nz,HcShRd
+    pop hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,e
+    nop
+    out ($BE),a
+    ld hl,AMY_UVAR_RowBuf
+    ld bc,$1BBE
+HcShWr:
+    outi
+    nop
+    jr nz,HcShWr
+HcShNext:
+    ld hl,AMY_UVAR_HcRow
+    inc (hl)
+    ld a,(AMY_UVAR_HcHi)
+    cp (hl)
+    jr nz,HcShRow
+    ret
+; HcPat: the cave patterns for screen thirds 0 and 1 from PatA, third 2
+; from PatB (tile codes 128-143, pattern table at 0), run in the blank
+HcPat:
+    ld hl,(AMY_UVAR_PatA)
+    xor a
+    out ($BF),a
+    ld a,$44
+    out ($BF),a
+    ld bc,$80BE
+    otir
+    ld hl,(AMY_UVAR_PatA)
+    xor a
+    out ($BF),a
+    ld a,$4C
+    out ($BF),a
+    ld bc,$80BE
+    otir
+    ld hl,(AMY_UVAR_PatB)
+    xor a
+    out ($BF),a
+    ld a,$54
+    out ($BF),a
+    ld bc,$80BE
+    otir
+    ret
+; HcMinMax: d = the smallest, e = the largest of a and the 29 bytes at hl
+HcMinMax:
+    ld d,a
+    ld e,a
+    ld b,29
+HcMmL:
+    ld a,(hl)
+    cp d
+    jr nc,HcMm1
+    ld d,a
+HcMm1:
+    cp e
+    jr c,HcMm2
+    ld e,a
+HcMm2:
+    inc hl
+    djnz HcMmL
+    ret
+; HcCls: the class of cell (hl) in row c (hl: first air row, hl+30: last)
+HcCls:
+    ld a,c
+    inc a
+    cp (hl)
+    jr c,HcClR
+    jr z,HcClC
+    push hl
+    push de
+    ld de,30
+    add hl,de
+    ld a,(hl)
+    pop de
+    pop hl
+    cp c
+    jr nc,HcClA
+    inc a
+    cp c
+    jr z,HcClF
+HcClR:
+    ld a,1
+    ret
+HcClC:
+    ld a,2
+    ret
+HcClA:
+    xor a
+    ret
+HcClF:
+    ld a,3
+    ret
+HcFire:
+    db $40,$3E,$30,$02,$40,$4B,$40,$02,$40,$59,$40,$02,$40,$6B,$50,$02,$40,$7C,$70,$02,$50
+HcGlob:
+    db $40,$50,$10,$02,$40,$4E,$20,$02,$40,$5F,$20,$02,$40,$5C,$30,$02,$40,$75,$30,$02,$40,$70,$40,$02
+    db $40,$97,$40,$02,$40,$8F,$50,$02,$40,$D7,$50,$02,$40,$C8,$60,$02,$50
+HcBoom:
+    db $00,$00,$15,$05,$00,$00,$25,$05,$00,$00,$35,$05,$00,$00,$45,$05,$00,$00,$55,$05,$00,$00,$65,$05
+    db $00,$00,$76,$05,$00,$00,$86,$05,$00,$00,$96,$05,$00,$00,$A6,$05,$00,$00,$B6,$05,$00,$00,$C6,$05
+    db $10
+HcMiss:
+    db $40,$FC,$31,$06,$40,$A6,$42,$0A,$50
+HcStart:
+    db $40,$53,$21,$06,$40,$FE,$20,$06,$40,$CA,$20,$06,$40,$A9,$20,$0E,$50
+HcOver:
+    db $40,$FE,$10,$0A,$40,$0E,$21,$0A,$40,$2E,$21,$0A,$40,$53,$21,$0A,$40,$FC,$31,$1E,$50
+
+HcSoundTable:
+    dw HcTuneMel,$702B
+    dw HcTuneBass,$7035
+    dw HcFire,$7049
+    dw HcGlob,$7049
+    dw HcBoom,$703F
+    dw HcMiss,$7049
+    dw HcStart,$7049
+    dw HcOver,$7049
+; Drip and Glow (original)
+; Tiny Sound, 8 frames per step
+HcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$01,$26,$01,$24,$01,$23
+    db $01,$1F,$01,$01,$21,$01,$23,$01,$24,$01,$1C,$01,$01,$01,$1F,$01
+    db $23,$01,$21,$01,$24,$01,$28,$01,$2B,$01,$01,$29,$01,$28,$01,$26
+    db $01,$23,$01,$24,$01,$26,$01,$28,$01,$01,$01,$24,$01,$21,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+HcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$05,$01,$0C,$01,$04,$01,$0B,$01,$09,$01,$01,$01
+    db $04,$01,$00,$01
+    db $FF
+}

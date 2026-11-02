@@ -51,6 +51,8 @@ cartridge "GRAVINAUTS/CLEVELAND M. BLAKEMORE/1985"
 ' after every `clear sprites`. Own xorshift random numbers. Nothing
 ' flashes: the acid ripples (a pattern shift every 12 frames), the flame
 ' changes shape every 10 frames.
+'
+' Workarounds for Amy bugs 37 (u16-small-literal-compare) removed 2026-11-01.
 
 const TSky = 128
 const TStar1 = 129
@@ -182,17 +184,6 @@ i16 Lmn = 0
 i16 EMax = 56
 i16 EMin = -56
 i16 EAcc = 1
-' i16 constants: comparing an i16 with a variable is a 16-bit test, with a
-' literal a 32-bit one (bug 37), and MoveBody runs four times a frame
-i16 K0 = 0
-i16 K2048 = 2048
-i16 K28672 = 28672
-i16 K48 = 48
-i16 K8 = 8
-i16 KM16 = -16
-i16 KM24 = -24
-i16 KM48 = -48
-i16 KM8 = -8
 ' the field: 8 solid rectangles in pixels (slab and keel of 4 glaciers)
 u8 RL[8]
 u8 RR[8]
@@ -639,7 +630,7 @@ sub PlayerStep:
     if Hit <> 255 then Gnd = 1
   end if
   if Gnd = 1 then
-    if Vy > K0 then
+    if Vy > 0 then
       Vy = 0
       W = Yp
       Py = W << 7
@@ -647,11 +638,11 @@ sub PlayerStep:
     if Thr = 0 then
       ' W = Vx / 8, rounded toward zero, by a shift
       W = Vx
-      if W < K0 then W = W + 7
+      if W < 0 then W = W + 7
       W = W >> 3
       Vx = Vx - W
-      if Vx > KM8 then
-        if Vx < K8 then Vx = 0
+      if Vx > -8 then
+        if Vx < 8 then Vx = 0
       end if
     end if
   end if
@@ -744,7 +735,7 @@ sub MoveBody:
   BoxAt
   IceHit
   if Hit <> 255 then
-    if Bvx > K0 then
+    if Bvx > 0 then
       V = RL[Hit]
       X = V - 13
     else
@@ -753,26 +744,26 @@ sub MoveBody:
     end if
     W = X
     Nq = W << 7
-    if Bvx > K48 then Bump = 1
-    if Bvx < KM48 then Bump = 1
+    if Bvx > 48 then Bump = 1
+    if Bvx < -48 then Bump = 1
     Bvx = 0 - Bvx
-    if Bvx < K0 then Bvx = Bvx + 1
+    if Bvx < 0 then Bvx = Bvx + 1
     Bvx = Bvx >> 1
   end if
   Bpx = Nq
-  if Bpx < K2048 then
+  if Bpx < 2048 then
     Bpx = 2048
-    if Bvx < K0 then
+    if Bvx < 0 then
       Bvx = 0 - Bvx
-      if Bvx < K0 then Bvx = Bvx + 1
+      if Bvx < 0 then Bvx = Bvx + 1
       Bvx = Bvx >> 1
     end if
   end if
-  if Bpx > K28672 then
+  if Bpx > 28672 then
     Bpx = 28672
-    if Bvx > K0 then
+    if Bvx > 0 then
       Bvx = 0 - Bvx
-      if Bvx < K0 then Bvx = Bvx + 1
+      if Bvx < 0 then Bvx = Bvx + 1
       Bvx = Bvx >> 1
     end if
   end if
@@ -784,36 +775,36 @@ sub MoveBody:
   BoxAt
   IceHit
   if Hit <> 255 then
-    if Bvy > K0 then
+    if Bvy > 0 then
       V = RT[Hit]
       Y = V - 16
       Land = 1
-      if Bvy > K48 then Bump = 1
+      if Bvy > 48 then Bump = 1
       ' about a third (Bvy is positive here): * 85 / 256
       Bvy = Bvy * 85
       Bvy = Bvy >> 8
       Bvy = 0 - Bvy
-      if Bvy > KM24 then Bvy = 0
+      if Bvy > -24 then Bvy = 0
       W = Bvx
-      if W < K0 then W = W + 3
+      if W < 0 then W = W + 3
       W = W >> 2
       Bvx = Bvx - W
     else
       V = RB[Hit]
       Y = V - 1
       Land = 2
-      if Bvy < KM48 then Bump = 1
+      if Bvy < -48 then Bump = 1
       Bvy = 0 - Bvy
-      if Bvy < K0 then Bvy = Bvy + 1
+      if Bvy < 0 then Bvy = Bvy + 1
       Bvy = Bvy >> 1
     end if
     W = Y
     Nq = W << 7
   end if
   Bpy = Nq
-  if Bpy < K2048 then
+  if Bpy < 2048 then
     Bpy = 2048
-    if Bvy < K0 then Bvy = 32
+    if Bvy < 0 then Bvy = 32
   end if
   W = Bpy << 1
   Y = highbyte W
@@ -825,8 +816,8 @@ sub MoveBody:
     end if
     if Acid = 0 then
       Bpy = 19456
-      if Bvy > K0 then
-        if Bvy > K48 then Bump = 1
+      if Bvy > 0 then
+        if Bvy > 48 then Bump = 1
         Bvy = 0
       end if
       Land = 1
@@ -1295,7 +1286,7 @@ sub DrawSprites:
         T = SDetR
         U = SSuitR
         W = EVY[J]
-        if W < KM16 then T = SDetFR
+        if W < -16 then T = SDetFR
         if EF[J] = 1 then
           T = T + 12
           U = SSuitL

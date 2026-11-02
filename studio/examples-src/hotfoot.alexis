@@ -1,0 +1,907 @@
+cartridge "HOTFOOT/JOHN KRUTCH/1987"
+
+' HOTFOOT
+' A ColecoVision game based on "Hotfoot" by John Krutch, Ahoy! October
+' 1987 (Commodore 64, machine code; the author's name is in the program's
+' own title line). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' The game: hop on one bare foot over a floor of 5 x 8 tiles. Every tile
+' is cool (blue), warm (yellow) or red hot, and every 101 frames (about
+' 1.7 seconds, the original's timer) the whole floor changes colour at
+' random. Landing on a warm tile, or standing on one when the floor
+' changes, heats the foot by 1; a red tile by 6; a cool one not at all.
+' The gauge on the left fills up; past 155 the foot is burned and the game
+' is over. Reaching the top row carries you onto the next stretch of floor:
+' 7 more rows, 7 points. Climb the ROWS LEFT (70 in the first round) and
+' the foot cools down: the next round asks for 7 more rows than the last.
+'
+' From the original (orig/hotfoot.dis, its machine code read by hand): the
+' 5 x 8 field, the three tile kinds drawn with equal chances, the timer of
+' 612 x 2816 cycles between changes (about 1.7 s), the heat of the tile you
+' land on and of the tile you stand on at each change (0, 1 or 6), the
+' gauge of 155 steps, the move to the top row starting a new stretch (the
+' field scrolls down, wrapping, by seven rows, the foot carried along),
+' 7 points and 7 fewer ROWS LEFT per stretch, ROWS LEFT starting at 070
+' and growing by 7 each round with the gauge emptied, the stick's
+' diagonals moving sideways, the two end messages.
+'
+' Improvements: smooth 16 x 16 foot sprites that hop with an arc (12
+' frames, the C64's delay after a move was about 13), tiled floor art,
+' a thermometer, steam on red tiles, sound effects and an original title
+' tune, a high score, the round number.
+'
+' Liberties: the floor's timer keeps running through the scroll and is
+' not restarted after a stretch. On the C64 it stopped and restarted, and
+' a stretch climbed with the stick held up (7 hops of about 13 frames)
+' ended before the timer did: the floor never changed, the field wraps
+' onto itself, so a column of cool tiles could be climbed for ever. Now
+' the floor changes every 101 frames whatever the foot does. The field
+' scrolls a character row at a time (14 steps) rather
+' than the C64's 21 character scrolls; the hop is animated instead of a
+' jump and a pause; the high score and round number are new. The original
+' has no way to win; neither does this one (each round is longer). Standing
+' still is no escape: every change of the floor can heat the foot.
+'
+' Controls: either controller; the stick hops one tile (hold it to keep
+' hopping; a diagonal hops sideways, as on the C64). A button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes.
+
+const TF00 = 128
+const TF01 = 129
+const TF02 = 130
+const TF03 = 131
+const TF04 = 132
+const TF05 = 133
+const TF06 = 134
+const TF07 = 135
+const TF10 = 136
+const TF11 = 137
+const TF12 = 138
+const TF13 = 139
+const TF14 = 140
+const TF15 = 141
+const TF16 = 142
+const TF17 = 143
+const TF20 = 144
+const TF21 = 145
+const TF22 = 146
+const TF23 = 147
+const TF24 = 148
+const TF25 = 149
+const TF26 = 150
+const TF27 = 151
+const TFrt = 152
+const TFrb = 153
+const TFrl = 154
+const TFrr = 155
+const TFrc = 156
+const TG0 = 157
+const TG1 = 158
+const TG2 = 159
+const TG3 = 160
+const TG4 = 161
+const TG5 = 162
+const TG6 = 163
+const TG7 = 164
+const TG8 = 165
+const TGcap = 166
+const TGbulb = 167
+const TGmark = 168
+const SFtline = 0
+const SFtfill = 4
+const SPuff0 = 8
+const SPuff1 = 12
+const NTiles8 = 328
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHop = 3
+const SndWarm = 4
+const SndSizzle = 5
+const SndTick = 6
+const SndCross = 7
+const SndRound = 8
+const SndStart = 9
+const SndBurn = 10
+const HopN = 12
+const TickN = 101
+const HeatMax = 155
+const DeadN = 100
+const MsgN = 170
+const ScrollF = 3
+const NSpr = 4
+' the field: char column of its left edge, char row of its top edge
+const FC0 = 8
+const FR0 = 4
+
+' the lift of the foot during a hop, by frame (0..HopN)
+data ArcT bytes
+  0, 2, 3, 4, 5, 6, 6, 6, 5, 4, 3, 2, 0
+end data
+
+record Foot:
+  u8 Col
+  u8 Row
+  u8 Ht
+  u8 Ox
+  u8 Oy
+  i16 Dx
+  i16 Dy
+end record
+
+Foot P
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Addr = 0
+u16 NumU = 0
+bcd digits 4 Score = 0
+bcd digits 4 Best = 0
+bcd digits 4 Seven4 = 7
+bcd digits 3 Left = 70
+bcd digits 3 LeftBase = 70
+bcd digits 3 Seven3 = 7
+u8 Round = 1
+u8 Heat = 0
+u8 Shown = 255
+u8 TickT = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 Sh = 0
+u8 Sf = 0
+u8 PuffT = 0
+u8 Over = 0
+u8 TitleOn = 0
+' the floor: 0 cool, 1 warm, 2 hot; index Row * 5 + Col, row 0 at the bottom
+u8 Cl[40]
+u8 Tmp[40]
+u8 Buf[20]
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Wt = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Sr = 0
+u8 Gi = 0
+u8 Ri = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table HfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the original's message, then back to the title on a press
+  if Score > Best then Best = Score
+  ShowHud
+  mute all
+  print at 8,9, "                    "
+  print at 8,10, "  SORRY ABOUT YOUR  "
+  print at 8,11, "    BURNED FOOT.    "
+  print at 8,12, "                    "
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then Over = 1
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then DrawField(0)
+    return
+  end if
+  if PuffT > 0 then dec PuffT
+  ' the floor's timer runs on through the scroll (see the liberties)
+  inc TickT
+  if TickT >= TickN then
+    TickT = 0
+    Recolor
+    DrawField(Sh)
+    play sound SndTick
+    AddHeat
+    if DeadT > 0 then return
+  end if
+  if Sh > 0 then
+    ScrollStep
+    return
+  end if
+  if P.Ht > 0 then
+    dec P.Ht
+    if P.Ht = 0 then
+      AddHeat
+      if DeadT > 0 then return
+      if P.Row = 7 then
+        Sh = 1
+        Sf = ScrollF
+      end if
+    end if
+    return
+  end if
+  TryMove
+  return
+end sub
+
+' the stick: sideways first (the C64 turned diagonals into sideways hops),
+' then up, then down; a hop off the field is not taken
+sub TryMove:
+  K = J1 | J2
+  i16 Mx = 0
+  i16 My = 0
+  V = K & 12
+  select case V
+  case 4
+    if P.Col > 0 then Mx = -32
+  case 8
+    if P.Col < 4 then Mx = 32
+  case 12
+    Mx = 0
+  case else
+    V = K & 3
+    if V = 1 then My = -16
+    if V = 2 then
+      if P.Row > 0 then My = 16
+    end if
+  end select
+  if Mx = 0 then
+    if My = 0 then return
+  end if
+  P.Ox = CellX(P.Col)
+  P.Oy = CellY(P.Row)
+  P.Dx = Mx
+  P.Dy = My
+  if Mx < 0 then dec P.Col
+  if Mx > 0 then inc P.Col
+  if My < 0 then inc P.Row
+  if My > 0 then dec P.Row
+  P.Ht = HopN
+  play sound SndHop
+  return
+end sub
+
+function CellX(u8 C) as u8
+  return 72 + (C << 5)
+
+function CellY(u8 R) as u8
+  return 144 - (R << 4)
+
+function HeatOf(u8 Kind) as u8
+  select case Kind
+  case 1
+    return 1
+  case 2
+    return 6
+  case else
+    return 0
+  end select
+  return 0
+
+function KindAt(u8 C, u8 R) as u8
+  return Cl[R * 5 + C]
+
+' the tile under the foot heats it; past HeatMax it is burned
+sub AddHeat:
+  u8 Kd = 0
+  u8 Hh = 0
+  Kd = KindAt(P.Col, P.Row)
+  Hh = HeatOf(Kd)
+  W16 = Heat + Hh
+  if W16 > HeatMax then
+    Heat = HeatMax + 1
+    DeadT = DeadN
+    P.Ht = 0
+    play sound SndBurn
+  else
+    Heat = W16
+    if Kd = 2 then
+      PuffT = 24
+      play sound SndSizzle
+    end if
+    if Kd = 1 then play sound SndWarm
+  end if
+  DrawGauge
+  return
+end sub
+
+' the field slides down a character row every ScrollF frames, 14 rows in
+' all (seven tiles), wrapping as on the C64; the foot rides along
+sub ScrollStep:
+  dec Sf
+  if Sf > 0 then return
+  Sf = ScrollF
+  inc Sh
+  if Sh < 15 then
+    DrawField(Sh)
+    return
+  end if
+  ' the stretch is done: the top row is now the bottom row
+  for Ci = 0 to 39
+    V = Ci + 35
+    if V >= 40 then V = V - 40
+    Tmp[Ci] = Cl[V]
+  next
+  for Ci = 0 to 39
+    Cl[Ci] = Tmp[Ci]
+  next
+  Sh = 0
+  P.Row = 0
+  DrawField(0)
+  Score += Seven4
+  Left -= Seven3
+  if Left = 0 then
+    inc Round
+    LeftBase += Seven3
+    Left = LeftBase
+    Heat = 0
+    DrawGauge
+    MsgT = MsgN
+    print at 8,8, "                    "
+    print at 8,9, "YOU HAVE AGILE FEET!"
+    print at 8,10, "  NOW TRY IT AGAIN  "
+    print at 8,11, "WITH SEVEN MORE ROWS"
+    print at 8,12, "                    "
+    play sound SndRound
+  else
+    play sound SndCross
+  end if
+  ShowHud
+  return
+end sub
+
+sub Recolor:
+  for Ci = 0 to 39
+    Rand
+    W16 = Rs & 255
+    W16 = W16 * 3
+    V = W16 >> 8
+    Cl[Ci] = V
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the floor, slid down by Shift character rows (0..14, wrapping)
+sub DrawField(u8 Shift):
+  u8 Q = 0
+  u8 Rw = 0
+  u8 Pt = 0
+  u8 Base = 0
+  u8 Bi = 0
+  u8 Rb = 0
+  Addr = FR0 * 32 + FC0
+  for Sr = 0 to 15
+    Q = Sr + 16 - Shift
+    Q = Q & 15
+    Rw = 7 - (Q >> 1)
+    Pt = (Q & 1) << 2
+    Bi = 0
+    Rb = Rw * 5
+    for Ri = 0 to 4
+      Base = Cl[Rb + Ri]
+      Base = (Base << 3) + Pt + 128
+      Buf[Bi] = Base
+      Buf[Bi + 1] = Base + 1
+      Buf[Bi + 2] = Base + 2
+      Buf[Bi + 3] = Base + 3
+      Bi = Bi + 4
+    next
+    copy Buf count 20 to vram.name + Addr
+    Addr = Addr + 32
+  next
+  return
+end sub
+
+sub DrawFrame:
+  fill TFrt count 20 at FC0,3
+  fill TFrb count 20 at FC0,20
+  for Gi = 4 to 19
+    put char TFrl at 7,Gi
+    put char TFrr at 28,Gi
+  next
+  put char TFrc at 7,3
+  put char TFrc at 28,3
+  put char TFrc at 7,20
+  put char TFrc at 28,20
+  ' the thermometer: cap, tube, bulb, danger mark
+  put char TGcap at 4,3
+  put char TGbulb at 4,20
+  put char TGmark at 5,4
+  print at 2,21, "HEAT"
+  Shown = 255
+  DrawGauge
+  return
+end sub
+
+' the tube is 128 pixels high for HeatMax + 1 steps
+sub DrawGauge:
+  u8 Fl = 0
+  u8 Lv = 0
+  u8 Lo = 0
+  W16 = Heat * 105
+  W16 = W16 >> 7
+  Fl = W16
+  if Fl = Shown then return
+  Shown = Fl
+  for Gi = 0 to 15
+    Lo = Gi << 3
+    Lv = 0
+    if Fl > Lo then
+      Lv = Fl - Lo
+      if Lv > 8 then Lv = 8
+    end if
+    Y = 19 - Gi
+    put char TG0 + Lv at 4,Y
+  next
+  return
+end sub
+
+' sprite 0 the foot's outline, 1 its skin, 2-3 steam
+sub DrawSprites:
+  u8 Kk = 0
+  u8 Fx = 0
+  u8 Fy = 0
+  u8 Col = 15
+  i16 Off = 0
+  if TitleOn = 1 then
+    Fx = CellX(2)
+    Fy = CellY(0)
+  elseif P.Ht > 0 then
+    Kk = HopN - P.Ht
+    Off = P.Dx * Kk
+    Off = Off / HopN
+    Fx = P.Ox + Off
+    Off = P.Dy * Kk
+    Off = Off / HopN
+    Fy = P.Oy + Off
+    Fy = Fy - ArcT[Kk]
+  else
+    Fx = CellX(P.Col)
+    Fy = CellY(P.Row)
+    if Sh > 0 then Fy = Fy + ((Sh - 1) << 3)
+  end if
+  if Heat > 103 then Col = 9
+  if DeadT > 0 then Col = 8
+  Fy = Fy - 1
+  set sprite 0 to Fy,Fx,SFtline,1
+  set sprite 1 to Fy,Fx,SFtfill,Col
+  if DeadT > 0 then
+    Kk = DeadT >> 2
+    Kk = Kk & 1
+    V = Fy - 10 - ((DeadN - DeadT) >> 3)
+    set sprite 2 to V,Fx - 4,SPuff0 + (Kk << 2),14
+    V = V - 6
+    set sprite 3 to V,Fx + 6,SPuff1 - (Kk << 2),15
+  elseif PuffT > 0 then
+    V = Fy - 12 - ((24 - PuffT) >> 1)
+    set sprite 2 to V,Fx,SPuff0,14
+    set sprite 3 to 192,0,0,0
+  else
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 8,1, "SCORE"
+  print at 14,1, Score
+  print at 21,1, "HI"
+  print at 24,1, Best
+  print at 8,22, "ROWS LEFT"
+  print at 18,22, Left
+  print at 22,22, "ROUND"
+  NumU = Round
+  print at 28,22, digits$(NumU, 2)
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Round = 1
+  LeftBase = 70
+  Left = LeftBase
+  Heat = 0
+  P.Col = 2
+  P.Row = 0
+  P.Ht = 0
+  TickT = 0
+  DeadT = 0
+  MsgT = 0
+  Sh = 0
+  PuffT = 0
+  Over = 0
+  TitleOn = 0
+  NewScreen
+  Recolor
+  DrawFrame
+  DrawField(0)
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the floor changing colour, the foot waiting, the tune once
+sub TitlePage:
+  NewScreen
+  Recolor
+  DrawFrame
+  DrawField(0)
+  TitleBox
+  print at 8,1, "AHOY! OCTOBER 1987"
+  print at 21,22, "HI"
+  print at 24,22, Best
+  TitleOn = 1
+  DeadT = 0
+  PuffT = 0
+  Heat = 0
+  DrawGauge
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  TickT = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  inc TickT
+  if TickT >= TickN then
+    TickT = 0
+    Recolor
+    DrawField(0)
+    TitleBox
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  return
+end sub
+
+sub TitleBox:
+  print at 9,7, "                  "
+  print at 9,8, "     HOTFOOT      "
+  print at 9,9, "                  "
+  print at 9,10, " BY JOHN KRUTCH   "
+  print at 9,11, "                  "
+  print at 9,12, " PRESS THE BUTTON "
+  print at 9,13, "                  "
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "HOTFOOT"
+  print at 2,5, "BASED ON HOTFOOT BY JOHN"
+  print at 2,6, "KRUTCH, AHOY! OCTOBER 1987"
+  print at 2,7, "(COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: HOT TILES"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  ' Wt tells the test bots this page is waiting for the button
+  Wt = 1
+  Rearm
+  pause until press
+  Wt = 0
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0C,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$0C,$00,$00,$40,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$08,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$00,$00,$00
+  $00,$20,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$04,$02,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$40
+  $00,$00,$00,$00,$08,$10,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$40,$20,$00,$00,$00
+  $20,$02,$01,$00,$00,$00,$00,$00
+  $00,$00,$80,$40,$00,$00,$00,$00
+  $00,$44,$00,$00,$10,$00,$00,$00
+  $00,$00,$04,$00,$40,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$10,$00,$00,$00,$02,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$18,$C3,$C3,$C3
+  $C3,$81,$00,$10,$30,$00,$81,$C3
+  $00,$00,$F0,$F0,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$17,$17,$17,$17,$17,$17,$17
+  $01,$07,$07,$07,$07,$07,$07,$07
+  $01,$07,$07,$07,$07,$F7,$F7,$07
+  $01,$07,$07,$07,$07,$07,$07,$07
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $07,$07,$F7,$07,$07,$F7,$07,$07
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$F7,$F7,$07,$07,$07
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$0A,$0A,$BA,$0A,$0A,$0A,$0A
+  $01,$0A,$0A,$0A,$0A,$BA,$0A,$0A
+  $01,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $0A,$0A,$0A,$BA,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$BA,$0A,$0A,$0A
+  $0A,$BA,$0A,$0A,$0A,$0A,$0A,$0A
+  $01,$18,$18,$18,$18,$18,$18,$18
+  $01,$08,$08,$B8,$B8,$B8,$08,$08
+  $01,$08,$08,$08,$08,$08,$08,$B8
+  $01,$08,$08,$08,$B8,$B8,$08,$08
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $08,$08,$08,$B8,$B8,$08,$08,$08
+  $B8,$B8,$B8,$08,$08,$08,$08,$08
+  $08,$08,$B8,$B8,$08,$08,$08,$08
+  $0E,$FE,$0E,$0E,$FE,$0E,$0E,$01
+  $01,$0E,$FE,$0E,$FE,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$FE,$0E,$0E,$0E,$FE,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$18
+  $1E,$1E,$1E,$1E,$1E,$1E,$18,$18
+  $1E,$1E,$1E,$1E,$1E,$18,$18,$18
+  $1E,$1E,$1E,$1E,$18,$18,$18,$18
+  $1E,$1E,$1E,$18,$18,$18,$18,$18
+  $1E,$1E,$18,$18,$18,$18,$18,$18
+  $1E,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $01,$01,$01,$01,$E1,$1E,$1E,$1E
+  $18,$18,$08,$98,$98,$08,$18,$18
+  $01,$01,$91,$91,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $01,$1F,$10,$11,$11,$1C,$0C,$08,$08,$08,$08,$08,$08,$0C,$04,$07
+  $C0,$70,$1C,$06,$C2,$36,$1A,$1E,$08,$08,$08,$08,$18,$10,$30,$E0
+  $00,$00,$0F,$0E,$0E,$03,$03,$07,$07,$07,$07,$07,$07,$03,$03,$00
+  $00,$80,$E0,$F8,$3C,$C8,$E4,$E0,$F0,$F0,$F0,$F0,$E0,$E0,$C0,$00
+  $00,$00,$00,$00,$00,$03,$07,$0F,$0F,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$B0,$F8,$FC,$F8,$20,$00,$00,$00,$00,$00
+  $00,$00,$0C,$1E,$1E,$0D,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$30,$78,$78,$B0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+HfHop:
+    db $40,$7F,$30,$02,$40,$5F,$40,$03,$50
+HfWarm:
+    db $40,$53,$31,$03,$40,$7C,$51,$04,$50
+HfSizzle:
+    db $00,$00,$14,$04,$00,$00,$34,$06,$00,$00,$54,$08,$00,$00,$74,$0A,$10
+HfTick:
+    db $00,$00,$51,$01,$00,$00,$81,$02,$10
+HfCross:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$20,$0A,$50
+HfRound:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$20,$18
+    db $50
+HfStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0E,$50
+HfBurn:
+    db $00,$00,$05,$06,$00,$00,$16,$0A,$00,$00,$36,$0E,$00,$00,$56,$14,$00,$00,$76,$18,$10
+
+HfSoundTable:
+    dw HfTuneMel,$702B
+    dw HfTuneBass,$7035
+    dw HfHop,$7049
+    dw HfWarm,$7049
+    dw HfSizzle,$703F
+    dw HfTick,$703F
+    dw HfCross,$7049
+    dw HfRound,$7049
+    dw HfStart,$7049
+    dw HfBurn,$703F
+; Hot Tiles (original)
+; Tiny Sound, 8 frames per step
+HfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$28,$01,$24,$21,$01,$23,$01,$26,$01
+    db $23,$1F,$01,$01,$21,$01,$24,$28,$01,$2B,$28,$01,$26,$24,$23,$01
+    db $21,$01,$01,$01,$1C,$01,$21,$24,$01,$21,$1C,$01,$1E,$01,$21,$26
+    db $01,$24,$23,$01,$24,$01,$23,$21,$01,$20,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+HfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$0C,$01,$13,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$10,$01,$0B,$01,$10,$01,$14,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,855 @@
+cartridge "FUELING STATION/J.KRUTCH/1987"
+
+' FUELING STATION
+' A ColecoVision game based on "Fueling Station" by John Krutch, Ahoy!
+' December 1987 (Commodore 64 machine language, FUELING.OBJ at $C000,
+' started by a two-line BASIC loader, disk ahoy1987-12). Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/fueling-obj.dis, and watched in jsc64), the game is
+' built for the ColecoVision: a star field, green docking rails with a
+' running light, four flying saucers as smooth sprites, a fuel gauge, the
+' stick's four directions labelled under the four bays, sound effects.
+'
+' The game: four saucers bob up and down on their own. Each one flies up
+' or down until it reaches the top or the bottom of the sky and turns
+' round. Push the stick toward a saucer's label to turn it round at once.
+' Bring all four between the docking rails together, and keep them there,
+' and they fuel up. Four docks, each one narrower; 150 units of energy
+' for each, one used every 40 frames. Out of energy ends the game.
+'
+' From the original (orig/): the saucers' speeds in pixels a frame, up /
+' down: 1/2, 1/1, 2/1, 2/2 (one step of its main loop per video frame,
+' waited on the raster); a saucer turns down above Y 60 and up from Y 200
+' (C64 sprite rows); the docks are the rows between the two rails, the
+' saucer's top row between 113-150, 121-150, 121-142 and 129-142 for docks
+' 1-4 (the rails on character rows 8/14, 9/14, 9/13, 10/13); energy 150
+' at every dock, one unit every 40 jiffies, with a light running along
+' the rails once per unit; a new dock puts saucers 1 and 3 at the bottom
+' (Y 198) and 2 and 4 at random heights (60-199); turning a saucer is a
+' toggle of its direction (one key each: the C64's four corner keys);
+' FUELING IN PROGRESS with a humming sound, then the next dock; after
+' dock 4 MISSION ACCOMPLISHED; at energy 0 OUT OF ENERGY.
+'
+' Liberties: the C64 counted the docking done the very frame all four
+' saucers' tops were inside the dock. Left alone, the four saucers'
+' different speeds bring them all into the dock by chance: a simulation
+' of the original rules wins dock 1 in 44% of games without touching a
+' key (6% at dock 4). Here the saucers must stay docked together for a
+' moment (60, 40, 30, 16 frames at docks 1-4; a gauge in the status line
+' fills up and empties if one leaves), and to make that humanly possible
+' a saucer between the rails flies at half speed (the docking field).
+' With these two changes no idle game won a dock in 1000 simulated tries,
+' Dock 4 is also eased: its top edge is 4 pixels higher (saucer tops
+' 125-142, not 129-142; its top rail is drawn 4 pixels higher) and the hold
+' is 16 frames, because at 129-142 a bot reacting 15 frames late docked
+' it in only 1 of 3 runs (13% in simulation; now about 80%, close to dock
+' 3). Also: energy left
+' at each dock is added up as a score, with a best score on the title
+' (the C64 kept no score); a saucer between the rails lights up; the
+' stick replaces the keys (left, up, down, right for saucers 1-4; the
+' diagonals turn two at once); the playfield is 24 rows (the C64's 25 rows
+' moved down one row; the saucers 16 pixels wide where the C64's were 48);
+' the C64 started over at dock 1 after OUT OF ENERGY or MISSION
+' ACCOMPLISHED (PRESS ANY KEY TO PLAY AGAIN): here the game ends with the
+' message and goes back to the title; a title page, a credits page and a
+' title tune.
+'
+' Controls: controller 1 (or 2): stick left, up, down, right turns saucer
+' 1, 2, 3, 4 round. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers.
+
+const TSky = 128
+const TSt1 = 129
+const TSt2 = 130
+const TSt3 = 131
+const TSt4 = 132
+const TSt5 = 133
+const TRl0 = 134
+const TRd0 = 135
+const TRu0 = 136
+const TRl1 = 137
+const TRd1 = 138
+const TRu1 = 139
+const TSa0 = 140
+const TSl0 = 141
+const TSd0 = 142
+const TSa1 = 143
+const TSl1 = 144
+const TSd1 = 145
+const TArL = 146
+const TArR = 147
+const TArU = 148
+const TArD = 149
+const TGe = 150
+const TGf = 151
+const TTp = 152
+const SSau = 0
+const NTiles8 = 200
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTog0 = 3
+const SndTog1 = 4
+const SndTog2 = 5
+const SndTog3 = 6
+const SndLock = 7
+const SndFuel = 8
+const SndOut = 9
+const SndStart = 10
+const SndWin = 11
+const SndZap = 12
+const NSpr = 4
+const EnergyStart = 150
+const ChaseLen = 40
+
+' the saucers' columns (sprite X), colours outside / inside the dock
+data ShipX bytes 36,92,148,204
+data ColDim bytes 8,14,10,4
+data ColLit bytes 9,15,11,5
+' the stick bit that turns each saucer: left, up, down, right
+data PadBit bytes 4,1,2,8
+data TogSnd bytes SndTog0,SndTog1,SndTog2,SndTog3
+' the docks: saucer tops from Lo to Hi - 1 (C64 rows), the rails' rows,
+' the frames all four must stay
+data BandLo bytes 113,121,121,125
+data BandHi bytes 151,151,143,143
+data TopRow bytes 9,10,10,11
+data BotRow bytes 15,15,14,14
+data HoldT bytes 60,40,30,16
+
+record Ship:
+  u8 Y
+  u8 D
+  u8 Up
+  u8 Dn
+  u8 In
+end record
+
+data ShipStart records Ship
+  198,0,1,2,0
+  100,0,1,1,0
+  198,0,2,1,0
+  100,0,2,2,0
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$00
+  $00,$00,$20,$70,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$18
+  $18,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$18
+  $18,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$18,$00,$00,$00,$00
+  $00,$10,$30,$80,$80,$30,$10,$00
+  $00,$08,$0C,$01,$01,$0C,$08,$00
+  $18,$C3,$81,$00,$18,$18,$18,$00
+  $00,$18,$18,$18,$00,$81,$C3,$18
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $01,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$51,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$91,$01,$01
+  $01,$01,$01,$01,$A1,$01,$01,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $01,$01,$03,$02,$02,$0C,$01,$01
+  $01,$01,$03,$02,$02,$0C,$21,$21
+  $21,$21,$03,$02,$02,$0C,$01,$01
+  $01,$01,$0F,$03,$03,$02,$01,$01
+  $01,$01,$0F,$03,$03,$02,$21,$21
+  $21,$21,$0F,$03,$03,$02,$01,$01
+  $01,$01,$01,$01,$01,$01,$03,$02
+  $02,$0C,$01,$01,$01,$01,$01,$01
+  $02,$0C,$21,$21,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$0F,$03
+  $03,$02,$01,$01,$01,$01,$01,$01
+  $03,$02,$21,$21,$01,$01,$01,$01
+  $01,$71,$71,$17,$17,$71,$71,$01
+  $01,$71,$71,$17,$17,$71,$71,$01
+  $71,$17,$17,$07,$71,$71,$71,$01
+  $01,$71,$71,$71,$07,$17,$17,$71
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $0E,$EF,$E3,$E3,$E2,$E2,$EC,$0E
+  $5F,$F5,$F5,$F5,$F5,$F5,$45,$04
+end data
+data SpritePat bytes
+  $00,$00,$00,$03,$0F,$1F,$7F,$99,$FF,$7F,$1F,$07,$00,$00,$00,$00
+  $00,$00,$00,$C0,$F0,$F8,$FE,$99,$FF,$FE,$F8,$E0,$00,$00,$00,$00
+end data
+
+data StarMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$83,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$80,$80,$80,$80,$80,$83,$80,$81,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$82,$82,$80,$80,$80,$80,$80,$81,$80,$80
+  $80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$81,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$85,$80,$80,$80,$80,$80,$80,$80,$80,$82
+  $80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80
+  $80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$82,$80,$80,$80,$80,$80,$80,$81,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+end data
+
+data TitleMap bytes
+  $80,$81,$98,$98,$98,$80,$98,$80,$98,$80,$98,$98,$98,$80,$98,$80,$80,$80,$98,$98,$98,$80,$98,$80,$80,$98,$80,$98,$98,$98,$80,$80
+  $80,$80,$98,$80,$80,$80,$98,$80,$98,$80,$98,$80,$80,$80,$98,$80,$80,$80,$80,$98,$80,$81,$98,$98,$80,$98,$80,$98,$80,$80,$80,$80
+  $80,$80,$98,$98,$80,$80,$98,$80,$98,$80,$98,$98,$80,$81,$98,$80,$80,$80,$80,$98,$80,$80,$98,$80,$98,$98,$80,$98,$80,$98,$80,$80
+  $80,$80,$98,$80,$80,$80,$98,$80,$98,$80,$98,$80,$80,$80,$98,$80,$80,$80,$80,$98,$80,$80,$98,$80,$80,$98,$80,$98,$80,$98,$80,$80
+  $80,$80,$98,$80,$80,$81,$98,$98,$98,$81,$98,$98,$98,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$80,$80,$98,$80,$98,$98,$98,$80,$80
+  $80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$80,$80,$98,$80,$80
+  $80,$80,$98,$80,$80,$80,$80,$98,$80,$80,$98,$80,$98,$80,$80,$98,$80,$80,$80,$98,$80,$80,$98,$80,$98,$80,$98,$98,$80,$98,$80,$80
+  $81,$80,$98,$98,$98,$81,$80,$98,$80,$80,$98,$98,$98,$80,$80,$98,$80,$80,$80,$98,$80,$80,$98,$80,$98,$80,$98,$80,$98,$98,$80,$80
+  $80,$80,$80,$80,$98,$80,$80,$98,$80,$80,$98,$80,$98,$80,$80,$98,$80,$80,$80,$98,$80,$80,$98,$80,$98,$80,$98,$80,$80,$98,$80,$80
+  $80,$80,$98,$98,$98,$80,$80,$98,$80,$80,$98,$80,$98,$80,$80,$98,$80,$80,$98,$98,$98,$80,$98,$98,$98,$80,$98,$80,$80,$98,$80,$80
+end data
+
+Ship Sh[4]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 4 Score = 0
+bcd digits 4 Best = 0
+u8 Lv = 1
+u8 Energy = 0
+u8 Chase = 0
+u8 LightCol = 0
+u8 Phase = 0
+u8 Hold = 0
+u8 Gauge = 0
+u8 Lo = 0
+u8 Hi = 0
+u8 Docked = 0
+u8 Over = 0
+u8 Won = 0
+u8 Toggles = 0
+u8 Pulse = 0
+' input
+u8 J1 = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Si = 0
+u8 Ri = 0
+u8 Ti = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table FsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+level_start:
+  StartLevel
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawShips
+  if Docked = 1 then goto dock_done
+  if Over = 0 then goto play_loop
+
+  ' out of energy
+  mute all
+  play sound SndOut
+  EndBox
+  print at 9,11, "OUT OF ENERGY"
+  goto the_end
+
+dock_done:
+  FuelUp
+  Score += Energy
+  if Lv < 4 then
+    inc Lv
+    goto level_start
+  end if
+  Won = 1
+  mute all
+  play sound SndWin
+  EndBox
+  print at 6,11, "MISSION ACCOMPLISHED"
+
+the_end:
+  if Score > Best then Best = Score
+  print at 8,13, "ENERGY SAVED ", Score
+  print at 8,14, "BEST         ", Best
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the stick turns saucers round, every saucer moves
+' (half speed inside the dock), the docking clock, the energy
+sub PlayStep:
+  u8 Yv = 0
+  u8 Dv = 0
+  u8 Inside = 0
+  for Si = 0 to 3
+    K = PadBit[Si]
+    V = Edge & K
+    if V > 0 then
+      Sh[Si].D = Sh[Si].D ^ 1
+      inc Toggles
+      play sound TogSnd[Si]
+    end if
+  next
+  Phase = Phase ^ 1
+  Inside = 0
+  for Si = 0 to 3
+    Yv = Sh[Si].Y
+    Dv = Sh[Si].D
+    if Yv >= 200 then Dv = 1
+    if Yv < 60 then Dv = 0
+    if InDock(Yv) = 0 or Phase = 0 then
+      if Dv = 1 then
+        Yv = Yv - Sh[Si].Up
+      else
+        Yv = Yv + Sh[Si].Dn
+      end if
+    end if
+    Sh[Si].Y = Yv
+    Sh[Si].D = Dv
+    Sh[Si].In = InDock(Yv)
+    Inside = Inside + Sh[Si].In
+  next
+  if Inside = 4 then
+    inc Hold
+    if Hold = 1 then play sound SndLock
+  else
+    Hold = 0
+  end if
+  ShowGauge
+  if Hold >= HoldT[Lv - 1] then Docked = 1
+  if Docked = 0 then EnergyTick
+  return
+end sub
+
+' 1 when a saucer top at C64 row Yv is inside this level's dock
+function InDock(u8 Yv) as u8
+  if Yv < Lo then return 0
+  if Yv >= Hi then return 0
+  return 1
+
+' the light runs along the rails once per energy unit
+sub EnergyTick:
+  inc Chase
+  if Chase >= ChaseLen then
+    Chase = 0
+    dec Energy
+    ShowEnergy
+    if Energy = 0 then Over = 1
+  end if
+  V = Chase * 4 / 5
+  if V <> LightCol then
+    RailCell(LightCol, 0)
+    LightCol = V
+    RailCell(LightCol, 1)
+  end if
+  return
+end sub
+
+' the rail tile for column Col of the top (Top = 1) or bottom rail
+function RailTile(u8 Col, u8 Top, u8 Lit) as u8
+  u8 T = 0
+  T = TRl0
+  select case Col
+    case 9, 16, 23
+      if Top = 1 then
+        T = TRd0
+      else
+        T = TRu0
+      end if
+  end select
+  return T + Lit * 3
+
+sub RailCell(u8 Col, u8 Lit)
+  J = TopRow[Lv - 1]
+  K = RailTile(Col, 1, Lit)
+  if Lv = 4 then
+    ' dock 4's eased edge: the top rail 4 pixels higher, over two rows
+    put char TSa0 + Lit * 3 at Col,J - 1
+    K = K - TRl0 + TSl0
+  end if
+  put char K at Col,J
+  J = BotRow[Lv - 1]
+  K = RailTile(Col, 0, Lit)
+  put char K at Col,J
+  return
+end sub
+
+sub DrawRails:
+  for Ri = 0 to 31
+    RailCell(Ri, 0)
+  next
+  return
+end sub
+
+' the docking gauge: 8 cells in the status line
+sub ShowGauge:
+  W16 = Hold
+  W16 = W16 * 8
+  W16 = W16 / HoldT[Lv - 1]
+  V = W16
+  if V > 8 then V = 8
+  ' only the cells that changed (the gauge grows one cell at a time)
+  if V > Gauge then
+    for Ri = Gauge to V - 1
+      put char TGf at Ri + 14,1
+    next
+  end if
+  if V < Gauge then
+    for Ri = V to Gauge - 1
+      put char TGe at Ri + 14,1
+    next
+  end if
+  Gauge = V
+  return
+end sub
+
+sub ShowEnergy:
+  NumU = Energy
+  print at 9,1, digits$(NumU, 3)
+  return
+end sub
+
+' a random height 60-199, as the C64's SID noise loop
+function RandY() as u8
+  u8 R = 0
+  R = 0
+  while R < 60
+    Rand
+    R = Rs & 255
+    if R >= 200 then R = 0
+  end while
+  return R
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' sprites 0-3: the saucers, lit inside the dock (Pulse: the fuelling glow)
+sub DrawShips:
+  u8 Yv = 0
+  u8 Cv = 0
+  for Si = 0 to 3
+    Yv = Sh[Si].Y
+    Cv = ColDim[Si]
+    if Sh[Si].In = 1 then Cv = ColLit[Si]
+    if Pulse = 1 then Cv = 15
+    set sprite Si to Yv - 40,ShipX[Si],SSau,Cv
+  next
+  update sprites
+  return
+end sub
+
+' FUELING IN PROGRESS: the hum, the saucers glow (3 times a second at
+' most), about two and a half seconds
+sub FuelUp:
+  mute all
+  play sound SndFuel
+  fill 32 count 28 at 2,22
+  print at 6,22, "FUELING IN PROGRESS"
+  for Ti = 1 to 150
+    Frame1
+    V = Ti / 12
+    Pulse = V & 1
+    DrawShips
+  next
+  Pulse = 0
+  return
+end sub
+
+sub EndBox:
+  HideSprites
+  for Ri = 9 to 15
+    fill 32 count 24 at 4,Ri
+  next
+  return
+end sub
+
+sub NewGame:
+  copy ShipStart to Sh
+  Score = 0
+  Lv = 1
+  Over = 0
+  Won = 0
+  Toggles = 0
+  return
+end sub
+
+sub StartLevel:
+  NewScreen
+  copy StarMap count 768 to vram.name
+  Lo = BandLo[Lv - 1]
+  Hi = BandHi[Lv - 1]
+  Sh[0].Y = 198
+  Sh[1].Y = RandY()
+  Sh[2].Y = 198
+  Sh[3].Y = RandY()
+  for Si = 0 to 3
+    Sh[Si].In = InDock(Sh[Si].Y)
+  next
+  Energy = EnergyStart
+  Chase = 0
+  LightCol = 0
+  Phase = 0
+  Hold = 0
+  Gauge = 0
+  Docked = 0
+  Pulse = 0
+  DrawRails
+  RailCell(0, 1)
+  print at 2,1, "ENERGY"
+  ShowEnergy
+  fill TGe count 8 at 14,1
+  NumU = Lv
+  print at 23,1, "LEVEL ", digits$(NumU, 1)
+  put char TArL at 5,22
+  put char TArU at 12,22
+  put char TArD at 19,22
+  put char TArR at 26,22
+  DrawShips
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasJ = 15
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  V = J1 & 15
+  Edge = V ^ WasJ
+  Edge = Edge & V
+  WasJ = V
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: FUELING STATION in station panels, four saucers bobbing in
+' their bays, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 6,1, "AHOY! DECEMBER 1987"
+  copy TitleMap count 352 to vram.name + 96
+  print at 9,18, "BY JOHN KRUTCH"
+  print at 13,20, "START"
+  print at 13,21, "CREDITS"
+  if Best > 0 then
+    print at 11,22, "BEST ", Best
+  end if
+  copy ShipStart to Sh
+  for Si = 0 to 3
+    Sh[Si].Y = 154 + Si * 4
+  next
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the saucers bob between C64 rows 152 and 171 (screen rows 14-17) at
+' their own speeds, every other frame
+sub TitleAnim:
+  u8 Yv = 0
+  V = Tick & 1
+  if V = 0 then
+    for Si = 0 to 3
+      Yv = Sh[Si].Y
+      if Yv >= 170 then Sh[Si].D = 1
+      if Yv < 152 then Sh[Si].D = 0
+      if Sh[Si].D = 1 then
+        Sh[Si].Y = Yv - Sh[Si].Up
+      else
+        Sh[Si].Y = Yv + Sh[Si].Dn
+      end if
+      Sh[Si].In = 0
+    next
+  end if
+  DrawShips
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,20
+  put char 32 at 11,21
+  J = Menu + 20
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "FUELING STATION"
+  print at 2,5, "BASED ON FUELING STATION"
+  print at 2,6, "BY JOHN KRUTCH, AHOY!"
+  print at 2,7, "DECEMBER 1987 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: DOCKING BAY FOUR"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+FsTog0:
+    db $40,$A9,$30,$02,$40,$71,$40,$03,$50
+FsTog1:
+    db $40,$97,$30,$02,$40,$65,$40,$03,$50
+FsTog2:
+    db $40,$87,$30,$02,$40,$5A,$40,$03,$50
+FsTog3:
+    db $40,$7F,$30,$02,$40,$55,$40,$03,$50
+FsLock:
+    db $40,$47,$40,$02,$40,$35,$50,$02,$50
+FsFuel:
+    db $80,$75,$21,$03,$80,$19,$31,$03,$80,$E2,$30,$03,$80,$1C,$21,$03,$80,$E3,$30,$03,$80,$1F,$31,$03
+    db $80,$E5,$20,$03,$80,$BF,$30,$03,$80,$E7,$30,$03,$80,$C0,$20,$03,$80,$E9,$30,$03,$80,$C2,$30,$03
+    db $80,$A5,$20,$03,$80,$C3,$30,$03,$80,$A6,$30,$03,$80,$C4,$20,$03,$80,$A7,$30,$03,$80,$92,$30,$03
+    db $80,$A8,$20,$03,$80,$93,$30,$03,$80,$A9,$30,$03,$80,$94,$20,$03,$80,$83,$30,$03,$80,$94,$30,$03
+    db $80,$7F,$20,$14,$90
+FsOut:
+    db $80,$50,$10,$03,$80,$57,$10,$03,$80,$5E,$10,$03,$80,$67,$10,$03,$80,$70,$10,$03,$80,$79,$10,$03
+    db $80,$84,$10,$03,$80,$8F,$10,$03,$80,$9C,$20,$03,$80,$A9,$20,$03,$80,$B8,$20,$03,$80,$C8,$20,$03
+    db $80,$D9,$20,$03,$80,$EC,$20,$03,$80,$01,$21,$03,$80,$17,$21,$03,$80,$2F,$21,$03,$80,$4A,$21,$03
+    db $80,$67,$21,$03,$80,$86,$21,$03,$80,$A8,$21,$03,$80,$CC,$21,$03,$80,$F3,$21,$03,$80,$1F,$22,$03
+    db $80,$50,$32,$03,$80,$83,$32,$03,$80,$BB,$32,$03,$80,$F9,$32,$03,$80,$37,$33,$03,$80,$7F,$33,$03
+    db $90
+FsStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+FsWin:
+    db $C0,$D6,$10,$08,$C0,$AA,$10,$08,$C0,$8F,$10,$08,$C0,$6B,$10,$08,$C0,$8F,$10,$08,$C0,$6B,$20,$1E
+    db $D0
+FsZap:
+    db $00,$00,$35,$03,$00,$00,$56,$04,$10
+
+FsSoundTable:
+    dw FsTuneMel,$702B
+    dw FsTuneBass,$7035
+    dw FsTog0,$7049
+    dw FsTog1,$7049
+    dw FsTog2,$7049
+    dw FsTog3,$7049
+    dw FsLock,$7049
+    dw FsFuel,$7053
+    dw FsOut,$7053
+    dw FsStart,$7049
+    dw FsWin,$705D
+    dw FsZap,$703F
+; Docking Bay Four (original)
+; Tiny Sound, 8 frames per step
+FsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$28,$01,$01,$2A,$01,$2B,$01,$2A,$01
+    db $28,$01,$01,$01,$26,$01,$01,$23,$01,$01,$21,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$01,$28,$01,$01,$2A,$01,$2B,$01,$2D,$01
+    db $2F,$01,$01,$01,$2D,$01,$2B,$01,$2A,$01,$26,$01,$28,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+FsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$1C,$01,$10,$01,$1C,$01,$0C,$01,$18,$01
+    db $0C,$01,$18,$01,$0E,$01,$1A,$01,$0E,$01,$1A,$01,$0B,$01,$17,$01
+    db $0B,$01,$17,$01,$10,$01,$1C,$01,$10,$01,$1C,$01,$0C,$01,$18,$01
+    db $0E,$01,$1A,$01,$13,$01,$1A,$01,$0B,$01,$17,$01,$10,$01,$01,$01
+    db $17,$01,$00,$01
+    db $FF
+}

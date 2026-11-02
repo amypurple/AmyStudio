@@ -1,0 +1,1058 @@
+cartridge "RAID/LARRY COATS/1985"
+
+' RAID
+' A ColecoVision game based on "RAID" by Larry Coats, Ahoy! May 1985
+' (Commodore 64: a BASIC program with 1,309 bytes of machine code in DATA
+' lines at $C100, "(C) 1983 BY LARRY COATS" on its instruction screen;
+' orig/ has the program, its detokenized listing and a disassembly of the
+' machine code). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' From the original (rules read from the BASIC and the machine code):
+' a walled field of four tall rooms joined by gaps; 29 hearts in fixed
+' places, 16 butterflies starting in fixed places, the raider in a pocket
+' on the left of the middle row, the exit at the far end of the pocket on
+' the right. The raider moves one cell while the stick is held, in eight
+' directions; a diagonal blocked by a wall slides along it (the vertical
+' way tried first, then the horizontal, into a heart or an empty cell
+' only). Walking into a butterfly is death. Each butterfly step, every
+' butterfly (the last one first) looks at its four neighbours: the raider
+' there and it pounces (death); else it tries one random way of four and
+' moves only into an empty cell (never onto a heart, a wall or another
+' butterfly). The raider and the butterflies take turns at the same pace.
+' Hearts: 10 points each, 100 more for taking the last one; walking out on
+' the right with every heart taken: 500 and the next level (the hearts all
+' back). Hearts taken stay taken after a death; the butterflies go back to
+' their places. Five lives. The skill level 1-9 is the starting level, and
+' every level is faster (the C64's delay 255 - 12 x level).
+'
+' Liberties: the 40 x 23 field narrowed to 28 x 21 with the same plan
+' (rooms five cells wide instead of eight, gaps on rows 5, 10 and 15, the
+' pockets three cells long, 29 hearts in the same kinds of places); the
+' butterflies' places staggered a row (rooms' left pair on rows 2 and 18,
+' right pair on 3 and 17) so no more than four sprites share a line; smooth
+' sprites gliding from cell to cell (the rules stay cell by cell, as the
+' C64's), with an invisible mark tile under each butterfly in the name
+' table (the C64 kept them on its screen too); the butterflies' step
+' spread over four frames, four at a time, the last ones first (sixteen in
+' one frame overran it); everything freezes while the raider bursts; a
+' gate tile in the wall at the exit, opening when the last heart
+' is taken; speeds for people: the butterflies step every 14 frames on
+' level 1, a frame quicker every two levels down to 6 from level 17, the
+' raider a cell in 8 frames on level 1, 6 frames quicker than them (5 at
+' least), instead of the same pace
+' (the C64 reached no delay at all by level 21); one player (the C64 took
+' 1-9 players in turns; no keyboard here); the skill chosen with the
+' stick on the title; the raider a fixed-colour figure (the C64's ball
+' changed colour every move, too fast a flash here); the C64's random
+' border colour each round left out; a short READY pause before each
+' round; scores added as they happen (the C64 added them after each round,
+' with the same totals); high score; GAME OVER returns to the title (no
+' "ANOTHER GAME?").
+' Standing still scores nothing. As on the C64, the heart in the start
+' pocket keeps the butterflies out until it is taken (they never step onto
+' hearts); after that the pocket is no refuge (they wander in and pounce),
+' and stepping back and forth in one place is no safer.
+'
+' Controls: the joystick (either controller) moves the raider, diagonals
+' too. On the title, left and right choose the skill, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz (the burst changes colour at 2.5 Hz).
+'
+' Workarounds for Amy bugs jake-return-before-for removed 2026-11-01.
+
+const TWall0 = 128
+const TWall1 = 129
+const TWall2 = 130
+const TWall3 = 131
+const TWall4 = 132
+const TWall5 = 133
+const TWall6 = 134
+const TWall7 = 135
+const TWall8 = 136
+const TWall9 = 137
+const TWall10 = 138
+const TWall11 = 139
+const TWall12 = 140
+const TWall13 = 141
+const TWall14 = 142
+const TWall15 = 143
+const THeart = 144
+const TGate = 145
+const TOpen = 146
+const TMark = 147
+const TLife = 148
+const TTtl00 = 149
+const TTtl01 = 150
+const TTtl02 = 151
+const TTtl03 = 152
+const TTtl04 = 153
+const TTtl05 = 154
+const TTtl06 = 155
+const TTtl07 = 156
+const TTtl10 = 157
+const TTtl11 = 158
+const TTtl12 = 159
+const TTtl13 = 160
+const TTtl14 = 161
+const TTtl15 = 162
+const TTtl16 = 163
+const TTtl17 = 164
+const SRaid0 = 0
+const SRaid1 = 4
+const SBoom = 8
+const SFly0 = 12
+const SFly1 = 16
+const NTiles8 = 296
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHeart = 3
+const SndLast = 4
+const SndCrash = 5
+const SndOuch = 6
+const SndExit = 7
+const SndStart = 8
+const SndOver = 9
+const SndTick = 10
+const NSpr = 17
+const NFly = 16
+const NHeart = 29
+const StPlay = 1
+const StDie = 2
+const StClear = 3
+const FW = 28
+const FH = 21
+const StartC = 1
+const StartR = 10
+const ExitC = 26
+const ExitR = 10
+const DieF = 90
+const ClearF = 100
+
+' the butterflies' four ways, in the C64's order: up, left, right, down
+data DcT bytes
+  0, 255, 1, 0
+end data
+data DrT bytes
+  255, 0, 0, 1
+end data
+data FlyCol bytes
+  13, 7, 11, 9
+end data
+data TitleX bytes
+  44, 68, 172, 196
+end data
+
+data TilePat bytes
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$81,$81,$81,$81,$81,$81,$81
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$08,$08,$00,$80,$80,$80,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$08,$08,$00,$80,$80,$80,$00
+  $81,$81,$81,$81,$81,$81,$81,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $08,$08,$08,$00,$80,$80,$80,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $08,$08,$08,$00,$80,$80,$80,$00
+  $00,$93,$01,$01,$01,$83,$38,$10
+  $00,$AA,$AA,$AA,$AA,$AA,$AA,$00
+  $00,$10,$18,$01,$01,$18,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$54,$81,$46,$38,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $07,$07,$23,$23,$23,$23,$07,$07
+  $83,$83,$11,$11,$11,$11,$01,$01
+  $82,$82,$C6,$C6,$C6,$C6,$C6,$C6
+  $07,$07,$23,$23,$23,$23,$23,$23
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F0,$F0,$23,$23,$23,$23,$23,$23
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $C6,$C6,$C6,$C6,$C6,$C6,$82,$82
+  $23,$23,$23,$23,$23,$23,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$01
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$01
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$01
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$01
+  $0B,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$01
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$01
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$01
+  $6A,$6A,$6A,$06,$6A,$6A,$6A,$01
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $01,$18,$18,$18,$18,$18,$81,$81
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $01,$31,$31,$13,$13,$31,$31,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$71,$71,$17,$71,$71,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1
+  $1B,$1B,$1B,$1B,$1B,$1B,$1A,$1A
+  $1B,$1B,$1B,$1B,$1B,$1B,$1A,$1A
+  $1B,$1B,$1B,$1B,$1B,$1B,$1A,$1A
+  $1B,$1B,$1B,$1B,$1B,$1B,$1A,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$81,$81,$81,$81
+  $A1,$A1,$1A,$1A,$18,$18,$18,$18
+  $1A,$1A,$1A,$1A,$18,$18,$18,$18
+  $1A,$1A,$1A,$1A,$18,$18,$18,$18
+  $1A,$1A,$1A,$1A,$18,$18,$18,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$07,$0D,$0F,$0B,$0C,$07,$02,$06,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$F0,$D0,$30,$E0,$40,$60,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0D,$0F,$0B,$0C,$07,$02,$03,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$F0,$D0,$30,$E0,$40,$60,$00,$00,$00
+  $00,$00,$11,$09,$04,$00,$32,$03,$32,$00,$04,$09,$11,$00,$00,$00
+  $00,$00,$10,$20,$40,$00,$98,$80,$98,$00,$40,$20,$10,$00,$00,$00
+  $00,$00,$00,$1C,$3E,$3F,$1E,$0E,$03,$0E,$1E,$1C,$00,$00,$00,$00
+  $00,$00,$00,$38,$7C,$7C,$F8,$F0,$C0,$F0,$F8,$38,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0C,$1E,$0E,$03,$0E,$0C,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$30,$78,$F0,$C0,$F0,$30,$00,$00,$00,$00,$00
+end data
+data FieldT bytes
+  143,141,141,141,141,141,143,143,141,141,141,141,141,143,143,141,141,141,141,141,143,143,141,141,141,141,141,143
+  139,144,32,32,32,144,142,139,144,32,32,32,144,142,139,144,32,32,32,144,142,139,144,32,32,32,144,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,32,32,32,32,32,140,137,32,32,32,32,32,142,139,32,32,32,32,32,140,137,32,32,32,32,32,142
+  139,32,32,32,32,32,144,144,32,32,32,32,32,142,139,32,32,32,32,32,144,144,32,32,32,32,32,142
+  139,32,32,32,32,32,134,131,32,32,32,32,32,142,139,32,32,32,32,32,134,131,32,32,32,32,32,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  143,133,133,129,32,32,142,139,32,32,32,32,32,140,137,32,32,32,32,32,142,139,32,32,132,133,133,143
+  139,32,32,144,32,32,142,139,32,32,32,32,32,144,144,32,32,32,32,32,142,139,32,32,144,144,32,145
+  143,133,133,129,32,32,142,139,32,32,32,32,32,134,131,32,32,32,32,32,142,139,32,32,132,133,133,143
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,32,32,32,32,32,140,137,32,32,32,32,32,142,139,32,32,32,32,32,140,137,32,32,32,32,32,142
+  139,32,32,32,32,32,144,144,32,32,32,32,32,142,139,32,32,32,32,32,144,144,32,32,32,32,32,142
+  139,32,32,32,32,32,134,131,32,32,32,32,32,142,139,32,32,32,32,32,134,131,32,32,32,32,32,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142,139,32,32,32,32,32,142
+  139,144,32,32,32,144,142,139,144,32,32,32,144,142,139,144,32,32,32,144,142,139,144,32,32,32,144,142
+  143,135,135,135,135,135,143,143,135,135,135,135,135,143,143,135,135,135,135,135,143,143,135,135,135,135,135,143
+end data
+data FlyC bytes
+  2,4,9,11,16,18,23,25,2,4,9,11,16,18,23,25
+end data
+data FlyR bytes
+  2,3,2,3,2,3,2,3,18,17,18,17,18,17,18,17
+end data
+data HeartC bytes
+  1,5,8,12,15,19,22,26,1,5,8,12,15,19,22,26,6,7,20,21,6,7,20,21,3,13,14,24,25
+end data
+data HeartR bytes
+  1,1,1,1,1,1,1,1,19,19,19,19,19,19,19,19,5,5,5,5,15,15,15,15,10,10,10,10,10
+end data
+
+record Fly:
+  u8 Cx
+  u8 Cy
+  u8 Ox
+  u8 Oy
+end record
+
+Fly Fs[16]
+u8 Got[29]
+u16 Seed = 12345
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 Lives = 5
+u8 Level = 1
+u8 Skill = 1
+u8 HLeft = 29
+u8 Fr = 10
+u8 PFr = 8
+u8 BT = 10
+u8 Grp = 0
+u8 OffG[4]
+u8 Over = 0
+' the raider: state, cell, cell it came from, frames left of the glide
+u8 St = StPlay
+u8 Pc = StartC
+u8 Pr = StartR
+u8 Poc = StartC
+u8 Por = StartR
+u8 PT = 0
+u8 Steps = 0
+u8 Wing = 0
+u8 DieT = 0
+u8 ClrT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Hi8 = 0
+u8 Hr = 0
+u8 Hc = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table RdSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 1 then goto game_over
+  if St = StClear then
+    if ClrT >= ClearF then NextLevel
+  end if
+  goto play_loop
+
+game_over:
+  Phase = 4
+  if Score > Hi then Hi = Score
+  print at 10,12, " GAME OVER "
+  mute all
+  play sound SndOver
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the field (the name table holds the walls, the hearts and the gate)
+
+' a 16-bit xorshift: the butterflies' ways
+function Rnd as u8
+  u8 Lo = 0
+  Seed = Seed ^ (Seed << 7)
+  Seed = Seed ^ (Seed >> 9)
+  Seed = Seed ^ (Seed << 8)
+  Lo = Seed & 255
+  return Lo
+
+' the tile in field cell Cc, Cr
+function CellAt(u8 Cc, u8 Cr) as u8
+  u8 T = 0
+  T = get char at Cc + 2, Cr + 2
+  return T
+
+' frames per butterfly step on level L: 14, a frame less every two
+' levels, 6 from level 17
+function SpeedFor(u8 L) as u8
+  u8 S = 0
+  if L >= 17 then return 6
+  S = L - 1
+  S = 14 - S / 2
+  return S
+
+' pixels still to glide: T frames left of F
+function Glide(u8 T, u8 F) as u8
+  return (T * 8) / F
+
+sub DrawField:
+  for Hr = 0 to FH - 1
+    W16 = Hr * FW
+    for Hc = 0 to FW - 1
+      V = FieldT[W16 + Hc]
+      put char V at Hc + 2, Hr + 2
+    next
+  next
+  ' hearts taken before a death stay taken
+  HLeft = NHeart
+  for Hi8 = 0 to NHeart - 1
+    if Got[Hi8] = 1 then
+      put char 32 at HeartC[Hi8] + 2, HeartR[Hi8] + 2
+      dec HLeft
+    end if
+  next
+  if HLeft = 0 then put char TOpen at 29, 12
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc Anim
+  select case St
+  case StDie
+    inc DieT
+    if PT > 0 then dec PT
+    if DieT >= DieF then LoseLife
+    return
+  case StClear
+    inc ClrT
+    if PT > 0 then dec PT
+    return
+  end select
+  MovePlayer
+  if St <> StPlay then return
+  MoveFlies
+  return
+end sub
+
+' the raider: a cell every PFr frames while the stick is held
+sub MovePlayer:
+  u8 Dc = 0
+  u8 Dr = 0
+  u8 Nc = 0
+  u8 Nr = 0
+  if PT > 0 then
+    dec PT
+    if PT > 0 then return
+  end if
+  V = Pad & 1
+  if V > 0 then Dr = 255
+  V = Pad & 2
+  if V > 0 then Dr = 1
+  V = Pad & 4
+  if V > 0 then Dc = 255
+  V = Pad & 8
+  if V > 0 then Dc = 1
+  V = Dc | Dr
+  if V = 0 then return
+  Nc = Pc + Dc
+  Nr = Pr + Dr
+  if TryMove(Nc, Nr, 1) = 1 then return
+  if Dc = 0 then return
+  if Dr = 0 then return
+  ' a diagonal into a wall slides: up or down first, then sideways
+  if TryMove(Pc, Nr, 0) = 1 then return
+  V = TryMove(Nc, Pr, 0)
+  return
+end sub
+
+' the raider steps into Nc, Nr if he can: 1 when something happened.
+' Prim = 1 for the stick's own way (a butterfly there is death); the
+' slides go only into a heart or an empty cell
+function TryMove(u8 Nc, u8 Nr, u8 Prim) as u8
+  u8 T = 0
+  T = CellAt(Nc, Nr)
+  select case T
+  case TMark
+    if Prim = 0 then return 0
+    Caught
+    return 1
+  case THeart
+    TakeHeart(Nc, Nr)
+  case 32
+  case else
+    return 0
+  end select
+  Poc = Pc
+  Por = Pr
+  Pc = Nc
+  Pr = Nr
+  PT = PFr
+  inc Steps
+  if HLeft = 0 then
+    if Pc = ExitC then
+      if Pr = ExitR then
+        St = StClear
+        ClrT = 0
+        Score += 500
+        ShowScore
+        play sound SndExit
+      end if
+    end if
+  end if
+  return 1
+
+sub TakeHeart(u8 Tc, u8 Tr):
+  u8 Q = 0
+  put char 32 at Tc + 2, Tr + 2
+  for Q = 0 to NHeart - 1
+    if HeartC[Q] = Tc then
+      if HeartR[Q] = Tr then Got[Q] = 1
+    end if
+  next
+  dec HLeft
+  Score += 10
+  if HLeft = 0 then
+    Score += 100
+    put char TOpen at 29, 12
+    play sound SndLast
+  else
+    play sound SndHeart
+  end if
+  ShowScore
+  ShowLeft
+  return
+end sub
+
+sub Caught:
+  St = StDie
+  DieT = 0
+  play sound SndCrash
+  play sound SndOuch
+  return
+end sub
+
+' every Fr frames all the butterflies step, the last one first, four of
+' them a frame (sixteen in one frame took more than two)
+sub MoveFlies:
+  u8 Top = 0
+  u8 Bot = 0
+  dec BT
+  if BT = 0 then
+    BT = Fr
+    inc Wing
+  end if
+  Grp = Fr - BT
+  if Grp >= 4 then return
+  Top = 15 - Grp * 4
+  Bot = Top - 3
+  for Fi = Top to Bot step -1
+    Fs[Fi].Ox = Fs[Fi].Cx
+    Fs[Fi].Oy = Fs[Fi].Cy
+    if St = StPlay then FStep(Fi)
+  next
+  return
+end sub
+
+' one butterfly: the raider next to it (up, left, right or down) and it
+' pounces; else one random way, into an empty cell only
+sub FStep(u8 B):
+  u8 C = 0
+  u8 R = 0
+  u8 D = 0
+  u8 Nc = 0
+  u8 Nr = 0
+  C = Fs[B].Cx
+  R = Fs[B].Cy
+  D = 9
+  if C = Pc then
+    V = R - Pr
+    if V = 1 then D = 0
+    if V = 255 then D = 3
+  elseif R = Pr then
+    V = C - Pc
+    if V = 1 then D = 1
+    if V = 255 then D = 2
+  end if
+  if D = 9 then
+    D = Rnd() & 3
+    Nc = C + DcT[D]
+    Nr = R + DrT[D]
+    if CellAt(Nc, Nr) <> 32 then return
+    MoveFly(B, C, R, Nc, Nr)
+    return
+  end if
+  MoveFly(B, C, R, Pc, Pr)
+  Caught
+  return
+end sub
+
+' butterfly B from cell C, R to cell Nc, Nr, its mark with it
+sub MoveFly(u8 B, u8 C, u8 R, u8 Nc, u8 Nr):
+  put char 32 at C + 2, R + 2
+  Fs[B].Cx = Nc
+  Fs[B].Cy = Nr
+  put char TMark at Nc + 2, Nr + 2
+  return
+end sub
+
+sub LoseLife:
+  dec Lives
+  ShowLives
+  for Fi = 0 to NFly - 1
+    put char 32 at Fs[Fi].Cx + 2, Fs[Fi].Cy + 2
+  next
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  ResetRound
+  DrawSprites
+  Ready
+  return
+end sub
+
+' the raider in the start pocket, the butterflies in their places
+sub ResetRound:
+  St = StPlay
+  Pc = StartC
+  Pr = StartR
+  Poc = Pc
+  Por = Pr
+  PT = 0
+  DieT = 0
+  BT = Fr
+  for Fi = 0 to NFly - 1
+    Fs[Fi].Cx = FlyC[Fi]
+    Fs[Fi].Cy = FlyR[Fi]
+    Fs[Fi].Ox = FlyC[Fi]
+    Fs[Fi].Oy = FlyR[Fi]
+    put char TMark at FlyC[Fi] + 2, FlyR[Fi] + 2
+  next
+  return
+end sub
+
+sub Ready:
+  Phase = 3
+  print at 24,1, "READY"
+  play sound SndStart
+  Rearm
+  wait 45 frames
+  nmi off
+  fill 32 count 5 at 24,1
+  Phase = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' levels and games
+
+sub StartLevel:
+  Phase = 2
+  Fr = SpeedFor(Level)
+  PFr = 5
+  if Fr > 11 then PFr = Fr - 6
+  NewScreen
+  DrawField
+  ShowHud
+  ResetRound
+  DrawSprites
+  ShowScreen
+  Ready
+  return
+end sub
+
+sub ClearGot:
+  for Hi8 = 0 to NHeart - 1
+    Got[Hi8] = 0
+  next
+  return
+end sub
+
+sub NextLevel:
+  if Level < 99 then inc Level
+  ClearGot
+  StartLevel
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lives = 5
+  Level = Skill
+  Over = 0
+  ClearGot
+  StartLevel
+  return
+end sub
+
+sub ShowHud:
+  print at 9,1, "LV"
+  put char THeart at 15,1
+  put char TLife at 20,1
+  ShowScore
+  ShowLevel
+  ShowLeft
+  ShowLives
+  return
+end sub
+
+sub ShowScore:
+  print at 2,1, Score
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Level
+  print at 11,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLeft:
+  NumU = HLeft
+  print at 16,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 21,1, digits$(NumU, 1)
+  return
+end sub
+
+' sprite 0 the raider, 1-16 the butterflies
+sub DrawSprites:
+  u8 C = 0
+  u8 R = 0
+  u8 Oc = 0
+  u8 Orr = 0
+  u8 Off = 0
+  u8 Pat = 0
+  u8 Col = 0
+  Off = Glide(PT, PFr)
+  X = Pc * 8 + 12
+  Y = Pr * 8 + 11
+  if Pc > Poc then
+    X = X - Off
+  elseif Pc < Poc then
+    X = X + Off
+  end if
+  if Pr > Por then
+    Y = Y - Off
+  elseif Pr < Por then
+    Y = Y + Off
+  end if
+  if St = StDie then
+    V = DieT / 12
+    V = V & 1
+    Col = 11
+    if V = 1 then Col = 8
+    if DieT >= 72 then
+      set sprite 0 to 192,0,0,0
+    else
+      set sprite 0 to Y,X,SBoom,Col
+    end if
+  else
+    V = Steps & 1
+    Pat = SRaid0 + V * 4
+    set sprite 0 to Y,X,Pat,15
+  end if
+  ' the glide of each group of four (group K steps K frames after the first)
+  for K = 0 to 3
+    V = BT + K
+    if V > Fr then V = V - Fr
+    OffG[K] = Glide(V, Fr)
+  next
+  for Fi = 0 to NFly - 1
+    C = Fs[Fi].Cx
+    R = Fs[Fi].Cy
+    Oc = Fs[Fi].Ox
+    Orr = Fs[Fi].Oy
+    X = C * 8 + 12
+    Y = R * 8 + 11
+    V = 15 - Fi
+    Off = OffG[V >> 2]
+    if C > Oc then
+      X = X - Off
+    elseif C < Oc then
+      X = X + Off
+    end if
+    if R > Orr then
+      Y = Y - Off
+    elseif R < Orr then
+      Y = Y + Off
+    end if
+    V = Wing + Fi
+    V = V & 1
+    Pat = SFly0 + V * 4
+    Col = FlyCol[Fi & 3]
+    set sprite Fi + 1 to Y,X,Pat,Col
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name in big letters, the rules, the skill, the tune once
+sub TitlePage:
+  Phase = 5
+  NewScreen
+  for Hc = 0 to 7
+    V = TTtl00 + Hc
+    put char V at Hc + 12, 3
+    V = TTtl10 + Hc
+    put char V at Hc + 12, 4
+  next
+  print at 9,6, "AHOY! MAY 1985"
+  print at 8,7, "AFTER LARRY COATS"
+  print at 3,9, "TAKE ALL THE HEARTS, DODGE"
+  print at 2,10, "THE BUTTERFLIES, THEN LEAVE"
+  print at 2,11, "BY THE GATE ON THE RIGHT."
+  put char THeart at 6,13
+  print at 8,13, "10  LAST ONE +100"
+  put char TOpen at 6,15
+  print at 8,15, "EXIT 500"
+  print at 9,17, "SKILL"
+  print at 9,19, "HIGH ", Hi
+  print at 8,21, "PRESS THE BUTTON"
+  ShowSkill
+  for Fi = 0 to 3
+    X = TitleX[Fi]
+    K = FlyCol[Fi]
+    set sprite Fi + 1 to 23,X,SFly0,K
+  next
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 6
+tp_loop:
+  Frame1
+  ReadPad
+  inc Anim
+  V = Rnd()
+  V = Pad & 12
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 4 then
+        if Skill > 1 then dec Skill
+      else
+        if Skill < 9 then inc Skill
+      end if
+      ShowSkill
+      play sound SndTick
+    end if
+  end if
+  WasStick = V
+  V = Anim & 15
+  if V = 0 then
+    for Fi = 0 to 3
+      J = Anim >> 4
+      J = J + Fi
+      J = J & 1
+      K = SFly0 + J * 4
+      X = TitleX[Fi]
+      set sprite Fi + 1 to 23,X,K,FlyCol[Fi]
+    next
+    update sprites
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  return
+end sub
+
+sub ShowSkill:
+  NumU = Skill
+  print at 15,17, "< ", digits$(NumU, 1), " >"
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "RAID"
+  print at 2,4, "BASED ON RAID BY LARRY"
+  print at 2,5, "COATS, AHOY! MAY 1985"
+  print at 2,6, "(COMMODORE 64)."
+  print at 2,8, "COLECOVISION GAME, MUSIC"
+  print at 2,9, "AND PICTURES BY CLAUDE"
+  print at 2,10, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "IN AMY BY AMY BIENVENU,"
+  print at 2,12, "2026."
+  print at 2,14, "MUSIC: WINGS OVER THE MAZE"
+  print at 2,15, "(ORIGINAL)"
+  print at 2,17, "TAKE EVERY HEART, KEEP AWAY"
+  print at 2,18, "FROM THE BUTTERFLIES AND"
+  print at 2,19, "GET OUT ON THE RIGHT!"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 8
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+RdHeart:
+    db $40,$50,$20,$02,$40,$3B,$30,$02,$40,$2B,$40,$03,$50
+RdLast:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$30,$08,$50
+RdCrash:
+    db $00,$00,$04,$04,$00,$00,$25,$06,$00,$00,$46,$0A,$00,$00,$66,$10,$10
+RdOuch:
+    db $40,$BA,$20,$05,$40,$E9,$20,$05,$40,$26,$31,$06,$40,$75,$41,$0A,$50
+RdExit:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$0F
+    db $50
+RdStart:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$30,$0C,$50
+RdOver:
+    db $40,$FE,$20,$0C,$40,$1D,$21,$0C,$40,$41,$21,$0C,$40,$AB,$21,$24,$50
+RdTick:
+    db $40,$5D,$40,$02,$50
+
+RdSoundTable:
+    dw RdTuneMel,$702B
+    dw RdTuneBass,$7035
+    dw RdHeart,$7049
+    dw RdLast,$7049
+    dw RdCrash,$703F
+    dw RdOuch,$7049
+    dw RdExit,$7049
+    dw RdStart,$7049
+    dw RdOver,$7049
+    dw RdTick,$7049
+; Wings over the Maze (original)
+; Tiny Sound, 8 frames per step
+RdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$F1,$22,$1C,$1F,$23,$01,$21,$1F,$1E,$01,$1F,$23,$28,$01
+    db $26,$23,$01,$01,$24,$23,$21,$01,$23,$21,$1F,$01,$1E,$1F,$21,$01
+    db $23,$01,$01,$01,$1C,$1F,$23,$01,$21,$1F,$1E,$01,$1F,$23,$28,$01
+    db $2A,$2B,$01,$01,$2A,$28,$26,$01,$23,$24,$21,$01,$1E,$01,$1B,$01
+    db $1C,$01,$00,$01
+    db $FF
+RdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$04,$01,$01,$01,$0B,$01,$01,$01,$04,$01,$01,$01
+    db $07,$01,$01,$01,$09,$01,$01,$01,$04,$01,$01,$01,$0E,$01,$01,$01
+    db $0B,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$0C,$01,$01,$01
+    db $0B,$01,$01,$01,$09,$01,$01,$01,$0B,$01,$01,$01,$0B,$01,$01,$01
+    db $04,$01,$00,$01
+    db $FF
+}

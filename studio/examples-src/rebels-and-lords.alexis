@@ -1,0 +1,1910 @@
+cartridge "REBELS & LORDS/AHOY! DEC 1986/2026"
+
+' REBELS & LORDS
+' A ColecoVision game based on "Rebels & Lords", Ahoy! December 1986
+' (Commodore 64, BASIC; disk image ahoy1986-12; the listing names no
+' author). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' The game: a 19 x 19 land of grass, woods and rocks, with castles held by
+' the lords and by the rebels. Each week every lord in turn (in a new
+' random order each week) looks over the land with a cursor and sends
+' troops from his castles and idle armies to any cell. Then the rebels
+' plan, and the armies march five steps. An army that meets another
+' owner's troops fights; a castle with no troops falls without a fight.
+' At the end of the week every castle raises its levy of new troops.
+' Own every castle to win.
+'
+' From the original (orig/rebels.bas): the 19 x 19 map and its making
+' (terrain levels 1-3: rocks in a wandering ridge of one or two cells per
+' row, 50 trees, 5 forests on level 3), 3 x lords to 35 castles placed on
+' grass or woods, the map shown for acceptance before play; rebel castles
+' with a levy of 1 + INT(1/K) and INT(15 RND + RND/K) troops (K = .09 +
+' 1.3 RND); the lords' castles with a levy of 7 + lords and 20 + castles +
+' 15 RND + 2 x the distance from the centre; the troop size chosen with
+' the stick (up/down 10, left/right 1), the destination with the cursor;
+' the march: five steps a week, each army one cell a step (straight when
+' in line, else a random choice of row or column), the armies taken in
+' turn from a random one; rocks stop an army where it is (here only when the other way toward
+' its goal is blocked too: a liberty); arriving at an
+' own castle adds the troops to it, at an idle army joins it; the battle
+' (attack strength .2 + .35 RND, defence .25 + .3 RND, + .1 in a castle,
+' 60% losses in the first exchange, then rounds until one side has none,
+' each loss rounded up as the C64's INT of a fraction did); the defender's
+' losses from its armies first; a castle captured with 0 troops; armies in
+' the woods drawn as woods; the rebels' plan (their strongest castle, if
+' stronger than the biggest lord army, sends 34% out; an idle rebel army
+' goes for a lord castle within 3 cells, each tried with 60% chance, or a
+' random cell); the levies every week; the lords in a new random order.
+'
+' Liberties: lords are named by colour (RED, BLUE, WHITE, VIOLET), not
+' typed in. One or two human lords on the two joysticks, plus up to three
+' computer lords (the original had only human lords and the rebels); the
+' computer lords send their castles' spare troops at the nearest castle
+' they do not own. The original has no end but quitting: here a lord who
+' owns every castle wins, a lord with no castle and no army is out, and
+' the game ends when no human lord is left or after week 99 (most castles
+' wins). At most 24 castles (35 on the C64) and 24 armies (199) to fit
+' 1 KB of RAM; troops are capped at 9999 a castle or army. Troops sent start
+' at half of what is there instead of 0. Battles report the troops on
+' each side and the outcome, and go on by themselves after a few seconds
+' when no human lord is involved. Each cell is one tile with a castle or
+' army in its owner's colour, the cursor a smooth sprite.
+'
+' Controls: the lord whose turn it is uses his own joystick (lord 1:
+' controller 1, lord 2: controller 2). Stick: move the cursor. Left
+' button: pick troops on your castle or army, then choose how many (stick
+' up/down 10, left/right 1), left button again, then put the X on the
+' destination and press the left button. Right button: cancel, or end your
+' turn. Menus: up/down choose, left/right change, a button to start.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table; the title
+' tune is played once. `set sprite count` is always given. Own xorshift
+' random numbers. Nothing flashes faster than 3 Hz. The base terrain of
+' the map is kept in spare VRAM (name table + $400), not in RAM.
+
+const TGrass = 128
+const TWoods = 129
+const TRocks = 130
+const TCastle0 = 131
+const TCastle1 = 132
+const TCastle2 = 133
+const TCastle3 = 134
+const TCastle4 = 135
+const TArmy0 = 136
+const TArmy1 = 137
+const TArmy2 = 138
+const TArmy3 = 139
+const TArmy4 = 140
+const TFrame = 141
+const SCursor = 0
+const SDest = 4
+const SBurst = 8
+const NTiles8 = 112
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndPick = 4
+const SndSend = 5
+const SndNope = 6
+const SndClash = 7
+const SndWin = 8
+const SndLose = 9
+const SndTake = 10
+const SndWeek = 11
+const SndVictory = 12
+const SndDefeat = 13
+const MaxA = 24
+const MaxC = 24
+const MapX = 2
+const MapY = 2
+const NoDest = 255
+const Free = 255
+const Cap = 9999
+const NSpr = 4
+const TerrV = $0400
+
+' owner names, 6 characters each
+data Names chars
+  "REBELS"
+  "RED   "
+  "BLUE  "
+  "WHITE "
+  "VIOLET"
+end data
+data NameLen bytes
+  6, 3, 4, 5, 6
+end data
+' the sprite colours of the owners (cursor and marks)
+data OwnCol bytes
+  1, 8, 4, 15, 13
+end data
+
+record Castle:
+  u8 Own
+  u8 R
+  u8 C
+  u8 Levy
+  u16 Tr
+end record
+
+record Army:
+  u8 Own
+  u8 R
+  u8 C
+  u8 Dr
+  u8 Dc
+  u16 Tr
+end record
+
+Castle Cas[MaxC]
+Army Arm[MaxA]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+' the game set-up: human lords, computer lords, castles, terrain level
+u8 NH = 1
+u8 NCpu = 1
+u8 NL = 2
+u8 NF = 9
+u8 GL = 2
+' each lord: 0 none, 1 controller 1, 2 controller 2, 3 computer; out
+u8 Ctl[5]
+u8 Out[5]
+u8 Order[5]
+u8 Wk = 1
+u8 Over = 0
+u8 Winner = 0
+' whose turn and the turn's phase (0 computer work, 1 looking, 2 size,
+' 3 destination, 4 a message waits, 5 map acceptance, 6 title, 7 credits)
+u8 PP = 0
+u8 Ph = 0
+u8 Cr = 9
+u8 Cc = 9
+u8 Dr2 = 9
+u8 Dc2 = 9
+u16 Ms = 0
+u16 Avail = 0
+' the last battle, for the tests
+u8 BtN = 0
+u8 BGa = 0
+u8 BGd = 0
+u16 BQa0 = 0
+u16 BQd0 = 0
+u16 BQa = 0
+u16 BQd = 0
+u8 BCas = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jp = 0
+u8 WasJp = 0
+u8 Rep = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Menu = 0
+u8 Blink = 0
+' loop counters (never shared with the helpers)
+u8 Li = 0
+u8 Ai = 0
+u8 Ci = 0
+u8 Si = 0
+u8 Ri = 0
+u8 Qi = 0
+u8 Ti = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+u8 Nr = 0
+u8 Nc = 0
+
+  tile screen
+  set sound table RlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 6 then goto title
+
+  NewGame
+week_loop:
+  PlayWeek
+  if Over = 0 then goto week_loop
+
+  ' the end: a message, then back to the title on a press
+  HideSprites
+  Ph = 0
+  PP = 0
+  ShowStatus
+  for Ri = 9 to 13
+    fill 32 count 8 at 22,Ri
+  next
+  ClearMsg
+  if Winner = 255 then
+    print at 2,21, "THE REBELS RULE THE LAND."
+    play sound SndDefeat
+  else
+    PrName(Winner, 2, 21)
+    V = NameLen[Winner] + 3
+    print at V,21, "RULES THE LAND!"
+    if Ctl[Winner] = 3 then
+      play sound SndDefeat
+    else
+      play sound SndVictory
+    end if
+  end if
+  print at 2,22, "AFTER WEEK"
+  NumU = Wk
+  print NumU at 13,22 width 2
+  Ph = 9
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers (xorshift)
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' 0 .. Lim - 1
+function Rnd(u8 Lim) as u8
+  Rand
+  return Rs % Lim
+
+' the base terrain of a cell: 0 grass, 1 woods, 2 rocks
+function Terr(u8 Rr, u8 Cq) as u8
+  u16 Ofs = 0
+  u8 Tv = 0
+  Ofs = Rr * 19 + Cq
+  vpeek vram.name + TerrV + Ofs into Tv
+  return Tv
+
+sub SetTerr(u8 Rr, u8 Cq, u8 Tv):
+  u16 Ofs = 0
+  Ofs = Rr * 19 + Cq
+  vpoke vram.name + TerrV + Ofs, Tv
+  return
+end sub
+
+' the castle on a cell, or Free
+function CastleAt(u8 Rr, u8 Cq) as u8
+  u8 Fi = 0
+  for Fi = 0 to MaxC - 1
+    if Fi < NF then
+      if Cas[Fi].R = Rr then
+        if Cas[Fi].C = Cq then return Fi
+      end if
+    end if
+  next
+  return Free
+
+' the owner of the troops on a cell (castle first, then armies), or Free
+function OwnerAt(u8 Rr, u8 Cq) as u8
+  u8 Fi = 0
+  Fi = CastleAt(Rr, Cq)
+  if Fi <> Free then return Cas[Fi].Own
+  for Fi = 0 to MaxA - 1
+    if Arm[Fi].Own <> Free then
+      if Arm[Fi].R = Rr then
+        if Arm[Fi].C = Cq then return Arm[Fi].Own
+      end if
+    end if
+  next
+  return Free
+
+' troops of owner Who on a cell: the castle's and every army's (Moving 0:
+' idle armies only, 1: all)
+function TroopsAt(u8 Rr, u8 Cq, u8 Who, u8 Moving) as u16
+  u16 Sum = 0
+  u8 Fi = 0
+  Fi = CastleAt(Rr, Cq)
+  if Fi <> Free then
+    if Cas[Fi].Own = Who then Sum = Cas[Fi].Tr
+  end if
+  for Fi = 0 to MaxA - 1
+    if Arm[Fi].Own = Who then
+      if Arm[Fi].R = Rr then
+        if Arm[Fi].C = Cq then
+          if Moving = 1 then
+            Sum = Sum + Arm[Fi].Tr
+          elseif Arm[Fi].Dr = NoDest then
+            Sum = Sum + Arm[Fi].Tr
+          end if
+        end if
+      end if
+    end if
+  next
+  return Sum
+
+function FreeArmy as u8
+  u8 Fi = 0
+  for Fi = 0 to MaxA - 1
+    if Arm[Fi].Own = Free then return Fi
+  next
+  return Free
+
+function CastlesOf(u8 Who) as u8
+  u8 Fi = 0
+  u8 Cnt = 0
+  for Fi = 0 to MaxC - 1
+    if Fi < NF then
+      if Cas[Fi].Own = Who then inc Cnt
+    end if
+  next
+  return Cnt
+
+function ArmiesOf(u8 Who) as u8
+  u8 Fi = 0
+  u8 Cnt = 0
+  for Fi = 0 to MaxA - 1
+    if Arm[Fi].Own = Who then inc Cnt
+  next
+  return Cnt
+
+function Dist(u8 R1, u8 C1, u8 R2, u8 C2) as u8
+  u8 Dd = 0
+  if R1 > R2 then Dd = R1 - R2 else Dd = R2 - R1
+  if C1 > C2 then Dd = Dd + C1 - C2 else Dd = Dd + C2 - C1
+  return Dd
+
+function AbsD(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' a step of A toward B: -1, 0, 1 (as 255, 0, 1)
+function Toward(u8 A, u8 B) as u8
+  if A < B then return A + 1
+  if A > B then return A - 1
+  return A
+
+' ---------------------------------------------------------------------------
+' the map
+
+' the tile of a cell: castle, else a visible army, else the terrain
+function CellTile(u8 Rr, u8 Cq) as u8
+  u8 Fi = 0
+  u8 Tv = 0
+  Fi = CastleAt(Rr, Cq)
+  if Fi <> Free then return TCastle0 + Cas[Fi].Own
+  Tv = Terr(Rr, Cq)
+  if Tv = 0 then
+    Fi = OwnerAt(Rr, Cq)
+    if Fi <> Free then return TArmy0 + Fi
+  end if
+  return TGrass + Tv
+
+sub DrawCell(u8 Rr, u8 Cq):
+  u8 Tv = 0
+  u8 Xx = 0
+  u8 Yy = 0
+  Tv = CellTile(Rr, Cq)
+  Xx = Cq + MapX
+  Yy = Rr + MapY
+  put char Tv at Xx,Yy
+  return
+end sub
+
+sub DrawMap:
+  for Ri = 0 to 18
+    for Qi = 0 to 18
+      DrawCell(Ri, Qi)
+    next
+  next
+  return
+end sub
+
+sub MakeMap:
+  ' grass everywhere
+  fill 0 count 361 to vram.name + TerrV
+  if GL >= 2 then
+    ' a ridge of rocks wandering down the land
+    J = 6
+    for Ri = 0 to 18
+      V = Rnd(100)
+      if V >= 20 then
+        if Rnd(100) >= 20 then SetTerr(Ri, J, 2)
+        K = J + 1
+        if Rnd(100) >= 20 then SetTerr(Ri, K, 2)
+      end if
+      ' INT(J - .2 + 1.9 RND): one back 10%, still 53%, one on 37%
+      V = Rnd(100)
+      if V < 10 then
+        dec J
+      elseif V >= 63 then
+        inc J
+      end if
+      if J < 4 then J = 4
+      if J > 14 then J = 14
+    next
+    ' 50 trees
+    for Ti = 1 to 50
+      Got = 0
+      while Got = 0
+        R = Rnd(19)
+        C = Rnd(19)
+        if Terr(R, C) = 0 then Got = 1
+      end while
+      SetTerr(R, C, 1)
+    next
+  end if
+  if GL = 3 then
+    ' five forests, thicker at their middle
+    for Ti = 1 to 5
+      Nr = Rnd(12) + 3
+      Nc = Rnd(12) + 3
+      for Ri = 0 to 18
+        for Qi = 0 to 18
+          V = Dist(Ri, Qi, Nr, Nc)
+          if V <= 7 then
+            if Terr(Ri, Qi) = 0 then
+              K = 8 - V
+              K = K * 10
+              if Rnd(100) < K then SetTerr(Ri, Qi, 1)
+            end if
+          end if
+        next
+      next
+    next
+  end if
+  ' the castles, on grass or woods, one to a cell
+  for Ci = 0 to MaxC - 1
+    Cas[Ci].R = 255
+    Cas[Ci].C = 255
+  next
+  for Ci = 0 to MaxC - 1
+    if Ci < NF then
+      Got = 0
+      while Got = 0
+        R = Rnd(19)
+        C = Rnd(19)
+        if Terr(R, C) < 2 then
+          if CastleAt(R, C) = Free then Got = 1
+        end if
+      end while
+      Cas[Ci].R = R
+      Cas[Ci].C = C
+      Cas[Ci].Own = 0
+      if Ci < NL then Cas[Ci].Own = Ci + 1
+    end if
+  next
+  return
+end sub
+
+' the castles' troops and levies (after the map is accepted)
+sub StockCastles:
+  for Ci = 0 to MaxC - 1
+    if Ci < NF then
+      if Cas[Ci].Own = 0 then
+        ' K = .09 + 1.3 RND, in hundredths
+        K = Rnd(130) + 9
+        V = 100 / K
+        Cas[Ci].Levy = V + 1
+        V = Rnd(100)
+        V = V / K
+        W16 = Rnd(15) + V
+        Cas[Ci].Tr = W16
+      else
+        Cas[Ci].Levy = 7 + NL
+        V = Dist(Cas[Ci].R, Cas[Ci].C, 9, 9)
+        W16 = V * 2 + 20 + NF + Rnd(15)
+        Cas[Ci].Tr = W16
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the week
+
+sub PlayWeek:
+  ' the lords in a random order
+  for Li = 0 to 4
+    Order[Li] = Li
+  next
+  for Li = 1 to 4
+    K = Rnd(4) + 1
+    V = Order[Li]
+    Order[Li] = Order[K]
+    Order[K] = V
+  next
+  for Li = 1 to 4
+    PP = Order[Li]
+    if PP <= NL then
+      if Out[PP] = 0 then
+        if Ctl[PP] = 3 then
+          CpuTurn
+        else
+          HumanTurn
+        end if
+      end if
+    end if
+  next
+  Ph = 0
+  PP = 0
+  RebelPlan
+  ShowStatus
+  ClearMsg
+  print at 2,21, "THE ARMIES MARCH..."
+  play sound SndWeek
+  for Si = 1 to 5
+    March
+    WaitFrames(12)
+  next
+  ' the levies
+  for Ci = 0 to MaxC - 1
+    if Ci < NF then
+      W16 = Cas[Ci].Tr + Cas[Ci].Levy
+      if W16 > Cap then W16 = Cap
+      Cas[Ci].Tr = W16
+    end if
+  next
+  CheckEnd
+  if Over = 0 then
+    inc Wk
+    ShowStatus
+  end if
+  return
+end sub
+
+sub CheckEnd:
+  Got = 0
+  for Li = 1 to 4
+    if Li <= NL then
+      if Out[Li] = 0 then
+        V = CastlesOf(Li)
+        if V = NF then
+          Over = 1
+          Winner = Li
+          return
+        end if
+        if V = 0 then
+          if ArmiesOf(Li) = 0 then
+            Out[Li] = 1
+            ClearMsg
+            PrName(Li, 2, 21)
+            V = NameLen[Li] + 3
+            print at V,21, "IS OUT OF THE WAR."
+            play sound SndLose
+            WaitMsg(0)
+          end if
+        end if
+        if Out[Li] = 0 then
+          if Ctl[Li] < 3 then inc Got
+        end if
+      end if
+    end if
+  next
+  if Got = 0 then
+    Over = 1
+    Winner = 255
+    return
+  end if
+  if Wk >= 99 then
+    ' the most castles wins
+    Over = 1
+    Winner = 255
+    K = 0
+    for Li = 1 to 4
+      if Li <= NL then
+        V = CastlesOf(Li)
+        if V > K then
+          K = V
+          Winner = Li
+        end if
+      end if
+    next
+  end if
+  return
+end sub
+
+' one step of the march: every army, taken in turn from a random one
+sub March:
+  K = Rnd(MaxA)
+  for Ai = 0 to MaxA - 1
+    N = Ai + K
+    if N >= MaxA then N = N - MaxA
+    MoveArmy(N)
+  next
+  return
+end sub
+
+sub MoveArmy(u8 Ia):
+  u8 Me = 0
+  u8 Fr = 0
+  u8 Fc = 0
+  u8 Def = 0
+  u8 Ic = 0
+  u16 Qd = 0
+  Me = Arm[Ia].Own
+  if Me = Free then return
+  if Arm[Ia].Dr = NoDest then return
+  Fr = Arm[Ia].R
+  Fc = Arm[Ia].C
+  if Fr = Arm[Ia].Dr then
+    if Fc = Arm[Ia].Dc then
+      Arrive(Ia)
+      return
+    end if
+  end if
+  ' straight when in line, else a row or a column step at random
+  Nr = Fr
+  Nc = Fc
+  if Fr = Arm[Ia].Dr then
+    Nc = Toward(Fc, Arm[Ia].Dc)
+  elseif Fc = Arm[Ia].Dc then
+    Nr = Toward(Fr, Arm[Ia].Dr)
+  elseif Rnd(2) = 0 then
+    Nr = Toward(Fr, Arm[Ia].Dr)
+  else
+    Nc = Toward(Fc, Arm[Ia].Dc)
+  end if
+  if Terr(Nr, Nc) = 2 then
+    ' rocks: try the other way toward the goal before stopping
+    if Nr <> Fr then
+      if Fc <> Arm[Ia].Dc then
+        Nr = Fr
+        Nc = Toward(Fc, Arm[Ia].Dc)
+      end if
+    elseif Fr <> Arm[Ia].Dr then
+      Nc = Fc
+      Nr = Toward(Fr, Arm[Ia].Dr)
+    end if
+  end if
+  if Terr(Nr, Nc) = 2 then
+    ' rocks: the army stops where it is
+    if Ctl[Me] = 1 then Blocked(Ia)
+    if Ctl[Me] = 2 then Blocked(Ia)
+    Arm[Ia].Dr = Fr
+    Arm[Ia].Dc = Fc
+    Arrive(Ia)
+    return
+  end if
+  Def = OwnerAt(Nr, Nc)
+  if Def <> Free then
+    if Def <> Me then
+      Qd = TroopsAt(Nr, Nc, Def, 1)
+      Ic = CastleAt(Nr, Nc)
+      if Qd = 0 then
+        if Ic <> Free then
+          Cas[Ic].Own = Me
+          Taken(Me, Def, Nr, Nc)
+        end if
+      else
+        Battle(Ia, Def, Qd)
+        if Arm[Ia].Own = Free then
+          DrawCell(Fr, Fc)
+          DrawCell(Nr, Nc)
+          ShowStatus
+          return
+        end if
+      end if
+    end if
+  end if
+  Arm[Ia].R = Nr
+  Arm[Ia].C = Nc
+  DrawCell(Fr, Fc)
+  DrawCell(Nr, Nc)
+  if Nr = Arm[Ia].Dr then
+    if Nc = Arm[Ia].Dc then Arrive(Ia)
+  end if
+  return
+end sub
+
+' at its destination: into an own castle, or join an idle army, or wait
+sub Arrive(u8 Ia):
+  u8 Ic = 0
+  u8 Ja = 0
+  Ic = CastleAt(Arm[Ia].R, Arm[Ia].C)
+  if Ic <> Free then
+    if Cas[Ic].Own = Arm[Ia].Own then
+      W16 = Cas[Ic].Tr + Arm[Ia].Tr
+      if W16 > Cap then W16 = Cap
+      Cas[Ic].Tr = W16
+      Arm[Ia].Own = Free
+      return
+    end if
+  end if
+  Arm[Ia].Dr = NoDest
+  for Ja = 0 to MaxA - 1
+    if Ja <> Ia then
+      if Arm[Ja].Own = Arm[Ia].Own then
+        if Arm[Ja].Dr = NoDest then
+          if Arm[Ja].R = Arm[Ia].R then
+            if Arm[Ja].C = Arm[Ia].C then
+              W16 = Arm[Ja].Tr + Arm[Ia].Tr
+              if W16 > Cap then W16 = Cap
+              Arm[Ja].Tr = W16
+              Arm[Ia].Own = Free
+              return
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Blocked(u8 Ia):
+  ClearMsg
+  V = Arm[Ia].Own
+  PrName(V, 2, 21)
+  V = NameLen[V] + 2
+  print at V,21, "'S ARMY"
+  print at 2,22, "CANNOT CROSS THE ROCKS."
+  play sound SndNope
+  CursorAt(Arm[Ia].R, Arm[Ia].C, 1)
+  WaitMsg(0)
+  return
+end sub
+
+sub Taken(u8 Me, u8 Def, u8 Rr, u8 Cq):
+  ClearMsg
+  PrName(Me, 2, 21)
+  V = NameLen[Me] + 3
+  print at V,21, "TAKES"
+  PrName(Def, 2, 22)
+  V = NameLen[Def] + 2
+  print at V,22, "' CASTLE WITHOUT A FIGHT!"
+  if Def > 0 then print at V,22, "'S CASTLE WITHOUT A FIGHT"
+  DrawCell(Rr, Cq)
+  ShowStatus
+  play sound SndTake
+  CursorAt(Rr, Cq, 1)
+  V = 0
+  if Ctl[Me] < 3 then V = 1
+  if Ctl[Def] < 3 then V = 1
+  WaitMsg(V)
+  return
+end sub
+
+' the losses of one exchange, rounded up: Q x G% (x 60%), worked in two
+' parts (hundreds and the rest) so that nothing passes 65535
+function Loss(u16 Q, u8 G, u8 F) as u16
+  u16 Lh = 0
+  u16 Lr = 0
+  u16 L6 = 0
+  Lh = Q / 100
+  Lh = Lh * G
+  Lr = Q % 100
+  Lr = Lr * G
+  if F = 100 then
+    Lr = Lr + 99
+    Lr = Lr / 100
+    return Lh + Lr
+  end if
+  L6 = Lh * 6
+  Lr = Lr * 6 + (L6 % 10) * 100 + 999
+  Lr = Lr / 1000
+  L6 = L6 / 10
+  return L6 + Lr
+
+' army Ia attacks Def's Qd troops on cell Nr, Nc
+sub Battle(u8 Ia, u8 Def, u16 Qd):
+  u16 Qa = 0
+  u16 Lq = 0
+  u8 Ff = 60
+  u8 Ic = 0
+  u8 Me = 0
+  u8 Ja = 0
+  u8 Seen = 0
+  Me = Arm[Ia].Own
+  Qa = Arm[Ia].Tr
+  Ic = CastleAt(Nr, Nc)
+  BGa = Rnd(35) + 20
+  BGd = Rnd(30) + 25
+  BCas = 0
+  if Ic <> Free then
+    BGd = BGd + 10
+    BCas = 1
+  end if
+  BQa0 = Qa
+  BQd0 = Qd
+  ' the news, with the troops on each side
+  if Ctl[Me] < 3 then Seen = 1
+  if Ctl[Def] < 3 then Seen = 1
+  ClearMsg
+  PrName(Me, 2, 21)
+  V = NameLen[Me] + 3
+  print at V,21, "ATTACKS"
+  V = V + 8
+  PrName(Def, V, 21)
+  NumU = Qa
+  print NumU at 2,22 width 4
+  print at 7,22, "AGAINST"
+  NumU = Qd
+  print NumU at 15,22 width 4
+  CursorAt(Nr, Nc, 2)
+  play sound SndClash
+  WaitFrames(40)
+  ' the exchanges
+  Lq = Loss(Qd, BGd, Ff)
+  while Lq < 1000
+    if Lq >= Qa then Qa = 0 else Qa = Qa - Lq
+    if Qa = 0 then exit while
+    Lq = Loss(Qa, BGa, 100)
+    if Lq >= Qd then Qd = 0 else Qd = Qd - Lq
+    if Qd = 0 then exit while
+    Ff = 100
+    Lq = Loss(Qd, BGd, Ff)
+  end while
+  BQa = Qa
+  BQd = Qd
+  inc BtN
+  NumU = Qa
+  print NumU at 2,22 width 4
+  NumU = Qd
+  print NumU at 15,22 width 4
+  if Qa > 0 then
+    ' the attacker wins: the defenders are gone
+    for Ja = 0 to MaxA - 1
+      if Arm[Ja].Own = Def then
+        if Arm[Ja].R = Nr then
+          if Arm[Ja].C = Nc then Arm[Ja].Own = Free
+        end if
+      end if
+    next
+    if Ic <> Free then
+      Cas[Ic].Own = Me
+      Cas[Ic].Tr = 0
+    end if
+    Arm[Ia].Tr = Qa
+    WaitFrames(30)
+    ClearMsg
+    PrName(Me, 2, 21)
+    V = NameLen[Me] + 3
+    print at V,21, "IS VICTORIOUS!"
+    play sound SndWin
+  else
+    ' the defender wins: its losses come from its armies first
+    Arm[Ia].Own = Free
+    Lq = BQd0 - Qd
+    for Ja = 0 to MaxA - 1
+      if Lq > 0 then
+        if Arm[Ja].Own = Def then
+          if Arm[Ja].R = Nr then
+            if Arm[Ja].C = Nc then
+              if Arm[Ja].Tr > Lq then
+                Arm[Ja].Tr = Arm[Ja].Tr - Lq
+                Lq = 0
+              else
+                Lq = Lq - Arm[Ja].Tr
+                Arm[Ja].Own = Free
+              end if
+            end if
+          end if
+        end if
+      end if
+    next
+    if Lq > 0 then
+      if Ic <> Free then
+        if Cas[Ic].Tr > Lq then Cas[Ic].Tr = Cas[Ic].Tr - Lq else Cas[Ic].Tr = 0
+      end if
+    end if
+    WaitFrames(30)
+    ClearMsg
+    PrName(Def, 2, 21)
+    V = NameLen[Def] + 3
+    print at V,21, "REPELS THE INVADERS!"
+    play sound SndLose
+  end if
+  WaitMsg(Seen)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the rebels' plan and the computer lords
+
+sub RebelPlan:
+  u16 Qa = 0
+  u16 Qd = 0
+  u8 Ua = Free
+  u8 Ia = 0
+  u8 Ic = 0
+  u8 Tr2 = 0
+  u8 Tc2 = 0
+  for Ic = 0 to MaxC - 1
+    if Ic < NF then
+      if Cas[Ic].Tr > Qa then
+        Qa = Cas[Ic].Tr
+        Ua = Ic
+      end if
+    end if
+  next
+  for Ia = 0 to MaxA - 1
+    if Arm[Ia].Own <> Free then
+      if Arm[Ia].Own > 0 then
+        if Arm[Ia].Tr > Qd then Qd = Arm[Ia].Tr
+      end if
+    end if
+  next
+  Got = 0
+  if Ua <> Free then
+    if Qd < Qa then
+      if Cas[Ua].Own = 0 then Got = 1
+    end if
+  end if
+  if Got = 1 then
+    Ia = FreeArmy
+    if Ia <> Free then
+      W16 = Qa * 34
+      W16 = W16 / 100
+      if W16 > 0 then
+        Arm[Ia].Own = 0
+        Arm[Ia].Tr = W16
+        Cas[Ua].Tr = Cas[Ua].Tr - W16
+        Arm[Ia].R = Cas[Ua].R
+        Arm[Ia].C = Cas[Ua].C
+        Arm[Ia].Dr = NoDest
+      end if
+    end if
+  end if
+  ' every idle rebel army gets a goal
+  for Ia = 0 to MaxA - 1
+    if Arm[Ia].Own = 0 then
+      if Arm[Ia].Dr = NoDest then
+        Tr2 = Free
+        for Ic = 0 to MaxC - 1
+          if Ic < NF then
+            if Tr2 = Free then
+              if Cas[Ic].Own > 0 then
+                if Rnd(10) < 6 then
+                  V = AbsD(Cas[Ic].R, Arm[Ia].R)
+                  K = AbsD(Cas[Ic].C, Arm[Ia].C)
+                  if V <= 3 then
+                    if K <= 3 then
+                      Tr2 = Cas[Ic].R
+                      Tc2 = Cas[Ic].C
+                    end if
+                  end if
+                end if
+              end if
+            end if
+          end if
+        next
+        if Tr2 = Free then
+          Got = 0
+          while Got = 0
+            Tr2 = Rnd(19)
+            Tc2 = Rnd(19)
+            if Tr2 <> Arm[Ia].R then Got = 1
+            if Tc2 <> Arm[Ia].C then Got = 1
+          end while
+        end if
+        Arm[Ia].Dr = Tr2
+        Arm[Ia].Dc = Tc2
+      end if
+    end if
+  next
+  return
+end sub
+
+' a new army of Ms troops from cell Cr, Cc to Dr2, Dc2 for lord PP; the
+' troops come from the castle first, then the idle armies there
+sub SendArmy:
+  u8 Ia = 0
+  u8 Ic = 0
+  u8 Ja = 0
+  u16 Need = 0
+  Ia = FreeArmy
+  if Ia = Free then return
+  Need = Ms
+  Ic = CastleAt(Cr, Cc)
+  if Ic <> Free then
+    if Cas[Ic].Own = PP then
+      if Cas[Ic].Tr >= Need then
+        Cas[Ic].Tr = Cas[Ic].Tr - Need
+        Need = 0
+      else
+        Need = Need - Cas[Ic].Tr
+        Cas[Ic].Tr = 0
+      end if
+    end if
+  end if
+  for Ja = 0 to MaxA - 1
+    if Need > 0 then
+      if Arm[Ja].Own = PP then
+        if Arm[Ja].Dr = NoDest then
+          if Arm[Ja].R = Cr then
+            if Arm[Ja].C = Cc then
+              if Arm[Ja].Tr > Need then
+                Arm[Ja].Tr = Arm[Ja].Tr - Need
+                Need = 0
+              else
+                Need = Need - Arm[Ja].Tr
+                Arm[Ja].Own = Free
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  Arm[Ia].Own = PP
+  Arm[Ia].Tr = Ms
+  Arm[Ia].R = Cr
+  Arm[Ia].C = Cc
+  Arm[Ia].Dr = Dr2
+  Arm[Ia].Dc = Dc2
+  return
+end sub
+
+' a cell up to 4 away from V0 on one axis, inside the map
+function Wander(u8 V0) as u8
+  u8 Wv = 0
+  Wv = V0 + Rnd(9)
+  if Wv < 4 then return 0
+  Wv = Wv - 4
+  if Wv > 18 then return 18
+  return Wv
+
+' the nearest castle not owned by PP, from Cr, Cc (Free if none)
+function NearestFoe as u8
+  u8 Ic = 0
+  u8 Best = Free
+  u8 Bd = 255
+  u8 Dd = 0
+  for Ic = 0 to MaxC - 1
+    if Ic < NF then
+      if Cas[Ic].Own <> PP then
+        Dd = Dist(Cas[Ic].R, Cas[Ic].C, Cr, Cc)
+        if Dd < Bd then
+          Bd = Dd
+          Best = Ic
+        end if
+      end if
+    end if
+  next
+  return Best
+
+sub CpuTurn:
+  u8 Ic = 0
+  u8 Ia = 0
+  u8 Tg = 0
+  Ph = 0
+  ShowStatus
+  ClearMsg
+  PrName(PP, 2, 21)
+  V = NameLen[PP] + 3
+  print at V,21, "MAKES HIS PLANS..."
+  WaitFrames(30)
+  ' castles with spare troops attack the nearest castle they don't own
+  for Ic = 0 to MaxC - 1
+    if Ic < NF then
+      if Cas[Ic].Own = PP then
+        if Cas[Ic].Tr > 25 then
+          Cr = Cas[Ic].R
+          Cc = Cas[Ic].C
+          Tg = NearestFoe
+          if Tg <> Free then
+            W16 = Cas[Tg].Tr + 8
+            Ms = Cas[Ic].Tr - 10
+            if Ms > W16 then
+              Dr2 = Cas[Tg].R
+              Dc2 = Cas[Tg].C
+              SendArmy
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  ' idle armies march on
+  for Ia = 0 to MaxA - 1
+    if Arm[Ia].Own = PP then
+      if Arm[Ia].Dr = NoDest then
+        Cr = Arm[Ia].R
+        Cc = Arm[Ia].C
+        Tg = NearestFoe
+        if Tg <> Free then
+          Arm[Ia].Dr = Cas[Tg].R
+          Arm[Ia].Dc = Cas[Tg].C
+        end if
+        ' stuck behind rocks: half the time a detour to a nearby cell
+        if Rnd(2) = 0 then
+          Arm[Ia].Dr = Wander(Cr)
+          Arm[Ia].Dc = Wander(Cc)
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a human lord's turn
+
+sub HumanTurn:
+  u8 Ic = 0
+  ShowStatus
+  ' the cursor starts on the lord's first castle (or army)
+  Cr = 9
+  Cc = 9
+  for Ic = MaxC - 1 downto 0
+    if Ic < NF then
+      if Cas[Ic].Own = PP then
+        Cr = Cas[Ic].R
+        Cc = Cas[Ic].C
+      end if
+    end if
+  next
+  if CastlesOf(PP) = 0 then
+    for Ic = 0 to MaxA - 1
+      if Arm[Ic].Own = PP then
+        Cr = Arm[Ic].R
+        Cc = Arm[Ic].C
+      end if
+    next
+  end if
+  play sound SndPick
+  LookHelp
+  ShowCell
+  Ph = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasB = 3
+ht_loop:
+  Frame1
+  ReadPad
+  CursorAt(Cr, Cc, 0)
+  set sprite 1 to 192,0,0,0
+  update sprites
+  if StickMove(Cr, Cc) = 1 then ShowCell
+  if P2 = 1 then
+    Ph = 0
+    HideSprites
+    return
+  end if
+  if P1 = 0 then goto ht_loop
+  ' pick the troops here
+  Avail = TroopsAt(Cr, Cc, PP, 0)
+  if Avail = 0 then
+    play sound SndNope
+    ClearMsg
+    print at 2,21, "NO TROOPS TO SEND HERE."
+    WaitFrames(50)
+    LookHelp
+    goto ht_loop
+  end if
+  if FreeArmy = Free then
+    play sound SndNope
+    ClearMsg
+    print at 2,21, "TOO MANY ARMIES IN THE"
+    print at 2,22, "FIELD. WAIT FOR NEXT WEEK."
+    WaitFrames(90)
+    LookHelp
+    goto ht_loop
+  end if
+  play sound SndPick
+  Ms = Avail >> 1
+  if Ms = 0 then Ms = 1
+  Ph = 2
+  ClearMsg
+  print at 2,21, "SEND      OF      TROOPS"
+  NumU = Avail
+  print NumU at 13,21 width 4
+  print at 2,22, "STICK: SIZE  L: OK  R: BACK"
+ht_size:
+  NumU = Ms
+  print NumU at 7,21 width 4
+  Frame1
+  ReadPad
+  if P2 = 1 then
+    LookHelp
+    Ph = 1
+    goto ht_loop
+  end if
+  if P1 = 1 then goto ht_dest
+  if RepStick = 1 then
+    select case Jp & 15
+    case 1
+      Ms = Ms + 10
+    case 2
+      if Ms > 10 then Ms = Ms - 10 else Ms = 1
+    case 4
+      if Ms > 1 then dec Ms
+    case 8
+      inc Ms
+    end select
+    if Ms > Avail then Ms = Avail
+    play sound SndTick
+  end if
+  goto ht_size
+ht_dest:
+  play sound SndPick
+  Ph = 3
+  Dr2 = Cr
+  Dc2 = Cc
+  ClearMsg
+  print at 2,21, "PUT THE X ON THE GOAL."
+  print at 2,22, "L: MARCH   R: BACK"
+ht_dloop:
+  Frame1
+  ReadPad
+  CursorAt(Cr, Cc, 0)
+  V = Dc2 << 3
+  X = V + 12
+  V = Dr2 << 3
+  Y = V + 11
+  K = OwnCol[PP]
+  set sprite 1 to Y,X,SDest,K
+  update sprites
+  V = StickMove(Dr2, Dc2)
+  if P2 = 1 then
+    LookHelp
+    Ph = 1
+    goto ht_loop
+  end if
+  if P1 = 0 then goto ht_dloop
+  if Dr2 = Cr then
+    if Dc2 = Cc then
+      play sound SndNope
+      goto ht_dloop
+    end if
+  end if
+  SendArmy
+  play sound SndSend
+  ClearMsg
+  NumU = Ms
+  print NumU at 2,21 width 4
+  print at 7,21, "TROOPS ON THEIR WAY."
+  DrawCell(Cr, Cc)
+  ShowCell
+  WaitFrames(40)
+  LookHelp
+  Ph = 1
+  goto ht_loop
+end sub
+
+sub LookHelp:
+  ClearMsg
+  PrName(PP, 2, 21)
+  V = NameLen[PP] + 3
+  print at V,21, "LORD, YOUR ORDERS?"
+  print at 2,22, "L: SEND TROOPS  R: END TURN"
+  return
+end sub
+
+' the stick moves a cell (held: again every 6 frames after 14); returns 1
+' when the cell changed
+function StickMove(ref u8 Rr, ref u8 Cq) as u8
+  if RepStick = 0 then return 0
+  if Jp & 1 then
+    if Rr > 0 then dec Rr
+  end if
+  if Jp & 2 then
+    if Rr < 18 then inc Rr
+  end if
+  if Jp & 4 then
+    if Cq > 0 then dec Cq
+  end if
+  if Jp & 8 then
+    if Cq < 18 then inc Cq
+  end if
+  play sound SndTick
+  return 1
+
+' 1 when the stick asks for a step now (first push, then repeats)
+function RepStick as u8
+  V = Jp & 15
+  if V = 0 then
+    Rep = 0
+    return 0
+  end if
+  inc Rep
+  if Rep = 1 then return 1
+  if Rep < 14 then return 0
+  Rep = 8
+  return 1
+
+' what the cursor shows: the cell's kind, owner, troops (own) and levy
+sub ShowCell:
+  u8 Ic = 0
+  u8 Ow = 0
+  u8 Tv = 0
+  for Ri = 9 to 13
+    fill 32 count 8 at 22,Ri
+  next
+  Ic = CastleAt(Cr, Cc)
+  Ow = OwnerAt(Cr, Cc)
+  Tv = Terr(Cr, Cc)
+  if Ic <> Free then
+    print at 22,9, "CASTLE"
+  else
+    select case Tv
+    case 0
+      print at 22,9, "GRASS"
+    case 1
+      print at 22,9, "WOODS"
+    case else
+      print at 22,9, "ROCKS"
+    end select
+  end if
+  if Ow = Free then return
+  if Tv = 1 then
+    ' the woods hide other lords' armies
+    if Ow <> PP then
+      if Ic = Free then return
+    end if
+  end if
+  PrName(Ow, 22, 10)
+  if Ow = PP then
+    print at 22,11, "TROOPS"
+    NumU = TroopsAt(Cr, Cc, PP, 1)
+    print NumU at 22,12 width 4
+    if Ic <> Free then
+      print at 22,13, "LEVY"
+      NumU = Cas[Ic].Levy
+      print NumU at 27,13 width 2
+    end if
+  end if
+  return
+end sub
+
+' the panel: week, whose turn, castles per owner
+sub ShowStatus:
+  print at 22,2, "WEEK"
+  NumU = Wk
+  print NumU at 27,2 width 2
+  fill 32 count 8 at 22,4
+  if Ph > 0 then PrName(PP, 22, 4)
+  if PP > 0 then
+    if Ph = 0 then PrName(PP, 22, 4)
+  end if
+  print at 22,15, "CASTLES"
+  for Li = 0 to 4
+    Ri = Li + 16
+    if Li <= NL then
+      T = TCastle0 + Li
+      put char T at 22,Ri
+      put Names + Li * 6 count 3 at 24,Ri
+      NumU = CastlesOf(Li)
+      print NumU at 28,Ri width 2
+      if Li > 0 then
+        if Out[Li] = 1 then print at 24,Ri, "OUT"
+      end if
+    end if
+  next
+  return
+end sub
+
+sub PrName(u8 Who, u8 Xc, u8 Yc):
+  u8 Ln = 0
+  Ln = NameLen[Who]
+  put Names + Who * 6 count Ln at Xc,Yc
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' sprite 0 the cursor on a cell (Kind 0 lord's colour, 1 white, 2 burst)
+sub CursorAt(u8 Rr, u8 Cq, u8 Kind):
+  u8 Xs = 0
+  u8 Ys = 0
+  Xs = Cq << 3
+  Xs = Xs + 12
+  Ys = Rr << 3
+  Ys = Ys + 11
+  if Kind = 2 then
+    set sprite 0 to Ys,Xs,SBurst,11
+  elseif Kind = 1 then
+    set sprite 0 to Ys,Xs,SCursor,15
+  else
+    K = OwnCol[PP]
+    if PP = 0 then K = 15
+    ' the cursor dims every 20 frames (1.5 Hz)
+    if Tick & 32 then K = 14
+    set sprite 0 to Ys,Xs,SCursor,K
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' waiting
+
+sub WaitFrames(u8 Nf):
+  u8 Wf = 0
+  for Wf = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+' a message waits: for a press when a human lord is involved (or 3
+' seconds), else a second and a half
+sub WaitMsg(u8 Human):
+  u8 Wf = 0
+  u8 Lim = 90
+  u8 OldPh = 0
+  OldPh = Ph
+  Ph = 4
+  if Human = 1 then Lim = 180
+  Rearm
+  wait no fire
+  nmi off
+  for Wf = 1 to Lim
+    Frame1
+    ReadPad
+    if P1 = 1 then exit for
+    if P2 = 1 then exit for
+  next
+  HideSprites
+  Ph = OldPh
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the game set-up
+
+sub NewGame:
+  Wk = 1
+  Over = 0
+  Winner = 0
+  NL = NH + NCpu
+  for Li = 0 to 4
+    Ctl[Li] = 0
+    Out[Li] = 0
+  next
+  Ctl[0] = 3
+  Ctl[1] = 1
+  if NH = 2 then Ctl[2] = 2
+  for Li = 1 to 4
+    if Li <= NL then
+      if Li > NH then Ctl[Li] = 3
+    end if
+  next
+  for Ai = 0 to MaxA - 1
+    Arm[Ai].Own = Free
+    Arm[Ai].Dr = NoDest
+  next
+ng_map:
+  NewScreen
+  Ph = 0
+  MakeMap
+  DrawFrame
+  DrawMap
+  ShowStatus
+  ClearMsg
+  print at 2,21, "IS THIS LAND GOOD?"
+  print at 2,22, "L: YES   R: ANOTHER LAND"
+  ShowScreen
+  Ph = 5
+  Rearm
+  wait no fire
+  nmi off
+ng_ask:
+  Frame1
+  ReadPad
+  if P2 = 1 then goto ng_map
+  if P1 = 0 then goto ng_ask
+  StockCastles
+  ClearMsg
+  play sound SndPick
+  return
+end sub
+
+sub DrawFrame:
+  fill TFrame count 32 at 0,0
+  fill TFrame count 32 at 0,23
+  for Ri = 1 to 22
+    put char TFrame at 0,Ri
+    put char TFrame at 1,Ri
+    put char TFrame at 21,Ri
+    put char TFrame at 30,Ri
+    put char TFrame at 31,Ri
+  next
+  fill TFrame count 19 at 2,1
+  print at 22,1, "REBELS&L"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' the stick of the lord whose turn it is (both on the menus), presses of
+' the left (P1) and right (P2) buttons
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  select case Ctl[PP]
+  case 1
+    Jp = J1
+  case 2
+    Jp = J2
+  case else
+    Jp = J1 | J2
+  end select
+  if Ph >= 4 then Jp = J1 | J2
+  V = Jp >> 4
+  P1 = 0
+  P2 = 0
+  K = V ^ WasB
+  K = K & V
+  if K & 1 then P1 = 1
+  if K & 2 then P2 = 1
+  WasB = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of land, the set-up menu, the tune once
+sub TitlePage:
+  Ph = 6
+  PP = 0
+  NewScreen
+  fill TFrame count 32 at 0,0
+  fill TFrame count 32 at 0,23
+  for Ri = 2 to 4
+    for Qi = 2 to 29
+      V = Qi + Ri
+      V = V % 5
+      T = TGrass
+      if V = 0 then T = TWoods
+      put char T at Qi,Ri
+    next
+  next
+  put char TCastle1 at 4,3
+  put char TArmy1 at 6,3
+  put char TArmy0 at 13,4
+  put char TCastle0 at 15,3
+  put char TRocks at 16,2
+  put char TRocks at 17,2
+  put char TArmy2 at 22,4
+  put char TCastle2 at 26,3
+  print at 8,6, "REBELS  &  LORDS"
+  print at 6,8, "AFTER AHOY! DEC 1986"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Menu = 4
+  ShowMenu
+  Rearm
+  wait no fire
+  nmi off
+  WasB = 3
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if RepStick = 1 then
+    V = Jp & 15
+    select case V
+    case 1
+      if Menu > 0 then dec Menu
+    case 2
+      if Menu < 5 then inc Menu
+    case 4
+      MenuChange(0)
+    case 8
+      MenuChange(1)
+    end select
+    play sound SndTick
+    ShowMenu
+  end if
+  if P1 = 0 then
+    if P2 = 0 then goto tp_loop
+  end if
+  if Menu < 4 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 5 then
+    CreditsPage
+    Menu = 6
+  end if
+  return
+end sub
+
+sub MenuChange(u8 Up):
+  select case Menu
+  case 0
+    if Up = 1 then NH = 2 else NH = 1
+  case 1
+    if Up = 1 then
+      if NCpu < 3 then inc NCpu
+    else
+      if NCpu > 0 then dec NCpu
+    end if
+  case 2
+    if Up = 1 then
+      if NF < MaxC then inc NF
+    else
+      if NF > 3 then dec NF
+    end if
+  case 3
+    if Up = 1 then
+      if GL < 3 then inc GL
+    else
+      if GL > 1 then dec GL
+    end if
+  end select
+  ' four lords at most, three castles a lord at least
+  V = NH + NCpu
+  if V > 4 then NCpu = 4 - NH
+  V = NH + NCpu
+  V = V * 3
+  if NF < V then NF = V
+  return
+end sub
+
+sub ShowMenu:
+  print at 6,11, "HUMAN LORDS"
+  print NH at 22,11 width 2
+  print at 6,12, "COMPUTER LORDS"
+  print NCpu at 22,12 width 2
+  print at 6,13, "CASTLES"
+  print NF at 22,13 width 2
+  print at 6,14, "LAND"
+  select case GL
+  case 1
+    print at 17,14, "   OPEN"
+  case 2
+    print at 17,14, "  HILLS"
+  case else
+    print at 17,14, "FORESTS"
+  end select
+  print at 6,16, "START THE WAR"
+  print at 6,17, "CREDITS"
+  for Ri = 11 to 17
+    put char 32 at 4,Ri
+  next
+  V = Menu + 11
+  if Menu >= 4 then V = V + 1
+  put char 62 at 4,V
+  print at 3,20, "STICK: CHOOSE AND CHANGE"
+  print at 3,21, "BUTTON: START"
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 7,2, "REBELS  &  LORDS"
+  print at 2,5, "BASED ON REBELS & LORDS,"
+  print at 2,6, "AHOY! DECEMBER 1986"
+  print at 2,7, "(COMMODORE 64, BASIC)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: BANNERS AT DAWN"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$20,$02,$00,$08,$40,$01,$00
+  $10,$38,$82,$00,$E8,$E0,$02,$02
+  $00,$18,$C3,$81,$01,$20,$8D,$00
+  $38,$20,$AA,$00,$42,$00,$18,$18
+  $38,$20,$AA,$00,$42,$00,$18,$18
+  $38,$20,$AA,$00,$42,$00,$18,$18
+  $38,$20,$AA,$00,$42,$00,$18,$18
+  $38,$20,$AA,$00,$42,$00,$18,$18
+  $70,$87,$40,$48,$A3,$48,$54,$40
+  $70,$87,$40,$48,$A3,$48,$54,$40
+  $70,$87,$40,$48,$A3,$48,$54,$40
+  $70,$87,$40,$48,$A3,$48,$54,$40
+  $70,$87,$40,$48,$A3,$48,$54,$40
+  $00,$80,$00,$00,$00,$01,$00,$00
+end data
+data TileCol bytes
+  $03,$23,$23,$03,$23,$23,$23,$03
+  $C3,$C3,$3C,$0C,$3C,$3C,$C3,$C3
+  $03,$F3,$3E,$3E,$3E,$1E,$E1,$03
+  $13,$13,$E3,$0E,$1E,$0E,$1E,$1E
+  $83,$83,$E3,$0E,$1E,$0E,$1E,$1E
+  $43,$43,$E3,$0E,$1E,$0E,$1E,$1E
+  $F3,$F3,$E3,$0E,$1E,$0E,$1E,$1E
+  $D3,$D3,$E3,$0E,$1E,$0E,$1E,$1E
+  $13,$31,$13,$13,$31,$13,$13,$13
+  $83,$38,$83,$83,$38,$83,$83,$83
+  $43,$34,$43,$43,$34,$43,$43,$43
+  $F3,$3F,$F3,$F3,$3F,$F3,$F3,$F3
+  $D3,$3D,$D3,$D3,$3D,$D3,$D3,$D3
+  $0A,$BA,$0A,$0A,$0A,$BA,$0A,$0A
+end data
+data SpritePat bytes
+  $00,$00,$3C,$20,$20,$00,$00,$00,$00,$00,$00,$20,$20,$3C,$00,$00
+  $00,$00,$3C,$04,$04,$00,$00,$00,$00,$00,$00,$04,$04,$3C,$00,$00
+  $00,$00,$00,$00,$0C,$06,$03,$01,$03,$06,$0C,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$60,$C0,$80,$C0,$60,$30,$00,$00,$00,$00,$00
+  $00,$01,$11,$09,$04,$00,$71,$03,$01,$00,$04,$09,$11,$01,$00,$00
+  $00,$00,$10,$20,$40,$02,$8E,$C0,$80,$00,$40,$20,$10,$00,$00,$00
+end data
+
+asm {
+RlTick:
+    db $40,$40,$50,$01,$40,$40,$80,$01,$50
+RlPick:
+    db $40,$7F,$20,$03,$40,$5F,$30,$05,$50
+RlSend:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$0A,$50
+RlNope:
+    db $40,$3B,$22,$06,$40,$A6,$32,$08,$50
+RlClash:
+    db $00,$00,$04,$03,$00,$00,$25,$03,$00,$00,$14,$03,$00,$00,$36,$06,$00,$00,$66,$0A,$10
+RlWin:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$20,$0C,$50
+RlLose:
+    db $40,$1D,$21,$08,$40,$53,$21,$08,$40,$AB,$31,$0E,$50
+RlTake:
+    db $40,$AA,$20,$04,$40,$8F,$20,$04,$40,$71,$20,$04,$40,$55,$20,$0C,$50
+RlWeek:
+    db $00,$00,$21,$02,$00,$00,$52,$04,$00,$00,$31,$02,$00,$00,$62,$06,$10
+RlVictory:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$20,$1E,$50
+RlDefeat:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$3B,$22,$1E,$50
+
+RlSoundTable:
+    dw RlTuneMel,$702B
+    dw RlTuneBass,$7035
+    dw RlTick,$7049
+    dw RlPick,$7049
+    dw RlSend,$7049
+    dw RlNope,$7049
+    dw RlClash,$703F
+    dw RlWin,$7049
+    dw RlLose,$7049
+    dw RlTake,$7049
+    dw RlWeek,$703F
+    dw RlVictory,$7049
+    dw RlDefeat,$7049
+; Banners at Dawn (original)
+; Tiny Sound, 8 frames per step
+RlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$21,$24,$01,$23,$21,$1F,$01,$1C,$01
+    db $1A,$01,$1C,$01,$21,$01,$1C,$21,$24,$01,$26,$28,$26,$24,$23,$01
+    db $21,$01,$01,$01,$28,$01,$26,$24,$23,$01,$24,$26,$28,$01,$21,$01
+    db $1F,$01,$1C,$01,$1E,$01,$1F,$21,$23,$01,$1F,$1C,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+RlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$04,$01,$09,$01,$10,$01,$09,$01,$10,$01,$12,$01,$0C,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$09,$01,$10,$01
+    db $07,$01,$0E,$01,$0E,$01,$15,$01,$10,$01,$17,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

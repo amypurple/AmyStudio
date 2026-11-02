@@ -1,0 +1,1258 @@
+cartridge "TO THE TOP/KEVIN DEWEY/1985"
+
+' TO THE TOP
+' A ColecoVision game based on "To the Top" by Kevin Dewey, Ahoy! January
+' 1985 (VIC-20 BASIC; the listing is in orig/, read line by line: it is a
+' VIC-20 program, so it was not run in the C-64 emulator).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: get your climber to the top of the screen, stage after stage,
+' in a cycle of four:
+'   THE CLIMB     climb up through a field of charged blocks while two
+'                 fallers drop down the screen; a faller that lands on a
+'                 block slides two cells sideways (or smashes it).
+'   MAGIC WINGS   you fly up by yourself: steer left and right between
+'                 red barriers and four moving bars.
+'   THE CROSSING  climb again through more blocks while three walkers
+'                 cross the screen from the left, hopping two rows down
+'                 when a block stands in their way.
+'   MAGIC WINGS   fly up again through a sky of floating creatures.
+' Touching a block, a barrier, a bar or a creature zaps you: one zap ends
+' the game ("ZAPPED AT STAGE n"). Every cycle adds blocks, barriers and
+' creatures. Reach stage 32 and you have made it to the top.
+'
+' From the original (orig/tothetop.bas): the four stages and their order,
+' a stage counted for each one cleared (two of them announced as MAGIC
+' WINGS LEVEL), one zap ends the game, moves of one cell (left, right, up;
+' no way down), the climb's two fallers starting at the top corners and
+' then at random columns in the left and right halves, sliding two cells
+' right (left one) or left (right one) when a block is under them and
+' destroying blocks they land on; the crossing's three walkers starting
+' at a random row, 5 and 9 rows below it, hopping two rows down at a
+' block and starting again after one width; the wing stages' auto-rise,
+' the bars' rows and starting columns, barriers in pairs (top row and 14
+' rows lower), random creatures; the counts: blocks 30 + 5 a stage (climb,
+' crossing + 20), barriers 2 + 2 a cycle, creatures twice that; the order
+' within a pass (things move, then you, then the check).
+'
+' Liberties: a 24 x 21 field (the VIC had 22 x 23) between two pillars;
+' smooth sprites move between the cells. One move a pass at a steady
+' rate: 9 frames a pass on foot, 7 in flight (the VIC's BASIC loop was
+' about this fast and never sped up; it still doesn't). A tap of the
+' stick between passes is remembered for the next pass. The stick stops
+' at the pillars, where the VIC's screen wrapped to the next row; the bars
+' and the sliding fallers wrap within their row. Walkers that hop below
+' the field are gone until their next crossing (the VIC poked them into
+' memory below the screen). The bars are whole from the start. Each field
+' is checked to have a way up before play (the VIC could deal a field
+' with none); in flight, the empty air above the top row is no longer
+' read from character memory (which could zap you at random on the VIC).
+' After stage 32 the VIC only congratulated you at your next zap and then
+' let you play on without dying; here clearing stage 32 wins the game.
+' A banner names each stage before it starts.
+'
+' Controls: either controller; the stick moves left, right and up (hold to
+' keep moving). On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TBlock = 128
+const TBar = 129
+const TCrw = 130
+const TCrp = 131
+const TCrc = 132
+const TCrM = 133
+const TCrb = 134
+const TCrg = 135
+const TPill = 136
+const TPilr = 137
+const TFlagl = 138
+const TFlagr = 139
+const TStar = 140
+const TGround = 141
+const SClimb0 = 0
+const SClimb1 = 4
+const SWing0 = 8
+const SWing1 = 12
+const SFall0 = 16
+const SFall1 = 20
+const SWalk0 = 24
+const SWalk1 = 28
+const SSeg = 32
+const SZap = 36
+const NTiles8 = 112
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndSlide = 4
+const SndZap = 5
+const SndZing = 6
+const SndBeep = 7
+const SndClear = 8
+const SndStart = 9
+const SndOver = 10
+const SndWin = 11
+const FW = 24
+const FH = 21
+const FX = 4
+const FY = 2
+const NSpr = 12
+const MsgN = 80
+const DeadN = 70
+const WinStage = 33
+
+data Bit bytes
+  1, 2, 4, 8, 16, 32, 64, 128
+end data
+data CrT bytes
+  130, 131, 132, 133, 134, 135
+end data
+' the wing stage's bars: row, head column, length
+data BarRow bytes
+  6, 4, 2, 10
+end data
+data BarHead bytes
+  2, 9, 7, 5
+end data
+data BarLen bytes
+  3, 3, 6, 6
+end data
+
+record Foe:
+  u8 X
+  u8 Y
+  u8 Ox
+  u8 Oy
+  u8 Alive
+  u8 Len
+end record
+
+Foe Foes[4]
+u8 Map[63]
+u8 Rch[24]
+u8 Rn[24]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 2 StageB = 1
+u8 Stage = 1
+u8 Best = 0
+u8 U = 30
+u8 UU = 2
+u8 Ph = 1
+u8 Per = 9
+u8 Tf = 0
+u8 Fr = 0
+u8 Tk = 0
+u8 Bo = 0
+u8 Nf = 2
+u8 Over = 0
+u8 MsgT = 0
+u8 DeadT = 0
+u8 Clr = 0
+u8 Mv = 0
+u8 Held = 0
+u8 WasHeld = 0
+u8 Latch = 0
+u8 Anim = 0
+u8 TitleOn = 0
+u8 Ty = 0
+' the climber: cell and the cell of the last pass; 255 = above the top
+u8 Px = 12
+u8 Py = 19
+u8 Pox = 12
+u8 Poy = 19
+' sprite placing (SprPut)
+u8 Gx = 0
+u8 Gy = 0
+u8 Gox = 0
+u8 Goy = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Gn = 0
+u8 Ux = 0
+u8 Uy = 0
+u8 Gp = 0
+u8 Gc = 0
+u8 Gdx = 0
+u8 Gdy = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 Ki = 0
+u8 Tries = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TtSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Stage > Best then Best = Stage
+  if Best > 32 then Best = 32
+  mute all
+  if Over = 2 then
+    print at 5,9, "                    "
+    print at 5,10, "  CONGRATULATIONS!  "
+    print at 5,11, "                    "
+    print at 5,12, " YOU HAVE GOTTEN TO "
+    print at 5,13, "  THE TOP: STAGE 32 "
+    print at 5,14, "                    "
+    play sound SndWin
+  else
+    print at 5,10, "                    "
+    print at 5,11, " ZAPPED AT STAGE    "
+    print at 5,12, "                    "
+    print at 22,11, StageB
+    play sound SndOver
+  end if
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the banner, the zap, or a pass every Per frames
+
+sub PlayFrame:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then Over = 1
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      for Ri = 9 to 13
+        fill 32 count FW at FX,Ri
+      next
+      PlaceField
+      Tf = 0
+    end if
+    return
+  end if
+  inc Tf
+  if Tf >= Per then
+    Tf = 0
+    Mv = Held
+    if Mv = 0 then Mv = Latch
+    Latch = 0
+    Pass
+  end if
+  Fr = (Tf << 3) / Per
+  return
+end sub
+
+' one pass of the stage in play (the original's loop, once)
+sub Pass:
+  inc Tk
+  inc Anim
+  Pox = Px
+  Poy = Py
+  for Fi = 0 to 3
+    Foes[Fi].Ox = Foes[Fi].X
+    Foes[Fi].Oy = Foes[Fi].Y
+  next
+  select case Ph
+  case 1
+    PassClimb
+  case 2
+    PassCross
+  case 3
+    PassWings
+  case else
+    PassWings2
+  end select
+  return
+end sub
+
+' the stick's move: up one row, or one cell left or right (not past the
+' pillars)
+sub MoveOnFoot:
+  if Mv = 1 then
+    dec Py
+  elseif Mv = 2 then
+    if Px > 0 then dec Px
+  elseif Mv = 3 then
+    if Px < FW - 1 then inc Px
+  end if
+  if Mv > 0 then play sound SndStep
+  return
+end sub
+
+sub SteerFly:
+  if Mv = 2 then
+    if Px > 0 then dec Px
+  elseif Mv = 3 then
+    if Px < FW - 1 then inc Px
+  end if
+  return
+end sub
+
+' THE CLIMB (lines 34-44): fallers slide off blocks, land (smashing what
+' is under them), you move, the check, then they fall a row
+sub PassClimb:
+  for Fi = 0 to 1
+    X = Foes[Fi].X
+    Y = Foes[Fi].Y
+    if Solid(X, Y + 1) <> 0 then
+      if Fi = 0 then
+        X = Wrap(X + 2)
+      else
+        X = Wrap(X + FW - 2)
+      end if
+      Foes[Fi].X = X
+      play sound SndSlide
+    end if
+    if Solid(X, Y) <> 0 then EraseCell(X, Y)
+    if Solid(X, Y + 1) <> 0 then EraseCell(X, Y + 1)
+  next
+  MoveOnFoot
+  if Solid(Px, Py) <> 0 then
+    Zap
+    return
+  end if
+  for Fi = 0 to 1
+    if Foes[Fi].X = Px then
+      V = Foes[Fi].Y
+      if V = Py then Zap
+      if V + 1 = Py then Zap
+    end if
+  next
+  if DeadT > 0 then return
+  if Py = 0 then
+    StageClear
+    return
+  end if
+  inc Foes[0].Y
+  inc Foes[1].Y
+  if Foes[0].Y + 1 >= FH then
+    Foes[0].X = RndN(11)
+    Foes[1].X = RndN(11) + 12
+    Foes[0].Y = 0
+    Foes[1].Y = 0
+  end if
+  return
+end sub
+
+' THE CROSSING (lines 11-19): walkers hop down at a block, you move, the
+' check, then they walk a cell right; after one width a new crossing
+sub PassCross:
+  for Fi = 0 to 2
+    if Foes[Fi].Alive = 1 then
+      X = Foes[Fi].X
+      Y = Foes[Fi].Y
+      if Solid(X + 1, Y) <> 0 then
+        Y = Y + 2
+        Foes[Fi].Y = Y
+        play sound SndSlide
+        if Y >= FH then Foes[Fi].Alive = 0
+      end if
+      if Foes[Fi].Alive = 1 then
+        if Solid(X, Y) <> 0 then EraseCell(X, Y)
+      end if
+    end if
+  next
+  MoveOnFoot
+  if Solid(Px, Py) <> 0 then
+    Zap
+    return
+  end if
+  for Fi = 0 to 2
+    if Foes[Fi].Alive = 1 then
+      if Foes[Fi].X = Px then
+        if Foes[Fi].Y = Py then Zap
+      end if
+    end if
+  next
+  if DeadT > 0 then return
+  if Py = 0 then
+    StageClear
+    return
+  end if
+  for Fi = 0 to 2
+    inc Foes[Fi].X
+  next
+  inc Bo
+  if Bo >= FW then NewWalkers
+  return
+end sub
+
+sub NewWalkers:
+  Bo = 0
+  R = RndN(12)
+  Foes[0].Y = R
+  Foes[1].Y = R + 9
+  Foes[2].Y = R + 5
+  for Fi = 0 to 2
+    Foes[Fi].X = 0
+    Foes[Fi].Ox = 0
+    Foes[Fi].Oy = Foes[Fi].Y
+    Foes[Fi].Alive = 1
+  next
+  return
+end sub
+
+' MAGIC WINGS (lines 63-72): off the top is the end; you rise and steer,
+' the check against barriers and bars, then the bars move right
+sub PassWings:
+  if Py = 255 then
+    StageClear
+    return
+  end if
+  SteerFly
+  if Py = 0 then
+    Py = 255
+  else
+    dec Py
+    if Solid(Px, Py) <> 0 then Zap
+    for Fi = 0 to 3
+      if Foes[Fi].Y = Py then
+        if OnBar(Fi) = 1 then Zap
+      end if
+    next
+  end if
+  for Fi = 0 to 3
+    Foes[Fi].X = Wrap(Foes[Fi].X + 1)
+  next
+  return
+end sub
+
+' 1 when the climber's column is under bar Bi (head X, Len cells to the
+' left of it, wrapping)
+function OnBar(u8 Bi) as u8
+  u8 Dx = 0
+  Dx = Wrap(Foes[Bi].X + FW - Px)
+  if Dx < Foes[Bi].Len then return 1
+  return 0
+
+' MAGIC WINGS again (lines 78-83): rise and steer through the creatures
+sub PassWings2:
+  if Py = 255 then
+    StageClear
+    return
+  end if
+  SteerFly
+  if Py = 0 then
+    Py = 255
+  else
+    dec Py
+    if Solid(Px, Py) <> 0 then Zap
+  end if
+  return
+end sub
+
+sub Zap:
+  if DeadT > 0 then return
+  DeadT = DeadN
+  play sound SndZap
+  return
+end sub
+
+' a stage cleared: the next stage of the cycle (climb, wings, crossing,
+' wings); the magic wings stages are announced
+sub StageClear:
+  inc Stage
+  StageB += 1
+  if Stage >= WinStage then
+    Over = 2
+    play sound SndWin
+    return
+  end if
+  select case Ph
+  case 1
+    Ph = 3
+  case 3
+    Ph = 2
+  case 2
+    Ph = 4
+  case else
+    Ph = 1
+  end select
+  BeginStage
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the field: a bit map of deadly cells (blocks, barriers, creatures)
+
+function Wrap(u8 Wx) as u8
+  if Wx >= FW then return Wx - FW
+  return Wx
+
+function Solid(u8 Cx, u8 Cy) as u8
+  u8 Bi = 0
+  if Cx >= FW then return 0
+  if Cy >= FH then return 0
+  Bi = Cy * 3 + (Cx >> 3)
+  return Map[Bi] & Bit[Cx & 7]
+
+sub PutCell(u8 Cx, u8 Cy, u8 Tc):
+  u8 Bi = 0
+  Bi = Cy * 3 + (Cx >> 3)
+  Map[Bi] = Map[Bi] | Bit[Cx & 7]
+  put char Tc at Cx + FX, Cy + FY
+  return
+end sub
+
+sub EraseCell(u8 Cx, u8 Cy):
+  u8 Bi = 0
+  Bi = Cy * 3 + (Cx >> 3)
+  Map[Bi] = Map[Bi] & (255 - Bit[Cx & 7])
+  put char 32 at Cx + FX, Cy + FY
+  return
+end sub
+
+' the stage's blocks, barriers or creatures, dealt again until there is a
+' way to the top
+sub PlaceField:
+  for Tries = 1 to 30
+    ClearField
+    select case Ph
+    case 1
+      DealBlocks(U, 2, 17)
+    case 2
+      N = U + 20
+      DealBlocks(N, 0, 19)
+    case 3
+      DealBarriers
+    case else
+      DealCreatures
+    end select
+    if WayUp = 1 then exit for
+  next
+  return
+end sub
+
+sub ClearField:
+  fill array Map with 0
+  for Ri = 0 to 20
+    fill 32 count FW at FX,Ri + FY
+  next
+  if Ph >= 3 then DrawStars
+  return
+end sub
+
+sub DrawStars:
+  for Ri = 0 to 20
+    K = Ri * 7
+    K = K & 15
+    if K < FW then put char TStar at K + FX, Ri + FY
+  next
+  return
+end sub
+
+sub DealBlocks(u8 Count, u8 Top, u8 Rows):
+  for Ki = 1 to Count
+    Y = RndN(Rows) + Top
+    X = RndN(FW)
+    PutCell(X, Y, TBlock)
+  next
+  return
+end sub
+
+sub DealBarriers:
+  for Ki = 1 to UU
+    X = RndN(FW)
+    PutCell(X, 0, TBar)
+    PutCell(X, 13, TBar)
+  next
+  return
+end sub
+
+sub DealCreatures:
+  N = UU * 2
+  for Ki = 1 to N
+    Y = RndN(17)
+    X = RndN(FW)
+    T = CrT[RndN(6)]
+    PutCell(X, Y, T)
+  next
+  return
+end sub
+
+' 1 when the top row can be reached from the start: on foot by steps up,
+' left and right; in flight by rising one row a pass, one cell aside
+function WayUp as u8
+  u8 Got = 0
+  fill array Rch with 0
+  Rch[Px] = 1
+  for Ri = 1 to Py
+    Y = Py - Ri
+    for Ci = 0 to FW - 1
+      Rn[Ci] = 0
+      if Solid(Ci, Y) = 0 then
+        if Rch[Ci] = 1 then Rn[Ci] = 1
+        if Ph >= 3 then
+          if Ci > 0 then
+            if Rch[Ci - 1] = 1 then Rn[Ci] = 1
+          end if
+          if Ci < FW - 1 then
+            if Rch[Ci + 1] = 1 then Rn[Ci] = 1
+          end if
+        end if
+      end if
+    next
+    if Ph < 3 then Spread(Y)
+    copy Rn count FW to Rch
+  next
+  for Ci = 0 to FW - 1
+    if Rch[Ci] = 1 then Got = 1
+  next
+  return Got
+
+' on foot, a reached cell of row Sy reaches the free cells beside it
+sub Spread(u8 Sy):
+  for Ci = 1 to FW - 1
+    if Rn[Ci - 1] = 1 then
+      if Solid(Ci, Sy) = 0 then Rn[Ci] = 1
+    end if
+  next
+  Ci = FW - 1
+  while Ci > 0
+    dec Ci
+    if Rn[Ci + 1] = 1 then
+      if Solid(Ci, Sy) = 0 then Rn[Ci] = 1
+    end if
+  end while
+  return
+end sub
+
+' a number 0..Nn-1
+function RndN(u8 Nn) as u8
+  Rand
+  W16 = (Rs >> 8) * Nn
+  return W16 >> 8
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' stages
+
+sub NewGame:
+  Stage = 1
+  StageB = 1
+  U = 30
+  UU = 2
+  Ph = 1
+  Over = 0
+  TitleOn = 0
+  play sound SndStart
+  BeginStage
+  return
+end sub
+
+' the screen of a stage, its banner, the climber at the start; the field
+' is dealt when the banner goes
+sub BeginStage:
+  NewScreen
+  DrawFrame
+  for Fi = 0 to 3
+    Foes[Fi].Alive = 0
+    Foes[Fi].Len = 0
+  next
+  Px = 12
+  Py = 20
+  Nf = 0
+  select case Ph
+  case 1
+    U = U + 5
+    Py = 19
+    Per = 9
+    Nf = 2
+    Foes[0].X = 0
+    Foes[1].X = FW - 1
+    Foes[0].Y = 0
+    Foes[1].Y = 0
+    Foes[0].Alive = 1
+    Foes[1].Alive = 1
+    Banner(1)
+  case 2
+    U = U + 5
+    Per = 9
+    Nf = 3
+    NewWalkers
+    Banner(2)
+  case 3
+    UU = UU + 2
+    Per = 7
+    Nf = 4
+    for Fi = 0 to 3
+      Foes[Fi].Y = BarRow[Fi]
+      Foes[Fi].X = BarHead[Fi]
+      Foes[Fi].Len = BarLen[Fi]
+      Foes[Fi].Alive = 1
+    next
+    Banner(3)
+  case else
+    Per = 7
+    Banner(3)
+  end select
+  for Fi = 0 to 3
+    Foes[Fi].Ox = Foes[Fi].X
+    Foes[Fi].Oy = Foes[Fi].Y
+  next
+  Pox = Px
+  Poy = Py
+  Tf = 0
+  Fr = 0
+  DeadT = 0
+  MsgT = MsgN
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub Banner(u8 Kind):
+  print at 9,10, "STAGE"
+  print at 15,10, StageB
+  select case Kind
+  case 1
+    print at 9,12, "THE CLIMB"
+  case 2
+    print at 9,12, "THE CROSSING"
+  case else
+    print at 6,12, "MAGIC WINGS LEVEL!"
+    play sound SndZing
+  end select
+  return
+end sub
+
+' the pillars, their flags at the top, the ground, the status line
+sub DrawFrame:
+  for Ri = 3 to 22
+    put char TPill at 3,Ri
+    put char TPilr at 28,Ri
+  next
+  put char TFlagl at 3,2
+  put char TFlagr at 28,2
+  if Ph = 1 then fill TGround count FW at FX,22
+  if Ph = 2 then fill TGround count FW at FX,22
+  print at 2,1, "STAGE"
+  print at 8,1, StageB
+  print at 23,1, "BEST"
+  NumU = Best
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite Gn at the cell Gx, Gy, coming from Gox, Goy (Fr eighths of the
+' way), pattern Gp, colour Gc, drawn Gdx, Gdy pixels left and up of the
+' cell's corner
+sub SprPut:
+  Ux = Gox * 8 + FX * 8 - Gdx
+  Uy = Goy * 8 + FY * 8 - Gdy - 1
+  Sx = Gx - Gox
+  select case Sx
+  case 1
+    Ux = Ux + Fr
+  case 2
+    Ux = Ux + Fr * 2
+  case 255
+    Ux = Ux - Fr
+  case 254
+    Ux = Ux - Fr * 2
+  case 0
+  case else
+    Ux = Gx * 8 + FX * 8 - Gdx
+  end select
+  Sy = Gy - Goy
+  select case Sy
+  case 1
+    Uy = Uy + Fr
+  case 2
+    Uy = Uy + Fr * 2
+  case 255
+    Uy = Uy - Fr
+  case 0
+  case else
+    Uy = Gy * 8 + FY * 8 - Gdy - 1
+  end select
+  set sprite Gn to Uy,Ux,Gp,Gc
+  return
+end sub
+
+sub DrawSprites:
+  ' sprite 0: the climber (or the zap)
+  Gn = 0
+  Gx = Px
+  Gy = Py
+  Gox = Pox
+  Goy = Poy
+  Gdx = 4
+  Gdy = 4
+  Gc = 11
+  if Ph >= 3 then
+    V = Anim & 1
+    Gp = SWing0 + V * 4
+  else
+    V = Px + Py
+    V = V & 1
+    Gp = SClimb0 + V * 4
+  end if
+  if DeadT > 0 then
+    Gp = SZap
+    V = DeadT / 10
+    V = V & 1
+    if V = 0 then
+      Gc = 15
+    else
+      Gc = 10
+    end if
+  end if
+  if TitleOn = 1 then
+    Gx = 12
+    Gox = 12
+    Gy = Ty
+    Goy = Ty
+    Gp = SWing0
+    V = Tick >> 3
+    if V & 1 then Gp = SWing1
+  end if
+  SprPut
+  Gn = 1
+  for Fi = 0 to 3
+    DrawFoe
+  next
+  while Gn < NSpr
+    set sprite Gn to 192,0,0,0
+    inc Gn
+  end while
+  update sprites
+  return
+end sub
+
+sub DrawFoe:
+  if Foes[Fi].Alive = 0 then return
+  Gx = Foes[Fi].X
+  Gy = Foes[Fi].Y
+  Gox = Foes[Fi].Ox
+  Goy = Foes[Fi].Oy
+  select case Ph
+  case 1
+    Gdx = 4
+    Gdy = 0
+    Gc = 13
+    V = Tk & 1
+    Gp = SFall0 + V * 4
+    SprPut
+    inc Gn
+  case 2
+    Gdx = 4
+    Gdy = 4
+    Gc = 3
+    V = Tk + Fi
+    V = V & 1
+    Gp = SWalk0 + V * 4
+    SprPut
+    inc Gn
+  case 3
+    ' a bar: segments two cells wide ending at the head
+    Gdx = 0
+    Gdy = 4
+    Gc = 9
+    Gp = SSeg
+    K = Foes[Fi].Len - 1
+    Gx = Gx - K
+    Gox = Gox - K
+    for Ki = 1 to Foes[Fi].Len step 2
+      if Ki = Foes[Fi].Len then
+        Gx = Gx - 1
+        Gox = Gox - 1
+      end if
+      if Gx >= 128 then
+        Gx = Gx + FW
+        Gox = Gox + FW
+      end if
+      SprPut
+      inc Gn
+      Gx = Gx + 2
+      Gox = Gox + 2
+      if Gx >= FW then
+        Gx = Gx - FW
+        Gox = Gox - FW
+      end if
+    next
+    ' the last segment of a 3-long bar overlaps the one before it
+  case else
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  ' the move: up first, then left, then right; a fresh press is kept
+  ' for the next pass
+  Held = 0
+  if V & 8 then Held = 3
+  if V & 4 then Held = 2
+  if V & 1 then Held = 1
+  if Held > 0 then
+    if Held <> WasHeld then Latch = Held
+  end if
+  WasHeld = Held
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: pillars, a winged climber rising, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  Ph = 3
+  DrawFrame
+  print at 2,1, "            "
+  for Ri = 3 to 21
+    K = Ri * 5
+    K = K & 15
+    put char TStar at K + 6, Ri
+  next
+  print at 10,5, "TO THE TOP!"
+  print at 8,7, "BY KEVIN DEWEY"
+  print at 11,13, "START GAME"
+  print at 11,15, "CREDITS"
+  print at 7,20, "AHOY! JANUARY 1985"
+  put char TBlock at 8,10
+  put char TBlock at 20,10
+  put char TBar at 6,17
+  put char TBar at 24,17
+  put char TCrp at 14,10
+  ShowMenu
+  TitleOn = 1
+  DeadT = 0
+  Ty = 22
+  for Fi = 0 to 3
+    Foes[Fi].Alive = 0
+  next
+  Fr = 0
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 540
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Tick & 3
+  if V = 0 then
+    dec Ty
+    if Ty > 22 then Ty = 22
+  end if
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,15
+  J = Menu * 2 + 13
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "TO THE TOP"
+  print at 2,5, "BASED ON TO THE TOP BY"
+  print at 2,6, "KEVIN DEWEY, AHOY! JANUARY"
+  print at 2,7, "1985 (VIC-20)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: UPWARD (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $01,$04,$08,$1C,$08,$10,$01,$00
+  $01,$01,$40,$01,$01,$01,$01,$00
+  $C3,$A5,$81,$18,$00,$99,$C3,$99
+  $C3,$A5,$81,$18,$00,$99,$C3,$99
+  $C3,$A5,$81,$18,$00,$99,$C3,$99
+  $C3,$A5,$81,$18,$00,$99,$C3,$99
+  $C3,$A5,$81,$18,$00,$99,$C3,$99
+  $C3,$A5,$81,$18,$00,$99,$C3,$99
+  $83,$83,$83,$83,$83,$83,$83,$83
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $81,$83,$87,$40,$40,$40,$83,$83
+  $81,$C1,$E1,$02,$02,$02,$C1,$C1
+  $00,$00,$00,$00,$10,$00,$00,$00
+  $00,$44,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $17,$B7,$B7,$B7,$B7,$B7,$15,$01
+  $18,$19,$F9,$19,$19,$19,$16,$01
+  $1F,$1F,$1F,$F1,$0F,$F1,$1F,$1F
+  $19,$19,$19,$91,$09,$91,$19,$19
+  $17,$17,$17,$71,$07,$71,$17,$17
+  $1D,$1D,$1D,$D1,$0D,$D1,$1D,$1D
+  $15,$15,$15,$51,$05,$51,$15,$15
+  $13,$13,$13,$31,$03,$31,$13,$13
+  $1E,$1E,$1E,$1A,$1E,$1E,$1E,$1A
+  $1E,$1E,$1E,$1A,$1E,$1E,$1E,$1A
+  $19,$19,$19,$B1,$B1,$B1,$1E,$1A
+  $19,$19,$19,$B1,$B1,$B1,$1E,$1A
+  $01,$01,$01,$01,$51,$01,$01,$01
+  $0A,$1A,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$01,$01,$0B,$07,$03,$03,$06,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$D0,$E0,$C0,$C0,$60,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$09,$07,$03,$03,$03,$02,$06,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$90,$E0,$C0,$C0,$C0,$40,$60,$00,$00,$00,$00
+  $00,$00,$00,$81,$C1,$77,$3F,$1B,$03,$03,$06,$04,$00,$00,$00,$00
+  $00,$00,$00,$81,$83,$EE,$FC,$D8,$C0,$C0,$60,$20,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$07,$1F,$7B,$E3,$83,$06,$04,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$E0,$F8,$DE,$C7,$C1,$60,$20,$00,$00,$00,$00
+  $03,$07,$0D,$0D,$0F,$05,$0F,$0A,$0A,$05,$05,$09,$0A,$04,$08,$00
+  $C0,$E0,$B0,$B0,$F0,$A0,$F0,$50,$50,$A0,$A0,$90,$50,$20,$10,$00
+  $03,$07,$0D,$0D,$0F,$05,$0F,$0A,$05,$05,$0A,$09,$05,$08,$04,$00
+  $C0,$E0,$B0,$B0,$F0,$A0,$F0,$50,$A0,$A0,$50,$90,$A0,$10,$20,$00
+  $00,$00,$00,$00,$03,$05,$07,$09,$0F,$01,$02,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$A0,$E0,$90,$F0,$80,$40,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$05,$07,$01,$0F,$09,$02,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$A0,$E0,$80,$F0,$90,$40,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$FF,$AA,$55,$FF,$AA,$55,$FF,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FE,$AA,$54,$FE,$AA,$54,$FE,$00,$00,$00,$00,$00
+  $00,$40,$20,$10,$09,$07,$3F,$87,$07,$3B,$08,$10,$20,$40,$00,$00
+  $00,$82,$84,$88,$D0,$F0,$F6,$F0,$F0,$EE,$88,$84,$82,$81,$00,$00
+end data
+
+asm {
+TtStep:
+    db $40,$7F,$30,$02,$50
+TtSlide:
+    db $40,$53,$31,$02,$40,$AB,$41,$02,$50
+TtZap:
+    db $00,$00,$04,$04,$00,$00,$15,$04,$00,$00,$24,$06,$00,$00,$46,$08,$00,$00,$76,$0E,$10
+TtZing:
+    db $40,$40,$10,$03,$40,$55,$20,$03,$40,$40,$10,$03,$40,$55,$20,$03,$40,$40,$10,$03,$40,$35,$20,$0A
+    db $50
+TtBeep:
+    db $40,$6B,$20,$0A,$50
+TtClear:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$55,$20,$0E,$50
+TtStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+TtOver:
+    db $40,$E2,$10,$0C,$40,$FE,$20,$0C,$40,$1D,$21,$0C,$40,$3B,$22,$1E,$50
+TtWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+TtSoundTable:
+    dw TtTuneMel,$702B
+    dw TtTuneBass,$7035
+    dw TtStep,$7049
+    dw TtSlide,$7049
+    dw TtZap,$703F
+    dw TtZing,$7049
+    dw TtBeep,$7049
+    dw TtClear,$7049
+    dw TtStart,$7049
+    dw TtOver,$7049
+    dw TtWin,$7049
+; Upward (original)
+; Tiny Sound, 8 frames per step
+TtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$23,$26,$01,$01,$2B,$01,$2A,$01,$26,$01
+    db $28,$01,$01,$01,$24,$01,$28,$2B,$01,$01,$30,$01,$2F,$01,$2B,$01
+    db $2D,$01,$01,$01,$23,$01,$26,$2B,$01,$01,$2F,$01,$2D,$01,$2A,$01
+    db $2B,$01,$2D,$01,$2F,$01,$32,$01,$30,$01,$2D,$01,$2F,$01,$2B,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+TtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$13,$01,$0E,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$10,$01,$17,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$13,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $13,$01,$00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1745 @@
+cartridge "CATACOMBS/CLEVE BLAKEMORE/1987"
+
+' CATACOMBS
+' A ColecoVision game based on "Catacombs" V1.0 by Cleve Blakemore, Ahoy!
+' January 1987 (Commodore 64, BASIC with a small machine-language scroller).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/catacombs.bas), the game is built for the ColecoVision:
+' smooth 16 x 16 sprites gliding from cell to cell, brick tiles, a lantern
+' that lights the floor around the explorer, sound effects and an original
+' title tune.
+'
+' The game: ten levels of catacombs, each an 80 x 50 map seen through a
+' window that scrolls when the explorer nears its edge. On every level lie
+' gold (50 each), traps (they take 50 gold) and one key (100). The key
+' opens the trapdoor down to the next level (25 gold more). Three monsters
+' of the level's kind (skull, wizard, bat, spirit or snake) shuffle toward
+' the explorer, one step each in turn; one touch and the game is over:
+' CHOMP. Levels 1-5 are lit; on levels 6-10 the floor is dark and only the
+' lantern shows gold, traps, the key and the monsters near the explorer
+' (walls and the trapdoor show everywhere, as on the C64). Get out of
+' level 10 with as much gold as you can.
+'
+' From the original (orig/catacombs.bas): the 80 x 50 map and its walls,
+' made from the listing's level bit patterns and print loop (levels.py,
+' orig/c64maze.py), the outer wall, the start at (10,5), the ladder mark
+' at (3,3); per level one trapdoor at x 8-67, y 5-44, 2 x level gold and
+' 2 x level traps (one each on level 1: a C64 FOR loop runs once), one
+' key, all at x 5-74, y 5-44 on free floor; three monsters of the level's
+' kind (skull, wizard, bat, spirit, snake, then again); moves in eight
+' directions; the monsters step toward the explorer in turn, x then y,
+' each blocked by anything but floor; gold 50, key 100 (needed for the
+' trapdoor), trap -50 (if there are 50); 25 gold for each level reached;
+' after level 10 the game ends with the gold; levels 1-5 lit, 6-10 dark
+' with the lantern lighting a box around the explorer.
+'
+' Liberties: the window is 28 x 20 cells (the C64 showed 40 x 25) and
+' scrolls when the explorer comes within 4 cells of its edge (C64: 1).
+' The explorer walks onto gold, a key or a trap in the same move (the C64
+' spent a move picking it up). A monster that steps onto the explorer
+' catches him too (on the C64 only walking into a monster was fatal; a
+' monster could stand on the explorer harmlessly). Monsters start at
+' least 8 cells from the explorer; floor the explorer can't reach is
+' filled in, so everything is in reach. A locked trapdoor says so. The
+' lantern box is 7 x 7 cells round the explorer (C64: 6 x 5, off-centre),
+' so a monster in the dark is seen at least 3 moves away.
+' A move every 8 frames, a monster step every 8 frames in turn (each
+' monster every 24). A high score (the most gold) is kept.
+'
+' Controls: either controller; the stick walks (diagonals too; hold to
+' keep walking). On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TFloor = 128
+const TDark = 129
+const TBrick = 130
+const TOuter = 131
+const TLadder = 132
+const TExit = 133
+const TGold = 134
+const TKey = 135
+const TTrap = 136
+const THkey = 137
+const SExp0 = 0
+const SLamp0 = 4
+const SExp1 = 8
+const SLamp1 = 12
+const SChomp = 16
+const SSkull0 = 20
+const SSkull1 = 24
+const SWizard0 = 28
+const SWizard1 = 32
+const SBat0 = 36
+const SBat1 = 40
+const SSpirit0 = 44
+const SSpirit1 = 48
+const SSnake0 = 52
+const SSnake1 = 56
+const NTiles8 = 80
+const SprBytes = 480
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndBump = 4
+const SndGold = 5
+const SndKey = 6
+const SndTrap = 7
+const SndLocked = 8
+const SndChomp = 9
+const SndDown = 10
+const SndStart = 11
+const SndWin = 12
+const NSpr = 6
+const MaxT = 42
+const VW = 28
+const VH = 20
+const DeadN = 100
+
+record Thing:
+  u8 X
+  u8 Y
+  u8 K
+end record
+
+record Mon:
+  u8 X
+  u8 Y
+  i8 Dx
+  i8 Dy
+  u8 T
+end record
+
+' kinds of thing
+const KGold = 1
+const KTrap = 2
+const KKey = 3
+const KExit = 4
+
+data BitT bytes
+  128, 64, 32, 16, 8, 4, 2, 1
+end data
+' the monster of each level (sprite pattern) and its colour
+data MonPat bytes
+  SSkull0, SWizard0, SBat0, SSpirit0, SSnake0, SSkull0, SWizard0, SBat0, SSpirit0, SSnake0
+end data
+data MonCol bytes
+  15, 13, 4, 7, 2, 15, 13, 4, 7, 2
+end data
+
+Thing Things[MaxT]
+Mon Mons[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Gold = 0
+u16 Hi = 0
+u16 RowB = 0
+u16 VAddr = 0
+u8 Cnt = 0
+u8 FloorT = 0
+u8 Lx0 = 0
+u8 Lx1 = 0
+u8 Ly0 = 0
+u8 Ly1 = 0
+u8 Lv = 0
+u8 Dark = 0
+u8 HasKey = 0
+u8 Over = 0
+u8 LvDone = 0
+' the explorer: map cell, glide direction and frames left
+u8 Px = 10
+u8 Py = 5
+i8 Pdx = 0
+i8 Pdy = 0
+u8 Pt = 0
+' the window's top-left map cell
+u8 Vx = 0
+u8 Vy = 0
+u8 Tk = 0
+u8 Md = 0
+u8 Want = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 FlashT = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ti = 0
+u8 Mi = 0
+u8 Ri = 0
+u8 Ci = 0
+' box to draw (map cells, inclusive)
+u8 Bx0 = 0
+u8 By0 = 0
+u8 Bx1 = 0
+u8 By1 = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Got = 0
+
+  tile screen
+  set sound table CaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if LvDone = 1 then
+    NextLevel
+  end if
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Gold > Hi then Hi = Gold
+  mute all
+  backdrop black
+  for Ri = 8 to 14
+    fill 32 count 24 at 4,Ri
+  next
+  if Over = 2 then
+    print at 6,9, "YOU ESCAPED FROM"
+    print at 6,10, "THE CATACOMBS!"
+    play sound SndWin
+  else
+    print at 6,9, "CHOMP!"
+    print at 6,10, "THE CATACOMBS WIN."
+  end if
+  print at 6,12, "GOLD ="
+  NumU = Gold
+  print at 13,12, digits$(NumU, 5)
+  ShowHud
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the map
+
+' 1 when the map cell is wall
+function IsWall(u8 Wx, u8 Wy) as u8
+  u16 Ix = 0
+  u8 Bits = 0
+  Ix = Lv * 500 + Wy * 10 + (Wx >> 3)
+  Bits = Walls[Ix] & BitT[Wx & 7]
+  if Bits > 0 then return 1
+  return 0
+
+' the thing on a cell: its index + 1, or 0
+function ThingAt(u8 Ax, u8 Ay) as u8
+  u8 I = 0
+  u8 Found = 0
+  for I = 0 to MaxT - 1
+    if Things[I].X = Ax then
+      if Things[I].Y = Ay then
+        if Things[I].K > 0 then Found = I + 1
+      end if
+    end if
+  next
+  return Found
+
+' the monster on a cell: its index + 1, or 0
+function MonAt(u8 Ax, u8 Ay) as u8
+  u8 I = 0
+  u8 Found = 0
+  for I = 0 to 2
+    if Mons[I].X = Ax then
+      if Mons[I].Y = Ay then Found = I + 1
+    end if
+  next
+  return Found
+
+' 1 when a monster may step on the cell: floor with nothing on it
+function MonFree(u8 Ax, u8 Ay) as u8
+  if IsWall(Ax, Ay) = 1 then return 0
+  if ThingAt(Ax, Ay) > 0 then return 0
+  if MonAt(Ax, Ay) > 0 then return 0
+  return 1
+
+' 1 when the cell is lit: a lit level, or inside the lantern's box
+function Lit(u8 Ax, u8 Ay) as u8
+  u8 D = 0
+  if Dark = 0 then return 1
+  if Ax > Px then D = Ax - Px else D = Px - Ax
+  if D > 3 then return 0
+  if Ay > Py then D = Ay - Py else D = Py - Ay
+  if D > 3 then return 0
+  return 1
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random free cell Qx (Lo .. Lo+Span-1), Qy (5..44): no wall, no
+' thing, no monster, not the start
+sub FreeCell(u8 Lo, u8 Span):
+  Got = 0
+  while Got = 0
+    Rand
+    Qx = Rs % Span + Lo
+    Rand
+    Qy = Rs % 40 + 5
+    Got = 1
+    if IsWall(Qx, Qy) = 1 then Got = 0
+    if ThingAt(Qx, Qy) > 0 then Got = 0
+    if MonAt(Qx, Qy) > 0 then Got = 0
+    if Qx = 10 then
+      if Qy = 5 then Got = 0
+    end if
+  end while
+  return
+end sub
+
+sub AddThing(u8 Kind):
+  Things[Ti].X = Qx
+  Things[Ti].Y = Qy
+  Things[Ti].K = Kind
+  inc Ti
+  return
+end sub
+
+' a new level: the trapdoor, gold, traps, the key, three monsters
+sub MakeLevel:
+  for Ti = 0 to MaxT - 1
+    Things[Ti].K = 0
+  next
+  for Mi = 0 to 2
+    Mons[Mi].X = 0
+    Mons[Mi].Y = 0
+    Mons[Mi].T = 0
+  next
+  Ti = 0
+  FreeCell(8, 60)
+  AddThing(KExit)
+  N = Lv * 2
+  if N = 0 then N = 1
+  for Ci = 1 to N
+    FreeCell(5, 70)
+    AddThing(KGold)
+  next
+  for Ci = 1 to N
+    FreeCell(5, 70)
+    AddThing(KTrap)
+  next
+  FreeCell(5, 70)
+  AddThing(KKey)
+  for Mi = 0 to 2
+    Got = 0
+    while Got = 0
+      FreeCell(5, 70)
+      Got = 1
+      if Qx < 18 then
+        if Qy < 13 then Got = 0
+      end if
+    end while
+    Mons[Mi].X = Qx
+    Mons[Mi].Y = Qy
+  next
+  Px = 10
+  Py = 5
+  Pt = 0
+  Pdx = 0
+  Pdy = 0
+  Vx = 0
+  Vy = 0
+  Tk = 0
+  Md = 0
+  Want = 0
+  HasKey = 0
+  LvDone = 0
+  Dark = 0
+  if Lv >= 5 then Dark = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then Over = 1
+    return
+  end if
+  if Pt > 0 then dec Pt
+  for Mi = 0 to 2
+    if Mons[Mi].T > 0 then Mons[Mi].T -= 1
+  next
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 28 at 2,22
+  end if
+  if FlashT > 0 then
+    dec FlashT
+    if FlashT = 0 then backdrop black
+  end if
+  ' the explorer moves on pass 0 of every 8, a monster on pass 4
+  inc Tk
+  if Tk = 4 then MonsterTurn
+  if Tk < 8 then return
+  Tk = 0
+  PlayerTurn
+  return
+end sub
+
+sub Message(u8 Mid):
+  fill 32 count 28 at 2,22
+  select case Mid
+  case 1
+    print at 2,22, "GOLD! +50"
+  case 2
+    print at 2,22, "THE KEY! +100"
+  case 3
+    print at 2,22, "A TRAP! -50"
+  case 4
+    print at 2,22, "THE TRAPDOOR IS LOCKED"
+  case else
+    print at 2,22, "CHOMP!"
+  end select
+  MsgT = 90
+  return
+end sub
+
+' the stick (latched in Want): one cell in any of eight directions
+sub PlayerTurn:
+  J = Want
+  Want = 0
+  if J = 0 then return
+  Pdx = 0
+  Pdy = 0
+  V = J & 4
+  if V > 0 then Pdx = -1
+  V = J & 8
+  if V > 0 then Pdx = 1
+  V = J & 1
+  if V > 0 then Pdy = -1
+  V = J & 2
+  if V > 0 then Pdy = 1
+  Qx = Px + Pdx
+  Qy = Py + Pdy
+  if IsWall(Qx, Qy) = 1 then return
+  T = ThingAt(Qx, Qy)
+  K = 0
+  if T > 0 then
+    T = T - 1
+    K = Things[T].K
+    select case K
+    case KExit
+      if HasKey = 1 then
+        LvDone = 1
+      else
+        Message(4)
+        play sound SndLocked
+      end if
+      return
+    case KGold
+      Gold += 50
+      Message(1)
+      play sound SndGold
+    case KKey
+      Gold += 100
+      HasKey = 1
+      Message(2)
+      play sound SndKey
+    case KTrap
+      if Gold > 49 then Gold -= 50
+      Message(3)
+      play sound SndTrap
+      backdrop dark red
+      FlashT = 30
+    end select
+    Things[T].K = 0
+  end if
+  if K = 0 then play sound SndStep
+  Bx0 = Px
+  By0 = Py
+  Px = Qx
+  Py = Qy
+  Pt = 8
+  ' the window follows: 4 cells from its edge
+  U = 0
+  V = Px - Vx
+  if V < 4 then
+    if Vx > 0 then
+      dec Vx
+      U = 1
+    end if
+  end if
+  if V > 23 then
+    if Vx < 80 - VW then
+      inc Vx
+      U = 1
+    end if
+  end if
+  V = Py - Vy
+  if V < 4 then
+    if Vy > 0 then
+      dec Vy
+      U = 1
+    end if
+  end if
+  if V > 15 then
+    if Vy < 50 - VH then
+      inc Vy
+      U = 1
+    end if
+  end if
+  if U = 1 then
+    DrawView
+  elseif Dark = 1 then
+    ' the lantern's old and new boxes
+    if Bx0 > Px then Bx0 = Px
+    if By0 > Py then By0 = Py
+    Bx1 = Bx0 + 7
+    By1 = By0 + 7
+    Bx0 = Bx0 - 3
+    By0 = By0 - 3
+    DrawBox
+  elseif K > 0 then
+    Bx0 = Px
+    By0 = Py
+    Bx1 = Px
+    By1 = Py
+    DrawBox
+  end if
+  if K > 0 then ShowHud
+  if MonAt(Px, Py) > 0 then Caught
+  return
+end sub
+
+' one monster (in turn) steps toward the explorer: x, then y
+sub MonsterTurn:
+  u8 Ox = 0
+  u8 Oy = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  Mi = Md
+  inc Md
+  if Md > 2 then Md = 0
+  Ox = Mons[Mi].X
+  Oy = Mons[Mi].Y
+  Nx = Ox
+  Ny = Oy
+  if Ox < Px then Nx = Ox + 1
+  if Ox > Px then Nx = Ox - 1
+  if MonFree(Nx, Oy) = 0 then Nx = Ox
+  Mons[Mi].X = Nx
+  if Oy < Py then Ny = Oy + 1
+  if Oy > Py then Ny = Oy - 1
+  if MonFree(Nx, Ny) = 0 then Ny = Oy
+  Mons[Mi].Y = Ny
+  Mons[Mi].Dx = Nx - Ox
+  Mons[Mi].Dy = Ny - Oy
+  if Nx <> Ox or Ny <> Oy then Mons[Mi].T = 24
+  if Nx = Px then
+    if Ny = Py then Caught
+  end if
+  return
+end sub
+
+sub Caught:
+  DeadT = DeadN
+  Message(5)
+  play sound SndChomp
+  return
+end sub
+
+' the trapdoor: the next level, or the way out after level 10
+sub NextLevel:
+  LvDone = 0
+  inc Lv
+  if Lv >= 10 then
+    Lv = 9
+    Over = 2
+    return
+  end if
+  NewScreen
+  print at 3,7, "PREPARE FOR THE NEXT LEVEL!"
+  print at 3,10, "DESCENDING TO LEVEL"
+  NumU = Lv + 1
+  print at 23,10, digits$(NumU, 2)
+  ShowScreen
+  play sound SndDown
+  Rearm
+  wait 100 frames
+  nmi off
+  Gold += 25
+  print at 9,13, "GOLD ="
+  NumU = Gold
+  print at 16,13, digits$(NumU, 5)
+  Rearm
+  wait 70 frames
+  nmi off
+  StartLevel
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the box Bx0..Bx1, By0..By1 (map cells), clipped to the window: walls,
+' floor (lit or dark), then the things that can be seen
+sub DrawBox:
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Tl = 0
+  u8 Wb = 0
+  if Bx0 > 200 then Bx0 = 0
+  if By0 > 200 then By0 = 0
+  if Bx0 < Vx then Bx0 = Vx
+  if By0 < Vy then By0 = Vy
+  V = Vx + VW - 1
+  if Bx1 > V then Bx1 = V
+  V = Vy + VH - 1
+  if By1 > V then By1 = V
+  ' walls and floor, a row at a time (asm CaDrawRow)
+  Cnt = Bx1 - Bx0 + 1
+  FloorT = TFloor
+  if Dark = 1 then FloorT = TDark
+  RowB = Lv * 500 + By0 * 10 + (Bx0 >> 3)
+  Sx = Bx0 - Vx + 2
+  Sy = By0 - Vy + 2
+  VAddr = Sy * 32 + Sx
+  for Cy = By0 to By1
+    call asm CaDrawRow
+    RowB += 10
+    VAddr += 32
+    if Bx0 = 0 then put char TOuter at Sx,Sy
+    if Bx1 = 79 then
+      V = Sx + Cnt - 1
+      put char TOuter at V,Sy
+    end if
+    if Cy = 0 or Cy = 49 then fill TOuter count Cnt at Sx,Sy
+    inc Sy
+  next
+  if Bx0 <= 3 and Bx1 >= 3 and By0 <= 3 and By1 >= 3 then
+    Sx = 5 - Vx
+    Sy = 5 - Vy
+    put char TLadder at Sx,Sy
+  end if
+  ' the lantern's light on a dark level
+  if Dark = 1 then
+    Lx0 = Px - 3
+    Lx1 = Px + 3
+    Ly0 = Py - 3
+    Ly1 = Py + 3
+    if Lx0 < Bx0 then Lx0 = Bx0
+    if Ly0 < By0 then Ly0 = By0
+    if Lx1 > Bx1 then Lx1 = Bx1
+    if Ly1 > By1 then Ly1 = By1
+    for Cy = Ly0 to Ly1
+      for Cx = Lx0 to Lx1
+        if IsWall(Cx, Cy) = 0 then
+          Sx = Cx - Vx + 2
+          Sy = Cy - Vy + 2
+          put char TFloor at Sx,Sy
+        end if
+      next
+    next
+  end if
+  for Ci = 0 to MaxT - 1
+    K = Things[Ci].K
+    if K > 0 then
+      X = Things[Ci].X
+      Y = Things[Ci].Y
+      Got = 1
+      if X < Bx0 or X > Bx1 or Y < By0 or Y > By1 then Got = 0
+      if Got = 1 then
+        if K <> KExit then Got = Lit(X, Y)
+      end if
+      if Got = 1 then
+        Sx = X - Vx + 2
+        Sy = Y - Vy + 2
+        select case K
+        case KGold
+          Tl = TGold
+        case KTrap
+          Tl = TTrap
+        case KKey
+          Tl = TKey
+        case else
+          Tl = TExit
+        end select
+        put char Tl at Sx,Sy
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawView:
+  Bx0 = Vx
+  By0 = Vy
+  Bx1 = Vx + VW - 1
+  By1 = Vy + VH - 1
+  DrawBox
+  return
+end sub
+
+' a sprite's screen position from its cell and glide: X (and Y) of its
+' top-left corner, or 0 when off the window
+function SprX(u8 Cx, i8 Dx, u8 Tg) as i16
+  i16 S = 0
+  S = (Cx - Vx + 2) * 8 - 4
+  S = S - Dx * Tg
+  return S
+
+function SprY(u8 Cy, i8 Dy, u8 Tg) as i16
+  i16 S = 0
+  S = (Cy - Vy + 2) * 8 - 4
+  S = S - Dy * Tg
+  return S
+
+' sprites 0-1 the explorer, 2-4 the monsters
+sub DrawSprites:
+  i16 Sx = 0
+  i16 Sy = 0
+  u8 Pat = 0
+  u8 Col = 0
+  u8 Mx = 0
+  u8 My = 0
+  u8 Mt = 0
+  if TitleOn = 1 then
+    update sprites
+    return
+  end if
+  Sx = SprX(Px, Pdx, Pt)
+  Sy = SprY(Py, Pdy, Pt)
+  X = Sx
+  Y = Sy - 1
+  if DeadT > 0 then
+    V = DeadT >> 4
+    V = V & 1
+    Col = 9
+    if V = 1 then Col = 6
+    set sprite 0 to Y,X,SChomp,Col
+    set sprite 1 to 192,0,0,0
+  else
+    Pat = 0
+    if Pt > 4 then Pat = 8
+    set sprite 0 to Y,X,Pat + SLamp0,11
+    set sprite 1 to Y,X,Pat + SExp0,5
+  end if
+  for Mi = 0 to 2
+    J = Mi + 2
+    Mx = Mons[Mi].X
+    My = Mons[Mi].Y
+    Mt = Mons[Mi].T / 3
+    Got = 1
+    if Mx < Vx or My < Vy then Got = 0
+    if Mx >= Vx + VW or My >= Vy + VH then Got = 0
+    if Got = 1 then Got = Lit(Mx, My)
+    if Got = 1 then
+      Sx = SprX(Mx, Mons[Mi].Dx, Mt)
+      Sy = SprY(My, Mons[Mi].Dy, Mt)
+      X = Sx
+      Y = Sy - 1
+      V = Tick >> 4
+      V = V + Mi
+      V = V & 1
+      Pat = MonPat[Lv] + V * 4
+      set sprite J to Y,X,Pat,MonCol[Lv]
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "GOLD"
+  NumU = Gold
+  print at 7,1, digits$(NumU, 5)
+  print at 14,1, "LEVEL"
+  NumU = Lv + 1
+  print at 20,1, digits$(NumU, 2)
+  if HasKey = 1 then
+    put char THkey at 24,1
+  else
+    put char 32 at 24,1
+  end if
+  return
+end sub
+
+' the brick colour of the level (all three thirds)
+sub SetBricks:
+  W16 = Lv * 8
+  copy BrickCol + W16 count 8 to vram.color + TBrick * 8
+  copy BrickCol + W16 count 8 to vram.color + 2048 + TBrick * 8
+  copy BrickCol + W16 count 8 to vram.color + 4096 + TBrick * 8
+  return
+end sub
+
+sub StartLevel:
+  MakeLevel
+  NewScreen
+  SetBricks
+  DrawView
+  ShowHud
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub NewGame:
+  Gold = 0
+  Lv = 0
+  DeadT = 0
+  MsgT = 0
+  FlashT = 0
+  Over = 0
+  TitleOn = 0
+  StartLevel
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  V = V & 15
+  if V > 0 then Want = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the monsters of the catacombs, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  Lv = 0
+  SetBricks
+  fill TBrick count 28 at 2,2
+  fill TBrick count 28 at 2,20
+  for Ri = 3 to 19
+    put char TBrick at 2,Ri
+    put char TBrick at 29,Ri
+  next
+  print at 10,4, "CATACOMBS"
+  print at 7,6, "BY CLEVE BLAKEMORE"
+  print at 10,9, "SKULL"
+  print at 10,11, "WIZARD"
+  print at 10,13, "BAT"
+  print at 10,15, "SPIRIT"
+  print at 10,17, "SNAKE"
+  print at 18,10, "START GAME"
+  print at 18,12, "CREDITS"
+  print at 2,22, "HI"
+  NumU = Hi
+  print at 5,22, digits$(NumU, 5)
+  print at 15,22, "AHOY! JAN 1987"
+  ' the five monsters beside their names
+  for Mi = 0 to 4
+    V = Mi * 16 + 64
+    Y = V + 2
+    set sprite Mi to Y,56,MonPat[Mi],MonCol[Mi]
+  next
+  put char TGold at 4,19
+  print at 5,19, "50"
+  put char TKey at 9,19
+  print at 10,19, "100"
+  put char TTrap at 15,19
+  print at 16,19, "-50"
+  put char TExit at 21,19
+  print at 22,19, "DOWN"
+  ShowMenu
+  TitleOn = 1
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 640
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 16,10
+  put char 32 at 16,12
+  J = Menu * 2 + 10
+  put char 62 at 16,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "CATACOMBS"
+  print at 2,5, "BASED ON CATACOMBS V1.0"
+  print at 2,6, "BY CLEVE BLAKEMORE, AHOY!"
+  print at 2,7, "JANUARY 1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: DOWN THE OLD STAIR"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$04,$00,$00,$40,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$00,$40,$40,$40,$00
+  $00,$AA,$00,$AA,$00,$AA,$00,$00
+  $42,$81,$42,$42,$81,$42,$42,$81
+  $00,$81,$81,$00,$81,$81,$81,$00
+  $00,$93,$01,$81,$81,$81,$81,$00
+  $00,$70,$88,$80,$02,$05,$00,$00
+  $00,$00,$10,$38,$18,$00,$00,$00
+  $00,$70,$88,$80,$02,$05,$00,$00
+end data
+data TileCol bytes
+  $0A,$6A,$0A,$0A,$6A,$0A,$0A,$0A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $18,$18,$18,$01,$18,$18,$18,$01
+  $0E,$E1,$0E,$1E,$0E,$E1,$0E,$01
+  $FE,$EF,$FE,$FE,$EF,$FE,$FE,$EF
+  $0D,$D1,$D1,$0D,$D1,$D1,$D1,$0D
+  $0A,$AB,$AB,$A6,$A6,$A6,$A6,$0A
+  $0A,$7A,$7A,$A7,$7A,$7A,$0A,$0A
+  $0A,$0A,$1A,$1A,$1A,$0A,$0A,$0A
+  $01,$B1,$B1,$1B,$B1,$B1,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$0F,$17,$17,$05,$05,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$40,$00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$00,$20,$30,$30,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$17,$17,$05,$08,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$40,$00,$00,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$00,$20,$30,$30,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$11,$09,$07,$1C,$07,$09,$11,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$20,$C0,$70,$C0,$20,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$0F,$1B,$1B,$1F,$0E,$07,$05,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$B0,$F0,$E0,$C0,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$0F,$1B,$1B,$1F,$0E,$07,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$B0,$F0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$02,$07,$0F,$17,$07,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$80,$C0,$E0,$D0,$C0,$E0,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$02,$17,$0F,$07,$07,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$80,$D0,$E0,$C0,$C0,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$18,$1D,$1F,$17,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$30,$70,$F0,$D0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$07,$0F,$1D,$18,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$70,$30,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$1B,$1F,$1E,$1F,$1F,$16,$04,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$B0,$F0,$F0,$F0,$F0,$D0,$90,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$1B,$1F,$1E,$1F,$1F,$0D,$12,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$B0,$F0,$F0,$F0,$F0,$A0,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$03,$00,$0E,$1B,$11,$18,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$60,$E0,$60,$60,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$06,$07,$00,$07,$0D,$08,$06,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$C0,$C0,$60,$E0,$C0,$00,$00,$00,$00,$00
+end data
+data BrickCol bytes
+  $18,$18,$18,$11,$18,$18,$18,$11
+  $13,$13,$13,$11,$13,$13,$13,$11
+  $15,$15,$15,$11,$15,$15,$15,$11
+  $19,$19,$19,$11,$19,$19,$19,$11
+  $1D,$1D,$1D,$11,$1D,$1D,$1D,$11
+  $16,$16,$16,$11,$16,$16,$16,$11
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $14,$14,$14,$11,$14,$14,$14,$11
+  $12,$12,$12,$11,$12,$12,$12,$11
+  $17,$17,$17,$11,$17,$17,$17,$11
+end data
+data Walls bytes
+  255,255,255,255,255,255,255,255,255,255
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  144,0,0,0,0,0,56,7,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,0,0,0,0,0,1
+  184,7,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,0,0,0,0,0,0,56,7
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  128,0,0,0,0,0,56,7,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,248,7,56,7,255,225
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,255
+  240,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,0,0,0,0,0,0,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,1
+  128,0,0,0,0,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,0,0,1
+  128,0,0,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,248,7,255,224,0,0,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  128,0,0,0,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,0,0,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,0,0,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  128,0,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  128,0,0,0,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  144,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,0,0,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  128,0,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,0,1
+  128,0,0,0,0,0,56,7,56,7
+  255,224,0,0,0,0,0,0,56,7
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,255,224,0,0,0,0,0,1
+  184,7,56,7,255,224,0,0,0,1
+  128,0,56,7,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  240,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,0,0,0,0,0,0,0,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,1
+  128,0,0,0,0,0,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,0,0,1
+  128,0,0,0,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  151,255,224,0,0,0,0,0,0,57
+  135,56,7,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,0,0,0,0,0,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,0,0,0,0,0,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,1
+  128,0,0,0,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,248,7,56,7,56,7,255,224,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  151,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,24,7,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,0,0,0,0,0,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,0,0,0,0,0,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,1
+  128,0,0,0,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  135,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  144,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,56,7,0,0,0,0,0,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,0,0,0,0,0,224,0,0,1
+  128,0,0,56,7,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,56,7,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,1
+  128,0,0,0,224,0,0,0,0,1
+  128,56,7,56,7,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  151,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,0,0,0,0,0,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,0,0,0,0,0,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,255,224,0,0,0,0,1
+  128,56,7,56,7,56,7,255,224,1
+  128,0,0,0,0,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,255
+  224,0,0,0,0,0,0,56,7,1
+  128,0,0,0,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,255,224,0,0,1
+  128,0,0,56,7,56,7,56,7,255
+  224,0,0,0,0,0,0,56,7,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,255,224,0,0,0,0,0,0,57
+  135,56,7,56,7,255,224,0,0,1
+  128,0,0,56,7,248,7,255,224,1
+  255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,192,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  255,224,0,0,0,0,0,0,56,7
+  128,0,0,0,0,0,0,0,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,255,225
+  128,0,0,0,0,0,56,7,0,1
+  128,0,0,0,0,0,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,255,224,0,1
+  128,0,0,0,56,7,0,0,0,1
+  128,0,0,0,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  128,0,56,7,255,224,0,0,0,1
+  255,255,255,255,255,255,255,255,255,255
+end data
+
+asm {
+; CaDrawRow: one row of the window's walls and floor. In: RowB (index of
+; the first wall byte), Bx0 (its bit: Bx0 & 7), Cnt cells, VAddr (name
+; table offset), FloorT (the floor tile). A wall bit is TBrick.
+CaDrawRow:
+    ld a,$A5
+    ld ($701F),a
+    ld hl,(AMY_UVAR_VAddr)
+    ld de,($73F6)
+    add hl,de
+    ld a,l
+    out (VDP_CTRL_PORT),a
+    ld a,h
+    or $40
+    out (VDP_CTRL_PORT),a
+    ld hl,(AMY_UVAR_RowB)
+    ld de,AMY_UDATA_Walls
+    add hl,de
+    ld a,(AMY_UVAR_Bx0)
+    and 7
+    ld c,a
+    ld e,(hl)
+    ld b,c
+    inc b
+    jr CaDrSh1
+CaDrSh0:
+    sla e
+CaDrSh1:
+    djnz CaDrSh0
+    ld a,(AMY_UVAR_Cnt)
+    ld b,a
+    ld a,(AMY_UVAR_FloorT)
+    ld d,a
+CaDrLoop:
+    sla e
+    ld a,AMY_UCONST_TBrick
+    jr c,CaDrOut
+    ld a,d
+CaDrOut:
+    out (VDP_DATA_PORT),a
+    inc c
+    ld a,c
+    and 7
+    jr nz,CaDrNext
+    inc hl
+    ld e,(hl)
+CaDrNext:
+    djnz CaDrLoop
+    jp AMY_RELEASE_VDP_GUARD
+
+CaStep:
+    db $00,$00,$46,$01,$00,$00,$76,$02,$10
+CaBump:
+    db $40,$F9,$33,$03,$50
+CaGold:
+    db $40,$47,$10,$03,$40,$35,$10,$03,$40,$2A,$20,$08,$50
+CaKey:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$20,$0C,$50
+CaTrap:
+    db $40,$F9,$12,$06,$40,$25,$13,$06,$40,$56,$23,$06,$40,$8D,$23,$0C,$50
+CaLocked:
+    db $40,$FC,$21,$06,$40,$3B,$32,$0A,$50
+CaChomp:
+    db $00,$00,$05,$04,$00,$00,$16,$04,$00,$00,$26,$08,$00,$00,$47,$10,$10
+CaDown:
+    db $40,$7C,$20,$02,$40,$86,$20,$02,$40,$90,$20,$02,$40,$9B,$20,$02,$40,$A6,$20,$02,$40,$B3,$20,$02
+    db $40,$C0,$20,$02,$40,$CF,$20,$02,$40,$DE,$20,$02,$40,$EF,$20,$02,$40,$01,$21,$02,$40,$14,$21,$02
+    db $40,$29,$21,$02,$40,$3F,$21,$02,$40,$57,$21,$02,$40,$71,$21,$02,$40,$8D,$21,$02,$40,$AB,$21,$02
+    db $40,$CA,$21,$02,$40,$ED,$21,$02,$40,$12,$22,$02,$40,$3B,$22,$02,$40,$67,$22,$02,$50
+CaStart:
+    db $40,$AB,$21,$06,$40,$53,$21,$06,$40,$1D,$21,$06,$40,$D6,$20,$0E,$50
+CaWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+CaSoundTable:
+    dw CaTuneMel,$702B
+    dw CaTuneBass,$7035
+    dw CaStep,$703F
+    dw CaBump,$7049
+    dw CaGold,$7049
+    dw CaKey,$7049
+    dw CaTrap,$7049
+    dw CaLocked,$7049
+    dw CaChomp,$703F
+    dw CaDown,$7049
+    dw CaStart,$7049
+    dw CaWin,$7049
+; Down the Old Stair (original)
+; Tiny Sound, 9 frames per step
+CaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$01,$01,$18,$01,$1A,$01,$1C,$01
+    db $01,$01,$01,$01,$1D,$01,$1C,$01,$1A,$01,$18,$01,$17,$01,$01,$01
+    db $15,$01,$01,$01,$18,$01,$1C,$01,$21,$01,$01,$01,$1F,$01,$1D,$01
+    db $1C,$01,$01,$01,$1A,$01,$1D,$01,$1C,$01,$1A,$01,$18,$01,$17,$01
+    db $14,$01,$15,$01,$01,$01,$00,$01,$01
+    db $FF
+CaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$15,$01,$01,$01,$00,$01,$01
+    db $FF
+}

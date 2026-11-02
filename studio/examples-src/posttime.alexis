@@ -1,0 +1,1490 @@
+cartridge "POST TIME/BOB LLORET/1984"
+
+' POST TIME
+' A ColecoVision game based on "Post Time" by Bob Lloret, Ahoy! June 1984
+' (Commodore 64 BASIC, program page 35; disk ahoy1984-jan-jun, orig/).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game (the original's rules, read from its listing, orig/posttime.bas):
+' one to four players each start with $500 at the track. A meeting is ten
+' races (the original ENDs after race 10, or when everyone is broke). Each
+' race has six horses, named from the original's list of sixty, six new
+' ones a race, each with odds from 1 TO 1 up to 15 TO 1. Every player
+' with money bets in turn: WIN (the horse must come first; pays the bet
+' times the odds), PLACE (first or second), SHOW (first, second or
+' third), or TRIFECTA (first, second and third in the right order). A
+' lost bet is taken from the player's cash; a won bet adds the winnings
+' and the stake is kept. The race: again and again one horse picked at
+' random moves a step; the order at the half-mile pole is shown, the first
+' three past the post finish, PHOTO FINISH, then WIN / PLACE / SHOW and
+' each player's result. A player with no money left is out (WENT BROKE).
+'
+' From the original: the players and their $500, the four bets, ten races,
+' six horses of the original's names (in its order; FOWARD PASS spelt
+' right), odds 1-15 TO 1, the race made of single random steps with the
+' same length (58 steps, the half-mile pole at step 25), the half-mile
+' order, the photo finish, the results and WENT BROKE, the grandstand,
+' rails, numbered lanes and finish line.
+'
+' Liberties:
+' - Honest odds. In the original the odds were drawn at random and every
+'   horse ran alike, so the longest odds were always the best bet (a WIN
+'   on a 15 TO 1 horse paid back 2.6 times the stake on average): betting
+'   the same way every race beat the game. Here each horse has a strength
+'   (its share of the random steps, 9 to 12) and its odds come from it,
+'   so favourites win more often and long shots pay more, with a small
+'   track take. PLACE pays the odds / 3 and SHOW the odds / 6 (the
+'   original's / 2 and / 3 were worth more than the bet even on
+'   favourites), and TRIFECTA pays (odds+1) x (odds+1) x (odds+1) / 3 of
+'   its three horses, at most the original's 50 TO 1 (a fixed 50 TO 1 on
+'   the three favourites paid four times the stake). A computer check of
+'   every bet (ptsim) gives returns between -25% and +15%: no bet beats
+'   the track for sure.
+' - The original's bugs fixed: a TRIFECTA was checked against player 1's
+'   and 2's horse numbers, and the finish overwrote the odds of horses 1-3
+'   before the payouts.
+' - Bets are made with the stick (a form: bet, horse(s), amount, place the
+'   bet) instead of typed numbers, with what it would pay shown; bets are
+'   from $10 (or all the player's money, when less) to $1000 a race (the
+'   original took any number, even negative ones). Winnings stop at $60000.
+' - Players are PLAYER 1-4 (no typed names). The race card's horses, a
+'   gliding sprite horse and jockey per lane, galloping, hoof sounds, a
+'   bugle, a bell at the finish, a title tune. Results wait for a button
+'   instead of a delay. After the last race (or when all are broke) a
+'   final standings page names the richest player (the original just
+'   stopped). No play-again question: the house ending.
+'
+' Controls: the stick moves the cursor up and down the bet form and
+' changes a value left and right (hold to repeat, faster after a while);
+' either button moves on / places the bet. Either controller. On the
+' title, up and down choose, left and right set the number of players.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off after a
+' wait, display off. Music first in the sound table; the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes faster than 3 Hz.
+
+const TDirt = 128
+const TDirtl = 129
+const TFin = 130
+const TRail = 131
+const TPole = 132
+const TPoletop = 133
+const TGrass = 134
+const TSky = 135
+const TFlag = 136
+const TFlagy = 137
+const TAwn = 138
+const TCrowd = 139
+const TCrowd2 = 140
+const TSign = 141
+const TNum1 = 142
+const TNum2 = 143
+const TNum3 = 144
+const TNum4 = 145
+const TNum5 = 146
+const TNum6 = 147
+const TRule = 148
+const TShoe = 149
+const TMark = 150
+const TBigP00 = 151
+const TBigP01 = 152
+const TBigP10 = 153
+const TBigP11 = 154
+const TBigO00 = 155
+const TBigO01 = 156
+const TBigO10 = 157
+const TBigO11 = 158
+const TBigS00 = 159
+const TBigS01 = 160
+const TBigS10 = 161
+const TBigS11 = 162
+const TBigT00 = 163
+const TBigT01 = 164
+const TBigT10 = 165
+const TBigT11 = 166
+const TBigI00 = 167
+const TBigI01 = 168
+const TBigI10 = 169
+const TBigI11 = 170
+const TBigM00 = 171
+const TBigM01 = 172
+const TBigM10 = 173
+const TBigM11 = 174
+const TBigE00 = 175
+const TBigE01 = 176
+const TBigE10 = 177
+const TBigE11 = 178
+const SHorse0 = 0
+const SHorse1 = 4
+const SHorse2 = 8
+const SHorse3 = 12
+const SJock0 = 16
+const SJock1 = 20
+const NTiles8 = 408
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndPick = 4
+const SndBad = 5
+const SndBugle = 6
+const SndHoof = 7
+const SndBell = 8
+const SndCash = 9
+const SndLose = 10
+const SndBroke = 11
+const SndWin = 12
+const SndFlash = 13
+const NSpr = 12
+const NRaces = 10
+const Steps = 58
+const HalfStep = 25
+const X0 = 27
+const MaxBet = 1000
+const MaxCash = 60000
+const LaneRow = 8
+const FormRow = 14
+
+' horse strength (9-12) -> its weight in the odds (about (s/9)^10 x 10)
+data QTab bytes
+  10,29,74,178
+end data
+' colours per lane: horse, jockey silks
+data HorseCol bytes
+  6,1,15,6,1,14
+end data
+data SilkCol bytes
+  8,15,4,11,3,13
+end data
+
+' the original's sixty horses, 16 characters each, six a race
+data HNames chars
+  "SEATTLE SLEW    "
+  "SECRETARIAT     "
+  "LIGHTNIN'       "
+  "SLO POKE        "
+  "STREAKER        "
+  "GAMBLER         "
+  "FIREWORKS       "
+  "HOOFER          "
+  "THUNDER         "
+  "SLICK STICK     "
+  "GOLDEN BOY      "
+  "ROCKET          "
+  "BOLD FORBES     "
+  "AFFIRMED        "
+  "GENERAL ASSEMBLY"
+  "DANCERS IMAGE   "
+  "HILL RISE       "
+  "NASHUA          "
+  "GENUINE RISK    "
+  "RIVA RIDGE      "
+  "PENSIVE         "
+  "ASSAULT         "
+  "TIM TAM         "
+  "CARRY BACK      "
+  "JIM FRENCH      "
+  "NO LE HACE      "
+  "BREVITY         "
+  "NASHUA          "
+  "FABIUS          "
+  "ASSAULT         "
+  "MAJESTIC PRINCE "
+  "PENSIVE         "
+  "WORTH           "
+  "OMAHA           "
+  "JET PILOT       "
+  "COUNT TURF      "
+  "DAUBER          "
+  "CROZIER         "
+  "SHAM            "
+  "CARRY BACK      "
+  "PONDER          "
+  "POT O LUCK      "
+  "ADVOCATOR       "
+  "HILL PRINCE     "
+  "SPY SONG        "
+  "MISSTEP         "
+  "ZAL             "
+  "TICKET          "
+  "BALLY ACHE      "
+  "CAPOT           "
+  "CITATION        "
+  "NEEDLES         "
+  "DECIDEDLY       "
+  "SWAPS           "
+  "FORWARD PASS    "
+  "RUMBO           "
+  "BURGOO KING     "
+  "CAVALCADE       "
+  "FLYING EBONY    "
+  "NATIVE DANCER   "
+end data
+
+data KindNames chars
+  "WIN     "
+  "PLACE   "
+  "SHOW    "
+  "TRIFECTA"
+end data
+
+record Bettor:
+  u16 Cash
+  u16 Amt
+  u16 Got
+  u8 Kind
+  u8 H1
+  u8 H2
+  u8 H3
+  u8 Res
+end record
+
+Bettor Pl[4]
+bcd digits 2 RaceNo
+bcd digits 2 Hits[4]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 RaceSeed = 0
+u16 Pays = 0
+u8 Wt[6]
+u8 Od[6]
+u8 Pos[6]
+u8 Dx[6]
+u8 Gal[6]
+u8 Fin[3]
+u8 Half[3]
+u8 NFin = 0
+u8 NHalf = 0
+u8 WSum = 0
+u8 Race = 0
+u8 NP = 1
+u8 Cur = 0
+u8 Field = 0
+u8 Stage = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Asking = 0
+u8 Running = 0
+u8 Over = 0
+u8 TriP = 0
+' input
+u8 J1 = 0
+u8 Pj = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 LastDir = 0
+u8 Rep = 0
+u8 Held = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Hi = 0
+u8 Li = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PtSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Stage = 1
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewMeet
+
+race_loop:
+  inc Race
+  inc RaceNo
+  SetupRace
+  CardPage
+  for Pi = 0 to 3
+    if Pi < NP then
+      if Pl[Pi].Cash > 0 then BetForm(Pi)
+    end if
+  next
+  RunRace
+  ResultsPage
+  if Over = 1 then goto meet_end
+  if Race >= NRaces then goto meet_end
+  WaitButton(21)
+  goto race_loop
+
+meet_end:
+  WaitButton(21)
+  FinalPage
+  Stage = 6
+  Pause(60)
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the meeting
+
+sub NewMeet:
+  Race = 0
+  RaceNo = 0
+  Over = 0
+  for Pi = 0 to 3
+    Pl[Pi].Cash = 500
+    Pl[Pi].Amt = 0
+    Pl[Pi].Got = 0
+    Pl[Pi].Res = 0
+    Hits[Pi] = 0
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a horse's odds from the strengths of the field (TO 1, 1-15)
+function OddsOf(u8 Ho) as u8
+  u16 Sq = 0
+  u16 Me = 0
+  u16 Ra = 0
+  u8 Ok = 0
+  for Ok = 0 to 5
+    Sq = Sq + QTab[Wt[Ok] - 9]
+  next
+  Me = QTab[Wt[Ho] - 9]
+  Ra = Sq * 19 / (Me * 20)
+  if Ra < 2 then return 1
+  if Ra > 16 then return 15
+  return Ra - 1
+
+sub SetupRace:
+  WSum = 0
+  for Hi = 0 to 5
+    Rand
+    Wt[Hi] = Rs % 4 + 9
+    WSum = WSum + Wt[Hi]
+    Pos[Hi] = 0
+    Dx[Hi] = X0
+    Gal[Hi] = Hi
+  next
+  for Hi = 0 to 5
+    Od[Hi] = OddsOf(Hi)
+  next
+  NFin = 0
+  NHalf = 0
+  for Pi = 0 to 3
+    Pl[Pi].Res = 0
+    Pl[Pi].Got = 0
+    Pl[Pi].Amt = 0
+  next
+  return
+end sub
+
+' the trifecta's odds for three horses: (o+1)^3 / 3, at most 50
+function TriOdds(u8 A, u8 B, u8 E) as u8
+  u16 Pr = 0
+  Pr = Od[A] + 1
+  Pr = Pr * (Od[B] + 1)
+  Pr = Pr * (Od[E] + 1) / 3
+  if Pr > 50 then Pr = 50
+  if Pr < 1 then Pr = 1
+  return Pr
+
+' what player Pn's bet pays when it comes in (the winnings, stake kept)
+function PayOf(u8 Pn) as u16
+  u16 Am = 0
+  u8 Kd = 0
+  u8 Ho = 0
+  Am = Pl[Pn].Amt
+  Kd = Pl[Pn].Kind
+  Ho = Pl[Pn].H1
+  select case Kd
+  case 0
+    return Am * Od[Ho]
+  case 1
+    return Am * Od[Ho] / 3
+  case 2
+    return Am * Od[Ho] / 6
+  case else
+    return Am * TriOdds(Ho, Pl[Pn].H2, Pl[Pn].H3)
+  end select
+  return 0
+
+' 1 when player Pn's bet came in
+function BetWon(u8 Pn) as u8
+  u8 Ho = 0
+  Ho = Pl[Pn].H1
+  select case Pl[Pn].Kind
+  case 0
+    if Fin[0] = Ho then return 1
+  case 1
+    if Fin[0] = Ho or Fin[1] = Ho then return 1
+  case 2
+    if Fin[0] = Ho or Fin[1] = Ho or Fin[2] = Ho then return 1
+  case else
+    if Fin[0] = Ho then
+      if Fin[1] = Pl[Pn].H2 then
+        if Fin[2] = Pl[Pn].H3 then return 1
+      end if
+    end if
+  end select
+  return 0
+
+' settle every bet; Over = 1 when everyone is broke
+sub Settle:
+  u16 Gain = 0
+  u16 Room = 0
+  u8 Alive = 0
+  for Pi = 0 to 3
+    if Pi < NP then
+      if Pl[Pi].Amt > 0 then
+        if BetWon(Pi) = 1 then
+          Gain = PayOf(Pi)
+          Room = MaxCash - Pl[Pi].Cash
+          if Gain > Room then Gain = Room
+          Pl[Pi].Cash = Pl[Pi].Cash + Gain
+          Pl[Pi].Got = Gain
+          Pl[Pi].Res = 1
+          inc Hits[Pi]
+        else
+          Pl[Pi].Cash = Pl[Pi].Cash - Pl[Pi].Amt
+          Pl[Pi].Res = 2
+          if Pl[Pi].Cash = 0 then Pl[Pi].Res = 3
+        end if
+      else
+        Pl[Pi].Res = 4
+      end if
+      if Pl[Pi].Cash > 0 then inc Alive
+    end if
+  next
+  Over = 0
+  if Alive = 0 then Over = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the race
+
+sub RaceStep:
+  u8 Ra = 0
+  u8 Ho = 0
+  Rand
+  Ra = Rs % WSum
+  Ho = 0
+  while Ra >= Wt[Ho]
+    Ra = Ra - Wt[Ho]
+    inc Ho
+  end while
+  if Pos[Ho] < Steps then
+    inc Pos[Ho]
+    if Pos[Ho] = HalfStep then
+      if NHalf < 3 then
+        Half[NHalf] = Ho
+        inc NHalf
+        if NHalf = 3 then ShowHalf
+      end if
+    end if
+    if Pos[Ho] = Steps then
+      Fin[NFin] = Ho
+      inc NFin
+      play sound SndBell
+    end if
+  end if
+  return
+end sub
+
+sub ShowHalf:
+  print at 2,21, "AT THE HALF:"
+  for Li = 0 to 2
+    put char TNum1 + Half[Li] at Li * 2 + 15,21
+  next
+  return
+end sub
+
+' each horse glides toward its place on the track; finishers run on
+sub MoveHorses:
+  u8 Want = 0
+  u8 Hx = 0
+  u8 Fr = 0
+  u8 Sy = 0
+  u8 Sp = 0
+  for Hi = 0 to 5
+    Want = Pos[Hi] * 3 + X0
+    Hx = Dx[Hi]
+    if Pos[Hi] = Steps then Want = 210
+    if Hx < Want then inc Hx
+    Dx[Hi] = Hx
+    if Running = 1 or Hx < Want then
+      inc Gal[Hi]
+    end if
+    Fr = (Gal[Hi] >> 2) & 3
+    Sy = Hi * 16 + 63
+    Sp = Hi * 2
+    set sprite Sp to Sy,Hx,SJock0 + (Fr & 1) * 4,SilkCol[Hi]
+    set sprite Sp + 1 to Sy,Hx,SHorse0 + Fr * 4,HorseCol[Hi]
+  next
+  update sprites
+  return
+end sub
+
+sub RunRace:
+  u8 Lag = 0
+  NewScreen
+  DrawTrack
+  Running = 0
+  MoveHorses
+  ShowScreen
+  Stage = 4
+  print at 2,21, "AT THE POST..."
+  play sound SndBugle
+  Pause(90)
+  fill 32 count 28 at 2,21
+  print at 2,21, "THEY'RE OFF!"
+  Running = 1
+  RaceSeed = Rs
+  do
+    Frame1
+    if Tick & 1 then RaceStep
+    if Tick & 7 = 0 then play sound SndHoof
+    MoveHorses
+    if Tick = 120 then
+      if NHalf < 3 then fill 32 count 12 at 2,21
+    end if
+  loop until NFin = 3
+  ' the rest run a little more
+  Running = 0
+  for Lag = 1 to 50
+    Frame1
+    MoveHorses
+  next
+  ' photo finish: a camera flash, then the words, slowly changing colour
+  fill 32 count 28 at 2,22
+  play sound SndFlash
+  backdrop white
+  Pause(6)
+  backdrop black
+  for Lag = 0 to 5
+    print at 9,22, "PHOTO  FINISH"
+    Pause(12)
+    fill 32 count 13 at 9,22
+    Pause(6)
+  next
+  print at 9,22, "PHOTO  FINISH"
+  Pause(30)
+  return
+end sub
+
+sub DrawTrack:
+  u8 Ry = 0
+  for Li = 0 to 31
+    if Li & 2 then
+      put char TFlag at Li,1
+    else
+      put char TSky at Li,1
+    end if
+    put char TAwn at Li,2
+    if Li & 1 then
+      put char TCrowd at Li,3
+      put char TCrowd2 at Li,4
+    else
+      put char TCrowd2 at Li,3
+      put char TCrowd at Li,4
+    end if
+  next
+  put char TFlagy at 0,1
+  put char TFlagy at 30,1
+  fill TSign count 32 at 0,5
+  print at 9,5, "ROLLING DOWNS"
+  fill TGrass count 32 at 0,6
+  fill TRail count 32 at 0,7
+  fill TRail count 32 at 0,20
+  ' the half-mile pole: where a horse's nose is at step 25
+  put char TPoletop at 14,6
+  put char TPole at 14,7
+  put char TPole at 14,20
+  for Li = 0 to 5
+    Ry = Li * 2 + LaneRow
+    fill TDirt count 32 at 0,Ry
+    fill TDirtl count 32 at 0,Ry + 1
+    put char TNum1 + Li at 2,Ry
+    put char TFin at 27,Ry
+    put char TFin at 27,Ry + 1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the race card and the bets
+
+sub ShowName(u8 Ho, u8 Nx, u8 Ny):
+  u16 Off = 0
+  Off = Race - 1
+  Off = Off * 6 + Ho
+  Off = Off * 16
+  put HNames + Off count 16 at Nx,Ny
+  return
+end sub
+
+' money at Mx,My as $ and the figure, no leading zeros, Nw columns cleared
+sub ShowMoney(u16 Mv, u8 Mx, u8 My):
+  u8 Nd = 1
+  fill 32 count 6 at Mx,My
+  put char 36 at Mx,My
+  if Mv >= 10 then Nd = 2
+  if Mv >= 100 then Nd = 3
+  if Mv >= 1000 then Nd = 4
+  if Mv >= 10000 then Nd = 5
+  select case Nd
+  case 1
+    print Mv at Mx + 1,My digits 1
+  case 2
+    print Mv at Mx + 1,My digits 2
+  case 3
+    print Mv at Mx + 1,My digits 3
+  case 4
+    print Mv at Mx + 1,My digits 4
+  case else
+    print Mv at Mx + 1,My digits 5
+  end select
+  return
+end sub
+
+sub ShowOdds(u8 Ho, u8 Ox, u8 Oy):
+  V = Od[Ho]
+  if V < 10 then
+    print V at Ox + 1,Oy digits 1
+    put char 32 at Ox,Oy
+  else
+    print V at Ox,Oy digits 2
+  end if
+  print at Ox + 2,Oy, "-1"
+  return
+end sub
+
+sub CardPage:
+  NewScreen
+  print at 2,1, "RACE"
+  print RaceNo at 7,1
+  print at 10,1, "OF 10"
+  put char TShoe at 26,1
+  put char TShoe at 28,1
+  fill TRule count 28 at 2,2
+  print at 2,3, "NO  HORSE"
+  print at 24,3, "ODDS"
+  for Hi = 0 to 5
+    Y = Hi + 4
+    put char TNum1 + Hi at 3,Y
+    ShowName(Hi, 6, Y)
+    ShowOdds(Hi, 24, Y)
+  next
+  print at 2,11, "TRIFECTA PAYS UP TO 50-1"
+  fill TRule count 28 at 2,12
+  ShowScreen
+  Stage = 3
+  return
+end sub
+
+' the arrows by the horses chosen on the form
+sub ShowMarks:
+  for Li = 0 to 5
+    put char 32 at 2,Li + 4
+  next
+  put char TMark at 2,Pl[Cur].H1 + 4
+  if Pl[Cur].Kind = 3 then
+    put char TMark at 2,Pl[Cur].H2 + 4
+    put char TMark at 2,Pl[Cur].H3 + 4
+  end if
+  return
+end sub
+
+sub ShowForm:
+  u8 Kd = 0
+  u16 Ko = 0
+  Kd = Pl[Cur].Kind
+  Ko = Kd * 8
+  put KindNames + Ko count 8 at 13,FormRow + 1
+  if Kd = 3 then
+    print at 4,FormRow + 2, "FIRST "
+    print at 4,FormRow + 3, "SECOND"
+    print at 4,FormRow + 4, "THIRD "
+    put char TNum1 + Pl[Cur].H2 at 13,FormRow + 3
+    put char TNum1 + Pl[Cur].H3 at 13,FormRow + 4
+  else
+    print at 4,FormRow + 2, "HORSE "
+    fill 32 count 26 at 4,FormRow + 3
+    fill 32 count 26 at 4,FormRow + 4
+  end if
+  put char TNum1 + Pl[Cur].H1 at 13,FormRow + 2
+  ShowMoney(Pl[Cur].Amt, 13, FormRow + 5)
+  ' what it pays
+  Pays = PayOf(Cur)
+  print at 4,FormRow + 6, "PAYS"
+  ShowMoney(Pays, 13, FormRow + 6)
+  print at 20,FormRow + 6, "    "
+  if Kd = 3 then
+    TriP = TriOdds(Pl[Cur].H1, Pl[Cur].H2, Pl[Cur].H3)
+    print TriP at 20,FormRow + 6 digits 2
+    print at 22,FormRow + 6, "-1"
+  end if
+  ShowMarks
+  ' the cursor
+  for Li = 1 to 7
+    put char 32 at 2,FormRow + Li
+  next
+  J = Field + 1
+  if Field = 5 then J = 8
+  put char 62 at 2,FormRow + J
+  return
+end sub
+
+' the stick: Held = the direction (bit 1 up, 2 down, 4 left, 8 right)
+' when it acts this frame (at once, then repeated); 0 otherwise
+sub StickRep:
+  D = Pj & 15
+  Held = 0
+  if D = 0 then
+    LastDir = 0
+    return
+  end if
+  if D <> LastDir then
+    Held = D
+    Rep = 16
+    K = 0
+  else
+    dec Rep
+    if Rep = 0 then
+      Held = D
+      Rep = 4
+      if K < 250 then inc K
+    end if
+  end if
+  LastDir = D
+  return
+end sub
+
+function NextHorse(u8 Ho, u8 Up) as u8
+  if Up = 1 then
+    if Ho = 5 then return 0
+    return Ho + 1
+  end if
+  if Ho = 0 then return 5
+  return Ho - 1
+
+' the amount changes by 10, by 100 after a long hold; it stays between
+' $10 (or all the cash, when less) and the cash, at most $1000
+sub ChangeAmt(u8 More):
+  u16 Am = 0
+  u16 Ca = 0
+  u16 Lo = 10
+  u16 Hi16 = 0
+  u16 St = 10
+  Am = Pl[Cur].Amt
+  Ca = Pl[Cur].Cash
+  Hi16 = Ca
+  if Hi16 > MaxBet then Hi16 = MaxBet
+  if Ca < Lo then Lo = Ca
+  if K >= 8 then St = 100
+  if More = 1 then
+    Am = Am + St
+    if Am > Hi16 then Am = Hi16
+  else
+    if Am < Lo + St then
+      Am = Lo
+    else
+      Am = Am - St
+    end if
+  end if
+  Pl[Cur].Amt = Am
+  return
+end sub
+
+' the player Pn's bet, made on the form
+sub BetForm(u8 Pn):
+  u8 Rt = 0
+  u8 Ok = 0
+  Cur = Pn
+  Pl[Cur].Kind = 0
+  Pl[Cur].H1 = 0
+  Pl[Cur].H2 = 1
+  Pl[Cur].H3 = 2
+  Pl[Cur].Amt = 10
+  if Pl[Cur].Cash < 10 then Pl[Cur].Amt = Pl[Cur].Cash
+  Field = 0
+  for Li = 13 to 22
+    fill 32 count 28 at 2,Li
+  next
+  print at 2,13, "PLAYER"
+  put char Cur + 49 at 9,13
+  print at 12,13, "HAS"
+  ShowMoney(Pl[Cur].Cash, 16, 13)
+  print at 4,FormRow + 1, "BET"
+  print at 4,FormRow + 5, "AMOUNT"
+  print at 4,FormRow + 8, "PLACE THE BET"
+  ShowForm
+  play sound SndPick
+  ReadPad
+  LastDir = 0
+bf_loop:
+  Asking = 1
+  Frame1
+  inc Rs
+  ReadPad
+  StickRep
+  if Held & 3 then
+    ' up and down move along the form (no 2ND/3RD unless TRIFECTA)
+    if Held & 1 then
+      if Field > 0 then dec Field
+      if Pl[Cur].Kind <> 3 then
+        if Field = 3 then Field = 1
+      end if
+    else
+      if Field < 5 then inc Field
+      if Pl[Cur].Kind <> 3 then
+        if Field = 2 then Field = 4
+      end if
+    end if
+    play sound SndTick
+    ShowForm
+  end if
+  if Held & 12 then
+    Rt = 0
+    if Held & 8 then Rt = 1
+    select case Field
+    case 0
+      if Rt = 1 then
+        Pl[Cur].Kind = (Pl[Cur].Kind + 1) & 3
+      else
+        Pl[Cur].Kind = (Pl[Cur].Kind + 3) & 3
+      end if
+    case 1
+      Pl[Cur].H1 = NextHorse(Pl[Cur].H1, Rt)
+    case 2
+      Pl[Cur].H2 = NextHorse(Pl[Cur].H2, Rt)
+    case 3
+      Pl[Cur].H3 = NextHorse(Pl[Cur].H3, Rt)
+    case 4
+      ChangeAmt(Rt)
+    end select
+    if Field < 5 then
+      play sound SndTick
+      ShowForm
+    end if
+  end if
+  if Press = 0 then goto bf_loop
+  if Field < 5 then
+    inc Field
+    if Pl[Cur].Kind <> 3 then
+      if Field = 2 then Field = 4
+    end if
+    play sound SndTick
+    ShowForm
+    goto bf_loop
+  end if
+  ' a trifecta needs three different horses
+  Ok = 1
+  if Pl[Cur].Kind = 3 then
+    if Pl[Cur].H1 = Pl[Cur].H2 then Ok = 0
+    if Pl[Cur].H1 = Pl[Cur].H3 then Ok = 0
+    if Pl[Cur].H2 = Pl[Cur].H3 then Ok = 0
+  end if
+  if Ok = 0 then
+    print at 4,22, "PICK 3 DIFFERENT HORSES"
+    play sound SndBad
+    Pause(60)
+    fill 32 count 26 at 4,22
+    goto bf_loop
+  end if
+  Asking = 0
+  play sound SndPick
+  print at 4,22, "BET PLACED"
+  Pause(30)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' results
+
+sub ResultsPage:
+  u8 Ry = 0
+  Settle
+  NewScreen
+  print at 2,1, "RACE"
+  print RaceNo at 7,1
+  print at 10,1, "RESULTS"
+  fill TRule count 28 at 2,2
+  print at 2,3, "WIN"
+  print at 2,4, "PLACE"
+  print at 2,5, "SHOW"
+  for Li = 0 to 2
+    Ry = Li + 3
+    put char TNum1 + Fin[Li] at 8,Ry
+    ShowName(Fin[Li], 10, Ry)
+    ShowOdds(Fin[Li], 26, Ry)
+  next
+  print at 2,7, "AT THE HALF:"
+  for Li = 0 to 2
+    put char TNum1 + Half[Li] at Li * 2 + 15,7
+  next
+  fill TRule count 28 at 2,8
+  for Pi = 0 to 3
+    if Pi < NP then
+      Ry = Pi * 3 + 10
+      print at 2,Ry, "PLAYER"
+      put char Pi + 49 at 9,Ry
+      select case Pl[Pi].Res
+      case 1
+        print at 11,Ry, "WON"
+        ShowMoney(Pl[Pi].Got, 15, Ry)
+      case 2
+        print at 11,Ry, "LOST"
+        ShowMoney(Pl[Pi].Amt, 16, Ry)
+      case 3
+        print at 11,Ry, "WENT BROKE"
+      case else
+        print at 11,Ry, "IS BROKE"
+      end select
+      if Pl[Pi].Res < 3 then
+        print at 4,Ry + 1, "NOW HAS"
+        ShowMoney(Pl[Pi].Cash, 12, Ry + 1)
+      end if
+    end if
+  next
+  ShowScreen
+  Stage = 5
+  for Pi = 0 to 3
+    if Pi < NP then
+      if Pl[Pi].Res = 1 then
+        play sound SndCash
+      end if
+    end if
+  next
+  if Over = 1 then play sound SndBroke
+  return
+end sub
+
+sub FinalPage:
+  u8 Best = 0
+  u8 Ties = 0
+  u8 Ry = 0
+  NewScreen
+  print at 2,1, "THE MEETING IS OVER"
+  fill TRule count 28 at 2,2
+  Best = 0
+  for Pi = 0 to 3
+    if Pi < NP then
+      Ry = Pi * 2 + 4
+      print at 2,Ry, "PLAYER"
+      put char Pi + 49 at 9,Ry
+      ShowMoney(Pl[Pi].Cash, 12, Ry)
+      print Hits[Pi] at 20,Ry
+      print at 23,Ry, "HITS"
+      if Pl[Pi].Cash > Pl[Best].Cash then Best = Pi
+    end if
+  next
+  Ties = 0
+  for Pi = 0 to 3
+    if Pi < NP then
+      if Pl[Pi].Cash = Pl[Best].Cash then inc Ties
+    end if
+  next
+  if Pl[Best].Cash = 0 then
+    print at 2,14, "EVERYONE WENT BROKE."
+    print at 2,15, "THE TRACK WINS!"
+    play sound SndBroke
+  else
+    if NP = 1 then
+      if Pl[0].Cash > 500 then
+        print at 2,14, "YOU BEAT THE TRACK!"
+        play sound SndWin
+      else
+        print at 2,14, "THE TRACK WINS THIS TIME."
+        play sound SndLose
+      end if
+    else
+      if Ties > 1 then
+        print at 2,14, "A TIE AT THE TOP!"
+      else
+        print at 2,14, "PLAYER"
+        put char Best + 49 at 9,14
+        print at 11,14, "GOES HOME"
+        print at 2,15, "THE BIG WINNER!"
+      end if
+      play sound SndWin
+    end if
+  end if
+  ShowScreen
+  return
+end sub
+
+sub WaitButton(u8 Wy):
+  print at 8,Wy, "PRESS THE BUTTON"
+  ReadPad
+  Asking = 2
+wb_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Press = 0 then goto wb_loop
+  Asking = 0
+  play sound SndTick
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Nf):
+  u8 Pk = 0
+  for Pk = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up or joypad(2).up then J1 = J1 | 1
+  if joypad(1).down or joypad(2).down then J1 = J1 | 2
+  if joypad(1).left or joypad(2).left then J1 = J1 | 4
+  if joypad(1).right or joypad(2).right then J1 = J1 | 8
+  if joypad(1).fire or joypad(2).fire then J1 = J1 | 16
+  Pj = J1
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 11
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowPlayers:
+  put char NP + 48 at 15,14
+  return
+end sub
+
+sub ShowMenu:
+  for J = 14 to 16
+    put char 32 at 4,J
+  next
+  J = Menu + 14
+  put char 62 at 4,J
+  return
+end sub
+
+' the title: big letters, a horse galloping by, the tune once, the menu
+sub TitlePage:
+  u8 Tx = 16
+  u8 Tf = 0
+  NewScreen
+  ' P O S T   T I M E in 2 x 2 letters
+  put char TBigP00 at 7,3
+  put char TBigP01 at 8,3
+  put char TBigP10 at 7,4
+  put char TBigP11 at 8,4
+  put char TBigO00 at 9,3
+  put char TBigO01 at 10,3
+  put char TBigO10 at 9,4
+  put char TBigO11 at 10,4
+  put char TBigS00 at 11,3
+  put char TBigS01 at 12,3
+  put char TBigS10 at 11,4
+  put char TBigS11 at 12,4
+  put char TBigT00 at 13,3
+  put char TBigT01 at 14,3
+  put char TBigT10 at 13,4
+  put char TBigT11 at 14,4
+  put char TBigT00 at 16,3
+  put char TBigT01 at 17,3
+  put char TBigT10 at 16,4
+  put char TBigT11 at 17,4
+  put char TBigI00 at 18,3
+  put char TBigI01 at 19,3
+  put char TBigI10 at 18,4
+  put char TBigI11 at 19,4
+  put char TBigM00 at 20,3
+  put char TBigM01 at 21,3
+  put char TBigM10 at 20,4
+  put char TBigM11 at 21,4
+  put char TBigE00 at 22,3
+  put char TBigE01 at 23,3
+  put char TBigE10 at 22,4
+  put char TBigE11 at 23,4
+  print at 9,6, "BY BOB LLORET"
+  print at 9,7, "AHOY! JUNE 1984"
+  fill TRail count 32 at 0,9
+  fill TDirt count 32 at 0,10
+  fill TDirtl count 32 at 0,11
+  fill TRail count 32 at 0,12
+  print at 6,14, "PLAYERS"
+  print at 6,15, "START RACING"
+  print at 6,16, "CREDITS"
+  print at 14,14, "<"
+  print at 16,14, ">"
+  ShowPlayers
+  ShowMenu
+  print at 2,19, "BET ON SIX HORSES IN TEN"
+  print at 2,20, "RACES. EVERYONE STARTS WITH"
+  print at 2,21, "$500: WHO GOES HOME RICHEST?"
+  ShowScreen
+  Stage = 2
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 620
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ' the horse gallops across the strip, again and again
+  inc Tf
+  if Tf & 1 then
+    inc Tx
+    if Tx > 220 then Tx = 16
+  end if
+  V = (Tf >> 2) & 3
+  set sprite 0 to 79,Tx,SJock0 + (V & 1) * 4,8
+  set sprite 1 to 79,Tx,SHorse0 + V * 4,6
+  update sprites
+  ReadPad
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if V & 2 then
+        if Menu < 2 then inc Menu
+      end if
+      if Menu = 0 then
+        if V & 4 then
+          if NP > 1 then dec NP
+        end if
+        if V & 8 then
+          if NP < 4 then inc NP
+        end if
+        ShowPlayers
+      end if
+      ShowMenu
+      play sound SndTick
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 2 then
+    Stage = 1
+    CreditsPage
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,1, "POST TIME"
+  print at 2,3, "BASED ON POST TIME BY BOB"
+  print at 2,4, "LLORET, AHOY! JUNE 1984"
+  print at 2,5, "(COMMODORE 64)."
+  print at 2,7, "ONE TO FOUR PLAYERS BET ON"
+  print at 2,8, "TEN RACES OF SIX HORSES:"
+  print at 2,9, "WIN, PLACE, SHOW OR"
+  print at 2,10, "TRIFECTA. THE ODDS HERE"
+  print at 2,11, "FOLLOW EACH HORSE'S FORM."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: DOWN THE STRETCH"
+  print at 2,20, "(ORIGINAL)"
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+
+data TilePat bytes
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$02,$00,$20,$00,$00,$00,$11
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$22,$22,$22,$00,$00
+  $18,$18,$00,$18,$C5,$18,$18,$00
+  $00,$18,$C3,$18,$18,$18,$18,$18
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$E1,$1C,$18,$10,$10,$10,$00
+  $10,$E1,$1C,$18,$10,$10,$10,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$99,$00
+  $00,$44,$11,$44,$00,$22,$88,$22
+  $00,$22,$88,$22,$00,$42,$18,$42
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$38,$18,$18,$18,$C3,$00
+  $00,$C3,$99,$0C,$18,$30,$81,$00
+  $00,$C3,$06,$1C,$06,$99,$C3,$00
+  $00,$0C,$1C,$2C,$81,$0C,$0C,$00
+  $00,$81,$60,$83,$06,$99,$C3,$00
+  $00,$C3,$60,$83,$99,$99,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$83,$C6,$82,$C6,$44,$C6,$00
+  $00,$20,$30,$38,$C3,$38,$30,$20
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $E0,$18,$18,$18,$18,$18,$18,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$18
+  $00,$E0,$E0,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$07,$07,$00
+  $18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$07,$07,$18,$18,$18,$18,$07
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $07,$00,$00,$00,$00,$E0,$E0,$00
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$E0,$E0,$01,$01,$01,$01,$01
+  $00,$07,$07,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$07,$07,$01,$01,$01,$01,$01
+  $00,$E0,$E0,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$07,$07,$00
+  $80,$80,$80,$80,$80,$E0,$E0,$00
+  $00,$18,$18,$E1,$E1,$19,$19,$19
+  $00,$18,$18,$87,$87,$98,$98,$98
+  $19,$18,$18,$18,$18,$18,$18,$00
+  $98,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $E0,$00,$00,$00,$00,$07,$07,$00
+end data
+data TileCol bytes
+  $0A,$6A,$0A,$6A,$0A,$6A,$0A,$0A
+  $0A,$6A,$0A,$6A,$0A,$0A,$0A,$AB
+  $1F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $02,$0F,$0F,$F2,$F2,$F2,$02,$02
+  $82,$8F,$0F,$82,$2F,$82,$F2,$02
+  $02,$F2,$2F,$82,$F2,$82,$F2,$82
+  $02,$C2,$02,$C2,$02,$C2,$02,$02
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $85,$58,$85,$85,$85,$85,$85,$0E
+  $B5,$5B,$B5,$B5,$B5,$B5,$B5,$0E
+  $8F,$8F,$8F,$8F,$8F,$8F,$18,$01
+  $01,$91,$19,$91,$01,$F1,$1F,$F1
+  $01,$B1,$1B,$B1,$01,$71,$17,$71
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $08,$F8,$F8,$F8,$F8,$F8,$8F,$08
+  $0F,$F1,$F1,$1F,$1F,$1F,$F1,$0F
+  $04,$4F,$F4,$F4,$F4,$4F,$4F,$04
+  $0B,$1B,$1B,$1B,$B1,$1B,$1B,$0B
+  $03,$31,$13,$31,$13,$31,$31,$03
+  $0D,$DF,$FD,$DF,$DF,$DF,$DF,$0D
+  $01,$01,$01,$08,$0B,$01,$01,$01
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+  $01,$1B,$1B,$B1,$B1,$B1,$B1,$1B
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $1B,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $B1,$01,$01,$01,$01,$01,$01,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$1B,$1B,$01,$01,$01,$01,$B1
+  $B1,$01,$01,$01,$01,$1A,$1A,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$1B,$1B,$B1,$B1,$B1,$B1,$B1
+  $01,$1B,$1B,$B1,$B1,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$B1,$B1,$1B,$1B,$B1,$B1,$B1
+  $01,$B1,$B1,$1B,$1B,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$1B,$1B,$B1,$B1,$B1,$B1,$1B
+  $01,$1B,$1B,$01,$01,$01,$01,$B1
+  $1B,$A1,$A1,$A1,$A1,$1A,$1A,$01
+  $B1,$01,$01,$01,$01,$1A,$1A,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$A0,$7F,$7F,$3F,$3F,$30,$60,$C0,$80
+  $00,$00,$00,$00,$04,$0E,$1F,$3B,$E0,$E0,$E0,$E0,$60,$30,$18,$08
+  $00,$00,$00,$00,$00,$00,$00,$A0,$7F,$7F,$3F,$3F,$18,$19,$09,$19
+  $00,$00,$00,$00,$04,$0E,$1F,$3B,$E0,$E0,$E0,$E0,$C0,$80,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$A0,$7F,$7F,$3F,$3F,$30,$28,$44,$02
+  $00,$00,$00,$00,$04,$0E,$1F,$3B,$E0,$E0,$E0,$E0,$60,$A0,$90,$00
+  $00,$00,$00,$00,$00,$00,$00,$A0,$7F,$7F,$3F,$3F,$18,$28,$24,$20
+  $00,$00,$00,$00,$04,$0E,$1F,$3B,$E0,$E0,$E0,$E0,$E0,$90,$88,$80
+  $00,$00,$03,$03,$07,$07,$03,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+PtTick:
+    db $40,$40,$30,$02,$50
+PtPick:
+    db $40,$71,$20,$02,$40,$55,$20,$04,$50
+PtBad:
+    db $40,$CD,$12,$06,$40,$FF,$F3,$03,$40,$F9,$12,$0A,$50
+PtBugle:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$0A,$40,$FF,$F3,$04,$40,$8F,$10,$06
+    db $40,$6B,$10,$10,$50
+PtHoof:
+    db $00,$00,$45,$01,$00,$00,$76,$02,$10
+PtBell:
+    db $40,$47,$10,$03,$40,$5F,$20,$03,$40,$47,$10,$03,$40,$5F,$30,$0C,$50
+PtCash:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$20,$0C,$50
+PtLose:
+    db $40,$1D,$21,$0A,$40,$2E,$21,$0A,$40,$53,$21,$14,$50
+PtBroke:
+    db $40,$53,$21,$0C,$40,$7C,$21,$0C,$40,$AB,$21,$0C,$40,$3B,$22,$1E,$50
+PtWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$1E
+    db $50
+PtFlash:
+    db $00,$00,$04,$02,$00,$00,$44,$06,$10
+
+PtSoundTable:
+    dw PtTuneMel,$702B
+    dw PtTuneBass,$7035
+    dw PtTick,$7049
+    dw PtPick,$7049
+    dw PtBad,$7049
+    dw PtBugle,$7049
+    dw PtHoof,$703F
+    dw PtBell,$7049
+    dw PtCash,$7049
+    dw PtLose,$7049
+    dw PtBroke,$7049
+    dw PtWin,$7049
+    dw PtFlash,$703F
+; Down the Stretch (original)
+; Tiny Sound, 8 frames per step
+PtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$25,$28,$01,$25,$2D,$01,$01,$28,$01,$01
+    db $2A,$01,$28,$26,$01,$25,$23,$01,$01,$01,$01,$01,$23,$01,$26,$2A
+    db $01,$26,$2C,$01,$01,$28,$01,$01,$2A,$01,$28,$26,$01,$23,$25,$01
+    db $01,$01,$01,$01,$21,$01,$25,$28,$01,$2D,$2A,$01,$26,$23,$01,$26
+    db $28,$01,$25,$23,$01,$20,$21,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01
+    db $FF
+PtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$09,$01,$10,$09,$01,$10,$0D,$01,$10
+    db $0E,$01,$09,$0E,$01,$09,$10,$01,$0B,$10,$01,$08,$10,$01,$0B,$10
+    db $01,$0B,$10,$01,$0B,$08,$01,$0B,$0E,$01,$09,$0E,$01,$09,$09,$01
+    db $10,$09,$01,$10,$09,$01,$10,$0D,$01,$10,$0E,$01,$09,$0B,$01,$0E
+    db $10,$01,$0B,$10,$01,$08,$09,$01,$10,$09,$01,$01,$00,$01,$01,$01
+    db $01,$01
+    db $FF
+}

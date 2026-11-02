@@ -1,0 +1,1389 @@
+cartridge "SLITHER/AHOY! NOV 1985/2026"
+
+' SLITHER
+' A ColecoVision game based on "Slither", Ahoy! November 1985 (Commodore
+' 64 BASIC type-in; the program and the disk do not name its author).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a snake slithers through the forty rooms of a castle and never
+' stops. Steer it with the stick; it leaves its body behind it wherever it
+' goes, and running into a wall or into its own trail costs a life. Each
+' room hides as many treasures as the difficulty (1 to 5); eat them all to
+' earn the room's bonus and go on to the next room. After room 40 comes a
+' big bonus, extra lives, and the forty rooms again one difficulty higher.
+'
+' From the original (orig/slither.bas): the forty rooms, their names and
+' their walls (the listing's wall lines); the snake never stops and never
+' shrinks, its trail stays until it crashes; a crash wipes the whole trail
+' and the snake starts again at the top left heading right, the treasures
+' it has not eaten stay; difficulty 1-5 = treasures per room and the
+' snake's colour (white, yellow, green, grey, magenta); twelve kinds of
+' treasure, one kind per room (room n has kind n, rooms 12-40 kind 12)
+' worth 10, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 400; the room
+' bonus is the next value (25 .. 500); treasures land on a random empty
+' cell away from the right and bottom walls, never on the start; seven
+' lives, at most nine; after room 40: the twelve values times the
+' difficulty, difficulty + 1 (at most 5), that many more lives; a high score.
+'
+' Liberties: the rooms are scaled from the C64's 38 x 21 field to 26 x 19
+' (every room checked open everywhere, as on the C64); the snake glides a
+' pixel at a time, one cell every 6 frames, which crosses a room in about
+' the time the C64 took; the stick is remembered until the next cell (the
+' C64 read it once a step); pulling straight back is ignored (on the C64 it
+' was an instant crash into the snake's own neck); the trail is drawn in
+' joined pieces; the wipe after a crash sweeps down the room row by row; the
+' walls change colour every room; the room name sits in the top wall; the
+' score is kept in BCD (6 digits); no "play again" question, the title
+' comes back instead; the colour flashing of the crash is left out
+' (nothing flashes).
+'
+' Controls: controller 1 (or 2): the stick steers. On the title, left and
+' right choose the difficulty, up and down START or CREDITS, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFloor = 128
+const TP1 = 129
+const TP2 = 130
+const TP3 = 131
+const TP4 = 132
+const TP5 = 133
+const TP6 = 134
+const TP7 = 135
+const TP8 = 136
+const TP9 = 137
+const TP10 = 138
+const TP11 = 139
+const TP12 = 140
+const TSn0 = 141
+const TSn1 = 142
+const TSn2 = 143
+const TSn3 = 144
+const TSn4 = 145
+const TSn5 = 146
+const TSn6 = 147
+const TSn7 = 148
+const TSn8 = 149
+const TSn9 = 150
+const TSn10 = 151
+const TSn11 = 152
+const TSn12 = 153
+const TSn13 = 154
+const TSn14 = 155
+const TSn15 = 156
+const TW0 = 157
+const TW1 = 158
+const TW2 = 159
+const TW3 = 160
+const TW4 = 161
+const TW5 = 162
+const TW6 = 163
+const TW7 = 164
+const TW8 = 165
+const TW9 = 166
+const TW10 = 167
+const TW11 = 168
+const TW12 = 169
+const TW13 = 170
+const TW14 = 171
+const TW15 = 172
+const TLife = 173
+const TDots = 174
+const SHd00 = 0
+const SHd01 = 4
+const SHd10 = 8
+const SHd11 = 12
+const SHd20 = 16
+const SHd21 = 20
+const SHd30 = 24
+const SHd31 = 28
+const SHx = 32
+const NTiles8 = 376
+const SprBytes = 288
+const RoomBytes = 76
+const StartC = 6
+const StartR = 4
+const SndTuneA = 1
+const SndTuneB = 2
+const SndEat0 = 3
+const SndEat1 = 4
+const SndEat2 = 5
+const SndEat3 = 6
+const SndEat4 = 7
+const SndEat5 = 8
+const SndEat6 = 9
+const SndEat7 = 10
+const SndEat8 = 11
+const SndEat9 = 12
+const SndEat10 = 13
+const SndEat11 = 14
+const SndCrash = 15
+const SndWipe = 16
+const SndClear = 17
+const SndTally = 18
+const SndLife = 19
+const SndStart = 20
+const SndOver = 21
+const StepF = 6
+const NRooms = 40
+
+data DCol bytes 0,1,0,255
+data DRow bytes 255,0,1,0
+data Bit bytes 1,2,4,8
+data BitT bytes 128,64,32,16,8,4,2,1
+data Glide bytes 0,1,3,4,5,7
+data SnakeC bytes 15,10,3,14,13
+data Worth words 10,25,50,75,100,125,150,175,200,250,300,400,500
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $04,$0A,$12,$22,$99,$22,$00,$99
+  $08,$16,$10,$83,$01,$01,$83,$28
+  $00,$C3,$81,$00,$81,$C3,$18,$00
+  $18,$C3,$81,$81,$81,$00,$18,$00
+  $81,$81,$C3,$18,$18,$18,$C3,$81
+  $01,$03,$06,$0C,$18,$87,$30,$60
+  $10,$38,$10,$38,$38,$38,$38,$83
+  $38,$44,$44,$38,$10,$18,$10,$1C
+  $00,$81,$C3,$24,$C3,$24,$81,$00
+  $18,$18,$C3,$42,$42,$42,$C3,$00
+  $00,$92,$45,$01,$45,$01,$01,$00
+  $00,$81,$81,$00,$99,$99,$81,$00
+  $00,$C3,$91,$81,$85,$A1,$C3,$00
+  $81,$81,$91,$81,$85,$A1,$C3,$00
+  $00,$C0,$90,$80,$84,$A0,$C0,$00
+  $81,$80,$90,$80,$84,$A0,$C0,$00
+  $00,$C3,$91,$81,$85,$A1,$81,$81
+  $81,$81,$91,$81,$85,$A1,$81,$81
+  $00,$C0,$90,$80,$84,$A0,$80,$81
+  $81,$80,$90,$80,$84,$A0,$80,$81
+  $00,$03,$11,$01,$05,$21,$03,$00
+  $81,$01,$11,$01,$05,$21,$03,$00
+  $00,$00,$10,$00,$04,$20,$00,$00
+  $81,$00,$10,$00,$04,$20,$00,$00
+  $00,$03,$11,$01,$05,$21,$01,$81
+  $81,$01,$11,$01,$05,$21,$01,$81
+  $00,$00,$10,$00,$04,$20,$00,$81
+  $81,$00,$10,$00,$04,$20,$00,$81
+  $00,$89,$89,$00,$81,$81,$81,$00
+  $08,$89,$89,$00,$81,$81,$81,$00
+  $00,$88,$88,$00,$80,$80,$80,$00
+  $08,$88,$88,$00,$80,$80,$80,$00
+  $00,$89,$89,$00,$81,$81,$81,$00
+  $08,$89,$89,$00,$81,$81,$81,$00
+  $00,$88,$88,$00,$80,$80,$80,$00
+  $08,$88,$88,$00,$80,$80,$80,$00
+  $00,$09,$09,$00,$81,$81,$81,$00
+  $08,$09,$09,$00,$81,$81,$81,$00
+  $00,$08,$08,$00,$80,$80,$80,$00
+  $08,$08,$08,$00,$80,$80,$80,$00
+  $00,$09,$09,$00,$81,$81,$81,$00
+  $08,$09,$09,$00,$81,$81,$81,$00
+  $00,$08,$08,$00,$80,$80,$80,$00
+  $08,$08,$08,$00,$80,$80,$80,$00
+  $00,$C3,$A5,$81,$81,$C3,$18,$24
+  $00,$04,$00,$40,$00,$01,$10,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $C1,$C1,$C1,$C1,$18,$98,$08,$18
+  $C1,$C1,$C1,$18,$18,$18,$18,$81
+  $01,$15,$15,$05,$15,$15,$51,$01
+  $A1,$1B,$1B,$1B,$1B,$0B,$A1,$01
+  $1B,$1B,$1B,$B1,$B1,$B1,$1B,$1B
+  $F1,$F1,$F1,$F1,$F1,$1A,$81,$81
+  $B1,$B1,$81,$F1,$F1,$F1,$F1,$1A
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$1B,$1F,$F1,$1F,$F1,$1B,$01
+  $71,$71,$1B,$B1,$B1,$B1,$1B,$01
+  $01,$B1,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$1A,$A6,$0A,$A6,$A6,$A6,$0A
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$0F,$1F,$0F,$1F,$1F,$0F,$01
+  $1F,$0F,$1F,$0F,$1F,$1F,$0F,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$0F,$1F,$0F,$1F,$1F,$0F,$1F
+  $1F,$0F,$1F,$0F,$1F,$1F,$0F,$1F
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $01,$1F,$1F,$1F,$1F,$1F,$81,$81
+  $01,$41,$01,$41,$01,$41,$41,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$07,$0B,$0F,$0F,$0F,$07,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$D0,$F0,$F0,$F0,$E0,$E0,$00,$00,$00,$00
+  $00,$02,$01,$01,$03,$07,$0B,$0F,$0F,$0F,$07,$07,$00,$00,$00,$00
+  $00,$40,$80,$80,$C0,$E0,$D0,$F0,$F0,$F0,$E0,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0F,$0F,$0F,$0F,$0F,$0F,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$A0,$F0,$F0,$F0,$F0,$A0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0F,$0F,$0F,$0F,$0F,$0F,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$A0,$F2,$FC,$FC,$F2,$A0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$07,$0F,$0F,$0F,$0B,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$F0,$F0,$F0,$D0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$07,$0F,$0F,$0F,$0B,$07,$03,$01,$01,$02,$00
+  $00,$00,$00,$00,$E0,$E0,$F0,$F0,$F0,$D0,$E0,$C0,$80,$80,$40,$00
+  $00,$00,$00,$00,$03,$05,$0F,$0F,$0F,$0F,$05,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F0,$F0,$F0,$F0,$F0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$05,$4F,$3F,$3F,$4F,$05,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F0,$F0,$F0,$F0,$F0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0A,$0D,$0A,$0F,$04,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$D0,$B0,$F0,$20,$E0,$00,$00,$00,$00
+end data
+
+data RoomBits bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,8,16,0
+  0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0
+  0,8,16,0,0,8,16,0,0,8,16,0,0,14,112,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,128,0,0,1,128,0
+  0,1,128,0,0,1,128,0,0,1,128,0,0,1,128,0
+  0,127,254,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,127,254,0,0,1,128,0
+  0,1,128,0,0,1,128,0,0,1,128,0,0,1,128,0
+  0,1,128,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,31,255,128,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,1,255,248,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,64,1,0,0,64,1,0,0,64,1,0,0,64,1,0
+  0,64,1,0,31,252,63,248,0,64,1,0,0,64,1,0
+  0,64,1,0,0,64,1,0,0,64,1,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,127,254,0,0,64,2,0
+  0,64,2,0,0,64,2,0,0,78,114,0,0,72,18,0
+  0,72,18,0,0,72,18,0,0,72,18,0,0,79,242,0
+  0,64,2,0,0,64,2,0,0,124,126,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,64,2,0,0,65,130,0,0,65,130,0
+  0,65,130,0,0,1,128,0,0,1,128,0,0,1,128,0
+  0,1,128,0,0,1,128,0,0,65,130,0,0,65,130,0
+  0,65,130,0,0,64,2,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,1,127,254,128,1,0,0,128,1,127,254,128
+  1,0,0,128,1,0,0,128,1,127,254,128,1,0,0,128
+  1,0,0,128,1,127,254,128,1,0,0,128,1,127,254,128
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  3,255,255,192,2,0,0,0,2,0,0,0,3,255,255,192
+  0,0,0,64,0,0,0,64,0,0,0,64,3,255,255,192
+  2,0,0,0,2,0,0,0,3,255,255,192,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0
+  0,0,2,0,0,0,2,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,64,2,0,2,74,82,64,2,10,80,64
+  2,10,80,64,2,10,80,64,2,74,82,64,0,64,2,0
+  0,64,2,0,0,64,2,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,64,2,0,0,0,0,0,0,0,0,0
+  0,127,254,0,0,0,0,0,0,0,0,0,31,248,31,248
+  0,0,0,0,0,0,0,0,0,0,0,0,0,127,254,0
+  0,0,0,0,0,0,0,0,0,0,0,0,31,248,31,248
+  0,0,0,0,0,0,0,0,0,127,254,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,15,240,0
+  0,8,16,0,0,8,16,0,31,200,19,248,0,72,18,0
+  0,72,18,0,0,72,18,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,72,18,0,0,72,18,0,0,72,18,0
+  0,0,0,0,0,0,0,0,0,0,0,0,7,254,127,224
+  0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0
+  0,2,64,0,7,226,71,224,0,2,64,0,0,2,64,0
+  0,2,64,0,0,2,64,0,0,2,64,0,7,254,127,224
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,31,207,243,248,0,72,18,0
+  0,72,18,0,0,75,210,0,0,74,82,0,0,74,82,0
+  0,74,82,0,0,74,82,0,0,74,82,0,0,74,82,0
+  0,74,82,0,3,202,83,192,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,3,192,0
+  0,14,112,0,0,24,24,0,0,48,12,0,0,32,4,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,32,4,0
+  0,56,28,0,0,14,112,0,0,3,192,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,3,255,255,192
+  2,0,0,0,2,0,0,0,2,0,0,0,3,255,255,192
+  2,0,0,0,2,0,0,0,2,0,0,0,2,0,0,0
+  3,255,255,192,2,0,0,0,2,0,0,0,2,0,0,0
+  3,255,255,192,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,129,0,0,0,129,0,0,0,129,0,0,64,129,0
+  2,72,145,32,2,72,145,32,2,72,145,32,2,72,145,32
+  2,72,145,32,2,72,145,32,2,72,145,32,2,72,145,32
+  2,72,145,32,2,72,145,32,2,72,145,32,2,8,16,32
+  2,8,16,32,2,8,16,32,2,8,16,32,0,64,2,0
+  0,64,2,0,0,64,2,0,0,64,2,0,0,79,242,0
+  0,79,242,0,0,79,254,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,127,242,0
+  0,79,242,0,0,79,242,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,64,2,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,3,255,241,128,0,65,17,0
+  0,65,18,0,0,65,20,0,0,65,20,0,0,65,24,0
+  0,65,20,0,0,65,20,0,0,65,18,0,0,65,17,0
+  3,251,17,128,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,8,145,32,0,8,145,32,0,8,145,32
+  0,8,145,32,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  2,72,145,32,2,72,145,32,2,72,145,32,2,72,145,32
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  2,0,0,64,2,0,0,64,2,0,0,64,2,0,0,64
+  2,0,0,64,31,207,241,248,0,0,128,0,0,0,128,0
+  0,0,128,0,0,0,128,0,0,0,128,0,0,0,128,0
+  0,0,128,0,0,0,128,0,0,0,128,0,0,0,64,0
+  0,0,64,0,0,0,64,0,0,0,64,0,3,254,127,192
+  2,0,0,64,2,0,0,64,0,0,0,0,0,0,0,0
+  3,255,255,192,0,0,0,0,0,0,0,0,2,0,0,64
+  2,0,0,64,3,254,127,192,0,2,0,0,0,2,0,0
+  0,2,0,0,0,2,0,0,0,3,192,0,0,2,64,0
+  0,2,64,0,0,30,120,0,0,0,0,0,0,0,0,0
+  0,112,14,0,0,64,2,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,112,14,0,0,0,0,0,0,0,0,0
+  0,30,120,0,0,2,64,0,0,2,64,0,0,3,192,0
+  0,0,0,0,0,0,64,0,0,0,64,0,0,0,64,0
+  8,254,71,240,8,66,66,16,8,66,66,16,8,66,66,16
+  8,66,66,16,8,66,66,16,8,66,66,16,8,66,66,16
+  8,66,66,16,8,66,66,16,8,66,66,16,8,66,66,16
+  8,66,66,16,15,226,127,16,0,2,0,0,0,2,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,31,255,224,0
+  0,0,0,0,0,0,0,0,0,7,224,0,0,4,0,0
+  0,4,0,0,0,4,0,0,0,7,224,0,0,0,32,0
+  0,0,32,0,0,0,32,0,0,7,224,0,0,0,0,0
+  0,0,0,0,0,7,255,248,0,7,255,248,0,0,16,0
+  0,0,16,0,0,7,240,0,0,0,16,0,0,0,16,0
+  0,7,208,0,0,4,16,0,0,4,16,0,0,4,16,0
+  0,4,240,0,0,4,16,0,0,4,16,0,0,4,16,0
+  0,7,208,0,0,4,16,0,0,4,16,0,0,4,240,0
+  0,4,0,0,0,4,0,0,0,4,0,8,0,4,0,8
+  0,4,0,8,0,4,0,8,2,63,196,120,2,4,4,8
+  2,4,4,8,2,4,4,8,2,0,4,0,31,192,127,128
+  2,0,4,0,2,4,4,8,2,4,4,8,2,4,4,8
+  2,63,196,120,0,4,0,8,0,4,0,8,0,4,0,8
+  0,4,0,8,0,0,128,0,0,0,128,0,0,0,128,0
+  0,0,128,0,0,0,128,0,0,0,128,0,7,224,135,224
+  0,32,132,0,0,32,132,0,0,32,132,0,0,32,132,0
+  0,32,132,0,0,32,132,0,0,32,132,0,0,32,132,0
+  0,32,132,0,0,32,4,0,0,32,4,0,0,32,4,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,124,62,0,0,64,2,0
+  0,64,2,0,0,64,2,0,0,64,2,0,0,64,2,0
+  0,79,254,0,0,72,2,0,0,72,2,0,0,64,114,0
+  0,64,66,0,0,72,66,0,0,72,66,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,31,142,113,248
+  0,4,32,0,0,4,32,0,0,4,32,0,0,4,32,0
+  3,252,63,192,2,0,0,64,2,0,0,64,2,0,0,64
+  2,0,0,64,3,252,63,192,0,4,32,0,0,4,32,0
+  0,4,32,0,0,4,32,0,0,0,0,0,0,0,0,0
+  0,0,0,0,30,124,63,224,0,68,34,0,0,68,34,0
+  0,68,34,0,0,76,50,0,0,64,2,0,0,64,2,0
+  0,64,2,0,0,76,50,0,0,68,34,0,0,68,34,0
+  0,68,34,0,7,255,254,120,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  7,255,255,224,7,255,255,224,6,1,128,96,6,1,128,96
+  6,1,128,96,6,1,128,96,6,1,128,96,6,1,128,96
+  6,1,128,96,6,15,240,96,6,15,240,96,6,1,128,0
+  6,0,0,0,6,0,0,0,6,1,128,0,6,1,128,0
+  0,0,128,0,0,0,128,0,0,0,128,0,0,0,128,0
+  0,2,160,0,31,254,63,248,0,2,32,0,0,2,160,0
+  0,0,128,0,0,0,128,0,0,0,128,0,0,2,160,0
+  0,2,32,0,31,254,63,248,0,2,160,0,0,0,128,0
+  0,0,128,0,0,0,128,0,0,0,128,0,0,8,16,0
+  0,8,16,0,0,8,16,0,0,8,16,0,0,14,112,0
+  0,8,16,0,0,248,31,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,248,31,0
+  0,8,16,0,0,14,112,0,0,8,16,0,0,8,16,0
+  0,8,16,0,0,8,16,0,0,0,17,32,0,0,17,32
+  0,0,17,32,0,0,17,32,2,78,17,32,2,72,17,32
+  2,72,17,32,2,72,17,32,2,72,17,32,2,72,17,32
+  2,72,17,32,2,72,17,32,2,72,17,32,2,72,17,32
+  2,72,113,32,2,72,0,0,2,72,0,0,2,72,0,0
+  2,72,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  31,249,159,248,0,129,129,0,0,129,129,0,0,129,129,0
+  0,129,129,0,0,129,129,0,0,137,145,0,0,9,144,0
+  0,9,144,0,0,9,144,0,0,9,144,0,0,9,144,0
+  31,249,159,248,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,32,0,0,1,32,0,0,1,32,0,0,17,32
+  0,0,145,32,0,0,145,32,0,8,145,32,0,8,145,32
+  0,72,145,0,0,72,145,0,2,72,144,0,2,72,144,0
+  2,72,128,0,2,72,128,0,2,72,0,0,2,64,0,0
+  2,64,0,0,2,0,0,0,2,0,0,0,0,0,4,0
+  0,0,4,0,0,0,4,0,0,0,4,0,31,239,252,0
+  0,33,128,0,0,33,132,0,0,32,4,0,0,32,4,0
+  0,60,60,0,0,32,4,0,0,32,4,0,0,33,132,0
+  0,1,132,0,0,63,247,248,0,32,0,0,0,32,0,0
+  0,32,0,0,0,32,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,15,255,255,240
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,8,0,0,0,8,0,0,0,8,0,0
+  0,8,255,248,0,8,0,0,0,8,0,0,0,8,0,0
+  7,249,240,0,0,8,16,0,0,8,16,0,0,8,16,0
+  0,15,159,224,0,0,16,0,0,0,16,0,0,0,16,0
+  31,255,16,0,0,0,16,0,0,0,16,0,0,0,16,0
+end data
+
+data RoomTxt bytes
+  84,72,69,32,67,79,85,82,84,89,65,82,68,84,72,69,32,71,65,84,69,72,79,85
+  83,69,84,72,69,32,66,65,82,82,65,67,75,83,84,72,69,32,71,65,82,68,69,78
+  84,72,69,32,67,72,65,80,69,76,84,72,69,32,80,73,84,71,65,76,76,69,82,89
+  32,73,84,72,69,32,76,73,66,82,65,82,89,84,72,69,32,83,78,65,75,69,84,72
+  69,32,67,79,76,79,78,65,68,69,84,72,69,32,87,73,78,69,32,67,69,76,76,65
+  82,84,72,69,32,84,72,82,69,69,32,82,79,79,77,83,84,72,69,32,68,79,85,66
+  76,69,45,69,32,82,79,79,77,71,65,76,76,69,82,89,32,73,73,84,72,69,32,79
+  86,65,76,32,82,79,79,77,84,72,69,32,71,82,69,69,78,72,79,85,83,69,84,72
+  69,32,77,69,83,72,32,82,79,79,77,84,72,69,32,80,82,73,83,79,78,84,72,69
+  32,73,45,74,45,75,32,82,79,79,77,84,72,69,32,67,85,66,73,67,76,69,83,84
+  82,73,80,76,69,45,84,84,72,69,32,86,69,83,84,73,66,85,76,69,84,72,69,32
+  65,82,69,78,65,68,69,65,84,72,84,82,65,80,32,73,84,72,69,32,83,45,67,72
+  65,77,66,69,82,84,72,69,32,83,80,73,82,65,76,32,72,65,76,76,84,72,69,32
+  87,69,66,84,72,69,32,77,65,90,69,84,72,69,32,80,73,84,32,73,73,84,72,69
+  32,65,84,82,73,85,77,84,72,69,32,67,76,79,65,75,82,79,79,77,83,84,72,69
+  32,68,85,78,71,69,79,78,84,72,69,32,83,72,73,70,84,73,78,71,32,72,65,76
+  76,84,72,69,32,83,85,73,84,69,84,72,69,32,80,65,78,84,82,89,71,65,76,76
+  69,82,89,32,73,73,73,84,72,69,32,87,73,78,68,66,82,69,65,75,68,69,65,84
+  72,84,82,65,80,32,73,73,84,72,69,32,87,65,76,76,68,69,65,84,72,84,82,65
+  80,32,73,73,73
+end data
+
+data RoomOff words
+  0,13,26,38,48,58,65,74,85,94,106,121,136,153,163,176,190,203,213,227,239,247,260,269,280,293,308,315,323,333,343,357,368,385,394,404,415,428,440,448,461
+end data
+
+data WallCol bytes
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0F,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04,$4E,$4E,$4E,$04
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0B,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06,$6A,$6A,$6A,$06
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0F,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04,$47,$47,$47,$04
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0B,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06,$69,$69,$69,$06
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $0F,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C,$C3,$C3,$C3,$0C
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $09,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04,$4D,$4D,$4D,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $07,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04,$45,$45,$45,$04
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+  $09,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06,$68,$68,$68,$06
+end data
+
+data SnCol bytes
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$0F,$1F,$0F,$1F,$1F,$0F,$01,$1F,$0F,$1F,$0F,$1F,$1F,$0F,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$0F,$1F,$0F,$1F,$1F,$0F,$1F,$1F,$0F,$1F,$0F,$1F,$1F,$0F,$1F
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$01,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$01,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$01,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$0A,$1A,$0A,$1A,$1A,$0A,$01,$1A,$0A,$1A,$0A,$1A,$1A,$0A,$01
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$0A,$1A,$0A,$1A,$1A,$0A,$1A,$1A,$0A,$1A,$0A,$1A,$1A,$0A,$1A
+  $01,$13,$13,$13,$13,$13,$13,$01,$13,$13,$13,$13,$13,$13,$13,$01
+  $01,$13,$13,$13,$13,$13,$13,$01,$13,$13,$13,$13,$13,$13,$13,$01
+  $01,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13
+  $01,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13
+  $01,$13,$13,$13,$13,$13,$13,$01,$13,$13,$13,$13,$13,$13,$13,$01
+  $01,$03,$13,$03,$13,$13,$03,$01,$13,$03,$13,$03,$13,$13,$03,$01
+  $01,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13,$13
+  $01,$03,$13,$03,$13,$13,$03,$13,$13,$03,$13,$03,$13,$13,$03,$13
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$0E,$1E,$0E,$1E,$1E,$0E,$01,$1E,$0E,$1E,$0E,$1E,$1E,$0E,$01
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $01,$0E,$1E,$0E,$1E,$1E,$0E,$1E,$1E,$0E,$1E,$0E,$1E,$1E,$0E,$1E
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$0D,$1D,$0D,$1D,$1D,$0D,$01,$1D,$0D,$1D,$0D,$1D,$1D,$0D,$01
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $01,$0D,$1D,$0D,$1D,$1D,$0D,$1D,$1D,$0D,$1D,$0D,$1D,$1D,$0D,$1D
+end data
+
+data TitleMap bytes
+  $AE,$AE,$93,$97,$95,$AE,$91,$AE,$AE,$AE,$8F,$9B,$95,$AE,$8F,$9B,$95,$AE,$91,$AE,$91,$AE,$93,$97,$95,$AE,$93,$97,$99,$AE,$AE,$AE
+  $AE,$AE,$92,$AE,$AE,$AE,$92,$AE,$AE,$AE,$AE,$92,$AE,$AE,$AE,$92,$AE,$AE,$92,$AE,$92,$AE,$92,$AE,$AE,$AE,$92,$AE,$92,$AE,$AE,$AE
+  $AE,$AE,$90,$97,$99,$AE,$92,$AE,$AE,$AE,$AE,$92,$AE,$AE,$AE,$92,$AE,$AE,$94,$97,$9A,$AE,$94,$95,$AE,$AE,$92,$93,$96,$AE,$AE,$AE
+  $AE,$AE,$AE,$AE,$92,$AE,$92,$AE,$AE,$AE,$AE,$92,$AE,$AE,$AE,$92,$AE,$AE,$92,$AE,$92,$AE,$92,$AE,$AE,$AE,$92,$90,$99,$AE,$AE,$AE
+  $AE,$AE,$8F,$97,$96,$AE,$90,$97,$95,$AE,$8F,$98,$95,$AE,$AE,$8E,$AE,$AE,$8E,$AE,$8E,$AE,$90,$97,$95,$AE,$8E,$AE,$8E,$AE,$AE,$AE
+end data
+
+record Snake:
+  u8 C
+  u8 R
+  u8 Dir
+  u8 InM
+  u8 Nc
+  u8 Nr
+end record
+
+Snake Hd
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Tal = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+u8 RowBuf[76]
+u8 NameBuf[24]
+' play state: phase (0 moving, 1 crashed, 2 room cleared), moving, frame
+' of the move, what the next cell holds, the stick remembered
+u8 Ph = 0
+u8 Mv = 0
+u8 Mt = 0
+u8 Pv = 0
+u8 Want = 255
+u8 Lives = 7
+u8 Diff = 1
+u8 Room = 1
+u8 Left = 0
+u8 Kind = 1
+u8 Over = 0
+u8 Crashes = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Steps = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Rx = 0
+u8 Ry = 0
+u8 Pz = 0
+u8 Ti = 0
+u8 Ni = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 M = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 P8 = 0
+
+  tile screen
+  set sound table SlSoundTable areas 6
+  sprites 16x16
+  set sprite count 2
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawHead
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  print at 9,10, "            "
+  print at 9,11, "  GAME OVER "
+  print at 9,12, "            "
+  print at 9,13, " BEST       "
+  print at 15,13, Hi
+  print at 9,14, "            "
+  ShowHud
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc Steps
+  select case Ph
+    case 0
+      SnakeStep
+    case 1
+      CrashSeq
+    case 2
+      ClearSeq
+  end select
+  return
+end sub
+
+' remember the stick (one straight direction; diagonals do nothing, as on
+' the C64); finish the glide under way; at a cell, choose the next one
+sub SnakeStep:
+  K = J1 & 15
+  select case K
+    case 1
+      Want = 0
+    case 8
+      Want = 1
+    case 2
+      Want = 2
+    case 4
+      Want = 3
+  end select
+  if Mv = 1 then
+    inc Mt
+    if Mt >= StepF then
+      Arrive
+      Mv = 0
+    end if
+  end if
+  if Mv = 0 then
+    if Ph = 0 then Decide
+  end if
+  return
+end sub
+
+' 1 when tile V lets the snake in: the floor or a treasure
+function Free(u8 Tv) as u8
+  if Tv = TFloor then return 1
+  if Tv >= TP1 and Tv <= TP12 then return 1
+  return 0
+
+sub Decide:
+  D = Hd.Dir
+  if Want < 4 then
+    V = Hd.Dir ^ 2
+    if Want <> V then D = Want
+  end if
+  X = Hd.C + DCol[D]
+  Y = Hd.R + DRow[D]
+  Pv = get char at X,Y
+  if Free(Pv) = 0 then
+    Ph = 1
+    play sound SndCrash
+    return
+  end if
+  M = Hd.InM | Bit[D]
+  put char TSn0 + M at Hd.C,Hd.R
+  Hd.Dir = D
+  Hd.Nc = X
+  Hd.Nr = Y
+  Mv = 1
+  Mt = 0
+  return
+end sub
+
+' the head is in its new cell: an end piece there, and a treasure is eaten
+sub Arrive:
+  Hd.C = Hd.Nc
+  Hd.R = Hd.Nr
+  V = Hd.Dir ^ 2
+  Hd.InM = Bit[V]
+  put char TSn0 + Hd.InM at Hd.C,Hd.R
+  if Pv <> TFloor then EatOne
+  return
+end sub
+
+sub EatOne:
+  K = Pv - TP1
+  W16 = Worth[K]
+  AddPts(W16)
+  play sound SndEat0 + K
+  dec Left
+  ShowHud
+  if Left = 0 then Ph = 2
+  return
+end sub
+
+' add P points to the BCD score (BCD += takes a byte, bug
+' rashgar-bcd-add-u16: big amounts go in steps of 200)
+sub AddPts(u16 P)
+  while P > 200
+    Sc += 200
+    P = P - 200
+  end while
+  P8 = P
+  Sc += P8
+  return
+end sub
+
+' a crash: the dead head a moment, the trail wiped row by row, a pause,
+' then a life less: the next snake, or the end
+sub CrashSeq:
+  inc Crashes
+  Pause(40)
+  for Ry = 3 to 21
+    WipeRow
+    if Ry & 1 then play sound SndWipe
+    Frame1
+  next
+  Pause(30)
+  dec Lives
+  ShowHud
+  if Lives = 0 then
+    Over = 1
+  else
+    Respawn
+  end if
+  return
+end sub
+
+sub WipeRow:
+  for Rx = 3 to 28
+    V = get char at Rx,Ry
+    if V >= TSn0 and V <= TSn15 then put char TFloor at Rx,Ry
+  next
+  return
+end sub
+
+' every treasure eaten: the room bonus, then the next room
+sub ClearSeq:
+  Pause(20)
+  play sound SndClear
+  print at 9,10, "            "
+  print at 9,11, "  BONUS     "
+  K = Kind
+  W16 = Worth[K]
+  NumU = W16
+  print at 17,11, digits$(NumU, 3)
+  print at 9,12, "            "
+  AddPts(W16)
+  ShowHud
+  Pause(90)
+  inc Room
+  if Room > NRooms then
+    BigBonus
+    Room = 1
+    LevelBanner
+  end if
+  StartRoom
+  return
+end sub
+
+' after room 40: the twelve treasures' worth times the difficulty, a
+' difficulty more, that many lives
+sub BigBonus:
+  NewScreen
+  backdrop dark blue
+  print at 9,4, "LEVEL "
+  NumU = Diff
+  print at 15,4, digits$(NumU, 1)
+  print at 17,4, "BONUS"
+  ShowHud
+  ShowScreen
+  Tal = 0
+  for Ti = 0 to 11
+    put char TP1 + Ti at Ti * 2 + 4,8
+    Pause(10)
+    W16 = Worth[Ti]
+    for Ni = 1 to Diff
+      Tal = Tal + W16
+      AddPts(W16)
+    next
+    play sound SndTally
+    NumU = Tal
+    print at 14,10, digits$(NumU, 5)
+    ShowHud
+    Pause(10)
+  next
+  Pause(60)
+  if Diff < 5 then inc Diff
+  Lives = Lives + Diff
+  if Lives > 9 then Lives = 9
+  NumU = Diff
+  print at 7,13, digits$(NumU, 1)
+  print at 9,13, "BONUS LIVES"
+  play sound SndLife
+  ShowHud
+  Pause(60)
+  print at 3,16, "GET READY FOR DIFFICULTY "
+  print at 28,16, digits$(NumU, 1)
+  Pause(150)
+  return
+end sub
+
+' the snake starts again at the top left, heading right
+sub Respawn:
+  Hd.C = StartC
+  Hd.R = StartR
+  Hd.Dir = 1
+  Hd.InM = 0
+  Want = 255
+  Mv = 0
+  Mt = 0
+  put char TSn0 at Hd.C,Hd.R
+  Ph = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens
+
+sub NewGame:
+  Sc = 0
+  Lives = 7
+  Room = 1
+  Over = 0
+  Crashes = 0
+  LevelBanner
+  StartRoom
+  return
+end sub
+
+sub LevelBanner:
+  NewScreen
+  print at 10,9, "DIFFICULTY "
+  NumU = Diff
+  print at 21,9, digits$(NumU, 1)
+  print at 6,12, "40 ROOMS THIS LEVEL"
+  ShowScreen
+  play sound SndStart
+  Pause(120)
+  return
+end sub
+
+' a room: walls, name, treasures, the snake at the start
+sub StartRoom:
+  NewScreen
+  K = Diff - 1
+  W16 = K * 128
+  copy SnCol + W16 count 128 to vram.color + TSn0 * 8
+  K = (Room - 1) & 7
+  W16 = K * 128
+  copy WallCol + W16 count 128 to vram.color + TW0 * 8
+  DrawRoom
+  RoomName
+  Kind = Room
+  if Kind > 12 then Kind = 12
+  Kind = Kind - 1
+  Left = Diff
+  for Pz = 1 to Diff
+    PlaceOne
+  next
+  Respawn
+  ShowHud
+  DrawHead
+  ShowScreen
+  Pause(30)
+  return
+end sub
+
+' 1 when cell (Cx, Cy) is wall: the border, or a wall of the room (RowBuf)
+function WallAt(u8 Cx, u8 Cy) as u8
+  if Cx < 2 or Cx > 29 or Cy < 2 or Cy > 22 then return 0
+  if Cx = 2 or Cx = 29 or Cy = 2 or Cy = 22 then return 1
+  N = (Cy - 3) * 4 + (Cx >> 3)
+  V = RowBuf[N] & BitT[Cx & 7]
+  if V > 0 then return 1
+  return 0
+
+sub DrawRoom:
+  W16 = Room - 1
+  W16 = W16 * RoomBytes
+  copy RoomBits + W16 count RoomBytes to RowBuf
+  for Ry = 2 to 22
+    for Rx = 2 to 29
+      if WallAt(Rx, Ry) = 1 then
+        M = 0
+        if WallAt(Rx, Ry - 1) = 1 then M = M | 1
+        if WallAt(Rx + 1, Ry) = 1 then M = M | 2
+        if WallAt(Rx, Ry + 1) = 1 then M = M | 4
+        if WallAt(Rx - 1, Ry) = 1 then M = M | 8
+        put char TW0 + M at Rx,Ry
+      else
+        put char TFloor at Rx,Ry
+      end if
+    next
+  next
+  return
+end sub
+
+' "#n THE NAME" in the top wall, in the middle
+sub RoomName:
+  K = Room - 1
+  W16 = RoomOff[K]
+  NumU = RoomOff[Room]
+  N = NumU - W16
+  copy RoomTxt + W16 count 24 to NameBuf
+  T = N + 4
+  if Room >= 10 then inc T
+  X = 16 - (T >> 1)
+  print at X,2, " #"
+  NumU = Room
+  if Room >= 10 then
+    print at X + 2,2, digits$(NumU, 2)
+    X = X + 4
+  else
+    print at X + 2,2, digits$(NumU, 1)
+    X = X + 3
+  end if
+  put char 32 at X,2
+  for J = 1 to N
+    put char NameBuf[J - 1] at X + J,2
+  next
+  put char 32 at X + N + 1,2
+  return
+end sub
+
+' a treasure on a random empty cell (columns 4-27, rows 3-20), not the start
+sub PlaceOne:
+  T = 0
+  while T = 0
+    X = RandBelow(24) + 4
+    Y = RandBelow(18) + 3
+    V = get char at X,Y
+    if V = TFloor then T = 1
+    if X = StartC and Y = StartR then T = 0
+  end while
+  put char TP1 + Kind at X,Y
+  return
+end sub
+
+function RandBelow(u8 Lim) as u8
+  Rand
+  W16 = Rs >> 4
+  return W16 % Lim
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, Sc
+  put char TLife at 13,1
+  NumU = Lives
+  print at 14,1, digits$(NumU, 1)
+  print at 19,1, "HI"
+  print at 22,1, Hi
+  return
+end sub
+
+' the head: sprite 0, gliding from its cell toward the next
+sub DrawHead:
+  X = Hd.C * 8 - 4
+  Y = Hd.R * 8 - 4
+  if Mv = 1 then
+    V = Glide[Mt]
+    select case Hd.Dir
+      case 0
+        Y = Y - V
+      case 1
+        X = X + V
+      case 2
+        Y = Y + V
+      case 3
+        X = X - V
+    end select
+  end if
+  if Ph = 1 then
+    K = SHx
+  else
+    K = Hd.Dir << 3
+    K = K + SHd00
+    V = Tick & 16
+    if V > 0 then K = K + 4
+  end if
+  C = SnakeC[Diff - 1]
+  set sprite 0 to Y - 1,X,K,C
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Nf)
+  for Pz = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: SLITHER in snake pieces, the difficulty, START / CREDITS
+sub TitlePage:
+  NewScreen
+  copy SnCol count 128 to vram.color + TSn0 * 8
+  copy TitleMap count 160 to vram.name + 96
+  print at 7,1, "AHOY! NOVEMBER 1985"
+  print at 3,10, "STEER THE SNAKE THROUGH"
+  print at 3,11, "40 CASTLE ROOMS. EAT THE"
+  print at 3,12, "TREASURES, MISS THE WALLS"
+  print at 3,13, "AND YOUR OWN TRAIL."
+  for Ti = 0 to 11
+    put char TP1 + Ti at Ti * 2 + 4,15
+  next
+  print at 5,17, "DIFFICULTY"
+  print at 16,17, "1 2 3 4 5"
+  print at 12,19, "START"
+  print at 12,20, "CREDITS"
+  if Hi > 0 then
+    print at 9,22, "BEST "
+    print at 14,22, Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 580
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      select case V
+        case 1
+          Menu = 0
+        case 2
+          Menu = 1
+        case 4
+          if Diff > 1 then dec Diff
+        case 8
+          if Diff < 5 then inc Diff
+      end select
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub TitleAnim:
+  K = Tick & 16
+  T = SHd30
+  if K > 0 then T = SHd31
+  C = SnakeC[Diff - 1]
+  set sprite 0 to 59,222,T,C
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,19
+  put char 32 at 10,20
+  J = Menu + 19
+  put char 62 at 10,J
+  for Ti = 0 to 4
+    X = Ti * 2 + 15
+    put char 32 at X,17
+    put char 32 at X + 2,17
+  next
+  X = Diff * 2 + 13
+  put char 91 at X,17
+  put char 93 at X + 2,17
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "SLITHER"
+  print at 2,5, "BASED ON SLITHER,"
+  print at 2,6, "AHOY! NOVEMBER 1985"
+  print at 2,7, "(COMMODORE 64 TYPE-IN;"
+  print at 2,8, "THE LISTING NAMES NO"
+  print at 2,9, "AUTHOR)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: CASTLE CRAWL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SlEat0:
+    db $40,$53,$11,$01,$40,$E2,$10,$01,$40,$A9,$30,$02,$50
+SlEat1:
+    db $40,$2E,$11,$01,$40,$CA,$10,$01,$40,$97,$30,$02,$50
+SlEat2:
+    db $40,$0D,$11,$01,$40,$B3,$10,$01,$40,$86,$30,$02,$50
+SlEat3:
+    db $40,$F0,$10,$01,$40,$A0,$10,$01,$40,$78,$30,$02,$50
+SlEat4:
+    db $40,$D5,$10,$01,$40,$8E,$10,$01,$40,$6B,$30,$02,$50
+SlEat5:
+    db $40,$BE,$10,$01,$40,$7F,$10,$01,$40,$5F,$30,$02,$50
+SlEat6:
+    db $40,$A9,$10,$01,$40,$71,$10,$01,$40,$55,$30,$02,$50
+SlEat7:
+    db $40,$97,$10,$01,$40,$65,$10,$01,$40,$4B,$30,$02,$50
+SlEat8:
+    db $40,$86,$10,$01,$40,$5A,$10,$01,$40,$43,$30,$02,$50
+SlEat9:
+    db $40,$78,$10,$01,$40,$50,$10,$01,$40,$3C,$30,$02,$50
+SlEat10:
+    db $40,$6B,$10,$01,$40,$47,$10,$01,$40,$35,$30,$02,$50
+SlEat11:
+    db $40,$5F,$10,$01,$40,$3F,$10,$01,$40,$30,$30,$02,$50
+SlCrash:
+    db $00,$00,$13,$02,$00,$00,$34,$02,$00,$00,$55,$03,$00,$00,$76,$04,$10
+SlWipe:
+    db $40,$BB,$22,$01,$40,$EA,$62,$01,$50
+SlClear:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$55,$20,$0A,$50
+SlTally:
+    db $40,$7F,$10,$02,$40,$5F,$30,$03,$50
+SlLife:
+    db $40,$8F,$10,$03,$40,$71,$10,$03,$40,$5F,$30,$06,$50
+SlStart:
+    db $40,$1D,$11,$06,$40,$E2,$10,$06,$40,$BF,$10,$06,$40,$8F,$20,$0C,$50
+SlOver:
+    db $40,$BF,$10,$0A,$40,$D6,$20,$0A,$40,$F0,$20,$0A,$40,$1D,$21,$0A,$40,$7C,$31,$1E,$50
+
+SlSoundTable:
+    dw SlTuneMel,$702B
+    dw SlTuneBass,$7035
+    dw SlEat0,$7049
+    dw SlEat1,$7049
+    dw SlEat2,$7049
+    dw SlEat3,$7049
+    dw SlEat4,$7049
+    dw SlEat5,$7049
+    dw SlEat6,$7049
+    dw SlEat7,$7049
+    dw SlEat8,$7049
+    dw SlEat9,$7049
+    dw SlEat10,$7049
+    dw SlEat11,$7049
+    dw SlCrash,$703F
+    dw SlWipe,$7049
+    dw SlClear,$7049
+    dw SlTally,$7049
+    dw SlLife,$7049
+    dw SlStart,$7049
+    dw SlOver,$7049
+; Castle Crawl (original)
+; Tiny Sound, 9 frames per step
+SlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$17,$01,$1A,$01,$1E,$01,$1C,$1A,$19,$01,$1A,$01
+    db $17,$01,$01,$01,$1E,$01,$21,$01,$23,$01,$21,$1E,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$1A,$01,$1C,$01,$1E,$01,$1F,$1E,$1C,$01,$1A,$01
+    db $19,$01,$01,$01,$17,$01,$19,$1A,$1C,$01,$1A,$19,$17,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0B,$01,$01,$01,$12,$01,$01,$01,$0B,$01,$01,$01
+    db $12,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01,$10,$01,$01,$01
+    db $0B,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$09,$01,$01,$01
+    db $12,$01,$01,$01,$07,$01,$01,$01,$12,$01,$01,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

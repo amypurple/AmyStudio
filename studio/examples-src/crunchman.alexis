@@ -1,0 +1,1261 @@
+cartridge "CRUNCHMAN/ROY D. LEWIS/1987"
+
+' CRUNCHMAN
+' A ColecoVision game based on "Crunchman 64" by Roy D. Lewis, Ahoy!
+' February 1987 (Commodore 64: CRUNCHMAN1 loads the sprites and characters,
+' CRUNCHMAN2 is the BASIC title, maze and bookkeeping around a machine-code
+' game loop at $1852; orig/ has both files, their listings and a
+' disassembly of the machine code). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' From the original (rules read from the BASIC and the machine code):
+' a maze of one-cell corridors between walls two cells thick; Crunchman
+' starts in the middle, the four ghosts (GOOLY, GOOKY, COOLY, COOKY) start
+' on the four corner power spots, the top two heading down, the bottom two
+' up. Crunchman moves only while the stick is held; at each cell he takes
+' the stick's direction if it is open and stops at a wall. The ghosts do
+' not chase: in a corridor they keep going, at a crossing or a corner they
+' pick a random open way that is not back (back only at a dead end). Every
+' spot is 2 points; a power spot makes Crunchman faster (3 steps for 2)
+' and the ghosts edible for about 8.5 seconds: 30, 60, 120, 240 for the
+' ghosts eaten on one power spot (the value doubles from 15). An eaten
+' ghost vanishes and comes back in the middle of the maze about 8.5
+' seconds later. After 255 of the 323 spots, the bonus box at the top
+' middle opens: nothing on level 1, AB (100) on levels 2-3, CD (250) from
+' level 4. All spots eaten: the next level (maze redrawn). Touching a ghost
+' without power costs one of three lives; the maze is kept. High score.
+'
+' Liberties: an original maze 27 x 21 (the C64's was 38 x 22: it does not
+' fit the screen) with the same build (corridors one cell wide, walls two
+' thick, power spots in the corners, the start in the middle, a tunnel on
+' the middle row, the bonus box at the top middle); 221 crumbs, the box
+' opening after 174 (255 / 323 of them); original characters: Crunchman a
+' cookie-cruncher with big teeth, the ghosts teardrops of goo called Goos
+' (their four names kept), crumbs, cookies for power, a cupcake (AB) and a
+' cake (CD); speeds for people: Crunchman 1 pixel a frame (1 1/2 with
+' power), the Goos 3/4 on level 1, 7/8 on level 2, as fast as him from
+' level 3 (the C64 moved them all 2 pixels a frame, the same every level);
+' power lasts 8 seconds and the Goos blink in the last 2 (slowly); a
+' stick held towards a wall at a crossing keeps him going the way he was
+' going (the C64 stopped him), and he can turn back between cells; an
+' eaten Goo waits while Crunchman is near the middle before coming back
+' (the C64 could put it on top of him); the Goos' first steps are
+' staggered (sub-pixel counts 0, 2, 4, 6); GAME OVER returns to the title.
+'
+' Controls: the joystick (either controller) moves Crunchman. On the title,
+' up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz (the Goos blink at 2.5 Hz).
+
+const TWall0 = 128
+const TWall1 = 129
+const TWall2 = 130
+const TWall3 = 131
+const TWall4 = 132
+const TWall5 = 133
+const TWall6 = 134
+const TWall7 = 135
+const TWall8 = 136
+const TWall9 = 137
+const TWall10 = 138
+const TWall11 = 139
+const TWall12 = 140
+const TWall13 = 141
+const TWall14 = 142
+const TWall15 = 143
+const TDoor = 144
+const TCrumb = 145
+const TCookie = 146
+const TCupcake = 147
+const TCake = 148
+const TLife = 149
+const TTtl00 = 150
+const TTtl01 = 151
+const TTtl02 = 152
+const TTtl03 = 153
+const TTtl04 = 154
+const TTtl05 = 155
+const TTtl06 = 156
+const TTtl07 = 157
+const TTtl08 = 158
+const TTtl09 = 159
+const TTtl010 = 160
+const TTtl011 = 161
+const TTtl012 = 162
+const TTtl013 = 163
+const TTtl014 = 164
+const TTtl015 = 165
+const TTtl016 = 166
+const TTtl017 = 167
+const TTtl018 = 168
+const TTtl10 = 169
+const TTtl11 = 170
+const TTtl12 = 171
+const TTtl13 = 172
+const TTtl14 = 173
+const TTtl15 = 174
+const TTtl16 = 175
+const TTtl17 = 176
+const TTtl18 = 177
+const TTtl19 = 178
+const TTtl110 = 179
+const TTtl111 = 180
+const TTtl112 = 181
+const TTtl113 = 182
+const TTtl114 = 183
+const TTtl115 = 184
+const TTtl116 = 185
+const TTtl117 = 186
+const TTtl118 = 187
+const SCf00 = 0
+const SCf01 = 4
+const SCf10 = 8
+const SCf11 = 12
+const SCf20 = 16
+const SCf21 = 20
+const SCf30 = 24
+const SCf31 = 28
+const SCf40 = 32
+const SCf41 = 36
+const SCb0 = 40
+const SCb1 = 44
+const SCd0 = 48
+const SCd1 = 52
+const SCd2 = 56
+const SCd3 = 60
+const SGoo0 = 64
+const SGoo1 = 68
+const SGoo2 = 72
+const SGoo3 = 76
+const NTiles8 = 480
+const SprBytes = 640
+const NDots = 221
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCrumb = 3
+const SndCookie = 4
+const SndGulp = 5
+const SndBonus = 6
+const SndOpen = 7
+const SndSplat = 8
+const SndSquash = 9
+const SndClear = 10
+const SndStart = 11
+const SndOver = 12
+const NSpr = 6
+const StPlay = 1
+const StDie = 2
+const StClear = 3
+const MazeW = 27
+const MazeH = 21
+const PixW = 216
+const CenX = 104
+const CenY = 80
+const OpenAt = 174
+const PowerF = 480
+const AwayF = 510
+const BlinkF = 120
+const DieF = 100
+const ClearF = 120
+
+data DxT bytes
+  0, 0, 1, 0, 255
+end data
+data DyT bytes
+  0, 255, 0, 1, 0
+end data
+data OppT bytes
+  0, 3, 4, 1, 2
+end data
+' the Goos' corners and first ways (3 down, 1 up)
+data GoX bytes
+  8, 200, 8, 200
+end data
+data GoY bytes
+  8, 8, 152, 152
+end data
+data GoD bytes
+  3, 3, 1, 1
+end data
+' first sub-pixel counts, staggered so the four never decide on the same
+' frame
+data GoAcc bytes
+  0, 2, 4, 6
+end data
+' the first cell of each maze row in OpenT and MazeT
+data RowOff words
+  0, 27, 54, 81, 108, 135, 162, 189, 216, 243, 270, 297, 324, 351, 378, 405, 432, 459, 486, 513, 540
+end data
+data GoCol bytes
+  3, 13, 7, 11
+end data
+
+record Mover:
+  u8 X
+  u8 Y
+  u8 Dir
+  u8 Acc
+  u16 Away
+end record
+
+Mover Gs[4]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Seed = 12345
+u16 W16 = 0
+u16 NumU = 0
+u16 Eaten = 0
+u16 Power = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+bcd digits 6 Gp = 0
+u8 Lives = 3
+u8 Level = 1
+u8 Gsp = 6
+u8 Over = 0
+' Crunchman: state, position (maze pixels, the cell's top left), way
+' (0 none, 1 up, 2 right, 3 down, 4 left), sub-pixel count, mouth
+u8 St = StPlay
+u8 Px = CenX
+u8 Py = CenY
+u8 Pd = 0
+u8 Pa = 0
+u8 Sd = 0
+u8 Moved = 0
+u8 WalkT = 0
+u8 DieT = 0
+u8 ClrT = 0
+u8 PocketOpen = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Hr = 0
+u8 Hc = 0
+' scratch
+u8 F = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 1 then goto game_over
+  if St = StClear then
+    if ClrT >= ClearF then NextLevel
+  end if
+  goto play_loop
+
+game_over:
+  Phase = 4
+  if Score > Hi then
+    Hi = Score
+    ShowHi
+  end if
+  print at 9,12, " GAME OVER "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the maze (the name table is the maze, as the C64's screen was)
+
+' a 16-bit xorshift: the Goos' choices
+function Rnd as u8
+  u8 Lo = 0
+  Seed = Seed ^ (Seed << 7)
+  Seed = Seed ^ (Seed >> 9)
+  Seed = Seed ^ (Seed << 8)
+  Lo = Seed & 255
+  return Lo
+
+' 1 when the cell is not a wall or a closed door (columns wrap round the
+' tunnel); read from the ROM table OpenT (the name table was too slow)
+function IsOpen(u8 Cc, u8 Cr) as u8
+  u8 T = 0
+  if Cr >= MazeH then return 0
+  if Cc = 255 then Cc = MazeW - 1
+  if Cc >= MazeW then Cc = 0
+  W16 = RowOff[Cr]
+  W16 = W16 + Cc
+  T = OpenT[W16]
+  if T = 2 then return PocketOpen
+  return T
+
+' 1 when the way D out of cell Cc, Cr is open
+function WayOpen(u8 Cc, u8 Cr, u8 D) as u8
+  u8 Nc = 0
+  u8 Nr = 0
+  Nc = Cc + DxT[D]
+  Nr = Cr + DyT[D]
+  return IsOpen(Nc, Nr)
+
+sub DrawMaze:
+  for Hr = 0 to MazeH - 1
+    for Hc = 0 to MazeW - 1
+      W16 = Hr * MazeW
+      W16 = W16 + Hc
+      V = MazeT[W16]
+      put char V at Hc + 2, Hr + 2
+    next
+  next
+  PocketOpen = 0
+  ' the bonus in its box: nothing on level 1, a cupcake (AB) on levels 2-3,
+  ' a cake (CD) from level 4
+  select case Level
+  case 1
+    V = 32
+  case 2, 3
+    V = TCupcake
+  case else
+    V = TCake
+  end select
+  put char V at 15,3
+  return
+end sub
+
+sub OpenPocket:
+  PocketOpen = 1
+  put char 32 at 13,3
+  put char 32 at 14,3
+  put char 32 at 16,3
+  put char 32 at 17,3
+  play sound SndOpen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc Anim
+  select case St
+  case StDie
+    inc DieT
+    if DieT >= DieF then LoseLife
+    return
+  case StClear
+    inc ClrT
+    return
+  end select
+  if Power > 0 then dec Power
+  MoveGoos
+  MovePlayer
+  Collide
+  return
+end sub
+
+' the stick: one way (with both axes, the one that turns)
+sub StickWay:
+  u8 Sv = 0
+  u8 Sh = 0
+  V = Pad & 1
+  if V > 0 then Sv = 1
+  V = Pad & 2
+  if V > 0 then Sv = 3
+  V = Pad & 4
+  if V > 0 then Sh = 4
+  V = Pad & 8
+  if V > 0 then Sh = 2
+  Sd = Sv
+  if Sh > 0 then
+    if Sv = 0 then
+      Sd = Sh
+    elseif Pd = 1 then
+      Sd = Sh
+    elseif Pd = 3 then
+      Sd = Sh
+    end if
+  end if
+  return
+end sub
+
+' Crunchman moves only while the stick is held: 8/8 pixel a frame, 12/8
+' with power
+sub MovePlayer:
+  Moved = 0
+  StickWay
+  if Sd = 0 then return
+  if Power > 0 then
+    Pa = Pa + 12
+  else
+    Pa = Pa + 8
+  end if
+  while Pa >= 8
+    Pa = Pa - 8
+    PStep
+  end while
+  if Moved > 0 then inc WalkT
+  return
+end sub
+
+' one pixel of Crunchman
+sub PStep:
+  u8 Cx = 0
+  u8 Cy = 0
+  V = Px | Py
+  V = V & 7
+  if V = 0 then
+    Cx = Px >> 3
+    Cy = Py >> 3
+    if WayOpen(Cx, Cy, Sd) = 1 then
+      Pd = Sd
+    elseif Pd > 0 then
+      if WayOpen(Cx, Cy, Pd) = 0 then Pd = 0
+    end if
+  elseif Sd = OppT[Pd] then
+    Pd = Sd
+  end if
+  if Pd = 0 then return
+  Moved = 1
+  Px = Slide(Px, DxT[Pd])
+  Py = Py + DyT[Pd]
+  V = Px | Py
+  V = V & 7
+  if V = 0 then EatCell
+  return
+end sub
+
+' a coordinate moved by D (0, 1 or 255) across the 216-pixel maze
+function Slide(u8 A, u8 D) as u8
+  if D = 1 then
+    inc A
+    if A >= PixW then A = 0
+  elseif D = 255 then
+    if A = 0 then return PixW - 1
+    dec A
+  end if
+  return A
+
+' what is in the cell Crunchman has reached
+sub EatCell:
+  u8 Ex = 0
+  u8 Ey = 0
+  u8 T = 0
+  Ex = (Px >> 3) + 2
+  Ey = (Py >> 3) + 2
+  T = get char at Ex, Ey
+  if T < TCrumb then return
+  put char 32 at Ex, Ey
+  select case T
+  case TCrumb
+    Score += 2
+    inc Eaten
+    play sound SndCrumb
+    if Eaten = OpenAt then OpenPocket
+    if Eaten = NDots then
+      St = StClear
+      ClrT = 0
+      play sound SndClear
+    end if
+  case TCookie
+    Power = PowerF
+    Gp = 15
+    play sound SndCookie
+  case TCupcake
+    Score += 100
+    play sound SndBonus
+  case TCake
+    Score += 250
+    play sound SndBonus
+  end select
+  ShowScore
+  return
+end sub
+
+' the Goos: Gsp/8 pixel a frame; an eaten one counts down, then comes
+' back in the middle (not while Crunchman is near)
+sub MoveGoos:
+  for Gi = 0 to 3
+    if Gs[Gi].Away > 0 then
+      dec Gs[Gi].Away
+      if Gs[Gi].Away = 0 then
+        if Near(CenX, CenY, 24) = 1 then
+          Gs[Gi].Away = 1
+        else
+          Gs[Gi].X = CenX
+          Gs[Gi].Y = CenY
+          Gs[Gi].Acc = 0
+        end if
+      end if
+    else
+      Gs[Gi].Acc = Gs[Gi].Acc + Gsp
+      while Gs[Gi].Acc >= 8
+        Gs[Gi].Acc = Gs[Gi].Acc - 8
+        GStep(Gi)
+      end while
+    end if
+  next
+  return
+end sub
+
+' 1 when Crunchman is within R pixels of Ax, Ay on both axes
+function Near(u8 Ax, u8 Ay, u8 R) as u8
+  i16 Dx = 0
+  i16 Dy = 0
+  Dx = Px
+  Dx = Dx - Ax
+  Dy = Py
+  Dy = Dy - Ay
+  if abs(Dx) >= R then return 0
+  if abs(Dy) >= R then return 0
+  return 1
+
+' one pixel of Goo G: in a corridor it keeps going; at a crossing or a
+' corner, a random open way that is not back
+sub GStep(u8 G):
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Ways = 0
+  u8 D = 0
+  u8 Back = 0
+  u8 Tries = 0
+  X = Gs[G].X
+  Y = Gs[G].Y
+  V = X | Y
+  V = V & 7
+  if V = 0 then
+    Cx = X >> 3
+    Cy = Y >> 3
+    Ways = 0
+    for D = 1 to 4
+      Ways = Ways + WayOpen(Cx, Cy, D)
+    next
+    D = Gs[G].Dir
+    Back = OppT[D]
+    if Ways <> 2 then
+      D = 0
+    elseif WayOpen(Cx, Cy, D) = 0 then
+      D = 0
+    end if
+    while D = 0
+      inc Tries
+      D = Rnd() & 3
+      D = D + 1
+      if Tries < 40 then
+        if D = Back then
+          D = 0
+        elseif WayOpen(Cx, Cy, D) = 0 then
+          D = 0
+        end if
+      else
+        D = Back
+      end if
+    end while
+    Gs[G].Dir = D
+  end if
+  D = Gs[G].Dir
+  Gs[G].X = Slide(X, DxT[D])
+  Gs[G].Y = Y + DyT[D]
+  return
+end sub
+
+' Crunchman against the Goos (within 6 pixels on both axes)
+sub Collide:
+  if St <> StPlay then return
+  for Gi = 0 to 3
+    if Gs[Gi].Away = 0 then
+      if Near(Gs[Gi].X, Gs[Gi].Y, 7) = 1 then
+        if Power > 0 then
+          Gs[Gi].Away = AwayF
+          Gp += Gp
+          Score += Gp
+          ShowScore
+          play sound SndGulp
+        else
+          St = StDie
+          DieT = 0
+          play sound SndSplat
+          play sound SndSquash
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub LoseLife:
+  dec Lives
+  ShowLives
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  ResetPositions
+  return
+end sub
+
+' Crunchman in the middle, the Goos in their corners, no power
+sub ResetPositions:
+  St = StPlay
+  Px = CenX
+  Py = CenY
+  Pd = 0
+  Pa = 0
+  Power = 0
+  for Gi = 0 to 3
+    Gs[Gi].X = GoX[Gi]
+    Gs[Gi].Y = GoY[Gi]
+    Gs[Gi].Dir = GoD[Gi]
+    Gs[Gi].Acc = GoAcc[Gi]
+    Gs[Gi].Away = 0
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' levels and games
+
+sub StartLevel:
+  Phase = 2
+  Eaten = 0
+  V = Level + 5
+  if V > 8 then V = 8
+  Gsp = V
+  NewScreen
+  DrawMaze
+  ShowHud
+  ResetPositions
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 60 frames
+  nmi off
+  Phase = 1
+  return
+end sub
+
+sub NextLevel:
+  Phase = 3
+  if Level < 99 then inc Level
+  StartLevel
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lives = 3
+  Level = 1
+  Over = 0
+  StartLevel
+  return
+end sub
+
+sub ShowHud:
+  print at 9,1, "HI"
+  print at 19,1, "LV"
+  ShowScore
+  ShowHi
+  ShowLevel
+  ShowLives
+  return
+end sub
+
+sub ShowScore:
+  print at 2,1, Score
+  return
+end sub
+
+sub ShowHi:
+  print at 12,1, Hi
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Level
+  print at 22,1, digits$(NumU, 2)
+  return
+end sub
+
+' a face for each life left after this one (up to four)
+sub ShowLives:
+  u8 Shown = 0
+  fill 32 count 4 at 25,1
+  Shown = 0
+  if Lives > 1 then Shown = Lives - 1
+  if Shown > 4 then Shown = 4
+  if Shown > 0 then
+    for Hc = 1 to Shown
+      put char TLife at 24 + Hc, 1
+    next
+  end if
+  return
+end sub
+
+' sprites 0-1 Crunchman (face over body), 2-5 the Goos
+sub DrawSprites:
+  u8 Gc = 0
+  X = Px + 12
+  Y = Py + 11
+  if St = StDie then
+    V = DieT >> 3
+    if V > 3 then V = 3
+    K = SCd0 + V * 4
+    set sprite 0 to 192,0,0,0
+    if DieT >= 80 then
+      set sprite 1 to 192,0,0,0
+    else
+      set sprite 1 to Y,X,K,9
+    end if
+  else
+    F = 0
+    if St = StPlay then
+      V = WalkT >> 2
+      F = V & 1
+    end if
+    K = Pd * 2 + F
+    K = SCf00 + K * 4
+    set sprite 0 to Y,X,K,15
+    K = SCb0 + F * 4
+    set sprite 1 to Y,X,K,9
+  end if
+  for Gi = 0 to 3
+    J = Gi + 2
+    if Gs[Gi].Away > 0 then
+      set sprite J to 192,0,0,0
+    else
+      V = Anim + Gi * 8
+      V = V >> 4
+      V = V & 1
+      K = SGoo0 + V * 4
+      Gc = GoCol[Gi]
+      if Power > 0 then
+        K = K + 8
+        Gc = 14
+        if Power < BlinkF then
+          V = Anim / 12
+          V = V & 1
+          if V = 1 then Gc = 15
+        end if
+      end if
+      X = Gs[Gi].X + 12
+      Y = Gs[Gi].Y + 11
+      set sprite J to Y,X,K,Gc
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name in big letters, the four Goos by name, the points,
+' the tune once, START / CREDITS
+sub TitlePage:
+  Phase = 5
+  NewScreen
+  for Hc = 0 to 18
+    V = TTtl00 + Hc
+    put char V at Hc + 6, 3
+    V = TTtl10 + Hc
+    put char V at Hc + 6, 4
+  next
+  print at 6,6, "AHOY! FEBRUARY 1987"
+  print at 7,7, "AFTER ROY D. LEWIS"
+  print at 7,10, "GOOLY"
+  print at 19,10, "GOOKY"
+  print at 7,13, "COOLY"
+  print at 19,13, "COOKY"
+  put char TCrumb at 4,15
+  print at 6,15, "2"
+  put char TCookie at 9,15
+  print at 11,15, "GOOS 30-240"
+  put char TCupcake at 4,17
+  print at 6,17, "100"
+  put char TCake at 11,17
+  print at 13,17, "250"
+  put char TLife at 18,17
+  print at 20,17, "x3"
+  NumU = 0
+  print at 9,19, "HIGH ", Hi
+  print at 13,21, "START"
+  print at 13,22, "CREDITS"
+  ShowMenu
+  for Gi = 0 to 3
+    V = Gi & 1
+    X = 36 + V * 96
+    V = Gi >> 1
+    Y = 71 + V * 24
+    K = GoCol[Gi]
+    J = Gi + 2
+    set sprite J to Y,X,SGoo0,K
+  next
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 6
+tp_loop:
+  Frame1
+  ReadPad
+  inc Anim
+  V = Rnd()
+  V = Pad & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 12,21
+  put char 32 at 12,22
+  J = Menu + 21
+  put char 62 at 12,J
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "CRUNCHMAN"
+  print at 2,4, "BASED ON CRUNCHMAN 64 BY"
+  print at 2,5, "ROY D. LEWIS, AHOY!"
+  print at 2,6, "FEBRUARY 1987 (C-64)."
+  print at 2,8, "COLECOVISION GAME, MUSIC"
+  print at 2,9, "AND PICTURES BY CLAUDE"
+  print at 2,10, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "IN AMY BY AMY BIENVENU,"
+  print at 2,12, "2026."
+  print at 2,14, "MUSIC: COOKIE JAR STOMP"
+  print at 2,15, "(ORIGINAL)"
+  print at 2,17, "EAT EVERY CRUMB. A COOKIE"
+  print at 2,18, "TURNS THE GOOS: CRUNCH"
+  print at 2,19, "THEM BEFORE IT WEARS OFF!"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 8
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$85,$91,$81,$83,$89,$00,$00
+  $00,$05,$11,$01,$03,$09,$00,$00
+  $00,$85,$91,$81,$83,$89,$A1,$81
+  $00,$05,$11,$01,$03,$09,$21,$01
+  $00,$84,$90,$80,$82,$88,$00,$00
+  $00,$04,$10,$00,$02,$08,$00,$00
+  $00,$84,$90,$80,$82,$88,$A0,$80
+  $00,$04,$10,$00,$02,$08,$20,$00
+  $81,$85,$91,$81,$83,$89,$00,$00
+  $01,$05,$11,$01,$03,$09,$00,$00
+  $81,$85,$91,$81,$83,$89,$A1,$81
+  $01,$05,$11,$01,$03,$09,$21,$01
+  $80,$84,$90,$80,$82,$88,$00,$00
+  $00,$04,$10,$00,$02,$08,$00,$00
+  $80,$84,$90,$80,$82,$88,$A0,$80
+  $00,$04,$10,$00,$02,$08,$20,$00
+  $00,$92,$92,$92,$92,$92,$92,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $C3,$81,$04,$40,$08,$22,$81,$C3
+  $10,$38,$44,$04,$AA,$81,$C3,$00
+  $08,$08,$81,$81,$81,$81,$81,$00
+  $00,$81,$24,$00,$81,$54,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$0C,$0C,$0C,$0C,$0C,$0C
+  $60,$60,$26,$26,$19,$19,$E0,$E0
+  $CC,$CC,$4C,$4C,$4C,$4C,$CC,$CC
+  $99,$99,$89,$89,$81,$81,$81,$81
+  $86,$86,$32,$32,$C1,$C1,$C1,$C1
+  $64,$64,$64,$64,$64,$64,$04,$04
+  $19,$19,$44,$44,$04,$04,$A4,$A4
+  $19,$19,$C8,$C8,$C8,$C8,$08,$08
+  $60,$60,$60,$60,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$0C,$0C,$0C,$0C,$0C,$07,$07
+  $E1,$E1,$E4,$E4,$26,$26,$99,$99
+  $CC,$CC,$CC,$CC,$4C,$4C,$61,$61
+  $91,$91,$99,$99,$99,$99,$99,$99
+  $C1,$C1,$C1,$C1,$32,$32,$86,$86
+  $04,$04,$64,$64,$64,$64,$64,$64
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $C9,$C9,$C9,$C9,$C9,$C9,$C9,$C9
+  $E0,$E0,$60,$60,$60,$60,$60,$60
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $05,$54,$54,$54,$54,$54,$05,$01
+  $05,$54,$54,$54,$54,$54,$05,$01
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$54,$54,$54,$05,$01
+  $05,$54,$54,$04,$54,$54,$05,$01
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$04,$54,$54,$54,$04
+  $54,$54,$54,$54,$54,$54,$05,$01
+  $54,$54,$54,$54,$54,$54,$05,$01
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$05,$01
+  $04,$54,$54,$04,$54,$54,$05,$01
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $04,$54,$54,$04,$54,$54,$54,$04
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$01
+  $01,$01,$01,$B1,$B1,$01,$01,$01
+  $1A,$1A,$6A,$6A,$6A,$6A,$1A,$1A
+  $81,$91,$F9,$F9,$A6,$1A,$1A,$01
+  $81,$B1,$1F,$19,$1F,$18,$1A,$01
+  $01,$18,$F8,$08,$8F,$F8,$18,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$A1,$A1,$A1,$A1
+  $1B,$1B,$1B,$1B,$A1,$A1,$1A,$1A
+  $1B,$1B,$1B,$1B,$1A,$1A,$1A,$1A
+  $1B,$1B,$1B,$1B,$1A,$1A,$1A,$1A
+  $1B,$1B,$1B,$1B,$A1,$A1,$A1,$A1
+  $1B,$1B,$1B,$1B,$1A,$1A,$1A,$1A
+  $B1,$B1,$1B,$1B,$1A,$1A,$1A,$1A
+  $1B,$1B,$1B,$1B,$1A,$1A,$1A,$1A
+  $B1,$B1,$B1,$B1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$81,$81,$81,$81,$61,$61
+  $1A,$1A,$18,$18,$18,$18,$61,$61
+  $1A,$1A,$18,$18,$18,$18,$16,$16
+  $1A,$1A,$18,$18,$18,$18,$16,$16
+  $A1,$A1,$81,$81,$18,$18,$16,$16
+  $1A,$1A,$18,$18,$18,$18,$16,$16
+  $1A,$1A,$18,$18,$18,$18,$16,$16
+  $1A,$1A,$18,$18,$18,$18,$16,$16
+  $A1,$A1,$81,$81,$81,$81,$61,$61
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$0E,$0A,$0E,$00,$00,$0F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$50,$70,$00,$00,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$0A,$0E,$00,$0D,$00,$00,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$50,$70,$00,$B0,$00,$00,$B0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0A,$0E,$0E,$00,$00,$0F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$50,$70,$70,$00,$00,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0A,$0E,$0E,$00,$0D,$00,$00,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$50,$70,$70,$00,$B0,$00,$00,$B0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$0C,$0E,$00,$00,$0F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$60,$70,$00,$00,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$0C,$0E,$00,$0D,$00,$00,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$60,$70,$00,$B0,$00,$00,$B0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$0E,$0A,$00,$00,$0F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$70,$50,$00,$00,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$0E,$0A,$00,$0D,$00,$00,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$70,$50,$00,$B0,$00,$00,$B0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$06,$0E,$00,$00,$0F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$30,$70,$00,$00,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$06,$0E,$00,$0D,$00,$00,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$30,$70,$00,$B0,$00,$00,$B0,$00,$00,$00,$00
+  $00,$00,$0F,$1F,$31,$35,$31,$3F,$3F,$30,$30,$3F,$1F,$0D,$00,$00
+  $00,$00,$F0,$F8,$8C,$AC,$8C,$FC,$FC,$0C,$0C,$FC,$F8,$B0,$00,$00
+  $00,$00,$0F,$1F,$31,$35,$31,$3F,$32,$30,$30,$32,$1F,$0D,$00,$00
+  $00,$00,$F0,$F8,$8C,$AC,$8C,$FC,$4C,$0C,$0C,$4C,$F8,$B0,$00,$00
+  $00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00
+  $00,$00,$00,$00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $00,$00,$00,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$7F,$7F,$7F,$7F,$7F,$7F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7F,$7F,$7F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$00,$00
+  $00,$01,$03,$07,$0F,$19,$19,$3F,$3F,$78,$7F,$FF,$FF,$7F,$00,$00
+  $00,$80,$C0,$E0,$F0,$98,$98,$FC,$FC,$1E,$FE,$FF,$FF,$FE,$00,$00
+  $00,$00,$00,$03,$0F,$1F,$39,$39,$7F,$78,$FF,$FF,$FF,$7F,$00,$00
+  $00,$00,$00,$C0,$F0,$FC,$9C,$9C,$FE,$1E,$FF,$FF,$FF,$FE,$00,$00
+  $00,$1F,$1F,$1F,$0F,$1F,$1D,$3F,$3F,$75,$7F,$FF,$FF,$7F,$00,$00
+  $00,$F8,$F8,$F8,$F0,$F8,$B8,$FC,$FC,$AE,$FE,$FF,$FF,$FE,$00,$00
+  $00,$00,$00,$1F,$0F,$1F,$3F,$3D,$7F,$75,$FF,$FF,$FF,$7F,$00,$00
+  $00,$00,$00,$F8,$F0,$FC,$FC,$BC,$FE,$AE,$FF,$FF,$FF,$FE,$00,$00
+end data
+data MazeT bytes
+  143,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,141,143
+  139,146,145,145,145,145,145,145,145,145,145,144,144,32,144,144,145,145,145,145,145,145,145,145,145,146,142
+  139,145,134,135,135,135,131,145,134,131,145,134,135,135,135,131,145,134,131,145,134,135,135,135,131,145,142
+  139,145,140,141,141,141,137,145,140,137,145,140,141,141,141,137,145,140,137,145,140,141,141,141,137,145,142
+  139,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,142
+  139,145,134,131,145,134,135,135,135,131,145,134,135,135,135,131,145,134,135,135,135,131,145,134,131,145,142
+  139,145,140,137,145,142,143,141,141,137,145,140,141,141,141,137,145,140,141,141,143,139,145,140,137,145,142
+  139,145,145,145,145,142,139,145,145,145,145,145,145,145,145,145,145,145,145,145,142,139,145,145,145,145,142
+  143,135,135,131,145,142,139,145,134,135,135,135,131,145,134,135,135,135,131,145,142,139,145,134,135,135,143
+  141,141,141,137,145,140,137,145,142,143,141,141,137,145,140,141,141,143,139,145,140,137,145,140,141,141,141
+  32,145,145,145,145,145,145,145,142,139,145,145,145,32,145,145,145,142,139,145,145,145,145,145,145,145,32
+  131,145,134,135,135,135,131,145,142,139,145,134,135,135,135,131,145,142,139,145,134,135,135,135,131,145,134
+  139,145,140,141,141,141,137,145,142,139,145,140,141,141,141,137,145,142,139,145,140,141,141,141,137,145,142
+  139,145,145,145,145,145,145,145,142,139,145,145,145,145,145,145,145,142,139,145,145,145,145,145,145,145,142
+  139,145,134,131,145,134,135,135,143,143,135,135,131,145,134,135,135,143,143,135,135,131,145,134,131,145,142
+  139,145,140,137,145,140,141,141,141,141,141,141,137,145,140,141,141,141,141,141,141,137,145,140,137,145,142
+  139,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,142
+  139,145,134,135,135,135,131,145,134,131,145,134,135,135,135,131,145,134,131,145,134,135,135,135,131,145,142
+  139,145,140,141,141,141,137,145,140,137,145,140,141,141,141,137,145,140,137,145,140,141,141,141,137,145,142
+  139,146,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,146,142
+  143,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,143
+end data
+data OpenT bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,1,1,1,1,1,1,1,1,1,1,2,2,1,2,2,1,1,1,1,1,1,1,1,1,1,0
+  0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0
+  0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0
+  0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+  0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,1,0
+  0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,1,0
+  0,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,0
+  0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0
+  0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0
+  1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1
+  0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0
+  0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0
+  0,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,0
+  0,1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1,0
+  0,1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1,0
+  0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+  0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0
+  0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0
+  0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+
+asm {
+CrCrumb:
+    db $40,$3E,$30,$01,$40,$2F,$50,$01,$50
+CrCookie:
+    db $40,$18,$21,$02,$40,$BA,$20,$02,$40,$8C,$20,$02,$40,$70,$20,$02,$40,$56,$30,$03,$40,$46,$40,$04
+    db $50
+CrGulp:
+    db $40,$46,$20,$02,$40,$5D,$20,$02,$40,$7C,$20,$02,$40,$56,$20,$02,$40,$3E,$30,$03,$40,$2F,$40,$05
+    db $50
+CrBonus:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$0A,$50
+CrOpen:
+    db $00,$00,$22,$03,$00,$00,$43,$03,$00,$00,$74,$04,$10
+CrSplat:
+    db $00,$00,$05,$04,$00,$00,$26,$06,$00,$00,$46,$08,$00,$00,$76,$0C,$10
+CrSquash:
+    db $40,$A0,$20,$04,$40,$BA,$20,$04,$40,$E0,$20,$04,$40,$0A,$31,$04,$40,$40,$31,$04,$40,$82,$41,$06
+    db $40,$D2,$61,$08,$50
+CrClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$0F
+    db $50
+CrStart:
+    db $40,$1D,$21,$05,$40,$E2,$20,$05,$40,$BF,$20,$05,$40,$8F,$30,$0C,$50
+CrOver:
+    db $40,$E2,$20,$0C,$40,$FE,$20,$0C,$40,$1D,$21,$0C,$40,$7C,$21,$24,$50
+
+CrSoundTable:
+    dw CrTuneMel,$702B
+    dw CrTuneBass,$7035
+    dw CrCrumb,$7049
+    dw CrCookie,$7049
+    dw CrGulp,$7049
+    dw CrBonus,$7049
+    dw CrOpen,$703F
+    dw CrSplat,$703F
+    dw CrSquash,$7049
+    dw CrClear,$7049
+    dw CrStart,$7049
+    dw CrOver,$7049
+; Cookie Jar Stomp (original)
+; Tiny Sound, 8 frames per step
+CrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$70,$F1,$22,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$24,$21,$01,$23,$01,$26,$2B,$01,$2A,$28,$26,$24,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$23,$26,$01,$23,$1F,$01,$28,$01,$26,$24
+    db $01,$23,$21,$01,$26,$01,$24,$23,$01,$21,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+CrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$90,$18,$32,$07,$01,$0E,$01,$0B,$01,$0E,$01,$09,$01,$10,$01
+    db $0C,$01,$10,$01,$07,$01,$0E,$01,$0B,$01,$07,$01,$0E,$01,$09,$01
+    db $0E,$01,$12,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$0C,$01,$13,$01
+    db $10,$01,$0C,$01,$0E,$01,$09,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$00,$01
+    db $FF
+}

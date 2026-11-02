@@ -1,0 +1,1038 @@
+cartridge "PHOBIA/CLEVE BLAKEMORE/1988"
+
+' PHOBIA
+' A ColecoVision game based on "Phobia" by Cleve Blakemore, Ahoy! June 1988
+' (Commodore 64 BASIC, disk ahoy1988-06). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' listing, orig/phobia.bas), the game is built for the ColecoVision: a
+' tiled corridor in the Reality Institute, smooth 16 x 16 sprites (the
+' runner, the laser bolt, the advancing wall), a sliding exit door, sound
+' effects and an original title tune.
+'
+' The game: a test of reason and reflexes. Two doors are named above the
+' corridor, each a fate (WATER or AIR, DEMONS or TIGERS...). Choose the one
+' you could survive with the stick (up: the top door, down: the bottom
+' door) and run to the exit on the right. Jump (button) over the pits and
+' the laser bolts, and keep ahead of the wall closing in from the left.
+' The right fate opens the door; the wrong one, a pit, a bolt, or the wall
+' pinning you at a door you never chose ends the game with the reason.
+' Nine rooms make a graduate of the Institute.
+'
+' From the original (orig/phobia.bas): the 13 pairs of fates and the
+' reasons (lines 1720-1840) and the congratulation and life-force messages;
+' up and down choose a door (and may be changed until the door is reached),
+' a choice is needed at the door (the runner bounces back without one); the
+' run speed and the jump (8 steps up, 8 down, also while running); the
+' laser bolt that keeps sweeping from right to left at the runner's
+' height on rooms 2, 6, 7, 8 and 9; the pits (left one on rooms 4, 5, 7, 8,
+' 9; right one on 3, 6, 7, 8, 9); the wall that comes from the left at 1
+' (rooms 1-5), 2 (6-8) or 3 (9) pixels a step and pushes the runner
+' ahead; one life (any death ends the game); the score of 50 x the pair's
+' number + 250 x the room number for each room; nine rooms; the fanfare.
+'
+' Liberties: one BASIC pass of the C64 (about 20 a second) is spread over
+' three frames, so everything moves smoothly at the original speeds; the
+' jump is a smooth arc of 40 frames, 22 pixels high (the C64's 16 passes,
+' 16 pixels, linear). The C64 picked a random pair each room (repeats
+' possible); here the nine rooms of a game use nine different pairs. The
+' laser waits a short random time off screen between sweeps (the C64's
+' bolt wrapped round its 256-pixel register). A wall that pins a runner
+' who has not chosen at the door crushes him (on the C64 the two sprites
+' fought on). Collisions are boxes (the C64 used its sprite collision
+' register; its pit sensors were invisible sprites). Added: two lines of
+' controls under the corridor each room, a hint at the door when no fate
+' is chosen, a WELL DONE line, the door sliding open as tiles, the rubble
+' behind the wall. The reason is shown as a three-line message (the C64
+' scrolled it across the top). A high score. GAME END then the title (the
+' C64 restarted with RUN).
+'
+' Controls: either controller: the stick left and right runs, up and down
+' choose a door, a side button jumps (hold it to keep jumping). On the
+' title, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` always given. Own
+' xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TWallp = 128
+const TWallt = 129
+const TFloor = 130
+const TFloorb = 131
+const TPitl = 132
+const TPitm = 133
+const TPitr = 134
+const TPitd = 135
+const TRub = 136
+const TLint = 137
+const TDrl = 138
+const TDrr = 139
+const TDark = 140
+const TDarkr = 141
+const TEmit = 142
+const TFtld = 143
+const TFtrd = 144
+const TFbld = 145
+const TFbrd = 146
+const TFhtd = 147
+const TFhbd = 148
+const TFvld = 149
+const TFvrd = 150
+const TFtll = 151
+const TFtrl = 152
+const TFbll = 153
+const TFbrl = 154
+const TFhtl = 155
+const TFhbl = 156
+const TFvll = 157
+const TFvrl = 158
+const TArrow = 159
+const TArrowl = 160
+const TBlk = 161
+const SRun0 = 0
+const SRun1 = 4
+const SRun2 = 8
+const SLaser = 12
+const SCruT = 16
+const SCruB = 20
+const SDust = 24
+const NTiles8 = 272
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndJump = 4
+const SndZap = 5
+const SndDoor = 6
+const SndVapor = 7
+const SndBump = 8
+const SndStart = 9
+const SndWin = 10
+const NSpr = 4
+const JumpN = 40
+const RunSp = 20
+const LaserSp = 24
+const ExitX = 208
+const PitAx = 80
+const PitBx = 152
+const NDoors = 13
+const NRooms = 9
+
+data TilePat bytes
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$00,$00,$00,$00,$81,$42,$42
+  $00,$00,$01,$01,$01,$01,$00,$00
+  $10,$10,$00,$01,$01,$00,$00,$00
+  $07,$F0,$E0,$E0,$E0,$E0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$07,$07,$07,$07,$03,$03
+  $00,$00,$22,$AA,$44,$24,$00,$A5
+  $10,$42,$08,$80,$04,$20,$01,$40
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $00,$80,$80,$80,$00,$80,$80,$80
+  $00,$01,$01,$01,$00,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$81,$80,$07,$07,$80,$81,$00
+  $00,$00,$00,$E0,$E0,$10,$10,$10
+  $00,$00,$00,$07,$07,$08,$08,$08
+  $10,$10,$10,$E0,$E0,$00,$00,$00
+  $08,$08,$08,$07,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $00,$00,$00,$E0,$E0,$10,$10,$10
+  $00,$00,$00,$07,$07,$08,$08,$08
+  $10,$10,$10,$E0,$E0,$00,$00,$00
+  $08,$08,$08,$07,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $00,$10,$18,$03,$01,$03,$18,$10
+  $00,$08,$18,$C0,$80,$C0,$18,$08
+  $01,$80,$80,$80,$01,$01,$80,$00
+end data
+data TileCol bytes
+  $04,$4E,$E4,$E4,$E4,$E4,$4E,$04
+  $0E,$0F,$0E,$01,$04,$4E,$E4,$E4
+  $0F,$0E,$1E,$1E,$1E,$1E,$01,$0E
+  $1E,$1E,$01,$1E,$1E,$01,$01,$01
+  $1F,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1E,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$61,$16,$16,$86,$08,$98
+  $86,$86,$86,$86,$86,$86,$86,$86
+  $0E,$0F,$0E,$A1,$0A,$01,$0E,$0E
+  $0A,$A6,$A6,$A6,$0A,$A6,$A6,$A6
+  $0A,$A6,$A6,$A6,$0A,$A6,$A6,$A6
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $04,$4E,$4E,$9D,$9D,$4E,$4E,$04
+  $01,$01,$01,$14,$14,$41,$41,$41
+  $01,$01,$01,$14,$14,$41,$41,$41
+  $41,$41,$41,$14,$14,$01,$01,$01
+  $41,$41,$41,$14,$14,$01,$01,$01
+  $01,$01,$01,$04,$04,$01,$01,$01
+  $01,$01,$01,$04,$04,$01,$01,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$01,$01,$1B,$1B,$B1,$B1,$B1
+  $01,$01,$01,$1B,$1B,$B1,$B1,$B1
+  $B1,$B1,$B1,$1B,$1B,$01,$01,$01
+  $B1,$B1,$B1,$1B,$1B,$01,$01,$01
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$B1,$B1,$1B,$1B,$1B,$B1,$B1
+  $01,$B1,$B1,$1B,$1B,$1B,$B1,$B1
+  $9F,$F9,$F9,$F9,$89,$89,$98,$08
+end data
+data SpritePat bytes
+  $03,$07,$07,$03,$07,$0F,$1B,$33,$03,$07,$0C,$18,$30,$60,$40,$00
+  $80,$C0,$80,$00,$80,$C0,$B0,$98,$80,$C0,$60,$30,$18,$08,$0C,$00
+  $03,$07,$07,$03,$07,$07,$07,$07,$03,$03,$02,$02,$06,$04,$0C,$00
+  $80,$C0,$80,$00,$80,$C0,$A0,$20,$80,$C0,$C0,$60,$20,$20,$30,$00
+  $03,$07,$07,$03,$07,$0F,$17,$17,$03,$07,$06,$0C,$08,$18,$10,$00
+  $80,$C0,$80,$00,$80,$C0,$A0,$30,$80,$80,$C0,$60,$20,$30,$10,$00
+  $00,$00,$00,$00,$00,$00,$5D,$BF,$5D,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FC,$FE,$FC,$00,$00,$00,$00,$00,$00,$00
+  $FF,$80,$BF,$A0,$AF,$A8,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $FC,$04,$F6,$17,$D6,$54,$56,$57,$56,$54,$56,$57,$56,$54,$56,$57
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$A8,$AF,$A0,$BF,$80,$FF,$FF,$FF
+  $56,$54,$56,$57,$56,$54,$56,$57,$56,$D4,$16,$F7,$06,$FC,$FF,$FF
+  $00,$02,$10,$05,$20,$05,$10,$45,$12,$05,$2A,$0A,$25,$0B,$2F,$00
+  $00,$20,$44,$04,$50,$10,$A4,$40,$54,$50,$8A,$A8,$D2,$E8,$FA,$00
+end data
+data DoorTxt chars
+  "        WATER         "
+  "         AIR          "
+  "        EARTH         "
+  "         FIRE         "
+  "        WOLVES        "
+  "       DRAGONS        "
+  "      SLOW DEATH      "
+  "     SLOW TORTURE     "
+  "         REAL         "
+  "        UNREAL        "
+  "       DESPAIR        "
+  "        PANIC         "
+  "     LIFE & DEATH     "
+  " ETERNAL CONFINEMENT  "
+  "      SAFE CHAOS      "
+  "   DANGEROUS ORDER    "
+  "        DEMONS        "
+  "        TIGERS        "
+  "      NIGHTMARES      "
+  "     RATTLESNAKES     "
+  "    DEATH SENTENCE    "
+  "    EXTERMINATION     "
+  "     SEARING HEAT     "
+  "  ABSOLUTE ZERO COLD  "
+  "     ACCELERATION     "
+  "    DEACCELERATION    "
+end data
+data GoodT bytes 1,0,1,1,0,0,0,1,0,0,0,0,1
+data MsgTxt chars
+  "   YOU ARE NOT A WATER    "
+  "    BREATHING CREATURE    "
+  "                          "
+  "  EARTH BURIES BUT FIRE   "
+  "       INCINERATES        "
+  "                          "
+  "DRAGONS ARE FANTASY - BUT "
+  "     WOLVES ARE REAL      "
+  "                          "
+  " YOU CAN SURVIVE TORTURE, "
+  "     BUT NEVER DEATH      "
+  "                          "
+  " YOU CANNOT EXIST OUTSIDE "
+  "         REALITY          "
+  "                          "
+  "PANIC IS LOSS OF CONSCIOUS"
+  " CONTROL AND CAUSES DEATH "
+  "                          "
+  "   LIFE IS BETTER THAN    "
+  "       IMPRISONMENT       "
+  "                          "
+  "   CHAOS IS OUTSIDE OF    "
+  "         REALITY          "
+  "                          "
+  "   DEMONS ARE NOT REAL,   "
+  "        TIGERS ARE        "
+  "                          "
+  "VENOM KILLS BUT NIGHTMARES"
+  "       ARE HARMLESS       "
+  "                          "
+  "   WHERE THERE'S LIFE,    "
+  "       THERE'S HOPE       "
+  "                          "
+  "   NOTHING CAN SURVIVE    "
+  "      ABSOLUTE ZERO       "
+  "                          "
+  "  TO BE ACCELERATED TOO   "
+  "     QUICKLY IS FATAL     "
+  "                          "
+  "YOUR LIFE FORCE IS WEAK..."
+  " YOU LACK SUFFICIENT WILL "
+  "      TO SURVIVE...       "
+  "CONGRATULATIONS, YOU HAVE "
+  "    GRADUATED FROM THE    "
+  " INSTITUTE OF REALITY...  "
+end data
+data TitleArt bytes
+  TBlk,TBlk,TBlk,32,TBlk,32,TBlk,32,TBlk,TBlk,TBlk,32,TBlk,TBlk,32,32,TBlk,TBlk,TBlk,32,32,TBlk,32
+  TBlk,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,32,TBlk,32,32,TBlk,32,TBlk
+  TBlk,TBlk,TBlk,32,TBlk,TBlk,TBlk,32,TBlk,32,TBlk,32,TBlk,TBlk,TBlk,32,32,TBlk,32,32,TBlk,TBlk,TBlk
+  TBlk,32,32,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,TBlk,32,32,TBlk,32,32,TBlk,32,TBlk
+  TBlk,32,32,32,TBlk,32,TBlk,32,TBlk,TBlk,TBlk,32,TBlk,TBlk,32,32,TBlk,TBlk,TBlk,32,TBlk,32,TBlk
+end data
+
+' the jump: height in pixels for each of its 40 frames
+data JumpH bytes
+  0,2,4,6,8,10,11,13,14,15,16,17,18,19,20,20,21,21,22,22,22,22,22,21,21,20,20,19,18,17,16,15,14,13,11,10,8,6,4,2
+end data
+' rooms 1-9 (index 0 unused): laser, left pit, right pit, wall speed
+data LaserT bytes 0,0,1,0,0,0,1,1,1,1
+data PitAT bytes 0,0,0,0,1,1,0,1,1,1
+data PitBT bytes 0,0,0,1,0,0,1,1,1,1
+data WallT bytes 0,5,5,5,5,5,11,11,11,16
+' the runner's colours while vaporized (one every 12 frames)
+data VapCol bytes 15,11,9,13,8,6
+
+record Room:
+  u8 Laser
+  u8 PitA
+  u8 PitB
+  u8 Wall
+end record
+
+Room Cfg
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Off = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 Mode = 0
+u8 Lv = 1
+u8 Z = 0
+u8 Order[13]
+' the runner: x in 1/16 pixel, jump frame, choice (0 none, 1 top, 2 bottom)
+u16 Px16 = 0
+u8 Px = 0
+u8 Jt = 0
+u8 Ch = 0
+u8 Hinted = 0
+' the laser (x in 1/16 pixel, on screen, frames before the next sweep)
+u16 Lx16 = 0
+u8 LOn = 0
+u8 LWait = 0
+' the wall (x in 1/16 pixel) and the rubble columns filled behind it
+u16 Wx16 = 0
+u8 Filled = 0
+' play phase: 0 running, 1 through the door, 2 vaporized; its timer
+u8 Ph = 0
+u8 Pt = 0
+u8 Why = 0
+u8 Over = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PhSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the reason (or the diploma), then back to the title on a press
+  Mode = 4
+  if Score > Hi then Hi = Score
+  mute all
+  ShowMsg(Why)
+  if Over = 2 then
+    play sound SndWin
+  end if
+  print at 11,19, "GAME END"
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  select case Ph
+  case 1
+    ExitStep
+  case 2
+    VaporStep
+  case else
+    RunStep
+  end select
+  return
+end sub
+
+sub RunStep:
+  ' the choice: up the top door, down the bottom one
+  K = J1 & 3
+  if K = 1 then
+    if Ch <> 1 then
+      Ch = 1
+      DrawPanels
+      play sound SndClick
+    end if
+  elseif K = 2 then
+    if Ch <> 2 then
+      Ch = 2
+      DrawPanels
+      play sound SndClick
+    end if
+  end if
+  ' run
+  K = J1 & 12
+  if K = 8 then Px16 = Px16 + RunSp
+  if K = 4 then
+    if Px16 >= 24 * 16 + RunSp then
+      Px16 = Px16 - RunSp
+    end if
+  end if
+  ' jump (hold the button to keep jumping)
+  if Jt > 0 then
+    inc Jt
+    if Jt >= JumpN then Jt = 0
+  elseif Btn > 0 then
+    Jt = 1
+    play sound SndJump
+  end if
+  ' the wall comes on and pushes the runner ahead
+  Wx16 = Wx16 + Cfg.Wall
+  W16 = Wx16 + 14 * 16
+  if W16 > Px16 then Px16 = W16
+  Px = Px16 >> 4
+  FillRubble
+  ' the exit door
+  if Px >= ExitX then
+    if Ch = 0 then
+      Px16 = (ExitX - 4) * 16
+      Px = ExitX - 4
+      W16 = Wx16 >> 4
+      if W16 + 14 >= Px then
+        Die(NDoors)
+        return
+      end if
+      play sound SndBump
+      if Hinted = 0 then
+        Hinted = 1
+        print at 3,20, "  PUSH UP OR DOWN TO     "
+        print at 3,21, "  CHOOSE YOUR FATE       "
+      end if
+    else
+      V = Ch - 1
+      if V = GoodT[Z] then
+        Ph = 1
+        Pt = 0
+        Jt = 0
+        LOn = 0
+        play sound SndDoor
+      else
+        Die(Z)
+      end if
+      return
+    end if
+  end if
+  ' the laser bolt
+  if Cfg.Laser > 0 then
+    if LOn = 0 then
+      dec LWait
+      if LWait = 0 then
+        LOn = 1
+        Lx16 = 212 * 16
+        play sound SndZap
+      end if
+    else
+      Lx16 = Lx16 - LaserSp
+      if Lx16 < 16 * 16 then
+        LOn = 0
+        Rand
+        V = Rs & 31
+        LWait = V + 30
+      end if
+    end if
+  end if
+  if Hit = 1 then Die(NDoors)
+  return
+end sub
+
+' 1 when the runner touches the bolt or stands over a pit
+function Hit as u8
+  u8 H = 0
+  u8 Lx = 0
+  u8 Ft = 0
+  H = JumpH[Jt]
+  if LOn = 1 then
+    if H < 10 then
+      W16 = Lx16 >> 4
+      Lx = W16
+      if Lx + 2 <= Px + 12 then
+        if Lx + 14 >= Px + 4 then return 1
+      end if
+    end if
+  end if
+  if Jt > 0 then return 0
+  Ft = Px + 8
+  if Cfg.PitA = 1 then
+    if Ft >= PitAx + 4 then
+      if Ft < PitAx + 20 then return 1
+    end if
+  end if
+  if Cfg.PitB = 1 then
+    if Ft >= PitBx + 4 then
+      if Ft < PitBx + 20 then return 1
+    end if
+  end if
+  return 0
+
+sub Die(u8 Reason):
+  Why = Reason
+  Ph = 2
+  Pt = 0
+  LOn = 0
+  play sound SndVapor
+  return
+end sub
+
+' the door slides up (32 frames), the runner walks in, the room's points,
+' the next room
+sub ExitStep:
+  inc Pt
+  if Pt <= 32 then
+    V = Pt & 7
+    if V = 0 then
+      V = Pt >> 3
+      Ri = 17 - V
+      put char TDark at 28,Ri
+      put char TDarkr at 29,Ri
+    end if
+    return
+  end if
+  if Pt < 120 then
+    if Px < 224 then
+      Px16 = Px16 + RunSp
+      Px = Px16 >> 4
+    end if
+    if Pt = 70 then
+      inc Lv
+      AddPoints(Z, 50)
+      AddPoints(Lv, 250)
+      if Lv > NRooms then
+        Lv = NRooms
+        ShowHud
+        Why = NDoors + 1
+        Over = 2
+        return
+      end if
+      ShowHud
+      print at 3,20, "                          "
+      print at 3,21, "        WELL DONE         "
+      print at 3,22, "                          "
+      play sound SndStart
+    end if
+    return
+  end if
+  NewRoom
+  return
+end sub
+
+sub AddPoints(u8 Times, u8 Each):
+  u8 I = 0
+  while I < Times
+    Score += Each
+    inc I
+  end while
+  return
+end sub
+
+sub VaporStep:
+  inc Pt
+  if Pt >= 90 then Over = 1
+  return
+end sub
+
+' the rubble behind the wall, a column at a time
+sub FillRubble:
+  W16 = Wx16 >> 7
+  T = W16
+  if T > 27 then T = 27
+  while Filled < T
+    for Ri = 12 to 16
+      put char TRub at Filled,Ri
+    next
+    inc Filled
+  end while
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number 0 .. N-1 (N up to 16)
+function RandBelow(u8 N) as u8
+  u8 R = 16
+  while R >= N
+    Rand
+    R = Rs & 15
+  end while
+  return R
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the runner, 1 the laser bolt, 2-3 the wall
+sub DrawSprites:
+  Y = 119 - JumpH[Jt]
+  if Ph = 2 then
+    if Pt < 72 then
+      V = Pt / 12
+      C = VapCol[V]
+      set sprite 0 to Y,Px,SRun1,C
+    elseif Pt < 84 then
+      set sprite 0 to Y,Px,SDust,14
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+  elseif Px >= 220 then
+    set sprite 0 to 192,0,0,0
+  else
+    if Jt > 0 then
+      K = SRun0
+    else
+      V = Px >> 3
+      V = V % 3
+      K = V << 2
+    end if
+    set sprite 0 to Y,Px,K,15
+  end if
+  if LOn = 1 then
+    W16 = Lx16 >> 4
+    X = W16
+    set sprite 1 to 117,X,SLaser,9
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  W16 = Wx16 >> 4
+  X = W16
+  set sprite 2 to 103,X,SCruT,14
+  set sprite 3 to 119,X,SCruB,14
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE ", Score
+  print at 22,1, "ROOM  /9"
+  K = 48 + Lv
+  put char K at 27,1
+  return
+end sub
+
+' the two doors: the chosen one lit, with arrows
+sub DrawPanels:
+  for J = 0 to 1
+    Y = J * 4 + 3
+    K = J + 1
+    if K = Ch then
+      T = TFtll
+    else
+      T = TFtld
+    end if
+    put char T at 3,Y
+    put char T + 1 at 28,Y
+    fill T + 4 count 24 at 4,Y
+    put char T + 2 at 3,Y + 2
+    put char T + 3 at 28,Y + 2
+    fill T + 5 count 24 at 4,Y + 2
+    put char T + 6 at 3,Y + 1
+    put char T + 7 at 28,Y + 1
+    if K = Ch then
+      put char TArrow at 2,Y + 1
+      put char TArrowl at 29,Y + 1
+    else
+      put char 32 at 2,Y + 1
+      put char 32 at 29,Y + 1
+    end if
+    Off = Z * 44 + J * 22
+    put DoorTxt + Off count 22 at 5,Y + 1
+  next
+  return
+end sub
+
+' a message of three lines of 26 (a reason, the life force, the diploma)
+sub ShowMsg(u8 M):
+  u16 Mo = 0
+  Mo = M * 78
+  for J = 0 to 2
+    Y = J + 20
+    put MsgTxt + Mo count 26 at 3,Y
+    Mo = Mo + 26
+  next
+  return
+end sub
+
+sub DrawRoom:
+  fill TWallt count 32 at 0,11
+  for Ri = 12 to 16
+    fill TWallp count 32 at 0,Ri
+  next
+  fill TFloor count 32 at 0,17
+  fill TFloorb count 32 at 0,18
+  if Cfg.PitA = 1 then DrawPit(10)
+  if Cfg.PitB = 1 then DrawPit(19)
+  put char TLint at 28,12
+  put char TLint at 29,12
+  for Ri = 13 to 16
+    put char TDrl at 28,Ri
+    put char TDrr at 29,Ri
+  next
+  if Cfg.Laser > 0 then put char TEmit at 27,15
+  return
+end sub
+
+sub DrawPit(u8 Col):
+  put char TPitl at Col,17
+  put char TPitm at Col + 1,17
+  put char TPitr at Col + 2,17
+  fill TPitd count 3 at Col,18
+  return
+end sub
+
+' a room: its fates, the corridor, the runner at the left
+sub NewRoom:
+  Z = Order[Lv - 1]
+  Cfg.Laser = LaserT[Lv]
+  Cfg.PitA = PitAT[Lv]
+  Cfg.PitB = PitBT[Lv]
+  Cfg.Wall = WallT[Lv]
+  Ch = 0
+  Hinted = 0
+  Px16 = 40 * 16
+  Px = 40
+  Jt = 0
+  Wx16 = 16 * 16
+  Filled = 2
+  LOn = 0
+  LWait = 60
+  Ph = 0
+  Pt = 0
+  NewScreen
+  ShowHud
+  DrawPanels
+  DrawRoom
+  print at 3,20, "  UP OR DOWN: CHOOSE A    "
+  print at 3,21, "  DOOR. BUTTON: JUMP.     "
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub Shuffle:
+  u8 I = 0
+  u8 Sw = 0
+  for I = 0 to 12
+    Order[I] = I
+  next
+  for I = 12 to 1 step -1
+    K = RandBelow(I + 1)
+    Sw = Order[I]
+    Order[I] = Order[K]
+    Order[K] = Sw
+  next
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lv = 1
+  Over = 0
+  Why = 0
+  Shuffle
+  NewRoom
+  Mode = 3
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: PHOBIA in blocks, the corridor with its door, the tune once
+sub TitlePage:
+  Mode = 2
+  NewScreen
+  print at 8,1, "AHOY! MAGAZINE"
+  print at 11,2, "PRESENTS"
+  for Ri = 0 to 4
+    Off = Ri * 23
+    put TitleArt + Off count 23 at 5,Ri + 4
+  next
+  print at 7,10, "BY CLEVE BLAKEMORE"
+  Cfg.Laser = 1
+  Cfg.PitA = 1
+  Cfg.PitB = 1
+  DrawRoom
+  print at 3,20, "A TEST OF REASON AND"
+  print at 3,21, "REFLEXES. PRESS A BUTTON."
+  if Hi > 0 then
+    print at 10,22, "BEST ", Hi
+  end if
+  Px = 40
+  Px16 = 40 * 16
+  Jt = 0
+  Ph = 0
+  LOn = 0
+  Wx16 = 16 * 16
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  ' the runner jogs to the door and back
+  V = Tick & 1
+  if V = 0 then
+    inc Px
+    if Px > 200 then Px = 40
+    DrawSprites
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub CreditsPage:
+  Mode = 1
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "PHOBIA"
+  print at 2,5, "BASED ON PHOBIA BY CLEVE"
+  print at 2,6, "BLAKEMORE, AHOY! JUNE 1988"
+  print at 2,7, "(COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: REALITY INSTITUTE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+PhClick:
+    db $40,$5D,$10,$02,$40,$7C,$30,$02,$50
+PhJump:
+    db $40,$75,$21,$02,$40,$18,$31,$02,$40,$D7,$30,$02,$40,$A5,$40,$02,$50
+PhZap:
+    db $40,$2F,$10,$02,$40,$3B,$20,$02,$40,$4B,$20,$02,$40,$5D,$30,$02,$40,$76,$50,$02,$50
+PhDoor:
+    db $00,$00,$16,$0A,$00,$00,$26,$0A,$00,$00,$36,$0A,$00,$00,$56,$0A,$00,$00,$76,$0A,$10
+PhVapor:
+    db $00,$00,$04,$04,$00,$00,$15,$04,$00,$00,$25,$06,$00,$00,$36,$08,$00,$00,$46,$0A,$00,$00,$67,$0E
+    db $10
+PhBump:
+    db $40,$6D,$22,$03,$40,$EA,$32,$05,$50
+PhStart:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$0C,$50
+PhWin:
+    db $40,$26,$11,$06,$40,$DE,$10,$06,$40,$AF,$10,$06,$40,$93,$10,$0C,$40,$AF,$10,$06,$40,$93,$20,$18
+    db $50
+
+PhSoundTable:
+    dw PhTuneMel,$702B
+    dw PhTuneBass,$7035
+    dw PhClick,$7049
+    dw PhJump,$7049
+    dw PhZap,$7049
+    dw PhDoor,$703F
+    dw PhVapor,$703F
+    dw PhBump,$7049
+    dw PhStart,$7049
+    dw PhWin,$7049
+; Reality Institute (original)
+; Tiny Sound, 8 frames per step
+PhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$22,$23,$01,$26,$01,$25,$01,$01,$23
+    db $22,$01,$1E,$01,$1F,$01,$01,$1E,$1F,$01,$23,$01,$22,$01,$01,$01
+    db $1E,$01,$01,$01,$23,$01,$26,$01,$2A,$01,$29,$01,$28,$01,$26,$01
+    db $25,$01,$01,$01,$26,$01,$25,$01,$23,$01,$22,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+PhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

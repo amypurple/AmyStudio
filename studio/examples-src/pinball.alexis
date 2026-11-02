@@ -1,0 +1,1129 @@
+cartridge "FLIPPER ALLEY/T.BRANTNER/1987"
+
+' FLIPPER ALLEY
+' A ColecoVision game based on "Pinball Arcade" by Tony Brantner, Ahoy!
+' March 1987 (Commodore 64 machine language, PINBALL ML at $C000, started
+' by a two-line BASIC loader). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/pinball-ml.dis); the table is redrawn for the
+' ColecoVision: red rails on blue felt, round bumpers that light up, yellow
+' studs, two swinging flippers, a silver ball, a spring plunger, bells.
+'
+' The game: pull the plunger (stick down/up sets the power), launch with a
+' button. The ball flies up the lane, past the one-way gate and onto the
+' table, bouncing off rails, studs and bumpers. Press a button to flip.
+' Bumpers score 100 (cyan, top), 50 (magenta) and 10 (green, low). Every
+' 1000 points is an extra ball (at most 9). A ball through the drain
+' between the flippers is lost; three balls to start.
+'
+' From the original (orig/): the ball moves one pixel at a time, X and Y
+' separately; each axis has a speed index 0-7 (0-3 up/left from fast to
+' slow, 4-7 down/right from slow to fast) that sets how often it moves
+' (every 1, 2, 4 or 8 passes, worked out here in pixels a frame, MagT);
+' gravity adds 3/256 of a step to the down speed every pass (GravStep);
+' a ball that meets a rail turns round on that axis by the table
+' 6,5,4,4,3,3,2,1 (BncT: a fast ball comes back a little slower) and a
+' bounce up or down also starts the gravity count at random; anything on
+' the table that is not felt is solid (rails, studs, bumpers, the gate);
+' bumpers score 50, 100, 50, 10, 10 and flash; the thousands digit
+' changing gives an extra ball, up to 9; the plunger power 3-15 starts at
+' 5, the stick moves it, a button launches; the ball leaves the lane going
+' up fast and to the left, faster the harder it was pulled
+' ((power / 4) xor 3); a flipped flipper sends the ball up fast (speed 1),
+' faster with the stick up (0), softer with the stick down (2), and
+' sideways by the table 0,0,1,2,5,6,7,7 (KickT); the score and the high
+' score, six digits each.
+'
+' Liberties: the 40 x 23 table is scaled to 28 x 21 cells (bumpers 2 x 2
+' instead of 3 x 3, the eleven 2 x 2 studs become 1 x 1 studs, the two
+' over the drain kept side by side as a short bar; the two right-hand
+' rows the C64 had at columns 35-37, rows 12-13, are left out: scaled down
+' they made a pocket on the stud beside the lane that trapped the ball);
+' the passes are turned into whole frames (the C64 ran about 7.5 passes a
+' frame, from the cycle count of its delay loop: the speeds here are about
+' 0.7 of that, scaled to the smaller table; gravity 17/256 a frame, a bit
+' floatier than the C64's, so a flip with the stick up reaches the top
+' bumpers); the ball tests two corners of its leading edge (the C64 one
+' point). The original's flipper row was solid even at rest and the ball
+' bounced off it almost as off a rail, so the game played itself and the
+' button only added points: here a resting flipper is dead rubber, the
+' ball hops down its slope towards the drain (which, as on the C64, the
+' flippers never cover), so the flips must be timed; a flip lasts 10
+' frames (kicking during the first 6) with 6 more before the next one
+' (the C64's flip lasted 64 passes, about 8 frames), so tapping at random
+' keeps few balls; a sound for every kind of bumper, the flip, the launch,
+' the drain and an extra ball (the C64 had a bumper buzz and a launch
+' click); bumpers stay lit 12 frames (the C64: 21 passes); the score's
+' six BCD digits wrap past 999999; GAME OVER then the title (the C64 asked
+' PRESS RETURN).
+'
+' Controls: controller 1 (or 2). Before the launch: stick down/up sets the
+' plunger, a button launches. On the table: either button flips both
+' flippers; hold the stick up for a harder flip, down for a softer one.
+' On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFelt = 128
+const TFelt2 = 129
+const TDrain = 130
+const TRail0 = 131
+const TRail1 = 132
+const TRail2 = 133
+const TRail3 = 134
+const TRail4 = 135
+const TRail5 = 136
+const TRail6 = 137
+const TRail7 = 138
+const TRail8 = 139
+const TRail9 = 140
+const TRail10 = 141
+const TRail11 = 142
+const TRail12 = 143
+const TRail13 = 144
+const TRail14 = 145
+const TRail15 = 146
+const TStud = 147
+const TGate = 148
+const TBmpA00 = 149
+const TBmpA01 = 150
+const TBmpA10 = 151
+const TBmpA11 = 152
+const TBmpB00 = 153
+const TBmpB01 = 154
+const TBmpB10 = 155
+const TBmpB11 = 156
+const TBmpC00 = 157
+const TBmpC01 = 158
+const TBmpC10 = 159
+const TBmpC11 = 160
+const TBmpL00 = 161
+const TBmpL01 = 162
+const TBmpL10 = 163
+const TBmpL11 = 164
+const TFl0_0 = 165
+const TFl0_1 = 166
+const TFl0_2 = 167
+const TFl0_3 = 168
+const TFl0_4 = 169
+const TFl0_5 = 170
+const TFl0_6 = 171
+const TFl0_7 = 172
+const TFl0_8 = 173
+const TFl0_9 = 174
+const TFl0_10 = 175
+const TFl0_11 = 176
+const TFl1_0 = 177
+const TFl1_1 = 178
+const TFl1_2 = 179
+const TFl1_3 = 180
+const TFl1_4 = 181
+const TFl1_5 = 182
+const TFl1_6 = 183
+const TFl1_7 = 184
+const TFl1_8 = 185
+const TFl1_9 = 186
+const TFl1_10 = 187
+const TFl1_11 = 188
+const TFl2_0 = 189
+const TFl2_1 = 190
+const TFl2_2 = 191
+const TFl2_3 = 192
+const TFl2_4 = 193
+const TFl2_5 = 194
+const TFl2_6 = 195
+const TFl2_7 = 196
+const TFl2_8 = 197
+const TFl2_9 = 198
+const TFl2_10 = 199
+const TFl2_11 = 200
+const TBallic = 201
+const TBulb = 202
+const TBulb2 = 203
+const SBallg = 0
+const SBall = 4
+const SPlunger = 8
+const NTiles8 = 608
+const SprBytes = 96
+const TSolid = 131
+const TBmpA = 149
+const TBmpB = 153
+const TBmpC = 157
+const TBmpL = 161
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBell1 = 3
+const SndBell5 = 4
+const SndBell10 = 5
+const SndFlip = 6
+const SndWall = 7
+const SndLaunch = 8
+const SndDrain = 9
+const SndExtra = 10
+const SndStart = 11
+const SndOver = 12
+const NSpr = 4
+' 1/16 pixels a frame for speed index 0-7, and the bounce and kick tables
+data MagT bytes 80,40,20,10,10,20,40,80
+data BncT bytes 6,5,4,4,3,3,2,1
+data KickT bytes 0,0,1,2,5,6,7,7
+' bumper points / 10 (the C64's $C530) and their resting tiles
+data PtsT bytes 5,10,5,1,1
+data BmpTileT bytes 153,149,153,157,157
+const GravStep = 17
+' the flip: frames 1-6 swinging up (kicks), 7-10 held,
+' then falling back; the next flip from frame 16
+const FlipUp = 6
+const FlipEnd = 16
+const LaneX = 225
+const ExitY = 48
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$81,$81,$81,$81,$81,$81,$81
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $81,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $80,$C0,$60,$30,$18,$0C,$06,$03
+  $03,$F0,$E0,$C0,$80,$80,$01,$03
+  $C0,$F0,$07,$03,$01,$01,$80,$C0
+  $03,$01,$80,$80,$C0,$E0,$F0,$03
+  $C0,$80,$01,$01,$03,$07,$F0,$C0
+  $03,$F0,$E0,$C0,$80,$80,$01,$03
+  $C0,$F0,$07,$03,$01,$01,$80,$C0
+  $03,$01,$80,$80,$C0,$E0,$F0,$03
+  $C0,$80,$01,$01,$03,$07,$F0,$C0
+  $03,$F0,$E0,$C0,$80,$80,$01,$03
+  $C0,$F0,$07,$03,$01,$01,$80,$C0
+  $03,$01,$80,$80,$C0,$E0,$F0,$03
+  $C0,$80,$01,$01,$03,$07,$F0,$C0
+  $03,$F0,$E0,$C0,$80,$80,$01,$03
+  $C0,$F0,$07,$03,$01,$01,$80,$C0
+  $03,$01,$80,$80,$C0,$E0,$F0,$03
+  $C0,$80,$01,$01,$03,$07,$F0,$C0
+  $03,$00,$00,$00,$F0,$00,$00,$00
+  $00,$07,$00,$00,$00,$01,$00,$00
+  $00,$00,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$00,$00,$E0,$00
+  $00,$00,$00,$00,$E0,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$00,$00,$C0
+  $00,$00,$00,$07,$00,$00,$07,$00
+  $00,$00,$F0,$00,$00,$00,$00,$00
+  $00,$E0,$00,$00,$00,$80,$00,$00
+  $C0,$00,$00,$00,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$00,$00,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$00,$00,$E0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$C0,$00
+  $00,$00,$00,$00,$00,$C0,$00,$00
+  $00,$07,$00,$00,$C0,$00,$00,$00
+  $00,$F0,$F0,$80,$00,$00,$00,$00
+  $00,$F0,$F0,$01,$00,$00,$00,$00
+  $00,$E0,$00,$00,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$00
+  $00,$00,$00,$07,$00,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$54,$04,$04,$04,$04
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $09,$08,$08,$08,$08,$08,$08,$08
+  $98,$98,$98,$98,$98,$98,$98,$98
+  $09,$98,$98,$98,$98,$98,$98,$98
+  $08,$08,$08,$08,$08,$08,$08,$09
+  $09,$08,$08,$08,$08,$08,$08,$09
+  $98,$98,$98,$98,$98,$98,$98,$09
+  $09,$98,$98,$98,$98,$98,$98,$09
+  $98,$98,$98,$98,$98,$98,$98,$98
+  $09,$98,$98,$98,$98,$98,$98,$98
+  $98,$98,$98,$98,$98,$98,$98,$98
+  $09,$98,$98,$98,$98,$98,$98,$98
+  $98,$98,$98,$98,$98,$98,$98,$09
+  $09,$98,$98,$98,$98,$98,$98,$09
+  $98,$98,$98,$98,$98,$98,$98,$09
+  $09,$98,$98,$98,$98,$98,$98,$09
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $74,$47,$47,$47,$47,$47,$F7,$F7
+  $74,$74,$47,$47,$47,$47,$F7,$F7
+  $F7,$F7,$47,$47,$47,$47,$47,$74
+  $F7,$F7,$47,$47,$47,$47,$74,$74
+  $D4,$4D,$4D,$4D,$4D,$4D,$FD,$FD
+  $D4,$D4,$4D,$4D,$4D,$4D,$FD,$FD
+  $FD,$FD,$4D,$4D,$4D,$4D,$4D,$D4
+  $FD,$FD,$4D,$4D,$4D,$4D,$D4,$D4
+  $24,$42,$42,$42,$42,$42,$F2,$F2
+  $24,$24,$42,$42,$42,$42,$F2,$F2
+  $F2,$F2,$42,$42,$42,$42,$42,$24
+  $F2,$F2,$42,$42,$42,$42,$24,$24
+  $B4,$4B,$4B,$4B,$4B,$4B,$8B,$8B
+  $B4,$B4,$4B,$4B,$4B,$4B,$8B,$8B
+  $8B,$8B,$4B,$4B,$4B,$4B,$4B,$B4
+  $8B,$8B,$4B,$4B,$4B,$4B,$B4,$B4
+  $4F,$0F,$0F,$0F,$4F,$04,$04,$04
+  $04,$4F,$0F,$0F,$0F,$F4,$04,$04
+  $04,$04,$F4,$0F,$0F,$0F,$04,$04
+  $04,$04,$04,$F4,$0F,$0F,$4F,$04
+  $04,$04,$04,$04,$F4,$0F,$0F,$F4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$F4,$0F,$0F,$F4
+  $04,$04,$04,$F4,$0F,$0F,$4F,$04
+  $04,$04,$4F,$0F,$0F,$0F,$04,$04
+  $04,$4F,$0F,$0F,$0F,$F4,$04,$04
+  $4F,$0F,$0F,$0F,$F4,$04,$04,$04
+  $04,$04,$0F,$0F,$0F,$0F,$04,$04
+  $04,$04,$0F,$0F,$0F,$0F,$04,$04
+  $04,$04,$0F,$0F,$0F,$0F,$04,$04
+  $04,$04,$4F,$0F,$0F,$4F,$04,$04
+  $04,$04,$04,$0F,$0F,$04,$04,$04
+  $04,$04,$04,$F4,$F4,$04,$04,$04
+  $04,$04,$04,$4F,$4F,$04,$04,$04
+  $04,$04,$04,$0F,$0F,$04,$04,$04
+  $04,$04,$4F,$0F,$0F,$4F,$04,$04
+  $04,$04,$0F,$0F,$0F,$0F,$04,$04
+  $04,$04,$0F,$0F,$0F,$0F,$04,$04
+  $04,$04,$0F,$0F,$0F,$0F,$04,$04
+  $04,$04,$04,$04,$0F,$0F,$0F,$0F
+  $04,$04,$04,$4F,$0F,$0F,$0F,$F4
+  $04,$04,$04,$0F,$0F,$0F,$F4,$04
+  $04,$04,$0F,$0F,$0F,$F4,$04,$04
+  $04,$F4,$0F,$0F,$F4,$04,$04,$04
+  $04,$F4,$F4,$F4,$04,$04,$04,$04
+  $04,$4F,$4F,$F4,$04,$04,$04,$04
+  $04,$F4,$0F,$0F,$F4,$04,$04,$04
+  $04,$04,$0F,$0F,$0F,$F4,$04,$04
+  $04,$04,$04,$0F,$0F,$0F,$F4,$04
+  $04,$04,$04,$4F,$0F,$0F,$0F,$F4
+  $04,$04,$04,$04,$0F,$0F,$0F,$0F
+  $01,$1F,$1F,$1F,$1E,$1E,$1E,$01
+  $01,$1F,$1F,$1B,$1B,$1A,$1A,$01
+  $01,$19,$19,$18,$18,$16,$16,$01
+end data
+data SpritePat bytes
+  $00,$60,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $78,$9C,$BC,$FC,$FC,$78,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$7E,$18,$3C,$18,$3C,$18,$3C,$18,$3C,$18,$3C,$18,$3C,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data FieldMap bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,131,131,131,131,131,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,131,131,131,32,32
+  32,32,131,131,131,135,137,129,128,128,128,128,128,128,128,128,128,128,129,128,128,128,128,128,128,128,128,143,131,131,32,32
+  32,32,131,135,137,128,128,128,128,128,128,128,147,128,128,128,128,147,128,128,128,128,128,129,128,128,128,128,139,131,32,32
+  32,32,133,128,128,128,129,128,128,147,128,128,128,128,128,128,128,129,128,128,128,147,128,128,128,128,128,128,143,131,32,32
+  32,32,133,128,128,128,128,128,128,128,128,129,128,128,149,150,128,128,128,128,128,128,129,128,128,128,128,128,128,139,32,32
+  32,32,131,134,128,129,128,153,154,128,128,128,128,128,151,152,129,128,128,128,128,153,154,128,128,128,128,129,148,139,32,32
+  32,32,131,133,128,128,128,155,156,128,129,128,128,128,128,128,128,128,128,128,128,155,156,128,128,128,128,142,128,139,32,32
+  32,32,131,133,129,128,128,128,128,128,128,128,128,128,128,129,128,128,128,128,128,128,128,128,128,128,129,141,128,139,32,32
+  32,32,131,131,134,147,128,128,128,129,128,147,128,144,136,136,138,128,147,128,129,128,128,128,147,128,128,141,128,139,32,32
+  32,32,131,131,133,128,128,128,128,128,128,128,128,128,129,128,128,128,128,128,128,128,128,128,128,129,128,141,128,139,32,32
+  32,32,131,131,131,138,128,128,129,128,128,128,128,128,128,128,128,128,128,129,128,128,128,128,128,128,128,141,128,139,32,32
+  32,32,131,135,137,128,128,128,128,128,128,128,128,129,128,128,128,128,128,128,128,128,128,128,129,128,128,141,128,139,32,32
+  32,32,133,128,128,128,157,158,128,128,128,128,128,128,128,128,128,128,129,128,128,128,157,158,128,128,128,141,128,139,32,32
+  32,32,133,128,128,128,159,160,128,147,128,128,129,128,128,128,128,128,128,128,147,128,159,160,128,128,128,141,128,139,32,32
+  32,32,131,134,128,128,129,128,128,128,128,128,128,128,128,128,128,129,128,128,128,128,128,128,128,128,140,133,129,139,32,32
+  32,32,131,131,134,128,128,128,128,128,128,129,128,128,128,128,128,128,128,128,128,128,129,128,128,128,139,133,128,139,32,32
+  32,32,131,131,131,134,128,128,128,128,128,128,128,128,147,147,129,128,128,128,128,128,128,128,140,132,131,133,128,139,32,32
+  32,32,131,131,131,131,132,134,128,128,129,128,128,128,128,128,128,128,128,128,128,129,140,132,131,131,131,133,128,139,32,32
+  32,32,131,131,131,131,131,131,134,128,128,128,128,128,128,129,128,128,128,128,128,140,131,131,131,131,131,133,128,139,32,32
+  32,32,131,131,131,131,131,131,133,165,166,167,168,169,170,171,172,173,174,175,176,139,131,131,131,131,131,133,128,139,32,32
+  32,32,131,131,131,131,131,131,131,132,132,132,132,134,130,130,140,132,132,132,132,131,131,131,131,131,131,133,128,139,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+data FlipT bytes
+  165,166,167,168,169,170,171,172,173,174,175,176
+  177,178,179,180,181,182,183,184,185,186,187,188
+  189,190,191,192,193,194,195,196,197,198,199,200
+end data
+data TitleMap bytes
+  0,0,0,202,202,202,0,202,0,0,0,202,202,202,0,202,202,0,0,202,202,0,0,202,202,202,0,202,202,0,0,0
+  0,0,0,202,0,0,0,202,0,0,0,0,202,0,0,202,0,202,0,202,0,202,0,202,0,0,0,202,0,202,0,0
+  0,0,0,202,202,0,0,202,0,0,0,0,202,0,0,202,202,0,0,202,202,0,0,202,202,0,0,202,202,0,0,0
+  0,0,0,202,0,0,0,202,0,0,0,0,202,0,0,202,0,0,0,202,0,0,0,202,0,0,0,202,0,202,0,0
+  0,0,0,202,0,0,0,202,202,202,0,202,202,202,0,202,0,0,0,202,0,0,0,202,202,202,0,202,0,202,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,203,0,0,203,0,0,0,203,0,0,0,203,203,203,0,203,0,203,0,0,0,0,0,0
+  0,0,0,0,0,0,0,203,0,203,0,203,0,0,0,203,0,0,0,203,0,0,0,203,0,203,0,0,0,0,0,0
+  0,0,0,0,0,0,0,203,203,203,0,203,0,0,0,203,0,0,0,203,203,0,0,0,203,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,203,0,203,0,203,0,0,0,203,0,0,0,203,0,0,0,0,203,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,203,0,203,0,203,203,203,0,203,203,203,0,203,203,203,0,0,203,0,0,0,0,0,0,0
+end data
+data BumC bytes 7,14,21,6,22
+data BumR bytes 7,6,7,14,14
+
+record Bumper
+  u8 Lit
+  u8 Hits
+end record
+
+Bumper Bum[5]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Sub1000 = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the ball: pixel position (top-left of its 6 x 6), speed indexes, the
+' sixteenths of a pixel carried over, the gravity count
+u8 BX = 0
+u8 BY = 0
+u8 VX = 0
+u8 VY = 0
+u8 AX = 0
+u8 AY = 0
+u8 Gacc = 0
+u8 NX = 0
+u8 NY = 0
+u8 Power = 5
+u8 LaunchP = 5
+u8 Balls = 3
+' 1 title, 2 aiming, 3 launching, 4 rolling, 5 lost, 6 game over
+u8 St = 0
+u8 Ft = 0
+u8 Pose = 0
+u8 Bonus = 0
+u8 LastBump = 255
+u8 Kicks = 0
+u8 Bounces = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title ball
+u8 TbX = 40
+u8 TbY = 120
+u8 TbDx = 1
+u8 TbDy = 1
+' loop counters (never shared with the helpers)
+u8 Bn = 0
+u8 Sk = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 HitC = 0
+u8 HitR = 0
+u8 HitT = 0
+
+  tile screen
+  set sound table PbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if St < 6 then goto play_loop
+
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  SCORE ", Score, "  "
+  print at 8,13, "  BEST  ", Hi, "  "
+  print at 8,14, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+sub PlayStep:
+  FlipStep
+  LightsStep
+  select case St
+    case 2
+      Aim
+    case 3
+      Launch
+    case 4
+      MoveBall
+    case 5
+      Lost
+  end select
+  return
+end sub
+
+' the plunger: down pulls harder, up eases it; a button lets go
+sub Aim:
+  V = Tick & 3
+  if V = 0 then
+    V = J1 & 3
+    if V = 2 then
+      if Power < 15 then inc Power
+    end if
+    if V = 1 then
+      if Power > 3 then dec Power
+    end if
+  end if
+  BY = 142 + Power
+  if Press = 1 then
+    St = 3
+    Press = 0
+    play sound SndLaunch
+  end if
+  return
+end sub
+
+' up the lane 4 pixels a frame, the spring easing back, then onto the table
+sub Launch:
+  if Power > 0 then dec Power
+  if BY > ExitY + 4 then
+    BY = BY - 4
+    return
+  end if
+  BY = ExitY
+  St = 4
+  VY = 1
+  ' (the C64's power was 3-15 when the button went: kept in LaunchP)
+  V = LaunchP >> 2
+  VX = (V ^ 3) & 3
+  AX = 0
+  AY = 0
+  Gacc = 0
+  return
+end sub
+
+
+' one frame of the ball: gravity, then the X and Y pixel steps interleaved
+sub MoveBall:
+  V = Gacc
+  Gacc = Gacc + GravStep
+  if Gacc < V then
+    if VY < 7 then inc VY
+  end if
+  AX = AX + MagT[VX]
+  NX = AX >> 4
+  AX = AX & 15
+  AY = AY + MagT[VY]
+  NY = AY >> 4
+  AY = AY & 15
+  while NX + NY > 0
+    if NX > 0 then
+      StepX
+    end if
+    if NY > 0 then
+      StepY
+    end if
+  end while
+  if BY >= 178 then
+    St = 5
+    Bonus = 40
+    play sound SndDrain
+  end if
+  return
+end sub
+
+sub StepX:
+  dec NX
+  if VX < 4 then
+    X = BX - 1
+  else
+    X = BX + 6
+  end if
+  K = Blocked(X, BY) | Blocked(X, BY + 5)
+  if K = 0 then
+    if VX < 4 then
+      dec BX
+    else
+      inc BX
+    end if
+    return
+  end if
+  VX = BncT[VX]
+  NX = 0
+  AX = 0
+  Hit
+  return
+end sub
+
+sub StepY:
+  dec NY
+  if VY < 4 then
+    Y = BY - 1
+  else
+    Y = BY + 6
+  end if
+  K = Blocked(BX, Y) | Blocked(BX + 5, Y)
+  if K = 0 then
+    if VY < 4 then
+      dec BY
+    else
+      inc BY
+    end if
+    return
+  end if
+  NY = 0
+  AY = 0
+  if HitR = 21 then
+    if VY >= 4 then
+      if HitC >= 9 then
+        if HitC <= 20 then
+          OnFlipper
+          return
+        end if
+      end if
+    end if
+  end if
+  VY = BncT[VY]
+  Gacc = random(0, 63)
+  Hit
+  return
+end sub
+
+' 1 when the pixel is on something solid; HitC, HitR, HitT say what
+function Blocked(u8 Px, u8 Py) as u8
+  HitC = Px >> 3
+  HitR = Py >> 3
+  HitT = get char at HitC,HitR
+  if HitR = 21 then
+    if HitC = 14 or HitC = 15 then return 0
+  end if
+  if HitT >= TSolid then return 1
+  return 0
+
+function IsUp as u8
+  if Ft >= 1 and Ft <= FlipUp then return 1
+  return 0
+
+' the ball came down on the flipper row
+sub OnFlipper:
+  if IsUp = 1 then
+    Kick
+  else
+    ' dead rubber: a small hop, drifting down the slope to the middle
+    VY = 3
+    Gacc = 240
+    if BX < 117 then
+      VX = 6
+    else
+      VX = 1
+    end if
+  end if
+  return
+end sub
+
+sub Kick:
+  V = J1 & 3
+  select case V
+    case 1
+      VY = 0
+    case 2
+      VY = 2
+    case else
+      VY = 1
+  end select
+  VX = KickT[VX]
+  Gacc = random(0, 63)
+  inc Kicks
+  return
+end sub
+
+' a rail, a stud or a bumper was hit
+sub Hit:
+  inc Bounces
+  if HitT >= TBmpA and HitT < TBmpL + 4 then
+    Bn = WhichBump(HitC, HitR)
+    if Bn < 5 then ScoreBump(Bn)
+  end if
+  return
+end sub
+
+function WhichBump(u8 Cc, u8 Rr) as u8
+  u8 Found = 5
+  for Sk = 0 to 4
+    if Cc >= BumC[Sk] and Cc <= BumC[Sk] + 1 then
+      if Rr >= BumR[Sk] and Rr <= BumR[Sk] + 1 then Found = Sk
+    end if
+  next
+  return Found
+
+sub ScoreBump(u8 N)
+  u8 P = PtsT[N]
+  LastBump = N
+  Bum[N].Lit = 12
+  Bum[N].Hits = Bum[N].Hits + 1
+  DrawBump(N, TBmpL)
+  ' the score in tens, packed BCD; the thousands for the extra balls
+  for J = 1 to P
+    Score += 10
+  next
+  Sub1000 = Sub1000 + P * 10
+  if Sub1000 >= 1000 then
+    Sub1000 = Sub1000 - 1000
+    if Balls < 9 then
+      inc Balls
+      play sound SndExtra
+    end if
+  else
+    select case P
+      case 10
+        play sound SndBell1
+      case 5
+        play sound SndBell5
+      case else
+        play sound SndBell10
+    end select
+  end if
+  if Score > Hi then Hi = Score
+  ShowScore
+  return
+end sub
+
+sub DrawBump(u8 N, u8 T)
+  u8 Cb = BumC[N]
+  u8 Rb = BumR[N]
+  put char T at Cb,Rb
+  put char T + 1 at Cb + 1,Rb
+  put char T + 2 at Cb,Rb + 1
+  put char T + 3 at Cb + 1,Rb + 1
+  return
+end sub
+
+sub LightsStep:
+  for Bn = 0 to 4
+    if Bum[Bn].Lit > 0 then
+      Bum[Bn].Lit = Bum[Bn].Lit - 1
+      if Bum[Bn].Lit = 0 then DrawBump(Bn, BmpTileT[Bn])
+    end if
+  next
+  return
+end sub
+
+' the flippers: a press (when they are down) swings them up
+sub FlipStep:
+  if Ft = 0 then
+    if Press = 1 then
+      if St = 4 then
+        Ft = 1
+        play sound SndFlip
+        ' a ball sitting on a flipper is kicked at once
+        if BY >= 158 and BY <= 166 then
+          V = BX + 3
+          if V >= 72 and V <= 167 then Kick
+        end if
+      end if
+    end if
+  else
+    inc Ft
+    if Ft >= FlipEnd then Ft = 0
+  end if
+  K = 0
+  if Ft > 0 and Ft <= 10 then K = 1
+  if Ft >= 3 and Ft <= 8 then K = 2
+  if K <> Pose then
+    Pose = K
+    W16 = Pose * 12
+    for Sk = 0 to 11
+      V = FlipT[W16 + Sk]
+      put char V at Sk + 9,21
+    next
+  end if
+  return
+end sub
+
+' a lost ball: a pause, then the next ball or the end
+sub Lost:
+  dec Bonus
+  if Bonus > 0 then return
+  dec Balls
+  ShowBalls
+  if Balls = 0 then
+    St = 6
+    return
+  end if
+  NewBall
+  return
+end sub
+
+sub NewBall:
+  St = 2
+  Power = 5
+  BX = LaneX
+  BY = 147
+  Ft = 0
+  ShowBalls
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the ball (glint, body), 2 the plunger
+sub DrawSprites:
+  if St = 2 then LaunchP = Power
+  if St <= 4 then
+    set sprite 0 to BY - 1,BX,SBallg,15
+    set sprite 1 to BY - 1,BX,SBall,14
+  else
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  end if
+  if St = 2 then
+    Y = BY + 6
+  else
+    Y = 153 + Power
+  end if
+  set sprite 2 to Y - 1,224,SPlunger,11
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  print at 24,1, Hi
+  return
+end sub
+
+sub ShowBalls:
+  NumU = Balls
+  print at 19,1, digits$(NumU, 1)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy FieldMap count 768 to vram.name
+  print at 2,1, "SCORE"
+  put char TBallic at 17,1
+  print at 21,1, "HI"
+  Score = 0
+  Sub1000 = 0
+  Balls = 3
+  Kicks = 0
+  Bounces = 0
+  Pose = 0
+  for Bn = 0 to 4
+    Bum[Bn].Lit = 0
+    Bum[Bn].Hits = 0
+  next
+  NewBall
+  ShowScore
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: FLIPPER ALLEY in light bulbs, a ball bouncing round the
+' marquee, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 7,1, "AHOY! MARCH 1987"
+  copy TitleMap count 352 to vram.name + 96
+  print at 7,16, "BY TONY BRANTNER"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Hi > 0 then
+    print at 9,21, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  St = 1
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 623
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the ball bounces round the marquee, a pixel a frame each way
+sub TitleAnim:
+  if TbDx = 1 then
+    inc TbX
+    if TbX >= 226 then TbDx = 0
+  else
+    dec TbX
+    if TbX <= 18 then TbDx = 1
+  end if
+  if TbDy = 1 then
+    inc TbY
+    if TbY >= 132 then TbDy = 0
+  else
+    dec TbY
+    if TbY <= 18 then TbDy = 1
+  end if
+  set sprite 0 to TbY - 1,TbX,SBallg,15
+  set sprite 1 to TbY - 1,TbX,SBall,14
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "FLIPPER ALLEY"
+  print at 2,5, "BASED ON PINBALL ARCADE BY"
+  print at 2,6, "TONY BRANTNER, AHOY!"
+  print at 2,7, "MARCH 1987 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: TILT-A-WHIRL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+PbBell1:
+    db $40,$47,$10,$02,$40,$35,$20,$03,$40,$47,$40,$04,$40,$47,$60,$04,$50
+PbBell5:
+    db $40,$6B,$10,$02,$40,$55,$20,$03,$40,$6B,$40,$04,$40,$6B,$60,$04,$50
+PbBell10:
+    db $40,$AA,$20,$02,$40,$8F,$30,$03,$40,$AA,$50,$04,$50
+PbFlip:
+    db $00,$00,$24,$02,$00,$00,$55,$03,$10
+PbWall:
+    db $00,$00,$65,$01,$10
+PbLaunch:
+    db $40,$3B,$22,$02,$40,$AB,$21,$02,$40,$53,$31,$02,$40,$1D,$31,$02,$40,$D6,$40,$03,$50
+PbDrain:
+    db $40,$7F,$20,$03,$40,$8D,$20,$03,$40,$9D,$30,$03,$40,$AE,$30,$03,$40,$C2,$30,$03,$40,$D7,$30,$03
+    db $40,$EF,$40,$03,$40,$0A,$41,$03,$40,$27,$41,$03,$40,$48,$41,$03,$40,$6C,$51,$03,$40,$95,$51,$03
+    db $50
+PbExtra:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$20,$0C,$50
+PbStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+PbOver:
+    db $40,$8F,$10,$0A,$40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$1D,$21,$0A,$40,$AB,$31,$1E,$50
+
+PbSoundTable:
+    dw PbTuneMel,$702B
+    dw PbTuneBass,$7035
+    dw PbBell1,$7049
+    dw PbBell5,$7049
+    dw PbBell10,$7049
+    dw PbFlip,$703F
+    dw PbWall,$703F
+    dw PbLaunch,$7049
+    dw PbDrain,$7049
+    dw PbExtra,$7049
+    dw PbStart,$7049
+    dw PbOver,$7049
+; Tilt-a-Whirl (original)
+; Tiny Sound, 7 frames per step
+PbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$23,$01,$1F
+    db $01,$21,$01,$23,$01,$24,$01,$01,$01,$23,$01,$21,$01,$1F,$01,$1C
+    db $01,$21,$01,$24,$01,$28,$01,$01,$24,$01,$21,$01,$26,$01,$24,$01
+    db $23,$01,$21,$01,$01,$01,$1A,$01,$1E,$01,$1F,$01,$23,$01,$26,$01
+    db $2B,$01,$01,$28,$01,$24,$01,$26,$01,$23,$01,$21,$01,$1E,$01,$1F
+    db $01,$21,$01,$23,$01,$26,$01,$2B,$01,$01,$01,$00,$01
+    db $FF
+PbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$13,$01,$0E,$01,$13,$01,$0E,$01,$13,$01,$0E,$01
+    db $0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$0E,$01
+    db $15,$01,$10,$01,$15,$01,$10,$01,$15,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $13,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$13,$01,$0E,$01,$13,$01,$01,$00,$01
+    db $FF
+}

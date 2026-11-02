@@ -1,0 +1,1007 @@
+cartridge "DETONATION/B.BLACKMER/1986"
+
+' DETONATION
+' A ColecoVision game based on "Detonation" by Bob Blackmer, Ahoy!
+' November 1986 (Commodore 64 machine language at $C000, started by a
+' two-line BASIC boot). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/detonation.dis, and watched running in an emulator),
+' the game is built for the ColecoVision: a burning cord crawling round a
+' bunker yard as a smooth spark sprite, steel bunkers and a white crate
+' drawn in tiles, a bomb-disposal man as a two-colour sprite, spinning
+' curls, sound effects and an ending.
+'
+' The game: a fuse burns round the edge of the yard towards the safe crate
+' at the bottom. Three bombs sit in three steel bunkers. Fetch all three
+' and bring them back into the crate before the fuse gets there; then the
+' bombs are put back and the next round starts, with the guards faster.
+' Each bunker's mouth is guarded by a spinning curl that sweeps across it.
+' Touching a curl or a wall makes the fuse jump ahead. Ten rounds win.
+'
+' From the original: the fuse is one long cord for the whole game (it is
+' not renewed between rounds); it moves one cell at a fixed time step and
+' jumps one cell at once on every contact with the bunkers, the crate or a
+' curl; three curls patrol the three bunker mouths together (two up and
+' down in opposite directions, one left and right under the top bunker),
+' over one shared sweep; touching a bomb takes it; with all three, standing
+' in the crate finishes the round; every round the curls speed up (the C64
+' moved them every 11th pass at round 1, then every 10th... every 2nd at
+' round 10, SpdT here); ten rounds win; the winner's score counts the cells
+' of fuse left; the fuse reaching the crate blows it up.
+'
+' Liberties: the yard is laid out on the 32 x 24 tile grid (the C64's
+' 40 x 25 and expanded sprites); the cord has 76 cells (107 on the C64) and
+' burns one every 2 seconds, the spark crawling smoothly between cells (the
+' C64 jumped one cell every 4.3 s by the jiffy clock); a curl's touch costs
+' a cell every 4 frames while it lasts (the C64 took one on every pass of
+' its loop, a few hundred a second); walls are solid (the C64's man walked
+' through them, burning fuse on every pass): walking straight into one
+' costs a cell every 20 frames, sliding along it is free; the
+' man walks 1.5 pixels a frame (on the C64 about 3, faster than its curls
+' ever got); points during play (10 a bomb, 50 a round) as well as the
+' final count of the fuse left (10 a cell, also given when the crate blows
+' up, so a lost game still has a score); the bombs carried are shown at
+' the top; the C64's background music (a tune that sped up each round) is
+' replaced by a quiet tick of the burning cord; the C64's colour-cycling
+' blast flashed many times a second: here the yard flashes at most twice
+' a second; GAME OVER then the title (the C64 asked PRESS FIRE).
+'
+' Controls: controller 1 (or 2): the stick walks (diagonals too). On the
+' title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFh = 128
+const TFv = 129
+const TFdl = 130
+const TFrd = 131
+const TFur = 132
+const TFend = 133
+const TAh = 134
+const TAv = 135
+const TAc = 136
+const TSt = 137
+const TCr = 138
+const TBomb00 = 139
+const TBomb01 = 140
+const TBomb10 = 141
+const TBomb11 = 142
+const TIb = 143
+const TIe = 144
+const SMan0d = 0
+const SMan0b = 4
+const SMan1d = 8
+const SMan1b = 12
+const SSp0w = 16
+const SSp0y = 20
+const SSp1w = 24
+const SSp1y = 28
+const SCu0 = 32
+const SCu1 = 36
+const SCu2 = 40
+const SCu3 = 44
+const SBl0 = 48
+const SBl1 = 52
+const NTiles8 = 136
+const SprBytes = 448
+const NFuse = 76
+const NWalls = 12
+const SndTuneA = 1
+const SndTuneB = 2
+const SndGrab = 3
+const SndFizz = 4
+const SndTick = 5
+const SndBoom = 6
+const SndLevel = 7
+const SndStart = 8
+const SndWin = 9
+const SndCount = 10
+const NSpr = 9
+const FStep = 120
+const HitGap = 20
+const StingGap = 4
+const LastLv = 10
+' the curls' shared sweep: 0..CurlMax
+const CurlMax = 64
+' the man's limits (sprite corner) inside the yard
+const PMinX = 21
+const PMaxX = 219
+const PMinY = 31
+const PMaxY = 161
+' the crate's inside
+const CrX0 = 112
+const CrX1 = 143
+const CrY0 = 144
+const CrY1 = 167
+
+' the curls' speed by round (1/256 pixel a frame)
+data SpdT words 78,85,95,107,122,142,171,200,230,260
+
+data TilePat bytes
+  $00,$00,$99,$44,$22,$99,$00,$00
+  $38,$18,$1C,$38,$38,$18,$1C,$38
+  $00,$00,$60,$07,$03,$0C,$1C,$38
+  $00,$00,$06,$E0,$C0,$30,$1C,$38
+  $38,$18,$1A,$E0,$F0,$06,$00,$00
+  $00,$00,$18,$18,$1C,$38,$38,$18
+  $00,$00,$00,$45,$92,$00,$00,$00
+  $10,$08,$10,$00,$08,$10,$04,$10
+  $00,$00,$00,$10,$08,$00,$00,$00
+  $01,$44,$98,$01,$01,$44,$98,$00
+  $01,$43,$01,$00,$10,$10,$01,$00
+  $00,$00,$00,$00,$03,$F0,$E0,$E0
+  $00,$30,$40,$00,$F0,$03,$01,$01
+  $C0,$C0,$C0,$C0,$E0,$F0,$03,$00
+  $00,$00,$00,$00,$01,$03,$F0,$00
+  $04,$08,$38,$83,$83,$83,$38,$00
+  $04,$08,$38,$44,$44,$44,$38,$00
+end data
+data TileCol bytes
+  $01,$01,$18,$98,$68,$16,$01,$01
+  $81,$91,$81,$61,$81,$91,$81,$61
+  $01,$01,$81,$19,$18,$81,$81,$61
+  $01,$01,$81,$19,$18,$81,$81,$61
+  $81,$91,$81,$19,$18,$61,$01,$01
+  $01,$01,$81,$91,$81,$61,$81,$91
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $E1,$E1,$E1,$01,$E1,$E1,$E1,$E1
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $45,$F5,$54,$45,$45,$F5,$54,$04
+  $EF,$EF,$EF,$0E,$EF,$EF,$EF,$0E
+  $01,$01,$01,$01,$91,$19,$19,$18
+  $01,$B1,$B1,$01,$91,$19,$19,$18
+  $18,$18,$18,$16,$16,$16,$61,$01
+  $08,$08,$08,$06,$16,$16,$61,$01
+  $B1,$B1,$91,$19,$18,$18,$61,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$01
+end data
+data SpritePat bytes
+  $00,$00,$07,$07,$00,$00,$00,$00,$00,$30,$00,$00,$00,$00,$0E,$00
+  $00,$00,$E0,$E0,$00,$00,$00,$00,$00,$0C,$00,$00,$00,$00,$70,$00
+  $07,$0F,$08,$08,$07,$1F,$3F,$37,$37,$07,$07,$06,$06,$06,$00,$00
+  $E0,$F0,$10,$10,$E0,$F8,$FC,$EC,$EC,$E0,$E0,$60,$60,$60,$00,$00
+  $00,$00,$07,$07,$00,$00,$00,$00,$30,$00,$00,$00,$00,$00,$38,$00
+  $00,$00,$E0,$E0,$00,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$1C,$00
+  $07,$0F,$08,$08,$07,$1F,$3F,$37,$07,$07,$07,$0C,$18,$18,$00,$00
+  $E0,$F0,$10,$10,$E0,$F8,$FC,$EC,$E0,$E0,$E0,$30,$18,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$11,$09,$07,$1C,$78,$1C,$07,$09,$11,$01,$00,$00
+  $00,$00,$00,$00,$10,$20,$C0,$70,$3C,$70,$C0,$20,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$02,$0B,$04,$3C,$04,$0B,$02,$04,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$A0,$40,$78,$40,$A0,$80,$40,$00,$00,$00
+  $00,$00,$07,$0C,$18,$11,$12,$12,$12,$19,$0C,$06,$03,$00,$00,$00
+  $00,$00,$E0,$30,$18,$88,$48,$C8,$08,$18,$E0,$00,$80,$00,$00,$00
+  $00,$00,$00,$03,$06,$0C,$19,$12,$14,$04,$04,$02,$03,$00,$00,$00
+  $00,$00,$00,$F0,$18,$0C,$C4,$24,$A4,$C4,$0C,$18,$F0,$00,$00,$00
+  $00,$00,$00,$01,$00,$07,$18,$10,$13,$12,$11,$18,$0C,$07,$00,$00
+  $00,$00,$00,$C0,$60,$30,$98,$48,$48,$48,$88,$18,$30,$E0,$00,$00
+  $00,$00,$00,$0F,$18,$30,$23,$25,$24,$23,$30,$18,$0F,$00,$00,$00
+  $00,$00,$00,$C0,$40,$20,$20,$28,$48,$98,$30,$60,$C0,$00,$00,$00
+  $00,$04,$22,$13,$0F,$3F,$7F,$FF,$7F,$3F,$0F,$13,$22,$04,$00,$00
+  $00,$20,$44,$C8,$F0,$FC,$FE,$FF,$FE,$FC,$F0,$C8,$44,$20,$00,$00
+  $00,$10,$08,$4F,$03,$FF,$1F,$FF,$1F,$FF,$03,$4F,$08,$10,$00,$00
+  $00,$80,$91,$20,$FC,$F0,$FF,$FC,$FF,$F0,$FC,$20,$91,$80,$00,$00
+end data
+
+data ArenaMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$89,$89,$89,$89,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$8B,$8C,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$8D,$8E,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$89,$89,$89,$89,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$89,$89,$89,$89,$20,$81,$20,$20
+  $20,$20,$81,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$81,$20,$20
+  $20,$20,$81,$20,$89,$8B,$8C,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8B,$8C,$89,$20,$81,$20,$20
+  $20,$20,$81,$20,$89,$8D,$8E,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8D,$8E,$89,$20,$81,$20,$20
+  $20,$20,$81,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$81,$20,$20
+  $20,$20,$81,$20,$89,$89,$89,$89,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$89,$89,$89,$89,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8A,$20,$20,$20,$20,$8A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8A,$20,$20,$20,$20,$8A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8A,$20,$20,$20,$20,$8A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$81,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8A,$8A,$8A,$8A,$8A,$8A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$81,$20,$20
+  $20,$20,$84,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$85,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+data FX bytes 29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,4,5,6,7,8,9,10,11,12
+data FY bytes 22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,22,22,22,22,22,22,22,22,22,22
+data FT bytes 133,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,131,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,128,128,128,128,128,128,128,128,128,128
+data FA bytes 135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,136,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,134,136,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,135,136,134,134,134,134,134,134,134,134,134,134
+data WX0 bytes 104,104,144,32,32,32,184,184,216,104,144,112
+data WY0 bytes 40,48,48,88,128,96,88,128,96,144,144,168
+data WX1 bytes 151,111,151,71,71,39,223,223,223,111,151,143
+data WY1 bytes 47,79,79,95,135,127,95,135,127,175,175,175
+data BombC bytes 15,5,25
+data BombR bytes 6,13,13
+
+record Curl:
+  u8 X
+  u8 Y
+end record
+
+Curl Curls[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Spd = 0
+bcd digits 5 Score = 0
+bcd digits 5 Best = 0
+u8 PX = 120
+u8 PY = 150
+u8 Half = 0
+u8 Walk = 0
+u8 WalkN = 0
+u8 Phase = 0
+u8 PDir = 1
+u8 SFrac = 0
+u8 CurlAnim = 0
+u8 FIdx = 0
+u8 FBurn = 0
+u8 HitT = 0
+u8 Touch = 0
+u8 Stung = 0
+u8 Got = 0
+u8 Carry = 0
+u8 Lv = 1
+u8 Over = 0
+u8 Mode = 0
+u8 Bumps = 0
+u8 Stings = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 SparkT = 0
+u8 Spark = 0
+' title spark
+u8 TsX = 24
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Bi = 0
+u8 Ms = 0
+u8 Ec = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 NX = 0
+u8 NY = 0
+
+  tile screen
+  set sound table DtSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  if Over = 1 then
+    Blast
+  else
+    Victory2
+  end if
+  if Score > Best then Best = Score
+  HideSprites
+  print at 9,9, "              "
+  if Over = 1 then
+    print at 9,10, "  GAME  OVER  "
+  else
+    print at 9,10, " ALL  DEFUSED "
+  end if
+  print at 9,11, "              "
+  print at 9,12, " SCORE  ", Score, " "
+  print at 9,13, "              "
+  Mode = 2
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  MoveMan
+  MoveCurls
+  ' contacts: a curl touched burns a cell, then one more every StingGap
+  ' frames while it lasts; a wall walked into, one every HitGap frames
+  Touch = Bumps
+  Stung = 0
+  if CurlHit() > 0 then
+    Touch = 1
+    Stung = 1
+    inc Stings
+  end if
+  if Touch > 0 then
+    if HitT = 0 then
+      ' a curl keeps burning while it touches; a wall only now and then
+      if Stung = 1 then
+        HitT = StingGap
+      else
+        HitT = HitGap
+      end if
+      play sound SndFizz
+      Burn
+      if Over > 0 then return
+    end if
+  end if
+  if HitT > 0 then dec HitT
+  ' the cord burns on
+  inc FBurn
+  if FBurn >= FStep then
+    FBurn = 0
+    play sound SndTick
+    Burn
+    if Over > 0 then return
+  end if
+  TakeBombs
+  if Carry = 3 then
+    X = PX + 8
+    Y = PY + 8
+    if InBox(X, Y, CrX0, CrY0, CrX1, CrY1) = 1 then RoundDone
+  end if
+  return
+end sub
+
+' one cell of cord turns to ash; the last one blows up the crate
+sub Burn:
+  X = FX[FIdx]
+  Y = FY[FIdx]
+  put char FA[FIdx] at X,Y
+  inc FIdx
+  if FIdx >= NFuse then Over = 1
+  return
+end sub
+
+' 1.5 pixels a frame: one pixel, and a second one every other frame; each
+' axis on its own so the man slides along walls; a wall stops him, and
+' when he is stopped dead it counts as a contact (Bumps)
+sub MoveMan:
+  Bumps = 0
+  X = PX
+  Y = PY
+  Half = Half ^ 1
+  K = Half + 1
+  for Ms = 1 to K
+    StepAxis
+  next
+  ' sliding along a wall is free: only a man stopped dead bumps
+  if PX <> X then Bumps = 0
+  if PY <> Y then Bumps = 0
+  return
+end sub
+
+sub StepAxis:
+  NX = PX
+  NY = PY
+  V = J1 & 12
+  select case V
+    case 4
+      if NX > PMinX then dec NX
+    case 8
+      if NX < PMaxX then inc NX
+  end select
+  if NX <> PX then
+    if WallHit(NX, PY) = 0 then
+      PX = NX
+      inc WalkN
+    else
+      Bumps = 1
+    end if
+  end if
+  V = J1 & 3
+  select case V
+    case 1
+      if NY > PMinY then dec NY
+    case 2
+      if NY < PMaxY then inc NY
+  end select
+  if NY <> PY then
+    if WallHit(PX, NY) = 0 then
+      PY = NY
+      inc WalkN
+    else
+      Bumps = 1
+    end if
+  end if
+  if WalkN >= 8 then
+    WalkN = 0
+    Walk = Walk ^ 1
+  end if
+  return
+end sub
+
+' 1 when the man's body (sprite corner Ax, Ay) overlaps a wall
+function WallHit(u8 Ax, u8 Ay) as u8
+  u8 Wi = 0
+  u8 L = 0
+  u8 R = 0
+  u8 T = 0
+  u8 B = 0
+  L = Ax + 3
+  R = Ax + 12
+  T = Ay + 1
+  B = Ay + 14
+  for Wi = 0 to NWalls - 1
+    if R >= WX0[Wi] then
+      if L <= WX1[Wi] then
+        if B >= WY0[Wi] then
+          if T <= WY1[Wi] then return 1
+        end if
+      end if
+    end if
+  next
+  return 0
+
+' 1 when the point (Qx, Qy) lies in the box
+function InBox(u8 Qx, u8 Qy, u8 X0, u8 Y0, u8 X1, u8 Y1) as u8
+  if Qx < X0 then return 0
+  if Qx > X1 then return 0
+  if Qy < Y0 then return 0
+  if Qy > Y1 then return 0
+  return 1
+
+' the curls: one sweep 0..CurlMax and back, at the round's speed
+sub MoveCurls:
+  W16 = SFrac + Spd
+  SFrac = W16 & 255
+  K = W16 >> 8
+  while K > 0
+    if PDir = 1 then
+      inc Phase
+      if Phase >= CurlMax then PDir = 0
+    else
+      dec Phase
+      if Phase = 0 then PDir = 1
+    end if
+    dec K
+  end while
+  for Ci = 0 to 2
+    select case Ci
+      case 0
+        Curls[Ci].X = 72
+        Curls[Ci].Y = 80 + Phase
+      case 1
+        Curls[Ci].X = 168
+        Curls[Ci].Y = 144 - Phase
+      case else
+        Curls[Ci].X = 88 + Phase
+        Curls[Ci].Y = 84
+    end select
+  next
+  return
+end sub
+
+' how many curls touch the man
+function CurlHit as u8
+  u8 N = 0
+  u8 Ch = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  for Ch = 0 to 2
+    ' the boxes (man 3..12 x 1..14, curl 3..12 x 3..12) overlap when the
+    ' corners are less than 10 apart across and the rows fit
+    if PX >= Curls[Ch].X then
+      Dx = PX - Curls[Ch].X
+    else
+      Dx = Curls[Ch].X - PX
+    end if
+    if Dx < 10 then
+      W16 = PY + 14
+      if W16 >= Curls[Ch].Y + 3 then
+        W16 = Curls[Ch].Y + 12
+        Dy = PY + 1
+        if Dy <= W16 then inc N
+      end if
+    end if
+  next
+  return N
+
+' a bomb touched is taken
+sub TakeBombs:
+  for Bi = 0 to 2
+    V = 1 << Bi
+    K = Got & V
+    if K = 0 then
+      X = BombC[Bi] * 8
+      Y = BombR[Bi] * 8
+      if PX + 12 >= X + 2 then
+        if PX + 3 <= X + 13 then
+          if PY + 14 >= Y + 4 then
+            if PY + 1 <= Y + 14 then
+              Got = Got | V
+              inc Carry
+              Score += 10
+              X = BombC[Bi]
+              Y = BombR[Bi]
+              fill 32 count 2 at X,Y
+              fill 32 count 2 at X,Y + 1
+              play sound SndGrab
+              ShowHud
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the three bombs in the crate: the next round, the curls faster
+sub RoundDone:
+  Score += 50
+  if Lv >= LastLv then
+    Over = 2
+    return
+  end if
+  inc Lv
+  Spd = SpdT[Lv - 1]
+  Got = 0
+  Carry = 0
+  PutBombs
+  ShowHud
+  play sound SndLevel
+  return
+end sub
+
+sub PutBombs:
+  for Bi = 0 to 2
+    X = BombC[Bi]
+    Y = BombR[Bi]
+    put char TBomb00 at X,Y
+    put char TBomb01 at X + 1,Y
+    put char TBomb10 at X,Y + 1
+    put char TBomb11 at X + 1,Y + 1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the endings
+sub Blast:
+  mute all
+  play sound SndBoom
+  for Ec = 0 to 71
+    Frame1
+    K = Ec / 12
+    K = K & 1
+    if K = 0 then
+      backdrop dark red
+    else
+      backdrop dark yellow
+    end if
+    K = Ec >> 3
+    K = K & 1
+    K = K * 4 + SBl0
+    set sprite 7 to 147,120,K,11
+    set sprite 8 to 143,124,K,8
+    update sprites
+  next
+  backdrop black
+  FuseBonus
+  return
+end sub
+
+sub Victory2:
+  mute all
+  play sound SndWin
+  Rearm
+  wait 60 frames
+  nmi off
+  FuseBonus
+  return
+end sub
+
+' 10 points for every cell of cord left, counted up
+sub FuseBonus:
+  u8 Keep = 0
+  Keep = Over
+  print at 9,15, "FUSE LEFT     "
+  while FIdx < NFuse
+    Frame1
+    Burn
+    Score += 10
+    ShowHud
+    NumU = NFuse - FIdx
+    print at 19,15, digits$(NumU, 2)
+    play sound SndCount
+  end while
+  print at 9,15, "              "
+  Over = Keep
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: sprites 0-1 the man (visor and boots, suit), 2-3 the spark,
+' 4-6 the curls, 7-8 the blast
+sub DrawSprites:
+  K = Walk * 8 + SMan0d
+  set sprite 0 to PY - 1,PX,K,15
+  set sprite 1 to PY - 1,PX,K + 4,3
+  inc SparkT
+  if SparkT >= 10 then
+    SparkT = 0
+    Spark = Spark ^ 1
+    inc CurlAnim
+  end if
+  SparkXY
+  K = Spark * 8 + SSp0w
+  set sprite 2 to Y,X,K,15
+  set sprite 3 to Y,X,K + 4,11
+  for Ci = 0 to 2
+    K = CurlAnim + Ci
+    K = K & 3
+    K = K * 4 + SCu0
+    set sprite Ci + 4 to Curls[Ci].Y - 1,Curls[Ci].X,K,10
+  next
+  update sprites
+  return
+end sub
+
+' the spark: between this cell and the next by how far the cell has burnt
+sub SparkXY:
+  C = FIdx
+  if C >= NFuse then C = NFuse - 1
+  X = FX[C] * 8 - 4
+  Y = FY[C] * 8 - 5
+  NumU = FBurn * 8
+  NumU = NumU / FStep
+  V = NumU
+  if C < NFuse - 1 then
+    NX = FX[C + 1]
+    NY = FY[C + 1]
+  else
+    NX = FX[C] + 1
+    NY = FY[C]
+  end if
+  if NX > FX[C] then X = X + V
+  if NX < FX[C] then X = X - V
+  if NY > FY[C] then Y = Y + V
+  if NY < FY[C] then Y = Y - V
+  return
+end sub
+
+sub ShowHud:
+  NumU = Lv
+  print at 2,1, "ROUND ", digits$(NumU, 2)
+  for Bi = 0 to 2
+    V = 1 << Bi
+    K = Got & V
+    if K = 0 then
+      put char TIe at Bi + 12,1
+    else
+      put char TIb at Bi + 12,1
+    end if
+  next
+  print at 17,1, "SCORE ", Score
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy ArenaMap count 768 to vram.name
+  Score = 0
+  Lv = 1
+  Spd = SpdT[0]
+  PX = 120
+  PY = 150
+  Half = 0
+  Walk = 0
+  WalkN = 0
+  Phase = 0
+  PDir = 1
+  SFrac = 0
+  CurlAnim = 0
+  FIdx = 0
+  FBurn = 0
+  HitT = 0
+  Got = 0
+  Carry = 0
+  Over = 0
+  Stings = 0
+  ShowHud
+  MoveCurls
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  Mode = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name over a burning cord with a bomb at its end, START /
+' CREDITS, the best score, the tune once
+sub TitlePage:
+  Mode = 0
+  NewScreen
+  print at 6,2, "AHOY! NOVEMBER 1986"
+  print at 10,5, "DETONATION"
+  print at 8,7, "BY BOB BLACKMER"
+  fill TFh count 22 at 4,11
+  put char TFend at 3,11
+  put char TBomb00 at 26,10
+  put char TBomb01 at 27,10
+  put char TBomb10 at 26,11
+  put char TBomb11 at 27,11
+  print at 4,14, "FETCH THE THREE BOMBS"
+  print at 4,15, "BEFORE THE FUSE BURNS"
+  print at 4,16, "DOWN TO THE CRATE."
+  print at 13,19, "START"
+  print at 13,20, "CREDITS"
+  if Best > 0 then
+    print at 9,22, "BEST ", Best
+  end if
+  ShowMenu
+  TsX = 20
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 496
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the spark crawls along the title's cord, a pixel every fourth frame,
+' and starts again at the left when it nears the bomb
+sub TitleAnim:
+  V = Tick & 3
+  if V = 0 then
+    inc TsX
+    if TsX >= 196 then TsX = 20
+  end if
+  inc SparkT
+  if SparkT >= 10 then
+    SparkT = 0
+    Spark = Spark ^ 1
+  end if
+  K = Spark * 8 + SSp0w
+  set sprite 2 to 83,TsX,K,15
+  set sprite 3 to 83,TsX,K + 4,11
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,19
+  put char 32 at 11,20
+  J = Menu + 19
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  Mode = 0
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "DETONATION"
+  print at 2,5, "BASED ON DETONATION BY"
+  print at 2,6, "BOB BLACKMER, AHOY!"
+  print at 2,7, "NOVEMBER 1986 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SLOW BURN"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+DtGrab:
+    db $40,$A9,$20,$02,$40,$7F,$20,$02,$40,$55,$30,$04,$50
+DtFizz:
+    db $00,$00,$24,$03,$00,$00,$45,$04,$00,$00,$75,$05,$10
+DtTick:
+    db $00,$00,$83,$01,$00,$00,$C4,$02,$10
+DtBoom:
+    db $00,$00,$06,$06,$00,$00,$16,$06,$00,$00,$26,$06,$00,$00,$36,$06,$00,$00,$47,$06,$00,$00,$57,$06
+    db $00,$00,$67,$06,$00,$00,$77,$06,$00,$00,$87,$06,$00,$00,$97,$06,$00,$00,$A7,$06,$00,$00,$B7,$06
+    db $10
+DtLevel:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$0C,$50
+DtStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$8F,$20,$0C,$50
+DtWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$20,$18
+    db $50
+DtCount:
+    db $40,$47,$30,$01,$40,$47,$A0,$01,$50
+
+DtSoundTable:
+    dw DtTuneMel,$702B
+    dw DtTuneBass,$7035
+    dw DtGrab,$7049
+    dw DtFizz,$703F
+    dw DtTick,$703F
+    dw DtBoom,$703F
+    dw DtLevel,$7049
+    dw DtStart,$7049
+    dw DtWin,$7049
+    dw DtCount,$7049
+; Slow Burn (original)
+; Tiny Sound, 8 frames per step
+DtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2A,$01,$28,$26,$25,$01,$23,$01
+    db $22,$01,$1E,$01,$01,$01,$23,$01,$26,$01,$2A,$01,$2D,$01,$2B,$01
+    db $2A,$01,$28,$01,$26,$01,$25,$01,$28,$01,$2B,$01,$2A,$28,$26,$01
+    db $25,$01,$23,$01,$22,$01,$25,$01,$2A,$01,$01,$01,$23,$01,$01,$01
+    db $00,$01
+    db $FF
+DtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0E,$01,$15,$01,$10,$01,$0B,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $07,$01,$0E,$01,$06,$01,$0D,$01,$06,$01,$0A,$01,$0B,$01,$01,$01
+    db $00,$01
+    db $FF
+}

@@ -1,0 +1,1174 @@
+cartridge "SCAVENGER HUNT/BOB BLACKMER/1987"
+
+' SCAVENGER HUNT
+' A ColecoVision game based on "Scavenger Hunt" by Bob Blackmer, Ahoy!
+' May 1987 (Commodore 64, machine code). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/scavengerhunt.ml.dis), the game is rebuilt for the
+' ColecoVision: a hunter in two-colour sprites that walks a pixel at a time,
+' ladders, brick and item tiles, sound effects.
+'
+' The game: two hunters race through the same building, each seen in his
+' own window. The building has nine corridors joined by ladders. Each
+' hunter has a list of six things to find (rings, balls, ladders and boxes
+' in white, red or green, and the barber pole). Walk over a thing on your
+' list to take it; whoever finds all six first wins. A thing taken by one
+' hunter is gone for the other.
+'
+' From the original (orig/): the split screen, a window over the building
+' for each player with his list beside it; the building, 55 columns wide,
+' nine corridors three rows high and two brick rows between them; one shaft
+' between corridors 1-2, 3-4, 5-6 and 7-8 (in the middle), two between 2-3,
+' 4-5, 6-7 and 8-9 (left and right); 63 places, seven in each corridor,
+' eight columns apart, filled with the thirteen kinds in turn (about five
+' of each) and shuffled; six things a list, drawn at random; walking over a
+' thing on your list takes it (others are left alone); the things are
+' shared; both hunters start in the middle corridor; the first to finish
+' his list wins; joystick in each port; no time limit, no hazards.
+'
+' Liberties: the screen is redrawn for the 32 x 24 screen (14-column
+' windows instead of 17); the C64 moved a character a step (about 25 steps
+' a second); here the hunter walks 1.5 pixels a frame (11 columns a second)
+' and the window follows a column at a time; pushing up or down near a
+' ladder slides the hunter onto it (the C64 needed the exact column); a
+' list never holds the same kind twice (on the C64 it could, and two lists
+' could then ask for more of a kind than the building holds, so that
+' nobody could finish); the shafts are ladders; the tune is played on the
+' title only (the C64 played it all through the game); one player can race
+' the computer (it knows where things are, walks slower and stops after
+' every find); a side button pauses; the 2 x 2 picture the C64 put in a
+' random corridor (a decoration) is left out.
+'
+' Controls: joystick only. Left and right walk along a corridor, up and down
+' climb a ladder, a side button pauses. Player 1 uses controller 1, player
+' 2 controller 2 (one player: either). On the title, up and down choose,
+' left, right or a button change the players, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+'
+' Workarounds for Amy bugs actnaut-const-product removed 2026-11-01.
+
+const TBrick = 128
+const TFrame = 129
+const TLadl = 130
+const TLadr = 131
+const TItem0 = 132
+const TItem1 = 133
+const TItem2 = 134
+const TItem3 = 135
+const TItem4 = 136
+const TItem5 = 137
+const TItem6 = 138
+const TItem7 = 139
+const TItem8 = 140
+const TItem9 = 141
+const TItem10 = 142
+const TItem11 = 143
+const TItem12 = 144
+const TCheck = 145
+const SBodyr1 = 0
+const SSkinr1 = 4
+const SBodyr2 = 8
+const SSkinr2 = 12
+const SBodyl1 = 16
+const SSkinl1 = 20
+const SBodyl2 = 24
+const SSkinl2 = 28
+const SBodyc1 = 32
+const SSkinc1 = 36
+const SBodyc2 = 40
+const SSkinc2 = 44
+const NTiles8 = 144
+const SprBytes = 384
+const WCols = 56
+const WRows = 50
+const TItem = 132
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFind = 3
+const SndStep = 4
+const SndRung = 5
+const SndNope = 6
+const SndPick = 7
+const SndWin = 8
+const SndLose = 9
+const NSlot = 63
+const NKind = 13
+const MinX = 8
+const MaxX = 424
+const ViewW = 14
+const MaxOx = 42
+const MaxOy = 42
+const MsgRow = 11
+const CpuRest = 50
+
+data WinTop bytes 1,12
+data BodyCol bytes 5,13
+' a bit for each line of a list
+data Bit bytes 1,2,4,8,16,32
+' the corridor and place of each of the 63 places
+' the corridor whose places are on each row of the building (255: none)
+data RowFl bytes 255,255,255,255,255,0,255,255,255,255,1,255,255,255,255,2,255,255,255,255,3,255,255,255,255,4,255,255,255,255,5,255,255,255,255,6,255,255,255,255,7,255,255,255,255,8,255,255,255,255
+data SlotFl bytes 0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,3,3,3,3,3,3,3,4,4,4,4,4,4,4,5,5,5,5,5,5,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7,8,8,8,8,8,8,8
+data SlotK bytes 0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1,2,3,4,5,6
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$44,$00,$11,$00,$44,$00,$11
+  $40,$40,$80,$40,$40,$40,$80,$40
+  $02,$02,$01,$02,$02,$02,$01,$02
+  $C3,$42,$81,$81,$81,$42,$C3,$00
+  $C3,$42,$81,$81,$81,$42,$C3,$00
+  $C3,$42,$81,$81,$81,$42,$C3,$00
+  $C3,$81,$10,$00,$00,$81,$C3,$00
+  $C3,$81,$10,$00,$00,$81,$C3,$00
+  $C3,$81,$10,$00,$00,$81,$C3,$00
+  $84,$03,$84,$03,$84,$03,$84,$00
+  $84,$03,$84,$03,$84,$03,$84,$00
+  $84,$03,$84,$03,$84,$03,$84,$00
+  $01,$92,$01,$82,$82,$82,$01,$00
+  $01,$92,$01,$82,$82,$82,$01,$00
+  $01,$92,$01,$82,$82,$82,$01,$00
+  $10,$38,$38,$38,$38,$38,$38,$38
+  $01,$03,$06,$8C,$D8,$70,$20,$00
+end data
+data TileCol bytes
+  $E8,$E8,$E8,$0E,$E8,$E8,$E8,$0E
+  $02,$32,$02,$32,$02,$32,$02,$32
+  $E1,$E1,$1E,$E1,$E1,$E1,$1E,$E1
+  $E1,$E1,$1E,$E1,$E1,$E1,$1E,$E1
+  $1F,$F1,$F1,$F1,$F1,$F1,$1F,$01
+  $18,$81,$81,$81,$81,$81,$18,$01
+  $13,$31,$31,$31,$31,$31,$13,$01
+  $1F,$1F,$1F,$0F,$0F,$1F,$1F,$01
+  $18,$18,$18,$08,$08,$18,$18,$01
+  $13,$13,$13,$03,$03,$13,$13,$01
+  $F1,$1F,$F1,$1F,$F1,$1F,$F1,$01
+  $81,$18,$81,$18,$81,$18,$81,$01
+  $31,$13,$31,$13,$31,$13,$31,$01
+  $13,$31,$13,$31,$31,$31,$13,$01
+  $18,$81,$18,$81,$81,$81,$18,$01
+  $1F,$F1,$1F,$F1,$F1,$F1,$1F,$01
+  $B1,$F1,$81,$F1,$81,$F1,$81,$E1
+  $31,$31,$31,$31,$31,$31,$31,$01
+end data
+data SpritePat bytes
+  $03,$07,$00,$00,$00,$00,$07,$0F,$1B,$03,$03,$03,$06,$06,$0E,$00
+  $C0,$E0,$00,$00,$00,$00,$E0,$F0,$D8,$C0,$C0,$C0,$60,$60,$70,$00
+  $00,$00,$07,$07,$07,$03,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$60,$E0,$C0,$00,$00,$04,$04,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$0F,$1B,$03,$03,$03,$06,$0C,$1C,$00
+  $C0,$E0,$00,$00,$00,$00,$E0,$F0,$D8,$C0,$C0,$C0,$30,$18,$1C,$00
+  $00,$00,$07,$07,$07,$03,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$60,$E0,$C0,$00,$00,$04,$04,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$0F,$1B,$03,$03,$03,$06,$06,$0E,$00
+  $C0,$E0,$00,$00,$00,$00,$E0,$F0,$D8,$C0,$C0,$C0,$60,$60,$70,$00
+  $00,$00,$07,$06,$07,$03,$00,$00,$20,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$C0,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$0F,$1B,$03,$03,$03,$0C,$18,$38,$00
+  $C0,$E0,$00,$00,$00,$00,$E0,$F0,$D8,$C0,$C0,$C0,$60,$30,$38,$00
+  $00,$00,$07,$06,$07,$03,$00,$00,$20,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$C0,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$07,$33,$1F,$0F,$07,$07,$03,$03,$03,$06,$06,$06,$00
+  $C0,$E0,$E0,$E0,$CC,$F8,$F0,$E0,$E0,$C0,$C0,$C0,$60,$60,$60,$00
+  $00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$07,$33,$1F,$0F,$07,$07,$03,$03,$03,$06,$06,$06,$00
+  $C0,$E0,$E0,$E0,$CC,$F8,$F0,$E0,$E0,$C0,$C0,$C0,$60,$60,$60,$00
+  $00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data WMap bytes
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,130,131,128,128,128,128,128,128,128,128,128,128,128,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,131,32,32,32,32,32,32,32,32,32,32,32,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+end data
+
+record Hunter:
+  u16 X
+  u16 Y
+  u8 Fl
+  u8 Face
+  u8 Anim
+  u8 Ox
+  u8 Oy
+  u8 Got
+  u8 Found
+  u8 Frac
+  u8 Hold
+  u8 Last
+  u8 VDir
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Va = 0
+u16 Off = 0
+Hunter H[2]
+u8 Item[63]
+u8 Want[12]
+u8 Pool[13]
+u8 Dirty = 0
+u8 Need = 0
+u8 RowB[14]
+u8 NPl = 1
+u8 Cpu = 0
+u8 Winner = 0
+u8 Paused = 0
+u8 Phase = 0
+' the computer's target place
+u8 AiT = 255
+u8 AiPlan = 0
+' the search in progress: next place to weigh, best so far
+u8 AiScan = 255
+u8 AiBest = 255
+u16 AiBestD = 0
+u16 Finds = 0
+' input
+u8 J0 = 0
+u8 J1 = 0
+u8 OldB = 0
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Sel = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Ri = 0
+u8 Li = 0
+u8 Si = 0
+u8 Ai = 0
+u8 Ti = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table ShSoundTable areas 6
+  sprites 16x16
+  sprites flicker on
+  set sprite count 4
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 2 then goto title
+  NewGame
+  PlayGame
+
+  ' the end: who won, then back to the title on a press
+  mute all
+  if Winner = 2 and Cpu = 1 then
+    print at 7,MsgRow, "THE COMPUTER WINS"
+    play sound SndLose
+  else
+    if Winner = 1 then
+      print at 7,MsgRow, "PLAYER ONE WINS "
+    else
+      print at 7,MsgRow, "PLAYER TWO WINS "
+    end if
+    play sound SndWin
+  end if
+  Phase = 3
+  Rearm
+  wait 90 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a new game: the building filled, two lists, both hunters in the middle
+
+sub NewGame:
+  ' the thirteen kinds in turn in the 63 places, then shuffled
+  for Si = 0 to NSlot - 1
+    Item[Si] = Si % NKind
+  next
+  for Si = 62 downto 1
+    Rand
+    K = Rs % (Si + 1)
+    T = Item[Si]
+    Item[Si] = Item[K]
+    Item[K] = T
+  next
+  for Pi = 0 to 1
+    MakeList(Pi)
+    H[Pi].X = 224 + Pi * 32
+    H[Pi].Y = FloorY(4)
+    H[Pi].Fl = 4
+    H[Pi].Face = Pi * 2
+    H[Pi].Anim = 0
+    H[Pi].Got = 0
+    H[Pi].Found = 0
+    H[Pi].Frac = 0
+    H[Pi].Hold = 0
+    H[Pi].Last = 255
+    H[Pi].VDir = 0
+  next
+  ' the computer looks around before it starts
+  if Cpu = 1 then H[1].Hold = 90
+  AiT = 255
+  AiPlan = 0
+  AiScan = 255
+  Winner = 0
+  Paused = 0
+  Finds = 0
+  return
+end sub
+
+' six different kinds for player P: the first six of a shuffled pool
+sub MakeList(u8 P):
+  for Ki = 0 to NKind - 1
+    Pool[Ki] = Ki
+  next
+  for Ki = 0 to 5
+    Rand
+    N = NKind - Ki
+    K = Ki + Rs % N
+    T = Pool[Ki]
+    Pool[Ki] = Pool[K]
+    Pool[K] = T
+    Want[P * 6 + Ki] = Pool[Ki]
+  next
+  return
+end sub
+
+function FloorY(u8 F) as u16
+  return F * 40 + 32
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the play
+
+sub PlayGame:
+  DrawField
+  print at 10,MsgRow, "GET READY"
+  ShowScreen
+  for Ti = 1 to 60
+    Frame1
+  next
+  print at 10,MsgRow, "         "
+  Phase = 1
+  OldB = 16
+pg_loop:
+  Frame1
+  GetInput
+  if Paused = 0 then
+    MoveHunter(0, J0, 3)
+    if Cpu = 1 then
+      MoveHunter(1, J1, 2)
+    else
+      MoveHunter(1, J1, 3)
+    end if
+    TakeCheck(0)
+    TakeCheck(1)
+  end if
+  DrawAll
+  if Winner = 0 then goto pg_loop
+  Phase = 2
+  return
+end sub
+
+' one hunter's step: Sp is 3 for 1.5 pixels a frame, 2 for 1
+sub MoveHunter(u8 P, u8 Js, u8 Sp):
+  u8 S = 1
+  u8 Moved = 0
+  u16 Fy = 0
+  u16 Sx = 0
+  if H[P].Hold > 0 then
+    dec H[P].Hold
+    return
+  end if
+  if Sp = 3 then
+    H[P].Frac = H[P].Frac ^ 1
+    S = 1 + H[P].Frac
+  end if
+  if H[P].Fl <> 255 then
+    ' on a floor: walk, or step onto a ladder
+    if (Js & 4) <> 0 then
+      if H[P].X >= MinX + S then
+        H[P].X = H[P].X - S
+      else
+        H[P].X = MinX
+      end if
+      H[P].Face = 2
+      Moved = 1
+    else
+      if (Js & 8) <> 0 then
+        if H[P].X + S <= MaxX then
+          H[P].X = H[P].X + S
+        else
+          H[P].X = MaxX
+        end if
+        H[P].Face = 0
+        Moved = 1
+      end if
+    end if
+    if (Js & 1) <> 0 and H[P].Fl > 0 then
+      Sx = ShaftX(H[P].Fl - 1, H[P].X)
+      if ToShaft(P, Sx, S) = 1 then
+        H[P].Y = H[P].Y - S
+        H[P].Fl = 255
+        H[P].VDir = 1
+        Moved = 2
+      end if
+    end if
+    if (Js & 2) <> 0 and H[P].Fl < 8 then
+      Sx = ShaftX(H[P].Fl, H[P].X)
+      if ToShaft(P, Sx, S) = 1 then
+        H[P].Y = H[P].Y + S
+        H[P].Fl = 255
+        H[P].VDir = 2
+        Moved = 2
+      end if
+    end if
+  else
+    ' on a ladder: up or down to the next floor
+    V = (H[P].Y - 32) / 40
+    if (Js & 1) <> 0 then
+      Fy = FloorY(V)
+      if H[P].Y >= Fy + S then
+        H[P].Y = H[P].Y - S
+      else
+        H[P].Y = Fy
+      end if
+      Moved = 2
+      H[P].VDir = 1
+    else
+      if (Js & 2) <> 0 then
+        Fy = FloorY(V + 1)
+        if H[P].Y + S <= Fy then
+          H[P].Y = H[P].Y + S
+        else
+          H[P].Y = Fy
+        end if
+        Moved = 2
+        H[P].VDir = 2
+      end if
+    end if
+    ' a floor reached?
+    W16 = H[P].Y - 32
+    if W16 % 40 = 0 then
+      H[P].Fl = W16 / 40
+    end if
+    H[P].Face = 4
+  end if
+  if Moved > 0 then
+    H[P].Anim = H[P].Anim + S
+    if H[P].Anim >= 12 then
+      H[P].Anim = H[P].Anim - 12
+      if P = 0 or Cpu = 0 then
+        if Moved = 1 then
+          play sound SndStep
+        else
+          play sound SndRung
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the ladder's x between floor B and B + 1 nearest to X
+function ShaftX(u8 B, u16 Xa) as u16
+  if (B & 1) = 0 then return 216
+  if Xa < 216 then return 88
+  return 336
+
+' slides hunter P towards the ladder at Sx; 1 when he stands on it
+function ToShaft(u8 P, u16 Sx, u8 S) as u8
+  if H[P].X = Sx then return 1
+  if H[P].X < Sx then
+    if Sx - H[P].X > 12 then return 0
+    H[P].X = H[P].X + S
+    if H[P].X > Sx then H[P].X = Sx
+  else
+    if H[P].X - Sx > 12 then return 0
+    H[P].X = H[P].X - S
+    if H[P].X < Sx then H[P].X = Sx
+  end if
+  return 0
+
+' a thing under hunter P's feet: taken if it is on his list
+sub TakeCheck(u8 P):
+  u8 Fl = 0
+  u8 Slot = 0
+  u8 Kind = 0
+  u8 Line = 0
+  u16 Ix = 0
+  Fl = H[P].Fl
+  if Fl = 255 then return
+  ' the nearest of the corridor's seven places (columns 1, 9 ... 49)
+  W16 = H[P].X + 24
+  K = W16 >> 6
+  if K > 6 then K = 6
+  Ix = K * 64 + 8
+  if H[P].X + 12 < Ix or H[P].X > Ix + 4 then
+    H[P].Last = 255
+    return
+  end if
+  Slot = Fl * 7 + K
+  Kind = Item[Slot]
+  if Kind >= NKind then return
+  Line = WantLine(P, Kind)
+  if Line = 255 then
+    if Slot <> H[P].Last then
+      if P = 0 or Cpu = 0 then play sound SndNope
+    end if
+    H[P].Last = Slot
+    return
+  end if
+  Item[Slot] = 255
+  H[P].Found = H[P].Found | Bit[Line]
+  inc H[P].Got
+  inc Finds
+  Dirty = 3
+  ShowLine(P, Line)
+  play sound SndFind
+  if P = 1 and Cpu = 1 then
+    H[1].Hold = CpuRest
+    AiT = 255
+    AiScan = 255
+  end if
+  if H[P].Got = 6 then Winner = P + 1
+  return
+end sub
+
+' the line of P's list that asks for Kind and is not found yet, or 255
+function WantLine(u8 P, u8 Kind) as u8
+  u8 B = 0
+  B = P * 6
+  for Li = 0 to 5
+    if Want[B + Li] = Kind then
+      if (H[P].Found & Bit[Li]) = 0 then return Li
+    end if
+  next
+  return 255
+
+' ---------------------------------------------------------------------------
+' input: controllers, or the computer for player 2
+
+sub GetInput:
+  ReadPads
+  if NPl = 1 then
+    J0 = Pads
+  else
+    J0 = PadOf(1)
+  end if
+  if Cpu = 1 then
+    J1 = AiPad()
+  else
+    J1 = PadOf(2)
+  end if
+  N = (J0 | J1) & 16
+  if N <> 0 and OldB = 0 then
+    Paused = Paused ^ 1
+    play sound SndPick
+    if Paused = 1 then
+      print at 12,MsgRow, "PAUSED"
+    else
+      print at 12,MsgRow, "      "
+    end if
+  end if
+  OldB = N
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' the computer: picks the wanted thing with the shortest walk (it looks
+' again every 32 frames and after every find, weighing three places a frame
+' so that the search never costs a frame), then walks there: along its
+' corridor to the ladder towards the target's floor, up or down, and so on
+function AiPad as u8
+  u8 Tf = 0
+  u16 Tx = 0
+  u16 Sx = 0
+  if H[1].Fl = 255 then return H[1].VDir
+  if AiScan = 255 then
+    if AiPlan = 0 or AiT = 255 then
+      AiPlan = 32
+      AiScan = 0
+      AiBest = 255
+      AiBestD = 65000
+    end if
+  end if
+  if AiScan <> 255 then AiChoose
+  if AiPlan > 0 then dec AiPlan
+  if AiT = 255 then return 0
+  if Item[AiT] >= NKind then return 0
+  Tf = SlotFl[AiT]
+  Tx = SlotK[AiT] * 64 + 4
+  if Tf = H[1].Fl then return Toward(H[1].X, Tx)
+  if Tf < H[1].Fl then
+    Sx = ShaftX(H[1].Fl - 1, H[1].X)
+    if H[1].X = Sx then return 1
+  else
+    Sx = ShaftX(H[1].Fl, H[1].X)
+    if H[1].X = Sx then return 2
+  end if
+  return Toward(H[1].X, Sx)
+
+function Toward(u16 Xa, u16 Xt) as u8
+  if Xa < Xt then return 8
+  if Xa > Xt then return 4
+  return 0
+
+' three more places weighed; at the end of the 63 the best is the target
+sub AiChoose:
+  u16 D = 0
+  u8 Lim = 0
+  Lim = AiScan + 3
+  for Ai = AiScan to Lim - 1
+    if Item[Ai] < NKind then
+      if WantLine(1, Item[Ai]) <> 255 then
+        D = Dist(H[1].Fl, H[1].X, Ai)
+        if D < AiBestD then
+          AiBestD = D
+          AiBest = Ai
+        end if
+      end if
+    end if
+  next
+  AiScan = Lim
+  if AiScan >= NSlot then
+    AiScan = 255
+    AiT = AiBest
+  end if
+  return
+end sub
+
+' the walk in pixels from floor F, x Xa to place Slot
+function Dist(u8 F, u16 Xa, u8 Slot) as u16
+  u8 Tf = 0
+  u16 Cost = 0
+  u16 Cx = 0
+  u16 Sx = 0
+  u16 Tx = 0
+  Tf = SlotFl[Slot]
+  Tx = SlotK[Slot] * 64 + 4
+  Cx = Xa
+  while F <> Tf
+    if Tf < F then
+      Sx = ShaftX(F - 1, Cx)
+      dec F
+    else
+      Sx = ShaftX(F, Cx)
+      inc F
+    end if
+    if Sx > Cx then Cost = Cost + Sx - Cx else Cost = Cost + Cx - Sx
+    Cost = Cost + 40
+    Cx = Sx
+  end while
+  if Tx > Cx then Cost = Cost + Tx - Cx else Cost = Cost + Cx - Tx
+  return Cost
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the frames, the windows and both lists
+sub DrawField:
+  NewScreen
+  for Pi = 0 to 1
+    Y = WinTop[Pi]
+    fill TFrame count 16 at 2,Y
+    fill TFrame count 16 at 2,Y + 9
+    for Ri = 1 to 8
+      put char TFrame at 2,Y + Ri
+      put char TFrame at 17,Y + Ri
+    next
+    if Pi = 1 and Cpu = 1 then
+      print at 19,Y + 1, "COMPUTER"
+    else
+      if Pi = 0 then
+        print at 19,Y + 1, "PLAYER ONE"
+      else
+        print at 19,Y + 1, "PLAYER TWO"
+      end if
+    end if
+    for Li = 0 to 5
+      ShowLine(Pi, Li)
+    next
+    H[Pi].Ox = 255
+  next
+  ' both windows whole before the screen is shown
+  DrawAll
+  DrawView(0, 0)
+  DrawView(0, 4)
+  DrawView(1, 0)
+  DrawView(1, 4)
+  Need = 0
+  return
+end sub
+
+' line L of player P's list: the thing (or a tick once found) and its name
+sub ShowLine(u8 P, u8 L):
+  u8 Kind = 0
+  u8 Row = 0
+  Kind = Want[P * 6 + L]
+  Row = WinTop[P] + 3 + L
+  if (H[P].Found & Bit[L]) <> 0 then
+    put char TCheck at 19,Row
+    print at 20,Row, "          "
+    return
+  end if
+  put char TItem + Kind at 19,Row
+  select case Kind
+  case 0
+    print at 20,Row, "WHT RING"
+  case 1
+    print at 20,Row, "RED RING"
+  case 2
+    print at 20,Row, "GRN RING"
+  case 3
+    print at 20,Row, "WHT BALL"
+  case 4
+    print at 20,Row, "RED BALL"
+  case 5
+    print at 20,Row, "GRN BALL"
+  case 6
+    print at 20,Row, "WHT LADDER"
+  case 7
+    print at 20,Row, "RED LADDER"
+  case 8
+    print at 20,Row, "GRN LADDER"
+  case 9
+    print at 20,Row, "GRN BOX"
+  case 10
+    print at 20,Row, "RED BOX"
+  case 11
+    print at 20,Row, "WHT BOX"
+  case else
+    print at 20,Row, "POLE"
+  end select
+  return
+end sub
+
+' the windows follow their hunters a column (or row) at a time
+sub DrawAll:
+  u8 Nx = 0
+  u8 Ny = 0
+  for Pi = 0 to 1
+    W16 = H[Pi].X >> 3
+    if W16 > 6 then Nx = W16 - 6 else Nx = 0
+    if Nx > MaxOx then Nx = MaxOx
+    W16 = H[Pi].Y >> 3
+    Ny = W16 - 3
+    if Ny > MaxOy then Ny = MaxOy
+    if Nx <> H[Pi].Ox or Ny <> H[Pi].Oy then
+      H[Pi].Ox = Nx
+      H[Pi].Oy = Ny
+      Dirty = Dirty | Bit[Pi]
+    end if
+  next
+  ' a changed window has both its halves to draw (Need: bits 0-1 window 1,
+  ' 2-3 window 2); half a window a frame
+  if (Dirty & 1) <> 0 then Need = Need | 3
+  if (Dirty & 2) <> 0 then Need = Need | 12
+  Dirty = 0
+  select case Need & 15
+  case 0
+    N = 0
+  case 1, 3, 5, 7, 9, 11, 13, 15
+    DrawView(0, 0)
+    Need = Need & 14
+  case 2, 6, 10, 14
+    DrawView(0, 4)
+    Need = Need & 13
+  case 4, 12
+    DrawView(1, 0)
+    Need = Need & 11
+  case else
+    DrawView(1, 4)
+    Need = 0
+  end select
+  DrawSprites
+  return
+end sub
+
+' window P: 14 x 8 tiles of the building from (Ox, Oy), with the things;
+' half of it (four rows from R0) a call, so that a frame never overruns
+sub DrawView(u8 P, u8 R0):
+  u8 Wr = 0
+  u8 Fl = 0
+  u8 Kc = 0
+  u8 Top = 0
+  u8 Vx = 0
+  u8 Ix = 0
+  Top = WinTop[P] + 1
+  Vx = H[P].Ox
+  Wr = H[P].Oy + R0
+  Off = Wr * WCols + Vx
+  W16 = Top + R0
+  Va = W16 * 32 + 3
+  for Ri = R0 to R0 + 3
+    ' the bottom row of a corridor holds its seven places (built in RowB);
+    ' the other rows go straight from the map to the screen
+    Fl = RowFl[Wr]
+    if Fl >= 9 then
+      copy WMap + Off count ViewW to vram.name + Va
+    else
+      copy WMap + Off count ViewW to RowB
+      Ix = Fl * 7
+      for Ki = 0 to 6
+        Kc = Ki * 8 + 1
+        if Kc >= Vx then
+          Kc = Kc - Vx
+          if Kc < ViewW then
+            T = Item[Ix + Ki]
+            if T < NKind then RowB[Kc] = TItem + T
+          end if
+        end if
+      next
+      copy RowB count ViewW to vram.name + Va
+    end if
+    Off = Off + WCols
+    Va = Va + 32
+    inc Wr
+  next
+  return
+end sub
+
+sub DrawSprites:
+  u8 Fr = 0
+  u8 Sy = 0
+  u8 Sx = 0
+  for Pi = 0 to 1
+    Fr = H[Pi].Face
+    if H[Pi].Anim >= 6 then inc Fr
+    ' a ladder: the climber turns about every few pixels
+    W16 = H[Pi].Ox * 8
+    Sx = H[Pi].X - W16 + 24
+    W16 = H[Pi].Oy * 8
+    Sy = H[Pi].Y - W16 + WinTop[Pi] * 8 + 7
+    N = Pi * 2
+    set sprite N to Sy,Sx,Fr * 8 + 4,9
+    set sprite N + 1 to Sy,Sx,Fr * 8,BodyCol[Pi]
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for K = 0 to 3
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: the two windows of the C64's title, the thirteen things, the
+' menu, the tune once
+
+sub TitlePage:
+  NewScreen
+  for Pi = 0 to 1
+    Y = WinTop[Pi]
+    fill TFrame count 16 at 2,Y
+    fill TFrame count 16 at 2,Y + 9
+    for Ri = 1 to 8
+      put char TFrame at 2,Y + Ri
+      put char TFrame at 17,Y + Ri
+    next
+  next
+  print at 5,3, "SCAVENGER"
+  print at 7,5, "HUNT"
+  print at 4,8, "FIND ALL SIX"
+  for Ki = 0 to 12
+    X = Ki % 7
+    Y = Ki / 7
+    put char TItem + Ki at 20 + X,3 + Y * 2
+  next
+  print at 19,7, "TWO HUNTERS"
+  print at 19,8, "ONE HOUSE"
+  Sel = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Phase = 0
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  N = Pads & (Pads ^ OldPads)
+  if (N & 1) <> 0 then
+    if Sel > 0 then dec Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 2) <> 0 then
+    if Sel < 2 then inc Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if Sel = 1 then
+    if (N & 28) <> 0 then
+      NPl = 3 - NPl
+      play sound SndPick
+      ShowMenu
+    end if
+  else
+    if (N & 16) <> 0 then goto tp_done
+  end if
+  goto tp_loop
+tp_done:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  Cpu = 0
+  if NPl = 1 then Cpu = 1
+  if Sel = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Si = 0 to 2
+    put char 32 at 4,Si + 15
+  next
+  put char 62 at 4,Sel + 15
+  print at 6,15, "START"
+  if NPl = 1 then
+    print at 6,16, "VS COMPUTER"
+  else
+    print at 6,16, "TWO PLAYERS"
+  end if
+  print at 6,17, "CREDITS"
+  print at 19,15, "UP DOWN"
+  print at 19,16, "CHOOSE"
+  print at 19,18, "BUTTON"
+  print at 19,19, "STARTS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "SCAVENGER HUNT"
+  print at 2,5, "BASED ON SCAVENGER HUNT"
+  print at 2,6, "BY BOB BLACKMER, AHOY!"
+  print at 2,7, "MAY 1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: HIDE AND SEEK IN"
+  print at 2,18, "THE HALLS (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+ShFind:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$30,$06,$50
+ShStep:
+    db $00,$00,$A6,$01,$00,$00,$F6,$01,$10
+ShRung:
+    db $40,$1D,$81,$01,$40,$1D,$F1,$01,$50
+ShNope:
+    db $40,$FC,$51,$03,$40,$3B,$62,$03,$50
+ShPick:
+    db $40,$55,$40,$02,$50
+ShWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+ShLose:
+    db $40,$D6,$20,$0A,$40,$F0,$20,$0A,$40,$0E,$21,$0A,$40,$41,$31,$1E,$50
+
+ShSoundTable:
+    dw ShTuneMel,$702B
+    dw ShTuneBass,$7035
+    dw ShFind,$7049
+    dw ShStep,$703F
+    dw ShRung,$7049
+    dw ShNope,$7049
+    dw ShPick,$7049
+    dw ShWin,$7049
+    dw ShLose,$7049
+; Hide and Seek in the Halls (original)
+; Tiny Sound, 8 frames per step
+ShTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$01,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$23,$01,$24,$01,$28,$01,$26,$01,$01,$01
+    db $01,$01,$01,$01,$28,$01,$2B,$01,$2D,$01,$01,$01,$2B,$01,$28,$01
+    db $26,$01,$01,$01,$24,$01,$23,$01,$1F,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ShTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$04,$01,$07,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

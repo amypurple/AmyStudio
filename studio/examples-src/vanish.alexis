@@ -1,0 +1,1248 @@
+cartridge "VANISH/AHOY! JANUARY 1989/1989"
+
+' VANISH
+' A ColecoVision game based on "Vanish", Ahoy! January 1989 (Commodore
+' 128, BASIC 7.0 with a small machine-language core; the listing, its
+' title screen and the disk name no author, so the credit is the
+' magazine's). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/vanish.bas), the game is built for the ColecoVision: tiled
+' raised blocks, smooth 16 x 16 sprites, a star that grows as it falls,
+' sound effects and an original title tune.
+'
+' The game: the red force (left) and the blue force (right) each own 16
+' blocks, 4 rows by 4 columns. The forces take turns to fire a star from
+' the launcher at the top: the attacker picks a row and a column of the
+' other field, the star flies at that block, and the defender moves a
+' round force shield in the sky above its field to stop it. A star that
+' gets through makes the block vanish and the attacker fires again; a star
+' stopped by the shield, or one that falls through an empty square, ends
+' the turn. The force that loses 15 blocks loses the game.
+'
+' From the original (orig/vanish.bas): the two 4 x 4 fields, row 1 at the
+' back and row 4 at the front, column 1 next to the middle; the hidden aim
+' (hold the stick and press the button: up 1, right 2, down 3, left 4;
+' the button alone repeats the last row or column); the star launched from
+' the top centre at the chosen block and growing as it falls; the shield
+' moved by the defender with the stick in both directions, the attacker's
+' shield parked; a hit vanishes the block and the attacker fires again; a
+' block or a miss passes the turn; 15 blocks lost loses; the three
+' projectile speeds (HIGHWAY TRAFFIC, SPEED OF SOUND, SPEED OF LIGHT) and
+' three skill levels (AMATEUR, SEMI-PRO, PROFESSIONAL); the "computer
+' controlled" aim that picks a random block still standing.
+'
+' Liberties: ONE PLAYER mode, where the computer is the blue force: it
+' aims at random blocks still standing (the original's computer aim) and
+' also defends, seeing the star like a player does (it starts moving
+' about 0.3 seconds after the launch, judges the star's line from its
+' flight, and errs by up to 20 pixels), at the human shield's speed.
+' The original's "computer controlled" mode (both shots random, two
+' human defenders) is not kept. The skill level sets the shield's size
+' (big, medium, small) instead of the C-128's sprite tricks. The shield is
+' kept in a band of sky above its own field: on the C-128 touching the
+' grid lost the game at once, and nothing kept the shield from waiting
+' under the launcher, where every star passes, which made defence
+' trivial. The launcher moves to one of five places along the top for
+' each turn (on the C-128 it stayed in the middle): with one launch point a
+' parked shield covered the same blocks for ever and the game stalled once
+' the others had vanished. Faster stars (the C-128's speeds are kept as
+' names; the slowest was too easy to stop here). A star aimed at an empty square falls through it and misses (in
+' the listing it counted as a second hit on the same square). The blocks
+' are drawn as raised tiles rather than a perspective bitmap; both
+' controllers are used (red on 1, blue on 2; in one-player mode either).
+'
+' Controls: joystick and side buttons. To aim: hold a direction and press
+' a button (up 1, right 2, down 3, left 4; the button alone repeats your
+' last choice), first the row, then the column. To defend: move the
+' shield with the stick. On the title, up and down choose a line, left
+' and right (or a button) change it, a button on START or CREDITS.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TRtl = 128
+const TRfl = 129
+const TRtm = 130
+const TRfm = 131
+const TRtr = 132
+const TRfr = 133
+const TBtl = 134
+const TBfl = 135
+const TBtm = 136
+const TBfm = 137
+const TBtr = 138
+const TBfr = 139
+const TRct = 140
+const TRcf = 141
+const TBct = 142
+const TBcf = 143
+const THtl = 144
+const THtm = 145
+const THtr = 146
+const THfl = 147
+const THfm = 148
+const THfr = 149
+const TSt1 = 150
+const TSt2 = 151
+const TSt3 = 152
+const TLch00 = 153
+const TLch01 = 154
+const TLch10 = 155
+const TLch11 = 156
+const TRule = 157
+const SStar0a = 0
+const SStar0b = 4
+const SStar1a = 8
+const SStar1b = 12
+const SStar2a = 16
+const SStar2b = 20
+const SStar3a = 24
+const SStar3b = 28
+const SShield0 = 32
+const SShield1 = 36
+const SShield2 = 40
+const SBurst = 44
+const NTiles8 = 240
+const SprBytes = 384
+const SndTuneA = 1
+const SndTuneB = 2
+const SndAim = 3
+const SndSet = 4
+const SndLaunch = 5
+const SndBlock = 6
+const SndVanish = 7
+const SndMiss = 8
+const SndTurn = 9
+const SndStart = 10
+const SndWin = 11
+const NSpr = 4
+const SkyTop = 2
+const SkyBot = 11
+const LaunchY = 8
+const BandTop = 48
+const BandBot = 84
+const AimY = 64
+const ResN = 24
+const LostMax = 15
+
+record Shot:
+  u16 X
+  u16 Y
+  i16 Dx
+  u16 Dy
+  u8 Tx
+  u8 Ty
+  u8 Box
+  u8 Done
+end record
+
+record Shield:
+  u8 X
+  u8 Y
+  u8 Ax
+  u8 Ay
+  u8 Lo
+  u8 Hi
+end record
+
+' field columns: left edge tile of each force's field
+data BaseC bytes
+  2, 18
+end data
+' the star's vertical speed (1/16 pixel a frame) by speed setting
+data SpdT bytes
+  24, 36, 52
+end data
+' the launcher's five places (tile column of its left half)
+data LchT bytes
+  9, 12, 15, 18, 21
+end data
+' the shield's half size by skill, the star's by size
+data HalfS bytes
+  7, 5, 3
+end data
+data HalfP bytes
+  1, 2, 3, 4
+end data
+data ShPat bytes
+  32, 36, 40
+end data
+
+Shot St
+Shield Sh[2]
+u8 Bx[32]
+u8 Lost[2]
+bcd digits 2 RedLeft
+bcd digits 2 BlueLeft
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+i16 Ix = 0
+' settings
+u8 Np = 1
+u8 Spd = 1
+u8 Skl = 0
+' turn: attacker, defender, phase (0 aim, 1 flight, 2 result, 3 over)
+u8 Att = 0
+u8 Def = 1
+u8 Ph = 0
+u8 Ys = 1
+u8 Tr = 0
+u8 Tc = 0
+u8 LastR[2]
+u8 LastC[2]
+u8 AiT = 0
+u8 Seen = 0
+u8 React = 18
+u8 Res = 0
+u8 ResT = 0
+u8 Win = 0
+u8 Over = 0
+u8 Psz = 0
+u8 LchC = 15
+u8 LchX = 120
+' input
+u8 Pad[2]
+u8 Was[2]
+u8 Prs[2]
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Gi = 0
+u8 Pi = 0
+u8 Ci = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table VnSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  for Ri = 5 to 7
+    fill 32 count 24 at 4,Ri
+  next
+  if Win = 0 then
+    print at 6,6, "THE RED FORCE WINS"
+  else
+    print at 6,6, "THE BLUE FORCE WINS"
+  end if
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveShields
+  select case Ph
+  case 0
+    if IsCpu(Att) = 1 then
+      CpuAim
+    else
+      HumanAim
+    end if
+  case 1
+    Fly
+  case 2
+    Result
+  case else
+    Over = 1
+  end select
+  return
+end sub
+
+' 1 when force P is played by the computer
+function IsCpu(u8 P) as u8
+  u8 Q = 0
+  if Np = 1 then
+    if P = 1 then Q = 1
+  end if
+  return Q
+
+' the stick direction at the moment of the press: 1 up, 2 right, 3 down,
+' 4 left, 0 none (the original's JOY values 1, 3, 5, 7)
+function DirOf(u8 Bits) as u8
+  u8 Q = 0
+  if Bits & 1 then Q = 1
+  if Bits & 8 then Q = 2
+  if Bits & 2 then Q = 3
+  if Bits & 4 then Q = 4
+  return Q
+
+sub HumanAim:
+  if Prs[Att] = 0 then return
+  D = DirOf(Pad[Att])
+  if Ys = 1 then
+    if D = 0 then
+      Tr = LastR[Att]
+    else
+      Tr = D - 1
+      LastR[Att] = Tr
+    end if
+    Ys = 2
+    ShowAim
+    play sound SndSet
+    return
+  end if
+  if D = 0 then
+    Tc = LastC[Att]
+  else
+    Tc = D - 1
+    LastC[Att] = Tc
+  end if
+  Launch
+  return
+end sub
+
+' the computer: ROW? for half a second, COLUMN?, then a random block
+' still standing (the original's computer aim, line 88)
+sub CpuAim:
+  inc AiT
+  if AiT = 30 then
+    Ys = 2
+    ShowAim
+    play sound SndSet
+  end if
+  if AiT < 55 then return
+  K = PickBox
+  Tr = K >> 2
+  ' screen column g (left to right) to the label (1 next to the middle)
+  V = K & 3
+  if Def = 0 then
+    Tc = 3 - V
+  else
+    Tc = V
+  end if
+  Launch
+  return
+end sub
+
+' a random block of the defender still standing: its index r * 4 + g
+function PickBox as u8
+  u8 Q = 0
+  u8 Tries = 0
+  Q = Rnd & 15
+  B = Def << 4
+  while Bx[B + Q] = 0
+    Q = Q + 1
+    Q = Q & 15
+    inc Tries
+  end while
+  return Q
+
+' start the star at the block (row Tr, column label Tc) of the defender
+sub Launch:
+  if Def = 0 then
+    V = 3 - Tc
+  else
+    V = Tc
+  end if
+  St.Box = Tr << 2
+  St.Box = St.Box + V
+  C = BaseC[Def]
+  V = V * 3
+  C = C + V
+  St.Tx = C << 3
+  St.Tx = St.Tx + 4
+  V = Tr << 4
+  St.Ty = 104 + V
+  St.X = LchX << 8
+  St.Y = LaunchY << 8
+  V = SpdT[Spd]
+  St.Dy = V << 4
+  ' frames of flight, then the sideways step that gets there in time
+  W16 = St.Ty - LaunchY
+  W16 = W16 << 8
+  W16 = W16 / St.Dy
+  if W16 = 0 then W16 = 1
+  ' (up to 148 pixels sideways: 148 * 256 is past i16, so the size is
+  ' divided as a u16 and the sign put back)
+  Ix = St.Tx
+  Ix = Ix - LchX
+  A16 = abs(Ix)
+  A16 = A16 << 8
+  A16 = A16 / W16
+  St.Dx = A16
+  if Ix < 0 then St.Dx = 0 - St.Dx
+  St.Done = 0
+  Seen = 0
+  Ph = 1
+  ClearPrompts
+  play sound SndLaunch
+  return
+end sub
+
+' the star in flight: moves, meets the shield, reaches its block or
+' falls through an empty square
+sub Fly:
+  St.X = St.X + St.Dx
+  St.Y = St.Y + St.Dy
+  X = St.X >> 8
+  Y = St.Y >> 8
+  Psz = SizeOf(Y)
+  inc Seen
+  if IsCpu(Def) = 1 then CpuDefend
+  if Blocked(X, Y) = 1 then
+    Res = 2
+    ResT = ResN
+    Ph = 2
+    play sound SndBlock
+    return
+  end if
+  if St.Done = 0 then
+    if Y >= St.Ty then
+      St.Done = 1
+      K = Def << 4
+      K = K + St.Box
+      if Bx[K] = 1 then
+        Bx[K] = 2
+        Res = 1
+        ResT = ResN
+        Ph = 2
+        DrawBox(Def, St.Box)
+        play sound SndVanish
+        return
+      end if
+    end if
+  end if
+  if Y >= 184 then
+    Res = 3
+    ResT = ResN
+    Ph = 2
+    play sound SndMiss
+  end if
+  return
+end sub
+
+' the star's size (0 small .. 3 big) from its height
+function SizeOf(u8 Py) as u8
+  u8 Q = 3
+  if Py < 100 then Q = 2
+  if Py < 72 then Q = 1
+  if Py < 40 then Q = 0
+  return Q
+
+' 1 when the defender's shield covers the star at X, Y
+function Blocked(u8 Px, u8 Py) as u8
+  u8 Q = 0
+  i16 Ddx = 0
+  i16 Ddy = 0
+  i16 Lim = 0
+  Ddx = Px
+  Ddx = Ddx - Sh[Def].X
+  Ddy = Py
+  Ddy = Ddy - Sh[Def].Y
+  Lim = HalfS[Skl] + HalfP[Psz]
+  Ddx = abs(Ddx)
+  Ddy = abs(Ddy)
+  if Ddx < Lim then
+    if Ddy < Lim then Q = 1
+  end if
+  return Q
+
+' the pause after a shot: a vanishing block, a burst, a miss
+sub Result:
+  dec ResT
+  if ResT > 0 then return
+  if Res = 1 then
+    K = Def << 4
+    K = K + St.Box
+    Bx[K] = 0
+    DrawBox(Def, St.Box)
+    inc Lost[Def]
+    if Def = 0 then
+      dec RedLeft
+    else
+      dec BlueLeft
+    end if
+    ShowHud
+    if Lost[Def] >= LostMax then
+      Win = Att
+      Ph = 3
+      return
+    end if
+    ' a hit: the attacker fires again
+    StartAim
+    return
+  end if
+  ' stopped or missed: the other force's turn
+  Att = Def
+  Def = 1 - Att
+  play sound SndTurn
+  StartAim
+  return
+end sub
+
+sub StartAim:
+  ' the launcher moves to one of its five places (a parked shield then
+  ' cannot cover the same blocks for ever)
+  PutLauncher(32)
+  V = Rnd % 5
+  LchC = LchT[V]
+  LchX = LchC << 3
+  PutLauncher(TLch00)
+  Ph = 0
+  Ys = 1
+  AiT = 0
+  Res = 0
+  ShowAim
+  return
+end sub
+
+' the computer's shield: still for React frames after the launch, then
+' to the point where the star's line crosses its band, with an error
+sub CpuDefend:
+  if Seen <> React then return
+  W16 = AimY << 8
+  if St.Y >= W16 then return
+  W16 = W16 - St.Y
+  W16 = W16 / St.Dy
+  Ix = St.Dx * W16
+  A16 = St.X + Ix
+  V = A16 >> 8
+  T = Rnd % 41
+  V = V + T
+  V = V - 20
+  Sh[Def].Ax = V
+  Sh[Def].Ay = AimY
+  return
+end sub
+
+' the shields: the human defender's by the stick, the computer's to its
+' aim point (home when there is nothing to stop)
+sub MoveShields:
+  for Pi = 0 to 1
+    if IsCpu(Pi) = 1 then
+      if Ph <> 1 then
+        Sh[Pi].Ax = Sh[Pi].Lo + 48
+        Sh[Pi].Ay = 66
+      end if
+      StepTo
+    elseif Pi = Def then
+      K = Pad[Pi]
+      if K & 1 then Sh[Pi].Y = Sh[Pi].Y - 2
+      if K & 2 then Sh[Pi].Y = Sh[Pi].Y + 2
+      if K & 4 then Sh[Pi].X = Sh[Pi].X - 2
+      if K & 8 then Sh[Pi].X = Sh[Pi].X + 2
+    end if
+    Keep
+  next
+  return
+end sub
+
+' the computer's shield one step (2 pixels) toward its aim point
+sub StepTo:
+  V = Sh[Pi].X
+  U = Sh[Pi].Ax
+  if V + 1 < U then
+    V = V + 2
+  elseif V > U + 1 then
+    V = V - 2
+  end if
+  Sh[Pi].X = V
+  V = Sh[Pi].Y
+  U = Sh[Pi].Ay
+  if V + 1 < U then
+    V = V + 2
+  elseif V > U + 1 then
+    V = V - 2
+  end if
+  Sh[Pi].Y = V
+  return
+end sub
+
+' the shield stays in the band of sky above its own field
+sub Keep:
+  U = Sh[Pi].Lo
+  T = Sh[Pi].Hi
+  clamp Sh[Pi].X between U and T
+  clamp Sh[Pi].Y between BandTop and BandBot
+  return
+end sub
+
+function Rnd as u8
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the star (or the burst), 1 the red shield, 2 the blue shield
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+    update sprites
+    return
+  end if
+  X = St.X >> 8
+  Y = St.Y >> 8
+  if Ph = 1 then
+    V = Tick >> 3
+    V = V & 1
+    K = Psz << 3
+    K = K + V * 4
+    Y = Y - 1
+    set sprite 0 to Y,X,K,11
+  elseif Ph = 2 then
+    if Res = 2 then
+      Y = Y - 1
+      set sprite 0 to Y,X,SBurst,15
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  K = ShPat[Skl]
+  Y = Sh[0].Y - 1
+  set sprite 1 to Y,Sh[0].X,K,9
+  Y = Sh[1].Y - 1
+  set sprite 2 to Y,Sh[1].X,K,7
+  update sprites
+  return
+end sub
+
+' one block: force P, index Q (row * 4 + column g); 1 standing, 2 hit,
+' 0 gone
+sub DrawBox(u8 P, u8 Q)
+  u8 St8 = 0
+  u8 Col = 0
+  u8 Row = 0
+  u8 Tl = 0
+  u8 Fl = 0
+  St8 = Bx[(P << 4) + Q]
+  Col = BaseC[P] + (Q & 3) * 3
+  Row = 13 + (Q >> 2) * 2
+  select case St8
+  case 1
+    if P = 0 then
+      Tl = TRtl
+    else
+      Tl = TBtl
+    end if
+    put char Tl at Col,Row
+    put char Tl + 2 at Col + 1,Row
+    put char Tl + 4 at Col + 2,Row
+    Fl = Tl + 1
+    put char Fl at Col,Row + 1
+    put char Fl + 2 at Col + 1,Row + 1
+    put char Fl + 4 at Col + 2,Row + 1
+  case 2
+    if P = 0 then
+      Tl = TRct
+    else
+      Tl = TBct
+    end if
+    fill Tl count 3 at Col,Row
+    Fl = Tl + 1
+    fill Fl count 3 at Col,Row + 1
+  case else
+    put char THtl at Col,Row
+    put char THtm at Col + 1,Row
+    put char THtr at Col + 2,Row
+    put char THfl at Col,Row + 1
+    put char THfm at Col + 1,Row + 1
+    put char THfr at Col + 2,Row + 1
+  end select
+  return
+end sub
+
+sub DrawFields:
+  for Pi = 0 to 1
+    for Gi = 0 to 15
+      DrawBox(Pi, Gi)
+    next
+  next
+  print at 14,12, "ROW"
+  for Ri = 0 to 3
+    V = 13 + Ri * 2
+    put char 49 + Ri at 15,V
+  next
+  for Gi = 0 to 3
+    V = 3 + Gi * 3
+    put char 52 - Gi at V,21
+    V = 19 + Gi * 3
+    put char 49 + Gi at V,21
+  next
+  return
+end sub
+
+' the starry sky, the launcher, the rules under the HUD
+sub DrawSky:
+  for Ri = SkyTop to SkyBot
+    for Ci = 0 to 31
+      V = Ci * 7 + Ri * 13
+      V = V % 23
+      select case V
+      case 0
+        put char TSt1 at Ci,Ri
+      case 7
+        put char TSt2 at Ci,Ri
+      case 15
+        put char TSt3 at Ci,Ri
+      end select
+    next
+  next
+  PutLauncher(TLch00)
+  return
+end sub
+
+' the launcher's four tiles at column LchC (T = 32 erases it, the sky's
+' stars come back on the next screen)
+sub PutLauncher(u8 T0)
+  u8 T1 = 32
+  u8 T2 = 32
+  u8 T3 = 32
+  if T0 <> 32 then
+    T1 = T0 + 1
+    T2 = T0 + 2
+    T3 = T0 + 3
+  end if
+  put char T0 at LchC,1
+  put char T1 at LchC + 1,1
+  put char T2 at LchC,2
+  put char T3 at LchC + 1,2
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "RED"
+  print RedLeft at 6,1
+  print at 23,1, "BLUE"
+  print BlueLeft at 28,1
+  return
+end sub
+
+sub ClearPrompts:
+  for Ri = 3 to 5
+    fill 32 count 11 at 2,Ri
+    fill 32 count 11 at 19,Ri
+  next
+  return
+end sub
+
+' the aim prompts on the attacker's side, DEFEND on the defender's
+sub ShowAim:
+  ClearPrompts
+  if Att = 0 then
+    C = 2
+    D = 19
+    print at C,3, "RED AIMS"
+  else
+    C = 19
+    D = 2
+    print at C,3, "BLUE AIMS"
+  end if
+  if Ys = 1 then
+    print at C,4, "ROW?"
+  else
+    print at C,4, "COLUMN?"
+  end if
+  if IsCpu(Att) = 0 then print at C,5, "U1 R2 D3 L4"
+  print at D,3, "DEFEND"
+  return
+end sub
+
+sub NewGame:
+  for Ri = 0 to 31
+    Bx[Ri] = 1
+  next
+  Lost[0] = 0
+  Lost[1] = 0
+  RedLeft = 16
+  BlueLeft = 16
+  LastR[0] = 0
+  LastR[1] = 0
+  LastC[0] = 0
+  LastC[1] = 0
+  Sh[0].Lo = 16
+  Sh[0].Hi = 112
+  Sh[1].Lo = 128
+  Sh[1].Hi = 224
+  for Pi = 0 to 1
+    Sh[Pi].X = Sh[Pi].Lo + 48
+    Sh[Pi].Y = 66
+    Sh[Pi].Ax = Sh[Pi].X
+    Sh[Pi].Ay = 66
+  next
+  NewScreen
+  DrawSky
+  DrawFields
+  print at 10,22, "V A N I S H"
+  ShowHud
+  Att = 0
+  Def = 1
+  Over = 0
+  Win = 0
+  TitleOn = 0
+  StartAim
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Pad[p]: the stick and button bits of force p's controller (in one
+' player mode the red force reads both); Prs[p] a new press
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  if Np = 1 then
+    Pad[0] = J1 | J2
+    Pad[1] = 0
+  else
+    Pad[0] = J1
+    Pad[1] = J2
+  end if
+  for Pi = 0 to 1
+    V = Pad[Pi] & 16
+    Prs[Pi] = 0
+    if V > 0 then
+      if Was[Pi] = 0 then Prs[Pi] = 1
+    end if
+    Was[Pi] = V
+  next
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the fields under the sky, the options, the tune once
+sub TitlePage:
+  for Ri = 0 to 31
+    Bx[Ri] = 1
+  next
+  NewScreen
+  DrawSky
+  DrawFields
+  for Ri = 3 to 11
+    fill 32 count 26 at 3,Ri
+  next
+  print at 10,4, "V A N I S H"
+  print at 7,22, "AHOY! JANUARY 1989"
+  Menu = 3
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  K = V & 15
+  if K > 0 then
+    if WasStick = 0 then
+      if K & 1 then
+        if Menu > 0 then dec Menu
+      elseif K & 2 then
+        if Menu < 4 then inc Menu
+      elseif K & 4 then
+        ChangeOpt(2)
+      elseif K & 8 then
+        ChangeOpt(1)
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = K
+  if Press = 1 then
+    if Menu >= 3 then goto tp_done
+    ChangeOpt(1)
+    ShowMenu
+  end if
+  goto tp_loop
+tp_done:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 4 then CreditsPage
+  return
+end sub
+
+' option line Menu (0 players, 1 speed, 2 skill) one step forward (1) or
+' back (2)
+sub ChangeOpt(u8 Way)
+  select case Menu
+  case 0
+    Np = 3 - Np
+  case 1
+    if Way = 1 then
+      Spd = (Spd + 1) % 3
+    else
+      Spd = (Spd + 2) % 3
+    end if
+  case 2
+    if Way = 1 then
+      Skl = (Skl + 1) % 3
+    else
+      Skl = (Skl + 2) % 3
+    end if
+  end select
+  play sound SndAim
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 6 to 10
+    put char 32 at 3,Ri
+  next
+  V = Menu + 6
+  put char 62 at 3,V
+  fill 32 count 24 at 4,6
+  if Np = 1 then
+    print at 4,6, "PLAYERS  1 VS COMPUTER"
+  else
+    print at 4,6, "PLAYERS  2"
+  end if
+  fill 32 count 24 at 4,7
+  print at 4,7, "SPEED"
+  select case Spd
+  case 0
+    print at 13,7, "HIGHWAY TRAFFIC"
+  case 1
+    print at 13,7, "SPEED OF SOUND"
+  case else
+    print at 13,7, "SPEED OF LIGHT"
+  end select
+  fill 32 count 24 at 4,8
+  print at 4,8, "SKILL"
+  select case Skl
+  case 0
+    print at 13,8, "AMATEUR"
+  case 1
+    print at 13,8, "SEMI-PRO"
+  case else
+    print at 13,8, "PROFESSIONAL"
+  end select
+  print at 4,9, "START"
+  print at 4,10, "CREDITS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "V A N I S H"
+  print at 2,5, "BASED ON VANISH, AHOY!"
+  print at 2,6, "JANUARY 1989 (COMMODORE"
+  print at 2,7, "128). THE LISTING NAMES NO"
+  print at 2,8, "AUTHOR."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: FALLING STARS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $81,$91,$A5,$C3,$99,$A3,$C9,$00
+  $91,$38,$85,$2C,$64,$18,$00,$00
+  $81,$91,$A5,$C3,$99,$A3,$C9,$00
+  $91,$38,$85,$2C,$64,$18,$00,$00
+  $80,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$02,$02,$02,$02,$02,$02,$02
+  $40,$40,$40,$40,$40,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$02,$02,$02,$01,$00,$00
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$60,$60,$00,$00,$00,$00,$00
+  $07,$F0,$1C,$38,$30,$60,$60,$60
+  $E0,$F0,$38,$1C,$0C,$06,$06,$06
+  $30,$38,$1C,$F0,$07,$00,$00,$00
+  $0C,$1C,$38,$F0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $1F,$19,$19,$19,$19,$19,$19,$16
+  $18,$18,$18,$18,$18,$18,$16,$01
+  $0F,$09,$09,$09,$09,$09,$09,$06
+  $08,$08,$08,$08,$08,$08,$06,$01
+  $1F,$19,$19,$19,$19,$19,$19,$16
+  $18,$18,$18,$18,$18,$18,$16,$01
+  $1F,$15,$15,$15,$15,$15,$15,$14
+  $14,$14,$14,$14,$14,$14,$14,$01
+  $0F,$05,$05,$05,$05,$05,$05,$04
+  $04,$04,$04,$04,$04,$04,$04,$01
+  $1F,$15,$15,$15,$15,$15,$15,$14
+  $14,$14,$14,$14,$14,$14,$14,$01
+  $1F,$19,$19,$19,$19,$19,$19,$01
+  $18,$81,$18,$81,$81,$81,$01,$01
+  $1F,$15,$15,$15,$15,$15,$15,$01
+  $14,$41,$14,$41,$41,$41,$01,$01
+  $1E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $1E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$1E,$01,$01
+  $01,$01,$01,$01,$01,$0E,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$1E,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$71,$71,$01,$01,$01,$01,$01
+  $71,$17,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$17,$71,$01,$01,$01
+  $71,$71,$71,$71,$71,$01,$01,$01
+  $01,$01,$01,$0E,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$07,$07,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$E0,$E0,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$07,$07,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$E0,$E0,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$01,$1F,$1F,$01,$01,$01,$01,$00,$00,$00
+  $00,$00,$00,$80,$80,$80,$80,$F8,$F8,$80,$80,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$09,$05,$03,$0F,$0F,$03,$05,$09,$00,$00,$00,$00
+  $00,$00,$00,$00,$90,$A0,$C0,$F0,$F0,$C0,$A0,$90,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$03,$7F,$7F,$03,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$C0,$FE,$FE,$C0,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$11,$09,$05,$03,$1F,$1F,$03,$05,$09,$11,$00,$00,$00
+  $00,$00,$00,$88,$90,$A0,$C0,$F8,$F8,$C0,$A0,$90,$88,$00,$00,$00
+  $01,$0F,$1F,$38,$73,$67,$6F,$EF,$EF,$6F,$67,$73,$38,$1F,$0F,$01
+  $80,$F0,$F8,$1C,$CE,$E6,$F6,$F7,$F7,$F6,$E6,$CE,$1C,$F8,$F0,$80
+  $00,$00,$01,$07,$0F,$1C,$1B,$3B,$3B,$1B,$1C,$0F,$07,$01,$00,$00
+  $00,$00,$80,$E0,$F0,$38,$D8,$DC,$DC,$D8,$38,$F0,$E0,$80,$00,$00
+  $00,$00,$00,$00,$01,$07,$07,$0F,$0F,$07,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$E0,$F0,$F0,$E0,$E0,$80,$00,$00,$00,$00
+  $80,$40,$20,$10,$08,$04,$00,$F8,$00,$04,$08,$10,$20,$40,$80,$00
+  $81,$82,$84,$88,$08,$10,$00,$9F,$00,$10,$88,$84,$82,$81,$80,$00
+end data
+
+asm {
+VnAim:
+    db $40,$40,$20,$03,$50
+VnSet:
+    db $40,$7F,$20,$03,$40,$55,$20,$05,$50
+VnLaunch:
+    db $40,$47,$10,$03,$40,$50,$20,$03,$40,$5F,$20,$03,$40,$71,$20,$03,$40,$7F,$30,$03,$40,$8F,$40,$04
+    db $50
+VnBlock:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$35,$05,$10
+VnVanish:
+    db $00,$00,$06,$03,$00,$00,$16,$04,$00,$00,$37,$06,$00,$00,$57,$0A,$10
+VnMiss:
+    db $40,$53,$31,$05,$40,$AB,$41,$08,$50
+VnTurn:
+    db $40,$AA,$20,$04,$40,$71,$30,$06,$50
+VnStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+VnWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+VnSoundTable:
+    dw VnTuneMel,$702B
+    dw VnTuneBass,$7035
+    dw VnAim,$7049
+    dw VnSet,$7049
+    dw VnLaunch,$7049
+    dw VnBlock,$703F
+    dw VnVanish,$703F
+    dw VnMiss,$7049
+    dw VnTurn,$7049
+    dw VnStart,$7049
+    dw VnWin,$7049
+; Falling Stars (original)
+; Tiny Sound, 8 frames per step
+VnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$2A,$01,$26,$01,$23,$01,$1E,$01,$1F,$01,$23,$01
+    db $26,$01,$25,$01,$23,$01,$01,$01,$21,$01,$1E,$01,$1A,$01,$1E,$01
+    db $21,$01,$26,$01,$25,$01,$21,$01,$1C,$01,$21,$01,$25,$01,$01,$01
+    db $23,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$25,$01,$22,$01,$1E,$01
+    db $22,$01,$23,$01,$01,$01,$00,$01,$01,$01,$01,$01
+    db $FF
+VnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1082 @@
+cartridge "ORBIT/C. M. BLAKEMORE/1987"
+
+' ORBIT
+' A ColecoVision game based on "Orbit" by Cleveland M. Blakemore, Ahoy!
+' November 1987 (Commodore 128, BASIC 7.0 with sprite motion; "based
+' loosely on the original MIT version for the PDP" says its REM). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/orbit.b7), the game is built for the ColecoVision: smooth
+' 16 x 16 sprites on circular paths, a tumbling rock, a painted Earth, a
+' starry sky, sound effects and an original title tune.
+'
+' The game: three chunks of space debris circle the Earth, two one way and
+' one the other, each spiralling a little closer every turn. Your defence
+' ship circles the Earth on a low orbit; steer it round with the stick and
+' fire outward. You get one shot each time the debris completes a turn
+' (the SHOT lamp). Destroy all three chunks to save the planet; if one
+' reaches your orbit, it hits the Earth.
+'
+' From the original: the ship on an orbit of 42 units round the Earth,
+' moved 5 degrees a step while the debris move 8 (ship speed 5/8 of the
+' debris); three chunks at 80, 100 and 120 units, the inner and outer
+' anticlockwise, the middle one clockwise, all at the same angular speed;
+' each turn every chunk comes 5 units closer; a chunk inside the ship's
+' orbit is an impact; the shot leaves along the ship's angle, straight out
+' from the Earth; one shot per turn of the debris; a hit chunk explodes and
+' is gone; YOU HAVE SAVED THE PLANET! when all three are gone; ASTEROID
+' IMPACT KILLS (a random 10,000-59,999) PEOPLE! when one gets through.
+'
+' Liberties: scaled to the screen: ship orbit 26 pixels, chunks from 48,
+' 60 and 72 pixels, 3 pixels closer a turn (the same 8, 12 and 16 turns to
+' impact), and the spiral is smooth instead of a 5-unit jump at the end of
+' each turn. A turn of the debris lasts 240 frames on wave 1. The stick
+' moves the ship clockwise with right and anticlockwise with left (the
+' C128's JOY codes ran it the other way). The shot starts at the ship
+' (C128: at the Earth's centre, behind the ship), flies 1.5 pixels a frame
+' and lasts until it hits or leaves the debris zone (C128: switched off
+' at the end of every turn); it needs a fresh press. The chunks start each
+' wave at random angles (C128: all at the top, lined up, with the shot
+' reloaded at that moment; a player sitting in one place could time it
+' the same way every turn: fix as in Sack Race, no winning by standing
+' still or repeating one move); the shot is reloaded every turn of the
+' debris, counted from the wave's start. Waves: after the planet is saved
+' the next wave comes 1/8 faster (up to 2.5 times) and spirals in half a
+' pixel a turn more (up to 8 a turn, wave 11 on: fewer turns, and shots,
+' before impact) (C128: one wave, then ANOTHER GAME?); a score (100 x wave a chunk, five times that for saving the planet) and a
+' high score. Collisions are boxes round the sprites' centres instead of
+' the VIC's pixel coincidence. The colour-cycling impact flash (far faster
+' than 3 Hz) is a border that blinks at 2.5 Hz. The title and credits
+' pages and the tune are new.
+'
+' Controls: either controller; stick left/right steers the ship round the
+' Earth, either side button fires. On the title, up and down choose, a
+' button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TSp = 128
+const TSt1 = 129
+const TSt2 = 130
+const TSt3 = 131
+const TLampon = 132
+const TLampoff = 133
+const TEarth00 = 134
+const TEarth01 = 135
+const TEarth02 = 136
+const TEarth03 = 137
+const TEarth10 = 138
+const TEarth11 = 139
+const TEarth12 = 140
+const TEarth13 = 141
+const TEarth20 = 142
+const TEarth21 = 143
+const TEarth22 = 144
+const TEarth23 = 145
+const TEarth30 = 146
+const TEarth31 = 147
+const TEarth32 = 148
+const TEarth33 = 149
+const TBigO00 = 150
+const TBigO01 = 151
+const TBigO10 = 152
+const TBigO11 = 153
+const TBigR00 = 154
+const TBigR01 = 155
+const TBigR10 = 156
+const TBigR11 = 157
+const TBigB00 = 158
+const TBigB01 = 159
+const TBigB10 = 160
+const TBigB11 = 161
+const TBigI00 = 162
+const TBigI01 = 163
+const TBigI10 = 164
+const TBigI11 = 165
+const TBigT00 = 166
+const TBigT01 = 167
+const TBigT10 = 168
+const TBigT11 = 169
+const SShip0 = 0
+const SShip1 = 4
+const SShip2 = 8
+const SShip3 = 12
+const SShip4 = 16
+const SShip5 = 20
+const SShip6 = 24
+const SShip7 = 28
+const SShot = 32
+const SRock0 = 36
+const SRock1 = 40
+const SRock2 = 44
+const SRock3 = 48
+const SBoom0 = 52
+const SBoom1 = 56
+const SBoom2 = 60
+const NTiles8 = 336
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndMove = 4
+const SndReady = 5
+const SndZap = 6
+const SndImpact = 7
+const SndSaved = 8
+const SndStart = 9
+const SndOver = 10
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+const NSpr = 6
+const CX = 128
+const CY = 104
+const ShipR = 26
+const ImpR = 6656
+const ShipSp = 171
+const ShotSp = 384
+const ShotMax = 22528
+const HitR = 7
+const BoomN = 24
+const ImpN = 150
+const ReadyN = 90
+const SavedN = 180
+const SpdMax = 682
+
+' a quarter sine, 127 x sin(i x 90 / 64 degrees), i = 0..64
+data SinT bytes
+  0, 3, 6, 9, 12, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46
+  49, 51, 54, 57, 60, 63, 65, 68, 71, 73, 76, 78, 81, 83, 85, 88
+  90, 92, 94, 96, 98, 100, 102, 104, 106, 107, 109, 111, 112, 113, 115, 116
+  117, 118, 120, 121, 122, 122, 123, 124, 125, 125, 126, 126, 126, 127, 127, 127
+  127
+end data
+' the chunks: starting radius (pixels), turning way (1 clockwise), colour
+data RkR0 bytes
+  48, 60, 72
+end data
+data RkCw bytes
+  0, 1, 0
+end data
+data RkCol bytes
+  9, 7, 3
+end data
+
+' a chunk of debris: angle and radius in 1/256 (angle 0 up, clockwise,
+' 256 a turn), alive, burst countdown
+record Rock:
+  u16 Ang
+  u16 Rad
+  u8 Live
+  u8 Boom
+  u8 Cw
+end record
+Rock Rk[3]
+' centres on screen (pixels), worked out each frame
+u8 RkX[3]
+u8 RkY[3]
+
+bcd digits 6 Score
+bcd digits 6 Hi
+bcd digits 6 Pts
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 SAng = 0
+u16 ShR = 0
+u16 Spd = 273
+u16 Dr = 3
+u16 Rev = 0
+u8 ShA = 0
+u8 ShOn = 0
+u8 ShRdy = 1
+u8 ShX = 0
+u8 ShY = 0
+u8 PlX = 0
+u8 PlY = 0
+u8 Mode = 0
+u8 Wave = 1
+u8 Phase = 0
+u8 MsgT = 0
+u8 Left = 3
+u8 Over = 0
+u8 ImpK = 0
+u8 PlayT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Si = 0
+u8 R0 = 0
+u8 R1 = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Sx = 0
+u8 Sy = 0
+
+  tile screen
+  set sound table ObSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the original's message, then back to the title on a press
+  Mode = 4
+  if Score > Hi then Hi = Score
+  ShowHud
+  mute all
+  TzOn = 0
+  backdrop black
+  Rand
+  NumU = Rs % 50000
+  NumU = NumU + 10000
+  print at 3,16, "                          "
+  print at 3,17, "  ASTEROID IMPACT KILLS   "
+  print at 3,18, "      " + digits$(NumU, 5) + " PEOPLE!     "
+  print at 3,19, "                          "
+  print at 3,20, "        GAME  OVER        "
+  print at 3,21, "                          "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  select case Phase
+  case 0
+    ' WAVE n / GET READY: the debris wait in place
+    dec MsgT
+    if MsgT = 0 then
+      Phase = 1
+      ClearMsg
+    end if
+  case 1
+    inc PlayT
+    Control
+    MoveShot
+    MoveRocks
+    Collide
+  case 2
+    ' an impact: the border blinks, then the game is over
+    Booms
+    dec MsgT
+    V = MsgT / 12
+    V = V & 1
+    if V = 1 then
+      backdrop dark red
+    else
+      backdrop black
+    end if
+    if MsgT = 0 then Over = 1
+  case 3
+    ' all three gone: the planet is saved, the next wave comes faster
+    Booms
+    dec MsgT
+    if MsgT = 0 then
+      if Wave < 99 then inc Wave
+      Pts += 100
+      StartWave
+    end if
+  end select
+  return
+end sub
+
+' the stick steers the ship round the Earth, a fresh press fires
+sub Control:
+  V = Stick & 12
+  if V = 8 then SAng = SAng + ShipSp
+  if V = 4 then SAng = SAng - ShipSp
+  if V <> 0 then
+    K = PlayT & 7
+    if K = 0 then play sound SndMove
+  end if
+  if Press = 1 then
+    if ShRdy = 1 and ShOn = 0 then
+      ShRdy = 0
+      ShOn = 1
+      W16 = SAng >> 8
+      ShA = W16
+      ShR = ShipR * 256
+      ShowLamp
+      play sound SndShot
+    end if
+  end if
+  return
+end sub
+
+sub MoveShot:
+  if ShOn = 1 then
+    ShR = ShR + ShotSp
+    if ShR >= ShotMax then ShOn = 0
+  end if
+  ' a new shot every turn of the debris
+  W16 = Rev
+  Rev = Rev + Spd
+  if Rev < W16 then
+    if ShRdy = 0 then
+      ShRdy = 1
+      ShowLamp
+      play sound SndReady
+    end if
+  end if
+  return
+end sub
+
+' the chunks turn and spiral in; one inside the ship's orbit hits the Earth
+sub MoveRocks:
+  u16 A = 0
+  u16 R = 0
+  for Ci = 0 to 2
+    if Rk[Ci].Live = 1 then
+      A = Rk[Ci].Ang
+      R = Rk[Ci].Rad
+      if Rk[Ci].Cw = 1 then
+        A = A + Spd
+      else
+        A = A - Spd
+      end if
+      R = R - Dr
+      Rk[Ci].Ang = A
+      Rk[Ci].Rad = R
+      if R < ImpR then
+        if Phase = 1 then
+          Phase = 2
+          MsgT = ImpN
+          ImpK = Ci
+          Rk[Ci].Live = 0
+          Rk[Ci].Boom = BoomN
+          ShOn = 0
+          play sound SndImpact
+        end if
+      end if
+    end if
+  next
+  Booms
+  return
+end sub
+
+sub Booms:
+  for Ci = 0 to 2
+    if Rk[Ci].Boom > 0 then Rk[Ci].Boom = Rk[Ci].Boom - 1
+  next
+  return
+end sub
+
+' R x sin(A) in pixels (A: 256 a turn), rounded towards zero
+function SinR(u8 A, u8 R) as i16
+  u8 Q = 0
+  u8 Hb = 0
+  u16 M = 0
+  i16 Res = 0
+  Q = A & 63
+  Hb = A & 64
+  if Hb > 0 then Q = 64 - Q
+  M = SinT[Q]
+  M = M * R
+  M = M >> 7
+  Res = M
+  if A >= 128 then Res = 0 - Res
+  return Res
+
+' the screen centre of a thing at angle A (0..255) and radius R pixels
+sub Place(u8 A, u8 R):
+  i16 P = 0
+  P = CX + SinR(A, R)
+  PlX = P
+  P = CY - SinR(A + 64, R)
+  PlY = P
+  return
+end sub
+
+' 1 when two centres are less than HitR pixels apart on both axes
+function Near(u8 Ax, u8 Ay, u8 Bx, u8 By) as u8
+  u8 Res = 0
+  if absdiff(Ax, Bx) < HitR then
+    if absdiff(Ay, By) < HitR then Res = 1
+  end if
+  return Res
+
+sub Collide:
+  Locate
+  if ShOn = 1 then
+    for Ci = 0 to 2
+      if Rk[Ci].Live = 1 and ShOn = 1 then
+        if Near(ShX, ShY, RkX[Ci], RkY[Ci]) = 1 then
+          Rk[Ci].Live = 0
+          Rk[Ci].Boom = BoomN
+          ShOn = 0
+          Score += Pts
+          dec Left
+          ShowScore
+          play sound SndZap
+        end if
+      end if
+    next
+  end if
+  if Phase = 1 then
+    if Left = 0 then
+      Phase = 3
+      MsgT = SavedN
+      ' saving the planet pays five times a chunk
+      for Si = 1 to 5
+        Score += Pts
+      next
+      ShowScore
+      print at 3,17, "                          "
+      print at 3,18, "YOU HAVE SAVED THE PLANET!"
+      print at 3,19, "                          "
+      play sound SndSaved
+    end if
+  end if
+  return
+end sub
+
+' every centre on screen for this frame
+sub Locate:
+  for Ci = 0 to 2
+    W16 = Rk[Ci].Ang >> 8
+    J = W16
+    W16 = Rk[Ci].Rad >> 8
+    K = W16
+    Place(J, K)
+    RkX[Ci] = PlX
+    RkY[Ci] = PlY
+  next
+  W16 = ShR >> 8
+  K = W16
+  Place(ShA, K)
+  ShX = PlX
+  ShY = PlY
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a new wave: the ship at the top, the chunks at random angles, faster
+' by 1/8 of the first wave's speed every wave, spiralling in faster
+sub StartWave:
+  SAng = 0
+  ShOn = 0
+  ShRdy = 1
+  Rev = 0
+  PlayT = 0
+  Left = 3
+  W16 = Wave - 1
+  W16 = W16 * 34
+  Spd = 273 + W16
+  if Spd > SpdMax then Spd = SpdMax
+  ' the spiral: 3 pixels a turn, half a pixel more every wave, at most 8
+  W16 = Wave + 5
+  if W16 > 16 then W16 = 16
+  Dr = Spd * W16
+  Dr = Dr >> 9
+  for Ci = 0 to 2
+    Rand
+    Rk[Ci].Ang = Rs
+    W16 = RkR0[Ci]
+    Rk[Ci].Rad = W16 << 8
+    Rk[Ci].Live = 1
+    Rk[Ci].Boom = 0
+    Rk[Ci].Cw = RkCw[Ci]
+  next
+  Locate
+  Phase = 0
+  MsgT = ReadyN
+  ClearMsg
+  ShowHud
+  NumU = Wave
+  print at 11,17, " WAVE " + digits$(NumU, 2) + " "
+  print at 10,19, " GET READY "
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawSprites:
+  ' the ship, nose away from the Earth (eight facings)
+  if Mode <> 3 then
+    set sprite 0 to 192,0,0,0
+  else
+    W16 = SAng >> 8
+    J = W16
+    Place(J, ShipR)
+    Sx = PlX - 8
+    Sy = PlY - 9
+    K = J + 16
+    K = K >> 5
+    K = K << 2
+    set sprite 0 to Sy,Sx,K,15
+  end if
+  ' the shot
+  if ShOn = 1 then
+    Sx = ShX - 8
+    Sy = ShY - 9
+    set sprite 1 to Sy,Sx,SShot,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for Si = 0 to 2
+    Sx = RkX[Si] - 8
+    Sy = RkY[Si] - 9
+    T = Si + 2
+    if Rk[Si].Live = 1 then
+      V = Tick >> 3
+      V = V + Si
+      V = V & 3
+      K = V << 2
+      K = K + SRock0
+      C = RkCol[Si]
+      set sprite T to Sy,Sx,K,C
+    elseif Rk[Si].Boom > 0 then
+      K = BoomPat(Rk[Si].Boom)
+      set sprite T to Sy,Sx,K,11
+    else
+      set sprite T to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the burst pattern for a countdown (24 frames)
+function BoomPat(u8 Bt) as u8
+  u8 P = SBoom2
+  select case Bt
+  case 17 to 24
+    P = SBoom0
+  case 9 to 16
+    P = SBoom1
+  end select
+  return P
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 15,1, "WAVE"
+  ShowScore
+  NumU = Wave
+  print at 20,1, digits$(NumU, 2)
+  print at 24,1, "SHOT"
+  ShowLamp
+  return
+end sub
+
+sub ShowLamp:
+  if ShRdy = 1 then
+    put char TLampon at 29,1
+  else
+    put char TLampoff at 29,1
+  end if
+  return
+end sub
+
+sub ShowScore:
+  print Score at 8,1
+  return
+end sub
+
+' a row of stars (Ri); always the same stars; the Earth in the middle
+sub StarRow:
+  for J = 0 to 31
+    V = J * 7
+    V = V + Ri * 13
+    V = V ^ (J * Ri)
+    V = V & 31
+    select case V
+    case 3
+      T = TSt1
+    case 11
+      T = TSt3
+    case 22
+      T = TSt2
+    case 27
+      T = TSt1
+    case else
+      T = TSp
+    end select
+    put char T at J,Ri
+  next
+  if Ri >= 11 and Ri <= 14 then
+    V = Ri - 11
+    T = V << 2
+    T = T + TEarth00
+    for J = 14 to 17
+      put char T at J,Ri
+      inc T
+    next
+  end if
+  return
+end sub
+
+' the rows R0 to R1 of the sky
+sub SkyRows:
+  for Ri = R0 to R1
+    StarRow
+  next
+  return
+end sub
+
+sub ClearMsg:
+  R0 = 16
+  R1 = 21
+  SkyRows
+  return
+end sub
+
+sub NewGame:
+  Mode = 3
+  Score = 0
+  Pts = 100
+  Wave = 1
+  Over = 0
+  NewScreen
+  R0 = 2
+  R1 = 22
+  SkyRows
+  StartWave
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Stick = V & 15
+  ' left and right together: neither
+  if Stick & 12 = 12 then Stick = Stick & 3
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub BigAt(u8 Tb, u8 Col):
+  put char Tb at Col,2
+  put char Tb + 1 at Col + 1,2
+  put char Tb + 2 at Col,3
+  put char Tb + 3 at Col + 1,3
+  return
+end sub
+
+' the title: the name, the Earth with debris circling, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  Mode = 2
+  NewScreen
+  R0 = 2
+  R1 = 22
+  SkyRows
+  BigAt(TBigO00, 10)
+  BigAt(TBigR00, 13)
+  BigAt(TBigB00, 16)
+  BigAt(TBigI00, 19)
+  BigAt(TBigT00, 22)
+  print at 3,5, "BY CLEVELAND M. BLAKEMORE"
+  print at 9,6, "AHOY! NOV 1987"
+  print at 11,20, "START GAME"
+  print at 11,21, "CREDITS"
+  print at 11,22, "HI"
+  print Hi at 14,22
+  ShowMenu
+  Wave = 1
+  Spd = 273
+  Dr = 0
+  for Ci = 0 to 2
+    W16 = Ci * 85
+    Rk[Ci].Ang = W16 << 8
+    ' (smaller circles than in play, clear of the title's text)
+    W16 = Ci * 8
+    W16 = W16 + 32
+    Rk[Ci].Rad = W16 << 8
+    Rk[Ci].Live = 1
+    Rk[Ci].Boom = 0
+    Rk[Ci].Cw = RkCw[Ci]
+  next
+  ShOn = 0
+  Phase = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  MoveRocks
+  Locate
+  DrawSprites
+  V = Stick & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,20
+  put char 32 at 9,21
+  J = Menu + 20
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  Mode = 1
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "ORBIT"
+  print at 2,5, "BASED ON ORBIT BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! NOVEMBER 1987"
+  print at 2,8, "(COMMODORE 128), LOOSELY"
+  print at 2,9, "AFTER THE 1960S MIT GAME."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: LOW EARTH ORBIT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$20,$70,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$00,$00,$01,$06,$0C,$F0,$E0
+  $03,$C0,$00,$C0,$80,$38,$87,$07
+  $C0,$03,$00,$03,$01,$01,$01,$01
+  $00,$00,$00,$80,$C0,$F0,$E0,$E0
+  $C0,$C0,$80,$80,$80,$80,$80,$80
+  $07,$F0,$E0,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$0C,$06,$06,$0E
+  $03,$03,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$C0,$C0,$F0,$C0
+  $01,$01,$01,$03,$03,$03,$03,$00
+  $E0,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$01,$01,$01,$01,$03,$03
+  $E0,$F0,$F0,$07,$01,$00,$00,$00
+  $00,$18,$38,$38,$C3,$00,$C0,$03
+  $00,$00,$01,$03,$02,$00,$03,$C0
+  $07,$F0,$F0,$E0,$80,$00,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$0E
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $0E,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$1C,$1C,$E0,$E0,$E0,$E0,$00
+  $F0,$80,$80,$70,$70,$0E,$0E,$00
+  $00,$00,$00,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$E0,$E0,$E0,$E0,$00,$00,$00
+  $F0,$0E,$0E,$0E,$0E,$F0,$F0,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$00,$00,$00
+  $80,$80,$80,$80,$80,$01,$01,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$01,$01,$80,$80,$80,$80,$80
+  $03,$03,$03,$03,$03,$03,$03,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $01,$01,$01,$51,$51,$51,$15,$15
+  $F1,$1F,$0F,$35,$35,$35,$53,$53
+  $F1,$1F,$0F,$25,$25,$25,$25,$45
+  $01,$01,$01,$41,$21,$41,$21,$21
+  $15,$15,$15,$15,$15,$15,$35,$35
+  $53,$35,$35,$05,$05,$05,$05,$05
+  $45,$45,$45,$45,$35,$23,$23,$23
+  $14,$14,$14,$14,$14,$14,$04,$04
+  $35,$35,$15,$15,$15,$15,$15,$14
+  $35,$35,$35,$35,$25,$25,$24,$04
+  $32,$42,$42,$42,$24,$24,$04,$04
+  $04,$04,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$41,$41,$01,$01,$01
+  $04,$24,$24,$24,$42,$0F,$1F,$F1
+  $04,$04,$24,$24,$24,$0F,$1F,$F1
+  $14,$41,$41,$41,$21,$01,$01,$01
+  $01,$1B,$1B,$B1,$B1,$B1,$A1,$A1
+  $01,$B1,$B1,$B1,$B1,$B1,$A1,$A1
+  $A1,$A1,$A1,$A1,$61,$16,$16,$01
+  $A1,$A1,$A1,$A1,$61,$61,$61,$01
+  $01,$0B,$0B,$B1,$B1,$B1,$A1,$0A
+  $01,$B1,$B1,$B1,$B1,$B1,$A1,$A1
+  $0A,$1A,$1A,$A1,$61,$61,$61,$01
+  $A1,$A1,$A1,$A1,$61,$61,$61,$01
+  $01,$0B,$0B,$B1,$B1,$B1,$A1,$0A
+  $01,$B1,$B1,$B1,$B1,$B1,$A1,$A1
+  $0A,$A1,$A1,$A1,$61,$06,$06,$01
+  $A1,$A1,$A1,$A1,$61,$61,$61,$01
+  $01,$0B,$0B,$B1,$B1,$B1,$A1,$A1
+  $01,$1B,$1B,$B1,$B1,$B1,$A1,$A1
+  $A1,$A1,$A1,$A1,$61,$06,$06,$01
+  $A1,$A1,$A1,$A1,$61,$16,$16,$01
+  $01,$0B,$0B,$B1,$B1,$B1,$A1,$A1
+  $01,$1B,$1B,$B1,$B1,$B1,$A1,$A1
+  $A1,$A1,$A1,$A1,$61,$61,$61,$01
+  $A1,$A1,$A1,$A1,$61,$61,$61,$01
+end data
+data SpritePat bytes
+  $00,$00,$01,$01,$01,$03,$03,$03,$07,$0F,$1F,$3C,$78,$60,$00,$00
+  $00,$00,$80,$80,$80,$C0,$C0,$C0,$E0,$F0,$F8,$7C,$1C,$04,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$FF,$7F,$07,$03,$01,$01,$01,$01,$00
+  $00,$00,$00,$08,$30,$F0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$80,$80
+  $00,$60,$38,$1C,$1E,$0F,$0F,$07,$07,$07,$0F,$1E,$1C,$38,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$FC,$FC,$E0,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$03,$07,$7F,$FF,$3F,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$C0,$C0,$C0,$C0,$C0,$E0,$E0,$F0,$30,$08,$00,$00,$00
+  $00,$00,$60,$78,$3C,$1F,$0F,$07,$03,$03,$03,$01,$01,$01,$00,$00
+  $00,$00,$04,$1C,$7C,$F8,$F0,$E0,$C0,$C0,$C0,$80,$80,$80,$00,$00
+  $01,$01,$03,$03,$03,$03,$03,$03,$07,$07,$0F,$0C,$10,$00,$00,$00
+  $00,$80,$80,$80,$80,$C0,$E0,$FE,$FF,$FC,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$3F,$3F,$07,$00,$00,$00,$00,$00,$00
+  $00,$0C,$1C,$38,$78,$F0,$E0,$E0,$E0,$F0,$F0,$78,$38,$1C,$00,$00
+  $00,$00,$00,$10,$0C,$0F,$07,$07,$03,$03,$03,$03,$03,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$FC,$FF,$FE,$E0,$C0,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$0F,$1B,$1F,$3F,$3D,$3F,$1F,$1F,$0F,$07,$03,$00,$00
+  $00,$00,$C0,$E0,$F0,$F0,$F8,$FC,$FC,$FC,$78,$F0,$E0,$80,$00,$00
+  $00,$00,$01,$07,$0F,$1F,$3F,$3F,$3B,$1F,$1F,$0F,$07,$03,$00,$00
+  $00,$00,$C0,$F0,$F8,$E8,$7C,$FC,$FC,$FC,$F8,$F0,$C0,$80,$00,$00
+  $00,$00,$01,$07,$0F,$1E,$3F,$3F,$3F,$1F,$0F,$0F,$07,$03,$00,$00
+  $00,$00,$C0,$E0,$F0,$F8,$F8,$FC,$BC,$FC,$F8,$D8,$F0,$C0,$00,$00
+  $00,$00,$01,$03,$0F,$1F,$3F,$3F,$3F,$3E,$17,$1F,$0F,$03,$00,$00
+  $00,$00,$C0,$E0,$F0,$F8,$F8,$DC,$FC,$FC,$F8,$F0,$E0,$80,$00,$00
+  $00,$00,$00,$00,$00,$03,$02,$06,$07,$02,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$C0,$60,$60,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$02,$06,$04,$18,$1C,$0B,$02,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$60,$58,$1C,$08,$30,$20,$60,$C0,$80,$00,$00
+  $00,$04,$00,$08,$00,$10,$00,$40,$00,$20,$00,$08,$00,$01,$08,$00
+  $00,$00,$20,$84,$00,$00,$08,$00,$08,$00,$04,$00,$40,$08,$00,$00
+end data
+
+asm {
+ObShot:
+    db $40,$47,$10,$02,$40,$55,$20,$02,$40,$6B,$30,$02,$40,$7F,$50,$03,$40,$A0,$60,$03,$50
+ObMove:
+    db $40,$A6,$72,$01,$50
+ObReady:
+    db $40,$40,$40,$03,$40,$35,$40,$03,$50
+ObZap:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$56,$0A,$10
+ObImpact:
+    db $00,$00,$04,$0A,$00,$00,$15,$0C,$00,$00,$26,$10,$00,$00,$36,$14,$00,$00,$57,$1E,$10
+ObSaved:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$14,$50
+ObStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+ObOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$7F,$22,$1E,$50
+
+ObSoundTable:
+    dw ObTuneMel,$702B
+    dw ObTuneBass,$7035
+    dw ObShot,$7049
+    dw ObMove,$7049
+    dw ObReady,$7049
+    dw ObZap,$703F
+    dw ObImpact,$703F
+    dw ObSaved,$7049
+    dw ObStart,$7049
+    dw ObOver,$7049
+; Low Earth Orbit (original)
+; Tiny Sound, 8 frames per step
+ObTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$19,$01,$1C,$01,$21,$01,$23,$01
+    db $25,$01,$01,$01,$23,$01,$21,$01,$1E,$01,$1A,$01,$1E,$01,$21,$01
+    db $01,$01,$20,$01,$1C,$01,$17,$01,$1C,$01,$20,$01,$21,$01,$23,$01
+    db $01,$01,$25,$01,$23,$01,$21,$01,$20,$01,$1C,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ObTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

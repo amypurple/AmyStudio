@@ -8472,5 +8472,2969 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lawn-job",
+    "label": "Lawn Job (1984)",
+    "detail": "A ColecoVision adaptation of LAWN JOB by Mike Buhidar Jr., originally published in Ahoy! 1984.",
+    "projectName": "Lawn Job",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "salvage-diver",
+    "label": "Salvage Diver (1984)",
+    "detail": "A ColecoVision adaptation of SALVAGE DIVER by B.W. Behling, originally published in Ahoy! 1984.",
+    "projectName": "Salvage Diver",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "space-lanes",
+    "label": "Space Lanes (March 1984)",
+    "detail": "A ColecoVision adaptation of SPACE LANES by Robert Alonso, originally published in Ahoy! March 1984.",
+    "projectName": "Space Lanes",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "air-assault",
+    "label": "Air Assault (May 1984)",
+    "detail": "A ColecoVision adaptation of AIR ASSAULT by Bob Lloret, originally published in Ahoy! May 1984.",
+    "projectName": "Air Assault",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-emerald-elephant",
+    "label": "The Emerald Elephant (September/October 1984)",
+    "detail": "A ColecoVision adaptation of THE EMERALD ELEPHANT by Orson Scott Card, originally published in Ahoy! September/October 1984.",
+    "projectName": "The Emerald Elephant",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "futurewar",
+    "label": "Futurewar! (February 1985)",
+    "detail": "A ColecoVision adaptation of FUTUREWAR! by B. W. Behling, originally published in Ahoy! February 1985.",
+    "projectName": "Futurewar!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "salmon-run",
+    "label": "Salmon Run (March 1985)",
+    "detail": "A ColecoVision adaptation of SALMON RUN by Mike Wacker, originally published in Ahoy! March 1985.",
+    "projectName": "Salmon Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-mansion-murder",
+    "label": "The Mansion Murder (March 1985)",
+    "detail": "A ColecoVision adaptation of THE MANSION MURDER by an author not named in the issue, originally published in Ahoy! March 1985.",
+    "projectName": "The Mansion Murder",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "raid",
+    "label": "Raid (May 1985)",
+    "detail": "A ColecoVision adaptation of RAID by Larry Coats, originally published in Ahoy! May 1985.",
+    "projectName": "Raid",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "duck-shoot",
+    "label": "Duck Shoot (June 1985)",
+    "detail": "A ColecoVision adaptation of DUCK SHOOT by Bob Blackmer, originally published in Ahoy! June 1985.",
+    "projectName": "Duck Shoot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "speedy",
+    "label": "Speedy (June 1985)",
+    "detail": "A ColecoVision adaptation of SPEEDY by Kevin Dewey, originally published in Ahoy! June 1985.",
+    "projectName": "Speedy",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "towers-of-hanoi",
+    "label": "Towers Of Hanoi (June 1985)",
+    "detail": "A ColecoVision adaptation of Towers of Hanoi by Daniel Miller, originally published in Ahoy! June 1985.",
+    "projectName": "Towers Of Hanoi",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fidgits",
+    "label": "Fidgits (August 1985)",
+    "detail": "A ColecoVision adaptation of FIDGITS by Walter E. Meyers, originally published in Ahoy! August 1985.",
+    "projectName": "Fidgits",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "moxeys-porch",
+    "label": "Moxeys Porch (September 1985)",
+    "detail": "A ColecoVision adaptation of MOXEYS PORCH by Bob Blackmer, originally published in Ahoy! September 1985.",
+    "projectName": "Moxeys Porch",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "starkite",
+    "label": "Starkite (September 1985)",
+    "detail": "A ColecoVision adaptation of STARKITE by J.C. Hilty, originally published in Ahoy! September 1985.",
+    "projectName": "Starkite",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "jewel-quest",
+    "label": "Jewel Quest (December 1985)",
+    "detail": "A ColecoVision adaptation of JEWEL QUEST by Bob Blackmer, originally published in Ahoy! December 1985.",
+    "projectName": "Jewel Quest",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "santas-busy-day",
+    "label": "Santa's Busy Day (December 1985)",
+    "detail": "A ColecoVision adaptation of SANTA'S BUSY DAY by George Trepal, originally published in Ahoy! December 1985.",
+    "projectName": "Santa's Busy Day",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "starfolk",
+    "label": "Starfolk (December 1985)",
+    "detail": "A ColecoVision adaptation of STARFOLK by an author not named in the issue, originally published in Ahoy! December 1985.",
+    "projectName": "Starfolk",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "knockout",
+    "label": "Knockout (January 1986)",
+    "detail": "A ColecoVision adaptation of KNOCKOUT by an author not named in the issue, originally published in Ahoy! January 1986.",
+    "projectName": "Knockout",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "microsim",
+    "label": "Microsim (January 1986)",
+    "detail": "A ColecoVision adaptation of MICROSIM by Tim Gerchmez, originally published in Ahoy! January 1986.",
+    "projectName": "Microsim",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-haunted-castle",
+    "label": "The Haunted Castle (January 1986)",
+    "detail": "A ColecoVision adaptation of THE HAUNTED CASTLE by an author not named in the issue, originally published in Ahoy! January 1986.",
+    "projectName": "The Haunted Castle",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-martian-monsters",
+    "label": "The Martian Monsters (January 1986)",
+    "detail": "A ColecoVision adaptation of THE MARTIAN MONSTERS by J. C. Hilty, originally published in Ahoy! January 1986.",
+    "projectName": "The Martian Monsters",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "head-to-head",
+    "label": "Head To Head (February 1986)",
+    "detail": "A ColecoVision adaptation of HEAD TO HEAD by Doug Smoak, originally published in Ahoy! February 1986.",
+    "projectName": "Head To Head",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "treasure-wheel",
+    "label": "Treasure Wheel (February 1986)",
+    "detail": "A ColecoVision adaptation of TREASURE WHEEL by Bob Blackmer, originally published in Ahoy! February 1986.",
+    "projectName": "Treasure Wheel",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "actionauts",
+    "label": "Actionauts (April 1986)",
+    "detail": "A ColecoVision adaptation of ACTIONAUTS by Rob Fulop and Lon Richter (Advanced Program Technology 1985), originally published in Ahoy! April 1986.",
+    "projectName": "Actionauts",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "comet-catcher",
+    "label": "Comet Catcher (April 1986)",
+    "detail": "A ColecoVision adaptation of COMET CATCHER by Dale Rupert, originally published in Ahoy! April 1986.",
+    "projectName": "Comet Catcher",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hidden-cavern",
+    "label": "Hidden Cavern (April 1986)",
+    "detail": "A ColecoVision adaptation of HIDDEN CAVERN by James C. Hilty, originally published in Ahoy! April 1986.",
+    "projectName": "Hidden Cavern",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "english-darts",
+    "label": "English Darts (May 1986)",
+    "detail": "A ColecoVision adaptation of ENGLISH DARTS by Michael E. Townsend, originally published in Ahoy! May 1986.",
+    "projectName": "English Darts",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ski-folly",
+    "label": "Ski Folly (May 1986)",
+    "detail": "A ColecoVision adaptation of SKI FOLLY by an author not named in the issue, originally published in Ahoy! May 1986.",
+    "projectName": "Ski Folly",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "star-search",
+    "label": "Star Search (May 1986)",
+    "detail": "A ColecoVision adaptation of STAR SEARCH by Jim Sanders, originally published in Ahoy! May 1986.",
+    "projectName": "Star Search",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chessboard-tours",
+    "label": "Chessboard Tours (June 1986)",
+    "detail": "A ColecoVision adaptation of CHESSBOARD TOURS by Daniel L. Miller, originally published in Ahoy! June 1986.",
+    "projectName": "Chessboard Tours",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "got-a-match",
+    "label": "Got A Match? (June 1986)",
+    "detail": "A ColecoVision adaptation of GOT A MATCH? by Walter E. Meyers, originally published in Ahoy! June 1986.",
+    "projectName": "Got A Match?",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "shaker-ahoy",
+    "label": "Shaker (June 1986)",
+    "detail": "A ColecoVision adaptation of SHAKER by John Fedor, originally published in Ahoy! June 1986.",
+    "projectName": "Shaker",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "star-strike",
+    "label": "Star Strike (June 1986)",
+    "detail": "A ColecoVision adaptation of STAR STRIKE by Bob Eaton, originally published in Ahoy! June 1986.",
+    "projectName": "Star Strike",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "crazy-joe",
+    "label": "Crazy Joe (July 1986)",
+    "detail": "A ColecoVision adaptation of CRAZY JOE by Chris Greacen, originally published in Ahoy! July 1986.",
+    "projectName": "Crazy Joe",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "escape-from-skull-castle",
+    "label": "Escape From Skull Castle (July 1986)",
+    "detail": "A ColecoVision adaptation of ESCAPE FROM SKULL CASTLE by James C. Hilty, originally published in Ahoy! July 1986.",
+    "projectName": "Escape From Skull Castle",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "head-on",
+    "label": "Head-On (July 1986)",
+    "detail": "A ColecoVision adaptation of HEAD-ON by John Fedor, originally published in Ahoy! July 1986.",
+    "projectName": "Head-On",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "nebergall-run",
+    "label": "Nebergall Run (July 1986)",
+    "detail": "A ColecoVision adaptation of NEBERGALL RUN by Roger Browne and Steve Gebert, originally published in Ahoy! July 1986.",
+    "projectName": "Nebergall Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "flap-ahoy",
+    "label": "Flap (August 1986)",
+    "detail": "A ColecoVision adaptation of Flap by Andrew Vajoczki, originally published in Ahoy! August 1986.",
+    "projectName": "Flap",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "meteor-run",
+    "label": "Meteor Run (August 1986)",
+    "detail": "A ColecoVision adaptation of METEOR RUN by Tony Brantner, originally published in Ahoy! August 1986.",
+    "projectName": "Meteor Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "step-on-it",
+    "label": "Step On It (August 1986)",
+    "detail": "A ColecoVision adaptation of STEP ON IT by Penny DeGroff, originally published in Ahoy! August 1986.",
+    "projectName": "Step On It",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "larc-i-mission",
+    "label": "Larc-I Mission (September 1986)",
+    "detail": "A ColecoVision adaptation of LARC-I Mission by Joseph Bedard, originally published in Ahoy! September 1986.",
+    "projectName": "Larc-I Mission",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "matchblocks",
+    "label": "Matchblocks (September 1986)",
+    "detail": "A ColecoVision adaptation of MATCHBLOCKS by James A. Shephard, originally published in Ahoy! September 1986.",
+    "projectName": "Matchblocks",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mine-canyon",
+    "label": "Mine Canyon (September 1986)",
+    "detail": "A ColecoVision adaptation of MINE CANYON by John Krutch, originally published in Ahoy! September 1986.",
+    "projectName": "Mine Canyon",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "trapped",
+    "label": "Trapped (September 1986)",
+    "detail": "A ColecoVision adaptation of TRAPPED by Mike Hoyt, originally published in Ahoy! September 1986.",
+    "projectName": "Trapped",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "attack-force",
+    "label": "Attack Force (October 1986)",
+    "detail": "A ColecoVision adaptation of ATTACK FORCE by an author not named in the issue, originally published in Ahoy! October 1986.",
+    "projectName": "Attack Force",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "penguins",
+    "label": "Penguins (October 1986)",
+    "detail": "A ColecoVision adaptation of PENGUINS by an author not named in the issue, originally published in Ahoy! October 1986.",
+    "projectName": "Penguins",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "detonation",
+    "label": "Detonation (November 1986)",
+    "detail": "A ColecoVision adaptation of DETONATION by Bob Blackmer, originally published in Ahoy! November 1986.",
+    "projectName": "Detonation",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "discs-of-daedalus",
+    "label": "Discs Of Daedalus (November 1986)",
+    "detail": "A ColecoVision adaptation of DISCS OF DAEDALUS by George Decker, originally published in Ahoy! November 1986.",
+    "projectName": "Discs Of Daedalus",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "teleporter",
+    "label": "Teleporter (November 1986)",
+    "detail": "A ColecoVision adaptation of Teleporter by Cleveland M. Blakemore, originally published in Ahoy! November 1986.",
+    "projectName": "Teleporter",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "tenpins",
+    "label": "Tenpins (November 1986)",
+    "detail": "A ColecoVision adaptation of TENPINS by Tony (surname not given), originally published in Ahoy! November 1986.",
+    "projectName": "Tenpins",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "micro-city",
+    "label": "Micro City (December 1986)",
+    "detail": "A ColecoVision adaptation of MICRO CITY by Darryl Dion Hawkins, originally published in Ahoy! December 1986.",
+    "projectName": "Micro City",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "minotaur-maze",
+    "label": "Minotaur Maze (December 1986)",
+    "detail": "A ColecoVision adaptation of MINOTAUR MAZE by Cleveland M. Blakemore, originally published in Ahoy! December 1986.",
+    "projectName": "Minotaur Maze",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "rebels-and-lords",
+    "label": "Rebels & Lords (December 1986)",
+    "detail": "A ColecoVision adaptation of REBELS & LORDS by an author not named in the issue, originally published in Ahoy! December 1986.",
+    "projectName": "Rebels & Lords",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "vault-of-terror",
+    "label": "Vault Of Terror (December 1986)",
+    "detail": "A ColecoVision adaptation of VAULT OF TERROR by C. M. Blakemore, originally published in Ahoy! December 1986.",
+    "projectName": "Vault Of Terror",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bugout",
+    "label": "Bugout (January 1987)",
+    "detail": "A ColecoVision adaptation of BUGOUT by Tony Brantner, originally published in Ahoy! January 1987.",
+    "projectName": "Bugout",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dark-fortress",
+    "label": "Dark Fortress (January 1987)",
+    "detail": "A ColecoVision adaptation of DARK FORTRESS by Cleve Blakemore, originally published in Ahoy! January 1987.",
+    "projectName": "Dark Fortress",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "starfighter",
+    "label": "Starfighter (January 1987)",
+    "detail": "A ColecoVision adaptation of STARFIGHTER by Michael J. Carston, originally published in Ahoy! January 1987.",
+    "projectName": "Starfighter",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "vortex",
+    "label": "Vortex (January 1987)",
+    "detail": "A ColecoVision adaptation of VORTEX by Sean D. Wagle, originally published in Ahoy! January 1987.",
+    "projectName": "Vortex",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "crunchman",
+    "label": "Crunchman (February 1987)",
+    "detail": "A ColecoVision adaptation of CRUNCHMAN by Roy D. Lewis, originally published in Ahoy! February 1987.",
+    "projectName": "Crunchman",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "jailbreak",
+    "label": "Jailbreak (February 1987)",
+    "detail": "A ColecoVision adaptation of JAILBREAK by Bob Blackmer, originally published in Ahoy! February 1987.",
+    "projectName": "Jailbreak",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "geehonk-caverns",
+    "label": "Geehonk Caverns (March 1987)",
+    "detail": "A ColecoVision adaptation of GEEHONK CAVERNS by John Fedor (Ranger Software), originally published in Ahoy! March 1987.",
+    "projectName": "Geehonk Caverns",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lights-out",
+    "label": "Lights Out (March 1987)",
+    "detail": "A ColecoVision adaptation of LIGHTS OUT by Walter E. Meyers, originally published in Ahoy! March 1987.",
+    "projectName": "Lights Out",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "laps",
+    "label": "Laps (April 1987)",
+    "detail": "A ColecoVision adaptation of LAPS by J.C. Hilty, originally published in Ahoy! April 1987.",
+    "projectName": "Laps",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "moondog",
+    "label": "Moondog (May 1987)",
+    "detail": "A ColecoVision adaptation of MOONDOG by J.C. Hilty, originally published in Ahoy! May 1987.",
+    "projectName": "Moondog",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "scavenger-hunt",
+    "label": "Scavenger Hunt (May 1987)",
+    "detail": "A ColecoVision adaptation of SCAVENGER HUNT by Bob Blackmer, originally published in Ahoy! May 1987.",
+    "projectName": "Scavenger Hunt",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wall-crawler",
+    "label": "Wall Crawler (May 1987)",
+    "detail": "A ColecoVision adaptation of WALL CRAWLER by Tony Brantner, originally published in Ahoy! May 1987.",
+    "projectName": "Wall Crawler",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cave-of-the-ice-ape",
+    "label": "Cave Of The Ice Ape (June 1987)",
+    "detail": "A ColecoVision adaptation of CAVE OF THE ICE APE by J. C. Hilty, originally published in Ahoy! June 1987.",
+    "projectName": "Cave Of The Ice Ape",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "galactic-cab-co",
+    "label": "Galactic Cab Co. (June 1987)",
+    "detail": "A ColecoVision adaptation of Galactic Cab Co. by Cleveland M. Blakemore, originally published in Ahoy! June 1987.",
+    "projectName": "Galactic Cab Co.",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "power-squares",
+    "label": "Power Squares (June 1987)",
+    "detail": "A ColecoVision adaptation of POWER SQUARES by John Fedor, originally published in Ahoy! June 1987.",
+    "projectName": "Power Squares",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wraiths",
+    "label": "Wraiths (June 1987)",
+    "detail": "A ColecoVision adaptation of WRAITHS by Cleveland M. Blakemore, originally published in Ahoy! June 1987.",
+    "projectName": "Wraiths",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "plink-and-plonk",
+    "label": "Plink And Plonk (July 1987)",
+    "detail": "A ColecoVision adaptation of PLINK AND PLONK by Walter E. Meyers, originally published in Ahoy! July 1987.",
+    "projectName": "Plink And Plonk",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "batter-up",
+    "label": "Batter Up! (August 1987)",
+    "detail": "A ColecoVision adaptation of BATTER UP! by J.C. Hilty, originally published in Ahoy! August 1987.",
+    "projectName": "Batter Up!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "steeple-run",
+    "label": "Steeple Run (August 1987)",
+    "detail": "A ColecoVision adaptation of STEEPLE RUN by Tony Brantner, originally published in Ahoy! August 1987.",
+    "projectName": "Steeple Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "red-alert",
+    "label": "Red Alert (September 1987)",
+    "detail": "A ColecoVision adaptation of RED ALERT by Tony Brantner, originally published in Ahoy! September 1987.",
+    "projectName": "Red Alert",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hotfoot",
+    "label": "Hotfoot (October 1987)",
+    "detail": "A ColecoVision adaptation of HOTFOOT by John Krutch, originally published in Ahoy! October 1987.",
+    "projectName": "Hotfoot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "desert-front",
+    "label": "Desert Front (November 1987)",
+    "detail": "A ColecoVision adaptation of Desert Front by Alan Thomason, originally published in Ahoy! November 1987.",
+    "projectName": "Desert Front",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "paper-route",
+    "label": "Paper Route (November 1987)",
+    "detail": "A ColecoVision adaptation of PAPER ROUTE by Bob Blackmer, originally published in Ahoy! November 1987.",
+    "projectName": "Paper Route",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cliffhanger",
+    "label": "Cliffhanger (December 1987)",
+    "detail": "A ColecoVision adaptation of CLIFFHANGER by J. C. Hilty, originally published in Ahoy! December 1987.",
+    "projectName": "Cliffhanger",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "warship",
+    "label": "Warship (December 1987)",
+    "detail": "A ColecoVision adaptation of WARSHIP by C.F. Kaylor, originally published in Ahoy! December 1987.",
+    "projectName": "Warship",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ice-titans",
+    "label": "Ice Titans (January 1988)",
+    "detail": "A ColecoVision adaptation of ICE TITANS by Cleveland M. Blakemore, originally published in Ahoy! January 1988.",
+    "projectName": "Ice Titans",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "coffee-break",
+    "label": "Coffee Break (February 1988)",
+    "detail": "A ColecoVision adaptation of Coffee Break by Dan Komaromi (C-128 version by Cleveland M. Blakemore), originally published in Ahoy! February 1988.",
+    "projectName": "Coffee Break",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "crypt-of-fear",
+    "label": "Crypt Of Fear (February 1988)",
+    "detail": "A ColecoVision adaptation of CRYPT OF FEAR by Cleveland M. Blakemore, originally published in Ahoy! February 1988.",
+    "projectName": "Crypt Of Fear",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "marauder",
+    "label": "Marauder (February 1988)",
+    "detail": "A ColecoVision adaptation of MARAUDER by Cleveland M. Blakemore, originally published in Ahoy! February 1988.",
+    "projectName": "Marauder",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "grim-oak-manor",
+    "label": "Grim Oak Manor (April 1988)",
+    "detail": "A ColecoVision adaptation of GRIM OAK MANOR by Cleveland M. Blakemore, originally published in Ahoy! April 1988.",
+    "projectName": "Grim Oak Manor",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "time-subway",
+    "label": "Time Subway (April 1988)",
+    "detail": "A ColecoVision adaptation of TIME SUBWAY by Cleveland M. Blakemore (concept Lynwood Brooks), originally published in Ahoy! April 1988.",
+    "projectName": "Time Subway",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lost-dutchmans-mine",
+    "label": "Lost Dutchman's Mine (June 1988)",
+    "detail": "A ColecoVision adaptation of LOST DUTCHMAN'S MINE by Cleveland M. Blakemore, originally published in Ahoy! June 1988.",
+    "projectName": "Lost Dutchman's Mine",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mines-of-merlin",
+    "label": "Mines Of Merlin (June 1988)",
+    "detail": "A ColecoVision adaptation of MINES OF MERLIN by Cleveland M. Blakemore, originally published in Ahoy! June 1988.",
+    "projectName": "Mines Of Merlin",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "guerilla",
+    "label": "Guerilla (July 1988)",
+    "detail": "A ColecoVision adaptation of GUERILLA by Cleve Blakemore, originally published in Ahoy! July 1988.",
+    "projectName": "Guerilla",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "tomb-of-horror",
+    "label": "Tomb Of Horror (July 1988)",
+    "detail": "A ColecoVision adaptation of TOMB OF HORROR by Cleveland M. Blakemore, originally published in Ahoy! July 1988.",
+    "projectName": "Tomb Of Horror",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-mines-of-vlur",
+    "label": "The Mines Of V'lur (September 1988)",
+    "detail": "A ColecoVision adaptation of The Mines of V'lur by Mike Hoyt, originally published in Ahoy! September 1988.",
+    "projectName": "The Mines Of V'lur",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "trap-shoot",
+    "label": "Trap Shoot (September 1988)",
+    "detail": "A ColecoVision adaptation of TRAP SHOOT by Matt Pierce, originally published in Ahoy! September 1988.",
+    "projectName": "Trap Shoot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "turbo-ski",
+    "label": "Turbo Ski (September 1988)",
+    "detail": "A ColecoVision adaptation of TURBO SKI by Bob Blackmer, originally published in Ahoy! September 1988.",
+    "projectName": "Turbo Ski",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bombs-away",
+    "label": "Bombs Away! (October 1988)",
+    "detail": "A ColecoVision adaptation of BOMBS AWAY! by John Fraleigh, originally published in Ahoy! October 1988.",
+    "projectName": "Bombs Away!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "island-quest",
+    "label": "Island Quest (November 1988)",
+    "detail": "A ColecoVision adaptation of ISLAND QUEST by Bob Blackmer, originally published in Ahoy! November 1988.",
+    "projectName": "Island Quest",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "tubular",
+    "label": "Tubular! (December 1988)",
+    "detail": "A ColecoVision adaptation of TUBULAR! by Bob Blackmer, originally published in Ahoy! December 1988.",
+    "projectName": "Tubular!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "flag-hunt",
+    "label": "Flag Hunt (January 1989)",
+    "detail": "A ColecoVision adaptation of FLAG HUNT by John Fedor, originally published in Ahoy! January 1989.",
+    "projectName": "Flag Hunt",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "night-raid",
+    "label": "Night Raid (February 1989)",
+    "detail": "A ColecoVision adaptation of NIGHT RAID by an author not named in the issue, originally published in Ahoy! February 1989.",
+    "projectName": "Night Raid",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "stix",
+    "label": "Stix! (February 1989)",
+    "detail": "A ColecoVision adaptation of STIX! by an author not named in the issue, originally published in Ahoy! February 1989.",
+    "projectName": "Stix!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chain",
+    "label": "Chainmail (September 1987)",
+    "detail": "A ColecoVision adaptation of CHAINMAIL by Cleveland M. Blakemore, originally published in Ahoy! September 1987.",
+    "projectName": "Chainmail",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dfort2",
+    "label": "Dark Fortress Ii (1987)",
+    "detail": "A ColecoVision adaptation of DARK FORTRESS II by CLEVE BLAKEMORE, originally published in Ahoy! 1987.",
+    "projectName": "Dark Fortress Ii",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pduel",
+    "label": "Planet Duel (1987)",
+    "detail": "A ColecoVision adaptation of PLANET DUEL by C.M.BLAKEMORE, originally published in Ahoy! 1987.",
+    "projectName": "Planet Duel",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "phantasy",
+    "label": "Phantasy (March 1988)",
+    "detail": "A ColecoVision adaptation of PHANTASY by Cleveland M. Blakemore, originally published in Ahoy! March 1988.",
+    "projectName": "Phantasy",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pinball",
+    "label": "Flipper Alley (1987)",
+    "detail": "A ColecoVision adaptation of FLIPPER ALLEY by T.BRANTNER, originally published in Ahoy! 1987.",
+    "projectName": "Flipper Alley",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "triwords",
+    "label": "Tri Words (December 1988)",
+    "detail": "A ColecoVision adaptation of TRI WORDS by Bob Blackmer, originally published in Ahoy! December 1988.",
+    "projectName": "Tri Words",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wtag",
+    "label": "Wizard Tag (March 1987)",
+    "detail": "A ColecoVision adaptation of WIZARD TAG by Bob Blackmer, originally published in Ahoy! March 1987.",
+    "projectName": "Wizard Tag",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wtag2",
+    "label": "Wizard Tag Ii (July 1987)",
+    "detail": "A ColecoVision adaptation of WIZARD TAG II by Bob Blackmer, originally published in Ahoy! July 1987.",
+    "projectName": "Wizard Tag Ii",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "empire",
+    "label": "Empire (October 1987)",
+    "detail": "A ColecoVision adaptation of EMPIRE by Cleveland M. Blakemore, originally published in Ahoy! October 1987.",
+    "projectName": "Empire",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "orbit",
+    "label": "Orbit (November 1987)",
+    "detail": "A ColecoVision adaptation of ORBIT by Cleveland M. Blakemore, originally published in Ahoy! November 1987.",
+    "projectName": "Orbit",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "phobia",
+    "label": "Phobia (June 1988)",
+    "detail": "A ColecoVision adaptation of PHOBIA by Cleve Blakemore, originally published in Ahoy! June 1988.",
+    "projectName": "Phobia",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fishmath",
+    "label": "Fish Math (1985)",
+    "detail": "A ColecoVision adaptation of FISH MATH by KEVIN DEWEY, originally published in Ahoy! 1985.",
+    "projectName": "Fish Math",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "catacomb",
+    "label": "Catacombs (1987)",
+    "detail": "A ColecoVision adaptation of CATACOMBS by CLEVE BLAKEMORE, originally published in Ahoy! 1987.",
+    "projectName": "Catacombs",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "alice",
+    "label": "Alice In Adventureland (1985)",
+    "detail": "A ColecoVision adaptation of ALICE IN ADVENTURELAND by BOB SPIRKO, originally published in Ahoy! 1985.",
+    "projectName": "Alice In Adventureland",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "tothetop",
+    "label": "To The Top (January 1985)",
+    "detail": "A ColecoVision adaptation of TO THE TOP by Kevin Dewey, originally published in Ahoy! January 1985.",
+    "projectName": "To The Top",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "namestar",
+    "label": "Name That Star (April 1984)",
+    "detail": "A ColecoVision adaptation of NAME THAT STAR by Bob Lloret, originally published in Ahoy! April 1984.",
+    "projectName": "Name That Star",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mathmast",
+    "label": "Math Master (May 1984)",
+    "detail": "A ColecoVision adaptation of MATH MASTER by Bob Lloret, originally published in Ahoy! May 1984.",
+    "projectName": "Math Master",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "posttime",
+    "label": "Post Time (June 1984)",
+    "detail": "A ColecoVision adaptation of POST TIME by Bob Lloret, originally published in Ahoy! June 1984.",
+    "projectName": "Post Time",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "elfred",
+    "label": "Elfred (1985)",
+    "detail": "A ColecoVision adaptation of ELFRED by D.&J. ARNOLD, originally published in Ahoy! 1985.",
+    "projectName": "Elfred",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hoparnd",
+    "label": "Hop Around (1985)",
+    "detail": "A ColecoVision adaptation of HOP AROUND by KEVIN DEWEY, originally published in Ahoy! 1985.",
+    "projectName": "Hop Around",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "tiletime",
+    "label": "Tile Time (May 1985)",
+    "detail": "A ColecoVision adaptation of TILE TIME by MURDOCK & BLACKBURN, originally published in Ahoy! May 1985.",
+    "projectName": "Tile Time",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "brainfr",
+    "label": "Brainframe (1985)",
+    "detail": "A ColecoVision adaptation of BRAINFRAME by NORM VOGEL, originally published in Ahoy! 1985.",
+    "projectName": "Brainframe",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "slither",
+    "label": "Slither (1985)",
+    "detail": "A ColecoVision adaptation of SLITHER by AHOY! NOV 1985 / 2026, originally published in Ahoy! 1985.",
+    "projectName": "Slither",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "invective",
+    "label": "Invective (1985)",
+    "detail": "A ColecoVision adaptation of INVECTIVE by GEORGE TREPAL, originally published in Ahoy! 1985.",
+    "projectName": "Invective",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pig",
+    "label": "Pig In A Poke (1985)",
+    "detail": "A ColecoVision adaptation of PIG IN A POKE by ORSON SCOTT CARD, originally published in Ahoy! 1985.",
+    "projectName": "Pig In A Poke",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mycroft",
+    "label": "Mycroft Mews (October 1985)",
+    "detail": "A ColecoVision adaptation of MYCROFT MEWS by John R. Prager, originally published in Ahoy! October 1985.",
+    "projectName": "Mycroft Mews",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "solit",
+    "label": "Solitaire 64 (October 1985)",
+    "detail": "A ColecoVision adaptation of SOLITAIRE 64 by ERIC W. SINK, AHOY!, originally published in Ahoy! October 1985.",
+    "projectName": "Solitaire 64",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "knight",
+    "label": "Knight's Tour (November 1985)",
+    "detail": "A ColecoVision adaptation of KNIGHT'S TOUR by Ramella, originally published in Ahoy! November 1985.",
+    "projectName": "Knight's Tour",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "elmac",
+    "label": "Elmac Plays Nim (1986)",
+    "detail": "A ColecoVision adaptation of ELMAC PLAYS NIM by DALE RUPERT, originally published in Ahoy! 1986.",
+    "projectName": "Elmac Plays Nim",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mostleast",
+    "label": "The Most And The Least (March 1986)",
+    "detail": "A ColecoVision adaptation of THE MOST AND THE LEAST by Orson Scott Card, originally published in Ahoy! March 1986.",
+    "projectName": "The Most And The Least",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "alchemist",
+    "label": "Alchemist's Apprentice (1986)",
+    "detail": "A ColecoVision adaptation of ALCHEMIST'S APPRENTICE by C.C.PETERSON, originally published in Ahoy! 1986.",
+    "projectName": "Alchemist's Apprentice",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fmusic",
+    "label": "Fidgits Music School (August 1985)",
+    "detail": "A ColecoVision adaptation of FIDGITS MUSIC SCHOOL by WALTER E. MEYERS, originally published in Ahoy! August 1985.",
+    "projectName": "Fidgits Music School",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "reversi2",
+    "label": "Reversi (1986)",
+    "detail": "A ColecoVision adaptation of REVERSI by ROD CARTY, originally published in Ahoy! 1986.",
+    "projectName": "Reversi",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "silhou",
+    "label": "Silhouette (1987)",
+    "detail": "A ColecoVision adaptation of SILHOUETTE by CURTIS F. KAYLOR, originally published in Ahoy! 1987.",
+    "projectName": "Silhouette",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "capture",
+    "label": "Capture (1988)",
+    "detail": "A ColecoVision adaptation of CAPTURE by MICHAEL HOYT, originally published in Ahoy! 1988.",
+    "projectName": "Capture",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fshuffle",
+    "label": "Fast Shuffle (July 1987)",
+    "detail": "A ColecoVision adaptation of FAST SHUFFLE by Robert Bixby, originally published in Ahoy! July 1987.",
+    "projectName": "Fast Shuffle",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "vanish",
+    "label": "Vanish (1989)",
+    "detail": "A ColecoVision adaptation of VANISH by AHOY! JANUARY 1989, originally published in Ahoy! 1989.",
+    "projectName": "Vanish",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "disint",
+    "label": "Disintegrator (1985)",
+    "detail": "A ColecoVision adaptation of DISINTEGRATOR by B.SCHULAK, originally published in Ahoy! 1985.",
+    "projectName": "Disintegrator",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "univaders",
+    "label": "Univaders (1987)",
+    "detail": "A ColecoVision adaptation of UNIVADERS by R.BIXBY, originally published in Ahoy! 1987.",
+    "projectName": "Univaders",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ahninja",
+    "label": "Last Ninja (ahoy! 1986) (AHOY! 1986)",
+    "detail": "A ColecoVision adaptation of LAST NINJA (AHOY! 1986) by C.M.BLAKEMORE, originally published in AHOY! 1986.",
+    "projectName": "Last Ninja (ahoy! 1986)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "guardian",
+    "label": "Guardian (1986)",
+    "detail": "A ColecoVision adaptation of GUARDIAN by AHOY!, originally published in Ahoy! 1986.",
+    "projectName": "Guardian",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "scrambler",
+    "label": "Scrambler (1987)",
+    "detail": "A ColecoVision adaptation of SCRAMBLER by Tony Brantner, originally published in Ahoy! 1987.",
+    "projectName": "Scrambler",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "crystal",
+    "label": "Crystallus (1987)",
+    "detail": "A ColecoVision adaptation of CRYSTALLUS by B.BLACKMER, originally published in Ahoy! 1987.",
+    "projectName": "Crystallus",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "platforms",
+    "label": "Platforms (October 1987)",
+    "detail": "A ColecoVision adaptation of PLATFORMS by Tony Brantner, originally published in Ahoy! October 1987.",
+    "projectName": "Platforms",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "spraycam",
+    "label": "Spray-Cam (1987)",
+    "detail": "A ColecoVision adaptation of SPRAY-CAM by BOB BLACKMER, originally published in Ahoy! 1987.",
+    "projectName": "Spray-Cam",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "kloros",
+    "label": "Vee Kloros (March 1988)",
+    "detail": "A ColecoVision adaptation of VEE KLOROS by Cleve Blakemore, originally published in Ahoy! March 1988.",
+    "projectName": "Vee Kloros",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dragtype",
+    "label": "Dragon Type (1985)",
+    "detail": "A ColecoVision adaptation of DRAGON TYPE by BOB SPIRKO, originally published in Ahoy! 1985.",
+    "projectName": "Dragon Type",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "keno",
+    "label": "Keno (June 1986)",
+    "detail": "A ColecoVision adaptation of KENO by VALERIE JEAN KRAMER, originally published in Ahoy! June 1986.",
+    "projectName": "Keno",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wumpus",
+    "label": "Wumpus (February 1987)",
+    "detail": "A ColecoVision adaptation of WUMPUS by Marc Clifford, originally published in Ahoy! February 1987.",
+    "projectName": "Wumpus",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wheelf",
+    "label": "Spin & Solve (March 1987)",
+    "detail": "A ColecoVision adaptation of SPIN & SOLVE by Richard Bain, originally published in Ahoy! March 1987.",
+    "projectName": "Spin & Solve",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "constco",
+    "label": "Construction Co. (1984)",
+    "detail": "A ColecoVision adaptation of CONSTRUCTION CO. by B.W. BEHLING, originally published in Ahoy! 1984.",
+    "projectName": "Construction Co.",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fueling",
+    "label": "Fueling Station (1987)",
+    "detail": "A ColecoVision adaptation of FUELING STATION by J.KRUTCH, originally published in Ahoy! 1987.",
+    "projectName": "Fueling Station",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "barricade",
+    "label": "Barricade (1988)",
+    "detail": "A ColecoVision adaptation of BARRICADE by T.BRANTNER, originally published in Ahoy! 1988.",
+    "projectName": "Barricade",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ahoyminis",
+    "label": "Ahoy! Column Games (1988)",
+    "detail": "A ColecoVision adaptation of AHOY! COLUMN GAMES by COMMODARES, originally published in Ahoy! 1988.",
+    "projectName": "Ahoy! Column Games",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "swoop",
+    "label": "Swoop (June 1986)",
+    "detail": "A ColecoVision adaptation of SWOOP by AHOY! 1986 / 2026, originally published in Ahoy! June 1986.",
+    "projectName": "Swoop",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "wizim",
+    "label": "Wizard Of Im (1985)",
+    "detail": "A ColecoVision adaptation of WIZARD OF IM by B.SPIRKO, originally published in Ahoy! 1985.",
+    "projectName": "Wizard Of Im",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mysto",
+    "label": "Mr. Mysto (1985)",
+    "detail": "A ColecoVision adaptation of MR. MYSTO by FRANK DINUNZIO, originally published in Ahoy! 1985.",
+    "projectName": "Mr. Mysto",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

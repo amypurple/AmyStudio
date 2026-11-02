@@ -1,0 +1,893 @@
+cartridge "BUGOUT/T.BRANTNER/1987"
+
+' BUGOUT
+' A ColecoVision game based on "Bugout" by Tony Brantner, Ahoy! January
+' 1987 (Commodore 64 machine language, BUGOUT at $C000, started by the
+' two-line BUGOUT BOOT loader). Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/bugout.dis), the game is built for the ColecoVision:
+' a night lawn between garden walls, the house on the left and a hedge on
+' the right, Smilin' Stan as a smooth two-colour sprite, four kinds of
+' giant bugs with moving legs and wings, a spray of mist drawn in tiles,
+' a puff when a bug is sprayed, sound effects and an original title tune.
+'
+' The game: giant bugs run across the lawn from the hedge towards the
+' house, one bug in each of seven lanes. Smilin' Stan the exterminator
+' guards the house: he moves up and down and sprays. A bug that touches
+' the spray goes up in a puff and a new one comes from the hedge in its
+' lane. Bumping a bug pushes it back towards the hedge for a while. Bees
+' are different: a bee that touches Stan stings him, and he can't move or
+' spray for two seconds. Every bug that reaches the house is a miss; the
+' third miss ends the game. Each sprayed bug makes the game a little
+' faster and is worth more: 10 points at the start, up to 210.
+'
+' From the original (orig/): seven bugs, one per lane (lanes 18 pixels
+' apart, each bug wandering 6 pixels up and down in its lane, a step
+' every 8 moves, turning at random at the lane's edges); new bugs start
+' off the right edge, staggered by lane; the kind (three speeds of
+' crawler, 1 : 2 : 4, and the bee, twice the fastest) and the colour at
+' random (bees yellow); the spray is a line of characters in front of
+' Stan's can that grows one character a frame, half the screen long, then
+' shrinks back the same way, and Stan can't spray again until it is gone
+' (holding the button sprays again and again); a bug overlapping Stan
+' that is not a bee is pushed back for 200 moves; a bee stings for 120
+' frames (Stan turns yellow, can't move or spray); points = (26 - delay)
+' x 10 with the delay starting at 25 and dropping 40/256 per bug sprayed,
+' down to 6 (10 points up to 200); three misses end the game; the score
+' and the high score (six digits).
+'
+' Liberties: the field is scaled to the ColecoVision (the spray is 16
+' tiles of the 28 between the safe columns, the push lasts 140 frames at
+' a pixel a frame); the C64's speed came from its loop's delay, here the
+' speed is a number Spd (16 to 36, sixteenths: up to 2.25 times the
+' start), raised every 6 bugs sprayed, so a bug is worth (Spd - 15) x 10
+' (10 to 210); Stan moves 1.5 pixels a frame (the C64: 1 pixel a frame
+' while the bugs could get three times faster: here a human-paced player
+' can keep up); kills are box tests between the spray band and the bug's
+' body (the C64 used its sprite-to-character collision); a sprayed bug
+' goes up in a puff for 20 frames while the game goes on (the C64 stopped
+' the game while the bug dissolved pixel by pixel); the stick's diagonals
+' move Stan too; the C64's SHIFT LOCK pause is left out (no keypad);
+' GAME OVER then the title (the C64 said PRESS ANY KEY).
+'
+' Controls: controller 1 (or 2): the stick moves Stan up and down, a
+' button sprays (hold it to spray again and again). On the title, up and
+' down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers.
+
+const TLawn0 = 128
+const TLawn1 = 129
+const TLawn2 = 130
+const TLawn3 = 131
+const TSpray0 = 132
+const TSpray1 = 133
+const TSpray2 = 134
+const TSpray3 = 135
+const TWallt = 136
+const TWallb = 137
+const TSide = 138
+const THedge0 = 139
+const THedge1 = 140
+const TMiss = 141
+const TTbl = 142
+const SStand = 0
+const SStanb = 4
+const SBug00 = 8
+const SBug01 = 12
+const SBug10 = 16
+const SBug11 = 20
+const SBug20 = 24
+const SBug21 = 28
+const SBug30 = 32
+const SBug31 = 36
+const SPuff0 = 40
+const SPuff1 = 44
+const NTiles8 = 120
+const SprBytes = 384
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSpray = 3
+const SndZap = 4
+const SndBump = 5
+const SndSting = 6
+const SndMiss = 7
+const SndFast = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 9
+const NBugs = 7
+' Stan: his X, his Y limits (sprite top), in 1/16 pixels too
+const SX = 20
+const SYMin = 22
+const SYMax = 136
+const SYfMin = 352
+const SYfMax = 2176
+const SYSpd = 24
+' the spray: first column and length in tiles
+const SprC0 = 5
+const SprN = 16
+const ScoreCap = 999789
+const ScoreMax = 999999
+
+' each lane's top (the bug wanders from Lo to Lo + 6) and its start stagger
+data LaneLo bytes 22,40,58,76,94,112,130
+data Stag bytes 35,21,7,0,14,28,42
+' speed by kind in 1/16 pixels a frame at Spd 16: beetle, roach, ladybird, bee
+data KindBase bytes 6,3,2,12
+data ColT bytes 9,15,7,13,14,5,8,9
+
+data TilePat bytes
+  $00,$20,$20,$00,$04,$08,$00,$00
+  $00,$02,$04,$00,$00,$40,$40,$00
+  $00,$00,$10,$20,$00,$00,$02,$00
+  $08,$08,$00,$00,$80,$00,$00,$10
+  $00,$22,$24,$42,$10,$89,$24,$00
+  $40,$08,$84,$10,$42,$08,$10,$02
+  $00,$44,$11,$20,$04,$90,$42,$00
+  $10,$00,$42,$08,$81,$20,$08,$40
+  $00,$00,$00,$10,$10,$00,$42,$42
+  $42,$42,$00,$10,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $49,$94,$22,$89,$52,$08,$A2,$14
+  $24,$42,$94,$09,$A0,$15,$40,$94
+  $00,$24,$18,$83,$45,$83,$92,$00
+  $81,$00,$30,$00,$00,$0C,$00,$81
+end data
+data TileCol bytes
+  $0C,$2C,$2C,$0C,$2C,$2C,$0C,$0C
+  $0C,$2C,$2C,$0C,$0C,$2C,$2C,$0C
+  $0C,$0C,$2C,$2C,$0C,$0C,$2C,$0C
+  $2C,$2C,$0C,$0C,$2C,$0C,$0C,$2C
+  $0C,$FC,$5F,$5F,$5F,$5F,$5C,$0C
+  $FC,$5C,$5F,$5F,$5F,$5F,$FC,$5C
+  $0C,$5C,$5F,$5F,$5F,$5F,$FC,$0C
+  $5C,$0C,$5F,$5F,$5F,$5F,$5C,$FC
+  $0E,$0F,$01,$18,$16,$01,$18,$16
+  $18,$16,$01,$18,$16,$01,$0E,$01
+  $0F,$0E,$0E,$01,$0F,$0E,$0E,$01
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $01,$91,$91,$19,$19,$19,$91,$01
+  $1B,$0B,$1B,$0B,$0A,$1A,$0A,$1A
+end data
+data SpritePat bytes
+  $00,$00,$0F,$0A,$0F,$08,$00,$00,$00,$30,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$80,$8F,$9F,$1E,$3C,$18,$00,$00,$00,$00,$00,$00,$00
+  $0F,$1F,$00,$00,$00,$00,$1F,$3F,$37,$07,$07,$06,$06,$06,$00,$00
+  $80,$E0,$00,$00,$00,$00,$E0,$C0,$80,$80,$80,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$10,$09,$3D,$7D,$FD,$7D,$3D,$09,$10,$00,$00,$00,$00
+  $00,$00,$00,$60,$F8,$FE,$FF,$FE,$FF,$FE,$F8,$60,$00,$00,$00,$00
+  $00,$00,$00,$04,$09,$3D,$7D,$FD,$7D,$3D,$09,$04,$00,$00,$00,$00
+  $00,$00,$00,$48,$F8,$FE,$FF,$FE,$FF,$FE,$F8,$48,$00,$00,$00,$00
+  $00,$00,$00,$80,$44,$3F,$7F,$FF,$7F,$3F,$04,$09,$00,$00,$00,$00
+  $00,$00,$00,$00,$90,$FE,$FF,$FE,$FF,$FE,$90,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$89,$7F,$7F,$FF,$7F,$3F,$02,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$FE,$FF,$FE,$FF,$FE,$48,$48,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$1C,$3D,$76,$3D,$1C,$07,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$9C,$DE,$BF,$DE,$9C,$F0,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$1C,$3D,$76,$3D,$1C,$07,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$9C,$DE,$BF,$DE,$9C,$F0,$20,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$03,$1F,$7A,$BA,$7A,$1F,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$B8,$30,$F8,$AC,$AE,$AC,$F8,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0E,$3F,$7A,$BA,$7A,$1F,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$F8,$AC,$AE,$AC,$F8,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$0B,$07,$1F,$07,$0B,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$D0,$E0,$F8,$E0,$D0,$40,$00,$00,$00,$00,$00
+  $00,$00,$11,$41,$08,$24,$80,$10,$80,$24,$08,$41,$11,$00,$00,$00
+  $00,$00,$10,$04,$20,$48,$01,$10,$01,$48,$20,$04,$10,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$8E,$8E,$20,$20,$8E,$20,$8E,$20,$8E,$8E,$8E,$20,$8E,$8E,$8E,$20,$8E,$20,$8E,$20,$8E,$8E,$8E,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$20,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$20,$8E,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$8E,$8E,$20,$20,$8E,$20,$8E,$20,$8E,$20,$20,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$20,$8E,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$20,$8E,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$8E,$20,$20,$8E,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$8E,$8E,$20,$20,$8E,$8E,$8E,$20,$8E,$8E,$8E,$20,$8E,$8E,$8E,$20,$8E,$8E,$8E,$20,$20,$8E,$20,$20,$20,$20,$20
+end data
+
+record Bug:
+  u16 Xf
+  u8 Y
+  u8 Lo
+  u8 Kind
+  u8 Col
+  u8 Dy
+  u8 Push
+  u8 Die
+end record
+
+Bug Bugs[NBugs]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 SYf = 0
+u16 BugX = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 SY = 0
+u8 Stun = 0
+u8 SprT = 0
+u8 SprR = 0
+u8 SprLen = 0
+u8 Spd = 16
+u8 KillCt = 0
+u8 Kills = 0
+u8 Missed = 0
+u8 Stings = 0
+u8 Bumps = 0
+u8 Over = 0
+u8 GF = 0
+u8 AnimT = 0
+u8 Fr = 0
+u8 Pts = 0
+u8 Started = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Scr = 0
+' title animation
+u8 TbX = 240
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Ds = 0
+u8 Rw = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table BoSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  Scr = 3
+  print at 8,8, "                "
+  print at 8,9, "   GAME  OVER   "
+  print at 8,10, "                "
+  print at 8,11, "  SCORE ", Score, "  "
+  print at 8,12, "  BEST  ", Hi, "  "
+  print at 8,13, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: Stan (or his sting), the spray, the seven bugs
+sub PlayStep:
+  Started = 0
+  if Stun > 0 then
+    dec Stun
+  else
+    MoveStan
+    if Btn > 0 then
+      if SprT = 0 then
+        SprR = SY + 5
+        SprR = SprR >> 3
+        SprT = 1
+        Started = 1
+        put char SprayTile(SprC0) at SprC0,SprR
+        play sound SndSpray
+      end if
+    end if
+  end if
+  if Started = 0 then
+    if SprT > 0 then AdvanceSpray
+  end if
+  SprLen = SprayLen(SprT)
+  for Bi = 0 to NBugs - 1
+    BugStep
+  next
+  inc GF
+  return
+end sub
+
+' 1.5 pixels a frame, between SYMin and SYMax
+sub MoveStan:
+  K = J1 & 3
+  if K = 1 then
+    W16 = SYfMin + SYSpd
+    if SYf < W16 then
+      SYf = SYfMin
+    else
+      SYf = SYf - SYSpd
+    end if
+  end if
+  if K = 2 then
+    W16 = SYfMax - SYSpd
+    if SYf > W16 then
+      SYf = SYfMax
+    else
+      SYf = SYf + SYSpd
+    end if
+  end if
+  SY = SYf >> 4
+  return
+end sub
+
+' the spray grows a tile a frame to SprN tiles, then shrinks from the far
+' end the same way
+sub AdvanceSpray:
+  inc SprT
+  if SprT <= SprN then
+    C = SprC0 + SprT - 1
+    put char SprayTile(C) at C,SprR
+    return
+  end if
+  C = SprC0 + SprN * 2 - SprT
+  put char LawnTile(C, SprR) at C,SprR
+  if SprT = SprN * 2 then SprT = 0
+  return
+end sub
+
+function SprayLen(u8 T) as u8
+  if T = 0 then return 0
+  if T <= SprN then return T
+  return SprN * 2 - T
+
+function SprayTile(u8 Col) as u8
+  return TSpray0 + (Col & 3)
+
+function LawnTile(u8 Col, u8 Row) as u8
+  return TLawn0 + ((Col + Row * 2) & 3)
+
+' 1/16 pixels a frame for a bug of kind Kd at the present speed
+function BugVel(u8 Kd) as u16
+  u16 Vb = 0
+  Vb = KindBase[Kd]
+  Vb = Vb * Spd
+  return Vb >> 4
+
+' one bug: its puff, its push, its run, a miss, its wandering, Stan's
+' bump or the bee's sting, the spray
+sub BugStep:
+  if Bugs[Bi].Die > 0 then
+    Bugs[Bi].Die = Bugs[Bi].Die - 1
+    if Bugs[Bi].Die = 0 then Respawn
+    return
+  end if
+  if Bugs[Bi].Push > 0 then
+    Bugs[Bi].Push = Bugs[Bi].Push - 1
+    Bugs[Bi].Xf = Bugs[Bi].Xf + 16
+  else
+    W16 = BugVel(Bugs[Bi].Kind)
+    BugX = W16 + 64
+    if Bugs[Bi].Xf < BugX then
+      MissBug
+      return
+    end if
+    Bugs[Bi].Xf = Bugs[Bi].Xf - W16
+  end if
+  V = GF & 7
+  if V = 0 then Wander
+  ' off the right edge: nothing else can touch it
+  if Bugs[Bi].Xf >= 4096 then return
+  BugX = Bugs[Bi].Xf >> 4
+  X = BugX
+  Y = Bugs[Bi].Y
+  if Bugs[Bi].Push = 0 then
+    if X >= SX - 6 then
+      if X < SX + 12 then
+        if Y > SY - 10 then
+          if Y <= SY + 19 then Touch
+        end if
+      end if
+    end if
+  end if
+  if SprLen = 0 then return
+  ' the spray band: tiles SprC0.. on row SprR, pixel rows 2-5 of the tile
+  if X + 14 < SprC0 * 8 then return
+  W16 = SprLen * 8 + SprC0 * 8 - 1
+  if X + 1 > W16 then return
+  K = SprR * 8
+  if Y + 11 < K + 2 then return
+  if Y + 4 > K + 5 then return
+  Sprayed
+  return
+end sub
+
+sub Wander:
+  if Bugs[Bi].Dy = 0 then
+    V = Bugs[Bi].Y + 1
+  else
+    V = Bugs[Bi].Y - 1
+  end if
+  K = Bugs[Bi].Lo
+  if V < K then
+    Rand
+    Bugs[Bi].Dy = Rs & 1
+    return
+  end if
+  if V > K + 6 then
+    Rand
+    Bugs[Bi].Dy = Rs & 1
+    return
+  end if
+  Bugs[Bi].Y = V
+  return
+end sub
+
+' a bug overlaps Stan: pushed back, or a bee's sting
+sub Touch:
+  if Bugs[Bi].Kind = 3 then
+    if Stun = 0 then
+      Stun = 120
+      inc Stings
+      play sound SndSting
+    end if
+    return
+  end if
+  Bugs[Bi].Push = 140
+  inc Bumps
+  play sound SndBump
+  return
+end sub
+
+sub Sprayed:
+  Bugs[Bi].Die = 20
+  Pts = (Spd - 15) * 10
+  if Score > ScoreCap then
+    Score = ScoreMax
+  else
+    Score += Pts
+  end if
+  if Score > Hi then Hi = Score
+  inc Kills
+  inc KillCt
+  if KillCt >= 6 then
+    KillCt = 0
+    if Spd < 36 then inc Spd
+  end if
+  play sound SndZap
+  ShowScore
+  return
+end sub
+
+sub MissBug:
+  inc Missed
+  play sound SndMiss
+  ShowMissed
+  if Missed >= 3 then Over = 1
+  Respawn
+  return
+end sub
+
+' a new bug in lane Bi, off the right edge
+sub Respawn:
+  W16 = Stag[Bi]
+  W16 = W16 + 256
+  Bugs[Bi].Xf = W16 << 4
+  Bugs[Bi].Lo = LaneLo[Bi]
+  Bugs[Bi].Y = Bugs[Bi].Lo
+  Bugs[Bi].Push = 0
+  Bugs[Bi].Die = 0
+  Rand
+  Bugs[Bi].Kind = Rs & 3
+  Rand
+  V = Rs & 7
+  Bugs[Bi].Col = ColT[V]
+  if Bugs[Bi].Kind = 3 then Bugs[Bi].Col = 11
+  Rand
+  Bugs[Bi].Dy = Rs & 1
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 Stan (detail, body), 2-8 the bugs
+sub DrawSprites:
+  if Stun > 0 then
+    set sprite 0 to SY - 1,SX,SStand,15
+    set sprite 1 to SY - 1,SX,SStanb,11
+  else
+    set sprite 0 to SY - 1,SX,SStand,11
+    set sprite 1 to SY - 1,SX,SStanb,5
+  end if
+  inc AnimT
+  if AnimT >= 10 then
+    AnimT = 0
+    Fr = Fr ^ 1
+  end if
+  for Ds = 0 to NBugs - 1
+    J = Ds + 2
+    if Bugs[Ds].Die > 0 then
+      K = SPuff1
+      if Bugs[Ds].Die > 10 then K = SPuff0
+      BugX = Bugs[Ds].Xf >> 4
+      X = BugX
+      set sprite J to Bugs[Ds].Y - 1,X,K,15
+    else
+      if Bugs[Ds].Xf < 4096 then
+        BugX = Bugs[Ds].Xf >> 4
+        X = BugX
+        K = BugPat(Bugs[Ds].Kind)
+        set sprite J to Bugs[Ds].Y - 1,X,K,Bugs[Ds].Col
+      else
+        set sprite J to 192,0,0,0
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+function BugPat(u8 Kd) as u8
+  u8 P = 0
+  select case Kd
+    case 0
+      P = SBug00
+    case 1
+      P = SBug10
+    case 2
+      P = SBug20
+    case else
+      P = SBug30
+  end select
+  return P + Fr * 4
+
+sub ShowScore:
+  print at 8,21, Score
+  print at 22,21, Hi
+  return
+end sub
+
+sub ShowMissed:
+  fill 32 count 6 at 9,22
+  if Missed = 0 then return
+  for J = 1 to Missed
+    K = J * 2 + 7
+    put char TMiss at K,22
+  next
+  return
+end sub
+
+sub NewGame:
+  Scr = 2
+  NewScreen
+  DrawField
+  print at 10,1, "B U G O U T"
+  print at 2,21, "SCORE"
+  print at 17,21, "HIGH"
+  print at 2,22, "MISSED"
+  for Bi = 0 to NBugs - 1
+    Respawn
+  next
+  Score = 0
+  Spd = 16
+  KillCt = 0
+  Kills = 0
+  Missed = 0
+  Stings = 0
+  Bumps = 0
+  Stun = 0
+  SprT = 0
+  SprLen = 0
+  Over = 0
+  GF = 0
+  SYf = 1216
+  SY = 76
+  ShowScore
+  ShowMissed
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the walls, the lawn, the house's siding and the hedge
+sub DrawField:
+  fill TWallt count 32 at 0,2
+  fill TWallb count 32 at 0,19
+  for Rw = 3 to 18
+    put char TSide at 0,Rw
+    put char TSide at 1,Rw
+    for C = 2 to 29
+      put char LawnTile(C, Rw) at C,Rw
+    next
+    V = Rw & 1
+    put char THedge0 + V at 30,Rw
+    put char THedge1 - V at 31,Rw
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: BUGOUT in bug-shell blocks, a bee flying over, START /
+' CREDITS, the best score, the tune once
+sub TitlePage:
+  Scr = 1
+  NewScreen
+  print at 7,1, "AHOY! JANUARY 1987"
+  copy TitleMap count 192 to vram.name + 96
+  fill TLawn0 count 32 at 0,12
+  fill TLawn2 count 32 at 0,13
+  print at 6,15, "BY TONY BRANTNER"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Hi > 0 then
+    print at 9,21, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a bee crosses the lawn on the title, Stan waits at the left
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then dec TbX
+  inc AnimT
+  if AnimT >= 10 then
+    AnimT = 0
+    Fr = Fr ^ 1
+  end if
+  set sprite 0 to 87,SX,SStand,11
+  set sprite 1 to 87,SX,SStanb,5
+  K = Fr * 4 + SBug30
+  set sprite 2 to 89,TbX,K,11
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  Scr = 0
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "BUGOUT"
+  print at 2,5, "BASED ON BUGOUT BY TONY"
+  print at 2,6, "BRANTNER, AHOY! JANUARY"
+  print at 2,7, "1987 (COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: PEST CONTROL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+BoSpray:
+    db $00,$00,$34,$04,$00,$00,$44,$06,$00,$00,$54,$08,$00,$00,$74,$08,$00,$00,$84,$06,$10
+BoZap:
+    db $40,$47,$20,$02,$40,$55,$20,$02,$40,$6B,$30,$02,$40,$8F,$40,$03,$40,$D6,$50,$04,$50
+BoBump:
+    db $40,$3B,$22,$03,$40,$A6,$32,$03,$50
+BoSting:
+    db $40,$7F,$10,$03,$40,$78,$10,$03,$40,$7F,$20,$03,$40,$78,$20,$03,$40,$7F,$30,$03,$40,$78,$40,$03
+    db $40,$7F,$60,$06,$50
+BoMiss:
+    db $40,$53,$21,$08,$40,$AB,$21,$08,$40,$3B,$32,$0E,$50
+BoFast:
+    db $40,$6B,$30,$03,$40,$55,$30,$03,$40,$47,$30,$05,$50
+BoStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$50
+BoOver:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$AB,$21,$0A,$40,$3B,$32,$1E,$50
+
+BoSoundTable:
+    dw BoTuneMel,$702B
+    dw BoTuneBass,$7035
+    dw BoSpray,$703F
+    dw BoZap,$7049
+    dw BoBump,$7049
+    dw BoSting,$7049
+    dw BoMiss,$7049
+    dw BoFast,$7049
+    dw BoStart,$7049
+    dw BoOver,$7049
+; Pest Control (original)
+; Tiny Sound, 7 frames per step
+BoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$26,$28,$2A,$01,$26,$01,$21,$01,$23,$25,$26,$01
+    db $23,$01,$1F,$01,$21,$23,$25,$01,$28,$01,$25,$01,$26,$01,$01,$01
+    db $21,$01,$01,$01,$1E,$1F,$21,$01,$1E,$01,$1A,$01,$1F,$21,$23,$01
+    db $1F,$01,$1C,$01,$1E,$21,$26,$01,$25,$28,$2D,$01,$26,$01,$01,$01
+    db $32,$01,$00,$01
+    db $FF
+BoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$09,$01,$0D,$01,$0E,$01,$09,$01,$0E,$01
+    db $01,$01,$00,$01
+    db $FF
+}

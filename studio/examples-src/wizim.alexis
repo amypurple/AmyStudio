@@ -1,0 +1,1137 @@
+cartridge "WIZARD OF IM/B.SPIRKO/1985"
+
+' THE WIZARD OF IM
+' A ColecoVision game based on "Wizard of Im" by Bob Spirko, Ahoy! July
+' 1985 (Commodore 64 machine language at $C000, loaded and started with
+' SYS 49152 by a two-line BASIC boot). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: glowing orbs fall down the night sky of Im. The wizard walks
+' along the ground and fires magic sparks straight up to burst them. An
+' orb that falls on the wizard costs a life (three lives). Orbs that reach
+' the ground escape: from the second level each one costs points, and
+' every tenth escaped orb costs a life. Points per orb rise with the
+' level; the orbs fall faster and come more often.
+'
+' From the original (orig/wizard-of-im.dis, timed in jsc64 with
+' orig/c64time-wizim.mjs): 19 lanes (the C64's even columns 0-36); one
+' orb at most per row; every orb drops one row per "pass"; a pass lasts
+' 21 x D loop rounds (D = 48 at level 1, 2 fewer each level: 17 frames a
+' row at level 1); a new orb every 6 passes at level 1, one pass sooner at
+' level 3 and then every 4 levels (never under 1); its lane is (RND & 15)
+' + (RND & 3) (middle lanes come more often); an orb in the bottom row is
+' removed at the end of the pass and costs level - 1 points when the
+' score is 256 or more; one spark at a time, held fire fires again, the
+' spark hits the orb in its lane; 5 points an orb at level 1, then the
+' C64's table (8, 12, 19, 30, 48, 76, 121, 193, 30, 48, 76, 121, 193, 45,
+' 72, 115, 184, 80, 105, 153); the next level at 768 points, then 1536,
+' 2560, 3840... (3, 6, 10, 15, ... x 256); the wizard walks 1.85 C64
+' pixels a frame, the spark rises 3.3; the wizard is struck by an orb
+' that touches him: a flash, the orbs near the ground cleared, a life
+' lost; game over after the third; the best score is kept.
+'
+' Liberties: the field is 19 tiles wide (the C64's 16-pixel lane pitch
+' halved, speeds across scaled the same way) beside a side panel for the
+' scores; the orbs glide down a pixel at a time (the C64 moved them a whole
+' row at once, the rows one after another) and all orbs of a pass move
+' together; collisions are box tests (the C64 used its sprite-to-text
+' collision register); every tenth escaped orb costs a life (shown as ten
+' rings in the panel): on the C64 orbs that got past cost nothing at level
+' 1, so standing still under one lane with the fire button held was safe
+' for ever; the levels stop rising at level 21 (the C64's fall delay would
+' run out and its threshold byte wrap round), the score stops at 65535;
+' no pause, restart or quit keys (joystick only); sounds for a hit, a
+' miss, a new level and the start (the C64 had the spark and the struck
+' wizard); GAME OVER then the title.
+'
+' Controls: controller 1 (or 2): the stick moves the wizard left and
+' right, either button fires (hold it to fire again). On the title, up
+' and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table; the title
+' tune is played once. `set sprite count` is always given.
+
+const TSky = 128
+const TOrbT00 = 129
+const TOrbT01 = 130
+const TOrbT02 = 131
+const TOrbT03 = 132
+const TOrbT04 = 133
+const TOrbT05 = 134
+const TOrbT06 = 135
+const TOrbT07 = 136
+const TOrbB01 = 137
+const TOrbB02 = 138
+const TOrbB03 = 139
+const TOrbB04 = 140
+const TOrbB05 = 141
+const TOrbB06 = 142
+const TOrbB07 = 143
+const TOrbT10 = 144
+const TOrbT11 = 145
+const TOrbT12 = 146
+const TOrbT13 = 147
+const TOrbT14 = 148
+const TOrbT15 = 149
+const TOrbT16 = 150
+const TOrbT17 = 151
+const TOrbB11 = 152
+const TOrbB12 = 153
+const TOrbB13 = 154
+const TOrbB14 = 155
+const TOrbB15 = 156
+const TOrbB16 = 157
+const TOrbB17 = 158
+const TOrbT20 = 159
+const TOrbT21 = 160
+const TOrbT22 = 161
+const TOrbT23 = 162
+const TOrbT24 = 163
+const TOrbT25 = 164
+const TOrbT26 = 165
+const TOrbT27 = 166
+const TOrbB21 = 167
+const TOrbB22 = 168
+const TOrbB23 = 169
+const TOrbB24 = 170
+const TOrbB25 = 171
+const TOrbB26 = 172
+const TOrbB27 = 173
+const TOrbT30 = 174
+const TOrbT31 = 175
+const TOrbT32 = 176
+const TOrbT33 = 177
+const TOrbT34 = 178
+const TOrbT35 = 179
+const TOrbT36 = 180
+const TOrbT37 = 181
+const TOrbB31 = 182
+const TOrbB32 = 183
+const TOrbB33 = 184
+const TOrbB34 = 185
+const TOrbB35 = 186
+const TOrbB36 = 187
+const TOrbB37 = 188
+const TSt0 = 189
+const TSt1 = 190
+const TWin = 191
+const TGr0 = 192
+const TGr1 = 193
+const TPan = 194
+const TPanT = 195
+const TPanB = 196
+const TMk0 = 197
+const TMk1 = 198
+const TLife = 199
+const TTl = 200
+const TStar = 201
+const SWzRdT = 0
+const SWzRbT = 4
+const SWzRdB = 8
+const SWzRbB = 12
+const SWzLdT = 16
+const SWzLbT = 20
+const SWzLdB = 24
+const SWzLbB = 28
+const SBolt0 = 32
+const SBolt1 = 36
+const SPop = 40
+const SZap = 44
+const NTiles8 = 592
+const SprBytes = 384
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndMiss = 5
+const SndStruck = 6
+const SndLevel = 7
+const SndStart = 8
+const SndOver = 9
+const TuneFrames = 784
+const NSpr = 8
+const NoOrb = 255
+' the wizard's limits in 1/256 pixels (left edge 16 to 157)
+const WMin = 4096
+const WMax = 40192
+' 1.85 C64 pixels a frame, halved: 237/256 of a pixel
+const WSpd = 237
+' the spark: 3.3 pixels a frame, in 1/256
+const BSpd = 845
+const MaxLv = 21
+const MissMax = 10
+
+' fall speed in 1/256 pixels a frame for levels 1-21: 8 x 256 / (21 x D /
+' 59.3 rounds a frame), D = 48, 46, ... 8
+data FallT words 120,126,131,138,145,152,161,170,181,193,207,222,241,262,289,321,361,413,482,578,723
+' points an orb at levels 1-21 (the C64's table at $C703)
+data PtsT bytes 5,8,12,19,30,48,76,121,193,30,48,76,121,193,45,72,115,184,80,105,153
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$00,$00,$81,$C3,$00
+  $00,$00,$C3,$81,$00,$00,$81,$C3
+  $00,$00,$00,$C3,$81,$00,$00,$81
+  $00,$00,$00,$00,$C3,$81,$00,$00
+  $00,$00,$00,$00,$00,$C3,$81,$00
+  $00,$00,$00,$00,$00,$00,$C3,$81
+  $00,$00,$00,$00,$00,$00,$00,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$00,$00,$00,$00,$00,$00,$00
+  $81,$C3,$00,$00,$00,$00,$00,$00
+  $00,$81,$C3,$00,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $81,$00,$00,$81,$C3,$00,$00,$00
+  $C3,$81,$00,$00,$81,$C3,$00,$00
+  $00,$C3,$81,$00,$00,$81,$C3,$00
+  $00,$00,$C3,$81,$00,$00,$81,$C3
+  $00,$00,$00,$C3,$81,$00,$00,$81
+  $00,$00,$00,$00,$C3,$81,$00,$00
+  $00,$00,$00,$00,$00,$C3,$81,$00
+  $00,$00,$00,$00,$00,$00,$C3,$81
+  $00,$00,$00,$00,$00,$00,$00,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$00,$00,$00,$00,$00,$00,$00
+  $81,$C3,$00,$00,$00,$00,$00,$00
+  $00,$81,$C3,$00,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $81,$00,$00,$81,$C3,$00,$00,$00
+  $C3,$81,$00,$00,$81,$C3,$00,$00
+  $00,$C3,$81,$00,$00,$81,$C3,$00
+  $00,$00,$C3,$81,$00,$00,$81,$C3
+  $00,$00,$00,$C3,$81,$00,$00,$81
+  $00,$00,$00,$00,$C3,$81,$00,$00
+  $00,$00,$00,$00,$00,$C3,$81,$00
+  $00,$00,$00,$00,$00,$00,$C3,$81
+  $00,$00,$00,$00,$00,$00,$00,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$00,$00,$00,$00,$00,$00,$00
+  $81,$C3,$00,$00,$00,$00,$00,$00
+  $00,$81,$C3,$00,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $81,$00,$00,$81,$C3,$00,$00,$00
+  $C3,$81,$00,$00,$81,$C3,$00,$00
+  $00,$C3,$81,$00,$00,$81,$C3,$00
+  $00,$00,$C3,$81,$00,$00,$81,$C3
+  $00,$00,$00,$C3,$81,$00,$00,$81
+  $00,$00,$00,$00,$C3,$81,$00,$00
+  $00,$00,$00,$00,$00,$C3,$81,$00
+  $00,$00,$00,$00,$00,$00,$C3,$81
+  $00,$00,$00,$00,$00,$00,$00,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$00,$00,$00,$00,$00,$00,$00
+  $81,$C3,$00,$00,$00,$00,$00,$00
+  $00,$81,$C3,$00,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $81,$00,$00,$81,$C3,$00,$00,$00
+  $C3,$81,$00,$00,$81,$C3,$00,$00
+  $01,$01,$01,$01,$01,$00,$10,$10
+  $10,$10,$00,$01,$01,$01,$01,$00
+  $00,$C3,$C3,$81,$81,$81,$81,$00
+  $00,$44,$00,$00,$10,$02,$40,$00
+  $00,$09,$00,$00,$04,$40,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$08,$18,$18,$C3,$C3,$81,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$10,$38,$10,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$19,$19,$09,$09,$19,$19,$01
+  $01,$01,$19,$19,$09,$09,$19,$19
+  $01,$01,$01,$19,$19,$09,$09,$19
+  $01,$01,$01,$01,$19,$19,$09,$09
+  $01,$01,$01,$01,$01,$19,$19,$09
+  $01,$01,$01,$01,$01,$01,$19,$19
+  $01,$01,$01,$01,$01,$01,$01,$19
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $19,$01,$01,$01,$01,$01,$01,$01
+  $19,$19,$01,$01,$01,$01,$01,$01
+  $09,$19,$19,$01,$01,$01,$01,$01
+  $09,$09,$19,$19,$01,$01,$01,$01
+  $19,$09,$09,$19,$19,$01,$01,$01
+  $19,$19,$09,$09,$19,$19,$01,$01
+  $01,$1B,$1B,$0B,$0B,$1B,$1B,$01
+  $01,$01,$1B,$1B,$0B,$0B,$1B,$1B
+  $01,$01,$01,$1B,$1B,$0B,$0B,$1B
+  $01,$01,$01,$01,$1B,$1B,$0B,$0B
+  $01,$01,$01,$01,$01,$1B,$1B,$0B
+  $01,$01,$01,$01,$01,$01,$1B,$1B
+  $01,$01,$01,$01,$01,$01,$01,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1B,$01,$01,$01,$01,$01,$01,$01
+  $1B,$1B,$01,$01,$01,$01,$01,$01
+  $0B,$1B,$1B,$01,$01,$01,$01,$01
+  $0B,$0B,$1B,$1B,$01,$01,$01,$01
+  $1B,$0B,$0B,$1B,$1B,$01,$01,$01
+  $1B,$1B,$0B,$0B,$1B,$1B,$01,$01
+  $01,$17,$17,$07,$07,$17,$17,$01
+  $01,$01,$17,$17,$07,$07,$17,$17
+  $01,$01,$01,$17,$17,$07,$07,$17
+  $01,$01,$01,$01,$17,$17,$07,$07
+  $01,$01,$01,$01,$01,$17,$17,$07
+  $01,$01,$01,$01,$01,$01,$17,$17
+  $01,$01,$01,$01,$01,$01,$01,$17
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $17,$01,$01,$01,$01,$01,$01,$01
+  $17,$17,$01,$01,$01,$01,$01,$01
+  $07,$17,$17,$01,$01,$01,$01,$01
+  $07,$07,$17,$17,$01,$01,$01,$01
+  $17,$07,$07,$17,$17,$01,$01,$01
+  $17,$17,$07,$07,$17,$17,$01,$01
+  $01,$13,$13,$03,$03,$13,$13,$01
+  $01,$01,$13,$13,$03,$03,$13,$13
+  $01,$01,$01,$13,$13,$03,$03,$13
+  $01,$01,$01,$01,$13,$13,$03,$03
+  $01,$01,$01,$01,$01,$13,$13,$03
+  $01,$01,$01,$01,$01,$01,$13,$13
+  $01,$01,$01,$01,$01,$01,$01,$13
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $13,$01,$01,$01,$01,$01,$01,$01
+  $13,$13,$01,$01,$01,$01,$01,$01
+  $03,$13,$13,$01,$01,$01,$01,$01
+  $03,$03,$13,$13,$01,$01,$01,$01
+  $13,$03,$03,$13,$13,$01,$01,$01
+  $13,$13,$03,$03,$13,$13,$01,$01
+  $1F,$1E,$1E,$1E,$1E,$01,$1E,$1E
+  $1E,$1E,$01,$1F,$1E,$1E,$1E,$01
+  $0E,$E1,$1B,$1B,$1B,$1B,$1B,$01
+  $03,$23,$02,$06,$16,$16,$16,$06
+  $03,$23,$02,$06,$16,$16,$16,$06
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $05,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$05
+  $04,$4E,$E4,$E4,$E4,$E4,$4E,$04
+  $04,$48,$48,$48,$48,$48,$48,$04
+  $04,$B4,$D4,$D4,$4D,$4D,$4D,$04
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$01,$B1,$B1,$B1,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$0F,$0B,$0F,$1F,$0F,$0F,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$9C,$08,$10,$20,$60,$00
+  $02,$06,$07,$0F,$0F,$1F,$3F,$00,$00,$00,$00,$10,$30,$39,$3F,$3F
+  $00,$00,$00,$00,$80,$80,$E0,$00,$00,$00,$00,$80,$C0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$61,$61,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$7F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$C0,$C0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$39,$10,$08,$04,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$D0,$F0,$F8,$F0,$F0,$60,$00,$00
+  $00,$00,$00,$00,$01,$01,$07,$00,$00,$00,$00,$01,$03,$03,$01,$01
+  $40,$60,$E0,$F0,$F0,$F8,$FC,$00,$00,$00,$00,$08,$0C,$9C,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$86,$86,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$FC,$FE,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$07,$02,$02,$05,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $05,$02,$07,$02,$02,$05,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$F7,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$41,$22,$12,$0A,$F8,$0A,$12,$22,$41,$80,$00,$00,$00,$00,$00
+  $80,$04,$20,$40,$80,$F8,$80,$40,$20,$04,$80,$00,$00,$00,$00,$00
+end data
+
+data GameMap bytes
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BF,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BF,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BE,$BE,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BE,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $BD,$BD,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$BD,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C2
+  $C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0,$C0,$C1,$C0
+end data
+
+data TitleMap bytes
+  $80,$80,$80,$80,$C8,$80,$C8,$80,$C8,$C8,$C8,$80,$C8,$C8,$C8,$80,$C8,$C8,$C8,$80,$C8,$C8,$80,$80,$C8,$C8,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$C8,$80,$C8,$80,$80,$C8,$80,$80,$80,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$C8,$C8,$C8,$C9,$80,$C8,$80,$80,$80,$C8,$80,$80,$C8,$C8,$C8,$80,$C8,$C8,$80,$80,$C8,$80,$C8,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$C8,$C8,$C8,$80,$80,$C8,$80,$C9,$C8,$80,$80,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$80,$80,$80,$C9
+  $80,$80,$C9,$80,$C8,$80,$C8,$80,$C8,$C8,$C8,$80,$C8,$C8,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$80,$C8,$C8,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$C9,$80
+  $80,$80,$80,$80,$80,$80,$C8,$C8,$C8,$80,$C8,$C8,$C8,$80,$80,$80,$80,$C9,$C8,$C8,$C8,$80,$C8,$80,$C8,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$C8,$80,$C8,$80,$C8,$80,$80,$80,$80,$80,$80,$80,$80,$C8,$80,$80,$C8,$C8,$C8,$80,$80,$80,$80,$C9,$80,$80
+  $80,$80,$80,$80,$80,$80,$C8,$80,$C8,$80,$C8,$C8,$80,$80,$80,$80,$80,$80,$80,$C8,$80,$80,$C8,$C8,$C8,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$C8,$80,$C8,$80,$C8,$80,$80,$80,$80,$80,$80,$80,$80,$C8,$80,$80,$C8,$80,$C8,$80,$80,$80,$C9,$80,$80,$80
+  $80,$80,$80,$80,$C9,$80,$C8,$C8,$C8,$80,$C8,$80,$80,$C9,$80,$80,$80,$80,$C8,$C8,$C8,$80,$C8,$80,$C8,$80,$C9,$80,$80,$80,$80,$80
+end data
+
+record Spark:
+  u8 Live
+  u8 X
+  u8 Ln
+  u16 Yf
+end record
+
+Spark Bolt
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Score = 0
+u16 Hi = 0
+u16 NextAt = 0
+u16 Fall = 0
+u16 Phase = 0
+u16 WXf = 0
+' the orb in each row: its lane, or NoOrb
+u8 Lane[22]
+u8 Ph = 0
+u8 OldPh = 0
+u8 WX = 0
+u8 Face = 0
+u8 Lv = 0
+u8 Pts = 0
+u8 Pen = 0
+u8 Step3 = 0
+u8 SpInt = 0
+u8 SpCnt = 0
+u8 LvCnt = 0
+u8 Lives = 3
+u8 Missed = 0
+u8 Over = 0
+u8 Struck = 0
+u8 PopT = 0
+u8 PopX = 0
+u8 PopY = 0
+u8 Hits = 0
+u8 Escapes = 0
+u8 Redraw = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TwX = 40
+u8 TwD = 1
+' loop counters (never shared with the helpers)
+u8 Rw = 0
+u8 Dr = 0
+u8 Hr = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 T = 0
+
+  tile screen
+  set sound table WzSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  print at 5,9, "             "
+  print at 5,10, "  GAME OVER  "
+  print at 5,11, "             "
+  mute all
+  play sound SndOver
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the wizard, the spark, the orbs falling, collisions
+sub PlayStep:
+  MoveWizard
+  if Bolt.Live = 0 then
+    if Btn > 0 then Launch
+  end if
+  if Bolt.Live = 1 then MoveBolt
+  if PopT > 0 then dec PopT
+  ' the orbs: a pixel fraction a frame; a whole row ends the pass
+  Phase = Phase + Fall
+  if Phase >= 2048 then
+    Phase = Phase - 2048
+    EndPass
+  end if
+  Ph = Phase >> 8
+  if Ph <> OldPh then Redraw = 1
+  if Redraw = 1 then DrawOrbs
+  if Bolt.Live = 1 then BoltHit
+  StruckTest
+  if Struck = 1 then Strike
+  return
+end sub
+
+' plain left or right (diagonals too), stopped at the field's edges
+sub MoveWizard:
+  K = J1 & 12
+  select case K
+    case 4
+      Face = 1
+      if WXf < WMin + WSpd then
+        WXf = WMin
+      else
+        WXf = WXf - WSpd
+      end if
+    case 8
+      Face = 0
+      if WXf > WMax - WSpd then
+        WXf = WMax
+      else
+        WXf = WXf + WSpd
+      end if
+  end select
+  WX = WXf >> 8
+  return
+end sub
+
+' the lane under the wizard's middle
+function WizLane() as u8
+  V = WX + 6
+  V = V - 16
+  V = V >> 3
+  if V > 18 then V = 18
+  return V
+
+sub Launch:
+  Bolt.Ln = WizLane()
+  Bolt.X = Bolt.Ln * 8 + 14
+  Bolt.Yf = 152 * 256
+  Bolt.Live = 1
+  play sound SndZap
+  return
+end sub
+
+sub MoveBolt:
+  if Bolt.Yf < BSpd + 1024 then
+    Bolt.Live = 0
+    return
+  end if
+  Bolt.Yf = Bolt.Yf - BSpd
+  return
+end sub
+
+' the spark's tip in the cell of an orb in its lane: a hit
+sub BoltHit:
+  Y = Bolt.Yf >> 8
+  if Y < Ph then return
+  V = Y - Ph
+  V = V >> 3
+  if V > 21 then return
+  if Lane[V] <> Bolt.Ln then return
+  Hr = V
+  EraseRow
+  Lane[Hr] = NoOrb
+  Bolt.Live = 0
+  PopX = Bolt.X - 1
+  PopY = Hr * 8 + Ph
+  PopT = 8
+  inc Hits
+  play sound SndPop
+  AddScore
+  return
+end sub
+
+sub AddScore:
+  W16 = 65535 - Pts
+  if Score > W16 then
+    Score = 65535
+  else
+    Score = Score + Pts
+  end if
+  if Score > Hi then Hi = Score
+  ShowScore
+  if Lv < MaxLv then
+    if Score >= NextAt then
+      NextLevel
+      play sound SndLevel
+    end if
+  end if
+  return
+end sub
+
+' the end of a pass: the orb in the bottom row escapes, the others drop a
+' row, and maybe a new orb at the top
+sub EndPass:
+  EraseAll
+  if Lane[21] <> NoOrb then Escape
+  for Rw = 21 to 1 step -1
+    Lane[Rw] = Lane[Rw - 1]
+  next
+  Lane[0] = NoOrb
+  dec SpCnt
+  if SpCnt = 0 then
+    SpCnt = SpInt
+    Rand
+    V = Rs & 15
+    K = Rs >> 8
+    K = K & 3
+    Lane[0] = V + K
+  end if
+  Redraw = 1
+  return
+end sub
+
+' an orb reached the ground: points off from 256 up (the C64), a ring
+sub Escape:
+  inc Escapes
+  if Score >= 256 then Score = Score - Pen
+  ShowScore
+  inc Missed
+  if Missed >= MissMax then
+    Missed = 0
+    play sound SndStruck
+    LoseLife
+  else
+    play sound SndMiss
+  end if
+  ShowMissed
+  return
+end sub
+
+' the wizard's box against the orbs in the three bottom rows
+sub StruckTest:
+  Struck = 0
+  for Dr = 19 to 21
+    C = Lane[Dr]
+    if C <> NoOrb then
+      X = C * 8 + 16
+      Y = Dr * 8 + Ph
+      ' orb pixels X..X+7, Y+1..Y+6; wizard X+1..X+10, rows 160..183
+      V = Y + 6
+      if V >= 162 then
+        V = WX + 10
+        if X <= V then
+          V = X + 7
+          if V >= WX + 1 then Struck = 1
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' struck: the flash (everything stops), the bottom rows cleared, a life
+sub Strike:
+  play sound SndStruck
+  Bolt.Live = 0
+  PopT = 0
+  for Dr = 0 to 44
+    Frame1
+    V = Dr / 10
+    V = V & 1
+    if V = 0 then
+      set sprite 6 to 159,WX - 3,SZap,15
+    else
+      set sprite 6 to 159,WX - 3,SZap,10
+    end if
+    DrawSprites
+  next
+  set sprite 6 to 192,0,0,0
+  Struck = 0
+  EraseAll
+  for Dr = 19 to 21
+    Lane[Dr] = NoOrb
+  next
+  Redraw = 1
+  DrawOrbs
+  LoseLife
+  return
+end sub
+
+sub LoseLife:
+  if Lives > 0 then dec Lives
+  ShowLives
+  if Lives = 0 then Over = 1
+  return
+end sub
+
+' the next level: faster, more often, worth more
+sub NextLevel:
+  inc Lv
+  Fall = FallT[Lv - 1]
+  Pts = PtsT[Lv - 1]
+  Pen = Lv - 1
+  W16 = Step3
+  W16 = W16 << 8
+  NextAt = NextAt + W16
+  inc Step3
+  dec LvCnt
+  if LvCnt = 0 then
+    LvCnt = 4
+    if SpInt > 1 then dec SpInt
+  end if
+  ShowLevel
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: an orb in row r is tiles at rows r and r+1 of its lane's column
+function OrbTop(u8 Ln, u8 P) as u8
+  T = Ln & 3
+  T = T * 15
+  return T + P + TOrbT00
+
+sub EraseRow:
+  C = Lane[Hr]
+  if C = NoOrb then return
+  X = C + 2
+  put char TSky at X,Hr
+  Y = Hr + 1
+  put char TSky at X,Y
+  return
+end sub
+
+sub EraseAll:
+  for Hr = 0 to 21
+    EraseRow
+  next
+  return
+end sub
+
+sub DrawOrbs:
+  Redraw = 0
+  OldPh = Ph
+  for Dr = 0 to 21
+    C = Lane[Dr]
+    if C <> NoOrb then
+      X = C + 2
+      K = OrbTop(C, Ph)
+      put char K at X,Dr
+      Y = Dr + 1
+      if Ph = 0 then
+        put char TSky at X,Y
+      else
+        K = K + 7
+        put char K at X,Y
+      end if
+    end if
+  next
+  return
+end sub
+
+' sprites 0-3 the wizard (detail, body; top, bottom), 4 the spark, 5 the
+' burst, 6 the flash (set by Strike)
+sub DrawSprites:
+  K = Face * 16
+  set sprite 0 to 159,WX,K + SWzRdT,15
+  set sprite 1 to 159,WX,K + SWzRbT,13
+  set sprite 2 to 175,WX,K + SWzRdB,15
+  set sprite 3 to 175,WX,K + SWzRbB,13
+  if Bolt.Live = 1 then
+    Y = Bolt.Yf >> 8
+    K = Tick >> 3
+    K = K & 1
+    K = K * 4 + SBolt0
+    set sprite 4 to Y - 1,Bolt.X - 6,K,11
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  if PopT > 0 then
+    set sprite 5 to PopY - 1,PopX,SPop,15
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  if Struck = 0 then set sprite 6 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print Score at 23,3 digits 5
+  print Hi at 23,6 digits 5
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 23,9, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLives:
+  for Dr = 0 to 2
+    X = Dr + 23
+    if Dr < Lives then
+      put char TLife at X,12
+    else
+      put char TPan at X,12
+    end if
+  next
+  return
+end sub
+
+sub ShowMissed:
+  for Dr = 0 to 9
+    X = Dr % 5
+    X = X + 23
+    Y = Dr / 5
+    Y = Y + 15
+    if Dr < Missed then
+      put char TMk1 at X,Y
+    else
+      put char TMk0 at X,Y
+    end if
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 23,2, "SCORE"
+  print at 23,5, "HIGH"
+  print at 23,8, "LEVEL"
+  print at 23,11, "LIVES"
+  print at 23,14, "MISSED"
+  print at 23,19, "WIZARD"
+  print at 23,20, "OF IM"
+  fill array Lane with NoOrb
+  Score = 0
+  NextAt = 768
+  Step3 = 3
+  Lv = 0
+  SpInt = 6
+  SpCnt = 6
+  LvCnt = 3
+  NextLevel
+  ' the first threshold is 768 (3 x 256), then 3 + 3, 6 + 4, 10 + 5 ...
+  NextAt = 768
+  Step3 = 3
+  WXf = 21248
+  WX = 83
+  Face = 0
+  Phase = 0
+  Ph = 0
+  OldPh = 0
+  Bolt.Live = 0
+  Lives = 3
+  Missed = 0
+  Over = 0
+  Struck = 0
+  PopT = 0
+  Hits = 0
+  Escapes = 0
+  ShowScore
+  ShowLives
+  ShowMissed
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: WIZARD OF IM in starry blocks, the wizard pacing the
+' ground, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  for Dr = 0 to 22
+    fill TSky count 32 at 0,Dr
+  next
+  copy TitleMap count 352 to vram.name + 32
+  fill TGr0 count 32 at 0,23
+  backdrop black
+  print at 7,14, "AHOY! JULY 1985"
+  print at 8,15, "BY BOB SPIRKO"
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  if Hi > 0 then
+    print at 10,20, "BEST ", digits$(Hi, 5)
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneFrames
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the wizard paces the title's meadow, a pixel every other frame
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then
+    if TwD = 0 then
+      inc TwX
+      if TwX >= 224 then TwD = 1
+    else
+      dec TwX
+      if TwX <= 16 then TwD = 0
+    end if
+  end if
+  K = TwD * 16
+  set sprite 0 to 159,TwX,K + SWzRdT,15
+  set sprite 1 to 159,TwX,K + SWzRbT,13
+  set sprite 2 to 175,TwX,K + SWzRdB,15
+  set sprite 3 to 175,TwX,K + SWzRbB,13
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  J = Menu + 17
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "THE WIZARD OF IM"
+  print at 2,5, "BASED ON WIZARD OF IM BY"
+  print at 2,6, "BOB SPIRKO, AHOY! JULY"
+  print at 2,7, "1985 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: STARFALL WALTZ"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+WzZap:
+    db $40,$7C,$30,$01,$40,$69,$30,$01,$40,$59,$40,$01,$40,$4C,$40,$01,$40,$40,$40,$01,$40,$36,$40,$01
+    db $40,$2E,$50,$01,$40,$27,$50,$01,$50
+WzPop:
+    db $00,$00,$15,$02,$00,$00,$36,$03,$00,$00,$66,$04,$10
+WzMiss:
+    db $40,$53,$41,$03,$40,$C5,$51,$05,$50
+WzStruck:
+    db $00,$00,$06,$04,$00,$00,$17,$06,$00,$00,$37,$08,$00,$00,$57,$0A,$00,$00,$77,$0C,$10
+WzLevel:
+    db $C0,$AA,$20,$05,$C0,$7F,$20,$05,$C0,$6B,$20,$05,$C0,$55,$20,$05,$C0,$40,$20,$0E,$D0
+WzStart:
+    db $40,$FE,$20,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$7F,$20,$0E,$50
+WzOver:
+    db $40,$AA,$10,$0A,$40,$BF,$20,$0A,$40,$D6,$20,$0A,$40,$E2,$20,$0A,$40,$FE,$30,$1E,$50
+
+WzSoundTable:
+    dw WzTuneMel,$702B
+    dw WzTuneBass,$7035
+    dw WzZap,$7049
+    dw WzPop,$703F
+    dw WzMiss,$7049
+    dw WzStruck,$703F
+    dw WzLevel,$705D
+    dw WzStart,$7049
+    dw WzOver,$7049
+; Starfall Waltz (original)
+; Tiny Sound, 8 frames per step
+WzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$28,$2A,$2B,$01,$2A,$01,$28,$01,$23,$01
+    db $24,$01,$23,$21,$1F,$01,$1E,$01,$01,$01,$23,$01,$21,$01,$26,$28
+    db $2A,$01,$28,$01,$26,$01,$21,$01,$23,$01,$21,$1F,$1E,$01,$1F,$01
+    db $01,$01,$01,$01,$1C,$01,$1F,$23,$28,$01,$26,$01,$23,$01,$1F,$01
+    db $21,$01,$24,$28,$26,$01,$24,$01,$23,$01,$01,$01,$23,$01,$24,$01
+    db $23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01,$23,$01,$28,$01
+    db $01,$01,$01,$01,$00,$01
+    db $FF
+WzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$01,$01,$17,$01,$10,$01,$01,$01,$17,$01
+    db $15,$01,$01,$01,$1C,$01,$17,$01,$01,$01,$1E,$01,$0E,$01,$01,$01
+    db $15,$01,$0E,$01,$01,$01,$15,$01,$13,$01,$01,$01,$1A,$01,$13,$01
+    db $01,$01,$1A,$01,$0C,$01,$01,$01,$13,$01,$0C,$01,$01,$01,$13,$01
+    db $15,$01,$01,$01,$1C,$01,$15,$01,$01,$01,$1C,$01,$17,$01,$01,$01
+    db $1E,$01,$17,$01,$01,$01,$1E,$01,$10,$01,$01,$01,$17,$01,$10,$01
+    db $01,$01,$01,$01,$00,$01
+    db $FF
+}

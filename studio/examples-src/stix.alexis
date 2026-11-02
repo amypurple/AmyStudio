@@ -1,0 +1,1478 @@
+cartridge "STIX!/AHOY!/1989"
+
+' STIX!
+' A ColecoVision game based on "STIX!", Ahoy! February 1989 (Commodore
+' 128 BASIC 7.0, disk ahoy1989-02; no author named on the disk or in the
+' listing). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Four logical puzzles about the placement of eight sticks, drawn here as
+' matches standing in holes on a black board:
+'
+' 1 LINEARSTIX: nine holes in a row, four red matches on the left, four
+'   blue on the right, the middle hole empty. Red moves right, blue moves
+'   left, only forward: a step into the next hole, or a jump over one match
+'   into the hole behind it. Swap the two sides.
+' 2 TRISTIXULAR: ten holes in a triangle (rows of 4, 3, 2 and 1), eight
+'   matches. Pick a match, then an empty hole two along a row or two along
+'   a diagonal with a match between: it jumps, and the jumped match goes.
+'   Leave only one.
+' 3 INTERSTIXTION: a cross of two lines of nine holes sharing the middle
+'   one. Two red matches at the left go right, two green at the top go
+'   down, two blue at the right go left, two yellow at the bottom go up, in
+'   that order, one move each turn (a step or a jump, forward only). Bring
+'   every pair to the far end of its line. A colour that cannot move when
+'   its turn comes loses the game.
+' 4 TRANSTIXION: eight matches (3, 2, 3) on seven lines. Choose a line: its
+'   matches all change colour, red > yellow > green > blue > red. Make
+'   them all red.
+'
+' From the original (orig/stix.bas, read from the listing; C-128 programs
+' do not run in the toolbox's emulator): the four boards and their holes,
+' the moves and jumps, the win tests, TRISTIXULAR's first match in the
+' middle of row 2 and seven more dealt at random, INTERSTIXTION's turn
+' order (right, down, left, up), TRANSTIXION's seven lines and colour
+' order and its 20 random line changes to mix the colours, the names, the
+' objectives (the title's scrolling text, here a page before each puzzle),
+' the win screen ("CONGRATULATIONS ... WE HAVE A WINNER IN ... AND THE
+' CROWD GOES WILD"), starting over (the C-128's space bar) at any time.
+'
+' Improvements and liberties: the sticks are matches on a black board with
+' guide dots between the holes; a match hops in a smooth arc as a sprite
+' and lands back as tiles (never more than three sprites); a pointer that
+' glides (LINEARSTIX, TRISTIXULAR) and lit holes (the chosen match, the
+' chosen line) instead of the C-128's blinking sprites; TRISTIXULAR deals
+' only positions that can be won (half of the C-128's could not: model.mjs
+' searched them all; the C-128 only redealt when the three corners were
+' full); a game that can no longer be won ends with a message (NO MOVES
+' LEFT; in INTERSTIXTION the colour that cannot move loses, as the
+' objective says) where the C-128 waited for the space bar; a move counter
+' and the session's best for each puzzle; TRANSTIXION is never dealt
+' already solved; TRANSTIXION's colour routines (listing lines 1670-1720)
+' are damaged on the disk image: rebuilt as one step forward for each
+' match of the line (the order the objective gives); TRISTIXULAR's
+' pointer moves with up/down/left/right and the diagonals (the C-128
+' used only the diagonals and left/right). INTERSTIXTION shows whose turn
+' it is. New tune and sounds; the title letters are matches.
+'
+' Controls: joystick only (either controller). Title: up and down choose,
+' a button starts. LINEARSTIX: left/right move the pointer, the left
+' button moves the match. TRISTIXULAR: the stick moves the pointer, the
+' left button picks a match, then on an empty hole makes it jump.
+' INTERSTIXTION: the stick chooses between the two matches whose turn it
+' is, the left button moves it. TRANSTIXION: the stick chooses a line, the
+' left button changes its colours. Right button: start the puzzle over;
+' held for a second and a half: back to the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+'
+' Workarounds for Amy bugs sack-div-in-sum, sack-print-bcd-var-index, sack-bcd-element-carry removed 2026-11-01.
+
+const TBlank = 128
+const TTop1l = 129
+const TTop1r = 130
+const TTop2l = 131
+const TTop2r = 132
+const TTop3l = 133
+const TTop3r = 134
+const TTop4l = 135
+const TTop4r = 136
+const TTop5l = 137
+const TTop5r = 138
+const TTop6l = 139
+const TTop6r = 140
+const TTop7l = 141
+const TTop7r = 142
+const TTop8l = 143
+const TTop8r = 144
+const TBot00l = 145
+const TBot00r = 146
+const TBot01l = 147
+const TBot01r = 148
+const TBot10l = 149
+const TBot10r = 150
+const TBot11l = 151
+const TBot11r = 152
+const TDot = 153
+const TFh = 154
+const TFv = 155
+const TFc = 156
+const TMhl = 157
+const TMhr = 158
+const TMvt = 159
+const TMvb = 160
+const TDgb = 161
+const TDgf = 162
+const TDgbh = 163
+const TDgfh = 164
+const TMdot = 165
+const SHead = 0
+const SShaft = 4
+const SArrow = 8
+const SPuff = 12
+const NTiles8 = 304
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndPick = 4
+const SndHop = 5
+const SndLand = 6
+const SndVanish = 7
+const SndBuzz = 8
+const SndTurn = 9
+const SndWin = 10
+const SndLose = 11
+const SndStrike = 12
+const NSpr = 4
+const MsgRow = 20
+
+' head colours by match colour 1-8 (red, yellow, green, blue, magenta,
+' cyan, white, pink)
+data HeadCol bytes 8,11,2,5,13,7,15,9
+' TRISTIXULAR: row and column of each hole, every jump (from, over, to),
+' the deals that can be won (two empty holes)
+data Tri2R bytes 1,1,1,1,2,2,2,3,3,4
+data Tri2X bytes 1,3,5,7,2,4,6,3,5,4
+data Jmp bytes 0,1,2,0,4,7,1,2,3,1,5,8,2,1,0,2,5,7,3,2,1,3,6,8,4,5,6,4,7,9,6,5,4,6,8,9,7,5,2,7,4,0,8,6,3,8,5,1,9,8,6,9,7,4
+const NJmp = 18
+data Deals bytes 0,1,0,2,0,4,0,6,0,7,0,8,1,3,1,9,2,3,2,9,3,4,3,6,3,7,3,8,4,9,6,9,7,9,8,9
+const NDeal = 18
+' INTERSTIXTION's groups in turn order: colour, line (0 across, 1 down),
+' forward (1 towards 9, 0 towards 1)
+data GCol bytes 1,3,4,2
+data GLn bytes 0,1,0,1
+data GFwd bytes 1,1,0,0
+' TRANSTIXION's seven lines (255 pads the short one)
+data Lines4 bytes 0,1,2, 3,4,255, 5,6,7, 0,3,6, 1,4,7, 1,3,5, 2,4,6
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $03,$07,$07,$07,$03,$01,$01,$01
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$F0,$10,$10,$F0
+  $00,$00,$00,$00,$F0,$08,$08,$F0
+  $00,$00,$00,$00,$F0,$10,$10,$F0
+  $00,$00,$00,$00,$F0,$08,$08,$F0
+  $01,$01,$01,$01,$F0,$10,$10,$F0
+  $80,$80,$80,$80,$F0,$08,$08,$F0
+  $01,$01,$01,$01,$F0,$10,$10,$F0
+  $80,$80,$80,$80,$F0,$08,$08,$F0
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$C3,$00,$00,$00,$00
+  $81,$81,$85,$85,$81,$81,$A1,$A1
+  $00,$81,$42,$A5,$A5,$42,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$0C,$F0,$F0,$0C,$00,$00
+  $18,$C3,$C3,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $00,$18,$C3,$C3,$18,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $81,$81,$81,$81,$81,$A1,$A1,$A1
+  $81,$81,$81,$81,$81,$A1,$A1,$A1
+  $B1,$B1,$B1,$B1,$B1,$A1,$A1,$A1
+  $B1,$B1,$B1,$B1,$B1,$A1,$A1,$A1
+  $21,$21,$21,$21,$21,$A1,$A1,$A1
+  $21,$21,$21,$21,$21,$A1,$A1,$A1
+  $51,$51,$51,$51,$51,$A1,$A1,$A1
+  $51,$51,$51,$51,$51,$A1,$A1,$A1
+  $D1,$D1,$D1,$D1,$D1,$A1,$A1,$A1
+  $D1,$D1,$D1,$D1,$D1,$A1,$A1,$A1
+  $71,$71,$71,$71,$71,$A1,$A1,$A1
+  $71,$71,$71,$71,$71,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$A1,$A1,$A1
+  $F1,$F1,$F1,$F1,$F1,$A1,$A1,$A1
+  $91,$91,$91,$91,$91,$A1,$A1,$A1
+  $91,$91,$91,$91,$91,$A1,$A1,$A1
+  $01,$01,$01,$01,$1E,$E1,$E1,$1E
+  $01,$01,$01,$01,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$17,$71,$71,$17
+  $01,$01,$01,$01,$71,$71,$71,$71
+  $A1,$A1,$A1,$A1,$1E,$E1,$E1,$1E
+  $A1,$A1,$A1,$A1,$E1,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$17,$71,$71,$17
+  $A1,$A1,$A1,$A1,$71,$71,$71,$71
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $06,$0A,$0A,$6A,$0A,$0A,$0A,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $06,$6A,$A6,$6A,$6A,$A6,$6A,$06
+  $01,$01,$01,$0A,$0A,$01,$01,$01
+  $01,$01,$81,$A8,$A8,$81,$01,$01
+  $81,$18,$18,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $81,$81,$A1,$A1,$A1,$A1,$A1,$A1
+  $81,$81,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$81,$18,$18,$81,$01,$01,$01
+end data
+data SpritePat bytes
+  $03,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$00,$00,$00,$00
+  $00,$01,$03,$07,$0F,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$09,$04,$20,$02,$60,$02,$20,$04,$09,$10,$00,$00,$00,$00
+  $00,$10,$20,$40,$04,$40,$0C,$40,$04,$40,$20,$10,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  32,32,32,32,32,32,157,158,32,32,32,157,158,32,157,158,32,32,32,32,163,32,32,164,32,32,32,32,32,32,32,32
+  32,32,32,32,32,159,32,32,32,32,32,32,32,159,32,32,32,32,159,32,32,161,162,32,32,159,32,32,32,32,32,32
+  32,32,32,32,32,160,32,32,32,32,32,32,32,160,32,32,32,32,160,32,32,161,162,32,32,160,32,32,32,32,32,32
+  32,32,32,32,32,32,157,158,32,32,32,32,32,32,32,32,32,32,32,32,32,161,162,32,32,159,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,159,32,32,32,32,159,32,32,32,32,159,32,32,162,161,32,32,160,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,160,32,32,32,32,160,32,32,32,32,160,32,32,162,161,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,157,158,32,32,32,32,32,32,32,32,32,32,32,32,162,32,32,161,32,165,32,32,32,32,32,32
+end data
+data HoleX1 bytes 3,6,9,12,15,18,21,24,27
+data HoleY1 bytes 10,10,10,10,10,10,10,10,10
+const NDot1 = 8
+data Dot1 bytes 5,10,8,10,11,10,14,10,17,10,20,10,23,10,26,10
+data HoleX2 bytes 6,12,18,24,9,15,21,12,18,15
+data HoleY2 bytes 4,4,4,4,8,8,8,12,12,16
+const NDot2 = 50
+data Dot2 bytes 8,4,9,4,10,4,11,4,8,6,8,7,9,7,14,4,15,4,16,4,17,4,14,6,14,7,15,7,20,4,21,4,22,4,23,4,17,6,17,7,16,7,23,6,23,7,22,7,11,8,12,8,13,8,14,8,11,10,11,11,12,11,17,8,18,8,19,8,20,8,14,10,14,11,13,11,17,10,17,11,18,11,20,10,20,11,19,11,14,14,14,15,15,15,17,14,17,15,16,15
+data HoleX3 bytes 3,6,9,12,15,18,21,24,27,15,15,15,15,15,15,15,15
+data HoleY3 bytes 10,10,10,10,10,10,10,10,10,2,4,6,8,12,14,16,18
+const NDot3 = 8
+data Dot3 bytes 5,10,8,10,11,10,14,10,17,10,20,10,23,10,26,10
+data HoleX4 bytes 8,14,20,11,17,8,14,20
+data HoleY4 bytes 6,6,6,10,10,14,14,14
+const NDot4 = 44
+data Dot4 bytes 10,6,11,6,12,6,13,6,16,6,17,6,18,6,19,6,13,10,14,10,15,10,16,10,10,14,11,14,12,14,13,14,16,14,17,14,18,14,19,14,10,8,10,9,11,9,13,12,13,13,14,13,16,8,16,9,17,9,19,12,19,13,20,13,13,8,13,9,12,9,10,12,10,13,9,13,19,8,19,9,18,9,16,12,16,13,15,13
+
+record Cell:
+  u8 Cx
+  u8 Cy
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Va = 0
+' the puzzle
+Cell Cells[17]
+u8 Occ[17]
+u8 Col4[8]
+u8 Puz = 1
+u8 NH = 9
+u8 Cur = 0
+u8 Sel = 255
+u8 Turn = 0
+u8 Ln4 = 0
+u8 Res = 0
+u8 Mode = 0
+u8 Quit = 0
+u8 Hold = 0
+u8 Deal = 0
+u8 Jover = 255
+bcd digits 4 Moves
+bcd digits 4 Best[4]
+' the pointer: where it is and where it goes (pixels)
+u8 Ax = 0
+u8 Ay = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 ArrOn = 0
+' input
+u8 Pads = 0
+u8 OldPads = 0
+u8 Edge = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 MSel = 0
+' loop counters (never shared with the helpers)
+u8 Hi = 0
+u8 Di = 0
+u8 Si = 0
+u8 Ki = 0
+u8 Ti = 0
+u8 Mi = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SxSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 1
+  sprites flicker on
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Mode = 0
+  CreditsPage
+
+title:
+  Mode = 0
+  TitlePage
+  if MSel = 4 then
+    CreditsPage
+    goto title
+  end if
+  Puz = MSel + 1
+  ObjectPage
+again:
+  PlayPuzzle
+  if Quit = 1 then goto title
+  if Quit = 2 then goto again
+  ' the end: a message, then the title on a press
+  Mode = 3
+  if Res = 1 then
+    WinPage
+  else
+    LosePage
+  end if
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one puzzle, from the deal to a win, a lost game or the right button
+
+sub PlayPuzzle:
+  Quit = 0
+  Res = 0
+  SetupPuzzle
+  DrawBoard
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 63
+  Hold = 0
+  Mode = 1
+pp_loop:
+  Frame1
+  ReadPads
+  GlideArrow
+  ' the right button: a tap starts over, held 90 frames goes to the title
+  if (Pads & 32) <> 0 then
+    inc Hold
+    if Hold >= 90 then
+      Quit = 1
+      play sound SndTick
+      goto pp_done
+    end if
+  else
+    if Hold > 0 then
+      Hold = 0
+      Quit = 2
+      play sound SndStrike
+      goto pp_done
+    end if
+  end if
+  select case Puz
+  case 1
+    Step1
+  case 2
+    Step2
+  case 3
+    Step3
+  case else
+    Step4
+  end select
+  if Res = 0 then goto pp_loop
+pp_done:
+  Mode = 2
+  HideSprites
+  return
+end sub
+
+sub SetupPuzzle:
+  Moves = 0
+  Sel = 255
+  Turn = 0
+  Ln4 = 0
+  Cur = 0
+  ArrOn = 0
+  fill array Occ with 0
+  LoadHoles
+  select case Puz
+  case 1
+    for Hi = 0 to 3
+      Occ[Hi] = 1
+      Occ[Hi + 5] = 4
+    next
+    Cur = 4
+    ArrOn = 1
+  case 2
+    ' a winnable deal: two empty holes, the others filled in order
+    Rand
+    Deal = Rs % NDeal
+    K = Deal * 2
+    C = 1
+    for Hi = 0 to 9
+      if Hi <> Deals[K] and Hi <> Deals[K + 1] then
+        Occ[Hi] = C
+        inc C
+      end if
+    next
+    Cur = 5
+    ArrOn = 1
+  case 3
+    Occ[0] = 1
+    Occ[1] = 1
+    Occ[7] = 4
+    Occ[8] = 4
+    Occ[9] = 3
+    Occ[10] = 3
+    Occ[15] = 2
+    Occ[16] = 2
+    Sel = 0
+    PickFirst
+  case else
+    Scramble
+  end select
+  if ArrOn = 1 then
+    ArrowTarget
+    Ax = Tx
+    Ay = Ty
+  end if
+  return
+end sub
+
+' the holes of this board into Cells (one record a hole)
+sub LoadHoles:
+  select case Puz
+  case 1
+    NH = 9
+  case 2
+    NH = 10
+  case 3
+    NH = 17
+  case else
+    NH = 8
+  end select
+  CopyHoles(NH)
+  return
+end sub
+
+sub CopyHoles(u8 Cnt):
+  for Hi = 0 to Cnt - 1
+    select case Puz
+    case 1
+      Cells[Hi].Cx = HoleX1[Hi]
+      Cells[Hi].Cy = HoleY1[Hi]
+    case 2
+      Cells[Hi].Cx = HoleX2[Hi]
+      Cells[Hi].Cy = HoleY2[Hi]
+    case 3
+      Cells[Hi].Cx = HoleX3[Hi]
+      Cells[Hi].Cy = HoleY3[Hi]
+    case else
+      Cells[Hi].Cx = HoleX4[Hi]
+      Cells[Hi].Cy = HoleY4[Hi]
+    end select
+  next
+  return
+end sub
+
+' TRANSTIXION: all red, then 20 random lines turned (again if that left
+' them all red)
+sub Scramble:
+  fill array Col4 with 0
+sc_again:
+  for Mi = 1 to 20
+    Rand
+    Ln4 = Rs % 7
+    TurnLine
+  next
+  if AllRed() = 1 then goto sc_again
+  Ln4 = 0
+  return
+end sub
+
+sub TurnLine:
+  K = Ln4 * 3
+  for Ki = 0 to 2
+    N = Lines4[K + Ki]
+    if N < 8 then
+      Col4[N] = (Col4[N] + 1) & 3
+      Occ[N] = Col4[N] + 1
+    end if
+  next
+  return
+end sub
+
+function AllRed as u8
+  for Ki = 0 to 7
+    if Col4[Ki] <> 0 then return 0
+  next
+  return 1
+
+' ---------------------------------------------------------------------------
+' LINEARSTIX
+
+sub Step1:
+  if (Edge & 4) <> 0 then
+    if Cur > 0 then
+      dec Cur
+      play sound SndTick
+    end if
+  end if
+  if (Edge & 8) <> 0 then
+    if Cur < 8 then
+      inc Cur
+      play sound SndTick
+    end if
+  end if
+  ArrowTarget
+  if (Edge & 16) = 0 then return
+  C = Occ[Cur]
+  if C = 0 then
+    play sound SndBuzz
+    return
+  end if
+  ' red (1) goes towards 9, blue towards 1
+  V = 0
+  if C = 1 then V = 1
+  N = LineDest(0, Cur + 1, V)
+  if N = 0 then
+    play sound SndBuzz
+    return
+  end if
+  Jover = 255
+  HopMatch(Cur, N - 1)
+  Moves += 1
+  ShowMoves
+  if Won1() = 1 then
+    Res = 1
+  else
+    if Any1() = 0 then Res = 2
+  end if
+  return
+end sub
+
+function Won1 as u8
+  for Ki = 0 to 3
+    if Occ[Ki] <> 4 then return 0
+    if Occ[Ki + 5] <> 1 then return 0
+  next
+  return 1
+
+function Any1 as u8
+  for Ki = 0 to 8
+    C = Occ[Ki]
+    if C > 0 then
+      V = 0
+      if C = 1 then V = 1
+      if LineDest(0, Ki + 1, V) > 0 then return 1
+    end if
+  next
+  return 0
+
+' the hole of place P (1-9) on line Ln (0 across, 1 down; down 5 is
+' across 5)
+function LineHole(u8 Ln, u8 P) as u8
+  if Ln = 0 then return P - 1
+  if P = 5 then return 4
+  if P < 5 then return P + 8
+  return P + 7
+
+' the place a match at P can reach going forward (towards 9 when Fw is
+' true): the next place if empty, else the one after if empty (a jump);
+' 0 when neither
+function LineDest(u8 Ln, u8 P, u8 Fw) as u8
+  if Fw <> 0 then
+    if P >= 9 then return 0
+    if Occ[LineHole(Ln, P + 1)] = 0 then return P + 1
+    if P >= 8 then return 0
+    if Occ[LineHole(Ln, P + 2)] = 0 then return P + 2
+    return 0
+  end if
+  if P <= 1 then return 0
+  if Occ[LineHole(Ln, P - 1)] = 0 then return P - 1
+  if P <= 2 then return 0
+  if Occ[LineHole(Ln, P - 2)] = 0 then return P - 2
+  return 0
+
+' ---------------------------------------------------------------------------
+' TRISTIXULAR
+
+sub Step2:
+  MovePointer2
+  ArrowTarget
+  if (Edge & 16) = 0 then return
+  if Occ[Cur] > 0 then
+    ' pick a match (again: put it down)
+    V = Sel
+    if Sel = Cur then
+      Sel = 255
+    else
+      Sel = Cur
+    end if
+    if V < 10 then DrawHole(V)
+    DrawHole(Cur)
+    play sound SndPick
+    return
+  end if
+  if Sel = 255 then
+    play sound SndBuzz
+    return
+  end if
+  Jover = FindJump(Sel, Cur)
+  if Jover = 255 then
+    play sound SndBuzz
+    return
+  end if
+  V = Sel
+  Sel = 255
+  HopMatch(V, Cur)
+  Moves += 1
+  ShowMoves
+  if CountMatches() = 1 then
+    Res = 1
+  else
+    if Any2() = 0 then Res = 2
+  end if
+  return
+end sub
+
+' the hole jumped over going from F to D, if that jump exists and has a
+' match to jump (255 when not)
+function FindJump(u8 F, u8 D) as u8
+  for Ki = 0 to NJmp - 1
+    K = Ki * 3
+    if Jmp[K] = F and Jmp[K + 2] = D then
+      if Occ[Jmp[K + 1]] > 0 then return Jmp[K + 1]
+    end if
+  next
+  return 255
+
+function Any2 as u8
+  for Ki = 0 to NJmp - 1
+    K = Ki * 3
+    if Occ[Jmp[K]] > 0 and Occ[Jmp[K + 1]] > 0 and Occ[Jmp[K + 2]] = 0 then return 1
+  next
+  return 0
+
+function CountMatches as u8
+  N = 0
+  for Ki = 0 to NH - 1
+    if Occ[Ki] > 0 then inc N
+  next
+  return N
+
+' the hole at row R, column Xc of the triangle (255 if none)
+function Find2(u8 R, u8 Xc) as u8
+  for Ki = 0 to 9
+    if Tri2R[Ki] = R and Tri2X[Ki] = Xc then return Ki
+  next
+  return 255
+
+' up and down go to the next row (the diagonal held, or the nearer side),
+' left and right two columns along the row
+sub MovePointer2:
+  i8 Dr = 0
+  i8 Dc = 0
+  u8 R = 0
+  u8 Xc = 0
+  u8 Nw = 255
+  if (Edge & 15) = 0 then return
+  R = Tri2R[Cur]
+  Xc = Tri2X[Cur]
+  if (Pads & 1) <> 0 then Dr = -1
+  if (Pads & 2) <> 0 then Dr = 1
+  if (Pads & 4) <> 0 then Dc = -1
+  if (Pads & 8) <> 0 then Dc = 1
+  if Dr = 0 then
+    Nw = Find2(R, Xc + Dc * 2)
+  else
+    if Dc = 0 then
+      Nw = Find2(R + Dr, Xc + 1)
+      if Nw = 255 then Nw = Find2(R + Dr, Xc - 1)
+    else
+      Nw = Find2(R + Dr, Xc + Dc)
+    end if
+  end if
+  if Nw < 10 then
+    Cur = Nw
+    play sound SndTick
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' INTERSTIXTION
+
+sub Step3:
+  u8 G = 0
+  u8 P = 0
+  u8 Old = 0
+  G = Turn & 3
+  if (Edge & 15) <> 0 then
+    ' the other match of this colour
+    Old = Sel
+    Sel = OtherOf(Sel)
+    DrawHole(Old)
+    DrawHole(Sel)
+    play sound SndTick
+  end if
+  if (Edge & 16) = 0 then return
+  P = LinePos(Sel, GLn[G])
+  N = LineDest(GLn[G], P, GFwd[G])
+  if N = 0 then
+    play sound SndBuzz
+    return
+  end if
+  Jover = 255
+  Old = Sel
+  Sel = 255
+  HopMatch(Old, LineHole(GLn[G], N))
+  Moves += 1
+  ShowMoves
+  inc Turn
+  if Won3() = 1 then
+    Res = 1
+    return
+  end if
+  PickFirst
+  if Sel = 255 then
+    ' this colour cannot move: the game is lost
+    Res = 2
+    return
+  end if
+  ShowTurn
+  return
+end sub
+
+' the first match of the colour whose turn it is that can move (Sel 255
+' when none can)
+sub PickFirst:
+  u8 G = 0
+  u8 Hh = 0
+  G = Turn & 3
+  Sel = 255
+  for Si = 1 to 9
+    Hh = LineHole(GLn[G], Si)
+    if Occ[Hh] = GCol[G] then
+      if LineDest(GLn[G], Si, GFwd[G]) > 0 then
+        if Sel = 255 then Sel = Hh
+      end if
+    end if
+  next
+  if Sel < 17 then DrawHole(Sel)
+  return
+end sub
+
+' the other match of the same colour on its line
+function OtherOf(u8 Hh) as u8
+  u8 G = 0
+  u8 Q = 0
+  G = Turn & 3
+  for Si = 1 to 9
+    Q = LineHole(GLn[G], Si)
+    if Q <> Hh and Occ[Q] = GCol[G] then return Q
+  next
+  return Hh
+
+' the place (1-9) of hole Hh on line Ln
+function LinePos(u8 Hh, u8 Ln) as u8
+  if Ln = 0 then return Hh + 1
+  if Hh = 4 then return 5
+  if Hh < 13 then return Hh - 8
+  return Hh - 7
+
+function Won3 as u8
+  if Occ[7] <> 1 or Occ[8] <> 1 then return 0
+  if Occ[0] <> 4 or Occ[1] <> 4 then return 0
+  if Occ[15] <> 3 or Occ[16] <> 3 then return 0
+  if Occ[9] <> 2 or Occ[10] <> 2 then return 0
+  return 1
+
+sub ShowTurn:
+  T = Turn & 3
+  select case T
+  case 0
+    print at 4,MsgRow, "  RED MOVES RIGHT  "
+  case 1
+    print at 4,MsgRow, "  GREEN MOVES DOWN "
+  case 2
+    print at 4,MsgRow, "  BLUE MOVES LEFT  "
+  case else
+    print at 4,MsgRow, "  YELLOW MOVES UP  "
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' TRANSTIXION
+
+sub Step4:
+  u8 OldL = 0
+  OldL = Ln4
+  if (Edge & 5) <> 0 then Ln4 = (Ln4 + 6) % 7
+  if (Edge & 10) <> 0 then Ln4 = (Ln4 + 1) % 7
+  if Ln4 <> OldL then
+    DrawLine(OldL)
+    DrawLine(Ln4)
+    play sound SndTick
+  end if
+  if (Edge & 16) = 0 then return
+  TurnLine
+  DrawLine(Ln4)
+  play sound SndTurn
+  Moves += 1
+  ShowMoves
+  if AllRed() = 1 then Res = 1
+  return
+end sub
+
+sub DrawLine(u8 L):
+  K = L * 3
+  for Di = 0 to 2
+    N = Lines4[K + Di]
+    if N < 8 then DrawHole(N)
+  next
+  return
+end sub
+
+function InLine(u8 Hh) as u8
+  K = Ln4 * 3
+  if Lines4[K] = Hh or Lines4[K + 1] = Hh or Lines4[K + 2] = Hh then return 1
+  return 0
+
+' ---------------------------------------------------------------------------
+' a match hops from hole F to hole D in an arc: off the board as a sprite,
+' over the jumped match (Jover, which goes at the top of the arc in
+' TRISTIXULAR) and back in as tiles
+
+sub HopMatch(u8 F, u8 D):
+  u8 Mc = 0
+  u8 Fr = 0
+  i16 X0 = 0
+  i16 Y0 = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Px = 0
+  i16 Py = 0
+  i16 Lift = 0
+  u8 Hc = 0
+  Mode = 2
+  Mc = Occ[F]
+  Hc = HeadCol[Mc - 1]
+  Occ[F] = 0
+  DrawHole(F)
+  X0 = Cells[F].Cx * 8
+  Y0 = Cells[F].Cy * 8 - 1
+  Dx = Cells[D].Cx * 8
+  Dx = Dx - X0
+  Dy = Cells[D].Cy * 8 - 1
+  Dy = Dy - Y0
+  ' 16 frames for a step, 24 for a jump or a long way
+  Fr = 16
+  if abs(Dx) > 24 or abs(Dy) > 24 then Fr = 24
+  play sound SndHop
+  for Ti = 1 to Fr
+    Px = X0 + Dx * Ti / Fr
+    Py = Y0 + Dy * Ti / Fr
+    Lift = Ti * (Fr - Ti)
+    Lift = Lift / 6
+    Py = Py - Lift
+    if Ti = Fr / 2 then
+      if Jover < 17 then
+        Occ[Jover] = 0
+        DrawHole(Jover)
+        play sound SndVanish
+      end if
+    end if
+    if Jover < 17 and Ti >= Fr / 2 then
+      K = Cells[Jover].Cx * 8
+      N = Cells[Jover].Cy * 8 - 1
+      set sprite 2 to N,K,SPuff,15
+    end if
+    X = Px
+    Y = Py
+    set sprite 0 to Y,X,SHead,Hc
+    set sprite 1 to Y,X,SShaft,10
+    if ArrOn = 0 then set sprite 3 to 207,0,0,0
+    update sprites
+    Frame1
+  next
+  Occ[D] = Mc
+  DrawHole(D)
+  set sprite 0 to 207,0,0,0
+  set sprite 1 to 207,0,0,0
+  set sprite 2 to 207,0,0,0
+  update sprites
+  Jover = 255
+  play sound SndLand
+  ' the stick and buttons as they are now: a press held from before the
+  ' hop is no new press, one made after it is
+  Pads = PadOf(1) | PadOf(2)
+  Mode = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' one hole: the match's head (its colour) over the shaft and the hole,
+' lit when it is the chosen match or in the chosen line
+sub DrawHole(u8 Hh):
+  u8 Hx = 0
+  u8 Hy = 0
+  u8 Lt = 0
+  u8 Bt = 0
+  Hx = Cells[Hh].Cx
+  Hy = Cells[Hh].Cy
+  C = Occ[Hh]
+  if Puz = 4 then
+    Lt = InLine(Hh)
+  else
+    if Hh = Sel then Lt = 1
+  end if
+  if C = 0 then
+    put char TBlank at Hx,Hy
+    put char TBlank at Hx + 1,Hy
+    Bt = TBot00l + Lt * 2
+  else
+    T = TTop1l + (C - 1) * 2
+    put char T at Hx,Hy
+    put char T + 1 at Hx + 1,Hy
+    Bt = TBot10l + Lt * 2
+  end if
+  put char Bt at Hx,Hy + 1
+  put char Bt + 1 at Hx + 1,Hy + 1
+  return
+end sub
+
+sub DrawBoard:
+  NewScreen
+  DrawFrame
+  DrawDots
+  for Hi = 0 to NH - 1
+    DrawHole(Hi)
+  next
+  PrintName(2, 1)
+  print at 19,1, "MOVES"
+  ShowMoves
+  print at 2,22, "R BUTTON: AGAIN (HOLD: MENU)"
+  select case Puz
+  case 1
+    print at 3,MsgRow, "RED GOES RIGHT, BLUE LEFT"
+  case 2
+    print at 4,MsgRow, "JUMP TILL ONE IS LEFT"
+  case 3
+    ShowTurn
+  case else
+    print at 6,MsgRow, "MAKE ALL MATCHES RED"
+    ' the colour order under the board
+    for Di = 0 to 3
+      X = Di * 4 + 9
+      put char TTop1l + Di * 2 at X,17
+      put char TTop1l + Di * 2 + 1 at X + 1,17
+      put char TBot10l at X,18
+      put char TBot10r at X + 1,18
+      if Di < 3 then put char 62 at X + 2,18
+    next
+  end select
+  return
+end sub
+
+sub PrintName(u8 Px, u8 Py):
+  select case Puz
+  case 1
+    print at Px,Py, "LINEARSTIX"
+  case 2
+    print at Px,Py, "TRISTIXULAR"
+  case 3
+    print at Px,Py, "INTERSTIXTION"
+  case else
+    print at Px,Py, "TRANSTIXION"
+  end select
+  return
+end sub
+
+sub DrawFrame:
+  fill TFh count 30 at 1,0
+  fill TFh count 30 at 1,23
+  for Di = 1 to 22
+    put char TFv at 1,Di
+    put char TFv at 30,Di
+  next
+  put char TFc at 1,0
+  put char TFc at 30,0
+  put char TFc at 1,23
+  put char TFc at 30,23
+  return
+end sub
+
+sub DrawDots:
+  select case Puz
+  case 1
+    DotsFrom(0, NDot1)
+  case 2
+    DotsFrom(1, NDot2)
+  case 3
+    DotsFrom(2, NDot3)
+  case else
+    DotsFrom(3, NDot4)
+  end select
+  return
+end sub
+
+sub DotsFrom(u8 Which, u8 Cnt):
+  u16 Ix = 0
+  for Di = 0 to Cnt - 1
+    Ix = Di * 2
+    select case Which
+    case 0
+      X = Dot1[Ix]
+      Y = Dot1[Ix + 1]
+    case 1
+      X = Dot2[Ix]
+      Y = Dot2[Ix + 1]
+    case 2
+      X = Dot3[Ix]
+      Y = Dot3[Ix + 1]
+    case else
+      X = Dot4[Ix]
+      Y = Dot4[Ix + 1]
+    end select
+    put char TDot at X,Y
+  next
+  return
+end sub
+
+sub ShowMoves:
+  print Moves at 25,1
+  return
+end sub
+
+' the pointer under the hole at Cur
+sub ArrowTarget:
+  Tx = Cells[Cur].Cx * 8
+  Ty = Cells[Cur].Cy * 8 + 15
+  return
+end sub
+
+sub GlideArrow:
+  if ArrOn = 0 then return
+  if Ax < Tx then Ax = Ax + Min8(Tx - Ax, 4)
+  if Ax > Tx then Ax = Ax - Min8(Ax - Tx, 4)
+  if Ay < Ty then Ay = Ay + Min8(Ty - Ay, 4)
+  if Ay > Ty then Ay = Ay - Min8(Ay - Ty, 4)
+  set sprite 3 to Ay,Ax,SArrow,15
+  update sprites
+  return
+end sub
+
+function Min8(u8 A, u8 B) as u8
+  if A < B then return A
+  return B
+
+' ---------------------------------------------------------------------------
+' input: both controllers together; Edge holds the new presses, and a
+' direction held repeats every 8 frames after 20
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  Edge = Pads & (Pads ^ OldPads)
+  if (Pads & 15) = 0 then
+    Rep = 0
+  else
+    inc Rep
+    if Rep >= 28 then
+      Rep = 20
+      Edge = Edge | (Pads & 15)
+    end if
+  end if
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).button1 then T = T | 16
+  if joypad(P).button2 then T = T | 32
+  return T
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for K = 0 to NSpr - 1
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: STIX! in matches, the four puzzles and CREDITS, the best
+' number of moves of this session, the tune once
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 224 to vram.name + 64
+  DrawFrame
+  print at 4,10, "FOUR PUZZLES, EIGHT STICKS"
+  MSel = Puz - 1
+  ShowMenu
+  print at 4,20, "STICK: CHOOSE"
+  print at 4,21, "BUTTON: PLAY"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 470
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 63
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  if (Edge & 1) <> 0 then
+    if MSel > 0 then
+      dec MSel
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  if (Edge & 2) <> 0 then
+    if MSel < 4 then
+      inc MSel
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  if (Edge & 48) = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  play sound SndStrike
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for Si = 0 to 4
+    Y = Si + 13
+    put char 32 at 6,Y
+    if Si = MSel then put char 62 at 6,Y
+  next
+  print at 8,13, "1 LINEARSTIX"
+  print at 8,14, "2 TRISTIXULAR"
+  print at 8,15, "3 INTERSTIXTION"
+  print at 8,16, "4 TRANSTIXION"
+  print at 8,17, "CREDITS"
+  for Si = 0 to 3
+    Y = Si + 13
+    if Best[Si] = 0 then
+      print at 24,Y, "    "
+    else
+      print Best[Si] at 24,Y
+    end if
+  next
+  print at 23,12, "BEST"
+  return
+end sub
+
+' the objective, as the C-128's title scrolled it
+sub ObjectPage:
+  NewScreen
+  DrawFrame
+  PrintName(2, 2)
+  select case Puz
+  case 1
+    print at 3,5, "MOVE ALL RED STIX TO THE"
+    print at 3,6, "RIGHT SIDE AND THE BLUE"
+    print at 3,7, "ONES TO THE LEFT."
+    print at 3,9, "ALL STIX MOVE FORWARD ONLY,"
+    print at 3,10, "BUT THEY CAN JUMP OVER ONE."
+    print at 3,13, "LEFT, RIGHT: CHOOSE A STICK"
+    print at 3,14, "BUTTON: MOVE OR JUMP IT"
+  case 2
+    print at 3,5, "LEAVE ONLY ONE STICK ON"
+    print at 3,6, "THE BOARD BY JUMPING OVER"
+    print at 3,7, "THE OTHERS. A JUMPED STICK"
+    print at 3,8, "VANISHES."
+    print at 3,11, "STICK: MOVE THE POINTER"
+    print at 3,12, "BUTTON ON A STICK: PICK IT"
+    print at 3,13, "BUTTON ON AN EMPTY HOLE:"
+    print at 3,14, "JUMP THE PICKED STICK THERE"
+  case 3
+    print at 3,5, "MOVE THE STIX TO THE"
+    print at 3,6, "OPPOSITE SIDE OF THE CROSS."
+    print at 3,7, "ALL STIX MOVE FORWARD ONLY"
+    print at 3,8, "BUT THEY CAN JUMP. THE FOUR"
+    print at 3,9, "COLOURS TAKE TURNS: RED,"
+    print at 3,10, "GREEN, BLUE, YELLOW. A"
+    print at 3,11, "COLOUR THAT CANNOT MOVE"
+    print at 3,12, "LOSES THE GAME."
+    print at 3,14, "STICK: THE OTHER STICK"
+    print at 3,15, "BUTTON: MOVE OR JUMP IT"
+  case else
+    print at 3,5, "CHANGE ALL STIX TO RED."
+    print at 3,7, "STICK: CHOOSE A LINE"
+    print at 3,8, "BUTTON: CHANGE ITS COLOURS"
+    print at 3,10, "THE ORDER OF CHANGE IS"
+    print at 3,11, "RED, YELLOW, GREEN, BLUE,"
+    print at 3,12, "THEN BACK TO RED."
+  end select
+  print at 3,18, "RIGHT BUTTON IN PLAY:"
+  print at 3,19, "START OVER (HOLD: MENU)"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the C-128's win screen, with the number of moves and the best
+sub WinPage:
+  u8 Bi = 0
+  Bi = Puz - 1
+  if Best[Bi] = 0 or Moves < Best[Bi] then
+    Best[Bi] = Moves
+  end if
+  Rearm
+  wait 30 frames
+  nmi off
+  NewScreen
+  DrawFrame
+  fill TDot count 26 at 3,5
+  fill TDot count 26 at 3,15
+  print at 7,7, "CONGRATULATIONS!"
+  print at 7,9, "WE HAVE A WINNER"
+  print at 9,10, "IN"
+  PrintName(12, 10)
+  print at 4,12, "AND THE CROWD GOES WILD"
+  print at 8,17, "MOVES"
+  print Moves at 16,17
+  print at 8,18, "BEST"
+  print Best[Bi] at 16,18
+  ShowScreen
+  mute all
+  play sound SndWin
+  Rearm
+  wait 60 frames
+  nmi off
+  return
+end sub
+
+' a game that can no longer be won: the board stays, with the reason
+sub LosePage:
+  if Puz = 3 then
+    T = Turn & 3
+    select case T
+    case 0
+      print at 4,MsgRow, " RED CANNOT MOVE:  "
+    case 1
+      print at 4,MsgRow, " GREEN CANNOT MOVE:"
+    case 2
+      print at 4,MsgRow, " BLUE CANNOT MOVE: "
+    case else
+      print at 4,MsgRow, "YELLOW CANNOT MOVE:"
+    end select
+    print at 2,21, "     THE GAME IS LOST     "
+  else
+    print at 2,MsgRow, "       NO MOVES LEFT        "
+    print at 2,21, "                            "
+  end if
+  print at 2,22, "   PRESS A BUTTON: TITLE    "
+  mute all
+  play sound SndLose
+  Rearm
+  wait 60 frames
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "STIX!"
+  print at 2,5, "BASED ON STIX! FOR THE"
+  print at 2,6, "COMMODORE 128, AHOY!"
+  print at 2,7, "FEBRUARY 1989 (NO AUTHOR"
+  print at 2,8, "NAMED ON THE DISK)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: MATCHBOX MARCH"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SxTick:
+    db $40,$47,$50,$02,$40,$47,$F0,$01,$50
+SxPick:
+    db $40,$71,$30,$02,$40,$55,$30,$03,$50
+SxHop:
+    db $40,$55,$30,$02,$40,$5F,$30,$02,$40,$6B,$40,$02,$40,$78,$40,$02,$40,$87,$50,$02,$40,$97,$50,$02
+    db $50
+SxLand:
+    db $00,$00,$35,$02,$00,$00,$66,$03,$10
+SxVanish:
+    db $00,$00,$24,$03,$00,$00,$45,$04,$00,$00,$76,$06,$10
+SxBuzz:
+    db $40,$F9,$23,$08,$40,$FF,$33,$08,$50
+SxTurn:
+    db $40,$8F,$30,$03,$40,$71,$30,$03,$40,$5F,$40,$04,$50
+SxWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$10,$14
+    db $50
+SxLose:
+    db $40,$1D,$21,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+SxStrike:
+    db $00,$00,$14,$02,$00,$00,$35,$03,$00,$00,$56,$05,$00,$00,$87,$06,$10
+
+SxSoundTable:
+    dw SxTuneMel,$702B
+    dw SxTuneBass,$7035
+    dw SxTick,$7049
+    dw SxPick,$7049
+    dw SxHop,$7049
+    dw SxLand,$703F
+    dw SxVanish,$703F
+    dw SxBuzz,$7049
+    dw SxTurn,$7049
+    dw SxWin,$7049
+    dw SxLose,$7049
+    dw SxStrike,$703F
+; Matchbox March (original)
+; Tiny Sound, 7 frames per step
+SxTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$26,$01,$21,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$19,$01,$1C,$1F,$25,$01,$1F,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$1A,$01,$1E,$21,$26,$01,$2A,$01,$28,$01,$25,$01
+    db $21,$01,$23,$25,$26,$01,$21,$01,$1E,$01,$1C,$01,$19,$01,$1A,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+SxTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$13,$01,$1A,$01,$15,$01,$1C,$01,$15,$01,$0E,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+}

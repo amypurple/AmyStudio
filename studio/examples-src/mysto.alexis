@@ -1,0 +1,1366 @@
+cartridge "MR. MYSTO/FRANK DINUNZIO/1985"
+' MR. MYSTO
+' Based on "Mr. Mysto" version 2.0 by Frank DiNunzio, Ahoy! April 1986
+' (Commodore 64 BASIC, disk ahoy1986-04; "BY FRANK DINUNZIO 1/16/1985" on
+' its title, "C-64 VERSION 2.0" in its REMs), for the ColecoVision in Amy
+' by Amy Bienvenu; this version by Claude (Anthropic).
+'
+' A word-guessing game that learns ("an experiment in artificial
+' intelligence"): think of a word, answer Mr. Mysto's questions YES or NO,
+' and he guesses it. When he is wrong you tell him the word and type a
+' question that tells it from his guess, with the answer for your word;
+' he never misses that word again.
+'
+' Screen: the mystic's face on rows 1-10 (his mouth moves and he blips
+' while he talks, his eyes follow the cursor), how many words he knows on
+' rows 1-2, what he says on rows 11-14, what you type on row 16, the letter
+' keys (or YES / NO) on rows 18-21, a hint on row 22.
+'
+' Controls (either joystick): the stick moves the cursor on the keys (held,
+' it repeats), the left button presses the key under it, the right button
+' deletes the last letter. Keys: A-Z ' - . , ? ! SPC DEL END. Answers: YES
+' and NO with the stick and the left button. Keypad not used.
+'
+' The listing's rules are kept: it starts knowing one word, NOTHING (line
+' 70); it walks its yes/no questions from the first (lines 180-220), asks
+' "IS YOUR WORD ...?" at a word (line 1130), says "I AM RIGHT AGAIN!" when
+' right, otherwise asks for the word (fewer than 18 letters, line 260),
+' then "TYPE A QUESTION THAT WILL HELP ME TELL <word> FROM <guess>", adds
+' a "?" when it is missing (line 320), asks the answer for the new word,
+' and puts the question in place of the guess with the two words under it
+' (lines 340-390); "TRY ANOTHER?" after every word; at NO it ends the
+' session. Its texts are kept (spelling made standard).
+'
+' Liberties taken:
+' - Words and questions are typed with a joystick keyboard (letters,
+'   ' - . , ? ! and space), not the C-64 keyboard. Questions are kept to
+'   27 letters (28 with the "?"), so each one fits a screen line.
+' - No disk: the knowledge stays in video memory until the power goes off.
+'   The title offers START A NEW CATEGORY (the listing's S: only NOTHING),
+'   ANIMALS (a small built-in set of 8 words, new: so there is something to
+'   play at once) and CONTINUE (what was learnt this session, the listing's
+'   G for an existing category). Room for 60 words (120 nodes); then "MY
+'   MEMORY IS FULL" (the listing said MEMORY LOW, saved and ended).
+' - The listing kept its knowledge as a list of Y/N path strings, sorted
+'   by length every ten words (lines 1160-1280) to speed up the search;
+'   here it is a plain tree of questions and words (the same answers, no
+'   sorting needed).
+' - The edit routine (F1 at TRY ANOTHER, lines 1020-1100) and the choice
+'   "DO YOU WANT ME TO SPEAK?" are left out: Mr. Mysto always speaks (the
+'   blips are the listing's random pitches, lines 700-760).
+' - New: if the word you type is the word he just guessed, he says he
+'   knows it already and learns nothing (the listing would have stored a
+'   question with the same word on both sides).
+' - The face drawn in tiles (with a wizard's hat and beard; the listing's
+'   was PETSCII lines), pupils as sprites, the text appearing as he talks
+'   (a button shows it at once), how many words he knows, a title tune and
+'   sound effects.
+'
+' House rules: tiles from code 128, the tune once (quieter than the
+' effects), NMI off while drawing, `set sprite count 4` again after every
+' `clear sprites`, nothing flashes faster than 3 Hz, text in columns 2-29.
+
+const SndHush = 1
+const SndBlip0 = 2
+const SndBlip1 = 3
+const SndBlip2 = 4
+const SndBlip3 = 5
+const SndKey = 6
+const SndPick = 7
+const SndDel = 8
+const SndNo = 9
+const SndRight = 10
+const SndLearn = 11
+const SndTuneA = 12
+const SndTuneB = 13
+u16 TzLeft = 0
+u8 TzOn = 0
+const PPick = 0
+const PIsIt = 1
+const PQm = 2
+const PRight = 3
+const PSorry = 4
+const PType = 5
+const PFrom = 6
+const PDot = 7
+const PAns = 8
+const PAnother = 9
+const PThanks = 10
+const PWords = 11
+const PFull = 12
+const PLearnt = 13
+const PSame = 14
+const AnNodes = 15
+const AnWords = 8
+const TSk = 128
+const TFl = 129
+const TFr = 130
+const TFtl = 131
+const TFtr = 132
+const TFtm = 133
+const TBrow00 = 134
+const TBrow01 = 135
+const TEye00 = 136
+const TEye01 = 137
+const TNose00 = 138
+const TNose01 = 139
+const TMshut00 = 140
+const TMshut01 = 141
+const TMshut02 = 142
+const TMshut03 = 143
+const TMopen00 = 144
+const TMopen01 = 145
+const TMopen02 = 146
+const TMopen03 = 147
+const TBd = 148
+const TBel = 149
+const TBer = 150
+const TBfl = 151
+const TBfr = 152
+const TBfm = 153
+const TTip00 = 154
+const TTip01 = 155
+const THl = 156
+const THr = 157
+const THs = 158
+const THt = 159
+const TBrl = 160
+const TBrm = 161
+const TBrr = 162
+const TStar = 163
+const TRule = 164
+const SBox = 0
+const SBoxl = 4
+const SBoxr = 8
+const SPupil = 12
+const NTiles8 = 296
+const SprBytes = 128
+
+const NMax = 120
+const SlotWord = 126
+const SlotQue = 127
+const WordMax = 17
+const QueMax = 27
+const KeyRow = 18
+const FaceC = 11
+const TalkRow = 11
+const InRow = 16
+' special keys
+const KySpc = 1
+const KyDel = 2
+const KyEnd = 3
+
+' the keys, row by row (9 a row); row 3 has 5 marks, then SPC DEL END
+data KeyTab bytes 65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,39,45,46,44,63,33
+
+data PhPick chars "PICK A WORD AND I WILL TRY TO DEDUCE WHAT IT IS.{0}"
+data PhIsIt chars "IS YOUR WORD {0}"
+data PhQm chars "?{0}"
+data PhRight chars "I AM RIGHT AGAIN!{0}"
+data PhSorry chars "I AM SORRY BUT I DO NOT KNOW THE ANSWER. PLEASE TELL ME WHAT IT IS.{0}"
+data PhType chars "TYPE A QUESTION THAT WILL HELP ME TELL {0}"
+data PhFrom chars " FROM {0}"
+data PhDot chars ".{0}"
+data PhAns chars "ENTER THE ANSWER FOR {0}"
+data PhAnother chars "TRY ANOTHER?{0}"
+data PhThanks chars "THANK YOU. I NOW KNOW {0}"
+data PhWords chars " WORDS. REMEMBER - I AM NO SMARTER THAN THE USER WHO GIVES ME INFORMATION.{0}"
+data PhFull chars "MY MEMORY IS FULL. I CANNOT LEARN ANY MORE WORDS.{0}"
+data PhLearnt chars "THANK YOU. NOW I KNOW {0}"
+data PhSame chars "BUT I ALREADY KNOW THAT WORD! ANSWER MY QUESTIONS AGAIN MORE CAREFULLY.{0}"
+data PhTab words
+  @PhPick
+  @PhIsIt
+  @PhQm
+  @PhRight
+  @PhSorry
+  @PhType
+  @PhFrom
+  @PhDot
+  @PhAns
+  @PhAnother
+  @PhThanks
+  @PhWords
+  @PhFull
+  @PhLearnt
+  @PhSame
+end data
+data AnTree bytes
+  1,2,3,4,7,8,0,0,5,6,0,0,0,0,9,10,11,12,0,0,0,0,0,0,13,14,0,0,0,0
+end data
+data AnText bytes
+  22,68,79,69,83,32,73,84,32,76,73,86,69,32,73,78
+  32,87,65,84,69,82,63,15,73,83,32,73,84,32,65,32
+  77,65,77,77,65,76,63,11,67,65,78,32,73,84,32,70
+  76,89,63,5,87,72,65,76,69,19,68,79,69,83,32,73
+  84,32,72,65,86,69,32,67,76,65,87,83,63,4,67,82
+  65,66,5,83,72,65,82,75,22,68,79,69,83,32,73,84
+  32,72,85,78,84,32,65,84,32,78,73,71,72,84,63,21
+  68,79,69,83,32,73,84,32,72,65,86,69,32,83,84,82
+  73,80,69,83,63,3,79,87,76,6,80,65,82,82,79,84
+  5,90,69,66,82,65,12,73,83,32,73,84,32,65,32,80
+  69,84,63,3,68,79,71,8,69,76,69,80,72,65,78,84
+end data
+
+' the knowledge: a tree. Node texts live in video memory, 32 bytes a node
+' (length, then the letters) from $2800 (the colour table of the lower
+' screen thirds, unused: tile screen shares one colour third).
+record Node:
+  u8 Yc
+  u8 Nc
+end record
+Node Tree[NMax]
+u8 NCount = 0
+u8 Have = 0
+bcd digits 3 Known = 0
+
+u8 Slot[32]
+u8 Msg[132]
+u8 MsgLen = 0
+u8 Inp[30]
+u8 InpLen = 0
+u8 InpMax = 0
+
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Mv = 0
+u8 LastDir = 0
+u8 Hold = 0
+u8 Rep = 0
+u8 WasStick = 0
+' state the bots read: Wt 0 busy, 1 waiting for a button, 2 typing,
+' 3 yes/no, 4 title, 5 credits, 6 game over
+u8 Wt = 0
+u8 Menu = 0
+u8 Ans = 0
+u8 Kr = 0
+u8 Kc = 0
+u8 Node1 = 0
+u8 Cur = 0
+u8 Talk = 0
+u8 TalkT = 0
+u8 MouthO = 0
+u8 Fast = 0
+u8 LookX = 128
+u8 LookY = 60
+u8 Tick = 0
+u8 Mix = 0
+u8 Rounds = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table MySoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  select case Menu
+  case 0
+    LoadNothing
+  case 1
+    LoadAnimals
+  case 3
+    CreditsPage
+    goto title
+  end select
+  Have = 1
+  GameScreen
+
+new_word:
+  MsgClr
+  MsgPhr(PPick)
+  Say
+  Hint(1)
+  WaitButton
+  Hint(0)
+  Cur = 0
+ask:
+  ' copy the node's fields once
+  Node1 = Tree[Cur].Yc
+  if Node1 = 0 then goto guess
+  MsgClr
+  MsgSlot(Cur)
+  Say
+  if AskYN = 1 then
+    Cur = Node1
+  else
+    Cur = Tree[Cur].Nc
+  end if
+  goto ask
+
+guess:
+  MsgClr
+  MsgPhr(PIsIt)
+  MsgSlot(Cur)
+  MsgPhr(PQm)
+  Say
+  if AskYN = 1 then
+    play sound SndRight
+    MsgClr
+    MsgPhr(PRight)
+    goto another
+  end if
+  play sound SndNo
+  if NCount + 2 > NMax then
+    MsgClr
+    MsgPhr(PFull)
+    goto another
+  end if
+  MsgClr
+  MsgPhr(PSorry)
+  Say
+  TypeIn(WordMax)
+  InpToSlot(SlotWord)
+  if SameAsSlot(Cur) = 1 then
+    MsgClr
+    MsgPhr(PSame)
+    goto another
+  end if
+  MsgClr
+  MsgPhr(PType)
+  MsgSlot(SlotWord)
+  MsgPhr(PFrom)
+  MsgSlot(Cur)
+  MsgPhr(PDot)
+  Say
+  TypeIn(QueMax)
+  if Inp[InpLen - 1] <> 63 then
+    Inp[InpLen] = 63
+    inc InpLen
+  end if
+  InpToSlot(SlotQue)
+  MsgClr
+  MsgPhr(PAns)
+  MsgSlot(SlotWord)
+  MsgCh(58)
+  MsgCh(32)
+  MsgSlot(SlotQue)
+  Say
+  Ans = AskYN
+  Learn(Cur, Ans)
+  play sound SndLearn
+  ShowKnown
+  MsgClr
+  MsgPhr(PLearnt)
+  MsgWords
+  MsgPhr(PDot)
+
+another:
+  ' after what he just said
+  inc Rounds
+  MsgCh(32)
+  MsgPhr(PAnother)
+  Say
+  if AskYN = 1 then goto new_word
+  MsgClr
+  MsgPhr(PThanks)
+  MsgWords
+  MsgPhr(PWords)
+  Say
+  ClearLow
+  print at 9,22, "PRESS A BUTTON"
+  Wt = 6
+  LookX = 128
+  LookY = 60
+  Pupils
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Wt = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+' the stick: Mv is a direction (1 up 2 down 4 left 8 right) on a fresh push,
+' and again every 6 frames after it has been held for 16
+sub ReadPad:
+  u8 D = 0
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 and WasBtn = 0 then Press = 1
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 and WasBtn2 = 0 then Press2 = 1
+  WasBtn2 = Btn2
+  D = Up1 + Dn1 * 2 + Lf1 * 4 + Rt1 * 8
+  Mv = 0
+  if D = 0 then
+    Hold = 0
+  else
+    if D <> LastDir then
+      Mv = D
+      Hold = 0
+      Rep = 0
+    else
+      if Hold < 16 then
+        inc Hold
+      else
+        inc Rep
+        if Rep >= 6 then
+          Mv = D
+          Rep = 0
+        end if
+      end if
+    end if
+  end if
+  LastDir = D
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  ' the font's colours only: the node texts live higher in the colour table
+  fill $F0 count 1024 to vram.color
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' --- the knowledge in video memory -----------------------------------------
+sub SlotRead(u8 S):
+  u16 Va = 0
+  Va = S
+  Va = Va * 32 + 2048
+  copy vram.color + Va count 32 to Slot
+  return
+end sub
+
+sub SlotWrite(u8 S):
+  u16 Va = 0
+  Va = S
+  Va = Va * 32 + 2048
+  copy Slot count 32 to vram.color + Va
+  return
+end sub
+
+sub InpToSlot(u8 S):
+  u8 I = 0
+  Slot[0] = InpLen
+  for I = 0 to 29
+    Slot[I + 1] = Inp[I]
+  next
+  SlotWrite(S)
+  return
+end sub
+
+' 1 when the typed word is the text of slot S
+function SameAsSlot(u8 S) as u8
+  u8 I = 0
+  u8 R = 1
+  SlotRead(S)
+  if Slot[0] <> InpLen then R = 0
+  if R = 1 then
+    for I = 0 to 16
+      if I < InpLen then
+        if Slot[I + 1] <> Inp[I] then R = 0
+      end if
+    next
+  end if
+  return R
+
+sub LoadNothing:
+  Slot[0] = 7
+  Slot[1] = 78
+  Slot[2] = 79
+  Slot[3] = 84
+  Slot[4] = 72
+  Slot[5] = 73
+  Slot[6] = 78
+  Slot[7] = 71
+  SlotWrite(0)
+  Tree[0].Yc = 0
+  Tree[0].Nc = 0
+  NCount = 1
+  Known = 1
+  return
+end sub
+
+sub LoadAnimals:
+  u8 I = 0
+  u8 L = 0
+  u8 K = 0
+  u16 P = 0
+  P = 0
+  for I = 0 to AnNodes - 1
+    Tree[I].Yc = AnTree[I * 2]
+    Tree[I].Nc = AnTree[I * 2 + 1]
+    L = AnText[P]
+    Slot[0] = L
+    for K = 1 to 28
+      if K <= L then
+        Slot[K] = AnText[P + K]
+      end if
+    next
+    P = P + L + 1
+    SlotWrite(I)
+  next
+  NCount = AnNodes
+  Known = AnWords
+  return
+end sub
+
+' the guess at node C becomes the typed question; the old word and the new
+' word go under it (A: the answer for the new word, 1 yes)
+sub Learn(u8 C, u8 A):
+  u8 N1 = 0
+  u8 N2 = 0
+  N1 = NCount
+  N2 = NCount + 1
+  SlotRead(C)
+  SlotWrite(N1)
+  SlotRead(SlotWord)
+  SlotWrite(N2)
+  SlotRead(SlotQue)
+  SlotWrite(C)
+  if A = 1 then
+    Tree[C].Yc = N2
+    Tree[C].Nc = N1
+  else
+    Tree[C].Yc = N1
+    Tree[C].Nc = N2
+  end if
+  Tree[N1].Yc = 0
+  Tree[N1].Nc = 0
+  Tree[N2].Yc = 0
+  Tree[N2].Nc = 0
+  NCount += 2
+  Known += 1
+  return
+end sub
+
+' --- the message being built -----------------------------------------------
+sub MsgClr:
+  MsgLen = 0
+  return
+end sub
+
+sub MsgCh(u8 C):
+  if MsgLen < 130 then
+    Msg[MsgLen] = C
+    inc MsgLen
+  end if
+  return
+end sub
+
+sub MsgPhr(u8 K):
+  u16 P = 0
+  u8 C = 0
+  P = PhTab[K]
+  C = peek(P)
+  while C <> 0
+    MsgCh(C)
+    inc P
+    C = peek(P)
+  end while
+  return
+end sub
+
+sub MsgSlot(u8 S):
+  u8 I = 0
+  u8 L = 0
+  SlotRead(S)
+  L = Slot[0]
+  for I = 1 to 30
+    if I <= L then MsgCh(Slot[I])
+  next
+  return
+end sub
+
+' how many words are known, in figures
+sub MsgWords:
+  u16 W = 0
+  u8 D = 0
+  u8 Lead = 0
+  W = NCount
+  W = (W + 1) / 2
+  D = W / 100
+  if D > 0 then
+    MsgCh(48 + D)
+    Lead = 1
+  end if
+  W = W - D * 100
+  D = W / 10
+  if D > 0 or Lead = 1 then MsgCh(48 + D)
+  D = W - D * 10
+  MsgCh(48 + D)
+  return
+end sub
+
+' the length of the word that starts at P in the message
+function WordAt(u8 P) as u8
+  u8 L = 0
+  u8 Q = 0
+  Q = P
+  while Q < MsgLen
+    if Msg[Q] = 32 then
+      Q = MsgLen
+    else
+      inc L
+      inc Q
+    end if
+  end while
+  return L
+
+' --- speaking --------------------------------------------------------------
+sub Mouth(u8 O):
+  if O = 0 then
+    put char TMshut00 at 14,7
+    put char TMshut01 at 15,7
+    put char TMshut02 at 16,7
+    put char TMshut03 at 17,7
+  else
+    put char TMopen00 at 14,7
+    put char TMopen01 at 15,7
+    put char TMopen02 at 16,7
+    put char TMopen03 at 17,7
+  end if
+  MouthO = O
+  return
+end sub
+
+' the pupils look toward LookX, LookY
+sub Pupils:
+  i8 Ox = 0
+  u8 Oy = 0
+  u8 Px = 0
+  u8 Py = 0
+  if LookX < 88 then Ox = -3
+  if LookX > 168 then Ox = 3
+  if LookX >= 88 and LookX < 112 then Ox = -1
+  if LookX > 144 and LookX <= 168 then Ox = 1
+  if LookY > 80 then Oy = 1
+  Py = 40 + Oy
+  Px = 102 + Ox
+  set sprite 2 to Py,Px,SPupil,1
+  Px = 150 + Ox
+  set sprite 3 to Py,Px,SPupil,1
+  update sprites
+  return
+end sub
+
+' one frame of talking: the mouth opens and shuts (4 times a second at
+' most) with a blip of a random pitch
+sub TalkFrame:
+  Frame1
+  ReadPad
+  if Press = 1 or Press2 = 1 then Fast = 1
+  inc TalkT
+  if TalkT >= 8 then
+    TalkT = 0
+    if MouthO = 0 then
+      Mouth(1)
+      V = random(0, 255)
+      V = (V + Mix) & 3
+      select case V
+      case 0
+        play sound SndBlip0
+      case 1
+        play sound SndBlip1
+      case 2
+        play sound SndBlip2
+      case else
+        play sound SndBlip3
+      end select
+    else
+      Mouth(0)
+    end if
+  end if
+  return
+end sub
+
+' say the message on rows 11-14, words wrapped, letter by letter
+sub Say:
+  u8 P = 0
+  u8 Col = 2
+  u8 Row = TalkRow
+  u8 L = 0
+  u8 C = 0
+  Wt = 0
+  for Row = TalkRow to 14
+    fill 32 count 28 at 2,Row
+  next
+  Row = TalkRow
+  Fast = 0
+  TalkT = 7
+  LookX = 128
+  LookY = 100
+  Pupils
+  while P < MsgLen
+    C = Msg[P]
+    if C = 32 then
+      if Col > 2 then
+        inc Col
+      end if
+      inc P
+    else
+      L = WordAt(P)
+      if Col + L > 30 then
+        Col = 2
+        inc Row
+      end if
+      while L > 0
+        if Row <= 14 then put char Msg[P] at Col,Row
+        inc Col
+        inc P
+        dec L
+        if Fast = 0 then
+          TalkFrame
+          TalkFrame
+        end if
+      end while
+    end if
+  end while
+  ' keep talking a moment after the last letter
+  if Fast = 0 then
+    for C = 1 to 10
+      TalkFrame
+    next
+  end if
+  Mouth(0)
+  return
+end sub
+
+' --- the face and the screens ----------------------------------------------
+sub DrawFace:
+  ' hat
+  put char TTip00 at 15,1
+  put char TTip01 at 16,1
+  put char THl at 14,2
+  put char THs at 15,2
+  put char THt at 16,2
+  put char THr at 17,2
+  put char TBrl at 11,3
+  fill TBrm count 8 at 12,3
+  put char TBrr at 20,3
+  ' forehead and brows
+  put char TFtl at 11,4
+  put char TFtr at 20,4
+  put char TFtm at 14,4
+  put char TFtm at 15,4
+  put char TFtm at 16,4
+  put char TFtm at 17,4
+  put char TBrow00 at 12,4
+  put char TBrow01 at 13,4
+  put char TBrow00 at 18,4
+  put char TBrow01 at 19,4
+  ' eyes, nose, mouth rows
+  for Y = 5 to 7
+    put char TFl at 11,Y
+    fill TSk count 8 at 12,Y
+    put char TFr at 20,Y
+  next
+  put char TEye00 at 12,5
+  put char TEye01 at 13,5
+  put char TEye00 at 18,5
+  put char TEye01 at 19,5
+  put char TNose00 at 15,6
+  put char TNose01 at 16,6
+  Mouth(0)
+  ' chin and beard
+  put char TBfl at 11,8
+  fill TBfm count 8 at 12,8
+  put char TBfr at 20,8
+  put char TBel at 12,9
+  fill TBd count 6 at 13,9
+  put char TBer at 19,9
+  put char TBel at 14,10
+  fill TBd count 2 at 15,10
+  put char TBer at 17,10
+  return
+end sub
+
+sub GameScreen:
+  NewScreen
+  DrawFace
+  print at 2,1, "WORDS"
+  ShowKnown
+  fill TRule count 28 at 2,15
+  ShowScreen
+  Pupils
+  return
+end sub
+
+sub ShowKnown:
+  print at 3,2, Known
+  return
+end sub
+
+sub ClearLow:
+  for Y = 17 to 22
+    fill 32 count 28 at 2,Y
+  next
+  return
+end sub
+
+sub Hint(u8 H):
+  fill 32 count 28 at 2,22
+  if H = 1 then print at 3,22, "PRESS A BUTTON WHEN READY"
+  if H = 2 then print at 3,22, "LEFT: PRESS  RIGHT: DELETE"
+  return
+end sub
+
+sub WaitButton:
+  Wt = 1
+  Press = 0
+  while Press = 0 and Press2 = 0
+    Frame1
+    ReadPad
+  end while
+  Wt = 0
+  return
+end sub
+
+' --- YES / NO --------------------------------------------------------------
+sub DrawYN:
+  ClearLow
+  print at 10,19, "YES"
+  print at 19,19, "NO"
+  return
+end sub
+
+sub YNCursor:
+  u8 Sx = 0
+  Sx = 76
+  if Ans = 0 then Sx = 148
+  set sprite 0 to 147,Sx,SBoxl,11
+  Sx += 16
+  set sprite 1 to 147,Sx,SBoxr,11
+  LookX = Sx
+  LookY = 150
+  Pupils
+  return
+end sub
+
+function AskYN as u8
+  DrawYN
+  Ans = 1
+  YNCursor
+  Wt = 3
+  Press = 0
+  while Press = 0
+    Frame1
+    ReadPad
+    if Mv = 4 then
+      Ans = 1
+      play sound SndKey
+      YNCursor
+    end if
+    if Mv = 8 then
+      Ans = 0
+      play sound SndKey
+      YNCursor
+    end if
+  end while
+  play sound SndPick
+  Wt = 0
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  ClearLow
+  return Ans
+
+' --- the keyboard ----------------------------------------------------------
+sub DrawKeys:
+  u8 R = 0
+  u8 C = 0
+  u8 K = 0
+  u8 Kx = 0
+  u8 Ky = 0
+  ClearLow
+  for R = 0 to 3
+    Ky = KeyRow + R
+    for C = 0 to 8
+      K = R * 9 + C
+      Kx = 4 + C * 3
+      if K < 32 then put char KeyTab[K] at Kx,Ky
+    next
+  next
+  Ky = KeyRow + 3
+  print at 19,Ky, "SPC"
+  print at 23,Ky, "DEL"
+  print at 27,Ky, "END"
+  Hint(2)
+  return
+end sub
+
+' the key under the cursor: a letter code, or KySpc, KyDel, KyEnd
+function KeyAt(u8 R, u8 C) as u8
+  u8 K = 0
+  K = R * 9 + C
+  if R = 3 then
+    select case C
+    case 0 to 4
+      K = KeyTab[K]
+    case 5
+      K = KySpc
+    case 6
+      K = KyDel
+    case else
+      K = KyEnd
+    end select
+  else
+    K = KeyTab[K]
+  end if
+  return K
+
+sub KeyCursor:
+  u8 Sx = 0
+  u8 Sy = 0
+  Sy = (KeyRow + Kr) * 8 - 5
+  if Kr = 3 and Kc >= 5 then
+    ' SPC, DEL, END at columns 19, 23, 27
+    Sx = (Kc * 4 - 1) * 8 - 4
+    set sprite 0 to Sy,Sx,SBoxl,11
+    Sx += 16
+    set sprite 1 to Sy,Sx,SBoxr,11
+  else
+    Sx = (4 + Kc * 3) * 8 - 4
+    set sprite 0 to Sy,Sx,SBox,11
+    set sprite 1 to 192,0,0,0
+  end if
+  LookX = Sx
+  LookY = Sy
+  Pupils
+  return
+end sub
+
+sub ShowInp:
+  u8 I = 0
+  u8 X2 = 0
+  fill 32 count 28 at 2,InRow
+  for I = 0 to 28
+    if I < InpLen then
+      X2 = 2 + I
+      put char Inp[I] at X2,InRow
+    end if
+  next
+  if InpLen < InpMax then
+    X2 = 2 + InpLen
+    put char 95 at X2,InRow
+  end if
+  return
+end sub
+
+sub DelLetter:
+  if InpLen > 0 then
+    dec InpLen
+    play sound SndDel
+    ShowInp
+  end if
+  return
+end sub
+
+' type a word or question of up to M letters into Inp
+sub TypeIn(u8 M):
+  u8 K = 0
+  u8 Done = 0
+  InpMax = M
+  InpLen = 0
+  Kr = 0
+  Kc = 0
+  DrawKeys
+  ShowInp
+  KeyCursor
+  Wt = 2
+  while Done = 0
+    Frame1
+    ReadPad
+    if Mv <> 0 then
+      select case Mv
+      case 1
+        if Kr > 0 then dec Kr
+      case 2
+        if Kr < 3 then inc Kr
+      case 4
+        if Kc > 0 then dec Kc
+      case 8
+        if Kc < 8 then inc Kc
+      end select
+      if Kr = 3 and Kc > 7 then Kc = 7
+      play sound SndKey
+      KeyCursor
+    end if
+    if Press2 = 1 then DelLetter
+    if Press = 1 then
+      K = KeyAt(Kr, Kc)
+      select case K
+      case KyDel
+        DelLetter
+      case KyEnd
+        ' drop a trailing space; an empty answer is not taken
+        if InpLen > 0 then
+          if Inp[InpLen - 1] = 32 then dec InpLen
+        end if
+        if InpLen > 0 then
+          Done = 1
+        else
+          play sound SndNo
+        end if
+      case KySpc
+        if InpLen > 0 and InpLen < M then
+          if Inp[InpLen - 1] <> 32 then
+            Inp[InpLen] = 32
+            inc InpLen
+            play sound SndPick
+            ShowInp
+          end if
+        end if
+      case else
+        if InpLen < M then
+          Inp[InpLen] = K
+          inc InpLen
+          play sound SndPick
+          ShowInp
+        else
+          play sound SndNo
+        end if
+      end select
+    end if
+  end while
+  play sound SndPick
+  Wt = 0
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  ClearLow
+  ShowInp
+  fill 32 count 28 at 2,InRow
+  return
+end sub
+
+' --- title and credits -----------------------------------------------------
+sub ShowMenu:
+  for Y = 15 to 18
+    fill 32 count 28 at 2,Y
+  next
+  print at 5,15, "START A NEW CATEGORY"
+  print at 5,16, "ANIMALS (8 WORDS)"
+  if Have = 1 then print at 5,17, "CONTINUE"
+  print at 5,18, "CREDITS"
+  V = Menu + 15
+  put char 62 at 3,V
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  DrawFace
+  put char TStar at 6,3
+  put char TStar at 25,2
+  put char TStar at 4,8
+  put char TStar at 27,7
+  print at 11,11, "MR. MYSTO"
+  print at 3,12, "AN EXPERIMENT IN ARTIFICIAL"
+  print at 10,13, "INTELLIGENCE"
+  Menu = 1
+  if Have = 1 then Menu = 2
+  ShowMenu
+  print at 4,21, "STICK CHOOSES, BUTTON GO"
+  ShowScreen
+  LookX = 128
+  LookY = 60
+  Pupils
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 768
+  TzOn = 1
+  Wt = 4
+  Press = 0
+  while Press = 0
+    Frame1
+    ReadPad
+    if Mv = 1 then
+      if Menu > 0 then dec Menu
+      if Menu = 2 and Have = 0 then dec Menu
+      play sound SndKey
+      ShowMenu
+    end if
+    if Mv = 2 then
+      if Menu < 3 then inc Menu
+      if Menu = 2 and Have = 0 then inc Menu
+      play sound SndKey
+      ShowMenu
+    end if
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  Wt = 0
+  return
+end sub
+
+sub CreditsPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill $F0 count 1024 to vram.color
+  backdrop dark blue
+  cls
+  print at 11,1, "MR. MYSTO"
+  print at 2,3, "A WORD-GUESSING GAME THAT"
+  print at 2,4, "LEARNS FROM YOU."
+  print at 2,6, "BASED ON MR. MYSTO V2.0"
+  print at 2,7, "BY FRANK DINUNZIO,"
+  print at 2,8, "AHOY! APRIL 1986"
+  print at 2,9, "(COMMODORE 64 BASIC)."
+  print at 2,11, "COLECOVISION VERSION IN AMY"
+  print at 2,12, "BY AMY BIENVENU AND CLAUDE"
+  print at 2,13, "(ANTHROPIC), 2026."
+  print at 2,15, "TUNE: THE CRYSTAL BALL."
+  print at 2,17, "STICK MOVES ON THE KEYS,"
+  print at 2,18, "LEFT BUTTON PRESSES A KEY,"
+  print at 2,19, "RIGHT BUTTON DELETES."
+  print at 9,22, "PRESS A BUTTON"
+  Wt = 5
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Wt = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$F0,$E0,$C0,$C0,$C0,$C0,$C0
+  $00,$F0,$07,$03,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$1C,$30,$00
+  $00,$00,$00,$00,$E0,$38,$0C,$00
+  $00,$07,$E0,$C0,$C0,$E0,$07,$00
+  $00,$E0,$07,$03,$03,$07,$E0,$00
+  $01,$01,$03,$03,$07,$0C,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$00,$00
+  $07,$C0,$80,$00,$00,$00,$00,$00
+  $00,$01,$E0,$00,$00,$80,$00,$00
+  $00,$80,$07,$00,$00,$01,$00,$00
+  $E0,$03,$01,$00,$00,$00,$00,$00
+  $07,$C0,$80,$00,$00,$00,$00,$00
+  $00,$01,$E0,$C0,$C0,$C0,$E0,$00
+  $00,$80,$07,$03,$03,$03,$07,$00
+  $E0,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$E0,$F0,$07,$03,$01
+  $01,$01,$03,$07,$F0,$E0,$C0,$80
+  $C0,$C0,$C0,$E0,$F0,$07,$03,$01
+  $03,$03,$03,$07,$F0,$E0,$C0,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$10,$38,$10,$00,$02,$00,$00
+  $00,$00,$04,$0E,$04,$40,$00,$00
+  $00,$00,$03,$F0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$F0,$03,$00,$00,$00
+  $00,$10,$10,$83,$38,$28,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $49,$49,$49,$49,$49,$49,$49,$49
+  $49,$49,$49,$49,$49,$49,$49,$49
+  $04,$49,$49,$49,$49,$49,$49,$49
+  $04,$94,$49,$49,$49,$49,$49,$49
+  $04,$09,$09,$09,$09,$09,$09,$09
+  $09,$09,$09,$09,$19,$19,$19,$09
+  $09,$09,$09,$09,$19,$19,$19,$09
+  $09,$F9,$9F,$9F,$9F,$9F,$F9,$09
+  $09,$F9,$9F,$9F,$9F,$9F,$F9,$09
+  $89,$89,$89,$89,$89,$89,$09,$09
+  $09,$09,$09,$89,$89,$89,$09,$09
+  $E9,$9E,$9E,$09,$09,$09,$09,$09
+  $0E,$9E,$E9,$09,$09,$96,$09,$09
+  $0E,$9E,$E9,$09,$09,$96,$09,$09
+  $E9,$9E,$9E,$09,$09,$09,$09,$09
+  $E9,$9E,$9E,$09,$09,$09,$09,$09
+  $0E,$9E,$E9,$96,$91,$91,$96,$09
+  $0E,$9E,$E9,$96,$91,$91,$96,$09
+  $E9,$9E,$9E,$09,$09,$09,$09,$09
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $4E,$4E,$4E,$4E,$4E,$E4,$E4,$E4
+  $4E,$4E,$4E,$4E,$E4,$E4,$E4,$E4
+  $49,$49,$4E,$4E,$4E,$E4,$E4,$E4
+  $49,$49,$4E,$4E,$E4,$E4,$E4,$E4
+  $09,$09,$0E,$0E,$0E,$0E,$0E,$0E
+  $D4,$D4,$D4,$4D,$4D,$4D,$4D,$0D
+  $D4,$D4,$D4,$D4,$4D,$4D,$4D,$0D
+  $D4,$D4,$D4,$4D,$4D,$4D,$4D,$0D
+  $D4,$D4,$D4,$D4,$4D,$4D,$4D,$0D
+  $0D,$BD,$BD,$BD,$0D,$BD,$0D,$0D
+  $0D,$0D,$BD,$BD,$BD,$BD,$0D,$0D
+  $04,$04,$D4,$4D,$4D,$0D,$0B,$04
+  $0D,$0D,$0D,$0D,$0D,$0D,$0B,$04
+  $04,$04,$D4,$D4,$4D,$0D,$0B,$04
+  $04,$B4,$B4,$4B,$B4,$B4,$04,$04
+  $04,$04,$04,$05,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $00,$7F,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$7F,$00
+  $00,$FE,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$FE,$00
+  $00,$7F,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$7F,$00
+  $00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$00
+  $00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$00
+  $00,$E0,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$E0,$00
+  $60,$F0,$F0,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+MyHush:
+    db $00,$00,$F4,$01,$10
+MyBlip0:
+    db $40,$3B,$32,$03,$40,$1A,$52,$02,$50
+MyBlip1:
+    db $40,$E0,$31,$03,$40,$FC,$51,$02,$50
+MyBlip2:
+    db $40,$AB,$31,$03,$40,$94,$51,$02,$50
+MyBlip3:
+    db $40,$7F,$32,$03,$40,$5D,$52,$02,$50
+MyKey:
+    db $40,$47,$40,$01,$50
+MyPick:
+    db $40,$6B,$20,$02,$40,$55,$30,$02,$50
+MyDel:
+    db $40,$AA,$30,$02,$40,$E2,$40,$02,$50
+MyNo:
+    db $40,$F9,$22,$03,$40,$56,$43,$05,$50
+MyRight:
+    db $40,$8F,$10,$05,$40,$8F,$F0,$01,$40,$71,$10,$05,$40,$71,$F0,$01,$40,$5F,$10,$05,$40,$5F,$F0,$01
+    db $40,$47,$10,$0F,$40,$47,$F0,$01,$50
+MyLearn:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$0B,$40,$6B,$F0,$01,$50
+
+MySoundTable:
+    dw MyHush,$702B
+    dw MyBlip0,$7035
+    dw MyBlip1,$7035
+    dw MyBlip2,$7035
+    dw MyBlip3,$7035
+    dw MyKey,$7035
+    dw MyPick,$7035
+    dw MyDel,$7035
+    dw MyNo,$7035
+    dw MyRight,$7035
+    dw MyLearn,$7035
+    dw MyTuneMel,$703F
+    dw MyTuneBass,$7049
+; The Crystal Ball, A minor (original for this game)
+; Tiny Sound, 12 frames per step
+MyTuneMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$70,$F1,$22,$1C,$00,$1F,$00,$23,$00,$28,$00,$27,$00,$23,$00
+    db $1E,$00,$00,$00,$21,$00,$24,$00,$28,$00,$26,$24,$23,$00,$21,$00
+    db $23,$00,$00,$00,$1F,$00,$23,$00,$28,$00,$2A,$2B,$2A,$00,$28,$00
+    db $27,$00,$23,$00,$24,$00,$21,$00,$1E,$00,$1B,$00,$1C,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+MyTuneBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$0B,$01,$12,$01,$10,$01,$0B,$01
+    db $10,$01,$01,$01
+    db $FF
+}

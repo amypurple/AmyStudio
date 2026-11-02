@@ -1,0 +1,925 @@
+cartridge "MOXEYS PORCH/BOB BLACKMER/1985"
+
+' MOXEYS PORCH
+' A ColecoVision game based on "Moxeys Porch" by Bob Blackmer, Ahoy!
+' September 1985 (Commodore 64, BASIC; author from the listing's REM).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/moxey.bas), the game is built for the ColecoVision: smooth
+' 16 x 16 sprites, a pogo hop drawn over eight frames, tiled steps that
+' change when marked, sound effects and an original title tune.
+'
+' The game: Enzo got a pogo stick and hopped over to his neighbour's
+' porch, a pyramid of ten rows of steps (1 to 10 steps a row, 55 in all).
+' Every step he lands on gets a pogo mark (10 points). Moxie doesn't like
+' the marks: she walks her rounds on the porch, and if she meets Enzo the
+' game is over. Mark all 55 steps and you get another porch and a faster
+' Moxie. Choose the starting level on the title: 1 is the hardest (Moxie
+' as fast as she gets), 9 the easiest; each porch lowers it by one.
+'
+' From the original (orig/moxey.bas): the porch (ten rows, 55 steps, the
+' bottom row drawn differently), Enzo starting on the top step, the six
+' moves (left, right and the four diagonals; no straight up or down,
+' because the rows are offset by half a step), the marks and 10 points a
+' step, 55 marks for a porch; Moxie's route, the listing's 68 moves (a
+' closed loop that visits 50 of the 55 steps), from her start on row 9;
+' the level 1-9 (1 hardest), one Moxie move for every LV moves Enzo can
+' make, LV down by one each porch (not below 1); one catch ends the game;
+' the score carried across porches, a high score.
+'
+' Liberties: Enzo hops a step in 8 frames (7.5 steps a second at most)
+' and Moxie takes 4 + 8 x LV frames a step (12 at level 1, 76 at level 9),
+' so level 1 is a little slower than the C64's "as fast as Enzo" and every
+' level is playable by a person; the C64's BASIC loop made both far
+' faster. Moxie glides between steps; she catches Enzo when their sprites
+' meet (the C64 compared positions only after each of Enzo's moves, so
+' she could be dodged by stepping away the moment she arrived). Straight
+' up or down on the stick hops up or down on the side Enzo faces (the C64
+' ignored them). The C64 let Enzo hop up-left off the left edge onto the
+' porch's side; here he stays on the steps. The C64's "play again (Y/N)"
+' is replaced by the house end (message, then the title), the keyboard
+' level choice by the title menu. The bounce-away animations are a banner
+' and a fanfare.
+'
+' Controls: either controller. Stick: left / right hop along a row; the
+' diagonals hop to the row above or below; up or down alone hop that way
+' on the side Enzo faces. Title: up / down choose, left / right change the
+' level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes.
+
+const TWall = 128
+const TTl = 129
+const TTr = 130
+const TMl = 131
+const TMr = 132
+const TRl = 133
+const TRr = 134
+const TBl = 135
+const TBr = 136
+const TSl1 = 137
+const TSl2 = 138
+const TSr1 = 139
+const TSr2 = 140
+const TLawn = 141
+const TDoor = 142
+const SKidr = 0
+const SPogor = 4
+const SKidl = 8
+const SPogol = 12
+const SMhead = 16
+const SMbody0 = 20
+const SMbody1 = 24
+const SMbody2 = 28
+const NTiles8 = 120
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBoing = 3
+const SndMark = 4
+const SndCaught = 5
+const SndPorch = 6
+const SndStart = 7
+const SndOver = 8
+const SndTick = 9
+const HopN = 8
+const DeadN = 100
+const MsgN = 150
+const NCells = 55
+const PathN = 68
+const NSpr = 4
+
+' first cell index of each row
+data RowBase bytes
+  0, 1, 3, 6, 10, 15, 21, 28, 36, 45
+end data
+' Moxie's route (the listing's MV table): 0 left, 1 right, 2 up-left,
+' 3 up-right, 4 down-left, 5 down-right
+data Path bytes
+  0,0,0,0,0,3,3,3,3,2,2,3,3,5,5,5,5,4,4,0,0,0,4,1,1,2,2,3,3,3,5,5,5,5
+  4,4,4,1,1,1,1,2,2,0,5,4,0,0,0,3,3,2,3,0,0,0,4,4,4,4,1,1,1,1,3,1,1,1
+end data
+' the hop's height above the step, by frames left
+data Arc bytes
+  0, 3, 5, 6, 6, 6, 5, 3, 0
+end data
+
+record Walker:
+  u8 R
+  u8 I
+  u8 X
+  u8 Y
+  u8 K
+  u8 T
+  u8 D
+end record
+
+Walker Mo
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Score
+bcd digits 6 Hi
+i16 Dx = 0
+i16 Dy = 0
+u8 Mark[55]
+u8 Cnt = 0
+u8 Lv = 5
+u8 StartLv = 5
+u8 Porch = 1
+u8 Per = 44
+u8 Over = 0
+' Enzo: cell, sprite position, frames left of the hop, the hop's
+' direction, facing (0 right, 1 left)
+u8 Pr = 0
+u8 Pi = 0
+u8 Px = 0
+u8 Py = 0
+u8 Ph = 0
+u8 Pd = 0
+u8 Face = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Ready = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MxSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Hi = 0
+  Ready = 0
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score > Hi then Hi = Score
+  ShowHud
+  mute all
+  print at 7,9, "                  "
+  print at 7,10, "  MOXIE CAUGHT    "
+  print at 7,11, "  ENZO!           "
+  print at 7,12, "                  "
+  print at 7,13, "    GAME  OVER    "
+  print at 7,14, "                  "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+function CellOf(u8 Rw, u8 Ix) as u8
+  return RowBase[Rw] + Ix
+
+' 1 when row Rw, step Ix is on the porch (a -1 wraps to 255)
+function OnPorch(u8 Rw, u8 Ix) as u8
+  u8 Ok = 1
+  if Rw > 9 then Ok = 0
+  if Ix > Rw then Ok = 0
+  return Ok
+
+function StepX(u8 Rw, u8 Ix) as u8
+  return (15 - Rw + Ix * 2) * 8
+
+function StepY(u8 Rw) as u8
+  return Rw * 16 + 13
+
+' one frame of play
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then Over = 1
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then NextPorch
+    return
+  end if
+  MoveMoxie
+  if Ph = 0 then
+    MarkHere
+    if Cnt = NCells then
+      PorchDone
+      return
+    end if
+    TryMove
+  end if
+  if Ph > 0 then
+    HopPixels
+    dec Ph
+  end if
+  Collide
+  return
+end sub
+
+' Moxie: a new move of her route every Per frames, glided over 8 frames
+sub MoveMoxie:
+  if Mo.T = 0 then
+    W16 = Mo.K
+    Mo.D = Path[W16]
+    inc Mo.K
+    if Mo.K >= PathN then Mo.K = 0
+    select case Mo.D
+    case 0
+      dec Mo.I
+    case 1
+      inc Mo.I
+    case 2
+      dec Mo.R
+      dec Mo.I
+    case 3
+      dec Mo.R
+    case 4
+      inc Mo.R
+    case else
+      inc Mo.R
+      inc Mo.I
+    end select
+  end if
+  if Mo.T < HopN then
+    select case Mo.D
+    case 0
+      Mo.X -= 2
+    case 1
+      Mo.X += 2
+    case 2
+      Mo.X -= 1
+      Mo.Y -= 2
+    case 3
+      Mo.X += 1
+      Mo.Y -= 2
+    case 4
+      Mo.X -= 1
+      Mo.Y += 2
+    case else
+      Mo.X += 1
+      Mo.Y += 2
+    end select
+  end if
+  inc Mo.T
+  if Mo.T >= Per then Mo.T = 0
+  return
+end sub
+
+sub MarkHere:
+  C = CellOf(Pr, Pi)
+  if Mark[C] = 0 then
+    Mark[C] = 1
+    inc Cnt
+    Score += 10
+    DrawCell(Pr, Pi)
+    ShowScore
+    play sound SndMark
+  end if
+  return
+end sub
+
+' the stick: J bits 1 up, 2 down, 4 left, 8 right -> a move 0-5 or none
+sub TryMove:
+  K = J1 | J2
+  K = K & 15
+  N = 255
+  select case K
+  case 4
+    N = 0
+  case 8
+    N = 1
+  case 5
+    N = 2
+  case 9
+    N = 3
+  case 6
+    N = 4
+  case 10
+    N = 5
+  case 1
+    N = 3 - Face
+  case 2
+    N = 5 - Face
+  end select
+  if N = 255 then return
+  R = Pr
+  C = Pi
+  select case N
+  case 0
+    dec C
+  case 1
+    inc C
+  case 2
+    dec R
+    dec C
+  case 3
+    dec R
+  case 4
+    inc R
+  case else
+    inc R
+    inc C
+  end select
+  if OnPorch(R, C) = 0 then return
+  Pr = R
+  Pi = C
+  Pd = N
+  V = N & 1
+  if N = 4 then V = 0
+  if N = 3 then V = 1
+  Face = 1 - V
+  Ph = HopN
+  play sound SndBoing
+  return
+end sub
+
+sub HopPixels:
+  select case Pd
+  case 0
+    Px -= 2
+  case 1
+    Px += 2
+  case 2
+    Px -= 1
+    Py -= 2
+  case 3
+    Px += 1
+    Py -= 2
+  case 4
+    Px -= 1
+    Py += 2
+  case else
+    Px += 1
+    Py += 2
+  end select
+  return
+end sub
+
+' caught when the two sprites meet (12 pixels across, 10 down)
+sub Collide:
+  Dx = Px - Mo.X
+  Dy = Py - Mo.Y
+  if Dx < 0 then Dx = -Dx
+  if Dy < 0 then Dy = -Dy
+  if Dx < 12 then
+    if Dy < 10 then
+      DeadT = DeadN
+      Ph = 0
+      mute all
+      play sound SndCaught
+    end if
+  end if
+  return
+end sub
+
+sub PorchDone:
+  MsgT = MsgN
+  ShowBanner
+  play sound SndPorch
+  return
+end sub
+
+sub NextPorch:
+  if Lv > 1 then dec Lv
+  inc Porch
+  StartPorch
+  return
+end sub
+
+' a fresh porch: no marks, Enzo on top, Moxie on row 9
+sub ResetActors:
+  for Ci = 0 to 54
+    Mark[Ci] = 0
+  next
+  Cnt = 0
+  Per = Lv * 8 + 4
+  Pr = 0
+  Pi = 0
+  Px = StepX(0, 0)
+  Py = StepY(0)
+  Ph = 0
+  Face = 0
+  Pd = 5
+  Mo.R = 8
+  Mo.I = 7
+  Mo.X = StepX(8, 7)
+  Mo.Y = StepY(8)
+  Mo.K = 0
+  Mo.T = 0
+  Mo.D = 0
+  DeadT = 0
+  MsgT = 0
+  return
+end sub
+
+sub StartPorch:
+  ResetActors
+  NewScreen
+  DrawPorch
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' one step: tread (marked or not) over its riser
+sub DrawCell(u8 Rw, u8 Ix):
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Tc = 0
+  Cx = 15 - Rw + Ix * 2
+  Cy = Rw * 2 + 3
+  Tc = TTl
+  if Mark[RowBase[Rw] + Ix] = 1 then Tc = TMl
+  put char Tc at Cx,Cy
+  Tc = Tc + 1
+  put char Tc at Cx + 1,Cy
+  Cy = Cy + 1
+  if Rw = 9 then
+    put char TBl at Cx,Cy
+    put char TBr at Cx + 1,Cy
+  else
+    put char TRl at Cx,Cy
+    put char TRr at Cx + 1,Cy
+  end if
+  return
+end sub
+
+' one row of the porch, its two sides included
+sub DrawRow(u8 Rw):
+  u8 Ix = 0
+  u8 Ex = 0
+  u8 Ey = 0
+  for Ix = 0 to Rw
+    DrawCell(Rw, Ix)
+  next
+  Ex = 14 - Rw
+  Ey = Rw * 2 + 3
+  put char TSl1 at Ex,Ey
+  put char TSl2 at Ex,Ey + 1
+  Ex = Rw + 17
+  put char TSr1 at Ex,Ey
+  put char TSr2 at Ex,Ey + 1
+  return
+end sub
+
+sub DrawPorch:
+  for Ri = 2 to 22
+    fill TWall count 32 at 0,Ri
+  next
+  fill TLawn count 32 at 0,23
+  put char TDoor at 15,2
+  put char TDoor at 16,2
+  for Ri = 0 to 9
+    DrawRow(Ri)
+  next
+  return
+end sub
+
+sub ShowBanner:
+  print at 8,9, "                "
+  print at 8,10, "  PORCH  DONE!  "
+  print at 8,11, "                "
+  print at 8,12, " MOXIE GETS     "
+  print at 8,13, "    FASTER...   "
+  print at 8,14, "                "
+  return
+end sub
+
+' sprites 0-1 Enzo and his pogo stick, 2-3 Moxie's head and body
+sub DrawSprites:
+  if TitleOn = 1 then
+    V = Tick >> 2
+    V = V & 7
+    Y = Arc[V]
+  else
+    Y = Arc[Ph]
+    if Ph = 0 then
+      ' a little bounce in place: he never stands still on a pogo stick
+      V = Tick >> 3
+      V = V & 3
+      if V = 1 then Y = 1
+      if V = 2 then Y = 2
+      if V = 3 then Y = 1
+    end if
+  end if
+  Y = Py - Y
+  Y = Y - 1
+  K = SKidr
+  T = SPogor
+  if Face = 1 then
+    K = SKidl
+    T = SPogol
+  end if
+  set sprite 0 to Y,Px,K,7
+  set sprite 1 to Y,Px,T,14
+  Y = Mo.Y - 1
+  K = SMbody0
+  if DeadT > 0 then
+    K = SMbody2
+    V = Tick & 8
+    if V > 0 then Y = Y - 2
+  else
+    V = Mo.T
+    if V < HopN then
+      V = V & 4
+      if V > 0 then K = SMbody1
+    end if
+  end if
+  set sprite 2 to Y,Mo.X,SMhead,15
+  set sprite 3 to Y,Mo.X,K,13
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 21,1, "HI"
+  print at 2,2, "PORCH"
+  print at 21,2, "LEVEL"
+  ShowScore
+  print at 24,1, Hi
+  NumU = Porch
+  print at 8,2, digits$(NumU, 2)
+  NumU = Lv
+  print at 27,2, str$(NumU, width 2)
+  return
+end sub
+
+sub ShowScore:
+  print at 5,1, Score
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lv = StartLv
+  Porch = 1
+  Over = 0
+  TitleOn = 0
+  StartPorch
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the porch, Enzo bouncing on the top step, Moxie on her
+' rounds; START GAME / LEVEL / CREDITS
+sub TitlePage:
+  Lv = StartLv
+  ResetActors
+  NewScreen
+  DrawPorch
+  for Ri = 7 to 18
+    fill 32 count 22 at 5,Ri
+  next
+  print at 9,8, "MOXEYS PORCH"
+  print at 8,10, "BY BOB BLACKMER"
+  print at 9,13, "START GAME"
+  print at 9,14, "LEVEL"
+  print at 9,15, "CREDITS"
+  print at 6,17, "1 IS THE HARDEST"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  print at 15,1, "AHOY! SEP 1985"
+  ShowMenu
+  TitleOn = 1
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Ready = 1
+tp_loop:
+  Frame1
+  ReadPad
+  MoveMoxie
+  DrawSprites
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      end if
+      K = V & 2
+      if K > 0 then
+        if Menu < 2 then inc Menu
+      end if
+      if Menu = 1 then
+        K = V & 4
+        if K > 0 then
+          if StartLv > 1 then dec StartLv
+        end if
+        K = V & 8
+        if K > 0 then
+          if StartLv < 9 then inc StartLv
+        end if
+      end if
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  Ready = 0
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 13 to 15
+    put char 32 at 7,Ri
+  next
+  J = Menu + 13
+  put char 62 at 7,J
+  NumU = StartLv
+  print at 15,14, "< " + str$(NumU, width 1) + " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "MOXEYS PORCH"
+  print at 2,4, "BASED ON MOXEYS PORCH BY"
+  print at 2,5, "BOB BLACKMER, AHOY!"
+  print at 2,6, "SEPTEMBER 1985 (C-64)."
+  print at 2,8, "ENZO HOPPED ONTO MOXIE'S"
+  print at 2,9, "PORCH WITH HIS POGO STICK."
+  print at 2,10, "MARK ALL 55 STEPS AND"
+  print at 2,11, "KEEP AWAY FROM MOXIE!"
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: POGO ON THE PORCH"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Ready = 2
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Ready = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$00,$60,$02,$00,$00,$00
+  $00,$06,$40,$0C,$00,$00,$00,$00
+  $00,$30,$48,$30,$06,$09,$00,$00
+  $00,$06,$09,$99,$90,$60,$00,$00
+  $00,$40,$00,$08,$00,$20,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $81,$42,$24,$18,$18,$24,$42,$00
+  $81,$42,$24,$18,$18,$24,$42,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $22,$00,$88,$00,$21,$00,$44,$00
+  $81,$42,$42,$42,$81,$42,$34,$42
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$01
+  $0B,$AB,$0B,$AB,$AB,$0B,$0F,$06
+  $0B,$AB,$AB,$AB,$0B,$0B,$0F,$06
+  $0A,$1A,$1A,$1A,$1A,$1A,$0E,$06
+  $0A,$1A,$1A,$A1,$1A,$1A,$0E,$06
+  $06,$86,$06,$86,$06,$86,$06,$01
+  $16,$16,$16,$16,$16,$16,$16,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$0F
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$0F
+  $64,$64,$64,$46,$46,$46,$46,$06
+  $06,$06,$06,$06,$06,$06,$06,$01
+  $64,$64,$64,$64,$46,$46,$46,$06
+  $06,$06,$06,$06,$06,$06,$06,$01
+  $2C,$0C,$2C,$0C,$2C,$0C,$2C,$0C
+  $68,$86,$86,$86,$68,$86,$6B,$86
+end data
+data SpritePat bytes
+  $03,$07,$06,$07,$03,$01,$07,$0D,$1B,$03,$03,$06,$0C,$00,$00,$00
+  $C0,$E0,$A0,$E0,$C0,$80,$E0,$B0,$D8,$C0,$C0,$60,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$30,$1F,$01,$01,$1F,$02,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$0C,$F8,$80,$80,$F8,$40,$80,$80
+  $03,$07,$05,$07,$03,$01,$07,$0D,$1B,$03,$03,$06,$0C,$00,$00,$00
+  $C0,$E0,$60,$E0,$C0,$80,$E0,$B0,$D8,$C0,$C0,$60,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$30,$1F,$01,$01,$1F,$02,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$0C,$F8,$80,$80,$F8,$40,$80,$80
+  $0F,$1F,$1B,$1F,$0C,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$B0,$F0,$60,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$37,$27,$0F,$0F,$1F,$1F,$0C,$1C
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$D8,$C8,$E0,$E0,$F0,$F0,$60,$70
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$37,$27,$0F,$0F,$1F,$1F,$0C,$0E
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$D8,$C8,$E0,$E0,$F0,$F0,$C0,$E0
+  $00,$00,$00,$00,$00,$00,$2F,$3F,$07,$07,$0F,$0F,$1F,$1F,$0C,$1C
+  $00,$00,$00,$00,$00,$00,$E8,$F8,$C0,$C0,$E0,$E0,$F0,$F0,$60,$70
+end data
+
+asm {
+MxBoing:
+    db $40,$1D,$31,$01,$40,$D6,$30,$01,$40,$A0,$30,$01,$40,$7F,$50,$02,$50
+MxMark:
+    db $00,$00,$23,$01,$00,$00,$42,$02,$10
+MxCaught:
+    db $40,$7F,$10,$06,$40,$A0,$10,$06,$40,$CA,$20,$06,$40,$FE,$20,$08,$40,$53,$21,$14,$50
+MxPorch:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$05,$40,$6B,$20,$12
+    db $50
+MxStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+MxOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+MxTick:
+    db $40,$47,$40,$02,$50
+
+MxSoundTable:
+    dw MxTuneMel,$702B
+    dw MxTuneBass,$7035
+    dw MxBoing,$7049
+    dw MxMark,$703F
+    dw MxCaught,$7049
+    dw MxPorch,$7049
+    dw MxStart,$7049
+    dw MxOver,$7049
+    dw MxTick,$7049
+; Pogo on the Porch (original)
+; Tiny Sound, 8 frames per step
+MxTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$1A,$01,$1F,$01,$23,$01,$21,$01,$1A,$01
+    db $1E,$01,$21,$01,$23,$01,$1F,$01,$1A,$01,$1C,$01,$1A,$01,$17,$01
+    db $1A,$01,$01,$01,$18,$01,$1C,$01,$1F,$01,$1C,$01,$17,$01,$1A,$01
+    db $1F,$01,$1A,$01,$15,$01,$18,$01,$1E,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MxTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

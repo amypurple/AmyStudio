@@ -1,0 +1,987 @@
+cartridge "CRYSTALLUS/B.BLACKMER/1987"
+
+' CRYSTALLUS
+' A ColecoVision game based on "Crystallus" by Bob Blackmer, Ahoy!
+' September 1987 (Commodore 64 machine language, CRYSTALLUS.ML at $C000,
+' started by a two-line BASIC loader). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: you are trapped in a huge maze of 36 connecting cubicles, each
+' holding a shimmering crystal that rings when you take it. Gather all 36:
+' then a wall cracks open somewhere and the outer wall opens too. Find the
+' way out of the cubicles, round the corridor and through the outer wall.
+' You see only the part of the maze around you.
+'
+' From the original (read from its machine code, orig/crystallus-ml.dis,
+' and played in jsc64): the maze is the C64's own map, 67 x 58 cells (built
+' at $6000 by the program, read back from memory: orig/map.bin); the same
+' start cell (C64 column 39, row 35); the same walls and openings (the C64
+' let the player onto space, $9A, $8E and the crystal $98, test at $C11E);
+' one step a cell, up, down, left or right; a crystal is taken by stepping
+' on it and rings; at 36 the C64 picked one of four escapes at random
+' (SID noise, $C2B3): a two-cell hole in the top of the top-left or
+' top-right cubicle, or the bottom of the bottom-left or bottom-right one,
+' with a two-cell hole in the outer wall on the far side; reaching the
+' outer wall's row frees you ("YOU HAVE ESCAPED!"). No enemies, no time
+' limit and no score in the original.
+'
+' Liberties: the view is 28 x 20 cells and follows the explorer only when
+' he nears its edge (the C64 showed 21 x 13 cells always centred on him);
+' the explorer slides smoothly from cell to cell, 6 frames a cell (about
+' 10 cells a second; the C64 stepped about 12 times a second); a diagonal
+' on the stick moves along whichever of its two directions is open (the
+' C64 ignored diagonals); escape when you step into the outer wall's hole,
+' top or bottom (the C64 counted the top one a row later, outside); new
+' tiles from the C64 characters, a new explorer and new crystals that
+' shimmer through four looks (about once a second); the crystals ring four
+' chimes in turn (the C64 played the next notes of its own melody, which
+' is not used here); when the way out opens, a rumble and a message saying
+' which corner cubicle cracked (the C64 gave no hint, only a constant
+' melody); then a soft hum every 4 seconds; a clock (minutes:seconds) and
+' the best time on the title, as a score; the C64's PRESS FIRE TO PLAY
+' becomes the title.
+'
+' Controls: controller 1 (or 2): the stick walks. On the title, up and
+' down choose START or CREDITS, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFloor = 128
+const TC80 = 129
+const TC81 = 130
+const TC82 = 131
+const TC83 = 132
+const TC84 = 133
+const TC85 = 134
+const TC86 = 135
+const TC88 = 136
+const TC8d = 137
+const TC8e = 138
+const TC96 = 139
+const TC97 = 140
+const TCry0 = 141
+const TCry1 = 142
+const TCry2 = 143
+const TCry3 = 144
+const THole = 145
+const TIcon = 146
+const TTb0 = 147
+const TTb1 = 148
+const SPw0 = 0
+const SPr0 = 4
+const SPw1 = 8
+const SPr1 = 12
+const SGlint = 16
+const NTiles8 = 168
+const SprBytes = 160
+const MazeW = 67
+const MazeH = 58
+const SndTuneA = 1
+const SndTuneB = 2
+const SndGem0 = 3
+const SndGem1 = 4
+const SndGem2 = 5
+const SndGem3 = 6
+const SndCrack = 7
+const SndHum = 8
+const SndBump = 9
+const SndStart = 10
+const SndFree = 11
+const NSpr = 4
+const ViewW = 28
+const ViewH = 20
+const MaxCamX = 39
+const MaxCamY = 38
+const NCry = 36
+
+' pixels moved on each of the six frames of a step
+data StepPx bytes 1,2,1,1,2,1
+' stick bits: 1 up, 2 down, 4 left, 8 right -> dx, dy (+1 = 1, 255 = -1)
+data DirDx bytes 0,0,255,1
+data DirDy bytes 255,1,0,0
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$CC,$F0,$F0,$C0,$C0,$C3,$C3
+  $00,$00,$03,$03,$F0,$F0,$CC,$C3
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$F0,$F0,$C0,$C0,$00,$00
+  $00,$00,$C0,$C0,$F0,$F0,$CC,$C3
+  $C3,$CC,$F0,$F0,$03,$03,$C3,$C3
+  $C3,$C3,$0C,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$0C,$0C,$00,$00
+  $30,$30,$00,$00,$00,$00,$00,$30
+  $00,$18,$C3,$81,$81,$C3,$18,$00
+  $00,$18,$2C,$91,$81,$38,$18,$00
+  $00,$18,$C3,$81,$81,$C3,$18,$00
+  $00,$18,$2C,$91,$81,$38,$18,$00
+  $00,$20,$02,$00,$00,$40,$04,$00
+  $00,$18,$C3,$81,$81,$C3,$18,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $1B,$B1,$B1,$B1,$B4,$B4,$14,$14
+  $01,$01,$B1,$B1,$1B,$1B,$1B,$1B
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$41,$41,$41,$41,$01,$01
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$1B
+  $1B,$1B,$1B,$1B,$B4,$B4,$14,$14
+  $14,$14,$41,$41,$01,$01,$01,$01
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $01,$0B,$0B,$0B,$0B,$0A,$0A,$01
+  $0E,$0E,$01,$1E,$1E,$1E,$01,$0E
+  $1E,$1E,$01,$0E,$0E,$0E,$01,$1E
+  $01,$71,$17,$17,$17,$17,$71,$01
+  $01,$F1,$F1,$1F,$1F,$F1,$F1,$01
+  $01,$51,$15,$15,$15,$15,$51,$01
+  $01,$71,$71,$17,$17,$71,$71,$01
+  $01,$E1,$E1,$01,$01,$E1,$E1,$01
+  $01,$71,$17,$17,$17,$17,$71,$01
+  $4F,$47,$47,$47,$47,$47,$47,$04
+  $4F,$45,$45,$45,$45,$45,$45,$04
+end data
+data SpritePat bytes
+  $00,$00,$00,$07,$05,$07,$03,$0F,$1B,$13,$03,$06,$04,$00,$00,$00
+  $00,$00,$00,$E0,$A0,$E0,$C0,$F0,$D8,$C8,$C0,$60,$20,$00,$00,$00
+  $00,$03,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$00,$00
+  $00,$C0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00
+  $00,$00,$00,$07,$05,$07,$03,$0F,$1B,$13,$03,$03,$02,$00,$00,$00
+  $00,$00,$00,$E0,$A0,$E0,$C0,$F0,$D8,$C8,$C0,$C0,$40,$00,$00,$00
+  $00,$03,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00
+  $00,$C0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$00,$00
+  $00,$00,$01,$01,$03,$3F,$03,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$FC,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' the maze: 67 x 58 cells (C64 map $6000, rows 10-67, columns 11-77)
+data MazeMap bytes
+  $8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8B
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8C
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8C
+  $80,$80,$80,$80,$80,$83,$89,$8A,$8A,$89,$86,$80,$80,$80,$80,$83,$89,$8A,$8A,$89,$86,$80,$80,$80,$80,$83,$89,$8A,$8A,$89,$86,$80,$80,$80,$80,$83,$89,$8A,$8A,$89,$86,$80,$80,$80,$80,$83,$89,$8A,$8A,$89,$86,$80,$80,$80,$80,$83,$89,$8A,$8A,$89,$86,$80,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$80,$80,$8C
+  $80,$80,$80,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$80,$80,$80,$8B
+  $80,$80,$80,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$80,$80,$80,$8C
+  $80,$80,$80,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8B
+  $80,$80,$80,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80,$8C
+  $80,$80,$80,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$80,$80,$80,$8B
+  $80,$80,$80,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$80,$80,$80,$8C
+  $80,$80,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$80,$80,$8C
+  $80,$80,$80,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$80,$80,$80,$8B
+  $80,$80,$80,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$80,$80,$80,$8C
+  $80,$80,$80,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8B
+  $80,$80,$80,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80,$8C
+  $80,$80,$80,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$80,$80,$80,$8B
+  $80,$80,$80,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$80,$80,$80,$8C
+  $80,$80,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$80,$80,$8C
+  $80,$80,$80,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$80,$80,$80,$8B
+  $80,$80,$80,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$80,$80,$80,$8C
+  $80,$80,$80,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8B
+  $80,$80,$80,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80,$8C
+  $80,$80,$80,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$80,$80,$80,$8B
+  $80,$80,$80,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$80,$80,$80,$8C
+  $80,$80,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$80,$80,$8C
+  $80,$80,$80,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$80,$80,$80,$8B
+  $80,$80,$80,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$80,$80,$80,$8C
+  $80,$80,$80,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8B
+  $80,$80,$80,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80,$8C
+  $80,$80,$80,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$80,$80,$80,$8B
+  $80,$80,$80,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$80,$80,$80,$8C
+  $80,$80,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$80,$80,$8C
+  $80,$80,$80,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$80,$80,$80,$8B
+  $80,$80,$80,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$80,$80,$80,$8C
+  $80,$80,$80,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8B
+  $80,$80,$80,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80,$8C
+  $80,$80,$80,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$80,$80,$80,$8B
+  $80,$80,$80,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$80,$80,$80,$8C
+  $80,$80,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$88,$8A,$89,$8A,$8A,$89,$8A,$85,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$84,$84,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$83,$81,$82,$80,$80,$87,$81,$86,$80,$80,$80,$80,$8C
+  $80,$80,$80,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$83,$81,$82,$85,$80,$80,$88,$87,$81,$86,$80,$80,$80,$8B
+  $80,$80,$80,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$89,$82,$85,$80,$80,$80,$80,$88,$87,$89,$80,$80,$80,$8C
+  $80,$80,$80,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$80,$8A,$8A,$80,$80,$80,$80,$80,$80,$80,$88,$89,$89,$85,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8B
+  $80,$80,$80,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$89,$86,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80,$8C
+  $80,$80,$80,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$87,$81,$86,$80,$80,$80,$80,$83,$81,$82,$80,$80,$80,$8B
+  $80,$80,$80,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$88,$87,$81,$86,$80,$80,$83,$81,$82,$85,$80,$80,$80,$8C
+  $80,$80,$80,$80,$88,$87,$89,$8A,$8A,$89,$82,$85,$80,$80,$88,$87,$89,$8A,$8A,$89,$82,$85,$80,$80,$88,$87,$89,$8A,$8A,$89,$82,$85,$80,$80,$88,$87,$89,$8A,$8A,$89,$82,$85,$80,$80,$88,$87,$89,$8A,$8A,$89,$82,$85,$80,$80,$88,$87,$89,$8A,$8A,$89,$82,$85,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$80,$88,$84,$84,$84,$84,$85,$80,$80,$80,$80,$88,$84,$84,$84,$84,$85,$80,$80,$80,$80,$88,$84,$84,$84,$84,$85,$80,$80,$80,$80,$88,$84,$84,$84,$84,$85,$80,$80,$80,$80,$88,$84,$84,$84,$84,$85,$80,$80,$80,$80,$88,$84,$84,$84,$84,$85,$80,$80,$80,$80,$80,$8C
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8B
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8C
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8B
+  $8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C,$8B,$8C
+end data
+' the 36 crystals (x, y)
+data CryX bytes 7,17,27,37,47,57,7,17,27,37,47,57,7,17,27,37,47,57,7,17,27,37,47,57,7,17,27,37,47,57,7,17,27,37,47,57
+data CryY bytes 8,8,8,8,8,8,16,16,16,16,16,16,24,24,24,24,24,24,32,32,32,32,32,32,40,40,40,40,40,40,48,48,48,48,48,48
+' escape holes: per choice, cubicle hole (x, x+1), wall hole (x, x+1)
+data HoleX bytes 7,44,57,21,7,40,57,21
+data HoleY bytes 5,57,5,57,53,0,53,0
+data TitleMap bytes
+  $20,$20,$20,$20,$93,$93,$94,$20,$93,$94,$20,$20,$94,$20,$93,$20,$93,$93,$94,$20,$93,$94,$93,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$20,$20,$94,$20,$93,$20,$93,$20,$94,$20,$93,$20,$20,$20,$20,$93,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$94,$20,$20,$20,$93,$93,$20,$20,$20,$94,$20,$20,$94,$93,$93,$20,$20,$93,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$20,$20,$93,$20,$93,$20,$20,$93,$20,$20,$20,$20,$94,$20,$20,$94,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$94,$93,$20,$94,$20,$93,$20,$20,$93,$20,$20,$93,$94,$93,$20,$20,$93,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$93,$94,$20,$93,$20,$20,$20,$94,$20,$20,$20,$93,$20,$94,$20,$93,$94,$93,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$93,$20,$94,$20,$20,$20,$93,$20,$20,$20,$93,$20,$93,$20,$94,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$94,$93,$93,$20,$93,$20,$20,$20,$93,$20,$20,$20,$94,$20,$93,$20,$93,$93,$94,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$94,$20,$93,$20,$20,$20,$94,$20,$20,$20,$93,$20,$94,$20,$20,$20,$93,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$93,$20,$93,$20,$94,$93,$93,$20,$93,$93,$94,$20,$93,$94,$93,$20,$94,$93,$93,$20,$20,$20,$20,$20
+end data
+
+record Explorer:
+  u8 X
+  u8 Y
+  u8 Dir
+  u8 Left
+  u8 Off
+  u8 Look
+  u8 Pull
+end record
+
+Explorer Me
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Secs = 0
+u16 Best = 0
+u8 Fr = 0
+u8 Got[36]
+u8 NGot = 0
+u8 Hole = 0
+u8 CamX = 0
+u8 CamY = 0
+u8 NewCX = 0
+u8 NewCY = 0
+u8 Over = 0
+u8 State = 0
+u8 GemF = 0
+u8 GemT = 0
+u8 HumT = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 GlX = 0
+u8 GlY = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Rw = 0
+u8 Hk = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tx = 0
+u8 Ty = 0
+
+  tile screen
+  set sound table CySoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Shimmer
+  Clock
+  DrawMe
+  if Over = 0 then goto play_loop
+
+  ' the end: the escape, the time, then back to the title on a press
+  State = 3
+  if Best = 0 then
+    Best = Secs
+  elseif Secs < Best then
+    Best = Secs
+  end if
+  print at 6,9, "                  "
+  print at 6,10, " YOU HAVE ESCAPED! "
+  print at 6,11, "                  "
+  NumU = Secs
+  print at 6,12, "    TIME "
+  ShowTime(15, 12)
+  print at 20,12, "    "
+  print at 6,13, "    BEST "
+  NumU = Best
+  ShowTime(15, 13)
+  print at 20,13, "    "
+  print at 6,14, "                  "
+  mute all
+  play sound SndFree
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a cell the explorer may stand on: floor and bridge slabs, and once the
+' way out is open its four hole cells
+function CanGo(u8 Cx, u8 Cy) as u8
+  if Cx >= MazeW then
+    return 0
+  end if
+  if Cy >= MazeH then
+    return 0
+  end if
+  W16 = Cy * MazeW + Cx
+  V = MazeMap[W16]
+  if V = TFloor then
+    return 1
+  end if
+  if V = TC8e then
+    return 1
+  end if
+  return IsHole(Cx, Cy)
+
+' 1 when the cell is one of the open holes
+function IsHole(u8 Hx, u8 Hy) as u8
+  if Hole = 0 then
+    return 0
+  end if
+  K = (Hole - 1) * 2
+  if HoleY[K] = Hy then
+    if Hx = HoleX[K] then
+      return 1
+    end if
+    if Hx = HoleX[K] + 1 then
+      return 1
+    end if
+  end if
+  inc K
+  if HoleY[K] = Hy then
+    if Hx = HoleX[K] then
+      return 1
+    end if
+    if Hx = HoleX[K] + 1 then
+      return 1
+    end if
+  end if
+  return 0
+
+' the camera that keeps the explorer at least 8 columns / 6 rows from the
+' view's edges
+function CamFor(u8 P, u8 Cur, u8 Margin, u8 Size, u8 MaxC) as u8
+  V = Cur
+  if P < V + Margin then
+    if P >= Margin then
+      V = P - Margin
+    else
+      V = 0
+    end if
+  end if
+  W16 = P + Margin + 1
+  if W16 > V + Size then
+    V = P + Margin + 1 - Size
+  end if
+  if V > MaxC then
+    V = MaxC
+  end if
+  return V
+
+' one frame: start a step from the stick, or go on with the step under way
+sub PlayStep:
+  if Me.Left > 0 then
+    GoOn
+    return
+  end if
+  K = J1 & 15
+  if K = 0 then
+    return
+  end if
+  ' a diagonal: the horizontal part first if it is open, else the vertical
+  J = 255
+  V = K & 12
+  if V > 0 then
+    if V = 4 then
+      Tx = 2
+    else
+      Tx = 3
+    end if
+    X = Me.X + DirDx[Tx]
+    if CanGo(X, Me.Y) = 1 then J = Tx
+  end if
+  if J = 255 then
+    V = K & 3
+    if V > 0 then
+      if V = 1 then
+        Tx = 0
+      else
+        Tx = 1
+      end if
+      Y = Me.Y + DirDy[Tx]
+      if CanGo(Me.X, Y) = 1 then J = Tx
+    end if
+  end if
+  if J = 255 then
+    return
+  end if
+  Me.Dir = J
+  Me.Left = 6
+  Me.Off = 0
+  Me.Look = Me.Look ^ 1
+  ' will the view follow? then the explorer stays and the maze moves
+  X = Me.X + DirDx[J]
+  Y = Me.Y + DirDy[J]
+  NewCX = CamFor(X, CamX, 8, ViewW, MaxCamX)
+  NewCY = CamFor(Y, CamY, 6, ViewH, MaxCamY)
+  Me.Pull = 0
+  if NewCX <> CamX then Me.Pull = 1
+  if NewCY <> CamY then Me.Pull = 1
+  GoOn
+  return
+end sub
+
+sub GoOn:
+  K = 6 - Me.Left
+  Me.Off = Me.Off + StepPx[K]
+  dec Me.Left
+  if Me.Left > 0 then
+    return
+  end if
+  Me.X = Me.X + DirDx[Me.Dir]
+  Me.Y = Me.Y + DirDy[Me.Dir]
+  Me.Off = 0
+  if Me.Pull = 1 then
+    CamX = NewCX
+    CamY = NewCY
+    DrawView
+  end if
+  Arrive
+  return
+end sub
+
+' on a new cell: a crystal? the way out?
+sub Arrive:
+  for Ci = 0 to 35
+    if Got[Ci] = 0 then
+      if CryX[Ci] = Me.X then
+        if CryY[Ci] = Me.Y then TakeGem
+      end if
+    end if
+  next
+  if Hole > 0 then
+    if Me.Y = 0 then Over = 1
+    if Me.Y = 57 then Over = 1
+  end if
+  return
+end sub
+
+sub TakeGem:
+  Got[Ci] = 1
+  inc NGot
+  X = Me.X - CamX + 2
+  Y = Me.Y - CamY + 2
+  put char TFloor at X,Y
+  select case NGot & 3
+    case 1
+      play sound SndGem0
+    case 2
+      play sound SndGem1
+    case 3
+      play sound SndGem2
+    case else
+      play sound SndGem3
+  end select
+  ShowGems
+  if NGot = NCry then OpenWay
+  return
+end sub
+
+' all 36: one of the four escapes, at random as on the C64
+sub OpenWay:
+  Rand
+  Hole = Rs & 3
+  inc Hole
+  play sound SndCrack
+  HumT = 0
+  DrawHoles
+  fill 32 count 28 at 2,22
+  select case Hole
+    case 1
+      print at 2,22, "THE NORTH-WEST CUBICLE"
+    case 2
+      print at 2,22, "THE NORTH-EAST CUBICLE"
+    case 3
+      print at 2,22, "THE SOUTH-WEST CUBICLE"
+    case else
+      print at 2,22, "THE SOUTH-EAST CUBICLE"
+  end select
+  print at 25,22, "OPENS"
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the view: 20 rows of 28 cells from the map, then the crystals still
+' there and the open holes
+sub DrawView:
+  W16 = CamY * MazeW + CamX
+  NumU = 66
+  for Rw = 0 to 19
+    copy MazeMap + W16 count ViewW to vram.name + NumU
+    W16 = W16 + MazeW
+    NumU = NumU + 32
+  next
+  for Hk = 0 to 35
+    if Got[Hk] = 0 then
+      X = CryX[Hk]
+      Y = CryY[Hk]
+      if X >= CamX then
+        if Y >= CamY then
+          X = X - CamX
+          Y = Y - CamY
+          if X < ViewW then
+            if Y < ViewH then put char TCry0 at X + 2,Y + 2
+          end if
+        end if
+      end if
+    end if
+  next
+  DrawHoles
+  return
+end sub
+
+sub DrawHoles:
+  if Hole = 0 then
+    return
+  end if
+  K = (Hole - 1) * 2
+  for Hk = 0 to 3
+    J = (Hk >> 1) + K
+    X = HoleX[J] + (Hk & 1)
+    Y = HoleY[J]
+    if X >= CamX then
+      if Y >= CamY then
+        X = X - CamX
+        Y = Y - CamY
+        if X < ViewW then
+          if Y < ViewH then put char THole at X + 2,Y + 2
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the crystals shimmer: the crystal tile takes the next of four looks
+' every 15 frames (each look a quarter second)
+sub Shimmer:
+  inc GemT
+  if GemT < 15 then
+    return
+  end if
+  GemT = 0
+  GemF = (GemF + 1) & 3
+  W16 = TCry0 - 128 + GemF
+  W16 = W16 * 8
+  NumU = TCry0 - 128
+  NumU = NumU * 8
+  copy TilePat + W16 count 8 to vram.pattern + 1024 + NumU
+  copy TilePat + W16 count 8 to vram.pattern + 3072 + NumU
+  copy TilePat + W16 count 8 to vram.pattern + 5120 + NumU
+  copy TileCol + W16 count 8 to vram.color + 1024 + NumU
+  ' after the way out opens, a soft hum every 4 seconds
+  if Hole > 0 then
+    inc HumT
+    if HumT >= 16 then
+      HumT = 0
+      play sound SndHum
+    end if
+  end if
+  return
+end sub
+
+' the clock: minutes and seconds, stopping at 99:59
+sub Clock:
+  inc Fr
+  if Fr < 60 then
+    return
+  end if
+  Fr = 0
+  if Secs < 5999 then inc Secs
+  NumU = Secs
+  ShowTime(25, 1)
+  return
+end sub
+
+sub ShowTime(u8 Col, u8 Row):
+  W16 = NumU / 60
+  print at Col,Row, digits$(W16, 2)
+  put char 58 at Col + 2,Row
+  W16 = NumU - W16 * 60
+  print at Col + 3,Row, digits$(W16, 2)
+  return
+end sub
+
+sub ShowGems:
+  NumU = NGot
+  print at 4,1, digits$(NumU, 2)
+  return
+end sub
+
+' the explorer: white body and red cap and boots, sliding between cells
+sub DrawMe:
+  X = Me.X - CamX + 2
+  Y = Me.Y - CamY + 2
+  X = X * 8 - 4
+  Y = Y * 8 - 7
+  if Me.Pull = 0 then
+    if Me.Left > 0 then
+      select case Me.Dir
+        case 0
+          Y = Y - Me.Off
+        case 1
+          Y = Y + Me.Off
+        case 2
+          X = X - Me.Off
+        case 3
+          X = X + Me.Off
+      end select
+    end if
+  end if
+  K = Me.Look * 12
+  set sprite 0 to Y,X,SPr0 + K,8
+  set sprite 1 to Y,X,SPw0 + K,15
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  for Ci = 0 to 35
+    Got[Ci] = 0
+  next
+  NGot = 0
+  Hole = 0
+  Over = 0
+  Secs = 0
+  Fr = 0
+  GemT = 0
+  GemF = 0
+  Me.X = 28
+  Me.Y = 25
+  Me.Dir = 0
+  Me.Left = 0
+  Me.Off = 0
+  Me.Look = 0
+  Me.Pull = 0
+  CamX = 28 - 14
+  CamY = 25 - 10
+  put char TIcon at 2,1
+  print at 6,1, "/36"
+  print at 20,1, "TIME"
+  NumU = 0
+  ShowTime(25, 1)
+  ShowGems
+  DrawView
+  print at 3,22, "GATHER THE 36 CRYSTALS"
+  DrawMe
+  ShowScreen
+  State = 2
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: CRYSTALLUS in crystal blocks, a glint dancing over them,
+' START / CREDITS, the best time, the tune once
+sub TitlePage:
+  NewScreen
+  State = 1
+  W16 = 0
+  NumU = 66
+  for Rw = 0 to 10
+    copy TitleMap + W16 count 28 to vram.name + NumU
+    W16 = W16 + 28
+    NumU = NumU + 32
+  next
+  print at 5,14, "AHOY! SEPTEMBER 1987"
+  print at 7,15, "BY BOB BLACKMER"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Best > 0 then
+    print at 9,21, "BEST "
+    NumU = Best
+    ShowTime(14, 21)
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 594
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a glint jumps to a new spot on the letters twice a second
+sub TitleAnim:
+  V = Tick & 31
+  if V = 0 then
+    Rand
+    GlX = Rs & 127
+    GlX = GlX + 56
+    V = Rs >> 8
+    GlY = V & 63
+    GlY = GlY + 12
+  end if
+  if V < 16 then
+    set sprite 0 to GlY,GlX,SGlint,15
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  State = 0
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "CRYSTALLUS"
+  print at 2,5, "BASED ON CRYSTALLUS BY BOB"
+  print at 2,6, "BLACKMER, AHOY! SEPTEMBER"
+  print at 2,7, "1987 (COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: GLASS HALLS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+CyGem0:
+    db $40,$AA,$10,$03,$40,$71,$20,$03,$40,$55,$20,$04,$40,$55,$40,$06,$40,$55,$60,$08,$50
+CyGem1:
+    db $40,$8F,$10,$03,$40,$5F,$20,$03,$40,$47,$20,$04,$40,$47,$40,$06,$40,$47,$60,$08,$50
+CyGem2:
+    db $40,$7F,$10,$03,$40,$55,$20,$03,$40,$40,$20,$04,$40,$40,$40,$06,$40,$40,$60,$08,$50
+CyGem3:
+    db $40,$6B,$10,$03,$40,$47,$20,$03,$40,$35,$20,$04,$40,$35,$40,$06,$40,$35,$60,$08,$50
+CyCrack:
+    db $00,$00,$06,$06,$00,$00,$17,$08,$00,$00,$37,$0A,$00,$00,$57,$0C,$00,$00,$77,$0E,$10
+CyHum:
+    db $40,$D6,$50,$06,$40,$AA,$60,$06,$40,$8F,$60,$06,$40,$6B,$70,$0A,$50
+CyBump:
+    db $00,$00,$65,$02,$10
+CyStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$50
+CyFree:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$20,$18
+    db $50
+
+CySoundTable:
+    dw CyTuneMel,$702B
+    dw CyTuneBass,$7035
+    dw CyGem0,$7049
+    dw CyGem1,$7049
+    dw CyGem2,$7049
+    dw CyGem3,$7049
+    dw CyCrack,$703F
+    dw CyHum,$7049
+    dw CyBump,$703F
+    dw CyStart,$7049
+    dw CyFree,$7049
+; Glass Halls (original)
+; Tiny Sound, 9 frames per step
+CyTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$70,$F1,$22,$28,$01,$23,$01,$2B,$01,$2A,$01,$28,$01,$23,$01
+    db $26,$01,$01,$01,$24,$01,$28,$01,$2B,$01,$2F,$01,$2D,$01,$2B,$01
+    db $2A,$01,$01,$01,$28,$01,$2B,$01,$2F,$01,$2D,$01,$2B,$01,$28,$01
+    db $2A,$01,$26,$01,$28,$01,$23,$01,$24,$01,$21,$01,$23,$01,$01,$01
+    db $28,$01,$01,$01,$00,$01
+    db $FF
+CyTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$10,$01,$17,$01,$10,$01,$17,$01,$0C,$01,$07,$01
+    db $0E,$01,$09,$01,$10,$01,$0B,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $10,$01,$01,$01,$00,$01
+    db $FF
+}

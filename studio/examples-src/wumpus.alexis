@@ -1,0 +1,1302 @@
+cartridge "WUMPUS/MARC CLIFFORD/1987"
+
+' WUMPUS
+' A ColecoVision game based on "Wumpus" by Marc Clifford, Ahoy! February
+' 1987 (COMAL 0.14 for the Commodore 64, on the issue's COMAL flip side,
+' disk ahoy1987-02b, files WUMPUS and WUMPUS.TXT; orig/). Hunt the Wumpus
+' itself is Gregory Yob's game of 1973 (People's Computer Company); this
+' listing is a version of it with its own cave.
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game (the original's rules, read from its tokenized COMAL program;
+' orig/wumpus-decoded.txt):
+' - The cave has 20 rooms joined by tunnels. It is new every game and not
+'   Yob's dodecahedron: each room 2-20 gets a tunnel to a random lower room
+'   (so every room can be reached), then each room 3-20 one more tunnel to
+'   a random room at least two below it, when they are not joined already.
+'   Rooms have from 1 to many tunnels.
+' - The wumpus, two superbats and two bottomless pits are put in random
+'   rooms (a bat and a pit may share a room); you start in a room with none
+'   of them. You have 7 arrows.
+' - Each turn you see your room and the rooms its tunnels lead to, and the
+'   warnings: I SMELL A WUMPUS (it is one or two tunnels away: next door,
+'   or next door to a room next door), I HEAR BATS (a bat next door), I
+'   FEEL A DRAFT (a pit next door).
+' - Move through a tunnel. Bats in the new room carry you to a random room
+'   with no bat, pit or wumpus. Then the wumpus may wake: a random room
+'   1-20 is drawn and, if it is next to the wumpus, the wumpus moves there
+'   (so a wumpus with more tunnels roams more). If it reaches your room, it
+'   gets you. Then a pit in your room means you fall.
+' - Shoot: give the rooms the arrow flies through, in order. When a room is
+'   not joined to the one before, the arrow takes a random tunnel instead.
+'   It stops when it hits the wumpus (you win) or you (you lose). Each shot
+'   costs an arrow; with none left you lose. Shooting does not wake the
+'   wumpus (the original only moves it after a move).
+'
+' Liberties:
+' - The stick picks a tunnel and the left button walks through it, instead
+'   of typing M and a room number; the room you could not reach (no such
+'   room, no tunnel) cannot be asked for.
+' - Shooting: the right button opens the bow; left and right choose a room
+'   number 1-20 (any room, as in the original, so a wrong guess still sends
+'   the arrow on a random tunnel), the left button adds it to the arrow's
+'   path, the right button looses the arrow, down takes the last room back
+'   (or puts the bow away). The path holds at most 5 rooms (the original
+'   asked how many, with no limit).
+' - A cave in which a room would get more than 8 tunnels is drawn again
+'   (8 tunnel mouths fit across the screen; the original kept the list in a
+'   10-letter string).
+' - The notebook: the 20 rooms with the warnings you felt in each room you
+'   visited (pips: red smell, yellow bats, cyan draft), what a careful
+'   player writes on paper. It shows nothing you have not felt.
+' - The rules page says "one or two tunnels away" for the smell: that is
+'   what the program does (its own instructions said "closer than 4").
+' - No QUIT command and no "instructions?" question: HOW TO PLAY is on the
+'   title menu; a hunt ends by winning, being caught, falling or running
+'   out of arrows.
+' - Pictures: the room as a cave chamber with its tunnel mouths and their
+'   numbers; the hunter walks into the chosen tunnel, bats carry him off,
+'   the arrow flies into its first tunnel, the wumpus shows up at the end.
+'   Hunts and wins are counted on the title (BCD counters).
+'
+' Controls: left and right choose a tunnel, the left button walks through
+' it, the right button takes out the bow (then as above). Either
+' controller. Title: up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off after a
+' wait, display off. Music first in the sound table; the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes faster than 3 Hz.
+
+const TRock1 = 128
+const TRock2 = 129
+const TFloor = 130
+const TRule = 131
+const TMouth00 = 132
+const TMouth01 = 133
+const TMouth10 = 134
+const TMouth11 = 135
+const TNote0 = 136
+const TNote1 = 137
+const TNote2 = 138
+const TNote3 = 139
+const TNote4 = 140
+const TNote5 = 141
+const TNote6 = 142
+const TNote7 = 143
+const TTorch = 144
+const SHunt = 0
+const SFace = 4
+const SBat1 = 8
+const SBat2 = 12
+const SArrow = 16
+const SArrowup = 20
+const SWeyes = 24
+const SWump = 28
+const SCursor = 32
+const NTiles8 = 136
+const SprBytes = 288
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndPick = 4
+const SndBad = 5
+const SndStep = 6
+const SndFlap = 7
+const SndTwang = 8
+const SndThud = 9
+const SndRoar = 10
+const SndFall = 11
+const SndWin = 12
+const SndLose = 13
+const NSpr = 8
+const MaxT = 8
+const MaxPath = 5
+const MouthY = 4
+const NumY = 6
+const HuntY = 63
+const WarnY = 12
+const MsgY = 15
+const NoteY = 18
+
+' fates
+const FPlay = 0
+const FWump = 1
+const FPit = 2
+const FSelf = 3
+const FNoArrow = 4
+const FWin = 5
+
+' one tunnel mouth on the screen
+record Mouth:
+  u8 Room
+  u8 Col
+end record
+
+Mouth Ex[8]
+u8 NEx = 0
+u8 Adj[160]
+u8 Deg[20]
+u8 Notes[20]
+u8 Path[5]
+u8 NPath = 0
+u8 Plr = 0
+u8 Wump = 0
+u8 Bat1 = 0
+u8 Bat2 = 0
+u8 Pit1 = 0
+u8 Pit2 = 0
+u8 Arrows = 7
+u8 Fate = 0
+u8 Sel = 0
+u8 Aim = 0
+u8 ShotAt = 0
+u8 Moves = 0
+u8 Redraws = 0
+u8 Over = 0
+bcd digits 4 Hunts
+bcd digits 4 Wins
+u16 Rs = 1
+u16 W16 = 0
+u16 TurnSeed = 0
+u16 HuntSeed = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Stage = 0
+u8 Tick = 0
+u8 Asking = 0
+u8 TMenu = 0
+' input
+u8 J1 = 0
+u8 Pj = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 WasStick = 0
+u8 LastDir = 0
+u8 Rep = 0
+u8 Held = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ti = 0
+u8 Ni = 0
+' scratch
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table WuSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Stage = 1
+  CreditsPage
+
+title:
+  TitlePage
+  if TMenu = 1 then
+    RulesPage
+    goto title
+  end if
+  if TMenu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  NewHunt
+  RoomPage
+
+play_loop:
+  Turn
+  if Fate = FPlay then goto play_loop
+
+  EndPage
+  Stage = 6
+  Pause(60)
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers and the cave
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' 0 .. N-1
+function RndN(u8 N) as u8
+  Rand
+  return Rs % N
+
+' 1 when rooms A and B (0-19) are joined by a tunnel
+function Linked(u8 A, u8 B) as u8
+  u8 Lk = 0
+  u8 Li = 0
+  u8 Ln = 0
+  u8 Base = 0
+  Ln = Deg[A]
+  Base = A * MaxT
+  while Li < Ln
+    if Adj[Base + Li] = B then Lk = 1
+    inc Li
+  end while
+  return Lk
+
+' 1 when A and B have a room next door in common
+function Shared(u8 A, u8 B) as u8
+  u8 Sh = 0
+  u8 Si = 0
+  u8 Sn = 0
+  u8 Sb = 0
+  Sn = Deg[A]
+  Sb = A * MaxT
+  while Si < Sn
+    if Linked(Adj[Sb + Si], B) = 1 then Sh = 1
+    inc Si
+  end while
+  return Sh
+
+' a tunnel both ways; Redraws counts caves thrown away (a room past 8)
+sub AddTunnel(u8 A, u8 B):
+  u8 Slot = 0
+  if Deg[A] >= MaxT then
+    Over = 1
+    return
+  end if
+  if Deg[B] >= MaxT then
+    Over = 1
+    return
+  end if
+  Slot = A * MaxT + Deg[A]
+  Adj[Slot] = B
+  inc Deg[A]
+  Slot = B * MaxT + Deg[B]
+  Adj[Slot] = A
+  inc Deg[B]
+  return
+end sub
+
+' the original's cave: a tree (each room to a lower one), then one more
+' tunnel per room 3-20 to a room at least two below it
+sub BuildCave:
+  u8 Nt = 0
+  fill array Deg with 0
+  Over = 0
+  for Ri = 1 to 19
+    Nt = RndN(Ri)
+    AddTunnel(Ri, Nt)
+  next
+  for Ri = 2 to 19
+    Nt = RndN(Ri - 1)
+    if Linked(Ri, Nt) = 0 then AddTunnel(Ri, Nt)
+  next
+  return
+end sub
+
+sub MakeCave:
+  Redraws = 0
+  do
+    BuildCave
+    if Over = 1 then inc Redraws
+  loop until Over = 0
+  return
+end sub
+
+function Hazard(u8 R) as u8
+  if R = Wump then return 1
+  if R = Bat1 then return 1
+  if R = Bat2 then return 1
+  if R = Pit1 then return 1
+  if R = Pit2 then return 1
+  return 0
+
+sub NewHunt:
+  HuntSeed = Rs
+  MakeCave
+  Wump = RndN(20)
+  Bat1 = RndN(20)
+  Bat2 = RndN(20)
+  Pit1 = RndN(20)
+  Pit2 = RndN(20)
+  do
+    Plr = RndN(20)
+  loop until Hazard(Plr) = 0
+  Arrows = 7
+  Fate = FPlay
+  Moves = 0
+  NPath = 0
+  Sel = 0
+  fill array Notes with 0
+  inc Hunts
+  return
+end sub
+
+' the warnings in room R: 1 smell, 2 bats, 4 draft
+function Senses(u8 R) as u8
+  u8 Fl = 0
+  if Linked(R, Wump) = 1 then Fl = 1
+  if Shared(R, Wump) = 1 then Fl = 1
+  if Linked(R, Bat1) = 1 then Fl = Fl | 2
+  if Linked(R, Bat2) = 1 then Fl = Fl | 2
+  if Linked(R, Pit1) = 1 then Fl = Fl | 4
+  if Linked(R, Pit2) = 1 then Fl = Fl | 4
+  return Fl
+
+' the exits of the player's room, in number order (as the original lists
+' them), with their screen columns
+sub ListExits:
+  u8 Lc = 0
+  NEx = 0
+  for Ri = 0 to 19
+    if Linked(Plr, Ri) = 1 then
+      Ex[NEx].Room = Ri
+      inc NEx
+    end if
+  next
+  ' centre the row of mouths: 3 columns each
+  Lc = 16 - NEx * 3 / 2
+  for Ri = 0 to NEx - 1
+    Ex[Ri].Col = Ri * 3 + Lc
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the room
+
+sub DrawChamber:
+  for Y = 3 to 10
+    for X = 2 to 29
+      V = TFloor
+      if Y < 5 then V = TRock1
+      if Y = 10 then V = TRock2
+      if X = 2 then V = TRock2
+      if X = 29 then V = TRock1
+      put char V at X,Y
+    next
+  next
+  return
+end sub
+
+sub DrawMouths:
+  u8 Mc = 0
+  u8 Mr = 0
+  for Ri = 0 to NEx - 1
+    Mc = Ex[Ri].Col
+    Mr = Ex[Ri].Room + 1
+    put char TMouth00 at Mc,MouthY
+    put char TMouth01 at Mc + 1,MouthY
+    put char TMouth10 at Mc,MouthY + 1
+    put char TMouth11 at Mc + 1,MouthY + 1
+    print Mr at Mc,NumY digits 2
+  next
+  return
+end sub
+
+sub ShowArrows:
+  print at 19,1, "ARROWS"
+  print Arrows at 26,1 digits 1
+  for J = 0 to 6
+    V = 32
+    if J < Arrows then V = 62
+    put char V at 21 + J,2
+  next
+  fill TRule count 3 at 2,2
+  return
+end sub
+
+sub ClearLines(u8 Top, u8 N):
+  for J = Top to Top + N - 1
+    fill 32 count 28 at 2,J
+  next
+  return
+end sub
+
+sub ShowWarnings:
+  u8 Fl = 0
+  Fl = Senses(Plr)
+  Notes[Plr] = Fl | 128
+  ClearLines(WarnY, 3)
+  Y = WarnY
+  if Fl & 1 then
+    put char TNote1 at 2,Y
+    print at 4,Y, "I SMELL A WUMPUS!"
+    inc Y
+  end if
+  if Fl & 2 then
+    put char TNote2 at 2,Y
+    print at 4,Y, "I HEAR BATS."
+    inc Y
+  end if
+  if Fl & 4 then
+    put char TNote4 at 2,Y
+    print at 4,Y, "I FEEL A DRAFT."
+    inc Y
+  end if
+  if Fl = 0 then print at 4,WarnY, "ALL IS QUIET."
+  return
+end sub
+
+' the notebook: 4 rows of 5 rooms
+sub DrawNotes:
+  u8 Nc = 0
+  u8 Nr = 0
+  u8 Nv = 0
+  for Ni = 0 to 19
+    Nc = (Ni % 5) * 5 + 4
+    Nr = Ni / 5 + NoteY
+    Nv = Ni + 1
+    print Nv at Nc,Nr digits 2
+    V = 32
+    if Notes[Ni] & 128 then V = (Notes[Ni] & 7) + TNote0
+    put char V at Nc + 2,Nr
+  next
+  return
+end sub
+
+sub HelpMove:
+  fill 32 count 28 at 2,22
+  print at 2,22, "<> TUNNEL  L:GO  R:BOW"
+  return
+end sub
+
+sub HelpBow:
+  fill 32 count 28 at 2,22
+  print at 2,22, "<> ROOM L:ADD R:LOOSE"
+  print at 24,22, "V:BACK"
+  return
+end sub
+
+sub PutHunter(u8 Hx, u8 Hy):
+  set sprite 0 to Hy,Hx,SFace,9
+  set sprite 1 to Hy,Hx,SHunt,5
+  return
+end sub
+
+sub ShowCursor:
+  u8 Cx = 0
+  Cx = Ex[Sel].Col * 8
+  set sprite 2 to MouthY * 8 - 14,Cx,SCursor,15
+  update sprites
+  return
+end sub
+
+sub RoomPage:
+  u8 Rn = 0
+  NewScreen
+  Rn = Plr + 1
+  print at 2,1, "ROOM"
+  print Rn at 7,1 digits 2
+  fill TRule count 16 at 2,2
+  ShowArrows
+  DrawChamber
+  ListExits
+  DrawMouths
+  ShowWarnings
+  fill TRule count 28 at 2,16
+  print at 2,17, "NOTES"
+  put char TNote1 at 9,17
+  print at 10,17, "SMELL"
+  put char TNote2 at 16,17
+  print at 17,17, "BATS"
+  put char TNote4 at 22,17
+  print at 23,17, "DRAFT"
+  DrawNotes
+  HelpMove
+  if Sel >= NEx then Sel = 0
+  PutHunter(120, HuntY)
+  ShowCursor
+  ShowScreen
+  Stage = 3
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a turn
+
+' the stick: Held = the direction (bit 1 up, 2 down, 4 left, 8 right)
+' when it acts this frame (at once, then repeated); 0 otherwise
+sub StickRep:
+  D = Pj & 15
+  Held = 0
+  if D = 0 then
+    LastDir = 0
+  else
+    if D <> LastDir then
+      Held = D
+      Rep = 18
+    else
+      dec Rep
+      if Rep = 0 then
+        Held = D
+        Rep = 7
+      end if
+    end if
+    LastDir = D
+  end if
+  return
+end sub
+
+sub Turn:
+  u8 Act = 0
+  ReadPad
+  LastDir = 0
+  Asking = 1
+  TurnSeed = Rs
+  while Act = 0
+    Frame1
+    ReadPad
+    StickRep
+    if Held & 4 then
+      if Sel > 0 then
+        dec Sel
+      else
+        Sel = NEx - 1
+      end if
+      play sound SndTick
+      ShowCursor
+    end if
+    if Held & 8 then
+      inc Sel
+      if Sel >= NEx then Sel = 0
+      play sound SndTick
+      ShowCursor
+    end if
+    if P1 = 1 then Act = 1
+    if P2 = 1 then Act = 2
+  end while
+  Asking = 0
+  if Act = 1 then
+    DoMove(Ex[Sel].Room)
+  else
+    Bow
+  end if
+  return
+end sub
+
+' the hunter walks to the mouth he chose
+sub WalkTo(u8 Col):
+  i16 Hx = 0
+  i16 Dx = 0
+  u8 Fr = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  Dx = Col * 8
+  Dx = Dx - 120
+  for Fr = 0 to 24
+    Hx = Dx * Fr / 24 + 120
+    Sx = Hx
+    Sy = HuntY - Fr
+    PutHunter(Sx, Sy)
+    update sprites
+    if Fr & 7 = 0 then play sound SndStep
+    Frame1
+  next
+  return
+end sub
+
+sub DoMove(u8 Dest):
+  Stage = 4
+  set sprite 2 to 192,0,SCursor,15
+  WalkTo(Ex[Sel].Col)
+  inc Moves
+  Plr = Dest
+  CheckBats
+  CheckWump
+  if Fate = FPlay then CheckPit
+  if Fate = FPlay then
+    RoomPage
+  end if
+  return
+end sub
+
+sub BatRide:
+  u8 Fr = 0
+  u8 Bx = 0
+  u8 Fp = 0
+  Fr = 0
+  play sound SndFlap
+  for Fr = 0 to 60
+    Bx = Fr * 4
+    Fp = SBat1
+    if Fr & 8 then Fp = SBat2
+    set sprite 3 to 40,Bx,Fp,14
+    PutHunter(Bx, 52)
+    update sprites
+    if Fr = 30 then play sound SndFlap
+    Frame1
+  next
+  return
+end sub
+
+sub CheckBats:
+  u8 Fl = 0
+  u8 Carry = 0
+  if Plr = Bat1 then Carry = 1
+  if Plr = Bat2 then Carry = 1
+  if Carry = 1 then
+    do
+      Fl = RndN(20)
+    loop until Hazard(Fl) = 0
+    Plr = Fl
+    ClearLines(WarnY, 5)
+    print at 2,WarnY, "A SUPERBAT PICKED YOU UP AND"
+    print at 2,WarnY + 1, "CARRIED YOU OFF."
+    BatRide
+  end if
+  return
+end sub
+
+sub CheckWump:
+  u8 Nw = 0
+  Nw = RndN(20)
+  if Linked(Wump, Nw) = 1 then Wump = Nw
+  if Wump = Plr then Fate = FWump
+  return
+end sub
+
+sub CheckPit:
+  if Plr = Pit1 then Fate = FPit
+  if Plr = Pit2 then Fate = FPit
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the bow
+
+sub ShowPath:
+  u8 Pv = 0
+  ClearLines(WarnY, 5)
+  print at 2,WarnY, "THE ARROW FLIES THROUGH"
+  print at 2,WarnY + 1, "ROOMS:"
+  for Ti = 0 to MaxPath - 1
+    if Ti < NPath then
+      Pv = Path[Ti] + 1
+      print Pv at Ti * 4 + 9,WarnY + 1 digits 2
+    else
+      print at Ti * 4 + 9,WarnY + 1, "--"
+    end if
+  next
+  print at 2,WarnY + 3, "NEXT ROOM"
+  Pv = Aim + 1
+  print at 12,WarnY + 3, "<"
+  print Pv at 14,WarnY + 3 digits 2
+  print at 17,WarnY + 3, ">"
+  return
+end sub
+
+sub Bow:
+  u8 Bd = 0
+  NPath = 0
+  Aim = Ex[Sel].Room
+  Asking = 2
+  HelpBow
+  ShowPath
+  play sound SndPick
+  ReadPad
+  LastDir = 0
+  while Bd = 0
+    Frame1
+    ReadPad
+    StickRep
+    if Held & 4 then
+      if Aim > 0 then
+        dec Aim
+      else
+        Aim = 19
+      end if
+      play sound SndTick
+      ShowPath
+    end if
+    if Held & 8 then
+      inc Aim
+      if Aim > 19 then Aim = 0
+      play sound SndTick
+      ShowPath
+    end if
+    if Held & 2 then
+      if NPath = 0 then
+        Bd = 2
+      else
+        dec NPath
+        play sound SndTick
+        ShowPath
+      end if
+    end if
+    if P1 = 1 then
+      if NPath < MaxPath then
+        Path[NPath] = Aim
+        inc NPath
+        play sound SndPick
+      else
+        play sound SndBad
+      end if
+      ShowPath
+    end if
+    if P2 = 1 then
+      if NPath > 0 then
+        Bd = 1
+      else
+        play sound SndBad
+      end if
+    end if
+  end while
+  Asking = 0
+  if Bd = 1 then
+    Shoot
+  else
+    ShowWarnings
+    HelpMove
+  end if
+  return
+end sub
+
+' a random room next to room R (the original's RANDROOM: rooms 1-20 drawn
+' until one is next door)
+function RandNext(u8 R) as u8
+  u8 Pr = 0
+  do
+    Pr = RndN(20)
+  loop until Linked(R, Pr) = 1
+  return Pr
+
+' the arrow flies up into the mouth of room R (when it is on screen)
+sub FlyArrow(u8 R):
+  u8 Fr = 0
+  u8 Ax = 120
+  u8 Ay = 0
+  i16 Tx = 0
+  i16 Ix = 0
+  for Ti = 0 to NEx - 1
+    if Ex[Ti].Room = R then Ax = Ex[Ti].Col * 8
+  next
+  Tx = Ax
+  Tx = Tx - 120
+  play sound SndTwang
+  for Fr = 0 to 20
+    Ix = Tx * Fr / 20 + 120
+    Ay = HuntY - Fr * 2
+    X = Ix
+    set sprite 3 to Ay,X,SArrowup,15
+    update sprites
+    Frame1
+  next
+  set sprite 3 to 192,0,SArrowup,15
+  update sprites
+  return
+end sub
+
+sub Shoot:
+  u8 Last = 0
+  u8 Hit = 0
+  Stage = 4
+  set sprite 2 to 192,0,SCursor,15
+  Last = Plr
+  for Ti = 0 to NPath - 1
+    if Hit = 0 then
+      ShotAt = Path[Ti]
+      if Linked(Last, ShotAt) = 0 then ShotAt = RandNext(Last)
+      if Ti = 0 then FlyArrow(ShotAt)
+      Last = ShotAt
+      if ShotAt = Wump then Hit = 1
+      if ShotAt = Plr then Hit = 2
+    end if
+  next
+  dec Arrows
+  ShowArrows
+  ClearLines(WarnY, 5)
+  select case Hit
+  case 1
+    Fate = FWin
+  case 2
+    Fate = FSelf
+  case else
+    if Arrows = 0 then
+      Fate = FNoArrow
+    else
+      print at 2,WarnY, "YOU MISSED!"
+      play sound SndThud
+      Pause(50)
+      ShowWarnings
+      HelpMove
+      ShowCursor
+      Stage = 3
+    end if
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the end
+
+' the wumpus rises from the floor
+sub WumpusRises(u8 Wx):
+  u8 Fr = 0
+  u8 Wy = 0
+  for Fr = 0 to 30
+    Wy = 90 - Fr
+    set sprite 4 to Wy,Wx,SWeyes,9
+    set sprite 5 to Wy,Wx,SWump,12
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub EndPage:
+  u8 Fr = 0
+  Stage = 5
+  select case Fate
+  case FWump
+    play sound SndRoar
+    WumpusRises(150)
+    Pause(40)
+  case FPit
+    play sound SndFall
+    for Fr = 0 to 40
+      PutHunter(120, Fr * 2 + HuntY)
+      update sprites
+      Frame1
+    next
+  case FWin
+    play sound SndRoar
+    WumpusRises(150)
+    Pause(30)
+  end select
+  NewScreen
+  fill mode 2 text color with $F1
+  print at 2,1, "THE HUNT IS OVER"
+  fill TRule count 28 at 2,2
+  select case Fate
+  case FWin
+    print at 2,5, "CONGRATULATIONS!"
+    print at 2,7, "YOU SLEW THE FEARSOME"
+    print at 2,8, "WUMPUS!"
+    set sprite 4 to 95,120,SWeyes,9
+    set sprite 5 to 95,120,SWump,12
+    set sprite 3 to 95,112,SArrow,15
+    inc Wins
+    play sound SndWin
+  case FWump
+    print at 2,5, "LOOK OUT!!!"
+    print at 2,7, "THE WUMPUS GOT YOU!"
+    print at 2,9, "BETTER LUCK NEXT TIME."
+    set sprite 4 to 95,120,SWeyes,9
+    set sprite 5 to 95,120,SWump,12
+    play sound SndLose
+  case FPit
+    print at 2,5, "DON'T DO THAT!!!"
+    print at 2,7, "TOO LATE, YOU FELL INTO A"
+    print at 2,8, "PIT. YOU SHOULD BE MORE"
+    print at 2,9, "CAREFUL."
+    play sound SndLose
+  case FSelf
+    print at 2,5, "YOU KLUTZ!"
+    print at 2,7, "YOU JUST SHOT YOURSELF."
+    play sound SndLose
+  case else
+    print at 2,5, "YOU RAN OUT OF ARROWS."
+    print at 2,7, "THE WUMPUS IS STILL OUT"
+    print at 2,8, "THERE, IN ROOM"
+    V = Wump + 1
+    print V at 17,8 digits 2
+    play sound SndLose
+  end select
+  print at 2,16, "ROOMS WALKED"
+  print Moves at 16,16 digits 3
+  print at 2,17, "ARROWS LEFT"
+  print Arrows at 16,17 digits 1
+  print at 2,19, "HUNTS"
+  print Hunts at 9,19
+  print at 16,19, "WON"
+  print Wins at 21,19
+  update sprites
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Nf):
+  u8 Pk = 0
+  for Pk = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up or joypad(2).up then J1 = J1 | 1
+  if joypad(1).down or joypad(2).down then J1 = J1 | 2
+  if joypad(1).left or joypad(2).left then J1 = J1 | 4
+  if joypad(1).right or joypad(2).right then J1 = J1 | 8
+  B1 = 0
+  B2 = 0
+  if joypad(1).button1 or joypad(2).button1 then B1 = 1
+  if joypad(1).button2 or joypad(2).button2 then B2 = 1
+  Pj = J1
+  P1 = 0
+  P2 = 0
+  if B1 = 1 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  if B2 = 1 then
+    if WasB2 = 0 then P2 = 1
+  end if
+  WasB1 = B1
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowTitleMenu:
+  for J = 0 to 2
+    put char 32 at 8,J + 15
+  next
+  put char 62 at 8,TMenu + 15
+  return
+end sub
+
+' the title: a cave mouth with torches, the wumpus peering out, the tune
+' once, the menu
+sub TitlePage:
+  u8 Tf = 0
+  u8 Wy = 0
+  NewScreen
+  for X = 2 to 29
+    put char TRock1 at X,3
+    put char TRock2 at X,11
+  next
+  for Y = 4 to 10
+    put char TRock2 at 2,Y
+    put char TRock1 at 29,Y
+  next
+  put char TTorch at 5,6
+  put char TTorch at 26,6
+  for Y = 7 to 8
+    for X = 12 to 19
+      put char TFloor at X,Y
+    next
+  next
+  print at 13,5, "WUMPUS"
+  print at 10,15, "HUNT THE WUMPUS"
+  print at 10,16, "HOW TO PLAY"
+  print at 10,17, "CREDITS"
+  print at 7,19, "BY MARC CLIFFORD"
+  print at 6,20, "AHOY! FEBRUARY 1987"
+  print at 2,13, "HUNTS"
+  print Hunts at 8,13
+  print at 20,13, "WON"
+  print Wins at 24,13
+  ShowTitleMenu
+  ShowScreen
+  Stage = 2
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 660
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasB1 = 1
+  WasB2 = 1
+  WasStick = 0
+  Tf = 0
+  do
+    Frame1
+    inc Rs
+    ' the wumpus peers out of the cave, then sinks back, slowly
+    inc Tf
+    Wy = 70
+    if Tf & 128 then Wy = 56
+    set sprite 4 to Wy,120,SWeyes,9
+    set sprite 5 to Wy,120,SWump,12
+    update sprites
+    ReadPad
+    V = J1 & 15
+    if V > 0 then
+      if WasStick = 0 then
+        if V & 1 then
+          if TMenu > 0 then dec TMenu
+        end if
+        if V & 2 then
+          if TMenu < 2 then inc TMenu
+        end if
+        ShowTitleMenu
+        play sound SndTick
+      end if
+    end if
+    WasStick = V
+  loop until P1 + P2 > 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 2,1, "HOW TO PLAY WUMPUS"
+  fill TRule count 28 at 2,2
+  print at 2,3, "HUNT THE WUMPUS IN HIS CAVE"
+  print at 2,4, "OF 20 ROOMS. SHOOT IT WITH"
+  print at 2,5, "ONE OF YOUR 7 ARROWS."
+  print at 2,7, "BATS NEXT DOOR: YOU HEAR"
+  print at 2,8, "THEM. THEY CARRY YOU OFF."
+  print at 2,9, "A PIT NEXT DOOR: A DRAFT."
+  print at 2,10, "STEP IN AND YOU FALL."
+  print at 2,11, "THE WUMPUS ONE OR TWO"
+  print at 2,12, "TUNNELS AWAY: YOU SMELL IT."
+  print at 2,13, "IT WAKES AS YOU WALK."
+  print at 2,15, "STICK: PICK A TUNNEL."
+  print at 2,16, "LEFT BUTTON: WALK THROUGH."
+  print at 2,17, "RIGHT BUTTON: THE BOW. LIST"
+  print at 2,18, "UP TO 5 ROOMS IN ORDER; A"
+  print at 2,19, "WRONG ONE AND THE ARROW MAY"
+  print at 2,20, "GO ANYWHERE."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Stage = 7
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,1, "WUMPUS"
+  print at 2,3, "BASED ON WUMPUS BY MARC"
+  print at 2,4, "CLIFFORD, AHOY! FEBRUARY"
+  print at 2,5, "1987 (COMAL, COMMODORE 64)."
+  print at 2,7, "HUNT THE WUMPUS WAS CREATED"
+  print at 2,8, "BY GREGORY YOB IN 1973."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: DEEP IN THE CAVE"
+  print at 2,17, "(ORIGINAL)"
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Stage = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+
+data TilePat bytes
+  $08,$18,$00,$81,$C3,$00,$08,$18
+  $00,$80,$C2,$06,$00,$20,$60,$00
+  $00,$00,$10,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$F0,$F0,$E0
+  $00,$00,$00,$C0,$E0,$F0,$F0,$07
+  $E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $07,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$C3,$C3,$00,$00,$00,$00,$00
+  $00,$00,$00,$C3,$C3,$00,$00,$00
+  $00,$C3,$C3,$C3,$C3,$00,$00,$00
+  $00,$00,$00,$00,$00,$C3,$C3,$00
+  $00,$C3,$C3,$00,$00,$C3,$C3,$00
+  $00,$00,$00,$C3,$C3,$C3,$C3,$00
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $18,$C3,$C3,$18,$18,$18,$C3,$00
+end data
+data TileCol bytes
+  $EA,$EA,$0A,$EA,$EA,$0A,$EA,$EA
+  $0A,$EA,$EA,$EA,$0A,$EA,$EA,$0A
+  $01,$01,$61,$01,$01,$61,$01,$01
+  $01,$01,$01,$0A,$06,$01,$01,$01
+  $0A,$0A,$0A,$1A,$1A,$A1,$A1,$A1
+  $0A,$0A,$0A,$1A,$1A,$1A,$1A,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $01,$18,$18,$01,$01,$01,$01,$01
+  $01,$01,$01,$1B,$1B,$01,$01,$01
+  $01,$18,$18,$1B,$1B,$01,$01,$01
+  $01,$01,$01,$01,$01,$17,$17,$01
+  $01,$18,$18,$01,$01,$17,$17,$01
+  $01,$01,$01,$1B,$1B,$17,$17,$01
+  $01,$18,$18,$1B,$1B,$17,$17,$01
+  $81,$18,$1B,$81,$E1,$E1,$1E,$01
+end data
+data SpritePat bytes
+  $03,$07,$00,$00,$0F,$1B,$1B,$1B,$03,$03,$06,$06,$06,$06,$0E,$00
+  $C0,$E0,$00,$00,$F0,$D8,$D8,$D8,$C0,$C0,$60,$60,$60,$60,$70,$00
+  $00,$00,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C1,$E3,$F7,$7F,$3E,$1C,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$83,$C7,$EF,$FE,$7C,$38,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$0F,$3F,$7E,$F8,$E0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$F0,$FC,$7E,$1F,$07,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$7F,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$FE,$02,$00,$00,$00,$00,$00,$00,$00
+  $02,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$02,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00
+  $00,$00,$00,$0C,$0C,$00,$00,$15,$0A,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$30,$00,$00,$50,$A8,$00,$00,$00,$00,$00,$00,$00
+  $0C,$1E,$3F,$73,$F3,$FF,$FF,$EA,$F5,$FF,$7F,$7F,$3C,$38,$38,$78
+  $30,$78,$FC,$CE,$CF,$FF,$FF,$AF,$57,$FF,$FE,$FE,$3C,$1C,$1C,$1E
+  $00,$00,$03,$03,$03,$1F,$0F,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+WuTick:
+    db $40,$40,$30,$02,$50
+WuPick:
+    db $40,$55,$20,$02,$40,$40,$20,$03,$50
+WuBad:
+    db $40,$CD,$12,$06,$40,$FF,$F3,$03,$40,$F9,$12,$0A,$50
+WuStep:
+    db $00,$00,$35,$02,$00,$00,$F5,$06,$00,$00,$45,$02,$10
+WuFlap:
+    db $00,$00,$24,$03,$00,$00,$74,$03,$00,$00,$24,$03,$00,$00,$74,$03,$00,$00,$24,$03,$00,$00,$74,$03
+    db $00,$00,$34,$03,$00,$00,$84,$03,$10
+WuTwang:
+    db $40,$7F,$10,$02,$40,$A9,$20,$03,$40,$FE,$30,$04,$40,$53,$51,$06,$50
+WuThud:
+    db $00,$00,$16,$02,$00,$00,$56,$06,$10
+WuRoar:
+    db $00,$00,$06,$06,$00,$00,$17,$0A,$00,$00,$37,$0C,$00,$00,$67,$10,$10
+WuFall:
+    db $40,$6B,$10,$04,$40,$7F,$20,$04,$40,$97,$20,$04,$40,$BF,$30,$04,$40,$F0,$30,$04,$40,$2E,$41,$06
+    db $40,$7C,$51,$08,$40,$FC,$61,$0A,$50
+WuWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$1E
+    db $50
+WuLose:
+    db $40,$53,$21,$0C,$40,$68,$21,$0C,$40,$7C,$21,$0C,$40,$AB,$21,$1E,$50
+
+WuSoundTable:
+    dw WuTuneMel,$702B
+    dw WuTuneBass,$7035
+    dw WuTick,$7049
+    dw WuPick,$7049
+    dw WuBad,$7049
+    dw WuStep,$703F
+    dw WuFlap,$703F
+    dw WuTwang,$7049
+    dw WuThud,$703F
+    dw WuRoar,$703F
+    dw WuFall,$7049
+    dw WuWin,$7049
+    dw WuLose,$7049
+; Deep in the Cave (original)
+; Tiny Sound, 9 frames per step
+WuTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$24,$23,$01,$21,$01,$1C,$01,$01,$01
+    db $1F,$01,$1C,$01,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$01,$01
+    db $01,$01,$01,$01,$24,$01,$01,$28,$26,$01,$24,$01,$23,$01,$1F,$01
+    db $21,$01,$23,$01,$24,$01,$23,$01,$21,$01,$20,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+WuTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$15,$01,$09,$01,$15,$01,$04,$01,$10,$01
+    db $04,$01,$10,$01,$09,$01,$15,$01,$05,$01,$11,$01,$04,$01,$10,$01
+    db $04,$01,$08,$01,$09,$01,$15,$01,$0C,$01,$15,$01,$07,$01,$13,$01
+    db $05,$01,$11,$01,$04,$01,$10,$01,$04,$01,$10,$01,$09,$01,$04,$01
+    db $09,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+}

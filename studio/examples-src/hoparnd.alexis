@@ -1,0 +1,1123 @@
+cartridge "HOP AROUND/KEVIN DEWEY/1985"
+
+' HOP AROUND
+' A ColecoVision game based on "Hop Around" by Kevin Dewey, Ahoy! April
+' 1985 (Commodore 64 BASIC with redefined characters and sprite scenery;
+' the disk also has a VIC-20 version. orig/ has both programs, their
+' detokenized listings, jsc64 screenshots and the scripts used). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' The story (from the VIC-20 version's title page): you must save Doris
+' from the villain while dodging him and the bombs.
+'
+' Not a cell-for-cell port: the rules are the listing's, the game is built
+' for the ColecoVision: the hopper, the villain and the bombs are smooth
+' sprites, the girders, Doris, the brick pillars and the hills are tiles,
+' sound effects and an original title tune.
+'
+' From the original (orig/hop64.bas): five girders; the hopper starts on
+' the bottom one; the villain starts at the left of the top girder and
+' walks towards Doris, who waves at the right end; the stick walks left
+' and right, the button hops: straight up until a girder blocks the way
+' overhead (through any holes above, up to the top of the screen), then
+' one step right and down again; one bomb at a time appears in the top
+' girder at a random column and falls, punching a hole in every girder on
+' its way and drifting one column right at each girder below the first;
+' after each bomb the villain walks on (levels 1-5, chosen on the title
+' as the C-64's F1 did); walking into a
+' hole drops the hopper to the girder below, and so does a bomb blasting
+' the girder under it; a fall of more than 8 rows, a fall through the
+' bottom girder, a bomb, or bumping into the villain is the end ("YOU
+' BOMBED OUT!"); the villain reaching Doris carries her off (also the
+' end); coming down on the villain from a hop through the top girder
+' saves Doris ("YOU DID IT! YOU SAVED SWEET DORIS WITH ONLY n JUMPS!"),
+' and every hop counts as a jump.
+'
+' Liberties: on the C-64 a stomp only counted when the girder under the
+' villain's feet was also holed (a landing on solid girder at his cell
+' counted as bumping into him); here coming down on him from a hop
+' through the top girder is enough, and touching him while still rising
+' is still the end. The listing kept the HIGHEST jump count as its record
+' (IF BJ>JB); here the record is the FEWEST jumps, as the message means.
+' A long climb on the C-64 read past the hop sound's DATA (OUT OF DATA
+' error): here every hop works. A new bomb burns its fuse on the top
+' girder for 40 frames before it drops (on the C-64 a bomb could fall on
+' a hopper just under the top girder with no time to react). The villain
+' walks 1, 1, 2, 2, 3 columns after each bomb on levels 1-5 (the C-64:
+' the level's number, 1-5, which left a human no chance on the higher
+' levels), and the wait between bombs is 4 frames shorter each level.
+' Speeds: the hopper walks a column in 8 frames (7.5 a second, the C-64
+' did about 12 in jsc64 but jumped cell by cell) and rises and falls at
+' 2 pixels a frame; a bomb falls at 2 pixels a frame (the C-64's was about
+' 20 rows a second, a bit faster); a new bomb waits 30 to 93 frames on
+' level 1 (the C-64 drew a 1 in 9 chance on every pass); the villain creeps half a
+' pixel a frame instead of jumping a cell. Doris's cell blocks the hopper.
+' The game area is 28 columns (the C-64's 40), girders on rows 5, 9, 13,
+' 17 and 21 (the C-64's 3, 9, 13, 17 and 21), bombs appear between
+' columns 2 and 25 so their holes stay inside. Standing still is not a
+' way out: bombs keep falling and the villain keeps walking.
+'
+' Controls: either controller; the stick walks left and right, either
+' button hops (hold it to keep hopping). On the title, up and down
+' choose, left and right (or a button) change the level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz (Doris waves once a second, the fuse
+' spark changes colour 3 times a second).
+
+const TGirder = 128
+const THole = 129
+const TScorch = 130
+const TBrick = 131
+const THillL = 132
+const THillR = 133
+const THillF = 134
+const TGrass = 135
+const TDoris0 = 136
+const TDorisB0 = 137
+const TDoris1 = 138
+const TDorisB1 = 139
+const TGirdE = 140
+const SHop0a = 0
+const SHop0b = 4
+const SHop1a = 8
+const SHop1b = 12
+const SHopupa = 16
+const SHopupb = 20
+const SHopdeada = 24
+const SHopdeadb = 28
+const SVil0a = 32
+const SVil0b = 36
+const SVil0ua = 40
+const SVil0ub = 44
+const SVil1a = 48
+const SVil1b = 52
+const SVil1ua = 56
+const SVil1ub = 60
+const SBomb = 64
+const SSpark = 68
+const SDoris = 72
+const SDorisf = 76
+const NTiles8 = 104
+const SprBytes = 640
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHop = 3
+const SndLand = 4
+const SndStep = 5
+const SndWhistle = 6
+const SndFizz = 7
+const SndBlast = 8
+const SndCreep = 9
+const SndDead = 10
+const SndStomp = 11
+const SndWin = 12
+const SndLost = 13
+const SndStart = 14
+const SndTick = 15
+const NSpr = 8
+const PmStand = 0
+const PmWalk = 1
+const PmRise = 2
+const PmShift = 3
+const PmFall = 4
+const PmDead = 5
+const PmWin = 6
+const PmGone = 7
+const TopY = 24
+const StartY = 152
+const VilEnd = 224
+const DeadN = 90
+const FallMax = 64
+const FuseN = 40
+
+data FloorT bytes
+  5, 9, 13, 17, 21
+end data
+
+record Bomb:
+  u8 X
+  u8 Y
+  u8 Bc
+  u8 Nx
+  u8 Live
+  u8 Wt
+end record
+
+record Mover:
+  u8 X
+  u8 Y
+  u8 Gx
+  u8 Hf
+end record
+
+Bomb Bm
+Mover Vil
+Mover Dor
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 3 Jumps = 0
+bcd digits 3 Best = 0
+' the girders: 1 solid, 0 holed; girder G, column C at G * 28 + C - 2
+u8 Gd[140]
+' the hopper: column, pixel position, state, frames left, the hop started
+' below the top girder, pixels fallen
+u8 Pc = 13
+u8 Px = 104
+u8 Py = 152
+u8 Pm = 0
+u8 Pt = 0
+u8 Below = 0
+u8 FallN = 0
+u8 DeadT = 0
+u8 Lv = 1
+u8 Over = 0
+u8 Wave = 0
+u8 WaveT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Pad = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table HaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  Phase = 4
+  mute all
+  for Gi = 9 to 15
+    fill 32 count 26 at 3,Gi
+  next
+  select case Over
+  case 2
+    print at 9,10, "YOU DID IT!"
+    print at 5,12, "YOU SAVED SWEET DORIS"
+    print at 7,13, "WITH ONLY"
+    print at 17,13, Jumps
+    print at 21,13, "JUMPS!"
+    Got = 0
+    if Best = 0 then Got = 1
+    if Jumps < Best then Got = 1
+    if Got = 1 then
+      Best = Jumps
+      print at 10,15, "A NEW BEST!"
+      ShowHud
+    end if
+    play sound SndWin
+  case 3
+    print at 6,10, "THE VILLAIN CARRIED"
+    print at 9,11, "DORIS AWAY!"
+    print at 8,13, "YOU BOMBED OUT!"
+    play sound SndLost
+  case else
+    print at 8,11, "YOU BOMBED OUT!"
+    play sound SndLost
+  end select
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the girders
+
+' the girder number (1-5) at a screen row, 0 when there is none
+function GirderAt(u8 Gr) as u8
+  select case Gr
+  case 5
+    return 1
+  case 9
+    return 2
+  case 13
+    return 3
+  case 17
+    return 4
+  case 21
+    return 5
+  case else
+    return 0
+  end select
+  return 0
+
+' 1 when the cell is solid girder (the pillars count as solid)
+function Solid(u8 Sc, u8 Sr) as u8
+  u8 Gn = 0
+  u16 Ix = 0
+  Gn = GirderAt(Sr)
+  if Gn = 0 then return 0
+  if Sc < 2 then return 1
+  if Sc > 29 then return 1
+  Ix = (Gn - 1) * 28 + Sc - 2
+  return Gd[Ix]
+
+' blast a hole at column C of girder number K (1-5)
+sub Blast:
+  W16 = K - 1
+  W16 = W16 * 28 + C - 2
+  Gd[W16] = 0
+  R = FloorT[K - 1]
+  put char THole at C,R
+  play sound SndBlast
+  return
+end sub
+
+sub DrawGirders:
+  for Gi = 0 to 4
+    R = FloorT[Gi]
+    fill TGirder count 28 at 2,R
+  next
+  return
+end sub
+
+sub ResetGirders:
+  for Gi = 0 to 139
+    Gd[Gi] = 1
+  next
+  return
+end sub
+
+sub DrawFrame:
+  for Gi = 2 to 21
+    fill TBrick count 2 at 0,Gi
+    fill TBrick count 2 at 30,Gi
+  next
+  for Gi = 0 to 15
+    C = Gi << 1
+    put char THillL at C,22
+    C = C + 1
+    put char THillR at C,22
+  next
+  fill TGrass count 32 at 0,23
+  DrawGirders
+  DrawDoris
+  return
+end sub
+
+sub DrawDoris:
+  if Wave = 0 then
+    put char TDoris0 at 29,3
+    put char TDorisB0 at 29,4
+  else
+    put char TDoris1 at 29,3
+    put char TDorisB1 at 29,4
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  inc WaveT
+  if WaveT >= 30 then
+    WaveT = 0
+    Wave = Wave ^ 1
+    if Pm <> PmGone then DrawDoris
+  end if
+  if Pm = PmDead then
+    dec DeadT
+    if DeadT = 0 then Over = 1
+    return
+  end if
+  if Pm = PmWin then
+    Tumble
+    return
+  end if
+  if Pm = PmGone then
+    CarryOff
+    return
+  end if
+  MoveBomb
+  MoveVillain
+  if Pm = PmGone then return
+  MoveHopper
+  if Pm < PmDead then Collide
+  return
+end sub
+
+' the bomb: wait, appear in the top girder with its fuse burning (40
+' frames), blast through it and fall two pixels a frame,
+' drift a column right over the row above each lower girder, blast it
+sub MoveBomb:
+  u8 Fp = 0
+  if Bm.Live = 0 then
+    dec Bm.Wt
+    if Bm.Wt > 0 then return
+    Rand
+    Bm.Bc = Rs mod 24 + 2
+    Bm.X = Bm.Bc << 3
+    Bm.Y = 40
+    Bm.Nx = 1
+    Bm.Live = 1
+    Bm.Wt = FuseN
+    play sound SndFizz
+    return
+  end if
+  ' the fuse burns on the top girder, then the bomb blasts through it
+  if Bm.Wt > 0 then
+    dec Bm.Wt
+    if Bm.Wt = 0 then
+      C = Bm.Bc
+      K = 1
+      Blast
+      play sound SndWhistle
+    end if
+    return
+  end if
+  Bm.Y += 2
+  if Bm.Nx <= 4 then
+    Fp = FloorT[Bm.Nx] << 3
+    if Bm.Y > Fp - 8 then
+      Bm.X += 2
+      if Bm.Y = Fp then
+        inc Bm.Bc
+        inc Bm.Nx
+        C = Bm.Bc
+        K = Bm.Nx
+        Blast
+      end if
+    end if
+  end if
+  if Bm.Y >= 176 then
+    Bm.Live = 0
+    Rand
+    Bm.Wt = NextWait(Lv)
+    V = Lv + 1
+    V = V >> 1
+    V = V << 3
+    W16 = Vil.Gx + V
+    if W16 > VilEnd then W16 = VilEnd
+    Vil.Gx = W16
+    play sound SndCreep
+  end if
+  return
+end sub
+
+' frames before the next bomb: 30 to 93 on level 1, 4 fewer each level
+function NextWait(u8 Lw) as u8
+  u8 Base = 0
+  Base = Rs & 63
+  return Base + 34 - Lw * 4
+
+' the villain creeps half a pixel a frame towards his goal; at Doris he
+' carries her off
+sub MoveVillain:
+  if Vil.X >= Vil.Gx then return
+  Vil.Hf = Vil.Hf ^ 1
+  if Vil.Hf = 0 then return
+  inc Vil.X
+  if Vil.X >= VilEnd then
+    Pm = PmGone
+    Dor.X = 232
+    Dor.Y = 24
+    put char 32 at 29,3
+    put char 32 at 29,4
+    play sound SndLost
+  end if
+  return
+end sub
+
+sub MoveHopper:
+  u8 Hr = 0
+  select case Pm
+  case PmStand
+    Hr = Py >> 3
+    Hr = Hr + 2
+    if Solid(Pc, Hr) = 0 then
+      Pm = PmFall
+      FallN = 0
+      Below = 0
+      return
+    end if
+    if Btn > 0 then
+      Pm = PmRise
+      inc Jumps
+      ShowJumps
+      Below = 0
+      if Py > TopY then Below = 1
+      play sound SndHop
+      return
+    end if
+    V = Pad & 12
+    if V = 4 then
+      if Pc > 2 then
+        dec Pc
+        Pm = PmWalk
+      end if
+    end if
+    if V = 8 then
+      Got = 1
+      if Pc >= 29 then Got = 0
+      if Pc = 28 then
+        if Py <= TopY then Got = 0
+      end if
+      if Got = 1 then
+        inc Pc
+        Pm = PmWalk
+      end if
+    end if
+  case PmWalk
+    X = Pc << 3
+    if Px < X then inc Px
+    if Px > X then dec Px
+    if Px = X then Pm = PmStand
+  case PmRise
+    Py -= 2
+    V = Py & 7
+    if V = 0 then
+      Hr = Py >> 3
+      Got = 0
+      if Hr <= 2 then Got = 1
+      if Got = 0 then
+        if Solid(Pc, Hr - 1) = 1 then Got = 1
+      end if
+      if Got = 1 then
+        Pm = PmShift
+        Pt = 0
+        Got = 1
+        if Pc >= 29 then Got = 0
+        if Pc = 28 then
+          if Py <= TopY then Got = 0
+        end if
+        if Got = 1 then
+          inc Pc
+          Pt = 4
+        end if
+      end if
+    end if
+  case PmShift
+    if Pt > 0 then
+      Px += 2
+      dec Pt
+    end if
+    if Pt = 0 then
+      Pm = PmFall
+      FallN = 0
+    end if
+  case PmFall
+    Py += 2
+    FallN += 2
+    V = Py & 7
+    if V = 0 then
+      if Py >= 168 then
+        Die
+        return
+      end if
+      Hr = Py >> 3
+      Hr = Hr + 2
+      if Solid(Pc, Hr) = 1 then
+        if FallN > FallMax then
+          Die
+          return
+        end if
+        Pm = PmStand
+        Below = 0
+        play sound SndLand
+      end if
+    end if
+  end select
+  return
+end sub
+
+' the bomb and the villain against the hopper (boxes a little inside the
+' drawings)
+sub Collide:
+  if Bm.Live = 1 then
+    X = Bm.X + 7
+    Y = Px + 7
+    if X > Px then
+      if Y > Bm.X then
+        X = Bm.Y + 8
+        Y = Py + 15
+        if X > Py then
+          if Y > Bm.Y then
+            Die
+            return
+          end if
+        end if
+      end if
+    end if
+  end if
+  X = Vil.X + 6
+  Y = Px + 6
+  if X > Px then
+    if Y > Vil.X then
+      X = Vil.Y + 15
+      Y = Py + 15
+      if X > Py then
+        if Y > Vil.Y then
+          Got = 0
+          if Below = 1 then
+            if Pm = PmShift then Got = 1
+            if Pm = PmFall then Got = 1
+          end if
+          if Got = 1 then
+            Pm = PmWin
+            Bm.Live = 0
+            play sound SndStomp
+          else
+            Die
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Die:
+  Pm = PmDead
+  DeadT = DeadN
+  play sound SndDead
+  return
+end sub
+
+' the stomped villain tumbles down to the right and off the screen
+sub Tumble:
+  if Vil.X < 240 then Vil.X += 1
+  Vil.Y += 2
+  if Vil.Y >= 190 then
+    Vil.Y = 192
+    Over = 2
+  end if
+  return
+end sub
+
+' the villain carries Doris off down to the left
+sub CarryOff:
+  dec Vil.X
+  Vil.Y += 2
+  Dor.X = Vil.X + 8
+  Dor.Y = Vil.Y
+  if Vil.Y >= 190 then Over = 3
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' 0-1 the hopper, 2-3 the villain, 4 the bomb, 5 its spark, 6 Doris
+sub DrawSprites:
+  u8 Sy = 0
+  u8 Pa = 0
+  Sy = Py - 1
+  select case Pm
+  case PmDead
+    Pa = SHopdeada
+  case PmRise, PmShift
+    Pa = SHopupa
+  case PmFall
+    Pa = SHopupa
+  case else
+    V = Px >> 2
+    V = V & 1
+    Pa = SHop0a
+    if Pm = PmWalk then
+      if V = 1 then Pa = SHop1a
+    end if
+  end select
+  set sprite 0 to Sy,Px,Pa,3
+  Pa = Pa + 4
+  set sprite 1 to Sy,Px,Pa,9
+  ' the villain
+  Sy = Vil.Y - 1
+  V = Vil.X >> 2
+  V = V & 1
+  if V = 0 then
+    Pa = SVil0a
+  else
+    Pa = SVil1a
+  end if
+  if Pm = PmWin then Pa = Pa + 8
+  if Vil.Y >= 192 then Sy = 192
+  set sprite 2 to Sy,Vil.X,Pa,13
+  Pa = Pa + 4
+  set sprite 3 to Sy,Vil.X,Pa,15
+  ' the bomb and its spark
+  if Bm.Live = 1 then
+    Sy = Bm.Y - 1
+    set sprite 4 to Sy,Bm.X,SBomb,14
+    V = Tick / 10
+    V = V & 1
+    C = 11
+    if V = 1 then C = 8
+    set sprite 5 to Sy,Bm.X,SSpark,C
+  else
+    set sprite 4 to 192,0,0,0
+    set sprite 5 to 192,0,0,0
+  end if
+  if Pm = PmGone then
+    Sy = Dor.Y - 1
+    if Dor.Y >= 190 then Sy = 192
+    set sprite 6 to Sy,Dor.X,SDoris,9
+  else
+    set sprite 6 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowJumps:
+  print at 8,1, Jumps
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "JUMPS"
+  ShowJumps
+  print at 13,1, "LEVEL"
+  NumU = Lv
+  print at 19,1, digits$(NumU, 1)
+  print at 22,1, "BEST"
+  print at 27,1, Best
+  return
+end sub
+
+sub NewGame:
+  Phase = 0
+  NewScreen
+  ResetGirders
+  DrawFrame
+  Jumps = 0
+  ShowHud
+  Pc = 13
+  Px = 104
+  Py = StartY
+  Pm = PmStand
+  Below = 0
+  FallN = 0
+  DeadT = 0
+  Over = 0
+  Vil.X = 24
+  Vil.Y = TopY
+  Vil.Gx = 24
+  Vil.Hf = 0
+  Bm.Live = 0
+  Bm.Wt = 60
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Pad = J1 | J2
+  Btn = Pad & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the girders, Doris waving, the name, START / LEVEL / CREDITS
+sub TitlePage:
+  Phase = 5
+  NewScreen
+  ResetGirders
+  DrawFrame
+  for Gi = 6 to 20
+    if GirderAt(Gi) = 0 then fill 32 count 26 at 3,Gi
+  next
+  print at 10,7, "HOP AROUND!"
+  print at 9,11, "BY KEVIN DEWEY"
+  print at 8,15, "AHOY! APRIL 1985"
+  print at 12,18, "START"
+  print at 12,19, "LEVEL"
+  print at 12,20, "CREDITS"
+  print at 22,1, "BEST"
+  print at 27,1, Best
+  ShowLevel
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Phase = 6
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  inc WaveT
+  if WaveT >= 30 then
+    WaveT = 0
+    Wave = Wave ^ 1
+    DrawDoris
+  end if
+  V = Pad & 15
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if V = 2 then
+        if Menu < 2 then inc Menu
+      end if
+      if Menu = 1 then
+        if V = 4 then
+          if Lv > 1 then dec Lv
+        end if
+        if V = 8 then
+          if Lv < 5 then inc Lv
+        end if
+      end if
+      ShowMenu
+      ShowLevel
+      play sound SndTick
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    inc Lv
+    if Lv > 5 then Lv = 1
+    ShowLevel
+    play sound SndTick
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 18,19, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowMenu:
+  for Ci = 0 to 2
+    R = Ci + 18
+    C = 32
+    if Ci = Menu then C = 62
+    put char C at 10,R
+  next
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 7
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "HOP AROUND!"
+  print at 2,5, "BASED ON HOP AROUND BY"
+  print at 2,6, "KEVIN DEWEY, AHOY! APRIL"
+  print at 2,7, "1985 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: GIRDER HOP"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Phase = 8
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$C3,$99,$C3,$99,$C3,$00
+  $81,$00,$00,$00,$00,$00,$00,$42
+  $A5,$4A,$10,$00,$00,$20,$4A,$A5
+  $10,$10,$10,$00,$40,$40,$40,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$02
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$20,$02,$00,$40,$04,$00,$10
+  $00,$44,$00,$88,$00,$21,$00,$44
+  $C3,$81,$C3,$24,$00,$18,$C3,$18
+  $81,$00,$81,$81,$81,$00,$24,$99
+  $C3,$81,$C3,$24,$00,$18,$C2,$19
+  $01,$01,$80,$80,$81,$00,$24,$99
+  $01,$01,$C2,$99,$C3,$99,$C2,$01
+end data
+data TileCol bytes
+  $0F,$05,$54,$45,$45,$45,$54,$05
+  $E4,$04,$04,$04,$04,$04,$04,$E4
+  $84,$84,$84,$04,$04,$84,$84,$84
+  $68,$68,$68,$06,$68,$68,$68,$06
+  $A4,$A4,$A4,$4A,$4A,$4A,$4A,$BA
+  $B4,$A4,$A4,$A4,$4A,$4A,$4A,$0A
+  $0A,$BA,$BA,$0A,$BA,$BA,$0A,$BA
+  $0C,$2C,$0C,$2C,$0C,$2C,$0C,$2C
+  $4B,$4B,$B9,$19,$09,$69,$49,$94
+  $4D,$0D,$9D,$9D,$4D,$0D,$94,$4F
+  $4B,$4B,$B9,$19,$09,$69,$49,$94
+  $9D,$9D,$9D,$9D,$4D,$0D,$94,$4F
+  $4F,$45,$54,$45,$45,$45,$54,$45
+end data
+data SpritePat bytes
+  $38,$7C,$00,$00,$00,$7C,$BA,$BA,$38,$38,$6C,$44,$44,$C6,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$7C,$54,$38,$00,$00,$00,$82,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $38,$7C,$00,$00,$00,$7C,$78,$BA,$38,$38,$3C,$24,$64,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$7C,$54,$38,$00,$00,$00,$82,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $38,$FA,$82,$00,$00,$7C,$38,$38,$38,$38,$6C,$44,$C6,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $82,$00,$7C,$54,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$FC,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0A,$1F,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$80,$00
+  $3C,$7E,$FF,$00,$00,$00,$7E,$FF,$BD,$3C,$3C,$24,$24,$66,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$38,$28,$38,$00,$00,$00,$81,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$66,$24,$24,$3C,$3C,$BD,$FF,$7E,$00,$00,$00,$FF,$7E,$3C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$00,$00,$00,$38,$28,$38,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$FF,$00,$00,$00,$7E,$FF,$BD,$3C,$3C,$28,$28,$6C,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$38,$28,$38,$00,$00,$00,$81,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$6C,$28,$28,$3C,$3C,$BD,$FF,$7E,$00,$00,$00,$FF,$7E,$3C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$00,$00,$00,$38,$28,$38,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $04,$08,$38,$7C,$DE,$BE,$7C,$38,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$05,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$C3,$00,$00,$00,$00,$00,$7E,$FF,$BD,$BD,$7E,$FF,$24,$66
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$3C,$5A,$7E,$66,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+HaHop:
+    db $40,$A9,$20,$02,$40,$7F,$20,$02,$40,$5F,$30,$02,$40,$47,$40,$02,$50
+HaLand:
+    db $40,$FC,$31,$02,$40,$A6,$52,$02,$50
+HaStep:
+    db $40,$39,$70,$02,$50
+HaWhistle:
+    db $40,$35,$50,$06,$40,$39,$50,$06,$40,$3C,$50,$06,$40,$40,$50,$06,$40,$43,$60,$06,$40,$47,$60,$06
+    db $40,$4C,$60,$06,$40,$50,$60,$06,$40,$55,$60,$06,$40,$5A,$70,$06,$40,$5F,$70,$06,$50
+HaFizz:
+    db $00,$00,$64,$04,$00,$00,$84,$04,$00,$00,$64,$04,$00,$00,$84,$04,$00,$00,$64,$04,$00,$00,$84,$04
+    db $00,$00,$64,$04,$00,$00,$84,$04,$00,$00,$64,$04,$00,$00,$94,$04,$10
+HaBlast:
+    db $00,$00,$04,$02,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$66,$0A,$10
+HaCreep:
+    db $40,$F9,$42,$03,$40,$FF,$F3,$03,$40,$25,$43,$03,$50
+HaDead:
+    db $40,$8F,$20,$05,$40,$97,$30,$05,$40,$A0,$30,$05,$40,$AA,$40,$05,$40,$B4,$40,$05,$40,$BF,$50,$05
+    db $40,$CA,$50,$05,$40,$D6,$60,$05,$40,$E2,$60,$05,$40,$F0,$70,$05,$40,$FE,$70,$05,$40,$0E,$81,$14
+    db $50
+HaStomp:
+    db $00,$00,$05,$03,$00,$00,$26,$06,$00,$00,$57,$08,$10
+HaWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$06,$40,$6B,$10,$18
+    db $50
+HaLost:
+    db $40,$1D,$21,$0C,$40,$2E,$21,$0C,$40,$41,$31,$0C,$40,$53,$31,$1E,$50
+HaStart:
+    db $40,$D6,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$47,$20,$0C,$50
+HaTick:
+    db $40,$55,$40,$02,$50
+
+HaSoundTable:
+    dw HaTuneMel,$702B
+    dw HaTuneBass,$7035
+    dw HaHop,$7049
+    dw HaLand,$7049
+    dw HaStep,$7049
+    dw HaWhistle,$7049
+    dw HaFizz,$703F
+    dw HaBlast,$703F
+    dw HaCreep,$7049
+    dw HaDead,$7049
+    dw HaStomp,$703F
+    dw HaWin,$7049
+    dw HaLost,$7049
+    dw HaStart,$7049
+    dw HaTick,$7049
+; Girder Hop (original)
+; Tiny Sound, 7 frames per step
+HaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$24,$21,$01,$23,$01,$26,$2B,$01,$26,$23,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$24,$01,$1F,$1C,$01,$1A,$01,$1F,$23
+    db $01,$1F,$1A,$01,$18,$01,$1C,$21,$01,$1E,$1A,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+HaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$12,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

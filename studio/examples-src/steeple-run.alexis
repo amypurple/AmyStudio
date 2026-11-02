@@ -1,0 +1,1485 @@
+cartridge "STEEPLE RUN/TONY BRANTNER/1987"
+
+' STEEPLE RUN
+' A ColecoVision game based on "Steeplechase" by Tony Brantner, Ahoy!
+' August 1987 (Commodore 64, machine code). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/ml.dis), the game is rebuilt for the ColecoVision:
+' smooth sprites, hills that scroll slower than the turf (as the C64's
+' split screen did), tile scenery redrawn, sounds and a title tune.
+'
+' The game: two horses race in two lanes, one above the other, over a
+' course of 1, 2 or 3 miles. Push right to drive your horse on, left to
+' rein it in; let go and it slows down. A button jumps. Hedges, rails,
+' walls and water come at you: touch one and your horse is held to a crawl
+' until it is past. The first to finish wins; the best time for each
+' course length is kept until the power goes off.
+'
+' From the original (orig/ml.dis): speed 0-46 in 256ths, +10 a pass with
+' right, -16 with left, -3 when let go, never 47 or more; a step of one
+' pixel every 50 - speed passes, so the horse creeps at speed 0 and the
+' last few points of speed count most; a gallop frame every 8 steps; a
+' hundredth of a mile every 128 steps; the jump lasts a fixed time (the
+' same at any speed), so a fast horse jumps further; an obstacle touched
+' holds the speed at 10 while they overlap; the obstacles come at random
+' (four kinds), at most a few at a time; the race ends when one horse has
+' gone the course's distance; the time runs in tenths; the best time of
+' each course (1, 2, 3) is kept; the course chosen with the joystick on
+' the title; the horses trot in from the left before the start.
+'
+' Liberties: speeds are per frame (the C64 ran its loop about 650 times a
+' second: right adds 98/256 a frame, left takes 157, letting go 29; a step
+' is 2560 / (50 - speed) 256ths of a pixel a frame); the jump lasts 48
+' frames, 16 pixels high at the top, and it starts on a press (the C64
+' jumped again at once while the button was held: holding it kept the
+' horse in the air for ever); a horse can only start another jump 8 frames
+' after landing, and it can't be driven on in the air (it slows as if let
+' go), so jumping all the time no longer clears every obstacle; obstacles
+' are 16 pixels wide and come 112 to 367 pixels apart (the C64 drew some
+' double width and spaced them by 256-pixel turns); the hitboxes are
+' boxes (the horse's legs, the obstacle's height), not the C64's sprite
+' collisions; the C64 raced two players or one horse alone; here one
+' player races the clock, or the second horse is the computer's; a
+' 3-2-1-GO count before the start; the C64 played a note per stride, here
+' hoof clops.
+'
+' Controls: joystick only. Right drives on, left reins in, either side
+' button jumps. Player 1 uses controller 1 and races in the top lane,
+' player 2 controller 2 in the bottom lane (one player: either
+' controller). On the title, up and down choose a line, left, right or a
+' button change it, a button on START starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+'
+' Workarounds for Amy bugs steeple-print-digits-first-and-last, steeple-word-table-u16-index removed 2026-11-01.
+
+const THilla0 = 128
+const THilla1 = 129
+const THilla2 = 130
+const THilla3 = 131
+const THilla4 = 132
+const THilla5 = 133
+const THilla6 = 134
+const THilla7 = 135
+const TTurfa0 = 136
+const TTurfa1 = 137
+const TTurfa2 = 138
+const TTurfa3 = 139
+const THillb0 = 140
+const THillb1 = 141
+const THillb2 = 142
+const THillb3 = 143
+const THillb4 = 144
+const THillb5 = 145
+const THillb6 = 146
+const THillb7 = 147
+const TTurfb0 = 148
+const TTurfb1 = 149
+const TTurfb2 = 150
+const TTurfb3 = 151
+const TSky = 152
+const TBar4 = 153
+const TBar1 = 154
+const TBar2 = 155
+const TBar3 = 156
+const TBar0 = 157
+const TLeaf = 158
+const TPost = 159
+const SHorse0b = 0
+const SHorse0f = 4
+const SHorse1b = 8
+const SHorse1f = 12
+const SHorse2b = 16
+const SHorse2f = 20
+const SHorse3b = 24
+const SHorse3f = 28
+const SHorse4b = 32
+const SHorse4f = 36
+const SRider = 40
+const SHedge = 44
+const SRail = 48
+const SWall = 52
+const SWater = 56
+const NTiles8 = 256
+const SprBytes = 480
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClop = 3
+const SndClop2 = 4
+const SndJump = 5
+const SndKnock = 6
+const SndBeep = 7
+const SndGo = 8
+const SndFinish = 9
+const SndBest = 10
+const SndPick = 11
+const HorseX = 48
+const SpawnX = 224
+const GoneX = 16
+const JLen = 48
+const LandLag = 8
+const AccR = 98
+const BrkL = 157
+const Fric = 29
+const TopSp = 12031
+const KnockSp = 2560
+const MsgRow = 22
+
+' 256ths of a pixel a frame at each speed: 2560 / (50 - speed)
+data VelT words
+  51,52,53,54,55,56,58,59,60,62,64,65,67,69,71,73
+  75,77,80,82,85,88,91,94,98,102,106,111,116,121,128,134
+  142,150,160,170,182,196,213,232,256,284,320,365,426,512,640
+end data
+' the jump: 16 x t x (48 - t) / 576 pixels
+data JumpH bytes
+  0,1,2,3,4,5,7,7,8,9,10,11,12,12,13,13,14
+  14,15,15,15,15,15,15,16,15,15,15,15,15,15,14,14,13
+  13,12,12,11,10,9,8,7,7,5,4,3,2,1,0
+end data
+' the obstacles: hedge, rail, wall, water
+' the heights to clear (a pixel under the drawings: 11, 9, 10, 4)
+data ObH bytes 10,8,9,4
+data ObSpr bytes SHedge,SRail,SWall,SWater
+data ObCol bytes 12,15,6,4
+data HorseCol bytes 10,6
+data RiderCol bytes 8,13
+
+data TilePat bytes
+  $00,$00,$00,$00,$FF,$8F,$00,$00
+  $00,$00,$00,$00,$87,$03,$01,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $FF,$FF,$EF,$FF,$FF,$EF,$FF,$FF
+  $00,$00,$10,$00,$00,$10,$00,$00
+  $3F,$00,$00,$3F,$3F,$3F,$3F,$3F
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$8F,$00,$00
+  $00,$00,$00,$00,$87,$03,$01,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00
+  $FF,$FF,$EF,$FF,$FF,$EF,$FF,$FF
+  $00,$00,$10,$00,$00,$10,$00,$00
+  $3F,$00,$00,$3F,$3F,$3F,$3F,$3F
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $49,$92,$22,$88,$49,$22,$92,$11
+  $18,$18,$18,$18,$18,$18,$18,$18
+end data
+data TileCol bytes
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $32,$32,$32,$32,$32,$32,$32,$32
+  $32,$32,$32,$32,$32,$32,$32,$32
+  $CF,$FF,$FF,$CF,$CF,$CF,$CF,$CF
+  $CF,$FF,$FF,$CF,$CF,$CF,$CF,$CF
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $55,$55,$55,$55,$52,$52,$52,$52
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $22,$22,$C2,$C2,$C2,$C2,$CC,$CC
+  $32,$32,$32,$32,$32,$32,$32,$32
+  $32,$32,$32,$32,$32,$32,$32,$32
+  $CF,$FF,$FF,$CF,$CF,$CF,$CF,$CF
+  $CF,$FF,$FF,$CF,$CF,$CF,$CF,$CF
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$01
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $F1,$81,$F1,$81,$F1,$81,$F1,$81
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$60,$FF,$BF,$3F,$3F,$1F,$1C,$33,$61,$C0,$80
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$01,$01,$83,$C6,$4C
+  $00,$00,$01,$03,$03,$07,$F7,$FF,$FF,$FE,$FE,$F0,$98,$0C,$06,$02
+  $A0,$F0,$F8,$FC,$FE,$9E,$8E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$FF,$BF,$3F,$3F,$1F,$1E,$1B,$11,$31,$20
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$03,$03,$02,$86,$84
+  $00,$00,$01,$03,$03,$07,$F7,$FF,$FF,$FE,$FE,$C0,$60,$30,$10,$18
+  $A0,$F0,$F8,$FC,$FE,$9E,$8E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$FF,$BF,$3F,$3F,$1F,$0E,$0F,$09,$09,$0D
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$01,$01,$01,$00,$80
+  $00,$00,$01,$03,$03,$07,$F7,$FF,$FF,$FE,$FE,$C0,$E0,$20,$A0,$D8
+  $A0,$F0,$F8,$FC,$FE,$9E,$8E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$FF,$BF,$3F,$3F,$1F,$1E,$33,$21,$60,$40
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$01,$01,$83,$82,$C6
+  $00,$00,$01,$03,$03,$07,$F7,$FF,$FF,$FE,$FE,$E0,$B0,$18,$0C,$04
+  $A0,$F0,$F8,$FC,$FE,$9E,$8E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$FF,$BF,$3F,$3F,$1F,$3E,$60,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$03,$06,$0C,$00,$00
+  $00,$00,$01,$03,$03,$07,$F7,$FF,$FF,$FE,$FE,$FC,$04,$00,$00,$00
+  $A0,$F0,$F8,$FC,$FE,$9E,$8E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$01,$0F,$1F,$3F,$3F,$1E,$0E,$0E,$0F,$00,$00,$00,$00
+  $C0,$E0,$C0,$80,$C0,$E0,$F0,$F8,$3C,$0C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0C,$3F,$7F,$FF,$FF,$7F,$FF,$FF,$7F,$FF,$FF
+  $00,$00,$00,$00,$00,$C0,$F0,$F8,$FC,$FE,$FE,$FF,$FF,$FE,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$C0,$FF,$FF,$C0,$C0,$FF,$FF,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$03,$FF,$FF,$03,$03,$FF,$FF,$03,$03
+  $00,$00,$00,$00,$00,$00,$FF,$EF,$FF,$FE,$FF,$EF,$FF,$FE,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FF,$EF,$FF,$FE,$FF,$EF,$FF,$FE,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$FF,$FF,$7F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C3,$FF,$FF,$FE
+end data
+data HillAnim bytes
+  $00,$00,$00,$00,$FF,$8F,$00,$00,$00,$00,$00,$00,$87,$03,$01,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$00,$00,$FF,$1E,$00,$00,$00,$00,$00,$00,$0F,$07,$03,$01
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FF,$FE,$FE
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$00,$00,$FE,$3C,$00,$00,$00,$00,$00,$00,$1F,$0F,$07,$03
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FE,$FC,$FC
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$00,$00,$FC,$78,$00,$00,$00,$00,$00,$00,$3F,$1F,$0F,$07
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FC,$F8,$F8
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$00,$00,$F8,$F0,$00,$00,$00,$00,$00,$00,$7F,$3F,$1F,$0F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$F8,$F0,$F0
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$00,$00,$F0,$E0,$00,$00,$00,$00,$00,$00,$FF,$7F,$3F,$1F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$F1,$E0,$E0
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$00,$00,$E1,$C0,$00,$00,$00,$00,$00,$00,$FF,$FF,$7F,$3F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$E3,$C0,$C0
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$00,$00,$C3,$81,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$7F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$C7,$80,$80
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$00,$00,$87,$03,$01,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$8F,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$00,$00,$0F,$07,$03,$01,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$FF,$FE,$FE,$00,$00,$00,$00,$FF,$1E,$00,$00
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$00,$00,$1F,$0F,$07,$03,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$FE,$FC,$FC,$00,$00,$00,$00,$FE,$3C,$00,$00
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$00,$00,$3F,$1F,$0F,$07,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$FC,$F8,$F8,$00,$00,$00,$00,$FC,$78,$00,$00
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$00,$00,$7F,$3F,$1F,$0F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$F8,$F0,$F0,$00,$00,$00,$00,$F8,$F0,$00,$00
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$00,$00,$FF,$7F,$3F,$1F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$F1,$E0,$E0,$00,$00,$00,$00,$F0,$E0,$00,$00
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$7F,$3F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$E3,$C0,$C0,$00,$00,$00,$00,$E1,$C0,$00,$00
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$7F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$C7,$80,$80,$00,$00,$00,$00,$C3,$81,$00,$00
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$FF,$8F,$00,$00,$00,$00,$00,$00,$87,$03,$01,$00
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FF,$FE,$FE
+  $00,$00,$00,$00,$FF,$1E,$00,$00,$00,$00,$00,$00,$0F,$07,$03,$01
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FE,$FC,$FC
+  $00,$00,$00,$00,$FE,$3C,$00,$00,$00,$00,$00,$00,$1F,$0F,$07,$03
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$FC,$F8,$F8
+  $00,$00,$00,$00,$FC,$78,$00,$00,$00,$00,$00,$00,$3F,$1F,$0F,$07
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$F8,$F0,$F0
+  $00,$00,$00,$00,$F8,$F0,$00,$00,$00,$00,$00,$00,$7F,$3F,$1F,$0F
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$F1,$E0,$E0
+  $00,$00,$00,$00,$F0,$E0,$00,$00,$00,$00,$00,$00,$FF,$7F,$3F,$1F
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$E3,$C0,$C0
+  $00,$00,$00,$00,$E1,$C0,$00,$00,$00,$00,$00,$00,$FF,$FF,$7F,$3F
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$C7,$80,$80
+  $00,$00,$00,$00,$C3,$81,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$7F
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$FF,$8F,$00,$00
+  $00,$00,$00,$00,$87,$03,$01,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$10,$38,$38,$38,$00,$00,$00,$00,$10,$38,$38,$38,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FE,$FE,$00,$00,$00,$00,$FF,$1E,$00,$00
+  $00,$00,$00,$00,$0F,$07,$03,$01,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$20,$70,$70,$70,$00,$00,$00,$00,$20,$70,$70,$70,$00,$00
+  $00,$00,$00,$00,$FF,$FE,$FC,$FC,$00,$00,$00,$00,$FE,$3C,$00,$00
+  $00,$00,$00,$00,$1F,$0F,$07,$03,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00
+  $00,$00,$00,$00,$FF,$FC,$F8,$F8,$00,$00,$00,$00,$FC,$78,$00,$00
+  $00,$00,$00,$00,$3F,$1F,$0F,$07,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$80,$C1,$C1,$C1,$00,$00,$00,$00,$80,$C1,$C1,$C1,$00,$00
+  $00,$00,$00,$00,$FF,$F8,$F0,$F0,$00,$00,$00,$00,$F8,$F0,$00,$00
+  $00,$00,$00,$00,$7F,$3F,$1F,$0F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$01,$83,$83,$83,$00,$00,$00,$00,$01,$83,$83,$83,$00,$00
+  $00,$00,$00,$00,$FF,$F1,$E0,$E0,$00,$00,$00,$00,$F0,$E0,$00,$00
+  $00,$00,$00,$00,$FF,$7F,$3F,$1F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$02,$07,$07,$07,$00,$00,$00,$00,$02,$07,$07,$07,$00,$00
+  $00,$00,$00,$00,$FF,$E3,$C0,$C0,$00,$00,$00,$00,$E1,$C0,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$7F,$3F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$04,$0E,$0E,$0E,$00,$00,$00,$00,$04,$0E,$0E,$0E,$00,$00
+  $00,$00,$00,$00,$FF,$C7,$80,$80,$00,$00,$00,$00,$C3,$81,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$7F,$00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+  $00,$00,$08,$1C,$1C,$1C,$00,$00,$00,$00,$08,$1C,$1C,$1C,$00,$00
+end data
+data TurfAnim bytes
+  $FF,$FF,$EF,$FF,$FF,$EF,$FF,$FF,$00,$00,$10,$00,$00,$10,$00,$00
+  $3F,$00,$00,$3F,$3F,$3F,$3F,$3F,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$DE,$FE,$FE,$DE,$FE,$FE,$01,$01,$21,$01,$01,$21,$01,$01
+  $7F,$00,$00,$7F,$7F,$7F,$7F,$7F,$FE,$00,$00,$FE,$FE,$FE,$FE,$FE
+  $FC,$FC,$BC,$FC,$FC,$BC,$FC,$FC,$03,$03,$43,$03,$03,$43,$03,$03
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$FC,$00,$00,$FC,$FC,$FC,$FC,$FC
+  $F8,$F8,$78,$F8,$F8,$78,$F8,$F8,$07,$07,$87,$07,$07,$87,$07,$07
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$F9,$00,$00,$F9,$F9,$F9,$F9,$F9
+  $F0,$F0,$F1,$F0,$F0,$F1,$F0,$F0,$0F,$0F,$0E,$0F,$0F,$0E,$0F,$0F
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$F3,$00,$00,$F3,$F3,$F3,$F3,$F3
+  $E0,$E0,$E2,$E0,$E0,$E2,$E0,$E0,$1F,$1F,$1D,$1F,$1F,$1D,$1F,$1F
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$E7,$00,$00,$E7,$E7,$E7,$E7,$E7
+  $C0,$C0,$C4,$C0,$C0,$C4,$C0,$C0,$3F,$3F,$3B,$3F,$3F,$3B,$3F,$3F
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$CF,$00,$00,$CF,$CF,$CF,$CF,$CF
+  $80,$80,$88,$80,$80,$88,$80,$80,$7F,$7F,$77,$7F,$7F,$77,$7F,$7F
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$9F,$00,$00,$9F,$9F,$9F,$9F,$9F
+  $00,$00,$10,$00,$00,$10,$00,$00,$FF,$FF,$EF,$FF,$FF,$EF,$FF,$FF
+  $FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$3F,$00,$00,$3F,$3F,$3F,$3F,$3F
+  $01,$01,$21,$01,$01,$21,$01,$01,$FE,$FE,$DE,$FE,$FE,$DE,$FE,$FE
+  $FE,$00,$00,$FE,$FE,$FE,$FE,$FE,$7F,$00,$00,$7F,$7F,$7F,$7F,$7F
+  $03,$03,$43,$03,$03,$43,$03,$03,$FC,$FC,$BC,$FC,$FC,$BC,$FC,$FC
+  $FC,$00,$00,$FC,$FC,$FC,$FC,$FC,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $07,$07,$87,$07,$07,$87,$07,$07,$F8,$F8,$78,$F8,$F8,$78,$F8,$F8
+  $F9,$00,$00,$F9,$F9,$F9,$F9,$F9,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $0F,$0F,$0E,$0F,$0F,$0E,$0F,$0F,$F0,$F0,$F1,$F0,$F0,$F1,$F0,$F0
+  $F3,$00,$00,$F3,$F3,$F3,$F3,$F3,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $1F,$1F,$1D,$1F,$1F,$1D,$1F,$1F,$E0,$E0,$E2,$E0,$E0,$E2,$E0,$E0
+  $E7,$00,$00,$E7,$E7,$E7,$E7,$E7,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $3F,$3F,$3B,$3F,$3F,$3B,$3F,$3F,$C0,$C0,$C4,$C0,$C0,$C4,$C0,$C0
+  $CF,$00,$00,$CF,$CF,$CF,$CF,$CF,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $7F,$7F,$77,$7F,$7F,$77,$7F,$7F,$80,$80,$88,$80,$80,$88,$80,$80
+  $9F,$00,$00,$9F,$9F,$9F,$9F,$9F,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF
+end data
+data TitleMap bytes
+  32,32,32,158,158,158,32,158,158,158,32,158,158,158,32,158,158,158,32,158,158,158,32,158,32,32,32,158,158,158,32,32
+  32,32,32,158,32,32,32,32,158,32,32,158,32,32,32,158,32,32,32,158,32,158,32,158,32,32,32,158,32,32,32,32
+  32,32,32,158,158,158,32,32,158,32,32,158,158,32,32,158,158,32,32,158,158,158,32,158,32,32,32,158,158,32,32,32
+  32,32,32,32,32,158,32,32,158,32,32,158,32,32,32,158,32,32,32,158,32,32,32,158,32,32,32,158,32,32,32,32
+  32,32,32,158,158,158,32,32,158,32,32,158,158,158,32,158,158,158,32,158,32,32,32,158,158,158,32,158,158,158,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,158,158,32,32,158,32,158,32,158,32,158,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,158,32,158,32,158,32,158,32,158,158,158,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,158,158,32,32,158,32,158,32,158,158,158,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,158,32,158,32,158,32,158,32,158,32,158,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,158,32,158,32,158,158,158,32,158,32,158,32,32,32,32,32,32,32,32,32,32
+end data
+
+record Horse:
+  u16 Sp
+  u8 Fr
+  u16 Ps
+  u16 Ds
+  u8 Pc
+  u8 Jt
+  u8 Lg
+  u8 Gf
+  u8 Gc
+  u16 Gap
+  u8 Hit
+end record
+
+record Obs:
+  u8 Kind
+  u8 X
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 Ra = 7
+u16 W16 = 0
+u16 Va = 0
+Horse Hs[2]
+Obs Ob[4]
+u16 Best[3]
+u16 TimeT = 0
+u16 Goal = 100
+u8 Sub6 = 0
+u8 ClkD = 0
+u8 TnC = 0
+u8 ScC = 0
+u8 MnC = 0
+u8 Course = 1
+u8 NPl = 1
+u8 Cpu = 0
+u8 NL = 1
+u8 Phase = 0
+u8 Winner = 255
+u8 NewBest = 0
+' the lane at work, loaded from Hs[L]
+u8 Ln = 0
+u16 Sp = 0
+u8 Fr = 0
+u16 Ps = 0
+u16 Ds = 0
+u8 Pc = 0
+u8 Jt = 0
+u8 Lg = 0
+u8 Gf = 0
+u8 Gc = 0
+u16 Gap = 0
+u8 Hit = 0
+u8 Px = 0
+u8 Hj = 0
+u8 Spd = 0
+u8 Hx = HorseX
+' what is on the screen, per lane
+u8 LastH[2]
+u8 LastT[2]
+u8 LastS[2]
+u16 LastD[2]
+' the computer
+u8 AiErr = 0
+u8 AiX = 0
+' input: per player the stick (1 up, 2 down, 4 left, 8 right, 16 a
+' button), last pass's, and the button's press
+u8 Jp[2]
+u8 OldJp[2]
+u8 Pe[2]
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Sel = 0
+' the title's stick edges (ShowMenu uses N)
+u8 Ed = 0
+u8 RowB[32]
+' loop counters (never shared with the helpers)
+u8 Li = 0
+u8 Oi = 0
+u8 Ti = 0
+u8 Ci = 0
+u8 Ai = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 M = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SpSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 5
+  sprites flicker on
+  set sprite count 10
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Best[0] = 0
+  Best[1] = 0
+  Best[2] = 0
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 3 then goto title
+  RunRace
+  ' the end: the result, then back to the title on a press
+  ' (left alone, Amy's sleep blanks the screen after 30 seconds)
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the race
+
+sub RunRace:
+  DrawRace
+  SetupRace
+  DrawAllLanes
+  ShowScreen
+  WalkIn
+  CountDown
+  Phase = 1
+rr_loop:
+  Frame1
+  GetInput
+  for Li = 0 to NL - 1
+    LaneStep(Li)
+  next
+  Clock
+  update sprites
+  if TimeT = 10 and Sub6 = 0 then print at 13,MsgRow, "     "
+  if Winner = 255 then goto rr_loop
+  Phase = 2
+  FinishMsg
+  return
+end sub
+
+sub SetupRace:
+  for Li = 0 to 1
+    Hs[Li].Sp = 0
+    Hs[Li].Fr = 0
+    Hs[Li].Ps = 0
+    Hs[Li].Ds = 0
+    Hs[Li].Pc = 0
+    Hs[Li].Jt = 0
+    Hs[Li].Lg = 0
+    Hs[Li].Gf = 0
+    Hs[Li].Gc = 0
+    Hs[Li].Gap = 160
+    Hs[Li].Hit = 0
+    LastH[Li] = 255
+    LastT[Li] = 255
+    LastS[Li] = 255
+    LastD[Li] = 65535
+    OldJp[Li] = 31
+  next
+  for Oi = 0 to 3
+    Ob[Oi].Kind = 0
+    Ob[Oi].X = 0
+  next
+  W16 = Course
+  Goal = W16 * 100
+  TimeT = 0
+  Sub6 = 0
+  ClkD = 0
+  TnC = 0
+  ScC = 0
+  MnC = 0
+  Winner = 255
+  NewBest = 0
+  AiX = 0
+  Phase = 0
+  return
+end sub
+
+' the horses trot in from the left (the C64 did this with rising notes)
+sub WalkIn:
+  for Ti = 0 to 63
+    Hx = 16 + (Ti >> 1)
+    if (Ti & 7) = 0 then play sound SndClop
+    for Li = 0 to NL - 1
+      LoadLane(Li)
+      Gf = (Ti >> 3) & 3
+      DrawLane
+    next
+    update sprites
+    Frame1
+  next
+  Hx = HorseX
+  return
+end sub
+
+sub CountDown:
+  for Ci = 3 to 1 step -1
+    N = Ci
+    print at 13,MsgRow, "  " + digits$(N, 1) + "  "
+    play sound SndBeep
+    for Ti = 1 to 40
+      Frame1
+    next
+  next
+  print at 13,MsgRow, " GO! "
+  play sound SndGo
+  return
+end sub
+
+sub LoadLane(u8 L):
+  Ln = L
+  Sp = Hs[L].Sp
+  Fr = Hs[L].Fr
+  Ps = Hs[L].Ps
+  Ds = Hs[L].Ds
+  Pc = Hs[L].Pc
+  Jt = Hs[L].Jt
+  Lg = Hs[L].Lg
+  Gf = Hs[L].Gf
+  Gc = Hs[L].Gc
+  Gap = Hs[L].Gap
+  Hit = Hs[L].Hit
+  Spd = Sp >> 8
+  return
+end sub
+
+sub StoreLane:
+  Hs[Ln].Sp = Sp
+  Hs[Ln].Fr = Fr
+  Hs[Ln].Ps = Ps
+  Hs[Ln].Ds = Ds
+  Hs[Ln].Pc = Pc
+  Hs[Ln].Jt = Jt
+  Hs[Ln].Lg = Lg
+  Hs[Ln].Gf = Gf
+  Hs[Ln].Gc = Gc
+  Hs[Ln].Gap = Gap
+  Hs[Ln].Hit = Hit
+  return
+end sub
+
+' one frame of one lane: speed, step, jump, obstacles, the finish, drawing
+sub LaneStep(u8 L):
+  u8 J = 0
+  u16 F16 = 0
+  LoadLane(L)
+  J = Jp[L]
+  ' the speed: driven only on the ground
+  if Jt = 0 and (J & 8) <> 0 then
+    Sp = Sp + AccR
+    if Sp > TopSp then Sp = TopSp
+  else
+    if Jt = 0 and (J & 4) <> 0 then
+      Sp = Ease(Sp, BrkL)
+    else
+      Sp = Ease(Sp, Fric)
+    end if
+  end if
+  Spd = Sp >> 8
+  ' the step: 2560 / (50 - speed) 256ths of a pixel
+  F16 = VelT[Spd]
+  F16 = F16 + Fr
+  Px = F16 >> 8
+  Fr = F16 & 255
+  Ps = Ps + Px
+  Pc = Pc + Px
+  if Pc >= 128 then
+    Pc = Pc - 128
+    inc Ds
+  end if
+  Gc = Gc + Px
+  if Gc >= 8 then
+    Gc = Gc - 8
+    Gf = (Gf + 1) & 3
+    if Jt = 0 then
+      if (Gf & 1) = 0 then
+        play sound SndClop
+      else
+        play sound SndClop2
+      end if
+    end if
+  end if
+  ' the jump
+  if Jt > 0 then
+    inc Jt
+    if Jt > JLen then
+      Jt = 0
+      Lg = LandLag
+    end if
+  else
+    if Lg > 0 then
+      dec Lg
+    else
+      if Pe[L] = 1 then
+        Jt = 1
+        play sound SndJump
+      end if
+    end if
+  end if
+  Hj = JumpH[Jt]
+  MoveObs
+  if Ds >= Goal and Winner = 255 then Winner = L
+  StoreLane
+  DrawLane
+  return
+end sub
+
+' a speed less some 256ths, never below 0
+function Ease(u16 S, u16 D) as u16
+  if S > D then return S - D
+  return 0
+
+' the obstacles of lane Ln move with the turf; a new one when the gap is
+' run; one touched holds the speed at 10
+sub MoveObs:
+  u8 Ox = 0
+  u8 Kd = 0
+  u8 Free = 255
+  u8 Touch = 0
+  for Oi = 0 to 1
+    K = Ln * 2 + Oi
+    Kd = Ob[K].Kind
+    if Kd > 0 then
+      Ox = Ob[K].X
+      if Ox <= GoneX + Px then
+        Ob[K].Kind = 0
+        Free = K
+      else
+        Ox = Ox - Px
+        Ob[K].X = Ox
+        ' the legs (Hx+10 .. Hx+21) against the obstacle (X+4 .. X+11)
+        if Ox + 11 >= Hx + 10 and Ox + 4 <= Hx + 21 then
+          if Hj < ObH[Kd - 1] then Touch = 1
+        end if
+      end if
+    else
+      Free = K
+    end if
+  next
+  if Gap > Px then
+    Gap = Gap - Px
+  else
+    Rand
+    if Free = 255 then
+      Gap = 16
+    else
+      Ob[Free].Kind = ((Rs >> 3) & 3) + 1
+      Ob[Free].X = SpawnX
+      W16 = Rs >> 8
+      Gap = W16 + 112
+    end if
+  end if
+  if Touch = 1 then
+    if Sp > KnockSp then Sp = KnockSp
+    Spd = Sp >> 8
+    if Hit = 0 then play sound SndKnock
+  end if
+  Hit = Touch
+  return
+end sub
+
+sub Rand:
+  Xor(Rs)
+  return
+end sub
+
+' a 16-bit xorshift (7, 9, 8)
+sub Xor(ref u16 R):
+  W16 = R << 7
+  R = R ^ W16
+  W16 = R >> 9
+  R = R ^ W16
+  W16 = R << 8
+  R = R ^ W16
+  return
+end sub
+
+' the race clock in tenths, up to 99:59.9
+sub Clock:
+  inc Sub6
+  if Sub6 >= 6 then
+    Sub6 = 0
+    if TimeT < 59999 then inc TimeT
+    ClkD = 1
+  end if
+  if ClkD = 0 or (Tick & 1) = 1 then return
+  ' the digits are counted, not divided out (four u16 divisions cost more
+  ' than a third of a frame), and only the changed ones printed
+  ClkD = 0
+  inc TnC
+  if TnC >= 10 then
+    TnC = 0
+    inc ScC
+    if ScC >= 60 then
+      ScC = 0
+      if MnC < 99 then inc MnC
+      print at 7,1, digits$(MnC, 2)
+    end if
+    print at 10,1, digits$(ScC, 2)
+  end if
+  print at 13,1, digits$(TnC, 1)
+  return
+end sub
+
+sub PrintTime(u8 Col, u8 Row, u16 Tt):
+  u8 Mn = 0
+  u8 Sc = 0
+  u8 Tn = 0
+  u16 Rm = 0
+  Mn = Tt / 600
+  Rm = Tt % 600
+  Sc = Rm / 10
+  Tn = Rm % 10
+  print at Col,Row, digits$(Mn, 2) + ":" + digits$(Sc, 2) + "." + digits$(Tn, 1)
+  return
+end sub
+
+sub FinishMsg:
+  u16 Old = 0
+  play sound SndFinish
+  ' the clock's last tenth may still be waiting for an even frame
+  PrintTime(7, 1, TimeT)
+  Old = Best[Course - 1]
+  if Old = 0 or TimeT < Old then
+    Best[Course - 1] = TimeT
+    NewBest = 1
+  end if
+  print at 2,21, "                            "
+  select case Winner
+  case 0
+    if NL = 1 then
+      print at 10,21, "FINISHED!"
+    else
+      print at 8,21, "PLAYER 1 WINS!"
+    end if
+  case else
+    if Cpu = 1 then
+      print at 8,21, "COMPUTER WINS!"
+    else
+      print at 8,21, "PLAYER 2 WINS!"
+    end if
+  end select
+  if NewBest = 1 then
+    print at 2,MsgRow, "  NEW BEST TIME  " + "           "
+    PrintTime(19, MsgRow, TimeT)
+  else
+    print at 2,MsgRow, "  TIME           " + "           "
+    PrintTime(19, MsgRow, TimeT)
+  end if
+  ShowBest
+  for Ti = 1 to 60
+    Frame1
+  next
+  if NewBest = 1 then play sound SndBest
+  for Ti = 1 to 30
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input: controllers, or the computer
+
+sub GetInput:
+  ReadPads
+  if NPl = 1 then
+    Jp[0] = Pads
+  else
+    Jp[0] = PadOf(1)
+  end if
+  if Cpu = 1 then
+    Jp[1] = AiPad()
+  else
+    Jp[1] = PadOf(2)
+  end if
+  for Si = 0 to 1
+    Pe[Si] = 0
+    if (Jp[Si] & 16) <> 0 and (OldJp[Si] & 16) = 0 then Pe[Si] = 1
+    OldJp[Si] = Jp[Si]
+  next
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' the computer: always drives on; for the nearest obstacle ahead it picks a
+' take-off point (where the top of the jump meets it) give or take a few
+' pixels, and presses the button there
+function AiPad as u8
+  u8 Nr = 255
+  u8 Ox = 0
+  u16 Tg = 0
+  V = 8
+  for Ai = 2 to 3
+    if Ob[Ai].Kind > 0 then
+      Ox = Ob[Ai].X
+      if Ox > HorseX + 8 and Ox < Nr then Nr = Ox
+    end if
+  next
+  if Nr = 255 then return V
+  if Nr <> AiX then
+    if Nr > AiX then
+      ' a new obstacle: a new error, -8 .. +7 pixels, and one time in
+      ' eight a bad one, -24 .. +23
+      Xor(Ra)
+      AiErr = Ra & 15
+      if (Ra & $0700) = 0 then AiErr = (Ra >> 4) % 48
+      AiErr = AiErr + 16
+    end if
+    AiX = Nr
+  end if
+  if Hs[1].Jt > 0 or Hs[1].Lg > 0 then return V
+  W16 = Hs[1].Sp >> 8
+  Tg = VelT[W16]
+  Tg = Tg * 24
+  Tg = Tg >> 8
+  Tg = Tg + AiErr
+  ' the obstacle's middle against the legs': Nr + 8 - (HorseX + 16),
+  ' plus the error's offset (16 + 8, or 16 + 24 for a bad one)
+  W16 = Nr - (HorseX + 8)
+  if (Ra & $0700) = 0 then
+    W16 = W16 + 40
+  else
+    W16 = W16 + 24
+  end if
+  if W16 <= Tg and (OldJp[1] & 16) = 0 then V = V | 16
+  return V
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the lane at work: its sprites, its scenery's shift, distance and speed
+sub DrawLane:
+  u8 Fp = 0
+  u8 Sb = 0
+  u8 Yh = 0
+  u8 Kd = 0
+  Sb = Ln * 3
+  Yh = Ln * 72 + 66 - Hj
+  if Jt > 0 then
+    Fp = 4
+  else
+    Fp = Gf
+  end if
+  Fp = Fp * 8
+  set sprite Sb to Yh - 5,Hx + 9,SRider,RiderCol[Ln]
+  set sprite Sb + 1 to Yh,Hx,Fp,HorseCol[Ln]
+  set sprite Sb + 2 to Yh,Hx + 16,Fp + 4,HorseCol[Ln]
+  for Oi = 0 to 1
+    K = Ln * 2 + Oi
+    Kd = Ob[K].Kind
+    Sb = 6 + K
+    if Kd > 0 then
+      Yh = Ln * 72 + 66
+      set sprite Sb to Yh,Ob[K].X,ObSpr[Kd - 1],ObCol[Kd - 1]
+    else
+      set sprite Sb to 207,0,0,0
+    end if
+  next
+  ' the hills move at half the turf's speed, redrawn every second frame
+  ' (lane 0 on even frames, lane 1 on odd ones) to keep within a frame
+  V = Ps >> 1
+  V = V & 31
+  T = Tick & 1
+  if V <> LastH[Ln] and T = Ln then
+    LastH[Ln] = V
+    Va = V * 64
+    select case Ln
+    case 0
+      copy HillAnim + Va count 64 to vram.pattern + THilla0 * 8
+    case else
+      copy HillAnim + Va count 64 to vram.pattern + 2048 + THillb0 * 8
+    end select
+  end if
+  V = Ps & 15
+  if V <> LastT[Ln] then
+    LastT[Ln] = V
+    Va = V * 32
+    if Ln = 0 then
+      copy TurfAnim + Va count 32 to vram.pattern + 2048 + TTurfa0 * 8
+    else
+      copy TurfAnim + Va count 32 to vram.pattern + 4096 + TTurfb0 * 8
+    end if
+  end if
+  ' the figures on odd frames, lane 0 and lane 1 in turn (the clock is
+  ' printed on even frames)
+  T = Tick & 3
+  if T <> Ln * 2 + 1 then return
+  if Ds <> LastD[Ln] then
+    LastD[Ln] = Ds
+    ShowDist
+  end if
+  if Spd <> LastS[Ln] then
+    LastS[Ln] = Spd
+    ShowBar
+  end if
+  return
+end sub
+
+sub ShowDist:
+  Y = Ln * 9 + 3
+  N = Ds / 100
+  M = Ds % 100
+  print at 5,Y, digits$(N, 1) + "." + digits$(M, 2) + " MI"
+  return
+end sub
+
+' 12 cells, a quarter cell a point of speed
+sub ShowBar:
+  Y = Ln * 9 + 3
+  N = Spd >> 2
+  fill array RowB with TBar0
+  for Ci = 0 to 11
+    if Ci < N then
+      RowB[Ci] = TBar4
+    else
+      if Ci = N then
+        M = Spd & 3
+        if M > 0 then RowB[Ci] = TBar0 + M - 4
+      end if
+    end if
+  next
+  Va = Y * 32 + 17
+  copy RowB count 12 to vram.name + Va
+  return
+end sub
+
+sub DrawAllLanes:
+  for Li = 0 to 1
+    LoadLane(Li)
+    if Li < NL then
+      DrawLane
+      ShowDist
+      ShowBar
+    else
+      for Ci = 3 to 5
+        set sprite Ci to 207,0,0,0
+      next
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub DrawRace:
+  NewScreen
+  print at 2,1, "TIME 00:00.0"
+  ShowBest
+  for Li = 0 to 1
+    DrawLaneBg(Li)
+  next
+  print at 2,3, "P1"
+  if NL = 2 then
+    if Cpu = 1 then
+      print at 2,12, "CP"
+    else
+      print at 2,12, "P2"
+    end if
+  else
+    print at 2,12, "                            "
+    print at 7,16, "RACE THE CLOCK"
+  end if
+  N = Course
+  if N = 1 then
+    print at 9,21, "COURSE: 1 MILE"
+  else
+    print at 9,21, "COURSE: " + digits$(N, 1) + " MILES"
+  end if
+  return
+end sub
+
+sub ShowBest:
+  W16 = Best[Course - 1]
+  print at 17,1, "BEST "
+  if W16 = 0 then
+    print at 22,1, "--:--.-"
+  else
+    PrintTime(22, 1, W16)
+  end if
+  return
+end sub
+
+' rows: status, two of hills, four of sky, turf, rail
+sub DrawLaneBg(u8 L):
+  u8 R0 = 0
+  u8 Hb = 0
+  u8 Tb = 0
+  R0 = L * 9 + 3
+  if L = 0 then
+    Hb = THilla0
+    Tb = TTurfa0
+  else
+    Hb = THillb0
+    Tb = TTurfb0
+  end if
+  HillRows(R0 + 1, Hb)
+  for Ci = 3 to 6
+    fill TSky count 32 at 0,R0 + Ci
+  next
+  TurfRows(R0 + 7, Tb)
+  print at 13,R0, "SPD"
+  return
+end sub
+
+sub HillRows(u8 R, u8 Hb):
+  for Ci = 0 to 31
+    RowB[Ci] = Hb + (Ci & 3)
+  next
+  Va = R * 32
+  copy RowB count 32 to vram.name + Va
+  for Ci = 0 to 31
+    RowB[Ci] = Hb + 4 + (Ci & 3)
+  next
+  Va = Va + 32
+  copy RowB count 32 to vram.name + Va
+  return
+end sub
+
+sub TurfRows(u8 R, u8 Tb):
+  for Ci = 0 to 31
+    RowB[Ci] = Tb + (Ci & 1)
+  next
+  Va = R * 32
+  copy RowB count 32 to vram.name + Va
+  for Ci = 0 to 31
+    RowB[Ci] = Tb + 2 + (Ci & 1)
+  next
+  Va = Va + 32
+  copy RowB count 32 to vram.name + Va
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  for K = 0 to 9
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: STEEPLE RUN in hedges, a horse galloping and jumping over
+' scrolling hills, START / PLAYERS / COURSE / CREDITS, the tune once
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 352 to vram.name + 32
+  HillRows(13, THillb0)
+  fill TSky count 32 at 0,15
+  TurfRows(16, TTurfb0)
+  Sel = 0
+  ShowMenu
+  ' the demo horse runs in lane 1's state
+  Ln = 1
+  Ps = 0
+  Jt = 0
+  Gf = 0
+  Gc = 0
+  Ds = 0
+  Spd = 46
+  LastH[1] = 255
+  LastT[1] = 255
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 546
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  TitleDemo
+  Ed = Pads & (Pads ^ OldPads)
+  if (Ed & 1) <> 0 then
+    if Sel > 0 then dec Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (Ed & 2) <> 0 then
+    if Sel < 3 then inc Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  select case Sel
+  case 1
+    if (Ed & 28) <> 0 then
+      Cycle(NPl, 3)
+      play sound SndPick
+      ShowMenu
+    end if
+  case 2
+    if (Ed & 28) <> 0 then
+      Cycle(Course, 3)
+      play sound SndPick
+      ShowMenu
+    end if
+  case else
+    if (Ed & 16) <> 0 then goto tp_done
+  end select
+  goto tp_loop
+tp_done:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  Ra = Ra ^ Rs
+  if Ra = 0 then Ra = 7
+  HideSprites
+  ' NPl 3 is player 2 played by the computer
+  Cpu = 0
+  NL = 2
+  if NPl = 3 then Cpu = 1
+  if NPl = 1 then NL = 1
+  if Sel = 3 then
+    CreditsPage
+  end if
+  return
+end sub
+
+' Vr goes round 1 .. Top
+sub Cycle(ref u8 Vr, u8 Top):
+  inc Vr
+  if Vr > Top then Vr = 1
+  return
+end sub
+
+sub ShowMenu:
+  for Si = 0 to 3
+    put char 32 at 7,Si + 19
+  next
+  put char 62 at 7,Sel + 19
+  print at 9,19, "START"
+  select case NPl
+  case 1
+    print at 9,20, "ONE PLAYER     "
+  case 2
+    print at 9,20, "TWO PLAYERS    "
+  case else
+    print at 9,20, "ONE VS COMPUTER"
+  end select
+  N = Course
+  if N = 1 then
+    print at 9,21, "COURSE: 1 MILE "
+  else
+    print at 9,21, "COURSE: " + digits$(N, 1) + " MILES"
+  end if
+  print at 9,22, "CREDITS"
+  return
+end sub
+
+' the demo horse: full gallop, a jump every 96 frames
+sub TitleDemo:
+  u8 Yh = 0
+  Ps = Ps + 2
+  Gc = Gc + 2
+  if Gc >= 8 then
+    Gc = 0
+    Gf = (Gf + 1) & 3
+  end if
+  inc Ds
+  if Ds >= 96 then Ds = 0
+  if Ds < JLen then
+    Jt = Ds + 1
+  else
+    Jt = 0
+  end if
+  Hj = JumpH[Jt]
+  Hx = 104
+  Yh = 114 - Hj
+  if Jt > 0 then
+    T = 32
+  else
+    T = Gf * 8
+  end if
+  set sprite 0 to Yh - 5,Hx + 9,SRider,RiderCol[0]
+  set sprite 1 to Yh,Hx,T,HorseCol[0]
+  set sprite 2 to Yh,Hx + 16,T + 4,HorseCol[0]
+  update sprites
+  V = Ps >> 1
+  V = V & 31
+  Va = V * 64
+  copy HillAnim + Va count 64 to vram.pattern + 2048 + THillb0 * 8
+  V = Ps & 15
+  Va = V * 32
+  copy TurfAnim + Va count 32 to vram.pattern + 4096 + TTurfb0 * 8
+  Hx = HorseX
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "STEEPLE  RUN"
+  print at 2,5, "BASED ON STEEPLECHASE BY"
+  print at 2,6, "TONY BRANTNER, AHOY!"
+  print at 2,7, "AUGUST 1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: PADDOCK GALLOP"
+  print at 2,17, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SpClop:
+    db $00,$00,$65,$01,$00,$00,$B6,$01,$10
+SpClop2:
+    db $00,$00,$74,$01,$00,$00,$C5,$01,$10
+SpJump:
+    db $40,$1D,$41,$02,$40,$D6,$40,$02,$40,$AA,$50,$02,$40,$8F,$60,$02,$50
+SpKnock:
+    db $00,$00,$14,$02,$00,$00,$25,$03,$00,$00,$46,$05,$00,$00,$77,$06,$10
+SpBeep:
+    db $40,$7F,$20,$0A,$40,$7F,$F0,$02,$50
+SpGo:
+    db $40,$40,$20,$18,$50
+SpFinish:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+SpBest:
+    db $40,$55,$20,$04,$40,$47,$20,$04,$40,$55,$20,$04,$40,$47,$20,$04,$40,$35,$20,$10,$50
+SpPick:
+    db $40,$55,$40,$02,$50
+
+SpSoundTable:
+    dw SpTuneMel,$702B
+    dw SpTuneBass,$7035
+    dw SpClop,$703F
+    dw SpClop2,$703F
+    dw SpJump,$7049
+    dw SpKnock,$703F
+    dw SpBeep,$7049
+    dw SpGo,$7049
+    dw SpFinish,$7049
+    dw SpBest,$7049
+    dw SpPick,$7049
+; Paddock Gallop (original)
+; Tiny Sound, 7 frames per step
+SpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$21,$01,$26,$2A,$01,$26,$21,$01,$26,$2A,$01,$2D
+    db $2B,$01,$28,$25,$01,$28,$2B,$01,$28,$2A,$01,$26,$21,$01,$26,$2A
+    db $01,$26,$28,$01,$25,$21,$01,$01,$21,$01,$26,$2A,$01,$26,$21,$01
+    db $26,$2A,$01,$2D,$2F,$01,$2B,$28,$01,$25,$21,$01,$25,$28,$01,$25
+    db $26,$01,$2A,$28,$01,$25,$26,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01
+    db $FF
+SpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0E,$01,$01,$15,$01,$01,$0E,$01,$01,$15,$01,$01
+    db $09,$01,$01,$10,$01,$01,$09,$01,$01,$10,$01,$01,$0E,$01,$01,$15
+    db $01,$01,$09,$01,$01,$10,$01,$01,$0E,$01,$01,$15,$01,$01,$0E,$01
+    db $01,$15,$01,$01,$07,$01,$01,$0E,$01,$01,$09,$01,$01,$10,$01,$01
+    db $09,$01,$01,$10,$01,$01,$0E,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01
+    db $FF
+}

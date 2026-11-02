@@ -1,0 +1,1159 @@
+cartridge "VORTEX/S.D.WAGLE/1987"
+
+' VORTEX
+' A ColecoVision game based on "Vortex" by Sean D. Wagle, Ahoy! January
+' 1987 (Commodore 64 machine language, VORTEX at $C000, started by the
+' two-line VORTEX BOOT). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/vortex.dis), the game is rebuilt for the
+' ColecoVision: an armoured core of hatched blocks round a glowing eye,
+' a small arrow ship drawn at 32 headings, six spinning guardians, a
+' starfield, smooth sprites, sound effects and a title tune.
+'
+' The game: a core sits in the middle of space behind 36 armour blocks.
+' Your ship never stops flying; turn it and shoot your way through the
+' armour to the eye. Guardians come out of the core and wheel round it;
+' touch one, or fly into the armour, and the ship is lost (and the core
+' is rebuilt). Shoot the eye to clear the level.
+'
+' From the original (orig/): the core's shape (7 rows: 3, 5, 7, 7, 7, 5, 3
+' blocks with the eye in the middle); the ship always moving the way it
+' faces, turned by the stick through 32 headings, wrapping round the
+' screen; one shot at a time; NOVICE (every hit breaks a block) and
+' EXPERT (a hit breaks a block one time in four); six guardians, each
+' born at the core with a random heading and a random speed below the
+' level (0-3 then 0-7 from level 7, plus one), turning one heading every
+' 10 frames three times in four, so they wheel round the core, and born
+' again when they leave the screen; a shot that hits a guardian kills it;
+' a guardian touching the ship, or the ship touching the armour, loses a
+' ship and rebuilds the core; 3 ships; 100 points a block (the eye too),
+' 10 a guardian, a bonus of 1000 x level (2000 x level on EXPERT) for the
+' eye; 18 levels, then level 1 again; a new colour for each level.
+'
+' Liberties: speeds in ColecoVision pixels with the same proportions for
+' both axes (the C64's horizontal steps were double its vertical ones):
+' ship 1.25 pixels a frame, shot 5, guardians 0.5 x (speed + 1); the ship
+' turns one heading every 2 frames (the C64 turned every frame: a whole
+' turn in half a second); a press fires and holding a button brakes (the
+' C64 fired again while the button was held and braked only while a shot
+' was out, so holding the button made a sitting gun); the ship waits at
+' the start of each life until the stick or a button is touched; it
+' starts at the bottom left facing right (the C64 started it facing the
+' core); from level 2 a guardian sometimes turns toward the ship instead
+' of wheeling (2 x level chances in 64 at each turn) so a ship cannot sit
+' safely in one place; the score has six digits and stops at 999999; a
+' best score; GAME OVER then the title.
+'
+' Controls: controller 1 (or 2): left and right turn the ship, a button
+' fires, holding a button brakes. On the title, up and down choose,
+' a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers.
+
+const TBlk = 128
+const TEye = 129
+const TSt0 = 130
+const TSt1 = 131
+const TSt2 = 132
+const TLife = 133
+const TBar = 134
+const SSh00 = 0
+const SSh01 = 4
+const SSh02 = 8
+const SSh03 = 12
+const SSh04 = 16
+const SSh05 = 20
+const SSh06 = 24
+const SSh07 = 28
+const SSh08 = 32
+const SSh09 = 36
+const SSh10 = 40
+const SSh11 = 44
+const SSh12 = 48
+const SSh13 = 52
+const SSh14 = 56
+const SSh15 = 60
+const SSh16 = 64
+const SSh17 = 68
+const SSh18 = 72
+const SSh19 = 76
+const SSh20 = 80
+const SSh21 = 84
+const SSh22 = 88
+const SSh23 = 92
+const SSh24 = 96
+const SSh25 = 100
+const SSh26 = 104
+const SSh27 = 108
+const SSh28 = 112
+const SSh29 = 116
+const SSh30 = 120
+const SSh31 = 124
+const SEn0 = 128
+const SEn1 = 132
+const SEn2 = 136
+const SEn3 = 140
+const SShot = 144
+const SBl0 = 148
+const SBl1 = 152
+const NTiles8 = 56
+const SprBytes = 1248
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndCrunch = 4
+const SndClank = 5
+const SndPop = 6
+const SndBoom = 7
+const SndCore = 8
+const SndLevel = 9
+const SndStart = 10
+const SndOver = 11
+const NSpr = 9
+const NFoe = 6
+const ScoreCap = 998999
+const ScoreMax = 999999
+' the core: 7 x 7 cells at columns 12-18, rows 8-14 (pixels 96-151, 64-119)
+const CoreC = 12
+const CoreR = 8
+' ship start, in pixels
+const ShipX0 = 40
+const ShipY0 = 168
+
+' sine of the 32 headings x 64, plus 128 (heading 0 is up, clockwise)
+data SinT bytes 128,140,152,164,173,181,187,191,192,191,187,181,173,164,152,140,128,116,104,92,83,75,69,65,64,65,69,75,83,92,104,116
+' the core's shape: first and last column (0-6) of each of the 7 rows
+data RowA bytes 2,1,0,0,0,1,2
+data RowB bytes 4,5,6,6,6,5,4
+' title letters (3 x 5): V O R T E X
+data Bit3 bytes 4,2,1
+data Font bytes 5,5,5,5,2, 7,5,5,5,7, 6,5,6,5,5, 7,2,2,2,2, 7,4,6,4,7, 5,5,2,5,5
+
+data TilePat bytes
+  $01,$11,$23,$45,$09,$11,$23,$00
+  $C3,$81,$18,$C3,$C3,$18,$81,$C3
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$20,$00,$00,$00
+  $10,$10,$38,$38,$83,$93,$C6,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $69,$68,$68,$68,$68,$68,$68,$06
+  $1B,$1B,$FB,$BF,$BF,$FB,$1B,$1B
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$51,$01
+  $01,$01,$01,$01,$51,$01,$01,$01
+  $F1,$F1,$F1,$F1,$1F,$1F,$F1,$01
+  $01,$05,$04,$01,$01,$04,$05,$01
+end data
+data SpritePat bytes
+  $00,$00,$01,$01,$01,$03,$03,$07,$07,$07,$0F,$0C,$18,$00,$00,$00
+  $00,$00,$80,$80,$80,$C0,$C0,$E0,$E0,$E0,$F0,$70,$18,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$03,$07,$07,$0F,$1F,$18,$00,$00,$00,$00
+  $00,$00,$40,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$E0,$60,$30,$10,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$0F,$1F,$3F,$00,$00,$00,$00,$00
+  $00,$00,$20,$60,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$60,$60,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$0F,$1F,$7F,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$30,$60,$E0,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$01,$07,$3F,$7F,$0F,$03,$03,$01,$01,$01,$00
+  $00,$00,$00,$00,$30,$F0,$E0,$E0,$E0,$C0,$C0,$80,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$01,$3F,$3F,$0F,$03,$03,$03,$03,$02,$02,$00
+  $00,$00,$00,$00,$08,$F8,$F0,$E0,$E0,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$3F,$3F,$0F,$07,$07,$07,$07,$06,$04,$00,$00
+  $00,$00,$00,$00,$00,$FC,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$1F,$0F,$07,$07,$07,$07,$0E,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$FC,$F8,$F0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$1C,$0F,$0F,$07,$07,$0F,$0F,$1C,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$E0,$FC,$FC,$E0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$0E,$07,$07,$07,$07,$0F,$1F,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$F0,$F8,$FC,$80,$00,$00,$00,$00,$00
+  $00,$00,$04,$06,$07,$07,$07,$07,$0F,$3F,$3F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F8,$FC,$00,$00,$00,$00,$00
+  $00,$02,$02,$03,$03,$03,$03,$0F,$3F,$3F,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$C0,$E0,$E0,$F0,$F8,$08,$00,$00,$00,$00
+  $00,$01,$01,$01,$03,$03,$0F,$7F,$3F,$07,$01,$00,$00,$00,$00,$00
+  $00,$00,$80,$80,$80,$C0,$C0,$E0,$E0,$E0,$F0,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$7F,$1F,$0F,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$E0,$60,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$3F,$1F,$0F,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$60,$60,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$60,$20,$00,$00
+  $00,$00,$00,$00,$18,$1F,$0F,$07,$07,$03,$01,$01,$00,$00,$00,$00
+  $00,$00,$10,$30,$60,$E0,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$40,$00,$00
+  $00,$00,$00,$18,$0C,$0F,$07,$07,$07,$03,$03,$01,$01,$01,$00,$00
+  $00,$00,$00,$18,$70,$F0,$E0,$E0,$E0,$C0,$C0,$80,$80,$80,$00,$00
+  $00,$00,$08,$0C,$06,$07,$07,$07,$07,$03,$03,$03,$03,$02,$00,$00
+  $00,$00,$00,$00,$18,$F8,$F0,$E0,$E0,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$06,$06,$07,$07,$07,$07,$07,$07,$07,$07,$06,$04,$00,$00
+  $00,$00,$00,$00,$00,$FC,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$03,$07,$07,$07,$07,$06,$0C,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$FE,$F8,$F0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$01,$03,$03,$07,$07,$07,$0F,$0C,$00,$00,$00,$00
+  $00,$80,$80,$80,$C0,$C0,$F0,$FE,$FC,$E0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$03,$07,$07,$0F,$1F,$10,$00,$00,$00,$00
+  $00,$40,$40,$C0,$C0,$C0,$C0,$F0,$FC,$FC,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$0F,$1F,$3F,$00,$00,$00,$00,$00
+  $00,$00,$20,$60,$E0,$E0,$E0,$E0,$F0,$FC,$FC,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$0F,$1F,$3F,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$70,$E0,$E0,$E0,$E0,$F0,$F8,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$07,$3F,$3F,$07,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$38,$F0,$E0,$E0,$E0,$F0,$F0,$38,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$3F,$1F,$0F,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0C,$F8,$F0,$E0,$E0,$E0,$E0,$70,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$3F,$1F,$0F,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$FC,$FC,$F0,$E0,$E0,$E0,$E0,$60,$20,$00,$00
+  $00,$00,$00,$00,$10,$1F,$0F,$07,$07,$03,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$FC,$FC,$F0,$C0,$C0,$C0,$C0,$40,$40,$00
+  $00,$00,$00,$00,$0C,$0F,$07,$07,$07,$03,$03,$01,$01,$01,$00,$00
+  $00,$00,$00,$00,$00,$80,$E0,$FC,$FE,$F0,$C0,$C0,$80,$80,$80,$00
+  $00,$00,$00,$0C,$06,$07,$07,$07,$07,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$F0,$F8,$FE,$80,$80,$00,$00,$00,$00
+  $00,$00,$04,$06,$07,$07,$07,$07,$07,$07,$07,$07,$06,$06,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F8,$FC,$00,$00,$00,$00,$00
+  $00,$00,$02,$03,$03,$03,$03,$07,$07,$07,$07,$06,$0C,$08,$00,$00
+  $00,$00,$00,$00,$80,$80,$C0,$E0,$E0,$F0,$F8,$18,$00,$00,$00,$00
+  $00,$00,$00,$01,$23,$22,$23,$33,$1B,$0F,$00,$00,$01,$0F,$00,$00
+  $00,$00,$F0,$80,$00,$00,$F0,$D8,$CC,$C4,$44,$C4,$80,$00,$00,$00
+  $00,$00,$08,$18,$11,$11,$13,$1B,$0F,$03,$00,$31,$1F,$00,$00,$00
+  $00,$00,$00,$F8,$8C,$00,$C0,$F0,$D8,$C8,$88,$88,$18,$10,$00,$00
+  $00,$02,$06,$04,$08,$09,$0B,$07,$07,$63,$31,$0E,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$8C,$C6,$E0,$E0,$D0,$90,$10,$20,$60,$40,$00
+  $00,$00,$03,$02,$04,$04,$47,$67,$23,$33,$0F,$00,$00,$01,$03,$00
+  $00,$C0,$80,$00,$00,$F0,$CC,$C4,$E6,$E2,$20,$20,$40,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$04,$02,$13,$0F,$3F,$0F,$13,$02,$04,$08,$00,$00,$00
+  $00,$00,$20,$40,$80,$90,$E0,$E0,$E0,$90,$80,$40,$20,$00,$00,$00
+  $81,$41,$21,$00,$08,$00,$02,$E0,$02,$00,$08,$00,$21,$41,$81,$00
+  $02,$04,$08,$00,$20,$00,$80,$03,$80,$00,$20,$00,$08,$04,$02,$00
+end data
+
+data BlkCols bytes
+  $69,$68,$68,$68,$68,$68,$68,$06
+  $8B,$8A,$8A,$8A,$8A,$8A,$8A,$08
+  $C3,$C2,$C2,$C2,$C2,$C2,$C2,$0C
+  $47,$45,$45,$45,$45,$45,$45,$04
+  $6F,$6D,$6D,$6D,$6D,$6D,$6D,$06
+  $AB,$AF,$AF,$AF,$AF,$AF,$AF,$0A
+  $4F,$4E,$4E,$4E,$4E,$4E,$4E,$04
+  $69,$6D,$6D,$6D,$6D,$6D,$6D,$06
+end data
+data EyeCols bytes
+  $1B,$1B,$FB,$BF,$BF,$FB,$1B,$1B
+  $18,$18,$B8,$8B,$8B,$B8,$18,$18
+end data
+const NPal = 8
+
+' a guardian: position in 1/256 pixels, velocity, heading, speed (0-7),
+' turn clock, alive, and its pixel position for the collision tests
+record Foe:
+  u16 X
+  u16 Y
+  i16 Vx
+  i16 Vy
+  u8 H
+  u8 K
+  u8 T
+  u8 Act
+  u8 Px
+  u8 Py
+end record
+
+Foe Foes[NFoe]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Bonus = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the ship (1/256 pixels; Shx, Shy in pixels)
+u16 Sx = 0
+u16 Sy = 0
+i16 SVx = 0
+i16 SVy = 0
+u8 Shx = 0
+u8 Shy = 0
+u8 Hd = 0
+u8 TurnT = 0
+u8 Moving = 0
+u8 Brake = 0
+' the shot
+u16 Bx = 0
+u16 By = 0
+i16 BVx = 0
+i16 BVy = 0
+u8 BOn = 0
+' the core: 0 empty, 1 block, 2 the eye
+u8 Grid[49]
+u8 Blocks = 0
+' game state
+u8 Lv = 1
+u8 Expert = 0
+u8 Lives = 3
+u8 Dead = 0
+u8 Won = 0
+u8 Over = 0
+u8 EyeT = 0
+u8 EyeF = 0
+u8 Spin = 0
+u8 Kills = 0
+u8 Broken = 0
+u8 Shots = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+i16 Q = 0
+i16 Q2 = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table VxSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  HideSprites
+  print at 9,16, "             "
+  print at 9,17, "  GAME OVER  "
+  print at 9,18, "             "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  inc Spin
+  if Dead > 0 then
+    DeadStep
+    return
+  end if
+  if Won > 0 then
+    WonStep
+    return
+  end if
+  MoveShip
+  MoveShot
+  MoveFoes
+  ShipHits
+  FlashEye
+  return
+end sub
+
+' the ship: the stick turns it (a heading every 2 frames), a press fires,
+' a held button brakes; it flies the way it faces and wraps round
+sub MoveShip:
+  K = J1 & 12
+  if K > 0 then
+    Moving = 1
+    inc TurnT
+    if TurnT >= 2 then
+      TurnT = 0
+      if K = 4 then Hd = (Hd - 1) & 31
+      if K = 8 then Hd = (Hd + 1) & 31
+      ShipVel
+    end if
+  else
+    TurnT = 1
+  end if
+  Brake = 0
+  if Btn > 0 then
+    Moving = 1
+    Brake = 1
+  end if
+  if Press = 1 then
+    if BOn = 0 then Shoot
+  end if
+  if Brake = 0 then
+    if Moving = 1 then
+      Sx = Sx + SVx
+      Sy = Sy + SVy
+      if Sx < 6144 then Sx = Sx + 53248
+      if Sx >= 59392 then Sx = Sx - 53248
+      if Sy < 7168 then Sy = Sy + 38912
+      if Sy >= 46080 then Sy = Sy - 38912
+    end if
+  end if
+  Shx = Sx >> 8
+  Shy = Sy >> 8
+  return
+end sub
+
+' a velocity: the sine of heading H (x 64) x Kv, in 1/256 pixels a frame
+function Vel(u8 H, i16 Kv) as i16
+  Q = SinT[H]
+  Q = Q - 128
+  return Q * Kv
+
+sub ShipVel:
+  SVx = Vel(Hd, 5)
+  V = (Hd + 24) & 31
+  SVy = Vel(V, 5)
+  return
+end sub
+
+sub Shoot:
+  BOn = 1
+  Bx = Sx
+  By = Sy
+  BVx = Vel(Hd, 20)
+  V = (Hd + 24) & 31
+  BVy = Vel(V, 20)
+  inc Shots
+  play sound SndZap
+  return
+end sub
+
+' the shot flies 5 pixels a frame; it stops at the screen's edge, on a
+' block (which breaks: always on NOVICE, one time in four on EXPERT) or on
+' a guardian
+sub MoveShot:
+  if BOn = 0 then return
+  Bx = Bx + BVx
+  By = By + BVy
+  X = Bx >> 8
+  Y = By >> 8
+  if X < 16 then BOn = 0
+  if X > 240 then BOn = 0
+  if Y < 16 then BOn = 0
+  if Y > 184 then BOn = 0
+  if BOn = 0 then return
+  C = CellAt(X, Y)
+  if C < 49 then
+    if Grid[C] > 0 then
+      BOn = 0
+      HitBlock(C)
+      return
+    end if
+  end if
+  for Fi = 0 to NFoe - 1
+    with Foes[Fi] as E
+      if E.Act = 1 then
+        if AbsD(E.Px, X) < 6 then
+          if AbsD(E.Py, Y) < 6 then
+            BOn = 0
+            E.Act = 0
+            inc Kills
+            AddScore(10)
+            play sound SndPop
+          end if
+        end if
+      end if
+    end with
+  next
+  return
+end sub
+
+' the core cell (0-48) under pixel X, Y, or 255 outside the core
+function CellAt(u8 Px, u8 Py) as u8
+  if Px < 96 then return 255
+  if Px > 151 then return 255
+  if Py < 64 then return 255
+  if Py > 119 then return 255
+  Px = (Px - 96) >> 3
+  Py = (Py - 64) >> 3
+  return Py * 7 + Px
+
+' the distance between two pixel positions
+function AbsD(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+sub HitBlock(u8 Cell):
+  if Expert = 1 then
+    Rnd
+    V = Rs & 3
+    if V > 0 then
+      play sound SndClank
+      return
+    end if
+  end if
+  V = Grid[Cell]
+  Grid[Cell] = 0
+  dec Blocks
+  inc Broken
+  X = Cell mod 7
+  Y = Cell / 7
+  put char 32 at X + CoreC,Y + CoreR
+  AddScore(100)
+  if V = 2 then
+    Won = 120
+    play sound SndCore
+  else
+    play sound SndCrunch
+  end if
+  return
+end sub
+
+sub AddK:
+  if Score > ScoreCap then
+    Score = ScoreMax
+  else
+    Score += 1000
+  end if
+  if Score > Hi then Hi = Score
+  print at 8,1, Score
+  return
+end sub
+
+sub AddScore(u8 P):
+  if Score > ScoreCap then
+    Score = ScoreMax
+  else
+    Score += P
+  end if
+  if Score > Hi then Hi = Score
+  print at 8,1, Score
+  return
+end sub
+
+' the guardians: born at the core, they turn every 10 frames (back one
+' heading three times in four; from level 2 sometimes toward the ship)
+' and are born again when they leave the screen
+sub MoveFoes:
+  for Fi = 0 to NFoe - 1
+    with Foes[Fi] as E
+      if E.Act = 0 then Spawn(Fi)
+      inc E.T
+      if E.T >= 10 then
+        E.T = 0
+        Turn(Fi)
+      end if
+      E.X = E.X + E.Vx
+      E.Y = E.Y + E.Vy
+      X = E.X >> 8
+      Y = E.Y >> 8
+      E.Px = X
+      E.Py = Y
+      if X < 16 then E.Act = 0
+      if X > 240 then E.Act = 0
+      if Y < 16 then E.Act = 0
+      if Y > 184 then E.Act = 0
+    end with
+  next
+  return
+end sub
+
+sub Spawn(u8 F):
+  with Foes[F] as G
+    G.Act = 1
+    G.X = 31744
+    G.Y = 23552
+    G.T = 9
+    Rnd
+    G.H = Rs & 31
+    G.K = PickSpeed()
+    FoeVel(F)
+  end with
+  return
+end sub
+
+' a speed below the level: 0-3 (0-7 from level 7), the C64's retry loop
+function PickSpeed() as u8
+  C = 3
+  if Lv >= 7 then C = 7
+pk_again:
+  Rnd
+  V = (Rs >> 8) & C
+  if V >= Lv then goto pk_again
+  return V
+
+sub FoeVel(u8 F):
+  with Foes[F] as G
+    Q2 = G.K + 1
+    Q2 = Q2 + Q2
+    G.Vx = Vel(G.H, Q2)
+    V = (G.H + 24) & 31
+    G.Vy = Vel(V, Q2)
+  end with
+  return
+end sub
+
+sub Turn(u8 F):
+  Rnd
+  V = (Rs >> 8) & 63
+  C = Lv * 2
+  K = 0
+  if Lv >= 2 then
+    if V < C then K = 1
+  end if
+  if K = 1 then
+    Home(F)
+    FoeVel(F)
+  else
+    V = Rs & 3
+    if V > 0 then
+      Foes[F].H = (Foes[F].H - 1) & 31
+      FoeVel(F)
+    end if
+  end if
+  return
+end sub
+
+' one heading toward the ship: the sign of the cross product of the
+' guardian's heading and the line to the ship
+sub Home(u8 F):
+  with Foes[F] as G
+    V = (G.H + 24) & 31
+    Q = Shx
+    Q = Q - G.Px
+    Q2 = SinT[V]
+    Q2 = Q2 - 128
+    Q = Q * Q2
+    Q2 = Shy
+    Q2 = Q2 - G.Py
+    W16 = SinT[G.H]
+    Q2 = Q2 * (W16 - 128)
+    if Q2 > Q then
+      G.H = (G.H + 1) & 31
+    else
+      G.H = (G.H - 1) & 31
+    end if
+  end with
+  return
+end sub
+
+' the ship is lost on a guardian or on the armour
+sub ShipHits:
+  X = Shx
+  Y = Shy
+  V = 0
+  C = CellAt(X - 4, Y - 4)
+  if C < 49 then V = V | Grid[C]
+  C = CellAt(X + 4, Y - 4)
+  if C < 49 then V = V | Grid[C]
+  C = CellAt(X - 4, Y + 4)
+  if C < 49 then V = V | Grid[C]
+  C = CellAt(X + 4, Y + 4)
+  if C < 49 then V = V | Grid[C]
+  for Fi = 0 to NFoe - 1
+    with Foes[Fi] as E
+      if E.Act = 1 then
+        if AbsD(E.Px, Shx) < 9 then
+          if AbsD(E.Py, Shy) < 9 then V = 1
+        end if
+      end if
+    end with
+  next
+  if V > 0 then
+    Dead = 90
+    BOn = 0
+    play sound SndBoom
+  end if
+  return
+end sub
+
+' the blast, then a new ship and a new core, or the end
+sub DeadStep:
+  dec Dead
+  if Dead > 0 then return
+  dec Lives
+  if Lives = 0 then
+    fill 32 count 6 at 23,1
+    Over = 1
+    return
+  end if
+  NewLife
+  return
+end sub
+
+' the eye is hit: the bonus, the next level
+sub WonStep:
+  dec Won
+  if Won = 60 then
+    ' 1000 x level (x 2 on EXPERT), added a thousand at a time (BCD +=
+    ' takes no u16: bugs/rashgar-bcd-add-u16.alexis)
+    Bonus = Lv
+    if Expert = 1 then Bonus = Bonus + Bonus
+    for Ci = 1 to Bonus
+      AddK
+    next
+    play sound SndLevel
+  end if
+  if Won > 0 then return
+  inc Lv
+  if Lv > 18 then Lv = 1
+  NewLife
+  return
+end sub
+
+' the eye glows: its colours swap 16 frames each (under 2 Hz)
+sub FlashEye:
+  inc EyeT
+  if EyeT < 16 then return
+  EyeT = 0
+  EyeF = EyeF ^ 1
+  W16 = EyeF * 8
+  copy EyeCols + W16 count 8 to vram.color + 1024 + (TEye - 128) * 8
+  return
+end sub
+
+' a new life (or level): the core rebuilt in the level's colours, the
+' guardians gone, the ship at the start
+sub NewLife:
+  BuildCore
+  for Fi = 0 to NFoe - 1
+    Foes[Fi].Act = 0
+  next
+  Sx = ShipX0 * 256
+  Sy = ShipY0 * 256
+  Shx = ShipX0
+  Shy = ShipY0
+  Hd = 8
+  ShipVel
+  Moving = 0
+  BOn = 0
+  TurnT = 1
+  ShowStatus
+  return
+end sub
+
+sub BuildCore:
+  fill array Grid with 0
+  Blocks = 0
+  for Ri = 0 to 6
+    BuildRow(Ri)
+  next
+  Grid[24] = 2
+  put char TEye at CoreC + 3,CoreR + 3
+  K = (Lv - 1) & 7
+  W16 = K * 8
+  copy BlkCols + W16 count 8 to vram.color + 1024 + (TBlk - 128) * 8
+  return
+end sub
+
+sub BuildRow(u8 R):
+  for Ci = RowA[R] to RowB[R]
+    J = R * 7 + Ci
+    Grid[J] = 1
+    inc Blocks
+    put char TBlk at CoreC + Ci,CoreR + R
+  next
+  return
+end sub
+
+sub ShowStatus:
+  print at 8,1, Score
+  NumU = Lv
+  print at 18,1, digits$(NumU, 2)
+  fill 32 count 6 at 23,1
+  ShowLives(Lives)
+  return
+end sub
+
+sub ShowLives(u8 N):
+  for J = 1 to N
+    put char TLife at 22 + J,1
+  next
+  return
+end sub
+
+sub Rnd:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 the ship (or the blast), 1 the shot, 2-7 the guardians
+sub DrawSprites:
+  X = Shx
+  Y = Shy
+  if Dead > 0 then
+    K = SBl0
+    if Dead < 70 then K = SBl1
+    if Dead < 40 then
+      set sprite 0 to 192,0,0,0
+    else
+      set sprite 0 to Y - 9,X - 8,K,11
+    end if
+  else
+    K = Hd * 4 + SSh00
+    set sprite 0 to Y - 9,X - 8,K,15
+  end if
+  if BOn = 1 then
+    X = Bx >> 8
+    Y = By >> 8
+    set sprite 1 to Y - 9,X - 8,SShot,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  K = (Spin >> 2) & 3
+  K = K * 4 + SEn0
+  for Fi = 0 to NFoe - 1
+    J = Fi + 2
+    with Foes[Fi] as E
+      if E.Act = 1 then
+        C = Fi + 3
+        if C = 4 then C = 9
+        set sprite J to E.Py - 9,E.Px - 8,K,C
+      else
+        set sprite J to 192,0,0,0
+      end if
+    end with
+  next
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  Stars
+  print at 2,1, "SCORE"
+  print at 15,1, "LV"
+  Score = 0
+  Lv = 1
+  Lives = 3
+  Dead = 0
+  Won = 0
+  Over = 0
+  Kills = 0
+  Broken = 0
+  Shots = 0
+  NewLife
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+  return
+end sub
+
+' a sprinkle of stars (never on the core)
+sub Stars:
+  for Ri = 3 to 22
+    Rnd
+    X = (Rs & 31)
+    if X < 2 then X = X + 4
+    if X > 29 then X = X - 6
+    V = (Rs >> 8) & 3
+    if V < 3 then put char TSt0 + V at X,Ri
+  next
+  for Ri = 8 to 14
+    fill 32 count 7 at CoreC,Ri
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: VORTEX in armour blocks, guardians wheeling round it, NOVICE /
+' EXPERT / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  Lv = 1
+  K = 0
+  W16 = K * 8
+  copy BlkCols + W16 count 8 to vram.color + 1024 + (TBlk - 128) * 8
+  print at 7,1, "AHOY! JANUARY 1987"
+  fill TBar count 28 at 2,3
+  for Ci = 0 to 5
+    BigLetter(Ci)
+  next
+  fill TBar count 28 at 2,10
+  print at 7,12, "BY SEAN D. WAGLE"
+  print at 12,15, "NOVICE"
+  print at 12,16, "EXPERT"
+  print at 12,17, "CREDITS"
+  if Hi > 0 then
+    print at 9,20, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  select case Menu
+    case 0
+      Expert = 0
+    case 1
+      Expert = 1
+    case 2
+      CreditsPage
+  end select
+  return
+end sub
+
+' one big letter, 3 x 5 blocks, at column 5 + 4 x N, rows 4-8
+sub BigLetter(u8 N):
+  for Ri = 0 to 4
+    V = Font[N * 5 + Ri]
+    for J = 0 to 2
+      K = V & Bit3[J]
+      if K > 0 then put char TBlk at 5 + N * 4 + J,4 + Ri
+    next
+  next
+  return
+end sub
+
+' three guardians wheel across the title
+sub TitleAnim:
+  inc Spin
+  K = (Spin >> 2) & 3
+  K = K * 4 + SEn0
+  for Fi = 0 to 2
+    V = Spin + Fi * 85
+    set sprite Fi + 2 to 103,V,K,Fi + 3
+  next
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for J = 15 to 17
+    put char 32 at 10,J
+  next
+  J = Menu + 15
+  put char 62 at 10,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "VORTEX"
+  print at 2,5, "BASED ON VORTEX BY SEAN D."
+  print at 2,6, "WAGLE, AHOY! JANUARY 1987"
+  print at 2,7, "(COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SPIRAL ARM"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+VxZap:
+    db $40,$3E,$20,$01,$40,$49,$30,$01,$40,$56,$30,$01,$40,$65,$40,$01,$40,$77,$40,$01,$40,$8C,$50,$01
+    db $40,$A5,$50,$01,$40,$C2,$60,$01,$50
+VxCrunch:
+    db $00,$00,$15,$02,$00,$00,$36,$03,$00,$00,$66,$04,$10
+VxClank:
+    db $40,$50,$30,$02,$40,$66,$50,$03,$50
+VxPop:
+    db $00,$00,$24,$02,$00,$00,$45,$03,$00,$00,$76,$03,$10
+VxBoom:
+    db $00,$00,$06,$06,$00,$00,$16,$08,$00,$00,$27,$0A,$00,$00,$47,$0C,$00,$00,$77,$10,$00,$00,$A7,$10
+    db $10
+VxCore:
+    db $00,$00,$04,$05,$00,$00,$15,$05,$00,$00,$26,$05,$00,$00,$37,$05,$00,$00,$44,$05,$00,$00,$55,$05
+    db $00,$00,$66,$05,$00,$00,$77,$05,$00,$00,$84,$05,$00,$00,$95,$05,$00,$00,$A6,$05,$00,$00,$B7,$05
+    db $10
+VxLevel:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$0E,$50
+VxStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+VxOver:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$1E,$50
+
+VxSoundTable:
+    dw VxTuneMel,$702B
+    dw VxTuneBass,$7035
+    dw VxZap,$7049
+    dw VxCrunch,$703F
+    dw VxClank,$7049
+    dw VxPop,$703F
+    dw VxBoom,$703F
+    dw VxCore,$703F
+    dw VxLevel,$7049
+    dw VxStart,$7049
+    dw VxOver,$7049
+; Spiral Arm (original)
+; Tiny Sound, 7 frames per step
+VxTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$26,$2A,$2F,$2D,$2A,$26,$2A,$2B,$28,$23,$28
+    db $2A,$26,$23,$26,$25,$28,$2B,$31,$2F,$2B,$28,$2B,$2A,$26,$21,$26
+    db $28,$25,$22,$25,$23,$26,$2A,$2F,$2D,$2A,$26,$2A,$2B,$2F,$34,$2F
+    db $2D,$2A,$26,$2D,$2B,$28,$25,$28,$2A,$01,$2E,$01,$2F,$01,$2A,$01
+    db $2F,$01,$01,$00
+    db $FF
+VxTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0B,$01,$01,$01,$0B,$01,$01,$01,$10,$01,$01,$01
+    db $0B,$01,$01,$01,$09,$01,$01,$01,$09,$01,$01,$01,$0E,$01,$01,$01
+    db $12,$01,$01,$01,$0B,$01,$01,$01,$0B,$01,$01,$01,$10,$01,$01,$01
+    db $0E,$01,$01,$01,$10,$01,$01,$01,$12,$01,$01,$01,$0B,$01,$12,$01
+    db $0B,$01,$01,$00
+    db $FF
+}

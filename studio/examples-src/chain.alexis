@@ -1,0 +1,1394 @@
+cartridge "CHAINMAIL/C.M. BLAKEMORE/1987"
+
+' CHAINMAIL
+' A ColecoVision game based on "Chainmail" by Cleveland M. Blakemore,
+' Ahoy! September 1987 (Commodore 128, BASIC 7.0 with a small
+' machine-language interrupt routine). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing and its interrupt code, orig/), the game is rebuilt for the
+' ColecoVision: double-size sprite knights with a steel layer, tiled
+' dungeon walls, pits and braziers, sound effects and an original tune.
+'
+' The game: two knights duel in a walled dungeon. The stick turns your
+' knight (eight facings); the button swings the sword; button and stick
+' together walk in the stick's direction, whatever way the knight faces.
+' A blow only lands when the two knights touch while facing each other
+' squarely, and only when one of them swings: if both swing, the swords
+' clang (a parry). A blow costs the other knight health and both are
+' thrown apart. The braziers in two corners heal a knight standing by
+' them; the two pits kill outright. A knight with no health left falls.
+'
+' From the original (orig/chainmail.bas, orig/interrupt.dis): the eight
+' facings and their turning (up and the right side turn clockwise, the
+' left side anticlockwise, down does nothing); fire alone swings; fire
+' and a direction walk in the stick's direction (the interrupt moves the
+' sprite without turning it); a blow needs contact, facings exactly
+' opposite and one swinger only (both swinging: nothing); after any
+' contact the knights are pushed apart; touching a brazier heals 2,
+' touching a pit is a fall and the end; the health bars; the knights
+' starting at the top and bottom facing each other; two healing fires in
+' opposite corners (bottom left and top right); the death spin and the
+' remains.
+'
+' Liberties: a ONE PLAYER mode against a computer knight (the original
+' needs two players); the computer reacts late (it sees you a fixed
+' number of frames behind) and only swings when it judges you open.
+' Health 48 as in the original, but a blow costs 4 (not 2) and lands once
+' per swing (on the C-128 it could land on every pass while touching),
+' so a duel lasts about twelve blows. A swing is a 12-frame blow and a
+' 12-frame recovery (on the C-128, a held button flickered the sword
+' every other pass). The pits are moved to the middle height, left and
+' right, so the arena is the same for both knights (point symmetry; on
+' the C-128 both pits were in the upper half, nearer the red knight).
+' The braziers hold 8 heals each and relight one heal every 5 seconds
+' (on the C-128 they healed for ever, so a knight could camp by one).
+' The push apart follows the line between the knights (on the C-128 it
+' followed the other knight's facing). Contact is a box test, not
+' pixel collision. Walking is 2 pixels every 3 frames.
+'
+' Controls: controller 1 the red knight, controller 2 the green knight
+' (ONE PLAYER: the computer plays green). Stick: turn; button: swing;
+' button + stick: walk. Either side button. On the title, up and down
+' choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes.
+
+const TWall = 128
+const TFloora = 129
+const TFloorb = 130
+const TPit00 = 131
+const TPit01 = 132
+const TPit02 = 133
+const TPit03 = 134
+const TPit10 = 135
+const TPit11 = 136
+const TPit12 = 137
+const TPit13 = 138
+const TPit20 = 139
+const TPit21 = 140
+const TPit22 = 141
+const TPit23 = 142
+const TPit30 = 143
+const TPit31 = 144
+const TPit32 = 145
+const TPit33 = 146
+const TFira00 = 147
+const TFira01 = 148
+const TFira10 = 149
+const TFira11 = 150
+const TFirb00 = 151
+const TFirb01 = 152
+const TFirb10 = 153
+const TFirb11 = 154
+const TFire00 = 155
+const TFire01 = 156
+const TFire10 = 157
+const TFire11 = 158
+const TBarr0 = 159
+const TBarr1 = 160
+const TBarr2 = 161
+const TBarr3 = 162
+const TBarr4 = 163
+const TBarr5 = 164
+const TBarr6 = 165
+const TBarr7 = 166
+const TBarr8 = 167
+const TBarg0 = 168
+const TBarg1 = 169
+const TBarg2 = 170
+const TBarg3 = 171
+const TBarg4 = 172
+const TBarg5 = 173
+const TBarg6 = 174
+const TBarg7 = 175
+const TBarg8 = 176
+const TChainh = 177
+const TChainv = 178
+const SKs00 = 0
+const SKa00 = 4
+const SKs01 = 8
+const SKa01 = 12
+const SKs02 = 16
+const SKa02 = 20
+const SKs03 = 24
+const SKa03 = 28
+const SKs04 = 32
+const SKa04 = 36
+const SKs05 = 40
+const SKa05 = 44
+const SKs06 = 48
+const SKa06 = 52
+const SKs07 = 56
+const SKa07 = 60
+const SKs10 = 64
+const SKa10 = 68
+const SKs11 = 72
+const SKa11 = 76
+const SKs12 = 80
+const SKa12 = 84
+const SKs13 = 88
+const SKa13 = 92
+const SKs14 = 96
+const SKa14 = 100
+const SKs15 = 104
+const SKa15 = 108
+const SKs16 = 112
+const SKa16 = 116
+const SKs17 = 120
+const SKa17 = 124
+const SKsdead = 128
+const SKadead = 132
+const NTiles8 = 408
+const SprBytes = 1088
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTurn = 3
+const SndSwish = 4
+const SndClang = 5
+const SndHit = 6
+const SndBump = 7
+const SndHeal = 8
+const SndFall = 9
+const SndDie = 10
+const SndStart = 11
+const SndWin = 12
+const XMin = 34
+const XMax = 221
+const YMin = 34
+const YMax = 157
+const SwN = 24
+const SwAct = 12
+const Dmg = 4
+const HpMax = 48
+const Reach = 22
+const PushD = 6
+const FuelMax = 8
+const HealN = 12
+const RegrowN = 300
+const DieN = 96
+const NSpr = 4
+const React = 6
+
+record Knight:
+  u8 X
+  u8 Y
+  u8 R
+  u8 Sw
+  u8 Hit
+  u8 Hp
+  u8 RotT
+  u8 HealT
+end record
+
+' the braziers (centre) and the pits (hole box, inclusive)
+data BrzX bytes
+  32, 224
+end data
+data BrzY bytes
+  152, 32
+end data
+data PitL bytes
+  68, 164
+end data
+data PitR bytes
+  91, 187
+end data
+const PitT = 84
+const PitB = 107
+' stick bits -> walking step (1 up, 2 down, 4 left, 8 right)
+data StepX bytes
+  0, 0, 0, 0, 255, 255, 255, 255, 1, 1, 1, 1, 0, 0, 0, 0
+end data
+data StepY bytes
+  0, 255, 1, 0, 0, 255, 1, 0, 0, 255, 1, 0, 0, 255, 1, 0
+end data
+' armour colours: red, green
+data ArmC bytes
+  8, 2
+end data
+
+Knight Kn[2]
+u8 Fu[2]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Players = 1
+u8 Menu = 0
+u8 Mv = 0
+u8 Regrow = 0
+u8 Loser = 0
+u8 DieT = 0
+u8 DieHow = 0
+u8 Over = 0
+u8 Wins0 = 0
+u8 Wins1 = 0
+u8 BrzF = 0
+u8 BrzT = 0
+u8 BrzShown[2]
+u8 TitleOn = 0
+' the computer knight's view of you (React frames late)
+u8 SeenX = 0
+u8 SeenY = 0
+u8 SeenR = 0
+u8 SeenAct = 0
+u8 SeenT = 0
+u8 SeenIdle = 0
+u8 CpuMood = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' event flags for the tests (bit 0 hit, 1 parry, 2 bump, 3 heal)
+u8 Ev = 0
+' loop counters (never shared with the helpers)
+u8 Ki = 0
+u8 Ri = 0
+u8 Bi = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table CmSoundTable areas 6
+  sprites 16x16
+  sprites double
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker off
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Players = Menu + 1
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  if Players = 1 then CpuThink
+  PlayStep
+  AnimBraziers
+  DrawKnights
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  if Loser = 1 then
+    inc Wins0
+  else
+    inc Wins1
+  end if
+  print at 6,4, "                    "
+  print at 6,6, "                    "
+  if Players = 1 then
+    if Loser = 1 then
+      print at 6,5, "  VICTORY IS YOURS  "
+    else
+      print at 6,5, " THE GREEN KNIGHT   "
+      print at 6,6, "     PREVAILS       "
+    end if
+  else
+    if Loser = 1 then
+      print at 6,5, "  THE RED KNIGHT    "
+    else
+      print at 6,5, " THE GREEN KNIGHT   "
+    end if
+    print at 6,6, "       WINS         "
+  end if
+  print at 6,7, "                    "
+  NumU = Wins0
+  print at 7,7, "RED "
+  print at 11,7, digits$(NumU, 2)
+  NumU = Wins1
+  print at 15,7, "GREEN "
+  print at 21,7, digits$(NumU, 2)
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  Ev = 0
+  if DieT > 0 then
+    Dying
+    return
+  end if
+  inc Mv
+  if Mv >= 3 then Mv = 0
+  StepKnight(0, J1)
+  StepKnight(1, J2)
+  Contact
+  for Ki = 0 to 1
+    Hazards
+  next
+  inc Regrow
+  if Regrow >= 150 then
+    Regrow = 0
+    ' (two counts of 150 frames: one heal relit every 5 seconds)
+    inc BrzT
+    if BrzT >= 2 then
+      BrzT = 0
+      for Bi = 0 to 1
+        if Fu[Bi] < FuelMax then inc Fu[Bi]
+      next
+    end if
+  end if
+  if DieT = 0 then
+    for Ki = 0 to 1
+      if Kn[Ki].Hp = 0 then
+        if DieT = 0 then StartDeath(Ki, 0)
+      end if
+    next
+  end if
+  return
+end sub
+
+' one knight's stick: walk (button + stick), turn (stick), swing (button)
+sub StepKnight(u8 I, u8 Jy):
+  u8 Dirs = 0
+  u8 B = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Rr = 0
+  u8 Tt = 0
+  Dirs = Jy & 15
+  B = Jy & 16
+  Rr = Kn[I].R
+  Tt = Kn[I].RotT
+  if Kn[I].Sw > 0 then Kn[I].Sw -= 1
+  if Dirs > 0 then
+    if B > 0 then
+      Tt = 0
+      if Mv > 0 then
+        Nx = Kn[I].X + StepX[Dirs]
+        Ny = Kn[I].Y + StepY[Dirs]
+        clamp Nx between XMin and XMax
+        clamp Ny between YMin and YMax
+        Kn[I].X = Nx
+        Kn[I].Y = Ny
+      end if
+    else
+      if Tt = 0 then
+        Rr = Turned(Rr, Dirs)
+        if Rr <> Kn[I].R then play sound SndTurn
+        Tt = 8
+      else
+        dec Tt
+      end if
+    end if
+  else
+    Tt = 0
+    if B > 0 then
+      if Kn[I].Sw = 0 then
+        Kn[I].Sw = SwN
+        Kn[I].Hit = 0
+        play sound SndSwish
+      end if
+    end if
+  end if
+  Kn[I].R = Rr
+  Kn[I].RotT = Tt
+  return
+end sub
+
+' the facing after one turn: up and the right side clockwise, the left
+' side anticlockwise, down alone does nothing (as on the C-128)
+function Turned(u8 R0, u8 Dirs) as u8
+  u8 Q = 0
+  Q = R0
+  select case Dirs
+  case 1, 8, 9, 10
+    Q = R0 + 1
+  case 4, 5, 6
+    Q = R0 + 7
+  case else
+    Q = R0
+  end select
+  return Q & 7
+
+' the two knights touching: a blow, a parry or a bump, then pushed apart
+sub Contact:
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 A0 = 0
+  u8 A1 = 0
+  u8 Opp = 0
+  Dx = absdiff(Kn[0].X, Kn[1].X)
+  Dy = absdiff(Kn[0].Y, Kn[1].Y)
+  if Dx < Reach then
+    if Dy < Reach then
+      A0 = 0
+      A1 = 0
+      if Kn[0].Sw > SwAct then A0 = 1
+      if Kn[1].Sw > SwAct then A1 = 1
+      Opp = Kn[0].R + 4
+      Opp = Opp & 7
+      Got = 0
+      if Opp = Kn[1].R then
+        if A0 = 1 then
+          if A1 = 0 then
+            if Kn[0].Hit = 0 then
+              Kn[0].Hit = 1
+              Wound(1)
+              Got = 1
+            end if
+          else
+            Ev = Ev | 2
+            play sound SndClang
+            Got = 1
+          end if
+        elseif A1 = 1 then
+          if Kn[1].Hit = 0 then
+            Kn[1].Hit = 1
+            Wound(0)
+            Got = 1
+          end if
+        end if
+      end if
+      if Got = 0 then
+        Ev = Ev | 4
+        play sound SndBump
+      end if
+      PushApart
+    end if
+  end if
+  return
+end sub
+
+sub Wound(u8 I):
+  u8 H = 0
+  H = Kn[I].Hp
+  if H > Dmg then
+    H = H - Dmg
+  else
+    H = 0
+  end if
+  Kn[I].Hp = H
+  Ev = Ev | 1
+  play sound SndHit
+  DrawBars
+  return
+end sub
+
+' each knight thrown PushD pixels away from the other, on each axis where
+' they differ (straight up and down when they stand on one spot)
+sub PushApart:
+  u8 X0 = 0
+  u8 X1 = 0
+  u8 Y0 = 0
+  u8 Y1 = 0
+  X0 = Kn[0].X
+  X1 = Kn[1].X
+  Y0 = Kn[0].Y
+  Y1 = Kn[1].Y
+  if X0 < X1 then
+    X0 = X0 - PushD
+    X1 = X1 + PushD
+  elseif X0 > X1 then
+    X0 = X0 + PushD
+    X1 = X1 - PushD
+  end if
+  if Y0 < Y1 then
+    Y0 = Y0 - PushD
+    Y1 = Y1 + PushD
+  elseif Y0 > Y1 then
+    Y0 = Y0 + PushD
+    Y1 = Y1 - PushD
+  elseif X0 = X1 then
+    Y0 = Y0 - PushD
+    Y1 = Y1 + PushD
+  end if
+  clamp X0 between XMin and XMax
+  clamp X1 between XMin and XMax
+  clamp Y0 between YMin and YMax
+  clamp Y1 between YMin and YMax
+  Kn[0].X = X0
+  Kn[1].X = X1
+  Kn[0].Y = Y0
+  Kn[1].Y = Y1
+  return
+end sub
+
+' knight Ki: the pits and the braziers
+sub Hazards:
+  X = Kn[Ki].X
+  Y = Kn[Ki].Y
+  if DieT = 0 then
+    if Y >= PitT then
+      if Y <= PitB then
+        for Bi = 0 to 1
+          if X >= PitL[Bi] then
+            if X <= PitR[Bi] then
+              if DieT = 0 then StartDeath(Ki, 1)
+            end if
+          end if
+        next
+      end if
+    end if
+  end if
+  Got = 0
+  for Bi = 0 to 1
+    if absdiff(X, BrzX[Bi]) < 16 then
+      if absdiff(Y, BrzY[Bi]) < 16 then Got = Bi + 1
+    end if
+  next
+  if Got = 0 then
+    Kn[Ki].HealT = 0
+    return
+  end if
+  Bi = Got - 1
+  if Fu[Bi] = 0 then return
+  if Kn[Ki].Hp >= HpMax then return
+  K = Kn[Ki].HealT + 1
+  if K >= HealN then
+    K = 0
+    V = Kn[Ki].Hp + 2
+    Kn[Ki].Hp = min(V, HpMax)
+    dec Fu[Bi]
+    Ev = Ev | 8
+    play sound SndHeal
+    DrawBars
+  end if
+  Kn[Ki].HealT = K
+  return
+end sub
+
+sub StartDeath(u8 I, u8 How):
+  Loser = I
+  DieHow = How
+  DieT = DieN
+  if How = 1 then
+    ' into the pit: the knight drops to the middle of the hole
+    if Kn[I].X < 128 then
+      Kn[I].X = 80
+    else
+      Kn[I].X = 176
+    end if
+    Kn[I].Y = 96
+    play sound SndFall
+  else
+    play sound SndDie
+  end if
+  Kn[I].Sw = 0
+  DrawBars
+  return
+end sub
+
+' the loser spins; a fallen knight leaves his remains, one in a pit is gone
+sub Dying:
+  dec DieT
+  V = DieT & 3
+  if V = 0 then
+    if DieT > 24 then
+      K = Kn[Loser].R + 1
+      Kn[Loser].R = K & 7
+    end if
+  end if
+  if DieT = 0 then Over = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer knight (green): it sees you React frames late, walks to
+' you round the pits, turns to face you squarely and swings when you are
+' not swinging; low on health, it goes to a lit brazier
+
+sub CpuThink:
+  u8 Mx = 0
+  u8 My = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 Dist = 0
+  u8 Want = 0
+  u8 Diff = 0
+  u8 Out = 0
+  inc SeenT
+  if SeenT >= React then
+    SeenT = 0
+    SeenX = Kn[0].X
+    SeenY = Kn[0].Y
+    SeenR = Kn[0].R
+    SeenAct = 0
+    if Kn[0].Sw > SwAct then SeenAct = 1
+    ' how many looks since you last had the blade out (0: just put away)
+    if SeenAct = 1 then
+      SeenIdle = 255
+    elseif SeenIdle < 9 then
+      inc SeenIdle
+    elseif SeenIdle = 255 then
+      SeenIdle = 0
+    end if
+    Rand
+    CpuMood = Rs & 3
+  end if
+  Mx = Kn[1].X
+  My = Kn[1].Y
+  Tx = SeenX
+  Ty = SeenY
+  Dist = max(absdiff(Mx, Tx), absdiff(My, Ty))
+  Want = SeenR + 4
+  Want = Want & 7
+  Out = 0
+  ' low on health and far: to the nearest lit brazier
+  if Kn[1].Hp < 16 then
+    if Dist > 40 then
+      Got = 0
+      if Fu[1] > 0 then Got = 2
+      if Fu[0] > 0 then
+        if Got = 0 then
+          Got = 1
+        elseif My > 96 then
+          Got = 1
+        end if
+      end if
+      if Got > 0 then
+        Tx = BrzX[Got - 1]
+        Ty = BrzY[Got - 1]
+        Dist = 99
+      end if
+    end if
+  end if
+  ' aligned and near: start a swing, then walk in while the blade is out
+  Got = 0
+  if Kn[1].R = Want then
+    if Dist <= 28 then
+      if Kn[1].Sw = 0 then
+        if SeenAct = 0 then
+          ' you are open: just after your blow (recovering) or idle a while
+          if SeenIdle <= 1 then Got = 1
+          if SeenIdle >= 6 then
+            if CpuMood < 3 then Got = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  if Got = 1 then
+    Out = 16
+  elseif Dist > 18 then
+    if Dist < 60 then
+      if Kn[1].R <> Want then
+        if CpuMood > 0 then Out = TurnStick(Kn[1].R, Want)
+      end if
+    end if
+    if Out = 0 then Out = WalkTo(Mx, My, Tx, Ty) | 16
+  elseif Kn[1].R <> Want then
+    Out = TurnStick(Kn[1].R, Want)
+  end if
+  J2 = Out
+  return
+end sub
+
+' the stick that turns facing R0 toward Want the short way
+function TurnStick(u8 R0, u8 Want) as u8
+  u8 Df = 0
+  u8 S = 0
+  Df = Want - R0
+  Df = Df & 7
+  S = 4
+  if Df <= 4 then S = 8
+  return S
+
+' the stick toward (Tx, Ty), round the pits
+function WalkTo(u8 Mx, u8 My, u8 Tx, u8 Ty) as u8
+  u8 S = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Pi = 0
+  if Tx > Mx + 1 then S = S | 8
+  if Tx + 1 < Mx then S = S | 4
+  if Ty > My + 1 then S = S | 2
+  if Ty + 1 < My then S = S | 1
+  Nx = Mx + StepX[S]
+  Ny = My + StepY[S]
+  ' a pit ahead (with a margin): go round it, up or down
+  for Pi = 0 to 1
+    if Nx + 10 >= PitL[Pi] then
+      if Nx <= PitR[Pi] + 10 then
+        if Ny + 10 >= PitT then
+          if Ny <= PitB + 10 then
+            S = S & 12
+            if My < 96 then
+              S = S | 1
+            else
+              S = S | 2
+            end if
+            if My + 12 < PitT then S = S & 14
+            if My > PitB + 12 then S = S & 13
+          end if
+        end if
+      end if
+    end if
+  next
+  return S
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the brazier flames change shape three times a second; a spent brazier
+' shows its embers
+sub AnimBraziers:
+  inc BrzF
+  if BrzF >= 20 then BrzF = 0
+  for Bi = 0 to 1
+    K = 2
+    if Fu[Bi] > 0 then
+      K = 0
+      if BrzF >= 10 then K = 1
+    end if
+    if K <> BrzShown[Bi] then
+      BrzShown[Bi] = K
+      DrawBrazier
+    end if
+  next
+  return
+end sub
+
+' brazier Bi in look BrzShown[Bi] (0, 1 flames, 2 embers)
+sub DrawBrazier:
+  T = TFira00
+  if BrzShown[Bi] = 1 then T = TFirb00
+  if BrzShown[Bi] = 2 then T = TFire00
+  X = BrzX[Bi] >> 3
+  X = X - 1
+  Y = BrzY[Bi] >> 3
+  Y = Y - 1
+  put char T at X,Y
+  U = T + 1
+  put char U at X + 1,Y
+  U = T + 2
+  put char U at X,Y + 1
+  U = T + 3
+  put char U at X + 1,Y + 1
+  return
+end sub
+
+sub DrawKnights:
+  for Ki = 0 to 1
+    X = Kn[Ki].X - 16
+    Y = Kn[Ki].Y - 17
+    J = Ki << 1
+    N = J + 1
+    C = ArmC[Ki]
+    if TitleOn = 2 then
+      set sprite J to 192,0,0,0
+      set sprite N to 192,0,0,0
+    elseif Loser < 2 then
+      DrawLoser
+    else
+      K = Kn[Ki].R << 3
+      if Kn[Ki].Sw > SwAct then K = K + 64
+      set sprite J to Y,X,K,15
+      K = K + 4
+      set sprite N to Y,X,K,C
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub DrawLoser:
+  K = Kn[Ki].R << 3
+  if Ki = Loser then
+    if DieT <= 24 then
+      if DieHow = 1 then
+        set sprite J to 192,0,0,0
+        set sprite N to 192,0,0,0
+        return
+      end if
+      set sprite J to Y,X,SKsdead,15
+      set sprite N to Y,X,SKadead,C
+      return
+    end if
+  end if
+  set sprite J to Y,X,K,15
+  K = K + 4
+  set sprite N to Y,X,K,C
+  return
+end sub
+
+' the health bars: red at columns 6-11, green at 18-23 (8 points a tile)
+sub DrawBars:
+  for Bi = 0 to 1
+    V = Kn[Bi].Hp
+    T = TBarr0
+    X = 6
+    if Bi = 1 then
+      T = TBarg0
+      X = 18
+    end if
+    for Ri = 0 to 5
+      K = min(V, 8)
+      U = T + K
+      put char U at X,22
+      V = V - K
+      inc X
+    next
+  next
+  return
+end sub
+
+sub DrawArena:
+  for Ri = 2 to 21
+    for Bi = 2 to 29
+      if Ri = 2 then
+        T = TWall
+      elseif Ri = 21 then
+        T = TWall
+      elseif Bi = 2 then
+        T = TWall
+      elseif Bi = 29 then
+        T = TWall
+      else
+        V = Ri + Bi
+        V = V & 1
+        T = TFloora + V
+      end if
+      put char T at Bi,Ri
+    next
+  next
+  ' the pits (4 x 4 tiles)
+  for Ri = 0 to 3
+    for Bi = 0 to 3
+      T = Ri << 2
+      T = T + Bi + TPit00
+      put char T at Bi + 8,Ri + 10
+      put char T at Bi + 20,Ri + 10
+    next
+  next
+  for Bi = 0 to 1
+    BrzShown[Bi] = 0
+    DrawBrazier
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 11,1, "CHAINMAIL"
+  print at 2,22, "RED"
+  print at 25,22, "GREEN"
+  DrawBars
+  return
+end sub
+
+sub NewGame:
+  Kn[0].X = 128
+  Kn[0].Y = 44
+  Kn[0].R = 4
+  Kn[1].X = 128
+  Kn[1].Y = 147
+  Kn[1].R = 0
+  for Ki = 0 to 1
+    Kn[Ki].Sw = 0
+    Kn[Ki].Hit = 0
+    Kn[Ki].Hp = HpMax
+    Kn[Ki].RotT = 0
+    Kn[Ki].HealT = 0
+    Fu[Ki] = FuelMax
+  next
+  Mv = 0
+  Loser = 2
+  Regrow = 0
+  BrzT = 0
+  DieT = 0
+  Over = 0
+  TitleOn = 0
+  SeenT = 0
+  SeenX = Kn[0].X
+  SeenY = Kn[0].Y
+  SeenR = Kn[0].R
+  SeenAct = 0
+  SeenIdle = 9
+  J2 = 0
+  NewScreen
+  DrawArena
+  ShowHud
+  DrawKnights
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a chain border, the two knights face to face, the tune once,
+' ONE PLAYER / TWO PLAYERS / CREDITS
+sub TitlePage:
+  NewScreen
+  fill TChainh count 26 at 3,2
+  fill TChainh count 26 at 3,20
+  for Ri = 3 to 19
+    put char TChainv at 2,Ri
+    put char TChainv at 29,Ri
+  next
+  print at 11,4, "CHAINMAIL"
+  print at 4,6, "BY CLEVELAND M. BLAKEMORE"
+  print at 9,15, "ONE PLAYER"
+  print at 9,16, "TWO PLAYERS"
+  print at 9,17, "CREDITS"
+  print at 8,18, "AHOY! SEPT 1987"
+  ShowMenu
+  Kn[0].X = 100
+  Kn[0].Y = 100
+  Kn[0].R = 2
+  Kn[1].X = 156
+  Kn[1].Y = 100
+  Kn[1].R = 6
+  Kn[0].Sw = 0
+  Kn[1].Sw = 0
+  DieT = 0
+  TitleOn = 1
+  Loser = 2
+  DrawKnights
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 612
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  ' the two knights trade blows in turn
+  V = Tick & 63
+  Kn[0].Sw = 0
+  Kn[1].Sw = 0
+  if V < 12 then Kn[0].Sw = SwN
+  if V >= 32 then
+    if V < 44 then Kn[1].Sw = SwN
+  end if
+  DrawKnights
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 15 to 17
+    put char 32 at 7,Ri
+  next
+  J = Menu + 15
+  put char 62 at 7,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "CHAINMAIL"
+  print at 2,5, "BASED ON CHAINMAIL BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! SEPTEMBER 1987"
+  print at 2,8, "(COMMODORE 128)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: THE LISTS AT DAWN"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $10,$10,$10,$00,$01,$01,$01,$01
+  $00,$00,$00,$07,$F0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$07,$07,$07
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $E0,$E0,$E0,$F0,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$07,$F0,$E0,$00,$00,$00
+  $00,$00,$01,$01,$03,$03,$07,$F0
+  $00,$00,$80,$80,$C0,$C0,$E0,$E0
+  $F0,$E0,$E0,$C0,$80,$C0,$E0,$F0
+  $F0,$F0,$F0,$03,$01,$03,$07,$F0
+  $00,$00,$00,$01,$01,$03,$07,$F0
+  $00,$00,$00,$C0,$C0,$C0,$C0,$F0
+  $F0,$E0,$E0,$C0,$80,$C0,$E0,$F0
+  $F0,$F0,$03,$03,$01,$03,$07,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$11,$80,$C0,$E0,$F0
+  $00,$00,$20,$48,$01,$03,$07,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$B8,$81,$81,$B8,$38,$00
+  $18,$24,$42,$42,$24,$18,$18,$18
+end data
+data TileCol bytes
+  $1F,$1E,$1E,$01,$1F,$1E,$1E,$01
+  $14,$14,$14,$14,$14,$14,$14,$01
+  $14,$14,$14,$01,$14,$14,$14,$14
+  $0E,$0E,$0E,$1E,$E1,$E1,$E1,$E1
+  $0E,$0E,$0E,$01,$01,$01,$01,$01
+  $0E,$0E,$0E,$01,$01,$01,$01,$01
+  $0E,$0E,$0E,$1E,$1E,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$1E,$0E,$0E,$0E
+  $01,$01,$01,$01,$01,$0E,$0E,$0E
+  $01,$01,$01,$01,$01,$0E,$0E,$0E
+  $E1,$E1,$E1,$1E,$1E,$0E,$0E,$0E
+  $01,$01,$81,$81,$81,$81,$81,$1B
+  $01,$01,$81,$81,$81,$81,$81,$B1
+  $1B,$1B,$1B,$18,$1E,$1E,$1E,$1E
+  $B1,$B1,$F1,$18,$1E,$1E,$1E,$E1
+  $01,$01,$01,$81,$81,$81,$81,$1B
+  $01,$01,$01,$81,$81,$81,$81,$B1
+  $1B,$1B,$1F,$18,$1E,$1E,$1E,$1E
+  $B1,$B1,$1B,$18,$1E,$1E,$1E,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$81,$81,$1E,$1E,$1E,$1E
+  $01,$01,$81,$81,$1E,$1E,$1E,$E1
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$81,$81,$81,$81,$81,$81,$0E
+  $0E,$18,$18,$18,$18,$18,$18,$0E
+  $0E,$18,$18,$18,$18,$18,$18,$0E
+  $0E,$18,$18,$18,$18,$18,$18,$0E
+  $0E,$08,$08,$08,$08,$08,$08,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$21,$21,$21,$21,$21,$21,$0E
+  $0E,$21,$21,$21,$21,$21,$21,$0E
+  $0E,$21,$21,$21,$21,$21,$21,$0E
+  $0E,$21,$21,$21,$21,$21,$21,$0E
+  $0E,$12,$12,$12,$12,$12,$12,$0E
+  $0E,$12,$12,$12,$12,$12,$12,$0E
+  $0E,$12,$12,$12,$12,$12,$12,$0E
+  $0E,$02,$02,$02,$02,$02,$02,$0E
+  $01,$E1,$1E,$E1,$E1,$1E,$E1,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $0C,$0C,$0C,$0C,$0C,$8C,$DE,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F6,$FC,$F8,$F8,$FC,$FE,$F3,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$60,$20,$18,$1C,$38,$70,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E1,$E3,$DE,$8C,$04,$00,$00,$00,$00
+  $04,$0E,$1E,$3C,$7F,$7E,$3C,$18,$08,$0C,$06,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$20,$10,$10,$20,$70,$F0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$40,$7F,$7F,$40,$00
+  $0F,$0F,$0F,$0F,$07,$06,$0C,$08,$08,$0C,$06,$07,$03,$01,$00,$00
+  $F0,$F0,$F0,$F0,$C0,$60,$20,$00,$00,$20,$60,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$02,$06,$0E,$03,$01
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$03,$06,$0C,$08,$18,$1C,$1E,$0D,$00,$00,$00,$00
+  $00,$30,$78,$FC,$FE,$7F,$36,$10,$10,$20,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$7B,$31,$30,$30,$30,$30,$30
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0E,$1C,$38,$18,$04,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$CF,$7F,$3F,$1F,$1F,$3F,$6F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$31,$7B,$C7,$87,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$0E,$04,$08,$08,$04,$02,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$60,$30,$10,$18,$3C,$7E,$FE,$3C,$78,$70,$20
+  $00,$02,$FE,$FE,$02,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$06,$04,$00,$00,$04,$06,$03,$0F,$0F,$0F,$0F
+  $00,$00,$80,$C0,$E0,$60,$30,$10,$10,$30,$60,$E0,$F0,$F0,$F0,$F0
+  $01,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $80,$C0,$70,$60,$40,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$02,$04,$08,$08,$6C,$FE,$7F,$3F,$1E,$0C,$00
+  $00,$00,$00,$00,$B0,$78,$38,$18,$10,$30,$60,$C0,$00,$00,$00,$00
+  $1C,$0E,$03,$01,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$80,$C0,$60,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F6,$FC,$F8,$F8,$FC,$FE,$F3,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$70,$38,$18,$1C,$38,$70,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $20,$30,$30,$10,$10,$98,$D8,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $04,$0E,$1E,$3C,$7F,$7E,$3C,$18,$08,$0C,$06,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$20,$18,$1C,$38,$70,$F0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$83,$C6,$EC,$EC,$D8,$90,$00,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$07,$06,$0C,$08,$08,$0C,$06,$07,$03,$01,$00,$00
+  $F0,$F0,$F0,$F0,$C0,$60,$20,$00,$00,$20,$60,$F0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$87,$7E,$60,$00,$00,$00
+  $00,$00,$00,$00,$03,$06,$0C,$08,$18,$1C,$1E,$0F,$03,$01,$00,$00
+  $00,$30,$78,$FC,$FE,$7F,$36,$10,$10,$20,$40,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$01,$02,$03,$01,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$80,$C0,$70,$38
+  $00,$00,$00,$00,$03,$0E,$1C,$38,$18,$1C,$0E,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$CF,$7F,$3F,$1F,$1F,$3F,$6F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$07,$1B,$19,$08,$08,$0C,$0C,$04
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$0E,$1C,$38,$18,$04,$02,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$60,$30,$10,$18,$3C,$7E,$FE,$3C,$78,$70,$20
+  $00,$00,$00,$00,$00,$01,$1B,$37,$37,$63,$C1,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0F,$0E,$04,$00,$00,$04,$06,$03,$0F,$0F,$0F,$0F
+  $00,$00,$80,$C0,$E0,$60,$30,$10,$10,$30,$60,$E0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$06,$7E,$E1,$03,$07,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$02,$04,$08,$08,$6C,$FE,$7F,$3F,$1E,$0C,$00
+  $00,$00,$80,$C0,$F0,$78,$38,$18,$10,$30,$60,$C0,$00,$00,$00,$00
+  $00,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$38,$7C,$7C,$7C,$38
+  $0F,$0F,$0F,$0F,$07,$07,$0F,$0F,$0F,$0F,$07,$07,$03,$01,$00,$00
+  $F0,$F0,$F0,$F0,$C0,$E0,$E0,$E0,$E0,$E0,$E0,$C0,$80,$00,$00,$00
+end data
+
+asm {
+CmTurn:
+    db $40,$7F,$50,$01,$40,$A9,$70,$01,$50
+CmSwish:
+    db $00,$00,$41,$02,$00,$00,$30,$03,$00,$00,$60,$03,$10
+CmClang:
+    db $40,$35,$00,$02,$40,$47,$20,$03,$40,$35,$30,$04,$40,$47,$50,$08,$50
+CmHit:
+    db $00,$00,$06,$03,$00,$00,$25,$04,$00,$00,$46,$08,$10
+CmBump:
+    db $40,$3B,$22,$02,$40,$F9,$42,$03,$50
+CmHeal:
+    db $40,$6B,$40,$02,$40,$55,$40,$02,$40,$47,$50,$03,$50
+CmFall:
+    db $40,$7F,$10,$04,$40,$8F,$20,$04,$40,$AA,$20,$04,$40,$D6,$30,$04,$40,$FE,$30,$04,$40,$53,$41,$06
+    db $40,$FC,$61,$0A,$50
+CmDie:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$18,$50
+CmStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+CmWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$18,$50
+
+CmSoundTable:
+    dw CmTuneMel,$702B
+    dw CmTuneBass,$7035
+    dw CmTurn,$7049
+    dw CmSwish,$703F
+    dw CmClang,$7049
+    dw CmHit,$703F
+    dw CmBump,$7049
+    dw CmHeal,$7049
+    dw CmFall,$7049
+    dw CmDie,$7049
+    dw CmStart,$7049
+    dw CmWin,$7049
+; The Lists at Dawn (original)
+; Tiny Sound, 9 frames per step
+CmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$21,$01,$23,$01,$24,$01,$23,$21
+    db $1F,$01,$1C,$01,$1A,$01,$1C,$01,$1F,$01,$21,$01,$23,$01,$01,$1F
+    db $21,$01,$01,$01,$24,$01,$01,$23,$21,$01,$1F,$01,$1C,$01,$1F,$01
+    db $21,$01,$1C,$01,$1A,$01,$01,$1C,$1F,$01,$1E,$01,$1C,$01,$1A,$01
+    db $21,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+CmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$13,$01
+    db $10,$01,$0B,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$17,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$13,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$0B,$01,$12,$01,$10,$01,$0B,$01
+    db $09,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

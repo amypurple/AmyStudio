@@ -1,0 +1,813 @@
+cartridge "INVECTIVE/GEORGE TREPAL/1985"
+
+' INVECTIVE
+' A ColecoVision game based on "Invective" by George Trepal, Ahoy!
+' September 1985 (Commodore 64, BASIC). Made for Amy Studio by Claude (an
+' AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/invective.bas), the game is built for the ColecoVision: a
+' smooth 16 x 16 ball sprite that rolls from cell to cell, tiled field,
+' arrow hints, sound effects and an original title tune.
+'
+' The game: walk the ball round a walled field of green points, yellow
+' blocks and blue fences. Green scores 10, yellow costs 50, blue costs 20
+' and scrambles the joystick: each of the four stick directions moves the
+' ball in a direction drawn at random. The stick is also scrambled every
+' 15 seconds whether you touch blue or not. The row at the bottom always
+' shows which way each stick direction moves the ball. Anything the ball
+' rolls over is used up. The game lasts 90 seconds.
+'
+' From the original: the walled field of three bands, each a yellow bar
+' with blue fence posts above and below it and lone yellow blocks between
+' (redrawn to fit 26 x 18 cells), green points scattered on free cells at
+' random, the start in the top left corner, +10 / -50 / -20, every cell
+' entered is cleared, the outer wall blocks, only the four plain stick
+' directions move (diagonals do nothing), the scramble (the listing's own
+' shuffle of four slots, kept from one scramble to the next), the hint
+' row with UP / DN / LT / RT and an arrow each, a red flash and a sound
+' at each scramble, the scramble every 15 seconds, the score at the end.
+'
+' Liberties: the field is 26 x 18 cells instead of 38 x 22 (TV safe area)
+' with 28 green points instead of 50 (the same share of the free cells).
+' The game lasts the 90 seconds the title promises: the listing only
+' checked its clock inside the scramble, so the C64 game ran about 135
+' seconds. The listing scrambled several times during each 15th second
+' (its check ran on every pass of the loop for that second): here once.
+' The score starts from 0 in every game (the listing kept the last game's
+' score on a replay). The ball rolls a cell in 8 frames instead of jumping;
+' the border flash is a red flash of the outer wall. A clock and a high
+' score are shown. No text in the original is an insult despite the
+' title, so nothing was removed.
+'
+' Controls: either controller; the stick moves the ball (hold to keep
+' rolling). On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. The only flash is one red wall flash of 12
+' frames at a scramble (at most every few seconds).
+
+const TWall = 128
+const TWallred = 129
+const TGem = 130
+const TZig = 131
+const TFence = 132
+const TAru = 133
+const TArd = 134
+const TArl = 135
+const TArr = 136
+const SFace0 = 0
+const SFace1 = 4
+const SBall = 8
+const SBallb = 12
+const NTiles8 = 72
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndGem = 4
+const SndZig = 5
+const SndScram = 6
+const SndBump = 7
+const SndStart = 8
+const SndOver = 9
+const HopN = 8
+const FlashN = 12
+const NGems = 28
+const NSpr = 2
+const GameSecs = 90
+const FieldW = 26
+const FieldH = 18
+
+' the three kinds of row: 0 lone yellow blocks, 1 blue posts, 2 yellow
+' bars (0 floor, 1 yellow, 2 blue); 26 cells each
+data KindRow bytes
+  0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0
+  0,2,0,0,2,0,0,0,2,0,0,2,0,0,2,0,0,2,0,0,0,2,0,0,2,0
+  0,1,1,1,1,0,0,0,1,1,1,1,0,0,1,1,1,1,0,0,0,1,1,1,1,0
+end data
+' the kind of each of the 18 rows: three bands
+data RowK bytes
+  0,1,2,1,0,0, 0,1,2,1,0,0, 0,1,2,1,0,0
+end data
+' hint row: the column of each arrow (UP DN LT RT)
+data HintX bytes
+  6, 12, 19, 25
+end data
+
+record Mover
+  u8 C
+  u8 R
+  u8 X
+  u8 Y
+  u8 H
+  u8 D
+end record
+
+Mover Pl
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+i16 Sc = 0
+i16 Hi = 0
+i16 Sw = 0
+u8 Secs = GameSecs
+u8 Ft = 0
+u8 FlashT = 0
+u8 Over = 0
+u8 Gems = 0
+' the scramble: Sa holds the listing's four slots (stick directions 0 up,
+' 1 down, 2 left, 3 right); Map[stick] is the way the ball moves
+u8 Sa[4]
+u8 Map[4]
+u8 WasK = 0
+u8 TitleOn = 0
+u8 Ready = 0
+u8 Blink = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Xi = 0
+u8 Si = 0
+u8 Hi4 = 0
+u8 Gi = 0
+' scratch
+u8 B = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 S = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+
+  tile screen
+  set sound table IvSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  mute all
+  WallColour(0)
+  ShowHud
+  print at 8,9, "                "
+  print at 8,10, "    TIME UP!    "
+  print at 8,11, "                "
+  print at 8,12, "  SCORE         "
+  Sw = Sc
+  ShowNum(17, 12)
+  print at 8,13, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if FlashT > 0 then
+    dec FlashT
+    if FlashT = 0 then WallColour(0)
+  end if
+  inc Ft
+  if Ft >= 60 then
+    Ft = 0
+    dec Secs
+    ShowTime
+    if Secs = 0 then
+      Over = 1
+      return
+    end if
+    V = Secs mod 15
+    if V = 0 then Scramble
+  end if
+  if Pl.H = 0 then TryMove
+  if Pl.H > 0 then
+    select case Pl.D
+    case 0
+      Pl.Y = Pl.Y - 1
+    case 1
+      Pl.Y = Pl.Y + 1
+    case 2
+      Pl.X = Pl.X - 1
+    case else
+      Pl.X = Pl.X + 1
+    end select
+    Pl.H = Pl.H - 1
+    if Pl.H = 0 then Arrive
+  end if
+  return
+end sub
+
+' the stick: only the four plain directions; Map[] says where it moves
+sub TryMove:
+  K = J1 | J2
+  K = K & 15
+  B = WasK
+  WasK = K
+  select case K
+  case 1
+    S = 0
+  case 2
+    S = 1
+  case 4
+    S = 2
+  case 8
+    S = 3
+  case else
+    return
+  end select
+  D = Map[S]
+  Qc = Pl.C
+  Qr = Pl.R
+  select case D
+  case 0
+    dec Qr
+  case 1
+    inc Qr
+  case 2
+    dec Qc
+  case else
+    inc Qc
+  end select
+  if IsWall(Qc, Qr) = 1 then
+    if B <> K then play sound SndBump
+    return
+  end if
+  Pl.C = Qc
+  Pl.R = Qr
+  Pl.D = D
+  Pl.H = HopN
+  return
+end sub
+
+function IsWall(u8 C, u8 R) as u8
+  u8 W = 0
+  if C < 3 then W = 1
+  if C > 28 then W = 1
+  if R < 3 then W = 1
+  if R > 20 then W = 1
+  return W
+
+' the ball has rolled onto its cell: use up what is there
+sub Arrive:
+  T = get char at Pl.C, Pl.R
+  select case T
+  case TGem
+    Sc = Sc + 10
+    dec Gems
+    play sound SndGem
+  case TZig
+    Sc = Sc - 50
+    play sound SndZig
+  case TFence
+    Scramble
+    Sc = Sc - 20
+  case else
+    return
+  end select
+  put char 32 at Pl.C, Pl.R
+  ShowScore
+  return
+end sub
+
+' the listing's shuffle: four swaps of a slot with a random one, then the
+' slots give right, left, down, up
+sub Scramble:
+  for Si = 0 to 3
+    Rand
+    V = Rs & 3
+    T = Sa[Si]
+    Sa[Si] = Sa[V]
+    Sa[V] = T
+  next
+  ' (known open bug dutch-index-of-index-target: Map[Sa[0]] = 3 is
+  ' refused, so the slot goes through V)
+  V = Sa[0]
+  Map[V] = 3
+  V = Sa[1]
+  Map[V] = 2
+  V = Sa[2]
+  Map[V] = 1
+  V = Sa[3]
+  Map[V] = 0
+  ShowHints
+  WallColour(1)
+  FlashT = FlashN
+  play sound SndScram
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the outer wall grey (0) or red (1): its colour bytes are swapped in VRAM
+sub WallColour(u8 Red):
+  A16 = TWall << 3
+  if Red = 1 then
+    W16 = (TWallred - 128) << 3
+  else
+    W16 = (TWall - 128) << 3
+  end if
+  copy TileCol + W16 count 8 to vram.color + A16
+end sub
+
+' sprite 0 the face (drawn on top), 1 the ball; a blink now and then
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    inc Blink
+    if Blink >= 200 then Blink = 0
+    Y = Pl.Y - 1
+    if Blink < 10 then
+      set sprite 0 to Y,Pl.X,SFace1,1
+      set sprite 1 to Y,Pl.X,SBallb,11
+    else
+      set sprite 0 to Y,Pl.X,SFace0,1
+      set sprite 1 to Y,Pl.X,SBall,11
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  ShowScore
+  print at 14,1, "HI"
+  Sw = Hi
+  ShowNum(17, 1)
+  print at 23,1, "TIME"
+  ShowTime
+  return
+end sub
+
+sub ShowScore:
+  Sw = Sc
+  ShowNum(8, 1)
+  return
+end sub
+
+sub ShowTime:
+  print Secs at 28,1 digits 2
+  return
+end sub
+
+' Sw printed right-aligned in five columns from column Col, a minus sign
+' right before the first digit when it is negative
+sub ShowNum(u8 Col, u8 Row):
+  u8 Neg = 0
+  u8 Nd = 0
+  u8 Mc = 0
+  fill 32 count 5 at Col,Row
+  if Sw < 0 then
+    Neg = 1
+    NumU = 0 - Sw
+  else
+    NumU = Sw
+  end if
+  Nd = NDig(NumU)
+  Mc = Col + 1
+  print NumU at Mc,Row width 4
+  if Neg = 1 then
+    Mc = Col + 4 - Nd
+    put char 45 at Mc,Row
+  end if
+end sub
+
+function NDig(u16 N) as u8
+  u8 Nd = 1
+  if N >= 10 then Nd = 2
+  if N >= 100 then Nd = 3
+  if N >= 1000 then Nd = 4
+  return Nd
+
+' the hint row: UP DN LT RT and the arrow each one moves the ball
+sub ShowHints:
+  print at 3,22, "UP="
+  print at 9,22, "DN="
+  print at 16,22, "LT="
+  print at 22,22, "RT="
+  for Hi4 = 0 to 3
+    T = TAru + Map[Hi4]
+    X = HintX[Hi4]
+    put char T at X,22
+  next
+  return
+end sub
+
+' one row of the field (Ri, screen row 3-20)
+sub DrawRow:
+  V = Ri - 3
+  B = RowK[V] * FieldW
+  for Xi = 0 to 25
+    V = KindRow[B + Xi]
+    select case V
+    case 1
+      T = TZig
+    case 2
+      T = TFence
+    case else
+      T = 32
+    end select
+    X = Xi + 3
+    put char T at X,Ri
+  next
+  return
+end sub
+
+sub DrawField:
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,21
+  for Ri = 3 to 20
+    put char TWall at 2,Ri
+    put char TWall at 29,Ri
+    DrawRow
+  next
+  return
+end sub
+
+' green points on free cells at random, never on the start cell
+sub ScatterGems:
+  Gems = 0
+  while Gems < NGems
+    Rand
+    X = Rs & 31
+    W16 = Rs >> 8
+    Y = W16 & 31
+    if X < FieldW then
+      if Y < FieldH then
+        X = X + 3
+        Y = Y + 3
+        T = get char at X,Y
+        if T = 32 then
+          K = X + Y
+          if K > 6 then
+            put char TGem at X,Y
+            inc Gems
+          end if
+        end if
+      end if
+    end if
+  end while
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Secs = GameSecs
+  Ft = 0
+  FlashT = 0
+  Over = 0
+  TitleOn = 0
+  WasK = 0
+  for Si = 0 to 3
+    Sa[Si] = Si
+    Map[Si] = Si
+  next
+  Pl.C = 3
+  Pl.R = 3
+  Pl.X = 20
+  Pl.Y = 20
+  Pl.H = 0
+  Pl.D = 3
+  NewScreen
+  DrawField
+  ScatterGems
+  ShowHud
+  ShowHints
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the rules with the field's own tiles, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  fill TWall count 28 at 2,2
+  print at 10,3, "INVECTIVE"
+  print at 7,5, "BY GEORGE TREPAL"
+  put char TGem at 4,7
+  print at 6,7, "GREEN POINT    +10"
+  put char TZig at 4,9
+  print at 6,9, "YELLOW BLOCK   -50"
+  put char TFence at 4,11
+  print at 6,11, "BLUE FENCE     -20"
+  print at 6,12, "AND SCRAMBLES THE STICK"
+  print at 3,14, "THE STICK IS SCRAMBLED"
+  print at 3,15, "EVERY 15 SECONDS ANYWAY."
+  print at 3,16, "THE GAME LASTS 90 SECONDS."
+  print at 11,18, "START GAME"
+  print at 11,19, "CREDITS"
+  fill TWall count 28 at 2,20
+  print at 5,22, "AHOY! SEPTEMBER 1985"
+  print at 2,1, "HI"
+  Sw = Hi
+  ShowNum(5, 1)
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Ready = 1
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  Ready = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,18
+  put char 32 at 9,19
+  J = Menu + 18
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "INVECTIVE"
+  print at 2,5, "BASED ON INVECTIVE BY"
+  print at 2,6, "GEORGE TREPAL, AHOY!"
+  print at 2,7, "SEPTEMBER 1985"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: CROSSED WIRES"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Ready = 2
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Ready = 0
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$18,$C3,$81,$81,$C3,$18,$00
+  $00,$44,$AA,$11,$00,$44,$AA,$11
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $18,$C3,$81,$24,$18,$18,$18,$00
+  $18,$18,$18,$24,$81,$C3,$18,$00
+  $10,$30,$80,$00,$80,$30,$10,$00
+  $08,$0C,$01,$00,$01,$0C,$08,$00
+end data
+data TileCol bytes
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $19,$19,$19,$01,$19,$19,$19,$01
+  $01,$31,$13,$13,$13,$12,$21,$01
+  $0B,$1B,$1B,$1B,$0A,$1A,$1A,$1A
+  $54,$54,$45,$45,$54,$54,$45,$45
+  $F1,$1F,$1F,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$1F,$1F,$F1,$01
+  $F1,$F1,$1F,$0F,$1F,$F1,$F1,$01
+  $F1,$F1,$1F,$0F,$1F,$F1,$F1,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$02,$00,$02,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$00,$40,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$00,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$00,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0D,$0F,$0D,$0E,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$F0,$B0,$70,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$0C,$0F,$0C,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$30,$F0,$30,$E0,$C0,$00,$00,$00,$00
+end data
+
+asm {
+IvStep:
+    db $40,$7F,$50,$01,$50
+IvGem:
+    db $40,$55,$10,$03,$40,$40,$20,$06,$50
+IvZig:
+    db $00,$00,$15,$04,$00,$00,$26,$06,$00,$00,$56,$08,$10
+IvScram:
+    db $40,$6B,$10,$02,$40,$8F,$10,$02,$40,$5F,$10,$02,$40,$AA,$10,$02,$40,$55,$10,$02,$40,$D6,$20,$06
+    db $50
+IvBump:
+    db $40,$FC,$21,$03,$50
+IvStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+IvOver:
+    db $40,$8F,$10,$0A,$40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$1D,$21,$1A,$50
+
+IvSoundTable:
+    dw IvTuneMel,$702B
+    dw IvTuneBass,$7035
+    dw IvStep,$7049
+    dw IvGem,$7049
+    dw IvZig,$703F
+    dw IvScram,$7049
+    dw IvBump,$7049
+    dw IvStart,$7049
+    dw IvOver,$7049
+; Crossed Wires (original)
+; Tiny Sound, 8 frames per step
+IvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$1C,$01,$21,$01,$24,$01,$23,$21,$1F,$01,$1C,$01
+    db $1F,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$23,$21,$1F,$01,$23,$01
+    db $26,$01,$24,$23,$21,$01,$20,$01,$23,$01,$1C,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+IvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$04,$01,$08,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

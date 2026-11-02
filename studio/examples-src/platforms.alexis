@@ -1,0 +1,1330 @@
+cartridge "PLATFORMS/TONY BRANTNER/1987"
+
+' PLATFORMS
+' A ColecoVision game based on "Platforms" by Tony Brantner, Ahoy!
+' October 1987 (Commodore 64, machine code; the author's name is on the
+' issue's contents page). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: six ledges ride up and down on six poles. Gold rings hang at
+' the tops of the poles, worth 100, 250, 500, 500, 250 and 100. Walk along
+' a ledge, jump from ledge to ledge and ride them up until the climber
+' touches a ring. Take all six to clear the level; the ledges then move
+' faster. A spark climbs a pole from below now and then: the ledge it
+' touches glows red for about two seconds, and while it glows nobody can
+' land on it, and anyone standing on it drops through. Falling off the
+' bottom costs a life (the rings come back, the ledges are dealt again).
+' Three lives, one more every 10,000 points (at most nine).
+'
+' From the original (orig/platforms.dis, its machine code read by hand,
+' and the program run in jsc64 to time its loop: about 27 passes of its
+' main loop per 60 Hz frame): the six ledges and their range (surface
+' 33 to 148 pixels down the screen), their starting heights (35 + 16 x a
+' random 0..7) and directions, a move of one pixel per (41 - 2 x (level
+' - 1)) passes, a turn at the ends of the range and a random turn about
+' once in 256 moves; the walk (a pixel every 32 passes, never off the
+' ledge), the jump (the button; its height of about 21 pixels and its
+' shape, ten phases of 85 passes from the original's table, then a steady
+' fall of a pixel every 8 passes; sideways a pixel every 16 passes in the
+' stick's direction, or straight up, bouncing off the screen's sides);
+' landing when the feet cross a ledge's surface within 3 pixels, even on
+' the way up; the spark (a random pole, never the same twice in a row,
+' rising a pixel per ledge move, falling back at two, the ledge glowing
+' for 50 ticks of 64 passes, a drop through it at a tick, a fall of a
+' pixel per 16 passes with no landing); the rings and their values,
+' counted into the score 10 points every 16 passes; a death only once the
+' count is done; the level cleared when all six are taken, not in the
+' middle of a jump; the extra life when the ten-thousands digit changes;
+' three lives, a high score.
+'
+' Improvements: the ledges are tiles moved a pixel at a time (no sprite
+' limit on a line), a climber with walk and jump frames, the spark
+' animated, a glint on the taken ring, sound effects for every event, an
+' original title tune, a level number, short GET READY and WELL DONE
+' pauses.
+'
+' Liberties: the screen is 224 pixels wide, not 320: the poles stand 40
+' pixels apart (56 on the C64) and every sideways speed is scaled by 5/7
+' so that a jump still carries the climber from pole to pole. Heights and
+' vertical speeds are the original's. The glowing ledge does not blink
+' (the C64 flashed it about 12 times a second): it stays red. The ledges
+' speed up to level 13 and then stay at that speed (a move every 17
+' passes, 1.6 pixels a frame); on the C64 they reached a move every 3
+' passes (9 pixels a frame) by level 20, which no one can play. The level
+' starts after a one-second GET READY pause. The end message replaces
+' PRESS ANY KEY. Standing still is no way to win: the rings need moving
+' from pole to pole, and the spark keeps coming.
+'
+' Controls: either controller; the stick walks along a ledge; a button
+' jumps (with the stick left or right to jump that way, alone to jump
+' straight up). A button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes.
+
+const TPole = 128
+const TP00t0 = 129
+const TP00t1 = 130
+const TP00t2 = 131
+const TP00t3 = 132
+const TP00t4 = 133
+const TP00t5 = 134
+const TP00t6 = 135
+const TP00t7 = 136
+const TP00b4 = 137
+const TP00b5 = 138
+const TP00b6 = 139
+const TP00b7 = 140
+const TP01t0 = 141
+const TP01t1 = 142
+const TP01t2 = 143
+const TP01t3 = 144
+const TP01t4 = 145
+const TP01t5 = 146
+const TP01t6 = 147
+const TP01t7 = 148
+const TP01b4 = 149
+const TP01b5 = 150
+const TP01b6 = 151
+const TP01b7 = 152
+const TP02t0 = 153
+const TP02t1 = 154
+const TP02t2 = 155
+const TP02t3 = 156
+const TP02t4 = 157
+const TP02t5 = 158
+const TP02t6 = 159
+const TP02t7 = 160
+const TP02b4 = 161
+const TP02b5 = 162
+const TP02b6 = 163
+const TP02b7 = 164
+const TP10t0 = 165
+const TP10t1 = 166
+const TP10t2 = 167
+const TP10t3 = 168
+const TP10t4 = 169
+const TP10t5 = 170
+const TP10t6 = 171
+const TP10t7 = 172
+const TP10b4 = 173
+const TP10b5 = 174
+const TP10b6 = 175
+const TP10b7 = 176
+const TP11t0 = 177
+const TP11t1 = 178
+const TP11t2 = 179
+const TP11t3 = 180
+const TP11t4 = 181
+const TP11t5 = 182
+const TP11t6 = 183
+const TP11t7 = 184
+const TP11b4 = 185
+const TP11b5 = 186
+const TP11b6 = 187
+const TP11b7 = 188
+const TP12t0 = 189
+const TP12t1 = 190
+const TP12t2 = 191
+const TP12t3 = 192
+const TP12t4 = 193
+const TP12t5 = 194
+const TP12t6 = 195
+const TP12t7 = 196
+const TP12b4 = 197
+const TP12b5 = 198
+const TP12b6 = 199
+const TP12b7 = 200
+const TRing = 201
+const THook = 202
+const TBeam = 203
+const TLife = 204
+const SMrstands = 0
+const SMrstandb = 4
+const SMrstep1s = 8
+const SMrstep1b = 12
+const SMrstep2s = 16
+const SMrstep2b = 20
+const SMrjumps = 24
+const SMrjumpb = 28
+const SMlstands = 32
+const SMlstandb = 36
+const SMlstep1s = 40
+const SMlstep1b = 44
+const SMlstep2s = 48
+const SMlstep2b = 52
+const SMljumps = 56
+const SMljumpb = 60
+const SSpark0 = 64
+const SSpark1 = 68
+const SGlint = 72
+const NTiles8 = 616
+const SprBytes = 608
+const SndTuneA = 1
+const SndTuneB = 2
+const SndJump = 3
+const SndLand = 4
+const SndRing = 5
+const SndCount = 6
+const SndZap = 7
+const SndPlunge = 8
+const SndLost = 9
+const SndClear = 10
+const SndLife = 11
+const SndStart = 12
+const NSpr = 4
+const NP = 6
+const TPlat = 129
+const PerMin = 17
+const PassF = 27
+const WalkV = 154
+const JumpV = 308
+const ReadyN = 60
+const DeadN = 80
+const ClearN = 150
+const YTop = 33
+const YBot = 148
+const YDie = 204
+const YCap = 210
+
+' the jump: the change of height per frame in 1/16 pixel, plus 64
+' (simulated from the C64's ten phases at 27 passes a frame); afterwards
+' a steady 54 (3.4 pixels a frame) down
+data JumpD bytes
+  10, 10, 10, 32, 37, 37, 46, 50, 51, 54, 57, 58, 58, 60, 61, 62
+  67, 68, 67, 71, 71, 71, 76, 78, 77, 87, 91, 91, 106, 118
+end data
+' ring values in tens of points
+data RingVal bytes
+  10, 25, 50, 50, 25, 10
+end data
+data SparkCol bytes
+  11, 15, 7, 9, 13, 3, 11, 15
+end data
+
+record Man:
+  u16 X
+  u16 Y16
+  u8 St
+  u8 Ledge
+  u8 Jf
+  u8 Jd
+  u8 Face
+  u8 WalkC
+end record
+
+Man P
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Addr = 0
+u16 NumU = 0
+u16 TenCnt = 0
+bcd digits 6 Score = 0
+bcd digits 6 Best = 0
+' the ledges: surface row (pixels), direction (0 down, 1 up), glow ticks
+u8 Sy[6]
+u8 Dir[6]
+u8 Dmg[6]
+u8 OldSy[6]
+u8 ShownSy[6]
+u8 ShownV[6]
+u8 Rg[6]
+u8 Buf[3]
+' the spark
+u8 Es = 0
+u8 Ey = 0
+u8 Ev = 0
+u8 Et = 0
+u8 ELast = 0
+u8 ECol = 11
+' timers (passes of the C64 loop, 27 a frame)
+u8 PlatT = 0
+u8 DmgT = 0
+u8 BonT = 0
+u8 Per = 41
+u8 Bon = 0
+u8 Left = 6
+u8 Lives = 3
+u8 Level = 1
+u8 PrevPy = 0
+u8 Py = 0
+u8 ReadyT = 0
+u8 DeadT = 0
+u8 ClearT = 0
+u8 GlT = 0
+u8 GlK = 0
+u8 Over = 0
+u8 TitleOn = 0
+u8 HudDirty = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Wt = 0
+' loop counters (never shared with the helpers)
+u8 Lk = 0
+u8 Dk = 0
+u8 Tk = 0
+u8 Gi = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawPlats
+  DrawSprites
+  if HudDirty = 1 then
+    ShowScore
+    HudDirty = 0
+  end if
+  if Over = 0 then goto play_loop
+
+  if Score > Best then Best = Score
+  ShowHud
+  mute all
+  print at 11,22, "GAME  OVER"
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if ReadyT > 0 then
+    dec ReadyT
+    if ReadyT = 0 then print at 11,22, "          "
+    return
+  end if
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then LoseLife
+    return
+  end if
+  if ClearT > 0 then
+    dec ClearT
+    if ClearT = 0 then NextLevel
+    return
+  end if
+  if GlT > 0 then dec GlT
+  CountBonus
+  for Lk = 0 to 5
+    OldSy[Lk] = Sy[Lk]
+  next
+  PlatT = PlatT + PassF
+  while PlatT >= Per
+    PlatT = PlatT - Per
+    SparkTick
+    LedgeTick
+  end while
+  PrevPy = Py
+  select case P.St
+  case 0
+    StandStep
+  case 1
+    JumpStep
+  case else
+    W16 = P.Y16 + 27
+    if W16 > YCap * 16 then W16 = YCap * 16
+    P.Y16 = W16
+  end select
+  Py = P.Y16 >> 4
+  CheckRing
+  GlowTick
+  if Bon = 0 then
+    if P.St <> 0 then
+      if Py >= YDie then
+        DeadT = DeadN
+        play sound SndLost
+        return
+      end if
+    end if
+    if P.St <> 1 then
+      if Left = 0 then
+        ClearT = ClearN
+        print at 11,22, "WELL DONE!"
+        play sound SndClear
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the ring count: 10 points every 16 passes; an extra life every 10,000
+sub CountBonus:
+  BonT = BonT + PassF
+  while BonT >= 16
+    BonT = BonT - 16
+    if Bon > 0 then
+      dec Bon
+      Score += 10
+      HudDirty = 1
+      inc TenCnt
+      if TenCnt >= 1000 then
+        TenCnt = TenCnt - 1000
+        if Lives < 9 then
+          inc Lives
+          play sound SndLife
+        end if
+      end if
+    end if
+  end while
+  return
+end sub
+
+' the ledges: a pixel each, turning at the ends of the range and now and
+' then at random
+sub LedgeTick:
+  u8 Nd = 0
+  for Tk = 0 to 5
+    if Dir[Tk] = 0 then
+      Nd = Sy[Tk] + 1
+    else
+      Nd = Sy[Tk] - 1
+    end if
+    if Nd < YTop then
+      Dir[Tk] = Dir[Tk] ^ 1
+    elseif Nd > YBot then
+      Dir[Tk] = Dir[Tk] ^ 1
+    else
+      Rand
+      V = Rs & 255
+      if V = 0 then
+        Dir[Tk] = Dir[Tk] ^ 1
+      else
+        Sy[Tk] = Nd
+      end if
+    end if
+  next
+  return
+end sub
+
+' the spark: up a pole a pixel a move, back down at two once it has
+' touched the ledge, which glows for 50 ticks
+sub SparkTick:
+  u8 Lim = 0
+  if Es = 0 then
+    PickPole
+    Es = 1
+    Ey = 204
+    Ev = 0
+    Rand
+    V = Rs & 7
+    ECol = SparkCol[V]
+  end if
+  if Ev = 0 then
+    dec Ey
+  else
+    Ey = Ey + 2
+  end if
+  Lim = Sy[Et] + 4
+  if Ey <= Lim then
+    Ev = 1
+    if Dmg[Et] = 0 then play sound SndZap
+    Dmg[Et] = 50
+  end if
+  if Ev = 1 then
+    if Ey >= 200 then Es = 0
+  end if
+  return
+end sub
+
+function PickOne() as u8
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * 6
+  return W16 >> 8
+
+sub PickPole:
+  u8 Pk = 0
+  Pk = PickOne()
+  while Pk = ELast
+    Pk = PickOne()
+  end while
+  Et = Pk
+  ELast = Pk
+  return
+end sub
+
+' the glow: a tick every 64 passes; standing on a glowing ledge at a tick
+' drops the climber through it
+sub GlowTick:
+  DmgT = DmgT + PassF
+  while DmgT >= 64
+    DmgT = DmgT - 64
+    for Dk = 0 to 5
+      if Dmg[Dk] > 0 then
+        dec Dmg[Dk]
+        if P.St = 0 then
+          if P.Ledge = Dk then
+            P.St = 2
+            play sound SndPlunge
+          end if
+        end if
+      end if
+    next
+  end while
+  return
+end sub
+
+function LedgeLeft(u8 Q) as u8
+  return 17 + Q * 40
+
+' standing: carried by the ledge; the stick walks, a button jumps
+sub StandStep:
+  u8 Kb = 0
+  u8 Xn = 0
+  u8 Lo = 0
+  u16 Nx = 0
+  W16 = Sy[P.Ledge]
+  P.Y16 = W16 << 4
+  Kb = J1 | J2
+  if Btn > 0 then
+    P.St = 1
+    P.Jf = 0
+    V = Kb & 12
+    P.Jd = 0
+    if V = 8 then
+      P.Jd = 1
+      P.Face = 0
+    end if
+    if V = 4 then
+      P.Jd = 2
+      P.Face = 1
+    end if
+    play sound SndJump
+    return
+  end if
+  V = Kb & 12
+  if V = 8 then
+    P.Face = 0
+    Nx = P.X + WalkV
+  elseif V = 4 then
+    P.Face = 1
+    Nx = P.X - WalkV
+  else
+    P.WalkC = 0
+    return
+  end if
+  Xn = Nx >> 8
+  Lo = LedgeLeft(P.Ledge)
+  if Xn >= Lo then
+    if Xn <= Lo + 21 then
+      P.X = Nx
+      inc P.WalkC
+    end if
+  end if
+  return
+end sub
+
+' in the air: the jump table, sideways (bouncing off the sides), landing
+' when the feet cross a ledge's surface
+sub JumpStep:
+  u8 Dd = 0
+  u8 Xn = 0
+  u8 Lo = 0
+  u8 Found = 0
+  u8 Q = 0
+  i16 Ra = 0
+  i16 Rb = 0
+  u16 Nx = 0
+  inc P.Jf
+  Dd = 118
+  if P.Jf <= 30 then Dd = JumpD[P.Jf - 1]
+  W16 = P.Y16 + Dd
+  W16 = W16 - 64
+  if W16 > YCap * 16 then W16 = YCap * 16
+  P.Y16 = W16
+  if P.Jd = 1 then
+    Nx = P.X + JumpV
+    Xn = Nx >> 8
+    if Xn > 238 then
+      P.Jd = 2
+    else
+      P.X = Nx
+    end if
+  elseif P.Jd = 2 then
+    Nx = P.X - JumpV
+    Xn = Nx >> 8
+    if Xn < 17 then
+      P.Jd = 1
+    else
+      P.X = Nx
+    end if
+  end if
+  if P.Jf = 1 then return
+  Py = P.Y16 >> 4
+  Xn = P.X >> 8
+  for Lk = 0 to 5
+    Q = 5 - Lk
+    if Found = 0 then
+      if Dmg[Q] = 0 then
+        Lo = LedgeLeft(Q)
+        if Xn >= Lo then
+          if Xn <= Lo + 21 then
+            Ra = PrevPy
+            Ra = Ra - OldSy[Q]
+            Rb = Py
+            Rb = Rb - Sy[Q]
+            if Ra > Rb then
+              swap Ra with Rb
+            end if
+            if Rb >= 0 then
+              if Ra <= 2 then Found = Q + 1
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  if Found > 0 then
+    P.St = 0
+    P.Ledge = Found - 1
+    W16 = Sy[P.Ledge]
+    P.Y16 = W16 << 4
+    play sound SndLand
+  end if
+  return
+end sub
+
+' a ring is taken when the climber's feet are 27 to 43 pixels down and
+' its middle is under the ring
+sub CheckRing:
+  u8 Xn = 0
+  u8 Q = 0
+  u8 Rm = 0
+  if Py < 27 then return
+  if Py >= 44 then return
+  Xn = P.X >> 8
+  if Xn < 24 then return
+  Xn = Xn - 24
+  Q = Xn / 40
+  Rm = Xn - Q * 40
+  if Rm >= 8 then return
+  if Q >= NP then return
+  if Rg[Q] = 0 then return
+  Rg[Q] = 0
+  dec Left
+  Bon = Bon + RingVal[Q]
+  put char THook at 3 + Q * 5,3
+  GlT = 24
+  GlK = Q
+  play sound SndRing
+  return
+end sub
+
+sub LoseLife:
+  dec Lives
+  ShowHud
+  if Lives = 0 then
+    Over = 1
+  else
+    StartLevel
+  end if
+  return
+end sub
+
+sub NextLevel:
+  inc Level
+  if Per > PerMin then Per = Per - 2
+  StartLevel
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' three characters at a row: Buf to the name table
+sub PutRow(u8 Col, u8 Row):
+  Addr = Row * 32
+  Addr = Addr + Col
+  copy Buf count 3 to vram.name + Addr
+  return
+end sub
+
+sub PoleRow(u8 Col, u8 Row):
+  Buf[0] = 32
+  Buf[1] = TPole
+  Buf[2] = 32
+  PutRow(Col, Row)
+  return
+end sub
+
+' a ledge at its surface row S: the row it starts in, the row below for
+' shifts of 4 or more, plain pole above and below
+sub DrawLedge(u8 Q, u8 S, u8 Lv):
+  u8 R = 0
+  u8 Sh = 0
+  u8 C0 = 0
+  u8 Bs = 0
+  R = S >> 3
+  Sh = S & 7
+  C0 = 2 + Q * 5
+  Bs = TPlat + Lv * 36
+  Buf[0] = Bs + Sh
+  Buf[1] = Bs + 12 + Sh
+  Buf[2] = Bs + 24 + Sh
+  PutRow(C0, R)
+  if Sh >= 4 then
+    Buf[0] = Bs + 4 + Sh
+    Buf[1] = Bs + 16 + Sh
+    Buf[2] = Bs + 28 + Sh
+    PutRow(C0, R + 1)
+  else
+    PoleRow(C0, R + 1)
+  end if
+  if R >= 5 then PoleRow(C0, R - 1)
+  if R <= 19 then PoleRow(C0, R + 2)
+  return
+end sub
+
+sub DrawPlats:
+  u8 Lv = 0
+  for Gi = 0 to 5
+    Lv = 0
+    if Dmg[Gi] > 0 then Lv = 1
+    if Sy[Gi] <> ShownSy[Gi] then
+      DrawLedge(Gi, Sy[Gi], Lv)
+      ShownSy[Gi] = Sy[Gi]
+      ShownV[Gi] = Lv
+    elseif Lv <> ShownV[Gi] then
+      DrawLedge(Gi, Sy[Gi], Lv)
+      ShownV[Gi] = Lv
+    end if
+  next
+  return
+end sub
+
+' the beam, the values, the rings and the poles
+sub DrawField:
+  fill TBeam count 28 at 2,2
+  for Gi = 0 to 5
+    X = 2 + Gi * 5
+    NumU = RingVal[Gi]
+    NumU = NumU * 10
+    print at X,2, digits$(NumU, 3)
+    put char TRing at X + 1,3
+    for Y = 4 to 21
+      put char TPole at X + 1,Y
+    next
+  next
+  return
+end sub
+
+' sprites 0-1 the climber (skin, clothes), 2 the spark, 3 the glint
+sub DrawSprites:
+  u8 Fr = 0
+  u8 Pat = 0
+  u8 Sx = 0
+  u8 Sy0 = 0
+  u8 Cb = 7
+  Fr = 0
+  if P.St <> 0 then
+    Fr = 3
+  elseif P.WalkC > 0 then
+    V = P.WalkC >> 3
+    V = V & 3
+    if V = 1 then Fr = 1
+    if V = 3 then Fr = 2
+  end if
+  if ClearT > 0 then
+    V = ClearT >> 3
+    V = V & 1
+    Fr = 3 * V
+    P.Face = (ClearT >> 4) & 1
+  end if
+  if DeadT > 0 then Cb = 6
+  Pat = P.Face * 4 + Fr
+  Pat = Pat << 3
+  Sx = (P.X >> 8) - 8
+  Py = P.Y16 >> 4
+  Sy0 = Py - 17
+  set sprite 0 to Sy0,Sx,Pat,11
+  set sprite 1 to Sy0,Sx,Pat + 4,Cb
+  if Es = 1 then
+    V = Tick >> 2
+    V = V & 1
+    Sx = 22 + Et * 40
+    Sy0 = Ey - 1
+    if Ey >= 193 then Sy0 = 192
+    set sprite 2 to Sy0,Sx,SSpark0 + (V << 2),ECol
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  if GlT > 0 then
+    Sx = 20 + GlK * 40
+    set sprite 3 to 20,Sx,SGlint,15
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 8,1, Score
+  print at 20,1, "HI"
+  print at 23,1, Best
+  print at 2,22, "LEVEL"
+  NumU = Level
+  print at 8,22, digits$(NumU, 2)
+  print at 22,22, "LIVES"
+  NumU = Lives
+  print at 28,22, digits$(NumU, 1)
+  put char TLife at 29,22
+  return
+end sub
+
+' a new level, or the same one again after a fall: the ledges dealt at
+' random, the rings back, the climber on the first ledge
+sub StartLevel:
+  NewScreen
+  DrawField
+  for Lk = 0 to 5
+    Rand
+    V = Rs & 7
+    Sy[Lk] = 35 + (V << 4)
+    Rand
+    V = Rs & 1
+    Dir[Lk] = V
+    Dmg[Lk] = 0
+    Rg[Lk] = 1
+    ShownSy[Lk] = 0
+    ShownV[Lk] = 0
+    OldSy[Lk] = Sy[Lk]
+  next
+  DrawPlats
+  P.St = 0
+  P.Ledge = 0
+  P.Jf = 0
+  P.Jd = 0
+  P.Face = 0
+  P.WalkC = 0
+  P.X = 20 * 256
+  W16 = Sy[0]
+  P.Y16 = W16 << 4
+  Py = Sy[0]
+  PrevPy = Py
+  Es = 0
+  Ey = 204
+  Ev = 0
+  ELast = 0
+  PlatT = 0
+  DmgT = 0
+  BonT = 0
+  Bon = 0
+  Left = 6
+  GlT = 0
+  DeadT = 0
+  ClearT = 0
+  ReadyT = ReadyN
+  ShowHud
+  print at 11,22, "GET READY!"
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  TenCnt = 0
+  Lives = 3
+  Level = 1
+  Per = 41
+  Over = 0
+  TitleOn = 0
+  StartLevel
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the poles and rings, two ledges low down, the climber, the
+' tune once
+sub TitlePage:
+  NewScreen
+  DrawField
+  for Lk = 0 to 5
+    Sy[Lk] = 140 - Lk * 4
+    if Lk >= 3 then Sy[Lk] = 128 + Lk * 4
+    Dmg[Lk] = 0
+    ShownSy[Lk] = 0
+    ShownV[Lk] = 0
+  next
+  DrawPlats
+  TitleBox
+  print at 2,1, "AHOY! OCTOBER 1987"
+  print at 20,22, "HI"
+  print at 23,22, Best
+  TitleOn = 1
+  Es = 0
+  GlT = 0
+  DeadT = 0
+  ClearT = 0
+  P.St = 0
+  P.Face = 0
+  P.WalkC = 0
+  P.X = 28 * 256
+  W16 = Sy[0]
+  P.Y16 = W16 << 4
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  return
+end sub
+
+sub TitleBox:
+  for Gi = 6 to 14
+    fill 32 count 24 at 4,Gi
+  next
+  print at 9,7, "P L A T F O R M S"
+  print at 7,9, "BY TONY BRANTNER"
+  print at 6,11, "RIDE THE LEDGES UP TO"
+  print at 6,12, "THE GOLD RINGS"
+  print at 8,14, "PRESS THE BUTTON"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "PLATFORMS"
+  print at 2,5, "BASED ON PLATFORMS BY TONY"
+  print at 2,6, "BRANTNER, AHOY! OCTOBER"
+  print at 2,7, "1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: GOING UP"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  ' Wt tells the test bots this page is waiting for the button
+  Wt = 1
+  Rearm
+  pause until press
+  Wt = 0
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$80,$80,$C0,$00,$00,$00,$00
+  $00,$C0,$80,$80,$C0,$00,$00,$00
+  $00,$00,$C0,$80,$80,$C0,$00,$00
+  $00,$00,$00,$C0,$80,$80,$C0,$00
+  $00,$00,$00,$00,$C0,$80,$80,$C0
+  $00,$00,$00,$00,$00,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$C0,$80
+  $00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$18,$18
+  $18,$00,$00,$00,$00,$00,$18,$18
+  $18,$18,$00,$00,$00,$00,$00,$18
+  $18,$18,$18,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$18,$18,$18,$18
+  $03,$01,$01,$03,$00,$00,$00,$00
+  $00,$03,$01,$01,$03,$00,$00,$00
+  $00,$00,$03,$01,$01,$03,$00,$00
+  $00,$00,$00,$03,$01,$01,$03,$00
+  $00,$00,$00,$00,$03,$01,$01,$03
+  $00,$00,$00,$00,$00,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$00,$00,$00,$00,$00
+  $C0,$80,$80,$C0,$00,$00,$00,$00
+  $00,$C0,$80,$80,$C0,$00,$00,$00
+  $00,$00,$C0,$80,$80,$C0,$00,$00
+  $00,$00,$00,$C0,$80,$80,$C0,$00
+  $00,$00,$00,$00,$C0,$80,$80,$C0
+  $00,$00,$00,$00,$00,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$C0,$80
+  $00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$18,$18
+  $18,$00,$00,$00,$00,$00,$18,$18
+  $18,$18,$00,$00,$00,$00,$00,$18
+  $18,$18,$18,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$18,$18,$18,$18
+  $03,$01,$01,$03,$00,$00,$00,$00
+  $00,$03,$01,$01,$03,$00,$00,$00
+  $00,$00,$03,$01,$01,$03,$00,$00
+  $00,$00,$00,$03,$01,$01,$03,$00
+  $00,$00,$00,$00,$03,$01,$01,$03
+  $00,$00,$00,$00,$00,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$00,$00,$00,$00,$00
+  $18,$18,$C3,$99,$42,$99,$C3,$00
+  $18,$18,$18,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$C1,$C3,$18,$24,$24,$00
+end data
+data TileCol bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1B,$1A,$1A,$16,$01,$01,$01,$01
+  $01,$1B,$1A,$1A,$16,$01,$01,$01
+  $01,$01,$1B,$1A,$1A,$16,$01,$01
+  $01,$01,$01,$1B,$1A,$1A,$16,$01
+  $01,$01,$01,$01,$1B,$1A,$1A,$16
+  $01,$01,$01,$01,$01,$1B,$1A,$1A
+  $01,$01,$01,$01,$01,$01,$1B,$1A
+  $01,$01,$01,$01,$01,$01,$01,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $16,$01,$01,$01,$01,$01,$01,$01
+  $1A,$16,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$16,$01,$01,$01,$01,$01
+  $0B,$0A,$0A,$06,$0E,$E1,$E1,$E1
+  $E1,$0B,$0A,$0A,$06,$0E,$E1,$E1
+  $E1,$E1,$0B,$0A,$0A,$06,$0E,$E1
+  $E1,$E1,$E1,$0B,$0A,$0A,$06,$0E
+  $E1,$E1,$E1,$E1,$0B,$0A,$0A,$06
+  $E1,$E1,$E1,$E1,$E1,$0B,$0A,$0A
+  $E1,$E1,$E1,$E1,$E1,$E1,$0B,$0A
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$0B
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $06,$0E,$E1,$E1,$E1,$E1,$E1,$E1
+  $0A,$06,$0E,$E1,$E1,$E1,$E1,$E1
+  $0A,$0A,$06,$0E,$E1,$E1,$E1,$E1
+  $1B,$1A,$1A,$16,$01,$01,$01,$01
+  $01,$1B,$1A,$1A,$16,$01,$01,$01
+  $01,$01,$1B,$1A,$1A,$16,$01,$01
+  $01,$01,$01,$1B,$1A,$1A,$16,$01
+  $01,$01,$01,$01,$1B,$1A,$1A,$16
+  $01,$01,$01,$01,$01,$1B,$1A,$1A
+  $01,$01,$01,$01,$01,$01,$1B,$1A
+  $01,$01,$01,$01,$01,$01,$01,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $16,$01,$01,$01,$01,$01,$01,$01
+  $1A,$16,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$16,$01,$01,$01,$01,$01
+  $1B,$19,$18,$16,$01,$01,$01,$01
+  $01,$1B,$19,$18,$16,$01,$01,$01
+  $01,$01,$1B,$19,$18,$16,$01,$01
+  $01,$01,$01,$1B,$19,$18,$16,$01
+  $01,$01,$01,$01,$1B,$19,$18,$16
+  $01,$01,$01,$01,$01,$1B,$19,$18
+  $01,$01,$01,$01,$01,$01,$1B,$19
+  $01,$01,$01,$01,$01,$01,$01,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $16,$01,$01,$01,$01,$01,$01,$01
+  $18,$16,$01,$01,$01,$01,$01,$01
+  $19,$18,$16,$01,$01,$01,$01,$01
+  $0B,$09,$08,$06,$06,$E1,$E1,$E1
+  $E1,$0B,$09,$08,$06,$06,$E1,$E1
+  $E1,$E1,$0B,$09,$08,$06,$06,$E1
+  $E1,$E1,$E1,$0B,$09,$08,$06,$06
+  $E1,$E1,$E1,$E1,$0B,$09,$08,$06
+  $E1,$E1,$E1,$E1,$E1,$0B,$09,$08
+  $E1,$E1,$E1,$E1,$E1,$E1,$0B,$09
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$0B
+  $06,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $06,$06,$E1,$E1,$E1,$E1,$E1,$E1
+  $08,$06,$06,$E1,$E1,$E1,$E1,$E1
+  $09,$08,$06,$06,$E1,$E1,$E1,$E1
+  $1B,$19,$18,$16,$01,$01,$01,$01
+  $01,$1B,$19,$18,$16,$01,$01,$01
+  $01,$01,$1B,$19,$18,$16,$01,$01
+  $01,$01,$01,$1B,$19,$18,$16,$01
+  $01,$01,$01,$01,$1B,$19,$18,$16
+  $01,$01,$01,$01,$01,$1B,$19,$18
+  $01,$01,$01,$01,$01,$01,$1B,$19
+  $01,$01,$01,$01,$01,$01,$01,$1B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $16,$01,$01,$01,$01,$01,$01,$01
+  $18,$16,$01,$01,$01,$01,$01,$01
+  $19,$18,$16,$01,$01,$01,$01,$01
+  $E1,$E1,$1B,$1B,$B1,$1B,$1B,$01
+  $E1,$E1,$E1,$E1,$01,$01,$01,$01
+  $0A,$0B,$0A,$0A,$0A,$0A,$06,$01
+  $B1,$B1,$17,$17,$51,$51,$51,$01
+end data
+data SpritePat bytes
+  $00,$03,$07,$06,$03,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$80,$00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0F,$07,$07,$04,$04,$04,$04,$06,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$80,$80,$80,$80,$80,$80,$C0,$00
+  $00,$03,$07,$06,$03,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$80,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0F,$07,$07,$0C,$08,$18,$10,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$80,$80,$80,$40,$40,$60,$00,$00
+  $00,$03,$07,$06,$03,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$80,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0F,$05,$07,$03,$03,$06,$05,$06,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$00,$80,$00,$00,$00,$00,$80,$00
+  $00,$03,$07,$06,$03,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0F,$07,$07,$0C,$18,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$00,$80,$80,$C0,$60,$20,$00,$00,$00
+  $00,$01,$03,$03,$01,$00,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$60,$C0,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$01,$01,$01,$01,$01,$01,$03,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$F0,$E0,$E0,$20,$20,$20,$20,$60,$00
+  $00,$01,$03,$03,$01,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$60,$C0,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$01,$01,$01,$02,$02,$06,$00,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$F0,$E0,$E0,$30,$10,$18,$08,$00,$00
+  $00,$01,$03,$03,$01,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$60,$C0,$00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$00,$01,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$F0,$A0,$E0,$C0,$C0,$60,$A0,$60,$00
+  $00,$01,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$60,$C0,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$00,$01,$01,$03,$06,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$F0,$E0,$E0,$30,$18,$08,$00,$00,$00
+  $03,$0C,$10,$0C,$03,$00,$03,$0C,$10,$0C,$03,$00,$03,$0C,$10,$0C
+  $00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00
+  $00,$03,$0C,$10,$0C,$03,$00,$03,$0C,$10,$0C,$03,$00,$03,$0C,$10
+  $80,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$01,$01,$11,$08,$00,$60,$00,$08,$11,$01,$01,$00,$00
+  $00,$00,$00,$00,$00,$10,$20,$00,$30,$00,$20,$10,$00,$00,$00,$00
+end data
+
+asm {
+PfJump:
+    db $40,$1D,$31,$02,$40,$D6,$30,$02,$40,$AA,$40,$02,$40,$8F,$50,$03,$50
+PfLand:
+    db $00,$00,$33,$01,$00,$00,$63,$02,$10
+PfRing:
+    db $40,$47,$10,$03,$40,$35,$10,$03,$40,$2A,$20,$08,$40,$2A,$50,$08,$50
+PfCount:
+    db $40,$40,$50,$01,$50
+PfZap:
+    db $00,$00,$24,$03,$00,$00,$35,$03,$00,$00,$44,$04,$00,$00,$65,$06,$10
+PfPlunge:
+    db $40,$7F,$20,$04,$40,$97,$30,$04,$40,$B4,$30,$04,$40,$D6,$40,$04,$40,$FE,$40,$04,$40,$2E,$51,$06
+    db $50
+PfLost:
+    db $40,$1D,$21,$08,$40,$2E,$21,$08,$40,$41,$21,$08,$40,$53,$31,$14,$50
+PfClear:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$06
+    db $40,$55,$20,$14,$50
+PfLife:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$20,$0C,$50
+PfStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0E,$50
+
+PfSoundTable:
+    dw PfTuneMel,$702B
+    dw PfTuneBass,$7035
+    dw PfJump,$7049
+    dw PfLand,$703F
+    dw PfRing,$7049
+    dw PfCount,$7049
+    dw PfZap,$703F
+    dw PfPlunge,$7049
+    dw PfLost,$7049
+    dw PfClear,$7049
+    dw PfLife,$7049
+    dw PfStart,$7049
+; Going Up (original)
+; Tiny Sound, 8 frames per step
+PfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$01,$26,$01,$21,$23,$01,$1F,$01
+    db $23,$26,$01,$01,$25,$01,$21,$01,$1C,$01,$21,$25,$01,$23,$21,$01
+    db $1F,$01,$1E,$01,$1A,$01,$1E,$21,$01,$26,$01,$2A,$28,$01,$26,$01
+    db $23,$2B,$01,$01,$2A,$01,$26,$01,$21,$01,$28,$01,$26,$25,$01,$28
+    db $26,$01,$01,$00
+    db $FF
+PfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$01,$00
+    db $FF
+}

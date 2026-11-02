@@ -1,0 +1,1685 @@
+cartridge "METEOR RUN/TONY BRANTNER, AHOY!/1986"
+
+' METEOR RUN
+' Based on Meteor Run by Tony Brantner, Ahoy! August 1986 (Commodore 64,
+' machine language). Made for the ColecoVision by Claude (an AI made by
+' Anthropic) for Amy Studio, 2026, in Amy by Amy Bienvenu. The listing is
+' machine code typed in with a hex loader, so this game is built from the
+' article's rules (orig/ holds the scans), not from the code.
+'
+' The game (the article's rules): your ship comes down onto the screen,
+' then flies over the planet. Up and down move it straight up and down;
+' left and right speed it up the longer you hold them (to a limit), and
+' the other way slows it, stops it, then turns it round. At either side
+' limit the planet's surface scrolls. Meteors drift in all directions: a
+' touch costs a ship. When one is on your line of fire, the button burns
+' it with the laser (50 points). A ship every 1000 points, at most nine.
+' Three ships, 30 units of power; at the bottom of the screen the button
+' is a tractor beam: over a Zalium crystal mound it pulls the crystals up,
+' +10 power (at most 30). Under a third of the power the laser is off;
+' at none the ship explodes. The right button pauses.
+'
+' Rules in numbers (mine, the article gives none): speed in 1/16 pixel,
+' Vel 0-64 with 32 standing still, one step a frame while held (2 pixels
+' a frame at most); up and down 2 pixels a frame; power drains a unit
+' every 150 frames (2.5 seconds); the laser waits 12 frames between
+' shots; meteors move 1/16 pixel steps, faster every 500 points.
+'
+' Made for this machine, after the C64 screen (orig/c64-screen*.png): a
+' black sky with a few faint stars; a grey stepped mountain range on a
+' blue ground line, scrolling at half the ship's speed (its tiles'
+' patterns are rewritten from 64 pre-shifted copies; the name table never
+' changes); the white swept-wing ship (hull and red cockpit, two sprites)
+' facing the way it flies; four tumbling light blue meteors with white
+' craters (two sprites each, three sizes); the green laser drawn across
+' its row in tiles; the light yellow tractor beam pulling up the yellow
+' crystal mound; the HUD below as on the C64: SCORE (magenta), SHIPS
+' (cyan), HIGH (light red) and the POWER bar, red, yellow, green thirds;
+' music under the game, quieter than the effects (music first in the
+' table).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TStar = 128
+const TGline = 129
+const TBeam = 130
+const TPrf = 131
+const TPrh = 132
+const TPyf = 133
+const TPyh = 134
+const TPgf = 135
+const TPgh = 136
+const TPe = 137
+const TWsc0 = 138
+const TWsc1 = 139
+const TWsc2 = 140
+const TWsc3 = 141
+const TWsc4 = 142
+const TWsh0 = 143
+const TWsh1 = 144
+const TWsh2 = 145
+const TWsh3 = 146
+const TWsh4 = 147
+const TWhi0 = 148
+const TWhi1 = 149
+const TWhi2 = 150
+const TWhi3 = 151
+const TWpo0 = 152
+const TWpo1 = 153
+const TWpo2 = 154
+const TWpo3 = 155
+const TWpo4 = 156
+const TScr0 = 157
+const TScr1 = 158
+const TScr2 = 159
+const TScr3 = 160
+const TScr4 = 161
+const TScr5 = 162
+const TScr6 = 163
+const TScr7 = 164
+const TScr8 = 165
+const TScr9 = 166
+const TScr10 = 167
+const TScr11 = 168
+const TScr12 = 169
+const TScr13 = 170
+const TScr14 = 171
+const TScr15 = 172
+const TScr16 = 173
+const TScr17 = 174
+const TScr18 = 175
+const TScr19 = 176
+const TScr20 = 177
+const TScr21 = 178
+const TScr22 = 179
+const TScr23 = 180
+const SShipr = 0
+const STrimr = 4
+const SShipl = 8
+const STriml = 12
+const SMets0a = 16
+const SMets0b = 20
+const SMets1a = 24
+const SMets1b = 28
+const SMetm0a = 32
+const SMetm0b = 36
+const SMetm1a = 40
+const SMetm1b = 44
+const SMetl0a = 48
+const SMetl0b = 52
+const SMetl1a = 56
+const SMetl1b = 60
+const SCrys = 64
+const STbeam = 68
+const SBla1 = 72
+const SBla2 = 76
+const NTiles8 = 424
+const SprBytes = 640
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndZap = 5
+const SndPop = 6
+const SndBoom = 7
+const SndFall = 8
+const SndTract = 9
+const SndFuel = 10
+const SndExtra = 11
+const SndLow = 12
+const SndOver = 13
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the ship: Sxf its left edge in 1/16 pixel (16-224 pixels), Sy its top,
+' Vel its speed (32 = still, 0 full left, 64 full right), Face 0 right
+' 1 left
+u16 Sxf = 1280
+u8 Sy = 64
+u8 Vel = 32
+u8 Face = 0
+' the world's scroll in 1/16 pixel, and the bands' shown offsets
+u16 Wx = 0
+u8 Ho = 255
+' Ph: 1 flying, 0 coming down, 2 crashed, 3 game over, 4 title
+u8 Ph = 4
+u16 Score = 0
+u16 Hi = 0
+u16 NextB = 1000
+u8 Ships = 3
+u8 Pw = 30
+u8 Pt = 0
+u8 Lc = 0
+u8 Bt = 0
+u8 Br = 0
+u8 Bx0 = 0
+u8 Bx1 = 0
+u8 Tt = 0
+u8 Ty = 0
+u8 Tc = 0
+' the crystals: Cx their x on the screen (0-511, seen under 240), Cv 1 there
+u16 Cx = 160
+u8 Cv = 1
+' the meteors: place in 1/16 pixel, speed (32 = still), size 0-2, state
+' (0 flying, 1 bursting, 2 waiting), timer, colour
+u16 Mx[4]
+u16 My[4]
+u8 Mvx[4]
+u8 Mvy[4]
+u8 Ms[4]
+u8 Mst[4]
+u8 Mt[4]
+u8 Mc[4]
+u8 Kills = 0
+u8 Hit = 0
+u8 Lv = 0
+u8 Idle = 0
+u8 Shown = 0
+
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 B16 = 0
+u8 Menu = 0
+u8 Lf = 0
+u8 Rg = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 B2 = 0
+u8 WasB2 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 D = 0
+u8 R = 0
+u8 Cxp = 0
+u8 Cyp = 0
+u8 Gx = 0
+
+  tile screen
+  set sound table MrSoundTable areas 6
+  sprites 16x16
+  set sprite count 12
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  NextB = 1000
+  Ships = 3
+  DrawField
+  ShowHud
+  ShowScreen
+  play sound SndRunA
+  play sound SndRunB
+
+launch:
+  ' the ship comes down at the left; the meteors start well away from it
+  Ph = 0
+  Sxf = 1280
+  Sy = 0
+  Vel = 32
+  Face = 0
+  Pw = 30
+  Pt = 0
+  Lc = 0
+  Tt = 0
+  Tc = 0
+  ShowPower
+  for I = 0 to 3
+    NewMeteor(I)
+  next
+  for Tm = 1 to 64
+    Frame1
+    ' (the pad is read here too, so a press made during the descent is
+    ' not taken for a button still held)
+    ReadPad
+    Bands
+    MoveMets
+    inc Sy
+    DrawAll
+  next
+  Ph = 1
+
+fly:
+  Frame1
+  ReadPad
+  if Press2 = 1 then Pause
+  MoveShip
+  Bands
+  MoveMets
+  Kills = 0
+  if Press = 1 then
+    if Sy >= 136 then
+      Tractor
+    else
+      Laser
+    end if
+  end if
+  if Lc > 0 then dec Lc
+  BeamTick
+  TractorTick
+  ' power: a unit every 150 frames
+  inc Pt
+  if Pt = 150 then
+    Pt = 0
+    if Pw > 0 then dec Pw
+    ShowPower
+    if Pw = 9 then play sound SndLow
+  end if
+  Collide
+  DrawAll
+  if Kills > 0 then
+    ShowScore
+    Bonus
+  end if
+  if Hit = 1 then goto crash
+  if Pw = 0 then goto crash
+  goto fly
+
+crash:
+  Ph = 2
+  play sound SndBoom
+  play sound SndFall
+  set sprite 1 to 192,0,0,0
+  set sprite 2 to 192,0,0,0
+  set sprite 3 to 192,0,0,0
+  BeamOff
+  for Tm = 0 to 47
+    Frame1
+    Bands
+    MoveMets
+    V = Tm >> 3
+    V = V & 1
+    V = V << 2
+    V = V + SBla1
+    W = Sxf >> 4
+    if Tm < 40 then
+      set sprite 0 to Sy,W,V,11
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+    DrawMets
+    update sprites
+  next
+  dec Ships
+  ShowHud
+  if Ships > 0 then goto launch
+
+  ' the end: the score and the high score
+  Ph = 3
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  HideSprites
+  if Score > Hi then Hi = Score
+  ShowHud
+  play sound SndOver
+  print at 11,7, "GAME OVER"
+  print at 9,9, "SCORE"
+  NumU = Score
+  print at 16,9, digits$(NumU, 5)
+  print at 8,12, "PRESS A BUTTON"
+  for Tm = 1 to 60
+    Frame1
+  next
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' MoveShip: the stick speeds the ship up or slows it (it keeps its speed
+' when let go); past either side limit the world scrolls instead
+sub MoveShip:
+  if Rg = 1 then
+    if Vel < 64 then inc Vel
+  end if
+  if Lf = 1 then
+    if Vel > 0 then dec Vel
+  end if
+  if Vel > 32 then Face = 0
+  if Vel < 32 then Face = 1
+  if Up1 = 1 then
+    if Sy > 8 then Sy = Sy - 2
+  end if
+  if Dn1 = 1 then
+    if Sy < 144 then Sy = Sy + 2
+  end if
+  A16 = Wx >> 4
+  if Vel > 32 then
+    V = Vel - 32
+    Sxf = Sxf + V
+    ' (the scroll starts with the ship at x 160, well inside the overscan,
+    ' so a meteor coming in from the edge leaves time to react)
+    if Sxf > 2560 then
+      W16 = Sxf - 2560
+      Sxf = 2560
+      Wx = Wx + W16
+    end if
+  end if
+  if Vel < 32 then
+    V = 32 - Vel
+    W16 = V + 1280
+    if Sxf < W16 then
+      W16 = W16 - Sxf
+      Sxf = 1280
+      Wx = Wx - W16
+    else
+      Sxf = Sxf - V
+    end if
+  end if
+  ' what moved on the screen: meteors and crystals move with the ground
+  B16 = Wx >> 4
+  if B16 <> A16 then
+    W16 = B16 - A16
+    D = W16
+    ' D: 1-2 the ground went left, 254-255 it went right
+    if D < 128 then
+      Cx = Cx - D
+      W16 = D
+      W16 = W16 << 4
+      for I = 0 to 3
+        Mx[I] = Mx[I] - W16
+        Mx[I] = Mx[I] & 4095
+      next
+    else
+      D = 0 - D
+      Cx = Cx + D
+      W16 = D
+      W16 = W16 << 4
+      for I = 0 to 3
+        Mx[I] = Mx[I] + W16
+        Mx[I] = Mx[I] & 4095
+      next
+    end if
+    Cx = Cx & 511
+  end if
+  return
+end sub
+
+' Bands: the mountains (at half the ground's speed, behind it) get the
+' patterns of their new offset
+sub Bands:
+  W16 = Wx >> 5
+  V = W16
+  V = V & 63
+  if V <> Ho then
+    Ho = V
+    W16 = V
+    W16 = W16 << 6
+    A16 = W16 << 1
+    W16 = W16 + A16
+    copy HillPat + W16 count 192 to vram.pattern + 5352
+  end if
+  return
+end sub
+
+' NewMeteor(L): meteor L comes in from an edge, away from the ship
+sub NewMeteor(u8 L):
+  Mst[L] = 0
+  Ms[L] = random(0, 2)
+  Mc[L] = 5
+  Lv = Score / 500
+  if Lv > 8 then Lv = 8
+  K = Lv * 2
+  K = K + 8
+  ' an edge: 0 top, 1 left, 2 right
+  V = random(0, 2)
+  if V = 0 then
+    W = random(0, 239)
+    Y = 8
+  else
+    Y = random(16, 120)
+    W = 248
+    if V = 2 then W = 232
+  end if
+  ' not too near the ship
+  X = Sxf >> 4
+  D = Dist(W, X)
+  R = Dist(Y, Sy)
+  if D < 48 then
+    if R < 48 then
+      W = W + 128
+    end if
+  end if
+  W16 = W
+  Mx[L] = W16 << 4
+  W16 = Y
+  My[L] = W16 << 4
+  V = 32 - K
+  W = 32 + K
+  Mvx[L] = random(V, W)
+  Mvy[L] = random(V, W)
+  if Mvx[L] = 32 then Mvx[L] = 36
+  if Mvy[L] = 32 then Mvy[L] = 29
+  return
+end sub
+
+' Dist(A, B): how far apart two bytes are
+function Dist(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+' MoveMets: every flying meteor drifts (wrapping round the sides, and
+' from the bottom of the sky to its top); a burst counts down, then the
+' meteor waits and comes back from an edge
+sub MoveMets:
+  for I = 0 to 3
+    if Mst[I] = 0 then
+      W16 = Mvx[I]
+      Mx[I] = Mx[I] + W16
+      Mx[I] = Mx[I] - 32
+      Mx[I] = Mx[I] & 4095
+      W16 = Mvy[I]
+      My[I] = My[I] + W16
+      My[I] = My[I] - 32
+      if My[I] < 128 then My[I] = My[I] + 2176
+      if My[I] >= 2304 then My[I] = My[I] - 2176
+    else
+      dec Mt[I]
+      if Mt[I] = 0 then
+        if Mst[I] = 1 then
+          Mst[I] = 2
+          Mt[I] = random(30, 90)
+        else
+          NewMeteor(I)
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Laser: a shot along the ship's row the way it faces; every flying
+' meteor on that line bursts (50 points each)
+sub Laser:
+  if Pw < 10 then return
+  if Lc > 0 then return
+  if Bt > 0 then BeamOff
+  Lc = 12
+  play sound SndZap
+  X = Sxf >> 4
+  V = Sy + 8
+  Br = V >> 3
+  if Face = 0 then
+    V = X + 16
+    Bx0 = V >> 3
+    Bx1 = 31
+  else
+    Bx0 = 0
+    V = X >> 3
+    if V > 0 then dec V
+    Bx1 = V
+  end if
+  for J = Bx0 to Bx1
+    put char TBeam at J,Br
+  next
+  Bt = 6
+  Cyp = Sy + 8
+  Cxp = X + 8
+  for I = 0 to 3
+    if Mst[I] = 0 then
+      W16 = My[I] >> 4
+      V = W16
+      V = V + 8
+      R = MetR[Ms[I]]
+      R = R + 4
+      D = Dist(V, Cyp)
+      if D < R then
+        W16 = Mx[I] >> 4
+        V = W16
+        W = 0
+        if Face = 0 then
+          if V > X then W = 1
+        else
+          if V < X then W = 1
+        end if
+        if W = 1 then
+          Mst[I] = 1
+          Mt[I] = 14
+          inc Kills
+          Score = Score + 50
+        end if
+      end if
+    end if
+  next
+  if Kills > 0 then play sound SndPop
+  return
+end sub
+
+' BeamTick: the beam shows 6 frames, then its row is put back
+sub BeamTick:
+  if Bt = 0 then return
+  dec Bt
+  if Bt = 0 then BeamOff
+  return
+end sub
+
+sub BeamOff:
+  Bt = 0
+  Y = Br
+  for J = Bx0 to Bx1
+    X = J
+    CellAt
+    put char V at J,Br
+  next
+  return
+end sub
+
+' CellAt: V the tile the field has at X,Y (stars, mountains, the ground
+' line)
+sub CellAt:
+  V = 32
+  if Y <= 16 then
+    W = X * 7
+    D = Y * 13
+    W = W + D
+    W = W & 31
+    if W = 0 then V = TStar
+  end if
+  if Y >= 17 then
+    if Y <= 19 then
+      W = Y - 17
+      W = W << 3
+      D = X & 7
+      V = TScr0 + W
+      V = V + D
+    end if
+  end if
+  if Y = 20 then V = TGline
+  return
+end sub
+
+' Tractor: at the bottom, the beam pulls up the crystals under the ship
+sub Tractor:
+  if Tt > 0 then return
+  Tt = 12
+  Tc = 0
+  X = Sxf >> 4
+  if Cv = 1 then
+    if Cx < 240 then
+      W16 = Cx
+      V = W16
+      D = Dist(V, X)
+      if D < 10 then
+        Tt = 24
+        Tc = 1
+        play sound SndTract
+      end if
+    end if
+  end if
+  return
+end sub
+
+' TractorTick: the beam shows while Tt counts; a beam that started over
+' the crystals (Tc 1) gives +10 power at its end
+sub TractorTick:
+  if Tt = 0 then return
+  dec Tt
+  if Tt > 0 then return
+  if Tc = 0 then return
+  Tc = 0
+  Pw = Pw + 10
+  if Pw > 30 then Pw = 30
+  Pt = 0
+  ShowPower
+  play sound SndFuel
+  ' the next mound: off the right edge, found by flying on
+  V = random(0, 200)
+  Cx = 272 + V
+  return
+end sub
+
+' Collide: Hit 1 if the ship meets a flying meteor
+sub Collide:
+  Hit = 0
+  X = Sxf >> 4
+  Cxp = X + 8
+  Cyp = Sy + 8
+  for I = 0 to 3
+    if Mst[I] = 0 then
+      R = MetR[Ms[I]]
+      W16 = Mx[I] >> 4
+      V = W16
+      D = Dist(V, X)
+      W = R + 6
+      if D < W then
+        W16 = My[I] >> 4
+        V = W16
+        V = V + 8
+        D = Dist(V, Cyp)
+        W = R + 4
+        if D < W then Hit = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' Bonus: a ship every 1000 points (at most nine)
+sub Bonus:
+  if Score < NextB then return
+  NextB = NextB + 1000
+  if Ships < 9 then
+    inc Ships
+    play sound SndExtra
+  end if
+  ShowHud
+  return
+end sub
+
+' DrawAll: the ship, the tractor beam, the crystals and the meteors
+sub DrawAll:
+  X = Sxf >> 4
+  if Face = 0 then
+    set sprite 0 to Sy,X,SShipr,15
+    set sprite 1 to Sy,X,STrimr,8
+  else
+    set sprite 0 to Sy,X,SShipl,15
+    set sprite 1 to Sy,X,STriml,8
+  end if
+  Ty = 0
+  if Tt > 0 then
+    V = Sy + 11
+    set sprite 2 to V,X,STbeam,11
+    Ty = Tc
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  ' the crystals (rising into the beam while it pulls)
+  if Cv = 1 then
+    if Cx < 240 then
+      W16 = Cx
+      W = W16
+      V = 145
+      if Ty = 1 then
+        D = 24 - Tt
+        D = D << 1
+        V = V - D
+      end if
+      set sprite 3 to V,W,SCrys,10
+    else
+      set sprite 3 to 192,0,0,0
+    end if
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  DrawMets
+  update sprites
+  return
+end sub
+
+' DrawMets: the meteors on sprites 4-11 (a light blue rock and its white
+' craters), the pairs' order turning every frame so a crowded line
+' flickers instead of losing the same one
+sub DrawMets:
+  for I = 0 to 3
+    J = I + Tick
+    J = J & 3
+    J = J << 1
+    J = J + 4
+    K = J + 1
+    if Mst[I] = 2 then
+      set sprite J to 192,0,0,0
+      set sprite K to 192,0,0,0
+    else
+      W16 = Mx[I] >> 4
+      X = W16
+      W16 = My[I] >> 4
+      Y = W16
+      if Mst[I] = 1 then
+        V = Mt[I] >> 2
+        V = V & 1
+        V = V << 2
+        V = V + SBla1
+        set sprite J to Y,X,V,9
+        set sprite K to 192,0,0,0
+      else
+        V = Tick >> 3
+        V = V + I
+        V = V & 1
+        V = V << 3
+        W = Ms[I] << 4
+        V = V + W
+        V = V + SMets0a
+        W = V + 4
+        set sprite J to Y,X,W,15
+        W = Mc[I]
+        set sprite K to Y,X,V,W
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Pause:
+  mute all
+  print at 13,11, "PAUSE"
+  WasB2 = 1
+pause_wait:
+  Frame1
+  ReadPad
+  if Press2 = 0 then goto pause_wait
+  X = 13
+  Y = 11
+  for K = 13 to 17
+    X = K
+    CellAt
+    put char V at K,11
+  next
+  Press = 0
+  play sound SndRunA
+  play sound SndRunB
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub DrawField:
+  NewScreen
+  for Y = 0 to 20
+    for X = 0 to 31
+      CellAt
+      put char V at X,Y
+    next
+  next
+  Ho = 255
+  Bands
+  copy HillCol count 192 to vram.color + 1256
+  return
+end sub
+
+sub ShowHud:
+  for J = 0 to 4
+    V = TWsc0 + J
+    K = J + 2
+    put char V at K,21
+    V = TWsh0 + J
+    K = J + 14
+    put char V at K,21
+    V = TWpo0 + J
+    K = J + 2
+    put char V at K,22
+  next
+  for J = 0 to 3
+    V = TWhi0 + J
+    K = J + 21
+    put char V at K,21
+  next
+  ShowScore
+  NumU = Ships
+  print at 19,21, digits$(NumU, 1)
+  NumU = Hi
+  print at 25,21, digits$(NumU, 5)
+  ShowPower
+  return
+end sub
+
+sub ShowScore:
+  print at 7,21, "0"
+  NumU = Score
+  print at 8,21, digits$(NumU, 5)
+  return
+end sub
+
+' ShowPower: 15 cells of 2 segments each; the lowest third red, the middle
+' yellow, the top green (the laser is off below the red)
+sub ShowPower:
+  W = Pw
+  for J = 0 to 14
+    K = J + 8
+    D = J / 5
+    D = D << 1
+    D = D + TPrf
+    if W >= 2 then
+      V = D
+      W = W - 2
+    else
+      if W = 1 then
+        V = D + 1
+        W = 0
+      else
+        V = TPe
+      end if
+    end if
+    put char V at K,22
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf = 0
+  Rg = 0
+  Btn = 0
+  B2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf = 1
+  if joypad(2).left then Lf = 1
+  if joypad(1).right then Rg = 1
+  if joypad(2).right then Rg = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then B2 = 1
+  if joypad(2).button2 then B2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if B2 = 1 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  for J = 0 to 11
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the planet scrolling under the stars, a meteor or two, a menu
+sub TitlePage:
+  Ph = 4
+  DrawField
+  print at 6,4, "M E T E O R   R U N"
+  print at 6,7, "BURN THE METEORS,"
+  print at 6,8, "PULL UP THE CRYSTALS"
+  print at 12,11, "START"
+  print at 12,12, "CREDITS"
+  print at 11,14, "HI"
+  NumU = Hi
+  print at 14,14, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Menu = 0
+  Score = 0
+  for I = 0 to 3
+    NewMeteor(I)
+  next
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Wx = Wx + 16
+  Bands
+  MoveMets
+  DrawMets
+  update sprites
+  ReadPad
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,11
+  put char 32 at 10,12
+  V = Menu + 11
+  put char 62 at 10,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,3, "METEOR RUN"
+  print at 3,5, "BASED ON METEOR RUN BY"
+  print at 3,6, "TONY BRANTNER, AHOY!"
+  print at 3,7, "AUGUST 1986 (COMMODORE 64)."
+  print at 3,9, "MADE FOR THE COLECOVISION"
+  print at 3,10, "BY CLAUDE (AN AI MADE BY"
+  print at 3,11, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,12, "2026, IN AMY BY AMY"
+  print at 3,13, "BIENVENU."
+  print at 3,15, "MUSIC: ZALIUM DAWN,"
+  print at 10,16, "ROCK BELT"
+  print at 3,18, "RIGHT BUTTON: PAUSE"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' the meteors' radii by size
+data MetR bytes
+  3,5,7
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$11,$11,$11,$11,$11,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $00,$11,$11,$11,$11,$11,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $00,$11,$11,$11,$11,$11,$00,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$87,$80,$80,$70,$08,$08,$F0
+  $00,$70,$88,$80,$80,$80,$88,$70
+  $00,$70,$88,$88,$88,$88,$88,$70
+  $00,$F0,$88,$88,$F0,$A0,$90,$88
+  $00,$07,$80,$80,$F0,$80,$80,$07
+  $00,$87,$80,$80,$70,$08,$08,$F0
+  $00,$88,$88,$88,$07,$88,$88,$88
+  $00,$70,$20,$20,$20,$20,$20,$70
+  $00,$F0,$88,$88,$F0,$80,$80,$80
+  $00,$87,$80,$80,$70,$08,$08,$F0
+  $00,$88,$88,$88,$07,$88,$88,$88
+  $00,$70,$20,$20,$20,$20,$20,$70
+  $00,$70,$88,$80,$B8,$88,$88,$87
+  $00,$88,$88,$88,$07,$88,$88,$88
+  $00,$F0,$88,$88,$F0,$80,$80,$80
+  $00,$70,$88,$88,$88,$88,$88,$70
+  $00,$88,$88,$88,$A8,$A8,$A8,$50
+  $00,$07,$80,$80,$F0,$80,$80,$07
+  $00,$F0,$88,$88,$F0,$A0,$90,$88
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$E1,$01,$01,$01
+  $05,$04,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$03,$03,$01,$01,$01
+  $01,$19,$19,$19,$19,$19,$01,$01
+  $01,$91,$91,$91,$91,$91,$01,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$01,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$01,$01
+  $01,$13,$13,$13,$13,$13,$01,$01
+  $01,$31,$31,$31,$31,$31,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$1D,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $01,$1D,$D1,$D1,$D1,$D1,$D1,$1D
+  $01,$17,$71,$71,$71,$71,$71,$71
+  $01,$71,$71,$71,$17,$71,$71,$71
+  $01,$71,$71,$71,$71,$71,$71,$71
+  $01,$71,$71,$71,$71,$71,$71,$71
+  $01,$17,$71,$71,$71,$71,$71,$71
+  $01,$91,$91,$91,$19,$91,$91,$91
+  $01,$91,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$91,$91,$91,$19
+  $01,$91,$91,$91,$19,$91,$91,$91
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$1F,$F1,$F1,$F1,$F1,$F1,$1F
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$07,$03,$01,$C0,$3F,$3F,$C0,$01,$03,$07,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$8F,$8F,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$70,$70,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$F1,$F1,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$E0,$C0,$80,$03,$FC,$FC,$03,$80,$C0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0E,$0E,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$06,$03,$0F,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$80,$E0,$F0,$80,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$01,$04,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$00,$00,$20,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$06,$03,$03,$05,$05,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$A0,$F0,$C0,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$04,$00,$00,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$A0,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$04,$05,$09,$06,$0B,$0F,$3F,$3D,$00,$00,$00,$00
+  $00,$00,$80,$60,$E0,$E0,$B0,$F8,$F4,$98,$70,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$03,$0A,$04,$09,$14,$30,$00,$02,$00,$00,$00,$00
+  $00,$00,$40,$80,$00,$00,$40,$00,$08,$24,$88,$10,$20,$00,$00,$00
+  $00,$00,$01,$01,$07,$0F,$1E,$1B,$0F,$0D,$0D,$07,$0E,$0C,$00,$00
+  $00,$00,$00,$80,$C0,$B8,$B8,$F4,$CC,$58,$B0,$60,$00,$00,$00,$00
+  $00,$00,$02,$06,$08,$10,$01,$04,$00,$00,$02,$08,$01,$02,$00,$00
+  $00,$00,$00,$00,$00,$40,$04,$08,$30,$A0,$40,$80,$00,$00,$00,$00
+  $02,$03,$0F,$1F,$3C,$35,$19,$36,$6B,$4F,$BF,$7D,$F7,$5D,$00,$00
+  $E0,$D0,$90,$70,$F0,$E8,$BE,$FC,$F5,$9B,$76,$EA,$CC,$B8,$70,$00
+  $01,$04,$00,$00,$03,$0A,$24,$09,$14,$30,$40,$82,$08,$20,$00,$00
+  $00,$20,$60,$80,$00,$10,$40,$03,$0A,$24,$89,$14,$30,$40,$00,$00
+  $03,$0E,$1D,$39,$77,$4F,$5E,$3B,$2F,$1D,$3D,$37,$1E,$3C,$3B,$04
+  $00,$80,$40,$E0,$EE,$BD,$B9,$F7,$CF,$5E,$BA,$6C,$B8,$F0,$00,$00
+  $04,$01,$02,$06,$08,$30,$21,$04,$10,$00,$02,$08,$21,$03,$04,$18
+  $80,$00,$80,$00,$10,$42,$06,$08,$30,$A0,$44,$90,$40,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$23,$77,$7F,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$88,$9C,$DC,$FC,$FE,$FF,$00
+  $03,$03,$07,$07,$0F,$0F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$E0,$E0,$F0,$F0,$F8,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$02,$13,$0F,$0F,$13,$02,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$C8,$F0,$F0,$C8,$40,$20,$00,$00,$00,$00
+  $81,$20,$09,$00,$42,$00,$20,$81,$00,$20,$00,$42,$00,$09,$20,$81
+  $01,$02,$20,$00,$42,$00,$04,$82,$82,$04,$00,$42,$00,$20,$02,$01
+end data
+data HillPat bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,15,15,15,15,63,63,192,192,240,240,252,252,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0
+  15,15,63,63,255,255,255,255,0,0,192,192,192,192,240,240,63,63,63,63,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,192,192,192,192,240,240,15,15,15,15,63,63,63,63,240,240,240,240,252,252,252,252,0,0,0,0,0,0,0,0
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  240,240,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,3,3,207,207,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,31,31,31,31,127,127,128,128,224,224,248,248,254,254
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,0,0,0,0,0,0,128,128,0,0,0,0,0,0,0,0
+  30,30,127,127,255,255,255,255,0,0,128,128,129,129,225,225,127,127,127,127,255,255,255,255,254,254,255,255,255,255,255,255
+  0,0,128,128,128,128,224,224,31,31,31,31,127,127,127,127,224,224,224,224,248,248,248,248,0,0,0,0,1,1,1,1
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  225,225,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,7,7,159,159,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,63,63,63,63,255,255,0,0,192,192,240,240,252,252
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  60,60,255,255,255,255,255,255,0,0,0,0,3,3,195,195,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255
+  0,0,0,0,0,0,192,192,63,63,63,63,255,255,255,255,192,192,192,192,240,240,240,240,0,0,0,0,3,3,3,3
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  195,195,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,15,15,63,63,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,30,30,127,127,127,127,255,255,0,0,128,128,224,224,248,248
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  120,120,254,254,254,254,255,255,1,1,1,1,7,7,135,135,255,255,255,255,255,255,255,255,248,248,254,254,254,254,255,255
+  0,0,0,0,1,1,129,129,127,127,127,127,255,255,255,255,128,128,128,128,224,224,224,224,0,0,1,1,7,7,7,7
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  135,135,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,254,254,255,255,255,255,31,31,127,127,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,60,60,255,255,255,255,255,255,0,0,0,0,192,192,240,240
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  240,240,252,252,252,252,255,255,3,3,3,3,15,15,15,15,255,255,255,255,255,255,255,255,240,240,252,252,252,252,255,255
+  0,0,0,0,3,3,3,3,255,255,255,255,255,255,255,255,0,0,0,0,192,192,192,192,0,0,3,3,15,15,15,15
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  15,15,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,252,252,255,255,255,255,63,63,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,1,1,1,1,7,7,120,120,254,254,255,255,255,255,0,0,0,0,128,128,224,224
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,120,120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  224,224,248,248,248,248,254,254,7,7,7,7,31,31,31,31,255,255,255,255,255,255,255,255,224,224,248,248,248,248,254,254
+  1,1,1,1,7,7,7,7,254,254,254,254,255,255,255,255,0,0,0,0,128,128,128,128,1,1,7,7,31,31,31,31
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255
+  31,31,255,255,255,255,255,255,255,255,255,255,255,255,255,255,224,224,249,249,255,255,255,255,127,127,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,3,3,3,3,15,15,240,240,252,252,255,255,255,255,0,0,0,0,0,0,192,192
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  192,192,240,240,240,240,252,252,15,15,15,15,63,63,63,63,255,255,255,255,255,255,255,255,192,192,240,240,240,240,252,252
+  3,3,3,3,15,15,15,15,252,252,252,252,255,255,255,255,0,0,0,0,0,0,0,0,3,3,15,15,63,63,63,63
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255
+  63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,192,192,243,243,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,1,1,7,7,7,7,31,31,224,224,248,248,254,254,255,255,0,0,0,0,0,0,128,128
+  0,0,0,0,0,0,1,1,0,0,0,0,0,0,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  128,128,224,224,224,224,248,248,31,31,31,31,127,127,127,127,255,255,255,255,255,255,255,255,128,128,224,224,224,224,248,248
+  7,7,7,7,31,31,31,31,248,248,248,248,254,254,254,254,0,0,0,0,0,0,0,0,7,7,31,31,127,127,127,127
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,255,255,255,255,255,255
+  127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,129,129,231,231,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,3,3,15,15,15,15,63,63,192,192,240,240,252,252,255,255,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,3,3,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,192,192,192,192,240,240,63,63,63,63,255,255,255,255,255,255,255,255,255,255,255,255,0,0,192,192,192,192,240,240
+  15,15,15,15,63,63,63,63,240,240,240,240,252,252,252,252,0,0,0,0,0,0,0,0,15,15,63,63,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,3,3,207,207,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,7,7,31,31,31,31,127,127,128,128,224,224,248,248,254,254,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,7,7,0,0,0,0,0,0,128,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,128,128,129,129,225,225,127,127,127,127,255,255,255,255,254,254,255,255,255,255,255,255,0,0,128,128,128,128,224,224
+  31,31,31,31,127,127,127,127,224,224,224,224,248,248,248,248,0,0,0,0,1,1,1,1,30,30,127,127,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,225,225,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,7,7,159,159,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,15,15,63,63,63,63,255,255,0,0,192,192,240,240,252,252,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,15,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,3,3,195,195,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,0,0,0,0,0,0,192,192
+  63,63,63,63,255,255,255,255,192,192,192,192,240,240,240,240,0,0,0,0,3,3,3,3,60,60,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,195,195,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,15,15,63,63,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,1,1,30,30,127,127,127,127,255,255,0,0,128,128,224,224,248,248,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,30,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,1,1,1,7,7,135,135,255,255,255,255,255,255,255,255,248,248,254,254,254,254,255,255,0,0,0,0,1,1,129,129
+  127,127,127,127,255,255,255,255,128,128,128,128,224,224,224,224,0,0,1,1,7,7,7,7,120,120,254,254,254,254,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,135,135,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,248,248,254,254,255,255,255,255,31,31,127,127,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,3,3,60,60,255,255,255,255,255,255,0,0,0,0,192,192,240,240,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,60,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  3,3,3,3,15,15,15,15,255,255,255,255,255,255,255,255,240,240,252,252,252,252,255,255,0,0,0,0,3,3,3,3
+  255,255,255,255,255,255,255,255,0,0,0,0,192,192,192,192,0,0,3,3,15,15,15,15,240,240,252,252,252,252,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,15,15,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,240,240,252,252,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,1,1,1,1,7,7,120,120,254,254,255,255,255,255,0,0,0,0,128,128,224,224,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,120,120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  7,7,7,7,31,31,31,31,255,255,255,255,255,255,255,255,224,224,248,248,248,248,254,254,1,1,1,1,7,7,7,7
+  254,254,254,254,255,255,255,255,0,0,0,0,128,128,128,128,1,1,7,7,31,31,31,31,224,224,248,248,248,248,254,254
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,31,31,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,224,224,249,249,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,3,3,3,3,15,15,240,240,252,252,255,255,255,255,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  15,15,15,15,63,63,63,63,255,255,255,255,255,255,255,255,192,192,240,240,240,240,252,252,3,3,3,3,15,15,15,15
+  252,252,252,252,255,255,255,255,0,0,0,0,0,0,0,0,3,3,15,15,63,63,63,63,192,192,240,240,240,240,252,252
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,63,63,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,192,192,243,243,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  1,1,7,7,7,7,31,31,224,224,248,248,254,254,255,255,0,0,0,0,0,0,128,128,0,0,0,0,0,0,1,1
+  0,0,0,0,0,0,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  31,31,31,31,127,127,127,127,255,255,255,255,255,255,255,255,128,128,224,224,224,224,248,248,7,7,7,7,31,31,31,31
+  248,248,248,248,254,254,254,254,0,0,0,0,0,0,0,0,7,7,31,31,127,127,127,127,128,128,224,224,224,224,248,248
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,255,255,255,255,255,255,127,127,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,129,129,231,231,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  3,3,15,15,15,15,63,63,192,192,240,240,252,252,255,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3
+  0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  63,63,63,63,255,255,255,255,255,255,255,255,255,255,255,255,0,0,192,192,192,192,240,240,15,15,15,15,63,63,63,63
+  240,240,240,240,252,252,252,252,0,0,0,0,0,0,0,0,15,15,63,63,255,255,255,255,0,0,192,192,192,192,240,240
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,3,3,207,207,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  7,7,31,31,31,31,127,127,128,128,224,224,248,248,254,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7
+  0,0,0,0,0,0,128,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  127,127,127,127,255,255,255,255,254,254,255,255,255,255,255,255,0,0,128,128,128,128,224,224,31,31,31,31,127,127,127,127
+  224,224,224,224,248,248,248,248,0,0,0,0,1,1,1,1,30,30,127,127,255,255,255,255,0,0,128,128,129,129,225,225
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,225,225,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  254,254,255,255,255,255,255,255,7,7,159,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  15,15,63,63,63,63,255,255,0,0,192,192,240,240,252,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,0,0,0,0,0,0,192,192,63,63,63,63,255,255,255,255
+  192,192,192,192,240,240,240,240,0,0,0,0,3,3,3,3,60,60,255,255,255,255,255,255,0,0,0,0,3,3,195,195
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,195,195,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  252,252,255,255,255,255,255,255,15,15,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  30,30,127,127,127,127,255,255,0,0,128,128,224,224,248,248,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,30
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  255,255,255,255,255,255,255,255,248,248,254,254,254,254,255,255,0,0,0,0,1,1,129,129,127,127,127,127,255,255,255,255
+  128,128,128,128,224,224,224,224,0,0,1,1,7,7,7,7,120,120,254,254,254,254,255,255,1,1,1,1,7,7,135,135
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,135,135,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  248,248,254,254,255,255,255,255,31,31,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  60,60,255,255,255,255,255,255,0,0,0,0,192,192,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3
+  255,255,255,255,255,255,255,255,240,240,252,252,252,252,255,255,0,0,0,0,3,3,3,3,255,255,255,255,255,255,255,255
+  0,0,0,0,192,192,192,192,0,0,3,3,15,15,15,15,240,240,252,252,252,252,255,255,3,3,3,3,15,15,15,15
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,15,15,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  240,240,252,252,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  120,120,254,254,255,255,255,255,0,0,0,0,128,128,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120,120
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,7,7
+  255,255,255,255,255,255,255,255,224,224,248,248,248,248,254,254,1,1,1,1,7,7,7,7,254,254,254,254,255,255,255,255
+  0,0,0,0,128,128,128,128,1,1,7,7,31,31,31,31,224,224,248,248,248,248,254,254,7,7,7,7,31,31,31,31
+  255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,31,31,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  224,224,249,249,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  240,240,252,252,255,255,255,255,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,240
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,15,15
+  255,255,255,255,255,255,255,255,192,192,240,240,240,240,252,252,3,3,3,3,15,15,15,15,252,252,252,252,255,255,255,255
+  0,0,0,0,0,0,0,0,3,3,15,15,63,63,63,63,192,192,240,240,240,240,252,252,15,15,15,15,63,63,63,63
+  255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  192,192,243,243,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  224,224,248,248,254,254,255,255,0,0,0,0,0,0,128,128,0,0,0,0,0,0,1,1,0,0,0,0,0,0,224,224
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,7,7,7,7,31,31
+  255,255,255,255,255,255,255,255,128,128,224,224,224,224,248,248,7,7,7,7,31,31,31,31,248,248,248,248,254,254,254,254
+  0,0,0,0,0,0,0,0,7,7,31,31,127,127,127,127,128,128,224,224,224,224,248,248,31,31,31,31,127,127,127,127
+  255,255,255,255,255,255,255,255,248,248,255,255,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  129,129,231,231,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  192,192,240,240,252,252,255,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,192,192
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,15,15,15,15,63,63
+  255,255,255,255,255,255,255,255,0,0,192,192,192,192,240,240,15,15,15,15,63,63,63,63,240,240,240,240,252,252,252,252
+  0,0,0,0,0,0,0,0,15,15,63,63,255,255,255,255,0,0,192,192,192,192,240,240,63,63,63,63,255,255,255,255
+  255,255,255,255,255,255,255,255,240,240,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  3,3,207,207,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  128,128,224,224,248,248,254,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,0,0,0,0,0,0,128,128
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,31,31,31,31,127,127
+  254,254,255,255,255,255,255,255,0,0,128,128,128,128,224,224,31,31,31,31,127,127,127,127,224,224,224,224,248,248,248,248
+  0,0,0,0,1,1,1,1,30,30,127,127,255,255,255,255,0,0,128,128,129,129,225,225,127,127,127,127,255,255,255,255
+  255,255,255,255,255,255,255,255,225,225,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255
+  7,7,159,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,192,192,240,240,252,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,63,63,63,63,255,255
+  252,252,255,255,255,255,255,255,0,0,0,0,0,0,192,192,63,63,63,63,255,255,255,255,192,192,192,192,240,240,240,240
+  0,0,0,0,3,3,3,3,60,60,255,255,255,255,255,255,0,0,0,0,3,3,195,195,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,195,195,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255
+  15,15,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,128,128,224,224,248,248,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,30,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,30,30,127,127,127,127,255,255
+  248,248,254,254,254,254,255,255,0,0,0,0,1,1,129,129,127,127,127,127,255,255,255,255,128,128,128,128,224,224,224,224
+  0,0,1,1,7,7,7,7,120,120,254,254,254,254,255,255,1,1,1,1,7,7,135,135,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,135,135,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,254,254,255,255,255,255
+  31,31,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,192,192,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,60,60,255,255,255,255,255,255
+  240,240,252,252,252,252,255,255,0,0,0,0,3,3,3,3,255,255,255,255,255,255,255,255,0,0,0,0,192,192,192,192
+  0,0,3,3,15,15,15,15,240,240,252,252,252,252,255,255,3,3,3,3,15,15,15,15,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,15,15,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,252,252,255,255,255,255
+  63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,128,128,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120,120,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,7,7,120,120,254,254,255,255,255,255
+  224,224,248,248,248,248,254,254,1,1,1,1,7,7,7,7,254,254,254,254,255,255,255,255,0,0,0,0,128,128,128,128
+  1,1,7,7,31,31,31,31,224,224,248,248,248,248,254,254,7,7,7,7,31,31,31,31,255,255,255,255,255,255,255,255
+  254,254,255,255,255,255,255,255,31,31,255,255,255,255,255,255,255,255,255,255,255,255,255,255,224,224,249,249,255,255,255,255
+  127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,240,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,15,15,240,240,252,252,255,255,255,255
+  192,192,240,240,240,240,252,252,3,3,3,3,15,15,15,15,252,252,252,252,255,255,255,255,0,0,0,0,0,0,0,0
+  3,3,15,15,63,63,63,63,192,192,240,240,240,240,252,252,15,15,15,15,63,63,63,63,255,255,255,255,255,255,255,255
+  252,252,255,255,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,192,192,243,243,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,128,128,0,0,0,0,0,0,1,1,0,0,0,0,0,0,224,224,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,7,7,7,7,31,31,224,224,248,248,254,254,255,255
+  128,128,224,224,224,224,248,248,7,7,7,7,31,31,31,31,248,248,248,248,254,254,254,254,0,0,0,0,0,0,0,0
+  7,7,31,31,127,127,127,127,128,128,224,224,224,224,248,248,31,31,31,31,127,127,127,127,255,255,255,255,255,255,255,255
+  248,248,255,255,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,129,129,231,231,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,15,15,15,15,63,63,192,192,240,240,252,252,255,255
+  0,0,192,192,192,192,240,240,15,15,15,15,63,63,63,63,240,240,240,240,252,252,252,252,0,0,0,0,0,0,0,0
+  15,15,63,63,255,255,255,255,0,0,192,192,192,192,240,240,63,63,63,63,255,255,255,255,255,255,255,255,255,255,255,255
+  240,240,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,3,3,207,207,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,0,0,0,0,0,0,128,128,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,31,31,31,31,127,127,128,128,224,224,248,248,254,254
+  0,0,128,128,128,128,224,224,31,31,31,31,127,127,127,127,224,224,224,224,248,248,248,248,0,0,0,0,1,1,1,1
+  30,30,127,127,255,255,255,255,0,0,128,128,129,129,225,225,127,127,127,127,255,255,255,255,254,254,255,255,255,255,255,255
+  225,225,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,7,7,159,159,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,63,63,63,63,255,255,0,0,192,192,240,240,252,252
+  0,0,0,0,0,0,192,192,63,63,63,63,255,255,255,255,192,192,192,192,240,240,240,240,0,0,0,0,3,3,3,3
+  60,60,255,255,255,255,255,255,0,0,0,0,3,3,195,195,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255
+  195,195,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,15,15,63,63,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,30,30,127,127,127,127,255,255,0,0,128,128,224,224,248,248
+  0,0,0,0,1,1,129,129,127,127,127,127,255,255,255,255,128,128,128,128,224,224,224,224,0,0,1,1,7,7,7,7
+  120,120,254,254,254,254,255,255,1,1,1,1,7,7,135,135,255,255,255,255,255,255,255,255,248,248,254,254,254,254,255,255
+  135,135,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,254,254,255,255,255,255,31,31,127,127,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,60,60,255,255,255,255,255,255,0,0,0,0,192,192,240,240
+  0,0,0,0,3,3,3,3,255,255,255,255,255,255,255,255,0,0,0,0,192,192,192,192,0,0,3,3,15,15,15,15
+  240,240,252,252,252,252,255,255,3,3,3,3,15,15,15,15,255,255,255,255,255,255,255,255,240,240,252,252,252,252,255,255
+  15,15,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,252,252,255,255,255,255,63,63,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,120,120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,1,1,1,1,7,7,120,120,254,254,255,255,255,255,0,0,0,0,128,128,224,224
+  1,1,1,1,7,7,7,7,254,254,254,254,255,255,255,255,0,0,0,0,128,128,128,128,1,1,7,7,31,31,31,31
+  224,224,248,248,248,248,254,254,7,7,7,7,31,31,31,31,255,255,255,255,255,255,255,255,224,224,248,248,248,248,254,254
+  31,31,255,255,255,255,255,255,255,255,255,255,255,255,255,255,224,224,249,249,255,255,255,255,127,127,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,3,3,3,3,15,15,240,240,252,252,255,255,255,255,0,0,0,0,0,0,192,192
+  3,3,3,3,15,15,15,15,252,252,252,252,255,255,255,255,0,0,0,0,0,0,0,0,3,3,15,15,63,63,63,63
+  192,192,240,240,240,240,252,252,15,15,15,15,63,63,63,63,255,255,255,255,255,255,255,255,192,192,240,240,240,240,252,252
+  63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,192,192,243,243,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255
+  0,0,0,0,0,0,1,1,0,0,0,0,0,0,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,1,1,7,7,7,7,31,31,224,224,248,248,254,254,255,255,0,0,0,0,0,0,128,128
+  7,7,7,7,31,31,31,31,248,248,248,248,254,254,254,254,0,0,0,0,0,0,0,0,7,7,31,31,127,127,127,127
+  128,128,224,224,224,224,248,248,31,31,31,31,127,127,127,127,255,255,255,255,255,255,255,255,128,128,224,224,224,224,248,248
+  127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,129,129,231,231,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,255,255,255,255,255,255
+  0,0,0,0,0,0,3,3,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,3,3,15,15,15,15,63,63,192,192,240,240,252,252,255,255,0,0,0,0,0,0,0,0
+  15,15,15,15,63,63,63,63,240,240,240,240,252,252,252,252,0,0,0,0,0,0,0,0,15,15,63,63,255,255,255,255
+  0,0,192,192,192,192,240,240,63,63,63,63,255,255,255,255,255,255,255,255,255,255,255,255,0,0,192,192,192,192,240,240
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,3,3,207,207,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,255,255,255,255,255,255
+  0,0,0,0,0,0,7,7,0,0,0,0,0,0,128,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,7,7,31,31,31,31,127,127,128,128,224,224,248,248,254,254,0,0,0,0,0,0,0,0
+  31,31,31,31,127,127,127,127,224,224,224,224,248,248,248,248,0,0,0,0,1,1,1,1,30,30,127,127,255,255,255,255
+  0,0,128,128,129,129,225,225,127,127,127,127,255,255,255,255,254,254,255,255,255,255,255,255,0,0,128,128,128,128,224,224
+  255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,7,7,159,159,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,225,225,255,255,255,255,255,255
+  0,0,0,0,0,0,15,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,15,15,63,63,63,63,255,255,0,0,192,192,240,240,252,252,0,0,0,0,0,0,0,0
+  63,63,63,63,255,255,255,255,192,192,192,192,240,240,240,240,0,0,0,0,3,3,3,3,60,60,255,255,255,255,255,255
+  0,0,0,0,3,3,195,195,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,0,0,0,0,0,0,192,192
+  255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,15,15,63,63,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,195,195,255,255,255,255,255,255
+  0,0,0,0,0,0,30,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,1,1,30,30,127,127,127,127,255,255,0,0,128,128,224,224,248,248,0,0,0,0,0,0,0,0
+  127,127,127,127,255,255,255,255,128,128,128,128,224,224,224,224,0,0,1,1,7,7,7,7,120,120,254,254,254,254,255,255
+  1,1,1,1,7,7,135,135,255,255,255,255,255,255,255,255,248,248,254,254,254,254,255,255,0,0,0,0,1,1,129,129
+  255,255,255,255,255,255,255,255,248,248,254,254,255,255,255,255,31,31,127,127,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,135,135,255,255,255,255,255,255
+  0,0,0,0,0,0,60,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,3,3,60,60,255,255,255,255,255,255,0,0,0,0,192,192,240,240,0,0,0,0,0,0,0,0
+  255,255,255,255,255,255,255,255,0,0,0,0,192,192,192,192,0,0,3,3,15,15,15,15,240,240,252,252,252,252,255,255
+  3,3,3,3,15,15,15,15,255,255,255,255,255,255,255,255,240,240,252,252,252,252,255,255,0,0,0,0,3,3,3,3
+  255,255,255,255,255,255,255,255,240,240,252,252,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,15,15,255,255,255,255,255,255
+  0,0,0,0,0,0,120,120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,1,1,1,1,7,7,120,120,254,254,255,255,255,255,0,0,0,0,128,128,224,224,0,0,0,0,0,0,0,0
+  254,254,254,254,255,255,255,255,0,0,0,0,128,128,128,128,1,1,7,7,31,31,31,31,224,224,248,248,248,248,254,254
+  7,7,7,7,31,31,31,31,255,255,255,255,255,255,255,255,224,224,248,248,248,248,254,254,1,1,1,1,7,7,7,7
+  255,255,255,255,255,255,255,255,224,224,249,249,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,31,31,255,255,255,255,255,255
+  0,0,0,0,0,0,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,3,3,3,3,15,15,240,240,252,252,255,255,255,255,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0
+  252,252,252,252,255,255,255,255,0,0,0,0,0,0,0,0,3,3,15,15,63,63,63,63,192,192,240,240,240,240,252,252
+  15,15,15,15,63,63,63,63,255,255,255,255,255,255,255,255,192,192,240,240,240,240,252,252,3,3,3,3,15,15,15,15
+  255,255,255,255,255,255,255,255,192,192,243,243,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,63,63,255,255,255,255,255,255
+  0,0,0,0,0,0,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,1,7,7,7,7,31,31,224,224,248,248,254,254,255,255,0,0,0,0,0,0,128,128,0,0,0,0,0,0,1,1
+  248,248,248,248,254,254,254,254,0,0,0,0,0,0,0,0,7,7,31,31,127,127,127,127,128,128,224,224,224,224,248,248
+  31,31,31,31,127,127,127,127,255,255,255,255,255,255,255,255,128,128,224,224,224,224,248,248,7,7,7,7,31,31,31,31
+  255,255,255,255,255,255,255,255,129,129,231,231,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,255,255,255,255,255,255,127,127,255,255,255,255,255,255
+  0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  3,3,15,15,15,15,63,63,192,192,240,240,252,252,255,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3
+  240,240,240,240,252,252,252,252,0,0,0,0,0,0,0,0,15,15,63,63,255,255,255,255,0,0,192,192,192,192,240,240
+  63,63,63,63,255,255,255,255,255,255,255,255,255,255,255,255,0,0,192,192,192,192,240,240,15,15,15,15,63,63,63,63
+  255,255,255,255,255,255,255,255,3,3,207,207,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,128,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  7,7,31,31,31,31,127,127,128,128,224,224,248,248,254,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7
+  224,224,224,224,248,248,248,248,0,0,0,0,1,1,1,1,30,30,127,127,255,255,255,255,0,0,128,128,129,129,225,225
+  127,127,127,127,255,255,255,255,254,254,255,255,255,255,255,255,0,0,128,128,128,128,224,224,31,31,31,31,127,127,127,127
+  254,254,255,255,255,255,255,255,7,7,159,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,225,225,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  15,15,63,63,63,63,255,255,0,0,192,192,240,240,252,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15
+  192,192,192,192,240,240,240,240,0,0,0,0,3,3,3,3,60,60,255,255,255,255,255,255,0,0,0,0,3,3,195,195
+  255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,0,0,0,0,0,0,192,192,63,63,63,63,255,255,255,255
+  252,252,255,255,255,255,255,255,15,15,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,195,195,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  30,30,127,127,127,127,255,255,0,0,128,128,224,224,248,248,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,30
+  128,128,128,128,224,224,224,224,0,0,1,1,7,7,7,7,120,120,254,254,254,254,255,255,1,1,1,1,7,7,135,135
+  255,255,255,255,255,255,255,255,248,248,254,254,254,254,255,255,0,0,0,0,1,1,129,129,127,127,127,127,255,255,255,255
+  248,248,254,254,255,255,255,255,31,31,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,135,135,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3
+  60,60,255,255,255,255,255,255,0,0,0,0,192,192,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60
+  0,0,0,0,192,192,192,192,0,0,3,3,15,15,15,15,240,240,252,252,252,252,255,255,3,3,3,3,15,15,15,15
+  255,255,255,255,255,255,255,255,240,240,252,252,252,252,255,255,0,0,0,0,3,3,3,3,255,255,255,255,255,255,255,255
+  240,240,252,252,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,15,15,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,7,7
+  120,120,254,254,255,255,255,255,0,0,0,0,128,128,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120,120
+  0,0,0,0,128,128,128,128,1,1,7,7,31,31,31,31,224,224,248,248,248,248,254,254,7,7,7,7,31,31,31,31
+  255,255,255,255,255,255,255,255,224,224,248,248,248,248,254,254,1,1,1,1,7,7,7,7,254,254,254,254,255,255,255,255
+  224,224,249,249,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255,31,31,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,15,15
+  240,240,252,252,255,255,255,255,0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,240
+  0,0,0,0,0,0,0,0,3,3,15,15,63,63,63,63,192,192,240,240,240,240,252,252,15,15,15,15,63,63,63,63
+  255,255,255,255,255,255,255,255,192,192,240,240,240,240,252,252,3,3,3,3,15,15,15,15,252,252,252,252,255,255,255,255
+  192,192,243,243,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,7,7,7,7,31,31
+  224,224,248,248,254,254,255,255,0,0,0,0,0,0,128,128,0,0,0,0,0,0,1,1,0,0,0,0,0,0,224,224
+  0,0,0,0,0,0,0,0,7,7,31,31,127,127,127,127,128,128,224,224,224,224,248,248,31,31,31,31,127,127,127,127
+  255,255,255,255,255,255,255,255,128,128,224,224,224,224,248,248,7,7,7,7,31,31,31,31,248,248,248,248,254,254,254,254
+  129,129,231,231,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,248,248,255,255,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,15,15,15,15,63,63
+  192,192,240,240,252,252,255,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,0,0,0,0,0,0,192,192
+  0,0,0,0,0,0,0,0,15,15,63,63,255,255,255,255,0,0,192,192,192,192,240,240,63,63,63,63,255,255,255,255
+  255,255,255,255,255,255,255,255,0,0,192,192,192,192,240,240,15,15,15,15,63,63,63,63,240,240,240,240,252,252,252,252
+  3,3,207,207,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,240,240,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,31,31,31,31,127,127
+  128,128,224,224,248,248,254,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,0,0,0,0,0,0,128,128
+  0,0,0,0,1,1,1,1,30,30,127,127,255,255,255,255,0,0,128,128,129,129,225,225,127,127,127,127,255,255,255,255
+  254,254,255,255,255,255,255,255,0,0,128,128,128,128,224,224,31,31,31,31,127,127,127,127,224,224,224,224,248,248,248,248
+  7,7,159,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,225,225,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,254,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,63,63,63,63,255,255
+  0,0,192,192,240,240,252,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,0,0,0,0,0,0,0,0
+  0,0,0,0,3,3,3,3,60,60,255,255,255,255,255,255,0,0,0,0,3,3,195,195,255,255,255,255,255,255,255,255
+  252,252,255,255,255,255,255,255,0,0,0,0,0,0,192,192,63,63,63,63,255,255,255,255,192,192,192,192,240,240,240,240
+  15,15,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,195,195,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,255,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,30,30,127,127,127,127,255,255
+  0,0,128,128,224,224,248,248,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,30,0,0,0,0,0,0,0,0
+  0,0,1,1,7,7,7,7,120,120,254,254,254,254,255,255,1,1,1,1,7,7,135,135,255,255,255,255,255,255,255,255
+  248,248,254,254,254,254,255,255,0,0,0,0,1,1,129,129,127,127,127,127,255,255,255,255,128,128,128,128,224,224,224,224
+  31,31,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,135,135,255,255,255,255,255,255,255,255,255,255,255,255,255,255,248,248,254,254,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,60,60,255,255,255,255,255,255
+  0,0,0,0,192,192,240,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60,0,0,0,0,0,0,0,0
+  0,0,3,3,15,15,15,15,240,240,252,252,252,252,255,255,3,3,3,3,15,15,15,15,255,255,255,255,255,255,255,255
+  240,240,252,252,252,252,255,255,0,0,0,0,3,3,3,3,255,255,255,255,255,255,255,255,0,0,0,0,192,192,192,192
+  63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,15,15,255,255,255,255,255,255,255,255,255,255,255,255,255,255,240,240,252,252,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,7,7,120,120,254,254,255,255,255,255
+  0,0,0,0,128,128,224,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120,120,0,0,0,0,0,0,0,0
+  1,1,7,7,31,31,31,31,224,224,248,248,248,248,254,254,7,7,7,7,31,31,31,31,255,255,255,255,255,255,255,255
+  224,224,248,248,248,248,254,254,1,1,1,1,7,7,7,7,254,254,254,254,255,255,255,255,0,0,0,0,128,128,128,128
+  127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  254,254,255,255,255,255,255,255,31,31,255,255,255,255,255,255,255,255,255,255,255,255,255,255,224,224,249,249,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,15,15,240,240,252,252,255,255,255,255
+  0,0,0,0,0,0,192,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,240,0,0,0,0,0,0,0,0
+  3,3,15,15,63,63,63,63,192,192,240,240,240,240,252,252,15,15,15,15,63,63,63,63,255,255,255,255,255,255,255,255
+  192,192,240,240,240,240,252,252,3,3,3,3,15,15,15,15,252,252,252,252,255,255,255,255,0,0,0,0,0,0,0,0
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  252,252,255,255,255,255,255,255,63,63,255,255,255,255,255,255,255,255,255,255,255,255,255,255,192,192,243,243,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,7,7,7,7,31,31,224,224,248,248,254,254,255,255
+  0,0,0,0,0,0,128,128,0,0,0,0,0,0,1,1,0,0,0,0,0,0,224,224,0,0,0,0,0,0,0,0
+  7,7,31,31,127,127,127,127,128,128,224,224,224,224,248,248,31,31,31,31,127,127,127,127,255,255,255,255,255,255,255,255
+  128,128,224,224,224,224,248,248,7,7,7,7,31,31,31,31,248,248,248,248,254,254,254,254,0,0,0,0,0,0,0,0
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  248,248,255,255,255,255,255,255,127,127,255,255,255,255,255,255,255,255,255,255,255,255,255,255,129,129,231,231,255,255,255,255
+end data
+data HillCol bytes
+  225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225
+  225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225
+  225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225
+  225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225
+  225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225
+  225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225,225
+end data
+
+asm {
+MrZap:
+    db $40,$2F,$10,$01,$40,$3B,$20,$01,$40,$4B,$30,$01,$40,$5D,$40,$02,$40,$76,$60,$02,$50
+MrPop:
+    db $00,$00,$05,$03,$00,$00,$26,$05,$00,$00,$56,$08,$10
+MrBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$66,$0E,$00,$00,$97,$12,$10
+MrFall:
+    db $40,$7F,$10,$03,$40,$A9,$20,$03,$40,$E2,$30,$03,$40,$2E,$41,$04,$40,$C5,$51,$06,$40,$A6,$72,$0A
+    db $50
+MrTract:
+    db $40,$53,$21,$02,$40,$1D,$21,$02,$40,$E2,$20,$02,$40,$BF,$20,$02,$40,$A0,$20,$02,$40,$8F,$20,$02
+    db $40,$71,$30,$04,$50
+MrFuel:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$30,$06,$50
+MrExtra:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$20,$0A,$50
+MrLow:
+    db $40,$FE,$20,$06,$40,$FF,$F3,$06,$40,$FE,$20,$06,$50
+MrOver:
+    db $40,$1D,$11,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$42,$1A,$50
+
+MrSoundTable:
+    dw MrTuneMel,$702B
+    dw MrTuneBass,$7035
+    dw MrRunMel,$702B
+    dw MrRunBass,$7035
+    dw MrZap,$7049
+    dw MrPop,$703F
+    dw MrBoom,$703F
+    dw MrFall,$7049
+    dw MrTract,$7049
+    dw MrFuel,$7049
+    dw MrExtra,$7049
+    dw MrLow,$7049
+    dw MrOver,$7049
+; Zalium Dawn (original)
+; Tiny Sound, 6 frames per step
+MrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$17,$01,$1A,$01,$1E,$01,$23,$01,$21,$01,$01,$01
+    db $1E,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$25,$01,$01,$01
+    db $00,$01,$01,$01,$26,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$21,$01
+    db $23,$01,$26,$01,$25,$01,$21,$01,$1E,$01,$25,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12
+    db $FF
+
+; Rock Belt (original)
+; Tiny Sound, 5 frames per step
+MrRunMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$50,$1A,$21,$15,$01,$18,$01,$1C,$01,$01,$01,$1A,$01,$18,$01
+    db $17,$01,$01,$01,$15,$01,$18,$01,$1C,$01,$1F,$01,$1D,$01,$1C,$01
+    db $1A,$01,$01,$01,$18,$01,$1C,$01,$21,$01,$01,$01,$1F,$01,$1D,$01
+    db $1C,$01,$01,$01,$1A,$01,$17,$01,$14,$01,$17,$01,$15,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MrRunBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$70,$18,$32,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15
+    db $09,$15,$09,$15,$05,$11,$05,$11,$05,$11,$05,$11,$05,$11,$05,$11
+    db $05,$11,$05,$11,$0C,$18,$0C,$18,$0C,$18,$0C,$18,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10
+    db $FF
+}

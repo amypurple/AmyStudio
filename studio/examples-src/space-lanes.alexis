@@ -1,0 +1,890 @@
+cartridge "SPACE LANES/ROBERT ALONSO/1984"
+
+' SPACE LANES
+' A ColecoVision game based on "Space Lanes" by Robert Alonso, Ahoy!
+' March 1984 (Commodore 64 BASIC; the "64 SPACE LANES" listing on the
+' Jul-Dec 1984 disk is the same program). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/), rebuilt for the ColecoVision: a smooth 16 x 16 ship
+' sprite that glides from cell to cell, tiled hull walls, energy dots and
+' beams, sound effects and an original title tune.
+'
+' The game: fly your ship round a walled grid and pick up the energy
+' dots (5 points each). The dots lie on ten rows; between them run ten
+' laser lanes. At random a lane fires a beam from wall to wall: a ship on
+' that lane loses a life. Clear every dot for a new round (all the dots
+' come back, +5 bonus). Three ships; the game ends when they are gone.
+'
+' From the original (orig/64spacelanes.bas): the walled field, ten dot
+' rows with ten lanes between them, the two half-rows of dots meeting in
+' the middle, moves of one cell in eight directions (walls block), 5 points
+' a dot, the refill and +5 when the field is cleared (PO/900), a lane that
+' fires at random (one chance in ten each pass) and costs a life to a ship
+' on it, three lives, the high score, the ship's shape, the start in the
+' middle of the field on a lane.
+'
+' Liberties: the field is 26 x 20 cells, 14 dots a row (140 a round, the
+' C64 had 18 a row) so it fits inside the TV-safe columns. On the C64 a
+' beam was an instant hit with no warning (pure luck); here a lane first
+' blinks red (WarnT frames) and then fires for FireN frames, so a player
+' can see it coming. To keep the pressure on (the C64 never got harder),
+' each round fires lanes more often with a shorter warning, and one beam
+' in four is aimed at the lane nearest the ship. Standing still on a dot
+' row is safe but scores nothing. After a hit the beams are cleared and
+' the ship carries on where it was (as on the C64), after a short pause.
+'
+' Controls: either controller; the stick flies the ship one cell at a time
+' in eight directions (hold to keep flying). On the title, up and down
+' choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Warnings blink at under 2 Hz.
+'
+' Workarounds for Amy bugs slanes-return-before-local removed 2026-11-01.
+
+const TWall = 128
+const TSpace = 129
+const TStar1 = 130
+const TStar2 = 131
+const TDot = 132
+const TLane = 133
+const TWarn = 134
+const TBeam = 135
+const TEmitl = 136
+const TEmitr = 137
+const TEmitlo = 138
+const TEmitro = 139
+const TLife = 140
+const SCock = 0
+const SShip = 4
+const SFlame0 = 8
+const SFlame1 = 12
+const SBoom0 = 16
+const SBoom1 = 20
+const NTiles8 = 104
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndEat = 3
+const SndArm = 4
+const SndZap = 5
+const SndHit = 6
+const SndClear = 7
+const SndStart = 8
+const SndOver = 9
+const StepN = 4
+const DeadN = 60
+const MsgN = 100
+const FireN = 16
+const NLanes = 10
+const NSpr = 4
+const DotsAll = 140
+const ColL = 3
+const ColR = 28
+const RowT = 3
+const RowB = 22
+
+' the eight directions: code = dy * 3 + dx (dx, dy 0 left/up, 1 still,
+' 2 right/down); 4 is no move
+data DxT bytes
+  0, 1, 2, 0, 1, 2, 0, 1, 2
+end data
+data DyT bytes
+  0, 0, 0, 1, 1, 1, 2, 2, 2
+end data
+
+record Craft:
+  u8 Px
+  u8 Py
+  u8 C
+  u8 R
+  u8 Ph
+  u8 Dir
+end record
+
+Craft Sh
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 5 Sc
+bcd digits 5 Hi
+u8 Round = 1
+u8 Lives = 3
+u8 Left = 0
+u8 Rate = 5
+u8 WarnT = 54
+u8 Over = 0
+' lanes: state (0 rest, 1 warning, 2 firing) and frames left
+u8 Ls[10]
+u8 Lt[10]
+u8 DeadT = 0
+u8 MsgT = 0
+u8 TitleOn = 0
+u8 Wt = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Li = 0
+u8 Ri = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  print at 8,11, "                "
+  print at 8,12, "   GAME  OVER   "
+  print at 8,13, "                "
+  play sound SndOver
+  Wt = 4
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      ClearLanes
+      if Lives = 0 then Over = 1
+    end if
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      DrawField
+      ShowHud
+    end if
+    return
+  end if
+  Spawn
+  UpdateLanes
+  if Sh.Ph = 0 then TryMove
+  if Sh.Ph > 0 then Glide
+  Collide
+  return
+end sub
+
+' the ship moves 2 pixels a frame towards its new cell
+sub Glide:
+  T = Sh.Dir
+  K = DxT[T]
+  if K = 0 then Sh.Px -= 2
+  if K = 2 then Sh.Px += 2
+  K = DyT[T]
+  if K = 0 then Sh.Py -= 2
+  if K = 2 then Sh.Py += 2
+  dec Sh.Ph
+  if Sh.Ph = 0 then Arrive
+  return
+end sub
+
+' the stick as a direction code (4: none)
+function StickDir(u8 S) as u8
+  select case S
+  case 1
+    return 1
+  case 2
+    return 7
+  case 4
+    return 3
+  case 8
+    return 5
+  case 5
+    return 0
+  case 9
+    return 2
+  case 6
+    return 6
+  case 10
+    return 8
+  case else
+    return 4
+  end select
+  return 4
+
+sub TryMove:
+  K = J1 | J2
+  K = K & 15
+  T = StickDir(K)
+  if T = 4 then return
+  u8 Nc = Sh.C + DxT[T] - 1
+  u8 Nr = Sh.R + DyT[T] - 1
+  if Nc < ColL then return
+  if Nc > ColR then return
+  if Nr < RowT then return
+  if Nr > RowB then return
+  Sh.C = Nc
+  Sh.R = Nr
+  Sh.Dir = T
+  Sh.Ph = StepN
+  return
+end sub
+
+' on a new cell: take its dot
+sub Arrive:
+  T = get char at Sh.C,Sh.R
+  if T <> TDot then return
+  put char TSpace at Sh.C,Sh.R
+  Sc += 5
+  dec Left
+  ShowScore
+  if Left > 0 then
+    play sound SndEat
+    return
+  end if
+  ' the field is clear: a new round, all dots back, +5
+  Sc += 5
+  inc Round
+  SetRound
+  Left = DotsAll
+  ClearLanes
+  MsgT = MsgN
+  ShowHud
+  print at 9,11, "              "
+  print at 9,12, "  ROUND       "
+  NumU = Round
+  print at 18,12, digits$(NumU, 2)
+  print at 9,13, "              "
+  play sound SndClear
+  return
+end sub
+
+' rounds fire more lanes with less warning
+sub SetRound:
+  V = Round * 2
+  Rate = V + 3
+  if Rate > 19 then Rate = 19
+  W16 = Round * 4
+  if W16 > 26 then W16 = 26
+  WarnT = 62 - W16
+  return
+end sub
+
+' maybe arm a lane: one in four aims at the ship's lane
+sub Spawn:
+  Rand
+  V = Rs & 255
+  if V >= Rate then return
+  Rand
+  V = Rs & 3
+  if V = 0 then
+    K = NearLane(Sh.R)
+  else
+    W16 = Rs >> 8
+    W16 = W16 * NLanes
+    K = W16 >> 8
+  end if
+  if Ls[K] <> 0 then return
+  Ls[K] = 1
+  Lt[K] = WarnT
+  DrawLane(K)
+  play sound SndArm
+  return
+end sub
+
+' the lane above a dot row, or the lane the ship is on
+function NearLane(u8 Row) as u8
+  return (Row - 3) >> 1
+
+sub UpdateLanes:
+  for Li = 0 to 9
+    T = Ls[Li]
+    if T > 0 then
+      V = Lt[Li] - 1
+      Lt[Li] = V
+      if T = 1 then
+        if V = 0 then
+          Ls[Li] = 2
+          Lt[Li] = FireN
+          DrawLane(Li)
+          play sound SndZap
+        else
+          V = V & 15
+          if V = 0 then DrawLane(Li)
+        end if
+      else
+        if V = 0 then
+          Ls[Li] = 0
+          DrawLane(Li)
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' a firing beam hits the ship when it is within 5 pixels of the lane's row
+sub Collide:
+  for Li = 0 to 9
+    if Ls[Li] = 2 then
+      if DeadT = 0 then
+        Y = Li * 16
+        Y = Y + 24
+        V = Sh.Py + 6
+        if V > Y then
+          V = Y + 6
+          if Sh.Py < V then
+            DeadT = DeadN
+            dec Lives
+            ShowLives
+            play sound SndHit
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub ClearLanes:
+  for Li = 0 to 9
+    Ls[Li] = 0
+    Lt[Li] = 0
+    DrawLane(Li)
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' lane N as its state shows it (warning blinks: 16 frames on, 16 off)
+sub DrawLane(u8 N):
+  u8 Row = N * 2 + 3
+  u8 Tl = TLane
+  u8 El = TEmitl
+  u8 Er = TEmitr
+  select case Ls[N]
+  case 1
+    V = Lt[N] >> 4
+    V = V & 1
+    if V = 1 then
+      Tl = TWarn
+      El = TEmitlo
+      Er = TEmitro
+    end if
+  case 2
+    Tl = TBeam
+    El = TEmitlo
+    Er = TEmitro
+  end select
+  fill Tl count 26 at 3,Row
+  put char El at 2,Row
+  put char Er at 29,Row
+  return
+end sub
+
+sub DrawSprites:
+  Y = Sh.Py - 3
+  T = Sh.Px - 2
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  elseif DeadT > 0 then
+    V = DeadT >> 3
+    V = V & 1
+    K = SBoom0
+    if V = 0 then K = SBoom1
+    set sprite 0 to Y,T,K,11
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  else
+    set sprite 0 to Y,T,SCock,7
+    set sprite 1 to Y,T,SShip,11
+    V = Tick >> 3
+    V = V & 1
+    K = SFlame0
+    if V = 1 then K = SFlame1
+    set sprite 2 to Y,T,K,8
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 11,1, "HI"
+  print at 20,1, "RD"
+  ShowScore
+  print at 14,1, Hi
+  NumU = Round
+  print at 23,1, digits$(NumU, 2)
+  ShowLives
+  return
+end sub
+
+sub ShowScore:
+  print at 5,1, Sc
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 3 at 26,1
+  if Lives = 0 then return
+  fill TLife count Lives at 26,1
+  return
+end sub
+
+' one dot row: dots on 3, 5 .. 15 and 16, 18 .. 28, stars between
+sub DotRow(u8 Row):
+  u8 Col = 0
+  u8 Last = ColR
+  put char TWall at 2,Row
+  put char TWall at 29,Row
+  for Col = ColL to Last
+    T = TSpace
+    V = Col & 1
+    if Col < 16 then
+      if V = 1 then T = TDot
+    else
+      if V = 0 then T = TDot
+    end if
+    if T = TSpace then
+      V = Col * 7
+      V = V + Row * 3
+      V = V & 15
+      if V = 0 then T = TStar1
+      if V = 9 then T = TStar2
+    end if
+    put char T at Col,Row
+  next
+  return
+end sub
+
+sub DrawField:
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,23
+  for Ri = 4 to RowB step 2
+    DotRow(Ri)
+  next
+  for Li = 0 to 9
+    DrawLane(Li)
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Round = 1
+  Lives = 3
+  Left = DotsAll
+  SetRound
+  for Li = 0 to 9
+    Ls[Li] = 0
+    Lt[Li] = 0
+  next
+  NewScreen
+  DrawField
+  ShowHud
+  ' the start: the middle of the field, on a lane (as on the C64)
+  Sh.C = 16
+  Sh.R = 13
+  Sh.Px = 128
+  Sh.Py = 104
+  Sh.Ph = 0
+  Sh.Dir = 4
+  DeadT = 0
+  MsgT = 0
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  Wt = 3
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the field with a few lanes firing, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  Round = 1
+  SetRound
+  for Li = 0 to 9
+    Ls[Li] = 0
+    Lt[Li] = 0
+  next
+  NewScreen
+  DrawField
+  for Ri = 7 to 17
+    fill 32 count 20 at 6,Ri
+  next
+  print at 10,8, "SPACE LANES"
+  print at 8,10, "BY ROBERT ALONSO"
+  print at 11,13, "START GAME"
+  print at 11,14, "CREDITS"
+  print at 7,16, "AHOY! MARCH 1984"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  ShowMenu
+  TitleOn = 1
+  Sh.R = 0
+  DeadT = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 510
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Wt = 2
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleLanes
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' on the title only the top and bottom lanes (outside the box) fire,
+' silently
+sub TitleLanes:
+  V = Tick & 63
+  if V = 0 then
+    V = Tick >> 6
+    V = V & 3
+    select case V
+    case 0
+      K = 0
+    case 1
+      K = 9
+    case 2
+      K = 1
+    case else
+      K = 8
+    end select
+    if Ls[K] = 0 then
+      Ls[K] = 1
+      Lt[K] = 40
+      DrawLane(K)
+    end if
+  end if
+  for Li = 0 to 9
+    T = Ls[Li]
+    if T > 0 then
+      V = Lt[Li] - 1
+      Lt[Li] = V
+      if V = 0 then
+        if T = 1 then
+          Ls[Li] = 2
+          Lt[Li] = FireN
+        else
+          Ls[Li] = 0
+        end if
+        DrawLane(Li)
+      else
+        V = V & 15
+        if V = 0 then DrawLane(Li)
+      end if
+    end if
+  next
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,14
+  J = Menu + 13
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "SPACE LANES"
+  print at 2,5, "BASED ON SPACE LANES BY"
+  print at 2,6, "ROBERT ALONSO, AHOY! MARCH"
+  print at 2,7, "1984 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: NIGHT CORRIDOR"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Wt = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$42,$00,$00,$00,$00,$42,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$06,$F0,$F0,$06,$00,$00
+  $00,$40,$C0,$F0,$F0,$C0,$00,$00
+  $00,$00,$06,$F0,$F0,$06,$00,$00
+  $00,$40,$C0,$F0,$F0,$C0,$00,$00
+  $18,$C3,$81,$18,$42,$18,$C3,$81
+end data
+data TileCol bytes
+  $0E,$4E,$0E,$0E,$0E,$0E,$4E,$04
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$51,$01
+  $01,$01,$A1,$1B,$1B,$A1,$01,$01
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $01,$01,$01,$81,$81,$01,$01,$01
+  $01,$07,$0F,$0F,$0F,$0F,$07,$01
+  $0E,$0E,$8E,$E8,$E8,$8E,$0E,$04
+  $0E,$FE,$8E,$8E,$8E,$8E,$0E,$04
+  $0E,$0E,$FE,$EF,$EF,$FE,$0E,$04
+  $0E,$FE,$FE,$FE,$FE,$FE,$0E,$04
+  $B1,$1B,$1B,$B1,$1B,$1B,$B1,$B1
+end data
+data SpritePat bytes
+  $00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$04,$0C,$1F,$07,$4F,$7F,$77,$63,$40,$00,$00,$00,$00
+  $00,$00,$80,$80,$C0,$E0,$80,$C0,$E0,$B0,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$08,$04,$27,$1F,$0C,$38,$0C,$1F,$27,$04,$08,$00,$00,$00
+  $00,$00,$40,$80,$90,$E0,$C0,$70,$C0,$E0,$90,$80,$40,$00,$00,$00
+  $22,$84,$10,$42,$08,$A0,$12,$40,$0A,$A0,$12,$48,$84,$10,$44,$00
+  $10,$84,$08,$40,$12,$04,$40,$0A,$40,$04,$48,$10,$84,$08,$24,$00
+end data
+
+asm {
+SlEat:
+    db $40,$47,$30,$01,$40,$35,$40,$02,$50
+SlArm:
+    db $40,$53,$41,$03,$40,$AB,$51,$03,$50
+SlZap:
+    db $00,$00,$24,$02,$00,$00,$35,$03,$00,$00,$56,$05,$10
+SlHit:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$10,$10
+SlClear:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$05,$40,$6B,$20,$14
+    db $50
+SlStart:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$0C,$50
+SlOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$3B,$22,$1E,$50
+
+SlSoundTable:
+    dw SlTuneMel,$702B
+    dw SlTuneBass,$7035
+    dw SlEat,$7049
+    dw SlArm,$7049
+    dw SlZap,$703F
+    dw SlHit,$703F
+    dw SlClear,$7049
+    dw SlStart,$7049
+    dw SlOver,$7049
+; Night Corridor (original)
+; Tiny Sound, 8 frames per step
+SlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$1A,$01,$1E,$01,$23,$01,$25,$01
+    db $26,$01,$01,$01,$25,$01,$21,$01,$1C,$01,$21,$01,$25,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1E,$01,$21,$01
+    db $25,$01,$21,$01,$23,$01,$26,$01,$25,$01,$22,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$01,$01,$17,$01,$01,$01,$0B,$01,$01,$01
+    db $12,$01,$01,$01,$09,$01,$01,$01,$15,$01,$01,$01,$09,$01,$01,$01
+    db $10,$01,$01,$01,$07,$01,$01,$01,$13,$01,$01,$01,$06,$01,$01,$01
+    db $12,$01,$01,$01,$0B,$01,$01,$01,$06,$01,$01,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

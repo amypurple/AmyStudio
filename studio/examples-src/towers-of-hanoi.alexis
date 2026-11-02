@@ -1,0 +1,1146 @@
+cartridge "TOWERS OF HANOI/DANIEL MILLER/1985"
+
+' TOWERS OF HANOI
+' A ColecoVision game based on "Towers of Hanoi" by Daniel Miller,
+' Ahoy! June 1985 (Commodore 64, BASIC with eight ring sprites; the
+' listing is dated September 1, 1983).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/hanoi.bas), the game is built for the ColecoVision: rings
+' drawn as tiles on three pegs and a wooden base, a lifted ring that
+' glides up, across and down as sprites, a pointing hand, sound effects
+' and an original title tune.
+'
+' The game: all the rings start on the left tower, the largest at the
+' bottom. Move them one at a time from tower to tower until the whole
+' stack stands on another tower. A ring may never be put on a smaller
+' one. 2 to 8 rings; n rings need at least 2^n - 1 moves.
+'
+' From the original: three towers, 2 to 8 rings chosen before the game,
+' all on tower 1 at the start, the "n rings requires 2^n - 1 moves" note,
+' moving the top ring of one tower to another, the refusals "TOWER IS
+' EMPTY" and "INVALID" (the same tower twice: here it just puts the ring
+' back, uncounted), the move counter, the ring animated up, across and
+' down, and the COMPUTER SOLUTION, which starts again from the beginning
+' and solves the puzzle by itself, ending on tower 3.
+'
+' Liberties: the original does not check the ring sizes (a big ring could
+' be put on a small one) and never notices a solved puzzle: here a big
+' ring on a smaller one is refused and the game ends when every ring
+' stands on tower 2 or 3, with the moves against the fewest possible and
+' a best score per ring count (only for puzzles solved without help).
+' The towers are picked by moving a hand with the stick instead of typing
+' 1-3. The computer solution is chosen on the title (WATCH THE COMPUTER)
+' instead of with F1, and a new HELP: the right button makes one best
+' move from wherever the rings are (holding it lets the computer finish);
+' a puzzle finished with help says so. Ring colours are new.
+'
+' Controls: either controller. Stick left/right moves the hand between
+' the towers; the left button (or stick up / down) lifts the top ring or
+' puts the held ring down; the right button asks the computer for one
+' move. On the title: up/down choose, left/right set the rings, a button
+' starts. While the computer plays alone, a button returns to the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Nothing flashes.
+
+const TSky = 128
+const TPeg = 129
+const TTip = 130
+const TBase = 131
+const TBasel = 132
+const TBaser = 133
+const TBand = 134
+const TR0 = 135
+const TR1 = 136
+const TR2 = 137
+const TR3 = 138
+const TR4 = 139
+const TR5 = 140
+const TR6 = 141
+const TR7 = 142
+const TR8 = 143
+const TR9 = 144
+const TR10 = 145
+const TR11 = 146
+const TR12 = 147
+const TR13 = 148
+const TR14 = 149
+const TR15 = 150
+const TR16 = 151
+const TR17 = 152
+const TR18 = 153
+const TR19 = 154
+const TR20 = 155
+const TR21 = 156
+const TR22 = 157
+const TR23 = 158
+const TR24 = 159
+const TR25 = 160
+const TR26 = 161
+const TR27 = 162
+const TR28 = 163
+const TR29 = 164
+const SRing10 = 0
+const SRing11 = 4
+const SRing12 = 8
+const SRing13 = 12
+const SRing20 = 16
+const SRing21 = 20
+const SRing22 = 24
+const SRing23 = 28
+const SRing30 = 32
+const SRing31 = 36
+const SRing32 = 40
+const SRing33 = 44
+const SRing40 = 48
+const SRing41 = 52
+const SRing42 = 56
+const SRing43 = 60
+const SRing50 = 64
+const SRing51 = 68
+const SRing52 = 72
+const SRing53 = 76
+const SRing60 = 80
+const SRing61 = 84
+const SRing62 = 88
+const SRing63 = 92
+const SRing70 = 96
+const SRing71 = 100
+const SRing72 = 104
+const SRing73 = 108
+const SRing80 = 112
+const SRing81 = 116
+const SRing82 = 120
+const SRing83 = 124
+const SHand = 128
+const SHandsh = 132
+const NTiles8 = 296
+const SprBytes = 1088
+const SndTuneA = 1
+const SndTuneB = 2
+const SndLift = 3
+const SndDrop = 4
+const SndBad = 5
+const SndWin = 6
+const SndTick = 7
+' ring i (1-8), column k (-3..3): its tile, 0 = no ring there (art.py)
+data RingT bytes
+  0, 0, 135, 136, 137, 0, 0
+  0, 0, 138, 139, 140, 0, 0
+  0, 141, 142, 143, 142, 144, 0
+  0, 145, 146, 147, 146, 148, 0
+  0, 149, 150, 151, 150, 152, 0
+  153, 154, 154, 155, 154, 154, 156
+  157, 158, 158, 159, 158, 158, 160
+  161, 162, 162, 163, 162, 162, 164
+end data
+const NSpr = 6
+const BaseRow = 17
+const TipRow = 8
+const HoverY = 39
+const HandY = 25
+const GlideV = 6
+const MsgN = 120
+const RptN = 12
+
+' the towers' peg columns, the rings' sprite colours (1-8)
+data PegCol bytes
+  6, 15, 24
+end data
+data RCol bytes
+  0, 15, 11, 7, 3, 13, 9, 8, 14
+end data
+
+record Peg:
+  u8 Ht
+  u8 Col
+end record
+
+record Hand:
+  u8 Tw
+  u8 X
+  u8 Y
+  u8 Ty
+  u8 St
+  u8 Rg
+  u8 From
+end record
+
+Peg Pg[3]
+Hand Hd
+u8 Stk[24]
+u8 Pos[9]
+u16 Best[9]
+u8 N = 3
+u16 MovesU = 0
+bcd digits 4 MovesB = 0
+u16 Least = 7
+u8 Auto = 0
+u8 HelpOn = 0
+u8 Helped = 0
+u8 Plan = 0
+u8 AFrom = 0
+u8 ATo = 0
+u8 PendAct = 0
+u8 LiftV = 4
+u8 MsgT = 0
+u8 Over = 0
+u8 Menu = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 StickWas = 0
+u8 StickNew = 0
+u8 Rpt = 0
+u8 B1 = 0
+u8 B1Was = 0
+u8 P1 = 0
+u8 B2 = 0
+u8 B2Was = 0
+u8 P2 = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InTitle = 0
+' loop counters
+u8 Ti = 0
+u8 Li = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+
+  tile screen
+  set sound table HnSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  if Over = 2 then goto title
+  ' solved: the moves, the fewest possible, a best score, then the title
+  ' on a press
+  EndMessage
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 28 at 2,19
+  end if
+  if Auto = 1 then
+    if Press = 1 then Over = 2
+  end if
+  if Auto = 1 then
+    AutoStep
+  elseif HelpOn = 1 then
+    AutoStep
+  else
+    HumanStep
+  end if
+  MoveHand
+  return
+end sub
+
+' the player: the stick moves the hand, the left button (or up / down)
+' lifts or drops, the right button asks for one computer move
+sub HumanStep:
+  if Hd.St = 0 then
+    if P2 = 1 then
+      HelpOn = 1
+      Helped = 1
+      Plan = 0
+      PendAct = 0
+      ShowHelped
+    end if
+  end if
+  if P2 = 1 then
+    if Hd.St = 2 then Say(4)
+  end if
+  if Hd.St = 0 then SteerHand
+  if Hd.St = 2 then SteerHand
+  if P1 = 1 then PendAct = 1
+  if StickNew & 1 then
+    if Hd.St = 0 then PendAct = 1
+  end if
+  if StickNew & 2 then
+    if Hd.St = 2 then PendAct = 1
+  end if
+  if PendAct = 1 then
+    if Arrived() = 1 then
+      select case Hd.St
+      case 0
+        PendAct = 0
+        TryLift
+      case 2
+        PendAct = 0
+        TryDrop
+      end select
+    end if
+  end if
+  return
+end sub
+
+sub SteerHand:
+  V = Stick & 12
+  if V = 0 then
+    Rpt = 0
+  else
+    if Rpt = 0 then
+      if V = 4 then
+        if Hd.Tw = 0 then
+          Hd.Tw = 2
+        else
+          dec Hd.Tw
+        end if
+      end if
+      if V = 8 then
+        inc Hd.Tw
+        if Hd.Tw = 3 then Hd.Tw = 0
+      end if
+      play sound SndTick
+      Rpt = RptN
+    else
+      dec Rpt
+    end if
+  end if
+  return
+end sub
+
+' the computer: plan the best move from where the rings are, carry it out
+sub AutoStep:
+  select case Hd.St
+  case 0
+    if Plan = 0 then
+      Solve
+      Plan = 1
+    end if
+    Hd.Tw = AFrom
+    if Arrived() = 1 then TryLift
+  case 2
+    Hd.Tw = ATo
+    if Arrived() = 1 then
+      TryDrop
+      Plan = 0
+      HelpOn = 0
+    end if
+  end select
+  return
+end sub
+
+' the best next move towards tower 3 (index 2) from any position: from
+' the largest ring down, each ring that is not where it should be needs
+' the smaller rings on the third tower first; the last such ring is the
+' one to move now
+sub Solve:
+  u8 Tg = 2
+  u8 Kr = 0
+  u8 Pk = 0
+  AFrom = 0
+  ATo = 0
+  for Kr = N to 1 step -1
+    Pk = Pos[Kr]
+    if Pk <> Tg then
+      AFrom = Pk
+      ATo = Tg
+      Tg = 3 - Pk - Tg
+    end if
+  next
+  return
+end sub
+
+function Arrived as u8
+  u8 Px = PegX(Hd.Tw)
+  u8 Ok = 0
+  if Hd.X = Px then Ok = 1
+  return Ok
+
+function PegX(u8 T) as u8
+  u8 Cc = PegCol[T]
+  return (Cc << 3) + 4
+
+function RowY(u8 Lv) as u8
+  u8 Rr = 16 - Lv
+  return (Rr << 3) - 1
+
+' the hand glides to its tower; a lifted ring rises, a dropped one falls
+sub MoveHand:
+  u8 Px = PegX(Hd.Tw)
+  if Hd.St = 0 then GlideTo(Px)
+  if Hd.St = 2 then GlideTo(Px)
+  if Hd.St = 1 then
+    if Hd.Y > HoverY + LiftV then
+      Hd.Y = Hd.Y - LiftV
+    else
+      Hd.Y = HoverY
+      Hd.St = 2
+    end if
+  end if
+  if Hd.St = 3 then
+    if Hd.Y + LiftV < Hd.Ty then
+      Hd.Y = Hd.Y + LiftV
+    else
+      Hd.Y = Hd.Ty
+      Land
+    end if
+  end if
+  return
+end sub
+
+sub GlideTo(u8 Px):
+  if Hd.X < Px then
+    if Px - Hd.X > GlideV then
+      Hd.X = Hd.X + GlideV
+    else
+      Hd.X = Px
+    end if
+  end if
+  if Hd.X > Px then
+    if Hd.X - Px > GlideV then
+      Hd.X = Hd.X - GlideV
+    else
+      Hd.X = Px
+    end if
+  end if
+  return
+end sub
+
+sub TryLift:
+  u8 T = Hd.Tw
+  u8 Ht = Pg[T].Ht
+  if Ht = 0 then
+    Say(1)
+  else
+    dec Ht
+    Pg[T].Ht = Ht
+    K = T << 3
+    K = K + Ht
+    Hd.Rg = Stk[K]
+    Hd.From = T
+    Hd.Y = RowY(Ht)
+    Hd.St = 1
+    DrawRingRow(T, Ht, 0)
+    play sound SndLift
+  end if
+  return
+end sub
+
+sub TryDrop:
+  u8 T = Hd.Tw
+  u8 Ht = Pg[T].Ht
+  u8 Top = 0
+  if Ht > 0 then
+    K = T << 3
+    K = K + Ht - 1
+    Top = Stk[K]
+  end if
+  if Top > 0 and Top < Hd.Rg then
+    Say(2)
+  else
+    Hd.Ty = RowY(Ht)
+    Hd.St = 3
+  end if
+  return
+end sub
+
+' the dropped ring reaches its place: a tile again, a move counted when
+' it changed towers, the end when every ring is on tower 2 or 3
+sub Land:
+  u8 T = Hd.Tw
+  u8 Ht = Pg[T].Ht
+  K = T << 3
+  K = K + Ht
+  Stk[K] = Hd.Rg
+  Pg[T].Ht = Ht + 1
+  Pos[Hd.Rg] = T
+  DrawRingRow(T, Ht, Hd.Rg)
+  Hd.St = 0
+  play sound SndDrop
+  if T <> Hd.From then
+    if MovesU < 9999 then
+      inc MovesU
+      MovesB += 1
+    end if
+    ShowMoves
+  end if
+  if Pg[1].Ht = N then Over = 1
+  if Pg[2].Ht = N then Over = 1
+  return
+end sub
+
+' messages on row 19: 1 empty tower, 2 too big, 4 drop first
+sub Say(u8 Which):
+  fill 32 count 28 at 2,19
+  select case Which
+  case 1
+    print at 7,19, "THAT TOWER IS EMPTY"
+    play sound SndBad
+  case 2
+    print at 4,19, "TOO BIG FOR THAT TOWER"
+    play sound SndBad
+  case 4
+    print at 4,19, "PUT THE RING DOWN FIRST"
+    play sound SndBad
+  end select
+  MsgT = MsgN
+  return
+end sub
+
+' the fewest moves for n rings: 2^n - 1
+function LeastFor(u8 Nr) as u16
+  u16 Lw = 1
+  u8 Q = 0
+  for Q = 1 to Nr
+    Lw = Lw << 1
+  next
+  return Lw - 1
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' one ring row of tower T at level Lv: ring Rg, or the bare peg (Rg 0)
+sub DrawRingRow(u8 T, u8 Lv, u8 Rg):
+  u8 Row = 16 - Lv
+  u8 C0 = PegCol[T] - 3
+  u8 Base = 0
+  u8 Tl = 0
+  if Rg > 0 then Base = (Rg - 1) * 7
+  for Ci = 0 to 6
+    Tl = 0
+    if Rg > 0 then Tl = RingT[Base + Ci]
+    if Tl = 0 then
+      if Ci = 3 then
+        Tl = TPeg
+      else
+        Tl = TSky
+      end if
+    end if
+    put char Tl at C0 + Ci,Row
+  next
+  return
+end sub
+
+' the three towers on their base, with the rings where they are
+sub DrawTowers:
+  fill TSky count 28 at 2,TipRow
+  for Li = 9 to 16
+    fill TSky count 28 at 2,Li
+  next
+  put char TBasel at 2,BaseRow
+  fill TBase count 25 at 3,BaseRow
+  put char TBaser at 28,BaseRow
+  for Ti = 0 to 2
+    C = PegCol[Ti]
+    put char TTip at C,TipRow
+    for Li = 0 to 7
+      J = Ti << 3
+      J = J + Li
+      if Li < Pg[Ti].Ht then
+        DrawRingRow(Ti, Li, Stk[J])
+      else
+        DrawRingRow(Ti, Li, 0)
+      end if
+    next
+  next
+  return
+end sub
+
+' all the rings on tower 1, the hand over it
+sub SetRings:
+  for Li = 0 to 23
+    Stk[Li] = 0
+  next
+  for Li = 0 to 8
+    Pos[Li] = 0
+  next
+  Ti = N
+  for Li = 0 to 7
+    if Ti > 0 then
+      Stk[Li] = Ti
+      dec Ti
+    end if
+  next
+  Pg[0].Ht = N
+  Pg[1].Ht = 0
+  Pg[2].Ht = 0
+  Hd.Tw = 0
+  Hd.X = PegX(0)
+  Hd.St = 0
+  Hd.Rg = 0
+  return
+end sub
+
+sub DrawSprites:
+  u8 Hx = Hd.X - 7
+  u8 Sx = Hd.X - 32
+  u8 Q = 0
+  u8 Pt = 0
+  u8 Cl = 15
+  if Auto = 1 then Cl = 7
+  if HelpOn = 1 then Cl = 7
+  set sprite 0 to HandY,Hx,SHand,Cl
+  set sprite 1 to HandY,Hx,SHandsh,1
+  if Hd.St = 0 then
+    for Q = 2 to 5
+      set sprite Q to 192,0,0,0
+    next
+  else
+    Pt = (Hd.Rg - 1) << 4
+    Cl = RCol[Hd.Rg]
+    for Q = 2 to 5
+      set sprite Q to Hd.Y,Sx,Pt,Cl
+      Sx = Sx + 16
+      Pt = Pt + 4
+    next
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowMoves:
+  print at 2,1, "MOVES"
+  print MovesB at 8,1
+  return
+end sub
+
+sub ShowHud:
+  ShowMoves
+  print at 18,1, "FEWEST"
+  NumU = Least
+  print at 25,1, digits$(NumU, 3)
+  print at 2,2, "RINGS"
+  NumU = N
+  print at 8,2, digits$(NumU, 1)
+  print at 18,2, "BEST"
+  ShowBest(25, 2)
+  return
+end sub
+
+sub ShowBest(u8 Bx, u8 By):
+  W16 = Best[N]
+  if W16 = 0 then
+    print at Bx,By, "----"
+  else
+    print at Bx,By, width$(W16, 4)
+  end if
+  return
+end sub
+
+sub ShowHelped:
+  fill 32 count 28 at 2,21
+  print at 6,21, "THE COMPUTER HELPED"
+  return
+end sub
+
+sub EndMessage:
+  fill 32 count 28 at 2,19
+  fill 32 count 28 at 2,20
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  NumU = MovesU
+  print at 6,19, "SOLVED IN"
+  print at 16,19, width$(NumU, 4)
+  print at 21,19, "MOVES"
+  if Auto = 1 then
+    print at 4,21, "THE COMPUTER'S SOLUTION"
+  elseif Helped = 1 then
+    print at 6,21, "THE COMPUTER HELPED"
+  elseif MovesU = Least then
+    print at 5,21, "PERFECT! THE FEWEST"
+  else
+    print at 6,21, "THE FEWEST IS"
+    NumU = Least
+    print at 20,21, width$(NumU, 3)
+  end if
+  if Auto = 0 and Helped = 0 then
+    W16 = Best[N]
+    if W16 = 0 or MovesU < W16 then
+      Best[N] = MovesU
+      print at 9,22, "A NEW BEST!"
+    end if
+  end if
+  ShowHud
+  return
+end sub
+
+sub NewGame:
+  Over = 0
+  MovesU = 0
+  MovesB = 0
+  HelpOn = 0
+  Helped = 0
+  Plan = 0
+  PendAct = 0
+  MsgT = 0
+  Least = LeastFor(N)
+  LiftV = 4
+  if Auto = 1 then LiftV = 6
+  NewScreen
+  SetRings
+  DrawTowers
+  ShowHud
+  if Auto = 1 then
+    print at 6,21, "COMPUTER SOLUTION"
+    print at 4,22, "BUTTON: BACK TO TITLE"
+  else
+    print at 2,21, "LEFT BUTTON: LIFT OR DROP"
+    print at 2,22, "RIGHT BUTTON: COMPUTER MOVE"
+  end if
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 | J2
+  Stick = V & 15
+  StickNew = Stick & (Stick ^ StickWas)
+  StickWas = Stick
+  B1 = V & 16
+  B2 = V & 32
+  P1 = 0
+  P2 = 0
+  if B1 > 0 and B1Was = 0 then P1 = 1
+  if B2 > 0 and B2Was = 0 then P2 = 1
+  ' holding the right button keeps asking for moves
+  if B2 > 0 then
+    if HelpOn = 0 then P2 = 1
+  end if
+  B1Was = B1
+  B2Was = B2
+  Press = P1 | P2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker on
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the towers with the chosen rings, RINGS, PLAY / WATCH /
+' CREDITS
+sub TitlePage:
+  NewScreen
+  fill TBand count 28 at 2,1
+  print at 8,3, "TOWERS OF HANOI"
+  print at 8,4, "BY DANIEL MILLER"
+  print at 8,5, "AHOY! JUNE 1985"
+  fill TBand count 28 at 2,6
+  print at 4,19, "RINGS <   >"
+  print at 18,19, "BEST"
+  print at 10,20, "PLAY"
+  print at 10,21, "WATCH THE COMPUTER"
+  print at 10,22, "CREDITS"
+  SetRings
+  DrawTowers
+  TitleRings
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 528
+  TzOn = 1
+  InTitle = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  if StickNew > 0 then TitleStick
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  InTitle = 0
+  Auto = 0
+  if Menu = 1 then Auto = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub TitleStick:
+  select case StickNew
+  case 1
+    if Menu > 0 then dec Menu
+    ShowMenu
+  case 2
+    if Menu < 2 then inc Menu
+    ShowMenu
+  case 4
+    if N > 2 then
+      dec N
+      ChangeRings
+    end if
+  case 8
+    if N < 8 then
+      inc N
+      ChangeRings
+    end if
+  end select
+  return
+end sub
+
+sub ChangeRings:
+  play sound SndTick
+  SetRings
+  for Li = 0 to 7
+    if Li < N then
+      DrawRingRow(0, Li, Stk[Li])
+    else
+      DrawRingRow(0, Li, 0)
+    end if
+  next
+  TitleRings
+  return
+end sub
+
+sub TitleRings:
+  NumU = N
+  print at 12,19, digits$(NumU, 1)
+  ShowBest(23, 19)
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,20
+  put char 32 at 8,21
+  put char 32 at 8,22
+  J = Menu + 20
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 8,2, "TOWERS OF HANOI"
+  print at 2,5, "BASED ON TOWERS OF HANOI BY"
+  print at 2,6, "DANIEL MILLER, AHOY! JUNE"
+  print at 2,7, "1985 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: THREE PEGS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$20,$03,$00,$00,$00
+  $80,$80,$00,$04,$00,$80,$80,$00
+  $01,$01,$00,$20,$00,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$07,$07,$07,$03,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$C0,$E0,$E0,$E0,$E0,$C0,$00
+  $00,$E0,$C0,$C0,$C0,$C0,$E0,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$07,$03,$03,$03,$03,$07,$00
+  $00,$00,$01,$01,$01,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$00,$80,$80,$80,$80,$00,$00
+  $00,$07,$F0,$F0,$F0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$E0,$F0,$F0,$F0,$F0,$E0,$00
+  $00,$C0,$80,$80,$80,$80,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$03,$01,$01,$01,$01,$03,$00
+  $00,$01,$03,$03,$03,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$80,$C0,$C0,$C0,$C0,$80,$00
+  $00,$F0,$E0,$E0,$E0,$E0,$F0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$F0,$07,$07,$07,$07,$F0,$00
+  $00,$80,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$00,$00,$00,$00,$00,$00,$18
+  $00,$01,$00,$00,$00,$00,$01,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4
+  $04,$04,$B4,$A4,$A4,$A4,$A4,$A4
+  $0B,$0A,$0A,$1A,$1A,$0A,$01,$04
+  $4B,$BA,$0A,$1A,$0A,$1A,$41,$04
+  $4B,$BA,$0A,$1A,$0A,$1A,$41,$04
+  $01,$06,$08,$09,$09,$08,$06,$01
+  $04,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $A4,$0F,$0F,$0F,$0F,$0F,$0F,$A4
+  $04,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $A4,$0B,$0B,$0B,$0B,$0B,$0B,$A4
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $04,$04,$74,$74,$74,$74,$04,$04
+  $04,$07,$07,$07,$07,$07,$07,$04
+  $A4,$07,$07,$07,$07,$07,$07,$A4
+  $04,$04,$74,$74,$74,$74,$04,$04
+  $04,$34,$43,$43,$43,$43,$34,$04
+  $04,$03,$03,$03,$03,$03,$03,$04
+  $A4,$03,$03,$03,$03,$03,$03,$A4
+  $04,$34,$34,$34,$34,$34,$34,$04
+  $04,$4D,$4D,$4D,$4D,$4D,$4D,$04
+  $04,$0D,$0D,$0D,$0D,$0D,$0D,$04
+  $A4,$0D,$0D,$0D,$0D,$0D,$0D,$A4
+  $04,$4D,$4D,$4D,$4D,$4D,$4D,$04
+  $04,$94,$94,$94,$94,$94,$94,$04
+  $04,$09,$09,$09,$09,$09,$09,$04
+  $A4,$09,$09,$09,$09,$09,$09,$A4
+  $04,$94,$94,$94,$94,$94,$94,$04
+  $04,$48,$48,$48,$48,$48,$48,$04
+  $04,$08,$08,$08,$08,$08,$08,$04
+  $A4,$08,$08,$08,$08,$08,$08,$A4
+  $04,$84,$48,$48,$48,$48,$84,$04
+  $04,$4E,$0E,$0E,$0E,$0E,$4E,$04
+  $04,$0E,$0E,$0E,$0E,$0E,$0E,$04
+  $A4,$0E,$0E,$0E,$0E,$0E,$0E,$A4
+  $04,$4E,$0E,$0E,$0E,$0E,$4E,$04
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3F,$7F,$7F,$7F,$7F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FC,$FE,$FE,$FE,$FE,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$0F,$1F,$1F,$1F,$1F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$F0,$F8,$F8,$F8,$F8,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$7F,$FF,$FF,$FF,$FF,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FE,$FF,$FF,$FF,$FF,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$1F,$3F,$3F,$3F,$3F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$F8,$FC,$FC,$FC,$FC,$F8,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$0F,$0F,$0F,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$0F,$3F,$1F,$0F,$07,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$10,$60,$40,$20,$10,$08,$04,$03,$00,$00,$00,$00,$00
+  $20,$20,$20,$20,$18,$08,$10,$20,$40,$80,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+HnLift:
+    db $40,$D6,$20,$02,$40,$AA,$20,$02,$40,$8F,$20,$03,$50
+HnDrop:
+    db $40,$1D,$11,$02,$40,$AB,$21,$04,$50
+HnBad:
+    db $00,$00,$16,$06,$00,$00,$36,$08,$10
+HnWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$10,$06
+    db $40,$55,$20,$18,$50
+HnTick:
+    db $40,$7F,$40,$02,$50
+
+HnSoundTable:
+    dw HnTuneMel,$702B
+    dw HnTuneBass,$7035
+    dw HnLift,$7049
+    dw HnDrop,$7049
+    dw HnBad,$703F
+    dw HnWin,$7049
+    dw HnTick,$7049
+; Three Pegs (original)
+; Tiny Sound, 8 frames per step
+HnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$21,$01,$26,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$1E,$01,$1C,$01,$1F,$01,$24,$01,$23,$01,$21,$01,$1F,$01
+    db $1E,$01,$1A,$01,$1C,$01,$23,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+HnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$01,$01,$17,$01,$01,$01,$13,$01,$01,$01
+    db $10,$01,$01,$01,$0E,$01,$01,$01,$15,$01,$01,$01,$0B,$01,$01,$01
+    db $0E,$01,$01,$01,$0C,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01
+    db $0B,$01,$01,$01,$10,$01,$01,$01,$0B,$01,$01,$01,$10,$01,$01,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+}

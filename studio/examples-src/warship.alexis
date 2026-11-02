@@ -1,0 +1,1282 @@
+cartridge "WARSHIP/C.F. KAYLOR/1987"
+
+' WARSHIP
+' A ColecoVision game based on "Warship" by C.F. Kaylor, Ahoy! December
+' 1987 (Commodore 64, BASIC). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/warship.bas), the game is built for the ColecoVision: two
+' tiled sea views, smooth 16 x 16 ship sprites, a shell flying an arc,
+' splashes and explosions, sound effects and an original title tune.
+'
+' The game: each player has a gun ship and a sea view of their own (player
+' 1 on top, player 2 below) with four enemy ships at unknown distances. On
+' your turn, turn the gun until a ship is in front of it, set the gun's
+' elevation (0 to 45 degrees) and fire. The wind (arrows) blows the shell
+' up to four columns sideways: aim beside the ship, upwind. The shell's
+' range is 100 + 20 x the elevation (100 to 1000 yards). Within 100 yards
+' of the ship it sinks; otherwise the gunner reports SHORT or LONG and by
+' how much, or MISS when no ship was in the line of fire. The first player
+' to sink all four ships wins.
+'
+' From the original (orig/warship.bas): four ships per player at random
+' bearings (0-255) and random distances (100-999); turns alternate, a new
+' wind (-4 to +4) every turn; the gun turns the view of the ships and keeps
+' its bearing and elevation between turns; elevation 0-45, starting at 45;
+' range (45 - |A - 45|) x 20 + 100; a ship counts when its sprite's X is
+' within 10 pixels of the shell's landing column (the C64 window 115-135
+' plus 8 per wind step); of the ships there, the nearest one is the target;
+' HIT within 100, else SHORT or LONG with the difference; KILLS on each
+' side; first to 4 wins.
+'
+' Liberties: a computer opponent for player 2 (menu); player 2 on the
+' second controller in the two-player game. The stick turns the gun (right
+' turns it right, so the ships slide left), where the C64 moved the ships
+' the way the stick pointed; holding it turns faster. The ships are drawn
+' at least 24 pixels apart, so that two never sit on one another (the C64
+' allowed it). The shell flies a smooth arc whose height follows the
+' elevation; a ship hit burns and sinks; the C64's border-less character
+' gun became a turret and a barrel sprite whose length shows the elevation.
+' A sight post marks straight ahead. Each player's shots are counted (BCD)
+' and shown at the end.
+'
+' Controls: player 1 on controller 1, player 2 on controller 2 (against
+' the computer, either controller plays player 1). Left / right turn the
+' gun, up / down raise and lower it, a button fires. On the title, up and
+' down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+'
+' Workarounds for Amy bugs sack-print-bcd-var-index removed 2026-11-01.
+
+const TSky = 128
+const TCloudl = 129
+const TCloudr = 130
+const TSkylow = 131
+const THorizon = 132
+const TSeaa = 133
+const TSeab = 134
+const TSight = 135
+const TTur00 = 136
+const TTur01 = 137
+const TTur10 = 138
+const TTur11 = 139
+const TDeckl = 140
+const TDeckr = 141
+const TDeck = 142
+const TDeckt = 143
+const TRule = 144
+const SShip0 = 0
+const SShip1 = 4
+const SSink0 = 8
+const SSink1 = 12
+const SShell0 = 16
+const SShell1 = 20
+const SShell2 = 24
+const SSplash0 = 28
+const SSplash1 = 32
+const SBoom0 = 36
+const SBoom1 = 40
+const SGun0 = 44
+const SGun1 = 48
+const SGun2 = 52
+const SGun3 = 56
+const SGun4 = 60
+const SGun5 = 64
+const NTiles8 = 136
+const SprBytes = 544
+const SndTuneA = 1
+const SndTuneB = 2
+const SndGun = 3
+const SndWhistle = 4
+const SndSplash = 5
+const SndBoom = 6
+const SndTick = 7
+const SndTurn = 8
+const SndStart = 9
+const SndWin = 10
+const NSpr = 12
+const FlyN = 48
+const KillsToWin = 4
+const MinGap = 24
+const AiNone = 0
+
+record Ship:
+  u8 X
+  u16 D
+  u8 Alive
+  u16 Mem
+end record
+
+' ships 0-3 are player 1's targets (top view), 4-7 player 2's (bottom)
+Ship Fleet[8]
+
+' wind arrows by wind index 0-8 (wind -4..+4)
+data WindTxt chars
+  "<<<<"
+  " <<<"
+  "  <<"
+  "   <"
+  "    "
+  ">   "
+  ">>  "
+  ">>> "
+  ">>>>"
+end data
+' first screen row of each player's view
+data HalfRow bytes
+  1, 12
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Rds = 0
+u16 Sf = 0
+u16 Best = 0
+i16 Ds = 0
+i16 Q16 = 0
+i16 Hq = 0
+' per player: bearing, elevation, kills, shots (BCD)
+u8 Br[2]
+u8 An[2]
+u8 Kills[2]
+bcd digits 3 Shots[2]
+bcd digits 3 ShotQ
+' turn state
+u8 Pl = 0
+u8 Mode = 1
+u8 Wi = 4
+u8 Phase = 0
+u8 Res = 0
+u8 Sg = 255
+u8 Over = 0
+u8 Winner = 0
+u8 R0 = 1
+u8 Tt = 0
+u8 ShX = 0
+u8 ShY = 0
+u8 ShP = 0
+u8 FxP = 0
+u8 FxX = 0
+u8 FxY = 0
+u8 FxC = 0
+u8 Sink = 255
+u8 SinkT = 0
+' computer player
+u8 AiT = 0
+u8 AiShip = 0
+u8 AiWant = 0
+u8 AiAng = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Js = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 HoldLR = 0
+u8 HoldUD = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+' loop counters (never shared with the helpers)
+u8 Si = 0
+u8 Gi = 0
+u8 Ti = 0
+u8 Ri = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table WsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+new_game:
+  NewGame
+
+turn_loop:
+  BeginTurn
+  if Mode = 1 then
+    if Pl = 1 then
+      AimComputer
+    else
+      AimHuman
+    end if
+  else
+    AimHuman
+  end if
+  Shoot
+  if Over = 0 then
+    V = Pl + 1
+    Pl = V & 1
+    goto turn_loop
+  end if
+
+  ' the end: who won, in how many shots; then back to the title on a press
+  mute all
+  play sound SndWin
+  Phase = 5
+  R0 = HalfRow[Winner]
+  print at 14,R0 + 1, "  * WINNER *  "
+  ShowEnd
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' numbers
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number 0 .. N-1 (N up to 255)
+function Rnd(u8 Lim) as u8
+  u16 Wk = 0
+  u8 Rv = 0
+  Rand
+  Wk = Rs >> 4
+  Wk = Wk & 255
+  Wk = Wk * Lim
+  Wk = Wk >> 8
+  Rv = Wk
+  return Rv
+
+' the shell's range for an elevation: (45 - |A - 45|) x 20 + 100
+function RangeOf(u8 Ang) as u16
+  u16 Rg = 0
+  if Ang > 45 then
+    Rg = 90 - Ang
+  else
+    Rg = Ang
+  end if
+  Rg = Rg * 20
+  Rg = Rg + 100
+  return Rg
+
+' circular distance between two bearings
+function Gap(u8 Pa, u8 Pb) as u8
+  u8 Gd = 0
+  Gd = Pa - Pb
+  if Gd > 128 then Gd = 0 - Gd
+  return Gd
+
+' ---------------------------------------------------------------------------
+' a new game: four ships each, at least MinGap apart, distances 100-999
+
+sub NewGame:
+  for Si = 0 to 7
+    Fleet[Si].Alive = 1
+    Fleet[Si].Mem = AiNone
+    W16 = Rnd(225)
+    W16 = W16 << 2
+    W16 = W16 + Rnd(4)
+    W16 = W16 + 100
+    Fleet[Si].D = W16
+    PlaceShip
+  next
+  for Pl = 0 to 1
+    Br[Pl] = 0
+    An[Pl] = 45
+    Kills[Pl] = 0
+    Shots[Pl] = 0
+  next
+  Pl = 0
+  Over = 0
+  Sink = 255
+  NewScreen
+  DrawField
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' a bearing for ship Si clear of the earlier ships of its fleet
+sub PlaceShip:
+  Got = 0
+  while Got = 0
+    X = Rnd(255)
+    Got = 1
+    Gi = Si & 252
+    while Gi < Si
+      V = Fleet[Gi].X
+      if Gap(X, V) < MinGap then Got = 0
+      inc Gi
+    end while
+  end while
+  Fleet[Si].X = X
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a turn
+
+sub BeginTurn:
+  R0 = HalfRow[Pl]
+  Wi = Rnd(9)
+  Res = 0
+  Sg = 255
+  Phase = 1
+  Tt = 0
+  ShowHud
+  print at 14,R0 + 1, "  YOUR TURN     "
+  if Mode = 1 then
+    if Pl = 1 then print at 14,R0 + 1, "  THINKING...   "
+  end if
+  B = 1 - Pl
+  ClearMsg
+  ShowWind
+  play sound SndTurn
+  return
+end sub
+
+' the active player's stick (both sticks for player 1 against the computer)
+sub PickStick:
+  if Mode = 1 then
+    Js = J1 | J2
+  elseif Pl = 0 then
+    Js = J1
+  else
+    Js = J2
+  end if
+  Btn = Js & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub AimHuman:
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HoldLR = 0
+  HoldUD = 0
+ah_loop:
+  Frame1
+  ReadPad
+  PickStick
+  ' turn the gun
+  V = Js & 12
+  if V = 0 then
+    HoldLR = 0
+  else
+    if HoldLR < 250 then inc HoldLR
+    N = 1
+    if HoldLR > 24 then N = 2
+    V = Js & 8
+    if V > 0 then
+      Br[Pl] = Br[Pl] - N
+    else
+      Br[Pl] = Br[Pl] + N
+    end if
+  end if
+  ' elevation: a step at once, then every 4 frames after 12
+  V = Js & 3
+  if V = 0 then
+    HoldUD = 0
+  else
+    Got = 0
+    if HoldUD = 0 then Got = 1
+    if HoldUD > 12 then
+      K = HoldUD & 3
+      if K = 0 then Got = 1
+    end if
+    if HoldUD < 250 then inc HoldUD
+    if Got = 1 then
+      V = Js & 1
+      if V > 0 then
+        if An[Pl] < 45 then inc An[Pl]
+      else
+        if An[Pl] > 0 then dec An[Pl]
+      end if
+      ShowAngle
+      play sound SndTick
+    end if
+  end if
+  DrawSprites
+  if Press = 0 then goto ah_loop
+  return
+end sub
+
+' the computer: picks a ship (one it has a range for, else the nearest to
+' the sight), turns to it at a player's speed, sets the elevation (with an
+' error of up to 6 degrees either way when it knows the range) and fires
+sub AimComputer:
+  ChooseTarget
+  AiT = 40 + Rnd(30)
+ac_think:
+  Frame1
+  DrawSprites
+  dec AiT
+  if AiT > 0 then goto ac_think
+  print at 14,R0 + 1, "                "
+ac_turn:
+  Frame1
+  V = Pl << 2
+  V = V + AiShip
+  X = Fleet[V].X + Br[Pl]
+  X = X + 8
+  if X <> AiWant then
+    D = AiWant - X
+    ' two pixels a frame when far, one for the last pixel
+    N = 1
+    if D >= 2 then
+      if D <= 254 then N = 2
+    end if
+    if D < 128 then
+      Br[Pl] = Br[Pl] + N
+    else
+      Br[Pl] = Br[Pl] - N
+    end if
+    DrawSprites
+    goto ac_turn
+  end if
+  DrawSprites
+  AiT = 10
+ac_elev:
+  Frame1
+  if AiT > 0 then
+    dec AiT
+    goto ac_elev
+  end if
+  AiT = 3
+  if An[Pl] <> AiAng then
+    if An[Pl] < AiAng then
+      inc An[Pl]
+    else
+      dec An[Pl]
+    end if
+    ShowAngle
+    play sound SndTick
+    DrawSprites
+    goto ac_elev
+  end if
+  AiT = 30
+ac_wait:
+  Frame1
+  DrawSprites
+  dec AiT
+  if AiT > 0 then goto ac_wait
+  return
+end sub
+
+sub ChooseTarget:
+  Gi = Pl << 2
+  AiShip = 255
+  ' a live ship with a known range first
+  for Ti = 0 to 3
+    V = Gi + Ti
+    if Fleet[V].Alive = 1 then
+      if Fleet[V].Mem <> AiNone then
+        if AiShip = 255 then AiShip = Ti
+      end if
+    end if
+  next
+  if AiShip = 255 then
+    Best = 999
+    for Ti = 0 to 3
+      V = Gi + Ti
+      if Fleet[V].Alive = 1 then
+        X = Fleet[V].X + Br[Pl]
+        X = X + 8
+        D = Gap(X, 128)
+        W16 = D
+        if W16 < Best then
+          Best = W16
+          AiShip = Ti
+        end if
+      end if
+    next
+  end if
+  ' where to put the ship's centre: upwind of the gun by the wind
+  T = Wi << 3
+  AiWant = T + 96
+  K = Rnd(5)
+  AiWant = AiWant + K
+  AiWant = AiWant - 2
+  V = Gi + AiShip
+  W16 = Fleet[V].Mem
+  if W16 = AiNone then
+    AiAng = Rnd(36) + 5
+  else
+    W16 = W16 - 100
+    W16 = W16 / 20
+    K = W16
+    K = K + Rnd(13)
+    if K < 6 then
+      K = 0
+    else
+      K = K - 6
+    end if
+    if K > 45 then K = 45
+    AiAng = K
+  end if
+  return
+end sub
+
+' fire: the shell flies, then the result
+sub Shoot:
+  Phase = 3
+  inc Shots[Pl]
+  play sound SndGun
+  Tt = 0
+  Resolve
+  for Ti = 0 to FlyN
+    Tt = Ti
+    if Ti = 6 then play sound SndWhistle
+    ShellAt
+    Frame1
+    DrawSprites
+  next
+  ShP = 0
+  ' the landing
+  Phase = 4
+  FxX = ShX
+  FxY = R0 << 3
+  FxY = FxY + 37
+  select case Res
+  case 1
+    play sound SndBoom
+    V = Pl << 2
+    V = V + Sg
+    FxX = Fleet[V].X + Br[Pl]
+    FxP = SBoom0
+    FxC = 9
+    Sink = V
+    SinkT = 0
+    inc Kills[Pl]
+    if Kills[Pl] >= KillsToWin then
+      Over = 1
+      Winner = Pl
+    end if
+    print at 14,R0 + 1, "  HIT! SUNK     "
+  case 2
+    play sound SndSplash
+    FxY = FxY + 3
+    FxP = SSplash0
+    FxC = 15
+    print at 14,R0 + 1, "  SHORT BY      "
+    NumU = Rds
+    print at 25,R0 + 1, digits$(NumU, 3)
+  case 3
+    play sound SndSplash
+    FxY = FxY - 3
+    FxP = SSplash0
+    FxC = 15
+    print at 14,R0 + 1, "  LONG BY       "
+    NumU = Rds
+    print at 24,R0 + 1, digits$(NumU, 3)
+  case else
+    play sound SndSplash
+    FxP = SSplash0
+    FxC = 15
+    print at 14,R0 + 1, "  MISS          "
+  end select
+  ShowKills
+  for Ti = 0 to 59
+    Frame1
+    K = Ti / 12
+    K = K & 1
+    if K = 1 then
+      if Res = 1 then
+        FxP = SBoom1
+        FxC = 11
+      else
+        FxP = SSplash1
+      end if
+    else
+      if Res = 1 then
+        FxP = SBoom0
+        FxC = 9
+      else
+        FxP = SSplash0
+      end if
+    end if
+    if Ti >= 40 then
+      if Res <> 1 then FxP = 0
+    end if
+    if Sink <> 255 then
+      SinkT = Ti
+      if Ti = 59 then
+        Fleet[Sink].Alive = 0
+        Fleet[Sink].D = 1000
+        Sink = 255
+      end if
+    end if
+    DrawSprites
+  next
+  FxP = 0
+  DrawSprites
+  if Over = 0 then
+    for Ti = 0 to 50
+      Frame1
+    next
+  end if
+  return
+end sub
+
+' the result of the shot, from the original's rules: Res 0 miss, 1 hit,
+' 2 short, 3 long; Sg the ship (0-3), Rds the difference
+sub Resolve:
+  Gi = Pl << 2
+  Best = 1000
+  Sg = 255
+  for Ti = 0 to 3
+    V = Gi + Ti
+    X = Fleet[V].X + Br[Pl]
+    W16 = Fleet[V].D
+    ' the ship's centre against the landing column, 10 pixels either side
+    Ds = X
+    Ds = Ds + 8
+    Q16 = Wi
+    Q16 = Q16 << 3
+    Q16 = Q16 + 96
+    Ds = Ds - Q16
+    if Ds > -10 then
+      if Ds < 10 then
+        if W16 < Best then
+          Best = W16
+          Sg = Ti
+        end if
+      end if
+    end if
+  next
+  if Sg = 255 then
+    Res = 0
+    Rds = 0
+    return
+  end if
+  Sf = RangeOf(An[Pl])
+  Ds = Best
+  Q16 = Sf
+  Ds = Ds - Q16
+  if Ds > 100 then
+    Res = 2
+    Rds = Ds
+  elseif Ds < -100 then
+    Res = 3
+    Ds = 0 - Ds
+    Rds = Ds
+  else
+    Res = 1
+    Rds = 0
+  end if
+  ' the gunner's report is public: the computer remembers it
+  V = Gi + Sg
+  Fleet[V].Mem = Best
+  return
+end sub
+
+' the shell at time Tt: a straight line from the gun to the landing point,
+' lifted by a parabola as high as the elevation
+sub ShellAt:
+  Q16 = Wi
+  Q16 = Q16 << 3
+  Q16 = Q16 - 32
+  Q16 = Q16 * Tt
+  Q16 = Q16 / FlyN
+  Q16 = Q16 + 120
+  ShX = Q16
+  ' height: H = 4 + A/2 pixels at the top of the arc
+  V = An[Pl] >> 1
+  V = V + 4
+  Hq = FlyN - Tt
+  Hq = Hq * Tt
+  Hq = Hq * V
+  Hq = Hq / 576
+  Q16 = Tt
+  Q16 = Q16 * 16
+  Q16 = Q16 / FlyN
+  T = R0 << 3
+  ShY = T + 59
+  ShY = ShY - Q16
+  ShY = ShY - Hq
+  ShP = SShell0
+  if Tt > 16 then ShP = SShell1
+  if Tt > 32 then ShP = SShell2
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the shell, 1 the splash or explosion, 2-3 the gun barrels,
+' 4-7 player 1's targets, 8-11 player 2's
+sub DrawSprites:
+  if Phase = 3 then
+    set sprite 0 to ShY,ShX,ShP,15
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  if Phase = 4 then
+    if FxP > 0 then
+      set sprite 1 to FxY,FxX,FxP,FxC
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if TitleOn = 1 then
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  else
+    V = An[0] / 9
+    V = V << 2
+    V = V + SGun0
+    set sprite 2 to 63,120,V,14
+    V = An[1] / 9
+    V = V << 2
+    V = V + SGun0
+    set sprite 3 to 151,120,V,14
+  end if
+  for Si = 0 to 7
+    DrawShip
+  next
+  update sprites
+  return
+end sub
+
+sub DrawShip:
+  N = Si + 4
+  if Fleet[Si].Alive = 0 then
+    set sprite N to 192,0,0,0
+    return
+  end if
+  B = Si >> 2
+  X = Fleet[Si].X + Br[B]
+  if X < 16 then
+    set sprite N to 192,0,0,0
+    return
+  end if
+  if X > 224 then
+    set sprite N to 192,0,0,0
+    return
+  end if
+  Y = 46
+  if B = 1 then Y = 134
+  K = Si & 1
+  K = K << 2
+  K = K + SShip0
+  if Si = Sink then
+    K = SShip0
+    if SinkT > 20 then K = SSink0
+    if SinkT > 40 then K = SSink1
+  end if
+  set sprite N to Y,X,K,1
+  return
+end sub
+
+' both views: HUD rows, sky, cloud, horizon, sea, the own ship
+sub DrawField:
+  for B = 0 to 1
+    R0 = HalfRow[B]
+    DrawHalf
+  next
+  fill TRule count 32 at 0,23
+  for B = 0 to 1
+    R0 = HalfRow[B]
+    ShowHud
+  next
+  R0 = HalfRow[Pl]
+  return
+end sub
+
+sub DrawHalf:
+  Ri = R0 + 2
+  fill TSky count 32 at 0,Ri
+  inc Ri
+  fill TSky count 32 at 0,Ri
+  inc Ri
+  fill TSky count 32 at 0,Ri
+  inc Ri
+  fill TSkylow count 32 at 0,Ri
+  ' two clouds, placed differently in each view
+  C = 5
+  T = 22
+  if R0 > 1 then
+    C = 19
+    T = 6
+  end if
+  Ri = R0 + 3
+  put char TCloudl at C,Ri
+  put char TCloudr at C + 1,Ri
+  Ri = R0 + 2
+  put char TCloudl at T,Ri
+  put char TCloudr at T + 1,Ri
+  Ri = R0 + 6
+  fill THorizon count 32 at 0,Ri
+  for Ti = 7 to 10
+    Ri = R0 + Ti
+    for J = 0 to 31
+      V = J + Ri
+      V = V & 1
+      T = TSeaa + V
+      put char T at J,Ri
+    next
+  next
+  ' the sight post straight ahead, the bow and the turret
+  Ri = R0 + 7
+  put char TSight at 15,Ri
+  Ri = R0 + 9
+  put char TTur00 at 15,Ri
+  put char TTur01 at 16,Ri
+  put char TDeckl at 13,Ri
+  put char TDeckt at 14,Ri
+  put char TDeckt at 17,Ri
+  put char TDeckr at 18,Ri
+  Ri = R0 + 10
+  put char TDeckl at 11,Ri
+  fill TDeck count 3 at 12,Ri
+  put char TTur10 at 15,Ri
+  put char TTur11 at 16,Ri
+  fill TDeck count 3 at 17,Ri
+  put char TDeckr at 20,Ri
+  ' the top view's last row is the line between the views
+  if R0 = 1 then fill TRule count 32 at 0,11
+  return
+end sub
+
+' the HUD of view R0 (player B's)
+sub ShowHud:
+  B = 0
+  if R0 > 1 then B = 1
+  fill 32 count 28 at 2,R0
+  if B = 0 then
+    print at 2,R0, "PLAYER 1"
+  elseif Mode = 1 then
+    print at 2,R0, "COMPUTER"
+  else
+    print at 2,R0, "PLAYER 2"
+  end if
+  print at 12,R0, "KILLS"
+  print at 21,R0, "ANGLE"
+  ShowKillsOf
+  ShowAngleOf
+  return
+end sub
+
+sub ShowKills:
+  B = Pl
+  ShowKillsOf
+  return
+end sub
+
+sub ShowKillsOf:
+  T = HalfRow[B]
+  V = Kills[B]
+  print V at 18,T digits 1
+  return
+end sub
+
+sub ShowAngle:
+  B = Pl
+  ShowAngleOf
+  return
+end sub
+
+sub ShowAngleOf:
+  T = HalfRow[B]
+  NumU = An[B]
+  print at 27,T, digits$(NumU, 2)
+  return
+end sub
+
+' the wind line of the active view; the other view's message line cleared
+sub ShowWind:
+  print at 2,R0 + 1, "WIND"
+  W16 = Wi << 2
+  put WindTxt + W16 count 4 at 7,R0 + 1
+  return
+end sub
+
+' clear row 2 of view B
+sub ClearMsg:
+  T = HalfRow[B]
+  inc T
+  fill 32 count 28 at 2,T
+  return
+end sub
+
+' shots of both players at the end
+sub ShowEnd:
+  for B = 0 to 1
+    T = HalfRow[B]
+    inc T
+    fill 32 count 12 at 2,T
+    print at 2,T, "SHOTS"
+    print Shots[B] at 8,T
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 11
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: player 1's sea with ships sailing by, the tune once,
+' 1 PLAYER / 2 PLAYERS / CREDITS
+sub TitlePage:
+  Phase = 0
+  TitleOn = 1
+  An[0] = 45
+  An[1] = 45
+  for Si = 0 to 7
+    Fleet[Si].Alive = 0
+  next
+  for Si = 0 to 2
+    Fleet[Si].Alive = 1
+    V = Si * 80
+    Fleet[Si].X = V
+  next
+  Br[0] = 0
+  NewScreen
+  R0 = 1
+  DrawHalf
+  fill TRule count 32 at 0,23
+  print at 12,1, "WARSHIP"
+  print at 9,14, "BY C.F. KAYLOR"
+  print at 9,15, "AHOY! DEC 1987"
+  print at 9,18, "1 PLAYER"
+  print at 9,19, "2 PLAYERS"
+  print at 9,20, "CREDITS"
+  print at 5,22, "FIRST TO SINK 4 WINS"
+  ShowMenu
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  K = Tick & 3
+  if K = 0 then dec Br[0]
+  DrawSprites
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  Mode = Menu + 1
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ti = 18 to 20
+    put char 32 at 7,Ti
+  next
+  J = Menu + 18
+  put char 62 at 7,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "WARSHIP"
+  print at 2,5, "BASED ON WARSHIP BY"
+  print at 2,6, "C.F. KAYLOR, AHOY!"
+  print at 2,7, "DECEMBER 1987 (COMMODORE 64)"
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: HARBOUR WATCH"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$06,$E0,$80,$00,$00,$00
+  $00,$60,$F0,$03,$01,$00,$00,$00
+  $00,$00,$00,$88,$00,$22,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$04
+  $00,$30,$00,$00,$03,$00,$00,$00
+  $00,$00,$0E,$00,$00,$00,$C0,$00
+  $00,$18,$18,$18,$18,$18,$C3,$00
+  $00,$07,$E0,$C0,$80,$03,$00,$00
+  $00,$E0,$07,$03,$01,$C0,$00,$00
+  $00,$00,$20,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$00,$01,$07,$E0,$80,$00,$00
+  $00,$00,$80,$E0,$07,$01,$00,$00
+  $00,$00,$00,$00,$88,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$F5,$5F,$5F,$0F,$05,$05
+  $05,$F5,$F5,$5F,$5F,$0F,$05,$05
+  $05,$05,$05,$75,$05,$75,$07,$07
+  $07,$07,$07,$07,$04,$04,$54,$54
+  $04,$54,$04,$04,$54,$04,$04,$04
+  $04,$04,$54,$04,$04,$04,$54,$04
+  $04,$B4,$B4,$B4,$B4,$B4,$45,$04
+  $04,$E4,$4E,$4E,$4E,$1E,$0E,$01
+  $04,$E4,$4E,$4E,$4E,$1E,$0E,$01
+  $0E,$0E,$FE,$0E,$01,$0E,$0E,$0E
+  $0E,$0E,$FE,$0E,$01,$0E,$0E,$0E
+  $04,$04,$E4,$E4,$4E,$4E,$0E,$0E
+  $04,$04,$E4,$E4,$4E,$4E,$0E,$0E
+  $0E,$0E,$0E,$0E,$1E,$0E,$0E,$0E
+  $04,$04,$04,$04,$04,$04,$0E,$0E
+  $01,$0B,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$01,$09,$0B,$1F,$FF,$7F,$3F,$1F,$00,$00
+  $00,$00,$00,$00,$80,$80,$C0,$C0,$E4,$EE,$FE,$FE,$FC,$F8,$00,$00
+  $00,$00,$00,$00,$00,$02,$02,$07,$27,$7F,$FF,$7F,$3F,$1F,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$20,$74,$FF,$FF,$FE,$FC,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$1F,$0F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$10,$38,$FC,$F8,$F0,$E0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$70,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$13,$0B,$07,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$90,$A0,$C0,$F0,$00,$00,$00
+  $00,$00,$00,$02,$01,$13,$03,$07,$0B,$27,$0F,$1F,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$90,$80,$C0,$A0,$C8,$E0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$13,$0F,$1F,$07,$13,$02,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$C8,$F0,$F8,$E0,$C8,$40,$F8,$00,$00,$00
+  $00,$00,$08,$42,$17,$3F,$7C,$38,$7C,$3F,$17,$42,$1F,$00,$00,$00
+  $00,$00,$10,$42,$E8,$FC,$3E,$1C,$3E,$FC,$E8,$42,$F8,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+end data
+
+asm {
+WsGun:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$36,$06,$00,$00,$57,$0A,$10
+WsWhistle:
+    db $40,$40,$50,$06,$40,$47,$50,$06,$40,$50,$60,$06,$40,$5A,$60,$06,$40,$65,$60,$06,$40,$71,$60,$06
+    db $40,$7F,$70,$06,$40,$8F,$70,$06,$50
+WsSplash:
+    db $00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$46,$06,$00,$00,$67,$0A,$10
+WsBoom:
+    db $00,$00,$04,$03,$00,$00,$05,$04,$00,$00,$16,$06,$00,$00,$36,$08,$00,$00,$47,$0C,$00,$00,$67,$10
+    db $10
+WsTick:
+    db $40,$35,$50,$01,$50
+WsTurn:
+    db $40,$AA,$20,$04,$40,$7F,$20,$04,$50
+WsStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+WsWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+
+WsSoundTable:
+    dw WsTuneMel,$702B
+    dw WsTuneBass,$7035
+    dw WsGun,$703F
+    dw WsWhistle,$7049
+    dw WsSplash,$703F
+    dw WsBoom,$703F
+    dw WsTick,$7049
+    dw WsTurn,$7049
+    dw WsStart,$7049
+    dw WsWin,$7049
+; Harbour Watch (original)
+; Tiny Sound, 8 frames per step
+WsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$31,$88,$21,$01,$01,$1C,$21,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$1C,$01,$1D,$01,$01,$21,$1F,$01,$1C,$01,$1A,$01,$18,$01
+    db $17,$01,$01,$01,$18,$01,$1C,$01,$21,$01,$24,$01,$26,$01,$24,$01
+    db $23,$01,$1F,$01,$21,$01,$1C,$01,$18,$01,$17,$01,$15,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+WsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $0C,$01,$13,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$04,$01,$0B,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

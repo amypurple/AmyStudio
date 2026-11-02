@@ -1,0 +1,1425 @@
+cartridge "TRAPPED/MIKE HOYT/1986"
+
+' TRAPPED
+' A ColecoVision game based on "Trapped" by Mike Hoyt, Ahoy! September
+' 1986 (Commodore 64, BASIC with small machine-code sprite movers).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/), the game is built for the ColecoVision: smooth 16 x 16
+' sprites (a two-colour spaceman who hops in an arc, a two-colour alien
+' that floats), tiled blocks over a starfield, sound effects and an
+' original title tune.
+'
+' The game: you are stranded on a 7 x 7 field of blocks floating in space.
+' Hop from block to block (one cell up, down, left or right) and land once
+' on every block to mark it; then the next sector. Hopping into empty space
+' or off the field, or onto the alien, costs a shield; so does the alien
+' landing on you. After each of your hops the alien may float one cell
+' toward you (three times in five, along a random axis; it crosses empty
+' space). The white warp pad sends you to a random block, once a level.
+' From level 11 the boards come back and every block needs two landings
+' (the first cracks it). Lose all your shields and the game is over.
+'
+' From the original (orig/trapped.bas): the ten 7 x 7 boards of its DATA,
+' block states (empty, block, warp pad, cracked, marked), the order of the
+' landing checks (off the field or on the alien, the warp pad while
+' unused, empty space, cracked or block), the warp to a random non-empty
+' cell once a level, the two-landing blocks above level 10 (boards 1-10
+' again), 2 x level points a block, the alien's move (3 in 5 after each
+' hop, toward you along a random axis, over empty space), the random
+' places after a lost shield (not empty, not a pad) with the field kept,
+' the alien resting at the first marking after a new start (the listing's
+' B = 1), the 3-2-1 countdown, level 1-20 and 2/4/6/8 shields on the
+' title, the level colours, levels stopping at 20, a high score.
+'
+' Liberties: one hop for each push of the stick (the C64 repeated a held
+' stick, which walked players off the field); the warp never drops you on
+' the alien; the hop, float, fall and capture are animated, and the level
+' change is a fanfare with the blocks changing colour every 20 frames
+' instead of a fast border flash; the HUD also shows the warp pad's state
+' and the blocks left. The game is turn-based as in the original: nothing
+' moves until you hop, so waiting gains nothing and costs nothing, and
+' every block must still be reached with the alien closing in.
+'
+' Controls: either controller; push the stick to hop. On the title, up
+' and down choose a line, left/right (or a button) change the level and
+' the shields, a button on START GAME starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TBlk00 = 128
+const TBlk01 = 129
+const TBlk02 = 130
+const TBlk10 = 131
+const TBlk11 = 132
+const TBlk12 = 133
+const TBlk20 = 134
+const TBlk21 = 135
+const TBlk22 = 136
+const TCrk00 = 137
+const TCrk01 = 138
+const TCrk02 = 139
+const TCrk10 = 140
+const TCrk11 = 141
+const TCrk12 = 142
+const TCrk20 = 143
+const TCrk21 = 144
+const TCrk22 = 145
+const TUsd00 = 146
+const TUsd01 = 147
+const TUsd02 = 148
+const TUsd10 = 149
+const TUsd11 = 150
+const TUsd12 = 151
+const TUsd20 = 152
+const TUsd21 = 153
+const TUsd22 = 154
+const TWarp00 = 155
+const TWarp01 = 156
+const TWarp02 = 157
+const TWarp10 = 158
+const TWarp11 = 159
+const TWarp12 = 160
+const TWarp20 = 161
+const TWarp21 = 162
+const TWarp22 = 163
+const TSpace = 164
+const TStar0 = 165
+const TStar1 = 166
+const TStar2 = 167
+const TStar3 = 168
+const TBar = 169
+const TQ0 = 170
+const TQ1 = 171
+const TQ2 = 172
+const TQ3 = 173
+const TQ4 = 174
+const TQ5 = 175
+const TQ6 = 176
+const TQ7 = 177
+const TQ8 = 178
+const TQ9 = 179
+const TQ10 = 180
+const TQ11 = 181
+const TQ12 = 182
+const TQ13 = 183
+const TQ14 = 184
+const TQ15 = 185
+const SVis0 = 0
+const SSuit0 = 4
+const SVis1 = 8
+const SSuit1 = 12
+const SFall0 = 16
+const SFall1 = 20
+const SFall2 = 24
+const SEye0 = 28
+const SBody0 = 32
+const SEye1 = 36
+const SBody1 = 40
+const SBoom = 44
+const NTiles8 = 464
+const SprBytes = 384
+const NPlat8 = 216
+const LogoW = 27
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHop = 3
+const SndMark = 4
+const SndCrack = 5
+const SndFloat = 6
+const SndWarp = 7
+const SndFall = 8
+const SndZap = 9
+const SndCount = 10
+const SndGo = 11
+const SndClear = 12
+const SndOver = 13
+const SndTick = 14
+const NSpr = 4
+const HopN = 12
+const BoardC = 3
+const BoardR = 2
+const HudC = 25
+
+' directions: 0 up, 1 right, 2 down, 3 left (255 is -1 in a byte)
+data DcT bytes
+  0, 1, 0, 255
+end data
+data DrT bytes
+  255, 0, 1, 0
+end data
+' pixels a frame of a hop or a float (24 pixels in 12 frames)
+data PxT bytes
+  0, 2, 0, 254
+end data
+' the height of the hop, frame 0-12
+data ArcT bytes
+  0, 4, 7, 10, 12, 13, 14, 13, 12, 10, 7, 4, 0
+end data
+' the block colour of levels 1-10 (C64 colours 10, 2, 8, 7, 13, 5, 3, 14, 6, 14)
+data LvColT bytes
+  0, 9, 8, 10, 11, 3, 12, 7, 5, 4, 5
+end data
+
+record Actor:
+  u8 C
+  u8 R
+  u8 X
+  u8 Y
+  u8 Lift
+end record
+
+Actor Hero
+Actor Foe
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Hi = 0
+' the field: 0 empty, 1 block, 2 warp pad, 4 cracked, 5 marked
+u8 Brd[49]
+u8 Lv = 1
+u8 LvShow = 1
+u8 Two = 0
+u8 StartLv = 1
+u8 StartSh = 4
+u8 Sh = 4
+u8 Tot = 0
+u8 Done = 0
+u8 Tu = 0
+u8 Grace = 0
+u8 Off = 0
+u8 Res = 0
+u8 Caught = 0
+u8 Dir = 0
+u8 HFr = 0
+u8 HVis = 1
+u8 AVis = 1
+u8 Boom = 0
+u8 Ph = 0
+u8 Over = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Push = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ri = 0
+u8 Ki = 0
+u8 Fi = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+u8 Got = 0
+u8 Dpx = 0
+u8 Li = 0
+
+  tile screen
+  set sound table TrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+level_start:
+  StartLevel
+place:
+  PlacePair
+  Countdown
+turn:
+  Ph = 1
+  WaitMove
+  Ph = 2
+  HeroHop
+  Resolve
+  if Res = 1 then goto died
+  if Res = 2 then goto cleared
+  if Res = 0 then AlienTurn
+  if Caught = 1 then goto died
+  goto turn
+
+died:
+  Ph = 3
+  if Caught = 1 then
+    CaughtAnim
+  elseif Off = 0 then
+    if Hero.C = Foe.C then
+      if Hero.R = Foe.R then
+        CaughtAnim
+      else
+        FallAnim
+      end if
+    else
+      FallAnim
+    end if
+  else
+    FallAnim
+  end if
+  dec Sh
+  ShowHud
+  if Sh > 0 then goto place
+  goto game_over
+
+cleared:
+  Ph = 4
+  ClearAnim
+  inc Lv
+  if Lv > 20 then Lv = 20
+  goto level_start
+
+game_over:
+  Ph = 5
+  Over = 1
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  fill 32 count 21 at 3,1
+  print at 6,10, "               "
+  print at 6,11, "   GAME OVER   "
+  print at 6,12, "               "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+function CellIdx(u8 Cc, u8 Rr) as u8
+  return Rr * 7 + Cc
+
+' a random number 0..N-1 from the high byte of (low byte x N)
+function RandBelow(u8 Nn) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * Nn
+  W16 = W16 >> 8
+  Rv = W16
+  return Rv
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the board of level Lv (boards 1-10, again with two landings from 11)
+sub StartLevel:
+  Two = 0
+  LvShow = Lv
+  if Lv > 10 then
+    Two = 1
+    LvShow = Lv - 10
+  end if
+  W16 = LvShow - 1
+  W16 = W16 * 49
+  copy LevelT + W16 count 49 to Brd
+  Tot = 0
+  for Ki = 0 to 48
+    if Brd[Ki] = 1 then inc Tot
+  next
+  Done = 0
+  Tu = 0
+  NewScreen
+  SetBlockColour(LvColT[LvShow])
+  DrawBack
+  DrawBoard
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' the spaceman and the alien on random cells (not empty, not a pad)
+sub PlacePair:
+  Off = 0
+  Caught = 0
+  Boom = 0
+  Grace = 1
+  Got = 0
+  while Got = 0
+    Qc = RandBelow(7)
+    Qr = RandBelow(7)
+    I = CellIdx(Qc, Qr)
+    V = Brd[I]
+    if V <> 0 then
+      if V <> 2 then Got = 1
+    end if
+  end while
+  Hero.C = Qc
+  Hero.R = Qr
+  Got = 0
+  while Got = 0
+    Qc = RandBelow(7)
+    Qr = RandBelow(7)
+    I = CellIdx(Qc, Qr)
+    V = Brd[I]
+    if V <> 0 then
+      if V <> 2 then Got = 1
+    end if
+    if Qc = Hero.C then
+      if Qr = Hero.R then Got = 0
+    end if
+  end while
+  Foe.C = Qc
+  Foe.R = Qr
+  PlaceSprites
+  HVis = 1
+  AVis = 1
+  HFr = 0
+  return
+end sub
+
+sub PlaceSprites:
+  Hero.X = Hero.C * 24 + 28
+  Hero.Y = Hero.R * 24 + 20
+  Hero.Lift = 0
+  Foe.X = Foe.C * 24 + 28
+  Foe.Y = Foe.R * 24 + 20
+  Foe.Lift = 0
+  return
+end sub
+
+' the landing: Res 0 the alien moves, 1 a shield lost, 2 the level done,
+' 3 the alien rests
+sub Resolve:
+  Res = 0
+  Ki = 1
+  while Ki = 1
+    Ki = 0
+    if Off = 1 then
+      Res = 1
+    elseif Hero.C = Foe.C and Hero.R = Foe.R then
+      Res = 1
+    else
+      I = CellIdx(Hero.C, Hero.R)
+      V = Brd[I]
+      select case V
+      case 0
+        Res = 1
+      case 2
+        if Tu = 0 then
+          Warp
+          Ki = 1
+        end if
+      case 1
+        if Two = 1 then
+          Brd[I] = 4
+          DrawCell(Hero.C, Hero.R)
+          play sound SndCrack
+        else
+          MarkCell
+        end if
+      case 4
+        MarkCell
+      end select
+    end if
+  end while
+  return
+end sub
+
+sub MarkCell:
+  Brd[I] = 5
+  DrawCell(Hero.C, Hero.R)
+  inc Done
+  W16 = LvShow << 1
+  Sc = Sc + W16
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  play sound SndMark
+  if Done = Tot then
+    Res = 2
+  elseif Grace = 1 then
+    Grace = 0
+    Res = 3
+  end if
+  return
+end sub
+
+' the warp pad: a random non-empty cell, never the alien's or this one
+sub Warp:
+  Tu = 1
+  play sound SndWarp
+  for Fi = 0 to 15
+    V = Fi & 4
+    if V = 0 then
+      HVis = 1
+    else
+      HVis = 0
+    end if
+    Frame1
+    DrawSprites
+  next
+  Got = 0
+  while Got = 0
+    Qc = RandBelow(7)
+    Qr = RandBelow(7)
+    I = CellIdx(Qc, Qr)
+    if Brd[I] <> 0 then Got = 1
+    if Qc = Foe.C then
+      if Qr = Foe.R then Got = 0
+    end if
+    if Qc = Hero.C then
+      if Qr = Hero.R then Got = 0
+    end if
+  end while
+  Hero.C = Qc
+  Hero.R = Qr
+  Hero.X = Hero.C * 24 + 28
+  Hero.Y = Hero.R * 24 + 20
+  for Fi = 0 to 15
+    V = Fi & 4
+    if V = 0 then
+      HVis = 0
+    else
+      HVis = 1
+    end if
+    Frame1
+    DrawSprites
+  next
+  HVis = 1
+  ShowHud
+  return
+end sub
+
+' the alien: three times in five, a cell toward the spaceman along a
+' random axis (no move when already level on that axis)
+sub AlienTurn:
+  Caught = 0
+  V = RandBelow(5)
+  if V < 3 then
+    K = RandBelow(2)
+    Dir = 255
+    if K = 0 then
+      if Foe.C > Hero.C then
+        Dir = 3
+      elseif Foe.C < Hero.C then
+        Dir = 1
+      end if
+    else
+      if Foe.R < Hero.R then
+        Dir = 2
+      elseif Foe.R > Hero.R then
+        Dir = 0
+      end if
+    end if
+    if Dir < 4 then FoeFloat
+    if Foe.C = Hero.C then
+      if Foe.R = Hero.R then Caught = 1
+    end if
+  end if
+  return
+end sub
+
+sub FoeFloat:
+  play sound SndFloat
+  Dpx = PxT[Dir]
+  for Fi = 1 to HopN
+    Foe.X = Foe.X + Dpx
+    if Dir = 0 then Foe.Y = Foe.Y - 2
+    if Dir = 2 then Foe.Y = Foe.Y + 2
+    Frame1
+    DrawSprites
+  next
+  Foe.C = Foe.C + DcT[Dir]
+  Foe.R = Foe.R + DrT[Dir]
+  return
+end sub
+
+' wait for a fresh push of the stick
+sub WaitMove:
+  Push = 0
+  while Push = 0
+    Frame1
+    ReadPad
+    DrawSprites
+  end while
+  return
+end sub
+
+' the hop: twelve frames in an arc; off the field it stops half way
+sub HeroHop:
+  Qc = Hero.C + DcT[Dir]
+  Qr = Hero.R + DrT[Dir]
+  Off = 0
+  if Qc > 6 then Off = 1
+  if Qr > 6 then Off = 1
+  N = HopN
+  if Off = 1 then N = 5
+  Dpx = PxT[Dir]
+  HFr = 1
+  play sound SndHop
+  for Fi = 1 to N
+    Hero.X = Hero.X + Dpx
+    if Dir = 0 then Hero.Y = Hero.Y - 2
+    if Dir = 2 then Hero.Y = Hero.Y + 2
+    Hero.Lift = ArcT[Fi]
+    Frame1
+    DrawSprites
+  next
+  HFr = 0
+  Hero.Lift = 0
+  if Off = 0 then
+    Hero.C = Qc
+    Hero.R = Qr
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' animations
+
+sub FallAnim:
+  play sound SndFall
+  for Fi = 0 to 47
+    HFr = 2 + (Fi >> 4)
+    if Fi < 32 then Hero.Lift = 0 - (Fi >> 3)
+    Frame1
+    DrawSprites
+  next
+  HVis = 0
+  HFr = 0
+  Hero.Lift = 0
+  Frame1
+  DrawSprites
+  Rearm
+  wait 20 frames
+  nmi off
+  return
+end sub
+
+sub CaughtAnim:
+  play sound SndZap
+  for Fi = 0 to 59
+    V = Fi & 16
+    if V = 0 then
+      Boom = 1
+    else
+      Boom = 0
+    end if
+    Frame1
+    DrawSprites
+  next
+  Boom = 0
+  HVis = 0
+  Frame1
+  DrawSprites
+  Rearm
+  wait 20 frames
+  nmi off
+  return
+end sub
+
+sub ClearAnim:
+  play sound SndClear
+  print at 7,1, "SECTOR CLEAR!"
+  for Fi = 0 to 119
+    V = Fi & 31
+    if V = 0 then
+      K = Fi >> 5
+      K = K + LvShow
+      if K > 10 then K = K - 10
+      Rearm
+      wait
+      nmi off
+      SetBlockColour(LvColT[K])
+    end if
+    Frame1
+    DrawSprites
+  next
+  return
+end sub
+
+sub Countdown:
+  DrawSprites
+  for Ci = 3 to 1 step -1
+    print at 7,1, "GET READY  "
+    NumU = Ci
+    print at 18,1, digits$(NumU, 1)
+    play sound SndCount
+    for Fi = 0 to 39
+      Frame1
+      DrawSprites
+    next
+  next
+  fill 32 count 21 at 3,1
+  play sound SndGo
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the colour of the 27 block tiles (block, cracked, marked) on black
+sub SetBlockColour(u8 Col):
+  u8 Cb = 0
+  Cb = Col << 4
+  Cb = Cb | 1
+  A16 = TBlk00
+  A16 = A16 << 3
+  fill Cb count NPlat8 to vram.color + A16
+  return
+end sub
+
+' a star or space for screen cell X, Y (a fixed scatter)
+function StarAt(u8 Sx, u8 Sy) as u8
+  u8 Hh = 0
+  Hh = Sx * 7
+  Hh = Hh + Sy * 13
+  Hh = Hh + Sx * Sy
+  Hh = Hh & 31
+  if Hh < 4 then return TStar0 + Hh
+  return TSpace
+
+' one cell of the field from Brd
+sub DrawCell(u8 Cc, u8 Rr):
+  u8 Base = 0
+  u8 Tc = 0
+  u8 Tr = 0
+  u8 Q = 0
+  u8 Ix = 0
+  u8 Yy = 0
+  u8 Xx = 0
+  Ix = Rr * 7 + Cc
+  Base = 0
+  select case Brd[Ix]
+  case 1
+    Base = TBlk00
+  case 2
+    Base = TWarp00
+  case 4
+    Base = TCrk00
+  case 5
+    Base = TUsd00
+  end select
+  for Tr = 0 to 2
+    Yy = Rr * 3 + BoardR + Tr
+    for Tc = 0 to 2
+      Xx = Cc * 3 + BoardC + Tc
+      if Base = 0 then
+        Q = StarAt(Xx, Yy)
+      else
+        Q = Tr * 3 + Tc + Base
+      end if
+      put char Q at Xx,Yy
+    next
+  next
+  return
+end sub
+
+sub DrawBoard:
+  for Ri = 0 to 6
+    for Ci = 0 to 6
+      DrawCell(Ci, Ri)
+    next
+  next
+  return
+end sub
+
+sub DrawBack:
+  for Ri = 0 to 23
+    for Ci = 0 to 31
+      K = StarAt(Ci, Ri)
+      put char K at Ci,Ri
+    next
+  next
+  for Ri = 1 to 22
+    put char TBar at 24,Ri
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at HudC,3, "SCORE"
+  NumU = Sc
+  print at HudC,4, digits$(NumU, 5)
+  print at HudC,6, "HIGH"
+  NumU = Hi
+  print at HudC,7, digits$(NumU, 5)
+  print at HudC,9, "LEVEL"
+  NumU = Lv
+  print at HudC+3,10, digits$(NumU, 2)
+  print at HudC,12, "SHLDS"
+  NumU = Sh
+  print at HudC+3,13, digits$(NumU, 2)
+  print at HudC,15, "WARP"
+  if Tu = 0 then
+    print at HudC,16, "READY"
+  else
+    print at HudC,16, " USED"
+  end if
+  print at HudC,18, "LEFT"
+  NumU = Tot - Done
+  print at HudC+3,19, digits$(NumU, 2)
+  return
+end sub
+
+' sprite 0 the visor, 1 the suit (or the fall), 2 the eyes, 3 the body
+sub DrawSprites:
+  if HVis = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    Y = Hero.Y - 1
+    Y = Y - Hero.Lift
+    if HFr >= 2 then
+      K = HFr - 2
+      K = K << 2
+      K = K + SFall0
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to Y,Hero.X,K,15
+    else
+      K = HFr << 3
+      J = K + SVis0
+      K = K + SSuit0
+      set sprite 0 to Y,Hero.X,J,5
+      set sprite 1 to Y,Hero.X,K,15
+    end if
+  end if
+  if AVis = 0 then
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  else
+    V = Tick >> 4
+    V = V & 1
+    Y = Foe.Y - 1
+    if V = 1 then dec Y
+    if Boom = 1 then
+      set sprite 2 to Y,Foe.X,SBoom,11
+    else
+      K = V << 3
+      J = K + SEye0
+      set sprite 2 to Y,Foe.X,J,6
+    end if
+    K = V << 3
+    K = K + SBody0
+    set sprite 3 to Y,Foe.X,K,3
+  end if
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lv = StartLv
+  Sh = StartSh
+  Over = 0
+  Ph = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  ' a fresh push: the first of up, right, down, left after a centred stick
+  Stick = V & 15
+  Push = 0
+  if Stick > 0 then
+    if WasStick = 0 then
+      Push = 1
+      K = Stick & 1
+      if K > 0 then
+        Dir = 0
+      else
+        K = Stick & 8
+        if K > 0 then
+          Dir = 1
+        else
+          K = Stick & 2
+          if K > 0 then
+            Dir = 2
+          else
+            Dir = 3
+          end if
+        end if
+      end if
+    end if
+  end if
+  WasStick = Stick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo, a spaceman and the alien on two blocks, the tune
+' once, START GAME / LEVEL / SHIELDS / CREDITS
+sub TitlePage:
+  Ph = 0
+  NewScreen
+  SetBlockColour(9)
+  DrawBack
+  for Ri = 0 to 23
+    put char TSpace at 24,Ri
+  next
+  for Ri = 0 to 3
+    Li = Ri * LogoW
+    for Ci = 0 to 26
+      K = LogoT[Li]
+      put char K at Ci+2,Ri+2
+      inc Li
+    next
+  next
+  print at 9,7, "BY MIKE HOYT"
+  print at 8,8, "AHOY! SEPT 1986"
+  ' two blocks with the actors on them
+  Brd[0] = 1
+  Brd[1] = 1
+  for Ri = 0 to 2
+    for Ci = 0 to 2
+      K = Ri * 3 + Ci + TBlk00
+      put char K at Ci+6,Ri+11
+      put char K at Ci+22,Ri+11
+    next
+  next
+  Hero.X = 52
+  Hero.Y = 92
+  Hero.Lift = 0
+  Foe.X = 180
+  Foe.Y = 92
+  HVis = 1
+  AVis = 1
+  HFr = 0
+  Boom = 0
+  print at 2,20, "HI"
+  NumU = Hi
+  print at 5,20, digits$(NumU, 5)
+  ShowMenu
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 540
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Got = 0
+  while Got = 0
+    Frame1
+    inc Rs
+    if Rs = 0 then Rs = 1
+    ReadPad
+    DrawSprites
+    TitleInput
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub TitleInput:
+  if Push = 1 then
+    select case Dir
+    case 0
+      if Menu > 0 then dec Menu
+    case 2
+      if Menu < 3 then inc Menu
+    case 1
+      MenuChange
+    case 3
+      MenuBack
+    end select
+    ShowMenu
+  end if
+  if Press = 1 then
+    select case Menu
+    case 0
+      Got = 1
+    case 3
+      Got = 1
+    case else
+      MenuChange
+      ShowMenu
+    end select
+  end if
+  return
+end sub
+
+sub MenuChange:
+  if Menu = 1 then
+    inc StartLv
+    if StartLv > 20 then StartLv = 1
+  end if
+  if Menu = 2 then
+    StartSh = StartSh + 2
+    if StartSh > 8 then StartSh = 2
+  end if
+  return
+end sub
+
+sub MenuBack:
+  if Menu = 1 then
+    dec StartLv
+    if StartLv = 0 then StartLv = 20
+  end if
+  if Menu = 2 then
+    StartSh = StartSh - 2
+    if StartSh = 0 then StartSh = 8
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  print at 11,11, "START GAME"
+  print at 11,12, "LEVEL"
+  NumU = StartLv
+  print at 19,12, digits$(NumU, 2)
+  print at 11,13, "SHIELDS"
+  NumU = StartSh
+  print at 20,13, digits$(NumU, 1)
+  print at 11,14, "CREDITS"
+  for Ri = 11 to 14
+    put char 32 at 10,Ri
+  next
+  J = Menu + 11
+  put char 62 at 10,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "TRAPPED"
+  print at 2,5, "BASED ON TRAPPED BY MIKE"
+  print at 2,6, "HOYT, AHOY! SEPTEMBER 1986"
+  print at 2,7, "(COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: SEVEN BY SEVEN"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Menu = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$1F,$2F,$3F,$38,$3B,$3B
+  $00,$00,$FF,$FF,$FF,$00,$FF,$FF
+  $00,$00,$F8,$F4,$FC,$1C,$DC,$DC
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $DC,$DC,$DC,$DC,$DC,$DC,$DC,$DC
+  $3B,$3B,$38,$3F,$2F,$1F,$00,$00
+  $FF,$FF,$00,$FF,$FF,$FF,$00,$00
+  $DC,$DC,$1C,$FC,$F4,$F8,$00,$00
+  $00,$00,$1F,$2F,$3F,$38,$3B,$3B
+  $00,$00,$FF,$FF,$FF,$00,$FF,$FF
+  $00,$00,$F8,$F4,$FC,$1C,$DC,$DC
+  $38,$3A,$3B,$3B,$3B,$3A,$3B,$3B
+  $FF,$3F,$9F,$86,$30,$79,$F9,$FC
+  $DC,$DC,$1C,$5C,$DC,$DC,$DC,$5C
+  $3B,$3B,$38,$3F,$2F,$1F,$00,$00
+  $FF,$FF,$00,$FF,$FF,$FF,$00,$00
+  $1C,$9C,$1C,$FC,$F4,$F8,$00,$00
+  $00,$00,$1D,$3B,$3C,$2E,$17,$33
+  $00,$00,$DD,$BB,$00,$00,$00,$81
+  $00,$00,$D8,$B8,$34,$7C,$EC,$C8
+  $31,$20,$10,$30,$30,$20,$10,$31
+  $C3,$E7,$7E,$3C,$3C,$7E,$E7,$C3
+  $84,$0C,$0C,$08,$04,$0C,$0C,$88
+  $33,$27,$1E,$3C,$37,$0E,$00,$00
+  $81,$00,$00,$00,$77,$EE,$00,$00
+  $C4,$EC,$7C,$38,$74,$E8,$00,$00
+  $00,$00,$E0,$C0,$C8,$C0,$C0,$C8
+  $00,$00,$00,$00,$18,$C3,$81,$00
+  $00,$00,$07,$03,$13,$03,$03,$13
+  $C0,$C0,$C8,$C0,$C0,$C8,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$13,$03,$03,$13,$03,$03
+  $C8,$C0,$C0,$C8,$C0,$E0,$00,$00
+  $00,$81,$C3,$18,$00,$00,$00,$00
+  $13,$03,$03,$13,$03,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$20,$70,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$02
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$01,$0F,$0F,$5F,$F5,$F5,$05
+  $01,$01,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$01,$01
+  $05,$F5,$F5,$5F,$0F,$0F,$01,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$51,$51,$51,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$01,$01,$01,$01
+  $1B,$1B,$1B,$1B,$01,$01,$01,$01
+  $0B,$0B,$0B,$0B,$01,$01,$01,$01
+  $01,$01,$01,$01,$A1,$A1,$A1,$A1
+  $B1,$B1,$B1,$B1,$A1,$A1,$A1,$A1
+  $1B,$1B,$1B,$1B,$A1,$A1,$A1,$A1
+  $0B,$0B,$0B,$0B,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$1A,$1A,$1A,$1A
+  $B1,$B1,$B1,$B1,$1A,$1A,$1A,$1A
+  $1B,$1B,$1B,$1B,$1A,$1A,$1A,$1A
+  $0B,$0B,$0B,$0B,$1A,$1A,$1A,$1A
+  $01,$01,$01,$01,$0A,$0A,$0A,$0A
+  $B1,$B1,$B1,$B1,$0A,$0A,$0A,$0A
+  $1B,$1B,$1B,$1B,$0A,$0A,$0A,$0A
+  $0B,$0B,$0B,$0B,$0A,$0A,$0A,$0A
+end data
+data SpritePat bytes
+  $00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$08,$08,$07,$1F,$37,$27,$27,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$F0,$10,$10,$E0,$F8,$EC,$E4,$E4,$E0,$60,$60,$60,$70,$00
+  $00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$08,$08,$27,$3F,$07,$07,$07,$0E,$1C,$30,$00,$00,$00
+  $C0,$E0,$F0,$10,$10,$E4,$FC,$E0,$E0,$E0,$70,$38,$0C,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$04,$0F,$0B,$03,$02,$06,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$20,$F0,$D0,$C0,$40,$60,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$1C,$14,$1C,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$38,$28,$38,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$3F,$63,$6B,$E3,$FF,$7C,$3F,$2B,$49,$44,$84,$00,$00
+  $00,$E0,$F8,$FC,$C6,$D6,$C7,$FF,$3E,$FC,$D4,$92,$22,$21,$00,$00
+  $00,$00,$00,$00,$1C,$14,$1C,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$38,$28,$38,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$3F,$63,$6B,$E3,$FF,$7C,$3F,$2B,$29,$14,$12,$00,$00
+  $00,$E0,$F8,$FC,$C6,$D6,$C7,$FF,$3E,$FC,$D4,$94,$28,$48,$00,$00
+  $00,$41,$21,$11,$08,$00,$E3,$00,$08,$11,$21,$41,$00,$00,$00,$00
+  $00,$04,$08,$10,$20,$00,$8E,$00,$20,$10,$08,$04,$00,$00,$00,$00
+end data
+data LevelT bytes
+  1,1,1,1,1,1,1
+  1,1,1,1,1,1,1
+  1,1,1,1,1,1,1
+  1,1,1,2,1,1,1
+  1,1,1,1,1,1,1
+  1,1,1,1,1,1,1
+  1,1,1,1,1,1,1
+  0,1,1,0,1,1,0
+  1,1,1,1,1,1,1
+  1,1,1,1,1,1,1
+  0,1,1,2,1,1,0
+  1,1,1,1,1,1,1
+  1,1,1,1,1,1,1
+  0,1,1,0,1,1,0
+  1,1,0,0,0,1,1
+  0,1,1,1,1,1,0
+  1,1,1,1,1,1,1
+  1,1,1,2,1,1,1
+  1,1,1,1,1,1,1
+  0,1,1,1,1,1,0
+  1,1,0,0,0,1,1
+  1,1,0,0,0,1,1
+  1,1,1,1,1,1,1
+  0,1,1,1,1,1,0
+  0,0,1,2,1,0,0
+  0,1,1,1,1,1,0
+  1,1,1,1,1,1,1
+  1,1,0,0,0,1,1
+  1,1,1,1,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,1,1,1,1
+  1,0,1,2,1,0,1
+  1,1,1,1,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,1,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,1,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,2,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,1,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,0,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,1,1,1,1
+  0,0,0,2,0,0,0
+  1,1,1,1,1,1,1
+  1,0,1,0,1,0,1
+  1,1,1,0,1,1,1
+  0,0,0,1,0,0,0
+  0,0,1,1,1,0,0
+  1,1,0,1,0,1,1
+  1,0,1,1,1,0,1
+  1,1,0,1,0,1,1
+  0,1,1,1,1,1,0
+  0,0,0,2,0,0,0
+  0,0,1,1,1,0,0
+  0,1,1,0,1,1,0
+  1,1,0,1,0,1,1
+  0,1,1,2,1,1,0
+  1,1,0,1,0,1,1
+  0,1,1,0,1,1,0
+  0,0,1,1,1,0,0
+  1,1,0,1,1,1,1
+  0,1,1,1,0,1,1
+  1,1,0,1,1,0,1
+  0,1,1,2,1,1,1
+  1,1,0,1,1,0,1
+  0,1,1,1,0,1,1
+  1,1,0,1,1,1,1
+end data
+data LogoT bytes
+  173,177,171,170,177,173,174,170,176,173,174,170,177,173,174,170,177,173,174,170,177,173,171,170,177,173,174
+  170,175,170,170,183,182,171,170,183,182,175,170,183,182,171,170,183,182,171,170,183,182,170,170,175,170,175
+  170,175,170,170,175,179,170,170,175,170,175,170,175,170,170,170,175,170,170,170,175,170,170,170,175,170,175
+  170,171,170,170,171,170,171,170,171,170,171,170,171,170,170,170,171,170,170,170,173,173,171,170,173,173,170
+end data
+
+asm {
+TrHop:
+    db $40,$D6,$30,$02,$40,$8F,$30,$02,$40,$6B,$30,$02,$40,$55,$40,$02,$50
+TrMark:
+    db $40,$47,$10,$03,$40,$35,$20,$06,$50
+TrCrack:
+    db $00,$00,$12,$02,$00,$00,$33,$04,$10
+TrFloat:
+    db $40,$FC,$51,$03,$40,$3B,$62,$03,$40,$7F,$72,$03,$50
+TrWarp:
+    db $40,$18,$21,$02,$40,$BA,$20,$02,$40,$7C,$20,$02,$40,$56,$20,$02,$40,$3B,$30,$02,$40,$2B,$30,$02
+    db $40,$3B,$40,$02,$40,$2B,$50,$02,$50
+TrFall:
+    db $40,$5D,$20,$04,$40,$70,$20,$04,$40,$8C,$30,$04,$40,$BA,$30,$04,$40,$F9,$40,$04,$40,$75,$61,$08
+    db $50
+TrZap:
+    db $00,$00,$04,$03,$00,$00,$25,$04,$00,$00,$36,$08,$00,$00,$66,$0C,$10
+TrCount:
+    db $40,$7F,$20,$06,$50
+TrGo:
+    db $40,$40,$10,$0E,$50
+TrClear:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+TrOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$AB,$21,$1E,$50
+TrTick:
+    db $40,$6B,$30,$02,$50
+
+TrSoundTable:
+    dw TrTuneMel,$702B
+    dw TrTuneBass,$7035
+    dw TrHop,$7049
+    dw TrMark,$7049
+    dw TrCrack,$703F
+    dw TrFloat,$7049
+    dw TrWarp,$7049
+    dw TrFall,$7049
+    dw TrZap,$703F
+    dw TrCount,$7049
+    dw TrGo,$7049
+    dw TrClear,$7049
+    dw TrOver,$7049
+    dw TrTick,$7049
+; Seven by Seven (original)
+; Tiny Sound, 8 frames per step
+TrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$23,$01,$1E,$01,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$23,$01,$28,$01,$26,$01,$25,$01,$23
+    db $01,$21,$01,$01,$01,$23,$01,$26,$01,$2A,$01,$01,$28,$26,$01,$25
+    db $01,$21,$01,$23,$01,$25,$01,$26,$01,$28,$01,$25,$01,$22,$01,$23
+    db $01,$01,$01,$00,$01,$01,$01
+    db $FF
+TrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$10,$01,$17,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $0B,$01,$01,$01,$00,$01,$01
+    db $FF
+}

@@ -1,0 +1,1134 @@
+cartridge "TELEPORTER/C. M. BLAKEMORE/1986"
+
+' TELEPORTER
+' A ColecoVision game based on "Teleporter" by Cleveland M. Blakemore,
+' Ahoy! November 1986 (Commodore 64, BASIC).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/teleporter.bas), the game is built for the ColecoVision:
+' a drawn teleporter chamber and image monitor, aliens as big doubled
+' sprites that materialise row by row, a lock lamp, sound effects and an
+' original title tune.
+'
+' The game: you run the teleporter of the U.S.S. Nefarius. Twenty-one
+' visitors are beamed aboard, one after another. Before each transport
+' the helm posts the expected BEAM and TARGET readings and a reference
+' WAVE, and the image monitor shows who is expected. About half the
+' visitors are phonies. While the visitor materialises, watch the live
+' readings, the live wave, the lock lamp and the figure on the pad:
+' a phony's signal drifts (readings off by more than 0.5, a wrong wave,
+' a red lamp), and early on its shape or colour may not match the
+' monitor. Press a button to abort and fry a phony. Frying a real
+' visitor, or letting a phony aboard, is an error. From the fourteenth
+' visitor on, the captain reports trouble: the computer on the fritz
+' (no live readings), meteors and radiation storms (shaking, no live
+' wave), lunchtime (no lamp), a garbled transmission (the monitor shows
+' the wrong figure), energy saving (no live readings or wave). At the
+' end you get a rating by your errors; more than six and you are fired.
+'
+' From the original: 21 transports (L = 0 to 20); a phony one time in
+' two; the posted readings (BEAM 50.0-94.9, TARGET 65.0-94.9); the drift
+' each step, EC = INT(RND * VI) + INT(RND * 8 * F) tenths with VI
+' swinging between 5 and -5 (a real visitor stays within 0.5, a phony
+' adds up to 0.7); the phony's shape differs when RND * 7 > L and its
+' colour when RND * 12 > L; the five waveforms in pairs, the live one
+' slipping to its twin; 43 beam steps; aborting at any step; the four
+' outcomes and their messages (PHONY... GOOD JOB, YOU JUST FRIED THE
+' <TYPE>!, ANOTHER ALIEN FREELOADER, GOOD JOB); the events of the last
+' eight transports in the listing's order (ON L-12 GOSUB); the races and
+' ranks of visitor; the rating (11 ranks by errors) and YOU'RE FIRED
+' above six errors.
+'
+' Liberties: the posted readings stay on screen beside the live ones
+' (the C64 printed the live ones over them). The live wave and the lamp
+' slip when the drift is 0.6 or more (the listing's index 39.6 + W +
+' ABS(EC) slipped on some steps of real visitors too, through rounding,
+' and a red lamp at 0.5 was right for both); the readings are the same.
+' One drift sample per beam step (the listing printed two), a step every
+' 10 frames (about 7 seconds a transport); the button is read every
+' frame instead of once a step. The screen shake is the aliens' sprites
+' shaking, not the whole screen. A rating with more than 20 errors (the
+' listing printed none) is RAW RECRUIT. The listing's two sprite
+' layers (multicolour) are a body and a detail sprite.
+'
+' Controls: either controller; a side button aborts the transport. On
+' the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+'
+' Workarounds for Amy bugs telep-call-compare-clobber removed 2026-11-01.
+
+const TWall = 128
+const TWalll = 129
+const TWallr = 130
+const TBeam = 131
+const TBeamon = 132
+const TEmit00 = 133
+const TEmit01 = 134
+const TEmit02 = 135
+const TEmit03 = 136
+const TEmit04 = 137
+const TEmit05 = 138
+const TPad00 = 139
+const TPad01 = 140
+const TPad02 = 141
+const TPad03 = 142
+const TPad04 = 143
+const TPad05 = 144
+const TFloor = 145
+const TDeck = 146
+const TMtl = 147
+const TMt = 148
+const TMtr = 149
+const TMl = 150
+const TMr = 151
+const TMbl = 152
+const TMb = 153
+const TMbr = 154
+const TScr = 155
+const TWsu = 156
+const TWsd = 157
+const TWqh = 158
+const TWql = 159
+const TWzz = 160
+const TWza = 161
+const TWtt = 162
+const TWfl = 163
+const TRule = 164
+const TLampoff = 165
+const TLampok = 166
+const TLampbad = 167
+const TStar = 168
+const SBody0 = 0
+const SEye0 = 4
+const SBody1 = 8
+const SEye1 = 12
+const SBody2 = 16
+const SEye2 = 20
+const SPadbody = 24
+const SPadeye = 28
+const NTiles8 = 328
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBeep = 3
+const SndHum = 4
+const SndHumHi = 5
+const SndFry = 6
+const SndAlarm = 7
+const SndGood = 8
+const SndBad = 9
+const SndEnd = 10
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $42,$42,$00,$42,$42,$00,$42,$42
+  $42,$42,$00,$42,$42,$00,$42,$42
+  $00,$00,$00,$CC,$80,$C0,$E0,$00
+  $00,$00,$00,$CC,$00,$00,$00,$00
+  $00,$00,$00,$CC,$00,$00,$00,$00
+  $00,$00,$00,$CC,$00,$00,$00,$00
+  $00,$00,$00,$CC,$00,$00,$00,$00
+  $00,$00,$00,$CC,$01,$01,$07,$00
+  $07,$E0,$C0,$C0,$80,$00,$CC,$00
+  $00,$00,$00,$00,$00,$00,$CC,$00
+  $00,$00,$00,$00,$00,$00,$CC,$00
+  $00,$00,$00,$00,$00,$00,$CC,$00
+  $00,$00,$00,$00,$00,$00,$CC,$00
+  $80,$E0,$E0,$E0,$07,$03,$31,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$42,$42,$81,$00,$00
+  $00,$00,$81,$42,$42,$24,$18,$00
+  $00,$01,$82,$82,$82,$82,$83,$00
+  $00,$03,$02,$02,$02,$02,$01,$00
+  $00,$03,$05,$09,$31,$41,$81,$00
+  $00,$C0,$A0,$90,$8C,$82,$81,$00
+  $00,$10,$10,$28,$28,$44,$83,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$10,$38,$10,$00,$00,$00
+end data
+data TileCol bytes
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $14,$14,$04,$14,$14,$04,$14,$14
+  $75,$75,$05,$75,$75,$05,$75,$75
+  $0E,$0F,$0E,$E1,$1E,$17,$15,$01
+  $0E,$0F,$0E,$E1,$0E,$07,$05,$01
+  $0E,$0F,$0E,$E1,$0E,$07,$05,$01
+  $0E,$0F,$0E,$E1,$0E,$07,$05,$01
+  $0E,$0F,$0E,$E1,$0E,$07,$05,$01
+  $0E,$0F,$0E,$E1,$1E,$17,$15,$01
+  $71,$17,$15,$1F,$1E,$0E,$E1,$0E
+  $07,$07,$05,$0F,$0E,$0E,$E1,$0E
+  $07,$07,$05,$0F,$0E,$0E,$E1,$0E
+  $07,$07,$05,$0F,$0E,$0E,$E1,$0E
+  $07,$07,$05,$0F,$0E,$0E,$E1,$0E
+  $71,$71,$51,$F1,$1E,$1E,$1E,$0E
+  $0E,$01,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$14
+  $0F,$0E,$0E,$0E,$E1,$E1,$E1,$E1
+  $0F,$0E,$0E,$0F,$01,$01,$01,$01
+  $EF,$0E,$0E,$FE,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$E1,$0E,$0E,$0E,$01,$01
+  $01,$01,$01,$0E,$0E,$0E,$01,$01
+  $1E,$1E,$1E,$0E,$0E,$0E,$01,$01
+  $01,$0C,$01,$01,$01,$0C,$01,$01
+  $01,$31,$31,$31,$31,$31,$01,$01
+  $01,$01,$31,$31,$31,$31,$31,$01
+  $01,$13,$31,$31,$31,$31,$31,$01
+  $01,$31,$31,$31,$31,$31,$13,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$01,$01,$01,$01,$01,$03,$01
+  $01,$01,$01,$0E,$0F,$0E,$01,$01
+  $01,$1C,$1C,$1C,$1C,$1C,$1C,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$19,$19,$19,$19,$19,$19,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+end data
+data SpritePat bytes
+  $0C,$12,$0C,$1F,$3F,$77,$63,$77,$3F,$38,$1F,$0F,$1B,$32,$62,$C6
+  $30,$48,$30,$F8,$FC,$EE,$C6,$EE,$FC,$1C,$F8,$F0,$D8,$4C,$46,$63
+  $00,$00,$00,$00,$00,$08,$1C,$08,$00,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$38,$10,$00,$E0,$00,$00,$00,$00,$00,$00
+  $03,$0F,$1F,$3F,$33,$33,$3F,$1C,$0C,$1E,$37,$67,$C7,$86,$06,$0E
+  $C0,$F0,$F8,$FC,$CC,$CC,$FC,$38,$30,$78,$EC,$E6,$E3,$61,$60,$70
+  $00,$00,$00,$00,$0C,$0C,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$30,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$43,$2F,$1F,$3F,$3B,$3F,$1C,$0F,$1D,$39,$31,$61,$43,$86,$0C
+  $01,$C2,$F4,$F8,$FC,$DC,$FC,$38,$F0,$B8,$9C,$8C,$86,$C2,$61,$30
+  $00,$00,$00,$00,$00,$04,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+const NSpr = 4
+const NAliens = 21
+const Steps = 43
+const StepF = 10
+const PadX = 48
+const PadY = 79
+const MonX = 168
+const MonY = 43
+
+' the visitors: races (8 wide), kinds (10 wide), ranks (22 wide)
+data Races chars "KRELL   ALGON   BETA IV CETA    ALPHAN  SOL     TIRUS   "
+data Kinds chars "AMBASSADORTRADER    CREWMEMBERPILOT     ENGINEER  INSPECTOR OFFICER   "
+data Ranks chars "RAW RECRUIT           SPACE CADET           ENSIGN                SPECIALIST            LIEUTENANT            1ST LIEUTENANT        CAPTAIN               MAJOR                 ADMIRAL               GALACTIC WHIZ KID     REGULAR RICKY ROCKET  "
+' the ten waveforms (four tiles each): pairs of a reference and its twin
+data WaveT bytes
+  TWsu, TWsd, TWsu, TWsd,  TWsd, TWsu, TWsd, TWsu
+  TWqh, TWql, TWqh, TWql,  TWql, TWqh, TWql, TWqh
+  TWsu, TWsu, TWsd, TWsd,  TWsd, TWsd, TWsu, TWsu
+  TWzz, TWzz, TWzz, TWzz,  TWza, TWza, TWza, TWza
+  TWtt, TWfl, TWtt, TWfl,  TWfl, TWtt, TWfl, TWtt
+end data
+' alien colours
+data ColT bytes
+  3, 5, 7, 8, 9, 10, 11, 13
+end data
+
+record Visitor:
+  u8 Shape
+  u8 Col
+  u8 Race
+  u8 Kind
+end record
+
+Visitor Mon
+Visitor Pad
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Nb = 0
+u16 Nt = 0
+u16 Lb = 0
+u16 Lt = 0
+u16 Pb = 0
+bcd digits 2 Good = 0
+u8 L = 0
+u8 K = 0
+u8 F = 0
+u8 EyeC = 15
+u8 W = 0
+u8 Wv = 0
+i8 Ec = 0
+i8 Vi = 5
+u8 Ae = 0
+u8 Lamp = 0
+u8 HidC = 0
+u8 HidD = 0
+u8 HidL = 0
+u8 Sb = 0
+u8 Rv = 0
+u8 Stp = 0
+u8 Abort = 0
+u8 Phase = 0
+u8 Over = 0
+u8 Shk = 0
+u8 Buf[32]
+u8 BufE[32]
+' the pad visitor's shape (64 bytes) and its number
+u8 Src[65]
+' input
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+' loop counters (never shared with the helpers)
+u8 Hc = 0
+u8 Bi = 0
+u8 Fi = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TpSoundTable areas 6
+  sprites 16x16
+  sprites double
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+  for L = 0 to 20
+    PlayAlien
+  next
+  L = 20
+  EndGame
+  Over = 1
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: a 16-bit xorshift; Rnd(N) is 0..N-1
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function Rnd(u8 N) as u8
+  u8 Q = 0
+  Rand
+  Q = lowbyte Rs
+  return Q % N
+
+' ---------------------------------------------------------------------------
+' one visitor (L): stand by, prepare, the captain's report, the beam, the
+' outcome
+
+sub PlayAlien:
+  Phase = 0
+  ShowHud
+  Msg(1)
+  Hold(60)
+  ' who is coming, and is it a phony
+  F = 0
+  V = Rnd(2)
+  if V = 1 then F = 1
+  Mon.Shape = Rnd(3)
+  Mon.Col = ColT[Rnd(8)]
+  Mon.Race = Rnd(7)
+  Mon.Kind = Rnd(7)
+  EyeC = 15
+  if Rnd(3) = 0 then EyeC = 1
+  Pad = Mon
+  if F = 1 then
+    if Rnd(7) > L then Pad.Shape = (Mon.Shape + 1 + Rnd(2)) % 3
+    if Rnd(12) > L then
+      V = Mon.Col
+      while V = Mon.Col
+        V = ColT[Rnd(8)]
+      end while
+      Pad.Col = V
+    end if
+  end if
+  ' the posted readings (tenths) and the reference wave
+  Nb = Rnd(45) + 50
+  Nb = Nb * 10 + Rnd(10)
+  Nt = Rnd(30) + 65
+  Nt = Nt * 10 + Rnd(10)
+  W = Rnd(5) << 1
+  HidC = 0
+  HidD = 0
+  HidL = 0
+  Sb = 0
+  Rv = 0
+  BuildPad
+  Msg(2)
+  ShowPosted
+  ShowMonitor
+  Hold(90)
+  ' the captain's report, from the fourteenth visitor on
+  if L > 12 then
+    Report(L - 12)
+    Hold(100)
+  end if
+  Beam
+  Outcome
+  return
+end sub
+
+' the beam: 43 steps; a press aborts
+sub Beam:
+  Phase = 1
+  Abort = 0
+  Lamp = 1
+  BeamTiles(TBeamon)
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  for Stp = 0 to 42
+    if Abort = 0 then
+      BeamStep
+      for Fi = 1 to StepF
+        if Abort = 0 then
+          Frame1
+          ReadPad
+          if Press = 1 then Abort = 1
+          Shake
+        end if
+      next
+    end if
+  next
+  BeamTiles(TBeam)
+  Phase = 2
+  return
+end sub
+
+' one step: the drift, the live readings, the live wave, the lamp, a few
+' more rows of the visitor
+sub BeamStep:
+  i16 E16 = 0
+  if Vi > 0 then
+    Ec = Rnd(5)
+  else
+    Ec = Rnd(5)
+    Ec = -1 - Ec
+  end if
+  Vi = -Vi
+  if F = 1 then Ec = Ec + Rnd(8)
+  E16 = Ec
+  Lb = Nb + E16
+  Lt = Nt + E16
+  Ae = Ec
+  if Ec < 0 then Ae = -Ec
+  Wv = W
+  Lamp = 1
+  if Ae >= 6 then
+    Wv = W + 1
+    Lamp = 2
+  end if
+  if HidC = 0 then
+    ShowNum(Lb, 17, 17)
+    ShowNum(Lt, 17, 18)
+  end if
+  if HidD = 0 then DrawWave(Wv, 18)
+  ShowLamp
+  W16 = Stp + 1
+  W16 = W16 * 16 / Steps
+  Rv = W16
+  BuildPad
+  V = Stp & 1
+  if V = 0 then
+    play sound SndHum
+  else
+    play sound SndHumHi
+  end if
+  return
+end sub
+
+' the end of a transport: the four outcomes
+sub Outcome:
+  select case (Abort, F)
+  case (1, 1)
+    Fry
+    Msg(20)
+    Hold(60)
+    Msg(27)
+    inc Good
+    play sound SndGood
+  case (1, 0)
+    Fry
+    Msg(25)
+    inc K
+    play sound SndBad
+  case (0, 1)
+    Msg(24)
+    play sound SndAlarm
+    Hold(60)
+    Fry
+    inc K
+  case else
+    Msg(27)
+    inc Good
+    play sound SndGood
+  end select
+  ShowHud
+  Hold(120)
+  Pad.Shape = 3
+  Rv = 0
+  BuildPad
+  HideAliens
+  return
+end sub
+
+' abort: the crackle, ABORT !, the visitor dissolves
+sub Fry:
+  play sound SndFry
+  ClearMsg
+  print at 2,21, "* * * *  ABORT !  * * * *"
+  Lamp = 2
+  ShowLamp
+  while Rv > 0
+    dec Rv
+    BuildPad
+    Hold(3)
+  end while
+  Hold(30)
+  return
+end sub
+
+' the captain's report (ON L-12 GOSUB 580,605,580,585,590,595,600,605)
+sub Report(u8 Ev):
+  ClearMsg
+  select case Ev
+  case 1, 3
+    HidC = 1
+    print at 2,21, "$%&# COMPUTER ON THE FRITZ!"
+  case 2, 8
+    Sb = 1
+    HidD = 1
+    print at 2,21, "METEOR BELT-TURBULENCE"
+    print at 2,22, "AHEAD"
+  case 4
+    HidL = 1
+    print at 2,21, "LUNCHTIME"
+  case 5
+    HidD = 1
+    Sb = 1
+    print at 2,21, "PASSING THRU RADIATION"
+    print at 2,22, "STORM"
+  case 6
+    Mon.Shape = (Mon.Shape + 1 + Rnd(2)) % 3
+    ShowMonitor
+    print at 2,21, "TRANSMISSION GARBLED!"
+  case 7
+    HidC = 1
+    HidD = 1
+    print at 2,21, "WE TRY TO CONSERVE ENERGY"
+    print at 2,22, "HERE"
+  end select
+  play sound SndBeep
+  if HidC = 1 then
+    print at 17,17, "    "
+    print at 17,18, "    "
+  end if
+  if HidD = 1 then
+    fill 32 count 4 at 24,18
+  end if
+  if HidL = 1 then ShowLamp
+  return
+end sub
+
+' the end: fired, then the rating
+sub EndGame:
+  Phase = 3
+  play sound SndEnd
+  if K > 6 then
+    Msg(26)
+    Hold(150)
+  end if
+  ClearMsg
+  print at 2,21, "RATING:"
+  C = 0
+  if K <= 20 then C = (20 - K) / 2
+  W16 = C
+  W16 = W16 * 22
+  put Ranks + W16 count 22 at 2,22
+  play sound SndBeep
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' messages (numbered as the listing's S$())
+
+sub Msg(u8 M):
+  ClearMsg
+  select case M
+  case 1
+    print at 2,21, "STAND BY ....."
+  case 2
+    print at 2,21, "PREPARE FOR"
+    W16 = Mon.Race
+    W16 = W16 << 3
+    put Races + W16 count 8 at 2,22
+    W16 = Mon.Kind
+    W16 = W16 * 10
+    put Kinds + W16 count 10 at 10,22
+  case 20
+    print at 2,21, "PHONY..."
+  case 24
+    print at 2,21, "ANOTHER ALIEN FREELOADER."
+  case 25
+    print at 2,21, "YOU JUST FRIED THE"
+    W16 = Mon.Kind
+    W16 = W16 * 10
+    put Kinds + W16 count 10 at 2,22
+    print at 12,22, "!"
+    Bang
+  case 26
+    print at 2,21, "YOU'RE FIRED!"
+    print at 2,22, "GET OFF MY SHIP!"
+  case 27
+    print at 2,21, "GOOD JOB."
+  end select
+  play sound SndBeep
+  return
+end sub
+
+' the "!" right after the kind's name (no gap)
+sub Bang:
+  u8 Ln = 10
+  u8 Done = 0
+  W16 = Mon.Kind
+  W16 = W16 * 10
+  while Done = 0
+    C = Kinds[W16 + Ln - 1]
+    if C = 32 then
+      dec Ln
+    else
+      Done = 1
+    end if
+    if Ln = 1 then Done = 1
+  end while
+  print at 12,22, " "
+  put char 33 at 2 + Ln,22
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' V10 tenths as nn.n at X,Y
+sub ShowNum(u16 V10, u8 Nx, u8 Ny):
+  u8 Whole = 0
+  u8 Tenth = 0
+  Whole = V10 / 10
+  Tenth = V10 % 10
+  print Whole at Nx,Ny digits 2
+  put char 46 at Nx + 2,Ny
+  print Tenth at Nx + 3,Ny digits 1
+  return
+end sub
+
+sub DrawWave(u8 Wn, u8 Wy):
+  u8 Wi = 0
+  u8 Base = 0
+  Base = Wn << 2
+  for Wi = 0 to 3
+    put char WaveT[Base + Wi] at 24 + Wi,Wy
+  next
+  return
+end sub
+
+sub ShowLamp:
+  C = TLampoff
+  if HidL = 0 then
+    if Lamp = 1 then C = TLampok
+    if Lamp = 2 then C = TLampbad
+  end if
+  put char C at 22,17
+  put char C at 22,18
+  return
+end sub
+
+sub ShowPosted:
+  ShowNum(Nb, 10, 17)
+  ShowNum(Nb, 17, 17)
+  ShowNum(Nt, 10, 18)
+  ShowNum(Nt, 17, 18)
+  DrawWave(W, 17)
+  DrawWave(W, 18)
+  Lamp = 0
+  ShowLamp
+  return
+end sub
+
+sub ClearPanel:
+  print at 10,17, "    "
+  print at 10,18, "    "
+  print at 17,17, "    "
+  print at 17,18, "    "
+  fill 32 count 4 at 24,17
+  fill 32 count 4 at 24,18
+  Lamp = 0
+  ShowLamp
+  return
+end sub
+
+' the visitor on the image monitor (sprites 2 and 3)
+sub ShowMonitor:
+  V = Mon.Shape << 3
+  C = Mon.Col
+  set sprite 2 to MonY,MonX,V + 4,EyeC
+  set sprite 3 to MonY,MonX,V,C
+  update sprites
+  return
+end sub
+
+' the visitor on the pad (sprites 0 and 1), Rv rows of 16 shown from the
+' bottom, a band of sparkles just above them
+sub BuildPad:
+  u8 Top = 0
+  u8 Hi8 = 0
+  u8 Lo8 = 0
+  Top = 16 - Rv
+  if Pad.Shape <> Src[64] then
+    ' the shape's body and detail into RAM once
+    Pb = Pad.Shape
+    Pb = Pb << 6
+    if Pad.Shape < 3 then
+      copy SpritePat + Pb count 64 to Src
+    end if
+    Src[64] = Pad.Shape
+  end if
+  for Bi = 0 to 15
+    Buf[Bi] = 0
+    Buf[Bi + 16] = 0
+    BufE[Bi] = 0
+    BufE[Bi + 16] = 0
+    if Pad.Shape < 3 then
+      if Bi >= Top then
+        Buf[Bi] = Src[Bi]
+        Buf[Bi + 16] = Src[Bi + 16]
+        BufE[Bi] = Src[Bi + 32]
+        BufE[Bi + 16] = Src[Bi + 48]
+      elseif Bi + 3 >= Top then
+        if Phase = 1 then
+          Rand
+          Hi8 = highbyte Rs
+          Lo8 = lowbyte Rs
+          Buf[Bi] = Lo8 & Hi8
+          Rand
+          Hi8 = highbyte Rs
+          Lo8 = lowbyte Rs
+          Buf[Bi + 16] = Lo8 & Hi8
+        end if
+      end if
+    end if
+  next
+  copy Buf count 32 to vram.spr_pat + 192
+  copy BufE count 32 to vram.spr_pat + 224
+  return
+end sub
+
+' the shake of meteors and storms: the aliens' sprites jitter
+sub Shake:
+  Shk = 0
+  if Sb = 1 then Shk = Rnd(4)
+  X = PadX + Shk
+  C = Pad.Col
+  set sprite 0 to PadY,X,SPadeye,EyeC
+  set sprite 1 to PadY,X,SPadbody,C
+  X = MonX + Shk
+  set sprite 2 x to X
+  set sprite 3 x to X
+  update sprites
+  return
+end sub
+
+sub HideAliens:
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub BeamTiles(u8 T):
+  for Ri = 4 to 13
+    fill T count 6 at 5,Ri
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "U.S.S. NEFARIUS"
+  print at 19,1, "ALIEN"
+  V = L + 1
+  print V at 25,1 digits 2
+  print at 27,1, "/21"
+  print at 17,13, "ERRORS"
+  print K at 26,13 digits 2
+  print at 17,14, "CLEARED"
+  print Good at 26,14
+  return
+end sub
+
+' the deck: chamber, monitor, helm, the captain's line
+sub DrawRoom:
+  for Ri = 2 to 14
+    fill TWall count 32 at 0,Ri
+  next
+  fill TFloor count 32 at 0,15
+  put char TWallr at 4,3
+  put char TWalll at 11,3
+  for Ri = 4 to 14
+    put char TWallr at 4,Ri
+    put char TWalll at 11,Ri
+  next
+  for J = 0 to 5
+    put char TEmit00 + J at 5 + J,3
+    put char TPad00 + J at 5 + J,14
+  next
+  BeamTiles(TBeam)
+  ' the monitor
+  put char TMtl at 17,3
+  fill TMt count 10 at 18,3
+  put char TMtr at 28,3
+  for Ri = 4 to 10
+    put char TMl at 17,Ri
+    fill TScr count 10 at 18,Ri
+    put char TMr at 28,Ri
+  next
+  put char TMbl at 17,11
+  fill TMb count 10 at 18,11
+  put char TMbr at 28,11
+  print at 18,2, " IMAGE SCAN "
+  ' the helm
+  print at 10,16, "SET"
+  print at 17,16, "LIVE"
+  print at 24,16, "WAVE"
+  print at 2,17, "BEAM"
+  print at 2,18, "TARGET"
+  fill TRule count 32 at 0,19
+  print at 2,20, "CAPTAIN:"
+  Lamp = 0
+  ShowLamp
+  return
+end sub
+
+sub NewGame:
+  L = 0
+  K = 0
+  Good = 0
+  Over = 0
+  Vi = 5
+  Phase = 0
+  NewScreen
+  DrawRoom
+  ShowHud
+  ClearPanel
+  Pad.Shape = 3
+  Src[64] = 9
+  Rv = 0
+  BuildPad
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Hold(u8 N):
+  for Hc = 1 to N
+    Frame1
+    ReadPad
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Btn = 0
+  if joypad(1).fire then Btn = 16
+  if joypad(2).fire then Btn = 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the stars, a visitor on the monitor, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  TitleOn = 1
+  NewScreen
+  for J = 0 to 23
+    V = Rnd(30) + 1
+    Y = Rnd(22) + 1
+    put char TStar at V,Y
+  next
+  fill 32 count 24 at 4,4
+  fill 32 count 24 at 4,5
+  fill 32 count 24 at 4,6
+  print at 11,5, "TELEPORTER"
+  fill 32 count 26 at 3,8
+  print at 4,8, "BY CLEVELAND M. BLAKEMORE"
+  fill 32 count 22 at 5,10
+  print at 6,10, "AHOY! NOVEMBER 1986"
+  fill 32 count 14 at 9,17
+  fill 32 count 14 at 9,18
+  print at 11,17, "START GAME"
+  print at 11,18, "CREDITS"
+  Mon.Shape = 1
+  Mon.Col = 3
+  EyeC = 15
+  set sprite 2 to 95,112,12,EyeC
+  set sprite 3 to 95,112,8,3
+  update sprites
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = 0
+  if joypad(1).up then V = 1
+  if joypad(2).up then V = 1
+  if joypad(1).down then V = 2
+  if joypad(2).down then V = 2
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,17
+  put char 32 at 9,18
+  J = Menu + 17
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "TELEPORTER"
+  print at 2,5, "BASED ON TELEPORTER BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! NOVEMBER 1986"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: TRANSPORTER ROOM"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+TpBeep:
+    db $40,$47,$20,$03,$40,$47,$40,$03,$50
+TpHum:
+    db $40,$FC,$31,$02,$40,$E0,$51,$02,$40,$C5,$61,$02,$50
+TpHumHi:
+    db $40,$53,$31,$02,$40,$41,$51,$02,$40,$2E,$61,$02,$50
+TpFry:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$0A,$00,$00,$77,$0E,$10
+TpAlarm:
+    db $40,$7F,$10,$06,$40,$A9,$10,$06,$40,$7F,$10,$06,$40,$A9,$10,$06,$40,$7F,$20,$06,$40,$A9,$30,$0C
+    db $50
+TpGood:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$0C,$50
+TpBad:
+    db $40,$3B,$12,$0A,$40,$F9,$22,$14,$50
+TpEnd:
+    db $40,$D6,$20,$0A,$40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$21,$18,$50
+
+TpSoundTable:
+    dw TpTuneMel,$702B
+    dw TpTuneBass,$7035
+    dw TpBeep,$7049
+    dw TpHum,$7049
+    dw TpHumHi,$7049
+    dw TpFry,$703F
+    dw TpAlarm,$7049
+    dw TpGood,$7049
+    dw TpBad,$7049
+    dw TpEnd,$7049
+; Transporter Room (original)
+; Tiny Sound, 8 frames per step
+TpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$21,$01,$24,$01,$23,$01,$01,$21
+    db $1F,$01,$1C,$01,$1D,$01,$21,$01,$26,$01,$24,$01,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$28,$01,$01,$26,$24,$01,$23,$01,$21,$01,$24,$01
+    db $28,$01,$01,$01,$26,$01,$23,$01,$20,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$11,$01,$18,$01,$11,$01,$18,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$11,$01,$18,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$10,$01,$14,$01,$15,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

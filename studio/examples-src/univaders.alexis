@@ -1,0 +1,842 @@
+cartridge "UNIVADERS/R.BIXBY/1987"
+
+' UNIVADERS
+' A ColecoVision game based on "Univaders" by Robert Bixby, Ahoy! July
+' 1987 (Commodore 64 machine language, 1,248 bytes started by SYS 2099).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: eight saucers drift across the sky, each sweeping from one
+' side to the other and slowly sinking. Your cannon ship on the deck fires
+' a laser straight up: every saucer it touches is worth 10 points; every
+' saucer that sinks to the deck costs 10 (never below zero). A tumbling
+' star-mine falls from the sky again and again: if it strikes the ship you
+' lose one of your four ships. The game ends when the time runs out (the
+' clock counts 100000 down by tens) or when the last ship is lost.
+'
+' From the original (orig/univaders.dis): eight saucers, each with its own
+' turning points (the bound tables at $0B33 / $0B3B), one pixel along and
+' one pixel down per pass of the main loop, a new random colour and a
+' random height in the top 32 pixels when one is hit or reaches the bottom;
+' +10 a hit, -10 a landing, clamped at zero; one mine at a time, starting
+' in a random place in the top seven rows and falling a row every other
+' pass, animated through eight shapes; four ships; the clock starts at
+' 100000 and loses 10 every pass (about 80 passes a second on the C64:
+' about two minutes); six-digit score.
+'
+' Liberties: smooth sprites instead of character graphics; the speeds are
+' worked out from the C64's loop (about 1.3 passes a frame) and tuned for
+' a human player: saucers 1 pixel a frame across and 3/4 down, the mine 3
+' pixels a frame (the C64's jumped 8 pixels every 1.5 frames), the ship 2
+' pixels a frame (the C64's moved a whole character every pass); the clock
+' still runs out after 10000 C64 passes (4/3 a frame, about 2 minutes).
+' The C64 drew and erased its laser in one go and relied on the sprite
+' collision register catching it (an unreliable hit); here the beam stays
+' up 6 frames, then the cannon cools down 6 frames, and any saucer it
+' touches is hit. Against camping under one column (the beam catches every
+' saucer that sweeps through): every third mine starts right above the
+' ship. A hit saucer bursts for 12 frames before it comes back. A lost
+' ship flashes the border red once and stops the play for half a second (the
+' C64 flashed rainbow colours). No background drone (the C64 hummed a
+' random falling tone all game). GAME OVER / TIME UP, then the title (the
+' C64 asked PLAY AGAIN? Y/N). A high score.
+'
+' Controls: controller 1 (or 2): the stick moves the ship left and right;
+' either button fires. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TSp0 = 128
+const TSp1 = 129
+const TSp2 = 130
+const TSp3 = 131
+const TBeam = 132
+const TBtip = 133
+const TDeck = 134
+const TLife = 135
+const TTl = 136
+const SUfoA = 0
+const SUfoB = 4
+const SBoom0 = 8
+const SBoom1 = 12
+const SShip = 16
+const SMine0 = 20
+const SMine1 = 24
+const SMine2 = 28
+const SMine3 = 32
+const NTiles8 = 72
+const SprBytes = 288
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndBoom = 4
+const SndLand = 5
+const SndCrash = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 10
+const NUfo = 8
+const ShipY = 161
+const ShipMin = 16
+const ShipMax = 224
+const LandY = 146
+const BeamTop = 2
+const BeamBot = 19
+const LzOn = 6
+const LzCool = 6
+const StartLoops = 10000
+
+' each saucer's turning points (the C64's tables, shifted to the screen)
+data UfoMin bytes 16,21,23,24,26,17,18,28
+data UfoMax bytes 219,218,217,223,222,221,224,220
+' where the saucers start across the sky (the C64's $0864 table, scaled)
+data UfoX0 bytes 30,60,90,120,150,180,200,45
+data UfoCols bytes 2,3,5,6,7,8,9,10,11,12,13,14,15,3,7,11
+' the starfield: which star tile a cell gets
+data StarT bytes 0,0,1,0,0,0,2,0,0,0,0,3,0,0,1,0,0,0,0,2,0,0,0,0,3,0,0,0,1,0,0,0
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$10,$38,$10,$00,$00
+  $C3,$18,$18,$18,$C3,$18,$18,$18
+  $00,$18,$18,$C3,$18,$18,$C3,$18
+  $00,$00,$00,$88,$00,$44,$00,$00
+  $00,$18,$18,$C3,$81,$01,$C6,$00
+  $01,$01,$80,$81,$81,$00,$80,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$51,$01,$01,$01,$01,$E1,$01
+  $01,$01,$01,$41,$51,$41,$01,$01
+  $1F,$71,$F1,$71,$1F,$71,$F1,$71
+  $01,$F1,$F1,$1F,$71,$F1,$1F,$71
+  $0E,$0F,$0E,$E1,$04,$54,$04,$01
+  $01,$71,$71,$17,$17,$17,$71,$01
+  $1D,$DF,$F9,$D9,$D9,$0D,$16,$01
+end data
+data SpritePat bytes
+  $03,$0F,$1F,$3F,$7F,$FF,$99,$FF,$7F,$1F,$09,$09,$11,$11,$21,$00
+  $C0,$F0,$F8,$FC,$FE,$FF,$99,$FF,$FE,$F8,$90,$90,$88,$88,$04,$00
+  $03,$0F,$1F,$3F,$7F,$FF,$B3,$FF,$7F,$1F,$09,$09,$09,$11,$11,$00
+  $C0,$F0,$F8,$FC,$FE,$FF,$33,$FF,$FE,$F8,$90,$90,$90,$88,$04,$00
+  $00,$00,$04,$02,$13,$0A,$04,$3C,$04,$0A,$13,$02,$04,$00,$00,$00
+  $00,$00,$20,$40,$C8,$50,$20,$3C,$20,$50,$C8,$40,$20,$00,$00,$00
+  $80,$41,$20,$11,$00,$88,$02,$C0,$02,$88,$00,$11,$20,$41,$80,$00
+  $81,$04,$02,$10,$00,$09,$20,$01,$20,$09,$00,$10,$02,$04,$81,$00
+  $01,$01,$01,$03,$03,$06,$47,$4F,$6D,$7F,$FF,$FF,$E7,$C3,$00,$00
+  $80,$80,$80,$C0,$C0,$60,$E2,$F2,$B6,$FE,$FF,$FF,$E7,$C3,$00,$00
+  $08,$08,$2A,$1C,$FE,$1C,$2A,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$42,$24,$18,$3C,$18,$24,$42,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$54,$38,$7C,$38,$54,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$24,$A5,$7E,$3C,$7E,$A5,$24,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $81,$80,$82,$83,$80,$82,$82,$81,$83,$83,$80,$88,$80,$88,$83,$88,$88,$80,$80,$88,$80,$80,$82,$80,$80,$83,$83,$83,$80,$80,$80,$83
+  $80,$83,$83,$81,$82,$80,$80,$81,$81,$83,$82,$88,$81,$88,$81,$88,$80,$88,$80,$88,$80,$82,$83,$83,$81,$80,$80,$80,$81,$80,$81,$80
+  $83,$80,$80,$82,$80,$82,$80,$83,$80,$81,$81,$88,$80,$88,$80,$88,$81,$88,$82,$88,$82,$80,$80,$80,$81,$80,$83,$82,$80,$82,$82,$80
+  $83,$82,$80,$80,$80,$80,$83,$80,$82,$80,$80,$88,$83,$88,$80,$88,$83,$88,$80,$88,$82,$80,$80,$83,$83,$80,$83,$83,$80,$83,$80,$82
+  $80,$81,$83,$83,$80,$82,$82,$81,$82,$82,$80,$88,$88,$88,$82,$88,$82,$88,$81,$88,$81,$81,$81,$80,$81,$80,$80,$80,$81,$80,$81,$81
+  $80,$80,$82,$80,$80,$80,$83,$80,$80,$80,$81,$83,$80,$80,$82,$80,$81,$82,$80,$82,$80,$81,$81,$82,$81,$83,$80,$80,$81,$82,$80,$82
+  $83,$80,$80,$82,$83,$88,$83,$88,$81,$88,$88,$88,$82,$88,$88,$83,$83,$88,$88,$88,$80,$88,$88,$81,$80,$88,$88,$88,$82,$80,$80,$83
+  $80,$80,$80,$81,$82,$88,$81,$88,$81,$88,$80,$88,$82,$88,$80,$88,$82,$88,$80,$82,$82,$88,$83,$88,$80,$88,$80,$81,$82,$80,$80,$83
+  $80,$80,$80,$82,$81,$88,$82,$88,$82,$88,$88,$88,$83,$88,$80,$88,$83,$88,$88,$82,$82,$88,$88,$82,$82,$88,$88,$88,$82,$80,$82,$80
+  $80,$83,$80,$81,$82,$88,$80,$88,$80,$88,$80,$88,$83,$88,$83,$88,$80,$88,$83,$82,$80,$88,$81,$88,$81,$80,$80,$88,$82,$82,$80,$82
+  $81,$81,$80,$81,$80,$80,$88,$82,$83,$88,$80,$88,$80,$88,$88,$82,$81,$88,$88,$88,$82,$88,$80,$88,$80,$88,$88,$88,$83,$83,$83,$80
+  $80,$83,$80,$80,$81,$82,$81,$82,$82,$83,$80,$80,$80,$83,$82,$82,$83,$82,$80,$83,$80,$81,$80,$81,$82,$81,$80,$81,$80,$80,$82,$80
+end data
+
+record Ufo:
+  u8 X
+  u8 Y
+  u8 Dir
+  u8 Col
+  u8 Boom
+end record
+
+Ufo Ufos[8]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Loops = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+bcd digits 6 Ten = 10
+u8 ShipX = 120
+u8 Lives = 4
+u8 Over = 0
+u8 Freeze = 0
+' the laser: frames on, cool-down, its column
+u8 LzT = 0
+u8 Cool = 0
+u8 Bc = 0
+' the mine: position (MnY 0 = none), shape, mines dropped
+u8 MnX = 0
+u8 MnY = 0
+u8 MnS = 0
+u8 MnN = 0
+u8 Hits = 0
+u8 Landed = 0
+u8 Blink = 0
+u8 BlinkT = 0
+u8 Frac = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ui = 0
+u8 Ds = 0
+u8 Rw = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table UvSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  HideSprites
+  print at 8,9, "                "
+  select case Over
+    case 1
+      print at 8,10, "   GAME  OVER   "
+    case 2
+      print at 8,10, "    TIME  UP    "
+  end select
+  print at 8,11, "                "
+  print at 8,12, "  SCORE ", Score, "  "
+  print at 8,13, "  BEST  ", Hi, "  "
+  print at 8,14, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 20 then backdrop black
+    if Freeze = 0 then
+      if Lives = 0 then Over = 1
+    end if
+    return
+  end if
+  MoveShip
+  Laser
+  MoveUfos
+  MoveMine
+  Clock
+  return
+end sub
+
+' 2 pixels a frame between the turning points
+sub MoveShip:
+  K = J1 & 12
+  if K = 4 then
+    if ShipX > ShipMin + 1 then
+      ShipX = ShipX - 2
+    else
+      ShipX = ShipMin
+    end if
+  end if
+  if K = 8 then
+    if ShipX < ShipMax - 1 then
+      ShipX = ShipX + 2
+    else
+      ShipX = ShipMax
+    end if
+  end if
+  return
+end sub
+
+' fire (held = repeat), the beam's frames, its cool-down
+sub Laser:
+  if LzT > 0 then
+    dec LzT
+    if LzT = 0 then
+      EraseBeam
+      Cool = LzCool
+    end if
+    return
+  end if
+  if Cool > 0 then
+    dec Cool
+    return
+  end if
+  if Btn = 0 then return
+  Bc = ShipX + 8
+  Bc = Bc >> 3
+  DrawBeam
+  LzT = LzOn
+  play sound SndZap
+  return
+end sub
+
+sub DrawBeam:
+  put char TBtip at Bc,BeamTop
+  for Rw = BeamTop + 1 to BeamBot
+    put char TBeam at Bc,Rw
+  next
+  return
+end sub
+
+sub EraseBeam:
+  for Rw = BeamTop to BeamBot
+    put char StarAt(Bc, Rw) at Bc,Rw
+  next
+  return
+end sub
+
+' the star tile of a cell (the same every time: the beam puts it back)
+function StarAt(u8 Cx, u8 Cy) as u8
+  u8 Q = 0
+  Q = Cx * 5 + Cy * 11
+  Q = Q & 31
+  return StarT[Q] + TSp0
+
+' 1 if saucer Ui's box touches the beam's column
+function BeamHits(u8 Ax) as u8
+  u8 L = 0
+  u8 R = 0
+  u8 Got = 0
+  L = Bc * 8
+  R = L + 5
+  L = L + 2
+  if Ax <= R then
+    if Ax + 15 >= L then Got = 1
+  end if
+  return Got
+
+' every saucer: one pixel along, 3/4 pixel down; hits and landings
+sub MoveUfos:
+  Frac = Frac + 1
+  if Frac = 4 then Frac = 0
+  for Ui = 0 to NUfo - 1
+    MoveOne
+  next
+  return
+end sub
+
+sub MoveOne:
+  X = Ufos[Ui].X
+  Y = Ufos[Ui].Y
+  K = Ufos[Ui].Boom
+  if K > 0 then
+    dec K
+    Ufos[Ui].Boom = K
+    if K = 0 then Respawn
+    return
+  end if
+  if Ufos[Ui].Dir = 1 then
+    inc X
+    if X >= UfoMax[Ui] then Ufos[Ui].Dir = 0
+  else
+    dec X
+    if X <= UfoMin[Ui] then Ufos[Ui].Dir = 1
+  end if
+  Ufos[Ui].X = X
+  if Frac > 0 then inc Y
+  Ufos[Ui].Y = Y
+  if LzT > 0 then
+    if BeamHits(X) = 1 then
+      Ufos[Ui].Boom = 12
+      Score += Ten
+      if Score > Hi then Hi = Score
+      inc Hits
+      play sound SndBoom
+      ShowScore
+      return
+    end if
+  end if
+  if Y >= LandY then
+    Score -= Ten
+    inc Landed
+    play sound SndLand
+    ShowScore
+    Respawn
+  end if
+  return
+end sub
+
+' saucer Ui back at the top: random height in the top 32 pixels, colour
+sub Respawn:
+  Rand
+  V = Rs & 31
+  Ufos[Ui].Y = V + 16
+  V = Rs >> 8
+  V = V & 15
+  Ufos[Ui].Col = UfoCols[V]
+  Ufos[Ui].Boom = 0
+  return
+end sub
+
+' the mine: 3 pixels a frame; strikes the ship or leaves at the deck
+sub MoveMine:
+  if MnY = 0 then
+    NewMine
+    return
+  end if
+  MnY = MnY + 3
+  V = Tick & 3
+  if V = 0 then
+    MnS = MnS + 1
+    MnS = MnS & 3
+  end if
+  if MnY >= 157 then
+    if MnY < 176 then
+      if MnX + 7 >= ShipX + 2 then
+        if MnX <= ShipX + 13 then
+          Crash
+          return
+        end if
+      end if
+    end if
+  end if
+  if MnY >= 176 then MnY = 0
+  return
+end sub
+
+' a new mine in the top eight rows: random column, every third one above
+' the ship
+sub NewMine:
+  Rand
+  inc MnN
+  if MnN = 3 then
+    MnN = 0
+    MnX = ShipX + 4
+  else
+    V = Rs & 255
+    if V > 216 then V = V - 100
+    MnX = V + 16
+  end if
+  V = Rs >> 8
+  V = V & 7
+  MnY = V * 8 + 16
+  return
+end sub
+
+' the mine hits the ship: one ship lost, the sky flashes red
+sub Crash:
+  MnY = 0
+  dec Lives
+  put char TDeck at Lives + 2,22
+  play sound SndCrash
+  backdrop dark red
+  Freeze = 30
+  if LzT > 0 then
+    LzT = 0
+    EraseBeam
+  end if
+  return
+end sub
+
+' the C64's clock: 10 a pass, 4/3 passes a frame
+sub Clock:
+  dec Loops
+  V = Tick & 3
+  if V = 0 then
+    if Loops > 0 then dec Loops
+  end if
+  ShowTime
+  if Loops = 0 then Over = 2
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 the ship, 1 the mine, 2-9 the saucers
+sub DrawSprites:
+  set sprite 0 to ShipY,ShipX,SShip,7
+  if MnY > 0 then
+    K = MnS * 4 + SMine0
+    set sprite 1 to MnY - 1,MnX,K,15
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  inc BlinkT
+  if BlinkT >= 12 then
+    BlinkT = 0
+    Blink = Blink ^ 4
+  end if
+  for Ds = 0 to NUfo - 1
+    J = Ds + 2
+    K = Ufos[Ds].Boom
+    C = Ufos[Ds].Col
+    if K > 0 then
+      if K > 6 then
+        V = SBoom0
+      else
+        V = SBoom1
+      end if
+      C = 11
+    else
+      V = SUfoA + Blink
+    end if
+    set sprite J to Ufos[Ds].Y - 1,Ufos[Ds].X,V,C
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+sub ShowTime:
+  NumU = Loops
+  print at 20,1, digits$(NumU, 5), "0"
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  DrawField
+  print at 2,1, "SCORE"
+  print at 15,1, "TIME"
+  for Rw = 0 to 31
+    put char TDeck at Rw,22
+  next
+  Lives = 4
+  for Rw = 2 to 5
+    put char TLife at Rw,22
+  next
+  Score = 0
+  Loops = StartLoops
+  ShipX = 120
+  Over = 0
+  Freeze = 0
+  LzT = 0
+  Cool = 0
+  MnY = 0
+  MnN = 0
+  Hits = 0
+  Landed = 0
+  Frac = 0
+  for Ui = 0 to NUfo - 1
+    Ufos[Ui].X = UfoX0[Ui]
+    Ufos[Ui].Dir = Ui & 1
+    Respawn
+  next
+  ShowScore
+  ShowTime
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' stars from row 0 to the ship's rows
+sub DrawField:
+  for Rw = 0 to 21
+    for K = 0 to 31
+      put char StarAt(K, Rw) at K,Rw
+    next
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: UNIVADERS in glowing panels over the stars, a saucer drifting
+' by, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  DrawField
+  copy TitleMap count 384 to vram.name + 64
+  print at 8,1, "AHOY! JULY 1987"
+  print at 7,15, "BY ROBERT BIXBY"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Hi > 0 then
+    print at 9,21, "BEST ", Hi
+  end if
+  ShowMenu
+  Ufos[0].X = 16
+  Ufos[0].Dir = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a saucer drifts to and fro under the title, a pixel every other frame
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then
+    X = Ufos[0].X
+    if Ufos[0].Dir = 1 then
+      inc X
+      if X >= 224 then Ufos[0].Dir = 0
+    else
+      dec X
+      if X <= 16 then Ufos[0].Dir = 1
+    end if
+    Ufos[0].X = X
+  end if
+  inc BlinkT
+  if BlinkT >= 12 then
+    BlinkT = 0
+    Blink = Blink ^ 4
+  end if
+  set sprite 2 to 104,Ufos[0].X,SUfoA + Blink,13
+  set sprite 0 to ShipY,120,SShip,7
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "UNIVADERS"
+  print at 2,5, "BASED ON UNIVADERS BY"
+  print at 2,6, "ROBERT BIXBY, AHOY! JULY"
+  print at 2,7, "1987 (COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: ORBIT WATCH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+UvZap:
+    db $40,$25,$20,$01,$40,$2F,$30,$01,$40,$3A,$30,$01,$40,$49,$40,$01,$40,$5B,$40,$01,$40,$72,$50,$01
+    db $40,$8E,$50,$01,$40,$B2,$60,$01,$50
+UvBoom:
+    db $00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$46,$06,$00,$00,$67,$08,$10
+UvLand:
+    db $40,$3B,$32,$03,$40,$F9,$52,$05,$50
+UvCrash:
+    db $00,$00,$04,$06,$00,$00,$16,$08,$00,$00,$37,$0A,$00,$00,$57,$0C,$00,$00,$77,$0E,$10
+UvStart:
+    db $40,$53,$21,$05,$40,$E2,$20,$05,$40,$AA,$20,$05,$40,$71,$20,$0C,$50
+UvOver:
+    db $40,$FE,$10,$0A,$40,$41,$21,$0A,$40,$7C,$21,$0A,$40,$FC,$31,$1E,$50
+
+UvSoundTable:
+    dw UvTuneMel,$702B
+    dw UvTuneBass,$7035
+    dw UvZap,$7049
+    dw UvBoom,$703F
+    dw UvLand,$7049
+    dw UvCrash,$703F
+    dw UvStart,$7049
+    dw UvOver,$7049
+; Orbit Watch (original)
+; Tiny Sound, 7 frames per step
+UvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$26,$2A,$01,$28,$26,$25,$01,$23,$01,$1E,$01
+    db $23,$26,$2A,$01,$2B,$2A,$28,$01,$26,$01,$23,$01,$25,$01,$21,$01
+    db $1E,$01,$01,$01,$23,$26,$2A,$01,$2D,$01,$2A,$01,$2B,$2A,$28,$01
+    db $26,$25,$23,$01,$21,$01,$25,$01,$28,$01,$2A,$01,$01,$01,$2F,$01
+    db $01,$00,$01,$01
+    db $FF
+UvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0B,$01,$0B,$01,$0B,$01,$0B,$01,$0B,$01,$0B,$01
+    db $06,$01,$06,$01,$07,$01,$07,$01,$07,$01,$07,$01,$09,$01,$09,$01
+    db $06,$01,$06,$01,$0B,$01,$0B,$01,$0E,$01,$0E,$01,$10,$01,$10,$01
+    db $0B,$01,$0B,$01,$09,$01,$09,$01,$06,$01,$06,$01,$0B,$01,$01,$01
+    db $06,$01,$00,$01
+    db $FF
+}

@@ -1,0 +1,1551 @@
+cartridge "MINOTAUR MAZE/CLEVELAND M. BLAKEMORE/1986"
+
+' MINOTAUR MAZE
+' A ColecoVision game based on "Minotaur Maze" by Cleveland M. Blakemore,
+' Ahoy! December 1986 (Commodore 64, machine language). Made for Amy Studio
+' by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/), the game is built for the ColecoVision: smooth
+' sprites in a brick labyrinth, a minotaur that charges when it sees you,
+' a heartbeat when one is near, a quiet drone under play.
+'
+' The game: a new labyrinth every maze. Gather the gems (4 in the first
+' maze, 4 more each maze), then go back to the stairs where you started,
+' top left. Two minotaurs (three from maze 3) roam from their lair in the
+' middle, following the left-hand wall; one that sees you down a corridor
+' charges. They eat the gems they walk over: those are lost to you. When no
+' gem is left the stairs open. Each gem 50 points; back on the stairs, 10
+' more for each gem you took in that maze. Caught: a man less (four men).
+'
+' From the original (orig/): gems = 4 x maze; a gem SC+50; minotaurs move
+' by the left-hand rule and eat gems (the count goes down, no points); the
+' maze is done on the start square with no gem left, bonus 10 x gems taken;
+' touched by a minotaur: MEN-1, four men.
+'
+' Controls (either joystick): the stick walks through the corridors. The
+' button starts and plays again; on the title, left and right choose START
+' or CREDITS.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table ($702B,
+' $7035), effects after. `set sprite count` is always given. Own
+' xorshift random numbers (the test bot replays them). Nothing flashes faster than 3 times a
+' second (the gems change colour every 24 frames).
+'
+' Workarounds for Amy bugs 25 (sprite count) removed 2026-11-01.
+
+const TTl0 = 128
+const TTl1 = 129
+const TTl2 = 130
+const TTl3 = 131
+const TTr0 = 132
+const TTr1 = 133
+const TBl0 = 134
+const TBl1 = 135
+const TFloor = 136
+const TGem = 137
+const TGem2 = 138
+const TGem3 = 139
+const TStairs = 140
+const TBones = 141
+const TBones2 = 142
+const TMan = 143
+const THgem = 144
+const TBrick = 145
+const TPic0 = 146
+const TPic1 = 147
+const TPic2 = 148
+const TPic3 = 149
+const TPic4 = 150
+const TPic5 = 151
+const TPic6 = 152
+const TPic7 = 153
+const TPic8 = 154
+const TPic9 = 155
+const TPic10 = 156
+const TPic11 = 157
+const TPic12 = 158
+const TPic13 = 159
+const TPic14 = 160
+const TPic15 = 161
+const TPic16 = 162
+const TPic17 = 163
+const TPic18 = 164
+const TPic19 = 165
+const TPic20 = 166
+const TPic21 = 167
+const TPic22 = 168
+const TPic23 = 169
+const TPic24 = 170
+const TPic25 = 171
+const TPic26 = 172
+const TPic27 = 173
+const TPic28 = 174
+const TPic29 = 175
+const TPic30 = 176
+const TPic31 = 177
+const TPic32 = 178
+const TPic33 = 179
+const TPic34 = 180
+const TPic35 = 181
+const TPic36 = 182
+const TPic37 = 183
+const TPic38 = 184
+const TPic39 = 185
+const TPic40 = 186
+const TPic41 = 187
+const TPic42 = 188
+const TPic43 = 189
+const TPic44 = 190
+const TPic45 = 191
+const TPic46 = 192
+const TPic47 = 193
+const TPic48 = 194
+const TPic49 = 195
+const TPic50 = 196
+const TPic51 = 197
+const SHeadR = 0
+const SBodyR1 = 4
+const SBodyR2 = 8
+const SHeadL = 12
+const SBodyL1 = 16
+const SBodyL2 = 20
+const SDeadH = 24
+const SDeadB = 28
+const SHornR = 32
+const SHideR1 = 36
+const SHideR2 = 40
+const SHornL = 44
+const SHideL1 = 48
+const SHideL2 = 52
+const NTiles8 = 560
+const SprBytes = 448
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrnA = 3
+const SndDrnB = 4
+const SndStep = 5
+const SndGem = 6
+const SndEat = 7
+const SndRoar = 8
+const SndHeart = 9
+const SndCaught = 10
+const SndOpen = 11
+const SndDone = 12
+const SndStart = 13
+const SndOver = 14
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u16 Score = 0
+u16 Hi = 0
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 Rs = 1
+u8 Men = 4
+u8 Maze = 1
+u8 GemsLeft = 0
+u8 Took = 0
+u8 ExO = 0
+u8 NMin = 2
+u8 Ms = 4
+u8 Grace = 0
+' Gs 0 playing, 1 caught, 2 maze done; St the frames since
+u8 Gs = 0
+u8 St = 0
+u8 Over = 0
+' the labyrinth: 15 x 9 cells; bit 0 wall on the left, bit 1 wall on top,
+' bit 2 a gem, bit 3 visited (while it is made), bit 4 the lair
+u8 Cw[135]
+u8 Nb[4]
+u8 Left = 0
+' you: cell, direction (0 up, 1 right, 2 down, 3 left), pixels on the way
+' to the next cell (0 = in the cell), moving, facing left
+u8 Pc = 0
+u8 Pd = 1
+u8 Pp = 0
+u8 Pm = 0
+u8 Face = 0
+' the minotaurs: cell, direction, quarter pixels on the way (0-63),
+' charging, facing left
+u8 Mc[3]
+u8 Md[3]
+u8 Mp[3]
+u8 Mch[3]
+u8 Mf[3]
+' heartbeat, gem shimmer
+u8 Hb = 0
+u8 Gph = 0
+u8 Gt = 0
+' input
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Rot = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 H = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Ok = 0
+u8 Nn = 0
+u8 Sd = 0
+u8 Cs = 0
+u8 Want = 0
+u8 Got = 0
+u8 Dm = 0
+u8 Hx = 0
+u8 Hy = 0
+
+  tile screen
+  set sound table MzSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  Score = 0
+  Men = 4
+  Maze = 1
+  Over = 0
+  NewMaze
+
+play_loop:
+  Frame1
+  ReadPad
+  if Gs = 0 then
+    PlayStep
+  elseif Gs = 1 then
+    CaughtStep
+  else
+    DoneStep
+  end if
+  Shimmer
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  stop sound SndDrnA
+  stop sound SndDrnB
+  if Score > Hi then Hi = Score
+  print at 10,10, "           "
+  print at 10,11, " GAME OVER "
+  print at 10,12, "           "
+  ShowHud
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MovePlayer
+  if Grace > 0 then
+    dec Grace
+  else
+    for I = 0 to 2
+      if I < NMin then MoveMinotaur
+    next
+  end if
+  if Gs <> 0 then return
+  if Pp = 0 then
+    if Pc = 0 then
+      if ExO = 1 then
+        MazeDone
+        return
+      end if
+    end if
+  end if
+  CheckHit
+  Heartbeat
+  return
+end sub
+
+' the stick: in a cell, take a held direction that is open (a turn first,
+' so a diagonal slides round corners); between cells, keep going or turn
+' back. 2 pixels a frame, 8 frames a cell.
+sub MovePlayer:
+  if Pp = 0 then
+    Want = 255
+    C = Pc
+    V = Pd & 1
+    if V = 1 then
+      TryV
+      if Want = 255 then TryH
+    else
+      TryH
+      if Want = 255 then TryV
+    end if
+    if Want = 255 then
+      Pm = 0
+      return
+    end if
+    Pd = Want
+    Pm = 1
+  else
+    Ok = 0
+    if Pd = 0 then
+      if Dn1 = 1 then Ok = 1
+    elseif Pd = 1 then
+      if Lf1 = 1 then Ok = 1
+    elseif Pd = 2 then
+      if Up1 = 1 then Ok = 1
+    else
+      if Rt1 = 1 then Ok = 1
+    end if
+    if Ok = 1 then
+      C = Pc
+      D = Pd
+      Neigh
+      Pc = N
+      Pp = 16 - Pp
+      V = Pd + 2
+      Pd = V & 3
+    end if
+  end if
+  if Pd = 1 then Face = 0
+  if Pd = 3 then Face = 1
+  Pp = Pp + 2
+  if Pp >= 16 then
+    C = Pc
+    D = Pd
+    Neigh
+    Pc = N
+    Pp = 0
+    Arrive
+  end if
+  return
+end sub
+
+sub TryV:
+  if Up1 = 1 then
+    D = 0
+    CanGo
+    if Ok = 1 then Want = 0
+  end if
+  if Want = 255 then
+    if Dn1 = 1 then
+      D = 2
+      CanGo
+      if Ok = 1 then Want = 2
+    end if
+  end if
+  return
+end sub
+
+sub TryH:
+  if Lf1 = 1 then
+    D = 3
+    CanGo
+    if Ok = 1 then Want = 3
+  end if
+  if Want = 255 then
+    if Rt1 = 1 then
+      D = 1
+      CanGo
+      if Ok = 1 then Want = 1
+    end if
+  end if
+  return
+end sub
+
+' you reach a cell: a gem there is yours
+sub Arrive:
+  play sound SndStep
+  V = Cw[Pc] & 4
+  if V = 0 then return
+  V = Cw[Pc] & 251
+  Cw[Pc] = V
+  dec GemsLeft
+  inc Took
+  Score = Score + 50
+  C = Pc
+  DrawBR
+  ShowGems
+  ShowScore
+  play sound SndGem
+  if GemsLeft = 0 then OpenExit
+  return
+end sub
+
+sub OpenExit:
+  ExO = 1
+  C = 0
+  DrawBR
+  print at 17,22, "STAIRS OPEN!"
+  play sound SndOpen
+  return
+end sub
+
+' a minotaur: in a cell it looks along the corridors; seeing you it
+' charges, else it keeps its left hand on the wall (now and then its
+' right, so it does not circle one block for ever). It eats the gems on
+' its way.
+sub MoveMinotaur:
+  C = Mc[I]
+  if Mp[I] = 0 then
+    Cs = C
+    Sight
+    C = Cs
+    if Sd <> 255 then
+      if Mch[I] = 0 then
+        play sound SndRoar
+      end if
+      Mch[I] = 1
+      Md[I] = Sd
+    else
+      Mch[I] = 0
+      Q = Md[I]
+      Rand
+      V = Rs & 3
+      if V = 0 then
+        R = 1
+      else
+        R = 3
+      end if
+      V = Q + R
+      D = V & 3
+      CanGo
+      if Ok = 0 then
+        D = Q
+        CanGo
+      end if
+      if Ok = 0 then
+        V = Q + 4
+        V = V - R
+        D = V & 3
+        CanGo
+      end if
+      if Ok = 0 then
+        V = Q + 2
+        D = V & 3
+      end if
+      Md[I] = D
+    end if
+    D = Md[I]
+    if D = 1 then Mf[I] = 0
+    if D = 3 then Mf[I] = 1
+  end if
+  V = Ms
+  if Mch[I] = 1 then V = V + 2
+  V = Mp[I] + V
+  Mp[I] = V
+  if V < 64 then return
+  D = Md[I]
+  C = Mc[I]
+  Neigh
+  Mc[I] = N
+  Mp[I] = 0
+  V = Cw[N] & 4
+  if V = 0 then return
+  V = Cw[N] & 251
+  Cw[N] = V
+  dec GemsLeft
+  C = N
+  DrawBR
+  ShowGems
+  play sound SndEat
+  if GemsLeft = 0 then OpenExit
+  return
+end sub
+
+' Sight: from cell Cs, is your cell straight along an open corridor?
+' Sd = the direction to you, or 255
+sub Sight:
+  Sd = 255
+  if Cs = Pc then return
+  T = CellX[Cs]
+  U = CellX[Pc]
+  X = CellY[Cs]
+  Y = CellY[Pc]
+  if X = Y then
+    if U > T then
+      Q = 1
+    else
+      Q = 3
+    end if
+  elseif T = U then
+    if Y > X then
+      Q = 2
+    else
+      Q = 0
+    end if
+  else
+    return
+  end if
+  C = Cs
+  D = Q
+si_loop:
+  CanGo
+  if Ok = 0 then return
+  Neigh
+  C = N
+  if C = Pc then
+    Sd = Q
+    return
+  end if
+  goto si_loop
+end sub
+
+' CanGo: is the way from cell C in direction D open? (Ok)
+sub CanGo:
+  Ok = 0
+  T = CellX[C]
+  U = CellY[C]
+  if D = 0 then
+    if U > 0 then
+      V = Cw[C] & 2
+      if V = 0 then Ok = 1
+    end if
+  elseif D = 1 then
+    if T < 14 then
+      N = C + 1
+      V = Cw[N] & 1
+      if V = 0 then Ok = 1
+    end if
+  elseif D = 2 then
+    if U < 8 then
+      N = C + 15
+      V = Cw[N] & 2
+      if V = 0 then Ok = 1
+    end if
+  else
+    if T > 0 then
+      V = Cw[C] & 1
+      if V = 0 then Ok = 1
+    end if
+  end if
+  return
+end sub
+
+' Neigh: the cell next to C in direction D (N)
+sub Neigh:
+  if D = 0 then
+    N = C - 15
+  elseif D = 1 then
+    N = C + 1
+  elseif D = 2 then
+    N = C + 15
+  else
+    N = C - 1
+  end if
+  return
+end sub
+
+' InGrid: is there a cell next to C in direction D? (Ok)
+sub InGrid:
+  Ok = 0
+  T = CellX[C]
+  U = CellY[C]
+  if D = 0 then
+    if U > 0 then Ok = 1
+  elseif D = 1 then
+    if T < 14 then Ok = 1
+  elseif D = 2 then
+    if U < 8 then Ok = 1
+  else
+    if T > 0 then Ok = 1
+  end if
+  return
+end sub
+
+' Carve: open the wall between cell C and its neighbour in direction D
+sub Carve:
+  if D = 0 then
+    V = Cw[C] & 253
+    Cw[C] = V
+  elseif D = 1 then
+    N = C + 1
+    V = Cw[N] & 254
+    Cw[N] = V
+  elseif D = 2 then
+    N = C + 15
+    V = Cw[N] & 253
+    Cw[N] = V
+  else
+    V = Cw[C] & 254
+    Cw[C] = V
+  end if
+  return
+end sub
+
+' Where a figure is on the screen: cell C, direction D, P pixels on the
+' way (X, Y: the top-left of its 16 x 16 sprite)
+sub EntPos:
+  X = CellX[C] << 4
+  Y = CellY[C] << 4
+  Y = Y + 16
+  if P = 0 then return
+  if D = 0 then
+    Y = Y - P
+  elseif D = 1 then
+    X = X + P
+  elseif D = 2 then
+    Y = Y + P
+  else
+    X = X - P
+  end if
+  return
+end sub
+
+function Dist(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+' a minotaur within 10 pixels of you (both ways) catches you; Dm the
+' nearest one's distance (for the heartbeat)
+sub CheckHit:
+  C = Pc
+  D = Pd
+  P = Pp
+  EntPos
+  Hx = X
+  Hy = Y
+  Dm = 255
+  for I = 0 to 2
+    if I < NMin then
+      C = Mc[I]
+      D = Md[I]
+      P = Mp[I] >> 2
+      EntPos
+      T = Dist(Hx, X)
+      U = Dist(Hy, Y)
+      if T < 10 then
+        if U < 10 then
+          Gs = 1
+          St = 0
+          stop sound SndDrnA
+          stop sound SndDrnB
+          play sound SndCaught
+          return
+        end if
+      end if
+      if T < 128 then
+        if U < 128 then
+          V = T + U
+          if V < Dm then Dm = V
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the heart beats when a minotaur is near, faster the nearer
+sub Heartbeat:
+  if Dm >= 80 then
+    Hb = 0
+    return
+  end if
+  inc Hb
+  V = Dm >> 1
+  V = V + 14
+  if Hb < V then return
+  Hb = 0
+  play sound SndHeart
+  return
+end sub
+
+' caught: 150 frames, everyone still, then a man less
+sub CaughtStep:
+  inc St
+  if St < 150 then return
+  dec Men
+  ShowMen
+  if Men = 0 then
+    Over = 1
+    return
+  end if
+  ResetPos
+  Gs = 0
+  play sound SndDrnA
+  play sound SndDrnB
+  return
+end sub
+
+' back on the stairs with no gem left: the bonus, then the next maze
+sub MazeDone:
+  Gs = 2
+  St = 0
+  W16 = Took
+  W16 = W16 * 10
+  Score = Score + W16
+  ShowScore
+  stop sound SndDrnA
+  stop sound SndDrnB
+  play sound SndDone
+  print at 17,22, "  BONUS     "
+  NumU = W16
+  print at 24,22, digits$(NumU, 3)
+  return
+end sub
+
+sub DoneStep:
+  inc St
+  if St < 120 then return
+  if Maze < 99 then inc Maze
+  NewMaze
+  return
+end sub
+
+sub ResetPos:
+  Pc = 0
+  Pd = 1
+  Pp = 0
+  Pm = 0
+  Face = 0
+  for I = 0 to 2
+    Mc[I] = LairC[I]
+    Md[I] = LairD[I]
+    Mp[I] = 0
+    Mch[I] = 0
+    Mf[I] = 0
+  next
+  Grace = 90
+  Hb = 0
+  return
+end sub
+
+' a new maze: the labyrinth, the gems, the speed
+sub NewMaze:
+  NewScreen
+  GenMaze
+  PlaceGems
+  ExO = 0
+  Took = 0
+  Gs = 0
+  St = 0
+  V = Maze + 2
+  if V > 7 then V = 7
+  Ms = V
+  NMin = 2
+  if Maze >= 3 then NMin = 3
+  DrawMaze
+  ShowHud
+  ResetPos
+  ShowScreen
+  play sound SndStart
+  play sound SndDrnA
+  play sound SndDrnB
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the labyrinth, by "hunt and kill": walk at random into cells not yet
+' visited, knocking walls down; stuck, look for a new cell beside the
+' visited ones and go on from there. Then the lair in the middle, and a
+' few more openings so there is more than one way round.
+sub GenMaze:
+  for C = 0 to 134
+    Cw[C] = 3
+  next
+  C = 0
+  Cw[0] = 11
+  Left = 134
+gm_walk:
+  Nn = 0
+  for D = 0 to 3
+    InGrid
+    if Ok = 1 then
+      Neigh
+      V = Cw[N] & 8
+      if V = 0 then
+        Nb[Nn] = D
+        inc Nn
+      end if
+    end if
+  next
+  if Nn > 0 then
+    Rand
+    V = Rs & 255
+    V = V % Nn
+    D = Nb[V]
+    Carve
+    Neigh
+    C = N
+    V = Cw[C] | 8
+    Cw[C] = V
+    dec Left
+    goto gm_walk
+  end if
+  if Left = 0 then goto gm_lair
+  H = 0
+gm_hunt:
+  V = Cw[H] & 8
+  if V = 0 then
+    Rand
+    R = Rs & 3
+    for K = 0 to 3
+      if Nn = 0 then
+        V = K + R
+        D = V & 3
+        C = H
+        InGrid
+        if Ok = 1 then
+          Neigh
+          V = Cw[N] & 8
+          if V > 0 then
+            Carve
+            Nn = 1
+          end if
+        end if
+      end if
+    next
+    if Nn = 1 then
+      C = H
+      V = Cw[C] | 8
+      Cw[C] = V
+      dec Left
+      goto gm_walk
+    end if
+  end if
+  inc H
+  if H < 135 then goto gm_hunt
+gm_lair:
+  for C = 65 to 69
+    V = Cw[C] | 16
+    Cw[C] = V
+    if C > 65 then
+      V = Cw[C] & 254
+      Cw[C] = V
+    end if
+  next
+  for J = 0 to 7
+    Rand
+    W16 = Rs % 135
+    C = W16
+    V = Rs >> 8
+    V = V & 1
+    D = V * 3
+    InGrid
+    if Ok = 1 then Carve
+  next
+  return
+end sub
+
+' the gems: 4 a maze, at most 28, on free cells (not the start, not the lair)
+sub PlaceGems:
+  V = Maze * 4
+  if Maze > 7 then V = 28
+  GemsLeft = V
+  J = 0
+pg_loop:
+  Rand
+  W16 = Rs % 135
+  C = W16
+  if C < 2 then goto pg_loop
+  V = Cw[C] & 20
+  if V > 0 then goto pg_loop
+  V = Cw[C] | 4
+  Cw[C] = V
+  inc J
+  if J < GemsLeft then goto pg_loop
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawMaze:
+  for C = 0 to 134
+    DrawCell
+  next
+  for J = 0 to 8
+    Y = J << 1
+    Y = Y + 2
+    put char TTl1 at 30,Y
+    inc Y
+    put char TBl1 at 30,Y
+  next
+  for J = 0 to 14
+    X = J << 1
+    put char TTl2 at X,20
+    inc X
+    put char TTr1 at X,20
+  next
+  put char TTl0 at 30,20
+  return
+end sub
+
+' a cell's four tiles from its walls
+sub DrawCell:
+  V = Cw[C]
+  X = CellX[C] << 1
+  Y = CellY[C] << 1
+  Y = Y + 2
+  T = V & 3
+  T = T + TTl0
+  put char T at X,Y
+  inc X
+  T = V >> 1
+  T = T & 1
+  T = T + TTr0
+  put char T at X,Y
+  dec X
+  inc Y
+  T = V & 1
+  T = T + TBl0
+  put char T at X,Y
+  DrawBR
+  return
+end sub
+
+' the bottom-right tile of cell C: a gem, the stairs, the lair, the floor
+sub DrawBR:
+  V = Cw[C]
+  X = CellX[C] << 1
+  X = X + 1
+  Y = CellY[C] << 1
+  Y = Y + 3
+  T = TFloor
+  U = V & 16
+  if U > 0 then
+    T = TBones
+    U = C & 1
+    if U = 1 then T = TBones2
+  end if
+  U = V & 4
+  if U > 0 then T = TGem
+  if C = 0 then
+    if ExO = 1 then T = TStairs
+  end if
+  put char T at X,Y
+  return
+end sub
+
+' the gems change colour slowly (every 24 frames)
+sub Shimmer:
+  inc Gt
+  if Gt < 24 then return
+  Gt = 0
+  inc Gph
+  if Gph >= 3 then Gph = 0
+  W16 = Gph << 3
+  A16 = TGem << 3
+  copy TileCol + W16 count 8 to vram.color + A16
+  return
+end sub
+
+' sprites 0-1: you; 2-7: the minotaurs (horns, hide), their order turned
+' every frame so a crowded line flickers instead of losing one for good
+sub DrawSprites:
+  C = Pc
+  D = Pd
+  P = Pp
+  EntPos
+  Y = Y - 1
+  if Gs = 1 then
+    set sprite 0 to Y,X,SDeadH,11
+    set sprite 1 to Y,X,SDeadB,15
+  else
+    K = SBodyR1
+    if Pm = 1 then
+      V = Pp & 8
+      if V > 0 then K = SBodyR2
+    end if
+    T = SHeadR
+    if Face = 1 then
+      K = K + 12
+      T = SHeadL
+    end if
+    set sprite 0 to Y,X,T,11
+    set sprite 1 to Y,X,K,15
+  end if
+  inc Rot
+  if Rot >= 3 then Rot = 0
+  for I = 0 to 2
+    J = I + Rot
+    if J >= 3 then J = J - 3
+    J = J << 1
+    J = J + 2
+    if I < NMin then
+      C = Mc[I]
+      D = Md[I]
+      P = Mp[I] >> 2
+      EntPos
+      Y = Y - 1
+      K = SHideR1
+      V = Mp[I] & 32
+      if V > 0 then K = SHideR2
+      T = SHornR
+      if Mf[I] = 1 then
+        K = K + 12
+        T = SHornL
+      end if
+      U = 15
+      if Mch[I] = 1 then U = 9
+      set sprite J to Y,X,T,U
+      inc J
+      set sprite J to Y,X,K,6
+    else
+      set sprite J to 192,0,0,0
+      inc J
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' row 1: the score, the best, the men; row 22: the maze, the gems
+sub ShowHud:
+  print at 2,1, "SCORE"
+  ShowScore
+  print at 14,1, "HI"
+  NumU = Hi
+  print at 17,1, digits$(NumU, 5)
+  ShowMen
+  print at 2,22, "MAZE"
+  NumU = Maze
+  print at 7,22, digits$(NumU, 2)
+  put char THgem at 11,22
+  ShowGems
+  if ExO = 0 then print at 17,22, "            "
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowGems:
+  NumU = GemsLeft
+  print at 13,22, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowMen:
+  for J = 0 to 3
+    X = J + 25
+    if J < Men then
+      put char TMan at X,1
+    else
+      put char 32 at X,1
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the minotaur's head, the tune once, START / CREDITS
+sub TitlePage:
+  NewScreen
+  for J = 2 to 29
+    put char TBrick at J,1
+  next
+  for J = 0 to 7
+    W16 = J * 12
+    A16 = J + 3
+    A16 = A16 << 5
+    A16 = A16 + 10
+    copy TitleMap + W16 count 12 to vram.name + A16
+  next
+  print at 9,12, "MINOTAUR  MAZE"
+  print at 3,14, "GATHER THE GEMS, THEN GO"
+  print at 3,15, "BACK UP THE STAIRS. THE"
+  print at 3,16, "MINOTAURS EAT GEMS - AND"
+  print at 3,17, "MEN. THEY CHARGE ON SIGHT."
+  for J = 2 to 29
+    put char TBrick at J,19
+  next
+  print at 2,22, "HI"
+  NumU = Hi
+  print at 5,22, digits$(NumU, 5)
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = Lf1 | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  print at 13,22, " START   CREDITS"
+  if Menu = 0 then
+    put char 62 at 13,22
+  else
+    put char 62 at 21,22
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 9,2, "MINOTAUR  MAZE"
+  print at 2,5, "BASED ON MINOTAUR MAZE BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! DECEMBER 1986"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: THREAD OF ARIADNE,"
+  print at 2,19, "UNDER KNOSSOS"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$A0,$E0,$E0
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$10,$E0,$E0,$A0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$A0,$E0,$E0,$E0,$A0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $30,$87,$03,$87,$30,$00,$00,$00
+  $30,$87,$03,$87,$30,$00,$00,$00
+  $30,$87,$03,$87,$30,$00,$00,$00
+  $03,$03,$C3,$C3,$0C,$0C,$00,$00
+  $00,$40,$38,$08,$00,$02,$06,$00
+  $00,$00,$10,$38,$10,$00,$00,$00
+  $30,$87,$30,$83,$00,$83,$44,$00
+  $30,$87,$03,$87,$30,$00,$00,$00
+  $00,$10,$10,$10,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$07
+  $00,$00,$00,$00,$00,$E0,$00,$00
+  $00,$00,$00,$00,$00,$80,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$E0
+  $00,$00,$00,$00,$00,$00,$80,$03
+  $00,$00,$00,$00,$00,$01,$E0,$C0
+  $00,$00,$00,$00,$00,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0
+  $00,$00,$00,$00,$00,$01,$01,$03
+  $E0,$C0,$80,$80,$01,$07,$E0,$C0
+  $00,$00,$00,$60,$01,$00,$00,$00
+  $03,$03,$03,$03,$07,$80,$C0,$F0
+  $C0,$F0,$04,$07,$F0,$F0,$E0,$C0
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$70,$E0,$F0,$07,$07,$03,$01
+  $C0,$C0,$C0,$C0,$E0,$01,$03,$F0
+  $00,$00,$00,$06,$80,$00,$00,$00
+  $07,$03,$01,$00,$80,$E0,$07,$03
+  $00,$00,$00,$00,$80,$80,$80,$C0
+  $07,$F0,$F0,$E1,$1C,$1C,$1C,$1C
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$F0,$E0,$C0,$E0
+  $03,$01,$20,$00,$00,$00,$00,$00
+  $C0,$80,$80,$40,$00,$00,$03,$07
+  $00,$00,$00,$00,$00,$00,$E0,$F0
+  $00,$00,$00,$00,$00,$00,$03,$07
+  $01,$00,$00,$01,$00,$00,$E0,$F0
+  $E0,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$F0,$07,$03,$01,$03
+  $01,$01,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$87,$38,$C3,$1C,$1C
+  $F0,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$21,$00,$00,$00,$00,$00
+  $07,$07,$03,$00,$00,$00,$00,$00
+  $70,$F0,$E0,$00,$00,$00,$00,$00
+  $00,$00,$C2,$80,$80,$80,$80,$80
+  $07,$F0,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$C0,$C0,$07,$F0
+  $00,$E0,$80,$00,$00,$00,$00,$00
+  $80,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$01,$01,$03,$07
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$E0,$F0,$F0,$F0,$07,$07
+  $00,$10,$38,$83,$38,$10,$00,$00
+  $00,$04,$0E,$E0,$0E,$04,$00,$00
+  $07,$07,$03,$07,$07,$07,$F0,$F0
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $40,$40,$80,$E0,$00,$00,$00,$00
+  $01,$01,$01,$03,$80,$00,$00,$00
+  $E0,$C0,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $51,$41,$41,$01,$01,$01,$01,$01
+  $51,$41,$41,$41,$41,$41,$41,$41
+  $05,$04,$14,$01,$01,$01,$01,$01
+  $05,$04,$14,$41,$41,$41,$41,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $05,$04,$14,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$17,$17,$15,$51,$01,$01,$01
+  $71,$1F,$17,$15,$41,$01,$01,$01
+  $71,$17,$1F,$17,$51,$01,$01,$01
+  $1B,$1A,$1B,$1A,$B1,$A1,$01,$01
+  $01,$E1,$E1,$E1,$01,$E1,$E1,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $B1,$1B,$B1,$17,$07,$17,$71,$01
+  $F1,$17,$17,$15,$51,$01,$01,$01
+  $05,$14,$14,$14,$05,$14,$14,$14
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$E1,$E1
+  $01,$01,$01,$01,$01,$1E,$0E,$0E
+  $01,$01,$01,$01,$01,$E1,$1E,$AE
+  $01,$01,$01,$01,$01,$01,$01,$16
+  $01,$01,$01,$01,$01,$01,$61,$16
+  $01,$01,$01,$01,$01,$E1,$1E,$AE
+  $01,$01,$01,$01,$01,$1E,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$E1,$E1
+  $01,$01,$01,$01,$01,$E1,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$E1,$E1
+  $0E,$0E,$0E,$1E,$E1,$01,$01,$01
+  $AE,$AE,$AE,$AE,$AE,$1A,$1A,$1A
+  $A1,$A1,$1A,$6A,$A6,$A6,$A6,$A6
+  $16,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $A1,$1A,$6A,$6A,$A6,$A6,$A6,$A6
+  $AE,$AE,$AE,$AE,$AE,$1A,$1A,$A1
+  $0E,$0E,$0E,$1E,$E1,$01,$01,$01
+  $1E,$1E,$1E,$0E,$1E,$1E,$E1,$E1
+  $01,$01,$01,$01,$E1,$E1,$E1,$E1
+  $E1,$1E,$1E,$1E,$E1,$E1,$E1,$E1
+  $E1,$E1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$61,$16,$16,$16,$16
+  $A1,$A1,$61,$06,$06,$06,$06,$06
+  $A6,$A6,$A6,$61,$06,$06,$86,$86
+  $06,$06,$06,$01,$06,$06,$86,$86
+  $06,$06,$06,$01,$06,$06,$86,$86
+  $A6,$06,$06,$61,$06,$06,$86,$86
+  $A1,$A1,$A1,$16,$06,$06,$06,$06
+  $01,$01,$01,$61,$16,$16,$16,$16
+  $E1,$E1,$01,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$1E,$E1,$1E,$E1,$E1
+  $16,$61,$01,$01,$01,$01,$01,$01
+  $06,$06,$61,$01,$01,$01,$01,$01
+  $86,$86,$86,$06,$06,$06,$06,$06
+  $86,$86,$86,$06,$06,$06,$06,$06
+  $06,$06,$61,$61,$61,$61,$61,$61
+  $16,$61,$01,$01,$01,$01,$01,$01
+  $06,$16,$16,$16,$16,$16,$A1,$1A
+  $06,$6A,$6A,$0A,$0A,$0A,$0A,$0A
+  $A6,$6A,$0A,$0A,$0A,$0A,$0A,$0A
+  $06,$06,$06,$A6,$16,$1A,$1A,$1A
+  $61,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$A1,$A1
+  $0A,$1A,$1A,$A1,$1A,$1A,$0A,$0A
+  $0A,$1A,$1A,$A1,$1A,$1A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$A1,$A1
+  $A1,$A1,$01,$01,$01,$01,$01,$01
+  $BA,$BA,$1B,$1A,$01,$01,$01,$01
+  $BA,$BA,$AB,$1A,$A1,$01,$01,$01
+  $A1,$A1,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$06,$04,$00,$00,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$F8,$EC,$E4,$E0,$A0,$B0,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$06,$04,$00,$01,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$F8,$EC,$E4,$E0,$A0,$10,$18,$00
+  $00,$00,$00,$07,$0F,$0F,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0F,$1F,$37,$27,$07,$05,$0D,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$60,$20,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$0F,$1F,$37,$27,$07,$05,$08,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$60,$20,$00,$80,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$18,$3C,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$05,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$FA,$00,$00
+  $00,$00,$00,$10,$18,$08,$00,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$30,$20,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$05,$03,$1F,$17,$17,$06,$06,$0E,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$60,$C0,$F8,$E8,$E8,$60,$60,$70,$00
+  $00,$00,$00,$00,$00,$07,$0F,$05,$03,$1F,$17,$17,$0C,$18,$18,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$60,$C0,$F8,$E8,$E8,$30,$18,$18,$00
+  $00,$00,$00,$08,$0C,$04,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$18,$10,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$06,$03,$1F,$17,$17,$06,$06,$0E,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$A0,$C0,$F8,$E8,$E8,$60,$60,$70,$00
+  $00,$00,$00,$00,$00,$07,$0F,$06,$03,$1F,$17,$17,$0C,$18,$18,$00
+  $00,$00,$00,$00,$00,$E0,$F0,$A0,$C0,$F8,$E8,$E8,$30,$18,$18,$00
+end data
+data TitleMap bytes
+  146,146,146,146,146,146,146,146,146,146,146,146
+  146,147,148,149,146,150,151,146,152,153,154,146
+  155,156,157,158,159,160,161,162,163,164,165,166
+  167,168,169,170,171,172,173,174,175,176,177,178
+  146,146,179,180,181,182,181,182,183,184,146,146
+  146,146,146,146,185,186,187,188,189,146,146,146
+  146,146,146,146,190,191,192,193,146,146,146,146
+  146,146,146,146,194,195,196,197,146,146,146,146
+end data
+data CellX bytes
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+end data
+data CellY bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+  3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+  4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5
+  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7
+  8,8,8,8,8,8,8,8,8,8,8,8,8,8,8
+end data
+
+' the minotaurs' places in the lair, and first directions
+data LairC bytes
+  65,69,67
+end data
+data LairD bytes
+  3,1,0
+end data
+
+asm {
+MzStep:
+    db $00,$00,$76,$01,$00,$00,$A6,$02,$10
+MzGem:
+    db $40,$47,$10,$02,$40,$35,$10,$02,$40,$2A,$20,$04,$40,$24,$40,$06,$50
+MzEat:
+    db $00,$00,$25,$03,$00,$00,$36,$03,$00,$00,$55,$04,$10
+MzRoar:
+    db $00,$00,$17,$04,$00,$00,$06,$08,$00,$00,$17,$0A,$00,$00,$37,$0C,$00,$00,$66,$0A,$10
+MzHeart:
+    db $40,$FF,$23,$03,$40,$FF,$93,$05,$40,$FF,$43,$03,$40,$FF,$B3,$08,$50
+MzCaught:
+    db $40,$3B,$02,$08,$40,$5D,$12,$08,$40,$A6,$22,$08,$40,$F9,$22,$0A,$40,$56,$33,$0C,$40,$FF,$43,$1E
+    db $50
+MzOpen:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$12,$50
+MzDone:
+    db $40,$8F,$10,$06,$40,$71,$10,$06,$40,$5F,$10,$06,$40,$47,$10,$06,$40,$5F,$10,$06,$40,$47,$10,$06
+    db $40,$39,$20,$18,$50
+MzStart:
+    db $40,$53,$21,$06,$40,$1D,$21,$06,$40,$E2,$20,$0C,$50
+MzOver:
+    db $40,$53,$11,$0C,$40,$68,$21,$0C,$40,$7C,$21,$0C,$40,$94,$31,$0C,$40,$FC,$31,$28,$50
+
+MzSoundTable:
+    dw MzTuneMel,$702B
+    dw MzTuneBass,$7035
+    dw MzDrnMel,$702B
+    dw MzDrnBass,$7035
+    dw MzStep,$703F
+    dw MzGem,$7049
+    dw MzEat,$703F
+    dw MzRoar,$703F
+    dw MzHeart,$7049
+    dw MzCaught,$7049
+    dw MzOpen,$7049
+    dw MzDone,$7049
+    dw MzStart,$7049
+    dw MzOver,$7049
+; Thread of Ariadne (original)
+; Tiny Sound, 8 frames per step
+MzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$F1,$22,$21,$01,$01,$24,$01,$28,$01,$01,$26,$01,$24,$01
+    db $23,$01,$20,$01,$21,$01,$01,$1C,$01,$21,$01,$24,$01,$23,$01,$21
+    db $01,$20,$01,$01,$01,$28,$01,$01,$29,$01,$28,$01,$26,$01,$24,$01
+    db $01,$26,$01,$23,$01,$01,$24,$01,$21,$01,$23,$01,$20,$01,$21,$01
+    db $01,$00,$01,$01
+    db $FF
+MzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$10,$01,$09,$01,$10,$01,$05,$01,$0C,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Under Knossos (original)
+; Tiny Sound, 14 frames per step
+MzDrnMel:
+    db $44
+    dw sndtiny_1
+    db 14
+    db $02,$B0,$1A,$21,$01,$01,$01,$01,$1C,$00,$00,$00,$01,$01,$01,$01
+    db $1D,$00,$00,$00,$01,$01,$01,$01,$1C,$00,$00,$00,$01,$01,$01,$01
+    db $1A,$00,$18,$00,$01,$01,$01,$01,$15,$00,$00,$00,$01,$01,$01,$01
+    db $17,$00,$00,$00,$01,$01,$01,$01,$18,$00,$17,$00,$01,$01,$01,$01
+    db $14,$00,$00,$00
+    db $FF
+MzDrnBass:
+    db $84
+    dw sndtiny_2
+    db 14
+    db $02,$A0,$18,$32,$09,$00,$00,$00,$00,$00,$00,$00,$09,$00,$00,$00
+    db $00,$00,$00,$00,$05,$00,$00,$00,$00,$00,$00,$00,$0E,$00,$00,$00
+    db $00,$00,$00,$00,$09,$00,$00,$00,$00,$00,$00,$00,$07,$00,$00,$00
+    db $00,$00,$00,$00,$05,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}

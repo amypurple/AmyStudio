@@ -1,0 +1,1100 @@
+cartridge "NEBERGALL RUN/BROWNE AND GEBERT, AHOY!/1986"
+
+' NEBERGALL RUN
+' After the game by Roger Browne and Steve Gebert, Ahoy! July 1986
+' (Commodore 128, BASIC 7.0), made for the ColecoVision in Amy by Amy
+' Bienvenu. By Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' The game (the article and the listing, orig/): you command the supply
+' ship's Mark-IV laser. The Black Nebula's troop ships cross the
+' targeting display at four speeds and change course without warning.
+' Move the crosshair with the stick; hold the button until the laser
+' discharges. A hit destroys the ship (the faster, the more troops and
+' points: 50, 150, 300, 500); every miss upsets the laser's balance, and
+' one miss too many destroys your ship. Fire too often and the laser
+' overheats (reverse ionic flux) with the same end. Clear enough troop
+' ships before too many drones get through (the time bar) and the
+' people of Nebergall have a fighting chance.
+'
+' The listing's numbers, kept: experience level LV 1-9; misses allowed
+' M1 = 19 - LV; troop ships to destroy H1 = 11 + LV; the drones' limit
+' G1 = 1450 - LV * 50 passes (here 3 frames a pass, 70 to 50 seconds).
+' The ships' four speeds and their courses chosen at random (lines
+' 1050-1080), the story pages (130-390), the endings (1490-1640).
+'
+' Changes, noted: points by speed follow the article (faster = more);
+' the listing's table gave the speeds 3, 2 and 1 the points 50, 300 and
+' 150. The heat gauge is new: the article warns of overheating but the
+' listing never checks it. Holding the button to charge follows the
+' article ("depress and hold the fire button until discharge"); the
+' listing fired at once. The laser comes from the cockpit's lower edge,
+' as the listing drew it (line 1200).
+'
+' Controls (either joystick): the stick moves the crosshair, the button
+' (held) fires; on the title the stick chooses the level and the menu.
+'
+' House rules kept: text in columns 2-29, tiles from code 128, the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait; nothing flashes faster than 3 times a second.
+
+const TFtl = 128
+const TFtr = 129
+const TFbl = 130
+const TFbr = 131
+const TFt = 132
+const TFb = 133
+const TFl = 134
+const TFr = 135
+const TFtm = 136
+const TFbm = 137
+const TPan = 138
+const TSky = 139
+const TSt1 = 140
+const TSt2 = 141
+const TSt3 = 142
+const TGh = 143
+const TGr = 144
+const TGt = 145
+const TGe = 146
+const TMx = 147
+const TMo = 148
+const SCross = 0
+const SSh1 = 4
+const SSh2 = 8
+const SSh3 = 12
+const SSh4 = 16
+const SBl1 = 20
+const SBl2 = 24
+const SDot = 28
+const NTiles8 = 168
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRunA = 3
+const SndRunB = 4
+const SndBoom = 5
+const SndZap = 6
+const SndMiss = 7
+const SndHot = 8
+const SndWin = 9
+const SndOver = 10
+const SndGo = 11
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the crosshair: Cx, Cy its sprite's corner (pixels); Chg the charge
+' (frames held; 255 waiting for a release); Heat 0-100
+u8 Cx = 120
+u8 Cy = 72
+u8 Chg = 0
+u8 Heat = 0
+u8 Cool = 0
+' the beam: Bm frames left to show it, Bx By its target
+u8 Bm = 0
+u8 Bx = 0
+u8 By = 0
+' the troop ships: Sx Sy in 1/16 pixel, Vx Vy their speed (16-bit, signed
+' as two's complement), Dr the heading (0-15), Ct frames to a new course,
+' Sst 0 flying / 1 bursting (Sbt frames left)
+u16 Sx[4]
+u16 Sy[4]
+u16 Vx[4]
+u16 Vy[4]
+u8 Dr[4]
+u8 Ct[4]
+u8 Sst[4]
+u8 Sbt[4]
+' the mission: Lv the level, M1 misses allowed, H1 ships to destroy
+u8 Lv = 1
+u8 M1 = 18
+u8 H1 = 12
+u8 Hits = 0
+u8 Miss = 0
+u8 Shots = 0
+u16 Score = 0
+u16 Hi = 0
+u16 Tl = 0
+u16 Tmax = 0
+u16 Tstep = 0
+' Ph: 1 flying, 0 waiting; Fin: why it ended (1 miss, 2 heat, 3 time, 4 won)
+u8 Ph = 0
+u8 Fin = 0
+' the bot's view: Fired 1 the frame a shot went off, Hit the ship hit (255 none)
+u8 Fired = 0
+u8 Hship = 255
+u8 Idle = 0
+u16 Rs = $5A3C
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rg1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 Tm = 0
+u16 NumU = 0
+u16 W16 = 0
+u16 A16 = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Px = 0
+u8 Py = 0
+
+  tile screen
+  set sound table NbSoundTable areas 6
+  sprites 16x16
+  set sprite count 14
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+  StoryPages
+
+new_game:
+  M1 = 19 - Lv
+  H1 = 11 + Lv
+  W16 = Lv * 50
+  Tmax = 1450 - W16
+  Tmax = Tmax * 3
+  Tstep = Tmax / 20
+  Tl = Tmax
+  Score = 0
+  Hits = 0
+  Miss = 0
+  Shots = 0
+  Heat = 0
+  Chg = 0
+  Bm = 0
+  Cx = 120
+  Cy = 72
+  DrawField
+  ShowHud
+  ShowScreen
+  for I = 0 to 3
+    NewShip(I)
+  next
+  Ph = 0
+  print at 10,10, "GOOD LUCK !"
+  play sound SndGo
+  for Tm = 1 to 90
+    Frame1
+    DrawAll
+  next
+  for X = 10 to 20
+    put char TSky at X,10
+  next
+  play sound SndRunA
+  play sound SndRunB
+  Ph = 1
+  WasBtn = 1
+
+fly:
+  Frame1
+  Fired = 0
+  Hship = 255
+  ReadPad
+  MoveCross
+  MoveShips
+  Trigger
+  ' the laser cools: a unit every 2 frames
+  inc Cool
+  if Cool >= 2 then
+    Cool = 0
+    if Heat > 0 then dec Heat
+  end if
+  if Fired = 1 then ShowHud
+  V = Tick & 15
+  if V = 0 then ShowHeat
+  ' the drones: the time runs out
+  dec Tl
+  V = Tick & 31
+  if V = 0 then ShowTime
+  DrawAll
+  if Heat >= 100 then
+    Fin = 2
+    goto ending
+  end if
+  if Miss >= M1 then
+    Fin = 1
+    goto ending
+  end if
+  if Hits >= H1 then
+    Fin = 4
+    goto ending
+  end if
+  if Tl = 0 then
+    Fin = 3
+    goto ending
+  end if
+  goto fly
+
+ending:
+  Ph = 0
+  stop sound SndRunA
+  stop sound SndRunB
+  mute all
+  ShowHeat
+  ShowTime
+  if Fin < 4 then
+    play sound SndBoom
+    play sound SndOver
+  else
+    play sound SndWin
+  end if
+  ' the ship (or the laser) goes, a burst at the cannon for a loss
+  for Tm = 0 to 40
+    Frame1
+    MoveShips
+    if Fin < 4 then
+      V = Tm >> 3
+      V = V & 1
+      V = V * 4
+      V = V + SBl1
+      set sprite 5 to 140,120,V,8
+    end if
+    DrawShips
+    update sprites
+  next
+  HideSprites
+  if Score > Hi then Hi = Score
+  ShowHud
+  if Fin = 1 then
+    print at 4,5, "OOPS..ONE MISS TOO MANY.."
+    print at 11,6, "YOU DIED"
+  end if
+  if Fin = 2 then
+    print at 5,5, "THE LASER OVERHEATED.."
+    print at 11,6, "YOU DIED"
+  end if
+  if Fin = 3 then
+    print at 4,5, "TOO MANY DRONES GOT"
+    print at 4,6, "THROUGH: MISSION ABORTED"
+  end if
+  if Fin = 4 then
+    print at 3,5, "CONGRATULATIONS COMMANDER!"
+    print at 4,7, "YOU HAVE ENSURED THE"
+    print at 4,8, "SAFETY OF THE OTHER SUPPLY"
+    print at 4,9, "SHIPS AND HAVE GIVEN THE"
+    print at 4,10, "PEOPLE OF NEBERGALL A"
+    print at 4,11, "FIGHTING CHANCE."
+  else
+    print at 9,8, "G A M E  O V E R"
+  end if
+  NumU = Hits
+  print at 4,13, digits$(NumU, 2)
+  print at 7,13, "TROOP SHIPS DESTROYED"
+  print at 4,15, "PRESS A BUTTON"
+  for Tm = 1 to 60
+    Frame1
+  next
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Rnd: the next random byte (a 16-bit xorshift)
+function Rnd() as u8
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  V = Rs & 255
+  return V
+
+' NewShip(L): ship L comes in from an edge with a new course
+sub NewShip(u8 L):
+  Sst[L] = 0
+  V = Rnd()
+  W = V & 3
+  V = Rnd()
+  if W = 0 then
+    X = 24
+    Y = V & 63
+    Y = Y + 32
+  end if
+  if W = 1 then
+    X = 214
+    Y = V & 63
+    Y = Y + 32
+  end if
+  if W = 2 then
+    X = V & 127
+    X = X + 40
+    Y = 26
+  end if
+  if W = 3 then
+    X = V & 127
+    X = X + 40
+    Y = 126
+  end if
+  W16 = X
+  Sx[L] = W16 << 4
+  W16 = Y
+  Sy[L] = W16 << 4
+  NewCourse(L)
+  return
+end sub
+
+' NewCourse(L): a heading at random, its speed by the ship's kind (and the
+' level), and the frames to the next change (60-187)
+sub NewCourse(u8 L):
+  V = Rnd()
+  V = V & 15
+  Dr[L] = V
+  K = L * 16
+  K = K + V
+  V = VxT[K]
+  W16 = V
+  if V >= 128 then W16 = W16 + 65280
+  W = Lv
+  if V >= 128 then
+    W16 = W16 - W
+  else
+    if V > 0 then W16 = W16 + W
+  end if
+  Vx[L] = W16
+  V = VyT[K]
+  W16 = V
+  if V >= 128 then W16 = W16 + 65280
+  if V >= 128 then
+    W16 = W16 - W
+  else
+    if V > 0 then W16 = W16 + W
+  end if
+  Vy[L] = W16
+  V = Rnd()
+  V = V & 127
+  Ct[L] = V + 60
+  return
+end sub
+
+' MoveCross: the stick moves the crosshair 2 pixels a frame, inside the
+' display (its centre 24-224 across, 24-136 down)
+sub MoveCross:
+  if Lf1 = 1 then
+    if Cx > 16 then Cx = Cx - 2
+  end if
+  if Rg1 = 1 then
+    if Cx < 216 then Cx = Cx + 2
+  end if
+  if Up1 = 1 then
+    if Cy > 16 then Cy = Cy - 2
+  end if
+  if Dn1 = 1 then
+    if Cy < 128 then Cy = Cy + 2
+  end if
+  return
+end sub
+
+' MoveShips: every ship flies its course, wrapping round the display
+' (x 24-215, y 24-127 for its corner), and changes course now and then;
+' a burst counts down, then the ship comes back from an edge
+sub MoveShips:
+  for I = 0 to 3
+    if Sst[I] = 0 then
+      Sx[I] = Sx[I] + Vx[I]
+      if Sx[I] >= 32768 then Sx[I] = Sx[I] + 3072
+      if Sx[I] < 384 then Sx[I] = Sx[I] + 3072
+      if Sx[I] >= 3456 then Sx[I] = Sx[I] - 3072
+      Sy[I] = Sy[I] + Vy[I]
+      if Sy[I] >= 32768 then Sy[I] = Sy[I] + 1664
+      if Sy[I] < 384 then Sy[I] = Sy[I] + 1664
+      if Sy[I] >= 2048 then Sy[I] = Sy[I] - 1664
+      dec Ct[I]
+      if Ct[I] = 0 then NewCourse(I)
+    else
+      dec Sbt[I]
+      if Sbt[I] = 0 then NewShip(I)
+    end if
+  next
+  return
+end sub
+
+' Trigger: the button held charges the laser; at 12 frames it discharges
+' (once, then the button must be let go); let go early and nothing fires
+sub Trigger:
+  if Btn = 0 then
+    Chg = 0
+    return
+  end if
+  if Chg = 255 then return
+  inc Chg
+  if Chg < 12 then return
+  Chg = 255
+  Shoot
+  return
+end sub
+
+' Shoot: the beam to the crosshair's centre; the first flying ship whose
+' centre is within 9 pixels across and 8 down is hit
+sub Shoot:
+  Fired = 1
+  inc Shots
+  Heat = Heat + 24
+  if Heat > 100 then Heat = 100
+  Bm = 8
+  Bx = Cx + 8
+  By = Cy + 8
+  for I = 0 to 3
+    if Hship = 255 then
+      if Sst[I] = 0 then
+        W16 = Sx[I] >> 4
+        X = W16
+        X = X + 8
+        W16 = Sy[I] >> 4
+        Y = W16
+        Y = Y + 8
+        V = Dist(X, Bx)
+        W = Dist(Y, By)
+        if V <= 9 then
+          if W <= 8 then Hship = I
+        end if
+      end if
+    end if
+  next
+  if Hship = 255 then
+    inc Miss
+    play sound SndMiss
+  else
+    I = Hship
+    Sst[I] = 1
+    Sbt[I] = 30
+    inc Hits
+    W16 = Pts[I]
+    Score = Score + W16
+    play sound SndBoom
+  end if
+  play sound SndZap
+  if Heat >= 76 then play sound SndHot
+  return
+end sub
+
+' Dist(A, B): how far apart two bytes are
+function Dist(u8 A, u8 B) as u8
+  if A >= B then return A - B
+  return B - A
+
+' DrawAll: the crosshair (its colour by the charge), the ships, the beam
+sub DrawAll:
+  V = 15
+  if Chg > 0 then V = 11
+  if Chg > 6 then V = 9
+  if Chg = 255 then V = 15
+  set sprite 0 to Cy,Cx,SCross,V
+  set sprite 5 to 192,0,0,0
+  DrawShips
+  DrawBeam
+  update sprites
+  return
+end sub
+
+' DrawShips: the four ships in sprites 1-4, their order turning every
+' frame (on a crowded line they flicker instead of one vanishing)
+sub DrawShips:
+  for I = 0 to 3
+    J = I + Tick
+    J = J & 3
+    J = J + 1
+    W16 = Sx[I] >> 4
+    X = W16
+    W16 = Sy[I] >> 4
+    Y = W16
+    if Sst[I] = 0 then
+      V = I * 4
+      V = V + SSh1
+      W = ShCol[I]
+    else
+      V = Sbt[I] >> 3
+      V = V & 1
+      V = V * 4
+      V = V + SBl1
+      W = 11
+      if Sbt[I] < 12 then W = 9
+    end if
+    set sprite J to Y,X,V,W
+  next
+  return
+end sub
+
+' DrawBeam: eight dots from the cannon (128, 150) to the target, sprites
+' 6-13, while Bm counts down
+sub DrawBeam:
+  if Bm = 0 then
+    for J = 6 to 13
+      set sprite J to 192,0,0,0
+    next
+    return
+  end if
+  dec Bm
+  for K = 1 to 8
+    J = K + 5
+    ' a point K/8 of the way: x from 128, y from 150
+    if Bx >= 128 then
+      V = Bx - 128
+      W16 = V * K
+      W16 = W16 >> 3
+      Px = W16
+      Px = Px + 121
+    else
+      V = 128 - Bx
+      W16 = V * K
+      W16 = W16 >> 3
+      Px = W16
+      Px = 121 - Px
+    end if
+    V = 150 - By
+    W16 = V * K
+    W16 = W16 >> 3
+    Py = W16
+    Py = 143 - Py
+    W = 10
+    if Bm < 4 then W = 6
+    set sprite J to Py,Px,SDot,W
+  next
+  return
+end sub
+
+' the field: the panel, the targeting display's frame (rows 2-18, columns
+' 2-29), stars inside
+sub DrawField:
+  NewScreen
+  for Y = 0 to 23
+    for X = 0 to 31
+      put char TPan at X,Y
+    next
+  next
+  for Y = 3 to 17
+    for X = 3 to 28
+      put char TSky at X,Y
+    next
+  next
+  for X = 3 to 28
+    V = X & 3
+    if V = 0 then
+      put char TFtm at X,2
+      put char TFbm at X,18
+    else
+      put char TFt at X,2
+      put char TFb at X,18
+    end if
+  next
+  for Y = 3 to 17
+    put char TFl at 2,Y
+    put char TFr at 29,Y
+  next
+  put char TFtl at 2,2
+  put char TFtr at 29,2
+  put char TFbl at 2,18
+  put char TFbr at 29,18
+  for I = 1 to 40
+    V = Rnd()
+    X = V & 15
+    V = Rnd()
+    V = V & 7
+    X = X + V
+    X = X + 4
+    V = Rnd()
+    Y = V & 15
+    if Y > 13 then Y = Y - 7
+    Y = Y + 3
+    V = Rnd()
+    V = V & 3
+    if V = 3 then V = 0
+    V = V + TSt1
+    put char V at X,Y
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 15,1, "HI"
+  NumU = Hi
+  print at 18,1, digits$(NumU, 5)
+  print at 24,1, "LV"
+  NumU = Lv
+  print at 27,1, digits$(NumU, 1)
+  print at 2,19, "SHIPS"
+  NumU = Hits
+  print at 8,19, digits$(NumU, 2)
+  print at 10,19, "/"
+  NumU = H1
+  print at 11,19, digits$(NumU, 2)
+  print at 15,19, "HEAT"
+  ShowHeat
+  print at 2,20, "MISS"
+  for I = 1 to 18
+    X = I + 7
+    if I <= M1 then
+      if I <= Miss then
+        put char TMx at X,20
+      else
+        put char TMo at X,20
+      end if
+    else
+      put char TPan at X,20
+    end if
+  next
+  print at 2,21, "TIME"
+  ShowTime
+  return
+end sub
+
+' ShowHeat: 10 cells on row 19 (columns 20-29... 19-28), red above 70
+sub ShowHeat:
+  for I = 1 to 9
+    X = I + 19
+    V = I * 11
+    if Heat >= V then
+      if Heat >= 70 then
+        put char TGr at X,19
+      else
+        put char TGh at X,19
+      end if
+    else
+      put char TGe at X,19
+    end if
+  next
+  return
+end sub
+
+' ShowTime: 20 cells on row 21, one for each twentieth of the time left
+sub ShowTime:
+  W16 = Tl / Tstep
+  if Tl > 0 then inc W16
+  N = W16
+  for I = 1 to 20
+    X = I + 7
+    if I <= N then
+      put char TGt at X,21
+    else
+      put char TGe at X,21
+    end if
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rg1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rg1 = 1
+  if joypad(2).right then Rg1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn = 1
+  if joypad(2).button2 then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 14
+  for J = 0 to 13
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a plain page: the panel with a black window (rows 3-21)
+sub PlainPage:
+  NewScreen
+  for Y = 0 to 23
+    for X = 0 to 31
+      put char TPan at X,Y
+    next
+  next
+  return
+end sub
+
+' the title: the level (left and right) and START or CREDITS (up, down)
+sub TitlePage:
+  PlainPage
+  print at 9,4, "N E B E R G A L L"
+  print at 13,6, "R U N"
+  print at 4,9, "DESTROY THE BLACK NEBULA'S"
+  print at 4,10, "TROOP SHIPS. DON'T MISS!"
+  print at 7,13, "EXPERIENCE LEVEL"
+  print at 12,16, "START"
+  print at 12,17, "CREDITS"
+  print at 10,20, "HI"
+  NumU = Hi
+  print at 13,20, digits$(NumU, 5)
+  ShowLevel
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  V = Rnd()
+  ReadPad
+  V = Up1 | Dn1
+  W = Lf1 | Rg1
+  N = V | W
+  if N = 1 then
+    if WasStick = 0 then
+      if V = 1 then
+        Menu = Menu ^ 1
+        ShowMenu
+      end if
+      if Lf1 = 1 then
+        if Lv > 1 then dec Lv
+        ShowLevel
+      end if
+      if Rg1 = 1 then
+        if Lv < 9 then inc Lv
+        ShowLevel
+      end if
+    end if
+  end if
+  WasStick = N
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowLevel:
+  print at 13,14, "< >"
+  NumU = Lv
+  print at 14,14, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowMenu:
+  put char TPan at 10,16
+  put char TPan at 10,17
+  V = Menu + 16
+  put char 62 at 10,V
+  return
+end sub
+
+' the story (lines 130-390 of the listing), three pages
+sub StoryPages:
+  PlainPage
+  print at 11,4, "COMMANDER"
+  print at 4,7, "THE FORCES OF THE BLACK"
+  print at 4,8, "NEBULA HAVE BROKEN THROUGH"
+  print at 3,9, "THE PLANETARY DEFENSE LINES"
+  print at 4,10, "AND ARE ATTACKING THE"
+  print at 4,11, "PLANET NEBERGALL."
+  StoryWait
+  PlainPage
+  print at 4,4, "WE HAVE GATHERED THE"
+  print at 4,5, "WEAPONS AND SUPPLIES THAT"
+  print at 4,6, "THEY NEED TO SURVIVE THE"
+  print at 4,7, "ATTACK. WE HAVE ARMED A"
+  print at 4,8, "SUPPLY SHIP WITH THE NEW"
+  print at 4,9, "STELLAR LASER MARK-IV."
+  print at 4,11, "ENEMY TROOP SHIPS ARE"
+  print at 4,12, "PATROLLING THE STELLAR"
+  print at 4,13, "SUPPLY LANES. WE HAVE ONLY"
+  print at 4,14, "ONE LASER. DESTROY AS MANY"
+  print at 4,15, "TROOP SHIPS AS YOU CAN."
+  StoryWait
+  PlainPage
+  print at 4,4, "MISSING A TARGET WILL"
+  print at 4,5, "CAUSE AN IMBALANCE IN YOUR"
+  print at 4,6, "LASER THAT COULD DESTROY"
+  print at 4,7, "YOU! HOLD THE BUTTON UNTIL"
+  print at 4,8, "THE LASER DISCHARGES, AND"
+  print at 4,9, "WATCH ITS HEAT."
+  print at 11,12, "DON'T MISS!"
+  print at 11,14, "GOOD LUCK!"
+  StoryWait
+  return
+end sub
+
+sub StoryWait:
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+sw_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto sw_loop
+  return
+end sub
+
+sub CreditsPage:
+  PlainPage
+  print at 9,3, "NEBERGALL RUN"
+  print at 3,5, "BASED ON NEBERGALL RUN BY"
+  print at 3,6, "ROGER BROWNE AND STEVE"
+  print at 3,7, "GEBERT, AHOY! JULY 1986"
+  print at 3,8, "(COMMODORE 128)."
+  print at 3,10, "MADE FOR THE COLECOVISION"
+  print at 3,11, "BY CLAUDE (AN AI MADE BY"
+  print at 3,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,13, "2026, IN AMY BY AMY"
+  print at 3,14, "BIENVENU."
+  print at 3,16, "MUSIC: SUPPLY LANES,"
+  print at 3,17, "BLACK NEBULA"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+' points by kind (slowest to fastest) and colours
+data Pts words
+  50,150,300,500
+end data
+data ShCol bytes
+  3,7,13,9
+end data
+
+data VxT bytes
+  10,9,7,4,0,252,249,247,246,247,249,252,0,4,7,9,16,15,11,6,0,250,245,241,240,241,245,250,0,6,11,15,24,22,17,9,0,247,239,234,232,234,239,247,0,9,17,22,34,31,24,13,0,243,232,225,222,225,232,243,0,13,24,31
+end data
+data VyT bytes
+  0,4,7,9,10,9,7,4,0,252,249,247,246,247,249,252,0,6,11,15,16,15,11,6,0,250,245,241,240,241,245,250,0,9,17,22,24,22,17,9,0,247,239,234,232,234,239,247,0,13,24,31,34,31,24,13,0,243,232,225,222,225,232,243
+end data
+
+data TilePat bytes
+  $00,$00,$01,$01,$01,$01,$01,$01
+  $00,$00,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$10,$10,$00,$00,$00
+  $00,$00,$00,$10,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$42,$24,$18,$18,$24,$42,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$74,$74,$74,$74,$74,$74
+  $04,$04,$74,$74,$74,$74,$74,$74
+  $74,$74,$74,$74,$74,$74,$04,$04
+  $74,$74,$74,$74,$74,$74,$04,$04
+  $04,$04,$07,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$07,$04,$04
+  $74,$74,$74,$74,$74,$74,$74,$74
+  $74,$74,$74,$74,$74,$74,$74,$74
+  $04,$04,$07,$71,$71,$01,$01,$01
+  $01,$01,$01,$71,$71,$07,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$01,$01,$01,$F1,$01,$01,$01
+  $01,$01,$51,$01,$01,$01,$01,$01
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $04,$48,$48,$48,$48,$48,$48,$04
+  $04,$47,$47,$47,$47,$47,$47,$04
+  $04,$41,$41,$41,$41,$41,$41,$04
+  $04,$84,$84,$84,$84,$84,$84,$04
+  $04,$04,$E4,$4E,$4E,$E4,$04,$04
+end data
+data SpritePat bytes
+  $00,$01,$01,$0F,$11,$20,$20,$F1,$20,$20,$11,$0F,$01,$01,$00,$00
+  $00,$00,$00,$E0,$10,$08,$08,$1E,$08,$08,$10,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$3F,$76,$FF,$7F,$1F,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$FC,$DA,$FF,$FE,$F8,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$8F,$DF,$FF,$FF,$DF,$8F,$07,$03,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F1,$FB,$FF,$FF,$FB,$F1,$E0,$C0,$00,$00,$00
+  $00,$00,$01,$03,$03,$07,$8F,$FF,$FF,$9F,$1B,$31,$00,$00,$00,$00
+  $00,$00,$80,$C0,$C0,$E0,$F1,$FF,$FF,$F9,$D8,$8C,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$71,$3F,$1F,$1F,$3F,$71,$C0,$80,$00,$00,$00
+  $00,$00,$00,$01,$03,$8E,$FC,$F8,$F8,$FC,$8E,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$0F,$1F,$1F,$0F,$07,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$E0,$F0,$F8,$F8,$F0,$E0,$40,$00,$00,$00,$00
+  $81,$40,$24,$10,$00,$40,$80,$00,$00,$80,$40,$00,$10,$24,$40,$81
+  $81,$02,$24,$08,$00,$02,$01,$00,$00,$01,$02,$00,$08,$24,$02,$81
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+NbBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$56,$0E,$00,$00,$77,$12,$10
+NbZap:
+    db $40,$38,$00,$01,$40,$46,$10,$01,$40,$56,$10,$01,$40,$70,$20,$02,$40,$8C,$40,$02,$40,$BA,$50,$03
+    db $50
+NbMiss:
+    db $40,$75,$11,$04,$40,$FC,$31,$06,$40,$BB,$52,$08,$50
+NbHot:
+    db $40,$40,$10,$02,$40,$FF,$83,$02,$40,$40,$10,$02,$40,$FF,$83,$02,$50
+NbWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$10,$14
+    db $50
+NbOver:
+    db $40,$1D,$11,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$42,$1A,$50
+NbGo:
+    db $40,$8F,$20,$03,$40,$5F,$20,$03,$40,$47,$30,$06,$50
+
+NbSoundTable:
+    dw NbTuneMel,$702B
+    dw NbTuneBass,$7035
+    dw NbRunMel,$702B
+    dw NbRunBass,$7035
+    dw NbBoom,$703F
+    dw NbZap,$7049
+    dw NbMiss,$7049
+    dw NbHot,$7049
+    dw NbWin,$7049
+    dw NbOver,$7049
+    dw NbGo,$7049
+; Supply Lanes (original)
+; Tiny Sound, 6 frames per step
+NbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$17,$01,$01,$1E,$01,$01,$23,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$1C,$01,$01,$1F,$01,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01,$1A,$01,$01,$1E,$01,$01,$21,$01,$1F,$01,$1C,$01
+    db $19,$01,$01,$01,$17,$01,$1E,$01,$1A,$01,$1E,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+NbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17,$0B,$17
+    db $0B,$17,$0B,$17,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13,$07,$13
+    db $07,$13,$07,$13,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12,$06,$12
+    db $06,$12,$06,$12
+    db $FF
+
+; Black Nebula (original)
+; Tiny Sound, 7 frames per step
+NbRunMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$50,$1A,$21,$15,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$1A,$01
+    db $18,$01,$17,$01,$15,$01,$01,$01,$18,$01,$01,$01,$1D,$01,$1C,$01
+    db $1A,$01,$1C,$01,$15,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$1A,$01
+    db $18,$01,$17,$01,$14,$01,$17,$01,$1C,$01,$01,$01,$15,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+NbRunBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$18,$32,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15
+    db $09,$15,$09,$15,$05,$11,$05,$11,$05,$11,$05,$11,$05,$11,$05,$11
+    db $05,$11,$05,$11,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15,$09,$15
+    db $09,$15,$09,$15,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10,$04,$10
+    db $04,$10,$04,$10
+    db $FF
+}

@@ -1,0 +1,1062 @@
+cartridge "NIGHT RAID/AHOY! FEB 1989/1989"
+
+' NIGHT RAID
+' A ColecoVision game based on "Night Raid", Ahoy! February 1989
+' (Commodore 64 machine language, NIGHT RAID.ML at $C000, 2,692 bytes,
+' started by a two-line BASIC loader; no author is named on the disk or in
+' the program). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/nightraid.dis), the game is built for the
+' ColecoVision: a starry night over a small town, hangar mouths on both
+' sides of four flight lanes, smooth two-colour raider sprites, a
+' crackling ray, explosions, sound effects and a title tune.
+'
+' The game: raiders fly out of the hangars, cross a lane, then come back
+' out one lane lower, four lanes in all. A raider on the lowest lane lets
+' down a ray that wrecks the first building (or the cannon) it passes over.
+' Shoot them first with three guns: the centre cannon fires straight up,
+' the left bunker fires up and to the right, the right bunker up and to
+' the left. When the wave is over every building still standing is worth
+' 1000; each 10,000 points rebuilds one; with nothing left standing at the
+' end of a wave the game is over.
+'
+' From the original (orig/): four raider slots on four lanes (C64 Y 50,
+' 86, 122, 158); a raider takes the next lane only when no other raider is
+' on it, and waits at the hangar until it is free; 16 + (0-7) raiders a
+' wave; eight raider kinds picked at random when one sets out, each with
+' its side and speed (1, 2 or 3 pixels a move: 50, 100, 200 points); a
+' raider on the lowest lane drops its ray (one building per pass, the ray
+' then goes out); one shot at a time, from the cannon (stick centred +
+' button: straight up, only while the cannon stands), the left bunker
+' (left + button) or the right bunker (right + button), moving two pixels
+' sideways for each one up; a hit is a box test (the C64 compared
+' positions too); the bunkers can't be destroyed; after a wave a pause,
+' the level up (15 at most), 1000 for every building left (cannon
+' included), one rebuilt in order (cannon first) per wave in which the
+' ten-thousands digit changed; game over at the end of a wave with all
+' five gone and none to rebuild.
+'
+' Liberties: the C64 ran its loop flat out (about 33 passes a frame:
+' a shot step every 8 passes, a raider step every 16 - level passes, so
+' its level 15 moved raiders tens of pixels a frame); here everything is
+' worked out per frame: the shot climbs 3.25 pixels a frame (the C64's
+' 4 x 0.8 for the smaller screen), raiders 1.25, 2.5 or 3.75 pixels at
+' level 1 and up to 2.56 times that from level 8 on (the C64 started
+' about 40% faster and became unplayable); raiders come out of and go into
+' hangar mouths drawn inside the screen (the C64's went off its edges); a
+' raider waiting for a free lane waits in its hangar mouth; the ray checks
+' both columns of a building (raiders move up to 8 pixels a frame); the
+' explosion lasts 12 frames (8 on the C64); a high score; a wave-cleared
+' message; the bonus is added as the wave ends (the C64 added it after
+' its pause); the stars twinkle twice a second (the C64 rolled star bits
+' every 8 passes); GAME OVER then the title (the C64 went back to PRESS
+' FIRE BUTTON). The SHIFT pause key is gone (no keypad, no keys).
+'
+' Controls: controller 1 (or 2): button alone fires the centre cannon,
+' left + button the left bunker, right + button the right bunker. Holding
+' the button fires again as soon as the last shot is gone (as on the C64).
+' On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` always given.
+'
+' Workarounds for Amy bugs jake-return-before-for removed 2026-11-01.
+
+const TSky = 128
+const TStar0 = 129
+const TStar1 = 130
+const TStar2 = 131
+const TTw0 = 132
+const TTw1 = 133
+const THl00 = 134
+const THl01 = 135
+const THl10 = 136
+const THl11 = 137
+const THr00 = 138
+const THr01 = 139
+const THr10 = 140
+const THr11 = 141
+const TLane = 142
+const TGrass = 143
+const TEarth0 = 144
+const TEarth1 = 145
+const TDome00 = 146
+const TDome01 = 147
+const TDome10 = 148
+const TDome11 = 149
+const TGun00 = 150
+const TGun01 = 151
+const TGun10 = 152
+const TGun11 = 153
+const TBl00 = 154
+const TBl01 = 155
+const TBl10 = 156
+const TBl11 = 157
+const TBr00 = 158
+const TBr01 = 159
+const TBr10 = 160
+const TBr11 = 161
+const TRub00 = 162
+const TRub01 = 163
+const TRub10 = 164
+const TRub11 = 165
+const TTl = 166
+const TMoon00 = 167
+const TMoon01 = 168
+const TMoon10 = 169
+const TMoon11 = 170
+const TLife = 171
+const SAr = 0
+const SArl = 4
+const SAl = 8
+const SAll = 12
+const SBr = 16
+const SBrl = 20
+const SBl = 24
+const SBll = 28
+const SCr = 32
+const SCrl = 36
+const SCl = 40
+const SCll = 44
+const SEx0 = 48
+const SEx1 = 52
+const SShot = 56
+const SRay0 = 60
+const SRay1 = 64
+const NTiles8 = 352
+const SprBytes = 544
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndHit = 4
+const SndRay = 5
+const SndCrash = 6
+const SndBonus = 7
+const SndClear = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 11
+' shot limits in 1/16 pixels
+const ShTop = 384
+const ShMinX = 256
+const ShMaxX = 3776
+' raider X range in 1/16 pixels (16 to 224)
+const RxMin = 256
+const RxMax = 3584
+
+' lanes by raider state 1-4 (sprite Y)
+data LaneY bytes 0,24,56,88,120
+' the eight kinds: 1 = sets out from the right (moves left), speed 1-3
+data KindLeft bytes 1,0,0,1,0,0,1,0
+data KindSpd bytes 1,1,2,2,2,3,3,3
+' points by speed (tens), hull colour and patterns by speed
+data SpdPts bytes 0,5,10,20
+data SpdCol bytes 0,3,9,13
+' targets: the cannon then four buildings (left column)
+data TCol bytes 15,6,9,21,24
+' muzzles by gun (0 cannon, 1 left bunker, 2 right bunker): X in pixels
+data GunX bytes 128,30,225
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$04,$0E,$04,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $A5,$00,$A5,$00,$A5,$00,$00,$22
+  $00,$40,$04,$00,$10,$00,$02,$00
+  $00,$00,$80,$00,$00,$08,$00,$00
+  $00,$03,$F0,$E0,$C0,$C0,$80,$99
+  $00,$C0,$F0,$07,$03,$03,$01,$99
+  $99,$00,$00,$99,$99,$00,$01,$01
+  $99,$00,$00,$99,$99,$00,$80,$80
+  $00,$01,$01,$01,$01,$01,$03,$07
+  $00,$80,$80,$80,$80,$80,$C0,$E0
+  $F0,$E0,$C0,$38,$00,$00,$00,$00
+  $F0,$07,$03,$1C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$07
+  $00,$00,$18,$30,$60,$C0,$80,$C0
+  $F0,$E0,$C0,$30,$00,$00,$00,$00
+  $E0,$F0,$07,$60,$00,$00,$00,$00
+  $00,$00,$18,$0C,$06,$03,$01,$03
+  $00,$00,$00,$00,$00,$00,$80,$E0
+  $07,$F0,$E0,$06,$00,$00,$00,$00
+  $F0,$07,$03,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$0E,$E0,$C0,$80,$00,$00
+  $00,$00,$20,$8B,$03,$01,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$07,$E0,$C0,$80,$80,$04,$0E
+  $00,$E0,$07,$03,$01,$01,$00,$10
+  $04,$00,$80,$80,$C0,$E0,$07,$00
+  $38,$10,$01,$01,$03,$07,$E0,$00
+  $00,$C3,$81,$81,$24,$81,$24,$81
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$51,$01
+  $01,$01,$01,$51,$01,$01,$01,$01
+  $01,$E1,$F1,$E1,$01,$01,$01,$01
+  $01,$01,$E1,$01,$01,$01,$01,$01
+  $0E,$0F,$0E,$E1,$E1,$E1,$E1,$E1
+  $0E,$0F,$0E,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$0E,$0F,$0E
+  $01,$01,$01,$01,$01,$0E,$0F,$0E
+  $0E,$0F,$0E,$01,$01,$01,$01,$01
+  $0E,$0F,$0E,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$0E,$0F,$0E
+  $E1,$E1,$E1,$E1,$E1,$0E,$0F,$0E
+  $01,$01,$01,$01,$01,$01,$41,$01
+  $21,$02,$C2,$0C,$AC,$0A,$0A,$6A
+  $0A,$6A,$6A,$0A,$6A,$0A,$6A,$0A
+  $0A,$0A,$6A,$0A,$0A,$6A,$0A,$0A
+  $01,$71,$17,$17,$17,$15,$1E,$EB
+  $01,$71,$71,$17,$17,$15,$1E,$EB
+  $EB,$0E,$0E,$EB,$EB,$0E,$1E,$1E
+  $EB,$0E,$0E,$EB,$EB,$0E,$1E,$1E
+  $01,$F1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$F1,$E1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1F,$1E,$9E,$0E,$0E,$0E,$0E
+  $E1,$1F,$1E,$9E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$E1,$E1
+  $01,$01,$F1,$E1,$E1,$E1,$E1,$E1
+  $1E,$1F,$1E,$9E,$0E,$0E,$0E,$0E
+  $E1,$F1,$1E,$9E,$0E,$0E,$0E,$0E
+  $01,$01,$F1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$E1,$E1
+  $E1,$1F,$1E,$9E,$0E,$0E,$0E,$0E
+  $E1,$1F,$1E,$9E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$E1,$E1,$1E,$1E,$1E,$0E,$0E
+  $01,$01,$E1,$1E,$1E,$1E,$0E,$0E
+  $05,$57,$57,$57,$57,$57,$57,$04
+  $01,$B1,$1B,$1B,$1B,$1B,$AB,$AB
+  $01,$B1,$1B,$1B,$1B,$1B,$0B,$AB
+  $AB,$0B,$1B,$1B,$1B,$1B,$B1,$01
+  $AB,$AB,$1B,$1B,$1B,$1B,$B1,$01
+  $01,$17,$17,$15,$BE,$1E,$BE,$1E
+end data
+data SpritePat bytes
+  $00,$00,$00,$03,$05,$1F,$5B,$FF,$7F,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$A0,$F8,$6C,$FF,$FE,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$24,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$00,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$05,$1F,$36,$FF,$7F,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$A0,$F8,$DA,$FF,$FE,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$49,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$00,$24,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$F0,$7F,$3F,$3F,$3F,$7F,$F0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$FF,$F8,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$FF,$1F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0F,$FE,$FC,$FC,$FC,$FE,$0F,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$C7,$63,$71,$3F,$3F,$3F,$71,$63,$C7,$80,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F4,$FF,$FC,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$2F,$FF,$3F,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$01,$E3,$C6,$8E,$FC,$FC,$FC,$8E,$C6,$E3,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$09,$07,$1F,$0F,$2F,$07,$09,$02,$00,$00,$00,$00
+  $00,$00,$00,$40,$90,$E0,$F0,$F4,$E0,$E0,$90,$40,$00,$00,$00,$00
+  $00,$21,$08,$42,$10,$82,$10,$01,$28,$80,$12,$41,$00,$00,$00,$00
+  $00,$04,$20,$84,$02,$20,$10,$04,$04,$90,$08,$22,$00,$00,$00,$00
+  $18,$3C,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $04,$04,$02,$02,$04,$04,$02,$02,$04,$04,$02,$02,$04,$04,$02,$02
+  $40,$40,$80,$80,$40,$40,$80,$80,$40,$40,$80,$80,$40,$40,$80,$80
+end data
+
+data GameMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$81,$80,$80,$83,$83,$81,$80,$80,$80,$80,$80,$80
+  $80,$80,$86,$87,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$81,$80,$80,$80,$80,$82,$80,$80,$80,$80,$81,$8A,$8B,$80,$80
+  $80,$80,$88,$89,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$8C,$8D,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$81,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $83,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$83,$80,$80,$80,$81,$80,$80,$80
+  $80,$80,$86,$87,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8A,$8B,$80,$80
+  $80,$80,$88,$89,$83,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$81,$80,$8E,$82,$80,$8E,$80,$80,$8E,$80,$80,$8E,$8C,$8D,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$83,$80,$83,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$83,$80,$81
+  $80,$80,$80,$80,$83,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$80,$83,$81,$80,$82,$80,$80,$83,$80,$81,$80
+  $80,$80,$86,$87,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$82,$83,$80,$80,$80,$8A,$8B,$80,$80
+  $80,$80,$88,$89,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$83,$80,$8E,$80,$80,$8E,$8C,$8D,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80
+  $80,$83,$80,$80,$80,$80,$82,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$86,$87,$80,$81,$80,$81,$82,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$82,$8A,$8B,$80,$80
+  $80,$80,$88,$89,$80,$83,$8E,$80,$80,$8E,$80,$80,$8E,$80,$82,$8E,$80,$83,$8E,$80,$80,$8E,$80,$80,$8E,$80,$80,$8E,$8C,$8D,$80,$80
+  $81,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$82
+  $81,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$81,$83,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$9A,$9B,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$9F,$80,$80
+  $80,$80,$9C,$9D,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$A0,$A1,$80,$80
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90,$90,$91,$90
+  $90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91,$90,$91
+end data
+
+data TitleMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$A6,$83,$80,$A6,$80,$A6,$80,$A6,$A6,$A6,$80,$A6,$80,$A6,$80,$A6,$A6,$A6,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$A6,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$80,$80,$A6,$80,$A6,$80,$80,$A6,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$A6,$80,$A6,$A6,$81,$A6,$80,$A6,$80,$A6,$80,$A6,$A6,$A6,$80,$81,$A6,$80,$83,$80,$80,$80,$80,$82,$80
+  $80,$80,$80,$81,$80,$80,$80,$A6,$80,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$81,$A6,$81,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$A6,$80,$80,$A6,$80,$A6,$80,$A6,$A6,$A6,$80,$A6,$80,$A6,$80,$80,$A6,$80,$80,$80,$80,$81,$82,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$83
+  $80,$80,$81,$80,$80,$80,$80,$80,$80,$A6,$A6,$80,$80,$A6,$A6,$A6,$80,$A6,$80,$A6,$A6,$80,$80,$80,$80,$A7,$A8,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$83,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$80,$80,$A9,$AA,$80,$80,$80,$80,$82
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$A6,$A6,$80,$80,$A6,$A6,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80
+  $83,$80,$80,$80,$80,$80,$80,$80,$83,$A6,$82,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$A6,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$83,$80,$80,$80,$80,$80,$A6,$80,$A6,$81,$A6,$82,$A6,$80,$A6,$80,$A6,$A6,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$83,$80,$80,$82,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80
+end data
+
+record Raider:
+  u8 St
+  u8 Ty
+  u8 Bm
+  u16 X
+end record
+
+Raider Rd[4]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 ShX = 0
+u16 ShY = 0
+u16 Acc = 0
+u16 Spd = 0
+bcd digits 5 Score = 0
+bcd digits 5 Hi = 0
+u8 Alive[5]
+u8 ShOn = 0
+u8 ShGun = 0
+u8 RayOn = 0
+u8 RayS = 0
+u8 Lv = 0
+u8 Left = 0
+u8 WaveT = 0
+u8 TenK = 0
+u8 TenK0 = 0
+u8 Rebuild = 0
+u8 Over = 0
+u8 Kills = 0
+u8 Lost = 0
+u8 Waves = 0
+u8 N8 = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Twk = 0
+' title raider
+u8 TrX = 16
+' loop counters (never shared with the helpers)
+u8 Sl = 0
+u8 Ds = 0
+u8 Tg = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table NrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  print at 8,8, "                "
+  print at 8,9, "   GAME  OVER   "
+  print at 8,10, "                "
+  print at 8,11, "  SCORE ", Score, "0 "
+  print at 8,12, "  BEST  ", Hi, "0 "
+  print at 8,13, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if WaveT > 0 then
+    dec WaveT
+    if WaveT = 0 then NextWave
+    return
+  end if
+  DoFire
+  MoveShot
+  for Sl = 3 to 0 step -1
+    MoveRaider(Sl)
+  next
+  RayStep
+  for Sl = 0 to 3
+    if Rd[Sl].Bm > 0 then
+      dec Rd[Sl].Bm
+      if Rd[Sl].Bm = 0 then Rd[Sl].St = 0
+    end if
+  next
+  CheckWave
+  return
+end sub
+
+' the gun the stick picks: 0 cannon, 1 left bunker, 2 right bunker, 3 none
+function PickGun(u8 Stick) as u8
+  u8 G = 3
+  select case Stick & 12
+    case 0
+      if Alive[0] > 0 then G = 0
+    case 4
+      G = 1
+    case 8
+      G = 2
+  end select
+  return G
+
+sub DoFire:
+  if ShOn > 0 then return
+  if Btn = 0 then return
+  K = PickGun(J1)
+  if K = 3 then return
+  ShGun = K
+  ShOn = 1
+  W16 = GunX[K]
+  ShX = W16 << 4
+  ShY = 150 * 16
+  play sound SndZap
+  return
+end sub
+
+' the shot: 3.25 pixels up a frame, 6.5 sideways from a bunker; the first
+' raider (slot 3 down to 0) whose box it is in explodes
+sub MoveShot:
+  if ShOn = 0 then return
+  ShY = ShY - 52
+  select case ShGun
+    case 1
+      ShX = ShX + 104
+    case 2
+      ShX = ShX - 104
+  end select
+  if ShY < ShTop then
+    ShOn = 0
+    return
+  end if
+  if ShX < ShMinX or ShX > ShMaxX then
+    ShOn = 0
+    return
+  end if
+  X = ShX >> 4
+  Y = ShY >> 4
+  for Ds = 3 to 0 step -1
+    if HitBox(Ds) = 1 then
+      Rd[Ds].Bm = 12
+      ShOn = 0
+      inc Kills
+      K = Rd[Ds].Ty
+      AddPts(SpdPts[KindSpd[K]])
+      play sound SndHit
+      return
+    end if
+  next
+  return
+end sub
+
+' 1 when the shot point (X, Y) is inside raider Hs's box
+function HitBox(u8 Hs) as u8
+  u8 Ex = 0
+  u8 Ey = 0
+  if Rd[Hs].St = 0 then return 0
+  if Rd[Hs].Bm > 0 then return 0
+  Ex = Rd[Hs].X >> 4
+  Ey = LaneY[Rd[Hs].St]
+  if X <= Ex then return 0
+  if X > Ex + 15 then return 0
+  if Y < Ey + 2 then return 0
+  if Y > Ey + 13 then return 0
+  return 1
+
+' points in tens (Score and Hi count tens: a 0 is printed after them)
+sub AddPts(u8 Tens):
+  Score += Tens
+  if Score > Hi then Hi = Score
+  Acc = Acc + Tens
+  while Acc >= 1000
+    Acc = Acc - 1000
+    inc TenK
+  end while
+  ShowScore
+  return
+end sub
+
+' one raider: set out when the wave has raiders left, move along its lane,
+' take the next lane at the far hangar
+sub MoveRaider(u8 Ms):
+  u16 Nx = 0
+  u16 Dv = 0
+  if Rd[Ms].St = 0 then
+    if Left = 0 then return
+    if Advance(Ms) = 0 then return
+    dec Left
+  end if
+  if Rd[Ms].Bm > 0 then return
+  K = Rd[Ms].Ty
+  Dv = KindSpd[K] * Spd
+  if KindLeft[K] = 1 then
+    if Rd[Ms].X < RxMin + Dv then
+      V = Advance(Ms)
+      return
+    end if
+    Nx = Rd[Ms].X - Dv
+  else
+    Nx = Rd[Ms].X + Dv
+    if Nx > RxMax then
+      V = Advance(Ms)
+      return
+    end if
+  end if
+  Rd[Ms].X = Nx
+  return
+end sub
+
+' the next lane for raider As: 1 when it moved on (or flew home after the
+' lowest lane), 0 when the lane is taken
+function Advance(u8 As) as u8
+  u8 N = Rd[As].St + 1
+  if N >= 5 then
+    Rd[As].St = 0
+    return 1
+  end if
+  for J = 0 to 3
+    if Rd[J].St = N then return 0
+  next
+  Rd[As].St = N
+  if N = 1 then
+    Rnd
+    Rd[As].Ty = Rs & 7
+  end if
+  if N = 4 then
+    RayOn = 1
+    RayS = As
+    play sound SndRay
+  end if
+  if KindLeft[Rd[As].Ty] = 1 then
+    Rd[As].X = RxMax
+  else
+    Rd[As].X = RxMin
+  end if
+  Rd[As].Bm = 0
+  return 1
+
+' the ray under the raider on the lowest lane wrecks what it passes over
+sub RayStep:
+  if RayOn = 0 then return
+  if Rd[RayS].St <> 4 or Rd[RayS].Bm > 0 then
+    RayOn = 0
+    return
+  end if
+  W16 = Rd[RayS].X >> 4
+  V = W16 + 7
+  V = V >> 3
+  for Tg = 0 to 4
+    K = TCol[Tg]
+    if V = K or V = K + 1 then
+      if Alive[Tg] > 0 then
+        Alive[Tg] = 0
+        inc Lost
+        DrawTarget(Tg)
+        RayOn = 0
+        play sound SndCrash
+      end if
+      return
+    end if
+  next
+  return
+end sub
+
+' all raiders out and home or shot: the bonus, a pause, the next wave
+sub CheckWave:
+  if Left > 0 or ShOn > 0 or RayOn > 0 then return
+  for J = 0 to 3
+    if Rd[J].St > 0 then return
+  next
+  N8 = 0
+  for J = 0 to 4
+    N8 = N8 + Alive[J]
+  next
+  print at 9,9, " WAVE CLEARED "
+  if N8 > 0 then
+    print at 9,10, " BONUS ", N8, "000 "
+    for Tg = 1 to N8
+      AddPts(100)
+    next
+  end if
+  inc Waves
+  if TenK <> TenK0 then inc Rebuild
+  play sound SndClear
+  WaveT = 100
+  return
+end sub
+
+
+' after the pause: the level up, rebuild, the next wave or the end
+sub NextWave:
+  copy GameMap + 288 count 64 to vram.name + 288
+  N8 = 0
+  for J = 0 to 4
+    N8 = N8 + Alive[J]
+  next
+  if N8 = 0 and Rebuild = 0 then
+    Over = 1
+    return
+  end if
+  if Lv < 15 then inc Lv
+  StartWave
+  return
+end sub
+
+sub StartWave:
+  K = Lv
+  if K > 8 then K = 8
+  Spd = K * 3 + 17
+  for Tg = 0 to 4
+    if Rebuild > 0 and Alive[Tg] = 0 then
+      Alive[Tg] = 1
+      dec Rebuild
+      DrawTarget(Tg)
+    end if
+  next
+  Rnd
+  Left = (Rs & 7) + 16
+  TenK0 = TenK
+  NumU = Lv
+  print at 16,1, digits$(NumU, 2)
+  return
+end sub
+
+sub Rnd:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub DrawTarget(u8 T):
+  u8 Cx = TCol[T]
+  u8 Pc = TRub00
+  if Alive[T] > 0 then
+    if T = 0 then
+      Pc = TGun00
+    else
+      Pc = TDome00
+    end if
+  end if
+  put char Pc at Cx,19
+  put char Pc + 1 at Cx + 1,19
+  put char Pc + 2 at Cx,20
+  put char Pc + 3 at Cx + 1,20
+  return
+end sub
+
+' sprites: 0 the shot, 1-2 the ray, 3 + 2 x slot the lights, 4 + 2 x slot
+' the hull (or the explosion)
+sub DrawSprites:
+  if ShOn > 0 then
+    X = ShX >> 4
+    Y = ShY >> 4
+    set sprite 0 to Y - 3,X - 4,SShot,15
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  if RayOn > 0 then
+    W16 = Rd[RayS].X >> 4
+    X = W16
+    K = Tick >> 4
+    K = (K & 1) * 4 + SRay0
+    set sprite 1 to 135,X,K,7
+    set sprite 2 to 151,X,K,7
+  else
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  end if
+  for Ds = 0 to 3
+    J = Ds * 2 + 3
+    if Rd[Ds].St = 0 then
+      set sprite J to 192,0,0,0
+      set sprite J + 1 to 192,0,0,0
+    else
+      W16 = Rd[Ds].X >> 4
+      X = W16
+      Y = LaneY[Rd[Ds].St] - 1
+      if Rd[Ds].Bm > 0 then
+        K = SEx0
+        if Rd[Ds].Bm < 7 then K = SEx1
+        set sprite J to 192,0,0,0
+        set sprite J + 1 to Y,X,K,10
+      else
+        V = Rd[Ds].Ty
+        K = KindSpd[V]
+        V = KindLeft[V]
+        K = (K - 1) * 16 + V * 8 + SAr
+        set sprite J to Y,X,K + 4,11
+        set sprite J + 1 to Y,X,K,SpdCol[KindSpd[Rd[Ds].Ty]]
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score, "0"
+  print at 23,1, Hi, "0"
+  return
+end sub
+
+' the stars twinkle: two star shapes swapped twice a second
+sub Twinkle:
+  inc Twk
+  if Twk < 30 then return
+  Twk = 0
+  V = Tick & 32
+  if V > 0 then
+    copy TilePat + 32 count 8 to vram.pattern + 1024 + 8
+    copy TilePat + 32 count 8 to vram.pattern + 3072 + 8
+    copy TilePat + 32 count 8 to vram.pattern + 5120 + 8
+  else
+    copy TilePat + 40 count 8 to vram.pattern + 1024 + 8
+    copy TilePat + 40 count 8 to vram.pattern + 3072 + 8
+    copy TilePat + 40 count 8 to vram.pattern + 5120 + 8
+  end if
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 2,1, "SCORE"
+  print at 15,1, "W"
+  print at 20,1, "HI"
+  for Sl = 0 to 3
+    Rd[Sl].St = 0
+    Rd[Sl].Bm = 0
+    Rd[Sl].X = 0
+  next
+  for Tg = 0 to 4
+    Alive[Tg] = 1
+    DrawTarget(Tg)
+  next
+  Score = 0
+  Acc = 0
+  TenK = 0
+  Rebuild = 0
+  Lv = 1
+  ShOn = 0
+  RayOn = 0
+  WaveT = 0
+  Over = 0
+  Kills = 0
+  Lost = 0
+  Waves = 0
+  StartWave
+  ShowScore
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  Twinkle
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 10
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: NIGHT RAID in moonlit blocks, a raider crossing, START /
+' CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 6,1, "AHOY! FEBRUARY 1989"
+  copy TitleMap count 384 to vram.name + 64
+  print at 5,16, "SHOOT DOWN THE RAIDERS"
+  print at 5,17, "BEFORE THEIR RAYS FALL"
+  print at 13,19, "START"
+  print at 13,20, "CREDITS"
+  if Hi > 0 then
+    print at 9,22, "BEST ", Hi, "0"
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a dart crosses the title sky, a pixel a frame
+sub TitleAnim:
+  inc TrX
+  if TrX > 224 then TrX = 16
+  set sprite 3 to 110,TrX,SBr + 4,11
+  set sprite 4 to 110,TrX,SBr,9
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,19
+  put char 32 at 11,20
+  J = Menu + 19
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "NIGHT RAID"
+  print at 2,5, "BASED ON NIGHT RAID,"
+  print at 2,6, "AHOY! FEBRUARY 1989"
+  print at 2,7, "(COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE, NO AUTHOR NAMED)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: BLACKOUT WATCH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+NrZap:
+    db $40,$BA,$20,$01,$40,$8F,$30,$01,$40,$75,$30,$01,$40,$62,$40,$01,$40,$55,$40,$01,$40,$4B,$50,$01
+    db $40,$43,$50,$01,$40,$3C,$60,$01,$50
+NrHit:
+    db $00,$00,$05,$03,$00,$00,$16,$04,$00,$00,$36,$06,$00,$00,$57,$08,$10
+NrRay:
+    db $00,$00,$54,$02,$00,$00,$55,$02,$00,$00,$54,$02,$00,$00,$55,$02,$00,$00,$64,$02,$00,$00,$65,$02
+    db $00,$00,$64,$02,$00,$00,$65,$02,$00,$00,$64,$02,$00,$00,$65,$02,$10
+NrCrash:
+    db $00,$00,$06,$04,$00,$00,$17,$06,$00,$00,$27,$08,$00,$00,$37,$0A,$00,$00,$57,$0E,$10
+NrBonus:
+    db $40,$6B,$20,$03,$40,$55,$30,$03,$50
+NrClear:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$50
+NrStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+NrOver:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$AB,$21,$0A,$40,$3B,$32,$1E,$50
+
+NrSoundTable:
+    dw NrTuneMel,$702B
+    dw NrTuneBass,$7035
+    dw NrZap,$7049
+    dw NrHit,$703F
+    dw NrRay,$703F
+    dw NrCrash,$703F
+    dw NrBonus,$7049
+    dw NrClear,$7049
+    dw NrStart,$7049
+    dw NrOver,$7049
+; Blackout Watch (original)
+; Tiny Sound, 8 frames per step
+NrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$26,$25,$01,$23,$01,$1E,$01,$23,$01
+    db $26,$01,$28,$01,$01,$2A,$28,$01,$26,$01,$25,$01,$01,$01,$21,$01
+    db $25,$01,$23,$01,$01,$26,$25,$01,$23,$01,$1E,$01,$01,$01,$1F,$01
+    db $21,$01,$23,$01,$26,$01,$25,$01,$21,$01,$23,$01,$01,$01,$2A,$01
+    db $2F,$01,$00,$01
+    db $FF
+NrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$07,$01,$0E,$01,$09,$01,$10,$01,$0B,$01,$01,$01
+    db $06,$01,$00,$01
+    db $FF
+}
