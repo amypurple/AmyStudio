@@ -13,6 +13,7 @@ The project is maintained by Amy Bienvenu and carries forward a long ColecoVisio
 - [Development Quality Pipeline](docs/development-quality-pipeline.md)
 - [Amy Studio on GitHub](https://github.com/amypurple/AmyStudio)
 - [Amy Language Reference](docs/amy-language.md)
+- [Amy Compiler Command Line](docs/amy-compiler-cli.md)
 - [Amy Studio Heritage](docs/amy-studio-heritage.md)
 - [ColecoVision Essentials](docs/colecovision-essentials.md)
 
@@ -52,6 +53,16 @@ python3 -m http.server 8080
 ```
 
 Then open `http://localhost:8080/studio/`. Stop the server with `Ctrl+C`.
+
+### Command-Line Compiler
+
+Compile a standalone `.alexis` source with the same compiler and assembler used by Studio:
+
+```powershell
+node tools/amyc.mjs game.alexis --output --asm --opt balanced
+```
+
+Run `node tools/amyc.mjs --help` for the exact options supported by your checkout, or see the [Amy compiler command-line reference](docs/amy-compiler-cli.md).
 
 ## ROM Test And Debug
 

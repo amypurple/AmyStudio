@@ -3,7 +3,7 @@
 //
 //   node tools/amyc.mjs path/to/program.alexis            # transpile + assemble, report size
 //   node tools/amyc.mjs prog.alexis --asm [out.asm]       # also write the generated ASM
-//   node tools/amyc.mjs prog.alexis --rom [out.rom]       # also write the ROM binary
+//   node tools/amyc.mjs prog.alexis --output [out.rom]    # also write the ROM/binary
 //   node tools/amyc.mjs prog.alexis --symbols [out.sym]   # write debugger symbols
 //   node tools/amyc.mjs prog.alexis --optimized-asm out   # write post-optimizer ASM
 //   node tools/amyc.mjs prog.alexis --opt balanced        # optimization level (default: balanced)
@@ -81,6 +81,54 @@ import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compiler
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+const CLI_VALUES = Object.freeze({
+  optimization: ["auto", "off", "safe", "balanced", "aggressive", "experimental"],
+  target: ["colecovision-cartridge", "colecovision-megacart", "adam-native-program", "adam-disk", "adam-data-pack"],
+  medium: ["dsk", "ddp"],
+  memoryProfile: ["colecovision-cartridge", "colecovision-megacart", "colecovision_legacy_sdcc", "adam-eos-application", "adam-os7-eos-drivers"],
+  hardware: ["sgm", "sgm1", "adam-sound-enhancer", "adamlink", "eve-serial", "orphanware-serial", "micro-serial", "microinnovations-serial"]
+});
+
+const HELP_TEXT = `Amy compiler command line
+
+Usage:
+  node tools/amyc.mjs <file.alexis> [options]
+
+Outputs (not written unless requested):
+  --output [path]          Write the compiled .rom or ADAM .bin (--rom is an alias)
+  --asm [path]             Write generated assembly
+  --optimized-asm [path]   Write assembly after optimizer passes
+  --symbols [path]         Write debugger symbols
+  --report-json <path>     Write a machine-readable build report
+
+Build options:
+  --opt <level>            auto | off | safe | balanced | aggressive | experimental
+                           Default: balanced; legacy alias "on" means aggressive
+  --target <platform>      ${CLI_VALUES.target.join(" | ")}
+                           Default: colecovision-cartridge
+  --medium <medium>        dsk | ddp (ADAM targets only)
+  --memory-profile <id>    ${CLI_VALUES.memoryProfile.join(" | ")}
+  --project-dir <dir>      Resolve @project/... files and project ASM includes
+  --hardware <id>          Enable optional hardware; repeat for multiple devices
+                           ${CLI_VALUES.hardware.join(" | ")}
+  --define <symbol>        Define a compile-time symbol; repeat as needed
+
+Advanced:
+  --disable-opt-pass <id>  Disable one named optimizer pass; repeat as needed
+  --experimental-record-ix Enable experimental record-array IX code generation
+  -h, --help               Show this reference
+
+If an optional output path is omitted, the file is written beside the source.
+The compiler always assembles and reports ROM/RAM use, even with no output flag.
+Full ADAM .dsk/.ddp project packaging is performed by Amy Studio, not this
+single-source compiler; those targets compile their program payload here.
+
+Examples:
+  node tools/amyc.mjs game.alexis --output --asm --opt balanced
+  node tools/amyc.mjs game.alexis --output build/game.rom --symbols build/game.sym
+  node tools/amyc.mjs app.alexis --target adam-native-program --medium dsk --output
+  node tools/amyc.mjs game.alexis --hardware sgm1 --define DEBUG --output`;
+
 function stripAmyInlineComment(rawLine) {
   const text = String(rawLine || "");
   let inString = false;
@@ -115,25 +163,52 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [], defines: [], experimentalRecordIx: false };
+  const opts = { file: null, help: false, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [], defines: [], disabledOptimizerPasses: [], experimentalRecordIx: false };
+  const requiredValue = (index, option) => {
+    const value = argv[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${option} requires a value.`);
+    return value;
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--asm") opts.asm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
+    if (a === "--help" || a === "-h") opts.help = true;
+    else if (a === "--asm") opts.asm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--optimized-asm") opts.optimizedAsm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
-    else if (a === "--rom") opts.rom = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
+    else if (a === "--rom" || a === "--output") opts.rom = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--symbols") opts.symbols = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
-    else if (a === "--report-json") opts.reportJson = argv[++i] || null;
-    else if (a === "--opt") opts.opt = argv[++i] || "balanced";
-    else if (a === "--project-dir") opts.projectDir = argv[++i] || null;
-    else if (a === "--target") opts.target = argv[++i] || "colecovision-cartridge";
-    else if (a === "--medium") opts.medium = argv[++i] || null;
-    else if (a === "--memory-profile") opts.memoryProfile = argv[++i] || null;
-    else if (a === "--hardware") opts.hardware.push(argv[++i] || "");
-    else if (a === "--define") opts.defines.push(argv[++i] || "");
+    else if (a === "--report-json") opts.reportJson = requiredValue(i++, a);
+    else if (a === "--opt") opts.opt = requiredValue(i++, a).toLowerCase();
+    else if (a === "--project-dir") opts.projectDir = requiredValue(i++, a);
+    else if (a === "--target") opts.target = requiredValue(i++, a).toLowerCase();
+    else if (a === "--medium") opts.medium = requiredValue(i++, a).toLowerCase();
+    else if (a === "--memory-profile") opts.memoryProfile = requiredValue(i++, a);
+    else if (a === "--hardware") opts.hardware.push(requiredValue(i++, a).toLowerCase());
+    else if (a === "--define") opts.defines.push(requiredValue(i++, a));
+    else if (a === "--disable-opt-pass") opts.disabledOptimizerPasses.push(requiredValue(i++, a));
     else if (a === "--experimental-record-ix") opts.experimentalRecordIx = true;
-    else if (!opts.file && !a.startsWith("--")) opts.file = a;
+    else if (a.startsWith("-")) throw new Error(`Unknown option: ${a}`);
+    else if (!opts.file) opts.file = a;
+    else throw new Error(`Unexpected argument: ${a}`);
   }
+  if (opts.opt === "on") opts.opt = "aggressive";
+  for (const [key, value, label] of [
+    ["optimization", opts.opt, "optimization level"],
+    ["target", opts.target, "target"],
+    ["medium", opts.medium, "medium"],
+    ["memoryProfile", opts.memoryProfile, "memory profile"]
+  ]) {
+    if (value && !CLI_VALUES[key].includes(value)) throw new Error(`Unknown ${label}: ${value}. Valid values: ${CLI_VALUES[key].join(", ")}.`);
+  }
+  for (const hardware of opts.hardware) {
+    if (!CLI_VALUES.hardware.includes(hardware)) throw new Error(`Unknown hardware: ${hardware}. Valid values: ${CLI_VALUES.hardware.join(", ")}.`);
+  }
+  if (opts.medium && !opts.target.startsWith("adam-")) throw new Error("--medium is valid only with an ADAM target.");
   return opts;
+}
+
+function writeOutputFile(filePath, data, encoding = undefined) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, data, encoding);
 }
 
 function diagnosticFromLog(file, stage, log, severity = "error", sourceText = "") {
@@ -224,9 +299,19 @@ function buildAssemblyFiles(asm, projectDir) {
 }
 
 async function main() {
-  const opts = parseArgs(process.argv.slice(2));
+  let opts;
+  try {
+    opts = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(`amyc: ${error.message}\nRun "node tools/amyc.mjs --help" for usage.`);
+    process.exit(2);
+  }
+  if (opts.help) {
+    console.log(HELP_TEXT);
+    return;
+  }
   if (!opts.file) {
-    console.error("usage: node tools/amyc.mjs <file.alexis> [--asm [out]] [--rom [out]] [--opt level] [--target platform] [--medium dsk|ddp] [--memory-profile profile] [--project-dir dir] [--define symbol]");
+    console.error('amyc: missing input file. Run "node tools/amyc.mjs --help" for usage.');
     process.exit(2);
   }
   const srcPath = path.resolve(opts.file);
@@ -240,6 +325,7 @@ async function main() {
     return abs && existsSync(abs) ? readFileSync(abs, "utf8") : null;
   };
   const base = srcPath.replace(/\.(alexis|amy|txt)$/i, "");
+  const defaultBinaryPath = base + (opts.target.startsWith("adam-") ? ".bin" : ".rom");
 
   const project = newProject({
     manifestDefaults: manifest.defaults,
@@ -286,11 +372,21 @@ async function main() {
 
   if (opts.asm !== undefined) {
     const asmPath = typeof opts.asm === "string" ? path.resolve(opts.asm) : base + ".asm";
-    writeFileSync(asmPath, generatedAsm, "utf8");
+    writeOutputFile(asmPath, generatedAsm, "utf8");
     console.log("ASM  -> " + asmPath + " (" + generatedAsm.length + " chars)");
   }
 
   const profile = getOptimizationProfile(opts.opt, generatedAsm);
+  if (profile.optimizerConfig && opts.disabledOptimizerPasses.length) {
+    profile.optimizerConfig = { ...profile.optimizerConfig };
+    for (const pass of opts.disabledOptimizerPasses.filter(Boolean)) {
+      if (!(pass in profile.optimizerConfig)) {
+        console.error(`Unknown optimizer pass: ${pass}`);
+        process.exit(2);
+      }
+      profile.optimizerConfig[pass] = false;
+    }
+  }
   const files = buildAssemblyFiles(generatedAsm, opts.projectDir);
   const assembled = await assembleAmysCVAssembly(files, "main.asm", {
     outputFilename: path.basename(base) + (buildContext.machine === "adam" ? ".bin" : ".rom"), outputMode: "binary", targetPlatform: buildContext.machine === "adam" ? "raw" : "coleco",
@@ -305,18 +401,18 @@ async function main() {
   const rom = assembled.binary || assembled.bytes || new Uint8Array();
   if (opts.optimizedAsm !== undefined) {
     const optimizedAsmPath = typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm";
-    writeFileSync(optimizedAsmPath, assembled.optimizedAsm || generatedAsm, "utf8");
+    writeOutputFile(optimizedAsmPath, assembled.optimizedAsm || generatedAsm, "utf8");
     console.log("OPT  -> " + optimizedAsmPath + " (" + (assembled.optimizedAsm || generatedAsm).length + " chars)");
   }
   console.log("ROM  " + rom.length + " bytes  (" + opts.opt + " optimizer)");
   if (opts.rom !== undefined) {
-    const romPath = typeof opts.rom === "string" ? path.resolve(opts.rom) : base + ".rom";
-    writeFileSync(romPath, rom);
+    const romPath = typeof opts.rom === "string" ? path.resolve(opts.rom) : defaultBinaryPath;
+    writeOutputFile(romPath, rom);
     console.log("ROM  -> " + romPath);
   }
   if (opts.symbols !== undefined) {
     const symbolsPath = typeof opts.symbols === "string" ? path.resolve(opts.symbols) : base + ".sym";
-    writeFileSync(symbolsPath, assembled.symbolsText || "", "utf8");
+    writeOutputFile(symbolsPath, assembled.symbolsText || "", "utf8");
     console.log("SYM  -> " + symbolsPath);
   }
   writeBuildReport(opts, {
@@ -331,7 +427,7 @@ async function main() {
     artifacts: {
       asm: opts.asm !== undefined ? (typeof opts.asm === "string" ? path.resolve(opts.asm) : base + ".asm") : null,
       optimizedAsm: opts.optimizedAsm !== undefined ? (typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm") : null,
-      rom: opts.rom !== undefined ? (typeof opts.rom === "string" ? path.resolve(opts.rom) : base + ".rom") : null,
+      rom: opts.rom !== undefined ? (typeof opts.rom === "string" ? path.resolve(opts.rom) : defaultBinaryPath) : null,
       symbols: opts.symbols !== undefined ? (typeof opts.symbols === "string" ? path.resolve(opts.symbols) : base + ".sym") : null
     }
   });
