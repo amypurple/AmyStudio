@@ -1,0 +1,1320 @@
+cartridge "BLOCK BATTLE/COMPUTE!S GAZETTE/1989"
+
+' BLOCK BATTLE
+' A ColecoVision game based on "Block Battle!", COMPUTE!'s Gazette
+' September 1989 (Commodore 64 BASIC with a custom character set; the
+' listing names no author). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game (rules from the listing, orig/block battle.bas): a board of 8
+' columns by 6 rows. Column 0 is green's home, column 7 yellow's; each
+' side starts with six blocks in its home. The six middle columns are pits
+' crossed by strips: every middle column has 4 red column strips (random
+' rows) and every row has 3 blue row strips (random columns). A block in
+' the middle must stand on a strip. A turn has two parts:
+'  1. MOVE: pick one of your blocks and push it one cell (up, down, left,
+'     right). In the middle the target must be empty and carry a strip;
+'     your own home takes you only into its empty cells; the enemy's home
+'     can be entered on an empty cell or on an enemy block, which is
+'     captured (listing lines 410-500, 730-750).
+'  2. SLIDE: pick a middle cell and push the stick: left/right slides that
+'     row's blue strips one cell round, up/down slides that column's red
+'     strips one cell round (lines 1100-1170). Every block of the line left
+'     with no strip under it falls into the pit and is lost (1180-1240).
+' The game ends (lines 20-110) when all six of one side's blocks sit in the
+' enemy's home, when a side has no block left (both: a tie), when a side
+' has at least as many blocks in the enemy's home as the other side has in
+' its, and more than the enemy has blocks left, or a tie when both counts
+' and both totals are equal. Green moves first. One player plays green
+' against the computer (yellow); two players take turns.
+'
+' Improvements: a board of drawn tiles (pits, red and blue strips, bevelled
+' blocks), blocks that slide smoothly and shrink away into the pit, a
+' cursor, sounds and an original title tune ("Sliding Ranks"), the wins of
+' each side counted on the title page.
+'
+' Liberties: both kinds of strip are shown where they cross (the C64 drew a
+' blue strip over a red one, so a crossing looked like a plain blue strip,
+' and the strips under a block were hidden: here they show at the block's
+' sides); a player with no legal move passes the move part of the turn (the
+' C64 waited for ever); the button pressed again cancels a chosen block or
+' strip; a move off the board is refused rather than clamped; the
+' computer's move and slide are chosen by scoring every legal move and
+' every slide (captures and moves toward green's home first; slides that
+' drop green blocks and spare its own), not the listing's scan, which could
+' loop for ever when no move was left; the joystick moves the cursor (the
+' C64 also took the cursor keys); either controller plays either side;
+' sounds and the tune are new.
+'
+' Controls: stick moves the cursor; a button picks the block (or the
+' strip's cell), then push the stick for the direction; a button again
+' cancels. Title: up/down and a button. Keypad not used.
+
+const TC0 = 128
+const TC1 = 129
+const TC2 = 130
+const TC3 = 131
+const TC4 = 132
+const TC5 = 133
+const TC6 = 134
+const TC7 = 135
+const TC8 = 136
+const TC9 = 137
+const TC10 = 138
+const TC11 = 139
+const TC12 = 140
+const TC13 = 141
+const TC14 = 142
+const TC15 = 143
+const TC16 = 144
+const TC17 = 145
+const TC18 = 146
+const TC19 = 147
+const TC20 = 148
+const TC21 = 149
+const TC22 = 150
+const TC23 = 151
+const TC24 = 152
+const TC25 = 153
+const TC26 = 154
+const TC27 = 155
+const TC28 = 156
+const TC29 = 157
+const TC30 = 158
+const TC31 = 159
+const TC32 = 160
+const TC33 = 161
+const TC34 = 162
+const TC35 = 163
+const TC36 = 164
+const TC37 = 165
+const TC38 = 166
+const TC39 = 167
+const TC40 = 168
+const TC41 = 169
+const TC42 = 170
+const TC43 = 171
+const TC44 = 172
+const TC45 = 173
+const TC46 = 174
+const TC47 = 175
+const TC48 = 176
+const TEdge = 177
+const TBar = 178
+const STl = 0
+const STr = 4
+const SBl = 8
+const SBr = 12
+const SBlk0 = 16
+const SBlk1 = 20
+const SBlk2 = 24
+const SBlk3 = 28
+const NTiles8 = 408
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndBad = 4
+const SndPick = 5
+const SndShift = 6
+const SndFall = 7
+const SndCapture = 8
+const SndWin = 9
+
+record Cand:
+  u8 Fr
+  u8 Dest
+  u8 Sc
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the board: index Y * 8 + X; Pc 0 empty, 1 green, 2 yellow
+u8 Pc[48]
+u8 Vs[48]
+u8 Hs[48]
+u8 Ln[6]
+
+bcd digits 4 Wins[2] = 0
+
+Cand Best
+Cand Try
+
+u8 Turn = 0
+u8 Np = 1
+u8 GT = 6
+u8 YT = 6
+u8 Won = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Mx = 0
+u8 My = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Ask = 0
+u16 HalfT = 0
+' the last move and slide (for the bot): 255 = passed
+u8 LFr = 0
+u8 LDest = 0
+u8 LKind = 0
+u8 LLine = 0
+u8 LDir = 0
+u8 Fell = 0
+u8 Menu = 0
+u16 Seed = 12345
+u16 Rt = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Dir = 0
+u8 WasDir = 0
+u8 DirNew = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Phase = 0
+' loop counters of their own
+u8 Gi = 0
+u8 Gk = 0
+u8 Gd = 0
+u8 Ai = 0
+u8 Ad = 0
+u8 Ak = 0
+u8 Al = 0
+u8 Fi = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table BkSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Np = Menu + 1
+  NewGame
+  Turn = 2
+
+turn_loop:
+  ' the move part
+  if Turn = 1 then
+    Turn = 2
+  else
+    Turn = 1
+  end if
+  inc HalfT
+  ShowCounts
+  if AnyMove = 0 then
+    ' (for the bot: LFr 255 says the computer passed)
+    if Turn = 2 then
+      LFr = 255
+      LDest = 255
+    end if
+    Say(3)
+    Pause(60)
+  elseif Np = 1 and Turn = 2 then
+    AiMove
+  else
+    HumanMove
+  end if
+  Won = CheckWin
+  if Won > 0 then goto game_end
+  ' the slide part
+  if Np = 1 and Turn = 2 then
+    AiSlide
+  else
+    HumanSlide
+  end if
+  Won = CheckWin
+  if Won = 0 then goto turn_loop
+
+game_end:
+  Ask = 0
+  HideSprites
+  ShowCounts
+  fill 32 count 28 at 2,22
+  select case Won
+  case 1
+    print at 6,22, "GREEN PLAYER WINS!"
+    inc Wins[0]
+  case 2
+    if Np = 1 then
+      print at 6,22, "THE COMPUTER WINS!"
+    else
+      print at 6,22, "YELLOW PLAYER WINS!"
+    end if
+    inc Wins[1]
+  case else
+    print at 10,22, "TIE GAME!"
+  end select
+  mute all
+  play sound SndWin
+  Ask = 9
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Ask = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause(u8 Fr):
+  u8 Pk = 0
+  for Pk = 1 to Fr
+    Frame1
+  next
+  return
+end sub
+
+' a 16-bit xorshift; the title advances it every frame
+function Rnd(u8 N) as u8
+  Rt = Seed << 7
+  Seed ^= Rt
+  Rt = Seed >> 9
+  Seed ^= Rt
+  Rt = Seed << 8
+  Seed ^= Rt
+  Rt = Seed >> 4
+  return Rt % N
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Dir = 0
+  if Up1 = 1 then Dir = 1
+  if Dn1 = 1 then Dir = 2
+  if Lf1 = 1 then Dir = 3
+  if Rt1 = 1 then Dir = 4
+  DirNew = 0
+  if Dir <> WasDir then DirNew = Dir
+  WasDir = Dir
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  sprites stable 0 to 4
+  sprites flicker off
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the board
+
+function Home(u8 Qx) as u8
+  if Qx = 0 then return 1
+  if Qx = 7 then return 1
+  return 0
+
+sub DrawCell(u8 Qx, u8 Qy):
+  u8 Ci = 0
+  u8 Sb = 0
+  u8 Sc = 0
+  u8 Sr = 0
+  u8 Rw = 0
+  Ci = Qy * 8 + Qx
+  if Home(Qx) = 1 then
+    Sb = 12 + Pc[Ci]
+  else
+    Sb = Pc[Ci] * 4 + Hs[Ci] * 2 + Vs[Ci]
+  end if
+  Sb = Sb * 9
+  Sc = Qx * 3 + 4
+  Sr = Qy * 3 + 3
+  for Rw = 0 to 2
+    V = CellT[Sb]
+    put char V at Sc,Sr
+    inc Sb
+    inc Sc
+    V = CellT[Sb]
+    put char V at Sc,Sr
+    inc Sb
+    inc Sc
+    V = CellT[Sb]
+    put char V at Sc,Sr
+    inc Sb
+    Sc -= 2
+    inc Sr
+  next
+  return
+end sub
+
+sub DrawBoard:
+  for Gk = 0 to 5
+    for Gi = 0 to 7
+      DrawCell(Gi, Gk)
+    next
+  next
+  fill TEdge count 26 at 3,2
+  fill TEdge count 26 at 3,21
+  for Gk = 3 to 20
+    put char TEdge at 3,Gk
+    put char TEdge at 28,Gk
+  next
+  return
+end sub
+
+sub NewBoard:
+  fill array Pc with 0
+  fill array Vs with 0
+  fill array Hs with 0
+  for Gk = 0 to 5
+    W = Gk * 8
+    Pc[W] = 1
+    W += 7
+    Pc[W] = 2
+  next
+  ' 4 red strips in each middle column, 3 blue strips in each row
+  for Gi = 1 to 6
+    Gd = 0
+    while Gd < 4
+      V = Rnd(6) * 8 + Gi
+      if Vs[V] = 0 then
+        Vs[V] = 1
+        inc Gd
+      end if
+    end while
+  next
+  for Gk = 0 to 5
+    Gd = 0
+    while Gd < 3
+      V = Rnd(6) + 1
+      V += Gk * 8
+      if Hs[V] = 0 then
+        Hs[V] = 1
+        inc Gd
+      end if
+    end while
+  next
+  return
+end sub
+
+sub NewGame:
+  NewBoard
+  GT = 6
+  YT = 6
+  HalfT = 0
+  NewScreen
+  DrawBoard
+  ShowScreen
+  return
+end sub
+
+sub ShowCounts:
+  fill 32 count 28 at 2,1
+  print at 3,1, "GREEN"
+  NumU = GT
+  print at 9,1, digits$(NumU, 1)
+  print at 20,1, "YELLOW"
+  NumU = YT
+  print at 27,1, digits$(NumU, 1)
+  if Turn = 1 then
+    put char 62 at 2,1
+  else
+    put char 62 at 19,1
+  end if
+  return
+end sub
+
+sub Say(u8 Which):
+  fill 32 count 28 at 2,22
+  select case Which
+  case 0
+    print at 9,22, "CHOOSE A BLOCK"
+  case 1
+    print at 7,22, "INDICATE A DIRECTION"
+  case 2
+    print at 9,22, "CHOOSE A STRIP"
+  case 3
+    print at 8,22, "NO MOVE - PASS"
+  case 4
+    print at 7,22, "THE COMPUTER MOVES"
+  case 5
+    print at 7,22, "THE COMPUTER SLIDES"
+  case 6
+    print at 3,22, "STICK: ROW L/R, COLUMN U/D"
+  end select
+  return
+end sub
+
+' cursor: four corner sprites round cell (Cx, Cy) in colour Col
+sub ShowCursor(u8 Col):
+  u8 Px = 0
+  u8 Py = 0
+  u8 Px8 = 0
+  u8 Py8 = 0
+  Px = Cx * 24 + 32
+  Py = Cy * 24 + 23
+  Px8 = Px + 8
+  Py8 = Py + 8
+  set sprite 0 to Py,Px,STl,Col
+  set sprite 1 to Py,Px8,STr,Col
+  set sprite 2 to Py8,Px,SBl,Col
+  set sprite 3 to Py8,Px8,SBr,Col
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' can the side to move push a block onto (Qx, Qy)? (listing 410-500)
+function Legal(u8 Qx, u8 Qy) as u8
+  u8 Ok = 1
+  u8 Li = 0
+  u8 Pv = 0
+  if Qx > 7 then Ok = 0
+  if Qy > 5 then Ok = 0
+  if Ok = 1 then
+    Li = Qy * 8 + Qx
+    Pv = Pc[Li]
+    select case (Qx, Turn)
+    case (0, 1), (7, 2)
+      if Pv > 0 then Ok = 0
+    case (0, 2)
+      if Pv = 2 then Ok = 0
+    case (7, 1)
+      if Pv = 1 then Ok = 0
+    case else
+      if Pv > 0 then Ok = 0
+      if Vs[Li] = 0 then
+        if Hs[Li] = 0 then Ok = 0
+      end if
+    end select
+  end if
+  return Ok
+
+' the cell next to (Qx, Qy) in direction D (1 up, 2 down, 3 left, 4 right):
+' sets Tx, Ty (255 off the board's top or left)
+sub Toward(u8 Qx, u8 Qy, u8 D):
+  Tx = Qx
+  Ty = Qy
+  select case D
+  case 1
+    Ty = Qy - 1
+  case 2
+    Ty = Qy + 1
+  case 3
+    Tx = Qx - 1
+  case 4
+    Tx = Qx + 1
+  end select
+  return
+end sub
+
+function AnyMove as u8
+  u8 Found = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  for Gi = 0 to 47
+    if Pc[Gi] = Turn then
+      Ax = Gi & 7
+      Ay = Gi >> 3
+      for Gd = 1 to 4
+        Toward(Ax, Ay, Gd)
+        if Legal(Tx, Ty) = 1 then Found = 1
+      next
+    end if
+  next
+  return Found
+
+' the game's end (listing 20-110): 0 none, 1 green, 2 yellow, 3 tie
+function CheckWin as u8
+  u8 Gf = 0
+  u8 Yf = 0
+  u8 R = 0
+  u8 Ci = 0
+  for Ci = 0 to 5
+    if Pc[Ci * 8 + 7] = 1 then inc Gf
+    if Pc[Ci * 8] = 2 then inc Yf
+  next
+  if Gf = 6 then
+    R = 1
+  elseif Yf = 6 then
+    R = 2
+  elseif GT = 0 and YT = 0 then
+    R = 3
+  elseif GT = 0 then
+    R = 2
+  elseif YT = 0 then
+    R = 1
+  elseif Gf >= Yf and Gf > YT then
+    R = 1
+  elseif Yf >= Gf and Yf > GT then
+    R = 2
+  elseif Gf = Yf and GT = YT and Gf = GT then
+    R = 3
+  end if
+  return R
+
+' push the block at (Mx, My) onto (Tx, Ty), sliding a sprite between
+sub DoMove:
+  u8 Fi2 = 0
+  u8 Ti = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Col = 0
+  u8 St = 0
+  Fi2 = My * 8 + Mx
+  Ti = Ty * 8 + Tx
+  LFr = Fi2
+  LDest = Ti
+  Col = 2
+  if Turn = 2 then Col = 11
+  Pc[Fi2] = 0
+  Frame1
+  HideCursor
+  DrawCell(Mx, My)
+  Sx = Mx * 24 + 36
+  Sy = My * 24 + 27
+  play sound SndMove
+  for St = 1 to 8
+    if Tx > Mx then Sx += 3
+    if Tx < Mx then Sx -= 3
+    if Ty > My then Sy += 3
+    if Ty < My then Sy -= 3
+    set sprite 4 to Sy,Sx,SBlk0,Col
+    update sprites
+    Frame1
+    Frame1
+  next
+  if Pc[Ti] > 0 then
+    ' a capture in the enemy's home (listing 730-750)
+    if Turn = 1 then
+      dec YT
+    else
+      dec GT
+    end if
+    play sound SndCapture
+  end if
+  Pc[Ti] = Turn
+  DrawCell(Tx, Ty)
+  set sprite 4 to 192,0,0,0
+  update sprites
+  ShowCounts
+  return
+end sub
+
+' the line's cells: Kind 0 row Line (columns 1-6), Kind 1 column Line
+function LineIdx(u8 Kind, u8 Line, u8 Kk) as u8
+  if Kind = 0 then return Line * 8 + Kk + 1
+  return Kk * 8 + Line
+
+' slide the line's strips one cell round: Dir 0 left/up, 1 right/down
+sub Rotate(u8 Kind, u8 Line, u8 D):
+  u8 Rk = 0
+  u8 Ri = 0
+  u8 Keep = 0
+  for Rk = 0 to 5
+    Ri = LineIdx(Kind, Line, Rk)
+    if Kind = 0 then
+      Ln[Rk] = Hs[Ri]
+    else
+      Ln[Rk] = Vs[Ri]
+    end if
+  next
+  if D = 0 then
+    Keep = Ln[0]
+    for Rk = 0 to 4
+      Ln[Rk] = Ln[Rk + 1]
+    next
+    Ln[5] = Keep
+  else
+    Keep = Ln[5]
+    for Rk = 5 to 1 step -1
+      Ln[Rk] = Ln[Rk - 1]
+    next
+    Ln[0] = Keep
+  end if
+  for Rk = 0 to 5
+    Ri = LineIdx(Kind, Line, Rk)
+    if Kind = 0 then
+      Hs[Ri] = Ln[Rk]
+    else
+      Vs[Ri] = Ln[Rk]
+    end if
+  next
+  return
+end sub
+
+' blocks of the line with no strip under them: Side's count
+function Loose(u8 Kind, u8 Line, u8 Side) as u8
+  u8 Lk = 0
+  u8 Li = 0
+  u8 Cnt = 0
+  for Lk = 0 to 5
+    Li = LineIdx(Kind, Line, Lk)
+    if Pc[Li] = Side then
+      if Vs[Li] = 0 then
+        if Hs[Li] = 0 then inc Cnt
+      end if
+    end if
+  next
+  return Cnt
+
+' a block falls into the pit at board index Bi
+sub FallAt(u8 Bi):
+  u8 Bx = 0
+  u8 By = 0
+  u8 Col = 0
+  u8 Fs = 0
+  u8 Pat = 0
+  Bx = Bi & 7
+  By = Bi >> 3
+  Col = 2
+  if Pc[Bi] = 2 then Col = 11
+  if Pc[Bi] = 1 then
+    dec GT
+  else
+    dec YT
+  end if
+  Pc[Bi] = 0
+  inc Fell
+  DrawCell(Bx, By)
+  play sound SndFall
+  Bx = Bx * 24 + 36
+  By = By * 24 + 27
+  Pat = SBlk0
+  for Fs = 0 to 3
+    set sprite 4 to By,Bx,Pat,Col
+    update sprites
+    Pat += 4
+    Pause(6)
+  next
+  set sprite 4 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' slide and redraw the line, then drop what lost its footing (1110-1240)
+sub DoSlide(u8 Kind, u8 Line, u8 D):
+  u8 Sk = 0
+  u8 Si = 0
+  LKind = Kind
+  LLine = Line
+  LDir = D
+  Fell = 0
+  Rotate(Kind, Line, D)
+  Frame1
+  HideCursor
+  play sound SndShift
+  for Sk = 0 to 5
+    Si = LineIdx(Kind, Line, Sk)
+    DrawCell(Si & 7, Si >> 3)
+  next
+  Pause(8)
+  for Sk = 0 to 5
+    Si = LineIdx(Kind, Line, Sk)
+    if Pc[Si] > 0 then
+      if Vs[Si] = 0 then
+        if Hs[Si] = 0 then FallAt(Si)
+      end if
+    end if
+  next
+  ShowCounts
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a player's turn
+
+' move the cursor with the stick (repeats while held), inside MinX-MaxX
+sub CursorStep(u8 MinX, u8 MaxX):
+  u8 Go = 0
+  if Dir = 0 then
+    Rep = 0
+  elseif DirNew > 0 then
+    Go = 1
+    Rep = 14
+  else
+    dec Rep
+    if Rep = 0 then
+      Go = 1
+      Rep = 6
+    end if
+  end if
+  if Go = 1 then
+    select case Dir
+    case 1
+      if Cy > 0 then dec Cy
+    case 2
+      if Cy < 5 then inc Cy
+    case 3
+      if Cx > MinX then dec Cx
+    case 4
+      if Cx < MaxX then inc Cx
+    end select
+  end if
+  return
+end sub
+
+sub HumanMove:
+  Cx = 0
+  if Turn = 2 then Cx = 7
+  Cy = 1
+  Phase = 0
+  Say(0)
+  Ask = 1
+  Frame1
+  ReadPad
+  WasBtn = 1
+hm_loop:
+  Frame1
+  ReadPad
+  if Phase = 0 then
+    CursorStep(0, 7)
+    ShowCursor(13)
+    if Press = 1 then
+      V = Cy * 8 + Cx
+      if Pc[V] = Turn then
+        Mx = Cx
+        My = Cy
+        Phase = 1
+        Ask = 2
+        play sound SndPick
+        Say(1)
+        ShowCursor(9)
+      else
+        play sound SndBad
+      end if
+    end if
+  else
+    if Press = 1 then
+      Phase = 0
+      Ask = 1
+      Say(0)
+    elseif DirNew > 0 then
+      Toward(Mx, My, DirNew)
+      if Legal(Tx, Ty) = 1 then
+        Ask = 0
+        DoMove
+        return
+      end if
+      play sound SndBad
+      Phase = 0
+      Ask = 1
+      Say(0)
+    end if
+  end if
+  goto hm_loop
+end sub
+
+sub HumanSlide:
+  if Cx < 1 then Cx = 1
+  if Cx > 6 then Cx = 6
+  Phase = 0
+  Say(2)
+  Ask = 3
+hs_loop:
+  Frame1
+  ReadPad
+  if Phase = 0 then
+    CursorStep(1, 6)
+    ShowCursor(7)
+    if Press = 1 then
+      Phase = 1
+      Ask = 4
+      play sound SndPick
+      Say(6)
+      ShowCursor(13)
+    end if
+  else
+    if Press = 1 then
+      Phase = 0
+      Ask = 3
+      Say(2)
+    elseif DirNew > 0 then
+      Ask = 0
+      select case DirNew
+      case 1
+        DoSlide(1, Cx, 0)
+      case 2
+        DoSlide(1, Cx, 1)
+      case 3
+        DoSlide(0, Cy, 0)
+      case else
+        DoSlide(0, Cy, 1)
+      end select
+      return
+    end if
+  end if
+  goto hs_loop
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer (yellow)
+
+sub AiMove:
+  u8 Bx = 0
+  u8 By = 0
+  u8 Sc = 0
+  Say(4)
+  Best.Sc = 0
+  for Ai = 0 to 47
+    if Pc[Ai] = 2 then
+      Bx = Ai & 7
+      By = Ai >> 3
+      for Ad = 1 to 4
+        Toward(Bx, By, Ad)
+        if Legal(Tx, Ty) = 1 then
+          Try.Fr = Ai
+          Try.Dest = Ty * 8 + Tx
+          Sc = 30 + Rnd(6)
+          select case Ad
+          case 3
+            Sc += 12
+          case 4
+            Sc -= 12
+          end select
+          if Tx = 0 then
+            if Pc[Try.Dest] = 1 then
+              Sc += 60
+            else
+              Sc += 40
+            end if
+          elseif Tx < 7 then
+            V = Try.Dest
+            if Vs[V] = 1 and Hs[V] = 1 then Sc += 8
+          end if
+          Try.Sc = Sc
+          if Try.Sc > Best.Sc then
+            Best.Fr = Try.Fr
+            Best.Dest = Try.Dest
+            Best.Sc = Try.Sc
+          end if
+        end if
+      next
+    end if
+  next
+  Cx = Best.Fr & 7
+  Cy = Best.Fr >> 3
+  Mx = Cx
+  My = Cy
+  Tx = Best.Dest & 7
+  Ty = Best.Dest >> 3
+  ShowCursor(13)
+  Pause(40)
+  DoMove
+  return
+end sub
+
+sub AiSlide:
+  u8 Gs = 0
+  u8 Ys = 0
+  u8 Sc = 0
+  u8 BKind = 0
+  u8 BLine = 0
+  u8 BDir = 0
+  u8 BSc = 0
+  Say(5)
+  for Ak = 0 to 1
+    for Al = 0 to 5
+      for Ad = 0 to 1
+        V = Al
+        if Ak = 1 then V = Al + 1
+        Rotate(Ak, V, Ad)
+        Gs = Loose(Ak, V, 1)
+        Ys = Loose(Ak, V, 2)
+        Rotate(Ak, V, 1 - Ad)
+        Sc = Gs * 10 + 60
+        Sc -= Ys * 12
+        Sc += Rnd(4)
+        if Sc > BSc then
+          BSc = Sc
+          BKind = Ak
+          BLine = V
+          BDir = Ad
+        end if
+      next
+    next
+  next
+  if BKind = 0 then
+    Cy = BLine
+    Cx = Rnd(6) + 1
+  else
+    Cx = BLine
+    Cy = Rnd(6)
+  end if
+  ShowCursor(7)
+  Pause(40)
+  DoSlide(BKind, BLine, BDir)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' title and credits
+
+sub TitlePage:
+  NewScreen
+  fill TBar count 28 at 2,3
+  print at 9,5, "BLOCK BATTLE!"
+  fill TBar count 28 at 2,7
+  print at 5,9, "COMPUTE!'S GAZETTE 1989"
+  print at 11,13, "1 PLAYER"
+  print at 11,14, "2 PLAYERS"
+  print at 11,15, "CREDITS"
+  print at 9,18, "WINS"
+  print at 9,19, "GREEN  "
+  print at 17,19, Wins[0]
+  print at 9,20, "YELLOW "
+  print at 17,20, Wins[1]
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Menu = 0
+  Ask = 5
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Rt = Rnd(2)
+  ReadPad
+  if DirNew = 1 then
+    if Menu > 0 then dec Menu
+    ShowMenu
+  end if
+  if DirNew = 2 then
+    if Menu < 2 then inc Menu
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  Ask = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then EditorialPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 13 to 15
+    put char 32 at 9,J
+  next
+  V = Menu + 13
+  put char 62 at 9,V
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 9,2, "BLOCK BATTLE!"
+  print at 2,4, "FROM THE GAME IN COMPUTE!'S"
+  print at 2,5, "GAZETTE, SEPTEMBER 1989"
+  print at 2,6, "(COMMODORE 64)."
+  print at 2,8, "COLECOVISION VERSION BY"
+  print at 2,9, "CLAUDE (ANTHROPIC), 2026,"
+  print at 2,10, "IN AMY BY AMY BIENVENU."
+  print at 2,12, "MOVE ONE BLOCK A CELL, THEN"
+  print at 2,13, "SLIDE A ROW OF BLUE STRIPS"
+  print at 2,14, "OR A COLUMN OF RED ONES."
+  print at 2,15, "BLOCKS LEFT WITHOUT A STRIP"
+  print at 2,16, "FALL. TAKE THE ENEMY HOME!"
+  print at 2,18, "MUSIC: SLIDING RANKS"
+  print at 7,22, "PRESS A BUTTON"
+  ShowScreen
+  Ask = 6
+  Rearm
+  pause until press and release
+  wait no fire
+  nmi off
+  Ask = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$C3,$C3,$C3,$C3,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $81,$81,$81,$81,$00,$00,$00,$00
+  $00,$00,$00,$00,$81,$81,$81,$81
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$C3,$C3,$C3,$C3,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $81,$81,$81,$81,$00,$00,$00,$00
+  $00,$00,$00,$00,$81,$81,$81,$81
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $01,$05,$05,$05,$05,$05,$04,$01
+  $18,$05,$05,$05,$05,$05,$04,$18
+  $01,$01,$01,$01,$13,$12,$12,$12
+  $01,$01,$01,$01,$03,$02,$02,$02
+  $01,$01,$01,$01,$31,$21,$21,$21
+  $12,$12,$12,$12,$12,$12,$12,$12
+  $02,$02,$2C,$2C,$2C,$2C,$02,$02
+  $21,$21,$21,$21,$21,$21,$21,$21
+  $12,$12,$12,$1C,$01,$01,$01,$01
+  $02,$02,$02,$0C,$01,$01,$01,$01
+  $21,$21,$21,$C1,$01,$01,$01,$01
+  $18,$18,$18,$18,$03,$02,$02,$02
+  $02,$02,$02,$0C,$18,$18,$18,$18
+  $12,$52,$52,$52,$52,$52,$42,$12
+  $21,$25,$25,$25,$25,$25,$24,$21
+  $01,$01,$01,$01,$1F,$1B,$1B,$1B
+  $01,$01,$01,$01,$0F,$0B,$0B,$0B
+  $01,$01,$01,$01,$F1,$B1,$B1,$B1
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$0B,$BA,$BA,$BA,$BA,$0B,$0B
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $1B,$1B,$1B,$1A,$01,$01,$01,$01
+  $0B,$0B,$0B,$0A,$01,$01,$01,$01
+  $B1,$B1,$B1,$A1,$01,$01,$01,$01
+  $18,$18,$18,$18,$0F,$0B,$0B,$0B
+  $0B,$0B,$0B,$0A,$18,$18,$18,$18
+  $1B,$5B,$5B,$5B,$5B,$5B,$4B,$1B
+  $B1,$B5,$B5,$B5,$B5,$B5,$B4,$B1
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $01,$0E,$0E,$0E,$E3,$E2,$E2,$E2
+  $01,$0E,$0E,$0E,$03,$02,$02,$02
+  $01,$0E,$0E,$0E,$3E,$2E,$2E,$2E
+  $E2,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $E2,$E2,$E2,$EC,$0E,$0E,$0E,$01
+  $02,$02,$02,$0C,$0E,$0E,$0E,$01
+  $2E,$2E,$2E,$CE,$0E,$0E,$0E,$01
+  $01,$0E,$0E,$0E,$EF,$EB,$EB,$EB
+  $01,$0E,$0E,$0E,$0F,$0B,$0B,$0B
+  $01,$0E,$0E,$0E,$FE,$BE,$BE,$BE
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $BE,$BE,$BE,$BE,$BE,$BE,$BE,$BE
+  $EB,$EB,$EB,$EA,$0E,$0E,$0E,$01
+  $0B,$0B,$0B,$0A,$0E,$0E,$0E,$01
+  $BE,$BE,$BE,$AE,$0E,$0E,$0E,$01
+  $0E,$EF,$FE,$FE,$FE,$FE,$EF,$0E
+  $01,$08,$08,$01,$01,$05,$04,$01
+end data
+data SpritePat bytes
+  $FF,$FF,$FF,$E0,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$07,$07,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$E0,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$07,$07,$07,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00
+end data
+data CellT bytes
+  128, 128, 128, 128, 128, 128, 128, 128, 128
+  128, 129, 128, 128, 129, 128, 128, 129, 128
+  128, 128, 128, 130, 130, 130, 128, 128, 128
+  128, 129, 128, 130, 131, 130, 128, 129, 128
+  132, 133, 134, 135, 136, 137, 138, 139, 140
+  132, 141, 134, 135, 136, 137, 138, 142, 140
+  132, 133, 134, 143, 136, 144, 138, 139, 140
+  132, 141, 134, 143, 136, 144, 138, 142, 140
+  145, 146, 147, 148, 149, 150, 151, 152, 153
+  145, 154, 147, 148, 149, 150, 151, 155, 153
+  145, 146, 147, 156, 149, 157, 151, 152, 153
+  145, 154, 147, 156, 149, 157, 151, 155, 153
+  158, 158, 158, 159, 159, 159, 160, 160, 160
+  161, 162, 163, 164, 136, 165, 166, 167, 168
+  169, 170, 171, 172, 149, 173, 174, 175, 176
+end data
+
+asm {
+BkMove:
+    db $40,$A9,$30,$02,$40,$7F,$40,$02,$40,$71,$60,$02,$50
+BkBad:
+    db $40,$F9,$22,$06,$40,$25,$43,$06,$50
+BkPick:
+    db $40,$55,$30,$02,$40,$55,$70,$02,$50
+BkShift:
+    db $00,$00,$36,$02,$00,$00,$55,$03,$00,$00,$86,$03,$10
+BkFall:
+    db $40,$5D,$10,$02,$40,$70,$20,$02,$40,$85,$20,$02,$40,$A0,$30,$02,$40,$C1,$30,$02,$40,$E9,$40,$02
+    db $40,$18,$51,$02,$40,$53,$71,$03,$40,$9E,$91,$03,$50
+BkCapture:
+    db $00,$00,$14,$03,$00,$00,$35,$05,$00,$00,$66,$08,$10
+BkWin:
+    db $80,$D6,$10,$08,$80,$AA,$10,$08,$80,$8F,$10,$08,$80,$6B,$10,$10,$80,$8F,$20,$08,$80,$6B,$10,$18
+    db $80,$6B,$60,$0A,$90
+
+BkSoundTable:
+    dw BkTuneMel,$702B
+    dw BkTuneBass,$7035
+    dw BkMove,$7049
+    dw BkBad,$7049
+    dw BkPick,$7049
+    dw BkShift,$703F
+    dw BkFall,$7049
+    dw BkCapture,$703F
+    dw BkWin,$7053
+; Sliding Ranks (original)
+; Tiny Sound, 7 frames per step
+BkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$21,$01,$24,$01,$23,$01,$21,$01
+    db $20,$01,$1C,$01,$21,$01,$01,$1C,$21,$01,$24,$01,$28,$01,$26,$01
+    db $24,$01,$23,$01,$24,$01,$01,$23,$21,$01,$23,$01,$1F,$01,$01,$1D
+    db $1C,$01,$1A,$01,$1C,$01,$21,$01,$20,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+BkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$11,$01,$0C,$01
+    db $07,$01,$0E,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0E,$01,$09,$01
+    db $0B,$01,$08,$01,$09,$01,$0C,$01,$10,$01,$10,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

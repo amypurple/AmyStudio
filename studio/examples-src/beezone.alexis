@@ -1,0 +1,990 @@
+cartridge "BEEZONE/COMPUTE GAZETTE/1987"
+
+' BEEZONE
+' A ColecoVision game based on "Beezone", COMPUTE!'s Gazette, September
+' 1987 (Commodore 64 machine language, SYS 2173; the program and the disk
+' name no author). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' machine code, orig/main.dis and orig/game.dis, and watched in jsc64),
+' the game is built for the ColecoVision: a comb of wax chambers in tiles,
+' smooth 16 x 16 sprites, sound effects and an original title tune.
+'
+' The game: a little honey bear steps from chamber to chamber of a
+' honeycomb. Every full chamber it steps into is emptied (10 points).
+' Three guard bees wander the comb; the queen dives down a column now and
+' then and fills every chamber she passes again. Touching a bee or the
+' queen costs a life. Empty the whole comb for 75 points and a fresh comb.
+' Now and then a flower opens in the middle of the comb: reach it for an
+' extra life (at most 9) and 50 points. Four lives.
+'
+' From the original (orig/): the grid of chambers that the player crosses
+' one whole chamber per push of the stick (no diagonals, held repeats); a
+' chamber scores 10 when it is full; the comb cleared gives 75 and is
+' drawn again full; three bees start in the other three corners, each
+' picks a random direction (1 in 4 chances out of 16 each, else it waits a
+' frame and draws again) and flies it for 48 frames or until the edge of
+' the comb; the queen starts at the top of a random column (a random
+' number under 10, here under 9), falls about a pixel a frame and fills
+' every chamber of that column as she reaches it; the bonus in the middle
+' of the comb gives a life (at most 9) and 50; any bee, the queen
+' included, costs a life; four lives; after a lost life the player and
+' the bees go back to their corners and the comb stays as it was; the
+' high score.
+'
+' Liberties: 9 x 7 chambers (the C64 had 10 x 8) to keep the comb inside
+' the TV's safe area. The bear crosses a chamber in 12 frames (the C64's
+' delay loop took about 11). The bees fly 1.25 pixels a frame on the first
+' comb and a quarter pixel more each comb up to the C64's 2 pixels (the
+' C64 never got faster); the queen waits 150 frames between dives on the
+' first comb, 20 fewer each comb down to 50 (the C64 dived again after
+' about 25 frames), and waits 90 frames after a lost life or a new comb so
+' that she never falls on the bear at once. The bonus is a flower that
+' opens for 5 seconds every 20 seconds (the C64 showed and hid its bonus
+' at random, about one time in 2,560 passes). Collisions are box tests
+' (the C64 used the sprite collision register). A level number is shown.
+' GAME OVER then the title (the C64 went back to its title animation).
+'
+' Controls: controller 1 (or 2): the stick moves the bear one chamber.
+' On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFull00 = 128
+const TFull01 = 129
+const TFull02 = 130
+const TFull10 = 131
+const TFull11 = 132
+const TFull12 = 133
+const TFull20 = 134
+const TFull21 = 135
+const TFull22 = 136
+const TEmpty00 = 137
+const TEmpty01 = 138
+const TEmpty02 = 139
+const TEmpty10 = 140
+const TEmpty11 = 141
+const TEmpty12 = 142
+const TEmpty20 = 143
+const TEmpty21 = 144
+const TEmpty22 = 145
+const TBlk = 146
+const TLife = 147
+const TApos = 148
+const TWax = 149
+const SBear0f = 0
+const SBear0b = 4
+const SBear1f = 8
+const SBear1b = 12
+const SBee0 = 16
+const SBee1 = 20
+const SDive = 24
+const SFlower = 28
+const NTiles8 = 176
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSlurp = 3
+const SndFill = 4
+const SndSting = 5
+const SndFall = 6
+const SndFlower = 7
+const SndComb = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 8
+const NCol = 9
+const NRow = 7
+const NCell = 63
+const ScoreCap = 999700
+const ScoreMax = 999999
+' sprite pixel limits for the bees (the comb's inside)
+const XMin = 16
+const XMax = 216
+const YMin = 8
+const YMax = 160
+' the flower's chamber (4,3)
+const FlX = 116
+const FlY = 84
+
+' the bees' corners
+data StartX bytes 212,20,212
+data StartY bytes 156,156,12
+
+data TilePat bytes
+  $00,$03,$07,$F0,$E0,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$F0,$07,$03,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$38,$60,$00,$00,$0E,$04,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$C0,$E0,$F0,$07,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$07,$F0,$E0,$C0,$00
+  $00,$03,$06,$0C,$18,$30,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$60,$30,$18,$0C,$02,$02
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $40,$40,$30,$18,$0C,$06,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$0C,$18,$30,$60,$C0,$00
+  $81,$30,$40,$01,$01,$03,$81,$00
+  $99,$81,$24,$00,$18,$18,$C3,$00
+  $18,$18,$08,$10,$00,$00,$00,$00
+  $00,$88,$00,$22,$00,$88,$00,$22
+end data
+data TileCol bytes
+  $01,$B1,$B1,$1B,$1B,$1B,$1B,$1B
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $01,$B1,$B1,$B1,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$FB,$FB,$0B,$0B,$AB,$AB,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$B1,$B1,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $1B,$1B,$1B,$1B,$B1,$B1,$B1,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$0A,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$0A,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $1B,$FB,$FB,$AB,$AB,$AB,$1A,$01
+  $16,$16,$F6,$06,$F6,$F6,$16,$01
+  $F1,$F1,$F1,$F1,$01,$01,$01,$01
+  $0A,$A1,$0A,$A1,$0A,$A1,$0A,$A1
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$0C,$08,$01,$02,$01,$00,$03,$07,$07,$00,$00,$00
+  $00,$00,$00,$00,$30,$20,$80,$40,$80,$00,$C0,$E0,$E0,$00,$00,$00
+  $30,$78,$7F,$3F,$33,$33,$3E,$1C,$0E,$1F,$3C,$78,$68,$0F,$1C,$3C
+  $0C,$1E,$FE,$FC,$CC,$CC,$7C,$38,$70,$F8,$3C,$1E,$16,$F0,$38,$3C
+  $00,$00,$00,$00,$0C,$08,$01,$02,$01,$00,$03,$07,$07,$00,$00,$00
+  $00,$00,$00,$00,$30,$20,$80,$40,$80,$00,$C0,$E0,$E0,$00,$00,$00
+  $30,$78,$7F,$3F,$33,$33,$3E,$1C,$0E,$1F,$3C,$78,$68,$0F,$0E,$1E
+  $0C,$1E,$FE,$FC,$CC,$CC,$7C,$38,$70,$F8,$3C,$1E,$16,$F0,$70,$3C
+  $00,$18,$24,$22,$11,$0F,$1A,$3A,$7A,$3A,$1A,$07,$01,$00,$00,$00
+  $00,$30,$48,$88,$10,$E0,$B8,$BC,$BE,$BC,$B8,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$1A,$7A,$BA,$BA,$5A,$27,$19,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$B8,$BC,$BE,$BD,$BA,$E4,$18,$00,$00,$00,$00
+  $02,$04,$08,$13,$17,$0D,$07,$05,$07,$05,$07,$03,$02,$01,$00,$00
+  $40,$20,$10,$C8,$E8,$B0,$E0,$A0,$E0,$A0,$E0,$C0,$40,$80,$00,$00
+  $00,$03,$07,$37,$7B,$7C,$3D,$03,$3D,$7C,$7B,$37,$07,$03,$00,$00
+  $00,$C0,$E0,$EC,$DE,$3E,$BC,$C0,$BC,$3E,$DE,$EC,$E0,$C0,$00,$00
+end data
+
+record Bee:
+  u8 X
+  u8 Y
+  u8 Dir
+  u8 Cnt
+end record
+
+Bee Bees[3]
+u8 Full[63]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 FlT = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the bear: chamber, pixels, slide frames left, direction (1 up, 2 down,
+' 3 left, 4 right)
+u8 PC = 0
+u8 PR = 0
+u8 PX = 20
+u8 PY = 12
+u8 PMove = 0
+u8 PDir = 0
+' the queen
+u8 DOn = 0
+u8 DX = 0
+u8 DY = 0
+u8 DRow = 0
+u8 DCol = 0
+u8 DWait = 0
+u8 DWaitLv = 150
+' bees' speed in quarter pixels a frame and its remainder
+u8 BSpd = 5
+u8 BAcc = 0
+u8 Mv = 0
+u8 FOn = 0
+u8 NFull = 0
+u8 Lives = 4
+u8 Lv = 0
+u8 Freeze = 0
+u8 Why = 0
+u8 Over = 0
+u8 Cleared = 0
+u8 Deaths = 0
+u8 Flowers = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title bee
+u8 TbX = 40
+u8 TbD = 1
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Ds = 0
+u8 Cr = 0
+u8 Cc = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table BzSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  HideSprites
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  SCORE ", Score, "  "
+  print at 8,13, "  BEST  ", Hi, "  "
+  print at 8,14, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the chamber number of column C, row R
+function CellIx(u8 Col, u8 Row) as u8
+  return Row * NCol + Col
+
+' 1 when two sprite corners are closer than 11 pixels both ways
+function Near(u8 Ax, u8 Ay, u8 Bx, u8 By) as u8
+  u8 D = 0
+  if Ax > Bx then
+    D = Ax - Bx
+  else
+    D = Bx - Ax
+  end if
+  if D >= 11 then return 0
+  if Ay > By then
+    D = Ay - By
+  else
+    D = By - Ay
+  end if
+  if D >= 11 then return 0
+  return 1
+
+' one frame of play
+sub PlayStep:
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 0 then EndFreeze
+    return
+  end if
+  MovePlayer
+  MoveBees
+  MoveQueen
+  FlowerClock
+  Collide
+  return
+end sub
+
+sub EndFreeze:
+  if Why = 1 then
+    dec Lives
+    ShowLives
+    if Lives = 0 then
+      Over = 1
+    else
+      ResetActors
+    end if
+  else
+    NewBoard
+  end if
+  return
+end sub
+
+' the bear: a push starts a step of one chamber, 2 pixels a frame
+sub MovePlayer:
+  if PMove = 0 then
+    PDir = 0
+    if J1 & 1 then
+      if PR > 0 then PDir = 1
+    elseif J1 & 2 then
+      if PR < 6 then PDir = 2
+    elseif J1 & 4 then
+      if PC > 0 then PDir = 3
+    elseif J1 & 8 then
+      if PC < 8 then PDir = 4
+    end if
+    if PDir = 0 then return
+    select case PDir
+      case 1
+        dec PR
+      case 2
+        inc PR
+      case 3
+        dec PC
+      case 4
+        inc PC
+    end select
+    PMove = 12
+  end if
+  select case PDir
+    case 1
+      PY = PY - 2
+    case 2
+      PY = PY + 2
+    case 3
+      PX = PX - 2
+    case 4
+      PX = PX + 2
+  end select
+  dec PMove
+  if PMove = 0 then Arrive
+  return
+end sub
+
+' the bear has reached a chamber: a full one is emptied
+sub Arrive:
+  K = CellIx(PC, PR)
+  if Full[K] = 0 then return
+  Full[K] = 0
+  dec NFull
+  DrawCell(PC, PR)
+  AddScore(10)
+  inc Cleared
+  play sound SndSlurp
+  if NFull = 0 then
+    AddScore(75)
+    Freeze = 90
+    Why = 2
+    play sound SndComb
+  end if
+  return
+end sub
+
+sub AddScore(u8 Pts):
+  if Score > ScoreCap then
+    Score = ScoreMax
+  else
+    Score += Pts
+  end if
+  if Score > Hi then Hi = Score
+  ShowScore
+  return
+end sub
+
+' the bees: a new direction at random, or a step along the old one
+sub MoveBees:
+  u8 Bx = 0
+  u8 By = 0
+  u8 Bd = 0
+  u8 Bc = 0
+  BAcc = BAcc + BSpd
+  Mv = BAcc >> 2
+  BAcc = BAcc & 3
+  for Bi = 0 to 2
+    Bx = Bees[Bi].X
+    By = Bees[Bi].Y
+    Bd = Bees[Bi].Dir
+    Bc = Bees[Bi].Cnt
+    if Bd = 0 then
+      Rand
+      V = Rs & 15
+      if V >= 1 then
+        if V <= 4 then
+          Bd = V
+          Bc = 48
+        end if
+      end if
+    else
+      dec Bc
+      if Bc = 0 then
+        Bd = 0
+      else
+        select case Bd
+          case 1
+            if By < YMin + Mv then
+              Bd = 0
+            else
+              By = By - Mv
+            end if
+          case 2
+            if By + Mv > YMax then
+              Bd = 0
+            else
+              By = By + Mv
+            end if
+          case 3
+            if Bx < XMin + Mv then
+              Bd = 0
+            else
+              Bx = Bx - Mv
+            end if
+          case 4
+            if Bx + Mv > XMax then
+              Bd = 0
+            else
+              Bx = Bx + Mv
+            end if
+        end select
+      end if
+    end if
+    Bees[Bi].X = Bx
+    Bees[Bi].Y = By
+    Bees[Bi].Dir = Bd
+    Bees[Bi].Cnt = Bc
+  next
+  return
+end sub
+
+' the queen: waits, then falls down a random column filling its chambers
+sub MoveQueen:
+  if DOn = 0 then
+    if DWait > 0 then
+      dec DWait
+      return
+    end if
+    Rand
+    V = Rs & 15
+    if V >= NCol then return
+    DCol = V
+    DX = V * 24 + 20
+    DY = YMin
+    DRow = 0
+    DOn = 1
+    Refill
+    return
+  end if
+  inc DY
+  V = DY / 24
+  if V > DRow then
+    if V < NRow then
+      DRow = V
+      Refill
+    end if
+  end if
+  if DY >= YMax then
+    DOn = 0
+    DWait = DWaitLv
+  end if
+  return
+end sub
+
+sub Refill:
+  K = CellIx(DCol, DRow)
+  if Full[K] = 1 then return
+  Full[K] = 1
+  inc NFull
+  DrawCell(DCol, DRow)
+  play sound SndFill
+  return
+end sub
+
+sub FlowerClock:
+  dec FlT
+  if FlT = 0 then
+    if FOn = 1 then
+      FOn = 0
+      FlT = 1200
+    else
+      FOn = 1
+      FlT = 300
+    end if
+  end if
+  return
+end sub
+
+sub Collide:
+  if FOn = 1 then
+    if Near(PX, PY, FlX, FlY) = 1 then
+      FOn = 0
+      FlT = 1200
+      if Lives < 9 then inc Lives
+      inc Flowers
+      AddScore(50)
+      ShowLives
+      play sound SndFlower
+    end if
+  end if
+  for Ds = 0 to 2
+    if Near(PX, PY, Bees[Ds].X, Bees[Ds].Y) = 1 then Die
+  next
+  if DOn = 1 then
+    if Near(PX, PY, DX, DY) = 1 then Die
+  end if
+  return
+end sub
+
+sub Die:
+  if Freeze > 0 then return
+  Freeze = 75
+  Why = 1
+  inc Deaths
+  play sound SndSting
+  play sound SndFall
+  return
+end sub
+
+sub ResetActors:
+  PC = 0
+  PR = 0
+  PX = 20
+  PY = 12
+  PMove = 0
+  PDir = 0
+  for Bi = 0 to 2
+    Bees[Bi].X = StartX[Bi]
+    Bees[Bi].Y = StartY[Bi]
+    Bees[Bi].Dir = 0
+    Bees[Bi].Cnt = 0
+  next
+  BAcc = 0
+  DOn = 0
+  DWait = 90
+  return
+end sub
+
+' a fresh comb: the next level, its speeds, every chamber full
+sub NewBoard:
+  inc Lv
+  BSpd = Lv + 4
+  if BSpd > 8 then BSpd = 8
+  if Lv < 6 then
+    DWaitLv = 170 - Lv * 20
+  else
+    DWaitLv = 50
+  end if
+  fill array Full with 1
+  NFull = NCell
+  Rearm
+  wait
+  nmi off
+  display off
+  DrawBoard
+  NumU = Lv
+  print at 25,22, digits$(NumU, 2)
+  ResetActors
+  ShowScreen
+  return
+end sub
+
+sub DrawBoard:
+  for Cr = 0 to NRow - 1
+    for Cc = 0 to NCol - 1
+      DrawCell(Cc, Cr)
+    next
+  next
+  return
+end sub
+
+' a chamber's nine tiles, full or empty
+sub DrawCell(u8 Col, u8 Row):
+  u8 T = TFull00
+  u8 Tx = 0
+  u8 Ty = 0
+  if Full[CellIx(Col, Row)] = 0 then T = TEmpty00
+  Tx = Col * 3 + 2
+  Ty = Row * 3 + 1
+  put char T at Tx,Ty
+  put char T + 1 at Tx + 1,Ty
+  put char T + 2 at Tx + 2,Ty
+  put char T + 3 at Tx,Ty + 1
+  put char T + 4 at Tx + 1,Ty + 1
+  put char T + 5 at Tx + 2,Ty + 1
+  put char T + 6 at Tx,Ty + 2
+  put char T + 7 at Tx + 1,Ty + 2
+  put char T + 8 at Tx + 2,Ty + 2
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the bear (face, body), 2-4 the bees, 5 the queen, 6 the flower
+sub DrawSprites:
+  K = 0
+  if PMove > 0 then K = (PMove >> 2) & 1
+  K = K * 8
+  set sprite 0 to PY - 1,PX,SBear0f + K,15
+  set sprite 1 to PY - 1,PX,SBear0b + K,6
+  V = (Tick >> 3) & 1
+  V = V * 4 + SBee0
+  for Ds = 0 to 2
+    set sprite Ds + 2 to Bees[Ds].Y - 1,Bees[Ds].X,V,13
+  next
+  if DOn = 1 then
+    set sprite 5 to DY - 1,DX,SDive,9
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  if FOn = 1 then
+    set sprite 6 to FlY - 1,FlX,SFlower,7
+  else
+    set sprite 6 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 5,22, Score
+  print at 15,22, Hi
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 28,22, digits$(NumU, 1)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  print at 2,22, "SC"
+  print at 12,22, "HI"
+  print at 22,22, "LV"
+  put char TLife at 27,22
+  fill TWax count 32 at 0,0
+  fill TWax count 32 at 0,23
+  Score = 0
+  Lives = 4
+  Lv = 0
+  Over = 0
+  Freeze = 0
+  Cleared = 0
+  Deaths = 0
+  Flowers = 0
+  FOn = 0
+  FlT = 1200
+  ShowScore
+  ShowLives
+  NewBoard
+  DrawSprites
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: BEEZONE in honey blocks, a bee buzzing to and fro, START /
+' CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  fill TWax count 32 at 0,0
+  fill TWax count 32 at 0,1
+  BigWord
+  print at 7,10, "COMPUTE! S GAZETTE"
+  put char TApos at 15,10
+  print at 10,11, "SEPTEMBER 1987"
+  print at 13,15, "START"
+  print at 13,16, "CREDITS"
+  if Hi > 0 then
+    print at 9,20, "BEST ", Hi
+  end if
+  fill TWax count 32 at 0,22
+  fill TWax count 32 at 0,23
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' BEEZONE in 3 x 5 letters of honey blocks, rows 3-7, columns 2-28
+data BigFont bytes
+  ' B         E         E         Z         O         N         E
+  $06,$05,$06,$05,$06, $07,$04,$06,$04,$07, $07,$04,$06,$04,$07, $07,$01,$02,$04,$07, $07,$05,$05,$05,$07, $05,$07,$07,$05,$05, $07,$04,$06,$04,$07
+end data
+
+sub BigWord:
+  u8 Bits = 0
+  u8 L = 0
+  u8 Row = 0
+  u8 Bx = 0
+  for L = 0 to 6
+    for Row = 0 to 4
+      Bits = BigFont[L * 5 + Row]
+      Bx = L * 4 + 2
+      if Bits & 4 then put char TBlk at Bx,Row + 3
+      if Bits & 2 then put char TBlk at Bx + 1,Row + 3
+      if Bits & 1 then put char TBlk at Bx + 2,Row + 3
+    next
+  next
+  return
+end sub
+
+' a bee buzzes along under the title, a pixel a frame
+sub TitleAnim:
+  if TbD = 1 then
+    inc TbX
+    if TbX >= 224 then TbD = 2
+  else
+    dec TbX
+    if TbX <= 16 then TbD = 1
+  end if
+  V = (Tick >> 3) & 1
+  V = V * 4 + SBee0
+  Y = (Tick >> 2) & 7
+  if Y > 3 then Y = 7 - Y
+  set sprite 2 to 98 + Y,TbX,V,13
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,15
+  put char 32 at 11,16
+  J = Menu + 15
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $B0
+  print at 11,2, "BEEZONE"
+  print at 2,5, "BASED ON BEEZONE,"
+  print at 2,6, "COMPUTE! S GAZETTE"
+  put char TApos at 10,6
+  print at 2,7, "SEPTEMBER 1987 (COMMODORE"
+  print at 2,8, "64 MACHINE LANGUAGE; THE"
+  print at 2,9, "AUTHOR IS NOT NAMED ON THE"
+  print at 2,10, "DISK)."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: COMB HOP (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+BzSlurp:
+    db $40,$53,$21,$02,$40,$FE,$30,$02,$40,$BF,$40,$02,$50
+BzFill:
+    db $00,$00,$65,$02,$00,$00,$85,$02,$10
+BzSting:
+    db $00,$00,$04,$04,$00,$00,$25,$06,$00,$00,$46,$0A,$10
+BzFall:
+    db $40,$7F,$10,$03,$40,$8D,$10,$03,$40,$9D,$20,$03,$40,$AE,$20,$03,$40,$C2,$20,$03,$40,$D7,$20,$03
+    db $40,$EF,$30,$03,$40,$0A,$31,$03,$40,$27,$31,$03,$40,$48,$31,$03,$40,$6C,$41,$03,$40,$95,$41,$03
+    db $50
+BzFlower:
+    db $40,$55,$20,$04,$40,$47,$20,$04,$40,$35,$20,$04,$40,$2A,$30,$0A,$50
+BzComb:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$20,$04,$40,$55,$20,$0C,$50
+BzStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+BzOver:
+    db $40,$BF,$10,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$7C,$31,$1E,$50
+
+BzSoundTable:
+    dw BzTuneMel,$702B
+    dw BzTuneBass,$7035
+    dw BzSlurp,$7049
+    dw BzFill,$703F
+    dw BzSting,$703F
+    dw BzFall,$7049
+    dw BzFlower,$7049
+    dw BzComb,$7049
+    dw BzStart,$7049
+    dw BzOver,$7049
+; Comb Hop (original)
+; Tiny Sound, 8 frames per step
+BzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$26,$28,$2A,$01,$26,$01,$21,$01,$23,$25,$26,$01
+    db $23,$01,$1F,$01,$21,$23,$25,$01,$21,$01,$1C,$01,$1E,$1F,$21,$01
+    db $01,$01,$00,$01,$26,$28,$2A,$01,$26,$01,$2D,$01,$2B,$2A,$28,$01
+    db $25,$01,$28,$01,$26,$25,$23,$01,$21,$01,$25,$01,$26,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+BzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$00,$01,$0E,$01,$09,$01,$12,$01,$09,$01,$07,$01,$0B,$01
+    db $10,$01,$09,$01,$12,$01,$0B,$01,$09,$01,$09,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

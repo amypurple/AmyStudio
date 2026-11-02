@@ -1,0 +1,1087 @@
+cartridge "APPLE HUNT/COMPUTE'S GAZETTE/1985"
+
+' APPLE HUNT
+' A ColecoVision game based on "Apple Hunt", a type-in game for the
+' Commodore 64 and VIC-20 in COMPUTE!'s Gazette, April 1985 (BASIC; the
+' listing carries no author's name). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing apple/64 and the VIC-20 listing p2, orig/); the game is built
+' for the ColecoVision: smooth 16 x 16 sprites that walk from cell to cell,
+' tiled forest graphics, a time bar, sound effects and an original title
+' tune.
+'
+' The game: you are the smiling face in a forest. Eat apples; avoid the
+' trees and the monster, which wanders at random and eats any tree, apple
+' or ruby it walks over. Walking into a tree or meeting the monster costs a
+' man. Five apples finish a wave, a ruby finishes it at once (3000 points).
+' Each apple is worth 50 to 500 points. Time is short: the border and the
+' time bar turn red near the end, and a wave finished before that earns a
+' time bonus. A button lets off a zap round you: it destroys everything in
+' the eight cells round the face and resets the time; if the monster is
+' among them it is destroyed for 1000 points and the wave is over,
+' otherwise it lands somewhere else. Each wave has more trees. An extra man
+' and an extra zap come after waves 5, 10, 15, 20 and 25. The edges wrap
+' round (the forest is a torus), for you and for the monster.
+'
+' From the original: 45 trees on 960 cells plus 27 a wave (here 26 on 560
+' cells plus 16 a wave, the same density), 6 to 11 apples, each a 3 in 100
+' chance of being a ruby, the monster's random steps in eight directions,
+' its eating, five apples a wave, apples worth 1 to 10 times 50, the ruby
+' 3000, the zap (8 cells, time reset, 1000 for the monster, the monster
+' moved elsewhere when missed), 2 men and 2 zaps at the start, the extra
+' man and zap after waves 5-25, the time limit of 1400 jiffies with the
+' red warning at 1100, the bonus of 3 points per jiffy left (none once the
+' screen is red), the wave rebuilt after a lost man, the high score.
+'
+' Liberties: the face walks a cell in 8 frames (7.5 cells a second) and
+' the monster in about 11, instead of BASIC's jumps. Meeting the monster
+' is a touch of the two sprites (the original only noticed it when one
+' landed on the other's cell, so they could pass through each other).
+' Running out of time costs a man; the original ended the whole game.
+' The start cell and the four cells next to it are cleared of trees, and
+' the monster starts at least 6 cells away (the original could start the
+' face inside a tree or next to the monster). When no apple is left (the
+' monster ate them) before five were eaten, the wave ends; in the original
+' it could only end by zapping the monster or by the clock. The stick
+' takes the first of up, down, left, right that is held (the C64 listing
+' ignored diagonals). The wave-over and game-over texts are boxes over the
+' forest. The time bar is new.
+'
+' Controls: either controller; the stick moves the face (hold to keep
+' walking), either button lets off a zap.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TGrass0 = 128
+const TGrass1 = 129
+const TTree = 130
+const TApple = 131
+const TRuby = 132
+const TZap = 133
+const THedge = 134
+const TBarf = 135
+const TBarr = 136
+const TBare = 137
+const SFace = 0
+const SChomp = 4
+const SSad = 8
+const SMon0 = 12
+const SMon1 = 16
+const NTiles8 = 80
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndEat = 4
+const SndRuby = 5
+const SndZap = 6
+const SndDie = 7
+const SndBlink = 8
+const SndWave = 9
+const SndOver = 10
+const SndLate = 11
+const NSpr = 2
+const StepN = 8
+const DeadN = 100
+const ZapN = 24
+const TimeRed = 1100
+const TimeMax = 1400
+const NeedApples = 5
+
+' directions: 0 up, 1 right, 2 down, 3 left, then the diagonals (the
+' monster uses all eight); 255 is -1
+data DXT bytes
+  0, 1, 0, 255, 1, 1, 255, 255
+end data
+data DYT bytes
+  255, 0, 1, 0, 255, 1, 1, 255
+end data
+
+record Actor:
+  u8 C
+  u8 R
+  u8 X
+  u8 Y
+  u8 D
+  u8 Ph
+end record
+
+Actor Pl
+Actor Mo
+
+bcd digits 6 Score
+bcd digits 6 Hi
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 T = 0
+u16 NTr = 26
+u16 Bo = 0
+u8 Wv = 1
+u8 Men = 2
+u8 Zaps = 2
+u8 Tx = 0
+u8 Al = 0
+u8 Ev = 0
+u8 Over = 0
+u8 DeadT = 0
+u8 ZapT = 0
+u8 Hit = 0
+u8 Red = 0
+u8 Chomp = 0
+u8 Bar = 8
+u8 Intro = 0
+u8 TitleOn = 0
+u8 Why = 0
+u8 Gift = 0
+u8 Mode = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ni = 0
+u8 Ki = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+u8 Wr = 0
+
+  tile screen
+  set sound table AhSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+  ' a new game
+  Score = 0
+  Wv = 1
+  Men = 2
+  Zaps = 2
+  NTr = 26
+
+wave_start:
+  BuildWave
+  IntroBlink
+
+  Mode = 1
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Ev = 0 then goto play_loop
+  Mode = 0
+
+  select case Ev
+  case 1
+    WaveOver
+    inc Wv
+    NTr = NTr + 16
+    if NTr > 260 then NTr = 260
+    goto wave_start
+  case else
+    dec Men
+    if Men >= 1 then goto wave_start
+  end select
+
+  ' the end: a message, then back to the title on a press
+  if Score > Hi then Hi = Score
+  mute all
+  ShowHud
+  Box
+  print at 10,9, "GAME  OVER"
+  print at 7,11, "SCORE"
+  print at 15,11, Score
+  print at 7,12, "WAVE"
+  NumU = Wv
+  print at 15,12, digits$(NumU, 2)
+  print at 7,13, "HIGH"
+  print at 15,13, Hi
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then Ev = 2
+    return
+  end if
+  if ZapT > 0 then
+    dec ZapT
+    if ZapT = 0 then ZapEnd
+    return
+  end if
+  if Chomp > 0 then dec Chomp
+  inc T
+  if T = TimeRed then
+    Red = 1
+    backdrop dark red
+    play sound SndLate
+  end if
+  ShowBar
+  if T >= TimeMax then
+    Why = 1
+    Die
+    return
+  end if
+  if Press = 1 then
+    if Zaps > 0 then
+      ZapStart
+      return
+    end if
+  end if
+  if Pl.Ph = 0 then TryMove
+  if Pl.Ph > 0 then
+    Glide(Pl)
+    dec Pl.Ph
+    if Pl.Ph = 0 then Arrive
+  end if
+  if Ev > 0 then return
+  if DeadT > 0 then return
+  V = Tick & 3
+  if V <> 3 then
+    if Mo.Ph = 0 then MonPick
+    Glide(Mo)
+    dec Mo.Ph
+    if Mo.Ph = 0 then MonArrive
+  end if
+  Touch
+  return
+end sub
+
+' move a sprite one pixel toward its cell
+sub Glide(ref Actor A):
+  u8 Tg = 0
+  Tg = PixOf(A.C)
+  if A.X < Tg then
+    inc A.X
+  elseif A.X > Tg then
+    dec A.X
+  end if
+  Tg = PixOf(A.R)
+  if A.Y < Tg then
+    inc A.Y
+  elseif A.Y > Tg then
+    dec A.Y
+  end if
+  return
+end sub
+
+' the sprite corner for a cell (a 16 x 16 sprite centred on an 8 x 8 cell)
+function PixOf(u8 Cell) as u8
+  return Cell * 8 - 4
+
+' the next cell in direction Dd from Qc, Qr, wrapped round the forest
+' (cols 2-29, rows 3-22); Wr = 1 when it wrapped
+sub NextCell(u8 Dd):
+  Wr = 0
+  Qc = Qc + DXT[Dd]
+  Qr = Qr + DYT[Dd]
+  if Qc < 2 then
+    Qc = 29
+    Wr = 1
+  elseif Qc > 29 then
+    Qc = 2
+    Wr = 1
+  end if
+  if Qr < 3 then
+    Qr = 22
+    Wr = 1
+  elseif Qr > 22 then
+    Qr = 3
+    Wr = 1
+  end if
+  return
+end sub
+
+' the stick: the first of up, down, left, right
+function StickDir as u8
+  u8 Sk = 0
+  Sk = J1 | J2
+  V = Sk & 1
+  if V > 0 then return 0
+  V = Sk & 2
+  if V > 0 then return 2
+  V = Sk & 4
+  if V > 0 then return 3
+  V = Sk & 8
+  if V > 0 then return 1
+  return 255
+
+sub TryMove:
+  K = StickDir
+  if K = 255 then return
+  Pl.D = K
+  Qc = Pl.C
+  Qr = Pl.R
+  NextCell(K)
+  Pl.C = Qc
+  Pl.R = Qr
+  Pl.Ph = StepN
+  if Wr = 1 then
+    Pl.X = PixOf(Qc)
+    Pl.Y = PixOf(Qr)
+  end if
+  play sound SndStep
+  return
+end sub
+
+' the face has reached its cell
+sub Arrive:
+  K = get char at Pl.C,Pl.R
+  select case K
+  case TTree
+    Why = 2
+    Die
+  case TApple
+    Ground(Pl.C, Pl.R)
+    AppleScore
+    inc Tx
+    dec Al
+    Chomp = 12
+    play sound SndEat
+    ShowHud
+    if Tx >= NeedApples then
+      Ev = 1
+    elseif Al = 0 then
+      Ev = 1
+    end if
+  case TRuby
+    Ground(Pl.C, Pl.R)
+    for Ki = 1 to 30
+      Score += 100
+    next
+    Chomp = 12
+    play sound SndRuby
+    ShowHud
+    Gift = 1
+    Ev = 1
+  end select
+  return
+end sub
+
+' 1 to 10 times 50 points
+sub AppleScore:
+  u8 Times = 0
+  Times = RndN(10) + 1
+  for Ki = 1 to Times
+    Score += 50
+  next
+  return
+end sub
+
+sub Die:
+  DeadT = DeadN
+  Pl.Ph = 0
+  play sound SndDie
+  return
+end sub
+
+' the monster: a random step in one of eight directions
+sub MonPick:
+  Mo.D = RndN(8)
+  Qc = Mo.C
+  Qr = Mo.R
+  NextCell(Mo.D)
+  Mo.C = Qc
+  Mo.R = Qr
+  Mo.Ph = StepN
+  if Wr = 1 then
+    Mo.X = PixOf(Qc)
+    Mo.Y = PixOf(Qr)
+  end if
+  return
+end sub
+
+' the monster eats what it walks over
+sub MonArrive:
+  K = get char at Mo.C,Mo.R
+  if K >= TTree then
+    if K = TApple then dec Al
+    Ground(Mo.C, Mo.R)
+    if Al = 0 then
+      if Tx < NeedApples then Ev = 1
+    end if
+  end if
+  return
+end sub
+
+' the two sprites touching
+sub Touch:
+  V = absdiff(Pl.X, Mo.X)
+  if V >= 7 then return
+  V = absdiff(Pl.Y, Mo.Y)
+  if V >= 7 then return
+  Why = 3
+  Die
+  return
+end sub
+
+' the zap: the eight cells round the face
+sub ZapStart:
+  dec Zaps
+  ZapT = ZapN
+  Hit = 0
+  for Ni = 0 to 7
+    Qc = Pl.C
+    Qr = Pl.R
+    NextCell(Ni)
+    if Qc = Mo.C then
+      if Qr = Mo.R then Hit = 1
+    end if
+    K = get char at Qc,Qr
+    if K = TApple then dec Al
+    put char TZap at Qc,Qr
+  next
+  play sound SndZap
+  ShowHud
+  return
+end sub
+
+sub ZapEnd:
+  for Ni = 0 to 7
+    Qc = Pl.C
+    Qr = Pl.R
+    NextCell(Ni)
+    Ground(Qc, Qr)
+  next
+  if Hit = 1 then
+    for Ki = 1 to 10
+      Score += 100
+    next
+    ShowHud
+    Gift = 2
+    Ev = 1
+    return
+  end if
+  PlaceMonster
+  T = 0
+  Red = 0
+  backdrop black
+  ShowBar
+  if Al = 0 then
+    if Tx < NeedApples then Ev = 1
+  end if
+  return
+end sub
+
+' the monster on a random cell at least 6 cells from the face
+sub PlaceMonster:
+mp_again:
+  Qc = RndN(28) + 2
+  Qr = RndN(20) + 3
+  V = absdiff(Qc, Pl.C)
+  K = absdiff(Qr, Pl.R)
+  if V < 6 then
+    if K < 6 then goto mp_again
+  end if
+  Mo.C = Qc
+  Mo.R = Qr
+  Mo.X = PixOf(Qc)
+  Mo.Y = PixOf(Qr)
+  Mo.Ph = 0
+  Mo.D = 0
+  return
+end sub
+
+' grass on a cell (two tiles in a checker)
+sub Ground(u8 Gc, u8 Gr):
+  u8 Gt = 0
+  Gt = Gc + Gr
+  Gt = Gt & 1
+  Gt = Gt + TGrass0
+  put char Gt at Gc,Gr
+  return
+end sub
+
+' a number 0..N-1 from the xorshift
+function RndN(u8 Lim) as u8
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * Lim
+  return W16 >> 8
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a wave: the forest, the trees, the apples, the monster, the face
+
+sub BuildWave:
+  NewScreen
+  for Ri = 2 to 23
+    fill THedge count 2 at 0,Ri
+    fill THedge count 2 at 30,Ri
+  next
+  fill THedge count 28 at 2,2
+  fill THedge count 28 at 2,23
+  for Ri = 3 to 22
+    for Ki = 2 to 29
+      Ground(Ki, Ri)
+    next
+  next
+  PlaceTrees
+  Al = RndN(6) + 6
+  for Ki = 1 to Al
+    Qc = RndN(28) + 2
+    Qr = RndN(20) + 3
+    V = RndN(100)
+    if V < 3 then
+      put char TRuby at Qc,Qr
+    else
+      put char TApple at Qc,Qr
+    end if
+  next
+  ' the face: a free start (its cell and the four next to it)
+  Pl.C = RndN(28) + 2
+  Pl.R = RndN(20) + 3
+  Ground(Pl.C, Pl.R)
+  for Ni = 0 to 3
+    Qc = Pl.C
+    Qr = Pl.R
+    NextCell(Ni)
+    K = get char at Qc,Qr
+    if K = TTree then Ground(Qc, Qr)
+  next
+  Pl.X = PixOf(Pl.C)
+  Pl.Y = PixOf(Pl.R)
+  Pl.Ph = 0
+  Pl.D = 0
+  PlaceMonster
+  ' the monster's cell is eaten
+  K = get char at Mo.C,Mo.R
+  if K = TApple then Ground(Mo.C, Mo.R)
+  CountApples
+  Tx = 0
+  T = 0
+  Red = 0
+  Ev = 0
+  DeadT = 0
+  ZapT = 0
+  Chomp = 0
+  Why = 0
+  Gift = 0
+  Bar = 99
+  backdrop black
+  ShowHud
+  ShowBar
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub PlaceTrees:
+  u16 Nt = 0
+  for Nt = 1 to NTr
+    Qc = RndN(28) + 2
+    Qr = RndN(20) + 3
+    put char TTree at Qc,Qr
+  next
+  return
+end sub
+
+' apples on the board (some were planted on the same cell twice)
+sub CountApples:
+  Al = 0
+  for Ri = 3 to 22
+    for Ki = 2 to 29
+      K = get char at Ki,Ri
+      if K = TApple then inc Al
+    next
+  next
+  return
+end sub
+
+' the face blinks three times before the wave starts
+sub IntroBlink:
+  NumU = Wv
+  print at 2,2, " WAVE "
+  print at 8,2, digits$(NumU, 2)
+  print at 10,2, " "
+  for Ni = 1 to 3
+    Intro = 1
+    DrawSprites
+    play sound SndBlink
+    for Ri = 1 to 12
+      Frame1
+    next
+    Intro = 0
+    DrawSprites
+    for Ri = 1 to 12
+      Frame1
+    next
+  next
+  fill THedge count 9 at 2,2
+  ReadPad
+  WasBtn = Btn
+  return
+end sub
+
+' the wave is over: the bonus and the extra man
+sub WaveOver:
+  Bo = 0
+  if Red = 0 then
+    Bo = TimeMax - T
+    Bo = Bo * 3
+  end if
+  play sound SndWave
+  Box
+  NumU = Wv
+  print at 9,9, "WAVE"
+  print at 14,9, digits$(NumU, 2)
+  print at 17,9, "OVER"
+  if Gift = 1 then print at 8,10, "RUBY!     3000"
+  if Gift = 2 then print at 8,10, "ZAPPED!   1000"
+  print at 8,11, "BONUS"
+  print at 16,11, digits$(Bo, 4)
+  AddBonus
+  print at 8,12, "SCORE"
+  print at 14,12, Score
+  NumU = Men
+  print at 8,13, "MEN"
+  print at 19,13, digits$(NumU, 1)
+  NumU = Zaps
+  print at 8,14, "ZAPS"
+  print at 19,14, digits$(NumU, 1)
+  ShowHud
+  select case Wv
+  case 5, 10, 15, 20, 25
+    inc Men
+    inc Zaps
+    for Ni = 1 to 6
+      print at 8,15, "EXTRA MAN & ZAP"
+      for Ri = 1 to 12
+        Frame1
+      next
+      print at 8,15, "               "
+      for Ri = 1 to 12
+        Frame1
+      next
+    next
+    print at 8,15, "EXTRA MAN & ZAP"
+    NumU = Men
+    print at 19,13, digits$(NumU, 1)
+    NumU = Zaps
+    print at 19,14, digits$(NumU, 1)
+    ShowHud
+  end select
+  ' a moment to read it; a press goes on sooner
+  for Ri = 1 to 150
+    Frame1
+    ReadPad
+    if Ri > 40 then
+      if Press = 1 then Ri = 150
+    end if
+  next
+  backdrop black
+  return
+end sub
+
+' the bonus into the BCD score, a hundred at a time
+sub AddBonus:
+  u8 Rest = 0
+  while Bo >= 100
+    Score += 100
+    Bo = Bo - 100
+  end while
+  Rest = Bo
+  Score += Rest
+  return
+end sub
+
+' a box in the middle of the forest for messages
+sub Box:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  for Ri = 8 to 16
+    fill 32 count 20 at 6,Ri
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the face, 1 the monster
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    update sprites
+    return
+  end if
+  Y = Pl.Y - 1
+  if Intro = 1 then
+    set sprite 0 to 192,0,0,0
+  elseif DeadT > 0 then
+    set sprite 0 to Y,Pl.X,SSad,11
+  elseif Chomp > 0 then
+    set sprite 0 to Y,Pl.X,SChomp,11
+  else
+    set sprite 0 to Y,Pl.X,SFace,11
+  end if
+  Y = Mo.Y - 1
+  V = Tick >> 3
+  V = V & 1
+  K = SMon0
+  if V = 1 then K = SMon1
+  set sprite 1 to Y,Mo.X,K,7
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 8,1, Score
+  print at 17,1, "HI"
+  print at 20,1, Hi
+  print at 12,2, "M"
+  NumU = Men
+  print at 13,2, digits$(NumU, 1)
+  print at 15,2, "Z"
+  NumU = Zaps
+  print at 16,2, digits$(NumU, 1)
+  return
+end sub
+
+' the time bar on the hedge row (columns 21-28): one cell per 175 frames
+' left, red once the time is nearly out
+sub ShowBar:
+  W16 = TimeMax - T
+  W16 = W16 / 175
+  N = W16
+  if N > 8 then N = 8
+  if N = Bar then return
+  Bar = N
+  C = TBarf
+  if Red = 1 then C = TBarr
+  for Ki = 0 to 7
+    J = Ki + 21
+    if Ki < N then
+      put char C at J,2
+    else
+      put char TBare at J,2
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of forest, the cast, the tune once
+sub TitlePage:
+  NewScreen
+  TitleOn = 1
+  for Ri = 2 to 22
+    fill THedge count 2 at 0,Ri
+    fill THedge count 2 at 30,Ri
+  next
+  fill THedge count 28 at 2,2
+  fill THedge count 28 at 2,22
+  for Ki = 2 to 29
+    Ground(Ki, 3)
+    Ground(Ki, 4)
+    Ground(Ki, 20)
+    Ground(Ki, 21)
+  next
+  for Ki = 0 to 6
+    J = Ki * 4 + 3
+    put char TTree at J,3
+    J = J + 2
+    put char TApple at J,4
+    J = Ki * 4 + 4
+    put char TTree at J,21
+  next
+  put char TRuby at 15,20
+  print at 10,6, "APPLE  HUNT"
+  print at 3,7, "COMPUTE!S GAZETTE 4/1985"
+  put char TApple at 6,9
+  print at 9,9, "APPLE  50-500"
+  put char TRuby at 6,10
+  print at 9,10, "RUBY     3000"
+  put char TTree at 6,11
+  print at 9,11, "TREE    AVOID"
+  print at 9,13, "MONSTER AVOID"
+  print at 9,14, "OR ZAP: 1000"
+  print at 9,16, "YOU"
+  print at 4,18, "STICK MOVES, BUTTON ZAPS"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  print at 8,19, "PRESS THE BUTTON"
+  set sprite 0 to 123,40,SFace,11
+  set sprite 1 to 103,40,SMon0,7
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "APPLE  HUNT"
+  print at 2,5, "BASED ON APPLE HUNT FROM"
+  print at 2,6, "COMPUTE'S GAZETTE, APRIL"
+  print at 2,7, "1985 (COMMODORE 64 AND"
+  print at 2,8, "VIC-20 TYPE-IN, BASIC)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: ORCHARD PATH"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$00,$08,$00,$00,$00,$21,$00
+  $38,$81,$00,$01,$81,$38,$18,$C3
+  $08,$10,$83,$08,$01,$01,$83,$28
+  $00,$C3,$C3,$00,$81,$C3,$18,$00
+  $10,$92,$54,$38,$01,$38,$54,$92
+  $44,$AA,$AA,$00,$44,$00,$88,$22
+  $00,$01,$01,$01,$01,$01,$00,$00
+  $00,$01,$01,$01,$01,$01,$00,$00
+  $00,$01,$02,$02,$02,$01,$00,$00
+end data
+data TileCol bytes
+  $0C,$2C,$0C,$2C,$0C,$2C,$0C,$0C
+  $0C,$0C,$2C,$0C,$0C,$0C,$2C,$0C
+  $3C,$C3,$03,$C2,$C3,$3C,$AC,$CA
+  $AC,$AC,$C8,$F8,$C8,$C8,$C8,$8C
+  $0C,$CD,$FD,$0D,$CD,$CD,$DC,$0C
+  $FC,$FC,$FC,$FC,$CB,$FC,$FC,$FC
+  $C1,$C2,$2C,$0C,$2C,$0C,$1C,$C1
+  $01,$1B,$1B,$1B,$1B,$1B,$01,$01
+  $01,$18,$18,$18,$18,$18,$01,$01
+  $01,$1E,$E1,$E1,$E1,$1E,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$07,$1F,$3F,$39,$79,$7F,$7F,$77,$3B,$3C,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$FC,$9C,$9E,$FE,$FE,$EE,$DC,$3C,$F8,$E0,$00,$00
+  $00,$00,$07,$1F,$3F,$39,$79,$7F,$7E,$78,$38,$3C,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$FC,$9C,$9E,$FE,$7E,$1E,$1C,$3C,$F8,$E0,$00,$00
+  $00,$00,$07,$1F,$3F,$35,$7B,$75,$7F,$7C,$3B,$37,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$FC,$AC,$DE,$AE,$FE,$3E,$DC,$EC,$F8,$E0,$00,$00
+  $00,$30,$13,$0F,$1D,$19,$3F,$6F,$8D,$0F,$17,$22,$44,$48,$CC,$00
+  $00,$0C,$C8,$F0,$B8,$98,$FC,$F6,$B1,$F0,$E8,$44,$22,$12,$33,$00
+  $00,$60,$13,$0F,$1D,$19,$3F,$AF,$0D,$1F,$17,$12,$14,$24,$36,$00
+  $00,$06,$C8,$F0,$B8,$98,$FC,$F5,$B0,$F0,$E8,$48,$28,$24,$6C,$00
+end data
+
+asm {
+AhStep:
+    db $40,$FC,$51,$01,$40,$53,$71,$01,$50
+AhEat:
+    db $40,$D6,$10,$02,$40,$8F,$10,$02,$40,$6B,$20,$02,$40,$47,$30,$04,$50
+AhRuby:
+    db $40,$6B,$10,$03,$40,$55,$10,$03,$40,$47,$10,$03,$40,$35,$10,$03,$40,$47,$20,$03,$40,$35,$20,$0A
+    db $50
+AhZap:
+    db $00,$00,$04,$03,$00,$00,$15,$03,$00,$00,$26,$05,$00,$00,$46,$08,$10
+AhDie:
+    db $40,$1D,$11,$06,$40,$53,$21,$06,$40,$AB,$21,$06,$40,$FC,$21,$06,$40,$A6,$32,$14,$50
+AhBlink:
+    db $40,$7F,$30,$03,$40,$FF,$F3,$03,$50
+AhWave:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$05,$40,$6B,$20,$10
+    db $50
+AhOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+AhLate:
+    db $40,$40,$20,$04,$40,$FF,$F3,$04,$40,$40,$20,$04,$50
+
+AhSoundTable:
+    dw AhTuneMel,$702B
+    dw AhTuneBass,$7035
+    dw AhStep,$7049
+    dw AhEat,$7049
+    dw AhRuby,$7049
+    dw AhZap,$703F
+    dw AhDie,$7049
+    dw AhBlink,$7049
+    dw AhWave,$7049
+    dw AhOver,$7049
+    dw AhLate,$7049
+; Orchard Path (original)
+; Tiny Sound, 8 frames per step
+AhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$01,$1E,$1A,$01,$1C,$01,$1F,$01
+    db $1E,$01,$1A,$01,$17,$01,$1A,$1E,$01,$1A,$17,$01,$19,$01,$1C,$01
+    db $21,$01,$01,$01,$1A,$01,$1E,$21,$01,$23,$21,$01,$1F,$01,$1C,$01
+    db $19,$01,$15,$01,$17,$01,$1A,$01,$1C,$01,$1E,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+AhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$0D,$01,$0E,$01,$15,$01,$07,$01,$0E,$01,$10,$01,$17,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$09,$01,$10,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

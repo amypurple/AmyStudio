@@ -11436,5 +11436,525 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lab3d",
+    "label": "3-D Labyrinth (December 1984)",
+    "detail": "John Stilwell's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "3-D Labyrinth",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "speed3d",
+    "label": "3-D Speedway (April 1988)",
+    "detail": "Chris Ulmer's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "3-D Speedway",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "t3d",
+    "label": "3-D Tic Tac Toe (June 1984)",
+    "detail": "A COMPUTE!'s Gazette game from June 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "3-D Tic Tac Toe",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "aard",
+    "label": "Aardvark Attack (October 1983)",
+    "detail": "Todd Heimarck's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Aardvark Attack",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "armada",
+    "label": "Alien Armada (May 1985)",
+    "detail": "John Matias's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Alien Armada",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "alphanx",
+    "label": "Alpha Anxiety (March 1985)",
+    "detail": "A COMPUTE!'s Gazette game from March 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Alpha Anxiety",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ashoot",
+    "label": "Alpha-Shoot (January 1984)",
+    "detail": "A COMPUTE!'s Gazette game from January 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Alpha-Shoot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "amatch",
+    "label": "Animal Match (December 1987)",
+    "detail": "A COMPUTE!'s Gazette game from December 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Animal Match",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ahunt",
+    "label": "Apple Hunt (April 1985)",
+    "detail": "A COMPUTE!'s Gazette game from April 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Apple Hunt",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "willie",
+    "label": "Apple Willie (April 1990)",
+    "detail": "A COMPUTE!'s Gazette game from April 1990, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Apple Willie",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "abase",
+    "label": "Arcade Baseball (May 1986)",
+    "detail": "A COMPUTE!'s Gazette game from May 1986, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Arcade Baseball",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "volley",
+    "label": "Arcade Volleyball (June 1988)",
+    "detail": "Rhett Anderson and David Hensley Jr.'s COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Arcade Volleyball",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "apanic",
+    "label": "Astro-Panic! (February 1984)",
+    "detail": "Charles Brannon's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Astro-Panic!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "atoms",
+    "label": "Atom Shoot (October 1985)",
+    "detail": "A COMPUTE!'s Gazette game from October 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Atom Shoot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "quarks",
+    "label": "Atom Shoot 64 (October 1985)",
+    "detail": "A COMPUTE!'s Gazette game from October 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Atom Shoot 64",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bact",
+    "label": "Bacteria (March 1989)",
+    "detail": "A COMPUTE!'s Gazette game from March 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Bacteria",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bagdad",
+    "label": "Bagdad (November 1984)",
+    "detail": "Kevin Martin and Bryan Files's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Bagdad",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bagger",
+    "label": "Bagger (July 1988)",
+    "detail": "A COMPUTE!'s Gazette game from July 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Bagger",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bblitz",
+    "label": "Balloon Blitz (August 1984)",
+    "detail": "Michael T. Bohn's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Balloon Blitz",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bbbar",
+    "label": "BB Barrage (August 1988)",
+    "detail": "William Chin's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "BB Barrage",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "beekpr",
+    "label": "Beekeeper (July 1984)",
+    "detail": "A COMPUTE!'s Gazette game from July 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Beekeeper",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "beezone",
+    "label": "Beezone (September 1987)",
+    "detail": "A COMPUTE!'s Gazette game from September 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Beezone",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "binc",
+    "label": "Binary Castle (November 1983)",
+    "detail": "A COMPUTE!'s Gazette game from November 1983, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Binary Castle",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bingo64",
+    "label": "Bingo 64 (April 1984)",
+    "detail": "Richard L. Witkover's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Bingo 64",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bbattle",
+    "label": "Block Battle! (September 1989)",
+    "detail": "A COMPUTE!'s Gazette game from September 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Block Battle!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "blockout",
+    "label": "Block Out (November 1988)",
+    "detail": "A COMPUTE!'s Gazette game from November 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Block Out",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

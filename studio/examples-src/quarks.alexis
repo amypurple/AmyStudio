@@ -1,0 +1,920 @@
+cartridge "ATOM SHOOT 64/COMPUTE'S GAZETTE/1985"
+
+' ATOM SHOOT 64
+' A ColecoVision game based on "Atom Shoot", COMPUTE!'s Gazette, October
+' 1985 (Commodore 64 BASIC, disk 1985-10; no author is named in the
+' listing or on the disk's contents files). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The same disk has a VIC-20 "Atom Shoot" that is a different game (a
+' Black Box hunt, ported as games/atoms, cartridge ATOM SHOOT). This one
+' keeps the printed name with "64" added so the two cartridges can be
+' told apart.
+'
+' The game: 25 mirrors ("quarks") hide in a 15 x 10 box, each slanted /
+' or \. You have 25 turns. A turn is either a SHOT or a GUESS:
+'   SHOT: pick one of the 50 ports round the box; a beam goes straight
+'     in, bounces off every mirror it meets and comes out at a port. The
+'     turn's letter (A for turn 1 ... Y for turn 25) is written at the
+'     port it went in and the port it came out.
+'   GUESS: pick a cell and a slant. Right: the mirror shows and you score
+'     54 - 2 x turn points; wrong: a grey mark and you lose half that.
+'     Early turns are worth more, so shooting costs points too.
+' Finding all 25 adds 200 - 5 x turn. The game ends after turn 25 (or
+' when all are found); the box opens and shows the mirrors you missed.
+'
+' From the C-64 listing: 15 x 10 box, 25 mirrors at random cells with
+' random slants, the 50 ports, the beam rule (lines 270-320: a mirror in
+' the first cell counts, the beam always comes out), the turn letter at
+' both ends, 25 turns, the scores (54 - 2S, minus half on a miss, the
+' 200 - 5S bonus), wrong guesses marked, a found mirror guessed again
+' with the same slant costs no turn, the box opened at the end.
+'
+' Liberties: joystick instead of keys (a cursor moves over the box and
+' its ports; on a port a button shoots, on a cell the left button
+' guesses / and the right button guesses \; the listing's four symbol
+' choices were two pairs of the same two slants). A found mirror cannot
+' be guessed again with the other slant (the listing charged a turn and
+' painted a miss over it). The listing's QUIT key is gone: the game runs
+' its 25 turns; and the listing ended badly when the 25th turn was a
+' guess (it fell into the shot code): here every 25th turn ends the
+' game. The title keeps the best score. A spark marks the port where the
+' last beam came out; the side panel shows the turn, what a right guess
+' is worth now, the score and the mirrors found. Drawn tiles, sounds and
+' a title tune. No play-again prompt: the title comes back.
+'
+' Controls: either controller; the stick moves the cursor (it repeats
+' when held); left button: shoot from a port, or guess / on a cell;
+' right button: shoot from a port, or guess \ on a cell. On the title,
+' up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes.
+
+const TCell = 128
+const TFsl = 129
+const TFbs = 130
+const TWrong = 131
+const TMsl = 132
+const TMbs = 133
+const TPort = 134
+const TCorner = 135
+const TLa = 136
+const TLb = 137
+const TLc = 138
+const TLd = 139
+const TLe = 140
+const TLf = 141
+const TLg = 142
+const TLh = 143
+const TLi = 144
+const TLj = 145
+const TLk = 146
+const TLl = 147
+const TLm = 148
+const TLn = 149
+const TLo = 150
+const TLp = 151
+const TLq = 152
+const TLr = 153
+const TLs = 154
+const TLt = 155
+const TLu = 156
+const TLv = 157
+const TLw = 158
+const TLx = 159
+const TLy = 160
+const TTsl = 161
+const TTbs = 162
+const SCur = 0
+const SSpark = 4
+const NTiles8 = 280
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndShot = 4
+const SndFound = 5
+const SndWrong = 6
+const SndBump = 7
+const SndWon = 8
+const SndOver = 9
+const NSpr = 2
+const TuneLen = 512
+const NMirrors = 25
+const NTurns = 25
+' the box: Bd[R * 17 + C], R 0..11, C 0..16; ports on the ring
+const BW = 17
+const GX = 2
+const GY = 3
+' board kinds (tile = 128 + kind)
+const KCell = 0
+const KFound = 1
+const KWrong = 3
+const KMiss = 4
+const KPort = 6
+const KCorner = 7
+const KLetter = 8
+
+record Cursor:
+  u8 Row
+  u8 Col
+end record
+
+record Tally:
+  i16 Score
+  u8 Turn
+  u8 Found
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+i16 Best = 0
+u8 HasBest = 0
+Tally Tl
+Cursor Cur
+' Mir[] = 0 empty, 1 /, 2 \ ; Bd[] = the kind shown
+u8 Mir[204]
+u8 Bd[204]
+' the last action, for the bots: 1 shot, 2 right, 3 wrong, 4 free
+u8 LastAct = 0
+u8 LastEx = 0
+u8 LastPts = 0
+' game state: 0 title, 2 playing, 4 over
+u8 Gs = 0
+u8 Rpt = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 SparkT = 0
+u8 SparkX = 0
+u8 SparkY = 0
+u8 Lock = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table QkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayInput
+  DrawSprites
+  if Gs <> 4 then goto play_loop
+
+  ' the end: open the box, a message, then back to the title on a press
+  HideSprites
+  OpenBox
+  EndMessage
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the box
+
+function IsRing(u8 R, u8 C) as u8
+  if R = 0 then return 1
+  if R = 11 then return 1
+  if C = 0 then return 1
+  if C = 16 then return 1
+  return 0
+
+function IsCorner(u8 R, u8 C) as u8
+  u8 Edge = 0
+  if R = 0 or R = 11 then inc Edge
+  if C = 0 or C = 16 then inc Edge
+  if Edge = 2 then return 1
+  return 0
+
+' follow a beam from port Ent (lines 280-320): the port it comes out of
+function Trace(u8 Ent) as u8
+  u8 R = 0
+  u8 C = 0
+  u8 M = 0
+  u8 Guard = 0
+  i8 Dr = 0
+  i8 Dc = 0
+  i8 T = 0
+  R = Ent / BW
+  C = Ent % BW
+  if R = 0 then Dr = 1
+  if R = 11 then Dr = -1
+  if C = 0 then Dc = 1
+  if C = 16 then Dc = -1
+  while Guard < 250
+    inc Guard
+    R = R + Dr
+    C = C + Dc
+    if IsRing(R, C) = 1 then return R * BW + C
+    M = Mir[R * BW + C]
+    select case M
+    case 1
+      ' "/": right turns up, down turns left
+      T = Dr
+      Dr = 0 - Dc
+      Dc = 0 - T
+    case 2
+      ' "\": right turns down, down turns right
+      T = Dr
+      Dr = Dc
+      Dc = T
+    end select
+  end while
+  return Ent
+
+' what a right guess earns on this turn (line 200: B = 54 - 2S)
+function Worth as u8
+  return 54 - Tl.Turn * 2
+
+sub DrawCell(u8 Ce):
+  u8 T = 0
+  u8 Px = 0
+  u8 Py = 0
+  T = Bd[Ce] + 128
+  Px = Ce % BW + GX
+  Py = Ce / BW + GY
+  put char T at Px,Py
+  return
+
+sub DrawBox:
+  u8 Ce = 0
+  for Ce = 0 to 203
+    DrawCell(Ce)
+  next
+  return
+
+' a new box: 25 mirrors at random cells, random slants (lines 420-450)
+sub NewBox:
+  u8 R = 0
+  u8 C = 0
+  u8 Ce = 0
+  u8 Placed = 0
+  fill array Mir with 0
+  for R = 0 to 11
+    for C = 0 to 16
+      Ce = R * BW + C
+      if IsCorner(R, C) = 1 then
+        Bd[Ce] = KCorner
+      elseif IsRing(R, C) = 1 then
+        Bd[Ce] = KPort
+      else
+        Bd[Ce] = KCell
+      end if
+    next
+  next
+  while Placed < NMirrors
+    W16 = Rand
+    R = W16 & 15
+    C = (W16 >> 4) & 15
+    if R < 10 and C < 15 then
+      Ce = (R + 1) * BW + C + 1
+      if Mir[Ce] = 0 then
+        Mir[Ce] = ((W16 >> 8) & 1) + 1
+        inc Placed
+      end if
+    end if
+  end while
+  return
+
+' ---------------------------------------------------------------------------
+' turns
+
+sub SetSpark(u8 Ce):
+  SparkX = Ce % BW
+  SparkX = (SparkX + GX) * 8 - 1
+  SparkY = Ce / BW
+  SparkY = (SparkY + GY) * 8 - 1
+  SparkT = 90
+  return
+
+' a shot from port Ce: the turn's letter at both ends
+sub Shoot(u8 Ce):
+  u8 Ex = 0
+  u8 L = 0
+  Ex = Trace(Ce)
+  L = KLetter + Tl.Turn - 1
+  Bd[Ce] = L
+  Bd[Ex] = L
+  DrawCell(Ce)
+  DrawCell(Ex)
+  LastAct = 1
+  LastEx = Ex
+  play sound SndShot
+  SetSpark(Ex)
+  Say(1)
+  EndTurn
+  return
+
+' a guess of slant Sl at cell Ce (lines 180-260)
+sub Guess(u8 Ce, u8 Sl):
+  u8 B = 0
+  u16 Bonus = 0
+  if Bd[Ce] = KFound or Bd[Ce] = KFound + 1 then
+    ' a mirror already found: free, no turn (line 190)
+    LastAct = 4
+    play sound SndBump
+    return
+  end if
+  B = Worth()
+  if Mir[Ce] = Sl then
+    Bd[Ce] = KFound + Sl - 1
+    Tl.Score += B
+    inc Tl.Found
+    LastAct = 2
+    LastPts = B
+    play sound SndFound
+    Say(2)
+    if Tl.Found = NMirrors then
+      Bonus = 200 - Tl.Turn * 5
+      Tl.Score = Tl.Score + Bonus
+      Gs = 4
+    end if
+  else
+    Bd[Ce] = KWrong
+    B = B / 2
+    Tl.Score -= B
+    LastAct = 3
+    LastPts = B
+    play sound SndWrong
+    Say(3)
+  end if
+  DrawCell(Ce)
+  EndTurn
+  return
+
+sub EndTurn:
+  if Gs <> 4 then
+    if Tl.Turn = NTurns then
+      Gs = 4
+    else
+      inc Tl.Turn
+    end if
+  end if
+  ShowHud
+  ' a short rest before the next turn (the listing's delay loop)
+  Lock = 30
+  return
+
+' a line of news under the box
+sub Say(u8 What):
+  fill 32 count 28 at 2,21
+  select case What
+  case 1
+    J = Tl.Turn + 64
+    print at 2,21, "SHOT "
+    put char J at 7,21
+    print at 9,21, "IN AND OUT"
+  case 2
+    NumU = LastPts
+    print at 2,21, "A QUARK! +", digits$(NumU, 2)
+  case 3
+    NumU = LastPts
+    print at 2,21, "NOTHING THERE. -", digits$(NumU, 2)
+  end select
+  return
+
+' the box opens: mirrors not found show red (lines 330-350)
+sub OpenBox:
+  u8 Ce = 0
+  u8 Last = 0
+  Last = 11 * BW - 2
+  for Ce = BW + 1 to Last
+    if Mir[Ce] > 0 then
+      if Bd[Ce] = KCell or Bd[Ce] = KWrong then
+        Bd[Ce] = KMiss + Mir[Ce] - 1
+        DrawCell(Ce)
+      end if
+    end if
+  next
+  return
+
+sub EndMessage:
+  u8 NewBest = 0
+  if HasBest = 0 then
+    NewBest = 1
+  elseif Tl.Score > Best then
+    NewBest = 1
+  end if
+  if NewBest = 1 then
+    Best = Tl.Score
+    HasBest = 1
+  end if
+  ShowHud
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  if Tl.Found = NMirrors then
+    print at 2,21, "YOU SOLVED IT! ALL 25."
+    play sound SndWon
+  else
+    NumU = Tl.Found
+    print at 2,21, "TIME UP. ", digits$(NumU, 2), " OF 25 FOUND."
+    play sound SndOver
+  end if
+  print at 2,22, "FINAL SCORE"
+  ShowScore(14, 22, Tl.Score)
+  if NewBest = 1 then print at 21,22, "BEST!"
+  return
+
+' a signed score: a minus, then the digits
+sub ShowScore(u8 Px, u8 Py, i16 S):
+  u16 A = 0
+  if S < 0 then
+    put char 45 at Px,Py
+    A = 0 - S
+  else
+    put char 32 at Px,Py
+    A = S
+  end if
+  print at Px + 1,Py, digits$(A, 4)
+  return
+
+sub ShowHud:
+  print at 21,3, "TURN"
+  NumU = Tl.Turn
+  print at 21,4, digits$(NumU, 2), " OF 25"
+  print at 21,6, "WORTH"
+  NumU = Worth()
+  print at 21,7, digits$(NumU, 2)
+  print at 21,9, "SCORE"
+  ShowScore(21, 10, Tl.Score)
+  print at 21,12, "FOUND"
+  NumU = Tl.Found
+  print at 21,13, digits$(NumU, 2), " OF 25"
+  return
+
+' the key under the box
+sub ShowKey:
+  print at 2,17, "PORT: A BUTTON SHOOTS."
+  print at 2,18, "CELL: LEFT"
+  put char TFsl at 13,18
+  print at 15,18, "RIGHT"
+  put char TFbs at 21,18
+  print at 2,19, "25 TURNS. FIND 25 QUARKS."
+  return
+
+' ---------------------------------------------------------------------------
+' input
+
+sub PlayInput:
+  u8 St = 0
+  if Lock > 0 then
+    dec Lock
+    Press = 0
+    return
+  end if
+  St = J1 | J2
+  St = St & 15
+  if St = 0 then
+    Rpt = 0
+  elseif Rpt > 0 then
+    dec Rpt
+  else
+    if WasStick = 0 then
+      Rpt = 14
+    else
+      Rpt = 6
+    end if
+    MoveBy(St)
+  end if
+  WasStick = St
+  if Press > 0 then Act(Press)
+  return
+
+' the button (1 left, 2 right) on the cursor's cell
+sub Act(u8 Which):
+  u8 Ce = 0
+  Ce = Cur.Row * BW + Cur.Col
+  if IsRing(Cur.Row, Cur.Col) = 1 then
+    Shoot(Ce)
+  else
+    Guess(Ce, Which)
+  end if
+  return
+
+' can the cursor stand on R, C? (the box and its ports, not the corners)
+function CanGo(u8 R, u8 C) as u8
+  if R > 11 then return 0
+  if C > 16 then return 0
+  if IsCorner(R, C) = 1 then return 0
+  return 1
+
+sub MoveBy(u8 St):
+  u8 R = 0
+  u8 C = 0
+  R = Cur.Row
+  C = Cur.Col
+  if (St & 1) > 0 then
+    dec R
+  elseif (St & 2) > 0 then
+    inc R
+  elseif (St & 8) > 0 then
+    inc C
+  elseif (St & 4) > 0 then
+    dec C
+  end if
+  if CanGo(R, C) = 1 then
+    Cur.Row = R
+    Cur.Col = C
+    play sound SndStep
+  end if
+  return
+
+sub DrawSprites:
+  X = (Cur.Col + GX) * 8 - 1
+  Y = (Cur.Row + GY) * 8 - 2
+  set sprite 0 to Y,X,SCur,15
+  Y = 192
+  if SparkT > 0 then
+    dec SparkT
+    Y = SparkY - 1
+  end if
+  set sprite 1 to Y,SparkX,SSpark,9
+  update sprites
+  return
+
+' ---------------------------------------------------------------------------
+' rounds
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+sub NewGame:
+  Tl.Score = 0
+  Tl.Turn = 1
+  Tl.Found = 0
+  LastAct = 0
+  SparkT = 0
+  Lock = 0
+  NewScreen
+  NewBox
+  DrawBox
+  print at 9,1, "ATOM SHOOT 64"
+  ShowHud
+  ShowKey
+  Cur.Row = 0
+  Cur.Col = 8
+  DrawSprites
+  ShowScreen
+  Gs = 2
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 3
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' J1/J2: up 1, down 2, left 4, right 8; Btn: left 1, right 2
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  Btn = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then Btn = Btn | 1
+  if joypad(1).button2 then Btn = Btn | 2
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then Btn = Btn | 1
+  if joypad(2).button2 then Btn = Btn | 2
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then
+      Press = 1
+      if (Btn & 1) = 0 then Press = 2
+    end if
+  end if
+  WasBtn = Btn
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: ATOM SHOOT 64 between strips of mirrors, the tune once
+sub TitlePage:
+  Gs = 0
+  NewScreen
+  for Ci = 2 to 29
+    V = Ci & 1
+    put char TTsl + V at Ci,3
+    put char TTbs - V at Ci,7
+  next
+  print at 9,5, "ATOM SHOOT 64"
+  print at 4,9, "COMPUTE!'S GAZETTE 1985"
+  print at 3,11, "25 MIRRORS HIDE IN A BOX."
+  print at 3,12, "SHOOT BEAMS, READ WHERE"
+  print at 3,13, "THEY COME OUT, AND GUESS"
+  print at 3,14, "EACH MIRROR AND ITS SLANT."
+  print at 12,16, "PLAY"
+  print at 12,17, "CREDITS"
+  if HasBest = 1 then
+    print at 8,20, "BEST SCORE"
+    ShowScore(19, 20, Best)
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if (V & 1) > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      play sound SndStep
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,16
+  put char 32 at 10,17
+  J = Menu + 16
+  put char 62 at 10,J
+  return
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $B1
+  print at 9,2, "ATOM SHOOT 64"
+  print at 2,4, "BASED ON ATOM SHOOT,"
+  print at 2,5, "COMPUTE!'S GAZETTE, OCTOBER"
+  print at 2,6, "1985 (COMMODORE 64 BASIC)."
+  print at 2,7, "NO AUTHOR NAMED. THE SAME"
+  print at 2,8, "DISK'S VIC-20 ATOM SHOOT IS"
+  print at 2,9, "ANOTHER GAME, HENCE THE 64."
+  print at 2,11, "A RIGHT GUESS SCORES 54"
+  print at 2,12, "MINUS TWICE THE TURN; A"
+  print at 2,13, "WRONG ONE LOSES HALF THAT."
+  print at 2,15, "COLECOVISION GAME, MUSIC"
+  print at 2,16, "AND PICTURES BY CLAUDE"
+  print at 2,17, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,18, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,20, "MUSIC: MIRROR LATTICE"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $80,$C0,$60,$30,$18,$0C,$06,$03
+  $00,$93,$93,$00,$93,$93,$00,$00
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $80,$C0,$60,$30,$18,$0C,$06,$03
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $38,$44,$44,$83,$44,$44,$44,$00
+  $87,$44,$44,$87,$44,$44,$87,$00
+  $38,$44,$40,$40,$40,$44,$38,$00
+  $70,$48,$44,$44,$44,$48,$70,$00
+  $83,$40,$40,$87,$40,$40,$83,$00
+  $83,$40,$40,$87,$40,$40,$40,$00
+  $38,$44,$40,$A3,$44,$44,$C3,$00
+  $44,$44,$44,$83,$44,$44,$44,$00
+  $38,$10,$10,$10,$10,$10,$38,$00
+  $1C,$08,$08,$08,$08,$48,$30,$00
+  $44,$48,$50,$60,$50,$48,$44,$00
+  $40,$40,$40,$40,$40,$40,$83,$00
+  $44,$93,$54,$54,$44,$44,$44,$00
+  $44,$44,$64,$54,$4C,$44,$44,$00
+  $38,$44,$44,$44,$44,$44,$38,$00
+  $87,$44,$44,$87,$40,$40,$40,$00
+  $38,$44,$44,$44,$54,$48,$34,$00
+  $87,$44,$44,$87,$50,$48,$44,$00
+  $C3,$40,$40,$38,$04,$04,$87,$00
+  $83,$10,$10,$10,$10,$10,$10,$00
+  $44,$44,$44,$44,$44,$44,$38,$00
+  $44,$44,$44,$44,$44,$28,$10,$00
+  $44,$44,$44,$54,$54,$93,$44,$00
+  $44,$44,$28,$10,$28,$44,$44,$00
+  $44,$44,$28,$10,$10,$10,$10,$00
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $80,$C0,$60,$30,$18,$0C,$06,$03
+end data
+data TileCol bytes
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$1E,$1E,$01,$1E,$1E,$01,$01
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $01,$01,$1B,$1A,$1A,$1A,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1B,$1B,$1B,$B1,$1B,$1B,$1B,$0B
+  $B1,$1B,$1B,$B1,$1B,$1B,$B1,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $B1,$1B,$1B,$B1,$1B,$1B,$B1,$0B
+  $B1,$1B,$1B,$B1,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$B1,$1B,$1B,$B1,$0B
+  $1B,$1B,$1B,$B1,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$B1,$0B
+  $1B,$B1,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $B1,$1B,$1B,$B1,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $B1,$1B,$1B,$B1,$1B,$1B,$1B,$0B
+  $B1,$1B,$1B,$1B,$1B,$1B,$B1,$0B
+  $B1,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$B1,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$0B
+  $96,$96,$96,$96,$96,$96,$96,$96
+  $96,$96,$96,$96,$96,$96,$96,$96
+end data
+data SpritePat bytes
+  $CC,$80,$00,$00,$80,$80,$00,$00,$80,$CC,$00,$00,$00,$00,$00,$00
+  $C0,$40,$00,$00,$40,$40,$00,$00,$40,$C0,$00,$00,$00,$00,$00,$00
+  $80,$40,$00,$00,$00,$00,$00,$00,$40,$80,$00,$00,$00,$00,$00,$00
+  $40,$80,$00,$00,$00,$00,$00,$00,$80,$40,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+QkStep:
+    db $40,$53,$51,$01,$40,$7C,$81,$01,$50
+QkShot:
+    db $40,$BA,$20,$02,$40,$7C,$30,$02,$40,$56,$30,$02,$40,$42,$40,$02,$40,$5D,$50,$03,$40,$8C,$70,$04
+    db $50
+QkFound:
+    db $40,$8F,$10,$03,$40,$71,$10,$03,$40,$5F,$10,$03,$40,$47,$50,$08,$50
+QkWrong:
+    db $00,$00,$24,$03,$00,$00,$45,$05,$00,$00,$76,$06,$10
+QkBump:
+    db $00,$00,$41,$02,$10
+QkWon:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$10,$06
+    db $40,$55,$10,$14,$40,$55,$70,$0A,$50
+QkOver:
+    db $40,$1D,$21,$08,$40,$41,$21,$08,$40,$7C,$31,$08,$40,$C5,$31,$14,$40,$C5,$81,$0A,$50
+
+QkSoundTable:
+    dw QkTuneMel,$702B
+    dw QkTuneBass,$7035
+    dw QkStep,$7049
+    dw QkShot,$7049
+    dw QkFound,$7049
+    dw QkWrong,$703F
+    dw QkBump,$703F
+    dw QkWon,$7049
+    dw QkOver,$7049
+; Mirror Lattice (original)
+; Tiny Sound, 8 frames per step
+QkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$1F,$23,$28,$26,$23,$1F,$23,$24,$28,$2B,$28
+    db $26,$01,$23,$01,$21,$24,$28,$2D,$2B,$28,$24,$28,$23,$27,$2A,$2F
+    db $2D,$01,$2A,$01,$2B,$2A,$28,$23,$24,$23,$21,$1C,$1E,$1F,$21,$23
+    db $27,$01,$2A,$01,$28,$23,$1F,$23,$21,$1E,$1B,$1E,$1C,$01,$23,$01
+    db $28,$01,$00,$01
+    db $FF
+QkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$0C,$01,$07,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$0C,$01,$0B,$01,$12,$01
+    db $0B,$01,$0F,$01,$10,$01,$07,$01,$09,$01,$0C,$01,$0B,$01,$09,$01
+    db $0B,$01,$0B,$01,$10,$01,$07,$01,$0B,$01,$0B,$01,$10,$01,$0B,$01
+    db $10,$01,$00,$01
+    db $FF
+}

@@ -1,0 +1,1045 @@
+cartridge "BEEKEEPER/COMPUTE GAZETTE/1984"
+
+' BEEKEEPER
+' A ColecoVision game based on "Beekeeper", COMPUTE!'s Gazette, July 1984
+' (Commodore 64 and VIC-20, BASIC; no author named in the listing).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listings, orig/), the game is built for the ColecoVision: smooth 16 x 16
+' sprites, tiled meadow, hive and swarm, sound effects and an original
+' title tune.
+'
+' The game: your little plane flies over a meadow of clovers above the
+' hive wall; under the wall sits the swarm. The plane never stops: it flies
+' one cell at a time in the way it faces, in eight directions, and the
+' stick turns it left or right. A clover, or the edge of the meadow, stops
+' it (it waits there facing the obstacle). The button fires a laser up to
+' seven cells ahead: it burns the first thing it meets, a clover (50), a
+' cell of hive wall (50), a bee of the swarm (100) or the chaser (200).
+' Bore through the wall and shoot 46 bees to clear the swarm: the next
+' swarm comes with a fresh meadow and eight ships again. A chasing bee (or
+' one time in six a crab that leaves clovers behind it) homes in on the
+' plane; touching it costs a ship. Eight ships lost and the game is over.
+'
+' From the original (orig/beekeeper_64.bas): the always-moving ship with
+' eight headings and left/right turns, blocked by clovers and the field's
+' edges; the seven-cell laser stopping at the first thing hit; scores 50,
+' 50, 100 and 200 (150 + 50); random clovers, a two-row hive wall, three
+' rows of bees in random colours; 66 of 120 bees (here 46 of 84, the same
+' share) clear the swarm; a new swarm resets the field and the ships to
+' eight; the chaser starts low on the right, homes in on the ship, is a crab
+' one time in six and the crab leaves clovers on its trail (the bee wipes
+' clovers it crosses); three difficulty levels (the chaser's speed); the
+' high score.
+'
+' Liberties: a 28 x 15 meadow instead of 40 x 19 (28 clovers instead of
+' 50). The plane steps a cell in 12 frames; the chaser in 24, 16 or 12
+' frames by level (the original jumped it 1, 2 or 3 cells a pass), one
+' frame quicker each swarm for three swarms; it homes in diagonally
+' instead of along the screen memory, never overshoots, and comes back
+' 40 frames after being shot or after a crash. Turning repeats every 7
+' frames while the stick is held; the laser fires on the button with a
+' short reload. A crash scores nothing (the original also counted the
+' chaser shot, +200). The screen does not wrap from one edge to the other.
+' The ship hits the chaser when their sprites touch.
+'
+' Controls: either controller; stick left and right turn the plane, either
+' button fires. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TMead = 128
+const TClover = 129
+const TBeam = 130
+const THive = 131
+const THole = 132
+const TBeey = 133
+const TBeep = 134
+const TBeec = 135
+const TWood = 136
+const SShip0 = 0
+const SShip1 = 4
+const SShip2 = 8
+const SShip3 = 12
+const SShip4 = 16
+const SShip5 = 20
+const SShip6 = 24
+const SShip7 = 28
+const SBee0 = 32
+const SBee1 = 36
+const SCrab0 = 40
+const SCrab1 = 44
+const SBoom0 = 48
+const SBoom1 = 52
+const NTiles8 = 72
+const SprBytes = 448
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndTurn = 5
+const SndCrash = 6
+const SndSwarm = 7
+const SndStart = 8
+const SndOver = 9
+const FC0 = 2
+const FC1 = 29
+const FR0 = 2
+const FR1 = 16
+const BeeBot = 21
+const StepN = 12
+const TurnN = 7
+const FireN = 16
+const BeamN = 6
+const BoomN = 12
+const DeadN = 60
+const MsgN = 120
+const SpawnN = 40
+const NClover = 28
+const NBees = 46
+const StartC = 5
+const NSpr = 3
+
+' headings 0 right, 1 down-right, 2 down ... 6 up, 7 up-right
+data DXT bytes
+  1, 1, 0, 255, 255, 255, 0, 1
+end data
+data DYT bytes
+  0, 1, 1, 1, 0, 255, 255, 255
+end data
+' pixels done after k frames of a 12-frame step
+data OffT bytes
+  0, 1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8
+end data
+' the chaser's frames a cell by level
+data EsT bytes
+  0, 24, 16, 12
+end data
+data EcolT bytes
+  11, 9, 7, 13, 15, 10
+end data
+
+record Mob:
+  u8 C
+  u8 R
+  u8 X
+  u8 Y
+  u8 Bx
+  u8 By
+  u8 Dx
+  u8 Dy
+  u8 M
+end record
+
+Mob Ship
+Mob En
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+u8 Lev = 1
+u8 Swarm = 1
+u8 Ships = 8
+u8 Left = 0
+u8 Over = 0
+u8 Pd = 6
+u8 TurnT = 0
+u8 FireT = 0
+u8 BeamT = 0
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 Eon = 0
+u8 Ew = 0
+u8 Ek = 0
+u8 Ecol = 11
+u8 Es = 16
+u8 Bn = 0
+u8 BmC[7]
+u8 BmR[7]
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Cj = 0
+u8 Bi = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 H = 0
+u8 J = 0
+u8 K = 0
+u8 O = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+u8 Hit = 0
+
+  tile screen
+  set sound table BkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  mute all
+  print at 8,8, "                "
+  print at 8,9, "   GAME  OVER   "
+  print at 8,10, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' helpers with arguments and results
+
+function AbsDiff(u8 A, u8 B) as u8
+  u8 D = 0
+  if A > B then
+    D = A - B
+  else
+    D = B - A
+  end if
+  return D
+
+' 1 when cell C, R is inside columns FC0-FC1 and rows FR0-Bot
+function InBox(u8 C, u8 R, u8 Bot) as u8
+  u8 Ok = 0
+  if C >= FC0 then
+    if C <= FC1 then
+      if R >= FR0 then
+        if R <= Bot then Ok = 1
+      end if
+    end if
+  end if
+  return Ok
+
+' -1, 0 or 1 (as 255, 0, 1): the way from A to B
+function Toward(u8 A, u8 B) as u8
+  u8 S = 0
+  if B > A then S = 1
+  if B < A then S = 255
+  return S
+
+' 1 when the chaser's sprite covers cell C, R
+function Near(u8 C, u8 R) as u8
+  u8 Res = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  if Eon = 1 then
+    Cx = C * 8 - 4
+    Cy = R * 8 - 4
+    if AbsDiff(Cx, En.X) < 7 then
+      if AbsDiff(Cy, En.Y) < 7 then Res = 1
+    end if
+  end if
+  return Res
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      NewSwarmScreen
+    end if
+    return
+  end if
+  if FireT > 0 then dec FireT
+  if BeamT > 0 then
+    dec BeamT
+    if BeamT = 0 then EraseBeam
+  end if
+  if BoomT > 0 then dec BoomT
+  MoveEnemy
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then LoseShip
+    return
+  end if
+  Steer
+  MoveShip
+  if Btn > 0 then
+    if FireT = 0 then Shoot
+  end if
+  Collide
+  return
+end sub
+
+' left and right turn the plane (left = anticlockwise), repeating while held
+sub Steer:
+  K = J1 | J2
+  V = K & 12
+  if V = 0 then
+    TurnT = 0
+    return
+  end if
+  if TurnT > 0 then
+    dec TurnT
+    return
+  end if
+  TurnT = TurnN
+  K = V & 4
+  if K > 0 then
+    V = Pd + 7
+  else
+    V = Pd + 1
+  end if
+  Pd = V & 7
+  play sound SndTurn
+  return
+end sub
+
+' the plane flies one cell every StepN frames the way it faces; a clover or
+' the edge keeps it where it is for the step
+sub MoveShip:
+  if Ship.M = 0 then
+    Ship.M = StepN
+    Ship.Bx = Ship.X
+    Ship.By = Ship.Y
+    Ship.Dx = 0
+    Ship.Dy = 0
+    Qc = Ship.C + DXT[Pd]
+    Qr = Ship.R + DYT[Pd]
+    if InBox(Qc, Qr, FR1) = 1 then
+      T = get char at Qc,Qr
+      if T <> TClover then
+        Ship.C = Qc
+        Ship.R = Qr
+        Ship.Dx = DXT[Pd]
+        Ship.Dy = DYT[Pd]
+      end if
+    end if
+  end if
+  dec Ship.M
+  V = StepN - Ship.M
+  O = OffT[V]
+  select case Ship.Dx
+  case 1
+    Ship.X = Ship.Bx + O
+  case 255
+    Ship.X = Ship.Bx - O
+  end select
+  select case Ship.Dy
+  case 1
+    Ship.Y = Ship.By + O
+  case 255
+    Ship.Y = Ship.By - O
+  end select
+  return
+end sub
+
+' the laser: up to seven cells ahead, stops at the first thing it meets
+sub Shoot:
+  FireT = FireN
+  Qc = Ship.C
+  Qr = Ship.R
+  Bn = 0
+  Hit = 0
+  for Bi = 1 to 7
+    if Hit = 0 then
+      Qc = Qc + DXT[Pd]
+      Qr = Qr + DYT[Pd]
+      if InBox(Qc, Qr, BeeBot) = 0 then
+        Hit = 2
+      elseif Near(Qc, Qr) = 1 then
+        Hit = 1
+        Sc += 200
+        Eon = 0
+        Ew = SpawnN
+      else
+        T = get char at Qc,Qr
+        select case T
+        case TMead
+          put char TBeam at Qc,Qr
+          BmC[Bn] = Qc
+          BmR[Bn] = Qr
+          inc Bn
+        case TClover
+          Hit = 1
+          Sc += 50
+          put char TMead at Qc,Qr
+        case THive
+          Hit = 1
+          Sc += 50
+          put char THole at Qc,Qr
+        case TBeey to TBeec
+          Hit = 1
+          Sc += 100
+          put char THole at Qc,Qr
+          dec Left
+        end select
+      end if
+    end if
+  next
+  BeamT = BeamN
+  play sound SndZap
+  if Hit = 1 then
+    BoomT = BoomN
+    BoomX = Qc * 8 - 4
+    BoomY = Qr * 8 - 4
+    play sound SndPop
+    ShowHud
+    if Left = 0 then SwarmDone
+  end if
+  return
+end sub
+
+sub EraseBeam:
+  if Bn > 0 then
+    for Ki = 1 to Bn
+      J = Ki - 1
+      C = BmC[J]
+      R = BmR[J]
+      T = get char at C,R
+      if T = TBeam then put char TMead at C,R
+    next
+  end if
+  Bn = 0
+  return
+end sub
+
+sub SwarmDone:
+  inc Swarm
+  MsgT = MsgN
+  Eon = 0
+  print at 8,8, "                "
+  print at 8,9, "  SWARM CLEARED "
+  print at 8,10, "                "
+  print at 8,11, "   NEXT SWARM   "
+  NumU = Swarm
+  print at 21,11, digits$(NumU, 2)
+  print at 8,12, "                "
+  play sound SndSwarm
+  return
+end sub
+
+' the chaser: comes back after a wait, then homes in on the plane a cell at
+' a time; the bee wipes the cell it leaves, the crab leaves a clover there
+sub MoveEnemy:
+  if Eon = 0 then
+    if Ew > 0 then dec Ew
+    if Ew = 0 then
+      if DeadT = 0 then SpawnEnemy
+    end if
+    return
+  end if
+  if En.M = 0 then
+    T = TMead
+    if Ek = 1 then T = TClover
+    Got1
+    if Hit = 1 then put char T at En.C,En.R
+    En.M = Es
+    En.Bx = En.X
+    En.By = En.Y
+    En.Dx = Toward(En.C, Ship.C)
+    En.Dy = Toward(En.R, Ship.R)
+    En.C = En.C + En.Dx
+    En.R = En.R + En.Dy
+  end if
+  dec En.M
+  ' pixels done: (Es - M) * 8 / Es
+  V = Es - En.M
+  W16 = V * 8
+  W16 = W16 / Es
+  O = W16
+  select case En.Dx
+  case 1
+    En.X = En.Bx + O
+  case 255
+    En.X = En.Bx - O
+  end select
+  select case En.Dy
+  case 1
+    En.Y = En.By + O
+  case 255
+    En.Y = En.By - O
+  end select
+  return
+end sub
+
+' Hit = 1 when the chaser may mark the cell it leaves (a meadow cell or a
+' clover, not where the plane is)
+sub Got1:
+  Hit = 0
+  V = get char at En.C,En.R
+  if V = TMead then Hit = 1
+  if V = TClover then Hit = 1
+  if En.C = Ship.C then
+    if En.R = Ship.R then Hit = 0
+  end if
+  return
+end sub
+
+sub SpawnEnemy:
+  Rand
+  V = Rs & 15
+  En.C = V + 14
+  En.R = FR1
+  if AbsDiff(En.C, Ship.C) < 6 then
+    if Ship.R > 10 then En.R = FR0
+  end if
+  W16 = Rs >> 4
+  W16 = W16 % 6
+  Ek = 0
+  if W16 = 1 then Ek = 1
+  W16 = Rs >> 8
+  W16 = W16 % 6
+  Ecol = EcolT[W16]
+  if Ek = 1 then Ecol = 8
+  En.X = En.C * 8 - 4
+  En.Y = En.R * 8 - 4
+  En.Dx = 0
+  En.Dy = 0
+  En.Bx = En.X
+  En.By = En.Y
+  En.M = Es
+  Eon = 1
+  return
+end sub
+
+' the plane against the chaser: their sprites touching costs a ship
+sub Collide:
+  if Eon = 0 then return
+  if AbsDiff(Ship.X, En.X) >= 6 then return
+  if AbsDiff(Ship.Y, En.Y) >= 6 then return
+  DeadT = DeadN
+  Eon = 0
+  Ew = SpawnN
+  play sound SndCrash
+  return
+end sub
+
+sub LoseShip:
+  dec Ships
+  ShowHud
+  if Ships = 0 then
+    Over = 1
+    return
+  end if
+  ResetShip
+  return
+end sub
+
+sub ResetShip:
+  Ship.C = StartC
+  Ship.R = FR1
+  Ship.X = StartC * 8 - 4
+  Ship.Y = FR1 * 8 - 4
+  Ship.M = 0
+  Ship.Dx = 0
+  Ship.Dy = 0
+  Pd = 6
+  T = get char at StartC,FR1
+  if T = TClover then put char TMead at StartC,FR1
+  return
+end sub
+
+' the chaser's speed: by level, a frame quicker each swarm for three swarms
+sub SetSpeed:
+  V = Swarm - 1
+  if V > 3 then V = 3
+  Es = EsT[Lev] - V
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the plane (or its crash), 1 the chaser, 2 a burst where the
+' laser hit
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  elseif MsgT > 0 then
+    set sprite 0 to 192,0,0,0
+  elseif DeadT > 0 then
+    V = Tick >> 3
+    V = V & 1
+    K = V << 2
+    K = K + SBoom0
+    Y = Ship.Y - 1
+    set sprite 0 to Y,Ship.X,K,9
+  else
+    K = Pd << 2
+    Y = Ship.Y - 1
+    set sprite 0 to Y,Ship.X,K,15
+  end if
+  if Eon = 1 then
+    V = Tick >> 2
+    V = V & 1
+    K = V << 2
+    if Ek = 1 then
+      K = K + SCrab0
+    else
+      K = K + SBee0
+    end if
+    Y = En.Y - 1
+    set sprite 1 to Y,En.X,K,Ecol
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if BoomT > 0 then
+    K = SBoom1
+    if BoomT > 6 then K = SBoom0
+    Y = BoomY - 1
+    set sprite 2 to Y,BoomX,K,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print Sc at 8,1
+  print at 15,1, "SHIPS"
+  NumU = Ships
+  print at 21,1, digits$(NumU, 1)
+  print at 23,1, "BEES"
+  NumU = Left
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+' the meadow with its frame and clovers, the hive wall, the swarm
+sub BuildField:
+  for Ri = 2 to 22
+    fill TWood count 2 at 0,Ri
+    fill TWood count 2 at 30,Ri
+  next
+  for Ri = FR0 to FR1
+    fill TMead count 28 at 2,Ri
+  next
+  fill THive count 28 at 2,17
+  fill THive count 28 at 2,18
+  for Ri = 19 to BeeBot
+    for Cj = FC0 to FC1
+      Rand
+      W16 = Rs % 3
+      T = W16
+      T = T + TBeey
+      put char T at Cj,Ri
+    next
+  next
+  fill TWood count 28 at 2,22
+  Ki = 0
+  while Ki < NClover
+    Rand
+    W16 = Rs % 28
+    C = W16
+    C = C + FC0
+    W16 = Rs >> 8
+    W16 = W16 % 14
+    R = W16
+    R = R + FR0
+    T = get char at C,R
+    if T = TMead then
+      put char TClover at C,R
+      inc Ki
+    end if
+  end while
+  T = get char at StartC,FR1
+  if T = TClover then put char TMead at StartC,FR1
+  return
+end sub
+
+sub StartSwarm:
+  BuildField
+  Left = NBees
+  Ships = 8
+  SetSpeed
+  ResetShip
+  Eon = 0
+  Ew = SpawnN
+  DeadT = 0
+  MsgT = 0
+  BeamT = 0
+  BoomT = 0
+  FireT = 0
+  TurnT = 0
+  Bn = 0
+  ShowHud
+  return
+end sub
+
+sub NewSwarmScreen:
+  NewScreen
+  StartSwarm
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Swarm = 1
+  Over = 0
+  TitleOn = 0
+  NewScreen
+  StartSwarm
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: name, points, level menu, the tune once
+sub TitlePage:
+  TitleOn = 1
+  NewScreen
+  for Ri = 2 to 22
+    fill TWood count 2 at 0,Ri
+    fill TWood count 2 at 30,Ri
+  next
+  fill THive count 28 at 2,2
+  fill THive count 28 at 2,22
+  print at 9,4, "* BEEKEEPER *"
+  print at 2,6, "COMPUTE!'S GAZETTE JULY 1984"
+  put char TBeey at 6,8
+  print at 8,8, "BEE OF THE SWARM  100"
+  put char THive at 6,9
+  print at 8,9, "HIVE WALL          50"
+  put char TClover at 6,10
+  print at 8,10, "CLOVER             50"
+  print at 4,11, "CHASING BEE OR CRAB 200"
+  print at 9,13, "BEGINNER"
+  print at 9,14, "ADVANCED"
+  print at 9,15, "MASTER"
+  print at 9,16, "CREDITS"
+  print at 4,18, "STICK LEFT/RIGHT TURNS"
+  print at 4,19, "BUTTON FIRES THE LASER"
+  print at 9,20, "HI"
+  print Hi at 12,20
+  if Menu = 3 then Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 456
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then
+    CreditsPage
+  else
+    Lev = Menu + 1
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  for Ki = 13 to 16
+    put char 32 at 7,Ki
+  next
+  J = Menu + 13
+  put char 62 at 7,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "BEEKEEPER"
+  print at 2,5, "BASED ON BEEKEEPER FROM"
+  print at 2,6, "COMPUTE!'S GAZETTE, JULY"
+  print at 2,7, "1984 (COMMODORE 64 AND"
+  print at 2,8, "VIC-20 BASIC TYPE-IN)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: CLOVER WALTZ"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$04,$00,$00,$40,$00,$00,$00
+  $18,$C3,$18,$54,$08,$81,$10,$20
+  $00,$10,$38,$83,$38,$10,$00,$00
+  $81,$42,$C3,$24,$24,$C3,$42,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $99,$99,$C3,$48,$81,$48,$C3,$00
+  $99,$99,$C3,$48,$81,$48,$C3,$00
+  $99,$99,$C3,$48,$81,$48,$C3,$00
+  $00,$88,$00,$21,$00,$08,$80,$00
+end data
+data TileCol bytes
+  $0C,$2C,$0C,$0C,$2C,$0C,$0C,$0C
+  $DC,$CD,$DC,$3C,$C3,$C3,$2C,$2C
+  $0C,$FC,$FC,$CF,$FC,$FC,$0C,$0C
+  $AB,$AB,$BA,$AB,$AB,$BA,$AB,$AB
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$1B,$B1,$1B,$B1,$1B,$01
+  $1F,$1F,$19,$91,$19,$91,$19,$01
+  $1F,$1F,$17,$71,$17,$71,$17,$01
+  $0A,$6A,$0A,$6A,$0A,$6A,$6A,$0A
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$18,$1B,$1F,$1F,$1B,$18,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$C0,$C0,$F0,$FC,$FC,$F0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$10,$3C,$3E,$0F,$07,$03,$01,$00,$01,$03,$06,$04,$00,$00
+  $00,$00,$00,$10,$30,$60,$C0,$C0,$E0,$F0,$78,$3C,$1C,$00,$00,$00
+  $00,$00,$00,$07,$07,$01,$03,$03,$7F,$3F,$03,$03,$01,$01,$00,$00
+  $00,$00,$00,$E0,$E0,$80,$C0,$C0,$FE,$FC,$C0,$C0,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$30,$18,$0D,$03,$07,$0F,$1E,$1C,$18,$00,$00
+  $00,$00,$18,$1C,$38,$78,$F0,$E0,$C0,$E0,$30,$18,$00,$00,$00,$00
+  $00,$01,$03,$03,$03,$03,$0F,$3F,$3F,$0F,$03,$03,$03,$03,$01,$00
+  $00,$00,$00,$00,$00,$18,$D8,$F8,$F8,$D8,$18,$00,$00,$00,$00,$00
+  $00,$00,$00,$38,$3C,$1E,$0F,$07,$03,$03,$06,$0C,$08,$00,$00,$00
+  $00,$00,$20,$60,$C0,$80,$00,$80,$C0,$E0,$F0,$7C,$3C,$08,$00,$00
+  $00,$00,$01,$01,$03,$03,$3F,$7F,$03,$03,$01,$07,$07,$00,$00,$00
+  $00,$00,$80,$80,$C0,$C0,$FC,$FE,$C0,$C0,$80,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$18,$0C,$07,$03,$07,$0F,$1E,$1C,$38,$18,$00,$00
+  $00,$00,$18,$38,$78,$F0,$E0,$C0,$B0,$18,$0C,$00,$00,$00,$00,$00
+  $00,$00,$18,$3C,$3E,$1E,$07,$0F,$1B,$1F,$1B,$0F,$07,$03,$01,$00
+  $00,$00,$30,$78,$F8,$F0,$C0,$E0,$B0,$F0,$B0,$E0,$C0,$80,$00,$00
+  $00,$00,$00,$00,$60,$F8,$07,$0F,$1B,$1F,$1B,$0F,$07,$03,$01,$00
+  $00,$00,$00,$00,$30,$F8,$C0,$E0,$B0,$F0,$B0,$E0,$C0,$80,$00,$00
+  $00,$00,$30,$48,$68,$1A,$0F,$3F,$6F,$8F,$17,$24,$24,$00,$00,$00
+  $00,$00,$0C,$12,$16,$58,$F0,$FC,$F6,$F1,$E8,$24,$24,$00,$00,$00
+  $00,$00,$00,$60,$94,$D2,$3F,$3F,$6F,$0F,$2B,$48,$00,$00,$00,$00
+  $00,$00,$00,$06,$29,$4B,$F0,$FC,$F6,$F0,$D4,$12,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$02,$0B,$07,$07,$0B,$02,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$D0,$E0,$E0,$D0,$40,$20,$00,$00,$00,$00
+  $00,$10,$09,$01,$24,$02,$60,$08,$08,$60,$02,$24,$01,$09,$10,$00
+  $00,$08,$90,$80,$24,$40,$06,$10,$10,$06,$40,$24,$80,$90,$08,$00
+end data
+
+asm {
+BkZap:
+    db $40,$35,$10,$02,$40,$40,$20,$02,$40,$4C,$20,$02,$40,$5A,$30,$02,$40,$6B,$40,$03,$50
+BkPop:
+    db $00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$56,$06,$10
+BkTurn:
+    db $40,$7F,$40,$02,$50
+BkCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$57,$10,$00,$00,$77,$14,$10
+BkSwarm:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+BkStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+BkOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+
+BkSoundTable:
+    dw BkTuneMel,$702B
+    dw BkTuneBass,$7035
+    dw BkZap,$7049
+    dw BkPop,$703F
+    dw BkTurn,$7049
+    dw BkCrash,$703F
+    dw BkSwarm,$7049
+    dw BkStart,$7049
+    dw BkOver,$7049
+; Clover Waltz (original)
+; Tiny Sound, 8 frames per step
+BkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$1C,$18,$01,$1C,$1F,$01,$24,$23,$01,$21
+    db $1F,$01,$01,$1D,$01,$1A,$17,$01,$1A,$1D,$01,$23,$21,$01,$1F,$1C
+    db $01,$01,$1F,$01,$1C,$18,$01,$1C,$21,$01,$24,$23,$01,$26,$24,$01
+    db $1F,$1C,$01,$1A,$18,$01,$01,$01,$01,$01,$00,$01,$01
+    db $FF
+BkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$0C,$01,$13,$0C,$01,$13,$07,$01,$0E
+    db $07,$01,$0E,$07,$01,$0E,$0C,$01,$13,$0C,$01,$13,$0C,$01,$13,$09
+    db $01,$10,$05,$01,$0C,$07,$01,$0E,$07,$01,$0B,$0C,$01,$13,$07,$01
+    db $0E,$0C,$01,$13,$0C,$01,$13,$0C,$01,$0C,$01,$00,$01
+    db $FF
+}

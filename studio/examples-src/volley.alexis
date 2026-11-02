@@ -1,0 +1,994 @@
+cartridge "ARCADE VOLLEYBALL/ANDERSON AND HENSLEY/1988"
+
+' ARCADE VOLLEYBALL
+' A ColecoVision game based on "Arcade Volleyball" by Rhett Anderson and
+' David Hensley, Jr., COMPUTE!'s Gazette June 1988 (Commodore 64, machine
+' language). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules and numbers are the original's, read
+' from its machine code (orig/volleyball.dis) and checked by running it in
+' jsc64 (orig/c64run-volley.mjs); the screen is rebuilt for this machine.
+'
+' The game: two teams of two jumping heads play volleyball with their
+' heads. One stick moves both heads of a team together (left/right, also
+' in the air); the button makes both jump (hold it to keep jumping). The
+' ball floats until it is first headed; then gravity pulls it. A head that
+' hits the ball while standing sends it back up as fast as it came; a
+' head rising in a jump speeds it up, one falling slows it; the side of
+' the head steers it (left side left, right side right, top straight).
+' The court is walled: the ball bounces off both walls and the ceiling.
+' Three touches a team: a fourth loses the rally (a team's count starts
+' again when the other team touches the ball or when the ball bounces off
+' the other team's back wall). The net's top halves the ball's fall speed
+' and bounces it up; the net's side bounces it back at full speed; under
+' the net counts as the floor. The ball on your floor loses the rally.
+' Only the serving team scores; otherwise the serve changes sides. The
+' right team serves first; first to 15 wins (no need to win by two).
+'
+' From the original (all numbers in its units: X in steps of two C64
+' pixels, Y in pixels, speeds in 1/256): gravity 3/256 a frame; the
+' serve floats at Y 140, X 125 (right) or 20 (left); walls at X 2 and 143,
+' ceiling 15, floor 160; the heads walk a step a frame (left team 1-33,
+' right 79-111, the second head 32 steps on), jump 40 frames on a table
+' peaking at 38 pixels; the hit window is 20 steps wide and 8 pixels
+' high, with the side-of-head table of X speeds (-1.31 .. +1.31) and the
+' jump table of Y speeds (+3 rising .. -3 falling); X speed capped near
+' 3; net from X 68 to 76, top at Y 76, the side bounce from Y 75 to 130;
+' the computer's practice player (left team) and its rules: it lines up
+' the nearer head with the ball by a tenth-second clock (20-29) and jumps
+' when the ball is low and moving the right way.
+'
+' Made for the ColecoVision: the court drawn in tiles inside the overscan
+' (the C64 court is scaled to 23/16 of a step per pixel, the heights kept);
+' heads with faces that look the way they walk and up in a jump, walking
+' feet, a turning ball, a shadow on the sand under the ball (it helps
+' judge where the ball will come down); sound effects and an original
+' title tune ("Beach Bump"); a short POINT / SIDE OUT message between
+' rallies; the longest rally (in hits) shown at the end.
+'
+' Liberties: the practice mode (POKE 2065,1 on the C64) is ONE PLAYER on
+' the title menu, and the human plays the right team with either joystick;
+' TWO PLAYERS: joystick 1 the left team (as on the C64), joystick 2 the
+' right. Either side button jumps. The C64 waited for a key after a game;
+' here the game ends with a message and a button returns to the title.
+'
+' House rules kept: joystick only (no keypad); text in columns 2-29 and
+' rows 1-22; tiles from code 128; the title tune plays once; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait.
+
+const TWalll = 128
+const TWallr = 129
+const TCeil = 130
+const TCeill = 131
+const TCeilr = 132
+const TLine = 133
+const TSand = 134
+const TNetcapl = 135
+const TNetcapr = 136
+const TNetl = 137
+const TNetr = 138
+const TNetbl = 139
+const TNetbr = 140
+const TPostl = 141
+const TPostr = 142
+const TPostfl = 143
+const TPostfr = 144
+const TDot = 145
+const SHeadr = 0
+const SHeadr2 = 4
+const SHeadl = 8
+const SHeadl2 = 12
+const SHeadjr = 16
+const SHeadjl = 20
+const SBall0 = 24
+const SBall1 = 28
+const SBall2 = 32
+const SShadow = 36
+const NTiles8 = 144
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPock = 3
+const SndThud = 4
+const SndNet = 5
+const SndWhistle = 6
+const SndPoint = 7
+const SndSide = 8
+const SndWin = 9
+
+' the jump: pixels above the floor by the jump counter (40 down to 1)
+data JumpTab bytes
+  0, 0, 4, 8, 11, 14, 17, 20, 23, 25, 27, 29, 31, 33, 34, 35, 36, 37, 38, 38
+  38, 38, 37, 36, 35, 34, 33, 31, 29, 27, 23, 20, 17, 14, 11, 8, 4, 0, 0, 0, 0
+end data
+
+' X speed added by the place on the head (0 far left .. 19 far right),
+' exactly the original's bytes (hi at $1221, lo at $1236)
+data VxAdd words
+  $FEB0, $FEB5, $FECE, $FEE2, $FEF6, $FFF8, $FFFA, $FFFF, $FFFF, $0001
+  $0001, $0006, $0008, $000A, $001E, $0032, $014B, $0150, $0109, $0114
+end data
+
+' Y speed taken away by the jump counter (rising heads push the ball up)
+data VyJump words
+  $0000, $0000, $FCFF, $FDFF, $FDFF, $FEFF, $FEFF, $FEFF, $FEFF, $FFFF
+  $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF, $FFFF
+  $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000
+  $0000, $0100, $0100, $0100, $0100, $0200, $0200, $0300, $0000, $0000
+  $0000
+end data
+
+' the heads' colours: left team light yellow and light green, right team
+' magenta and medium red (as on the C64)
+data HeadCol bytes 11, 3, 13, 8
+
+const NetL = 68
+const NetR = 76
+const Floor0 = 160
+const WinPts = 15
+
+' a team: Px the first head's X (steps), Jc the jump counter, Jo the jump
+' height, Hits the touches, Jump the button, Dir 0 / 1 left / 2 right,
+' Look 0 left / 1 right, Walk the walking clock
+record Team:
+  u8 Px
+  u8 Jc
+  u8 Jo
+  u8 Hits
+  u8 Jump
+  u8 Dir
+  u8 Look
+  u8 Walk
+end record
+
+Team Tm[2]
+
+' the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the ball: BX BY in 1/256 (X in steps, Y in pixels), VX VY its speed
+u16 BX = 0
+u16 BY = 0
+i16 VX = 0
+i16 VY = 0
+u8 Hang = 1
+u8 Spin = 0
+' the match: Server 0 left / 1 right, Win the rally's winner (2 none)
+u8 Sc[2]
+u8 Server = 1
+u8 Win = 2
+u8 Np = 1
+' Phase: 0 title, 1 play, 2 between rallies, 3 game over
+u8 Phase = 0
+bcd digits 4 Rally = 0
+bcd digits 4 Best = 0
+u8 Clock = 0
+u8 Tenth = 0
+
+' input
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ti = 0
+u8 Hi = 0
+u8 Wi = 0
+' scratch
+u8 Xi = 0
+u8 Yi = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u16 NumU = 0
+i16 T = 0
+
+  tile screen
+  set sound table VbSoundTable areas 6
+  sprites 16x16
+  sprites flicker on
+  set sprite count 6
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Np = Menu + 1
+
+  NewMatch
+match_loop:
+  PlayRally
+  if Phase = 3 then goto game_over
+  goto match_loop
+
+game_over:
+  HideSprites
+  ClearMsg
+  if Sc[0] >= WinPts then
+    print at 7,6, "LEFT TEAM WINS!"
+  else
+    print at 7,6, "RIGHT TEAM WINS!"
+  end if
+  print at 6,8, "LONGEST RALLY"
+  print at 20,8, Best
+  print at 25,8, "HITS"
+  mute all
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the match
+
+sub NewMatch:
+  Sc[0] = 0
+  Sc[1] = 0
+  Server = 1
+  Best = 0
+  Tm[0].Px = 33
+  Tm[1].Px = 79
+  for Ti = 0 to 1
+    Tm[Ti].Jc = 0
+    Tm[Ti].Jo = 0
+    Tm[Ti].Walk = 0
+  next
+  Tm[0].Look = 1
+  Tm[1].Look = 0
+  DrawCourt
+  ShowScores
+  ShowScreen
+  return
+end sub
+
+' one rally: the serve, then play until a winner (Win 0 or 1)
+sub PlayRally:
+  ServeBall
+  Phase = 1
+  Win = 2
+  play sound SndWhistle
+rl_loop:
+  Frame1
+  inc Clock
+  if Clock >= 6 then
+    Clock = 0
+    inc Tenth
+    if Tenth >= 10 then Tenth = 0
+  end if
+  Sticks
+  if Np = 1 then Brain
+  Walking
+  Jumps
+  HeadHits
+  NetTop
+  ClampHeads
+  NetSide
+  if Win < 2 then goto rl_end
+  CapVx
+  MoveBall
+  DrawAll
+  if Win < 2 then goto rl_end
+  HitLimit
+  if Win < 2 then goto rl_end
+  goto rl_loop
+rl_end:
+  DrawAll
+  EndRally
+  return
+end sub
+
+' the ball floats where the server stands
+sub ServeBall:
+  VX = 0
+  VY = 0
+  Hang = 1
+  Rally = 0
+  Tm[0].Hits = 0
+  Tm[1].Hits = 0
+  BY = 140 * 256
+  if Server = 1 then
+    BX = 125 * 256
+  else
+    BX = 20 * 256
+  end if
+  ShowScores
+  DrawAll
+  return
+end sub
+
+' a rally is over: only the server scores, else the serve changes sides
+sub EndRally:
+  Phase = 2
+  if Rally > Best then Best = Rally
+  if Win = Server then
+    Sc[Win] = Sc[Win] + 1
+    print at 12,5, "POINT!"
+    play sound SndPoint
+  else
+    print at 11,5, "SIDE OUT"
+    play sound SndSide
+  end if
+  Server = Win
+  ShowScores
+  for Wi = 1 to 50
+    Frame1
+  next
+  ClearMsg
+  if Sc[Win] >= WinPts then
+    Phase = 3
+    return
+  end if
+  ' the practice opponent goes back to its place (as on the C64)
+  if Np = 1 then
+    Tm[0].Px = 8
+    Tm[0].Jc = 0
+    Tm[0].Jo = 0
+  end if
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 16 at 8,5
+  fill 32 count 18 at 6,6
+  fill 32 count 24 at 4,8
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the players
+
+' Sticks: Dir and Fire for each team from its joystick
+sub Sticks:
+  for Ti = 0 to 1
+    Tm[Ti].Dir = 0
+    Tm[Ti].Jump = 0
+  next
+  if Np = 1 then
+    ' practice: the human plays the right team with either joystick
+    if joypad(1).left or joypad(2).left then Tm[1].Dir = 1
+    if joypad(1).right or joypad(2).right then Tm[1].Dir = 2
+    if joypad(1).fire or joypad(2).fire then Tm[1].Jump = 1
+    return
+  end if
+  if joypad(1).left then Tm[0].Dir = 1
+  if joypad(1).right then Tm[0].Dir = 2
+  if joypad(1).fire then Tm[0].Jump = 1
+  if joypad(2).left then Tm[1].Dir = 1
+  if joypad(2).right then Tm[1].Dir = 2
+  if joypad(2).fire then Tm[1].Jump = 1
+  return
+end sub
+
+' Brain: the C64's practice opponent (left team). A "random" 20-29 from
+' the tenth-second clock picks the head: the ball right of it, the second
+' head lines up 22 steps left of the ball, else the first 6 steps left; it
+' jumps while the ball is low (Y 124 on) and moving away from its first
+' head's side
+sub Brain:
+  u8 Pick = 0
+  u8 Bxi = 0
+  u8 Goal = 0
+  u8 Px = 0
+  Pick = Tenth + 20
+  Bxi = BX >> 8
+  Px = Tm[0].Px
+  if Pick < Bxi then
+    Goal = Bxi - 22
+    if Goal >= Px then
+      Tm[0].Dir = 2
+    else
+      Tm[0].Dir = 1
+    end if
+  else
+    Goal = Bxi - 6
+    if Goal > Px then Tm[0].Dir = 2
+    if Goal < Px then Tm[0].Dir = 1
+  end if
+  Yi = BY >> 8
+  if Yi >= 124 then
+    V = Bxi - Px
+    V = V & 128
+    K = VX >> 8
+    K = K & 128
+    if V = K then Tm[0].Jump = 1
+  end if
+  return
+end sub
+
+' Walking: a step a frame, the look and the walking feet
+sub Walking:
+  for Ti = 0 to 1
+    select case Tm[Ti].Dir
+    case 1
+      Tm[Ti].Px = Tm[Ti].Px - 1
+      Tm[Ti].Look = 0
+      Tm[Ti].Walk = Tm[Ti].Walk + 1
+    case 2
+      Tm[Ti].Px = Tm[Ti].Px + 1
+      Tm[Ti].Look = 1
+      Tm[Ti].Walk = Tm[Ti].Walk + 1
+    end select
+  next
+  return
+end sub
+
+' Jumps: the height from the table, the counter down; a held button
+' starts the next jump when one ends
+sub Jumps:
+  u8 Jc = 0
+  for Ti = 0 to 1
+    Jc = Tm[Ti].Jc
+    Tm[Ti].Jo = 0
+    if Jc > 0 then
+      Tm[Ti].Jo = JumpTab[Jc]
+      Jc = Jc - 1
+    end if
+    if Jc = 0 then
+      if Tm[Ti].Jump = 1 then Jc = 40
+    end if
+    Tm[Ti].Jc = Jc
+  next
+  return
+end sub
+
+' HeadHits: the four heads in the C64's order (left team first); one hit
+' a frame, only on a ball that is not rising
+sub HeadHits:
+  u8 Off = 0
+  for Hi = 0 to 3
+    if VY < 0 then return
+    Ti = Hi >> 1
+    Off = 0
+    if (Hi & 1) = 1 then Off = 32
+    if TryHead(Ti, Off) = 1 then return
+  next
+  return
+end sub
+
+' TryHead(team, 0 or 32): 1 when the ball is on that head
+function TryHead(u8 Tn, u8 Off) as u8
+  u8 Top = 0
+  u8 Idx = 0
+  u8 Bxi = 0
+  i16 Dv = 0
+  Top = BY >> 8
+  Top = Top + Tm[Tn].Jo
+  if (Top & $F8) <> $90 then return 0
+  Bxi = BX >> 8
+  Idx = Bxi + 10 - Off - Tm[Tn].Px
+  if Idx >= 20 then return 0
+  VY = 0 - VY
+  VX = VX + VxAdd[Idx]
+  Dv = VyJump[Tm[Tn].Jc]
+  VY = VY - Dv
+  Tm[Tn].Hits = Tm[Tn].Hits + 1
+  Tm[1 - Tn].Hits = 0
+  Hang = 0
+  Rally += 1
+  play sound SndPock
+  return 1
+
+' NetTop: a falling ball on the net's top loses half its speed and bounces
+sub NetTop:
+  if VY < 0 then return
+  Yi = BY >> 8
+  if (Yi & $FC) <> $4C then return
+  Xi = BX >> 8
+  if Xi < NetL then return
+  if Xi >= NetR then return
+  VY = VY >> 1
+  VY = 0 - VY
+  Hang = 0
+  play sound SndNet
+  return
+end sub
+
+sub ClampHeads:
+  if Tm[0].Px < 1 then Tm[0].Px = 1
+  if Tm[0].Px > 33 then Tm[0].Px = 33
+  if Tm[1].Px < 79 then Tm[1].Px = 79
+  if Tm[1].Px > 111 then Tm[1].Px = 111
+  return
+end sub
+
+' NetSide: the side of the net bounces the ball back; under it, the side
+' it came from loses the rally
+sub NetSide:
+  u8 Lo = 0
+  Xi = BX >> 8
+  Yi = BY >> 8
+  if VX >= 0 then
+    Lo = NetL
+  else
+    Lo = NetL + 5
+  end if
+  if Xi < Lo then return
+  if Xi >= Lo + 4 then return
+  if Yi < 75 then return
+  if Yi >= 130 then
+    if VX >= 0 then
+      Win = 1
+    else
+      Win = 0
+    end if
+    return
+  end if
+  VX = 0 - VX
+  Hang = 0
+  play sound SndNet
+  return
+end sub
+
+' CapVx: the C64 pulled X speeds of 3 to 5 steps back to 2
+sub CapVx:
+  K = VX >> 8
+  select case K
+  case 3 to 5
+    VX = $0200 + (VX & 255)
+  case $FB to $FD
+    VX = $FE00 + (VX & 255)
+  end select
+  return
+end sub
+
+' MoveBall: walls, ceiling, floor
+sub MoveBall:
+  BX = BX + VX
+  Xi = BX >> 8
+  if Xi < 1 or Xi >= 206 then
+    BX = $0200 + (BX & 255)
+    Tm[1].Hits = 0
+    VX = 0 - VX
+    play sound SndThud
+  else
+    if Xi >= $90 then
+      BX = $8F00 + (BX & 255)
+      Tm[0].Hits = 0
+      VX = 0 - VX
+      play sound SndThud
+    end if
+  end if
+  if Hang = 0 then VY = VY + 3
+  BY = BY + VY
+  Yi = BY >> 8
+  if Yi >= Floor0 then
+    BY = $9F00 + (BY & 255)
+    VY = 0 - VY
+    play sound SndThud
+    Xi = BX >> 8
+    if Xi >= $46 then
+      Win = 0
+    else
+      Win = 1
+    end if
+    return
+  end if
+  if Yi < 14 then
+    BY = $0F00 + (BY & 255)
+    VY = 0 - VY
+    play sound SndThud
+  end if
+  return
+end sub
+
+' HitLimit: a fourth touch loses the rally
+sub HitLimit:
+  if Tm[0].Hits = 4 then Win = 1
+  if Tm[1].Hits = 4 then Win = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' UnitPx: a C64 step to a screen pixel (the court scaled 23/16)
+function UnitPx(u16 U) as u8
+  return (U * 23 >> 4) + 15
+
+' HeadPat: the head's pattern by its look, walk and jump
+function HeadPat(u8 Tn) as u8
+  u8 P = 0
+  if Tm[Tn].Jo > 0 then
+    P = SHeadjl
+    if Tm[Tn].Look = 1 then P = SHeadjr
+    return P
+  end if
+  P = SHeadl
+  if Tm[Tn].Look = 1 then P = SHeadr
+  if Tm[Tn].Dir > 0 then
+    if (Tm[Tn].Walk & 8) <> 0 then P = P + 4
+  end if
+  return P
+
+sub DrawAll:
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Pat = 0
+  u8 Sn = 0
+  for Ti = 0 to 1
+    Pat = HeadPat(Ti)
+    Sy = 160 - Tm[Ti].Jo
+    for Hi = 0 to 1
+      Sx = UnitPx(Tm[Ti].Px + Hi * 32 + 6) - 8
+      Sn = Ti * 2 + Hi
+      set sprite Sn + 1 to Sy,Sx,Pat,HeadCol[Sn]
+    next
+  next
+  Xi = BX >> 8
+  Yi = BY >> 8
+  Sx = UnitPx(Xi + 6) - 8
+  inc Spin
+  Pat = Spin >> 3
+  Pat = Pat % 3
+  Pat = Pat * 4 + SBall0
+  set sprite 0 to Yi + 1,Sx,Pat,15
+  if Phase = 0 then
+    set sprite 5 to 192,Sx,SShadow,14
+  else
+    set sprite 5 to 176,Sx,SShadow,14
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScores:
+  NumU = Sc[0]
+  print at 2,1, digits$(NumU, 2)
+  NumU = Sc[1]
+  print at 28,1, digits$(NumU, 2)
+  ' the server's mark
+  if Server = 0 then
+    print at 4,1, "<"
+    print at 27,1, " "
+  else
+    print at 4,1, " "
+    print at 27,1, ">"
+  end if
+  return
+end sub
+
+' the court: score line, ceiling, walls, the net and the sand
+sub DrawCourt:
+  NewScreen
+  print at 7,1, "ARCADE VOLLEYBALL"
+  put char TCeill at 2,2
+  fill TCeil count 26 at 3,2
+  put char TCeilr at 29,2
+  for Yi = 3 to 21
+    put char TWalll at 2,Yi
+    put char TWallr at 29,Yi
+  next
+  ' the net: cap on row 11, mesh rows 12-16, post rows 17-21
+  put char TNetcapl at 15,11
+  put char TNetcapr at 16,11
+  for Yi = 12 to 15
+    put char TNetl at 15,Yi
+    put char TNetr at 16,Yi
+  next
+  put char TNetbl at 15,16
+  put char TNetbr at 16,16
+  for Yi = 17 to 21
+    put char TPostl at 15,Yi
+    put char TPostr at 16,Yi
+  next
+  fill TLine count 28 at 2,22
+  put char TPostfl at 15,22
+  put char TPostfr at 16,22
+  fill TSand count 28 at 2,23
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens
+
+sub TitlePage:
+  NewScreen
+  Phase = 0
+  fill TDot count 28 at 2,2
+  print at 7,4, "ARCADE VOLLEYBALL"
+  print at 6,6, "FOUR HEADS, ONE BALL"
+  print at 10,8, "ONE PLAYER"
+  print at 10,9, "TWO PLAYERS"
+  print at 10,10, "CREDITS"
+  print at 3,12, "STICK MOVES BOTH HEADS,"
+  print at 3,13, "A BUTTON JUMPS. ONLY THE"
+  print at 3,14, "SERVER SCORES: FIRST TO 15."
+  fill TLine count 28 at 2,22
+  fill TSand count 28 at 2,23
+  ShowMenu
+  ' the four heads hop on the sand
+  Tm[0].Px = 3
+  Tm[1].Px = 83
+  for Ti = 0 to 1
+    Tm[Ti].Jc = Ti * 20 + 1
+    Tm[Ti].Dir = 0
+    Tm[Ti].Jump = 1
+  next
+  Tm[0].Look = 1
+  Tm[1].Look = 0
+  BX = 76 * 256
+  BY = 200 * 256
+  DrawAll
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  Jumps
+  DrawAll
+  if Up1 = 1 then
+    if WasStick = 0 then
+      if Menu > 0 then dec Menu
+      ShowMenu
+    end if
+  end if
+  if Dn1 = 1 then
+    if WasStick = 0 then
+      if Menu < 2 then inc Menu
+      ShowMenu
+    end if
+  end if
+  WasStick = Up1 | Dn1
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 8 to 10
+    put char 32 at 8,J
+  next
+  V = Menu + 8
+  put char 62 at 8,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 4,2, "ARCADE VOLLEYBALL"
+  print at 4,4, "BASED ON ARCADE VOLLEYBALL"
+  print at 4,5, "BY RHETT ANDERSON AND"
+  print at 4,6, "DAVID HENSLEY, JR.,"
+  print at 4,7, "COMPUTE!'S GAZETTE"
+  print at 4,8, "JUNE 1988 (COMMODORE 64)."
+  print at 4,10, "MADE FOR THE COLECOVISION"
+  print at 4,11, "BY CLAUDE (AN AI MADE BY"
+  print at 4,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 4,13, "2026, IN AMY BY AMY"
+  print at 4,14, "BIENVENU."
+  print at 4,16, "MUSIC (ORIGINAL):"
+  print at 4,17, "BEACH BUMP"
+  print at 9,20, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame and screen helpers
+
+sub Rearm:
+  ' the title tune plays once (Tiny Sound loops): stop it when it is done
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: let the NMI run during the wait, then keep it off
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: the menus' reading (either joystick)
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  if joypad(1).up or joypad(2).up then Up1 = 1
+  if joypad(1).down or joypad(2).down then Dn1 = 1
+  if joypad(1).fire or joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every new screen starts here: wait, NMI off, display off, tiles, cls
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$07,$07,$07,$07,$07
+  $00,$00,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$40,$00,$04,$00,$00
+  $00,$10,$00,$01,$00,$40,$00,$08
+  $00,$00,$03,$03,$02,$01,$02,$01
+  $00,$00,$C0,$C0,$40,$80,$40,$80
+  $02,$01,$02,$01,$02,$01,$02,$01
+  $40,$80,$40,$80,$40,$80,$40,$80
+  $02,$01,$03,$03,$03,$03,$03,$03
+  $40,$80,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$07,$00,$40,$00,$04,$00,$00
+  $C0,$E0,$00,$00,$00,$04,$00,$00
+  $00,$18,$C3,$C3,$18,$00,$00,$00
+end data
+data TileCol bytes
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0F,$01,$01,$01,$01,$01,$01
+  $0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0F,$0A,$0A,$BA,$0A,$BA,$0A,$0A
+  $0A,$BA,$0A,$BA,$0A,$BA,$0A,$BA
+  $01,$01,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $EF,$EA,$0A,$BA,$0A,$BA,$0A,$0A
+  $EF,$EA,$0A,$0A,$0A,$BA,$0A,$0A
+  $01,$F1,$1F,$1F,$F1,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$07,$0F,$1F,$3F,$3D,$3D,$3F,$3F,$3E,$1F,$0F,$07,$04,$04,$1C
+  $00,$E0,$F0,$F8,$FC,$EC,$EC,$FC,$FC,$DC,$38,$F0,$E0,$20,$20,$38
+  $00,$07,$0F,$1F,$3F,$3D,$3D,$3F,$3F,$3E,$1F,$0F,$07,$08,$10,$70
+  $00,$E0,$F0,$F8,$FC,$EC,$EC,$FC,$FC,$DC,$38,$F0,$E0,$10,$08,$0E
+  $00,$07,$0F,$1F,$3F,$37,$37,$3F,$3F,$3B,$1C,$0F,$07,$04,$04,$1C
+  $00,$E0,$F0,$F8,$FC,$BC,$BC,$FC,$FC,$7C,$F8,$F0,$E0,$20,$20,$38
+  $00,$07,$0F,$1F,$3F,$37,$37,$3F,$3F,$3B,$1C,$0F,$07,$08,$10,$70
+  $00,$E0,$F0,$F8,$FC,$BC,$BC,$FC,$FC,$7C,$F8,$F0,$E0,$10,$08,$0E
+  $00,$07,$0F,$1F,$3D,$3D,$3F,$3F,$3F,$3F,$1F,$0F,$07,$02,$02,$02
+  $00,$E0,$F0,$F8,$EC,$EC,$FC,$FC,$FC,$3C,$38,$F0,$E0,$40,$40,$40
+  $00,$07,$0F,$1F,$37,$37,$3F,$3F,$3F,$3C,$1C,$0F,$07,$02,$02,$02
+  $00,$E0,$F0,$F8,$BC,$BC,$FC,$FC,$FC,$FC,$F8,$F0,$E0,$40,$40,$40
+  $00,$00,$07,$0F,$1F,$37,$3A,$3C,$3C,$3D,$3D,$1E,$0E,$07,$00,$00
+  $00,$00,$E0,$70,$78,$7C,$FC,$FC,$FC,$0C,$FC,$F8,$F0,$E0,$00,$00
+  $00,$00,$07,$0F,$1F,$3F,$3E,$3E,$3D,$3D,$3D,$1E,$0E,$07,$00,$00
+  $00,$00,$E0,$70,$58,$5C,$BC,$B4,$DC,$FC,$EC,$F0,$F0,$E0,$00,$00
+  $00,$00,$07,$0F,$1F,$37,$3B,$3D,$3E,$3F,$3F,$1F,$0F,$07,$00,$00
+  $00,$00,$E0,$F0,$D8,$DC,$BC,$B4,$DC,$0C,$EC,$F0,$F0,$E0,$00,$00
+  $0F,$3F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$FC,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+VbPock:
+    db $40,$6B,$10,$01,$40,$8F,$20,$02,$40,$AA,$50,$02,$50
+VbThud:
+    db $00,$00,$25,$02,$00,$00,$56,$03,$00,$00,$96,$02,$10
+VbNet:
+    db $40,$53,$21,$02,$40,$7C,$31,$02,$40,$AB,$51,$03,$50
+VbWhistle:
+    db $40,$35,$30,$06,$40,$35,$F0,$02,$40,$35,$30,$0A,$50
+VbPoint:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$0A,$50
+VbSide:
+    db $40,$D6,$20,$06,$40,$1D,$31,$0A,$50
+VbWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$06,$40,$6B,$10,$18
+    db $50
+
+VbSoundTable:
+    dw VbTuneMel,$702B
+    dw VbTuneBass,$7035
+    dw VbPock,$7049
+    dw VbThud,$703F
+    dw VbNet,$7049
+    dw VbWhistle,$7049
+    dw VbPoint,$7049
+    dw VbSide,$7049
+    dw VbWin,$7049
+; Beach Bump (original)
+; Tiny Sound, 8 frames per step
+VbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$24,$01,$28,$01,$2B,$01,$28,$01,$24,$26
+    db $28,$01,$26,$01,$23,$01,$26,$01,$29,$01,$2B,$01,$29,$01,$26,$28
+    db $26,$01,$24,$01,$1F,$01,$24,$01,$28,$01,$2B,$01,$2D,$01,$2B,$01
+    db $28,$01,$26,$01,$24,$01,$28,$01,$26,$01,$23,$01,$24,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+VbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0B,$01,$0C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,674 @@
+cartridge "BINARY CASTLE/COMPUTE!'S GAZETTE/1983"
+
+' BINARY CASTLE
+' From "Binary Castle", COMPUTE!'s Gazette, November 1983 (Commodore 64
+' BASIC, 18 lines; the disk's VIC file is a copy of the 64 one). The
+' listing names no author. For the ColecoVision in Amy by Amy Bienvenu;
+' ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: orig/binarycastle64.bas (from the disk retyped by a reader in
+' the late 1980s). Line numbers in the comments are the listing's.
+'
+' The game: a number from 0 to 15 appears as a row of four stones, a lit
+' stone for a 1 and an empty one for a 0 (line 50). Say what number it is
+' (55). Right, and the row joins the castle, one row higher each time
+' (80); twenty rows and the castle is finished: YOU DID IT!!! (80). One
+' wrong answer and the castle falls (60-70).
+'
+' Controls (either joystick): up and down pick the number (hold to run
+' through them), a side button answers. Keypad not used.
+'
+' Improvements: the question's stones are sprites in a frame that fly up
+' and land on the castle; tiled stones, grass, stars and battlements; the
+' castle crumbles row by row on a wrong answer; sound effects and an
+' original title tune (played once); a best height.
+' Liberties taken:
+' - The listing's RND gave 0 to 14 (INT(15*RND(0))): 15 never came. Here
+'   all sixteen numbers come (doubtful typo or slip, fixed).
+' - The listing prints the first two rows on the same screen line (D=21
+'   and D=20 both reach line 20 since D$ holds 20 cursor-downs), so its
+'   castle showed 19 rows; here each of the 20 rows has its own line.
+' - The retyped DATA uses three different characters for a 0 stone
+'   ("L", {164}, {186}) and {166} for a 1; read as 0 and 1 (the patterns
+'   are otherwise exactly 0-15 in order). Line 230 ends "RETURN5": the
+'   stray 5 is never reached and changes nothing.
+' - The place values 8 4 2 1 are written under the castle, and after each
+'   right answer the sum is shown ("8+2+1 = 11"); a wrong answer shows the
+'   right one. The listing gave neither (a fair hint for a first-time
+'   player; the rules are the same).
+' - A wrong answer or a finished castle ends the game (message, then the
+'   title) instead of starting again at once; the C64's border flashing
+'   is a slow sky change (under 3 Hz) and a fanfare.
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; music
+' first in the sound table; screens drawn with the NMI off; nothing
+' flashes faster than 3 Hz.
+
+const TOne_l = 128
+const TOne_r = 129
+const TZero_l = 130
+const TZero_r = 131
+const TMerlon = 132
+const TGrass = 133
+const TUp = 134
+const TDown = 135
+const TStar = 136
+const TFrame = 137
+const SOne = 0
+const SZero = 4
+const NTiles8 = 80
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndFly = 4
+const SndThunk = 5
+const SndRight = 6
+const SndWrong = 7
+const SndCrumble = 8
+const SndWin = 9
+const NRows = 20
+const TCol = 6
+const QX = 144
+const QY = 55
+const NFly = 24
+const TuneLen = 520
+
+' the four stones of the question, as sprites
+record Brick:
+  u8 X
+  u8 Y
+  u8 Lit
+end record
+Brick Br[4]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' St: what the cartridge waits for (bots read it): 0 busy, 1 a button on
+' the credits or title, 2 an answer, 9 the end of a game
+u8 St = 0
+u8 Rows = 0
+u8 Target = 0
+u8 Pick = 0
+u8 BestRows = 0
+u8 Won = 0
+bcd digits 2 RowB
+bcd digits 2 BestB
+u8 Tick = 0
+u8 JoyNow = 0
+u8 JoyWas = 0
+u8 Hold = 0
+u8 Done = 0
+u16 Rs = $ACE1
+u16 Rt = 0
+u16 NumU = 0
+u8 I = 0
+u8 Fi = 0
+u8 Kc = 0
+u8 Rr = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+i16 X0 = 0
+i16 X1 = 0
+i16 Px = 0
+i16 Py = 0
+i16 Py1 = 0
+
+' --- small helpers ----------------------------------------------------------
+' bit B of N (0 or 1)
+function BitOf(u8 N, u8 B) as u8
+  return (N >> B) & 1
+
+' the screen row of castle row H (1 at the bottom, 20 at the top)
+function RowY(u8 H) as u8
+  return 22 - H
+
+' a new press of a side button (down now, up the frame before)
+function FirePressed as u8
+  V = JoyWas & 16
+  if V <> 0 then return 0
+  V = JoyNow & 16
+  if V <> 0 then return 1
+  return 0
+
+  tile screen
+  set sound table BcSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  PlayScreen
+  Rows = 0
+  RowB = 0
+  Won = 0
+  Pick = 0
+  ShowRow
+
+' 50-90: a question, an answer, the castle grows or falls
+play_loop:
+  AskQuestion
+  GetAnswer
+  if Pick = Target then
+    Correct
+    if Rows >= NRows then goto castle_done
+    goto play_loop
+  end if
+  Wrong
+  goto game_end
+
+castle_done:
+  Won = 1
+  Finished
+
+game_end:
+  St = 9
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  St = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' 50: a new number, shown as four stones in the frame
+sub AskQuestion:
+  Rnd16
+  Target = Rs & 15
+  for I = 0 to 3
+    Br[I].X = QX + I * 16
+    Br[I].Y = QY
+    Br[I].Lit = BitOf(Target, 3 - I)
+  next
+  DrawBricks
+  ClearPanel
+  print at 16,10, "WHAT NUMBER?"
+  fill TUp count 2 at 21,12
+  fill TDown count 2 at 21,14
+  ShowPick
+  return
+end sub
+
+' 55: the stick picks, a button answers
+sub GetAnswer:
+  St = 2
+  Hold = 0
+  Done = 0
+  while Done = 0
+    Frame1
+    V = JoyNow & 3
+    select case V
+    case 1
+      StepPick(1)
+    case 2
+      StepPick(15)
+    case else
+      Hold = 0
+    end select
+    Done = FirePressed
+  end while
+  St = 0
+  return
+end sub
+
+' a step of the picker: at once, then again every 5 frames after 18
+sub StepPick(u8 Dlt):
+  inc Hold
+  if Hold = 1 then MovePick(Dlt)
+  if Hold >= 18 then
+    MovePick(Dlt)
+    Hold = 13
+  end if
+  return
+end sub
+
+sub MovePick(u8 Dlt):
+  Pick = Pick + Dlt
+  Pick = Pick & 15
+  play sound SndClick
+  ShowPick
+  return
+end sub
+
+sub ShowPick:
+  print at 21,13, digits$(Pick, 2)
+  return
+end sub
+
+' 80: right: the stones fly onto the castle
+sub Correct:
+  play sound SndRight
+  ClearPanel
+  print at 16,10, "RIGHT!"
+  Explain(12)
+  Pause(20)
+  Rr = RowY(Rows + 1)
+  play sound SndFly
+  FlyBricks
+  play sound SndThunk
+  for I = 0 to 3
+    Tx = TCol + I * 2
+    if Br[I].Lit = 1 then
+      put char TOne_l at Tx,Rr
+      put char TOne_r at Tx + 1,Rr
+    else
+      put char TZero_l at Tx,Rr
+      put char TZero_r at Tx + 1,Rr
+    end if
+  next
+  HideSprites
+  inc Rows
+  RowB += 1
+  if RowB > BestB then BestB = RowB
+  if Rows > BestRows then BestRows = Rows
+  ShowRow
+  Pause(12)
+  return
+end sub
+
+' the four stones from the frame to castle row Rr, NFly frames
+sub FlyBricks:
+  Py1 = Rr * 8 - 1
+  for Fi = 1 to NFly
+    for I = 0 to 3
+      X0 = QX + I * 16
+      X1 = TCol * 8 + I * 16
+      Px = X0 + (X1 - X0) * Fi / NFly
+      Br[I].X = Px
+      Py = QY + (Py1 - QY) * Fi / NFly
+      Br[I].Y = Py
+    next
+    DrawBricks
+    Frame1
+  next
+  return
+end sub
+
+' 60-70: wrong: the right answer, then the castle falls
+sub Wrong:
+  play sound SndWrong
+  ClearPanel
+  print at 16,10, "SORRY,"
+  print at 16,11, "WRONG NUMBER."
+  print at 16,13, "IT WAS:"
+  Explain(14)
+  Pause(60)
+  HideSprites
+  Crumble
+  print at 16,16, "THE CASTLE"
+  print at 16,17, "HAS FALLEN."
+  print at 16,20, "PRESS THE    "
+  print at 16,21, "BUTTON        "
+  return
+end sub
+
+' the castle's rows fall from the top, one every 5 frames
+sub Crumble:
+  for Kc = 1 to Rows
+    Ty = 21 - Rows + Kc
+    fill 32 count 8 at TCol,Ty
+    play sound SndCrumble
+    Pause(5)
+  next
+  return
+end sub
+
+' 80: twenty rows: the battlements and the fanfare
+sub Finished:
+  HideSprites
+  fill TMerlon count 8 at TCol,1
+  ClearPanel
+  print at 16,10, "YOU DID IT!!!"
+  print at 16,12, "THE CASTLE IS"
+  print at 16,13, "FINISHED."
+  print at 16,20, "PRESS THE    "
+  print at 16,21, "BUTTON        "
+  play sound SndWin
+  ' the listing's border colours, slowly: the sky changes every 20 frames
+  for Kc = 1 to 8
+    J8 = Kc & 1
+    if J8 = 1 then
+      backdrop dark blue
+    else
+      backdrop black
+    end if
+    Pause(20)
+  next
+  backdrop black
+  return
+end sub
+
+' "8+2+1 = 11" (the lit stones' values and their sum) at row Row
+sub Explain(u8 Row):
+  fill 32 count 14 at 16,Row
+  Tx = 16
+  for Kc = 0 to 3
+    W = 3 - Kc
+    if BitOf(Target, W) = 1 then
+      if Tx > 16 then
+        print at Tx,Row, "+"
+        inc Tx
+      end if
+      V = 1 << W
+      print at Tx,Row, digits$(V, 1)
+      inc Tx
+    end if
+  next
+  if Tx = 16 then
+    print at 16,Row, "NONE"
+    Tx = 20
+  end if
+  print at Tx,Row, " = "
+  Tx = Tx + 3
+  if Target >= 10 then
+    print at Tx,Row, digits$(Target, 2)
+  else
+    print at Tx,Row, digits$(Target, 1)
+  end if
+  return
+end sub
+
+sub DrawBricks:
+  for I = 0 to 3
+    V = Br[I].X
+    W = Br[I].Y
+    if Br[I].Lit = 1 then
+      set sprite I to W,V,SOne,11
+    else
+      set sprite I to W,V,SZero,14
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ClearPanel:
+  for Ty = 10 to 17
+    fill 32 count 14 at 16,Ty
+  next
+  return
+end sub
+
+sub ShowRow:
+  NumU = Rows + 1
+  if NumU > NRows then NumU = NRows
+  print at 16,4, "ROW "
+  print at 20,4, digits$(NumU, 2)
+  print at 22,4, " OF 20"
+  print at 16,18, "BEST "
+  print at 21,18, BestB
+  return
+end sub
+
+' the play screen: night sky, stars, grass, the frame and the labels
+sub PlayScreen:
+  NewScreen
+  put char TStar at 3,3
+  put char TStar at 2,7
+  put char TStar at 27,3
+  put char TStar at 4,12
+  put char TStar at 15,8
+  put char TStar at 28,15
+  fill TGrass count 4 at 2,22
+  print at 6,22, "8 4 2 1 "
+  fill TGrass count 16 at 14,22
+  print at 16,2, "BINARY CASTLE"
+  fill TFrame count 10 at 17,6
+  fill TFrame count 10 at 17,8
+  print at 16,20, "UP/DOWN: PICK"
+  print at 16,21, "BUTTON: ANSWER"
+  ShowRow
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame; the sticks and buttons of both controllers: bit 0 up,
+' bit 1 down, bit 4 a button
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  JoyWas = JoyNow
+  V = joypad(1).up | joypad(2).up
+  W = joypad(1).down | joypad(2).down
+  W = W << 1
+  JoyNow = V | W
+  V = joypad(1).fire | joypad(2).fire
+  V = V << 4
+  JoyNow = JoyNow | V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for J8 = 0 to 3
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  return
+end sub
+
+' a new press of a button; the random numbers run meanwhile
+sub WaitPress:
+  Done = 0
+  while Done = 0
+    Frame1
+    Rnd16
+    Done = FirePressed
+  end while
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "BINARY CASTLE"
+  print at 2,5, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,6, "NOVEMBER 1983 (COMMODORE"
+  print at 2,7, "64; THE LISTING NAMES NO"
+  print at 2,8, "AUTHOR)."
+  print at 2,10, "FOR THE COLECOVISION BY"
+  print at 2,11, "CLAUDE (AN AI MADE BY"
+  print at 2,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "2026, IN AMY, THE LANGUAGE"
+  print at 2,14, "BY AMY BIENVENU."
+  print at 2,16, "MUSIC: STONES OF THE KEEP"
+  print at 2,17, "(ORIGINAL)."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  St = 1
+  WaitPress
+  St = 0
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 9,1, "BINARY CASTLE"
+  print at 2,3, "BUILD A CASTLE 20 ROWS HIGH."
+  print at 2,4, "EACH ROW IS A NUMBER FROM 0"
+  print at 2,5, "TO 15 IN BINARY: A LIT STONE"
+  print at 2,6, "IS 1, AN EMPTY ONE IS 0."
+  print at 2,7, "THE STONES ARE WORTH 8, 4, 2"
+  print at 2,8, "AND 1. ADD THE LIT ONES:"
+  ' an example row: 1 0 1 1 = 11
+  put char TOne_l at 6,10
+  put char TOne_r at 7,10
+  put char TZero_l at 8,10
+  put char TZero_r at 9,10
+  put char TOne_l at 10,10
+  put char TOne_r at 11,10
+  put char TOne_l at 12,10
+  put char TOne_r at 13,10
+  print at 6,11, "8 4 2 1"
+  print at 16,10, "8+2+1 = 11"
+  print at 2,13, "STICK UP AND DOWN: PICK THE"
+  print at 2,14, "NUMBER. BUTTON: ANSWER."
+  print at 2,16, "ONE WRONG ANSWER AND THE"
+  print at 2,17, "CASTLE FALLS!"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  St = 1
+  WaitPress
+  St = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  TzOn = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$F0,$F0,$F0,$F0,$E0,$00
+  $44,$11,$00,$00,$00,$00,$00,$00
+  $10,$38,$83,$01,$38,$38,$00,$00
+  $00,$00,$38,$38,$01,$83,$38,$10
+  $00,$00,$10,$38,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0A,$AF,$AB,$AB,$AB,$AB,$AB,$0A
+  $0A,$AF,$AB,$AB,$AB,$AB,$AB,$0A
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $01,$01,$A1,$B1,$B1,$B1,$BA,$0A
+  $31,$13,$03,$02,$0C,$0C,$0C,$0C
+  $F1,$F1,$1F,$1F,$F1,$F1,$01,$01
+  $01,$01,$F1,$F1,$1F,$1F,$F1,$F1
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $05,$05,$01,$01,$01,$01,$05,$05
+end data
+data SpritePat bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$C0,$C0,$C0,$C0,$C0,$C0,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$03,$03,$03,$03,$03,$03,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+BcClick:
+    db $40,$40,$30,$01,$40,$40,$60,$01,$50
+BcFly:
+    db $40,$D6,$30,$03,$40,$AA,$30,$03,$40,$8F,$30,$03,$40,$6B,$40,$03,$50
+BcThunk:
+    db $00,$00,$15,$02,$00,$00,$46,$05,$10
+BcRight:
+    db $40,$8F,$20,$04,$40,$6B,$20,$08,$50
+BcWrong:
+    db $40,$53,$11,$06,$40,$68,$21,$06,$40,$7C,$21,$06,$40,$AB,$21,$14,$50
+BcCrumble:
+    db $00,$00,$14,$03,$00,$00,$36,$03,$10
+BcWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06
+    db $40,$55,$20,$18,$50
+
+BcSoundTable:
+    dw BcTuneMel,$702B
+    dw BcTuneBass,$7035
+    dw BcClick,$7049
+    dw BcFly,$7049
+    dw BcThunk,$703F
+    dw BcRight,$7049
+    dw BcWrong,$7049
+    dw BcCrumble,$703F
+    dw BcWin,$7049
+; Stones of the Keep (original)
+; Tiny Sound, 8 frames per step
+BcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$24,$01,$28,$01,$26,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$01,$01,$2A,$01,$28,$01
+    db $26,$01,$01,$01,$24,$01,$23,$01,$21,$01,$1A,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+BcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$17,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$0C,$01,$13,$01
+    db $0B,$01,$13,$01,$09,$01,$10,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01
+    db $FF
+}
