@@ -24,8 +24,9 @@
   enemy sprites.
 - Updated 21 existing games with a consistent game-over flow that waits for
   input, supports Amy's screen saver and returns cleanly to the title screen.
-- Expanded the example catalogue to **444 programs** and revalidated the
-  affected sources with the Balanced compiler profile.
+- The clean example catalogue now contains **467 programs**, including
+  **32 Ahoy! adaptations**. The affected sources were revalidated with the
+  Balanced compiler profile.
 
 ## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations
 
@@ -79,7 +80,7 @@
 - Reduced indexed byte compound updates by reusing one proven destination
   address for dynamic `+=`, `-=`, `&=`, `|=` and `^=` operations. The clean
   repository also received the previously validated immediate-mask rule.
-- Validated the resulting Alexis-Z80 catalogue at 303/303 examples, with 302
+- Validated the resulting clean-repository catalogue at 303/303 examples, with 302
   assembled ROMs and GearColeco runtime captures of the new programs and both
   corrected input flows.
 
