@@ -4643,6 +4643,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitBcdAdd,
     emitBcdSub
   }));
+  const globalDeclarationLines = new Map();
   const firstPassNameError = scanAmyFirstPass({
     lines,
     recordDefinitionLineNumbers,
@@ -4669,7 +4670,8 @@ export function transpileAmyCore(sourceText, deps) {
     describeGlobalNameCollision,
     runtimeVars,
     runtimeParamSlotSize,
-    splitTopLevelArgs
+    splitTopLevelArgs,
+    globalDeclarationLines
   });
   if (firstPassNameError) {
     return { ok: false, asmBody: "", log: firstPassNameError };
@@ -4730,6 +4732,17 @@ export function transpileAmyCore(sourceText, deps) {
       : null;
     if (direct && !/^\(/.test(direct[1].trim())) return [`    ld ix,${direct[1].trim()}`];
     return [...loadAddress, "    push hl", "    pop ix"];
+  }
+
+  function describeGlobalDeclaredAfterUse(sourceText, sourceLineNumber) {
+    const identifiers = String(sourceText).match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+    for (const identifier of identifiers) {
+      const declarationLine = globalDeclarationLines.get(lowerName(identifier));
+      if (Number.isInteger(declarationLine) && declarationLine > sourceLineNumber) {
+        return `Global variable '${identifier}' is used before its declaration on line ${declarationLine + 1}; declare globals before main code and sub/function bodies: ${sourceText}`;
+      }
+    }
+    return null;
   }
 
   for (let sourceLineNumber = 0; sourceLineNumber < lines.length; sourceLineNumber += 1) {
@@ -5865,6 +5878,10 @@ export function transpileAmyCore(sourceText, deps) {
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
       if (!assignmentCode) {
+        const declarationOrderError = describeGlobalDeclaredAfterUse(rawLine, sourceLineNumber);
+        if (declarationOrderError) {
+          return { ok: false, asmBody: "", log: declarationOrderError };
+        }
         if (/\b(?:and|or)\b/i.test(formulaAssignment.value)) {
           return {
             ok: false,

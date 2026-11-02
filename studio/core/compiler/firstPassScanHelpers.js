@@ -24,7 +24,8 @@ export function scanAmyFirstPass({
   describeGlobalNameCollision,
   runtimeVars,
   runtimeParamSlotSize,
-  splitTopLevelArgs
+  splitTopLevelArgs,
+  globalDeclarationLines
 }) {
   let firstPassInAsm = false;
   let firstPassNameError = null;
@@ -195,6 +196,7 @@ export function scanAmyFirstPass({
       try {
         for (const declEntry of parseAmyDeclarationList(bcdPredecl[4], rawLine)) {
           ensureUserVarAsmSymbol(declEntry.name);
+          globalDeclarationLines?.set(lowerName(declEntry.name), lineIndex);
         }
       } catch (_error) {}
     }
@@ -204,6 +206,7 @@ export function scanAmyFirstPass({
       try {
         for (const declEntry of parseAmyDeclarationList(ramPredecl[3], rawLine)) {
           ensureUserVarAsmSymbol(declEntry.name);
+          globalDeclarationLines?.set(lowerName(declEntry.name), lineIndex);
         }
       } catch (_error) {}
     }
@@ -211,6 +214,7 @@ export function scanAmyFirstPass({
       try {
         for (const declEntry of parseAmyDeclarationList(ramPredecl[3], rawLine)) {
           ensureUserVarAsmSymbol(declEntry.name);
+          globalDeclarationLines?.set(lowerName(declEntry.name), lineIndex);
         }
       } catch (_error) {}
     }
