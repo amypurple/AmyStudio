@@ -112,6 +112,11 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const usesWaitVblank = /^\s*wait\s*(?:'.*)?$/im.test(text) ||
     /\bwait\s+vblanks?\b/i.test(text) ||
     /\bwait\s+(?:[A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+frames?\b/i.test(text);
+  const needsTextVdpGuard =
+    /^\s*put\s+char\b/im.test(codeText) ||
+    /=\s*get\s+char\s+at\b/im.test(codeText) ||
+    /^\s*fill(?:\s+.+?\s+count\s+.+?\s+at\b|\s+at\b)/im.test(codeText) ||
+    /\bAMY_(?:PUT_CHAR_AT|GET_CHAR_AT|FILL_AT|PRINT_AT|RELEASE_VDP_GUARD)\b/i.test(text);
   const usesWipeWithHalt = /\bwipe\s+(?:screen|bitmap)\s+(?:up|down)\b/i.test(text);
   const usesTextScreen = /\btext\s+screen\b/i.test(text);
   const usesGraphicsMode2Text = /\bgraphics\s+mode\s+2\s+text\b/i.test(text);
@@ -155,6 +160,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const needsVdpStatusShadow =
     usesWaitVblank ||
     needsSpriteFlicker ||
+    needsTextVdpGuard ||
     /\b(VDP_STATUS|NMI_FLAG)\b/i.test(text) ||
     /\bvdp\.status\b/i.test(text) ||
     /\bif\s+(?:not\s+)?any\s+collision\b/i.test(text);

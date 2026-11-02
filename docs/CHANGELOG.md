@@ -1,3 +1,13 @@
+## 2026-11-02 - Text and VDP guard RAM safety
+
+- Fixed small programs using `fill ... at`, `put char`, or `get char` allocating
+  user variables over the `$7020-$7022` VDP/NMI guard state.
+- Unified source capability inference with the final runtime map so user RAM
+  starts at `$7023` whenever guarded text helpers are linked.
+- Added five-profile GearColeco/OS7 runtime coverage that verifies both RAM
+  preservation and the resulting VRAM output.
+- Rebuilt the Visual Studio Code extension as version 0.1.9.
+
 ## 2026-11-02 - Ahoy compiler regression fixes
 
 - Fixed runtime `u16` copy counts overwriting the RAM source address before

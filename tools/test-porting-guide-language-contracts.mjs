@@ -51,8 +51,8 @@ sub start:
   loop forever
 end sub
 `);
-assert.equal(romWidening.ok, false, "u8 ROM-table widening unexpectedly compiled; update the guide");
-assert.match(romWidening.log || "", /Invalid runtime assignment/i);
+assert.equal(romWidening.ok, true, `u8 ROM-table widening failed: ${romWidening.log || "unknown error"}`);
+assert.match(romWidening.asmBody || "", /AMY_UDATA_RomValues[\s\S]*?ld l,a\s*\n\s*ld h,0/i);
 
 const offsetCopy = transpileAmyForTest(`
 u8 Source[8]
