@@ -13,6 +13,9 @@ const guardedSources = [
   "fill at 3,3 32 count 2",
   "put char 32 at 3,3",
   "Value = get char at 3,3",
+  "screen on",
+  "nmi on",
+  'print at 0,0, "X"\nscreen on',
   "asm { call AMY_FILL_AT }",
   "asm { call AMY_RELEASE_VDP_GUARD }"
 ];
