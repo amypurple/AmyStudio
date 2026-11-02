@@ -2003,6 +2003,15 @@ unlike `text screen`, it does not also upload the BIOS font and initialize color
 `line`, and `circle`; its default color byte is `$F0`, so the color clause is
 optional.
 
+The `3-D Super Plotter` example is an advanced use of this documented surface.
+Its perspective projection, mesh traversal, custom fast pixel routine, and
+hidden-line horizon are program code, not a built-in `plot 3d` command. The Amy
+language features it relies on are the ordinary supported forms `tile screen`,
+`bitmap screen color C`, `define chars`, `fill mode 2 text color with C`,
+`fill Char count N at X,Y`, `copy ... count N to vram.*`, `print at`,
+`digits$()`, `nmi on/off`, and the sound-table commands documented below.
+See `studio/examples-src/3d-super-plotter.alexis` for the complete implementation.
+
 `picture screen` is the raw Graphics II picture/table surface used before
 uploading or decompressing full-screen pattern/color assets.
 
