@@ -97,6 +97,32 @@ export function createPrintHelpers(ctx) {
     return state.textExprBufferName;
   }
 
+  function ensureTextExprPositionVars() {
+    if (state.textExprColumnName && state.textExprRowName) {
+      return { columnName: state.textExprColumnName, rowName: state.textExprRowName };
+    }
+    state.textExprColumnName = "AMY_TEXT_EXPR_COLUMN";
+    state.textExprRowName = "AMY_TEXT_EXPR_ROW";
+    const columnAddress = reserveRam(state.textExprColumnName, 1, "numeric text expression column");
+    const rowAddress = reserveRam(state.textExprRowName, 1, "numeric text expression row");
+    runtimeVars.set(state.textExprColumnName, { type: "int8", declaredType: "u8", address: columnAddress, scope: "global", internal: true });
+    runtimeVars.set(state.textExprRowName, { type: "int8", declaredType: "u8", address: rowAddress, scope: "global", internal: true });
+    runtimeDeclarations.push(`${state.textExprColumnName} EQU ${formatHex16(columnAddress)}`);
+    runtimeDeclarations.push(`${state.textExprRowName} EQU ${formatHex16(rowAddress)}`);
+    state.hasRuntimeRamDeclarations = true;
+    return { columnName: state.textExprColumnName, rowName: state.textExprRowName };
+  }
+
+  function ensureTextExprOffsetVar() {
+    if (state.textExprOffsetName) return state.textExprOffsetName;
+    state.textExprOffsetName = "AMY_TEXT_EXPR_OFFSET";
+    const address = reserveRam(state.textExprOffsetName, 1, "numeric text expression buffer offset");
+    runtimeVars.set(state.textExprOffsetName, { type: "int8", declaredType: "u8", address, scope: "global", internal: true });
+    runtimeDeclarations.push(`${state.textExprOffsetName} EQU ${formatHex16(address)}`);
+    state.hasRuntimeRamDeclarations = true;
+    return state.textExprOffsetName;
+  }
+
   function ensureFp5FriendlyFormatVars() {
     if (state.fp5FriendlyFirstIntName && state.fp5FriendlyDotName && state.fp5FriendlyLastFracName) {
       return {
@@ -782,6 +808,67 @@ export function createPrintHelpers(ctx) {
   function emitPrintTextExpressionAt(textExprToken, xToken, yToken) {
     const segments = splitTopLevelPlus(textExprToken);
     if (!segments.length) return null;
+    const parsedSegments = segments.map((segment) => {
+      const literalMatch = segment.match(/^"([^"]*)"$/);
+      return literalMatch ? { kind: "literal", text: literalMatch[1] } : { kind: "numeric", call: parseNumericTextCall(segment) };
+    });
+    if (parsedSegments.some((segment) => segment.kind === "numeric" && !segment.call)) return null;
+    if (parsedSegments.some((segment) => segment.kind === "numeric" && segment.call.digitsToken === null)) {
+      const bufferName = ensureTextExprBuffer();
+      const coords = ensureTextExprPositionVars();
+      const loadCoords = emitLoadTextCoordsIntoDE(xToken, yToken);
+      if (!loadCoords) return null;
+      state.needsNumericCompactHelper = true;
+      const lines = [
+        ...loadCoords,
+        "    ld a,e",
+        `    ld (${coords.columnName}),a`,
+        "    ld a,d",
+        `    ld (${coords.rowName}),a`
+      ];
+      let maximumWidth = 0;
+      for (const segment of parsedSegments) {
+        let sourceLabel;
+        let width;
+        if (segment.kind === "literal") {
+          if (!segment.text.length) continue;
+          const literal = emitTextLiteral(segment.text);
+          sourceLabel = literal.label;
+          width = literal.length;
+        } else {
+          const textCall = segment.call;
+          const plain = textCall.digitsToken === null;
+          const formatLines = emitFormatFp5FriendlyIntoBuffer(textCall.valueToken, bufferName, textCall.digitsToken)
+            || emitFormatAutoIntoBuffer(textCall.valueToken, bufferName, textCall.digitsToken, textCall.widthMode);
+          if (!formatLines) return null;
+          lines.push(...formatLines);
+          if (plain) {
+            const compactPreparation = emitNumericPostprocessBuffer(bufferName, textCall.width, true);
+            if (!compactPreparation) return null;
+            lines.push(...compactPreparation);
+          }
+          sourceLabel = bufferName;
+          width = textCall.width;
+          lines.push(`    ld hl,${sourceLabel}`, `    ld b,${width}`);
+          if (plain) lines.push("    call AMY_NUMERIC_COMPACT");
+        }
+        if (segment.kind === "literal") lines.push(`    ld hl,${sourceLabel}`, `    ld b,${width}`);
+        lines.push(
+          "    push bc",
+          `    ld a,(${coords.rowName})`,
+          "    ld d,a",
+          `    ld a,(${coords.columnName})`,
+          "    ld e,a",
+          "    call AMY_PUT_AT",
+          "    pop bc",
+          `    ld a,(${coords.columnName})`,
+          "    add a,b",
+          `    ld (${coords.columnName}),a`
+        );
+        maximumWidth += width;
+      }
+      return { lines, width: maximumWidth, dynamicWidth: true };
+    }
     const bufferName = ensureTextExprBuffer();
     const lines = [];
     let xAdvance = 0;
@@ -848,6 +935,89 @@ export function createPrintHelpers(ctx) {
     const bufferInfo = getByteArrayBufferInfoLocal(bufferToken, totalWidth);
     if (!bufferInfo) return null;
 
+    if (prepared.some((segment) => segment.kind === "str$" && segment.digitsToken === null)) {
+      const tempBuffer = ensureTextExprBuffer();
+      const offsetName = ensureTextExprOffsetVar();
+      state.needsNumericCompactHelper = true;
+      const lines = ["    xor a", `    ld (${offsetName}),a`];
+      const loadAppendDestination = () => {
+        const loadBase = emitLoadArrayAddressIntoHL(bufferToken, "0");
+        if (!loadBase) return null;
+        return [
+          ...loadBase,
+          `    ld a,(${offsetName})`,
+          "    ld e,a",
+          "    ld d,0",
+          "    add hl,de",
+          "    ex de,hl"
+        ];
+      };
+      for (const segment of prepared) {
+        if (segment.kind === "literal") {
+          const destination = loadAppendDestination();
+          if (!destination) return null;
+          lines.push(
+            ...destination,
+            `    ld hl,${segment.label}`,
+            `    ld bc,${segment.width}`,
+            "    ldir",
+            `    ld a,(${offsetName})`,
+            `    add a,${segment.width}`,
+            `    ld (${offsetName}),a`
+          );
+          continue;
+        }
+        const plain = segment.digitsToken === null;
+        const formatLines = emitFormatFp5FriendlyIntoBuffer(segment.valueToken, tempBuffer, segment.digitsToken)
+          || emitFormatAutoIntoBuffer(segment.valueToken, tempBuffer, segment.digitsToken, segment.widthMode);
+        const destination = loadAppendDestination();
+        if (!formatLines || !destination) return null;
+        lines.push(...formatLines);
+        if (plain) {
+          const compactPreparation = emitNumericPostprocessBuffer(tempBuffer, segment.width, true);
+          if (!compactPreparation) return null;
+          lines.push(...compactPreparation);
+        }
+        lines.push(`    ld hl,${tempBuffer}`, `    ld b,${segment.width}`);
+        if (plain) lines.push("    call AMY_NUMERIC_COMPACT");
+        lines.push(
+          "    push hl",
+          "    push bc",
+          ...destination,
+          "    pop bc",
+          "    pop hl",
+          `    ld a,(${offsetName})`,
+          "    add a,b",
+          `    ld (${offsetName}),a`,
+          "    ld c,b",
+          "    ld b,0",
+          "    ldir"
+        );
+      }
+      const loadTail = emitLoadArrayAddressIntoHL(bufferToken, "0");
+      if (!loadTail) return null;
+      const fillLoop = makeGeneratedLabel("TextExprPad");
+      const fillDone = makeGeneratedLabel("TextExprPadDone");
+      lines.push(
+        ...loadTail,
+        `    ld a,(${offsetName})`,
+        "    ld e,a",
+        "    ld d,0",
+        "    add hl,de",
+        `    ld a,${totalWidth}`,
+        "    sub e",
+        `    jr z,${fillDone}`,
+        "    ld b,a",
+        "    ld a,$20",
+        `${fillLoop}:`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    djnz ${fillLoop}`,
+        `${fillDone}:`
+      );
+      return { lines, width: totalWidth };
+    }
+
     const tempBuffer = ensureTextExprBuffer();
     const lines = [];
     let targetOffset = 0;
@@ -886,6 +1056,13 @@ export function createPrintHelpers(ctx) {
       }
       const numericText = parseNumericTextCall(item);
       if (numericText) {
+        if (numericText.digitsToken === null) {
+          const printed = emitPrintTextExpressionAt(item, itemX, yToken);
+          if (!printed) return null;
+          lines.push(...printed.lines);
+          xAdvance += printed.width;
+          continue;
+        }
         const printed = emitPrintAutoAt(numericText.valueToken, itemX, yToken, numericText.digitsToken, numericText.widthMode);
         if (!printed) return null;
         lines.push(...printed);

@@ -1,3 +1,13 @@
+## 2026-11-02 - Compact plain numeric strings
+
+- Fixed plain `str$(Value)` to emit only the sign and significant decimal
+  characters. A `u16` value of 20 now produces `20`, not `00020`, in direct
+  output, concatenated expressions and fixed-buffer assignments.
+- Preserved explicit formatting: `digits$` remains zero-padded and `width$`
+  remains right-aligned. Added five-profile GearColeco runtime coverage.
+- Updated the language reference and rebuilt the Visual Studio Code extension
+  as version 0.1.7 with the corrected compiler snapshot.
+
 ## 2026-10-31 - Numeric formatting and compiler safety fixes
 
 - Fixed signed `width` formatting so padding precedes the minus sign (`  -42`)

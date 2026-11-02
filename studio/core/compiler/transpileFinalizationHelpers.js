@@ -721,6 +721,7 @@ export function finalizeAmyTranspile({
     needsNumericPostprocessHelpers,
     needsNumericPostprocessWidthHelper,
     needsNumericDefaultWidthHelper,
+    needsNumericCompactHelper,
     needsFp5FriendlyFormatHelper,
     numericPadCharName,
     numericDigitBaseName,
@@ -1145,6 +1146,43 @@ export function finalizeAmyTranspile({
         "AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE_SIGN:",
         "    dec hl",
         "    ld (hl),$2D",
+        "    ret"
+      ].join("\n")
+    : "";
+
+  const numericCompactHelperBlock = needsNumericCompactHelper
+    ? [
+        "",
+        "; --- Amy unpadded numeric text helper ---",
+        "; Input: HL = fixed-width text, B = width. Output: HL/B = compact text.",
+        "AMY_NUMERIC_COMPACT:",
+        ...(numericPadCharName
+          ? [`    ld a,(${numericPadCharName})`, "    ld c,a"]
+          : ["    ld c,$20"]),
+        "AMY_NUMERIC_COMPACT_LEADING:",
+        "    ld a,b",
+        "    or a",
+        "    ret z",
+        "    ld a,(hl)",
+        "    cp c",
+        "    jr nz,AMY_NUMERIC_COMPACT_TRAILING_SETUP",
+        "    inc hl",
+        "    dec b",
+        "    jr AMY_NUMERIC_COMPACT_LEADING",
+        "AMY_NUMERIC_COMPACT_TRAILING_SETUP:",
+        "    push hl",
+        "    ld d,0",
+        "    ld e,b",
+        "    add hl,de",
+        "    dec hl",
+        "AMY_NUMERIC_COMPACT_TRAILING:",
+        "    ld a,(hl)",
+        "    cp c",
+        "    jr nz,AMY_NUMERIC_COMPACT_DONE",
+        "    dec hl",
+        "    djnz AMY_NUMERIC_COMPACT_TRAILING",
+        "AMY_NUMERIC_COMPACT_DONE:",
+        "    pop hl",
         "    ret"
       ].join("\n")
     : "";
@@ -1585,7 +1623,7 @@ export function finalizeAmyTranspile({
         ? ["; --- Amy runtime RAM init data ---", ...runtimeInitData].join("\n")
         : "")
     : initRoutine;
-  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), emittedInitRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, numericDefaultWidthHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
+  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), emittedInitRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, numericDefaultWidthHelperBlock, numericCompactHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`

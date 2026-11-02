@@ -40,6 +40,12 @@ u8 Lv = 1
   print at 2,5, "L " + digits$(Lv + 1, 2)
 `);
 
+compile("plain str is unpadded", `
+u16 W = 20
+  text screen
+  print at 2,5, "A" + str$(W) + "B"
+`);
+
 compile("word table with u16 index", `
 u16 J = 129
 u16 W = 0

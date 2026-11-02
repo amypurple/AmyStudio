@@ -1574,6 +1574,7 @@ export function transpileAmyCore(sourceText, deps) {
   let needsNumericPostprocessHelpers = false;
   let needsNumericPostprocessWidthHelper = false;
   let needsNumericDefaultWidthHelper = false;
+  let needsNumericCompactHelper = false;
   let needsFp5FriendlyFormatHelper = false;
   let fp5FriendlyFirstIntName = null;
   let fp5FriendlyDotName = null;
@@ -4377,6 +4378,8 @@ export function transpileAmyCore(sourceText, deps) {
       set needsNumericPostprocessWidthHelper(value) { needsNumericPostprocessWidthHelper = value; },
       get needsNumericDefaultWidthHelper() { return needsNumericDefaultWidthHelper; },
       set needsNumericDefaultWidthHelper(value) { needsNumericDefaultWidthHelper = value; },
+      get needsNumericCompactHelper() { return needsNumericCompactHelper; },
+      set needsNumericCompactHelper(value) { needsNumericCompactHelper = value; },
       get needsFp5FriendlyFormatHelper() { return needsFp5FriendlyFormatHelper; },
       set needsFp5FriendlyFormatHelper(value) { needsFp5FriendlyFormatHelper = value; },
       get fp5FriendlyFirstIntName() { return fp5FriendlyFirstIntName; },
@@ -6721,6 +6724,7 @@ export function transpileAmyCore(sourceText, deps) {
       needsNumericPostprocessHelpers,
       needsNumericPostprocessWidthHelper,
       needsNumericDefaultWidthHelper,
+      needsNumericCompactHelper,
       needsFp5FriendlyFormatHelper,
       numericPadCharName,
       numericDigitBaseName,

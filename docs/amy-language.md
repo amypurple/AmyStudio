@@ -2497,6 +2497,10 @@ The result is compiled directly into a fixed `u8` buffer or immediate screen
 output. It does not allocate a dynamic string and does not introduce a general
 runtime string type.
 
+Plain `str$(Value)` emits only the sign and significant decimal characters:
+`str$(20)` is `20`, not `00020`, and `"A" + str$(20) + "B"` is `A20B`.
+When assigned to a fixed `u8` buffer, unused cells at the end are filled with spaces.
+
 For scoreboard-style fields, use explicit padding:
 
 - `str$(Value, digits N)` or `digits$(Value, N)` writes a zero-padded field
