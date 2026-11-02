@@ -1,0 +1,1639 @@
+cartridge "SPEEDWAY/AHOY!/1986"
+
+' SPEEDWAY
+' A ColecoVision game based on "Speedway", Ahoy! December 1986
+' (Commodore 64, machine language, disk ahoy1986-12; no author is named
+' in the program, so the credit is the issue's). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's, read from its
+' machine code (orig/speedway.prg, disassembly in orig/speedway-dis.txt);
+' the game is rebuilt for the ColecoVision: smooth sprites, rounded
+' track edges, a chequered start line, engine notes that follow each
+' car's speed, sound effects and an original title tune.
+'
+' The game, as the original: a top-down oval race on one of four tracks
+' (the original's four 20 x 21 track maps, unchanged), on a DRY, WET or
+' ICY road. The stick turns the car's nose a step of eight (left turns
+' anticlockwise); the button is the gas. Off the gas the car slows down
+' and finally stops. The car does not go where its nose points at once:
+' the road holds it to its old course for a moment, longer on WET and
+' much longer on ICE (11, 31 and 61 passes of the original's loop), and
+' while it slides the gas does nothing. Speed comes in eight levels, each
+' twice as fast as the next (the original's mask table 0,1,3,...,127).
+' Touching the grass holds the car at level 5, a crawl. Cars that touch
+' are pushed one pixel apart and both drop to level 5. A lap counts on
+' crossing the start line in the bottom half after visiting the top and
+' bottom halves on and off the line. ONE PLAYER: as many laps as you can
+' in one minute (after the 5-second countdown). Races: first to 20 laps.
+'
+' From the original: the four tracks; the 8 headings and their pixel
+' steps (diagonals move one pixel on both axes); the steering repeat (a
+' step every 16 passes); gas -21 and coast +10 in 256ths of a speed
+' level, a coasting car at the slowest level stops dead; the grip timer
+' by road (11/31/61) that only reloads when it runs out; grass = level 5;
+' the bump (direction from the cars' relative position, one pixel each,
+' both to level 5); the lap flags (four quarters, the line x 126-129);
+' starting on the line heading left, stopped; the 5-4-3-2-1 countdown
+' with beeps; ONE PLAYER = laps in 1:00; TWO PLAYERS = first to 20 laps;
+' road colours change with the condition; PRESS a button at the end.
+'
+' Liberties: the original's loop ran about three passes a C64 frame,
+' unevenly; here two passes a frame, so the top speed is 2 pixels a frame
+' on a track three quarters of the C64's size (the same feel). A cell is
+' 12 x 8 pixels (16 x 8 on the C64) and the track sits in tile columns
+' 1-30 (the outer wall half-cropped). Grass contact uses an 8 x 8 box
+' round the car's centre on the track map (the C64 used its sprite-to-
+' background collision); cars touch within 9 pixels. Steering turns at
+' once on a new push, then every 8 frames while held (the C64 sampled
+' the stick every 16 passes, so a quick tap could be lost). The menu is
+' on the joystick (the C64 asked on the keyboard), and adds a COMPUTER
+' car: ONE PLAYER V CPU, and TWO PLAYERS + CPU (three cars). The computer
+' follows a path round each track, slows for sharp turns, and keeps to
+' level 1 on wet and icy roads. The best lap count of the ONE PLAYER game
+' is kept for each track and road until the power is turned off. The
+' game end shows the result, then goes back to the title (no keyboard).
+'
+' Controls: the stick turns, a button is the gas (player 1 on controller
+' 1, player 2 on controller 2). On the title, up and down choose a line,
+' left and right change it, a button starts (or opens the credits).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Nothing flashes faster than 3 Hz.
+'
+' Workarounds for Amy bugs h2h-print-record-array-bcd removed 2026-11-01.
+
+const TBlank = 128
+const TTk0 = 129
+const TTk1 = 130
+const TTk2 = 131
+const TTk3 = 132
+const TTk4 = 133
+const TTk5 = 134
+const TTk6 = 135
+const TTk7 = 136
+const TTk8 = 137
+const TTk9 = 138
+const TTk10 = 139
+const TTk11 = 140
+const TTk12 = 141
+const TTk13 = 142
+const TTk14 = 143
+const TTk15 = 144
+const TLg0 = 145
+const TLg1 = 146
+const TLg2 = 147
+const TLg3 = 148
+const TLg4 = 149
+const TLg5 = 150
+const TLg6 = 151
+const TLg7 = 152
+const TLg8 = 153
+const TLg9 = 154
+const TLg10 = 155
+const TLg11 = 156
+const TLg12 = 157
+const TLg13 = 158
+const TLg14 = 159
+const TLg15 = 160
+const TLg16 = 161
+const TLg17 = 162
+const TLg18 = 163
+const TLg19 = 164
+const TLg20 = 165
+const TLg21 = 166
+const TLg22 = 167
+const TLg23 = 168
+const TLg24 = 169
+const TLg25 = 170
+const TLg26 = 171
+const TLg27 = 172
+const TLg28 = 173
+const TLg29 = 174
+const TLg30 = 175
+const TLg31 = 176
+const TLg32 = 177
+const TLg33 = 178
+const TLg34 = 179
+const TLg35 = 180
+const TLg36 = 181
+const TFlag = 182
+const SCar0 = 0
+const SCar1 = 4
+const SCar2 = 8
+const SCar3 = 12
+const SCar4 = 16
+const SCar5 = 20
+const SCar6 = 24
+const SCar7 = 28
+const NTiles8 = 440
+const SprBytes = 256
+const NTk8 = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndScrape = 3
+const SndBump = 4
+const SndBeep = 5
+const SndGo = 6
+const SndLap = 7
+const SndOver = 8
+const NSpr = 3
+const GasA = 42
+const CoastA = 20
+const HitLvl = 5
+const RepN = 8
+const WinLaps = 20
+const TrialSecs = 60
+const LineL = 126
+const LineR = 129
+const MidY = 92
+
+' speed level masks, a frame being two of the original's passes: level 0
+' moves 2 pixels a frame, level L > 0 one pixel when (frame AND mask) = 0
+data LvMask bytes
+  0, 0, 1, 3, 7, 15, 31, 63
+end data
+' grip by road (passes before the course follows the nose)
+data GripN bytes
+  6, 16, 31
+end data
+' heading steps (255 = -1): 0 up-left, 1 left, 2 down-left, 3 down,
+' 4 down-right, 5 right, 6 up-right, 7 up
+data StepX bytes
+  255, 255, 255, 0, 1, 1, 1, 0
+end data
+data StepY bytes
+  255, 0, 1, 1, 1, 0, 255, 255
+end data
+' the bump's push for the first car (from the cars' relative position)
+data PushD bytes
+  0, 2, 6, 4
+end data
+' a direction from the signs of dx, dy: index (sy+1)*3 + (sx+1)
+data SignDir bytes
+  0, 7, 6, 1, 1, 5, 2, 3, 4
+end data
+' sprite colours: red, yellow, magenta
+data CarCol bytes
+  8, 11, 13
+end data
+
+record Car:
+  u8 X
+  u8 Y
+  u8 Face
+  u8 Head
+  u16 Slow
+  u8 Slip
+  u8 Flags
+  u8 Laps
+  u8 Rep
+  u8 Hit
+  u8 Way
+  u8 Kind
+  bcd digits 2 LapB
+end record
+
+Car Cars[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 TOff = 0
+' the race
+u8 NCar = 1
+u8 Trk = 0
+u8 Road = 0
+u8 RaceKind = 0
+u8 Tk = 0
+u8 Fr = 0
+u8 Secs = 0
+u8 Mins = 0
+u8 Racing = 0
+u8 Over = 0
+u8 Winner = 0
+u8 Stk[3]
+u8 Best[12]
+u8 ScrapeT = 0
+u8 BumpT = 0
+u8 CpuLim = 0
+u8 TitleOn = 0
+u8 Count = 0
+bcd digits 2 LapShow
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 Was1 = 0
+u8 Was2 = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 EngLo3 = $C0
+u8 EngHi3 = 0
+u8 EngVol3 = $DF
+u8 EngLo2 = $A0
+u8 EngHi2 = 0
+u8 EngVol2 = $BF
+' loop counters
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SwSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+  RunRace
+  ' the end: the result, then back to the title on a press
+  Over = 1
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one race
+
+sub RunRace:
+  SetupRace
+  NewScreen
+  DrawTrack
+  DrawStatus
+  DrawCars
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  ' the countdown: 5 to 1, a beep a second
+  Count = 5
+  while Count > 0
+    ShowCount
+    play sound SndBeep
+    for Ri = 1 to 60
+      Frame1
+      DrawCars
+    next
+    dec Count
+  end while
+  ShowCount
+  play sound SndGo
+  Racing = 1
+race_loop:
+  Frame1
+  ReadPad
+  RaceFrame
+  DrawCars
+  EngOut
+  if Racing = 1 then goto race_loop
+  EngVol3 = $DF
+  EngVol2 = $BF
+  EngOut
+  ShowResult
+  return
+end sub
+
+sub SetupRace:
+  u8 I = 0
+  u8 Sy = 0
+  NCar = 1
+  select case RaceKind
+  case 1
+    NCar = 2
+  case 2
+    NCar = 2
+  case 3
+    NCar = 3
+  end select
+  TOff = Trk * 420
+  CpuLim = 0
+  if Road > 0 then CpuLim = 1
+  for I = 0 to 2
+    Sy = Trk * 3
+    Sy = StartY[Sy + I]
+    Cars[I].X = 132
+    Cars[I].Y = Sy
+    Cars[I].Face = 1
+    Cars[I].Head = 1
+    Cars[I].Slow = $7FF
+    Cars[I].Slip = GripN[Road]
+    Cars[I].Flags = 0
+    Cars[I].Laps = 0
+    Cars[I].LapB = 0
+    Cars[I].Rep = 0
+    Cars[I].Hit = 0
+    Cars[I].Way = 0
+    Cars[I].Kind = I + 1
+    Stk[I] = 0
+  next
+  ' kinds: 1 player 1, 2 player 2, 3 computer
+  if RaceKind = 1 then Cars[1].Kind = 3
+  Tk = 0
+  Fr = 0
+  Secs = 0
+  Mins = 0
+  Racing = 0
+  Over = 0
+  Winner = 0
+  ScrapeT = 0
+  BumpT = 0
+  Was1 = 16
+  Was2 = 16
+  return
+end sub
+
+' one frame: sticks, steering, two passes of the original's loop, time
+sub RaceFrame:
+  u8 I = 0
+  u8 Last = 0
+  Last = NCar - 1
+  for I = 0 to Last
+    Stk[I] = StickOf(I)
+    Steer(I)
+  next
+  inc Tk
+  for I = 0 to Last
+    TickCar(I)
+  next
+  ' once a frame: grass, lap flags, bumps
+  for I = 0 to Last
+    CheckCar(I)
+  next
+  if NCar > 1 then Bumps
+  if ScrapeT > 0 then dec ScrapeT
+  if BumpT > 0 then dec BumpT
+  inc Fr
+  if Fr >= 60 then
+    Fr = 0
+    inc Secs
+    if Secs >= 60 then
+      Secs = 0
+      inc Mins
+    end if
+    ShowTime
+  end if
+  if RaceKind = 0 then
+    if Mins >= 1 then Racing = 0
+  end if
+  return
+end sub
+
+function StickOf(u8 I) as u8
+  select case Cars[I].Kind
+  case 1
+    return J1
+  case 2
+    return J2
+  end select
+  return Drive(I)
+
+' the nose: a step on a new push, then every 8 frames while held
+sub Steer(u8 I):
+  u8 S = 0
+  u8 F = 0
+  S = Stk[I] & 12
+  if S = 0 then
+    Cars[I].Rep = 0
+    return
+  end if
+  if Cars[I].Rep = 0 then
+    F = Cars[I].Face
+    if S & 4 then
+      F = F + 1
+    else
+      F = F + 7
+    end if
+    Cars[I].Face = F & 7
+    Cars[I].Rep = RepN
+  end if
+  Cars[I].Rep = Cars[I].Rep - 1
+  return
+end sub
+
+' one pass of the original's loop for one car (fields copied to locals
+' once, written back at the end)
+sub TickCar(u8 I):
+  u8 Fc = 0
+  u8 Hd = 0
+  u8 Gas = 0
+  u8 Lv = 0
+  u8 Q = 0
+  u8 Fl = 0
+  u8 Sl = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Go = 0
+  u16 S = 0
+  Fc = Cars[I].Face
+  Hd = Cars[I].Head
+  Sl = Cars[I].Slip
+  S = Cars[I].Slow
+  Cx = Cars[I].X
+  Cy = Cars[I].Y
+  Gas = Stk[I] & 16
+  if Fc <> Hd then
+    if Sl = 0 then
+      Hd = Fc
+      Sl = GripN[Road]
+    end if
+    dec Sl
+    Gas = 0
+  end if
+  Go = 1
+  if Gas > 0 then
+    if S >= GasA then S = S - GasA
+  else
+    S = S + CoastA
+    if S >= $800 then
+      S = S - CoastA
+      Go = 0
+    end if
+  end if
+  if Go = 1 then
+    Lv = highbyte S
+    if Lv = 0 then
+      Go = 2
+    else
+      V = Tk & LvMask[Lv]
+      if V > 0 then Go = 0
+    end if
+  end if
+  ' Go pixels along the course, inside the track area
+  while Go > 0
+    dec Go
+    Nx = Cx + StepX[Hd]
+    Ny = Cy + StepY[Hd]
+    if Nx >= 12 then
+      if Nx <= 244 then
+        if Ny >= 12 then
+          if Ny <= 172 then
+            Cx = Nx
+            Cy = Ny
+          end if
+        end if
+      end if
+    end if
+  end while
+  Cars[I].Face = Fc
+  Cars[I].Head = Hd
+  Cars[I].Slip = Sl
+  Cars[I].Slow = S
+  Cars[I].X = Cx
+  Cars[I].Y = Cy
+  return
+end sub
+
+' once a frame for each car: the grass holds it at level 5; the lap flags
+sub CheckCar(u8 I):
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Q = 0
+  u8 Fl = 0
+  u16 S = 0
+  Cx = Cars[I].X
+  Cy = Cars[I].Y
+  Fl = Touching(Cx, Cy)
+  Cars[I].Hit = Fl
+  if Fl = 1 then
+    S = Cars[I].Slow
+    if S < $500 then
+      S = S & 255
+      S = S + $500
+      Cars[I].Slow = S
+    end if
+    if I < 2 then
+      if ScrapeT = 0 then
+        play sound SndScrape
+        ScrapeT = 12
+      end if
+    end if
+  end if
+  Q = 0
+  if Cy >= MidY then Q = 2
+  if Cx >= LineL then
+    if Cx <= LineR then Q = Q + 1
+  end if
+  Fl = Cars[I].Flags | Bit(Q)
+  if Fl >= 15 then
+    if Q = 3 then
+      LapDone(I)
+      return
+    end if
+  end if
+  Cars[I].Flags = Fl
+  return
+end sub
+
+function Bit(u8 N) as u8
+  select case N
+  case 0
+    return 1
+  case 1
+    return 2
+  case 2
+    return 4
+  end select
+  return 8
+
+sub LapDone(u8 I):
+  Cars[I].Flags = 0
+  Cars[I].Laps = Cars[I].Laps + 1
+  Cars[I].LapB += 1
+  ShowLaps(I)
+  play sound SndLap
+  if RaceKind > 0 then
+    if Cars[I].Laps >= WinLaps then
+      if Racing = 1 then
+        Winner = I + 1
+        Racing = 0
+      end if
+    end if
+  end if
+  return
+end sub
+
+' at least level 5 (keeps the fraction, as the original)
+sub SlowDown(u8 I):
+  u16 S = 0
+  S = Cars[I].Slow
+  if S < $500 then
+    S = S & 255
+    S = S + $500
+    Cars[I].Slow = S
+  end if
+  return
+end sub
+
+' one pixel along heading D, inside the screen's track area
+sub MoveCar(u8 I, u8 D):
+  u8 Nx = 0
+  u8 Ny = 0
+  Nx = Cars[I].X + StepX[D]
+  Ny = Cars[I].Y + StepY[D]
+  if Nx < 12 then return
+  if Nx > 244 then return
+  if Ny < 12 then return
+  if Ny > 172 then return
+  Cars[I].X = Nx
+  Cars[I].Y = Ny
+  return
+end sub
+
+' the 8 x 8 box round the centre on the track map (ColOf: x -> cell
+' column, 20 off the map; RowOf: y -> cell row * 20, 999 off the map)
+function Touching(u8 Px, u8 Py) as u8
+  u8 L = 0
+  u8 Rt = 0
+  u16 Tp = 0
+  u16 Bt = 0
+  L = ColOf[Px - 4]
+  Rt = ColOf[Px + 3]
+  if Rt >= 20 then return 1
+  if L >= 20 then return 1
+  Tp = RowOf[Py - 4]
+  Bt = RowOf[Py + 3]
+  if Bt >= 420 then return 1
+  if Tp >= 420 then return 1
+  Tp = Tp + TOff
+  Bt = Bt + TOff
+  if TrackWall[Tp + L] = 1 then return 1
+  if TrackWall[Tp + Rt] = 1 then return 1
+  if TrackWall[Bt + L] = 1 then return 1
+  if TrackWall[Bt + Rt] = 1 then return 1
+  return 0
+
+function Dist(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' cars that touch: pushed a pixel apart, both down to level 5
+sub Bumps:
+  u8 A = 0
+  u8 B = 0
+  u8 Q = 0
+  u8 D = 0
+  u8 Lb = 0
+  Lb = NCar - 2
+  for A = 0 to Lb
+    for B = A + 1 to NCar - 1
+      if Dist(Cars[A].X, Cars[B].X) < 9 then
+        if Dist(Cars[A].Y, Cars[B].Y) < 9 then
+          Q = 0
+          if Cars[A].X >= Cars[B].X then Q = 2
+          if Cars[A].Y >= Cars[B].Y then Q = Q + 1
+          D = PushD[Q]
+          MoveCar(A, D)
+          D = D + 4
+          MoveCar(B, D & 7)
+          SlowDown(A)
+          SlowDown(B)
+          if BumpT = 0 then
+            play sound SndBump
+            BumpT = 10
+          end if
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's driver: head for the next point of the path, slow down
+' for sharp turns, gas only when nose and course agree
+
+' the 8-way direction from (Fx,Fy) to (Tx,Ty): a diagonal unless one
+' side is 2.4 times the other (12/5, about tan 67.5 degrees)
+function DirTo(u8 Fx, u8 Fy, u8 Tx, u8 Ty) as u8
+  u16 Ax = 0
+  u16 Ay = 0
+  u8 Sx = 1
+  u8 Sy = 1
+  if Tx > Fx then
+    Sx = 2
+    Ax = Tx - Fx
+  elseif Tx < Fx then
+    Sx = 0
+    Ax = Fx - Tx
+  end if
+  if Ty > Fy then
+    Sy = 2
+    Ay = Ty - Fy
+  elseif Ty < Fy then
+    Sy = 0
+    Ay = Fy - Ty
+  end if
+  if Ax * 5 > Ay * 12 then Sy = 1
+  if Ay * 5 > Ax * 12 then Sx = 1
+  return SignDir[Sy * 3 + Sx]
+
+function Drive(u8 I) as u8
+  u8 Wo = 0
+  u8 Wn = 0
+  u8 K2 = 0
+  u8 Wx = 0
+  u8 Wy = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Want = 0
+  u8 Df = 0
+  u8 Tn = 0
+  u8 Lim = 0
+  u8 B = 0
+  u16 Md = 0
+  Wo = WayOff[Trk]
+  Wn = WayN[Trk]
+  Cx = Cars[I].X
+  Cy = Cars[I].Y
+  K2 = Cars[I].Way
+  Wx = WayX[Wo + K2]
+  Wy = WayY[Wo + K2]
+  if Dist(Wx, Cx) < 10 then
+    if Dist(Wy, Cy) < 10 then
+      inc K2
+      if K2 >= Wn then K2 = 0
+      Cars[I].Way = K2
+      Wx = WayX[Wo + K2]
+      Wy = WayY[Wo + K2]
+    end if
+  end if
+  Want = DirTo(Cx, Cy, Wx, Wy)
+  Df = Want - Cars[I].Face
+  Df = Df & 7
+  if Df >= 1 then
+    if Df <= 4 then
+      B = 4
+    else
+      B = 8
+    end if
+  end if
+  Lim = CpuLim
+  ' the turn at the point ahead
+  inc K2
+  if K2 >= Wn then K2 = 0
+  Tn = DirTo(Wx, Wy, WayX[Wo + K2], WayY[Wo + K2]) - Want
+  Tn = Tn & 7
+  if Tn > 4 then Tn = 8 - Tn
+  Md = Dist(Wx, Cx)
+  Md = Md + Dist(Wy, Cy)
+  if Tn >= 2 then
+    if Md < 40 then
+      if Lim < 1 then Lim = 1
+    end if
+  end if
+  if Df = 0 then
+    if Cars[I].Face = Cars[I].Head then
+      if highbyte Cars[I].Slow >= Lim then B = B | 16
+    end if
+  end if
+  return B
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawCars:
+  u8 I = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 P = 0
+  for I = 0 to 2
+    if I < NCar then
+      Sx = Cars[I].X - 8
+      Sy = Cars[I].Y - 9
+      P = Cars[I].Head
+      P = P << 2
+      set sprite I to Sy,Sx,P,CarCol[I]
+    else
+      set sprite I to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the engines: player 1 (car 0) on tone 3, car 1 on tone 2; higher with speed
+sub EngOut:
+  u16 N = 0
+  u8 A = 0
+  N = Cars[0].Slow >> 2
+  N = N + 120
+  A = N & 15
+  EngLo3 = A | $C0
+  EngHi3 = N >> 4
+  EngVol3 = $DA
+  if Cars[0].Slow >= $7E0 then EngVol3 = $DF
+  EngVol2 = $BF
+  if NCar > 1 then
+    N = Cars[1].Slow >> 2
+    N = N + 130
+    A = N & 15
+    EngLo2 = A | $A0
+    EngHi2 = N >> 4
+    EngVol2 = $BB
+    if Cars[1].Slow >= $7E0 then EngVol2 = $BF
+  end if
+  if Racing = 0 then
+    EngVol3 = $DF
+    EngVol2 = $BF
+  end if
+  call asm SwEngOut
+  return
+end sub
+
+sub DrawTrack:
+  u16 Src = 0
+  u16 Dst = 0
+  Src = Trk * 630
+  for Ri = 1 to 21
+    Dst = Ri << 5
+    Dst = Dst + 1
+    copy TrackMap + Src count 30 to vram.name + Dst
+    Src = Src + 30
+  next
+  return
+end sub
+
+sub ShowTime:
+  if RaceKind = 0 then
+    print at 2,22, "TIME"
+    print Mins at 7,22 digits 1
+    print at 8,22, ":"
+    print Secs at 9,22 digits 2
+  else
+    print Mins at 2,22 digits 1
+    print at 3,22, ":"
+    print Secs at 4,22 digits 2
+  end if
+  return
+end sub
+
+sub ShowLaps(u8 I):
+  u8 Col = 0
+  if RaceKind = 0 then
+    print Cars[I].LapB at 17,22
+    return
+  end if
+  Col = I * 8
+  Col = Col + 11
+  print Cars[I].LapB at Col,22
+  return
+end sub
+
+sub DrawStatus:
+  u8 I = 0
+  u8 Col = 0
+  u8 Bi = 0
+  fill 32 count 28 at 2,22
+  ShowTime
+  if RaceKind = 0 then
+    print at 12,22, "LAPS"
+    ShowLaps(0)
+    Bi = Trk * 3
+    Bi = Bi + Road
+    print at 21,22, "BEST"
+    print Best[Bi] at 26,22 digits 2
+    return
+  end if
+  for I = 0 to NCar - 1
+    Col = I * 8
+    Col = Col + 7
+    ShowName(Cars[I].Kind, Col)
+    ShowLaps(I)
+  next
+  return
+end sub
+
+sub ShowName(u8 Kind, u8 Col):
+  select case Kind
+  case 1
+    print at Col,22, "P1"
+  case 2
+    print at Col,22, "P2"
+  case else
+    print at Col,22, "CPU"
+  end select
+  return
+end sub
+
+sub ShowCount:
+  if Count > 0 then
+    Banner(1)
+  else
+    Banner(0)
+  end if
+  return
+end sub
+
+' a message on row 11 over the track (0 clears: the track comes back)
+sub Banner(u8 Msg):
+  u16 Src = 0
+  if Msg = 0 then
+    Src = Trk * 630
+    Src = Src + 300
+    copy TrackMap + Src count 30 to vram.name + 353
+    return
+  end if
+  fill 32 count 16 at 8,11
+  select case Msg
+  case 1
+    print at 10,11, "READY"
+    print Count at 17,11 digits 1
+  case 2
+    print at 10,11, "TIME UP!"
+  case 3
+    print at 9,11, "NEW BEST!"
+  end select
+  return
+end sub
+
+sub ShowResult:
+  u8 Bi = 0
+  if RaceKind = 0 then
+    Bi = Trk * 3
+    Bi = Bi + Road
+    if Cars[0].Laps > Best[Bi] then
+      Best[Bi] = Cars[0].Laps
+      Banner(3)
+      print Best[Bi] at 26,22 digits 2
+    else
+      Banner(2)
+    end if
+    return
+  end if
+  fill 32 count 16 at 8,11
+  select case Cars[Winner - 1].Kind
+  case 1
+    print at 10,11, "P1 WINS!"
+  case 2
+    print at 10,11, "P2 WINS!"
+  case else
+    print at 10,11, "CPU WINS!"
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Press1 = 0
+  Press2 = 0
+  V = J1 & 16
+  if V > 0 then
+    if Was1 = 0 then Press1 = 1
+  end if
+  Was1 = V
+  V = J2 & 16
+  if V > 0 then
+    if Was2 = 0 then Press2 = 1
+  end if
+  Was2 = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  u16 Co = 0
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  ' the track tiles in the road's colours
+  Co = Road * NTk8
+  copy TrackCol + Co count NTk8 to vram.color + TTk0 * 8
+  copy TrackCol + Co count NTk8 to vram.color + 2048 + TTk0 * 8
+  copy TrackCol + Co count NTk8 to vram.color + 4096 + TTk0 * 8
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub DrawLogo:
+  u16 Ix = 0
+  u8 L = 0
+  u8 Ly = 0
+  u8 Lx = 0
+  u8 Col = 0
+  u8 T = 0
+  for L = 0 to 7
+    Col = L * 3
+    Col = Col + 4
+    for Ly = 0 to 3
+      for Lx = 0 to 2
+        Ix = L * 12
+        Ix = Ix + Ly * 3
+        Ix = Ix + Lx
+        T = LogoT[Ix]
+        X = Col + Lx
+        Y = Ly + 2
+        put char T at X,Y
+      next
+    next
+  next
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  DrawLogo
+  fill TFlag count 24 at 4,7
+  print at 7,8, "AHOY! DECEMBER 1986"
+  print at 6,11, "RACE"
+  print at 6,13, "TRACK"
+  print at 6,15, "ROAD"
+  print at 6,17, "START"
+  print at 6,19, "CREDITS"
+  print at 4,22, "STICK CHOOSES, BUTTON GOES"
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Was1 = 16
+  Was2 = 16
+tp_loop:
+  Frame1
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      MenuMove(V)
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  V = Press1 | Press2
+  if V = 0 then goto tp_loop
+  if TzOn = 1 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+  end if
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  HideSprites
+  if Menu = 4 then CreditsPage
+  return
+end sub
+
+sub MenuMove(u8 S):
+  if S & 1 then
+    if Menu > 0 then dec Menu
+    return
+  end if
+  if S & 2 then
+    if Menu < 4 then inc Menu
+    return
+  end if
+  select case Menu
+  case 0
+    if S & 8 then
+      RaceKind = RaceKind + 1
+    else
+      RaceKind = RaceKind + 3
+    end if
+    RaceKind = RaceKind & 3
+  case 1
+    if S & 8 then
+      Trk = Trk + 1
+    else
+      Trk = Trk + 3
+    end if
+    Trk = Trk & 3
+  case 2
+    if S & 8 then
+      inc Road
+      if Road > 2 then Road = 0
+    else
+      if Road = 0 then
+        Road = 2
+      else
+        dec Road
+      end if
+    end if
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 11 to 19
+    put char 32 at 4,Ri
+  next
+  J = Menu << 1
+  J = J + 11
+  put char 62 at 4,J
+  fill 32 count 16 at 13,11
+  select case RaceKind
+  case 0
+    print at 13,11, "ONE PLAYER"
+  case 1
+    print at 13,11, "1 PLAYER V CPU"
+  case 2
+    print at 13,11, "TWO PLAYERS"
+  case else
+    print at 13,11, "2 PLAYERS + CPU"
+  end select
+  K = Trk + 1
+  print K at 13,13 digits 1
+  fill 32 count 3 at 13,15
+  select case Road
+  case 0
+    print at 13,15, "DRY"
+  case 1
+    print at 13,15, "WET"
+  case else
+    print at 13,15, "ICY"
+  end select
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "SPEEDWAY"
+  print at 2,5, "BASED ON SPEEDWAY,"
+  print at 2,6, "AHOY! DECEMBER 1986"
+  print at 2,7, "(COMMODORE 64, MACHINE"
+  print at 2,8, "LANGUAGE). NO AUTHOR NAMED."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "THE FOUR TRACKS ARE THE"
+  print at 2,17, "ORIGINAL'S."
+  print at 2,19, "MUSIC: CHEQUERED FLAG"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$02,$00,$08,$80,$00,$11
+  $F0,$F0,$F0,$F0,$E0,$E0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$00,$00,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$00,$00,$C0,$C0
+  $F0,$F0,$F0,$F0,$07,$07,$03,$00
+  $00,$20,$02,$00,$01,$01,$03,$F0
+  $00,$20,$02,$00,$80,$80,$C0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$C0,$80,$80,$08,$80,$00,$11
+  $F0,$03,$01,$01,$08,$80,$00,$11
+  $00,$03,$07,$07,$F0,$F0,$F0,$F0
+  $00,$C0,$E0,$E0,$F0,$F0,$F0,$F0
+  $00,$03,$07,$07,$07,$07,$03,$00
+  $00,$C0,$E0,$E0,$E0,$E0,$C0,$00
+  $00,$00,$03,$03,$03,$03,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C3,$C3
+  $00,$00,$C0,$C0,$C0,$C0,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C0,$C0
+  $C3,$C3,$C3,$C3,$C3,$C3,$C0,$C0
+  $C0,$C0,$C3,$C3,$C3,$C3,$C3,$C3
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C0,$C0
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$03,$03
+  $C0,$C0,$C3,$C3,$C3,$C3,$00,$00
+  $C3,$C3,$00,$00,$00,$00,$00,$00
+  $03,$03,$C3,$C3,$C3,$C3,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$03,$03
+  $03,$03,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$03,$03,$03,$03,$00,$00
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C0,$C0,$C0,$C0,$00,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $02,$C2,$C2,$02,$C2,$C2,$02,$C2
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $FE,$FE,$0E,$0E,$FE,$FE,$0E,$0E
+  $0E,$0E,$FE,$FE,$0E,$0E,$FE,$FE
+  $E2,$E2,$E2,$E2,$2E,$2E,$2E,$0E
+  $02,$C2,$C2,$02,$E2,$E2,$E2,$2E
+  $02,$C2,$C2,$02,$E2,$E2,$E2,$E2
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $E2,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $E2,$E2,$E2,$E2,$C2,$C2,$02,$C2
+  $2E,$E2,$E2,$E2,$C2,$C2,$02,$C2
+  $0E,$2E,$2E,$2E,$E2,$E2,$E2,$E2
+  $0E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $0E,$2E,$2E,$2E,$2E,$2E,$2E,$0E
+  $0E,$2E,$2E,$2E,$2E,$2E,$2E,$0E
+  $01,$01,$F1,$B1,$B1,$B1,$1F,$1B
+  $01,$01,$0F,$0B,$0B,$0B,$01,$01
+  $01,$01,$1F,$1B,$1B,$1B,$01,$01
+  $1B,$1B,$1F,$1B,$1B,$1B,$F1,$B1
+  $01,$01,$01,$01,$01,$01,$0F,$0B
+  $01,$01,$01,$01,$01,$01,$F1,$B1
+  $B1,$B1,$01,$01,$01,$01,$01,$01
+  $0B,$0B,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$1F,$18,$18,$18,$1F,$18
+  $01,$01,$1F,$18,$18,$18,$01,$01
+  $01,$01,$0F,$08,$08,$08,$01,$01
+  $18,$18,$F1,$81,$81,$81,$01,$01
+  $01,$01,$1F,$1B,$1B,$1B,$1F,$1B
+  $01,$01,$F1,$B1,$B1,$B1,$1F,$1B
+  $1B,$1B,$1F,$1B,$1B,$1B,$1F,$1B
+  $1B,$1B,$1F,$1B,$1B,$1B,$F1,$B1
+  $1B,$1B,$1F,$18,$18,$18,$1F,$18
+  $B1,$B1,$01,$01,$01,$01,$01,$01
+  $18,$18,$1F,$18,$18,$18,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $18,$18,$1F,$18,$18,$18,$01,$01
+  $01,$01,$1F,$18,$18,$18,$01,$01
+  $1B,$1B,$1F,$1B,$1B,$1B,$1F,$1B
+  $1B,$1B,$1F,$18,$18,$18,$1F,$18
+  $01,$01,$1F,$1B,$1B,$1B,$1F,$1B
+  $01,$01,$01,$01,$01,$01,$1F,$1B
+  $1B,$1B,$1F,$18,$18,$18,$1F,$18
+  $1B,$1B,$1F,$18,$18,$18,$F1,$81
+  $1B,$1B,$1F,$18,$18,$18,$1F,$18
+  $18,$18,$1F,$18,$18,$18,$01,$01
+  $81,$81,$01,$01,$01,$01,$01,$01
+  $18,$18,$1F,$18,$18,$18,$01,$01
+  $1B,$1B,$1F,$1B,$1B,$1B,$1F,$1B
+  $1B,$1B,$1F,$18,$18,$18,$1F,$18
+  $1B,$1B,$F1,$B1,$B1,$B1,$01,$01
+  $01,$01,$F1,$B1,$B1,$B1,$1F,$1B
+  $1B,$1B,$F1,$B1,$B1,$B1,$01,$01
+  $F1,$1F,$F1,$1F,$F1,$1F,$F1,$1F
+end data
+data SpritePat bytes
+  $00,$00,$3B,$3B,$3D,$0F,$37,$3E,$3E,$3E,$03,$01,$01,$01,$01,$00
+  $00,$00,$C0,$C0,$C0,$C0,$E0,$3E,$BE,$7E,$F8,$F8,$F8,$C0,$C0,$00
+  $00,$00,$00,$0C,$1E,$1F,$67,$FE,$FE,$67,$1F,$1E,$0C,$00,$00,$00
+  $00,$00,$00,$18,$3C,$F8,$7C,$BE,$BE,$7C,$F8,$3C,$18,$00,$00,$00
+  $00,$01,$01,$01,$01,$03,$3E,$3E,$3E,$37,$0F,$3D,$3B,$3B,$00,$00
+  $00,$C0,$C0,$F8,$F8,$F8,$7E,$BE,$3E,$E0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$01,$0B,$1F,$1F,$0F,$06,$05,$06,$0F,$1F,$1D,$0D,$03,$03,$01
+  $00,$80,$D0,$F8,$F8,$F0,$60,$A0,$60,$F0,$F8,$B8,$B0,$C0,$C0,$80
+  $00,$03,$03,$1F,$1F,$1F,$7E,$7D,$7C,$07,$03,$03,$03,$03,$00,$00
+  $00,$80,$80,$80,$80,$C0,$7C,$7C,$7C,$EC,$F0,$BC,$DC,$DC,$00,$00
+  $00,$00,$00,$18,$3C,$1F,$3E,$7D,$7D,$3E,$1F,$3C,$18,$00,$00,$00
+  $00,$00,$00,$30,$78,$F8,$E6,$7F,$7F,$E6,$F8,$78,$30,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$07,$7C,$7D,$7E,$1F,$1F,$1F,$03,$03,$00
+  $00,$00,$DC,$DC,$BC,$F0,$EC,$7C,$7C,$7C,$C0,$80,$80,$80,$80,$00
+  $01,$03,$03,$0D,$1D,$1F,$0F,$06,$05,$06,$0F,$1F,$1F,$0B,$01,$00
+  $80,$C0,$C0,$B0,$B8,$F8,$F0,$60,$A0,$60,$F0,$F8,$F8,$D0,$80,$00
+end data
+data TrackMap bytes
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,130,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,134,129,129,129,129
+  129,129,129,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,129,129,129
+  129,129,135,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,136,129,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,139,129,129,129,129,140,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,141,129,129,129,129,129,129,129,129,142,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,139,129,129,129,129,129,129,129,129,129,129,140,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,129,129,129,129,129,129,129,129,129,129,129,129,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,129,129,129,129,129,129,129,129,129,129,129,129,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,129,129,129,129,129,129,129,129,129,129,129,129,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,136,129,129,129,129,129,129,129,129,129,129,135,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,134,129,129,129,129,129,129,129,129,130,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,136,129,129,129,129,135,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,129,140,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,139,129,129
+  129,129,129,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,129,129,129
+  129,129,129,129,142,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,141,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,130,131,131,131,131,131,134,129,129,129,129,129,129,129,129,130,131,131,131,131,131,134,129,129,129,129
+  129,129,129,131,131,131,131,131,131,131,131,131,136,129,129,129,129,135,131,131,131,131,131,131,131,131,131,129,129,129
+  129,129,135,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,136,129,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,141,140,131,131,131,131,131,132,133,131,131,131,131,131,139,142,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,138,129,129,129,140,131,131,132,133,131,131,139,129,129,129,137,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,137,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,137,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,137,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,138,129,129,129,135,131,131,132,133,131,131,136,129,129,129,137,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,134,135,131,131,131,131,131,132,133,131,131,131,131,131,136,130,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,129,140,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,139,129,129
+  129,129,129,131,131,131,131,131,131,131,131,131,139,129,129,129,129,140,131,131,131,131,131,131,131,131,131,129,129,129
+  129,129,129,129,142,131,131,131,131,131,141,129,129,129,129,129,129,129,129,142,131,131,131,131,131,141,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,130,131,131,131,131,131,131,131,136,129,129,129,129,135,131,131,131,131,131,131,131,134,129,129,129,129
+  129,129,129,131,131,131,131,131,131,131,131,131,131,138,129,129,137,131,131,131,131,131,131,131,131,131,131,129,129,129
+  129,129,135,131,131,131,131,131,131,131,131,131,131,134,129,129,130,131,131,131,131,131,131,131,131,131,131,136,129,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,139,129,140,131,131,132,133,131,131,139,129,140,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,141,129,129,129,129,129,142,132,133,141,129,129,129,129,129,142,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,137,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,134,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,136,129,129,129,129,129,129,129,129,129,129,135,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,129,140,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,139,129,129
+  129,129,129,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,129,129,129
+  129,129,129,129,142,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,141,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+  129,129,135,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,136,129,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,143,129,129,129,129,129,129,129,129,129,129,129,129,129,129,144,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,134,129,129,129,129,129,129,129,129,130,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,136,129,129,129,129,135,131,131,131,131,131,131,131,131,131,131,138,129
+  129,129,140,131,131,131,131,131,131,131,131,131,131,138,129,129,137,131,131,131,131,131,131,131,131,131,131,139,129,129
+  129,129,129,129,129,140,131,131,131,131,131,131,131,138,129,129,137,131,131,131,131,131,131,131,139,129,129,129,129,129
+  129,129,129,129,129,129,129,144,131,131,131,131,131,138,129,129,137,131,131,131,131,131,143,129,129,129,129,129,129,129
+  129,129,129,129,129,135,131,131,131,131,131,131,131,138,129,129,137,131,131,131,131,131,131,131,136,129,129,129,129,129
+  129,129,135,131,131,131,131,131,131,131,131,131,131,138,129,129,137,131,131,131,131,131,131,131,131,131,131,136,129,129
+  129,137,131,131,131,131,131,131,131,131,131,131,139,129,129,129,129,140,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,141,129,129,129,129,129,129,129,129,142,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,143,129,129,129,129,129,129,129,129,129,129,129,129,129,129,144,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,137,131,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,131,138,129
+  129,129,140,131,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,131,139,129,129
+  129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129
+end data
+data TrackWall bytes
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1
+  1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,0,0,0,0,1,1,1,1,1,1,0,0,0,0,1,1,1
+  1,1,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,1,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,1,1
+  1,1,1,0,0,0,0,1,1,1,1,1,1,0,0,0,0,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,0,1,1,1
+  1,1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,1
+  1,1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,0,0,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1
+  1,1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,1
+  1,1,1,1,0,0,0,0,0,1,1,0,0,0,0,0,1,1,1,1
+  1,1,1,1,1,0,0,0,0,1,1,0,0,0,0,1,1,1,1,1
+  1,1,1,1,0,0,0,0,0,1,1,0,0,0,0,0,1,1,1,1
+  1,1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,1
+  1,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1
+  1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+end data
+data TrackCol bytes
+  2,194,194,2,194,194,2,194,46,46,46,46,46,46,46,14,14,14,14,14,14,14,14,14,254,254,14,14,254,254,14,14
+  14,14,254,254,14,14,254,254,226,226,226,226,46,46,46,14,2,194,194,2,226,226,226,46,2,194,194,2,226,226,226,226
+  46,46,46,46,46,46,46,46,226,226,226,226,226,226,226,226,226,226,226,226,194,194,2,194,46,226,226,226,194,194,2,194
+  14,46,46,46,226,226,226,226,14,46,46,46,46,46,46,46,14,46,46,46,46,46,46,14,14,46,46,46,46,46,46,14
+  12,44,44,12,44,44,12,44,196,196,196,196,196,196,196,4,4,4,4,4,4,4,4,4,244,244,4,4,244,244,4,4
+  4,4,244,244,4,4,244,244,76,76,76,76,196,196,196,4,12,44,44,12,76,76,76,196,12,44,44,12,76,76,76,76
+  196,196,196,196,196,196,196,196,76,76,76,76,76,76,76,76,76,76,76,76,44,44,12,44,196,76,76,76,44,44,12,44
+  4,196,196,196,76,76,76,76,4,196,196,196,196,196,196,196,4,196,196,196,196,196,196,4,4,196,196,196,196,196,196,4
+  15,95,95,15,95,95,15,95,245,245,245,245,245,245,245,5,5,5,5,5,5,5,5,5,69,69,5,5,69,69,5,5
+  5,5,69,69,5,5,69,69,95,95,95,95,245,245,245,5,15,95,95,15,95,95,95,245,15,95,95,15,95,95,95,95
+  245,245,245,245,245,245,245,245,95,95,95,95,95,95,95,95,95,95,95,95,95,95,15,95,245,95,95,95,95,95,15,95
+  5,245,245,245,95,95,95,95,5,245,245,245,245,245,245,245,5,245,245,245,245,245,245,5,5,245,245,245,245,245,245,5
+end data
+data LogoT bytes
+  145,146,147,148,149,150,151,152,153,154,155,156
+  157,146,158,159,149,160,161,152,162,163,164,164
+  157,146,147,159,149,150,161,152,162,165,155,166
+  157,146,147,159,149,150,161,152,162,165,155,166
+  157,146,158,167,164,167,168,164,168,165,155,156
+  169,164,169,167,170,167,171,172,173,174,175,176
+  145,146,158,159,149,177,161,152,178,163,164,163
+  169,164,169,179,180,181,164,168,164,164,163,164
+end data
+data StartY bytes
+  158,147,136,138,127,116,150,139,128,162,151,140
+end data
+data WayX bytes
+  98,62,44,44,62,98,158,194,212,212,194,158,110,62,44,44
+  62,110,146,194,212,212,194,146,110,62,44,44,62,110,146,194
+  212,212,194,146,110,56,44,62,92,62,44,62,128,194,212,194
+  164,194,212,194
+end data
+data WayY bytes
+  148,140,116,68,44,36,36,44,68,116,140,148,136,136,116,68
+  48,48,48,48,68,116,136,136,140,140,116,68,56,56,56,56
+  68,116,140,140,152,152,136,116,92,68,48,32,32,32,48,68
+  92,116,136,152
+end data
+data WayOff bytes
+  0,12,24,36
+end data
+data WayN bytes
+  12,12,12,16
+end data
+data ColOf bytes
+  20,20,20,20,20,20,20,20,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+  2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4
+  4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7
+  7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9
+  10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12
+  12,12,12,12,13,13,13,13,13,13,13,13,13,13,13,13,14,14,14,14,14,14,14,14,14,14,14,14,15,15,15,15
+  15,15,15,15,15,15,15,15,16,16,16,16,16,16,16,16,16,16,16,16,17,17,17,17,17,17,17,17,17,17,17,17
+  18,18,18,18,18,18,18,18,18,18,18,18,19,19,19,19,19,19,19,19,19,19,19,19,20,20,20,20,20,20,20,20
+end data
+data RowOf words
+  999,999,999,999,999,999,999,999,0,0,0,0,0,0,0,0,20,20,20,20,20,20,20,20,40,40,40,40,40,40,40,40
+  60,60,60,60,60,60,60,60,80,80,80,80,80,80,80,80,100,100,100,100,100,100,100,100,120,120,120,120,120,120,120,120
+  140,140,140,140,140,140,140,140,160,160,160,160,160,160,160,160,180,180,180,180,180,180,180,180,200,200,200,200,200,200,200,200
+  220,220,220,220,220,220,220,220,240,240,240,240,240,240,240,240,260,260,260,260,260,260,260,260,280,280,280,280,280,280,280,280
+  300,300,300,300,300,300,300,300,320,320,320,320,320,320,320,320,340,340,340,340,340,340,340,340,360,360,360,360,360,360,360,360
+  380,380,380,380,380,380,380,380,400,400,400,400,400,400,400,400,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999
+  999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999
+  999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999,999
+end data
+
+asm {
+SwEngOut:
+    ld a,(AMY_UVAR_EngLo3)
+    out ($FF),a
+    ld a,(AMY_UVAR_EngHi3)
+    out ($FF),a
+    ld a,(AMY_UVAR_EngVol3)
+    out ($FF),a
+    ld a,(AMY_UVAR_EngLo2)
+    out ($FF),a
+    ld a,(AMY_UVAR_EngHi2)
+    out ($FF),a
+    ld a,(AMY_UVAR_EngVol2)
+    out ($FF),a
+    ret
+SwScrape:
+    db $00,$00,$36,$03,$00,$00,$55,$03,$00,$00,$66,$04,$10
+SwBump:
+    db $00,$00,$14,$03,$00,$00,$35,$04,$00,$00,$56,$06,$10
+SwBeep:
+    db $40,$7F,$20,$0A,$50
+SwGo:
+    db $40,$40,$10,$1E,$50
+SwLap:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$47,$30,$08,$50
+SwOver:
+    db $40,$8F,$10,$0A,$40,$71,$10,$0A,$40,$5F,$20,$0A,$40,$47,$20,$1E,$50
+
+SwSoundTable:
+    dw SwTuneMel,$702B
+    dw SwTuneBass,$7035
+    dw SwScrape,$703F
+    dw SwBump,$703F
+    dw SwBeep,$7049
+    dw SwGo,$7049
+    dw SwLap,$7049
+    dw SwOver,$7049
+; Chequered Flag (original)
+; Tiny Sound, 8 frames per step
+SwTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$01,$26,$01,$21,$23,$01,$1F,$01
+    db $23,$26,$01,$01,$25,$01,$21,$01,$1C,$01,$21,$25,$28,$01,$26,$01
+    db $25,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$2A,$28,$26,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$23,$01,$21,$01,$1C,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SwTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$07,$01,$0B,$01,$0E,$01,$09,$01
+    db $07,$01,$09,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$00,$01
+    db $FF
+}

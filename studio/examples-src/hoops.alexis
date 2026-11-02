@@ -1,0 +1,1013 @@
+cartridge "HOOPS/AHOY! SEPTEMBER 1987/1987"
+
+' HOOPS
+' Inspired by and adapted from "Hoops", Ahoy! September 1987 (Commodore
+' 64, machine language; the disk's note: "Hoops combines the games of
+' basketball and computer pong into a fast action contest for one or two
+' players"). Made for the ColecoVision in Amy (the language by Amy
+' Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' The original was run in a C64 emulator and its 6502 code read (orig/:
+' the program, its disassembly and screenshots). Kept from it:
+' - a gym seen from the side: two hoops with nets on side backboards, a
+'   scoreboard of lamps (00 to 21), the floor, an orange ball;
+' - each player is a dome sliding on the floor in his own half (red left,
+'   yellow right); the ball falls and bounces, and a dome sends it back
+'   up, always as high, at an angle set by where it meets the dome (10
+'   angles: far from the middle, flat and fast; near it, steep);
+' - walls, ceiling and backboards bounce it, the floor too, so the ball
+'   never stops; it passes up through a net and scores only falling into
+'   it: red scores in the right hoop, yellow in the left one;
+' - one point a basket, first to 21; one or two players, and for one
+'   player a level 1-6 (the computer's dome follows the ball and meets it
+'   off-centre, so it shoots flatter and harder as the level rises).
+' Made for this machine: the ball and domes are sprites moving in 1/16
+' pixel steps at 60 frames a second with real gravity; a wood floor; the
+' net swishes on a basket; crowd, whistle, boing and swish sounds; an
+' original title tune ("Tip-Off") and a quiet loop under play ("Full
+' Court"), the music first in the sound table.
+'
+' Controls: the stick slides the dome (red: either joystick for one
+' player, joystick 1 for two; yellow: joystick 2). On the title: up and
+' down choose a line, left and right change players and level, a button
+' picks.
+'
+' House rules kept: text in columns 2-29 and rows 1-22, tiles from code
+' 128, every screen drawn with the NMI off after a wait, nothing flashes.
+
+const TPanel = 128
+const TLon = 129
+const TLoff = 130
+const TTon = 131
+const TSign = 132
+const TTrim = 133
+const TWall = 134
+const TWood = 135
+const TWood2 = 136
+const TCourt = 137
+const TBoardl = 138
+const TBoardr = 139
+const TRim = 140
+const TNet = 141
+const TNet2 = 142
+const TArl = 143
+const TArr = 144
+const TArlg = 145
+const TArrg = 146
+const SBall = 0
+const SDome = 4
+const NTiles8 = 152
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPlayA = 3
+const SndPlayB = 4
+const SndPad = 5
+const SndFloor = 6
+const SndWall = 7
+const SndSwish = 8
+const SndCrowd = 9
+const SndScore = 10
+const SndWhistle = 11
+const SndOver = 12
+const SndTick = 13
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the ball: Bx, By its top left in 1/16 pixels; Vx, Vy its speeds (1/16
+' a frame); Dx 0 right / 1 left, Dy 0 down / 1 up; Dir its angle (0-9)
+u16 Bx = 0
+u16 By = 0
+u8 Vx = 0
+u8 Vy = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Dir = 0
+' the ball in pixels, its centre, and its centre's height a frame ago
+u8 Bxp = 0
+u8 Byp = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Pcy = 0
+' the domes' left ends (red 24-104, yellow 136-216) and the scores
+u8 P1 = 64
+u8 P2 = 176
+u8 S1 = 0
+u8 S2 = 0
+u8 Players = 1
+u8 Lev = 1
+' Ph: 0 title, 1 tip-off, 2 play, 3 over; Hit: what the ball met this
+' frame (bits: 1 dome, 2 floor, 4 wall, 8 basket left, 16 basket right)
+u8 Ph = 0
+u8 Hit = 0
+u8 Sw = 0
+u8 SwSide = 0
+u8 Idle = 0
+' the computer: Err angles off (Es 0 flatter / 1 steeper); Rj the launch's
+' random part; W16 a sum
+u8 Err = 0
+u8 Es = 0
+u8 Rj = 0
+u16 W16 = 0
+
+u8 Menu = 0
+u8 L1 = 0
+u8 R1 = 0
+u8 L2 = 0
+u8 R2 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 T = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table HpSoundTable areas 6
+  sprites 16x16
+  set sprite count 3
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+new_game:
+  S1 = 0
+  S2 = 0
+  P1 = 64
+  P2 = 176
+  Sw = 0
+  DrawCourt
+  ShowScores
+  ShowScreen
+  ' the tip-off: the ball over the middle, about to fall; a whistle
+  Ph = 1
+  Bx = 1984
+  By = 1024
+  Vy = 0
+  Dy = 0
+  Dir = random(4, 5)
+  SetDir
+  Pcy = 68
+  print at 11,10, "TIP-OFF!"
+  play sound SndWhistle
+  for Tm = 1 to 60
+    Frame1
+    ReadPad
+    MoveDomes
+    Bxp = Bx >> 4
+    Byp = By >> 4
+    DrawSprites
+  next
+  print at 11,10, "        "
+  play sound SndPlayA
+  play sound SndPlayB
+  Ph = 2
+
+play_loop:
+  Frame1
+  ReadPad
+  MoveDomes
+  MoveBall
+  DrawSprites
+  if Hit > 7 then Basket
+  if Sw > 0 then NetSwish
+  if Ph = 3 then goto game_over
+  goto play_loop
+
+game_over:
+  stop sound SndPlayA
+  stop sound SndPlayB
+  mute all
+  play sound SndWhistle
+  play sound SndOver
+  if Players = 1 then
+    if S1 >= 21 then
+      print at 11,10, "YOU WIN!"
+    else
+      print at 9,10, "COMPUTER WINS"
+    end if
+  else
+    if S1 >= 21 then
+      print at 10,10, "RED WINS!"
+    else
+      print at 9,10, "YELLOW WINS!"
+    end if
+  end if
+  for Tm = 1 to 90
+    Frame1
+  next
+  print at 8,12, "PRESS A BUTTON"
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' SetDir: the speed across for angle Dir (0-4 left, 5-9 right)
+sub SetDir:
+  Vx = Vxt[Dir]
+  Dx = 0
+  if Dir < 5 then Dx = 1
+  return
+end sub
+
+' MoveDomes: red from its stick; yellow from joystick 2, or the computer
+sub MoveDomes:
+  if L1 = 1 then
+    if P1 > 26 then
+      P1 = P1 - 2
+    else
+      P1 = 24
+    end if
+  end if
+  if R1 = 1 then
+    if P1 < 102 then
+      P1 = P1 + 2
+    else
+      P1 = 104
+    end if
+  end if
+  if Players = 1 then CompAim
+  if L2 = 1 then
+    if P2 > 138 then
+      P2 = P2 - 2
+    else
+      P2 = 136
+    end if
+  end if
+  if R2 = 1 then
+    if P2 < 214 then
+      P2 = P2 + 2
+    else
+      P2 = 216
+    end if
+  end if
+  return
+end sub
+
+' CompAim: the computer's dome. It works out the angle that would drop
+' the ball into the left net from where the ball is (the speed across
+' needed is about (Cx - 43) x 9 / 32), misses that by Err angles (chosen
+' at each of red's shots: 0 to 6 - level, steeper or flatter), and goes
+' to the place on its dome that gives it
+sub CompAim:
+  W16 = 0
+  if Cx > 43 then
+    W16 = Cx - 43
+    W16 = W16 * 9
+    W16 = W16 >> 5
+  end if
+  V = W16
+  N = 4
+  if V >= 8 then N = 3
+  if V >= 16 then N = 2
+  if V >= 25 then N = 1
+  if V >= 35 then N = 0
+  if Es = 0 then
+    N = N + Err
+    if N > 4 then N = 4
+  else
+    if N >= Err then
+      N = N - Err
+    else
+      N = 0
+    end if
+  end if
+  K = KofDir[N]
+  T = Cx + 3
+  T = T - K
+  if T < 136 then T = 136
+  if T > 216 then T = 216
+  L2 = 0
+  R2 = 0
+  V = T + 1
+  if P2 > V then L2 = 1
+  V = P2 + 1
+  if T > V then R2 = 1
+  return
+end sub
+
+' MoveBall: across (walls, backboards), then gravity and down or up
+' (ceiling, backboards, domes, floor), then the baskets
+sub MoveBall:
+  Hit = 0
+  if Dx = 0 then
+    Bx = Bx + Vx
+  else
+    Bx = Bx - Vx
+  end if
+  Bxp = Bx >> 4
+  Byp = By >> 4
+  if Bxp < 24 then
+    Bx = 384
+    Dx = 0
+    Hit = 4
+  end if
+  if Bxp > 224 then
+    Bx = 3584
+    Dx = 1
+    Hit = 4
+  end if
+  ' the backboards: x 28-31 (left) and 224-227 (right), y 80-111
+  if Byp >= 73 then
+    if Byp < 112 then
+      Bxp = Bx >> 4
+      if Dx = 1 then
+        if Bxp < 32 then
+          Bx = 512
+          Dx = 0
+          Hit = 4
+        end if
+      else
+        if Bxp > 216 then
+          Bx = 3456
+          Dx = 1
+          Hit = 4
+        end if
+      end if
+    end if
+  end if
+  Bxp = Bx >> 4
+  ' gravity: 2 a frame
+  if Dy = 1 then
+    if Vy > 2 then
+      Vy = Vy - 2
+    else
+      Vy = 0
+      Dy = 0
+    end if
+  else
+    if Vy < 96 then Vy = Vy + 2
+  end if
+  if Dy = 0 then
+    By = By + Vy
+  else
+    By = By - Vy
+  end if
+  Byp = By >> 4
+  if Byp < 56 then
+    By = 896
+    Byp = 56
+    Dy = 0
+    Hit = 4
+  end if
+  ' the tops of the backboards (only over them)
+  V = Byp + 7
+  if V >= 80 then
+    if Byp < 112 then
+      W = 0
+      if Bxp < 32 then W = 1
+      if Bxp > 216 then W = 1
+      if W = 1 then
+        if Dy = 0 then
+          By = 1152
+          Dy = 1
+        else
+          By = 1792
+          Dy = 0
+        end if
+        Byp = By >> 4
+        Hit = Hit | 4
+      end if
+    end if
+  end if
+  Cx = Bxp + 4
+  ' the domes (tops at 170): only falling, the ball's bottom on one
+  if Dy = 0 then
+    V = Byp + 8
+    if V >= 170 then
+      if V < 178 then
+        Dome(P1)
+        if Hit < 1 then Dome(P2)
+      end if
+    end if
+  end if
+  ' the floor (176)
+  V = Byp + 8
+  if V >= 176 then
+    By = 2688
+    Byp = 168
+    Dy = 1
+    Hit = Hit | 2
+  end if
+  ' the baskets: the centre falling through the rim's height (113) inside
+  ' a net (left x 33-54 scores for yellow, right x 201-222 for red)
+  Cy = Byp + 4
+  if Dy = 0 then
+    if Pcy < 113 then
+      if Cy >= 113 then
+        if Cx >= 33 then
+          if Cx <= 54 then Hit = Hit | 8
+        end if
+        if Cx >= 201 then
+          if Cx <= 222 then Hit = Hit | 16
+        end if
+      end if
+    end if
+  end if
+  Pcy = Cy
+  V = Hit & 1
+  if V = 1 then play sound SndPad
+  V = Hit & 4
+  if V = 4 then play sound SndWall
+  V = Hit & 2
+  if V = 2 then
+    if Vy > 16 then play sound SndFloor
+  end if
+  return
+end sub
+
+' Dome(P): the ball meets the dome whose left end is P? Then it goes up,
+' always as high, at the angle of where it met: k = 0 (far left of the
+' middle) .. 22 (far right) -> Dir 0-9
+sub Dome(u8 P):
+  V = P + 18
+  if Cx > V then return
+  V = Cx + 3
+  if V < P then return
+  K = Cx + 11
+  W = P + 8
+  K = K - W
+  if K > 22 then K = 22
+  Dir = DirT[K]
+  SetDir
+  Dy = 1
+  ' always about as high (84 give or take, as the original's random
+  ' phase); red's shot sets the computer's next error
+  Rj = random(0, 8)
+  Vy = 80 + Rj
+  if P = P1 then
+    V = 6 - Lev
+    Err = random(0, V)
+    Es = random(0, 1)
+  end if
+  By = 2592
+  Byp = 162
+  Hit = Hit | 1
+  return
+end sub
+
+' Basket: a point for whoever shot it, the net swishes, the crowd cheers
+sub Basket:
+  V = Hit & 8
+  if V = 8 then
+    inc S2
+    SwSide = 0
+  else
+    inc S1
+    SwSide = 1
+  end if
+  Sw = 24
+  play sound SndSwish
+  play sound SndCrowd
+  play sound SndScore
+  ShowScores
+  if S1 >= 21 then Ph = 3
+  if S2 >= 21 then Ph = 3
+  return
+end sub
+
+' NetSwish: the net's two shapes in turn for a moment (8 frames each)
+sub NetSwish:
+  dec Sw
+  V = Sw & 8
+  K = TNet
+  if V = 8 then K = TNet2
+  if Sw = 0 then K = TNet
+  X = 3
+  if SwSide = 1 then X = 25
+  for J = 0 to 3
+    put char K at X,15
+    inc X
+  next
+  return
+end sub
+
+sub DrawSprites:
+  V = Byp - 1
+  set sprite 0 to V,Bxp,SBall,10
+  set sprite 1 to 169,P1,SDome,8
+  set sprite 2 to 169,P2,SDome,11
+  update sprites
+  return
+end sub
+
+' ShowScores: red's two lamp digits on the left board, yellow's on the right
+sub ShowScores:
+  V = S1 / 10
+  X = 3
+  BigDigit(V)
+  V = S1 % 10
+  X = 7
+  BigDigit(V)
+  V = S2 / 10
+  X = 22
+  BigDigit(V)
+  V = S2 % 10
+  X = 26
+  BigDigit(V)
+  return
+end sub
+
+' BigDigit(D): digit D in 3 x 5 lamps, its top left at column X, row 1
+sub BigDigit(u8 D):
+  K = D * 15
+  for Y = 1 to 5
+    W = X
+    for J = 0 to 2
+      N = TLoff
+      if Dig[K] = 1 then N = TLon
+      put char N at W,Y
+      inc W
+      inc K
+    next
+  next
+  return
+end sub
+
+' DrawCourt: the scoreboard and sign, the gym's walls, floor, boards, hoops
+sub DrawCourt:
+  NewScreen
+  for Y = 1 to 5
+    fill TPanel count 28 at 2,Y
+  next
+  for Y = 2 to 4
+    fill TSign count 10 at 11,Y
+  next
+  print at 11,2, "H O O P S"
+  if Players = 1 then
+    print at 12,4, "LEVEL"
+    NumU = Lev
+    print at 18,4, digits$(NumU, 1)
+  else
+    print at 11,4, "2 PLAYERS"
+  end if
+  fill TTrim count 28 at 2,6
+  for Y = 7 to 21
+    put char TWall at 2,Y
+    put char TWall at 29,Y
+  next
+  for X = 2 to 29
+    V = X & 1
+    V = V + TWood
+    put char V at X,22
+  next
+  for Y = 10 to 13
+    put char TBoardl at 3,Y
+    put char TBoardr at 28,Y
+  next
+  fill TRim count 4 at 3,14
+  fill TRim count 4 at 25,14
+  fill TNet count 4 at 3,15
+  fill TNet count 4 at 25,15
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: red from joystick 1 (or either, alone), yellow from joystick 2
+sub ReadPad:
+  L1 = 0
+  R1 = 0
+  L2 = 0
+  R2 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  if joypad(1).left then L1 = 1
+  if joypad(1).right then R1 = 1
+  if joypad(2).left then L2 = 1
+  if joypad(2).right then R2 = 1
+  if Players = 1 then
+    L1 = L1 | L2
+    R1 = R1 | R2
+  end if
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn = 1
+  if joypad(2).button2 then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the gym, HOOPS in lamps, a ball bouncing between the domes,
+' and the menu (players, level, start, credits)
+sub TitlePage:
+  Ph = 0
+  S1 = 0
+  S2 = 0
+  DrawCourt
+  ShowScores
+  K = 0
+  for Y = 8 to 12
+    for X = 6 to 24
+      if Ttl[K] = 1 then put char TTon at X,Y
+      inc K
+    next
+  next
+  print at 9,15, "PLAYERS"
+  print at 9,16, "LEVEL"
+  print at 9,17, "START"
+  print at 9,18, "CREDITS"
+  Menu = 2
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Bx = 1024
+  By = 1200
+  Vy = 0
+  Dy = 0
+  Dir = 7
+  SetDir
+  P1 = 64
+  P2 = 176
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  ' the ball bounces on the floor and the walls (no domes, no baskets)
+  TitleBall
+  DrawSprites
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  V = L1 | R1
+  V = V | L2
+  V = V | R2
+  if V = 1 then
+    if WasStick = 0 then
+      W = L1 | L2
+      if Menu = 0 then
+        if W = 1 then
+          Players = 1
+        else
+          Players = 2
+        end if
+      end if
+      if Menu = 1 then
+        if Players = 1 then
+          if W = 1 then
+            if Lev > 1 then dec Lev
+          else
+            if Lev < 6 then inc Lev
+          end if
+        end if
+      end if
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  V = Up1 | Dn1
+  V = V | L1
+  V = V | R1
+  V = V | L2
+  V = V | R2
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+' TitleBall: the title's ball, bouncing on its own
+sub TitleBall:
+  if Dx = 0 then
+    Bx = Bx + Vx
+  else
+    Bx = Bx - Vx
+  end if
+  Bxp = Bx >> 4
+  if Bxp < 24 then
+    Bx = 384
+    Dx = 0
+  end if
+  if Bxp > 224 then
+    Bx = 3584
+    Dx = 1
+  end if
+  Bxp = Bx >> 4
+  if Dy = 1 then
+    if Vy > 2 then
+      Vy = Vy - 2
+    else
+      Vy = 0
+      Dy = 0
+    end if
+  else
+    if Vy < 96 then Vy = Vy + 2
+  end if
+  if Dy = 0 then
+    By = By + Vy
+  else
+    By = By - Vy
+  end if
+  Byp = By >> 4
+  V = Byp + 8
+  if V >= 176 then
+    By = 2688
+    Byp = 168
+    Dy = 1
+    Vy = 72
+  end if
+  return
+end sub
+
+' ShowMenu: the cursor, the players and the level between their arrows
+' (an arrow greys at the end of its range; the level greys for two)
+sub ShowMenu:
+  for Y = 15 to 18
+    put char 32 at 7,Y
+  next
+  V = Menu + 15
+  put char 62 at 7,V
+  V = TArl
+  if Players = 1 then V = TArlg
+  put char V at 18,15
+  NumU = Players
+  print at 19,15, digits$(NumU, 1)
+  V = TArr
+  if Players = 2 then V = TArrg
+  put char V at 20,15
+  V = TArl
+  if Lev = 1 then V = TArlg
+  if Players = 2 then V = TArlg
+  put char V at 18,16
+  NumU = Lev
+  print at 19,16, digits$(NumU, 1)
+  V = TArr
+  if Lev = 6 then V = TArrg
+  if Players = 2 then V = TArrg
+  put char V at 20,16
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  for X = 3 to 28
+    V = X & 1
+    V = V + TWood
+    put char V at X,2
+    put char V at X,21
+  next
+  print at 13,4, "HOOPS"
+  print at 4,6, "BASED ON HOOPS, AHOY!"
+  print at 4,7, "SEPTEMBER 1987 (COMMODORE"
+  print at 4,8, "64). AUTHOR'S NAME NOT ON"
+  print at 4,9, "THE DISK; CREDIT TO AHOY!"
+  print at 4,11, "MADE FOR THE COLECOVISION"
+  print at 4,12, "BY CLAUDE (AN AI MADE BY"
+  print at 4,13, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 4,14, "2026, IN AMY BY AMY"
+  print at 4,15, "BIENVENU."
+  print at 4,17, "MUSIC: TIP-OFF AND"
+  print at 4,18, "FULL COURT (ORIGINAL)"
+  print at 8,20, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$40,$40,$40,$40,$81,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$49,$24,$49,$24,$49,$24
+  $49,$24,$49,$24,$24,$14,$08,$00
+  $24,$49,$24,$49,$49,$28,$10,$00
+  $08,$18,$38,$87,$38,$18,$08,$00
+  $10,$18,$1C,$E1,$1C,$18,$10,$00
+  $08,$18,$38,$87,$38,$18,$08,$00
+  $10,$18,$1C,$E1,$1C,$18,$10,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $04,$41,$41,$41,$41,$41,$41,$04
+  $01,$19,$19,$19,$19,$19,$19,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0A,$0B,$0A,$01,$01,$01,$01,$01
+  $0E,$EF,$FE,$FE,$FE,$FE,$E1,$0E
+  $0B,$0A,$0A,$8A,$0A,$0A,$0A,$08
+  $0B,$0A,$0A,$8A,$0A,$0A,$0A,$08
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $08,$08,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $E1,$E1,$E1,$1E,$E1,$E1,$E1,$01
+  $E1,$E1,$E1,$1E,$E1,$E1,$E1,$01
+end data
+data SpritePat bytes
+  $3C,$5A,$DB,$FF,$DB,$5A,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$19,$37,$7F,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$FC,$FC,$FE,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data Vxt bytes 40, 30, 20, 12, 4, 4, 12, 20, 30, 40
+data DirT bytes 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 7, 8, 8, 9, 9
+data KofDir bytes 1, 3, 5, 8, 10
+data Dig bytes 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1
+data Ttl bytes 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1
+
+asm {
+HpPad:
+    db $40,$1D,$11,$01,$40,$D6,$20,$02,$40,$AA,$40,$03,$50
+HpFloor:
+    db $00,$00,$25,$01,$00,$00,$56,$02,$10
+HpWall:
+    db $40,$47,$30,$01,$40,$5F,$70,$02,$50
+HpSwish:
+    db $00,$00,$31,$02,$00,$00,$21,$03,$00,$00,$42,$04,$00,$00,$62,$06,$10
+HpCrowd:
+    db $00,$00,$23,$08,$00,$00,$23,$08,$00,$00,$33,$0A,$00,$00,$43,$0E,$00,$00,$63,$12,$10
+HpScore:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$08,$50
+HpWhistle:
+    db $40,$2A,$20,$03,$40,$28,$20,$03,$40,$2A,$20,$03,$40,$28,$20,$0C,$50
+HpOver:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$14,$50
+HpTick:
+    db $40,$6B,$40,$01,$50
+
+HpSoundTable:
+    dw HpTuneMel,$702B
+    dw HpTuneBass,$7035
+    dw HpPlayMel,$702B
+    dw HpPlayBass,$7035
+    dw HpPad,$7049
+    dw HpFloor,$703F
+    dw HpWall,$7049
+    dw HpSwish,$703F
+    dw HpCrowd,$703F
+    dw HpScore,$7049
+    dw HpWhistle,$7049
+    dw HpOver,$7049
+    dw HpTick,$7049
+; Tip-Off (original)
+; Tiny Sound, 6 frames per step
+HpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$1F,$01,$01,$23,$26,$01,$01,$01,$23,$01,$26,$01
+    db $2B,$01,$01,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01,$1F,$01,$01,$23,$26,$01,$01,$01,$28,$01,$26,$01
+    db $23,$01,$26,$01,$24,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+HpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $0B,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $10,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+
+; Fast Break (original)
+; Tiny Sound, 7 frames per step
+HpPlayMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$80,$1A,$21,$26,$01,$01,$01,$23,$01,$01,$01,$26,$01,$28,$01
+    db $26,$01,$01,$01,$23,$01,$01,$01,$1F,$01,$21,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$24,$01,$01,$01,$21,$01,$01,$01,$24,$01,$26,$01
+    db $24,$01,$01,$01,$21,$01,$01,$01,$1E,$01,$1F,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+HpPlayBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$90,$18,$32,$07,$01,$0B,$01,$0E,$01,$10,$01,$07,$01,$0B,$01
+    db $0E,$01,$0B,$01,$04,$01,$07,$01,$0B,$01,$0E,$01,$04,$01,$07,$01
+    db $0B,$01,$07,$01,$0C,$01,$10,$01,$13,$01,$10,$01,$0C,$01,$10,$01
+    db $13,$01,$10,$01,$0E,$01,$12,$01,$15,$01,$12,$01,$0E,$01,$12,$01
+    db $15,$01,$12,$01
+    db $FF
+}

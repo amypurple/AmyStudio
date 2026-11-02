@@ -1,0 +1,1046 @@
+cartridge "DOGCATCHER/B.BLACKMER/1986"
+
+' DOGCATCHER
+' A ColecoVision game based on "Dogcatcher" by Bob Blackmer, Ahoy!
+' September 1986 (Commodore 64 machine language at $C000, 15 blocks; author
+' from the program's own bottom line, "DOGCATCHER BY BOB BLACKMER (C) 1986",
+' and the issue's contents page). Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/dogcatcher.dis), the game is built for the
+' ColecoVision: a cut-away brick tenement at night, wooden floors with
+' ladders down the holes, stray dogs and a dogcatcher as smooth sprites,
+' a pound truck at the kerb, sound effects.
+'
+' The game: four strays roam the five storeys. Hold the button to put your
+' net out in front of you and let a dog walk into it - the net must face
+' the dog. A dog that touches you any other way (walking, climbing, the
+' net the wrong way, a dog already in the net, two at once) bites. Carry
+' each dog down the ladders to the truck at the right of the street. When
+' all four are in the truck it drives off, comes back, and the strays are
+' loose again, a little faster.
+'
+' From the original (orig/): six standing heights (five floors and the
+' street) 32 C64 pixels apart, holes in the middle of floors 1, 3 and 5 and
+' at both sides of floors 2 and 4; the catcher walks 2 pixels a step, only
+' when standing on a floor, and climbs 2 pixels a step only through a hole
+' (and on between floors); the street stops him at the truck; the strays
+' go in two pairs, one dog of each pair always walking right and the other
+' always left, on the original's two fixed courses (pair one: in to the
+' middle of floor 1, down, out to the edges of floor 2, again on floors 3
+' and 4; pair two: in to the side holes of floor 2, down, in to the middle
+' of floor 3, down, out on floor 4, across floor 5), a pixel a step,
+' dropping through the holes a pixel a step; a caught dog is gone until
+' the round ends; touching a dog: caught if the net is out toward it (a dog
+' walking right is caught by a net facing left), else a bite; a bite puts
+' the catcher back on the street; 9 lives and a bite with none left ends
+' the game; 100 points a dog, the dog count, the level; after four dogs the
+' truck drives off and back while everything else waits, and the steps
+' come about 2% faster each level (the original's delay loop, 25 to 1:
+' SpdT).
+'
+' Liberties: the field is the ColecoVision's 28 columns (the C64 had 30)
+' and storeys 24 pixels apart (32); the courses keep their shapes and
+' lengths in steps (528 steps round for both pairs, as in the original);
+' the original's speed at its fastest stays from level 25 on; a dog in the
+' net when you are bitten runs free again (the original let you keep it
+' and deliver it at once from the street); touching is a box test (the
+' C64 used its sprite collision register); the net stays out as long as
+' the button is held while standing (as on the C64, where holding the
+' trigger swung it every pass), a dog in the net cannot be dropped;
+' ladders drawn in the holes; the C64's looping tune during play is
+' replaced by sound effects (barks, a yelp, the net, the cage door, the
+' horn); a lives row of dog tags instead of LIVES 000009; the bite is a
+' still pause with the catcher turned red (the C64 flashed every sprite's
+' colour many times a second); GAME OVER then the title (the C64 waited
+' for the trigger to start again). Standing still is safe only on the
+' street and scores nothing; a dog can only be caught with the net, and
+' only delivered by walking the ladders, so nothing is won by waiting.
+'
+' Controls: controller 1 (or 2): the stick walks left and right on a floor
+' and climbs up and down through the holes; hold a side button to put the
+' net out. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TWall0 = 128
+const TWall1 = 129
+const TWin00 = 130
+const TWin01 = 131
+const TWin10 = 132
+const TWin11 = 133
+const TDwin00 = 134
+const TDwin01 = 135
+const TDwin10 = 136
+const TDwin11 = 137
+const TFlr = 138
+const TFlrL = 139
+const TFlrR = 140
+const THole = 141
+const TLad = 142
+const TLadT = 143
+const TLcL = 144
+const TLcR = 145
+const TLcLT = 146
+const TLcRT = 147
+const TRoof = 148
+const TPave = 149
+const TKerb = 150
+const TLamp = 151
+const TPost = 152
+const TTag = 153
+const TTblk = 154
+const SPwr0d = 0
+const SPwr0b = 4
+const SPwl0d = 8
+const SPwl0b = 12
+const SPwr1d = 16
+const SPwr1b = 20
+const SPwl1d = 24
+const SPwl1b = 28
+const SPnrd = 32
+const SPnrb = 36
+const SPnld = 40
+const SPnlb = 44
+const SPcrd = 48
+const SPcrb = 52
+const SPcld = 56
+const SPclb = 60
+const SPck0d = 64
+const SPck0b = 68
+const SPck1d = 72
+const SPck1b = 76
+const SDr0 = 80
+const SDr1 = 84
+const SDl0 = 88
+const SDl1 = 92
+const SDf = 96
+const SCage = 100
+const SCab = 104
+const NTiles8 = 216
+const SprBytes = 864
+const SndTuneA = 1
+const SndTuneB = 2
+const SndNet = 3
+const SndBite = 4
+const SndCage = 5
+const SndHorn = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 8
+const ScoreCap = 999899
+const ScoreMax = 999999
+' the street's right end (the truck) and the truck's parking place
+const StreetMax = 176
+const TruckPark = 192
+const TruckOff = 240
+
+' steps a frame x 256 for levels 1-25 (the C64's loop with its delay
+' 25 down to 1: 18500 - 320 x (level - 1) cycles)
+data SpdT words 256,261,265,270,275,280,286,291,297,303,310,316,323,330,338,346,354,363,372,381,391,402,413,425,438
+' the dogs' colours (pair one dark yellow, pair two white)
+data DogCol bytes 10,10,15,15
+
+data TilePat bytes
+  $10,$10,$10,$00,$40,$40,$40,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $81,$81,$81,$81,$81,$81,$00,$00
+  $81,$81,$81,$81,$81,$81,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $81,$81,$81,$81,$81,$81,$00,$00
+  $81,$81,$81,$81,$81,$81,$00,$00
+  $00,$01,$01,$00,$10,$10,$00,$00
+  $01,$01,$01,$00,$11,$11,$00,$00
+  $80,$81,$81,$00,$90,$90,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $42,$81,$42,$42,$42,$81,$42,$42
+  $00,$81,$42,$42,$42,$81,$42,$42
+  $04,$07,$04,$04,$04,$07,$04,$04
+  $20,$E0,$20,$20,$20,$E0,$20,$20
+  $00,$07,$04,$04,$04,$07,$04,$04
+  $00,$E0,$20,$20,$20,$E0,$20,$20
+  $00,$AA,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$00,$00
+  $00,$00,$00,$00,$F0,$00,$00,$00
+  $00,$C3,$81,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$C3
+  $00,$18,$24,$81,$91,$85,$C3,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $16,$16,$16,$01,$16,$16,$16,$01
+  $16,$16,$16,$01,$16,$16,$16,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $1B,$1B,$1B,$1B,$1B,$1B,$01,$0E
+  $1B,$1B,$1B,$1B,$1B,$1B,$01,$0E
+  $01,$14,$14,$14,$14,$14,$14,$01
+  $01,$14,$14,$14,$14,$14,$14,$01
+  $14,$14,$14,$14,$14,$14,$01,$0E
+  $14,$14,$14,$14,$14,$14,$01,$0E
+  $0B,$1A,$1A,$01,$1A,$1A,$01,$01
+  $1B,$1A,$1A,$01,$1A,$1A,$01,$01
+  $1B,$1A,$1A,$01,$1A,$1A,$01,$01
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $E1,$1E,$E1,$E1,$E1,$1E,$E1,$E1
+  $0E,$1E,$E1,$E1,$E1,$1E,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$EF,$0E,$01,$0E,$0E,$01,$01
+  $0F,$1E,$1E,$1E,$1E,$1E,$01,$0E
+  $0E,$01,$01,$01,$B1,$01,$01,$01
+  $01,$1B,$1B,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$1E
+  $01,$F1,$F1,$1F,$1F,$1F,$1F,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$1A,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$03,$03,$01,$00,$00,$00,$0C,$00,$00,$00,$00,$0C,$00
+  $00,$00,$00,$C0,$40,$80,$00,$00,$00,$10,$00,$00,$00,$00,$18,$00
+  $00,$03,$07,$00,$00,$00,$07,$0F,$0D,$01,$03,$03,$06,$06,$00,$00
+  $00,$C0,$F0,$00,$00,$00,$E0,$F0,$E0,$E0,$C0,$60,$30,$30,$00,$00
+  $00,$00,$00,$03,$02,$01,$00,$00,$00,$08,$00,$00,$00,$00,$18,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$00,$30,$00,$00,$00,$00,$30,$00
+  $00,$03,$0F,$00,$00,$00,$07,$0F,$07,$07,$03,$06,$0C,$0C,$00,$00
+  $00,$C0,$E0,$00,$00,$00,$E0,$F0,$B0,$80,$C0,$C0,$60,$60,$00,$00
+  $00,$00,$00,$03,$03,$01,$00,$00,$00,$0C,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$C0,$40,$80,$00,$00,$00,$10,$00,$00,$00,$00,$C0,$00
+  $00,$03,$07,$00,$00,$00,$07,$0F,$0D,$01,$03,$03,$03,$01,$00,$00
+  $00,$C0,$F0,$00,$00,$00,$E0,$F0,$E0,$E0,$C0,$C0,$C0,$80,$00,$00
+  $00,$00,$00,$03,$02,$01,$00,$00,$00,$08,$00,$00,$00,$00,$03,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$00,$30,$00,$00,$00,$00,$80,$00
+  $00,$03,$0F,$00,$00,$00,$07,$0F,$07,$07,$03,$03,$03,$01,$00,$00
+  $00,$C0,$E0,$00,$00,$00,$E0,$F0,$B0,$80,$C0,$C0,$C0,$80,$00,$00
+  $00,$00,$00,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$00
+  $1C,$22,$0A,$F4,$58,$E0,$10,$20,$00,$00,$00,$00,$00,$00,$18,$00
+  $00,$03,$07,$00,$00,$00,$07,$0F,$0F,$0F,$03,$03,$06,$06,$00,$00
+  $00,$C0,$F0,$00,$00,$00,$E0,$C0,$C0,$C0,$C0,$60,$30,$30,$00,$00
+  $38,$44,$50,$2F,$1A,$07,$08,$04,$00,$00,$00,$00,$00,$00,$18,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00
+  $00,$03,$0F,$00,$00,$00,$07,$03,$03,$03,$03,$06,$0C,$0C,$00,$00
+  $00,$C0,$E0,$00,$00,$00,$E0,$F0,$F0,$F0,$C0,$C0,$60,$60,$00,$00
+  $1F,$3F,$3F,$1F,$05,$05,$04,$04,$04,$04,$0C,$00,$00,$00,$00,$01
+  $00,$80,$80,$80,$E0,$A0,$C0,$00,$00,$00,$10,$00,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$03,$0B,$0B,$03,$03,$03,$03,$01,$00
+  $00,$00,$70,$78,$00,$00,$00,$F0,$F8,$E0,$E0,$C0,$C0,$C0,$80,$00
+  $00,$01,$01,$01,$07,$05,$03,$00,$00,$00,$08,$00,$00,$00,$00,$03
+  $F8,$FC,$FC,$F8,$A0,$A0,$20,$20,$20,$20,$30,$00,$00,$00,$00,$80
+  $00,$00,$0E,$1E,$00,$00,$00,$0F,$1F,$07,$07,$03,$03,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$D0,$D0,$C0,$C0,$C0,$C0,$80,$00
+  $08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$30,$00
+  $00,$03,$07,$0F,$0B,$0F,$07,$07,$03,$03,$03,$03,$03,$00,$00,$00
+  $00,$C0,$E0,$E0,$C0,$F0,$F8,$E0,$C0,$C0,$60,$60,$30,$30,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$0C,$00
+  $10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00
+  $00,$03,$07,$07,$03,$0F,$1F,$07,$03,$03,$06,$06,$0C,$0C,$00,$00
+  $00,$C0,$E0,$F0,$D0,$F0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$40,$3F,$3F,$3F,$30,$28,$48,$00
+  $00,$00,$00,$00,$00,$0C,$1E,$1F,$1E,$F0,$F8,$F0,$30,$50,$48,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$40,$3F,$3F,$3F,$30,$18,$18,$00
+  $00,$00,$00,$00,$00,$0C,$1E,$1F,$1E,$F0,$F8,$F0,$30,$30,$30,$00
+  $00,$00,$00,$00,$00,$30,$78,$F8,$78,$0F,$1F,$0F,$0C,$0A,$12,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$02,$FC,$FC,$FC,$0C,$14,$12,$00
+  $00,$00,$00,$00,$00,$30,$78,$F8,$78,$0F,$1F,$0F,$0C,$0C,$0C,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$02,$FC,$FC,$FC,$0C,$18,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$40,$3F,$7F,$BF,$A0,$00,$00,$00
+  $00,$00,$00,$00,$00,$0C,$1E,$1F,$1E,$F0,$F8,$F4,$14,$00,$00,$00
+  $00,$00,$FF,$AA,$AA,$AA,$AA,$AA,$AA,$FF,$FF,$FF,$38,$7C,$7C,$38
+  $00,$00,$FF,$AB,$AB,$AB,$AB,$AB,$AB,$FF,$FF,$FF,$1C,$3E,$3E,$1C
+  $00,$FE,$FF,$C3,$C1,$C0,$C0,$FF,$FF,$FF,$FF,$FF,$38,$7C,$7C,$38
+  $00,$00,$00,$80,$C0,$E0,$78,$FC,$FE,$FF,$FF,$FF,$1C,$3E,$3E,$1C
+end data
+
+data GameMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$20,$20
+  $20,$20,$86,$87,$81,$81,$81,$81,$81,$81,$82,$83,$81,$81,$81,$81,$81,$81,$81,$81,$82,$83,$81,$81,$81,$81,$81,$86,$87,$81,$20,$20
+  $20,$20,$88,$89,$80,$80,$80,$80,$80,$80,$84,$85,$80,$80,$80,$80,$80,$80,$80,$80,$84,$85,$80,$80,$80,$80,$80,$88,$89,$80,$20,$20
+  $20,$20,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8B,$8D,$8D,$92,$93,$8D,$8D,$8C,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$20,$20
+  $20,$20,$80,$80,$80,$80,$80,$80,$80,$80,$86,$87,$80,$80,$80,$90,$91,$80,$80,$82,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$20,$20
+  $20,$20,$81,$81,$81,$81,$81,$81,$81,$81,$88,$89,$81,$81,$81,$90,$91,$81,$81,$84,$85,$81,$81,$81,$81,$81,$81,$81,$81,$81,$20,$20
+  $20,$20,$8A,$8B,$8D,$8D,$8F,$8D,$8D,$8C,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8B,$8D,$8D,$8F,$8D,$8D,$8C,$8A,$20,$20
+  $20,$20,$82,$83,$81,$81,$8E,$81,$81,$86,$87,$81,$81,$81,$81,$81,$81,$81,$81,$81,$86,$87,$81,$81,$81,$8E,$81,$82,$83,$81,$20,$20
+  $20,$20,$84,$85,$80,$80,$8E,$80,$80,$88,$89,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$89,$80,$80,$80,$8E,$80,$84,$85,$80,$20,$20
+  $20,$20,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8B,$8D,$8D,$92,$93,$8D,$8D,$8C,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$20,$20
+  $20,$20,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$83,$80,$80,$90,$91,$80,$86,$87,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$20,$20
+  $20,$20,$81,$81,$81,$81,$81,$81,$81,$81,$81,$84,$85,$81,$81,$90,$91,$81,$88,$89,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$20,$20
+  $20,$20,$8A,$8B,$8D,$8D,$8F,$8D,$8D,$8C,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8B,$8D,$8D,$8F,$8D,$8D,$8C,$8A,$20,$20
+  $20,$20,$86,$87,$81,$81,$8E,$81,$81,$82,$83,$81,$81,$81,$81,$81,$81,$81,$81,$81,$82,$83,$81,$81,$81,$8E,$81,$86,$87,$81,$20,$20
+  $20,$20,$88,$89,$80,$80,$8E,$80,$80,$84,$85,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$85,$80,$80,$80,$8E,$80,$88,$89,$80,$20,$20
+  $20,$20,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8B,$8D,$8D,$92,$93,$8D,$8D,$8C,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$20,$20
+  $20,$20,$97,$82,$83,$80,$80,$80,$80,$86,$87,$80,$80,$80,$80,$90,$91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$20,$20
+  $20,$20,$98,$84,$85,$81,$81,$81,$81,$88,$89,$81,$81,$81,$81,$90,$91,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$20,$20
+  $20,$20,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$95,$20,$20
+  $96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96,$96
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$9A,$9A,$20,$20,$9A,$9A,$9A,$20,$9A,$9A,$9A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$9A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$9A,$9A,$20,$20,$9A,$9A,$9A,$20,$9A,$9A,$9A,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$9A,$9A,$9A,$20,$9A,$9A,$9A,$20,$9A,$9A,$9A,$20,$9A,$9A,$9A,$20,$9A,$20,$9A,$20,$9A,$9A,$9A,$20,$9A,$9A,$20,$20,$20,$20
+  $20,$20,$9A,$20,$20,$20,$9A,$20,$9A,$20,$20,$9A,$20,$20,$9A,$20,$20,$20,$9A,$20,$9A,$20,$9A,$20,$20,$20,$9A,$20,$9A,$20,$20,$20
+  $20,$20,$9A,$20,$20,$20,$9A,$9A,$9A,$20,$20,$9A,$20,$20,$9A,$20,$20,$20,$9A,$9A,$9A,$20,$9A,$9A,$20,$20,$9A,$9A,$20,$20,$20,$20
+  $20,$20,$9A,$20,$20,$20,$9A,$20,$9A,$20,$20,$9A,$20,$20,$9A,$20,$20,$20,$9A,$20,$9A,$20,$9A,$20,$20,$20,$9A,$20,$9A,$20,$20,$20
+  $20,$20,$9A,$9A,$9A,$20,$9A,$20,$9A,$20,$20,$9A,$20,$20,$9A,$9A,$9A,$20,$9A,$20,$9A,$20,$9A,$9A,$9A,$20,$9A,$20,$9A,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record DogR:
+  u8 X
+  u8 Y
+  u8 Gone
+end record
+
+DogR Dg[4]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Spd = 0
+u16 Acc = 0
+u16 DogN = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the catcher: x, y (sprite top), facing (0 right, 1 left), stride,
+' steps to the next stride, the net out this step, carrying, which dog
+u8 PX = 160
+u8 PY = 152
+u8 Face = 0
+u8 Stride = 0
+u8 WalkT = 0
+u8 Net = 0
+u8 Carry = 0
+u8 CDog = 0
+' the two pairs' course states (1-6)
+u8 SA = 1
+u8 SB = 1
+' 0 play, 1 bitten, 2 truck leaving, 3 truck coming
+u8 GMode = 0
+u8 ModeT = 0
+u8 TruckX = 0
+u8 Lv = 0
+u8 Lives = 9
+u8 Got = 0
+u8 Over = 0
+u8 Steps = 0
+u8 Hits = 0
+u8 HitDog = 0
+u8 Bites = 0
+u8 Caught = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TbX = 0
+' loop counters (never shared with the helpers)
+u8 Dn = 0
+u8 Ds = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DgSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayPass
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  SCORE ", Score, "  "
+  print at 8,13, "  BEST  ", Hi, "  "
+  print at 8,14, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame: as many steps as the level's speed gives, or the bite's
+' pause, or the truck driving off and back
+sub PlayPass:
+  select case GMode
+    case 0
+      Acc = Acc + Spd
+      Steps = Acc >> 8
+      Acc = Acc & 255
+      while Steps > 0
+        GameStep
+        dec Steps
+        if GMode <> 0 then Steps = 0
+      end while
+    case 1
+      dec ModeT
+      if ModeT = 0 then AfterBite
+    case 2
+      inc TruckX
+      if TruckX >= TruckOff then
+        NextLevel
+        GMode = 3
+      end if
+    case 3
+      dec TruckX
+      if TruckX <= TruckPark then
+        GMode = 0
+        Acc = 0
+      end if
+  end select
+  return
+end sub
+
+' one step of the C64's loop: the dogs, the catcher, then the touch test
+sub GameStep:
+  DogsStep
+  PlayerStep
+  Contact
+  return
+end sub
+
+' the standing height (0 top floor .. 5 street) for a sprite top, or 255
+' between floors
+function LevelOf(u8 Yp) as u8
+  select case Yp
+    case 32
+      return 0
+    case 56
+      return 1
+    case 80
+      return 2
+    case 104
+      return 3
+    case 128
+      return 4
+    case 152
+      return 5
+  end select
+  return 255
+
+' 1 when x is over a hole of floor F (0-4): the middle for 0, 2, 4, the
+' sides for 1 and 3
+function InHole(u8 F, u8 Xp) as u8
+  if (F & 1) = 0 then
+    if Xp < 108 then return 0
+    if Xp > 132 then return 0
+    return 1
+  end if
+  if Xp >= 36 then
+    if Xp <= 56 then return 1
+  end if
+  if Xp >= 188 then
+    if Xp <= 208 then return 1
+  end if
+  return 0
+
+' the stick: right, else left, else down, else up (and the net), in the
+' original's order
+sub PlayerStep:
+  u8 L = 0
+  u8 Lim = 0
+  Net = 0
+  L = LevelOf(PY)
+  if (J1 & 8) <> 0 then
+    Face = 0
+    WalkStride
+    if L = 255 then return
+    Lim = 224
+    if L = 5 then Lim = StreetMax
+    if PX < Lim then PX = PX + 2
+    Deliver
+    return
+  end if
+  if (J1 & 4) <> 0 then
+    Face = 1
+    WalkStride
+    if L = 255 then return
+    if PX > 16 then PX = PX - 2
+    return
+  end if
+  if (J1 & 2) <> 0 then
+    if L = 5 then return
+    if L <> 255 then
+      if InHole(L, PX) = 0 then return
+    end if
+    PY = PY + 2
+    return
+  end if
+  if (J1 & 1) <> 0 then
+    if L <> 0 then
+      if L = 255 then
+        PY = PY - 2
+      else
+        if InHole(L - 1, PX) = 1 then PY = PY - 2
+      end if
+    end if
+  end if
+  L = LevelOf(PY)
+  if (J1 & 16) <> 0 then
+    if Carry = 0 then
+      if L <> 255 then Net = 1
+    end if
+  end if
+  Deliver
+  return
+end sub
+
+' the walking stride changes every 5 steps of walking
+sub WalkStride:
+  inc WalkT
+  if WalkT >= 5 then
+    WalkT = 0
+    Stride = Stride ^ 1
+  end if
+  return
+end sub
+
+' a dog in the net reaches the truck
+sub Deliver:
+  if Carry = 0 then return
+  if PY <> 152 then return
+  if PX < StreetMax then return
+  Carry = 0
+  if Score > ScoreCap then
+    Score = ScoreMax
+  else
+    Score += 100
+  end if
+  if Score > Hi then Hi = Score
+  inc DogN
+  inc Got
+  ShowScore
+  if Got = 4 then
+    Got = 0
+    GMode = 2
+    play sound SndHorn
+  else
+    play sound SndCage
+  end if
+  return
+end sub
+
+' both pairs of strays one pixel along their courses (orig $C012-$C1E0)
+sub DogsStep:
+  select case SA
+    case 1, 3, 4
+      inc Dg[0].X
+      dec Dg[1].X
+      if Dg[1].X = 120 then
+        inc SA
+      else
+        if Dg[1].X = 0 then
+          SA = 4
+          PairStart(0, 80)
+        end if
+      end if
+    case 2, 5
+      inc Dg[0].Y
+      Dg[1].Y = Dg[0].Y
+      if Dg[0].Y = 56 then SA = 3
+      if Dg[0].Y = 104 then SA = 6
+    case 6
+      inc Dg[0].X
+      dec Dg[1].X
+      if Dg[0].X = 240 then
+        SA = 1
+        PairStart(0, 32)
+      end if
+  end select
+  select case SB
+    case 1, 3, 5
+      inc Dg[2].X
+      dec Dg[3].X
+      if Dg[3].X = 196 then SB = 2
+      if Dg[3].X = 120 then SB = 4
+      if Dg[3].X = 0 then
+        SB = 6
+        PairStart(2, 128)
+      end if
+    case 2, 4
+      inc Dg[2].Y
+      Dg[3].Y = Dg[2].Y
+      if Dg[2].Y = 80 then SB = 3
+      if Dg[2].Y = 104 then SB = 5
+    case 6
+      inc Dg[2].X
+      dec Dg[3].X
+      if Dg[3].X = 0 then
+        SB = 1
+        PairStart(2, 56)
+      end if
+  end select
+  return
+end sub
+
+' a pair starts again at the edges of a floor
+sub PairStart(u8 First, u8 Yp):
+  Dg[First].X = 0
+  Dg[First].Y = Yp
+  Dg[First + 1].X = 240
+  Dg[First + 1].Y = Yp
+  return
+end sub
+
+' the touch test (orig $CBAE): one dog walking into a net that faces it is
+' caught; anything else that touches bites
+sub Contact:
+  Hits = 0
+  for Dn = 0 to 3
+    if Dg[Dn].Gone = 0 then
+      if Near(Dg[Dn].X, PX) = 1 then
+        if Near(Dg[Dn].Y, PY) = 1 then
+          inc Hits
+          HitDog = Dn
+        end if
+      end if
+    end if
+  next
+  if Hits = 0 then return
+  if Hits = 1 then
+    if Net = 1 then
+      V = (HitDog & 1) ^ Face
+      if V = 1 then
+        Dg[HitDog].Gone = 1
+        Carry = 1
+        CDog = HitDog
+        Net = 0
+        inc Caught
+        play sound SndNet
+        return
+      end if
+    end if
+  end if
+  GMode = 1
+  ModeT = 45
+  inc Bites
+  play sound SndBite
+  return
+end sub
+
+function Near(u8 A, u8 B) as u8
+  if A >= B then
+    if A - B < 12 then return 1
+    return 0
+  end if
+  if B - A < 12 then return 1
+  return 0
+
+' after the bite's pause: a life less (or the end), back to the street;
+' a dog in the net runs free again
+sub AfterBite:
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  dec Lives
+  ShowLives
+  if Carry = 1 then
+    Dg[CDog].Gone = 0
+    Carry = 0
+  end if
+  PX = 160
+  PY = 152
+  Face = 0
+  GMode = 0
+  Acc = 0
+  return
+end sub
+
+' the next level: faster steps, the strays loose again
+sub NextLevel:
+  inc Lv
+  K = Lv
+  if K > 25 then K = 25
+  Spd = SpdT[K - 1]
+  for Dn = 0 to 3
+    Dg[Dn].Gone = 0
+  next
+  ShowLevel
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the catcher (detail, body), 2-3 the truck, 4-7 the dogs
+sub DrawSprites:
+  u8 Pose = 0
+  u8 Col = 5
+  Pose = Stride * 2 + Face
+  if Net = 1 then Pose = 4 + Face
+  if Carry = 1 then Pose = 6 + Face
+  if LevelOf(PY) = 255 then Pose = 8 + ((PY >> 3) & 1)
+  K = Pose * 8
+  if GMode = 1 then Col = 8
+  set sprite 0 to PY - 1,PX,K,15
+  set sprite 1 to PY - 1,PX,K + 4,Col
+  if TruckX >= TruckOff then
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  else
+    set sprite 2 to 151,TruckX,SCage,15
+    set sprite 3 to 151,TruckX + 16,SCab,2
+  end if
+  for Ds = 0 to 3
+    J = Ds + 4
+    if Dg[Ds].Gone = 1 then
+      set sprite J to 192,0,0,0
+    else
+      K = DogPat(Ds)
+      set sprite J to Dg[Ds].Y - 1,Dg[Ds].X,K,DogCol[Ds]
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' a dog's pattern: falling, or walking its way with a stride every 8 px
+function DogPat(u8 D) as u8
+  u8 P = 0
+  if D < 2 then
+    if SA = 2 then return SDf
+    if SA = 5 then return SDf
+  else
+    if SB = 2 then return SDf
+    if SB = 4 then return SDf
+  end if
+  P = (Dg[D].X >> 3) & 1
+  P = P * 4
+  if (D & 1) = 0 then return SDr0 + P
+  return SDl0 + P
+
+sub ShowScore:
+  print at 8,1, Score
+  NumU = DogN
+  print at 20,1, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 27,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 9 at 8,2
+  fill TTag count Lives at 8,2
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 2,1, "SCORE"
+  print at 15,1, "DOGS"
+  print at 24,1, "LV"
+  print at 2,2, "LIVES"
+  Score = 0
+  DogN = 0
+  Lv = 0
+  NextLevel
+  Lives = 9
+  Got = 0
+  Over = 0
+  Bites = 0
+  Caught = 0
+  PX = 160
+  PY = 152
+  Face = 0
+  Stride = 0
+  WalkT = 0
+  Net = 0
+  Carry = 0
+  CDog = 0
+  SA = 1
+  SB = 1
+  PairStart(0, 32)
+  PairStart(2, 56)
+  Acc = 0
+  TruckX = TruckOff
+  GMode = 3
+  ShowScore
+  ShowLives
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: DOGCATCHER in plank letters, a stray chased by the catcher
+' along a floor, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 6,1, "AHOY! SEPTEMBER 1986"
+  copy TitleMap count 384 to vram.name + 96
+  fill TFlr count 28 at 2,17
+  print at 8,18, "BY BOB BLACKMER"
+  print at 13,20, "START"
+  print at 13,21, "CREDITS"
+  if Hi > 0 then
+    print at 9,22, "BEST ", Hi
+  end if
+  ShowMenu
+  TbX = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a stray runs along the title's floor, the catcher 40 pixels behind
+sub TitleAnim:
+  inc TbX
+  K = (TbX >> 3) & 1
+  K = K * 4 + SDr0
+  set sprite 4 to 119,TbX + 40,K,10
+  K = (TbX >> 3) & 1
+  K = K * 16
+  set sprite 0 to 119,TbX,K,15
+  set sprite 1 to 119,TbX,K + 4,5
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,20
+  put char 32 at 11,21
+  J = Menu + 20
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "DOGCATCHER"
+  print at 2,5, "BASED ON DOGCATCHER BY"
+  print at 2,6, "BOB BLACKMER, AHOY!"
+  print at 2,7, "SEPTEMBER 1986 (COMMODORE"
+  print at 2,8, "64 MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: STRAYS ON THE STAIRS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+DgNet:
+    db $40,$A0,$30,$02,$40,$7C,$30,$02,$40,$5D,$40,$02,$40,$46,$20,$03,$40,$3B,$30,$04,$50
+DgBite:
+    db $00,$00,$15,$03,$00,$00,$16,$03,$00,$00,$25,$04,$00,$00,$46,$06,$00,$00,$77,$08,$10
+DgCage:
+    db $40,$FC,$11,$02,$40,$53,$21,$03,$40,$6B,$30,$03,$40,$55,$40,$05,$50
+DgHorn:
+    db $40,$41,$11,$0C,$40,$41,$F1,$04,$40,$41,$11,$10,$40,$53,$51,$06,$50
+DgStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+DgOver:
+    db $40,$BF,$10,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$7C,$31,$1E,$50
+
+DgSoundTable:
+    dw DgTuneMel,$702B
+    dw DgTuneBass,$7035
+    dw DgNet,$7049
+    dw DgBite,$703F
+    dw DgCage,$7049
+    dw DgHorn,$7049
+    dw DgStart,$7049
+    dw DgOver,$7049
+; Strays on the Stairs (original)
+; Tiny Sound, 8 frames per step
+DgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$24,$01,$28,$01,$26,$24,$23,$01,$26,$01
+    db $1F,$01,$01,$01,$21,$01,$24,$01,$29,$01,$28,$26,$24,$01,$28,$01
+    db $26,$01,$01,$01,$1F,$01,$24,$01,$28,$01,$2B,$01,$2D,$01,$2B,$28
+    db $26,$01,$24,$01,$23,$01,$26,$01,$23,$1F,$24,$01,$01,$01,$2B,$01
+    db $24,$01,$00,$01
+    db $FF
+DgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$05,$01,$0C,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$07,$0E,$0C,$01,$01,$01,$07,$01
+    db $0C,$01,$00,$01
+    db $FF
+}

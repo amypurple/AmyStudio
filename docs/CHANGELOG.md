@@ -22,10 +22,13 @@
   revisions improve Shaker's level selection and shake audio, and expand Star
   Strike with hover combat, aimed missiles, plasma trajectories and refined
   enemy sprites.
+- Added five further Ahoy! adaptations: **Dogcatcher**, **Speedway**, **The
+  Adventurer**, **Hoops** and **Rashgar**, with complete standalone sources,
+  publication provenance and five-profile compiler validation.
 - Updated 21 existing games with a consistent game-over flow that waits for
   input, supports Amy's screen saver and returns cleanly to the title screen.
-- The clean example catalogue now contains **467 programs**, including
-  **32 Ahoy! adaptations**. The affected sources were revalidated with the
+- The clean example catalogue now contains **472 programs**, including
+  **37 Ahoy! adaptations**. The affected sources were revalidated with the
   Balanced compiler profile.
 
 ## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations

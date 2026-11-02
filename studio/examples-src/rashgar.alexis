@@ -1,0 +1,1586 @@
+cartridge "RASHGAR/C.M.BLAKEMORE/1988"
+
+' RASHGAR - MASTER OF DIMENSION X
+' A ColecoVision game based on "Rashgar" by Cleveland M. Blakemore, Ahoy!
+' June 1988 (Commodore 128, BASIC 7.0 with a small machine-language
+' interrupt routine). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' listing, orig/rashgar.bas.txt; C-128 programs do not run in the toolbox's
+' C-64 emulator), the game is built for the ColecoVision: Rashgar's face
+' (the listing's four mouth frames) in tiles at the centre of the shield
+' rings, smooth sprites, an eye beam drawn in tiles, sound effects and an
+' original title tune.
+'
+' The game: you are Rashgar, a great face floating in Dimension X. Five
+' aggressors (nested turning squares) drift about; steer your sight with
+' the stick and press a button to fire the beam from your eyes to the
+' sight. An aggressor in the sight is destroyed and comes back later from
+' the edge of space. An aggressor that touches your face costs a life;
+' three are lost and the game is over.
+'
+' From the original: the shield rings drawn one by one with a rising tone
+' at the start (the listing's five circles at radii 20, 55, 90, 125, 160,
+' scaled; the colours of its C(0)-C(3) table); the face with four mouth
+' frames chewing (the interrupt routine's pointer cycle) and the pupils as
+' a separate sprite that glows while firing; the box sight; five aggressors
+' (sprites 4-8) of three nested squares turning, eight frames; the beam
+' drawn from the eyes to the sight and erased; the main loop's rule that
+' each pass one aggressor picked at random gets a new random direction; a
+' hit only when the sight is on an aggressor as the beam fires; 100 x level
+' points a hit; a new level every 8 hits; the aggressors' speed rising at
+' levels 4 and 8 (S = S + 1); three lives, the debris explosion when the
+' face is touched, the aggressors sent back out after a lost life; GAME OVER
+' in big letters flying in one by one from the right; the high score.
+'
+' Liberties: the rings are octagons (a circle would need more tile codes
+' than a screen third has); the aggressors bounce off the edges of the
+' visible area (the C-128 let sprites wander off into its 512-pixel
+' sprite space and wrap) and a destroyed one comes back from a random edge
+' after a short wait (it was parked off screen); the C-128's random walk
+' rarely brought an aggressor to the face, so the game could last for ever
+' with the sight held still: here a new direction is sometimes aimed at
+' Rashgar (2 in 8 at level 1, one more in 8 every two levels, at most 6
+' in 8),
+' and newcomers enter aimed at him; the beam fires about five times a second
+' while the button is held (the BASIC loop's own pace) and the sight stops
+' while it fires; the button fires even while the stick is pushed (the
+' listing fired only with the stick centred); with two aggressors in the
+' sight the first one is hit (the listing's collision test hit neither);
+' the sight touching the face does nothing (on the C-128 it cost a life, a
+' side effect of its sprite collision test); the screen flash on a lost life
+' pulses the backdrop at 1.5 Hz instead of flashing quickly; the sight moves
+' 2 pixels a frame and the aggressors 1/4, 1/2 and 3/4 pixel, scaled from
+' the C-128's MOVSPR speeds 8 and 1-3.
+'
+' Controls: either controller; the stick moves the sight, a button fires.
+' On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128 (each
+' screen third has its own set, VDP R3 = $FF); the frame loop is protected
+' from the NMI; screens drawn with the NMI off after a wait, display off.
+' Music first in the sound table, effects after; the title tune is played
+' once. `set sprite count` is always given. Own xorshift random numbers.
+
+const N0Bytes = 288
+const N1Bytes = 680
+const N2Bytes = 320
+const SPupils = 0
+const SSight = 4
+const SAgg0 = 8
+const SAgg1 = 12
+const SAgg2 = 16
+const SAgg3 = 20
+const SAgg4 = 24
+const SAgg5 = 28
+const SAgg6 = 32
+const SAgg7 = 36
+const SDebris0 = 40
+const SDebris1 = 44
+const SLG = 48
+const SLA = 52
+const SLM = 56
+const SLE = 60
+const SLO = 64
+const SLV = 68
+const SLR = 72
+const SprBytes = 608
+const TBeam = 128
+const NRingCells = 365
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndBoom = 4
+const SndRing = 5
+const SndLevel = 6
+const SndDie = 7
+const SndWhoosh = 8
+data T0Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$60,$30,$18,$0C,$06,$03,$01
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $03,$07,$F0,$E0,$C0,$80,$01,$03
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$03,$01,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $03,$07,$F0,$E0,$C0,$80,$01,$03
+  $00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$03,$01,$80,$C0
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$E0,$C0,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$03,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $07,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$07,$F0,$E0,$C0,$80,$01,$03
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$03,$01,$80,$C0
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+end data
+data T0Col bytes
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$41
+  $41,$41,$14,$14,$14,$14,$14,$14
+  $14,$41,$41,$41,$41,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$51
+  $01,$01,$01,$01,$01,$01,$01,$05
+  $01,$01,$01,$01,$01,$01,$01,$51
+  $14,$14,$41,$41,$41,$01,$01,$01
+  $41,$41,$41,$14,$14,$14,$14,$14
+  $01,$01,$01,$01,$01,$01,$01,$41
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $05,$05,$05,$05,$51,$01,$01,$01
+  $05,$05,$05,$05,$01,$01,$01,$01
+  $05,$05,$05,$05,$51,$01,$01,$01
+  $51,$51,$51,$15,$15,$15,$15,$15
+  $15,$51,$51,$51,$51,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $15,$15,$51,$51,$51,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$71
+  $01,$01,$01,$17,$17,$17,$07,$07
+  $01,$01,$01,$07,$07,$07,$07,$07
+  $01,$01,$01,$17,$17,$17,$07,$07
+  $01,$01,$01,$01,$01,$01,$01,$71
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $14,$41,$41,$41,$41,$41,$41,$41
+  $71,$71,$17,$17,$17,$17,$17,$17
+  $17,$71,$71,$71,$71,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$51,$01
+  $17,$17,$71,$71,$71,$01,$01,$01
+  $71,$71,$71,$17,$17,$17,$17,$17
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+end data
+data T1Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$60,$30,$18,$0C,$06,$03,$01
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $03,$07,$F0,$E0,$E0,$E0,$E0,$E0
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $03,$07,$F0,$E0,$C0,$80,$01,$03
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$03,$01,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$07,$07,$07,$07
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $07,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$07,$F0,$E0,$C0,$80,$01,$03
+  $00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$03,$01,$80,$C0
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$07,$F0,$E0,$E0,$E0,$E0,$E0
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $C0,$E0,$F0,$07,$07,$07,$07,$07
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $E0,$E0,$E0,$E0,$E0,$F0,$07,$03
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $07,$07,$07,$07,$07,$F0,$E0,$C0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$07
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$80,$C0,$E0,$F0,$07,$03
+  $00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$01,$00,$00,$00,$00
+  $C0,$80,$01,$03,$07,$F0,$E0,$C0
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$E0
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$80,$C0,$E0,$F0,$07,$03
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $C0,$80,$01,$03,$07,$F0,$E0,$C0
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$00,$00,$C0,$E0,$F0,$07,$03
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $00,$E0,$F0,$30,$30,$30,$30,$70
+  $F0,$F0,$07,$03,$01,$01,$01,$01
+  $87,$00,$01,$01,$01,$00,$07,$F0
+  $F0,$00,$40,$40,$40,$00,$07,$03
+  $F0,$F0,$F0,$E0,$C0,$C0,$C0,$C0
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$87,$C0,$E0,$F0,$00,$00
+  $01,$03,$07,$01,$03,$07,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $87,$00,$01,$01,$01,$00,$00,$07
+  $F0,$00,$40,$40,$40,$00,$00,$07
+  $E0,$07,$80,$C0,$E0,$F0,$00,$00
+  $01,$07,$00,$01,$03,$07,$00,$00
+  $87,$00,$01,$01,$01,$00,$00,$01
+  $F0,$00,$40,$40,$40,$00,$00,$E0
+  $F0,$01,$80,$C0,$E0,$F0,$00,$00
+  $03,$E0,$00,$01,$03,$07,$00,$00
+  $87,$00,$01,$01,$01,$00,$00,$00
+  $F0,$00,$40,$40,$40,$00,$00,$00
+  $07,$00,$80,$C0,$E0,$F0,$00,$00
+  $07,$00,$00,$01,$03,$07,$00,$00
+end data
+data T1Col bytes
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $51,$51,$15,$15,$15,$15,$15,$15
+  $15,$51,$51,$51,$51,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$71
+  $71,$71,$17,$17,$17,$17,$17,$17
+  $17,$71,$71,$71,$71,$01,$01,$01
+  $17,$17,$71,$71,$71,$01,$01,$01
+  $71,$71,$71,$17,$17,$17,$17,$17
+  $01,$01,$01,$01,$01,$01,$01,$71
+  $15,$15,$51,$51,$51,$01,$01,$01
+  $51,$51,$51,$15,$15,$15,$15,$15
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $01,$01,$01,$01,$01,$01,$01,$31
+  $01,$01,$01,$01,$01,$01,$01,$03
+  $01,$01,$01,$01,$01,$01,$01,$31
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $17,$71,$71,$71,$71,$71,$71,$71
+  $31,$31,$13,$13,$13,$13,$13,$13
+  $03,$03,$03,$03,$31,$01,$01,$01
+  $03,$03,$03,$03,$31,$01,$01,$01
+  $31,$31,$31,$13,$13,$13,$13,$13
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $31,$31,$13,$13,$13,$13,$13,$13
+  $13,$31,$31,$31,$31,$01,$01,$01
+  $13,$13,$31,$31,$31,$01,$01,$01
+  $31,$31,$31,$13,$13,$13,$13,$13
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $13,$13,$13,$13,$13,$13,$13,$13
+  $13,$13,$13,$13,$13,$13,$13,$13
+  $01,$01,$01,$01,$01,$01,$51,$01
+  $13,$13,$13,$13,$13,$13,$31,$31
+  $01,$01,$01,$31,$31,$31,$31,$13
+  $01,$01,$01,$31,$31,$31,$13,$13
+  $13,$13,$13,$13,$13,$31,$31,$31
+  $71,$71,$71,$71,$71,$71,$71,$17
+  $31,$01,$01,$01,$01,$01,$01,$01
+  $13,$13,$13,$13,$13,$13,$31,$31
+  $01,$01,$01,$31,$03,$03,$03,$03
+  $01,$01,$01,$31,$03,$03,$03,$03
+  $13,$13,$13,$13,$13,$31,$31,$31
+  $31,$01,$01,$01,$01,$01,$01,$01
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $71,$01,$01,$01,$01,$01,$01,$01
+  $17,$17,$17,$17,$17,$17,$71,$71
+  $01,$01,$01,$71,$71,$71,$71,$17
+  $03,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$71,$71,$71,$17,$17
+  $17,$17,$17,$17,$17,$71,$71,$71
+  $71,$01,$01,$01,$01,$01,$01,$01
+  $01,$21,$12,$21,$21,$21,$21,$12
+  $01,$02,$02,$12,$12,$12,$21,$21
+  $01,$02,$02,$12,$12,$12,$21,$21
+  $01,$21,$21,$21,$21,$21,$21,$21
+  $12,$12,$21,$21,$21,$21,$21,$21
+  $21,$02,$12,$12,$12,$02,$12,$21
+  $21,$02,$12,$12,$12,$02,$21,$21
+  $21,$21,$21,$21,$21,$21,$21,$21
+  $21,$01,$01,$01,$01,$01,$01,$01
+  $21,$21,$12,$12,$12,$12,$01,$01
+  $21,$21,$21,$12,$12,$12,$01,$01
+  $21,$21,$01,$01,$01,$01,$01,$01
+  $21,$02,$12,$12,$12,$02,$02,$12
+  $21,$02,$12,$12,$12,$02,$02,$21
+  $21,$12,$12,$12,$12,$12,$01,$01
+  $21,$21,$02,$12,$12,$12,$01,$01
+  $21,$02,$12,$12,$12,$02,$02,$12
+  $21,$02,$12,$12,$12,$02,$02,$12
+  $21,$12,$12,$12,$12,$12,$01,$01
+  $21,$12,$02,$12,$12,$12,$01,$01
+  $21,$02,$12,$12,$12,$02,$02,$02
+  $21,$02,$12,$12,$12,$02,$02,$02
+  $12,$02,$12,$12,$12,$12,$01,$01
+  $21,$02,$02,$12,$12,$12,$01,$01
+end data
+data T2Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$60,$30,$18,$0C,$06,$03,$01
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $E0,$E0,$E0,$E0,$E0,$F0,$07,$03
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$80,$C0,$E0,$F0,$07,$03
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $C0,$80,$01,$03,$07,$F0,$E0,$C0
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $07,$07,$07,$07,$07,$F0,$E0,$C0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$07
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$80,$C0,$E0,$F0,$07,$03
+  $C0,$80,$01,$03,$07,$F0,$E0,$C0
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$E0
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$80,$C0,$E0,$F0,$07,$03
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $00,$00,$80,$C0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$07,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $C0,$80,$01,$03,$07,$F0,$E0,$C0
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+end data
+data T2Col bytes
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $15,$15,$15,$15,$15,$15,$51,$51
+  $01,$01,$01,$51,$51,$51,$51,$15
+  $71,$01,$01,$01,$01,$01,$01,$01
+  $17,$17,$17,$17,$17,$17,$71,$71
+  $01,$01,$01,$71,$71,$71,$71,$17
+  $01,$01,$01,$01,$01,$01,$51,$01
+  $01,$01,$01,$71,$71,$71,$17,$17
+  $17,$17,$17,$17,$17,$71,$71,$71
+  $71,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$51,$51,$51,$15,$15
+  $15,$15,$15,$15,$15,$51,$51,$51
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$14
+  $51,$01,$01,$01,$01,$01,$01,$01
+  $15,$15,$15,$15,$15,$15,$51,$51
+  $15,$15,$15,$15,$15,$51,$51,$51
+  $51,$01,$01,$01,$01,$01,$01,$01
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $14,$14,$14,$14,$14,$14,$41,$41
+  $01,$01,$01,$41,$41,$41,$41,$14
+  $07,$07,$17,$17,$17,$01,$01,$01
+  $07,$07,$07,$07,$07,$01,$01,$01
+  $07,$07,$17,$17,$17,$01,$01,$01
+  $01,$01,$01,$41,$41,$41,$14,$14
+  $14,$14,$14,$14,$14,$41,$41,$41
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$51,$05,$05,$05,$05
+  $01,$01,$01,$01,$05,$05,$05,$05
+  $01,$01,$01,$51,$05,$05,$05,$05
+  $05,$01,$01,$01,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+end data
+data BgName bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  132,32,32,32,32,32,133,134,135,32,32,136,137,137,137,137,137,137,137,137,138,32,32,139,140,141,32,32,32,32,32,32
+  32,32,32,32,32,133,134,135,32,32,136,142,143,144,144,144,144,144,144,145,146,138,32,32,139,140,141,32,32,32,32,32
+  32,32,32,32,133,134,135,32,32,136,142,147,32,132,32,32,32,132,148,32,149,146,138,32,32,139,140,141,32,32,32,32
+  32,32,32,133,134,135,32,32,136,142,147,32,148,132,148,32,32,32,32,32,32,149,146,138,32,148,139,140,141,32,32,32
+  148,32,133,134,135,32,32,136,142,147,132,32,150,151,152,152,152,152,153,154,32,148,149,146,138,32,32,139,140,141,32,148
+  32,32,155,156,32,32,136,142,147,32,32,150,157,158,32,159,32,32,160,161,154,32,32,149,146,138,32,32,162,163,32,32
+  32,32,132,133,134,32,135,136,137,134,138,139,140,32,32,32,32,32,32,141,142,143,32,32,144,145,32,32,146,147,32,134
+  32,32,132,133,32,32,148,32,32,138,139,140,137,32,149,150,150,151,32,32,141,142,143,32,32,152,32,32,146,147,32,32
+  32,32,132,133,32,134,148,32,32,153,154,137,32,149,155,156,157,158,151,32,32,159,160,32,32,152,32,32,146,147,32,32
+  32,32,132,133,32,32,148,32,32,153,161,32,32,162,163,32,32,164,165,32,32,166,160,32,32,152,32,32,146,147,32,32
+  32,32,132,133,32,32,148,32,32,153,161,32,32,167,32,32,32,32,168,32,169,166,160,32,32,152,32,32,146,147,32,32
+  32,32,132,133,32,32,148,32,32,153,161,32,32,170,171,32,32,172,173,32,32,166,160,137,32,152,32,134,146,147,32,134
+  32,32,132,133,32,32,148,32,32,153,174,169,32,175,176,177,178,179,180,32,32,181,160,32,32,152,32,32,146,147,32,32
+  32,32,132,133,32,32,148,32,32,182,183,184,32,32,175,185,185,180,32,32,186,187,188,137,32,152,32,32,146,147,137,137
+  32,32,132,133,32,32,134,135,32,32,136,137,138,32,32,32,139,32,32,140,141,142,32,32,143,144,32,32,145,146,32,32
+  32,32,132,147,32,32,148,149,135,32,32,136,137,138,32,32,32,32,140,141,142,32,32,143,150,151,32,32,152,146,32,32
+  32,32,153,154,155,32,32,148,149,135,32,32,136,156,157,157,157,157,158,142,32,32,143,150,151,32,32,159,160,161,32,32
+  32,32,32,153,154,155,32,139,148,149,135,32,32,32,32,32,32,32,32,32,32,143,150,151,162,32,159,160,161,139,32,162
+  32,32,32,32,153,154,155,32,32,148,149,135,32,32,32,32,32,32,32,32,143,150,151,32,32,159,160,161,32,32,32,32
+  32,32,32,32,32,153,154,155,162,32,148,149,163,164,164,164,164,164,164,165,150,151,32,32,159,160,161,32,32,32,32,32
+  32,32,162,32,32,32,153,154,155,32,32,148,166,166,166,166,166,166,166,166,151,32,32,159,160,161,32,32,139,167,32,32
+  32,32,32,32,32,32,32,153,154,155,32,32,32,32,32,32,139,32,32,32,32,32,159,160,161,32,162,32,32,32,32,32
+end data
+data FaceT bytes
+  189,190,191,192,193,194,195,196,197,198,199,200
+  189,190,191,192,193,201,202,196,197,203,204,200
+  189,190,191,192,193,205,206,196,197,207,208,200
+  189,190,191,192,193,209,210,196,197,211,212,200
+end data
+data RingLo bytes
+  46,47,48,49,77,78,79,80,81,82,109,110,113,114,141,146
+  173,174,177,178,205,206,207,208,209,210,238,239,240,241,204,205
+  206,207,208,209,210,211,235,236,237,242,243,244,10,11,12,19
+  20,21,41,42,43,52,53,54,73,74,85,86,105,106,117,118
+  137,138,149,150,169,170,181,182,201,202,213,214,233,234,235,244
+  245,246,10,11,12,19,20,21,43,44,45,50,51,52,76,77
+  78,79,80,81,82,83,75,76,77,78,79,80,81,82,83,84
+  106,107,108,109,110,111,112,113,114,115,116,117,137,138,139,148
+  149,150,168,169,170,181,182,183,199,200,201,214,215,216,230,231
+  232,247,248,249,6,7,24,25,38,57,70,89,102,121,134,153
+  166,185,198,217,230,249,6,7,24,25,38,39,40,55,56,57
+  71,72,73,86,87,88,104,105,106,117,118,119,137,138,139,148
+  149,150,170,171,172,173,174,175,176,177,178,179,180,181,203,204
+  205,206,207,208,209,210,211,212,70,71,72,87,88,89,101,102
+  103,120,121,122,132,133,134,153,154,155,163,164,165,186,187,188
+  194,195,196,219,220,221,226,227,252,253,2,3,28,29,34,35
+  60,61,66,67,92,93,98,99,124,125,130,131,156,157,162,163
+  188,189,194,195,220,221,226,227,252,253,2,3,28,29,34,35
+  60,61,66,67,68,91,92,93,99,100,101,122,123,124,132,133
+  134,153,154,155,165,166,167,184,185,186,198,199,200,215,216,217
+  231,232,233,246,247,248,64,141,145,146,172,173,174,185,192,202
+  213,223,239,4,8,9,31,44,69,75,148,183,187,191,203,247
+  254,255,16,103,120,125,127,168,194,220,221,240,250
+end data
+data RingHi bytes
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,2,2,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,2,2,2,2,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+  2,2,2,2,2,2,0,0,0,0,0,0,0,0,0,0
+  0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,2,2,2,2,2,2,2,2,2,2,2
+end data
+data RingEnd words
+  30,102,216,326,365
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$60,$60,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$06,$06,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$81,$81,$80,$80,$80,$F8,$F8,$80,$80,$80,$81,$81,$FF,$00
+  $00,$FF,$81,$81,$01,$01,$01,$1F,$1F,$01,$01,$01,$81,$81,$FF,$00
+  $00,$7F,$40,$4F,$48,$48,$4B,$5A,$52,$53,$50,$5F,$41,$40,$7F,$00
+  $00,$FE,$02,$82,$FA,$0A,$CA,$4A,$5A,$D2,$12,$12,$F2,$02,$FE,$00
+  $00,$07,$FE,$87,$8C,$88,$CB,$5A,$52,$73,$78,$2F,$21,$20,$23,$3E
+  $7C,$C4,$04,$84,$F4,$1E,$CE,$4A,$5A,$D3,$11,$31,$E1,$7F,$E0,$00
+  $01,$07,$1F,$77,$84,$0C,$9B,$92,$F2,$73,$7C,$26,$33,$10,$10,$0B
+  $D0,$08,$08,$CC,$64,$3E,$CE,$4F,$49,$D9,$30,$21,$EE,$F8,$E0,$80
+  $03,$06,$1D,$33,$66,$8C,$1B,$36,$B2,$DB,$6D,$26,$33,$19,$08,$04
+  $20,$10,$98,$CC,$64,$B6,$DB,$4D,$6C,$D8,$31,$66,$CC,$B8,$60,$C0
+  $06,$0C,$18,$33,$26,$5D,$B3,$36,$16,$9B,$CD,$64,$37,$1B,$04,$02
+  $40,$20,$D8,$EC,$26,$B3,$D9,$68,$6C,$CD,$BA,$64,$CC,$18,$30,$60
+  $0D,$08,$18,$11,$2F,$79,$73,$92,$9E,$0B,$88,$EC,$37,$0E,$06,$01
+  $80,$60,$70,$EC,$37,$11,$D0,$79,$49,$CE,$9E,$F4,$88,$18,$10,$B0
+  $1F,$10,$10,$21,$3F,$70,$53,$52,$9A,$8B,$88,$88,$EF,$1C,$07,$00
+  $00,$E0,$38,$F7,$11,$11,$D1,$59,$4A,$CA,$0E,$FC,$84,$08,$08,$F8
+  $3C,$23,$20,$21,$7F,$50,$53,$52,$5A,$4B,$88,$88,$8F,$F8,$0F,$00
+  $00,$F0,$1F,$F1,$11,$11,$D2,$5A,$4A,$CA,$0A,$FE,$84,$04,$C4,$3C
+  $80,$50,$00,$14,$8A,$01,$12,$09,$84,$13,$03,$AE,$03,$04,$49,$02
+  $08,$21,$A8,$08,$29,$2A,$94,$69,$DE,$AB,$55,$AB,$56,$A9,$7C,$86
+  $29,$2A,$94,$69,$DE,$AB,$55,$AB,$56,$A9,$7C,$86,$21,$04,$20,$04
+  $24,$40,$A1,$40,$88,$00,$6A,$80,$40,$22,$90,$40,$24,$90,$40,$22
+  $00,$07,$07,$18,$18,$18,$18,$19,$19,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$00,$00,$F8,$F8,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$07,$07,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$F8,$F8,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$1E,$1E,$19,$19,$19,$19,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$78,$78,$98,$98,$98,$98,$18,$18,$18,$18,$18,$18,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$06,$06,$01,$01,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$60,$60,$80,$80,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$19,$19,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$80,$80,$60,$60,$18,$18,$00
+end data
+const NSpr = 10
+const ScoreCap = 990000
+const ScoreMax = 999999
+const XMin = 1024
+const XMax = 14336
+const YMin = 1024
+const YMax = 10240
+const RedN = 6
+const BeamN = 6
+const CoolN = 12
+const WaitN = 50
+const DeadN = 150
+const KillsN = 8
+const MaxBeam = 40
+
+' 16 directions: 16 x cos and 16 x sin, plus 16 (so they fit in bytes)
+data CosT bytes
+  32,31,27,22,16,10,5,1,0,1,5,10,16,22,27,31
+end data
+data SinT bytes
+  16,22,27,31,32,31,27,22,16,10,5,1,0,1,5,10
+end data
+' debris directions (pixels a frame + 4)
+data DebX bytes
+  2, 7, 5
+end data
+data DebY bytes
+  2, 3, 7
+end data
+
+record Agg:
+  i16 X
+  i16 Y
+  i16 Vx
+  i16 Vy
+  u8 Live
+  u8 Wt
+end record
+
+Agg Ag[5]
+u16 BeamOff[MaxBeam]
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Pts = 0
+u16 Off = 0
+u16 Ri = 0
+u16 RiEnd = 0
+i16 Dx = 0
+i16 Dy = 0
+i16 Ax = 0
+i16 Ay = 0
+i16 Bx = 0
+i16 By = 0
+i16 StX = 0
+i16 StY = 0
+i16 T16 = 0
+u8 Sx = 120
+u8 Sy = 120
+u8 Lv = 1
+u8 Spd = 1
+u8 Aim = 2
+u8 Kills = 8
+u8 Lives = 3
+u8 Over = 0
+u8 RedT = RedN
+u8 BeamT = 0
+u8 Cool = 0
+u8 Nb = 0
+u8 DeadT = 0
+u8 Shot = 0
+u8 Hit = 0
+u8 Mf = 0
+u8 OldMf = 9
+u8 FaceOn = 1
+u8 Dbx[3]
+u8 Dby[3]
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InGame = 0
+' loop counters (never shared with the helpers)
+u8 Ai = 0
+u8 Bi = 0
+u8 Ki = 0
+u8 Pi = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  call asm SetR3
+  set sound table RgSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Animate
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER flies in, then back to the title on a press
+  InGame = 0
+  if Score > Hi then Hi = Score
+  ShowHud
+  GameOver
+  print at 7,18, "HIGH SCORE ", Hi
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    DeathStep
+    return
+  end if
+  if Cool > 0 then dec Cool
+  if BeamT > 0 then
+    dec BeamT
+    if BeamT = 0 then EraseBeam
+  end if
+  Shot = 0
+  if Btn > 0 then
+    if Cool = 0 then Shoot
+  else
+    MoveSight
+  end if
+  Redirect
+  for Ai = 0 to 4
+    MoveAgg(Ai)
+  next
+  if TouchFace = 1 then Die
+  return
+end sub
+
+sub MoveSight:
+  K = J1 | J2
+  V = K & 1
+  if V > 0 then
+    if Sy > 17 then Sy = Sy - 2
+  end if
+  V = K & 2
+  if V > 0 then
+    if Sy < 159 then Sy = Sy + 2
+  end if
+  V = K & 4
+  if V > 0 then
+    if Sx > 17 then Sx = Sx - 2
+  end if
+  V = K & 8
+  if V > 0 then
+    if Sx < 223 then Sx = Sx + 2
+  end if
+  return
+end sub
+
+' the eye beam: drawn to the sight; the first aggressor in the sight dies
+sub Shoot:
+  Shot = 1
+  Cool = CoolN
+  if BeamT > 0 then EraseBeam
+  DrawBeam
+  BeamT = BeamN
+  play sound SndZap
+  Hit = 255
+  for Ai = 0 to 4
+    if Hit = 255 then
+      if Ag[Ai].Live = 1 then
+        if InSight(Ai) = 1 then Hit = Ai
+      end if
+    end if
+  next
+  if Hit < 5 then Kill(Hit)
+  return
+end sub
+
+' 1 when aggressor A's sprite is within 10 pixels of the sight's
+function InSight(u8 A) as u8
+  u8 Px = 0
+  u8 Py = 0
+  T16 = Ag[A].X >> 6
+  Px = T16
+  T16 = Ag[A].Y >> 6
+  Py = T16
+  if absdiff(Px, Sx) > 10 then return 0
+  if absdiff(Py, Sy) > 10 then return 0
+  return 1
+
+sub Kill(u8 A):
+  Ag[A].Live = 0
+  Ag[A].Wt = WaitN
+  play sound SndBoom
+  ' 100 x level (bcd += takes a u8, not a u16: one 100 per level)
+  if Score > ScoreCap then
+    Score = ScoreMax
+  else
+    for Pi = 1 to Lv
+      Score += 100
+    next
+  end if
+  ShowScore
+  dec Kills
+  if Kills > 0 then return
+  Kills = KillsN
+  if Lv < 99 then inc Lv
+  if Lv = 4 then inc Spd
+  if Lv = 8 then inc Spd
+  SetAim
+  ShowLevel
+  play sound SndLevel
+  return
+end sub
+
+sub SetAim:
+  Aim = Lv >> 1
+  Aim = Aim + 2
+  if Aim > 6 then Aim = 6
+  return
+end sub
+
+' every RedN passes one aggressor picked at random gets a new direction
+sub Redirect:
+  dec RedT
+  if RedT > 0 then return
+  RedT = RedN
+  Rand
+  J = Rs & 7
+  if J >= 5 then return
+  if Ag[J].Live = 0 then return
+  Rand
+  V = Rs & 7
+  if V < Aim then
+    D = AimDir(J)
+  else
+    W16 = Rs >> 4
+    D = W16 & 15
+  end if
+  SetVel(J, D)
+  return
+end sub
+
+' the direction (0-15, in steps of two) from aggressor A towards Rashgar
+function AimDir(u8 A) as u8
+  Dx = Ag[A].X >> 6
+  Dx = 120 - Dx
+  Dy = Ag[A].Y >> 6
+  Dy = 92 - Dy
+  Ax = abs(Dx)
+  Ay = abs(Dy)
+  T16 = Ay << 1
+  if T16 < Ax then
+    if Dx > 0 then return 0
+    return 8
+  end if
+  T16 = Ax << 1
+  if T16 < Ay then
+    if Dy > 0 then return 4
+    return 12
+  end if
+  if Dx > 0 then
+    if Dy > 0 then return 2
+    return 14
+  end if
+  if Dy > 0 then return 6
+  return 10
+
+sub SetVel(u8 A, u8 Dir):
+  V = CosT[Dir]
+  T16 = V
+  T16 = T16 - 16
+  Ag[A].Vx = T16 * Spd
+  V = SinT[Dir]
+  T16 = V
+  T16 = T16 - 16
+  Ag[A].Vy = T16 * Spd
+  return
+end sub
+
+sub MoveAgg(u8 A):
+  if Ag[A].Live = 0 then
+    dec Ag[A].Wt
+    if Ag[A].Wt = 0 then Spawn(A)
+    return
+  end if
+  Ag[A].X += Ag[A].Vx
+  Ag[A].Y += Ag[A].Vy
+  if Ag[A].X < XMin then
+    Ag[A].X = XMin
+    Ag[A].Vx = 0 - Ag[A].Vx
+  end if
+  if Ag[A].X > XMax then
+    Ag[A].X = XMax
+    Ag[A].Vx = 0 - Ag[A].Vx
+  end if
+  if Ag[A].Y < YMin then
+    Ag[A].Y = YMin
+    Ag[A].Vy = 0 - Ag[A].Vy
+  end if
+  if Ag[A].Y > YMax then
+    Ag[A].Y = YMax
+    Ag[A].Vy = 0 - Ag[A].Vy
+  end if
+  return
+end sub
+
+' a new aggressor at a random point of a random edge, aimed at Rashgar
+sub Spawn(u8 A):
+  Rand
+  K = Rs & 3
+  Rand
+  V = Rs & 127
+  W16 = Rs >> 8
+  N = W16 & 63
+  X = V + N
+  X = X + 16
+  Y = V + 16
+  select case K
+  case 0
+    Y = 16
+  case 1
+    Y = 160
+  case 2
+    X = 16
+  case else
+    X = 224
+  end select
+  T16 = X
+  Ag[A].X = T16 << 6
+  T16 = Y
+  Ag[A].Y = T16 << 6
+  Ag[A].Live = 1
+  D = AimDir(A)
+  SetVel(A, D)
+  return
+end sub
+
+' 1 when an aggressor touches the face (pixels 116-139 x 89-109)
+function TouchFace as u8
+  u8 Px = 0
+  u8 Py = 0
+  for Ki = 0 to 4
+    if Ag[Ki].Live = 1 then
+      T16 = Ag[Ki].X >> 6
+      Px = T16
+      T16 = Ag[Ki].Y >> 6
+      Py = T16
+      if Px >= 104 then
+        if Px <= 136 then
+          if Py >= 77 then
+            if Py <= 106 then return 1
+          end if
+        end if
+      end if
+    end if
+  next
+  return 0
+
+sub Die:
+  DeadT = DeadN
+  if BeamT > 0 then EraseBeam
+  BeamT = 0
+  dec Lives
+  ShowHud
+  FaceOn = 0
+  DrawFace
+  for Ki = 0 to 2
+    Dbx[Ki] = 120
+    Dby[Ki] = 92
+  next
+  play sound SndDie
+  return
+end sub
+
+sub DeathStep:
+  dec DeadT
+  if DeadT >= 90 then
+    V = DeadT / 20
+    V = V & 1
+    if V = 1 then
+      backdrop dark red
+    else
+      backdrop black
+    end if
+    for Ki = 0 to 2
+      V = DebX[Ki]
+      Dbx[Ki] = Dbx[Ki] + V
+      Dbx[Ki] = Dbx[Ki] - 4
+      V = DebY[Ki]
+      Dby[Ki] = Dby[Ki] + V
+      Dby[Ki] = Dby[Ki] - 4
+    next
+  end if
+  if DeadT = 89 then backdrop black
+  if DeadT > 0 then return
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  ResetAggs
+  FaceOn = 1
+  OldMf = 9
+  DrawFace
+  return
+end sub
+
+sub ResetAggs:
+  for Ki = 0 to 4
+    Ag[Ki].Live = 0
+    V = Ki * 25
+    Ag[Ki].Wt = V + 30
+    Ag[Ki].X = 0
+    Ag[Ki].Y = 0
+    Ag[Ki].Vx = 0
+    Ag[Ki].Vy = 0
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the beam: a line of beam tiles from Rashgar's eyes to the sight, one
+' sample every 4 pixels; the cells are kept to put the background back
+sub DrawBeam:
+  Nb = 0
+  Dx = Sx + 8
+  Dx = Dx - 128
+  Dy = Sy + 8
+  Dy = Dy - 96
+  Ax = abs(Dx)
+  Ay = abs(Dy)
+  T16 = Ax
+  if Ay > Ax then T16 = Ay
+  T16 = T16 >> 2
+  N = T16
+  if N > 0 then
+    T16 = Ay << 1
+    if T16 < Ax then
+      C = TBeam
+    else
+      T16 = Ax << 1
+      if T16 < Ay then
+        C = TBeam + 1
+      else
+        C = TBeam + 3
+        if Dx > 0 then
+          if Dy > 0 then C = TBeam + 2
+        end if
+        if Dx < 0 then
+          if Dy < 0 then C = TBeam + 2
+        end if
+      end if
+    end if
+    StX = Dx << 6
+    StX = StX / N
+    StY = Dy << 6
+    StY = StY / N
+    Bx = 8192
+    By = 6144
+    Off = 0
+    for Bi = 1 to N
+      Bx = Bx + StX
+      By = By + StY
+      T16 = Bx >> 9
+      X = T16
+      T16 = By >> 9
+      Y = T16
+      Got = 1
+      if Y < 2 then Got = 0
+      if Y > 23 then Got = 0
+      if X > 31 then Got = 0
+      if X >= 14 then
+        if X <= 17 then
+          if Y >= 11 then
+            if Y <= 13 then Got = 0
+          end if
+        end if
+      end if
+      if Got = 1 then
+        W16 = Y
+        W16 = W16 << 5
+        W16 = W16 + X
+        if W16 <> Off then
+          if Nb < MaxBeam then
+            Off = W16
+            BeamOff[Nb] = Off
+            inc Nb
+            vpoke vram.name + Off, C
+          end if
+        end if
+      end if
+    next
+  end if
+  return
+end sub
+
+sub EraseBeam:
+  if Nb > 0 then
+    N = Nb - 1
+    for Bi = 0 to N
+      Off = BeamOff[Bi]
+      V = BgName[Off]
+      vpoke vram.name + Off, V
+    next
+  end if
+  Nb = 0
+  return
+end sub
+
+' the face: 4 x 3 tiles at columns 14-17, rows 11-13 (or the background)
+sub DrawFace:
+  K = Mf * 12
+  for Ki = 0 to 11
+    V = Ki >> 2
+    Y = V + 11
+    V = Ki & 3
+    X = V + 14
+    W16 = Y
+    W16 = W16 << 5
+    Off = W16 + X
+    if FaceOn = 1 then
+      V = K + Ki
+      C = FaceT[V]
+    else
+      C = BgName[Off]
+    end if
+    vpoke vram.name + Off, C
+  next
+  return
+end sub
+
+' the mouth chews: frames 3, 2, 1, 0 (open to closed), 8 frames each
+sub Animate:
+  V = Tick >> 3
+  V = V & 3
+  Mf = 3 - V
+  if Mf = OldMf then return
+  OldMf = Mf
+  if FaceOn = 1 then DrawFace
+  return
+end sub
+
+' sprite 0 the pupils, 1 the sight, 2-6 the aggressors, 7-9 debris
+sub DrawSprites:
+  if FaceOn = 1 then
+    C = 9
+    if BeamT > 0 then C = 15
+    set sprite 0 to 87,120,SPupils,C
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  if InGame = 1 then
+    if DeadT = 0 then
+      set sprite 1 to Sy - 1,Sx,SSight,14
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  V = Tick >> 2
+  V = V & 7
+  K = V << 2
+  K = K + SAgg0
+  for Ai = 0 to 4
+    J = Ai + 2
+    if Ag[Ai].Live = 1 then
+      T16 = Ag[Ai].X >> 6
+      X = T16
+      T16 = Ag[Ai].Y >> 6
+      Y = T16
+      set sprite J to Y - 1,X,K,15
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  for Ki = 0 to 2
+    J = Ki + 7
+    if DeadT >= 90 then
+      V = Ki & 1
+      V = V << 2
+      V = V + SDebris0
+      set sprite J to Dby[Ki],Dbx[Ki],V,11
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "LEVEL"
+  ShowLevel
+  print at 11,1, "SCORE"
+  ShowScore
+  print at 24,1, "LIVES"
+  N = Lives + 48
+  put char N at 29,1
+  return
+end sub
+
+sub ShowLevel:
+  W16 = Lv
+  print at 8,1, width$(W16, 2)
+  return
+end sub
+
+sub ShowScore:
+  print at 17,1, Score
+  return
+end sub
+
+' a ring of the shield (K: 0-3, 4 the stars), cell by cell from ROM
+sub DrawRing:
+  if K = 0 then
+    Ri = 0
+  else
+    Ri = RingEnd[K - 1]
+  end if
+  RiEnd = RingEnd[K]
+  while Ri < RiEnd
+    V = RingLo[Ri]
+    Off = V
+    V = RingHi[Ri]
+    W16 = V
+    W16 = W16 << 8
+    Off = Off + W16
+    if Off < 352 then
+      DrawCell
+    elseif Off >= 448 then
+      DrawCell
+    else
+      V = Off & 31
+      if V < 14 then
+        DrawCell
+      elseif V > 17 then
+        DrawCell
+      elseif FaceOn = 0 then
+        DrawCell
+      end if
+    end if
+    inc Ri
+  end while
+  return
+end sub
+
+sub DrawCell:
+  V = BgName[Off]
+  vpoke vram.name + Off, V
+  return
+end sub
+
+' the shield energizes: the rings appear one by one with a tone
+sub ShieldUp:
+  for Ki = 0 to 4
+    K = Ki
+    Rearm
+    wait
+    nmi off
+    DrawRing
+    play sound SndRing
+    Rearm
+    wait 14 frames
+    nmi off
+  next
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lv = 1
+  Spd = 1
+  SetAim
+  Kills = KillsN
+  Lives = 3
+  Over = 0
+  DeadT = 0
+  BeamT = 0
+  Cool = 0
+  Nb = 0
+  RedT = RedN
+  Sx = 168
+  Sy = 60
+  FaceOn = 1
+  OldMf = 9
+  ResetAggs
+  NewScreen
+  K = 4
+  DrawRing
+  Mf = 0
+  DrawFace
+  ShowHud
+  InGame = 1
+  DrawSprites
+  ShowScreen
+  ShieldUp
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' GAME OVER: eight big letters fly in from the right one after another
+sub GameOver:
+  HideSprites
+  for Ki = 0 to 7
+    play sound SndWhoosh
+    V = Ki & 3
+    V = V * 24
+    if Ki < 4 then
+      Y = 71
+      D = 84 + V
+    else
+      Y = 95
+      D = 84 + V
+    end if
+    select case Ki
+    case 0
+      C = SLG
+    case 1
+      C = SLA
+    case 2
+      C = SLM
+    case 3, 6
+      C = SLE
+    case 4
+      C = SLO
+    case 5
+      C = SLV
+    case else
+      C = SLR
+    end select
+    X = 240
+    while X > D
+      X = X - 4
+      if X < D then X = D
+      set sprite Ki to Y,X,C,11
+      update sprites
+      Frame1
+    end while
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen: each third gets its own tiles and colours
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill full mode 2 text color with $F1
+  copy T0Pat count N0Bytes to vram.pattern + 1024
+  copy T0Col count N0Bytes to vram.color + 1024
+  copy T1Pat count N1Bytes to vram.pattern + 3072
+  copy T1Col count N1Bytes to vram.color + 3072
+  copy T2Pat count N2Bytes to vram.pattern + 5120
+  copy T2Col count N2Bytes to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: stars and Rashgar chewing, the tune once, START GAME / CREDITS
+sub TitlePage:
+  InGame = 0
+  FaceOn = 1
+  OldMf = 9
+  for Ki = 0 to 4
+    Ag[Ki].Live = 0
+  next
+  NewScreen
+  K = 4
+  DrawRing
+  Mf = 0
+  DrawFace
+  print at 3,3, "AHOY! MAGAZINE PRESENTS..."
+  print at 9,5, "R A S H G A R"
+  print at 5,7, "MASTER OF DIMENSION X"
+  print at 4,16, "BY CLEVELAND M. BLAKEMORE"
+  print at 11,18, "START GAME"
+  print at 11,19, "CREDITS"
+  print at 2,21, "HI"
+  print at 5,21, Hi
+  print at 15,21, "AHOY! JUNE 1988"
+  ShowMenu
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 540
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Animate
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,18
+  put char 32 at 9,19
+  J = Menu + 18
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 7,2, "RASHGAR - MASTER OF"
+  print at 9,3, "DIMENSION X"
+  print at 2,5, "BASED ON RASHGAR BY"
+  print at 2,6, "CLEVELAND M. BLAKEMORE,"
+  print at 2,7, "AHOY! JUNE 1988"
+  print at 2,8, "(COMMODORE 128)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: DIMENSION X"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SetR3:
+    ld bc,$03FF
+    jp WRITE_REGISTER
+RgZap:
+    db $40,$35,$10,$01,$40,$40,$20,$01,$40,$50,$20,$01,$40,$5F,$30,$01,$40,$7F,$40,$02,$40,$AA,$50,$02
+    db $50
+RgBoom:
+    db $00,$00,$05,$02,$00,$00,$16,$03,$00,$00,$36,$04,$00,$00,$57,$08,$10
+RgRing:
+    db $40,$53,$21,$03,$40,$FE,$30,$03,$40,$CA,$30,$03,$40,$AA,$40,$06,$50
+RgLevel:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$20,$0C,$50
+RgDie:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$26,$0A,$00,$00,$37,$10,$00,$00,$57,$18,$10
+RgWhoosh:
+    db $40,$47,$30,$02,$40,$55,$40,$02,$40,$6B,$40,$02,$40,$7F,$50,$02,$50
+
+RgSoundTable:
+    dw RgTuneMel,$702B
+    dw RgTuneBass,$7035
+    dw RgZap,$7049
+    dw RgBoom,$703F
+    dw RgRing,$7049
+    dw RgLevel,$7049
+    dw RgDie,$703F
+    dw RgWhoosh,$7049
+; Dimension X (original)
+; Tiny Sound, 8 frames per step
+RgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$1E,$01,$01,$1A,$01,$1C,$01,$1E,$01
+    db $21,$01,$1F,$1E,$1C,$01,$01,$17,$01,$01,$19,$01,$1A,$01,$1C,$01
+    db $1E,$01,$01,$01,$23,$01,$01,$1E,$01,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$1C,$01,$01,$21,$01,$1E,$01,$1A,$01
+    db $17,$01,$01,$01,$00,$01,$01
+    db $FF
+RgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$10,$01,$17,$01,$07,$01,$0E,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$09,$01,$10,$01,$06,$01,$0D,$01
+    db $0B,$01,$01,$01,$00,$01,$01
+    db $FF
+}

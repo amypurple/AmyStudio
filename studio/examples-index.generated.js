@@ -8377,5 +8377,100 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dogcatcher",
+    "label": "Dogcatcher (September 1986)",
+    "detail": "A ColecoVision adaptation of DOGCATCHER by Bob Blackmer, originally published in Ahoy! September 1986.",
+    "projectName": "Dogcatcher",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "speedway",
+    "label": "Speedway (December 1986)",
+    "detail": "A ColecoVision adaptation of SPEEDWAY by an author not named in the issue, originally published in Ahoy! December 1986.",
+    "projectName": "Speedway",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-adventurer",
+    "label": "The Adventurer (February 1987)",
+    "detail": "A ColecoVision adaptation of THE ADVENTURER by Jean-Francois Heon, originally published in Ahoy! February 1987.",
+    "projectName": "The Adventurer",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hoops",
+    "label": "Hoops (September 1987)",
+    "detail": "A ColecoVision adaptation of Hoops by an author not named in the issue, originally published in Ahoy! September 1987.",
+    "projectName": "Hoops",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "rashgar",
+    "label": "Rashgar (June 1988)",
+    "detail": "A ColecoVision adaptation of RASHGAR by Cleveland M. Blakemore, originally published in Ahoy! June 1988.",
+    "projectName": "Rashgar",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];
