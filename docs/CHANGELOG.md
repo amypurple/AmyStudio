@@ -1,3 +1,17 @@
+## 2026-11-02 - Ahoy compiler regression fixes
+
+- Fixed runtime `u16` copy counts overwriting the RAM source address before
+  copying, and added real-OS7 runtime coverage across all five profiles.
+- Fixed signed `data words`, dynamic word-table comparisons, nested array
+  targets, u16 table values widened to u32, BCD array printing and
+  narrower-to-wider BCD arithmetic.
+- Added packed byte-data copies into record arrays, inline `swap`, and a
+  compact byte remainder path that avoids unnecessary 16-bit division.
+- Improved diagnostics for reserved or colliding local names and dynamic
+  `digits$`/`width$` widths. The complete clean example corpus passes.
+- Rebuilt the Visual Studio Code extension as version 0.1.8 with the updated
+  compiler and regression coverage.
+
 ## 2026-11-02 - Compact plain numeric strings
 
 - Fixed plain `str$(Value)` to emit only the sign and significant decimal

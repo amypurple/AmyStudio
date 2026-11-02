@@ -88,6 +88,14 @@ export function handlePrintFormatStatement({
 
   if (/^print\s+at\s+/i.test(line)) {
     const argText = line.replace(/^print\s+at\s+/i, "");
+    const dynamicTextWidth = argText.match(/\b(?:digits|width)\$\s*\([^,]+,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/i);
+    if (dynamicTextWidth) {
+      return {
+        handled: true,
+        ok: false,
+        log: `digits$()/width$() field width must be a literal integer from 1 to 16; '${dynamicTextWidth[1]}' is runtime data: ${rawLine}`
+      };
+    }
     let parts = splitTopLevelArgs(argText).map((part) => part.trim()).filter(Boolean);
     if (parts.length >= 2) {
       const relaxedItems = /^([\s\S]+?)\s+("[\s\S]*)$/.exec(parts[1]);

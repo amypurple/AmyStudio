@@ -419,7 +419,17 @@ export function handleDeclarationStatement({
         const procMap = ensureProcLocalMap(state.currentProc);
         const mangledName = `${state.currentProc}_${name}`;
         const initialInvocation = parseRoutineInvocation(initial);
-        if (!state.isValidSymbolName(name) || state.isReservedAmyIdentifier(name) || state.describeGlobalNameCollision(name) || (!isSafeExpression(initial) && !initialInvocation) || state.mapHasInsensitive(procMap, name) || state.runtimeVars.has(mangledName) || lowerName(name) === lowerName(state.currentProc)) {
+        if (!state.isValidSymbolName(name)) {
+          return { handled: true, ok: false, log: `Invalid local variable name '${name}': ${rawLine}` };
+        }
+        if (state.isReservedAmyIdentifier(name)) {
+          return { handled: true, ok: false, log: `Local variable name '${name}' collides with a reserved Amy keyword or builtin: ${rawLine}` };
+        }
+        const globalCollision = state.describeGlobalNameCollision(name);
+        if (globalCollision) {
+          return { handled: true, ok: false, log: `Local variable name '${name}' collides with an existing ${globalCollision}; Amy names are case-insensitive: ${rawLine}` };
+        }
+        if ((!isSafeExpression(initial) && !initialInvocation) || state.mapHasInsensitive(procMap, name) || state.runtimeVars.has(mangledName) || lowerName(name) === lowerName(state.currentProc)) {
           return { handled: true, ok: false, log: `Invalid local variable declaration: ${rawLine}` };
         }
         const useStaticLocal = typeof state.isStaticLocalProcCandidate === "function"

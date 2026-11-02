@@ -834,6 +834,26 @@ export function handleVramTextStatement({
       };
     }
 
+    if (targetInfo?.kind === "record_array") {
+      const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);
+      const targetCode = targetInfo.qualifiedField
+        ? emitLoadRecordFieldAddressIntoHL(targetExpr)
+        : emitLoadArrayAddressIntoHL(targetExpr, "0");
+      const countValue = countToken ? tryEvaluateConstantExpression(countToken) : null;
+      const targetByteCount = targetInfo.length * targetInfo.recordSize;
+      if (!sourceCode || !targetCode) {
+        return { ok: false, handled: true, log: `Record byte copy could not resolve source or destination: ${rawLine}` };
+      }
+      if (!Number.isInteger(countValue) || countValue < 1 || countValue > targetByteCount) {
+        return { ok: false, handled: true, log: `Raw record-array copy requires a constant count from 1 to ${targetByteCount}: ${rawLine}` };
+      }
+      return {
+        ok: true,
+        handled: true,
+        lines: [...sourceCode, "    push hl", ...targetCode, "    ex de,hl", "    pop hl", `    ld bc,${countValue}`, "    ldir"]
+      };
+    }
+
     if (targetInfo?.kind === "array") {
       if (sourceInfo?.kind === "array") {
         if (targetInfo.elementType !== sourceInfo.elementType) {
@@ -875,7 +895,25 @@ export function handleVramTextStatement({
         if (!resolvedCountToken) {
           return { ok: false, handled: true, log: `copy to byte buffer needs an explicit count for non-data or offset source ${sourceExpr}: ${rawLine}` };
         }
-        return { ok: true, handled: true, lines: [...sourceCode, "    push hl", ...targetCode, "    ex de,hl", "    pop hl", ...emitLoadCountIntoBC(resolvedCountToken), "    ldir"] };
+        const countCode = emitLoadCountIntoBC(resolvedCountToken);
+        if (!countCode) {
+          return { ok: false, handled: true, log: `copy to byte buffer requires a valid byte count: ${rawLine}` };
+        }
+        return {
+          ok: true,
+          handled: true,
+          lines: [
+            ...countCode,
+            "    push bc",
+            ...sourceCode,
+            "    push hl",
+            ...targetCode,
+            "    ex de,hl",
+            "    pop hl",
+            "    pop bc",
+            "    ldir"
+          ]
+        };
       }
     }
   }

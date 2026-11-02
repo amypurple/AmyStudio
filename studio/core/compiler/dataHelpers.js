@@ -120,14 +120,18 @@ export function createDataHelpers(ctx) {
     if (addressOf) return { kind: "address", name: addressOf[1] };
     if (/^\$[0-9A-Fa-f]+$/.test(trimmed)) return { kind: "value", text: trimmed.toUpperCase() };
     if (/^0x[0-9A-Fa-f]+$/i.test(trimmed)) return { kind: "value", text: `$${trimmed.slice(2).toUpperCase()}` };
-    if (/^[0-9]+$/.test(trimmed)) return { kind: "value", text: trimmed };
+    if (/^-?[0-9]+$/.test(trimmed)) {
+      const value = Number.parseInt(trimmed, 10);
+      if (!Number.isInteger(value) || value < -32768 || value > 0xFFFF) return false;
+      return { kind: "value", text: String(value & 0xFFFF) };
+    }
     return false;
   }
 
   function appendWordDataTokens(block, tokenText, rawLine) {
     const tokens = String(tokenText).trim().split(",").map(normalizeWordDataToken);
     if (tokens.some((token) => token === false)) {
-      throw new Error(`Invalid word table entry (use @Label, $xxxx, or a decimal word): ${rawLine}`);
+      throw new Error(`Invalid word table entry (use @Label, $xxxx, or a signed/unsigned decimal word): ${rawLine}`);
     }
     block.values.push(...tokens.filter(Boolean));
   }

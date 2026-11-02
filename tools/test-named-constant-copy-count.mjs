@@ -40,10 +40,10 @@ try {
     await run(["tools/amyc.mjs", sourcePath, "--asm", asmPath, "--rom", romPath, "--opt", profile]);
     const asm = await readFile(asmPath, "utf8");
 
-    assert.match(asm, /ld bc,AMY_UCONST_BYTE_MAX\s+call WRITE_VRAM/i, `${profile}: 255 should use WRITE_VRAM`);
-    assert.match(asm, /ld bc,AMY_UCONST_WORD_MIN\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 256 expression should use the wide wrapper`);
-    assert.match(asm, /ld bc,AMY_UCONST_N\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 300 should preserve both bytes`);
-    assert.match(asm, /ld bc,AMY_UCONST_VIEW_N1\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 1024 should preserve both bytes`);
+    assert.match(asm, /ld bc,AMY_UCONST_BYTE_MAX[\s\S]{0,160}?call WRITE_VRAM/i, `${profile}: 255 should use WRITE_VRAM`);
+    assert.match(asm, /ld bc,AMY_UCONST_WORD_MIN[\s\S]{0,160}?call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 256 expression should use the wide wrapper`);
+    assert.match(asm, /ld bc,AMY_UCONST_N[\s\S]{0,160}?call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 300 should preserve both bytes`);
+    assert.match(asm, /ld bc,AMY_UCONST_VIEW_N1[\s\S]{0,160}?call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 1024 should preserve both bytes`);
     assert.match(asm, /ld bc,300\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: literal and named counts should use the same path`);
     assert.doesNotMatch(asm, /ld a,AMY_UCONST_(?:WORD_MIN|N|VIEW_N1)/i, `${profile}: wide constants must not be truncated through A`);
 
@@ -53,9 +53,9 @@ try {
     await writeFile(forwardPath, forwardSource);
     await run(["tools/amyc.mjs", forwardPath, "--asm", forwardAsmPath, "--rom", forwardRomPath, "--opt", profile]);
     const forwardAsm = await readFile(forwardAsmPath, "utf8");
-    assert.match(forwardAsm, /ld bc,AMY_UCONST_N\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: forward 360 count should use the wide wrapper`);
-    assert.match(forwardAsm, /ld bc,AMY_UCONST_VIEW_N1\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: forward constant expression should preserve 1024`);
-    assert.match(forwardAsm, /ld bc,AMY_UCONST_BYTE_MAX\s+call WRITE_VRAM/i, `${profile}: forward 255 count should keep the byte-sized path`);
+    assert.match(forwardAsm, /ld bc,AMY_UCONST_N[\s\S]{0,160}?call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: forward 360 count should use the wide wrapper`);
+    assert.match(forwardAsm, /ld bc,AMY_UCONST_VIEW_N1[\s\S]{0,160}?call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: forward constant expression should preserve 1024`);
+    assert.match(forwardAsm, /ld bc,AMY_UCONST_BYTE_MAX[\s\S]{0,160}?call WRITE_VRAM/i, `${profile}: forward 255 count should keep the byte-sized path`);
     assert.doesNotMatch(forwardAsm, /ld a,AMY_UCONST_(?:N|VIEW_N1)/i, `${profile}: forward wide constants must not be truncated through A`);
   }
   console.log("Named constant copy counts: PASS");

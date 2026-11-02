@@ -722,14 +722,31 @@ export function createExpressionComputeHelpers({
       }
       if (node.op === "%") {
         const rightValue = tryEvaluateAstInteger(node.right);
+        const leftDeclaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
         if (Number.isInteger(rightValue) && rightValue > 0 && rightValue <= 256 && (rightValue & (rightValue - 1)) === 0) {
-          const leftDeclaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
           if (!isSignedDeclaredType(leftDeclaredType)) {
             const loadLeft = emitLoadInt8AstIntoA(node.left);
             if (!loadLeft) return null;
             const mask = `$${((rightValue - 1) & 0xFF).toString(16).toUpperCase().padStart(2, "0")}`;
             return [...loadLeft, `    and ${mask}`];
           }
+        }
+        if (Number.isInteger(rightValue) && rightValue > 0 && rightValue <= 0xFF && !isSignedDeclaredType(leftDeclaredType)) {
+          const loadLeft = emitLoadInt8AstIntoA(node.left);
+          if (!loadLeft) return null;
+          if (rightValue === 1) return [...loadLeft, "    xor a"];
+          const loop = makeGeneratedLabel("Mod8ExprLoop");
+          const done = makeGeneratedLabel("Mod8ExprDone");
+          return [
+            ...loadLeft,
+            `    ld b,${symbolOrValue(String(rightValue))}`,
+            `${loop}:`,
+            "    cp b",
+            `    jr c,${done}`,
+            "    sub b",
+            `    jr ${loop}`,
+            `${done}:`
+          ];
         }
         const lines = emitLoadModulo16AstIntoHL(node, resolveDeclaredValueType(renderExpressionAst(node)) || null);
         if (!lines) return null;

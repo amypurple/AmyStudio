@@ -55,7 +55,8 @@ export function createInlineStatementCompiler(ctx) {
     compileDisplayGraphicsSpriteStatement,
     compileVramTextStatement,
     compileVramPixelInputStatement,
-    compileSoundSpinnerStatement
+    compileSoundSpinnerStatement,
+    compileMathBitStatement
   } = ctx;
 
   return function compileInlineStatement(inlineStmt, rawLineText) {
@@ -92,6 +93,14 @@ export function createInlineStatementCompiler(ctx) {
         return soundResult.ok
           ? { ok: true, lines: soundResult.lines, log: "" }
           : { ok: false, lines: [], log: soundResult.log };
+      }
+    }
+    if (/^swap\s+/i.test(inlineStmt)) {
+      const mathResult = compileMathBitStatement?.(inlineStmt, rawLineText);
+      if (mathResult?.handled) {
+        return mathResult.ok
+          ? { ok: true, lines: mathResult.lines, log: "" }
+          : { ok: false, lines: [], log: mathResult.log };
       }
     }
     if (/^return$/i.test(inlineStmt)) {

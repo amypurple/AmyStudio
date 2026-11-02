@@ -768,8 +768,17 @@ export function createControlFlowHelpers(ctx) {
         lines.push(...loadLeft);
         lines.push(`    ld de,${rawWord}`);
       } else {
-        lines.push(...loadLeft);
-        lines.push(`    ld de,${symbolOrValue(rightToken)}`);
+        const loadRight = emitLoadInt16IntoHL(rightToken);
+        if (loadRight && tryEvaluateConstantExpression(rightToken) === null) {
+          lines.push(...loadLeft);
+          lines.push("    push hl");
+          lines.push(...loadRight);
+          lines.push("    ex de,hl");
+          lines.push("    pop hl");
+        } else {
+          lines.push(...loadLeft);
+          lines.push(`    ld de,${symbolOrValue(rightToken)}`);
+        }
       }
       lines.push("    or a");
       lines.push("    sbc hl,de");

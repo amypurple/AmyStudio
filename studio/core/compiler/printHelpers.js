@@ -639,7 +639,7 @@ export function createPrintHelpers(ctx) {
     if (isFix16_16DeclaredType(declaredType)) return 9;
     if (isFix8_8DeclaredType(declaredType)) return 7;
     if (normalizeDeclaredType(declaredType) === "ufix8_8") return 6;
-    if (declaredType === "bcd") return directInfo ? getBcdDigitCount(directInfo) : null;
+    if (declaredType === "bcd") return getBcdDigitCount(valueToken);
     if (declaredType === "u8") return 3;
     if (declaredType === "boolean") return 1;
     if (declaredType === "u16") return 5;

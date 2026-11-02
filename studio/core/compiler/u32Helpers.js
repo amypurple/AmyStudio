@@ -201,44 +201,46 @@ export function createU32Helpers({
     const fieldRef = parseRecordFieldRef(token);
     if (fieldRef) {
       const fieldType = resolveValueType(token);
-      if (fieldType !== "u32" && fieldType !== "i32") return null;
-      const loadAddress = emitLoadRecordFieldAddressIntoHL(token);
-      if (!loadAddress) return null;
-      return [
-        ...loadAddress,
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+0),a`,
-        "    inc hl",
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+1),a`,
-        "    inc hl",
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+2),a`,
-        "    inc hl",
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+3),a`
-      ];
+      if (fieldType === "u32" || fieldType === "i32") {
+        const loadAddress = emitLoadRecordFieldAddressIntoHL(token);
+        if (!loadAddress) return null;
+        return [
+          ...loadAddress,
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+0),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+1),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+2),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+3),a`
+        ];
+      }
     }
     const arrayRef = parseArrayRef(token);
     if (arrayRef) {
       const arrayInfo = getRuntimeInfo(arrayRef.name);
-      if (!arrayInfo || arrayInfo.kind !== "array" || (arrayInfo.elementType !== "u32" && arrayInfo.elementType !== "i32")) return null;
-      const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
-      if (!loadAddress) return null;
-      return [
-        ...loadAddress,
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+0),a`,
-        "    inc hl",
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+1),a`,
-        "    inc hl",
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+2),a`,
-        "    inc hl",
-        "    ld a,(hl)",
-        `    ld (${baseLabel}+3),a`
-      ];
+      if (arrayInfo?.kind === "array" && (arrayInfo.elementType === "u32" || arrayInfo.elementType === "i32")) {
+        const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+        if (!loadAddress) return null;
+        return [
+          ...loadAddress,
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+0),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+1),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+2),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+3),a`
+        ];
+      }
     }
     const functionCall = emitFunctionInvocation(token);
     if (functionCall) {

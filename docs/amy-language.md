@@ -2505,6 +2505,7 @@ For scoreboard-style fields, use explicit padding:
 
 - `str$(Value, digits N)` or `digits$(Value, N)` writes a zero-padded field
 - `str$(Value, width N)` or `width$(Value, N)` writes a right-aligned field using the configured pad tile
+- `N` is a compile-time literal from 1 through 16; use a fixed maximum width when the value itself is dynamic
 - this is Amy's readable equivalent of CVBasic's compact `<N>` / `<.N>` print prefixes
 
 Numeric glyph output can be customized globally:

@@ -52,7 +52,8 @@ export function createBcdHelpers(ctx) {
     return bytes;
   }
 
-  function getBcdDigitCount(info) {
+  function getBcdDigitCount(infoOrName) {
+    const info = typeof infoOrName === "string" ? getBcdInfo(infoOrName) : infoOrName;
     if (!info || info.kind !== "bcd") return null;
     return Number.isInteger(info.digitCount) ? info.digitCount : info.byteCount * 2;
   }
@@ -213,15 +214,20 @@ export function createBcdHelpers(ctx) {
       if (valueInfo.kind !== "array" && valueInfo.type === "int8") {
         return emitBcdAdjustByInt8(varName, valueToken, "add");
       }
-      if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) !== digitCount) return null;
+      if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) > digitCount) return null;
+      const sourceByteCount = valueInfo.byteCount;
       const lines = ["    or a"];
       for (let i = 0; i < byteCount; i++) {
-        const loadSrc = emitLoadBcdInt8IntoA(valueToken, i);
+        const loadSrc = i < sourceByteCount ? emitLoadBcdInt8IntoA(valueToken, i) : null;
         const loadDst = emitLoadBcdInt8IntoA(varName, i);
         const storeDst = emitStoreAToBcdInt8(varName, i);
-        if (!loadSrc || !loadDst || !storeDst) return null;
-        lines.push(...preserveFlagsAroundBcdLoad(loadSrc));
-        lines.push("    ld b,a");
+        if ((i < sourceByteCount && !loadSrc) || !loadDst || !storeDst) return null;
+        if (loadSrc) {
+          lines.push(...preserveFlagsAroundBcdLoad(loadSrc));
+          lines.push("    ld b,a");
+        } else {
+          lines.push("    ld b,0");
+        }
         lines.push(...preserveFlagsAroundBcdLoad(loadDst));
         lines.push(`    ${i === 0 ? "add a,b" : "adc a,b"}`);
         lines.push("    daa");
@@ -266,14 +272,19 @@ export function createBcdHelpers(ctx) {
         return emitBcdAdjustByInt8(varName, valueToken, "sub");
       }
       lines = ["    or a"];
-      if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) !== digitCount) return null;
+      if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) > digitCount) return null;
+      const sourceByteCount = valueInfo.byteCount;
       for (let i = 0; i < byteCount; i++) {
-        const loadSrc = emitLoadBcdInt8IntoA(valueToken, i);
+        const loadSrc = i < sourceByteCount ? emitLoadBcdInt8IntoA(valueToken, i) : null;
         const loadDst = emitLoadBcdInt8IntoA(varName, i);
         const storeDst = emitStoreAToBcdInt8(varName, i);
-        if (!loadSrc || !loadDst || !storeDst) return null;
-        lines.push(...preserveFlagsAroundBcdLoad(loadSrc));
-        lines.push("    ld b,a");
+        if ((i < sourceByteCount && !loadSrc) || !loadDst || !storeDst) return null;
+        if (loadSrc) {
+          lines.push(...preserveFlagsAroundBcdLoad(loadSrc));
+          lines.push("    ld b,a");
+        } else {
+          lines.push("    ld b,0");
+        }
         lines.push(...preserveFlagsAroundBcdLoad(loadDst));
         lines.push(`    ${i === 0 ? "sub b" : "sbc a,b"}`);
         lines.push("    daa");

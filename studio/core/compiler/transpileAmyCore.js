@@ -3373,7 +3373,8 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parseFormulaAssignment(text) {
-    const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*`;
+    const indexPattern = String.raw`(?:[^\[\]]+|\[[^\[\]]*\])+`;
+    const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[${indexPattern}\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[${indexPattern}\])?)*`;
     const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(<<=|>>=|\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|=)\\s*(.+)$`));
     if (!match) return null;
     if (match[2] === "=" && /^(?:get|read)\s+(?:char|tile|count|frame)\b/i.test(match[3].trim())) return null;
@@ -5897,6 +5898,15 @@ export function transpileAmyCore(sourceText, deps) {
           && resolveValueType(formulaAssignment.value) === "bcd") {
           return { ok: false, asmBody: "", log: `BCD assignment requires same-size BCD variables: ${rawLine}` };
         }
+        if ((formulaAssignment.op === "+=" || formulaAssignment.op === "-=")
+          && resolveValueType(formulaAssignment.target) === "bcd"
+          && resolveDeclaredValueType(formulaAssignment.value) === "u16") {
+          return {
+            ok: false,
+            asmBody: "",
+            log: `BCD ${formulaAssignment.op} u16 requires a bounded binary-to-BCD conversion that is not implemented; use a literal, u8, or a BCD value no wider than the target: ${rawLine}`
+          };
+        }
         return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };
       }
       body.push(...assignmentCode);
@@ -6104,6 +6114,28 @@ export function transpileAmyCore(sourceText, deps) {
         });
         return result.handled && result.ok ? { ...result, lines: inlineBody } : result;
       },
+      compileMathBitStatement: (inlineLine, inlineRawLine) => handleMathBitStatement({
+        line: inlineLine,
+        rawLine: inlineRawLine,
+        resolveValueType,
+        resolveDeclaredValueType,
+        isSignedDeclaredType,
+        emitMultiplyInt8Op,
+        emitMultiplyInt16Op,
+        emitDivideInt8Op,
+        getRuntimeInfo,
+        makeGeneratedLabel,
+        emitLoadInt8Into,
+        emitStoreInt8FromA,
+        emitLoadInt16IntoHL,
+        emitStoreInt16FromHL,
+        formatIxOffset,
+        scopedRuntimeName,
+        runtimeTypeSize,
+        tryEvaluateCompileTimeNumericExpression,
+        parseRecordFieldRef,
+        emitLoadArrayAddressIntoHL
+      }),
       compileSoundSpinnerStatement: (inlineLine, inlineRawLine) => handleSoundSpinnerStatement({
         line: inlineLine,
         rawLine: inlineRawLine,
