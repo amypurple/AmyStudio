@@ -107,6 +107,7 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
   let current = null;
   let inAsm = false;
   let opaqueAsm = false;
+  const opaqueRoutineRoots = new Set();
   const globalAsmTransfers = [];
 
   const finish = () => { current = null; inAsm = false; };
@@ -143,8 +144,8 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
       continue;
     }
     const include = text.match(/^include(?:\s+asm)?\s+"([^"]+)"$/i);
-    if (include && !includeIsProvablyDataOnly(include[1], resolveInclude)) opaqueAsm = true;
-    if (/^call\s+asm\b/i.test(text)) opaqueAsm = true;
+    if (include && !includeIsProvablyDataOnly(include[1], resolveInclude)) opaqueRoutineRoots.add(current.key);
+    if (/^call\s+asm\b/i.test(text)) opaqueRoutineRoots.add(current.key);
     if (/^end\s+(?:sub|function)$/i.test(text)) { finish(); continue; }
     current.body.push(text);
   }
@@ -153,7 +154,8 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
   const asmEntryTargets = new Set();
   const classifyAsmTransfer = (transfer, callerKey = null) => {
     if (!transfer || transfer.op === "unknown" || !/^(?:[A-Za-z_.$][A-Za-z0-9_.$]*|\$[0-9A-F]+|0x[0-9A-F]+|[0-9]+)$/i.test(transfer.target)) {
-      opaqueAsm = true;
+      if (callerKey) opaqueRoutineRoots.add(callerKey);
+      else opaqueAsm = true;
       return;
     }
     const target = asmTargetRoutine(transfer.target, routines);
@@ -200,6 +202,19 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
   };
   for (const root of nmiRoots) markReachable(root);
 
+  const opaqueReachable = new Set(opaqueRoutineRoots);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [caller, targets] of graph) {
+      if (opaqueReachable.has(caller)) continue;
+      if ([...targets].some((target) => opaqueReachable.has(target))) {
+        opaqueReachable.add(caller);
+        changed = true;
+      }
+    }
+  }
+
   const eligible = new Set();
   if (!opaqueAsm) {
     for (const routine of routines.values()) {
@@ -207,11 +222,11 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
       const unsupportedLocal = hasUnsupportedLocal(routine, customTypes);
       const callsRefRoutine = [...(graph.get(routine.key) || [])].some((target) => routines.get(target)?.params.some((param) => param.isRef));
       const asmCallsParameterizedRoutine = routine.params.length > 0 && asmEntryTargets.has(routine.key);
-      if (routine.key !== "start" && scalarParams && !unsupportedLocal && !callsRefRoutine && !asmCallsParameterizedRoutine && !recursive.has(routine.key) && !nmiReachable.has(routine.key)) {
+      if (routine.key !== "start" && scalarParams && !unsupportedLocal && !callsRefRoutine && !asmCallsParameterizedRoutine && !recursive.has(routine.key) && !nmiReachable.has(routine.key) && !opaqueReachable.has(routine.key)) {
         eligible.add(routine.key);
       }
     }
   }
 
-  return { routines, graph, recursive, nmiRoots, nmiReachable, asmEntryTargets, eligible, opaqueAsm };
+  return { routines, graph, recursive, nmiRoots, nmiReachable, asmEntryTargets, eligible, opaqueAsm, opaqueRoutineRoots, opaqueReachable };
 }

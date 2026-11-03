@@ -846,6 +846,14 @@ export function createExpressionComputeHelpers({
     }
     if (node.kind === "call") {
       const callName = String(node.name || "").toLowerCase();
+      if ((callName === "highbyte" || callName === "lowbyte") && node.args.length === 1) {
+        const loadWord = emitLoadInt16AstIntoHL(node.args[0]);
+        if (!loadWord) return null;
+        return [
+          ...loadWord,
+          ...(callName === "highbyte" ? ["    ld l,h", "    ld h,0"] : ["    ld h,0"])
+        ];
+      }
       if (callName === "random" && node.args.length === 1) {
         const count = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.args[0]));
         if (Number.isInteger(count) && count > 256 && count <= 65536) {

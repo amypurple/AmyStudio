@@ -187,9 +187,13 @@ export function createValueParseHelpers({
   function parseRoutineInvocation(token) {
     const match = String(token).trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)$/);
     if (!match) return null;
+    const signature = procSignatures.get(match[1]) || [];
+    const getCharArgument = signature.length === 1
+      && /^get\s+char\s+at\s+.+?\s*,\s*.+$/i.test(match[2].trim());
     return {
       name: match[1],
-      args: splitTopLevelArgs(match[2]).map((part) => normalizeExpression(part))
+      args: (getCharArgument ? [match[2].trim()] : splitTopLevelArgs(match[2]))
+        .map((part) => normalizeExpression(part))
     };
   }
 

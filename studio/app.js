@@ -17,7 +17,7 @@ import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
   stripGeneratedSourceMarkers
-} from "./core/editor/sourceBreakpoints.js?v=20260928-lighthouse1";
+} from "./core/editor/sourceBreakpoints.js?v=20261011-picture-declarations";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
@@ -42,13 +42,13 @@ import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentAri
 import { createFx16Helpers } from "./core/compiler/fx16Helpers.js";
 import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20260712-preserve-loader";
 import { createCompareLiteralHelpers } from "./core/compiler/compareLiteralHelpers.js";
-import { createCompilerShellHelpers } from "./core/compiler/compilerShellHelpers.js";
+import { createCompilerShellHelpers } from "./core/compiler/compilerShellHelpers.js?v=20261007-adam-dual-reset1";
 import { createDataHelpers } from "./core/compiler/dataHelpers.js";
 import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelpers.js?v=20260715-asm-label-collision";
 import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHelpers.js";
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
 import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260714-fixed-const-compare";
-import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20260621-random-loop-shape";
+import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20261103-claude-open6";
 import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
 import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js?v=20260803-120-colors";
 import { handleForStatement } from "./core/compiler/forStatementHelpers.js";
@@ -57,7 +57,7 @@ import { createInlineStatementCompiler } from "./core/compiler/inlineStatementHe
 import { createLoadStoreHelpers } from "./core/compiler/loadStoreHelpers.js";
 import { handleDoStatement, handleWhileStatement } from "./core/compiler/loopStatementHelpers.js";
 import { handleMathBitStatement } from "./core/compiler/mathBitStatementHelpers.js";
-import { handleMutateStatement } from "./core/compiler/mutateStatementHelpers.js";
+import { handleMutateStatement } from "./core/compiler/mutateStatementHelpers.js?v=20261103-claude-open6";
 import { createPrintHelpers } from "./core/compiler/printHelpers.js";
 import { handlePrintFormatStatement } from "./core/compiler/printFormatStatementHelpers.js?v=20260729-print-at-short-form";
 import { createProcHelpers } from "./core/compiler/procHelpers.js?v=20260715-asm-label-collision";
@@ -66,15 +66,15 @@ import { handleDispatchLabelStatement } from "./core/compiler/dispatchLabelState
 import { handleRandomBounceStatement } from "./core/compiler/randomBounceStatementHelpers.js";
 import { handleRoutineStatement } from "./core/compiler/routineStatementHelpers.js";
 import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoStatementHelpers.js";
-import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20260710-word-ptr";
+import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20261103-claude-open6";
 import { handleSelectCaseStatement } from "./core/compiler/selectCaseStatementHelpers.js";
 import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js?v=20260714-record-fixed-source-preserve";
 import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260911-tripcm";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
-import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js?v=20260802-spinner-consume";
-import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20260731-source-marker-alignment";
-import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260724-mode2-color-loader";
+import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js?v=20261103-claude-open6";
+import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20261007-adam-dual-reset1";
+import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20261103-claude-open6";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js?v=20260802-keypad-blank";
 import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
 import {
@@ -113,9 +113,9 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261010-record-iterator1";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20261013-megacart-transpiler1";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20261013-megacart-transpiler2";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261103-claude-open6";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260926-adam-quebec16";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bundleAmySource } from "./core/amySourceBundle.js";
@@ -141,6 +141,7 @@ const els = {
   newProjectMediumField: document.getElementById("newProjectMediumField"),
   newProjectMedium: document.getElementById("newProjectMedium"),
   newProjectSupportNote: document.getElementById("newProjectSupportNote"),
+  btnCreateProject: document.getElementById("btnCreateProject"),
   projectTabs: document.getElementById("projectTabs"),
   btnOpen: document.getElementById("btnOpen"),
   btnSave: document.getElementById("btnSave"),
@@ -1504,7 +1505,6 @@ function bindEvents() {
         exportProject,
         downloadText,
         transpileSource: (...args) => transpileSource(...args),
-        transpileAmy: (...args) => transpileAmy(...args),
         analyzeLibraryResolution,
         updatePreviewActions,
         generateAsm,

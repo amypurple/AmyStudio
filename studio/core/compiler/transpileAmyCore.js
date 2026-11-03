@@ -1,4 +1,4 @@
-import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js?v=20260730-static-abi-v11";
+import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js?v=20261103-claude-open6";
 
 export function analyzeGlobalScratchClobbers(sourceText, stripComment = (line) => line) {
   const rawLines = String(sourceText || "").split(/\r?\n/);
@@ -2113,7 +2113,12 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parseExpressionAst(expr) {
-    return parseExpressionAstCore(expr, normalizeExpression);
+    const normalized = normalizeExpression(expr);
+    const withByteComponents = normalized.replace(
+      /\b(highbyte|lowbyte)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)/gi,
+      "$1($2)"
+    );
+    return parseExpressionAstCore(withByteComponents, normalizeExpression);
   }
 
   function renderExpressionAst(node) {

@@ -1049,6 +1049,24 @@ export function createRuntimeValueHelpers({
       return [...loadArg, "    push hl"];
     }
     if (type === "int8") {
+      const getChar = String(token).trim().match(/^get\s+char\s+at\s+(.+?)\s*,\s*(.+)$/i);
+      if (getChar) {
+        const loadY = emitLoadInt8ValueInto("a", getChar[2]);
+        const loadX = emitLoadInt8ValueInto("a", getChar[1]);
+        if (!loadX || !loadY) return null;
+        return [
+          ...loadY,
+          "    push af",
+          ...loadX,
+          "    ld e,a",
+          "    pop af",
+          "    ld d,a",
+          "    call AMY_GET_CHAR_AT",
+          "    ld l,a",
+          "    ld h,0",
+          "    push hl"
+        ];
+      }
       const constantValue = tryEvaluateCompileTimeNumericExpression(token);
       if (constantValue !== null) {
         const widened = isSignedDeclaredType(declaredType)

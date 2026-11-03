@@ -12866,5 +12866,68 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "letter-attack",
+    "label": "Letter Attack! (December 1984)",
+    "detail": "COMPUTE!'s Gazette's Letter Attack!, reimagined for ColecoVision with a joystick-controlled alphabet dial, smooth falling letters and scoring statistics; no author is named in the listing.",
+    "projectName": "Letter Attack!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "vic-20",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lexitron",
+    "label": "Lexitron (February 1986)",
+    "detail": "Ron Wilson's COMPUTE!'s Gazette word-search game, reimagined for ColecoVision with a sliding cursor, illuminated letters, energy tubes and three directional rule sets.",
+    "projectName": "Lexitron",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "word-game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lava-flow",
+    "label": "Lava Flow (September 1988)",
+    "detail": "COMPUTE!'s Gazette's Lava Flow, rebuilt for ColecoVision as a one- or two-player arena with spreading lava, heat-damaged walls and animated movement; no author is named on the disk.",
+    "projectName": "Lava Flow",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "two-player",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

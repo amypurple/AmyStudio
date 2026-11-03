@@ -1633,6 +1633,8 @@ BCD current limits:
 - BCD-to-BCD assignment and copy require identical declared digit counts
 - local BCD declarations accept non-negative compile-time initializers that fit their declared digit count
 - no implicit assignment from `u16`, `u32`, fixed, or fp5 runtime values
+- `Score += ByteValue` accepts `u8`/`i8`, but `BCD += u16` is deliberately rejected;
+  convert the binary word to BCD explicitly so code size and overflow policy are visible
 - no general BCD expressions such as `Score = Score + 10`
 - indexed byte reads such as `Score[0]` are for debugging/inspection only
 
@@ -2180,6 +2182,8 @@ local-record field, or overlay-qualified byte field. Wider destinations are reje
 A `fill ... count N to vram.*` or RAM-to-VRAM `copy ... count N` with a runtime
 count of zero performs no transfer. This prevents the Coleco BIOS zero-count convention
 from turning an empty operation into a 65,536-byte transfer.
+The count may be a `u8` or `u16` expression. Amy preserves the independently computed
+source and destination addresses while loading a 16-bit runtime count.
 
 In multicolor mode, `Target = pget X,Y` and `Target = pget multicolor X,Y`
 accept the same byte destinations, including indexed and overlay-qualified fields.
@@ -2539,6 +2543,10 @@ Var = get char at X,Y
 return get char at X,Y  ' inside a function returning u8/i8
 fill Char count N at X,Y
 ```
+
+`get char at X,Y` is a byte-valued input. It may be returned directly from a byte
+function and may be passed directly to a one-parameter byte routine. Assign it to a
+temporary first when a larger argument list would make its coordinate comma ambiguous.
 
 For `put Name at X,Y` and `put Name centered at Y`, `Name` must be a known-length
 `u8[]` buffer or ROM `data` block. The compiler infers the count; centered uses
@@ -3432,6 +3440,9 @@ being calculated, and argument order in the source does not affect the call.
   through an address argument or into a documented global. Use an Amy `function` when a typed
   expression result is required.
 - Do not set both a register pair and one of its halves in one call, such as `hl` and `h`.
+- An opaque `call asm` disables the private frameless ABI only for its containing Amy routine
+  and Amy callers that can reach it. Unrelated routines remain eligible. Explicit ASM transfers
+  to Amy routines still participate in recursion and NMI-safety analysis.
 
 #### Amy symbols visible to ASM
 

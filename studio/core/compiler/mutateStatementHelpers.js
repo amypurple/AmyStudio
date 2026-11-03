@@ -35,7 +35,9 @@ export function handleMutateStatement({
   if (_depShift.handled) return _depShift;
 
   const qualifiedTargetPattern = String.raw`([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)`;
-  const incDecVar = line.match(new RegExp(`^(inc|dec)\\s+${qualifiedTargetPattern}$`, "i"));
+  // Let the normal target parser validate the full expression. A bracket-only
+  // regex cannot represent nested indices such as Hand[Shape[Region]].
+  const incDecVar = line.match(/^(inc|dec)\s+(.+)$/i);
   if (incDecVar) {
     const op = incDecVar[1].toLowerCase();
     const name = incDecVar[2];

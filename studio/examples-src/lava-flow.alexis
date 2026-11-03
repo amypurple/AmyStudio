@@ -1,0 +1,975 @@
+cartridge "LAVA FLOW/COMPUTE!'S GAZETTE/1988"
+
+' LAVA FLOW
+' A ColecoVision game based on "Lava Flow", COMPUTE!'s Gazette September
+' 1988 (Commodore 64 machine language at $C000, LAVAFLOW started by
+' LAVA.BOOT; no author is named on the disk). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/lavaflow.dis; timing worked out from its delay loop),
+' the game is rebuilt for the ColecoVision: tiles for the bricks, the heat
+' stages and the lava, players as sprites gliding from cell to cell, a
+' title tune, a credits page and sounds.
+'
+' The game: BLACK and WHITE stand in a field round a lava vent. The lava
+' flows out a cell at a time; a player it reaches, or who walks into it, is
+' burnt and loses one of five lives, and a new round starts. Press the
+' button to switch building on or off: a building player walks slower and
+' leaves a brick behind on every step. Bricks stop the lava for a while:
+' lava touching a brick heats it through four colours, then it melts into
+' lava. The last player with lives wins.
+'
+' From the original (orig/): the lava is swept cell by cell, 15 cells a
+' main-loop pass on the C64 (8 a frame here); a flowing front cell is
+' looked at once a sweep (a phase bit, the C64's shadow byte at screen +
+' $7D0) and one in N of the front and brick cells looked at turns over (a
+' counter shared by both, N = 2, 1, 3, 2, 1, 3 ... one per sweep); a front
+' turns into lava and flows into its four neighbours (up, left, right,
+' down): a free cell becomes a front, a brick (whatever its heat) gets the
+' first heat colour, a player there is burnt; a heated brick goes 9, 2, 8,
+' 10 (C64 colours) and then melts like a front; a brick a player laid stays
+' cool until lava touches it. Players move on the stick (up, right, down,
+' left checked in that order), a move into lava or a front burns, bricks,
+' the border and the other player block; the button toggles building, and
+' a building player is slower (C64 6 against 11 loop passes a cell);
+' after the toggle the stick is ignored for a moment (C64 20 passes). Both
+' burnt in the same pass: both lose a life. Five lives each.
+'
+' Liberties: a 26 x 19 field inside the TV-safe area (the C64's 38 x 22)
+' with the vent between the players 7 cells from each (C64 10 and 11);
+' speeds in frames: a cell in 9 frames walking, 16 building, a sweep of the
+' field in 62 frames (on the C64 a player walked about 10 cells in the time
+' the lava grew one; here about 7); the sweep counter restarts at 2 every
+' round; the lava bubbles slowly (the C64 flashed it about 13 times a
+' second); the player is a sprite gliding from cell to cell, and counts as
+' standing on the cell it is walking to; a mark on the status line shows
+' who is building; a short READY before each round; one player can play
+' BLACK against a computer WHITE (it walks away from the vent, never into a
+' cell next to the lava, and builds when lava is within two cells); both
+' players out at once is a draw (the C64 named BLACK); the end message,
+' then the title (no play-again question).
+'
+' Controls: joystick only. BLACK: controller 1, WHITE: controller 2 (in a
+' one-player game either controller moves BLACK). Stick: walk. A button:
+' building on/off. On the title, up and down choose a line, left, right or
+' a button change it; a button on START begins.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off after
+' a wait, display off. Music first in the sound table, effects after; the
+' title tune is played once. `set sprite count` after every `clear sprites`.
+
+const TFloor = 128
+const TBrick0 = 129
+const TBrick1 = 130
+const TBrick2 = 131
+const TBrick3 = 132
+const TBrick4 = 133
+const TLava = 134
+const TLavab = 135
+const TFr00 = 136
+const TFr01 = 137
+const TFr02 = 138
+const TFr03 = 139
+const TFr10 = 140
+const TFr11 = 141
+const TFr12 = 142
+const TFr13 = 143
+const TRock = 144
+const TMark = 145
+const TLogo = 146
+const NTiles8 = 152
+const SprBytes = 72
+const SUp0 = 0
+const SUp1 = 1
+const SRight0 = 2
+const SRight1 = 3
+const SDown0 = 4
+const SDown1 = 5
+const SLeft0 = 6
+const SLeft1 = 7
+const SBurnt = 8
+const LogoW = 15
+const LogoX = 8
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBuildOn = 3
+const SndBuildOff = 4
+const SndRumble = 5
+const SndBurn = 6
+const SndReady = 7
+const SndWin = 8
+' the field: columns 3-28, rows 3-21, inside a rock border
+const MinC = 3
+const MaxC = 28
+const MinR = 3
+const MaxR = 21
+const VentC = 15
+const VentR = 12
+const CellsPF = 8
+const SpdWalk = 16
+const SpdBuild = 9
+const LockF = 12
+const NSpr = 4
+
+data TilePat bytes
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$20,$00,$00,$02,$02,$00
+  $00,$20,$20,$00,$00,$02,$02,$00
+  $00,$20,$20,$00,$00,$02,$02,$00
+  $00,$20,$20,$00,$00,$02,$02,$00
+  $00,$20,$20,$00,$00,$02,$02,$00
+  $08,$40,$02,$20,$04,$80,$10,$01
+  $20,$02,$80,$08,$00,$10,$02,$40
+  $00,$C3,$81,$00,$00,$00,$00,$00
+  $E0,$C0,$80,$80,$80,$80,$C0,$E0
+  $07,$03,$01,$01,$01,$01,$03,$07
+  $00,$00,$00,$00,$00,$81,$C3,$00
+  $00,$C3,$81,$00,$00,$00,$00,$00
+  $E0,$C0,$80,$80,$80,$80,$C0,$E0
+  $07,$03,$01,$01,$01,$01,$03,$07
+  $00,$00,$00,$00,$00,$81,$C3,$00
+  $10,$C6,$91,$38,$08,$9C,$89,$C3
+  $00,$07,$88,$07,$00,$C1,$22,$C1
+  $00,$00,$AA,$00,$44,$00,$10,$00
+end data
+data TileCol bytes
+  $45,$05,$05,$05,$05,$05,$05,$05
+  $0E,$1E,$1E,$01,$0E,$1E,$1E,$01
+  $0A,$6A,$6A,$06,$0A,$6A,$6A,$06
+  $08,$68,$68,$06,$08,$68,$68,$06
+  $09,$89,$89,$08,$09,$89,$89,$08
+  $0B,$9B,$9B,$09,$0B,$9B,$9B,$09
+  $98,$98,$98,$98,$98,$98,$98,$98
+  $98,$98,$98,$98,$08,$98,$98,$98
+  $05,$59,$59,$09,$09,$09,$09,$09
+  $59,$59,$59,$59,$59,$59,$59,$59
+  $59,$59,$59,$59,$59,$59,$59,$59
+  $09,$09,$09,$09,$09,$59,$59,$05
+  $05,$59,$59,$09,$09,$09,$09,$09
+  $59,$59,$59,$59,$59,$59,$59,$59
+  $59,$59,$59,$59,$59,$59,$59,$59
+  $09,$09,$09,$09,$09,$59,$59,$05
+  $1E,$E1,$E1,$E1,$1E,$1E,$E1,$1E
+  $01,$1E,$E1,$1E,$01,$1E,$E1,$1E
+  $0B,$09,$98,$08,$98,$08,$98,$06
+end data
+data SpritePat bytes
+  $42,$5A,$5A,$3C,$18,$18,$24,$24
+  $42,$5A,$5A,$3C,$18,$18,$44,$04
+  $00,$18,$18,$3F,$58,$18,$24,$48
+  $00,$18,$18,$3F,$58,$18,$14,$24
+  $00,$18,$18,$3C,$5A,$3C,$18,$3C
+  $00,$18,$18,$3C,$5A,$3C,$24,$24
+  $00,$18,$18,$FC,$1A,$28,$24,$12
+  $00,$18,$18,$FC,$1A,$18,$28,$24
+  $10,$18,$34,$2C,$5E,$7A,$3C,$00
+end data
+data LogoMap bytes
+  146,32,32,32,32,146,32,32,146,32,146,32,32,146,32
+  146,32,32,32,146,32,146,32,146,32,146,32,146,32,146
+  146,32,32,32,146,146,146,32,146,32,146,32,146,146,146
+  146,32,32,32,146,32,146,32,146,32,146,32,146,32,146
+  146,146,146,32,146,32,146,32,32,146,32,32,146,32,146
+  146,146,146,32,146,32,32,32,32,146,32,32,146,32,146
+  146,32,32,32,146,32,32,32,146,32,146,32,146,32,146
+  146,146,32,32,146,32,32,32,146,32,146,32,146,32,146
+  146,32,32,32,146,32,32,32,146,32,146,32,146,146,146
+  146,32,32,32,146,146,146,32,32,146,32,32,146,32,146
+end data
+
+data MenuRow bytes 16,18,20
+
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Players = 1
+u8 Sel = 1
+' state for the bots: 0 credits/logo, 1 title, 2 play, 3 round over, 4 end,
+' 5 READY
+u8 GState = 0
+' players: 0 BLACK, 1 WHITE; cell, moving, sixteenths of a pixel into
+' the move (x 8 = a cell), facing (0 up, 1 right, 2 down, 3 left)
+u8 PC[2]
+u8 PR[2]
+u8 Mv[2]
+u8 Pos[2]
+u8 Face[2]
+u8 Build[2]
+u8 Lock[2]
+u8 Dead[2]
+u8 Lives[2]
+u8 WasF[2]
+u8 Joy[2]
+' the lava sweep
+u8 SwC = 3
+u8 SwR = 3
+u8 Phase = 0
+u8 Cnt = 2
+u8 NRel = 2
+u8 Sweeps = 0
+u8 Burns = 0
+u8 Over = 0
+u8 Winner = 0
+u8 LavaLook = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Ki = 0
+u8 Ri = 0
+' scratch
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nc = 0
+u8 Nr = 0
+u8 Gc = 0
+u8 Gr = 0
+u8 Tg = 0
+
+  tile screen
+  set sound table LvSoundTable areas 6
+  sprites 8x8
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  Lives[0] = 5
+  Lives[1] = 5
+
+round:
+  NewRound
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  RoundOver
+  if Winner = 0 then goto round
+  EndGame
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: both players, then 8 cells of the lava sweep
+sub PlayStep:
+  for Pi = 0 to 1
+    PlayerStep(Pi)
+  next
+  for Ki = 1 to CellsPF
+    SweepCell
+    NextCell
+  next
+  inc LavaLook
+  if LavaLook = 30 then
+    LavaLook = 0
+    Bubble
+  end if
+  if Dead[0] = 1 or Dead[1] = 1 then Over = 1
+end sub
+
+' a name-table cell read with vpeek: the BIOS read behind `get char` was
+' too slow for 8 sweep cells plus the computer in one frame
+function CellAt(u8 C, u8 R) as u8
+  u16 Off
+  Off = R * 32 + C
+  vpeek vram.name + Off into Tg
+  return Tg
+
+function IsHot(u8 T) as u8
+  if T = TLava then return 1
+  if T >= TFr00 and T <= TFr13 then return 1
+  return 0
+
+function IsBrick(u8 T) as u8
+  if T >= TBrick0 and T <= TBrick4 then return 1
+  return 0
+
+function StepC(u8 Cc, u8 Dd) as u8
+  select case Dd
+    case 1
+      return Cc + 1
+    case 3
+      return Cc - 1
+  end select
+  return Cc
+
+function StepR(u8 Rr, u8 Dd) as u8
+  select case Dd
+    case 0
+      return Rr - 1
+    case 2
+      return Rr + 1
+  end select
+  return Rr
+
+' the stick's direction: up, right, down, left in the C64's order; 255 none
+function StickDir(u8 S) as u8
+  if S & 1 then return 0
+  if S & 8 then return 1
+  if S & 2 then return 2
+  if S & 4 then return 3
+  return 255
+
+sub PlayerStep(u8 P)
+  u8 S
+  u8 F
+  u8 D
+  u8 T
+  u8 O
+  u8 Sp
+  if Dead[P] = 1 then return
+  if P = 1 and Players = 1 then
+    S = CpuJoy()
+  else
+    S = Joy[P]
+  end if
+  F = S & 16
+  if Lock[P] > 0 then
+    dec Lock[P]
+  else
+    if F > 0 and WasF[P] = 0 then
+      Build[P] = Build[P] ^ 1
+      Lock[P] = LockF
+      if Build[P] = 1 then
+        play sound SndBuildOn
+      else
+        play sound SndBuildOff
+      end if
+      ShowMark(P)
+    end if
+  end if
+  WasF[P] = F
+  if Mv[P] = 1 then
+    Sp = SpdWalk
+    if Build[P] = 1 then Sp = SpdBuild
+    Pos[P] = Pos[P] + Sp
+    if Pos[P] >= 128 then
+      Pos[P] = 0
+      Mv[P] = 0
+    end if
+    return
+  end if
+  if Lock[P] > 0 then return
+  D = StickDir(S)
+  if D = 255 then return
+  Face[P] = D
+  Nc = StepC(PC[P], D)
+  Nr = StepR(PR[P], D)
+  T = CellAt(Nc, Nr)
+  if T = TFloor then
+    O = P ^ 1
+    if Nc = PC[O] and Nr = PR[O] then return
+    if Build[P] = 1 then put char TBrick0 at PC[P], PR[P]
+    PC[P] = Nc
+    PR[P] = Nr
+    Mv[P] = 1
+    Pos[P] = 0
+    return
+  end if
+  if IsHot(T) = 1 then Dead[P] = 1
+end sub
+
+' one cell of the sweep (the C64's $C30F loop body)
+sub SweepCell:
+  u8 T
+  T = CellAt(SwC, SwR)
+  if IsBrick(T) = 1 then
+    dec Cnt
+    if Cnt > 0 then return
+    Cnt = NRel
+    if T = TBrick0 then return
+    if T < TBrick4 then
+      put char T + 1 at SwC, SwR
+      return
+    end if
+    Melt(SwC, SwR)
+    return
+  end if
+  if T >= TFr00 and T <= TFr13 then
+    if ((T - TFr00) >> 2) <> Phase then return
+    put char T ^ 4 at SwC, SwR
+    dec Cnt
+    if Cnt > 0 then return
+    Cnt = NRel
+    Melt(SwC, SwR)
+  end if
+end sub
+
+sub NextCell:
+  inc SwC
+  if SwC <= MaxC then return
+  SwC = MinC
+  inc SwR
+  if SwR <= MaxR then return
+  SwR = MinR
+  Phase = Phase ^ 1
+  dec NRel
+  if NRel = 0 then NRel = 3
+  inc Sweeps
+  play sound SndRumble
+end sub
+
+' a cell turns to lava and flows into its neighbours: up, left, right, down
+sub Melt(u8 C, u8 R)
+  put char TLava at C, R
+  Flow(C, R - 1, 0)
+  Flow(C - 1, R, 1)
+  Flow(C + 1, R, 2)
+  Flow(C, R + 1, 3)
+end sub
+
+sub Flow(u8 C, u8 R, u8 I)
+  u8 T
+  for Ri = 0 to 1
+    if C = PC[Ri] and R = PR[Ri] then
+      if Dead[Ri] = 0 then
+        Dead[Ri] = 1
+      end if
+      return
+    end if
+  next
+  T = CellAt(C, R)
+  if T = TFloor then
+    V = Phase ^ 1
+    put char TFr00 + V * 4 + I at C, R
+    return
+  end if
+  if IsBrick(T) = 1 then put char TBrick1 at C, R
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's WHITE: builds when lava is within two cells, walks away
+' from the vent onto cells with no lava next to them (up, right, down, left
+' in order; a cell next to lava is left even for a nearer one); it looks
+' every other pass
+' (`IsHot(get char at C, R)` is refused: bugs/lava-get-char-call-arg.alexis)
+function HotAt(u8 C, u8 R) as u8
+  u8 Tc
+  Tc = CellAt(C, R)
+  return IsHot(Tc)
+
+function Danger(u8 C, u8 R) as u8
+  u8 N
+  N = HotAt(C, R - 1)
+  N = N + HotAt(C - 1, R)
+  N = N + HotAt(C + 1, R)
+  N = N + HotAt(C, R + 1)
+  return N
+
+function VentDist(u8 C, u8 R) as u8
+  u8 Dc
+  u8 Dr
+  if C > VentC then
+    Dc = C - VentC
+  else
+    Dc = VentC - C
+  end if
+  if R > VentR then
+    Dr = R - VentR
+  else
+    Dr = VentR - R
+  end if
+  return Dc + Dr
+
+function CpuJoy() as u8
+  u8 Want
+  u8 D
+  u8 Best
+  u8 BestS
+  u8 Sc
+  u8 Cur
+  u8 T
+  if Mv[1] = 1 or Lock[1] > 0 then return 0
+  ' it thinks every other pass (the frame budget)
+  if Tick & 1 then return 0
+  Want = Danger(PC[1], PR[1])
+  if Want = 0 then
+    Want = HotAt(PC[1], PR[1] - 2)
+    Want = Want + HotAt(PC[1], PR[1] + 2)
+    Want = Want + HotAt(PC[1] - 2, PR[1])
+    Want = Want + HotAt(PC[1] + 2, PR[1])
+  end if
+  if Want > 0 then Want = 1
+  if Want <> Build[1] and WasF[1] = 0 then return 16
+  Best = 255
+  BestS = 0
+  for D = 0 to 3
+    Nc = StepC(PC[1], D)
+    Nr = StepR(PR[1], D)
+    T = CellAt(Nc, Nr)
+    if T = TFloor then
+      if Nc <> PC[0] or Nr <> PR[0] then
+        if Danger(Nc, Nr) = 0 then
+          Sc = VentDist(Nc, Nr) + 1
+          if Sc > BestS then
+            BestS = Sc
+            Best = D
+          end if
+        end if
+      end if
+    end if
+  next
+  if Best = 255 then return 0
+  Cur = VentDist(PC[1], PR[1]) + 1
+  if Danger(PC[1], PR[1]) = 0 and BestS <= Cur then return 0
+  select case Best
+    case 0
+      return 1
+    case 1
+      return 8
+    case 2
+      return 2
+  end select
+  return 4
+
+' ---------------------------------------------------------------------------
+' a new round: the field, the vent, the players at their starts
+sub NewRound:
+  NewScreen
+  for Ri = 2 to 22
+    fill TRock count 28 at 2, Ri
+  next
+  for Ri = MinR to MaxR
+    fill TFloor count 26 at MinC, Ri
+  next
+  put char TFr00 at VentC, VentR
+  print at 2,1, "BLACK"
+  print at 25,1, "WHITE"
+  for Pi = 0 to 1
+    Mv[Pi] = 0
+    Pos[Pi] = 0
+    Build[Pi] = 0
+    Lock[Pi] = 0
+    Dead[Pi] = 0
+    WasF[Pi] = 16
+    PR[Pi] = VentR
+    ShowMark(Pi)
+  next
+  PC[0] = VentC - 7
+  PC[1] = VentC + 7
+  Face[0] = 1
+  Face[1] = 3
+  ShowLives
+  SwC = MinC
+  SwR = MinR
+  Phase = 0
+  Cnt = 2
+  NRel = 2
+  Sweeps = 0
+  Over = 0
+  LavaLook = 0
+  print at 12,1, "READY!"
+  HideSprites
+  DrawSprites
+  ShowScreen
+  GState = 5
+  play sound SndReady
+  ' a button held through READY does not switch building on
+  for Ri = 1 to 45
+    Frame1
+    ReadPad
+    WasF[0] = Joy[0] & 16
+    WasF[1] = Joy[1] & 16
+  next
+  print at 12,1, "      "
+  GState = 2
+  Rearm
+  wait
+  nmi off
+end sub
+
+' the lava's slow bubbling: swap the tile's two looks
+sub Bubble:
+  if Tick & 32 then
+    LookAs(TLava, TLavab)
+  else
+    LookAs(TLava, TLava)
+  end if
+end sub
+
+sub ShowLives:
+  NumU = Lives[0]
+  print at 8,1, digits$(NumU, 1)
+  NumU = Lives[1]
+  print at 23,1, digits$(NumU, 1)
+end sub
+
+sub ShowMark(u8 P)
+  X = 9
+  if P = 1 then X = 21
+  if Build[P] = 1 then
+    put char TMark at X, 1
+  else
+    put char 32 at X, 1
+  end if
+end sub
+
+' who was burnt, lives down, a pause; Winner 1 BLACK, 2 WHITE, 3 draw
+sub RoundOver:
+  GState = 3
+  inc Burns
+  mute all
+  play sound SndBurn
+  for Pi = 0 to 1
+    if Dead[Pi] = 1 then dec Lives[Pi]
+  next
+  ShowLives
+  if Dead[0] = 1 and Dead[1] = 1 then
+    print at 11,1, "BOTH OUT!"
+  else
+    if Dead[0] = 1 then
+      print at 11,1, "BLACK OUT!"
+    else
+      print at 11,1, "WHITE OUT!"
+    end if
+  end if
+  for Ri = 1 to 120
+    Frame1
+    DrawSprites
+  next
+  Winner = 0
+  if Lives[0] = 0 then Winner = 2
+  if Lives[1] = 0 then Winner = Winner + 1
+end sub
+
+sub EndGame:
+  GState = 4
+  print at 8,11, "                "
+  select case Winner
+    case 1
+      print at 8,12, "  BLACK WINS!   "
+    case 2
+      print at 8,12, "  WHITE WINS!   "
+    case 3
+      print at 8,12, "  IT'S A DRAW   "
+  end select
+  print at 8,13, "                "
+  mute all
+  play sound SndWin
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  HideSprites
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0 BLACK, 1 WHITE (8 x 8), gliding from the cell left behind
+sub DrawSprites:
+  u8 Pat
+  u8 Rmd
+  u8 Col
+  for Pi = 0 to 1
+    X = PC[Pi] * 8
+    Y = PR[Pi] * 8
+    Pat = Face[Pi] * 2
+    if Mv[Pi] = 1 then
+      Rmd = (128 - Pos[Pi]) >> 4
+      select case Face[Pi]
+        case 0
+          Y = Y + Rmd
+        case 1
+          X = X - Rmd
+        case 2
+          Y = Y - Rmd
+        case 3
+          X = X + Rmd
+      end select
+      Pat = Pat + ((Pos[Pi] >> 6) & 1)
+    end if
+    Col = 1
+    if Pi = 1 then Col = 15
+    if Dead[Pi] = 1 then
+      Pat = SBurnt
+      Col = 11
+      if Tick & 16 then Col = 8
+    end if
+    Y = Y - 1
+    set sprite Pi to Y,X,Pat,Col
+  next
+  update sprites
+end sub
+
+' a live tile code takes the look of source tile S
+sub LookAs(u8 T, u8 S)
+  W16 = (S - 128) * 8
+  NumU = T * 8
+  copy TilePat + W16 count 8 to vram.pattern + NumU
+  copy TilePat + W16 count 8 to vram.pattern + 2048 + NumU
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + NumU
+  copy TileCol + W16 count 8 to vram.color + NumU
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+end sub
+
+' Joy: bits 1 up, 2 down, 4 left, 8 right, 16 a button. In one-player
+' games (and on the menus) either controller moves BLACK.
+sub ReadPad:
+  for Pi = 0 to 1
+    V = 0
+    J = Pi + 1
+    if joypad(J).up then V = V | 1
+    if joypad(J).down then V = V | 2
+    if joypad(J).left then V = V | 4
+    if joypad(J).right then V = V | 8
+    if joypad(J).fire then V = V | 16
+    Joy[Pi] = V
+  next
+  if Players = 1 or GState <> 2 then
+    Joy[0] = Joy[0] | Joy[1]
+    Joy[1] = 0
+  end if
+  Btn = Joy[0] & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+end sub
+
+' the title: LAVA / FLOW in lava blocks, the players line, start, credits
+sub TitlePage:
+  u8 Lr
+  NewScreen
+  for Lr = 0 to 9
+    if Lr < 5 then
+      Y = Lr + 2
+    else
+      Y = Lr + 3
+    end if
+    W16 = Lr * LogoW
+    NumU = Y * 32 + LogoX
+    copy LogoMap + W16 count LogoW to vram.name + NumU
+  next
+  print at 5,14, "COMPUTE!'S GAZETTE 1988"
+  for J = 0 to 2
+    ShowLine(J)
+  next
+  ShowCursor
+  ShowScreen
+  GState = 1
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  V = Joy[0] & 15
+  if V > 0 and WasStick = 0 then
+    if V & 1 then
+      if Sel > 0 then Sel = Sel - 1
+      ShowCursor
+    end if
+    if V & 2 then
+      if Sel < 2 then Sel = Sel + 1
+      ShowCursor
+    end if
+    if V & 12 then
+      if Sel = 0 then
+        Players = 3 - Players
+        ShowLine(0)
+      end if
+    end if
+  end if
+  WasStick = V
+  if Press = 1 then
+    if Sel = 1 then goto tp_go
+    if Sel = 2 then
+      CreditsPage
+      goto title_again
+    end if
+    Players = 3 - Players
+    ShowLine(0)
+  end if
+  goto tp_loop
+tp_go:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  return
+title_again:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitlePage
+end sub
+
+sub ShowLine(u8 L)
+  Y = MenuRow[L]
+  fill 32 count 23 at 6, Y
+  select case L
+    case 0
+      if Players = 1 then
+        print at 6,Y, "1 PLAYER VS COMPUTER"
+      else
+        print at 6,Y, "2 PLAYERS"
+      end if
+    case 1
+      print at 6,Y, "START"
+    case 2
+      print at 6,Y, "CREDITS"
+  end select
+end sub
+
+sub ShowCursor:
+  for J = 0 to 2
+    put char 32 at 4, MenuRow[J]
+  next
+  put char 62 at 4, MenuRow[Sel]
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F6
+  backdrop dark red
+  print at 11,2, "LAVA FLOW"
+  print at 2,4, "BASED ON LAVA FLOW,"
+  print at 2,5, "COMPUTE!'S GAZETTE,"
+  print at 2,6, "SEPTEMBER 1988 (COMMODORE"
+  print at 2,7, "64 MACHINE LANGUAGE; NO"
+  print at 2,8, "AUTHOR NAMED ON THE DISK)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026. MUSIC: SLOW MAGMA"
+  print at 2,15, "(ORIGINAL)"
+  print at 2,17, "BLACK: CONTROLLER 1"
+  print at 2,18, "WHITE: CONTROLLER 2"
+  print at 2,19, "BUTTON: BUILD BRICKS ON/OFF"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  GState = 0
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+end sub
+
+asm {
+LvBuildOn:
+    db $40,$7F,$20,$03,$40,$5F,$20,$04,$50
+LvBuildOff:
+    db $40,$7F,$20,$03,$40,$A9,$20,$04,$50
+LvRumble:
+    db $00,$00,$56,$03,$00,$00,$76,$03,$10
+LvBurn:
+    db $40,$7C,$10,$03,$40,$84,$10,$03,$40,$8E,$10,$03,$40,$98,$10,$03,$40,$A5,$10,$03,$40,$B3,$10,$03
+    db $40,$C4,$10,$03,$40,$D9,$10,$03,$40,$F3,$20,$03,$40,$14,$21,$03,$40,$40,$21,$03,$40,$7B,$21,$03
+    db $40,$D2,$21,$03,$40,$5D,$22,$03,$50
+LvReady:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$8F,$20,$0E,$50
+LvWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$6B,$20,$18,$50
+
+LvSoundTable:
+    dw LvTuneMel,$702B
+    dw LvTuneBass,$7035
+    dw LvBuildOn,$7049
+    dw LvBuildOff,$7049
+    dw LvRumble,$703F
+    dw LvBurn,$7049
+    dw LvReady,$7049
+    dw LvWin,$7049
+; Slow Magma (original)
+; Tiny Sound, 8 frames per step
+LvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$21,$01
+    db $1F,$01,$21,$01,$24,$01,$28,$01,$2D,$01,$2B,$28,$26,$01,$28,$01
+    db $24,$01,$01,$01,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$1F,$01
+    db $23,$01,$26,$01,$24,$23,$21,$01,$1F,$01,$1C,$01,$21,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+LvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $0B,$01,$0E,$01,$05,$01,$0C,$01,$04,$01,$0B,$01,$09,$01,$04,$01
+    db $09,$01,$00,$01
+    db $FF
+}

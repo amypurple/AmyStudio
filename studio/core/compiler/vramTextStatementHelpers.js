@@ -722,24 +722,32 @@ export function handleVramTextStatement({
           : [];
         const guardedDone = countDoneLabel ? [`${countDoneLabel}:`] : [];
         const targetIsDirectDeLoad = targetVram.length === 1 && /^\s*ld de,/.test(targetVram[0]);
+        const countCode = emitLoadCountIntoBC(resolvedCountToken);
+        if (!countCode) {
+          return { ok: false, handled: true, log: `copy to VRAM requires a valid byte count: ${rawLine}` };
+        }
         return {
           ok: true,
           handled: true,
           lines: wrapVramUploadLines(targetIsDirectDeLoad
             ? [
+                ...countCode,
+                "    push bc",
                 ...sourceCode,
                 ...targetVram,
-                ...emitLoadCountIntoBC(resolvedCountToken),
+                "    pop bc",
                 ...guardedCount,
                 `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`,
                 ...guardedDone
               ]
             : [
+                ...countCode,
+                "    push bc",
                 ...targetVram,
                 "    push de",
                 ...sourceCode,
                 "    pop de",
-                ...emitLoadCountIntoBC(resolvedCountToken),
+                "    pop bc",
                 ...guardedCount,
                 `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`,
                 ...guardedDone
@@ -788,9 +796,11 @@ export function handleVramTextStatement({
           ok: true,
           handled: true,
           lines: [
+            ...countCode,
+            "    push bc",
             ...sourceVram,
             ...targetCode,
-            ...countCode,
+            "    pop bc",
             `    call ${useDirectReadVram ? "READ_VRAM" : "AMY_GET_VRAM"}`
           ]
         };
@@ -940,22 +950,30 @@ export function handleVramTextStatement({
     }
     const useDirectWriteVram = isDefinitelyByteSizedCount(resolvedCountToken);
     const targetIsDirectDeLoad = targetCode.length === 1 && /^\s*ld de,/.test(targetCode[0]);
+    const countCode = emitLoadCountIntoBC(resolvedCountToken);
+    if (!countCode) {
+      return { ok: false, handled: true, log: `copy bytes requires a valid byte count: ${rawLine}` };
+    }
     return {
       ok: true,
       handled: true,
       lines: targetIsDirectDeLoad
         ? [
+            ...countCode,
+            "    push bc",
             ...sourceCode,
             ...targetCode,
-            ...emitLoadCountIntoBC(resolvedCountToken),
+            "    pop bc",
             `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
           ]
         : [
+            ...countCode,
+            "    push bc",
             ...targetCode,
             "    push de",
             ...sourceCode,
             "    pop de",
-            ...emitLoadCountIntoBC(resolvedCountToken),
+            "    pop bc",
             `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
           ]
     };
@@ -1267,6 +1285,14 @@ export function handleVramTextStatement({
       emitLoadInt8ValueIntoPreserving
     });
     if (!loadInputs) {
+      const unresolved = [putChar[1], putChar[2], putChar[3]]
+        .map((token) => String(token).trim())
+        .find((token) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(token)
+          && !resolveValueType(token)
+          && !emitLoadInt8ValueInto("a", token));
+      if (unresolved) {
+        return { ok: false, handled: true, log: `Unknown identifier '${unresolved}' in put char: ${rawLine}` };
+      }
       return { ok: false, handled: true, log: `put char requires byte-sized coordinates and tile value: ${rawLine}` };
     }
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_PUT_CHAR_AT"] };
