@@ -1,0 +1,1060 @@
+cartridge "DESCENT TO KAYLON/COMPUTE!'S GAZETTE/1984"
+
+' DESCENT TO KAYLON
+' A ColecoVision game based on "Descent To Kaylon", COMPUTE!'s Gazette,
+' November 1984 (Commodore 64 and VIC-20, BASIC; the listing names no
+' author). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/kaylon_64.bas), the game is built for the ColecoVision:
+' a smooth lander sprite with a retro-rocket flame, asteroid rows that
+' scroll pixel by pixel (pre-shifted tiles), tiled scenery, sound effects
+' and an original title tune.
+'
+' The game: your lander crosses the top of the screen from left to right
+' (starting again at the left if you wait). Press the button to release
+' it. It falls through four rows of drifting asteroids (the 1st and 4th
+' drift left, the 2nd and 3rd right) and a barrier with gaps, down into a
+' crater with four landing pads. Hold the button to fire the
+' retro-rockets: the lander hovers. Steer with the stick. Touch a rock,
+' the barrier, the ground or a lander already parked, and the lander is
+' lost. A landing scores 100 and parks the lander on its pad; fill all four
+' pads for a bonus of 100 x the level and a BONUS LEVEL: new asteroid rows,
+' 2 % denser each level. Three landers; the game ends when they are gone.
+'
+' From the original: the screen layout (lander path on row 3, asteroid
+' rows 5, 8, 13, 16 with the 1st and 4th the same row, barrier row 10, the
+' crater rows 21-23 with four pads), the drift directions, the falling
+' speed of a row every two moves and the asteroid shift of a cell a move,
+' release with the button, hold to hover (the listing resets the fall
+' counter while the key is down), left/right steering, any touch fatal,
+' a used pad is solid, 100 a landing, (level) x 100 bonus for four pads,
+' rock chance 0.1 + level / 50 for each cell, the rows kept after a crash
+' or a landing and drawn again for each level, three lives, high score.
+'
+' Liberties: 28 columns instead of 40, so the rows, crater and barrier are
+' scaled (the barrier gaps are all two cells wide: with smooth movement a
+' one-cell gap would need pixel-exact play); the lander moves by pixels
+' (cruise 0.75, fall 0.5, steer 1, asteroids 0.875 pixel a frame, about
+' the BASIC loop's pace); the asteroids also drift while the lander
+' cruises (in the listing they only moved during the fall); collisions use
+' a 6 x 9 box in the lander and the rock shapes; the hover needs the button
+' released once after the drop (so the release press doesn't hover at
+' once); the bonus level is a banner and fanfare. Endless like the
+' original: no last level.
+'
+' Controls: either controller. Button: release the lander, then hold to
+' hover. Stick left/right: steer while falling. On the title, up/down
+' choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off,
+' display off. Music first in the sound table, effects after; the title
+' tune is played once. `set sprite count` always given. Own xorshift
+' random numbers. Nothing flashes.
+
+const TRk000 = 128
+const TRk001 = 129
+const TRk010 = 130
+const TRk011 = 131
+const TRk100 = 132
+const TRk101 = 133
+const TRk110 = 134
+const TRk111 = 135
+const TRk200 = 136
+const TRk201 = 137
+const TRk210 = 138
+const TRk211 = 139
+const TRk300 = 140
+const TRk301 = 141
+const TRk310 = 142
+const TRk311 = 143
+const TRk400 = 144
+const TRk401 = 145
+const TRk410 = 146
+const TRk411 = 147
+const TRk500 = 148
+const TRk501 = 149
+const TRk510 = 150
+const TRk511 = 151
+const TRk600 = 152
+const TRk601 = 153
+const TRk610 = 154
+const TRk611 = 155
+const TRk700 = 156
+const TRk701 = 157
+const TRk710 = 158
+const TRk711 = 159
+const TBrick = 160
+const TGround = 161
+const TCrust = 162
+const TPad = 163
+const TLanded = 164
+const TStar1 = 165
+const TStar2 = 166
+const TRule = 167
+const SShip = 0
+const SWin = 4
+const SFlame0 = 8
+const SFlame1 = 12
+const SBoom0 = 16
+const SBoom1 = 20
+const NTiles8 = 320
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBlip = 3
+const SndDrop = 4
+const SndRetro = 5
+const SndCrash = 6
+const SndLand = 7
+const SndBonus = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 3
+' the twelve tile codes of the three asteroid patterns (after the art)
+const TRock = 168
+const RockS = 14
+const FallS = 8
+const CruiseS = 12
+const DeadN = 70
+const LandN = 50
+const BonusN = 150
+const PadY = 181
+const XMin = 11
+const XMax = 228
+
+' the barrier (row 10) and the crater (rows 21, 22): 1 solid
+data WallT bytes
+  1,1,1,1,0,0,1,1,1,1,1,0,0,1,1,1,1,0,0,1,1,1,0,0,1,1,1,1
+end data
+' rows that can be touched (1)
+data RowKind bytes
+  0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,1,0,0,0,0,1,1,1
+end data
+data PadCT bytes
+  8, 12, 15, 18
+end data
+' the screen row of each asteroid row: pattern 0 drifts left (rows 5
+' and 16), 1 and 2 right
+data RockRowT bytes
+  5, 8, 13, 16
+end data
+data RockPatT bytes
+  0, 1, 2, 0
+end data
+
+record Pad:
+  u8 C
+  u8 Used
+end record
+
+Pad Pads[4]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+u8 Lv = 1
+u8 Lf = 3
+u8 Bs = 4
+u8 Over = 0
+u8 Dens = 31
+' the asteroid patterns (3 x 28), offsets (pixels, 0-223), sub-pixels
+u8 Rk[84]
+u8 Ofs[3]
+u8 Rf[3]
+u8 RowBuf[28]
+u8 LastS[3]
+u8 LastIx[3]
+' the lander: phase (0 cruise, 1 fall, 2 lost, 3 landed, 4 bonus level),
+' position (sprite corner), sub-pixels, timer, hover
+u8 Ph = 0
+u8 Sx = 12
+u8 Sy = 24
+u8 Fx = 0
+u8 Fy = 0
+u8 Tm = 0
+u8 Hv = 0
+u8 HvOk = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' scratch
+u8 Hit = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 Y = 0
+
+  tile screen
+  set sound table KySoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 2
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ' the rows first, in the blank, before the beam reaches row 5
+  DrawRocks
+  ReadPad
+  MoveRocks
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  print at 8,11, "                "
+  print at 8,12, "   GAME  OVER   "
+  print at 8,13, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  select case Ph
+  case 0
+    Cruise
+  case 1
+    Fall
+  case 2
+    dec Tm
+    if Tm = 0 then
+      if Lf = 0 then
+        Over = 1
+      else
+        StartCruise
+      end if
+    end if
+  case 3
+    dec Tm
+    if Tm = 0 then
+      if Bs = 0 then
+        NextLevel
+      else
+        StartCruise
+      end if
+    end if
+  case else
+    dec Tm
+    if Tm = 0 then
+      NewLevelScreen
+      StartCruise
+    end if
+  end select
+  return
+end sub
+
+' along row 3, left to right, again from the left; the button drops
+sub Cruise:
+  Fx = Fx + CruiseS
+  V = Fx >> 4
+  Fx = Fx & 15
+  Sx = Sx + V
+  if Sx > XMax then Sx = XMin + 1
+  if Press = 0 then return
+  Ph = 1
+  Fy = 0
+  HvOk = 0
+  Hv = 0
+  play sound SndDrop
+  return
+end sub
+
+sub Fall:
+  if Btn = 0 then HvOk = 1
+  Hv = 0
+  if Btn > 0 then
+    if HvOk = 1 then Hv = 1
+  end if
+  if Hv = 0 then
+    Fy = Fy + FallS
+    V = Fy >> 4
+    Fy = Fy & 15
+    Sy = Sy + V
+  else
+    V = Tick & 7
+    if V = 0 then play sound SndRetro
+  end if
+  K = J1 | J2
+  V = K & 4
+  if V > 0 then
+    if Sx > XMin then dec Sx
+  end if
+  V = K & 8
+  if V > 0 then
+    if Sx < XMax then inc Sx
+  end if
+  Collide
+  if Hit = 2 then
+    Landed
+  elseif Hit = 1 then
+    Lost
+  end if
+  return
+end sub
+
+' Hit: 0 clear, 1 the lander touches something, 2 it sits on a free pad
+sub Collide:
+  u8 Top = 0
+  u8 Bot = 0
+  u8 R0 = 0
+  u8 R1 = 0
+  u8 Rr = 0
+  u8 Cc = 0
+  u8 Pk = 0
+  Hit = 0
+  Top = Sy + 4
+  Bot = Sy + 12
+  if Bot >= PadY then
+    Cc = (Sx - 8) >> 3
+    for Pk = 0 to 3
+      if Pads[Pk].C = Cc then
+        if Pads[Pk].Used = 0 then Hit = 2
+      end if
+    next
+  end if
+  if Hit = 0 then
+    R0 = Top >> 3
+    R1 = Bot >> 3
+    for Rr = R0 to R1
+      if RowKind[Rr] > 0 then
+        if SolidAt(Rr, Sx + 5, Top, Bot) > 0 then Hit = 1
+        if SolidAt(Rr, Sx + 8, Top, Bot) > 0 then Hit = 1
+        if SolidAt(Rr, Sx + 10, Top, Bot) > 0 then Hit = 1
+      end if
+    next
+  end if
+  return
+end sub
+
+' 1 when screen pixel column Q of screen row R is solid for a lander
+' spanning lines T to B
+function SolidAt(u8 R, u8 Q, u8 T, u8 B) as u8
+  u8 Bc = 0
+  u8 Kp = 0
+  u8 Yt = 0
+  Bc = (Q - 16) >> 3
+  select case R
+  case 5
+    Kp = 0
+  case 8
+    Kp = 1
+  case 13
+    Kp = 2
+  case 16
+    Kp = 0
+  case 10
+    return WallT[Bc]
+  case 21
+    if Bc < 3 then return 1
+    if Bc > 24 then return 1
+    return 0
+  case 22
+    if Bc < 7 then return 1
+    if Bc > 20 then return 1
+    return UsedPadAt(Bc)
+  case 23
+    return 1
+  case else
+    return 0
+  end select
+  ' an asteroid row: the rock shape is lines 1-6, pixels 1-6 of its cell
+  Yt = R << 3
+  if B < Yt + 1 then return 0
+  if T > Yt + 6 then return 0
+  return RockAt(Kp, Q - 16)
+
+' 1 when band pixel column P is inside a rock of pattern Kp
+function RockAt(u8 Kp, u8 P) as u8
+  u16 Pp = 0
+  u8 Ix = 0
+  u8 W = 0
+  Pp = P + 224 - Ofs[Kp]
+  if Pp >= 224 then Pp = Pp - 224
+  Ix = Pp >> 3
+  W = Pp & 7
+  if W = 0 then return 0
+  if W = 7 then return 0
+  Ix = Kp * 28 + Ix
+  return Rk[Ix]
+
+function UsedPadAt(u8 Bc) as u8
+  u8 Pk = 0
+  u8 Got = 0
+  for Pk = 0 to 3
+    if Pads[Pk].C = Bc then Got = Pads[Pk].Used
+  next
+  return Got
+
+sub Landed:
+  u8 Pk = 0
+  u8 Cc = 0
+  Cc = (Sx - 8) >> 3
+  for Pk = 0 to 3
+    if Pads[Pk].C = Cc then Pads[Pk].Used = 1
+  next
+  Cc = Cc + 2
+  put char TLanded at Cc,22
+  Sc += 100
+  dec Bs
+  if Bs = 0 then
+    AddBonus(Lv)
+    play sound SndBonus
+  else
+    play sound SndLand
+  end if
+  ShowHud
+  Ph = 3
+  Tm = LandN
+  return
+end sub
+
+' the bonus for four pads: 100 x the level
+sub AddBonus(u8 N):
+  u8 Kk = 0
+  for Kk = 1 to N
+    Sc += 100
+  next
+  return
+end sub
+
+sub Lost:
+  Ph = 2
+  Tm = DeadN
+  if Lf > 0 then dec Lf
+  ShowHud
+  play sound SndCrash
+  return
+end sub
+
+sub StartCruise:
+  Ph = 0
+  Sx = XMin + 1
+  Sy = 24
+  Fx = 0
+  Fy = 0
+  Hv = 0
+  return
+end sub
+
+sub NextLevel:
+  if Lv < 99 then inc Lv
+  print at 8,11, "                "
+  print at 8,12, " BONUS LEVEL    "
+  print at 21,12, digits$(Lv, 2)
+  print at 8,13, "                "
+  Ph = 4
+  Tm = BonusN
+  return
+end sub
+
+sub NewLevelScreen:
+  Bs = 4
+  for I = 0 to 3
+    Pads[I].Used = 0
+  next
+  MakeRocks
+  NewScreen
+  DrawField
+  DrawRocks
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' each cell a rock with a chance of 0.1 + level / 50 (Dens / 256)
+sub MakeRocks:
+  W16 = Lv * 5 + 26
+  if W16 > 100 then W16 = 100
+  Dens = W16
+  for I = 0 to 83
+    Rand
+    V = Rs & 255
+    if V < Dens then
+      Rk[I] = 1
+    else
+      Rk[I] = 0
+    end if
+  next
+  for I = 0 to 2
+    Ofs[I] = 0
+    Rf[I] = 0
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' pattern 0 drifts left, 1 and 2 right
+sub MoveRocks:
+  u8 Kp = 0
+  u8 N = 0
+  u8 O = 0
+  for Kp = 0 to 2
+    O = Rf[Kp] + RockS
+    N = O >> 4
+    Rf[Kp] = O & 15
+    O = Ofs[Kp]
+    if Kp = 0 then
+      if O < N then O = O + 224
+      O = O - N
+    else
+      O = O + N
+      if O >= 224 then O = O - 224
+    end if
+    Ofs[Kp] = O
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' each asteroid row from its pattern and offset. The shift (0-7 pixels)
+' is the same for every cell of a row, so each pattern has its own four
+' tile codes (no rock, rock right, rock left, both) whose pictures are
+' copied for the shift; the names are written again only when the row has
+' moved a whole cell (through RowBuf)
+sub DrawRocks:
+  u8 Kp = 0
+  u8 Jc = 0
+  u8 Ix = 0
+  u8 Ro = 0
+  u8 Sh = 0
+  u8 Code = 0
+  u8 Ra = 0
+  u8 Rb = 0
+  u16 Pp = 0
+  u16 Vo = 0
+  u16 So = 0
+  for Kp = 0 to 2
+    Pp = 224 - Ofs[Kp]
+    if Pp >= 224 then Pp = Pp - 224
+    Ix = Pp >> 3
+    Sh = Pp & 7
+    Code = Kp * 4 + TRock
+    if Sh <> LastS[Kp] then
+      LastS[Kp] = Sh
+      So = Sh * 32
+      Vo = Code * 8
+      copy TilePat + So count 32 to vram.pattern + Vo
+      copy TilePat + So count 32 to vram.pattern + 2048 + Vo
+      copy TilePat + So count 32 to vram.pattern + 4096 + Vo
+    end if
+    if Ix <> LastIx[Kp] then
+      LastIx[Kp] = Ix
+      Ro = Kp * 28
+      Ra = Rk[Ro + Ix]
+      for Jc = 0 to 27
+        inc Ix
+        if Ix = 28 then Ix = 0
+        Rb = Rk[Ro + Ix]
+        V = Ra + Ra
+        RowBuf[Jc] = Code + V + Rb
+        Ra = Rb
+      next
+      for Jc = 0 to 3
+        if RockPatT[Jc] = Kp then
+          Vo = RockRowT[Jc] * 32 + 2
+          copy RowBuf count 28 to vram.name + Vo
+        end if
+      next
+    end if
+  next
+  return
+end sub
+
+' the next DrawRocks writes every row and every picture
+sub ForceRocks:
+  for I = 0 to 2
+    LastS[I] = 255
+    LastIx[I] = 255
+  next
+  return
+end sub
+
+' sprite 0 the lander, 1 its window, 2 the flame or the explosion
+sub DrawSprites:
+  u8 Pat = 0
+  Y = Sy - 1
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  elseif Ph = 2 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    Pat = SBoom0
+    if Tm < 50 then Pat = SBoom1
+    if Tm < 20 then
+      set sprite 2 to 192,0,0,0
+    else
+      set sprite 2 to Y,Sx,Pat,9
+    end if
+  elseif Ph >= 3 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  else
+    set sprite 0 to Y,Sx,SShip,15
+    set sprite 1 to Y,Sx,SWin,7
+    if Hv = 1 then
+      Pat = Tick >> 2
+      Pat = Pat & 1
+      Pat = Pat << 2
+      Pat = Pat + SFlame0
+      set sprite 2 to Y,Sx,Pat,10
+    else
+      set sprite 2 to 192,0,0,0
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print Sc at 5,1
+  print at 13,1, "HI"
+  print Hi at 16,1
+  print at 21,2, "LEVEL"
+  print at 2,2, "SHIPS"
+  print at 8,2, digits$(Lf, 1)
+  print at 27,2, digits$(Lv, 2)
+  return
+end sub
+
+' stars, the barrier, the crater and its pads
+sub DrawField:
+  u8 Rw = 0
+  u8 Cl = 0
+  for Rw = 3 to 20
+    for Cl = 2 to 29
+      V = Rw * 7 + Cl * 13
+      V = V & 31
+      if V = 3 then put char TStar1 at Cl,Rw
+      if V = 17 then put char TStar2 at Cl,Rw
+    next
+  next
+  for Cl = 0 to 27
+    K = Cl + 2
+    if WallT[Cl] = 1 then
+      put char TBrick at K,10
+    else
+      put char 32 at K,10
+    end if
+  next
+  fill TCrust count 5 at 0,21
+  fill TCrust count 5 at 27,21
+  fill TGround count 9 at 0,22
+  fill TGround count 9 at 23,22
+  fill 32 count 14 at 9,22
+  fill TGround count 32 at 0,23
+  for I = 0 to 3
+    K = Pads[I].C + 2
+    if Pads[I].Used = 1 then
+      put char TLanded at K,22
+    else
+      put char TPad at K,22
+    end if
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lv = 1
+  Lf = 3
+  Over = 0
+  TitleOn = 0
+  NewLevelScreen
+  StartCruise
+  DrawSprites
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count 32 to vram.color + 1344
+  copy TileCol count 32 to vram.color + 1376
+  copy TileCol count 32 to vram.color + 1408
+  ForceRocks
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the field with drifting asteroids, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  Lv = 1
+  for I = 0 to 3
+    Pads[I].C = PadCT[I]
+    Pads[I].Used = 0
+  next
+  MakeRocks
+  NewScreen
+  DrawField
+  for I = 10 to 11
+    fill 32 count 28 at 2,I
+  next
+  print at 7,3, "DESCENT TO KAYLON"
+  print at 5,11, "COMPUTE!'S GAZETTE 1984"
+  print at 10,18, "START GAME"
+  print at 10,19, "CREDITS"
+  print at 2,1, "HI"
+  print Hi at 5,1
+  ShowMenu
+  TitleOn = 1
+  DrawRocks
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  DrawRocks
+  inc Rs
+  ReadPad
+  MoveRocks
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,18
+  put char 32 at 8,19
+  J = Menu + 18
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 7,2, "DESCENT TO KAYLON"
+  print at 2,5, "BASED ON DESCENT TO KAYLON,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "NOVEMBER 1984 (COMMODORE 64"
+  print at 2,8, "AND VIC-20)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: ORBIT OF KAYLON"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3C,$7E,$FF,$EF,$7E,$3C,$00
+  $00,$3C,$7E,$FF,$EF,$7E,$3C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$00,$00,$00
+  $00,$78,$FC,$FE,$DE,$FC,$78,$00
+  $00,$78,$FC,$FF,$DF,$FC,$78,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$03,$01,$00,$00
+  $00,$F0,$F8,$FC,$BC,$F8,$F0,$00
+  $00,$F0,$F9,$FF,$BF,$F9,$F0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$07,$03,$01,$00
+  $00,$E0,$F0,$F8,$78,$F0,$E0,$00
+  $00,$E1,$F3,$FF,$7F,$F3,$E1,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$0F,$0E,$07,$03,$00
+  $00,$C0,$E0,$F0,$F0,$E0,$C0,$00
+  $00,$C3,$E7,$FF,$FE,$E7,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$1F,$1D,$0F,$07,$00
+  $00,$80,$C0,$E0,$E0,$C0,$80,$00
+  $00,$87,$CF,$FF,$FD,$CF,$87,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$0F,$1F,$3F,$3B,$1F,$0F,$00
+  $00,$00,$80,$C0,$C0,$80,$00,$00
+  $00,$0F,$9F,$FF,$FB,$9F,$0F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$1E,$3F,$7F,$77,$3F,$1E,$00
+  $00,$00,$00,$80,$80,$00,$00,$00
+  $00,$1E,$3F,$FF,$F7,$3F,$1E,$00
+  $10,$10,$00,$41,$41,$00,$08,$00
+  $00,$42,$00,$10,$81,$00,$04,$20
+  $00,$00,$30,$86,$00,$42,$00,$10
+  $00,$00,$00,$00,$00,$00,$00,$A5
+  $18,$C3,$C3,$81,$42,$00,$00,$A5
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $E1,$F1,$E1,$E1,$E1,$A1,$A1,$61
+  $68,$68,$06,$68,$68,$06,$68,$06
+  $0A,$6A,$0A,$6A,$6A,$0A,$6A,$6A
+  $01,$01,$A1,$1A,$0A,$6A,$0A,$6A
+  $01,$01,$01,$01,$01,$03,$02,$A1
+  $F1,$1F,$15,$1F,$F1,$0E,$02,$A1
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$01,$01,$0E,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$03,$07,$04,$07,$0F,$1F,$17,$10,$30,$30,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$20,$E0,$F0,$F8,$E8,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$C0,$80,$80
+  $00,$00,$00,$02,$12,$0B,$07,$3F,$0F,$17,$15,$22,$02,$00,$00,$00
+  $00,$00,$00,$40,$88,$D0,$E0,$F0,$EC,$E0,$90,$48,$00,$00,$00,$00
+  $00,$20,$10,$00,$88,$42,$02,$10,$C1,$10,$02,$42,$90,$00,$10,$20
+  $00,$84,$88,$80,$09,$42,$40,$08,$83,$08,$40,$42,$09,$80,$88,$84
+end data
+
+asm {
+KyBlip:
+    db $40,$7F,$30,$02,$40,$A9,$40,$02,$50
+KyDrop:
+    db $40,$8F,$20,$03,$40,$AA,$30,$03,$40,$D6,$30,$03,$50
+KyRetro:
+    db $00,$00,$46,$03,$00,$00,$55,$03,$10
+KyCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$0C,$00,$00,$76,$10,$10
+KyLand:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$20,$0C,$50
+KyBonus:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+KyStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+KyOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+
+KySoundTable:
+    dw KyTuneMel,$702B
+    dw KyTuneBass,$7035
+    dw KyBlip,$7049
+    dw KyDrop,$7049
+    dw KyRetro,$703F
+    dw KyCrash,$703F
+    dw KyLand,$7049
+    dw KyBonus,$7049
+    dw KyStart,$7049
+    dw KyOver,$7049
+; Orbit of Kaylon (original)
+; Tiny Sound, 8 frames per step
+KyTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$24,$01,$23,$01,$21,$01,$01,$1F
+    db $1C,$01,$01,$01,$1D,$01,$21,$01,$26,$01,$24,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$1F,$01
+    db $21,$01,$23,$01,$24,$01,$23,$01,$21,$01,$20,$01,$21,$01,$01,$01
+    db $00,$01,$01
+    db $FF
+KyTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$04,$01,$0B,$01,$09,$01,$01,$00
+    db $01,$01,$01
+    db $FF
+}

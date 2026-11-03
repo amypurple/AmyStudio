@@ -1,0 +1,925 @@
+cartridge "DISC BLITZ/COMPUTE!'S GAZETTE/1989"
+
+' DISC BLITZ
+' A ColecoVision game based on "Disc Blitz", COMPUTE!'s Gazette January
+' 1989 (disk 1989-01; Commodore 64, BASIC with a machine-language core; no
+' author is named in the listing). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' BASIC listing and the disassembly of its machine code, orig/), the game
+' is built for the ColecoVision: smooth sprites, spinning discs, a
+' scrolling space background, sound effects and an original title tune.
+'
+' The game: your ship sits on the left edge of the field and moves up and
+' down. Six discs bounce round the field diagonally, all at the same speed,
+' right up to your edge. Shoot them all (10 points each) to clear the
+' wave; a disc that touches the ship destroys it, and then the whole wave
+' comes back. Four formations make a level; five levels set the discs off
+' in different directions (all down-right, down-left... and at level 5 at
+' random), then level 5 repeats for ever. Three spare ships.
+'
+' From the original (orig/disc blitz.bas, orig/ml.dis): the ship fixed on
+' the left edge, moving up and down only; one shot at a time, fired
+' whenever the button is held and no shot is flying, three times the
+' ship's speed; six discs moving one step in X and Y together and bouncing
+' off the field's edges, the left one level with the ship; the four
+' formations (a diagonal, a column on the right, a column on the left, a
+' row near the bottom) and the five direction sets by level (BASIC lines
+' 730-770 and 920-990); a level every four waves, at most 5; 10 points a
+' disc; losing a ship brings every disc of the wave back in its formation;
+' three spare ships, game over after the fourth loss; a score, ships and
+' level panel on the right.
+'
+' Liberties: speeds are slower than the C64's (about 2.8 pixels a frame
+' for ship and discs there); here the ship moves 2 pixels a frame and the
+' discs 1.25 at level 1, a little faster each level up to 1.75, so a
+' human can dodge; the shot flies 6 pixels a frame. The field is scaled to
+' 22 x 22 tiles. Each wave (and each new ship) starts with the formation
+' shown still for a second, with a READY banner, instead of starting at
+' once; the new ship appears in place instead of sliding in from the
+' border (the border is outside a TV's picture). The disc colour shimmer
+' (12 Hz) became a spin; the in-game bass line was dropped; the title tune
+' is new; a high score was added. Collisions are boxes, not pixels.
+'
+' Controls: either controller; stick up/down moves the ship, either
+' button fires (hold to keep firing). On the title, up and down choose,
+' a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off after
+' a wait, display off. Music first in the sound table, effects after; the
+' title tune played once. `set sprite count` always given.
+
+const TSpace = 128
+const TBar = 129
+const THbar = 130
+const TPanel = 131
+const TBlk = 132
+const TBlk2 = 133
+const TLife = 134
+const SShip = 0
+const SCanopy = 4
+const SShot = 8
+const SDisc0 = 12
+const SDisc1 = 16
+const SDisc2 = 20
+const SDisc3 = 24
+const SPop = 28
+const SBoom0 = 32
+const SBoom1 = 36
+const SBoom2 = 40
+const NTiles8 = 56
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndPop = 4
+const SndBoom = 5
+const SndWave = 6
+const SndReady = 7
+const SndOver = 8
+const NSpr = 9
+const XMin = 16
+const XMax = 176
+const YMin = 8
+const YMax = 168
+const ShipX = 16
+const ShipSpd = 2
+const ShotSpd = 6
+const ShotEnd = 184
+const HoldN = 60
+const DeadN = 90
+const PopN = 12
+const NDisc = 6
+const PanelC = 25
+
+record Disc:
+  u8 X
+  u8 Y
+  u8 Dx
+  u8 Dy
+  u8 St
+end record
+
+' formation coordinates (the C64's, scaled to the field)
+data FormA bytes
+  47, 68, 89, 110, 131, 152
+end data
+data FormB bytes
+  26, 53, 80, 106, 133, 160
+end data
+' disc speed by level, in 1/16 pixel a frame
+data SpdT bytes
+  0, 20, 22, 24, 26, 28
+end data
+' disc colour by level
+data ColT bytes
+  0, 7, 3, 11, 13, 9
+end data
+' 3 x 5 block letters for the title: D I S C B L T Z (rows top to bottom,
+' bit 2 = left column)
+data FontT bytes
+  6, 5, 5, 5, 6
+  7, 2, 2, 2, 7
+  7, 4, 7, 1, 7
+  7, 4, 4, 4, 7
+  6, 5, 6, 5, 6
+  4, 4, 4, 4, 7
+  7, 2, 2, 2, 2
+  7, 1, 2, 4, 7
+end data
+
+Disc Ds[6]
+bcd digits 5 Score
+bcd digits 5 Best
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Lv = 1
+u8 Rout = 1
+u8 Lives = 3
+u8 Over = 0
+' play state: 0 play, 1 hold (formation shown), 2 ship destroyed
+u8 Mode = 0
+u8 HoldT = 0
+u8 DeadT = 0
+u8 Sy = 88
+u8 ShotOn = 0
+u8 ShotX = 0
+u8 ShotY = 0
+u8 Acc = 0
+u8 Steps = 0
+u8 Spin = 0
+u8 ScrollT = 0
+u8 Sp[8]
+u8 TitleOn = 0
+u8 Left = 0
+u8 Hit = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Di = 0
+u8 Si = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Best = 0
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Scroll
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Score > Best then Best = Score
+  ShowPanel
+  mute all
+  print at 6,10, "            "
+  print at 6,11, " GAME  OVER "
+  print at 6,12, "            "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  select case Mode
+  case 2
+    Dying
+  case 1
+    MoveShip
+    dec HoldT
+    if HoldT = 0 then
+      Mode = 0
+      ClearBanner
+    end if
+  case else
+    MoveShip
+    FireShot
+    MoveDiscs
+    MoveShot
+    HitShip
+    Pops
+    if Mode = 0 then
+      if CountLeft() = 0 then NextWave
+    end if
+  end select
+  return
+end sub
+
+sub MoveShip:
+  K = J1 | J2
+  V = K & 1
+  if V > 0 then
+    if Sy >= YMin + ShipSpd then
+      Sy = Sy - ShipSpd
+    else
+      Sy = YMin
+    end if
+  end if
+  V = K & 2
+  if V > 0 then
+    if Sy <= YMax - ShipSpd then
+      Sy = Sy + ShipSpd
+    else
+      Sy = YMax
+    end if
+  end if
+  return
+end sub
+
+' the button held and no shot flying: a new shot from the wings
+sub FireShot:
+  if ShotOn = 1 then return
+  if Btn = 0 then return
+  ShotOn = 1
+  ShotX = ShipX + 10
+  ShotY = Sy
+  play sound SndShot
+  return
+end sub
+
+sub MoveShot:
+  if ShotOn = 0 then return
+  if ShotX >= ShotEnd - ShotSpd then
+    ShotOn = 0
+    return
+  end if
+  ShotX = ShotX + ShotSpd
+  ShotHit
+  return
+end sub
+
+' the shot (8 x 10 between its two dashes) against the discs (box 2..13)
+sub ShotHit:
+  for Si = 0 to 5
+    if ShotOn = 1 then
+      if Ds[Si].St = 1 then
+        X = Ds[Si].X
+        Y = Ds[Si].Y
+        if Overlap(ShotX, ShotY + 3, 8, 10, X + 2, Y + 2) = 1 then
+          Ds[Si].St = PopN
+          ShotOn = 0
+          Score += 10
+          ShowScore
+          play sound SndPop
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' 1 when the box at Ax,Ay (Aw x Ah) meets the 12 x 12 box at Bx,By
+function Overlap(u8 Ax, u8 Ay, u8 Aw, u8 Ah, u8 Bx, u8 By) as u8
+  if Ax + Aw <= Bx then return 0
+  if Bx + 12 <= Ax then return 0
+  if Ay + Ah <= By then return 0
+  if By + 12 <= Ay then return 0
+  return 1
+
+' a disc against the ship (box 2..13 x 4..11 of its sprite)
+sub HitShip:
+  for Si = 0 to 5
+    if Mode = 0 then
+      if Ds[Si].St = 1 then
+        X = Ds[Si].X
+        Y = Ds[Si].Y
+        Hit = Overlap(ShipX + 2, Sy + 4, 12, 8, X + 2, Y + 2)
+        if Hit = 1 then
+          Mode = 2
+          DeadT = DeadN
+          ShotOn = 0
+          play sound SndBoom
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the discs move Steps pixels in X and in Y, bouncing off the edges
+sub MoveDiscs:
+  V = SpdT[Lv]
+  V = Acc + V
+  Steps = V >> 4
+  Acc = V & 15
+  for Di = 0 to 5
+    if Ds[Di].St = 1 then
+      with Ds[Di] as D
+        for K = 1 to Steps
+          if D.Dx = 1 then
+            D.X = D.X + 1
+            if D.X >= XMax then D.Dx = 0
+          else
+            D.X = D.X - 1
+            if D.X <= XMin then D.Dx = 1
+          end if
+          if D.Dy = 1 then
+            D.Y = D.Y + 1
+            if D.Y >= YMax then D.Dy = 0
+          else
+            D.Y = D.Y - 1
+            if D.Y <= YMin then D.Dy = 1
+          end if
+        next
+      end with
+    end if
+  next
+  return
+end sub
+
+' a shot disc bursts for a few frames
+sub Pops:
+  for Di = 0 to 5
+    V = Ds[Di].St
+    if V > 1 then
+      dec V
+      if V = 1 then V = 0
+      Ds[Di].St = V
+    end if
+  next
+  return
+end sub
+
+function CountLeft as u8
+  Left = 0
+  for Di = 0 to 5
+    if Ds[Di].St > 0 then inc Left
+  next
+  return Left
+
+' the ship explodes; then a spare ship (or the end) and the wave again
+sub Dying:
+  dec DeadT
+  if DeadT > 0 then return
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  dec Lives
+  ShowPanel
+  StartWave
+  return
+end sub
+
+' every disc of the wave: one more formation, a level every four
+sub NextWave:
+  inc Rout
+  if Rout > 4 then
+    Rout = 1
+    if Lv < 5 then inc Lv
+  end if
+  play sound SndWave
+  ShowPanel
+  StartWave
+  return
+end sub
+
+' the formation of this wave (Rout) with the level's directions, held
+' still for a second
+sub StartWave:
+  for Di = 0 to 5
+    Ds[Di].X = FormX(Rout, Di)
+    Ds[Di].Y = FormY(Rout, Di)
+    Ds[Di].St = 1
+    select case Lv
+    case 1
+      Ds[Di].Dx = 1
+      Ds[Di].Dy = 1
+    case 2
+      Ds[Di].Dx = 1
+      Ds[Di].Dy = 0
+    case 3
+      Ds[Di].Dx = 0
+      Ds[Di].Dy = 1
+    case 4
+      Ds[Di].Dx = 0
+      Ds[Di].Dy = 0
+    case else
+      Rand
+      V = Rs & 1
+      Ds[Di].Dx = V
+      V = Rs >> 8
+      V = V & 1
+      Ds[Di].Dy = V
+    end select
+  next
+  ShotOn = 0
+  Acc = 0
+  Mode = 1
+  HoldT = HoldN
+  print at 9,11, " READY "
+  return
+end sub
+
+' formation X: 1 diagonal, 2 column right, 3 column left, 4 row
+function FormX(u8 R, u8 I) as u8
+  select case R
+  case 2
+    return 166
+  case 3
+    return 68
+  case else
+    return FormA[I]
+  end select
+  return 0
+
+function FormY(u8 R, u8 I) as u8
+  if R = 4 then return 142
+  return FormB[I]
+
+sub ClearBanner:
+  fill TSpace count 7 at 9,11
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the space tile's rows turn left a bit every fourth frame (the original
+' rotated its space character in the interrupt)
+sub Scroll:
+  inc ScrollT
+  V = ScrollT & 3
+  if V > 0 then return
+  for J = 0 to 7
+    B = Sp[J]
+    C = B >> 7
+    B = B << 1
+    Sp[J] = B | C
+  next
+  W16 = TSpace << 3
+  copy Sp count 8 to vram.pattern + W16
+  copy Sp count 8 to vram.pattern + 2048 + W16
+  copy Sp count 8 to vram.pattern + 4096 + W16
+  return
+end sub
+
+' sprites: 0 ship, 1 its canopy and flame, 2 the shot, 3-8 the discs
+sub DrawSprites:
+  Y = Sy - 1
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  elseif Mode = 2 then
+    V = DeadN - DeadT
+    select case V
+    case 0 to 19
+      set sprite 0 to Y,ShipX,SBoom0,11
+    case 20 to 39
+      set sprite 0 to Y,ShipX,SBoom1,9
+    case 40 to 59
+      set sprite 0 to Y,ShipX,SBoom2,6
+    case else
+      set sprite 0 to 192,0,0,0
+    end select
+    set sprite 1 to 192,0,0,0
+  else
+    set sprite 0 to Y,ShipX,SShip,15
+    set sprite 1 to Y,ShipX,SCanopy,8
+  end if
+  if ShotOn = 1 then
+    Y = ShotY - 1
+    set sprite 2 to Y,ShotX,SShot,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  inc Spin
+  V = Spin >> 2
+  V = V & 3
+  K = V << 2
+  K = K + SDisc0
+  C = ColT[Lv]
+  for Di = 0 to 5
+    J = Di + 3
+    B = Ds[Di].St
+    if Mode = 2 then B = 0
+    if TitleOn = 1 then B = 0
+    if B = 0 then
+      set sprite J to 192,0,0,0
+    else
+      X = Ds[Di].X
+      Y = Ds[Di].Y - 1
+      if B = 1 then
+        set sprite J to Y,X,K,C
+      else
+        set sprite J to Y,X,SPop,15
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at PanelC,4, Score
+  return
+end sub
+
+sub ShowPanel:
+  print at PanelC,3, "SCORE"
+  ShowScore
+  print at PanelC,7, "HIGH"
+  print at PanelC,8, Best
+  print at PanelC,11, "SHIPS"
+  fill TPanel count 5 at PanelC,12
+  if Lives > 0 then fill TLife count Lives at PanelC,12
+  print at PanelC,15, "LEVEL"
+  NumU = Lv
+  print at PanelC,16, digits$(NumU, 1)
+  print at PanelC,19, "WAVE"
+  NumU = Rout
+  print at PanelC,20, digits$(NumU, 1)
+  return
+end sub
+
+' the field (space), the frame and the panel
+sub DrawField:
+  for J = 0 to 23
+    fill TSpace count 23 at 1,J
+    put char TBar at 24,J
+    fill TPanel count 7 at 25,J
+  next
+  fill THbar count 23 at 1,0
+  fill THbar count 23 at 1,23
+  for J = 0 to 23
+    put char TBar at 1,J
+  next
+  return
+end sub
+
+sub ResetSpace:
+  copy TilePat count 8 to Sp
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lv = 1
+  Rout = 1
+  Lives = 3
+  Sy = 53
+  NewScreen
+  DrawField
+  ShowPanel
+  TitleOn = 0
+  Over = 0
+  StartWave
+  DrawSprites
+  ShowScreen
+  play sound SndReady
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  ResetSpace
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' one block letter (FontT row L) at column C, row Y, in tile T
+sub Letter(u8 L, u8 Cl, u8 Ry, u8 T):
+  u16 Base = 0
+  u8 Row = 0
+  u8 Bits = 0
+  Base = L * 5
+  for Row = 0 to 4
+    Bits = FontT[Base + Row]
+    if (Bits & 4) > 0 then put char T at Cl, Ry + Row
+    if (Bits & 2) > 0 then put char T at Cl + 1, Ry + Row
+    if (Bits & 1) > 0 then put char T at Cl + 2, Ry + Row
+  next
+  return
+end sub
+
+' the title: the field, DISC BLITZ in blocks, the tune
+' once, START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawField
+  ' DISC (letters 0 1 2 3), BLITZ (4 5 1 6 7)
+  Letter(0, 4, 2, TBlk)
+  Letter(1, 8, 2, TBlk)
+  Letter(2, 12, 2, TBlk)
+  Letter(3, 16, 2, TBlk)
+  Letter(4, 2, 8, TBlk2)
+  Letter(5, 6, 8, TBlk2)
+  Letter(1, 10, 8, TBlk2)
+  Letter(6, 14, 8, TBlk2)
+  Letter(7, 18, 8, TBlk2)
+  print at 4,14, "COMPUTE!'S GAZETTE"
+  print at 7,15, "JANUARY 1989"
+  print at 7,18, "START GAME"
+  print at 7,19, "CREDITS"
+  print at PanelC,7, "HIGH"
+  print at PanelC,8, Best
+  ShowMenu
+  Lv = 1
+  Rout = 1
+  StartWave
+  ClearBanner
+  Mode = 0
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 460
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  MoveDiscs
+  Scroll
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 5,18
+  put char 32 at 5,19
+  J = Menu + 18
+  put char 62 at 5,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "DISC BLITZ"
+  print at 2,5, "BASED ON DISC BLITZ,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "JANUARY 1989 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: SAUCER RUN"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$04,$00,$80,$00,$00,$10,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $00,$60,$38,$81,$81,$38,$60,$00
+end data
+data TileCol bytes
+  $01,$41,$01,$41,$01,$01,$51,$01
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $01,$0E,$04,$0F,$0F,$04,$0E,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $1F,$07,$07,$07,$07,$07,$05,$01
+  $1B,$09,$09,$09,$09,$09,$08,$01
+  $04,$F4,$F4,$4F,$4F,$F4,$F4,$04
+end data
+data SpritePat bytes
+  $00,$00,$C0,$70,$3E,$3F,$7F,$7F,$7F,$7F,$3F,$3E,$70,$C0,$00,$00
+  $00,$00,$00,$00,$00,$80,$F0,$9F,$9F,$F0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$60,$60,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$3F,$3B,$71,$73,$76,$7E,$7F,$7F,$3F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$FC,$FE,$FE,$7E,$6E,$CE,$8E,$DC,$FC,$F8,$E0,$00
+  $00,$07,$1F,$3F,$38,$79,$7F,$7E,$7E,$7F,$7F,$3E,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$7C,$FE,$FE,$7E,$7E,$FE,$9E,$1C,$FC,$F8,$E0,$00
+  $00,$07,$1F,$3F,$3F,$7F,$7F,$7E,$7E,$7B,$71,$38,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$1C,$8E,$DE,$7E,$7E,$FE,$FE,$FC,$FC,$F8,$E0,$00
+  $00,$07,$1F,$3F,$3F,$7F,$7F,$76,$76,$73,$73,$3F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$FC,$CE,$CE,$6E,$6E,$FE,$FE,$FC,$FC,$F8,$E0,$00
+  $00,$40,$20,$10,$09,$00,$62,$02,$00,$CA,$05,$10,$21,$41,$81,$00
+  $00,$82,$84,$04,$20,$C0,$13,$D0,$20,$48,$A3,$02,$10,$08,$04,$00
+  $00,$00,$02,$0B,$07,$1F,$3C,$78,$78,$3C,$1F,$07,$0B,$02,$00,$00
+  $00,$00,$80,$A0,$C0,$F0,$78,$3C,$3C,$78,$F0,$C0,$A0,$80,$00,$00
+  $02,$22,$12,$08,$80,$60,$10,$80,$C0,$10,$20,$48,$09,$11,$21,$00
+  $00,$10,$20,$24,$28,$04,$07,$00,$01,$04,$02,$10,$08,$04,$02,$00
+  $00,$00,$20,$00,$02,$00,$80,$00,$00,$00,$00,$20,$00,$00,$10,$00
+  $00,$00,$08,$00,$00,$01,$00,$00,$00,$04,$00,$00,$80,$00,$04,$00
+end data
+
+asm {
+DbShot:
+    db $40,$BA,$20,$02,$40,$8C,$20,$02,$40,$70,$30,$02,$40,$59,$30,$02,$40,$4B,$40,$02,$40,$3E,$60,$02
+    db $50
+DbPop:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$56,$06,$10
+DbBoom:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$26,$08,$00,$00,$36,$0A,$00,$00,$57,$0E,$00,$00,$67,$10
+    db $10
+DbWave:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$20,$0C,$50
+DbReady:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$30,$0A,$50
+DbOver:
+    db $40,$E2,$10,$0C,$40,$FE,$20,$0C,$40,$2E,$21,$0C,$40,$C5,$21,$1E,$50
+
+DbSoundTable:
+    dw DbTuneMel,$702B
+    dw DbTuneBass,$7035
+    dw DbShot,$7049
+    dw DbPop,$703F
+    dw DbBoom,$703F
+    dw DbWave,$7049
+    dw DbReady,$7049
+    dw DbOver,$7049
+; Saucer Run (original)
+; Tiny Sound, 7 frames per step
+DbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$23,$01,$1E,$01,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$23,$01,$01,$21,$01,$1E,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$1E,$01,$23,$01,$26,$01,$28,$01,$26,$01
+    db $25,$01,$21,$01,$23,$01,$25,$01,$26,$01,$25,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+DbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$01,$17,$01,$0B,$01,$17,$01,$09,$01,$15,$01
+    db $09,$01,$15,$01,$07,$01,$13,$01,$07,$01,$13,$01,$06,$01,$12,$01
+    db $06,$01,$12,$01,$0B,$01,$17,$01,$0B,$01,$17,$01,$09,$01,$15,$01
+    db $09,$01,$15,$01,$07,$01,$13,$01,$06,$01,$12,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

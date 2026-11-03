@@ -12264,5 +12264,165 @@ export const exampleManifest = [
     ],
     "originKind": "original",
     "originLabel": "Original"
+  },
+  {
+    "id": "xroads",
+    "label": "Crossroads (December 1987)",
+    "detail": "Steve Harter's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Crossroads",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cutoff",
+    "label": "Cut-Off! (March 1984)",
+    "detail": "A COMPUTE!'s Gazette game from March 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Cut-Off!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cypher",
+    "label": "Cypher (February 1985)",
+    "detail": "A COMPUTE!'s Gazette game from February 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Cypher",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "decip",
+    "label": "Decipede (January 1987)",
+    "detail": "A COMPUTE!'s Gazette game from January 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Decipede",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "kaylon",
+    "label": "Descent to Kaylon (November 1984)",
+    "detail": "A COMPUTE!'s Gazette game from November 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Descent to Kaylon",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "disc",
+    "label": "Disc Blitz (January 1989)",
+    "detail": "A COMPUTE!'s Gazette game from January 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Disc Blitz",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dtake",
+    "label": "Double Take (December 1988)",
+    "detail": "A COMPUTE!'s Gazette game from December 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Double Take",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "digger",
+    "label": "Digger (March 1985)",
+    "detail": "A COMPUTE!'s Gazette game from March 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Digger",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

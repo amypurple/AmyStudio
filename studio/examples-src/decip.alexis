@@ -1,0 +1,1087 @@
+cartridge "DECIPEDE/COMPUTE'S GAZETTE/1987"
+
+' DECIPEDE
+' A ColecoVision game based on "Decipede", COMPUTE!'s Gazette disk,
+' January 1987 (Commodore 64, BASIC with a machine-language core). The
+' listing names no author. Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu. Original art and music: the
+' crawler is a chain of amber beads with a violet head, the field is full
+' of crystals; nothing follows the look of Atari's Centipede.
+'
+' The game (the original's rules, read from orig/decipede.bas and the
+' disassembly of orig/dec ml.prg, orig/decml.dis, and watched in jsc64):
+' - A crawler of 10 beads enters at the top left and runs across the
+'   field. When a crystal or the side blocks it, it steps one row down
+'   (straight down) and turns back. At the bottom row it starts climbing
+'   back up the same way until the top of the gun zone, then goes down
+'   again: it never leaves the bottom once there.
+' - A poisoned (red) crystal does not block it: the head enters it and
+'   dives straight down (up to 12 rows).
+' - Your gun moves in the four bottom rows; crystals block it. One shot
+'   at a time; hold the button to keep firing.
+' - A shot that hits any bead takes one bead off the END of the crawler
+'   (the original's rule: it does not split), 50 points. Ten hits clear
+'   the wave. A shot breaks a crystal: 25 points.
+' - One pest at a time: the HOPPER zigzags through the gun zone (200,
+'   it vanishes when it runs into a crystal), the DROPPER falls straight
+'   down above the gun planting a column of crystals (400), the CREEPER
+'   crosses row 10 poisoning the crystals it walks over (1200).
+' - The crawler's head, the hopper or the dropper touching the gun (or the
+'   gun walking into a bead) costs a gun. 3 guns, one more every 12000.
+' - Each new wave (after clearing or dying) the crawler comes back, more
+'   crystals grow (as many as crystals and beads shot in the last wave,
+'   plus 13), the lone crystal of the top row moves, and the speed follows
+'   the listing's C/P/S schedule (lines 390-510).
+'
+' Liberties: one step of the crawler every (S + 5) / 4 frames (S is the
+'   listing's delay, 25 down to 7: 7 to 3 frames) instead of the C64's
+'   ~30 steps a second, so a person can play; pests move one cell every
+'   twice that (C64: every third crawler step) and glide smoothly; the gun
+'   moves 2 pixels a frame (C64: a cell a frame) and the shot 4 pixels a
+'   frame (C64: a cell a frame); a pause of about 1-2 seconds between pests
+'   (the C64 sent the next one at once); scores are added as they happen
+'   (the C64 added them at the end of the wave); the field is 28 columns
+'   (crystal counts scaled by 5/8 from the 40-column screen); the gun
+'   starts each wave at the bottom centre; a short READY pause.
+'   Standing still is not safe: the dropper always falls above the gun
+'   and the crawler sweeps the bottom rows for ever.
+'
+' Controls: joystick moves the gun, either button fires (hold to repeat).
+' House rules: text in columns 2-29; tiles from 128; NMI off while
+' drawing; set sprite count after clear sprites; title tune once.
+
+const TRock = 128
+const TPois = 129
+const TBody0 = 130
+const TBody1 = 131
+const THeadr = 132
+const THeadl = 133
+const THeadd = 134
+const TWall = 135
+const TZone = 136
+const SGun = 0
+const SShot = 4
+const SHop0 = 8
+const SHop1 = 12
+const SDrop = 16
+const SCrawl = 20
+const SBoom = 24
+const NTiles8 = 72
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndRock = 4
+const SndSeg = 5
+const SndBug = 6
+const SndDie = 7
+const SndWave = 8
+const SndExtra = 9
+const SndOver = 10
+const NSpr = 3
+const TopR = 2
+const ZoneR = 19
+const BotR = 22
+const DieN = 70
+const MsgN = 60
+
+record Foe:
+  u8 Kind
+  u8 X
+  u8 Y
+  u8 Dx
+  u8 Dy
+  u8 Px
+  u8 Py
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 7
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+bcd digits 6 NextX = 12000
+u8 Guns = 3
+u8 Wave = 1
+u8 Over = 0
+' the listing's speed variables C, P, S
+u8 SpC = 1
+u8 SpP = 25
+u8 SpS = 25
+u8 StepT = 7
+u8 CentT = 0
+u8 EnT = 0
+u8 EnGap = 60
+' crawler
+u8 Sx[10]
+u8 Sy[10]
+u8 Len = 10
+u8 Dir = 1
+u8 Rise = 0
+u8 Dive = 0
+u8 Steps = 0
+' shots counted this wave (the listing's X and Y)
+u8 RockN = 0
+u8 SegN = 0
+u8 ZCol = 10
+' gun and shot (pixels; the gun box is 8 x 8)
+u8 Px = 116
+u8 Py = 176
+u8 Bon = 0
+u8 Bx = 0
+u8 By = 0
+u8 Hurt = 0
+Foe En
+u8 DeadT = 0
+u8 MsgT = 0
+u8 Died = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InGame = 0
+' loop counters
+u8 Si = 0
+u8 Ri = 0
+u8 Ni = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nx = 0
+u8 Ny = 0
+
+  tile screen
+  set sound table DpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  mute all
+  if Sc > Hi then Hi = Sc
+  InGame = 0
+  print at 9,10, "            "
+  print at 9,11, "  GAME OVER "
+  print at 9,12, "            "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' helpers that return values
+
+' xorshift random number below N
+function Rnd(u8 N) as u8
+  u16 Q
+  u8 R8
+  Rand
+  Q = Rs % N
+  R8 = Q
+  return R8
+
+' what blocks the gun: 0 free, 1 crystal; a bead in the box sets Hurt
+function BoxFree(u8 Bxp, u8 Byp) as u8
+  u8 C0
+  u8 C1
+  u8 R0
+  u8 R1
+  u8 Ok
+  u8 Cc
+  C0 = Bxp >> 3
+  C1 = Bxp + 7
+  C1 = C1 >> 3
+  R0 = Byp >> 3
+  R1 = Byp + 7
+  R1 = R1 >> 3
+  Ok = 1
+  Cc = get char at C0,R0
+  Ok = Ok & CellOk(Cc)
+  Cc = get char at C1,R0
+  Ok = Ok & CellOk(Cc)
+  Cc = get char at C0,R1
+  Ok = Ok & CellOk(Cc)
+  Cc = get char at C1,R1
+  Ok = Ok & CellOk(Cc)
+  return Ok
+
+function CellOk(u8 Tc) as u8
+  u8 Res
+  Res = 1
+  select case Tc
+  case TRock to TPois
+    Res = 0
+  case TBody0 to THeadd
+    Hurt = 1
+  end select
+  return Res
+
+' how far apart two pixel positions are
+function Dist(u8 A, u8 B) as u8
+  u8 D
+  if A > B then
+    D = A - B
+  else
+    D = B - A
+  end if
+  return D
+
+' ---------------------------------------------------------------------------
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      dec Guns
+      if Guns = 0 then
+        Over = 1
+      else
+        Died = 1
+        NewWave
+      end if
+    end if
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 10 at 11,12
+    return
+  end if
+  MoveGun
+  if Btn > 0 then
+    if Bon = 0 then
+      Bon = 1
+      Bx = Px + 3
+      By = Py
+      play sound SndZap
+    end if
+  end if
+  if Bon = 1 then MoveShot
+  dec CentT
+  if CentT = 0 then
+    CentT = StepT
+    CentStep
+  end if
+  Foes
+  CheckHit
+  if Len = 0 then
+    if DeadT = 0 then
+      play sound SndWave
+      Died = 0
+      NewWave
+    end if
+  end if
+  return
+end sub
+
+sub MoveGun:
+  K = J1 | J2
+  Nx = Px
+  Ny = Py
+  V = K & 4
+  if V > 0 then
+    if Nx > 16 then Nx = Nx - 2
+  end if
+  V = K & 8
+  if V > 0 then
+    if Nx < 232 then Nx = Nx + 2
+  end if
+  V = K & 1
+  if V > 0 then
+    if Ny > 152 then Ny = Ny - 2
+  end if
+  V = K & 2
+  if V > 0 then
+    if Ny < 176 then Ny = Ny + 2
+  end if
+  if Nx <> Px then
+    if BoxFree(Nx, Py) = 1 then Px = Nx
+  end if
+  if Ny <> Py then
+    if BoxFree(Px, Ny) = 1 then Py = Ny
+  end if
+  return
+end sub
+
+sub MoveShot:
+  By = By - 4
+  if By < 16 then
+    Bon = 0
+    return
+  end if
+  X = Bx >> 3
+  Y = By >> 3
+  T = get char at X,Y
+  select case T
+  case TRock to TPois
+    put char 32 at X,Y
+    Sc += 25
+    inc RockN
+    Bon = 0
+    play sound SndRock
+  case TBody0 to THeadd
+    Bon = 0
+    ShootSeg
+  end select
+  if Bon = 0 then return
+  if En.Kind = 0 then return
+  V = En.Px + 8
+  if Dist(Bx, V) < 6 then
+    V = En.Py + 8
+    if Dist(By, V) < 7 then
+      Bon = 0
+      select case En.Kind
+      case 1
+        Sc += 200
+      case 2
+        Sc += 400
+      case else
+        Sc += 1200
+      end select
+      En.Kind = 0
+      EnGap = 90
+      play sound SndBug
+    end if
+  end if
+  return
+end sub
+
+' a hit bead: the crawler loses its last bead (the original's rule)
+sub ShootSeg:
+  Sc += 50
+  inc SegN
+  dec Len
+  X = Sx[Len]
+  if X < 255 then
+    Y = Sy[Len]
+    put char 32 at X,Y
+  end if
+  play sound SndSeg
+  return
+end sub
+
+sub CentStep:
+  if Len = 0 then return
+  inc Steps
+  N = Len - 1
+  X = Sx[N]
+  if X < 255 then
+    Y = Sy[N]
+    put char 32 at X,Y
+  end if
+  Si = N
+  while Si > 0
+    K = Si - 1
+    Sx[Si] = Sx[K]
+    Sy[Si] = Sy[K]
+    dec Si
+  end while
+  X = Sx[0]
+  Y = Sy[0]
+  if Dive > 0 then
+    dec Dive
+    if Y < BotR then
+      inc Y
+    else
+      Dive = 0
+    end if
+    if Y = BotR then
+      Dive = 0
+      Rise = 1
+    end if
+  else
+    Nx = X + Dir
+    T = 0
+    if Nx < 2 then T = 1
+    if Nx > 29 then T = 1
+    if T = 0 then
+      V = get char at Nx,Y
+      if V = TRock then T = 1
+    end if
+    if T = 1 then
+      Dir = 0 - Dir
+      if Rise = 1 then
+        if Y > ZoneR then
+          dec Y
+        else
+          Rise = 0
+          inc Y
+        end if
+      else
+        if Y < BotR then
+          inc Y
+        else
+          Rise = 1
+          dec Y
+        end if
+      end if
+    else
+      X = Nx
+    end if
+    V = get char at X,Y
+    if V = TPois then Dive = 12
+  end if
+  Sx[0] = X
+  Sy[0] = Y
+  DrawCrawler
+  return
+end sub
+
+sub DrawCrawler:
+  Ni = 1
+  while Ni < Len
+    X = Sx[Ni]
+    if X < 255 then
+      Y = Sy[Ni]
+      V = Ni + Steps
+      V = V & 1
+      T = TBody0 + V
+      put char T at X,Y
+    end if
+    inc Ni
+  end while
+  X = Sx[0]
+  Y = Sy[0]
+  if Dive > 0 then
+    T = THeadd
+  elseif Dir = 1 then
+    T = THeadr
+  else
+    T = THeadl
+  end if
+  put char T at X,Y
+  return
+end sub
+
+' the pests: one at a time
+sub Foes:
+  if En.Kind = 0 then
+    dec EnGap
+    if EnGap = 0 then SpawnFoe
+    return
+  end if
+  ' glide towards the cell
+  with En as E
+    V = E.X << 3
+    V = V - 4
+    if E.Px < V then E.Px = E.Px + 2
+    if E.Px > V then E.Px = E.Px - 2
+    V = E.Y << 3
+    V = V - 4
+    if E.Py < V then E.Py = E.Py + 2
+    if E.Py > V then E.Py = E.Py - 2
+  end with
+  dec EnT
+  if EnT > 0 then return
+  EnT = StepT << 1
+  select case En.Kind
+  case 1
+    StepHopper
+  case 2
+    StepDropper
+  case 3
+    StepCreeper
+  end select
+  if En.Kind = 0 then EnGap = 60 + Rnd(60)
+  return
+end sub
+
+sub SpawnFoe:
+  K = Rnd(4)
+  if K = 0 then
+    EnGap = 30
+    return
+  end if
+  En.Kind = K
+  select case K
+  case 1
+    V = Rnd(2)
+    if V = 0 then
+      En.X = 2
+      En.Dx = 1
+    else
+      En.X = 29
+      En.Dx = 255
+    end if
+    En.Y = ZoneR + Rnd(4)
+    En.Dy = 255
+  case 2
+    V = Px + 4
+    En.X = V >> 3
+    En.Y = TopR
+    En.Dx = 0
+    En.Dy = 1
+  case 3
+    En.X = 2
+    En.Y = 10
+    En.Dx = 1
+    En.Dy = 0
+  end select
+  V = En.X << 3
+  En.Px = V - 4
+  V = En.Y << 3
+  En.Py = V - 4
+  EnT = StepT << 1
+  return
+end sub
+
+sub StepHopper:
+  X = En.X + En.Dx
+  Y = En.Y + En.Dy
+  if Y <= 16 then En.Dy = 1
+  if Y >= BotR then En.Dy = 255
+  if X < 2 then
+    En.Kind = 0
+    return
+  end if
+  if X > 29 then
+    En.Kind = 0
+    return
+  end if
+  V = get char at X,Y
+  if V = TRock then
+    En.Kind = 0
+    return
+  end if
+  if V = TPois then
+    En.Kind = 0
+    return
+  end if
+  En.X = X
+  En.Y = Y
+  return
+end sub
+
+sub StepDropper:
+  X = En.X
+  Y = En.Y
+  if Y >= 3 then
+    if Y <= 17 then
+      V = get char at X,Y
+      if V = 32 then put char TRock at X,Y
+    end if
+  end if
+  inc Y
+  if Y > BotR then
+    En.Kind = 0
+    return
+  end if
+  En.Y = Y
+  return
+end sub
+
+sub StepCreeper:
+  X = En.X + 1
+  if X > 29 then
+    En.Kind = 0
+    return
+  end if
+  Y = En.Y
+  V = get char at X,Y
+  if V = TRock then put char TPois at X,Y
+  En.X = X
+  return
+end sub
+
+' the gun is lost to a bead in its box or a pest on it
+sub CheckHit:
+  Hurt = 0
+  V = BoxFree(Px, Py)
+  if En.Kind = 1 then FoeTouch
+  if En.Kind = 2 then FoeTouch
+  if Hurt = 1 then
+    DeadT = DieN
+    Bon = 0
+    play sound SndDie
+  end if
+  return
+end sub
+
+sub FoeTouch:
+  V = En.Px + 4
+  if Dist(Px, V) < 7 then
+    V = En.Py + 4
+    if Dist(Py, V) < 7 then Hurt = 1
+  end if
+  return
+end sub
+
+' a new wave: after a clear (Died = 0) or a lost gun (Died = 1)
+sub NewWave:
+  Rearm
+  wait
+  nmi off
+  ' clear the old crawler and pests
+  for Si = 0 to 9
+    X = Sx[Si]
+    if X < 255 then
+      Y = Sy[Si]
+      T = get char at X,Y
+      if T >= TBody0 then put char 32 at X,Y
+    end if
+  next
+  En.Kind = 0
+  EnGap = 90
+  Bon = 0
+  ' the listing's lines 390-510
+  if Died = 1 then
+    dec SpP
+    SpS = SpP - 1
+  else
+    inc Wave
+    inc SpC
+    if SpC = 15 then SpC = 1
+    V = SpC % 3
+    if V <> 0 then
+      if SpC < 8 then
+        SpS = SpP
+      else
+        SpS = SpP - 1
+      end if
+    else
+      V = SpC / 3
+      if V < 3 then
+        SpS = SpP - 3
+      else
+        SpS = SpP - 4
+      end if
+      dec SpP
+    end if
+  end if
+  if SpS < 7 then SpS = 7
+  if SpP = 7 then SpP = 13
+  StepT = SpS + 5
+  StepT = StepT >> 2
+  ' more crystals: (X + Y + 13) scaled to the narrower field
+  W16 = RockN + SegN
+  W16 = W16 + 13
+  W16 = W16 * 5
+  W16 = W16 >> 3
+  N = W16
+  GrowRocks
+  StartWave
+  return
+end sub
+
+sub GrowRocks:
+  for Ri = 1 to N
+    X = 2 + Rnd(28)
+    Y = 3 + Rnd(15)
+    V = get char at X,Y
+    if V = 32 then put char TRock at X,Y
+  next
+  return
+end sub
+
+' the crawler at the top left, the lone top crystal moved, READY
+sub StartWave:
+  put char 32 at ZCol,TopR
+  ZCol = 3 + Rnd(26)
+  put char TRock at ZCol,TopR
+  ' the gun's start cell is kept free
+  fill 32 count 2 at 14,BotR
+  for Si = 0 to 9
+    Sx[Si] = 255
+    Sy[Si] = 0
+  next
+  Sx[0] = 2
+  Sy[0] = TopR
+  Len = 10
+  Dir = 1
+  Rise = 0
+  Dive = 0
+  RockN = 0
+  SegN = 0
+  Px = 112
+  Py = 176
+  CentT = StepT
+  DrawCrawler
+  ShowHud
+  print at 11,12, "  READY  "
+  MsgT = MsgN
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "GUNS"
+  NumU = Guns
+  print at 7,1, digits$(NumU, 1)
+  print at 10,1, "SCORE"
+  print Sc at 16,1
+  print at 23,1, "WAVE"
+  NumU = Wave
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+sub CheckExtra:
+  if Sc >= NextX then
+    NextX += 12000
+    inc Guns
+    play sound SndExtra
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  CheckExtra
+  if InGame = 1 then
+    NumU = Guns
+    print at 7,1, digits$(NumU, 1)
+    print Sc at 16,1
+  end if
+  X = Px - 4
+  Y = Py - 5
+  if DeadT > 0 then
+    set sprite 0 to Y,X,SBoom,9
+  else
+    set sprite 0 to Y,X,SGun,3
+  end if
+  if Bon = 1 then
+    X = Bx - 8
+    Y = By - 9
+    set sprite 1 to Y,X,SShot,15
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if En.Kind = 0 then
+    set sprite 2 to 192,0,0,0
+  else
+    Y = En.Py - 1
+    X = En.Px
+    select case En.Kind
+    case 1
+      V = Tick >> 3
+      V = V & 1
+      K = V << 2
+      K = K + SHop0
+      set sprite 2 to Y,X,K,13
+    case 2
+      set sprite 2 to Y,X,SDrop,7
+    case else
+      set sprite 2 to Y,X,SCrawl,10
+    end select
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawField:
+  for Ri = 2 to 22
+    put char TWall at 1,Ri
+    put char TWall at 30,Ri
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  NextX = 12000
+  Guns = 3
+  Wave = 1
+  SpC = 1
+  SpP = 25
+  SpS = 25
+  StepT = 7
+  Over = 0
+  DeadT = 0
+  NewScreen
+  DrawField
+  N = 93
+  GrowRocks
+  ZCol = 10
+  StartWave
+  InGame = 1
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  InGame = 0
+  NewScreen
+  DrawField
+  N = 60
+  GrowRocks
+  for Ri = 6 to 15
+    fill 32 count 22 at 5,Ri
+  next
+  ' a little crawler under the title
+  put char THeadl at 10,9
+  for Ri = 11 to 19
+    V = Ri & 1
+    T = TBody0 + V
+    put char T at Ri,9
+  next
+  print at 12,7, "DECIPEDE"
+  print at 6,11, "COMPUTE!'S GAZETTE"
+  print at 9,12, "JANUARY 1987"
+  print at 8,14, "PRESS THE BUTTON"
+  print at 2,1, "HI"
+  print Hi at 5,1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 504
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "DECIPEDE"
+  print at 2,5, "BASED ON DECIPEDE FROM"
+  print at 2,6, "COMPUTE!'S GAZETTE DISK,"
+  print at 2,7, "JANUARY 1987 (COMMODORE 64)."
+  print at 2,8, "INSPIRED BY CENTIPEDE."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: BEAD CHAIN"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $18,$C1,$81,$00,$01,$81,$C3,$18
+  $18,$C1,$81,$00,$01,$81,$C3,$18
+  $C3,$81,$18,$24,$24,$18,$81,$C3
+  $C3,$81,$00,$18,$18,$00,$81,$C3
+  $C3,$81,$06,$06,$00,$01,$81,$C3
+  $C3,$81,$60,$60,$00,$80,$81,$C3
+  $C3,$81,$00,$00,$00,$99,$A5,$C3
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $F1,$17,$17,$05,$15,$14,$14,$41
+  $F1,$19,$19,$08,$18,$16,$16,$61
+  $1B,$1B,$1B,$1A,$1A,$1A,$1A,$1A
+  $1B,$1B,$0B,$1A,$1A,$0A,$1A,$1A
+  $1D,$1D,$FD,$FD,$0D,$1D,$1D,$1D
+  $1D,$1D,$FD,$FD,$0D,$1D,$1D,$1D
+  $1D,$1D,$0D,$0D,$0D,$DF,$1D,$1D
+  $41,$14,$41,$14,$41,$14,$41,$14
+  $01,$01,$01,$01,$01,$01,$01,$04
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$01,$01,$03,$07,$0F,$0D,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$C0,$E0,$F0,$B0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$09,$05,$03,$0F,$03,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$90,$A0,$C0,$F0,$C0,$A0,$90,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$0B,$07,$03,$07,$0B,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$D0,$E0,$C0,$E0,$D0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$07,$0F,$07,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$E0,$F0,$E0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$0F,$0C,$0C,$0F,$05,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F0,$50,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$09,$05,$03,$0E,$03,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$80,$F0,$80,$40,$20,$00,$00,$00,$00,$00
+end data
+
+asm {
+DpZap:
+    db $40,$40,$20,$01,$40,$50,$30,$01,$40,$6B,$50,$01,$50
+DpRock:
+    db $00,$00,$22,$02,$00,$00,$43,$03,$10
+DpSeg:
+    db $40,$7F,$10,$02,$40,$A9,$20,$02,$40,$FE,$40,$03,$50
+DpBug:
+    db $40,$55,$10,$03,$40,$47,$10,$03,$40,$35,$20,$06,$50
+DpDie:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$66,$10,$10
+DpWave:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$20,$0C,$50
+DpExtra:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$6B,$10,$04,$40,$47,$10,$0A,$50
+DpOver:
+    db $40,$1D,$11,$0C,$40,$53,$21,$0C,$40,$AB,$21,$0C,$40,$3B,$22,$1E,$50
+
+DpSoundTable:
+    dw DpTuneMel,$702B
+    dw DpTuneBass,$7035
+    dw DpZap,$7049
+    dw DpRock,$703F
+    dw DpSeg,$7049
+    dw DpBug,$7049
+    dw DpDie,$703F
+    dw DpWave,$7049
+    dw DpExtra,$7049
+    dw DpOver,$7049
+; Bead Chain (original)
+; Tiny Sound, 8 frames per step
+DpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2A,$01,$28,$26,$25,$01,$23,$01
+    db $21,$01,$23,$01,$26,$01,$01,$28,$2A,$01,$2D,$01,$2A,$01,$28,$01
+    db $26,$01,$01,$01,$23,$01,$01,$26,$25,$01,$23,$21,$01,$01,$1E,$01
+    db $21,$01,$23,$01,$26,$01,$25,$01,$21,$01,$1E,$01,$23,$01,$01,$01
+    db $00,$01,$01
+    db $FF
+DpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $00,$01,$01
+    db $FF
+}

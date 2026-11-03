@@ -57,7 +57,15 @@ const projects = [
   ["Chopper-Pilot", "chpilot", "Chopper Pilot", "Chris Boss", "October 1987"],
   ["Circuits", "circuit", "Circuits", "Eric Haines", "December 1989"],
   ["Collision-Course", "collis", "Collision Course", null, "February 1987"],
-  ["Cosmic-Combat", "ccombat", "Cosmic Combat", "Tommy Graham", "December 1984"]
+  ["Cosmic-Combat", "ccombat", "Cosmic Combat", "Tommy Graham", "December 1984"],
+  ["Crossroads", "xroads", "Crossroads", "Steve Harter", "December 1987"],
+  ["Cut-Off", "cutoff", "Cut-Off!", null, "March 1984"],
+  ["Cypher", "cypher", "Cypher", null, "February 1985"],
+  ["Decipede", "decip", "Decipede", null, "January 1987"],
+  ["Descent-To-Kaylon", "kaylon", "Descent to Kaylon", null, "November 1984"],
+  ["Digger", "digger", "Digger", null, "March 1985"],
+  ["Disc-Blitz", "disc", "Disc Blitz", null, "January 1989"],
+  ["Double-Take", "dtake", "Double Take", null, "December 1988"]
 ];
 
 const knownIds = new Set(index.map((entry) => entry.id));

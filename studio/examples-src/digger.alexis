@@ -1,0 +1,1175 @@
+cartridge "DIGGER/COMPUTE!'S GAZETTE/1985"
+
+' DIGGER
+' A ColecoVision game based on "Digger", COMPUTE!'s Gazette, March 1985
+' (disk 1985-03, Commodore 64 and VIC-20 machine language; no author named
+' on the disk or in the program). Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: you dig tunnels through the earth under a hill. Three trolls
+' dig after you. Boulders lie in the earth; dig away the earth under one
+' and, after a moment of rumbling, it drops until it lands on earth again
+' or on the bottom. A falling boulder squashes any troll it meets (10
+' points). Squash all three trolls to clear the screen (100 points) and
+' start the next one. A troll that touches you, or a boulder that drops on
+' you, ends the game; so does the last boulder reaching the bottom while
+' trolls are left (nothing can squash them any more).
+'
+' From the original (orig/dg.dis, the C64 machine code at $C000): one
+' digger, three trolls, three boulders at fixed places every screen (the
+' table at $C558, scaled from the C64's 296 x 133 pixel field to 224 x
+' 144); the field starts full of earth and every creature erases earth as
+' it moves ($C7F1); the digger keeps moving in the last direction pushed,
+' only the four straight directions count ($C5C8, table $C5FD); a troll
+' heads for the digger along x and y at once and only looks again after a
+' random 2-33 of its turns ($C6E1, $C702, $C740); trolls dig too and pass
+' through boulders; a boulder falls when the earth under its full width is
+' gone, after a wait (50 passes, $C141), a pixel at a time, and stops on
+' earth; a falling boulder kills the trolls it touches, 10 points each
+' ($C176); no trolls left: 100 points and the next screen, the same layout
+' ($C291); touching a troll or a boulder ends the game, as do all three
+' boulders on the bottom ($C09A); the status lines SCORE, HI-SCORE, TROLLS,
+' SCREENS ($C2BB); the C64's SHIFT pause.
+'
+' Liberties: the play loop runs 30 passes a second (the C64's ran about
+' one creature turn every two frames); the digger moves 224/256 pixel a
+' pass (26 pixels a second), a troll 96/256 on screen 1 (+8/256 a
+' screen, at most 176/256), a boulder falls a pixel a pass after a 32-pass
+' rumble (the C64 waited 50 of its passes); the trolls are slower against
+' the digger than on the C64 (about 1.5 times slower there, 2.3 here on
+' screen 1) and the rumble is shorter so that a person, reacting a quarter
+' of a second late, can clear the first screens: a test player with that
+' delay, luring trolls under boulders, cleared screen 1 in about 4 games
+' out of 5 (with the first port's 116/256 and 38 passes: about 1 in 3);
+' the earth is cut in 4 x 4 pixel cells
+' (the C64 erased single pixels); a boulder at rest blocks the digger
+' instead of killing him (on the C64 a touch was a sprite collision and
+' killed); the game ends when every boulder is on the bottom (the C64
+' needed all three there; with fewer it went on with no way to win, so
+' the same thing); the left button stops the digger (the C64 digger could
+' not stop); the right button pauses (SHIFT on the C64); the trolls wait two seconds
+' before their first move (the C64's came at once); trolls get a
+' little faster each screen (the C64 never changed); the game starts from
+' a title page and ends with GAME OVER (the C64 restarted at once); earth
+' in three colours, a miner with a lamp, trolls, boulders that shake,
+' sounds and a title tune are new.
+'
+' Controls: joystick only. The stick sets the digging direction (up, down,
+' left, right; diagonals are ignored), the left button stops, the right
+' button pauses. A button starts from the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TDirt0 = 128
+const TDirt1 = 129
+const TDirt2 = 130
+const TDirt3 = 131
+const TDirt4 = 132
+const TDirt5 = 133
+const TDirt6 = 134
+const TDirt7 = 135
+const TDirt8 = 136
+const TDirt9 = 137
+const TDirt10 = 138
+const TDirt11 = 139
+const TDirt12 = 140
+const TDirt13 = 141
+const TDirt14 = 142
+const TDirt15 = 143
+const TGrass = 144
+const TBed = 145
+const TThead = 146
+const TBrick = 147
+const SHat = 0
+const SFace = 4
+const SBody1 = 8
+const SBody2 = 12
+const SHatl = 16
+const SFacel = 20
+const SBody1l = 24
+const SBody2l = 28
+const STroll1 = 32
+const STroll2 = 36
+const SBoulder = 40
+const SShake = 44
+const SPoof = 48
+const NTiles8 = 160
+const SprBytes = 416
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDig = 3
+const SndRumble = 4
+const SndThud = 5
+const SndSquash = 6
+const SndCaught = 7
+const SndClear = 8
+const SndStart = 9
+const SndPick = 10
+const FX0 = 16
+const FX1 = 224
+const FY0 = 32
+const FY1 = 160
+const RFloor = 162
+const PSpd = 224
+const TSpd0 = 96
+const RWait = 32
+const NSpr = 9
+
+' fixed starting places (the C64's $C558 table, scaled): digger, three
+' trolls; boulders sit on a 4-pixel cell edge (x and y = 2 mod 4)
+data StartX bytes 120,200,166,68
+data StartY bytes 104,52,40,120
+data RockX bytes 42,178,98
+data RockY bytes 62,70,70
+data TrollCol bytes 2,12,3
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$B0,$F0,$F0,$00,$00,$00,$00
+  $07,$F0,$0D,$F0,$00,$00,$00,$00
+  $08,$40,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$F0,$70,$F0
+  $F0,$B0,$F0,$F0,$E0,$F0,$70,$F0
+  $07,$F0,$0D,$F0,$E0,$F0,$70,$F0
+  $08,$40,$02,$00,$E0,$F0,$70,$F0
+  $00,$00,$00,$00,$F0,$0E,$F0,$0B
+  $F0,$B0,$F0,$F0,$F0,$0E,$F0,$0B
+  $07,$F0,$0D,$F0,$F0,$0E,$F0,$0B
+  $08,$40,$02,$00,$F0,$0E,$F0,$0B
+  $00,$00,$00,$00,$10,$01,$80,$04
+  $F0,$B0,$F0,$F0,$10,$01,$80,$04
+  $07,$F0,$0D,$F0,$10,$01,$80,$04
+  $08,$40,$02,$00,$10,$01,$80,$04
+  $00,$44,$11,$00,$00,$08,$40,$02
+  $10,$10,$00,$01,$01,$00,$20,$20
+  $42,$81,$24,$81,$42,$81,$C3,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$01,$01,$01,$01
+  $A1,$1A,$A1,$1A,$01,$01,$01,$01
+  $1A,$1A,$1A,$0A,$01,$01,$01,$01
+  $01,$01,$01,$01,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$1A,$A1,$1A,$A1,$A1,$A1,$A1
+  $1A,$1A,$1A,$0A,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$1A,$A1,$1A,$A1
+  $A1,$A1,$A1,$A1,$1A,$A1,$1A,$A1
+  $A1,$1A,$A1,$1A,$1A,$A1,$1A,$A1
+  $1A,$1A,$1A,$0A,$1A,$A1,$1A,$A1
+  $01,$01,$01,$01,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$1A,$1A,$1A,$1A
+  $A1,$1A,$A1,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$0A,$1A,$1A,$1A,$1A
+  $01,$31,$13,$03,$02,$1A,$1A,$1A
+  $4E,$4E,$04,$4E,$4E,$04,$4E,$4E
+  $21,$12,$12,$12,$21,$12,$12,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$1E,$01
+end data
+data SpritePat bytes
+  $00,$07,$0F,$1F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$F8,$F8,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$06,$07,$03,$00,$10,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$F0,$C0,$00,$08,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$17,$17,$07,$06,$06,$0E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$E8,$E8,$E0,$60,$30,$38
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$17,$17,$07,$06,$0C,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$E8,$E8,$E0,$60,$30,$38
+  $00,$03,$1F,$1F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$F8,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$0F,$03,$00,$10,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$60,$E0,$C0,$00,$08,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$17,$17,$07,$06,$0C,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$E8,$E8,$E0,$60,$60,$70
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$17,$17,$07,$06,$0C,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$E8,$E8,$E0,$60,$30,$38
+  $00,$40,$67,$3F,$1B,$19,$1F,$0C,$0E,$1F,$2F,$4F,$0F,$06,$0C,$1C
+  $00,$02,$E6,$FC,$D8,$98,$F8,$30,$70,$F8,$F4,$F2,$F0,$60,$30,$38
+  $00,$40,$67,$3F,$1B,$19,$1F,$0C,$0E,$1F,$2F,$4F,$0F,$06,$06,$0E
+  $00,$02,$E6,$FC,$D8,$98,$F8,$30,$70,$F8,$F4,$F2,$F0,$60,$60,$70
+  $00,$07,$1F,$3D,$7D,$7E,$FF,$FF,$EF,$F7,$7B,$7F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$FE,$FE,$FD,$FB,$FB,$FE,$FE,$FE,$FC,$F8,$E0,$00
+  $00,$0F,$3F,$7B,$FB,$FD,$FF,$FF,$DF,$EF,$F7,$FF,$7F,$3F,$0F,$00
+  $00,$C0,$F0,$F8,$FC,$FC,$FA,$F6,$F6,$FC,$FC,$FC,$F8,$F0,$C0,$00
+  $00,$08,$42,$10,$02,$40,$08,$22,$00,$08,$42,$10,$02,$20,$08,$00
+  $00,$10,$42,$08,$40,$02,$10,$44,$00,$10,$42,$08,$40,$04,$10,$00
+end data
+data DirtCol1 bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $91,$91,$91,$91,$01,$01,$01,$01
+  $91,$19,$91,$19,$01,$01,$01,$01
+  $19,$19,$19,$09,$01,$01,$01,$01
+  $01,$01,$01,$01,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$19,$91,$19,$91,$91,$91,$91
+  $19,$19,$19,$09,$91,$91,$91,$91
+  $01,$01,$01,$01,$19,$91,$19,$91
+  $91,$91,$91,$91,$19,$91,$19,$91
+  $91,$19,$91,$19,$19,$91,$19,$91
+  $19,$19,$19,$09,$19,$91,$19,$91
+  $01,$01,$01,$01,$19,$19,$19,$19
+  $91,$91,$91,$91,$19,$19,$19,$19
+  $91,$19,$91,$19,$19,$19,$19,$19
+  $19,$19,$19,$09,$19,$19,$19,$19
+end data
+data DirtCol2 bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $61,$61,$61,$61,$01,$01,$01,$01
+  $61,$16,$61,$16,$01,$01,$01,$01
+  $16,$16,$16,$06,$01,$01,$01,$01
+  $01,$01,$01,$01,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$16,$61,$16,$61,$61,$61,$61
+  $16,$16,$16,$06,$61,$61,$61,$61
+  $01,$01,$01,$01,$16,$61,$16,$61
+  $61,$61,$61,$61,$16,$61,$16,$61
+  $61,$16,$61,$16,$16,$61,$16,$61
+  $16,$16,$16,$06,$16,$61,$16,$61
+  $01,$01,$01,$01,$16,$16,$16,$16
+  $61,$61,$61,$61,$16,$16,$16,$16
+  $61,$16,$61,$16,$16,$16,$16,$16
+  $16,$16,$16,$06,$16,$16,$16,$16
+end data
+data TitleMap bytes
+  32,32,147,147,147,32,32,147,147,147,32,32,147,147,147,32,32,147,147,147,32,147,147,147,147,32,147,147,147,32,32,32
+  32,32,147,32,32,147,32,32,147,32,32,147,32,32,32,32,147,32,32,32,32,147,32,32,32,32,147,32,32,147,32,32
+  32,32,147,32,32,147,32,32,147,32,32,147,32,32,32,32,147,32,32,32,32,147,32,32,32,32,147,32,32,147,32,32
+  32,32,147,32,32,147,32,32,147,32,32,147,32,147,147,32,147,32,147,147,32,147,147,147,32,32,147,147,147,32,32,32
+  32,32,147,32,32,147,32,32,147,32,32,147,32,32,147,32,147,32,32,147,32,147,32,32,32,32,147,32,147,32,32,32
+  32,32,147,32,32,147,32,32,147,32,32,147,32,32,147,32,147,32,32,147,32,147,32,32,32,32,147,32,32,147,32,32
+  32,32,147,147,147,32,32,147,147,147,32,32,147,147,147,32,32,147,147,147,32,147,147,147,147,32,147,32,32,147,32,32
+end data
+
+record Actor:
+  u8 X
+  u8 Y
+  u8 Ac
+  u8 Live
+  u8 Dx
+  u8 Dy
+  u8 Tm
+  u8 Poof
+end record
+
+record Rock:
+  u8 X
+  u8 Y
+  u8 St
+  u8 T
+  u8 Ac
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 Scr = 1
+u8 TSpd = 72
+Actor Act[4]
+Rock Rk[3]
+' Phase: 0 intro, 1 play, 2 caught, 3 screen clear, 4 out of boulders
+u8 Phase = 0
+u8 PDir = 0
+u8 Face = 0
+u8 Paused = 0
+u8 Anim = 0
+u8 Digs = 0
+u8 Kills = 0
+u8 Squash = 0
+' input: J (1 up, 2 down, 4 left, 8 right, 16 left button, 32 right
+' button), OldJ last pass's
+u8 J = 0
+u8 OldJ = 0
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Pass = 0
+u8 Late = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ai = 0
+u8 Ri = 0
+u8 Ti = 0
+u8 Si = 0
+u8 Hi2 = 0
+' scratch
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DgSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 2
+  sprites flicker on
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+screen_loop:
+  RunScreen
+  if Phase = 3 then
+    NextScreen
+    goto screen_loop
+  end if
+
+  ' the end: the message, GAME OVER, back to the title on a press
+  if Score > Hi then Hi = Score
+  ShowStatus
+  if Phase = 2 then
+    print at 7,12, " CAUGHT BY A TROLL "
+  else
+    print at 7,12, " OUT OF  BOULDERS  "
+  end if
+  print at 7,13, "     GAME OVER     "
+  Rearm
+  wait 90 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  HideSprites
+  goto title
+
+' ---------------------------------------------------------------------------
+' one screen: the field drawn, SCREEN n, then play until the digger is
+' caught (2), the trolls are gone (3) or the boulders are (4)
+
+sub RunScreen:
+  DrawField
+  SetScreen
+  ShowStatus
+  print at 10,12, " SCREEN " + digits$(Scr, 2) + " "
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  for Ti = 1 to 90
+    Frame1
+  next
+  RedrawRow12
+  Phase = 1
+  OldJ = 63
+rs_loop:
+  Pass2
+  GetInput
+  PlayStep
+  DrawSprites
+  if Phase = 1 then goto rs_loop
+  if Phase = 2 then
+    CaughtAnim
+  else
+    if Phase = 3 then
+      ClearAnim
+    else
+      for Ti = 1 to 60
+        Frame1
+        DrawSprites
+      next
+    end if
+  end if
+  return
+end sub
+
+sub SetScreen:
+  for Ai = 0 to 3
+    Act[Ai].X = StartX[Ai]
+    Act[Ai].Y = StartY[Ai]
+    Act[Ai].Ac = 0
+    Act[Ai].Live = 1
+    Act[Ai].Dx = 0
+    Act[Ai].Dy = 0
+    ' trolls wake up after two seconds (a liberty: on the C64 they came at once)
+    Act[Ai].Tm = Ai * 4 + 60
+    Act[Ai].Poof = 0
+    Dig(StartX[Ai], StartY[Ai])
+  next
+  for Ri = 0 to 2
+    Rk[Ri].X = RockX[Ri]
+    Rk[Ri].Y = RockY[Ri]
+    Rk[Ri].St = 0
+    Rk[Ri].T = 0
+    Rk[Ri].Ac = 0
+  next
+  ' trolls a little faster every screen (a liberty)
+  V = Scr - 1
+  if V > 10 then V = 10
+  TSpd = TSpd0 + V * 8
+  PDir = 0
+  Face = 0
+  Paused = 0
+  Kills = 0
+  Phase = 0
+  return
+end sub
+
+' one pass of play
+sub PlayStep:
+  if (J & 32) <> 0 then
+    if (OldJ & 32) = 0 then
+      Paused = Paused ^ 1
+      play sound SndPick
+      if Paused = 1 then
+        print at 17,2, "PAUSED   "
+      else
+        ShowStatus
+      end if
+    end if
+  end if
+  OldJ = J
+  if Paused = 1 then return
+  inc Anim
+  MoveDigger
+  MoveTrolls
+  MoveRocks
+  if Phase <> 1 then return
+  if TouchTroll() = 1 then
+    Phase = 2
+    return
+  end if
+  if Kills = 3 then
+    Phase = 3
+    return
+  end if
+  if RocksLeft() = 0 then Phase = 4
+  return
+end sub
+
+' the digger: the stick sets the direction, which stays; the left button
+' stops; a boulder at rest is in the way
+sub MoveDigger:
+  u8 Nx = 0
+  u8 Ny = 0
+  u16 Sum = 0
+  select case J & 15
+  case 1
+    PDir = 1
+  case 2
+    PDir = 2
+  case 4
+    PDir = 3
+    Face = 1
+  case 8
+    PDir = 4
+    Face = 0
+  end select
+  if (J & 16) <> 0 then PDir = 0
+  if PDir = 0 then return
+  Sum = Act[0].Ac + PSpd
+  Act[0].Ac = Sum & 255
+  if Sum < 256 then return
+  Nx = Act[0].X
+  Ny = Act[0].Y
+  select case PDir
+  case 1
+    if Ny > FY0 then dec Ny
+  case 2
+    if Ny < FY1 then inc Ny
+  case 3
+    if Nx > FX0 then dec Nx
+  case else
+    if Nx < FX1 then inc Nx
+  end select
+  if Blocked(Nx, Ny) = 1 then return
+  X = Act[0].X
+  Y = Act[0].Y
+  Act[0].X = Nx
+  Act[0].Y = Ny
+  DigMove(X, Y, Nx, Ny)
+  if Digs > 0 then
+    if (Anim & 7) = 0 then play sound SndDig
+  end if
+  return
+end sub
+
+function Blocked(u8 Bx, u8 By) as u8
+  for Ri = 0 to 2
+    if Rk[Ri].St <> 2 then
+      if Near(Bx, By, Rk[Ri].X, Rk[Ri].Y, 12) = 1 then return 1
+    end if
+  next
+  return 0
+
+' 1 when two 16 x 16 things are closer than R on both axes
+function Near(u8 Ax, u8 Ay, u8 Bx, u8 By, u8 R) as u8
+  u8 Ddx = 0
+  u8 Ddy = 0
+  if Ax > Bx then Ddx = Ax - Bx else Ddx = Bx - Ax
+  if Ay > By then Ddy = Ay - By else Ddy = By - Ay
+  if Ddx < R and Ddy < R then return 1
+  return 0
+
+' trolls: head for the digger along x and y, looking again after a random
+' 2-33 of their own moves (8-132 frames here); they dig as they go
+sub MoveTrolls:
+  for Ai = 1 to 3
+    if Act[Ai].Live = 1 then
+      TrollStep(Ai)
+    else
+      if Act[Ai].Poof > 0 then dec Act[Ai].Poof
+    end if
+  next
+  return
+end sub
+
+sub TrollStep(u8 I):
+  u8 Tx = 0
+  u8 Ty = 0
+  u16 Sum = 0
+  Tx = Act[I].X
+  Ty = Act[I].Y
+  if Act[I].Tm = 0 then
+    Rand
+    Act[I].Tm = ((Rs & 31) + 2) * 2
+    X = Act[0].X
+    Y = Act[0].Y
+    if X > Tx then
+      Act[I].Dx = 2
+    else
+      if X < Tx then Act[I].Dx = 1 else Act[I].Dx = 0
+    end if
+    if Y > Ty then
+      Act[I].Dy = 2
+    else
+      if Y < Ty then Act[I].Dy = 1 else Act[I].Dy = 0
+    end if
+  end if
+  dec Act[I].Tm
+  if Act[I].Dx = 0 and Act[I].Dy = 0 then return
+  Sum = Act[I].Ac + TSpd
+  Act[I].Ac = Sum & 255
+  if Sum >= 256 then
+    select case Act[I].Dx
+    case 1
+      if Tx > FX0 then dec Tx
+    case 2
+      if Tx < FX1 then inc Tx
+    end select
+    select case Act[I].Dy
+    case 1
+      if Ty > FY0 then dec Ty
+    case 2
+      if Ty < FY1 then inc Ty
+    end select
+    X = Act[I].X
+    Y = Act[I].Y
+    Act[I].X = Tx
+    Act[I].Y = Ty
+    DigMove(X, Y, Tx, Ty)
+  end if
+  return
+end sub
+
+' boulders: 0 at rest, 1 rumbling, 2 falling
+sub MoveRocks:
+  for Ri = 0 to 2
+    RockStep(Ri)
+  next
+  return
+end sub
+
+sub RockStep(u8 I):
+  select case Rk[I].St
+  case 0
+    ' a boulder at rest looks under itself every fourth frame, in turn
+    V = Pass & 3
+    if V = I and Unsupported(I) = 1 then
+      Rk[I].St = 1
+      Rk[I].T = RWait
+      play sound SndRumble
+    end if
+  case 1
+    dec Rk[I].T
+    if Rk[I].T = 0 then
+      Rk[I].St = 2
+      Rk[I].Ac = 0
+    end if
+  case else
+    ' a pixel a pass
+    inc Rk[I].Y
+    RockHits(I)
+    V = Rk[I].Y + 14
+    if (V & 3) = 0 then
+      if Unsupported(I) = 0 then
+        Rk[I].St = 0
+        play sound SndThud
+      end if
+    end if
+  end select
+  return
+end sub
+
+' 1 when the cells under the boulder's whole width are dug (and it is not
+' on the bottom)
+function Unsupported(u8 I) as u8
+  u8 Ux = 0
+  u8 Uy = 0
+  u8 Cy = 0
+  u8 Cx = 0
+  u8 Ck = 0
+  Ux = Rk[I].X
+  Uy = Rk[I].Y
+  if Uy >= RFloor then return 0
+  Cy = (Uy + 14) >> 2
+  Cx = (Ux + 2) >> 2
+  for Ck = 0 to 2
+    if CellDirt(Cx + Ck, Cy) = 1 then return 0
+  next
+  return 1
+
+function CellDirt(u8 Cx, u8 Cy) as u8
+  u8 Tc = 0
+  u8 Bit = 0
+  Tc = get char at Cx >> 1, Cy >> 1
+  if Tc < TDirt0 or Tc > TDirt15 then return 0
+  Bit = 1 << ((Cx & 1) + ((Cy & 1) << 1))
+  if ((Tc - TDirt0) & Bit) <> 0 then return 1
+  return 0
+
+' a falling boulder squashes the trolls it touches and the digger
+sub RockHits(u8 I):
+  X = Rk[I].X
+  Y = Rk[I].Y
+  for Hi2 = 1 to 3
+    if Act[Hi2].Live = 1 then
+      if Near(X, Y, Act[Hi2].X, Act[Hi2].Y, 12) = 1 then
+        Act[Hi2].Live = 0
+        Act[Hi2].Poof = 30
+        inc Kills
+        Score += 10
+        play sound SndSquash
+        ShowStatus
+      end if
+    end if
+  next
+  if Near(X, Y, Act[0].X, Act[0].Y, 12) = 1 then Phase = 2
+  return
+end sub
+
+function TouchTroll as u8
+  for Ai = 1 to 3
+    if Act[Ai].Live = 1 then
+      if Near(Act[0].X, Act[0].Y, Act[Ai].X, Act[Ai].Y, 11) = 1 then return 1
+    end if
+  next
+  return 0
+
+' boulders that can still fall: not on the bottom
+function RocksLeft as u8
+  N = 0
+  for Ri = 0 to 2
+    if Rk[Ri].Y < RFloor then inc N
+  next
+  return N
+
+' erase the earth cells under a creature's 12 x 12 body (x+2..x+13), a
+' tile at a time; Digs counts the tiles changed
+sub Dig(u8 Px, u8 Py):
+  u8 Cx0 = 0
+  u8 Cx1 = 0
+  u8 Cy0 = 0
+  u8 Cy1 = 0
+  u8 C0 = 0
+  u8 C1 = 0
+  u8 R0 = 0
+  u8 R1 = 0
+  u8 Col = 0
+  u8 Row = 0
+  u8 Tc = 0
+  u8 Hm = 0
+  u8 Vm = 0
+  u8 Cut = 0
+  Digs = 0
+  Cx0 = (Px + 2) >> 2
+  Cx1 = (Px + 13) >> 2
+  Cy0 = (Py + 2) >> 2
+  Cy1 = (Py + 13) >> 2
+  C0 = Cx0 >> 1
+  C1 = Cx1 >> 1
+  R0 = Cy0 >> 1
+  R1 = Cy1 >> 1
+  for Row = R0 to R1
+    ' the cell rows of this tile row under the body: 3 top, 12 bottom
+    Vm = 0
+    if Row * 2 >= Cy0 then Vm = 3
+    if Row * 2 + 1 <= Cy1 then Vm = Vm | 12
+    for Col = C0 to C1
+      Hm = 0
+      if Col * 2 >= Cx0 then Hm = 5
+      if Col * 2 + 1 <= Cx1 then Hm = Hm | 10
+      Cut = Hm & Vm
+      Tc = get char at Col, Row
+      if Tc >= TDirt0 and Tc <= TDirt15 then
+        Tc = Tc - TDirt0
+        if (Tc & Cut) <> 0 then
+          Tc = Tc & (Cut ^ 15)
+          put char TDirt0 + Tc at Col, Row
+          inc Digs
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+' dig only when the body's cell box changed (a cell is 4 pixels)
+sub DigMove(u8 Ox, u8 Oy, u8 Nx, u8 Ny):
+  Digs = 0
+  if ((Ox + 2) >> 2) <> ((Nx + 2) >> 2) or ((Ox + 13) >> 2) <> ((Nx + 13) >> 2) or ((Oy + 2) >> 2) <> ((Ny + 2) >> 2) or ((Oy + 13) >> 2) <> ((Ny + 13) >> 2) then
+    Dig(Nx, Ny)
+  end if
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Scr = 1
+  return
+end sub
+
+sub NextScreen:
+  Score += 100
+  if Scr < 99 then inc Scr
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input: both controllers together
+
+sub GetInput:
+  ReadPads
+  J = Pads
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).button1 then T = T | 16
+  if joypad(P).button2 then T = T | 32
+  return T
+
+' ---------------------------------------------------------------------------
+' the end of a screen
+
+' the digger blinks twice a second, then lies still
+sub CaughtAnim:
+  play sound SndCaught
+  for Ti = 0 to 119
+    Frame1
+    V = Ti % 30
+    if V < 15 or Ti >= 90 then
+      DrawSprites
+    else
+      for Si = 0 to 2
+        set sprite Si to 207,0,0,0
+      next
+      update sprites
+    end if
+  next
+  return
+end sub
+
+sub ClearAnim:
+  play sound SndClear
+  print at 8,12, " SCREEN CLEARED "
+  print at 8,13, "   100 POINTS   "
+  ShowStatus
+  for Ti = 1 to 60
+    Pass2
+    inc Anim
+    MoveTrolls
+    DrawSprites
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' rows 1-2 status, row 3 grass, rows 4-21 earth, a bedrock frame
+sub DrawField:
+  NewScreen
+  fill TGrass count 28 at 2,3
+  for Si = 4 to 21
+    fill TDirt15 count 28 at 2,Si
+    put char TBed at 0,Si
+    put char TBed at 1,Si
+    put char TBed at 30,Si
+    put char TBed at 31,Si
+  next
+  fill TBed count 32 at 0,22
+  fill TBed count 32 at 0,23
+  return
+end sub
+
+' put earth rows 12-13 back after the SCREEN message (only the creatures'
+' starting places are dug then)
+sub RedrawRow12:
+  for Si = 12 to 13
+    for Ti = 2 to 29
+      put char TDirt15 at Ti,Si
+    next
+  next
+  ' and dig out again what the creatures and their tunnels need
+  for Ti = 0 to 3
+    if Act[Ti].Live = 1 then Dig(Act[Ti].X, Act[Ti].Y)
+  next
+  return
+end sub
+
+sub DrawSprites:
+  u8 Fr = 0
+  u8 Pb = 0
+  u8 Sy = 0
+  u8 Cc = 0
+  Fr = (Anim >> 2) & 1
+  Sy = Act[0].Y - 1
+  if Face = 0 then
+    Pb = SBody1 + Fr * 4
+    set sprite 0 to Sy,Act[0].X,SHat,11
+    set sprite 1 to Sy,Act[0].X,SFace,9
+    set sprite 2 to Sy,Act[0].X,Pb,5
+  else
+    Pb = SBody1l + Fr * 4
+    set sprite 0 to Sy,Act[0].X,SHatl,11
+    set sprite 1 to Sy,Act[0].X,SFacel,9
+    set sprite 2 to Sy,Act[0].X,Pb,5
+  end if
+  for Si = 1 to 3
+    K = Si + 2
+    if Act[Si].Live = 1 then
+      Pb = STroll1 + Fr * 4
+      Cc = TrollCol[Si - 1]
+      Sy = Act[Si].Y - 1
+      set sprite K to Sy,Act[Si].X,Pb,Cc
+    else
+      if Act[Si].Poof > 0 then
+        Sy = Act[Si].Y - 1
+        set sprite K to Sy,Act[Si].X,SPoof,15
+      else
+        set sprite K to 207,0,0,0
+      end if
+    end if
+  next
+  for Si = 0 to 2
+    K = Si + 6
+    Sy = Rk[Si].Y - 1
+    if Rk[Si].St = 1 and (Anim & 2) <> 0 then
+      set sprite K to Sy,Rk[Si].X,SShake,14
+    else
+      set sprite K to Sy,Rk[Si].X,SBoulder,14
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' rows 1 and 2: score, trolls left, high score, screen
+sub ShowStatus:
+  print at 2,1, "SCORE"
+  print Score at 8,1
+  print at 17,1, "TROLLS"
+  for Si = 1 to 3
+    if Act[Si].Live = 1 then
+      put char TThead at 23 + Si,1
+    else
+      put char 32 at 23 + Si,1
+    end if
+  next
+  print at 2,2, "HI"
+  print Hi at 8,2
+  print at 17,2, "SCREEN " + digits$(Scr, 2)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one pass of play every two frames (30 a second): when the pass ran into
+' a new frame already, one wait is enough
+sub Pass2:
+  call asm DgLate
+  if Late = 0 then Frame1
+  Frame1
+  inc Pass
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for K = 0 to NSpr - 1
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy DirtCol1 count 128 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy DirtCol2 count 128 to vram.color + 5120
+  backdrop black
+  ' each screen third its own colour table (the earth strata)
+  call asm SetR3
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: DIGGER in boulder bricks, a miner and a troll in a tunnel, the
+' high score, the tune once
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 224 to vram.name + 64
+  fill TGrass count 28 at 2,12
+  for Si = 13 to 16
+    fill TDirt15 count 28 at 2,Si
+  next
+  fill TDirt0 count 24 at 4,14
+  fill TDirt0 count 24 at 4,15
+  print at 2,18, "DROP BOULDERS ON THE TROLLS"
+  print at 5,20, "PRESS A BUTTON TO DIG"
+  print at 9,22, "HI "
+  print Hi at 12,22
+  Act[0].X = 40
+  Act[0].Y = 111
+  Act[1].X = 200
+  Act[1].Y = 111
+  Face = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 63
+tp_loop:
+  Frame1
+  inc Rs
+  inc Anim
+  ReadPads
+  TitleDemo
+  N = Pads & (Pads ^ OldPads)
+  if (N & 48) = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+' the miner walks the tunnel to the right, the troll after him to the left
+' and back
+sub TitleDemo:
+  u8 Fr = 0
+  u8 Pb = 0
+  Fr = (Anim >> 3) & 1
+  if (Anim & 1) = 0 then
+    if Face = 0 then
+      inc Act[0].X
+      dec Act[1].X
+      if Act[0].X >= 150 then Face = 1
+    else
+      dec Act[0].X
+      inc Act[1].X
+      if Act[0].X <= 40 then Face = 0
+    end if
+  end if
+  if Face = 0 then
+    Pb = SBody1 + Fr * 4
+    set sprite 0 to 110,Act[0].X,SHat,11
+    set sprite 1 to 110,Act[0].X,SFace,9
+    set sprite 2 to 110,Act[0].X,Pb,5
+  else
+    Pb = SBody1l + Fr * 4
+    set sprite 0 to 110,Act[0].X,SHatl,11
+    set sprite 1 to 110,Act[0].X,SFacel,9
+    set sprite 2 to 110,Act[0].X,Pb,5
+  end if
+  Pb = STroll1 + Fr * 4
+  set sprite 3 to 110,Act[1].X,Pb,2
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "DIGGER"
+  print at 2,5, "BASED ON DIGGER, COMPUTE!'S"
+  print at 2,6, "GAZETTE, MARCH 1985 (C64"
+  print at 2,7, "AND VIC-20 MACHINE CODE;"
+  print at 2,8, "NO AUTHOR NAMED ON THE"
+  print at 2,9, "DISK)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: UNDER THE HILL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; DgLate: Late = 1 when the VDP has begun a frame since its status was
+; last read (the NMI is off during a pass, so nothing else reads it)
+DgLate:
+  in a,($BF)
+  rlca
+  and 1
+  ld (AMY_UVAR_Late),a
+  ret
+SetR3:
+  ld bc,$03FF
+  call WRITE_REGISTER
+  ret
+DgDig:
+    db $00,$00,$A6,$01,$00,$00,$D7,$01,$10
+DgRumble:
+    db $00,$00,$57,$04,$00,$00,$76,$04,$00,$00,$57,$04,$00,$00,$76,$04,$00,$00,$67,$04,$10
+DgThud:
+    db $00,$00,$14,$02,$00,$00,$35,$03,$00,$00,$56,$04,$00,$00,$87,$06,$10
+DgSquash:
+    db $40,$7F,$20,$03,$40,$A9,$20,$03,$40,$FE,$30,$03,$40,$FC,$31,$06,$50
+DgCaught:
+    db $40,$D6,$10,$06,$40,$E2,$20,$06,$40,$F0,$20,$06,$40,$FE,$20,$06,$40,$0E,$31,$06,$40,$1D,$31,$14
+    db $50
+DgClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$04,$40,$6B,$20,$10
+    db $50
+DgStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0C,$50
+DgPick:
+    db $40,$55,$40,$02,$50
+
+DgSoundTable:
+    dw DgTuneMel,$702B
+    dw DgTuneBass,$7035
+    dw DgDig,$703F
+    dw DgRumble,$703F
+    dw DgThud,$703F
+    dw DgSquash,$7049
+    dw DgCaught,$7049
+    dw DgClear,$7049
+    dw DgStart,$7049
+    dw DgPick,$7049
+; Under the Hill (original)
+; Tiny Sound, 9 frames per step
+DgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$01,$01,$21,$01,$1F,$01
+    db $1E,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01,$23,$01,$01,$01
+    db $01,$01,$26,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$01,$01,$23,$01
+    db $21,$01,$1E,$01,$1A,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+DgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0E,$01,$15,$01,$0B,$01,$12,$01,$10,$01,$17,$01,$10,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

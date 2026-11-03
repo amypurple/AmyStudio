@@ -1,0 +1,2022 @@
+cartridge "CROSSROADS/S.HARTER/1987"
+
+' CROSSROADS
+' A ColecoVision game based on "Crossroads" by Steve Harter, COMPUTE!'s
+' Gazette December 1987 (Commodore 64 machine language, SYS 2300). Made
+' for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' The game: one or two players in a maze crowded with nine kinds of
+' creatures. The creatures fight each other as readily as they fight you:
+' each kind has a colour, and the same colour (or a friendly pair: cyan and
+' green, purple and blue, orange and brown) means friends; everything else
+' is a foe. Shoot creatures for points, pick up the spinning spars (each one
+' a shield point, S, and 500 at the end of the level); five spars taken by
+' the players end the level. Creatures eat spars too and drop them when they
+' die. A creature's attack or a bullet costs a shield point; with none left
+' a life (L) is lost. Points: blob 50, gunner 150, spider 300, beetle 400,
+' snapper 500, crawler 600, shell 1000, skull 1100, knight 1500.
+'
+' From the original (orig/crossroads.dis): the eight mazes (bit tables at
+' $0F65 and $1041, mirrored halves; levels 1-4 take the first four, later
+' levels a random one), the random wall style and colour each level; the
+' creature table at $15FE (speed, sight, hit points, points, colour/team
+' and behaviour flags: flees foes, chases foes, wants spars, ignores
+' bullets, herds with friends, shoots, bullets bounce off its sides,
+' attacking costs it a hit point); the level table at $1138 (L1: 36
+' blobs, 25 gunners, 15 spiders, 12 beetles ...) and the random mix from
+' level 5 ($1158, +32 of one kind); the friend table at $11A4; the move
+' choice (four directions weighted 100, +/- 40 - distance for what is seen
+' first in each, +1 straight on, -1 back, two random +1s; a turn takes a
+' move; walking into a foe attacks it, into a spar eats it); creature moves
+' handed out in turn by per-creature speed counters, 2 a jiffy at level 1,
+' one more every odd level; bullets from the cell ahead, cooldown 12
+' jiffies, through anything into the first object (no friend check);
+' bouncing off shells and knights unless they are hit in the face; the
+' player's 3 shield points (S, at most 9), 4 lives, an extra life every
+' 10000; 40 jiffies of stillness on each start; 5 spars a level plus up to
+' 5 more at random; 500 a spar at the end of the level; the edges wrap
+' round.
+'
+' Liberties: the 39 x 23 mazes are condensed to 27 x 21 for 8-pixel cells
+' (mazes.py drops 6 mirrored column pairs and 2 rows, keeping every open
+' cell connected); at most 30 creatures (the C64 had 72-88), the level's
+' counts scaled down in proportion, and the move rate scaled with them so
+' each creature keeps the C64's pace; everything runs at half the C64's
+' speed (players a cell every 8 frames, bullets every 2: the C64's 15 and
+' 60 cells a second were too fast on a TV); a creature moves at most every
+' 16 frames on average however few are left (the C64's last creatures
+' raced); the players are smooth sprites gliding between cells (the C64
+' used characters); point values from the code ($15FE: 500 and 600 for
+' snapper and crawler; the C64 title's list said 600 and 1000); a bullet
+' fired point-blank into a bouncing creature is lost; one button fires,
+' joystick only (the C64's keys to recolour a player and pause are gone);
+' a high score; GAME OVER, then the title.
+'
+' Controls: controller 1 (player 1) and controller 2 (player 2): the stick
+' walks (pushing a new way first turns), a button fires. On the title, up
+' and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TWall0 = 128
+const TWall1 = 129
+const TWall2 = 130
+const TWall3 = 131
+const TSpar = 132
+const TSpar2 = 133
+const TPm1 = 134
+const TPm2 = 135
+const TCr00 = 136
+const TCr01 = 137
+const TCr02 = 138
+const TCr03 = 139
+const TCr10 = 140
+const TCr11 = 141
+const TCr12 = 142
+const TCr13 = 143
+const TCr20 = 144
+const TCr21 = 145
+const TCr22 = 146
+const TCr23 = 147
+const TCr30 = 148
+const TCr31 = 149
+const TCr32 = 150
+const TCr33 = 151
+const TCr40 = 152
+const TCr41 = 153
+const TCr42 = 154
+const TCr43 = 155
+const TCr50 = 156
+const TCr51 = 157
+const TCr52 = 158
+const TCr53 = 159
+const TCr60 = 160
+const TCr61 = 161
+const TCr62 = 162
+const TCr63 = 163
+const TCr70 = 164
+const TCr71 = 165
+const TCr72 = 166
+const TCr73 = 167
+const TCr80 = 168
+const TCr81 = 169
+const TCr82 = 170
+const TCr83 = 171
+const TBul0h = 172
+const TBul0v = 173
+const TBul1h = 174
+const TBul1v = 175
+const TBul2h = 176
+const TBul2v = 177
+const TBul3h = 178
+const TBul3v = 179
+const TBul4h = 180
+const TBul4v = 181
+const TBul5h = 182
+const TBul5v = 183
+const TTblk = 184
+const SPd = 0
+const SPu = 4
+const SPr = 8
+const SPl = 12
+const SHd = 16
+const SHu = 20
+const SHr = 24
+const SHl = 28
+const SBurst = 32
+const SBurst2 = 36
+const NTiles8 = 456
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndHit = 4
+const SndKill = 5
+const SndBounce = 6
+const SndSpar = 7
+const SndHurt = 8
+const SndDie = 9
+const SndLevel = 10
+const SndStart = 11
+const SndOver = 12
+
+const NObj = 40
+const FirstCr = 10
+const LastObj = 39
+const MaxCr = 30
+const MW = 27
+const MH = 21
+const Empty = 255
+const TCr = TCr00
+const NSpr = 5
+
+' --- the original's creature table ($15FE), types 0-8 creatures, 9 the
+' player, 10-14 bullets
+data SpeedT bytes 5,8,9,8,7,6,8,6,20,2,2,1,2,7,4
+data Sight bytes 4,7,6,8,8,9,10,15,15,1,1,1,1,14,9
+data HitP bytes 1,1,2,3,3,4,3,2,3,3,1,1,1,1,1
+data Pts bytes 5,15,30,40,50,60,100,110,150,0,0,0,0,0,0
+data F42 bytes $80,$90,$70,$40,$70,$70,$70,$80,$30,$00,$00,$00,$00,$40,$60
+data F43 bytes $38,$21,$10,$18,$00,$00,$62,$0B,$63,$20,$20,$20,$10,$22,$20
+data Team bytes 6,2,3,8,5,7,14,9,4,2
+' bullet type and bullet tile class a creature type fires (255: none)
+data BulT bytes 255,10,255,255,255,255,14,11,13
+data BulC bytes 255,2,255,255,255,255,3,4,5
+' $11A4: the friend of each colour
+data FriendOf bytes 255,255,255,5,6,3,4,255,9,8,255,255,255,255,255,255
+data Opp bytes 1,0,3,2
+data DX bytes 0,0,1,255
+data DY bytes 1,255,0,0
+' $1138: levels 1-4, four (type, count) pairs each
+data LvT bytes 0,36,1,25,2,15,3,12, 1,34,2,10,3,16,4,20, 3,24,4,16,5,24,6,16, 5,19,6,18,7,20,8,15
+' $1158 and $08D0: the random mix from level 5
+data MixBase bytes 20,15,10,9,8,7,6,4,5
+data MixAdd bytes 0,8,4,2
+' the wall colours (C64 2,4,5,6,8,9,11,14 as ColecoVision colours)
+data WallCol bytes $81,$D1,$C1,$41,$A1,$61,$E1,$51
+data PlCol bytes 8,3
+data PlSX bytes 1,25
+data PlSD bytes 2,3
+data PlPat bytes SPd,SPu,SPr,SPl
+
+data MazeBits bytes
+  $FF,$DC
+  $80,$00
+  $AB,$DC
+  $A0,$00
+  $2B,$DC
+  $A9,$00
+  $AD,$00
+  $A1,$00
+  $BD,$00
+  $00,$00
+  $85,$00
+  $ED,$00
+  $81,$00
+  $BF,$DC
+  $00,$00
+  $AA,$DC
+  $AA,$DC
+  $82,$80
+  $B8,$94
+  $82,$00
+  $FF,$DC
+  $FF,$BC
+  $00,$00
+  $BB,$B8
+  $00,$00
+  $EF,$BC
+  $00,$00
+  $88,$04
+  $A8,$04
+  $00,$04
+  $AA,$BC
+  $A8,$84
+  $80,$34
+  $B9,$B4
+  $00,$00
+  $EF,$BC
+  $80,$00
+  $AC,$00
+  $A0,$00
+  $B8,$00
+  $80,$00
+  $FF,$BC
+  $FF,$FC
+  $80,$40
+  $BB,$5C
+  $80,$00
+  $D7,$F8
+  $92,$00
+  $BA,$00
+  $82,$00
+  $00,$00
+  $AA,$00
+  $AA,$00
+  $02,$00
+  $83,$F8
+  $D8,$00
+  $8B,$B4
+  $A8,$90
+  $AE,$D4
+  $A0,$00
+  $BE,$FC
+  $80,$00
+  $FF,$FC
+  $F9,$F8
+  $80,$00
+  $B9,$7C
+  $21,$00
+  $AD,$5C
+  $80,$40
+  $FD,$D4
+  $00,$00
+  $01,$EC
+  $00,$00
+  $BD,$7C
+  $80,$00
+  $85,$F4
+  $D0,$04
+  $85,$FC
+  $A0,$00
+  $A9,$E8
+  $81,$08
+  $A9,$78
+  $80,$00
+  $F9,$F8
+  $FF,$D4
+  $00,$00
+  $00,$00
+  $00,$00
+  $40,$40
+  $00,$00
+  $00,$00
+  $00,$00
+  $08,$00
+  $00,$00
+  $00,$00
+  $00,$00
+  $00,$00
+  $40,$40
+  $00,$00
+  $00,$00
+  $00,$00
+  $00,$00
+  $08,$00
+  $80,$04
+  $FF,$D4
+  $FF,$F4
+  $80,$04
+  $BA,$B4
+  $A3,$84
+  $28,$B4
+  $A2,$84
+  $B8,$34
+  $82,$B4
+  $FA,$94
+  $82,$94
+  $A8,$94
+  $A9,$34
+  $A9,$74
+  $A0,$04
+  $BA,$B4
+  $82,$84
+  $AE,$D4
+  $88,$44
+  $AB,$74
+  $88,$44
+  $FF,$F4
+  $FF,$B4
+  $80,$00
+  $B7,$F4
+  $00,$04
+  $F7,$F4
+  $10,$00
+  $97,$F4
+  $80,$00
+  $84,$20
+  $14,$20
+  $D5,$FC
+  $04,$20
+  $04,$20
+  $B4,$00
+  $87,$FC
+  $90,$00
+  $9E,$A8
+  $90,$80
+  $96,$BC
+  $80,$00
+  $FF,$B4
+  $FD,$F8
+  $8D,$00
+  $AF,$7C
+  $A0,$00
+  $AF,$78
+  $00,$00
+  $00,$04
+  $00,$10
+  $00,$10
+  $01,$44
+  $04,$10
+  $01,$44
+  $00,$10
+  $00,$44
+  $00,$10
+  $00,$04
+  $BD,$BC
+  $80,$00
+  $BF,$BC
+  $80,$20
+  $FD,$F8
+end data
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $81,$00,$24,$00,$00,$24,$00,$81
+  $00,$81,$42,$A5,$A5,$42,$81,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $10,$10,$38,$01,$38,$10,$10,$00
+  $44,$28,$38,$83,$38,$28,$44,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $A3,$C1,$80,$C0,$84,$C0,$81,$18
+  $18,$81,$03,$21,$03,$01,$83,$C5
+  $C3,$81,$09,$00,$00,$81,$AA,$00
+  $C3,$81,$90,$00,$00,$81,$AA,$00
+  $10,$81,$C0,$C4,$C0,$81,$1C,$1C
+  $38,$38,$81,$03,$23,$03,$81,$08
+  $38,$83,$90,$80,$00,$83,$44,$00
+  $1C,$C1,$09,$01,$00,$C1,$22,$00
+  $49,$2A,$1C,$80,$1C,$C9,$A6,$18
+  $18,$9A,$93,$38,$01,$38,$54,$92
+  $92,$54,$C3,$04,$C0,$54,$92,$00
+  $49,$2A,$C3,$20,$03,$2A,$49,$00
+  $1C,$C1,$80,$88,$C1,$1C,$2A,$08
+  $10,$54,$38,$83,$11,$01,$83,$38
+  $30,$85,$03,$10,$03,$85,$30,$00
+  $0C,$A1,$C0,$08,$C0,$A1,$0C,$00
+  $C1,$80,$82,$80,$88,$C9,$00,$14
+  $28,$00,$93,$11,$01,$41,$01,$83
+  $87,$23,$02,$F0,$02,$03,$87,$00
+  $E1,$C4,$40,$F0,$40,$C0,$E1,$00
+  $C3,$81,$34,$81,$C3,$81,$C3,$10
+  $08,$C3,$81,$C3,$81,$2C,$81,$C3
+  $00,$54,$01,$21,$00,$01,$54,$00
+  $00,$2A,$80,$84,$00,$80,$2A,$00
+  $1C,$22,$A2,$AA,$A2,$A2,$22,$1C
+  $38,$44,$45,$45,$AA,$45,$44,$38
+  $C3,$42,$42,$52,$42,$42,$C3,$00
+  $C3,$42,$42,$4A,$42,$42,$C3,$00
+  $0E,$C4,$E0,$C0,$E4,$C0,$0E,$00
+  $00,$70,$03,$D8,$03,$07,$23,$70
+  $83,$01,$49,$01,$83,$54,$00,$00
+  $C1,$80,$92,$80,$C1,$2A,$00,$00
+  $08,$A3,$81,$C4,$C8,$89,$A3,$08
+  $10,$C5,$91,$13,$23,$81,$C5,$10
+  $18,$C3,$91,$0C,$81,$C3,$99,$00
+  $18,$C3,$89,$30,$81,$C3,$99,$00
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$00,$00
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$00,$00
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$00,$00
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$00,$00
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$00,$00
+  $00,$00,$00,$81,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$00,$00
+  $01,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $1F,$1F,$1F,$01,$1F,$1F,$1F,$01
+  $1F,$0F,$1F,$0F,$0F,$1F,$0F,$1F
+  $0F,$F1,$1F,$F1,$F1,$1F,$F1,$0F
+  $F1,$1F,$F1,$1F,$F1,$1F,$F1,$1F
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $15,$15,$15,$15,$15,$15,$15,$51
+  $51,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$05,$05,$15,$51,$01
+  $15,$15,$15,$05,$05,$15,$15,$01
+  $81,$18,$18,$18,$18,$18,$81,$81
+  $81,$81,$18,$18,$18,$18,$18,$81
+  $81,$18,$18,$18,$08,$18,$81,$01
+  $81,$18,$18,$18,$08,$18,$81,$01
+  $71,$71,$71,$17,$71,$17,$17,$71
+  $71,$71,$17,$71,$17,$71,$71,$71
+  $71,$71,$17,$17,$17,$71,$71,$01
+  $71,$71,$17,$17,$17,$71,$71,$01
+  $91,$19,$19,$19,$19,$91,$91,$91
+  $91,$91,$91,$19,$19,$19,$19,$91
+  $91,$19,$19,$19,$19,$19,$91,$01
+  $91,$19,$19,$19,$19,$19,$91,$01
+  $12,$12,$12,$12,$12,$12,$01,$21
+  $21,$01,$12,$12,$12,$12,$12,$12
+  $12,$12,$12,$21,$12,$12,$12,$01
+  $12,$12,$12,$12,$12,$12,$12,$01
+  $1B,$1B,$B1,$1B,$1B,$1B,$1B,$B1
+  $B1,$1B,$1B,$1B,$1B,$B1,$1B,$1B
+  $01,$B1,$1B,$1B,$0B,$1B,$B1,$01
+  $01,$B1,$1B,$1B,$0B,$1B,$B1,$01
+  $E1,$E1,$1E,$1E,$1E,$1E,$E1,$E1
+  $E1,$E1,$1E,$1E,$E1,$1E,$E1,$E1
+  $1E,$E1,$1E,$1E,$1E,$E1,$1E,$01
+  $1E,$E1,$1E,$1E,$1E,$E1,$1E,$01
+  $A1,$1A,$1A,$1A,$1A,$1A,$A1,$01
+  $01,$A1,$1A,$A1,$1A,$1A,$1A,$A1
+  $1A,$1A,$1A,$1A,$1A,$A1,$01,$01
+  $1A,$1A,$1A,$1A,$1A,$A1,$01,$01
+  $D1,$1D,$1D,$1D,$1D,$1D,$1D,$D1
+  $D1,$1D,$1D,$1D,$1D,$1D,$1D,$D1
+  $D1,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $D1,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$01,$01,$18,$01,$01,$01,$01
+  $81,$81,$81,$81,$81,$81,$01,$01
+  $01,$01,$01,$12,$01,$01,$01,$01
+  $21,$21,$21,$21,$21,$21,$01,$01
+  $01,$01,$01,$18,$01,$01,$01,$01
+  $81,$81,$81,$81,$81,$81,$01,$01
+  $01,$01,$01,$1E,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$01,$01
+  $01,$01,$01,$1A,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$01,$01
+  $01,$01,$01,$1D,$01,$01,$01,$01
+  $D1,$D1,$D1,$D1,$D1,$D1,$01,$01
+  $89,$98,$98,$98,$98,$98,$98,$01
+end data
+data SpritePat bytes
+  $90,$CA,$3F,$3F,$CA,$84,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$21,$53,$FC,$FC,$53,$09,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$78,$34,$78,$B0,$30,$48,$CC,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$1E,$2C,$1E,$0D,$0C,$12,$33,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$01,$01,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$80,$80,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$48,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$12,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$28,$EE,$28,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$44,$00,$82,$00,$44,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$B8,$B8,$B8,$20,$B8,$B8,$20,$20,$B8,$B8,$B8,$20,$B8,$B8,$B8,$20,$B8,$B8,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$20,$20,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$20,$20,$B8,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$20,$20,$20,$B8,$B8,$20,$20,$B8,$20,$B8,$20,$B8,$B8,$B8,$20,$B8,$B8,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$20,$20,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$20,$20,$B8,$20,$20,$20,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$B8,$B8,$20,$B8,$20,$B8,$20,$B8,$B8,$B8,$20,$B8,$B8,$B8,$20,$B8,$B8,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$B8,$20,$20,$B8,$B8,$B8,$20,$B8,$B8,$B8,$20,$B8,$B8,$20,$20,$B8,$B8,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$B8,$20,$20,$B8,$20,$B8,$20,$B8,$B8,$B8,$20,$B8,$20,$B8,$20,$B8,$B8,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$B8,$20,$20,$20,$B8,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$B8,$20,$B8,$20,$B8,$B8,$B8,$20,$B8,$20,$B8,$20,$B8,$B8,$20,$20,$B8,$B8,$B8,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record Obj:
+  u8 X
+  u8 Y
+  u8 T
+  u8 D
+  u8 H
+  u8 C
+  u8 S
+  u8 M
+  u8 K
+end record
+
+record Player:
+  u8 Lives
+  u8 Spars
+  u8 Frz
+  u8 Cool
+  u8 Glide
+  u8 PX
+  u8 PY
+  u8 Stp
+  u8 Pad
+  u16 Tens
+end record
+
+Obj Ob[NObj]
+Player Pl[2]
+bcd digits 6 Sc[2]
+bcd digits 6 Hi = 0
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Rate = 0
+u16 Racc = 0
+u8 Level = 1
+u8 LvHi = 0
+u8 Moves = 1
+u8 Maze = 0
+u8 WStyle = 0
+u8 WCol = 0
+u8 Alive = 0
+u8 Extra = 0
+u8 Players = 1
+u8 Over = 0
+u8 Cur = FirstCr
+u8 BulRing = 2
+u8 SparF = 0
+u8 FlX = 0
+u8 FlY = 0
+u8 FlT = 0
+u8 Kills = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 J1 = 0
+u8 J2 = 0
+u8 WasStick = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 HudDirty = 0
+u8 LevelDone = 0
+' creature move work
+u8 Wt[4]
+u8 MixCnt[9]
+u8 PopPass = 0
+u16 Pop64 = 88
+u8 GotC = 0
+u8 XrLdx = 0
+u8 XrLdy = 0
+u8 GotOb = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Qv = 0
+u8 PutId = 255
+u8 Shoot[4]
+u8 Near[4]
+u8 NearO[4]
+u8 CT = 0
+u8 CD = 0
+u8 CX0 = 0
+u8 CY0 = 0
+u8 Fl42 = 0
+u8 Fl43 = 0
+u8 Tm = 0
+u8 Best = 0
+u8 BestW = 0
+' cell probes
+u8 NX = 0
+u8 NY = 0
+u8 Code = 0
+u8 Hit = 0
+u8 Dist = 0
+' loop counters, each owned by one routine
+u8 Dk = 0
+u8 Lp = 0
+u8 Pi = 0
+u8 Bi = 0
+u8 Ty = 0
+u8 Sk = 0
+u8 Mr = 0
+u8 Mc = 0
+' scratch
+u8 A = 0
+u8 B = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table XrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Players = Menu + 1
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPads
+  PlayFrame
+  DrawSprites
+  if HudDirty = 1 then ShowHud
+  if LevelDone = 1 then
+    EndLevel
+    goto play_loop
+  end if
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  print at 9,10, "           "
+  print at 9,11, " GAME OVER "
+  print at 9,12, "           "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayFrame:
+  inc SparF
+  if SparF >= 10 then
+    SparF = 0
+    AnimSpar
+  end if
+  for Pi = 0 to 1
+    PlayerTick(Pi)
+  next
+  V = Tick & 1
+  if V = 0 then BulletsStep
+  Racc = Racc + Rate
+  while Racc >= 64
+    Racc = Racc - 64
+    CreatureNext
+  end while
+  ' up to 5 more spars at random during a level
+  if Extra < 5 then
+    Rand
+    W16 = Rs & 1023
+    if W16 = 0 then
+      inc Extra
+      PlaceSpar
+    end if
+  end if
+  if FlT > 0 then dec FlT
+  V = Pl[0].Spars + Pl[1].Spars
+  if V >= 5 then LevelDone = 1
+  V = Pl[0].Lives + Pl[1].Lives
+  if V = 0 then Over = 1
+  return
+end sub
+
+' the spar spins: its tile takes the other frame's pattern
+sub AnimSpar:
+  V = Tick & 16
+  if V = 0 then
+    copy TilePat + 32 count 8 to vram.pattern + 1056
+    copy TilePat + 32 count 8 to vram.pattern + 3104
+    copy TilePat + 32 count 8 to vram.pattern + 5152
+  else
+    copy TilePat + 40 count 8 to vram.pattern + 1056
+    copy TilePat + 40 count 8 to vram.pattern + 3104
+    copy TilePat + 40 count 8 to vram.pattern + 5152
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the maze grid lives in the name table: cell (x, y) is column x + 2, row
+' y + 1. Codes: 32 empty, walls, the spar, objects (players' markers,
+' creatures, bullets).
+' (a Z80 read of the name table: get char through the BIOS was too slow
+' for a creature looking 15 cells four ways). Beside it, at $1C00, a map
+' of which object stands in each cell (32 bytes a row), kept by PutCell.
+function CellAt(u8 Cx, u8 Cy) as u8
+  Qx = Cx
+  Qy = Cy
+  call asm XrGetCell
+  return GotC
+
+sub PutCell(u8 Cx, u8 Cy, u8 Cc):
+  put char Cc at Cx + 2,Cy + 1
+  Qx = Cx
+  Qy = Cy
+  Qv = PutId
+  call asm XrSetObj
+  return
+end sub
+
+' the cell next to (A, B) in direction K, wrapping round: NX, NY
+sub Step1:
+  NX = A + DX[K]
+  NY = B + DY[K]
+  if NX = 255 then NX = MW - 1
+  if NX >= MW then NX = 0
+  if NY = 255 then NY = MH - 1
+  if NY >= MH then NY = 0
+  return
+end sub
+
+function IsObj(u8 Cc) as u8
+  if Cc >= TPm1 then return 1
+  return 0
+
+' the object at (NX, NY): Hit (255 none)
+sub FindObj:
+  Qx = NX
+  Qy = NY
+  call asm XrGetObj
+  Hit = GotOb
+  if Hit >= NObj then
+    Hit = Empty
+  else
+    if Ob[Hit].T = Empty then Hit = Empty
+  end if
+  return
+end sub
+
+' the tile an object shows
+function ObjTile(u8 O) as u8
+  if O < 2 then return TPm1 + O
+  if Ob[O].T < 9 then
+    V = Ob[O].T * 4
+    return TCr + V + Ob[O].D
+  end if
+  V = Ob[O].S * 2
+  if Ob[O].D < 2 then V = V + 1
+  return TBul0h + V
+
+sub DrawObj(u8 O):
+  PutId = O
+  PutCell(Ob[O].X, Ob[O].Y, ObjTile(O))
+  PutId = Empty
+  return
+end sub
+
+' a team's friend: 1 when the two colours are friends
+function Friends(u8 Ta, u8 Tb) as u8
+  if Ta = Tb then return 1
+  if FriendOf[Ta] = Tb then return 1
+  return 0
+
+' ---------------------------------------------------------------------------
+' random numbers: a 16-bit xorshift
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' 0-3 (and 0-1) without a division
+function Rnd4 as u8
+  Rand
+  V = Rs >> 6
+  return V & 3
+
+function Rnd(u8 N) as u8
+  Rand
+  W16 = Rs >> 4
+  W16 = W16 % N
+  return W16
+
+' a random empty cell: NX, NY
+sub RandomEmpty:
+  Code = 0
+  while Code <> 32
+    NX = Rnd(MW)
+    NY = Rnd(MH)
+    Code = CellAt(NX, NY)
+  end while
+  return
+end sub
+
+sub PlaceSpar:
+  RandomEmpty
+  PutCell(NX, NY, TSpar)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' creatures: the next one whose speed counter runs out moves (the C64's
+' $1755)
+sub CreatureNext:
+  if Alive = 0 then return
+  Mc = 0
+  while Mc = 0
+    inc Cur
+    if Cur > LastObj then Cur = FirstCr
+    if Ob[Cur].T < 9 then
+      dec Ob[Cur].C
+      if Ob[Cur].C = 0 then
+        Mc = 1
+        Ob[Cur].C = SpeedT[Ob[Cur].T]
+        CreatureStep
+      end if
+    end if
+  end while
+  return
+end sub
+
+' look along direction Dk up to the creature's sight: Near/NearO for the
+' first thing seen at distance 1, Code/Dist for the first thing at all
+sub Look:
+  Qv = Sight[CT]
+  call asm XrLook
+  Near[Dk] = 32
+  NearO[Dk] = Empty
+  if Dist = 1 then Near[Dk] = Code
+  Hit = Empty
+  if IsObj(Code) = 1 then
+    FindObj
+    if Dist = 1 then NearO[Dk] = Hit
+  end if
+  return
+end sub
+
+' add or take away 40 - distance from direction Dk's weight
+sub Pull:
+  V = 40 - Dist
+  Wt[Dk] = Wt[Dk] + V
+  return
+end sub
+
+sub Push:
+  V = 40 - Dist
+  Wt[Dk] = Wt[Dk] - V
+  return
+end sub
+
+' one move of creature Cur (the C64's $1787-$1931)
+sub CreatureStep:
+  CT = Ob[Cur].T
+  CD = Ob[Cur].D
+  CX0 = Ob[Cur].X
+  CY0 = Ob[Cur].Y
+  Fl42 = F42[CT]
+  Fl43 = F43[CT]
+  Tm = Team[CT]
+  for Dk = 0 to 3
+    Wt[Dk] = 100
+    Shoot[Dk] = 0
+    Look
+    if Code = TSpar then
+      V = Fl42 & $10
+      if V > 0 then Pull
+    end if
+    if Hit <> Empty then
+      if Ob[Hit].T >= 10 then
+        ' a bullet coming: dodge unless this kind ignores bullets
+        V = Fl42 & $20
+        if V = 0 then
+          Push
+          V = Fl43 & $10
+          if V > 0 then Push
+        end if
+      else
+        if Friends(Tm, Ob[Hit].M) = 1 then
+          V = Fl43 & 8
+          if V > 0 then
+            inc Wt[Dk]
+            K = Rnd4
+            inc Wt[K]
+          end if
+        else
+          V = Fl42 & $80
+          if V > 0 then Push
+          V = Fl42 & $40
+          if V > 0 then Pull
+          V = Fl43 & 3
+          K = Rnd4
+          if K < V then Shoot[Dk] = 1
+        end if
+      end if
+    end if
+  next
+  inc Wt[CD]
+  K = Opp[CD]
+  dec Wt[K]
+  K = Rnd4
+  inc Wt[K]
+  K = Rnd4
+  inc Wt[K]
+  ' walls next door are out; the best weight wins, ties at random
+  Best = Empty
+  BestW = 0
+  for Dk = 0 to 3
+    V = Near[Dk]
+    if V >= TWall0 then
+      if V <= TWall3 then Wt[Dk] = 0
+    end if
+    if Wt[Dk] > BestW then
+      BestW = Wt[Dk]
+      Best = Dk
+    else
+      if Wt[Dk] = BestW then
+        if BestW > 0 then
+          V = Rnd(2)
+          if V = 1 then Best = Dk
+        end if
+      end if
+    end if
+  next
+  if Best = Empty then return
+  if Best <> CD then
+    ' a turn takes the move
+    Ob[Cur].D = Best
+    DrawObj(Cur)
+  else
+    CreatureForward
+  end if
+  if Ob[Cur].T <> Empty then
+    if Shoot[Best] = 1 then
+      if BulT[CT] <> Empty then Shot(Cur)
+    end if
+  end if
+  return
+end sub
+
+sub CreatureForward:
+  V = Near[Best]
+  if V = 32 then
+    MoveObj(Cur, Best)
+    return
+  end if
+  if V = TSpar then
+    inc Ob[Cur].S
+    if Ob[Cur].H < 9 then inc Ob[Cur].H
+    MoveObj(Cur, Best)
+    return
+  end if
+  Hit = NearO[Best]
+  if Hit = Empty then return
+  if Ob[Hit].T < 10 then
+    if Friends(Tm, Ob[Hit].M) = 1 then return
+  end if
+  Attack(Cur, Hit)
+  if Ob[Cur].T <> Empty then
+    if Ob[Hit].T = Empty then MoveObj(Cur, Best)
+  end if
+  return
+end sub
+
+' object O steps one cell in direction Dir (the cell must be free)
+sub MoveObj(u8 O, u8 Dir):
+  A = Ob[O].X
+  B = Ob[O].Y
+  K = Dir
+  Step1
+  PutCell(A, B, 32)
+  Ob[O].X = NX
+  Ob[O].Y = NY
+  Ob[O].D = Dir
+  DrawObj(O)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' an attack: Att walks or flies into Tgt (the C64's $1DA4)
+sub Attack(u8 Att, u8 Tgt):
+  A = F43[Ob[Tgt].T] & $40
+  B = F43[Ob[Att].T] & $20
+  if A > 0 then
+    if B > 0 then
+      K = Opp[Ob[Tgt].D]
+      if Ob[Att].D <> K then
+        ' it bounces off the side or back
+        Ob[Att].D = Opp[Ob[Att].D]
+        if Ob[Att].T >= 10 then DrawObj(Att)
+        play sound SndBounce
+        return
+      end if
+    end if
+  end if
+  if Ob[Tgt].H > 0 then dec Ob[Tgt].H
+  if B > 0 then
+    if Ob[Att].H > 0 then dec Ob[Att].H
+  end if
+  if Tgt < 2 then Hurt(Tgt)
+  if Att < 2 then Hurt(Att)
+  if Ob[Tgt].H = 0 then Kill(Tgt, Att)
+  if Ob[Att].T <> Empty then
+    if Ob[Att].H = 0 then Kill(Att, Tgt)
+  end if
+  return
+end sub
+
+sub Hurt(u8 P):
+  HudDirty = 1
+  if Ob[P].H > 0 then play sound SndHurt
+  return
+end sub
+
+' Vic dies; By did it (a player, a player's bullet or anything else)
+sub Kill(u8 Vic, u8 By):
+  if Vic < 2 then
+    LoseLife(Vic)
+    return
+  end if
+  EraseObj(Vic)
+  Ty = Ob[Vic].T
+  Ob[Vic].T = Empty
+  if Ty >= 9 then return
+  dec Alive
+  inc Kills
+  SetRate
+  FlX = Ob[Vic].X
+  FlY = Ob[Vic].Y
+  FlT = 12
+  play sound SndKill
+  ' whoever fired gets the points
+  K = By
+  if By >= 2 then K = Ob[By].K
+  if K < 2 then AddPoints(K, Pts[Ty])
+  ' the spars it ate fall out at random places
+  Sk = Ob[Vic].S
+  while Sk > 0
+    PlaceSpar
+    dec Sk
+  end while
+  return
+end sub
+
+sub AddPoints(u8 P, u8 N):
+  Sc[P] += N
+  W16 = Pl[P].Tens / 1000
+  Pl[P].Tens = Pl[P].Tens + N
+  NumU = Pl[P].Tens / 1000
+  if NumU <> W16 then
+    if Pl[P].Lives < 9 then inc Pl[P].Lives
+  end if
+  if Sc[P] > Hi then Hi = Sc[P]
+  HudDirty = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' players
+sub ReadPads:
+  J1 = 0
+  if joypad(1).down then J1 = 1
+  if joypad(1).up then J1 = 2
+  if joypad(1).right then J1 = 3
+  if joypad(1).left then J1 = 4
+  if joypad(1).fire then J1 = J1 | 16
+  J2 = 0
+  if joypad(2).down then J2 = 1
+  if joypad(2).up then J2 = 2
+  if joypad(2).right then J2 = 3
+  if joypad(2).left then J2 = 4
+  if joypad(2).fire then J2 = J2 | 16
+  Pl[0].Pad = J1
+  Pl[1].Pad = J2
+  return
+end sub
+
+sub PlayerTick(u8 P):
+  if Ob[P].T = Empty then return
+  if Pl[P].Glide > 0 then dec Pl[P].Glide
+  if Pl[P].Cool > 0 then dec Pl[P].Cool
+  if Pl[P].Frz > 0 then
+    dec Pl[P].Frz
+    return
+  end if
+  V = Pl[P].Pad & 16
+  if V > 0 then
+    if Pl[P].Cool = 0 then
+      Pl[P].Cool = 24
+      Shot(P)
+    end if
+  end if
+  if Ob[P].T = Empty then return
+  inc Pl[P].Stp
+  if Pl[P].Stp < 8 then return
+  V = Pl[P].Pad & 7
+  if V = 0 then return
+  Pl[P].Stp = 0
+  PlayerMove(P, V - 1)
+  return
+end sub
+
+' the C64's $1A1B: a new way first turns (not into a wall), the same way
+' walks, eats a spar or attacks what is there
+sub PlayerMove(u8 P, u8 Dir):
+  A = Ob[P].X
+  B = Ob[P].Y
+  K = Dir
+  Step1
+  Code = CellAt(NX, NY)
+  if Dir <> Ob[P].D then
+    if Code >= TWall0 then
+      if Code <= TWall3 then return
+    end if
+    Ob[P].D = Dir
+    return
+  end if
+  if Code >= TWall0 then
+    if Code <= TWall3 then return
+  end if
+  if Code = TSpar then
+    inc Pl[P].Spars
+    if Ob[P].H < 9 then inc Ob[P].H
+    play sound SndSpar
+    HudDirty = 1
+    Code = 32
+  end if
+  if Code = 32 then
+    Pl[P].PX = Ob[P].X
+    Pl[P].PY = Ob[P].Y
+    MoveObj(P, Dir)
+    Pl[P].Glide = 8
+    return
+  end if
+  FindObj
+  if Hit <> Empty then Attack(P, Hit)
+  return
+end sub
+
+' clears an object's cell, but only if the map says it is drawn there (a
+' bullet fired point-blank shares its target's cell without being drawn)
+sub EraseObj(u8 O):
+  NX = Ob[O].X
+  NY = Ob[O].Y
+  FindObj
+  if Hit = O then PutCell(NX, NY, 32)
+  return
+end sub
+
+sub LoseLife(u8 P):
+  EraseObj(P)
+  dec Pl[P].Lives
+  play sound SndDie
+  HudDirty = 1
+  if Pl[P].Lives = 0 then
+    Ob[P].T = Empty
+    return
+  end if
+  Ob[P].H = 3
+  SpawnPlayer(P)
+  return
+end sub
+
+' a player at the start, still for 80 frames; whatever stands there goes
+sub SpawnPlayer(u8 P):
+  Ob[P].T = 9
+  Ob[P].X = PlSX[P]
+  Ob[P].Y = MH - 2
+  Ob[P].D = PlSD[P]
+  Ob[P].M = PlCol[P] - 1
+  if P = 0 then Ob[P].M = 2
+  if P = 1 then Ob[P].M = 5
+  Ob[P].K = P
+  Pl[P].Frz = 80
+  Pl[P].Glide = 0
+  Pl[P].Stp = 8
+  NX = Ob[P].X
+  NY = Ob[P].Y
+  Code = CellAt(NX, NY)
+  if Code = TSpar then inc Pl[P].Spars
+  if IsObj(Code) = 1 then
+    FindObj
+    if Hit <> Empty then
+      if Hit <> P then
+        PutCell(NX, NY, 32)
+        if Ob[Hit].T < 9 then dec Alive
+        Ob[Hit].T = Empty
+      end if
+    end if
+  end if
+  DrawObj(P)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' bullets: objects 2-9
+sub Shot(u8 S):
+  ' a free slot, or the oldest goes (the C64's $1D10)
+  Bi = Empty
+  for Lp = 2 to 9
+    if Ob[Lp].T = Empty then
+      Bi = Lp
+      Lp = 9
+    end if
+  next
+  if Bi = Empty then
+    Bi = BulRing
+    inc BulRing
+    if BulRing > 9 then BulRing = 2
+    PutCell(Ob[Bi].X, Ob[Bi].Y, 32)
+    Ob[Bi].T = Empty
+  end if
+  if S < 2 then
+    Ob[Bi].T = 10
+    Ob[Bi].S = S
+    Ob[Bi].K = S
+    play sound SndShot
+  else
+    Ty = Ob[S].T
+    Ob[Bi].T = BulT[Ty]
+    Ob[Bi].S = BulC[Ty]
+    Ob[Bi].K = Empty
+  end if
+  Ob[Bi].M = Ob[S].M
+  Ob[Bi].D = Ob[S].D
+  Ob[Bi].H = 1
+  A = Ob[S].X
+  B = Ob[S].Y
+  K = Ob[S].D
+  Step1
+  Ob[Bi].X = NX
+  Ob[Bi].Y = NY
+  Code = CellAt(NX, NY)
+  if Code = 32 then
+    DrawObj(Bi)
+    return
+  end if
+  if IsObj(Code) = 1 then
+    FindObj
+    if Hit <> Empty then
+      if Hit <> Bi then Attack(Bi, Hit)
+    end if
+  end if
+  ' point-blank: the bullet is spent (or bounced away)
+  if Ob[Bi].T <> Empty then
+    Ob[Bi].T = Empty
+  end if
+  return
+end sub
+
+sub BulletsStep:
+  for Mr = 2 to 9
+    if Ob[Mr].T <> Empty then BulletFly(Mr)
+  next
+  return
+end sub
+
+sub BulletFly(u8 O):
+  A = Ob[O].X
+  B = Ob[O].Y
+  K = Ob[O].D
+  Step1
+  Code = CellAt(NX, NY)
+  if Code = 32 then
+    MoveObj(O, Ob[O].D)
+    return
+  end if
+  if IsObj(Code) = 0 then
+    ' a wall or a spar stops it
+    PutCell(A, B, 32)
+    Ob[O].T = Empty
+    return
+  end if
+  FindObj
+  if Hit = Empty then return
+  Attack(O, Hit)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' levels
+sub NewGame:
+  Level = 1
+  LvHi = 0
+  Moves = 1
+  Maze = 0
+  Sc[0] = 0
+  Sc[1] = 0
+  for Pi = 0 to 1
+    Pl[Pi].Lives = 0
+    Pl[Pi].Tens = 0
+    Ob[Pi].H = 3
+  next
+  Pl[0].Lives = 4
+  if Players = 2 then Pl[1].Lives = 4
+  Over = 0
+  StartLevel
+  play sound SndStart
+  return
+end sub
+
+' moves a jiffy: the C64 added one on every odd level
+sub StartLevel:
+  V = Level & 1
+  if V = 1 then inc Moves
+  NewScreen
+  fill 255 count 672 to vram.name + $400
+  ChooseMaze
+  ChooseLook
+  DrawMaze
+  V = 0
+  if LvHi > 0 then V = 1
+  if Level >= 5 then V = 1
+  if V = 1 then MakeMix
+  for Lp = 0 to LastObj
+    Ob[Lp].T = Empty
+    Ob[Lp].S = 0
+  next
+  Pl[0].Spars = 0
+  Pl[1].Spars = 0
+  for Pi = 0 to 1
+    if Pl[Pi].Lives > 0 then SpawnPlayer(Pi)
+  next
+  Spawn
+  for Lp = 1 to 5
+    PlaceSpar
+  next
+  Extra = 0
+  LevelDone = 0
+  Racc = 0
+  Cur = FirstCr
+  FlT = 0
+  ShowHud
+  DrawSprites
+  ShowScreen
+  NumU = Level
+  print at 10,11, " LEVEL ", digits$(NumU, 2), " "
+  Rearm
+  wait 60 frames
+  nmi off
+  DrawMaze
+  for Lp = 0 to LastObj
+    if Ob[Lp].T <> Empty then DrawObj(Lp)
+  next
+  ShowHud
+  return
+end sub
+
+' levels 1-4 the first four mazes, then one at random (not the last one)
+sub ChooseMaze:
+  if LvHi = 0 then
+    if Level < 5 then
+      Maze = Level - 1
+      return
+    end if
+  end if
+  V = Maze
+  while V = Maze
+    V = Rnd(8)
+  end while
+  Maze = V
+  return
+end sub
+
+' a new wall style and colour (not last level's)
+sub ChooseLook:
+  V = WStyle
+  while V = WStyle
+    V = Rnd(4)
+  end while
+  WStyle = V
+  V = WCol
+  while V = WCol
+    V = Rnd(8)
+  end while
+  WCol = V
+  return
+end sub
+
+sub DrawMaze:
+  V = WallCol[WCol]
+  fill V count 32 to vram.color + 1024
+  fill V count 32 to vram.color + 3072
+  fill V count 32 to vram.color + 5120
+  for Mr = 0 to MH - 1
+    DrawRow(Mr)
+  next
+  return
+end sub
+
+' one maze row from its 14 bits, mirrored
+sub DrawRow(u8 R):
+  W16 = Maze * 42
+  W16 = W16 + R * 2
+  copy MazeBits + W16 count 2 to Wt
+  for Mc = 0 to 13
+    if Mc < 8 then
+      V = Wt[0] << Mc
+    else
+      J = Mc - 8
+      V = Wt[1] << J
+    end if
+    V = V & 128
+    if V > 0 then
+      J = TWall0 + WStyle
+    else
+      J = 32
+    end if
+    K = CellAt(Mc, R)
+    if K < TSpar then PutCell(Mc, R, J)
+    X = MW - 1 - Mc
+    K = CellAt(X, R)
+    if K < TSpar then PutCell(X, R, J)
+  next
+  return
+end sub
+
+' the level's creatures: the C64's counts, scaled to at most 30
+sub Spawn:
+  PopPass = 0
+  Pop64 = 0
+  for Ty = 0 to 8
+    CountOf(Ty)
+  next
+  if Pop64 = 0 then Pop64 = 1
+  PopPass = 1
+  Alive = 0
+  Mr = FirstCr
+  for Ty = 0 to 8
+    CountOf(Ty)
+    W16 = Hit * MaxCr
+    W16 = W16 / Pop64
+    K = W16
+    if Hit > 0 then
+      if K = 0 then K = 1
+    end if
+    while K > 0
+      if Mr <= LastObj then
+        RandomEmpty
+        Ob[Mr].T = Ty
+        Ob[Mr].X = NX
+        Ob[Mr].Y = NY
+        Ob[Mr].D = Rnd(4)
+        Ob[Mr].H = HitP[Ty]
+        Ob[Mr].M = Team[Ty]
+        Ob[Mr].S = 0
+        Ob[Mr].K = Empty
+        V = Rnd(8)
+        Ob[Mr].C = V + 1
+        DrawObj(Mr)
+        inc Mr
+        inc Alive
+      end if
+      dec K
+    end while
+  next
+  SetRate
+  return
+end sub
+
+' Hit = the C64's count of type T this level; the first pass totals them
+' into Pop64 (the C64's population)
+sub CountOf(u8 T):
+  Hit = 0
+  if LvHi = 0 then
+    if Level < 5 then
+      V = Level - 1
+      V = V * 8
+      for Lp = 0 to 3
+        J = V + Lp * 2
+        if LvT[J] = T then Hit = LvT[J + 1]
+      next
+      AddPop
+      return
+    end if
+  end if
+  Hit = MixCnt[T]
+  AddPop
+  return
+end sub
+
+
+sub AddPop:
+  if PopPass = 0 then Pop64 = Pop64 + Hit
+  return
+end sub
+
+' the random mix of levels 5 and up ($1317): each kind 0 or base + 8/4/2,
+' then 32 more of one kind
+sub MakeMix:
+  for Ty = 0 to 8
+    V = Rnd(4)
+    MixCnt[Ty] = 0
+    if V > 0 then MixCnt[Ty] = MixBase[Ty] + MixAdd[V]
+  next
+  V = Rnd(8) + 2
+  if V < 9 then MixCnt[V] = MixCnt[V] + 32
+  return
+end sub
+
+' creature moves a frame in 1/64: the C64's moves a jiffy, scaled by the
+' population kept and halved; at most one move per creature every 16
+' frames on average
+sub SetRate:
+  W16 = Moves * 32
+  W16 = W16 * MaxCr
+  Rate = W16 / Pop64
+  W16 = Alive * 4
+  if Rate > W16 then Rate = W16
+  return
+end sub
+
+sub EndLevel:
+  ' 500 a spar to whoever took it
+  for Pi = 0 to 1
+    Sk = Pl[Pi].Spars
+    while Sk > 0
+      AddPoints(Pi, 50)
+      dec Sk
+    end while
+  next
+  play sound SndLevel
+  ShowHud
+  print at 8,11, " LEVEL CLEARED "
+  Rearm
+  wait 90 frames
+  nmi off
+  inc Level
+  if Level >= 100 then
+    Level = 1
+    LvHi = 1
+  end if
+  if Level >= 10 then LvHi = 1
+  StartLevel
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub ShowHud:
+  HudDirty = 0
+  fill 32 count 28 at 2,22
+  for Pi = 0 to 1
+    if Pl[Pi].Lives > 0 then
+      if Pi = 0 then
+        X = 2
+      else
+        X = 18
+      end if
+      print at X,22, "S"
+      NumU = Ob[Pi].H
+      print at X + 1,22, digits$(NumU, 1)
+      print at X + 2,22, "L"
+      NumU = Pl[Pi].Lives
+      print at X + 3,22, digits$(NumU, 1)
+      print at X + 5,22, Sc[Pi]
+      print at X + 11,22, "0"
+    end if
+  next
+  NumU = Level
+  print at 15,22, digits$(NumU, 2)
+  return
+end sub
+
+' sprites: 0-1 the players' caps, 2-3 their bodies (gliding from the last
+' cell), 4 a kill burst
+sub DrawSprites:
+  for Pi = 0 to 1
+    PlayerSprite(Pi)
+  next
+  if FlT > 0 then
+    X = FlX * 8 + 16
+    Y = FlY * 8 + 7
+    K = SBurst
+    if FlT < 6 then K = SBurst2
+    set sprite 4 to Y,X,K,11
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub PlayerSprite(u8 P):
+  if Ob[P].T = Empty then
+    set sprite P to 192,0,0,0
+    set sprite P + 2 to 192,0,0,0
+    return
+  end if
+  X = Ob[P].X * 8 + 16
+  Y = Ob[P].Y * 8 + 7
+  V = Pl[P].Glide
+  if V > 0 then
+    A = Pl[P].PX
+    B = Pl[P].PY
+    ' a glide only between neighbours (not across the wrap)
+    if A = Ob[P].X then
+      if B + 1 = Ob[P].Y then Y = Y - V
+      if B = Ob[P].Y + 1 then Y = Y + V
+    end if
+    if B = Ob[P].Y then
+      if A + 1 = Ob[P].X then X = X - V
+      if A = Ob[P].X + 1 then X = X + V
+    end if
+  end if
+  K = PlPat[Ob[P].D]
+  J = PlCol[P]
+  ' blinks slowly (2 Hz) while still after a start
+  if Pl[P].Frz > 0 then
+    V = Pl[P].Frz & 16
+    if V > 0 then J = 14
+  end if
+  ' a white cap over the body (lower sprite numbers are on top)
+  set sprite P to Y,X,K + 16,15
+  set sprite P + 2 to Y,X,K,J
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadMenuPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  V = 0
+  if joypad(1).fire then V = 1
+  if joypad(2).fire then V = 1
+  Press = 0
+  if V > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: CROSSROADS in blocks, the creatures and their points, the menu
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 352 to vram.name + 32
+  print at 4,12, "COMPUTE!'S GAZETTE 12/87"
+  print at 8,13, "BY STEVE HARTER"
+  for Ty = 0 to 8
+    V = Ty * 4 + TCr + 2
+    J = Ty / 3
+    K = Ty % 3
+    X = K * 9 + 3
+    Y = J + 15
+    put char V at X,Y
+    NumU = Pts[Ty]
+    NumU = NumU * 10
+    print at X + 2,Y, digits$(NumU, 4)
+  next
+  put char TSpar at 12,18
+  print at 14,18, "500"
+  print at 11,19, "1 PLAYER"
+  print at 11,20, "2 PLAYERS"
+  print at 11,21, "CREDITS"
+  if Hi > 0 then
+    print at 9,22, "BEST ", Hi, "0"
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  inc Rs
+  ReadMenuPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 19 to 21
+    put char 32 at 9,J
+  next
+  J = Menu + 19
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "CROSSROADS"
+  print at 2,4, "BASED ON CROSSROADS BY"
+  print at 2,5, "STEVE HARTER, COMPUTE!'S"
+  print at 2,6, "GAZETTE DECEMBER 1987"
+  print at 2,7, "(COMMODORE 64 MACHINE CODE)."
+  print at 2,9, "SAME COLOUR, OR CYAN+GREEN,"
+  print at 2,10, "PURPLE+BLUE, ORANGE+BROWN:"
+  print at 2,11, "FRIENDS. ALL ELSE FIGHTS."
+  print at 2,12, "5 SPARS END A LEVEL."
+  print at 2,14, "COLECOVISION GAME, MUSIC"
+  print at 2,15, "AND PICTURES BY CLAUDE"
+  print at 2,16, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,17, "IN AMY BY AMY BIENVENU,"
+  print at 2,18, "2026."
+  print at 2,19, "MUSIC: FOUR WAYS OUT"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; look from (CX0, CY0) along Dk for up to Qv cells: the first thing seen
+; -> Code (1 when nothing within sight), Dist, NX, NY (wrapping round)
+XrLook:
+  ld a,(AMY_UVAR_Dk)
+  ld e,a
+  ld d,0
+  ld hl,XrTDX
+  add hl,de
+  ld a,(hl)
+  ld (XrLdx),a
+  ld hl,XrTDY
+  add hl,de
+  ld a,(hl)
+  ld (XrLdy),a
+  ld a,(AMY_UVAR_Qv)
+  ld b,a
+  ld c,0
+  ld a,(AMY_UVAR_CX0)
+  ld d,a
+  ld a,(AMY_UVAR_CY0)
+  ld e,a
+XrLk1:
+  inc c
+  ld a,(XrLdx)
+  add a,d
+  cp 255
+  jr nz,XrLk2
+  ld a,26
+XrLk2:
+  cp 27
+  jr c,XrLk3
+  xor a
+XrLk3:
+  ld d,a
+  ld a,(XrLdy)
+  add a,e
+  cp 255
+  jr nz,XrLk4
+  ld a,20
+XrLk4:
+  cp 21
+  jr c,XrLk5
+  xor a
+XrLk5:
+  ld e,a
+  push de
+  inc a
+  ld l,a
+  ld h,0
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  ld a,d
+  add a,2
+  ld e,a
+  ld d,$18
+  add hl,de
+  pop de
+  call XrRdHL
+  cp 32
+  jr nz,XrLk6
+  djnz XrLk1
+  ld a,1
+XrLk6:
+  ld (AMY_UVAR_Code),a
+  ld a,c
+  ld (AMY_UVAR_Dist),a
+  ld a,d
+  ld (AMY_UVAR_NX),a
+  ld a,e
+  ld (AMY_UVAR_NY),a
+  ret
+XrTDX:
+  db 0,0,1,255
+XrTDY:
+  db 1,255,0,0
+; name table cell (Qx + 2, Qy + 1) -> GotC
+XrGetCell:
+  ld a,(AMY_UVAR_Qy)
+  inc a
+  ld l,a
+  ld h,0
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  ld a,(AMY_UVAR_Qx)
+  add a,2
+  ld e,a
+  ld d,$18
+  add hl,de
+  call XrRdHL
+  ld (AMY_UVAR_GotC),a
+  ret
+; object map $1C00 + Qy * 32 + Qx -> GotOb
+XrGetObj:
+  call XrMapHL
+  call XrRdHL
+  ld (AMY_UVAR_GotOb),a
+  ret
+; Qv -> object map
+XrSetObj:
+  call XrMapHL
+  ld a,l
+  out ($BF),a
+  ld a,h
+  or $40
+  out ($BF),a
+  ld a,(AMY_UVAR_Qv)
+  nop
+  out ($BE),a
+  ret
+XrMapHL:
+  ld a,(AMY_UVAR_Qy)
+  ld l,a
+  ld h,0
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  ld a,(AMY_UVAR_Qx)
+  ld e,a
+  ld d,$1C
+  add hl,de
+  ret
+XrRdHL:
+  ld a,l
+  out ($BF),a
+  ld a,h
+  out ($BF),a
+  ex (sp),hl
+  ex (sp),hl
+  in a,($BE)
+  ret
+XrShot:
+    db $40,$3E,$20,$01,$40,$50,$30,$01,$40,$66,$40,$01,$40,$7C,$60,$01,$50
+XrHit:
+    db $00,$00,$25,$02,$00,$00,$56,$03,$10
+XrKill:
+    db $00,$00,$14,$02,$00,$00,$25,$03,$00,$00,$36,$04,$00,$00,$67,$06,$10
+XrBounce:
+    db $40,$2F,$30,$02,$40,$25,$40,$02,$50
+XrSpar:
+    db $40,$7F,$20,$03,$40,$5F,$20,$03,$40,$40,$20,$03,$40,$30,$40,$06,$50
+XrHurt:
+    db $40,$53,$11,$03,$40,$C5,$21,$03,$40,$3B,$42,$05,$50
+XrDie:
+    db $40,$D6,$10,$06,$40,$1D,$21,$06,$40,$68,$21,$06,$40,$AB,$31,$06,$40,$3B,$42,$0E,$50
+XrLevel:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$0E,$50
+XrStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0C,$50
+XrOver:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$AB,$31,$1E,$50
+
+XrSoundTable:
+    dw XrTuneMel,$702B
+    dw XrTuneBass,$7035
+    dw XrShot,$7049
+    dw XrHit,$703F
+    dw XrKill,$703F
+    dw XrBounce,$7049
+    dw XrSpar,$7049
+    dw XrHurt,$7049
+    dw XrDie,$7049
+    dw XrLevel,$7049
+    dw XrStart,$7049
+    dw XrOver,$7049
+; Four Ways Out (original)
+; Tiny Sound, 7 frames per step
+XrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$26,$2A,$26,$28,$01,$25,$01,$26,$23,$21,$23
+    db $1E,$01,$01,$01,$23,$26,$2A,$2D,$2B,$01,$28,$01,$2A,$26,$25,$21
+    db $23,$01,$01,$01,$26,$01,$2A,$01,$28,$26,$25,$23,$21,$01,$25,$01
+    db $28,$26,$25,$21,$23,$26,$2A,$26,$25,$21,$1E,$21,$23,$01,$2A,$01
+    db $2F,$01,$00,$01
+    db $FF
+XrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$10,$01,$0B,$01
+    db $12,$01,$0D,$01,$0E,$01,$09,$01,$10,$01,$0B,$01,$09,$01,$10,$01
+    db $12,$01,$0D,$01,$0B,$01,$12,$01,$07,$01,$09,$01,$0B,$01,$12,$01
+    db $0B,$01,$00,$01
+    db $FF
+}
