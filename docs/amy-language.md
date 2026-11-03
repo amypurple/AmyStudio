@@ -244,7 +244,7 @@ asset codec picture bitmap sprite16 cartridge bank overlay screen display nmi gr
 text cls print put fill vpoke vpeek vram decompress copy define show sprites sprite
 hitbox hide clear update swap wipe play stop mute sound song dsound tripcm enable
 disable reset spinner spinners random floor fraction highbyte lowbyte highword lowword
-sqrt log exp format fixed ufixed fixed32 fp5 bool bcd u8 u16 u32 i8 i16 i32
+sqrt log exp format fixed ufixed fixed32 fp5 float bool bcd u8 u16 u32 i8 i16 i32
 joypad keypad vdp status frame on wait choose fire true false
 ```
 
@@ -797,6 +797,10 @@ for example `const MaxClouds = 4` followed by `u8 CloudX[MaxClouds]`.
 
 The `N` in `bcd digits N` may likewise be a literal or named numeric constant from
 1 to 12. It determines RAM layout at compile time and therefore cannot be a variable.
+
+BCD values with different declared widths may be compared directly. Amy compares them
+numerically by extending the shorter value with leading zero digits; storage width does
+not change the value or make the comparison invalid.
 
 Global `bool` variables are bit-packed: up to 8 globals share one byte. Source code uses them as normal named flags.
 Comparisons may be assigned directly to a flag, for example `Hit = Row > 4`; the result is normalized to `true` or `false`.
@@ -1670,7 +1674,7 @@ Result = Flags >> ShiftCount
 ```
 
 Use the canonical symbols `&`, `|`, `^`, and `~` in value expressions. For
-compatibility with traditional BASIC listings, `and` and `or` are accepted as
+compatibility with traditional BASIC listings, `and`, `or`, and `xor` are accepted as
 bitwise aliases when the surrounding assignment is numeric. In `if`, `while`,
 and related control flow, the words keep their short-circuit boolean meaning.
 
@@ -2499,13 +2503,13 @@ runtime string type.
 
 Plain `str$(Value)` emits only the sign and significant decimal characters:
 `str$(20)` is `20`, not `00020`, and `"A" + str$(20) + "B"` is `A20B`.
-When assigned to a fixed `u8` buffer, unused cells at the end are filled with spaces.
+When assigned into a fixed buffer, unused trailing cells are filled with spaces.
 
 For scoreboard-style fields, use explicit padding:
 
 - `str$(Value, digits N)` or `digits$(Value, N)` writes a zero-padded field
 - `str$(Value, width N)` or `width$(Value, N)` writes a right-aligned field using the configured pad tile
-- `N` is a compile-time literal from 1 through 16; use a fixed maximum width when the value itself is dynamic
+- `N` is currently a literal field width from 1 to 16; runtime-variable field widths are rejected explicitly
 - this is Amy's readable equivalent of CVBasic's compact `<N>` / `<.N>` print prefixes
 
 Numeric glyph output can be customized globally:
@@ -2532,6 +2536,7 @@ put TitleLine count 9 at 8,8
 put TitleLine at 8,8
 put TitleLine centered at 20
 Var = get char at X,Y
+return get char at X,Y  ' inside a function returning u8/i8
 fill Char count N at X,Y
 ```
 
@@ -3025,7 +3030,8 @@ accept byte-sized runtime expressions, including record and overlay-qualified fi
 Tile gameplay collision uses pixel coordinates, not name-table coordinates:
 - `get char at TileX,TileY` reads the visible name table at tile coordinates
   `0..31,0..23` into any byte destination, including indexed arrays, local
-  arrays, and overlay-qualified fields.
+  arrays, and overlay-qualified fields. A byte function may return the read
+  tile directly with `return get char at TileX,TileY`.
 - `tile under PixelX,PixelY` converts visible pixel coordinates to tile
   coordinates with `>> 3`, reads the tile there, and tests it against a
   declared `tile type`.
@@ -3671,6 +3677,7 @@ false, and the right side of `or` is skipped when the left side is true.
 | `put Name centered at Y` | Write a known-length tile row centered |
 | `put Buffer frame size W,H at X,Y` | Write a tile frame |
 | `Var = get char at X,Y` | Read one tile |
+| `return get char at X,Y` | Read and return one tile from a byte function |
 | `Buffer = get count N at X,Y` | Read a tile row |
 | `Buffer = get frame size W,H at X,Y` | Read a tile frame |
 | `replace TypeOrValue with Char in Buffer frame size W,H` | Replace tiles in a RAM frame buffer |

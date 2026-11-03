@@ -1,0 +1,1085 @@
+cartridge "CELL RUNNER/COMPUTE!'S GAZETTE/1986"
+
+' CELL RUNNER
+' A ColecoVision game based on "Cell Runner" by John Krutch, COMPUTE!'s
+' Gazette disk of September 1986 (Commodore 64 machine language at $C000,
+' started by a four-line BASIC boot; the author's name is in the program:
+' "CELL RUNNER JOHN KRUTCH 1986"). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's, read from its
+' machine code (orig/dis.txt) and watched in a C64 emulator; the game is
+' rebuilt for the ColecoVision with hexagonal tile cells, a smooth runner
+' sprite, a title tune and sound.
+'
+' The game: a field of 8 x 10 hexagonal cells lies between a start bar at
+' the bottom and a goal bar at the top. Run up from the start bar to the
+' goal bar, moving only onto cells that are there. About every second the
+' field changes: a new random pattern of cells is shown, and if the cell
+' you stand on is gone you fall down to the next cell below (or to the
+' start bar). 30 seconds a level; reach the goal and the seconds left plus
+' 10 are added to the score. 40 levels, each with a quicker change. Hold
+' the stick up for 20 tries in a row and you are sent back to the start
+' (let go now and then).
+'
+' From the original (orig/dis.txt): the pattern table at $C759 (168
+' bytes, 1 = no cell); a field is the 80 bytes from a random offset 0-87,
+' never the same offset twice in a row ($C43D); the field is redrawn by a
+' CIA 2 timer interrupt every 611 x (1536 - 32 x (level - 1)) cycles
+' ($C520, about 57 frames at level 1); a move is refused into a missing
+' cell; standing on a missing cell drops you one cell at a time
+' ($C465); the up count ($C821) goes up by one per pass with the stick
+' straight up, back to 0 on any other reading, and at 20 puts you on the
+' start bar ($C422); the time is 30 - the CIA clock's seconds ($C575), out
+' of time at 0; a level adds the seconds left + 10 in BCD ($C5C9); the
+' cell colour goes yellow, grey, cyan, white, green and round again
+' ($C4B0); after level 40 the game ends ("YOU'RE OUT-- GOOD WORK.");
+' start place: the start bar under the fourth column; diagonals move
+' sideways only; a warning blip at each change in the last 10 seconds.
+'
+' Liberties: one move every 5 frames while the stick is held, the runner
+' gliding from cell to cell (the C64 moved a cell about every 1.5 frames,
+' too quick to steer); so the up count is one per move tried, 20 tries
+' (blocked tries count, as on the C64); the field changes every
+' 120 - 2 x (level - 1) frames, about twice the C64's period, from 120 to
+' 42, to match the slower moves; cells that will vanish at the next change
+' crumble 18 frames before (the C64 gave no warning); a changed field is
+' drawn in two halves on two frames (the lower half one frame late); a fall glides 3
+' frames a cell; a new field is never the old one, as the C64; best score
+' kept; sounds for steps, falls and changes, a title tune and a credits
+' page; "OUT OF TIME" / "GOOD WORK" then the title (the C64 said PRESS
+' THE FIRE BUTTON TO PLAY AGAIN).
+'
+' Controls: joystick (either controller): up, down, left, right move one
+' cell; on the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TCell00 = 128
+const TCell01 = 129
+const TCell02 = 130
+const TCell10 = 131
+const TCell11 = 132
+const TCell12 = 133
+const TSol000 = 134
+const TSol001 = 135
+const TSol002 = 136
+const TSol010 = 137
+const TSol011 = 138
+const TSol012 = 139
+const TSol100 = 140
+const TSol101 = 141
+const TSol102 = 142
+const TSol110 = 143
+const TSol111 = 144
+const TSol112 = 145
+const TSol200 = 146
+const TSol201 = 147
+const TSol202 = 148
+const TSol210 = 149
+const TSol211 = 150
+const TSol212 = 151
+const TSol300 = 152
+const TSol301 = 153
+const TSol302 = 154
+const TSol310 = 155
+const TSol311 = 156
+const TSol312 = 157
+const TSol400 = 158
+const TSol401 = 159
+const TSol402 = 160
+const TSol410 = 161
+const TSol411 = 162
+const TSol412 = 163
+const TCru000 = 164
+const TCru001 = 165
+const TCru002 = 166
+const TCru010 = 167
+const TCru011 = 168
+const TCru012 = 169
+const TCru100 = 170
+const TCru101 = 171
+const TCru102 = 172
+const TCru110 = 173
+const TCru111 = 174
+const TCru112 = 175
+const TCru200 = 176
+const TCru201 = 177
+const TCru202 = 178
+const TCru210 = 179
+const TCru211 = 180
+const TCru212 = 181
+const TCru300 = 182
+const TCru301 = 183
+const TCru302 = 184
+const TCru310 = 185
+const TCru311 = 186
+const TCru312 = 187
+const TCru400 = 188
+const TCru401 = 189
+const TCru402 = 190
+const TCru410 = 191
+const TCru411 = 192
+const TCru412 = 193
+const TBar = 194
+const TGoal = 195
+const TTb = 196
+const TTc = 197
+const SRun1 = 0
+const SRun2 = 4
+const SOut1 = 8
+const SOut2 = 12
+const NTiles8 = 560
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndBump = 4
+const SndFall = 5
+const SndShuffle = 6
+const SndWarn = 7
+const SndReset = 8
+const SndGoal = 9
+const SndStart = 10
+const SndOver = 11
+const SndWin = 12
+const NSpr = 2
+const StepT = 5
+const FallT = 3
+const Warn = 18
+const UpMax = 20
+const NLevels = 40
+
+' a screen position in pixels
+record Pos:
+  u8 X
+  u8 Y
+end record
+
+data TilePat bytes
+  $00,$05,$08,$10,$20,$40,$00,$40
+  $00,$AA,$00,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$00,$AA,$00
+  $02,$00,$02,$04,$08,$10,$A0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$03,$06,$0D,$E4,$C9,$4C,$A5
+  $00,$92,$24,$49,$92,$24,$49,$9A
+  $00,$A0,$60,$D8,$B4,$93,$98,$B4
+  $16,$92,$A4,$C9,$0D,$0B,$06,$00
+  $2C,$49,$92,$24,$49,$92,$24,$00
+  $2C,$25,$49,$93,$D8,$B0,$60,$00
+  $00,$03,$06,$0D,$E4,$C9,$4C,$A5
+  $00,$92,$24,$49,$92,$24,$49,$9A
+  $00,$A0,$60,$D8,$B4,$93,$98,$B4
+  $16,$92,$A4,$C9,$0D,$0B,$06,$00
+  $2C,$49,$92,$24,$49,$92,$24,$00
+  $2C,$25,$49,$93,$D8,$B0,$60,$00
+  $00,$03,$06,$0D,$E4,$C9,$4C,$A5
+  $00,$92,$24,$49,$92,$24,$49,$9A
+  $00,$A0,$60,$D8,$B4,$93,$98,$B4
+  $16,$92,$A4,$C9,$0D,$0B,$06,$00
+  $2C,$49,$92,$24,$49,$92,$24,$00
+  $2C,$25,$49,$93,$D8,$B0,$60,$00
+  $00,$03,$06,$0D,$E4,$C9,$4C,$A5
+  $00,$92,$24,$49,$92,$24,$49,$9A
+  $00,$A0,$60,$D8,$B4,$93,$98,$B4
+  $16,$92,$A4,$C9,$0D,$0B,$06,$00
+  $2C,$49,$92,$24,$49,$92,$24,$00
+  $2C,$25,$49,$93,$D8,$B0,$60,$00
+  $00,$03,$06,$0D,$E4,$C9,$4C,$A5
+  $00,$92,$24,$49,$92,$24,$49,$9A
+  $00,$A0,$60,$D8,$B4,$93,$98,$B4
+  $16,$92,$A4,$C9,$0D,$0B,$06,$00
+  $2C,$49,$92,$24,$49,$92,$24,$00
+  $2C,$25,$49,$93,$D8,$B0,$60,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $81,$60,$00,$00,$00,$00,$81,$00
+  $80,$60,$00,$00,$00,$00,$81,$00
+end data
+data TileCol bytes
+  $01,$41,$41,$41,$41,$41,$01,$41
+  $01,$14,$01,$01,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$41,$01
+  $01,$41,$01,$01,$01,$01,$41,$01
+  $01,$01,$01,$01,$01,$01,$41,$01
+  $41,$01,$41,$41,$41,$41,$41,$01
+  $01,$F1,$1F,$1B,$1B,$1B,$1B,$1B
+  $01,$0F,$0F,$0B,$0B,$0B,$0B,$0B
+  $01,$F1,$F1,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1A,$A1,$01
+  $0B,$0B,$0B,$0B,$0B,$0A,$0A,$01
+  $1B,$1B,$1B,$1B,$1B,$A1,$A1,$01
+  $01,$F1,$1F,$1E,$1E,$1E,$1E,$1E
+  $01,$0F,$0F,$0E,$0E,$0E,$0E,$0E
+  $01,$F1,$F1,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$14,$41,$01
+  $0E,$0E,$0E,$0E,$0E,$04,$04,$01
+  $1E,$1E,$1E,$1E,$1E,$41,$41,$01
+  $01,$F1,$1F,$17,$17,$17,$17,$17
+  $01,$0F,$0F,$07,$07,$07,$07,$07
+  $01,$F1,$F1,$17,$17,$17,$17,$17
+  $17,$17,$17,$17,$17,$14,$41,$01
+  $07,$07,$07,$07,$07,$04,$04,$01
+  $17,$17,$17,$17,$17,$41,$41,$01
+  $01,$E1,$1E,$1F,$1F,$1F,$1F,$1F
+  $01,$0E,$0E,$0F,$0F,$0F,$0F,$0F
+  $01,$E1,$E1,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1E,$E1,$01
+  $0F,$0F,$0F,$0F,$0F,$0E,$0E,$01
+  $1F,$1F,$1F,$1F,$1F,$E1,$E1,$01
+  $01,$F1,$1F,$13,$13,$13,$13,$13
+  $01,$0F,$0F,$03,$03,$03,$03,$03
+  $01,$F1,$F1,$13,$13,$13,$13,$13
+  $13,$13,$13,$13,$13,$12,$21,$01
+  $03,$03,$03,$03,$03,$02,$02,$01
+  $13,$13,$13,$13,$13,$21,$21,$01
+  $01,$F1,$F1,$B1,$1B,$1B,$B1,$1B
+  $01,$1F,$1F,$1B,$1B,$1B,$1B,$1B
+  $01,$F1,$F1,$B1,$B1,$1B,$B1,$B1
+  $B1,$1B,$1B,$1B,$B1,$A1,$A1,$01
+  $1B,$1B,$1B,$1B,$1B,$1A,$1A,$01
+  $B1,$1B,$1B,$1B,$B1,$A1,$A1,$01
+  $01,$F1,$F1,$E1,$1E,$1E,$E1,$1E
+  $01,$1F,$1F,$1E,$1E,$1E,$1E,$1E
+  $01,$F1,$F1,$E1,$E1,$1E,$E1,$E1
+  $E1,$1E,$1E,$1E,$E1,$41,$41,$01
+  $1E,$1E,$1E,$1E,$1E,$14,$14,$01
+  $E1,$1E,$1E,$1E,$E1,$41,$41,$01
+  $01,$F1,$F1,$71,$17,$17,$71,$17
+  $01,$1F,$1F,$17,$17,$17,$17,$17
+  $01,$F1,$F1,$71,$71,$17,$71,$71
+  $71,$17,$17,$17,$71,$41,$41,$01
+  $17,$17,$17,$17,$17,$14,$14,$01
+  $71,$17,$17,$17,$71,$41,$41,$01
+  $01,$E1,$E1,$F1,$1F,$1F,$F1,$1F
+  $01,$1E,$1E,$1F,$1F,$1F,$1F,$1F
+  $01,$E1,$E1,$F1,$F1,$1F,$F1,$F1
+  $F1,$1F,$1F,$1F,$F1,$E1,$E1,$01
+  $1F,$1F,$1F,$1F,$1F,$1E,$1E,$01
+  $F1,$1F,$1F,$1F,$F1,$E1,$E1,$01
+  $01,$F1,$F1,$31,$13,$13,$31,$13
+  $01,$1F,$1F,$13,$13,$13,$13,$13
+  $01,$F1,$F1,$31,$31,$13,$31,$31
+  $31,$13,$13,$13,$31,$21,$21,$01
+  $13,$13,$13,$13,$13,$12,$12,$01
+  $31,$13,$13,$13,$31,$21,$21,$01
+  $01,$0F,$05,$05,$05,$05,$04,$01
+  $01,$0F,$05,$B5,$B5,$05,$04,$01
+  $1B,$FB,$0B,$0B,$0B,$0A,$1A,$01
+  $17,$F7,$07,$07,$07,$04,$14,$01
+end data
+data SpritePat bytes
+  $00,$03,$03,$01,$07,$0B,$13,$03,$03,$06,$0C,$08,$18,$00,$00,$00
+  $00,$80,$80,$00,$C0,$A0,$90,$80,$80,$C0,$60,$20,$30,$00,$00,$00
+  $00,$03,$03,$01,$03,$07,$05,$03,$03,$03,$03,$03,$06,$00,$00,$00
+  $00,$80,$80,$00,$80,$C0,$C0,$80,$80,$00,$00,$80,$00,$00,$00,$00
+  $07,$07,$07,$0F,$1F,$3F,$3F,$3F,$0F,$1F,$1F,$3E,$3C,$3C,$00,$00
+  $C0,$C0,$C0,$E0,$F0,$F8,$F8,$F8,$E0,$F0,$F0,$F8,$78,$78,$00,$00
+  $07,$07,$07,$07,$0F,$0F,$0F,$0F,$07,$07,$07,$0F,$0F,$0F,$00,$00
+  $C0,$C0,$C0,$C0,$E0,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00
+end data
+
+data CellPat bytes
+  0,0,1,0,0,1,1,0,0,0,1,0,0,0,1,1,0,0,0,1,0,1,1,0
+  0,1,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,1,1,0,0,0,0,1
+  0,1,1,0,1,0,0,0,1,1,0,0,1,0,0,1,1,0,1,1,0,0,1,0
+  0,1,0,0,0,1,0,0,1,0,0,1,1,0,1,1,0,0,0,1,0,1,1,0
+  1,1,0,1,1,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,1,0
+  1,0,1,0,1,0,1,0,1,0,0,0,1,1,0,0,0,1,1,1,0,1,1,0
+  1,1,0,1,0,1,1,0,0,0,1,0,0,1,1,0,1,1,0,0,0,0,0,1
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$C4,$C4,$C4,$20,$C4,$C4,$C4,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$C4,$20,$20,$20,$C4,$C4,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$C4,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$C4,$C4,$C4,$20,$C4,$C4,$C4,$20,$C4,$C4,$C4,$20,$C4,$C4,$C4,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$C5,$C5,$20,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$C5,$C5,$20,$C5,$C5,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$C5,$C5,$20,$C5,$C5,$C5,$20,$C5,$20,$20,$20,$C5,$20,$C5,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$C5,$C5,$20,$20,$C5,$20,$C5,$20,$C5,$C5,$C5,$20,$C5,$C5,$C5,$20,$C5,$C5,$20,$20,$C5,$C5,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$C5,$C5,$20,$C5,$C5,$C5,$20,$C5,$20,$20,$20,$C5,$20,$C5,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$C5,$20,$C5,$20,$C5,$C5,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$20,$C5,$C5,$C5,$20,$C5,$20,$C5,$20,$20,$20,$20
+end data
+
+' the runner's pixel row for each place: 0 goal bar, 1-10 cell rows,
+' 11 start bar
+' the first tile of a cell in each state: 0 missing, 1-5 there (level
+' colour), 6-10 crumbling
+data StateTile bytes
+  128,134,140,146,152,158,164,170,176,182,188
+end data
+
+data PixY bytes
+  6,16,32,48,64,80,96,112,128,144,160,170
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Board[80]
+u8 BufT[24]
+u8 BufB[24]
+Pos From
+Pos Here
+u8 Pc = 3
+u8 Pr = 11
+u8 Gt = 0
+u8 GLen = 1
+u8 UpHeld = 0
+u8 ShufT = 0
+u8 Per = 120
+u8 Secs = 30
+u8 Sub60 = 60
+u8 Off = 0
+u8 NextOff = 0
+u8 Level = 1
+u8 Col = 0
+u8 Crumb = 0
+u8 Half = 0
+u8 Over = 0
+u8 Won = 0
+u8 Stk = 0
+u8 Pure = 0
+u8 Mix = 0
+bcd digits 4 TimeB = 30
+bcd digits 4 Score = 0
+bcd digits 4 Best = 0
+bcd digits 4 Ten = 10
+' counts for the bots
+u8 Moves = 0
+u8 Falls = 0
+u8 Resets = 0
+u8 Shuffles = 0
+u8 InPlay = 0
+' input and menus
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+' loop counters (never shared with the helpers)
+u8 Rr = 0
+u8 Cc = 0
+u8 Ws = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u16 W16 = 0
+' DrawBoard's place in Board (CrRow moves it on by 8 a row)
+u8 Dix = 0
+
+  tile screen
+  set sound table CrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadStick
+  PlayStep
+  DrawRunner
+  if Won = 1 then LevelDone
+  if Over = 0 then goto play_loop
+
+  ' the end: the message, then back to the title on a press
+  InPlay = 0
+  mute all
+  TzOn = 0
+  if Score > Best then Best = Score
+  print at 26,16, Best
+  print at 4,10, "                    "
+  if Over = 1 then
+    print at 4,11, "   OUT OF TIME!     "
+    play sound SndOver
+  else
+    print at 4,11, " GOOD WORK! ALL 40  "
+    play sound SndWin
+  end if
+  print at 4,12, "                    "
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the clock, the field's change, the runner
+sub PlayStep:
+  Pure = 0
+  if Stk = 1 then Pure = 1
+  if Pure = 0 then UpHeld = 0
+  if Half = 1 then
+    DrawRows(5, 9)
+    Half = 0
+  end if
+  dec Sub60
+  if Sub60 = 0 then
+    Sub60 = 60
+    dec Secs
+    dec TimeB
+    ShowTime
+    if Secs = 0 then
+      Over = 1
+      return
+    end if
+  end if
+  dec ShufT
+  if ShufT = Warn then
+    NextOff = PickOff()
+    Crumb = 1
+    DrawRows(0, 4)
+    Half = 1
+  end if
+  if ShufT = 0 then
+    Off = NextOff
+    LoadBoard
+    Crumb = 0
+    DrawRows(0, 4)
+    Half = 1
+    ShufT = Per
+    inc Shuffles
+    if Secs <= 10 then
+      play sound SndWarn
+    else
+      play sound SndShuffle
+    end if
+  end if
+  if Gt > 0 then dec Gt
+  if Gt > 0 then return
+  if Pr = 0 then
+    Won = 1
+    return
+  end if
+  V = Solid(Pc, Pr)
+  if V = 0 then
+    MoveTo(Pc, Pr + 1, FallT)
+    inc Falls
+    play sound SndFall
+    return
+  end if
+  TryMove
+  return
+end sub
+
+' a move tried with the stick (Stk: 1 up, 2 down, 4 left, 8 right)
+sub TryMove:
+  select case Stk
+    case 1
+      inc UpHeld
+      if UpHeld = UpMax then
+        ResetRunner
+        return
+      end if
+      K = Pr - 1
+      V = Solid(Pc, K)
+      if V = 1 then
+        MoveTo(Pc, K, StepT)
+      else
+        Gt = StepT
+      end if
+    case 2
+      if Pr = 11 then return
+      K = Pr + 1
+      V = Solid(Pc, K)
+      if V = 1 then
+        MoveTo(Pc, K, StepT)
+      else
+        Gt = StepT
+      end if
+    case 4 to 6
+      if Pc = 0 then return
+      K = Pc - 1
+      V = Solid(K, Pr)
+      if V = 1 then
+        MoveTo(K, Pr, StepT)
+      else
+        Gt = StepT
+      end if
+    case 8 to 10
+      if Pc = 7 then return
+      K = Pc + 1
+      V = Solid(K, Pr)
+      if V = 1 then
+        MoveTo(K, Pr, StepT)
+      else
+        Gt = StepT
+      end if
+  end select
+  return
+end sub
+
+' 1 when place (C, R) can be stood on: the bars always, a cell when there
+function Solid(u8 C, u8 R) as u8
+  u8 Res = 1
+  u8 Ix = 0
+  if R >= 1 then
+    if R <= 10 then
+      Ix = R - 1
+      Ix = Ix * 8 + C
+      if Board[Ix] = 1 then Res = 0
+    end if
+  end if
+  return Res
+
+' start a glide to (C, R) lasting N frames
+sub MoveTo(u8 C, u8 R, u8 N):
+  From.X = PlaceX(Pc)
+  From.Y = PixY[Pr]
+  Pc = C
+  Pr = R
+  Gt = N
+  GLen = N
+  if N = StepT then
+    inc Moves
+    play sound SndStep
+  end if
+  return
+end sub
+
+function PlaceX(u8 C) as u8
+  return C * 24 + 20
+
+sub ResetRunner:
+  Pc = 3
+  Pr = 11
+  Gt = 0
+  UpHeld = 0
+  inc Resets
+  play sound SndReset
+  return
+end sub
+
+' a new field offset 0-87, never the current one
+function PickOff as u8
+  u8 R = 0
+  R = random(0, 255)
+  R = R + Mix
+  R = R % 88
+  if R = Off then
+    inc R
+    if R = 88 then R = 0
+  end if
+  return R
+
+sub LoadBoard:
+  copy CellPat + Off count 80 to Board
+  return
+end sub
+
+' the field: 10 rows of 8 hexagons, 3 x 2 tiles each; with Crumb set, the
+' cells missing in the next field crumble. CrRow (Z80, below) builds one
+' row's two tile lines: the same work in Amy took 100,000 cycles a field,
+' more than a frame.
+sub DrawBoard:
+  DrawRows(0, 9)
+  return
+end sub
+
+' rows R0 to R1 of the field (in play: the top half in the frame of the
+' change, the bottom half in the next, to stay inside one frame)
+sub DrawRows(u8 R0, u8 R1):
+  Dix = R0 * 8
+  W16 = R0 * 64
+  W16 = W16 + 66
+  for Rr = R0 to R1
+    call asm CrRow
+    copy BufT count 24 to vram.name + W16
+    W16 = W16 + 32
+    copy BufB count 24 to vram.name + W16
+    W16 = W16 + 32
+  next
+  return
+end sub
+
+sub DrawRunner:
+  i16 D = 0
+  u8 Pat = 0
+  Here.X = PlaceX(Pc)
+  Here.Y = PixY[Pr]
+  if Gt > 0 then
+    D = From.X
+    D = D - Here.X
+    D = D * Gt
+    D = D / GLen
+    Here.X = Here.X + D
+    D = From.Y
+    D = D - Here.Y
+    D = D * Gt
+    D = D / GLen
+    Here.Y = Here.Y + D
+  end if
+  Pat = SRun1
+  V = Tick & 8
+  if Gt > 0 then
+    if V > 0 then Pat = SRun2
+  end if
+  K = Pat + 8
+  set sprite 0 to Here.Y - 1,Here.X,Pat,8
+  set sprite 1 to Here.Y - 1,Here.X,K,1
+  update sprites
+  return
+end sub
+
+sub ShowTime:
+  print Secs at 26,8 digits 2
+  return
+end sub
+
+sub ShowStatus:
+  print at 26,3, "LEV"
+  print Level at 26,4 digits 2
+  print at 26,7, "TIME"
+  ShowTime
+  print at 26,11, "PTS"
+  print at 26,12, Score
+  print at 26,15, "BEST"
+  print at 26,16, Best
+  return
+end sub
+
+' the level's start: colour, speed, clock, the runner on the start bar
+sub StartLevel:
+  Col = Level - 1
+  Col = Col % 5
+  Per = 122 - Level * 2
+  ShufT = Per
+  Secs = 30
+  TimeB = 30
+  Sub60 = 60
+  Crumb = 0
+  Half = 0
+  Pc = 3
+  Pr = 11
+  Gt = 0
+  UpHeld = 0
+  return
+end sub
+
+' the goal bar reached: seconds left + 10, then the next level (or the end)
+sub LevelDone:
+  Score += TimeB
+  Score += Ten
+  print at 26,12, Score
+  play sound SndGoal
+  for Ws = 1 to 50
+    Frame1
+    DrawRunner
+  next
+  if Level = NLevels then
+    Over = 2
+    return
+  end if
+  inc Level
+  StartLevel
+  print Level at 26,4 digits 2
+  ShowTime
+  DrawBoard
+  Frame1
+  Won = 0
+  return
+end sub
+
+sub DrawBars:
+  fill TBar count 24 at 2,22
+  for J = 0 to 7
+    K = J * 3 + 2
+    put char TBar at K,1
+    put char TGoal at K + 1,1
+    put char TBar at K + 2,1
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  DrawBars
+  Level = 1
+  Score = 0
+  Over = 0
+  Won = 0
+  Moves = 0
+  Falls = 0
+  Resets = 0
+  Shuffles = 0
+  Off = PickOff()
+  LoadBoard
+  StartLevel
+  DrawBoard
+  ShowStatus
+  DrawRunner
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+function PadBits as u8
+  u8 B = 0
+  if joypad(1).up then B = B | 1
+  if joypad(1).down then B = B | 2
+  if joypad(1).left then B = B | 4
+  if joypad(1).right then B = B | 8
+  if joypad(1).fire then B = B | 16
+  if joypad(2).up then B = B | 1
+  if joypad(2).down then B = B | 2
+  if joypad(2).left then B = B | 4
+  if joypad(2).right then B = B | 8
+  if joypad(2).fire then B = B | 16
+  return B
+
+' the stick (Stk, directions only) and a fresh button (Press)
+sub ReadStick:
+  V = PadBits()
+  Stk = V & 15
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: CELL RUNNER in block letters, a runner going to and fro,
+' PLAY / CREDITS, the tune once
+sub TitlePage:
+  NewScreen
+  print at 3,1, "COMPUTE!'S GAZETTE 9/1986"
+  copy TitleMap count 352 to vram.name + 64
+  print at 4,14, "RUN UP TO THE GOAL BAR"
+  print at 4,15, "ON THE CELLS THAT ARE"
+  print at 4,16, "THERE. THEY CHANGE!"
+  print at 12,18, "PLAY"
+  print at 12,19, "CREDITS"
+  print at 10,20, "BEST"
+  print at 15,20, Best
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 455
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadStick
+  TitleAnim
+  V = Stk & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a runner goes to and fro under the letters
+sub TitleAnim:
+  u8 Px = 0
+  u8 Pat = 0
+  Px = Tick
+  if Px >= 128 then Px = 255 - Px
+  Px = Px + 60
+  Pat = SRun1
+  V = Tick & 8
+  if V > 0 then Pat = SRun2
+  K = Pat + 8
+  set sprite 0 to 167,Px,Pat,8
+  set sprite 1 to 167,Px,K,15
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,18
+  put char 32 at 10,19
+  J = Menu + 18
+  put char 62 at 10,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "CELL RUNNER"
+  print at 2,5, "BASED ON CELL RUNNER BY"
+  print at 2,6, "JOHN KRUTCH, FROM THE"
+  print at 2,7, "COMPUTE!'S GAZETTE DISK OF"
+  print at 2,8, "SEPTEMBER 1986 (COMMODORE"
+  print at 2,9, "64 MACHINE LANGUAGE)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: HONEYCOMB DASH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; CrRow: one board row (8 cells from Board[Dix]) into BufT / BufB.
+; State 0 missing, Col + 1 there, Col + 6 there but missing in the next
+; field (CellPat[NextOff + index]) while Crumb = 1; tiles from StateTile.
+CrRow:
+    exx
+    ld hl,AMY_UVAR_BufT
+    ld bc,AMY_UVAR_BufB
+    exx
+    ld a,(AMY_UVAR_Dix)
+    ld c,a
+    ld b,8
+CrRowCell:
+    ld hl,AMY_UVAR_Board
+    ld e,c
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    or a
+    ld a,0
+    jr nz,CrRowSet
+    ld a,(AMY_UVAR_Col)
+    inc a
+    ld e,a
+    ld a,(AMY_UVAR_Crumb)
+    or a
+    jr z,CrRowSetE
+    ld a,(AMY_UVAR_NextOff)
+    add a,c
+    push de
+    ld e,a
+    ld hl,AMY_UDATA_CellPat
+    add hl,de
+    pop de
+    ld a,(hl)
+    or a
+    ld a,e
+    jr z,CrRowSet
+    add a,5
+    jr CrRowSet
+CrRowSetE:
+    ld a,e
+CrRowSet:
+    ld hl,AMY_UDATA_StateTile
+    ld e,a
+    add hl,de
+    ld a,(hl)
+    exx
+    ld (hl),a
+    inc hl
+    add a,3
+    ld (bc),a
+    inc bc
+    sub 2
+    ld (hl),a
+    inc hl
+    add a,3
+    ld (bc),a
+    inc bc
+    sub 2
+    ld (hl),a
+    inc hl
+    add a,3
+    ld (bc),a
+    inc bc
+    exx
+    inc c
+    djnz CrRowCell
+    ld a,c
+    ld (AMY_UVAR_Dix),a
+    ret
+CrStep:
+    db $40,$47,$60,$01,$40,$55,$80,$01,$50
+CrBump:
+    db $40,$F9,$52,$02,$50
+CrFall:
+    db $40,$7F,$30,$02,$40,$A0,$40,$02,$40,$D6,$50,$02,$50
+CrShuffle:
+    db $00,$00,$76,$02,$00,$00,$A6,$02,$10
+CrWarn:
+    db $40,$40,$20,$03,$40,$40,$F0,$03,$50
+CrReset:
+    db $40,$1D,$21,$04,$40,$AB,$31,$04,$40,$3B,$42,$08,$50
+CrGoal:
+    db $40,$D6,$20,$03,$40,$8F,$20,$03,$40,$6B,$20,$03,$40,$AA,$20,$03,$40,$71,$20,$03,$40,$55,$20,$03
+    db $40,$8F,$20,$03,$40,$5F,$20,$03,$40,$47,$10,$0C,$50
+CrStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$30,$0C,$50
+CrOver:
+    db $40,$AA,$20,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$53,$31,$1E,$50
+CrWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$08,$40,$8F,$20,$06,$40,$6B,$10,$14
+    db $50
+
+CrSoundTable:
+    dw CrTuneMel,$702B
+    dw CrTuneBass,$7035
+    dw CrStep,$7049
+    dw CrBump,$7049
+    dw CrFall,$7049
+    dw CrShuffle,$703F
+    dw CrWarn,$7049
+    dw CrReset,$7049
+    dw CrGoal,$7049
+    dw CrStart,$7049
+    dw CrOver,$7049
+    dw CrWin,$7049
+; Honeycomb Dash (original)
+; Tiny Sound, 7 frames per step
+CrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$26,$2A,$01,$28,$26,$25,$01,$23,$25,$26,$28
+    db $2A,$01,$01,$01,$2B,$2A,$28,$01,$26,$28,$2A,$01,$28,$26,$25,$21
+    db $23,$01,$01,$01,$23,$26,$2A,$2F,$2D,$2A,$26,$01,$28,$2B,$2A,$28
+    db $26,$25,$26,$01,$25,$01,$21,$01,$25,$28,$26,$25,$23,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+CrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0E,$01,$12,$01,$04,$01,$0B,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $0B,$01,$12,$01,$0B,$01,$12,$01,$0E,$01,$09,$01,$04,$01,$0B,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$06,$01,$0D,$01,$0B,$01,$12,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

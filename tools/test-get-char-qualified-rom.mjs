@@ -25,6 +25,7 @@ end overlay
 u8 Values[2]
 u8 Index = 1
 u8 LocalResult = 0
+u8 ReturnResult = 0
 u8 JoyBefore = 0
 u8 JoyAfter = 0
 u8 Done = 0
@@ -34,16 +35,21 @@ sub start:
   put char 41 at 0,0
   put char 42 at 1,0
   put char 43 at 2,0
+  put char 44 at 3,0
   screen on
   wait
   JoyBefore = joypad(1).up
   Values[Index] = get char at 0,0
   WorkRam.Game.Tiles[Index] = get char at 1,0
   ReadLocal
+  ReturnResult = ReadReturned(3,0)
   JoyAfter = joypad(1).up
   Done = 1
   loop forever
 end sub
+
+function ReadReturned(u8 X, u8 Y) as u8
+  return get char at X,Y
 
 sub ReadLocal:
   u8 LocalTiles[2]
@@ -82,6 +88,7 @@ try {
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Values") + 1, 1)[0], 41, `${profile}: indexed array`);
       assert.equal(core.readRam(addressOf(asm, "AMY_SCENE_Game_Tiles") + 1, 1)[0], 42, `${profile}: overlay field`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_LocalResult"), 1)[0], 43, `${profile}: local array`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_ReturnResult"), 1)[0], 44, `${profile}: function return`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_JoyBefore"), 1)[0], 1, `${profile}: joystick before get char`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_JoyAfter"), 1)[0], 1, `${profile}: get char must not overwrite joystick state`);
     } finally {

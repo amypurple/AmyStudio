@@ -1,0 +1,1435 @@
+cartridge "BOOMERANG/COMPUTE'S GAZETTE/1989"
+
+' BOOMERANG
+' A ColecoVision game based on "Boomerang", COMPUTE!'s Gazette disk,
+' August 1989 (Commodore 64 machine language, BOOMERANG, SYS6365; no
+' author is named in the program or on the disk). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/code.dis and orig/main.dis, and watched in jsc64,
+' orig/c64-*.png), the game is built for the ColecoVision: grass and
+' stone tiles, smooth sprites, spinning boomerangs, sound effects.
+'
+' The game: Blue and Red stand at the two ends of a walled field. Each
+' has one boomerang. Press the button to throw it the way you last moved.
+' It flies straight, twice as fast as you walk, until it hits a wall;
+' there it drops and lies. While it is in the air and within 20 columns
+' and 14 rows of you, the button sends it off again the way you are now
+' facing: steer it round the maze. Walk onto your own boomerang (in the
+' air or lying) to catch it. The other one's boomerang, flying or lying
+' on the ground, knocks you out. Each hit costs a life; the counter
+' starts at 9 and a hit at 0 eliminates you. After each hit both start
+' again at their ends, boomerangs in hand ("PREPARE FOR BATTLE!").
+'
+' From the original (orig/): the field is a frame with a random maze laid
+' on a grid of 4 x 4 cells: on every grid line each segment is a wall 1
+' time in 4 (the segments at the ends of a line 1 time in 8); MAZE NO
+' leaves the field empty; each player may refuse the maze and have
+' another drawn; the walking steps (4 C64 pixels across or 2 down per
+' pass of the main loop: across is twice as fast), the boomerang's two
+' steps a pass, the speed 1-3 delay loop ($20/$10/$08 x 256 x 5 cycles,
+' about 21, 39 and 67 passes a second with the rest of the loop), facing
+' set by every push even against a wall, holding the button rethrowing at
+' once, the redirect range (+-20 columns, +-14 rows), a lying boomerang
+' still deadly to the other player, a hit on both in one pass counting
+' for both, blue's elimination checked first, 10 lives shown as 9 to 0.
+'
+' Liberties: the field is 26 x 18 cells (the C64's 38 x 22 does not fit
+' the TV-safe area), so the maze grid has 6 x 4 lines, not 9 x 5; motion
+' is smooth (sub-pixel steps every frame at the C64's rates for speeds 1
+' and 2; speed 3 is eased to 4/5 of the C64's 67 passes a second);
+' touches are box tests (the C64 used its sprite collision register and a
+' box); a thrown boomerang can be caught only after it has once left its
+' thrower or lies (on the C64 it flew clear before the next collision
+' check); a
+' turn click when a boomerang is sent a new way; ONE PLAYER mode with a
+' computer Red (the original was for two players only): it looks every 16
+' frames, finds its way through the maze's rooms, takes a clear throw or a
+' steer only every other look, and does not dodge; the game ends with
+' the winner's message and goes back to the title (no PLAY AGAIN prompt,
+' no Q to quit, no pause); a maze that walls Blue's end off from Red's
+' is drawn again (on the C64 such a duel could never end unless a player
+' refused the maze); a title page, a credits page and a title tune.
+'
+' Controls: controller 1 is Blue, controller 2 Red. Stick: walk (and
+' face); either button: throw, or send your flying boomerang the way you
+' face. Title: up/down choose a line, left/right or a button change it, a
+' button on START begins. Maze check: stick toggles YES/NO, button
+' answers.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers.
+
+const TFl0 = 128
+const TFl1 = 129
+const TWall = 130
+const TBrd = 131
+const TPipb = 132
+const TPipr = 133
+const TQ0 = 134
+const TQ1 = 135
+const TQ2 = 136
+const TQ3 = 137
+const TQ4 = 138
+const TQ5 = 139
+const TQ6 = 140
+const TQ7 = 141
+const TQ8 = 142
+const TQ9 = 143
+const TQ10 = 144
+const TQ11 = 145
+const TQ12 = 146
+const TQ13 = 147
+const TQ14 = 148
+const TQ15 = 149
+const SMan0 = 0
+const SMan1 = 4
+const SBm0 = 8
+const SBm1 = 12
+const SBm2 = 16
+const SBm3 = 20
+const SBurst = 24
+const NTiles8 = 176
+const SprBytes = 224
+const TitleW = 18
+const SndTuneA = 1
+const SndTuneB = 2
+const SndThrow = 3
+const SndTurn = 4
+const SndCatch = 5
+const SndClunk = 6
+const SndHit = 7
+const SndTick = 8
+const SndStart = 9
+const SndWin = 10
+const NSpr = 4
+const X0 = 24
+const Y0 = 24
+const FW = 26
+const FH = 18
+const MW = 10
+const BW = 8
+const LivesStart = 10
+const InHand = 0
+const Lying = 255
+
+' walking speeds in 1/16 pixel a frame for speeds 1-3 (across / down);
+' the boomerang flies twice as fast
+data SpH bytes 23,42,56
+data SpV bytes 11,21,28
+data Bits bytes 1,2,4,8,16,32,64,128
+' a stick bit for each facing (up, down, left, right)
+data FaceBit bytes 1,2,4,8
+data ManCol bytes 5,8
+data BoomCol bytes 7,10
+data StartX bytes 24,222
+data StartY bytes 88,80
+
+record Man:
+  u8 X
+  u8 Y
+  u8 Ax
+  u8 Ay
+  u8 Face
+  u8 Lives
+  u8 Joy
+  u8 Hit
+end record
+
+record Boom:
+  u8 X
+  u8 Y
+  u8 Acc
+  u8 St
+  u8 Away
+  u8 Spin
+end record
+
+data TilePat bytes
+  $00,$00,$10,$00,$00,$01,$00,$00
+  $00,$40,$00,$00,$04,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0C,$0C,$2C,$0C,$0C,$2C,$0C,$0C
+  $0C,$2C,$0C,$0C,$2C,$0C,$0C,$0C
+  $EF,$1E,$1E,$1E,$1E,$1E,$1E,$E1
+  $0E,$0E,$01,$0E,$0E,$01,$0E,$0E
+  $01,$15,$15,$15,$15,$51,$51,$01
+  $01,$18,$18,$18,$18,$81,$81,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$A1,$01,$01,$01,$01
+  $1B,$1B,$1B,$1A,$01,$01,$01,$01
+  $0B,$0B,$0B,$0A,$01,$01,$01,$01
+  $01,$01,$01,$01,$B1,$B1,$B1,$A1
+  $B1,$B1,$B1,$A1,$B1,$B1,$B1,$A1
+  $1B,$1B,$1B,$1A,$B1,$B1,$B1,$A1
+  $0B,$0B,$0B,$0A,$B1,$B1,$B1,$A1
+  $01,$01,$01,$01,$1B,$1B,$1B,$1A
+  $B1,$B1,$B1,$A1,$1B,$1B,$1B,$1A
+  $1B,$1B,$1B,$1A,$1B,$1B,$1B,$1A
+  $0B,$0B,$0B,$0A,$1B,$1B,$1B,$1A
+  $01,$01,$01,$01,$0B,$0B,$0B,$0A
+  $B1,$B1,$B1,$A1,$0B,$0B,$0B,$0A
+  $1B,$1B,$1B,$1A,$0B,$0B,$0B,$0A
+  $0B,$0B,$0B,$0A,$0B,$0B,$0B,$0A
+end data
+data SpritePat bytes
+  $1E,$3F,$2D,$1E,$BF,$7F,$1E,$12,$33,$61,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00
+  $1E,$3F,$2D,$1E,$3F,$7F,$9E,$12,$12,$1B,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$70,$38,$38,$70,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$E7,$7E,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$0E,$1C,$1C,$0E,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$3C,$7E,$E7,$C3,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $88,$49,$2A,$1C,$FF,$1C,$2A,$49,$88,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$80,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $8D,$8A,$8D,$8B,$8D,$8B,$93,$8B,$8D,$87,$8D,$8A,$8C,$8A,$93,$8B,$8D,$87
+  $8D,$8A,$8B,$8B,$8B,$8B,$8D,$8B,$8D,$86,$8D,$8A,$8D,$8B,$95,$8B,$8B,$8B
+  $89,$86,$89,$87,$89,$87,$87,$87,$89,$87,$87,$87,$87,$87,$87,$87,$89,$87
+end data
+
+Man Pl[2]
+Boom Bm[2]
+u8 WallB[72]
+u8 Adj[35]
+u8 Dist[35]
+u8 Que[35]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Speed = 1
+u8 Players = 1
+u8 MazeOn = 1
+u8 Menu = 0
+u8 Over = 0
+u8 Winner = 0
+u8 Round = 0
+u8 Throws = 0
+' the computer's Red
+u8 CpuJ = 0
+u8 CpuT = 0
+u8 CpuLX = 0
+u8 CpuLY = 0
+u8 CpuStuck = 0
+u8 CpuWand = 0
+u8 CpuWDir = 0
+u8 CpuTn = 255
+u8 CpuGo = 0
+u8 CpuGx = 0
+u8 CpuGy = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InPlay = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Ri = 0
+u8 Ti = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table BoSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+
+  NewGame
+
+round_start:
+  StartRound
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawAll
+  if Pl[0].Hit = 0 and Pl[1].Hit = 0 then goto play_loop
+
+  KnockOut
+  if Over = 0 then goto round_start
+
+  ' the end: blue's elimination is checked first, as on the C64
+  InPlay = 0
+  mute all
+  play sound SndWin
+  HideSprites
+  for Ri = 9 to 13
+    fill 32 count 22 at 5,Ri
+  next
+  if Winner = 1 then
+    print at 6,10, "BLUE IS ELIMINATED!"
+    print at 11,12, "RED WINS!"
+  else
+    print at 7,10, "RED IS ELIMINATED!"
+    print at 10,12, "BLUE WINS!"
+  end if
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one pass of play, in the C64's order: Blue walks and throws, Red walks
+' and throws, both boomerangs fly, catches, hits
+sub PlayStep:
+  Pl[0].Joy = J1
+  if Players = 1 then
+    CpuThink
+    Pl[1].Joy = CpuJ
+  else
+    Pl[1].Joy = J2
+  end if
+  for Pi = 0 to 1
+    Walk(Pi)
+    FireButton(Pi)
+  next
+  for Pi = 0 to 1
+    Fly(Pi)
+  next
+  for Pi = 0 to 1
+    CatchCheck(Pi)
+  next
+  Pl[0].Hit = Touch(1, 0)
+  Pl[1].Hit = Touch(0, 1)
+  return
+end sub
+
+' walking: up, down, left, right in turn (each push sets the facing, even
+' into a wall), sub-pixel steps; a step into a wall cell is refused
+sub Walk(u8 P)
+  u8 Jv = 0
+  u8 N = 0
+  u8 Xv = 0
+  u8 Yv = 0
+  Jv = Pl[P].Joy
+  Xv = Pl[P].X
+  Yv = Pl[P].Y
+  V = Jv & 3
+  if V > 0 then
+    if V = 1 then
+      Pl[P].Face = 0
+    else
+      Pl[P].Face = 1
+    end if
+    N = Pl[P].Ay + SpV[Speed - 1]
+    Pl[P].Ay = N & 15
+    N = N >> 4
+    while N > 0
+      if V = 1 then
+        if EdgeFree(0, Xv, Yv, MW) = 1 then
+          dec Yv
+        else
+          N = 1
+        end if
+      else
+        if EdgeFree(1, Xv, Yv, MW) = 1 then
+          inc Yv
+        else
+          N = 1
+        end if
+      end if
+      dec N
+    end while
+  else
+    Pl[P].Ay = 0
+  end if
+  V = Jv & 12
+  if V > 0 then
+    if V = 4 then
+      Pl[P].Face = 2
+    else
+      Pl[P].Face = 3
+    end if
+    N = Pl[P].Ax + SpH[Speed - 1]
+    Pl[P].Ax = N & 15
+    N = N >> 4
+    while N > 0
+      if V = 4 then
+        if EdgeFree(2, Xv, Yv, MW) = 1 then
+          dec Xv
+        else
+          N = 1
+        end if
+      else
+        if EdgeFree(3, Xv, Yv, MW) = 1 then
+          inc Xv
+        else
+          N = 1
+        end if
+      end if
+      dec N
+    end while
+  else
+    Pl[P].Ax = 0
+  end if
+  Pl[P].X = Xv
+  Pl[P].Y = Yv
+  return
+end sub
+
+' the button (held counts every pass, as on the C64): a boomerang in hand
+' is thrown the way the thrower faces; one in the air and in range is sent
+' off that way
+sub FireButton(u8 P)
+  u8 St = 0
+  u8 Want = 0
+  i16 D = 0
+  V = Pl[P].Joy & 16
+  if V = 0 then return
+  St = Bm[P].St
+  Want = Pl[P].Face + 1
+  if St = InHand then
+    Bm[P].St = Want
+    Bm[P].X = Pl[P].X + 1
+    Bm[P].Y = Pl[P].Y + 1
+    Bm[P].Acc = 0
+    Bm[P].Away = 0
+    inc Throws
+    play sound SndThrow
+    return
+  end if
+  if St = Lying then return
+  ' in the air: the redirect range, in character cells
+  D = Bm[P].X >> 3
+  D = D - (Pl[P].X >> 3)
+  if D > 20 or D < -20 then return
+  D = Bm[P].Y >> 3
+  D = D - (Pl[P].Y >> 3)
+  if D > 14 or D < -14 then return
+  if St <> Want then
+    Bm[P].St = Want
+    Bm[P].Acc = 0
+    play sound SndTurn
+  end if
+  return
+end sub
+
+' a flying boomerang: twice the walking rate on its axis; a wall stops it
+' and it lies there
+sub Fly(u8 P)
+  u8 St = 0
+  u8 N = 0
+  u8 Dv = 0
+  u8 Xv = 0
+  u8 Yv = 0
+  St = Bm[P].St
+  if St = InHand or St = Lying then
+    Bm[P].Acc = 0
+  else
+    Dv = St - 1
+    Xv = Bm[P].X
+    Yv = Bm[P].Y
+    if Dv < 2 then
+      N = Bm[P].Acc + SpV[Speed - 1] * 2
+    else
+      N = Bm[P].Acc + SpH[Speed - 1] * 2
+    end if
+    Bm[P].Acc = N & 15
+    N = N >> 4
+    while N > 0
+      if EdgeFree(Dv, Xv, Yv, BW) = 1 then
+        select case Dv
+          case 0
+            dec Yv
+          case 1
+            inc Yv
+          case 2
+            dec Xv
+          case else
+            inc Xv
+        end select
+        dec N
+      else
+        N = 0
+        Bm[P].St = Lying
+        Bm[P].Acc = 0
+        play sound SndClunk
+      end if
+    end while
+    Bm[P].X = Xv
+    Bm[P].Y = Yv
+    inc Bm[P].Spin
+  end if
+  return
+end sub
+
+' walking onto your own boomerang catches it (once it has left your hands,
+' or lying)
+sub CatchCheck(u8 P)
+  u8 O = 0
+  if Bm[P].St = InHand then return
+  O = Overlap(Pl[P].X, Pl[P].Y, MW, Bm[P].X, Bm[P].Y, BW)
+  if O = 0 then
+    Bm[P].Away = 1
+  else
+    if Bm[P].Away = 1 or Bm[P].St = Lying then
+      Bm[P].St = InHand
+      Bm[P].Acc = 0
+      play sound SndCatch
+    end if
+  end if
+  return
+end sub
+
+' 1 when boomerang B (flying or lying) touches man M (his inner 8 x 8)
+function Touch(u8 B, u8 M) as u8
+  if Bm[B].St = InHand then return 0
+  return Overlap(Pl[M].X + 1, Pl[M].Y + 1, 8, Bm[B].X, Bm[B].Y, BW)
+
+function Overlap(u8 Ax, u8 Ay, u8 Aw, u8 Bx, u8 By, u8 Bw) as u8
+  if Ax >= Bx + Bw then return 0
+  if Bx >= Ax + Aw then return 0
+  if Ay >= By + Bw then return 0
+  if By >= Ay + Aw then return 0
+  return 1
+
+' 1 when a W x W box at X,Y may move one pixel in direction Dv (0 up,
+' 1 down, 2 left, 3 right): only the cells its leading edge enters
+function EdgeFree(u8 Dv, u8 X, u8 Y, u8 W) as u8
+  u8 Ok = 1
+  u8 E = 0
+  select case Dv
+    case 0
+      E = Y - Y0
+      if (E & 7) = 0 then Ok = RowFree(E - 1, X, W)
+    case 1
+      E = Y + W - Y0
+      if (E & 7) = 0 then Ok = RowFree(E, X, W)
+    case 2
+      E = X - X0
+      if (E & 7) = 0 then Ok = ColFree(E - 1, Y, W)
+    case else
+      E = X + W - X0
+      if (E & 7) = 0 then Ok = ColFree(E, Y, W)
+  end select
+  return Ok
+
+' the cells of field pixel row Py under pixels X .. X + W - 1
+function RowFree(u8 Py, u8 X, u8 W) as u8
+  u8 R = 0
+  u8 C = 0
+  u8 C1 = 0
+  u8 Ok = 1
+  R = Py >> 3
+  C = (X - X0) >> 3
+  C1 = (X + W - 1 - X0) >> 3
+  while C <= C1
+    if IsWall(C, R) = 1 then Ok = 0
+    inc C
+  end while
+  return Ok
+
+function ColFree(u8 Px, u8 Y, u8 W) as u8
+  u8 C = 0
+  u8 R = 0
+  u8 R1 = 0
+  u8 Ok = 1
+  C = Px >> 3
+  R = (Y - Y0) >> 3
+  R1 = (Y + W - 1 - Y0) >> 3
+  while R <= R1
+    if IsWall(C, R) = 1 then Ok = 0
+    inc R
+  end while
+  return Ok
+
+' the maze in bits: 4 bytes a row, outside the field is wall
+function IsWall(u8 C, u8 R) as u8
+  u8 Ix = 0
+  if C >= FW then return 1
+  if R >= FH then return 1
+  Ix = R * 4 + (C >> 3)
+  if (WallB[Ix] & Bits[C & 7]) > 0 then return 1
+  return 0
+
+sub SetWall(u8 C, u8 R)
+  u8 Ix = 0
+  Ix = R * 4 + (C >> 3)
+  WallB[Ix] = WallB[Ix] | Bits[C & 7]
+  put char TWall at C + 3,R + 3
+  return
+end sub
+
+' a wall segment along a row (C0..C1 at R) or a column (R0..R1 at C)
+sub HSeg(u8 R, u8 C0, u8 C1)
+  for Ci = C0 to C1
+    SetWall(Ci, R)
+  next
+  return
+end sub
+
+sub VSeg(u8 C, u8 R0, u8 R1)
+  for Ci = R0 to R1
+    SetWall(C, Ci)
+  next
+  return
+end sub
+
+' 1 in 8 / 1 in 4, from the C64's SID noise draws
+function OneIn(u8 M) as u8
+  Rand
+  if (Rs & M) = 0 then return 1
+  return 0
+
+' the maze: horizontal lines at rows 2, 6, 10, 14, vertical ones at
+' columns 2, 6, ... 22; end segments 1 in 8, the others 1 in 4 (rooms 14
+' and 20 hold Blue's and Red's starts)
+sub BuildMaze:
+  u8 L = 0
+  u8 S = 0
+  u8 A = 0
+  u8 Good = 0
+  while Good = 0
+    fill array WallB with 0
+    DrawField
+    if MazeOn = 1 then
+      for L = 0 to 3
+        A = L * 4 + 2
+        if OneIn(7) = 1 then HSeg(A, 0, 2)
+        for S = 0 to 4
+          if OneIn(3) = 1 then HSeg(A, S * 4 + 2, S * 4 + 6)
+        next
+        if OneIn(7) = 1 then HSeg(A, 22, 25)
+      next
+      for L = 0 to 5
+        A = L * 4 + 2
+        if OneIn(7) = 1 then VSeg(A, 0, 2)
+        for S = 0 to 2
+          if OneIn(3) = 1 then VSeg(A, S * 4 + 2, S * 4 + 6)
+        next
+        if OneIn(7) = 1 then VSeg(A, 14, 17)
+      next
+    end if
+    BuildAdj
+    ' a maze that walls the two ends apart is drawn again
+    CpuBfs(14)
+    if Dist[20] < 255 then Good = 1
+  end while
+  return
+end sub
+
+' the frame and the grass
+sub DrawField:
+  fill TBrd count 28 at 2,2
+  fill TBrd count 28 at 2,21
+  for Ri = 3 to 20
+    put char TBrd at 2,Ri
+    put char TBrd at 29,Ri
+    V = Ri & 1
+    for J = 3 to 28
+      K = (J + V) & 3
+      if K = 0 then
+        put char TFl1 at J,Ri
+      else
+        put char TFl0 at J,Ri
+      end if
+    next
+  next
+  return
+end sub
+
+' each player in turn may refuse the maze (the computer always keeps it)
+function MazeOk(u8 P) as u8
+  u8 Yes = 1
+  u8 Was = 0
+  u8 Jv = 0
+  u8 Bv = 0
+  fill 32 count 28 at 2,22
+  if P = 0 then
+    print at 3,22, "BLUE: KEEP THIS MAZE?"
+  else
+    print at 4,22, "RED: KEEP THIS MAZE?"
+  end if
+  Was = 31
+mz_loop:
+  if Yes = 1 then
+    print at 25,22, "YES"
+  else
+    print at 25,22, "NO "
+  end if
+mz_wait:
+  Frame1
+  ReadPad
+  if P = 0 then
+    Jv = J1
+  else
+    Jv = J2
+  end if
+  Bv = Jv & 16
+  Jv = Jv & 15
+  if Bv > 0 and (Was & 16) = 0 then goto mz_done
+  if Jv > 0 and (Was & 15) = 0 then
+    Yes = Yes ^ 1
+    play sound SndTick
+    Was = Jv | Bv
+    goto mz_loop
+  end if
+  Was = Jv | Bv
+  goto mz_wait
+mz_done:
+  play sound SndTick
+  fill 32 count 28 at 2,22
+  return Yes
+
+' ---------------------------------------------------------------------------
+' the computer's Red: every 16 frames it looks at the field and picks a
+' push (and the button) for the next 16 frames
+sub CpuThink:
+  u8 St = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 Ad = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Ex = 0
+  i16 Ey = 0
+  if CpuT > 0 then
+    dec CpuT
+    ' walking to a point: let go of each way once it is reached
+    if CpuGo = 1 then
+      if (CpuJ & 8) > 0 and Pl[1].X >= CpuGx then CpuJ = CpuJ & 247
+      if (CpuJ & 4) > 0 and Pl[1].X <= CpuGx then CpuJ = CpuJ & 251
+      if (CpuJ & 2) > 0 and Pl[1].Y >= CpuGy then CpuJ = CpuJ & 253
+      if (CpuJ & 1) > 0 and Pl[1].Y <= CpuGy then CpuJ = CpuJ & 254
+    end if
+    return
+  end if
+  CpuT = 15
+  CpuJ = 0
+  CpuGo = 0
+  St = Bm[1].St
+  Tx = Pl[0].X
+  Ty = Pl[0].Y
+  Dx = Tx
+  Dx = Dx - Pl[1].X
+  Dy = Ty
+  Dy = Dy - Pl[1].Y
+  if St = Lying then
+    ' fetch it
+    Tx = Bm[1].X - 1
+    Ty = Bm[1].Y - 1
+  end if
+  ' it sees a chance to throw only every other look (a human misses some)
+  Rand
+  if St = InHand and (Rs & 1) = 0 then
+    if Dy < 6 and Dy > -6 then
+      if Sight(Pl[1].X, Tx, Pl[1].Y + 1, 0) = 1 and Sight(Pl[1].X, Tx, Pl[1].Y + 8, 0) = 1 then
+        if Dx > 0 then CpuJ = 8 | 16 else CpuJ = 4 | 16
+        return
+      end if
+    end if
+    if Dx < 6 and Dx > -6 then
+      if Sight(Pl[1].Y, Ty, Pl[1].X + 1, 1) = 1 and Sight(Pl[1].Y, Ty, Pl[1].X + 8, 1) = 1 then
+        if Dy > 0 then CpuJ = 2 | 16 else CpuJ = 1 | 16
+        return
+      end if
+    end if
+  end if
+  if St > InHand and St < Lying and (Rs & 2) = 0 then
+    ' steer it when Blue is in line with it
+    Ex = Pl[0].X
+    Ex = Ex - Bm[1].X
+    Ey = Pl[0].Y
+    Ey = Ey - Bm[1].Y
+    if Ey < 6 and Ey > -6 then
+      if Ex > 0 then Ad = 8 else Ad = 4
+      if FaceBit[St - 1] <> Ad then
+        CpuJ = Ad | 16
+        return
+      end if
+    end if
+    if Ex < 6 and Ex > -6 then
+      if Ey > 0 then Ad = 2 else Ad = 1
+      if FaceBit[St - 1] <> Ad then
+        CpuJ = Ad | 16
+        return
+      end if
+    end if
+  end if
+  ' close to Blue in the same room with the boomerang in hand: line up
+  ' for a throw (the nearer line) instead of walking into him
+  if St = InHand and Dx < 32 and Dx > -32 and Dy < 32 and Dy > -32 and NodeOf(Tx, Ty) = NodeOf(Pl[1].X, Pl[1].Y) then
+    Ex = abs(Dx)
+    Ey = abs(Dy)
+    if Ex < Ey then
+      if Dx > 0 then CpuJ = 8 else CpuJ = 4
+    else
+      if Dy > 0 then CpuJ = 2 else CpuJ = 1
+    end if
+    return
+  end if
+  CpuJ = CpuSeek(Tx, Ty)
+  return
+end sub
+
+'' 1 when no wall lies between pixels A and B along the row through pixel
+' line L (Vert 0) or the column through pixel column L (Vert 1)
+function Sight(u8 A, u8 B, u8 L, u8 Vert) as u8
+  u8 Lo = 0
+  u8 Hi = 0
+  u8 Ok = 1
+  u8 Lc = 0
+  if A < B then
+    Lo = A
+    Hi = B
+  else
+    Lo = B
+    Hi = A
+  end if
+  Lo = (Lo - X0) >> 3
+  Hi = (Hi - X0) >> 3
+  Lc = (L - X0) >> 3
+  while Lo <= Hi
+    if Vert = 0 then
+      if IsWall(Lo, Lc) = 1 then Ok = 0
+    else
+      if IsWall(Lc, Lo) = 1 then Ok = 0
+    end if
+    inc Lo
+  end while
+  return Ok
+
+' a push toward Tx,Ty: the longer way first; stuck twice, wander a while
+function CpuSeek(u8 Tx, u8 Ty) as u8
+  u8 Jv = 0
+  u8 Mn = 0
+  u8 Tn = 0
+  u8 Dm = 0
+  u8 Nb = 0
+  u8 Av = 0
+  u8 Gx = 0
+  u8 Gy = 0
+  if Pl[1].X = CpuLX and Pl[1].Y = CpuLY then
+    inc CpuStuck
+  else
+    CpuStuck = 0
+  end if
+  CpuLX = Pl[1].X
+  CpuLY = Pl[1].Y
+  if CpuStuck >= 3 then
+    CpuStuck = 0
+    CpuWand = 2
+    Rand
+    CpuWDir = Bits[Rs & 3]
+  end if
+  if CpuWand > 0 then
+    dec CpuWand
+    Jv = CpuWDir
+  else
+    Gx = Tx
+    Gy = Ty
+    Mn = NodeOf(Pl[1].X, Pl[1].Y)
+    Tn = NodeOf(Tx, Ty)
+    if Mn <> Tn then
+      if Tn <> CpuTn then
+        CpuBfs(Tn)
+        CpuTn = Tn
+      end if
+      Dm = Dist[Mn]
+      Nb = Mn
+      Av = Adj[Mn]
+      if Dm < 255 then
+        if (Av & 1) > 0 then
+          if Dist[Mn - 7] < Dm then Nb = Mn - 7
+        end if
+        if (Av & 2) > 0 then
+          if Dist[Mn + 7] < Dm then Nb = Mn + 7
+        end if
+        if (Av & 4) > 0 then
+          if Dist[Mn - 1] < Dm then Nb = Mn - 1
+        end if
+        if (Av & 8) > 0 then
+          if Dist[Mn + 1] < Dm then Nb = Mn + 1
+        end if
+      end if
+      Gx = NodePix(Nb % 7)
+      Gy = NodePix(Nb / 7)
+    end if
+    CpuGx = Gx
+    CpuGy = Gy
+    CpuGo = 1
+    if Gx > Pl[1].X + 1 then Jv = 8
+    if Gx + 1 < Pl[1].X then Jv = 4
+    if Gy > Pl[1].Y + 1 then Jv = Jv | 2
+    if Gy + 1 < Pl[1].Y then Jv = Jv | 1
+  end if
+  return Jv
+
+' the computer's map: the field as 7 x 5 rooms (the cells between the
+' maze's grid lines); Adj holds the open sides (1 up, 2 down, 4 left,
+' 8 right) of each room, Dist the steps to the target room
+function NodeOf(u8 X, u8 Y) as u8
+  u8 I = 0
+  u8 Jr = 0
+  I = ((X + 5 - X0) >> 3) + 2
+  Jr = ((Y + 5 - Y0) >> 3) + 2
+  return (Jr >> 2) * 7 + (I >> 2)
+
+' the man's X (or Y) at the middle of room column (row) I
+function NodePix(u8 I) as u8
+  if I = 0 then return 27
+  return I * 32 + 23
+
+function LineC(u8 I) as u8
+  if I = 0 then return 1
+  return I * 4
+
+sub BuildAdj:
+  u8 I = 0
+  u8 Jr = 0
+  u8 N = 0
+  u8 Av = 0
+  for Jr = 0 to 4
+    for I = 0 to 6
+      Av = 0
+      if I < 6 then
+        if IsWall(I * 4 + 2, LineC(Jr)) = 0 then Av = Av | 8
+      end if
+      if I > 0 then
+        if IsWall(I * 4 - 2, LineC(Jr)) = 0 then Av = Av | 4
+      end if
+      if Jr < 4 then
+        if IsWall(LineC(I), Jr * 4 + 2) = 0 then Av = Av | 2
+      end if
+      if Jr > 0 then
+        if IsWall(LineC(I), Jr * 4 - 2) = 0 then Av = Av | 1
+      end if
+      N = Jr * 7 + I
+      Adj[N] = Av
+    next
+  next
+  return
+end sub
+
+' breadth first from room T
+sub CpuBfs(u8 T)
+  u8 Hd = 0
+  u8 Tl = 1
+  u8 N = 0
+  u8 D = 0
+  u8 Av = 0
+  fill array Dist with 255
+  Dist[T] = 0
+  Que[0] = T
+  while Hd < Tl
+    N = Que[Hd]
+    inc Hd
+    D = Dist[N] + 1
+    Av = Adj[N]
+    if (Av & 1) > 0 then
+      if Dist[N - 7] = 255 then
+        Dist[N - 7] = D
+        Que[Tl] = N - 7
+        inc Tl
+      end if
+    end if
+    if (Av & 2) > 0 then
+      if Dist[N + 7] = 255 then
+        Dist[N + 7] = D
+        Que[Tl] = N + 7
+        inc Tl
+      end if
+    end if
+    if (Av & 4) > 0 then
+      if Dist[N - 1] = 255 then
+        Dist[N - 1] = D
+        Que[Tl] = N - 1
+        inc Tl
+      end if
+    end if
+    if (Av & 8) > 0 then
+      if Dist[N + 1] = 255 then
+        Dist[N + 1] = D
+        Que[Tl] = N + 1
+        inc Tl
+      end if
+    end if
+  end while
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a hit: the life counters, the burst and the colours cycling (3 times a
+' second at most), then the next round or the end
+sub KnockOut:
+  u8 Fl = 0
+  InPlay = 0
+  mute all
+  play sound SndHit
+  for Pi = 0 to 1
+    if Pl[Pi].Hit = 1 then dec Pl[Pi].Lives
+  next
+  ShowLives
+  for Ti = 1 to 100
+    Frame1
+    Fl = Ti / 10
+    Fl = Fl & 1
+    for Pi = 0 to 1
+      if Pl[Pi].Hit = 1 then
+        if Fl = 1 then
+          set sprite Pi to Pl[Pi].Y - 1,Pl[Pi].X,SBurst,11
+        else
+          set sprite Pi to Pl[Pi].Y - 1,Pl[Pi].X,SMan0,ManCol[Pi]
+        end if
+      end if
+    next
+    update sprites
+  next
+  Over = 0
+  if Pl[0].Lives = 0 then
+    Over = 1
+    Winner = 1
+  else
+    if Pl[1].Lives = 0 then
+      Over = 1
+      Winner = 0
+    end if
+  end if
+  return
+end sub
+
+' the counters show lives - 1 (9 at the start, as on the C64); a hit at 0
+' eliminates, and the counter stays at 0
+sub ShowLives:
+  u8 L = 0
+  for L = 0 to 1
+    NumU = Pl[L].Lives
+    if NumU > 0 then dec NumU
+    print at L * 19 + 8,1, digits$(NumU, 1)
+  next
+  return
+end sub
+
+' sprites 0-1 the throwers, 2-3 their boomerangs (hidden in hand)
+sub DrawAll:
+  u8 Pt = 0
+  u8 St = 0
+  for Pi = 0 to 1
+    Pt = (Pl[Pi].X + Pl[Pi].Y) >> 3
+    Pt = (Pt & 1) * 4 + SMan0
+    set sprite Pi to Pl[Pi].Y - 1,Pl[Pi].X,Pt,ManCol[Pi]
+    St = Bm[Pi].St
+    select case St
+      case InHand
+        set sprite Pi + 2 to 192,0,SBm0,0
+      case Lying
+        set sprite Pi + 2 to Bm[Pi].Y - 1,Bm[Pi].X,SBm0,BoomCol[Pi]
+      case else
+        Pt = (Bm[Pi].Spin >> 1) & 3
+        set sprite Pi + 2 to Bm[Pi].Y - 1,Bm[Pi].X,Pt * 4 + SBm0,BoomCol[Pi]
+    end select
+  next
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  Pl[0].Lives = LivesStart
+  Pl[1].Lives = LivesStart
+  Over = 0
+  Winner = 0
+  Round = 0
+  Throws = 0
+  NewScreen
+  print at 3,1, "BLUE"
+  print at 23,1, "RED"
+  put char TPipb at 7,1
+  put char TPipr at 26,1
+  NumU = Speed
+  print at 12,1, "SPEED ", digits$(NumU, 1)
+  ShowLives
+  BuildMaze
+  ShowScreen
+  ' each player may ask for another maze (only if there is one)
+  if MazeOn = 1 then
+    while MazeOk(0) = 0
+      BuildMazeShown
+    end while
+    if Players = 2 then
+      while MazeOk(1) = 0
+        BuildMazeShown
+      end while
+    end if
+  end if
+  return
+end sub
+
+sub BuildMazeShown:
+  Rearm
+  wait
+  nmi off
+  BuildMaze
+  return
+end sub
+
+' a round: both at their ends, boomerangs in hand, facing up (as on the
+' C64), PREPARE FOR BATTLE!
+sub StartRound:
+  inc Round
+  for Pi = 0 to 1
+    Pl[Pi].X = StartX[Pi]
+    Pl[Pi].Y = StartY[Pi]
+    Pl[Pi].Ax = 0
+    Pl[Pi].Ay = 0
+    Pl[Pi].Face = 0
+    Pl[Pi].Joy = 0
+    Pl[Pi].Hit = 0
+    Bm[Pi].St = InHand
+    Bm[Pi].Acc = 0
+    Bm[Pi].Away = 0
+    Bm[Pi].Spin = 0
+  next
+  CpuT = 30
+  CpuGo = 0
+  CpuTn = 255
+  CpuJ = 0
+  CpuStuck = 0
+  CpuWand = 0
+  DrawAll
+  Rearm
+  wait
+  nmi off
+  print at 5,22, "PREPARE FOR BATTLE!"
+  play sound SndStart
+  Rearm
+  wait 60 frames
+  nmi off
+  fill 32 count 28 at 2,22
+  InPlay = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  J2 = 0
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  ' the menus: either controller
+  V = (J1 | J2) & 15
+  Edge = V ^ WasJ
+  Edge = Edge & V
+  WasJ = V
+  Btn = (J1 | J2) & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: BOOMERANG in big letters, the menu, the tune once
+sub TitlePage:
+  NewScreen
+  print at 4,1, "COMPUTE!'S GAZETTE 1989"
+  for Ri = 0 to 2
+    copy TitleMap + Ri * TitleW count TitleW to vram.name + 96 + 7 + Ri * 32
+  next
+  print at 7,8, "A MAZE DUEL FOR TWO"
+  print at 9,13, "START"
+  print at 9,15, "PLAYERS"
+  print at 9,17, "SPEED"
+  print at 9,19, "MAZE"
+  print at 9,21, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 500
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then Menu = 4 else dec Menu
+    else
+      if Menu = 4 then Menu = 0 else inc Menu
+    end if
+    play sound SndTick
+    ShowMenu
+  end if
+  K = Edge & 12
+  if K > 0 or Press = 1 then
+    select case Menu
+      case 0
+        if Press = 1 then goto tp_go
+      case 1
+        Players = 3 - Players
+      case 2
+        if K = 4 then
+          dec Speed
+          if Speed = 0 then Speed = 3
+        else
+          inc Speed
+          if Speed = 4 then Speed = 1
+        end if
+      case 3
+        MazeOn = MazeOn ^ 1
+      case else
+        if Press = 1 then goto tp_go
+    end select
+    play sound SndTick
+    ShowMenu
+  end if
+  goto tp_loop
+tp_go:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 4 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 13 to 21
+    put char 32 at 7,Ri
+  next
+  J = Menu * 2 + 13
+  put char 62 at 7,J
+  if Players = 1 then
+    print at 18,15, "1 VS CPU"
+  else
+    print at 18,15, "2       "
+  end if
+  NumU = Speed
+  print at 18,17, digits$(NumU, 1)
+  if MazeOn = 1 then
+    print at 18,19, "YES"
+  else
+    print at 18,19, "NO "
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "BOOMERANG"
+  print at 2,5, "BASED ON BOOMERANG FROM"
+  print at 2,6, "THE COMPUTE!'S GAZETTE"
+  print at 2,7, "DISK OF AUGUST 1989"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE; NO AUTHOR NAMED)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: OUT AND BACK"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+BoThrow:
+    db $40,$BA,$20,$02,$40,$84,$20,$02,$40,$8F,$20,$02,$40,$6D,$20,$02,$40,$75,$30,$02,$40,$5C,$30,$02
+    db $40,$62,$30,$02,$40,$50,$30,$02,$50
+BoTurn:
+    db $40,$55,$30,$02,$40,$40,$40,$02,$50
+BoCatch:
+    db $40,$7F,$20,$02,$40,$5F,$30,$02,$40,$47,$40,$03,$50
+BoClunk:
+    db $00,$00,$25,$02,$00,$00,$56,$04,$10
+BoHit:
+    db $40,$46,$10,$03,$40,$46,$10,$03,$40,$51,$10,$03,$40,$50,$10,$03,$40,$5D,$10,$03,$40,$5B,$10,$03
+    db $40,$6C,$10,$03,$40,$67,$10,$03,$40,$7D,$10,$03,$40,$75,$10,$03,$40,$91,$10,$03,$40,$85,$10,$03
+    db $40,$A7,$10,$03,$40,$97,$10,$03,$40,$C1,$10,$03,$40,$AA,$10,$03,$40,$DF,$20,$03,$40,$BF,$20,$03
+    db $40,$02,$21,$03,$40,$D6,$20,$03,$40,$2A,$21,$03,$40,$EF,$20,$03,$40,$59,$21,$03,$40,$0A,$21,$03
+    db $40,$90,$21,$03,$40,$26,$21,$03,$40,$CE,$21,$03,$40,$43,$21,$03,$50
+BoTick:
+    db $40,$6B,$40,$02,$50
+BoStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+BoWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+
+BoSoundTable:
+    dw BoTuneMel,$702B
+    dw BoTuneBass,$7035
+    dw BoThrow,$7049
+    dw BoTurn,$7049
+    dw BoCatch,$7049
+    dw BoClunk,$703F
+    dw BoHit,$7049
+    dw BoTick,$7049
+    dw BoStart,$7049
+    dw BoWin,$7049
+; Out and Back (original)
+; Tiny Sound, 8 frames per step
+BoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$25,$01,$28,$01,$2D,$01,$01,$01,$28,$01
+    db $25,$01,$21,$01,$23,$01,$26,$01,$2A,$01,$2F,$01,$01,$01,$2A,$01
+    db $26,$01,$23,$01,$25,$01,$28,$01,$2C,$01,$2F,$01,$01,$01,$2C,$01
+    db $28,$01,$25,$01,$26,$01,$23,$01,$20,$01,$21,$01,$01,$01,$01,$01
+    db $00,$01
+    db $FF
+BoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$15,$01,$10,$01,$09,$01,$10,$01
+    db $15,$01,$10,$01,$0B,$01,$12,$01,$17,$01,$12,$01,$0B,$01,$12,$01
+    db $17,$01,$12,$01,$04,$01,$0B,$01,$10,$01,$0B,$01,$04,$01,$0B,$01
+    db $10,$01,$14,$01,$0E,$01,$01,$10,$01,$01,$09,$01,$01,$01,$10,$01
+    db $00,$01
+    db $FF
+}

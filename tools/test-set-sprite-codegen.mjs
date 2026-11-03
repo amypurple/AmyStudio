@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { handleDisplayGraphicsSpriteStatement } from "../studio/core/compiler/displayGraphicsSpriteStatementHelpers.js";
+import { createInlineStatementCompiler } from "../studio/core/compiler/inlineStatementHelpers.js";
 
 function loadBytePreserving(register, token, liveRegs = []) {
   if (!liveRegs.length || register === "a") return [
@@ -33,11 +34,11 @@ assert.equal(result.ok, true);
 assert.equal(result.handled, true);
 
 const asm = result.lines.join("\n");
-assert.match(asm, /ld b,\(Y\)/);
-assert.match(asm, /ld hl,X\n    ld c,\(hl\)/);
-assert.match(asm, /ld hl,P\n    ld d,\(hl\)/);
-assert.match(asm, /ld hl,C\n    ld e,\(hl\)/);
 assert.match(asm, /ld a,\(I\)/);
+assert.match(asm, /ld e,\(C\)/);
+assert.match(asm, /ld hl,P\n    ld d,\(hl\)/);
+assert.match(asm, /ld hl,X\n    ld c,\(hl\)/);
+assert.match(asm, /ld hl,Y\n    ld b,\(hl\)/);
 assert.match(asm, /call AMY_SET_SPRITE/);
 assert.doesNotMatch(asm, /ld [bcde],l/);
 
@@ -76,6 +77,27 @@ assert.deepEqual(multiFieldResult.lines, [
   "    ld (AMY_SPRITE_TABLE+9),a",
   "    ld (AMY_SPRITE_TABLE+13),a"
 ]);
+
+const inlineCompiler = createInlineStatementCompiler({
+  currentFunctionRef: () => null,
+  doStack: [],
+  whileStack: [],
+  forStack: [],
+  compileDisplayGraphicsSpriteStatement: (line, rawLine) => handleDisplayGraphicsSpriteStatement({
+    line,
+    rawLine,
+    preferScreenOnNoNmi: false,
+    currentGraphicsMode: null,
+    emitLoadInt8Into: (register, token) => [`    ld ${register},(${token})`],
+    emitLoadInt8ValueInto: (register, token) => [`    ld ${register},(${token})`],
+    emitLoadInt8ValueIntoPreserving: loadBytePreserving,
+    tryEvaluateConstantExpression: (expr) => /^\d+$/.test(String(expr).trim()) ? Number(String(expr).trim()) : null,
+    formatHex16: (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`
+  })
+});
+const inlineSpriteResult = inlineCompiler("set sprite 28 x to GroundX0", "if GroundAlive0 then set sprite 28 x to GroundX0");
+assert.equal(inlineSpriteResult.ok, true);
+assert.match(inlineSpriteResult.lines.join("\n"), /AMY_SPRITE_TABLE\+113/);
 
 const spriteRuntime = fs.readFileSync(
   path.resolve(import.meta.dirname, "..", "src", "alexis_lib", "coleco_sprite_table.asm"),

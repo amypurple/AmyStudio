@@ -1163,9 +1163,12 @@ export function createAssignmentArithmeticHelpers({
       const valueText = String(valueToken || "").trim();
       // In conditions, `and`/`or` remain short-circuit combinators. In a
       // numeric assignment, accept their traditional BASIC bitwise meaning
-      // and lower them through the same typed path as `&` and `|`.
-      if (/\b(?:and|or)\b/i.test(valueText)) {
-        const bitwiseText = valueText.replace(/\band\b/gi, "&").replace(/\bor\b/gi, "|");
+      // and lower all word aliases through the typed symbolic path.
+      if (/\b(?:and|or|xor)\b/i.test(valueText)) {
+        const bitwiseText = valueText
+          .replace(/\band\b/gi, "&")
+          .replace(/\bor\b/gi, "|")
+          .replace(/\bxor\b/gi, "^");
         return emitFormulaAssignment(target, opToken, bitwiseText);
       }
 

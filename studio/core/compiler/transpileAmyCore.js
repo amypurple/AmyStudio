@@ -1996,7 +1996,7 @@ export function transpileAmyCore(sourceText, deps) {
     "play", "stop", "mute", "sound", "song", "dsound", "tripcm",
     "enable", "disable", "reset", "spinner", "spinners",
     "random", "floor", "fraction", "highbyte", "lowbyte", "highword", "lowword", "sqrt", "log", "exp", "format",
-    "fixed", "ufixed", "fixed32", "fp5", "bool", "bcd", "u8", "u16", "u32", "i8", "i16", "i32",
+    "fixed", "ufixed", "fixed32", "fp5", "float", "bool", "bcd", "u8", "u16", "u32", "i8", "i16", "i32",
     "joypad", "keypad", "vdp", "status", "frame",
     "on", "wait", "choose", "fire",
     "true", "false"
@@ -6136,6 +6136,15 @@ export function transpileAmyCore(sourceText, deps) {
         parseRecordFieldRef,
         emitLoadArrayAddressIntoHL
       }),
+      compileRandomBounceStatement: (inlineLine, inlineRawLine) => handleRandomBounceStatement({
+        line: inlineLine,
+        rawLine: inlineRawLine,
+        getRuntimeInfo,
+        scopedRuntimeName,
+        makeGeneratedLabel,
+        emitLoadInt8Into,
+        emitStoreInt8FromA
+      }),
       compileSoundSpinnerStatement: (inlineLine, inlineRawLine) => handleSoundSpinnerStatement({
         line: inlineLine,
         rawLine: inlineRawLine,
@@ -6362,6 +6371,8 @@ export function transpileAmyCore(sourceText, deps) {
         currentFunction,
         emitCurrentProcReturnLines,
         emitLoadInt8Into,
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving,
         emitLoadInt16IntoHL,
         emitStoreExtended32,
         emitStoreWideExpression,

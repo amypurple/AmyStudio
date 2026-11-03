@@ -1116,22 +1116,31 @@ export function createExpressionComputeHelpers({
           return emitLoadInt16ValueIntoHL(String((leftValue * rightValue) & 0xFFFF));
         }
         const emitScaleHLByConst = (constantValue) => {
-          if (!Number.isInteger(constantValue) || constantValue < 0 || constantValue > 0xFFFF) return null;
-          if (constantValue === 0) return ["    ld hl,0"];
-          if (constantValue === 1) return [];
-          if (constantValue === 256) return ["    ld h,l", "    ld l,0"];
-          if (constantValue === 257) return ["    ld a,h", "    add a,l", "    ld h,a"];
-          if ((constantValue & (constantValue - 1)) === 0) {
+          if (!Number.isInteger(constantValue)) return null;
+          const negative = constantValue < 0;
+          if (negative && (!isSignedDeclaredType(preferredDeclaredType) || constantValue < -0x8000)) return null;
+          const magnitude = Math.abs(constantValue);
+          if (magnitude > 0xFFFF) return null;
+          let lines;
+          if (magnitude === 0) lines = ["    ld hl,0"];
+          else if (magnitude === 1) lines = [];
+          else if (magnitude === 256) lines = ["    ld h,l", "    ld l,0"];
+          else if (magnitude === 257) lines = ["    ld a,h", "    add a,l", "    ld h,a"];
+          else if ((magnitude & (magnitude - 1)) === 0) {
             const lines = [];
-            for (let value = constantValue; value > 1; value >>= 1) lines.push("    add hl,hl");
-            return lines;
+            for (let value = magnitude; value > 1; value >>= 1) lines.push("    add hl,hl");
+            return negative
+              ? [...lines, "    xor a", "    sub l", "    ld l,a", "    sbc a,a", "    sub h", "    ld h,a"]
+              : lines;
+          } else {
+            const bits = magnitude.toString(2).slice(1);
+            lines = ["    ld d,h", "    ld e,l"];
+            for (const bit of bits) {
+              lines.push("    add hl,hl");
+              if (bit === "1") lines.push("    add hl,de");
+            }
           }
-          const bits = constantValue.toString(2).slice(1);
-          const lines = ["    ld d,h", "    ld e,l"];
-          for (const bit of bits) {
-            lines.push("    add hl,hl");
-            if (bit === "1") lines.push("    add hl,de");
-          }
+          if (negative) lines.push("    xor a", "    sub l", "    ld l,a", "    sbc a,a", "    sub h", "    ld h,a");
           // The general expression-multiply loop costs 17 bytes after loading
           // the left operand. Keep it when the fixed chain is not smaller.
           if (lines.length >= 17) return null;
@@ -1140,14 +1149,12 @@ export function createExpressionComputeHelpers({
         if (leftValue !== null) {
           const loadRight = emitLoadInt16AstIntoHL(node.right, preferredDeclaredType);
           const scale = emitScaleHLByConst(leftValue);
-          if (!loadRight || !scale) return null;
-          return [...loadRight, ...scale];
+          if (loadRight && scale) return [...loadRight, ...scale];
         }
         if (rightValue !== null) {
           const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
           const scale = emitScaleHLByConst(rightValue);
-          if (!loadLeft || !scale) return null;
-          return [...loadLeft, ...scale];
+          if (loadLeft && scale) return [...loadLeft, ...scale];
         }
         return emitLoadInt16RuntimeMultiplyAstIntoHL(node, preferredDeclaredType);
       }

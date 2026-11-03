@@ -1,0 +1,1281 @@
+cartridge "CHECKERS/COMPUTE'S GAZETTE/1984"
+
+' CHECKERS
+' A ColecoVision game based on "Checkers", COMPUTE!'s Gazette, February
+' 1984 (one BASIC listing for the Commodore 64 and VIC-20, disk 1984-02;
+' the disk was retyped by a reader around 1988-89, whose REM reads
+' "CHECKERS / JANUARY 1, 1989"; no author is named on the disk). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a cell-for-cell port: the rules and the computer player are the
+' listing's (orig/checkers.64_vic.bas), the board is drawn for the
+' ColecoVision: a slate-blue board with the listing's 0-7 column and row
+' numbers, pieces with rings and crowns, pieces that glide, the
+' computer's move written out as the listing did ("ME 2,5 TO 3,4"),
+' sound effects and a title tune.
+'
+' The game: you (yellow, the listing's Q pieces) start on rows 0-2 and
+' move up the board; the computer (magenta, W) starts on rows 5-7 and
+' moves down. The computer moves first. Men move one square diagonally
+' forward, or jump an enemy piece diagonally forward onto the empty
+' square behind it, taking it; after a jump the same piece may jump
+' again. A man reaching the far row is crowned king and moves and jumps
+' both ways. Jumps are never forced (neither side must take).
+'
+' From the listing: the start position (lines 110-160), the computer
+' moving first, its player step for step (lines 170-500): every piece,
+' columns 0-7 outer and rows 0-7 inner, men trying left then right
+' forward, kings down-left, up-left, down-right, up-right; each move
+' scored +2 a man crowned, +5 a jump, -2 leaving its back row, +1 to an
+' edge column, +1 for each own piece diagonally ahead of the landing,
+' -2 for each of your pieces there that could jump it; the first
+' highest wins; after a jump it keeps jumping with the best-scored jump
+' while there is one, even after being crowned on the way (line 400 then
+' 440); "YOU WIN" when it has no move; you may stop a chain of jumps at
+' any time (RETURN, here the right button); your man is crowned when it
+' ends its move on row 7.
+'
+' Liberties: a joystick cursor instead of typed digits. The listing
+' accepted any diagonal step of one or two squares onto an empty square,
+' backwards for men too, and a "jump" over an empty square or your own
+' piece removed it; here only real checkers moves are offered (men
+' forward, jumps over the computer's pieces), and the squares you may
+' move to are marked. A chain of jumps ends by itself when no further
+' jump is possible. The listing never noticed that you had lost: here
+' the computer wins when you have no piece or no move left. A draw is
+' called after 40 computer moves in a row without a capture (two kings
+' could otherwise chase each other for ever). Typo fixed (doubtful):
+' line 300 reads "IF Y=0 OR U=7", the edge-column bonus that the classic
+' BASIC checkers this listing follows writes "IF U=0 OR U=7"; the port
+' uses U=0 or U=7. The computer's 400-loop delay is a short pause and a
+' glide. Piece counts and games won (since power on) are shown; the
+' "ZZZ" end banner and END are a message and a return to the title.
+'
+' Controls: either controller. The stick moves the cursor square by
+' square; the left button picks one of your pieces, then a marked square
+' to move to; the right button puts the piece back, or ends a chain of
+' jumps. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title tune played
+' once. `set sprite count` always given. Nothing flashes.
+
+const TSqd00 = 128
+const TSqd01 = 129
+const TSqd10 = 130
+const TSqd11 = 131
+const TSql00 = 132
+const TSql01 = 133
+const TSql10 = 134
+const TSql11 = 135
+const TTgt00 = 136
+const TTgt01 = 137
+const TTgt10 = 138
+const TTgt11 = 139
+const TWas00 = 140
+const TWas01 = 141
+const TWas10 = 142
+const TWas11 = 143
+const TYm00 = 144
+const TYm01 = 145
+const TYm10 = 146
+const TYm11 = 147
+const TYk00 = 148
+const TYk01 = 149
+const TYk10 = 150
+const TYk11 = 151
+const TMm00 = 152
+const TMm01 = 153
+const TMm10 = 154
+const TMm11 = 155
+const TMk00 = 156
+const TMk01 = 157
+const TMk10 = 158
+const TMk11 = 159
+const TFt = 160
+const TFb = 161
+const TFl = 162
+const TFr = 163
+const TFtl = 164
+const TFtr = 165
+const TFbl = 166
+const TFbr = 167
+const SCur = 0
+const SPick = 4
+const SDisc = 8
+const SCrown = 12
+const NTiles8 = 320
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndPick = 4
+const SndDrop = 5
+const SndTake = 6
+const SndCrown = 7
+const SndBump = 8
+const SndWon = 9
+const SndLost = 10
+const NSpr = 6
+const TuneLen = 576
+' board placement (tile columns and rows)
+const BoardX = 7
+const BoardY = 3
+' square kinds (TSqd00 + 4 * kind)
+const KDark = 0
+const KLight = 1
+const KTarget = 2
+const KWas = 3
+' sprites
+const SpCur = 0
+const SpPick = 1
+const SpCrown = 2
+const SpMove = 3
+' the longest chain of computer squares kept for the bot
+const LogMax = 12
+
+record Move:
+  u8 Fx
+  u8 Fy
+  u8 Tx
+  u8 Ty
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+' the listing's board S(X,Y) at X * 8 + Y: 1 your man, 2 your king,
+' -1 my man, -2 my king, 0 empty
+i8 S[64]
+' X(0): the best score so far; Bm: X(1)..X(4)
+i16 Best = 0
+Move Bm
+' the computer's squares this turn (start, then every landing), for the bot
+u8 CLogN = 0
+u8 CLogX[12]
+u8 CLogY[12]
+u8 LastX = 0
+u8 LastY = 0
+u8 HasLast = 0
+' your cursor and pick
+u8 Cx = 2
+u8 Cy = 2
+u8 Px = 0
+u8 Py = 0
+u8 Sel = 0
+u8 Chain = 0
+' counts and games won
+u8 NYou = 0
+u8 NMe = 0
+u8 Quiet = 0
+u16 MoveNo = 0
+bcd digits 4 Wins
+bcd digits 4 Losses
+' game state: 0 title, 1 computer's turn, 2 your choice, 3 busy, 4 over;
+' Res 1 you won, 2 the computer won, 3 draw
+u8 Gs = 0
+u8 Res = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Rpt = 0
+u8 Gx = 0
+u8 Gy = 0
+u8 Mc = 0
+u8 Mr = 21
+u8 Lx = 0
+u8 Ly = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Back = 0
+u8 WasBack = 0
+u8 WasStick = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 V = 0
+
+  tile screen
+  set sound table GkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+  NewGame
+
+play_loop:
+  CompTurn
+  if Gs = 4 then goto game_end
+  PlayerTurn
+  if Gs = 4 then goto game_end
+  goto play_loop
+
+game_end:
+  HideSprites
+  select case Res
+  case 1
+    inc Wins
+    print at 2,22, "   YOU WIN. I CAN'T MOVE!   "
+    play sound SndWon
+  case 2
+    inc Losses
+    print at 2,22, "   I WIN. YOU CAN'T MOVE.   "
+    play sound SndLost
+  case else
+    print at 2,22, " A DRAW: 40 MOVES, NO TAKES "
+    play sound SndLost
+  end select
+  fill 32 count 28 at 2,21
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the board
+
+function Sq(u8 X, u8 Y) as i8
+  return S[X * 8 + Y]
+
+sub SetSq(u8 X, u8 Y, i8 P):
+  S[X * 8 + Y] = P
+  return
+end sub
+
+' four tiles T, T+1 (top row), T+2, T+3 (bottom row) at Tx, Ty
+sub Quad(u8 T, u8 Tx, u8 Ty):
+  put char T at Tx,Ty
+  put char T + 1 at Tx + 1,Ty
+  put char T + 2 at Tx,Ty + 1
+  put char T + 3 at Tx + 1,Ty + 1
+  return
+end sub
+
+' the kind of tile picture for a piece value (4 to 7), or a dark square
+function PieceKind(i8 P) as u8
+  select case P
+  case 1
+    return 4
+  case 2
+    return 5
+  case -1
+    return 6
+  case -2
+    return 7
+  end select
+  return KDark
+
+' draw square X,Y as kind K (255: as the board holds it)
+sub DrawSq(u8 X, u8 Y, u8 K):
+  u8 T = 0
+  u8 Kd = 0
+  Kd = K
+  if Kd = 255 then
+    if ((X + Y) & 1) = 1 then
+      Kd = KLight
+    else
+      Kd = PieceKind(Sq(X, Y))
+      if Kd = KDark and HasLast = 1 then
+        if X = LastX and Y = LastY then Kd = KWas
+      end if
+    end if
+  end if
+  T = Kd * 4 + TSqd00
+  Quad(T, X * 2 + BoardX, (7 - Y) * 2 + BoardY)
+  return
+end sub
+
+sub DrawBoard:
+  u8 X = 0
+  u8 Y = 0
+  for X = 0 to 7
+    for Y = 0 to 7
+      DrawSq(X, Y, 255)
+    next
+  next
+  return
+end sub
+
+sub DrawFrame:
+  u8 K = 0
+  u8 R = 0
+  put char TFtl at BoardX - 1,BoardY - 1
+  put char TFtr at BoardX + 16,BoardY - 1
+  put char TFbl at BoardX - 1,BoardY + 16
+  put char TFbr at BoardX + 16,BoardY + 16
+  fill TFt count 16 at BoardX,BoardY - 1
+  fill TFb count 16 at BoardX,BoardY + 16
+  for K = 0 to 15
+    R = K + BoardY
+    put char TFl at BoardX - 1,R
+    put char TFr at BoardX + 16,R
+  next
+  ' the listing's numbers: rows up the left side, columns along the foot
+  for K = 0 to 7
+    R = (7 - K) * 2 + BoardY
+    put char 48 + K at BoardX - 3,R
+    put char 48 + K at K * 2 + BoardX,BoardY + 17
+  next
+  print at 2,BoardY + 7, "ROW"
+  print at 24,BoardY + 17, "COL"
+  return
+end sub
+
+' pieces left on each side, shown at the right
+sub Counts:
+  u8 K = 0
+  i8 P = 0
+  NYou = 0
+  NMe = 0
+  for K = 0 to 63
+    P = S[K]
+    if P > 0 then inc NYou
+    if P < 0 then inc NMe
+  next
+  W16 = NMe
+  print at 25,7, digits$(W16, 2)
+  W16 = NYou
+  print at 25,15, digits$(W16, 2)
+  return
+end sub
+
+sub SidePanel:
+  print at 25,3, "ME"
+  Quad(TMm00, 25, 5)
+  print at 25,11, "YOU"
+  Quad(TYm00, 25, 13)
+  Counts
+  return
+end sub
+
+' the sprite place of square X,Y
+sub SqPos(u8 X, u8 Y):
+  Gx = (X * 2 + BoardX) * 8
+  Gy = ((7 - Y) * 2 + BoardY) * 8
+  return
+end sub
+
+' glide a piece P from square A to square B as sprites
+sub Glide(u8 Ax, u8 Ay, u8 Bx, u8 By, i8 P):
+  u8 K = 0
+  u8 C = 11
+  u8 Kc = 0
+  u8 X0 = 0
+  u8 Y0 = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Qx = 0
+  i16 Qy = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  if P < 0 then C = 13
+  Kc = 0
+  if P = 2 or P = -2 then Kc = 4
+  SqPos(Ax, Ay)
+  X0 = Gx
+  Y0 = Gy
+  SqPos(Bx, By)
+  Dx = Gx - X0
+  Dy = Gy - Y0
+  for K = 1 to 10
+    Qx = Dx * K / 10 + X0
+    Qy = Dy * K / 10 + Y0
+    Sx = Qx
+    Sy = Qy - 1
+    set sprite SpMove to Sy,Sx,SDisc,C
+    if Kc > 0 then
+      set sprite SpCrown to Sy,Sx,SCrown,Kc
+    end if
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub HideMover:
+  set sprite SpMove to 192,0,0,0
+  set sprite SpCrown to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' lift the piece off square A, glide it to B, set it down as P
+sub MovePiece(u8 Ax, u8 Ay, u8 Bx, u8 By, i8 P):
+  i8 Was = 0
+  Was = Sq(Ax, Ay)
+  SetSq(Ax, Ay, 0)
+  DrawSq(Ax, Ay, 255)
+  Glide(Ax, Ay, Bx, By, Was)
+  SetSq(Bx, By, P)
+  DrawSq(Bx, By, 255)
+  HideMover
+  play sound SndDrop
+  return
+end sub
+
+' take the piece between A and B off the board
+sub TakeMid(u8 Ax, u8 Ay, u8 Bx, u8 By):
+  u8 Mx = 0
+  u8 My = 0
+  Mx = (Ax + Bx) / 2
+  My = (Ay + By) / 2
+  SetSq(Mx, My, 0)
+  DrawSq(Mx, My, 255)
+  play sound SndTake
+  Quiet = 0
+  Counts
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer (the listing's lines 170-500; G = -1)
+
+' line 270: score moving X,Y to U,V; keep it when it beats X(0)
+sub Score(u8 X, u8 Y, u8 U, u8 V):
+  i16 Q = 0
+  i8 P = 0
+  i8 Pa = 0
+  u8 Ci2 = 0
+  u8 C = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Bx = 0
+  u8 By = 0
+  P = Sq(X, Y)
+  if V = 0 and P = -1 then Q = Q + 2
+  if Y = V + 2 or V = Y + 2 then Q = Q + 5
+  if Y = 7 then Q = Q - 2
+  ' typo fix: the retyped listing reads Y=0 OR U=7
+  if U = 0 or U = 7 then Q = Q + 1
+  for Ci2 = 0 to 1
+    C = 255
+    if Ci2 = 1 then C = 1
+    Ax = U + C
+    Ay = V - 1
+    if Ax <= 7 and Ay <= 7 then
+      Pa = Sq(Ax, Ay)
+      if Pa < 0 then
+        Q = Q + 1
+      else
+        Bx = U - C
+        By = V + 1
+        if Bx <= 7 and By <= 7 and Pa > 0 then
+          if Sq(Bx, By) = 0 then
+            Q = Q - 2
+          elseif Bx = X and By = Y then
+            Q = Q - 2
+          end if
+        end if
+      end if
+    end if
+  next
+  if Q > Best then
+    Best = Q
+    Bm.Fx = X
+    Bm.Fy = Y
+    Bm.Tx = U
+    Bm.Ty = V
+  end if
+  return
+end sub
+
+' lines 210-260: one direction A,B (255 is -1) from X,Y
+sub Try(u8 X, u8 Y, u8 A, u8 B):
+  u8 U = 0
+  u8 V2 = 0
+  i8 P = 0
+  U = X + A
+  V2 = Y + B
+  if U > 7 or V2 > 7 then return
+  P = Sq(U, V2)
+  if P = 0 then
+    Score(X, Y, U, V2)
+    return
+  end if
+  if P < 0 then return
+  U = U + A
+  V2 = V2 + B
+  if U > 7 or V2 > 7 then return
+  if Sq(U, V2) = 0 then Score(X, Y, U, V2)
+  return
+end sub
+
+' lines 480-500: a further jump by half-steps A,B from X,Y
+sub TryJump(u8 X, u8 Y, u8 A, u8 B):
+  u8 U = 0
+  u8 V2 = 0
+  U = A + A + X
+  V2 = B + B + Y
+  if U > 7 or V2 > 7 then return
+  if Sq(U, V2) <> 0 then return
+  if Sq(X + A, Y + B) > 0 then Score(X, Y, U, V2)
+  return
+end sub
+
+' lines 170-200: the best move of the whole board into Bm (Best -99: none)
+sub Search:
+  u8 X = 0
+  u8 Y = 0
+  i8 P = 0
+  Best = -99
+  for X = 0 to 7
+    for Y = 0 to 7
+      P = Sq(X, Y)
+      if P = -1 then
+        Try(X, Y, 255, 255)
+        Try(X, Y, 1, 255)
+      elseif P = -2 then
+        Try(X, Y, 255, 255)
+        Try(X, Y, 255, 1)
+        Try(X, Y, 1, 255)
+        Try(X, Y, 1, 1)
+      end if
+    next
+  next
+  return
+end sub
+
+sub LogSq(u8 X, u8 Y):
+  if CLogN < LogMax then
+    CLogX[CLogN] = X
+    CLogY[CLogN] = Y
+    inc CLogN
+  end if
+  return
+end sub
+
+' "ME X,Y" then " TO U,V" for every step, as the listing printed
+sub SayXY(u8 Col, u8 Row, u8 X, u8 Y):
+  put char 48 + X at Col,Row
+  put char 44 at Col + 1,Row
+  put char 48 + Y at Col + 2,Row
+  return
+end sub
+
+sub SayMove(u8 X, u8 Y):
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  print at 2,21, "ME"
+  SayXY(5, 21, X, Y)
+  Mc = 9
+  Mr = 21
+  return
+end sub
+
+sub SayTo(u8 U, u8 V):
+  if Mc > 23 then
+    Mc = 2
+    Mr = 22
+  end if
+  print at Mc,Mr, "TO"
+  SayXY(Mc + 3, Mr, U, V)
+  Mc = Mc + 7
+  return
+end sub
+
+' the best further jump from X,Y into Bm; 1 if there is one
+function Chain2(u8 X, u8 Y) as u8
+  i8 P = 0
+  Best = -99
+  P = Sq(X, Y)
+  if P = -1 then
+    TryJump(X, Y, 255, 255)
+    TryJump(X, Y, 1, 255)
+  else
+    TryJump(X, Y, 255, 255)
+    TryJump(X, Y, 255, 1)
+    TryJump(X, Y, 1, 255)
+    TryJump(X, Y, 1, 1)
+  end if
+  if Best = -99 then return 0
+  return 1
+
+sub CompTurn:
+  i8 P = 0
+  u8 Going = 1
+  Gs = 1
+  ' clear the marks of my last move
+  if HasLast = 1 then
+    HasLast = 0
+    DrawSq(LastX, LastY, 255)
+  end if
+  CLogN = 0
+  Search
+  if Best = -99 then
+    Res = 1
+    Gs = 4
+    return
+  end if
+  inc Quiet
+  inc MoveNo
+  SayMove(Bm.Fx, Bm.Fy)
+  LogSq(Bm.Fx, Bm.Fy)
+  LastX = Bm.Fx
+  LastY = Bm.Fy
+  Pause(30)
+  while Going = 1
+    SayTo(Bm.Tx, Bm.Ty)
+    LogSq(Bm.Tx, Bm.Ty)
+    ' line 400: a piece landing on row 0 is a king
+    P = Sq(Bm.Fx, Bm.Fy)
+    if Bm.Ty = 0 then
+      if P = -1 then play sound SndCrown
+      P = -2
+    end if
+    MovePiece(Bm.Fx, Bm.Fy, Bm.Tx, Bm.Ty, P)
+    Going = 0
+    if Bm.Fx = Bm.Tx + 2 or Bm.Tx = Bm.Fx + 2 then
+      TakeMid(Bm.Fx, Bm.Fy, Bm.Tx, Bm.Ty)
+      ' lines 440-460: jump on with the best further jump
+      Pause(12)
+      Going = Chain2(Bm.Tx, Bm.Ty)
+    end if
+  end while
+  HasLast = 1
+  DrawSq(LastX, LastY, 255)
+  Counts
+  if Quiet >= 40 then
+    Res = 3
+    Gs = 4
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' you
+
+' 1 when your piece at X,Y may go to U,V (Jmp 1: jumps only)
+function Legal(u8 X, u8 Y, u8 U, u8 V, u8 Jmp) as u8
+  i8 P = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  if U > 7 or V > 7 then return 0
+  P = Sq(X, Y)
+  if P <= 0 then return 0
+  if Sq(U, V) <> 0 then return 0
+  if P = 1 and V <= Y then return 0
+  Dx = U - X
+  if U < X then Dx = X - U
+  Dy = V - Y
+  if V < Y then Dy = Y - V
+  if Dx <> Dy then return 0
+  if Dx = 1 then
+    if Jmp = 1 then return 0
+    return 1
+  end if
+  if Dx <> 2 then return 0
+  if Sq((X + U) / 2, (Y + V) / 2) < 0 then return 1
+  return 0
+
+' how many places the piece at X,Y may go; marks them when Mark is 1
+function Targets(u8 X, u8 Y, u8 Jmp, u8 Mark) as u8
+  u8 N = 0
+  u8 D = 0
+  u8 A = 0
+  u8 B = 0
+  u8 U = 0
+  u8 V2 = 0
+  for D = 0 to 7
+    A = 255
+    if (D & 1) = 1 then A = 1
+    B = 255
+    if (D & 2) = 2 then B = 1
+    if D >= 4 then
+      A = A + A
+      B = B + B
+    end if
+    U = X + A
+    V2 = Y + B
+    if Legal(X, Y, U, V2, Jmp) = 1 then
+      inc N
+      if Mark = 1 then DrawSq(U, V2, KTarget)
+    end if
+  next
+  return N
+
+' 1 when you have any move at all
+function YouCanMove as u8
+  u8 X = 0
+  u8 Y = 0
+  for X = 0 to 7
+    for Y = 0 to 7
+      if Sq(X, Y) > 0 then
+        if Targets(X, Y, 0, 0) > 0 then return 1
+      end if
+    next
+  next
+  return 0
+
+' redraw the 5 x 5 squares around X,Y as the board holds them
+sub Unmark(u8 X, u8 Y):
+  u8 D = 0
+  u8 U = 0
+  u8 V2 = 0
+  for D = 0 to 24
+    U = D % 5 + X - 2
+    V2 = D / 5 + Y - 2
+    if U <= 7 and V2 <= 7 then DrawSq(U, V2, 255)
+  next
+  return
+end sub
+
+sub CurDraw:
+  SqPos(Cx, Cy)
+  set sprite SpCur to Gy - 1,Gx,SCur,15
+  update sprites
+  return
+end sub
+
+sub CurStep(u8 St):
+  u8 Moved = 0
+  if (St & 1) > 0 and Cy < 7 then
+    inc Cy
+    Moved = 1
+  end if
+  if (St & 2) > 0 and Cy > 0 then
+    dec Cy
+    Moved = 1
+  end if
+  if (St & 4) > 0 and Cx > 0 then
+    dec Cx
+    Moved = 1
+  end if
+  if (St & 8) > 0 and Cx < 7 then
+    inc Cx
+    Moved = 1
+  end if
+  if Moved = 1 then
+    play sound SndStep
+    CurDraw
+  end if
+  return
+end sub
+
+sub MoveInput:
+  u8 St = 0
+  St = J1 | J2
+  St = St & 15
+  if St = 0 then
+    Rpt = 0
+  elseif Rpt > 0 then
+    dec Rpt
+  else
+    if WasStick = 0 then
+      Rpt = 14
+    else
+      Rpt = 8
+    end if
+    CurStep(St)
+  end if
+  WasStick = St
+  return
+end sub
+
+sub Pick(u8 X, u8 Y):
+  Px = X
+  Py = Y
+  Sel = 1
+  SqPos(X, Y)
+  set sprite SpPick to Gy - 1,Gx,SPick,9
+  update sprites
+  V = Targets(X, Y, Chain, 1)
+  return
+end sub
+
+sub Unpick:
+  Sel = 0
+  Unmark(Px, Py)
+  set sprite SpPick to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub SayYou:
+  fill 32 count 28 at 2,22
+  if Chain = 1 then
+    print at 2,22, "JUMP AGAIN, RIGHT BTN: STOP"
+  elseif Sel = 1 then
+    print at 2,22, "WHERE TO? RIGHT BTN: BACK"
+  else
+    print at 2,22, "YOUR MOVE: PICK A PIECE"
+  end if
+  return
+end sub
+
+sub PlayerTurn:
+  u8 Done = 0
+  u8 Fx = 0
+  u8 Fy = 0
+  i8 P = 0
+  if YouCanMove = 0 then
+    Res = 2
+    Gs = 4
+    return
+  end if
+  Sel = 0
+  Chain = 0
+  SayYou
+  CurDraw
+  Rpt = 0
+  WasStick = 15
+  Gs = 2
+  while Done = 0
+    Frame1
+    ReadPad
+    MoveInput
+    if Press = 1 then
+      if Sel = 0 then
+        if Sq(Cx, Cy) > 0 and Targets(Cx, Cy, 0, 0) > 0 then
+          play sound SndPick
+          Pick(Cx, Cy)
+          SayYou
+        else
+          play sound SndBump
+        end if
+      elseif Legal(Px, Py, Cx, Cy, Chain) = 1 then
+        Gs = 3
+        Fx = Px
+        Fy = Py
+        Unpick
+        set sprite SpCur to 192,0,0,0
+        P = Sq(Fx, Fy)
+        MovePiece(Fx, Fy, Cx, Cy, P)
+        Lx = Cx
+        Ly = Cy
+        if Fx = Cx + 2 or Cx = Fx + 2 then
+          TakeMid(Fx, Fy, Cx, Cy)
+          if Targets(Cx, Cy, 1, 0) > 0 then
+            Chain = 1
+            Pick(Cx, Cy)
+            SayYou
+            CurDraw
+            Gs = 2
+          else
+            Done = 1
+          end if
+        else
+          Done = 1
+        end if
+      else
+        play sound SndBump
+      end if
+    elseif Back = 1 and Sel = 1 then
+      if Chain = 1 then
+        Unpick
+        Done = 1
+      else
+        play sound SndBump
+        Unpick
+        SayYou
+      end if
+    end if
+  end while
+  ' line 910: crowned when the move ends on row 7
+  Gs = 3
+  ' (P first: an i8 call compared with 1 is miscompiled,
+  ' bugs/gzchk-i8-call-compare-const.alexis)
+  P = Sq(Lx, Ly)
+  if Ly = 7 and P = 1 then
+    SetSq(Lx, Ly, 2)
+    DrawSq(Lx, Ly, 255)
+    play sound SndCrown
+  end if
+  set sprite SpCur to 192,0,0,0
+  update sprites
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+' lines 110-160: X even: rows 0 and 2 yours, 6 mine; X odd: 1 yours, 5 and 7 mine
+data StartCol bytes
+  1, 0, 1, 0, 0, 0, $FF, 0
+  0, 1, 0, 0, 0, $FF, 0, $FF
+end data
+
+sub NewGame:
+  u8 X = 0
+  u8 Y = 0
+  u8 K = 0
+  i8 P = 0
+  for X = 0 to 7
+    for Y = 0 to 7
+      K = (X & 1) * 8 + Y
+      P = StartCol[K]
+      SetSq(X, Y, P)
+    next
+  next
+  Res = 0
+  Quiet = 0
+  MoveNo = 0
+  HasLast = 0
+  CLogN = 0
+  Cx = 2
+  Cy = 2
+  Gs = 3
+  NewScreen
+  print at 2,1, "CHECKERS"
+  DrawFrame
+  DrawBoard
+  SidePanel
+  ShowScreen
+  Pause(20)
+  return
+end sub
+
+sub Pause(u8 N):
+  u8 K = 0
+  for K = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  V = V & 32
+  Back = 0
+  if V > 0 then
+    if WasBack = 0 then Back = 1
+  end if
+  WasBack = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of board, the name, the tune once, the menu
+sub TitlePage:
+  u8 X = 0
+  Gs = 0
+  NewScreen
+  for Ci = 0 to 7
+    X = Ci * 2 + 7
+    Quad(((Ci & 1) * 4) + TSqd00, X, 3)
+    Quad((((Ci + 1) & 1) * 4) + TSqd00, X, 5)
+  next
+  Quad(TMm00, 9, 3)
+  Quad(TMk00, 13, 3)
+  Quad(TYk00, 17, 5)
+  Quad(TYm00, 21, 5)
+  print at 11,9, "CHECKERS"
+  print at 4,11, "COMPUTE!'S GAZETTE 1984"
+  print at 3,13, "YELLOW AGAINST THE MACHINE."
+  print at 3,14, "JUMP ITS PIECES, CROWN"
+  print at 3,15, "YOURS, LEAVE IT NO MOVE."
+  print at 12,17, "PLAY"
+  print at 12,18, "CREDITS"
+  print at 5,21, "GAMES: YOU ", Wins, " ME ", Losses
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if (V & 1) > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      play sound SndStep
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,17
+  put char 32 at 10,18
+  J = Menu + 17
+  put char 62 at 10,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "CHECKERS"
+  print at 2,4, "BASED ON CHECKERS,"
+  print at 2,5, "COMPUTE!'S GAZETTE, FEBRUARY"
+  print at 2,6, "1984 (COMMODORE 64 AND"
+  print at 2,7, "VIC-20). NO AUTHOR NAMED."
+  print at 2,9, "THE LISTING'S RULES AND ITS"
+  print at 2,10, "COMPUTER PLAYER, WHICH"
+  print at 2,11, "SCORES EVERY MOVE ON THE"
+  print at 2,12, "BOARD AND JUMPS ON GREEDILY."
+  print at 2,15, "COLECOVISION GAME, MUSIC"
+  print at 2,16, "AND PICTURES BY CLAUDE"
+  print at 2,17, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,18, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,20, "MUSIC: CROWNING SQUARE"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$06,$04
+  $00,$00,$00,$00,$00,$C0,$60,$20
+  $04,$06,$03,$00,$00,$00,$00,$00
+  $20,$60,$C0,$00,$00,$00,$00,$00
+  $F0,$F0,$C0,$C0,$00,$00,$00,$00
+  $F0,$F0,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$F0,$F0
+  $00,$00,$00,$00,$03,$03,$F0,$F0
+  $00,$07,$F0,$1C,$CC,$88,$90,$90
+  $00,$E0,$F0,$38,$CC,$11,$09,$09
+  $90,$90,$88,$CC,$1C,$F0,$07,$00
+  $09,$09,$11,$CC,$38,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C9,$8D,$70,$70
+  $00,$E0,$F0,$07,$93,$B1,$0E,$0E
+  $87,$87,$80,$C0,$E0,$F0,$07,$00
+  $E1,$E1,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$1C,$CC,$88,$90,$90
+  $00,$E0,$F0,$38,$CC,$11,$09,$09
+  $90,$90,$88,$CC,$1C,$F0,$07,$00
+  $09,$09,$11,$CC,$38,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C9,$8D,$70,$70
+  $00,$E0,$F0,$07,$93,$B1,$0E,$0E
+  $87,$87,$80,$C0,$E0,$F0,$07,$00
+  $E1,$E1,$01,$03,$07,$F0,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $04,$04,$04,$04,$04,$F4,$F4,$F4
+  $04,$04,$04,$04,$04,$F4,$F4,$F4
+  $F4,$F4,$F4,$04,$04,$04,$04,$04
+  $F4,$F4,$F4,$04,$04,$04,$04,$04
+  $54,$54,$54,$54,$04,$04,$04,$04
+  $45,$45,$54,$54,$04,$04,$04,$04
+  $04,$04,$04,$04,$54,$54,$54,$54
+  $04,$04,$04,$04,$54,$54,$45,$45
+  $04,$B4,$4B,$B4,$4B,$4B,$4B,$4B
+  $04,$B4,$B4,$B4,$B4,$4B,$4B,$4B
+  $4B,$4B,$4B,$4B,$B4,$4B,$B4,$04
+  $4B,$4B,$4B,$B4,$B4,$B4,$B4,$04
+  $04,$B4,$4B,$4B,$4B,$4B,$B4,$B4
+  $04,$B4,$B4,$4B,$4B,$4B,$B4,$B4
+  $4B,$4B,$4B,$4B,$4B,$4B,$B4,$04
+  $4B,$4B,$4B,$4B,$4B,$B4,$B4,$04
+  $04,$D4,$4D,$D4,$4D,$4D,$4D,$4D
+  $04,$D4,$D4,$D4,$D4,$4D,$4D,$4D
+  $4D,$4D,$4D,$4D,$D4,$4D,$D4,$04
+  $4D,$4D,$4D,$D4,$D4,$D4,$D4,$04
+  $04,$D4,$4D,$4D,$4D,$4D,$D4,$D4
+  $04,$D4,$D4,$4D,$4D,$4D,$D4,$D4
+  $4D,$4D,$4D,$4D,$4D,$4D,$D4,$04
+  $4D,$4D,$4D,$4D,$4D,$D4,$D4,$04
+  $01,$01,$01,$01,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$01,$01,$01,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$1A,$1A,$1A,$1A
+  $01,$01,$01,$01,$A1,$A1,$A1,$A1
+  $1A,$1A,$1A,$1A,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $F8,$F8,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$F8,$F8
+  $1F,$1F,$03,$03,$03,$00,$00,$00,$00,$00,$00,$03,$03,$03,$1F,$1F
+  $FF,$FF,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$FF,$FF
+  $FF,$FF,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$FF,$FF
+  $00,$07,$0F,$1F,$3F,$7F,$7F,$7F,$7F,$7F,$7F,$3F,$1F,$0F,$07,$00
+  $00,$E0,$F0,$F8,$FC,$FE,$FE,$FE,$FE,$FE,$FE,$FC,$F8,$F0,$E0,$00
+  $00,$00,$00,$00,$09,$0D,$0F,$0F,$07,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$90,$B0,$F0,$F0,$E0,$E0,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+GkStep:
+    db $40,$1D,$51,$01,$40,$41,$81,$01,$50
+GkPick:
+    db $40,$BF,$20,$02,$40,$8F,$40,$03,$50
+GkDrop:
+    db $00,$00,$13,$01,$00,$00,$42,$02,$10
+GkTake:
+    db $40,$FC,$11,$03,$40,$A6,$32,$03,$40,$F9,$63,$06,$50
+GkCrown:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$30,$06,$40,$47,$60,$08,$50
+GkBump:
+    db $00,$00,$41,$02,$10
+GkWon:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$10,$06
+    db $40,$55,$10,$14,$40,$55,$70,$0A,$50
+GkLost:
+    db $40,$FE,$20,$08,$40,$1D,$21,$08,$40,$53,$31,$08,$40,$AB,$31,$14,$40,$AB,$81,$0A,$50
+
+GkSoundTable:
+    dw GkTuneMel,$702B
+    dw GkTuneBass,$7035
+    dw GkStep,$7049
+    dw GkPick,$7049
+    dw GkDrop,$703F
+    dw GkTake,$7049
+    dw GkCrown,$7049
+    dw GkBump,$703F
+    dw GkWon,$7049
+    dw GkLost,$7049
+; Crowning Square (original)
+; Tiny Sound, 9 frames per step
+GkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$25,$28,$01,$25,$21,$01,$23,$25,$26,$01
+    db $25,$23,$01,$01,$1C,$01,$21,$25,$01,$23,$21,$01,$20,$21,$23,$01
+    db $1C,$01,$01,$01,$1E,$01,$21,$26,$01,$25,$23,$01,$25,$26,$28,$01
+    db $2A,$28,$01,$01,$26,$01,$25,$23,$01,$21,$20,$01,$23,$01,$20,$01
+    db $21,$01,$01,$00
+    db $FF
+GkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$12,$01
+    db $10,$01,$14,$01,$0D,$01,$10,$01,$12,$01,$0E,$01,$10,$01,$0B,$01
+    db $04,$01,$08,$01,$0E,$01,$12,$01,$0B,$01,$0E,$01,$09,$01,$0D,$01
+    db $0E,$01,$12,$01,$10,$01,$01,$01,$04,$01,$01,$01,$09,$01,$04,$01
+    db $09,$01,$01,$00
+    db $FF
+}

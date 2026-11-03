@@ -1,3 +1,5 @@
+import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
+
 const ASM_CALL_LABEL_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ASM_CALL_ARG_RE = /^(a|b|c|d|e|h|l|hl|de|bc)\s*=\s*(.+)$/i;
 const ASM_WORD_REG_BYTES = new Map([
@@ -90,6 +92,8 @@ export function handleRoutineStatement({
   currentFunction,
   emitCurrentProcReturnLines,
   emitLoadInt8Into,
+  emitLoadInt8ValueInto,
+  emitLoadInt8ValueIntoPreserving,
   emitLoadInt16IntoHL,
   emitStoreExtended32,
   emitStoreWideExpression,
@@ -131,11 +135,34 @@ export function handleRoutineStatement({
     if (!currentFunction) {
       return { handled: true, ok: false, log: `Only functions can return a value: ${rawLine}` };
     }
-    const valueToken = normalizeExpression(returnValue[1].trim());
+    const rawValueToken = returnValue[1].trim();
+    const valueToken = normalizeExpression(rawValueToken);
     const returnType = currentFunction.returnType;
     let returnLines = null;
     if (returnType === "int8") {
-      returnLines = emitLoadInt8Into("a", valueToken);
+      const getChar = rawValueToken.match(/^get\s+char\s+at\s+(.+?)\s*,\s*(.+)$/i);
+      if (getChar) {
+        const loadInputs = emitLoadRoutineByteInputsFromTokens({
+          routineName: "AMY_GET_CHAR_AT",
+          values: { e: getChar[1], d: getChar[2] },
+          emitLoadInt8Into,
+          emitLoadInt8ValueInto,
+          emitLoadInt8ValueIntoPreserving
+        });
+        if (!loadInputs) {
+          return { handled: true, ok: false, log: `get char return requires byte-sized screen coordinates: ${rawLine}` };
+        }
+        returnLines = [...loadInputs, "    call AMY_GET_CHAR_AT"];
+      }
+      const valueType = resolveValueType(valueToken);
+      const expressionUsesWord = valueType === "int16"
+        || (valueToken.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [])
+          .some((identifier) => resolveValueType(identifier) === "int16");
+      if (expressionUsesWord) {
+        const loadWord = emitLoadInt16IntoHL(valueToken);
+        if (loadWord) returnLines = [...loadWord, "    ld a,l"];
+      }
+      if (!returnLines) returnLines = emitLoadInt8Into("a", valueToken);
       if (!returnLines) {
         const loadWord = emitLoadInt16IntoHL(valueToken);
         if (loadWord) returnLines = [...loadWord, "    ld a,l"];

@@ -56,7 +56,8 @@ export function createInlineStatementCompiler(ctx) {
     compileVramTextStatement,
     compileVramPixelInputStatement,
     compileSoundSpinnerStatement,
-    compileMathBitStatement
+    compileMathBitStatement,
+    compileRandomBounceStatement
   } = ctx;
 
   return function compileInlineStatement(inlineStmt, rawLineText) {
@@ -93,6 +94,14 @@ export function createInlineStatementCompiler(ctx) {
         return soundResult.ok
           ? { ok: true, lines: soundResult.lines, log: "" }
           : { ok: false, lines: [], log: soundResult.log };
+      }
+    }
+    if (/^bounce\s+/i.test(inlineStmt)) {
+      const bounceResult = compileRandomBounceStatement?.(inlineStmt, rawLineText);
+      if (bounceResult?.handled) {
+        return bounceResult.ok
+          ? { ok: true, lines: bounceResult.lines, log: "" }
+          : { ok: false, lines: [], log: bounceResult.log };
       }
     }
     if (/^swap\s+/i.test(inlineStmt)) {

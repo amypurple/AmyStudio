@@ -1,0 +1,1962 @@
+cartridge "CAMPAIGN MANAGER/COMPUTE!'S GAZETTE/1984"
+
+' CAMPAIGN MANAGER
+' A ColecoVision game based on "Campaign Manager" by Todd Heimarck,
+' COMPUTE!'s Gazette, August 1984 (Commodore 64, machine language, typed
+' in with MLX).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: two campaign managers run two candidates for president over
+' nine weeks of seven days. Each week each manager plans seven days:
+' CAMPAIGN in a state of the region where the candidate is, TV ADS over the
+' whole region, FUNDRAISE, REST; POLL the region ($100,000), TRAVEL to
+' another region, RECONSIDER (clear the week's plan). Then the two weeks
+' run day by day. Every state has 255 undecided voters; campaign stops and
+' ads win them over. After week nine come the last-minute points
+' (intelligence + stamina) in every state, the undecided split evenly, and
+' each state's electoral votes go to the candidate ahead there (a tie to
+' the state's own leaning). 270 of 538 votes, DC counted as a state.
+'
+' From the original (orig/campaign.prg, see tables.py and the article):
+' the 51 states with their electoral votes, their nine regions (New
+' England, Urban Northeast, Heartland, Great Plains, Atlantic, Southern,
+' Arklatex, Mountain, Pacific), each state's leaning to each party (a
+' start of 282 to 256 votes) and its acceptable range on each of five
+' issues (scale 1-6); five random candidates to pick from, each with
+' charisma, stamina, intelligence, experience and appeal from 1 to 8 and
+' positions inside the party's range (1-4 and 3-6, farms and schools 2-5);
+' the titles SEN GOV REP REV MS DR VP GEN; the coin toss; an optional
+' incumbent; campaign effectiveness CHAR x 2 + INTL, rest STAM x 4 + 9 -
+' EXPR with a bonus for a second day of rest, fundraising (EXPR x 3 +
+' APPL) x $200,000, money up to $25 million, health up to 255 and useless
+' below 8; a stop scores up to 3 points an agreed issue, one point per 32
+' health, the effectiveness, 2 more on the second day in a row in a state,
+' and a third day in a row backfires; the opponent gets a reaction share;
+' ads need a presence (a stop) in the region and $4 million, reach every
+' state of the region, grow stronger every week, and backfire at appeal 8;
+' a poll costs $100,000 and needs $1 million; a trip costs $100,000 when you
+' campaign in the new region; last-minute points INTL + STAM; a tie in
+' electoral votes is a coin toss.
+'
+' Liberties: party names are generic, CYAN and RED after the original map's
+' colours (the original used the real party names); candidates get generic
+' surnames after the original titles; issues are called ECONOMY, SOCIAL,
+' FARMS, SCHOOLS and DEFENSE. The exact point formulas of the machine code
+' were not all traced: the article's rules are followed and the missing
+' numbers chosen (a stop costs 10 + EXPR health and $100,000; ads cost $2.5
+' million and give CHAR + APPL + 2 x week a state; a third day in a row in
+' a state scores a quarter and gives the opponent the whole of it; the
+' reaction share is a quarter; the incumbent gets 3 points a stop and $1
+' million). A computer manager can play the other side (the original was
+' for two players only). The map is always on screen (the original's MAP
+' command): a state is drawn solid when its lead is 16 or more, striped
+' when less, grey when even; POLL gives the figures. The two players' days
+' run alternately, the toss loser first each day (who goes second has a
+' small edge, as in the original). The state map is Bounty Hunter's grid
+' with DC, Alaska and Hawaii added.
+'
+' Controls: either controller. Stick left/right: choose (a command, a
+' state, a region, a candidate). Left button: OK. Right button: back.
+' On the title, up/down choose a line, left/right change it.
+'
+' House rules: text in columns 2-29; tiles from code 128; music first in
+' the sound table, the title tune once; screens drawn with the NMI off,
+' display off; `set sprite count` always given; own xorshift random
+' numbers; nothing flashes.
+
+const TM00 = 128
+const TM01 = 129
+const TM02 = 130
+const TM03 = 131
+const TM10 = 132
+const TM11 = 133
+const TM12 = 134
+const TM13 = 135
+const TM20 = 136
+const TM21 = 137
+const TM22 = 138
+const TM23 = 139
+const TM30 = 140
+const TM31 = 141
+const TM32 = 142
+const TM33 = 143
+const TM40 = 144
+const TM41 = 145
+const TM42 = 146
+const TM43 = 147
+const TSea = 148
+const TRule = 149
+const TStar = 150
+const TStrR = 151
+const TBar = 152
+const TDot = 153
+const TPin = 154
+const TBox00 = 155
+const TBox01 = 156
+const TBox10 = 157
+const TBox11 = 158
+const SMark = 0
+const SFrame = 4
+const NTiles8 = 248
+const SprBytes = 64
+const NCells = 329
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndOk = 4
+const SndNope = 5
+const SndCheer = 6
+const SndAds = 7
+const SndCoin = 8
+const SndRest = 9
+const SndWin = 10
+const SndTie = 11
+const NSpr = 2
+const DayWait = 40
+const TuneLen = 548
+
+record Pl:
+  u8 Money
+  u8 Health
+  u8 Reg
+  u8 LastReg
+  u8 LastSt
+  u8 Streak
+  u8 Rested
+  u8 Party
+  u8 Cpu
+  u8 Title
+  u8 Name
+end record
+
+data TitleTx chars
+  "SEN. GOV. REP. REV. MS.  DR.  V.P. GEN. "
+end data
+data SurTx chars
+  "ALDEN    BRANDT   CORBIN   DALTON   EMERY    FINLEY   GRAVES   HOLLIS   "
+  "IVERS    KEMPER   LOWELL   MERCER   NOLAN    OSTROM   PRESCOTT QUINLAN  "
+end data
+data TraitTx chars
+  "CHARISMA  STAMINA   INTELLECT EXPERIENCEAPPEAL    "
+end data
+data IssueTx chars
+  "ECONOMYSOCIAL FARMS  SCHOOLSDEFENSE"
+end data
+data ActTx chars
+  "CAMPAIGN  TV ADS    FUNDRAISE REST      POLL      TRAVEL    RECONSIDERDONE      "
+end data
+data ActCh bytes
+  46, 67, 65, 70, 82
+end data
+
+Pl P[2]
+u8 Trait[10]
+u8 Pos[10]
+u8 OptT[25]
+u8 OptP[25]
+u8 OptTi[5]
+u8 OptNm[5]
+u8 SupC[52]
+u8 SupR[52]
+u8 Und[52]
+u8 Pres[18]
+u8 PlanA[14]
+u8 PlanS[14]
+u16 Rs = 1
+u16 Off = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+' game settings and state
+u8 Players = 1
+u8 Incumb = 0
+u8 Line = 0
+u8 First = 0
+u8 Week = 1
+u8 GPhase = 0
+u8 Cur = 0
+u8 Mode = 0
+u8 MenuI = 0
+u8 Sel = 1
+u8 Planned = 0
+u8 Winner = 0
+u8 EvC = 0
+u8 EvR = 0
+u16 TotC = 0
+u16 TotR = 0
+bcd digits 4 BigC, BigR
+' input
+u8 J1 = 0
+u8 Btn1 = 0
+u8 Btn2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 Stk = 0
+u8 WasStick = 0
+u8 RepT = 0
+u8 Tick = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Si = 0
+u8 Msg = 0
+' which screen waits for the player (for the test bots): 1 credits, 2 title,
+' 3 party, 4 candidate, 5 hand-over, 6 week plan, 0 none
+u8 Scr = 0
+
+  tile screen
+  set sound table CmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  GPhase = 0
+  TitlePage
+  NewGame
+  for Week = 1 to 9
+    PlanBoth
+    Resolve
+  next
+  Final
+  GPhase = 4
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: a 16-bit xorshift, stirred on the title
+
+function Rnd(u8 N) as u8
+  u16 T = 0
+  T = Rs << 7
+  Rs = Rs ^ T
+  T = Rs >> 9
+  Rs = Rs ^ T
+  T = Rs << 8
+  Rs = Rs ^ T
+  T = Rs & 255
+  T = T % N
+  return T
+
+' ---------------------------------------------------------------------------
+' support by party (0 cyan, 1 red)
+
+function SupOf(u8 Q, u8 S) as u8
+  if Q = 0 then return SupC[S]
+  return SupR[S]
+
+sub AddSup(u8 Q, u8 S, u8 N):
+  u16 T = 0
+  T = SupOf(Q, S)
+  T = T + N
+  if T > 255 then T = 255
+  if Q = 0 then
+    SupC[S] = T
+  else
+    SupR[S] = T
+  end if
+end sub
+
+' take up to N undecided voters of state S for party Q; returns how many
+function Win(u8 Q, u8 S, u8 N) as u8
+  u8 T = 0
+  T = N
+  if T > Und[S] then T = Und[S]
+  Und[S] = Und[S] - T
+  AddSup(Q, S, T)
+  return T
+
+' the state's look: 0 cyan sure .. 2 even .. 4 red sure
+function LookOf(u8 S) as u8
+  i16 M = 0
+  M = SupC[S]
+  M = M - SupR[S]
+  if M >= 16 then return 0
+  if M > 0 then return 1
+  if M <= -16 then return 4
+  if M < 0 then return 3
+  return 2
+
+' who carries a state now: 0 cyan, 1 red (a tie to the state's leaning)
+function Carrier(u8 S) as u8
+  if SupC[S] > SupR[S] then return 0
+  if SupR[S] > SupC[S] then return 1
+  if BiasA[S] > BiasB[S] then return 0
+  return 1
+
+' points from the issues: 3 an issue inside the state's range, 1 just next to it
+function IssuePts(u8 Pi, u8 S) as u8
+  u8 Pts = 0
+  u8 Ik = 0
+  u8 Lo = 0
+  u8 Hi = 0
+  u8 Ps = 0
+  u8 Ix = 0
+  for Ik = 0 to 4
+    Ix = S * 5 - 5
+    Ix = Ix + Ik
+    Hi = IssR[Ix]
+    Lo = Hi >> 4
+    Hi = Hi & 15
+    Ps = Pos[Pi * 5 + Ik]
+    if Ps >= Lo then
+      if Ps <= Hi then
+        Pts = Pts + 3
+      elseif Ps = Hi + 1 then
+        Pts = Pts + 1
+      end if
+    elseif Ps + 1 = Lo then
+      Pts = Pts + 1
+    end if
+  next
+  return Pts
+
+' ---------------------------------------------------------------------------
+' one day's action of player Pi
+
+sub DoAct(u8 Pi, u8 A, u8 S):
+  u8 Q = 0
+  u8 OQ = 0
+  u8 Mo = 0
+  u8 He = 0
+  u8 Lr = 0
+  u8 Ls = 0
+  u8 St = 0
+  u8 Re = 0
+  u8 Rg = 0
+  u8 Pts = 0
+  u8 Tk = 0
+  u8 Ch = 0
+  u8 Sta = 0
+  u8 Itl = 0
+  u8 Xpr = 0
+  u8 Apl = 0
+  u8 T0 = 0
+  u8 T1 = 0
+  u8 Ti = 0
+  u16 G = 0
+  Q = P[Pi].Party
+  OQ = Q ^ 1
+  Mo = P[Pi].Money
+  He = P[Pi].Health
+  Lr = P[Pi].LastReg
+  Ls = P[Pi].LastSt
+  St = P[Pi].Streak
+  Re = P[Pi].Rested
+  K = Pi * 5
+  Ch = Trait[K]
+  Sta = Trait[K + 1]
+  Itl = Trait[K + 2]
+  Xpr = Trait[K + 3]
+  Apl = Trait[K + 4]
+  Msg = 0
+  Tk = 0
+  select case A
+  case 1
+    Rg = StReg[S]
+    if Rg <> Lr then
+      if Mo > 0 then dec Mo
+      Lr = Rg
+    end if
+    if S = Ls then
+      if St < 9 then inc St
+    else
+      St = 1
+    end if
+    Ls = S
+    if He < 8 then
+      Pts = 0
+      Msg = 1
+    else
+      Pts = IssuePts(Pi, S)
+      Pts = Pts + He / 32
+      Pts = Pts + Ch * 2 + Itl
+      if St = 2 then Pts = Pts + 2
+      if Incumb = Pi + 1 then Pts = Pts + 3
+      if St >= 3 then
+        Pts = Pts / 4
+        Msg = 2
+      end if
+    end if
+    Tk = Win(Q, S, Pts)
+    if St >= 3 then
+      T0 = Win(OQ, S, Tk)
+    else
+      T0 = Win(OQ, S, Tk / 4)
+    end if
+    T1 = 10 + Xpr
+    if T1 > He then T1 = He
+    He = He - T1
+    if Mo > 0 then dec Mo
+    Pres[Pi * 9 + Rg] = 1
+    Re = 0
+  case 2
+    Ls = 0
+    Re = 0
+    if Pres[Pi * 9 + S] = 0 then
+      Msg = 3
+    elseif Mo < 40 then
+      Msg = 4
+    else
+      Mo = Mo - 25
+      Pts = Ch + Apl + Week * 2
+      if Apl = 8 then
+        Pts = Pts / 2
+        Msg = 5
+      end if
+      T0 = RegFirst[S]
+      T1 = RegFirst[S + 1]
+      while T0 < T1
+        Ti = Win(Q, T0, Pts)
+        Tk = Tk + Ti
+        if Apl = 8 then Ti = Win(OQ, T0, Ti / 2)
+        inc T0
+      end while
+    end if
+  case 3
+    Ls = 0
+    Re = 0
+    G = Xpr * 3 + Apl
+    G = G * 2
+    G = G + Mo
+    if G > 250 then G = 250
+    Tk = G - Mo
+    Mo = G
+    T1 = 5
+    if T1 > He then T1 = He
+    He = He - T1
+  case 4
+    Ls = 0
+    G = Sta * 4 + 9
+    G = G - Xpr
+    if Re = 1 then G = G + G / 2
+    G = G + He
+    if G > 255 then G = 255
+    Tk = G - He
+    He = G
+    Re = 1
+  end select
+  P[Pi].Money = Mo
+  P[Pi].Health = He
+  P[Pi].LastReg = Lr
+  P[Pi].LastSt = Ls
+  P[Pi].Streak = St
+  P[Pi].Rested = Re
+  V = Tk
+end sub
+
+' ---------------------------------------------------------------------------
+' a new game: the toss, the parties, the candidates
+
+sub NewGame:
+  u8 Pi = 0
+  u8 Wn = 0
+  u8 Pk = 0
+  for Si = 0 to 51
+    SupC[Si] = BiasA[Si]
+    SupR[Si] = BiasB[Si]
+    Und[Si] = 255
+  next
+  fill array Pres with 0
+  for Pi = 0 to 1
+    P[Pi].Cpu = 0
+    P[Pi].Reg = 0
+    P[Pi].LastReg = 255
+    P[Pi].LastSt = 0
+    P[Pi].Streak = 0
+    P[Pi].Rested = 0
+  next
+  if Players = 1 then P[1].Cpu = 1
+  ' the toss: the winner chooses the party and moves first each day
+  Wn = Rnd(2)
+  First = Wn
+  NewScreen
+  backdrop dark blue
+  print at 10,3, "COIN TOSS"
+  print at 5,6, "PLAYER   WINS THE TOSS"
+  Pk = Wn + 1
+  print Pk at 12,6 width 1
+  if P[Wn].Cpu = 1 then
+    print at 4,7, "(THE COMPUTER MANAGER)"
+  end if
+  ShowScreen
+  play sound SndOk
+  Pk = 0
+  if P[Wn].Cpu = 1 then
+    Pk = Rnd(2)
+    Pause(90)
+  else
+    Pk = ChooseParty
+  end if
+  P[Wn].Party = Pk
+  P[Wn ^ 1].Party = Pk ^ 1
+  for Pi = 0 to 1
+    PickCand(Pi)
+    P[Pi].Health = 100 + Trait[Pi * 5 + 1] * 10
+    P[Pi].Money = 30
+    if Incumb = Pi + 1 then P[Pi].Money = 40
+    ' start in a region of your party's strength: New England / Pacific
+    if P[Pi].Party = 1 then P[Pi].Reg = 7
+  next
+end sub
+
+function ChooseParty as u8
+  u8 Pk = 0
+  print at 5,10, "CHOOSE YOUR PARTY:"
+  print at 5,14, "LEFT/RIGHT, BUTTON: OK"
+  ShowParty(0)
+  Scr = 3
+  WaitOff
+  while Press1 = 0
+    Frame1
+    ReadPad
+    if Stk & 12 then
+      Pk = Pk ^ 1
+      ShowParty(Pk)
+      play sound SndClick
+    end if
+  end while
+  Scr = 0
+  play sound SndOk
+  return Pk
+
+sub ShowParty(u8 Pk):
+  if Pk = 0 then
+    print at 7,12, "> CYAN PARTY  <"
+  else
+    print at 7,12, ">  RED PARTY  <"
+  end if
+end sub
+
+' five random candidates, each with a title and a surname
+sub GenOpts(u8 Q):
+  u8 Oi = 0
+  u8 Kk = 0
+  u8 Ix = 0
+  u8 Lo = 0
+  for Oi = 0 to 4
+    OptTi[Oi] = Rnd(8)
+    OptNm[Oi] = Rnd(16)
+    for Kk = 0 to 4
+      Ix = Oi * 5 + Kk
+      OptT[Ix] = Rnd(8) + 1
+      Lo = 1
+      if Q = 1 then Lo = 3
+      if Kk = 2 then Lo = 2
+      if Kk = 3 then Lo = 2
+      OptP[Ix] = Rnd(4) + Lo
+    next
+  next
+end sub
+
+' a candidate's quality for the computer manager
+function OptScore(u8 Oi) as u8
+  u8 Ix = 0
+  u8 Sc = 0
+  Ix = Oi * 5
+  Sc = OptT[Ix] * 3 + OptT[Ix + 1] * 2 + OptT[Ix + 2] * 2 + OptT[Ix + 3] + OptT[Ix + 4]
+  if OptT[Ix + 4] = 8 then Sc = Sc - 3
+  return Sc
+
+sub PickCand(u8 Pi):
+  u8 Oi = 0
+  u8 Bst = 0
+  u8 Done = 0
+  u8 Q = 0
+  Q = P[Pi].Party
+  GenOpts(Q)
+  ' no two candidates with the same surname
+  if Pi = 1 then
+    for Oi = 0 to 4
+      if OptNm[Oi] = P[0].Name then OptNm[Oi] = (OptNm[Oi] + 1) & 15
+    next
+  end if
+  Oi = 0
+  NewScreen
+  backdrop dark blue
+  print at 2,1, "PLAYER   CHOOSES A CANDIDATE"
+  K = Pi + 1
+  print K at 9,1 width 1
+  if Q = 0 then
+    print at 2,2, "CYAN PARTY"
+  else
+    print at 2,2, "RED PARTY"
+  end if
+  print at 3,14, "1=LIBERAL  6=CONSERVATIVE"
+  if P[Pi].Cpu = 0 then
+    print at 2,21, "LEFT/RIGHT: ANOTHER ONE"
+    print at 2,22, "BUTTON: CHOOSE"
+  else
+    print at 2,22, "THE COMPUTER CHOOSES..."
+  end if
+  ShowOpt(0)
+  ShowScreen
+  if P[Pi].Cpu = 1 then
+    Bst = 0
+    for Oi = 1 to 4
+      if OptScore(Oi) > OptScore(Bst) then Bst = Oi
+    next
+    Oi = 0
+    while Oi <> Bst
+      Pause(40)
+      inc Oi
+      ShowOpt(Oi)
+      play sound SndClick
+    end while
+    Pause(90)
+  else
+    Scr = 4
+    WaitOff
+    while Done = 0
+      Frame1
+      ReadPad
+      if Stk & 8 then
+        Oi = Oi + 1
+        if Oi > 4 then Oi = 0
+        ShowOpt(Oi)
+        play sound SndClick
+      elseif Stk & 4 then
+        if Oi = 0 then Oi = 5
+        Oi = Oi - 1
+        ShowOpt(Oi)
+        play sound SndClick
+      end if
+      if Press1 = 1 then Done = 1
+    end while
+  end if
+  Scr = 0
+  play sound SndOk
+  P[Pi].Title = OptTi[Oi]
+  P[Pi].Name = OptNm[Oi]
+  for K = 0 to 4
+    Trait[Pi * 5 + K] = OptT[Oi * 5 + K]
+    Pos[Pi * 5 + K] = OptP[Oi * 5 + K]
+  next
+end sub
+
+sub ShowOpt(u8 Oi):
+  u8 Kk = 0
+  u8 Vv = 0
+  u8 Row = 0
+  u8 Ix = 0
+  Rearm
+  wait
+  nmi off
+  print at 2,4, "CANDIDATE   OF 5"
+  Vv = Oi + 1
+  print Vv at 12,4 width 1
+  fill 32 count 16 at 2,6
+  PutName(OptTi[Oi], OptNm[Oi], 2, 6)
+  for Kk = 0 to 4
+    Row = 8 + Kk
+    Ix = Oi * 5 + Kk
+    Off = Kk * 10
+    put TraitTx + Off count 10 at 2,Row
+    Vv = OptT[Ix]
+    fill TBar count Vv at 14,Row
+    Vv = 8 - Vv
+    if Vv > 0 then
+      Y = 22 - Vv
+      fill 32 count Vv at Y,Row
+    end if
+    Vv = OptT[Ix]
+    print Vv at 24,Row width 1
+    Row = 16 + Kk
+    Off = Kk * 7
+    put IssueTx + Off count 7 at 2,Row
+    fill TDot count 6 at 14,Row
+    Vv = 13 + OptP[Ix]
+    put char TPin at Vv,Row
+  next
+  print at 14,15, "123456"
+end sub
+
+' a candidate's name: title and surname, at most 14 letters
+sub PutName(u8 Ti, u8 Nm, u8 Cx, u8 Cy):
+  u8 Cn = 0
+  Off = Ti * 5
+  put TitleTx + Off count 5 at Cx,Cy
+  Off = Nm * 9
+  Cn = Cx + 5
+  put SurTx + Off count 9 at Cn,Cy
+end sub
+
+' ---------------------------------------------------------------------------
+' the week's plans
+
+sub PlanBoth:
+  u8 Pk = 0
+  u8 Pi = 0
+  fill array PlanA with 0
+  fill array PlanS with 0
+  for Pk = 0 to 1
+    Pi = First ^ Pk
+    if P[Pi].Cpu = 1 then
+      CpuPlan(Pi)
+    else
+      if Players = 2 then HandOff(Pi)
+      PlanWeek(Pi)
+    end if
+  next
+end sub
+
+sub HandOff(u8 Pi):
+  NewScreen
+  backdrop dark blue
+  print at 11,4, "WEEK   OF 9"
+  print Week at 16,4 width 1
+  print at 9,8, "PLAYER  "
+  K = Pi + 1
+  print K at 16,8 width 1
+  PutName(P[Pi].Title, P[Pi].Name, 8, 10)
+  print at 6,14, "PLAN YOUR WEEK. THE"
+  print at 6,15, "OTHER PLAYER LOOKS AWAY."
+  print at 8,20, "PRESS THE BUTTON"
+  ShowScreen
+  Scr = 5
+  WaitOff
+  while Press1 = 0
+    Frame1
+    ReadPad
+  end while
+  Scr = 0
+  play sound SndOk
+end sub
+
+sub MapScreen:
+  NewScreen
+  backdrop dark blue
+  DrawMap
+  fill TRule count 28 at 2,17
+end sub
+
+sub PlanWeek(u8 Pi):
+  u8 Done = 0
+  GPhase = 1
+  Cur = Pi
+  Planned = 0
+  Mode = 0
+  MenuI = 0
+  Sel = RegFirst[P[Pi].Reg]
+  MapScreen
+  ShowHud
+  ShowScreen
+  Scr = 6
+  WaitOff
+  while Done = 0
+    Frame1
+    ReadPad
+    select case Mode
+    case 0
+      if Stk & 8 then
+        MenuI = (MenuI + 1) & 7
+        ShowMenu
+        play sound SndClick
+      elseif Stk & 4 then
+        MenuI = (MenuI - 1) & 7
+        ShowMenu
+        play sound SndClick
+      end if
+      if Press1 = 1 then Done = MenuPick
+    case 1
+      if Stk > 0 then
+        StepState
+        play sound SndClick
+      end if
+      if Press1 = 1 then
+        AddPlan(1, Sel)
+        Mode = 0
+        HideCursor
+        ShowHud
+      elseif Press2 = 1 then
+        Mode = 0
+        HideCursor
+        ShowHud
+      end if
+    case 2
+      if Stk & 8 then
+        Sel = Sel + 1
+        if Sel > 8 then Sel = 0
+        ShowRegion
+        play sound SndClick
+      elseif Stk & 4 then
+        if Sel = 0 then Sel = 9
+        Sel = Sel - 1
+        ShowRegion
+        play sound SndClick
+      end if
+      if Press1 = 1 then
+        P[Pi].Reg = Sel
+        Mode = 0
+        HideCursor
+        play sound SndOk
+        ShowHud
+      elseif Press2 = 1 then
+        Mode = 0
+        HideCursor
+        ShowHud
+      end if
+    case 3
+      if Press1 | Press2 then
+        Mode = 0
+        ShowHud
+      end if
+    end select
+  end while
+  Scr = 0
+  HideCursor
+end sub
+
+' the command under the menu cursor; returns 1 when the week is planned
+function MenuPick as u8
+  u8 Res = 0
+  u8 Rg = 0
+  Rg = P[Cur].Reg
+  Msg = 0
+  select case MenuI
+  case 0
+    if Planned < 7 then
+      Mode = 1
+      if StReg[Sel] <> Rg then Sel = RegFirst[Rg]
+      ShowSel
+    else
+      Msg = 6
+    end if
+  case 1
+    AddPlan(2, Rg)
+  case 2
+    AddPlan(3, 0)
+  case 3
+    AddPlan(4, 0)
+  case 4
+    if P[Cur].Money >= 10 then
+      P[Cur].Money = P[Cur].Money - 1
+      Mode = 3
+      ShowPoll
+      play sound SndCoin
+    else
+      Msg = 7
+    end if
+  case 5
+    Mode = 2
+    Sel = Rg
+    ShowRegion
+  case 6
+    Planned = 0
+    for K = 0 to 6
+      PlanA[Cur * 7 + K] = 0
+    next
+    ShowHud
+    play sound SndOk
+  case 7
+    if Planned = 7 then
+      Res = 1
+      play sound SndOk
+    else
+      Msg = 8
+    end if
+  end select
+  if Msg > 0 then
+    ShowMsg
+    play sound SndNope
+  end if
+  return Res
+
+sub AddPlan(u8 A, u8 S):
+  if Planned < 7 then
+    K = Cur * 7 + Planned
+    PlanA[K] = A
+    PlanS[K] = S
+    inc Planned
+    if Planned = 7 then MenuI = 7
+    Msg = 0
+    ShowHud
+    play sound SndOk
+  else
+    Msg = 6
+    ShowMsg
+    play sound SndNope
+  end if
+end sub
+
+' the next or the previous state of the region
+sub StepState:
+  u8 Rg = 0
+  Rg = P[Cur].Reg
+  if Stk & 10 then
+    Sel = Sel + 1
+    if Sel >= RegFirst[Rg + 1] then Sel = RegFirst[Rg]
+  else
+    if Sel = RegFirst[Rg] then Sel = RegFirst[Rg + 1]
+    Sel = Sel - 1
+  end if
+  ShowSel
+end sub
+
+sub ShowSel:
+  ClearLines(21)
+  Off = Sel * 14
+  put StName + Off count 14 at 2,21
+  print at 17,21, "VOTES"
+  K = EV[Sel]
+  print K at 23,21 width 2
+  print at 2,22, "BUTTON: GO   RIGHT B: BACK"
+  X = StX[Sel] - 8
+  Y = StY[Sel] - 9
+  set sprite 0 to Y,X,SFrame,11
+  update sprites
+end sub
+
+sub ShowRegion:
+  ClearLines(21)
+  print at 2,21, "TRAVEL TO"
+  Off = Sel * 10
+  put RegName + Off count 10 at 12,21
+  print at 2,22, "BUTTON: GO   RIGHT B: BACK"
+  ' the frame on the region's largest state
+  V = RegFirst[Sel]
+  K = V
+  while V < RegFirst[Sel + 1]
+    if EV[V] > EV[K] then K = V
+    inc V
+  end while
+  X = StX[K] - 8
+  Y = StY[K] - 9
+  set sprite 0 to Y,X,SFrame,11
+  update sprites
+end sub
+
+sub HideCursor:
+  set sprite 0 to 208,0,0,0
+  update sprites
+end sub
+
+' the poll: every state of the region, the leader and the lead
+sub ShowPoll:
+  u8 S0 = 0
+  u8 S1 = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Nn = 0
+  i16 M = 0
+  ClearLines(18)
+  print at 2,18, "POLL"
+  Off = P[Cur].Reg * 10
+  put RegName + Off count 10 at 7,18
+  S0 = RegFirst[P[Cur].Reg]
+  S1 = RegFirst[P[Cur].Reg + 1]
+  Nn = 0
+  while S0 < S1
+    Cx = (Nn % 3) * 9 + 2
+    Cy = Nn / 3 + 19
+    Off = S0 * 2
+    put StAb + Off count 2 at Cx,Cy
+    M = SupC[S0]
+    M = M - SupR[S0]
+    Cx = Cx + 3
+    if M > 0 then
+      print at Cx,Cy, "C"
+    elseif M < 0 then
+      print at Cx,Cy, "R"
+      M = -M
+    else
+      print at Cx,Cy, "="
+    end if
+    if M > 99 then M = 99
+    K = M
+    Cx = Cx + 1
+    print K at Cx,Cy width 2
+    inc Nn
+    inc S0
+  end while
+  print at 2,22, "BUTTON: BACK"
+end sub
+
+sub ClearLines(u8 R0):
+  for Si = R0 to 22
+    fill 32 count 28 at 2,Si
+  next
+end sub
+
+sub ShowHud:
+  u8 Pk = 0
+  u8 Pi = 0
+  Pi = Cur
+  ClearLines(18)
+  print at 2,18, "WEEK   P"
+  print Week at 7,18 width 1
+  K = Pi + 1
+  print K at 10,18 width 1
+  PutName(P[Pi].Title, P[Pi].Name, 12, 18)
+  print at 2,19, "$"
+  ShowMoney(P[Pi].Money, 3, 19)
+  print at 9,19, "HEALTH"
+  K = P[Pi].Health
+  print K at 16,19 width 3
+  Off = P[Pi].Reg * 10
+  put RegName + Off count 10 at 20,19
+  print at 2,20, "PLAN"
+  for Pk = 0 to 6
+    V = PlanA[Pi * 7 + Pk]
+    K = ActCh[V]
+    X = Pk * 2 + 7
+    put char K at X,20
+  next
+  ShowMenu
+end sub
+
+sub ShowMenu:
+  ClearLines(21)
+  print at 2,21, "<"
+  Off = MenuI * 10
+  put ActTx + Off count 10 at 4,21
+  print at 15,21, ">"
+  if Msg > 0 then
+    ShowMsg
+  else
+    print at 2,22, "STICK: COMMAND  BUTTON: OK"
+  end if
+end sub
+
+sub ShowMsg:
+  fill 32 count 28 at 2,22
+  select case Msg
+  case 6
+    print at 2,22, "THE WEEK IS PLANNED"
+  case 7
+    print at 2,22, "A POLL NEEDS $1.0M"
+  case 8
+    print at 2,22, "PLAN ALL SEVEN DAYS FIRST"
+  end select
+  Msg = 0
+end sub
+
+' money in units of $100,000, as 12.3M
+sub ShowMoney(u8 M, u8 Cx, u8 Cy):
+  u8 Dd = 0
+  Dd = M / 10
+  print Dd at Cx,Cy width 2
+  Cx = Cx + 2
+  print at Cx,Cy, "."
+  Dd = M % 10
+  Cx = Cx + 1
+  print Dd at Cx,Cy width 1
+  Cx = Cx + 1
+  print at Cx,Cy, "M"
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer manager's week
+
+' how much a stop in state S is worth to party Q
+function StopValue(u8 Q, u8 S) as u16
+  i16 M = 0
+  u16 Vl = 0
+  M = SupOf(Q, S)
+  M = M - SupOf(Q ^ 1, S)
+  M = M - 6
+  if M < 0 then M = -M
+  M = M / 16 + 1
+  Vl = Und[S] / 32 + 1
+  Vl = Vl * EV[S]
+  Vl = Vl * 4
+  Vl = Vl / M
+  return Vl
+
+sub CpuPlan(u8 Pi):
+  u8 Q = 0
+  u8 Rg = 0
+  u8 Br = 0
+  u8 Dd = 0
+  u8 He = 0
+  u8 Mo = 0
+  u8 Ads = 0
+  u8 S0 = 0
+  u8 Bs = 0
+  u8 L1 = 0
+  u8 L2 = 0
+  u16 Sum = 0
+  u16 Bsum = 0
+  u16 Vl = 0
+  u16 Bv = 0
+  Q = P[Pi].Party
+  ' the region worth most
+  for Rg = 0 to 8
+    Sum = 0
+    S0 = RegFirst[Rg]
+    while S0 < RegFirst[Rg + 1]
+      Sum = Sum + StopValue(Q, S0)
+      inc S0
+    end while
+    if Sum > Bsum then
+      Bsum = Sum
+      Br = Rg
+    end if
+  next
+  P[Pi].Reg = Br
+  He = P[Pi].Health
+  Mo = P[Pi].Money
+  K = Pi * 5
+  L1 = P[Pi].LastSt
+  L2 = 0
+  for Dd = 0 to 6
+    J = Pi * 7 + Dd
+    if He < 70 then
+      PlanA[J] = 4
+      He = He + Trait[K + 1] * 4 + 9 - Trait[K + 3]
+      L1 = 0
+    elseif Mo < 4 then
+      PlanA[J] = 3
+      Mo = Mo + Trait[K + 3] * 6 + Trait[K + 4] * 2
+      L1 = 0
+    elseif Ads = 0 and Week >= 3 and Mo >= 45 and Pres[Pi * 9 + Br] = 1 then
+      PlanA[J] = 2
+      PlanS[J] = Br
+      Mo = Mo - 25
+      Ads = 1
+      L1 = 0
+    else
+      Bs = 0
+      Bv = 0
+      S0 = RegFirst[Br]
+      while S0 < RegFirst[Br + 1]
+        Vl = StopValue(Q, S0)
+        if S0 = L1 and S0 = L2 then Vl = 0
+        if Vl > Bv then
+          Bv = Vl
+          Bs = S0
+        end if
+        inc S0
+      end while
+      if Bs = 0 then Bs = RegFirst[Br]
+      PlanA[J] = 1
+      PlanS[J] = Bs
+      He = He - 10 - Trait[K + 3]
+      if Mo > 1 then Mo = Mo - 2
+      L2 = L1
+      L1 = Bs
+    end if
+  next
+end sub
+
+' ---------------------------------------------------------------------------
+' the week runs, day by day
+
+sub Resolve:
+  u8 Dd = 0
+  u8 Pk = 0
+  u8 Pi = 0
+  u8 A = 0
+  u8 S = 0
+  u8 Row = 0
+  GPhase = 2
+  MapScreen
+  ClearLines(18)
+  ShowTally
+  ShowScreen
+  for Dd = 0 to 6
+    Rearm
+    wait
+    nmi off
+    ClearLines(18)
+    print at 2,18, "WEEK   DAY"
+    print Week at 7,18 width 1
+    K = Dd + 1
+    print K at 13,18 width 1
+    for Pk = 0 to 1
+      Pi = First ^ Pk
+      J = Pi * 7 + Dd
+      A = PlanA[J]
+      S = PlanS[J]
+      DoAct(Pi, A, S)
+      Row = Pk * 2 + 19
+      ShowAct(Pi, A, S, Row)
+      if A = 1 then PaintState(S)
+      if A = 2 then PaintRegion(S)
+    next
+    ShowTally
+    if A = 1 then play sound SndCheer
+    if A = 2 then play sound SndAds
+    if A = 3 then play sound SndCoin
+    if A = 4 then play sound SndRest
+    Pause(DayWait)
+  next
+  GPhase = 3
+end sub
+
+' one line of the day's report: who, what, the gain
+sub ShowAct(u8 Pi, u8 A, u8 S, u8 Row):
+  u8 Gn = 0
+  u8 Cx = 0
+  Gn = V
+  PutName(P[Pi].Title, P[Pi].Name, 2, Row)
+  if P[Pi].Party = 0 then
+    print at 17,Row, "(CYAN)"
+  else
+    print at 17,Row, "(RED)"
+  end if
+  Row = Row + 1
+  select case A
+  case 1
+    Off = S * 14
+    put StName + Off count 14 at 3,Row
+    Cx = 18
+  case 2
+    print at 3,Row, "TV ADS"
+    Off = S * 10
+    put RegName + Off count 10 at 10,Row
+    Cx = 21
+  case 3
+    print at 3,Row, "FUNDRAISING"
+    Cx = 15
+  case 4
+    print at 3,Row, "RESTS"
+    Cx = 15
+  end select
+  select case Msg
+  case 1
+    print at 18,Row, "TOO TIRED"
+  case 2
+    print at 18,Row, "OVERDONE"
+  case 3
+    print at 21,Row, "NO BASE"
+  case 4
+    print at 21,Row, "NO MONEY"
+  case 5
+    print at 22,Row, "BACKLASH"
+  end select
+  if Msg = 0 then
+    if A > 0 then
+      print at Cx,Row, "+"
+      Cx = Cx + 1
+      print Gn at Cx,Row width 3
+    end if
+  end if
+end sub
+
+' the electoral votes each party would carry now
+sub CountEV:
+  EvC = 0
+  EvR = 0
+  TotC = 0
+  TotR = 0
+  for Si = 1 to 51
+    if Carrier(Si) = 0 then
+      TotC = TotC + EV[Si]
+    else
+      TotR = TotR + EV[Si]
+    end if
+  next
+end sub
+
+sub ShowTally:
+  CountEV
+  fill TRule count 28 at 2,17
+  print at 2,17, "CYAN"
+  print TotC at 7,17 width 3
+  print at 22,17, "RED"
+  print TotR at 26,17 width 3
+end sub
+
+' ---------------------------------------------------------------------------
+' election night
+
+sub Final:
+  u8 Pi = 0
+  u8 Q = 0
+  u8 Lm = 0
+  u8 Tk = 0
+  MapScreen
+  ClearLines(18)
+  print at 2,18, "ELECTION NIGHT"
+  ShowScreen
+  Pause(60)
+  ' the last-minute campaigning, then the undecided split evenly
+  for Pi = 0 to 1
+    Q = P[Pi].Party
+    Lm = Trait[Pi * 5 + 1] + Trait[Pi * 5 + 2]
+    for Si = 1 to 51
+      Tk = Win(Q, Si, Lm)
+    next
+  next
+  BigC = 0
+  BigR = 0
+  for Si = 1 to 51
+    Tk = Und[Si] / 2
+    Tk = Win(0, Si, Tk)
+    Tk = Win(1, Si, Tk)
+    Rearm
+    wait
+    nmi off
+    PaintState(Si)
+    Tk = EV[Si]
+    if Carrier(Si) = 0 then
+      BigC += Tk
+    else
+      BigR += Tk
+    end if
+    print at 2,20, "CYAN"
+    print BigC at 7,20
+    print at 19,20, "RED"
+    print BigR at 23,20
+    if EV[Si] >= 10 then play sound SndClick
+    Pause(3)
+  next
+  CountEV
+  Winner = 0
+  if TotR > TotC then Winner = 1
+  if TotR = TotC then
+    Winner = Rnd(2)
+    print at 2,21, "A TIE! A COIN TOSS DECIDES"
+    play sound SndTie
+    Pause(120)
+  end if
+  ClearLines(21)
+  for Pi = 0 to 1
+    if P[Pi].Party = Winner then
+      PutName(P[Pi].Title, P[Pi].Name, 2, 21)
+      print at 17,21, "IS ELECTED!"
+      if Winner = 0 then
+        print at 2,22, "THE CYAN PARTY WINS"
+      else
+        print at 2,22, "THE RED PARTY WINS"
+      end if
+      if P[Pi].Cpu = 1 then
+        print at 22,22, "(CPU)"
+      else
+        print at 22,22, "(P )"
+        K = Pi + 1
+        print K at 24,22 width 1
+      end if
+    end if
+  next
+  play sound SndWin
+end sub
+
+' ---------------------------------------------------------------------------
+' the map
+
+sub PaintState(u8 S):
+  u16 I = 0
+  u16 I1 = 0
+  u8 T = 0
+  u8 Base = 0
+  Base = LookOf(S) << 2
+  Base = Base + TM00
+  I = CellOff[S]
+  I1 = CellOff[S + 1]
+  while I < I1
+    T = Base + CellE[I]
+    put char T at CellC[I],CellR[I]
+    inc I
+  end while
+end sub
+
+sub PaintRegion(u8 Rg):
+  u8 S0 = 0
+  S0 = RegFirst[Rg]
+  while S0 < RegFirst[Rg + 1]
+    PaintState(S0)
+    inc S0
+  end while
+end sub
+
+sub DrawMap:
+  for Si = 1 to 16
+    fill TSea count 28 at 2,Si
+  next
+  for Si = 1 to 51
+    PaintState(Si)
+  next
+end sub
+
+' ---------------------------------------------------------------------------
+' frames, input, screens
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause(u8 Nf):
+  while Nf > 0
+    Frame1
+    dec Nf
+  end while
+end sub
+
+' wait until the buttons are up (no press carried over to the next screen)
+sub WaitOff:
+  ReadPad
+  while Btn1 | Btn2
+    Frame1
+    ReadPad
+  end while
+  Press1 = 0
+  Press2 = 0
+end sub
+
+sub ReadPad:
+  u8 Dir = 0
+  J1 = 0
+  Btn1 = 0
+  Btn2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then Btn1 = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).button1 then Btn1 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press1 = 0
+  Press2 = 0
+  if Btn1 = 1 then
+    if WasB1 = 0 then Press1 = 1
+  end if
+  if Btn2 = 1 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB1 = Btn1
+  WasB2 = Btn2
+  ' the stick: a new direction at once, then repeats while held
+  Dir = J1 & 15
+  Stk = 0
+  if Dir <> WasStick then
+    Stk = Dir
+    RepT = 20
+  elseif Dir > 0 then
+    dec RepT
+    if RepT = 0 then
+      Stk = Dir
+      RepT = 8
+    end if
+  end if
+  WasStick = Dir
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 1
+    set sprite J to 208,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: settings menu, the tune once
+sub TitlePage:
+  u8 Go = 0
+  NewScreen
+  backdrop dark blue
+  fill TStrR count 28 at 2,1
+  put char TBox00 at 4,3
+  put char TBox01 at 5,3
+  put char TBox10 at 4,4
+  put char TBox11 at 5,4
+  print at 8,3, "CAMPAIGN MANAGER"
+  put char TBox00 at 26,3
+  put char TBox01 at 27,3
+  put char TBox10 at 26,4
+  put char TBox11 at 27,4
+  fill TStar count 28 at 2,6
+  print at 6,8, "COMPUTE!'S GAZETTE"
+  print at 10,9, "AUGUST 1984"
+  print at 3,10, "BY TODD HEIMARCK"
+  ShowTitleMenu
+  print at 3,19, "UP/DOWN: LINE"
+  print at 3,20, "LEFT/RIGHT: CHANGE"
+  print at 3,21, "BUTTON: START"
+  fill TStrR count 28 at 2,22
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Scr = 2
+  WaitOff
+  while Go = 0
+    Frame1
+    inc Rs
+    if Rs = 0 then Rs = 1
+    ReadPad
+    if Stk > 0 then TitleKey(Stk)
+    if Press1 | Press2 then Go = 1
+  end while
+  Scr = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Line = 3 then
+    CreditsPage
+    goto title
+  end if
+end sub
+
+sub TitleKey(u8 Sk):
+  if Sk & 1 then
+    if Line > 0 then dec Line
+  end if
+  if Sk & 2 then
+    if Line < 3 then inc Line
+  end if
+  if Sk & 12 then
+    select case Line
+    case 0
+      Players = 3 - Players
+    case 1
+      if Sk & 8 then
+        Incumb = Incumb + 1
+        if Incumb > 2 then Incumb = 0
+      else
+        if Incumb = 0 then Incumb = 3
+        Incumb = Incumb - 1
+      end if
+    end select
+  end if
+  ShowTitleMenu
+  play sound SndClick
+end sub
+
+sub ShowTitleMenu:
+  u8 Row = 0
+  for Si = 13 to 16
+    put char 32 at 3,Si
+  next
+  Row = Line + 13
+  put char 62 at 3,Row
+  if Players = 1 then
+    print at 5,13, "PLAYERS    1 (VS CPU)"
+  else
+    print at 5,13, "PLAYERS    2         "
+  end if
+  select case Incumb
+  case 0
+    print at 5,14, "INCUMBENT  NONE    "
+  case 1
+    print at 5,14, "INCUMBENT  PLAYER 1"
+  case 2
+    print at 5,14, "INCUMBENT  PLAYER 2"
+  end select
+  print at 5,15, "START"
+  print at 5,16, "CREDITS"
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "CAMPAIGN MANAGER"
+  print at 2,4, "BASED ON CAMPAIGN MANAGER BY"
+  print at 2,5, "TODD HEIMARCK, COMPUTE!'S"
+  print at 2,6, "GAZETTE, AUGUST 1984"
+  print at 2,7, "(COMMODORE 64). COPYRIGHT"
+  print at 2,8, "1984 COMPUTE! PUBLICATIONS."
+  print at 2,10, "A STRATEGY GAME: THE PARTIES"
+  print at 2,11, "AND CANDIDATES ARE MADE UP."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 2,19, "MUSIC: STUMP SPEECH"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Scr = 1
+  WaitOff
+  while Press1 = 0
+    Frame1
+    ReadPad
+  end while
+  Scr = 0
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$38,$01,$83,$38,$93,$44
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$C3,$81,$81,$81,$C3,$00,$00
+  $00,$03,$03,$03,$00,$03,$00,$00
+  $00,$C0,$C0,$C0,$00,$C0,$00,$00
+  $00,$F0,$00,$00,$00,$00,$00,$00
+  $00,$F0,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $07,$07,$07,$07,$07,$07,$07,$01
+  $17,$17,$17,$17,$17,$17,$17,$01
+  $07,$0F,$07,$0F,$07,$0F,$07,$0F
+  $17,$1F,$17,$1F,$17,$1F,$17,$1F
+  $07,$0F,$07,$0F,$07,$0F,$07,$01
+  $17,$1F,$17,$1F,$17,$1F,$17,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $08,$0F,$08,$0F,$08,$0F,$08,$0F
+  $18,$1F,$18,$1F,$18,$1F,$18,$1F
+  $08,$0F,$08,$0F,$08,$0F,$08,$01
+  $18,$1F,$18,$1F,$18,$1F,$18,$01
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $08,$08,$08,$08,$08,$08,$08,$01
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$0B,$04,$04,$04,$04
+  $F4,$F4,$F4,$4F,$4F,$F4,$4F,$F4
+  $08,$08,$08,$08,$0F,$0F,$0F,$0F
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$01,$01
+  $01,$F1,$F1,$F1,$0F,$14,$04,$05
+  $01,$F1,$F1,$F1,$0F,$14,$04,$05
+  $05,$5F,$05,$05,$05,$04,$01,$01
+  $05,$F5,$05,$05,$05,$04,$01,$01
+end data
+data SpritePat bytes
+  $F0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$FC
+  $3F,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$3F
+  $FC,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$FC
+  $3F,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$3F
+end data
+data CellOff words
+  0, 0, 3, 5, 7, 9, 10, 11, 18, 19, 22, 26, 29, 32, 41, 44
+  56, 61, 68, 76, 88, 93, 99, 100, 102, 103, 107, 110, 115, 117, 123, 129
+  134, 138, 141, 144, 148, 154, 161, 194, 203, 218, 227, 234, 246, 258, 266, 278
+  290, 298, 321, 327, 329
+end data
+data CellR bytes
+  2, 2, 3, 3, 4, 3, 4, 5, 5, 6, 6, 3, 4, 4, 4, 5
+  5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 6, 7, 8, 6, 7, 8
+  2, 2, 3, 3, 4, 4, 5, 5, 5, 3, 4, 5, 1, 1, 1, 2
+  2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 7, 7, 7
+  8, 8, 9, 9, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3
+  4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7
+  8, 8, 8, 7, 7, 7, 8, 8, 9, 9, 9, 7, 8, 8, 9, 10
+  10, 10, 10, 11, 12, 11, 11, 12, 12, 13, 13, 14, 14, 14, 14, 15
+  16, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 12, 13, 11, 12, 13
+  10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 9, 9, 9, 9, 10, 10
+  10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13
+  14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 16, 16, 16, 16
+  16, 16, 1, 1, 1, 2, 2, 2, 3, 3, 3, 1, 1, 1, 2, 2
+  2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 4, 4, 4, 5, 5, 5
+  6, 6, 6, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10
+  11, 11, 11, 12, 12, 12, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12
+  12, 12, 6, 6, 7, 7, 7, 8, 8, 8, 6, 6, 6, 7, 7, 7
+  8, 8, 8, 9, 9, 9, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3
+  3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 7, 7, 8, 8
+  9, 9, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12
+  12, 13, 13, 14, 14, 14, 15, 15, 16
+end data
+data CellC bytes
+  28, 29, 29, 28, 28, 27, 27, 27, 28, 28, 27, 26, 24, 25, 26, 24
+  25, 26, 26, 23, 24, 25, 21, 22, 21, 22, 20, 20, 20, 19, 19, 19
+  20, 21, 21, 22, 21, 22, 20, 21, 22, 19, 19, 19, 16, 17, 18, 16
+  17, 18, 16, 17, 18, 16, 17, 18, 16, 17, 18, 17, 18, 16, 17, 18
+  17, 18, 17, 18, 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15
+  12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 16, 13, 14, 15
+  14, 15, 16, 26, 24, 25, 26, 25, 23, 24, 25, 23, 23, 24, 26, 22
+  23, 24, 25, 23, 23, 21, 22, 21, 22, 21, 22, 20, 21, 22, 23, 23
+  23, 21, 22, 19, 20, 21, 22, 19, 20, 21, 20, 20, 20, 19, 19, 19
+  17, 18, 17, 18, 17, 18, 17, 18, 17, 18, 13, 14, 15, 16, 14, 15
+  16, 13, 13, 14, 15, 16, 13, 14, 15, 16, 11, 12, 13, 14, 15, 16
+  11, 12, 13, 14, 15, 16, 11, 12, 13, 14, 15, 16, 11, 12, 13, 14
+  15, 16, 9, 10, 11, 9, 10, 11, 9, 10, 11, 6, 7, 8, 6, 7
+  8, 6, 7, 8, 6, 7, 8, 6, 7, 8, 9, 10, 11, 9, 10, 11
+  9, 10, 11, 10, 11, 12, 10, 11, 12, 13, 10, 11, 12, 10, 11, 12
+  10, 11, 12, 10, 11, 12, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7
+  8, 9, 7, 8, 7, 8, 9, 7, 8, 9, 4, 5, 6, 4, 5, 6
+  4, 5, 6, 4, 5, 6, 2, 3, 4, 5, 2, 3, 4, 5, 2, 3
+  4, 5, 2, 3, 4, 5, 2, 3, 4, 5, 2, 3, 2, 3, 2, 3
+  2, 3, 2, 3, 4, 5, 6, 2, 3, 4, 5, 6, 2, 3, 4, 5
+  6, 3, 4, 2, 3, 4, 3, 7, 8
+end data
+data CellE bytes
+  2, 1, 3, 1, 3, 1, 3, 2, 3, 3, 3, 1, 0, 0, 1, 2
+  2, 3, 3, 2, 2, 3, 0, 1, 2, 3, 1, 1, 3, 1, 1, 3
+  2, 1, 0, 1, 0, 1, 2, 2, 3, 1, 1, 3, 0, 0, 1, 0
+  0, 1, 0, 0, 1, 2, 2, 3, 2, 0, 1, 2, 3, 2, 0, 1
+  0, 1, 2, 3, 0, 0, 0, 1, 2, 2, 2, 3, 0, 0, 0, 1
+  0, 0, 0, 1, 2, 2, 2, 3, 2, 2, 2, 2, 3, 2, 0, 1
+  2, 2, 3, 3, 2, 3, 3, 1, 2, 2, 3, 1, 2, 3, 3, 2
+  2, 2, 3, 1, 3, 0, 1, 0, 1, 2, 3, 2, 2, 2, 1, 1
+  3, 0, 3, 2, 2, 3, 3, 2, 2, 3, 1, 1, 3, 1, 1, 3
+  0, 1, 2, 3, 0, 1, 0, 1, 2, 3, 2, 0, 0, 1, 2, 2
+  3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1
+  0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2
+  2, 3, 0, 0, 1, 0, 0, 1, 2, 2, 3, 0, 0, 1, 0, 0
+  1, 0, 0, 1, 0, 0, 1, 2, 2, 3, 0, 0, 1, 0, 0, 1
+  2, 2, 3, 0, 0, 1, 2, 2, 2, 3, 0, 0, 1, 0, 0, 1
+  0, 0, 1, 2, 2, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 2
+  2, 3, 0, 1, 0, 0, 1, 2, 2, 3, 0, 0, 1, 0, 0, 1
+  0, 0, 1, 2, 2, 3, 0, 0, 0, 1, 0, 0, 0, 1, 2, 2
+  2, 3, 0, 0, 0, 1, 2, 2, 2, 3, 0, 1, 0, 1, 0, 1
+  0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 2, 2, 2, 2
+  3, 0, 1, 2, 0, 3, 3, 3, 3
+end data
+data StX bytes
+  0, 236, 228, 220, 220, 228, 220, 204, 212, 196, 172, 164, 156, 172, 156, 140
+  140, 140, 108, 108, 116, 116, 212, 196, 212, 196, 188, 196, 188, 172, 180, 172
+  164, 164, 156, 140, 140, 124, 116, 84, 60, 84, 92, 92, 68, 68, 44, 28
+  28, 28, 28, 60
+end data
+data StY bytes
+  0, 20, 28, 28, 44, 52, 52, 36, 52, 52, 52, 60, 60, 36, 36, 20
+  44, 68, 12, 36, 52, 60, 60, 60, 68, 76, 68, 84, 92, 100, 116, 76
+  84, 100, 100, 84, 108, 76, 116, 20, 28, 44, 68, 84, 84, 60, 60, 20
+  36, 84, 116, 124
+end data
+data EV bytes
+  0, 4, 4, 3, 13, 4, 8, 36, 16, 25, 23, 12, 24, 20, 11, 10
+  8, 11, 3, 3, 5, 7, 3, 10, 3, 12, 6, 13, 8, 12, 21, 9
+  11, 9, 7, 6, 10, 8, 29, 4, 4, 3, 8, 5, 7, 5, 4, 10
+  7, 47, 3, 4
+end data
+data StReg bytes
+  0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 3
+  3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5
+  5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 8
+  8, 8, 8, 8
+end data
+data RegFirst bytes
+  1, 7, 10, 15, 22, 31, 35, 39, 47, 52
+end data
+data BiasA bytes
+  0, 4, 3, 3, 7, 7, 4, 6, 4, 5, 5, 4, 3, 6, 4, 6
+  3, 4, 3, 2, 3, 3, 3, 7, 7, 4, 7, 5, 4, 6, 5, 6
+  4, 5, 5, 6, 6, 4, 6, 4, 3, 3, 5, 4, 4, 3, 5, 3
+  2, 4, 2, 7
+end data
+data BiasB bytes
+  0, 5, 7, 7, 2, 3, 5, 4, 6, 4, 4, 6, 6, 4, 5, 3
+  7, 5, 6, 7, 6, 7, 6, 3, 2, 6, 3, 4, 6, 3, 4, 4
+  6, 4, 4, 4, 4, 5, 4, 5, 7, 7, 4, 5, 6, 7, 4, 6
+  7, 6, 7, 2
+end data
+data IssR bytes
+  35, 51, 86, 86, 52, 69, 67, 85, 54, 70, 35, 51, 54, 70, 67, 52
+  70, 84, 36, 20, 21, 52, 86, 85, 37, 54, 68, 84, 37, 38, 53, 22
+  68, 36, 20, 38, 69, 86, 69, 35, 20, 51, 86, 85, 36, 35, 52, 54
+  85, 35, 37, 36, 38, 70, 52, 38, 69, 37, 54, 53, 22, 38, 84, 38
+  69, 20, 67, 53, 52, 19, 52, 68, 52, 36, 20, 53, 68, 37, 54, 67
+  35, 36, 54, 70, 54, 52, 51, 38, 86, 51, 67, 19, 38, 70, 67, 69
+  53, 37, 52, 19, 53, 69, 38, 68, 21, 54, 54, 52, 37, 35, 54, 70
+  68, 37, 38, 22, 22, 68, 36, 20, 69, 53, 69, 54, 54, 51, 19, 86
+  86, 67, 19, 36, 54, 70, 53, 52, 20, 86, 86, 53, 52, 20, 54, 84
+  20, 69, 54, 70, 69, 37, 19, 19, 54, 70, 67, 35, 37, 54, 86, 67
+  36, 20, 38, 85, 36, 35, 19, 38, 84, 21, 35, 19, 70, 86, 67, 52
+  21, 86, 86, 51, 68, 36, 38, 70, 68, 69, 22, 38, 69, 38, 35, 52
+  53, 54, 51, 19, 52, 86, 70, 67, 68, 68, 53, 52, 19, 70, 38, 52
+  37, 37, 51, 20, 53, 53, 38, 53, 54, 52, 37, 37, 53, 53, 84, 38
+  70, 52, 70, 86, 70, 69, 36, 70, 68, 38, 70, 53, 54, 86, 68, 19
+  54, 37, 69, 54, 54, 22, 68, 84, 36, 21, 54, 70, 52, 36, 22
+end data
+data StName bytes
+  32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 77, 65
+  73, 78, 69, 32, 32, 32, 32, 32, 32, 32, 32, 32, 78, 69, 87, 32
+  72, 65, 77, 80, 83, 72, 73, 82, 69, 32, 86, 69, 82, 77, 79, 78
+  84, 32, 32, 32, 32, 32, 32, 32, 77, 65, 83, 83, 65, 67, 72, 85
+  83, 69, 84, 84, 83, 32, 82, 72, 79, 68, 69, 32, 73, 83, 76, 65
+  78, 68, 32, 32, 67, 79, 78, 78, 69, 67, 84, 73, 67, 85, 84, 32
+  32, 32, 78, 69, 87, 32, 89, 79, 82, 75, 32, 32, 32, 32, 32, 32
+  78, 69, 87, 32, 74, 69, 82, 83, 69, 89, 32, 32, 32, 32, 80, 69
+  78, 78, 83, 89, 76, 86, 65, 78, 73, 65, 32, 32, 79, 72, 73, 79
+  32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 73, 78, 68, 73, 65, 78
+  65, 32, 32, 32, 32, 32, 32, 32, 73, 76, 76, 73, 78, 79, 73, 83
+  32, 32, 32, 32, 32, 32, 77, 73, 67, 72, 73, 71, 65, 78, 32, 32
+  32, 32, 32, 32, 87, 73, 83, 67, 79, 78, 83, 73, 78, 32, 32, 32
+  32, 32, 77, 73, 78, 78, 69, 83, 79, 84, 65, 32, 32, 32, 32, 32
+  73, 79, 87, 65, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 77, 73
+  83, 83, 79, 85, 82, 73, 32, 32, 32, 32, 32, 32, 78, 79, 82, 84
+  72, 32, 68, 65, 75, 79, 84, 65, 32, 32, 83, 79, 85, 84, 72, 32
+  68, 65, 75, 79, 84, 65, 32, 32, 78, 69, 66, 82, 65, 83, 75, 65
+  32, 32, 32, 32, 32, 32, 75, 65, 78, 83, 65, 83, 32, 32, 32, 32
+  32, 32, 32, 32, 68, 69, 76, 65, 87, 65, 82, 69, 32, 32, 32, 32
+  32, 32, 77, 65, 82, 89, 76, 65, 78, 68, 32, 32, 32, 32, 32, 32
+  87, 65, 83, 72, 73, 78, 71, 84, 79, 78, 32, 68, 67, 32, 86, 73
+  82, 71, 73, 78, 73, 65, 32, 32, 32, 32, 32, 32, 87, 69, 83, 84
+  32, 86, 73, 82, 71, 73, 78, 73, 65, 32, 78, 79, 82, 84, 72, 32
+  67, 65, 82, 79, 76, 73, 78, 65, 83, 79, 85, 84, 72, 32, 67, 65
+  82, 79, 76, 73, 78, 65, 71, 69, 79, 82, 71, 73, 65, 32, 32, 32
+  32, 32, 32, 32, 70, 76, 79, 82, 73, 68, 65, 32, 32, 32, 32, 32
+  32, 32, 75, 69, 78, 84, 85, 67, 75, 89, 32, 32, 32, 32, 32, 32
+  84, 69, 78, 78, 69, 83, 83, 69, 69, 32, 32, 32, 32, 32, 65, 76
+  65, 66, 65, 77, 65, 32, 32, 32, 32, 32, 32, 32, 77, 73, 83, 83
+  73, 83, 83, 73, 80, 80, 73, 32, 32, 32, 65, 82, 75, 65, 78, 83
+  65, 83, 32, 32, 32, 32, 32, 32, 76, 79, 85, 73, 83, 73, 65, 78
+  65, 32, 32, 32, 32, 32, 79, 75, 76, 65, 72, 79, 77, 65, 32, 32
+  32, 32, 32, 32, 84, 69, 88, 65, 83, 32, 32, 32, 32, 32, 32, 32
+  32, 32, 77, 79, 78, 84, 65, 78, 65, 32, 32, 32, 32, 32, 32, 32
+  73, 68, 65, 72, 79, 32, 32, 32, 32, 32, 32, 32, 32, 32, 87, 89
+  79, 77, 73, 78, 71, 32, 32, 32, 32, 32, 32, 32, 67, 79, 76, 79
+  82, 65, 68, 79, 32, 32, 32, 32, 32, 32, 78, 69, 87, 32, 77, 69
+  88, 73, 67, 79, 32, 32, 32, 32, 65, 82, 73, 90, 79, 78, 65, 32
+  32, 32, 32, 32, 32, 32, 85, 84, 65, 72, 32, 32, 32, 32, 32, 32
+  32, 32, 32, 32, 78, 69, 86, 65, 68, 65, 32, 32, 32, 32, 32, 32
+  32, 32, 87, 65, 83, 72, 73, 78, 71, 84, 79, 78, 32, 32, 32, 32
+  79, 82, 69, 71, 79, 78, 32, 32, 32, 32, 32, 32, 32, 32, 67, 65
+  76, 73, 70, 79, 82, 78, 73, 65, 32, 32, 32, 32, 65, 76, 65, 83
+  75, 65, 32, 32, 32, 32, 32, 32, 32, 32, 72, 65, 87, 65, 73, 73
+  32, 32, 32, 32, 32, 32, 32, 32
+end data
+data StAb bytes
+  32, 32, 77, 69, 78, 72, 86, 84, 77, 65, 82, 73, 67, 84, 78, 89
+  78, 74, 80, 65, 79, 72, 73, 78, 73, 76, 77, 73, 87, 73, 77, 78
+  73, 65, 77, 79, 78, 68, 83, 68, 78, 69, 75, 83, 68, 69, 77, 68
+  68, 67, 86, 65, 87, 86, 78, 67, 83, 67, 71, 65, 70, 76, 75, 89
+  84, 78, 65, 76, 77, 83, 65, 82, 76, 65, 79, 75, 84, 88, 77, 84
+  73, 68, 87, 89, 67, 79, 78, 77, 65, 90, 85, 84, 78, 86, 87, 65
+  79, 82, 67, 65, 65, 75, 72, 73
+end data
+data RegName bytes
+  78, 69, 87, 32, 69, 78, 71, 76, 32, 32, 85, 82, 66, 65, 78, 32
+  78, 69, 32, 32, 72, 69, 65, 82, 84, 76, 65, 78, 68, 32, 71, 32
+  80, 76, 65, 73, 78, 83, 32, 32, 65, 84, 76, 65, 78, 84, 73, 67
+  32, 32, 83, 79, 85, 84, 72, 69, 82, 78, 32, 32, 65, 82, 75, 76
+  65, 84, 69, 88, 32, 32, 77, 79, 85, 78, 84, 65, 73, 78, 32, 32
+  80, 65, 67, 73, 70, 73, 67, 32, 32, 32
+end data
+
+asm {
+CmClick:
+    db $40,$6B,$40,$02,$50
+CmOk:
+    db $40,$8F,$30,$03,$40,$6B,$30,$04,$50
+CmNope:
+    db $40,$7F,$22,$05,$40,$F9,$32,$06,$50
+CmCheer:
+    db $40,$D6,$20,$03,$40,$AA,$20,$03,$40,$8F,$30,$06,$50
+CmAds:
+    db $40,$7F,$30,$03,$40,$71,$30,$03,$40,$7F,$30,$03,$40,$55,$30,$06,$50
+CmCoin:
+    db $40,$47,$30,$02,$40,$35,$30,$05,$50
+CmRest:
+    db $40,$53,$51,$06,$40,$AB,$71,$0A,$50
+CmWin:
+    db $40,$D6,$10,$07,$40,$AA,$10,$07,$40,$8F,$10,$07,$40,$6B,$10,$07,$40,$55,$10,$07,$40,$47,$20,$1C
+    db $50
+CmTie:
+    db $40,$FE,$20,$0A,$40,$FE,$20,$0A,$40,$FE,$30,$18,$50
+
+CmSoundTable:
+    dw CmTuneMel,$702B
+    dw CmTuneBass,$7035
+    dw CmClick,$7049
+    dw CmOk,$7049
+    dw CmNope,$7049
+    dw CmCheer,$7049
+    dw CmAds,$7049
+    dw CmCoin,$7049
+    dw CmRest,$7049
+    dw CmWin,$7049
+    dw CmTie,$7049
+; Stump Speech (original)
+; Tiny Sound, 8 frames per step
+CmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$18,$01,$1D,$01,$21,$01,$24,$01,$01,$01,$21,$01
+    db $22,$01,$1F,$01,$21,$01,$1D,$01,$01,$01,$18,$01,$1A,$01,$1C,$01
+    db $1D,$01,$1F,$01,$21,$01,$22,$01,$21,$01,$1F,$01,$01,$01,$00,$01
+    db $24,$01,$21,$01,$1D,$01,$26,$01,$24,$01,$22,$01,$21,$01,$1F,$01
+    db $1D,$01,$01,$01,$01,$01,$00,$01
+    db $FF
+CmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$05,$01,$0C,$01,$05,$01,$0C,$01,$05,$01,$0C,$01
+    db $0A,$01,$11,$01,$0A,$01,$11,$01,$05,$01,$0C,$01,$0A,$01,$11,$01
+    db $0A,$01,$11,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$10,$01
+    db $05,$01,$0C,$01,$05,$01,$0C,$01,$0A,$01,$11,$01,$0C,$01,$13,$01
+    db $05,$01,$0C,$01,$05,$01,$00,$01
+    db $FF
+}

@@ -34,7 +34,23 @@ const projects = [
   ["Binary-Castle", "binc", "Binary Castle", null, "November 1983"],
   ["Bingo-64", "bingo64", "Bingo 64", "Richard L. Witkover", "April 1984"],
   ["Block-Battle", "bbattle", "Block Battle!", null, "September 1989"],
-  ["Block-Out", "blockout", "Block Out", null, "November 1988"]
+  ["Block-Out", "blockout", "Block Out", null, "November 1988"],
+  ["Backgammon", "bgammon", "Backgammon", null, "November 1985"],
+  ["Bombardment", "bombard", "Bombardment", null, "January 1989"],
+  ["Bonking-Barrels", "bonk", "Bonking Barrels", null, "July 1984"],
+  ["Boom-And-Bust", "boombust", "Boom and Bust", null, "September 1988"],
+  ["Boomerang", "boomer", "Boomerang", null, "August 1989"],
+  ["Bounty-Hunter", "bounty", "Bounty Hunter", null, "August 1987"],
+  ["Brusher", "brusher", "Brusher", "Leonard Morris", "April 1989"],
+  ["Bump-N-Run", "bumprun", "Bump 'n Run", null, "November 1986"],
+  ["Cabby", "cabby", "Cabby", null, "October 1984"],
+  ["Campaign-Manager", "campaign", "Campaign Manager", "Todd Heimarck", "August 1984"],
+  ["Castle-Dungeon", "cdung", "Castle Dungeon", null, "June 1984"],
+  ["Cats-N-Dogs", "catsdogs", "Cats 'n Dogs", null, "January 1988"],
+  ["Cell-Runner", "cellrun", "Cell Runner", "John Krutch", "September 1986"],
+  ["Charlemagnes-Sword", "charle", "Charlemagne's Sword", null, "May 1985"],
+  ["Checkers", "gzchk", "Checkers", null, "February 1984"],
+  ["Chomper", "chomper", "Chomper", null, "January 1985"]
 ];
 
 const knownIds = new Set(index.map((entry) => entry.id));

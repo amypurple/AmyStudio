@@ -57,6 +57,17 @@ export function createCompareLiteralHelpers({
     const rightType = resolveValueType(rightToken);
     const lines = [];
     const effectiveOp = operator;
+    const loadLinesClobberB = (loadLines) => Array.isArray(loadLines) && loadLines.some((line) => {
+      const code = String(line || "").replace(/;.*/, "");
+      return /\b(?:b|bc)\b/i.test(code) || /^\s*(?:call|rst)\b/i.test(code);
+    });
+    const emitOperands = (loadRightB) => {
+      if (!loadRightB) return null;
+      if (!loadLinesClobberB(loadLeft)) return [...loadRightB, ...loadLeft];
+      const loadRightA = emitLoadInt8ValueInto("a", rightToken);
+      if (!loadRightA) return null;
+      return [...loadLeft, "    push af", ...loadRightA, "    ld b,a", "    pop af"];
+    };
     if (!rightType && isZeroLiteral(rightToken)) {
       lines.push(...loadLeft);
       lines.push("    or a");
@@ -79,15 +90,15 @@ export function createCompareLiteralHelpers({
       if (rightType) {
         if (!isByteValueType(rightType)) return null;
         const loadRight = emitLoadInt8ValueInto("b", rightToken);
-        if (!loadRight) return null;
-        lines.push(...loadRight);
-        lines.push(...loadLeft);
+        const operands = emitOperands(loadRight);
+        if (!operands) return null;
+        lines.push(...operands);
         lines.push("    cp b");
       } else {
         const loadRight = emitLoadInt8ValueInto("b", rightToken);
-        if (!loadRight) return null;
-        lines.push(...loadRight);
-        lines.push(...loadLeft);
+        const operands = emitOperands(loadRight);
+        if (!operands) return null;
+        lines.push(...operands);
         lines.push("    cp b");
       }
       lines.push(`    jp ${effectiveOp === "==" ? "z" : "nz"},${label}`);
@@ -96,9 +107,9 @@ export function createCompareLiteralHelpers({
     if (rightType) {
       if (!isByteValueType(rightType)) return null;
       const loadRight = emitLoadInt8ValueInto("b", rightToken);
-      if (!loadRight) return null;
-      lines.push(...loadRight);
-      lines.push(...loadLeft);
+      const operands = emitOperands(loadRight);
+      if (!operands) return null;
+      lines.push(...operands);
       lines.push("    xor $80");
       lines.push("    ld c,a");
       lines.push("    ld a,b");
@@ -108,9 +119,9 @@ export function createCompareLiteralHelpers({
       lines.push("    cp b");
     } else {
       const loadRight = emitLoadInt8ValueInto("b", rightToken);
-      if (!loadRight) return null;
-      lines.push(...loadRight);
-      lines.push(...loadLeft);
+      const operands = emitOperands(loadRight);
+      if (!operands) return null;
+      lines.push(...operands);
       lines.push("    xor $80");
       lines.push("    ld c,a");
       lines.push("    ld a,b");

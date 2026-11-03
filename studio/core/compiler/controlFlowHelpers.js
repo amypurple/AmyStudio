@@ -484,6 +484,24 @@ export function createControlFlowHelpers(ctx) {
     return String(encoded);
   }
 
+  function foldByteDomainConstantCompare(declared, operator, constant, constantOnRight = true) {
+    const kind = String(declared || "").toLowerCase();
+    const bounds = kind === "i8"
+      ? [-128, 127]
+      : (["u8", "byte", "boolean", "bool"].includes(kind) ? [0, 255] : null);
+    if (!bounds || !Number.isInteger(constant)) return null;
+    const effective = constantOnRight ? operator : reverseOperator(operator);
+    if (!effective) return null;
+    const [minimum, maximum] = bounds;
+    if (constant > maximum) {
+      return ({ "==": false, "!=": true, "<": true, "<=": true, ">": false, ">=": false })[effective] ?? null;
+    }
+    if (constant < minimum) {
+      return ({ "==": false, "!=": true, "<": false, "<=": false, ">": true, ">=": true })[effective] ?? null;
+    }
+    return null;
+  }
+
   function emitCompareGoto(leftToken, operator, rightToken, label, branchWhenFalse = false, compareMode = "auto") {
     const asmLabel = resolveJumpTarget(label);
     const effectiveOperator = branchWhenFalse ? invertOperator(operator) : operator;
@@ -527,8 +545,11 @@ export function createControlFlowHelpers(ctx) {
     rightToken = coerceSimpleLiteralForFixedCompare(rightToken, initialLeftDeclared);
     const leftDomainDeclared = initialLeftDeclared || inferLiteralDeclaredType(leftToken);
     const rightDomainDeclared = initialRightDeclared || inferLiteralDeclaredType(rightToken);
-    const leftConstant = tryEvaluateConstantExpression(leftToken);
-    const rightConstant = tryEvaluateConstantExpression(rightToken);
+    const compareNumericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression
+      : tryEvaluateConstantExpression;
+    const leftConstant = compareNumericEvaluator(leftToken);
+    const rightConstant = compareNumericEvaluator(rightToken);
     const isUnsignedIntegerDeclared = (declared) => ["u8", "u16", "u32", "boolean", "bool", "byte"].includes(String(declared || "").toLowerCase());
     const knownUnsignedVsNegative = rightConstant < 0 && isUnsignedIntegerDeclared(leftDomainDeclared)
       ? ({ "==": false, "!=": true, ">": true, ">=": true, "<": false, "<=": false })[effectiveOperator]
@@ -537,6 +558,14 @@ export function createControlFlowHelpers(ctx) {
         : undefined;
     if (typeof knownUnsignedVsNegative === "boolean") {
       return knownUnsignedVsNegative ? [`    jp ${asmLabel}`] : [];
+    }
+    const byteRangeResult = rightConstant !== null
+      ? foldByteDomainConstantCompare(leftDomainDeclared, effectiveOperator, rightConstant, true)
+      : leftConstant !== null
+        ? foldByteDomainConstantCompare(rightDomainDeclared, effectiveOperator, leftConstant, false)
+        : null;
+    if (typeof byteRangeResult === "boolean") {
+      return byteRangeResult ? [`    jp ${asmLabel}`] : [];
     }
     const constantResult = evaluateConstantComparison(leftToken, effectiveOperator, rightToken);
     if (constantResult !== null) {

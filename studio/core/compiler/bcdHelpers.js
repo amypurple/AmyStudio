@@ -183,10 +183,12 @@ export function createBcdHelpers(ctx) {
 
   function emitBcdAdjustByInt8(varName, valueToken, op) {
     const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
-    if (!valueInfo || valueInfo.kind === "array" || valueInfo.type !== "int8") return null;
+    const valueDeclared = getInt8ExpressionDeclaredType(valueToken);
+    const byteValue = valueInfo?.type === "int8" || valueDeclared !== null;
+    if (!byteValue) return null;
     const loadCount = emitLoadInt8Into("a", valueToken);
     if (!loadCount) return null;
-    const signedValue = isSignedDeclaredType(resolveDeclaredValueType(valueToken));
+    const signedValue = isSignedDeclaredType(valueDeclared);
     const positiveLoop = makeGeneratedLabel("BcdAdjPosLoop");
     const negativeLoop = makeGeneratedLabel("BcdAdjNegLoop");
     const positiveStart = makeGeneratedLabel("BcdAdjPos");
@@ -204,16 +206,27 @@ export function createBcdHelpers(ctx) {
     return lines;
   }
 
+  function getInt8ExpressionDeclaredType(valueToken) {
+    const direct = resolveDeclaredValueType(valueToken);
+    if (["u8", "i8", "byte", "boolean", "bool"].includes(String(direct || "").toLowerCase())) return direct;
+    const arrayRef = parseArrayRef?.(valueToken);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (arrayInfo?.kind === "array" && arrayInfo.elementType === "int8") return arrayInfo.declaredType || "u8";
+    const fieldRef = parseRecordFieldRef?.(valueToken);
+    if (fieldRef?.fieldInfo?.type === "int8") return fieldRef.fieldInfo.declaredType || "u8";
+    return null;
+  }
+
   function emitBcdAdd(varName, valueToken) {
     const info = getBcdInfo(varName);
     if (!info) return null;
     const { byteCount } = info;
     const digitCount = getBcdDigitCount(info);
     const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
+    if (getInt8ExpressionDeclaredType(valueToken) !== null) {
+      return emitBcdAdjustByInt8(varName, valueToken, "add");
+    }
     if (valueInfo) {
-      if (valueInfo.kind !== "array" && valueInfo.type === "int8") {
-        return emitBcdAdjustByInt8(varName, valueToken, "add");
-      }
       if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) > digitCount) return null;
       const sourceByteCount = valueInfo.byteCount;
       const lines = ["    or a"];
@@ -267,10 +280,10 @@ export function createBcdHelpers(ctx) {
     const digitCount = getBcdDigitCount(info);
     const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
     let lines = null;
+    if (getInt8ExpressionDeclaredType(valueToken) !== null) {
+      return emitBcdAdjustByInt8(varName, valueToken, "sub");
+    }
     if (valueInfo) {
-      if (valueInfo.kind !== "array" && valueInfo.type === "int8") {
-        return emitBcdAdjustByInt8(varName, valueToken, "sub");
-      }
       lines = ["    or a"];
       if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) > digitCount) return null;
       const sourceByteCount = valueInfo.byteCount;

@@ -1,0 +1,1071 @@
+cartridge "CASTLE DUNGEON/COMPUTE!'S GAZETTE/1984"
+
+' CASTLE DUNGEON
+' A ColecoVision game based on "Castle Dungeon", COMPUTE!'s Gazette,
+' June 1984 (issue 12, page 52; Commodore 64 and VIC-20, BASIC with a
+' small machine-language maze maker; no author is named on the listing).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: an evil wizard hid three bombs in the castle's dark dungeon.
+' Find all three within three minutes to save the castle. You carry a
+' lantern that shows only the cells around you. Walls stop you; a pit
+' swallows you unless you cast a levitation spell first; a beast (a lion)
+' eats you unless you have found the sword (then it is slain); a door
+' opens only once you have found a key.
+'
+' From the original (orig/castle dungeon64.bas, its machine code in the
+' DATA of lines 3030-3310): a new maze each game, carved by the same
+' depth-first walk (two cells a step, the way back kept in the cells
+' themselves), then items placed at random free cells in the same order
+' (pits, beasts, bombs, keys, doors in corridors, the sword, the player)
+' and then random wall cells knocked out to make loops; the dark dungeon
+' lit only around the player (the C64 shows the maze in black on black and
+' lights it with a big sprite behind the characters); walls and locked
+' doors bump; a pit without the spell or a beast without the sword loses
+' the game; a key opens every door (doors and keys vanish when used or
+' taken); the sword kills every beast met afterwards; the spell lasts over
+' any number of pits and ends on the first plain floor cell; three bombs
+' win; three minutes (the C64 listing; the VIC-20 one has five); the end
+' messages.
+'
+' Liberties: the maze is 27 x 21 cells (the C64's is 39 x 23) inside the
+' TV-safe area, so there are fewer items: 6 pits, 5 beasts (7 and 6 on the
+' C64), 4 doors (5) and 30 walls knocked out (50); 3 bombs, 2 keys, 1 sword
+' as before. A door is placed in a straight corridor of either direction
+' (the C64 only checks the cells above and below). Every new dungeon is
+' checked to be winnable (all three bombs reachable with the keys and the
+' sword found on the way) and made again if not: the C64 could deal
+' dungeons that cannot be won. Cells you have seen stay drawn dimly (the
+' C64 forgets them as soon as the lantern moves on): fair information for
+' a dark maze. The time left is shown (the C64 kept it hidden in TI$), and
+' the last ten seconds tick. The spell is the button (the C64's L key);
+' casting it takes 3/4 second (on the C64 the spell's sound loop in BASIC
+' took about as long, which is what made it cost something). The player
+' slides a cell in 8 frames (about the C64's BASIC pace). At the end the
+' whole dungeon is shown. No play-again question: the title comes back.
+'
+' Controls: either controller. The stick walks (hold to keep walking); a
+' side button casts the levitation spell. On the title, up and down
+' choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TDark = 128
+const TDimfloor = 129
+const TDimwall = 130
+const TDimpit = 131
+const TDimkey = 132
+const TDimbeast = 133
+const TDimbomb = 134
+const TDimdoor = 135
+const TDimsword = 136
+const TLitfloor = 137
+const TLitwall = 138
+const TLitpit = 139
+const TLitkey = 140
+const TLitbeast = 141
+const TLitbomb = 142
+const TLitdoor = 143
+const TLitsword = 144
+const TClock = 145
+const TWand = 146
+const SHero0 = 0
+const SHero1 = 4
+const SGlow = 8
+const NTiles8 = 152
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndBump = 4
+const SndFall = 5
+const SndRoar = 6
+const SndSlay = 7
+const SndPick = 8
+const SndBomb = 9
+const SndLev = 10
+const SndLose = 11
+const SndWon = 12
+const SndTick = 13
+const MW = 27
+const MH = 21
+const MapBytes = 284
+const StepN = 8
+const CastN = 45
+const StartSecs = 180
+const NSpr = 2
+' map kinds (low 3 bits of a cell; bit 3: seen)
+const KFloor = 0
+const KWall = 1
+const KPit = 2
+const KKey = 3
+const KBeast = 4
+const KBomb = 5
+const KDoor = 6
+const KSword = 7
+
+' directions: 0 right, 1 up, 2 left, 3 down
+data DcT bytes
+  1, 0, 255, 0
+end data
+data DrT bytes
+  0, 255, 0, 1
+end data
+' how many of each item, in the original's order
+data ItemK bytes
+  2, 4, 5, 3, 6, 7
+end data
+data ItemN bytes
+  6, 5, 3, 2, 4, 1
+end data
+
+record Hero:
+  u8 C
+  u8 R
+  u8 X
+  u8 Y
+  u8 D
+  u8 Ph
+end record
+
+Hero Me
+u8 Mp[MapBytes]
+bcd digits 3 Secs = StartSecs
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Seed0 = 0
+u16 Ci16 = 0
+u16 NumU = 0
+u8 Mode = 0
+u8 Over = 0
+u8 Bombs = 0
+u8 HasKey = 0
+u8 HasSword = 0
+u8 Lev = 0
+u8 CastT = 0
+u8 BumpT = 0
+u8 EndT = 0
+u8 FrameC = 0
+u8 Tries = 0
+u8 Found = 0
+u8 Changed = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Gn = 0
+u8 Gr = 0
+u8 Gc = 0
+u8 Tr = 0
+u8 Lr = 0
+u8 Lc = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nc = 0
+u8 Nr = 0
+u8 Oc = 0
+u8 Or2 = 0
+u8 Cc = 0
+u8 Cr = 0
+u8 Lc0 = 0
+u8 Lc1 = 0
+u8 Lr0 = 0
+u8 Lr1 = 0
+
+  tile screen
+  set sound table CdSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayPass
+  DrawHero
+  if Over = 0 then goto play_loop
+
+  ' the end: the message, the whole dungeon, then the title on a press
+  Mode = 3
+  mute all
+  Rearm
+  wait 40 frames
+  nmi off
+  RevealAll
+  DrawHero
+  if Over = 1 then
+    print at 4,9, "                        "
+    print at 4,10, "   CONGRATULATIONS !    "
+    print at 4,11, "  YOU SAVED THE CASTLE  "
+    print at 4,12, "       THIS TIME        "
+    print at 4,13, "                        "
+    play sound SndWon
+  else
+    print at 4,9, "                        "
+    print at 4,10, "                        "
+    if Over = 2 then print at 4,10, "  YOU FELL INTO A PIT   "
+    if Over = 3 then print at 4,10, "  YOU LOST TO A BEAST   "
+    if Over = 4 then print at 4,10, "   YOUR TIME RAN OUT    "
+    print at 4,11, "                        "
+    print at 4,12, "  YOU LOST THE CASTLE!  "
+    print at 4,13, "                        "
+    play sound SndLose
+  end if
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  Mode = 4
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the map: 27 x 21 cells, two to a byte (low nibble: even cell)
+
+function CellIx(u8 Cx, u8 Ry) as u16
+  u16 Wi = Ry
+  Wi = Wi * MW
+  return Wi + Cx
+
+function GetM(u16 Ix) as u8
+  u16 Bi = Ix >> 1
+  u8 Bv = Mp[Bi]
+  if Ix & 1 then
+    Bv = Bv >> 4
+  else
+    Bv = Bv & 15
+  end if
+  return Bv
+
+sub SetM(u16 Ix, u8 Nv):
+  u16 Bi = Ix >> 1
+  u8 Bv = Mp[Bi]
+  if Ix & 1 then
+    Bv = Bv & 15
+    Bv = Bv | (Nv << 4)
+  else
+    Bv = Bv & $F0
+    Bv = Bv | Nv
+  end if
+  Mp[Bi] = Bv
+  return
+end sub
+
+' kind of a cell (0-7)
+function KindAt(u8 Cx, u8 Ry) as u8
+  return GetM(CellIx(Cx, Ry)) & 7
+
+' a random number 0 .. Nn-1
+function Rnd(u8 Nn) as u8
+  u16 Wr = 0
+  Rand
+  Wr = Rs & 255
+  Wr = Wr * Nn
+  return Wr >> 8
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a new dungeon (the original's machine code, then its BASIC placements)
+
+sub MakeDungeon:
+  Tries = 0
+  Found = 0
+  while Found = 0
+    inc Tries
+    CarveMaze
+    PlaceAll
+    CheckWin
+  end while
+  return
+end sub
+
+' depth-first: from cell 1,1, two cells a step in a random free direction;
+' each new cell keeps the direction it was reached by (8 + D), the start
+' is 12; with no way on, go back the way the cell was reached
+sub CarveMaze:
+  fill array Mp with $11
+  Cc = 1
+  Cr = 1
+  SetM(CellIx(1, 1), 12)
+  Changed = 1
+  while Changed = 1
+    D = Rnd(4)
+    Found = 0
+    for Tr = 0 to 3
+      if Found = 0 then
+        K = (D + Tr) & 3
+        Nc = Cc + DcT[K] + DcT[K]
+        Nr = Cr + DrT[K] + DrT[K]
+        if Nc <= 25 and Nr <= 19 then
+          if GetM(CellIx(Nc, Nr)) = KWall then
+            SetM(CellIx(Cc + DcT[K], Cr + DrT[K]), KFloor)
+            SetM(CellIx(Nc, Nr), 8 + K)
+            Cc = Nc
+            Cr = Nr
+            Found = 1
+          end if
+        end if
+      end if
+    next
+    if Found = 0 then
+      V = GetM(CellIx(Cc, Cr))
+      SetM(CellIx(Cc, Cr), KFloor)
+      if V = 12 then
+        Changed = 0
+      else
+        K = V - 8
+        Cc = Cc - DcT[K] - DcT[K]
+        Cr = Cr - DrT[K] - DrT[K]
+      end if
+    end if
+  end while
+  Found = 0
+  return
+end sub
+
+' a random free floor cell into Cc, Cr
+sub FreeCell:
+  V = 1
+  while V <> KFloor
+    Cc = Rnd(25) + 1
+    Cr = Rnd(19) + 1
+    V = GetM(CellIx(Cc, Cr))
+  end while
+  return
+end sub
+
+' a door goes in a straight corridor (walls on both sides)
+function DoorOk as u8
+  u8 Ok = 0
+  if KindAt(Cc, Cr - 1) = KFloor and KindAt(Cc, Cr + 1) = KFloor then
+    if KindAt(Cc - 1, Cr) = KWall and KindAt(Cc + 1, Cr) = KWall then Ok = 1
+  end if
+  if KindAt(Cc - 1, Cr) = KFloor and KindAt(Cc + 1, Cr) = KFloor then
+    if KindAt(Cc, Cr - 1) = KWall and KindAt(Cc, Cr + 1) = KWall then Ok = 1
+  end if
+  return Ok
+
+sub PlaceAll:
+  for Gi = 0 to 5
+    T = ItemK[Gi]
+    Gn = ItemN[Gi]
+    for Tr = 1 to Gn
+      FreeCell
+      if T = KDoor then
+        while DoorOk = 0
+          FreeCell
+        end while
+      end if
+      SetM(CellIx(Cc, Cr), T)
+    next
+  next
+  FreeCell
+  Me.C = Cc
+  Me.R = Cr
+  ' knock out 30 inner wall cells
+  for Gi = 1 to 30
+    V = 0
+    while V <> KWall
+      Cc = Rnd(25) + 1
+      Cr = Rnd(19) + 1
+      V = GetM(CellIx(Cc, Cr))
+    end while
+    SetM(CellIx(Cc, Cr), KFloor)
+  next
+  return
+end sub
+
+' can all three bombs be reached? Flood from the player (bit 3 marks a
+' reached cell): pits pass (the spell is free), doors once a key is
+' reached, beasts once the sword is. Sweeps until nothing changes.
+function Passable(u8 Kk) as u8
+  u8 Ok = 1
+  select case Kk
+  case KWall
+    Ok = 0
+  case KDoor
+    Ok = HasKey
+  case KBeast
+    Ok = HasSword
+  end select
+  return Ok
+
+function Reached(u8 Cx, u8 Ry) as u8
+  return GetM(CellIx(Cx, Ry)) >> 3
+
+sub CheckWin:
+  HasKey = 0
+  HasSword = 0
+  Ci16 = CellIx(Me.C, Me.R)
+  SetM(Ci16, GetM(Ci16) | 8)
+  Changed = 1
+  while Changed = 1
+    Changed = 0
+    for Gr = 1 to 19
+      for Gc = 1 to 25
+        SweepCell
+      next
+    next
+  end while
+  ' count the bombs reached, clear the marks
+  Bombs = 0
+  for Gr = 0 to 20
+    for Gc = 0 to 26
+      Ci16 = CellIx(Gc, Gr)
+      V = GetM(Ci16)
+      if V = KBomb + 8 then inc Bombs
+      SetM(Ci16, V & 7)
+    next
+  next
+  Found = 0
+  if Bombs = 3 then Found = 1
+  HasKey = 0
+  HasSword = 0
+  Bombs = 0
+  return
+end sub
+
+sub SweepCell:
+  Ci16 = CellIx(Gc, Gr)
+  V = GetM(Ci16)
+  if V >= 8 then return
+  if Passable(V) = 0 then return
+  N = Reached(Gc - 1, Gr) | Reached(Gc + 1, Gr) | Reached(Gc, Gr - 1) | Reached(Gc, Gr + 1)
+  if N = 0 then return
+  SetM(Ci16, V | 8)
+  Changed = 1
+  if V = KKey then HasKey = 1
+  if V = KSword then HasSword = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing the dungeon: dark, dim (seen) or lit (in the lantern, 5 x 5)
+
+sub DrawCell:
+  Ci16 = CellIx(Lc, Lr)
+  V = GetM(Ci16)
+  X = Lc - Me.C + 2
+  Y = Lr - Me.R + 2
+  if X <= 4 and Y <= 4 then
+    T = TLitfloor + (V & 7)
+    if V < 8 then SetM(Ci16, V | 8)
+  elseif V >= 8 then
+    T = TDimfloor + (V & 7)
+  else
+    T = TDark
+  end if
+  put char T at Lc + 2, Lr + 2
+  return
+end sub
+
+' redraw the 7 x 7 cells around Oc, Or2 (clipped to the map)
+sub DrawAround:
+  Lc0 = 0
+  if Oc > 3 then Lc0 = Oc - 3
+  Lc1 = Oc + 3
+  if Lc1 > MW - 1 then Lc1 = MW - 1
+  Lr0 = 0
+  if Or2 > 3 then Lr0 = Or2 - 3
+  Lr1 = Or2 + 3
+  if Lr1 > MH - 1 then Lr1 = MH - 1
+  for Lr = Lr0 to Lr1
+    for Lc = Lc0 to Lc1
+      DrawCell
+    next
+  next
+  return
+end sub
+
+sub RevealAll:
+  for Lr = 0 to 20
+    for Lc = 0 to 26
+      V = KindAt(Lc, Lr)
+      T = TLitfloor + V
+      put char T at Lc + 2, Lr + 2
+    next
+  next
+  return
+end sub
+
+sub DrawHud:
+  put char TClock at 2,1
+  print at 3,1, Secs
+  print at 8,1, "BOMBS"
+  for Gi = 0 to 2
+    T = TDimbomb
+    if Gi < Bombs then T = TLitbomb
+    put char T at 14 + Gi,1
+  next
+  T = TDark
+  if HasKey = 1 then T = TLitkey
+  put char T at 19,1
+  T = TDark
+  if HasSword = 1 then T = TLitsword
+  put char T at 21,1
+  T = TDark
+  if Lev = 1 then T = TWand
+  put char T at 23,1
+  return
+end sub
+
+' the adventurer (sprite 0) and the spell's glow (sprite 1)
+sub DrawHero:
+  if Mode <> 2 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    update sprites
+    return
+  end if
+  Y = Me.Y - 1
+  K = SHero0
+  if Me.Ph > 0 then
+    V = Me.Ph & 4
+    if V > 0 then K = SHero1
+  end if
+  C = 15
+  if Over > 1 then C = 6
+  if Lev = 1 then
+    V = Tick & 32
+    if V > 0 then dec Y
+  end if
+  set sprite 0 to Y,Me.X,K,C
+  if Lev = 1 or CastT > 0 then
+    set sprite 1 to Y,Me.X,SGlow,7
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub PlaceHero:
+  Me.X = (Me.C + 2) * 8 - 4
+  Me.Y = (Me.R + 2) * 8 - 4
+  Me.Ph = 0
+  Me.D = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayPass:
+  ' the clock
+  inc FrameC
+  if FrameC >= 60 then
+    FrameC = 0
+    Secs -= 1
+    print at 3,1, Secs
+    if Secs < 11 then play sound SndTick
+    if Secs = 0 then
+      Over = 4
+      return
+    end if
+  end if
+  if BumpT > 0 then dec BumpT
+  if CastT > 0 then
+    dec CastT
+    if CastT = 0 then DrawHud
+    return
+  end if
+  if Me.Ph > 0 then
+    Slide
+    return
+  end if
+  if Press = 1 and Lev = 0 then
+    Lev = 1
+    CastT = CastN
+    play sound SndLev
+    return
+  end if
+  TryMove
+  return
+end sub
+
+sub Slide:
+  K = Me.D
+  select case K
+  case 0
+    inc Me.X
+  case 1
+    dec Me.Y
+  case 2
+    dec Me.X
+  case else
+    inc Me.Y
+  end select
+  dec Me.Ph
+  return
+end sub
+
+' the stick: the first held direction of up, down, right, left
+sub TryMove:
+  K = J1 | J2
+  D = 9
+  if K & 1 then
+    D = 1
+  elseif K & 2 then
+    D = 3
+  elseif K & 8 then
+    D = 0
+  elseif K & 4 then
+    D = 2
+  end if
+  if D = 9 then return
+  Nc = Me.C + DcT[D]
+  Nr = Me.R + DrT[D]
+  Ci16 = CellIx(Nc, Nr)
+  V = GetM(Ci16) & 7
+  select case V
+  case KWall
+    Bump
+    return
+  case KDoor
+    if HasKey = 0 then
+      Bump
+      return
+    end if
+    SetM(Ci16, KFloor + 8)
+    play sound SndStep
+  case KPit
+    if Lev = 0 then
+      Over = 2
+      play sound SndFall
+    end if
+  case KKey
+    HasKey = 1
+    SetM(Ci16, KFloor + 8)
+    play sound SndPick
+  case KSword
+    HasSword = 1
+    SetM(Ci16, KFloor + 8)
+    play sound SndPick
+  case KBeast
+    if HasSword = 0 then
+      Over = 3
+      play sound SndRoar
+    else
+      SetM(Ci16, KFloor + 8)
+      play sound SndSlay
+    end if
+  case KBomb
+    inc Bombs
+    SetM(Ci16, KFloor + 8)
+    play sound SndBomb
+    if Bombs >= 3 then Over = 1
+  case else
+    ' plain floor ends the spell
+    Lev = 0
+    play sound SndStep
+  end select
+  Oc = Me.C
+  Or2 = Me.R
+  Me.C = Nc
+  Me.R = Nr
+  Me.D = D
+  Me.Ph = StepN
+  DrawAround
+  DrawHud
+  return
+end sub
+
+sub Bump:
+  if BumpT = 0 then
+    play sound SndBump
+    BumpT = 15
+  end if
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  backdrop black
+  print at 10,11, "PLEASE WAIT"
+  ShowScreen
+  Rearm
+  wait
+  nmi off
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  Seed0 = Rs
+  MakeDungeon
+  NewScreen
+  backdrop black
+  Bombs = 0
+  HasKey = 0
+  HasSword = 0
+  Lev = 0
+  CastT = 0
+  BumpT = 0
+  FrameC = 0
+  Secs = StartSecs
+  Over = 0
+  PlaceHero
+  Oc = Me.C
+  Or2 = Me.R
+  DrawAround
+  DrawHud
+  Mode = 2
+  DrawHero
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a row of wall bricks across the title
+sub Bricks:
+  fill TLitwall count 28 at 2,R
+  return
+end sub
+
+sub TitlePage:
+  Mode = 1
+  NewScreen
+  backdrop black
+  R = 2
+  Bricks
+  R = 6
+  Bricks
+  print at 8,4, "CASTLE DUNGEON"
+  print at 2,8, "FIND THE THREE BOMBS HIDDEN"
+  print at 2,9, "IN THE DUNGEON. DON'T FALL"
+  print at 2,10, "INTO A PIT OR GET EATEN BY"
+  print at 2,11, "A BEAST. THE BUTTON CASTS A"
+  print at 2,12, "LEVITATION SPELL. YOU HAVE"
+  print at 2,13, "3 MINUTES TO FULFIL YOUR"
+  print at 2,14, "QUEST."
+  put char TLitkey at 3,16
+  print at 5,16, "OPENS DOORS"
+  put char TLitdoor at 18,16
+  put char TLitsword at 3,17
+  print at 5,17, "SLAYS BEASTS"
+  put char TLitbeast at 18,17
+  put char TLitbomb at 22,16
+  print at 24,16, "BOMB"
+  put char TLitpit at 22,17
+  print at 24,17, "PIT"
+  print at 11,19, "START GAME"
+  print at 11,20, "CREDITS"
+  print at 4,22, "COMPUTE!'S GAZETTE 6/1984"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,19
+  put char 32 at 9,20
+  J = Menu + 19
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  Mode = 0
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "CASTLE DUNGEON"
+  print at 2,5, "BASED ON CASTLE DUNGEON,"
+  print at 2,6, "COMPUTE!'S GAZETTE, JUNE"
+  print at 2,7, "1984 (COMMODORE 64 AND"
+  print at 2,8, "VIC-20)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: TORCH ON THE STAIR"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$40,$08,$00,$20,$02,$80
+  $02,$02,$00,$20,$20,$00,$04,$00
+  $00,$81,$C3,$81,$81,$C3,$81,$00
+  $00,$60,$90,$60,$9A,$05,$00,$00
+  $93,$C3,$A5,$81,$99,$24,$18,$C9
+  $02,$04,$04,$C3,$20,$81,$81,$C3
+  $81,$24,$24,$00,$06,$24,$24,$00
+  $01,$02,$04,$08,$30,$30,$68,$80
+  $00,$02,$40,$08,$00,$20,$02,$80
+  $02,$02,$00,$20,$20,$00,$04,$00
+  $00,$81,$C3,$81,$81,$C3,$81,$00
+  $00,$60,$90,$60,$9A,$05,$00,$00
+  $93,$C3,$A5,$81,$99,$24,$18,$C9
+  $02,$04,$04,$C3,$20,$81,$81,$C3
+  $81,$24,$24,$00,$06,$24,$24,$00
+  $01,$02,$04,$08,$30,$30,$68,$80
+  $C3,$4A,$89,$8D,$81,$42,$C3,$00
+  $06,$0E,$06,$08,$10,$20,$40,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$41,$41,$41,$01,$41,$41,$41
+  $14,$14,$01,$14,$14,$01,$14,$01
+  $01,$14,$41,$41,$41,$41,$14,$01
+  $01,$E1,$E1,$1E,$1E,$E1,$01,$01
+  $14,$4E,$4E,$4E,$4E,$E4,$E1,$14
+  $E1,$41,$41,$14,$E4,$14,$14,$14
+  $14,$14,$14,$04,$E4,$14,$14,$04
+  $E1,$E1,$E1,$E1,$E1,$41,$41,$41
+  $01,$E1,$E1,$E1,$01,$E1,$E1,$E1
+  $68,$68,$06,$68,$68,$06,$68,$06
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $01,$B1,$B1,$1B,$1B,$B1,$01,$01
+  $1A,$AB,$AB,$AB,$AB,$BA,$B1,$1A
+  $B1,$91,$91,$1E,$FE,$1E,$1E,$1E
+  $1A,$CA,$CA,$0A,$BA,$CA,$CA,$0A
+  $F1,$F1,$F1,$F1,$F1,$A1,$A1,$A1
+  $1F,$F1,$F1,$F1,$F1,$F1,$1F,$01
+  $F1,$F1,$F1,$E1,$E1,$E1,$E1,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$01,$01,$03,$05,$01,$02,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$C0,$A0,$80,$40,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$03,$03,$01,$01,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$C0,$C0,$80,$80,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$0F,$10,$10,$10,$10,$10,$10,$10,$10,$0F,$00,$00,$00
+  $00,$00,$00,$F0,$08,$08,$08,$08,$08,$08,$08,$08,$F0,$00,$00,$00
+end data
+
+asm {
+CdStep:
+    db $40,$FC,$51,$01,$50
+CdBump:
+    db $00,$00,$15,$03,$00,$00,$36,$03,$10
+CdFall:
+    db $40,$7F,$10,$04,$40,$97,$20,$04,$40,$B4,$20,$04,$40,$D6,$30,$04,$40,$FE,$30,$04,$40,$2E,$41,$04
+    db $40,$68,$41,$04,$40,$AB,$51,$08,$50
+CdRoar:
+    db $00,$00,$06,$06,$00,$00,$17,$0A,$00,$00,$37,$0C,$00,$00,$57,$0C,$10
+CdSlay:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$20,$0C,$50
+CdPick:
+    db $40,$5F,$20,$03,$40,$47,$20,$03,$40,$35,$30,$06,$50
+CdBomb:
+    db $40,$1D,$11,$04,$40,$BF,$10,$04,$40,$8F,$10,$04,$40,$5F,$20,$0A,$50
+CdLev:
+    db $40,$AA,$20,$03,$40,$87,$20,$03,$40,$71,$20,$03,$40,$55,$20,$03,$40,$71,$30,$03,$40,$55,$30,$03
+    db $40,$43,$30,$03,$40,$39,$40,$06,$50
+CdLose:
+    db $40,$53,$11,$0E,$40,$7C,$21,$0E,$40,$C5,$21,$0E,$40,$A6,$22,$28,$50
+CdWon:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+CdTick:
+    db $40,$40,$30,$02,$50
+
+CdSoundTable:
+    dw CdTuneMel,$702B
+    dw CdTuneBass,$7035
+    dw CdStep,$7049
+    dw CdBump,$703F
+    dw CdFall,$7049
+    dw CdRoar,$703F
+    dw CdSlay,$7049
+    dw CdPick,$7049
+    dw CdBomb,$7049
+    dw CdLev,$7049
+    dw CdLose,$7049
+    dw CdWon,$7049
+    dw CdTick,$7049
+; Torch on the Stair (original)
+; Tiny Sound, 9 frames per step
+CdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$01,$01,$18,$01,$1A,$01,$1C,$01
+    db $01,$01,$01,$01,$1D,$01,$01,$1C,$01,$1A,$18,$01,$17,$01,$01,$01
+    db $15,$01,$01,$01,$18,$01,$1C,$01,$21,$01,$01,$23,$01,$24,$01,$23
+    db $01,$21,$01,$20,$01,$01,$21,$01,$1C,$01,$18,$01,$17,$01,$01,$15
+    db $01,$01,$01,$00,$01
+    db $FF
+CdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$14,$01,$09,$01,$10,$01,$09,$01,$10,$01,$05,$01,$0C,$01
+    db $05,$01,$0C,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$01,$00,$01
+    db $FF
+}

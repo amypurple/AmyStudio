@@ -32,7 +32,7 @@ for (const example of catalog) {
     .join("\n");
 
   assert.match(visible, /COMPUTE!|GAZETTE/i, `${example.id}: no visible COMPUTE!/Gazette credit`);
-  assert.match(visible, /19[78]\d/, `${example.id}: no visible publication year`);
+  assert.match(visible, /19\d{2}/, `${example.id}: no visible publication year`);
   assert.match(visible, /\bBY\b|INSPIRED BY/i, `${example.id}: no visible author credit`);
   const manifestEntry = exampleManifest.find((entry) => entry.id === example.id);
   assert.ok(manifestEntry?.tags?.includes("compute!"), `${example.id}: generated compute! tag is missing`);

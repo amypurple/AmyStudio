@@ -1,0 +1,1390 @@
+cartridge "BOOM AND BUST/COMPUTE!'S GAZETTE/1988"
+
+' BOOM AND BUST
+' A ColecoVision game based on "Boom and Bust", COMPUTE!'s Gazette,
+' September 1988 (disk 1988-09; Commodore 64 BASIC with a machine-language
+' shooting gallery, B&B.ML; no author named on the listing or the disk).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a phrase, a thing or an occupation is hidden as a row of cards.
+' Letters ride ten rails across a fairground booth; your cannon on the
+' counter fires ONE pellet a turn. Hit a letter that is in the puzzle and
+' every copy turns over (+$10 each) and you shoot again; hit one that is
+' not, hit a bomb (BUST), miss everything or let the time run out and the
+' turn is lost. Any time you are aiming, button 2 lets you solve: right is
+' your round money + $500 banked; wrong loses the turn. When only one
+' letter (or one kind of letter) is still hidden, the player must solve.
+' Two players take turns (the starter alternates); one player plays for a
+' $100 bonus that drops $10 at every lost turn and is lost on a wrong
+' guess. After the puzzles, the bigger bank is the BOOM AND BUST CHAMPION.
+'
+' From the original (orig/boombust.bas, orig/bb.ml.dis): the 24 puzzles and
+' their three categories; one shot a turn; 26 letters in alphabetical order
+' from the bottom rows up plus four duds (the ML's rows hold 30 sprites;
+' the BASIC turns the last four into codes no phrase contains); every copy
+' of a letter scores 10; a letter not in the puzzle, a miss or the time
+' limit passes the turn (with a buzz); solving at any time (F1), +500 and
+' the round money banked, the other player's round money lost; the forced
+' guess when one letter, or only copies of one letter, remain; in two
+' players a wrong forced guess gives the other player a guess, then the
+' answer is shown; the one-player BONUS (100, -10 a buzz, 0 on a wrong
+' guess) added to the bank; the starter alternates; the champion / tie
+' message; ticks in the last seconds.
+'
+' Liberties: a game is 8 puzzles drawn from the 24 (the listing plays all
+' 24 in a row, about an hour); the letters, hit once, stay gone for the
+' rest of the puzzle and come back for the next one (on the C64 they stay
+' gone until all 30 are shot); the rails move in alternating directions at
+' ten different speeds (on the C64 the rows sweep across together); the
+' four duds are drawn as bombs; 8 seconds to shoot with a time bar (the
+' listing's 125-pass count); the guess is spelled with the stick on the
+' cards (up/down picks the letter, left/right the card, fire guesses), and
+' a guess with an empty card is refused instead of counted wrong; one
+' player keeps a best total; either controller plays for either player.
+'
+' Controls: either controller. Stick left/right moves the cannon, left
+' button fires, right button solves. While solving: up/down change the
+' letter, left/right choose the card, a button guesses. On the title,
+' up/down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TAwn = 128
+const TCnt = 129
+const TCard = 130
+const TBar = 131
+const TBarlo = 132
+const TSlot = 133
+const TPost = 134
+const TTurnl = 135
+const TTurnr = 136
+const TCardsel = 137
+const SLa = 0
+const SLb = 4
+const SLc = 8
+const SLd = 12
+const SLe = 16
+const SLf = 20
+const SLg = 24
+const SLh = 28
+const SLi = 32
+const SLj = 36
+const SLk = 40
+const SLl = 44
+const SLm = 48
+const SLn = 52
+const SLo = 56
+const SLp = 60
+const SLq = 64
+const SLr = 68
+const SLs = 72
+const SLt = 76
+const SLu = 80
+const SLv = 84
+const SLw = 88
+const SLx = 92
+const SLy = 96
+const SLz = 100
+const SBust = 104
+const SCan = 108
+const SShot = 112
+const SCur = 116
+const SPop = 120
+const NTiles8 = 80
+const SprBytes = 992
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFire = 3
+const SndDing = 4
+const SndBuzz = 5
+const SndBoom = 6
+const SndTick = 7
+const SndClick = 8
+const SndRight = 9
+const SndWrong = 10
+const SndStart = 11
+const SndChamp = 12
+const NPuz = 8
+const NAll = 24
+const PhW = 28
+const TimeN = 480
+const MsgN = 70
+const NSpr = 32
+const CanY = 135
+const ShotTop = 28
+' what follows a message
+const NxSame = 0
+const NxSwitch = 1
+const NxForced = 2
+const NxPuzzle = 3
+const NxOther = 4
+const NxReveal = 5
+
+data PhrT chars
+  "1A STITCH IN TIME SAVES NINE"
+  "1VIOLETS ARE BLUE..........."
+  "1LOVE CONQUERS ALL.........."
+  "1WHERE IS THE FIRE.........."
+  "1OF MICE AND MEN............"
+  "1ALONG CAME A SPIDER........"
+  "3POLICE OFFICER............."
+  "1PLEASE KEEP OFF THE GRASS.."
+  "1LITTLE RED RIDING HOOD....."
+  "1THE RIGHT STUFF............"
+  "1A PENNY FOR YOUR THOUGHTS.."
+  "3SCHOOL TEACHER............."
+  "3TAXI DRIVER................"
+  "2BOOK MARKER................"
+  "2CAR........................"
+  "2SHOPPING CART.............."
+  "2A GLASS OF MILK............"
+  "3COMPUTER PROGRAMMER........"
+  "3COOK......................."
+  "3NURSE......................"
+  "3INVENTOR..................."
+  "1SILENCE IS GOLDEN.........."
+  "1SUGAR AND SPICE............"
+  "1THE THREE LITTLE PIGS......"
+end data
+
+' the rails: top line, colour, speed (16ths of a pixel a frame), direction
+data RowYT bytes
+  35, 45, 55, 65, 75, 85, 95, 105, 115, 125
+end data
+data RowColT bytes
+  6, 15, 11, 7, 3, 9, 13, 5, 10, 15
+end data
+data RowSpT bytes
+  9, 6, 10, 7, 11, 8, 10, 6, 9, 7
+end data
+data Off72 bytes
+  0, 72, 144
+end data
+' letters in English text, most frequent first (the bot's order)
+data CatOff bytes
+  0, 0, 7, 13
+end data
+
+record Plr:
+  bcd digits 5 Cash
+  bcd digits 5 Rnd
+end record
+
+Plr Pl[2]
+bcd digits 5 Bonus = 0
+bcd digits 5 Best = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TimeT = 0
+' players: count, whose turn, the puzzle number, the order of puzzles
+u8 Np = 1
+u8 P = 0
+u8 Pz = 0
+u8 Order[24]
+' the puzzle: text, revealed flags, length, category, first column
+u8 Cur[28]
+u8 Rev[28]
+u8 Gs[28]
+u8 Len = 0
+u8 Cat = 1
+u8 Fc = 2
+' the gallery: rail positions (0-215) and their sixteenths, letters alive
+u8 RowPos[10]
+u8 RowF[10]
+u8 LAlive[30]
+' cannon and pellet
+u8 Cx = 120
+u8 Sx = 0
+u8 Sy = 0
+u8 PopK = 0
+u8 PopT = 0
+' flow: 0 aim, 1 pellet flying, 2 message, 3 solving
+u8 Mode = 0
+u8 NextAct = 0
+u8 MsgT = 0
+u8 GKind = 0
+u8 Gi = 0
+u8 RepT = 0
+u8 Over = 0
+u8 LastHit = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Li = 0
+u8 Pi = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Xb = 0
+
+  tile screen
+  set sound table BbSoundTable areas 6
+  sprites 8x8
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  EndMessage
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveRows
+  if PopT > 0 then dec PopT
+  select case Mode
+  case 0
+    AimStep
+  case 1
+    ShotStep
+  case 2
+    dec MsgT
+    if MsgT = 0 then DoNext
+  case 3
+    GuessStep
+  end select
+  return
+end sub
+
+sub MoveRows:
+  for Ri = 0 to 9
+    V = RowF[Ri] + RowSpT[Ri]
+    N = V >> 4
+    RowF[Ri] = V & 15
+    V = Ri & 1
+    if V = 0 then
+      V = RowPos[Ri] + N
+      if V >= 216 then V = V - 216
+    else
+      if N > RowPos[Ri] then
+        V = RowPos[Ri] + 216 - N
+      else
+        V = RowPos[Ri] - N
+      end if
+    end if
+    RowPos[Ri] = V
+  next
+  return
+end sub
+
+' letter I (0-2) of rail R: its left pixel
+function LetterX(u8 Rr, u8 I) as u8
+  u16 Wx = 0
+  Wx = RowPos[Rr]
+  Wx = Wx + Off72[I]
+  if Wx >= 216 then Wx = Wx - 216
+  return Wx + 16
+
+sub AimStep:
+  K = J1 | J2
+  V = K & 4
+  if V > 0 then
+    if Cx > 17 then Cx = Cx - 2
+  end if
+  V = K & 8
+  if V > 0 then
+    if Cx < 223 then Cx = Cx + 2
+  end if
+  if Press1 = 1 then
+    Sx = Cx
+    Sy = CanY - 6
+    Mode = 1
+    play sound SndFire
+    ShowHelp
+    return
+  end if
+  if Press2 = 1 then
+    StartGuess(0)
+    return
+  end if
+  dec TimeT
+  if TimeT < 180 then
+    W16 = TimeT % 30
+    if W16 = 0 then play sound SndTick
+  end if
+  W16 = TimeT % 20
+  if W16 = 0 then DrawBar
+  if TimeT = 0 then
+    LastHit = 255
+    Lose(0)
+  end if
+  return
+end sub
+
+' the pellet climbs 4 pixels a frame; the lowest letter it touches is hit
+sub ShotStep:
+  Sy = Sy - 4
+  K = FindHit
+  if K < 30 then
+    LastHit = K
+    LAlive[K] = 0
+    PopK = K
+    PopT = 12
+    Resolve(K)
+    return
+  end if
+  if Sy < ShotTop then
+    LastHit = 254
+    Lose(1)
+  end if
+  return
+end sub
+
+function FindHit as u8
+  u8 Hit = 255
+  u8 Rr = 0
+  u8 Ii = 0
+  u8 Ry = 0
+  u8 Kk = 0
+  u8 Lx = 0
+  Rr = 10
+  while Rr > 0
+    dec Rr
+    Ry = RowYT[Rr]
+    if Hit = 255 then
+      if Sy + 8 > Ry then
+        if Sy < Ry + 8 then
+          for Ii = 0 to 2
+            Kk = 9 - Rr
+            Kk = Kk * 3 + Ii
+            if LAlive[Kk] = 1 then
+              Lx = LetterX(Rr, Ii)
+              if Sx + 4 >= Lx then
+                if Sx + 3 <= Lx + 7 then
+                  if Hit = 255 then Hit = Kk
+                end if
+              end if
+            end if
+          next
+        end if
+      end if
+    end if
+  end while
+  return Hit
+
+' a letter hit: in the puzzle (turn it over, shoot again), not (lose the
+' turn), or a bomb
+sub Resolve(u8 Slot):
+  u8 Cnt = 0
+  u8 Ch = 0
+  if Slot >= 26 then
+    play sound SndBoom
+    Lose(2)
+  else
+    Ch = Slot + 65
+    Cnt = RevealLetter(Ch)
+    if Cnt = 0 then
+      Lose(3)
+    else
+      for Pi = 1 to Cnt
+        Pl[P].Rnd += 10
+      next
+      play sound SndDing
+      ShowRounds
+      ClearMsg
+      print at 9,20, "FOUND"
+      put char 48 + Cnt at 15,20
+      put char Ch at 18,20
+      if Cnt > 1 then print at 19,20, "'S"
+      MsgT = 45
+      Mode = 2
+      if Distinct <= 1 then
+        NextAct = NxForced
+      else
+        NextAct = NxSame
+      end if
+    end if
+  end if
+  return
+end sub
+
+' turn over every copy of Ch; the number of copies
+function RevealLetter(u8 Ch) as u8
+  u8 Cnt = 0
+  u8 Ii = 0
+  for Ii = 0 to Len - 1
+    if Cur[Ii] = Ch then
+      if Rev[Ii] = 0 then
+        Rev[Ii] = 1
+        inc Cnt
+        put char Ch at Fc + Ii, 21
+      end if
+    end if
+  next
+  return Cnt
+
+' how many different letters are still hidden: 0, 1 or 2 (two or more)
+function Distinct as u8
+  u8 Res = 0
+  u8 First = 0
+  u8 Ii = 0
+  for Ii = 0 to Len - 1
+    if Rev[Ii] = 0 then
+      if First = 0 then
+        First = Cur[Ii]
+        Res = 1
+      elseif Cur[Ii] <> First then
+        Res = 2
+      end if
+    end if
+  next
+  return Res
+
+' a lost turn: why (0 time, 1 missed, 2 bust, 3 not in the puzzle), the
+' buzz, the one-player bonus drops 10
+sub Lose(u8 Why):
+  ClearMsg
+  select case Why
+  case 0
+    print at 11,20, "TIME UP!"
+  case 1
+    print at 11,20, "MISSED!"
+  case 2
+    print at 12,20, "BUST!"
+  case else
+    print at 10,20, "NO"
+    put char LastHit + 65 at 13,20
+    print at 15,20, "THERE!"
+  end select
+  if Why <> 2 then play sound SndBuzz
+  if Np = 1 then
+    Bonus -= 10
+    ShowBanks
+  end if
+  Mode = 2
+  MsgT = MsgN
+  NextAct = NxSwitch
+  return
+end sub
+
+sub DoNext:
+  select case NextAct
+  case NxSame
+    StartAim
+  case NxSwitch
+    if Np = 2 then P = 1 - P
+    StartAim
+  case NxForced
+    StartGuess(1)
+  case NxOther
+    P = 1 - P
+    StartGuess(2)
+  case NxReveal
+    for Pi = 0 to 27
+      Rev[Pi] = 1
+    next
+    DrawPhrase
+    ClearMsg
+    print at 9,20, "THE ANSWER"
+    Mode = 2
+    MsgT = 150
+    NextAct = NxPuzzle
+  case else
+    inc Pz
+    if Pz >= NPuz then
+      Over = 1
+    else
+      StartPuzzle
+    end if
+  end select
+  return
+end sub
+
+sub StartAim:
+  Mode = 0
+  TimeT = TimeN
+  ShowTurn
+  ShowHelp
+  DrawBar
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' solving: kind 0 chosen, 1 forced, 2 the other player's chance
+
+sub StartGuess(u8 Kind):
+  GKind = Kind
+  Mode = 3
+  RepT = 20
+  Gi = 255
+  for Pi = 0 to Len - 1
+    if Rev[Pi] = 1 then
+      Gs[Pi] = Cur[Pi]
+    else
+      Gs[Pi] = 0
+      if Gi = 255 then Gi = Pi
+    end if
+  next
+  fill 32 count 28 at 2,22
+  ShowTurn
+  ClearMsg
+  print at 2,20, "STICK: LETTERS  FIRE: GUESS"
+  DrawGuess
+  return
+end sub
+
+sub GuessStep:
+  K = J1 | J2
+  K = K & 15
+  if K = 0 then
+    RepT = 0
+  else
+    if RepT = 0 then
+      GuessMove
+      RepT = 18
+    else
+      dec RepT
+      if RepT = 0 then
+        GuessMove
+        RepT = 6
+      end if
+    end if
+  end if
+  if Press1 = 1 then SubmitGuess
+  if Press2 = 1 then SubmitGuess
+  return
+end sub
+
+sub GuessMove:
+  V = K & 1
+  if V > 0 then
+    T = Gs[Gi]
+    if T = 0 then
+      T = 65
+    elseif T = 90 then
+      T = 65
+    else
+      inc T
+    end if
+    Gs[Gi] = T
+  end if
+  V = K & 2
+  if V > 0 then
+    T = Gs[Gi]
+    if T <= 65 then
+      T = 90
+    else
+      dec T
+    end if
+    Gs[Gi] = T
+  end if
+  V = K & 8
+  if V > 0 then NextCard(1)
+  V = K & 4
+  if V > 0 then NextCard(Len - 1)
+  play sound SndClick
+  DrawGuess
+  return
+end sub
+
+' the next hidden card, Step places on (wrapping)
+sub NextCard(u8 Stp):
+  u8 Tries = 0
+  u8 Q = 0
+  Q = Gi
+  for Tries = 1 to PhW
+    Q = Q + Stp
+    if Q >= Len then Q = Q - Len
+    if Rev[Q] = 0 then
+      Gi = Q
+      Tries = PhW
+    end if
+  next
+  return
+end sub
+
+sub SubmitGuess:
+  CountGuess
+  if N > 0 then
+    ClearMsg
+    print at 4,20, "FILL IN EVERY CARD FIRST"
+    play sound SndBuzz
+  elseif C = 0 then
+    GuessRight
+  else
+    GuessWrong
+  end if
+  return
+end sub
+
+' N empty cards, C cards that differ from the answer
+sub CountGuess:
+  N = 0
+  C = 0
+  for Pi = 0 to Len - 1
+    if Gs[Pi] = 0 then inc N
+    if Gs[Pi] <> Cur[Pi] then inc C
+  next
+  return
+end sub
+
+sub GuessRight:
+  Pl[P].Cash += Pl[P].Rnd
+  Pl[P].Cash += 250
+  Pl[P].Cash += 250
+  if Np = 1 then
+    Pl[P].Cash += Bonus
+    Bonus = 0
+  end if
+  Pl[0].Rnd = 0
+  Pl[1].Rnd = 0
+  for Pi = 0 to 27
+    Rev[Pi] = 1
+  next
+  DrawPhrase
+  ShowBanks
+  ShowRounds
+  ClearMsg
+  print at 12,20, "RIGHT!"
+  play sound SndRight
+  Mode = 2
+  MsgT = 150
+  NextAct = NxPuzzle
+  return
+end sub
+
+sub GuessWrong:
+  DrawPhrase
+  ClearMsg
+  print at 12,20, "WRONG!"
+  play sound SndWrong
+  if Np = 1 then
+    Bonus = 0
+    ShowBanks
+  end if
+  Mode = 2
+  MsgT = 100
+  select case GKind
+  case 0
+    NextAct = NxSwitch
+  case 1
+    if Np = 2 then
+      NextAct = NxOther
+    else
+      NextAct = NxReveal
+    end if
+  case else
+    NextAct = NxReveal
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' puzzles and games
+
+sub NewGame:
+  Pl[0].Cash = 0
+  Pl[1].Cash = 0
+  Pl[0].Rnd = 0
+  Pl[1].Rnd = 0
+  Bonus = 0
+  for Pi = 0 to 23
+    Order[Pi] = Pi
+  next
+  ' shuffle (Fisher-Yates)
+  Pi = 23
+  while Pi > 0
+    Rand
+    W16 = Pi + 1
+    W16 = Rs % W16
+    J = W16
+    T = Order[Pi]
+    Order[Pi] = Order[J]
+    Order[J] = T
+    dec Pi
+  end while
+  Pz = 0
+  P = 1
+  if Np = 1 then P = 0
+  Over = 0
+  TitleOn = 0
+  NewScreen
+  DrawBooth
+  play sound SndStart
+  StartPuzzle
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub StartPuzzle:
+  W16 = Order[Pz]
+  W16 = W16 * PhW
+  copy PhrT + W16 count PhW to Cur
+  Cat = Cur[0] - 48
+  Len = 0
+  for Pi = 1 to 27
+    T = Cur[Pi]
+    if T = 46 then T = 32
+    if Len = 0 then
+      if T = 32 then
+        if Cur[Pi] = 46 then Len = Pi - 1
+      end if
+    end if
+    Cur[Pi - 1] = T
+  next
+  Cur[27] = 32
+  if Len = 0 then Len = 27
+  for Pi = 0 to 27
+    Rev[Pi] = 0
+    if Cur[Pi] = 32 then Rev[Pi] = 1
+  next
+  V = PhW - Len
+  Fc = V >> 1
+  Fc = Fc + 2
+  for Pi = 0 to 29
+    LAlive[Pi] = 1
+  next
+  for Pi = 0 to 9
+    Rand
+    W16 = Rs % 216
+    RowPos[Pi] = W16
+    RowF[Pi] = 0
+  next
+  Pl[0].Rnd = 0
+  Pl[1].Rnd = 0
+  if Np = 1 then
+    Bonus = 100
+  else
+    P = 1 - P
+  end if
+  Cx = 120
+  fill 32 count 28 at 2,21
+  DrawPhrase
+  ShowBanks
+  ShowRounds
+  StartAim
+  print at 11,2, "PUZZLE"
+  NumU = Pz + 1
+  print at 18,2, digits$(NumU, 1)
+  print at 19,2, "/8"
+  return
+end sub
+
+
+sub EndMessage:
+  mute all
+  HideSprites
+  for Ri = 7 to 13
+    fill 32 count 26 at 3,Ri
+  next
+  for Ri = 19 to 22
+    fill 32 count 28 at 2,Ri
+  next
+  if Np = 1 then
+    print at 9,8, "FINAL BANK"
+    print at 20,8, "$"
+    print at 21,8, Pl[0].Cash
+    if Pl[0].Cash > Best then
+      Best = Pl[0].Cash
+      print at 8,10, "A NEW BEST TOTAL!"
+      play sound SndChamp
+    else
+      print at 9,10, "BEST"
+      print at 20,10, "$"
+      print at 21,10, Best
+      play sound SndRight
+    end if
+  elseif Pl[0].Cash = Pl[1].Cash then
+    print at 11,9, "TIE GAME!"
+    play sound SndRight
+  else
+    print at 7,8, "CONGRATULATIONS TO"
+    if Pl[0].Cash > Pl[1].Cash then
+      print at 12,10, "PLAYER 1"
+    else
+      print at 12,10, "PLAYER 2"
+    end if
+    print at 6,12, "BOOM AND BUST CHAMPION!"
+    play sound SndChamp
+  end if
+  Rearm
+  wait
+  nmi off
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawBooth:
+  fill TAwn count 28 at 2,3
+  for Ri = 3 to 18
+    put char TPost at 1,Ri
+    put char TPost at 30,Ri
+  next
+  fill TCnt count 28 at 2,18
+  return
+end sub
+
+sub DrawPhrase:
+  for Pi = 0 to Len - 1
+    T = Cur[Pi]
+    if Rev[Pi] = 0 then T = TCard
+    put char T at Fc + Pi, 21
+  next
+  return
+end sub
+
+sub DrawGuess:
+  for Pi = 0 to Len - 1
+    T = Gs[Pi]
+    if T = 0 then
+      T = TCard
+      if Pi = Gi then T = TCardsel
+    end if
+    put char T at Fc + Pi, 21
+  next
+  return
+end sub
+
+sub DrawBar:
+  W16 = TimeT + 19
+  W16 = W16 / 20
+  N = W16
+  T = TBar
+  if TimeT < 180 then T = TBarlo
+  if N > 0 then fill T count N at 4,22
+  V = 24 - N
+  if V > 0 then fill TSlot count V at 4 + N,22
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,20
+  return
+end sub
+
+sub ShowHelp:
+  ClearMsg
+  if Mode = 0 then print at 2,20, "FIRE: SHOOT  BUTTON 2: SOLVE"
+  return
+end sub
+
+sub ShowBanks:
+  print at 2,1, "PLAYER 1"
+  print at 2,2, "$"
+  print at 3,2, Pl[0].Cash
+  if Np = 2 then
+    print at 22,1, "PLAYER 2"
+    print at 24,2, "$"
+    print at 25,2, Pl[1].Cash
+  else
+    print at 25,1, "BONUS"
+    print at 24,2, "$"
+    print at 25,2, Bonus
+  end if
+  return
+end sub
+
+sub ShowRounds:
+  fill 32 count 28 at 2,19
+  print at 2,19, "+"
+  print at 3,19, Pl[0].Rnd
+  if Np = 2 then
+    print at 24,19, "+"
+    print at 25,19, Pl[1].Rnd
+  end if
+  C = Cat
+  select case C
+  case 1
+    print at 13,19, "PHRASE"
+  case 2
+    print at 13,19, "THING"
+  case else
+    print at 11,19, "OCCUPATION"
+  end select
+  return
+end sub
+
+sub ShowTurn:
+  put char 32 at 11,1
+  put char 32 at 20,1
+  if Np = 2 then
+    if P = 0 then
+      put char TTurnl at 11,1
+    else
+      put char TTurnr at 20,1
+    end if
+  end if
+  return
+end sub
+
+' sprite 0 the cannon, 1 the pellet (or the guess cursor), 2-31 the letters
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    C = 9
+    if P = 1 then C = 11
+    set sprite 0 to CanY,Cx,SCan,C
+    if Mode = 1 then
+      Y = Sy - 1
+      set sprite 1 to Y,Sx,SShot,15
+    elseif Mode = 3 then
+      X = Gi + Fc
+      X = X << 3
+      set sprite 1 to 175,X,SCur,11
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  end if
+  ' rail by rail: Li the letter (bottom rail A B C), N its sprite
+  Li = 0
+  Ri = 10
+  while Ri > 0
+    dec Ri
+    Y = RowYT[Ri] - 1
+    C = RowColT[Ri]
+    Xb = RowPos[Ri] + 16
+    for J = 0 to 2
+      N = Li + 2
+      X = Xb
+      if J = 1 then
+        if X >= 160 then
+          X = X - 144
+        else
+          X = X + 72
+        end if
+      elseif J = 2 then
+        if X >= 88 then
+          X = X - 72
+        else
+          X = X + 144
+        end if
+      end if
+      V = 0
+      if TitleOn = 1 then
+        if Ri > 1 then V = 1
+      end if
+      if V = 1 then
+        set sprite N to 192,0,0,0
+      elseif LAlive[Li] = 1 then
+        if Li >= 26 then
+          set sprite N to Y,X,SBust,8
+        else
+          T = Li << 2
+          set sprite N to Y,X,T,C
+        end if
+      elseif PopT > 0 then
+        if PopK = Li then
+          set sprite N to Y,X,SPop,11
+        else
+          set sprite N to 192,0,0,0
+        end if
+      else
+        set sprite N to 192,0,0,0
+      end if
+      inc Li
+    next
+  end while
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 | J2
+  Btn = V & 48
+  Press1 = 0
+  Press2 = 0
+  if WasBtn = 0 then
+    V = Btn & 16
+    if V > 0 then Press1 = 1
+    V = Btn & 32
+    if V > 0 then Press2 = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 31
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the booth with its letters riding, the tune once,
+' 1 PLAYER / 2 PLAYERS / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawBooth
+  TitleOn = 1
+  for Pi = 0 to 29
+    LAlive[Pi] = 1
+  next
+  for Pi = 0 to 9
+    RowPos[Pi] = Pi * 21
+  next
+  for Ri = 7 to 15
+    fill 32 count 20 at 6,Ri
+  next
+  print at 10,8, "BOOM AND BUST"
+  print at 9,12, "1 PLAYER"
+  print at 9,13, "2 PLAYERS"
+  print at 9,14, "CREDITS"
+  print at 2,20, "COMPUTE!'S GAZETTE SEPT 1988"
+  if Best > 0 then
+    print at 9,22, "BEST $"
+    print at 15,22, Best
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 544
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  MoveRows
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      play sound SndClick
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  V = Press1 | Press2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  Np = Menu + 1
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 7,12
+  put char 32 at 7,13
+  put char 32 at 7,14
+  J = Menu + 12
+  put char 62 at 7,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "BOOM AND BUST"
+  print at 2,5, "BASED ON BOOM AND BUST,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "SEPTEMBER 1988"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: MIDWAY LIGHTS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $F0,$F0,$F0,$F0,$F0,$F0,$60,$00
+  $00,$00,$88,$00,$00,$10,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$10,$30,$81,$30,$10,$00,$00
+  $00,$08,$0C,$81,$0C,$08,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $8F,$8F,$8F,$8F,$8F,$8F,$81,$01
+  $0B,$0A,$6A,$0A,$06,$6A,$0A,$06
+  $01,$15,$15,$15,$15,$15,$15,$01
+  $01,$03,$03,$02,$02,$03,$01,$01
+  $01,$09,$09,$08,$08,$09,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $01,$B1,$B1,$1B,$B1,$B1,$01,$01
+  $01,$B1,$B1,$1B,$B1,$B1,$01,$01
+  $01,$1B,$B5,$B5,$B5,$B5,$1B,$01
+end data
+data SpritePat bytes
+  $38,$6C,$C6,$C6,$FE,$C6,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$C6,$C6,$FC,$C6,$C6,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7C,$C6,$C0,$C0,$C0,$C6,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F8,$CC,$C6,$C6,$C6,$CC,$F8,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$C0,$C0,$FC,$C0,$C0,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$C0,$C0,$FC,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7C,$C6,$C0,$DE,$C6,$C6,$7E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$C6,$C6,$FE,$C6,$C6,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$30,$30,$30,$30,$30,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1E,$06,$06,$06,$C6,$C6,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$CC,$D8,$F0,$D8,$CC,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$EE,$FE,$D6,$C6,$C6,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$E6,$F6,$DE,$CE,$C6,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7C,$C6,$C6,$C6,$C6,$C6,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$C6,$C6,$FC,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7C,$C6,$C6,$C6,$D6,$CC,$7A,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$C6,$C6,$FC,$D8,$CC,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7C,$C6,$C0,$7C,$06,$C6,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$30,$30,$30,$30,$30,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$C6,$C6,$C6,$C6,$C6,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$C6,$C6,$C6,$6C,$38,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$C6,$C6,$D6,$FE,$EE,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C6,$6C,$38,$38,$38,$6C,$C6,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $CC,$CC,$CC,$78,$30,$30,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$0C,$18,$30,$60,$C0,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $04,$08,$38,$7C,$DE,$FE,$7C,$38,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$3C,$3C,$7E,$FF,$A5,$42,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$3C,$7E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$00,$EE,$00,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+BbFire:
+    db $40,$47,$10,$02,$40,$5F,$20,$02,$40,$7F,$40,$02,$40,$AA,$50,$02,$50
+BbDing:
+    db $40,$55,$10,$04,$40,$40,$10,$04,$40,$35,$20,$0A,$50
+BbBuzz:
+    db $40,$F9,$13,$08,$40,$FF,$23,$08,$40,$FF,$23,$0C,$50
+BbBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$56,$0C,$10
+BbTick:
+    db $40,$2A,$20,$02,$50
+BbClick:
+    db $40,$6B,$30,$02,$50
+BbRight:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$18
+    db $50
+BbWrong:
+    db $40,$1D,$11,$0A,$40,$53,$21,$0A,$40,$AB,$21,$18,$50
+BbStart:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$0C,$50
+BbChamp:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$10,$1E
+    db $50
+
+BbSoundTable:
+    dw BbTuneMel,$702B
+    dw BbTuneBass,$7035
+    dw BbFire,$7049
+    dw BbDing,$7049
+    dw BbBuzz,$7049
+    dw BbBoom,$703F
+    dw BbTick,$7049
+    dw BbClick,$7049
+    dw BbRight,$7049
+    dw BbWrong,$7049
+    dw BbStart,$7049
+    dw BbChamp,$7049
+; Midway Lights (original)
+; Tiny Sound, 8 frames per step
+BbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$18,$01,$1E,$01,$21,$01,$24,$01,$21,$01,$1E,$01
+    db $1F,$01,$01,$01,$23,$01,$26,$01,$28,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$1C,$01,$1E,$01,$1F,$01,$21,$01,$1A,$01,$01,$01
+    db $1F,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+BbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$13,$01,$0E,$01,$13,$01,$0E,$01,$13,$01,$0E,$01
+    db $0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $13,$01,$0E,$01,$13,$01,$0E,$01,$18,$01,$13,$01,$18,$01,$13,$01
+    db $15,$01,$1C,$01,$0E,$01,$15,$01,$18,$01,$0E,$01,$0E,$01,$01,$01
+    db $13,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

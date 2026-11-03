@@ -1,0 +1,1021 @@
+cartridge "BONKING BARRELS/COMPUTE!S GAZETTE/1984"
+
+' BONKING BARRELS
+' A ColecoVision game based on "Bonking Barrels", COMPUTE!'s Gazette,
+' July 1984 (disk 1984-07, Commodore 64 and VIC-20 versions in BASIC with
+' custom characters; no author is named on the listing, the disk or the
+' contents file). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/bonk64.bas), the game is built for the ColecoVision:
+' smooth 16 x 16 sprites, a worker who walks and jumps between cells,
+' wooden floors, brick walls, sound effects and an original title tune.
+'
+' The game: a warehouse of ten plank floors full of random holes. Barrels
+' come in at the top, roll along the floors (each always the same way) and
+' drop through the holes. Climb from the bottom to the top: jump up through
+' a hole above you, or blast the plank above you to make one. Touching a
+' barrel costs a worker and the warehouse is rebuilt with new holes; three
+' workers lost and the game is over.
+'
+' From the original: ten beams with random holes (80 random cells of the
+' screen, about one beam cell in eleven), walls left and right; four
+' barrels starting on the top row at random columns, directions right,
+' left, right, left; a barrel rolls while a beam is under it, drops one
+' row at a time through a hole, and wraps to the other wall when it rolls
+' into one; the man starts at the bottom (column 21 of 38), moves left and
+' right, jumps up two rows only through a hole above him, and blasts the
+' beam cell above him; scores: 2 for each jump up, -5 for a blast, -8 for
+' getting hit (the score can go below zero); reaching the top puts him
+' back at the bottom, and after three climbs the screen is rebuilt; with a
+' score over 35, each climb draws the number of barrels again (1 to 4);
+' three hits end the game; the man and the barrels move at the same pace
+' (one cell each per pass of the loop).
+'
+' Liberties: a barrel that leaves the bottom comes back alone at the top
+' (the original sent all four back at once); new barrels never appear
+' within three columns of a worker standing on the top floor; every floor
+' has 1 to 3 holes (the original's random cells could leave a beam with
+' none); hits are judged on the drawn shapes, not on character cells; the
+' barrels start a little slower than the worker and gain speed with each
+' new warehouse until they match him (the original kept one pace); up
+' under a solid plank makes the worker bonk his head (a sound, no cost);
+' a banner and a fanfare for each new warehouse; FLOORS CLIMBED (BCD) is
+' shown at the end; a high score; three lives shown as icons.
+'
+' Controls: either controller. Stick left and right walk, up jumps up
+' through a hole above, a button blasts the plank above (costs 5).
+' On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' the frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TPlank = 128
+const TPlank2 = 129
+const THole = 130
+const TBrick = 131
+const TFloor = 132
+const TLife = 133
+const TTbar = 134
+const SManr0 = 0
+const SManr1 = 4
+const SManl0 = 8
+const SManl1 = 12
+const SManj = 16
+const SSplat = 20
+const SBar0 = 24
+const SBar1 = 28
+const SBar2 = 32
+const SBar3 = 36
+const NTiles8 = 56
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndJump = 3
+const SndBonk = 4
+const SndBlast = 5
+const SndHit = 6
+const SndClimb = 7
+const SndScreen = 8
+const SndReady = 9
+const SndOver = 10
+const Lc = 3
+const Rc = 28
+const StartC = 16
+const StartR = 22
+const WalkN = 8
+const JumpN = 8
+const BonkN = 10
+const DeadN = 75
+const MsgN = 90
+const NSpr = 6
+
+record Barrel:
+  u8 C
+  u8 R
+  u8 M
+  u8 P
+  u8 D
+  u8 F
+end record
+
+Barrel Bar[4]
+' the ten floors, 26 cells each: 1 plank, 0 hole
+u8 Beam[260]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Ix = 0
+i16 Sc = 0
+i16 Hi = 0
+i16 D16 = 0
+bcd digits 4 Floors = 0
+u8 Nb = 4
+u8 Lv = 1
+u8 Spd = 11
+u8 Lives = 3
+u8 Tt = 1
+u8 Over = 0
+' the worker: cell, pixels (top left of his cell), state (0 still,
+' 1 walking, 2 jumping, 3 bonked), frames left, facing (0 right, 1 left)
+u8 Mc = StartC
+u8 Mr = StartR
+u8 Mx = 128
+u8 My = 176
+u8 Ms = 0
+u8 Mt = 0
+u8 Md = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Fi = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table BkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  HideSprites
+  ShowHud
+  mute all
+  print at 7,9, "                  "
+  print at 7,10, "    GAME  OVER    "
+  print at 7,11, "                  "
+  print at 7,12, "  FLOORS CLIMBED  "
+  print at 7,13, "                  "
+  print at 14,13, Floors
+  print at 7,14, "                  "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then LoseMan
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ClearBanner
+    return
+  end if
+  MoveBarrels
+  ManStep
+  Collide
+  return
+end sub
+
+' 1 when floor row R has a plank at column C (rows 3, 5 .. 21)
+function BeamAt(u8 Rw, u8 Cl) as u8
+  u8 Res = 0
+  u8 Odd = Rw & 1
+  if Rw >= 3 then
+    if Rw <= 21 then
+      if Odd = 1 then
+        Ix = (Rw - 3) / 2 * 26 + Cl - Lc
+        Res = Beam[Ix]
+      end if
+    end if
+  end if
+  return Res
+
+' the worker: walking, jumping, bonking, or reading the stick
+sub ManStep:
+  select case Ms
+  case 1
+    if Md = 0 then
+      inc Mx
+    else
+      dec Mx
+    end if
+    dec Mt
+    if Mt = 0 then Ms = 0
+  case 2
+    My = My - 2
+    dec Mt
+    if Mt = 0 then
+      Ms = 0
+      if Mr = 0 then Escape
+    end if
+  case 3
+    dec Mt
+    if Mt = 0 then Ms = 0
+  case else
+    ManInput
+  end select
+  return
+end sub
+
+sub ManInput:
+  K = J1 | J2
+  if Press = 1 then
+    V = Mr - 1
+    if BeamAt(V, Mc) = 1 then
+      Blast
+      return
+    end if
+  end if
+  V = K & 1
+  if V > 0 then
+    V = Mr - 1
+    if BeamAt(V, Mc) = 0 then
+      Mr = Mr - 2
+      Ms = 2
+      Mt = JumpN
+      ' from the top floor only half a jump is drawn, then he is out
+      if Mr = 0 then Mt = 4
+      Sc = Sc + 2
+      ShowScore
+      play sound SndJump
+    else
+      Ms = 3
+      Mt = BonkN
+      play sound SndBonk
+    end if
+    return
+  end if
+  V = K & 4
+  if V > 0 then
+    Md = 1
+    if Mc > Lc then
+      dec Mc
+      Ms = 1
+      Mt = WalkN
+    end if
+    return
+  end if
+  V = K & 8
+  if V > 0 then
+    Md = 0
+    if Mc < Rc then
+      inc Mc
+      Ms = 1
+      Mt = WalkN
+    end if
+  end if
+  return
+end sub
+
+' the plank above the worker goes: -5
+sub Blast:
+  V = Mr - 1
+  Ix = (V - 3) / 2 * 26 + Mc - Lc
+  Beam[Ix] = 0
+  put char THole at Mc,V
+  Sc = Sc - 5
+  ShowScore
+  play sound SndBlast
+  return
+end sub
+
+' out at the top: back to the bottom; the third climb rebuilds the screen
+sub Escape:
+  Floors += 1
+  inc Tt
+  if Sc > 35 then
+    Rand
+    V = Rs & 3
+    SetBarrels(V + 1)
+  end if
+  ManHome
+  if Tt > 3 then
+    Tt = 1
+    inc Lv
+    SetSpeed
+    NewField
+    Banner
+    play sound SndScreen
+  else
+    play sound SndClimb
+  end if
+  return
+end sub
+
+' a new number of barrels: the new ones come in at the top
+sub SetBarrels(u8 Want)
+  u8 Old = Nb
+  u8 Q = 0
+  Nb = Want
+  if Want > Old then
+    for Q = Old to Want - 1
+      Bi = Q
+      Spawn
+    next
+  end if
+  return
+end sub
+
+sub SetSpeed:
+  V = Lv + 10
+  if V > 16 then V = 16
+  Spd = V
+  return
+end sub
+
+sub ManHome:
+  Mc = StartC
+  Mr = StartR
+  Mx = Mc * 8
+  My = Mr * 8
+  Ms = 0
+  Mt = 0
+  return
+end sub
+
+' hit: -8, a worker less, and a new warehouse
+sub LoseMan:
+  Sc = Sc - 8
+  dec Lives
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  Tt = 1
+  NewField
+  Banner
+  play sound SndReady
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' barrels
+
+sub MoveBarrels:
+  for Bi = 0 to Nb - 1
+    StepBarrel
+  next
+  return
+end sub
+
+sub StepBarrel:
+  u8 P = Bar[Bi].P + Spd
+  if P < 128 then
+    Bar[Bi].P = P
+  else
+    Bar[Bi].P = 0
+    inc Bar[Bi].F
+    select case Bar[Bi].M
+    case 1
+      if Bar[Bi].D = 0 then
+        inc Bar[Bi].C
+      else
+        dec Bar[Bi].C
+      end if
+    case 2
+      inc Bar[Bi].R
+    end select
+    if Bar[Bi].R >= 23 then
+      Spawn
+    else
+      Decide
+    end if
+  end if
+  return
+end sub
+
+' the barrel's next move: roll on a plank (wrapping at the walls), else drop
+sub Decide:
+  C = Bar[Bi].C
+  R = Bar[Bi].R + 1
+  if BeamAt(R, C) = 1 then
+    if Bar[Bi].D = 0 then
+      if C >= Rc then
+        Bar[Bi].C = Lc
+        Bar[Bi].M = 3
+      else
+        Bar[Bi].M = 1
+      end if
+    else
+      if C <= Lc then
+        Bar[Bi].C = Rc
+        Bar[Bi].M = 3
+      else
+        Bar[Bi].M = 1
+      end if
+    end if
+  else
+    Bar[Bi].M = 2
+  end if
+  return
+end sub
+
+' barrel Bi comes in on the top row at a random column
+sub Spawn:
+  u8 Col = 0
+  Col = RandCol
+  if Mr <= 2 then
+    while absdiff(Col, Mc) < 4
+      Col = RandCol
+    end while
+  end if
+  Bar[Bi].C = Col
+  Bar[Bi].R = 2
+  Bar[Bi].P = 0
+  Bar[Bi].D = Bi & 1
+  Decide
+  return
+end sub
+
+' (written through a local: `return Rs % 26 + Lc` returned the address of
+' Rs, bugs/bonk-return-u16-plus-const.alexis)
+function RandCol as u8
+  u8 Q = 0
+  Rand
+  Q = Rs % 26
+  return Q + Lc
+
+' the worker's box against each barrel's
+sub Collide:
+  u8 Bx = 0
+  u8 By = 0
+  u8 Off = 0
+  for Bi = 0 to Nb - 1
+    if DeadT = 0 then
+      Off = Bar[Bi].P >> 4
+      Bx = Bar[Bi].C * 8
+      By = Bar[Bi].R * 8
+      if Bar[Bi].M = 1 then
+        if Bar[Bi].D = 0 then
+          Bx = Bx + Off
+        else
+          Bx = Bx - Off
+        end if
+      end if
+      if Bar[Bi].M = 2 then By = By + Off
+      if absdiff(Bx, Mx) < 6 then
+        D16 = By - My
+        if D16 > -8 then
+          if D16 < 7 then
+            DeadT = DeadN
+            Ms = 0
+            play sound SndHit
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the worker (or the splat), 1-4 the barrels
+sub DrawSprites:
+  u8 Bx = 0
+  u8 By = 0
+  u8 Off = 0
+  u8 Pat = 0
+  X = Mx - 4
+  Y = My - 9
+  if DeadT > 0 then
+    set sprite 0 to Y,X,SSplat,9
+  elseif TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    select case Ms
+    case 2
+      Pat = SManj
+    case 3
+      Pat = SManj
+      if Mt > 5 then Y = Y - 2
+    case else
+      V = Mx >> 2
+      V = V & 1
+      Pat = V << 2
+      if Md = 1 then Pat = Pat + SManl0
+    end select
+    set sprite 0 to Y,X,Pat,15
+  end if
+  for Bi = 0 to 3
+    J = Bi + 1
+    if Bi >= Nb then
+      set sprite J to 192,0,0,0
+    else
+      Off = Bar[Bi].P >> 4
+      Bx = Bar[Bi].C * 8
+      By = Bar[Bi].R * 8
+      if Bar[Bi].M = 1 then
+        if Bar[Bi].D = 0 then
+          Bx = Bx + Off
+        else
+          Bx = Bx - Off
+        end if
+      end if
+      if Bar[Bi].M = 2 then By = By + Off
+      ' four turns of the roll, two steps a cell; backwards rolling left
+      V = Bar[Bi].F << 1
+      if Bar[Bi].P >= 64 then inc V
+      if Bar[Bi].D = 1 then V = 3 - V
+      V = V & 3
+      Pat = V << 2
+      Pat = Pat + SBar0
+      X = Bx - 4
+      Y = By - 9
+      set sprite J to Y,X,Pat,10
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  ShowScore
+  print at 11,1, "HI"
+  PrintSigned(Hi, 13)
+  print at 20,1, "LV"
+  NumU = Lv
+  if NumU > 99 then NumU = 99
+  print at 22,1, digits$(NumU, 2)
+  fill 32 count 3 at 26,1
+  for Fi = 1 to Lives
+    T = 25 + Fi
+    put char TLife at T,1
+  next
+  return
+end sub
+
+sub ShowScore:
+  PrintSigned(Sc, 4)
+  return
+end sub
+
+' a signed score as a sign and four digits
+sub PrintSigned(i16 Value, u8 Col)
+  u8 Sg = 32
+  i16 Mag = Value
+  if Value < 0 then
+    Sg = 45
+    Mag = 0 - Value
+  end if
+  if Mag > 9999 then Mag = 9999
+  put char Sg at Col,1
+  NumU = Mag
+  print at Col + 1,1, digits$(NumU, 4)
+  return
+end sub
+
+' floor k (0-9) on row 3 + 2k, from the Beam table
+sub DrawFloor:
+  u8 Row = Fi * 2 + 3
+  u16 Base = Fi * 26
+  u8 Q = 0
+  for Q = 0 to 25
+    Ix = Base + Q
+    T = THole
+    if Beam[Ix] = 1 then
+      V = Q & 1
+      T = TPlank + V
+    end if
+    put char T at Q + Lc,Row
+  next
+  return
+end sub
+
+sub DrawField:
+  for Ri = 2 to 22
+    fill TBrick count 3 at 0,Ri
+    fill TBrick count 3 at 29,Ri
+  next
+  fill TFloor count 32 at 0,23
+  fill TBrick count 32 at 0,0
+  for Fi = 0 to 9
+    DrawFloor
+  next
+  return
+end sub
+
+' new random holes: 1 to 3 in every floor
+sub MakeHoles:
+  u8 Holes = 0
+  u8 H = 0
+  u16 Base = 0
+  fill array Beam with 1
+  for Fi = 0 to 9
+    Base = Fi * 26
+    Rand
+    Holes = Rs & 3
+    if Holes = 0 then Holes = 1
+    for H = 1 to Holes
+      V = RandCol - Lc
+      Ix = Base + V
+      Beam[Ix] = 0
+    next
+  next
+  return
+end sub
+
+' a new warehouse: holes, barrels at the top, the worker at the bottom
+sub NewField:
+  NewScreen
+  MakeHoles
+  DrawField
+  ShowHud
+  ManHome
+  for Bi = 0 to 3
+    Bar[Bi].F = Bi
+    Bar[Bi].M = 0
+    Spawn
+  next
+  DeadT = 0
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub Banner:
+  MsgT = MsgN
+  print at 8,11, "              "
+  print at 8,12, " WAREHOUSE    "
+  NumU = Lv
+  if NumU > 99 then NumU = 99
+  print at 19,12, digits$(NumU, 2)
+  print at 8,13, "              "
+  return
+end sub
+
+sub ClearBanner:
+  for Fi = 4 to 5
+    DrawFloor
+  next
+  fill 32 count 26 at 3,12
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Floors = 0
+  Lv = 1
+  Lives = 3
+  Tt = 1
+  Nb = 4
+  Over = 0
+  TitleOn = 0
+  SetSpeed
+  NewField
+  Banner
+  play sound SndReady
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the warehouse, barrels rolling, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  Mr = StartR
+  Mc = StartC
+  Nb = 4
+  Lv = 1
+  SetSpeed
+  MakeHoles
+  DrawField
+  for Ri = 6 to 16
+    fill 32 count 20 at 6,Ri
+  next
+  put char TTbar at 7,7
+  put char TTbar at 24,7
+  print at 9,7, "BONKING BARRELS"
+  print at 9,9, "COMPUTE!S GAZETTE"
+  print at 12,10, "JULY 1984"
+  print at 11,13, "START GAME"
+  print at 11,14, "CREDITS"
+  print at 2,1, "HI"
+  PrintSigned(Hi, 4)
+  ShowMenu
+  for Bi = 0 to 3
+    Bar[Bi].F = Bi
+    Spawn
+  next
+  TitleOn = 1
+  DeadT = 0
+  Mx = 128
+  My = 176
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  MoveBarrels
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,14
+  J = Menu + 13
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,1, "BONKING BARRELS"
+  print at 2,3, "BASED ON BONKING BARRELS,"
+  print at 2,4, "COMPUTE!S GAZETTE JULY 1984"
+  print at 2,5, "(COMMODORE 64 AND VIC-20)."
+  print at 2,7, "COLECOVISION GAME, MUSIC"
+  print at 2,8, "AND PICTURES BY CLAUDE"
+  print at 2,9, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,10, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,11, "MUSIC: WAREHOUSE ROLL"
+  print at 2,13, "CLIMB TEN FLOORS, DODGE THE"
+  print at 2,14, "BARRELS. STICK: WALK, UP:"
+  print at 2,15, "JUMP THROUGH A HOLE. BUTTON:"
+  print at 2,16, "BLAST THE PLANK ABOVE."
+  print at 2,18, "UP +2  BLAST -5  HIT -8"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$02,$00,$40,$00,$00,$00,$00
+  $00,$10,$00,$04,$00,$00,$00,$00
+  $81,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$00,$40,$40,$40,$00
+  $00,$10,$00,$22,$00,$88,$00,$00
+  $38,$83,$38,$10,$81,$C3,$24,$99
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+end data
+data TileCol bytes
+  $0B,$1A,$0A,$1A,$06,$01,$01,$01
+  $0B,$1A,$0A,$1A,$06,$01,$01,$01
+  $A1,$01,$01,$01,$01,$01,$01,$01
+  $E8,$E8,$E8,$0E,$E8,$E8,$E8,$0E
+  $0E,$EF,$0E,$1E,$0E,$1E,$0E,$01
+  $F1,$1F,$91,$91,$17,$17,$71,$17
+  $1A,$1A,$06,$0A,$0A,$06,$1A,$1A
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$03,$07,$02,$03,$01,$07,$0B,$03,$02,$06,$04
+  $00,$00,$00,$00,$00,$80,$C0,$80,$80,$00,$C0,$A0,$80,$80,$C0,$40
+  $00,$00,$00,$00,$00,$03,$07,$02,$03,$01,$07,$07,$03,$01,$01,$03
+  $00,$00,$00,$00,$00,$80,$C0,$80,$80,$00,$C0,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$01,$03,$01,$01,$00,$03,$05,$01,$01,$03,$02
+  $00,$00,$00,$00,$00,$C0,$E0,$40,$C0,$80,$E0,$D0,$C0,$40,$60,$20
+  $00,$00,$00,$00,$00,$01,$03,$01,$01,$00,$03,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$C0,$E0,$40,$C0,$80,$E0,$E0,$C0,$80,$80,$C0
+  $00,$00,$00,$00,$00,$0B,$0F,$0A,$03,$01,$07,$03,$03,$02,$04,$08
+  $00,$00,$00,$00,$00,$A0,$C0,$A0,$80,$00,$C0,$80,$80,$80,$40,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$09,$05,$03,$0E,$03,$05,$09,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$40,$80,$E0,$80,$40,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$06,$0E,$00,$0E,$0E,$06,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$00,$F0,$F0,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0D,$0E,$0E,$0D,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$B0,$70,$70,$B0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F,$0F,$00,$0F,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$40,$60,$70,$70,$00,$70,$60,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$05,$0E,$0E,$0D,$0B,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$A0,$70,$70,$B0,$D0,$E0,$C0
+end data
+
+asm {
+BkJump:
+    db $40,$D6,$20,$02,$40,$AA,$20,$02,$40,$8F,$20,$02,$40,$6B,$30,$03,$50
+BkBonk:
+    db $40,$3B,$12,$02,$40,$F9,$22,$03,$40,$F9,$43,$04,$50
+BkBlast:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$26,$05,$00,$00,$56,$08,$10
+BkHit:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$46,$0C,$00,$00,$67,$14,$10
+BkClimb:
+    db $40,$8F,$10,$05,$40,$71,$10,$05,$40,$5F,$10,$05,$40,$47,$20,$0C,$50
+BkScreen:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$14,$50
+BkReady:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0E,$50
+BkOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$3B,$22,$1E,$50
+
+BkSoundTable:
+    dw BkTuneMel,$702B
+    dw BkTuneBass,$7035
+    dw BkJump,$7049
+    dw BkBonk,$7049
+    dw BkBlast,$703F
+    dw BkHit,$703F
+    dw BkClimb,$7049
+    dw BkScreen,$7049
+    dw BkReady,$7049
+    dw BkOver,$7049
+; Warehouse Roll (original)
+; Tiny Sound, 8 frames per step
+BkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$24,$21,$01,$23,$01,$26,$2B,$01,$26,$23,$01,$21,$01,$01,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$24,$01,$1F,$1C,$01,$1E,$01,$21,$26
+    db $01,$21,$1E,$01,$1F,$01,$23,$26,$01,$1E,$01,$21,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+BkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$13,$1A,$1F,$1A,$13,$1A,$1F,$1A,$15,$1C,$21,$1C
+    db $15,$1C,$21,$1C,$13,$1A,$1F,$1A,$13,$1A,$1F,$1A,$0E,$15,$1A,$15
+    db $0E,$15,$1A,$15,$0C,$13,$18,$13,$0C,$13,$18,$13,$0E,$15,$1A,$15
+    db $0E,$15,$1A,$15,$13,$1A,$1F,$1A,$0E,$15,$1A,$12,$13,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

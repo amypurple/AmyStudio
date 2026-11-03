@@ -1,0 +1,1217 @@
+cartridge "CATS 'N' DOGS/COMPUTE'S GAZETTE/1988"
+
+' CATS 'N' DOGS
+' A ColecoVision game based on "Cats 'n' Dogs", COMPUTE!'s Gazette,
+' January 1988 (Commodore 64, BASIC with a machine-language core; the disk
+' names no author). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing and the disassembly of its machine code, orig/), the game is
+' built for the ColecoVision: tiled doghouses, smooth falling sprites, the
+' dog catcher walking off with his catch, sound effects and an original
+' title tune.
+'
+' The game: a yard of 7 x 7 doghouses. The cats (player 1) and the dogs
+' (player 2 or the computer) take turns dropping a pet into one of the
+' seven columns; it falls to the lowest free doghouse. Four pets of one
+' kind in a line (across, up and down, or diagonally) win the game. With
+' the DOG CATCHER on, after every turn he hides in a random empty
+' doghouse: a pet that falls into his house is caught and the turn is
+' lost. He goes home when four or more columns are full. A full yard is a
+' tie.
+'
+' From the original: the 7 x 7 yard, gravity drops, four in a row (its
+' machine code counts equal neighbours along the 7 rows, 7 columns and the
+' 14 diagonals of length four or more); the cursor that starts above the
+' middle column and wraps round the edges; the dog catcher (placed after
+' every turn in a random empty cell, catches a pet that falls into or
+' starts in his cell, leaves when more than three columns are full); the
+' computer's move as its machine code makes it (orig/catsdogs.ml.dis,
+' $4199): for each possible landing place, first with its own dog, then
+' with your cat, it fills the place and measures the longest line of
+' equal pets on the whole yard; a line of four (a win, or your win
+' blocked) is taken at once, otherwise the last place with the longest
+' line wins (scanning from the bottom right); when nothing wins, it plays
+' a random column one time in four while you have not won a game yet
+' (the listing's RND(0)*4 + C1*2 = 1); the computer walks its cursor
+' there column by column.
+'
+' Liberties:
+' - A match ends when one side has won three games (the original played
+'   for ever until F1); then a message and back to the title.
+' - The side that lost the last game starts the next (the cats always
+'   started); the cats start the first game.
+' - The computer's landing places ignore the catcher (its machine code saw
+'   him as a solid house to stand on, though pets fall into him). It
+'   avoids his column (with a random one, even when its choice was a win,
+'   as the listing does) only while it leads the match (the listing: by
+'   more than two games, impossible in a match to three).
+' - The original forgot to bring the catcher back after he left (DC = 0
+'   stayed for the following games): here he comes back every game.
+' - Both controllers work in both modes (the original asked how many
+'   joysticks).
+' - The winning line flashes (three times a second); the pets are drawn
+'   in single colours; the catcher carries his catch out of the yard.
+'
+' Controls: either controller; left and right move the pet above the yard
+' (hold to repeat), a button drops it. On the title, up and down choose,
+' left/right or a button change a setting, a button on PLAY starts.
+' Keypad not used.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` always given.
+' Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const THouse00 = 128
+const THouse01 = 129
+const THouse10 = 130
+const THouse11 = 131
+const TCat00 = 132
+const TCat01 = 133
+const TCat10 = 134
+const TCat11 = 135
+const TDog00 = 136
+const TDog01 = 137
+const TDog10 = 138
+const TDog11 = 139
+const TCatch00 = 140
+const TCatch01 = 141
+const TCatch10 = 142
+const TCatch11 = 143
+const TWcat00 = 144
+const TWcat01 = 145
+const TWcat10 = 146
+const TWcat11 = 147
+const TWdog00 = 148
+const TWdog01 = 149
+const TWdog10 = 150
+const TWdog11 = 151
+const TFence = 152
+const TPost = 153
+const TGrass = 154
+const SCat = 0
+const SDog = 4
+const SCatcher = 8
+const NTiles8 = 216
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndDrop = 4
+const SndLand = 5
+const SndBad = 6
+const SndMeow = 7
+const SndWoof = 8
+const SndCaught = 9
+const SndWin = 10
+const SndTie = 11
+const SndMatch = 12
+const NSpr = 4
+const WinsToMatch = 3
+const CursorY = 23
+
+' the 28 lines the machine code checks: start cell, step, length
+data LineT bytes
+  0,1,7, 7,1,7, 14,1,7, 21,1,7, 28,1,7, 35,1,7, 42,1,7
+  0,7,7, 1,7,7, 2,7,7, 3,7,7, 4,7,7, 5,7,7, 6,7,7
+  0,8,7, 1,8,6, 2,8,5, 3,8,4, 7,8,6, 14,8,5, 21,8,4
+  3,6,4, 4,6,5, 5,6,6, 6,6,7, 13,6,6, 20,6,5, 27,6,4
+end data
+' tile of the top-left quarter for a cell value (0 house, 1 cat, 2 dog,
+' 3 catcher), and for a flashing winner
+data CellTile bytes
+  THouse00, TCat00, TDog00, TCatch00
+end data
+data PetCol bytes
+  0, 15, 11
+end data
+
+record Side:
+  u8 Wins
+  u8 Human
+  bcd digits 2 Lost
+end record
+
+Side Pl[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Rb = 0
+u16 NumW = 0
+
+' the yard: Bd[row * 7 + column], row 0 at the top; 0 empty, 1 cat,
+' 2 dog, 3 the catcher
+u8 Bd[49]
+u8 Land[7]
+u8 Win4[4]
+u8 Mode = 0
+u8 Menu = 0
+u8 VsCpu = 1
+u8 DcOpt = 1
+u8 DcOn = 0
+u8 Cr = 255
+u8 Who = 1
+u8 Starter = 1
+u8 Cc = 3
+u8 CpCol = 0
+u8 CpCell = 0
+u8 CpWin = 0
+u8 BestRun = 0
+u8 RunMax = 0
+u8 Won = 0
+u8 WinEnd = 0
+u8 WinStp = 0
+u8 Caught = 0
+u8 Moves = 0
+u8 Drops = 0
+u8 Result = 0
+u8 Tick = 0
+' input
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Fl = 0
+u8 Ai = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 Q = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Px = 0
+u8 Py = 0
+u8 Pc = 0
+u8 T2 = 0
+
+  tile screen
+  set sound table CdSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+  if Menu = 3 then
+    RulesPage
+    goto title
+  end if
+  NewMatch
+
+new_game:
+  NewGame
+  Who = Starter
+
+turn:
+  ShowTurn
+  if Who = 2 then
+    if VsCpu = 1 then
+      ComputerTurn
+      goto after_move
+    end if
+  end if
+  HumanTurn
+after_move:
+  inc Drops
+  Mode = 6
+  if Caught = 0 then
+    WinCheck
+    if Won > 0 then goto game_won
+  end if
+  if AllFull() = 1 then goto game_tie
+  MoveCatcher
+  Who = 3 - Who
+  goto turn
+
+game_won:
+  Who = Won
+  FlashWin
+  Pl[Who].Wins = Pl[Who].Wins + 1
+  ShowScores
+  Message
+  if Who = 1 then
+    print at 2,21, "THE CATS WIN THIS GAME!"
+  else
+    print at 2,21, "THE DOGS WIN THIS GAME!"
+  end if
+  ' the loser starts the next game
+  Starter = 3 - Who
+  V = Pl[Who].Wins
+  if V >= WinsToMatch then goto match_over
+  Pause(120)
+  goto new_game
+
+game_tie:
+  Message
+  print at 2,21, "TIE GAME: THE YARD IS FULL"
+  play sound SndTie
+  Starter = 3 - Starter
+  Pause(120)
+  goto new_game
+
+match_over:
+  Pause(60)
+  Message
+  Mode = 4
+  if Who = 1 then
+    print at 2,21, "THE CATS WIN THE MATCH!"
+  else
+    print at 2,21, "THE DOGS WIN THE MATCH!"
+  end if
+  NumW = Pl[1].Wins
+  print at 2,22, "CATS ", digits$(NumW, 1)
+  NumW = Pl[2].Wins
+  print at 10,22, "DOGS ", digits$(NumW, 1)
+  play sound SndMatch
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, the screen sleeps after
+  ' 30 seconds and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+sub NewMatch:
+  Pl[1].Wins = 0
+  Pl[2].Wins = 0
+  Pl[1].Lost = 0
+  Pl[2].Lost = 0
+  Pl[1].Human = 1
+  Pl[2].Human = 1 - VsCpu
+  Starter = 1
+  return
+end sub
+
+sub NewGame:
+  fill array Bd with 0
+  Cr = 255
+  DcOn = DcOpt
+  Moves = 0
+  Caught = 0
+  YardScreen
+  return
+end sub
+
+' the landing place of a pet dropped in column Col (the catcher counts as
+' empty here, as in the computer's eyes), 255 for a full column
+function LandAt(u8 Col) as u8
+  u8 Lq = 0
+  u8 Lc = 255
+  Lq = Col
+  while Lq < 49
+    if Bd[Lq] = 1 then exit while
+    if Bd[Lq] = 2 then exit while
+    Lc = Lq
+    Lq = Lq + 7
+  end while
+  return Lc
+
+function AllFull as u8
+  u8 Fc = 0
+  u8 Nf = 0
+  for Fc = 0 to 6
+    select case Bd[Fc]
+    case 1, 2
+      inc Nf
+    case else
+    end select
+  next
+  if Nf = 7 then return 1
+  return 0
+
+' WalkLine: the runs of equal pets along one line; RunMax = the longest
+' run seen, Won/WinEnd/WinStp = the first line of four
+sub WalkLine(u8 Start, u8 Stp, u8 Len):
+  u8 Lq = 0
+  u8 Prev = 0
+  u8 Cnt = 0
+  u8 Li = 0
+  u8 Cv = 0
+  Lq = Start
+  for Li = 1 to Len
+    Cv = Bd[Lq]
+    if Cv = 0 then
+      Cnt = 0
+    else
+      if Cv = Prev then
+        inc Cnt
+      else
+        Cnt = 1
+      end if
+    end if
+    Prev = Cv
+    if Cnt > RunMax then RunMax = Cnt
+    if Cnt = 4 then
+      if Won = 0 then
+        Won = Cv
+        WinEnd = Lq
+        WinStp = Stp
+      end if
+    end if
+    Lq = Lq + Stp
+  next
+  return
+end sub
+
+sub WinCheck:
+  RunMax = 0
+  Won = 0
+  for Gi = 0 to 27
+    K = Gi * 3
+    X = LineT[K]
+    Y = LineT[K + 1]
+    V = LineT[K + 2]
+    WalkLine(X, Y, V)
+  next
+  if Won = 3 then Won = 0
+  return
+end sub
+
+' the computer's move (machine code at $4199, see the header)
+sub ComputerPick:
+  for Ai = 0 to 6
+    Land[Ai] = LandAt(Ai)
+  next
+  BestRun = 0
+  CpWin = 0
+  CpCell = 255
+  AiPass(2)
+  if CpWin = 0 then AiPass(1)
+  C = CpCell
+  CpCol = C % 7
+  if CpWin = 0 then
+    Rnd
+    V = Rb & 3
+    W = Pl[1].Wins
+    W = W * 2
+    V = V + W
+    if V = 1 then RandCol
+  end if
+  ' it steers clear of the catcher's column while it leads
+  if DcOn = 1 then
+    if Cr < 49 then
+      W = Pl[1].Wins
+      V = Pl[2].Wins
+      if V > W then
+        C = Cr % 7
+        if C = CpCol then RandCol
+      end if
+    end if
+  end if
+  ' a full column: try again at random
+cp_full:
+  V = Bd[CpCol]
+  if V = 1 then
+    RandCol
+    goto cp_full
+  end if
+  if V = 2 then
+    RandCol
+    goto cp_full
+  end if
+  return
+end sub
+
+' AiPass: try a pet of kind Kind on every landing place, from cell 48
+' down to 0
+sub AiPass(u8 Kind):
+  u8 Ay = 0
+  u8 Ac = 0
+  u8 Old = 0
+  for Ay = 48 downto 0
+    if CpWin = 0 then
+      Ac = Ay % 7
+      if Land[Ac] = Ay then
+        Old = Bd[Ay]
+        Bd[Ay] = Kind
+        WinCheck
+        Bd[Ay] = Old
+        if Won = Kind then
+          CpWin = 1
+          CpCell = Ay
+        else
+          if RunMax >= BestRun then
+            BestRun = RunMax
+            CpCell = Ay
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub RandCol:
+  Rnd
+  NumW = Rb
+  NumW = NumW * 7
+  NumW = NumW >> 8
+  CpCol = NumW
+  return
+end sub
+
+' MoveCatcher: after every turn he hides in a new empty doghouse, or goes
+' home for good this game once more than three columns are full
+sub MoveCatcher:
+  if DcOn = 0 then return
+  if Cr < 49 then
+    Bd[Cr] = 0
+    DrawCell(Cr)
+    Cr = 255
+  end if
+  V = 0
+  for J = 0 to 6
+    W = Bd[J]
+    if W = 1 then inc V
+    if W = 2 then inc V
+  next
+  if V > 3 then
+    DcOn = 0
+    ShowCatcherState
+    return
+  end if
+mc_try:
+  Rnd
+  NumW = Rb
+  NumW = NumW * 49
+  NumW = NumW >> 8
+  Q = NumW
+  if Bd[Q] <> 0 then goto mc_try
+  Cr = Q
+  Bd[Q] = 3
+  DrawCell(Q)
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' turns
+
+sub HumanTurn:
+  Message
+  if Who = 1 then
+    print at 2,21, "CATS: CHOOSE A COLUMN"
+  else
+    print at 2,21, "DOGS: CHOOSE A COLUMN"
+  end if
+  Cc = 3
+  Mode = 2
+  WasBtn = 1
+ht_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Cc = 0 then
+        Cc = 6
+      else
+        dec Cc
+      end if
+      play sound SndMove
+    end if
+    if Rt1 = 1 then
+      inc Cc
+      if Cc = 7 then Cc = 0
+      play sound SndMove
+    end if
+  end if
+  ShowCursor
+  if Press = 0 then goto ht_loop
+  V = Bd[Cc]
+  if V = 1 then
+    play sound SndBad
+    goto ht_loop
+  end if
+  if V = 2 then
+    play sound SndBad
+    goto ht_loop
+  end if
+  Mode = 3
+  DropPet
+  return
+end sub
+
+sub ComputerTurn:
+  Message
+  print at 2,21, "THE COMPUTER IS THINKING"
+  Mode = 3
+  Cc = 3
+  ShowCursor
+  Pause(30)
+  ComputerPick
+ct_walk:
+  if Cc <> CpCol then
+    Pause(10)
+    if Cc < CpCol then
+      inc Cc
+    else
+      dec Cc
+    end if
+    play sound SndMove
+    ShowCursor
+    goto ct_walk
+  end if
+  Pause(12)
+  DropPet
+  return
+end sub
+
+sub ShowCursor:
+  Px = Cc * 16
+  Px = Px + 32
+  Pc = Who * 4
+  Pc = Pc - 4
+  C = PetCol[Who]
+  set sprite 0 to CursorY, Px, Pc, C
+  update sprites
+  return
+end sub
+
+' DropPet: side Who's pet falls down column Cc into the lowest free
+' doghouse, or into the catcher's
+sub DropPet:
+  Caught = 0
+  inc Moves
+  Q = Cc
+  Py = CursorY
+  play sound SndDrop
+  if Bd[Q] = 3 then
+    Caught = 1
+  end if
+dp_fall:
+  ' fall to the doghouse Q
+  Y = Q / 7
+  Y = Y * 16
+  Y = Y + 39
+dp_step:
+  if Py < Y then
+    Py = Py + 4
+    if Py > Y then Py = Y
+    set sprite 0 to Py, Px, Pc, C
+    update sprites
+    Frame1
+    goto dp_step
+  end if
+  if Caught = 1 then goto dp_caught
+  W = Q + 7
+  if W < 49 then
+    V = Bd[W]
+    if V = 0 then
+      Q = W
+      goto dp_fall
+    end if
+    if V = 3 then
+      Q = W
+      Caught = 1
+      goto dp_fall
+    end if
+  end if
+  ' landed
+  Bd[Q] = Who
+  DrawCell(Q)
+  set sprite 0 to 192, 0, 0, 0
+  update sprites
+  play sound SndLand
+  if Who = 1 then
+    play sound SndMeow
+  else
+    play sound SndWoof
+  end if
+  return
+dp_caught:
+  CatchAt(Q)
+  return
+end sub
+
+' CatchAt: the catcher in cell Cell nets the pet and carries it out of the
+' yard (upwards); the doghouse is empty again
+sub CatchAt(u8 Cell):
+  Bd[Cell] = 0
+  DrawCell(Cell)
+  Cr = 255
+  Pl[Who].Lost += 1
+  Message
+  if Who = 1 then
+    print at 2,21, "THE CATCHER CAUGHT A CAT!"
+  else
+    print at 2,21, "THE CATCHER CAUGHT A DOG!"
+  end if
+  play sound SndCaught
+  ShowScores
+  ' he jiggles the net, then walks up out of the yard
+  X = Px
+  for Fl = 1 to 12
+    V = Fl & 2
+    X = Px + V
+    set sprite 1 to Py, X, SCatcher, 9
+    set sprite 0 to Py, Px, Pc, C
+    update sprites
+    Pause(3)
+  next
+ca_up:
+  if Py > CursorY then
+    Py = Py - 2
+    set sprite 1 to Py, Px, SCatcher, 9
+    V = Py - 6
+    set sprite 0 to V, Px, Pc, C
+    update sprites
+    Frame1
+    goto ca_up
+  end if
+  Pause(20)
+  set sprite 0 to 192, 0, 0, 0
+  set sprite 1 to 192, 0, 0, 0
+  update sprites
+  Pause(30)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawCell(u8 Cell):
+  u8 Dc = 0
+  u8 Dr = 0
+  u8 Dt = 0
+  Dt = Bd[Cell]
+  Dt = CellTile[Dt]
+  Dr = Cell / 7
+  Dc = Cell - Dr * 7
+  Dc = Dc * 2 + 4
+  Dr = Dr * 2 + 5
+  DrawQuad(Dt, Dc, Dr)
+  return
+end sub
+
+sub DrawQuad(u8 T, u8 Qc, u8 Qr):
+  put char T at Qc,Qr
+  inc T
+  inc Qc
+  put char T at Qc,Qr
+  inc T
+  dec Qc
+  inc Qr
+  put char T at Qc,Qr
+  inc T
+  inc Qc
+  put char T at Qc,Qr
+  return
+end sub
+
+' the winning line flashes magenta (10 frames on, 10 off: 3 per second)
+sub FlashWin:
+  ' the four cells, back from the end of the line
+  Q = WinEnd
+  for J = 0 to 3
+    Win4[J] = Q
+    Q = Q - WinStp
+  next
+  if Won = 1 then
+    play sound SndMeow
+  else
+    play sound SndWoof
+  end if
+  play sound SndWin
+  for Fl = 1 to 4
+    for J = 0 to 3
+      Q = Win4[J]
+      T2 = TWcat00
+      if Won = 2 then T2 = TWdog00
+      Y = Q / 7
+      X = Q - Y * 7
+      X = X * 2 + 4
+      Y = Y * 2 + 5
+      DrawQuad(T2, X, Y)
+    next
+    Pause(10)
+    for J = 0 to 3
+      Q = Win4[J]
+      DrawCell(Q)
+    next
+    Pause(10)
+  next
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub ShowTurn:
+  print at 20,7, " "
+  print at 20,13, " "
+  if Who = 1 then
+    print at 20,7, ">"
+  else
+    print at 20,13, ">"
+  end if
+  return
+end sub
+
+sub ShowScores:
+  NumW = Pl[1].Wins
+  print at 21,8, "WINS ", digits$(NumW, 1)
+  NumW = Pl[2].Wins
+  print at 21,14, "WINS ", digits$(NumW, 1)
+  if DcOpt = 1 then
+    print at 21,9, "LOST ", Pl[1].Lost
+    print at 21,15, "LOST ", Pl[2].Lost
+  end if
+  return
+end sub
+
+sub ShowCatcherState:
+  if DcOn = 1 then
+    print at 21,18, "CATCHER"
+    print at 21,19, "ABOUT! "
+  else
+    print at 21,18, "CATCHER"
+    print at 21,19, "AWAY   "
+  end if
+  return
+end sub
+
+sub YardScreen:
+  NewScreen
+  print at 9,1, "CATS 'N' DOGS"
+  for J = 0 to 48
+    DrawCell(J)
+  next
+  for J = 5 to 18
+    put char TFence at 3,J
+    put char TFence at 18,J
+  next
+  fill TPost count 16 at 3,19
+  print at 21,6, "CATS"
+  print at 21,12, "DOGS"
+  if VsCpu = 1 then
+    print at 21,7, "PLAYER"
+    print at 21,13, "COMPUTER"
+  else
+    print at 21,7, "PLAYER 1"
+    print at 21,13, "PLAYER 2"
+  end if
+  ShowScores
+  if DcOpt = 1 then ShowCatcherState
+  print at 21,3, "FIRST"
+  print at 21,4, "TO 3"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, controls, screens
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause(u8 Nf):
+  u8 Pf = 0
+  for Pf = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 8
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 9,2, "CATS 'N' DOGS"
+  ' a cat, the catcher and a dog in their doghouses
+  DrawQuad(TCat00, 10, 5)
+  DrawQuad(THouse00, 12, 5)
+  DrawQuad(TCatch00, 14, 5)
+  DrawQuad(THouse00, 16, 5)
+  DrawQuad(TDog00, 18, 5)
+  for J = 10 to 19
+    put char TPost at J,7
+  next
+  print at 8,10, "PLAY"
+  print at 8,11, "OPPONENT:"
+  print at 8,12, "DOG CATCHER:"
+  print at 8,13, "HOW TO PLAY"
+  print at 8,14, "CREDITS"
+  print at 4,18, "COMPUTE!'S GAZETTE 1988"
+  print at 4,20, "CATS 1ST, DOGS 2ND PLAYER"
+  ShowScreen
+  Menu = 0
+  Mode = 1
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  WasBtn = 1
+tp_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+      play sound SndMove
+    end if
+    if Dn1 = 1 then
+      if Menu < 4 then inc Menu
+      play sound SndMove
+    end if
+    V = Lf1 | Rt1
+    if V = 1 then
+      if Menu = 1 then Press = 1
+      if Menu = 2 then Press = 1
+    end if
+  end if
+  for Gi = 10 to 14
+    print at 6,Gi, " "
+  next
+  Py = Menu + 10
+  print at 6,Py, ">"
+  if VsCpu = 1 then
+    print at 18,11, "COMPUTER"
+  else
+    print at 18,11, "FRIEND  "
+  end if
+  if DcOpt = 1 then
+    print at 21,12, "ON "
+  else
+    print at 21,12, "OFF"
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    VsCpu = 1 - VsCpu
+    play sound SndLand
+    goto tp_loop
+  end if
+  if Menu = 2 then
+    DcOpt = 1 - DcOpt
+    play sound SndLand
+    goto tp_loop
+  end if
+  mute all
+  TzOn = 0
+  NumW = Tick
+  Rs = Rs ^ NumW
+  if Rs = 0 then Rs = 1
+  Mode = 0
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "CATS AND DOGS TAKE TURNS"
+  print at 2,4, "DROPPING A PET DOWN ONE OF"
+  print at 2,5, "THE SEVEN COLUMNS OF THE"
+  print at 2,6, "YARD. IT FALLS TO THE LOWEST"
+  print at 2,7, "EMPTY DOGHOUSE."
+  print at 2,9, "FOUR IN A LINE WIN A GAME:"
+  print at 2,10, "ACROSS, UP AND DOWN, OR"
+  print at 2,11, "DIAGONALLY. THREE GAMES WIN"
+  print at 2,12, "THE MATCH."
+  print at 2,14, "THE DOG CATCHER HIDES IN A"
+  print at 2,15, "NEW DOGHOUSE EVERY TURN. A"
+  print at 2,16, "PET THAT FALLS INTO HIS IS"
+  print at 2,17, "CAUGHT: THE TURN IS LOST."
+  print at 2,19, "STICK: COLUMN. BUTTON: DROP"
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Mode = 5
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "CATS 'N' DOGS"
+  print at 2,5, "BASED ON CATS 'N' DOGS,"
+  print at 2,6, "COMPUTE!'S GAZETTE, JANUARY"
+  print at 2,7, "1988 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: BACKYARD SCAMPER"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Mode = 77
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  return
+end sub
+
+data TilePat bytes
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $C0,$C1,$C3,$38,$38,$38,$38,$00
+  $03,$83,$C3,$1C,$1C,$1C,$1C,$00
+  $00,$10,$18,$E0,$13,$E0,$0E,$07
+  $00,$10,$30,$F0,$90,$F0,$E0,$C0
+  $03,$07,$F0,$E0,$E0,$E0,$0D,$00
+  $80,$C0,$E4,$0B,$0B,$0B,$93,$00
+  $00,$F0,$C0,$88,$9A,$98,$26,$07
+  $00,$E0,$07,$23,$4C,$CC,$C8,$C0
+  $03,$07,$F0,$E0,$E4,$E4,$E4,$00
+  $80,$C6,$13,$F0,$B0,$B0,$B0,$00
+  $00,$00,$00,$06,$F0,$06,$E0,$D0
+  $C3,$A9,$95,$C3,$20,$40,$80,$00
+  $D0,$F0,$09,$09,$09,$19,$00,$00
+  $00,$00,$00,$00,$00,$80,$00,$00
+  $00,$10,$18,$E0,$13,$E0,$0E,$07
+  $00,$10,$30,$F0,$90,$F0,$E0,$C0
+  $03,$07,$F0,$E0,$E0,$E0,$0D,$00
+  $80,$C0,$E4,$0B,$0B,$0B,$93,$00
+  $00,$F0,$C0,$88,$9A,$98,$26,$07
+  $00,$E0,$07,$23,$4C,$CC,$C8,$C0
+  $03,$07,$F0,$E0,$E4,$E4,$E4,$00
+  $80,$C6,$13,$F0,$B0,$B0,$B0,$00
+  $AA,$00,$AA,$AA,$00,$AA,$AA,$AA
+  $99,$99,$00,$99,$99,$00,$99,$99
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $84,$84,$84,$48,$48,$48,$48,$04
+  $84,$84,$84,$84,$48,$48,$48,$04
+  $4A,$4A,$4A,$A4,$A4,$A4,$A4,$04
+  $4A,$4A,$4A,$A4,$A4,$A4,$A4,$04
+  $04,$F4,$F4,$4F,$F4,$4F,$F4,$F4
+  $04,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$4F,$4F,$4F,$4F,$F4,$04
+  $F4,$F4,$F4,$4F,$4F,$4F,$4F,$04
+  $04,$4B,$4B,$4B,$4B,$4B,$B4,$B4
+  $04,$B4,$4B,$4B,$B4,$B4,$B4,$B4
+  $B4,$B4,$4B,$4B,$4B,$4B,$4B,$04
+  $B4,$B4,$4B,$B4,$B4,$B4,$B4,$04
+  $04,$04,$04,$94,$49,$94,$49,$49
+  $49,$49,$49,$49,$94,$94,$94,$04
+  $49,$49,$94,$94,$94,$94,$04,$04
+  $04,$04,$04,$04,$04,$94,$04,$04
+  $04,$D4,$D4,$4D,$D4,$4D,$D4,$D4
+  $04,$D4,$D4,$D4,$D4,$D4,$D4,$D4
+  $D4,$D4,$4D,$4D,$4D,$4D,$D4,$04
+  $D4,$D4,$D4,$4D,$4D,$4D,$4D,$04
+  $04,$4D,$4D,$4D,$4D,$4D,$D4,$D4
+  $04,$D4,$4D,$4D,$D4,$D4,$D4,$D4
+  $D4,$D4,$4D,$4D,$4D,$4D,$4D,$04
+  $D4,$D4,$4D,$D4,$D4,$D4,$D4,$04
+  $51,$05,$51,$51,$05,$51,$51,$51
+  $15,$15,$05,$15,$15,$05,$15,$15
+  $04,$04,$04,$04,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $00,$10,$18,$1F,$13,$1F,$0E,$07,$03,$07,$0F,$1F,$1F,$1F,$0D,$00
+  $00,$10,$30,$F0,$90,$F0,$E0,$C0,$80,$C0,$E4,$F4,$F4,$F4,$6C,$00
+  $00,$0F,$3F,$77,$65,$67,$26,$07,$03,$07,$0F,$1F,$1B,$1B,$1B,$00
+  $00,$E0,$F8,$DC,$4C,$CC,$C8,$C0,$80,$C6,$EC,$F0,$B0,$B0,$B0,$00
+  $00,$00,$00,$06,$0F,$06,$1F,$2F,$2F,$0F,$09,$09,$09,$19,$00,$00
+  $3C,$56,$6A,$3C,$20,$40,$80,$00,$00,$00,$00,$00,$00,$80,$00,$00
+end data
+
+asm {
+CdMove:
+    db $40,$47,$50,$01,$50
+CdDrop:
+    db $40,$7F,$30,$02,$40,$8F,$30,$02,$40,$A0,$30,$02,$40,$B4,$30,$02,$50
+CdLand:
+    db $00,$00,$25,$02,$00,$00,$46,$03,$10
+CdBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+CdMeow:
+    db $40,$7F,$20,$03,$40,$6B,$20,$05,$40,$78,$30,$08,$50
+CdWoof:
+    db $40,$3B,$12,$03,$40,$A6,$22,$04,$50
+CdCaught:
+    db $40,$55,$10,$05,$40,$71,$10,$05,$40,$55,$10,$05,$40,$71,$10,$05,$40,$55,$20,$05,$40,$71,$30,$0C
+    db $50
+CdWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+CdTie:
+    db $40,$FE,$20,$0A,$40,$0E,$21,$0A,$40,$1D,$21,$14,$50
+CdMatch:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+CdSoundTable:
+    dw CdTuneMel,$702B
+    dw CdTuneBass,$7035
+    dw CdMove,$7049
+    dw CdDrop,$7049
+    dw CdLand,$703F
+    dw CdBad,$703F
+    dw CdMeow,$7049
+    dw CdWoof,$7049
+    dw CdCaught,$7049
+    dw CdWin,$7049
+    dw CdTie,$7049
+    dw CdMatch,$7049
+; Backyard Scamper (original)
+; Tiny Sound, 8 frames per step
+CdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$1E,$21,$01,$1E,$1A,$01,$01,$1C,$1F,$23,$01
+    db $21,$1F,$1E,$01,$1A,$1E,$21,$01,$26,$01,$25,$23,$21,$01,$1E,$01
+    db $1C,$01,$01,$01,$1F,$01,$23,$01,$21,$01,$1E,$01,$1C,$1E,$1F,$01
+    db $1E,$1C,$1A,$01,$17,$19,$1A,$01,$1C,$01,$1E,$1C,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+CdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$0B,$01,$12,$01,$13,$01,$0E,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$09,$01,$10,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

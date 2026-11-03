@@ -4026,7 +4026,7 @@ export const exampleManifest = [
   {
     "id": "ti-aquarium",
     "label": "TI Aquarium",
-    "detail": "Michael A. Covington's 1984 COMPUTE! sprite aquarium, with nine moving fish, bubbles, seaweed and rotating sprite priority.",
+    "detail": "Michael A. Covington's March 1984 COMPUTE! sprite aquarium, with nine moving fish, bubbles, seaweed and rotating sprite priority.",
     "projectName": "ti-aquarium",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4046,7 +4046,7 @@ export const exampleManifest = [
   {
     "id": "trident",
     "label": "Trident",
-    "detail": "C. O. Dickerson's 1984 COMPUTE! submarine defense game, rebuilt with a Graphics II radar, waves and steerable antimissiles.",
+    "detail": "C. O. Dickerson's March 1984 COMPUTE! submarine defense game, rebuilt with a Graphics II radar, waves and steerable antimissiles.",
     "projectName": "trident",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4243,7 +4243,7 @@ export const exampleManifest = [
   {
     "id": "speedski",
     "label": "Speed Ski (VIC-20 Port)",
-    "detail": "Dub Scroggin's 1983 COMPUTE! downhill racing game, with gates, jumps, hazards, five slopes, multiple players and cumulative rounds.",
+    "detail": "Dub Scroggin's July 1983 COMPUTE! downhill racing game, with gates, jumps, hazards, five slopes, multiple players and cumulative rounds.",
     "projectName": "speedski",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -8379,101 +8379,6 @@ export const exampleManifest = [
     "originLabel": "Reimagined adaptation"
   },
   {
-    "id": "dogcatcher",
-    "label": "Dogcatcher (September 1986)",
-    "detail": "A ColecoVision adaptation of DOGCATCHER by Bob Blackmer, originally published in Ahoy! September 1986.",
-    "projectName": "Dogcatcher",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "speedway",
-    "label": "Speedway (December 1986)",
-    "detail": "A ColecoVision adaptation of SPEEDWAY by an author not named in the issue, originally published in Ahoy! December 1986.",
-    "projectName": "Speedway",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "the-adventurer",
-    "label": "The Adventurer (February 1987)",
-    "detail": "A ColecoVision adaptation of THE ADVENTURER by Jean-Francois Heon, originally published in Ahoy! February 1987.",
-    "projectName": "The Adventurer",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "hoops",
-    "label": "Hoops (September 1987)",
-    "detail": "A ColecoVision adaptation of Hoops by an author not named in the issue, originally published in Ahoy! September 1987.",
-    "projectName": "Hoops",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "rashgar",
-    "label": "Rashgar (June 1988)",
-    "detail": "A ColecoVision adaptation of RASHGAR by Cleveland M. Blakemore, originally published in Ahoy! June 1988.",
-    "projectName": "Rashgar",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
     "id": "lawn-job",
     "label": "Lawn Job (1984)",
     "detail": "A ColecoVision adaptation of LAWN JOB by Mike Buhidar Jr., originally published in Ahoy! 1984.",
@@ -9082,162 +8987,10 @@ export const exampleManifest = [
     "originLabel": "Reimagined adaptation"
   },
   {
-    "id": "shaker-ahoy",
-    "label": "Shaker (June 1986)",
-    "detail": "A ColecoVision adaptation of SHAKER by John Fedor, originally published in Ahoy! June 1986.",
-    "projectName": "Shaker",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "star-strike",
-    "label": "Star Strike (June 1986)",
-    "detail": "A ColecoVision adaptation of STAR STRIKE by Bob Eaton, originally published in Ahoy! June 1986.",
-    "projectName": "Star Strike",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "crazy-joe",
-    "label": "Crazy Joe (July 1986)",
-    "detail": "A ColecoVision adaptation of CRAZY JOE by Chris Greacen, originally published in Ahoy! July 1986.",
-    "projectName": "Crazy Joe",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "escape-from-skull-castle",
-    "label": "Escape From Skull Castle (July 1986)",
-    "detail": "A ColecoVision adaptation of ESCAPE FROM SKULL CASTLE by James C. Hilty, originally published in Ahoy! July 1986.",
-    "projectName": "Escape From Skull Castle",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "head-on",
-    "label": "Head-On (July 1986)",
-    "detail": "A ColecoVision adaptation of HEAD-ON by John Fedor, originally published in Ahoy! July 1986.",
-    "projectName": "Head-On",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "nebergall-run",
-    "label": "Nebergall Run (July 1986)",
-    "detail": "A ColecoVision adaptation of NEBERGALL RUN by Roger Browne and Steve Gebert, originally published in Ahoy! July 1986.",
-    "projectName": "Nebergall Run",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "flap-ahoy",
-    "label": "Flap (August 1986)",
-    "detail": "A ColecoVision adaptation of Flap by Andrew Vajoczki, originally published in Ahoy! August 1986.",
-    "projectName": "Flap",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "meteor-run",
-    "label": "Meteor Run (August 1986)",
-    "detail": "A ColecoVision adaptation of METEOR RUN by Tony Brantner, originally published in Ahoy! August 1986.",
-    "projectName": "Meteor Run",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "ahoy!",
-      "reimagined-adaptation",
-      "game",
-      "commodore-64"
-    ],
-    "originKind": "reimagined-adaptation",
-    "originLabel": "Reimagined adaptation"
-  },
-  {
-    "id": "step-on-it",
-    "label": "Step On It (August 1986)",
-    "detail": "A ColecoVision adaptation of STEP ON IT by Penny DeGroff, originally published in Ahoy! August 1986.",
-    "projectName": "Step On It",
+    "id": "dogcatcher",
+    "label": "Dogcatcher (September 1986)",
+    "detail": "A ColecoVision adaptation of DOGCATCHER by Bob Blackmer, originally published in Ahoy! September 1986.",
+    "projectName": "Dogcatcher",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
@@ -9500,6 +9253,25 @@ export const exampleManifest = [
     "originLabel": "Reimagined adaptation"
   },
   {
+    "id": "speedway",
+    "label": "Speedway (December 1986)",
+    "detail": "A ColecoVision adaptation of SPEEDWAY by an author not named in the issue, originally published in Ahoy! December 1986.",
+    "projectName": "Speedway",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
     "id": "vault-of-terror",
     "label": "Vault Of Terror (December 1986)",
     "detail": "A ColecoVision adaptation of VAULT OF TERROR by C. M. Blakemore, originally published in Ahoy! December 1986.",
@@ -9618,6 +9390,25 @@ export const exampleManifest = [
     "label": "Jailbreak (February 1987)",
     "detail": "A ColecoVision adaptation of JAILBREAK by Bob Blackmer, originally published in Ahoy! February 1987.",
     "projectName": "Jailbreak",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "the-adventurer",
+    "label": "The Adventurer (February 1987)",
+    "detail": "A ColecoVision adaptation of THE ADVENTURER by Jean-Francois Heon, originally published in Ahoy! February 1987.",
+    "projectName": "The Adventurer",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
@@ -9865,6 +9656,25 @@ export const exampleManifest = [
     "label": "Steeple Run (August 1987)",
     "detail": "A ColecoVision adaptation of STEEPLE RUN by Tony Brantner, originally published in Ahoy! August 1987.",
     "projectName": "Steeple Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hoops",
+    "label": "Hoops (September 1987)",
+    "detail": "A ColecoVision adaptation of Hoops by an author not named in the issue, originally published in Ahoy! September 1987.",
+    "projectName": "Hoops",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
@@ -10131,6 +9941,25 @@ export const exampleManifest = [
     "label": "Mines Of Merlin (June 1988)",
     "detail": "A ColecoVision adaptation of MINES OF MERLIN by Cleveland M. Blakemore, originally published in Ahoy! June 1988.",
     "projectName": "Mines Of Merlin",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ahoy!",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "rashgar",
+    "label": "Rashgar (June 1988)",
+    "detail": "A ColecoVision adaptation of RASHGAR by Cleveland M. Blakemore, originally published in Ahoy! June 1988.",
+    "projectName": "Rashgar",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
@@ -11942,6 +11771,326 @@ export const exampleManifest = [
     "label": "Block Out (November 1988)",
     "detail": "A COMPUTE!'s Gazette game from November 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
     "projectName": "Block Out",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bgammon",
+    "label": "Backgammon (November 1985)",
+    "detail": "A COMPUTE!'s Gazette game from November 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Backgammon",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bombard",
+    "label": "Bombardment (January 1989)",
+    "detail": "A COMPUTE!'s Gazette game from January 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Bombardment",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bonk",
+    "label": "Bonking Barrels (July 1984)",
+    "detail": "A COMPUTE!'s Gazette game from July 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Bonking Barrels",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "boombust",
+    "label": "Boom and Bust (September 1988)",
+    "detail": "A COMPUTE!'s Gazette game from September 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Boom and Bust",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "boomer",
+    "label": "Boomerang (August 1989)",
+    "detail": "A COMPUTE!'s Gazette game from August 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Boomerang",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bounty",
+    "label": "Bounty Hunter (August 1987)",
+    "detail": "A COMPUTE!'s Gazette game from August 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Bounty Hunter",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "brusher",
+    "label": "Brusher (April 1989)",
+    "detail": "Leonard Morris's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Brusher",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bumprun",
+    "label": "Bump 'n Run (November 1986)",
+    "detail": "A COMPUTE!'s Gazette game from November 1986, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Bump 'n Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cabby",
+    "label": "Cabby (October 1984)",
+    "detail": "A COMPUTE!'s Gazette game from October 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Cabby",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "campaign",
+    "label": "Campaign Manager (August 1984)",
+    "detail": "Todd Heimarck's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Campaign Manager",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cdung",
+    "label": "Castle Dungeon (June 1984)",
+    "detail": "A COMPUTE!'s Gazette game from June 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Castle Dungeon",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "catsdogs",
+    "label": "Cats 'n Dogs (January 1988)",
+    "detail": "A COMPUTE!'s Gazette game from January 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Cats 'n Dogs",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cellrun",
+    "label": "Cell Runner (September 1986)",
+    "detail": "John Krutch's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Cell Runner",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "charle",
+    "label": "Charlemagne's Sword (May 1985)",
+    "detail": "A COMPUTE!'s Gazette game from May 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Charlemagne's Sword",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gzchk",
+    "label": "Checkers (February 1984)",
+    "detail": "A COMPUTE!'s Gazette game from February 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Checkers",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chomper",
+    "label": "Chomper (January 1985)",
+    "detail": "A COMPUTE!'s Gazette game from January 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Chomper",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",

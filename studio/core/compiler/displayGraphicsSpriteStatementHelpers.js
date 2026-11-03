@@ -529,7 +529,7 @@ export function handleDisplayGraphicsSpriteStatement({
     const yExpr = offsetY === "0" ? `((${setSpriteTile[3]}) << 3) - 1` : `(((${setSpriteTile[3]}) << 3) - 1) + (${offsetY})`;
     const loadSprite = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_SET_SPRITE",
-      values: { a: setSpriteTile[1], b: yExpr, c: xExpr, d: setSpriteTile[4], e: setSpriteTile[5] },
+      values: { e: setSpriteTile[5], d: setSpriteTile[4], c: xExpr, b: yExpr, a: setSpriteTile[1] },
       emitLoadInt8Into,
       emitLoadInt8ValueInto,
       emitLoadInt8ValueIntoPreserving
@@ -566,7 +566,7 @@ export function handleDisplayGraphicsSpriteStatement({
     }
     const loadSprite = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_SET_SPRITE",
-      values: { a: setSprite[1], b: setSprite[2], c: setSprite[3], d: setSprite[4], e: setSprite[5] },
+      values: { e: setSprite[5], d: setSprite[4], c: setSprite[3], b: setSprite[2], a: setSprite[1] },
       emitLoadInt8Into,
       emitLoadInt8ValueInto,
       emitLoadInt8ValueIntoPreserving

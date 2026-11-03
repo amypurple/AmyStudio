@@ -107,6 +107,7 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
   let current = null;
   let inAsm = false;
   let opaqueAsm = false;
+  const globalAsmTransfers = [];
 
   const finish = () => { current = null; inAsm = false; };
   for (const rawLine of lines) {
@@ -126,7 +127,8 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
       if (/^asm\s*\{$/i.test(text)) { inAsm = true; continue; }
       if (inAsm) {
         if (text === "}") { inAsm = false; continue; }
-        if (parseAsmTransfer(text)) opaqueAsm = true;
+        const transfer = parseAsmTransfer(text);
+        if (transfer) globalAsmTransfers.push(transfer);
         continue;
       }
       const include = text.match(/^include(?:\s+asm)?\s+"([^"]+)"$/i);
@@ -149,6 +151,18 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
 
   const graph = new Map([...routines.keys()].map((name) => [name, new Set()]));
   const asmEntryTargets = new Set();
+  const classifyAsmTransfer = (transfer, callerKey = null) => {
+    if (!transfer || transfer.op === "unknown" || !/^(?:[A-Za-z_.$][A-Za-z0-9_.$]*|\$[0-9A-F]+|0x[0-9A-F]+|[0-9]+)$/i.test(transfer.target)) {
+      opaqueAsm = true;
+      return;
+    }
+    const target = asmTargetRoutine(transfer.target, routines);
+    if (!target) return;
+    asmEntryTargets.add(target);
+    if (callerKey) graph.get(callerKey)?.add(target);
+    else opaqueAsm = true;
+  };
+  for (const transfer of globalAsmTransfers) classifyAsmTransfer(transfer);
   for (const routine of routines.values()) {
     const allSource = routine.body.join("\n");
     for (const target of routines.values()) {
@@ -158,13 +172,7 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
     for (const asmLine of routine.asm) {
       const transfer = parseAsmTransfer(asmLine);
       if (!transfer) continue;
-      const target = asmTargetRoutine(transfer.target, routines);
-      if (target) {
-        graph.get(routine.key).add(target);
-        asmEntryTargets.add(target);
-      } else {
-        opaqueAsm = true;
-      }
+      classifyAsmTransfer(transfer, routine.key);
     }
   }
 
