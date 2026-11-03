@@ -1,0 +1,991 @@
+cartridge "COSMIC COMBAT/T.GRAHAM/1984"
+
+' COSMIC COMBAT
+' A ColecoVision game based on "Cosmic Combat" by Tommy Graham, COMPUTE!'s
+' Gazette, December 1984 (Commodore 64 machine language at $C000, also a
+' VIC-20 BASIC version). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the C64 original's (read from its
+' machine code, orig/dis.txt, and watched in jsc64, orig/run64.mjs and
+' orig/speed64.mjs), the game is built for the ColecoVision: a starfield
+' over the Earth's night horizon, a two-colour cruiser, blinking Zirconian
+' raiders, blasts and sounds.
+'
+' The game: the Zirconians dive on the Earth in waves. Their raiders have
+' no guns: they fall, drifting, and blow up where they reach the ground.
+' Slide the cruiser along the ground and shoot them with the laser. A
+' raider that lands takes 10 points off; one that blows up next to the
+' cruiser (or rams it) destroys it. Three cruisers.
+'
+' From the original (orig/dis.txt): three raiders on screen, each coming
+' back at the top as soon as it is gone; every raider gone (shot, landed or
+' crashed into another raider) counts one off the attack, 32 in the first
+' attack and 3 more in each one after; a raider takes one step down a C64
+' step, and on 1 step in 32 it picks a new course (a random draw:
+' straight, straight, left or right) which it keeps, one pixel sideways a
+' step; it comes in at a random height 0-31 above its first visible row;
+' two raiders that touch both explode, for no points; 50 points a raider
+' shot, minus 10 for each one that lands (never below 0); one laser bolt at
+' a time, fired while the button is held; a raider landing within the
+' width of its doubled blast, or touching the cruiser low down, wrecks it;
+' after a wreck the cruiser comes back in the middle and all three raiders
+' start again at the top; at the end of an attack the raiders fly off
+' upwards and "ATTACK nn" shows; each attack is faster: the C64 step delay
+' drops by 3 of 75 delay loops (worked out from the cycle counts:
+' 3650 / (3650 - 120 x (attack - 1)) times the first attack's speed).
+'
+' Liberties: the field is 192 x 136 pixels (the C64's 296 x 200); raiders
+' fall 200/256 pixel a frame in attack 1 (the C64: 1.5 C64 pixels a frame,
+' about 30% slower in time, so a person can play it), then faster by the
+' C64's ratio, up to 2.5 pixels a frame; the cruiser moves 2 pixels a frame
+' (the C64's moved three times as fast as the raiders fell, 4.5 pixels a
+' frame); the bolt flies 6 pixels a frame; raiders come in anywhere across
+' the screen (the C64's came in over its left 3/4); collisions are box
+' tests (the C64 used the sprite collision registers); the game freezes
+' for 1.5 s while a wrecked cruiser burns (the C64 froze for about 1/3 s); the attack
+' and the raiders left are shown all the time; no pause (the C64 paused on
+' SHIFT); a high score; GAME OVER, then the title (the C64 waited for the
+' button and started again).
+'
+' Controls: controller 1 (or 2): the stick moves the cruiser left and
+' right, either button fires (hold it to keep firing). A button starts the
+' game on the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TSky0 = 128
+const TStar1 = 129
+const TStar2 = 130
+const TStar3 = 131
+const TPlanet00 = 132
+const TPlanet01 = 133
+const TPlanet10 = 134
+const TPlanet11 = 135
+const THillA = 136
+const THillB = 137
+const TFlat = 138
+const TDomeL = 139
+const TDomeR = 140
+const TSoil = 141
+const TTblk = 142
+const SShipw = 0
+const SShipa = 4
+const SFoe1 = 8
+const SFoe2 = 12
+const SPop0 = 16
+const SPop1 = 20
+const SBig0 = 24
+const SBig1 = 28
+const SBig2 = 32
+const SShot = 36
+const NTiles8 = 120
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndBoom = 5
+const SndDie = 6
+const SndWave = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 9
+const NFoe = 3
+' the play field in sprite pixels
+const XMin = 16
+const XMax = 208
+const ShowY = 24
+const LandY = 160
+const PY = 160
+const RamY = 148
+const DeadT = 90
+
+' 1/256 pixels a frame for attacks 1-25 (200 x 3650 / (3650 - 120 (a - 1)), at most 640)
+data FallT words 200,207,214,222,230,239,249,260,271,284,298,313,330,349,371,395,422,453,490,533,584,640,640,640,640
+' stars: column, row pairs
+data Stars bytes 3,4,7,6,11,3,15,5,19,8,22,4,28,7,5,10,13,9,17,12,26,11,9,13,21,14,2,16,29,15,12,6,24,18,6,19,16,17,27,20
+' the horizon (row 22), columns 2-29
+data Horizon bytes 0,1,2,0,2,3,4,2,1,0,2,2,1,0,2,3,4,2,0,1,2,2,0,1,2,3,4,1
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$40,$00
+  $00,$00,$10,$38,$10,$00,$00,$00
+  $00,$03,$F0,$E0,$C0,$00,$E0,$C0
+  $00,$C0,$F0,$07,$03,$00,$07,$03
+  $E0,$F0,$03,$00,$00,$00,$00,$00
+  $07,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$C3,$81,$04,$40
+  $00,$00,$00,$00,$00,$C1,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$42
+  $00,$00,$03,$E0,$C0,$80,$80,$00
+  $00,$00,$C0,$F0,$07,$03,$03,$00
+  $00,$44,$00,$21,$00,$88,$00,$10
+  $01,$80,$80,$80,$80,$80,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$51,$01,$01,$01,$01,$51,$01
+  $01,$01,$B1,$B1,$B1,$01,$01,$01
+  $01,$D1,$1D,$1D,$1D,$0E,$1D,$1D
+  $01,$D1,$D1,$1D,$1D,$0E,$1D,$1D
+  $1D,$1E,$D1,$01,$01,$01,$01,$01
+  $1D,$E1,$D1,$01,$01,$01,$01,$01
+  $01,$01,$01,$C1,$1C,$1C,$2C,$2C
+  $01,$01,$01,$01,$01,$C1,$1C,$0C
+  $01,$01,$01,$01,$01,$01,$0C,$2C
+  $01,$01,$71,$17,$17,$17,$17,$0C
+  $01,$01,$71,$71,$17,$17,$17,$0C
+  $0C,$2C,$0C,$2C,$0C,$2C,$0C,$2C
+  $1F,$F5,$F5,$F5,$F5,$F5,$14,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$01,$01,$01,$01,$01,$00,$00,$04,$00,$00,$02,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80,$00,$00,$20,$00,$00,$40,$00,$00
+  $00,$00,$00,$02,$02,$06,$06,$26,$2F,$3F,$7B,$F7,$C6,$00,$00,$00
+  $00,$00,$00,$40,$40,$60,$40,$64,$F4,$FC,$DE,$EF,$63,$00,$00,$00
+  $00,$C0,$E7,$7F,$3C,$1F,$0E,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$03,$E7,$FE,$3C,$F8,$70,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$80,$C7,$7F,$3C,$1F,$0E,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$01,$E3,$FE,$3C,$F8,$70,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$0D,$07,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$E0,$B0,$E0,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$21,$11,$08,$00,$C2,$00,$08,$11,$21,$00,$00,$00,$00,$00,$00
+  $00,$08,$10,$20,$00,$86,$00,$20,$10,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0F,$1F,$3F,$3F,$1F,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$F0,$F8,$FC,$FC,$F8,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$42,$27,$1F,$7F,$FF,$FF,$FF,$7F,$1F,$27,$42,$00,$00,$00,$00
+  $00,$42,$E4,$F8,$FE,$FF,$FF,$FF,$FE,$F8,$E4,$42,$00,$00,$00,$00
+  $81,$21,$08,$80,$10,$04,$80,$22,$08,$82,$10,$44,$00,$00,$00,$00
+  $01,$08,$20,$82,$10,$80,$02,$20,$24,$01,$10,$42,$00,$00,$00,$00
+  $80,$C0,$C0,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+record Foe:
+  u8 X
+  u8 Y
+  u8 D
+  u8 BX
+  u8 BY
+  u8 BT
+  u8 BK
+end record
+
+Foe Fs[NFoe]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Fall = 0
+u16 Acc = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 PX = 112
+u8 Dead = 0
+u8 ShOn = 0
+u8 ShX = 0
+u8 ShY = 0
+u8 Ships = 3
+u8 Wave = 1
+u8 Left = 32
+u8 Over = 0
+u8 WaveEnd = 0
+u8 Kills = 0
+u8 Landed = 0
+u8 Crashes = 0
+u8 Wrecks = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ks = 0
+u8 Ci = 0
+u8 Di = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table CcSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if WaveEnd > 0 then EndWave
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  HideFoes
+  print at 7,9, "                  "
+  print at 7,10, "    GAME  OVER    "
+  print at 7,11, "                  "
+  print at 7,12, "   SCORE ", Score, "  "
+  print at 7,13, "   BEST  ", Hi, "  "
+  print at 7,14, "                  "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  inc Anim
+  if Dead > 0 then
+    dec Dead
+    if Dead = 0 then
+      if Ships = 0 then
+        Over = 1
+      else
+        NewLife
+      end if
+    end if
+  else
+    MoveShip
+    MoveShot
+    W16 = Acc + Fall
+    Acc = W16 & 255
+    Ks = W16 >> 8
+    while Ks > 0
+      for Fi = 0 to NFoe - 1
+        FoeStep(Fi)
+      next
+      CheckPairs
+      dec Ks
+    end while
+    if ShOn = 1 then ShotCheck
+  end if
+  for Fi = 0 to NFoe - 1
+    V = Fs[Fi].BT
+    if V > 0 then Fs[Fi].BT = V - 1
+  next
+  return
+end sub
+
+' the cruiser: 2 pixels a frame along the ground
+sub MoveShip:
+  select case J1 & 12
+    case 4
+      if PX > XMin + 1 then
+        PX = PX - 2
+      else
+        PX = XMin
+      end if
+    case 8
+      if PX < XMax - 1 then
+        PX = PX + 2
+      else
+        PX = XMax
+      end if
+  end select
+  return
+end sub
+
+' one bolt at a time, fired while the button is held, 6 pixels a frame
+sub MoveShot:
+  if ShOn = 1 then
+    if ShY < ShowY + 2 then
+      ShOn = 0
+    else
+      ShY = ShY - 6
+    end if
+  end if
+  if ShOn = 0 then
+    if Btn > 0 then
+      ShOn = 1
+      ShX = PX + 7
+      ShY = PY - 6
+      play sound SndZap
+    end if
+  end if
+  return
+end sub
+
+' the distance between two coordinates
+function Near(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' one C64 step of a raider: a new course on 1 step in 32, sideways, down
+sub FoeStep(u8 N):
+  u8 Ex
+  u8 Ey
+  u8 Dd
+  u8 R
+  Ex = Fs[N].X
+  Ey = Fs[N].Y
+  Dd = Fs[N].D
+  Rand
+  R = Rs & 31
+  if R = 31 then
+    Rand
+    R = Rs + 1
+    Dd = (R & 3) - 1
+  end if
+  if Dd = 1 then
+    if Ex > XMin then dec Ex
+  end if
+  if Dd = 2 then
+    if Ex < XMax then inc Ex
+  end if
+  inc Ey
+  Fs[N].X = Ex
+  Fs[N].Y = Ey
+  Fs[N].D = Dd
+  if Ey >= LandY then
+    Land(N)
+  else
+    if Ey >= RamY then
+      if Dead = 0 then
+        R = Near(Ex, PX)
+        if R < 12 then
+          Land(N)
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' two raiders touching: both explode, no points
+sub CheckPairs:
+  u8 Xa
+  u8 Ya
+  u8 Xb
+  u8 Yb
+  for Ci = 0 to NFoe - 2
+    for Di = Ci + 1 to NFoe - 1
+      Xa = Fs[Ci].X
+      Ya = Fs[Ci].Y
+      Xb = Fs[Di].X
+      Yb = Fs[Di].Y
+      if Ya >= ShowY then
+        if Yb >= ShowY then
+          if Near(Xa, Xb) < 12 then
+            if Near(Ya, Yb) < 10 then
+              Blast(Ci, 0)
+              Blast(Di, 0)
+              Crashes = Crashes + 2
+              play sound SndPop
+            end if
+          end if
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+' the bolt against the raiders: it covers the 6 pixels it flew this frame
+sub ShotCheck:
+  u8 Ex
+  u8 Ey
+  u8 Hit
+  Hit = 255
+  for Ci = 0 to NFoe - 1
+    Ex = Fs[Ci].X
+    Ey = Fs[Ci].Y
+    if Hit = 255 then
+      if Ey >= ShowY then
+        if ShX + 1 >= Ex then
+          if ShX <= Ex + 14 then
+            if ShY <= Ey + 9 then
+              if ShY + 13 >= Ey + 1 then Hit = Ci
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  if Hit < NFoe then
+    ShOn = 0
+    Score += 50
+    if Score > Hi then Hi = Score
+    ShowScore
+    inc Kills
+    Blast(Hit, 0)
+    play sound SndPop
+  end if
+  return
+end sub
+
+' a raider reaches the ground (or rams the cruiser): a big blast, 10 off,
+' and the cruiser goes if it is within the doubled blast
+sub Land(u8 N):
+  u8 Lx
+  Lx = Fs[N].X
+  Blast(N, 1)
+  inc Landed
+  Score -= 10
+  ShowScore
+  play sound SndBoom
+  if Dead = 0 then
+    if Near(Lx, PX) < 20 then Wreck
+  end if
+  return
+end sub
+
+' a blast where the raider was, and the raider comes back at the top
+sub Blast(u8 N, u8 Kind):
+  Fs[N].BX = Fs[N].X
+  Fs[N].BY = Fs[N].Y
+  Fs[N].BK = Kind
+  if Kind = 0 then
+    Fs[N].BT = 16
+  else
+    Fs[N].BT = 30
+  end if
+  if Left > 0 then dec Left
+  if Left = 0 then WaveEnd = 1
+  ShowLeft
+  Place(N)
+  return
+end sub
+
+' a raider at a random spot above the field
+sub Place(u8 N):
+  Rand
+  Fs[N].X = Rs % 193 + XMin
+  Fs[N].Y = (Rs >> 8) & 31
+  Fs[N].D = 0
+  return
+end sub
+
+sub Wreck:
+  Dead = DeadT
+  dec Ships
+  inc Wrecks
+  ShOn = 0
+  ShowShips
+  play sound SndDie
+  return
+end sub
+
+sub NewLife:
+  PX = 112
+  ShOn = 0
+  for Ci = 0 to NFoe - 1
+    Place(Ci)
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the attack is over: the raiders fly off upwards, ATTACK nn, faster
+sub EndWave:
+  u8 Up
+  ShOn = 0
+  Up = 1
+  while Up > 0
+    Frame1
+    Up = 0
+    for Ci = 0 to NFoe - 1
+      V = Fs[Ci].Y
+      if V >= ShowY then
+        Fs[Ci].Y = V - 2
+        Up = 1
+      end if
+      V = Fs[Ci].BT
+      if V > 0 then Fs[Ci].BT = V - 1
+    next
+    inc Anim
+    DrawSprites
+  end while
+  HideFoes
+  if Wave < 99 then inc Wave
+  play sound SndWave
+  NewWave
+  return
+end sub
+
+sub NewWave:
+  u8 Wi
+  W16 = Wave * 3 + 29
+  if W16 > 250 then W16 = 250
+  Left = W16
+  Wi = Wave - 1
+  if Wi > 24 then Wi = 24
+  Fall = FallT[Wi]
+  Acc = 0
+  WaveEnd = 0
+  ShOn = 0
+  for Ci = 0 to NFoe - 1
+    Place(Ci)
+    Fs[Ci].BT = 0
+  next
+  ShowAll
+  NumU = Wave
+  print at 10,11, "ATTACK ", digits$(NumU, 2)
+  Pause(100)
+  print at 10,11, "         "
+  return
+end sub
+
+sub Pause(u8 F):
+  for Ci = 1 to F
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+sub DrawField:
+  u8 Sx
+  u8 Sy
+  u8 T
+  for Ci = 3 to 21
+    fill TSky0 count 32 at 0,Ci
+  next
+  for Ci = 0 to 19
+    J = Ci * 2
+    Sx = Stars[J]
+    Sy = Stars[J + 1]
+    T = Ci % 3 + TStar1
+    put char T at Sx,Sy
+  next
+  put char TPlanet00 at 24,5
+  put char TPlanet01 at 25,5
+  put char TPlanet10 at 24,6
+  put char TPlanet11 at 25,6
+  fill THillB count 2 at 0,22
+  fill THillB count 2 at 30,22
+  for Ci = 0 to 27
+    T = Horizon[Ci]
+    select case T
+      case 0
+        T = THillA
+      case 1
+        T = THillB
+      case 2
+        T = TFlat
+      case 3
+        T = TDomeL
+      case 4
+        T = TDomeR
+    end select
+    put char T at Ci + 2,22
+  next
+  fill TSoil count 32 at 0,23
+  return
+end sub
+
+sub ShowAll:
+  print at 2,1, "SCORE"
+  print at 21,1, "SHIPS"
+  print at 2,2, "ATTACK"
+  print at 21,2, "LEFT"
+  ShowScore
+  ShowShips
+  ShowLeft
+  NumU = Wave
+  print at 9,2, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+sub ShowShips:
+  NumU = Ships
+  print at 27,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowLeft:
+  NumU = Left
+  print at 26,2, digits$(NumU, 3)
+  return
+end sub
+
+sub HideFoes:
+  for Ci = 2 to NSpr - 1
+    set sprite Ci to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' sprites 0-1 the cruiser (or its blast), 2-4 the raiders, 5-7 the blasts,
+' 8 the bolt
+data FoeCol bytes 8,13,3
+sub DrawSprites:
+  u8 Fr
+  u8 Ey
+  u8 Bt
+  u8 Col
+  if Dead = 0 then
+    set sprite 0 to PY - 1,PX,SShipw,7
+    set sprite 1 to PY - 1,PX,SShipa,14
+  else
+    Fr = Dead >> 3
+    Fr = Fr % 3
+    K = Fr * 4 + SBig0
+    if Dead > 30 then
+      set sprite 0 to PY - 1,PX,K,11
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+    set sprite 1 to 192,0,0,0
+  end if
+  Fr = (Anim >> 3) & 1
+  K = Fr * 4 + SFoe1
+  for Ci = 0 to NFoe - 1
+    J = Ci + 2
+    Ey = Fs[Ci].Y
+    if Ey >= ShowY then
+      Col = FoeCol[Ci]
+      set sprite J to Ey - 1,Fs[Ci].X,K,Col
+    else
+      set sprite J to 192,0,0,0
+    end if
+    J = Ci + 5
+    Bt = Fs[Ci].BT
+    if Bt > 0 then
+      if Fs[Ci].BK = 0 then
+        V = SPop0
+        if Bt < 9 then V = SPop1
+        Col = 11
+      else
+        V = SBig0
+        if Bt < 22 then V = SBig1
+        if Bt < 10 then V = SBig2
+        Col = 9
+      end if
+      Ey = Fs[Ci].BY
+      set sprite J to Ey - 1,Fs[Ci].BX,V,Col
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if ShOn = 1 then
+    set sprite 8 to ShY - 1,ShX,SShot,15
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  Score = 0
+  Wave = 1
+  Ships = 3
+  Over = 0
+  Dead = 0
+  Kills = 0
+  Landed = 0
+  Crashes = 0
+  Wrecks = 0
+  Anim = 0
+  PX = 112
+  DrawField
+  ShowScreen
+  play sound SndStart
+  NewWave
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: COSMIC / COMBAT in 3 x 5 blocks, a raider drifting down, the
+' best score, the tune once
+' C O S M I B A T: five rows of three bits each
+data Glyphs bytes 7,4,4,4,7, 7,5,5,5,7, 7,4,7,1,7, 5,7,7,5,5, 7,2,2,2,7, 6,5,6,5,6, 2,5,7,5,5, 7,2,2,2,2
+data Word1 bytes 0,1,2,3,4,0
+data Word2 bytes 0,1,3,5,6,7
+sub BigWord(u8 Which, u8 Top):
+  u8 L
+  u8 Row
+  u8 B
+  u8 Gx
+  u8 G
+  for L = 0 to 5
+    if Which = 0 then
+      G = Word1[L]
+    else
+      G = Word2[L]
+    end if
+    for Row = 0 to 4
+      J = G * 5 + Row
+      B = Glyphs[J]
+      Gx = L * 4 + 4
+      V = B & 4
+      if V > 0 then put char TTblk at Gx,Top + Row
+      V = B & 2
+      if V > 0 then put char TTblk at Gx + 1,Top + Row
+      V = B & 1
+      if V > 0 then put char TTblk at Gx + 2,Top + Row
+    next
+  next
+  return
+end sub
+
+sub TitlePage:
+  u8 Ty
+  u16 Tyf
+  u8 Tx
+  NewScreen
+  for Ci = 0 to 19
+    J = Ci * 2
+    K = Stars[J]
+    V = Stars[J + 1]
+    if V > 13 then
+      if V < 17 then V = V + 6
+    end if
+    put char TStar1 at K,V
+  next
+  BigWord(0, 2)
+  BigWord(1, 8)
+  print at 6,15, "COMPUTE!'S GAZETTE"
+  print at 9,16, "DECEMBER 1984"
+  print at 8,17, "BY TOMMY GRAHAM"
+  print at 8,20, "PRESS THE BUTTON"
+  if Hi > 0 then
+    print at 10,22, "BEST ", Hi
+  end if
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Tyf = 0
+  Tx = 30
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  inc Anim
+  ReadPad
+  ' a raider drifting down the right of the screen
+  Tyf = Tyf + 160
+  Ty = Tyf >> 8
+  if Ty > 150 then
+    Tyf = 0
+    Tx = Tx + 57
+    if Tx > 200 then Tx = Tx - 180
+  end if
+  Fi = (Anim >> 3) & 1
+  K = Fi * 4 + SFoe1
+  if Ty > 10 then
+    set sprite 2 to Ty,Tx,K,8
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "COSMIC COMBAT"
+  print at 2,5, "BASED ON COSMIC COMBAT BY"
+  print at 2,6, "TOMMY GRAHAM, COMPUTE!'S"
+  print at 2,7, "GAZETTE, DECEMBER 1984"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE AND VIC-20)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: ZIRCON DRIFT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+CcZap:
+    db $40,$2B,$30,$01,$40,$32,$30,$01,$40,$3A,$30,$01,$40,$44,$30,$01,$40,$4F,$40,$01,$40,$5B,$40,$01
+    db $40,$6A,$40,$01,$40,$7C,$40,$01,$40,$90,$50,$01,$40,$A7,$50,$01,$50
+CcPop:
+    db $00,$00,$15,$02,$00,$00,$25,$03,$00,$00,$46,$04,$00,$00,$66,$04,$10
+CcBoom:
+    db $00,$00,$06,$04,$00,$00,$17,$06,$00,$00,$37,$08,$00,$00,$57,$0A,$00,$00,$77,$0C,$10
+CcDie:
+    db $00,$00,$07,$06,$00,$00,$16,$08,$00,$00,$27,$0A,$00,$00,$37,$0C,$00,$00,$57,$0E,$00,$00,$77,$12
+    db $10
+CcWave:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$12,$50
+CcStart:
+    db $40,$53,$21,$05,$40,$FE,$20,$05,$40,$CA,$20,$05,$40,$AA,$20,$0E,$50
+CcOver:
+    db $40,$FE,$10,$0C,$40,$0E,$21,$0C,$40,$2E,$21,$0C,$40,$53,$21,$0C,$40,$FC,$31,$20,$50
+
+CcSoundTable:
+    dw CcTuneMel,$702B
+    dw CcTuneBass,$7035
+    dw CcZap,$7049
+    dw CcPop,$703F
+    dw CcBoom,$703F
+    dw CcDie,$703F
+    dw CcWave,$7049
+    dw CcStart,$7049
+    dw CcOver,$7049
+; Zircon Drift (original)
+; Tiny Sound, 8 frames per step
+CcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$1A,$21,$23,$01,$26,$01,$2A,$01,$01,$28,$01,$26,$01,$25
+    db $01,$23,$01,$01,$21,$01,$23,$01,$25,$01,$01,$01,$1E,$01,$01,$01
+    db $01,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$01,$25,$01,$23,$01,$21
+    db $01,$1E,$01,$01,$1C,$01,$1E,$01,$23,$01,$21,$01,$1E,$01,$23,$01
+    db $01,$01,$00,$01
+    db $FF
+CcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$17,$01,$0B,$01,$17,$01,$0B,$01,$17,$01
+    db $09,$01,$15,$01,$07,$01,$13,$01,$07,$01,$13,$01,$06,$01,$12,$01
+    db $06,$01,$12,$01,$04,$01,$10,$01,$04,$01,$10,$01,$07,$01,$13,$01
+    db $07,$01,$13,$01,$06,$01,$12,$01,$06,$01,$12,$01,$0B,$01,$01,$01
+    db $06,$01,$01,$01
+    db $FF
+}

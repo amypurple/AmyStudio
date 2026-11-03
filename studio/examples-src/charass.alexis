@@ -1,0 +1,963 @@
+cartridge "CHARACTER ASSASSINATION/COMPUTE!'S GAZETTE/1985"
+
+' CHARACTER ASSASSINATION
+' A ColecoVision game based on "Character Assassination", COMPUTE!'s
+' Gazette, June 1985 (Commodore 64 and VIC-20, BASIC; disk 1985-06). No
+' author is named in the listings or on the disk.
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a row of little characters stands on the street. One after
+' the other, from left to right, a letter or a digit falls on each of them.
+' Stop it before it lands: pick the card that shows it and press the
+' button. The sooner you stop it, the more it scores. A character that a
+' letter reaches is struck down for good and the sweep skips it; the
+' sweep goes round again and again until no character is left.
+'
+' From the original (orig/assassin.bas, C64, and orig/assassination.bas,
+' VIC-20): a row of characters at the bottom (40 on the C64, 22 on the
+' VIC); the sweep left to right over the characters still standing, round
+' and round until none is left (then GAME OVER); one falling character a
+' time, a digit 0-8 or a letter A-Z with even odds (the listing's RND*9+48
+' never gives 9); 21 steps of fall with a rising pitch; the score of a
+' stopped character is the steps left (C64: 38 at the top, 18 just before
+' landing); ONE try per character: the listing sets the keyboard buffer to
+' zero after any key (POKE 649,0), so a wrong key leaves the character
+' falling; speed 0-9 chosen at the start; the struck character flashes
+' and is gone.
+'
+' Liberties: the original is typed on the keyboard; the ColecoVision has
+' only the joystick here, so six cards under the street show the falling
+' character and five other different ones (same digit/letter odds), in a
+' new order for each drop; the stick moves a cursor over the cards
+' (left/right, held repeats every 8 frames) and the button picks one. A
+' wrong pick crosses that card out and, as in the original, the character
+' can no longer be stopped. 24 characters (columns 4-27) instead of 40/22.
+' The fall is smooth: 104 pixels at 6 + 2 x speed sixteenths of a pixel a
+' frame (4.6 s at speed 0 to 1.2 s at speed 9; the C64 BASIC took about
+' 2 to 1.3 s to type a key, the cards need the extra time); each new
+' round of the sweep falls 2 sixteenths faster (up to 24 more), or a
+' sharp player would play for ever; the score
+' counts the C64's 21 steps from the pixel position. A high score, a
+' CHARACTERS LEFT count, a burst for a stopped letter, tombstones for
+' struck characters, an original title tune.
+'
+' Controls: either controller. Stick left/right moves the cursor over the
+' cards, either button picks. On the title, up/down chooses, left/right
+' sets the speed, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table; the title tune
+' plays once. `set sprite count` always given. Nothing flashes.
+
+const TSky = 128
+const TStar = 129
+const TRule = 130
+const TGround = 131
+const THead0 = 132
+const TBody0 = 133
+const THead1 = 134
+const TBody1 = 135
+const THead2 = 136
+const TBody2 = 137
+const THead3 = 138
+const TBody3 = 139
+const TGrave0 = 140
+const TGrave1 = 141
+const TCardl = 142
+const TCardr = 143
+const TCross = 144
+const SGa = 0
+const SGb = 4
+const SGc = 8
+const SGd = 12
+const SGe = 16
+const SGf = 20
+const SGg = 24
+const SGh = 28
+const SGi = 32
+const SGj = 36
+const SGk = 40
+const SGl = 44
+const SGm = 48
+const SGn = 52
+const SGo = 56
+const SGp = 60
+const SGq = 64
+const SGr = 68
+const SGs = 72
+const SGt = 76
+const SGu = 80
+const SGv = 84
+const SGw = 88
+const SGx = 92
+const SGy = 96
+const SGz = 100
+const SG0 = 104
+const SG1 = 108
+const SG2 = 112
+const SG3 = 116
+const SG4 = 120
+const SG5 = 124
+const SG6 = 128
+const SG7 = 132
+const SG8 = 136
+const SCursor = 140
+const SBurst1 = 144
+const SBurst2 = 148
+const SBlast1 = 152
+const SBlast2 = 156
+const NTiles8 = 136
+const SprBytes = 1280
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrop = 3
+const SndHit = 4
+const SndBlast = 5
+const SndWrong = 6
+const SndTick = 7
+const SndStart = 8
+const SndOver = 9
+const NCol = 24
+const Col0 = 4
+const ManR = 18
+const CardR = 21
+const NCard = 6
+const FallMax = 1664
+const FallY0 = 24
+const GapN = 30
+const BurstN = 24
+const BlastN = 40
+const RepN = 8
+const NSpr = 3
+const LapMax = 24
+
+record Drop:
+  u8 Col
+  u8 Ch
+  u16 Fy
+  u8 Lock
+  u8 Pos
+end record
+
+' colours of the falling characters (A-Z, 0-8)
+data LetCol bytes
+  11, 3, 7, 9, 15, 13, 11, 3, 7, 9, 15, 13, 11
+  3, 7, 9, 15, 13, 11, 3, 7, 9, 15, 13, 11, 3
+  15, 11, 3, 7, 9, 13, 15, 11, 3
+end data
+
+Drop Dr
+u8 Alive[24]
+u8 Look[24]
+u8 Cand[6]
+u8 Used[6]
+bcd digits 6 Sc
+bcd digits 6 Hi
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Spd = 4
+u8 Lap = 0
+u8 Ph = 0
+u8 T = 0
+u8 Cur = 0
+u8 Rep = 0
+u8 Left = 0
+u8 Over = 0
+u8 Pts = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ki = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table CaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  if Sc > Hi then
+    Hi = Sc
+    print at 8,12, " NEW HIGH SCORE "
+    print at 8,13, "                "
+  end if
+  ShowHud
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveCursor
+  select case Ph
+  case 0
+    dec T
+    if T = 0 then NextDrop
+  case 1
+    if Press = 1 then
+      if Dr.Lock = 0 then Pick
+    end if
+    if Ph = 1 then Fall
+  case 2 to 3
+    dec T
+    if T = 0 then
+      Ph = 0
+      T = GapN
+      ClearCards
+      if Left = 0 then Over = 1
+    end if
+  end select
+  return
+end sub
+
+' the cursor: left/right, held repeats every RepN frames
+sub MoveCursor:
+  V = J1 | J2
+  V = V & 12
+  if V = 0 then
+    Rep = 0
+    return
+  end if
+  if Rep = 0 then
+    if V = 4 then
+      if Cur > 0 then dec Cur
+    end if
+    if V = 8 then
+      if Cur < NCard - 1 then inc Cur
+    end if
+  end if
+  inc Rep
+  if Rep >= RepN then Rep = 0
+  return
+end sub
+
+' a pick: the right card stops the character; a wrong one crosses the card
+' out and the character keeps falling (one try, as in the original)
+sub Pick:
+  if Cand[Cur] = Dr.Ch then
+    Pts = StepsLeft(Dr.Fy)
+    Sc += Pts
+    ShowScore
+    Ph = 2
+    T = BurstN
+    play sound SndHit
+  else
+    Dr.Lock = 1
+    Used[Cur] = 1
+    X = Cur << 2
+    X = X + 5
+    put char TCross at X,CardR
+    play sound SndWrong
+  end if
+  return
+end sub
+
+' the C64's score: 38 at the top, one less for each of its 21 steps
+function StepsLeft(u16 F) as u8
+  u16 St = 0
+  u8 P = 0
+  St = F / 80
+  P = St
+  P = 38 - P
+  return P
+
+sub Fall:
+  V = 6 + Spd + Spd
+  V = V + Lap
+  W16 = V
+  Dr.Fy = Dr.Fy + W16
+  if Dr.Fy >= FallMax then
+    Dr.Fy = FallMax
+    Ph = 3
+    T = BlastN
+    Alive[Dr.Col] = 0
+    dec Left
+    DrawMan(Dr.Col)
+    ShowLeft
+    play sound SndBlast
+  end if
+  return
+end sub
+
+' the next character still standing (the sweep goes round), its falling
+' letter and the six cards
+sub NextDrop:
+  u8 Tries = 0
+  Got = 0
+  for Tries = 1 to NCol
+    if Got = 0 then
+      inc Dr.Col
+      if Dr.Col >= NCol then
+        Dr.Col = 0
+        if Lap < LapMax then Lap = Lap + 2
+      end if
+      if Alive[Dr.Col] = 1 then Got = 1
+    end if
+  next
+  if Got = 0 then
+    Over = 1
+  else
+    Dr.Ch = MakeCh
+    Rand
+    V = Rs & 255
+    Dr.Pos = V % 6
+    MakeCards
+    Dr.Fy = 0
+    Dr.Lock = 0
+    Ph = 1
+    DrawCards
+    play sound SndDrop
+  end if
+  return
+end sub
+
+' a falling character: a digit 0-8 or a letter A-Z, even odds
+function MakeCh as u8
+  u8 Lo = 0
+  u8 Hb = 0
+  u8 R8 = 0
+  Rand
+  Lo = Rs & 255
+  W16 = Rs >> 8
+  Hb = W16
+  if Lo < 128 then
+    R8 = Hb % 9
+    R8 = R8 + 26
+  else
+    R8 = Hb % 26
+  end if
+  return R8
+
+' 1 when C is the falling character or one of the first N cards
+function Clash(u8 C, u8 N) as u8
+  u8 R8 = 0
+  u8 Q = 0
+  if C = Dr.Ch then R8 = 1
+  if N > 0 then
+    for Q = 0 to N - 1
+      if Cand[Q] = C then R8 = 1
+    next
+  end if
+  return R8
+
+sub MakeCards:
+  u8 Nc = 0
+  for Ki = 0 to NCard - 1
+    Used[Ki] = 0
+    if Ki = Dr.Pos then
+      Cand[Ki] = Dr.Ch
+    else
+      Nc = MakeCh
+      while Clash(Nc, Ki) = 1
+        Nc = MakeCh
+      end while
+      Cand[Ki] = Nc
+    end if
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+function ChAscii(u8 Cc) as u8
+  u8 A = 0
+  select case Cc
+  case 0 to 25
+    A = Cc + 65
+  case else
+    A = Cc + 22
+  end select
+  return A
+
+sub DrawCards:
+  for Ki = 0 to NCard - 1
+    X = Ki << 2
+    X = X + 5
+    J = X - 1
+    put char TCardl at J,CardR
+    C = ChAscii(Cand[Ki])
+    put char C at X,CardR
+    J = X + 1
+    put char TCardr at J,CardR
+  next
+  return
+end sub
+
+sub ClearCards:
+  for Ki = 0 to NCard - 1
+    X = Ki << 2
+    X = X + 5
+    put char 32 at X,CardR
+  next
+  return
+end sub
+
+' character I standing (head and body) or struck (a tombstone)
+sub DrawMan(u8 I)
+  u8 Cx = 0
+  u8 Th = 0
+  Cx = I + Col0
+  if Alive[I] = 1 then
+    Th = Look[I] + THead0
+    put char Th at Cx,ManR
+    Th = Look[I] + TBody0
+    put char Th at Cx,ManR + 1
+  else
+    put char TGrave0 at Cx,ManR
+    put char TGrave1 at Cx,ManR + 1
+  end if
+  return
+end sub
+
+' sprite 0 the cursor, 1 the falling character, 2 a burst or a blast
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    X = Cur << 5
+    X = X + 36
+    C = 15
+    if Ph <> 1 then C = 14
+    if Dr.Lock = 1 then C = 14
+    set sprite 0 to 163,X,SCursor,C
+  end if
+  X = Dr.Col + Col0
+  X = X << 3
+  X = X - 4
+  W16 = Dr.Fy >> 4
+  Y = W16 + FallY0
+  Y = Y - 1
+  select case Ph
+  case 1
+    K = Dr.Ch << 2
+    C = LetCol[Dr.Ch]
+    set sprite 1 to Y,X,K,C
+    set sprite 2 to 192,0,0,0
+  case 2
+    set sprite 1 to 192,0,0,0
+    K = SBurst2
+    if T > 12 then K = SBurst1
+    set sprite 2 to Y,X,K,11
+  case 3
+    set sprite 1 to 192,0,0,0
+    K = SBlast2
+    C = 9
+    if T > 30 then
+      K = SBlast1
+      C = 11
+    end if
+    set sprite 2 to 139,X,K,C
+  case else
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+  end select
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 15,1, "HI"
+  print at 18,1, Hi
+  print at 25,1, "SP"
+  NumU = Spd
+  print at 28,1, digits$(NumU, 1)
+  ShowScore
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Sc
+  return
+end sub
+
+sub ShowLeft:
+  print at 5,22, "CHARACTERS LEFT"
+  NumU = Left
+  print at 21,22, digits$(NumU, 2)
+  return
+end sub
+
+' the street: sky with a few stars, the rule, the characters, the pavement
+sub DrawField:
+  fill TRule count 32 at 0,2
+  for Ri = 3 to ManR - 1
+    fill TSky count 32 at 0,Ri
+    V = Ri * 7
+    V = V % 11
+    X = V + 3
+    put char TStar at X,Ri
+    X = X + 13
+    put char TStar at X,Ri
+  next
+  for Ci = 0 to NCol - 1
+    DrawMan(Ci)
+  next
+  fill TGround count 32 at 0,ManR + 2
+  return
+end sub
+
+sub SetMen:
+  for Ci = 0 to NCol - 1
+    Alive[Ci] = 1
+    V = Ci * 3
+    J = Ci >> 2
+    V = V + J
+    Look[Ci] = V & 3
+  next
+  Left = NCol
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  SetMen
+  NewScreen
+  DrawField
+  ShowHud
+  ShowLeft
+  Dr.Col = NCol - 1
+  Lap = 0
+  Dr.Fy = 0
+  Dr.Lock = 0
+  Cur = 2
+  Rep = 0
+  Ph = 0
+  T = 60
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the street, the tune once, START GAME / SPEED / CREDITS
+sub TitlePage:
+  SetMen
+  NewScreen
+  DrawField
+  print at 10,5, "CHARACTER"
+  print at 8,6, "ASSASSINATION"
+  print at 2,8, "COMPUTE!'S GAZETTE JUNE 1985"
+  print at 9,11, "START GAME"
+  print at 9,12, "SPEED"
+  print at 9,13, "CREDITS"
+  print at 3,15, "STOP EACH FALLING LETTER:"
+  print at 3,16, "PICK ITS CARD, PRESS FIRE"
+  print at 2,1, "HI"
+  print at 5,1, Hi
+  ShowMenu
+  TitleOn = 1
+  Ph = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 530
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  DrawSprites
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      select case V
+      case 1
+        if Menu > 0 then dec Menu
+      case 2
+        if Menu < 2 then inc Menu
+      case 4
+        if Menu = 1 then
+          if Spd > 0 then dec Spd
+        end if
+      case 8
+        if Menu = 1 then
+          if Spd < 9 then inc Spd
+        end if
+      end select
+      ShowMenu
+      play sound SndTick
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 11 to 13
+    put char 32 at 7,Ri
+  next
+  J = Menu + 11
+  put char 62 at 7,J
+  print at 16,12, "< "
+  NumU = Spd
+  print at 18,12, digits$(NumU, 1)
+  print at 19,12, " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 4,2, "CHARACTER ASSASSINATION"
+  print at 2,5, "BASED ON THE TYPE-IN GAME"
+  print at 2,6, "CHARACTER ASSASSINATION,"
+  print at 2,7, "COMPUTE!'S GAZETTE, JUNE"
+  print at 2,8, "1985 (COMMODORE 64 AND"
+  print at 2,9, "VIC-20). NO AUTHOR NAMED."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: DROPPED LETTERS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$42,$00,$00,$00,$00
+  $00,$C3,$81,$C3,$28,$C3,$18,$C3
+  $81,$00,$81,$81,$C3,$24,$24,$99
+  $00,$C3,$81,$C3,$28,$C3,$18,$C3
+  $81,$00,$81,$81,$C3,$24,$24,$99
+  $00,$C3,$81,$C3,$28,$C3,$18,$C3
+  $81,$00,$81,$81,$C3,$24,$24,$99
+  $00,$C3,$81,$C3,$28,$C3,$18,$C3
+  $81,$00,$81,$81,$C3,$24,$24,$99
+  $00,$00,$18,$C3,$4A,$81,$A5,$81
+  $42,$81,$81,$81,$00,$49,$00,$00
+  $00,$07,$08,$08,$08,$08,$07,$00
+  $00,$E0,$10,$10,$10,$10,$E0,$00
+  $00,$42,$24,$18,$18,$24,$42,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$01,$01,$04,$05,$04,$01,$01
+  $0E,$0F,$0E,$1E,$0E,$04,$01,$01
+  $01,$1A,$1A,$19,$91,$19,$91,$18
+  $18,$08,$98,$18,$1E,$E1,$E1,$1A
+  $01,$16,$16,$19,$91,$19,$91,$17
+  $17,$07,$97,$17,$1E,$E1,$E1,$1A
+  $01,$1E,$1E,$19,$91,$19,$91,$12
+  $12,$02,$92,$12,$1E,$E1,$E1,$1A
+  $01,$1B,$1B,$19,$91,$19,$91,$1D
+  $1D,$0D,$9D,$1D,$1E,$E1,$E1,$1A
+  $01,$01,$E1,$1E,$E1,$1E,$1E,$1E
+  $E1,$1E,$1E,$1E,$0C,$2C,$01,$01
+  $01,$51,$51,$51,$51,$51,$51,$01
+  $01,$51,$51,$51,$51,$51,$51,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+end data
+data SpritePat bytes
+  $00,$07,$07,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$F8,$F8,$18,$18,$18,$18,$18,$18,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$00,$00,$00,$00,$00,$00,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$80,$80,$60,$60,$18,$18,$18,$18,$18,$18,$60,$60,$80,$80,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$19,$19,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$00,$00,$F8,$F8,$18,$18,$18,$18,$F8,$F8,$00
+  $00,$18,$18,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$F8,$F8,$18,$18,$18,$18,$18,$18,$00
+  $00,$07,$07,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$07,$07,$00
+  $00,$E0,$E0,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$E0,$E0,$00
+  $00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$18,$18,$07,$07,$00
+  $00,$F8,$F8,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$80,$80,$00
+  $00,$18,$18,$18,$18,$19,$19,$1E,$1E,$19,$19,$18,$18,$18,$18,$00
+  $00,$18,$18,$60,$60,$80,$80,$00,$00,$80,$80,$60,$60,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$1F,$1F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$18,$18,$1E,$1E,$19,$19,$19,$19,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$78,$78,$98,$98,$98,$98,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$1E,$1E,$19,$19,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$98,$98,$78,$78,$18,$18,$18,$18,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$18,$18,$19,$19,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$18,$18,$98,$98,$60,$60,$98,$98,$00
+  $00,$1F,$1F,$18,$18,$18,$18,$1F,$1F,$19,$19,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$80,$80,$60,$60,$18,$18,$00
+  $00,$07,$07,$18,$18,$18,$18,$07,$07,$00,$00,$00,$00,$1F,$1F,$00
+  $00,$F8,$F8,$00,$00,$00,$00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$F8,$F8,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$07,$07,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$06,$06,$01,$01,$00
+  $00,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$60,$60,$80,$80,$00
+  $00,$18,$18,$18,$18,$18,$18,$19,$19,$19,$19,$1E,$1E,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$98,$98,$98,$98,$78,$78,$18,$18,$00
+  $00,$18,$18,$18,$18,$06,$06,$01,$01,$06,$06,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$60,$60,$80,$80,$60,$60,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$06,$06,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$18,$18,$18,$18,$60,$60,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$1F,$1F,$00,$00,$00,$00,$01,$01,$06,$06,$18,$18,$1F,$1F,$00
+  $00,$F8,$F8,$18,$18,$60,$60,$80,$80,$00,$00,$00,$00,$F8,$F8,$00
+  $00,$07,$07,$18,$18,$18,$18,$19,$19,$1E,$1E,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$78,$78,$98,$98,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$01,$01,$07,$07,$01,$01,$01,$01,$01,$01,$01,$01,$07,$07,$00
+  $00,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$E0,$E0,$00
+  $00,$07,$07,$18,$18,$00,$00,$00,$00,$01,$01,$06,$06,$1F,$1F,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$60,$60,$80,$80,$00,$00,$F8,$F8,$00
+  $00,$1F,$1F,$00,$00,$01,$01,$00,$00,$00,$00,$18,$18,$07,$07,$00
+  $00,$F8,$F8,$60,$60,$80,$80,$60,$60,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$00,$00,$01,$01,$06,$06,$18,$18,$1F,$1F,$00,$00,$00,$00,$00
+  $00,$60,$60,$E0,$E0,$60,$60,$60,$60,$F8,$F8,$60,$60,$60,$60,$00
+  $00,$1F,$1F,$18,$18,$1F,$1F,$00,$00,$00,$00,$18,$18,$07,$07,$00
+  $00,$F8,$F8,$00,$00,$E0,$E0,$18,$18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$01,$01,$06,$06,$18,$18,$1F,$1F,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$00,$00,$00,$00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$1F,$1F,$00,$00,$00,$00,$01,$01,$06,$06,$06,$06,$06,$06,$00
+  $00,$F8,$F8,$18,$18,$60,$60,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$07,$07,$18,$18,$18,$18,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$18,$18,$18,$18,$E0,$E0,$00
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $00,$00,$00,$09,$05,$03,$1F,$03,$05,$09,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$40,$80,$F0,$80,$40,$20,$00,$00,$00,$00,$00,$00
+  $81,$41,$21,$10,$09,$00,$00,$F0,$00,$09,$10,$21,$41,$81,$00,$00
+  $01,$02,$04,$10,$20,$00,$00,$1F,$00,$20,$10,$04,$02,$01,$00,$00
+  $00,$00,$00,$00,$03,$0F,$1F,$3F,$3F,$1F,$0F,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F8,$FC,$FC,$F8,$F0,$C0,$00,$00,$00,$00
+  $21,$13,$8F,$5F,$3F,$7F,$FF,$FF,$FF,$FF,$7F,$3F,$5F,$8F,$13,$21
+  $84,$C8,$F1,$FA,$FC,$FE,$FF,$FF,$FF,$FF,$FE,$FC,$FA,$F1,$C8,$84
+end data
+
+asm {
+CaDrop:
+    db $40,$47,$50,$02,$40,$55,$60,$02,$50
+CaHit:
+    db $40,$6B,$10,$02,$40,$55,$10,$02,$40,$47,$20,$02,$40,$35,$20,$03,$40,$2A,$40,$06,$50
+CaBlast:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$56,$0E,$10
+CaWrong:
+    db $40,$FC,$21,$04,$40,$5D,$32,$08,$50
+CaTick:
+    db $40,$40,$60,$01,$50
+CaStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+CaOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+
+CaSoundTable:
+    dw CaTuneMel,$702B
+    dw CaTuneBass,$7035
+    dw CaDrop,$7049
+    dw CaHit,$7049
+    dw CaBlast,$703F
+    dw CaWrong,$7049
+    dw CaTick,$7049
+    dw CaStart,$7049
+    dw CaOver,$7049
+; Dropped Letters (original)
+; Tiny Sound, 8 frames per step
+CaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$1A,$01,$17,$01,$19,$01,$1A,$01
+    db $1C,$01,$1E,$01,$1F,$01,$1E,$01,$1C,$01,$1A,$01,$19,$01,$01,$01
+    db $16,$01,$17,$01,$1A,$01,$1E,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1C,$01,$1A,$01,$1C,$01,$1E,$01,$19,$01,$17,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+CaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$01,$01,$12,$01,$01,$01,$09,$01,$01,$01
+    db $10,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$06,$01,$01,$01
+    db $0D,$01,$01,$01,$0B,$01,$01,$01,$0E,$01,$01,$01,$10,$01,$01,$01
+    db $13,$01,$01,$01,$06,$01,$01,$01,$0A,$01,$01,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

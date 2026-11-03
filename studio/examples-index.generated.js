@@ -12105,5 +12105,164 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "charass",
+    "label": "Character Assassination (June 1985)",
+    "detail": "A COMPUTE!'s Gazette game from June 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Character Assassination",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chcatch",
+    "label": "Chicken Catcher (November 1985)",
+    "detail": "A COMPUTE!'s Gazette game from November 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Chicken Catcher",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chop1",
+    "label": "Chopper 1 (August 1986)",
+    "detail": "Mike Sedore's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Chopper 1",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "chpilot",
+    "label": "Chopper Pilot (October 1987)",
+    "detail": "Chris Boss's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Chopper Pilot",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "circuit",
+    "label": "Circuits (December 1989)",
+    "detail": "Eric Haines's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Circuits",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "collis",
+    "label": "Collision Course (February 1987)",
+    "detail": "A COMPUTE!'s Gazette game from February 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Collision Course",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ccombat",
+    "label": "Cosmic Combat (December 1984)",
+    "detail": "Tommy Graham's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Cosmic Combat",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mutant-breakout",
+    "label": "Mutant Breakout (2026)",
+    "detail": "Funknflow5200's original side-scrolling beat 'em up, built for ColecoVision with Amy Studio and Amy Toolbox.",
+    "projectName": "Mutant Breakout",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "beat-em-up",
+      "side-scrolling"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   }
 ];

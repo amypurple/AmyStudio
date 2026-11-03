@@ -37,17 +37,23 @@ memory "colecovision_legacy_sdcc"
 u8 Count = 3
 u8 Zero = 0
 u8 Large = 9
+u16 CountWord = 3
+u16 CountHuge = 256
 u8 ByteLeft = 0
 u8 ByteZero = 0
 u8 ByteLarge = 0
 i8 SignedByte = -128
 i8 ByteRight = 0
+u8 ByteWord = 0
+u8 ByteHuge = 0
 u16 WordLeft = 0
 u16 WordRight = 0
 ByteLeft = 1 << Count
 ByteZero = 1 << Zero
 ByteLarge = 1 << Large
 ByteRight = SignedByte >> Count
+ByteWord = 128 >> (CountWord & 7)
+ByteHuge = 128 >> CountHuge
 WordLeft = 1 << Count
 WordRight = $8000 >> Count
 loop forever
@@ -86,6 +92,8 @@ try {
       assert.equal(core.readRam(addressOf(shifted.asm, "ByteZero"), 1)[0], 1, `${profile}: zero shift`);
       assert.equal(core.readRam(addressOf(shifted.asm, "ByteLarge"), 1)[0], 0, `${profile}: saturated u8 shift`);
       assert.equal(core.readRam(addressOf(shifted.asm, "ByteRight"), 1)[0], 0xF0, `${profile}: signed u8 right shift`);
+      assert.equal(core.readRam(addressOf(shifted.asm, "ByteWord"), 1)[0], 16, `${profile}: u16 expression shift count`);
+      assert.equal(core.readRam(addressOf(shifted.asm, "ByteHuge"), 1)[0], 0, `${profile}: large u16 byte shift count`);
       assert.deepEqual([...core.readRam(addressOf(shifted.asm, "WordLeft"), 2)], [8, 0], `${profile}: u16 left shift`);
       assert.deepEqual([...core.readRam(addressOf(shifted.asm, "WordRight"), 2)], [0, 0x10], `${profile}: u16 right shift`);
     } finally {

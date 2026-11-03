@@ -50,7 +50,14 @@ const projects = [
   ["Cell-Runner", "cellrun", "Cell Runner", "John Krutch", "September 1986"],
   ["Charlemagnes-Sword", "charle", "Charlemagne's Sword", null, "May 1985"],
   ["Checkers", "gzchk", "Checkers", null, "February 1984"],
-  ["Chomper", "chomper", "Chomper", null, "January 1985"]
+  ["Chomper", "chomper", "Chomper", null, "January 1985"],
+  ["Character-Assassination", "charass", "Character Assassination", null, "June 1985"],
+  ["Chicken-Catcher", "chcatch", "Chicken Catcher", null, "November 1985"],
+  ["Chopper-1", "chop1", "Chopper 1", "Mike Sedore", "August 1986"],
+  ["Chopper-Pilot", "chpilot", "Chopper Pilot", "Chris Boss", "October 1987"],
+  ["Circuits", "circuit", "Circuits", "Eric Haines", "December 1989"],
+  ["Collision-Course", "collis", "Collision Course", null, "February 1987"],
+  ["Cosmic-Combat", "ccombat", "Cosmic Combat", "Tommy Graham", "December 1984"]
 ];
 
 const knownIds = new Set(index.map((entry) => entry.id));

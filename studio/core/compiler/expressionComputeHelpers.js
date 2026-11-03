@@ -123,6 +123,28 @@ export function createExpressionComputeHelpers({
     return null;
   }
 
+  function emitLoadUnsignedShiftCountIntoA(node, saturation) {
+    const computationType = resolveExpressionAstComputationType(node, "u16");
+    if (!computationType || isSignedDeclaredType(computationType.declaredType)) return null;
+    if (computationType.runtimeType === "int8") return emitLoadInt8AstIntoA(node);
+    if (computationType.runtimeType !== "int16") return null;
+    const loadWord = emitLoadInt16AstIntoHL(node, computationType.declaredType);
+    if (!loadWord) return null;
+    const lowByte = makeGeneratedLabel("ShiftCountLowByte");
+    const ready = makeGeneratedLabel("ShiftCountLoaded");
+    return [
+      ...loadWord,
+      "    ld a,h",
+      "    or a",
+      `    jr z,${lowByte}`,
+      `    ld a,${saturation}`,
+      `    jr ${ready}`,
+      `${lowByte}:`,
+      "    ld a,l",
+      `${ready}:`
+    ];
+  }
+
   function emitStoreComputedToScratch32(baseLabel, computed, signedExtend = isSignedDeclaredType(computed?.declaredType)) {
     if (!computed) return null;
     if (computed.runtimeType === "int8") {
@@ -761,11 +783,8 @@ export function createExpressionComputeHelpers({
           ? "add a,a"
           : (isSignedDeclaredType(declaredType) ? "sra a" : "srl a");
         if (shiftCount === null) {
-          const countDeclared = resolveDeclaredValueType(renderExpressionAst(node.right));
-          const countType = resolveValueType(renderExpressionAst(node.right))
-            || runtimeTypeForDeclaredType(countDeclared);
-          const loadCount = emitLoadInt8AstIntoA(node.right);
-          if (countType !== "int8" || isSignedDeclaredType(countDeclared) || !loadCount) return null;
+          const loadCount = emitLoadUnsignedShiftCountIntoA(node.right, 8);
+          if (!loadCount) return null;
           const countReady = makeGeneratedLabel("Shift8CountReady");
           const shiftLoop = makeGeneratedLabel("Shift8Loop");
           const done = makeGeneratedLabel("Shift8Done");

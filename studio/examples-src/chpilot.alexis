@@ -1,0 +1,2109 @@
+cartridge "CHOPPER PILOT/COMPUTE!'S GAZETTE/1987"
+
+' CHOPPER PILOT
+' A ColecoVision game based on "Chopper Pilot" by Chris Boss, COMPUTE!'s
+' Gazette disk of October 1987 (Commodore 64, compiled machine code started
+' by SYS 2420; the author's name is in the program: ",,, BY CHRIS BOSS ,,,").
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's, read from its
+' machine code (orig/dis.txt) and watched in a C64 emulator (orig/*.mjs);
+' the game is rebuilt for the ColecoVision: rolling country that scrolls
+' smoothly by half tiles, a 32 x 16 sprite helicopter, an instrument panel,
+' sound.
+'
+' The game: fly a helicopter low over country that streams past from the
+' left. The button is the throttle: hold it to speed up, let go to slow
+' down. Pull the stick back to climb, push it forward to dive (PILOT; the
+' title also offers ARCADE: up climbs). Each column of country you pass
+' scores by your clearance over the ground under the cabin: under 8 pixels
+' 5 points, under 16 4, under 24 2, under 36 1. On the flat stretches stand
+' flags, radio masts and trees, and birds fly over them: touch down on a
+' flag (clearance under 3) to take it, 100 points; brush it higher up and
+' it falls (no penalty). Hitting a mast, a tree or the birds, or passing a
+' column while you touch the ground, is an ERROR and costs 25 points (only
+' while the score is 256 or more, as on the C64). A level ends when you have
+' flown its miles (30.00 on level 1, 20.00 after), when its clock runs out
+' (180, 140, 150, 160, 170 seconds) or at 25 errors; then you go on only if
+' your score has reached the level's bonus mark (10000, 14000, 17000,
+' 20000 here; the C64 asked 18000, 25000, 31000, 36000). Level 5 is the
+' last. At 20 errors the sky turns yellow.
+'
+' From the original (orig/dis.txt): the land is a column of height 0-20
+' half rows; each new column keeps its height, rises or falls (one chance
+' in three each) by the level's step (1, 2, 3, 5, 7; a fall smaller than
+' the step goes down by 1), capped at 20; at height 0 it stays flat for 20
+' more columns, then rises. On a flat column: a flag 32 times in 256, a
+' mast 8, a tree 8, birds 16 (in the 6th or 9th of the 13 rows), else
+' nothing. Throttle 0-26 (shown as speed 0-104), changed by one every 8, 8,
+' 6, 4, 2 passes; altitude 0-83 pixels, one a pass. Measured in jsc64: at
+' full throttle the C64 passed about 25 columns and climbed about 25
+' pixels a second.
+'
+' Liberties: the bonus marks are 5/9 of the C64's (its 18000 on level 1
+' needed about 90% of the most a level can give: 3000 columns at 5 points
+' plus every flag; a human-paced bot made about 11000); the speed grows in a straight line with the throttle (26
+' columns a second at 104; the C64 moved one column every 27 - throttle
+' passes, so its middle speeds were much slower than shown); the throttle
+' steps every 18, 18, 13, 9, 4 frames, the climb is 1/2, 1/2, 1/2, 5/8, 3/4
+' pixel a frame (the C64's passes got faster on later levels); errors are
+' counted per column passed while touching the ground (as on the C64) and
+' once per mast, tree or birds hit (the C64 counted those only if the hit
+' fell on a column step); touches by boxes, not pixels; flags, masts,
+' trees and birds never stand on the first or last column of a flat
+' stretch nor side by side (so they scroll by half tiles); each level has
+' its own land colours (the C64 striped the flat columns in the level's two
+' colours); the sky colour is chosen on the title (the C64 let the stick
+' pick it on the level screen); the ARCADE stick option; sounds: a rotor
+' chop that quickens with the throttle (the C64 played an engine tone),
+' flag, crash and level jingles, a title tune; a title page and credits;
+' the end goes back to the title (the C64 asked AGAIN Y/N).
+'
+' Controls: joystick (either controller): stick back/forward climbs and
+' dives (PILOT) or up/down climbs and dives (ARCADE); a button is the
+' throttle. On the title, up and down choose, left and right change, a
+' button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TTr00 = 128
+const TTr01 = 129
+const TTr02 = 130
+const TTr03 = 131
+const TTr10 = 132
+const TTr11 = 133
+const TTr12 = 134
+const TTr13 = 135
+const TTr20 = 136
+const TTr21 = 137
+const TTr22 = 138
+const TTr23 = 139
+const TTr30 = 140
+const TTr31 = 141
+const TTr32 = 142
+const TTr33 = 143
+const TFlag = 144
+const TFlagR = 145
+const TFlagL = 146
+const TGot = 147
+const TGotR = 148
+const TGotL = 149
+const TStump = 150
+const TStumpR = 151
+const TStumpL = 152
+const TMast = 153
+const TMastR = 154
+const TMastL = 155
+const TTree = 156
+const TTreeR = 157
+const TTreeL = 158
+const TBirds = 159
+const TBirdsR = 160
+const TBirdsL = 161
+const TPnl = 162
+const TPnlt = 163
+const TTb = 164
+const TTred = 165
+const TGauge = 166
+const TGaugeh = 167
+const TGauge0 = 168
+const SBodyla = 0
+const SBodyra = 4
+const SBodylb = 8
+const SBodyrb = 12
+const SWin = 16
+const STaila = 20
+const STailb = 24
+const NTiles8 = 328
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndChop = 3
+const SndCrash = 4
+const SndFlag = 5
+const SndKnock = 6
+const SndBird = 7
+const SndStart = 8
+const SndDone = 9
+const SndOver = 10
+const SndTick = 11
+const NSpr = 4
+const NCol = 33
+const HX = 168
+const ThrMax = 26
+const AltMax = 83
+const StepAcc = 30
+const MaxErr = 25
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$BB,$00,$22
+  $0F,$0F,$0F,$0F,$F0,$B0,$00,$22
+  $0F,$0F,$0F,$0F,$F0,$B0,$00,$22
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$0B,$00,$22
+  $00,$BB,$00,$11,$00,$88,$00,$22
+  $F0,$B0,$00,$11,$00,$88,$00,$22
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$0B,$00,$22
+  $0F,$0B,$00,$11,$00,$88,$00,$22
+  $00,$44,$00,$11,$00,$88,$00,$22
+  $E1,$E1,$E1,$10,$10,$10,$10,$38
+  $E0,$E0,$E0,$00,$00,$00,$00,$80
+  $01,$01,$01,$01,$01,$01,$01,$03
+  $87,$87,$87,$08,$08,$08,$08,$1C
+  $80,$80,$80,$80,$80,$80,$80,$C0
+  $07,$07,$07,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$38,$2C,$81
+  $00,$00,$00,$00,$00,$80,$C0,$E0
+  $00,$00,$00,$00,$00,$03,$02,$07
+  $18,$18,$81,$18,$C3,$18,$24,$99
+  $80,$80,$E0,$80,$C0,$80,$40,$60
+  $01,$01,$07,$01,$03,$01,$02,$06
+  $C3,$81,$00,$00,$81,$18,$18,$C3
+  $C0,$E0,$F0,$F0,$E0,$80,$80,$C0
+  $03,$07,$F0,$F0,$07,$01,$01,$03
+  $90,$60,$00,$00,$09,$06,$00,$00
+  $00,$00,$00,$00,$90,$60,$00,$00
+  $09,$06,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $00,$00,$01,$01,$01,$01,$00,$00
+  $00,$00,$01,$01,$01,$01,$00,$00
+  $00,$00,$01,$00,$00,$01,$00,$00
+end data
+data TileCol bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$20,$20,$20
+  $30,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $00,$00,$00,$00,$30,$20,$20,$20
+  $00,$00,$00,$00,$33,$32,$22,$C2
+  $30,$20,$20,$20,$32,$32,$22,$C2
+  $20,$20,$20,$20,$32,$32,$22,$C2
+  $30,$20,$20,$20,$20,$20,$20,$20
+  $30,$20,$20,$20,$32,$32,$22,$C2
+  $33,$32,$22,$C2,$22,$C2,$22,$C2
+  $32,$32,$22,$C2,$22,$C2,$22,$C2
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$32,$32,$22,$C2
+  $32,$32,$22,$C2,$22,$C2,$22,$C2
+  $22,$C2,$22,$C2,$22,$C2,$22,$C2
+  $08,$08,$08,$10,$10,$10,$10,$10
+  $80,$80,$80,$00,$00,$00,$00,$10
+  $80,$80,$80,$10,$10,$10,$10,$10
+  $04,$04,$04,$10,$10,$10,$10,$10
+  $40,$40,$40,$10,$10,$10,$10,$10
+  $40,$40,$40,$00,$00,$00,$00,$10
+  $00,$00,$00,$00,$00,$60,$60,$06
+  $00,$00,$00,$00,$00,$60,$60,$60
+  $00,$00,$00,$00,$00,$60,$60,$60
+  $80,$10,$01,$10,$01,$10,$10,$01
+  $80,$10,$10,$10,$10,$10,$10,$10
+  $80,$10,$10,$10,$10,$10,$10,$10
+  $0C,$0C,$0C,$0C,$0C,$60,$60,$06
+  $C0,$C0,$C0,$C0,$C0,$60,$60,$60
+  $C0,$C0,$0C,$0C,$C0,$60,$60,$60
+  $10,$10,$00,$00,$10,$10,$00,$00
+  $00,$00,$00,$00,$10,$10,$00,$00
+  $10,$10,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $14,$15,$15,$14,$14,$14,$01,$01
+  $18,$19,$19,$18,$18,$18,$01,$01
+  $01,$01,$13,$13,$13,$13,$01,$01
+  $01,$01,$1B,$1B,$1B,$1B,$01,$01
+  $01,$01,$1E,$01,$01,$1E,$01,$01
+end data
+data SpritePat bytes
+  $3F,$00,$00,$00,$02,$08,$10,$1F,$0F,$07,$03,$01,$00,$00,$00,$0F
+  $FF,$03,$1F,$FF,$1F,$1F,$1F,$FF,$FF,$FF,$FF,$FE,$84,$84,$84,$FF
+  $FF,$00,$C0,$F8,$FE,$FF,$FF,$FF,$FF,$80,$00,$00,$00,$00,$00,$E0
+  $FC,$00,$00,$00,$00,$C1,$FF,$FF,$FC,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$08,$10,$1F,$0F,$07,$03,$01,$00,$00,$00,$0F
+  $FF,$03,$1F,$FF,$1F,$1F,$1F,$FF,$FF,$FF,$FF,$FE,$84,$84,$84,$FF
+  $FF,$00,$C0,$F8,$FE,$FF,$FF,$FF,$FF,$80,$00,$00,$00,$00,$00,$E0
+  $00,$00,$00,$00,$00,$C1,$FF,$FF,$FC,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$00,$0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$20,$F8,$20,$20,$FC,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$00,$0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$50,$20,$50,$00,$FC,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' terrain colours, 16 tiles x 8 bytes for each of the 5 levels
+data TerrCols bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$20,$20,$20,$30,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $00,$00,$00,$00,$30,$20,$20,$20,$00,$00,$00,$00,$33,$32,$22,$C2,$30,$20,$20,$20,$32,$32,$22,$C2,$20,$20,$20,$20,$32,$32,$22,$C2
+  $30,$20,$20,$20,$20,$20,$20,$20,$30,$20,$20,$20,$32,$32,$22,$C2,$33,$32,$22,$C2,$22,$C2,$22,$C2,$32,$32,$22,$C2,$22,$C2,$22,$C2
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$32,$32,$22,$C2,$32,$32,$22,$C2,$22,$C2,$22,$C2,$22,$C2,$22,$C2,$22,$C2,$22,$C2
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$40,$40,$40,$30,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$30,$40,$40,$40,$00,$00,$00,$00,$33,$34,$44,$54,$30,$40,$40,$40,$34,$34,$44,$54,$40,$40,$40,$40,$34,$34,$44,$54
+  $30,$40,$40,$40,$40,$40,$40,$40,$30,$40,$40,$40,$34,$34,$44,$54,$33,$34,$44,$54,$44,$54,$44,$54,$34,$34,$44,$54,$44,$54,$44,$54
+  $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$34,$34,$44,$54,$34,$34,$44,$54,$44,$54,$44,$54,$44,$54,$44,$54,$44,$54,$44,$54
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$B0,$A0,$A0,$A0,$B0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $00,$00,$00,$00,$B0,$A0,$A0,$A0,$00,$00,$00,$00,$BB,$BA,$AA,$6A,$B0,$A0,$A0,$A0,$BA,$BA,$AA,$6A,$A0,$A0,$A0,$A0,$BA,$BA,$AA,$6A
+  $B0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$B0,$A0,$A0,$A0,$BA,$BA,$AA,$6A,$BB,$BA,$AA,$6A,$AA,$6A,$AA,$6A,$BA,$BA,$AA,$6A,$AA,$6A,$AA,$6A
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$BA,$BA,$AA,$6A,$BA,$BA,$AA,$6A,$AA,$6A,$AA,$6A,$AA,$6A,$AA,$6A,$AA,$6A,$AA,$6A
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$90,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$90,$80,$80,$80,$00,$00,$00,$00,$99,$98,$88,$68,$90,$80,$80,$80,$98,$98,$88,$68,$80,$80,$80,$80,$98,$98,$88,$68
+  $90,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$98,$98,$88,$68,$99,$98,$88,$68,$88,$68,$88,$68,$98,$98,$88,$68,$88,$68,$88,$68
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$98,$98,$88,$68,$98,$98,$88,$68,$88,$68,$88,$68,$88,$68,$88,$68,$88,$68,$88,$68
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$D0,$D0,$D0,$F0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $00,$00,$00,$00,$F0,$D0,$D0,$D0,$00,$00,$00,$00,$FF,$FD,$DD,$4D,$F0,$D0,$D0,$D0,$FD,$FD,$DD,$4D,$D0,$D0,$D0,$D0,$FD,$FD,$DD,$4D
+  $F0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$F0,$D0,$D0,$D0,$FD,$FD,$DD,$4D,$FF,$FD,$DD,$4D,$DD,$4D,$DD,$4D,$FD,$FD,$DD,$4D,$DD,$4D,$DD,$4D
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0,$FD,$FD,$DD,$4D,$FD,$FD,$DD,$4D,$DD,$4D,$DD,$4D,$DD,$4D,$DD,$4D,$DD,$4D,$DD,$4D
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$A4,$A4,$A4,$20,$A4,$20,$A4,$20,$A4,$A4,$A4,$20,$A4,$A4,$A4,$20,$A4,$A4,$A4,$20,$A4,$A4,$A4,$20,$A4,$A4,$20,$20,$20
+  $20,$20,$20,$A4,$20,$20,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$20,$20,$A4,$20,$A4,$20,$20
+  $20,$20,$20,$A4,$20,$20,$20,$A4,$A4,$A4,$20,$A4,$20,$A4,$20,$A4,$A4,$A4,$20,$A4,$A4,$A4,$20,$A4,$A4,$20,$20,$A4,$A4,$20,$20,$20
+  $20,$20,$20,$A4,$20,$20,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$A4,$20,$20,$20,$A4,$20,$20,$20,$A4,$20,$20,$20,$A4,$20,$A4,$20,$20
+  $20,$20,$20,$A4,$A4,$A4,$20,$A4,$20,$A4,$20,$A4,$A4,$A4,$20,$A4,$20,$20,$20,$A4,$20,$20,$20,$A4,$A4,$A4,$20,$A4,$20,$A4,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A5,$A5,$A5,$20,$A5,$A5,$A5,$20,$A5,$20,$20,$20,$A5,$A5,$A5,$20,$A5,$A5,$A5,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A5,$20,$A5,$20,$20,$A5,$20,$20,$A5,$20,$20,$20,$A5,$20,$A5,$20,$20,$A5,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A5,$A5,$A5,$20,$20,$A5,$20,$20,$A5,$20,$20,$20,$A5,$20,$A5,$20,$20,$A5,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A5,$20,$20,$20,$20,$A5,$20,$20,$A5,$20,$20,$20,$A5,$20,$A5,$20,$20,$A5,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$A5,$20,$20,$20,$A5,$A5,$A5,$20,$A5,$A5,$A5,$20,$A5,$A5,$A5,$20,$20,$A5,$20,$20,$20,$20,$20,$20,$20
+end data
+
+' the five levels
+data StepTab bytes
+  1, 2, 3, 5, 7
+end data
+data TimeTab bytes
+  180, 140, 150, 160, 170
+end data
+data ThrTab bytes
+  18, 18, 13, 9, 4
+end data
+data ClimbTab bytes
+  4, 4, 4, 5, 6
+end data
+data GoalTab words
+  3000, 2000, 2000, 2000, 2000
+end data
+data BonusTab words
+  10000, 14000, 17000, 20000, 0
+end data
+
+' a level's numbers, copied from the tables when it starts
+record Lev:
+  u8 Stp
+  u8 Secs
+  u8 ThrRate
+  u8 Climb
+  u16 Goal
+  u16 Bonus
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+Lev L
+' the land: N[0] the next column, N[1..32] the screen's columns 0-31
+u8 Hh[33]
+u8 Ob[33]
+u8 Phase = 0
+u8 Acc = 0
+u8 FlatCnt = 0
+u8 Redraw = 0
+' DrawField's row, the first row it drew last time, a scratch byte
+u8 DfRow = 0
+u8 DfLast = 0
+u8 DfTmp = 0
+u8 DfMask = 0
+u8 DfCnt = 0
+u8 DfList[16]
+' the helicopter and the game
+u16 AltF = 0
+u8 Alt = 0
+u8 Thr = 0
+u8 ThrCnt = 0
+u16 Score = 0
+u16 Miles = 0
+' the miles shown: two BCD halves (whole miles, hundredths)
+bcd digits 2 MiHi = 0
+bcd digits 2 MiLo = 0
+u8 Errs = 0
+u8 TimeS = 0
+u8 TFr = 0
+u8 Level = 1
+u8 LvEnd = 0
+u8 TerrHit = 0
+u8 HitLatch = 0
+u8 HitShow = 0
+u8 ColDone = 0
+u8 Flags = 0
+u8 Warned = 0
+u8 ChopT = 0
+u8 CrashT = 0
+u8 RotT = 0
+u8 HudG = 0
+u8 BodyA = 0
+u8 BodyB = 0
+u8 TailA = 0
+u8 TailB = 0
+u8 GaugeThr = 255
+' options
+u8 Sky = 0
+u8 Stick = 0
+u8 Menu = 0
+' input
+u8 Pj = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u16 Seed = 4321
+' loop counters (never shared with the helpers)
+u8 Hs = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u16 W16 = 0
+u16 NumU = 0
+
+  mode 2 screen
+  load default ascii
+  duplicate mode 2 patterns
+  set sound table CpSoundTable areas 9
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  Score = 0
+  Level = 1
+level_loop:
+  StartLevel
+
+play_loop:
+  Frame1
+  if Redraw = 1 then
+    call asm DrawField
+    Redraw = 0
+  end if
+  ReadPad
+  PlayStep
+  DrawHeli
+  HudG = Tick & 7
+  Hud
+  if LvEnd = 0 then goto play_loop
+
+  ' the level is over: on to the next one, or the end
+  EndLevel
+  if Level < 5 then
+    if Score >= L.Bonus then
+      inc Level
+      goto level_loop
+    end if
+  end if
+
+  ' the end: GAME OVER (or all five flown), then the title on a press
+  fill TTr00 count 28 at 2,2
+  fill TTr00 count 28 at 2,3
+  fill TTr00 count 28 at 2,4
+  if Level = 5 then
+    if LvEnd = 1 then
+      print at 3,4, " ALL FIVE LEVELS FLOWN! "
+    else
+      print at 3,4, "       GAME OVER        "
+    end if
+  else
+    print at 3,4, "       GAME OVER        "
+  end if
+  print at 3,5, "  FINAL SCORE           "
+  NumU = Score
+  print at 17,5, digits$(NumU, 5)
+  mute all
+  TzOn = 0
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of flight: throttle, climb, scroll, touches, the column's
+' points or error, the clock, the end tests
+sub PlayStep:
+  u8 Dn = 0
+  u8 Upw = 0
+  ' the throttle: the button speeds up, letting go slows down
+  inc ThrCnt
+  if ThrCnt >= L.ThrRate then
+    ThrCnt = 0
+    if Btn > 0 then
+      if Thr < ThrMax then inc Thr
+    else
+      if Thr > 0 then dec Thr
+    end if
+  end if
+  ' the stick: PILOT climbs on back (down), ARCADE on up
+  Upw = Pj & 1
+  Dn = Pj & 2
+  if Stick = 1 then
+    V = Upw
+    Upw = Dn
+    Dn = V
+  end if
+  if Dn > 0 then
+    AltF = AltF + L.Climb
+    if AltF > AltMax * 8 then AltF = AltMax * 8
+  end if
+  if Upw > 0 then
+    if AltF >= L.Climb then
+      AltF = AltF - L.Climb
+    else
+      AltF = 0
+    end if
+  end if
+  Alt = AltF >> 3
+  ' the land moves Thr / 30 half columns a frame
+  ColDone = 0
+  Acc = Acc + Thr
+  if Acc >= StepAcc then
+    Acc = Acc - StepAcc
+    HalfStep
+  end if
+  ' touches: the columns under the cabin and under the tail
+  BodyA = ColAt(HX + 1)
+  BodyB = BodyA + 2
+  TailA = BodyB
+  TailB = 25
+  TerrHit = GroundTouch
+  Objects
+  if TerrHit = 1 then HitShow = 8
+  ' a whole column passed: a mile tick, then an error or points
+  if ColDone = 1 then
+    inc Miles
+    MiLo += 1
+    if MiLo = 0 then MiHi += 1
+    V = TerrHit | HitLatch
+    if V > 0 then
+      inc Errs
+      if Score >= 256 then Score = Score - 25
+      HitLatch = 0
+      play sound SndCrash
+      CrashT = 20
+    else
+      V = ColAt(HX + 10)
+      K = Hh[V] * 4
+      if Alt >= K then
+        V = Alt - K
+        Score = Score + ClearPts(V)
+      end if
+    end if
+  end if
+  ' the clock
+  inc TFr
+  if TFr >= 60 then
+    TFr = 0
+    if TimeS > 0 then dec TimeS
+  end if
+  ' the end of the level
+  if Miles >= L.Goal then LvEnd = 1
+  if TimeS = 0 then LvEnd = 2
+  if Errs >= MaxErr then LvEnd = 3
+  if Errs >= 20 then
+    if Warned = 0 then
+      Warned = 1
+      backdrop light yellow
+    end if
+  end if
+  ' the rotor's chop, quicker with the throttle
+  if CrashT > 0 then dec CrashT
+  inc ChopT
+  V = Thr / 3
+  V = 13 - V
+  if ChopT >= V then
+    ChopT = 0
+    if CrashT = 0 then play sound SndChop
+  end if
+  if HitShow > 0 then dec HitShow
+  return
+end sub
+
+' half a column: the land's cells shift by 4 pixels; every second half
+' the columns move along and a new one comes in
+sub HalfStep:
+  if Phase = 0 then
+    Phase = 1
+  else
+    Phase = 0
+    call asm ShiftCols
+    NewColumn
+    ColDone = 1
+  end if
+  Redraw = 1
+  return
+end sub
+
+' the next column from the one before it (the C64's rules), with an
+' object on some flat columns
+sub NewColumn:
+  u8 H = 0
+  u8 Dir = 0
+  u8 R = 0
+  u8 Nob = 0
+  H = Hh[1]
+  if H = 0 then
+    inc FlatCnt
+    if FlatCnt > 20 then
+      FlatCnt = 0
+      Dir = 1
+    end if
+  else
+    Dir = Rnd3
+  end if
+  select case Dir
+    case 1
+      H = H + L.Stp
+      if H > 20 then H = 20
+    case 2
+      if H > L.Stp then
+        H = H - L.Stp
+      elseif H = L.Stp then
+        H = 0
+      else
+        dec H
+      end if
+  end select
+  Hh[0] = H
+  ' flag 32, mast 8, tree 8, birds 16 in 256 (not on a stretch's first or
+  ' last column, never next to another object)
+  if H = 0 then
+    if FlatCnt >= 1 then
+      if FlatCnt <= 19 then
+        if Ob[1] = 0 then
+          R = Rnd
+          select case R
+            case 0 to 31
+              Nob = 12 * 16 + 1
+            case 32 to 39
+              Nob = 12 * 16 + 4
+            case 40 to 47
+              Nob = 12 * 16 + 5
+            case 48 to 63
+              R = Rnd & 1
+              if R = 0 then
+                Nob = 5 * 16 + 6
+              else
+                Nob = 8 * 16 + 6
+              end if
+          end select
+        end if
+      end if
+    end if
+  end if
+  Ob[0] = Nob
+  return
+end sub
+
+' the land column under screen pixel Xs
+function ColAt(u8 Xs) as u8
+  u8 C = 0
+  C = Phase * 4
+  C = Xs - C
+  C = C >> 3
+  return C + 1
+
+' 1 when the helicopter touches the land: the cabin and skids over the
+' columns under them, the tail boom (7 pixels higher) over its own
+function GroundTouch as u8
+  u8 Res = 0
+  u8 Mh = 0
+  Mh = MaxH(BodyA, BodyB)
+  if Alt < Mh * 4 then Res = 1
+  Mh = MaxH(TailA, TailB)
+  Mh = Mh * 4
+  if Alt + 7 < Mh then Res = 1
+  return Res
+
+function MaxH(u8 A, u8 B) as u8
+  u8 M = 0
+  u8 I = 0
+  for I = A to B
+    if Hh[I] > M then M = Hh[I]
+  next
+  return M
+
+' points for a column passed: by the clearance under the cabin
+function ClearPts(u8 D) as u8
+  u8 P = 0
+  select case D
+    case 0 to 7
+      P = 5
+    case 8 to 15
+      P = 4
+    case 16 to 23
+      P = 2
+    case 24 to 35
+      P = 1
+  end select
+  return P
+
+' flags, masts and trees under the cabin; birds anywhere along the craft
+sub Objects:
+  u8 I = 0
+  u8 Ia = 0
+  u8 Ib = 0
+  u8 Ic = 0
+  u8 Ov = 0
+  u8 Rw = 0
+  u8 By = 0
+  u8 Sy = 0
+  Ia = BodyA
+  Ib = TailB
+  Ic = BodyB
+  Sy = 104 - Alt
+  for I = Ia to Ib
+    Ov = Ob[I]
+    if Ov > 0 then
+      Rw = Ov >> 4
+      if Rw = 12 then
+        if I <= Ic then GroundObj(I, Ov & 15)
+      else
+        By = Rw * 8 + 16
+        if Sy <= By + 7 then
+          if Sy + 15 >= By then
+            Ob[I] = 0
+            HitLatch = 1
+            HitShow = 12
+            Redraw = 1
+            play sound SndBird
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' a ground object under the cabin: take a flag (100), knock one over,
+' smash a mast or a tree (an error)
+sub GroundObj(u8 I, u8 Ty):
+  select case Ty
+    case 1
+      if Alt < 3 then
+        Ob[I] = 12 * 16 + 2
+        Score = Score + 100
+        inc Flags
+        AltF = AltF + 8
+        Redraw = 1
+        play sound SndFlag
+      elseif Alt < 8 then
+        Ob[I] = 12 * 16 + 3
+        Redraw = 1
+        play sound SndKnock
+      end if
+    case 4, 5
+      if Alt < 8 then
+        Ob[I] = 12 * 16 + 3
+        HitLatch = 1
+        HitShow = 12
+        Redraw = 1
+        play sound SndKnock
+      end if
+  end select
+  return
+end sub
+
+' a 16-bit xorshift; Rnd3 is 0, 1 or 2 (the C64 drew 0-3 and drew again
+' on 3)
+function Rnd as u8
+  u8 R = 0
+  Seed = Seed xor (Seed << 7)
+  Seed = Seed xor (Seed >> 9)
+  Seed = Seed xor (Seed << 8)
+  R = Seed & 255
+  return R
+
+function Rnd3 as u8
+  u8 R = 3
+  while R = 3
+    R = Rnd & 3
+  end while
+  return R
+
+' ---------------------------------------------------------------------------
+' a level: its numbers, the flat land, the screen, LEVEL n and the bonus
+' mark, then the button
+sub StartLevel:
+  u8 Li = 0
+  Li = Level - 1
+  L.Stp = StepTab[Li]
+  L.Secs = TimeTab[Li]
+  L.ThrRate = ThrTab[Li]
+  L.Climb = ClimbTab[Li]
+  L.Goal = GoalTab[Li]
+  L.Bonus = BonusTab[Li]
+  fill array Hh with 0
+  fill array Ob with 0
+  Phase = 0
+  Acc = 0
+  FlatCnt = 0
+  AltF = 0
+  Alt = 0
+  Thr = 0
+  ThrCnt = 0
+  Miles = 0
+  MiHi = 0
+  MiLo = 0
+  Errs = 0
+  TimeS = L.Secs
+  TFr = 0
+  LvEnd = 0
+  TerrHit = 0
+  HitLatch = 0
+  HitShow = 0
+  Warned = 0
+  Flags = 0
+  GameScreen
+  DfLast = 0
+  call asm DrawField
+  DrawHeli
+  HudAll
+  print at 12,2, "LEVEL "
+  NumU = Level
+  print at 18,2, digits$(NumU, 1)
+  if Level < 5 then
+    print at 6,3, "BONUS MARK "
+    NumU = L.Bonus
+    print at 17,3, digits$(NumU, 5)
+  else
+    print at 9,3, "THE LAST LEVEL"
+  end if
+  print at 8,4, "PRESS THE BUTTON"
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WaitPress
+  fill TTr00 count 28 at 2,2
+  fill TTr00 count 28 at 2,3
+  fill TTr00 count 28 at 2,4
+  WasBtn = 1
+  Redraw = 1
+  return
+end sub
+
+' the level's end: why, the score against the bonus mark
+sub EndLevel:
+  mute all
+  Thr = 0
+  DrawHeli
+  for Hs = 0 to 5
+    HudG = Hs
+    Hud
+  next
+  select case LvEnd
+    case 1
+      print at 9,2, "LEVEL   FLOWN!"
+      NumU = Level
+      print at 15,2, digits$(NumU, 1)
+    case 2
+      print at 10,2, "TIME IS UP!"
+    case else
+      print at 8,2, "25 ERRORS: GROUNDED"
+  end select
+  print at 5,3, "SCORE        FLAGS    "
+  NumU = Score
+  print at 11,3, digits$(NumU, 5)
+  NumU = Flags
+  print at 24,3, digits$(NumU, 3)
+  if Level < 5 then
+    if Score >= L.Bonus then
+      print at 9,4, "ON TO LEVEL "
+      NumU = Level + 1
+      print at 21,4, digits$(NumU, 1)
+      play sound SndDone
+    else
+      print at 5,4, "SHORT OF THE BONUS MARK"
+    end if
+  else
+    if LvEnd = 1 then play sound SndDone
+  end if
+  for Hs = 1 to 150
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the helicopter: window, tail rotor, two body halves (red after a hit)
+sub DrawHeli:
+  u8 Y = 0
+  u8 Fr = 0
+  u8 Col = 4
+  V = Thr >> 3
+  RotT = RotT + 1 + V
+  Fr = RotT >> 3
+  Fr = Fr & 1
+  Y = 103 - Alt
+  if HitShow > 0 then Col = 8
+  set sprite 0 to Y,HX,SWin,11
+  if Fr = 0 then
+    set sprite 1 to Y,HX + 16,STaila,9
+    set sprite 2 to Y,HX,SBodyla,Col
+    set sprite 3 to Y,HX + 16,SBodyra,Col
+  else
+    set sprite 1 to Y,HX + 16,STailb,9
+    set sprite 2 to Y,HX,SBodylb,Col
+    set sprite 3 to Y,HX + 16,SBodyrb,Col
+  end if
+  update sprites
+  return
+end sub
+
+' the panel: one group of figures a frame
+sub Hud:
+  V = HudG
+  select case V
+    case 0
+      NumU = Score
+      print at 8,16, digits$(NumU, 5)
+    case 1
+      NumU = Errs
+      print at 9,18, digits$(NumU, 2)
+    case 2
+      NumU = Thr * 4
+      print at 25,18, digits$(NumU, 3)
+    case 3
+      ShowMiles
+    case 4
+      NumU = TimeS
+      print at 8,20, digits$(NumU, 3)
+    case 5
+      Gauge
+  end select
+  return
+end sub
+
+sub ShowMiles:
+  print at 23,16, MiHi
+  print at 25,16, "."
+  print at 26,16, MiLo
+  return
+end sub
+
+' the throttle gauge: 13 cells, a half cell for an odd throttle; only the
+' cells between the last throttle shown and this one are drawn again (all
+' of them after HudAll)
+sub Gauge:
+  u8 T = 0
+  u8 Full = 0
+  u8 Lo = 0
+  u8 Hi = 12
+  if GaugeThr < 255 then
+    Lo = GaugeThr >> 1
+    Hi = Thr >> 1
+    if Lo > Hi then
+      T = Lo
+      Lo = Hi
+      Hi = T
+    end if
+    if Hi > 12 then Hi = 12
+  end if
+  GaugeThr = Thr
+  Full = Thr >> 1
+  for Ci = Lo to Hi
+    T = TGauge0
+    if Ci < Full then T = TGauge
+    if Ci = Full then
+      V = Thr & 1
+      if V = 1 then T = TGaugeh
+    end if
+    put char T at 17 + Ci,22
+  next
+  return
+end sub
+
+sub HudAll:
+  print at 2,16, "SCORE"
+  print at 17,16, "MILES"
+  print at 2,18, "ERRORS"
+  print at 17,18, "SPEED"
+  print at 2,20, "TIME"
+  print at 17,20, "LEVEL"
+  NumU = Level
+  print at 25,20, digits$(NumU, 1)
+  print at 2,22, "THROTTLE"
+  GaugeThr = 255
+  for Hs = 0 to 5
+    HudG = Hs
+    Hud
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' the stick and the button of either controller: 1 up, 2 down, 4 left,
+' 8 right, 16 button; Press is a fresh button
+sub ReadPad:
+  Pj = 0
+  if joypad(1).up then Pj = Pj | 1
+  if joypad(1).down then Pj = Pj | 2
+  if joypad(1).left then Pj = Pj | 4
+  if joypad(1).right then Pj = Pj | 8
+  if joypad(1).fire then Pj = Pj | 16
+  if joypad(2).up then Pj = Pj | 1
+  if joypad(2).down then Pj = Pj | 2
+  if joypad(2).left then Pj = Pj | 4
+  if joypad(2).right then Pj = Pj | 8
+  if joypad(2).fire then Pj = Pj | 16
+  Btn = Pj & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+  Press = 0
+  while Press = 0
+    Frame1
+    ReadPad
+    V = Rnd
+  end while
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 3
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen: the tiles in all three thirds, fonts black on the sky in
+' the top two thirds and white on the panel in the bottom one
+sub NewScreen(u8 Fc, u8 Pc):
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill Fc count 1024 to vram.color
+  fill Fc count 1024 to vram.color + 2048
+  fill Pc count 1024 to vram.color + 4096
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub SkyColour:
+  select case Sky
+    case 0
+      backdrop white
+    case 1
+      backdrop cyan
+    case 2
+      backdrop light green
+    case else
+      backdrop gray
+  end select
+  return
+end sub
+
+' the flight screen: the level's land colours, the ground row, the panel
+sub GameScreen:
+  NewScreen($10, $F1)
+  W16 = Level - 1
+  W16 = W16 * 128
+  copy TerrCols + W16 count 128 to vram.color + 1024
+  copy TerrCols + W16 count 128 to vram.color + 3072
+  fill TTr00 count 416 to vram.name + 64
+  fill TTr22 count 32 to vram.name + 480
+  fill TPnlt count 32 to vram.name + 512
+  fill TPnl count 224 to vram.name + 544
+  SkyColour
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: CHOPPER PILOT in big letters, a helicopter crossing,
+' START / SKY / STICK / CREDITS, the tune once
+sub TitlePage:
+  u8 Tx = 0
+  NewScreen($F0, $F0)
+  copy TitleMap count 352 to vram.name + 32
+  print at 9,14, "BY CHRIS BOSS"
+  print at 3,15, "COMPUTE!'S GAZETTE 10/1987"
+  print at 11,17, "START"
+  print at 11,18, "SKY"
+  print at 11,19, "STICK"
+  print at 11,20, "CREDITS"
+  print at 3,22, "BUTTON: THROTTLE. FLY LOW!"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 462
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  V = Rnd
+  ' the helicopter crosses right to left below the letters
+  Tx = Tx - 1
+  RotT = RotT + 3
+  K = RotT >> 3
+  K = K & 1
+  set sprite 0 to 97,Tx,SWin,11
+  if K = 0 then
+    set sprite 1 to 97,Tx + 16,STaila,9
+    set sprite 2 to 97,Tx,SBodyla,4
+    set sprite 3 to 97,Tx + 16,SBodyra,4
+  else
+    set sprite 1 to 97,Tx + 16,STailb,9
+    set sprite 2 to 97,Tx,SBodylb,4
+    set sprite 3 to 97,Tx + 16,SBodyrb,4
+  end if
+  update sprites
+  V = Pj & 15
+  if V > 0 then
+    if WasStick = 0 then MenuMove(V)
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  if Menu = 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub MenuMove(u8 S):
+  u8 Lr = 0
+  K = S & 1
+  if K > 0 then
+    if Menu > 0 then dec Menu
+  end if
+  K = S & 2
+  if K > 0 then
+    if Menu < 3 then inc Menu
+  end if
+  Lr = S & 12
+  if Lr > 0 then
+    if Menu = 1 then
+      if Lr = 8 then
+        Sky = Sky + 1
+      else
+        Sky = Sky + 3
+      end if
+      Sky = Sky & 3
+    end if
+    if Menu = 2 then Stick = Stick xor 1
+  end if
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  for J = 17 to 20
+    put char 32 at 9,J
+  next
+  J = Menu + 17
+  put char 62 at 9,J
+  select case Sky
+    case 0
+      print at 17,18, "< WHITE >"
+    case 1
+      print at 17,18, "< CYAN  >"
+    case 2
+      print at 17,18, "< GREEN >"
+    case else
+      print at 17,18, "< GRAY  >"
+  end select
+  if Stick = 0 then
+    print at 17,19, "< PILOT >"
+  else
+    print at 17,19, "< ARCADE>"
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen($F4, $F4)
+  backdrop dark blue
+  print at 9,2, "CHOPPER PILOT"
+  print at 2,4, "BASED ON CHOPPER PILOT BY"
+  print at 2,5, "CHRIS BOSS, FROM THE"
+  print at 2,6, "COMPUTE!'S GAZETTE DISK OF"
+  print at 2,7, "OCTOBER 1987 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: LOW PASS (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; DrawField: the 13 land rows (screen rows 2-14) from Hh / Ob and Phase.
+; A column's cell in row r (threshold B = 2 * (12 - r) half rows): height
+; <= B: sky, or the column's object if it stands in this row; B + 1: half
+; with a grass edge; B + 2: full with a grass edge; more: rock (codes 0-3,
+; objects 4-9). Phase 0: cell c shows column c + 1; phase 1: the right half
+; of column c and the left half of column c + 1. All lookups go through
+; the page-aligned DfPages (art.py): page r [h] = 128 + code, [32 + h] the
+; whole-cell tile; page p [128 + c] the half-and-half tile. Objects stand
+; only on flat columns (height 0): for their row their height is set to
+; 21 + type, then back to 0. Rows above the land (and above any birds),
+; drawn as sky last time, are skipped.
+DrawField:
+    ld hl,AMY_UVAR_Hh
+    ld b,33
+    xor a
+DfMax:
+    cp (hl)
+    jr nc,DfMx1
+    ld a,(hl)
+DfMx1:
+    inc hl
+    djnz DfMax
+    ld c,a
+    ld a,24
+    sub c
+    srl a
+    inc a
+    cp 13
+    jr c,DfTop
+    ld a,12
+DfTop:
+    ld c,a
+    xor a
+    ld (AMY_UVAR_DfTmp),a
+    ld (AMY_UVAR_DfCnt),a
+    ld hl,AMY_UVAR_Ob
+    ld b,33
+DfBird:
+    ld a,(hl)
+    or a
+    jr z,DfBirdN
+    push hl
+    ld a,(AMY_UVAR_DfCnt)
+    ld e,a
+    inc a
+    and 15
+    ld (AMY_UVAR_DfCnt),a
+    ld d,0
+    push hl
+    ld hl,AMY_UVAR_DfList
+    add hl,de
+    pop de
+    ld (hl),e
+    pop hl
+    ld a,(hl)
+    and $F0
+    cp $C0
+    jr nz,DfBird5
+    ld a,(AMY_UVAR_DfTmp)
+    or 4
+    ld (AMY_UVAR_DfTmp),a
+    jr DfBirdN
+DfBird5:
+    cp $50
+    jr nz,DfBird8
+    ld a,(AMY_UVAR_DfTmp)
+    or 1
+    ld (AMY_UVAR_DfTmp),a
+    ld a,5
+    cp c
+    jr nc,DfBirdN
+    ld c,a
+    jr DfBirdN
+DfBird8:
+    ld a,(AMY_UVAR_DfTmp)
+    or 2
+    ld (AMY_UVAR_DfTmp),a
+    ld a,8
+    cp c
+    jr nc,DfBirdN
+    ld c,a
+DfBirdN:
+    inc hl
+    djnz DfBird
+    ld a,(AMY_UVAR_DfTmp)
+    ld (AMY_UVAR_DfMask),a
+    ld a,(AMY_UVAR_DfLast)
+    ld b,a
+    ld a,c
+    ld (AMY_UVAR_DfLast),a
+    cp b
+    jr c,DfFirst
+    ld a,b
+DfFirst:
+    ld (AMY_UVAR_DfRow),a
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1840
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,1
+    call DfPatch
+DfRowLp:
+    ld a,(AMY_UVAR_DfRow)
+    add a,DfPages >> 8
+    ld d,a
+    ld hl,AMY_UVAR_Hh
+    ld a,(AMY_UVAR_Phase)
+    or a
+    jr nz,DfPh1
+    inc hl
+    ld a,d
+    add a,13
+    ld d,a
+    call DfRowP0
+    jr DfRowEnd
+DfPh1:
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    call DfRowP1
+DfRowEnd:
+    ld a,(AMY_UVAR_DfRow)
+    inc a
+    ld (AMY_UVAR_DfRow),a
+    cp 13
+    jr c,DfRowLp
+    xor a
+    jp DfPatch
+; the objects' columns (DfList, DfCnt): A = 1 gives them their pseudo
+; heights (22-26 a ground object 1-5, 28 birds in row 5, 29 in row 8; see
+; art.py), A = 0 puts them back to 0
+DfPatch:
+    ld c,a
+    ld a,(AMY_UVAR_DfCnt)
+    or a
+    ret z
+    ld b,a
+    ld hl,AMY_UVAR_DfList
+DfPa:
+    push hl
+    ld a,(hl)
+    sub AMY_UVAR_Ob & $FF
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Ob
+    add hl,de
+    ld a,c
+    or a
+    jr z,DfPaW
+    ld a,(hl)
+    cp $56
+    ld a,28
+    jr z,DfPaW
+    ld a,(hl)
+    cp $86
+    ld a,29
+    jr z,DfPaW
+    ld a,(hl)
+    and $0F
+    add a,21
+DfPaW:
+    ld hl,AMY_UVAR_Hh
+    add hl,de
+    ld (hl),a
+    pop hl
+    inc hl
+    djnz DfPa
+    ret
+; ShiftCols: N[1..32] = N[0..31] for the heights and the objects
+ShiftCols:
+    ld hl,AMY_UVAR_Hh+31
+    ld de,AMY_UVAR_Hh+32
+    ld bc,32
+    lddr
+    ld hl,AMY_UVAR_Ob+31
+    ld de,AMY_UVAR_Ob+32
+    ld bc,32
+    lddr
+    ret
+CpChop:
+    db $00,$00,$86,$02,$00,$00,$C6,$02,$10
+CpCrash:
+    db $00,$00,$14,$03,$00,$00,$35,$04,$00,$00,$66,$06,$10
+CpFlag:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$20,$03,$40,$47,$30,$06,$50
+CpKnock:
+    db $40,$FC,$31,$02,$40,$A6,$52,$03,$50
+CpBird:
+    db $40,$40,$30,$02,$40,$35,$40,$02,$40,$40,$50,$02,$50
+CpStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$30,$0C,$50
+CpDone:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$08,$40,$8F,$20,$06,$40,$6B,$20,$10
+    db $50
+CpOver:
+    db $40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$41,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$1E,$50
+CpTick:
+    db $40,$55,$40,$02,$50
+
+CpSoundTable:
+    dw CpTuneMel,$702B
+    dw CpTuneBass,$7035
+    dw CpChop,$703F
+    dw CpCrash,$703F
+    dw CpFlag,$7049
+    dw CpKnock,$7049
+    dw CpBird,$7049
+    dw CpStart,$7049
+    dw CpDone,$7049
+    dw CpOver,$7049
+    dw CpTick,$7049
+; Low Pass (original)
+; Tiny Sound, 7 frames per step
+CpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$1A,$21,$1A,$01,$1E,$01,$21,$01,$01,$1E,$1F,$01,$23,$01
+    db $26,$01,$01,$23,$21,$01,$1E,$01,$1A,$01,$1C,$01,$1E,$01,$01,$01
+    db $21,$01,$01,$01,$26,$01,$25,$01,$23,$01,$21,$01,$1F,$01,$23,$01
+    db $21,$01,$1E,$01,$1C,$01,$01,$01,$21,$01,$1C,$01,$1E,$01,$1A,$01
+    db $01,$01,$01,$01,$00,$01
+    db $FF
+CpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$0E,$15,$0E,$15,$0E,$15,$0E,$15,$07,$0E,$07,$0E
+    db $07,$0E,$07,$0E,$0E,$15,$0E,$15,$0B,$12,$0B,$12,$15,$10,$15,$10
+    db $15,$10,$15,$10,$0B,$12,$0B,$12,$07,$0E,$07,$0E,$10,$0B,$10,$0B
+    db $15,$10,$15,$10,$15,$10,$15,$10,$15,$10,$15,$10,$0E,$15,$0E,$15
+    db $0E,$01,$01,$01,$00,$01
+    db $FF
+; DrawField pages: made by art.py
+    align 256
+DfPages:
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$81,$82,$83,$92,$95,$98,$9B,$9E,$A1,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $84,$85,$86,$87,$92,$95,$98,$9B,$9E,$A1,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $88,$89,$8A,$8B,$92,$95,$98,$9B,$9E,$A1,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $8C,$8D,$8E,$8F,$92,$95,$98,$9B,$9E,$A1,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$89,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$83,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $9A,$9A,$9A,$9A,$9A,$9A,$9A,$9A,$9A,$9A,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$89,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$81,$82,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$81,$82,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$81,$82,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$80,$84,$85,$86,$87,$88,$83,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$8A,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$9F,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$9F,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$80,$80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$80,$80,$80,$80,$80,$80,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $80,$85,$8A,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$80,$90,$93,$96,$99,$9C,$8F,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+; phase 0: D = tile page; HL = Hh + 1
+DfRowP0:
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    out ($BE),a
+    ret
+; phase 1: D = code page; B = page of the left code; HL = Hh + 1
+DfRowP1:
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ld e,(hl)
+    inc hl
+    ld a,(de)
+    ld c,a
+    ld a,(bc)
+    out ($BE),a
+    ld a,c
+    add a,((DfPages >> 8) + 128) & $FF
+    ld b,a
+    ret
+}

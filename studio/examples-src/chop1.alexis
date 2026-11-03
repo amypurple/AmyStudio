@@ -1,0 +1,1243 @@
+cartridge "CHOPPER 1/M.SEDORE/1986"
+
+' CHOPPER 1
+' A ColecoVision game based on "Chopper 1" by Mike Sedore, COMPUTE!'s
+' Gazette, August 1986 (Commodore 64 machine language, SYS 2076). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/chopper1.dis, and watched in jsc64), the game is built
+' for the ColecoVision: a city at night with lit windows under a glowing
+' force dome, a moon, a red helicopter with a turning rotor as a two-colour
+' sprite, a grey saucer with chasing lights, plasma bombs, blasts, sounds.
+'
+' The game: an alien saucer patrols over the city and lets bombs go; it
+' carries 100 a wave and can't be harmed. Fly the chopper and shoot the
+' bombs with its pulse laser (it fires the way the chopper faces). A bomb
+' that reaches the dome burns a hole in it; one that falls through a hole
+' hits the city, which sinks a storey. Six hits destroy the city: no
+' bonus, and the wave starts again. Stop the wave and the city is saved:
+' 100 points for every storey left, and the next wave is faster. A bomb or
+' the saucer itself wrecks the chopper; the pilot bails out, and while
+' parachutes are left a new chopper comes. The pilot after the third
+' parachute has none: GAME OVER.
+'
+' From the original (orig/): five bombs, each parked in the saucer until a
+' random draw of 1 in 64 per bomb step lets it fall (while the wave has
+' bombs left); a bomb shot, burnt out or landed waits 13 bomb steps before
+' it is back in the saucer; the dome is one row of blocks, each stopping
+' one bomb; a bomb that reaches the street sinks the whole city a row
+' (6 rows, then CITY DESTROYED - NO BONUS, same wave again); 100 bombs a
+' wave, the wave ends CITY SAVED! BONUS: storeys x 100; 10 points a bomb;
+' 3 parachutes; a wrecked chopper hangs for 80 chopper steps, then the
+' pilot drops off the screen and a new chopper starts in the middle;
+' waves 1-9 chosen on the title (the bomb step slows by 1/17 of the wave-1
+' delay per wave: delay 18 - wave); a shot hits a bomb within about 5
+' pixels of its height and not still at the saucer. Speeds measured in
+' jsc64 against the C64 clock and worked out per frame: bombs 0.58 C64
+' pixels a frame at wave 1 (x 17 / (18 - wave)), the chopper 1.23, the
+' saucer 0.47, the laser about 7.
+'
+' Liberties: the field is the ColecoVision's 208 x 152 instead of the C64's
+' 232 x 190; bombs and the saucer move in screen pixels at the C64's
+' speeds scaled to it (bombs 116/256 a frame at wave 1), the chopper and
+' the laser keep their C64 speeds (1.25 and 6 pixels a frame); collisions
+' are box tests (the C64 used its sprite collision registers); the wave
+' ends when the saucer's last bomb has gone AND the sky is clear (the C64
+' ended it the moment the 100th bomb fell, wiping the bombs in flight);
+' the counted bonus and the jingles are new; the wave and START are chosen
+' with the stick on the title (the C64: up/down and the button); no pause
+' (the C64 paused on SHIFT); GAME OVER, then the title (the C64 waited for
+' the button and started again); six-digit scores.
+'
+' Controls: controller 1 (or 2): the stick flies the chopper (it turns to
+' face left or right), either button fires. On the title, up and down
+' choose a line, left and right choose the wave, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TSky3 = 131
+const TMoon00 = 132
+const TMoon01 = 133
+const TMoon10 = 134
+const TMoon11 = 135
+const TDome0 = 136
+const TDome1 = 137
+const TDome2 = 138
+const TDome3 = 139
+const TDome4 = 140
+const TDome5 = 141
+const TDome6 = 142
+const TDome7 = 143
+const TRoofA = 144
+const TRoofB = 145
+const TRoofC = 146
+const TWinA = 147
+const TWinB = 148
+const TWinC = 149
+const TStreet = 150
+const TChute = 151
+const TTstar = 152
+const TTblk = 153
+const SChR0d = 0
+const SChR0b = 4
+const SChL0d = 8
+const SChL0b = 12
+const SChR1d = 16
+const SChR1b = 20
+const SChL1d = 24
+const SChL1b = 28
+const SSa0d = 32
+const SSa1d = 36
+const SSa0b = 40
+const SBomb = 44
+const SShot = 48
+const SBl0 = 52
+const SBl1 = 56
+const SPcd = 60
+const SPcb = 64
+const SPfb = 68
+const NTiles8 = 208
+const SprBytes = 576
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrop = 3
+const SndShot = 4
+const SndPop = 5
+const SndZap = 6
+const SndBoom = 7
+const SndCrash = 8
+const SndBonus = 9
+const SndSaved = 10
+const SndLost = 11
+const SndStart = 12
+const SndOver = 13
+const NSpr = 11
+const NBomb = 5
+' the play field in screen pixels
+const XMin = 16
+const XMax = 224
+const YMin = 24
+const YMax = 168
+const SaucerY = 23
+const BombY0 = 30
+const GroundY = 170
+const PilotEnd = 184
+
+' 1/256 pixels a frame for waves 1-9: bomb fall, bomb steps (C64 pixels)
+data FallT words 116,123,131,141,152,164,179,197,219
+data StepT words 148,157,168,180,194,210,229,252,280
+' the dome's curve: how far down its tile the line is, by column 2-29
+data DomeH bytes 7,6,5,4,3,3,2,2,1,1,0,0,0,0,0,0,0,0,1,1,2,2,3,3,4,5,6,7
+' stars in the sky: column, row pairs
+data Stars bytes 3,4,7,6,11,3,15,5,19,8,22,4,28,7,5,10,13,9,17,12,26,11,9,13,21,14,2,14,29,12,12,6
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$10,$38,$10,$00
+  $03,$F0,$E0,$C0,$C0,$80,$80,$80
+  $C0,$F0,$07,$03,$03,$01,$01,$01
+  $80,$80,$C0,$C0,$E0,$F0,$03,$00
+  $01,$01,$03,$03,$07,$F0,$C0,$00
+  $00,$AA,$00,$00,$00,$00,$00,$00
+  $00,$00,$AA,$00,$00,$00,$00,$00
+  $00,$00,$00,$AA,$00,$00,$00,$00
+  $00,$00,$00,$00,$AA,$00,$00,$00
+  $00,$00,$00,$00,$00,$AA,$00,$00
+  $00,$00,$00,$00,$00,$00,$AA,$00
+  $00,$00,$00,$00,$00,$00,$00,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$81,$52,$81
+  $10,$10,$10,$38,$00,$00,$81,$48
+  $00,$00,$C3,$C3,$00,$24,$81,$81
+  $81,$93,$93,$81,$81,$60,$60,$81
+  $81,$0C,$0C,$81,$81,$93,$93,$81
+  $81,$81,$81,$81,$81,$30,$30,$81
+  $00,$00,$00,$CC,$00,$00,$00,$00
+  $C3,$81,$00,$99,$42,$24,$18,$18
+  $00,$00,$10,$38,$10,$00,$00,$00
+  $00,$81,$40,$40,$40,$40,$81,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $04,$54,$04,$04,$04,$04,$54,$04
+  $04,$04,$04,$04,$54,$F4,$54,$04
+  $F4,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $F4,$F4,$4F,$4F,$4F,$4F,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$4F,$F4,$04
+  $4F,$4F,$4F,$4F,$4F,$F4,$F4,$04
+  $07,$54,$04,$04,$04,$04,$04,$04
+  $04,$07,$54,$04,$04,$04,$04,$04
+  $04,$04,$07,$54,$04,$04,$04,$04
+  $04,$04,$04,$07,$54,$04,$04,$04
+  $04,$04,$04,$04,$07,$54,$04,$04
+  $04,$04,$04,$04,$04,$07,$54,$04
+  $04,$04,$04,$04,$04,$04,$07,$54
+  $04,$04,$04,$04,$04,$04,$04,$07
+  $04,$04,$04,$04,$0E,$E1,$B1,$E1
+  $94,$E4,$E4,$E4,$0E,$0E,$E1,$B1
+  $04,$04,$4E,$4E,$0E,$B1,$E1,$E1
+  $E1,$1B,$1B,$E1,$E1,$B1,$B1,$E1
+  $E1,$B1,$B1,$E1,$E1,$1B,$1B,$E1
+  $E1,$E1,$E1,$E1,$E1,$B1,$B1,$E1
+  $0E,$01,$01,$B1,$01,$01,$01,$01
+  $1F,$1F,$0F,$F1,$F1,$F1,$91,$91
+  $00,$00,$F0,$F0,$F0,$00,$00,$00
+  $07,$7F,$F7,$F7,$F7,$F7,$75,$07
+end data
+data SpritePat bytes
+  $00,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$00,$00,$00,$00
+  $00,$FC,$80,$80,$00,$F0,$F8,$00,$00,$00,$10,$FC,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$8F,$FF,$8F,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$08,$04,$FE,$FE,$F8,$00,$00,$00,$00,$00,$00
+  $00,$3F,$01,$01,$00,$0F,$1F,$00,$00,$00,$08,$3F,$00,$00,$00,$00
+  $00,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$10,$20,$7F,$7F,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F1,$FF,$F1,$E0,$00,$00,$00,$00,$00,$00
+  $00,$07,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$00,$00,$00,$00
+  $00,$F0,$80,$80,$00,$F0,$F8,$00,$00,$00,$10,$FC,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$8F,$FF,$8F,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$08,$04,$FE,$FE,$F8,$00,$00,$00,$00,$00,$00
+  $00,$0F,$01,$01,$00,$0F,$1F,$00,$00,$00,$08,$3F,$00,$00,$00,$00
+  $00,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$10,$20,$7F,$7F,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F1,$FF,$F1,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$24,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$90,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$12,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$48,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$3F,$5B,$FF,$3F,$0C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$FC,$6E,$FF,$FC,$30,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$0F,$0F,$0F,$0F,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$C0,$C0,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$0F,$1F,$0F,$07,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$E0,$F0,$F8,$F0,$E0,$40,$00,$00,$00,$00,$00
+  $00,$21,$13,$0F,$3F,$7F,$FF,$7F,$3F,$0F,$13,$21,$00,$00,$00,$00
+  $00,$84,$C8,$F0,$FC,$FE,$FF,$FE,$FC,$F0,$C8,$84,$00,$00,$00,$00
+  $0F,$3F,$7F,$49,$25,$12,$0A,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F8,$FC,$24,$48,$90,$A0,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$07,$03,$02,$06,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$80,$80,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$05,$03,$03,$03,$02,$06,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$40,$80,$80,$80,$80,$C0,$00,$00,$00
+end data
+
+record Bomb:
+  u8 St
+  u8 X
+  u16 Yf
+  u8 T
+  u8 Low
+end record
+
+Bomb Bs[NBomb]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Fall = 0
+u16 StepS = 0
+u16 StepAcc = 0
+u16 CXf = 0
+u16 CYf = 0
+u16 SXf = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 DomeOk[28]
+u8 Hgt[28]
+u8 RowB[28]
+u8 CX = 0
+u8 CY = 0
+u8 Face = 0
+u8 ChSt = 0
+u8 CrT = 0
+u8 PY = 0
+u8 SX = 0
+u8 SD = 0
+u8 ShOn = 0
+u8 ShX = 0
+u8 ShY = 0
+u8 ShD = 0
+u8 BlT = 0
+u8 BlX = 0
+u8 BlY = 0
+u8 Lv = 1
+u8 StartLv = 1
+u8 Left = 0
+u8 Str = 6
+u8 Sunk = 0
+u8 Spares = 3
+u8 Over = 0
+u8 WaveEnd = 0
+u8 Shot = 0
+u8 Burnt = 0
+u8 Landed = 0
+u8 Wrecks = 0
+u8 Waves = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Fr2 = 0
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Ds = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table ChSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if WaveEnd > 0 then EndWave
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  SCORE ", Score, "  "
+  print at 8,13, "  BEST  ", Hi, "  "
+  print at 8,14, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  inc Anim
+  MoveSaucer
+  MoveChopper
+  MoveShot
+  W16 = StepAcc + StepS
+  StepAcc = W16 & 255
+  K = W16 >> 8
+  while K > 0
+    BombStep
+    dec K
+  end while
+  for Bi = 0 to NBomb - 1
+    FallBomb(Bi)
+  next
+  if BlT > 0 then dec BlT
+  CheckWave
+  return
+end sub
+
+' the saucer: 0.47 C64 pixels a frame, turning at the edges
+sub MoveSaucer:
+  if SD = 0 then
+    SXf = SXf + 108
+    if SXf >= 57344 then SD = 1
+  else
+    SXf = SXf - 108
+    if SXf < 4096 then SD = 0
+  end if
+  SX = SXf >> 8
+  return
+end sub
+
+' the chopper flies 1.25 pixels a frame; wrecked, it hangs, then the
+' pilot drops
+sub MoveChopper:
+  select case ChSt
+    case 0
+      K = J1 & 12
+      if K = 4 then
+        Face = 1
+        if CXf > 4416 then
+          CXf = CXf - 320
+        else
+          CXf = 4096
+        end if
+      end if
+      if K = 8 then
+        Face = 0
+        if CXf < 57024 then
+          CXf = CXf + 320
+        else
+          CXf = 57344
+        end if
+      end if
+      K = J1 & 3
+      if K = 1 then
+        if CYf > 6464 then
+          CYf = CYf - 320
+        else
+          CYf = 6144
+        end if
+      end if
+      if K = 2 then
+        if CYf < 42688 then
+          CYf = CYf + 320
+        else
+          CYf = 43008
+        end if
+      end if
+      CX = CXf >> 8
+      CY = CYf >> 8
+      if Press = 1 then Laser
+      if HitSaucer() = 1 then Wreck
+    case 1
+      dec CrT
+      if CrT = 0 then
+        ChSt = 2
+        PY = CY
+      end if
+    case 2
+      inc PY
+      if PY >= PilotEnd then
+        if Spares = 0 then
+          Over = 1
+        else
+          dec Spares
+          ShowSpares
+          NewChopper
+        end if
+      end if
+  end select
+  return
+end sub
+
+function HitSaucer as u8
+  if CY > 31 then return 0
+  V = SX + 14
+  if CX > V then return 0
+  V = CX + 14
+  if SX > V then return 0
+  return 1
+
+sub NewChopper:
+  CXf = 112 * 256
+  CYf = 64 * 256
+  CX = 112
+  CY = 64
+  Face = 0
+  ChSt = 0
+  return
+end sub
+
+sub Wreck:
+  ChSt = 1
+  CrT = 65
+  ShOn = 0
+  BlX = CX
+  BlY = CY
+  BlT = 30
+  inc Wrecks
+  play sound SndCrash
+  return
+end sub
+
+' the laser: one shot at a time, 6 pixels a frame the way the chopper faces
+sub Laser:
+  if ShOn = 1 then return
+  ShOn = 1
+  ShY = CY + 7
+  ShD = Face
+  if Face = 0 then
+    ShX = CX + 14
+  else
+    ShX = CX - 6
+  end if
+  play sound SndShot
+  return
+end sub
+
+sub MoveShot:
+  if ShOn = 0 then return
+  if ShD = 0 then
+    if ShX >= 230 then
+      ShOn = 0
+      return
+    end if
+    ShX = ShX + 6
+  else
+    if ShX < 16 then
+      ShOn = 0
+      return
+    end if
+    ShX = ShX - 6
+  end if
+  return
+end sub
+
+' one C64 bomb step: parked bombs may drop, finished ones come back
+sub BombStep:
+  for Ds = 0 to NBomb - 1
+    C = Bs[Ds].St
+    select case C
+      case 0
+        if Left > 0 then
+          Rand
+          V = Rs & 63
+          if V = 3 then
+            Bs[Ds].St = 1
+            Bs[Ds].X = SX + 1
+            Bs[Ds].Yf = BombY0 * 256
+            Bs[Ds].Low = 0
+            dec Left
+            ShowLeft
+            play sound SndDrop
+          end if
+        end if
+      case 2
+        V = Bs[Ds].T + 1
+        Bs[Ds].T = V
+        if V >= 13 then Bs[Ds].St = 0
+    end select
+  next
+  return
+end sub
+
+' a falling bomb: the shot, the chopper, the dome, the street
+sub FallBomb(u8 N):
+  u8 By
+  u8 Bx
+  u8 Col
+  if Bs[N].St <> 1 then return
+  W16 = Bs[N].Yf + Fall
+  Bs[N].Yf = W16
+  By = W16 >> 8
+  Bx = Bs[N].X
+  if ShotHits(Bx, By) = 1 then
+    ShOn = 0
+    Score += 10
+    if Score > Hi then Hi = Score
+    ShowScore
+    inc Shot
+    Gone(N, Bx, By)
+    play sound SndPop
+    return
+  end if
+  if ChSt = 0 then
+    if Touches(Bx, By) = 1 then
+      Gone(N, Bx, By)
+      Wreck
+      return
+    end if
+  end if
+  if Bs[N].Low = 0 then
+    Col = Bx + 7
+    Col = (Col >> 3) - 2
+    V = DomeH[Col] + 119
+    if By >= V then
+      Bs[N].Low = 1
+      if DomeOk[Col] = 1 then
+        DomeOk[Col] = 0
+        put char TSky0 at Col + 2,16
+        inc Burnt
+        Gone(N, Bx, By)
+        play sound SndZap
+        return
+      end if
+    end if
+  end if
+  if By >= GroundY then
+    Gone(N, Bx, By)
+    inc Landed
+    play sound SndBoom
+    Sink
+  end if
+  return
+end sub
+
+' the bomb is finished: a blast where it was, back to the saucer later
+sub Gone(u8 N, u8 Gx, u8 Gy):
+  Bs[N].St = 2
+  Bs[N].T = 0
+  BlX = Gx
+  BlY = Gy - 3
+  BlT = 12
+  return
+end sub
+
+' the laser touches the bomb (within its height, 5 pixels above or below)
+function ShotHits(u8 Hx, u8 Hy) as u8
+  u8 L
+  u8 R
+  if ShOn = 0 then return 0
+  if Hy < 34 then return 0
+  if ShY + 5 < Hy then return 0
+  if ShY > Hy + 14 then return 0
+  ' the stretch the tracer covered this frame
+  if ShD = 0 then
+    L = ShX - 6
+    R = ShX + 7
+  else
+    L = ShX
+    R = ShX + 13
+  end if
+  if R < Hx + 4 then return 0
+  if L > Hx + 9 then return 0
+  return 1
+
+' the bomb's box against the chopper's
+function Touches(u8 Tx, u8 Ty) as u8
+  i16 Dx
+  i16 Dy
+  Dx = Tx
+  Dx = Dx - CX
+  Dy = Ty
+  Dy = Dy - CY
+  if Dx < -12 then return 0
+  if Dx > 9 then return 0
+  if Dy < -13 then return 0
+  if Dy > 11 then return 0
+  return 1
+
+' a bomb in the street: the city sinks a row; the sixth ends the wave
+sub Sink:
+  inc Sunk
+  DrawCity
+  dec Str
+  if Str = 0 then WaveEnd = 2
+  return
+end sub
+
+' the wave is over when the saucer is empty and the sky clear
+sub CheckWave:
+  if WaveEnd > 0 then return
+  if ChSt <> 0 then return
+  if Left > 0 then return
+  for Ci = 0 to NBomb - 1
+    if Bs[Ci].St = 1 then return
+  next
+  WaveEnd = 1
+  return
+end sub
+
+sub EndWave:
+  u8 Q
+  HideBombs
+  if WaveEnd = 2 then
+    print at 5,9, "                      "
+    print at 5,10, " CITY DESTROYED -     "
+    print at 5,11, "    NO BONUS          "
+    print at 5,12, "                      "
+    play sound SndLost
+    Pause(150)
+  else
+    print at 6,9, "                    "
+    print at 6,10, "    CITY SAVED!     "
+    print at 6,11, "    BONUS: ", Str, "00     "
+    print at 6,12, "                    "
+    play sound SndSaved
+    Pause(60)
+    ' count the bonus in
+    Q = Str
+    while Q > 0
+      Score += 100
+      if Score > Hi then Hi = Score
+      dec Q
+      ShowScore
+      print at 17,11, Q, "00"
+      play sound SndBonus
+      Pause(15)
+    end while
+    Pause(60)
+    inc Waves
+    if Lv < 9 then inc Lv
+  end if
+  NewWave
+  return
+end sub
+
+sub Pause(u8 F):
+  for Ci = 1 to F
+    Frame1
+  next
+  return
+end sub
+
+sub NewWave:
+  for Ci = 0 to NBomb - 1
+    Bs[Ci].St = 0
+    Bs[Ci].T = 0
+  next
+  Fall = FallT[Lv - 1]
+  StepS = StepT[Lv - 1]
+  StepAcc = 0
+  Left = 100
+  Str = 6
+  Sunk = 0
+  ShOn = 0
+  BlT = 0
+  WaveEnd = 0
+  for Ci = 0 to 27
+    DomeOk[Ci] = 1
+  next
+  NewCity
+  Rearm
+  wait
+  nmi off
+  DrawField
+  ShowAll
+  return
+end sub
+
+' a new skyline: towers 2 or 3 columns wide, 1 to 6 storeys
+sub NewCity:
+  u8 Wd
+  u8 Ht
+  Ci = 0
+  while Ci < 28
+    Rand
+    Wd = (Rs & 1) + 2
+    Ht = ((Rs >> 4) & 3) + 3
+    V = (Rs >> 8) & 7
+    if V = 0 then Ht = 1
+    if V = 1 then Ht = 6
+    if V = 2 then Ht = 2
+    while Wd > 0
+      if Ci < 28 then Hgt[Ci] = Ht
+      inc Ci
+      dec Wd
+    end while
+  end while
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+sub DrawField:
+  for Ci = 3 to 22
+    fill TSky0 count 32 at 0,Ci
+  next
+  for Ci = 0 to 15
+    J = Ci * 2
+    K = Stars[J]
+    V = Stars[J + 1]
+    C = (Ci & 1) + TSky1
+    if Ci > 11 then C = TSky3
+    put char C at K,V
+  next
+  put char TMoon00 at 24,4
+  put char TMoon01 at 25,4
+  put char TMoon10 at 24,5
+  put char TMoon11 at 25,5
+  for Ci = 0 to 27
+    if DomeOk[Ci] = 1 then
+      put char TDome0 + DomeH[Ci] at Ci + 2,16
+    end if
+  next
+  fill TStreet count 32 at 0,23
+  DrawCity
+  return
+end sub
+
+' the city rows 17-22: each tower its height less the rows sunk; each
+' row is built in RowB and copied to the name table in one go
+sub DrawCity:
+  u8 H
+  u8 Top
+  u8 R
+  u8 T
+  u16 Va
+  for R = 17 to 22
+    for Ci = 0 to 27
+      H = Hgt[Ci]
+      if H > Sunk then
+        H = H - Sunk
+      else
+        H = 0
+      end if
+      Top = 23 - H
+      if R < Top then
+        T = TSky0
+      else
+        if R = Top then
+          T = (Ci >> 1) & 1
+          T = T + TRoofA
+          if Hgt[Ci] = 6 then T = TRoofB
+          if Hgt[Ci] = 2 then T = TRoofC
+        else
+          T = R - Top
+          T = T + Ci
+          T = T % 3
+          T = T + TWinA
+        end if
+      end if
+      RowB[Ci] = T
+    next
+    Va = R
+    Va = Va * 32 + 2
+    copy RowB count 28 to vram.name + Va
+  next
+  return
+end sub
+
+sub ShowAll:
+  print at 2,1, "SCORE"
+  print at 18,1, "HI"
+  print at 2,2, "WAVE"
+  print at 10,2, "BOMBS"
+  ShowScore
+  ShowLeft
+  NumU = Lv
+  print at 7,2, digits$(NumU, 1)
+  ShowSpares
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  print at 21,1, Hi
+  return
+end sub
+
+sub ShowLeft:
+  NumU = Left
+  print at 16,2, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowSpares:
+  fill 32 count 3 at 26,2
+  if Spares > 0 then fill TChute count Spares at 26,2
+  return
+end sub
+
+sub HideBombs:
+  for Ci = 0 to NBomb - 1
+    J = Ci + 4
+    set sprite J to 192,0,0,0
+  next
+  set sprite 9 to 192,0,0,0
+  set sprite 10 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' sprites 0-1 the chopper or the pilot, 2-3 the saucer, 4-8 the bombs,
+' 9 the laser, 10 the blast
+sub DrawSprites:
+  u8 Fr
+  u8 By
+  Fr = (Anim >> 2) & 1
+  select case ChSt
+    case 0
+      K = Face * 8 + Fr * 16 + SChR0d
+      set sprite 0 to CY - 1,CX,K,15
+      set sprite 1 to CY - 1,CX,K + 4,8
+    case 1
+      K = Face * 8 + SChR0d
+      set sprite 0 to CY - 1,CX,K,14
+      set sprite 1 to CY - 1,CX,K + 4,6
+    case 2
+      if Spares > 0 then
+        set sprite 0 to PY - 1,CX,SPcd,15
+        set sprite 1 to PY - 1,CX,SPcb,11
+      else
+        set sprite 0 to PY - 1,CX,SPfb,11
+        set sprite 1 to 192,0,0,0
+      end if
+  end select
+  ' the lights chase three times a second
+  Fr = Anim / 10
+  Fr = Fr & 1
+  K = Fr * 4 + SSa0d
+  set sprite 2 to SaucerY - 1,SX,K,11
+  set sprite 3 to SaucerY - 1,SX,SSa0b,14
+  for Ds = 0 to NBomb - 1
+    J = Ds + 4
+    if Bs[Ds].St = 1 then
+      W16 = Bs[Ds].Yf
+      By = W16 >> 8
+      set sprite J to By - 1,Bs[Ds].X,SBomb,9
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if ShOn = 1 then
+    set sprite 9 to ShY - 1,ShX,SShot,11
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  if BlT > 0 then
+    K = SBl0
+    if BlT > 6 then K = SBl1
+    set sprite 10 to BlY - 1,BlX,K,10
+  else
+    set sprite 10 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  Score = 0
+  Lv = StartLv
+  Spares = 3
+  Over = 0
+  Shot = 0
+  Burnt = 0
+  Landed = 0
+  Wrecks = 0
+  Waves = 0
+  SXf = 80 * 256
+  SX = 80
+  SD = 0
+  Anim = 0
+  NewChopper
+  NewWave
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: CHOPPER 1 in dome-blue blocks, the saucer crossing, START /
+' WAVE / CREDITS, the best score, the tune once
+data Glyphs bytes 7,4,4,4,7,5,5,7,5,5,7,5,5,5,7,7,5,7,4,4,7,5,7,4,4,7,4,6,4,7,6,5,6,5,5,2,6,2,2,7
+sub BigLetters:
+  ' C H O P P E R in 3 x 5 blocks (rows 2-6), the 1 below (rows 8-12)
+  u8 L
+  u8 Row
+  u8 B
+  u8 Px
+  u8 Gy2
+  for L = 0 to 7
+    for Row = 0 to 4
+      J = L * 5 + Row
+      B = Glyphs[J]
+      Px = L * 4 + 2
+      Gy2 = Row + 2
+      if L = 7 then
+        Px = 14
+        Gy2 = Row + 8
+      end if
+      V = B & 4
+      if V > 0 then put char TTblk at Px,Gy2
+      V = B & 2
+      if V > 0 then put char TTblk at Px + 1,Gy2
+      V = B & 1
+      if V > 0 then put char TTblk at Px + 2,Gy2
+    next
+  next
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  for Ci = 0 to 15
+    J = Ci * 2
+    K = Stars[J]
+    V = Stars[J + 1]
+    if V > 7 then V = V + 9
+    put char TTstar at K,V
+  next
+  BigLetters
+  print at 7,14, "COMPUTE!'S GAZETTE"
+  print at 10,15, "AUGUST 1986"
+  print at 8,16, "BY MIKE SEDORE"
+  print at 12,18, "START"
+  print at 12,19, "WAVE"
+  print at 12,20, "CREDITS"
+  if Hi > 0 then
+    print at 10,22, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 568
+  TzOn = 1
+  SXf = 16 * 256
+  SD = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  inc Anim
+  ReadPad
+  MoveSaucer
+  Fr2 = Anim / 10
+  Fr2 = Fr2 & 1
+  K = Fr2 * 4 + SSa0d
+  set sprite 2 to 55,SX,K,11
+  set sprite 3 to 55,SX,SSa0b,14
+  update sprites
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if V & 2 then
+        if Menu < 2 then inc Menu
+      end if
+      if Menu = 1 then
+        if V & 4 then
+          if StartLv > 1 then dec StartLv
+        end if
+        if V & 8 then
+          if StartLv < 9 then inc StartLv
+        end if
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,18
+  put char 32 at 10,19
+  put char 32 at 10,20
+  J = Menu + 18
+  put char 62 at 10,J
+  NumU = StartLv
+  print at 17,19, "< ", digits$(NumU, 1), " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "CHOPPER 1"
+  print at 2,5, "BASED ON CHOPPER 1 BY MIKE"
+  print at 2,6, "SEDORE, COMPUTE!'S GAZETTE"
+  print at 2,7, "AUGUST 1986 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: NIGHT PATROL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+ChDrop:
+    db $80,$3B,$50,$02,$80,$41,$50,$02,$80,$49,$50,$02,$80,$51,$50,$02,$80,$5A,$50,$02,$80,$64,$50,$02
+    db $80,$6F,$50,$02,$80,$7B,$50,$02,$80,$89,$60,$02,$80,$98,$60,$02,$80,$A9,$60,$02,$80,$BC,$60,$02
+    db $90
+ChShot:
+    db $40,$40,$20,$01,$40,$55,$30,$01,$40,$71,$40,$01,$40,$97,$60,$02,$50
+ChPop:
+    db $00,$00,$15,$02,$00,$00,$35,$03,$00,$00,$56,$04,$10
+ChZap:
+    db $80,$2F,$20,$02,$80,$3E,$30,$02,$80,$2F,$40,$02,$80,$46,$60,$03,$90
+ChBoom:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$27,$08,$00,$00,$47,$0A,$00,$00,$77,$0E,$10
+ChCrash:
+    db $00,$00,$07,$06,$00,$00,$16,$08,$00,$00,$37,$0A,$00,$00,$47,$0C,$00,$00,$67,$0E,$00,$00,$87,$10
+    db $10
+ChBonus:
+    db $40,$47,$30,$02,$40,$FF,$F3,$02,$50
+ChSaved:
+    db $C0,$D6,$20,$06,$C0,$AA,$20,$06,$C0,$8F,$20,$06,$C0,$6B,$20,$06,$C0,$55,$20,$10,$D0
+ChLost:
+    db $C0,$1D,$21,$0A,$C0,$2E,$21,$0A,$C0,$53,$21,$0A,$C0,$AB,$31,$18,$D0
+ChStart:
+    db $40,$FE,$20,$05,$40,$CA,$20,$05,$40,$AA,$20,$05,$40,$7F,$20,$0C,$50
+ChOver:
+    db $40,$D6,$10,$0A,$40,$F0,$20,$0A,$40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$1E,$50
+
+ChSoundTable:
+    dw ChTuneMel,$702B
+    dw ChTuneBass,$7035
+    dw ChDrop,$7053
+    dw ChShot,$7049
+    dw ChPop,$703F
+    dw ChZap,$7053
+    dw ChBoom,$703F
+    dw ChCrash,$703F
+    dw ChBonus,$7049
+    dw ChSaved,$705D
+    dw ChLost,$705D
+    dw ChStart,$7049
+    dw ChOver,$7049
+; Night Patrol (original)
+; Tiny Sound, 8 frames per step
+ChTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$1A,$21,$1C,$01,$1F,$01,$23,$01,$01,$21,$01,$1F,$01,$1E
+    db $01,$1A,$01,$01,$1C,$01,$01,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $01,$21,$01,$1F,$01,$21,$01,$23,$01,$01,$01,$1C,$01,$1F,$01,$23
+    db $01,$01,$26,$01,$24,$01,$23,$01,$21,$01,$01,$1E,$01,$1F,$01,$1E
+    db $01,$1A,$01,$1C,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+ChTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$1C,$01,$10,$01,$1C,$01,$0E,$01,$1A,$01
+    db $0E,$01,$1A,$01,$0C,$01,$18,$01,$0C,$01,$18,$01,$0B,$01,$17,$01
+    db $0B,$01,$17,$01,$10,$01,$1C,$01,$10,$01,$1C,$01,$15,$01,$09,$01
+    db $15,$01,$09,$01,$0B,$01,$17,$01,$0B,$01,$1A,$01,$10,$01,$01,$01
+    db $0B,$01,$10,$01,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+}

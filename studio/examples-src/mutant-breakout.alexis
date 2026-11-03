@@ -1,0 +1,3401 @@
+cartridge "MUTANT BREAKOUT/FUNKNFLOW5200/2026"
+
+' MUTANT BREAKOUT
+' A side-scrolling beat 'em up. Genetic experiments break out of Facility 7:
+' fight through the Cell Block, the Sewers and the Perimeter, one boss each.
+'
+' Controls (either joystick): stick = walk (left/right) and move in the lane
+' (up/down); LEFT button = attack (tap for a 3-hit combo; in the air, a flying
+' kick); RIGHT button = jump. The keypad is not used. On the title screen the
+' stick picks the mutant (left/right) and the menu (up/down); a button confirms.
+'
+' The mutants: SCALES (lizard: balanced), TUSK (boar: slow, hits hard, tough),
+' FLUTTER (moth: fast, high jumps, fragile).
+'
+' Liberties / design notes: original game, inspired by the arcade beat 'em ups
+' of the late 1980s. The screen locks for each wave of guards, scientists with
+' tranquilizer darts and hounds; when it is clear, GO points right and the
+' corridor scrolls (the wall at half the speed of the floor). One player. The
+' stage art is periodic strips whose pattern bits are rotated each frame
+' (smooth pixel scrolling on the TMS9918; see scroll.asm).
+
+const THpf = 128
+const THpe = 129
+const TBsf = 130
+const TBse = 131
+const TLife = 132
+const TGo00 = 133
+const TGo01 = 134
+const TGo10 = 135
+const TGo11 = 136
+const TBar = 137
+const TBlack = 138
+const NTiles8 = 88
+const EnGrunt = 80
+const EnDarter = 104
+const EnHound = 128
+const SShadow = 144
+const SSpark = 148
+const SFood = 152
+const SOrb = 156
+const SArrow = 160
+const SDartR = 164
+const SDartL = 168
+const SBoss = 172
+const SpeciesBytes = 640
+const SharedBytes = 736
+const SharedOff = 640
+const BossOff = 1376
+const BossBytes = 384
+const NFar1 = 6
+const NNear1 = 2
+const NStat1 = 3
+const StageColBytes1 = 144
+const NFar2 = 6
+const NNear2 = 4
+const NStat2 = 3
+const StageColBytes2 = 176
+const NFar3 = 6
+const NNear3 = 5
+const NStat3 = 4
+const StageColBytes3 = 240
+const StripBase = 139
+const StripBaseOff = 1112
+const SndPunch = 1
+const SndWhiff = 2
+const SndHit = 3
+const SndBig = 4
+const SndJump = 5
+const SndLand = 6
+const SndHurt = 7
+const SndDie = 8
+const SndPick = 9
+const SndDart = 10
+const SndRoar = 11
+const SndClear = 12
+const SndGo = 13
+const SndSelect = 14
+const SndOver = 15
+const SndTitleA = 16
+const SndTitleB = 17
+const SndS1A = 18
+const SndS1B = 19
+const SndS2A = 20
+const SndS2B = 21
+const SndS3A = 22
+const SndS3B = 23
+const SndBossA = 24
+const SndBossB = 25
+const SndEndA = 26
+const SndEndB = 27
+const DbgStage = 0
+const DbgWave = 0
+const DbgGod = 0
+const DbgAuto = 0
+const DbgBusy = 0
+const DbgNoMus = 0
+
+' player states
+const PsIdle = 0
+const PsAtk = 1
+const PsJump = 2
+const PsKick = 3
+const PsHurt = 4
+const PsDead = 5
+const PsWin = 6
+' enemy states
+const EsOff = 0
+const EsWalk = 1
+const EsWind = 2
+const EsStrike = 3
+const EsRecov = 4
+const EsHurt = 5
+const EsDie = 6
+const EsGone = 7
+' enemy types (4-6: the bosses)
+const TyGrunt = 1
+const TyDarter = 2
+const TyHound = 3
+const TyBoss = 4
+' game phases
+const PhScroll = 0
+const PhFight = 1
+const PhBoss = 2
+const PhClear = 3
+' the lane the fighters walk in (feet y) and the x limits (sprite left edge)
+const LaneTop = 124
+const LaneBot = 168
+const XMin = 16
+const XMax = 224
+const ScrollX = 112
+const NStages = 3
+const WavesPer = 5
+const WaveSz = 6
+
+' ---- scroll engine (scroll.asm) ----
+u8 ScSh = 0
+u8 ScCnt = 0
+u8 ScN = 0
+u16 ScPtr = 0
+u16 ScVA = 0
+u8 ScDir = 0
+u8 ScRep = 0
+u8 ScOff = 0
+u8 ScRow = 0
+u16 ScBP = 0
+u8 ScBuf[32]
+u16 FarAddr = 0
+u16 NearAddr = 0
+u8 NFar = 0
+u8 NNear = 0
+u16 StatAddr = 0
+u8 NStat = 0
+u8 ShFar = 0
+u8 ShNear = 0
+u8 FarAcc = 0
+u8 ScrolledD = 0
+' ---- general ----
+u16 NumU = 0
+u16 Score = 0
+u16 HiScore = 2000
+u16 NextLife = 3000
+u8 Lives = 3
+u8 Spec = 0
+u8 Stage = 0
+u8 Wave = 0
+u8 Phase = 0
+u16 Dist = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 Menu = 0
+u8 Press = 0
+u8 WasBtn = 0
+u8 WasStick = 0
+u8 Btn1 = 0
+u8 Btn2 = 0
+u8 Was1 = 0
+u8 Was2 = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 J = 0
+u8 V = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+' ---- the chosen mutant ----
+u8 SpSpeed = 6
+u8 SpDmg = 1
+u8 SpHpMax = 8
+u8 SpJump = 5
+u8 SpAtk = 14
+u8 SpReach = 24
+u8 SpCol1 = 3
+u8 SpCol2 = 11
+' ---- the player ----
+u8 PX = 40
+u8 PY = 146
+u8 PZ = 0
+u8 PVs = 0
+u8 PUp = 0
+u8 PDir = 0
+u8 PSt = 0
+u8 PTm = 0
+u8 PAn = 0
+u8 PHp = 8
+u8 PInv = 0
+u8 PCombo = 0
+u8 PComboT = 0
+u8 PHit = 0
+u8 PKb = 0
+u8 PKbDir = 0
+u8 PMove = 0
+u8 PDead = 0
+u8 KickHit[3]
+' ---- enemies (3 slots; a boss uses slot 0) ----
+u8 EX[3]
+u8 EY[3]
+u8 ETy[3]
+u8 ESt[3]
+u8 ETm[3]
+u8 EHp[3]
+u8 EDir[3]
+u8 EFl[3]
+u8 ECool[3]
+u8 EAt[3]
+u8 EKb[3]
+u8 EKbD[3]
+u8 EAn[3]
+u8 Token = 0
+u8 Alive = 0
+u8 QLeft = 0
+u8 QIdx = 0
+u8 QDelay = 0
+u8 BossMax = 1
+u8 BossAct = 0
+u8 BossHide = 0
+' ---- projectiles, item, spark, arrow ----
+u8 PjOn[2]
+u8 PjX[2]
+u8 PjY[2]
+u8 PjD[2]
+u8 PjK[2]
+u8 ItOn = 0
+u8 ItX = 0
+u8 ItY = 0
+u16 ItT = 0
+u8 SpkT = 0
+u8 SpkX = 0
+u8 SpkY = 0
+u8 GoT = 0
+u8 StT = 0
+u8 HudDirty = 0
+u16 MusT = 0
+u8 MusOn = 0
+u16 MusLen = 0
+u8 Msg = 0
+u8 BAtk = 0
+u8 PMoved = 0
+u8 Rch = 0
+u8 Dmg1 = 0
+u8 NearFlag = 0
+u8 FarFlag = 0
+u8 StDone = 0
+
+' ---------------------------------------------------------------------------
+' main flow
+' ---------------------------------------------------------------------------
+  tile screen
+  call asm ZShare
+  set sound table MbSoundTable areas 4
+  sprites 16x16
+  nmi off
+  HideSprites
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    CreditsPage
+    goto title
+  end if
+  StoryPage
+  SetSpecies
+  Score = 0
+  Lives = 3
+  NextLife = 3000
+  Stage = DbgStage
+  StDone = 0
+
+stage_start:
+  StageCard
+  LoadStage
+  Wave = DbgWave
+  WasStick = 0
+
+play_loop:
+  Frame1
+  DrawAll
+  ReadPad
+  MusicTick
+  UpdatePlayer
+  UpdateEnemies
+  UpdateProj
+  UpdateItem
+  UpdateWave
+  if DbgAuto > 0 then
+    ScrollWorld(DbgAuto)
+    Dist = 0
+  end if
+  if DbgBusy > 0 then
+    call asm Busy with b = DbgBusy
+  end if
+  if HudDirty = 1 then DrawHud
+  if PDead = 2 then goto game_over
+  if StDone = 1 then goto stage_end
+  goto play_loop
+
+stage_end:
+  StDone = 0
+  inc Stage
+  if Stage >= NStages then
+    EndingPage
+    goto title
+  end if
+  goto stage_start
+
+game_over:
+  GameOverPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' system helpers
+' ---------------------------------------------------------------------------
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs during the wait only
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn1 = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn1 = 1
+  if joypad(2).button1 then Btn1 = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press1 = 0
+  Press2 = 0
+  if Btn1 = 1 then
+    if Was1 = 0 then Press1 = 1
+  end if
+  if Btn2 = 1 then
+    if Was2 = 0 then Press2 = 1
+  end if
+  Was1 = Btn1
+  Was2 = Btn2
+  Press = Press1 | Press2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 12
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 11
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every new screen starts here: wait, NMI off, display off, tiles, cls
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' wait n frames (NMI protected)
+sub Pause(u16 Frames):
+  Rearm
+  wait Frames frames
+  nmi off
+  return
+end sub
+
+' wait for a fresh button press (either button)
+sub WaitPress:
+  Rearm
+  wait no fire
+  nmi off
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+' Tiny Sound has no loop: play it again when it ends
+sub StartMusic(u8 Which):
+  if DbgNoMus = 1 then return
+  mute all
+  MusOn = Which
+  MusT = 0
+  MusLen = 0
+  select case Which
+    case 1
+      play sound SndTitleA
+      play sound SndTitleB
+      MusLen = 256
+    case 2
+      play sound SndS1A
+      play sound SndS1B
+      MusLen = 192
+    case 3
+      play sound SndS2A
+      play sound SndS2B
+      MusLen = 192
+    case 4
+      play sound SndS3A
+      play sound SndS3B
+      MusLen = 160
+    case 5
+      play sound SndBossA
+      play sound SndBossB
+      MusLen = 160
+    case 6
+      play sound SndEndA
+      play sound SndEndB
+      MusLen = 256
+  end select
+  return
+end sub
+
+sub StopMusic:
+  MusOn = 0
+  mute all
+  return
+end sub
+
+' called once a frame
+sub MusicTick:
+  if MusOn = 0 then return
+  inc MusT
+  if MusT >= MusLen then StartMusic(MusOn)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens: credits, title, story, stage card, game over, ending
+' ---------------------------------------------------------------------------
+sub CreditsPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print centered at 2, "MUTANT BREAKOUT"
+  print at 3,5, "A BEAT 'EM UP FOR THE"
+  print at 3,6, "COLECOVISION, WRITTEN IN"
+  print at 3,7, "AMY. THREE MUTANTS, THREE"
+  print at 3,8, "STAGES, THREE BOSSES."
+  print at 3,10, "GAME: FUNKNFLOW5200"
+  print at 3,11, "BUILT WITH AMY TOOLBOX"
+  print at 3,12, "(ANTHROPIC), 2026."
+  print at 3,14, "INSPIRED BY THE ARCADE"
+  print at 3,15, "BEAT 'EM UPS OF THE LATE"
+  print at 3,16, "80S. THE FLOOR AND WALL"
+  print at 3,17, "SCROLL BY ROTATING TILE"
+  print at 3,18, "PATTERNS EVERY FRAME."
+  print centered at 21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+' the three mutants on the title screen (sprites 0-5)
+sub TitleSprites:
+  u8 K = 0
+  u8 Base = 0
+  u8 C1 = 0
+  u8 C2 = 0
+  u8 SX = 0
+  u8 SY = 0
+  for K = 0 to 2
+    Base = K * 80
+    C1 = 14
+    C2 = 14
+    SY = 69
+    if K = Spec then
+      C1 = TCol1[K]
+      C2 = TCol2[K]
+      if (Mix & 16) <> 0 then Base += 8
+      if (Mix & 8) <> 0 then SY = 68
+    end if
+    SX = K * 64
+    SX += 48
+    J = K * 2
+    set sprite J to SY,SX,Base,C1
+    J += 1
+    Base += 4
+    if K = Spec then
+      set sprite J to SY,SX,Base,C2
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  return
+end sub
+
+sub TitleStats:
+  u8 Q = 0
+  fill 32 count 5 at 15,16
+  fill 32 count 5 at 15,17
+  fill 32 count 5 at 15,18
+  Q = TSpd[Spec]
+  fill 42 count Q at 15,16
+  Q = TPow[Spec]
+  fill 42 count Q at 15,17
+  Q = TLifeStar[Spec]
+  fill 42 count Q at 15,18
+  return
+end sub
+
+sub TitlePage:
+  u8 Mv = 0
+  u8 Old = 0
+  u8 Redraw = 1
+  NewScreen
+  copy Spr_scales count SpeciesBytes to vram.spr_pat
+  copy Spr_tusk count SpeciesBytes to vram.spr_pat + 640
+  copy Spr_flutter count SpeciesBytes to vram.spr_pat + 1280
+  fill TBar count 28 at 2,7
+  fill TBar count 28 at 2,12
+  print centered at 3, "M U T A N T"
+  print centered at 5, "B R E A K O U T"
+  print at 4,13, "SCALES"
+  print at 13,13, "TUSK"
+  print at 20,13, "FLUTTER"
+  print at 8,16, "SPEED"
+  print at 8,17, "POWER"
+  print at 8,18, "LIFE"
+  print at 14,20, "START"
+  print at 14,21, "CREDITS"
+  print at 3,23, "STICK: PICK  BUTTON: GO"
+  Menu = 0
+  StartMusic(1)
+  ShowScreen
+  WaitNoBtn
+title_loop:
+  Frame1
+  TitleSprites
+  update sprites
+  MusicTick
+  ReadPad
+  Mv = 0
+  if Lf1 = 1 then Mv = 1
+  if Rt1 = 1 then Mv = 2
+  if Up1 = 1 then Mv = 3
+  if Dn1 = 1 then Mv = 4
+  if Mv <> 0 then
+    if WasStick = 0 then
+      if Mv = 1 then
+        if Spec > 0 then dec Spec
+        Redraw = 1
+        play sound SndSelect
+      end if
+      if Mv = 2 then
+        if Spec < 2 then inc Spec
+        Redraw = 1
+        play sound SndSelect
+      end if
+      if Mv = 3 then
+        Menu = 0
+        Redraw = 1
+        play sound SndSelect
+      end if
+      if Mv = 4 then
+        Menu = 1
+        Redraw = 1
+        play sound SndSelect
+      end if
+    end if
+  end if
+  WasStick = Mv
+  if Redraw = 1 then
+    Redraw = 0
+    TitleStats
+    put char 32 at 12,20
+    put char 32 at 12,21
+    if Menu = 0 then put char 62 at 12,20
+    if Menu = 1 then put char 62 at 12,21
+    fill 32 count 28 at 2,14
+    Old = Spec
+  end if
+  if Press1 = 1 then goto title_done
+  if Press2 = 1 then goto title_done
+  goto title_loop
+title_done:
+  StopMusic
+  return
+end sub
+
+sub WaitNoBtn:
+  Rearm
+  wait no fire
+  nmi off
+  Was1 = 1
+  Was2 = 1
+  return
+end sub
+
+sub StoryPage:
+  NewScreen
+  print centered at 4, "FACILITY 7. MIDNIGHT."
+  print centered at 7, "THE LAB HAS SPLICED"
+  print centered at 8, "ANIMALS INTO SOMETHING"
+  print centered at 9, "NEW. THE CELL DOORS"
+  print centered at 10, "JUST CLICKED OPEN."
+  print centered at 13, "FIGHT THROUGH THE"
+  print centered at 14, "CELL BLOCK, THE SEWERS"
+  print centered at 15, "AND THE PERIMETER."
+  print centered at 18, "BREAK OUT!"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub StageCard:
+  u8 SN = 0
+  NewScreen
+  SN = Stage + 1
+  print centered at 8, "STAGE"
+  print SN at 21,8 digits 1
+  select case Stage
+    case 0
+      print centered at 11, "CELL BLOCK"
+    case 1
+      print centered at 11, "THE SEWERS"
+    case 2
+      print centered at 11, "THE PERIMETER"
+  end select
+  print centered at 15, "GET READY"
+  ShowScreen
+  Pause(110)
+  return
+end sub
+
+sub GameOverPage:
+  StopMusic
+  play sound SndOver
+  print centered at 9, "GAME OVER"
+  print at 9,12, "SCORE"
+  print Score at 15,12 digits 5
+  Pause(200)
+  return
+end sub
+
+sub EndingPage:
+  NewScreen
+  StartMusic(6)
+  print centered at 4, "FREEDOM"
+  print centered at 8, "THE FENCE FALLS AND THE"
+  print centered at 9, "NIGHT AIR SMELLS OF RAIN."
+  print centered at 10, "NO MORE CAGES."
+  print centered at 14, "FINAL SCORE"
+  print Score at 14,16 digits 5
+  print centered at 20, "THE END"
+  ShowScreen
+  Pause(400)
+  WaitPress
+  StopMusic
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' tables
+' ---------------------------------------------------------------------------
+data TCol1 bytes
+  3,9,13
+end data
+data TCol2 bytes
+  11,15,15
+end data
+data TSpd bytes
+  3,2,5
+end data
+data TPow bytes
+  3,5,2
+end data
+data TLifeStar bytes
+  4,5,3
+end data
+' quarter pixels per frame
+data TSpSpeed bytes
+  6,4,8
+end data
+data TSpDmg bytes
+  1,2,1
+end data
+data TSpHp bytes
+  8,10,6
+end data
+data TSpJump bytes
+  5,4,6
+end data
+data TSpAtk bytes
+  14,19,11
+end data
+data TSpReach bytes
+  24,26,22
+end data
+' enemy types 1-3
+data TyHpT bytes
+  0,4,3,3
+end data
+data TyPts bytes
+  0,10,15,12
+end data
+data BossHpT bytes
+  28,36,44
+end data
+data NWaves bytes
+  4,5,5
+end data
+' scroll pixels before each wave (stage * 5 + wave)
+data WGoal bytes
+  70,170,190,190,0
+  90,160,180,180,180
+  90,160,170,180,190
+end data
+' spawn lists (type | 16 = from the left), 6 per wave
+data Waves bytes
+  1,17,0,0,0,0
+  1,2,17,0,0,0
+  3,19,1,0,0,0
+  1,2,17,3,0,0
+  0,0,0,0,0,0
+  3,19,1,0,0,0
+  2,18,1,0,0,0
+  1,17,3,19,0,0
+  2,1,19,17,0,0
+  1,2,3,18,19,0
+  1,2,19,0,0,0
+  3,19,3,18,0,0
+  1,17,2,18,0,0
+  2,3,17,19,1,0
+  1,18,3,19,2,17
+end data
+
+' ---------------------------------------------------------------------------
+' stage loading, scrolling and waves
+' ---------------------------------------------------------------------------
+sub LoadStage:
+  NewScreen
+  call asm ZShare
+  select case Stage
+    case 0
+      copy StageCol1 count StageColBytes1 to vram.color + StripBaseOff
+      FarAddr = address of FarTab1
+      NearAddr = address of NearTab1
+      StatAddr = address of StatTab1
+      NFar = NFar1
+      NNear = NNear1
+      NStat = NStat1
+    case 1
+      copy StageCol2 count StageColBytes2 to vram.color + StripBaseOff
+      FarAddr = address of FarTab2
+      NearAddr = address of NearTab2
+      StatAddr = address of StatTab2
+      NFar = NFar2
+      NNear = NNear2
+      NStat = NStat2
+    case 2
+      copy StageCol3 count StageColBytes3 to vram.color + StripBaseOff
+      FarAddr = address of FarTab3
+      NearAddr = address of NearTab3
+      StatAddr = address of StatTab3
+      NFar = NFar3
+      NNear = NNear3
+      NStat = NStat3
+  end select
+  ShNear = 0
+  ShFar = 0
+  FarAcc = 0
+  call asm ScrollStrips with hl = FarAddr, b = NFar, c = 0
+  call asm ScrollStrips with hl = NearAddr, b = NNear, c = 0
+  call asm ScrollStrips with hl = StatAddr, b = NStat, c = 0
+  select case Stage
+    case 0
+      call asm BuildScene with hl = address of Scene1
+    case 1
+      call asm BuildScene with hl = address of Scene2
+    case 2
+      call asm BuildScene with hl = address of Scene3
+  end select
+  select case Spec
+    case 0
+      copy Spr_scales count SpeciesBytes to vram.spr_pat
+    case 1
+      copy Spr_tusk count SpeciesBytes to vram.spr_pat
+    case 2
+      copy Spr_flutter count SpeciesBytes to vram.spr_pat
+  end select
+  copy Spr_shared count SharedBytes to vram.spr_pat + SharedOff
+  select case Stage
+    case 0
+      copy Spr_boss1 count BossBytes to vram.spr_pat + BossOff
+    case 1
+      copy Spr_boss2 count BossBytes to vram.spr_pat + BossOff
+    case 2
+      copy Spr_boss3 count BossBytes to vram.spr_pat + BossOff
+  end select
+  ' state for a new stage
+  PX = 32
+  PY = 148
+  PZ = 0
+  PSt = PsIdle
+  PDir = 0
+  PInv = 60
+  PHp = SpHpMax
+  PCombo = 0
+  PComboT = 0
+  PDead = 0
+  Phase = PhScroll
+  Wave = 0
+  Dist = 0
+  Alive = 0
+  QLeft = 0
+  Token = 0
+  BossAct = 0
+  GoT = 240
+  StT = 0
+  ItOn = 0
+  SpkT = 0
+  for J = 0 to 2
+    ESt[J] = EsOff
+  next
+  for J = 0 to 1
+    PjOn[J] = 0
+  next
+  HudDirty = 1
+  DrawHud
+  StartMusic(Stage + 2)
+  ShowScreen
+  return
+end sub
+
+' the world moves D pixels left (the player is walking right)
+sub ScrollWorld(u8 D):
+  ShNear += D
+  ShNear &= 31
+  FarAcc += D
+  if FarAcc >= 2 then
+    FarAcc -= 2
+    inc ShFar
+    ShFar &= 31
+    FarFlag = 1
+  end if
+  NearFlag = 1
+  Dist += D
+  if ItOn = 1 then
+    if ItX > D then
+      ItX -= D
+    else
+      ItOn = 0
+    end if
+  end if
+  return
+end sub
+
+sub SpawnNext:
+  u8 I = 0
+  u8 Idx = 0
+  u8 Code = 0
+  u8 Ty = 0
+  u8 Pick = 0
+  Pick = 9
+  for I = 0 to 2
+    if ESt[I] = EsOff then Pick = I
+  next
+  if Pick = 9 then return
+  Idx = Stage * 5
+  Idx += Wave
+  Idx *= WaveSz
+  Idx += QIdx
+  Code = Waves[Idx]
+  inc QIdx
+  dec QLeft
+  Ty = Code & 15
+  ETy[Pick] = Ty
+  ESt[Pick] = EsWalk
+  EHp[Pick] = TyHpT[Ty]
+  if Stage > 0 then
+    if Ty = TyGrunt then inc EHp[Pick]
+  end if
+  EY[Pick] = random(LaneTop + 10, LaneBot - 6)
+  if (Code & 16) <> 0 then
+    EX[Pick] = 4
+    EDir[Pick] = 0
+  else
+    EX[Pick] = 236
+    EDir[Pick] = 1
+  end if
+  ECool[Pick] = 50
+  ETm[Pick] = 0
+  EFl[Pick] = 0
+  EAt[Pick] = 0
+  EAn[Pick] = 0
+  inc Alive
+  QDelay = 45
+  return
+end sub
+
+sub UpdateWave:
+  u8 Idx = 0
+  u8 Goal = 0
+  u8 MaxAct = 0
+  u8 NW = 0
+  if GoT > 0 then dec GoT
+  if StT > 0 then
+    dec StT
+    if StT = 0 then fill 32 count 28 at 2,22
+  end if
+  select case Phase
+    case PhScroll
+      NW = NWaves[Stage]
+      if Wave < NW then
+        Idx = Stage * 5
+        Idx += Wave
+        Goal = WGoal[Idx]
+        NumU = Dist
+        if NumU >= Goal then
+          Phase = PhFight
+          Idx *= WaveSz
+          QIdx = 0
+          QLeft = 0
+          for J = 0 to 5
+            V = Idx + J
+            if Waves[V] <> 0 then inc QLeft
+          next
+          QDelay = 30
+          GoT = 0
+        end if
+      else
+        NumU = Dist
+        if NumU >= 150 then
+          Phase = PhBoss
+          SpawnBoss
+        end if
+      end if
+    case PhFight
+      MaxAct = 2
+      if Stage > 0 then MaxAct = 3
+      if QDelay > 0 then dec QDelay
+      if QLeft > 0 then
+        if QDelay = 0 then
+          if Alive < MaxAct then SpawnNext
+        end if
+      end if
+      if QLeft = 0 then
+        if Alive = 0 then
+          inc Wave
+          Dist = 0
+          Phase = PhScroll
+          GoT = 240
+          play sound SndGo
+        end if
+      end if
+    case PhBoss
+      if BossAct = 2 then
+        if Alive = 0 then
+          Phase = PhClear
+          GoT = 240
+          Score += 1000
+          HudDirty = 1
+          play sound SndClear
+          StartMusic(Stage + 2)
+          print centered at 22, "STAGE CLEAR"
+          StT = 150
+        end if
+      end if
+    case PhClear
+      if PX >= 230 then StDone = 1
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the player
+' ---------------------------------------------------------------------------
+sub SetSpecies:
+  SpSpeed = TSpSpeed[Spec]
+  SpDmg = TSpDmg[Spec]
+  SpHpMax = TSpHp[Spec]
+  SpJump = TSpJump[Spec]
+  SpAtk = TSpAtk[Spec]
+  SpReach = TSpReach[Spec]
+  SpCol1 = TCol1[Spec]
+  SpCol2 = TCol2[Spec]
+  return
+end sub
+
+' walking: left/right (scrolling the world when allowed) and up/down in the lane
+sub MovePlayer:
+  u8 Stp = 0
+  u8 StpY = 0
+  u8 Lim = 0
+  u8 Top = 0
+  PMoved = 0
+  Lim = XMax
+  if Phase = PhClear then Lim = 244
+  if Lf1 = 1 then PMoved = 1
+  if Rt1 = 1 then PMoved = 1
+  if Up1 = 1 then PMoved = 1
+  if Dn1 = 1 then PMoved = 1
+  if PMoved = 0 then
+    PMove = 0
+    return
+  end if
+  PMove += SpSpeed
+  Stp = PMove / 4
+  PMove &= 3
+  if Rt1 = 1 then
+    if Lf1 = 0 then
+      PDir = 0
+      if Phase = PhScroll then
+        if PX >= ScrollX then
+          if Stp > 0 then ScrollWorld(Stp)
+        else
+          PX += Stp
+        end if
+      else
+        PX += Stp
+        if PX > Lim then PX = Lim
+      end if
+    end if
+  end if
+  if Lf1 = 1 then
+    if Rt1 = 0 then
+      PDir = 1
+      Top = XMin + Stp
+      if PX > Top then
+        PX -= Stp
+      else
+        PX = XMin
+      end if
+    end if
+  end if
+  StpY = Stp / 2
+  if StpY = 0 then
+    if (PAn & 1) = 0 then StpY = 1
+  end if
+  if Up1 = 1 then
+    if Dn1 = 0 then
+      Top = LaneTop + StpY
+      if PY > Top then
+        PY -= StpY
+      else
+        PY = LaneTop
+      end if
+    end if
+  end if
+  if Dn1 = 1 then
+    if Up1 = 0 then
+      PY += StpY
+      if PY > LaneBot then PY = LaneBot
+    end if
+  end if
+  return
+end sub
+
+' is enemy I within Reach pixels in front of the player? result in Rch
+sub InFront(u8 I, u8 Reach, u8 DyMax):
+  i16 D = 0
+  i16 Dy = 0
+  i16 R = 0
+  Rch = 0
+  D = EX[I]
+  if ETy[I] >= TyBoss then D += 8
+  D -= PX
+  if PDir = 1 then D = 0 - D
+  R = Reach
+  if ETy[I] >= TyBoss then R += 8
+  if D < -6 then return
+  if D > R then return
+  Dy = EY[I]
+  Dy -= PY
+  if Dy < 0 then Dy = 0 - Dy
+  R = DyMax
+  if Dy > R then return
+  Rch = 1
+  return
+end sub
+
+sub AddScore(u8 Pts):
+  NumU = Pts
+  NumU *= 10
+  Score += NumU
+  if Score >= NextLife then
+    NextLife += 3000
+    if Lives < 9 then inc Lives
+    play sound SndPick
+  end if
+  HudDirty = 1
+  return
+end sub
+
+sub HitEnemy(u8 I, u8 Dmg, u8 Kn):
+  if EHp[I] > Dmg then
+    EHp[I] -= Dmg
+  else
+    EHp[I] = 0
+  end if
+  EFl[I] = 8
+  SpkT = 8
+  SpkX = EX[I]
+  SpkY = EY[I]
+  if ETy[I] >= TyBoss then
+    SpkX += 8
+    SpkY -= 8
+    HudDirty = 1
+    if EHp[I] = 0 then
+      ESt[I] = EsDie
+      ETm[I] = 60
+      AddScore(0)
+      play sound SndBig
+    else
+      play sound SndHit
+      if Kn = 1 then
+        if ESt[I] <> EsStrike then
+          ESt[I] = EsHurt
+          ETm[I] = 16
+          EKb[I] = 0
+          if Token = 1 then Token = 0
+        end if
+      end if
+    end if
+    return
+  end if
+  if Token = I + 1 then Token = 0
+  EKb[I] = 3
+  ETm[I] = 14
+  if Kn = 1 then
+    EKb[I] = 6
+    ETm[I] = 24
+  end if
+  if PDir = 0 then
+    EKbD[I] = 0
+  else
+    EKbD[I] = 1
+  end if
+  ESt[I] = EsHurt
+  if EHp[I] = 0 then
+    ESt[I] = EsDie
+    ETm[I] = 26
+    N = ETy[I]
+    AddScore(TyPts[N])
+    play sound SndDie
+    if random(100) < 28 then
+      ItOn = 1
+      ItX = EX[I]
+      ItY = EY[I]
+      ItT = 700
+    end if
+  else
+    play sound SndHit
+  end if
+  return
+end sub
+
+' all enemies in the strike zone of a ground attack
+sub PlayerStrike:
+  u8 I = 0
+  u8 Hits = 0
+  u8 Dmg = 0
+  u8 Kn = 0
+  u8 Reach = 0
+  Dmg = SpDmg
+  if PCombo = 3 then
+    inc Dmg
+    Kn = 1
+  end if
+  Reach = SpReach - 6
+  for I = 0 to 2
+    if ESt[I] <> EsOff then
+      if ESt[I] < EsDie then
+        if PZ < 12 then
+          InFront(I, Reach, 10)
+          if Rch = 1 then
+            HitEnemy(I, Dmg, Kn)
+            inc Hits
+          end if
+        end if
+      end if
+    end if
+  next
+  if Hits = 0 then
+    play sound SndWhiff
+  else
+    PHit = 1
+  end if
+  return
+end sub
+
+sub KickStrike:
+  u8 I = 0
+  u8 Dmg = 0
+  u8 Reach = 0
+  Dmg = SpDmg + 1
+  Reach = SpReach - 4
+  for I = 0 to 2
+    if ESt[I] <> EsOff then
+      if ESt[I] < EsDie then
+        if KickHit[I] = 0 then
+          InFront(I, Reach, 12)
+          if Rch = 1 then
+            KickHit[I] = 1
+            HitEnemy(I, Dmg, 1)
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub HurtPlayer(u8 Dmg, u8 FromX):
+  if DbgGod = 1 then return
+  if PInv > 0 then return
+  if PSt = PsDead then return
+  if PHp > Dmg then
+    PHp -= Dmg
+  else
+    PHp = 0
+  end if
+  HudDirty = 1
+  PInv = 80
+  PTm = 0
+  PKb = 6
+  if FromX > PX then
+    PKbDir = 1
+  else
+    PKbDir = 0
+  end if
+  if PHp = 0 then
+    PSt = PsDead
+    play sound SndDie
+  else
+    PSt = PsHurt
+    play sound SndHurt
+  end if
+  return
+end sub
+
+sub PlayerLand:
+  PZ = 0
+  PSt = PsIdle
+  PCombo = 0
+  play sound SndLand
+  return
+end sub
+
+sub UpdatePlayer:
+  if PInv > 0 then dec PInv
+  if PComboT > 0 then dec PComboT
+  inc PAn
+  select case PSt
+    case PsIdle
+      MovePlayer
+      if Press2 = 1 then
+        PSt = PsJump
+        PUp = 1
+        PVs = SpJump
+        play sound SndJump
+      else
+        if Press1 = 1 then
+          PSt = PsAtk
+          PTm = 0
+          PHit = 0
+          if PComboT > 0 then
+            if PCombo < 3 then
+              inc PCombo
+            else
+              PCombo = 1
+            end if
+          else
+            PCombo = 1
+          end if
+        end if
+      end if
+    case PsAtk
+      inc PTm
+      if PTm = 4 then PlayerStrike
+      if PTm >= SpAtk then
+        PSt = PsIdle
+        if PHit = 1 then
+          PComboT = 20
+        else
+          PCombo = 0
+        end if
+      end if
+    case PsJump
+      MovePlayer
+      if Press1 = 1 then
+        PSt = PsKick
+        KickHit[0] = 0
+        KickHit[1] = 0
+        KickHit[2] = 0
+        play sound SndWhiff
+      end if
+      JumpPhysics
+    case PsKick
+      MovePlayer
+      KickStrike
+      JumpPhysics
+    case PsHurt
+      inc PTm
+      if PKb > 0 then
+        dec PKb
+        if PKbDir = 1 then
+          if PX > XMin + 2 then PX -= 2
+        else
+          if PX < XMax - 2 then PX += 2
+        end if
+      end if
+      if PZ > 0 then
+        if PZ > 3 then
+          PZ -= 3
+        else
+          PZ = 0
+        end if
+      end if
+      if PTm >= 18 then
+        if PZ = 0 then PSt = PsIdle
+      end if
+    case PsDead
+      inc PTm
+      if PZ > 0 then
+        if PZ > 3 then
+          PZ -= 3
+        else
+          PZ = 0
+        end if
+      end if
+      if PTm = 80 then
+        if Lives > 1 then
+          dec Lives
+          PHp = SpHpMax
+          PSt = PsIdle
+          PInv = 150
+          HudDirty = 1
+        else
+          PDead = 2
+        end if
+      end if
+  end select
+  return
+end sub
+
+sub JumpPhysics:
+  if PUp = 1 then
+    PZ += PVs
+    if (PAn & 1) = 0 then
+      dec PVs
+      if PVs = 0 then
+        PUp = 0
+        PVs = 1
+      end if
+    end if
+  else
+    if PZ <= PVs then
+      PlayerLand
+    else
+      PZ -= PVs
+      if (PAn & 1) = 0 then
+        if PVs < 6 then inc PVs
+      end if
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' enemies and projectiles
+' ---------------------------------------------------------------------------
+sub FacePlayer(u8 I):
+  if PX < EX[I] then
+    EDir[I] = 1
+  else
+    EDir[I] = 0
+  end if
+  return
+end sub
+
+sub FireDart(u8 I):
+  u8 K = 0
+  u8 Pick = 9
+  for K = 0 to 1
+    if PjOn[K] = 0 then Pick = K
+  next
+  if Pick = 9 then return
+  PjOn[Pick] = 1
+  PjK[Pick] = 1
+  PjY[Pick] = EY[I]
+  PjD[Pick] = EDir[I]
+  if EDir[I] = 0 then
+    PjX[Pick] = EX[I] + 14
+  else
+    PjX[Pick] = EX[I]
+  end if
+  play sound SndDart
+  return
+end sub
+
+sub UpdateEnemy(u8 I):
+  u8 Ty = 0
+  u8 Ad = 0
+  u8 Ady = 0
+  u8 Spd = 0
+  u8 Rng = 0
+  u8 Tgt = 0
+  u8 Wnd = 0
+  u8 Moved = 0
+  if ESt[I] = EsOff then return
+  Ty = ETy[I]
+  if EFl[I] > 0 then dec EFl[I]
+  inc EAn[I]
+  Ad = absdiff(EX[I], PX)
+  Ady = absdiff(EY[I], PY)
+  select case ESt[I]
+    case EsWalk
+      FacePlayer(I)
+      if ECool[I] > 0 then dec ECool[I]
+      Tgt = PY
+      if I = 1 then Tgt -= 7
+      if I = 2 then Tgt += 7
+      Spd = 1
+      Rng = 16
+      Wnd = 24
+      if Ty = TyHound then
+        Spd = 2
+        Rng = 38
+        Wnd = 16
+      end if
+      if Ty = TyDarter then
+        Rng = 80
+        Wnd = 28
+      end if
+      if Stage > 0 then Wnd -= 4
+      if Stage > 1 then Wnd -= 3
+      if Ty = TyDarter then
+        ' keep a distance: back off when close, close in when far
+        if Ad < 56 then
+          if EX[I] > PX then
+            if EX[I] < 228 then EX[I] += 1
+          else
+            if EX[I] > 12 then EX[I] -= 1
+          end if
+        else
+          if Ad > 104 then
+            if EX[I] > PX then
+              EX[I] -= 1
+            else
+              EX[I] += 1
+            end if
+          end if
+        end if
+      else
+        if Ad > Rng then
+          if EX[I] > PX then
+            if EX[I] > Spd then EX[I] -= Spd
+          else
+            EX[I] += Spd
+            if EX[I] > 238 then EX[I] = 238
+          end if
+        end if
+      end if
+      if (EAn[I] & 1) = 0 then
+        if EY[I] < Tgt then
+          if EY[I] < LaneBot then inc EY[I]
+        end if
+        if EY[I] > Tgt then
+          if EY[I] > LaneTop then dec EY[I]
+        end if
+      end if
+      if ECool[I] = 0 then
+        if Token = 0 then
+          if PSt <> PsDead then
+            if Ady <= 8 then
+              Moved = 0
+              if Ty = TyDarter then
+                if Ad >= 48 then
+                  if Ad <= 130 then Moved = 1
+                end if
+              else
+                if Ad <= Rng + 4 then Moved = 1
+              end if
+              if Moved = 1 then
+                Token = I + 1
+                ESt[I] = EsWind
+                ETm[I] = Wnd
+              end if
+            end if
+          end if
+        end if
+      end if
+    case EsWind
+      if Ty <> TyHound then FacePlayer(I)
+      dec ETm[I]
+      if ETm[I] = 0 then
+        ESt[I] = EsStrike
+        EAt[I] = 0
+        ETm[I] = 8
+        if Ty = TyDarter then
+          FireDart(I)
+          ETm[I] = 6
+        end if
+        if Ty = TyHound then ETm[I] = 14
+      end if
+    case EsStrike
+      if Ty = TyGrunt then
+        if EAt[I] = 0 then
+          EAt[I] = 1
+          if Ad <= 22 then
+            if Ady <= 8 then
+              if PZ < 10 then HurtPlayer(1, EX[I])
+            end if
+          end if
+        end if
+      end if
+      if Ty = TyHound then
+        if EDir[I] = 0 then
+          if EX[I] < 236 then EX[I] += 3
+        else
+          if EX[I] > 6 then EX[I] -= 3
+        end if
+        if EAt[I] = 0 then
+          if Ad <= 14 then
+            if Ady <= 8 then
+              if PZ < 8 then
+                EAt[I] = 1
+                HurtPlayer(1, EX[I])
+              end if
+            end if
+          end if
+        end if
+      end if
+      dec ETm[I]
+      if ETm[I] = 0 then
+        ESt[I] = EsRecov
+        ETm[I] = 22
+        if Ty = TyHound then ETm[I] = 30
+        if Token = I + 1 then Token = 0
+      end if
+    case EsRecov
+      dec ETm[I]
+      if ETm[I] = 0 then
+        ESt[I] = EsWalk
+        ECool[I] = random(30, 70)
+        if Stage > 0 then ECool[I] -= 10
+      end if
+    case EsHurt
+      if EKb[I] > 0 then
+        dec EKb[I]
+        if EKbD[I] = 0 then
+          if EX[I] < 236 then EX[I] += 2
+        else
+          if EX[I] > 6 then EX[I] -= 2
+        end if
+      end if
+      dec ETm[I]
+      if ETm[I] = 0 then
+        ESt[I] = EsWalk
+        ECool[I] = 20
+      end if
+    case EsDie
+      if EKb[I] > 0 then
+        dec EKb[I]
+        if EKbD[I] = 0 then
+          if EX[I] < 236 then EX[I] += 2
+        else
+          if EX[I] > 6 then EX[I] -= 2
+        end if
+      end if
+      dec ETm[I]
+      if ETm[I] = 0 then
+        ESt[I] = EsOff
+        if Alive > 0 then dec Alive
+        if ETy[I] >= TyBoss then BossAct = 2
+      end if
+  end select
+  return
+end sub
+
+sub UpdateEnemies:
+  for J = 0 to 2
+    if ESt[J] <> EsOff then
+      if ETy[J] >= TyBoss then
+        UpdateBoss
+      else
+        UpdateEnemy(J)
+      end if
+    end if
+  next
+  return
+end sub
+
+sub UpdateProj:
+  u8 K = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  for K = 0 to 1
+    if PjOn[K] = 1 then
+      if PjD[K] = 0 then
+        PjX[K] += 3
+        if PjK[K] = 2 then PjX[K] -= 1
+        if PjX[K] > 244 then PjOn[K] = 0
+      else
+        if PjK[K] = 2 then PjX[K] += 1
+        if PjX[K] < 5 then
+          PjOn[K] = 0
+        else
+          PjX[K] -= 3
+        end if
+      end if
+      if PjOn[K] = 1 then
+        Ax = absdiff(PjX[K], PX)
+        Ay = absdiff(PjY[K], PY)
+        if Ax <= 10 then
+          if Ay <= 8 then
+            if PZ < 12 then
+              HurtPlayer(1, PjX[K])
+              PjOn[K] = 0
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub UpdateItem:
+  u8 Ax = 0
+  u8 Ay = 0
+  if ItOn = 0 then return
+  if ItT > 0 then dec ItT
+  if ItT = 0 then
+    ItOn = 0
+    return
+  end if
+  Ax = absdiff(ItX, PX)
+  Ay = absdiff(ItY, PY)
+  if Ax <= 12 then
+    if Ay <= 9 then
+      if PZ < 10 then
+        ItOn = 0
+        PHp += 3
+        if PHp > SpHpMax then PHp = SpHpMax
+        AddScore(5)
+        HudDirty = 1
+        play sound SndPick
+      end if
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' bosses (slot 0). 4 = the Warden (slam, charge), 5 = the Brute (slam,
+' slime balls), 6 = the Director (syringe volleys, blinks across the room)
+' ---------------------------------------------------------------------------
+sub SpawnBoss:
+  ETy[0] = TyBoss + Stage
+  ESt[0] = EsWalk
+  BossMax = BossHpT[Stage]
+  EHp[0] = BossMax
+  EX[0] = 216
+  EY[0] = 148
+  EDir[0] = 1
+  ECool[0] = 70
+  ETm[0] = 0
+  EFl[0] = 0
+  EAn[0] = 0
+  Alive = 1
+  BossAct = 1
+  BossHide = 0
+  QLeft = 0
+  HudDirty = 1
+  Token = 0
+  play sound SndRoar
+  StartMusic(5)
+  print centered at 22, "WARNING"
+  StT = 100
+  return
+end sub
+
+' a slime ball / syringe from the boss
+sub FireOrb(u8 Dy):
+  u8 K = 0
+  u8 Pick = 9
+  for K = 0 to 1
+    if PjOn[K] = 0 then Pick = K
+  next
+  if Pick = 9 then return
+  PjOn[Pick] = 1
+  PjK[Pick] = 2
+  PjY[Pick] = EY[0] + Dy
+  PjD[Pick] = EDir[0]
+  if EDir[0] = 0 then
+    PjX[Pick] = EX[0] + 26
+  else
+    PjX[Pick] = EX[0]
+  end if
+  play sound SndDart
+  return
+end sub
+
+sub UpdateBoss:
+  u8 Ad = 0
+  u8 Ady = 0
+  u8 Cx = 0
+  u8 Pcx = 0
+  u8 Wnd = 0
+  if EFl[0] > 0 then dec EFl[0]
+  inc EAn[0]
+  Cx = EX[0] + 16
+  Pcx = PX + 8
+  Ad = absdiff(Cx, Pcx)
+  Ady = absdiff(EY[0], PY)
+  select case ESt[0]
+    case EsWalk
+      if PX < EX[0] then
+        EDir[0] = 1
+      else
+        EDir[0] = 0
+      end if
+      if ECool[0] > 0 then dec ECool[0]
+      if (EAn[0] & 1) = 0 then
+        if ETy[0] = 6 then
+          ' the Director keeps away
+          if Ad < 70 then
+            if Cx > Pcx then
+              if EX[0] < 216 then inc EX[0]
+            else
+              if EX[0] > 10 then dec EX[0]
+            end if
+          end if
+        else
+          if Ad > 26 then
+            if Cx > Pcx then
+              dec EX[0]
+            else
+              inc EX[0]
+            end if
+          end if
+        end if
+        if EY[0] < PY then
+          if EY[0] < LaneBot then inc EY[0]
+        end if
+        if EY[0] > PY then
+          if EY[0] > LaneTop then dec EY[0]
+        end if
+      end if
+      if ECool[0] = 0 then
+        if PSt <> PsDead then
+          Wnd = 26 - Stage * 3
+          select case ETy[0]
+            case 4
+              if Ad <= 36 then
+                BAtk = 1
+              else
+                BAtk = 2
+                Wnd = 20
+              end if
+            case 5
+              if Ad <= 36 then
+                BAtk = 1
+              else
+                BAtk = 3
+              end if
+            case 6
+              if Ad < 44 then
+                BAtk = 4
+                Wnd = 14
+              else
+                BAtk = 3
+              end if
+          end select
+          ESt[0] = EsWind
+          ETm[0] = Wnd
+        end if
+      end if
+    case EsWind
+      if PX < EX[0] then
+        EDir[0] = 1
+      else
+        EDir[0] = 0
+      end if
+      dec ETm[0]
+      if ETm[0] = 0 then
+        ESt[0] = EsStrike
+        EAt[0] = 0
+        ETm[0] = 10
+        if BAtk = 2 then ETm[0] = 28
+        if BAtk = 3 then
+          FireOrb(0)
+          if ETy[0] = 6 then
+            FireOrb(10)
+            ETm[0] = 16
+          end if
+        end if
+        if BAtk = 4 then
+          BossHide = 1
+          ETm[0] = 28
+        end if
+      end if
+    case EsStrike
+      if BAtk = 1 then
+        if EAt[0] = 0 then
+          EAt[0] = 1
+          if Ad <= 38 then
+            if Ady <= 14 then
+              if PZ < 14 then HurtPlayer(2, Cx)
+            end if
+          end if
+        end if
+      end if
+      if BAtk = 2 then
+        if EDir[0] = 0 then
+          if EX[0] < 214 then EX[0] += 3
+        else
+          if EX[0] > 10 then EX[0] -= 3
+        end if
+        if EAt[0] = 0 then
+          if Ad <= 24 then
+            if Ady <= 12 then
+              if PZ < 12 then
+                EAt[0] = 1
+                HurtPlayer(2, Cx)
+              end if
+            end if
+          end if
+        end if
+      end if
+      dec ETm[0]
+      if BAtk = 4 then
+        if ETm[0] = 14 then
+          ' reappear on the other side of the player
+          if PX < 120 then
+            EX[0] = 206
+          else
+            EX[0] = 20
+          end if
+        end if
+        if ETm[0] = 0 then BossHide = 0
+      end if
+      if ETm[0] = 0 then
+        ESt[0] = EsRecov
+        ETm[0] = 34 - Stage * 4
+      end if
+    case EsRecov
+      dec ETm[0]
+      if ETm[0] = 0 then
+        ESt[0] = EsWalk
+        ECool[0] = random(30, 66)
+        if Stage > 0 then ECool[0] -= 10
+        if Stage > 1 then ECool[0] -= 10
+      end if
+    case EsHurt
+      dec ETm[0]
+      if ETm[0] = 0 then
+        ESt[0] = EsWalk
+        ECool[0] = 14
+      end if
+    case EsDie
+      BossHide = 0
+      dec ETm[0]
+      if ETm[0] = 0 then
+        ESt[0] = EsOff
+        Alive = 0
+        BossAct = 2
+        HudDirty = 1
+      end if
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: sprites 0-11, then the scroll rotation (right after the wait)
+' sprites: 0 body, 1 accent, 2 shadow, 3-5 enemies (3-6 a boss), 7-8 shots,
+' 9 food, 10 spark, 11 GO arrow
+' ---------------------------------------------------------------------------
+sub DrawPlayer:
+  u8 Pose = 0
+  u8 Pat = 0
+  u8 SY = 0
+  u8 C1 = 0
+  u8 C2 = 0
+  select case PSt
+    case PsAtk
+      if PTm >= 2 then Pose = 2
+      if PTm + 3 >= SpAtk then Pose = 0
+    case PsJump
+      Pose = 3
+    case PsKick
+      Pose = 2
+    case PsHurt
+      Pose = 4
+    case PsDead
+      Pose = 4
+    case else
+      if PMoved = 1 then
+        if (PAn & 8) <> 0 then Pose = 1
+      end if
+  end select
+  Pat = PDir * 40
+  Pat += Pose * 8
+  SY = PY - 17
+  SY -= PZ
+  C1 = SpCol1
+  C2 = SpCol2
+  if PInv > 0 then
+    if (PAn & 2) <> 0 then
+      SY = 192
+    end if
+  end if
+  if PSt = PsDead then
+    if PTm > 40 then
+      if (PTm & 2) <> 0 then SY = 192
+    end if
+  end if
+  set sprite 0 to SY,PX,Pat,C1
+  Pat += 4
+  set sprite 1 to SY,PX,Pat,C2
+  if PZ > 0 then
+    SY = PY - 17
+    set sprite 2 to SY,PX,SShadow,1
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  return
+end sub
+
+sub DrawEnemy(u8 I):
+  u8 Pose = 0
+  u8 Pat = 0
+  u8 SY = 0
+  u8 Col = 0
+  u8 S = 0
+  S = I + 3
+  if ESt[I] = EsOff then
+    set sprite S to 192,0,0,0
+    return
+  end if
+  Pose = 0
+  if ETy[I] = TyHound then
+    if (EAn[I] & 4) <> 0 then Pose = 1
+    if ESt[I] = EsStrike then Pose = 1
+    if ESt[I] = EsWind then Pose = 0
+    Pat = EnHound + EDir[I] * 8
+    Pat += Pose * 4
+    Col = 10
+  else
+    if (EAn[I] & 8) <> 0 then Pose = 1
+    if ESt[I] = EsStrike then Pose = 2
+    if ESt[I] = EsWind then
+      if ETm[I] < 10 then Pose = 2
+    end if
+    if ESt[I] = EsHurt then Pose = 0
+    if ETy[I] = TyGrunt then
+      Pat = EnGrunt
+      Col = 5
+    else
+      Pat = EnDarter
+      Col = 15
+    end if
+    Pat += EDir[I] * 12
+    Pat += Pose * 4
+  end if
+  if EFl[I] > 0 then
+    Col = 15
+    if ETy[I] = TyDarter then Col = 8
+  end if
+  SY = EY[I] - 17
+  if ESt[I] = EsDie then
+    if (EAn[I] & 2) <> 0 then SY = 192
+  end if
+  set sprite S to SY,EX[I],Pat,Col
+  return
+end sub
+
+sub DrawBoss:
+  u8 Fr = 0
+  u8 SY = 0
+  u8 SX = 0
+  u8 SY2 = 0
+  u8 SX2 = 0
+  u8 Col = 0
+  u8 Pat = 0
+  Fr = 0
+  if (EAn[0] & 16) <> 0 then Fr = 1
+  if ESt[0] = EsWind then Fr = 2
+  if ESt[0] = EsStrike then Fr = 2
+  Pat = SBoss + Fr * 16
+  SY = EY[0] - 33
+  SX = EX[0]
+  SY2 = SY + 16
+  SX2 = SX + 16
+  Col = 8
+  if ETy[0] = 5 then Col = 12
+  if ETy[0] = 6 then Col = 15
+  if EFl[0] > 0 then
+    Col = 11
+    if ETy[0] = 6 then Col = 8
+  end if
+  if BossHide = 1 then SY = 192
+  if BossHide = 1 then SY2 = 192
+  if ESt[0] = EsDie then
+    if (EAn[0] & 2) <> 0 then
+      SY = 192
+      SY2 = 192
+    end if
+  end if
+  set sprite 3 to SY,SX,Pat,Col
+  Pat += 4
+  set sprite 4 to SY,SX2,Pat,Col
+  Pat += 4
+  set sprite 5 to SY2,SX,Pat,Col
+  Pat += 4
+  set sprite 6 to SY2,SX2,Pat,Col
+  return
+end sub
+
+sub DrawMisc:
+  u8 K = 0
+  u8 SY = 0
+  u8 Pat = 0
+  u8 Col = 0
+  for K = 0 to 1
+    J = 7 + K
+    if PjOn[K] = 1 then
+      SY = PjY[K] - 17
+      if PjK[K] = 1 then
+        Pat = SDartR
+        if PjD[K] = 1 then Pat = SDartL
+        set sprite J to SY,PjX[K],Pat,15
+      else
+        Col = 7
+        if Stage = 1 then Col = 12
+        SY -= 6
+        set sprite J to SY,PjX[K],SOrb,Col
+      end if
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if ItOn = 1 then
+    SY = ItY - 17
+    if (Mix & 16) <> 0 then dec SY
+    Col = 10
+    if ItT < 150 then
+      if (Mix & 4) <> 0 then Col = 0
+    end if
+    set sprite 9 to SY,ItX,SFood,Col
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  if SpkT > 0 then
+    dec SpkT
+    SY = SpkY - 25
+    set sprite 10 to SY,SpkX,SSpark,15
+  else
+    set sprite 10 to 192,0,0,0
+  end if
+  set sprite 11 to 192,0,0,0
+  if GoT > 0 then
+    if (Mix & 16) <> 0 then
+      SY = 70
+      K = Mix & 7
+      K += 216
+      set sprite 11 to SY,K,SArrow,11
+    end if
+  end if
+  if Phase = PhClear then
+    if (Mix & 16) <> 0 then
+      K = Mix & 7
+      K += 216
+      set sprite 11 to 70,K,SArrow,11
+    end if
+  end if
+  return
+end sub
+
+sub DrawAll:
+  DrawPlayer
+  if BossAct = 1 then
+    DrawBoss
+  else
+    DrawEnemy(0)
+    DrawEnemy(1)
+    DrawEnemy(2)
+    set sprite 6 to 192,0,0,0
+  end if
+  DrawMisc
+  update sprites
+  if NearFlag = 1 then
+    NearFlag = 0
+    call asm ScrollStrips with hl = NearAddr, b = NNear, c = ShNear
+  end if
+  if FarFlag = 1 then
+    if (Tick & 1) = 0 then
+      FarFlag = 0
+      call asm ScrollStrips with hl = FarAddr, b = NFar, c = ShFar
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' HUD: score, hi score, lives (row 1); health pips and boss bar (row 2)
+' ---------------------------------------------------------------------------
+sub DrawHud:
+  u8 K = 0
+  u8 NFill = 0
+  HudDirty = 0
+  print at 2,1, "SCORE"
+  print Score at 8,1 digits 5
+  if Score > HiScore then HiScore = Score
+  print at 15,1, "HI"
+  print HiScore at 18,1 digits 5
+  put char TLife at 25,1
+  print Lives at 27,1 digits 1
+  for K = 0 to 9
+    if K < SpHpMax then
+      if K < PHp then
+        put char THpf at 2 + K,2
+      else
+        put char THpe at 2 + K,2
+      end if
+    else
+      put char 32 at 2 + K,2
+    end if
+  next
+  if BossAct = 1 then
+    NumU = EHp[0]
+    NumU *= 14
+    NFill = 0
+    while NumU > 0
+      if NumU >= BossMax then
+        NumU -= BossMax
+        inc NFill
+      else
+        NumU = 0
+        inc NFill
+      end if
+    end while
+    if NFill > 14 then NFill = 14
+    for K = 0 to 13
+      if K < NFill then
+        put char TBsf at 14 + K,2
+      else
+        put char TBse at 14 + K,2
+      end if
+    next
+  else
+    fill 32 count 14 at 14,2
+  end if
+  return
+end sub
+
+data TilePat bytes
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$18,$C1,$94,$80,$C1,$1C,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$20,$30,$38,$03,$01,$03,$38
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $30,$20,$00,$00,$00,$00,$00,$00
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$18,$19,$19,$19,$19,$18,$01
+  $01,$14,$41,$41,$41,$41,$14,$01
+  $01,$1D,$1F,$1F,$1F,$1F,$1D,$01
+  $01,$14,$41,$41,$41,$41,$14,$01
+  $01,$31,$13,$13,$13,$13,$31,$01
+  $01,$01,$01,$01,$1B,$1B,$1B,$01
+  $01,$B1,$B1,$B1,$1B,$1B,$1B,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$01,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data Spr_scales bytes
+  $03,$07,$06,$07,$07,$03,$0F,$16,$16,$17,$1F,$36,$66,$C6,$0E,$0E
+  $00,$E0,$F0,$FC,$EC,$C0,$F0,$68,$68,$E8,$E0,$60,$60,$60,$70,$70
+  $00,$00,$01,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$06,$07,$07,$03,$0F,$16,$16,$17,$1F,$3C,$78,$D8,$38,$00
+  $00,$E0,$F0,$FC,$EC,$C0,$F0,$68,$68,$E8,$E0,$30,$18,$18,$0E,$00
+  $00,$00,$01,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$06,$07,$07,$03,$0F,$16,$16,$17,$1F,$36,$66,$CC,$1C,$00
+  $00,$E0,$F0,$FC,$EC,$C0,$F0,$7F,$7C,$E0,$E0,$60,$60,$30,$38,$00
+  $00,$00,$01,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$83,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$06,$07,$07,$03,$0F,$16,$16,$17,$1F,$3F,$6C,$D8,$00,$00
+  $00,$E0,$F0,$FC,$EC,$C0,$F2,$64,$7C,$E0,$E0,$F0,$30,$18,$00,$00
+  $00,$00,$01,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$82,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$06,$07,$07,$03,$1F,$36,$26,$03,$1F,$36,$66,$CC,$1C,$00
+  $00,$E0,$F0,$FC,$EC,$C0,$E0,$68,$68,$F4,$E0,$60,$60,$60,$E0,$00
+  $00,$00,$01,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$3F,$37,$03,$0F,$16,$16,$17,$07,$06,$06,$06,$0E,$0E
+  $C0,$E0,$60,$E0,$E0,$C0,$F0,$68,$68,$E8,$F8,$6C,$66,$63,$70,$70
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$3F,$37,$03,$0F,$16,$16,$17,$07,$0C,$18,$18,$70,$00
+  $C0,$E0,$60,$E0,$E0,$C0,$F0,$68,$68,$E8,$F8,$3C,$1E,$1B,$1C,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$3F,$37,$03,$0F,$FE,$3E,$07,$07,$06,$06,$0C,$1C,$00
+  $C0,$E0,$60,$E0,$E0,$C0,$F0,$68,$68,$E8,$F8,$6C,$66,$33,$38,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$C1,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$3F,$37,$03,$4F,$26,$3E,$07,$07,$0F,$0C,$18,$00,$00
+  $C0,$E0,$60,$E0,$E0,$C0,$F0,$68,$68,$E8,$F8,$FC,$36,$1B,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$41,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$0F,$3F,$37,$03,$07,$16,$16,$2F,$07,$06,$06,$06,$07,$00
+  $C0,$E0,$60,$E0,$E0,$C0,$F8,$6C,$64,$C0,$F8,$6C,$66,$33,$38,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+data Spr_tusk bytes
+  $04,$07,$0D,$0F,$07,$03,$1F,$16,$16,$1F,$07,$06,$06,$06,$0E,$0E
+  $20,$F8,$FC,$FC,$B8,$C0,$F8,$68,$68,$F8,$E0,$60,$60,$60,$70,$70
+  $00,$00,$02,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$44,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$07,$0D,$0F,$07,$03,$1F,$16,$16,$1F,$07,$0C,$18,$18,$38,$00
+  $20,$F8,$FC,$FC,$B8,$C0,$F8,$68,$68,$F8,$E0,$30,$18,$18,$0E,$00
+  $00,$00,$02,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$44,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$07,$0D,$0F,$07,$03,$1F,$16,$16,$1F,$07,$06,$06,$0C,$1C,$00
+  $20,$F8,$FC,$FC,$B8,$C0,$F8,$7F,$7C,$F0,$E0,$60,$60,$30,$38,$00
+  $00,$00,$02,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$44,$00,$00,$80,$83,$00,$00,$00,$00,$00,$00,$00
+  $04,$07,$0D,$0F,$07,$03,$1F,$16,$16,$1F,$07,$0F,$0C,$18,$00,$00
+  $20,$F8,$FC,$FC,$B8,$C0,$FA,$64,$7C,$F0,$E0,$F0,$30,$18,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$44,$00,$00,$80,$82,$00,$00,$00,$00,$00,$00,$00
+  $04,$07,$0D,$0F,$07,$03,$1F,$36,$26,$0F,$07,$06,$06,$0C,$1C,$00
+  $20,$F8,$FC,$FC,$B8,$C0,$F8,$68,$68,$F4,$E0,$60,$60,$60,$E0,$00
+  $00,$00,$02,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$44,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$1F,$3F,$3F,$1D,$03,$1F,$16,$16,$1F,$07,$06,$06,$06,$0E,$0E
+  $20,$E0,$B0,$F0,$E0,$C0,$F8,$68,$68,$F8,$E0,$60,$60,$60,$70,$70
+  $00,$00,$00,$00,$22,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$1F,$3F,$3F,$1D,$03,$1F,$16,$16,$1F,$07,$0C,$18,$18,$70,$00
+  $20,$E0,$B0,$F0,$E0,$C0,$F8,$68,$68,$F8,$E0,$30,$18,$18,$1C,$00
+  $00,$00,$00,$00,$22,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$1F,$3F,$3F,$1D,$03,$1F,$FE,$3E,$0F,$07,$06,$06,$0C,$1C,$00
+  $20,$E0,$B0,$F0,$E0,$C0,$F8,$68,$68,$F8,$E0,$60,$60,$30,$38,$00
+  $00,$00,$00,$00,$22,$00,$00,$01,$C1,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$1F,$3F,$3F,$1D,$03,$5F,$26,$3E,$0F,$07,$0F,$0C,$18,$00,$00
+  $20,$E0,$B0,$F0,$E0,$C0,$F8,$68,$68,$F8,$E0,$F0,$30,$18,$00,$00
+  $00,$00,$00,$00,$22,$00,$00,$01,$41,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $04,$1F,$3F,$3F,$1D,$03,$1F,$16,$16,$2F,$07,$06,$06,$06,$07,$00
+  $20,$E0,$B0,$F0,$E0,$C0,$F8,$6C,$64,$F0,$E0,$60,$60,$30,$38,$00
+  $00,$00,$00,$00,$22,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$40,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+data Spr_flutter bytes
+  $08,$04,$07,$05,$03,$01,$0F,$16,$16,$17,$07,$06,$06,$06,$0E,$0E
+  $10,$20,$F0,$D0,$E0,$C0,$F0,$68,$68,$E8,$E0,$60,$60,$60,$70,$70
+  $00,$00,$00,$02,$00,$20,$60,$E1,$E1,$C0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$07,$05,$03,$01,$0F,$16,$16,$17,$07,$0C,$18,$18,$38,$00
+  $10,$20,$F0,$D0,$E0,$C0,$F0,$68,$68,$E8,$E0,$30,$18,$18,$0E,$00
+  $00,$00,$00,$02,$00,$20,$60,$E1,$E1,$C0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$07,$05,$03,$01,$0F,$16,$16,$17,$07,$06,$06,$0C,$1C,$00
+  $10,$20,$F0,$D0,$E0,$C0,$F0,$7F,$7C,$E0,$E0,$60,$60,$30,$38,$00
+  $00,$00,$00,$02,$00,$20,$60,$E1,$E1,$C0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$80,$83,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$07,$05,$03,$01,$0F,$16,$16,$17,$07,$0F,$0C,$18,$00,$00
+  $10,$20,$F0,$D0,$E0,$C0,$F2,$64,$7C,$E0,$E0,$F0,$30,$18,$00,$00
+  $00,$00,$00,$02,$00,$20,$60,$E1,$E1,$C0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$80,$82,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$07,$05,$03,$01,$1F,$16,$06,$03,$07,$06,$06,$0C,$1C,$00
+  $10,$20,$F0,$D0,$E0,$C0,$E0,$68,$68,$F4,$E0,$60,$60,$60,$E0,$00
+  $00,$00,$00,$02,$00,$20,$60,$E1,$E1,$C0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$0F,$0B,$07,$03,$0F,$16,$16,$17,$07,$06,$06,$06,$0E,$0E
+  $10,$20,$E0,$A0,$C0,$80,$F0,$68,$68,$E8,$E0,$60,$60,$60,$70,$70
+  $00,$00,$00,$04,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$04,$06,$87,$87,$03,$02,$00,$00,$00,$00,$00
+  $08,$04,$0F,$0B,$07,$03,$0F,$16,$16,$17,$07,$0C,$18,$18,$70,$00
+  $10,$20,$E0,$A0,$C0,$80,$F0,$68,$68,$E8,$E0,$30,$18,$18,$1C,$00
+  $00,$00,$00,$04,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$04,$06,$87,$87,$03,$02,$00,$00,$00,$00,$00
+  $08,$04,$0F,$0B,$07,$03,$0F,$FE,$3E,$07,$07,$06,$06,$0C,$1C,$00
+  $10,$20,$E0,$A0,$C0,$80,$F0,$68,$68,$E8,$E0,$60,$60,$30,$38,$00
+  $00,$00,$00,$04,$00,$00,$00,$01,$C1,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$04,$06,$87,$87,$03,$02,$00,$00,$00,$00,$00
+  $08,$04,$0F,$0B,$07,$03,$4F,$26,$3E,$07,$07,$0F,$0C,$18,$00,$00
+  $10,$20,$E0,$A0,$C0,$80,$F0,$68,$68,$E8,$E0,$F0,$30,$18,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$01,$41,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$04,$06,$87,$87,$03,$02,$00,$00,$00,$00,$00
+  $08,$04,$0F,$0B,$07,$03,$07,$16,$16,$2F,$07,$06,$06,$06,$07,$00
+  $10,$20,$E0,$A0,$C0,$80,$F8,$68,$60,$C0,$E0,$60,$60,$30,$38,$00
+  $00,$00,$00,$04,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$04,$06,$87,$87,$03,$02,$00,$00,$00,$00,$00
+end data
+data Spr_shared bytes
+  $07,$0F,$0D,$07,$03,$0F,$1F,$17,$17,$17,$07,$06,$06,$06,$0E,$0E
+  $E0,$F0,$F0,$E0,$C0,$F0,$F8,$EA,$EA,$E8,$E0,$60,$60,$60,$70,$70
+  $07,$0F,$0D,$07,$03,$0F,$1F,$17,$17,$17,$07,$0C,$18,$18,$38,$00
+  $E0,$F0,$F0,$E0,$C0,$F0,$F8,$EA,$EA,$E8,$E0,$30,$18,$18,$1C,$00
+  $07,$0F,$0D,$07,$03,$0F,$1F,$17,$17,$17,$07,$06,$06,$0C,$1C,$00
+  $E0,$F0,$F0,$E0,$C0,$F0,$F8,$FE,$EF,$E0,$E0,$60,$60,$30,$38,$00
+  $07,$0F,$0F,$07,$03,$0F,$1F,$57,$57,$17,$07,$06,$06,$06,$0E,$0E
+  $E0,$F0,$B0,$E0,$C0,$F0,$F8,$E8,$E8,$E8,$E0,$60,$60,$60,$70,$70
+  $07,$0F,$0F,$07,$03,$0F,$1F,$57,$57,$17,$07,$0C,$18,$18,$38,$00
+  $E0,$F0,$B0,$E0,$C0,$F0,$F8,$E8,$E8,$E8,$E0,$30,$18,$18,$1C,$00
+  $07,$0F,$0F,$07,$03,$0F,$1F,$7F,$F7,$07,$07,$06,$06,$0C,$1C,$00
+  $E0,$F0,$B0,$E0,$C0,$F0,$F8,$E8,$E8,$E8,$E0,$60,$60,$30,$38,$00
+  $07,$0F,$0A,$07,$03,$07,$0F,$0F,$0F,$0D,$0D,$0D,$06,$06,$0E,$00
+  $C0,$E0,$F0,$F0,$E0,$F0,$F8,$FA,$FA,$EC,$E0,$E0,$60,$60,$70,$00
+  $07,$0F,$0A,$07,$03,$07,$0F,$0F,$0F,$0D,$0D,$05,$0C,$18,$18,$38
+  $C0,$E0,$F0,$F0,$E0,$F0,$F8,$FA,$FA,$EC,$E0,$C0,$30,$18,$18,$1C
+  $07,$0F,$0A,$07,$03,$07,$0F,$0F,$0F,$0D,$0D,$0D,$06,$06,$0E,$00
+  $C0,$E0,$F0,$F0,$E0,$F0,$F8,$FC,$FF,$EA,$E0,$E0,$60,$60,$70,$00
+  $03,$07,$0F,$0F,$07,$0F,$1F,$5F,$5F,$37,$07,$07,$06,$06,$0E,$00
+  $E0,$F0,$50,$E0,$C0,$E0,$F0,$F0,$F0,$B0,$B0,$B0,$60,$60,$70,$00
+  $03,$07,$0F,$0F,$07,$0F,$1F,$5F,$5F,$37,$07,$03,$0C,$18,$18,$38
+  $E0,$F0,$50,$E0,$C0,$E0,$F0,$F0,$F0,$B0,$B0,$A0,$30,$18,$18,$1C
+  $03,$07,$0F,$0F,$07,$0F,$1F,$3F,$FF,$57,$07,$07,$06,$06,$0E,$00
+  $E0,$F0,$50,$E0,$C0,$E0,$F0,$F0,$F8,$B0,$B0,$B0,$60,$60,$70,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$6F,$7F,$7F,$3F,$36,$24,$6C,$44
+  $00,$00,$00,$00,$00,$00,$28,$38,$EC,$F7,$EF,$ED,$6C,$44,$6C,$44
+  $00,$00,$00,$00,$00,$00,$00,$20,$6F,$7F,$7F,$3F,$1B,$0A,$1A,$00
+  $00,$00,$00,$00,$00,$00,$28,$38,$EC,$F7,$EF,$ED,$CC,$54,$68,$00
+  $00,$00,$00,$00,$00,$00,$14,$1C,$37,$EF,$F7,$B7,$36,$22,$36,$22
+  $00,$00,$00,$00,$00,$00,$00,$04,$F6,$FE,$FE,$FC,$6C,$24,$36,$22
+  $00,$00,$00,$00,$00,$00,$14,$1C,$37,$EF,$F7,$B7,$33,$2A,$16,$00
+  $00,$00,$00,$00,$00,$00,$00,$04,$F6,$FE,$FE,$FC,$D8,$50,$58,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1F,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$FC,$F8
+  $00,$02,$01,$09,$07,$3F,$07,$09,$01,$02,$00,$00,$00,$00,$00,$00
+  $00,$40,$80,$90,$E0,$FC,$E0,$90,$80,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$1F,$1F,$1F,$0F,$07,$03,$01,$03,$06,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$E0,$E0,$C0,$80,$00,$80,$C0,$60,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$0F,$0F,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0,$F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$3F,$3F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$60,$78,$F8,$FE,$F8,$78,$60,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$3F,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0,$F8,$F0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0F,$1F,$0F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$FC,$80,$00,$00,$00,$00,$00,$00
+end data
+data Spr_boss1 bytes
+  $00,$01,$03,$07,$07,$07,$03,$01,$3F,$7F,$F7,$F7,$E7,$E7,$C7,$C7
+  $00,$FF,$FF,$FF,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$7F,$FF
+  $00,$FF,$FF,$FF,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FE,$FF
+  $00,$80,$C0,$E0,$E0,$E0,$C0,$80,$FC,$FE,$EF,$EF,$E7,$E7,$E3,$E3
+  $87,$87,$07,$07,$07,$07,$07,$07,$0F,$0F,$1F,$1F,$3F,$3F,$3F,$00
+  $FF,$FF,$FF,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $FF,$FF,$FF,$07,$07,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$00
+  $E1,$E1,$E0,$E0,$E0,$E0,$E0,$E0,$F0,$F0,$F8,$F8,$FC,$FC,$FC,$00
+  $00,$01,$03,$07,$07,$07,$03,$01,$3F,$7F,$F7,$F7,$E7,$E7,$C7,$C7
+  $00,$FF,$FF,$FF,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$7F,$FF
+  $00,$FF,$FF,$FF,$FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FE,$FF
+  $00,$80,$C0,$E0,$E0,$E0,$C0,$80,$FC,$FE,$EF,$EF,$E7,$E7,$E3,$E3
+  $87,$87,$07,$07,$07,$0F,$0F,$1F,$1F,$3F,$3F,$7F,$7F,$FF,$FF,$00
+  $FF,$FF,$FF,$E0,$E0,$C0,$80,$80,$80,$80,$80,$80,$80,$80,$80,$00
+  $FF,$FF,$FF,$07,$07,$03,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00
+  $E1,$E1,$E0,$E0,$E0,$F0,$F0,$F8,$F8,$FC,$FC,$FE,$FE,$FF,$FF,$00
+  $08,$0D,$0F,$0F,$0F,$0F,$07,$07,$3F,$7F,$CF,$8F,$0F,$0F,$0F,$07
+  $7F,$FF,$FF,$FF,$3F,$FF,$FF,$FF,$FF,$E0,$F8,$F8,$FF,$FF,$FF,$FF
+  $FE,$FF,$FF,$FF,$FC,$FF,$FF,$FF,$FF,$07,$1F,$1F,$FF,$FF,$FF,$FF
+  $10,$B0,$F0,$F0,$F0,$F0,$E0,$E0,$FC,$FE,$F3,$F1,$F0,$F0,$F0,$E0
+  $07,$07,$07,$07,$0F,$0F,$1F,$1F,$3F,$3F,$3F,$00,$00,$00,$00,$00
+  $E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00
+  $07,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$F0,$F0,$F8,$F8,$FC,$FC,$FC,$00,$00,$00,$00,$00
+end data
+data Spr_boss2 bytes
+  $00,$00,$00,$03,$07,$0F,$0D,$0F,$0C,$0A,$07,$3F,$7F,$FF,$FF,$F7
+  $00,$00,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$AF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$F5,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$C0,$E0,$F0,$B0,$F0,$30,$50,$E0,$FC,$FE,$FF,$FF,$EF
+  $F7,$E7,$E7,$E3,$C3,$C3,$01,$01,$01,$03,$03,$03,$07,$07,$0F,$0F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$C0,$C0,$C0,$C0,$C0,$C0
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$03,$03,$03,$03,$03,$03
+  $EF,$E7,$E7,$C7,$C3,$C3,$80,$80,$80,$C0,$C0,$C0,$E0,$E0,$F0,$F0
+  $00,$00,$00,$03,$07,$0F,$0D,$0F,$0C,$0A,$07,$3F,$7F,$FF,$FF,$F7
+  $00,$00,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$AF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$F5,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$C0,$E0,$F0,$B0,$F0,$30,$50,$E0,$FC,$FE,$FF,$FF,$EF
+  $F7,$E7,$E7,$E3,$C3,$C3,$01,$01,$01,$03,$01,$03,$03,$07,$07,$0F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$E0,$C0,$C0,$C0,$C0,$C0
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$07,$03,$03,$03,$03,$03
+  $EF,$E7,$E7,$C7,$C3,$C3,$80,$80,$80,$C0,$80,$C0,$C0,$E0,$E0,$F0
+  $3F,$7F,$FE,$FE,$FF,$7F,$0F,$0D,$0F,$0C,$0A,$07,$3F,$7F,$FF,$FF
+  $FF,$FF,$00,$7F,$7F,$7F,$FF,$FF,$FF,$FF,$AF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$00,$FE,$FE,$FE,$FF,$FF,$FF,$FF,$F5,$FF,$FF,$FF,$FF,$FF
+  $FC,$FE,$7F,$7F,$FF,$FE,$F0,$B0,$F0,$30,$50,$E0,$FC,$FE,$FF,$FF
+  $F7,$E7,$E7,$E3,$C3,$01,$01,$01,$03,$03,$03,$07,$07,$0F,$0F,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$03,$03,$03,$03,$03,$03,$00
+  $EF,$E7,$E7,$C7,$C3,$80,$80,$80,$C0,$C0,$C0,$E0,$E0,$F0,$F0,$00
+end data
+data Spr_boss3 bytes
+  $00,$00,$00,$00,$01,$01,$01,$01,$01,$00,$00,$07,$0F,$1F,$3F,$3F
+  $00,$00,$7F,$FF,$FF,$FF,$FF,$AB,$FF,$7F,$3F,$FF,$FF,$5F,$5F,$AF
+  $00,$00,$FE,$FF,$FF,$FF,$FF,$D5,$FF,$FE,$FC,$FF,$FF,$FA,$FA,$F5
+  $00,$00,$00,$00,$80,$80,$80,$80,$80,$00,$00,$E0,$F0,$F8,$FC,$FC
+  $7F,$7F,$FF,$FF,$FF,$FF,$BF,$BF,$3F,$3F,$3F,$3F,$3F,$3E,$3E,$3C
+  $AF,$AF,$AF,$AF,$AF,$D7,$D7,$D7,$D7,$D7,$C0,$00,$00,$00,$00,$00
+  $F5,$F5,$F5,$F5,$F5,$EB,$EB,$EB,$EB,$EB,$03,$00,$00,$00,$00,$00
+  $FE,$FE,$FF,$FF,$FF,$FF,$FD,$FD,$FC,$FC,$FC,$FC,$FC,$7C,$7C,$3C
+  $00,$00,$00,$00,$01,$01,$01,$01,$01,$00,$00,$07,$0F,$1F,$3F,$3F
+  $00,$00,$7F,$FF,$FF,$FF,$FF,$AB,$FF,$7F,$3F,$FF,$FF,$5F,$5F,$AF
+  $00,$00,$FE,$FF,$FF,$FF,$FF,$D5,$FF,$FE,$FC,$FF,$FF,$FA,$FA,$F5
+  $00,$00,$00,$00,$80,$80,$80,$80,$80,$00,$00,$E0,$F0,$F8,$FC,$FC
+  $7F,$7F,$FF,$FF,$FF,$FF,$BF,$BF,$3F,$3F,$3F,$3E,$3E,$1E,$0E,$06
+  $AF,$AF,$AF,$AF,$AF,$D7,$D7,$D7,$D7,$D7,$C0,$00,$00,$00,$00,$00
+  $F5,$F5,$F5,$F5,$F5,$EB,$EB,$EB,$EB,$EB,$03,$00,$00,$00,$00,$00
+  $FE,$FE,$FF,$FF,$FF,$FF,$FD,$FD,$FC,$FC,$FC,$7C,$7C,$78,$70,$60
+  $00,$00,$00,$01,$01,$01,$01,$01,$00,$20,$60,$EF,$FF,$FF,$FF,$FE
+  $00,$7F,$FF,$FF,$FF,$FF,$AB,$FF,$7F,$3F,$FF,$FE,$FE,$FC,$FC,$BF
+  $00,$FE,$FF,$FF,$FF,$FF,$D5,$FF,$FE,$FC,$FF,$7F,$7F,$3F,$3F,$FD
+  $00,$00,$00,$80,$80,$80,$80,$80,$00,$04,$06,$F7,$FF,$FF,$FF,$7F
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$03,$03,$00
+  $BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$00,$00,$00
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD,$00,$00,$00
+  $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$C0,$C0,$00
+end data
+data FarTab1 bytes
+  $8B,$04,$0F,$05,$01,$00,$00,$F0,$07,$01,$00,$00,$00,$00,$00,$0F
+  $E0,$80,$00,$00,$00,$00,$00,$E0,$0F,$03,$00,$00,$00,$00,$00,$1F
+  $C0,$00,$00,$00,$00,$00,$00,$C0,$1F,$06,$00,$00,$00,$00,$00,$3F
+  $80,$00,$00,$00,$00,$00,$00,$80,$3F,$0C,$00,$00,$00,$00,$00,$7F
+  $00,$00,$00,$00,$00,$00,$00,$00,$7E,$18,$00,$00,$00,$00,$00,$FF
+  $00,$00,$00,$00,$00,$00,$00,$01,$FC,$30,$00,$00,$00,$00,$00,$FE
+  $00,$00,$00,$00,$00,$00,$00,$03,$F8,$60,$00,$00,$00,$00,$00,$FC
+  $01,$00,$00,$00,$00,$00,$00,$07,$F0,$C0,$00,$00,$00,$00,$00,$F8
+  $03,$00,$00,$00,$00,$00,$00,$0F,$E0,$80,$00,$00,$00,$00,$00,$F0
+  $07,$01,$00,$00,$00,$00,$00,$1F,$C0,$00,$00,$00,$00,$00,$00,$E0
+  $0F,$03,$00,$00,$00,$00,$00,$3F,$80,$00,$00,$00,$00,$00,$00,$C0
+  $1F,$06,$00,$00,$00,$00,$00,$7F,$00,$00,$00,$00,$00,$00,$00,$80
+  $3F,$0C,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $7E,$18,$00,$00,$00,$00,$00,$FE,$00,$00,$00,$00,$00,$00,$00,$01
+  $FC,$30,$00,$00,$00,$00,$00,$FC,$01,$00,$00,$00,$00,$00,$00,$03
+  $F8,$60,$00,$00,$00,$00,$00,$F8,$03,$00,$00,$00,$00,$00,$00,$07
+  $F0,$C0,$00,$00,$00
+  $8D,$03,$07,$45,$00,$00,$00,$00,$00,$00,$F0,$C3,$00,$00,$00,$00
+  $00,$00,$E1,$87,$00,$00,$00,$00,$00,$00,$C3,$0F,$00,$00,$00,$00
+  $00,$00,$87,$1E,$00,$00,$00,$00,$00,$00,$0F,$3C,$00,$00,$00,$00
+  $00,$00,$1E,$78,$00,$00,$00,$00,$00,$00,$3C,$F0,$00,$00,$00,$00
+  $00,$00,$78,$E1,$00
+  $8E,$04,$0F,$05,$01,$00,$C0,$CC,$CC,$CC,$CC,$CC,$CC,$00,$03,$33
+  $33,$33,$33,$33,$33,$00,$80,$98,$98,$98,$98,$98,$98,$00,$07,$67
+  $67,$67,$67,$67,$67,$00,$00,$30,$30,$30,$30,$30,$30,$00,$0F,$CF
+  $CF,$CF,$CF,$CF,$CF,$00,$00,$61,$61,$61,$61,$61,$61,$00,$1E,$9E
+  $9E,$9E,$9E,$9E,$9E,$00,$00,$C3,$C3,$C3,$C3,$C3,$C3,$00,$3C,$3C
+  $3C,$3C,$3C,$3C,$3C,$00,$00,$86,$86,$86,$86,$86,$86,$00,$78,$79
+  $79,$79,$79,$79,$79,$00,$00,$0C,$0C,$0C,$0C,$0C,$0C,$00,$F0,$F3
+  $F3,$F3,$F3,$F3,$F3,$00,$01,$19,$19,$19,$19,$19,$19,$00,$E0,$E6
+  $E6,$E6,$E6,$E6,$E6,$00,$03,$33,$33,$33,$33,$33,$33,$00,$C0,$CC
+  $CC,$CC,$CC,$CC,$CC,$00,$07,$67,$67,$67,$67,$67,$67,$00,$80,$98
+  $98,$98,$98,$98,$98,$00,$0F,$CF,$CF,$CF,$CF,$CF,$CF,$00,$00,$30
+  $30,$30,$30,$30,$30,$00,$1E,$9E,$9E,$9E,$9E,$9E,$9E,$00,$00,$61
+  $61,$61,$61,$61,$61,$00,$3C,$3C,$3C,$3C,$3C,$3C,$3C,$00,$00,$C3
+  $C3,$C3,$C3,$C3,$C3,$00,$78,$79,$79,$79,$79,$79,$79,$00,$00,$86
+  $86,$86,$86,$86,$86,$00,$F0,$F3,$F3,$F3,$F3,$F3,$F3,$00,$00,$0C
+  $0C,$0C,$0C,$0C,$0C,$00,$E0,$E6,$E6,$E6,$E6,$E6,$E6,$00,$01,$19
+  $19,$19,$19,$19,$19
+  $90,$04,$0F,$05,$01,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$33,$33,$33
+  $33,$33,$33,$33,$33,$98,$98,$98,$98,$98,$98,$98,$98,$67,$67,$67
+  $67,$67,$67,$67,$67,$30,$30,$30,$30,$30,$30,$30,$30,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$CF,$61,$61,$61,$61,$61,$61,$61,$61,$9E,$9E,$9E
+  $9E,$9E,$9E,$9E,$9E,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$3C,$3C,$3C
+  $3C,$3C,$3C,$3C,$3C,$86,$86,$86,$86,$86,$86,$86,$86,$79,$79,$79
+  $79,$79,$79,$79,$79,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$F3,$F3,$F3
+  $F3,$F3,$F3,$F3,$F3,$19,$19,$19,$19,$19,$19,$19,$19,$E6,$E6,$E6
+  $E6,$E6,$E6,$E6,$E6,$33,$33,$33,$33,$33,$33,$33,$33,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$67,$67,$67,$67,$67,$67,$67,$67,$98,$98,$98
+  $98,$98,$98,$98,$98,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$30,$30,$30
+  $30,$30,$30,$30,$30,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$61,$61,$61
+  $61,$61,$61,$61,$61,$3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$79,$79,$79,$79,$79,$79,$79,$79,$86,$86,$86
+  $86,$86,$86,$86,$86,$F3,$F3,$F3,$F3,$F3,$F3,$F3,$F3,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6,$19,$19,$19
+  $19,$19,$19,$19,$19
+  $92,$04,$0F,$05,$01,$CC,$CC,$CC,$CC,$CC,$00,$00,$00,$33,$33,$33
+  $33,$33,$00,$00,$00,$98,$98,$98,$98,$98,$00,$00,$00,$67,$67,$67
+  $67,$67,$00,$00,$00,$30,$30,$30,$30,$30,$00,$00,$00,$CF,$CF,$CF
+  $CF,$CF,$00,$00,$00,$61,$61,$61,$61,$61,$00,$00,$00,$9E,$9E,$9E
+  $9E,$9E,$00,$00,$00,$C3,$C3,$C3,$C3,$C3,$00,$00,$00,$3C,$3C,$3C
+  $3C,$3C,$00,$00,$00,$86,$86,$86,$86,$86,$00,$00,$00,$79,$79,$79
+  $79,$79,$00,$00,$00,$0C,$0C,$0C,$0C,$0C,$00,$00,$00,$F3,$F3,$F3
+  $F3,$F3,$00,$00,$00,$19,$19,$19,$19,$19,$00,$00,$00,$E6,$E6,$E6
+  $E6,$E6,$00,$00,$00,$33,$33,$33,$33,$33,$00,$00,$00,$CC,$CC,$CC
+  $CC,$CC,$00,$00,$00,$67,$67,$67,$67,$67,$00,$00,$00,$98,$98,$98
+  $98,$98,$00,$00,$00,$CF,$CF,$CF,$CF,$CF,$00,$00,$00,$30,$30,$30
+  $30,$30,$00,$00,$00,$9E,$9E,$9E,$9E,$9E,$00,$00,$00,$61,$61,$61
+  $61,$61,$00,$00,$00,$3C,$3C,$3C,$3C,$3C,$00,$00,$00,$C3,$C3,$C3
+  $C3,$C3,$00,$00,$00,$79,$79,$79,$79,$79,$00,$00,$00,$86,$86,$86
+  $86,$86,$00,$00,$00,$F3,$F3,$F3,$F3,$F3,$00,$00,$00,$0C,$0C,$0C
+  $0C,$0C,$00,$00,$00,$E6,$E6,$E6,$E6,$E6,$00,$00,$00,$19,$19,$19
+  $19,$19,$00,$00,$00
+  $94,$03,$07,$45,$00,$80,$80,$80,$80,$80,$80,$00,$00,$01,$01,$01
+  $01,$01,$01,$00,$00,$02,$02,$02,$02,$02,$02,$00,$00,$04,$04,$04
+  $04,$04,$04,$00,$00,$08,$08,$08,$08,$08,$08,$00,$00,$10,$10,$10
+  $10,$10,$10,$00,$00,$20,$20,$20,$20,$20,$20,$00,$00,$40,$40,$40
+  $40,$40,$40,$00,$00
+end data
+data NearTab1 bytes
+  $95,$04,$0F,$05,$01,$00,$80,$80,$90,$80,$80,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00,$01,$01
+  $01,$01,$01,$01,$01,$00,$00,$00,$40,$00,$00,$00,$00,$00,$02,$02
+  $02,$02,$02,$02,$02,$00,$00,$00,$80,$00,$00,$00,$00,$00,$04,$04
+  $04,$04,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08
+  $09,$08,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10
+  $12,$10,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20
+  $24,$20,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40
+  $48,$40,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $90,$80,$80,$80,$80,$00,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00
+  $20,$00,$00,$00,$00,$00,$02,$02,$02,$02,$02,$02,$02,$00,$00,$00
+  $40,$00,$00,$00,$00,$00,$04,$04,$04,$04,$04,$04,$04,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$08,$08,$09,$08,$08,$08,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$10,$12,$10,$10,$10,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$20,$24,$20,$20,$20,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$40,$48,$40,$40,$40,$40,$00,$00,$00
+  $00,$00,$00,$00,$00
+  $97,$04,$0F,$05,$01,$00,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00
+  $20,$00,$00,$00,$00,$00,$02,$02,$02,$02,$02,$02,$02,$00,$00,$00
+  $40,$00,$00,$00,$00,$00,$04,$04,$04,$04,$04,$04,$04,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$08,$08,$09,$08,$08,$08,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$10,$12,$10,$10,$10,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$20,$24,$20,$20,$20,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$40,$48,$40,$40,$40,$40,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$90,$80,$80,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00,$01,$01
+  $01,$01,$01,$01,$01,$00,$00,$00,$40,$00,$00,$00,$00,$00,$02,$02
+  $02,$02,$02,$02,$02,$00,$00,$00,$80,$00,$00,$00,$00,$00,$04,$04
+  $04,$04,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08
+  $09,$08,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10
+  $12,$10,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20
+  $24,$20,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40
+  $48,$40,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $90,$80,$80,$80,$80
+end data
+data StatTab1 bytes
+  $99,$04,$00,$15,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00
+  $9B,$03,$00,$0D,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $9C,$03,$00,$0D,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data StageCol1 bytes
+  $11,$11,$1B,$B1,$B1,$11,$11,$11
+  $11,$11,$1B,$B1,$B1,$11,$11,$11
+  $11,$44,$44,$44,$11,$B1,$B1,$11
+  $44,$41,$41,$41,$41,$41,$41,$41
+  $44,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$EE,$EE,$11
+  $41,$41,$41,$41,$41,$EE,$EE,$11
+  $14,$14,$14,$14,$14,$14,$11,$11
+  $44,$41,$41,$41,$41,$41,$41,$41
+  $44,$41,$41,$41,$41,$41,$41,$41
+  $44,$41,$41,$41,$41,$41,$41,$41
+  $44,$41,$41,$41,$41,$41,$41,$41
+  $11,$EE,$EE,$44,$44,$11,$11,$11
+  $11,$EE,$EE,$44,$44,$11,$11,$11
+  $11,$EE,$EE,$44,$44,$44,$44,$11
+  $44,$11,$11,$11,$11,$11,$11,$11
+end data
+data Scene1 bytes
+  153,2
+  139,2
+  141,1
+  142,2
+  144,2
+  144,2
+  144,2
+  146,2
+  148,1
+  155,1
+  156,1
+  149,2
+  151,2
+  149,2
+  151,2
+  149,2
+  151,2
+  149,2
+  151,2
+end data
+data FarTab2 bytes
+  $8B,$04,$0F,$05,$01,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$00,$00,$00,$00,$00,$01,$01,$01,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02,$02,$00,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$04,$04,$00,$04,$04,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08,$08,$00,$08,$08,$08
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10,$10,$00,$10,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20,$20,$00,$20,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40,$40,$00,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$00,$02,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$02,$02,$00,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$04,$04,$00,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$08,$08,$00,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$10,$10,$00,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$20,$20,$00,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$40,$40,$00
+  $8D,$04,$0F,$05,$01,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$00,$00,$00,$00,$00,$01,$01,$01,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02,$02,$00,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$04,$04,$00,$04,$04,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08,$08,$00,$08,$08,$08
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10,$10,$00,$10,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20,$20,$00,$20,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40,$40,$00,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$00,$02,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$02,$02,$00,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$04,$04,$00,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$08,$08,$00,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$10,$10,$00,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$20,$20,$00,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$40,$40,$00
+  $8F,$04,$0F,$05,$01,$00,$00,$CC,$CC,$CC,$CC,$CC,$CC,$00,$00,$CC
+  $CC,$CC,$CC,$CC,$CC,$00,$00,$99,$99,$99,$99,$99,$99,$00,$00,$99
+  $99,$99,$99,$99,$99,$00,$00,$33,$33,$33,$33,$33,$33,$00,$00,$33
+  $33,$33,$33,$33,$33,$00,$00,$66,$66,$66,$66,$66,$66,$00,$00,$66
+  $66,$66,$66,$66,$66,$00,$00,$CC,$CC,$CC,$CC,$CC,$CC,$00,$00,$CC
+  $CC,$CC,$CC,$CC,$CC,$00,$00,$99,$99,$99,$99,$99,$99,$00,$00,$99
+  $99,$99,$99,$99,$99,$00,$00,$33,$33,$33,$33,$33,$33,$00,$00,$33
+  $33,$33,$33,$33,$33,$00,$00,$66,$66,$66,$66,$66,$66,$00,$00,$66
+  $66,$66,$66,$66,$66,$00,$00,$CC,$CC,$CC,$CC,$CC,$CC,$00,$00,$CC
+  $CC,$CC,$CC,$CC,$CC,$00,$00,$99,$99,$99,$99,$99,$99,$00,$00,$99
+  $99,$99,$99,$99,$99,$00,$00,$33,$33,$33,$33,$33,$33,$00,$00,$33
+  $33,$33,$33,$33,$33,$00,$00,$66,$66,$66,$66,$66,$66,$00,$00,$66
+  $66,$66,$66,$66,$66,$00,$00,$CC,$CC,$CC,$CC,$CC,$CC,$00,$00,$CC
+  $CC,$CC,$CC,$CC,$CC,$00,$00,$99,$99,$99,$99,$99,$99,$00,$00,$99
+  $99,$99,$99,$99,$99,$00,$00,$33,$33,$33,$33,$33,$33,$00,$00,$33
+  $33,$33,$33,$33,$33,$00,$00,$66,$66,$66,$66,$66,$66,$00,$00,$66
+  $66,$66,$66,$66,$66
+  $91,$04,$0F,$05,$01,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+  $99,$99,$99,$99,$99,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33
+  $33,$33,$33,$33,$33,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+  $66,$66,$66,$66,$66,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+  $99,$99,$99,$99,$99,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33
+  $33,$33,$33,$33,$33,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+  $66,$66,$66,$66,$66,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+  $99,$99,$99,$99,$99,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33
+  $33,$33,$33,$33,$33,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+  $66,$66,$66,$66,$66,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+  $99,$99,$99,$99,$99,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33,$33
+  $33,$33,$33,$33,$33,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+  $66,$66,$66,$66,$66
+  $93,$04,$0F,$05,$01,$CC,$CC,$CC,$00,$00,$00,$00,$00,$CC,$CC,$CC
+  $00,$00,$00,$00,$00,$99,$99,$99,$00,$00,$00,$00,$00,$99,$99,$99
+  $00,$00,$00,$00,$00,$33,$33,$33,$00,$00,$00,$00,$00,$33,$33,$33
+  $00,$00,$00,$00,$00,$66,$66,$66,$00,$00,$00,$00,$00,$66,$66,$66
+  $00,$00,$00,$00,$00,$CC,$CC,$CC,$00,$00,$00,$00,$00,$CC,$CC,$CC
+  $00,$00,$00,$00,$00,$99,$99,$99,$00,$00,$00,$00,$00,$99,$99,$99
+  $00,$00,$00,$00,$00,$33,$33,$33,$00,$00,$00,$00,$00,$33,$33,$33
+  $00,$00,$00,$00,$00,$66,$66,$66,$00,$00,$00,$00,$00,$66,$66,$66
+  $00,$00,$00,$00,$00,$CC,$CC,$CC,$00,$00,$00,$00,$00,$CC,$CC,$CC
+  $00,$00,$00,$00,$00,$99,$99,$99,$00,$00,$00,$00,$00,$99,$99,$99
+  $00,$00,$00,$00,$00,$33,$33,$33,$00,$00,$00,$00,$00,$33,$33,$33
+  $00,$00,$00,$00,$00,$66,$66,$66,$00,$00,$00,$00,$00,$66,$66,$66
+  $00,$00,$00,$00,$00,$CC,$CC,$CC,$00,$00,$00,$00,$00,$CC,$CC,$CC
+  $00,$00,$00,$00,$00,$99,$99,$99,$00,$00,$00,$00,$00,$99,$99,$99
+  $00,$00,$00,$00,$00,$33,$33,$33,$00,$00,$00,$00,$00,$33,$33,$33
+  $00,$00,$00,$00,$00,$66,$66,$66,$00,$00,$00,$00,$00,$66,$66,$66
+  $00,$00,$00,$00,$00
+  $95,$04,$0F,$05,$01,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$00,$00,$00,$00,$00,$01,$01,$01,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02,$02,$00,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$04,$04,$00,$04,$04,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08,$08,$00,$08,$08,$08
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10,$10,$00,$10,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20,$20,$00,$20,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40,$40,$00,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$00,$80,$80,$80
+  $00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$00,$02,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$02,$02,$00,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$04,$04,$00,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$08,$08,$00,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$10,$10,$00,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$20,$20,$00,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$40,$40,$00
+end data
+data NearTab2 bytes
+  $97,$04,$0F,$05,$01,$00,$80,$80,$80,$80,$80,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02
+  $02,$02,$02,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$04
+  $04,$04,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08
+  $08,$08,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10
+  $10,$10,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20
+  $20,$20,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40
+  $40,$40,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $80,$80,$80,$80,$80,$00,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$02,$02,$02,$02,$02,$02,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$04,$04,$04,$04,$04,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$08,$08,$08,$08,$08,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$10,$10,$10,$10,$10,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$20,$20,$20,$20,$20,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$40,$40,$40,$40,$40,$40,$00,$00,$00
+  $00,$00,$00,$00,$00
+  $99,$04,$0F,$05,$01,$00,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$02,$02,$02,$02,$02,$02,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$04,$04,$04,$04,$04,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$08,$08,$08,$08,$08,$08,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$10,$10,$10,$10,$10,$10,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$20,$20,$20,$20,$20,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$40,$40,$40,$40,$40,$40,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$02
+  $02,$02,$02,$02,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$04
+  $04,$04,$04,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$08
+  $08,$08,$08,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10
+  $10,$10,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$20
+  $20,$20,$20,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$40
+  $40,$40,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $80,$80,$80,$80,$80
+  $9B,$03,$07,$45,$00,$00,$87,$00,$07,$00,$87,$00,$07,$00,$0F,$00
+  $0E,$00,$0F,$00,$0E,$00,$1E,$00,$1C,$00,$1E,$00,$1C,$00,$3C,$00
+  $38,$00,$3C,$00,$38,$00,$78,$00,$70,$00,$78,$00,$70,$00,$F0,$00
+  $E0,$00,$F0,$00,$E0,$00,$E1,$00,$C1,$00,$E1,$00,$C1,$00,$C3,$00
+  $83,$00,$C3,$00,$83
+  $9C,$03,$07,$45,$00,$00,$07,$00,$87,$00,$07,$00,$87,$00,$0E,$00
+  $0F,$00,$0E,$00,$0F,$00,$1C,$00,$1E,$00,$1C,$00,$1E,$00,$38,$00
+  $3C,$00,$38,$00,$3C,$00,$70,$00,$78,$00,$70,$00,$78,$00,$E0,$00
+  $F0,$00,$E0,$00,$F0,$00,$C1,$00,$E1,$00,$C1,$00,$E1,$00,$83,$00
+  $C3,$00,$83,$00,$C3
+end data
+data StatTab2 bytes
+  $9D,$04,$00,$15,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00
+  $9F,$03,$00,$0D,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $A0,$03,$00,$0D,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data StageCol2 bytes
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $CC,$CC,$C1,$C1,$C1,$C1,$C1,$C1
+  $CC,$CC,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$CC,$EE,$11,$11,$11
+  $C1,$C1,$C1,$CC,$EE,$11,$11,$11
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $1C,$1C,$1C,$11,$1C,$1C,$1C,$11
+  $CC,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $CC,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $CC,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $CC,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $44,$45,$44,$54,$44,$45,$44,$54
+  $44,$54,$44,$45,$44,$54,$44,$45
+  $11,$11,$EE,$44,$44,$11,$11,$11
+  $11,$11,$EE,$44,$44,$11,$11,$11
+  $EE,$EE,$44,$44,$44,$11,$11,$11
+  $44,$44,$11,$11,$11,$11,$11,$11
+end data
+data Scene2 bytes
+  139,2
+  157,2
+  141,2
+  143,2
+  145,2
+  145,2
+  145,2
+  147,2
+  149,2
+  159,1
+  160,1
+  151,2
+  153,2
+  151,2
+  155,1
+  156,1
+  153,2
+  151,2
+  153,2
+end data
+data FarTab3 bytes
+  $8B,$04,$0F,$05,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$7C,$7C,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$F8,$F8,$F8,$00,$00,$00,$00,$00,$01,$01,$01,$00,$00,$00
+  $00,$00,$F0,$F0,$F0,$00,$00,$00,$00,$00,$03,$03,$03,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$00,$00,$00,$00,$00,$07,$07,$07,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$00,$00,$00,$00,$00,$0F,$0F,$0F,$00,$00,$00
+  $00,$00,$80,$80,$80,$00,$00,$00,$00,$00,$1F,$1F,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E,$3E,$3E,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7C,$7C,$7C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$F8,$F8,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$00,$00,$00
+  $00,$00,$01,$01,$01,$00,$00,$00,$00,$00,$E0,$E0,$E0,$00,$00,$00
+  $00,$00,$03,$03,$03,$00,$00,$00,$00,$00,$C0,$C0,$C0,$00,$00,$00
+  $00,$00,$07,$07,$07,$00,$00,$00,$00,$00,$80,$80,$80,$00,$00,$00
+  $00,$00,$0F,$0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$1F,$1F,$1F
+  $8D,$04,$0F,$05,$01,$00,$00,$81,$81,$81,$81,$81,$81,$3E,$3E,$C1
+  $C1,$81,$81,$81,$81,$00,$00,$03,$03,$03,$03,$03,$03,$7C,$7C,$83
+  $83,$03,$03,$03,$03,$00,$00,$07,$07,$06,$06,$06,$06,$F8,$F8,$06
+  $06,$06,$06,$06,$06,$01,$01,$0E,$0E,$0C,$0C,$0C,$0C,$F0,$F0,$0C
+  $0C,$0C,$0C,$0C,$0C,$03,$03,$1C,$1C,$18,$18,$18,$18,$E0,$E0,$18
+  $18,$18,$18,$18,$18,$07,$07,$38,$38,$30,$30,$30,$30,$C0,$C0,$30
+  $30,$30,$30,$30,$30,$0F,$0F,$70,$70,$60,$60,$60,$60,$80,$80,$60
+  $60,$60,$60,$60,$60,$1F,$1F,$E0,$E0,$C0,$C0,$C0,$C0,$00,$00,$C0
+  $C0,$C0,$C0,$C0,$C0,$3E,$3E,$C1,$C1,$81,$81,$81,$81,$00,$00,$81
+  $81,$81,$81,$81,$81,$7C,$7C,$83,$83,$03,$03,$03,$03,$00,$00,$03
+  $03,$03,$03,$03,$03,$F8,$F8,$06,$06,$06,$06,$06,$06,$00,$00,$07
+  $07,$06,$06,$06,$06,$F0,$F0,$0C,$0C,$0C,$0C,$0C,$0C,$01,$01,$0E
+  $0E,$0C,$0C,$0C,$0C,$E0,$E0,$18,$18,$18,$18,$18,$18,$03,$03,$1C
+  $1C,$18,$18,$18,$18,$C0,$C0,$30,$30,$30,$30,$30,$30,$07,$07,$38
+  $38,$30,$30,$30,$30,$80,$80,$60,$60,$60,$60,$60,$60,$0F,$0F,$70
+  $70,$60,$60,$60,$60,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$1F,$1F,$E0
+  $E0,$C0,$C0,$C0,$C0
+  $8F,$04,$0F,$05,$01,$81,$91,$81,$81,$91,$81,$91,$81,$81,$A1,$81
+  $81,$A1,$81,$A1,$81,$03,$23,$03,$03,$23,$03,$23,$03,$03,$43,$03
+  $03,$43,$03,$43,$03,$06,$46,$06,$06,$46,$06,$46,$06,$06,$86,$06
+  $06,$86,$06,$86,$06,$0C,$8D,$0C,$0C,$8D,$0C,$8D,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$18,$1A,$18,$18,$1A,$18,$1A,$18,$18,$19,$18
+  $18,$19,$18,$19,$18,$30,$34,$30,$30,$34,$30,$34,$30,$30,$32,$30
+  $30,$32,$30,$32,$30,$60,$68,$60,$60,$68,$60,$68,$60,$60,$64,$60
+  $60,$64,$60,$64,$60,$C0,$D0,$C0,$C0,$D0,$C0,$D0,$C0,$C0,$C8,$C0
+  $C0,$C8,$C0,$C8,$C0,$81,$A1,$81,$81,$A1,$81,$A1,$81,$81,$91,$81
+  $81,$91,$81,$91,$81,$03,$43,$03,$03,$43,$03,$43,$03,$03,$23,$03
+  $03,$23,$03,$23,$03,$06,$86,$06,$06,$86,$06,$86,$06,$06,$46,$06
+  $06,$46,$06,$46,$06,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$8D,$0C
+  $0C,$8D,$0C,$8D,$0C,$18,$19,$18,$18,$19,$18,$19,$18,$18,$1A,$18
+  $18,$1A,$18,$1A,$18,$30,$32,$30,$30,$32,$30,$32,$30,$30,$34,$30
+  $30,$34,$30,$34,$30,$60,$64,$60,$60,$64,$60,$64,$60,$60,$68,$60
+  $60,$68,$60,$68,$60,$C0,$C8,$C0,$C0,$C8,$C0,$C8,$C0,$C0,$D0,$C0
+  $C0,$D0,$C0,$D0,$C0
+  $91,$03,$07,$45,$00,$00,$00,$00,$81,$42,$24,$18,$18,$00,$00,$00
+  $03,$84,$48,$30,$30,$00,$00,$00,$06,$09,$90,$60,$60,$00,$00,$00
+  $0C,$12,$21,$C0,$C0,$00,$00,$00,$18,$24,$42,$81,$81,$00,$00,$00
+  $30,$48,$84,$03,$03,$00,$00,$00,$60,$90,$09,$06,$06,$00,$00,$00
+  $C0,$21,$12,$0C,$0C
+  $92,$03,$07,$45,$00,$81,$42,$24,$18,$18,$24,$42,$81,$03,$84,$48
+  $30,$30,$48,$84,$03,$06,$09,$90,$60,$60,$90,$09,$06,$0C,$12,$21
+  $C0,$C0,$21,$12,$0C,$18,$24,$42,$81,$81,$42,$24,$18,$30,$48,$84
+  $03,$03,$84,$48,$30,$60,$90,$09,$06,$06,$09,$90,$60,$C0,$21,$12
+  $0C,$0C,$12,$21,$C0
+  $93,$03,$07,$45,$00,$81,$42,$24,$18,$18,$24,$42,$81,$03,$84,$48
+  $30,$30,$48,$84,$03,$06,$09,$90,$60,$60,$90,$09,$06,$0C,$12,$21
+  $C0,$C0,$21,$12,$0C,$18,$24,$42,$81,$81,$42,$24,$18,$30,$48,$84
+  $03,$03,$84,$48,$30,$60,$90,$09,$06,$06,$09,$90,$60,$C0,$21,$12
+  $0C,$0C,$12,$21,$C0
+end data
+data NearTab3 bytes
+  $94,$03,$07,$45,$00,$81,$42,$24,$18,$18,$00,$00,$00,$03,$84,$48
+  $30,$30,$00,$00,$00,$06,$09,$90,$60,$60,$00,$00,$00,$0C,$12,$21
+  $C0,$C0,$00,$00,$00,$18,$24,$42,$81,$81,$00,$00,$00,$30,$48,$84
+  $03,$03,$00,$00,$00,$60,$90,$09,$06,$06,$00,$00,$00,$C0,$21,$12
+  $0C,$0C,$00,$00,$00
+  $95,$03,$07,$45,$00,$00,$10,$00,$00,$00,$04,$00,$00,$00,$20,$00
+  $00,$00,$08,$00,$00,$00,$40,$00,$00,$00,$10,$00,$00,$00,$80,$00
+  $00,$00,$20,$00,$00,$00,$01,$00,$00,$00,$40,$00,$00,$00,$02,$00
+  $00,$00,$80,$00,$00,$00,$04,$00,$00,$00,$01,$00,$00,$00,$08,$00
+  $00,$00,$02,$00,$00
+  $96,$04,$0F,$05,$01,$00,$04,$00,$00,$00,$00,$20,$00,$00,$00,$00
+  $00,$10,$00,$00,$00,$00,$08,$00,$00,$00,$00,$40,$00,$00,$00,$00
+  $00,$20,$00,$00,$00,$00,$10,$00,$00,$00,$00,$80,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$00,$01,$00,$00,$40,$00,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$00,$00,$80,$00,$00,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$08,$00,$00,$00,$00,$00,$08,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$10,$00,$00,$00,$00,$00,$10,$00,$00,$00,$00,$04,$00
+  $00,$00,$00,$20,$00,$00,$00,$00,$00,$20,$00,$00,$00,$00,$08,$00
+  $00,$00,$00,$40,$00,$00,$00,$00,$00,$40,$00,$00,$00,$00,$10,$00
+  $00,$00,$00,$80,$00,$00,$00,$00,$00,$80,$00,$01,$00,$00,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$40,$00
+  $00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$80,$00
+  $00,$02,$00,$00,$00,$00,$01,$00,$00,$00,$00,$08,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$02,$00,$00,$00,$00,$10,$00,$00,$00,$00
+  $00,$08,$00,$00,$00
+  $98,$04,$0F,$05,$01,$00,$00,$00,$01,$00,$00,$10,$00,$00,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$20,$00,$00,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$40,$00,$00,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$80,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$01,$00,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$00,$00,$02,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$00,$00,$04,$00,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$08,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$10,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$00,$00,$20,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $04,$00,$00,$40,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$01,$00
+  $10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$02,$00
+  $20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$04,$00
+  $40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$08,$00
+  $80,$00,$00,$00,$00
+  $9A,$04,$0F,$05,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F
+  $3F,$3F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7E
+  $7E,$7E,$7E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC
+  $FC,$FC,$FC,$00,$00,$00,$00,$01,$01,$01,$01,$00,$00,$00,$00,$F8
+  $F8,$F8,$F8,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$F0
+  $F0,$F0,$F0,$00,$00,$00,$00,$07,$07,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$E0,$E0,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$00,$00,$00,$00,$C0
+  $C0,$C0,$C0,$00,$00,$00,$00,$1F,$1F,$1F,$1F,$00,$00,$00,$00,$80
+  $80,$80,$80,$00,$00,$00,$00,$3F,$3F,$3F,$3F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$7E,$7E,$7E,$7E,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FC,$FC,$FC,$FC,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F8,$F8,$F8,$F8,$00,$00,$00,$00,$01
+  $01,$01,$01,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$03
+  $03,$03,$03,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$07
+  $07,$07,$07,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$0F
+  $0F,$0F,$0F,$00,$00,$00,$00,$80,$80,$80,$80,$00,$00,$00,$00,$1F
+  $1F,$1F,$1F,$00,$00
+end data
+data StatTab3 bytes
+  $9C,$05,$00,$25,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00
+  $A0,$05,$00,$25,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$00,$00
+  $A4,$05,$00,$25,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$00,$00,$04,$00
+  $00,$00,$00,$00,$00
+  $A8,$03,$00,$0D,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data StageCol3 bytes
+  $11,$11,$11,$11,$11,$41,$41,$41
+  $11,$11,$11,$11,$11,$41,$41,$41
+  $41,$41,$14,$14,$14,$14,$14,$14
+  $41,$41,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $11,$EE,$EE,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$EE,$EE,$11
+  $CC,$1C,$CC,$11,$CC,$1C,$11,$11
+  $11,$41,$11,$11,$41,$11,$41,$11
+  $11,$41,$11,$11,$41,$11,$41,$11
+  $11,$41,$11,$41,$11,$11,$41,$11
+  $11,$41,$11,$41,$11,$11,$41,$11
+  $11,$11,$1B,$1B,$1B,$1B,$11,$11
+  $11,$11,$1B,$1B,$1B,$1B,$11,$11
+  $11,$F1,$11,$11,$F1,$11,$F1,$11
+  $11,$F1,$11,$11,$F1,$11,$F1,$11
+  $11,$F1,$11,$11,$F1,$11,$F1,$11
+  $11,$F1,$11,$11,$F1,$11,$F1,$11
+  $11,$11,$F1,$11,$11,$F1,$11,$F1
+  $11,$11,$F1,$11,$11,$F1,$11,$F1
+  $11,$11,$F1,$11,$11,$F1,$11,$F1
+  $11,$11,$F1,$11,$11,$F1,$11,$F1
+  $11,$F1,$11,$11,$81,$11,$11,$11
+  $11,$F1,$11,$11,$81,$11,$11,$11
+  $11,$F1,$11,$11,$81,$11,$11,$11
+  $11,$F1,$11,$11,$81,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+end data
+data Scene3 bytes
+  156,4
+  160,4
+  164,4
+  139,2
+  141,2
+  143,2
+  145,1
+  146,1
+  147,1
+  148,1
+  149,1
+  150,2
+  152,2
+  150,2
+  154,2
+  168,1
+  152,2
+  150,2
+  152,2
+end data
+asm {
+; ---------------------------------------------------------------------------
+; Smooth horizontal scrolling by rewriting the patterns of "strip" tiles.
+; The name table never changes: each screen row is a periodic texture (a
+; strip of 1, 2 or 4 tiles that repeats along the row). Shifting the texture
+; one pixel left is a bit rotation of the strip's pattern rows. The build
+; (stripkit.py) pre-computes every shift, so a frame only copies n*8 bytes
+; per strip into the pattern table. All three screen thirds share one
+; pattern table (ZShare), so every strip is written once. Each VDP data write
+; is spaced by 37 T-states (>= 8 us): safe in the blanking or the display.
+;
+; Strip record in ROM:
+;   db code            ; first tile code
+;   db lg              ; log2 of the bytes per shift (3, 4 or 5 = 1, 2 or 4 tiles)
+;   db mask            ; shifts - 1 (7, 15, 31), or 0 for a static strip
+;   dw stride          ; bytes in the whole record
+;   <shifts> blocks of n*8 pattern bytes
+; ScrollStrips: HL = table of records, B = count, C = shift in pixels (0-31)
+; ---------------------------------------------------------------------------
+ScrollStrips:
+    ld a,b
+    or a
+    ret z
+    ld (AMY_UVAR_ScCnt),a
+    ld a,c
+    and $1F
+    ld (AMY_UVAR_ScSh),a
+ss_next:
+    ld e,(hl)               ; tile code
+    inc hl
+    ld a,(hl)               ; lg
+    inc hl
+    ld (AMY_UVAR_ScN),a
+    ld a,(hl)               ; mask
+    inc hl
+    ld b,a
+    ld a,(AMY_UVAR_ScSh)
+    and b
+    ld (AMY_UVAR_ScOff),a   ; shift within this strip's period
+    ld c,(hl)               ; stride
+    inc hl
+    ld b,(hl)
+    inc hl                  ; HL = first data block
+    push hl
+    add hl,bc
+    ld bc,-5
+    add hl,bc
+    ld (AMY_UVAR_ScPtr),hl  ; the next record
+    pop hl
+    ld a,(AMY_UVAR_ScOff)
+    ld c,a
+    ld b,0
+    ld a,(AMY_UVAR_ScN)
+    ld d,a
+ss_off:
+    sla c                   ; offset = shift * 2^lg
+    rl b
+    dec d
+    jr nz,ss_off
+    add hl,bc               ; HL = this shift's block
+    push hl
+    ld l,e                  ; VRAM address = code * 8
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld a,(AMY_UVAR_ScN)
+    ld b,1
+ss_cnt:
+    sla b                   ; bytes = 2^lg
+    dec a
+    jr nz,ss_cnt
+ss_wr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz ss_wr
+    ld hl,(AMY_UVAR_ScPtr)
+    ld a,(AMY_UVAR_ScCnt)
+    dec a
+    ld (AMY_UVAR_ScCnt),a
+    jr nz,ss_next
+    ret
+
+; ---------------------------------------------------------------------------
+; ZShare: all three screen thirds use the first pattern and colour tables.
+; ---------------------------------------------------------------------------
+ZShare:
+    xor a
+    out ($BF),a
+    ld a,$84
+    out ($BF),a
+    ld a,$9F
+    out ($BF),a
+    ld a,$83
+    out ($BF),a
+    ret
+
+; ---------------------------------------------------------------------------
+; BuildScene: the name table, 24 rows of 32. HL = 19 records (code, n) for
+; rows 3-21; every other row is blank (tile 32). The caller has the display
+; off and the NMI off.
+; ---------------------------------------------------------------------------
+BuildScene:
+    push hl
+    ld a,0
+    out ($BF),a
+    ld a,$18 | $40
+    out ($BF),a
+    ; rows 0-2: blank
+    ld c,32*3
+    ld a,32
+bs_top:
+    out ($BE),a
+    nop
+    nop
+    dec c
+    jr nz,bs_top
+    pop hl
+    ld b,19
+bs_row:
+    ld e,(hl)               ; code
+    inc hl
+    ld a,(hl)               ; n
+    inc hl
+    dec a                   ; mask 0,1,3
+    ld d,a
+    ld c,0                  ; column
+bs_col:
+    ld a,c
+    and d
+    add a,e
+    out ($BE),a
+    nop
+    nop
+    inc c
+    ld a,c
+    cp 32
+    jr nz,bs_col
+    djnz bs_row
+    ; rows 22-23: blank
+    ld c,64
+    ld a,32
+bs_bot:
+    out ($BE),a
+    nop
+    nop
+    dec c
+    jr nz,bs_bot
+    ret
+
+; debug: burn about 1.2k T-states per unit in B (used to measure CPU headroom)
+Busy:
+    ld a,b
+    or a
+    ret z
+bz1:
+    ld c,76
+bz2:
+    dec c
+    jr nz,bz2
+    djnz bz1
+    ret
+}
+asm {
+MbPunch:
+    db $00,$00,$03,$02,$00,$00,$42,$04,$10
+MbWhiff:
+    db $40,$7C,$50,$01,$40,$BA,$70,$02,$40,$0A,$A1,$02,$50
+MbHit:
+    db $00,$00,$05,$03,$00,$00,$36,$06,$00,$00,$76,$04,$10
+MbBig:
+    db $00,$00,$04,$04,$00,$00,$25,$08,$00,$00,$66,$08,$10
+MbJump:
+    db $40,$75,$21,$02,$40,$F9,$20,$02,$40,$B4,$30,$02,$50
+MbLand:
+    db $00,$00,$41,$02,$00,$00,$82,$02,$10
+MbHurt:
+    db $40,$FC,$11,$03,$40,$A6,$12,$03,$40,$F9,$33,$05,$50
+MbDie:
+    db $00,$00,$16,$04,$00,$00,$47,$08,$00,$00,$77,$06,$10
+MbPick:
+    db $40,$8F,$20,$02,$40,$71,$20,$02,$40,$55,$20,$02,$40,$47,$30,$05,$50
+MbDart:
+    db $40,$38,$30,$01,$40,$5D,$40,$02,$40,$8C,$60,$02,$50
+MbRoar:
+    db $00,$00,$04,$08,$00,$00,$25,$0A,$00,$00,$56,$0A,$10
+MbClear:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$10,$10,$40,$6B,$60,$0A,$50
+MbGo:
+    db $40,$7F,$20,$03,$40,$5F,$20,$03,$50
+MbSelect:
+    db $40,$5F,$30,$02,$50
+MbOver:
+    db $40,$1D,$21,$0B,$40,$1D,$F1,$01,$40,$53,$21,$0B,$40,$53,$F1,$01,$40,$AB,$21,$0B,$40,$AB,$F1,$01
+    db $40,$3B,$32,$1E,$50
+
+MbSoundTable:
+    dw MbPunch,$702B
+    dw MbWhiff,$7035
+    dw MbHit,$702B
+    dw MbBig,$702B
+    dw MbJump,$7035
+    dw MbLand,$702B
+    dw MbHurt,$7035
+    dw MbDie,$702B
+    dw MbPick,$7035
+    dw MbDart,$7035
+    dw MbRoar,$702B
+    dw MbClear,$7035
+    dw MbGo,$7035
+    dw MbSelect,$7035
+    dw MbOver,$7035
+    dw MbTitleMel,$703F
+    dw MbTitleBass,$7049
+    dw MbS1Mel,$703F
+    dw MbS1Bass,$7049
+    dw MbS2Mel,$703F
+    dw MbS2Bass,$7049
+    dw MbS3Mel,$703F
+    dw MbS3Bass,$7049
+    dw MbBossMel,$703F
+    dw MbBossBass,$7049
+    dw MbEndMel,$703F
+    dw MbEndBass,$7049
+; Title: caged (A minor)
+; Tiny Sound, 8 frames per step
+MbTitleMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1C,$01,$1F,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$23,$01,$26,$01,$28,$01,$26,$01,$23,$01,$21,$01
+    db $1F,$01,$1E,$01
+    db $FF
+MbTitleBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$04,$01,$10,$01,$04,$01,$10,$01,$0C,$01,$13,$01
+    db $0B,$01,$12,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $0B,$01,$01,$01
+    db $FF
+
+; Stage 1: Cell Block (E minor)
+; Tiny Sound, 6 frames per step
+MbS1Mel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$23,$01,$01,$26,$01,$23,$01,$01,$1E,$01,$01,$21
+    db $01,$01,$01,$01,$23,$01,$01,$26,$01,$28,$01,$01,$26,$01,$01,$23
+    db $01,$21,$01,$01
+    db $FF
+MbS1Bass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0B,$0B,$12,$0B,$0B,$0B,$12,$0B,$07,$07,$0E,$07
+    db $09,$09,$10,$09,$0B,$0B,$12,$0B,$0B,$0B,$12,$0B,$07,$07,$0E,$07
+    db $06,$06,$12,$06
+    db $FF
+
+; Stage 2: Sewers (D minor)
+; Tiny Sound, 6 frames per step
+MbS2Mel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$21,$01,$24,$01,$01,$28,$01,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$24,$01,$01,$28,$01,$01,$2B,$01,$28,$01
+    db $26,$01,$01,$01
+    db $FF
+MbS2Bass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$09,$01,$09,$01,$10,$01,$09,$01,$09,$01,$09,$01
+    db $10,$01,$09,$01,$05,$01,$05,$01,$0C,$01,$05,$01,$04,$01,$04,$01
+    db $0B,$01,$04,$01
+    db $FF
+
+; Stage 3: Perimeter (B minor)
+; Tiny Sound, 5 frames per step
+MbS3Mel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$30,$1A,$21,$1E,$01,$21,$01,$25,$01,$23,$01,$21,$01,$01,$1E
+    db $01,$01,$01,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$23,$01,$01,$21
+    db $01,$01,$01,$01
+    db $FF
+MbS3Bass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$60,$18,$32,$06,$12,$06,$12,$06,$12,$06,$12,$0E,$1A,$0E,$1A
+    db $10,$1C,$10,$1C,$06,$12,$06,$12,$06,$12,$06,$12,$0E,$1A,$0E,$1A
+    db $0D,$19,$0D,$19
+    db $FF
+
+; Boss: chromatic menace (C minor)
+; Tiny Sound, 5 frames per step
+MbBossMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$10,$1A,$21,$1F,$1F,$22,$01,$1F,$01,$26,$01,$25,$01,$24,$01
+    db $22,$01,$21,$01,$1F,$1F,$22,$01,$1F,$01,$29,$01,$28,$01,$27,$01
+    db $26,$01,$01,$01
+    db $FF
+MbBossBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$50,$18,$32,$07,$07,$07,$07,$07,$07,$07,$07,$0F,$0F,$0F,$0F
+    db $11,$11,$11,$11,$07,$07,$07,$07,$07,$07,$07,$07,$0C,$0C,$0C,$0C
+    db $0E,$0E,$0E,$0E
+    db $FF
+
+; Ending: free (C major)
+; Tiny Sound, 8 frames per step
+MbEndMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1F,$01,$23,$01,$26,$01,$23,$01,$2B,$01,$01,$01
+    db $26,$01,$01,$01,$28,$01,$24,$01,$1F,$01,$24,$01,$28,$01,$26,$01
+    db $01,$01,$01,$01
+    db $FF
+MbEndBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0C,$01,$0E,$01
+    db $07,$01,$01,$01
+    db $FF
+}
