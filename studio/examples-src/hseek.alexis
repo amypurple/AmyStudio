@@ -1,0 +1,1235 @@
+cartridge "HEAT SEEKER/J.WOLVERTON/1985"
+
+' HEAT SEEKER
+' A ColecoVision game based on "Heat Seeker" by Jeff Wolverton, COMPUTE!'s
+' Gazette, March 1985 (Commodore 64 machine language, SYS 2061; the same
+' issue had a VIC-20 BASIC version). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: you fly a jet over an enemy base of ten heat-seeking
+' missiles standing on their pads. Strafe them on the ground; but every
+' little while the last missile on the right lifts off and chases the heat
+' of your engine. It flies faster than you, you turn tighter. You cannot
+' shoot it down: dodge it, or lead it into a missile still on its pad.
+' When every pad is empty the base is cleared: 1000 points and the ship
+' is given back. One or two players (taking turns), eight ships each.
+'
+' From the original (read from its machine code, orig/hseek64.dis):
+' - one physics step moves every object by its velocity vector (length 85,
+'   in 1/256 pixel units) times a speed factor: the jet 4/5/6 (novice,
+'   intermediate, expert), the missile 6/7/8, the shots 11 (see
+'   Liberties for the speeds used here);
+' - the stick turns the jet's vector by K/256 radian a step, K = 10/11/13;
+'   the missile turns toward the jet by 9/10/11 a step (the side picked
+'   from the cross product of its heading and the jet's direction);
+' - the jet starts heading right; a new missile lifts off 128 steps after
+'   the round starts or the last one blew up, from the right-most full pad
+'   (the pad is emptied), heading straight up;
+' - fire: one shot every 28 steps while the button is held, at most six
+'   on screen, each lives 127 steps; a shot that reaches a full pad
+'   destroys it (50 points) and burns there for the rest of its life;
+' - the missile kills the jet when both centres are within 16 C64 pixels
+'   (here 10, the sprites being smaller); the jet dies touching a full pad;
+'   the missile that touches a full pad blows up (100 points, the pad
+'   stays);
+' - 10 points every 256 steps survived; all pads empty and no missile
+'   left: 1000 points and the ship back; the pads are filled again at each
+'   new round (after a crash too); two players alternate every round;
+' - the screen wraps left-right, the top and bottom stop the flyers.
+'
+' Liberties: one physics step per video frame, at 3/4 of a C64 step
+' (speeds and turn rates x 3/4, the step counts 128/28/127/256 x 4/3 =
+' 171/37/169/341), so the turning radii are the C64's; the C64 sets its
+' CIA timer to about 280 interrupts a second, which would move everything
+' 4.7 times as fast as a frame-per-step port: unplayable on a TV. On
+' NOVICE and INTERMEDIATE the missile's speed factor is 5 and 6 (C64: 6
+' and 7): a bot reacting 12 frames late could not escape the C64's ratio;
+' EXPERT keeps the C64's 8 against the jet's 6. Also eased on NOVICE /
+' INTERMEDIATE only (playability pass, a 12-frame-lag bot): the launch
+' countdown runs at 1/2 / 2/3 speed (342 / 256 steps), the missile turns
+' 7 / 8 (C64 9 / 10) and runs out of fuel after 4 / 6 seconds (240 / 360
+' steps), blowing up harmlessly for 10 points (the C64's missile flew until
+' it hit something). EXPERT is the C64's (at 3/4 time); the field is the
+' ColecoVision's 208 x 160 pixels inside the safe area (the C64's 320 x
+' 200 overscan field), the wrap jumps between columns 2 and 29 so no
+' sprite ever crosses the TV's cropped edges; the ten pads stand in five
+' pairs (the C64's 40 columns spaced them evenly); the jet's heading is
+' kept as an angle (the C64 rotated the vector, the same motion);
+' collisions are box tests (the C64 used its sprite/background collision
+' register); left and right on the stick turn the jet too (the C64 used
+' only up = clockwise, down = anticlockwise, which still work); a missile
+' in flight sharpens its turn by 1 every 256 steps (at most to the jet's
+' rate), a guard so a jet circling tightly cannot farm the survival
+' points for ever (bot.mjs MODE=circle dies within 12 s); a missile that touches the top or the floor
+' slides along it as on the C64; a short wait and READY message between
+' rounds (the C64 waited for a button press too); sound effects (the C64
+' had its shot zap, a hum and explosions); GAME OVER then the title (the
+' C64 asked PLAY AGAIN? Y/N).
+'
+' Controls: controller 1 or 2 (both work for both players, as on the
+' C64): left/right (or up/down) turn the jet, a side button fires (hold it
+' for a stream of shots). On the title: up/down choose a line, left/right
+' change the skill or the number of players, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' frame loop protected from the NMI; screens drawn with the NMI off and the
+' display off; music first in the sound table, played once.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TSky3 = 131
+const TMs00 = 132
+const TMs01 = 133
+const TMs10 = 134
+const TMs11 = 135
+const TPad00 = 136
+const TPad01 = 137
+const TPad10 = 138
+const TPad11 = 139
+const TRail0 = 140
+const TRail1 = 141
+const TSand0 = 142
+const TSand1 = 143
+const TBlk = 144
+const SJet0 = 0
+const SJet1 = 4
+const SJet2 = 8
+const SJet3 = 12
+const SJet4 = 16
+const SJet5 = 20
+const SJet6 = 24
+const SJet7 = 28
+const SJet8 = 32
+const SJet9 = 36
+const SJet10 = 40
+const SJet11 = 44
+const SJet12 = 48
+const SJet13 = 52
+const SJet14 = 56
+const SJet15 = 60
+const SMsl0 = 64
+const SMsl1 = 68
+const SMsl2 = 72
+const SMsl3 = 76
+const SMsl4 = 80
+const SMsl5 = 84
+const SMsl6 = 88
+const SMsl7 = 92
+const SMsl8 = 96
+const SMsl9 = 100
+const SMsl10 = 104
+const SMsl11 = 108
+const SMsl12 = 112
+const SMsl13 = 116
+const SMsl14 = 120
+const SMsl15 = 124
+const SShot = 128
+const SBoom0 = 132
+const SBoom1 = 136
+const NTiles8 = 136
+const SprBytes = 1120
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndLaunch = 5
+const SndSplash = 6
+const SndCrash = 7
+const SndBonus = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 10
+' the field for a sprite's top-left corner, in pixels
+const XMin = 16
+const XMax = 225
+const XSpan = 209
+const YMin = 16
+const YMax = 160
+const PadY = 160
+' missile states: 0-127 counting to a launch, 200 none left, 255 flying
+const MsNone = 200
+const MsFly = 255
+' the C64's step counts at 3/4 time (x 4/3)
+const LaunchT = 171
+const CoolT = 37
+const LifeT = 169
+const SurvT = 341
+
+data CosT bytes 85,85,85,85,85,84,84,84,83,83,82,82,81,81,80,79,79,78,77,76,75,74,73,72,71,69,68,67,66,64,63,62,60,59,57,56,54,52,51,49,47,45,44,42,40,38,36,34,33,31,29,27,25,23,21,19,17,15,12,10,8,6,4,2,0,-2,-4,-6,-8,-10,-12,-15,-17,-19,-21,-23,-25,-27,-29,-31,-33,-34,-36,-38,-40,-42,-44,-45,-47,-49,-51,-52,-54,-56,-57,-59,-60,-62,-63,-64,-66,-67,-68,-69,-71,-72,-73,-74,-75,-76,-77,-78,-79,-79,-80,-81,-81,-82,-82,-83,-83,-84,-84,-84,-85,-85,-85,-85,-85,-85,-85,-85,-85,-84,-84,-84,-83,-83,-82,-82,-81,-81,-80,-79,-79,-78,-77,-76,-75,-74,-73,-72,-71,-69,-68,-67,-66,-64,-63,-62,-60,-59,-57,-56,-54,-52,-51,-49,-47,-45,-44,-42,-40,-38,-36,-34,-33,-31,-29,-27,-25,-23,-21,-19,-17,-15,-12,-10,-8,-6,-4,-2,0,2,4,6,8,10,12,15,17,19,21,23,25,27,29,31,33,34,36,38,40,42,44,45,47,49,51,52,54,56,57,59,60,62,63,64,66,67,68,69,71,72,73,74,75,76,77,78,79,79,80,81,81,82,82,83,83,84,84,84,85,85,85,85
+' the pad (0-9) over each screen column, 255 for none
+data ColPad bytes 255,255,0,0,1,1,255,255,2,2,3,3,255,255,4,4,5,5,255,255,6,6,7,7,255,255,8,8,9,9,255,255
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$10,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $80,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$07,$F0,$0C,$03,$00,$49,$00
+  $C0,$E0,$F0,$30,$C0,$00,$24,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$00,$49,$00
+  $00,$00,$00,$00,$E0,$00,$24,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$49,$00
+  $00,$40,$02,$00,$10,$00,$40,$00
+  $00,$08,$00,$40,$00,$04,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$E1,$01,$01,$01,$01,$01
+  $01,$F1,$01,$01,$01,$01,$41,$01
+  $01,$01,$01,$01,$51,$01,$01,$01
+  $F1,$F1,$81,$F1,$F1,$81,$F1,$F1
+  $F1,$F1,$81,$F1,$F1,$81,$F1,$F1
+  $F1,$81,$18,$81,$91,$0E,$E1,$0E
+  $F1,$81,$81,$81,$91,$0E,$E1,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$E1,$0E,$E1,$0E
+  $01,$01,$01,$01,$E1,$0E,$E1,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$0E,$E1,$0E
+  $0A,$BA,$BA,$0A,$BA,$0A,$BA,$0A
+  $0A,$BA,$0A,$BA,$0A,$BA,$0A,$0A
+  $19,$18,$18,$18,$16,$18,$16,$01
+end data
+data SpritePat bytes
+  $00,$0C,$0E,$0F,$07,$37,$3F,$3F,$3F,$3F,$37,$07,$0F,$0E,$0C,$00
+  $00,$00,$00,$00,$00,$80,$E0,$FC,$FC,$E0,$80,$00,$00,$00,$00,$00
+  $01,$03,$03,$13,$1B,$3F,$3F,$7F,$0F,$1F,$1E,$3C,$38,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$C0,$E0,$F0,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$0E,$1F,$3F,$1F,$0F,$3F,$7F,$F8,$40,$00,$00,$00,$00
+  $20,$70,$E0,$E0,$E0,$E0,$C0,$C0,$E0,$E0,$F0,$30,$08,$00,$00,$00
+  $00,$00,$07,$1F,$0F,$07,$7F,$FF,$7F,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$18,$B8,$F8,$F0,$E0,$C0,$C0,$C0,$C0,$C0,$40,$20,$00,$00
+  $00,$00,$07,$07,$73,$7F,$3F,$1F,$07,$03,$03,$01,$01,$01,$00,$00
+  $00,$00,$E0,$E0,$CE,$FE,$FC,$F8,$E0,$C0,$C0,$80,$80,$80,$00,$00
+  $00,$01,$39,$3D,$1F,$0F,$07,$07,$03,$03,$07,$07,$06,$04,$00,$00
+  $00,$00,$E0,$F8,$F0,$E0,$FE,$FF,$FE,$80,$80,$00,$00,$00,$00,$00
+  $04,$0E,$0E,$07,$07,$07,$07,$03,$07,$07,$0F,$0C,$10,$00,$00,$00
+  $00,$00,$60,$70,$F8,$FC,$F8,$F0,$FC,$FE,$3E,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$03,$03,$03,$07,$0F,$1F,$40,$00,$00,$00,$00,$00
+  $80,$80,$C0,$D8,$F8,$F8,$FC,$FC,$F0,$F0,$F8,$3C,$1C,$08,$00,$00
+  $00,$00,$00,$00,$00,$01,$07,$3F,$3F,$07,$01,$00,$00,$00,$00,$00
+  $00,$30,$70,$F0,$E0,$EC,$FC,$FC,$FC,$FC,$EC,$E0,$F0,$70,$30,$00
+  $00,$00,$00,$00,$00,$38,$1F,$0F,$07,$03,$03,$03,$01,$01,$01,$00
+  $00,$00,$08,$1C,$78,$F8,$F0,$FE,$FC,$FC,$F8,$D8,$C8,$C0,$80,$80
+  $00,$00,$00,$10,$0C,$0F,$07,$07,$03,$07,$07,$07,$07,$0E,$0E,$04
+  $00,$00,$00,$00,$06,$7F,$FE,$F8,$F0,$F8,$FC,$F8,$70,$60,$00,$00
+  $00,$00,$04,$06,$07,$07,$03,$03,$07,$0F,$0F,$1F,$3D,$11,$01,$00
+  $00,$00,$00,$00,$00,$80,$E0,$FE,$FF,$F8,$E0,$F0,$F8,$C0,$00,$00
+  $00,$01,$01,$01,$01,$03,$03,$07,$1F,$3F,$7F,$73,$07,$07,$00,$00
+  $00,$00,$00,$80,$80,$C0,$C0,$E0,$F8,$FE,$FE,$C6,$E0,$E0,$00,$00
+  $00,$00,$00,$00,$00,$01,$0F,$FF,$FF,$3F,$0F,$1F,$1F,$03,$00,$00
+  $00,$20,$20,$40,$C0,$C0,$C0,$C0,$E0,$E0,$F0,$F8,$BC,$18,$00,$00
+  $00,$00,$00,$00,$60,$FC,$7F,$1F,$0F,$3F,$3F,$1F,$0E,$04,$00,$00
+  $00,$00,$00,$08,$30,$F0,$E0,$E0,$C0,$C0,$E0,$E0,$E0,$E0,$60,$00
+  $00,$00,$10,$38,$3C,$1F,$0F,$7F,$3F,$3F,$3F,$1B,$13,$03,$03,$01
+  $00,$00,$00,$00,$00,$1C,$F8,$F0,$E0,$C0,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$60,$30,$38,$3F,$3F,$3F,$3F,$30,$30,$60,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F8,$FC,$FC,$F0,$00,$00,$00,$00,$00,$00
+  $00,$10,$18,$18,$1C,$3C,$3F,$3F,$77,$C1,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$E0,$F8,$FC,$3C,$00,$00,$00,$00,$00
+  $02,$03,$06,$0E,$1E,$3F,$FF,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F0,$70,$08,$00,$00,$00
+  $00,$00,$07,$7F,$7F,$0F,$07,$03,$03,$01,$01,$00,$00,$00,$00,$00
+  $40,$C0,$C0,$80,$00,$80,$80,$C0,$C0,$C0,$E0,$E0,$E0,$60,$00,$00
+  $00,$10,$1F,$0F,$07,$03,$03,$03,$03,$03,$03,$03,$03,$01,$00,$00
+  $00,$08,$F8,$F0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$80,$80,$00,$00
+  $02,$03,$03,$01,$01,$01,$01,$03,$03,$07,$07,$07,$07,$04,$00,$00
+  $00,$00,$E0,$FE,$FC,$F0,$C0,$C0,$80,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$0F,$1E,$10,$00,$00,$00
+  $40,$C0,$E0,$F0,$78,$FC,$FF,$E2,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$07,$1F,$3F,$7C,$00,$00,$00,$00,$00
+  $00,$10,$30,$30,$38,$78,$FC,$FC,$EE,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$1F,$3F,$3F,$0F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$06,$0C,$1C,$FC,$FC,$FC,$FC,$0C,$0C,$06,$00,$00,$00
+  $00,$00,$00,$00,$00,$3E,$3F,$1F,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$86,$FE,$FC,$FC,$38,$38,$30,$10,$00,$00
+  $00,$00,$00,$18,$1E,$0F,$0F,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E6,$FE,$FC,$78,$F0,$E0,$C0,$40
+  $00,$00,$06,$07,$07,$07,$07,$03,$03,$01,$01,$01,$01,$03,$02,$00
+  $00,$00,$00,$00,$00,$80,$80,$C0,$C0,$C0,$F8,$FC,$F0,$C0,$00,$00
+  $00,$01,$01,$03,$03,$03,$03,$03,$03,$03,$03,$07,$0F,$1F,$10,$00
+  $00,$00,$80,$80,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$F0,$F8,$08,$00
+  $00,$00,$00,$00,$01,$01,$01,$03,$03,$07,$1F,$7F,$0F,$03,$00,$00
+  $00,$20,$60,$E0,$E0,$E0,$C0,$C0,$C0,$80,$80,$80,$80,$C0,$C0,$40
+  $00,$00,$00,$00,$00,$00,$01,$03,$67,$FF,$3F,$1E,$0E,$06,$03,$02
+  $00,$00,$00,$18,$70,$F0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E1,$7F,$3F,$3F,$3C,$1C,$18,$18,$10,$00
+  $00,$00,$00,$00,$00,$7C,$F8,$F8,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$08,$05,$27,$1F,$0F,$3F,$1F,$17,$25,$04,$00,$00,$00,$00
+  $00,$00,$80,$20,$40,$C0,$80,$C0,$80,$40,$00,$80,$00,$00,$00,$00
+  $82,$44,$24,$10,$80,$60,$00,$C0,$10,$28,$44,$84,$04,$00,$00,$00
+  $10,$90,$A0,$40,$94,$20,$1C,$10,$10,$90,$88,$44,$20,$00,$00,$00
+end data
+
+data GameMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81
+  $80,$82,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$82,$80,$80,$82,$80,$80,$80,$80,$80,$81,$80
+  $80,$80,$82,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$81,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$83,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$81,$80,$80
+  $80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$82,$80,$80,$80
+  $80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$83,$80,$80,$81,$80,$80,$80,$80,$80,$81,$83,$80,$81,$80,$80,$80,$81,$80,$80,$80,$83,$80
+  $80,$80,$80,$80,$83,$80,$80,$80,$80,$81,$83,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$83,$80,$80,$80
+  $80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8E,$8E,$8E,$8E,$8F,$8F,$8E,$8F,$8E,$8E,$8F,$8F,$8E,$8E,$8F,$8F,$8F,$8F,$8F,$8F,$8E,$8E,$8E,$8E,$8E,$8F,$8E,$8F,$8E,$8E,$8F,$8E
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+end data
+
+data TitleMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$90,$80,$90,$90,$90,$80,$90,$90,$90,$80,$90,$90,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$81,$90,$80,$90,$80,$90,$80,$80,$80,$90,$80,$90,$80,$80,$90,$80,$81,$82,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$82,$80,$80,$80,$80,$80,$90,$90,$90,$80,$90,$90,$81,$80,$90,$90,$90,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$90,$81,$90,$80,$80,$80,$90,$80,$90,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$90,$80,$90,$90,$90,$80,$90,$80,$90,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$90,$90,$90,$80,$90,$90,$90,$80,$90,$90,$90,$80,$90,$80,$90,$80,$90,$90,$90,$80,$90,$90,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$90,$80,$82,$80,$90,$80,$80,$80,$90,$80,$80,$80,$90,$80,$90,$81,$90,$80,$80,$80,$90,$80,$90,$80,$80,$81,$80,$80
+  $80,$80,$80,$80,$90,$90,$90,$80,$90,$90,$80,$80,$90,$90,$80,$80,$90,$90,$80,$80,$90,$90,$80,$80,$90,$90,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$81,$90,$80,$90,$80,$80,$80,$90,$80,$80,$80,$90,$80,$90,$80,$90,$80,$80,$82,$90,$80,$90,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$90,$90,$90,$80,$90,$90,$90,$80,$90,$90,$90,$80,$90,$80,$90,$80,$90,$90,$90,$80,$90,$80,$90,$80,$80,$80,$80,$80
+end data
+
+data PadCol bytes 2,4,8,10,14,16,20,22,26,28
+
+record Obj:
+  u16 X
+  u16 Y
+  i16 Vx
+  i16 Vy
+  u8 Act
+  u8 Life
+end record
+
+' 0 the jet, 1 the missile, 2-7 the shots
+Obj O[8]
+u8 Pads[10]
+u16 Sc[2]
+u8 Ships[2]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 PA = 0
+u16 MA = 0
+u16 PTurn = 0
+u16 MTurn = 0
+u16 MTurnMax = 0
+u16 Steps = 0
+u16 Surv = 0
+u16 Flight = 0
+u16 Fuel = 0
+u16 FuelT = 0
+u8 Slow = 0
+u8 SlowT = 0
+u8 Fizz = 0
+u16 NumU = 0
+u16 W16 = 0
+i16 Dx = 0
+i16 Dy = 0
+i16 Cr = 0
+u8 PSpd = 0
+u8 MSpd = 0
+u8 Skill = 0
+u8 NPl = 1
+u8 Cur = 0
+u8 MState = 0
+u8 Cool = 0
+u8 Crash = 0
+u8 Freeze = 0
+u8 Cleared = 0
+u8 Over = 0
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 PadsLeft = 0
+u8 Shots = 0
+u8 Kills = 0
+u8 Lures = 0
+u8 Clears = 0
+u16 Lived = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Wt = 0
+' loop counters (never shared with the helpers)
+u8 Ob = 0
+u8 Pk = 0
+u8 Ds = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table HsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+  Wt = 2
+
+round_loop:
+  RoundStart
+  if Over = 1 then goto game_over
+
+play_loop:
+  Frame1
+  ReadPad
+  DoStep
+  DrawSprites
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 0 then goto round_end
+  end if
+  goto play_loop
+
+round_end:
+  ' the base cleared: 1000 points and the ship back
+  if Cleared = 1 then inc Ships[Cur]
+  goto round_loop
+
+game_over:
+  Wt = 3
+  print at 9,9,  "            "
+  print at 9,10, " GAME  OVER "
+  print at 9,11, "            "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a new round: the next player with ships left, full pads, the jet at the
+' upper left heading right, the missile counting to its launch
+sub RoundStart:
+  if NPl = 2 then Cur = 1 - Cur
+  if Ships[Cur] = 0 then
+    Cur = 1 - Cur
+    if Ships[Cur] = 0 then
+      Over = 1
+      return
+    end if
+  end if
+  dec Ships[Cur]
+  fill array Pads with 1
+  PadsLeft = 10
+  for Ob = 0 to 7
+    O[Ob].Act = 0
+    O[Ob].Life = 0
+    O[Ob].Vx = 0
+    O[Ob].Vy = 0
+  next
+  O[0].Act = 1
+  O[0].X = 40 * 256
+  O[0].Y = 40 * 256
+  PA = 0
+  SetVel(0, 0, PSpd)
+  MState = 0
+  Slow = 0
+  Cool = CoolT
+  Crash = 0
+  Freeze = 0
+  Cleared = 0
+  BoomT = 0
+  DrawPads
+  ShowHud
+  NumU = Cur + 1
+  print at 9,9, "PLAYER ", digits$(NumU, 1)
+  print at 9,10, "GET READY"
+  DrawSprites
+  play sound SndStart
+  Wt = 1
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  Wt = 2
+  print at 9,9, "         "
+  print at 9,10, "         "
+  return
+end sub
+
+' the velocity of object N for heading A (0-255, 0 = right, clockwise):
+' the C64's vector of length 85 times the speed factor F (in quarters:
+' the game runs at 3/4 of the C64's step speed, see Liberties)
+sub SetVel(u8 N, u8 A, u8 F):
+  i8 Cs = 0
+  i8 Sn = 0
+  u8 A2 = 0
+  i16 T = 0
+  u16 U = 0
+  Cs = CosT[A]
+  A2 = A - 64
+  Sn = CosT[A2]
+  ' divided by 4 rounding down, by a shift of the value lifted by 8192
+  ' (a signed divide is slow)
+  T = Cs * F
+  U = T + 8192
+  U = U >> 2
+  T = U
+  O[N].Vx = T - 2048
+  T = Sn * F
+  U = T + 8192
+  U = U >> 2
+  T = U
+  O[N].Vy = T - 2048
+  return
+end sub
+
+' one physics step
+sub DoStep:
+  if Freeze > 0 then
+    MoveShots
+    return
+  end if
+  ' the stick turns the jet: right or up clockwise, left or down anticlockwise
+  K = J1 & 9
+  V = J1 & 6
+  if K > 0 then
+    if V = 0 then PA = PA + PTurn
+  end if
+  if V > 0 then
+    if K = 0 then PA = PA - PTurn
+  end if
+  X = highbyte(PA)
+  SetVel(0, X, PSpd)
+  if MState = MsFly then Seek
+  MoveObj(0)
+  if MState = MsFly then MoveObj(1)
+  MoveShots
+  ' fire: a shot every 28 steps while the button is held
+  if Cool < CoolT then inc Cool
+  if Btn > 0 then
+    if Cool >= CoolT then NewShot
+  end if
+  Hits
+  ' the missile's countdown and launch
+  ' (novice counts every other step, intermediate two steps in three)
+  if MState < LaunchT then
+    inc Slow
+    if Slow >= SlowT then
+      Slow = 0
+    else
+      inc MState
+      if MState = LaunchT then Launch
+    end if
+  end if
+  ' 10 points every 341 steps (256 C64 steps)
+  inc Steps
+  inc Surv
+  if Surv >= SurvT then
+    Surv = 0
+    AddScore(1)
+  end if
+  if MState = MsNone then
+    if PadsLeft = 0 then
+      if Crash = 0 then
+        Cleared = 1
+        inc Clears
+        AddScore(100)
+        play sound SndBonus
+        Freeze = 90
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the missile turns toward the jet (through the wrap, as on the C64)
+sub Seek:
+  i8 Cs = 0
+  i8 Sn = 0
+  u8 A = 0
+  u8 A2 = 0
+  X = highbyte(O[0].X)
+  Y = highbyte(O[1].X)
+  Dx = X
+  Dx = Dx - Y
+  if Dx > 104 then Dx = Dx - XSpan
+  if Dx < -104 then Dx = Dx + XSpan
+  X = highbyte(O[0].Y)
+  Y = highbyte(O[1].Y)
+  Dy = X
+  Dy = Dy - Y
+  A = highbyte(MA)
+  Cs = CosT[A]
+  A2 = A - 64
+  Sn = CosT[A2]
+  Cr = Cs * Dy - Sn * Dx
+  if Cr > 0 then
+    MA = MA + MTurn
+  else
+    if Cr < 0 then
+      MA = MA - MTurn
+    else
+      ' straight ahead or straight behind: behind turns
+      if Cs * Dx + Sn * Dy < 0 then MA = MA + MTurn
+    end if
+  end if
+  inc Fuel
+  if FuelT > 0 then
+    if Fuel >= FuelT then
+      ' out of fuel: it blows up harmlessly, 10 points
+      Boom(1)
+      MState = 0
+      inc Fizz
+      AddScore(1)
+      play sound SndPop
+    end if
+  end if
+  inc Flight
+  if Flight >= 341 then
+    Flight = 0
+    if MTurn < MTurnMax then MTurn = MTurn + 31
+  end if
+  A = highbyte(MA)
+  SetVel(1, A, MSpd)
+  return
+end sub
+
+' move one flyer: wrap left-right, stop at the top and the floor
+sub MoveObj(u8 N):
+  u16 Px = 0
+  u16 Py = 0
+  Px = O[N].X + O[N].Vx
+  Py = O[N].Y + O[N].Vy
+  if highbyte(Px) < XMin then Px = Px + XSpan * 256
+  if highbyte(Px) >= XMax then Px = Px - XSpan * 256
+  if Py < YMin * 256 then Py = YMin * 256
+  if Py > YMax * 256 then Py = YMax * 256
+  O[N].X = Px
+  O[N].Y = Py
+  return
+end sub
+
+' the shots fly for 127 steps; a burning pad (Act 2) stays where it is
+sub MoveShots:
+  u16 Px = 0
+  u16 Py = 0
+  u8 Lf = 0
+  for Ob = 2 to 7
+    if O[Ob].Act > 0 then
+      Lf = O[Ob].Life + 1
+      O[Ob].Life = Lf
+      if Lf >= LifeT then
+        O[Ob].Act = 0
+      else
+        if O[Ob].Act = 1 then
+          Px = O[Ob].X + O[Ob].Vx
+          Py = O[Ob].Y + O[Ob].Vy
+          V = highbyte(Px)
+          if V < XMin then Px = Px + XSpan * 256
+          if V >= XMax then Px = Px - XSpan * 256
+          O[Ob].X = Px
+          O[Ob].Y = Py
+          V = highbyte(Py)
+          if V < YMin then O[Ob].Act = 0
+          if V > 168 then O[Ob].Act = 0
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub NewShot:
+  for Ob = 2 to 7
+    if O[Ob].Act = 0 then
+      O[Ob].Act = 1
+      O[Ob].Life = 0
+      O[Ob].X = O[0].X
+      O[Ob].Y = O[0].Y
+      X = highbyte(PA)
+      SetVel(Ob, X, 33)
+      Cool = 0
+      inc Shots
+      play sound SndZap
+      return
+    end if
+  next
+  return
+end sub
+
+' which full pad (0-9) is under pixel (Px, Py), or 255
+function PadAt(u8 Px, u8 Py) as u8
+  u8 Pi = 0
+  if Py < PadY then return 255
+  if Py >= 176 then return 255
+  Pi = ColPad[Px >> 3]
+  if Pi > 9 then return 255
+  if Pads[Pi] = 0 then return 255
+  return Pi
+
+sub Hits:
+  u8 P = 0
+  u16 Sx = 0
+  u16 Sy = 0
+  ' shots on full pads: 50 points, the shot burns on the pad
+  for Ob = 2 to 7
+    if O[Ob].Act = 1 then
+      Sx = O[Ob].X
+      Sy = O[Ob].Y
+      X = highbyte(Sx) + 8
+      Y = highbyte(Sy) + 8
+      P = PadAt(X, Y)
+      if P < 10 then
+        KillPad(P)
+        AddScore(5)
+        inc Kills
+        play sound SndPop
+        O[Ob].Act = 2
+        O[Ob].Life = LifeT - 84
+        O[Ob].X = PadCol[P] * 8 * 256
+        O[Ob].Y = (PadY - 2) * 256
+      end if
+    end if
+  next
+  ' the missile on a full pad: 100 points, the pad stays
+  if MState = MsFly then
+    X = highbyte(O[1].X) + 8
+    Y = highbyte(O[1].Y) + 12
+    P = PadAt(X, Y)
+    if P < 10 then
+      AddScore(10)
+      inc Lures
+      play sound SndSplash
+      Boom(1)
+      MState = 0
+    end if
+  end if
+  ' the jet on a full pad
+  X = highbyte(O[0].X) + 8
+  Y = highbyte(O[0].Y) + 12
+  P = PadAt(X, Y)
+  if P < 10 then
+    Crashed
+    return
+  end if
+  ' the missile on the jet: centres within 12 pixels
+  if MState = MsFly then
+    X = highbyte(O[0].X)
+    Y = highbyte(O[1].X)
+    Dx = X
+    Dx = Dx - Y
+    X = highbyte(O[0].Y)
+    Y = highbyte(O[1].Y)
+    Dy = X
+    Dy = Dy - Y
+    if Dx > -10 then
+      if Dx < 10 then
+        if Dy > -10 then
+          if Dy < 10 then Crashed
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Crashed:
+  Crash = 1
+  Boom(0)
+  O[0].Act = 0
+  MState = MsNone
+  play sound SndCrash
+  Freeze = 64
+  return
+end sub
+
+sub Boom(u8 N):
+  BoomX = highbyte(O[N].X)
+  BoomY = highbyte(O[N].Y)
+  BoomT = 40
+  return
+end sub
+
+' the right-most full pad launches its missile, straight up
+sub Launch:
+  u8 P = 0
+  u8 Found = 0
+  P = 10
+  while P > 0
+    dec P
+    if Pads[P] = 1 then
+      Found = 1
+      exit while
+    end if
+  end while
+  if Found = 0 then
+    MState = MsNone
+    return
+  end if
+  KillPad(P)
+  O[1].X = PadCol[P] * 8 * 256
+  O[1].Y = (PadY - 4) * 256
+  MA = 192 * 256
+  ' the C64's 9/10/11 (x 3/4 = 275/305/336); novice 7, intermediate 8
+  select case Skill
+    case 0
+      MTurn = 214
+    case 1
+      MTurn = 244
+    case else
+      MTurn = 336
+  end select
+  Flight = 0
+  Fuel = 0
+  SetVel(1, 192, MSpd)
+  MState = MsFly
+  play sound SndLaunch
+  return
+end sub
+
+sub KillPad(u8 P):
+  Pads[P] = 0
+  dec PadsLeft
+  X = PadCol[P]
+  put char TPad00 at X,20
+  put char TPad01 at X + 1,20
+  put char TPad10 at X,21
+  put char TPad11 at X + 1,21
+  return
+end sub
+
+sub AddScore(u8 N):
+  if Sc[Cur] < 65000 then Sc[Cur] = Sc[Cur] + N
+  ShowHud
+  return
+end sub
+
+sub DrawPads:
+  for Pk = 0 to 9
+    X = PadCol[Pk]
+    put char TMs00 at X,20
+    put char TMs01 at X + 1,20
+    put char TMs10 at X,21
+    put char TMs11 at X + 1,21
+  next
+  return
+end sub
+
+sub ShowHud:
+  NumU = Sc[0]
+  print at 2,1, "P1 ", digits$(NumU, 5), "0"
+  NumU = Ships[Cur]
+  print at 12,1, "SHIPS ", digits$(NumU, 1)
+  if NPl = 2 then
+    NumU = Sc[1]
+    print at 20,1, "P2 ", digits$(NumU, 5), "0"
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 the jet, 1 the missile, 2-7 the shots, 8 an explosion
+sub DrawSprites:
+  u8 Pat = 0
+  if O[0].Act = 1 then
+    X = highbyte(O[0].X)
+    Y = highbyte(O[0].Y)
+    Pat = highbyte(PA) + 8
+    Pat = (Pat / 16) * 4 + SJet0
+    set sprite 0 to Y - 1,X,Pat,15
+  else
+    set sprite 0 to 192,0,0,0
+  end if
+  if MState = MsFly then
+    X = highbyte(O[1].X)
+    Y = highbyte(O[1].Y)
+    Pat = highbyte(MA) + 8
+    Pat = (Pat / 16) * 4 + SMsl0
+    set sprite 1 to Y - 1,X,Pat,9
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for Ds = 2 to 7
+    select case O[Ds].Act
+      case 1
+        X = highbyte(O[Ds].X)
+        Y = highbyte(O[Ds].Y)
+        set sprite Ds to Y - 1,X,SShot,11
+      case 2
+        X = highbyte(O[Ds].X)
+        Y = highbyte(O[Ds].Y)
+        Pat = O[Ds].Life & 8
+        if Pat = 0 then
+          set sprite Ds to Y - 1,X,SBoom0,9
+        else
+          set sprite Ds to Y - 1,X,SBoom1,10
+        end if
+      case else
+        set sprite Ds to 192,0,0,0
+    end select
+  next
+  if BoomT > 0 then
+    dec BoomT
+    if BoomT > 20 then
+      set sprite 8 to BoomY - 1,BoomX,SBoom0,11
+    else
+      set sprite 8 to BoomY - 1,BoomX,SBoom1,8
+    end if
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  ' speeds in quarters at 3/4 time: (C64 factor) x 3
+  PSpd = Skill + 4
+  PSpd = PSpd * 3
+  ' the missile: the C64's 6/7/8; novice and intermediate get 5/6 here
+  MSpd = Skill + 5
+  if Skill = 2 then MSpd = 8
+  MSpd = MSpd * 3
+  ' turn rates in 1/256 of the 256-step circle: K/256 radian = K x 40.74,
+  ' times 3/4
+  PTurn = 305 + Skill * 31
+  if Skill = 2 then PTurn = PTurn + 30
+  MTurnMax = PTurn
+  Sc[0] = 0
+  Sc[1] = 0
+  Ships[0] = 8
+  Ships[1] = 0
+  if NPl = 2 then Ships[1] = 8
+  Cur = 1
+  if NPl = 1 then Cur = 0
+  Over = 0
+  Shots = 0
+  Kills = 0
+  Lures = 0
+  Clears = 0
+  Fizz = 0
+  ' easing (see Liberties): launch delay x2 / x1.5 and fuel 4 s / 6 s on
+  ' novice / intermediate; expert as the C64
+  select case Skill
+    case 0
+      SlowT = 2
+      FuelT = 240
+    case 1
+      SlowT = 3
+      FuelT = 360
+    case else
+      SlowT = 255
+      FuelT = 0
+  end select
+  Steps = 0
+  Surv = 0
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: HEAT SEEKER in glowing blocks, a jet looping round, the menu
+sub TitlePage:
+  u8 Ta = 0
+  i8 Tc = 0
+  i16 Tx = 0
+  i16 Ty = 0
+  Wt = 0
+  NewScreen
+  copy TitleMap count 352 to vram.name + 64
+  print at 2,13, "COMPUTE! GAZETTE, MARCH 1985"
+  print at 8,14, "BY JEFF WOLVERTON"
+  print at 8,16, "SKILL"
+  print at 8,17, "PLAYERS"
+  print at 8,18, "START"
+  print at 8,19, "CREDITS"
+  Menu = 2
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Wt = 4
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  ' the jet loops round the title
+  Ta = Tick
+  X = Ta + 64
+  Tc = CosT[Ta]
+  Tx = Tc + 112
+  Tc = CosT[X]
+  Tc = Tc / 32
+  Ty = Tc + 161
+  X = Tx
+  Y = Ty
+  K = Ta + 72
+  K = (K / 16) * 4 + SJet0
+  set sprite 0 to Y,X,K,15
+  update sprites
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 3
+      if K = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if K = 2 then
+        if Menu < 3 then inc Menu
+      end if
+      K = V & 12
+      if K > 0 then
+        if Menu = 0 then
+          if K = 8 then
+            if Skill < 2 then inc Skill
+          else
+            if Skill > 0 then dec Skill
+          end if
+        end if
+        if Menu = 1 then NPl = 3 - NPl
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu < 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  HideSprites
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 16 to 19
+    put char 32 at 6,J
+  next
+  J = Menu + 16
+  put char 62 at 6,J
+  select case Skill
+    case 0
+      print at 16,16, "NOVICE      "
+    case 1
+      print at 16,16, "INTERMEDIATE"
+    case else
+      print at 16,16, "EXPERT      "
+  end select
+  NumU = NPl
+  print at 16,17, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  Wt = 5
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "HEAT SEEKER"
+  print at 2,5, "BASED ON HEAT SEEKER BY"
+  print at 2,6, "JEFF WOLVERTON, COMPUTE!"
+  print at 2,7, "GAZETTE, MARCH 1985"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE; ALSO FOR VIC-20)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: AFTERBURNER NIGHT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+HsZap:
+    db $40,$3E,$20,$01,$40,$4C,$30,$01,$40,$5C,$30,$01,$40,$71,$40,$01,$40,$89,$40,$01,$40,$A8,$50,$01
+    db $50
+HsPop:
+    db $00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$56,$06,$10
+HsLaunch:
+    db $80,$75,$31,$02,$80,$2E,$31,$02,$80,$FE,$30,$02,$80,$DB,$30,$02,$80,$C1,$40,$02,$80,$AC,$40,$02
+    db $80,$9B,$40,$02,$80,$8E,$40,$02,$80,$82,$40,$02,$80,$78,$40,$02,$80,$70,$40,$02,$80,$69,$40,$02
+    db $90
+HsSplash:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$36,$08,$00,$00,$57,$0A,$10
+HsCrash:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$27,$08,$00,$00,$37,$0A,$00,$00,$57,$0E,$00,$00,$77,$10
+    db $10
+HsBonus:
+    db $C0,$AA,$20,$05,$C0,$8F,$20,$05,$C0,$71,$20,$05,$C0,$55,$20,$05,$C0,$47,$20,$10,$D0
+HsStart:
+    db $40,$FE,$20,$05,$40,$CA,$20,$05,$40,$AA,$20,$05,$40,$7F,$20,$0C,$50
+HsOver:
+    db $40,$FE,$10,$0A,$40,$1D,$21,$0A,$40,$41,$21,$0A,$40,$7C,$21,$0A,$40,$FC,$31,$1E,$50
+
+HsSoundTable:
+    dw HsTuneMel,$702B
+    dw HsTuneBass,$7035
+    dw HsZap,$7049
+    dw HsPop,$703F
+    dw HsLaunch,$7053
+    dw HsSplash,$703F
+    dw HsCrash,$703F
+    dw HsBonus,$705D
+    dw HsStart,$7049
+    dw HsOver,$7049
+; Afterburner Night (original)
+; Tiny Sound, 8 frames per step
+HsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2A,$01,$01,$28,$01,$26,$01,$25
+    db $01,$23,$01,$01,$21,$01,$23,$01,$25,$01,$26,$01,$01,$01,$28,$01
+    db $2A,$01,$2D,$01,$2F,$01,$2D,$01,$2A,$01,$01,$28,$01,$26,$01,$28
+    db $01,$2A,$01,$26,$01,$25,$01,$21,$01,$23,$01,$01,$01,$1E,$01,$23
+    db $01,$01,$00,$01
+    db $FF
+HsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$0B,$01,$12,$01,$0B,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$09,$01,$10,$01,$09,$01,$0E,$01,$09,$01
+    db $12,$01,$0D,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$12,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

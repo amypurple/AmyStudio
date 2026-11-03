@@ -1,0 +1,1067 @@
+cartridge "JERICHO II/ROBERT BIXBY/1989"
+
+' JERICHO II
+' A ColecoVision game based on "Jericho II" by Robert Bixby, COMPUTE!'s
+' Gazette June 1989 (Commodore 64 machine language, SYS 2288; the author's
+' name is in the program's own text, dated Christmas 1988). Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/jericho2.dis, and watched in jsc64), the game is
+' rebuilt for the ColecoVision: balls as smooth sprites, cut-stone bricks
+' that crack and change colour as they weaken, grooved tracks, sound.
+'
+' The game: a duel for two (or one against the computer). The screen is
+' split in two halves; each holds a player's wall and is ringed by that
+' player's track, which carries two shields on opposite sides. Turn your
+' ring with the stick to keep the balls in your half: every ball that
+' touches a brick of your wall knocks it and shakes a few more at random.
+' A ball that slips through a gap in your ring (top, bottom or the middle)
+' flies into your opponent's half and works for them. Bring your wall down
+' five times (each new wall is harder) before the other player does.
+'
+' From the original (orig/): two halves, each a ring of track round a wall
+' (C64: 20 x 24 cells, ring of 84 with two 10-cell shields opposite each
+' other, wall 10 x 12 in the middle; here 14 x 21, ring 66, shields 8,
+' wall 8 x 9 with the same free border proportions); the stick turns the
+' whole ring, both shields together; the balls move diagonally a cell at a
+' time (C64: a cell every 4 sixtieths, every 3 from level 3; here 6 and
+' 5, see the liberties), bounce off
+' shields, bricks, other balls and the screen's outer edges, and pass
+' through the gaps: down past the bottom row a ball comes in two rows from
+' the top of the other half, up past the top two rows from the bottom of
+' the other half, sideways through the middle; bricks take 3 + L hits at
+' level L (C64: colour 6 + hits up to 9), and every brick hit also knocks
+' 5 - L random bricks of the same wall; balls in play: (L1 + L2) / 2 + 1,
+' at most 4, each new one starting from its own corner; every 4 ball steps
+' each fallen brick of a wall scores 10 ^ L for its player (ten-digit
+' scores, the C64 had eleven), then a wall with no brick left is rebuilt
+' one level harder; the left player is checked first; five walls win.
+'
+' Liberties: the balls are slower, a cell every 6 frames (5 once either
+' player reaches level 3; C64: 4 and 3): at the C64's speed a player who
+' sees the balls a quarter second late did no better than one who never
+' touched the stick (sim.mjs, on the exact rules of model.mjs: 4 wins in
+' 10 against an idle ring; at 6/5, 9 in 10); the ring turns 2 cells every
+' 3 frames while the stick is held (C64: about 48 cells a second on a ring
+' of 84, as fast as its main loop ran); balls glide between cells; one
+' sound a frame (the loudest news: a fallen brick over a knock); the right edge bounce is a mirror of
+' the left one (C64: a ball at the right edge jumped back three cells);
+' the random knocks pick among all standing bricks (C64: rows 1-11 of 12,
+' and it hung when only the bottom row was left); a ball meeting another
+' ball only bounces (C64: it also counted as a brick hit); the faster
+' ball speed starts when either player reaches level 3 (C64: whichever
+' player scored last); a computer can play the right half (it rethinks
+' every 6 frames and ignores bricks in its guess); the game ends
+' with a winner's message (C64: PLAY AGAIN? Y/N); the attract mode's
+' self-turning rings are left out; sounds and tune are new.
+'
+' Controls: joystick only. Up or right turns your ring clockwise, down or
+' left counter-clockwise. Left half: controller 1, right half: controller
+' 2 (one player: either controller plays the left half). On the title,
+' up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TBrick1 = 128
+const TBrick2 = 129
+const TBrick3 = 130
+const TBrick4 = 131
+const TBrick5 = 132
+const TBrick6 = 133
+const TBrick7 = 134
+const TTrackh = 135
+const TTrackv = 136
+const TTrackc = 137
+const TShhl = 138
+const TShvl = 139
+const TShcl = 140
+const TShhr = 141
+const TShvr = 142
+const TShcr = 143
+const TLogo = 144
+const TLogo2 = 145
+const THorn = 146
+const SBall = 0
+const NTiles8 = 152
+const SprBytes = 32
+const TitleRows = 14
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPing = 3
+const SndKnock = 4
+const SndFall = 5
+const SndHorns = 6
+const SndWin = 7
+const SndPick = 8
+const NRing = 66
+const SegL = 8
+const HalfR = 33
+const NBr = 72
+const WallW = 8
+const WallC = 3
+const WallR = 6
+const LastR = 20
+const LastC = 27
+const MsgRow = 11
+const PerA = 6
+const PerB = 5
+
+data BallCol bytes 15,11,7,9
+' each ball's corner: row, column, sideways (1 right), up/down (1 down)
+data BallR0 bytes 10,10,3,3
+data BallC0 bytes 2,25,25,2
+data BallDx0 bytes 0,1,1,0
+data BallDy0 bytes 0,0,1,1
+data Glide5 bytes 0,2,3,5,6,8
+data Glide6 bytes 0,1,3,4,5,7,8
+data ShTile bytes TShhl,TShvl,TShcl,TShhr,TShvr,TShcr
+
+data TilePat bytes
+  $00,$A5,$A4,$99,$98,$98,$01,$00
+  $01,$23,$15,$19,$25,$25,$01,$00
+  $01,$21,$11,$19,$01,$01,$01,$00
+  $01,$01,$11,$09,$01,$01,$01,$00
+  $01,$01,$09,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $42,$42,$42,$42,$42,$42,$42,$42
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $01,$01,$01,$11,$01,$01,$01,$00
+  $01,$01,$01,$11,$01,$01,$01,$00
+  $00,$02,$06,$01,$01,$06,$02,$00
+end data
+data TileCol bytes
+  $01,$1E,$E1,$1E,$E1,$E1,$1E,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $1F,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $19,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $19,$18,$18,$18,$18,$18,$18,$01
+  $18,$16,$16,$16,$16,$16,$16,$01
+  $01,$04,$01,$01,$01,$01,$04,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$14,$41,$41,$41,$41,$14,$01
+  $01,$09,$08,$08,$08,$06,$06,$01
+  $19,$18,$18,$16,$19,$18,$18,$16
+  $01,$19,$18,$18,$18,$18,$16,$01
+  $01,$07,$05,$05,$05,$04,$04,$01
+  $17,$15,$15,$14,$17,$15,$15,$14
+  $01,$17,$15,$15,$15,$15,$14,$01
+  $1F,$1B,$1B,$1B,$1B,$1A,$1A,$01
+  $19,$18,$18,$18,$18,$16,$16,$01
+  $01,$B1,$B1,$1B,$1B,$B1,$B1,$01
+end data
+data SpritePat bytes
+  $30,$78,$FC,$FC,$78,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  32,32,32,32,32,144,32,144,144,144,32,144,144,32,32,144,144,144,32,144,144,144,32,144,32,144,32,144,144,144,32,32
+  32,32,32,32,32,144,32,144,32,32,32,144,32,144,32,32,144,32,32,144,32,32,32,144,32,144,32,144,32,144,32,32
+  32,32,32,32,32,144,32,144,144,32,32,144,144,32,32,32,144,32,32,144,32,32,32,144,144,144,32,144,32,144,32,32
+  32,32,32,144,32,144,32,144,32,32,32,144,32,144,32,32,144,32,32,144,32,32,32,144,32,144,32,144,32,144,32,32
+  32,32,32,144,144,144,32,144,144,144,32,144,32,144,32,144,144,144,32,144,144,144,32,144,32,144,32,144,144,144,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,145,145,145,145,145,32,145,145,145,145,145,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,145,32,32,32,32,32,145,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,145,32,32,32,32,32,145,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,145,32,32,32,32,32,145,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,145,32,32,32,32,32,145,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,145,145,145,145,145,32,145,145,145,145,145,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+
+record Ball:
+  u8 R
+  u8 C
+  u8 Dx
+  u8 Dy
+  u8 PR
+  u8 PC
+  u8 Snap
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+Ball Bl[4]
+u8 Brk[144]
+u8 Alive[2]
+u8 Lv[2]
+u8 Dg[20]
+u8 Off[2]
+u8 NB = 1
+u8 Per = 6
+u8 BallT = 0
+u8 ScanC = 0
+u8 ScanDue = 0
+u8 Rph = 0
+u8 Phase = 0
+u8 Mode = 1
+u8 Winner = 0
+u8 Sel = 0
+u8 HitB = 0
+u8 SndPend = 0
+u8 Hits = 0
+' the computer's half (1 player): a target ring cell and a decision timer
+u8 CpuT = 0
+u8 CpuTgt = 255
+u8 CpuWait = 0
+' input
+u8 Pad1 = 0
+u8 Pad2 = 0
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Pi = 0
+u8 Ki = 0
+u8 Ti = 0
+u8 Ri = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table JxSoundTable areas 6
+  sprites 16x16
+  sprites flicker off
+  set sprite count 4
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  Phase = 0
+  TitlePage
+  if Sel = 2 then
+    CreditsPage
+    goto title
+  end if
+  Mode = Sel + 1
+  NewGame
+  Phase = 1
+play_loop:
+  Frame1
+  PlayFrame
+  if Phase = 1 then goto play_loop
+
+  ' the end: the winner over the field, then back to the title on a press
+  HideSprites
+  print at 5,MsgRow - 1, "                      "
+  if Mode = 1 then
+    if Winner = 0 then
+      print at 5,MsgRow, "       YOU  WIN!      "
+    else
+      print at 5,MsgRow, "  THE COMPUTER WINS   "
+    end if
+  else
+    if Winner = 0 then
+      print at 5,MsgRow, "   LEFT PLAYER WINS   "
+    else
+      print at 5,MsgRow, "  RIGHT PLAYER WINS   "
+    end if
+  end if
+  print at 5,MsgRow + 1, "                      "
+  mute all
+  play sound SndWin
+  Phase = 2
+  Rearm
+  wait 90 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a new game: the field, both walls, both rings, the first ball
+
+sub NewGame:
+  NewScreen
+  for Pi = 0 to 1
+    Lv[Pi] = 0
+    Off[Pi] = 0
+  next
+  fill array Dg with 0
+  for Bi = 0 to 3
+    with Bl[Bi] as B
+      B.R = BallR0[Bi]
+      B.C = BallC0[Bi]
+      B.Dx = BallDx0[Bi]
+      B.Dy = BallDy0[Bi]
+      B.PR = B.R
+      B.PC = B.C
+      B.Snap = 1
+    end with
+  next
+  NB = 1
+  Per = PerA
+  BallT = 0
+  ScanC = 0
+  ScanDue = 0
+  Rph = 0
+  CpuT = 0
+  CpuTgt = 255
+  CpuWait = 0
+  for Pi = 0 to 1
+    for Ri = 0 to NRing - 1
+      DrawRing(Pi, Ri)
+    next
+    NewWall(Pi)
+    ShowScore(Pi)
+  next
+  DrawBalls
+  ShowScreen
+  play sound SndHorns
+  for Ti = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+' one frame of play: the rings, the balls every Per frames, the scan
+sub PlayFrame:
+  ReadPads
+  inc Rph
+  if Rph = 3 then Rph = 0
+  if Rph <> 2 then
+    TurnBy(0, StickDir(Pad1))
+    if Mode = 1 then
+      TurnBy(1, CpuDir())
+    else
+      TurnBy(1, StickDir(Pad2))
+    end if
+  end if
+  ' balls in play: (L1 + L2) / 2 + 1, at most 4
+  N = Lv[0] + Lv[1]
+  NB = (N >> 1) + 1
+  if NB > 4 then NB = 4
+  ' the scan runs on the frame after its ball step (spreads the work)
+  if ScanDue = 1 then
+    ScanDue = 0
+    Scan
+  end if
+  inc BallT
+  if BallT >= Per then
+    BallT = 0
+    for Bi = 0 to NB - 1
+      StepBall(Bi)
+    next
+    inc ScanC
+    if (ScanC & 3) = 3 then ScanDue = 1
+  end if
+  Per = PerA
+  if Lv[0] >= 3 or Lv[1] >= 3 then Per = PerB
+  if SndPend <> 0 then
+    play sound SndPend
+    SndPend = 0
+  end if
+  if Phase = 1 then DrawBalls
+  return
+end sub
+
+' the stick: up or right = 1 (clockwise), down or left = 2, else 0
+function StickDir(u8 P) as u8
+  if (P & 9) <> 0 then return 1
+  if (P & 6) <> 0 then return 2
+  return 0
+
+sub TurnBy(u8 P, u8 D):
+  if D = 0 then return
+  if D = 1 then
+    Ki = Off[P]
+    Off[P] = Off[P] + 1
+    if Off[P] >= NRing then Off[P] = 0
+  else
+    if Off[P] = 0 then
+      Off[P] = NRing - 1
+    else
+      Off[P] = Off[P] - 1
+    end if
+    Ki = Off[P]
+  end if
+  ' the four cells that changed: both shields' tails and heads
+  DrawRing(P, Ki)
+  DrawRing(P, Wrap66(Ki + SegL))
+  DrawRing(P, Wrap66(Ki + HalfR))
+  DrawRing(P, Wrap66(Ki + HalfR + SegL))
+  return
+end sub
+
+function Wrap66(u8 I) as u8
+  if I >= NRing then return I - NRing
+  return I
+
+' is ring cell I of half P under a shield?
+function Covered(u8 P, u8 I) as u8
+  u8 Tt = 0
+  Tt = I + NRing - Off[P]
+  while Tt >= HalfR
+    Tt = Tt - HalfR
+  end while
+  if Tt < SegL then return 1
+  return 0
+
+' ring cell I -> half column and row
+function RingCol(u8 I) as u8
+  if I < 14 then return I
+  if I < 33 then return 13
+  if I < 47 then return 46 - I
+  return 0
+
+function RingRow(u8 I) as u8
+  if I < 14 then return 0
+  if I < 33 then return I - 13
+  if I < 47 then return LastR
+  return 66 - I
+
+' half column Hc, row R -> ring cell, or 255 inside
+function RingIdx(u8 Hc, u8 R) as u8
+  if R = 0 then return Hc
+  if R = LastR then return 46 - Hc
+  if Hc = 13 then return 13 + R
+  if Hc = 0 then return 66 - R
+  return 255
+
+sub DrawRing(u8 P, u8 I):
+  u8 Cx = 0
+  u8 Ry = 0
+  u8 Tl = 0
+  Cx = RingCol(I) + P * 14 + 2
+  Ry = RingRow(I) + 2
+  select case I
+  case 0, 13, 33, 46
+    Tl = 2
+  case 1 to 12, 34 to 45
+    Tl = 0
+  case else
+    Tl = 1
+  end select
+  if Covered(P, I) = 1 then
+    put char ShTile[P * 3 + Tl] at Cx,Ry
+  else
+    put char TTrackh + Tl at Cx,Ry
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the balls
+
+sub StepBall(u8 I):
+  with Bl[I] as B
+    B.PR = B.R
+    B.PC = B.C
+    B.Snap = 0
+  end with
+  MoveV(I)
+  T = Occ(I)
+  if T > 0 then
+    if T = 2 then HitBrick(I)
+    Bl[I].Dy = Bl[I].Dy ^ 1
+    if T <> 2 then play sound SndPing
+    MoveV(I)
+  end if
+  MoveH(I)
+  T = Occ(I)
+  if T > 0 then
+    if T = 2 then HitBrick(I)
+    Bl[I].Dx = Bl[I].Dx ^ 1
+    if T <> 2 then play sound SndPing
+    MoveH(I)
+  end if
+  return
+end sub
+
+' up or down a row; past the top or bottom into the other half
+sub MoveV(u8 I):
+  with Bl[I] as B
+    if B.Dy = 1 then
+      if B.R >= LastR then
+        B.R = 2
+        B.C = OtherHalf(B.C)
+        B.Snap = 1
+      else
+        B.R += 1
+      end if
+    else
+      if B.R = 0 then
+        B.R = LastR - 2
+        B.C = OtherHalf(B.C)
+        B.Snap = 1
+      else
+        B.R -= 1
+      end if
+    end if
+  end with
+  return
+end sub
+
+' sideways; the outer edges turn the ball back
+sub MoveH(u8 I):
+  with Bl[I] as B
+    if B.Dx = 1 then
+      if B.C >= LastC then
+        B.Dx = 0
+        B.C = LastC - 1
+        play sound SndPing
+      else
+        B.C += 1
+      end if
+    else
+      if B.C = 0 then
+        B.Dx = 1
+        B.C = 1
+        play sound SndPing
+      else
+        B.C -= 1
+      end if
+    end if
+  end with
+  return
+end sub
+
+function OtherHalf(u8 Cc) as u8
+  if Cc >= 14 then return Cc - 14
+  return Cc + 14
+
+' what ball I is on: 0 nothing, 1 a shield, 2 a brick (HitB), 3 a ball
+function Occ(u8 I) as u8
+  u8 Rr = 0
+  u8 Cc = 0
+  u8 Hh = 0
+  u8 Pp = 0
+  u8 Ix = 0
+  u8 J = 0
+  Rr = Bl[I].R
+  Cc = Bl[I].C
+  Pp = 0
+  Hh = Cc
+  if Hh >= 14 then
+    Pp = 1
+    Hh = Hh - 14
+  end if
+  Ix = RingIdx(Hh, Rr)
+  if Ix <> 255 then
+    if Covered(Pp, Ix) = 1 then return 1
+  end if
+  if Rr >= WallR and Rr < WallR + 9 then
+    if Hh >= WallC and Hh < WallC + WallW then
+      HitB = Pp * NBr + (Rr - WallR) * WallW + Hh - WallC
+      if Brk[HitB] > 0 then return 2
+    end if
+  end if
+  for J = 0 to 3
+    if J <> I and J < NB then
+      if Bl[J].R = Rr and Bl[J].C = Cc then return 3
+    end if
+  next
+  return 0
+
+' a brick knocked (HitB), and 5 - L more of the same wall at random
+sub HitBrick(u8 I):
+  u8 Pw = 0
+  u8 Extra = 0
+  u8 E = 0
+  Pw = 0
+  if HitB >= NBr then Pw = 1
+  Knock(HitB)
+  Extra = 5 - Lv[Pw]
+  for E = 1 to Extra
+    if Alive[Pw] > 0 then Knock(PickBrick(Pw))
+  next
+  return
+end sub
+
+' a standing brick of wall P at random: 7 bits of the generator, tried
+' up to 8 times, then the next standing one along
+function PickBrick(u8 P) as u8
+  u8 Kk = 0
+  u8 Tries = 0
+  u8 Base = 0
+  Base = P * NBr
+  Rand
+  Kk = Rs & 127
+  while Tries < 8 and (Kk >= NBr or Brk[Base + Kk] = 0)
+    Rand
+    Kk = Rs & 127
+    inc Tries
+  end while
+  if Kk >= NBr then Kk = Kk - NBr
+  while Brk[Base + Kk] = 0
+    inc Kk
+    if Kk >= NBr then Kk = 0
+  end while
+  return Base + Kk
+
+sub Knock(u8 Bx):
+  u8 Pk = 0
+  Pk = 0
+  if Bx >= NBr then Pk = 1
+  Brk[Bx] -= 1
+  if Brk[Bx] = 0 then
+    dec Alive[Pk]
+    SndPend = SndFall
+  else
+    if SndPend = 0 then SndPend = SndKnock
+  end if
+  DrawBrick(Bx)
+  inc Hits
+  return
+end sub
+
+sub DrawBrick(u8 Bx):
+  u8 Pd = 0
+  u8 Rel = 0
+  Pd = 0
+  Rel = Bx
+  if Rel >= NBr then
+    Pd = 1
+    Rel = Rel - NBr
+  end if
+  X = (Rel & 7) + WallC + Pd * 14 + 2
+  Y = (Rel >> 3) + WallR + 2
+  if Brk[Bx] = 0 then
+    put char 32 at X,Y
+  else
+    put char TBrick1 - 1 + Brk[Bx] at X,Y
+  end if
+  return
+end sub
+
+sub NewWall(u8 P):
+  u8 Hp = 0
+  u8 Q = 0
+  Hp = 3 + Lv[P]
+  for Q = 0 to NBr - 1
+    Brk[P * NBr + Q] = Hp
+    DrawBrick(P * NBr + Q)
+  next
+  Alive[P] = NBr
+  ShowLevel(P)
+  return
+end sub
+
+' every 4 ball steps: each fallen brick scores 10 ^ L; a fallen wall is
+' rebuilt one level up; five walls win (the left player checked first)
+sub Scan:
+  for Si = 0 to 1
+    AddScore(Si, NBr - Alive[Si])
+    ShowScore(Si)
+    if Alive[Si] = 0 then
+      inc Lv[Si]
+      play sound SndHorns
+      if Lv[Si] >= 5 then
+        Winner = Si
+        Phase = 2
+        exit for
+      end if
+      NewWall(Si)
+    end if
+  next
+  return
+end sub
+
+' add N at the digit of 10 ^ L of player P's ten digits (most significant first)
+sub AddScore(u8 P, u8 Nn):
+  u8 Pos = 0
+  u8 Cy = 0
+  u8 Vv = 0
+  u8 Top = 0
+  Top = P * 10
+  Pos = Top + 9 - Lv[P]
+  Cy = Nn
+  while Cy > 0
+    Vv = Dg[Pos] + Cy
+    Dg[Pos] = Vv % 10
+    Cy = Vv / 10
+    if Pos = Top then Cy = 0
+    if Pos > Top then dec Pos
+  end while
+  return
+end sub
+
+sub ShowScore(u8 P):
+  u8 Q = 0
+  u8 Cx = 0
+  Cx = 4
+  if P = 1 then Cx = 18
+  for Q = 0 to 9
+    put char 48 + Dg[P * 10 + Q] at Cx + Q,1
+  next
+  return
+end sub
+
+sub ShowLevel(u8 P):
+  if P = 0 then
+    put char 48 + Lv[0] at 2,1
+  else
+    put char 48 + Lv[1] at 29,1
+  end if
+  return
+end sub
+
+sub DrawBalls:
+  u8 Q = 0
+  u8 Fr = 0
+  ' the glide: BallT / Per of the 8 pixels from the last cell to this one
+  if Per = 5 then
+    Fr = Glide5[BallT]
+  else
+    Fr = Glide6[BallT]
+  end if
+  for Q = 0 to 3
+    if Q < NB then
+      with Bl[Q] as B
+        X = B.C * 8 + 17
+        Y = B.R * 8 + 16
+        if B.Snap = 0 then
+          X = B.PC * 8 + 17
+          Y = B.PR * 8 + 16
+          if B.C > B.PC then X = X + Fr
+          if B.C < B.PC then X = X - Fr
+          if B.R > B.PR then Y = Y + Fr
+          if B.R < B.PR then Y = Y - Fr
+        end if
+      end with
+      set sprite Q to Y,X,SBall,BallCol[Q]
+    else
+      set sprite Q to 207,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer (right half, one player): every 6 frames it finds the ball
+' that will reach its ring first and the ring cell where it will arrive,
+' then turns the nearer shield there (ignoring bricks and other balls)
+
+function CpuDir as u8
+  u8 Dd = 0
+  inc CpuT
+  if CpuT >= 6 then
+    CpuT = 0
+    CpuTgt = Predict(1)
+  end if
+  if CpuTgt = 255 then return 0
+  ' the shield's middle (Off + 3 or + 3 + 33) onto the target
+  Dd = CpuTgt + NRing + NRing - Off[1] - 3
+  while Dd >= HalfR
+    Dd = Dd - HalfR
+  end while
+  if Dd = 0 then return 0
+  if Dd <= 16 then return 1
+  return 2
+
+' the ring cell of half P the most urgent ball will enter, or 255
+function Predict(u8 P) as u8
+  u8 Q = 0
+  u8 Best = 255
+  u8 BestT = 255
+  u8 Rr = 0
+  u8 Cc = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 St = 0
+  u8 Hh = 0
+  u8 Ix = 0
+  for Q = 0 to 3
+    if Q < NB then
+      Rr = Bl[Q].R
+      Cc = Bl[Q].C
+      Dx = Bl[Q].Dx
+      Dy = Bl[Q].Dy
+      ' only balls in half P
+      Hh = Cc
+      if P = 1 then Hh = Cc - 14
+      if Hh < 14 then
+        for St = 1 to 30
+          if Dy = 1 then
+            if Rr >= LastR then exit for
+            inc Rr
+          else
+            if Rr = 0 then exit for
+            dec Rr
+          end if
+          if Dx = 1 then
+            if Cc >= LastC then
+              Dx = 0
+              dec Cc
+            else
+              inc Cc
+            end if
+          else
+            if Cc = 0 then
+              Dx = 1
+              inc Cc
+            else
+              dec Cc
+            end if
+          end if
+          Hh = Cc
+          if P = 1 then Hh = Cc - 14
+          if Hh >= 14 then exit for
+          Ix = RingIdx(Hh, Rr)
+          if Ix <> 255 and St < BestT then
+            BestT = St
+            Best = Ix
+            exit for
+          end if
+        next
+      end if
+    end if
+  next
+  return Best
+
+' ---------------------------------------------------------------------------
+
+' xorshift 7, 9, 8 on Rs, a byte at a time (Amy's u16 shifts by 7-9
+' loop bit by bit)
+sub Rand:
+  u8 Hb = 0
+  u8 Lb = 0
+  u8 T1 = 0
+  Hb = highbyte(Rs)
+  Lb = Rs & 255
+  T1 = ((Hb & 1) << 7) | (Lb >> 1)
+  Hb = Hb ^ T1
+  Lb = Lb ^ ((Lb & 1) << 7)
+  Lb = Lb ^ (Hb >> 1)
+  Hb = Hb ^ Lb
+  Rs = Hb * 256 + Lb
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pad1 = PadOf(1)
+  Pad2 = PadOf(2)
+  Pads = Pad1 | Pad2
+  if Mode = 1 then Pad1 = Pads
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for K = 0 to 3
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: JERICHO II in stone, ONE PLAYER / TWO PLAYERS / CREDITS
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 448 to vram.name + 64
+  print at 8,17, "ROBERT BIXBY 1989"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  N = Pads & (Pads ^ OldPads)
+  if (N & 1) <> 0 then
+    if Sel > 0 then dec Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 2) <> 0 then
+    if Sel < 2 then inc Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 16) = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for Ki = 0 to 2
+    put char 32 at 9,Ki + 19
+  next
+  put char 62 at 9,Sel + 19
+  print at 11,19, "ONE PLAYER"
+  print at 11,20, "TWO PLAYERS"
+  print at 11,21, "CREDITS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $B1
+  print at 10,2, "JERICHO  II"
+  print at 2,4, "BASED ON JERICHO II BY"
+  print at 2,5, "ROBERT BIXBY, COMPUTE!'S"
+  print at 2,6, "GAZETTE, JUNE 1989"
+  print at 2,7, "(COMMODORE 64)."
+  print at 2,9, "COLECOVISION GAME, MUSIC"
+  print at 2,10, "AND PICTURES BY CLAUDE"
+  print at 2,11, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "IN AMY BY AMY BIENVENU,"
+  print at 2,13, "2026."
+  print at 2,15, "MUSIC: SEVEN TIMES ROUND"
+  print at 2,16, "(ORIGINAL)"
+  print at 2,18, "LEFT: CONTROLLER 1"
+  print at 2,19, "RIGHT: CONTROLLER 2"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+JxPing:
+    db $40,$47,$30,$02,$40,$35,$50,$02,$50
+JxKnock:
+    db $00,$00,$25,$02,$00,$00,$56,$03,$10
+JxFall:
+    db $00,$00,$14,$03,$00,$00,$35,$04,$00,$00,$66,$06,$10
+JxHorns:
+    db $40,$1D,$11,$06,$40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$12,$50
+JxWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$10,$1E
+    db $50
+JxPick:
+    db $40,$55,$40,$02,$50
+
+JxSoundTable:
+    dw JxTuneMel,$702B
+    dw JxTuneBass,$7035
+    dw JxPing,$7049
+    dw JxKnock,$703F
+    dw JxFall,$703F
+    dw JxHorns,$7049
+    dw JxWin,$7049
+    dw JxPick,$7049
+; Seven Times Round (original)
+; Tiny Sound, 9 frames per step
+JxTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$21,$01,$24,$01,$23,$01,$01,$21
+    db $1F,$01,$1C,$01,$21,$01,$01,$1C,$21,$01,$24,$01,$28,$01,$26,$01
+    db $24,$01,$23,$01,$24,$01,$01,$23,$21,$01,$1F,$01,$1C,$01,$01,$1F
+    db $21,$01,$23,$01,$24,$01,$23,$01,$21,$01,$20,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+JxTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$13,$01
+    db $10,$01,$13,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$0C,$01,$13,$01
+    db $0E,$01,$15,$01,$10,$01,$01,$01,$04,$01,$01,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

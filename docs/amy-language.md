@@ -1222,6 +1222,8 @@ case 1
   DoOne
 case 2 to 4
   DoRange
+case is < 10
+  DoSmallValue
 case ExitOpenTile
   DoExit
 case blastClears
@@ -1234,6 +1236,8 @@ end select
 Function calls are valid as the case expression: `select case AddTwo(1,2)`.
 `case` values may be numeric literals, constants, ranges, or a declared
 `tile type`; a tile type expands to all tile values in that group.
+Relational arms accept `case is < Value`, `<=`, `>`, `>=`, `=`, `!=`, or
+`<>`; they are tested in order like ordinary case arms.
 
 Select several related values as a tuple when that avoids repeated `if X = ... and Y = ...`
 conditions. Parentheses are required so tuple matching remains distinct from the scalar
@@ -2199,6 +2203,7 @@ Both fill commands produce the same final bytes on the standard Amy Mode 2 layou
 copy Charset to vram.pattern
 copy PixelBitmaps + StarOffset count 8 to vram.pattern + 128
 copy Source count 32 to vram $0800
+copy Source count 32 to vram $1C00 + RowOffset
 copy vram.name count 64 to Buffer
 copy vram.name to Buffer count 64
 merge PatternBytes count 8 to vram.pattern mask $F0 xor $0F

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -89,10 +89,34 @@ const projects = [
   ["International-Bounty-Hunter", "ibh", "International Bounty Hunter", null, "March 1990"]
 ];
 
+const knownFolders = new Set(projects.map(([folder]) => folder));
+for (const entry of readdirSync(packageRoot, { withFileTypes: true }).filter((item) => item.isDirectory())) {
+  if (knownFolders.has(entry.name)) continue;
+  const folderPath = join(packageRoot, entry.name);
+  const sourceNames = readdirSync(folderPath).filter((name) => name.toLowerCase().endsWith(".alexis"));
+  if (sourceNames.length !== 1) continue;
+  const id = sourceNames[0].slice(0, -7);
+  const readme = readFileSync(join(folderPath, "README.md"), "utf8");
+  const title = (readme.match(/^#\s+(.+?)(?:\s+\(ColecoVision\))?\s*$/mi)?.[1]
+    || entry.name.replaceAll("-", " "))
+    .replace(/\s+\(`[^`]+`\)\s*$/i, "");
+  const firstParagraph = readme
+    .replace(/^#.*$/m, "")
+    .trim()
+    .split(/\r?\n\s*\r?\n/, 1)[0]
+    .replace(/\r?\n/g, " ")
+    .replace(/\*+|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const date = firstParagraph.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(19\d{2}|20\d{2})\b/i)?.[0]
+    || "date unknown";
+  projects.push([entry.name, id, title, null, date, firstParagraph]);
+}
+
 const knownIds = new Set(index.map((entry) => entry.id));
 let added = 0;
 let updated = 0;
-for (const [folder, id, title, author, date] of projects) {
+for (const [folder, id, title, author, date, suppliedDetail] of projects) {
   copyFileSync(join(packageRoot, folder, `${id}.alexis`), join(examplesRoot, `${id}.alexis`));
   let entry = index.find((candidate) => candidate.id === id);
   if (!entry) {
@@ -100,9 +124,9 @@ for (const [folder, id, title, author, date] of projects) {
       id,
       originKind: "reimagined-adaptation",
       label: `${title} (${date})`,
-      detail: author
+      detail: suppliedDetail || (author
         ? `${author}'s COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.`
-        : `A COMPUTE!'s Gazette game from ${date}, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.`,
+        : `A COMPUTE!'s Gazette game from ${date}, adapted for ColecoVision with Amy Studio.`),
       projectName: title,
       sourceLang: "amy",
       memoryProfile: "colecovision_legacy_sdcc",
@@ -115,6 +139,11 @@ for (const [folder, id, title, author, date] of projects) {
     added += 1;
   } else {
     entry.tags = [...new Set([...(entry.tags || []), "gazette"])];
+    if (suppliedDetail) {
+      entry.label = `${title} (${date})`;
+      entry.detail = suppliedDetail;
+      entry.projectName = title;
+    }
     updated += 1;
   }
 }

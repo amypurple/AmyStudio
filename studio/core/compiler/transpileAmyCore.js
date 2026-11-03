@@ -3953,7 +3953,7 @@ export function transpileAmyCore(sourceText, deps) {
     expandDataValueToken,
     flushDataBlock
   } = createDataHelpers({
-    tryEvaluateConstantExpression,
+    tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
     ensureDataAsmSymbol,
     rewriteUserSymbolsInExpression,
     dataLengths,

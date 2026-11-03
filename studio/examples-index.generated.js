@@ -12847,9 +12847,9 @@ export const exampleManifest = [
   },
   {
     "id": "klondike",
-    "label": "Klondike (May 1986)",
-    "detail": "COMPUTE!'s Gazette's Klondike card game, faithfully adapted for ColecoVision with its original bank, betting, one-pass deal and safe automatic foundation play; no author is named in the listing.",
-    "projectName": "Klondike",
+    "label": "KLONDIKE (May 1986)",
+    "detail": "Klondike solitaire with a bank and bets, for the ColecoVision, from \"Klondike\", COMPUTE!'s Gazette, May 1986 (Commodore 64 BASIC; disk 1986-05, listing in orig/). The listing names no author, so it is credited to the magazine. Rules, additions and liberties are in the header of main.alexis.",
+    "projectName": "KLONDIKE",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
@@ -12925,6 +12925,1106 @@ export const exampleManifest = [
       "game",
       "commodore-64",
       "two-player",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hseek",
+    "label": "HEAT SEEKER (March 1985)",
+    "detail": "ColecoVision port of \"Heat Seeker\" by Jeff Wolverton, COMPUTE!'s Gazette March 1985 (Commodore 64 machine language, SYS 2061; a VIC-20 BASIC version was in the same issue). The author's name comes from LaunchBox; the program itself says only \"HEAT SEEKER, Compute! 1985\".",
+    "projectName": "HEAT SEEKER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ratrace",
+    "label": "THE HUMAN RAT RACE (March 1988)",
+    "detail": "A ColecoVision game based on \"Human Rat Race\", COMPUTE!'s Gazette March 1988 disk (Commodore 64: RAT RACE.BOOT, a two-line BASIC loader, loads HUMAN RAT RACE, 3,004 bytes of machine language at $C000, and starts it with SYS 49152). The program and the disk do not name an author (its title screen says only COMPUTE! 1988), and the March 1988 issue scan could not be reached from here. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "THE HUMAN RAT RACE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "invest",
+    "label": "INVESTOR (August 1988)",
+    "detail": "A ColecoVision port of \"Investor\", COMPUTE!'s Gazette, August 1988 (Commodore 64 and 128, BASIC; the listing names no author, only COMPUTE! Publications). It is a stock-market game for 1 or 2 players. Rules, liberties and controls are in the header of main.alexis.",
+    "projectName": "INVESTOR",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "isol",
+    "label": "ISOLATION (COMPUTE!'s Gazette, May 1990) (May 1990)",
+    "detail": "ColecoVision port of \"Isolation\", COMPUTE!'s Gazette May 1990 (Commodore 64 BASIC, disk 1990-05; listing in orig/). The listing names no author (only \"COPYRIGHT 1990 COMPUTE! PUBLICATIONS, INC.\"), so the credit is the magazine's.",
+    "projectName": "ISOLATION (COMPUTE!'s Gazette, May 1990)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "jericho",
+    "label": "JERICHO (June 1988)",
+    "detail": "A ColecoVision game based on \"Jericho\", COMPUTE!'s Gazette June 1988 (issue 60; Commodore 64: one 1,653-byte program, a one-line BASIC stub SYS2099 followed by machine language). The program shows only \"C 1988 COMPUTE PUBL.\" and no author's name. Neither the Best of 1988 disk nor the sources reachable from here give a name, so the game is credited to the magazine. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "JERICHO",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "jericho2",
+    "label": "JERICHO II (June 1989)",
+    "detail": "A ColecoVision game based on \"Jericho II\" by Robert Bixby, COMPUTE!'s Gazette June 1989 disk (Commodore 64 machine language, SYS 2288). The author's name is in the program's own text (\"JERICHO II by Robert Bixby ... Christmas, 1988\"); the BASIC line holds only the COMPUTE! Publications copyright. Made for Amy Studio by Claude (Anthropic) in Amy, 2026. The sequel to JERICHO (1988-06, games/jericho), ported separately: the rules here are the sequel's own.",
+    "projectName": "JERICHO II",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "jgrab",
+    "label": "JEWEL GRAB (January 1989)",
+    "detail": "ColecoVision port of \"Jewel Grab\", COMPUTE!'s Gazette disk, January 1989 (issue 67, page 50; Commodore 64 machine language, SYS 2063; no author named on the disk, the program or the sources found). Rules read from the disassembly (orig/jgrab.dis) and watched in jsc64 (orig/run.mjs, orig/speed.mjs, orig/probe.mjs; jsc64 has no sprite collisions, so the hit rules come from the code).",
+    "projectName": "JEWEL GRAB",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "jujitsu",
+    "label": "JUJITSU (September 1986)",
+    "detail": "A ColecoVision port of JUJITSU, COMPUTE!'s Gazette September 1986 (Commodore 64 BASIC with a small machine-code chime; the listing names no author). Despite the name it is a bidding card game (the game known as Goofspiel), with no fighters in it. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "JUJITSU",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gjump",
+    "label": "JUMP (November 1984)",
+    "detail": "A ColecoVision game based on \"Jump\" by Fernando Ciccarelli and Marcel Ferreira, COMPUTE!'s Gazette November 1984 (Commodore 64 and VIC-20, BASIC; disk 1984-11). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Authors from LaunchBox's entry for the Gazette program (the listing has no REM credit).",
+    "projectName": "JUMP",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "kablam",
+    "label": "KABLAM! (January 1985)",
+    "detail": "ColecoVision port of KABLAM! by Stephen Ressler, COMPUTE!'s Gazette, January 1985 (Commodore 64 and VIC-20; BASIC with a machine-language core in DATA lines). Original art and music; the rules come from the C64 listing and its disassembled machine code (orig/).",
+    "projectName": "KABLAM!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "kicker",
+    "label": "KICKER (February 1986)",
+    "detail": "A ColecoVision game based on \"Kicker\" by John Krause and Mark Tuttle, COMPUTE!'s Gazette February 1986 (issue 32; Commodore 64 machine language, 1,576 bytes at $0801 started with SYS 2061; authors from LaunchBox's Gazette catalogue, the program names none). A two-player table-soccer game. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "KICKER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "knock31",
+    "label": "KNOCK 31 (May 1989)",
+    "detail": "A ColecoVision port of KNOCK 31, COMPUTE!'s Gazette May 1989 (disk 1989-05; Commodore 64 BASIC with a small machine-code screen helper; the listing names no author). The card game known as 31, Scat or Blitz, you against three computer players. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "KNOCK 31",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lava",
+    "label": "LAVA FLOW (September 1988)",
+    "detail": "A ColecoVision game based on \"Lava Flow\", COMPUTE!'s Gazette September 1988 disk (Commodore 64: LAVA.BOOT loads LAVAFLOW, 2,106 bytes of machine language at $C000, and starts it with SYS 49152). No author is named on the disk or in the program. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "LAVA FLOW",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lattack",
+    "label": "LETTER ATTACK! (December 1984)",
+    "detail": "A ColecoVision game based on \"Letter Attack\", COMPUTE!'s Gazette December 1984 (Commodore 64 and VIC-20, BASIC; disk 1984-12). No author is named in the listings; the magazine's contents list names only the title (the issue scan on archive.org was not reachable). Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "LETTER ATTACK!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lexi",
+    "label": "LEXITRON (February 1986)",
+    "detail": "A ColecoVision game based on \"Lexitron\" by Ron Wilson, COMPUTE!'s Gazette February 1986 (Commodore 64 and 128, BASIC; disk 1986-02). Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "LEXITRON",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lincoln",
+    "label": "LINCOLN GREEN (September 1988)",
+    "detail": "ColecoVision port of \"Lincoln Green\" by Robert Bixby, COMPUTE!'s Gazette September 1988 (Commodore 64 machine language, SYS 2099, disk 1988-09). Rules read from the machine code (orig/lincoln.dis) and watched/timed in jsc64 (orig/run.mjs, orig/time.mjs). The source header (main.alexis) lists the rules kept and every liberty.",
+    "projectName": "LINCOLN GREEN",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "litter",
+    "label": "LITTERBUG (November 1987)",
+    "detail": "A ColecoVision game based on \"Litterbug\" by Paul Choquette, COMPUTE!'s Gazette November 1987 (Commodore 64, machine language; files litterbug boot, lb1, lb2, litterbug on the 1987-11 disk). Author from the LaunchBox Games Database entry for the issue. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "LITTERBUG",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "marath",
+    "label": "MARATHON (August 1989)",
+    "detail": "ColecoVision port of \"Marathon\", COMPUTE!'s Gazette August 1989 (Commodore 128, BASIC 7.0 + machine language; no author named in the listing). In Amy.",
+    "projectName": "MARATHON",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mblox",
+    "label": "MATCH BLOX (November 1986)",
+    "detail": "Based on \"Match Blox\", COMPUTE!'s Gazette, November 1986 (Commodore 64 BASIC; the program from the magazine's disk, detokenized, is in orig/). A ColecoVision game on the listing's rules, not a line port. Made by Claude (an AI made by Anthropic) for Amy Studio, 2026.",
+    "projectName": "MATCH BLOX",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mmatch",
+    "label": "MATCH MANIA (June 1989)",
+    "detail": "Based on \"Match Mania\", COMPUTE!'s Gazette, June 1989 (Commodore 64 BASIC, disk 1989-06; no author named; the detokenized listing is in orig/). A ColecoVision game on the listing's rules, not a line port. Made by Claude (an AI made by Anthropic) for Amy Studio, 2026.",
+    "projectName": "MATCH MANIA",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mattack",
+    "label": "MATH ATTACK (October 1986)",
+    "detail": "Port of \"Math Attack\", COMPUTE!'s Gazette October 1986 (Commodore 64 BASIC, orig/mattack.bas; no author named). Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "MATH ATTACK",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mdung",
+    "label": "MATH DUNGEON (January 1985)",
+    "detail": "A port of \"Math Dungeon\", COMPUTE!'s Gazette, January 1985 (one BASIC listing for the Commodore 64 and the VIC-20; no author named in the listing, the disk or the issue contents seen; the C64 path of the listing was used). Original listing in orig/ (untouched, from the 1985-01 disk).",
+    "projectName": "MATH DUNGEON",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mmagic",
+    "label": "MATH MAGIC (July 1989)",
+    "detail": "ColecoVision port of \"Math Magic\", COMPUTE!'s Gazette, July 1989 (Commodore 128, BASIC 7.0, disk 1989-07; no author named on the disk or in the listing). Rules read from the listing (orig/math magic.bas); the C-128 version can't be run headless.",
+    "projectName": "MATH MAGIC",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mmania",
+    "label": "MAZE-MANIA (September 1985)",
+    "detail": "ColecoVision port of Maze-Mania by Mark Tuttle, COMPUTE!'s Gazette September 1985 (C64, BASIC + machine code; disk 1985-09). The rules come from the listing and the disassembled machine code (orig/maze-mania.bas, orig/dis.txt; the ML bytes in orig/ml_c000.bin, orig/ml_c400.bin).",
+    "projectName": "MAZE-MANIA",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mazem",
+    "label": "MAZE MASTER (mazem) (October 1988)",
+    "detail": "ColecoVision port of \"Maze Master\", COMPUTE!'s Gazette October 1988 (C64 machine language, files maze.boot + maze master, SYS 49152; no author named on the disk). Rules read from orig/mazemaster.dis, pace timed in jsc64 (orig/c64time-maze.mjs: the computer steps every ~7.5 jiffies at F1).",
+    "projectName": "MAZE MASTER (mazem)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mstrike",
+    "label": "METEOR STRIKE (July 1986)",
+    "detail": "Based on \"Meteor Strike\", COMPUTE!'s Gazette July 1986 (Commodore 64 machine language, SYS2061; no author named on the disk). Rules, liberties and controls are in the header of main.alexis.",
+    "projectName": "METEOR STRIKE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mboggle",
+    "label": "MIND BOGGLE (May 1984)",
+    "detail": "ColecoVision port of \"Mind Boggle\", COMPUTE!'s Gazette May 1984 (Commodore 64 and VIC-20 BASIC, disk 1984-05; no author named in the listings or on the disk; listings in orig/, the C64 one is the source).",
+    "projectName": "MIND BOGGLE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mine89",
+    "label": "MINESWEEPER (July 1989)",
+    "detail": "A ColecoVision game based on \"Minesweeper\" by Ben Campbell, COMPUTE!'s Gazette July 1989 (Commodore 64 machine language, 7,271 bytes, started by 10 SYS (2068); the author's name is on its title screen: \" MINE SWEEPER BY BEN CAMPBELL\"). An arcade shooter, not the logic puzzle. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "MINESWEEPER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mbbq",
+    "label": "MONSTER BAR-B-Q (July 1989)",
+    "detail": "A ColecoVision game based on \"Monster Bar-B-Q\", COMPUTE!'s Gazette July 1989 (Commodore 128, BASIC 7.0; no author named in the listing or on the disk). Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "MONSTER BAR-B-Q",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "moonres",
+    "label": "MOON RESCUE (December 1986)",
+    "detail": "A ColecoVision game based on \"Moon Rescue\", COMPUTE!'s Gazette, December 1986 (Commodore 128, BASIC 7.0; no author named on the disk or in the listing). Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "MOON RESCUE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "mosaic",
+    "label": "MOSAIC (February 1988)",
+    "detail": "ColecoVision port of \"Mosaic\" by Jay A. Reeve, COMPUTE!'s Gazette, February 1988 (C64 BASIC + a 26-byte sprite mover; disk 1988-02, article on the Best of '88 disk: orig/article.txt).",
+    "projectName": "MOSAIC",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "munch",
+    "label": "MUNCHMATH (November 1983)",
+    "detail": "Based on \"Munchmath\", COMPUTE!'s Gazette November 1983 (Commodore 64 and VIC-20, BASIC; no author named in the listing). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "MUNCHMATH",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "marple",
+    "label": "MYSTERY AT MARPLE MANOR (September 1984)",
+    "detail": "ColecoVision port of \"Mystery at Marple Manor\", COMPUTE!'s Gazette, September 1984 (C64 + VIC-20 BASIC, disk 1984-09; no author named). Rules from the C64 listing in orig/; the source header of main.alexis lists the rules kept and every liberty.",
+    "projectName": "MYSTERY AT MARPLE MANOR",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ntnote",
+    "label": "NAME THAT NOTE (February 1985)",
+    "detail": "Based on \"Name That Note\", COMPUTE!'s Gazette February 1985 (Commodore 64 and VIC-20, BASIC; no author named in the listing). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "NAME THAT NOTE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "nevets",
+    "label": "NEVETS (April 1984)",
+    "detail": "A ColecoVision game based on \"Nevets\" by Steven R. McCloskey, COMPUTE!'s Gazette April 1984 (Commodore 64 and VIC-20, BASIC). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Author from LaunchBox's entry for the game (the disk's REM line names only the 1989 retyping date).",
+    "projectName": "NEVETS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "nckit",
+    "label": "NUMBER CONSTRUCTION KIT (March 1986)",
+    "detail": "Based on \"Number Construction Kit\", COMPUTE!'s Gazette March 1986 (Commodore 64, BASIC loaded at $3401; no author named in the listing). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "NUMBER CONSTRUCTION KIT",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "numplz",
+    "label": "NUMBER PLEASE? (October 1987)",
+    "detail": "Based on \"Number Please?\", COMPUTE!'s Gazette October 1987 (Commodore 64 and 128, BASIC; the listing names no author). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "NUMBER PLEASE?",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "nquest",
+    "label": "NUMBER QUEST (nquest) (April 1985)",
+    "detail": "ColecoVision port of \"Number Quest\", COMPUTE!'s Gazette, April 1985 (C64 + VIC-20 BASIC; no author named). Rules, liberties and controls: header of main.alexis.",
+    "projectName": "NUMBER QUEST (nquest)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "obst",
+    "label": "OBSTACLE 128 (November 1986)",
+    "detail": "ColecoVision port of Obstacle 128, COMPUTE!'s Gazette November 1986 (Commodore 128 BASIC 7.0, disk 1986-11; no author named in the listing, orig/obstacle 128.bas). Two lines that never stop; the border is drawn in the players' colours with a random gap at the top of the left side and the bottom of the right side; both lines start on the middle row moving the same random way; a crash scores for the other player, both crashing scores for both; when purple crashes blue takes one more step; 5 points and ahead wins. The C-128 program cannot run headless: rules read from the listing.",
+    "projectName": "OBSTACLE 128",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "oildef",
+    "label": "OIL DEFENSE (March 1988)",
+    "detail": "A ColecoVision game based on \"Oil Defense\", COMPUTE!'s Gazette March 1988 (disk 1988-03; Commodore 64 machine language, 3,867 bytes at $0801 started by SYS 2062). Neither the program nor the disk names the author. Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Not to be confused with games/oil (OIL TYCOON, Gazette 1983).",
+    "projectName": "OIL DEFENSE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gpegs",
+    "label": "PEGS (gpegs) (December 1986)",
+    "detail": "ColecoVision port of \"Pegs\", COMPUTE!'s Gazette, December 1986 (issue 42; C64 + VIC-20 BASIC; the listing names no author). Rules, liberties and controls: header of main.alexis. orig/pegs_64.bas (primary) and orig/pegs_vic.bas are the listings (disk 1986-12).",
+    "projectName": "PEGS (gpegs)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "persu",
+    "label": "PERSUASION (persu) (October 1986)",
+    "detail": "ColecoVision port of \"Persuasion\", COMPUTE!'s Gazette, October 1986 (C64 BASIC + a small raster-split ML routine; the listing names no author). Rules, liberties and controls: header of main.alexis. orig/persuasion.bas is the listing (disk 1986-10), orig/raster.dis the ML (border colour split only).",
+    "projectName": "PERSUASION (persu)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pickl",
+    "label": "PICK-A-LETTER (February 1987)",
+    "detail": "Based on \"Pick-A-Letter\", COMPUTE!'s Gazette February 1987 (Commodore 64 and 128, BASIC; the listing names no author). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "PICK-A-LETTER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pigs",
+    "label": "PIGS FOR BUCKS (October 1986)",
+    "detail": "A ColecoVision game based on \"Pigs for Bucks\", COMPUTE!'s Gazette October 1986 (Commodore 128, BASIC 7.0 with the sprite files PIG.SPR1-3 and a small PIG.ML). The listing carries no author's name; credited to the magazine. Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "PIGS FOR BUCKS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pinhead",
+    "label": "PINHEAD (February 1990)",
+    "detail": "ColecoVision port of \"Pinhead\", COMPUTE!'s Gazette February 1990 (Commodore 64 machine language, SYS 2064; no author named on the disk). Move a trampoline, bounce the pin-headed acrobat and pop the balloons drifting across a circus tent.",
+    "projectName": "PINHEAD",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pcove",
+    "label": "PIRATE COVE (pcove) (August 1986)",
+    "detail": "A ColecoVision port of \"Pirate Cove\", a mini-adventure for kids by Barbara H. Schulak, COMPUTE!'s Gazette, August 1986 (Commodore 64 BASIC; listing in orig/). Rules and liberties: see the header of main.alexis.",
+    "projectName": "PIRATE COVE (pcove)",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "praider",
+    "label": "PLANET RAIDER (March 1990)",
+    "detail": "A ColecoVision game based on \"Planet Raider\", COMPUTE!'s Gazette, March 1990 (Commodore 64 machine language, PLANET RAIDER, 4,816 bytes at $0801, started with SYS2064; disk 1990-03). The program and the disk's contents file name no author and the issue's article could not be reached here, so the credits say \"COMPUTE!'s Gazette, March 1990\". Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "PLANET RAIDER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "poker",
+    "label": "POKER (March 1984)",
+    "detail": "\"Poker\" (\" POKER 256 \" on its title), COMPUTE!'s Gazette, March 1984 (Commodore 64 and VIC-20 BASIC with two small machine-language routines), ported to the ColecoVision in Amy. The listing names no author, so the credit is \"COMPUTE!'s Gazette, March 1984\". (The disk copy's REM, \"C-64 VERSION/1-27-89\", is the date of the reader who retyped the early disks.)",
+    "projectName": "POKER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pool",
+    "label": "POOL (April 1985)",
+    "detail": "A ColecoVision game based on \"Pool\", COMPUTE!'s Gazette April 1985 (Commodore 64 machine language: POOL/64 loads PL at $C000; the disk also has a VIC-20 BASIC version). No author is named on the disk. Made by Claude for Amy Studio, in Amy.",
+    "projectName": "POOL",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ppoker",
+    "label": "POWER POKER (November 1985)",
+    "detail": "Jud Bleser's poker-squares game from COMPUTE!'s Gazette, November 1985 (Commodore 64, BASIC plus a 382-byte machine-language card drawer), ported to the ColecoVision in Amy. Author's name from the LaunchBox games database (the listing has no REM credit).",
+    "projectName": "POWER POKER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pball2",
+    "label": "POWERBALL (May 1987)",
+    "detail": "ColecoVision remake of Powerball, COMPUTE!'s Gazette May 1987 (Commodore 64 machine language at $C000, files POWERBALL.BOOT / POWERBALL; no author named on the disk). Not the same game as pball (PRISONBALL).",
+    "projectName": "POWERBALL",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "predict",
+    "label": "PREDICTOR (June 1986)",
+    "detail": "From COMPUTE!'s Gazette, June 1986 (issue 36, page 58; no author named), for the Commodore 64 and VIC-20. Ported to the ColecoVision in Amy.",
+    "projectName": "PREDICTOR",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "props",
+    "label": "PROPS (May 1984)",
+    "detail": "Port of \"Props\", COMPUTE!'s Gazette May 1984 (Commodore 64, BASIC + machine language; no author named on the disk). Rules, liberties and controls are in the header of main.alexis.",
+    "projectName": "PROPS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "pudding",
+    "label": "PUDDING MOUNTAIN MINER (April 1985)",
+    "detail": "A ColecoVision game based on \"Pudding Mountain Miner\", the 17-line BASIC program of the Horizons column in COMPUTE!'s Gazette, April 1985 (one listing for the Commodore 64 and VIC-20 that detects the machine; no author named in the listing). Made for Amy Studio by Claude (Anthropic) in Amy, 2026.",
+    "projectName": "PUDDING MOUNTAIN MINER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "nname",
+    "label": "THE NOTE NAME GAME (December 1983)",
+    "detail": "Based on \"The Note Name Game\", COMPUTE!'s Gazette December 1983 (Commodore 64 and VIC-20, BASIC; no author named in the listing or the issue's contents; the disk copy was retyped in 1989). Made for Amy Studio by Claude (Anthropic) in Amy, 2026. Rules, liberties and controls: the header of main.alexis.",
+    "projectName": "THE NOTE NAME GAME",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
       "compute!"
     ],
     "originKind": "reimagined-adaptation",

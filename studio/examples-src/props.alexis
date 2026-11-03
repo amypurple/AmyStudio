@@ -1,0 +1,996 @@
+cartridge "PROPS/COMPUTE!'S GAZETTE/1984"
+
+' PROPS
+' A ColecoVision game based on "Props", COMPUTE!'s Gazette May 1984
+' (Commodore 64, BASIC with a machine-language sprite mover; no author
+' named on the disk). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: you are a pigeon lost in a sky full of whirling propellers.
+' Your mate waits on a perch in one of the two coops at the screen edges.
+' Fly across, past eight propellers that rise and fall in their columns,
+' and land beside your mate. Then a new coop opens on the other side.
+'
+' From the original (orig/props.bas, the machine code read from its DATA
+' lines): eight propellers in fixed columns, even ones moving down, odd
+' ones up, wrapping round past the edges of the sky, all at the skill's
+' speed (1..5 pixels a frame for skills 1-5; skill 6 draws a new speed of
+' 0..6 pixels every few moves and sometimes a sudden gust); the blades
+' turn faster at higher skills (pattern every 5, 4, 3, 2, 1, 1 frames);
+' the pigeon flies in eight directions; the coop walls stop it; the mate
+' sits on a random row of the coop on the other side (NEW COOP), and moves
+' over to the other side when the pigeon is too slow (the C64 did this
+' every 200 passes of its loop, about 15 seconds); home scores skill + 3,
+' a propeller hit costs the skill's number (never below 0), stops the
+' pigeon for a moment and holds the propeller still; a level is passed
+' when the points add up (the C64 asked for 200 and a new skill).
+'
+' Liberties: the original never ends; here each level has a daylight
+' clock of 99 seconds and asks for 80 points, then the next skill follows
+' by itself (skill 6 passed wins); the clock running out ends the game,
+' so standing still or flying in one line scores nothing and loses. The
+' pigeon flies smoothly at 1.5 pixels a frame (the C64 moved a character
+' every 4.5 jiffies, measured in jsc64: orig/c64time.mjs). The coop timer
+' restarts after each homecoming. After a hit the pigeon is shown grey and
+' cannot be hit for 2/3 of a second (on the C64 a propeller could hit
+' twice). The gust is 10 pixels a frame (the C64's 28 sent the props
+' round the screen in a blur). All propellers are one size (the C64 had
+' two double-width ones). The skill is chosen on the title with the
+' joystick; there is no pause key or quit key.
+'
+' Controls: either controller; the stick flies the pigeon. On the title,
+' up and down choose a line, left and right change the skill, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. Nothing flashes.
+
+const TSky = 128
+const TStar1 = 129
+const TStar2 = 130
+const TPost = 131
+const TPerch = 132
+const TRoof = 133
+const TBase = 134
+const TBlk = 135
+const SProp0 = 0
+const SProp1 = 4
+const SProp2 = 8
+const SProp3 = 12
+const SPigr0 = 16
+const SPigr1 = 20
+const SPigl0 = 24
+const SPigl1 = 28
+const SMater = 32
+const SMatel = 36
+const SPuff = 40
+const NTiles8 = 64
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHit = 3
+const SndHome = 4
+const SndCoop = 5
+const SndLevel = 6
+const SndStart = 7
+const SndOver = 8
+const SndWin = 9
+const NSpr = 10
+const Goal = 80
+const CoopN = 900
+const StunN = 60
+const GraceN = 40
+const MsgN = 120
+const BxMin = 22
+const BxMax = 218
+const ByMin = 14
+const ByMax = 170
+const Wrap = 184
+
+' propeller columns (sprite X) and colours
+data PropX bytes
+  34, 56, 78, 100, 126, 152, 176, 198
+end data
+data PropC bytes
+  15, 11, 7, 13, 15, 11, 7, 13
+end data
+data StartY bytes
+  30, 50, 70, 90, 110, 130, 150, 170
+end data
+' speeds in quarter pixels a frame for skills 1-5, the skill-6 draws,
+' frames between blade patterns
+data SkillQ bytes
+  0, 4, 8, 12, 16, 20, 12
+end data
+data DrawQ bytes
+  0, 4, 8, 12, 16, 20, 24, 12
+end data
+data RotN bytes
+  0, 5, 4, 3, 2, 1, 1
+end data
+
+record Prop:
+  u8 Y
+  u8 F
+end record
+Prop Pr[8]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Hi = 0
+u8 Lv = 1
+u8 Skill = 1
+u8 Lp = 0
+u8 Over = 0
+u8 Sq = 4
+u8 Kc = 0
+u8 Gc = 0
+u8 Rot = 0
+u8 RotC = 0
+u8 Pat = 0
+' the pigeon: position (sprite corner), facing (0 right, 1 left)
+u8 Bx = 120
+u8 By = 92
+u8 Fd = 0
+u8 Mt = 0
+' the mate: side (0 left, 1 right), row
+u8 Side = 0
+u8 Mr = 10
+u16 Ct = 0
+u8 Tm = 99
+u8 Tf = 0
+u8 St = 0
+u8 Gr = 0
+u8 Fz = 255
+u8 MsgT = 0
+u8 TitleOn = 0
+' which screen is up (for the bots): 1 credits, 2 title, 3 play, 4 end
+u8 Scr = 0
+u8 Homes = 0
+u8 Hits = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jo = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table PpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  if Over = 2 then
+    print at 6,9, "                    "
+    print at 6,10, "  HOME TO ROOST!    "
+    print at 6,11, "  ALL SIX SKILLS    "
+    print at 6,12, "  FLOWN. WELL DONE! "
+    print at 6,13, "                    "
+    play sound SndWin
+  else
+    print at 8,10, "                "
+    print at 8,11, "     SUNSET     "
+    print at 8,12, "   GAME  OVER   "
+    print at 8,13, "                "
+    play sound SndOver
+  end if
+  Scr = 4
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then NextLevel
+    return
+  end if
+  inc Mt
+  Speeds
+  MoveProps
+  Spin
+  Clock
+  if Over > 0 then return
+  if St > 0 then
+    dec St
+    if St = 0 then
+      Fz = 255
+      Gr = GraceN
+    end if
+    return
+  end if
+  if Gr > 0 then dec Gr
+  FlyBird
+  if AtHome() = 1 then
+    Arrive
+    return
+  end if
+  if Gr = 0 then Collide
+  dec Ct
+  if Ct = 0 then
+    NewCoop
+    play sound SndCoop
+  end if
+  return
+end sub
+
+' skill 6: a new speed every 28 frames, a 1-in-64 gust check every 5
+sub Speeds:
+  if Lv < 6 then return
+  inc Kc
+  if Kc >= 28 then
+    Kc = 0
+    Rand
+    V = Rs & 7
+    Sq = DrawQ[V]
+  end if
+  inc Gc
+  if Gc >= 5 then
+    Gc = 0
+    Rand
+    V = highbyte(Rs)
+    V = V & 63
+    if V = 0 then Sq = 40
+  end if
+  return
+end sub
+
+sub MoveProps:
+  for Pi = 0 to 7
+    if Pi <> Fz then MoveOne(Pi)
+  next
+  return
+end sub
+
+sub MoveOne(u8 I):
+  u8 Yy = 0
+  u8 Ff = 0
+  u8 Nn = 0
+  Yy = Pr[I].Y
+  Ff = Pr[I].F + Sq
+  Nn = Ff >> 2
+  Pr[I].F = Ff & 3
+  if (I & 1) = 0 then
+    Yy = Yy + Nn
+    if Yy >= Wrap then Yy = Yy - Wrap
+  else
+    if Yy < Nn then
+      Yy = Yy + Wrap - Nn
+    else
+      Yy = Yy - Nn
+    end if
+  end if
+  Pr[I].Y = Yy
+  return
+end sub
+
+sub Spin:
+  inc RotC
+  if RotC >= Rot then
+    RotC = 0
+    Pat = Pat + 4
+    if Pat > SProp3 then Pat = SProp0
+  end if
+  return
+end sub
+
+sub Clock:
+  inc Tf
+  if Tf < 60 then return
+  Tf = 0
+  if Tm > 0 then dec Tm
+  ShowTime
+  if Tm = 0 then Over = 1
+  return
+end sub
+
+' the stick: eight directions, 1 or 2 pixels a frame in turn (1.5)
+sub FlyBird:
+  N = Mt & 1
+  N = N + 1
+  select case Jo & 12
+  case 4
+    Fd = 1
+    if Bx < BxMin + N then
+      Bx = BxMin
+    else
+      Bx = Bx - N
+    end if
+  case 8
+    Fd = 0
+    Bx = Bx + N
+    if Bx > BxMax then Bx = BxMax
+  end select
+  select case Jo & 3
+  case 1
+    if By < ByMin + N then
+      By = ByMin
+    else
+      By = By - N
+    end if
+  case 2
+    By = By + N
+    if By > ByMax then By = ByMax
+  end select
+  return
+end sub
+
+' 1 when the pigeon is against the mate's coop, level with the perch
+function AtHome as u8
+  u8 Cy = 0
+  u8 Py = 0
+  Cy = By + 8
+  Py = Mr << 3
+  Py = Py + 2
+  if Side = 0 then
+    if Bx > BxMin + 4 then return 0
+  else
+    if Bx < BxMax - 4 then return 0
+  end if
+  if Cy > Py then
+    if Cy - Py > 6 then return 0
+  else
+    if Py - Cy > 6 then return 0
+  end if
+  return 1
+
+sub Arrive:
+  V = Lv + 3
+  W16 = V
+  Sc = Sc + W16
+  Lp = Lp + V
+  inc Homes
+  ShowScore
+  if Lp >= Goal then
+    MsgT = MsgN
+    print at 9,11, "            "
+    print at 9,12, " LEVEL DONE "
+    print at 9,13, "            "
+    play sound SndLevel
+    return
+  end if
+  play sound SndHome
+  NewCoop
+  return
+end sub
+
+sub NextLevel:
+  if Lv >= 6 then
+    Over = 2
+    return
+  end if
+  inc Lv
+  StartLevel
+  for Ri = 11 to 13
+    DrawRow
+  next
+  ShowHud
+  return
+end sub
+
+' the pigeon's body against the propellers that are in the sky
+sub Collide:
+  u8 Px = 0
+  u8 Py = 0
+  for Pi = 0 to 7
+    if St = 0 then
+      Py = Pr[Pi].Y
+      if Py >= 16 then
+        if Py <= 168 then
+          Px = PropX[Pi]
+          if Overlap(Px, Py) = 1 then
+            St = StunN
+            Fz = Pi
+            inc Hits
+            V = Lv
+            if Lp < V then
+              Lp = 0
+            else
+              Lp = Lp - V
+            end if
+            W16 = V
+            if Sc < W16 then
+              Sc = 0
+            else
+              Sc = Sc - W16
+            end if
+            ShowScore
+            play sound SndHit
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' bird box Bx+4..Bx+11, By+5..By+10 against prop box X+3..X+12, Y+3..Y+12
+function Overlap(u8 Qx, u8 Qy) as u8
+  if Bx + 4 > Qx + 12 then return 0
+  if Qx + 3 > Bx + 11 then return 0
+  if By + 5 > Qy + 12 then return 0
+  if Qy + 3 > By + 10 then return 0
+  return 1
+
+' the mate moves to the other coop, on a random row 3-21
+sub NewCoop:
+  SetPost(TPost)
+  Side = Side ^ 1
+  Rand
+  V = Rs & 15
+  K = highbyte(Rs)
+  K = K & 3
+  Mr = V + K + 3
+  SetPost(TPerch)
+  Ct = CoopN
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawSprites:
+  u8 Sy = 0
+  u8 Sx = 0
+  u8 Sp = 0
+  ' the pigeon (a puff while stunned, grey just after)
+  Sy = By - 1
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  elseif St > 0 then
+    set sprite 0 to Sy,Bx,SPuff,15
+  else
+    V = Mt >> 3
+    V = V & 1
+    K = V << 2
+    if Fd = 1 then
+      K = K + SPigl0
+    else
+      K = K + SPigr0
+    end if
+    C = 15
+    if Gr > 0 then C = 14
+    set sprite 0 to Sy,Bx,K,C
+  end if
+  ' the mate on its perch
+  if TitleOn = 1 then
+    set sprite 1 to 192,0,0,0
+  else
+    V = Mr << 3
+    Sy = V - 7
+    if Side = 0 then
+      set sprite 1 to Sy,14,SMatel,9
+    else
+      set sprite 1 to Sy,226,SMater,9
+    end if
+  end if
+  for Pi = 0 to 7
+    J = Pi + 2
+    Sy = Pr[Pi].Y
+    Sx = PropX[Pi]
+    C = PropC[Pi]
+    if Sy < 16 then
+      set sprite J to 192,0,0,0
+    elseif Sy > 168 then
+      set sprite J to 192,0,0,0
+    else
+      Sy = Sy - 1
+      Sp = Pat
+      if Pi = Fz then C = 8
+      set sprite J to Sy,Sx,Sp,C
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 12,1, "SKILL"
+  print at 21,1, "TIME"
+  ShowScore
+  NumU = Lv
+  print at 18,1, digits$(NumU, 1)
+  ShowTime
+  return
+end sub
+
+sub ShowScore:
+  NumU = Sc
+  print at 5,1, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowTime:
+  NumU = Tm
+  print at 26,1, digits$(NumU, 2)
+  return
+end sub
+
+' one row of the field (Ri): coop posts at columns 2 and 29, the sky
+sub DrawRow:
+  K = TPost
+  if Ri = 2 then K = TRoof
+  if Ri = 22 then K = TBase
+  put char K at 2,Ri
+  put char K at 29,Ri
+  for J = 3 to 28
+    V = J * 7
+    V = V + Ri * 13
+    V = V & 31
+    K = TSky
+    if V = 3 then K = TStar1
+    if V = 17 then K = TStar2
+    put char K at J,Ri
+  next
+  return
+end sub
+
+' the mate's row in its coop: tile T (the perch or a plain post)
+sub SetPost(u8 T):
+  X = 2
+  if Side = 1 then X = 29
+  put char T at X,Mr
+  return
+end sub
+
+sub DrawField:
+  for Ri = 2 to 22
+    DrawRow
+  next
+  return
+end sub
+
+sub StartLevel:
+  Lp = 0
+  Tm = 99
+  Tf = 0
+  Sq = SkillQ[Lv]
+  Rot = RotN[Lv]
+  RotC = 0
+  Kc = 0
+  Gc = 0
+  St = 0
+  Gr = 0
+  Fz = 255
+  Ct = CoopN
+  return
+end sub
+
+sub ResetProps:
+  for Pi = 0 to 7
+    Pr[Pi].Y = StartY[Pi]
+    Pr[Pi].F = 0
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lv = Skill
+  Over = 0
+  Homes = 0
+  Hits = 0
+  MsgT = 0
+  Mt = 0
+  Pat = SProp0
+  StartLevel
+  NewScreen
+  DrawField
+  ShowHud
+  ResetProps
+  Bx = 120
+  By = 92
+  Fd = 1
+  ' the first mate waits on the left (the C64 started there too)
+  Side = 1
+  Mr = 10
+  Rand
+  NewCoop
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Scr = 3
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  Jo = J1 | J2
+  Btn = Jo & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the big PROPS logo, letter by letter from a 3 x 5 font
+data LogoF bytes
+  7, 5, 7, 4, 4,
+  7, 5, 7, 6, 5,
+  7, 5, 5, 5, 7,
+  7, 5, 7, 4, 4,
+  7, 4, 7, 1, 7
+end data
+
+sub DrawLogo:
+  u8 L = 0
+  u8 R = 0
+  u8 Bits = 0
+  u8 Cx = 0
+  for L = 0 to 4
+    for R = 0 to 4
+      Bits = LogoF[L * 5 + R]
+      Cx = L << 2
+      Cx = Cx + 6
+      if (Bits & 4) > 0 then put char TBlk at Cx,R + 3
+      if (Bits & 2) > 0 then put char TBlk at Cx + 1,R + 3
+      if (Bits & 1) > 0 then put char TBlk at Cx + 2,R + 3
+    next
+  next
+  return
+end sub
+
+' the title: the logo, four propellers turning, the tune once, the menu
+sub TitlePage:
+  NewScreen
+  DrawField
+  for Ri = 2 to 22
+    fill TSky count 26 at 3,Ri
+  next
+  DrawLogo
+  print at 5,9, "COMPUTE!'S GAZETTE"
+  print at 11,10, "MAY 1984"
+  print at 11,14, "START GAME"
+  print at 11,16, "SKILL"
+  print at 11,18, "CREDITS"
+  print at 5,21, "FLY THE PIGEON HOME"
+  print at 2,1, "HI"
+  NumU = Hi
+  print at 5,1, digits$(NumU, 5)
+  ShowMenu
+  TitleOn = 1
+  Lv = Skill
+  Rot = RotN[Lv]
+  Pat = SProp0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Scr = 2
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Spin
+  TitleSprites
+  V = Jo & 15
+  if V > 0 then
+    if WasStick = 0 then MenuMove
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then
+    Menu = 0
+    ShowMenu
+    goto tp_loop
+  end if
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub MenuMove:
+  if (V & 1) > 0 then
+    if Menu > 0 then dec Menu
+  end if
+  if (V & 2) > 0 then
+    if Menu < 2 then inc Menu
+  end if
+  if Menu = 1 then
+    if (V & 4) > 0 then
+      if Skill > 1 then dec Skill
+    end if
+    if (V & 8) > 0 then
+      if Skill < 6 then inc Skill
+    end if
+    Rot = RotN[Skill]
+  end if
+  ShowMenu
+  return
+end sub
+
+sub TitleSprites:
+  set sprite 2 to 103,40,Pat,15
+  set sprite 3 to 119,64,Pat,11
+  set sprite 4 to 103,184,Pat,7
+  set sprite 5 to 119,208,Pat,13
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,14
+  put char 32 at 9,16
+  put char 32 at 9,18
+  J = Menu << 1
+  J = J + 14
+  put char 62 at 9,J
+  NumU = Skill
+  print at 17,16, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 12,2, "PROPS"
+  print at 2,5, "BASED ON PROPS FROM"
+  print at 2,6, "COMPUTE!'S GAZETTE, MAY"
+  print at 2,7, "1984 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: HOMING PIGEON"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Scr = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$81,$C3,$C3,$C3,$C3,$81,$00
+  $00,$00,$00,$00,$00,$AA,$00,$00
+  $18,$C3,$81,$00,$00,$81,$C3,$C3
+  $C3,$C3,$81,$00,$00,$AA,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$F4,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$54,$04,$04
+  $0A,$4B,$4A,$4A,$4A,$4A,$4B,$0A
+  $04,$04,$04,$04,$04,$A4,$0B,$0A
+  $84,$48,$48,$08,$0A,$4B,$4A,$4A
+  $4A,$4A,$4B,$0A,$02,$32,$02,$02
+  $4F,$4B,$4B,$4B,$4B,$4A,$4A,$04
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$3D,$7F,$FF,$FF,$7F,$3D,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$BC,$FE,$FF,$FF,$FE,$BC,$00,$00,$00,$00,$00
+  $00,$00,$1E,$3F,$3F,$3F,$3F,$1F,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$F8,$FC,$FC,$FC,$FC,$78,$00,$00
+  $01,$03,$07,$07,$07,$07,$03,$07,$07,$03,$07,$07,$07,$07,$03,$01
+  $80,$C0,$E0,$E0,$E0,$E0,$C0,$E0,$E0,$C0,$E0,$E0,$E0,$E0,$C0,$80
+  $00,$00,$00,$00,$00,$01,$03,$07,$1F,$3F,$3F,$3F,$3F,$1E,$00,$00
+  $00,$00,$78,$FC,$FC,$FC,$FC,$F8,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$07,$03,$01,$37,$1F,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$CC,$F8,$F8,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$37,$1F,$0F,$03,$07,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0C,$F8,$F8,$F0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$33,$1F,$1F,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$E0,$C0,$80,$EC,$F8,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$30,$1F,$1F,$0F,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$EC,$F8,$F0,$C0,$E0,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$0F,$1F,$3F,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$F8,$FC,$20,$00,$00,$00,$00
+  $00,$00,$10,$04,$22,$08,$4B,$03,$4B,$08,$22,$04,$10,$00,$00,$00
+  $00,$00,$10,$40,$88,$20,$A4,$80,$A4,$20,$88,$40,$10,$00,$00,$00
+end data
+
+asm {
+PpHit:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$56,$0C,$10
+PpHome:
+    db $40,$5F,$10,$03,$40,$47,$10,$03,$40,$55,$10,$03,$40,$40,$20,$0A,$50
+PpCoop:
+    db $40,$AA,$20,$05,$40,$D6,$20,$05,$40,$FE,$30,$0A,$50
+PpLevel:
+    db $40,$BF,$10,$06,$40,$97,$10,$06,$40,$7F,$10,$06,$40,$5F,$10,$06,$40,$7F,$20,$06,$40,$5F,$20,$14
+    db $50
+PpStart:
+    db $40,$FE,$20,$06,$40,$BF,$20,$06,$40,$97,$20,$06,$40,$7F,$20,$0E,$50
+PpOver:
+    db $40,$E2,$10,$0C,$40,$FE,$20,$0C,$40,$2E,$21,$0C,$40,$7C,$21,$1E,$50
+PpWin:
+    db $40,$BF,$10,$08,$40,$97,$10,$08,$40,$7F,$10,$08,$40,$5F,$10,$08,$40,$4C,$10,$08,$40,$40,$20,$1E
+    db $50
+
+PpSoundTable:
+    dw PpTuneMel,$702B
+    dw PpTuneBass,$7035
+    dw PpHit,$703F
+    dw PpHome,$7049
+    dw PpCoop,$7049
+    dw PpLevel,$7049
+    dw PpStart,$7049
+    dw PpOver,$7049
+    dw PpWin,$7049
+; Homing Pigeon (original)
+; Tiny Sound, 8 frames per step
+PpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$25,$01,$28,$01,$25,$23,$21,$01,$23,$01,$25,$01
+    db $1E,$01,$01,$01,$26,$01,$25,$01,$23,$01,$21,$23,$25,$01,$1C,$01
+    db $01,$01,$00,$01,$1E,$01,$21,$01,$26,$01,$25,$23,$01,$01,$21,$01
+    db $23,$01,$20,$01,$28,$01,$26,$25,$23,$01,$20,$01,$23,$01,$21,$01
+    db $01,$01,$00,$01
+    db $FF
+PpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$15,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0B,$01,$12,$01,$10,$01,$17,$01,$09,$01,$10,$01
+    db $0D,$01,$10,$01,$0E,$01,$15,$01,$12,$01,$15,$01,$10,$01,$17,$01
+    db $14,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$01,$01
+    db $FF
+}

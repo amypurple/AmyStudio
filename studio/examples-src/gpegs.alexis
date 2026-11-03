@@ -1,0 +1,1253 @@
+cartridge "PEGS/COMPUTE'S GAZETTE/1986"
+
+' PEGS
+' A ColecoVision game based on "Pegs", COMPUTE!'s Gazette, December 1986
+' (issue 42; Commodore 64 and VIC-20, BASIC; the listing names no
+' author). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' The game (orig/pegs_64.bas, primary; orig/pegs_vic.bas is the same
+' program on a narrower screen): the triangle of 15 holes lettered A to O,
+' every hole filled but A at the top. A peg jumps a neighbour along a line
+' of the triangle into an empty hole and the jumped peg comes off (the 18
+' lines of three in the listing's DATA, both ways: 36 moves). Each jump
+' scores 1 point; the game ends when no jump is left, and 13 (one peg
+' left) wins: CONGRATULATIONS, YOU WON. Any jump can be taken back
+' (BACKUP, the listing's "_"), one at a time down to the start, also from
+' the GAME OVER prompt. A wrong move: ILLEGAL MOVE and a buzz.
+'
+' Kept from the listing: the board and its letters, the start hole, the
+' move table, the score (S, jumps made), the end test (no jump left,
+' lines 260-290), 13 to win, unlimited backup (lines 340-370, the board
+' of every turn: here the list of jumps made), the screens' words.
+'
+' Liberties:
+' - The joystick replaces typing two letters: the stick moves a cursor
+'   from hole to hole (the 8 directions: the nearest hole that way), the
+'   left button picks a peg and then drops it on the hole to jump to;
+'   the right button backs up. Picking the picked peg again puts it down;
+'   picking another peg changes the choice.
+' - A move is checked when it is made: picking an empty hole, or a jump
+'   that is not one of the 36, says ILLEGAL MOVE (the listing checked the
+'   typed pair the same way).
+' - The win's border flashes slowly (the original cycled all 16 colours
+'   20 times in about a second).
+' - At GAME OVER the left button ends the game (the listing's N) and the
+'   right button backs up; there is no PLAY AGAIN: the game goes back to
+'   the title. The title keeps the best score; the play screen also
+'   shows the pegs left and what the buttons do.
+' - The look is new: a green felt triangle, gold pegs carrying their
+'   letters, white when picked, black holes that keep their letter, the
+'   peg hopping over in an arc. Sounds and the title tune ("Jump the
+'   Row") are new.
+'
+' Controls: either controller; stick and side buttons only (no keypad).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' frame loop protected from the NMI; screens drawn with the NMI and the
+' display off. Music first in the sound table, the title tune once.
+
+const TFelt = 128
+const TFeltp = 129
+const TEdge0 = 130
+const TEdge1 = 131
+const TEdge2 = 132
+const TEdge3 = 133
+const TRp0 = 134
+const TRp1 = 135
+const TRp2 = 136
+const TRp3 = 137
+const TRp4 = 138
+const TRp5 = 139
+const TRp6 = 140
+const TRp7 = 141
+const TRw0 = 142
+const TRw1 = 143
+const TRw2 = 144
+const TRw3 = 145
+const TRw4 = 146
+const TRw5 = 147
+const TRw6 = 148
+const TRw7 = 149
+const TRh0 = 150
+const TRh1 = 151
+const TRh2 = 152
+const TRh3 = 153
+const TRh4 = 154
+const TRh5 = 155
+const TRh6 = 156
+const TRh7 = 157
+const TCpA = 158
+const TCpB = 159
+const TCpC = 160
+const TCpD = 161
+const TCpE = 162
+const TCpF = 163
+const TCpG = 164
+const TCpH = 165
+const TCpI = 166
+const TCpJ = 167
+const TCpK = 168
+const TCpL = 169
+const TCpM = 170
+const TCpN = 171
+const TCpO = 172
+const TCwA = 173
+const TCwB = 174
+const TCwC = 175
+const TCwD = 176
+const TCwE = 177
+const TCwF = 178
+const TCwG = 179
+const TCwH = 180
+const TCwI = 181
+const TCwJ = 182
+const TCwK = 183
+const TCwL = 184
+const TCwM = 185
+const TCwN = 186
+const TCwO = 187
+const TChA = 188
+const TChB = 189
+const TChC = 190
+const TChD = 191
+const TChE = 192
+const TChF = 193
+const TChG = 194
+const TChH = 195
+const TChI = 196
+const TChJ = 197
+const TChK = 198
+const TChL = 199
+const TChM = 200
+const TChN = 201
+const TChO = 202
+const TDot = 203
+const TRule = 204
+const SCtl = 0
+const SCtr = 4
+const SCbl = 8
+const SCbr = 12
+const SLA = 16
+const SLB = 20
+const SLC = 24
+const SLD = 28
+const SLE = 32
+const SLF = 36
+const SLG = 40
+const SLH = 44
+const SLI = 48
+const SLJ = 52
+const SLK = 56
+const SLL = 60
+const SLM = 64
+const SLN = 68
+const SLO = 72
+const SBall = 76
+const NTiles8 = 616
+const SprBytes = 640
+const TitleW = 23
+const TitleX = 4
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndPick = 4
+const SndDrop = 5
+const SndHop = 6
+const SndPop = 7
+const SndBad = 8
+const SndBack = 9
+const SndWin = 10
+const SndOver = 11
+data TilePat bytes
+  $00,$04,$00,$40,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$03,$03,$07,$07,$F0
+  $00,$80,$80,$C0,$C0,$E0,$E0,$F0
+  $F0,$E0,$E0,$C0,$C0,$80,$80,$00
+  $F0,$07,$07,$03,$03,$01,$01,$00
+  $00,$00,$03,$07,$F0,$E0,$C0,$C0
+  $00,$81,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$F0,$07,$03,$03
+  $C0,$80,$80,$80,$80,$80,$80,$C0
+  $03,$01,$01,$01,$01,$01,$01,$03
+  $C0,$C0,$E0,$F0,$07,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$00
+  $03,$03,$07,$F0,$E0,$C0,$00,$00
+  $00,$00,$03,$07,$F0,$E0,$C0,$C0
+  $00,$81,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$F0,$07,$03,$03
+  $C0,$80,$80,$80,$80,$80,$80,$C0
+  $03,$01,$01,$01,$01,$01,$01,$03
+  $C0,$C0,$E0,$F0,$07,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$00
+  $03,$03,$07,$F0,$E0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$81,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $03,$07,$07,$07,$07,$07,$07,$03
+  $C0,$E0,$E0,$E0,$E0,$E0,$E0,$C0
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$81,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$44,$44,$83,$44,$44,$44
+  $00,$87,$44,$44,$87,$44,$44,$87
+  $00,$38,$44,$40,$40,$40,$44,$38
+  $00,$70,$48,$44,$44,$44,$48,$70
+  $00,$83,$40,$40,$87,$40,$40,$83
+  $00,$83,$40,$40,$87,$40,$40,$40
+  $00,$38,$44,$40,$A3,$44,$44,$C3
+  $00,$44,$44,$44,$83,$44,$44,$44
+  $00,$38,$10,$10,$10,$10,$10,$38
+  $00,$1C,$08,$08,$08,$08,$48,$30
+  $00,$44,$48,$50,$60,$50,$48,$44
+  $00,$40,$40,$40,$40,$40,$40,$83
+  $00,$44,$93,$54,$54,$44,$44,$44
+  $00,$44,$64,$54,$4C,$44,$44,$44
+  $00,$38,$44,$44,$44,$44,$44,$38
+  $00,$38,$44,$44,$83,$44,$44,$44
+  $00,$87,$44,$44,$87,$44,$44,$87
+  $00,$38,$44,$40,$40,$40,$44,$38
+  $00,$70,$48,$44,$44,$44,$48,$70
+  $00,$83,$40,$40,$87,$40,$40,$83
+  $00,$83,$40,$40,$87,$40,$40,$40
+  $00,$38,$44,$40,$A3,$44,$44,$C3
+  $00,$44,$44,$44,$83,$44,$44,$44
+  $00,$38,$10,$10,$10,$10,$10,$38
+  $00,$1C,$08,$08,$08,$08,$48,$30
+  $00,$44,$48,$50,$60,$50,$48,$44
+  $00,$40,$40,$40,$40,$40,$40,$83
+  $00,$44,$93,$54,$54,$44,$44,$44
+  $00,$44,$64,$54,$4C,$44,$44,$44
+  $00,$38,$44,$44,$44,$44,$44,$38
+  $00,$38,$44,$44,$83,$44,$44,$44
+  $00,$87,$44,$44,$87,$44,$44,$87
+  $00,$38,$44,$40,$40,$40,$44,$38
+  $00,$70,$48,$44,$44,$44,$48,$70
+  $00,$83,$40,$40,$87,$40,$40,$83
+  $00,$83,$40,$40,$87,$40,$40,$40
+  $00,$38,$44,$40,$A3,$44,$44,$C3
+  $00,$44,$44,$44,$83,$44,$44,$44
+  $00,$38,$10,$10,$10,$10,$10,$38
+  $00,$1C,$08,$08,$08,$08,$48,$30
+  $00,$44,$48,$50,$60,$50,$48,$44
+  $00,$40,$40,$40,$40,$40,$40,$83
+  $00,$44,$93,$54,$54,$44,$44,$44
+  $00,$44,$64,$54,$4C,$44,$44,$44
+  $00,$38,$44,$44,$44,$44,$44,$38
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0C,$2C,$0C,$2C,$0C,$0C,$2C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$0C
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $C0,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$BC,$BC,$CB,$CB,$CB,$CB
+  $0C,$CB,$0B,$0B,$0B,$0B,$0B,$0B
+  $0C,$0C,$BC,$BC,$BC,$CB,$CB,$CB
+  $CB,$CB,$CB,$CB,$CB,$CB,$CB,$CB
+  $CB,$CB,$CB,$CB,$CB,$CB,$CB,$CB
+  $CB,$CB,$CB,$CB,$BC,$BC,$0C,$0C
+  $0B,$0B,$0B,$0B,$0B,$0B,$CB,$0C
+  $CB,$CB,$CB,$BC,$BC,$BC,$0C,$0C
+  $0C,$0C,$FC,$FC,$CF,$CF,$CF,$CF
+  $0C,$CF,$0F,$0F,$0F,$0F,$0F,$0F
+  $0C,$0C,$FC,$FC,$FC,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$FC,$FC,$0C,$0C
+  $0F,$0F,$0F,$0F,$0F,$0F,$CF,$0C
+  $CF,$CF,$CF,$FC,$FC,$FC,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$1C
+  $0C,$0C,$0C,$0C,$0C,$C1,$01,$01
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $01,$01,$C1,$0C,$0C,$0C,$0C,$0C
+  $1C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0B,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $0B,$B1,$1B,$1B,$B1,$1B,$1B,$B1
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$B1,$1B,$1B,$B1,$1B,$1B,$B1
+  $0B,$B1,$1B,$1B,$B1,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$B1,$1B,$1B,$B1
+  $0B,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$B1
+  $0B,$1B,$B1,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $0F,$F1,$1F,$1F,$F1,$1F,$1F,$F1
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$F1,$1F,$1F,$F1,$1F,$1F,$F1
+  $0F,$F1,$1F,$1F,$F1,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$F1,$1F,$1F,$F1
+  $0F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$F1
+  $0F,$1F,$F1,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $01,$E1,$E1,$E1,$1E,$E1,$E1,$E1
+  $01,$1E,$E1,$E1,$1E,$E1,$E1,$1E
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$1E,$E1,$E1,$1E,$E1,$E1,$1E
+  $01,$1E,$E1,$E1,$1E,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$1E,$E1,$E1,$1E
+  $01,$E1,$E1,$E1,$1E,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$1E
+  $01,$E1,$1E,$E1,$E1,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $00,$0B,$0B,$0B,$0B,$0B,$0B,$00
+  $00,$00,$00,$0B,$00,$00,$00,$00
+end data
+data SpritePat bytes
+  $FC,$FC,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$3F,$3F
+  $00,$00,$00,$00,$03,$04,$04,$07,$04,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$40,$C0,$40,$40,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$04,$04,$07,$04,$04,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$40,$80,$40,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$04,$04,$04,$04,$04,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$00,$00,$00,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$04,$04,$04,$04,$04,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$40,$40,$40,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$04,$04,$07,$04,$04,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$00,$00,$80,$00,$00,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$04,$04,$07,$04,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$04,$04,$05,$04,$04,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$00,$C0,$40,$40,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$04,$04,$07,$04,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$40,$40,$C0,$40,$40,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$01,$01,$01,$01,$01,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$00,$00,$00,$00,$04,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$80,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$04,$05,$06,$05,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$00,$00,$00,$80,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$04,$04,$04,$04,$04,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$06,$05,$05,$04,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$C0,$40,$40,$40,$40,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$06,$05,$04,$04,$04,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$40,$40,$C0,$40,$40,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$04,$04,$04,$04,$04,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$40,$40,$40,$40,$80,$00,$00,$00,$00,$00
+  $01,$0F,$1F,$3F,$7F,$7F,$7F,$FF,$FF,$7F,$7F,$7F,$3F,$1F,$0F,$01
+  $80,$F0,$F8,$FC,$FE,$FE,$FE,$FF,$FF,$FE,$FE,$FE,$FC,$F8,$F0,$80
+end data
+data BoardMap bytes
+  32,32,32,32,32,32,32,32,32,130,128,128,128,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,132,128,128,128,133,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,130,128,128,128,128,128,131,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,132,128,128,128,128,128,133,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,130,128,128,128,128,128,128,128,131,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,132,128,128,128,128,128,128,128,133,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,130,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,132,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,130,128,128,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,132,128,128,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,130,128,128,128,128,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32,32,32,32,32
+  32,32,32,32,132,128,128,128,128,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32,32,32,32,32
+  32,32,32,130,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32,32,32,32
+  32,32,32,132,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32,32,32,32
+  32,32,130,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32,32,32
+  32,32,132,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32,32,32
+  32,130,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32,32
+  32,132,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32,32
+  130,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,131,32,32,32,32,32
+  132,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,133,32,32,32,32,32
+end data
+data TitleMap bytes
+  203,203,203,203,32,32,203,203,203,203,203,32,32,203,203,203,32,32,32,203,203,203,203
+  203,32,32,32,203,32,203,32,32,32,32,32,203,32,32,32,203,32,203,32,32,32,32
+  203,32,32,32,203,32,203,32,32,32,32,32,203,32,32,32,32,32,203,32,32,32,32
+  203,203,203,203,32,32,203,203,203,203,32,32,203,32,203,203,203,32,32,203,203,203,32
+  203,32,32,32,32,32,203,32,32,32,32,32,203,32,32,32,203,32,32,32,32,32,203
+  203,32,32,32,32,32,203,32,32,32,32,32,203,32,32,32,203,32,32,32,32,32,203
+  203,32,32,32,32,32,203,203,203,203,203,32,32,203,203,203,203,32,203,203,203,203,32
+end data
+data PosC bytes
+  12,10,14,8,12,16,6,10,14,18,4,8,12,16,20
+end data
+data PosR bytes
+  3,7,7,11,11,11,15,15,15,15,19,19,19,19,19
+end data
+data Nav bytes
+  255,255,255,2,1,1,255,255
+  0,0,2,4,3,3,255,255
+  0,255,255,5,4,4,1,0
+  1,1,4,7,6,6,255,255
+  1,2,5,8,7,7,3,1
+  2,255,255,9,8,8,4,2
+  3,3,7,11,10,10,255,255
+  3,4,8,12,11,11,6,3
+  4,5,9,13,12,12,7,4
+  5,255,255,14,13,13,8,5
+  6,6,11,11,255,255,255,255
+  6,7,12,12,255,10,10,6
+  7,8,13,13,255,11,11,7
+  8,9,14,14,255,12,12,8
+  9,255,255,255,255,13,13,9
+end data
+const NSpr = 6
+const NPos = 15
+const NLine = 18
+const WinScore = 13
+const MsgRow = 22
+const PanelC = 24
+
+' the listing's 18 lines of three (DATA ABD, ACF, ...): from, over, to;
+' moves 18-35 are the same lines the other way
+data LnA bytes
+  0,0,1,1,2,2,3,3,3,4,4,5,5,6,7,10,11,12
+end data
+data LnB bytes
+  1,2,3,4,4,5,4,6,7,7,8,8,9,7,8,11,12,13
+end data
+data LnC bytes
+  3,5,6,8,7,9,5,10,12,11,13,12,14,8,9,12,13,14
+end data
+' joystick bits (1 up, 2 down, 4 left, 8 right) -> Nav direction
+data DirOf bytes
+  255,0,4,255,6,7,5,255,2,1,3,255,255,255,255,255
+end data
+' the eight tiles round a place: column and row offsets
+data RingX bytes
+  0,1,2,0,2,0,1,2
+end data
+data RingY bytes
+  0,0,0,1,1,2,2,2
+end data
+
+' the board: Tc(place) 1 a peg, 0 a hole (the listing's TC(T, 1-15))
+u8 Tc[15]
+' the jumps made, in order: the move (0-35) of each (backup undoes them)
+u8 Hm[14]
+u8 S = 0
+u16 Best = 0
+u8 Cur = 4
+u8 Sel = 255
+u8 Over = 0
+u8 Won = 0
+u8 Quit = 0
+' Ph: 1 waiting for a move, 2 the GAME OVER prompt, 0 busy (for the bot)
+u8 Ph = 0
+u8 Ask = 0
+u8 TitleOn = 0
+u8 Menu = 0
+u8 RepT = 0
+u8 Mf = 0
+u8 Mj = 0
+u8 Mt = 0
+u8 Found = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with helpers)
+u8 Li = 0
+u8 Lj = 0
+u8 Lw = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PgSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    CreditsPage
+    goto title
+  end if
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Over = 0 then goto play_loop
+
+  ' 380-450: the game is over (or won): back up or end
+  EndPrompt
+  if Quit = 0 then goto play_loop
+
+  Ph = 0
+  HideSprites
+  NumU = S
+  if NumU > Best then Best = NumU
+  fill 32 count 28 at 2,MsgRow
+  print at 2,MsgRow, "FINAL SCORE"
+  print S at 14,MsgRow width 2
+  print at 17,MsgRow, "PRESS BUTTON"
+  Ask = 9
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Ask = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+' the move from place Fp to place Tp: 0-35, or 255 if no line joins them
+function MoveOf(u8 Fp, u8 Tp) as u8
+  u8 Mi = 0
+  u8 Rm = 255
+  for Mi = 0 to 17
+    if LnA[Mi] = Fp then
+      if LnC[Mi] = Tp then Rm = Mi
+    end if
+    if LnC[Mi] = Fp then
+      if LnA[Mi] = Tp then Rm = Mi + NLine
+    end if
+  next
+  return Rm
+
+' a move's three places into Mf, Mj, Mt
+sub Unpack(u8 Um):
+  if Um >= NLine then
+    Um = Um - NLine
+    Mf = LnC[Um]
+    Mt = LnA[Um]
+  else
+    Mf = LnA[Um]
+    Mt = LnC[Um]
+  end if
+  Mj = LnB[Um]
+  return
+end sub
+
+' 1 if move Lm can be made now (a peg, a peg to jump, a hole)
+function CanMove(u8 Lm) as u8
+  Unpack(Lm)
+  if Tc[Mf] = 0 then return 0
+  if Tc[Mj] = 0 then return 0
+  if Tc[Mt] = 1 then return 0
+  return 1
+
+' 260-290: is any jump left?
+function AnyMove as u8
+  u8 Am = 0
+  u8 Ok = 0
+  for Am = 0 to 35
+    Ok = CanMove(Am)
+    if Ok = 1 then return 1
+  next
+  return 0
+
+sub NewGame:
+  ' 130: every hole filled but A
+  for Li = 0 to 14
+    Tc[Li] = 1
+  next
+  Tc[0] = 0
+  S = 0
+  Cur = 4
+  Sel = 255
+  Over = 0
+  Won = 0
+  Quit = 0
+  DrawPlay
+  return
+end sub
+
+sub PlayStep:
+  Ph = 1
+  ' the stick: a new direction moves at once, a held one repeats
+  K = 0
+  if Edge > 0 then
+    K = Jk
+    RepT = 14
+  else
+    if Jk > 0 then
+      dec RepT
+      if RepT = 0 then
+        K = Jk
+        RepT = 8
+      end if
+    end if
+  end if
+  if K > 0 then MoveCursor(K)
+  if P1 = 1 then
+    LeftButton
+  else
+    if P2 = 1 then Backup
+  end if
+  return
+end sub
+
+sub MoveCursor(u8 Mk):
+  u8 Dn = 0
+  u8 Np = 0
+  Dn = DirOf[Mk]
+  if Dn = 255 then return
+  K = Cur << 3
+  K = K + Dn
+  Np = Nav[K]
+  if Np = 255 then return
+  Cur = Np
+  play sound SndMove
+  DrawCursor
+  return
+end sub
+
+sub LeftButton:
+  u8 Lm = 0
+  if Sel = 255 then
+    if Tc[Cur] = 1 then
+      Sel = Cur
+      play sound SndPick
+      DrawPlace(Sel)
+      DrawCursor
+    else
+      Illegal
+    end if
+    return
+  end if
+  if Cur = Sel then
+    Sel = 255
+    play sound SndDrop
+    DrawPlace(Cur)
+    DrawCursor
+    return
+  end if
+  if Tc[Cur] = 1 then
+    ' another peg: it becomes the picked one
+    T = Sel
+    Sel = Cur
+    DrawPlace(T)
+    DrawPlace(Sel)
+    play sound SndPick
+    DrawCursor
+    return
+  end if
+  ' 170-200: is it a move, and can it be made?
+  Lm = MoveOf(Sel, Cur)
+  if Lm = 255 then
+    Illegal
+    return
+  end if
+  V = CanMove(Lm)
+  if V = 0 then
+    Illegal
+    return
+  end if
+  DoMove(Lm)
+  return
+end sub
+
+' 210-300: the jump
+sub DoMove(u8 Dm):
+  Ph = 0
+  Unpack(Dm)
+  Hm[S] = Dm
+  Sel = 255
+  Tc[Mf] = 0
+  DrawPlace(Mf)
+  Hop
+  Tc[Mj] = 0
+  Tc[Mt] = 1
+  DrawPlace(Mt)
+  inc S
+  ShowScore
+  Cur = Mt
+  DrawCursor
+  CheckEnd
+  return
+end sub
+
+' 250-290: thirteen wins; no jump left ends the game
+sub CheckEnd:
+  u8 Am = 0
+  Over = 0
+  Won = 0
+  if S = WinScore then
+    Over = 1
+    Won = 1
+    return
+  end if
+  Am = AnyMove
+  if Am = 0 then Over = 1
+  return
+end sub
+
+' 340-370: take back the last jump
+sub Backup:
+  u8 Bm = 0
+  if S = 0 then
+    play sound SndBad
+    return
+  end if
+  Ph = 0
+  dec S
+  Bm = Hm[S]
+  Unpack(Bm)
+  Tc[Mf] = 1
+  Tc[Mj] = 1
+  Tc[Mt] = 0
+  if Sel <> 255 then
+    T = Sel
+    Sel = 255
+    DrawPlace(T)
+  end if
+  DrawPlace(Mf)
+  DrawPlace(Mj)
+  DrawPlace(Mt)
+  play sound SndBack
+  ShowScore
+  Cur = Mf
+  DrawCursor
+  Over = 0
+  Won = 0
+  return
+end sub
+
+' 310-330
+sub Illegal:
+  Ph = 0
+  play sound SndBad
+  fill 32 count 28 at 2,MsgRow
+  print at 10,MsgRow, "ILLEGAL MOVE"
+  Pause(50)
+  ShowPrompt
+  return
+end sub
+
+' 380-450: the end of a game: the message, then back up (right) or end
+sub EndPrompt:
+  Ph = 0
+  fill 32 count 28 at 2,MsgRow
+  if Won = 1 then
+    print at 3,MsgRow, "CONGRATULATIONS, YOU WON"
+    play sound SndWin
+    for Lj = 0 to 7
+      select case Lj
+      case 0
+        backdrop dark yellow
+      case 1
+        backdrop magenta
+      case 2
+        backdrop light blue
+      case 3
+        backdrop dark red
+      case 4
+        backdrop cyan
+      case 5
+        backdrop dark green
+      case 6
+        backdrop gray
+      case else
+        backdrop dark blue
+      end select
+      Pause(20)
+    next
+  else
+    print at 2,MsgRow, "GAME OVER - YOUR SCORE IS"
+    print S at 28,MsgRow width 2
+    play sound SndOver
+    Pause(30)
+  end if
+  ' the panel: what the buttons do now
+  PanelClear
+  print at PanelC,10, "LEFT:"
+  print at PanelC,11, "END"
+  print at PanelC,13, "RIGHT:"
+  print at PanelC,14, "BACK"
+  print at PanelC,15, "UP"
+  Ph = 2
+ep_loop:
+  Frame1
+  ReadPad
+  if P1 = 1 then
+    Quit = 1
+    Ph = 0
+    return
+  end if
+  if P2 = 0 then goto ep_loop
+  Backup
+  PanelHelp
+  ShowPrompt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' one place: a peg (gold, or white when picked) or a hole, with its letter
+sub DrawPlace(u8 Dp):
+  u8 Pc = 0
+  u8 Pr = 0
+  u8 Rb = 0
+  u8 Cb = 0
+  u8 Ri = 0
+  Pc = PosC[Dp]
+  Pr = PosR[Dp]
+  if Tc[Dp] = 0 then
+    Rb = TRh0
+    Cb = TChA
+  else
+    if Dp = Sel then
+      Rb = TRw0
+      Cb = TCwA
+    else
+      Rb = TRp0
+      Cb = TCpA
+    end if
+  end if
+  for Ri = 0 to 7
+    X = Pc + RingX[Ri]
+    Y = Pr + RingY[Ri]
+    put char Rb + Ri at X,Y
+  next
+  X = Pc + 1
+  Y = Pr + 1
+  put char Cb + Dp at X,Y
+  return
+end sub
+
+' the cursor: four corner sprites round the place's 24 x 24 block
+sub DrawCursor:
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 Cc = 0
+  u8 Ex = 0
+  u8 Ey = 0
+  Cx = PosC[Cur] << 3
+  Cy = PosR[Cur] << 3
+  Cx = Cx - 4
+  Cy = Cy - 5
+  Ex = Cx + 16
+  Ey = Cy + 16
+  Cc = 7
+  if Sel <> 255 then Cc = 9
+  set sprite 0 to Cy,Cx,SCtl,Cc
+  set sprite 1 to Cy,Ex,SCtr,Cc
+  set sprite 2 to Ey,Cx,SCbl,Cc
+  set sprite 3 to Ey,Ex,SCbr,Cc
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' the peg hops from Mf over Mj to Mt in an arc; Mj pops half way
+sub Hop:
+  i16 Hx0 = 0
+  i16 Hy0 = 0
+  i16 Hdx = 0
+  i16 Hdy = 0
+  i16 Hx = 0
+  i16 Hy = 0
+  i16 Arc = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Lp = 0
+  HideCursor
+  Hx0 = PosC[Mf] << 3
+  Hx0 = Hx0 + 4
+  Hy0 = PosR[Mf] << 3
+  Hy0 = Hy0 + 3
+  Hdx = PosC[Mt] << 3
+  Hdx = Hdx + 4
+  Hdx = Hdx - Hx0
+  Hdy = PosR[Mt] << 3
+  Hdy = Hdy + 3
+  Hdy = Hdy - Hy0
+  Lp = Mf << 2
+  Lp = Lp + SLA
+  play sound SndHop
+  for Lw = 0 to 20
+    Hx = Hdx * Lw
+    Hx = Hx / 20
+    Hx = Hx + Hx0
+    Arc = 20 - Lw
+    Arc = Arc * Lw
+    Arc = Arc / 6
+    Hy = Hdy * Lw
+    Hy = Hy / 20
+    Hy = Hy + Hy0
+    Hy = Hy - Arc
+    Sx = Hx
+    Sy = Hy
+    set sprite 4 to Sy,Sx,Lp,1
+    set sprite 5 to Sy,Sx,SBall,11
+    update sprites
+    if Lw = 10 then
+      Tc[Mj] = 0
+      DrawPlace(Mj)
+      play sound SndPop
+    end if
+    Frame1
+  next
+  set sprite 4 to 192,0,0,0
+  set sprite 5 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print S at 9,1 width 2
+  V = 14 - S
+  print V at PanelC,5 width 2
+  return
+end sub
+
+sub ShowPrompt:
+  fill 32 count 28 at 2,MsgRow
+  print at 11,MsgRow, "YOUR MOVE"
+  return
+end sub
+
+sub PanelClear:
+  for Lw = 9 to 16
+    fill 32 count 6 at PanelC,Lw
+  next
+  return
+end sub
+
+sub PanelHelp:
+  PanelClear
+  print at PanelC,10, "LEFT:"
+  print at PanelC,11, "PICK"
+  print at PanelC,12, "JUMP"
+  print at PanelC,14, "RIGHT:"
+  print at PanelC,15, "BACKUP"
+  return
+end sub
+
+sub DrawPlay:
+  u8 Br = 0
+  u16 Bo = 0
+  u16 Vo = 0
+  NewScreen
+  ' the felt triangle, rows 2-21 from the map (28 columns a row)
+  for Br = 0 to 19
+    Bo = Br * 28
+    Vo = Br + 2
+    Vo = Vo * 32
+    Vo = Vo + 2
+    copy BoardMap + Bo count 28 to vram.name + Vo
+  next
+  for Li = 0 to 14
+    DrawPlace(Li)
+  next
+  ' 90-100: the title bar and the score
+  print at 2,1, "SCORE:"
+  print at 14,1, "PEGS"
+  print at PanelC,3, "PEGS"
+  print at PanelC,4, "LEFT"
+  ShowScore
+  PanelHelp
+  ShowPrompt
+  ShowScreen
+  DrawCursor
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Pf):
+  for Lw = 1 to Pf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  B1 = V & 16
+  B2 = V & 32
+  P1 = 0
+  P2 = 0
+  if B1 > 0 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  if B2 > 0 then
+    if WasB2 = 0 then P2 = 1
+  end if
+  WasB1 = B1
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: PEGS in little gold pegs, the tune once
+sub TitlePage:
+  u16 Tq = 0
+  u16 Tv = 0
+  u8 Tr = 0
+  Ask = 0
+  TitleOn = 1
+  NewScreen
+  for Tr = 0 to 6
+    Tq = Tr * TitleW
+    Tv = Tr + 3
+    Tv = Tv * 32
+    Tv = Tv + TitleX
+    copy TitleMap + Tq count TitleW to vram.name + Tv
+  next
+  fill TRule count 24 at 4,11
+  print at 4,13, "JUMP A PEG OVER A PEG"
+  print at 4,14, "INTO A HOLE. LEAVE ONE"
+  print at 4,15, "PEG TO SCORE 13."
+  print at 12,17, "START"
+  print at 12,18, "CREDITS"
+  print at 4,20, "BEST SCORE"
+  NumU = Best
+  print at 15,20, digits$(NumU, 2)
+  print at 4,22, "COMPUTE!'S GAZETTE 1986"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    Menu = Menu ^ 1
+    play sound SndMove
+    ShowMenu
+  end if
+  V = P1 | P2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,17
+  put char 32 at 10,18
+  C = Menu + 17
+  put char 62 at 10,C
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 13,2, "PEGS"
+  print at 2,5, "BASED ON PEGS, COMPUTE!'S"
+  print at 2,6, "GAZETTE, DECEMBER 1986"
+  print at 2,7, "(COMMODORE 64 AND VIC-20)."
+  print at 2,8, "NO AUTHOR IS NAMED IN THE"
+  print at 2,9, "LISTING."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: JUMP THE ROW"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Ask = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Ask = 0
+  return
+end sub
+
+asm {
+PgMove:
+    db $40,$47,$40,$01,$50
+PgPick:
+    db $40,$7F,$20,$02,$40,$55,$30,$02,$50
+PgDrop:
+    db $40,$55,$30,$02,$40,$7F,$30,$02,$50
+PgHop:
+    db $40,$43,$10,$02,$40,$43,$30,$02,$40,$43,$60,$03,$40,$43,$80,$03,$50
+PgPop:
+    db $00,$00,$24,$02,$00,$00,$55,$04,$10
+PgBad:
+    db $40,$F9,$12,$02,$40,$F9,$F2,$02,$40,$F9,$12,$02,$40,$F9,$F2,$02,$40,$F9,$12,$02,$40,$F9,$F2,$02
+    db $40,$F9,$12,$02,$40,$F9,$F2,$02,$40,$F9,$22,$03,$50
+PgBack:
+    db $40,$6B,$20,$02,$40,$8F,$30,$02,$40,$BF,$30,$02,$40,$FE,$40,$03,$50
+PgWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+PgOver:
+    db $40,$1D,$21,$06,$40,$53,$21,$06,$40,$AB,$31,$06,$40,$3B,$32,$12,$50
+
+PgSoundTable:
+    dw PgTuneMel,$702B
+    dw PgTuneBass,$7035
+    dw PgMove,$7049
+    dw PgPick,$7049
+    dw PgDrop,$7049
+    dw PgHop,$7049
+    dw PgPop,$703F
+    dw PgBad,$7049
+    dw PgBack,$7049
+    dw PgWin,$7049
+    dw PgOver,$7049
+; Jump the Row (original)
+; Tiny Sound, 8 frames per step
+PgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$21,$01,$1E,$1A,$01,$1E,$21,$01,$26,$25,$01,$23
+    db $21,$01,$1E,$1F,$01,$1C,$1E,$01,$1A,$1C,$01,$01,$21,$01,$1E,$1A
+    db $01,$1E,$23,$01,$26,$25,$01,$21,$23,$01,$1F,$1C,$01,$19,$1A,$01
+    db $01,$00,$01,$01
+    db $FF
+PgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$0E,$01,$09,$0E,$01,$09,$07,$01,$0E
+    db $0E,$01,$09,$0B,$01,$07,$09,$01,$12,$09,$01,$01,$0E,$01,$09,$0E
+    db $01,$09,$07,$01,$0E,$09,$01,$10,$07,$01,$0B,$09,$01,$09,$0E,$01
+    db $01,$00,$01,$01
+    db $FF
+}

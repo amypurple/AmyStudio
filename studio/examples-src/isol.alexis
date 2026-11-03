@@ -1,0 +1,1246 @@
+cartridge "ISOLATION/COMPUTE'S GAZETTE/1990"
+
+' ISOLATION
+' A ColecoVision game based on "Isolation", COMPUTE!'s Gazette, May 1990
+' (Commodore 64 BASIC, disk 1990-05; the listing names no author, only
+' "COPYRIGHT 1990 COMPUTE! PUBLICATIONS, INC."). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules and the computer player are the
+' listing's (orig/isolation.bas), the board is drawn for the ColecoVision:
+' stone plates with bevels, gold-ringed home plates, plates that crack
+' and fall, tokens that glide, sound effects and a title tune.
+'
+' The game: 1 to 4 players on a board of 7 x 6 plates, starting on the
+' four home plates (red top left, green bottom right, blue top right,
+' magenta bottom left). On a turn a player steps to one of the eight
+' plates round the token (a plate still there, nobody on it), then knocks
+' out any plate on the board that is still there, is empty and is not a
+' home plate. After each turn a player with no plate free round the token
+' is isolated and leaves the game. The last one left wins. With one
+' player, green is the computer.
+'
+' From the listing: the board and homes (lines 1360-1370, 270), the step
+' (220-260), the knock-out (740-760: not a hole, not occupied, not a home),
+' the isolation check after every knock-out (910-1040: the others first,
+' then the player who moved), the computer player step for step: its move
+' (310-600: up to 19 random tries a round, rounds 1 and 3 diagonal steps
+' only, 2 and 4 straight steps only, rounds 1 and 2 also wanting a free
+' plate beyond, as the listing tests it, line 500's slip XS=X+2*XS kept;
+' then the first free plate round it) and its knock-out (780-870: the
+' plates round player 1 in the listing's CX/CY order, mirrored on the
+' right and lower halves, else the first plate row by row).
+'
+' Liberties: the step is aimed with the stick and made with the button
+' (the listing stepped as soon as the stick moved), and the knock-out
+' cursor starts on the plate just left (the listing started it on the
+' player's home). Either controller plays for every player (pass it on).
+' The winner is named (the listing only played a tune). When the last
+' rival is isolated the game ends at once, before the mover is checked
+' (the listing hung when the mover was isolated by the same knock-out).
+' When no plate may be knocked out the turn goes on without one (the
+' listing's computer searched for ever). The listing's RND is a 16-bit
+' xorshift advanced on every title frame. The computer pauses and its
+' cursor shows the plate it knocks out. The board's 24-pixel squares
+' hold 16-pixel tokens with the player's number cut out, in red, green,
+' blue and magenta (the listing's yellow, light green, cyan and grey
+' would barely show on grey plates).
+'
+' Controls: either controller. Your turn: push the stick toward a plate
+' (the cursor shows it) and press a button to step there; then move the
+' cross-hair to a plate and press a button to knock it out. On the title,
+' up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title tune played
+' once. `set sprite count` always given. Nothing flashes.
+
+const TPlt00 = 128
+const TPlt01 = 129
+const TPlt02 = 130
+const TPlt10 = 131
+const TPlt11 = 132
+const TPlt12 = 133
+const TPlt20 = 134
+const TPlt21 = 135
+const TPlt22 = 136
+const THom00 = 137
+const THom01 = 138
+const THom02 = 139
+const THom10 = 140
+const THom11 = 141
+const THom12 = 142
+const THom20 = 143
+const THom21 = 144
+const THom22 = 145
+const TCrk00 = 146
+const TCrk01 = 147
+const TCrk02 = 148
+const TCrk10 = 149
+const TCrk11 = 150
+const TCrk12 = 151
+const TCrk20 = 152
+const TCrk21 = 153
+const TCrk22 = 154
+const THol00 = 155
+const THol01 = 156
+const THol02 = 157
+const THol10 = 158
+const THol11 = 159
+const THol12 = 160
+const THol20 = 161
+const THol21 = 162
+const THol22 = 163
+const TFt = 164
+const TFb = 165
+const TFl = 166
+const TFr = 167
+const TFtl = 168
+const TFtr = 169
+const TFbl = 170
+const TFbr = 171
+const STok1 = 0
+const STok2 = 4
+const STok3 = 8
+const STok4 = 12
+const SAim = 16
+const SDrill = 20
+const NTiles8 = 352
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndHop = 4
+const SndCrunch = 5
+const SndFall = 6
+const SndBump = 7
+const SndOut = 8
+const SndWon = 9
+const NSpr = 5
+const TuneLen = 576
+' board placement: square X,Y (1-7, 1-6) at tile column BoardX + 3 * (X-1)
+const BoardX = 5
+const BoardY = 3
+' square kinds (TPlt00 + 9 * kind)
+const KPlate = 0
+const KHome = 1
+const KCrack = 2
+const KHole = 3
+' sprites
+const SpCur = 0
+const Gone = 9
+
+record Spot:
+  u8 X
+  u8 Y
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Seed = 4321
+u16 R16 = 0
+' the listing's S(Y,X) (1 a plate) and P(Y,X) (the player on it) at Y * 9 + X
+u8 S[72]
+u8 Pc[72]
+' LX(P), LY(P): 9 when isolated
+u8 Lx[5]
+u8 Ly[5]
+' players, the current one, how many isolated, the computer (CP)
+u8 NPl = 2
+u8 Cur = 0
+u8 Wout = 0
+u8 Cp = 0
+' the computer's last step and knock-out, for the bot (255: none)
+Spot CMv
+Spot CRm
+' cursor
+u8 Ax = 0
+u8 Ay = 0
+u8 Ox = 0
+u8 Oy = 0
+' game state: 0 title, 1 computer, 2 your step, 3 your knock-out, 4 over,
+' 5 busy; Res the winner
+u8 Gs = 0
+u8 Res = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Rpt = 0
+u8 Gx = 0
+u8 Gy = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 V = 0
+
+  tile screen
+  set sound table IsSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+  NewGame
+
+play_loop:
+  NextPlayer
+  if Gs = 4 then goto game_end
+  if Cp = 1 and Cur = 2 then
+    CompTurn
+  else
+    HumanTurn
+  end if
+  Isolations
+  goto play_loop
+
+game_end:
+  HideSprites
+  fill 32 count 28 at 2,22
+  ShowToken(Res)
+  if Cp = 1 then
+    if Res = 1 then
+      print at 9,22, "YOU WIN!"
+    else
+      print at 5,22, "THE COMPUTER WINS."
+    end if
+  else
+    PName(Res, 9, 22)
+    print at 17,22, "WINS!"
+  end if
+  play sound SndWon
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the board
+
+function At(u8 X, u8 Y) as u8
+  return Y * 9 + X
+
+function IsHome(u8 X, u8 Y) as u8
+  if X <> 2 and X <> 6 then return 0
+  if Y = 2 or Y = 5 then return 1
+  return 0
+
+' line 280: on the board, a plate, nobody on it
+function Free(u8 X, u8 Y) as u8
+  u8 K = 0
+  if X < 1 or X > 7 then return 0
+  if Y < 1 or Y > 6 then return 0
+  K = At(X, Y)
+  if S[K] = 0 then return 0
+  if Pc[K] > 0 then return 0
+  return 1
+
+' line 270 / 740-760: a plate that may be knocked out
+function Removable(u8 X, u8 Y) as u8
+  if IsHome(X, Y) = 1 then return 0
+  return Free(X, Y)
+
+' draw square X,Y as kind K (255: as the board holds it)
+sub DrawSq(u8 X, u8 Y, u8 K):
+  u8 T = 0
+  u8 Kd = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 R = 0
+  Kd = K
+  if Kd = 255 then
+    Kd = KPlate
+    if S[At(X, Y)] = 0 then
+      Kd = KHole
+    elseif IsHome(X, Y) = 1 then
+      Kd = KHome
+    end if
+  end if
+  T = Kd * 9 + TPlt00
+  Tx = X * 3 + BoardX - 3
+  Ty = Y * 3 + BoardY - 3
+  for R = 0 to 2
+    put char T at Tx,Ty + R
+    put char T + 1 at Tx + 1,Ty + R
+    put char T + 2 at Tx + 2,Ty + R
+    T = T + 3
+  next
+  return
+end sub
+
+sub DrawBoard:
+  u8 X = 0
+  u8 Y = 0
+  for Y = 1 to 6
+    for X = 1 to 7
+      DrawSq(X, Y, 255)
+    next
+  next
+  return
+end sub
+
+sub DrawFrame:
+  u8 K = 0
+  u8 R = 0
+  put char TFtl at BoardX - 1,BoardY - 1
+  put char TFtr at BoardX + 21,BoardY - 1
+  put char TFbl at BoardX - 1,BoardY + 18
+  put char TFbr at BoardX + 21,BoardY + 18
+  fill TFt count 21 at BoardX,BoardY - 1
+  fill TFb count 21 at BoardX,BoardY + 18
+  for K = 0 to 17
+    R = K + BoardY
+    put char TFl at BoardX - 1,R
+    put char TFr at BoardX + 21,R
+  next
+  return
+end sub
+
+' the sprite place of square X,Y
+sub SqPos(u8 X, u8 Y):
+  Gx = (X * 3 + BoardX - 3) * 8 + 4
+  Gy = (Y * 3 + BoardY - 3) * 8 + 4
+  return
+end sub
+
+function TokColour(u8 P) as u8
+  select case P
+  case 1
+    return 8
+  case 2
+    return 12
+  case 3
+    return 4
+  end select
+  return 13
+
+sub PutToken(u8 P, u8 Px, u8 Py):
+  u8 C = 0
+  u8 Pat = 0
+  C = TokColour(P)
+  Pat = P * 4 + STok1 - 4
+  set sprite P to Py - 1,Px,Pat,C
+  return
+end sub
+
+sub ShowToken(u8 P):
+  SqPos(Lx[P], Ly[P])
+  PutToken(P, Gx, Gy)
+  update sprites
+  return
+end sub
+
+sub HideSprite(u8 N):
+  set sprite N to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub PName(u8 P, u8 Col, u8 Row):
+  select case P
+  case 1
+    print at Col,Row, "RED"
+  case 2
+    if Cp = 1 then
+      print at Col,Row, "COMPUTER"
+    else
+      print at Col,Row, "GREEN"
+    end if
+  case 3
+    print at Col,Row, "BLUE"
+  case else
+    print at Col,Row, "MAGENTA"
+  end select
+  return
+end sub
+
+' the top line: whose turn and what to do
+sub SayTurn(u8 What):
+  fill 32 count 18 at 12,1
+  PName(Cur, 12, 1)
+  if What = 0 then
+    print at 21,1, "STEPS"
+  else
+    print at 21,1, "KNOCKS"
+  end if
+  return
+end sub
+
+sub Hint(u8 What):
+  fill 32 count 28 at 2,22
+  select case What
+  case 0
+    print at 2,22, "AIM WITH STICK, BUTTON: STEP"
+  case 1
+    print at 2,22, "PICK A PLATE, BUTTON: KNOCK"
+  case 2
+    print at 7,22, "THE COMPUTER THINKS"
+  case 3
+    print at 6,22, "NO PLATE TO KNOCK OUT"
+  end select
+  return
+end sub
+
+' glide token P from square A to square B
+sub Glide(u8 P, u8 Ax0, u8 Ay0, u8 Bx, u8 By):
+  u8 K = 0
+  u8 X0 = 0
+  u8 Y0 = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Qx = 0
+  i16 Qy = 0
+  SqPos(Ax0, Ay0)
+  X0 = Gx
+  Y0 = Gy
+  SqPos(Bx, By)
+  Dx = Gx - X0
+  Dy = Gy - Y0
+  for K = 1 to 12
+    Qx = Dx * K / 12 + X0
+    Qy = Dy * K / 12 + Y0
+    PutToken(P, Qx, Qy)
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+' line 650: player P steps to X,Y
+sub StepTo(u8 P, u8 X, u8 Y):
+  u8 Fx = 0
+  u8 Fy = 0
+  Fx = Lx[P]
+  Fy = Ly[P]
+  play sound SndHop
+  Glide(P, Fx, Fy, X, Y)
+  Pc[At(Fx, Fy)] = 0
+  Pc[At(X, Y)] = P
+  Lx[P] = X
+  Ly[P] = Y
+  return
+end sub
+
+' lines 880-900: the plate at X,Y cracks and falls
+sub Knock(u8 X, u8 Y):
+  play sound SndCrunch
+  DrawSq(X, Y, KCrack)
+  Pause(14)
+  S[At(X, Y)] = 0
+  DrawSq(X, Y, KHole)
+  play sound SndFall
+  Pause(10)
+  return
+end sub
+
+function AnyRemovable as u8
+  u8 X = 0
+  u8 Y = 0
+  u8 N = 0
+  for Y = 1 to 6
+    for X = 1 to 7
+      N = N + Removable(X, Y)
+    next
+  next
+  return N
+
+' ---------------------------------------------------------------------------
+' turns
+
+' lines 170-190: the next player still in; the game ends when one is left
+sub NextPlayer:
+  u8 K = 0
+  if Wout + 1 >= NPl then
+    Gs = 4
+    Res = 0
+    for K = 1 to 4
+      if K <= NPl and Lx[K] <> Gone then Res = K
+    next
+    if Res = 0 then Res = Cur
+  else
+    for K = 1 to 4
+      inc Cur
+      if Cur > NPl then Cur = 1
+      if Lx[Cur] <> Gone then exit for
+    next
+  end if
+  return
+end sub
+
+' a xorshift for the listing's INT(RND(1)*3): 0, 1 or 2
+function Rnd3 as u8
+  u8 R8 = 0
+  Seed = Seed ^ (Seed << 7)
+  Seed = Seed ^ (Seed >> 9)
+  Seed = Seed ^ (Seed << 8)
+  R16 = highbyte Seed
+  R16 = R16 * 3
+  R8 = highbyte R16
+  return R8
+
+' one test of lines 410-450 / 470-520 (i16: line 500 goes far out)
+function FreeI(i16 X, i16 Y) as u8
+  u8 Bx = 0
+  u8 By = 0
+  if X < 1 or X > 7 then return 0
+  if Y < 1 or Y > 6 then return 0
+  Bx = X
+  By = Y
+  return Free(Bx, By)
+
+' lines 390-530: is the step X,Y -> Xp,Yp good enough in round Tr?
+function Roomy(u8 Tr, u8 X, u8 Y, u8 Xp, u8 Yp) as u8
+  i16 Sx = 0
+  i16 Sy = 0
+  i16 Xi = 0
+  i16 Yi = 0
+  i16 Xs = 0
+  i16 Ys = 0
+  if Tr > 2 then return 1
+  Sx = Xp
+  Sx = Sx - X
+  Sy = Yp
+  Sy = Sy - Y
+  Xi = X
+  Yi = Y
+  if Tr = 1 then
+    if FreeI(Xi + Sx * 2, Yi + Sy * 2) = 1 then return 1
+    if FreeI(Xi + Sx, Yi + Sy * 2) = 1 then return 1
+    if FreeI(Xi + Sx * 2, Yi + Sy) = 1 then return 1
+    return 0
+  end if
+  Ys = Yi + Sy * 2
+  if FreeI(Xi - 1, Ys) = 1 then return 1
+  if FreeI(Xi, Ys) = 1 then return 1
+  if FreeI(Xi + 1, Ys) = 1 then return 1
+  ' line 500: XS=X+2*XS with XS still X+1
+  Xs = Xi + (Xi + 1) * 2
+  if FreeI(Xs, Yi - 1) = 1 then return 1
+  if FreeI(Xs, Yi) = 1 then return 1
+  if FreeI(Xs, Yi + 1) = 1 then return 1
+  return 0
+
+' lines 310-600: the computer's step from X,Y into CMv
+sub CompPick(u8 X, u8 Y):
+  u8 Tr = 0
+  u8 Tries = 0
+  u8 Xp = 0
+  u8 Yp = 0
+  u8 Found = 0
+  u8 Odd = 0
+  u8 Z = 0
+  Tr = 1
+  while Found = 0 and Tr <= 4
+    Odd = Tr & 1
+    Tries = 1
+    while Found = 0 and Tries < 20
+      inc Tries
+      Xp = X + Rnd3() - 1
+      if Xp = X and Odd = 1 then continue while
+      Yp = Y + Rnd3() - 1
+      if Yp = Y and Odd = 1 then continue while
+      if Yp <> Y and Xp <> X and Odd = 0 then continue while
+      if Free(Xp, Yp) = 0 then continue while
+      if Roomy(Tr, X, Y, Xp, Yp) = 1 then Found = 1
+    end while
+    inc Tr
+  end while
+  if Found = 0 then
+    ' lines 540-590: the first free square round it
+    for Z = 0 to 2
+      if Found = 0 then
+        Xp = X + Z - 1
+        if Free(Xp, Y - 1) = 1 then
+          Yp = Y - 1
+          Found = 1
+        elseif Z <> 1 and Free(Xp, Y) = 1 then
+          Yp = Y
+          Found = 1
+        elseif Free(Xp, Y + 1) = 1 then
+          Yp = Y + 1
+          Found = 1
+        end if
+      end if
+    next
+  end if
+  CMv.X = Xp
+  CMv.Y = Yp
+  return
+end sub
+
+' lines 780-870: the plate the computer knocks out into CRm (255: none)
+data CxTab bytes
+  1, 1, 0, 1, $FF, 0, $FF, $FF
+end data
+data CyTab bytes
+  1, 0, 1, $FF, 1, $FF, 0, $FF
+end data
+
+sub CompKnock:
+  u8 Z = 0
+  u8 X = 0
+  u8 Y = 0
+  u8 L1x = 0
+  u8 L1y = 0
+  u8 Found = 0
+  L1x = Lx[1]
+  L1y = Ly[1]
+  CRm.X = 255
+  CRm.Y = 255
+  for Z = 0 to 7
+    if Found = 0 then
+      if L1x > 4 then
+        X = L1x - CxTab[Z]
+      else
+        X = L1x + CxTab[Z]
+      end if
+      if L1y > 3 then
+        Y = L1y - CyTab[Z]
+      else
+        Y = L1y + CyTab[Z]
+      end if
+      if Removable(X, Y) = 1 then Found = 1
+    end if
+  next
+  if Found = 0 then
+    for Y = 1 to 6
+      for X = 1 to 7
+        if Found = 0 then
+          if Removable(X, Y) = 1 then
+            Found = 1
+            CRm.X = X
+            CRm.Y = Y
+          end if
+        end if
+      next
+    next
+  else
+    CRm.X = X
+    CRm.Y = Y
+  end if
+  return
+end sub
+
+sub CompTurn:
+  u8 X = 0
+  u8 Y = 0
+  Gs = 1
+  SayTurn(0)
+  Hint(2)
+  Pause(30)
+  X = Lx[2]
+  Y = Ly[2]
+  CompPick(X, Y)
+  StepTo(2, CMv.X, CMv.Y)
+  SayTurn(1)
+  Pause(20)
+  CompKnock
+  if CRm.X = 255 then
+    Hint(3)
+    Pause(40)
+  else
+    SqPos(CRm.X, CRm.Y)
+    set sprite SpCur to Gy - 1,Gx,SDrill,8
+    update sprites
+    Pause(30)
+    HideSprite(SpCur)
+    Knock(CRm.X, CRm.Y)
+  end if
+  Gs = 5
+  return
+end sub
+
+sub CurDraw(u8 Pat, u8 C):
+  SqPos(Ax, Ay)
+  set sprite SpCur to Gy - 1,Gx,Pat,C
+  update sprites
+  return
+end sub
+
+' the step: the stick aims at one of the eight plates round the token
+sub HumanStep:
+  u8 Done = 0
+  u8 St = 0
+  u8 X = 0
+  u8 Y = 0
+  u8 C = 0
+  X = Lx[Cur]
+  Y = Ly[Cur]
+  C = TokColour(Cur)
+  Ax = X
+  Ay = Y
+  Gs = 2
+  SayTurn(0)
+  Hint(0)
+  CurDraw(SAim, 15)
+  while Done = 0
+    Frame1
+    ReadPad
+    St = J1 | J2
+    St = St & 15
+    if St > 0 and St <> WasStick then
+      Ax = X
+      Ay = Y
+      if (St & 1) > 0 then dec Ay
+      if (St & 2) > 0 then inc Ay
+      if (St & 4) > 0 then dec Ax
+      if (St & 8) > 0 then inc Ax
+      if Ax < 1 or Ax > 7 or Ay < 1 or Ay > 6 then
+        Ax = X
+        Ay = Y
+      end if
+      play sound SndStep
+      CurDraw(SAim, C)
+    end if
+    WasStick = St
+    if Press = 1 then
+      if Free(Ax, Ay) = 1 and (Ax <> X or Ay <> Y) then
+        Done = 1
+      else
+        play sound SndBump
+      end if
+    end if
+  end while
+  Gs = 5
+  HideSprite(SpCur)
+  StepTo(Cur, Ax, Ay)
+  Ox = X
+  Oy = Y
+  return
+end sub
+
+sub CurMove(u8 St):
+  u8 Moved = 0
+  if (St & 1) > 0 and Ay > 1 then
+    dec Ay
+    Moved = 1
+  end if
+  if (St & 2) > 0 and Ay < 6 then
+    inc Ay
+    Moved = 1
+  end if
+  if (St & 4) > 0 and Ax > 1 then
+    dec Ax
+    Moved = 1
+  end if
+  if (St & 8) > 0 and Ax < 7 then
+    inc Ax
+    Moved = 1
+  end if
+  if Moved = 1 then
+    play sound SndStep
+    CurDraw(SDrill, 15)
+  end if
+  return
+end sub
+
+' the knock-out: a cross-hair anywhere on the board
+sub HumanKnock:
+  u8 Done = 0
+  u8 St = 0
+  Ax = Ox
+  Ay = Oy
+  Gs = 3
+  SayTurn(1)
+  Hint(1)
+  CurDraw(SDrill, 15)
+  Rpt = 0
+  WasStick = 15
+  while Done = 0
+    Frame1
+    ReadPad
+    St = J1 | J2
+    St = St & 15
+    if St = 0 then
+      Rpt = 0
+    elseif Rpt > 0 then
+      dec Rpt
+    else
+      if WasStick = 0 then
+        Rpt = 14
+      else
+        Rpt = 8
+      end if
+      CurMove(St)
+    end if
+    WasStick = St
+    if Press = 1 then
+      if Removable(Ax, Ay) = 1 then
+        Done = 1
+      else
+        play sound SndBump
+      end if
+    end if
+  end while
+  Gs = 5
+  HideSprite(SpCur)
+  Knock(Ax, Ay)
+  return
+end sub
+
+sub HumanTurn:
+  WasStick = 15
+  HumanStep
+  if AnyRemovable() = 0 then
+    Hint(3)
+    Pause(40)
+  else
+    HumanKnock
+  end if
+  Hint(9)
+  return
+end sub
+
+' lines 950-1040: is player P cut off? then out
+sub CheckOut(u8 P):
+  u8 X = 0
+  u8 Y = 0
+  u8 N = 0
+  X = Lx[P]
+  Y = Ly[P]
+  N = Free(X - 1, Y - 1) + Free(X, Y - 1) + Free(X + 1, Y - 1)
+  N = N + Free(X - 1, Y) + Free(X + 1, Y)
+  N = N + Free(X - 1, Y + 1) + Free(X, Y + 1) + Free(X + 1, Y + 1)
+  if N = 0 then
+    inc Wout
+    Pc[At(X, Y)] = 0
+    Lx[P] = Gone
+    HideSprite(P)
+    play sound SndOut
+    fill 32 count 28 at 2,22
+    PName(P, 5, 22)
+    print at 14,22, "IS ISOLATED!"
+    Pause(80)
+    fill 32 count 28 at 2,22
+  end if
+  return
+end sub
+
+' lines 910-940: the others first, then the player who moved
+sub Isolations:
+  u8 K = 0
+  for K = 1 to 4
+    if K <= NPl and K <> Cur and Lx[K] <> Gone then CheckOut(K)
+  next
+  if Wout + 1 < NPl then CheckOut(Cur)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub NewGame:
+  u8 K = 0
+  fill array S with 0
+  fill array Pc with 0
+  for K = 0 to 71
+    V = K % 9
+    J = K / 9
+    if V >= 1 and V <= 7 and J >= 1 and J <= 6 then S[K] = 1
+  next
+  Lx[1] = 2
+  Ly[1] = 2
+  Lx[2] = 6
+  Ly[2] = 5
+  Lx[3] = 6
+  Ly[3] = 2
+  Lx[4] = 2
+  Ly[4] = 5
+  for K = 1 to 4
+    if K > NPl then Lx[K] = Gone
+  next
+  for K = 1 to 4
+    if Lx[K] <> Gone then Pc[At(Lx[K], Ly[K])] = K
+  next
+  Wout = 0
+  Cur = 0
+  Res = 0
+  CMv.X = 255
+  CRm.X = 255
+  Gs = 5
+  NewScreen
+  print at 2,1, "ISOLATION"
+  DrawFrame
+  DrawBoard
+  for K = 1 to 4
+    if Lx[K] <> Gone then ShowToken(K)
+  next
+  ShowScreen
+  Pause(30)
+  return
+end sub
+
+sub Pause(u8 N):
+  u8 K = 0
+  for K = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a row of plates, the name, the tune once, the menu
+data TitleRow bytes
+  0, 3, 1, 0, 3, 0, 1
+end data
+
+sub TitlePage:
+  u8 X = 0
+  u8 K = 0
+  Gs = 0
+  NewScreen
+  for Ci = 0 to 6
+    X = Ci + 1
+    K = TitleRow[Ci]
+    DrawSq(X, 1, K)
+  next
+  SqPos(3, 1)
+  PutToken(1, Gx, Gy)
+  SqPos(7, 1)
+  PutToken(2, Gx, Gy)
+  update sprites
+  print at 11,8, "ISOLATION"
+  print at 5,10, "COMPUTE!'S GAZETTE 1990"
+  print at 3,12, "STEP, THEN KNOCK OUT A"
+  print at 3,13, "PLATE. LAST ONE ABLE TO"
+  print at 3,14, "MOVE WINS."
+  print at 8,16, "1 PLAYER + COMPUTER"
+  print at 8,17, "2 PLAYERS"
+  print at 8,18, "3 PLAYERS"
+  print at 8,19, "4 PLAYERS"
+  print at 8,20, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 0
+tp_loop:
+  Frame1
+  K = Rnd3()
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 and WasStick = 0 then
+    if (V & 1) > 0 then
+      if Menu > 0 then dec Menu
+    elseif Menu < 4 then
+      inc Menu
+    end if
+    play sound SndStep
+    ShowMenu
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Seed = 0 then Seed = 1
+  Cp = 0
+  select case Menu
+  case 0
+    NPl = 2
+    Cp = 1
+  case 1 to 3
+    NPl = Menu + 1
+  case else
+    CreditsPage
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for Ci = 16 to 20
+    put char 32 at 6,Ci
+  next
+  J = Menu + 16
+  put char 62 at 6,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  backdrop dark blue
+  print at 10,2, "ISOLATION"
+  print at 2,4, "BASED ON ISOLATION,"
+  print at 2,5, "COMPUTE!'S GAZETTE, MAY 1990"
+  print at 2,6, "(COMMODORE 64). COPYRIGHT"
+  print at 2,7, "COMPUTE! PUBLICATIONS; NO"
+  print at 2,8, "AUTHOR NAMED IN THE LISTING."
+  print at 2,10, "THE LISTING'S RULES AND ITS"
+  print at 2,11, "COMPUTER PLAYER, WHICH HOPS"
+  print at 2,12, "AT RANDOM AND KNOCKS OUT"
+  print at 2,13, "PLATES NEXT TO RED."
+  print at 2,15, "COLECOVISION GAME, MUSIC"
+  print at 2,16, "AND PICTURES BY CLAUDE"
+  print at 2,17, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,18, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,20, "MUSIC: STEPPING STONES"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C3,$81,$C3,$C3,$C3,$C3,$81,$C3
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$C0,$60,$30,$18
+  $03,$03,$03,$03,$03,$03,$03,$CC
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $0C,$06,$03,$03,$06,$0E,$0C,$18
+  $9C,$C3,$83,$83,$1C,$9C,$9C,$9C
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $30,$60,$00,$00,$00,$00,$00,$00
+  $9C,$9C,$9C,$03,$03,$03,$00,$00
+  $00,$00,$00,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$01,$01
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0F,$0F,$FE,$FE,$FE,$FE,$FE,$FE
+  $0F,$0F,$0E,$0E,$0E,$0E,$0E,$0E
+  $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $FE,$FE,$FE,$FE,$FE,$FE,$01,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$01,$01
+  $0F,$0F,$FE,$FE,$FE,$FE,$FE,$FE
+  $0F,$0F,$0E,$0E,$0E,$0E,$0E,$0E
+  $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $EA,$EA,$AE,$AE,$AE,$AE,$EA,$EA
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $FE,$FE,$FE,$FE,$FE,$FE,$01,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$01,$01
+  $0F,$0F,$FE,$FE,$FE,$FE,$FE,$FE
+  $0F,$0F,$0E,$0E,$1E,$1E,$1E,$1E
+  $1F,$1F,$1E,$1E,$1E,$1E,$1E,$E1
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$1E,$1E,$1E,$E1,$E1,$E1,$E1
+  $FE,$FE,$FE,$FE,$FE,$FE,$01,$01
+  $1E,$1E,$0E,$0E,$0E,$0E,$01,$01
+  $E1,$E1,$E1,$1E,$1E,$1E,$01,$01
+  $04,$04,$04,$41,$41,$41,$41,$41
+  $04,$04,$04,$01,$01,$01,$01,$01
+  $04,$04,$04,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $04,$04,$04,$04,$04,$04,$05,$05
+  $05,$05,$04,$04,$04,$04,$04,$04
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $04,$04,$04,$04,$04,$04,$54,$54
+  $04,$04,$04,$04,$04,$04,$54,$54
+  $54,$54,$04,$04,$04,$04,$04,$04
+  $54,$54,$04,$04,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $00,$07,$19,$37,$2F,$5F,$5E,$7F,$7F,$5F,$5E,$2F,$37,$19,$07,$00
+  $00,$E0,$98,$EC,$F4,$7A,$7A,$7E,$7E,$7A,$3A,$F4,$EC,$98,$E0,$00
+  $00,$07,$19,$37,$2F,$5E,$5D,$7F,$7F,$5E,$5C,$2F,$37,$19,$07,$00
+  $00,$E0,$98,$EC,$F4,$7A,$BA,$BE,$7E,$FA,$3A,$F4,$EC,$98,$E0,$00
+  $00,$07,$19,$37,$2F,$5C,$5F,$7E,$7F,$5F,$5C,$2F,$37,$19,$07,$00
+  $00,$E0,$98,$EC,$F4,$7A,$BA,$7E,$BE,$BA,$7A,$F4,$EC,$98,$E0,$00
+  $00,$07,$19,$37,$2F,$5D,$5D,$7C,$7F,$5F,$5F,$2F,$37,$19,$07,$00
+  $00,$E0,$98,$EC,$F4,$BA,$BA,$3E,$BE,$BA,$BA,$F4,$EC,$98,$E0,$00
+  $F0,$F0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$F0,$F0
+  $0F,$0F,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$0F,$0F
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03,$03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0,$C0,$E0,$70,$38,$1C,$0E,$07,$03
+end data
+
+asm {
+IsStep:
+    db $40,$D6,$50,$01,$40,$E2,$80,$01,$50
+IsHop:
+    db $40,$53,$21,$02,$40,$1D,$31,$02,$40,$D6,$40,$03,$50
+IsCrunch:
+    db $00,$00,$12,$02,$00,$00,$33,$03,$00,$00,$63,$06,$10
+IsFall:
+    db $40,$BA,$20,$02,$40,$F9,$30,$02,$40,$75,$41,$03,$40,$2F,$62,$04,$50
+IsBump:
+    db $00,$00,$41,$02,$10
+IsOut:
+    db $40,$1D,$21,$06,$40,$53,$21,$06,$40,$AB,$31,$08,$40,$3B,$62,$0A,$50
+IsWon:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$10,$06
+    db $40,$55,$10,$14,$40,$55,$70,$0A,$50
+
+IsSoundTable:
+    dw IsTuneMel,$702B
+    dw IsTuneBass,$7035
+    dw IsStep,$7049
+    dw IsHop,$7049
+    dw IsCrunch,$703F
+    dw IsFall,$7049
+    dw IsBump,$703F
+    dw IsOut,$7049
+    dw IsWon,$7049
+; Stepping Stones (original)
+; Tiny Sound, 9 frames per step
+IsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1C,$01,$1F,$23,$01,$21,$1F,$01,$1E,$01,$23,$01
+    db $01,$01,$01,$01,$1C,$01,$1F,$24,$01,$23,$21,$01,$1F,$21,$23,$01
+    db $01,$01,$01,$01,$24,$01,$23,$21,$01,$1F,$1E,$01,$1F,$01,$1C,$01
+    db $1E,$01,$1B,$01,$1C,$01,$23,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$00
+    db $FF
+IsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0B,$01,$12,$01
+    db $0B,$01,$0F,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$13,$01,$1A,$01
+    db $13,$01,$17,$01,$15,$01,$1C,$01,$15,$01,$18,$01,$17,$01,$12,$01
+    db $0B,$01,$0F,$01,$10,$01,$17,$01,$0B,$01,$17,$01,$10,$01,$01,$01
+    db $10,$01,$01,$00
+    db $FF
+}

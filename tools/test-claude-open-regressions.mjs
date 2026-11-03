@@ -15,6 +15,8 @@ const runtimeSource = join(temp, "claude-open-runtime.alexis");
 writeFileSync(runtimeSource, `project "CLAUDE OPEN REGRESSIONS"
 memory "colecovision_legacy_sdcc"
 data T bytes 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25
+const TA = 130
+data CaseTable bytes Ta,5
 data Tab bytes 3,1,4,1
 u16 B = 3
 u16 N = 4
@@ -28,6 +30,21 @@ u8 Hi = 10
 u8 ArgResult = 0
 u8 ReturnResult = 0
 u8 Done = 0
+u8 CaseDataResult = 0
+u8 CaseResult = 0
+u16 SelectValue = 250
+u16 At = 5
+u16 WideArrayResult = 0
+u16 WideFieldResult = 0
+record Mine:
+  u8 X
+  u8 Y
+  u8 State
+end record
+Mine Mines[3]
+u8 MineIndex = 1
+u8 MinePattern = 16
+u8 MineColor = 8
 
 function IsA(u8 T) as u8
   if T = 65 then return 1
@@ -36,12 +53,16 @@ function IsA(u8 T) as u8
 function CellAt(u8 X, u8 Y) as u8
   return get char at X,Y
 
+function Twice16(u16 Value) as u16
+  return Value + Value
+
 sub start:
   tile screen
   nmi off
   fill array Hand with 0
   copy T + B count N to vram.name
   copy T count N to vram.name + 32
+  copy T count N to vram $1C00 + 672
   R1 = Q * 256 + lowbyte P
   R2 = highbyte P + 1
   inc Hand[Tab[I]]
@@ -51,6 +72,25 @@ sub start:
   put char 65 at 5,6
   ArgResult = IsA(get char at 5,6)
   ReturnResult = CellAt(5,6)
+  WideArrayResult = Twice16(Hand[I])
+  CaseDataResult = CaseTable[0]
+  select case SelectValue
+    case is < 100
+      CaseResult = 1
+    case is < 300
+      CaseResult = 2
+    case else
+      CaseResult = 3
+  end select
+  print At at 2,4 width 3
+  sprites 16x16
+  clear sprites
+  set sprite count 4
+  Mines[1].X = 220
+  Mines[1].Y = 70
+  WideFieldResult = Twice16(Mines[MineIndex].Y)
+  set sprite 2 to Mines[MineIndex].Y,Mines[MineIndex].X,MinePattern,MineColor
+  update sprites
   Done = 1
   loop forever
 end sub
@@ -114,6 +154,7 @@ try {
       assert.equal(core.readRam(done, 1)[0], 1, `${profile}: completion marker`);
       assert.deepEqual([...core.readVram(0x1800, 4)], [13, 14, 15, 16], `${profile}: offset ROM-to-VRAM copy`);
       assert.deepEqual([...core.readVram(0x1820, 4)], [10, 11, 12, 13], `${profile}: direct ROM-to-VRAM copy`);
+      assert.deepEqual([...core.readVram(0x1EA0, 4)], [10, 11, 12, 13], `${profile}: literal VRAM base plus offset`);
       const r1 = core.readRam(addressOf(built.asm, "AMY_UVAR_R1"), 2);
       const r2 = core.readRam(addressOf(built.asm, "AMY_UVAR_R2"), 2);
       assert.equal(r1[0] | (r1[1] << 8), 0x0534, `${profile}: lowbyte expression`);
@@ -123,6 +164,14 @@ try {
       assert.equal(core.readRam(hand + 11, 1)[0], 1, `${profile}: nested inc/dec target`);
       assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_ArgResult"), 1)[0], 1, `${profile}: get char argument`);
       assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_ReturnResult"), 1)[0], 65, `${profile}: get char return`);
+      assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_CaseDataResult"), 1)[0], 130, `${profile}: case-insensitive data constant`);
+      assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_CaseResult"), 1)[0], 2, `${profile}: relational select case`);
+      const wideArray = core.readRam(addressOf(built.asm, "AMY_UVAR_WideArrayResult"), 2);
+      const wideField = core.readRam(addressOf(built.asm, "AMY_UVAR_WideFieldResult"), 2);
+      assert.equal(wideArray[0] | (wideArray[1] << 8), 2, `${profile}: byte array element widened for u16 parameter`);
+      assert.equal(wideField[0] | (wideField[1] << 8), 140, `${profile}: byte record field widened for u16 parameter`);
+      assert.deepEqual([...core.readVram(0x1882, 3)], [32, 32, 53], `${profile}: value-first print with At variable`);
+      assert.deepEqual([...core.readVram(0x1B08, 4)], [70, 220, 16, 8], `${profile}: record-field sprite inputs`);
     } finally {
       core.destroy();
     }

@@ -1,0 +1,980 @@
+cartridge "PINHEAD/COMPUTE!'S GAZETTE/1990"
+
+' PINHEAD
+' A ColecoVision game based on "Pinhead", COMPUTE!'s Gazette February 1990
+' (Commodore 64 machine language, 4,028 bytes at $0801 started by SYS 2064,
+' a packed program that unpacks itself to $5000; no author named on the
+' disk). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/code5000.dis, and watched in jsc64), the game is
+' built for the ColecoVision: a night circus ring under bunting, bunches
+' of balloons at both sides, a little pin-headed acrobat, a trampoline,
+' smooth sprites and sounds.
+'
+' The game: move the trampoline left and right and press the button to
+' launch Pinhead. Keep him bouncing: where he lands on the trampoline sets
+' how high he flies (the middle sends him highest) and which way he
+' drifts. Balloons float across the tent; pop them with Pinhead. A miss
+' costs a life; five misses (LIVES 4 to 0, then one more) end the game.
+'
+' From the original: the trampoline (two sprites) moves 3 pixels a frame,
+' 6 with the button held; Pinhead sits on it until the button launches
+' him on the middle arc; eight arcs, chosen by the landing offset from the
+' trampoline's middle (the centre highest, the ends lowest); landing left
+' of the middle sends him left, right of it right, his drift speed random
+' (0..1, 0..3 from 300 points, 0..7 from 1500); he bounces off the sides;
+' missing the trampoline drops him to the floor, a dizzy pause, a life
+' lost; up to six balloons, a new one every 100 frames (90 from 100
+' points, 80 from 300, 70 from 500, 60 from 900, 50 from 1200, 35 from
+' 1500, 25 from 2000) if a slot is free, each from the left or right edge
+' at a random height, speed (1, 1..3 from 500 points, 1..7 from 2000),
+' colour and one of 16 sizes; a pop scores 10 x the balloon's speed plus
+' 1-9 for its size (the smallest most), turns Pinhead round and gives him
+' a new drift speed (0..balloon speed mask); a life every 2000 points (at
+' most 9); LIVES starts at 4.
+'
+' Liberties: coordinates scaled to the TV-safe field (columns 2-29, rows
+' 1-22: 0.74 vertically, about 0.77 across) and speeds to 60 frames a
+' second (the C64 ran at 50): the trampoline moves 2 pixels a frame, 4
+' with the button; drift and balloon speeds are kept in quarter pixels
+' (0, 3, 5, 8, 10, 13, 15, 18 per original step); the eight flight tables
+' are replaced by gravity (38/256 pixel per frame per frame) and a launch
+' speed per arc reaching the scaled apex of each table; box collisions
+' instead of the VIC's pixel collisions; balloons appear and leave at the
+' field's edges (the C64's came out of the side borders); balloon colours
+' from eight bright ones that show on the dark tent; the original sent
+' Pinhead straight up (no drift) at the launch and from a dead-centre
+' landing, so a player who never moved kept him bouncing for ever: here
+' the launch and every landing give a drift of at least one step; the
+' paddle mode (F1/F3) is left out (joystick only); a title, credits and a
+' GAME OVER page (the C64 waited for the button on the play field).
+'
+' Controls: controller 1 (or 2): the stick moves the trampoline, a button
+' launches Pinhead (held: the trampoline moves faster). On the title, up
+' and down choose, a button chooses.
+
+const TSky0 = 128
+const TSky1 = 129
+const TSky2 = 130
+const TBunR = 131
+const TBunY = 132
+const TBbr = 133
+const TBby = 134
+const TBbg = 135
+const TBbm = 136
+const TBbc = 137
+const TBbp = 138
+const TStrg = 139
+const TRim = 140
+const TSaw0 = 141
+const TTbl = 142
+const TTbly = 143
+const SMSit = 0
+const SMFly = 4
+const SMDiz = 8
+const SMFlat = 12
+const STrL = 16
+const STrR = 20
+const SB1 = 24
+const SB2 = 28
+const SB3 = 32
+const SB4 = 36
+const SB5 = 40
+const SB6 = 44
+const SB7 = 48
+const SB8 = 52
+const SB9 = 56
+const SPop = 60
+const NTiles8 = 128
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBoing = 3
+const SndPop = 4
+const SndMiss = 5
+const SndLife = 6
+const SndStart = 7
+const SndOver = 8
+const NSpr = 9
+const TMin = 16
+const TMax = 208
+const TY = 152
+const MY0 = 142
+const FloorY = 168
+const XMin4 = 64
+const XMax4 = 896
+const BYTop = 26
+const DieLen = 90
+const PopLen = 12
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$01,$83,$83,$38,$38,$10,$00
+  $00,$01,$83,$83,$38,$38,$10,$00
+  $38,$83,$83,$83,$38,$10,$08,$08
+  $38,$83,$83,$83,$38,$10,$08,$08
+  $38,$83,$83,$83,$38,$10,$08,$08
+  $38,$83,$83,$83,$38,$10,$08,$08
+  $38,$83,$83,$83,$38,$10,$08,$08
+  $38,$83,$83,$83,$38,$10,$08,$08
+  $10,$08,$10,$08,$10,$08,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $C3,$81,$20,$00,$00,$81,$C3,$08
+  $C3,$81,$20,$00,$00,$81,$C3,$08
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $04,$54,$04,$04,$04,$04,$54,$04
+  $0F,$48,$48,$48,$84,$84,$84,$04
+  $0F,$4B,$4B,$4B,$B4,$B4,$B4,$04
+  $84,$48,$48,$48,$84,$F4,$F4,$F4
+  $B4,$4B,$4B,$4B,$B4,$F4,$F4,$F4
+  $34,$43,$43,$43,$34,$F4,$F4,$F4
+  $D4,$4D,$4D,$4D,$D4,$F4,$F4,$F4
+  $74,$47,$47,$47,$74,$F4,$F4,$F4
+  $94,$49,$49,$49,$94,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $0B,$08,$08,$0B,$06,$06,$06,$06
+  $0A,$EA,$0A,$EA,$EA,$0A,$EA,$0A
+  $48,$48,$F8,$08,$08,$48,$48,$F4
+  $4B,$4B,$FB,$0B,$0B,$4B,$4B,$F4
+end data
+data SpritePat bytes
+  $00,$00,$01,$01,$00,$0B,$04,$00,$00,$01,$01,$03,$02,$02,$06,$00
+  $00,$00,$80,$80,$80,$F0,$90,$80,$80,$C0,$40,$60,$20,$20,$30,$00
+  $08,$05,$03,$01,$00,$00,$00,$01,$01,$02,$04,$08,$00,$00,$00,$00
+  $10,$A0,$C0,$80,$80,$80,$80,$C0,$40,$20,$10,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$20,$16,$0F,$06,$03,$0A,$12,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$24,$48,$50,$E0,$F0,$08,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$12,$0A,$3F,$12,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$24,$48,$F6,$44,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$55,$30,$30,$30,$30,$30,$78,$78,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$55,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$AA,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$AA,$0C,$0C,$0C,$0C,$0C,$1E,$1E,$00,$00
+  $07,$1F,$3F,$77,$7F,$7F,$7F,$7F,$7F,$3F,$1F,$07,$01,$01,$00,$01
+  $C0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$FC,$F8,$F0,$C0,$80,$00,$80,$00
+  $07,$1F,$3F,$37,$7F,$7F,$7F,$7F,$3F,$3F,$1F,$07,$01,$01,$00,$01
+  $C0,$F0,$F8,$F8,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$C0,$80,$00,$80,$00
+  $07,$0F,$1F,$37,$3F,$3F,$3F,$3F,$3F,$1F,$0F,$07,$01,$01,$00,$01
+  $C0,$E0,$F0,$F8,$F8,$F8,$F8,$F8,$F8,$F0,$E0,$C0,$80,$00,$80,$00
+  $07,$0F,$1F,$1B,$3F,$3F,$3F,$3F,$1F,$1F,$0F,$07,$01,$01,$00,$01
+  $C0,$E0,$F0,$F0,$F8,$F8,$F8,$F8,$F0,$F0,$E0,$C0,$80,$00,$80,$00
+  $07,$0F,$1B,$1F,$1F,$1F,$1F,$1F,$1F,$0F,$07,$01,$00,$01,$00,$01
+  $C0,$E0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$C0,$80,$80,$00,$80,$00
+  $03,$0F,$0B,$1F,$1F,$1F,$1F,$0F,$0F,$07,$01,$01,$00,$01,$00,$01
+  $80,$E0,$E0,$F0,$F0,$F0,$F0,$E0,$E0,$C0,$80,$00,$80,$00,$80,$00
+  $03,$07,$0B,$0F,$0F,$0F,$0F,$07,$03,$01,$00,$01,$00,$01,$00,$01
+  $80,$C0,$E0,$E0,$E0,$E0,$E0,$C0,$80,$80,$80,$00,$80,$00,$80,$00
+  $03,$03,$0F,$0F,$0F,$0F,$07,$03,$01,$01,$00,$01,$00,$01,$00,$01
+  $80,$C0,$E0,$E0,$E0,$E0,$C0,$80,$80,$00,$80,$00,$80,$00,$80,$00
+  $03,$05,$07,$07,$07,$07,$03,$01,$00,$01,$00,$01,$00,$01,$00,$01
+  $80,$C0,$C0,$C0,$C0,$C0,$80,$80,$80,$00,$80,$00,$80,$00,$80,$00
+  $00,$11,$09,$04,$00,$60,$00,$04,$09,$11,$00,$00,$00,$00,$00,$00
+  $00,$10,$20,$40,$00,$06,$00,$40,$20,$10,$00,$00,$00,$00,$00,$00
+end data
+
+data GameMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$80,$80
+  $80,$80,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$83,$84,$80,$80
+  $80,$80,$87,$88,$80,$80,$80,$81,$80,$82,$80,$81,$80,$82,$81,$80,$81,$82,$80,$82,$80,$80,$80,$82,$80,$80,$80,$81,$89,$8A,$80,$80
+  $80,$80,$89,$8A,$82,$80,$80,$82,$81,$81,$82,$80,$80,$80,$80,$80,$82,$80,$80,$81,$82,$80,$80,$80,$80,$82,$81,$81,$85,$86,$80,$80
+  $80,$80,$85,$86,$80,$80,$80,$82,$80,$80,$81,$80,$80,$80,$80,$82,$80,$82,$80,$80,$81,$81,$80,$80,$81,$81,$80,$81,$87,$88,$80,$80
+  $80,$80,$87,$88,$81,$80,$80,$80,$80,$80,$80,$80,$82,$82,$81,$81,$80,$80,$80,$80,$82,$80,$82,$80,$80,$82,$80,$81,$89,$8A,$80,$80
+  $80,$80,$89,$8A,$80,$80,$80,$81,$80,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$85,$86,$80,$80
+  $80,$80,$85,$86,$80,$80,$80,$80,$82,$80,$80,$80,$81,$82,$80,$82,$80,$82,$82,$80,$82,$80,$82,$81,$80,$80,$80,$82,$87,$88,$80,$80
+  $80,$80,$8B,$8B,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$82,$80,$80,$80,$80,$80,$81,$8B,$8B,$80,$80
+  $80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$81,$81,$82,$82,$80,$81,$80,$80,$81,$80,$80,$82,$82,$80,$80
+  $80,$80,$80,$80,$80,$81,$80,$80,$80,$82,$81,$80,$80,$82,$80,$80,$80,$82,$80,$80,$82,$80,$80,$80,$82,$82,$80,$80,$82,$81,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$81,$80,$80,$81,$80,$80,$82,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80
+  $80,$80,$82,$80,$80,$80,$80,$82,$81,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$82,$80,$82,$80,$80,$80,$80
+  $80,$80,$80,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$82,$80,$81,$80,$81,$81,$80,$80,$80,$80,$80,$80,$80,$82,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$82,$80,$81,$80,$82,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$81,$80,$81,$80,$80,$80,$80,$80,$80,$82,$82,$82,$81,$81,$80,$80,$81,$82,$82,$80,$82,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$82,$80,$81,$80,$80,$81,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$82,$80,$81,$80,$80,$81,$80,$82,$80,$80,$82,$80,$80,$80,$81,$80,$80,$80,$81,$80,$80,$80,$80,$80,$81,$82,$80,$80,$80
+  $80,$80,$82,$82,$81,$82,$80,$80,$82,$80,$81,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$80,$80
+  $80,$80,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+end data
+
+data TitleMap bytes
+  $20,$20,$80,$80,$81,$80,$82,$80,$82,$80,$81,$82,$81,$81,$80,$80,$80,$82,$80,$80,$82,$80,$80,$82,$80,$81,$80,$82,$80,$82,$20,$20
+  $20,$20,$8E,$8E,$80,$80,$8F,$8F,$8F,$80,$8E,$80,$8E,$80,$8F,$80,$8F,$80,$8E,$8E,$8E,$82,$80,$8F,$80,$81,$8E,$8E,$80,$82,$20,$20
+  $20,$20,$8E,$80,$8E,$80,$80,$8F,$80,$82,$8E,$8E,$8E,$82,$8F,$80,$8F,$80,$8E,$80,$80,$80,$8F,$81,$8F,$80,$8E,$80,$8E,$80,$20,$20
+  $20,$20,$8E,$8E,$80,$80,$80,$8F,$80,$80,$8E,$8E,$8E,$80,$8F,$8F,$8F,$81,$8E,$8E,$82,$80,$8F,$8F,$8F,$80,$8E,$80,$8E,$80,$20,$20
+  $20,$20,$8E,$82,$80,$81,$80,$8F,$80,$80,$8E,$8E,$8E,$80,$8F,$81,$8F,$80,$8E,$80,$80,$80,$8F,$82,$8F,$80,$8E,$80,$8E,$82,$20,$20
+  $20,$20,$8E,$80,$80,$82,$8F,$8F,$8F,$81,$8E,$80,$8E,$80,$8F,$80,$8F,$82,$8E,$8E,$8E,$81,$8F,$80,$8F,$82,$8E,$8E,$82,$81,$20,$20
+  $20,$20,$80,$81,$80,$80,$81,$80,$80,$82,$80,$81,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$82,$80,$20,$20
+end data
+
+' launch speeds (1/256 pixel a frame), highest arc first
+data ArcV words 1508,1430,1342,1258,1151,1018,874,710
+const Grav = 38
+
+' drift and balloon steps in quarter pixels a frame (original 0..7)
+data Dx4 bytes 0,3,5,8,10,13,15,18
+' landing offset (pixels from the middle, 0..21) -> arc (0 highest)
+data ArcFor bytes 0,1,1,2,2,3,4,4,4,5,5,6,6,6,7,7,7,7,7,7,7,7
+' the 16 balloon shapes -> points (as the C64's table at $5952)
+data ShapeVal bytes 9,8,8,7,7,6,5,4,2,1,7,4,3,2,3,5
+' half-width of each balloon size (points 1..9)
+data BalR bytes 0,7,7,6,6,5,5,4,4,3
+' colours that show on the dark blue tent
+data BalCol bytes 8,10,11,2,3,13,7,9
+
+record Balloon
+  u16 X4
+  u8 Y
+  u8 Spd
+  u8 Dir
+  u8 Val
+  u8 Col
+  u8 S
+end record
+
+Balloon Bl[6]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 YF = 0
+i16 Vy = 0
+u16 MX4 = 0
+u16 SV = 0
+u16 Sub2k = 0
+bcd digits 5 Score = 0
+bcd digits 5 Hi = 0
+u8 TX = 96
+u8 MState = 0
+u8 MDir = 0
+u8 MSpd = 0
+u8 DieT = 0
+u8 Lives = 4
+u8 Every = 120
+u8 SpawnT = 0
+u8 SpdMask = 1
+u8 DriftMask = 1
+u8 Over = 0
+u8 Pops = 0
+u8 Bounces = 0
+u8 Arc = 0
+u8 Evt = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Bs = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 S = 0
+u8 N = 0
+
+  tile screen
+  set sound table PhSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  print at 8,8, "                "
+  print at 8,9, "   GAME  OVER   "
+  print at 8,10, "                "
+  print at 8,11, "  SCORE ", Score, "  "
+  print at 8,12, "  BEST  ", Hi, "  "
+  print at 8,13, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  Evt = 0
+  MoveTramp
+  select case MState
+    case 0
+      W16 = TX + 8
+      MX4 = W16 * 4
+      if Btn > 0 then Launch
+    case 1
+      Fly
+    case else
+      Fall
+  end select
+  Spawn
+  for Bi = 0 to 5
+    MoveBalloon
+  next
+  if MState = 1 then PopCheck
+  return
+end sub
+
+sub MoveTramp:
+  K = 2
+  if Btn > 0 then K = 4
+  select case J1 & 12
+    case 4
+      if TX >= TMin + K then
+        TX = TX - K
+      else
+        TX = TMin
+      end if
+    case 8
+      if TX + K <= TMax then
+        TX = TX + K
+      else
+        TX = TMax
+      end if
+  end select
+  return
+end sub
+
+' the launch: the middle arc (the C64's $408A table), a random drift
+sub Launch:
+  MState = 1
+  Arc = 2
+  Vy = 0 - ArcV[2]
+  W16 = MY0
+  YF = W16 << 8
+  Rand
+  MDir = highbyte(Rs) & 1
+  MSpd = NewDrift(DriftMask)
+  play sound SndBoing
+  return
+end sub
+
+' a drift speed 0..Mask, at least 1 (liberty: the C64 allowed 0)
+function NewDrift(u8 Mask) as u8
+  Rand
+  C = Rs & Mask
+  if C = 0 then C = 1
+  return C
+
+sub Fly:
+  Vy = Vy + Grav
+  YF = YF + Vy
+  MoveSide
+  if Vy > 0 then
+    if highbyte(YF) >= MY0 then Land
+  end if
+  return
+end sub
+
+' sideways drift with a bounce at each side
+sub MoveSide:
+  V = Dx4[MSpd]
+  if MDir = 1 then
+    MX4 = MX4 + V
+    if MX4 >= XMax4 then
+      MX4 = XMax4
+      MDir = 0
+    end if
+  else
+    if MX4 < XMin4 + V then
+      MX4 = XMin4
+      MDir = 1
+    else
+      MX4 = MX4 - V
+    end if
+  end if
+  return
+end sub
+
+' on the way down at the trampoline's height: bounce or miss
+sub Land:
+  W16 = MY0
+  YF = W16 << 8
+  X = ManX()
+  C = TX + 8
+  if X >= C then
+    N = X - C
+  else
+    N = C - X
+  end if
+  if N > 21 then
+    MState = 2
+    DieT = 0
+    play sound SndMiss
+    return
+  end if
+  Arc = ArcFor[N]
+  Vy = 0 - ArcV[Arc]
+  if X < C then
+    MDir = 0
+  else
+    if X > C then
+      MDir = 1
+    else
+      Rand
+      MDir = Rs & 1
+    end if
+  end if
+  if MSpd = 0 then MSpd = NewDrift(DriftMask)
+  inc Bounces
+  Evt = Evt | 1
+  play sound SndBoing
+  return
+end sub
+
+function ManX() as u8
+  W16 = MX4 >> 2
+  return W16
+
+' missed: he drops to the sawdust, lies dizzy, then a life is gone
+sub Fall:
+  if highbyte(YF) < FloorY then
+    Vy = Vy + Grav
+    YF = YF + Vy
+    if highbyte(YF) >= FloorY then
+      W16 = FloorY
+      YF = W16 << 8
+    end if
+    return
+  end if
+  inc DieT
+  if DieT < DieLen then return
+  if Lives = 0 then
+    Over = 1
+    if Score > Hi then Hi = Score
+    return
+  end if
+  dec Lives
+  MState = 0
+  W16 = MY0
+  YF = W16 << 8
+  Vy = 0
+  Evt = Evt | 4
+  ShowStatus
+  return
+end sub
+
+' a new balloon every Every frames, if one of the six slots is free
+sub Spawn:
+  inc SpawnT
+  if SpawnT < Every then return
+  SpawnT = 0
+  for Bs = 0 to 5
+    if Bl[Bs].S = 0 then
+      NewBalloon(Bs)
+      return
+    end if
+  next
+  return
+end sub
+
+sub NewBalloon(u8 Slot)
+  Rand
+  C = Rs & SpdMask
+  while C = 0
+    Rand
+    C = Rs & SpdMask
+  end while
+  Bl[Slot].Spd = C
+  if (Rs & 128) > 0 then
+    Bl[Slot].Dir = 0
+    Bl[Slot].X4 = XMax4
+  else
+    Bl[Slot].Dir = 1
+    Bl[Slot].X4 = XMin4
+  end if
+  Rand
+  V = Rs & 63
+  while V > 50
+    Rand
+    V = Rs & 63
+  end while
+  Bl[Slot].Y = BYTop + V
+  K = highbyte(Rs)
+  Bl[Slot].Col = BalCol[K & 7]
+  Bl[Slot].Val = ShapeVal[K >> 4]
+  Bl[Slot].S = 1
+  Evt = Evt | 8
+  return
+end sub
+
+' balloon Bi: drift across, leave at the far side; a pop counts down
+sub MoveBalloon:
+  S = Bl[Bi].S
+  if S = 0 then return
+  if S > 1 then
+    Bl[Bi].S = S - 1
+    if S = 2 then Bl[Bi].S = 0
+    return
+  end if
+  W16 = Bl[Bi].X4
+  V = Dx4[Bl[Bi].Spd]
+  if Bl[Bi].Dir = 1 then
+    W16 = W16 + V
+    if W16 > XMax4 then Bl[Bi].S = 0
+  else
+    if W16 < XMin4 + V then
+      Bl[Bi].S = 0
+    else
+      W16 = W16 - V
+    end if
+  end if
+  Bl[Bi].X4 = W16
+  return
+end sub
+
+' Pinhead against the balloons: the first one touched pops
+sub PopCheck:
+  X = ManX()
+  Y = highbyte(YF)
+  for Bs = 0 to 5
+    if Bl[Bs].S = 1 then
+      if Touches(Bs) = 1 then
+        Popped(Bs)
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' box test: the balloon's body against Pinhead's (columns 4-11, rows 0-11)
+function Touches(u8 Q) as u8
+  W16 = Bl[Q].X4 >> 2
+  K = W16
+  C = BalR[Bl[Q].Val]
+  N = Bl[Q].Y
+  if X + 11 < K + 8 - C then return 0
+  if X + 4 > K + 7 + C then return 0
+  if Y + 11 < N then return 0
+  if Y > N + C + C then return 0
+  return 1
+
+sub Popped(u8 Q)
+  Bl[Q].S = PopLen
+  C = Bl[Q].Spd
+  V = C * 10 + Bl[Q].Val
+  Score += V
+  if Score > Hi then Hi = Score
+  if SV < 60000 then SV = SV + V
+  Sub2k = Sub2k + V
+  if Sub2k >= 2000 then
+    Sub2k = Sub2k - 2000
+    if Lives < 9 then inc Lives
+    play sound SndLife
+  else
+    play sound SndPop
+  end if
+  MDir = MDir ^ 1
+  Rand
+  MSpd = Rs & SpdMask
+  inc Pops
+  Evt = Evt | 2
+  Harder
+  ShowStatus
+  return
+end sub
+
+' the original's score steps (its spawn times x 1.2 for 60 Hz)
+sub Harder:
+  select case SV
+    case 0 to 99
+      V = 120
+    case 100 to 299
+      V = 108
+    case 300 to 499
+      V = 96
+    case 500 to 899
+      V = 84
+    case 900 to 1199
+      V = 72
+    case 1200 to 1499
+      V = 60
+    case 1500 to 1999
+      V = 42
+    case else
+      V = 30
+  end select
+  if V <> Every then
+    Every = V
+    SpawnT = 0
+  end if
+  DriftMask = 1
+  if SV >= 300 then DriftMask = 3
+  if SV >= 1500 then DriftMask = 7
+  SpdMask = 1
+  if SV >= 500 then SpdMask = 3
+  if SV >= 2000 then SpdMask = 7
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0 Pinhead, 1-2 the trampoline, 3-8 the balloons
+sub DrawSprites:
+  X = ManX()
+  Y = highbyte(YF)
+  select case MState
+    case 0
+      V = SMSit
+    case 1
+      V = SMFly
+    case else
+      V = SMFlat
+      if DieT < 40 then V = SMDiz
+      if Y < FloorY then V = SMFly
+  end select
+  set sprite 0 to Y,X,V,15
+  K = TX + 16
+  set sprite 1 to TY,TX,STrL,7
+  set sprite 2 to TY,K,STrR,7
+  for Bs = 0 to 5
+    J = Bs + 3
+    S = Bl[Bs].S
+    if S = 0 then
+      set sprite J to 192,0,0,0
+    else
+      W16 = Bl[Bs].X4 >> 2
+      X = W16
+      Y = Bl[Bs].Y
+      C = Bl[Bs].Col
+      if S = 1 then
+        V = Bl[Bs].Val
+        V = SB1 + (V - 1) * 4
+      else
+        V = SPop
+      end if
+      set sprite J to Y,X,V,C
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,1, "SCORE ", Score
+  print at 14,1, "PINHEAD"
+  NumU = Lives
+  print at 23,1, "LIVES ", digits$(NumU, 1)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  Score = 0
+  SV = 0
+  Sub2k = 0
+  TX = 96
+  Lives = 4
+  MState = 0
+  MDir = 0
+  MSpd = 0
+  DieT = 0
+  Over = 0
+  Pops = 0
+  Bounces = 0
+  SpawnT = 0
+  W16 = MY0
+  YF = W16 << 8
+  Vy = 0
+  W16 = TX + 8
+  MX4 = W16 * 4
+  for Bs = 0 to 5
+    Bl[Bs].S = 0
+  next
+  Harder
+  ShowStatus
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: PINHEAD in balloons, Pinhead bouncing, the tune once
+sub TitlePage:
+  NewScreen
+  print at 3,1, "COMPUTE!'S GAZETTE 2/1990"
+  copy TitleMap count 224 to vram.name + 64
+  print at 4,11, "BOUNCE PINHEAD ON THE"
+  print at 4,12, "TRAMPOLINE, POP BALLOONS!"
+  print at 13,16, "START"
+  print at 13,17, "CREDITS"
+  if Hi > 0 then
+    print at 10,20, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  W16 = MY0
+  YF = W16 << 8
+  Vy = 0 - ArcV[7]
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Vy = Vy + Grav
+  YF = YF + Vy
+  if Vy > 0 then
+    if highbyte(YF) >= MY0 then
+      W16 = MY0
+      YF = W16 << 8
+      Vy = 0 - ArcV[7]
+    end if
+  end if
+  Y = highbyte(YF)
+  set sprite 0 to Y,204,SMFly,15
+  set sprite 1 to TY,196,STrL,7
+  set sprite 2 to TY,212,STrR,7
+  update sprites
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,16
+  put char 32 at 11,17
+  J = Menu + 16
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "PINHEAD"
+  print at 2,5, "BASED ON PINHEAD,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "FEBRUARY 1990 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE; NO AUTHOR"
+  print at 2,9, "NAMED ON THE DISK)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: UNDER THE BIG TOP"
+  print at 2,19, "AT MIDNIGHT (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+PhBoing:
+    db $40,$FC,$21,$01,$40,$BA,$21,$01,$40,$80,$31,$01,$40,$4E,$31,$01,$40,$23,$31,$01,$40,$FD,$30,$01
+    db $40,$DC,$40,$01,$40,$BF,$40,$01,$50
+PhPop:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$04,$10
+PhMiss:
+    db $40,$7C,$20,$02,$40,$8A,$20,$02,$40,$99,$20,$02,$40,$AB,$20,$02,$40,$BE,$20,$02,$40,$D3,$20,$02
+    db $40,$EA,$20,$02,$40,$04,$21,$02,$40,$21,$31,$02,$40,$41,$31,$02,$40,$64,$31,$02,$40,$8D,$31,$02
+    db $40,$B8,$31,$02,$40,$E8,$31,$02,$40,$1F,$32,$02,$40,$5D,$32,$02,$50
+PhLife:
+    db $40,$8F,$10,$05,$40,$71,$10,$05,$40,$5F,$10,$05,$40,$47,$20,$0C,$50
+PhStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+PhOver:
+    db $40,$D6,$10,$0C,$40,$1D,$21,$0C,$40,$53,$21,$0C,$40,$AB,$31,$1E,$50
+
+PhSoundTable:
+    dw PhTuneMel,$702B
+    dw PhTuneBass,$7035
+    dw PhBoing,$7049
+    dw PhPop,$703F
+    dw PhMiss,$7049
+    dw PhLife,$7049
+    dw PhStart,$7049
+    dw PhOver,$7049
+; Under the Big Top at Midnight (original)
+; Tiny Sound, 8 frames per step
+PhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$1A,$21,$1F,$01,$24,$01,$28,$01,$01,$26,$24,$01,$23,$01
+    db $24,$01,$1F,$01,$21,$01,$26,$01,$29,$01,$01,$28,$26,$01,$25,$01
+    db $26,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$01,$2B,$29,$01,$26,$01
+    db $23,$01,$1F,$01,$21,$23,$24,$26,$28,$01,$2B,$01,$24,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+PhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$01,$10,$01,$13,$01,$0C,$01,$13,$01
+    db $10,$01,$13,$01,$0E,$01,$15,$01,$11,$01,$15,$01,$0E,$01,$15,$01
+    db $11,$01,$15,$01,$13,$01,$0E,$01,$17,$01,$0E,$01,$13,$01,$0E,$01
+    db $17,$01,$0E,$01,$0C,$01,$10,$01,$13,$01,$17,$01,$0C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

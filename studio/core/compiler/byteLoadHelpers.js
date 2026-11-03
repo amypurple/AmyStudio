@@ -516,11 +516,14 @@ export function createByteLoadHelpers(ctx) {
     if (needsSamePairPreserve) {
       const loadA = emitLoadInt8ValueInto("a", token);
       if (!loadA) return null;
-      const savePair = loadA.some((line) => lineClobbersPair(line, targetPair));
+      const saves = liveRegs
+        .map(pairForReg)
+        .filter((r, index, list) => r !== "af" && list.indexOf(r) === index)
+        .filter((r) => loadA.some((line) => lineClobbersPair(line, r)));
       return [
-        ...(savePair ? [`    push ${targetPair}`] : []),
+        ...saves.map((r) => `    push ${r}`),
         ...loadA,
-        ...(savePair ? [`    pop ${targetPair}`] : []),
+        ...[...saves].reverse().map((r) => `    pop ${r}`),
         `    ld ${normalizedRegister},a`
       ];
     }

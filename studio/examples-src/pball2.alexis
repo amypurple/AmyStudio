@@ -1,0 +1,1469 @@
+cartridge "POWERBALL/GAZETTE/1987"
+
+' POWERBALL
+' A ColecoVision game based on "Powerball", COMPUTE!'s Gazette May 1987
+' (Commodore 64 machine language at $C000, files POWERBALL.BOOT and
+' POWERBALL; no author is named on the disk). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/dis.txt, and watched in jsc64), the game is built for
+' the ColecoVision: bevelled bricks, steel walls, smooth sprites, a sound
+' for every event, a title tune.
+'
+' The game: a breakout with extras. Knock out every grey and green brick
+' of a screen with the ball; steel never breaks. Green bricks break at
+' once (4 points); a hit on a grey or coloured brick (1 point) gives it a
+' new colour, green one time in two. A broken green brick drops a capsule
+' three times in four (if none is falling); catch it with the paddle:
+'   S slow: every ball back to the slowest speed
+'   C catch: the paddle holds the ball until the button (or 1.5 s)
+'   L long paddle         3 three balls (when only one is in play)
+'   F fire: the button shoots upward; a shot breaks green bricks
+'     (3 points) and recolours the others
+'   N next screen (not on the tenth)
+'   + one paddle more (at most 9; rarer each time)
+'   P powerball: the ball ploughs through every brick and steel wall,
+'     3 points a brick, 1 a steel block
+' A new capsule ends the previous one. Three drones drift down from the
+' top and roam; one that touches the paddle, a shot or a ball is destroyed
+' (1 point, it turns the ball back) and another comes from the top, now
+' and then with a capsule. Lose every ball and you lose a paddle; you
+' start with 4. A cleared screen gives 100 x (screen speed + 1) points.
+' The ball speeds up at random, the first time after 46 seconds of a life,
+' then sooner and sooner until every second.
+'
+' From the original (orig/): the ten screens (narrowed from 40 to 28
+' columns), the three brick kinds and the recolouring hit, the scores
+' (4, 1, 3, 1, bonus 100 x (level + 1)), the eight capsules, their odds
+' (S 3/4, N 3/16 halving each time in a game, + 1/2 halving within a
+' screen, never the same twice in a row), their effects and the end of
+' each with the next capsule, catch time, the three drones (spawn at the
+' top, down-speed 1 to the level, sideways 0-15, a random push at each
+' bounce, 1/8 chance of a capsule when one appears), the ball's speeds
+' (8 + level at the serve, at least 2 down, steeper near the paddle's
+' middle and flatter near its ends), the serve on the paddle (button or
+' after 4 seconds), the speed-up timer (49, 25, 13, 7, 4, 2, then every
+' period of 250 C64 passes), four paddles, at most nine, six-digit score
+' and high score.
+'
+' Liberties: the field is 28 columns (the C64's 40 resampled) by 18 rows
+' of bricks; speeds are per frame in 1/16 pixels: the C64 made about 4.3
+' passes a frame, so a C64 speed V moves 2V sixteenths a frame (V 9 = 1.1
+' pixels); the paddle moves 4 pixels a frame (the C64's 6 on a wider
+' field was too quick to control on a joystick) and is 20 pixels wide, 32
+' long (C64 24 and 48 of 320); the capsule falls half a pixel a frame;
+' shots go up 8 pixels a frame (the C64's crossed the screen in a few
+' frames); the drones keep a colour and spin slowly (the C64 changed their
+' colour and frame at every pass, far faster than 3 Hz); the 3 capsule
+' copies the ball the C64 way; the fastest ball is speed 25 (3.1 pixels
+' a frame; the C64's 35 against its quicker paddle, kept in proportion); screens 1-10 repeat with the speed of their
+' number (the C64 played its tenth screen at level 1 speed and the next
+' round from level 2); collisions are tests on the ball's leading edge and
+' boxes (the C64 compared screen cells); the "PRESS FIRE TO CONTINUE AT
+' THIS LEVEL" choice after a game is gone (game over goes to the title);
+' the right button pauses (the C64 paused while SHIFT was held); a SCREEN
+' n banner; the capsule legend on the title page.
+'
+' Controls: controller 1 (or 2): the stick moves the paddle left and
+' right; a button serves a held ball and fires shots; the right button
+' pauses. A button starts on the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TBr1 = 128
+const TBr2 = 129
+const TBr3 = 130
+const TBr4 = 131
+const TBr5 = 132
+const TBr6 = 133
+const TBr7 = 134
+const TBr8 = 135
+const TBr9 = 136
+const TEtop = 137
+const TEtl = 138
+const TEtr = 139
+const TEl = 140
+const TEr = 141
+const TPicon = 142
+const TTla = 143
+const TTlb = 144
+const SBall = 0
+const SPadl = 4
+const SPad4 = 8
+const SPad16 = 12
+const SShot = 16
+const SCap0 = 20
+const SCap1 = 24
+const SCap2 = 28
+const SCap3 = 32
+const SCap4 = 36
+const SCap5 = 40
+const SCap6 = 44
+const SCap7 = 48
+const SDr0 = 52
+const SDr1 = 56
+const SDr2 = 60
+const NTiles8 = 136
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBrick = 3
+const SndHit = 4
+const SndSteel = 5
+const SndWall = 6
+const SndPad = 7
+const SndCap = 8
+const SndDrone = 9
+const SndShot = 10
+const SndLost = 11
+const SndClear = 12
+const SndOver = 13
+const NSpr = 10
+' the field: ball (4 x 4) left edge 18-234, top 10 (1/16 pixels below)
+const BallMinX = 288
+const BallMaxX = 3744
+const BallMinY = 160
+' drones (8 x 8): 18-230 across, 10-170 down
+const DrMaxX = 3680
+const DrMaxY = 2720
+const LostY = 180
+const PadY = 166
+const PadSpd = 64
+const SpdMax = 25
+const ServeHold = 240
+const CatchHold = 90
+' a speed-up period: 250 C64 passes, 58 frames
+const SpdPeriod = 58
+
+data LevelData bytes
+  28,255,213,28,248,63,63,63,63,56,0,42,206,10,206,11,206,10,206,11,206,14,156,63
+  63,63,63,56,0,28,255,255,234,29,90,63,63,63,63,1,0,28,191,149,28,156,28,156
+  28,156,63,63,63,35,0,28,205,2,218,2,218,2,218,2,205,77,130,77,63,63,63,63
+  63,21,0,28,230,67,194,66,213,67,194,66,244,66,244,70,215,68,232,63,63,63,35,0
+  28,220,89,34,220,89,28,220,89,63,63,63,63,3,0,38,136,18,204,15,78,14,206,14
+  78,16,138,63,63,63,63,63,2,0,92,191,149,92,255,213,92,198,65,198,65,198,65,199
+  92,63,63,63,7,0,14,65,27,65,27,65,1,65,20,65,3,65,193,1,65,3,65,193
+  14,65,129,3,66,1,65,3,65,195,12,65,129,2,65,130,66,3,65,7,130,6,73,195
+  65,3,129,1,133,4,74,195,65,3,133,1,129,4,65,194,67,130,66,195,65,3,130,1
+  130,1,129,4,65,194,67,130,66,195,65,3,130,1,132,2,130,65,193,130,194,130,66,130
+  193,65,130,1,173,66,148,66,131,65,194,65,129,65,129,66,142,66,131,65,194,65,129,65
+  129,66,147,65,194,65,152,65,194,65,152,65,194,65,140,0
+end data
+data LevelOfs words 0,11,29,41,55,75,96,111,130,150
+
+' capsule colours (S C L 3 F N + P), the C64's $CD30 in TMS colours
+data CapCol bytes 11,2,5,7,8,9,14,13
+' a grey or coloured brick hit: its new type for random bits 0-7 (C64: a
+' random colour 2-15, often green); bit 7 set gives green
+data RecolT bytes 4,5,6,7,8,9,2,3
+' drone colours
+data DrCol bytes 7,9,11,7,9
+
+data TilePat bytes
+  $00,$00,$42,$00,$00,$42,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$00,$83,$01,$83,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $0F,$0E,$FE,$0E,$0E,$FE,$0E,$04
+  $1F,$1E,$1E,$1E,$1E,$1E,$1C,$01
+  $13,$12,$12,$12,$12,$12,$1C,$01
+  $19,$18,$18,$18,$18,$18,$16,$01
+  $1F,$1B,$1B,$1B,$1B,$1B,$1A,$01
+  $1F,$17,$17,$17,$17,$17,$15,$01
+  $19,$1D,$1D,$1D,$1D,$1D,$16,$01
+  $17,$15,$15,$15,$15,$15,$14,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$16,$01
+  $05,$05,$01,$01,$01,$01,$01,$01
+  $05,$05,$51,$51,$51,$51,$51,$51
+  $05,$05,$51,$51,$51,$51,$51,$51
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $51,$51,$51,$51,$51,$51,$51,$51
+  $01,$01,$01,$19,$19,$19,$01,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$1B,$01
+  $17,$15,$15,$15,$15,$15,$17,$01
+end data
+data SpritePat bytes
+  $60,$F0,$F0,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$FF,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$FF,$FF,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$F1,$EF,$F3,$FD,$E3,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$F1,$EF,$EF,$EF,$F1,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$EF,$EF,$EF,$EF,$E1,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$E3,$FD,$F3,$FD,$E3,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$E1,$EF,$E3,$EF,$EF,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$ED,$E5,$E9,$ED,$ED,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$FF,$FB,$F1,$FB,$FF,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$E3,$ED,$E3,$EF,$EF,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$3C,$5A,$FF,$FF,$5A,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $81,$66,$7E,$3C,$3C,$7E,$66,$81,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$3C,$FF,$FF,$3C,$18,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$8F,$8F,$8F,$20,$8F,$8F,$8F,$20,$8F,$20,$8F,$20,$8F,$8F,$8F,$20,$8F,$8F,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$8F,$20,$8F,$20,$8F,$20,$8F,$20,$8F,$20,$8F,$20,$8F,$20,$20,$20,$8F,$20,$8F,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$8F,$8F,$8F,$20,$8F,$20,$8F,$20,$8F,$20,$8F,$20,$8F,$8F,$20,$20,$8F,$8F,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$8F,$20,$20,$20,$8F,$20,$8F,$20,$8F,$8F,$8F,$20,$8F,$20,$20,$20,$8F,$20,$8F,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$8F,$20,$20,$20,$8F,$8F,$8F,$20,$8F,$20,$8F,$20,$8F,$8F,$8F,$20,$8F,$20,$8F,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$90,$90,$20,$20,$20,$90,$20,$20,$90,$20,$20,$20,$90,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$90,$20,$90,$20,$90,$20,$90,$20,$90,$20,$20,$20,$90,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$90,$90,$20,$20,$90,$90,$90,$20,$90,$20,$20,$20,$90,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$90,$20,$90,$20,$90,$20,$90,$20,$90,$20,$20,$20,$90,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$90,$90,$20,$20,$90,$20,$90,$20,$90,$90,$90,$20,$90,$90,$90,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record Ball:
+  i16 X
+  i16 Y
+  i8 Vx
+  i8 Vy
+  u8 Live
+  u8 Hold
+  u8 Ofs
+end record
+Ball Bl[3]
+
+record Drone:
+  i16 X
+  i16 Y
+  i8 Vx
+  i8 Vy
+  u8 Live
+end record
+Drone Dr[3]
+
+u8 CapThr[8]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+' paddle
+u16 Pxf = 0
+u8 Px = 0
+u8 PadW = 20
+u8 PadMax = 0
+' game state
+u8 Scr = 0
+u8 SpL = 1
+u8 Lives = 4
+u16 BLeft = 0
+u8 NBalls = 0
+u8 Pw = 255
+u8 CatchOn = 0
+u8 CapOn = 0
+i16 CapX = 0
+i16 CapY = 0
+u8 CapT = 0
+u8 LastT = 255
+u8 ShotOn = 0
+u8 ShotX = 0
+u8 ShotY = 0
+u8 SpdCnt = 0
+u8 SpdLeft = 0
+u8 SpdPer = 0
+u8 DrAnim = 0
+u8 DrStep = 0
+u8 Ev = 0
+u8 Phase = 0
+u8 Paused = 0
+u8 Kills = 0
+u8 Bricks = 0
+u8 Pads = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 B2 = 0
+u8 WasB2 = 0
+u8 Press = 0
+u8 WasBtn = 0
+u8 Press2 = 0
+u8 Tick = 0
+u8 Idle = 0
+' the ball being moved (copied out of the record)
+i16 Ox = 0
+i16 Oy = 0
+i16 Nx = 0
+i16 Ny = 0
+i8 Wx = 0
+i8 Wy = 0
+u8 Bk = 0
+' the paddle hit and the drone move (globals: these subs return early)
+i16 Cx = 0
+i16 Pc = 0
+i16 Dd = 0
+u8 Ad = 0
+u8 Half = 0
+u8 Bounced = 0
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Di = 0
+u8 Row = 0
+u8 Col = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 R = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 T = 0
+u8 X = 0
+u8 Y = 0
+u8 Xp = 0
+u8 Yp = 0
+u8 Got = 0
+
+  tile screen
+  set sound table PbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+level:
+  DrawBoard
+
+life:
+  ResetLife
+  Intro
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Ev = 0 then goto play_loop
+
+  select case Ev
+  case 1
+    LoseLife
+    if Lives = 0 then goto game_end
+    goto life
+  case 2
+    ScreenClear
+    goto level
+  case else
+    ' an N capsule: straight to the next screen
+    NextScreen
+    goto level
+  end select
+
+game_end:
+  Phase = 5
+  HideSprites
+  print at 9,9, "             "
+  print at 9,10, "  GAME OVER  "
+  print at 9,11, "             "
+  mute all
+  TzOn = 0
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play, in the C64's order: the stick and button, the balls,
+' the capsule, the drones, the shot
+sub PlayStep:
+  Ev = 0
+  if Paused = 1 then
+    if Press2 = 1 then
+      Paused = 0
+      fill 32 count 5 at 13,19
+    end if
+    return
+  end if
+  if Press2 = 1 then
+    Paused = 1
+    print at 13,19, "PAUSE"
+    return
+  end if
+  MovePaddle
+  if Btn > 0 then
+    ' the button lets go of held balls and fires when F is on
+    for Bi = 0 to 2
+      Bl[Bi].Hold = 0
+    next
+    if Pw = 4 then
+      if ShotOn = 0 then
+        ShotOn = 1
+        ShotX = Px + PadW / 2 - 1
+        ShotY = PadY - 6
+        play sound SndShot
+      end if
+    end if
+  end if
+  SpeedTimer
+  for Bi = 0 to 2
+    MoveBall
+  next
+  MoveCap
+  for Di = 0 to 2
+    MoveDrone
+  next
+  MoveShot
+  if NBalls = 0 then Ev = 1
+  return
+end sub
+
+sub MovePaddle:
+  K = J1 & 12
+  if K = 4 then
+    W16 = 288 + PadSpd
+    if Pxf < W16 then
+      Pxf = 288
+    else
+      Pxf = Pxf - PadSpd
+    end if
+  end if
+  if K = 8 then
+    W16 = PadMax * 16
+    Pxf = Pxf + PadSpd
+    if Pxf > W16 then Pxf = W16
+  end if
+  Px = Pxf >> 4
+  return
+end sub
+
+' every period (58 frames) the count goes down; at 0 every ball gets a
+' random push and the next wait is half as long (49, 25, 13, 7, 4, 2, 1...)
+sub SpeedTimer:
+  dec SpdCnt
+  if SpdCnt > 0 then return
+  SpdCnt = SpdPeriod
+  dec SpdLeft
+  if SpdLeft > 0 then return
+  for Ki = 0 to 2
+    if Bl[Ki].Live = 1 then
+      Wx = Bl[Ki].Vx
+      Wy = Bl[Ki].Vy
+      Push
+      Bl[Ki].Vx = Wx
+      Bl[Ki].Vy = Wy
+    end if
+  next
+  SpdPer = SpdPer >> 1
+  SpdLeft = SpdPer + 1
+  return
+end sub
+
+' a random push on Wx / Wy (C64 $C776): one more unit across or down
+sub Push:
+  V = Rnd
+  if V >= 128 then
+    Wx = Faster(Wx)
+  else
+    Wy = Faster(Wy)
+  end if
+  return
+end sub
+
+' one unit faster, at most SpdMax, keeping the direction
+function Faster(i8 S) as i8
+  i8 Res = S
+  if S >= 0 then
+    if S < SpdMax then Res = S + 1
+  else
+    if S > -SpdMax then Res = S - 1
+  end if
+  return Res
+
+' one unit slower (towards 0), at least Lim
+function Slower(i8 S, u8 Lim) as i8
+  i8 Res = S
+  i8 L8 = Lim
+  if S >= 0 then
+    if S > L8 then Res = S - 1
+  else
+    if S < -L8 then Res = S + 1
+  end if
+  return Res
+
+' the brick type (1-9) under pixel Xq, Yq, or 0
+function BrickAt(u8 Xq, u8 Yq) as u8
+  u8 Res = 0
+  u8 Tc = 0
+  if Xq >= 16 then
+    if Xq < 240 then
+      if Yq >= 8 then
+        if Yq < 152 then
+          C = (Xq - 16) >> 3
+          R = (Yq - 8) >> 3
+          Tc = get char at C + 2, R + 1
+          if Tc >= TBr1 then
+            if Tc <= TBr9 then Res = Tc - TBr1 + 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  return Res
+
+' the background of field cell C, R (frame lines on the edges)
+sub EraseBrick:
+  X = C + 2
+  Y = R + 1
+  K = 32
+  if C = 0 then K = TEl
+  if C = 27 then K = TEr
+  if R = 0 then
+    select case C
+    case 0
+      K = TEtl
+    case 27
+      K = TEtr
+    case else
+      K = TEtop
+    end select
+  end if
+  put char K at X,Y
+  return
+end sub
+
+sub AddScore(u8 Pts):
+  Sc += Pts
+  if Sc > Hi then Hi = Sc
+  ShowScore
+  return
+end sub
+
+' a brick broken (C, R set by BrickAt): one fewer left
+sub BreakBrick:
+  EraseBrick
+  dec BLeft
+  inc Bricks
+  if BLeft = 0 then Ev = 2
+  return
+end sub
+
+' a grey or coloured brick hit: a new colour, green one time in two
+sub Recolour:
+  V = Rnd
+  if V >= 128 then
+    K = 3
+  else
+    K = RecolT[V & 7]
+  end if
+  put char TBr1 + K - 1 at C + 2,R + 1
+  AddScore(1)
+  play sound SndHit
+  return
+end sub
+
+' the ball meets a brick of type T at C, R: 1 when it bounces
+function HitBrick(u8 Tb) as u8
+  u8 Res = 1
+  if Pw = 7 then
+    ' the powerball goes through everything
+    Res = 0
+    if Tb = 1 then
+      EraseBrick
+      AddScore(1)
+    else
+      BreakBrick
+      AddScore(3)
+    end if
+    play sound SndBrick
+    return Res
+  end if
+  select case Tb
+  case 1
+    play sound SndSteel
+  case 3
+    Xp = C * 8 + 14
+    Yp = R * 8 + 8
+    BreakBrick
+    AddScore(4)
+    play sound SndBrick
+    V = Rnd
+    if V < 192 then SpawnCap
+  case else
+    Recolour
+  end select
+  return Res
+
+' ball Bi: held on the paddle, or moving one frame
+sub MoveBall:
+  if Bl[Bi].Live = 0 then return
+  if Bl[Bi].Hold > 0 then
+    dec Bl[Bi].Hold
+    Bl[Bi].X = (Px + Bl[Bi].Ofs) * 16
+    Bl[Bi].Y = (PadY - 4) * 16
+    return
+  end if
+  Ox = Bl[Bi].X
+  Oy = Bl[Bi].Y
+  Wx = Bl[Bi].Vx
+  Wy = Bl[Bi].Vy
+  ' across
+  Nx = Ox + Wx * 2
+  if Nx < BallMinX then
+    Nx = BallMinX
+    Wx = -Wx
+    play sound SndWall
+  end if
+  if Nx > BallMaxX then
+    Nx = BallMaxX
+    Wx = -Wx
+    play sound SndWall
+  end if
+  Xp = Nx >> 4
+  Yp = Oy >> 4
+  if Wx > 0 then Xp = Xp + 3
+  Bk = BrickAt(Xp, Yp + 2)
+  if Bk > 0 then
+    Got = HitBrick(Bk)
+    if Got = 1 then
+      Nx = Ox
+      Wx = -Wx
+    end if
+  end if
+  ' down
+  Ny = Oy + Wy * 2
+  if Ny < BallMinY then
+    Ny = BallMinY
+    Wy = -Wy
+    play sound SndWall
+  end if
+  Xp = Nx >> 4
+  Yp = Ny >> 4
+  if Wy > 0 then Yp = Yp + 3
+  Bk = BrickAt(Xp + 2, Yp)
+  if Bk > 0 then
+    Got = HitBrick(Bk)
+    if Got = 1 then
+      Ny = Oy
+      Wy = -Wy
+    end if
+  end if
+  Bl[Bi].X = Nx
+  Bl[Bi].Y = Ny
+  Bl[Bi].Vx = Wx
+  Bl[Bi].Vy = Wy
+  if Wy > 0 then PaddleHit
+  Yp = Bl[Bi].Y >> 4
+  if Yp >= LostY then
+    Bl[Bi].Live = 0
+    dec NBalls
+    if NBalls > 0 then play sound SndWall
+  end if
+  return
+end sub
+
+' a falling ball on the paddle (C64 $C208): up again, left of the middle
+' goes left; near the middle steeper, near the ends flatter
+sub PaddleHit:
+  Yp = Ny >> 4
+  if Yp + 3 < PadY then return
+  if Yp > PadY + 2 then return
+  Cx = (Nx >> 4) + 2
+  Half = PadW / 2
+  Pc = Px + Half
+  Dd = Cx - Pc
+  Ad = abs(Dd)
+  if Ad > Half + 1 then return
+  if Wy > 0 then Wy = -Wy
+  if Wx < 0 then Wx = -Wx
+  if Cx < Pc then Wx = -Wx
+  if Ad < PadW / 8 then
+    Wy = Faster(Wy)
+    Wx = Slower(Wx, 0)
+  else
+    if Ad >= Half - 2 then
+      Wy = Slower(Wy, 2)
+      Wx = Faster(Wx)
+    end if
+  end if
+  Bl[Bi].Vx = Wx
+  Bl[Bi].Vy = Wy
+  Bl[Bi].Y = (PadY - 4) * 16
+  if CatchOn = 1 then
+    Bl[Bi].Hold = CatchHold
+    Xp = Nx >> 4
+    if Xp < Px then Xp = Px
+    Bl[Bi].Ofs = Xp - Px
+  end if
+  inc Pads
+  play sound SndPad
+  return
+end sub
+
+' a capsule at pixel Xp, Yp when none is falling: a random kind, not the
+' last one, kept with its odds (C64 $C30E)
+sub SpawnCap:
+  if CapOn = 1 then return
+  Got = 0
+  while Got = 0
+    V = Rnd
+    T = V & 7
+    if T <> LastT then
+      V = Rnd
+      if V < CapThr[T] then Got = 1
+    end if
+  end while
+  CapT = T
+  LastT = T
+  CapOn = 1
+  if Xp < 18 then Xp = 18
+  if Xp > 226 then Xp = 226
+  CapX = Xp * 16
+  CapY = Yp * 16
+  return
+end sub
+
+sub MoveCap:
+  if CapOn = 0 then return
+  CapY = CapY + 8
+  Yp = CapY >> 4
+  if Yp >= LostY then
+    CapOn = 0
+    return
+  end if
+  if Yp + 7 < PadY then return
+  if Yp > PadY + 3 then return
+  Xp = CapX >> 4
+  if Xp + 11 < Px then return
+  if Xp >= Px + PadW then return
+  Catch
+  return
+end sub
+
+' a capsule caught (C64 $C58C): the last power ends, the new one starts
+sub Catch:
+  CapOn = 0
+  play sound SndCap
+  if Pw = 2 then
+    PadW = 20
+    W16 = Pxf + 96
+    Pxf = W16
+    SetPadMax
+  end if
+  CatchOn = 0
+  for Ki = 0 to 2
+    Bl[Ki].Hold = 0
+  next
+  select case CapT
+  case 0
+    for Ki = 0 to 2
+      if Bl[Ki].Vx >= 0 then
+        Bl[Ki].Vx = 8
+      else
+        Bl[Ki].Vx = -8
+      end if
+      if Bl[Ki].Vy >= 0 then
+        Bl[Ki].Vy = 8
+      else
+        Bl[Ki].Vy = -8
+      end if
+    next
+  case 1
+    CatchOn = 1
+  case 2
+    PadW = 32
+    if Pxf >= 384 then
+      Pxf = Pxf - 96
+    else
+      Pxf = 288
+    end if
+    SetPadMax
+  case 3
+    if NBalls = 1 then Split
+  case 5
+    if Scr <> 9 then
+      CapThr[5] = CapThr[5] >> 1
+      Ev = 3
+    end if
+  case 6
+    if Lives < 9 then
+      inc Lives
+      CapThr[6] = CapThr[6] >> 1
+      ShowLives
+    end if
+  end select
+  Pw = CapT
+  return
+end sub
+
+' the right limit of the paddle for its width, and a paddle kept inside
+sub SetPadMax:
+  PadMax = 238 - PadW
+  W16 = PadMax * 16
+  if Pxf > W16 then Pxf = W16
+  if Pxf < 288 then Pxf = 288
+  Px = Pxf >> 4
+  return
+end sub
+
+' three balls from the one in play (C64 $C553): the second goes the other
+' way up or down, the third the other way across
+sub Split:
+  K = 0
+  if Bl[0].Live = 0 then K = 1
+  if Bl[K].Live = 0 then K = 2
+  Ox = Bl[K].X
+  Oy = Bl[K].Y
+  Wx = Bl[K].Vx
+  Wy = Bl[K].Vy
+  for Ki = 0 to 2
+    Bl[Ki].X = Ox
+    Bl[Ki].Y = Oy
+    Bl[Ki].Live = 1
+    Bl[Ki].Hold = 0
+    Bl[Ki].Vx = Wx
+    Bl[Ki].Vy = Wy
+  next
+  Bl[1].Vy = -Wy
+  Bl[2].Vx = -Wx
+  NBalls = 3
+  return
+end sub
+
+' drone Di: a new one at the top when it is gone, then a move; it dies on
+' the paddle, a ball (which turns back) or a shot
+sub MoveDrone:
+  Bounced = 0
+  if Dr[Di].Live = 0 then SpawnDrone
+  Ox = Dr[Di].X
+  Oy = Dr[Di].Y
+  Wx = Dr[Di].Vx
+  Wy = Dr[Di].Vy
+  Ox = Ox + Wx * 2
+  Oy = Oy + Wy * 2
+  if Ox < BallMinX then
+    Ox = BallMinX
+    Wx = -Wx
+    Bounced = 1
+  end if
+  if Ox > DrMaxX then
+    Ox = DrMaxX
+    Wx = -Wx
+    Bounced = 1
+  end if
+  if Oy < BallMinY then
+    Oy = BallMinY
+    Wy = -Wy
+    Bounced = 1
+  end if
+  if Oy > DrMaxY then
+    Oy = DrMaxY
+    Wy = -Wy
+    Bounced = 1
+  end if
+  if Bounced = 1 then Push
+  Dr[Di].X = Ox
+  Dr[Di].Y = Oy
+  Dr[Di].Vx = Wx
+  Dr[Di].Vy = Wy
+  Xp = Ox >> 4
+  Yp = Oy >> 4
+  ' the paddle
+  if Yp + 7 >= PadY then
+    if Yp <= PadY + 3 then
+      if Xp + 7 >= Px then
+        if Xp < Px + PadW then
+          KillDrone
+          return
+        end if
+      end if
+    end if
+  end if
+  ' a ball: it turns back
+  for Ki = 0 to 2
+    if Bl[Ki].Live = 1 then
+      if Bl[Ki].Hold = 0 then
+        X = Bl[Ki].X >> 4
+        Y = Bl[Ki].Y >> 4
+        if Overlap(X, Y, 4) = 1 then
+          Bl[Ki].Vy = -Bl[Ki].Vy
+          KillDrone
+          return
+        end if
+      end if
+    end if
+  next
+  ' the shot
+  if ShotOn = 1 then
+    if Overlap(ShotX, ShotY, 2) = 1 then KillDrone
+  end if
+  return
+end sub
+
+' 1 when a box at Xa, Ya (Sz wide, Sz tall) touches the drone at Xp, Yp
+function Overlap(u8 Xa, u8 Ya, u8 Sz) as u8
+  u8 Res = 1
+  if Xa + Sz <= Xp then Res = 0
+  if Xa >= Xp + 8 then Res = 0
+  if Ya + Sz <= Yp then Res = 0
+  if Ya >= Yp + 8 then Res = 0
+  return Res
+
+sub KillDrone:
+  Dr[Di].Live = 0
+  inc Kills
+  AddScore(1)
+  play sound SndDrone
+  return
+end sub
+
+' a new drone at the top (C64 $C2D2): anywhere across, down 1 to the
+' level, across 0-15 either way; one time in eight it brings a capsule
+sub SpawnDrone:
+  V = Rnd
+  W16 = V * 212
+  Xp = highbyte W16
+  Xp = Xp + 18
+  Dr[Di].X = Xp * 16
+  Dr[Di].Y = BallMinY
+  Dr[Di].Live = 1
+  V = Rnd
+  if V >= 224 then
+    Yp = 10
+    SpawnCap
+  end if
+  V = Rnd
+  K = V & 15
+  K = K % SpL
+  Dr[Di].Vy = K + 1
+  V = Rnd
+  K = V & 31
+  K = K >> 1
+  if (V & 1) = 1 then
+    Dr[Di].Vx = -K
+  else
+    Dr[Di].Vx = K
+  end if
+  return
+end sub
+
+' the shot climbs 8 pixels a frame; any brick stops it
+sub MoveShot:
+  if ShotOn = 0 then return
+  if ShotY < 18 then
+    ShotOn = 0
+    return
+  end if
+  ShotY = ShotY - 8
+  Bk = BrickAt(ShotX, ShotY)
+  if Bk = 0 then return
+  ShotOn = 0
+  select case Bk
+  case 1
+    play sound SndSteel
+  case 3
+    BreakBrick
+    AddScore(3)
+    play sound SndBrick
+  case else
+    Recolour
+  end select
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function Rnd as u8
+  Rand
+  return lowbyte Rs
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the paddle, 2-4 the balls, 5 the capsule, 6-8 drones, 9 shot
+sub DrawSprites:
+  u8 Sy = 0
+  u8 Sx = 0
+  u8 Sc8 = 0
+  set sprite 0 to PadY - 1,Px,SPadl,9
+  if PadW = 32 then
+    set sprite 1 to PadY - 1,Px + 16,SPad16,9
+  else
+    set sprite 1 to PadY - 1,Px + 16,SPad4,9
+  end if
+  Sc8 = 15
+  if Pw = 7 then Sc8 = 13
+  for Ki = 0 to 2
+    if Bl[Ki].Live = 1 then
+      Sy = Bl[Ki].Y >> 4
+      Sx = Bl[Ki].X >> 4
+      set sprite Ki + 2 to Sy - 1,Sx,SBall,Sc8
+    else
+      set sprite Ki + 2 to 192,0,0,0
+    end if
+  next
+  if CapOn = 1 then
+    Sy = CapY >> 4
+    Sx = CapX >> 4
+    K = CapT * 4 + SCap0
+    V = CapCol[CapT]
+    set sprite 5 to Sy - 1,Sx,K,V
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  inc DrAnim
+  if DrAnim >= 24 then
+    DrAnim = 0
+    inc DrStep
+    if DrStep >= 3 then DrStep = 0
+  end if
+  J = DrAnim >> 3
+  J = J * 4 + SDr0
+  for Ki = 0 to 2
+    if Dr[Ki].Live = 1 then
+      Sy = Dr[Ki].Y >> 4
+      Sx = Dr[Ki].X >> 4
+      V = DrCol[Ki + DrStep]
+      set sprite Ki + 6 to Sy - 1,Sx,J,V
+    else
+      set sprite Ki + 6 to 192,0,0,0
+    end if
+  next
+  if ShotOn = 1 then
+    set sprite 9 to ShotY - 1,ShotX,SShot,15
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 11,22, Sc
+  print at 23,22, Hi
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 3,22, digits$(NumU, 1)
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lives = 4
+  Scr = 0
+  LastT = 255
+  CapThr[0] = 192
+  for Ki = 1 to 7
+    CapThr[Ki] = 255
+  next
+  CapThr[5] = 48
+  Kills = 0
+  Bricks = 0
+  Pads = 0
+  return
+end sub
+
+' a new life (and the start of a screen): one ball held on the paddle,
+' drones back to the top, no power (C64 $C9D8)
+sub ResetLife:
+  SpL = Scr + 1
+  Pw = 255
+  PadW = 20
+  CatchOn = 0
+  CapOn = 0
+  ShotOn = 0
+  Paused = 0
+  Pxf = 1888
+  SetPadMax
+  for Ki = 0 to 2
+    Bl[Ki].Live = 0
+    Bl[Ki].Hold = 0
+    Dr[Ki].Live = 0
+  next
+  Bl[0].Live = 1
+  Bl[0].Hold = ServeHold
+  Bl[0].Ofs = 8
+  Bl[0].X = (Px + 8) * 16
+  Bl[0].Y = (PadY - 4) * 16
+  Bl[0].Vx = SpL + 8
+  Bl[0].Vy = -Bl[0].Vx
+  NBalls = 1
+  SpdCnt = SpdPeriod
+  SpdPer = 48
+  SpdLeft = 49
+  return
+end sub
+
+' SCREEN n for a second, the ball waiting on the paddle
+sub Intro:
+  Phase = 2
+  NumU = Scr + 1
+  print at 11,19, "SCREEN ", digits$(NumU, 2)
+  DrawSprites
+  for J = 1 to 60
+    Frame1
+  next
+  fill 32 count 9 at 11,19
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+  Phase = 3
+  return
+end sub
+
+sub LoseLife:
+  Phase = 4
+  play sound SndLost
+  dec Lives
+  ShowLives
+  for J = 2 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  Rearm
+  wait 60 frames
+  nmi off
+  return
+end sub
+
+' a cleared screen: the bonus, 100 x (speed level + 1), then the next one
+sub ScreenClear:
+  Phase = 6
+  HideSprites
+  print at 10,19, "SCREEN CLEAR"
+  play sound SndClear
+  K = SpL + 1
+  for Ki = 1 to K
+    Sc += 100
+  next
+  if Sc > Hi then Hi = Sc
+  ShowScore
+  Rearm
+  wait 120 frames
+  nmi off
+  NextScreen
+  return
+end sub
+
+sub NextScreen:
+  inc Scr
+  if Scr >= 10 then Scr = 0
+  return
+end sub
+
+' the frame, the status line and screen Scr from the C64's data
+sub DrawBoard:
+  u16 P = 0
+  u8 Cell = 0
+  u8 Cnt = 0
+  u8 Tp = 0
+  NewScreen
+  CapThr[6] = 128
+  put char TEtl at 2,1
+  fill TEtop count 26 at 3,1
+  put char TEtr at 29,1
+  for Row = 2 to 21
+    put char TEl at 2,Row
+    put char TEr at 29,Row
+  next
+  put char TPicon at 2,22
+  print at 5,22, "SCORE"
+  print at 18,22, "HIGH"
+  ShowLives
+  ShowScore
+  BLeft = 0
+  P = LevelOfs[Scr]
+  Cell = 0
+  V = LevelData[P]
+  while V > 0
+    Tp = V >> 6
+    Cnt = V & 63
+    for Ki = 1 to Cnt
+      if Tp > 0 then
+        C = Cell % 28
+        R = Cell / 28
+        put char TBr1 + Tp - 1 at C + 2,R + 1
+        if Tp >= 2 then inc BLeft
+      end if
+      inc Cell
+    next
+    inc P
+    V = LevelData[P]
+  end while
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).button1 then J1 = J1 | 16
+  if joypad(2).button2 then J1 = J1 | 32
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  B2 = J1 & 32
+  Press2 = 0
+  if B2 > 0 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: POWER / BALL in bricks, the capsules, the high score, the
+' tune once
+sub TitlePage:
+  Phase = 0
+  NewScreen
+  print at 3,1, "COMPUTE!'S GAZETTE MAY 1987"
+  copy TitleMap count 352 to vram.name + 96
+  print at 11,14, "POWERBALL"
+  print at 4,16, "S SLOW       C CATCH"
+  print at 4,17, "L LONG       3 THREE BALLS"
+  print at 4,18, "F FIRE       N NEXT SCREEN"
+  print at 4,19, "+ PADDLE     P POWERBALL"
+  print at 7,21, "PRESS THE BUTTON"
+  if Hi > 0 then
+    print at 9,22, "HIGH ", Hi
+  end if
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 528
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Press = 0 then goto tp_loop
+  StopTune
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub StopTune:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub CreditsPage:
+  Phase = 1
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "POWERBALL"
+  print at 2,5, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,6, "MAY 1987 (COMMODORE 64"
+  print at 2,7, "MACHINE LANGUAGE; NO AUTHOR"
+  print at 2,8, "IS NAMED ON THE DISK)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: POWER SURGE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+PbBrick:
+    db $40,$47,$10,$02,$40,$5F,$30,$03,$50
+PbHit:
+    db $40,$7F,$20,$02,$40,$71,$30,$02,$50
+PbSteel:
+    db $40,$FC,$21,$02,$40,$3B,$42,$02,$50
+PbWall:
+    db $40,$D6,$40,$02,$50
+PbPad:
+    db $40,$53,$11,$02,$40,$1D,$31,$03,$50
+PbCap:
+    db $40,$8F,$10,$03,$40,$71,$10,$03,$40,$5F,$10,$03,$40,$47,$20,$06,$50
+PbDrone:
+    db $00,$00,$24,$03,$00,$00,$45,$04,$10
+PbShot:
+    db $40,$40,$20,$02,$40,$55,$40,$02,$50
+PbLost:
+    db $40,$A9,$10,$03,$40,$BC,$10,$03,$40,$D1,$20,$03,$40,$E9,$20,$03,$40,$02,$21,$03,$40,$1F,$21,$03
+    db $40,$3F,$31,$03,$40,$62,$31,$03,$40,$8A,$31,$03,$40,$B5,$31,$03,$40,$E6,$41,$03,$40,$1C,$42,$03
+    db $40,$59,$42,$03,$40,$9A,$42,$03,$50
+PbClear:
+    db $40,$AA,$10,$05,$40,$8F,$10,$05,$40,$71,$10,$05,$40,$55,$10,$05,$40,$71,$20,$05,$40,$55,$20,$12
+    db $50
+PbOver:
+    db $40,$E2,$10,$0A,$40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$C5,$31,$1E,$50
+
+PbSoundTable:
+    dw PbTuneMel,$702B
+    dw PbTuneBass,$7035
+    dw PbBrick,$7049
+    dw PbHit,$7049
+    dw PbSteel,$7049
+    dw PbWall,$7049
+    dw PbPad,$7049
+    dw PbCap,$7049
+    dw PbDrone,$703F
+    dw PbShot,$7049
+    dw PbLost,$7049
+    dw PbClear,$7049
+    dw PbOver,$7049
+; Power Surge (original)
+; Tiny Sound, 8 frames per step
+PbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2A,$01,$26,$01,$23,$01,$1E,$01
+    db $23,$01,$01,$01,$21,$01,$25,$01,$28,$01,$25,$01,$21,$01,$1C,$01
+    db $21,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1E,$01,$22,$01
+    db $25,$01,$2A,$01,$28,$01,$26,$01,$25,$01,$22,$01,$23,$01,$01,$01
+    db $1E,$01,$23,$01,$00,$01
+    db $FF
+PbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $06,$01,$0B,$01,$00,$01
+    db $FF
+}

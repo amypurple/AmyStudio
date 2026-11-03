@@ -1,0 +1,726 @@
+cartridge "MAZE MASTER/COMPUTE!'S GAZETTE/1988"
+
+' MAZE MASTER
+' A ColecoVision game based on "Maze Master", COMPUTE!'s Gazette October
+' 1988 (Commodore 64, machine code; no author named on the disk). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/mazemaster.dis, and timed in jsc64 with
+' orig/c64time-maze.mjs); the game is rebuilt for the ColecoVision with
+' tile walls, smooth sprites, sound effects and a title tune.
+'
+' The game: a new random maze is filled with dots. You (the ball) race the
+' computer (the star) to eat them. Whoever has eaten more than half of the
+' dots wins: the game ends as soon as one side's dots can no longer be
+' matched (score >= the other's score + the dots left), as on the C64.
+'
+' From the original: the maze is a perfect maze carved by a depth-first
+' walk that tries the four directions from a random one in turn (right,
+' up, left, down) and writes, in each cell, the direction it came from to
+' find its way back; every corridor cell holds a dot; the computer starts
+' in the top-left corner heading down, you near the middle; the computer
+' follows the right-hand wall: each step it tries the way to its right,
+' then straight ahead, and if both are closed it turns on the spot for a
+' step (so a left turn or a dead end costs it a step); both of you step
+' together, one cell a step, and you move only while the stick asks for an
+' open way; the computer's dot is taken first when both arrive together;
+' default pace one step per 8 frames (the C64 at its F1 speed: 7.5 jiffies).
+'
+' Liberties: the maze is 13 x 10 cells (27 x 21 tiles, 259 dots, 257 to
+' eat) and shown whole (the C64 carved 16 x 11 cells, 351 dots, and showed
+' each player a 15 x 10 window around himself); the C64's speed keys
+' F1/F3/F5/F7 (7.5 / 4.7 / 3.3 / 2 jiffies a step) become SLOW / NORMAL /
+' FAST on the title (16 / 8 / 4 frames a step, NORMAL the default); a tap
+' of the stick during a step is remembered for the next one, and a diagonal
+' takes its open half (up/down first); the end compares whole scores (the
+' C64 compared the low and high bytes apart); instead of flashing the
+' window and "PRESS ANY KEY TO PLAY AGAIN", the winner is named and a press
+' goes back to the title, which starts a new maze.
+'
+' Controls: joystick only. The stick moves the ball. On the title, left
+' and right choose the speed, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TFloor = 128
+const TDot = 129
+const TWall = 130
+const TDir0 = 131
+const TDir1 = 132
+const TDir2 = 133
+const TDir3 = 134
+const TDir4 = 135
+const TBlock = 136
+const SBall0 = 0
+const SBall1 = 4
+const SStar0 = 8
+const SStar1 = 12
+const NTiles8 = 72
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndGulp = 3
+const SndCgulp = 4
+const SndBump = 5
+const SndReady = 6
+const SndWin = 7
+const SndLose = 8
+const SndPick = 9
+const NDots = 257
+const NSpr = 2
+const CellW = 13
+const CellH = 10
+
+' step directions 1 up, 2 down, 3 right, 4 left (0 = standing)
+data DXT bytes 0,0,0,1,255
+data DYT bytes 0,255,1,0,0
+' the generator's directions, as on the C64: 0 right, 1 up, 2 left, 3 down
+data GX1 bytes 1,0,255,0
+data GY1 bytes 0,255,0,1
+' frames per pixel pattern: pixels a frame by speed (SLOW every 2nd frame)
+data SpeedPix bytes 0,1,2
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$B1,$B1,$01,$01,$01
+  $5F,$45,$45,$45,$45,$45,$45,$04
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $68,$68,$68,$68,$68,$68,$68,$06
+end data
+data SpritePat bytes
+  $3C,$7E,$B7,$B7,$FF,$BD,$42,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$ED,$ED,$FF,$BD,$42,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$92,$54,$38,$FE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $28,$28,$FE,$38,$38,$FE,$28,$28,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+record Mover:
+  u8 X
+  u8 Y
+  u8 Hd
+  u16 Score
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+' 0 you, 1 the computer
+Mover Mv[2]
+u8 CHd = 2
+u8 Px8 = 0
+u16 Left = NDots
+u8 Phase = 0
+u8 Speed = 1
+u8 Want = 0
+u8 Ate = 0
+' input: J the stick (1 up, 2 down, 4 left, 8 right, 16 a button)
+u8 J = 0
+u8 OldJ = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' generator
+u8 Gx = 0
+u8 Gy = 0
+u8 Gk = 0
+u8 Gr = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Si = 0
+u8 Mi = 0
+u8 Ti = 0
+' scratch
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MmSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 1
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewMaze
+  RunGame
+  ' the end: the winner, then back to the title on a press
+  HideSprites
+  print at 8,10, "              "
+  if Phase = 2 then
+    print at 8,11, "   YOU WIN!   "
+    play sound SndWin
+  else
+    print at 8,11, " COMPUTER WINS"
+    play sound SndLose
+  end if
+  print at 8,12, "              "
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' the name-table address of maze cell (X, Y): rows 1-21, columns 2-28
+function CellAddr(u8 Cx, u8 Cy) as u16
+  u16 A = 0
+  A = Cy
+  A = A * 32 + Cx
+  return A + 34
+
+function CellAt(u8 Cx, u8 Cy) as u8
+  u8 C = 0
+  W16 = CellAddr(Cx, Cy)
+  vpeek vram.name + W16 into C
+  return C
+
+sub PutCell(u8 Cx, u8 Cy, u8 C):
+  W16 = CellAddr(Cx, Cy)
+  vpoke vram.name + W16, C
+  return
+end sub
+
+' 1 when the step from (Cx, Cy) in direction D (1-4) is open
+function IsOpen(u8 Cx, u8 Cy, u8 D) as u8
+  u8 C = 0
+  C = CellAt(Cx + DXT[D], Cy + DYT[D])
+  if C = TWall then return 0
+  return 1
+
+' a new maze (display off): all wall, then the C64's depth-first carve from
+' the top-right cell, the way back kept in the cells, dots in every corridor
+sub NewMaze:
+  NewScreen
+  for Ri = 1 to 21
+    fill TWall count 27 at 2,Ri
+  next
+  Gx = CellW * 2 - 1
+  Gy = 1
+  PutCell(Gx, Gy, TDir4)
+nm_carve:
+  Rand
+  Gr = Rs & 3
+  Gk = Gr
+nm_try:
+  X = Gx + GX1[Gk] * 2
+  Y = Gy + GY1[Gk] * 2
+  if X >= 1 and X <= CellW * 2 - 1 and Y >= 1 and Y <= CellH * 2 - 1 then
+    V = CellAt(X, Y)
+    if V = TWall then
+      PutCell(X, Y, TDir0 + Gk)
+      PutCell(Gx + GX1[Gk], Gy + GY1[Gk], TDot)
+      Gx = X
+      Gy = Y
+      goto nm_carve
+    end if
+  end if
+  Gk = (Gk + 1) & 3
+  if Gk <> Gr then goto nm_try
+  ' no way on: back the way we came
+  V = CellAt(Gx, Gy) - TDir0
+  PutCell(Gx, Gy, TDot)
+  if V <> 4 then
+    Gx = Gx - GX1[V] * 2
+    Gy = Gy - GY1[V] * 2
+    goto nm_carve
+  end if
+  return
+end sub
+
+' the race: both start, wait for the stick, step together until one wins
+' (Phase 2 you, Phase 3 the computer)
+sub RunGame:
+  Mv[0].X = (CellW / 2) * 2 + 1
+  Mv[0].Y = CellH + 3
+  Mv[1].X = 1
+  Mv[1].Y = 1
+  for Mi = 0 to 1
+    Mv[Mi].Hd = 0
+    Mv[Mi].Score = 0
+    PutCell(Mv[Mi].X, Mv[Mi].Y, TFloor)
+  next
+  CHd = 2
+  Px8 = 0
+  Left = NDots
+  Want = 0
+  Phase = 0
+  print at 2,22, "READY: MOVE THE STICK"
+  DrawSprites
+  ShowScreen
+  play sound SndReady
+  OldJ = 31
+rg_wait:
+  Frame1
+  ReadStick
+  inc Rs
+  if (J & 15) = 0 then goto rg_wait
+  fill 32 count 28 at 2,22
+  ShowScores
+  Phase = 1
+  Decide
+rg_loop:
+  Frame1
+  ReadStick
+  N = SpeedPix[Speed]
+  if Speed = 0 then N = Tick & 1
+  Si = 0
+  while Si < N
+    inc Si
+    inc Px8
+    if Px8 = 8 then
+      Px8 = 0
+      Arrive
+      if Phase <> 1 then exit while
+      Decide
+    end if
+  end while
+  DrawSprites
+  if Phase = 1 then goto rg_loop
+  return
+end sub
+
+' both finish their step; the computer eats first, then you; the end test
+sub Arrive:
+  Ate = 0
+  for Mi = 0 to 1
+    K = Mv[Mi].Hd
+    if K <> 0 then
+      Mv[Mi].X = Mv[Mi].X + DXT[K]
+      Mv[Mi].Y = Mv[Mi].Y + DYT[K]
+      Mv[Mi].Hd = 0
+    end if
+  next
+  EatAt(1)
+  EatAt(0)
+  ShowScores
+  W16 = Mv[0].Score + Left
+  if Mv[1].Score >= W16 then
+    Phase = 3
+  else
+    W16 = Mv[1].Score + Left
+    if Mv[0].Score >= W16 then Phase = 2
+  end if
+  return
+end sub
+
+sub EatAt(u8 Who):
+  X = Mv[Who].X
+  Y = Mv[Who].Y
+  V = CellAt(X, Y)
+  if V <> TDot then return
+  PutCell(X, Y, TFloor)
+  Mv[Who].Score = Mv[Who].Score + 1
+  dec Left
+  if Who = 0 then
+    play sound SndGulp
+  else
+    play sound SndCgulp
+  end if
+  return
+end sub
+
+sub Decide:
+  CompThink
+  YouThink
+  return
+end sub
+
+' the C64's right-hand rule: by heading, try the right side, then ahead,
+' else turn for a step (heading 1 up, 2 down, 3 right, 4 left)
+sub CompThink:
+  X = Mv[1].X
+  Y = Mv[1].Y
+  select case CHd
+  case 1
+    if IsOpen(X, Y, 3) = 1 then
+      CStep(3)
+    else
+      if IsOpen(X, Y, 1) = 1 then CStep(1) else CHd = 2
+    end if
+  case 2
+    if IsOpen(X, Y, 4) = 1 then
+      CStep(4)
+    else
+      if IsOpen(X, Y, 2) = 1 then CStep(2) else CHd = 1
+    end if
+  case 3
+    if IsOpen(X, Y, 2) = 1 then
+      CStep(2)
+    else
+      if IsOpen(X, Y, 3) = 1 then CStep(3) else CHd = 4
+    end if
+  case 4
+    if IsOpen(X, Y, 1) = 1 then
+      CStep(1)
+    else
+      if IsOpen(X, Y, 4) = 1 then CStep(4) else CHd = 3
+    end if
+  end select
+  return
+end sub
+
+sub CStep(u8 D):
+  Mv[1].Hd = D
+  CHd = D
+  return
+end sub
+
+' the stick now, or a tap made during the last step; up/down first
+sub YouThink:
+  T = J & 15
+  if T = 0 then T = Want
+  Want = 0
+  if T = 0 then return
+  X = Mv[0].X
+  Y = Mv[0].Y
+  K = 0
+  if (T & 1) <> 0 then
+    if IsOpen(X, Y, 1) = 1 then K = 1
+  end if
+  if (T & 2) <> 0 then
+    if IsOpen(X, Y, 2) = 1 then K = 2
+  end if
+  if K = 0 then
+    if (T & 4) <> 0 then
+      if IsOpen(X, Y, 4) = 1 then K = 4
+    end if
+    if (T & 8) <> 0 then
+      if IsOpen(X, Y, 3) = 1 then K = 3
+    end if
+  end if
+  Mv[0].Hd = K
+  if K = 0 then play sound SndBump
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+' a mover's sprite place: its cell plus Px8 pixels along its step
+sub DrawSprites:
+  for Mi = 0 to 1
+    X = Mv[Mi].X * 8 + 16
+    Y = Mv[Mi].Y * 8 + 7
+    select case Mv[Mi].Hd
+    case 1
+      Y = Y - Px8
+    case 2
+      Y = Y + Px8
+    case 3
+      X = X + Px8
+    case 4
+      X = X - Px8
+    end select
+    N = (Tick >> 3) & 1
+    if Mi = 0 then
+      if Mv[0].Hd = 4 then N = 0 else N = 1
+      set sprite 0 to Y,X,SBall0 + N * 4,11
+    else
+      set sprite 1 to Y,X,SStar0 + N * 4,8
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' row 22: your dots, the computer's dots, the dots left
+sub ShowScores:
+  print at 2,22, "YOU"
+  print at 6,22, digits$(Mv[0].Score, 3)
+  print at 11,22, "CPU"
+  print at 15,22, digits$(Mv[1].Score, 3)
+  print at 20,22, "LEFT"
+  print at 25,22, digits$(Left, 3)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub ReadStick:
+  T = 0
+  if joypad(1).up or joypad(2).up then T = T | 1
+  if joypad(1).down or joypad(2).down then T = T | 2
+  if joypad(1).left or joypad(2).left then T = T | 4
+  if joypad(1).right or joypad(2).right then T = T | 8
+  if joypad(1).fire or joypad(2).fire then T = T | 16
+  J = T
+  if (J & 15) <> 0 then Want = J & 15
+  Press = 0
+  if (J & 16) <> 0 then
+    if (OldJ & 16) = 0 then Press = 1
+  end if
+  OldJ = J
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for K = 0 to NSpr - 1
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: MAZE / MASTER in red blocks (the C64 wrote MAZE MASTER over
+' its maze), the speed
+
+' 3 x 5 letters: M A Z E S T R
+data Font3 bytes 5,7,7,5,5, 2,5,7,5,5, 7,1,2,4,7, 7,4,6,4,7, 3,4,2,1,6, 7,2,2,2,2, 6,5,6,5,5
+data Word1 bytes 0,1,2,3
+data Word2 bytes 0,1,4,5,3,6
+
+sub TitlePage:
+  NewScreen
+  ' MAZE: 15 columns from 8 (8-22); MASTER: 23 columns from 4 (4-26)
+  for Ci = 0 to 3
+    BigLetter(Word1[Ci], 8 + Ci * 4, 3)
+  next
+  for Ci = 0 to 5
+    BigLetter(Word2[Ci], 4 + Ci * 4, 9)
+  next
+  print at 3,15, "EAT MORE THAN HALF THE"
+  print at 3,16, "DOTS BEFORE THE STAR DOES."
+  print at 4,19, "LEFT/RIGHT: SPEED"
+  print at 4,21, "BUTTON: START"
+  ShowSpeed
+  set sprite 0 to 39,40,SBall0,11
+  set sprite 1 to 39,200,SStar0,8
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  OldJ = 31
+  Ti = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadStick
+  N = J & (J ^ Ti)
+  Ti = J
+  if (N & 4) <> 0 then
+    if Speed > 0 then dec Speed
+    play sound SndPick
+    ShowSpeed
+  end if
+  if (N & 8) <> 0 then
+    if Speed < 2 then inc Speed
+    play sound SndPick
+    ShowSpeed
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+' one 3 x 5 letter of blocks
+sub BigLetter(u8 L, u8 Cx, u8 Cy):
+  for Ri = 0 to 4
+    K = L * 5 + Ri
+    V = Font3[K]
+    for Mi = 0 to 2
+      T = V & (4 >> Mi)
+      if T <> 0 then put char TBlock at Cx + Mi,Cy + Ri
+    next
+  next
+  return
+end sub
+
+sub ShowSpeed:
+  select case Speed
+  case 0
+    print at 22,19, "SLOW  "
+  case 1
+    print at 22,19, "NORMAL"
+  case 2
+    print at 22,19, "FAST  "
+  end select
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "MAZE MASTER"
+  print at 2,5, "BASED ON MAZE MASTER,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "OCTOBER 1988"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: TWISTING PASSAGES"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+MmGulp:
+    db $40,$6B,$30,$01,$40,$55,$40,$01,$50
+MmCgulp:
+    db $00,$00,$73,$01,$00,$00,$94,$01,$10
+MmBump:
+    db $00,$00,$86,$01,$10
+MmReady:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$08,$50
+MmWin:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$04,$40,$6B,$20,$12
+    db $50
+MmLose:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+MmPick:
+    db $40,$55,$40,$02,$50
+
+MmSoundTable:
+    dw MmTuneMel,$702B
+    dw MmTuneBass,$7035
+    dw MmGulp,$7049
+    dw MmCgulp,$703F
+    dw MmBump,$703F
+    dw MmReady,$7049
+    dw MmWin,$7049
+    dw MmLose,$7049
+    dw MmPick,$7049
+; Twisting Passages (original)
+; Tiny Sound, 8 frames per step
+MmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1F,$01,$1C,$01,$23,$01,$26,$01,$24,$01,$23,$01,$21,$01,$01,$01
+    db $00,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$21,$01,$1F,$01
+    db $1E,$01,$1C,$01,$1E,$01,$1B,$01,$1E,$01,$1C,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+MmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$0C,$01,$13,$01,$0B,$01,$12,$01,$04,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

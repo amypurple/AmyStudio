@@ -1,0 +1,1192 @@
+cartridge "INVESTOR/COMPUTE!'S GAZETTE/1988"
+
+' INVESTOR
+' A ColecoVision game based on "Investor", COMPUTE!'s Gazette, August
+' 1988 (Commodore 64 and 128, BASIC; the listing credits only COMPUTE!
+' Publications). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' The game: one or two investors start with $1,000 each and trade in
+' eleven mutual funds while the market runs against a time limit. Every
+' tick one fund moves 1 to 5 points up or down. A fund that reaches 200
+' splits (your shares double, the price is back to 100); a fund that falls
+' to 0 breaks (your shares in it are lost, the price is back to 100).
+' Each move pays a dividend to the fund's holders: the move's size in
+' percent of the price (whole dollars a share) while the fund is at 100 or
+' above, half a percent of the price below 100. When the time runs out
+' the market closes: cash plus funds at their prices is your net worth.
+' Two players: the higher net worth wins.
+'
+' From the original (orig/investor.bas): the eleven funds and their
+' names, the start at 100 with $1,000 cash, the move (a random fund, 1-5
+' points, up or down half the time each), the split at 200 and the break
+' at 0 (hi and low reset), both dividend rules with the listing's
+' rounding, the time limits (short 3000, medium 5500, long 8000 ticks, one
+' a tick), the market paused while a player trades, 30 ticks taken for
+' leaving the trading screen, the closing table (cash, funds, net worth).
+'
+' Liberties:
+' - Joystick only: no names are typed; player 1 trades with controller 1
+'   and player 2 with controller 2 (one player: either). Funds are picked
+'   with the stick instead of typing their names; right buys and left
+'   sells (hold to go faster: 1, then 10, then 100 shares a step), the
+'   left button buys as many as the cash allows, the right button sells
+'   the whole holding.
+' - A tick every 20 frames (3 a second, about the C64 BASIC's pace).
+' - The screen also shows each player's net worth, and the fund that moved
+'   is marked with an arrow (a star for a split, a cross for a break) and
+'   described on a ticker line (the 64 showed the percentage beside it).
+' - The end names the winner (two players) or the gain or loss (one
+'   player), and a best net worth is kept for one-player games. The 64
+'   only printed the table (and added player 1's funds twice into PA on
+'   a replay: not copied).
+' - Limits the 64's floating point did not need: cash stops at
+'   $999,999,999 and a holding at 1,000,000 shares of a fund.
+' - The 64's fund colours are not kept (the text is one colour here).
+'
+' Amy note: u32 = u32 op u8 is refused (bugs/invest-u32-binop-narrow):
+' the compound forms (*=, /=) are used instead. Comparing two u32
+' locals fails to assemble (bugs/invest-u32-local-compare): globals used.
+'
+' Controls: either controller. Title: up and down choose a line, left and
+' right change the players or the time, a button starts. Market: a button
+' opens the trading screen of that controller's player. Keypad not used.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off after a wait, display off; music first in
+' the sound table, the title tune played once; `set sprite count` given
+' after every `clear sprites`; nothing flashes.
+
+const TUp = 128
+const TDn = 129
+const TSpl = 130
+const TBrk = 131
+const TPtr = 132
+const TRule = 133
+const TLg0 = 134
+const TLg1 = 135
+const TLg2 = 136
+const TLg3 = 137
+const TLg4 = 138
+const TLg5 = 139
+const TLg6 = 140
+const TLg7 = 141
+const TLg8 = 142
+const TLg9 = 143
+const TLg10 = 144
+const TLg11 = 145
+const TLg12 = 146
+const TLg13 = 147
+const TLg14 = 148
+const TLg15 = 149
+const TLg16 = 150
+const TLg17 = 151
+const TLg18 = 152
+const TLg19 = 153
+const TLg20 = 154
+const TLg21 = 155
+const TLg22 = 156
+const TLg23 = 157
+const TLg24 = 158
+const TLg25 = 159
+const TLg26 = 160
+const SCur = 0
+const NTiles8 = 264
+const SprBytes = 32
+const LogoW = 24
+const LogoH = 4
+const LogoCol = 4
+const SndTuneA = 1
+const SndTuneB = 2
+const SndUp = 3
+const SndDown = 4
+const SndSplit = 5
+const SndCrash = 6
+const SndBuy = 7
+const SndSell = 8
+const SndNo = 9
+const SndBell = 10
+const NSpr = 2
+const TickN = 20
+const CashCap = 999999999
+const ShareCap = 1000000
+const ShowFrames = 520
+
+record Fund:
+  u8 Price
+  u8 Hi
+  u8 Lo
+end record
+
+data Names chars
+  "LEISURE    "
+  "AEROSPACE  "
+  "GOLD       "
+  "ENERGY     "
+  "AGRICULTURE"
+  "TECHNOLOGY "
+  "AUTOMOTIVE "
+  "MINERALS   "
+  "CHEMICALS  "
+  "COMPUTERS  "
+  "ELECTRONICS"
+end data
+
+data TimeT words
+  3000, 5500, 8000
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+Fund Fd[11]
+u32 Cash[2]
+u32 Sh[22]
+u32 Best = 0
+u32 Uv = 0
+u32 Ut = 0
+u32 Ua = 0
+u32 Ub = 0
+u32 Wn[2]
+u8 Buf[10]
+u32 Pow[9]
+' Dirty: bit 0 player 1's figures to show again, bit 1 player 2's
+u8 Dirty = 0
+u16 Rs = 1
+u16 Rw = 0
+u16 Tm = 0
+u16 W16 = 0
+u8 NPl = 1
+u8 TmSel = 0
+u8 Menu = 0
+u8 MkT = 0
+' the last move: fund, size, kind (0 up, 1 down, 2 break, 3 split), old fund
+u8 Mv = 255
+u8 Dy = 0
+u8 Ev = 0
+u8 OldMv = 255
+u8 Over = 0
+u8 InMarket = 0
+u8 Trader = 0
+u8 Row = 0
+u8 CurY = 0
+u8 Rep = 0
+u8 Held = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Was1 = 0
+u8 Was2 = 0
+u8 New1 = 0
+u8 New2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Pi = 0
+' scratch
+u8 C = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table IvSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Pow[0] = 100000000
+  Pow[1] = 10000000
+  Pow[2] = 1000000
+  Pow[3] = 100000
+  Pow[4] = 10000
+  Pow[5] = 1000
+  Pow[6] = 100
+  Pow[7] = 10
+  Pow[8] = 1
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+
+  NewGame
+market:
+  InMarket = 1
+  Frame1
+  InMarket = 0
+  ReadPad
+  if New1 > 0 then
+    Trader = 0
+    TradeScreen
+    goto market
+  end if
+  if New2 > 0 then
+    Trader = NPl - 1
+    TradeScreen
+    goto market
+  end if
+  inc MkT
+  if MkT >= TickN then
+    MkT = 0
+    MarketTick
+    ShowMove
+    if Tm = 0 then goto closing
+  else
+    ' the figures that changed, one player a frame
+    if Dirty > 0 then ShowDirty
+  end if
+  goto market
+
+closing:
+  mute all
+  play sound SndBell
+  EndScreen
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the market
+
+sub NewGame:
+  for Fi = 0 to 10
+    Fd[Fi].Price = 100
+    Fd[Fi].Hi = 100
+    Fd[Fi].Lo = 100
+  next
+  for Fi = 0 to 21
+    Sh[Fi] = 0
+  next
+  Cash[0] = 1000
+  Cash[1] = 1000
+  Tm = TimeT[TmSel]
+  Mv = 255
+  OldMv = 255
+  MkT = 0
+  MarketScreen
+  play sound SndBell
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' 510-860: one tick: a random fund moves; a split, a break; the dividend
+sub MarketTick:
+  i16 NewP = 0
+  u8 Div = 0
+  u8 P = 0
+  u8 Ix = 0
+  u8 Pr = 0
+  Rnd16
+  W16 = highbyte Rw
+  W16 = W16 * 11
+  Mv = highbyte W16
+  W16 = lowbyte Rw
+  W16 = W16 * 5
+  Dy = highbyte W16
+  inc Dy
+  Rnd16
+  V = Rw & 1
+  NewP = Fd[Mv].Price
+  if V = 0 then
+    NewP = NewP + Dy
+    Ev = 0
+  else
+    NewP = NewP - Dy
+    Ev = 1
+  end if
+  if NewP <= 0 then
+    ' a break: the holdings are lost
+    Ev = 2
+    NewP = 100
+    for P = 0 to 1
+      Ix = P * 11 + Mv
+      Sh[Ix] = 0
+    next
+  end if
+  if NewP >= 200 then
+    ' a split: the holdings double
+    Ev = 3
+    NewP = 100
+    for P = 0 to 1
+      Ix = P * 11 + Mv
+      Sh[Ix] = Sh[Ix] + Sh[Ix]
+      if Sh[Ix] > ShareCap then Sh[Ix] = ShareCap
+    next
+  end if
+  Pr = NewP
+  Fd[Mv].Price = Pr
+  if Ev >= 2 then
+    Fd[Mv].Hi = 100
+    Fd[Mv].Lo = 100
+  end if
+  if Pr > Fd[Mv].Hi then Fd[Mv].Hi = Pr
+  if Pr < Fd[Mv].Lo then Fd[Mv].Lo = Pr
+  ' the dividend: INT(Y * .01 * A) a share at 100 or above,
+  ' INT(.005 * A * shares) below
+  Div = DivShare(Dy, Pr)
+  for P = 0 to 1
+    Ix = P * 11 + Mv
+    Ut = Sh[Ix]
+    if Ut > 0 then
+      if Pr < 100 then
+        Ut *= Pr
+        Ut = Ut / 200
+      else
+        Ut *= Div
+      end if
+      Uv = Cash[P] + Ut
+      if Uv > CashCap then Uv = CashCap
+      Cash[P] = Uv
+      if Sh[Ix] > 0 then Dirty = Dirty | (P + 1)
+    end if
+  next
+  ' 1570: the clock
+  if Tm > 0 then dec Tm
+  return
+end sub
+
+function DivShare(u8 Sz, u8 Px) as u8
+  u16 T = 0
+  T = Sz * Px
+  T = T / 100
+  return T
+
+' Worth: cash + every holding at its price
+function Worth(u8 P) as u32
+  u32 Tot = 0
+  u32 One = 0
+  u8 F = 0
+  u8 Ix = 0
+  Tot = Cash[P]
+  for F = 0 to 10
+    Ix = P * 11 + F
+    One = Sh[Ix]
+    One *= Fd[F].Price
+    Tot = Tot + One
+  next
+  return Tot
+
+sub MarketScreen:
+  NewScreen
+  print at 2,1, "INVESTOR"
+  print at 19,1, "TIME"
+  print at 2,3, "FUND"
+  print at 14,3, "NOW"
+  print at 18,3, "CHG"
+  print at 23,3, "HI"
+  print at 27,3, "LO"
+  fill TRule count 28 at 2,4
+  for Fi = 0 to 10
+    DrawFund
+  next
+  fill TRule count 28 at 2,16
+  print at 5,19, "CASH"
+  print at 17,19, "NET WORTH"
+  print at 2,20, "P1"
+  if NPl = 2 then
+    print at 2,21, "P2"
+    print at 2,22, "BUTTON: TRADE (PAD 1/PAD 2)"
+  else
+    print at 2,22, "PRESS A BUTTON TO TRADE"
+  end if
+  ShowTime
+  ShowCash
+  ShowScreen
+  return
+end sub
+
+' one fund's row (Fi): name, price, change since 100, hi, low, marker
+sub DrawFund:
+  u8 Pr = 0
+  u8 Cg = 0
+  Y = Fi + 5
+  put Names + Fi * 11 count 11 at 2,Y
+  Pr = Fd[Fi].Price
+  print at 14,Y, width$(Pr, 3)
+  if Pr >= 100 then
+    Cg = Pr - 100
+    if Cg = 0 then
+      print at 18,Y, "  0"
+    else
+      print at 18,Y, "+", digits$(Cg, 2)
+    end if
+  else
+    Cg = 100 - Pr
+    print at 18,Y, "-", digits$(Cg, 2)
+  end if
+  V = Fd[Fi].Hi
+  print at 22,Y, width$(V, 3)
+  V = Fd[Fi].Lo
+  print at 26,Y, width$(V, 3)
+  C = 32
+  if Fi = Mv then
+    select case Ev
+    case 0
+      C = TUp
+    case 1
+      C = TDn
+    case 2
+      C = TBrk
+    case else
+      C = TSpl
+    end select
+  end if
+  put char C at 29,Y
+  return
+end sub
+
+' after a tick: the old fund's marker off, the new fund's row, the ticker
+sub ShowMove:
+  if OldMv < 11 then
+    if OldMv <> Mv then
+      Y = OldMv + 5
+      put char 32 at 29,Y
+    end if
+  end if
+  Fi = Mv
+  DrawFund
+  OldMv = Mv
+  put Names + Mv * 11 count 11 at 2,17
+  select case Ev
+  case 0
+    print at 14,17, "UP ", digits$(Dy, 1), "  "
+    play sound SndUp
+  case 1
+    print at 14,17, "DOWN ", digits$(Dy, 1)
+    play sound SndDown
+  case 2
+    print at 14,17, "BREAK!"
+    play sound SndCrash
+  case 3
+    print at 14,17, "SPLIT!"
+    play sound SndSplit
+  end select
+  if Fd[Mv].Price < 100 then
+    print at 21,17, " DIV .5%"
+  else
+    print at 21,17, " DIV ", digits$(Dy, 1), "% "
+  end if
+  ShowTime
+  return
+end sub
+
+sub ShowTime:
+  print at 24,1, width$(Tm, 4)
+  return
+end sub
+
+sub ShowDirty:
+  if Dirty & 1 then
+    Pi = 0
+    Dirty = Dirty & 2
+  else
+    Pi = 1
+    Dirty = 0
+  end if
+  ShowOne
+  return
+end sub
+
+sub ShowOne:
+  if Pi < NPl then
+    Y = Pi + 20
+    Uv = Cash[Pi]
+    PutMoney(4, Y)
+    Uv = Worth(Pi)
+    PutMoney(17, Y)
+  end if
+  return
+end sub
+
+sub ShowCash:
+  for Pi = 0 to 1
+    if Pi < NPl then
+      Y = Pi + 20
+      Uv = Cash[Pi]
+      PutMoney(4, Y)
+      Uv = Worth(Pi)
+      PutMoney(17, Y)
+    end if
+  next
+  return
+end sub
+
+' Digits: Uv (at most 999,999,999) into Buf[1..9] as digits by
+' subtracting powers of ten (no u32 division: format was too slow for a
+' tick), leading zeros as spaces; Buf[0] a space
+sub Digits:
+  u8 D = 0
+  u8 Lead = 1
+  Buf[0] = 32
+  for K = 0 to 8
+    D = 48
+    while Uv >= Pow[K]
+      Uv = Uv - Pow[K]
+      inc D
+    end while
+    if D <> 48 then Lead = 0
+    if K = 8 then Lead = 0
+    if Lead = 1 then D = 32
+    Buf[K + 1] = D
+  next
+  return
+end sub
+
+' PutMoney: Uv as "$" and up to 9 digits, right-aligned in 10 columns
+sub PutMoney(u8 Cx, u8 Cy):
+  u8 N = 0
+  Digits
+  N = 1
+  while Buf[N] = 32
+    inc N
+  end while
+  Buf[N - 1] = 36
+  put Buf count 10 at Cx,Cy
+  return
+end sub
+
+' PutShares: Uv right-aligned in 7 columns
+sub PutShares(u8 Cx, u8 Cy):
+  Digits
+  put Buf + 3 count 7 at Cx,Cy
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' 930-1560: the trading screen of player Trader
+
+sub TradeScreen:
+  play sound SndBell
+  NewScreen
+  print at 2,1, "PLAYER"
+  V = Trader + 1
+  print at 9,1, digits$(V, 1)
+  print at 11,1, "TRADING"
+  print at 2,2, "CASH"
+  print at 3,4, "FUND"
+  print at 15,4, "PRICE"
+  print at 22,4, "OWNED"
+  for Fi = 0 to 10
+    Y = Fi + 5
+    put Names + Fi * 11 count 11 at 3,Y
+    V = Fd[Fi].Price
+    print at 15,Y, width$(V, 3)
+    ShowOwned
+  next
+  print at 3,16, "BACK TO MARKET"
+  print at 2,18, "RIGHT: BUY    LEFT: SELL"
+  print at 2,19, "HOLD THE STICK: FASTER"
+  print at 2,20, "LEFT BUTTON: BUY MAX"
+  print at 2,21, "RIGHT BUTTON: SELL ALL"
+  print at 2,22, "LEAVING COSTS 30 TIME"
+  ShowTradeCash
+  Row = 11
+  CurY = Row * 8 + 39
+  ShowCursor
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Rep = 0
+  Held = 0
+ts_loop:
+  Frame1
+  ReadPad
+  TradeInput
+  ShowCursor
+  if Row <> 11 then goto ts_loop
+  if Held = 0 then goto ts_loop
+  ' leaving: 30 ticks (line 1230)
+  if Tm > 30 then
+    Tm = Tm - 30
+  else
+    Tm = 1
+  end if
+  HideSprites
+  MarketScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the stick and buttons of the trading player (Held: a button on BACK)
+sub TradeInput:
+  u8 Pad = 0
+  u8 St = 0
+  u8 Nw = 0
+  Held = 0
+  if NPl = 1 then
+    Pad = J1 | J2
+    Nw = New1 | New2
+  else
+    if Trader = 0 then
+      Pad = J1
+      Nw = New1
+    else
+      Pad = J2
+      Nw = New2
+    end if
+  end if
+  St = Pad & 15
+  ' up and down: a new push moves at once, a held one every 8 frames
+  if St <> WasStick then
+    Rep = 0
+  else
+    inc Rep
+  end if
+  V = 0
+  if St <> WasStick then V = 1
+  if Rep >= 8 then
+    K = Rep & 7
+    if K = 0 then V = 1
+  end if
+  WasStick = St
+  if V = 1 then
+    K = St & 1
+    if K > 0 then
+      if Row > 0 then dec Row
+    end if
+    K = St & 2
+    if K > 0 then
+      if Row < 11 then inc Row
+    end if
+    if Row < 11 then
+      K = St & 8
+      if K > 0 then TradeBuy(StepSize)
+      K = St & 4
+      if K > 0 then TradeSell(StepSize)
+    end if
+  end if
+  if Nw > 0 then
+    if Row = 11 then
+      Held = 1
+    else
+      K = Nw & 16
+      if K > 0 then TradeBuy(255)
+      K = Nw & 32
+      if K > 0 then TradeSell(255)
+    end if
+  end if
+  return
+end sub
+
+' shares a step while the stick is held: 1, after 2 seconds 10, after 4 100
+function StepSize as u8
+  u8 S = 1
+  if Rep >= 120 then S = 10
+  if Rep >= 240 then S = 100
+  return S
+
+' TradeBuy(N): N shares of fund Row (255: as many as the cash allows)
+sub TradeBuy(u8 N):
+  u8 Ix = 0
+  u8 Pr = 0
+  Ix = Trader * 11 + Row
+  Pr = Fd[Row].Price
+  Ua = Cash[Trader]
+  Ua /= Pr
+  Ub = ShareCap - Sh[Ix]
+  if Ua > Ub then Ua = Ub
+  Ub = N
+  if N = 255 then Ub = Ua
+  if Ub > Ua then Ub = Ua
+  if Ub = 0 then
+    play sound SndNo
+  else
+    Sh[Ix] = Sh[Ix] + Ub
+    Ub *= Pr
+    Cash[Trader] = Cash[Trader] - Ub
+    play sound SndBuy
+    Fi = Row
+    ShowOwned
+    ShowTradeCash
+  end if
+  return
+end sub
+
+' TradeSell(N): N shares of fund Row (255: all of them)
+sub TradeSell(u8 N):
+  u8 Ix = 0
+  u8 Pr = 0
+  Ix = Trader * 11 + Row
+  Pr = Fd[Row].Price
+  Ua = Sh[Ix]
+  Ub = N
+  if N = 255 then Ub = Ua
+  if Ub > Ua then Ub = Ua
+  if Ub = 0 then
+    play sound SndNo
+  else
+    Sh[Ix] = Ua - Ub
+    Ub *= Pr
+    Uv = Cash[Trader] + Ub
+    if Uv > CashCap then Uv = CashCap
+    Cash[Trader] = Uv
+    play sound SndSell
+    Fi = Row
+    ShowOwned
+    ShowTradeCash
+  end if
+  return
+end sub
+
+sub ShowOwned:
+  Y = Fi + 5
+  I = Trader * 11 + Fi
+  Uv = Sh[I]
+  PutShares(20, Y)
+  return
+end sub
+
+sub ShowTradeCash:
+  Uv = Cash[Trader]
+  PutMoney(7, 2)
+  return
+end sub
+
+' the cursor glides to the chosen row
+sub ShowCursor:
+  V = Row * 8 + 39
+  if CurY < V then
+    CurY = CurY + 2
+    if CurY > V then CurY = V
+  end if
+  if CurY > V then
+    CurY = CurY - 2
+    if CurY < V then CurY = V
+  end if
+  set sprite 0 to CurY,16,SCur,11
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' 1610-1800: the market closes
+
+sub EndScreen:
+  NewScreen
+  print at 9,2, "MARKET CLOSES"
+  print at 8,4, "FINAL STATISTICS"
+  for Pi = 0 to 1
+    Wn[Pi] = 0
+    if Pi < NPl then
+      Y = Pi * 5 + 7
+      print at 4,Y, "PLAYER"
+      V = Pi + 1
+      print at 11,Y, digits$(V, 1)
+      inc Y
+      print at 4,Y, "CASH"
+      Uv = Cash[Pi]
+      PutMoney(16, Y)
+      inc Y
+      print at 4,Y, "FUNDS"
+      Wn[Pi] = Worth(Pi)
+      Uv = Wn[Pi] - Cash[Pi]
+      PutMoney(16, Y)
+      inc Y
+      print at 4,Y, "NET WORTH"
+      Uv = Wn[Pi]
+      PutMoney(16, Y)
+    end if
+  next
+  if NPl = 2 then
+    if Wn[0] > Wn[1] then print at 8,19, "PLAYER 1 WINS!"
+    if Wn[1] > Wn[0] then print at 8,19, "PLAYER 2 WINS!"
+    if Wn[1] = Wn[0] then print at 9,19, "A DEAD HEAT!"
+  else
+    if Wn[0] >= 1000 then
+      Uv = Wn[0] - 1000
+      print at 4,14, "YOU GAINED"
+    else
+      Uv = 1000 - Wn[0]
+      print at 4,14, "YOU LOST"
+    end if
+    PutMoney(16, 14)
+    if Wn[0] > Best then
+      Best = Wn[0]
+      print at 10,19, "NEW BEST!"
+    end if
+  end if
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+' Rnd16: a 16-bit xorshift (7 9 8) in Rw
+sub Rnd16:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  Rw = Rs
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: J1, J2 the pads (1 up, 2 down, 4 left, 8 right, 16 left
+' button, 32 right button); New1, New2 the buttons newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 & 48
+  New1 = V & ~Was1
+  Was1 = V
+  V = J2 & 48
+  New2 = V & ~Was2
+  Was2 = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo, the menu (players, time, start, credits)
+sub TitlePage:
+  NewScreen
+  print at 12,1, "INVESTOR"
+  for I = 0 to 3
+    Y = I + 3
+    put LogoMap + I * LogoW count LogoW at LogoCol,Y
+  next
+  print at 2,8, "COMPUTE!'S GAZETTE AUG 1988"
+  print at 6,11, "PLAYERS"
+  print at 6,13, "TIME"
+  print at 6,15, "START TRADING"
+  print at 6,17, "CREDITS"
+  if Best > 0 then
+    print at 4,20, "BEST"
+    Uv = Best
+    PutMoney(9, 20)
+  end if
+  print at 2,22, "STICK: CHOOSE  BUTTON: GO"
+  Menu = 2
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = ShowFrames
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V <> WasStick then
+    K = V & 1
+    if K > 0 then
+      if Menu > 0 then dec Menu
+    end if
+    K = V & 2
+    if K > 0 then
+      if Menu < 3 then inc Menu
+    end if
+    K = V & 12
+    if K > 0 then
+      if Menu = 0 then NPl = 3 - NPl
+      if Menu = 1 then
+        K = V & 8
+        if K > 0 then
+          inc TmSel
+          if TmSel > 2 then TmSel = 0
+        else
+          if TmSel = 0 then
+            TmSel = 2
+          else
+            dec TmSel
+          end if
+        end if
+      end if
+    end if
+    ShowMenu
+  end if
+  WasStick = V
+  V = New1 | New2
+  if V = 0 then goto tp_loop
+  if Menu < 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  W16 = W16 << 8
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for I = 0 to 3
+    Y = I * 2 + 11
+    C = 32
+    if I = Menu then C = TPtr
+    put char C at 4,Y
+  next
+  print at 16,11, digits$(NPl, 1)
+  select case TmSel
+  case 0
+    print at 16,13, "SHORT "
+  case 1
+    print at 16,13, "MEDIUM"
+  case else
+    print at 16,13, "LONG  "
+  end select
+  W16 = TimeT[TmSel]
+  print at 23,13, width$(W16, 4)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "INVESTOR"
+  print at 2,5, "BASED ON INVESTOR,"
+  print at 2,6, "COMPUTE!'S GAZETTE, AUGUST"
+  print at 2,7, "1988 (COMMODORE 64 AND 128),"
+  print at 2,8, "COPYRIGHT COMPUTE!"
+  print at 2,9, "PUBLICATIONS, INC."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: TICKER TAPE RAG"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $10,$38,$83,$01,$38,$38,$38,$00
+  $38,$38,$38,$01,$83,$38,$10,$00
+  $10,$10,$01,$83,$38,$93,$44,$00
+  $82,$44,$28,$10,$28,$44,$82,$00
+  $40,$60,$70,$87,$70,$60,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$00,$10,$10
+  $00,$00,$00,$80,$00,$10,$10,$C3
+  $00,$00,$00,$80,$00,$10,$10,$C3
+  $00,$00,$10,$10,$C3,$C3,$C3,$C3
+  $00,$00,$10,$10,$C3,$C3,$C3,$C3
+  $00,$10,$10,$C3,$C3,$10,$10,$00
+  $00,$00,$00,$10,$10,$C3,$C3,$C3
+  $10,$10,$C3,$C3,$C3,$C3,$10,$10
+  $10,$10,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$10,$10,$00
+  $C3,$10,$10,$80,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$10,$10,$00,$00
+  $C3,$C3,$C3,$C3,$10,$10,$00,$00
+  $10,$10,$00,$80,$00,$00,$00,$00
+  $10,$10,$00,$80,$00,$00,$00,$00
+  $00,$00,$00,$80,$00,$00,$00,$10
+  $00,$00,$00,$80,$10,$10,$C3,$C3
+  $00,$00,$00,$80,$10,$10,$C3,$C3
+  $00,$00,$10,$10,$C3,$C3,$10,$10
+  $00,$10,$10,$C3,$C3,$C3,$10,$10
+  $C3,$C3,$10,$10,$00,$00,$00,$00
+  $C3,$C3,$10,$10,$00,$00,$00,$00
+  $C3,$10,$10,$80,$00,$00,$00,$00
+  $10,$C3,$C3,$C3,$C3,$C3,$10,$10
+  $C3,$C3,$C3,$10,$10,$00,$00,$00
+  $C3,$C3,$C3,$10,$10,$00,$00,$00
+end data
+data TileCol bytes
+  $30,$30,$03,$03,$30,$30,$30,$00
+  $80,$80,$80,$08,$08,$80,$80,$00
+  $B0,$B0,$0B,$0B,$B0,$0B,$B0,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $B0,$B0,$B0,$0B,$B0,$B0,$B0,$00
+  $00,$00,$00,$00,$00,$00,$05,$00
+  $00,$00,$00,$E0,$00,$00,$00,$00
+  $00,$00,$00,$E0,$00,$00,$30,$30
+  $00,$00,$00,$E0,$00,$30,$30,$03
+  $00,$00,$00,$E0,$00,$80,$80,$08
+  $00,$00,$30,$30,$03,$03,$03,$03
+  $00,$00,$80,$80,$08,$08,$08,$08
+  $00,$30,$30,$03,$03,$30,$30,$00
+  $00,$00,$00,$30,$30,$03,$03,$03
+  $30,$30,$03,$03,$03,$03,$30,$30
+  $80,$80,$08,$08,$08,$08,$08,$08
+  $03,$03,$03,$03,$03,$30,$30,$00
+  $03,$30,$30,$E0,$00,$00,$00,$00
+  $08,$08,$08,$08,$80,$80,$00,$00
+  $03,$03,$03,$03,$30,$30,$00,$00
+  $80,$80,$00,$E0,$00,$00,$00,$00
+  $30,$30,$00,$E0,$00,$00,$00,$00
+  $00,$00,$00,$E0,$00,$00,$00,$30
+  $00,$00,$00,$E0,$30,$30,$03,$03
+  $00,$00,$00,$E0,$80,$80,$08,$08
+  $00,$00,$30,$30,$03,$03,$30,$30
+  $00,$30,$30,$03,$03,$03,$30,$30
+  $08,$08,$80,$80,$00,$00,$00,$00
+  $03,$03,$30,$30,$00,$00,$00,$00
+  $08,$80,$80,$E0,$00,$00,$00,$00
+  $30,$03,$03,$03,$03,$03,$30,$30
+  $08,$08,$08,$80,$80,$00,$00,$00
+  $03,$03,$03,$30,$30,$00,$00,$00
+end data
+data SpritePat bytes
+  $00,$00,$00,$C0,$E0,$F0,$F8,$FC,$F8,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data LogoMap bytes
+  134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 135, 136, 137, 135, 138, 139, 138, 140
+  134, 134, 134, 134, 134, 134, 134, 134, 136, 137, 138, 139, 141, 142, 143, 138, 144, 145, 146, 147, 145, 148, 149, 134
+  150, 151, 152, 141, 153, 139, 141, 154, 147, 155, 156, 157, 145, 134, 148, 149, 134, 134, 134, 134, 134, 134, 134, 134
+  158, 156, 159, 160, 134, 155, 156, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134, 134
+end data
+
+asm {
+IvUp:
+    db $40,$6B,$50,$02,$40,$55,$60,$02,$50
+IvDown:
+    db $40,$D6,$50,$02,$40,$1D,$61,$02,$50
+IvSplit:
+    db $40,$8F,$10,$04,$40,$71,$10,$04,$40,$5F,$10,$04,$40,$47,$20,$0A,$50
+IvCrash:
+    db $00,$00,$05,$04,$00,$00,$26,$08,$00,$00,$56,$0C,$10
+IvBuy:
+    db $40,$47,$20,$02,$50
+IvSell:
+    db $40,$7F,$20,$02,$50
+IvNo:
+    db $40,$EA,$22,$06,$40,$1F,$33,$06,$50
+IvBell:
+    db $40,$55,$00,$06,$40,$55,$20,$08,$40,$55,$40,$0A,$40,$55,$70,$0E,$50
+
+IvSoundTable:
+    dw IvTuneMel,$702B
+    dw IvTuneBass,$7035
+    dw IvUp,$7049
+    dw IvDown,$7049
+    dw IvSplit,$7049
+    dw IvCrash,$703F
+    dw IvBuy,$7049
+    dw IvSell,$7049
+    dw IvNo,$7049
+    dw IvBell,$7049
+; Ticker Tape Rag (original)
+; Tiny Sound, 8 frames per step
+IvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1F,$01,$1A,$01,$1F,$01,$23,$01,$26,$01
+    db $23,$01,$01,$01,$24,$01,$21,$01,$1C,$01,$21,$01,$24,$01,$28,$01
+    db $24,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$2A,$01,$28,$01,$26,$01
+    db $23,$01,$1F,$01,$21,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+IvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$13,$01,$0E,$01,$07,$01,$0E,$01
+    db $0B,$01,$0E,$01,$09,$01,$10,$01,$15,$01,$10,$01,$0E,$01,$15,$01
+    db $12,$01,$15,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$0C,$01,$13,$01
+    db $10,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

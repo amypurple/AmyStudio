@@ -162,6 +162,27 @@ export function handleSelectCaseStatement({
     lines.push(`${currentSelect.nextTestLabel}:`);
     const nextTestLabel = makeGeneratedLabel("CaseNext");
 
+    const relationalCase = valueTokens.length === 1
+      ? valueTokens[0].match(/^is\s*(<=|>=|<>|!=|=|<|>)\s*(.+)$/i)
+      : null;
+    if (relationalCase) {
+      const inverse = new Map([
+        ["<", ">="], ["<=", ">"], [">", "<="], [">=", "<"],
+        ["=", "!="], ["!=", "=="], ["<>", "=="]
+      ]).get(relationalCase[1]);
+      const valueToken = normalizeExpression(relationalCase[2]);
+      const failCode = valueToken && emitCompareGoto(currentSelect.exprToken, inverse, valueToken, nextTestLabel);
+      if (!failCode) {
+        return { ok: false, handled: true, log: `Unsupported relational case in select case block: ${rawLine}` };
+      }
+      lines.push(...failCode);
+      currentSelect.nextTestLabel = nextTestLabel;
+      currentSelect.hasCase = true;
+      currentSelect.activeBody = true;
+      currentSelect.exprPreloaded = comparePreservesAccumulator(failCode);
+      return { ok: true, handled: true, lines };
+    }
+
     const isSingleValue = valueTokens.length === 1 && !valueTokens[0].match(/^.+\s+to\s+.+$/i);
     if (isSingleValue && emitSelectCaseEqGoto) {
       // Inverted condition: skip to next case on mismatch, fall through to body on match.

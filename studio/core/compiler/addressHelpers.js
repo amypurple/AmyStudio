@@ -187,9 +187,15 @@ export function createAddressHelpers(ctx) {
         "    ex de,hl"
       ];
     }
-    const rawAddress = rawTarget.match(/^vram\s+(\$[0-9A-Fa-f]+|[0-9]+)$/i);
+    const rawAddress = rawTarget.match(/^vram\s+(\$[0-9A-Fa-f]+|[0-9]+)(?:\s*\+\s*(.+))?$/i);
     if (rawAddress) {
-      return [`    ld de,${symbolOrValue(rawAddress[1])}`];
+      if (!rawAddress[2]) return [`    ld de,${symbolOrValue(rawAddress[1])}`];
+      const offsetToken = normalizeExpression(rawAddress[2]);
+      const constantOffset = constantVramOffsetExpression(offsetToken);
+      if (constantOffset !== null) return [`    ld de,${symbolOrValue(rawAddress[1])} + ${constantOffset}`];
+      const loadOffset = emitLoadInt16IntoHL(offsetToken, "u16");
+      if (!loadOffset) return null;
+      return [...loadOffset, `    ld de,${symbolOrValue(rawAddress[1])}`, "    add hl,de", "    ex de,hl"];
     }
     return null;
   }
@@ -245,9 +251,15 @@ export function createAddressHelpers(ctx) {
         "    add hl,de"
       ];
     }
-    const rawAddress = rawTarget.match(/^vram\s+(\$[0-9A-Fa-f]+|[0-9]+)$/i);
+    const rawAddress = rawTarget.match(/^vram\s+(\$[0-9A-Fa-f]+|[0-9]+)(?:\s*\+\s*(.+))?$/i);
     if (rawAddress) {
-      return [`    ld hl,${symbolOrValue(rawAddress[1])}`];
+      if (!rawAddress[2]) return [`    ld hl,${symbolOrValue(rawAddress[1])}`];
+      const offsetToken = normalizeExpression(rawAddress[2]);
+      const constantOffset = constantVramOffsetExpression(offsetToken);
+      if (constantOffset !== null) return [`    ld hl,${symbolOrValue(rawAddress[1])} + ${constantOffset}`];
+      const loadOffset = emitLoadInt16IntoHL(offsetToken, "u16");
+      if (!loadOffset) return null;
+      return [...loadOffset, `    ld de,${symbolOrValue(rawAddress[1])}`, "    add hl,de"];
     }
     return null;
   }

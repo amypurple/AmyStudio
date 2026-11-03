@@ -1044,7 +1044,18 @@ export function createRuntimeValueHelpers({
         if (!address) return null;
         return [`    ld hl,${address}`, "    push hl"];
       }
-      const loadArg = emitLoadInt16IntoHL(token, declaredType);
+      let loadArg = emitLoadInt16IntoHL(token, declaredType);
+      if (!loadArg && resolveValueType(token) === "int8") {
+        const loadByte = emitLoadInt8Into("a", token);
+        if (loadByte) {
+          const sourceSigned = isSignedDeclaredType(resolveDeclaredValueType(token));
+          loadArg = [
+            ...loadByte,
+            "    ld l,a",
+            ...(sourceSigned ? ["    add a,a", "    sbc a,a", "    ld h,a"] : ["    ld h,0"])
+          ];
+        }
+      }
       if (!loadArg) return null;
       return [...loadArg, "    push hl"];
     }

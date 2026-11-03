@@ -1,0 +1,688 @@
+' PREDICTOR
+' From COMPUTE!'s Gazette, June 1986 (issue 36, page 58; the listing and
+' the disk name no author), for the Commodore 64 and VIC-20 (a BASIC
+' loader that POKEs an 805-byte machine-language program to $C000).
+' ColecoVision version in Amy by Claude (an AI made by Anthropic) for
+' Amy Studio, 2026. Rules from the C64 machine code (orig/predict.dis),
+' checked by running it in jsc64 (orig/c64run-predict.mjs).
+'
+' The game is matching pennies against a machine that learns. Before each
+' move the computer makes its prediction, LEFT or RIGHT. You then make
+' your move. If the prediction matches, the computer scores; if not, you
+' do. First to 100 wins.
+' How it predicts (the C64's code, kept exactly): it remembers your last
+' four moves (a 4-bit history, 16 situations). Each situation has a
+' counter that starts at 127 or 128 (127 in even situations, 128 in odd);
+' a move to the left counts it down, to the right up. It predicts RIGHT
+' when the counter is 128 or more. The counters live on from game to game
+' (the C64 kept them until the program was loaded again); here they start
+' afresh when the console is switched on.
+'
+' Controls: push the joystick left or right (either controller) and let it
+' come back to the middle before the next move (the C64 waited for the
+' key to be let go). The buttons start the game from the title.
+'
+' Liberties taken:
+' - Joystick left/right for the C64's left-arrow and DEL keys.
+' - The counters stop at 0 and 255. The C64's wrapped round (255 + 1 = 0),
+'   so a player who pressed one key some 128 times in a row (easily done
+'   over two games, as the counters were kept) turned the prediction round
+'   and then won 128 rounds in a row by pressing the same key: repeating one
+'   move could beat it. Now repeating one move always loses.
+' - "ANOTHER GAME (Y/N)?" is gone: the result stays until a button is
+'   pressed (30 seconds at most), then the title.
+' - Added: a strip of the last 14 rounds (your move's arrow, red when you
+'   scored, blue when the computer guessed it), a line telling what
+'   happened, a title page with the rules, a credits page and a title tune
+'   ("Heads or Tails", newly composed); the C64's two blips are Tiny Sound
+'   effects (a note when you score, a noise when it guesses you), plus a
+'   fanfare at the end.
+' - The pads are 3 x 3 tile arrows (the C64's were 3 x 2 coloured boxes),
+'   red for your move and blue for the computer's prediction as on the C64.
+'
+' House rules kept: joystick only, text in columns 2-29 and rows 1-22, no
+' sprites, every screen drawn with the NMI off after a wait.
+
+const TPdl00 = 128
+const TPdl01 = 129
+const TPdl02 = 130
+const TPdl10 = 131
+const TPdl11 = 132
+const TPdl12 = 133
+const TPdl20 = 134
+const TPdl21 = 135
+const TPdl22 = 136
+const TPdr00 = 137
+const TPdr01 = 138
+const TPdr02 = 139
+const TPdr10 = 140
+const TPdr11 = 141
+const TPdr12 = 142
+const TPdr20 = 143
+const TPdr21 = 144
+const TPdr22 = 145
+const TPrl00 = 146
+const TPrl01 = 147
+const TPrl02 = 148
+const TPrl10 = 149
+const TPrl11 = 150
+const TPrl12 = 151
+const TPrl20 = 152
+const TPrl21 = 153
+const TPrl22 = 154
+const TPrr00 = 155
+const TPrr01 = 156
+const TPrr02 = 157
+const TPrr10 = 158
+const TPrr11 = 159
+const TPrr12 = 160
+const TPrr20 = 161
+const TPrr21 = 162
+const TPrr22 = 163
+const TPbl00 = 164
+const TPbl01 = 165
+const TPbl02 = 166
+const TPbl10 = 167
+const TPbl11 = 168
+const TPbl12 = 169
+const TPbl20 = 170
+const TPbl21 = 171
+const TPbl22 = 172
+const TPbr00 = 173
+const TPbr01 = 174
+const TPbr02 = 175
+const TPbr10 = 176
+const TPbr11 = 177
+const TPbr12 = 178
+const TPbr20 = 179
+const TPbr21 = 180
+const TPbr22 = 181
+const TRule = 182
+const THrl = 183
+const THrr = 184
+const THbl = 185
+const THbr = 186
+const THdot = 187
+const TLr = 188
+const TLb = 189
+const SNone = 0
+const NTiles8 = 496
+const SprBytes = 32
+const LogoX = 2
+const LogoW = 27
+const SndTuneA = 1
+const SndTuneB = 2
+const SndYou = 3
+const SndCpu = 4
+const SndTick = 5
+const SndWin = 6
+const SndLose = 7
+
+const WinAt = 100
+const HistLen = 14
+const HistX = 9
+const HistY = 13
+const PadLX = 5
+const PadRX = 24
+const PadPY = 3
+const PadCY = 17
+
+record Side:
+  u8 Wins
+  bcd digits 3 Shown
+end record
+
+' the C64's table at $C003 (16 counters) and history at $C013
+u8 Tbl[16]
+u8 Hist = 0
+u8 Learned = 0
+Side Sides[2]
+' the last rounds strip: tile codes, the oldest first
+u8 Strip[14]
+' the round just played: Mv your move, Pred its prediction (0 left, 1 right),
+' Who 0 you scored, 1 it scored
+u8 Mv = 0
+u8 Pred = 0
+u8 Who = 0
+u16 Rounds = 0
+' for the test bot: 7 credits, 8 title, 1 waiting for a move, 6 game over
+u8 Ph = 0
+u8 Tick = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Centred = 0
+u8 I = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PdSoundTable areas 4
+  nmi off
+  screen on
+  ResetTable
+
+  ' the credits page (once, after the console's logo)
+  Ph = 7
+  TextScreen
+  backdrop black
+  DrawLogo(2)
+  print at 4,9, "FROM COMPUTE!'S GAZETTE"
+  print at 7,10, "JUNE 1986, PAGE 58"
+  print at 3,11, "FOR THE COMMODORE 64 AND"
+  print at 3,12, "VIC-20 (NO AUTHOR NAMED)"
+  print at 3,15, "COLECOVISION VERSION BY"
+  print at 3,16, "CLAUDE (AN AI MADE BY"
+  print at 3,17, "ANTHROPIC) FOR AMY STUDIO"
+  print at 3,18, "2026. NEW MUSIC: HEADS"
+  print at 3,19, "OR TAILS."
+  print at 5,21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+
+title:
+  Ph = 8
+  TextScreen
+  backdrop black
+  DrawLogo(2)
+  print at 3,9, "MATCHING PENNIES WITH A"
+  print at 3,10, "COMPUTER THAT LEARNS."
+  print at 3,12, "IT PREDICTS YOUR MOVE,"
+  print at 3,13, "THEN YOU PUSH THE STICK"
+  print at 3,14, "LEFT OR RIGHT. IF IT WAS"
+  print at 3,15, "RIGHT, IT SCORES. IF NOT,"
+  print at 3,16, "YOU DO. FIRST TO 100 WINS."
+  print at 5,20, "PRESS A BUTTON TO PLAY"
+  ShowScreen
+  play song PdSong once
+  WaitPress
+  mute all
+  play sound SndTick
+
+  ' a new game: the scores, not the counters (the C64 kept them)
+  NewGame
+  DrawPlay
+  Ph = 1
+  Centred = 0
+
+turn:
+  ' the prediction is made before the move (C64 $C1CF)
+  Pred = Predict
+wait_move:
+  Frame1
+  ReadPad
+  if Lf1 = 0 then
+    if Rt1 = 0 then Centred = 1
+  end if
+  if Centred = 0 then goto wait_move
+  if Lf1 = 1 then
+    Mv = 0
+  elseif Rt1 = 1 then
+    Mv = 1
+  else
+    goto wait_move
+  end if
+  Centred = 0
+  PlayRound
+  ShowRound
+  if Sides[0].Wins >= WinAt then goto game_over
+  if Sides[1].Wins >= WinAt then goto game_over
+  goto turn
+
+game_over:
+  Ph = 6
+  Hold(40)
+  Rearm
+  wait
+  nmi off
+  print at 2,22, "                            "
+  if Who = 0 then
+    print at 9,22, "YOU WIN!"
+    play sound SndWin
+  else
+    print at 7,22, "THE COMPUTER WINS"
+    play sound SndLose
+  end if
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' Predict: the C64's BMI test on the counter of the present history
+function Predict as u8
+  V = Tbl[Hist]
+  if V >= 128 then return 1
+  return 0
+
+' PlayRound: Mv against Pred (C64 $C1FC left, $C24A right): the counter
+' of the present history learns the move, the move joins the history, and
+' whoever was right scores
+sub PlayRound:
+  u8 K
+  u8 C
+  K = Hist
+  C = Tbl[K]
+  select case Mv
+  case 0
+    if C > 0 then dec C
+  case else
+    if C < 255 then inc C
+  end select
+  Tbl[K] = C
+  Learned = C
+  Hist = Hist << 1
+  Hist = Hist & 15
+  Hist = Hist | Mv
+  Rounds += 1
+  if Pred = Mv then
+    Who = 1
+  else
+    Who = 0
+  end if
+  Sides[Who].Wins += 1
+  Sides[Who].Shown += 1
+  return
+end sub
+
+' ShowRound: light the pads, the scores, the strip and the message
+sub ShowRound:
+  u8 Look
+  Rearm
+  wait
+  nmi off
+  ' your move: red pad, the other dark (C64 colours 2 and 0)
+  DrawPad(0, 0, PadLX, PadPY)
+  DrawPad(0, 1, PadRX, PadPY)
+  DrawPad(1, Mv, PadX(Mv), PadPY)
+  DrawPad(0, 0, PadLX, PadCY)
+  DrawPad(0, 1, PadRX, PadCY)
+  DrawPad(2, Pred, PadX(Pred), PadCY)
+  ShowScores
+  ' the strip moves one to the left
+  for I = 1 to 13
+    J = I - 1
+    Strip[J] = Strip[I]
+  next
+  Look = THrl
+  if Who = 1 then Look = THbl
+  Look = Look + Mv
+  Strip[13] = Look
+  DrawStrip
+  print at 2,22, "                            "
+  if Who = 0 then
+    print at 5,22, "YOU FOOLED IT! +1 YOU"
+    play sound SndYou
+  else
+    print at 3,22, "IT GUESSED YOU! +1 FOR IT"
+    play sound SndCpu
+  end if
+  return
+end sub
+
+' PadX: the column of the left (0) or right (1) pad
+function PadX(u8 D) as u8
+  if D = 0 then return PadLX
+  return PadRX
+
+' DrawPad: a 3 x 3 pad, Look 0 dark, 1 red, 2 blue; D 0 left, 1 right
+sub DrawPad(u8 Look, u8 D, u8 Col, u8 Row):
+  u8 T
+  u8 R
+  u8 Cx
+  T = Look * 18
+  T = T + 128
+  if D = 1 then T = T + 9
+  for R = 0 to 2
+    Y = Row + R
+    for Cx = 0 to 2
+      X = Col + Cx
+      put char T at X,Y
+      inc T
+    next
+  next
+  return
+end sub
+
+sub ShowScores:
+  print Sides[0].Shown at 18,8
+  print Sides[1].Shown at 18,10
+  return
+end sub
+
+sub DrawStrip:
+  for I = 0 to 13
+    X = HistX + I
+    V = Strip[I]
+    put char V at X,HistY
+  next
+  return
+end sub
+
+sub ResetTable:
+  for I = 0 to 15
+    V = I & 1
+    Tbl[I] = 127 + V
+  next
+  Hist = 0
+  return
+end sub
+
+sub NewGame:
+  for I = 0 to 1
+    Sides[I].Wins = 0
+    Sides[I].Shown = 0
+  next
+  for I = 0 to 13
+    Strip[I] = THdot
+  next
+  Rounds = 0
+  Who = 0
+  return
+end sub
+
+' DrawPlay: the C64's screen, rebuilt: two panels with their pads, the
+' scores between them
+sub DrawPlay:
+  TextScreen
+  backdrop black
+  fill TRule count 28 at 2,1
+  print at 11,2, "YOUR MOVE"
+  fill TRule count 28 at 2,6
+  DrawPad(0, 0, PadLX, PadPY)
+  DrawPad(0, 1, PadRX, PadPY)
+  print at 9,8, "YOU"
+  print at 9,10, "COMPUTER"
+  ShowScores
+  print at 9,12, "LAST ROUNDS"
+  DrawStrip
+  fill TRule count 28 at 2,15
+  print at 6,16, "COMPUTER'S PREDICTION"
+  fill TRule count 28 at 2,21
+  DrawPad(0, 0, PadLX, PadCY)
+  DrawPad(0, 1, PadRX, PadCY)
+  print at 2,22, "PUSH THE STICK LEFT OR RIGHT"
+  ShowScreen
+  return
+end sub
+
+' DrawLogo: PREDICTOR in big letters (art.py checks it fits columns 2-28)
+sub DrawLogo(u8 Row):
+  u8 R
+  u8 Ofs
+  Ofs = 0
+  for R = 0 to 4
+    Y = Row + R
+    for I = 0 to 26
+      V = TitleLogo[Ofs]
+      X = LogoX + I
+      put char V at X,Y
+      inc Ofs
+    next
+  next
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$00,$00,$30,$70,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$F0,$E0,$C0,$C0,$E0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$70,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$0E,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$07,$03,$03,$07,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$0E,$0C,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$00,$00,$30,$70,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$F0,$E0,$C0,$C0,$E0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$70,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$0E,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$07,$03,$03,$07,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$0E,$0C,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$00,$00,$30,$70,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$F0,$E0,$C0,$C0,$E0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$70,$30,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$0E,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$07,$03,$03,$07,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$0E,$0C,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$30,$80,$00,$80,$30,$10,$00
+  $08,$0C,$01,$00,$01,$0C,$08,$00
+  $10,$30,$80,$00,$80,$30,$10,$00
+  $08,$0C,$01,$00,$01,$0C,$08,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $0E,$01,$01,$01,$01,$01,$E1,$E1
+  $0E,$01,$01,$E1,$E1,$E1,$E1,$E1
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $E1,$1E,$1E,$1E,$1E,$1E,$1E,$E1
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $E1,$E1,$01,$01,$01,$01,$01,$0E
+  $E1,$E1,$E1,$E1,$E1,$01,$01,$0E
+  $01,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$01
+  $0E,$01,$01,$E1,$E1,$1E,$1E,$1E
+  $0E,$01,$01,$01,$01,$01,$E1,$E1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $E1,$E1,$1E,$1E,$1E,$1E,$E1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$0E
+  $1E,$1E,$1E,$E1,$E1,$01,$01,$0E
+  $E1,$E1,$01,$01,$01,$01,$01,$0E
+  $09,$08,$08,$08,$08,$08,$F8,$F8
+  $09,$08,$08,$F8,$F8,$F8,$F8,$F8
+  $09,$08,$08,$08,$08,$08,$08,$08
+  $F8,$8F,$8F,$8F,$8F,$8F,$8F,$F8
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $F8,$F8,$08,$08,$08,$08,$08,$09
+  $F8,$F8,$F8,$F8,$F8,$08,$08,$09
+  $08,$08,$08,$08,$08,$08,$08,$09
+  $09,$08,$08,$08,$08,$08,$08,$08
+  $09,$08,$08,$F8,$F8,$8F,$8F,$8F
+  $09,$08,$08,$08,$08,$08,$F8,$F8
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F8,$F8,$8F,$8F,$8F,$8F,$F8,$F8
+  $08,$08,$08,$08,$08,$08,$08,$09
+  $8F,$8F,$8F,$F8,$F8,$08,$08,$09
+  $F8,$F8,$08,$08,$08,$08,$08,$09
+  $04,$05,$05,$05,$05,$05,$F5,$F5
+  $04,$05,$05,$F5,$F5,$F5,$F5,$F5
+  $04,$05,$05,$05,$05,$05,$05,$05
+  $F5,$5F,$5F,$5F,$5F,$5F,$5F,$F5
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $5F,$5F,$5F,$5F,$5F,$5F,$5F,$5F
+  $F5,$F5,$05,$05,$05,$05,$05,$04
+  $F5,$F5,$F5,$F5,$F5,$05,$05,$04
+  $05,$05,$05,$05,$05,$05,$05,$04
+  $04,$05,$05,$05,$05,$05,$05,$05
+  $04,$05,$05,$F5,$F5,$5F,$5F,$5F
+  $04,$05,$05,$05,$05,$05,$F5,$F5
+  $5F,$5F,$5F,$5F,$5F,$5F,$5F,$5F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F5,$F5,$5F,$5F,$5F,$5F,$F5,$F5
+  $05,$05,$05,$05,$05,$05,$05,$04
+  $5F,$5F,$5F,$F5,$F5,$05,$05,$04
+  $F5,$F5,$05,$05,$05,$05,$05,$04
+  $01,$01,$01,$03,$0C,$01,$01,$01
+  $91,$91,$19,$09,$19,$91,$91,$01
+  $91,$91,$19,$09,$19,$91,$91,$01
+  $51,$51,$15,$05,$15,$51,$51,$01
+  $51,$51,$15,$05,$15,$51,$51,$01
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $18,$19,$19,$19,$19,$19,$18,$01
+  $14,$15,$15,$15,$15,$15,$14,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleLogo bytes
+  188,188,32,189,189,32,188,188,188,189,189,32,188,188,188,32,189,189,188,188,188,189,189,189,188,188,32
+  188,32,188,189,32,189,188,32,32,189,32,189,32,188,32,189,32,32,32,188,32,189,32,189,188,32,188
+  188,188,32,189,189,32,188,188,32,189,32,189,32,188,32,189,32,32,32,188,32,189,32,189,188,188,32
+  188,32,32,189,32,189,188,32,32,189,32,189,32,188,32,189,32,32,32,188,32,189,32,189,188,32,188
+  188,32,32,189,32,189,188,188,188,189,189,32,188,188,188,32,189,189,32,188,32,189,189,189,188,32,188
+end data
+
+asm {
+PdYou:
+    db $40,$5F,$20,$03,$40,$47,$30,$03,$40,$47,$50,$06,$40,$47,$F0,$01,$50
+PdCpu:
+    db $00,$00,$25,$03,$00,$00,$36,$04,$00,$00,$66,$06,$00,$00,$F6,$01,$10
+PdTick:
+    db $40,$40,$60,$01,$50
+PdWin:
+    db $40,$8F,$20,$06,$40,$71,$20,$06,$40,$5F,$20,$06,$40,$47,$20,$10,$40,$47,$F0,$01,$50
+PdLose:
+    db $40,$D6,$20,$08,$40,$F0,$20,$08,$40,$0E,$21,$08,$40,$41,$31,$14,$40,$41,$F1,$01,$50
+
+PdSoundTable:
+    dw PdTuneMel,$702B
+    dw PdTuneBass,$7035
+    dw PdYou,$7049
+    dw PdCpu,$703F
+    dw PdTick,$7049
+    dw PdWin,$7049
+    dw PdLose,$7049
+; Heads or Tails, A minor (original for this game)
+; Tiny Sound, 8 frames per step
+PdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$31,$88,$1C,$00,$1F,$00,$23,$00,$21,$1F,$1E,$00,$1A,$00
+    db $1C,$00,$00,$00,$23,$00,$28,$00,$26,$00,$24,$23,$21,$00,$1E,$00
+    db $1F,$00,$00,$00,$24,$00,$23,$21,$1F,$00,$21,$23,$1E,$00,$1F,$1E
+    db $1C,$00,$1B,$00,$1C,$00,$1F,$23,$28,$00,$27,$00,$A8,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+PdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$10,$0B,$10,$0B,$0E,$09,$0E,$09,$0C,$07,$0C,$07
+    db $0B,$12,$0B,$12,$10,$0B,$10,$0B,$09,$10,$09,$10,$0E,$09,$0E,$09
+    db $07,$0E,$13,$0E,$0C,$07,$0C,$07,$07,$0E,$13,$0E,$09,$10,$09,$10
+    db $0B,$12,$0B,$0F,$10,$0B,$10,$0B,$0B,$12,$0B,$12,$10,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+; the title song: both voices of Heads or Tails (SndTuneA, SndTuneB)
+PdSong:
+    dw $0001
+    db $40+1,2
+    dw $0000
+}

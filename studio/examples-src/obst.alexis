@@ -1,0 +1,904 @@
+cartridge "OBSTACLE 128/GAZETTE/1986"
+
+' OBSTACLE 128
+' A ColecoVision game based on "Obstacle 128", COMPUTE!'s Gazette
+' November 1986 (Commodore 128 BASIC 7.0, disk 1986-11; no author is named
+' in the listing, orig/obstacle 128.bas).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a pixel-for-pixel port: the rules are the listing's, rebuilt for the
+' ColecoVision on an 8 x 8 cell field: raised obstacle blocks, arrow heads
+' that glide from cell to cell, sound.
+'
+' The game (from the listing): two players each steer a line that never
+' stops (one dot a pass on the C-128). The border is drawn in the players'
+' colours: the top and right side in purple (player 2), the bottom and
+' left side in blue (player 1), and each side stops short of a corner by
+' a random 30-69 dots (line 30), leaving a gap at the top of the left side
+' and at the bottom of the right side. Each round both lines start on the
+' middle row (blue at x 30-69, purple at x 80-119 of 160, line 40) moving
+' the same random direction. A stick held up, down, left or right turns
+' (diagonals and a centred stick keep the direction; straight back is
+' allowed and runs into your own line). Every pass blue moves first, then
+' purple; moving onto any line or border dot crashes (lines 100, 170).
+' When purple crashes blue takes one more step and may crash too (lines
+' 210-230). A crash gives the OTHER player a point; both crashing gives
+' both a point ("YOU BOTH CRASHED"). CRASHED is shown over the crasher's
+' side, the scores at the bottom, and a new round starts by itself. The
+' first player with 5 or more points and more than the other wins
+' ("YOU WON", lines 280-290).
+'
+' Liberties: the field is 26 x 18 cells inside the border (the C-128's
+' was about 157 x 197 dots), so the start columns are scaled (blue 8-13,
+' purple 16-21 of 32) and the gaps are 3-6 cells; running out through a
+' gap is a crash here (on the C-128 it stopped the program with an
+' ILLEGAL QUANTITY error); a step is 10, 8 or 6 frames (SPEED 1-3 on the
+' title; BASIC 7.0 ran at one speed); a direction pressed between two
+' steps is remembered for the next step; a one-player game against a
+' computer purple, which sees only up to 4 cells in a line: it keeps
+' straight while it has room, turns at random one step in eight, when blocked
+' turns to a random side that has room (the shorter side only when the
+' other is shut), one time in two a step late and one time in four not
+' at all (tuned so a human-paced player wins most games at speed 2); a crash
+' burst and a pause before the next round instead of the C-128's one-
+' second SLEEP; a winner's call of my own instead of the listing's PLAY
+' tune; heads glide; PURPLE/CPU and BLUE named in the score line.
+' Standing still is impossible (the lines never stop), and holding one
+' direction runs into the border within 26 steps.
+'
+' Controls: controller 1 steers blue, controller 2 purple (in a one-player
+' game the computer steers purple). On the title: left/right picks 1 or 2
+' players, up/down the speed, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once.
+
+const TFloor = 128
+const TRes = 129
+const TBlkb = 130
+const TBlkp = 131
+const TQy0 = 132
+const TQy1 = 133
+const TQy2 = 134
+const TQy3 = 135
+const TQy4 = 136
+const TQy5 = 137
+const TQy6 = 138
+const TQy7 = 139
+const TQy8 = 140
+const TQy9 = 141
+const TQy10 = 142
+const TQy11 = 143
+const TQy12 = 144
+const TQy13 = 145
+const TQy14 = 146
+const TQy15 = 147
+const TQc0 = 148
+const TQc1 = 149
+const TQc2 = 150
+const TQc3 = 151
+const TQc4 = 152
+const TQc5 = 153
+const TQc6 = 154
+const TQc7 = 155
+const TQc8 = 156
+const TQc9 = 157
+const TQc10 = 158
+const TQc11 = 159
+const TQc12 = 160
+const TQc13 = 161
+const TQc14 = 162
+const TQc15 = 163
+const SAup = 0
+const SArt = 4
+const SAdn = 8
+const SAlt = 12
+const SBoom0 = 16
+const SBoom1 = 20
+const NTiles8 = 288
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndCrash = 4
+const SndBoth = 5
+const SndGo = 6
+const SndWin = 7
+const NSpr = 4
+const NoDir = 255
+const MidRow = 11
+const WinPts = 5
+
+' frames a step by speed 1-3
+data StepFr bytes 10,8,6
+' directions 0 up, 1 right, 2 down, 3 left
+data DX bytes 0,1,0,255
+data DY bytes 255,0,1,0
+data BlockOf bytes TBlkb,TBlkp
+data HeadCol bytes 7,9
+
+data TilePat bytes
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $0E,$0E,$0E,$00,$00,$00,$00,$00
+  $11,$11,$11,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$00
+  $E0,$E0,$E0,$00,$E0,$E0,$E0,$00
+  $0E,$0E,$0E,$00,$E0,$E0,$E0,$00
+  $11,$11,$11,$00,$E0,$E0,$E0,$00
+  $00,$00,$00,$00,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$00,$0E,$0E,$0E,$00
+  $0E,$0E,$0E,$00,$0E,$0E,$0E,$00
+  $11,$11,$11,$00,$0E,$0E,$0E,$00
+  $00,$00,$00,$00,$11,$11,$11,$00
+  $E0,$E0,$E0,$00,$11,$11,$11,$00
+  $0E,$0E,$0E,$00,$11,$11,$11,$00
+  $11,$11,$11,$00,$11,$11,$11,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $0E,$0E,$0E,$00,$00,$00,$00,$00
+  $11,$11,$11,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$00
+  $E0,$E0,$E0,$00,$E0,$E0,$E0,$00
+  $0E,$0E,$0E,$00,$E0,$E0,$E0,$00
+  $11,$11,$11,$00,$E0,$E0,$E0,$00
+  $00,$00,$00,$00,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$00,$0E,$0E,$0E,$00
+  $0E,$0E,$0E,$00,$0E,$0E,$0E,$00
+  $11,$11,$11,$00,$0E,$0E,$0E,$00
+  $00,$00,$00,$00,$11,$11,$11,$00
+  $E0,$E0,$E0,$00,$11,$11,$11,$00
+  $0E,$0E,$0E,$00,$11,$11,$11,$00
+  $11,$11,$11,$00,$11,$11,$11,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $47,$45,$45,$45,$45,$45,$45,$04
+  $69,$6D,$6D,$6D,$6D,$6D,$6D,$06
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$01,$01,$01,$01,$01
+  $B1,$B1,$B1,$01,$01,$01,$01,$01
+  $1B,$1B,$1B,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$B1,$B1,$B1,$01
+  $B1,$B1,$B1,$01,$B1,$B1,$B1,$01
+  $B1,$B1,$B1,$01,$B1,$B1,$B1,$01
+  $1B,$1B,$1B,$01,$B1,$B1,$B1,$01
+  $01,$01,$01,$01,$B1,$B1,$B1,$01
+  $B1,$B1,$B1,$01,$B1,$B1,$B1,$01
+  $B1,$B1,$B1,$01,$B1,$B1,$B1,$01
+  $1B,$1B,$1B,$01,$B1,$B1,$B1,$01
+  $01,$01,$01,$01,$1B,$1B,$1B,$01
+  $B1,$B1,$B1,$01,$1B,$1B,$1B,$01
+  $B1,$B1,$B1,$01,$1B,$1B,$1B,$01
+  $1B,$1B,$1B,$01,$1B,$1B,$1B,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $71,$71,$71,$01,$01,$01,$01,$01
+  $71,$71,$71,$01,$01,$01,$01,$01
+  $17,$17,$17,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$71,$71,$71,$01
+  $71,$71,$71,$01,$71,$71,$71,$01
+  $71,$71,$71,$01,$71,$71,$71,$01
+  $17,$17,$17,$01,$71,$71,$71,$01
+  $01,$01,$01,$01,$71,$71,$71,$01
+  $71,$71,$71,$01,$71,$71,$71,$01
+  $71,$71,$71,$01,$71,$71,$71,$01
+  $17,$17,$17,$01,$71,$71,$71,$01
+  $01,$01,$01,$01,$17,$17,$17,$01
+  $71,$71,$71,$01,$17,$17,$17,$01
+  $71,$71,$71,$01,$17,$17,$17,$01
+  $17,$17,$17,$01,$17,$17,$17,$01
+end data
+data SpritePat bytes
+  $18,$3C,$7E,$FF,$3C,$3C,$3C,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$0C,$FE,$FF,$FF,$FE,$0C,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$3C,$3C,$3C,$FF,$7E,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$30,$7F,$FF,$FF,$7F,$30,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$05,$0B,$17,$0F,$0F,$17,$0B,$05,$02,$00,$00,$00
+  $00,$00,$00,$40,$A0,$D0,$E8,$F0,$F0,$E8,$D0,$A0,$40,$00,$00,$00
+  $81,$41,$20,$00,$09,$00,$A1,$01,$A1,$00,$09,$00,$20,$41,$81,$00
+  $01,$02,$04,$00,$20,$00,$85,$80,$85,$00,$20,$00,$04,$02,$01,$00
+end data
+
+' the title logo: 8 rows of 28 columns (columns 2-29)
+data TitleMap bytes
+  $80,$80,$8A,$87,$88,$8B,$87,$88,$8A,$87,$85,$87,$8B,$85,$8A,$87,$88,$8A,$87,$88,$89,$80,$80,$8B,$87,$85,$80,$80
+  $80,$80,$89,$80,$89,$91,$90,$85,$8D,$90,$80,$80,$89,$80,$91,$90,$89,$89,$80,$80,$89,$80,$80,$91,$90,$80,$80,$80
+  $80,$80,$89,$80,$89,$89,$80,$89,$80,$80,$89,$80,$89,$80,$89,$80,$89,$89,$80,$88,$89,$80,$80,$89,$80,$80,$80,$80
+  $80,$80,$86,$87,$80,$87,$87,$80,$87,$87,$80,$80,$85,$80,$85,$80,$85,$86,$87,$80,$87,$87,$85,$87,$87,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9C,$80,$80,$A0,$98,$80,$A0,$98,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9F,$80,$96,$80,$9E,$9E,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$9C,$95,$9C,$97,$9D,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$A2,$98,$9C,$A1,$A0,$96,$A0,$9A,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+end data
+
+record Cycle:
+  u8 X
+  u8 Y
+  u8 Ox
+  u8 Oy
+  u8 Dir
+  u8 Want
+  u8 Dead
+  u8 Score
+end record
+
+Cycle Cy[2]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Time = 0
+u8 Players = 1
+u8 Speed = 1
+u8 Spd = 8
+u8 Gap = 3
+u8 El = 0
+u8 Mode = 0
+u8 Over = 0
+u8 Winner = 0
+u8 Cf = 0
+u8 Rounds = 0
+u8 Boths = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Rep = 0
+' loop counter (never shared with the helpers)
+u8 Di = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+
+  tile screen
+  set sound table ObSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+round_start:
+  NewRound
+
+play_loop:
+  Frame1
+  ReadPads
+  PlayFrame
+  DrawSprites
+  if Mode = 3 then goto round_start
+  if Mode <> 2 then goto play_loop
+
+  ' game over: YOU WON over the winner, as on the C-128, and a box
+  print at 7,10, "                "
+  if Winner = 0 then
+    print at 2,1, "YOU WON"
+    print at 7,11, "   BLUE  WINS   "
+  else
+    print at 23,1, "YOU WON"
+    if Players = 1 then
+      print at 7,11, " COMPUTER  WINS "
+    else
+      print at 7,11, "  PURPLE  WINS  "
+    end if
+  end if
+  print at 7,12, "                "
+  mute all
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayFrame:
+  select case Mode
+    case 0
+      inc El
+      if El >= Spd then
+        El = 0
+        OneStep
+      end if
+    case 1
+      ' the crash burst, then the next round or the end
+      inc Cf
+      if Cf = 90 then
+        if Over = 1 then
+          Mode = 2
+        else
+          Mode = 3
+        end if
+      end if
+  end select
+  return
+end sub
+
+' one pass of the listing's loop: blue, then purple; when purple crashed
+' blue takes one more step (lines 210-230)
+sub OneStep:
+  u8 D = 0
+  inc Time
+  D = Cy[0].Want
+  Cy[0].Dead = MoveHead(0, D)
+  if Players = 1 then
+    D = AiDir()
+  else
+    D = Cy[1].Want
+  end if
+  Cy[1].Dead = MoveHead(1, D)
+  if Cy[1].Dead = 1 and Cy[0].Dead = 0 then
+    D = Cy[0].Dir
+    Cy[0].Dead = MoveHead(0, D)
+  end if
+  if Cy[0].Dead = 1 or Cy[1].Dead = 1 then
+    EndRound
+  else
+    play sound SndStep
+  end if
+  return
+end sub
+
+' moves player P one cell in direction D; 1 when it crashed (it stays)
+function MoveHead(u8 P, u8 D) as u8
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Got = 0
+  u8 Res = 0
+  u8 B = 0
+  Cy[P].Dir = D
+  Nx = Cy[P].X + DX[D]
+  Ny = Cy[P].Y + DY[D]
+  Got = get char at Nx, Ny
+  if Got <> TFloor then
+    Res = 1
+  else
+    ' the cell left behind becomes an obstacle block
+    B = BlockOf[P]
+    put char B at Cy[P].X, Cy[P].Y
+    put char TRes at Nx, Ny
+    Cy[P].Ox = Cy[P].X
+    Cy[P].Oy = Cy[P].Y
+    Cy[P].X = Nx
+    Cy[P].Y = Ny
+  end if
+  return Res
+
+' the points: a crash scores for the other player, both crashing for both
+sub EndRound:
+  u8 S0 = 0
+  u8 S1 = 0
+  for Di = 0 to 1
+    Cy[Di].Ox = Cy[Di].X
+    Cy[Di].Oy = Cy[Di].Y
+  next
+  if Cy[0].Dead = 1 then
+    inc Cy[1].Score
+    print at 2,1, "CRASHED"
+  end if
+  if Cy[1].Dead = 1 then
+    inc Cy[0].Score
+    print at 23,1, "CRASHED"
+  end if
+  if Cy[0].Dead = 1 and Cy[1].Dead = 1 then
+    print at 7,12, "YOU BOTH CRASHED"
+    inc Boths
+    play sound SndBoth
+  else
+    play sound SndCrash
+  end if
+  S0 = Cy[0].Score
+  S1 = Cy[1].Score
+  if S0 >= WinPts and S0 > S1 then
+    Over = 1
+    Winner = 0
+  end if
+  if S1 >= WinPts and S1 > S0 then
+    Over = 1
+    Winner = 1
+  end if
+  inc Rounds
+  El = 0
+  Cf = 0
+  Mode = 1
+  ShowScores
+  return
+end sub
+
+' the computer (purple): straight on while there is room, a turn now and
+' then at random, and towards the longer free line when blocked
+function AiDir() as u8
+  u8 D = 0
+  u8 A = 0
+  u8 Lt = 0
+  u8 Rt = 0
+  u8 Lv = 0
+  u8 Rv = 0
+  u8 S = 0
+  u8 Sv = 0
+  u8 R = 0
+  Rand
+  R = lowbyte Rs
+  D = Cy[1].Dir
+  A = Ray(D)
+  Lt = (D + 3) & 3
+  Rt = (D + 1) & 3
+  Lv = Ray(Lt)
+  Rv = Ray(Rt)
+  if Lv > Rv then
+    S = Lt
+    Sv = Lv
+  else
+    S = Rt
+    Sv = Rv
+  end if
+  ' with room on both sides it picks one at random (it cannot judge which
+  ' side has more space beyond its short sight)
+  if Lv > 0 and Rv > 0 then
+    if (R & 16) = 0 then
+      S = Lt
+      Sv = Lv
+    else
+      S = Rt
+      Sv = Rv
+    end if
+  end if
+  if A >= 3 then
+    if (R & 7) = 0 and Sv >= 2 then D = S
+  else
+    ' a person-like slip: now and then it turns one step too late
+    if Sv > A then
+      if A = 0 or (R & 1) <> 0 then D = S
+    end if
+  end if
+  ' and one time in eight it misses a wall right in front
+  if A = 0 and (R & 96) = 0 then D = Cy[1].Dir
+  return D
+
+' free cells in a line from the purple head in direction D (at most 4)
+function Ray(u8 D) as u8
+  u8 N = 0
+  u8 Rx = 0
+  u8 Ry = 0
+  u8 Go = 1
+  Rx = Cy[1].X
+  Ry = Cy[1].Y
+  while Go = 1
+    Rx = Rx + DX[D]
+    Ry = Ry + DY[D]
+    C = get char at Rx, Ry
+    if C = TFloor then
+      inc N
+      if N = 4 then Go = 0
+    else
+      Go = 0
+    end if
+  end while
+  return N
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the arrow heads, 2-3 the crash bursts
+sub DrawSprites:
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Off = 0
+  u8 D = 0
+  u8 Pat = 0
+  u8 Col = 0
+  u8 Hx = 0
+  u8 Hy = 0
+  Off = El * 8
+  Off = Off / Spd
+  for Di = 0 to 1
+    Hx = Cy[Di].X
+    Hy = Cy[Di].Y
+    D = Cy[Di].Dir
+    Sx = Cy[Di].Ox * 8
+    Sy = Cy[Di].Oy * 8
+    if Hx <> Cy[Di].Ox or Hy <> Cy[Di].Oy then
+      select case D
+        case 0
+          Sy = Sy - Off
+        case 1
+          Sx = Sx + Off
+        case 2
+          Sy = Sy + Off
+        case 3
+          Sx = Sx - Off
+      end select
+    end if
+    Sy = Sy - 1
+    Pat = D * 4
+    Col = HeadCol[Di]
+    set sprite Di to Sy,Sx,Pat,Col
+    ' the burst over a crashed head, kept inside columns 2-29, rows 1-22
+    K = Di + 2
+    if Mode = 1 and Cy[Di].Dead = 1 and Cf < 60 then
+      J = Cf / 10
+      J = J & 1
+      Pat = J * 4 + SBoom0
+      Sx = Hx * 8 - 4
+      Sy = Hy * 8 - 5
+      if Sx < 16 then Sx = 16
+      if Sx > 224 then Sx = 224
+      if Sy < 7 then Sy = 7
+      if Sy > 167 then Sy = 167
+      set sprite K to Sy,Sx,Pat,11
+    else
+      set sprite K to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScores:
+  NumU = Cy[0].Score
+  print at 2,22, "BLUE ", digits$(NumU, 2)
+  NumU = Cy[1].Score
+  if Players = 1 then
+    print at 21,22, "   CPU ", digits$(NumU, 2)
+  else
+    print at 21,22, "PURPLE ", digits$(NumU, 2)
+  end if
+  return
+end sub
+
+' a fresh field: the border in the players' colours with its two gaps,
+' both heads on the middle row moving the same way
+sub NewRound:
+  u8 Row = 0
+  u8 R = 0
+  u8 D = 0
+  u8 Top = 0
+  u8 Bot = 0
+  NewScreen
+  Rand
+  R = lowbyte Rs
+  K = R mod 6
+  Cy[0].X = 8 + K
+  K = R >> 3
+  K = K mod 6
+  Cy[1].X = 16 + K
+  Gap = R >> 6
+  Gap = Gap + 3
+  Rand
+  D = lowbyte Rs
+  D = D & 3
+  Top = 2 + Gap
+  Bot = 21 - Gap
+  fill TBlkp count 28 at 2,2
+  fill TBlkb count 28 at 2,21
+  for Row = 3 to 20
+    if Row <= Top then
+      put char TFloor at 2,Row
+    else
+      put char TBlkb at 2,Row
+    end if
+    fill TFloor count 26 at 3,Row
+    if Row >= Bot then
+      put char TFloor at 29,Row
+    else
+      put char TBlkp at 29,Row
+    end if
+  next
+  print at 10,1, "OBSTACLE 128"
+  print at 11,22, "5 TO WIN"
+  ShowScores
+  for Di = 0 to 1
+    Cy[Di].Y = MidRow
+    Cy[Di].Dir = D
+    Cy[Di].Want = D
+    Cy[Di].Dead = 0
+    Cy[Di].Ox = Cy[Di].X
+    Cy[Di].Oy = Cy[Di].Y
+    put char TRes at Cy[Di].X, Cy[Di].Y
+  next
+  Time = 0
+  El = 0
+  Cf = 0
+  Mode = 0
+  DrawSprites
+  ShowScreen
+  play sound SndGo
+  Rearm
+  wait 45 frames
+  nmi off
+  WasBtn = 0
+  return
+end sub
+
+sub NewGame:
+  Cy[0].Score = 0
+  Cy[1].Score = 0
+  Spd = StepFr[Speed]
+  Over = 0
+  Winner = 0
+  Rounds = 0
+  Boths = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' one stick: 1 up, 2 right, 4 down, 8 left, 16 a button
+function Stick(u8 N) as u8
+  u8 S = 0
+  if joypad(N).up then S = S | 1
+  if joypad(N).right then S = S | 2
+  if joypad(N).down then S = S | 4
+  if joypad(N).left then S = S | 8
+  if joypad(N).fire then S = S | 16
+  return S
+
+' a stick held in exactly one direction sets that player's next turn
+sub TakeDir(u8 P, u8 S):
+  u8 Dd = NoDir
+  S = S & 15
+  select case S
+    case 1
+      Dd = 0
+    case 2
+      Dd = 1
+    case 4
+      Dd = 2
+    case 8
+      Dd = 3
+  end select
+  if Dd <> NoDir then Cy[P].Want = Dd
+  return
+end sub
+
+sub ReadPads:
+  J1 = Stick(1)
+  J2 = Stick(2)
+  TakeDir(0, J1)
+  if Players = 2 then TakeDir(1, J2)
+  Btn = (J1 | J2) & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $B0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowMenu:
+  if Players = 1 then
+    print at 4,14, "PLAYERS  < 1 >  VS CPU "
+  else
+    print at 4,14, "PLAYERS  < 2 >         "
+  end if
+  NumU = Speed + 1
+  print at 4,16, "SPEED         ", digits$(NumU, 1)
+  return
+end sub
+
+' the title: the block logo, the menu, the tune once
+sub TitlePage:
+  u8 Last = 0
+  NewScreen
+  for Di = 0 to 7
+    W16 = Di * 28
+    copy TitleMap + W16 count 28 to vram.name + (Di + 2) * 32 + 2
+  next
+  print at 2,11, "COMPUTE!'S GAZETTE NOV 1986"
+  ShowMenu
+  print at 4,18, "STICK: PLAYERS AND SPEED"
+  print at 4,19, "BUTTON: START"
+  print at 4,21, "BLUE: CONTROLLER 1"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Rep = 0
+  WasBtn = 16
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  J = J1 & 15
+  if J <> Last then
+    Rep = 0
+  else
+    inc Rep
+    if Rep = 15 then Rep = 0
+  end if
+  Last = J
+  if J > 0 and Rep = 0 then
+    select case J
+      case 1
+        if Speed < 2 then inc Speed
+      case 4
+        if Speed > 0 then dec Speed
+      case 2
+        Players = 2
+      case 8
+        Players = 1
+    end select
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "OBSTACLE 128"
+  print at 2,5, "BASED ON OBSTACLE 128,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "NOVEMBER 1986 (COMMODORE"
+  print at 2,8, "128 BASIC 7.0)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: BLOCKADE LINES"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+ObStep:
+    db $40,$F9,$62,$01,$40,$F9,$72,$01,$50
+ObCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$26,$08,$00,$00,$36,$0A,$00,$00,$57,$0C,$00,$00,$67,$0E
+    db $10
+ObBoth:
+    db $40,$7F,$10,$06,$40,$A0,$20,$06,$40,$CA,$20,$06,$40,$FE,$20,$06,$40,$41,$31,$0C,$50
+ObGo:
+    db $40,$1D,$21,$06,$40,$1D,$61,$06,$40,$1D,$21,$06,$40,$BF,$20,$0C,$50
+ObWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$10,$18
+    db $50
+
+ObSoundTable:
+    dw ObTuneMel,$702B
+    dw ObTuneBass,$7035
+    dw ObStep,$7049
+    dw ObCrash,$703F
+    dw ObBoth,$7049
+    dw ObGo,$7049
+    dw ObWin,$7049
+; Blockade Lines (original)
+; Tiny Sound, 8 frames per step
+ObTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$21,$23,$24,$01,$26,$01,$24,$23
+    db $21,$01,$1F,$01,$21,$01,$1C,$01,$21,$23,$24,$26,$28,$01,$01,$26
+    db $24,$01,$23,$01,$1F,$01,$1A,$1F,$23,$01,$21,$1F,$1E,$01,$1A,$1E
+    db $21,$01,$1F,$1E,$1C,$1F,$23,$28,$26,$23,$24,$21,$23,$01,$20,$01
+    db $21,$01,$00,$01
+    db $FF
+ObTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$09,$10,$09,$01,$09,$10,$07,$01,$07,$0E
+    db $07,$01,$07,$0E,$09,$01,$09,$10,$09,$01,$09,$10,$10,$01,$10,$0B
+    db $10,$01,$08,$0B,$07,$01,$07,$0E,$07,$01,$07,$0E,$0E,$01,$0E,$09
+    db $0E,$01,$12,$09,$10,$01,$0B,$01,$10,$01,$0B,$01,$10,$01,$10,$01
+    db $09,$01,$00,$01
+    db $FF
+}

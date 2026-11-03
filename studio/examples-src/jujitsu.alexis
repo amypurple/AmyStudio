@@ -1,0 +1,1077 @@
+cartridge "JUJITSU/COMPUTE!'S GAZETTE/1986"
+
+' JUJITSU
+' A ColecoVision game based on "JUJITSU", COMPUTE!'s Gazette, September
+' 1986 (Commodore 64 BASIC with a small machine-code sound routine at
+' 50000; orig/jujitsu.bas, orig/jujitsu.prg). The listing names no author.
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game (a bidding card game, not a fighting game; the game known as
+' Goofspiel): you hold the thirteen hearts, the computer the thirteen
+' spades, and the thirteen clubs are shuffled face down. Each round one
+' club is turned and both players bid one card for it at the same time.
+' The higher bid takes the club and scores its value (ace 1 ... king 13);
+' a tie takes nothing and the club is lost. Bid cards are spent. The game
+' ends when a player reaches 46 (more than half of the 91 points) or
+' after the thirteenth club; the higher score wins.
+'
+' From the original, kept as the listing does it:
+' - The computer's bid (lines 550-920). Rounds 1-6: for a club of 8 or
+'   more it bids a random spade 38% of the time; otherwise it bids the
+'   club's value plus a random 0-4 (0-2 for clubs under 4), plus a random
+'   0-3 more for clubs of 5 and up, or plus 1-5 for clubs over 10, capped
+'   at 13; a spade already used is redrawn, and after 20 draws it bids its
+'   lowest spade. The draw counter (C) and the range (M) carry over from
+'   round to round as in BASIC (a used random spade redraws with the old
+'   range). Rounds 7-12: it compares your highest heart with its highest
+'   spade, the club with the highest club still to come and the average
+'   of the clubs to come, and bids its highest spade, its lowest spade or
+'   the rounds 1-6 bid by the listing's rules; round 13: its last spade.
+'   It never looks at your bid.
+' - Scoring, ties, the 46 limit, the end after 13 clubs.
+'
+' Liberties:
+' - Joystick: left/right chooses one of your hearts (used ones are
+'   skipped), the button bids it. No keys, no Y/N question: the result,
+'   then the title.
+' - The computer gets wise to low-balling: after two tricks in a row in
+'   which you bid your lowest heart, it bids its lowest spade above your
+'   lowest heart (when it has one, and not in round 13). Without this,
+'   always bidding your lowest heart beat the listing's computer in about
+'   half of the games (51% in 5000 simulated games, model.mjs / sim.mjs);
+'   with it, that never wins, while sensible play still wins about 30%.
+' - The shuffle is a full Fisher-Yates shuffle (the listing made 13
+'   random swaps, which often left clubs in place); the random numbers
+'   come from a 16-bit xorshift seeded by the time spent on the title.
+' - Cards drawn as cards; the computer's bid lies face down until you
+'   have bid, then turns over; each club played is marked with who took
+'   it. The round ends after three seconds (the listing's delay loop) or
+'   at a press.
+' - New sounds and an original title tune, "Thirteen Clubs" (the listing
+'   had a short machine-code chime after each bid).
+'
+' Controls: joystick left/right chooses a heart, either button bids it or
+' goes on. Keypad not used.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, the title tune
+' played once. `set sprite count` always given. Nothing flashes.
+
+const TRk0 = 128
+const TRk1 = 129
+const TRk2 = 130
+const TRk3 = 131
+const TRk4 = 132
+const TRk5 = 133
+const TRk6 = 134
+const TRk7 = 135
+const TRk8 = 136
+const TRk9 = 137
+const TRk10 = 138
+const TRk11 = 139
+const TRk12 = 140
+const TRr0 = 141
+const TRr1 = 142
+const TRr2 = 143
+const TRr3 = 144
+const TRr4 = 145
+const TRr5 = 146
+const TRr6 = 147
+const TRr7 = 148
+const TRr8 = 149
+const TRr9 = 150
+const TRr10 = 151
+const TRr11 = 152
+const TRr12 = 153
+const TSs0 = 154
+const TSs1 = 155
+const TSs2 = 156
+const TPipa00 = 157
+const TPipa01 = 158
+const TPipa10 = 159
+const TPipa11 = 160
+const TPipb00 = 161
+const TPipb01 = 162
+const TPipb10 = 163
+const TPipb11 = 164
+const TPipc00 = 165
+const TPipc01 = 166
+const TPipc10 = 167
+const TPipc11 = 168
+const TEtl = 169
+const TEtr = 170
+const TEl = 171
+const TEr = 172
+const TEbl = 173
+const TEbr = 174
+const TBack00 = 175
+const TBack01 = 176
+const TBack02 = 177
+const TBack03 = 178
+const TBack10 = 179
+const TBack11 = 180
+const TBack12 = 181
+const TBack13 = 182
+const TBack20 = 183
+const TBack21 = 184
+const TBack22 = 185
+const TBack23 = 186
+const TFelt = 187
+const TGtop = 188
+const TGtopr = 189
+const TGmid = 190
+const TGmidr = 191
+const TGbot = 192
+const TGbotr = 193
+const TMkh = 194
+const TMks = 195
+const TMkt = 196
+const TLJt = 197
+const TLJb = 198
+const TLUt = 199
+const TLUb = 200
+const TLIt = 201
+const TLIb = 202
+const TLTt = 203
+const TLTb = 204
+const TLSt = 205
+const TLSb = 206
+const SArrow = 0
+const NTiles8 = 632
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndCard = 4
+const SndBuzz = 5
+const SndTurn = 6
+const SndTake = 7
+const SndLost = 8
+const SndTie = 9
+const SndWin = 10
+const SndLose = 11
+const SpY = 2
+const HtY = 18
+const BidY = 7
+const CompX = 3
+const ClubX = 14
+const YouX = 25
+const MsgY = 11
+const PlayY = 14
+const Goal = 46
+
+record Side:
+  u8 Score
+  bcd digits 2 Pts
+end record
+
+data RankCh bytes 65, 50, 51, 52, 53, 54, 55, 56, 57, 84, 74, 81, 75
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 RsAt = 0
+u16 W16 = 0
+Side Sd[2]
+' index 1..13: hearts and spades used (1), clubs in round order (0 when
+' played, as in the listing), the club and the winner of each round
+u8 Hu[14]
+u8 Su[14]
+u8 Cl[14]
+u8 Pc[14]
+u8 Wn[14]
+' the listing's persistent C and M
+u8 Cc = 0
+u8 Mv = 0
+u8 LowRun = 0
+' game state (St: 0 title, 1 your bid, 2 the trick, 3 game over)
+u8 St = 0
+u8 Rd = 0
+u8 Hb = 0
+u8 Sb = 0
+u8 Res = 0
+u8 Over = 0
+' input
+u8 Cur = 1
+u8 Btn = 0
+u8 WasB = 1
+u8 Stick = 0
+u8 Held = 0
+u8 Tick = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table JjSoundTable areas 4
+  sprites 16x16
+  set sprite count 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+round_loop:
+  OneRound
+  if Over = 0 then goto round_loop
+
+  GameEnd
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  St = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: FNR(X) = INT(RND(1) * X)
+
+sub Rnd16:
+  Rs = Rs ^ (Rs << 7)
+  Rs = Rs ^ (Rs >> 9)
+  Rs = Rs ^ (Rs << 8)
+  return
+end sub
+
+function Fnr(u8 Fx) as u8
+  u8 Fr = 0
+  Rnd16
+  if Fx = 0 then return 0
+  Fr = Rs % Fx
+  return Fr
+
+' ---------------------------------------------------------------------------
+' the computer's bid (lines 550-920)
+
+function LowestSpade as u8
+  u8 Ls = 1
+  while Su[Ls] = 1
+    inc Ls
+  end while
+  return Ls
+
+' the highest card left: 0 your hearts, 1 the computer's spades
+function HighestLeft(u8 Hw) as u8
+  u8 Hx = 13
+  if Hw = 0 then
+    while Hu[Hx] = 1
+      dec Hx
+    end while
+  else
+    while Su[Hx] = 1
+      dec Hx
+    end while
+  end if
+  return Hx
+
+function LowestHeart as u8
+  u8 Lh = 1
+  while Hu[Lh] = 1 and Lh < 13
+    inc Lh
+  end while
+  return Lh
+
+' lines 570-650 (From580 = 1: enter at 580 with the old M)
+function NormalBid(u8 From580) as u8
+  u8 Club = 0
+  u8 Mm = 0
+  u8 Pick = 0
+  u8 Done = 0
+  Club = Cl[Rd]
+  if From580 = 0 then
+    Mv = 5
+    if Club < 4 then Mv = 3
+  end if
+  while Done = 0
+    Mm = Fnr(4)
+    if Club <= 4 then Pick = Club + Fnr(Mv)
+    if Club >= 5 then Pick = Club + Fnr(Mv) + Mm
+    if Club > 10 then Pick = Club + Fnr(Mv) + 1
+    if Pick > 13 then Pick = 13
+    inc Cc
+    if Cc = 20 then
+      Cc = 0
+      Pick = LowestSpade()
+      Done = 1
+    else
+      if Su[Pick] = 0 then
+        Cc = 0
+        Done = 1
+      end if
+    end if
+  end while
+  return Pick
+
+function CompBid as u8
+  u8 Club = 0
+  u8 Bid = 0
+  u8 Hh = 0
+  u8 Sh = 0
+  u8 Ct = 0
+  u8 Ch = 0
+  u8 Lh = 0
+  u8 Ci = 0
+  u8 Cv = 0
+  u16 Need = 0
+  Club = Cl[Rd]
+  Bid = 0
+  ' liberty: two low-balls in a row
+  if LowRun >= 2 and Rd < 13 then
+    Lh = LowestHeart() + 1
+    while Lh <= 13 and Bid = 0
+      if Su[Lh] = 0 then Bid = Lh
+      inc Lh
+    end while
+    if Bid > 0 then return Bid
+  end if
+  select case Rd
+  case 1 to 6
+    if Club >= 8 then
+      if Fnr(100) < 38 then
+        Bid = Fnr(13) + 1
+        if Su[Bid] = 1 then
+          Bid = NormalBid(1)
+        else
+          Cc = 0
+        end if
+        return Bid
+      end if
+    end if
+    Bid = NormalBid(0)
+  case 13
+    Bid = HighestLeft(1)
+  case else
+    Hh = HighestLeft(0)
+    Sh = HighestLeft(1)
+    if Hh >= Sh and Sd[0].Score + Club >= Goal then return Sh
+    for Ci = 1 to 13
+      if Ci <> Rd then
+        Cv = Cl[Ci]
+        Ct = Ct + Cv
+        if Cv > Ch then Ch = Cv
+      end if
+    next
+    Need = (13 - Rd) * 8
+    if Rd = 12 and Ch > Club then
+      Bid = LowestSpade()
+    else if Club > Ch then
+      if Hh > Sh then
+        Bid = LowestSpade()
+      else
+        Bid = Sh
+      end if
+    else if Rd >= 10 and Club <= 8 and Hh <= Sh and Ct >= Need then
+      Bid = LowestSpade()
+    else
+      Bid = NormalBid(0)
+    end if
+  end select
+  return Bid
+
+' ---------------------------------------------------------------------------
+' the game
+
+sub NewGame:
+  u8 Ni = 0
+  u8 Nj = 0
+  u8 Nt = 0
+  fill array Hu with 0
+  fill array Su with 0
+  fill array Wn with 0
+  fill array Pc with 0
+  for Ni = 1 to 13
+    Cl[Ni] = Ni
+  next
+  for Ni = 13 to 2 step -1
+    Nj = Fnr(Ni) + 1
+    Nt = Cl[Ni]
+    Cl[Ni] = Cl[Nj]
+    Cl[Nj] = Nt
+  next
+  for Ni = 0 to 1
+    Sd[Ni].Score = 0
+    Sd[Ni].Pts = 0
+  next
+  Cc = 0
+  Mv = 0
+  LowRun = 0
+  Over = 0
+  Rd = 0
+  Cur = 1
+  BoardScreen
+  return
+end sub
+
+sub OneRound:
+  u8 Ow = 0
+  u8 Lh = 0
+  inc Rd
+  Pc[Rd] = Cl[Rd]
+  Res = 0
+  ' the club and the computer's face-down bid
+  DrawBig(Cl[Rd], 1, ClubX, BidY)
+  play sound SndCard
+  DrawBack(CompX, BidY)
+  ClearBig(YouX, BidY)
+  ClearMsg
+  print at 7,MsgY, "WHAT DO YOU BID?"
+  ShowRound
+  Pause(10)
+  ' your bid
+  St = 1
+  PickHeart
+  Hb = Cur
+  Lh = LowestHeart()
+  St = 2
+  HideArrow
+  DrawGhost((Hb - 1) * 2 + 3, HtY)
+  DrawBig(Hb, 2, YouX, BidY)
+  play sound SndCard
+  ' the computer's bid: decided now, without looking at yours
+  RsAt = Rs
+  Sb = CompBid()
+  Pause(20)
+  DrawGhost((Sb - 1) * 2 + 3, SpY)
+  DrawBig(Sb, 0, CompX, BidY)
+  play sound SndTurn
+  Pause(30)
+  ' who takes the club (lines 940-1060)
+  Hu[Hb] = 1
+  Su[Sb] = 1
+  if Hb = Lh then
+    inc LowRun
+  else
+    LowRun = 0
+  end if
+  ClearMsg
+  if Hb = Sb then
+    Res = 1
+    print at 10,MsgY, "IT'S A TIE"
+    play sound SndTie
+  else if Sb > Hb then
+    Res = 3
+    Ow = 1
+    print at 6,MsgY, "SPADES TAKE THE CLUB"
+    play sound SndLost
+  else
+    Res = 2
+    Ow = 0
+    print at 6,MsgY, "HEARTS TAKE THE CLUB"
+    play sound SndTake
+  end if
+  if Res > 1 then
+    Sd[Ow].Score = Sd[Ow].Score + Cl[Rd]
+    Sd[Ow].Pts += Cl[Rd]
+  end if
+  Wn[Rd] = Res
+  ShowScores
+  ShowPlayed
+  if Sd[0].Score >= Goal or Sd[1].Score >= Goal or Rd = 13 then
+    Over = 1
+  else
+    Cl[Rd] = 0
+  end if
+  Pause(20)
+  WaitOrTime(170)
+  return
+end sub
+
+sub GameEnd:
+  St = 3
+  ClearMsg
+  fill 32 count 28 at 2,MsgY + 1
+  if Sd[0].Score = Sd[1].Score then
+    print at 11,MsgY, "TIE GAME"
+    play sound SndTie
+  else if Sd[1].Score > Sd[0].Score then
+    print at 8,MsgY, "COMPUTER WINS"
+    play sound SndLose
+  else
+    print at 11,MsgY, "YOU WIN!"
+    play sound SndWin
+  end if
+  print at 7,MsgY + 1, "PRESS THE BUTTON"
+  Rearm
+  wait 60 frames
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input
+
+sub ReadPad:
+  Btn = 0
+  V = 0
+  if joypad(1).fire then V = 1
+  if joypad(2).fire then V = 1
+  if V = 1 and WasB = 0 then Btn = 1
+  WasB = V
+  Stick = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  return
+end sub
+
+' the next heart still in your hand in direction Dir (1 left, 2 right)
+function NextHeart(u8 Hc, u8 Dir) as u8
+  u8 Hn = 0
+  Hn = Hc
+  if Dir = 1 then
+    while Hn > 1
+      dec Hn
+      if Hu[Hn] = 0 then return Hn
+    end while
+  else
+    while Hn < 13
+      inc Hn
+      if Hu[Hn] = 0 then return Hn
+    end while
+  end if
+  return Hc
+
+sub PickHeart:
+  u8 Nx = 0
+  if Hu[Cur] = 1 then
+    Cur = NextHeart(Cur, 2)
+    if Hu[Cur] = 1 then Cur = NextHeart(Cur, 1)
+  end if
+  WasB = 1
+  Held = 0
+  ShowArrow
+ph_loop:
+  Frame1
+  ReadPad
+  if Stick = 0 then
+    Held = 0
+  else
+    inc Held
+    if Held = 1 or Held = 18 then
+      Nx = NextHeart(Cur, Stick)
+      if Nx <> Cur then
+        Cur = Nx
+        ShowArrow
+        play sound SndMove
+      end if
+      if Held = 18 then Held = 10
+    end if
+  end if
+  if Btn = 0 then goto ph_loop
+  return
+end sub
+
+sub WaitOrTime(u8 Wf):
+  u8 Wk = 0
+  WasB = 1
+  for Wk = 1 to Wf
+    Frame1
+    ReadPad
+    if Btn = 1 then Wk = Wf
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub ShowArrow:
+  u8 Ax = 0
+  Ax = (Cur - 1) * 16
+  Ax = Ax + 24
+  set sprite 0 to 167, Ax, SArrow, 11
+  update sprites
+  return
+end sub
+
+sub HideArrow:
+  set sprite 0 to 192, 0, SArrow, 11
+  update sprites
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,MsgY
+  return
+end sub
+
+sub ShowRound:
+  print at 13,6, "CLUB"
+  put char RankCh[Cl[Rd] - 1] at 18,6
+  return
+end sub
+
+sub ShowScores:
+  print at 20,1, "SCORE"
+  print Sd[1].Pts at 26,1
+  print at 20,17, "SCORE"
+  print Sd[0].Pts at 26,17
+  return
+end sub
+
+' the clubs played (line 400) and who took each one
+sub ShowPlayed:
+  u8 Px = 0
+  u8 Pr = 0
+  u8 Pw = 0
+  for Pr = 1 to Rd
+    Px = Pr * 2 + 1
+    put char RankCh[Pc[Pr] - 1] at Px,PlayY
+    Pw = Wn[Pr]
+    select case Pw
+    case 1
+      put char TMkt at Px,PlayY + 1
+    case 2
+      put char TMkh at Px,PlayY + 1
+    case 3
+      put char TMks at Px,PlayY + 1
+    end select
+  next
+  return
+end sub
+
+' a small card: rank 1-13, suit 0 spades, 1 clubs, 2 hearts
+sub DrawSmall(u8 Rk, u8 Su2, u8 Dx, u8 Dy):
+  u8 Dt = 0
+  Dt = TRk0 + Rk - 1
+  if Su2 = 2 then Dt = TRr0 + Rk - 1
+  put char Dt at Dx,Dy
+  put char TSs0 + Su2 at Dx + 1,Dy
+  Dt = Su2 * 4 + TPipa00
+  put char Dt at Dx,Dy + 1
+  put char Dt + 1 at Dx + 1,Dy + 1
+  put char Dt + 2 at Dx,Dy + 2
+  put char Dt + 3 at Dx + 1,Dy + 2
+  return
+end sub
+
+sub DrawGhost(u8 Gx, u8 Gy):
+  put char TGtop at Gx,Gy
+  put char TGtopr at Gx + 1,Gy
+  put char TGmid at Gx,Gy + 1
+  put char TGmidr at Gx + 1,Gy + 1
+  put char TGbot at Gx,Gy + 2
+  put char TGbotr at Gx + 1,Gy + 2
+  return
+end sub
+
+sub DrawBig(u8 Rk, u8 Su2, u8 Bx, u8 By):
+  put char TEtl at Bx,By
+  put char TEl at Bx,By + 1
+  put char TEbl at Bx,By + 2
+  DrawSmall(Rk, Su2, Bx + 1, By)
+  put char TEtr at Bx + 3,By
+  put char TEr at Bx + 3,By + 1
+  put char TEbr at Bx + 3,By + 2
+  return
+end sub
+
+sub DrawBack(u8 Bx, u8 By):
+  u8 Br = 0
+  u8 Bt = 0
+  Bt = TBack00
+  for Br = 0 to 2
+    put char Bt at Bx,By + Br
+    put char Bt + 1 at Bx + 1,By + Br
+    put char Bt + 2 at Bx + 2,By + Br
+    put char Bt + 3 at Bx + 3,By + Br
+    Bt = Bt + 4
+  next
+  return
+end sub
+
+sub ClearBig(u8 Bx, u8 By):
+  fill 32 count 4 at Bx,By
+  fill 32 count 4 at Bx,By + 1
+  fill 32 count 4 at Bx,By + 2
+  return
+end sub
+
+' the table: your hand and the computer's, the clubs played
+sub BoardScreen:
+  u8 Bi = 0
+  NewScreen
+  print at 3,1, "MY SPADES"
+  print at 3,17, "YOUR HEARTS"
+  ShowScores
+  for Bi = 1 to 13
+    DrawSmall(Bi, 0, Bi * 2 + 1, SpY)
+    DrawSmall(Bi, 2, Bi * 2 + 1, HtY)
+  next
+  print at 3,6, "I BID"
+  print at 23,6, "YOU BID"
+  print at 3,PlayY - 1, "CLUBS PLAYED"
+  print at 3,22, "STICK: CHOOSE  BUTTON: BID"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens, frames, sound
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause(u8 Pf):
+  u8 Pk = 0
+  for Pk = 1 to Pf
+    Frame1
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $FC
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  St = 5
+  NewScreen
+  print at 9,2, "J U J I T S U"
+  print at 2,5, "BASED ON JUJITSU,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "SEPTEMBER 1986 (COMMODORE"
+  print at 2,8, "64 BASIC). THE LISTING"
+  print at 2,9, "NAMES NO AUTHOR."
+  print at 2,11, "A CARD GAME OF PURE BIDDING"
+  print at 2,12, "ALSO KNOWN AS GOOFSPIEL."
+  print at 2,14, "COLECOVISION GAME AND MUSIC"
+  print at 2,15, "BY CLAUDE (ANTHROPIC) FOR"
+  print at 2,16, "AMY STUDIO, IN AMY BY AMY"
+  print at 2,17, "BIENVENU, 2026."
+  print at 2,19, "MUSIC: THIRTEEN CLUBS"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the title: the logo is 7 letters at columns 9-21 (2 apart), rows 2-3
+data LogoT bytes TLJt, TLUt, TLJt, TLIt, TLTt, TLSt, TLUt
+
+sub TitlePage:
+  u8 Ti = 0
+  u8 Tx = 0
+  St = 0
+  NewScreen
+  for Ti = 0 to 6
+    Tx = Ti * 2 + 9
+    put char LogoT[Ti] at Tx,2
+    put char LogoT[Ti] + 1 at Tx,3
+  next
+  DrawBig(13, 0, 6, 5)
+  DrawBig(1, 1, 14, 5)
+  DrawBig(13, 2, 22, 5)
+  print at 2,10, "YOU BID YOUR HEARTS, THE"
+  print at 2,11, "COMPUTER ITS SPADES, FOR"
+  print at 2,12, "THE CLUBS, ONE AT A TIME."
+  print at 2,13, "THE HIGHER BID TAKES THE"
+  print at 2,14, "CLUB; A TIE TAKES NOTHING."
+  print at 2,15, "ACE 1 ... KING 13."
+  print at 2,16, "FIRST TO 46 POINTS WINS."
+  print at 2,18, "STICK: CHOOSE  BUTTON: BID"
+  print at 7,20, "PRESS THE BUTTON"
+  print at 2,22, "COMPUTE!'S GAZETTE SEP 1986"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  WasB = 1
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  if Btn = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+data TilePat bytes
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$00,$10,$38,$83,$83,$28,$00
+  $00,$00,$38,$38,$83,$93,$10,$00
+  $00,$00,$28,$83,$83,$38,$10,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C1,$E2,$01,$03,$07,$00,$00
+  $01,$83,$B8,$80,$C0,$E0,$00,$00
+  $00,$03,$07,$07,$03,$C6,$82,$80
+  $00,$C0,$E0,$E0,$C0,$9C,$41,$01
+  $82,$C6,$01,$03,$07,$00,$00,$00
+  $41,$9C,$80,$C0,$E0,$00,$00,$00
+  $00,$00,$1C,$C1,$80,$80,$80,$C0
+  $00,$00,$38,$83,$01,$01,$01,$03
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $54,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $54,$45,$54,$11,$54,$45,$54,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$AA,$00,$40,$00,$40,$00
+  $00,$00,$A8,$08,$00,$08,$00,$08
+  $40,$00,$40,$00,$40,$00,$40,$00
+  $08,$00,$08,$00,$08,$00,$08,$00
+  $40,$00,$40,$00,$AA,$00,$00,$00
+  $08,$00,$08,$00,$A8,$00,$00,$00
+  $00,$81,$28,$83,$38,$10,$81,$00
+  $00,$81,$10,$38,$83,$28,$81,$00
+  $00,$00,$00,$81,$81,$00,$00,$00
+  $C3,$C3,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$D8,$D8,$70,$70
+  $C6,$C6,$C6,$C6,$C6,$C6,$C6,$C6
+  $C6,$C6,$C6,$C6,$C6,$C6,$83,$83
+  $03,$03,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$03,$03
+  $03,$03,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $83,$83,$C6,$C6,$C0,$C0,$83,$83
+  $06,$06,$06,$06,$C6,$C6,$83,$83
+end data
+data TileCol bytes
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$1F,$1F,$F1,$1F,$0F
+  $0E,$F1,$1F,$F1,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$F1,$1F,$1F,$1F,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$8F,$8F,$F8,$8F,$0F
+  $0E,$F8,$8F,$F8,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$F8,$8F,$8F,$8F,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0E,$0F,$8F,$F8,$F8,$8F,$8F,$0F
+  $0F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$F1,$1F,$1F,$1F,$0F,$0E
+  $F1,$F1,$1F,$1F,$1F,$1F,$0F,$0E
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$1F,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$0F,$0F,$0E
+  $F1,$1F,$1F,$1F,$1F,$0F,$0F,$0E
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$8F,$8F,$8F,$0F,$0F,$0E
+  $F8,$8F,$8F,$8F,$8F,$0F,$0F,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$45,$54,$45,$54,$45,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $45,$54,$45,$54,$45,$54,$45,$54
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $45,$54,$45,$54,$45,$54,$45,$05
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$C2,$0C,$2C,$0C,$2C,$0C
+  $0C,$0C,$2C,$2C,$0C,$2C,$0C,$2C
+  $2C,$0C,$2C,$0C,$2C,$0C,$2C,$0C
+  $2C,$0C,$2C,$0C,$2C,$0C,$2C,$0C
+  $2C,$0C,$2C,$0C,$C2,$0C,$0C,$0C
+  $2C,$0C,$2C,$0C,$2C,$0C,$0C,$0C
+  $0C,$CF,$8F,$F8,$8F,$8F,$CF,$0C
+  $0C,$CF,$1F,$1F,$F1,$1F,$CF,$0C
+  $0C,$0C,$0C,$CE,$CE,$0C,$0C,$0C
+  $0B,$0B,$B0,$B0,$B0,$B0,$B0,$B0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $A0,$A0,$A0,$A0,$A0,$A0,$0A,$0A
+  $0B,$0B,$B0,$B0,$B0,$B0,$B0,$B0
+  $A0,$A0,$A0,$A0,$A0,$A0,$0A,$0A
+  $0B,$0B,$B0,$B0,$B0,$B0,$B0,$B0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $0B,$0B,$B0,$B0,$B0,$B0,$0B,$0B
+  $A0,$A0,$A0,$A0,$A0,$A0,$0A,$0A
+end data
+data SpritePat bytes
+  $00,$00,$01,$03,$07,$0F,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$F8,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+JjMove:
+    db $40,$47,$50,$01,$50
+JjCard:
+    db $00,$00,$26,$02,$00,$00,$55,$03,$10
+JjBuzz:
+    db $40,$EA,$22,$0C,$50
+JjTurn:
+    db $40,$7F,$30,$03,$40,$A9,$40,$03,$50
+JjTake:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$30,$06,$50
+JjLost:
+    db $40,$1D,$31,$04,$40,$7C,$41,$08,$50
+JjTie:
+    db $40,$D6,$30,$04,$40,$D6,$50,$06,$50
+JjWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$10,$18
+    db $50
+JjLose:
+    db $40,$1D,$21,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+
+JjSoundTable:
+    dw JjTuneMel,$702B
+    dw JjTuneBass,$7035
+    dw JjMove,$7049
+    dw JjCard,$703F
+    dw JjBuzz,$7049
+    dw JjTurn,$7049
+    dw JjTake,$7049
+    dw JjLost,$7049
+    dw JjTie,$7049
+    dw JjWin,$7049
+    dw JjLose,$7049
+; Thirteen Clubs (original)
+; Tiny Sound, 8 frames per step
+JjTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$18,$1C,$21,$23,$24,$01,$23,$21
+    db $1F,$01,$1C,$01,$1D,$01,$21,$01,$1A,$1D,$21,$24,$23,$01,$20,$01
+    db $1C,$01,$01,$01,$21,$01,$24,$01,$28,$26,$24,$23,$24,$01,$21,$01
+    db $1D,$01,$1A,$01,$1C,$01,$20,$23,$21,$01,$1C,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+JjTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$18,$01,$1F,$01
+    db $18,$01,$1F,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$14,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$11,$01,$18,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$10,$01,$14,$01,$15,$01,$1C,$01
+    db $15,$01,$01,$01
+    db $FF
+}

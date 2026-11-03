@@ -1,0 +1,1332 @@
+cartridge "LINCOLN GREEN/R.BIXBY/1988"
+
+' LINCOLN GREEN
+' A ColecoVision game based on "Lincoln Green" by Robert Bixby, COMPUTE!'s
+' Gazette September 1988 (Commodore 64 machine language, SYS 2099; disk
+' 1988-09). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/lincoln.dis, and watched in jsc64), the game is built
+' for the ColecoVision: round oaks on a forest floor, a hooded outlaw in
+' green as a two-colour sprite, arrows as smooth sprites, the forest
+' scrolling a cell at a time, sound effects and a title tune.
+'
+' The game: an outlaw is lost in an endless forest with archers on his
+' trail. Somewhere lies a sanctuary: the two numbers at the bottom are how
+' far it is east-west and north-south, but not in which direction - walk
+' and watch them. Bring both to 0. Arrows fly at you in volleys; nine nicks
+' and you are caught. Walking into a tree costs money from your purse;
+' an empty purse ends the game too.
+'
+' From the original (orig/): the forest of 4 x 4 cell blocks, each new
+' block a tree or a clearing with even odds (SID noise bit); the outlaw
+' stays in the middle and the forest scrolls four cells for a step of one
+' block; only straight stick directions walk (diagonals do nothing); the
+' two distances start at 1100, a step changes one of them by 10 and the
+' sanctuary's direction on each axis is random; a distance that would go
+' below 0 stays at 0 and its direction flips (so overshooting counts up
+' again); both 0 = YOU REACHED SANCTUARY; pushing into a tree takes 1 from
+' the purse of 600 for every pass of the C64's loop (about 33 a second,
+' measured in jsc64; here 1 every 2 frames = 30 a second); an arrow hit is
+' a nick, the 10th count (9 hits, the C64 counted from 1) ends the game;
+' a volley picks one of 8 kinds at random with a hiss: four arrows from the
+' left, top, top-left and bottom-left flying through the outlaw's spot
+' (or the mirror image from the right and below), 1 pixel a frame, 2 when
+' the two distances' high bytes add up to less than 4; which of the four
+' arrows are real depends on that sum too (the C64's table at $1521: the
+' closer you are, the more arrows); arrows stay put in the forest as it
+' scrolls (8 pixels a cell).
+'
+' Liberties: a new block is a tree 3 times in 8 (the C64: 1 in 2, below
+' the percolation threshold: the forest walled the outlaw in for good, as
+' blocks that scroll away are forgotten); pushing into a tree for 48 frames
+' (24 from the purse) forces a way through it, so no pocket is a trap
+' (the C64 only took the money); the start glade is clear as on the C64,
+' its hidden edge already chosen; the field is 7 x 5 blocks (the C64 had 10 x 6, its left four
+' columns and top four rows drawn invisible); a volley ends when its
+' arrows have flown 224 pixels (the C64 ended it when one chosen arrow
+' left the screen); a hit ends the volley and the next comes 45 frames
+' later (the C64 put the arrows back at their start); arrival times are
+' staggered as on the C64 (104/88/80/64 pixels from the outlaw); the
+' reverse volley's vertical arrow comes up the outlaw's column (the C64
+' sent it up the far left edge, a slip); the sum for the arrow table stops
+' at 10 (the C64 read past its table); hits are tested on the arrow's
+' middle within 5 x 6 pixels of the outlaw's (the C64 used sprite
+' collisions); distances stop at 9990; one step of the scroll every three
+' frames (12 frames a block, the C64 took 12-17 jiffies); the outlaw turns
+' red for a moment when nicked; sanctuary is spelt right (SANCUVERY on the
+' C64); the end goes back to the title (the C64 asked PLAY AGAIN? Y/N).
+'
+' Controls: controller 1 (or 2): the stick walks north, south, west, east.
+' On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TTree00 = 128
+const TTree01 = 129
+const TTree02 = 130
+const TTree03 = 131
+const TTree10 = 132
+const TTree11 = 133
+const TTree12 = 134
+const TTree13 = 135
+const TTree20 = 136
+const TTree21 = 137
+const TTree22 = 138
+const TTree23 = 139
+const TTree30 = 140
+const TTree31 = 141
+const TTree32 = 142
+const TTree33 = 143
+const TGlade00 = 144
+const TGlade01 = 145
+const TGlade02 = 146
+const TGlade03 = 147
+const TGlade10 = 148
+const TGlade11 = 149
+const TGlade12 = 150
+const TGlade13 = 151
+const TGlade20 = 152
+const TGlade21 = 153
+const TGlade22 = 154
+const TGlade23 = 155
+const TGlade30 = 156
+const TGlade31 = 157
+const TGlade32 = 158
+const TGlade33 = 159
+const TPound = 160
+const TLeaf0 = 161
+const TLeaf1 = 162
+const TLeaf2 = 163
+const TLeaf3 = 164
+const TLeaf4 = 165
+const TLeaf5 = 166
+const TLeaf6 = 167
+const TLeaf7 = 168
+const TLeaf8 = 169
+const TLeaf9 = 170
+const TLeaf10 = 171
+const TLeaf11 = 172
+const TLeaf12 = 173
+const TLeaf13 = 174
+const TLeaf14 = 175
+const TLeaf15 = 176
+const SHero0 = 0
+const SHero1 = 4
+const SSkin = 8
+const SArE = 12
+const SArS = 16
+const SArSE = 20
+const SArNE = 24
+const SArW = 28
+const SArN = 32
+const SArNW = 36
+const SArSW = 40
+const NTiles8 = 392
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndWhoosh = 3
+const SndNick = 4
+const SndRustle = 5
+const SndStep = 6
+const SndStart = 7
+const SndWin = 8
+const SndOver = 9
+const NSpr = 6
+' the outlaw's middle on the screen (pixels)
+const PCX = 128
+const PCY = 88
+' the visible band for an arrow's middle (columns 2-29, rows 1-20)
+const BandL = 24
+const BandR = 232
+const BandT = 16
+const BandB = 160
+const VolleyLen = 224
+' frames of pushing into a tree that force a way through (24 from the purse)
+const PushT = 48
+' trees in 8 new blocks (the C64: 4)
+const Trees = 3
+const StartDist = 1100
+const DistMax = 9990
+
+' the C64's arrow table ($1521): sprite masks (bit 1-4 = arrow 0-3)
+data MaskT bytes $1F,$0F,$07,$03,$1F,$17,$0F,$13,$0B,$07,$03,$05,$09,$11
+' volley start points (forward kinds; the reverse ones after them)
+data StX words 24,128,48,64,232,128,208,192
+data StY words 88,0,8,152,88,176,168,24
+' directions: 0 = -1, 1 = 0, 2 = +1
+data VxT bytes 2,1,2,2,0,1,0,0
+data VyT bytes 1,2,2,0,1,0,0,2
+
+data TilePat bytes
+  $00,$00,$00,$01,$01,$03,$07,$06
+  $E0,$C0,$06,$20,$0C,$C1,$09,$81
+  $07,$03,$00,$C0,$18,$83,$30,$06
+  $00,$00,$00,$80,$80,$C0,$E0,$E0
+  $07,$F0,$E0,$C0,$C0,$C0,$C0,$C0
+  $04,$02,$60,$08,$C0,$18,$80,$30
+  $60,$00,$81,$18,$03,$30,$04,$20
+  $E0,$F0,$07,$03,$03,$60,$03,$C0
+  $C0,$C0,$C0,$E0,$F0,$07,$00,$00
+  $04,$60,$08,$C1,$00,$00,$07,$07
+  $0C,$01,$18,$83,$00,$00,$E0,$E0
+  $03,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$07,$07,$07,$07,$E0,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$2A,$14,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$15,$0A,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$05,$02,$00,$00
+  $08,$00,$00,$00,$40,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$2A,$14,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$A8,$50,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$A8
+  $00,$00,$00,$00,$40,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$A8,$50,$00,$00,$00,$00
+  $50,$00,$00,$00,$00,$00,$04,$00
+  $18,$24,$20,$87,$20,$22,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0A,$0A,$0A,$CA,$CA,$CA,$CA,$CA
+  $AC,$AC,$2C,$2C,$2C,$2C,$3C,$2C
+  $AC,$AC,$0C,$2C,$2C,$2C,$2C,$2C
+  $0A,$0A,$0A,$CA,$CA,$CA,$CA,$CA
+  $CA,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $3C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $2C,$0C,$2C,$2C,$2C,$2C,$2C,$2C
+  $CA,$CA,$AC,$AC,$AC,$2C,$AC,$2C
+  $AC,$AC,$AC,$AC,$AC,$CA,$0A,$0A
+  $2C,$2C,$2C,$2C,$0C,$0C,$6A,$6A
+  $2C,$2C,$2C,$2C,$0C,$0C,$6A,$6A
+  $AC,$AC,$AC,$AC,$CA,$CA,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $6A,$6A,$6A,$6A,$6A,$6A,$A6,$0A
+  $6A,$6A,$6A,$6A,$6A,$6A,$A6,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$CA,$CA,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$CA,$CA,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$CA,$CA,$0A,$0A
+  $1A,$0A,$0A,$0A,$CA,$CA,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$CA,$CA,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$CA,$CA,$0A,$0A
+  $0A,$0A,$1A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$CA
+  $0A,$0A,$0A,$0A,$1A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$CA,$CA,$0A,$0A,$0A,$0A
+  $CA,$0A,$0A,$0A,$0A,$0A,$1A,$0A
+  $F1,$F1,$F1,$1F,$F1,$F1,$1F,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $31,$31,$21,$21,$01,$01,$01,$01
+  $13,$13,$12,$12,$01,$01,$01,$01
+  $03,$03,$02,$02,$01,$01,$01,$01
+  $01,$01,$01,$01,$31,$31,$21,$21
+  $31,$31,$21,$21,$31,$31,$21,$21
+  $13,$13,$12,$12,$31,$31,$21,$21
+  $03,$03,$02,$02,$31,$31,$21,$21
+  $01,$01,$01,$01,$13,$13,$12,$12
+  $31,$31,$21,$21,$13,$13,$12,$12
+  $13,$13,$12,$12,$13,$13,$12,$12
+  $03,$03,$02,$02,$13,$13,$12,$12
+  $01,$01,$01,$01,$03,$03,$02,$02
+  $31,$31,$21,$21,$03,$03,$02,$02
+  $13,$13,$12,$12,$03,$03,$02,$02
+  $03,$03,$02,$02,$03,$03,$02,$02
+end data
+data SpritePat bytes
+  $03,$07,$0E,$0C,$0C,$04,$0F,$1F,$3B,$33,$03,$07,$06,$06,$0E,$00
+  $C0,$E0,$70,$30,$30,$20,$F0,$F8,$DC,$CC,$C0,$E0,$60,$60,$70,$00
+  $03,$07,$0E,$0C,$0C,$04,$0F,$1F,$3B,$33,$03,$07,$0C,$18,$38,$00
+  $C0,$E0,$70,$30,$30,$20,$F0,$F8,$DC,$CC,$C0,$E0,$30,$18,$1C,$00
+  $00,$00,$03,$03,$03,$03,$00,$00,$00,$30,$30,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$C0,$FF,$C0,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$08,$0C,$FF,$0C,$08,$00,$00,$00,$00,$00
+  $03,$07,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$07,$03,$01,$01
+  $80,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$80,$00,$00
+  $00,$50,$28,$50,$28,$04,$02,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$40,$22,$12,$0A,$06,$3E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$04,$28,$50,$28,$50,$00
+  $00,$3E,$06,$0A,$12,$22,$40,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$30,$FF,$30,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$03,$FF,$03,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$01
+  $80,$80,$C0,$E0,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$E0,$C0
+  $00,$7C,$60,$50,$48,$44,$02,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$40,$20,$14,$0A,$14,$0A,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$44,$48,$50,$60,$7C,$00
+  $00,$0A,$14,$0A,$14,$20,$40,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+' LINCOLN: 17 tiles wide from column 7, row 3
+const LogoLCol = 7
+const LogoLW = 17
+data LogoLINCOLN bytes
+  5,0,2,15,1,13,10,8,3,1,6,9,10,0,0,13,10
+  5,0,0,15,0,7,14,10,0,0,5,10,10,0,0,7,14
+  13,12,8,15,4,5,11,2,12,4,9,6,10,12,4,5,11
+end data
+' GREEN: 12 tiles wide from column 10, row 7
+const LogoGCol = 10
+const LogoGW = 12
+data LogoGREEN bytes
+  6,3,10,3,4,7,3,10,3,1,13,10
+  5,12,10,12,1,7,1,10,3,0,7,14
+  9,14,10,2,4,13,12,10,12,4,5,11
+end data
+
+' a step of the walk: block offset and map index of the target block
+record Way:
+  i8 Dx
+  i8 Dy
+  u8 Target
+end record
+data WaysRom records Way
+  0,-1,22
+  0,1,40
+  -1,0,30
+  1,0,32
+end data
+
+Way Ways[4]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 DX = 0
+u16 DY = 0
+u16 Purse = 0
+u16 ArD = 0
+u16 DfAddr = 0
+u16 RBase = 6144
+i16 AX[4]
+i16 AY[4]
+i16 Ti = 0
+u8 Map[63]
+u8 RowBuf[36]
+' the sanctuary's direction on each axis (1 = east / north is closer)
+u8 FX = 0
+u8 FY = 0
+u8 Nicks = 0
+u8 Over = 0
+' the walk: Mv 1 while scrolling, the way (0 up 1 down 2 left 3 right),
+' frames to the next scroll step, steps left, the view's cell offsets
+u8 Mv = 0
+u8 MvW = 0
+u8 MvT = 0
+u8 MvN = 0
+u8 ScX = 4
+u8 ScY = 4
+i8 Wdx = 0
+i8 Wdy = 0
+u8 Blocked = 0
+u8 BumpT = 0
+' arrows: volley kind (8 = choose a new one), visible mask, speed, pause
+u8 ArSt = 8
+u8 ArMask = 0
+u8 ArSpd = 1
+u8 Pause = 0
+u8 HurtT = 0
+u8 Walk = 0
+u8 Hits = 0
+u8 Moves = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Rr = 0
+u8 Bk = 0
+u8 Ai = 0
+u8 Mr = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 T0 = 0
+u8 Bi = 0
+u8 Mi = 0
+u8 Sb = 0
+u8 Wy = 0
+' rendering: view, rows, which name table is shown (0 $1800, 1 $1C00)
+u8 RX = 4
+u8 RY = 4
+u8 RFrom = 0
+u8 RTo = 19
+u8 Front = 0
+
+  copy WaysRom to Ways
+  tile screen
+  set sound table LgSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message (in table 0), then back to the title on a press
+  if Front = 1 then
+    Front = 0
+    DrawField
+    call asm LgShowBack
+  end if
+  ' the outlaw stays in sight above the message
+  set sprite 0 to PCY - 41,PCX - 8,SSkin,9
+  V = 12
+  if Over = 3 then V = 6
+  set sprite 1 to PCY - 41,PCX - 8,SHero0,V
+  for J = 2 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  print at 4,9, "                        "
+  select case Over
+    case 1
+      print at 4,10, " YOU REACHED SANCTUARY! "
+      play sound SndWin
+    case 2
+      print at 4,10, "  YOUR PURSE IS EMPTY   "
+      play sound SndOver
+    case else
+      print at 4,10, "  NINE NICKS: CAUGHT!   "
+      play sound SndOver
+  end select
+  print at 4,11, "                        "
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the walk (or a push into a tree), then the arrows
+sub PlayStep:
+  if Mv = 1 then
+    WalkStep
+  else
+    TryWalk
+  end if
+  Arrows
+  if HurtT > 0 then dec HurtT
+  return
+end sub
+
+' the stick: one straight direction starts a step if that block is clear
+sub TryWalk:
+  Blocked = 0
+  select case J1 & 15
+    case 1
+      MvW = 0
+    case 2
+      MvW = 1
+    case 4
+      MvW = 2
+    case 8
+      MvW = 3
+    case else
+      BumpT = 0
+      return
+  end select
+  Mi = Ways[MvW].Target
+  if Map[Mi] > 0 then
+    Bump
+    if Over > 0 then return
+    if BumpT < PushT then return
+    ' pushed long enough: the outlaw forces his way through the thicket
+    Map[Mi] = 0
+  end if
+  BumpT = 0
+  Wdx = Ways[MvW].Dx
+  Wdy = Ways[MvW].Dy
+  ShiftMap
+  Mv = 1
+  MvT = 0
+  MvN = 4
+  inc Moves
+  play sound SndStep
+  return
+end sub
+
+' pushing into a tree: 1 from the purse every other frame
+sub Bump:
+  Blocked = 1
+  inc BumpT
+  V = BumpT & 15
+  if V = 1 then play sound SndRustle
+  V = BumpT & 1
+  if V = 1 then
+    if Purse > 0 then dec Purse
+    ShowPurse
+    MirrorHud
+    if Purse = 0 then Over = 2
+  end if
+  return
+end sub
+
+' the map moves one block against the walk; a new row or column of blocks
+' (a tree 3 times in 8) comes in at the far edge, out of sight
+sub ShiftMap:
+  select case MvW
+    case 0
+      for Mr = 6 to 1 step -1
+        Mi = Mr * 9
+        for Bk = 0 to 8
+          Map[Mi] = Map[Mi - 9]
+          inc Mi
+        next
+      next
+      for Bk = 0 to 8
+        Map[Bk] = NewBlock()
+      next
+      ScY = 8
+    case 1
+      copy Map + 9 count 54 to Map
+      for Bk = 54 to 62
+        Map[Bk] = NewBlock()
+      next
+      ScY = 0
+    case 2
+      for Mr = 0 to 6
+        Mi = Mr * 9 + 8
+        for Bk = 1 to 8
+          Map[Mi] = Map[Mi - 1]
+          dec Mi
+        next
+        Map[Mi] = NewBlock()
+      next
+      ScX = 8
+    case 3
+      for Mr = 0 to 6
+        Mi = Mr * 9
+        for Bk = 1 to 8
+          Map[Mi] = Map[Mi + 1]
+          inc Mi
+        next
+        Map[Mi] = NewBlock()
+      next
+      ScX = 0
+  end select
+  return
+end sub
+
+function NewBlock() as u8
+  Rand
+  K = lowbyte Rs
+  K = K & 7
+  if K < Trees then return 1
+  return 0
+
+' every third frame the view scrolls one cell and the arrows move 8 pixels
+' with the forest; after four the step is done and a distance changes
+sub WalkStep:
+  inc MvT
+  if MvT = 1 then
+    DrawBack(0)
+    return
+  end if
+  if MvT = 2 then
+    DrawBack(1)
+    return
+  end if
+  MvT = 0
+  ScX = ScX + Wdx
+  ScY = ScY + Wdy
+  Front = Front ^ 1
+  call asm LgShowBack
+  for Ai = 0 to 3
+    Ti = Wdx * 8
+    AX[Ai] = AX[Ai] - Ti
+    Ti = Wdy * 8
+    AY[Ai] = AY[Ai] - Ti
+  next
+  inc Walk
+  dec MvN
+  if MvN > 0 then return
+  Mv = 0
+  Distances
+  ShowDist
+  MirrorHud
+  if DX = 0 then
+    if DY = 0 then Over = 1
+  end if
+  return
+end sub
+
+' the C64's rule: towards the sanctuary takes 10, away adds 10; below 0
+' stays 0 and flips that axis's direction
+sub Distances:
+  select case MvW
+    case 0
+      if FY = 1 then
+        DY = Closer(DY)
+      else
+        DY = Farther(DY)
+      end if
+    case 1
+      if FY = 1 then
+        DY = Farther(DY)
+      else
+        DY = Closer(DY)
+      end if
+    case 2
+      if FX = 1 then
+        DX = Farther(DX)
+      else
+        DX = Closer(DX)
+      end if
+    case 3
+      if FX = 1 then
+        DX = Closer(DX)
+      else
+        DX = Farther(DX)
+      end if
+  end select
+  return
+end sub
+
+function Closer(u16 D) as u16
+  if D < 10 then
+    if MvW < 2 then
+      FY = FY ^ 1
+    else
+      FX = FX ^ 1
+    end if
+    return 0
+  end if
+  return D - 10
+
+function Farther(u16 D) as u16
+  if D >= DistMax then return DistMax
+  return D + 10
+
+' ---------------------------------------------------------------------------
+' the arrows: a new volley, its flight, hits
+sub Arrows:
+  ' speed and the real arrows from how near the sanctuary is
+  V = highbyte DX
+  K = highbyte DY
+  V = V + K
+  if V > 10 then V = 10
+  ArSpd = 1
+  if V < 4 then ArSpd = 2
+  if Pause > 0 then
+    dec Pause
+    if Pause = 0 then ArSt = 8
+    ArMask = 0
+    return
+  end if
+  if ArSt = 8 then NewVolley
+  K = ArSt & 3
+  K = K + V
+  ArMask = MaskT[K] >> 1
+  for Ai = 0 to 3
+    MoveArrow(Ai)
+  next
+  ArD = ArD + ArSpd
+  if ArD >= VolleyLen then ArSt = 8
+  for Ai = 0 to 3
+    V = ArMask >> Ai
+    V = V & 1
+    if V = 1 then
+      if HitTest(Ai) = 1 then
+        Nick
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+sub NewVolley:
+  Rand
+  ArSt = lowbyte Rs
+  ArSt = ArSt & 7
+  K = 0
+  if ArSt >= 4 then K = 4
+  for Ai = 0 to 3
+    J = K + Ai
+    AX[Ai] = StX[J]
+    AY[Ai] = StY[J]
+  next
+  ArD = 0
+  play sound SndWhoosh
+  return
+end sub
+
+sub MoveArrow(u8 N)
+  J = N
+  if ArSt >= 4 then J = J + 4
+  V = VxT[J]
+  select case V
+    case 0
+      AX[N] = AX[N] - ArSpd
+    case 2
+      AX[N] = AX[N] + ArSpd
+  end select
+  V = VyT[J]
+  select case V
+    case 0
+      AY[N] = AY[N] - ArSpd
+    case 2
+      AY[N] = AY[N] + ArSpd
+  end select
+  return
+end sub
+
+function InBand(u8 N) as u8
+  if AX[N] < BandL then return 0
+  if AX[N] > BandR then return 0
+  if AY[N] < BandT then return 0
+  if AY[N] > BandB then return 0
+  return 1
+
+function HitTest(u8 N) as u8
+  if InBand(N) = 0 then return 0
+  Ti = AX[N] - PCX
+  if abs(Ti) > 5 then return 0
+  Ti = AY[N] - PCY
+  if abs(Ti) > 6 then return 0
+  return 1
+
+sub Nick:
+  inc Nicks
+  inc Hits
+  play sound SndNick
+  Pause = 45
+  HurtT = 45
+  ArMask = 0
+  ShowNicks
+  MirrorHud
+  if Nicks >= 9 then Over = 3
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: the forest, 20 rows of 28 cells from the block map and the view
+' offsets, one row at a time through RowBuf
+sub DrawField:
+  RX = ScX
+  RY = ScY
+  RFrom = 0
+  RTo = 19
+  RBase = 6144
+  if Front = 1 then RBase = 7168
+  call asm LgDrawField
+  return
+end sub
+
+' half of the next view into the hidden name table (Part 0 rows 0-9,
+' 1 rows 10-19)
+sub DrawBack(u8 Part)
+  RX = ScX + Wdx
+  RY = ScY + Wdy
+  RFrom = Part * 10
+  RTo = RFrom + 9
+  RBase = 7168
+  if Front = 1 then RBase = 6144
+  call asm LgDrawField
+  return
+end sub
+
+' the HUD rows 21-22 printed in table 0, copied to table 1
+sub MirrorHud:
+  copy vram.name + 672 count 32 to vram $1EA0
+  copy vram.name + 704 count 32 to vram $1EC0
+  return
+end sub
+
+' sprites: 0 the outlaw's face and hands, 1 his body, 2-5 the arrows
+sub DrawSprites:
+  K = Walk & 1
+  K = K * 4 + SHero0
+  V = 12
+  if HurtT > 0 then V = 6
+  set sprite 0 to PCY - 9,PCX - 8,SSkin,9
+  set sprite 1 to PCY - 9,PCX - 8,K,V
+  K = SArE
+  if ArSt >= 4 then K = SArW
+  if ArSt = 8 then ArMask = 0
+  for Ai = 0 to 3
+    J = Ai + 2
+    V = ArMask >> Ai
+    V = V & 1
+    if V = 1 then
+      if InBand(Ai) = 1 then
+        X = AX[Ai] - 8
+        Y = AY[Ai] - 9
+        set sprite J to Y,X,K,15
+      else
+        set sprite J to 192,0,0,0
+      end if
+    else
+      set sprite J to 192,0,0,0
+    end if
+    K = K + 4
+  next
+  update sprites
+  return
+end sub
+
+sub ShowNicks:
+  NumU = Nicks
+  print at 8,21, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowPurse:
+  print at 23,21, digits$(Purse, 3)
+  return
+end sub
+
+sub ShowDist:
+  print at 6,22, digits$(DX, 4)
+  print at 24,22, digits$(DY, 4)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  backdrop black
+  ' the C64 started in an open glade: the blocks in view are clear, the
+  ' hidden edge blocks already chosen
+  for Bk = 0 to 62
+    Map[Bk] = NewBlock()
+  next
+  for Mr = 1 to 5
+    Mi = Mr * 9 + 1
+    for Bk = 1 to 7
+      Map[Mi] = 0
+      inc Mi
+    next
+  next
+  ScX = 4
+  ScY = 4
+  Front = 0
+  call asm LgClear2
+  DrawField
+  print at 2,21, "NICKS"
+  print at 15,21, "PURSE"
+  put char TPound at 22,21
+  print at 2,22, "E-W"
+  print at 20,22, "N-S"
+  DX = StartDist
+  DY = StartDist
+  Rand
+  FX = lowbyte Rs
+  FX = FX & 1
+  Rand
+  FY = lowbyte Rs
+  FY = FY & 1
+  Purse = 600
+  Nicks = 0
+  Over = 0
+  Mv = 0
+  MvT = 0
+  MvN = 0
+  Walk = 0
+  Hits = 0
+  Moves = 0
+  BumpT = 0
+  Blocked = 0
+  HurtT = 0
+  Pause = 60
+  ArSt = 8
+  ArMask = 0
+  ShowNicks
+  ShowPurse
+  ShowDist
+  MirrorHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  Front = 0
+  call asm LgShowBack
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: LINCOLN GREEN in leafy letters, a row of oaks, START /
+' CREDITS, the tune once
+sub TitlePage:
+  NewScreen
+  print at 5,1, "COMPUTE!'S GAZETTE 1988"
+  DrawLogo(0)
+  DrawLogo(1)
+  for Bk = 0 to 6
+    X = Bk * 4 + 2
+    for Mr = 0 to 3
+      Y = Mr + 11
+      K = Mr * 4 + TTree00
+      put char K at X,Y
+      put char K + 1 at X + 1,Y
+      put char K + 2 at X + 2,Y
+      put char K + 3 at X + 3,Y
+    next
+  next
+  print at 8,16, "BY ROBERT BIXBY"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  print at 3,21, "FIND SANCTUARY. DODGE THE"
+  print at 2,22, "ARROWS. PUSH TO PASS TREES."
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 552
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' one word of the logo: 3 rows of leaf tiles
+sub DrawLogo(u8 Wd)
+  for Mr = 0 to 2
+    for Bk = 0 to 16
+      if Wd = 0 then
+        J = Mr * LogoLW + Bk
+        K = LogoLINCOLN[J]
+        X = LogoLCol + Bk
+        Y = Mr + 3
+      else
+        K = 0
+        X = LogoGCol + Bk
+        Y = Mr + 7
+        if Bk < LogoGW then
+          J = Mr * LogoGW + Bk
+          K = LogoGREEN[J]
+        end if
+      end if
+      if Bk < LogoGW then
+        put char TLeaf0 + K at X,Y
+      else
+        if Wd = 0 then put char TLeaf0 + K at X,Y
+      end if
+    next
+  next
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F0
+  backdrop dark green
+  print at 9,2, "LINCOLN GREEN"
+  print at 2,5, "BASED ON LINCOLN GREEN BY"
+  print at 2,6, "ROBERT BIXBY, COMPUTE!'S"
+  print at 2,7, "GAZETTE SEPTEMBER 1988"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: GREENWOOD AIR"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; LgDrawField: the 20 field rows (screen rows 1-20, columns 2-29) from Map,
+; the view RX, RY (cell offsets), rows RFrom..RTo, into the name table
+; at RBase, written straight to the VDP (NMI off): per row, the tiles
+; of the first block from phase ScX & 3, six whole blocks, then the last
+; block's first ScX & 3 tiles; at least 31 cycles between VDP writes.
+; A block's tiles are TTree00 or TGlade00 + 4 x (row in block) + column.
+; Uses AF BC DE HL.
+LgDrawField:
+    ld a,(AMY_UVAR_RFrom)
+    ld (AMY_UVAR_Rr),a
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(AMY_UVAR_RBase)
+    add hl,de
+    ld de,34
+    add hl,de
+    ld (AMY_UVAR_DfAddr),hl
+LgDfRow:
+    ld hl,(AMY_UVAR_DfAddr)
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld de,32
+    add hl,de
+    ld (AMY_UVAR_DfAddr),hl
+    ld a,(AMY_UVAR_RY)
+    ld b,a
+    ld a,(AMY_UVAR_Rr)
+    add a,b
+    ld b,a
+    and 3
+    add a,a
+    add a,a
+    add a,AMY_UCONST_TGlade00
+    ld c,a
+    ld a,b
+    srl a
+    srl a
+    ld b,a
+    add a,a
+    add a,a
+    add a,a
+    add a,b
+    ld b,a
+    ld a,(AMY_UVAR_RX)
+    ld d,a
+    srl a
+    srl a
+    add a,b
+    ld e,a
+    ld a,d
+    and 3
+    ld d,a
+    push de
+    ld d,0
+    ld hl,AMY_UVAR_Map
+    add hl,de
+    pop de
+    ; first block: tiles d..3
+    call LgBase
+    add a,d
+    ld e,a
+    ld a,4
+    sub d
+    ld b,a
+    ld a,e
+LgDfFirst:
+    out ($BE),a
+    inc a
+    dec b
+    jr nz,LgDfFirst
+    ld b,6
+LgDfMid:
+    call LgBase
+    out ($BE),a
+    inc a
+    nop
+    nop
+    nop
+    nop
+    out ($BE),a
+    inc a
+    nop
+    nop
+    nop
+    nop
+    out ($BE),a
+    inc a
+    nop
+    nop
+    nop
+    nop
+    out ($BE),a
+    inc a
+    nop
+    nop
+    nop
+    nop
+    djnz LgDfMid
+    ld a,d
+    or a
+    jr z,LgDfNext
+    ld b,d
+    call LgBase
+LgDfLast:
+    out ($BE),a
+    inc a
+    dec b
+    jr nz,LgDfLast
+LgDfNext:
+    ld a,(AMY_UVAR_Rr)
+    inc a
+    ld (AMY_UVAR_Rr),a
+    ld b,a
+    ld a,(AMY_UVAR_RTo)
+    cp b
+    jp nc,LgDfRow
+    ret
+; LgShowBack: the VDP shows name table 1 ($1C00) when Front is 1, else 0
+; ($1800) (register 2 = 7 or 6)
+LgShowBack:
+    ld a,(AMY_UVAR_Front)
+    add a,6
+    out ($BF),a
+    ld a,$82
+    out ($BF),a
+    ret
+; LgClear2: name table 1 blank (NMI off)
+LgClear2:
+    ld a,$00
+    out ($BF),a
+    ld a,$5C
+    out ($BF),a
+    ld bc,768
+LgCl2:
+    ld a,32
+    out ($BE),a
+    dec bc
+    ld a,b
+    or c
+    jr nz,LgCl2
+    ret
+; a = the first tile of block (hl), hl moves on (c = TGlade00 + row x 4)
+LgBase:
+    ld a,(hl)
+    inc hl
+    or a
+    ld a,c
+    ret z
+    sub AMY_UCONST_TGlade00 - AMY_UCONST_TTree00
+    ret
+LgWhoosh:
+    db $00,$00,$35,$02,$00,$00,$46,$02,$00,$00,$45,$02,$00,$00,$56,$02,$00,$00,$55,$02,$00,$00,$66,$02
+    db $00,$00,$65,$02,$00,$00,$76,$02,$00,$00,$75,$02,$00,$00,$86,$02,$10
+LgNick:
+    db $40,$53,$11,$03,$40,$AB,$21,$03,$40,$3B,$22,$04,$40,$F9,$42,$06,$50
+LgRustle:
+    db $00,$00,$44,$02,$00,$00,$65,$03,$10
+LgStep:
+    db $40,$F9,$53,$01,$40,$FF,$73,$01,$50
+LgStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+LgWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$20,$18
+    db $50
+LgOver:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$53,$21,$0A,$40,$7C,$21,$0A,$40,$FC,$31,$1E,$50
+
+LgSoundTable:
+    dw LgTuneMel,$702B
+    dw LgTuneBass,$7035
+    dw LgWhoosh,$703F
+    dw LgNick,$7049
+    dw LgRustle,$703F
+    dw LgStep,$7049
+    dw LgStart,$7049
+    dw LgWin,$7049
+    dw LgOver,$7049
+; Greenwood Air (original)
+; Tiny Sound, 8 frames per step
+LgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$28,$01,$2A,$01,$01,$01,$28,$01
+    db $26,$01,$23,$01,$21,$01,$23,$01,$01,$01,$26,$01,$28,$01,$2A,$01
+    db $2D,$01,$01,$01,$2A,$01,$28,$01,$26,$01,$28,$01,$2A,$01,$01,$01
+    db $2D,$01,$2A,$01,$28,$01,$26,$01,$01,$01,$23,$01,$26,$01,$28,$01
+    db $21,$01,$23,$01,$01,$01,$00,$01
+    db $FF
+LgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $0B,$01,$12,$01,$0B,$01,$12,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $0E,$01,$15,$01,$0B,$01,$12,$01,$10,$01,$17,$01,$09,$01,$10,$01
+    db $0B,$01,$12,$01,$00,$01,$01,$01
+    db $FF
+}

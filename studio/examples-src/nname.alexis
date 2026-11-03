@@ -1,0 +1,1281 @@
+cartridge "THE NOTE NAME GAME/COMPUTE'S GAZETTE/1983"
+
+' THE NOTE NAME GAME
+' A ColecoVision game based on "The Note Name Game", COMPUTE!'s Gazette,
+' December 1983 (Commodore 64 and VIC-20, BASIC; no author named in the
+' listing or in the issue's contents). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: choose BASS, TREBLE or MIXED. Ten rounds: the computer plays a
+' note first (LISTEN), then shows it on the grand staff; name it (A to G).
+' One answer a note: CORRECT, or SORRY, THAT'S INCORRECT, IT WAS ... The
+' score is the percentage of right answers so far; at the end "YOUR SCORE
+' WAS ..%".
+'
+' From the original (orig/notenamegame_64.bas, the primary listing): the 25
+' notes E2..A5 (DATA E,F,G,A,B,C,D,...), bass = E2..C4 (lines 205-210: 13
+' notes from 0), treble = C4..A5 (13 notes from 12), mixed = all 25; never
+' the same note twice in a row (line 217); the note is heard BEFORE it is
+' drawn (line 220 then 225); ledger lines for E2, middle C and A5 (lines
+' 245-255); both staves always drawn; ten rounds (line 190); one answer per
+' note; the score SC = INT(R / (R + W) * 100 + .5) % after each answer
+' (line 305); the rising CORRECT sweep and the INCORRECT buzz; "WHAT NOTE
+' IS THIS?"; "IT WAS: ..."; "YOUR SCORE WAS ..%".
+'
+' Liberties: the letter is chosen on a chalk letter wheel (stick up/down,
+' button answers) instead of typed; the original's Q to quit is dropped
+' (ten rounds are short); stick left plays the note again while answering
+' (the original played it once); the end screen recaps the ten notes with
+' octave and your answer; a session count of notes named right and the best
+' score on the title. "PLAY AGAIN?" is dropped (house rule: back to the
+' title). Pitches are exact equal temperament from the SN76489 clock
+' (notes.py, as in games/ntnote); E2, F2, G2 lie below the tone channels'
+' lowest note (109 Hz) and play as periodic noise driven by tone 3. The
+' staff keeps the original's idea of each step a fixed height (6 pixels
+' here, lines 12 apart; the original used a text row per step); quarter
+' notes instead of the PETSCII ball. Art, effects and the title tune
+' ("Chalk on the Board") are new.
+'
+' Controls: either controller; stick and side buttons only. Title:
+' up/down choose a line, left/right change the staff, a button starts.
+' Play: up/down turn the letter wheel, left hears the note again, a button
+' answers (and skips the result after half a second).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' frame loop protected from the NMI; screens drawn with the NMI off,
+' display off. Music first in the sound table, the title tune once.
+
+const TP0 = 128
+const TP1 = 129
+const TP2 = 130
+const TP3 = 131
+const TP4 = 132
+const TP5 = 133
+const TP6 = 134
+const TP7 = 135
+const TP8 = 136
+const TP9 = 137
+const TP10 = 138
+const TP11 = 139
+const TP12 = 140
+const TP13 = 141
+const TP14 = 142
+const TP15 = 143
+const TP16 = 144
+const TP17 = 145
+const TP18 = 146
+const TP19 = 147
+const TP20 = 148
+const TP21 = 149
+const TP22 = 150
+const TP23 = 151
+const TP24 = 152
+const TP25 = 153
+const TP26 = 154
+const TP27 = 155
+const TP28 = 156
+const TP29 = 157
+const TP30 = 158
+const TP31 = 159
+const TP32 = 160
+const TP33 = 161
+const TP34 = 162
+const TP35 = 163
+const TP36 = 164
+const TP37 = 165
+const TP38 = 166
+const TP39 = 167
+const TP40 = 168
+const TP41 = 169
+const TP42 = 170
+const TP43 = 171
+const TP44 = 172
+const TP45 = 173
+const TP46 = 174
+const TP47 = 175
+const TBh = 176
+const TBv = 177
+const TBtl = 178
+const TBtr = 179
+const TBbl = 180
+const TBbr = 181
+const TAu0 = 182
+const TAd0 = 183
+const TAu1 = 184
+const TAd1 = 185
+const TLA00 = 186
+const TLA01 = 187
+const TLA10 = 188
+const TLA11 = 189
+const TLB00 = 190
+const TLB01 = 191
+const TLB10 = 192
+const TLB11 = 193
+const TLC00 = 194
+const TLC01 = 195
+const TLC10 = 196
+const TLC11 = 197
+const TLD00 = 198
+const TLD01 = 199
+const TLD10 = 200
+const TLD11 = 201
+const TLE00 = 202
+const TLE01 = 203
+const TLE10 = 204
+const TLE11 = 205
+const TLF00 = 206
+const TLF01 = 207
+const TLF10 = 208
+const TLF11 = 209
+const TLG00 = 210
+const TLG01 = 211
+const TLG10 = 212
+const TLG11 = 213
+const TLH00 = 214
+const TLH01 = 215
+const TLH10 = 216
+const TLH11 = 217
+const TLM00 = 218
+const TLM01 = 219
+const TLM10 = 220
+const TLM11 = 221
+const TLN00 = 222
+const TLN01 = 223
+const TLN10 = 224
+const TLN11 = 225
+const TLO00 = 226
+const TLO01 = 227
+const TLO10 = 228
+const TLO11 = 229
+const TLT00 = 230
+const TLT01 = 231
+const TLT10 = 232
+const TLT11 = 233
+const SQup = 0
+const SQdn = 4
+const SLedger = 8
+const NTiles8 = 848
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndRight = 4
+const SndWrong = 5
+const SndStart = 6
+const SndOver = 7
+const NSpr = 2
+const Rounds = 10
+const ListenN = 70
+const ResN = 110
+const SkipN = 80
+const NoteX = 84
+const BoxC = 22
+const BoxR = 9
+
+' tone periods of notes 1-25 (E2..A5), from notes.py: 3579545 / 32 / f
+data NotePer words
+  0, 90, 85, 76, 1017, 906, 855, 762, 679, 641, 571, 508, 453, 428, 381, 339, 320, 285, 254, 226, 214, 190, 170, 160, 143, 127
+end data
+' 1 = periodic noise at tone 3's period (/15) for notes below 109 Hz
+data NoteNz bytes
+  0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+end data
+' letter of each note, 0 = A .. 6 = G
+data NoteLet bytes
+  0, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0
+end data
+
+record Turn:
+  u8 Nt
+  u8 Gs
+  u8 Ok
+end record
+
+Turn Hist[10]
+
+' game state
+u8 Clef = 2
+u8 Lw = 1
+u8 Rn = 25
+u8 Nn = 0
+u8 No = 0
+u8 Tr = 0
+u8 Rt = 0
+u8 Wg = 0
+u8 Pc = 0
+u8 Best = 0
+u8 Played = 0
+bcd digits 4 Total = 0
+u8 Over = 0
+u8 Good = 0
+u8 Sel = 0
+' play phases: 0 listening, 1 answering, 2 showing the result
+u8 St = 0
+u8 PhT = 0
+' the note on the chip: period, noise flag, attenuation 0 loud .. 15 off
+u16 Pp = 0
+u8 Pn = 0
+u8 Va = 15
+u8 VaT = 0
+' random numbers, title
+u16 Rs = 1
+u16 W16 = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Menu = 0
+' input
+u8 J1 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InGame = 0
+' loop counters (never shared with helpers)
+u8 Ki = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table NnSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Envelope
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' lines 310-315: the score, then back to the title on a press
+  NoteOff
+  inc Played
+  if Pc > Best then Best = Pc
+  EndScreen
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a number from 0 to N - 1
+function Roll(u8 Nr) as u8
+  u16 Wm = 0
+  u8 Res = 0
+  Rand
+  Wm = Nr
+  Wm = Rs % Wm
+  Res = Wm
+  return Res
+
+' lines 205-218: a note of the chosen staff, never the last one again
+sub NewNote:
+  u8 Pick = 0
+  Pick = No
+  while Pick = No
+    Pick = Roll(Rn) + Lw
+  end while
+  Nn = Pick
+  inc Tr
+  Good = 0
+  St = 0
+  PhT = ListenN
+  PlayNote
+  DrawRound
+  return
+end sub
+
+function LetterOf(u8 Nq) as u8
+  return NoteLet[Nq]
+
+' octave of note 1-25 (E2 = 1): C3 is note 6, C4 note 13, C5 note 20
+function OctaveOf(u8 Nq) as u8
+  u8 Oq = 0
+  Oq = Nq + 1
+  Oq = Oq / 7
+  return Oq + 2
+
+' line 305: SC = INT(R / (R + W) * 100 + .5)
+function Percent(u8 Rq, u8 Wq) as u8
+  u16 Num = 0
+  u16 Den = 0
+  Den = Rq + Wq
+  if Den = 0 then return 0
+  Num = Rq * 100
+  Num = Num + Den / 2
+  Num = Num / Den
+  return Num
+
+sub PlayStep:
+  select case St
+  case 0
+    dec PhT
+    if PhT = 0 then
+      St = 1
+      Msg(1)
+    end if
+  case 1
+    Answering
+  case else
+    if PhT > 0 then dec PhT
+    if PhT = 0 then
+      NextNote
+      return
+    end if
+    if Press = 1 then
+      if PhT < SkipN then NextNote
+    end if
+  end select
+  return
+end sub
+
+sub Answering:
+  K = Edge & 1
+  if K > 0 then
+    inc Sel
+    if Sel > 6 then Sel = 0
+    ShowWheel
+    play sound SndTick
+  end if
+  K = Edge & 2
+  if K > 0 then
+    if Sel = 0 then
+      Sel = 6
+    else
+      dec Sel
+    end if
+    ShowWheel
+    play sound SndTick
+  end if
+  K = Edge & 4
+  if K > 0 then PlayNote
+  if Press = 1 then Judge
+  return
+end sub
+
+' lines 295-305 and 400-520: the one answer
+sub Judge:
+  u8 Ix = 0
+  Ix = Tr - 1
+  Hist[Ix].Nt = Nn
+  Hist[Ix].Gs = Sel
+  if Sel = LetterOf(Nn) then
+    Good = 1
+    inc Rt
+    Total += 1
+    play sound SndRight
+    Msg(2)
+  else
+    Good = 2
+    inc Wg
+    play sound SndWrong
+    Msg(3)
+  end if
+  Hist[Ix].Ok = Good
+  Pc = Percent(Rt, Wg)
+  ShowHud
+  St = 2
+  PhT = ResN
+  return
+end sub
+
+sub NextNote:
+  No = Nn
+  if Tr >= Rounds then
+    Over = 1
+    return
+  end if
+  NewNote
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the note on the chip (tone 1, or tone 3 driving periodic noise)
+
+sub PlayNote:
+  Pp = NotePer[Nn]
+  Pn = NoteNz[Nn]
+  Va = 0
+  VaT = 0
+  call asm PsgNote
+  return
+end sub
+
+' held for 30 frames, then one step quieter every 4 frames
+sub Envelope:
+  if Va >= 15 then return
+  inc VaT
+  if VaT < 30 then return
+  VaT = 26
+  inc Va
+  call asm PsgVol
+  return
+end sub
+
+sub NoteOff:
+  Va = 15
+  call asm PsgVol
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the stem points up below each staff's middle line, down from it
+function StemUp(u8 Nq) as u8
+  if Nq < 7 then return 1
+  if Nq < 13 then return 0
+  if Nq < 19 then return 1
+  return 0
+
+' sprite 0 the quarter note (hidden while listening), 1 its ledger line;
+' a note's centre is pixel row 178 - 6N; sprite Y is one less than the top
+sub DrawSprites:
+  u8 Cy = 0
+  Cy = Nn * 6
+  Cy = 178 - Cy
+  C = 15
+  if Good = 1 then C = 3
+  if Good = 2 then C = 9
+  T = SQdn
+  Y = Cy - 4
+  if StemUp(Nn) = 1 then
+    T = SQup
+    Y = Cy - 13
+  end if
+  V = Cy - 9
+  if St = 0 then
+    Y = 192
+    V = 192
+  end if
+  select case Nn
+  case 1, 13, 25
+  case else
+    V = 192
+  end select
+  set sprite 0 to Y,NoteX,T,C
+  set sprite 1 to V,NoteX,SLedger,15
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 21,3, "NOTE"
+  print Tr at 21,4 width 2
+  print at 23,4, " OF 10"
+  print at 21,6, "SCORE"
+  print Pc at 22,7 width 3
+  print at 25,7, "%"
+  return
+end sub
+
+' the right-hand messages (rows 16-21, columns 21-29)
+sub Msg(u8 Mq):
+  for Ki = 16 to 21
+    fill 32 count 9 at 21,Ki
+  next
+  select case Mq
+  case 0
+    print at 21,16, "LISTEN..."
+  case 1
+    print at 21,16, "NAME IT!"
+    print at 21,18, "UP/DOWN"
+    print at 21,19, "TURN"
+    print at 21,20, "LEFT HEAR"
+    print at 21,21, "AGAIN"
+  case 2
+    print at 21,16, "CORRECT!"
+  case else
+    print at 21,16, "SORRY,"
+    print at 21,17, "THAT'S"
+    print at 21,18, "INCORRECT"
+    print at 21,20, "IT WAS:"
+    T = LetterOf(Nn)
+    put char 65 + T at 28,20
+  end select
+  return
+end sub
+
+' a big letter (index into the glyphs A B C D E F G H M N O T)
+sub PutBig(u8 Gn, u8 Gc, u8 Gr):
+  u8 Tg = 0
+  u8 Cg = 0
+  Tg = Gn << 2
+  Tg = Tg + TLA00
+  put char Tg at Gc,Gr
+  inc Tg
+  Cg = Gc + 1
+  put char Tg at Cg,Gr
+  inc Tg
+  Gr = Gr + 1
+  put char Tg at Gc,Gr
+  inc Tg
+  put char Tg at Cg,Gr
+  return
+end sub
+
+sub ShowWheel:
+  C = BoxC + 2
+  Y = BoxR + 2
+  PutBig(Sel, C, Y)
+  return
+end sub
+
+' the chalk box: columns 22-27, rows 9-14, arrows above and below the letter
+sub DrawBox:
+  u8 Rb = 0
+  u8 Cb = 0
+  Rb = BoxR + 5
+  Cb = BoxC + 5
+  put char TBtl at BoxC,BoxR
+  put char TBtr at Cb,BoxR
+  put char TBbl at BoxC,Rb
+  put char TBbr at Cb,Rb
+  for Ki = 1 to 4
+    C = BoxC + Ki
+    put char TBh at C,BoxR
+    put char TBh at C,Rb
+    Y = BoxR + Ki
+    put char TBv at BoxC,Y
+    put char TBv at Cb,Y
+  next
+  C = BoxC + 2
+  Y = BoxR + 1
+  put char TAu0 at C,Y
+  Y = BoxR + 4
+  put char TAd0 at C,Y
+  inc C
+  put char TAd1 at C,Y
+  Y = BoxR + 1
+  put char TAu1 at C,Y
+  ShowWheel
+  return
+end sub
+
+' the grand staff from PaperMap (columns 2-19, rows 2-22)
+sub DrawStaff:
+  u16 Ix = 0
+  for Ri = 0 to 20
+    Y = Ri + 2
+    for Ki = 0 to 17
+      T = PaperMap[Ix] + TP0
+      C = Ki + 2
+      put char T at C,Y
+      inc Ix
+    next
+  next
+  return
+end sub
+
+sub DrawRound:
+  Rearm
+  wait
+  nmi off
+  ShowHud
+  Msg(0)
+  return
+end sub
+
+sub NewGame:
+  Tr = 0
+  No = 0
+  Nn = 1
+  Rt = 0
+  Wg = 0
+  Pc = 0
+  Over = 0
+  Sel = 0
+  Good = 0
+  St = 0
+  select case Clef
+  case 0
+    Lw = 1
+    Rn = 13
+  case 1
+    Lw = 13
+    Rn = 13
+  case else
+    Lw = 1
+    Rn = 25
+  end select
+  NewScreen
+  print at 2,1, "WHAT NOTE IS THIS?"
+  DrawStaff
+  DrawBox
+  ShowHud
+  InGame = 1
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 40 frames
+  wait no fire
+  nmi off
+  NewNote
+  return
+end sub
+
+' the end: the score (line 315) and a recap of the ten notes
+sub EndScreen:
+  Rearm
+  wait
+  nmi off
+  HideSprites
+  InGame = 0
+  for Ki = 1 to 22
+    fill 32 count 28 at 2,Ki
+  next
+  print at 5,4, "YOUR SCORE WAS"
+  print Pc at 20,4 width 3
+  print at 23,4, "%"
+  for Ki = 0 to 9
+    Recap(Ki)
+  next
+  if Pc = 100 then
+    print at 7,17, "A PERFECT EAR!"
+  else
+    if Pc >= 70 then print at 8,17, "WELL READ!"
+  end if
+  play sound SndOver
+  return
+end sub
+
+' one recap line: "NN E4 OK" or "NN E4 YOU F"
+sub Recap(u8 Iq):
+  u8 Nt = 0
+  u8 Cq = 0
+  u8 Rq = 0
+  Nt = Hist[Iq].Nt
+  Cq = 3
+  Rq = Iq + 8
+  if Iq >= 5 then
+    Cq = 16
+    Rq = Rq - 5
+  end if
+  print Iq + 1 at Cq,Rq width 2
+  T = LetterOf(Nt)
+  put char 65 + T at Cq + 3,Rq
+  T = OctaveOf(Nt)
+  put char 48 + T at Cq + 4,Rq
+  if Hist[Iq].Ok = 1 then
+    print at Cq + 6,Rq, "OK"
+  else
+    print at Cq + 6,Rq, "YOU"
+    T = Hist[Iq].Gs
+    put char 65 + T at Cq + 10,Rq
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Jk = J1 & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: THE NOTE / NAME GAME in big chalk letters, the tune once
+data LogoT bytes
+  11, 7, 4, 9, 10, 11, 4, 9, 0, 8, 4, 6, 0, 8, 4
+end data
+
+sub TitlePage:
+  NewScreen
+  ' THE NOTE: 8 letters wide (16 columns) from column 8
+  for Ki = 0 to 6
+    T = LogoT[Ki]
+    C = Ki << 1
+    C = C + 8
+    if Ki >= 3 then C = C + 2
+    PutBig(T, C, 2)
+  next
+  ' NAME GAME: 9 letters wide (18 columns) from column 7
+  for Ki = 0 to 7
+    T = LogoT[Ki + 7]
+    C = Ki << 1
+    C = C + 7
+    if Ki >= 4 then C = C + 2
+    PutBig(T, C, 5)
+  next
+  print at 4,8, "COMPUTE!'S GAZETTE 1983"
+  print at 4,12, "STAFF"
+  print at 4,14, "START"
+  print at 4,16, "CREDITS"
+  if Played > 0 then
+    print at 2,20, "BEST"
+    print Best at 7,20 width 3
+    print at 10,20, "%"
+    print at 13,20, "NAMED"
+    print Total at 19,20
+  end if
+  ShowChoices
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 500
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  K = Edge & 1
+  if K > 0 then
+    if Menu > 0 then dec Menu
+    ShowMenu
+  end if
+  K = Edge & 2
+  if K > 0 then
+    if Menu < 2 then inc Menu
+    ShowMenu
+  end if
+  K = Edge & 12
+  if K > 0 then
+    if Menu = 0 then ChangeChoice
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ChangeChoice:
+  K = Edge & 8
+  if K > 0 then
+    inc Clef
+    if Clef > 2 then Clef = 0
+  else
+    if Clef = 0 then
+      Clef = 2
+    else
+      dec Clef
+    end if
+  end if
+  play sound SndTick
+  ShowChoices
+  return
+end sub
+
+sub ShowChoices:
+  select case Clef
+  case 0
+    print at 12,12, "< BASS >    "
+  case 1
+    print at 12,12, "< TREBLE >  "
+  case else
+    print at 12,12, "< MIXED >   "
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for Ki = 0 to 2
+    C = Ki << 1
+    C = C + 12
+    put char 32 at 2,C
+  next
+  C = Menu << 1
+  C = C + 12
+  put char 62 at 2,C
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 6,2, "THE NOTE NAME GAME"
+  print at 2,5, "BASED ON THE NOTE NAME GAME,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "DECEMBER 1983 (COMMODORE 64"
+  print at 2,8, "AND VIC-20). NO AUTHOR IS"
+  print at 2,9, "NAMED IN THE LISTING."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: CHALK ON THE BOARD"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$C0,$E0
+  $03,$06,$0C,$0C,$0C,$0C,$0C,$18
+  $30,$30,$18,$0C,$0C,$0C,$06,$03
+  $C0,$30,$30,$30,$30,$30,$30,$30
+  $00,$18,$18,$18,$18,$18,$18,$0C
+  $00,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$04,$04,$04,$04,$04,$04,$04
+  $30,$30,$30,$30,$C0,$30,$30,$30
+  $0C,$0C,$0C,$0C,$00,$0C,$0C,$0C
+  $03,$03,$03,$06,$00,$06,$06,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $04,$04,$04,$04,$03,$04,$04,$04
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $06,$06,$06,$06,$06,$06,$06,$07
+  $0C,$18,$18,$30,$60,$60,$C0,$80
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $00,$07,$F0,$E4,$CC,$9C,$9C,$C1
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $31,$31,$CC,$CC,$C0,$CC,$CC,$CC
+  $81,$81,$01,$01,$00,$01,$01,$00
+  $80,$80,$80,$80,$00,$E0,$B0,$D8
+  $CC,$31,$30,$30,$30,$30,$30,$30
+  $00,$80,$C0,$C0,$60,$38,$F0,$00
+  $CC,$CC,$D8,$D8,$F0,$F0,$C0,$C0
+  $00,$C0,$60,$60,$60,$60,$60,$60
+  $03,$00,$00,$00,$00,$00,$00,$00
+  $30,$30,$30,$30,$30,$30,$31,$31
+  $00,$00,$00,$00,$00,$E0,$F0,$F0
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $31,$30,$30,$30,$30,$30,$30,$30
+  $07,$12,$07,$00,$00,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$F0,$18,$70,$60
+  $00,$00,$00,$E0,$C1,$03,$03,$03
+  $00,$00,$00,$00,$00,$1C,$1C,$1C
+  $30,$30,$31,$CC,$C0,$CC,$31,$30
+  $60,$C0,$C0,$E0,$00,$E0,$C0,$00
+  $01,$00,$00,$00,$00,$01,$01,$01
+  $80,$C0,$C0,$C0,$00,$80,$80,$80
+  $03,$03,$03,$06,$0C,$0C,$18,$30
+  $00,$1C,$1C,$1C,$00,$00,$00,$00
+  $00,$00,$00,$01,$07,$0C,$38,$60
+  $00,$60,$C0,$80,$00,$00,$00,$00
+  $C0,$00,$00,$00,$00,$00,$00,$00
+  $C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$E0,$E0,$18,$18,$18
+  $00,$00,$00,$07,$07,$18,$18,$18
+  $18,$18,$18,$E0,$E0,$00,$00,$00
+  $18,$18,$18,$07,$07,$00,$00,$00
+  $00,$00,$01,$07,$E0,$80,$00,$00
+  $00,$00,$80,$E0,$07,$01,$00,$00
+  $00,$00,$80,$E0,$07,$01,$00,$00
+  $00,$00,$01,$07,$E0,$80,$00,$00
+  $00,$F0,$F0,$70,$70,$70,$70,$80
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $80,$70,$70,$70,$70,$70,$70,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$80,$80,$70,$70,$70,$70,$80
+  $00,$07,$07,$07,$07,$07,$07,$07
+  $80,$70,$70,$70,$70,$80,$80,$00
+  $07,$07,$07,$07,$07,$07,$07,$00
+  $00,$F0,$F0,$70,$70,$70,$70,$70
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $70,$70,$70,$70,$70,$F0,$F0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$70,$70,$70,$70,$70
+  $00,$07,$07,$07,$07,$07,$07,$07
+  $70,$70,$70,$70,$70,$80,$80,$00
+  $07,$07,$07,$07,$07,$07,$07,$00
+  $00,$80,$80,$70,$70,$70,$70,$80
+  $00,$00,$00,$00,$00,$00,$00,$07
+  $80,$70,$70,$70,$70,$80,$80,$00
+  $07,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$70,$70,$70,$70,$80
+  $00,$00,$00,$00,$00,$00,$00,$07
+  $80,$70,$70,$70,$70,$70,$70,$00
+  $07,$00,$00,$00,$00,$00,$00,$00
+  $00,$F0,$F0,$70,$70,$70,$70,$70
+  $00,$00,$00,$00,$00,$00,$00,$C0
+  $70,$70,$70,$70,$70,$F0,$F0,$00
+  $C0,$07,$07,$07,$07,$00,$00,$00
+  $00,$70,$70,$70,$70,$70,$70,$80
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $80,$70,$70,$70,$70,$70,$70,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$70,$70,$81,$81,$8E,$8E,$8E
+  $00,$07,$07,$C0,$C0,$38,$38,$38
+  $8E,$70,$70,$70,$70,$70,$70,$00
+  $38,$07,$07,$07,$07,$07,$07,$00
+  $00,$70,$70,$81,$81,$8E,$8E,$70
+  $00,$07,$07,$07,$07,$38,$38,$C0
+  $70,$70,$70,$70,$70,$70,$70,$00
+  $C0,$07,$07,$07,$07,$07,$07,$00
+  $00,$F0,$F0,$70,$70,$70,$70,$70
+  $00,$07,$07,$07,$07,$07,$07,$07
+  $70,$70,$70,$70,$70,$F0,$F0,$00
+  $07,$07,$07,$07,$07,$07,$07,$00
+  $00,$80,$80,$01,$01,$01,$01,$01
+  $00,$00,$00,$C0,$C0,$C0,$C0,$C0
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+end data
+data TileCol bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0
+  $00,$00,$00,$00,$00,$00,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$00,$00,$00,$00,$00,$00,$00
+  $0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$F0
+  $00,$00,$00,$00,$0F,$00,$00,$00
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$F0,$0F,$0F,$0F,$0F,$0F,$F0
+  $0F,$00,$00,$00,$00,$00,$00,$F0
+  $F0,$F0,$0F,$0F,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$00
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$F0
+  $0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$F0,$F0,$F0,$F0,$F0,$0F,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$F0,$00,$00,$00,$00,$00
+  $F0,$F0,$00,$00,$00,$00,$00,$00
+  $0F,$00,$00,$F0,$0F,$F0,$F0,$F0
+  $0F,$00,$00,$F0,$0F,$F0,$F0,$F0
+  $0F,$00,$00,$00,$00,$F0,$F0,$F0
+  $F0,$F0,$F0,$0F,$0F,$0F,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$00
+  $F0,$00,$00,$00,$0F,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$0F,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$00,$00,$F0,$F0,$F0,$F0,$F0
+  $0F,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$00,$00,$00,$0F,$00,$00,$00
+  $0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0F,$0F,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$0F,$0F,$F0,$F0,$F0
+  $00,$00,$00,$0F,$0F,$F0,$F0,$F0
+  $F0,$F0,$F0,$0F,$0F,$00,$00,$00
+  $F0,$F0,$F0,$0F,$0F,$00,$00,$00
+  $00,$00,$E0,$E0,$0E,$0E,$00,$00
+  $00,$00,$0E,$0E,$E0,$E0,$00,$00
+  $00,$00,$E0,$E0,$0E,$0E,$00,$00
+  $00,$00,$0E,$0E,$E0,$E0,$00,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$0B
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$0B
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$0B
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$0B
+  $0B,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $0B,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $00,$0B,$0B,$00,$00,$00,$00,$00
+  $B0,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $00,$00,$00,$00,$00,$0B,$0B,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $B0,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$0B
+  $00,$0B,$0B,$00,$00,$00,$00,$0B
+  $0B,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $0B,$00,$00,$00,$00,$0B,$0B,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$0B
+  $00,$0B,$0B,$00,$00,$00,$00,$0B
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $0B,$00,$00,$00,$00,$00,$00,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $00,$0B,$0B,$00,$00,$00,$00,$0B
+  $B0,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $0B,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $00,$B0,$B0,$B0,$B0,$B0,$B0,$0B
+  $00,$B0,$B0,$B0,$B0,$B0,$B0,$0B
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $00,$B0,$B0,$0B,$0B,$0B,$0B,$0B
+  $00,$B0,$B0,$0B,$0B,$0B,$0B,$0B
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $00,$B0,$B0,$0B,$0B,$0B,$0B,$B0
+  $00,$B0,$B0,$B0,$B0,$0B,$0B,$0B
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $0B,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $B0,$B0,$B0,$B0,$B0,$0B,$0B,$00
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $00,$0B,$0B,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$00
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$07,$03,$00
+  $08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$F8,$F8,$F8,$F0,$E0,$00
+  $00,$01,$03,$07,$07,$07,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04
+  $00,$F0,$F8,$F8,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$3F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FC,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' staff: tile offset from TP0 for columns 2-19, rows 2-22
+data PaperMap bytes
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  5, 6, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9
+  10, 11, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14
+  15, 16, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18
+  5, 19, 20, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9
+  21, 22, 23, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14
+  24, 25, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18
+  5, 8, 27, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 28
+  29, 30, 31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  32, 33, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  5, 35, 36, 37, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9
+  38, 39, 40, 41, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14
+  15, 0, 42, 43, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18
+  5, 44, 45, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9
+  10, 46, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14
+  15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18
+  47, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 28
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+end data
+
+asm {
+NnTick:
+    db $80,$40,$50,$02,$90
+NnRight:
+    db $80,$D6,$30,$02,$80,$AA,$30,$02,$80,$8F,$30,$02,$80,$6B,$30,$02,$80,$55,$30,$02,$80,$47,$30,$02
+    db $80,$35,$40,$08,$90
+NnWrong:
+    db $80,$F9,$32,$0A,$80,$F9,$43,$10,$90
+NnStart:
+    db $80,$1D,$31,$05,$80,$E2,$30,$05,$80,$BF,$40,$0C,$90
+NnOver:
+    db $80,$BF,$30,$08,$80,$E2,$30,$08,$80,$FE,$30,$08,$80,$1D,$41,$14,$90
+
+NnSoundTable:
+    dw NnTuneMel,$702B
+    dw NnTuneBass,$7035
+    dw NnTick,$7053
+    dw NnRight,$7053
+    dw NnWrong,$7053
+    dw NnStart,$7053
+    dw NnOver,$7053
+; Chalk on the Board (original)
+; Tiny Sound, 9 frames per step
+NnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1A,$01,$1C,$1E,$01,$21,$23,$01,$21,$1E,$01,$01
+    db $1F,$01,$1E,$1C,$01,$1A,$19,$01,$1C,$21,$01,$01,$1A,$01,$1C,$1E
+    db $01,$21,$26,$01,$23,$21,$01,$1E,$1F,$01,$1C,$19,$01,$1C,$1A,$01
+    db $01,$01,$01,$01,$00,$01,$01,$01,$01,$01
+    db $FF
+NnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0E,$01,$01,$09,$01,$01,$07,$01,$01,$0E,$01,$01
+    db $10,$01,$01,$0B,$01,$01,$09,$01,$01,$09,$01,$01,$0E,$01,$01,$12
+    db $01,$01,$13,$01,$01,$0E,$01,$01,$10,$01,$01,$09,$01,$01,$0E,$01
+    db $01,$01,$01,$01,$00,$01,$01,$01,$01,$01
+    db $FF
+; PsgNote: start the quiz note: period AMY_UVAR_Pp on tone 1, or on tone 3
+; (silent) driving periodic noise when AMY_UVAR_Pn = 1; loudness AMY_UVAR_Va
+; (same method as games/ntnote)
+PsgNote:
+  ld a,$9F
+  out ($FF),a
+  ld a,$FF
+  out ($FF),a
+  ld a,(AMY_UVAR_Pn)
+  or a
+  ld b,$80
+  jr z,PsgNoteP
+  ld b,$C0
+PsgNoteP:
+  ld hl,(AMY_UVAR_Pp)
+  ld a,l
+  and $0F
+  or b
+  out ($FF),a
+  ld a,l
+  rrca
+  rrca
+  rrca
+  rrca
+  and $0F
+  ld c,a
+  ld a,h
+  add a,a
+  add a,a
+  add a,a
+  add a,a
+  or c
+  and $3F
+  out ($FF),a
+  ld a,(AMY_UVAR_Pn)
+  or a
+  jr z,PsgVol
+  ld a,$DF
+  out ($FF),a
+  ld a,$E3
+  out ($FF),a
+PsgVol:
+  ld a,(AMY_UVAR_Pn)
+  or a
+  ld b,$90
+  jr z,PsgVolP
+  ld b,$F0
+PsgVolP:
+  ld a,(AMY_UVAR_Va)
+  and $0F
+  or b
+  out ($FF),a
+  ret
+}

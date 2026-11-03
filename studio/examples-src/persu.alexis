@@ -1,0 +1,999 @@
+cartridge "PERSUASION/COMPUTE'S GAZETTE/1986"
+
+' PERSUASION
+' A ColecoVision game based on "Persuasion", COMPUTE!'s Gazette, October
+' 1986 (Commodore 64, BASIC with a small machine-language raster routine;
+' the listing names no author). Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game (orig/persuasion.bas; the ML part, orig/raster.dis, only
+' splits the border colour between the two halves): North and South each
+' move one token in turn, North first, one diagonal step on a diamond of
+' 30 stones (7 rows of 3, 4, 5, 6, 5, 4, 3; a token can never leave the
+' stones it can reach diagonally, so both share the same 30). The stone a
+' token lands on changes (lines 820, 520-580):
+'   stone      North lands       South lands
+'   neutral    touched           touched
+'   touched    half North        half South
+'   half North North (+1 North)  touched (undone)
+'   half South touched (undone)  South (+1 South)
+'   North      neutral (-1 N)    no change
+'   South      no change         neutral (-1 S)
+' First to 16 wins (THE NORTH / SOUTH IS THE WINNER); 15 all is a tie.
+' Both tokens may share a stone.
+'
+' Kept from the listing: the board, the starting stones (row 0 and row 6,
+' middle), the moves (diagonals only, lines 490-510), the colour table,
+' the scoring, North first, 16 to win and the 15-15 tie, the end words.
+'
+' Liberties:
+' - 1 PLAYER mode (new): you are North against a computer South that
+'   sees only the board (it weighs the stone it lands on, twice, plus the
+'   best other stone less 3 a step from there; ties go round the four
+'   directions). The original was for two players only.
+' - A game lasts at most 300 moves (150 each; MOVES LEFT on screen):
+'   then the higher score wins, equal scores tie. Without it two careful
+'   sides can undo each other's half stones for ever (model.mjs games
+'   never ended); first to 16 and 15-15 still end it at once. One move
+'   repeated back and forth cannot win (a stone gained is lost on the
+'   next visit); the bot checks it loses to the computer.
+' - Both controllers work for whoever is to move (the original passed one
+'   joystick). A move needs a fresh diagonal push: holding the stick does
+'   not repeat, so the other side's move never fires a held stick.
+' - Colours: neutral stays red, touched green; the sides are blue and
+'   yellow (the listing's blue and grey) on bevelled stones; a half stone
+'   is light over dark, as in the listing. The token to move is white,
+'   the other grey (the listing swapped yellow and black).
+' - The token slides to its new stone; sounds and the title tune
+'   ("Gentle Persuasion") are new; the title shows the rules.
+' - At the end: the message, then the button (or 30 seconds) returns to
+'   the title, no PLAY AGAIN key.
+'
+' Controls: either controller; the stick only (diagonal pushes) in play;
+' up/down and a side button on the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' frame loop protected from the NMI; screens drawn with the NMI and the
+' display off. Music first in the sound table, the title tune once.
+
+const TSt000 = 128
+const TSt001 = 129
+const TSt010 = 130
+const TSt011 = 131
+const TSt100 = 132
+const TSt101 = 133
+const TSt110 = 134
+const TSt111 = 135
+const TSt200 = 136
+const TSt201 = 137
+const TSt210 = 138
+const TSt211 = 139
+const TSt300 = 140
+const TSt301 = 141
+const TSt310 = 142
+const TSt311 = 143
+const TSt400 = 144
+const TSt401 = 145
+const TSt410 = 146
+const TSt411 = 147
+const TSt500 = 148
+const TSt501 = 149
+const TSt510 = 150
+const TSt511 = 151
+const TM0_1 = 152
+const TM0_2 = 153
+const TM0_3 = 154
+const TM0_4 = 155
+const TM0_5 = 156
+const TM0_6 = 157
+const TM0_7 = 158
+const TM0_8 = 159
+const TM0_9 = 160
+const TM0_10 = 161
+const TM0_11 = 162
+const TM0_12 = 163
+const TM0_13 = 164
+const TM0_14 = 165
+const TM0_15 = 166
+const TM1_1 = 167
+const TM1_2 = 168
+const TM1_3 = 169
+const TM1_4 = 170
+const TM1_5 = 171
+const TM1_6 = 172
+const TM1_7 = 173
+const TM1_8 = 174
+const TM1_9 = 175
+const TM1_10 = 176
+const TM1_11 = 177
+const TM1_12 = 178
+const TM1_13 = 179
+const TM1_14 = 180
+const TM1_15 = 181
+const TRule = 182
+const SON = 0
+const SFN = 4
+const SOS = 8
+const SFS = 12
+const NTiles8 = 440
+const SprBytes = 128
+const TitleW = 24
+const TitleX = 4
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMenu = 3
+const SndStep = 4
+const SndGain = 5
+const SndLose = 6
+const SndUndo = 7
+const SndWin = 8
+const SndTie = 9
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $0E,$0E,$0E,$00,$00,$00,$00,$00
+  $11,$11,$11,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$00
+  $E0,$E0,$E0,$00,$E0,$E0,$E0,$00
+  $0E,$0E,$0E,$00,$E0,$E0,$E0,$00
+  $11,$11,$11,$00,$E0,$E0,$E0,$00
+  $00,$00,$00,$00,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$00,$0E,$0E,$0E,$00
+  $0E,$0E,$0E,$00,$0E,$0E,$0E,$00
+  $11,$11,$11,$00,$0E,$0E,$0E,$00
+  $00,$00,$00,$00,$11,$11,$11,$00
+  $E0,$E0,$E0,$00,$11,$11,$11,$00
+  $0E,$0E,$0E,$00,$11,$11,$11,$00
+  $11,$11,$11,$00,$11,$11,$11,$00
+  $E0,$E0,$E0,$00,$00,$00,$00,$00
+  $0E,$0E,$0E,$00,$00,$00,$00,$00
+  $11,$11,$11,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$E0,$00
+  $E0,$E0,$E0,$00,$E0,$E0,$E0,$00
+  $0E,$0E,$0E,$00,$E0,$E0,$E0,$00
+  $11,$11,$11,$00,$E0,$E0,$E0,$00
+  $00,$00,$00,$00,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$00,$0E,$0E,$0E,$00
+  $0E,$0E,$0E,$00,$0E,$0E,$0E,$00
+  $11,$11,$11,$00,$0E,$0E,$0E,$00
+  $00,$00,$00,$00,$11,$11,$11,$00
+  $E0,$E0,$E0,$00,$11,$11,$11,$00
+  $0E,$0E,$0E,$00,$11,$11,$11,$00
+  $11,$11,$11,$00,$11,$11,$11,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $00,$09,$08,$08,$08,$08,$08,$08
+  $00,$09,$08,$08,$08,$08,$08,$08
+  $08,$08,$08,$08,$08,$08,$06,$00
+  $08,$08,$08,$08,$08,$08,$06,$00
+  $00,$03,$02,$02,$02,$02,$02,$02
+  $00,$03,$02,$02,$02,$02,$02,$02
+  $02,$02,$02,$02,$02,$02,$0C,$00
+  $02,$02,$02,$02,$02,$02,$0C,$00
+  $00,$07,$05,$05,$05,$05,$05,$05
+  $00,$07,$05,$05,$05,$05,$05,$05
+  $04,$04,$04,$04,$04,$04,$04,$00
+  $04,$04,$04,$04,$04,$04,$04,$00
+  $00,$0F,$0B,$0B,$0B,$0B,$0B,$0B
+  $00,$0F,$0B,$0B,$0B,$0B,$0B,$0B
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$00
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$00
+  $00,$05,$04,$04,$04,$04,$04,$04
+  $00,$05,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$01,$00
+  $04,$04,$04,$04,$04,$04,$01,$00
+  $00,$0B,$0A,$0A,$0A,$0A,$0A,$0A
+  $00,$0B,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$06,$00
+  $0A,$0A,$0A,$0A,$0A,$0A,$06,$00
+  $50,$50,$40,$00,$00,$00,$00,$00
+  $50,$50,$40,$00,$00,$00,$00,$00
+  $05,$05,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$50,$50,$40,$00
+  $50,$50,$40,$00,$50,$50,$40,$00
+  $50,$50,$40,$00,$50,$50,$40,$00
+  $05,$05,$04,$00,$50,$50,$40,$00
+  $00,$00,$00,$00,$50,$50,$40,$00
+  $50,$50,$40,$00,$50,$50,$40,$00
+  $50,$50,$40,$00,$50,$50,$40,$00
+  $05,$05,$04,$00,$50,$50,$40,$00
+  $00,$00,$00,$00,$05,$05,$04,$00
+  $50,$50,$40,$00,$05,$05,$04,$00
+  $50,$50,$40,$00,$05,$05,$04,$00
+  $05,$05,$04,$00,$05,$05,$04,$00
+  $B0,$B0,$A0,$00,$00,$00,$00,$00
+  $B0,$B0,$A0,$00,$00,$00,$00,$00
+  $0B,$0B,$0A,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$B0,$B0,$A0,$00
+  $B0,$B0,$A0,$00,$B0,$B0,$A0,$00
+  $B0,$B0,$A0,$00,$B0,$B0,$A0,$00
+  $0B,$0B,$0A,$00,$B0,$B0,$A0,$00
+  $00,$00,$00,$00,$B0,$B0,$A0,$00
+  $B0,$B0,$A0,$00,$B0,$B0,$A0,$00
+  $B0,$B0,$A0,$00,$B0,$B0,$A0,$00
+  $0B,$0B,$0A,$00,$B0,$B0,$A0,$00
+  $00,$00,$00,$00,$0B,$0B,$0A,$00
+  $B0,$B0,$A0,$00,$0B,$0B,$0A,$00
+  $B0,$B0,$A0,$00,$0B,$0B,$0A,$00
+  $0B,$0B,$0A,$00,$0B,$0B,$0A,$00
+  $00,$00,$00,$0E,$00,$00,$00,$00
+end data
+data SpritePat bytes
+  $03,$0F,$18,$30,$64,$46,$C5,$C4,$C4,$C4,$44,$60,$30,$18,$0F,$03
+  $C0,$F0,$18,$0C,$46,$42,$43,$C3,$43,$43,$42,$06,$0C,$18,$F0,$C0
+  $00,$00,$07,$0F,$1B,$39,$3A,$3B,$3B,$3B,$3B,$1F,$0F,$07,$00,$00
+  $00,$00,$E0,$F0,$B8,$BC,$BC,$3C,$BC,$BC,$BC,$F8,$F0,$E0,$00,$00
+  $03,$0F,$18,$30,$63,$44,$C4,$C3,$C0,$C0,$47,$60,$30,$18,$0F,$03
+  $C0,$F0,$18,$0C,$C6,$02,$03,$83,$43,$43,$82,$06,$0C,$18,$F0,$C0
+  $00,$00,$07,$0F,$1C,$3B,$3B,$3C,$3F,$3F,$38,$1F,$0F,$07,$00,$00
+  $00,$00,$E0,$F0,$38,$FC,$FC,$7C,$BC,$BC,$7C,$F8,$F0,$E0,$00,$00
+end data
+data TitleMap bytes
+  158,160,161,154,152,158,160,159,154,152,156,161,159,154,155,157,154,153,158,159,154,155,164,161
+  164,157,161,163,32,164,157,153,163,32,156,161,161,163,156,160,155,32,156,161,32,156,158,165
+  171,32,176,32,32,171,175,32,32,171,171,176,176,32,171,32,176,32,171,176,32,171,171,177
+  167,32,168,169,167,167,168,168,169,32,168,167,168,32,167,169,167,168,169,32,169,32,167,168
+end data
+const NSpr = 4
+const WinSc = 16
+const TieSc = 15
+const BoardW = 11
+const NCell = 77
+const Think = 30
+const MaxMoves = 300
+
+' each row's first and last X (lines 830: X1(A), X2(A))
+data RowX1 bytes
+  3,2,1,0,1,2,3
+end data
+data RowX2 bytes
+  7,8,9,10,9,8,7
+end data
+' the colour table (line 820, C(PL,C)) on stone looks 0-5:
+' 0 neutral, 1 touched, 2 half North, 3 half South, 4 North, 5 South
+data NewN bytes
+  1,2,4,1,0,5
+end data
+data NewS bytes
+  1,3,1,5,4,0
+end data
+' joystick bits (1 up, 2 down, 4 left, 8 right) -> diagonal 0-3 or 255
+data DirOf bytes
+  255,255,255,255,255,0,2,255,255,1,3,255,255,255,255,255
+end data
+' diagonal 0 up-left, 1 up-right, 2 down-left, 3 down-right: X and Y
+' steps plus one
+data StepX bytes
+  0,2,0,2
+end data
+data StepY bytes
+  0,0,2,2
+end data
+
+record Side
+  u8 X
+  u8 Y
+  u8 Sc
+end record
+
+Side Pl[2]
+u8 Cell[77]
+u8 Turn = 0
+u8 Mode = 0
+u16 Moves = 0
+u8 Over = 0
+u8 Winner = 0
+' Ph: 1 waiting for a human's push, 2 the computer thinking, 0 busy
+u8 Ph = 0
+u8 Ask = 0
+u8 TitleOn = 0
+u8 Menu = 0
+u8 LastGain = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 B1 = 0
+u8 WasB1 = 0
+u8 P1 = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with helpers)
+u8 Li = 0
+u8 Lj = 0
+u8 Lw = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table PzSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  Mode = Menu
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Over = 0 then goto play_loop
+
+  ' 610-680: the winner, then back to the title
+  Ph = 0
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,22
+  select case Winner
+  case 1
+    print at 4,1, "THE NORTH IS THE WINNER"
+    play sound SndWin
+  case 2
+    print at 4,1, "THE SOUTH IS THE WINNER"
+    play sound SndWin
+  case else
+    print at 10,1, "IT'S A TIE"
+    play sound SndTie
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  Ask = 9
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Ask = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+' the X of diagonal D from side P, or 255 if off the stones
+function DestX(u8 P, u8 D) as u8
+  u8 Nx = 0
+  u8 Ny = 0
+  Nx = Pl[P].X + StepX[D]
+  Nx = Nx - 1
+  Ny = Pl[P].Y + StepY[D]
+  Ny = Ny - 1
+  if Ny > 6 then return 255
+  if Nx < RowX1[Ny] then return 255
+  if Nx > RowX2[Ny] then return 255
+  return Nx
+
+' the new look of a stone S after side P lands on it
+function NewLook(u8 P, u8 S) as u8
+  if P = 0 then return NewN[S]
+  return NewS[S]
+
+' the computer's worth of landing on a stone of look S for side P
+' (20 = nothing gained)
+function Worth(u8 P, u8 S) as u8
+  u8 Own = 4
+  u8 Half = 2
+  u8 Wr = 20
+  if P = 1 then
+    Own = 5
+    Half = 3
+  end if
+  if S = 0 then Wr = 22
+  if S = 1 then Wr = 24
+  if S = Own then
+    Wr = 6
+  elseif S = Half then
+    Wr = 30
+  elseif S >= 2 then
+    ' the other side's half (undone) or the other side's stone
+    if S < 4 then Wr = 21 else Wr = 19
+  end if
+  return Wr
+
+' the computer's move for side P: twice the worth of the stone it lands
+' on, plus the best (worth - 3 x steps) of any other stone from there
+function AiDir(u8 P) as u8
+  u8 Best = 255
+  u8 Bv = 0
+  u8 D = 0
+  u8 Di = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Gx = 0
+  u8 Gy = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Ds = 0
+  u8 Nb = 0
+  u8 Wv = 0
+  u16 Tot = 0
+  for Di = 0 to 3
+    D = Moves + Di
+    D = D & 3
+    Nx = DestX(P, D)
+    if Nx <> 255 then
+      Ny = Pl[P].Y + StepY[D]
+      Ny = Ny - 1
+      Tot = Worth(P, Cell[Ny * BoardW + Nx])
+      Tot = Tot * 2
+      Nb = 0
+      for Gy = 0 to 6
+        Gx = RowX1[Gy]
+        while Gx <= RowX2[Gy]
+          ' steps on the diagonal lattice: the larger of the two distances
+          if Gx > Nx then Ax = Gx - Nx else Ax = Nx - Gx
+          if Gy > Ny then Ay = Gy - Ny else Ay = Ny - Gy
+          Ds = Ax
+          if Ay > Ds then Ds = Ay
+          if Ds > 0 then
+            Wv = Worth(P, Cell[Gy * BoardW + Gx])
+            Ds = Ds * 3
+            if Wv > Ds then
+              Wv = Wv - Ds
+              if Wv > Nb then Nb = Wv
+            end if
+          end if
+          Gx = Gx + 2
+        end while
+      next
+      Tot = Tot + Nb
+      if Tot > Bv then
+        Bv = Tot
+        Best = D
+      end if
+    end if
+  next
+  return Best
+
+sub NewGame:
+  for Li = 0 to 76
+    Cell[Li] = 0
+  next
+  ' 160: North at (5,0), South at (5,6)
+  Pl[0].X = 5
+  Pl[0].Y = 0
+  Pl[1].X = 5
+  Pl[1].Y = 6
+  Pl[0].Sc = 0
+  Pl[1].Sc = 0
+  Turn = 0
+  Moves = 0
+  Over = 0
+  Winner = 0
+  DrawPlay
+  return
+end sub
+
+sub PlayStep:
+  u8 Pd = 255
+  if Mode = 0 then
+    if Turn = 1 then
+      ' the computer: a pause, then its move
+      Ph = 2
+      ShowTurn
+      Pause(Think)
+      Pd = AiDir(1)
+      DoMove(Pd)
+      return
+    end if
+  end if
+  Ph = 1
+  if Edge = 0 then return
+  Pd = DirOf[Jk]
+  if Pd = 255 then return
+  K = DestX(Turn, Pd)
+  if K = 255 then return
+  DoMove(Pd)
+  return
+end sub
+
+' 490-630: side Turn steps along diagonal Dm; the stone changes, scores
+sub DoMove(u8 Dm):
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Ci = 0
+  u8 Was = 0
+  u8 Now = 0
+  u8 Own = 4
+  Ph = 0
+  Nx = DestX(Turn, Dm)
+  Ny = Pl[Turn].Y + StepY[Dm]
+  Ny = Ny - 1
+  Slide(Nx, Ny)
+  Pl[Turn].X = Nx
+  Pl[Turn].Y = Ny
+  Ci = Ny * BoardW
+  Ci = Ci + Nx
+  Was = Cell[Ci]
+  Now = NewLook(Turn, Was)
+  Cell[Ci] = Now
+  if Turn = 1 then Own = 5
+  LastGain = 0
+  if Now = Own then
+    Pl[Turn].Sc += 1
+    LastGain = 1
+    play sound SndGain
+  else
+    if Was = Own then
+      Pl[Turn].Sc -= 1
+      LastGain = 2
+      play sound SndLose
+    else
+      if Now < Was then
+        play sound SndUndo
+      else
+        play sound SndStep
+      end if
+    end if
+  end if
+  DrawStone(Nx, Ny)
+  inc Moves
+  ShowScores
+  ' 610-620: 15 all ties, 16 wins
+  if Pl[0].Sc = TieSc then
+    if Pl[1].Sc = TieSc then
+      Over = 1
+      Winner = 3
+    end if
+  end if
+  if Pl[Turn].Sc = WinSc then
+    Over = 1
+    Winner = Turn + 1
+  end if
+  ' liberty: after MaxMoves moves the higher score wins
+  if Over = 0 then
+    if Moves = MaxMoves then
+      Over = 1
+      Winner = 3
+      if Pl[0].Sc > Pl[1].Sc then Winner = 1
+      if Pl[1].Sc > Pl[0].Sc then Winner = 2
+    end if
+  end if
+  Turn = Turn ^ 1
+  DrawTokens
+  if Over = 0 then ShowTurn
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' a stone's tile column and row
+function StoneC(u8 Sx) as u8
+  return Sx * 2 + 5
+
+function StoneR(u8 Sy) as u8
+  return Sy * 3 + 2
+
+sub DrawStone(u8 Dx, u8 Dy):
+  u8 Tc = 0
+  u8 Tr = 0
+  u8 Tb = 0
+  Tc = StoneC(Dx)
+  Tr = StoneR(Dy)
+  Tb = Cell[Dy * BoardW + Dx]
+  Tb = Tb << 2
+  Tb = Tb + TSt000
+  put char Tb at Tc,Tr
+  put char Tb + 1 at Tc + 1,Tr
+  put char Tb + 2 at Tc,Tr + 1
+  put char Tb + 3 at Tc + 1,Tr + 1
+  return
+end sub
+
+' the token of side Ts at pixel Px,Py (fill white for the side to move)
+sub PutToken(u8 Ts, u8 Px, u8 Py):
+  u8 Fc = 14
+  u8 So = 0
+  u8 Sf = 1
+  u8 Po = SON
+  u8 Pf = SFN
+  if Ts = Turn then Fc = 15
+  if Ts = 1 then
+    So = 2
+    Sf = 3
+    Po = SOS
+    Pf = SFS
+  end if
+  set sprite So to Py,Px,Po,1
+  set sprite Sf to Py,Px,Pf,Fc
+  return
+end sub
+
+sub DrawTokens:
+  u8 Ti = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  for Ti = 0 to 1
+    Tx = Pl[Ti].X
+    Ty = Pl[Ti].Y
+    X = StoneC(Tx) << 3
+    Y = StoneR(Ty) << 3
+    Y = Y - 1
+    PutToken(Ti, X, Y)
+  next
+  update sprites
+  return
+end sub
+
+' the moving token slides to stone (Gx, Gy) in 10 frames
+sub Slide(u8 Gx, u8 Gy):
+  i16 Ax = 0
+  i16 Ay = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Hx = 0
+  i16 Hy = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Fr = 0
+  Ax = StoneC(Pl[Turn].X) << 3
+  Ay = StoneR(Pl[Turn].Y) << 3
+  Dx = StoneC(Gx) << 3
+  Dx = Dx - Ax
+  Dy = StoneR(Gy) << 3
+  Dy = Dy - Ay
+  for Fr = 1 to 10
+    Hx = Dx * Fr
+    Hx = Hx / 10
+    Hx = Hx + Ax
+    Hy = Dy * Fr
+    Hy = Hy / 10
+    Hy = Hy + Ay - 1
+    Sx = Hx
+    Sy = Hy
+    PutToken(Turn, Sx, Sy)
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub ShowScores:
+  V = Pl[0].Sc
+  print V at 2,4 width 2
+  V = Pl[1].Sc
+  print V at 2,20 width 2
+  NumU = MaxMoves - Moves
+  print at 23,21, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowTurn:
+  fill 32 count 28 at 2,1
+  if Turn = 0 then
+    if Mode = 0 then
+      print at 6,1, "YOUR MOVE (NORTH)"
+    else
+      print at 9,1, "NORTH TO MOVE"
+    end if
+  else
+    if Mode = 0 then
+      print at 7,1, "COMPUTER THINKS"
+    else
+      print at 9,1, "SOUTH TO MOVE"
+    end if
+  end if
+  return
+end sub
+
+sub DrawPlay:
+  u8 Ry = 0
+  u8 Rx = 0
+  u8 Rx2 = 0
+  NewScreen
+  for Ry = 0 to 6
+    Rx = RowX1[Ry]
+    Rx2 = RowX2[Ry]
+    while Rx <= Rx2
+      DrawStone(Rx, Ry)
+      Rx = Rx + 2
+    end while
+  next
+  print at 2,3, "NORTH"
+  print at 2,19, "SOUTH"
+  if Mode = 0 then
+    print at 2,5, "(YOU)"
+    print at 2,21, "(CPU)"
+  end if
+  print at 23,2, "FIRST"
+  print at 23,3, "TO 16"
+  print at 23,4, "WINS"
+  print at 23,19, "MOVES"
+  print at 23,20, "LEFT"
+  print at 3,22, "PUSH THE STICK DIAGONALLY"
+  ShowScores
+  ShowTurn
+  ShowScreen
+  DrawTokens
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Pf):
+  for Lw = 1 to Pf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  B1 = V & 16
+  P1 = 0
+  if B1 > 0 then
+    if WasB1 = 0 then P1 = 1
+  end if
+  WasB1 = B1
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: PERSUASION in mosaic squares, the rules, the menu, the tune
+sub TitlePage:
+  u16 Tq = 0
+  u16 Tv = 0
+  u8 Tr = 0
+  Ask = 0
+  TitleOn = 1
+  NewScreen
+  for Tr = 0 to 3
+    Tq = Tr * TitleW
+    Tv = Tr + 2
+    Tv = Tv * 32
+    Tv = Tv + TitleX
+    copy TitleMap + Tq count TitleW to vram.name + Tv
+  next
+  fill TRule count 26 at 3,7
+  print at 2,9, "STEP DIAGONALLY ONTO STONES"
+  print at 2,10, "RED, GREEN, HALF, THEN YOURS"
+  print at 2,11, "FOR A POINT. STEP ON YOUR"
+  print at 2,12, "OWN AND IT TURNS RED (-1)."
+  print at 2,13, "NORTH MOVES FIRST. 16 WINS."
+  print at 11,15, "1 PLAYER"
+  print at 11,16, "2 PLAYERS"
+  print at 11,17, "CREDITS"
+  fill TRule count 26 at 3,19
+  print at 4,21, "COMPUTE!'S GAZETTE 1986"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 500
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  if Edge = 1 then
+    if Menu > 0 then
+      dec Menu
+      play sound SndMenu
+      ShowMenu
+    end if
+  end if
+  if Edge = 2 then
+    if Menu < 2 then
+      inc Menu
+      play sound SndMenu
+      ShowMenu
+    end if
+  end if
+  if P1 = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  return
+end sub
+
+sub ShowMenu:
+  for Lj = 15 to 17
+    put char 32 at 9,Lj
+  next
+  C = Menu + 15
+  put char 62 at 9,C
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "PERSUASION"
+  print at 2,5, "BASED ON PERSUASION,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "OCTOBER 1986 (COMMODORE 64)."
+  print at 2,8, "NO AUTHOR IS NAMED IN THE"
+  print at 2,9, "LISTING."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: GENTLE PERSUASION"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Ask = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Ask = 0
+  return
+end sub
+
+asm {
+PzMenu:
+    db $40,$47,$40,$01,$50
+PzStep:
+    db $40,$FC,$21,$01,$40,$AB,$21,$01,$40,$53,$21,$01,$40,$1D,$31,$01,$40,$E2,$30,$01,$40,$BF,$50,$02
+    db $50
+PzGain:
+    db $40,$D6,$20,$01,$40,$AA,$20,$01,$40,$8F,$20,$02,$40,$6B,$30,$02,$40,$8F,$20,$01,$40,$6B,$20,$02
+    db $40,$55,$40,$03,$50
+PzLose:
+    db $40,$1D,$21,$02,$40,$53,$21,$02,$40,$AB,$31,$03,$40,$3B,$52,$04,$50
+PzUndo:
+    db $40,$7F,$20,$02,$40,$AA,$30,$02,$40,$D6,$40,$03,$50
+PzWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+PzTie:
+    db $40,$D6,$20,$08,$40,$D6,$30,$08,$40,$1D,$21,$12,$50
+
+PzSoundTable:
+    dw PzTuneMel,$702B
+    dw PzTuneBass,$7035
+    dw PzMenu,$7049
+    dw PzStep,$7049
+    dw PzGain,$7049
+    dw PzLose,$7049
+    dw PzUndo,$7049
+    dw PzWin,$7049
+    dw PzTie,$7049
+; Gentle Persuasion (original)
+; Tiny Sound, 8 frames per step
+PzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$21,$01,$01,$23,$24,$01,$28,$01,$01,$26,$24,$01
+    db $23,$01,$01,$24,$21,$01,$20,$01,$01,$21,$23,$01,$1C,$01,$01,$01
+    db $01,$01,$24,$01,$01,$26,$28,$01,$2B,$01,$01,$28,$24,$01,$26,$01
+    db $01,$23,$1F,$01,$21,$01,$01,$23,$1F,$01,$24,$01,$01,$01,$00,$01
+    db $FF
+PzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$01,$10,$01,$01,$0C,$01,$01,$13,$01,$01
+    db $07,$01,$01,$10,$01,$01,$04,$01,$01,$0B,$01,$01,$04,$01,$01,$08
+    db $01,$01,$0C,$01,$01,$13,$01,$01,$10,$01,$01,$0C,$01,$01,$07,$01
+    db $01,$0E,$01,$01,$04,$01,$01,$07,$01,$01,$0C,$01,$01,$01,$00,$01
+    db $FF
+}

@@ -1,0 +1,1036 @@
+cartridge "METEOR STRIKE/COMPUTE! GAZETTE/1986"
+
+' METEOR STRIKE
+' A ColecoVision game based on "Meteor Strike", COMPUTE!'s Gazette July
+' 1986 (Commodore 64 machine language, SYS2061; the author is not named on
+' the disk). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/mstrike-code.dis, and timed in jsc64), the game is
+' built for the ColecoVision: a starfield beside a grey panel with black
+' label boxes as on the C64, a rocket in eight headings with a flame while
+' it moves, two kinds of tumbling meteor, bursts, sound effects, a tune.
+'
+' The game: your rocket is caught in a meteor shower. Steer with the stick
+' and shoot in the direction you last moved. A big meteor is worth 100, a
+' small one 200. A meteor that touches the rocket costs one of five ships.
+' Survive each level until LEVEL COMPLETE: every meteor left bursts (and
+' scores) and the next level's meteors fly faster. Level 9 is the last and
+' lasts until the ships run out; finishing level 8 gives a ship.
+'
+' From the original: six meteors, each with a speed of -3..+3 pixels a step
+' on each axis (C64: -3..+4), wrapping round a 256 x 256 space of which
+' the field is the visible part, so a meteor leaving one side comes back
+' on the other after a while; the meteors' step clock speeds up every
+' level (C64: a delay of 12 - level); a hit meteor bursts for 5 of its
+' steps, then a new one (big or small at random) comes in from an edge;
+' one shot at a time, flying in the rocket's last heading until it leaves
+' the field (holding the button fires again at once); a hit rocket bursts,
+' everything stops a moment, then the meteors start again from the edges
+' and the rocket from the middle; 5 ships, a ship for finishing level 8,
+' level 9 the last; the level-end burst scores every meteor in flight.
+'
+' Liberties: the field is 168 x 176 pixels (C64 about 208 x 180) and the
+' speeds are scaled to it and slowed for human players (meteors from 0.20
+' steps a frame at level 1 to 0.61 at level 9; the C64 went from about
+' 0.3 to 1 step of up to 4 pixels); the rocket moves 1.5 pixels a frame
+' (C64 about 2) and stays inside the field (on the C64 it wrapped through
+' the invisible border like the meteors); a new meteor always flies into
+' the field from the edge it starts at and never stands still (the C64
+' picked any speed, including none); a meteor is replaced half way round
+' the unseen part of the space (the C64 did it where X or Y passed 0);
+' every other new meteor (after a burst or such a replacement) is aimed
+' at where the rocket is as it comes in, so that standing still or
+' circling does not pay (the C64's meteors flew at random); hits are box
+' tests on the drawn shapes (the C64 used sprite collisions); a level
+' lasts 25 seconds (about 24 in jsc64); the shot flies 4 pixels a frame;
+' the score stops at 999900 (the C64 rolled over); no pause key (the C64
+' paused with SHIFT); GAME OVER then the title (the C64 waited for the
+' button and restarted).
+'
+' Controls: controller 1 (or 2): the stick moves the rocket, either side
+' button fires. On the title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers.
+
+const TSp0 = 128
+const TSp1 = 129
+const TSp2 = 130
+const TSp3 = 131
+const TSp4 = 132
+const TPan = 133
+const TDiv = 134
+const TRivet = 135
+const TRk = 136
+const SShip0 = 0
+const SShip1 = 4
+const SShip2 = 8
+const SShip3 = 12
+const SShip4 = 16
+const SShip5 = 20
+const SShip6 = 24
+const SShip7 = 28
+const SFlame0 = 32
+const SFlame1 = 36
+const SFlame2 = 40
+const SFlame3 = 44
+const SFlame4 = 48
+const SFlame5 = 52
+const SFlame6 = 56
+const SFlame7 = 60
+const SShot = 64
+const SBig = 68
+const SSmall = 72
+const SBoom0 = 76
+const SBoom1 = 80
+const NTiles8 = 72
+const SprBytes = 672
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndRock = 4
+const SndCrash = 5
+const SndLevel = 6
+const SndBonus = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 9
+const NRock = 6
+' the visible field in field pixels: a sprite is shown at X 0..152, Y 0..160
+const FMaxX = 152
+const FMaxY = 160
+const LvFrames = 1500
+const HidMid = 200
+const ScoreCap = 9999
+
+' meteor steps a frame x 256, levels 1-9
+data RateT bytes 50,56,62,70,80,92,108,128,156
+' headings 0 up .. 7 up-left (clockwise): pixels a step
+data DXT bytes 0,1,1,1,0,255,255,255
+data DYT bytes 255,255,0,1,1,1,0,255
+' the stick's bits (1 up, 2 down, 4 left, 8 right) to a heading, 255 none
+data DirOf bytes 255,0,4,255,6,7,5,255,2,1,3,255,255,255,255,255
+' hit boxes of the big and the small meteor: left, right, top, bottom
+data BoxL bytes 1,4
+data BoxR bytes 14,11
+data BoxT bytes 1,4
+data BoxB bytes 13,10
+data Speed7 bytes 253,254,255,0,1,2,3,0,253,254,255,0,1,2,3,0
+data RockPat bytes SBig,SSmall
+data RockCol bytes 14,10
+data BurstCol bytes 6,8,9,11,15,15
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$20,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $91,$00,$88,$21,$02,$20,$82,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$71,$01,$01,$01,$01,$71,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$01,$51,$01,$01,$01,$01,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0E,$0E,$0E,$FE,$1E,$0E,$0E,$0E
+  $AB,$0A,$6A,$6A,$6A,$6A,$6A,$06
+end data
+data SpritePat bytes
+  $00,$01,$01,$03,$02,$02,$07,$07,$0F,$1D,$3D,$39,$31,$00,$00,$00
+  $00,$80,$80,$C0,$40,$40,$E0,$E0,$F0,$B8,$BC,$9C,$8C,$00,$00,$00
+  $00,$00,$00,$00,$00,$37,$7F,$FF,$4B,$07,$0E,$0D,$00,$00,$01,$00
+  $00,$00,$00,$38,$78,$98,$90,$E0,$E0,$E0,$E0,$C0,$E0,$E0,$C0,$80
+  $00,$00,$1C,$1E,$0F,$07,$01,$1F,$1F,$01,$07,$0F,$1E,$1C,$00,$00
+  $00,$00,$00,$00,$00,$C0,$F8,$CE,$CE,$F8,$C0,$00,$00,$00,$00,$00
+  $00,$01,$00,$00,$0D,$0E,$07,$4B,$FF,$7F,$37,$00,$00,$00,$00,$00
+  $80,$C0,$E0,$E0,$C0,$E0,$E0,$E0,$E0,$90,$98,$78,$38,$00,$00,$00
+  $00,$00,$00,$31,$39,$3D,$1D,$0F,$07,$07,$02,$02,$03,$01,$01,$00
+  $00,$00,$00,$8C,$9C,$BC,$B8,$F0,$E0,$E0,$40,$40,$C0,$80,$80,$00
+  $01,$03,$07,$07,$03,$07,$07,$07,$07,$09,$19,$1E,$1C,$00,$00,$00
+  $00,$80,$00,$00,$B0,$70,$E0,$D2,$FF,$FE,$CC,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$1F,$73,$73,$1F,$03,$00,$00,$00,$00,$00
+  $00,$00,$38,$78,$F0,$E0,$80,$F8,$F8,$80,$E0,$F0,$78,$38,$00,$00
+  $00,$00,$00,$1C,$1E,$19,$09,$07,$07,$07,$03,$03,$07,$07,$03,$01
+  $00,$00,$00,$00,$00,$EC,$FE,$FF,$D2,$E0,$70,$B0,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$19,$02,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$98,$40,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$40,$00,$30,$28,$38,$02,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$20,$00,$40,$A0,$A0,$40,$00,$20,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$02,$38,$28,$30,$00,$40,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$02,$19,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$40,$98,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$40,$1C,$14,$0C,$00,$02,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$04,$00,$02,$05,$05,$02,$00,$04,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$00,$0C,$14,$1C,$40,$80
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$07,$1E,$3F,$77,$67,$F7,$FF,$F3,$71,$7B,$3F,$1B,$07,$00,$00
+  $00,$E0,$F8,$3C,$EE,$FA,$F3,$DF,$FF,$F6,$C6,$EC,$F0,$E0,$00,$00
+  $00,$00,$00,$00,$03,$06,$0F,$0D,$0F,$06,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$E0,$F0,$D0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$02,$11,$09,$03,$2F,$07,$0F,$03,$09,$11,$02,$00,$00,$00
+  $00,$00,$20,$44,$C8,$E0,$FA,$F0,$F8,$E0,$C8,$44,$20,$00,$00,$00
+  $20,$08,$82,$10,$44,$02,$88,$02,$28,$02,$44,$10,$82,$08,$20,$00
+  $82,$88,$21,$04,$10,$22,$08,$20,$0A,$20,$11,$04,$20,$88,$82,$00
+end data
+
+data GameMap bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$84,$82,$80,$80,$80,$80,$82,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$87,$85,$85,$87,$85,$80,$80
+  $80,$80,$80,$80,$80,$84,$84,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$82,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$86,$85,$87,$85,$85,$87,$85,$80,$80
+  $80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$81,$80,$80,$81,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$81,$80,$80,$80,$80,$80,$81,$80,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$80,$80,$80,$80,$80,$80,$86,$85,$87,$85,$85,$87,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$81,$84,$84,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$81,$84,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$87,$85,$85,$87,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86,$85,$87,$85,$85,$87,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$81,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$86,$85,$87,$85,$85,$87,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$84,$86,$85,$85,$85,$85,$85,$85,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+end data
+
+data TitleMap bytes
+  $80,$80,$80,$88,$80,$80,$80,$88,$80,$88,$88,$88,$80,$88,$88,$88,$80,$88,$88,$88,$80,$88,$88,$88,$80,$88,$88,$80,$80,$80,$80,$80
+  $80,$80,$80,$88,$88,$80,$88,$88,$82,$88,$83,$80,$80,$80,$88,$80,$80,$88,$81,$80,$80,$88,$80,$88,$80,$88,$80,$88,$80,$80,$80,$80
+  $80,$80,$80,$88,$80,$88,$83,$88,$80,$88,$88,$80,$80,$83,$88,$80,$80,$88,$88,$80,$80,$88,$80,$88,$80,$88,$88,$80,$80,$80,$80,$80
+  $80,$80,$81,$88,$80,$80,$80,$88,$80,$88,$80,$80,$80,$80,$88,$80,$80,$88,$81,$80,$80,$88,$80,$88,$80,$88,$80,$88,$80,$80,$80,$80
+  $80,$80,$83,$88,$80,$80,$80,$88,$80,$88,$88,$88,$80,$80,$88,$80,$80,$88,$88,$88,$80,$88,$88,$88,$80,$88,$80,$88,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$88,$88,$88,$80,$88,$88,$88,$83,$88,$88,$80,$83,$88,$88,$88,$80,$88,$80,$88,$80,$88,$88,$88,$82,$80,$80,$80,$80
+  $80,$80,$80,$80,$88,$80,$80,$80,$80,$88,$80,$80,$88,$80,$88,$80,$80,$88,$80,$80,$88,$81,$88,$80,$88,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$82,$88,$88,$88,$80,$80,$88,$81,$80,$88,$88,$80,$80,$80,$88,$80,$80,$88,$88,$82,$82,$88,$88,$80,$80,$80,$80,$80,$80
+  $80,$80,$81,$80,$80,$80,$88,$80,$80,$88,$80,$80,$88,$80,$88,$80,$83,$88,$82,$80,$88,$80,$88,$80,$88,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$83,$80,$88,$88,$88,$80,$80,$88,$80,$80,$88,$80,$88,$80,$88,$88,$88,$80,$88,$80,$88,$80,$88,$88,$88,$81,$80,$80,$80,$80
+end data
+
+record Rock:
+  u8 X
+  u8 Y
+  i8 VX
+  i8 VY
+  u8 Kind
+  u8 Life
+end record
+
+Rock Rocks[NRock]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Hund = 0
+u16 Best = 0
+u16 LvT = 0
+' the rocket
+u8 SX = 76
+u8 SY = 80
+u8 Dir = 2
+u8 Moving = 0
+u8 Half = 0
+' the shot
+u8 BOn = 0
+u8 BX = 0
+u8 BY = 0
+u8 BDX = 0
+u8 BDY = 0
+' the game
+u8 MAcc = 0
+u8 Lv = 1
+u8 Ships = 5
+u8 Freeze = 0
+u8 FrKind = 0
+u8 Over = 0
+u16 Hits = 0
+u16 Shots = 0
+u8 AimNext = 0
+u8 LSide = 0
+u8 Lost = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TmX = 0
+u8 TmY = 100
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Di = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MsSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  Rearm
+  wait
+  nmi off
+  HideSprites
+  print at 7,10, "           "
+  print at 7,11, " GAME OVER "
+  print at 7,12, "           "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 0 then EndFreeze
+    return
+  end if
+  MoveShip
+  MoveShot
+  W16 = MAcc + RateT[Lv - 1]
+  MAcc = W16 & 255
+  if W16 > 255 then
+    for Ri = 0 to NRock - 1
+      RockStep(Ri)
+    next
+  end if
+  Collide
+  if Freeze > 0 then return
+  if Lv < 9 then
+    inc LvT
+    if LvT >= LvFrames then LevelDone
+  end if
+  return
+end sub
+
+' the stick: 1 then 2 pixels (1.5 a frame), kept inside the field
+sub MoveShip:
+  K = J1 & 15
+  V = DirOf[K]
+  Moving = 0
+  if V = 255 then return
+  Moving = 1
+  Dir = V
+  Half = Half ^ 1
+  C = Half + 1
+  SX = Clamp8(SX, DXT[V], C, FMaxX)
+  SY = Clamp8(SY, DYT[V], C, FMaxY)
+  return
+end sub
+
+' P moved by D (1 or 255 = -1, or 0) times N, kept in 0..Hi
+function Clamp8(u8 P, u8 D, u8 N, u8 Hi) as u8
+  i16 T
+  T = P
+  select case D
+    case 1
+      T = T + N
+    case 255
+      T = T - N
+  end select
+  if T < 0 then T = 0
+  if T > Hi then T = Hi
+  return T
+
+' the shot moves 4 pixels a frame and ends at the field's edge; a new one
+' leaves from the rocket's middle while the button is held
+sub MoveShot:
+  if BOn = 1 then
+    BX = BX + BDX
+    BY = BY + BDY
+    if BX > FMaxX then BOn = 0
+    if BY > FMaxY then BOn = 0
+  end if
+  if BOn = 0 then
+    if Btn > 0 then
+      BOn = 1
+      BX = SX
+      BY = SY
+      BDX = DXT[Dir] << 2
+      BDY = DYT[Dir] << 2
+      inc Shots
+      play sound SndZap
+    end if
+  end if
+  return
+end sub
+
+' one step of meteor N: fly, or burn out and be replaced
+sub RockStep(u8 N):
+  u8 Renew
+  Renew = 0
+  with Rocks[N] as R
+    if R.Kind = 2 then
+      dec R.Life
+      if R.Life = 0 then Renew = 1
+    else
+      R.X = R.X + R.VX
+      R.Y = R.Y + R.VY
+      ' half way round the unseen part of the space a meteor is replaced
+      ' (the C64 re-launched one whose X or Y passed through 0)
+      if R.VX <> 0 then
+        if R.X >= HidMid then
+          if R.X < HidMid + 3 then Renew = 1
+        end if
+      end if
+      if R.VY <> 0 then
+        if R.Y >= HidMid then
+          if R.Y < HidMid + 3 then Renew = 1
+        end if
+      end if
+    end if
+  end with
+  if Renew = 1 then
+    Launch(N)
+    ' every other meteor coming back is aimed at the rocket
+    AimNext = AimNext ^ 1
+    if AimNext = 1 then Aim(N, LSide)
+  end if
+  return
+end sub
+
+' Rnd7: -3..3 from four random bits (0 a little more often)
+function Rnd7 as i8
+  Rand
+  V = Rs & 15
+  return Speed7[V]
+
+' a place 0..Hi along an edge from the random low byte (fast: no divide)
+function EdgePos(u8 Hi) as u8
+  u8 P
+  P = Rs & 255
+  if P > Hi then P = P - 103
+  return P
+
+' a new meteor at an edge, flying in
+sub Launch(u8 N):
+  i8 Vx
+  i8 Vy
+  u8 Side
+  Vx = Rnd7
+  Vy = Rnd7
+  if Vx = 0 then
+    if Vy = 0 then Vy = 1
+  end if
+  Rand
+  Side = Rs & 1
+  if Vx = 0 then Side = 1
+  if Vy = 0 then Side = 0
+  with Rocks[N] as R
+    R.VX = Vx
+    R.VY = Vy
+    R.Kind = highbyte(Rs) & 1
+    if Side = 0 then
+      if Vx > 0 then
+        R.X = 240
+      else
+        R.X = FMaxX + 16
+      end if
+      R.Y = EdgePos(FMaxY)
+    else
+      if Vy > 0 then
+        R.Y = 240
+      else
+        R.Y = FMaxY + 16
+      end if
+      R.X = EdgePos(FMaxX)
+    end if
+  end with
+  LSide = Side
+  return
+end sub
+
+' put meteor N's entry point on the line that meets the rocket: the steps
+' it needs to reach the rocket along its main axis, then the other axis
+' moved back by as many steps (all modulo 256, as the space wraps)
+sub Aim(u8 N, u8 Side):
+  i8 Va
+  i8 Vb
+  u8 Dist
+  u8 Steps
+  i16 T
+  if Side = 0 then
+    Va = Rocks[N].VX
+    Vb = Rocks[N].VY
+    Dist = SX - Rocks[N].X
+  else
+    Va = Rocks[N].VY
+    Vb = Rocks[N].VX
+    Dist = SY - Rocks[N].Y
+  end if
+  if Va < 0 then
+    Dist = 0 - Dist
+    Va = 0 - Va
+  end if
+  Steps = Dist / Va
+  if Side = 0 then
+    T = SY - Vb * Steps
+    Rocks[N].Y = T & 255
+  else
+    T = SX - Vb * Steps
+    Rocks[N].X = T & 255
+  end if
+  return
+end sub
+
+' Seen(N) = 1 when meteor N is wholly inside the field
+function Seen(u8 N) as u8
+  if Rocks[N].X > FMaxX then return 0
+  if Rocks[N].Y > FMaxY then return 0
+  return 1
+
+' the shot and the rocket against every meteor in sight
+sub Collide:
+  u8 Kd
+  u8 Mx
+  u8 My
+  for Ri = 0 to NRock - 1
+    Kd = Rocks[Ri].Kind
+    if Kd < 2 then
+      if Seen(Ri) = 1 then
+        Mx = Rocks[Ri].X
+        My = Rocks[Ri].Y
+        if BOn = 1 then
+          X = BX + 7
+          Y = BY + 7
+          if InBox(X, Y, Mx, My, Kd) = 1 then
+            BOn = 0
+            Burst(Ri)
+            AddPoints(Kd + 1)
+            inc Hits
+            play sound SndRock
+          end if
+        end if
+      end if
+    end if
+  next
+  for Ri = 0 to NRock - 1
+    Kd = Rocks[Ri].Kind
+    if Kd < 2 then
+      if Seen(Ri) = 1 then
+        Mx = Rocks[Ri].X
+        My = Rocks[Ri].Y
+        if ShipHit(Mx, My, Kd) = 1 then
+          ShipLost
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+function InBox(u8 Px, u8 Py, u8 Mx, u8 My, u8 Kd) as u8
+  if Px < Mx + BoxL[Kd] then return 0
+  if Px > Mx + BoxR[Kd] then return 0
+  if Py < My + BoxT[Kd] then return 0
+  if Py > My + BoxB[Kd] then return 0
+  return 1
+
+' the rocket's box is 4..11 each way
+function ShipHit(u8 Mx, u8 My, u8 Kd) as u8
+  if SX + 11 < Mx + BoxL[Kd] then return 0
+  if SX + 4 > Mx + BoxR[Kd] then return 0
+  if SY + 11 < My + BoxT[Kd] then return 0
+  if SY + 4 > My + BoxB[Kd] then return 0
+  return 1
+
+sub Burst(u8 N):
+  Rocks[N].Kind = 2
+  Rocks[N].Life = 5
+  return
+end sub
+
+sub AddPoints(u8 P):
+  Hund = Hund + P
+  if Hund > ScoreCap then Hund = ScoreCap
+  if Hund > Best then Best = Hund
+  ShowScore
+  return
+end sub
+
+sub ShipLost:
+  dec Ships
+  inc Lost
+  ShowShips
+  BOn = 0
+  Moving = 0
+  Freeze = 50
+  FrKind = 1
+  mute all
+  play sound SndCrash
+  return
+end sub
+
+' LEVEL COMPLETE: every meteor still flying bursts and scores
+sub LevelDone:
+  u8 Kd
+  for Ri = 0 to NRock - 1
+    Kd = Rocks[Ri].Kind
+    if Kd < 2 then
+      Burst(Ri)
+      AddPoints(Kd + 1)
+    end if
+  next
+  BOn = 0
+  Freeze = 75
+  FrKind = 2
+  print at 5,11, " LEVEL COMPLETE "
+  play sound SndLevel
+  return
+end sub
+
+sub EndFreeze:
+  if FrKind = 1 then
+    if Ships = 0 then
+      Over = 1
+      return
+    end if
+    SX = 76
+    SY = 80
+    for Ri = 0 to NRock - 1
+      Launch(Ri)
+    next
+  else
+    copy GameMap + 357 count 16 to vram.name + 357
+    if Lv = 8 then
+      if Ships < 99 then inc Ships
+      ShowShips
+      play sound SndBonus
+    end if
+    inc Lv
+    LvT = 0
+    ShowLevel
+  end if
+  FrKind = 0
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 the rocket, 1 its flame, 2 the shot, 3-8 the meteors
+sub DrawSprites:
+  X = SX + 16
+  Y = SY + 7
+  if FrKind = 1 then
+    K = Freeze & 8
+    if K > 0 then
+      K = SBoom1
+    else
+      K = SBoom0
+    end if
+    set sprite 0 to Y,X,K,9
+    set sprite 1 to 192,0,0,0
+  else
+    K = Dir << 2
+    set sprite 0 to Y,X,K,15
+    if Moving = 1 then
+      K = K + SFlame0
+      set sprite 1 to Y,X,K,8
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  end if
+  if BOn = 1 then
+    X = BX + 16
+    Y = BY + 7
+    set sprite 2 to Y,X,SShot,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for Di = 0 to NRock - 1
+    DrawRock(Di)
+  next
+  update sprites
+  return
+end sub
+
+sub DrawRock(u8 N):
+  u8 Kd
+  u8 Sp
+  u8 Col
+  u8 Pat
+  Sp = N + 3
+  if Seen(N) = 0 then
+    set sprite Sp to 192,0,0,0
+    return
+  end if
+  Kd = Rocks[N].Kind
+  if Kd = 2 then
+    Pat = SBoom0
+    if Rocks[N].Life < 3 then Pat = SBoom1
+    Col = BurstCol[Rocks[N].Life]
+  else
+    Pat = RockPat[Kd]
+    Col = RockCol[Kd]
+  end if
+  X = Rocks[N].X + 16
+  Y = Rocks[N].Y + 7
+  set sprite Sp to Y,X,Pat,Col
+  return
+end sub
+
+sub ShowScore:
+  print at 24,3, digits$(Hund, 4), "00"
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 24,7, "  ", digits$(NumU, 2), "  "
+  return
+end sub
+
+sub ShowShips:
+  NumU = Ships
+  print at 24,19, "  ", digits$(NumU, 2), "  "
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 24,2, "SCORE:"
+  print at 24,6, "LEVEL:"
+  print at 24,11, "METEOR"
+  print at 24,12, "STRIKE"
+  print at 24,18, "SHIPS:"
+  Hund = 0
+  Lv = 1
+  LvT = 0
+  Ships = 5
+  SX = 76
+  SY = 80
+  Dir = 2
+  Moving = 0
+  Half = 0
+  BOn = 0
+  MAcc = 0
+  Freeze = 0
+  FrKind = 0
+  Over = 0
+  Hits = 0
+  Shots = 0
+  Lost = 0
+  AimNext = 0
+  for Ri = 0 to NRock - 1
+    Launch(Ri)
+  next
+  ShowScore
+  ShowLevel
+  ShowShips
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: METEOR STRIKE in rock letters over the stars, a meteor
+' drifting by, START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 352 to vram.name + 32
+  print at 2,13, "COMPUTE!'S GAZETTE JULY 1986"
+  print at 13,16, "START"
+  print at 13,17, "CREDITS"
+  if Best > 0 then
+    print at 9,20, "BEST ", digits$(Best, 4), "00"
+  end if
+  print at 2,22, "STICK MOVES   BUTTON FIRES"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a big meteor drifts across rows 14-19, a pixel every other frame
+sub TitleAnim:
+  V = Tick & 1
+  if V = 0 then
+    inc TmX
+    if TmX > 160 then TmX = 0
+  end if
+  X = TmX + 40
+  set sprite 3 to 112,X,SBig,14
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,16
+  put char 32 at 11,17
+  J = Menu + 16
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "METEOR STRIKE"
+  print at 2,5, "BASED ON METEOR STRIKE,"
+  print at 2,6, "COMPUTE!'S GAZETTE, JULY"
+  print at 2,7, "1986 (COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE; AUTHOR NOT NAMED"
+  print at 2,9, "ON THE DISK)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: FALLING STARS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+MsZap:
+    db $40,$3E,$20,$01,$40,$49,$30,$01,$40,$56,$30,$01,$40,$65,$40,$01,$40,$77,$40,$01,$40,$8C,$50,$01
+    db $40,$A5,$50,$01,$40,$C2,$60,$01,$50
+MsRock:
+    db $00,$00,$15,$02,$00,$00,$36,$03,$00,$00,$56,$04,$00,$00,$77,$05,$10
+MsCrash:
+    db $00,$00,$06,$06,$00,$00,$16,$08,$00,$00,$27,$0A,$00,$00,$47,$0C,$00,$00,$57,$0E,$00,$00,$77,$10
+    db $10
+MsLevel:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$10,$50
+MsBonus:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$6B,$20,$04,$40,$47,$20,$0C,$50
+MsStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+MsOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$AB,$31,$1E,$50
+
+MsSoundTable:
+    dw MsTuneMel,$702B
+    dw MsTuneBass,$7035
+    dw MsZap,$7049
+    dw MsRock,$703F
+    dw MsCrash,$703F
+    dw MsLevel,$7049
+    dw MsBonus,$7049
+    dw MsStart,$7049
+    dw MsOver,$7049
+; Falling Stars (original)
+; Tiny Sound, 8 frames per step
+MsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$2A,$01,$01,$28,$26,$01,$23,$01,$25,$01,$26,$01
+    db $28,$01,$01,$01,$26,$01,$01,$25,$23,$01,$21,$01,$23,$01,$1E,$01
+    db $01,$01,$01,$01,$2B,$01,$01,$2A,$28,$01,$26,$01,$28,$01,$2A,$01
+    db $26,$01,$01,$01,$25,$01,$23,$01,$22,$01,$25,$01,$23,$01,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+MsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$06,$01,$0D,$01,$06,$01,$0A,$01,$0B,$01,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+}

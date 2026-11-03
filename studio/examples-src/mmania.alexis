@@ -1,0 +1,1160 @@
+cartridge "MAZE-MANIA/MARK TUTTLE/1985"
+
+' MAZE-MANIA
+' A ColecoVision game based on "Maze-Mania" by Mark Tuttle, COMPUTE!'s
+' Gazette September 1985 (Commodore 64, BASIC with a machine-language
+' core). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' The game: cross the maze from the left to the exit in the right wall
+' before the time runs out. The maze has three parts: on the left, pillars
+' with one gap each and bouncers running up and down between them; in the
+' middle, bars with one gap each and bouncers running left and right; on
+' the right, pillars again with bouncers running up and down. Touch a
+' bouncer (or let one run into you) and you lose a man; so does running
+' out of time. Each new try draws a new maze. Clearing a level scores the
+' time left times the level, and gives a man back (three at most). Ten
+' levels; everything speeds up from level to level.
+' NORMAL GAME: as described. FADE GAME: each bouncer fades from grey to
+' black and back as it moves, invisible half the time. NERVOUS GAME: the
+' walls shudder. One or two players (they take turns; both play each level
+' before it advances).
+'
+' From the original (orig/maze-mania.bas, orig/dis.txt, the machine code
+' disassembled): the three-part maze and its random gaps (one per pillar
+' column, two of them on the start row, one per bar), the start in the
+' left column on a random row, the exit half-way down the right wall; the
+' bouncers' lanes, directions, start places and speeds (each moves every
+' 8-15 ticks, drawn again at random on a bounce, kept if the draw is
+' under 8); the player's move every J+1 ticks (J = 5 + level - 1), the
+' horizontal step tried before the vertical one (diagonals allowed);
+' the time of 200 counted down every K ticks (K = 15 + 4 per level); the
+' tick rate of the C64's interrupt timer (high byte 65, 5 less a level:
+' 61 to 198 ticks a second); touching a bouncer, a bouncer stepping on you,
+' time out; score = time left x level; a man back for a cleared level,
+' capped at three; three men; the fade colours (grey, dark, black x3,
+' dark, grey, black) and the bouncers' colours in turn; the two-player
+' turns and their end (GAME OVER PLAYER n, the other goes on), the
+' scoreboard, WELL DONE after level 10.
+'
+' Liberties: speeds. On the C64 the interrupt rate grew 3.3 times over
+' ten levels (61 to 198 ticks a second) while the player's move period
+' grew from 6 to 15 ticks and the time unit from 15 to 51 ticks: at level
+' 10 every bouncer outran the player. Here the tick rate grows 10% a level
+' (61 to 116 a second), the player moves every 6 to 10 ticks (5 + (level -
+' 1) / 2, plus one) and the time unit is 15 to 28 ticks (15 + 3 x (level -
+' 1) / 2), so the player keeps about the C64's speed, the time about its
+' 50 seconds, and the bouncers still speed up almost twice. The C64's
+' time-out set the same flag as a catch, so its OUT OF TIME message never
+' showed; here it does. The maze is 26 cells wide instead of 36 (four corridors on
+' each side instead of six, 3 + 7 + 4 bouncers instead of 5 + 7 + 6), so
+' it fits a TV screen. The player glides from cell to cell (2 pixels a
+' frame) as a sprite; the rules still work cell by cell. The C64 shook the
+' whole screen in the NERVOUS game with its fine scroll; here the walls
+' shudder by a pixel (at most every 10 frames). The fade greys are the
+' ColecoVision's grey and dark blue. Winning needs touching the exit
+' itself (the C64 also counted a bouncer hitting you in front of the
+' exit as a win). The menu is driven by the joystick; the C64 read the
+' joystick in port 1 only; here either controller plays.
+'
+' Controls: either controller; the stick moves (diagonals too). On the
+' title, up/down choose, left/right set the players, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off,
+' display off. Music first in the sound table, the title tune played once.
+
+const TMark = 128
+const TGoal = 129
+const TMan = 130
+const TE0 = 131
+const TE1 = 132
+const TE2 = 133
+const TE3 = 134
+const TE4 = 135
+const TE5 = 136
+const TE6 = 137
+const TE7 = 138
+const TE8 = 139
+const TE9 = 140
+const TE10 = 141
+const TE11 = 142
+const TE12 = 143
+const TE13 = 144
+const TF0 = 145
+const TF1 = 146
+const TF2 = 147
+const TF3 = 148
+const TF4 = 149
+const TF5 = 150
+const TF6 = 151
+const TF7 = 152
+const TF8 = 153
+const TF9 = 154
+const TF10 = 155
+const TF11 = 156
+const TF12 = 157
+const TF13 = 158
+const TBlk = 159
+const TBar = 160
+const TWal = 161
+const TBlks = 162
+const TBars = 163
+const TWals = 164
+const SPa = 0
+const SPb = 4
+const SSplat = 8
+const NTiles8 = 296
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndLost = 3
+const SndCrash = 4
+const SndClear = 5
+const SndTick = 6
+const SndStart = 7
+const SndOver = 8
+const SndWin = 9
+const SndMove = 10
+const NE = 14
+const GoalC = 29
+const GoalR = 11
+const TopR = 3
+const BotR = 19
+const NSpr = 4
+
+record Bouncer:
+  u8 Col
+  u8 Row
+  u8 Dir
+  u8 Spd
+  u8 Fad
+end record
+
+' directions: 0 up, 1 right, 2 down, 3 left
+data DCx bytes
+  0, 1, 0, 255
+end data
+data DRy bytes
+  255, 0, 1, 0
+end data
+' the bouncers' start: 3 on the left (bottom, up), 7 in the middle (left
+' end, right), 4 on the right (top, down)
+data ECs bytes
+  5, 7, 9, 11, 11, 11, 11, 11, 11, 11, 22, 24, 26, 28
+end data
+data ERs bytes
+  19, 19, 19, 5, 7, 9, 11, 13, 15, 17, 3, 3, 3, 3
+end data
+data EDs bytes
+  0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2
+end data
+' colours in turn (the C64's light green, red, purple, blue)
+data ECol bytes
+  3, 8, 13, 5
+end data
+data FadeT bytes
+  14, 4, 1, 1, 1, 4, 14, 1
+end data
+' ticks a frame x 64, levels 1-10: 61 ticks a second (the C64's at level
+' 1) and 10% more a level (the C64: 198 a second at level 10, see header)
+data RateT bytes
+  65, 72, 78, 85, 91, 98, 104, 111, 117, 124
+end data
+
+' a tile row in each colour on black, 8 rows a colour
+data CRow bytes
+  1, 1, 1, 1, 1, 1, 1, 1
+  17, 17, 17, 17, 17, 17, 17, 17
+  33, 33, 33, 33, 33, 33, 33, 33
+  49, 49, 49, 49, 49, 49, 49, 49
+  65, 65, 65, 65, 65, 65, 65, 65
+  81, 81, 81, 81, 81, 81, 81, 81
+  97, 97, 97, 97, 97, 97, 97, 97
+  113, 113, 113, 113, 113, 113, 113, 113
+  129, 129, 129, 129, 129, 129, 129, 129
+  145, 145, 145, 145, 145, 145, 145, 145
+  161, 161, 161, 161, 161, 161, 161, 161
+  177, 177, 177, 177, 177, 177, 177, 177
+  193, 193, 193, 193, 193, 193, 193, 193
+  209, 209, 209, 209, 209, 209, 209, 209
+  225, 225, 225, 225, 225, 225, 225, 225
+  241, 241, 241, 241, 241, 241, 241, 241
+end data
+
+Bouncer Bo[NE]
+u8 ECnt[NE]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 TAcc = 0
+u16 Sc[2]
+u8 Men[2]
+u8 LvOut[2]
+u8 Pl = 0
+u8 Np = 1
+u8 Single = 0
+u8 Ck = 0
+u8 Mode = 0
+u8 Lv = 1
+u8 PJ = 5
+u8 TK = 15
+u8 PCnt = 0
+u8 TCnt = 15
+u8 Time = 200
+u8 End = 0
+u8 Won = 0
+u8 Over = 0
+u8 TimeShown = 0
+' the maze: start row, pillar gaps, bar gaps
+u8 Sr = 4
+u8 HoleL[2]
+u8 HoleR[2]
+u8 Gap[8]
+' the player: cell, pixel position of the sprite corner
+u8 Pc = 3
+u8 Pr = 4
+u8 Px = 20
+u8 Py = 28
+u8 AnimT = 0
+u8 AnimF = 0
+u8 NervT = 0
+u8 NervF = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InPlay = 0
+' loop counters (never shared with the helpers)
+u8 Ei = 0
+u8 Ri = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+
+  tile screen
+  set sound table MmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+
+  NewGame
+game_loop:
+  PlayLevel
+  AfterTry
+  if Over = 0 then goto game_loop
+
+  ' the end: the scoreboard, then back to the title on a press
+  mute all
+  EndScreen
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one try of the player in play (Pl) on level Lv: a new maze, play until
+' the exit, a bouncer or the time ends it
+
+sub PlayLevel:
+  BuildMaze
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 40 frames
+  nmi off
+  InPlay = 1
+  do
+    Frame1
+    ReadPad
+    W16 = RateT[Lv - 1]
+    TAcc = TAcc + W16
+    while TAcc >= 64
+      TAcc = TAcc - 64
+      if End = 0 then OTick
+    end while
+    Glide
+    Animate
+    Nervous
+    if Time <> TimeShown then ShowTime
+    DrawSprites
+  loop until End > 0
+  InPlay = 0
+  ' let the sprite reach the cell
+  for Ki = 1 to 4
+    Frame1
+    Glide
+    DrawSprites
+  next
+  return
+end sub
+
+' one tick of the C64's interrupt: the bouncers, the time, the player
+sub OTick:
+  for Ei = 0 to NE - 1
+    V = ECnt[Ei] - 1
+    ECnt[Ei] = V
+    if V = 0 then BounceOne
+  next
+  dec TCnt
+  if TCnt = 0 then
+    TCnt = TK
+    if Time = 0 then
+      inc End
+    else
+      dec Time
+    end if
+  end if
+  if PCnt < PJ then
+    inc PCnt
+  else
+    PCnt = 0
+    PlayerMove
+  end if
+  return
+end sub
+
+' a bouncer whose count ran out: its step, or a bounce at the end of its
+' lane (the lanes are straight and walled at both ends, so the C64's test
+' of the next screen cell is the lane's bounds here), or the player caught
+sub BounceOne:
+  u8 Dr = 0, Cc = 0, Rr = 0, Code = 0, Lo = 0, Hi = 0, Nx = 0
+  ECnt[Ei] = Bo[Ei].Spd
+  Dr = Bo[Ei].Dir
+  Cc = Bo[Ei].Col
+  Rr = Bo[Ei].Row
+  Qc = Cc + DCx[Dr]
+  Qr = Rr + DRy[Dr]
+  Lo = TopR
+  Hi = BotR
+  Nx = Qr
+  if Dr & 1 then
+    Lo = 11
+    Hi = 20
+    Nx = Qc
+  end if
+  if Nx < Lo or Nx > Hi then
+    Bo[Ei].Dir = Dr ^ 2
+    Rand
+    V = Rs & 15
+    if V >= 8 then Bo[Ei].Spd = V
+    return
+  end if
+  if Qc = Pc and Qr = Pr then
+    End = 1
+    return
+  end if
+  put char 32 at Cc,Rr
+  Code = TE0 + Ei
+  put char Code at Qc,Qr
+  Bo[Ei].Col = Qc
+  Bo[Ei].Row = Qr
+  if Mode = 1 then
+    V = Bo[Ei].Fad + 1
+    V = V & 7
+    Bo[Ei].Fad = V
+    SetECol(Ei, FadeT[V])
+  end if
+  return
+end sub
+
+' what the player meets on a cell: 0 free, 1 a bouncer or the exit, 2 wall
+function Meet(u8 Cx, u8 Cy) as u8
+  u8 Code = 0
+  Code = get char at Cx,Cy
+  select case Code
+  case 32
+    return 0
+  case TGoal
+    Won = 1
+    return 1
+  case TE0 to TE13
+    return 1
+  case else
+    return 2
+  end select
+  return 2
+
+' the stick, horizontal step first, then vertical
+sub PlayerMove:
+  u8 Dx = 0, Dy = 0, M = 0
+  if Stick & 4 then Dx = 255
+  if Stick & 8 then Dx = 1
+  if Stick & 1 then Dy = 255
+  if Stick & 2 then Dy = 1
+  put char 32 at Pc,Pr
+  if Dx <> 0 then
+    M = Meet(Pc + Dx, Pr)
+    if M = 0 then Pc = Pc + Dx
+    if M = 1 then
+      End = 1
+      Dy = 0
+    end if
+  end if
+  if Dy <> 0 then
+    M = Meet(Pc, Pr + Dy)
+    if M = 0 then Pr = Pr + Dy
+    if M = 1 then End = 1
+  end if
+  put char TMark at Pc,Pr
+  return
+end sub
+
+' the sprite glides to its cell, 2 pixels a frame each way
+sub Glide:
+  u8 Tx = 0, Ty = 0
+  Tx = Pc * 8 - 4
+  Ty = Pr * 8 - 4
+  if Px < Tx then Px = Px + 2
+  if Px > Tx then Px = Px - 2
+  if Py < Ty then Py = Py + 2
+  if Py > Ty then Py = Py - 2
+  return
+end sub
+
+' bouncer I's colour on all its 8 rows
+sub SetECol(u8 I, u8 Colour):
+  W16 = Colour << 3
+  A16 = TE0 + I
+  A16 = A16 << 3
+  copy CRow + W16 count 8 to vram.color + A16
+  copy CRow + W16 count 8 to vram.color + 2048 + A16
+  copy CRow + W16 count 8 to vram.color + 4096 + A16
+  return
+end sub
+
+function Roll(u8 Range) as u8
+  u8 Lo = 0
+  Rand
+  Lo = Rs
+  Lo = Lo >> 1
+  return Lo % Range
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' after a try: the C64's BASIC lines 410-650
+
+sub AfterTry:
+  mute all
+  if End = 1 then
+    if Won = 1 then
+      Cleared
+      return
+    end if
+  end if
+  if Time > 0 then
+    print at 11,21, "CAUGHT!"
+    play sound SndCrash
+  else
+    print at 8,21, "OUT OF TIME"
+    play sound SndLost
+  end if
+  ShowSplat
+  Rearm
+  wait 100 frames
+  nmi off
+  V = Men[Pl] - 1
+  Men[Pl] = V
+  if V > 0 then return
+  LvOut[Pl] = Lv - 1
+  if Single = 1 then
+    Over = 1
+    return
+  end if
+  ' two players: this one is out, the other goes on alone
+  fill 32 count 28 at 2,21
+  NumU = Pl + 1
+  print at 6,21, "GAME OVER PLAYER ", digits$(NumU, 1)
+  play sound SndOver
+  Rearm
+  wait 150 frames
+  nmi off
+  Single = 1
+  if Pl = 1 then
+    Pl = 0
+    if Ck = 1 then NextLevel
+  else
+    Pl = 1
+  end if
+  return
+end sub
+
+sub Cleared:
+  W16 = Time
+  W16 = W16 * Lv
+  Sc[Pl] = Sc[Pl] + W16
+  play sound SndClear
+  NumU = W16
+  print at 7,21, "CLEARED +", digits$(NumU, 4)
+  inc Men[Pl]
+  ShowHud
+  Rearm
+  wait 120 frames
+  nmi off
+  if Single = 1 then
+    NextLevel
+    return
+  end if
+  if Pl = 0 then
+    Pl = 1
+    Ck = 1
+    CapMen
+    return
+  end if
+  Pl = 0
+  NextLevel
+  return
+end sub
+
+sub NextLevel:
+  Ck = 0
+  inc Lv
+  if Lv = 11 then
+    Lv = 10
+    LvOut[0] = 10
+    LvOut[1] = 10
+    Over = 2
+    return
+  end if
+  SetLevel
+  CapMen
+  return
+end sub
+
+sub CapMen:
+  if Men[Pl] > 3 then Men[Pl] = 3
+  return
+end sub
+
+' the player's move every PJ + 1 ticks, the time every TK ticks (see the
+' header: the C64's J = 4 + level, K = 11 + 4 x level)
+sub SetLevel:
+  u8 L1 = 0
+  L1 = Lv - 1
+  PJ = (L1 >> 1) + 5
+  TK = L1 * 3
+  TK = (TK >> 1) + 15
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub BuildMaze:
+  NewScreen
+  ' the frame
+  fill TWal count 28 at 2,2
+  fill TWal count 28 at 2,20
+  for Ri = TopR to BotR
+    put char TWal at 2,Ri
+    put char TWal at 29,Ri
+    put char TBlk at 4,Ri
+    put char TBlk at 6,Ri
+    put char TBlk at 8,Ri
+    put char TBlk at 23,Ri
+    put char TBlk at 25,Ri
+    put char TBlk at 27,Ri
+    if Ri > TopR then put char TWal at 10,Ri
+    if Ri < BotR then put char TWal at 21,Ri
+  next
+  ' the middle bars, one gap each (columns 12-19)
+  for Ki = 0 to 7
+    Ri = Ki << 1
+    Ri = Ri + 4
+    fill TBar count 10 at 11,Ri
+    C = Roll(8) + 12
+    Gap[Ki] = C
+    put char 32 at C,Ri
+  next
+  ' the start row and its two gaps, a gap in each other pillar column
+  Sr = Roll(15) + 4
+  put char 32 at 4,Sr
+  put char 32 at 27,Sr
+  for Ki = 0 to 1
+    V = Roll(11) + 6
+    HoleL[Ki] = V
+    C = Ki << 1
+    C = C + 6
+    put char 32 at C,V
+    V = Roll(11) + 6
+    HoleR[Ki] = V
+    C = C + 17
+    put char 32 at C,V
+  next
+  put char TGoal at GoalC,GoalR
+  ' the bouncers
+  for Ei = 0 to NE - 1
+    Bo[Ei].Col = ECs[Ei]
+    Bo[Ei].Row = ERs[Ei]
+    Bo[Ei].Dir = EDs[Ei]
+    V = Roll(8) + 8
+    Bo[Ei].Spd = V
+    ECnt[Ei] = V
+    Bo[Ei].Fad = Ei & 7
+    T = TE0 + Ei
+    put char T at ECs[Ei],ERs[Ei]
+    if Mode = 1 then
+      V = Ei & 7
+      SetECol(Ei, FadeT[V])
+    else
+      V = Ei & 3
+      SetECol(Ei, ECol[V])
+    end if
+  next
+  ' the player
+  Pc = 3
+  Pr = Sr
+  put char TMark at Pc,Pr
+  Px = 20
+  Py = Pr * 8 - 4
+  End = 0
+  Won = 0
+  TCnt = TK
+  PCnt = 0
+  Time = 200
+  TAcc = 0
+  return
+end sub
+
+' the bouncers' star turns (frame A / B every 20 frames)
+sub Animate:
+  inc AnimT
+  if AnimT < 20 then return
+  AnimT = 0
+  AnimF = AnimF ^ 1
+  if AnimF = 1 then
+    W16 = TF0 - 128
+  else
+    W16 = TE0 - 128
+  end if
+  W16 = W16 << 3
+  A16 = TE0 << 3
+  copy TilePat + W16 count 112 to vram.pattern + A16
+  copy TilePat + W16 count 112 to vram.pattern + 2048 + A16
+  copy TilePat + W16 count 112 to vram.pattern + 4096 + A16
+  return
+end sub
+
+' NERVOUS GAME: the walls shudder by a pixel now and then
+sub Nervous:
+  if Mode <> 2 then return
+  inc NervT
+  if NervT < 10 then return
+  NervT = 0
+  K = Roll(3)
+  if K = 0 then return
+  NervF = NervF ^ 1
+  if NervF = 1 then
+    W16 = TBlks - 128
+  else
+    W16 = TBlk - 128
+  end if
+  W16 = W16 << 3
+  A16 = TBlk << 3
+  copy TilePat + W16 count 24 to vram.pattern + A16
+  copy TilePat + W16 count 24 to vram.pattern + 2048 + A16
+  copy TilePat + W16 count 24 to vram.pattern + 4096 + A16
+  return
+end sub
+
+sub DrawSprites:
+  Y = Py - 1
+  if InPlay = 0 then
+    if End > 0 then
+      if Won = 0 then
+        set sprite 0 to Y,Px,SSplat,9
+        update sprites
+        return
+      end if
+    end if
+  end if
+  K = Tick & 16
+  if K > 0 then
+    set sprite 0 to Y,Px,SPb,15
+  else
+    set sprite 0 to Y,Px,SPa,15
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowSplat:
+  InPlay = 0
+  DrawSprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "LEVEL"
+  NumU = Lv
+  print at 8,1, digits$(NumU, 2)
+  print at 11,1, "TIME"
+  ShowTime
+  print at 20,1, "SC"
+  NumU = Sc[Pl]
+  print at 23,1, digits$(NumU, 5)
+  NumU = Pl + 1
+  print at 2,22, "PLAYER ", digits$(NumU, 1)
+  print at 11,22, "MEN"
+  fill 32 count 3 at 15,22
+  N = Men[Pl]
+  if N > 3 then N = 3
+  if N > 0 then fill TMan count N at 15,22
+  select case Mode
+  case 0
+    print at 21,22, "NORMAL"
+  case 1
+    print at 21,22, "FADE"
+  case else
+    print at 21,22, "NERVOUS"
+  end select
+  return
+end sub
+
+sub ShowTime:
+  NumU = Time
+  print at 16,1, digits$(NumU, 3)
+  TimeShown = Time
+  return
+end sub
+
+sub EndScreen:
+  NewScreen
+  backdrop dark blue
+  if Over = 2 then
+    print at 9,4, "WELL DONE!!"
+    print at 2,6, "YOU COMPLETED ALL TEN LEVELS"
+    play sound SndWin
+  else
+    print at 10,4, "GAME OVER"
+    play sound SndOver
+  end if
+  print at 10,9, "SCOREBOARD"
+  print at 10,10, "----------"
+  for Ki = 0 to 1
+    if Ki < Np then
+      Ri = Ki << 1
+      Ri = Ri + 13
+      NumU = Ki + 1
+      print at 3,Ri, "PLAYER ", digits$(NumU, 1)
+      NumU = Sc[Ki]
+      print at 13,Ri, digits$(NumU, 5)
+      print at 20,Ri, "LEVEL"
+      NumU = LvOut[Ki]
+      print at 26,Ri, digits$(NumU, 2)
+    end if
+  next
+  print at 7,20, "PRESS THE BUTTON"
+  ShowScreen
+  return
+end sub
+
+sub NewGame:
+  Lv = 1
+  SetLevel
+  Sc[0] = 0
+  Sc[1] = 0
+  Men[0] = 3
+  Men[1] = 3
+  LvOut[0] = 0
+  LvOut[1] = 0
+  Pl = 0
+  Ck = 0
+  Over = 0
+  Single = 0
+  if Np = 1 then Single = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Stick = V & 15
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  AnimT = 0
+  AnimF = 0
+  NervF = 0
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: MAZE-MANIA in a strip of maze, the tune once, the menu
+sub TitlePage:
+  NewScreen
+  fill TWal count 28 at 2,2
+  fill TWal count 28 at 2,8
+  for Ri = 3 to 7
+    put char TWal at 2,Ri
+    put char TWal at 29,Ri
+  next
+  for Ki = 0 to 12
+    C = Ki << 1
+    C = C + 3
+    put char TBlk at C,3
+    put char TBlk at C,7
+  next
+  fill TBar count 4 at 4,5
+  fill TBar count 4 at 24,5
+  print at 11,5, "MAZE-MANIA"
+  put char TE0 at 8,4
+  put char TE1 at 22,6
+  put char TE2 at 9,6
+  put char TE3 at 20,4
+  put char TGoal at 29,5
+  for Ki = 0 to 3
+    V = Ki & 3
+    SetECol(Ki, ECol[V])
+  next
+  print at 8,10, "BY MARK TUTTLE"
+  print at 10,12, "NORMAL GAME"
+  print at 10,13, "FADE GAME"
+  print at 10,14, "NERVOUS GAME"
+  print at 10,15, "CREDITS"
+  print at 3,20, "COMPUTE!'S GAZETTE 9/1985"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Animate
+  V = Stick
+  if V > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if V & 2 then
+        if Menu < 3 then inc Menu
+      end if
+      if V & 4 then Np = 1
+      if V & 8 then Np = 2
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 3 then
+    CreditsPage
+    Menu = 4
+    return
+  end if
+  Mode = Menu
+  return
+end sub
+
+sub ShowMenu:
+  for Ki = 12 to 15
+    put char 32 at 8,Ki
+  next
+  J = Menu + 12
+  put char 62 at 8,J
+  NumU = Np
+  print at 9,17, "PLAYERS < ", digits$(NumU, 1), " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "MAZE-MANIA"
+  print at 2,5, "BASED ON MAZE-MANIA BY"
+  print at 2,6, "MARK TUTTLE, COMPUTE!'S"
+  print at 2,7, "GAZETTE SEPTEMBER 1985"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: CORRIDOR SHUFFLE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$C3,$81,$A5,$81,$42,$C3,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $82,$54,$38,$83,$38,$54,$82,$00
+  $81,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$81,$20,$04,$00,$00,$00
+  $88,$00,$22,$00,$88,$00,$22,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$00,$00,$81,$20,$04,$00,$00
+  $00,$44,$00,$11,$00,$44,$00,$11
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $FB,$BF,$FB,$BF,$FB,$BF,$FB,$BF
+  $01,$1F,$1F,$1F,$1F,$F1,$1F,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $19,$18,$18,$18,$18,$18,$16,$01
+  $01,$0B,$BA,$BA,$BA,$0A,$01,$01
+  $45,$04,$45,$04,$45,$04,$45,$04
+  $19,$18,$18,$18,$18,$18,$16,$01
+  $01,$01,$0B,$BA,$BA,$BA,$0A,$01
+  $04,$45,$04,$45,$04,$45,$04,$45
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$07,$0D,$0F,$0B,$0C,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$F0,$D0,$30,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0D,$0F,$0F,$0D,$04,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$B0,$F0,$F0,$B0,$20,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$09,$05,$03,$0E,$03,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$80,$F0,$80,$40,$20,$00,$00,$00,$00,$00
+end data
+
+asm {
+MmLost:
+    db $40,$7F,$10,$04,$40,$87,$10,$04,$40,$8F,$10,$04,$40,$A0,$20,$04,$40,$B4,$20,$04,$40,$D6,$20,$04
+    db $40,$FE,$20,$04,$40,$41,$31,$04,$40,$AB,$31,$0E,$50
+MmCrash:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$46,$08,$10
+MmClear:
+    db $40,$D6,$10,$03,$40,$BF,$10,$03,$40,$AA,$10,$03,$40,$A0,$10,$03,$40,$8F,$10,$03,$40,$7F,$10,$03
+    db $40,$71,$10,$03,$40,$6B,$10,$03,$40,$5F,$10,$03,$40,$55,$10,$03,$40,$50,$10,$03,$40,$47,$10,$03
+    db $40,$40,$10,$03,$40,$35,$20,$0E,$50
+MmTick:
+    db $40,$47,$40,$02,$50
+MmStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+MmOver:
+    db $40,$D6,$10,$0C,$40,$0E,$21,$0C,$40,$41,$21,$0C,$40,$AB,$21,$1E,$50
+MmWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+MmMove:
+    db $40,$6B,$30,$02,$50
+
+MmSoundTable:
+    dw MmTuneMel,$702B
+    dw MmTuneBass,$7035
+    dw MmLost,$7049
+    dw MmCrash,$703F
+    dw MmClear,$7049
+    dw MmTick,$7049
+    dw MmStart,$7049
+    dw MmOver,$7049
+    dw MmWin,$7049
+    dw MmMove,$7049
+; Corridor Shuffle (original)
+; Tiny Sound, 8 frames per step
+MmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$24,$01,$28,$01,$2B,$01,$28,$26,$01,$24,$01,$23
+    db $01,$01,$01,$26,$01,$01,$23,$01,$24,$01,$21,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$1D,$01,$21,$01,$24,$01,$23,$01,$20,$01,$23,$01,$21
+    db $01,$00,$01,$01
+    db $FF
+MmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$18,$01,$13,$01,$18,$01,$13,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$11,$01,$18,$01,$11,$01,$18,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$0E,$01,$15,$01,$10,$01,$17,$01,$15,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

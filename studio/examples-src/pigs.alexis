@@ -1,0 +1,1385 @@
+cartridge "PIGS FOR BUCKS/COMPUTE!'S GAZETTE/1986"
+
+' PIGS FOR BUCKS
+' A ColecoVision game based on "Pigs for Bucks", COMPUTE!'s Gazette,
+' October 1986 (Commodore 128, BASIC 7.0 with sprite files PIG.SPR1-3).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: you are a farmer in a fenced pen of runaway pigs. Walk up to a
+' pig and press a button to pick it up, then carry it out through one of
+' the two gates (left or right) to the market: it sells for $100.00 less
+' one cent every sixtieth of a second since the level began, never under
+' $60.00. Points are the dollars, plus 10 x level when a pig fetches more
+' than $60. Sell every pig to finish the level: the money buys the next
+' level's pigs ($60 each, as many as you can, at most 7) and then, if you
+' like, spare pants at $25 (the store has 4 pairs, the clothesline holds 4).
+' Bump into the fence or a boulder and you fall and tear your pants: a pair
+' from the line replaces them; fall with an empty line and the game is over.
+' While you carry a pig, another pig that runs into you knocks you over too.
+' Press the button again to put a pig down. Boulders pile up as the levels
+' go on, from level 5 you sometimes walk faster, and from level 11 the mud
+' changes your pace at random.
+'
+' From the original (orig/pigsforbucks.bas): the pen, two gates and the
+' sale at either side; pigs moving in straight lines at speed 1 or 2 and
+' turning back at random from a box that shrinks as there are more pigs
+' (J = P * 2, line 300); all pigs starting in the middle; pick up / put
+' down with the button; a fall from the fence, the boulders, or a pig
+' bumping you while carrying; the sale price 100 - TI/100 (one cent a
+' jiffy) with the $60 floor; the points INT(PS) + 10 * L over $60; the
+' bank, high score, level; buying INT(BA/60) pigs (max 7) at $60, then
+' pants at $25 from a store of 4 for a line of 4; the boulder layouts of
+' DATA lines 880-960 (two sets at level 1, one more at levels 2, 3, 4, 5,
+' 7, 9, 11); the farmer's speed (2; from level 5, 2 on odd levels and 3 on
+' even ones; random 1-3 after level 10); random oinks.
+'
+' Liberties: a ColecoVision pen of 24 x 16 cells instead of 38 x 19: the
+' boulder layouts are scaled to it, the cells by the gates and the pigs'
+' starting spot are kept clear. Pigs walk in 8 directions instead of 360
+' degrees. Collisions are boxes, not sprite pixels. The pants are chosen
+' with the stick (up/down, button) instead of typing 0-4, and you can't
+' ask for more than you may buy. A level is finished, a pig is sold and a
+' new level begins with a message box. The original never ends while you
+' keep your pants (and stalls when no pig can be bought); here selling the
+' last pig of level 12 retires you rich (the end), and a bank too poor to
+' buy a pig ends the game. A short pause follows each fall (as on the
+' C-128). Outside a gate you may only walk left or right (as the original).
+'
+' Controls: either controller; the stick walks (8 directions), either
+' button picks up or puts down a pig. On the title, up and down choose, a
+' button starts. In the store, up/down choose how many pants, a button buys.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TGrass = 128
+const TDirt = 129
+const TDirt2 = 130
+const TRailh = 131
+const TRailv = 132
+const TPost = 133
+const TGate = 134
+const TSign = 135
+const TRock0 = 136
+const TRock1 = 137
+const TRock2 = 138
+const TRock3 = 139
+const TRock4 = 140
+const TRock5 = 141
+const TRock6 = 142
+const TRock7 = 143
+const TRock8 = 144
+const TRock9 = 145
+const TRock10 = 146
+const TRock11 = 147
+const TRock12 = 148
+const TRock13 = 149
+const TRock14 = 150
+const TRock15 = 151
+const TRope = 152
+const TPants = 153
+const TPeg = 154
+const SPigr0 = 0
+const SPigr1 = 4
+const SPigl0 = 8
+const SPigl1 = 12
+const SHeld = 16
+const SSkinr0 = 20
+const SSkinr1 = 24
+const SSkinl0 = 28
+const SSkinl1 = 32
+const SBodyr0 = 36
+const SBodyr1 = 40
+const SBodyl0 = 44
+const SBodyl1 = 48
+const SSkinf = 52
+const SBodyf = 56
+const NTiles8 = 216
+const SprBytes = 480
+const SndTuneA = 1
+const SndTuneB = 2
+const SndOink = 3
+const SndGrab = 4
+const SndDrop = 5
+const SndSold = 6
+const SndFall = 7
+const SndRip = 8
+const SndBuy = 9
+const SndLevel = 10
+const SndOver = 11
+const SndWin = 12
+const NSpr = 9
+const FallN = 80
+const MsgN = 120
+const MaxPig = 7
+' the pen (sprite pixels): interior x 32..208, y 32..144
+const PenX1 = 32
+const PenX2 = 208
+const PenY1 = 32
+const PenY2 = 144
+const GateL = 16
+const GateR = 224
+const StartX = 18
+const StartY = 85
+
+record Pig:
+  u16 X
+  u16 Y
+  u8 D
+  u8 S
+  u8 Live
+  u8 F
+end record
+
+' directions turned to when a pig meets a side of its box: left, right,
+' top, bottom (4 entries each)
+data TurnT bytes
+  1, 2, 3, 2,  5, 6, 7, 6,  3, 4, 5, 4,  7, 0, 1, 0
+end data
+
+Pig Pigs[7]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Pts = 0
+u16 Hi = 0
+u16 BankD = 0
+u8 BankC = 0
+u16 LvT = 0
+u16 PriceC = 10000
+u16 Bx1 = 0
+u16 Bx2 = 0
+u16 By1 = 0
+u16 By2 = 0
+u8 Lv = 1
+u8 Ol = 4
+u8 Os = 4
+u8 Np = 2
+u8 NLeft = 0
+u8 Over = 0
+u8 FSp = 16
+' the farmer: sprite position, sub-pixel steps, facing (0 right, 1 left),
+' the pig carried (0 none, else index + 1)
+u8 Fx = StartX
+u8 Fy = StartY
+u8 Ffx = 0
+u8 Ffy = 0
+u8 Fdir = 0
+u8 Fwalk = 0
+u8 Carry = 0
+u8 FallT = 0
+u8 MsgT = 0
+u8 TitleOn = 0
+u8 HitW = 0
+u8 Shop = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters
+u8 Pi = 0
+u8 Ri = 0
+u8 Qi = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+u8 Qty = 0
+u8 QMax = 0
+
+  tile screen
+  set sound table PfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Pts > Hi then Hi = Pts
+  HideSprites
+  ShowHud
+  mute all
+  for Ri = 9 to 14
+    fill 32 count 22 at 5,Ri
+  next
+  select case Over
+  case 2
+    print at 7,10, "YOU SOLD THEM ALL!"
+    print at 7,12, "RETIRED RICH AT"
+    print at 7,13, "THE AGE OF PIGS."
+    play sound SndWin
+  case 3
+    print at 9,11, "OUT OF MONEY:"
+    print at 7,12, "NOT ONE PIG TO BUY."
+    play sound SndOver
+  case else
+    print at 9,11, "NO PANTS LEFT!"
+    print at 10,12, "GAME OVER"
+    play sound SndOver
+  end select
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if FallT > 0 then
+    dec FallT
+    if FallT = 0 then AfterFall
+    exit sub
+  end if
+  if LvT < 60000 then inc LvT
+  PriceNow
+  MovePigs
+  MoveFarmer
+  if Press = 1 then
+    if Carry = 0 then
+      TryGrab
+    else
+      PutDown
+    end if
+  end if
+  if Carry > 0 then HoldPig
+  if Carry > 0 then
+    if Fx <= GateL then Sell
+  end if
+  if Carry > 0 then
+    if Fx >= GateR then Sell
+  end if
+  if NLeft = 0 then
+    LevelDone
+    exit sub
+  end if
+  CheckFall
+  ' an oink now and then; past level 10 the mud changes the pace
+  Rand
+  V = Rs & 127
+  if V = 5 then
+    play sound SndOink
+    if Lv > 10 then
+      K = highbyte(Rs) & 3
+      FSp = 8 + K * 8
+      if K = 3 then FSp = 16
+    end if
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ShowPrice
+  else
+    V = Tick & 7
+    if V = 0 then ShowPrice
+  end if
+  exit sub
+end sub
+
+' the price of a pig now, in cents: 100.00 less a cent a frame, never
+' under 60.00
+sub PriceNow:
+  if LvT >= 4000 then
+    PriceC = 6000
+  else
+    PriceC = 10000 - LvT
+  end if
+  return
+end sub
+
+' the pigs: straight lines; leaving their box they turn back (random)
+sub MovePigs:
+  for Pi = 0 to 6
+    if Pigs[Pi].Live = 1 then
+      V = Pi + 1
+      if V <> Carry then MoveOne
+    end if
+  next
+  return
+end sub
+
+sub MoveOne:
+  i16 Dx = 0
+  i16 Dy = 0
+  u8 Ix = 0
+  u16 Nx = 0
+  u16 Ny = 0
+  Ix = Pigs[Pi].S * 8 + Pigs[Pi].D
+  Dx = PvxT[Ix]
+  Dx = Dx - 64
+  Dy = PvyT[Ix]
+  Dy = Dy - 64
+  Nx = Pigs[Pi].X + Dx
+  Ny = Pigs[Pi].Y + Dy
+  HitW = 255
+  if Nx < Bx1 then
+    Nx = Bx1
+    HitW = 0
+  elseif Nx > Bx2 then
+    Nx = Bx2
+    HitW = 1
+  end if
+  if Ny < By1 then
+    Ny = By1
+    HitW = 2
+  elseif Ny > By2 then
+    Ny = By2
+    HitW = 3
+  end if
+  Pigs[Pi].X = Nx
+  Pigs[Pi].Y = Ny
+  if HitW < 4 then Turn(HitW)
+  return
+end sub
+
+' a new direction away from wall W and a new speed (0 or 1)
+sub Turn(u8 W):
+  u8 Ti = 0
+  Rand
+  Ti = W * 4
+  Ti = Ti + (Rs & 3)
+  Pigs[Pi].D = TurnT[Ti]
+  Pigs[Pi].S = (Rs >> 2) & 1
+  return
+end sub
+
+' the farmer walks with the stick (8 directions); outside the pen's side
+' fences (in a gate) only left and right
+sub MoveFarmer:
+  u8 Sp = 0
+  u8 Stk = 0
+  u8 H = 0
+  u8 Vv = 0
+  Stk = J1 | J2
+  H = Stk & 12
+  Vv = Stk & 3
+  if Fx < 28 then Vv = 0
+  if Fx > 212 then Vv = 0
+  Sp = FSp
+  if H > 0 then
+    if Vv > 0 then Sp = (FSp >> 1) + (FSp >> 3) + (FSp >> 4)
+  end if
+  if H > 0 then
+    Ffx = Ffx + Sp
+    K = Ffx >> 4
+    Ffx = Ffx & 15
+    if H = 8 then
+      Fx = Fx + K
+      Fdir = 0
+    elseif H = 4 then
+      Fx = Fx - K
+      Fdir = 1
+    end if
+  end if
+  if Vv > 0 then
+    Ffy = Ffy + Sp
+    K = Ffy >> 4
+    Ffy = Ffy & 15
+    if Vv = 2 then
+      Fy = Fy + K
+    elseif Vv = 1 then
+      Fy = Fy - K
+    end if
+  end if
+  clamp Fx between GateL and GateR
+  clamp Fy between 8 and 168
+  if H > 0 then
+    inc Fwalk
+  elseif Vv > 0 then
+    inc Fwalk
+  end if
+  return
+end sub
+
+function PigX(u8 Ix) as u8
+  return Pigs[Ix].X >> 4
+
+function PigY(u8 Ix) as u8
+  return Pigs[Ix].Y >> 4
+
+' distance test: 1 when pig Ix is within Rx, Ry pixels of the farmer
+function Near(u8 Ix, u8 Rx, u8 Ry) as u8
+  u8 Ax = 0
+  u8 Ay = 0
+  Ax = PigX(Ix)
+  Ay = PigY(Ix)
+  if Ax >= Fx then
+    Ax = Ax - Fx
+  else
+    Ax = Fx - Ax
+  end if
+  if Ay >= Fy then
+    Ay = Ay - Fy
+  else
+    Ay = Fy - Ay
+  end if
+  if Ax >= Rx then return 0
+  if Ay >= Ry then return 0
+  return 1
+
+sub TryGrab:
+  for Qi = 0 to 6
+    if Carry = 0 then
+      if Pigs[Qi].Live = 1 then
+        Got = Near(Qi, 16, 14)
+        if Got = 1 then
+          Carry = Qi + 1
+          play sound SndGrab
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub PutDown:
+  Carry = 0
+  play sound SndDrop
+  return
+end sub
+
+' the carried pig, held in front of the farmer
+sub HoldPig:
+  u8 Hx = 0
+  u8 Hy = 0
+  if Fdir = 0 then
+    Hx = Fx + 10
+  else
+    Hx = Fx - 10
+  end if
+  clamp Hx between GateL and GateR
+  Hy = Fy - 4
+  if Hy < 8 then Hy = 8
+  K = Carry - 1
+  W16 = Hx
+  Pigs[K].X = W16 << 4
+  W16 = Hy
+  Pigs[K].Y = W16 << 4
+  return
+end sub
+
+sub Sell:
+  u16 Dol = 0
+  u8 Cen = 0
+  K = Carry - 1
+  Pigs[K].Live = 0
+  Carry = 0
+  dec NLeft
+  Dol = PriceC / 100
+  Cen = PriceC - Dol * 100
+  Pts = Pts + Dol
+  if PriceC > 6000 then Pts = Pts + Lv * 10
+  BankD = BankD + Dol
+  BankC = BankC + Cen
+  if BankC >= 100 then
+    BankC = BankC - 100
+    inc BankD
+  end if
+  if Pts > Hi then Hi = Pts
+  ShowHud
+  print at 2,2, "SOLD FOR  $"
+  NumU = Dol
+  print at 13,2, digits$(NumU, 3)
+  put char 46 at 16,2
+  NumU = Cen
+  print at 17,2, digits$(NumU, 2)
+  MsgT = MsgN
+  play sound SndSold
+  return
+end sub
+
+' a fall: the fence or a boulder under the farmer's feet, or a pig
+' running into him while he carries one
+sub CheckFall:
+  Got = 0
+  V = Fx + 4
+  C = V >> 3
+  V = Fx + 11
+  D = V >> 3
+  V = Fy + 6
+  R = V >> 3
+  V = Fy + 14
+  T = V >> 3
+  TileHurts(C, R)
+  TileHurts(D, R)
+  TileHurts(C, T)
+  TileHurts(D, T)
+  if Carry > 0 then
+    for Qi = 0 to 6
+      if Pigs[Qi].Live = 1 then
+        V = Qi + 1
+        if V <> Carry then
+          if Near(Qi, 12, 12) = 1 then Got = 1
+        end if
+      end if
+    next
+  end if
+  if Got = 1 then
+    Carry = 0
+    FallT = FallN
+    play sound SndFall
+  end if
+  return
+end sub
+
+sub TileHurts(u8 Tc, u8 Tr):
+  u8 Ch = 0
+  Ch = get char at Tc,Tr
+  select case Ch
+  case TRailh, TRailv, TPost
+    Got = 1
+  case TRock0 to TRock15
+    Got = 1
+  end select
+  return
+end sub
+
+sub AfterFall:
+  if Ol = 0 then
+    Over = 1
+    return
+  end if
+  dec Ol
+  play sound SndRip
+  DrawPants
+  Fx = StartX
+  Fy = StartY
+  Fdir = 0
+  for Pi = 0 to 6
+    Rand
+    Pigs[Pi].D = Rs & 7
+    Pigs[Pi].S = (Rs >> 3) & 1
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' levels and the store
+
+' the pigs' box shrinks as there are more of them (line 300)
+sub SetBox:
+  u8 M = 0
+  M = Np + 1
+  M = M * 2
+  Bx1 = PenX1 + M
+  Bx1 = Bx1 << 4
+  Bx2 = PenX2 - M
+  Bx2 = Bx2 << 4
+  By1 = PenY1 + M
+  By1 = By1 << 4
+  By2 = PenY2 - M
+  By2 = By2 << 4
+  return
+end sub
+
+' Np pigs in the middle, random directions and speeds
+sub PlacePigs:
+  for Pi = 0 to 6
+    Pigs[Pi].Live = 0
+    if Pi < Np then Pigs[Pi].Live = 1
+    Pigs[Pi].X = 120 * 16
+    Pigs[Pi].Y = 88 * 16
+    Rand
+    Pigs[Pi].D = Rs & 7
+    Pigs[Pi].S = (Rs >> 3) & 1
+    Pigs[Pi].F = Pi
+  next
+  NLeft = Np
+  Carry = 0
+  LvT = 0
+  SetBox
+  return
+end sub
+
+sub LevelSpeed:
+  FSp = 16
+  if Lv >= 5 then
+    V = Lv & 1
+    if V = 0 then FSp = 24
+    if Lv >= 12 then FSp = 24
+  end if
+  return
+end sub
+
+sub Box(u8 Top, u8 Rows):
+  u8 Bi = 0
+  u8 Last = 0
+  Last = Top + Rows - 1
+  for Bi = Top to Last
+    fill 32 count 22 at 5,Bi
+  next
+  return
+end sub
+
+sub LevelDone:
+  Shop = 1
+  HideSprites
+  inc Lv
+  if Lv > 12 then
+    Lv = 12
+    Shop = 0
+    Over = 2
+    return
+  end if
+  play sound SndLevel
+  ' the pigs for the new level: as many as the bank buys, at most 7
+  NumU = BankD / 60
+  if NumU > MaxPig then NumU = MaxPig
+  Np = NumU
+  Box(8, 7)
+  print at 7,9, "LEVEL"
+  NumU = Lv
+  print at 13,9, digits$(NumU, 2)
+  print at 16,9, "DONE!"
+  print at 7,11, "YOU HAVE $"
+  NumU = BankD
+  print at 17,11, digits$(NumU, 4)
+  put char 46 at 21,11
+  NumU = BankC
+  print at 22,11, digits$(NumU, 2)
+  if Np = 0 then
+    print at 7,13, "NO PIG TO BUY..."
+    PauseShop(150)
+    Shop = 0
+    Over = 3
+    return
+  end if
+  print at 7,13, "YOU MUST BUY"
+  NumU = Np
+  print at 20,13, digits$(NumU, 1)
+  if Np = 1 then
+    print at 22,13, "PIG"
+  else
+    print at 22,13, "PIGS"
+  end if
+  NumU = Np * 60
+  BankD = BankD - NumU
+  ShowHud
+  PauseShop(150)
+  Store
+  ' the new pen
+  LevelSpeed
+  NewPen
+  Shop = 0
+  return
+end sub
+
+' a pause in the store (a button ends it early)
+sub PauseShop(u8 Frames):
+  u8 Pk = 0
+  for Pk = 1 to Frames
+    Frame1
+    ReadPad
+    if Press = 1 then Pk = Frames
+  next
+  return
+end sub
+
+' spare pants: $25 a pair, up to the line's 4 and the store's stock
+sub Store:
+  QMax = 4 - Ol
+  if Os < QMax then QMax = Os
+  NumU = BankD / 25
+  if NumU < QMax then QMax = NumU
+  if QMax = 0 then return
+  Box(8, 7)
+  print at 7,9, "PANTS IN STORE:"
+  NumU = Os
+  print at 23,9, digits$(NumU, 1)
+  print at 7,10, "$25 A PAIR."
+  print at 7,12, "HOW MANY?"
+  print at 7,13, "UP/DOWN, BUTTON"
+  Qty = 0
+  ShowQty
+  WasStick = 3
+st_loop:
+  Frame1
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Qty < QMax then inc Qty
+      else
+        if Qty > 0 then dec Qty
+      end if
+      ShowQty
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto st_loop
+  if Qty > 0 then
+    Ol = Ol + Qty
+    Os = Os - Qty
+    NumU = Qty * 25
+    BankD = BankD - NumU
+    play sound SndBuy
+  end if
+  DrawPants
+  ShowHud
+  return
+end sub
+
+sub ShowQty:
+  NumU = Qty
+  print at 18,12, digits$(NumU, 1)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites 0-1 the farmer (skin over overalls), 2-8 the pigs
+sub DrawSprites:
+  u8 Sy = 0
+  u8 Sk = 0
+  u8 Bd = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Pp = 0
+  u8 Pd = 0
+  Sy = Fy - 1
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  elseif FallT > 0 then
+    set sprite 0 to Sy,Fx,SSkinf,11
+    set sprite 1 to Sy,Fx,SBodyf,4
+  else
+    V = Fwalk >> 3
+    V = V & 1
+    if Fdir = 0 then
+      Sk = SSkinr0
+      Bd = SBodyr0
+    else
+      Sk = SSkinl0
+      Bd = SBodyl0
+    end if
+    if V = 1 then
+      Bd = Bd + 4
+    end if
+    set sprite 0 to Sy,Fx,Sk,11
+    set sprite 1 to Sy,Fx,Bd,4
+  end if
+  for Pi = 0 to 6
+    J = Pi + 2
+    if Pigs[Pi].Live = 0 then
+      set sprite J to 192,0,0,0
+    else
+      Ax = PigX(Pi)
+      Ay = PigY(Pi)
+      Ay = Ay - 1
+      V = Pi + 1
+      if V = Carry then
+        Pp = SHeld
+      else
+        Pd = Pigs[Pi].D
+        if Pd >= 5 then
+          Pp = SPigl0
+        elseif Pd = 0 then
+          Pp = SPigl0
+        else
+          Pp = SPigr0
+        end if
+        V = Tick >> 3
+        V = V + Pi
+        V = V & 1
+        if V = 1 then Pp = Pp + 4
+      end if
+      set sprite J to Ay,Ax,Pp,9
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "LEVEL"
+  NumU = Lv
+  print at 8,1, digits$(NumU, 2)
+  print at 14,1, "BANK $"
+  NumU = BankD
+  print at 20,1, digits$(NumU, 4)
+  put char 46 at 24,1
+  NumU = BankC
+  print at 25,1, digits$(NumU, 2)
+  print at 2,21, "SCORE"
+  NumU = Pts
+  print at 8,21, digits$(NumU, 5)
+  print at 19,21, "HI"
+  NumU = Hi
+  print at 22,21, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowPrice:
+  u16 Dol = 0
+  u8 Cen = 0
+  Dol = PriceC / 100
+  Cen = PriceC - Dol * 100
+  print at 2,2, "PIG PRICE $"
+  NumU = Dol
+  print at 13,2, digits$(NumU, 3)
+  put char 46 at 16,2
+  NumU = Cen
+  print at 17,2, digits$(NumU, 2)
+  return
+end sub
+
+' the clothesline: a peg, four places, a peg (columns 21-28 of row 2)
+sub DrawPants:
+  put char TPeg at 21,2
+  put char TPeg at 29,2
+  for Ri = 0 to 3
+    X = Ri * 2 + 22
+    put char TRope at X,2
+    inc X
+    if Ri < Ol then
+      put char TPants at X,2
+    else
+      put char TRope at X,2
+    end if
+  next
+  return
+end sub
+
+' the pen: grass, dirt, the fence with its two gates, the boulders of
+' this level
+sub DrawPen(u8 Rocks):
+  u8 Ce = 0
+  u8 Last = 0
+  for Ri = 3 to 22
+    fill TGrass count 32 at 0,Ri
+  next
+  fill TGrass count 32 at 0,0
+  fill TGrass count 32 at 0,23
+  for Ri = 4 to 19
+    for Ce = 4 to 27
+      V = Ce + Ri * 3
+      V = V & 3
+      if V = 0 then
+        put char TDirt2 at Ce,Ri
+      else
+        put char TDirt at Ce,Ri
+      end if
+    next
+  next
+  fill TRailh count 24 at 4,3
+  fill TRailh count 24 at 4,20
+  for Ri = 4 to 19
+    put char TRailv at 3,Ri
+    put char TRailv at 28,Ri
+  next
+  put char TPost at 3,3
+  put char TPost at 28,3
+  put char TPost at 3,20
+  put char TPost at 28,20
+  ' the gates (rows 11-12) and the market signs
+  for Ri = 11 to 12
+    put char TGate at 2,Ri
+    put char TGate at 3,Ri
+    put char TGate at 28,Ri
+    put char TGate at 29,Ri
+  next
+  put char TPost at 3,10
+  put char TPost at 3,13
+  put char TPost at 28,10
+  put char TPost at 28,13
+  put char TSign at 2,10
+  put char TSign at 29,10
+  ' the boulders: placed, then rounded from their neighbours
+  if Rocks > 0 then
+    Last = Rocks - 1
+    for Ce = 0 to Last
+      X = RockC[Ce]
+      Y = RockR[Ce]
+      put char TRock0 at X,Y
+    next
+    for Ce = 0 to Last
+      X = RockC[Ce]
+      Y = RockR[Ce]
+      RoundRock
+    next
+  end if
+  return
+end sub
+
+function IsRock(u8 Rc, u8 Rr) as u8
+  u8 Ch = 0
+  Ch = get char at Rc,Rr
+  if Ch < TRock0 then return 0
+  if Ch > TRock15 then return 0
+  return 1
+
+' the boulder at X, Y: round each corner with no neighbour on either side
+sub RoundRock:
+  u8 Up = 0
+  u8 Dn = 0
+  u8 Lf = 0
+  u8 Rt = 0
+  u8 M = 0
+  Up = IsRock(X, Y - 1)
+  Dn = IsRock(X, Y + 1)
+  Lf = IsRock(X - 1, Y)
+  Rt = IsRock(X + 1, Y)
+  M = 0
+  if Up + Lf = 0 then M = M | 1
+  if Up + Rt = 0 then M = M | 2
+  if Dn + Lf = 0 then M = M | 4
+  if Dn + Rt = 0 then M = M | 8
+  put char TRock0 + M at X,Y
+  return
+end sub
+
+sub NewPen:
+  NewScreen
+  V = RockN[Lv]
+  DrawPen(V)
+  ShowHud
+  ShowPrice
+  DrawPants
+  PlacePigs
+  Fx = StartX
+  Fy = StartY
+  Fdir = 0
+  Ffx = 0
+  Ffy = 0
+  FallT = 0
+  MsgT = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  return
+end sub
+
+sub NewGame:
+  Pts = 0
+  Lv = 1
+  BankD = 0
+  BankC = 0
+  Ol = 4
+  Os = 4
+  Np = 2
+  Over = 0
+  LevelSpeed
+  play sound SndLevel
+  NewPen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the empty pen, three pigs trotting, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawPen(0)
+  Box(6, 11)
+  print at 9,7, "PIGS FOR BUCKS"
+  print at 7,9, "COMPUTE!'S GAZETTE"
+  print at 10,10, "OCTOBER 1986"
+  print at 11,13, "START GAME"
+  print at 11,14, "CREDITS"
+  print at 2,1, "HI"
+  NumU = Hi
+  print at 5,1, digits$(NumU, 5)
+  ShowMenu
+  Np = 3
+  PlacePigs
+  Carry = 0
+  TitleOn = 1
+  FallT = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  MovePigs
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,14
+  J = Menu + 13
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "PIGS FOR BUCKS"
+  print at 2,4, "BASED ON PIGS FOR BUCKS,"
+  print at 2,5, "COMPUTE!'S GAZETTE,"
+  print at 2,6, "OCTOBER 1986 (COMMODORE"
+  print at 2,7, "128, BASIC 7.0)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: MARKET DAY SHUFFLE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $08,$40,$02,$20,$00,$84,$00,$10
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$00,$04,$00,$20,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $99,$99,$99,$99,$99,$99,$99,$99
+  $81,$81,$00,$00,$00,$00,$81,$81
+  $00,$00,$04,$00,$00,$40,$00,$00
+  $00,$10,$38,$20,$18,$08,$38,$10
+  $00,$00,$30,$00,$00,$06,$00,$00
+  $E0,$80,$30,$00,$00,$06,$00,$00
+  $07,$01,$30,$00,$00,$06,$00,$00
+  $18,$81,$30,$00,$00,$06,$00,$00
+  $00,$00,$30,$00,$00,$06,$80,$E0
+  $E0,$80,$30,$00,$00,$06,$80,$E0
+  $07,$01,$30,$00,$00,$06,$80,$E0
+  $18,$81,$30,$00,$00,$06,$80,$E0
+  $00,$00,$30,$00,$00,$06,$01,$07
+  $E0,$80,$30,$00,$00,$06,$01,$07
+  $07,$01,$30,$00,$00,$06,$01,$07
+  $18,$81,$30,$00,$00,$06,$01,$07
+  $00,$00,$30,$00,$00,$06,$81,$18
+  $E0,$80,$30,$00,$00,$06,$81,$18
+  $07,$01,$30,$00,$00,$06,$81,$18
+  $18,$81,$30,$00,$00,$06,$81,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $24,$24,$81,$81,$81,$99,$99,$99
+  $18,$18,$18,$18,$18,$18,$18,$18
+end data
+data TileCol bytes
+  $2C,$2C,$2C,$2C,$0C,$2C,$0C,$2C
+  $0A,$6A,$0A,$6A,$0A,$6A,$0A,$0A
+  $0A,$0A,$6A,$0A,$6A,$0A,$0A,$6A
+  $0C,$06,$01,$0A,$06,$01,$0C,$0C
+  $C6,$C6,$C6,$C6,$C6,$C6,$C6,$C6
+  $C6,$C6,$06,$06,$06,$06,$C6,$C6
+  $0A,$0A,$6A,$0A,$0A,$6A,$0A,$0A
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$6C
+  $0E,$0E,$FE,$0E,$0E,$1E,$0E,$0E
+  $AE,$AE,$FE,$0E,$0E,$1E,$0E,$0E
+  $AE,$AE,$FE,$0E,$0E,$1E,$0E,$0E
+  $EA,$AE,$FE,$0E,$0E,$1E,$0E,$0E
+  $0E,$0E,$FE,$0E,$0E,$1E,$AE,$AE
+  $AE,$AE,$FE,$0E,$0E,$1E,$AE,$AE
+  $AE,$AE,$FE,$0E,$0E,$1E,$AE,$AE
+  $EA,$AE,$FE,$0E,$0E,$1E,$AE,$AE
+  $0E,$0E,$FE,$0E,$0E,$1E,$AE,$AE
+  $AE,$AE,$FE,$0E,$0E,$1E,$AE,$AE
+  $AE,$AE,$FE,$0E,$0E,$1E,$AE,$AE
+  $EA,$AE,$FE,$0E,$0E,$1E,$AE,$AE
+  $0E,$0E,$FE,$0E,$0E,$1E,$AE,$EA
+  $AE,$AE,$FE,$0E,$0E,$1E,$AE,$EA
+  $AE,$AE,$FE,$0E,$0E,$1E,$AE,$EA
+  $EA,$AE,$FE,$0E,$0E,$1E,$AE,$EA
+  $01,$01,$0F,$01,$01,$01,$01,$01
+  $F1,$F1,$F5,$15,$15,$15,$15,$15
+  $61,$61,$6F,$61,$61,$61,$61,$61
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$11,$2F,$1F,$1F,$1F,$0F,$0C,$08,$08,$00,$00
+  $00,$00,$00,$00,$24,$FF,$FD,$FE,$FE,$FC,$F8,$D8,$88,$88,$00,$00
+  $00,$00,$00,$00,$00,$11,$2F,$1F,$1F,$1F,$0F,$06,$04,$02,$00,$00
+  $00,$00,$00,$00,$24,$FF,$FD,$FE,$FE,$FC,$F8,$D8,$50,$48,$00,$00
+  $00,$00,$00,$00,$24,$FF,$BF,$7F,$7F,$3F,$1F,$1B,$11,$11,$00,$00
+  $00,$00,$00,$00,$00,$88,$F4,$F8,$F8,$F8,$F0,$30,$10,$10,$00,$00
+  $00,$00,$00,$00,$24,$FF,$BF,$7F,$7F,$3F,$1F,$1B,$0A,$12,$00,$00
+  $00,$00,$00,$00,$00,$88,$F4,$F8,$F8,$F8,$F0,$60,$20,$40,$00,$00
+  $00,$00,$00,$0A,$09,$1F,$3F,$7F,$7F,$3F,$18,$00,$00,$00,$00,$00
+  $00,$00,$00,$50,$90,$F8,$FC,$FE,$FC,$F8,$30,$00,$00,$00,$00,$00
+  $0F,$1F,$7F,$0F,$0F,$0F,$07,$00,$00,$00,$30,$30,$00,$00,$00,$00
+  $C0,$E0,$F8,$C0,$40,$C0,$80,$00,$00,$0C,$0C,$00,$00,$00,$00,$00
+  $0F,$1F,$7F,$0F,$0F,$0F,$07,$00,$00,$00,$30,$30,$00,$00,$00,$00
+  $C0,$E0,$F8,$C0,$40,$C0,$80,$00,$00,$0C,$0C,$00,$00,$00,$00,$00
+  $03,$07,$1F,$03,$02,$03,$01,$00,$00,$30,$30,$00,$00,$00,$00,$00
+  $F0,$F8,$FE,$F0,$F0,$F0,$E0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00
+  $03,$07,$1F,$03,$02,$03,$01,$00,$00,$30,$30,$00,$00,$00,$00,$00
+  $F0,$F8,$FE,$F0,$F0,$F0,$E0,$00,$00,$00,$0C,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$1F,$3F,$37,$0F,$0F,$0C,$0C,$1C,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$F0,$B8,$C0,$C0,$C0,$C0,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$1F,$3F,$37,$0F,$0F,$0C,$18,$38,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$F0,$B8,$C0,$C0,$60,$30,$38,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$0F,$1D,$03,$03,$03,$03,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$F8,$FC,$EC,$F0,$F0,$30,$30,$38,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$0F,$1D,$03,$03,$06,$0C,$1C,$00
+  $00,$00,$00,$00,$00,$00,$00,$F8,$FC,$EC,$F0,$F0,$30,$18,$1C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$21,$71,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$F0,$F2,$E7,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$70,$70,$2E,$3F,$1F,$0F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$00,$00
+end data
+data RockC bytes
+  8,8,8,9,9,9,16,16,17,17,24,24,25,25,4,4
+  5,8,8,13,13,14,15,20,20,20,10,10,16,23,23,17
+  18,18,8,9,9,16,25,26,4,4,5,15,15,22,22,22
+  23,21,21,21,26,26,8,9,9,10,10,19,19,20,26,26
+  26,27,27,13,14,15,19,19,19,20,20,20,7,8,24,25
+  25,18,19,20,5,13,13,14,14,15,15,16,16,24,24,25
+  25
+end data
+data RockR bytes
+  7,8,9,7,8,9,7,8,7,8,6,7,6,7,18,19
+  19,14,15,13,14,14,14,14,15,16,8,9,6,6,7,9
+  8,9,13,13,14,14,14,14,4,5,4,6,7,6,7,8
+  8,14,15,16,6,7,16,15,16,15,16,13,14,13,15,16
+  8,7,8,15,15,15,7,8,9,7,8,9,14,12,16,15
+  16,4,4,4,18,16,17,16,17,17,18,18,19,17,18,17
+  18
+end data
+data RockN bytes
+  0,26,31,40,52,64,64,70,70,81,81,97,97
+end data
+data PvxT bytes
+  64,70,72,70,64,58,56,58,64,72,76,72,64,56,52,56
+end data
+data PvyT bytes
+  56,58,64,70,72,70,64,58,52,56,64,72,76,72,64,56
+end data
+
+asm {
+PfOink:
+    db $40,$FC,$21,$03,$40,$3B,$22,$03,$40,$7F,$22,$04,$40,$A6,$42,$03,$50
+PfGrab:
+    db $40,$7F,$10,$02,$40,$5F,$10,$02,$40,$47,$20,$04,$50
+PfDrop:
+    db $40,$D6,$20,$03,$40,$1D,$31,$05,$50
+PfSold:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$20,$0A,$50
+PfFall:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$56,$0E,$10
+PfRip:
+    db $40,$1D,$11,$06,$40,$53,$21,$06,$40,$AB,$21,$06,$40,$3B,$32,$10,$50
+PfBuy:
+    db $40,$8F,$20,$03,$40,$6B,$20,$06,$50
+PfLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$14,$50
+PfOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$53,$21,$0C,$40,$AB,$21,$1E,$50
+PfWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+PfSoundTable:
+    dw PfTuneMel,$702B
+    dw PfTuneBass,$7035
+    dw PfOink,$7049
+    dw PfGrab,$7049
+    dw PfDrop,$7049
+    dw PfSold,$7049
+    dw PfFall,$703F
+    dw PfRip,$7049
+    dw PfBuy,$7049
+    dw PfLevel,$7049
+    dw PfOver,$7049
+    dw PfWin,$7049
+; Market Day Shuffle (original)
+; Tiny Sound, 8 frames per step
+PfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$21,$01,$1E,$1A,$01,$1C,$01,$1F,$01
+    db $23,$01,$21,$01,$1E,$01,$1A,$1E,$21,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$01,$01,$23,$01,$1F,$23,$26,$01,$23,$1F,$21,$01,$1E,$21
+    db $26,$01,$21,$1E,$1F,$01,$1C,$01,$19,$01,$1C,$01,$1A,$01,$15,$01
+    db $1A,$01,$00,$01
+    db $FF
+PfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$12,$01,$13,$01,$0E,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$10,$01,$09,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$00,$01
+    db $FF
+}

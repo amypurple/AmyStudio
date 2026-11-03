@@ -1,0 +1,926 @@
+cartridge "KABLAM!/STEPHEN RESSLER/1985"
+
+' KABLAM!
+' A ColecoVision game based on "KABLAM!" by Stephen Ressler, COMPUTE!'s
+' Gazette, January 1985 (Commodore 64 and VIC-20, BASIC with a
+' machine-language core in DATA lines).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a prankster on the rooftop walks back and forth along the
+' ledge and drops firecrackers one at a time. Push your blast bin along the
+' pavement and catch each one before it hits the street. Every catch
+' scores a point; every ten catches the prankster speeds up. A missed
+' firecracker goes KABLAM! and costs a spare bin; miss with no spare left
+' and the game is over (four misses in all).
+'
+' From the original (orig/kablam_64.bas, its machine code disassembled in
+' orig/ml.dis): the skill level 1-15 (delay K = (16 - skill) x 15 + 15),
+' the bomber and the firecracker both moving one pixel a step with that
+' delay, the bomber bouncing between the same edges, the firecracker
+' dropped straight down from where the bomber is when the last one was
+' caught or burst, a point a catch (seven-digit score), five units less
+' delay every ten catches, three spare bins shown in the score line
+' (the game ends on the miss after the last spare), the bin's speed of
+' 4 pixels a frame and its wrap from one edge to the other, the burst
+' freezing the play, and the end: ten bursts over the town, GAME OVER.
+'
+' Liberties: original art and sound (a raccoon instead of the original's
+' figure, a rolling bin instead of its cup); speeds converted from the
+' measured C64 step time (about 45 K + 900 cycles plus 15% of interrupt
+' time) to 1/16 pixel a frame; the firecracker's fall is shorter on this
+' screen (120 lines for 154), so its vertical speed is scaled by 25/32 to
+' keep the C64's fall time. The delay stops shrinking at K = 25 (on the
+' C64 it went on, past 0, and wrapped round to the slowest speed). The
+' score shows "KABLAM!" over the burst and leaves a scorch mark. The
+' skill is chosen with the stick on the title instead of typed. The
+' original's pause key (the space bar) is left out (joystick only).
+'
+' Controls: either controller; the stick moves the bin left and right.
+' On the title: up/down choose START GAME or CREDITS, left/right the
+' skill, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table; the title tune
+' is played once. Nothing flashes faster than 3 Hz.
+
+const TSky = 128
+const TStar = 129
+const TMoon = 130
+const TLedge = 131
+const TBrick = 132
+const TWinl00 = 133
+const TWinl01 = 134
+const TWinl10 = 135
+const TWinl11 = 136
+const TWind00 = 137
+const TWind01 = 138
+const TWind10 = 139
+const TWind11 = 140
+const TPave = 141
+const TKerb = 142
+const TScorch = 143
+const TLife = 144
+const TQ0 = 145
+const TQ1 = 146
+const TQ2 = 147
+const TQ3 = 148
+const TQ4 = 149
+const TQ5 = 150
+const TQ6 = 151
+const TQ7 = 152
+const TQ8 = 153
+const TQ9 = 154
+const TQ10 = 155
+const TQ11 = 156
+const TQ12 = 157
+const TQ13 = 158
+const TQ14 = 159
+const TQ15 = 160
+const SRac0 = 0
+const SRac1 = 4
+const SRacd0 = 8
+const SRacd1 = 12
+const SFire = 16
+const SSpark0 = 20
+const SSpark1 = 24
+const SBinl = 28
+const SBinr = 32
+const SBand = 36
+const SBandr = 40
+const SBoom0 = 44
+const SBoom1 = 48
+const NTiles8 = 264
+const SprBytes = 416
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCatch = 3
+const SndBoom = 4
+const SndFuse = 5
+const SndFaster = 6
+const SndStart = 7
+const SndOver = 8
+const SndTick = 9
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$00,$00,$00,$02,$00
+  $18,$C3,$81,$83,$81,$C3,$18,$00
+  $00,$00,$00,$00,$00,$22,$22,$00
+  $10,$10,$00,$40,$40,$00,$04,$04
+  $00,$81,$81,$81,$81,$00,$81,$81
+  $00,$81,$81,$81,$81,$00,$81,$81
+  $81,$81,$81,$00,$00,$20,$20,$00
+  $81,$81,$81,$00,$00,$10,$10,$00
+  $00,$81,$81,$81,$81,$00,$81,$81
+  $00,$81,$81,$81,$81,$00,$81,$81
+  $81,$81,$81,$00,$00,$20,$20,$00
+  $81,$81,$81,$00,$00,$10,$10,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$0C,$00,$00,$00
+  $00,$2C,$81,$00,$81,$C2,$11,$00
+  $00,$80,$C3,$C3,$C3,$C3,$24,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$F4,$04,$04,$04,$A4,$04
+  $B4,$4B,$4B,$4B,$4B,$4B,$B4,$04
+  $0E,$0F,$0E,$0E,$01,$16,$16,$01
+  $16,$16,$01,$16,$16,$01,$16,$16
+  $01,$1B,$1B,$1B,$1B,$01,$1B,$1A
+  $01,$1B,$1B,$1B,$1B,$01,$1B,$1A
+  $1A,$1A,$1A,$01,$0E,$16,$16,$01
+  $1A,$1A,$1A,$01,$0E,$16,$16,$01
+  $01,$14,$14,$14,$14,$01,$14,$14
+  $01,$14,$14,$14,$14,$01,$14,$14
+  $14,$14,$14,$01,$0E,$16,$16,$01
+  $14,$14,$14,$01,$0E,$16,$16,$01
+  $0E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $0F,$0E,$01,$01,$B1,$01,$01,$01
+  $0E,$1E,$E1,$01,$E1,$E1,$1E,$01
+  $01,$17,$17,$17,$17,$17,$E1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$18,$18,$18,$16
+  $01,$01,$01,$01,$81,$81,$81,$61
+  $01,$01,$01,$01,$08,$08,$08,$06
+  $18,$18,$18,$16,$01,$01,$01,$01
+  $18,$18,$18,$16,$18,$18,$18,$16
+  $18,$18,$18,$16,$81,$81,$81,$61
+  $18,$18,$18,$16,$08,$08,$08,$06
+  $81,$81,$81,$61,$01,$01,$01,$01
+  $81,$81,$81,$61,$18,$18,$18,$16
+  $81,$81,$81,$61,$81,$81,$81,$61
+  $81,$81,$81,$61,$08,$08,$08,$06
+  $08,$08,$08,$06,$01,$01,$01,$01
+  $08,$08,$08,$06,$18,$18,$18,$16
+  $08,$08,$08,$06,$81,$81,$81,$61
+  $08,$08,$08,$06,$08,$08,$08,$06
+end data
+data SpritePat bytes
+  $00,$08,$3C,$3F,$00,$04,$20,$1C,$0F,$1F,$3F,$3F,$1F,$0F,$0E,$06
+  $00,$10,$3C,$FF,$06,$23,$07,$3E,$FC,$FE,$FF,$FF,$FE,$FC,$1C,$12
+  $00,$08,$3C,$3F,$00,$04,$20,$1C,$0F,$1F,$3F,$3F,$1F,$0F,$1C,$0C
+  $00,$10,$3C,$FF,$06,$23,$07,$3E,$FC,$FE,$FF,$FF,$FE,$FC,$38,$24
+  $00,$10,$00,$00,$1F,$3B,$1F,$03,$00,$00,$00,$00,$00,$00,$00,$18
+  $00,$08,$00,$00,$F8,$DC,$F8,$C0,$00,$00,$00,$00,$00,$00,$00,$0C
+  $00,$10,$00,$00,$1F,$3B,$1F,$03,$00,$00,$00,$00,$00,$00,$00,$30
+  $00,$08,$00,$00,$F8,$DC,$F8,$C0,$00,$00,$00,$00,$00,$00,$00,$18
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$07,$07,$07,$03,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$C0,$00,$00
+  $00,$02,$01,$02,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$A0,$C0,$A0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$04,$01,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$7F,$FF,$7F,$3F,$00,$00,$3F,$3F,$1F,$1F,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$FF,$FF,$FF,$FF,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$00,$00,$FF,$FF,$FF,$FF,$00,$00
+  $00,$00,$00,$00,$FE,$FF,$FE,$FC,$00,$00,$FC,$FC,$F8,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$3F,$3F,$00,$00,$00,$00,$0C,$1E
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$00,$00,$00,$00,$30,$78
+  $00,$01,$11,$0B,$07,$3F,$0F,$3F,$07,$0B,$11,$01,$00,$00,$00,$00
+  $00,$00,$10,$A0,$C0,$F8,$E0,$F8,$C0,$A0,$10,$00,$00,$00,$00,$00
+  $81,$41,$27,$1F,$3F,$7F,$FF,$7F,$3F,$1F,$27,$41,$81,$00,$00,$00
+  $02,$04,$C8,$F0,$F8,$FC,$FE,$FC,$F8,$F0,$C8,$04,$02,$00,$00,$00
+end data
+data SpdT bytes
+  117,105,96,88,81,75,70,66,62,59,55
+  53,50,48,46,44,42,41,39,38,36,35
+  34,33,32,31,30,29,28,28,27,26,26
+  25,25,24,23,23,22,22,22,21,21,20
+end data
+const LogoW = 17
+const LogoC = 7
+data LogoT bytes
+  155,151,146,157,147,159,154,150,145,145,151,154,150,147,152,150,145
+  159,147,150,157,155,159,154,150,145,145,159,158,150,149,150,149,145
+  153,149,149,145,153,157,153,149,157,153,153,149,149,145,149,149,145
+end data
+const NSpr = 9
+const BinY = 159
+const RacY = 23
+const BombY0 = 30
+const MissY = 163
+const BoomN = 45
+const XMin = 16
+const XMax = 224
+const BinMax = 216
+const KMin = 25
+
+record Actor:
+  u16 Xf
+  u16 Yf
+  u8 Dir
+end record
+
+Actor Rac
+Actor Bomb
+bcd digits 7 Score = 0
+bcd digits 7 Best = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Vs = 0
+u8 Skill = 5
+u8 Kd = 0
+u8 Spd = 0
+u8 Ten = 0
+u8 Spare = 3
+u8 Px = 120
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 Over = 0
+u8 Caught = 0
+u8 Missed = 0
+u8 TitleOn = 0
+u8 Lit[5]
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Bi = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table KbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 3
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: ten bursts over the town, then GAME OVER
+  if Score > Best then Best = Score
+  EndBursts
+  print at 9,10, "             "
+  print at 9,11, "  GAME OVER  "
+  print at 9,12, "             "
+  ShowHud
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveBin
+  if BoomT > 0 then
+    dec BoomT
+    if BoomT = 0 then
+      RestoreRow
+      if Spare = 0 then
+        Over = 1
+      else
+        dec Spare
+        ShowLives
+        DropBomb
+      end if
+    end if
+    return
+  end if
+  MoveRac
+  Bomb.Yf += Vs
+  if Catch(Px) = 1 then
+    inc Caught
+    inc Score
+    ShowScore
+    play sound SndCatch
+    inc Ten
+    if Ten >= 10 then
+      Ten = 0
+      if Kd > KMin then
+        Kd = Kd - 5
+        SetSpeed
+        play sound SndFaster
+      end if
+    end if
+    DropBomb
+    return
+  end if
+  V = BombRow
+  if V >= MissY then Burst
+  return
+end sub
+
+' the bin: 4 pixels a frame, wrapping from one edge to the other
+sub MoveBin:
+  K = J1 | J2
+  V = K & 4
+  if V > 0 then
+    if Px < XMin + 4 then
+      Px = BinMax
+    else
+      Px = Px - 4
+    end if
+  end if
+  V = K & 8
+  if V > 0 then
+    if Px > BinMax - 4 then
+      Px = XMin
+    else
+      Px = Px + 4
+    end if
+  end if
+  return
+end sub
+
+' the raccoon walks the ledge, turning at the edges
+sub MoveRac:
+  W16 = Spd
+  if Rac.Dir = 0 then
+    Rac.Xf += W16
+    if Rac.Xf >= XMax * 16 then
+      Rac.Xf = XMax * 16
+      Rac.Dir = 1
+    end if
+  else
+    if Rac.Xf <= XMin * 16 + W16 then
+      Rac.Xf = XMin * 16
+      Rac.Dir = 0
+    else
+      Rac.Xf -= W16
+    end if
+  end if
+  return
+end sub
+
+function BombRow as u8
+  W16 = Bomb.Yf >> 4
+  return W16
+
+function RacCol as u8
+  W16 = Rac.Xf >> 4
+  return W16
+
+' 1 when the firecracker (its tube: x + 5 .. x + 10, y + 5 .. y + 13)
+' touches the bin (x + 1 .. x + 22, y + 4 .. y + 15)
+function Catch(u8 Bx) as u8
+  u8 R = 0
+  u8 Fx = 0
+  u8 Fy = 0
+  Fx = Bomb.Xf >> 4
+  Fy = Bomb.Yf >> 4
+  if Fy + 13 >= BinY + 4 then
+    if Fy + 5 <= BinY + 15 then
+      if Fx + 10 >= Bx + 1 then
+        if Fx + 5 <= Bx + 22 then R = 1
+      end if
+    end if
+  end if
+  return R
+
+' the vertical speed: the horizontal one x 25 / 32
+function VertSpeed(u8 S) as u16
+  u16 Q = 0
+  Q = S
+  Q = Q * 25
+  return Q >> 5
+
+' speeds from the delay Kd (25 .. 240)
+sub SetSpeed:
+  V = Kd - KMin
+  V = V / 5
+  Spd = SpdT[V]
+  Vs = VertSpeed(Spd)
+  return
+end sub
+
+' a new firecracker in the raccoon's hands
+sub DropBomb:
+  Bomb.Xf = Rac.Xf
+  Bomb.Yf = BombY0 * 16
+  play sound SndFuse
+  return
+end sub
+
+' a miss: the burst on the pavement, KABLAM! above it, a scorch mark
+sub Burst:
+  inc Missed
+  BoomT = BoomN
+  BoomX = Bomb.Xf >> 4
+  BoomY = MissY
+  play sound SndBoom
+  C = BoomX + 8
+  C = C >> 3
+  put char TScorch at C,22
+  C = C - 3
+  if C < 2 then C = 2
+  if C > 23 then C = 23
+  print at C,20, "KABLAM!"
+  return
+end sub
+
+' the wall row under the KABLAM! text
+sub RestoreRow:
+  Ri = 20
+  DrawWallRow
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ten bursts over the town (the original's end)
+sub EndBursts:
+  HideSprites
+  for Bi = 1 to 10
+    Rand
+    X = Rs & 127
+    T = highbyte(Rs) & 63
+    X = X + T
+    X = X + 24
+    Rand
+    Y = Rs & 127
+    Y = Y + 24
+    set sprite 8 to Y,X,SBoom1,11
+    update sprites
+    play sound SndBoom
+    for Ci = 1 to 8
+      Frame1
+    next
+    set sprite 8 to Y,X,SBoom0,9
+    update sprites
+    for Ci = 1 to 8
+      Frame1
+    next
+  next
+  set sprite 8 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites: 0-1 bin band, 2-3 bin body, 4 spark, 5 firecracker, 6 raccoon
+' detail, 7 raccoon fur, 8 burst
+sub DrawSprites:
+  T = Px + 8
+  set sprite 0 to BinY,Px,SBand,1
+  set sprite 1 to BinY,T,SBandr,1
+  set sprite 2 to BinY,Px,SBinl,7
+  set sprite 3 to BinY,T,SBinr,7
+  X = RacCol
+  V = Tick >> 3
+  V = V & 1
+  K = V << 2
+  N = SRac0 + K
+  T = SRacd0 + K
+  set sprite 6 to RacY,X,T,1
+  set sprite 7 to RacY,X,N,14
+  if BoomT > 0 or TitleOn = 1 then
+    set sprite 4 to 192,0,0,0
+    set sprite 5 to 192,0,0,0
+  else
+    X = Bomb.Xf >> 4
+    Y = BombRow
+    K = V << 2
+    K = K + SSpark0
+    set sprite 4 to Y,X,K,10
+    set sprite 5 to Y,X,SFire,15
+  end if
+  if BoomT > 0 then
+    V = BoomT >> 3
+    V = V & 1
+    if V = 0 then
+      set sprite 8 to BoomY,BoomX,SBoom1,11
+    else
+      set sprite 8 to BoomY,BoomX,SBoom0,9
+    end if
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 16,1, "SKILL"
+  ShowScore
+  NumU = Skill
+  print at 22,1, digits$(NumU, 2)
+  ShowLives
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 3 at 26,1
+  if Spare > 0 then fill TLife count Spare at 26,1
+  return
+end sub
+
+' one row of the building (Ri, 6 .. 21): brick, with windows in rows
+' 8-9, 12-13, 16-17, 20-21 and columns 4, 9, 14, 19, 24
+sub DrawWallRow:
+  fill TBrick count 32 at 0,Ri
+  V = Ri - 8
+  T = V & 3
+  if Ri >= 8 and T < 2 then
+    K = V >> 2
+    for Ci = 0 to 4
+      C = Ci * 5
+      C = C + 5
+      N = Ci + K
+      N = N & 3
+      if Lit[N] = 1 then
+        J = TWinl00
+      else
+        J = TWind00
+      end if
+      J = J + T * 2
+      put char J at C,Ri
+      J = J + 1
+      C = C + 1
+      put char J at C,Ri
+    next
+  end if
+  return
+end sub
+
+sub DrawField:
+  fill TSky count 32 at 0,0
+  for Ri = 1 to 4
+    fill TSky count 32 at 0,Ri
+  next
+  put char TStar at 3,2
+  put char TStar at 9,3
+  put char TStar at 13,2
+  put char TStar at 19,4
+  put char TStar at 24,2
+  put char TMoon at 27,3
+  fill TLedge count 32 at 0,5
+  for Ri = 6 to 21
+    DrawWallRow
+  next
+  fill TPave count 32 at 0,22
+  fill TKerb count 32 at 0,23
+  return
+end sub
+
+sub LightWindows:
+  for Ci = 0 to 4
+    Rand
+    V = Rs & 1
+    Lit[Ci] = V
+  next
+  Lit[1] = 1
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Spare = 3
+  Ten = 0
+  Caught = 0
+  Missed = 0
+  V = 16 - Skill
+  Kd = V * 15
+  Kd = Kd + 15
+  SetSpeed
+  Px = 108
+  Rac.Xf = 16 * 16
+  Rac.Dir = 0
+  DropBomb
+  NewScreen
+  LightWindows
+  DrawField
+  ShowHud
+  BoomT = 0
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo, the raccoon pacing the ledge, the menu and skill
+sub TitlePage:
+  NewScreen
+  LightWindows
+  DrawField
+  for Ri = 7 to 18
+    fill 32 count 24 at 4,Ri
+  next
+  for Ri = 0 to 2
+    W16 = Ri * LogoW
+    Y = Ri + 8
+    for Ci = 0 to LogoW - 1
+      T = LogoT[W16 + Ci]
+      X = LogoC + Ci
+      put char T at X,Y
+    next
+  next
+  print at 7,12, "BY STEPHEN RESSLER"
+  print at 11,14, "START GAME"
+  print at 11,15, "CREDITS"
+  print at 11,17, "SKILL"
+  ShowSkill
+  print at 2,1, "BEST"
+  print at 7,1, Best
+  print at 17,1, "GAZETTE 1/85"
+  ShowMenu
+  Rac.Xf = 120 * 16
+  Rac.Dir = 0
+  Spd = 24
+  Px = 108
+  TitleOn = 1
+  BoomT = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  MoveRac
+  DrawSprites
+  V = J1 | J2
+  V = V & 15
+  if V > 0 and WasStick = 0 then
+    select case V
+    case 1
+      Menu = 0
+      ShowMenu
+    case 2
+      Menu = 1
+      ShowMenu
+    case 4
+      if Skill > 1 then dec Skill
+      ShowSkill
+      play sound SndTick
+    case 8
+      if Skill < 15 then inc Skill
+      ShowSkill
+      play sound SndTick
+    end select
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowSkill:
+  NumU = Skill
+  print at 17,17, "<"
+  print at 19,17, digits$(NumU, 2)
+  print at 22,17, ">"
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,14
+  put char 32 at 9,15
+  J = Menu + 14
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "KABLAM!"
+  print at 2,5, "BASED ON KABLAM! BY"
+  print at 2,6, "STEPHEN RESSLER, COMPUTE!'S"
+  print at 2,7, "GAZETTE, JANUARY 1985"
+  print at 2,8, "(COMMODORE 64 AND VIC-20)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: ROOFTOP PRANK"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+KbCatch:
+    db $40,$47,$10,$02,$40,$35,$20,$02,$40,$2A,$30,$03,$50
+KbBoom:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$26,$06,$00,$00,$46,$0A,$00,$00,$66,$10,$10
+KbFuse:
+    db $00,$00,$70,$02,$00,$00,$91,$02,$10
+KbFaster:
+    db $40,$7F,$20,$04,$40,$5F,$20,$04,$40,$40,$20,$08,$50
+KbStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$50
+KbOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$53,$21,$0C,$40,$3B,$22,$1E,$50
+KbTick:
+    db $40,$55,$40,$02,$50
+
+KbSoundTable:
+    dw KbTuneMel,$702B
+    dw KbTuneBass,$7035
+    dw KbCatch,$7049
+    dw KbBoom,$703F
+    dw KbFuse,$703F
+    dw KbFaster,$7049
+    dw KbStart,$7049
+    dw KbOver,$7049
+    dw KbTick,$7049
+; Rooftop Prank (original)
+; Tiny Sound, 8 frames per step
+KbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$24,$21,$01,$23,$01,$26,$2B,$01,$2A,$28,$01,$26,$01,$01,$23
+    db $01,$21,$1F,$01,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$2A,$2B,$01,$26,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+KbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$10,$01,$0B,$01,$0C,$01,$13,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$0E,$01,$15,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1229 @@
+cartridge "MOON RESCUE/COMPUTE!'S GAZETTE/1986"
+
+' MOON RESCUE
+' A ColecoVision game based on "Moon Rescue", COMPUTE!'s Gazette,
+' December 1986 (Commodore 128, BASIC 7.0; no author named on the disk).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: four astronauts are stranded on the moon, two on the plateaus
+' at the edges and two on landing pads in the valley. Fly your probe down
+' from the mothership, past four lanes of drifting rocks, land next to an
+' astronaut to take them aboard, and fly back up into the mothership's
+' dock to save them. A probe that hits a rock, leaves the screen, touches
+' the ground away from a landing place or comes up anywhere but the dock
+' is lost, with its passenger. When all four astronauts of a set are saved
+' or lost, a new set waits below and you get a bonus probe. Three probes.
+'
+' From the original (orig/moon rescue.bas): the scene (mothership dock at
+' the top, sun, stars, the surface line 0,150-40,150-105,175-215,175-
+' 280,150-320,150), the four rock lanes, odd lanes drifting right and even
+' ones left, each at a random speed of 1-4 drawn again at every landing;
+' the stick: up or down starts the probe and sets the way it drifts when
+' the stick is let go, any of the eight directions moves it while held (no
+' move at all before up or down after a landing); the zones: the dock
+' window, the plateau landings (X<53, X>302), the two valley pads, a crash
+' anywhere else on the valley floor, at the side edges or the top; one
+' passenger at a time; SAVED / LOST / SET / PROBE counters; a new set (and
+' a probe) when every astronaut is saved or lost; the 1-second pause on
+' landing; "MAKE NEW ROCKS (Y/N)": new random rock shapes.
+'
+' Liberties: coordinates scaled to the 224 x 176 visible play area (the
+' probe moves 3 pixels in 4 frames, rocks 0.6 to 2 pixels a frame, a bit
+' slower than the C-128's 1-4 to suit a joystick); collisions are boxes,
+' not the C-128's pixel test; the slopes between the plateaus and the
+' valley are solid (on the C-128 the probe flew through them); the probe
+' cannot drift above the dock; rocks vanish at the side edges of the play
+' area instead of sliding under the border; the probe shows its passenger;
+' the rock question is a title menu; a credits page.
+'
+' Controls: either joystick. Up or down launches the probe and sets its
+' drift; any direction steers while held. On the title, up/down chooses,
+' a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. Nothing flashes.
+
+const TG0 = 128
+const TG1 = 129
+const TG2 = 130
+const TG3 = 131
+const TG4 = 132
+const TG5 = 133
+const TG6 = 134
+const TG7 = 135
+const TG8 = 136
+const TG9 = 137
+const TG10 = 138
+const TG11 = 139
+const TG12 = 140
+const TG13 = 141
+const TG14 = 142
+const TG15 = 143
+const TG16 = 144
+const TG17 = 145
+const TG18 = 146
+const TG19 = 147
+const TG20 = 148
+const TG21 = 149
+const TG22 = 150
+const TG23 = 151
+const TG24 = 152
+const TG25 = 153
+const TG26 = 154
+const TStar1 = 155
+const TStar2 = 156
+const TStar3 = 157
+const TShip00 = 158
+const TShip01 = 159
+const TShip02 = 160
+const TShip03 = 161
+const TShip10 = 162
+const TShip11 = 163
+const TShip12 = 164
+const TShip13 = 165
+const TSun00 = 166
+const TSun01 = 167
+const TSun10 = 168
+const TSun11 = 169
+const TL27 = 170
+const TL28 = 171
+const TL29 = 172
+const TL30 = 173
+const TL31 = 174
+const TL32 = 175
+const TL33 = 176
+const TL34 = 177
+const TL35 = 178
+const TL36 = 179
+const TL37 = 180
+const TL38 = 181
+const TL39 = 182
+const TL40 = 183
+const TL41 = 184
+const TL42 = 185
+const TL43 = 186
+const TL44 = 187
+const TL45 = 188
+const TL46 = 189
+const TL47 = 190
+const TL48 = 191
+const TL49 = 192
+const TL50 = 193
+const TL51 = 194
+const TL52 = 195
+const TL53 = 196
+const SLander = 0
+const SLanderp = 4
+const SFlame = 8
+const SFlamed = 12
+const SRock = 16
+const SRocknew = 20
+const SMan0 = 24
+const SMan1 = 28
+const SBoom0 = 32
+const SBoom1 = 36
+const NTiles8 = 552
+const SprBytes = 320
+const NStars = 18
+const LogoCols = 17
+const LogoC0 = 7
+const LogoN = 34
+const SndTuneA = 1
+const SndTuneB = 2
+const SndThrust = 3
+const SndDock = 4
+const SndPick = 5
+const SndCrash = 6
+const SndSet = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 10
+const SpawnX = 120
+const SpawnY = 32
+const TopY = 36
+const PlatY = 128
+const FloorY = 152
+const LandN = 60
+const BoomN = 70
+const MsgN = 120
+const RockSpan = 2688
+
+record Rock:
+  u16 X
+  u8 Y
+  u8 Sp
+  u8 Rt
+end record
+
+' the four astronauts: sprite X, Y
+data ManX bytes
+  20, 100, 132, 220
+end data
+data ManY bytes
+  128, 152, 152, 128
+end data
+' rock speeds (1/8 pixel a frame) for the C-128 speeds 1-4
+data RockSpT bytes
+  6, 11, 17, 22
+end data
+' the eight stick directions (C-128 order 1 up .. 8 up-left): steps
+data DxT bytes
+  0, 0, 1, 1, 1, 0, 255, 255, 255
+end data
+data DyT bytes
+  0, 255, 255, 0, 1, 1, 1, 0, 255
+end data
+' rock bytes for a half-width of 0-8 pixels (left half, right half)
+data HalfL bytes
+  0, 1, 3, 7, 15, 31, 63, 127, 255
+end data
+data HalfR bytes
+  0, 128, 192, 224, 240, 248, 252, 254, 255
+end data
+data RockProf bytes
+  0, 0, 3, 5, 6, 7, 7, 8, 8, 7, 7, 6, 5, 3, 0, 0
+end data
+
+Rock Rocks[4]
+u8 RockBuf[32]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Saved = 0
+u16 Lost = 0
+u8 SetN = 1
+u8 Probes = 3
+u8 Over = 0
+' the probe: sprite corner, drift (0, 1 up, 5 down), moving, step phase
+u8 Lx = SpawnX
+u8 Ly = SpawnY
+u8 Ld = 0
+u8 Lsp = 0
+u8 Mv = 0
+u8 Dir = 0
+u8 Mo = 0
+u8 Ml = 4
+u8 Men[4]
+u8 LandT = 0
+u8 BoomT = 0
+u8 MsgT = 0
+u8 ThrT = 0
+u8 RockPat = 0
+u8 NewRocks = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Mi = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Got = 0
+
+  tile screen
+  set sound table MrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  ShowHud
+  mute all
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  SAVED         "
+  NumU = Saved
+  print at 16,12, digits$(NumU, 3)
+  print at 8,13, "                "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveRocks
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ShowHud
+  end if
+  if BoomT > 0 then
+    dec BoomT
+    if BoomT = 0 then AfterCrash
+    return
+  end if
+  if LandT > 0 then
+    dec LandT
+    return
+  end if
+  if Lsp = 1 then
+    if Lx < 16 then
+      Crash
+      return
+    end if
+    if Lx > 224 then
+      Crash
+      return
+    end if
+    if Ly < TopY then
+      TopZone
+    elseif Ly > PlatY then
+      BottomZone
+    end if
+    if LandT > 0 then return
+    if BoomT > 0 then return
+    if Lsp = 0 then return
+    if RockHit() = 1 then
+      Crash
+      return
+    end if
+    if SlopeHit(Lx, Ly) then
+      Crash
+      return
+    end if
+  end if
+  Steer
+  return
+end sub
+
+' the stick (C-128 line 410-420)
+sub Steer:
+  K = J1 | J2
+  Dir = Dir8(K)
+  if Dir = 0 then
+    Dir = Ld
+  else
+    if ThrT = 0 then
+      play sound SndThrust
+      ThrT = 8
+    end if
+    if Dir = 1 then
+      Ld = 1
+      Lsp = 1
+    end if
+    if Dir = 5 then
+      Ld = 5
+      Lsp = 1
+    end if
+  end if
+  if ThrT > 0 then dec ThrT
+  Mv = Mv + 1
+  Mv = Mv & 3
+  if Lsp = 0 then return
+  if Dir = 0 then return
+  if Mv = 0 then return
+  Lx = Lx + DxT[Dir]
+  V = Ly + DyT[Dir]
+  if V >= 30 then Ly = V
+  return
+end sub
+
+' the stick bits (1 up, 2 down, 4 left, 8 right) as a C-128 direction
+function Dir8(u8 Jb) as u8
+  u8 D = 0
+  select case Jb & 15
+  case 1
+    D = 1
+  case 9
+    D = 2
+  case 8
+    D = 3
+  case 10
+    D = 4
+  case 2
+    D = 5
+  case 6
+    D = 6
+  case 4
+    D = 7
+  case 5
+    D = 8
+  case else
+    D = 0
+  end select
+  return D
+
+' above the rocks: drifting down is fine, else the dock or a crash
+sub TopZone:
+  if Ld = 5 then return
+  if Lx >= 113 then
+    if Lx <= 127 then
+      Dock
+      return
+    end if
+  end if
+  Crash
+  return
+end sub
+
+sub Dock:
+  Lx = SpawnX
+  Ly = SpawnY
+  Lsp = 0
+  Ld = 0
+  play sound SndDock
+  if Mo = 1 then
+    Mo = 0
+    inc Saved
+    ShowHud
+    CheckSet
+  end if
+  return
+end sub
+
+' below the plateau line: the landing places (C-128 lines 560-610)
+sub BottomZone:
+  if Lx < 32 then
+    Land(0, PlatY)
+  elseif Lx > 205 then
+    Land(3, PlatY)
+  elseif Ly < FloorY then
+    return
+  elseif Lx >= 93 and Lx <= 107 then
+    Land(1, FloorY)
+  elseif Lx >= 125 and Lx <= 139 then
+    Land(2, FloorY)
+  else
+    Crash
+  end if
+  return
+end sub
+
+sub Land(u8 Which, u8 Yl):
+  Ly = Yl
+  if Men[Which] = 1 then
+    if Mo = 0 then
+      Men[Which] = 0
+      Mo = 1
+      dec Ml
+      play sound SndPick
+    end if
+  end if
+  RerollRocks
+  LandT = LandN
+  Lsp = 0
+  Ld = 0
+  return
+end sub
+
+sub Crash:
+  BoomT = BoomN
+  Lsp = 0
+  Ld = 0
+  dec Probes
+  if Mo = 1 then
+    Mo = 0
+    inc Lost
+  end if
+  play sound SndCrash
+  ShowHud
+  return
+end sub
+
+sub AfterCrash:
+  CheckSet
+  if Probes = 0 then
+    Over = 1
+    return
+  end if
+  Lx = SpawnX
+  Ly = SpawnY
+  return
+end sub
+
+' every astronaut saved or lost: the next set and a bonus probe
+sub CheckSet:
+  if Ml > 0 then return
+  if Mo = 1 then return
+  if Probes = 0 then return
+  Ml = 4
+  for Mi = 0 to 3
+    Men[Mi] = 1
+  next
+  inc SetN
+  inc Probes
+  RerollRocks
+  MsgT = MsgN
+  ShowHud
+  print at 2,2, "  NEW SET - BONUS PROBE!  "
+  play sound SndSet
+  return
+end sub
+
+' 1 when a visible rock touches the probe
+function RockHit as u8
+  u8 Hit = 0
+  u16 Px = 0
+  u8 Ry = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  for Si = 0 to 3
+    Px = Rocks[Si].X >> 3
+    Ry = Rocks[Si].Y
+    if Px >= 16 and Px <= 224 then
+      X = Px
+      if X > Lx then
+        Dx = X - Lx
+      else
+        Dx = Lx - X
+      end if
+      if Ry > Ly then
+        Dy = Ry - Ly
+      else
+        Dy = Ly - Ry
+      end if
+      if Dx < 11 and Dy < 11 then Hit = 1
+    end if
+  next
+  return Hit
+
+' the probe's feet below the surface line (the slopes)
+function SlopeHit(u8 Hx, u8 Hy) as bool
+  u8 F = Hy + 16
+  u8 A = (Hx + 3) >> 1
+  u8 B = (Hx + 12) >> 1
+  if F > SurfH[A] then return true
+  if F > SurfH[B] then return true
+  return false
+
+sub MoveRocks:
+  u16 Nx = 0
+  u16 Sp = 0
+  for Si = 0 to 3
+    Nx = Rocks[Si].X
+    Sp = Rocks[Si].Sp
+    if Rocks[Si].Rt = 1 then
+      Nx = Nx + Sp
+      if Nx >= RockSpan then Nx = Nx - RockSpan
+    else
+      if Nx < Sp then Nx = Nx + RockSpan
+      Nx = Nx - Sp
+    end if
+    Rocks[Si].X = Nx
+  next
+  return
+end sub
+
+sub RerollRocks:
+  for Si = 0 to 3
+    Rand
+    V = Rs & 3
+    Rocks[Si].Sp = RockSpT[V]
+  next
+  return
+end sub
+
+sub StartRocks:
+  for Si = 0 to 3
+    Rocks[Si].X = 552
+    Rocks[Si].Y = Si * 18 + 56
+    Rocks[Si].Rt = 1 - (Si & 1)
+  next
+  RerollRocks
+  return
+end sub
+
+' "MAKE NEW ROCKS": a new random rock shape in sprite pattern SRocknew
+sub MakeRock:
+  u8 Hw = 0
+  u8 Sh = 0
+  for Ri = 0 to 15
+    Hw = RockProf[Ri]
+    if Hw > 0 then
+      Rand
+      V = Rs & 3
+      select case V
+      case 0
+        if Hw > 1 then dec Hw
+      case 1
+        if Hw < 8 then inc Hw
+      case else
+      end select
+    end if
+    Sh = HalfL[Hw]
+    RockBuf[Ri] = Sh
+    RockBuf[Ri + 16] = HalfR[Hw]
+  next
+  ' a few craters
+  for Ri = 0 to 4
+    Rand
+    V = Rs & 7
+    V = V + 4
+    Sh = Rs >> 8
+    U = Sh & 7
+    T = Bit8(U)
+    if Sh >= 128 then
+      RockBuf[V + 16] = RockBuf[V + 16] ^ T
+    else
+      RockBuf[V] = RockBuf[V] ^ T
+    end if
+  next
+  W16 = SRocknew
+  W16 = W16 << 3
+  copy RockBuf count 32 to vram.spr_pat + W16
+  return
+end sub
+
+function Bit8(u8 B) as u8
+  u8 M = 128
+  M = M >> B
+  return M
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 the probe (or its wreck), 1 its flame, 2-5 the rocks, 6-9 the
+' astronauts
+sub DrawSprites:
+  u16 Px = 0
+  u8 Ry = 0
+  u8 Pt = 0
+  Y = Ly - 1
+  if BoomT > 0 then
+    Pt = SBoom1
+    if BoomT > 50 then Pt = SBoom0
+    if BoomT > 20 then
+      set sprite 0 to Y,Lx,Pt,9
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+    set sprite 1 to 192,0,0,0
+  elseif TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    Pt = SLander
+    if Mo = 1 then Pt = SLanderp
+    set sprite 0 to Y,Lx,Pt,15
+    Got = 0
+    if Lsp = 1 then
+      if Dir > 0 then Got = 1
+    end if
+    if Got = 1 then
+      V = Tick & 4
+      Pt = SFlame
+      if V > 0 then Pt = SFlamed
+      set sprite 1 to Y,Lx,Pt,8
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  end if
+  for Si = 0 to 3
+    J = Si + 2
+    Px = Rocks[Si].X >> 3
+    Ry = Rocks[Si].Y
+    Got = 0
+    if Px >= 16 and Px <= 224 then Got = 1
+    if TitleOn = 1 then Got = 0
+    if Got = 1 then
+      X = Px
+      Y = Ry - 1
+      set sprite J to Y,X,RockPat,14
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  for Mi = 0 to 3
+    J = Mi + 6
+    if Men[Mi] = 1 then
+      X = ManX[Mi]
+      Y = ManY[Mi] - 1
+      V = Tick >> 5
+      V = V + Mi
+      V = V & 1
+      Pt = SMan0
+      if V = 1 then Pt = SMan1
+      set sprite J to Y,X,Pt,11
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SAVED          LOST     "
+  NumU = Saved
+  print at 8,1, digits$(NumU, 3)
+  NumU = Lost
+  print at 22,1, digits$(NumU, 3)
+  print at 2,2, "SET           PROBES      "
+  NumU = SetN
+  print at 6,2, digits$(NumU, 2)
+  NumU = Probes
+  print at 23,2, digits$(NumU, 2)
+  return
+end sub
+
+' the scene: stars, sun, mothership, the ground
+sub DrawScene:
+  for Si = 0 to NStars - 1
+    K = Si * 3
+    X = StarT[K]
+    Y = StarT[K + 1]
+    T = StarT[K + 2] + TStar1
+    put char T at X,Y
+  next
+  put char TSun00 at 26,3
+  put char TSun01 at 27,3
+  put char TSun10 at 26,4
+  put char TSun11 at 27,4
+  for Ri = 0 to 3
+    T = TShip00 + Ri
+    X = Ri + 14
+    put char T at X,3
+    T = TShip10 + Ri
+    put char T at X,4
+  next
+  W16 = 0
+  for Ri = 17 to 22
+    for Mi = 2 to 29
+      T = GroundMap[W16]
+      put char T at Mi,Ri
+      inc W16
+    next
+  next
+  return
+end sub
+
+sub NewGame:
+  Saved = 0
+  Lost = 0
+  SetN = 1
+  Probes = 3
+  Ml = 4
+  Mo = 0
+  for Mi = 0 to 3
+    Men[Mi] = 1
+  next
+  RockPat = SRock
+  if NewRocks = 1 then
+    MakeRock
+    RockPat = SRocknew
+  end if
+  NewScreen
+  DrawScene
+  ShowHud
+  StartRocks
+  Lx = SpawnX
+  Ly = SpawnY
+  Ld = 0
+  Lsp = 0
+  Dir = 0
+  LandT = 0
+  BoomT = 0
+  MsgT = 0
+  Over = 0
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the scene, the logo, the rocks drifting, the tune once;
+' OLD ROCKS / NEW ROCKS / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawScene
+  for Ri = 0 to LogoCols - 1
+    T = LogoMap[Ri]
+    X = LogoC0 + Ri
+    put char T at X,6
+    T = LogoMap[Ri + LogoCols]
+    put char T at X,7
+  next
+  print at 3,9, "COMPUTE!'S GAZETTE DEC 1986"
+  print at 8,11, "START, OLD ROCKS"
+  print at 8,12, "START, NEW ROCKS"
+  print at 8,13, "CREDITS"
+  ShowMenu
+  for Mi = 0 to 3
+    Men[Mi] = 1
+  next
+  RockPat = SRock
+  StartRocks
+  TitleOn = 1
+  BoomT = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  MoveRocks
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  NewRocks = 0
+  if Menu = 1 then NewRocks = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 11 to 13
+    put char 32 at 6,Ri
+  next
+  J = Menu + 11
+  put char 62 at 6,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "MOON RESCUE"
+  print at 2,5, "BASED ON MOON RESCUE,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "DECEMBER 1986"
+  print at 2,8, "(COMMODORE 128)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: LUNAR LIFELINE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$38,$10,$00,$00,$00,$00
+  $00,$00,$00,$0E,$0E,$0E,$00,$00
+  $C0,$F0,$07,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$F0,$03
+  $00,$00,$00,$00,$00,$00,$03,$07
+  $00,$01,$07,$E0,$C0,$C0,$00,$00
+  $1C,$C1,$C1,$C1,$1C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$1C,$08,$00
+  $01,$01,$00,$00,$00,$00,$00,$00
+  $00,$80,$E0,$F0,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$E0
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$03,$F0,$E0,$80,$80
+  $E0,$80,$80,$00,$00,$00,$00,$00
+  $00,$10,$38,$10,$00,$00,$00,$00
+  $00,$00,$00,$0E,$0E,$0E,$00,$00
+  $07,$03,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$07,$01,$01
+  $00,$00,$00,$00,$01,$07,$F0,$C0
+  $03,$F0,$C0,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$1C,$08,$00
+  $00,$00,$00,$C1,$1C,$00,$00,$00
+  $C0,$00,$00,$00,$08,$1C,$08,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$07,$E0,$CC,$8C,$00,$80
+  $80,$80,$E0,$07,$CC,$31,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C4,$F0,$04,$04,$04,$00
+  $00,$01,$23,$F0,$20,$20,$20,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$F0,$E0,$C0,$80,$80,$00,$00
+  $C0,$F0,$07,$03,$01,$01,$10,$30
+  $10,$30,$80,$80,$C0,$E0,$F0,$03
+  $00,$00,$01,$01,$03,$07,$F0,$C0
+  $00,$C0,$C0,$0C,$0C,$CC,$CC,$CC
+  $00,$C3,$C3,$CC,$CC,$CC,$CC,$CC
+  $00,$F0,$F0,$0C,$0C,$0C,$0C,$0C
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$0C,$0C,$30,$30,$CC,$CC,$CC
+  $00,$0C,$0C,$0C,$0C,$CC,$CC,$C3
+  $00,$F0,$F0,$0C,$0C,$0C,$0C,$F0
+  $00,$F0,$F0,$0C,$0C,$0C,$0C,$F0
+  $00,$00,$00,$C0,$C0,$C0,$C0,$00
+  $00,$C3,$C3,$0C,$0C,$0C,$0C,$03
+  $00,$03,$03,$00,$00,$00,$00,$F0
+  $00,$0C,$0C,$CC,$CC,$0C,$0C,$0C
+  $00,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $00,$C0,$C0,$00,$00,$00,$00,$00
+  $CC,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $CC,$CC,$CC,$CC,$CC,$C3,$C3,$00
+  $0C,$0C,$0C,$0C,$0C,$F0,$F0,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $CC,$CC,$CC,$CC,$CC,$0C,$0C,$00
+  $C3,$0C,$0C,$0C,$0C,$0C,$0C,$00
+  $F0,$0C,$0C,$0C,$0C,$0C,$0C,$00
+  $F0,$C0,$C0,$30,$30,$0C,$0C,$00
+  $00,$C0,$C0,$C0,$C0,$00,$00,$00
+  $03,$00,$00,$00,$00,$30,$30,$00
+  $F0,$0C,$0C,$0C,$0C,$F0,$F0,$00
+  $0C,$0C,$0C,$CC,$CC,$03,$03,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0F,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0F,$1E,$1E,$1E,$0E,$0E,$0E,$0E
+  $0F,$0E,$0E,$1E,$1E,$1E,$0E,$0E
+  $F1,$E1,$1E,$1E,$FE,$0E,$0E,$0E
+  $01,$01,$01,$01,$F1,$E1,$E1,$1E
+  $01,$01,$01,$01,$01,$01,$F1,$E1
+  $01,$F1,$E1,$1E,$1E,$FE,$0E,$0E
+  $1E,$E1,$E1,$E1,$1E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$1E,$1E,$1E,$0E
+  $1E,$FE,$0E,$0E,$0E,$0E,$0E,$0E
+  $01,$F1,$E1,$E1,$1E,$FE,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$F1,$E1
+  $01,$01,$01,$01,$01,$01,$01,$F1
+  $01,$01,$01,$F1,$1E,$1E,$1E,$FE
+  $1E,$1E,$FE,$0E,$0E,$0E,$0E,$0E
+  $0E,$1E,$1E,$1E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$1E,$1E,$1E,$0E,$0E
+  $1E,$1E,$FE,$0E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$F1,$E1,$1E,$1E,$FE
+  $01,$01,$01,$01,$F1,$E1,$1E,$1E
+  $E1,$1E,$1E,$1E,$FE,$0E,$0E,$0E
+  $0B,$0B,$0A,$0E,$0E,$0E,$0E,$0E
+  $0B,$0B,$0A,$0E,$1E,$1E,$1E,$0E
+  $0B,$0B,$0A,$E1,$1E,$0E,$0E,$0E
+  $FE,$0E,$0E,$0E,$1E,$1E,$1E,$0E
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$51,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$04
+  $F1,$E1,$E1,$1E,$1E,$1E,$0F,$FE
+  $F1,$E1,$E1,$1E,$E1,$1E,$0F,$FE
+  $01,$01,$01,$01,$01,$01,$01,$04
+  $05,$04,$01,$01,$01,$01,$01,$01
+  $0E,$1E,$1E,$1E,$E1,$E1,$B1,$01
+  $0E,$1E,$1E,$E1,$E1,$E1,$B1,$01
+  $05,$04,$01,$01,$01,$01,$01,$01
+  $B1,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $B1,$B1,$1B,$1B,$1B,$1B,$AB,$AB
+  $AB,$AB,$1B,$1B,$1B,$1B,$1B,$B1
+  $0B,$0B,$1B,$1B,$1B,$1B,$B1,$B1
+  $01,$F1,$B1,$1B,$1B,$B1,$A1,$A1
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$1F,$1B,$B1,$B1,$B1,$A1,$A1
+  $01,$F1,$B1,$1B,$1B,$B1,$A1,$A1
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$1A
+  $01,$1F,$1B,$B1,$B1,$B1,$A1,$1A
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$0F,$0B,$B1,$B1,$B1,$A1,$0A
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$1F,$1B,$01,$01,$01,$01,$A1
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$F1,$B1,$B1,$B1,$B1,$A1,$A1
+  $01,$F1,$B1,$01,$01,$01,$01,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $81,$81,$81,$81,$61,$16,$16,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $18,$81,$81,$81,$61,$61,$61,$01
+  $18,$81,$81,$81,$61,$61,$61,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $08,$81,$81,$81,$61,$06,$06,$01
+  $81,$01,$01,$01,$01,$16,$16,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $81,$81,$81,$81,$61,$61,$61,$01
+  $01,$01,$01,$01,$01,$61,$61,$01
+end data
+data SpritePat bytes
+  $00,$03,$04,$0A,$08,$04,$0F,$1F,$3F,$1F,$08,$10,$20,$60,$00,$00
+  $00,$C0,$20,$50,$10,$20,$F0,$F8,$FC,$F8,$10,$08,$04,$06,$00,$00
+  $00,$03,$05,$0B,$0B,$04,$0F,$1F,$3F,$1F,$08,$10,$20,$60,$00,$00
+  $00,$C0,$A0,$D0,$D0,$20,$F0,$F8,$FC,$F8,$10,$08,$04,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$80
+  $00,$00,$07,$1F,$3D,$7C,$7F,$FD,$FF,$7F,$7F,$3F,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$FC,$FE,$FE,$FF,$FF,$3E,$1E,$FE,$FC,$F0,$00,$00
+  $00,$00,$07,$1F,$3D,$7C,$7F,$FD,$FF,$7F,$7F,$3F,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$FC,$FE,$FE,$FF,$FF,$3E,$1E,$FE,$FC,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$04,$05,$03,$0F,$17,$0B,$04,$04,$0C
+  $00,$00,$00,$00,$00,$00,$80,$40,$40,$80,$E0,$D0,$80,$40,$40,$60
+  $00,$00,$00,$00,$00,$00,$03,$04,$05,$03,$0F,$17,$0B,$04,$04,$0C
+  $00,$00,$00,$00,$10,$20,$A0,$60,$40,$80,$C0,$C0,$80,$40,$40,$60
+  $00,$00,$10,$09,$03,$2F,$0F,$1B,$0F,$27,$09,$11,$00,$00,$00,$00
+  $00,$00,$10,$20,$80,$E8,$E0,$B0,$E0,$C8,$20,$10,$00,$00,$00,$00
+  $20,$10,$00,$42,$00,$88,$00,$21,$00,$48,$00,$11,$80,$00,$20,$00
+  $82,$84,$00,$22,$00,$08,$00,$08,$00,$22,$00,$04,$80,$00,$04,$00
+end data
+data GroundMap bytes
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  129,130,131,129,132,133,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,134,135,129,130,131,129
+  136,137,137,138,136,139,140,141,128,128,128,128,128,128,128,128,128,128,128,128,142,143,144,138,136,137,137,138
+  137,145,146,137,137,145,146,147,148,128,128,128,128,128,128,128,128,128,128,149,150,145,146,137,137,145,146,137
+  136,137,137,138,136,137,137,138,136,129,151,152,153,129,151,152,153,129,129,154,136,137,137,138,136,137,137,138
+  137,145,146,137,137,145,146,137,137,145,146,137,137,145,146,137,137,145,146,137,137,145,146,137,137,145,146,137
+end data
+data LogoMap bytes
+  170,171,172,173,174,175,128,176,177,178,179,180,173,181,182,178,183
+  184,185,186,187,188,189,128,190,191,192,193,194,187,195,186,192,196
+end data
+data SurfH bytes
+  144,144,144,144,144,144,144,144,144,144,144,144,144,144,144,144
+  144,144,144,144,144,144,144,144,144,145,146,147,148,150,151,152
+  153,154,156,157,158,159,160,162,163,164,165,166,168,168,168,168
+  168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168
+  168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168
+  168,168,168,168,168,167,166,165,164,162,161,160,159,158,156,155
+  154,153,152,150,149,148,147,146,144,144,144,144,144,144,144,144
+  144,144,144,144,144,144,144,144,144,144,144,144,144,144,144,144
+end data
+data StarT bytes
+  28,7,2
+  15,16,1
+  4,9,0
+  29,16,2
+  23,13,1
+  4,14,0
+  13,11,0
+  21,15,2
+  19,11,1
+  27,13,1
+  9,3,1
+  21,6,0
+  18,9,1
+  4,3,1
+  10,15,2
+  11,5,2
+  22,10,2
+  10,12,2
+end data
+
+asm {
+MrThrust:
+    db $00,$00,$36,$03,$10
+MrDock:
+    db $40,$47,$10,$04,$40,$35,$10,$04,$40,$2A,$20,$0A,$50
+MrPick:
+    db $40,$7F,$10,$03,$40,$5F,$10,$03,$40,$40,$20,$06,$50
+MrCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$0E,$10
+MrSet:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$14,$50
+MrStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$8F,$20,$0E,$50
+MrOver:
+    db $40,$D6,$10,$0C,$40,$FE,$20,$0C,$40,$41,$21,$0C,$40,$AB,$21,$1E,$50
+
+MrSoundTable:
+    dw MrTuneMel,$702B
+    dw MrTuneBass,$7035
+    dw MrThrust,$703F
+    dw MrDock,$7049
+    dw MrPick,$7049
+    dw MrCrash,$703F
+    dw MrSet,$7049
+    dw MrStart,$7049
+    dw MrOver,$7049
+; Lunar Lifeline (original)
+; Tiny Sound, 8 frames per step
+MrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$23,$01,$26,$01,$25,$01,$01,$23
+    db $21,$01,$1E,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$25,$01,$01,$01
+    db $01,$01,$01,$01,$26,$01,$25,$01,$23,$01,$21,$01,$23,$01,$1E,$01
+    db $1A,$01,$1C,$01,$1E,$01,$01,$21,$1F,$01,$1E,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$06,$01,$0D,$01,$06,$01,$0D,$01,$0B,$01,$12,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

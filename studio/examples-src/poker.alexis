@@ -1,0 +1,1289 @@
+cartridge "POKER/COMPUTE!'S GAZETTE/1984"
+
+' POKER
+' A ColecoVision game based on "Poker" ("*** POKER 256 ***"), COMPUTE!'s
+' Gazette, March 1984 (Commodore 64 and VIC-20 BASIC with two small
+' machine-language routines; disk files POKER.64 and POKER.VIC; orig/).
+' The listing names no author. Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game (the original's rules, read from the C64 listing; the ML at 908
+' and 960 disassembled in orig/poker-ml.dis):
+' "It's you against the 64": five cards are dealt from a fresh 52-card deck.
+' Going along the hand, you keep or change each card; at most three cards
+' may be changed (the listing stops asking after the third change). New
+' cards come from what is left of the deck. Then the hand is judged
+' (ML 908 sorts the ranks, ML 960 counts the equal pairs: 1 a pair, 2 two
+' pair, 3 three of a kind, 4 a full house) and paid by the table:
+'   ROYAL FLUSH 250, STRAIGHT FLUSH 100, 4 OF A KIND 20, FULL HOUSE 10,
+'   FLUSH 8, STRAIGHT 5, 3 OF A KIND 4, 2 PAIR 3, PAIR (JACKS & UP) 1.
+' Anything less is a LOUSY HAND and costs $1 ("EACH HAND COSTS $1": in the
+' listing only a losing hand is charged; a win adds the table's amount).
+' Aces are high, and also low in A-2-3-4-5 (the listing's PT(1)+PT(5) test).
+'
+' Liberties:
+' - A clear end (the original deals for ever and its winnings may go
+'   negative): you sit down with $10 and play 50 hands; the game ends after
+'   hand 50, or at once if your bank reaches $0 ("BROKE"). The best bank is
+'   kept on the title.
+' - The keep/change questions (K and C keys, card by card) become a pointer:
+'   the stick moves it along the cards, the button marks a card NEW (or back
+'   to KEEP), and DRAW deals. The limit of three changes is kept (a fourth
+'   is refused with a message).
+' - ROYAL FLUSH pays $250 as the printed table and the VIC-20 listing (the
+'   C64 listing adds 249).
+' - A-2-3-4-5 in one suit is a STRAIGHT FLUSH (the listing paid it as a
+'   royal flush because the ace sorts to the top: PT(5)=14).
+' - The rapid border flashing of the original (faster than 3 Hz) is gone;
+'   cards glide from the deck and turn over with a beep instead.
+'
+' Controls: left/right move the pointer over the five cards and DRAW; a
+' button marks or unmarks the card (or draws on DRAW). Up or down also jump
+' to DRAW. Either button, either controller. Title: up/down and a button.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off after a
+' wait, display off. Music first in the sound table; the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+
+const TW = 128
+const TTl = 129
+const TTr = 130
+const TBl = 131
+const TBr = 132
+const TRk0 = 133
+const TRk1 = 134
+const TRk2 = 135
+const TRk3 = 136
+const TRk4 = 137
+const TRk5 = 138
+const TRk6 = 139
+const TRk7 = 140
+const TRk8 = 141
+const TRk9 = 142
+const TRk10 = 143
+const TRk11 = 144
+const TRk12 = 145
+const TRr0 = 146
+const TRr1 = 147
+const TRr2 = 148
+const TRr3 = 149
+const TRr4 = 150
+const TRr5 = 151
+const TRr6 = 152
+const TRr7 = 153
+const TRr8 = 154
+const TRr9 = 155
+const TRr10 = 156
+const TRr11 = 157
+const TRr12 = 158
+const TSs0 = 159
+const TSs1 = 160
+const TSs2 = 161
+const TSs3 = 162
+const TBs000 = 163
+const TBs001 = 164
+const TBs010 = 165
+const TBs011 = 166
+const TBs100 = 167
+const TBs101 = 168
+const TBs110 = 169
+const TBs111 = 170
+const TBs200 = 171
+const TBs201 = 172
+const TBs210 = 173
+const TBs211 = 174
+const TBs300 = 175
+const TBs301 = 176
+const TBs310 = 177
+const TBs311 = 178
+const TBack00 = 179
+const TBack01 = 180
+const TBack02 = 181
+const TBack03 = 182
+const TBack10 = 183
+const TBack11 = 184
+const TBack12 = 185
+const TBack13 = 186
+const TBack20 = 187
+const TBack21 = 188
+const TBack22 = 189
+const TBack23 = 190
+const TBack30 = 191
+const TBack31 = 192
+const TBack32 = 193
+const TBack33 = 194
+const TBack40 = 195
+const TBack41 = 196
+const TBack42 = 197
+const TBack43 = 198
+const TRule = 199
+const TStar = 200
+const TChip = 201
+const TLP00 = 202
+const TLP01 = 203
+const TLP10 = 204
+const TLP11 = 205
+const TLO00 = 206
+const TLO01 = 207
+const TLO10 = 208
+const TLO11 = 209
+const TLK00 = 210
+const TLK01 = 211
+const TLK10 = 212
+const TLK11 = 213
+const TLE00 = 214
+const TLE01 = 215
+const TLE10 = 216
+const TLE11 = 217
+const TLR00 = 218
+const TLR01 = 219
+const TLR10 = 220
+const TLR11 = 221
+const SArrow = 0
+const SFly00 = 4
+const SFly01 = 8
+const SFly10 = 12
+const SFly11 = 16
+const NTiles8 = 752
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndSwish = 4
+const SndFlip = 5
+const SndMark = 6
+const SndUnmark = 7
+const SndBad = 8
+const SndWin = 9
+const SndBig = 10
+const SndLose = 11
+const NSpr = 5
+const NHands = 50
+const StartPurse = 10
+const CardY = 13
+const LabelY = 18
+const DrawY = 20
+const MsgY = 22
+const PayY = 3
+const DeckX = 26
+const DeckY = 4
+
+' what each hand pays (0 = lousy: costs 1), by category
+data PayTab words
+  0,1,3,4,5,8,10,20,100,250
+end data
+
+record PCard:
+  u8 R
+  u8 S
+  u8 Ch
+end record
+
+PCard Hand[5]
+u8 Used[52]
+u8 Cnt[13]
+u16 Purse = 0
+u16 Best = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 DealSeed = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 HandNo = 0
+u8 Crow = CardY
+u8 Cat = 0
+u8 BestCat = 0
+u8 NChg = 0
+u8 Cur = 0
+u8 Stage = 0
+u8 Tick = 0
+u8 Asking = 0
+u8 TMenu = 0
+u8 EvReq = 0
+u8 EvMagic = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Push = 0
+' loop counters (never shared with the helpers)
+u8 Ki = 0
+u8 Si = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table PkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+
+if defined EVALTEST
+  ' test build: the bot writes Hand[] and sets EvReq; the hand is judged
+  EvReq = 0
+  EvMagic = $5A
+  do
+    if EvReq = 1 then
+      Cat = Classify
+      EvReq = 0
+    end if
+  loop
+end defined
+
+  screen on
+  Stage = 1
+  CreditsPage
+
+title:
+  TitlePage
+  if TMenu = 1 then
+    RulesPage
+    goto title
+  end if
+  if TMenu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  NewGame
+  TablePage
+
+hand_loop:
+  PlayHand
+  if Purse = 0 then goto game_over
+  if HandNo >= NHands then goto game_over
+  goto hand_loop
+
+game_over:
+  if Purse > Best then Best = Purse
+  EndPage
+  Stage = 6
+  Pause(60)
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the deck and the judge
+
+sub NewGame:
+  Purse = StartPurse
+  HandNo = 0
+  BestCat = 0
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a card not yet out of the deck, 0-51 (rank = card mod 13, 0 = deuce,
+' 12 = ace; suit = card / 13). Values from 65520 (= 52 x 1260) up are thrown
+' back so every card is equally likely.
+function DealOne() as u8
+  u8 Nc = 0
+  do
+    Rand
+    if Rs < 65520 then
+      Nc = Rs % 52
+      if Used[Nc] = 0 then
+        Used[Nc] = 1
+        return Nc
+      end if
+    end if
+  loop
+  return 0
+
+' the category of Hand[]: 0 lousy, 1 jacks or better, 2 two pair, 3 three
+' of a kind, 4 straight, 5 flush, 6 full house, 7 four of a kind,
+' 8 straight flush, 9 royal flush. Pairs counts every equal pair of cards
+' as the original's ML 960 did (1, 2, 3, 4 = full house, 6 = four).
+function Classify() as u8
+  u8 Pairs = 0
+  u8 Hi = 0
+  u8 Mn = 12
+  u8 Mx = 0
+  u8 Fl = 1
+  u8 St = 0
+  u8 Rk = 0
+  u8 S0 = 0
+  u8 Ci = 0
+  fill array Cnt with 0
+  S0 = Hand[0].S
+  for Ci = 0 to 4
+    Rk = Hand[Ci].R
+    Pairs = Pairs + Cnt[Rk]
+    Cnt[Rk] += 1
+    if Cnt[Rk] >= 2 then
+      if Rk > Hi then Hi = Rk
+    end if
+    if Hand[Ci].S <> S0 then Fl = 0
+    if Rk < Mn then Mn = Rk
+    if Rk > Mx then Mx = Rk
+  next
+  if Pairs = 0 then
+    if Mx - Mn = 4 then St = 1
+    ' A-2-3-4-5: the ace low
+    if Mx = 12 then
+      if Cnt[0] + Cnt[1] + Cnt[2] + Cnt[3] = 4 then
+        St = 1
+        Mn = 255
+      end if
+    end if
+  end if
+  if St = 1 then
+    if Fl = 1 then
+      if Mn = 8 then return 9
+      return 8
+    end if
+  end if
+  select case Pairs
+  case 6
+    return 7
+  case 4
+    return 6
+  end select
+  if Fl = 1 then return 5
+  if St = 1 then return 4
+  select case Pairs
+  case 3
+    return 3
+  case 2
+    return 2
+  case 1
+    if Hi >= 9 then return 1
+  end select
+  return 0
+
+' ---------------------------------------------------------------------------
+' drawing the table
+
+function CardCol(u8 Slot) as u8
+  return Slot * 5 + 4
+
+' card Slot at its place: Mode 0 felt (gone), 1 back, 2 face
+sub DrawCard(u8 Slot, u8 Mode):
+  u8 Cx = 0
+  u8 Rt = 0
+  u8 Bs = 0
+  u8 Su = 0
+  u8 Cy = 0
+  Cx = CardCol(Slot)
+  if Mode = 0 then
+    for Cy = Crow to Crow + 4
+      fill 32 count 4 at Cx,Cy
+    next
+    return
+  end if
+  if Mode = 1 then
+    for Cy = 0 to 4
+      for Rt = 0 to 3
+        put char TBack00 + Cy * 4 + Rt at Cx + Rt,Crow + Cy
+      next
+    next
+    return
+  end if
+  Su = Hand[Slot].S
+  Rt = Hand[Slot].R + TRk0
+  if Su = 1 then Rt = Rt + 13
+  if Su = 2 then Rt = Rt + 13
+  Bs = Su * 4 + TBs000
+  put char TTl at Cx,Crow
+  fill TW count 2 at Cx + 1,Crow
+  put char TTr at Cx + 3,Crow
+  put char Rt at Cx,Crow + 1
+  put char TSs0 + Su at Cx + 1,Crow + 1
+  fill TW count 2 at Cx + 2,Crow + 1
+  put char TW at Cx,Crow + 2
+  put char Bs at Cx + 1,Crow + 2
+  put char Bs + 1 at Cx + 2,Crow + 2
+  put char TW at Cx + 3,Crow + 2
+  put char TW at Cx,Crow + 3
+  put char Bs + 2 at Cx + 1,Crow + 3
+  put char Bs + 3 at Cx + 2,Crow + 3
+  put char TW at Cx + 3,Crow + 3
+  put char TBl at Cx,Crow + 4
+  fill TW count 2 at Cx + 1,Crow + 4
+  put char TBr at Cx + 3,Crow + 4
+  return
+end sub
+
+sub DrawDeck:
+  for J = 0 to 4
+    for K = 0 to 3
+      put char TBack00 + J * 4 + K at DeckX + K,DeckY + J
+    next
+  next
+  return
+end sub
+
+' the name of category C at X,Y (padded to 16 columns)
+sub CatName(u8 C, u8 Nx, u8 Ny):
+  fill 32 count 16 at Nx,Ny
+  select case C
+  case 9
+    print at Nx,Ny, "ROYAL FLUSH"
+  case 8
+    print at Nx,Ny, "STRAIGHT FLUSH"
+  case 7
+    print at Nx,Ny, "4 OF A KIND"
+  case 6
+    print at Nx,Ny, "FULL HOUSE"
+  case 5
+    print at Nx,Ny, "FLUSH"
+  case 4
+    print at Nx,Ny, "STRAIGHT"
+  case 3
+    print at Nx,Ny, "3 OF A KIND"
+  case 2
+    print at Nx,Ny, "2 PAIR"
+  case 1
+    print at Nx,Ny, "PAIR, JACKS & UP"
+  case else
+    print at Nx,Ny, "LOUSY HAND!!"
+  end select
+  return
+end sub
+
+sub MarkPay(u8 C, u8 T):
+  u8 My = 0
+  if C = 0 then return
+  My = PayY + 9 - C
+  put char T at 2,My
+  return
+end sub
+
+sub ShowPurse:
+  print Purse at 9,1 width 5
+  return
+end sub
+
+sub ShowHandNo:
+  print HandNo at 24,1 width 2
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,MsgY
+  return
+end sub
+
+sub TablePage:
+  NewScreen
+  Crow = CardY
+  put char TChip at 2,1
+  print at 3,1, "BANK $"
+  ShowPurse
+  print at 19,1, "HAND"
+  print at 26,1, "/50"
+  fill TRule count 28 at 2,2
+  DrawPayTableAt(PayY)
+  DrawDeck
+  fill TRule count 28 at 2,12
+  ShowScreen
+  Stage = 3
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a hand
+
+' a card back glides from the deck to slot Slot (16 frames)
+sub FlyIn(u8 Slot):
+  i16 Fx = 0
+  i16 Fy = 0
+  i16 Tx = 0
+  i16 Ty = 0
+  u8 Fs = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  Tx = CardCol(Slot) * 8
+  Ty = CardY * 8
+  play sound SndSwish
+  for Fs = 1 to 16
+    Fx = (Tx - DeckX * 8) * Fs / 16 + DeckX * 8
+    Fy = (Ty - DeckY * 8) * Fs / 16 + DeckY * 8 - 1
+    Sx = Fx
+    Sy = Fy
+    set sprite 1 to Sy,Sx,SFly00,4
+    set sprite 2 to Sy,Sx + 16,SFly01,4
+    set sprite 3 to Sy + 16,Sx,SFly10,4
+    set sprite 4 to Sy + 16,Sx + 16,SFly11,4
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub HideFly:
+  for J = 1 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' deal card Slot: glide, land face down, turn over
+sub DealTo(u8 Slot):
+  u8 Dc = 0
+  Dc = DealOne()
+  Hand[Slot].R = Dc % 13
+  Hand[Slot].S = Dc / 13
+  Hand[Slot].Ch = 0
+  FlyIn(Slot)
+  DrawCard(Slot, 1)
+  HideFly
+  Pause(6)
+  DrawCard(Slot, 2)
+  play sound SndFlip
+  Pause(6)
+  return
+end sub
+
+sub ShowLabels:
+  u8 Lx = 0
+  for Si = 0 to 4
+    Lx = CardCol(Si)
+    if Hand[Si].Ch = 1 then
+      print at Lx,LabelY, " NEW"
+    else
+      print at Lx,LabelY, "KEEP"
+    end if
+  next
+  return
+end sub
+
+sub ShowPointer:
+  u8 Ax = 0
+  u8 Ay = 0
+  if Cur < 5 then
+    Ax = CardCol(Cur) * 8 + 9
+    Ay = LabelY * 8 + 8
+  else
+    Ax = 120 - 7
+    Ay = DrawY * 8 + 8
+  end if
+  Ay = Ay - 1
+  set sprite 0 to Ay,Ax,SArrow,11
+  update sprites
+  return
+end sub
+
+sub ShowChgCount:
+  print at 2,MsgY, "CHANGE UP TO 3 CARDS:"
+  print NChg at 24,MsgY width 1
+  print at 26,MsgY, "SET"
+  return
+end sub
+
+' mark or unmark card Cur
+sub ToggleCard:
+  if Hand[Cur].Ch = 1 then
+    Hand[Cur].Ch = 0
+    dec NChg
+    play sound SndUnmark
+  else
+    if NChg >= 3 then
+      ClearMsg
+      print at 2,MsgY, "ONLY 3 CARDS MAY CHANGE."
+      play sound SndBad
+      return
+    end if
+    Hand[Cur].Ch = 1
+    inc NChg
+    play sound SndMark
+  end if
+  ShowLabels
+  ShowChgCount
+  return
+end sub
+
+' the stick and button until DRAW
+sub PickCards:
+  u8 Done = 0
+  NChg = 0
+  Cur = 0
+  ShowLabels
+  print at 14,DrawY, "DRAW"
+  ShowChgCount
+  ShowPointer
+  ReadPad
+  WasStick = J1 & 15
+  Asking = 1
+  while Done = 0
+    Frame1
+    ReadPad
+    if Push & 4 then
+      if Cur > 0 then
+        dec Cur
+      else
+        Cur = 5
+      end if
+      play sound SndTick
+      ShowPointer
+    end if
+    if Push & 8 then
+      if Cur < 5 then
+        inc Cur
+      else
+        Cur = 0
+      end if
+      play sound SndTick
+      ShowPointer
+    end if
+    if Push & 3 then
+      if Cur < 5 then
+        Cur = 5
+      else
+        Cur = 2
+      end if
+      play sound SndTick
+      ShowPointer
+    end if
+    if Press = 1 then
+      if Cur = 5 then
+        Done = 1
+      else
+        ToggleCard
+      end if
+    end if
+  end while
+  Asking = 0
+  set sprite 0 to 192,0,0,0
+  update sprites
+  fill 32 count 4 at 14,DrawY
+  return
+end sub
+
+sub ReplaceCards:
+  for Ki = 0 to 4
+    if Hand[Ki].Ch = 1 then
+      DrawCard(Ki, 0)
+      Pause(4)
+      DealTo(Ki)
+      Hand[Ki].Ch = 1
+    end if
+  next
+  return
+end sub
+
+sub Settle:
+  u16 Won = 0
+  ClearMsg
+  for Ki = 0 to 4
+    fill 32 count 4 at CardCol(Ki),LabelY
+  next
+  if Cat > BestCat then BestCat = Cat
+  MarkPay(Cat, TStar)
+  CatName(Cat, 2, MsgY)
+  if Cat = 0 then
+    dec Purse
+    print at 20,MsgY, "-$1"
+    play sound SndLose
+  else
+    Won = PayTab[Cat]
+    Purse = Purse + Won
+    put char 43 at 20,MsgY
+    put char 36 at 21,MsgY
+    print Won at 22,MsgY width 3
+    if Cat >= 6 then
+      play sound SndBig
+    else
+      play sound SndWin
+    end if
+  end if
+  ShowPurse
+  return
+end sub
+
+sub PlayHand:
+  inc HandNo
+  ShowHandNo
+  ClearMsg
+  fill array Used with 0
+  for Ki = 0 to 4
+    DrawCard(Ki, 0)
+  next
+  DealSeed = Rs
+  Stage = 4
+  for Ki = 0 to 4
+    DealTo(Ki)
+  next
+  Stage = 3
+  PickCards
+  ReplaceCards
+  Cat = Classify
+  Settle
+  WaitButton
+  MarkPay(Cat, 32)
+  return
+end sub
+
+sub WaitButton:
+  print at 8,DrawY, "PRESS THE BUTTON"
+  ReadPad
+  Asking = 2
+  do
+    Frame1
+    inc Rs
+    ReadPad
+  loop until Press = 1
+  Asking = 0
+  if Rs = 0 then Rs = 1
+  play sound SndTick
+  fill 32 count 16 at 8,DrawY
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the end
+
+sub EndPage:
+  NewScreen
+  print at 12,2, "POKER"
+  fill TRule count 28 at 2,3
+  if Purse = 0 then
+    print at 2,5, "YOU'RE BROKE!"
+    print at 2,6, "THE COLECOVISION WINS."
+    print at 2,8, "HANDS PLAYED"
+    print HandNo at 16,8 width 2
+    play sound SndLose
+  else
+    print at 2,5, "THE 50 HANDS ARE PLAYED."
+    print at 2,7, "YOU SAT DOWN WITH $10"
+    print at 2,8, "AND LEAVE WITH $"
+    print Purse at 18,8 width 5
+    if Purse > StartPurse then
+      print at 2,10, "YOU BEAT THE COLECOVISION!"
+      play sound SndWin
+    else
+      print at 2,10, "THE COLECOVISION WINS."
+      play sound SndLose
+    end if
+  end if
+  print at 2,13, "YOUR BEST HAND:"
+  CatName(BestCat, 2, 14)
+  print at 2,17, "BEST BANK $"
+  print Best at 13,17 width 5
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Pause(u8 Nf):
+  u8 Pk = 0
+  for Pk = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' J1: bit 1 up, 2 down, 4 left, 8 right, 16 a button; Push = stick
+' directions newly pushed this frame; Press = a new button press
+sub ReadPad:
+  u8 Sk = 0
+  J1 = 0
+  if joypad(1).up or joypad(2).up then J1 = J1 | 1
+  if joypad(1).down or joypad(2).down then J1 = J1 | 2
+  if joypad(1).left or joypad(2).left then J1 = J1 | 4
+  if joypad(1).right or joypad(2).right then J1 = J1 | 8
+  if joypad(1).fire or joypad(2).fire then J1 = J1 | 16
+  Sk = J1 & 15
+  Push = Sk & (WasStick ^ 15)
+  WasStick = Sk
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $FC
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowTitleMenu:
+  for J = 0 to 2
+    put char 32 at 9,J + 16
+  next
+  put char 62 at 9,TMenu + 16
+  return
+end sub
+
+' the title: P O K E R appear, a royal flush on the felt, the tune once
+sub TitlePage:
+  u8 Tf = 0
+  u8 Lx = 0
+  u8 Lc = 0
+  u8 Lt = 0
+  NewScreen
+  Crow = 6
+  fill TRule count 28 at 2,4
+  for Ki = 0 to 4
+    Hand[Ki].R = Ki + 8
+    Hand[Ki].S = 0
+    DrawCard(Ki, 2)
+  next
+  fill TRule count 28 at 2,12
+  print at 6,13, "IT'S YOU AGAINST THE"
+  print at 9,14, "COLECOVISION"
+  print at 11,16, "PLAY POKER"
+  print at 11,17, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  if Best > 0 then
+    print at 9,20, "BEST BANK $"
+    print Best at 20,20 width 5
+  end if
+  print at 7,21, "COMPUTE!'S GAZETTE"
+  print at 10,22, "MARCH 1984"
+  ShowTitleMenu
+  ShowScreen
+  Stage = 2
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 580
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  WasStick = 15
+  Tf = 0
+  do
+    Frame1
+    inc Rs
+    ' the letters appear one by one
+    if Tf < 50 then
+      inc Tf
+      if Tf % 10 = 0 then
+        Lc = Tf / 10 - 1
+        Lx = Lc * 3 + 9
+        Lt = Lc * 4 + TLP00
+        put char Lt at Lx,2
+        put char Lt + 1 at Lx + 1,2
+        put char Lt + 2 at Lx,3
+        put char Lt + 3 at Lx + 1,3
+      end if
+    end if
+    ReadPad
+    if Push & 1 then
+      if TMenu > 0 then dec TMenu
+      ShowTitleMenu
+      play sound SndTick
+    end if
+    if Push & 2 then
+      if TMenu < 2 then inc TMenu
+      ShowTitleMenu
+      play sound SndTick
+    end if
+  loop until Press = 1
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 2,1, "HOW TO PLAY POKER"
+  fill TRule count 28 at 2,2
+  print at 2,3, "YOU HAVE $10 AND 50 HANDS."
+  print at 2,4, "FIVE CARDS ARE DEALT. MOVE"
+  print at 2,5, "THE ARROW WITH THE STICK AND"
+  print at 2,6, "PRESS THE BUTTON TO MARK UP"
+  print at 2,7, "TO 3 CARDS NEW, THEN DRAW."
+  print at 2,9, "YOU WIN AS FOLLOWS:"
+  DrawPayTableAt(10)
+  print at 2,20, "ANYTHING LESS COSTS $1."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Stage = 7
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub DrawPayTableAt(u8 Top):
+  u16 Pw = 0
+  u8 Py = 0
+  u8 Pc = 0
+  for Pc = 1 to 9
+    Py = Top + 9 - Pc
+    CatName(Pc, 4, Py)
+    Pw = PayTab[Pc]
+    put char 36 at 21,Py
+    print Pw at 22,Py width 3
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,1, "POKER"
+  print at 2,3, "BASED ON POKER (POKER 256),"
+  print at 2,4, "COMPUTE!'S GAZETTE, MARCH"
+  print at 2,5, "1984 (COMMODORE 64 AND"
+  print at 2,6, "VIC-20 BASIC). DRAW POKER"
+  print at 2,7, "AGAINST THE MACHINE WITH"
+  print at 2,8, "THE ORIGINAL'S PAY TABLE."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: FIVE CARD DRAW"
+  print at 2,17, "(ORIGINAL)"
+  print at 2,19, "PLAY MONEY ONLY."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Stage = 1
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$C3,$02,$02,$1C,$20,$20,$C1
+  $00,$C3,$02,$02,$1C,$02,$02,$C3
+  $00,$24,$24,$24,$C1,$04,$04,$04
+  $00,$C1,$20,$C3,$02,$02,$22,$1C
+  $00,$1C,$20,$20,$C3,$22,$22,$1C
+  $00,$C1,$02,$04,$08,$10,$10,$10
+  $00,$1C,$22,$22,$1C,$22,$22,$1C
+  $00,$1C,$22,$22,$E1,$02,$02,$1C
+  $00,$4C,$52,$52,$52,$52,$52,$4C
+  $00,$0E,$04,$04,$04,$04,$24,$18
+  $00,$1C,$22,$22,$22,$2A,$24,$1A
+  $00,$22,$24,$28,$30,$28,$24,$22
+  $00,$08,$14,$22,$22,$C1,$22,$22
+  $00,$C3,$02,$02,$1C,$20,$20,$C1
+  $00,$C3,$02,$02,$1C,$02,$02,$C3
+  $00,$24,$24,$24,$C1,$04,$04,$04
+  $00,$C1,$20,$C3,$02,$02,$22,$1C
+  $00,$1C,$20,$20,$C3,$22,$22,$1C
+  $00,$C1,$02,$04,$08,$10,$10,$10
+  $00,$1C,$22,$22,$1C,$22,$22,$1C
+  $00,$1C,$22,$22,$E1,$02,$02,$1C
+  $00,$4C,$52,$52,$52,$52,$52,$4C
+  $00,$0E,$04,$04,$04,$04,$24,$18
+  $00,$1C,$22,$22,$22,$2A,$24,$1A
+  $00,$22,$24,$28,$30,$28,$24,$22
+  $00,$08,$14,$22,$22,$C1,$22,$22
+  $00,$10,$38,$83,$01,$01,$28,$83
+  $00,$93,$01,$01,$01,$83,$38,$10
+  $00,$10,$38,$83,$01,$83,$38,$10
+  $00,$38,$38,$29,$01,$29,$10,$83
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$80,$C1,$1C,$01,$03,$07,$00
+  $01,$01,$07,$F0,$80,$C0,$E0,$00
+  $00,$C3,$81,$00,$00,$00,$00,$80
+  $00,$C3,$81,$00,$00,$00,$00,$01
+  $C0,$E0,$F0,$07,$03,$01,$00,$00
+  $03,$07,$F0,$E0,$C0,$80,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$03,$07,$07,$07,$C2,$80,$80
+  $00,$C0,$E0,$E0,$E0,$43,$01,$01
+  $80,$C2,$01,$03,$07,$00,$00,$00
+  $01,$43,$80,$C0,$E0,$00,$00,$00
+  $C0,$80,$E8,$D0,$E8,$C5,$C2,$C5
+  $00,$00,$A2,$41,$A2,$14,$08,$14
+  $00,$00,$8A,$04,$8A,$51,$20,$51
+  $03,$01,$D4,$13,$D4,$B8,$83,$B8
+  $E8,$D0,$E8,$C5,$C2,$C5,$E8,$D0
+  $A2,$41,$A2,$14,$08,$14,$A2,$41
+  $8A,$04,$8A,$51,$20,$51,$8A,$04
+  $D4,$13,$D4,$B8,$83,$B8,$D4,$13
+  $E8,$C5,$C2,$C5,$E8,$D0,$E8,$C5
+  $A2,$14,$08,$14,$A2,$41,$A2,$14
+  $8A,$51,$20,$51,$8A,$04,$8A,$51
+  $D4,$B8,$83,$B8,$D4,$13,$D4,$B8
+  $C2,$C5,$E8,$D0,$E8,$C5,$C2,$C5
+  $08,$14,$A2,$41,$A2,$14,$08,$14
+  $20,$51,$8A,$04,$8A,$51,$20,$51
+  $83,$B8,$D4,$13,$D4,$B8,$83,$B8
+  $E8,$D0,$E8,$C5,$C2,$C5,$80,$C0
+  $A2,$41,$A2,$14,$08,$14,$00,$00
+  $8A,$04,$8A,$51,$20,$51,$00,$00
+  $D4,$13,$D4,$B8,$83,$B8,$01,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$10,$83,$38,$28,$44,$00
+  $00,$C3,$24,$00,$18,$81,$C3,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $E0,$18,$18,$18,$18,$18,$18,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$07,$18,$18,$18,$18,$18
+  $00,$E0,$E0,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$07,$07,$00
+  $18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$19,$19,$E1
+  $00,$18,$18,$60,$60,$80,$80,$00
+  $E1,$19,$19,$18,$18,$18,$18,$00
+  $00,$80,$80,$60,$60,$18,$18,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $E0,$00,$00,$00,$00,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $E0,$19,$19,$18,$18,$18,$18,$00
+  $E0,$80,$80,$60,$60,$18,$18,$00
+end data
+data TileCol bytes
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$0F
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $0F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $0F,$F1,$1F,$1F,$1F,$1F,$1F,$F1
+  $0F,$F1,$1F,$1F,$1F,$1F,$1F,$F1
+  $0F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $0F,$F1,$1F,$F1,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $0F,$F1,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$1F,$1F,$1F,$1F,$F1,$1F,$1F
+  $0F,$F8,$8F,$8F,$8F,$8F,$8F,$F8
+  $0F,$F8,$8F,$8F,$8F,$8F,$8F,$F8
+  $0F,$8F,$8F,$8F,$F8,$8F,$8F,$8F
+  $0F,$F8,$8F,$F8,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$F8,$8F,$8F,$8F
+  $0F,$F8,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$F8,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$8F,$8F,$8F,$8F,$F8,$8F,$8F
+  $0F,$1F,$1F,$F1,$F1,$F1,$1F,$F1
+  $0F,$F8,$F8,$F8,$F8,$F8,$8F,$8F
+  $0F,$8F,$8F,$F8,$F8,$F8,$8F,$8F
+  $0F,$1F,$1F,$F1,$F1,$F1,$1F,$F1
+  $0F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$F1,$1F,$1F,$1F,$1F,$0F
+  $F1,$F1,$F1,$1F,$1F,$1F,$1F,$0F
+  $0F,$F8,$F8,$08,$08,$08,$08,$F8
+  $0F,$F8,$F8,$08,$08,$08,$08,$F8
+  $F8,$F8,$F8,$8F,$8F,$8F,$0F,$0F
+  $F8,$F8,$8F,$8F,$8F,$8F,$0F,$0F
+  $0F,$8F,$8F,$8F,$F8,$F8,$F8,$F8
+  $0F,$8F,$8F,$8F,$8F,$F8,$F8,$F8
+  $F8,$F8,$F8,$F8,$8F,$8F,$8F,$0F
+  $F8,$F8,$F8,$8F,$8F,$8F,$8F,$0F
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$0F,$0F,$0F
+  $F1,$F1,$1F,$1F,$1F,$0F,$0F,$0F
+  $CF,$CF,$F4,$F4,$F4,$F4,$F4,$F4
+  $0F,$0F,$F4,$F4,$F4,$F4,$F4,$F4
+  $0F,$0F,$F4,$F4,$F4,$F4,$F4,$F4
+  $CF,$CF,$4F,$F4,$4F,$4F,$F4,$4F
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $4F,$F4,$4F,$4F,$F4,$4F,$4F,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $4F,$4F,$F4,$4F,$4F,$F4,$4F,$4F
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$4F,$4F,$F4,$4F,$4F,$F4,$4F
+  $F4,$F4,$F4,$F4,$F4,$F4,$CF,$CF
+  $F4,$F4,$F4,$F4,$F4,$F4,$0F,$0F
+  $F4,$F4,$F4,$F4,$F4,$F4,$0F,$0F
+  $4F,$F4,$4F,$4F,$F4,$4F,$CF,$CF
+  $0C,$0C,$0C,$0B,$0A,$0C,$0C,$0C
+  $0C,$BC,$BC,$CB,$BC,$BC,$BC,$0C
+  $0C,$C8,$F8,$08,$F8,$C8,$C8,$0C
+  $0C,$C9,$C9,$9C,$9C,$9C,$9C,$C9
+  $0C,$9C,$9C,$9C,$9C,$9C,$9C,$9C
+  $C9,$9C,$9C,$9C,$9C,$9C,$9C,$0C
+  $9C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $0C,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$0C
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$0C
+  $0C,$BC,$BC,$BC,$BC,$BC,$BC,$CB
+  $0C,$BC,$BC,$BC,$BC,$BC,$BC,$0C
+  $CB,$BC,$BC,$BC,$BC,$BC,$BC,$0C
+  $0C,$BC,$BC,$BC,$BC,$BC,$BC,$0C
+  $0C,$C3,$C3,$3C,$3C,$3C,$3C,$C3
+  $0C,$C3,$C3,$0C,$0C,$0C,$0C,$3C
+  $C3,$3C,$3C,$3C,$3C,$C3,$C3,$0C
+  $3C,$0C,$0C,$0C,$0C,$C3,$C3,$0C
+  $0C,$C7,$C7,$7C,$7C,$7C,$7C,$C7
+  $0C,$7C,$7C,$7C,$7C,$7C,$7C,$7C
+  $C7,$7C,$7C,$7C,$7C,$7C,$7C,$0C
+  $7C,$7C,$7C,$7C,$7C,$7C,$7C,$0C
+end data
+data SpritePat bytes
+  $03,$07,$0F,$1F,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+  $00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+end data
+
+asm {
+PkTick:
+    db $40,$40,$30,$02,$50
+PkSwish:
+    db $00,$00,$45,$02,$00,$00,$66,$03,$10
+PkFlip:
+    db $40,$7F,$20,$02,$40,$6B,$20,$02,$40,$55,$20,$03,$50
+PkMark:
+    db $40,$55,$20,$02,$40,$40,$20,$03,$50
+PkUnmark:
+    db $40,$55,$20,$02,$40,$7F,$30,$03,$50
+PkBad:
+    db $40,$CD,$12,$06,$40,$FF,$F3,$03,$40,$F9,$12,$0A,$50
+PkWin:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$0C
+    db $50
+PkBig:
+    db $40,$D6,$10,$03,$40,$AA,$10,$03,$40,$8F,$10,$03,$40,$6B,$10,$03,$40,$55,$10,$03,$40,$47,$10,$03
+    db $40,$35,$10,$03,$40,$47,$10,$06,$40,$35,$10,$14,$50
+PkLose:
+    db $40,$D6,$20,$06,$40,$FE,$20,$06,$40,$41,$21,$06,$40,$AB,$21,$0E,$50
+
+PkSoundTable:
+    dw PkTuneMel,$702B
+    dw PkTuneBass,$7035
+    dw PkTick,$7049
+    dw PkSwish,$703F
+    dw PkFlip,$7049
+    dw PkMark,$7049
+    dw PkUnmark,$7049
+    dw PkBad,$7049
+    dw PkWin,$7049
+    dw PkBig,$7049
+    dw PkLose,$7049
+; Five Card Draw (original)
+; Tiny Sound, 8 frames per step
+PkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$26,$01,$2A,$28,$26,$01,$23,$01,$26,$01
+    db $21,$01,$01,$01,$1F,$01,$23,$26,$01,$23,$1F,$01,$1E,$01,$21,$01
+    db $26,$01,$01,$01,$1C,$01,$1F,$23,$01,$25,$26,$01,$2A,$01,$28,$01
+    db $25,$01,$21,$01,$23,$25,$26,$01,$21,$01,$1E,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+PkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$12,$01,$15,$01,$07,$01,$0E,$01
+    db $0B,$01,$0E,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$0E,$01,$15,$01
+    db $12,$01,$15,$01,$10,$01,$17,$01,$13,$01,$17,$01,$09,$01,$10,$01
+    db $0D,$01,$10,$01,$07,$01,$0B,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$01,$01,$00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+}

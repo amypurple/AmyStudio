@@ -1,0 +1,2052 @@
+cartridge "MATH DUNGEON/COMPUTE'S GAZETTE/1985"
+
+' MATH DUNGEON
+' A ColecoVision game based on "Math Dungeon", COMPUTE!'s Gazette,
+' January 1985 (one BASIC listing for the Commodore 64 and the VIC-20).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/), the game is built for the ColecoVision: the typed
+' adventure commands become the joystick and one button, the dungeon is
+' drawn as you explore it, smooth sprites, tiles, sounds and an original
+' title tune.
+'
+' The game: choose a level (1-5). In the forest, walk north to the gate,
+' open it, go to the old house and open the milkbox: the note in it holds
+' a math question. Answer it right and the door flies open; a trap door
+' drops you into the Math Dungeon, a 10 x 10 grid of rooms and hallways.
+' Take the light first (you cannot move in the dark). Find the green, blue
+' and red doors and the green and blue keys. The green door hides a map
+' (it shows the whole dungeon and the monster rooms); the blue door hides
+' the red key; the red door is the way out. Monsters jump out of some
+' rooms and ask a question: answer right and the monster disappears and
+' leaves gold (take it before you leave the room); answer wrong and it
+' takes all your gold and transports you somewhere else in the dungeon.
+' Your score is the gold you carry out.
+'
+' From the original (orig/math dungeon.bas): the forest, the gate that
+' opens and closes, the house, the milkbox and the note's question, a
+' wrong answer sending you back; the trap door and the neon sign with the
+' level; the dungeon generator (10 + level random monster rooms, each
+' with its whole row and column made of rooms and hallways), the start
+' room with the unlit light, the two keys and three doors at random
+' rooms, the green door's map, the blue door's red key, the red door out;
+' "I'd turn on my light first", "there is a wall there"; the monster's
+' question, its gold (1 to 10 x level pieces), the robbery and transport
+' to a random room; the questions: + and - on levels 1-2, + - x / from
+' level 3, numbers up to 10 x level (5 x level for x and /), negatives
+' from level 4 (x, /) and 5 (+), no negative difference up to level 3,
+' whole quotients only; all the messages (shortened to two lines).
+'
+' Liberties:
+' - Numeric answers: no keyboard, so the answer is set on a dial with the
+'   stick (up/down 1, left/right 10, held to repeat) and given with a
+'   button. Only one answer per question: a wrong one has its penalty at
+'   once (the original also took one INPUT), and every question is new,
+'   so answers cannot be swept. The right answer is shown after a wrong
+'   one.
+' - The red door asks one last question before it opens (a wrong answer
+'   transports you), so the way out cannot be reached without math.
+' - Commands become context actions: the stick walks (N, S, E, W), the
+'   button does what can be done here (open or close the gate, open the
+'   milkbox and read the note, take the light, a key, the map or the gold,
+'   unlock a door), or repeats LOOK. GET LIGHT and LIGHT ON are one action;
+'   the light stays on (LIGHT OFF, INV and the hidden ALGEBRA teleport are
+'   left out; what you carry is always on screen).
+' - The dungeon is drawn as you see it: the room you are in and its
+'   doorways (the original's LOOK) stay drawn, so you need not map it on
+'   paper. Items show once you have been in their room.
+' - The start room is a random room of the dungeon (the original could put
+'   you in an unconnected cell of solid wall and leave you stuck).
+' - Without a home key, play-again is a return to the title.
+'
+' Controls: either controller. Title: left/right choose the level, a button
+' starts. Play: the stick walks, a button acts. Questions: up/down change
+' the answer by 1, left/right by 10, a button answers.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. Own xorshift random numbers.
+
+data MsgD chars
+  "YOU ARE IN A DENSE FOREST. A"
+  "PATH LEADS NORTH.           "
+  "YOU ARE FACING NORTH. A GATE"
+  "IS IN FRONT OF YOU.         "
+  "YOU ARE FACING NORTH. THE   "
+  "GATE IS OPEN.               "
+  "THE GATE IS CLOSED.         "
+  "                            "
+  "OK. THE GATE IS OPEN.       "
+  "                            "
+  "OK. THE GATE IS CLOSED.     "
+  "                            "
+  "AN OLD HOUSE. THERE IS A    "
+  "MILKBOX BY THE DOOR.        "
+  "THE DOOR IS CLOSED.         "
+  "                            "
+  "THE DOOR IS OPEN.           "
+  "                            "
+  "A NOTE IN THE MILKBOX HAS A "
+  "QUESTION ON IT.             "
+  "THE NOTE DISAPPEARS. THE    "
+  "DOOR FLIES OPEN WITH A BANG!"
+  "THE NOTE BLOWS AWAY. YOU ARE"
+  "BACK IN THE FOREST.         "
+  "A COLD AND DAMP ROOM. THERE "
+  "IS AN UNLIT LIGHT HERE.     "
+  "YOU ARE IN A COLD AND DAMP  "
+  "ROOM.                       "
+  "YOU ARE IN A LONG AND NARROW"
+  "HALLWAY.                    "
+  "I'D TURN ON MY LIGHT FIRST. "
+  "                            "
+  "OK. YOU HAVE THE LIGHT. THE "
+  "LIGHT IS ON.                "
+  "THERE IS A WALL THERE.      "
+  "                            "
+  "THERE IS A GREEN KEY HERE.  "
+  "                            "
+  "THERE IS A BLUE KEY HERE.   "
+  "                            "
+  "THERE IS A RED KEY HERE!    "
+  "                            "
+  "THERE IS A GREEN DOOR HERE. "
+  "                            "
+  "THERE IS A BLUE DOOR HERE.  "
+  "                            "
+  "THERE IS A RED DOOR HERE.   "
+  "                            "
+  "THE DOOR IS LOCKED. YOU DO  "
+  "NOT HAVE THE RIGHT KEY.     "
+  "THE DOOR OPENS. THERE IS A  "
+  "MAP HERE!                   "
+  "THE DOOR OPENS. THERE IS A  "
+  "RED KEY HERE!               "
+  "OK. YOU HAVE THE KEY.       "
+  "                            "
+  "OK. YOU HAVE THE MAP. SKULLS"
+  "MARK THE MONSTERS.          "
+  "A MONSTER JUMPS OUT: 'YOU   "
+  "MUST ANSWER THIS QUESTION!' "
+  "THE MONSTER DISAPPEARS. YOU "
+  "SEE SOME GOLD HERE!         "
+  "'NOW I'LL TAKE ALL YOUR GOLD"
+  "AND TRANSPORT YOU AWAY!'    "
+  "THE RED DOOR ASKS ONE LAST  "
+  "QUESTION BEFORE IT OPENS.   "
+  "THE RED DOOR SLAMS. A SUDDEN"
+  "FLASH AND YOU ARE AWAY!     "
+  "THE DOOR IS OPEN.           "
+  "                            "
+end data
+const MForest = 0
+const MGateC = 1
+const MGateO = 2
+const MGateShut = 3
+const MOkOpen = 4
+const MOkShut = 5
+const MHouse = 6
+const MDoorShut = 7
+const MDoorOpen = 8
+const MNote = 9
+const MNoteOk = 10
+const MNoteBad = 11
+const MDark = 12
+const MRoom = 13
+const MHall = 14
+const MNoLight = 15
+const MLightOn = 16
+const MWall = 17
+const MGKey = 18
+const MBKey = 19
+const MRKey = 20
+const MGDoor = 21
+const MBDoor = 22
+const MRDoor = 23
+const MLocked = 24
+const MMapHere = 25
+const MRKeyHere = 26
+const MGotKey = 27
+const MGotMap = 28
+const MMonster = 29
+const MBeat = 30
+const MRobbed = 31
+const MExitQ = 32
+const MExitBad = 33
+const MOpened = 34
+const TWall00 = 128
+const TWall01 = 129
+const TWall10 = 130
+const TWall11 = 131
+const TRoom00 = 132
+const TRoom01 = 133
+const TRoom10 = 134
+const TRoom11 = 135
+const THall00 = 136
+const THall01 = 137
+const THall10 = 138
+const THall11 = 139
+const TMon00 = 140
+const TMon01 = 141
+const TMon10 = 142
+const TMon11 = 143
+const TLamp00 = 144
+const TLamp01 = 145
+const TLamp10 = 146
+const TLamp11 = 147
+const TGkey00 = 148
+const TGkey01 = 149
+const TGkey10 = 150
+const TGkey11 = 151
+const TBkey00 = 152
+const TBkey01 = 153
+const TBkey10 = 154
+const TBkey11 = 155
+const TRkey00 = 156
+const TRkey01 = 157
+const TRkey10 = 158
+const TRkey11 = 159
+const TGdoor00 = 160
+const TGdoor01 = 161
+const TGdoor10 = 162
+const TGdoor11 = 163
+const TBdoor00 = 164
+const TBdoor01 = 165
+const TBdoor10 = 166
+const TBdoor11 = 167
+const TRdoor00 = 168
+const TRdoor01 = 169
+const TRdoor10 = 170
+const TRdoor11 = 171
+const TOdoor00 = 172
+const TOdoor01 = 173
+const TOdoor10 = 174
+const TOdoor11 = 175
+const TMap00 = 176
+const TMap01 = 177
+const TMap10 = 178
+const TMap11 = 179
+const TGold00 = 180
+const TGold01 = 181
+const TGold10 = 182
+const TGold11 = 183
+const TGrass = 184
+const TPath = 185
+const TSky = 186
+const TTree00 = 187
+const TTree01 = 188
+const TTree10 = 189
+const TTree11 = 190
+const TFence = 191
+const TGate00 = 192
+const TGate01 = 193
+const TGate10 = 194
+const TGate11 = 195
+const TGopen00 = 196
+const TGopen01 = 197
+const TGopen10 = 198
+const TGopen11 = 199
+const TRoof = 200
+const TRoofl = 201
+const TRoofr = 202
+const TBrick = 203
+const TWin = 204
+const THdoor00 = 205
+const THdoor01 = 206
+const THdoor10 = 207
+const THdoor11 = 208
+const THopen00 = 209
+const THopen01 = 210
+const THopen10 = 211
+const THopen11 = 212
+const TMbox00 = 213
+const TMbox01 = 214
+const TMbox10 = 215
+const TMbox11 = 216
+const TMboxo00 = 217
+const TMboxo01 = 218
+const TMboxo10 = 219
+const TMboxo11 = 220
+const TStep = 221
+const TFrame = 222
+const SHero = 0
+const SHero2 = 4
+const SGlow = 8
+const SMon1 = 12
+const SMon2 = 16
+const NTiles8 = 760
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndBump = 4
+const SndClick = 5
+const SndTake = 6
+const SndRight = 7
+const SndWrong = 8
+const SndRoar = 9
+const SndBang = 10
+const SndFall = 11
+const SndWin = 12
+const SndDial = 13
+const NSpr = 4
+const ILight = 0
+const IGKey = 1
+const IBKey = 2
+const IRKey = 3
+const IGDoor = 4
+const IBDoor = 5
+const IRDoor = 6
+const IMap = 7
+const IGold = 8
+const NoCell = 255
+
+' the item icon (2 x 2 tiles) of each item
+data IconT bytes
+  TLamp00, TGkey00, TBkey00, TRkey00, TGdoor00, TBdoor00, TRdoor00, TMap00, TGold00
+end data
+' the message when standing on each item
+data ItMsg bytes
+  MDark, MGKey, MBKey, MRKey, MGDoor, MBDoor, MRDoor, MMapHere, MBeat
+end data
+
+record Thing:
+  u8 C
+  u8 St
+end record
+
+' items: cell (NoCell: not in the dungeon), state (1 lying here or a
+' closed door, 2 taken or an open door)
+Thing It[9]
+' the dungeon: 0 wall, 1 hallway, 2 room, 3 monster room
+u8 Fl[100]
+' what the player has seen: 1 the cell, 2 been inside, 4 shown on the map
+u8 Sn[100]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Gold = 0
+u8 GoldAmt = 0
+u8 Lv = 1
+u8 Lit = 0
+u8 HasMap = 0
+u8 Done = 0
+u8 Arr = 0
+' the player: cell, pixel position, step frames left, step direction
+u8 Px = 0
+u8 Py = 0
+u8 Hx = 0
+u8 Hy = 0
+u8 Ph = 0
+i8 Dx = 0
+i8 Dy = 0
+u8 Here = 0
+u8 Mon = 0
+' outside: station (0 forest, 1 gate, 2 porch, 3 at the door), gate, door
+u8 Ost = 0
+u8 Ty = 0
+u8 GateO = 0
+u8 DoorO = 0
+' the question: operands, operation (0 + 1 - 2 x 3 /), answer, dial, result
+i16 Qx = 0
+i16 Qy = 0
+u8 Qop = 0
+i16 Qans = 0
+i16 Dial = 0
+u8 Wr = 0
+u8 Nq = 0
+u8 Nright = 0
+' state for bots: 1 dungeon idle, 2 dial, 3 outside idle, 4 title,
+' 5 end, 6 a press-to-go-on page
+u8 Wt = 0
+u8 Scene = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jx = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Idle = 0
+' text cursor for numbers
+u8 Nc = 0
+u8 Nr = 0
+u8 Dg[6]
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ri = 0
+u8 Ii = 0
+u8 Wi = 0
+u8 Gi = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MdSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+  ' outside the house
+  Outside
+o_loop:
+  Frame1
+  ReadPad
+  OStep
+  DrawSprites
+  if Ost < 4 then goto o_loop
+
+  ' the trap door and the sign
+  TrapPage
+  StartDungeon
+d_loop:
+  Frame1
+  ReadPad
+  DStep
+  DrawSprites
+  if Done = 0 then goto d_loop
+
+  ' out of the dungeon
+  WinPage
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  Wt = 5
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Wt = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' 0 .. N-1, like INT(RND(1)*N)
+function Rnd(u8 N) as u8
+  u16 R16 = 0
+  Rand
+  R16 = Rs >> 3
+  R16 = R16 % N
+  return R16
+
+' ---------------------------------------------------------------------------
+' the questions (listing lines 1320-1550)
+
+sub MakeQ:
+  Qop = Rnd(4)
+  if Lv <= 2 then Qop = Rnd(2)
+  select case Qop
+  case 0
+    Qx = Rnd(Lv * 10)
+    Qy = Rnd(Lv * 10)
+    if Lv > 4 then
+      Qx = Qx - Rnd(Lv * 5)
+      Qy = Qy - Rnd(Lv * 5)
+    end if
+    Qans = Qx + Qy
+  case 1
+    Qx = Rnd(Lv * 10)
+    Qy = Rnd(Lv * 10)
+    if Lv <= 3 then
+      if Qy > Qx then swap Qx with Qy
+    end if
+    Qans = Qx - Qy
+  case 2
+    Qx = Rnd(Lv * 5)
+    Qy = Rnd(Lv * 5)
+    if Lv >= 4 then
+      Qx = Qx - Rnd(Lv * 2)
+      Qy = Qy - Rnd(Lv * 2)
+    end if
+    Qans = Qx * Qy
+  case else
+    do
+      Qx = Rnd(Lv * 5)
+      Qy = Rnd(Lv * 5)
+      if Lv >= 4 then
+        Qx = Qx - Rnd(Lv * 3)
+        Qy = Qy - Rnd(Lv * 3)
+      end if
+      if Qy = 0 then Qy = 1
+      Qans = Qx / Qy
+    loop until Qans * Qy = Qx
+  end select
+  return
+end sub
+
+' a signed number at Nc,Nr; Nc moves past it
+sub PrNum(i16 V16):
+  u16 A = 0
+  u8 Dc = 0
+  if V16 < 0 then
+    put char 45 at Nc,Nr
+    inc Nc
+    A = 0 - V16
+  else
+    A = V16
+  end if
+  do
+    W16 = A % 10
+    Dg[Dc] = W16 + 48
+    A = A / 10
+    inc Dc
+  loop while A > 0
+  while Dc > 0
+    dec Dc
+    put char Dg[Dc] at Nc,Nr
+    inc Nc
+  end while
+  return
+end sub
+
+' the question box over the play area; Wr = 0 right, 1 wrong
+sub Ask:
+  MakeQ
+  inc Nq
+  HideSprites
+  for Ri = 6 to 15
+    fill TFrame count 26 at 3,Ri
+  next
+  for Ri = 7 to 14
+    fill 32 count 24 at 4,Ri
+  next
+  print at 6,7, "WHAT IS..."
+  Nc = 8
+  Nr = 9
+  PrNum(Qx)
+  inc Nc
+  select case Qop
+  case 0
+    C = 43
+  case 1
+    C = 45
+  case 2
+    C = 42
+  case else
+    C = 47
+  end select
+  put char C at Nc,Nr
+  Nc += 2
+  PrNum(Qy)
+  print at Nc,9, " ?"
+  print at 5,13, "STICK: UP/DN 1, L/R 10"
+  print at 9,14, "BUTTON: ANSWER"
+  Dial = 0
+  ShowDial
+  Wr = 2
+  Rep = 0
+  WasStick = 15
+  while Wr = 2
+    Wt = 2
+    Frame1
+    ReadPad
+    DialStep
+  end while
+  Wt = 0
+  fill 32 count 24 at 4,13
+  fill 32 count 24 at 4,14
+  if Dial = Qans then
+    Wr = 0
+    inc Nright
+    print at 10,13, "CORRECT!!"
+    play sound SndRight
+  else
+    Wr = 1
+    print at 6,13, "INCORRECT!! IT WAS"
+    Nc = 25
+    Nr = 13
+    PrNum(Qans)
+    play sound SndWrong
+  end if
+  WaitN(80)
+  return
+end sub
+
+' one frame of the dial: a fresh push moves at once, a held one repeats
+sub DialStep:
+  if Press = 1 then
+    Wr = 3
+    return
+  end if
+  Jx = J1 | J2
+  Jx = Jx & 15
+  if Jx = 0 then
+    WasStick = 0
+    return
+  end if
+  if Jx <> WasStick then
+    Rep = 16
+  else
+    dec Rep
+    if Rep > 0 then return
+    Rep = 4
+  end if
+  WasStick = Jx
+  if Jx & 1 then
+    Dial += 1
+  elseif Jx & 2 then
+    Dial -= 1
+  elseif Jx & 8 then
+    Dial += 10
+  else
+    Dial -= 10
+  end if
+  if Dial > 999 then Dial = 999
+  if Dial < -999 then Dial = -999
+  play sound SndDial
+  ShowDial
+  return
+end sub
+
+sub ShowDial:
+  print at 8,11, "ANSWER:"
+  fill 32 count 8 at 16,11
+  Nc = 16
+  Nr = 11
+  PrNum(Dial)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' messages (two rows of 28 at the bottom)
+
+sub Say(u8 M):
+  W16 = M * 56
+  put MsgD + W16 count 28 at 2,21
+  W16 += 28
+  put MsgD + W16 count 28 at 2,22
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' outside: the forest, the gate, the house (listing lines 160-440)
+
+data OstY bytes
+  136, 112, 72, 56
+end data
+
+sub Outside:
+  Ost = 0
+  GateO = 0
+  DoorO = 0
+  Gold = 0
+  Nq = 0
+  Nright = 0
+  NewScreen
+  DrawOutside
+  Hx = 120
+  Hy = 135
+  Ph = 0
+  Scene = 1
+  Say(MForest)
+  ShowScreen
+  return
+end sub
+
+sub DrawOutside:
+  for Ri = 1 to 2
+    fill TSky count 28 at 2,Ri
+  next
+  for Ri = 3 to 19
+    fill TGrass count 28 at 2,Ri
+  next
+  fill TSky count 12 at 2,3
+  fill TSky count 7 at 23,3
+  put char TRoofl at 10,3
+  fill TRoof count 10 at 11,3
+  put char TRoofr at 21,3
+  fill TSky count 7 at 2,4
+  put char TRoofl at 9,4
+  fill TRoof count 12 at 10,4
+  put char TRoofr at 22,4
+  for Ri = 5 to 8
+    fill TBrick count 14 at 9,Ri
+  next
+  put char TWin at 11,5
+  put char TWin at 12,5
+  put char TWin at 19,5
+  put char TWin at 20,5
+  for Ri = 9 to 16
+    fill TPath count 2 at 15,Ri
+  next
+  fill TStep count 2 at 15,9
+  fill TFence count 28 at 2,12
+  fill TFence count 28 at 2,13
+  DrawGate
+  DrawDoor
+  DrawBox(0)
+  Big(TTree00, 3, 14)
+  Big(TTree00, 7, 16)
+  Big(TTree00, 11, 14)
+  Big(TTree00, 19, 15)
+  Big(TTree00, 23, 17)
+  Big(TTree00, 26, 14)
+  Big(TTree00, 4, 18)
+  Big(TTree00, 11, 18)
+  Big(TTree00, 20, 18)
+  Big(TTree00, 4, 8)
+  Big(TTree00, 25, 9)
+  return
+end sub
+
+sub DrawGate:
+  if GateO = 1 then
+    Big(TGopen00, 15, 12)
+  else
+    Big(TGate00, 15, 12)
+  end if
+  return
+end sub
+
+sub DrawDoor:
+  if DoorO = 1 then
+    Big(THopen00, 15, 7)
+  else
+    Big(THdoor00, 15, 7)
+  end if
+  return
+end sub
+
+sub DrawBox(u8 Open):
+  if Open = 1 then
+    Big(TMboxo00, 18, 7)
+  else
+    Big(TMbox00, 18, 7)
+  end if
+  return
+end sub
+
+' a 2 x 2 picture whose top-left tile is T
+sub Big(u8 T0, u8 Bc, u8 Br):
+  put char T0 at Bc,Br
+  T0 += 1
+  put char T0 at Bc + 1,Br
+  T0 += 1
+  put char T0 at Bc,Br + 1
+  T0 += 1
+  put char T0 at Bc + 1,Br + 1
+  return
+end sub
+
+' one frame outside
+sub OStep:
+  if Ph > 0 then
+    if Hy < Ty then
+      Hy += 2
+    else
+      Hy -= 2
+    end if
+    dec Ph
+    if Ph = 0 then OArrive
+    return
+  end if
+  Wt = 3
+  Jx = J1 | J2
+  if Press = 1 then
+    Wt = 0
+    OAct
+    return
+  end if
+  if Jx & 1 then
+    Wt = 0
+    select case Ost
+    case 0
+      OGo(1)
+    case 1
+      if GateO = 1 then
+        OGo(2)
+      else
+        Say(MGateShut)
+        play sound SndBump
+        WaitN(20)
+      end if
+    case else
+      if DoorO = 1 then
+        OGo(3)
+      else
+        Say(MDoorShut)
+        play sound SndBump
+        WaitN(20)
+      end if
+    end select
+  elseif Jx & 2 then
+    if Ost > 0 then
+      Wt = 0
+      OGo(Ost - 1)
+    end if
+  end if
+  return
+end sub
+
+sub OGo(u8 S):
+  Ost = S
+  Ty = OstY[S] - 1
+  if Ty > Hy then
+    Ph = Ty - Hy
+  else
+    Ph = Hy - Ty
+  end if
+  Ph = Ph >> 1
+  ClearMsg
+  play sound SndStep
+  return
+end sub
+
+sub OArrive:
+  select case Ost
+  case 0
+    Say(MForest)
+  case 1
+    if GateO = 1 then
+      Say(MGateO)
+    else
+      Say(MGateC)
+    end if
+  case 2
+    Say(MHouse)
+  case else
+    ' through the door: on to the trap door
+    Ost = 4
+  end select
+  return
+end sub
+
+sub OAct:
+  select case Ost
+  case 0
+    Say(MForest)
+  case 1
+    if GateO = 1 then
+      GateO = 0
+      Say(MOkShut)
+    else
+      GateO = 1
+      Say(MOkOpen)
+    end if
+    play sound SndClick
+    Rearm
+    wait
+    nmi off
+    DrawGate
+    WaitN(10)
+  case else
+    if DoorO = 1 then
+      Say(MDoorOpen)
+    else
+      Rearm
+      wait
+      nmi off
+      DrawBox(1)
+      play sound SndClick
+      Say(MNote)
+      WaitN(70)
+      Ask
+      Rearm
+      wait
+      nmi off
+      display off
+      DrawOutside
+      ClearMsg
+      if Wr = 0 then
+        DoorO = 1
+        DrawDoor
+        ShowScreen
+        play sound SndBang
+        Say(MNoteOk)
+      else
+        Ost = 0
+        Hy = 135
+        ShowScreen
+        Say(MNoteBad)
+      end if
+      WaitN(30)
+    end if
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the trap door and the neon sign (listing lines 450-520)
+
+sub TrapPage:
+  Scene = 0
+  NewScreen
+  backdrop dark blue
+  fill mode 2 text color with $F4
+  LoadTiles
+  print at 2,4, "A TRAP DOOR OPENS BENEATH"
+  print at 2,5, "YOUR FEET AND YOU BEGIN"
+  print at 2,6, "SLIDING DOWN A CHUTE. YOU"
+  print at 2,7, "PASS A NEON SIGN THAT SAYS:"
+  for Ri = 10 to 16
+    fill TFrame count 18 at 7,Ri
+  next
+  for Ri = 11 to 15
+    fill 32 count 16 at 8,Ri
+  next
+  print at 9,12, "'MATH DUNGEON'"
+  print at 11,14, "'LEVEL"
+  Nc = 18
+  Nr = 14
+  PrNum(Lv)
+  put char 39 at Nc,14
+  print at 8,20, "PRESS THE BUTTON"
+  ShowScreen
+  play sound SndFall
+  Wt = 6
+  Rearm
+  pause until press and release
+  nmi off
+  Wt = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the dungeon (listing lines 530-2310)
+
+' the dungeon generator (listing lines 1620-1770)
+sub MakeDungeon:
+  u8 Nm = 0
+  u8 Got = 0
+  fill array Fl with 0
+  fill array Sn with 0
+  Nm = Rnd(10) + Lv
+  Gi = 0
+  while Gi < Nm
+    C = Rnd(100)
+    if Fl[C] <> 3 then
+      Fl[C] = 3
+      inc Gi
+    end if
+  end while
+  for Gi = 0 to 99
+    if Fl[Gi] = 3 then Lines(Gi)
+  next
+  ' keys and doors: distinct open cells
+  for Gi = 0 to 8
+    It[Gi].C = NoCell
+    It[Gi].St = 0
+  next
+  for Gi = IGKey to IBKey
+    PlaceIt(Gi)
+  next
+  for Gi = IGDoor to IRDoor
+    PlaceIt(Gi)
+  next
+  return
+end sub
+
+' fill the row and the column of monster cell Mc with rooms and hallways
+sub Lines(u8 Mc):
+  u8 R0 = 0
+  u8 C0 = 0
+  u8 Li = 0
+  u8 Cc = 0
+  R0 = Mc / 10
+  C0 = Mc % 10
+  for Li = 0 to 9
+    Cc = R0 * 10 + Li
+    if Fl[Cc] = 0 then Fl[Cc] = Rnd(2) + 1
+    Cc = Li * 10 + C0
+    if Fl[Cc] = 0 then Fl[Cc] = Rnd(2) + 1
+  next
+  return
+end sub
+
+' a random open cell not used by an item of the same kind (keys, doors)
+sub PlaceIt(u8 Ik):
+  u8 Ok = 0
+  u8 Pc = 0
+  u8 Oi = 0
+  while Ok = 0
+    Pc = Rnd(100)
+    Ok = 1
+    if Fl[Pc] = 0 then Ok = 0
+    for Oi = 0 to 8
+      if It[Oi].C = Pc then
+        if Oi <> Ik then
+          if Ik < IGDoor then
+            if Oi < IGDoor then Ok = 0
+          else
+            if Oi >= IGDoor then Ok = 0
+          end if
+        end if
+      end if
+    next
+  end while
+  It[Ik].C = Pc
+  It[Ik].St = 1
+  return
+end sub
+
+function OpenCell as u8
+  u8 Oc = 0
+  do
+    Oc = Rnd(100)
+  loop while Fl[Oc] = 0
+  return Oc
+
+sub StartDungeon:
+  MakeDungeon
+  ' start in a random open cell, made a room, with the unlit light
+  Here = OpenCell
+  Fl[Here] = 2
+  It[ILight].C = Here
+  It[ILight].St = 1
+  Px = Here % 10
+  Py = Here / 10
+  Lit = 0
+  HasMap = 0
+  Done = 0
+  Mon = 0
+  Scene = 2
+  NewScreen
+  Sn[Here] = 3
+  DrawGrid
+  DrawPanel
+  PlaceHero
+  Say(MDark)
+  ShowScreen
+  return
+end sub
+
+sub PlaceHero:
+  Hx = Px << 4
+  Hx += 16
+  Hy = Py << 4
+  Hy += 7
+  return
+end sub
+
+' the dungeon screen again after a question box
+sub Redraw:
+  Rearm
+  wait
+  nmi off
+  display off
+  for Ri = 1 to 20
+    fill 32 count 8 at 22,Ri
+  next
+  DrawGrid
+  DrawPanel
+  ClearMsg
+  ShowScreen
+  return
+end sub
+
+sub DrawGrid:
+  for Ci = 0 to 99
+    DrawCell(Ci)
+  next
+  return
+end sub
+
+' one cell: its kind if seen, the item on it if visited
+sub DrawCell(u8 Dc):
+  u8 Tl = 0
+  u8 S = 0
+  u8 Dk = 0
+  u8 Ix = 0
+  u8 Is = 0
+  u8 Di = 0
+  S = Sn[Dc]
+  Dk = Fl[Dc]
+  Tl = 32
+  if S & 1 then
+    select case Dk
+    case 0
+      Tl = TWall00
+    case 1
+      Tl = THall00
+    case 2
+      Tl = TRoom00
+    case else
+      if S & 4 then
+        Tl = TMon00
+      else
+        Tl = TRoom00
+      end if
+    end select
+  end if
+  if S & 2 then
+    ' doors first, then what lies on the floor over them
+    for Di = IGDoor to IRDoor
+      Ix = It[Di].C
+      if Ix = Dc then
+        Is = It[Di].St
+        if Is = 1 then Tl = IconT[Di]
+        if Is = 2 then Tl = TOdoor00
+      end if
+    next
+    for Di = 0 to IRKey
+      Ix = It[Di].C
+      if Ix = Dc then
+        if It[Di].St = 1 then Tl = IconT[Di]
+      end if
+    next
+    for Di = IMap to IGold
+      Ix = It[Di].C
+      if Ix = Dc then
+        if It[Di].St = 1 then Tl = IconT[Di]
+      end if
+    next
+  end if
+  X = Dc % 10
+  Y = Dc / 10
+  X = X << 1
+  X += 2
+  Y = Y << 1
+  Y += 1
+  if Tl = 32 then
+    fill 32 count 2 at X,Y
+    fill 32 count 2 at X,Y + 1
+  else
+    Big(Tl, X, Y)
+  end if
+  return
+end sub
+
+' the side panel: level, gold, what you carry
+sub DrawPanel:
+  print at 23,1, "LEVEL"
+  Nc = 25
+  Nr = 2
+  PrNum(Lv)
+  print at 23,4, "GOLD"
+  ShowGold
+  print at 23,7, "ITEMS"
+  for Ri = 8 to 16
+    fill 32 count 7 at 23,Ri
+  next
+  if Lit = 1 then Big(TLamp00, 23, 8)
+  if HasMap = 1 then Big(TMap00, 26, 8)
+  if It[IGKey].St = 2 then Big(TGkey00, 23, 11)
+  if It[IBKey].St = 2 then Big(TBkey00, 26, 11)
+  if It[IRKey].St = 2 then Big(TRkey00, 23, 14)
+  print at 23,18, "MATH"
+  print at 23,19, "DUNGEON"
+  return
+end sub
+
+sub ShowGold:
+  fill 32 count 6 at 23,5
+  Nc = 23
+  Nr = 5
+  PrNum(Gold)
+  return
+end sub
+
+' reveal the cell you are in and its four neighbours (the listing's LOOK)
+sub Reveal:
+  u8 Rc = 0
+  Rc = Here
+  Sn[Rc] = Sn[Rc] | 3
+  DrawCell(Rc)
+  if Lit = 0 then return
+  if Px < 9 then
+    Rc = Here + 1
+    Sn[Rc] = Sn[Rc] | 1
+    DrawCell(Rc)
+  end if
+  if Px > 0 then
+    Rc = Here - 1
+    Sn[Rc] = Sn[Rc] | 1
+    DrawCell(Rc)
+  end if
+  if Py < 9 then
+    Rc = Here + 10
+    Sn[Rc] = Sn[Rc] | 1
+    DrawCell(Rc)
+  end if
+  if Py > 0 then
+    Rc = Here - 10
+    Sn[Rc] = Sn[Rc] | 1
+    DrawCell(Rc)
+  end if
+  return
+end sub
+
+' one frame in the dungeon
+sub DStep:
+  if Arr = 1 then
+    Arr = 0
+    Arrive
+    return
+  end if
+  if Ph > 0 then
+    Hx = Hx + Dx
+    Hy = Hy + Dy
+    dec Ph
+    if Ph = 0 then Arr = 1
+    return
+  end if
+  Wt = 1
+  Jx = J1 | J2
+  if Press = 1 then
+    Wt = 0
+    Act
+    return
+  end if
+  Dx = 0
+  Dy = 0
+  if Jx & 1 then
+    Dy = -1
+  elseif Jx & 2 then
+    Dy = 1
+  elseif Jx & 4 then
+    Dx = -1
+  elseif Jx & 8 then
+    Dx = 1
+  else
+    return
+  end if
+  Wt = 0
+  TryWalk
+  return
+end sub
+
+' the listing's N, S, E, W (lines 1560-1610)
+sub TryWalk:
+  i8 Tx = 0
+  i8 Ty2 = 0
+  u8 Tc = 0
+  if Lit = 0 then
+    Say(MNoLight)
+    play sound SndBump
+    WaitN(20)
+    return
+  end if
+  Tx = Px + Dx
+  Ty2 = Py + Dy
+  Tc = 0
+  if Tx < 0 then Tc = 1
+  if Tx > 9 then Tc = 1
+  if Ty2 < 0 then Tc = 1
+  if Ty2 > 9 then Tc = 1
+  if Tc = 0 then
+    Tc = Ty2 * 10 + Tx
+    if Fl[Tc] = 0 then Tc = 1 else Tc = 0
+  end if
+  if Tc = 1 then
+    Say(MWall)
+    play sound SndBump
+    WaitN(20)
+    return
+  end if
+  ' leaving: gold left on the floor is lost (as in the listing)
+  if It[IGold].C = Here then
+    It[IGold].C = NoCell
+    It[IGold].St = 0
+    Rearm
+    wait
+    nmi off
+    DrawCell(Here)
+  end if
+  Px = Tx
+  Py = Ty2
+  Here = Py * 10 + Px
+  Dx = Dx << 1
+  Dy = Dy << 1
+  Ph = 8
+  ClearMsg
+  play sound SndStep
+  return
+end sub
+
+' in a new cell: the monster, or what is here
+sub Arrive:
+  Rearm
+  wait
+  nmi off
+  Reveal
+  if Fl[Here] = 3 then
+    Encounter
+    return
+  end if
+  Describe
+  return
+end sub
+
+sub Describe:
+  u8 Dm = 0
+  u8 Di = 0
+  if Fl[Here] = 1 then Dm = MHall else Dm = MRoom
+  for Di = IGDoor to IRDoor
+    if It[Di].C = Here then
+      if It[Di].St = 1 then Dm = ItMsg[Di]
+      if It[Di].St = 2 then Dm = MOpened
+    end if
+  next
+  for Di = 0 to IGold
+    if It[Di].C = Here then
+      if Di < IGDoor then
+        if It[Di].St = 1 then Dm = ItMsg[Di]
+      end if
+      if Di >= IMap then
+        if It[Di].St = 1 then Dm = ItMsg[Di]
+      end if
+    end if
+  next
+  Say(Dm)
+  return
+end sub
+
+' a monster (listing lines 2000-2190)
+sub Encounter:
+  Mon = 1
+  play sound SndRoar
+  Say(MMonster)
+  WaitN(90)
+  Ask
+  Mon = 0
+  Redraw
+  if Wr = 0 then
+    Fl[Here] = 2
+    GoldAmt = Rnd(Lv * 10) + 1
+    It[IGold].C = Here
+    It[IGold].St = 1
+    DrawCell(Here)
+    Say(MBeat)
+  else
+    Gold = 0
+    ShowGold
+    Say(MRobbed)
+    WaitN(100)
+    Transport
+  end if
+  return
+end sub
+
+' to a random open cell (listing lines 2030-2040)
+sub Transport:
+  play sound SndFall
+  Here = OpenCell
+  Px = Here % 10
+  Py = Here / 10
+  PlaceHero
+  Arr = 1
+  return
+end sub
+
+' the button: the listing's GET, OPEN and LOOK, whichever fits here
+sub Act:
+  u8 Ai = 0
+  u8 Got = 0
+  ' the light (GET LIGHT, LIGHT ON)
+  if Lit = 0 then
+    if It[ILight].C = Here then
+      It[ILight].St = 2
+      Lit = 1
+      play sound SndTake
+      Say(MLightOn)
+      Rearm
+      wait
+      nmi off
+      Reveal
+      DrawPanel
+      WaitN(20)
+      return
+    end if
+  end if
+  ' a key, the map, the gold
+  for Ai = IGKey to IGold
+    if Got = 0 then
+      if It[Ai].C = Here then
+        if It[Ai].St = 1 then
+          if Ai < IGDoor then Got = Ai
+          if Ai >= IMap then Got = Ai
+        end if
+      end if
+    end if
+  next
+  if Got > 0 then
+    TakeIt(Got)
+    return
+  end if
+  ' a closed door
+  for Ai = IGDoor to IRDoor
+    if Got = 0 then
+      if It[Ai].C = Here then
+        if It[Ai].St = 1 then Got = Ai
+      end if
+    end if
+  next
+  if Got > 0 then
+    Unlock(Got)
+    return
+  end if
+  Describe
+  play sound SndClick
+  WaitN(10)
+  return
+end sub
+
+sub TakeIt(u8 Ti):
+  It[Ti].St = 2
+  play sound SndTake
+  Rearm
+  wait
+  nmi off
+  DrawCell(Here)
+  select case Ti
+  case IMap
+    HasMap = 1
+    for Ci = 0 to 99
+      V = Sn[Ci] | 5
+      Sn[Ci] = V
+    next
+    Rearm
+    wait
+    nmi off
+    display off
+    DrawGrid
+    ShowScreen
+    Say(MGotMap)
+  case IGold
+    It[IGold].C = NoCell
+    Gold += GoldAmt
+    ClearMsg
+    print at 2,21, "YOU FOUND"
+    Nc = 12
+    Nr = 21
+    PrNum(GoldAmt)
+    print at Nc,21, " GOLD PIECES."
+    print at 2,22, "YOU NOW HAVE"
+    Nc = 15
+    Nr = 22
+    PrNum(Gold)
+    print at Nc,22, " GOLD."
+  case else
+    Say(MGotKey)
+  end select
+  DrawPanel
+  WaitN(20)
+  return
+end sub
+
+' a door: green gives the map, blue the red key, red the way out
+sub Unlock(u8 Di):
+  u8 Need = 0
+  Need = Di - 3
+  if It[Need].St <> 2 then
+    Say(MLocked)
+    play sound SndBump
+    WaitN(20)
+    return
+  end if
+  select case Di
+  case IGDoor
+    It[Di].St = 2
+    It[IMap].C = Here
+    It[IMap].St = 1
+    play sound SndBang
+    Say(MMapHere)
+    DrawCell(Here)
+  case IBDoor
+    It[Di].St = 2
+    It[IRKey].C = Here
+    It[IRKey].St = 1
+    play sound SndBang
+    Say(MRKeyHere)
+    DrawCell(Here)
+  case else
+    ' the way out, after one last question (a liberty)
+    Say(MExitQ)
+    WaitN(70)
+    Ask
+    Redraw
+    if Wr = 0 then
+      Done = 1
+    else
+      Say(MExitBad)
+      WaitN(100)
+      Transport
+    end if
+  end select
+  WaitN(20)
+  return
+end sub
+
+sub WinPage:
+  Scene = 0
+  NewScreen
+  for Ri = 1 to 6
+    fill TGrass count 28 at 2,Ri
+  next
+  Big(TTree00, 3, 2)
+  Big(TTree00, 8, 4)
+  Big(TTree00, 14, 2)
+  Big(TTree00, 20, 4)
+  Big(TTree00, 26, 2)
+  print at 2,8, "THERE IS A SUDDEN FLASH AND"
+  print at 2,9, "YOU FIND YOURSELF AMIDST"
+  print at 2,10, "SOME TREES."
+  print at 2,12, "YOU HAVE FOUND YOUR WAY OUT"
+  print at 2,13, "OF THE MATH DUNGEON."
+  print at 2,15, "YOU HAVE WON"
+  Nc = 15
+  Nr = 15
+  PrNum(Gold)
+  print at Nc,15, " GOLD PIECES"
+  print at 2,16, "IN YOUR JOURNEY."
+  print at 2,18, "QUESTIONS RIGHT:"
+  Nc = 19
+  Nr = 18
+  PrNum(Nright)
+  put char 47 at Nc,18
+  inc Nc
+  PrNum(Nq)
+  print at 2,21, "LEVEL"
+  Nc = 8
+  Nr = 21
+  PrNum(Lv)
+  ShowScreen
+  play sound SndWin
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites
+
+sub DrawSprites:
+  u8 Pat = 0
+  u8 Gy = 0
+  u8 Gx = 0
+  if Scene = 0 then return
+  Pat = SHero
+  if Ph > 0 then
+    T = Tick & 8
+    if T > 0 then Pat = SHero2
+  end if
+  set sprite 0 to Hy,Hx,Pat,15
+  if Lit = 1 then
+    if Scene = 2 then
+      set sprite 1 to Hy,Hx,SGlow,11
+    else
+      set sprite 1 to 192,0,0,0
+    end if
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if Mon = 1 then
+    Pat = SMon1
+    T = Tick & 16
+    if T > 0 then Pat = SMon2
+    Gx = Hx
+    Gy = Hy - 2
+    set sprite 2 to Gy,Gx,Pat,3
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub WaitN(u8 Nf):
+  for Wi = 1 to Nf
+    Frame1
+    DrawSprites
+  next
+  ReadPad
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  return
+end sub
+
+' the tiles at codes 128-255 of the three screen thirds (after any
+' `fill mode 2 text color`, which writes the whole table)
+sub LoadTiles:
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the printed title, the level (listing lines 700-760), the tune once
+sub TitlePage:
+  Scene = 0
+  NewScreen
+  for Ri = 1 to 22
+    fill TWall00 count 28 at 2,Ri
+  next
+  for Ri = 3 to 20
+    fill 32 count 24 at 4,Ri
+  next
+  print at 10,5, "MATH DUNGEON"
+  print at 8,7, "A MATH ADVENTURE"
+  Big(TLamp00, 6, 9)
+  Big(TGkey00, 10, 9)
+  Big(TMap00, 14, 9)
+  Big(TGold00, 18, 9)
+  Big(TRdoor00, 22, 9)
+  print at 6,13, "DESIRED LEVEL: < >"
+  print at 7,15, "LEFT/RIGHT: LEVEL"
+  print at 6,16, "BUTTON: INTO THE WOODS"
+  print at 7,18, "COMPUTE!'S GAZETTE"
+  print at 9,19, "JANUARY 1985"
+  ShowLevel
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 0
+  Wt = 4
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 12
+  if V > 0 then
+    if WasStick = 0 then
+      if V & 4 then
+        if Lv > 1 then dec Lv
+      else
+        if Lv < 5 then inc Lv
+      end if
+      play sound SndDial
+      ShowLevel
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  Wt = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub ShowLevel:
+  Nc = 22
+  Nr = 13
+  PrNum(Lv)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "MATH DUNGEON"
+  print at 2,5, "BASED ON MATH DUNGEON,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "JANUARY 1985 (COMMODORE 64"
+  print at 2,8, "AND VIC-20)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: DOWN THE CHUTE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Wt = 6
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  Wt = 0
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$00,$00,$00,$00,$00,$10,$10
+  $00,$80,$80,$80,$80,$80,$00,$00
+  $10,$10,$F0,$00,$00,$00,$00,$00
+  $08,$08,$07,$08,$08,$07,$00,$00
+  $00,$00,$10,$00,$00,$00,$01,$00
+  $00,$00,$08,$00,$00,$00,$00,$00
+  $00,$20,$00,$00,$00,$00,$04,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$07,$F0,$E0,$19,$19,$E0
+  $00,$00,$E0,$F0,$07,$98,$98,$07
+  $F0,$07,$05,$00,$00,$00,$00,$00
+  $70,$E0,$A0,$00,$00,$00,$00,$00
+  $00,$03,$04,$03,$07,$0D,$0B,$0D
+  $00,$C0,$20,$C0,$E0,$B0,$D0,$B0
+  $0B,$0D,$07,$03,$00,$00,$00,$00
+  $D0,$B0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$E1,$CC,$21,$21,$21,$CC
+  $00,$00,$00,$00,$00,$01,$09,$64
+  $E1,$00,$00,$00,$00,$00,$00,$00
+  $60,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E1,$CC,$21,$21,$21,$CC
+  $00,$00,$00,$00,$00,$01,$09,$64
+  $E1,$00,$00,$00,$00,$00,$00,$00
+  $60,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E1,$CC,$21,$21,$21,$CC
+  $00,$00,$00,$00,$00,$01,$09,$64
+  $E1,$00,$00,$00,$00,$00,$00,$00
+  $60,$00,$00,$00,$00,$00,$00,$00
+  $E0,$C0,$C9,$C9,$C9,$C9,$C9,$C9
+  $07,$03,$D8,$D8,$D8,$D8,$23,$23
+  $C9,$C9,$C9,$C9,$C0,$C0,$00,$00
+  $D8,$D8,$D8,$D8,$03,$03,$00,$00
+  $E0,$C0,$C9,$C9,$C9,$C9,$C9,$C9
+  $07,$03,$D8,$D8,$D8,$D8,$23,$23
+  $C9,$C9,$C9,$C9,$C0,$C0,$00,$00
+  $D8,$D8,$D8,$D8,$03,$03,$00,$00
+  $E0,$C0,$C9,$C9,$C9,$C9,$C9,$C9
+  $07,$03,$D8,$D8,$D8,$D8,$23,$23
+  $C9,$C9,$C9,$C9,$C0,$C0,$00,$00
+  $D8,$D8,$D8,$D8,$03,$03,$00,$00
+  $E0,$30,$20,$20,$20,$20,$20,$20
+  $07,$0C,$04,$04,$04,$04,$04,$04
+  $20,$20,$20,$20,$20,$20,$00,$00
+  $04,$04,$04,$04,$04,$04,$00,$00
+  $00,$C0,$20,$D2,$24,$D1,$22,$D1
+  $00,$07,$08,$C8,$48,$C8,$48,$E8
+  $20,$C0,$00,$00,$00,$00,$00,$00
+  $08,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$E2,$C1,$C1
+  $00,$00,$00,$80,$C0,$C0,$E0,$07
+  $88,$04,$04,$00,$00,$00,$00,$00
+  $83,$B8,$E0,$00,$00,$00,$00,$00
+  $08,$40,$02,$20,$00,$84,$00,$10
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$E2,$C8,$81,$A0,$04,$20,$80
+  $C0,$F0,$B8,$03,$13,$01,$41,$09
+  $C4,$E0,$01,$01,$01,$01,$03,$00
+  $03,$87,$80,$80,$80,$80,$C0,$00
+  $00,$81,$00,$81,$81,$00,$81,$00
+  $00,$40,$52,$52,$52,$40,$52,$52
+  $00,$02,$4A,$4A,$4A,$02,$4A,$4A
+  $52,$40,$52,$52,$52,$40,$00,$00
+  $4A,$02,$4A,$4A,$4A,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$00,$00,$04,$00,$00
+  $00,$00,$08,$00,$00,$00,$00,$00
+  $00,$44,$00,$00,$00,$11,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$01,$00,$10,$10,$00,$01,$01
+  $00,$99,$99,$00,$99,$99,$00,$01
+  $00,$80,$40,$40,$40,$40,$40,$00
+  $00,$01,$02,$02,$02,$02,$02,$18
+  $00,$40,$40,$40,$40,$80,$00,$00
+  $18,$02,$02,$02,$02,$01,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$03,$07,$07
+  $00,$00,$00,$00,$00,$F0,$07,$07
+  $07,$07,$07,$07,$00,$00,$00,$00
+  $07,$07,$07,$07,$C0,$C0,$C0,$00
+  $00,$00,$00,$03,$07,$07,$07,$07
+  $00,$30,$F0,$E0,$80,$07,$07,$07
+  $07,$07,$07,$07,$00,$00,$00,$00
+  $07,$07,$07,$07,$C0,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+end data
+data TileCol bytes
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $06,$06,$06,$06,$01,$06,$16,$16
+  $06,$16,$16,$16,$16,$61,$06,$06
+  $16,$16,$61,$06,$06,$06,$06,$06
+  $16,$16,$61,$16,$16,$16,$06,$06
+  $04,$04,$E4,$04,$04,$04,$E4,$04
+  $04,$04,$E4,$04,$04,$04,$04,$04
+  $04,$E4,$04,$04,$04,$04,$E4,$04
+  $04,$04,$04,$E4,$04,$04,$04,$04
+  $06,$06,$F6,$6F,$6F,$F6,$F6,$6F
+  $06,$06,$F6,$F6,$6F,$F6,$F6,$6F
+  $6F,$F6,$F6,$06,$06,$06,$06,$06
+  $F6,$F6,$F6,$06,$06,$06,$06,$06
+  $06,$B6,$B6,$B6,$B6,$B6,$B6,$B6
+  $06,$B6,$B6,$B6,$B6,$B6,$B6,$B6
+  $B6,$B6,$B6,$B6,$06,$06,$06,$06
+  $B6,$B6,$B6,$B6,$06,$06,$06,$06
+  $06,$06,$63,$63,$36,$36,$36,$63
+  $06,$06,$06,$06,$06,$63,$63,$36
+  $63,$06,$06,$06,$06,$06,$06,$06
+  $36,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$65,$65,$56,$56,$56,$65
+  $06,$06,$06,$06,$06,$65,$65,$56
+  $65,$06,$06,$06,$06,$06,$06,$06
+  $56,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$69,$69,$96,$96,$96,$69
+  $06,$06,$06,$06,$06,$69,$69,$96
+  $69,$06,$06,$06,$06,$06,$06,$06
+  $96,$06,$06,$06,$06,$06,$06,$06
+  $62,$62,$62,$62,$62,$62,$62,$62
+  $62,$62,$26,$26,$26,$26,$62,$62
+  $62,$62,$62,$62,$62,$62,$06,$06
+  $26,$26,$26,$26,$62,$62,$06,$06
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$56,$56,$56,$56,$65,$65
+  $65,$65,$65,$65,$65,$65,$06,$06
+  $56,$56,$56,$56,$65,$65,$06,$06
+  $68,$68,$68,$68,$68,$68,$68,$68
+  $68,$68,$86,$86,$86,$86,$68,$68
+  $68,$68,$68,$68,$68,$68,$06,$06
+  $86,$86,$86,$86,$68,$68,$06,$06
+  $6E,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $6E,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $E6,$E6,$E6,$E6,$E6,$E6,$06,$06
+  $E6,$E6,$E6,$E6,$E6,$E6,$06,$06
+  $06,$6F,$F6,$6F,$F6,$6F,$F6,$6F
+  $06,$6F,$F6,$F6,$F6,$F6,$F6,$F6
+  $F6,$6F,$06,$06,$06,$06,$06,$06
+  $F6,$6F,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$B6,$B6,$6B,$6B,$6B
+  $06,$06,$06,$B6,$B6,$B6,$B6,$6B
+  $6B,$6B,$6B,$06,$06,$06,$06,$06
+  $6B,$B6,$B6,$06,$06,$06,$06,$06
+  $2C,$2C,$2C,$2C,$0C,$2C,$0C,$2C
+  $0A,$1A,$0A,$1A,$1A,$0A,$1A,$0A
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $2C,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $2C,$2C,$2C,$C2,$C2,$C2,$C2,$C2
+  $C2,$C2,$AC,$AC,$AC,$AC,$AC,$0C
+  $C2,$C2,$AC,$AC,$AC,$AC,$AC,$0C
+  $0C,$AC,$0A,$AC,$AC,$0A,$AC,$0C
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1B,$01,$01
+  $1B,$1B,$1B,$1B,$1B,$1B,$01,$01
+  $0A,$0A,$0A,$0A,$0A,$0A,$1A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$1A,$0A,$0A,$0A,$1A,$0A,$0A
+  $0A,$0A,$1A,$0A,$0A,$0A,$0A,$0A
+  $08,$68,$08,$06,$08,$68,$08,$06
+  $84,$84,$84,$46,$48,$48,$48,$06
+  $84,$84,$84,$64,$48,$48,$48,$06
+  $69,$69,$06,$69,$69,$06,$69,$69
+  $06,$67,$67,$06,$67,$67,$06,$69
+  $0A,$A6,$6A,$6A,$6A,$6A,$6A,$0A
+  $0A,$A6,$6A,$6A,$6A,$6A,$6A,$6A
+  $0A,$6A,$6A,$6A,$6A,$A6,$0A,$0E
+  $6A,$6A,$6A,$6A,$6A,$A6,$0A,$0E
+  $0A,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $0A,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$0E
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$0E
+  $09,$09,$09,$09,$09,$F9,$F9,$F9
+  $09,$09,$09,$09,$09,$F9,$9F,$9F
+  $F9,$F9,$F9,$F9,$09,$09,$09,$0E
+  $9F,$9F,$9F,$9F,$E9,$E9,$E9,$0E
+  $09,$09,$09,$F9,$F9,$19,$19,$19
+  $09,$F9,$F9,$F9,$F9,$91,$91,$91
+  $F9,$F9,$F9,$F9,$09,$09,$09,$0E
+  $9F,$9F,$9F,$9F,$E9,$E9,$E9,$0E
+  $0E,$01,$0E,$0E,$01,$0E,$0E,$01
+  $0E,$EF,$FE,$FE,$FE,$FE,$EF,$0E
+end data
+data SpritePat bytes
+  $03,$07,$05,$07,$03,$0F,$1F,$17,$17,$17,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$A0,$E0,$C0,$F0,$F8,$E8,$E8,$E8,$E0,$60,$60,$60,$70,$00
+  $03,$07,$05,$07,$03,$0F,$1F,$17,$17,$17,$07,$06,$0C,$18,$18,$00
+  $C0,$E0,$A0,$E0,$C0,$F0,$F8,$E8,$E8,$E8,$E0,$60,$30,$18,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0E,$1F,$1F,$0E,$00,$00,$00,$00,$00
+  $00,$0C,$1E,$3F,$67,$6B,$67,$7F,$3F,$35,$3F,$1F,$1B,$31,$61,$00
+  $00,$30,$78,$FC,$E6,$D6,$E6,$FE,$FC,$AC,$FC,$F8,$D8,$8C,$86,$00
+  $00,$00,$0C,$1E,$3F,$67,$6B,$67,$7F,$3F,$35,$3F,$1F,$0D,$19,$00
+  $00,$00,$30,$78,$FC,$E6,$D6,$E6,$FE,$FC,$AC,$FC,$F8,$B0,$98,$00
+end data
+
+asm {
+MdStep:
+    db $40,$FC,$41,$02,$40,$3B,$52,$02,$50
+MdBump:
+    db $00,$00,$26,$04,$00,$00,$56,$04,$10
+MdClick:
+    db $40,$7F,$30,$03,$40,$5F,$30,$03,$50
+MdTake:
+    db $40,$8F,$20,$04,$40,$6B,$20,$04,$40,$47,$20,$08,$50
+MdRight:
+    db $40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$55,$20,$0E,$50
+MdWrong:
+    db $40,$53,$11,$0A,$40,$68,$21,$0A,$40,$C5,$21,$18,$50
+MdRoar:
+    db $00,$00,$15,$06,$00,$00,$16,$08,$00,$00,$37,$0C,$10
+MdBang:
+    db $00,$00,$04,$03,$00,$00,$25,$06,$00,$00,$46,$0C,$10
+MdFall:
+    db $40,$6B,$20,$04,$40,$7F,$20,$04,$40,$A0,$20,$04,$40,$BF,$20,$04,$40,$FE,$30,$04,$40,$53,$31,$08
+    db $50
+MdWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+MdDial:
+    db $40,$47,$40,$01,$50
+
+MdSoundTable:
+    dw MdTuneMel,$702B
+    dw MdTuneBass,$7035
+    dw MdStep,$7049
+    dw MdBump,$703F
+    dw MdClick,$7049
+    dw MdTake,$7049
+    dw MdRight,$7049
+    dw MdWrong,$7049
+    dw MdRoar,$703F
+    dw MdBang,$703F
+    dw MdFall,$7049
+    dw MdWin,$7049
+    dw MdDial,$7049
+; Down the Chute (original)
+; Tiny Sound, 8 frames per step
+MdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$28,$01,$01,$26,$24,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$23,$01,$26,$01,$29,$01,$28,$01,$26,$01
+    db $23,$01,$01,$01,$24,$01,$01,$28,$01,$26,$01,$24,$23,$01,$01,$21
+    db $01,$20,$01,$23,$01,$28,$01,$26,$01,$23,$01,$20,$01,$21,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+MdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$11,$01,$0C,$01
+    db $11,$01,$0C,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$10,$01,$0B,$01,$10,$01,$08,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

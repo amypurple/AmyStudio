@@ -1,0 +1,1375 @@
+cartridge "JEWEL GRAB/GAZETTE/1989"
+
+' JEWEL GRAB
+' A ColecoVision game based on "Jewel Grab", COMPUTE!'s Gazette disk,
+' January 1989 (Commodore 64 machine language, SYS 2063; no author named on
+' the disk). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' The game: a miner gathers every gem of a cavern screen while round bombs
+' float after him through the rock. The ledges are stone blocks and the
+' ladders are loose: the miner can pick up to four of each and put them
+' down elsewhere to build his own way. A golden goblet is worth 200 and
+' stops the bombs for a while. Six screens make a round; each round adds a
+' bomb (1 to 4); clear the fourth round to win.
+'
+' Controls: controller 1 (or 2). Stick: walk left/right, climb ladders up
+' and down. Button: jump (four rows up, carried on in the direction the
+' stick held). Stick down + button: pick up the block diagonally below in
+' front of the miner, or put one down there. Stick up (only up) + button:
+' pick up the ladder piece at the miner's legs, or put one there. On the
+' title, up and down choose, left and right set the speed, a button chooses.
+'
+' From the original (orig/jgrab.dis; run in jsc64, which shows the play
+' screen but not sprite collisions, so the hit rules come from the code):
+' the screens' blocks, ladders, gems, bomb speeds and goblet places ($1276
+' table, orig/levels.py); the miner moves one cell a pass: walk if the cell
+' at his legs ahead is empty, a ladder or a gem ($0AD1); jump = four passes
+' up while the cell above his head is empty or a gem ($0A62), the stick held
+' at take-off carries on through the jump and the fall (the stick is only
+' read while standing, $0936); falls a cell a pass unless standing on
+' something or holding a ladder ($0A96); climbs up while his body is on a
+' ladder or a gem or his legs on a ladder ($0B25), down when a ladder or gem
+' is under his feet or his legs are on a ladder over empty space ($0B53);
+' all the tests of a pass use the cells where the pass began; a gem is taken
+' when his body or legs touch it, 100 ($0A1D); down + button takes or puts
+' a block at the cell below-ahead, up + button (alone) takes or puts a
+' ladder at his legs, four of each at most, and a failed take/put with the
+' button just pressed is a jump ($0962-$0A1A); bombs: one per round,
+' starting at the four places of $1161/$1169, speed = the screen's value -
+' round / 2 pixels a pass on each axis, heading for a target, turning
+' towards it every STEP passes, and every RETARGET turns they stop for nine
+' passes with the fuse burning and take the miner's position as the new
+' target ($0BD0-$0CBA); first turn counters from the clock (1, 3, 5 or 7);
+' bombs wait 10 passes at a screen start ($115D); goblet 200, the bombs stand
+' still 81 passes ($0CC2), it comes back after a death; touching a bomb
+' loses a life, the screen starts again as new (blocks, ladders, gems)
+' with the score kept; 4 lives in hand at the start, one more for each
+' screen cleared (10 at most, $0DEB); after round 4 YOU WIN ($0E20).
+'
+' Liberties: the C64's cavern is 39 x 23 cells, here 28 x 20: the screens
+' are fitted by scaling each run's end points (levels.py), a gem landing on
+' a block moved up a row (the gems that need tools are the same ones as on
+' the C64, orig/reach64.mjs and reach.mjs, but fewer cells to cross make
+' some screens a little easier); bomb starts and the goblet placed by the
+' same scaling; bomb speeds times 3/4 (rounded) to suit the smaller cavern
+' (the C64's 8 pixels a pass at round 1, screen 1, is 6 here); one pass
+' every 6, 5, 4 or 3 frames for speeds 1-4 (the C64's delay loop
+' gave about 13 to 22 passes a second; speed 1 here is slower than the
+' C64's slowest), sprites glide between passes; hits are box tests at the
+' end of a pass (miner 6 x 15 pixels, bomb 12 x 13; the C64 used sprite
+' collisions); digging uses the last way the miner walked (the C64 also
+' dug to the left while he climbed); speed chosen on the title with the
+' stick (the C64 used keys 1-4); the R (skip screen) and Q (quit) keys and
+' the SHIFT pause are left out; a ROUND / SCREEN card before each screen,
+' the miner blinks before a screen starts again; gems twinkle; bombs turn
+' grey while the goblet holds them (the C64 flashed the top line); GAME
+' OVER or YOU WIN, then the title (the C64 waited for the button).
+' Eased for human players (playability pass): bombs wait 25 passes at a
+' screen start (the C64's 10); after a lost life the miner blinks and
+' bombs can't hurt him for 24 passes (the goblet still works); at speed 1
+' each round has one bomb fewer (1, 1, 2, 3).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TBg0 = 128
+const TBg1 = 129
+const TBg2 = 130
+const TBg3 = 131
+const TBlock = 132
+const TLadder = 133
+const TJewel = 134
+const TJewel2 = 135
+const TFloor = 136
+const TLife = 137
+const TSlot = 138
+const TLgem = 139
+const TLstone = 140
+const SMr0d = 0
+const SMr0b = 4
+const SMl0d = 8
+const SMl0b = 12
+const SMr1d = 16
+const SMr1b = 20
+const SMl1d = 24
+const SMl1b = 28
+const SMr2d = 32
+const SMr2b = 36
+const SMl2d = 40
+const SMl2b = 44
+const SC0d = 48
+const SC0b = 52
+const SC1d = 56
+const SC1b = 60
+const SBf0 = 64
+const SBf1 = 68
+const SBp1 = 72
+const SBp2 = 76
+const SBp3 = 80
+const SBp4 = 84
+const SGoblet = 88
+const NTiles8 = 104
+const SprBytes = 736
+const SndTuneA = 1
+const SndTuneB = 2
+const SndJump = 3
+const SndGem = 4
+const SndTake = 5
+const SndPut = 6
+const SndFuse = 7
+const SndBoom = 8
+const SndDie = 9
+const SndBonus = 10
+const SndClear = 11
+const SndStart = 12
+const SndOver = 13
+const SndWin = 14
+const NSpr = 7
+const NMon = 4
+const StartC = 2
+const StartR = 20
+const MaxLives = 10
+const FrzLen = 81
+const StartWait = 25
+const SafeLen = 24
+
+' the six screens (levels.py): per screen the counts, then blocks and
+' ladders as column,row,length and jewels as column,row, then speed,
+' step, retarget and the bonus sprite's x,y
+data LvOfs words 0,41,99,152,182,276
+data LvData bytes
+  4,3,16,13,2,9,4,8,9,8,16,9,5,3,10,5,4,11,4,5,16,9,13,6
+  3,3,11,2,8,13,23,7,29,7,29,18,8,10,10,144,35,7,11,5,5,16,5,5
+  8,9,4,20,9,4,8,12,6,18,12,5,3,17,27,3,16,3,14,3,17,5,29,17
+  5,10,11,3,20,3,3,5,29,5,13,6,18,6,9,11,21,11,13,18,18,18,8,5
+  15,116,139,7,2,5,2,8,6,5,13,11,4,8,18,5,13,17,4,17,15,5,25,15
+  5,2,8,18,4,28,3,12,9,3,4,10,5,28,2,14,9,4,12,19,12,14,14,10
+  16,23,19,5,10,5,116,139,1,6,12,8,1,25,4,18,8,6,10,11,10,25,2,13
+  10,13,11,13,15,13,18,13,20,12,2,25,109,130,11,13,5,6,4,7,9,19,7,9
+  6,11,1,25,11,1,8,13,1,23,13,1,9,16,4,19,16,4,13,18,3,16,18,3
+  11,16,18,4,13,16,3,18,16,3,9,13,1,22,13,1,6,11,2,25,11,2,3,7
+  4,28,7,4,12,5,2,19,5,2,10,14,3,17,3,5,9,16,9,26,9,8,12,23
+  12,11,14,20,14,16,8,5,1,25,66,139,19,3,11,7,9,10,3,11,9,3,13,8
+  4,16,7,3,18,6,3,20,5,3,22,5,3,2,15,1,10,16,3,12,15,3,14,14
+  3,16,13,3,18,12,3,20,12,4,23,11,3,25,10,4,18,18,8,25,16,5,4,2
+  11,4,28,10,6,18,18,4,25,16,3,10,6,7,13,5,20,3,27,5,20,8,14,11
+  6,13,10,19,18,16,25,13,6,8,15,176,52
+end data
+data MonX bytes 16,216,216,112
+data MonY bytes 16,16,156,16
+data PassLen bytes 6,5,4,3
+' a bomb's fuse while it waits (C64 pointers $EA..$EE..$EA, $118D)
+data WaitPat bytes 68,72,76,80,84,80,76,72,68
+
+record Mon:
+  u8 X
+  u8 Y
+  u8 OX
+  u8 OY
+  u8 DX
+  u8 DY
+  u8 StepC
+  u8 RT
+  u8 Wt
+  u8 TX
+  u8 TY
+  u8 Pat
+end record
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$40,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$20,$00,$00
+  $01,$80,$01,$00,$10,$10,$10,$00
+  $82,$82,$01,$82,$82,$82,$01,$82
+  $00,$C3,$81,$60,$81,$C3,$18,$00
+  $08,$C3,$81,$C1,$81,$C3,$18,$08
+  $00,$10,$02,$40,$08,$00,$21,$00
+  $00,$C3,$81,$81,$00,$C3,$28,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$61,$01,$01,$01,$61,$01
+  $01,$01,$01,$61,$01,$01,$01,$01
+  $01,$61,$01,$01,$01,$61,$01,$01
+  $1F,$FE,$1E,$01,$1F,$1E,$1E,$01
+  $A1,$A1,$1A,$A1,$A1,$A1,$1A,$A1
+  $01,$17,$17,$F7,$17,$17,$71,$01
+  $F1,$17,$17,$7F,$17,$17,$71,$F1
+  $09,$96,$96,$96,$96,$06,$96,$06
+  $01,$1B,$1B,$1B,$0B,$19,$91,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $09,$9D,$9D,$9D,$9D,$9D,$9D,$06
+  $0F,$FE,$FE,$FE,$FE,$FE,$FE,$01
+end data
+data SpritePat bytes
+  $03,$07,$0F,$03,$03,$03,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$C0,$40,$C0,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$02,$06,$04,$0C,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$40,$20,$30,$10,$00
+  $03,$07,$0F,$03,$02,$03,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$C0,$C0,$C0,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$02,$04,$0C,$08,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$40,$60,$20,$30,$00
+  $03,$07,$0F,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$C0,$40,$C0,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$03,$01,$01,$03,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$80,$80,$80,$80,$00
+  $03,$07,$0F,$03,$02,$03,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$C0,$80,$80,$C0,$00
+  $03,$07,$0F,$03,$03,$03,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$C0,$40,$C0,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$06,$0C,$08,$18,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$C0,$60,$20,$30,$00
+  $03,$07,$0F,$03,$02,$03,$00,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$C0,$C0,$C0,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$03,$06,$04,$0C,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$60,$30,$10,$18,$00
+  $03,$07,$0F,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$00,$00,$00,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$05,$05,$01,$03,$02,$06,$04,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$E0,$A0,$A0,$80,$C0,$40,$40,$60,$40,$40,$00
+  $03,$07,$0F,$00,$00,$00,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$05,$05,$01,$03,$02,$02,$06,$02,$02,$00
+  $00,$00,$00,$C0,$C0,$E0,$A0,$A0,$80,$C0,$40,$60,$20,$00,$00,$00
+  $00,$00,$00,$00,$07,$0F,$1B,$37,$2F,$3F,$3F,$3F,$1F,$1F,$0F,$07
+  $00,$20,$40,$80,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$E0
+  $00,$00,$00,$00,$07,$0F,$1B,$37,$2F,$3F,$3F,$3F,$1F,$1F,$0F,$07
+  $00,$40,$80,$80,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$E0
+  $00,$00,$00,$00,$07,$0F,$1B,$37,$2F,$3F,$3F,$3F,$1F,$1F,$0F,$07
+  $10,$20,$50,$80,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$E0
+  $00,$00,$00,$00,$07,$0F,$1B,$37,$2F,$3F,$3F,$3F,$1F,$1F,$0F,$07
+  $50,$28,$50,$80,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$E0
+  $00,$00,$00,$00,$07,$0F,$1B,$37,$2F,$3F,$3F,$3F,$1F,$1F,$0F,$07
+  $68,$24,$48,$80,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$E0
+  $00,$00,$00,$00,$07,$0F,$1B,$37,$2F,$3F,$3F,$3F,$1F,$1F,$0F,$07
+  $14,$28,$54,$80,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F0,$E0
+  $00,$00,$3F,$2F,$2F,$17,$1B,$0F,$07,$01,$01,$01,$07,$0F,$00,$00
+  $00,$00,$FC,$FC,$FC,$F8,$F8,$F0,$E0,$80,$80,$80,$E0,$F0,$00,$00
+end data
+
+data TitleMap bytes
+  0,0,0,139,139,0,139,139,139,139,0,139,0,0,0,139,0,139,139,139,139,0,139,0,0,0,0,0
+  0,0,0,0,139,0,139,0,0,0,0,139,0,0,0,139,0,139,0,0,0,0,139,0,0,0,0,0
+  0,0,0,0,139,0,139,139,139,0,0,139,0,139,0,139,0,139,139,139,0,0,139,0,0,0,0,0
+  0,139,0,0,139,0,139,0,0,0,0,139,0,139,0,139,0,139,0,0,0,0,139,0,0,0,0,0
+  0,0,139,139,0,0,139,139,139,139,0,0,139,0,139,0,0,139,139,139,139,0,139,139,139,139,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,140,140,140,0,140,140,140,0,0,0,140,140,0,0,140,140,140,0,0,0,0,0,0
+  0,0,0,0,140,0,0,0,0,140,0,0,140,0,140,0,0,140,0,140,0,0,140,0,0,0,0,0
+  0,0,0,0,140,0,140,140,0,140,140,140,0,0,140,140,140,140,0,140,140,140,0,0,0,0,0,0
+  0,0,0,0,140,0,0,140,0,140,0,140,0,0,140,0,0,140,0,140,0,0,140,0,0,0,0,0
+  0,0,0,0,0,140,140,140,0,140,0,0,140,0,140,0,0,140,0,140,140,140,0,0,0,0,0,0
+end data
+
+Mon Mons[NMon]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+u16 Lp = 0
+u16 Passes = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the miner: cell, sprite position now and at the pass start
+u8 Pc = 0
+u8 Pr = 0
+u8 Px = 0
+u8 Py = 0
+u8 OPx = 0
+u8 OPy = 0
+u8 Jmp = 0
+u8 FallC = 0
+u8 FireL = 0
+u8 Joy = 0
+u8 Face = 0
+u8 WalkI = 0
+u8 ClimbI = 0
+u8 Pose = 0
+u8 InvL = 0
+u8 InvB = 0
+u8 JewLeft = 0
+u8 Lives = 0
+u8 Scr = 0
+u8 Rd = 1
+u8 Spd = 1
+u8 PassN = 6
+u8 Fc = 0
+u8 NMons = 1
+u8 MSpd = 0
+u8 LStep = 0
+u8 LRet = 0
+u8 MonDelay = 0
+u8 FrzT = 0
+u8 Safe = 0
+u8 BonOn = 0
+u8 BonX = 0
+u8 BonY = 0
+u8 Phase = 0
+u8 Timer = 0
+u8 Over = 0
+u8 Won = 0
+u8 Deaths = 0
+u8 Gems = 0
+u8 Mix = 0
+u8 Twk = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Mi = 0
+u8 Ds = 0
+u8 Li = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table JgSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER or YOU WIN, then back to the title on a press
+  if Score > Hi then Hi = Score
+  mute all
+  print at 8,10, "              "
+  if Won = 1 then
+    print at 8,11, "   YOU WIN!   "
+    play sound SndWin
+  else
+    print at 8,11, "  GAME  OVER  "
+    play sound SndOver
+  end if
+  print at 8,12, "              "
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one video frame of play: a pass of the game every PassN frames, the
+' sprites gliding from the pass's start to its end in between
+sub PlayFrame:
+  inc Twk
+  if Twk >= 20 then
+    Twk = 0
+    TwinkleGems
+  end if
+  select case Phase
+    case 0
+      inc Fc
+      if Fc >= PassN then
+        Fc = 0
+        PassStep
+      end if
+      DrawSprites
+    case 1
+      DyingFrame
+    case 2
+      ClearFrame
+  end select
+  return
+end sub
+
+' the C64's main loop, one pass
+sub PassStep:
+  u8 Skip
+  u8 Done
+  inc Passes
+  SaveOld
+  Skip = 0
+  Done = 0
+  if Jmp = 0 then
+    if FallC = 0 then
+      Joy = J1
+      V = Joy & 16
+      if V = 0 then
+        FireL = 0
+      else
+        if FireL = 1 then
+          Skip = 1
+        else
+          Jmp = 4
+          FireL = 1
+          play sound SndJump
+        end if
+      end if
+    end if
+  end if
+  if Skip = 0 then
+    Done = Actions()
+    if Done = 0 then GemCheck
+  end if
+  if JewLeft = 0 then
+    ScreenDone
+  else
+    MoveMiner
+    MoveBombs
+    Touches
+    if FrzT > 0 then dec FrzT
+    if Safe > 0 then dec Safe
+  end if
+  return
+end sub
+
+' the sprites' positions at the start of the pass (they glide from there)
+sub SaveOld:
+  OPx = Px
+  OPy = Py
+  for Mi = 0 to NMons - 1
+    Mons[Mi].OX = Mons[Mi].X
+    Mons[Mi].OY = Mons[Mi].Y
+  next
+  return
+end sub
+
+' what kind of cell: 0 empty, 1 block, 2 ladder, 3 gem, 4 solid
+function CellK(u8 Cc, u8 Rr) as u8
+  u8 Ch
+  u8 R
+  R = 4
+  if Cc < 2 then return R
+  if Cc > 29 then return R
+  if Rr < 2 then return R
+  Ch = get char at Cc, Rr
+  select case Ch
+    case 32, TBg0, TBg1, TBg2, TBg3
+      R = 0
+    case TBlock
+      R = 1
+    case TLadder
+      R = 2
+    case TJewel
+      R = 3
+  end select
+  return R
+
+' the background tile of an empty cell
+function BgAt(u8 Cc, u8 Rr) as u8
+  u8 B
+  B = Cc * 7 + Rr * 13
+  B = B & 15
+  if B < 3 then
+    B = B + TBg1
+  else
+    B = TBg0
+  end if
+  return B
+
+' take or put a block (down + button) or a ladder (up + button alone);
+' 1 when one was taken or put (or a block try failed), which also ends a jump
+function Actions() as u8
+  u8 Dc
+  u8 Dr
+  u8 Kd
+  u8 R
+  R = 0
+  V = Joy & 18
+  if V = 18 then
+    Dr = Pr + 2
+    if Face = 0 then
+      Dc = Pc + 1
+    else
+      Dc = Pc - 1
+    end if
+    Kd = CellK(Dc, Dr)
+    if Kd = 0 then
+      if InvB > 0 then
+        dec InvB
+        put char TBlock at Dc, Dr
+        play sound SndPut
+      end if
+      R = 1
+    end if
+    if Kd = 1 then
+      if InvB < 4 then
+        inc InvB
+        put char BgAt(Dc, Dr) at Dc, Dr
+        play sound SndTake
+      end if
+      R = 1
+    end if
+    if R = 1 then
+      Joy = 0
+      Jmp = 0
+      ShowInv
+      return R
+    end if
+  end if
+  if Joy = 17 then
+    Dr = Pr + 1
+    Kd = CellK(Pc, Dr)
+    if Kd = 0 then
+      if InvL > 0 then
+        dec InvL
+        put char TLadder at Pc, Dr
+        play sound SndPut
+        R = 1
+      end if
+    end if
+    if Kd = 2 then
+      if InvL < 4 then
+        inc InvL
+        put char BgAt(Pc, Dr) at Pc, Dr
+        play sound SndTake
+        R = 1
+      end if
+    end if
+    if R = 1 then
+      Joy = 0
+      Jmp = 0
+      ShowInv
+    end if
+  end if
+  return R
+
+' a gem at the miner's body, else at his legs: 100
+sub GemCheck:
+  u8 Gr
+  Gr = Pr
+  K = CellK(Pc, Gr)
+  if K <> 3 then
+    Gr = Pr + 1
+    K = CellK(Pc, Gr)
+  end if
+  if K <> 3 then return
+  put char BgAt(Pc, Gr) at Pc, Gr
+  Score += 100
+  inc Gems
+  ShowScore
+  play sound SndGem
+  dec JewLeft
+  return
+end sub
+
+' jump, fall, walk, climb: every test on the cells where the pass began
+sub MoveMiner:
+  i8 Dr
+  u8 Kb
+  u8 Kl
+  u8 Kf
+  u8 Kh
+  u8 Nc
+  Dr = 0
+  Nc = Pc
+  Kb = CellK(Pc, Pr)
+  Kl = CellK(Pc, Pr + 1)
+  Kf = CellK(Pc, Pr + 2)
+  if Jmp > 0 then
+    dec Jmp
+    if Jmp = 0 then FallC = 1
+    Kh = CellK(Pc, Pr - 1)
+    if Kh = 0 then Dr = -1
+    if Kh = 3 then Dr = -1
+  else
+    if Kf = 0 or Kf = 3 then
+      if Kb = 2 or Kl = 2 then
+        FallC = 0
+      else
+        Dr = 1
+        inc FallC
+      end if
+    else
+      FallC = 0
+    end if
+  end if
+  V = Joy & 8
+  if V > 0 then
+    K = CellK(Pc + 1, Pr + 1)
+    if K <> 1 and K <> 4 then
+      Nc = Pc + 1
+      Face = 0
+      Pose = 0
+      WalkI = (WalkI + 1) & 3
+    end if
+  end if
+  V = Joy & 4
+  if V > 0 then
+    K = CellK(Pc - 1, Pr + 1)
+    if K <> 1 and K <> 4 then
+      Nc = Pc - 1
+      Face = 1
+      Pose = 0
+      WalkI = (WalkI + 1) & 3
+    end if
+  end if
+  V = Joy & 1
+  if V > 0 then
+    if Kb = 2 or Kb = 3 or Kl = 2 then
+      Dr = Dr - 1
+      Pose = 1
+      ClimbI = ClimbI xor 1
+    end if
+  end if
+  V = Joy & 2
+  if V > 0 then
+    K = 0
+    if Kf = 2 or Kf = 3 then K = 1
+    if Kf = 0 and Kl = 2 then K = 1
+    if K = 1 then
+      Dr = Dr + 1
+      Pose = 1
+      ClimbI = ClimbI xor 1
+    end if
+  end if
+  Pc = Nc
+  Pr = Pr + Dr
+  if Pr < 2 then Pr = 2
+  Px = Pc * 8 - 4
+  Py = Pr * 8
+  return
+end sub
+
+' the bombs (C64 $0BD0-$0CBA)
+sub MoveBombs:
+  if MonDelay > 0 then
+    dec MonDelay
+  else
+    if FrzT = 0 then BombsGo
+  end if
+  return
+end sub
+
+sub BombsGo:
+  u8 Bx
+  u8 By
+  u8 S
+  for Mi = 0 to NMons - 1
+    if Mons[Mi].Wt > 0 then
+      dec Mons[Mi].Wt
+      V = Mons[Mi].Wt
+      Mons[Mi].Pat = WaitPat[V]
+      Mons[Mi].RT = LRet
+    else
+      if Mons[Mi].Pat = SBf0 then
+        Mons[Mi].Pat = SBf1
+      else
+        Mons[Mi].Pat = SBf0
+      end if
+      Bx = Mons[Mi].X
+      By = Mons[Mi].Y
+      S = MSpd
+      if Mons[Mi].DX = 1 then
+        if Bx > 226 - S then
+          Bx = 226
+        else
+          Bx = Bx + S
+        end if
+      else
+        if Bx < 14 + S then
+          Bx = 14
+        else
+          Bx = Bx - S
+        end if
+      end if
+      if Mons[Mi].DY = 1 then
+        if By < 16 + S then
+          By = 16
+        else
+          By = By - S
+        end if
+      else
+        if By > 166 - S then
+          By = 166
+        else
+          By = By + S
+        end if
+      end if
+      Mons[Mi].X = Bx
+      Mons[Mi].Y = By
+      dec Mons[Mi].StepC
+      if Mons[Mi].StepC = 0 then
+        dec Mons[Mi].RT
+        if Mons[Mi].RT = 0 then
+          Mons[Mi].Wt = 9
+          Mons[Mi].TX = Px
+          Mons[Mi].TY = Py
+          play sound SndFuse
+        end if
+        Mons[Mi].StepC = LStep
+        if Bx >= Mons[Mi].TX then
+          Mons[Mi].DX = 0
+        else
+          Mons[Mi].DX = 1
+        end if
+        if By >= Mons[Mi].TY then
+          Mons[Mi].DY = 1
+        else
+          Mons[Mi].DY = 0
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' 1 when box A (x a0..a1) overlaps box B (b0..b1) on one axis
+function Over1(u8 A0, u8 A1, u8 B0, u8 B1) as u8
+  u8 R
+  R = 1
+  if A1 < B0 then R = 0
+  if B1 < A0 then R = 0
+  return R
+
+' the goblet first (as the C64), else any bomb: a life lost
+sub Touches:
+  u8 Hx
+  u8 Hy
+  u8 Hit
+  Hx = Px + 5
+  Hy = Py + 1
+  Hit = 0
+  if BonOn = 1 then
+    K = Over1(Hx, Hx + 5, BonX + 2, BonX + 13)
+    if K = 1 then
+      K = Over1(Hy, Hy + 14, BonY + 2, BonY + 13)
+      if K = 1 then
+        BonOn = 0
+        FrzT = FrzLen
+        Score += 200
+        ShowScore
+        play sound SndBonus
+        Hit = 2
+      end if
+    end if
+  end if
+  if Hit = 0 then
+    if Safe = 0 then BombHit
+  end if
+  return
+end sub
+
+sub BombHit:
+  u8 Hx
+  u8 Hy
+  u8 Hit
+  Hx = Px + 5
+  Hy = Py + 1
+  Hit = 0
+  for Mi = 0 to NMons - 1
+    K = Over1(Hx, Hx + 5, Mons[Mi].X + 2, Mons[Mi].X + 13)
+    if K = 1 then
+      K = Over1(Hy, Hy + 14, Mons[Mi].Y + 3, Mons[Mi].Y + 15)
+      if K = 1 then Hit = 1
+    end if
+  next
+  if Hit = 1 then
+    Phase = 1
+    Timer = 72
+    inc Deaths
+    play sound SndBoom
+    play sound SndDie
+  end if
+  return
+end sub
+
+' the miner blinks (3 a second), then a life goes and the screen restarts
+sub DyingFrame:
+  dec Timer
+  Fc = PassN - 1
+  DrawSprites
+  if Timer > 0 then return
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  dec Lives
+  StartScreen
+  Safe = SafeLen
+  return
+end sub
+
+' a screen cleared: one more life (10 at most), the next screen or round
+sub ScreenDone:
+  Phase = 2
+  Timer = 60
+  mute all
+  play sound SndClear
+  return
+end sub
+
+sub ClearFrame:
+  dec Timer
+  Fc = PassN - 1
+  DrawSprites
+  if Timer > 0 then return
+  if Lives < MaxLives then inc Lives
+  inc Scr
+  if Scr = 6 then
+    Scr = 0
+    inc Rd
+    if Rd = 5 then
+      Won = 1
+      Over = 1
+      return
+    end if
+  end if
+  StartScreen
+  return
+end sub
+
+' gems twinkle: the gem tile's pattern changes every 20 frames
+sub TwinkleGems:
+  Mix = Mix xor 1
+  if Mix = 1 then
+    copy TilePat + 56 count 8 to vram.pattern + 1072
+    copy TilePat + 56 count 8 to vram.pattern + 3120
+    copy TilePat + 56 count 8 to vram.pattern + 5168
+  else
+    copy TilePat + 48 count 8 to vram.pattern + 1072
+    copy TilePat + 48 count 8 to vram.pattern + 3120
+    copy TilePat + 48 count 8 to vram.pattern + 5168
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a sprite coordinate on its way from O (pass start) to N (pass end)
+function Tw(u8 O, u8 N) as u8
+  i16 D
+  u8 F
+  u8 R
+  F = Fc + 1
+  D = N
+  D = D - O
+  D = D * F
+  D = D / PassN
+  R = O + D
+  return R
+
+' sprites 0-1 the miner (detail, body), 2-5 the bombs, 6 the goblet
+sub DrawSprites:
+  u8 Sx
+  u8 Sy
+  u8 P
+  u8 Cl
+  Sx = Tw(OPx, Px)
+  Sy = Tw(OPy, Py) - 1
+  if Pose = 1 then
+    P = ClimbI * 8 + SC0d
+  else
+    P = WalkI
+    if P = 3 then P = 1
+    P = P * 16 + Face * 8
+  end if
+  V = 0
+  if Phase = 1 then
+    V = Timer / 12
+    V = V & 1
+  end if
+  if Safe > 0 then
+    V = Tick / 12
+    V = V & 1
+  end if
+  if V = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    set sprite 0 to Sy,Sx,P,9
+    set sprite 1 to Sy,Sx,P + 4,3
+  end if
+  Cl = 8
+  if FrzT > 0 then Cl = 14
+  for Ds = 0 to NMon - 1
+    if Ds < NMons then
+      Sx = Tw(Mons[Ds].OX, Mons[Ds].X)
+      Sy = Tw(Mons[Ds].OY, Mons[Ds].Y) - 1
+      set sprite Ds + 2 to Sy,Sx,Mons[Ds].Pat,Cl
+    else
+      set sprite Ds + 2 to 192,0,0,0
+    end if
+  next
+  if BonOn = 1 then
+    set sprite 6 to BonY - 1,BonX,SGoblet,11
+  else
+    set sprite 6 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub ShowScore:
+  print at 23,1, Score
+  return
+end sub
+
+' the ladders and blocks in hand, four slots each
+sub ShowInv:
+  for J = 0 to 3
+    if J < InvL then
+      put char TLadder at 13 + J, 1
+    else
+      put char TSlot at 13 + J, 1
+    end if
+    if J < InvB then
+      put char TBlock at 18 + J, 1
+    else
+      put char TSlot at 18 + J, 1
+    end if
+  next
+  return
+end sub
+
+sub ShowLives:
+  fill 32 count 10 at 2,1
+  if Lives > 0 then fill TLife count Lives at 2,1
+  return
+end sub
+
+' a screen from the table: the cavern, the floor, blocks, ladders, gems
+sub DrawLevel:
+  u8 Nb
+  u8 Cc
+  u8 Rr
+  u8 Ln
+  u8 R
+  for R = 2 to 21
+    for Cc = 2 to 29
+      put char BgAt(Cc, R) at Cc, R
+    next
+  next
+  fill TFloor count 28 at 2,22
+  Lp = LvOfs[Scr]
+  Nb = LvData[Lp]
+  inc Lp
+  for Li = 1 to Nb
+    Cc = LvData[Lp]
+    Rr = LvData[Lp + 1]
+    Ln = LvData[Lp + 2]
+    Lp = Lp + 3
+    fill TBlock count Ln at Cc, Rr
+  next
+  Nb = LvData[Lp]
+  inc Lp
+  for Li = 1 to Nb
+    Cc = LvData[Lp]
+    Rr = LvData[Lp + 1]
+    Ln = LvData[Lp + 2]
+    Lp = Lp + 3
+    for R = 0 to Ln - 1
+      put char TLadder at Cc, Rr + R
+    next
+  next
+  Nb = LvData[Lp]
+  inc Lp
+  JewLeft = Nb
+  for Li = 1 to Nb
+    Cc = LvData[Lp]
+    Rr = LvData[Lp + 1]
+    Lp = Lp + 2
+    put char TJewel at Cc, Rr
+  next
+  ' the C64's speed less round / 2, times 3/4 for the smaller cavern
+  K = Rd / 2
+  MSpd = LvData[Lp] - K
+  MSpd = (MSpd * 3 + 2) / 4
+  LStep = LvData[Lp + 1]
+  LRet = LvData[Lp + 2]
+  BonX = LvData[Lp + 3]
+  BonY = LvData[Lp + 4]
+  return
+end sub
+
+' the bombs at their corners, turn counters from the clock (1, 3, 5, 7)
+sub SetBombs:
+  u8 Rv
+  for Mi = 0 to NMon - 1
+    Rv = random(0, 255) + Tick
+    Rv = Rv + Mi * 3
+    Mons[Mi].X = MonX[Mi]
+    Mons[Mi].Y = MonY[Mi]
+    Mons[Mi].OX = MonX[Mi]
+    Mons[Mi].OY = MonY[Mi]
+    Mons[Mi].DX = Rv & 1
+    Mons[Mi].DY = Rv & 1
+    K = (Rv | 1) & 7
+    Mons[Mi].StepC = K
+    Mons[Mi].RT = K
+    Mons[Mi].Wt = 0
+    Mons[Mi].TX = StartC * 8 - 4
+    Mons[Mi].TY = StartR * 8
+    Mons[Mi].Pat = SBf0
+  next
+  return
+end sub
+
+' the ROUND / SCREEN card, then the screen as new
+sub StartScreen:
+  NewScreen
+  NumU = Rd
+  print at 11,9, "ROUND ", digits$(NumU, 1)
+  NumU = Scr + 1
+  print at 10,11, "SCREEN ", digits$(NumU, 1)
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 60 frames
+  nmi off
+  NewScreen
+  DrawLevel
+  ShowLives
+  InvL = 0
+  InvB = 0
+  ShowInv
+  ShowScore
+  Pc = StartC
+  Pr = StartR
+  Px = Pc * 8 - 4
+  Py = Pr * 8
+  OPx = Px
+  OPy = Py
+  Jmp = 0
+  FallC = 0
+  Joy = 0
+  Face = 0
+  Pose = 0
+  WalkI = 0
+  NMons = Rd
+  if Spd = 1 then
+    if Rd > 1 then NMons = Rd - 1
+  end if
+  Safe = 0
+  SetBombs
+  MonDelay = StartWait
+  FrzT = 0
+  BonOn = 1
+  Phase = 0
+  Fc = 0
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Lives = 4
+  Scr = 0
+  Rd = 1
+  Over = 0
+  Won = 0
+  Deaths = 0
+  Gems = 0
+  FireL = 1
+  PassN = PassLen[Spd - 1]
+  StartScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo in gem and stone bricks, a bomb drifting, START /
+' SPEED / CREDITS, the best score, the tune once
+sub TitlePage:
+  u8 Tr
+  NewScreen
+  for Tr = 0 to 10
+    for J = 0 to 27
+      Lp = Tr
+      Lp = Lp * 28 + J
+      V = TitleMap[Lp]
+      if V > 0 then put char V at J + 2, Tr + 3
+    next
+  next
+  print at 7,15, "COMPUTE!'S GAZETTE"
+  print at 10,16, "JANUARY 1989"
+  print at 12,18, "START"
+  print at 12,19, "SPEED"
+  print at 12,20, "CREDITS"
+  if Hi > 0 then
+    print at 2,22, "BEST"
+    print at 7,22, Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 456
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  TitleAnim
+  V = J1 & 15
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      end if
+      K = V & 2
+      if K > 0 then
+        if Menu < 2 then inc Menu
+      end if
+      K = V & 12
+      if K > 0 then
+        if Menu = 1 then
+          if K = 4 then
+            if Spd > 1 then dec Spd
+          else
+            if Spd < 4 then inc Spd
+          end if
+        end if
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    inc Spd
+    if Spd > 4 then Spd = 1
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+' a bomb drifts to and fro under the logo
+sub TitleAnim:
+  V = Tick & 127
+  if V < 64 then
+    X = V * 2 + 60
+  else
+    X = 188 - (V - 64) * 2
+  end if
+  K = Tick / 16
+  K = K & 1
+  set sprite 2 to 7,X,SBf0 + K * 4,8
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,18
+  put char 32 at 10,19
+  put char 32 at 10,20
+  J = Menu + 18
+  put char 62 at 10,J
+  NumU = Spd
+  print at 18,19, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "JEWEL GRAB"
+  print at 2,4, "BASED ON JEWEL GRAB,"
+  print at 2,5, "COMPUTE!'S GAZETTE DISK,"
+  print at 2,6, "JANUARY 1989 (COMMODORE 64"
+  print at 2,7, "MACHINE LANGUAGE)."
+  print at 2,9, "COLECOVISION GAME, MUSIC"
+  print at 2,10, "AND PICTURES BY CLAUDE"
+  print at 2,11, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "IN AMY BY AMY BIENVENU,"
+  print at 2,13, "2026."
+  print at 2,15, "MUSIC: GLITTER IN THE DEEP"
+  print at 2,16, "(ORIGINAL)"
+  print at 2,18, "DOWN+BUTTON: BLOCKS"
+  print at 2,19, "UP+BUTTON: LADDERS"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+JgJump:
+    db $40,$53,$31,$02,$40,$2E,$31,$02,$40,$0E,$31,$02,$40,$F1,$30,$02,$40,$D8,$30,$02,$40,$C0,$30,$02
+    db $50
+JgGem:
+    db $40,$47,$10,$03,$40,$35,$20,$03,$40,$2A,$30,$08,$50
+JgTake:
+    db $40,$7F,$20,$02,$40,$5F,$30,$03,$50
+JgPut:
+    db $40,$5F,$20,$02,$40,$7F,$30,$03,$50
+JgFuse:
+    db $00,$00,$73,$04,$00,$00,$93,$04,$10
+JgBoom:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$37,$0A,$00,$00,$57,$10,$10
+JgDie:
+    db $40,$7F,$20,$03,$40,$91,$20,$03,$40,$A4,$20,$03,$40,$BA,$20,$03,$40,$D4,$20,$03,$40,$F1,$20,$03
+    db $40,$11,$21,$03,$40,$37,$21,$03,$40,$62,$31,$03,$40,$91,$31,$03,$40,$C9,$31,$03,$40,$06,$32,$03
+    db $40,$4D,$32,$03,$40,$9E,$32,$03,$40,$F9,$32,$03,$40,$63,$33,$03,$50
+JgBonus:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$04,$40,$39,$20,$0C,$50
+JgClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$10,$50
+JgStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0E,$50
+JgOver:
+    db $40,$AA,$10,$0A,$40,$BF,$20,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$53,$31,$1E,$50
+JgWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06
+    db $40,$55,$20,$1E,$50
+
+JgSoundTable:
+    dw JgTuneMel,$702B
+    dw JgTuneBass,$7035
+    dw JgJump,$7049
+    dw JgGem,$7049
+    dw JgTake,$7049
+    dw JgPut,$7049
+    dw JgFuse,$703F
+    dw JgBoom,$703F
+    dw JgDie,$7049
+    dw JgBonus,$7049
+    dw JgClear,$7049
+    dw JgStart,$7049
+    dw JgOver,$7049
+    dw JgWin,$7049
+; Glitter in the Deep (original)
+; Tiny Sound, 8 frames per step
+JgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $1F,$01,$21,$01,$23,$01,$01,$01,$1E,$01,$01,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$1F,$01,$21,$01,$23,$01,$28,$01,$26,$01
+    db $23,$01,$26,$01,$28,$01,$01,$01,$2F,$01,$01,$00,$01
+    db $FF
+JgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$10,$01,$0B,$01
+    db $07,$01,$0B,$01,$10,$01,$01,$01,$10,$01,$01,$00,$01
+    db $FF
+}

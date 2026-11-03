@@ -1,0 +1,1082 @@
+cartridge "MARATHON/COMPUTE!'S GAZETTE/1989"
+
+' MARATHON
+' A ColecoVision game based on "Marathon", COMPUTE!'s Gazette August 1989
+' (Commodore 128, BASIC 7.0 with a machine-language core; no author named
+' in the listing). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' BASIC listing and the disassembly of MARATHON ML, orig/), the game is
+' built for the ColecoVision: 16 x 16 sprites gliding a pixel a frame, a
+' tiled running track, sound effects and an original title tune.
+'
+' The game: you run on a grid of lanes (9 x 10 crossings, 24 x 16 pixels
+' apart, the original's spacing). A runner keeps going; the stick picks the
+' direction taken at the next crossing. Rival runners chase you; touching
+' one costs a runner. Pick up the flags for points. Survive a round and the
+' next one brings more or faster rivals. Every stretch you run takes a
+' hundredth of a mile off the 26 miles to go: reach 0 and you are the
+' greatest runner in history. Lose your last runner and the marathon is
+' over. Once a life, the button makes the rivals drop out for 4 seconds;
+' they come back at the corners.
+'
+' From the original: the grid and its bounds; you and the rivals move a
+' pixel a step and turn only at a crossing; your direction is latched from
+' the stick and taken at the next crossing (a blocked one stops you at the
+' edge); a rival at a crossing heads towards you along X three times out
+' of four (a counter shared by all rivals), else along Y, and keeps its
+' way when lined up on the chosen axis; rivals take two steps every SP
+' frames, you one a frame; rivals per round and SP from the DATA line
+' (2/3, 2/2, 2/2, 3/3, 3/2, 3/2, 4/3, 4/2, 4/2, 5/4, 5/3, 5/3, 5/3, 6/4,
+' 6/4, 6/3, 6/3, then stays); rivals start at random corners, you in the
+' middle going up; a flag at a random inner crossing, 15 x round a flag,
+' a new flag when one is taken; the button once a life: rivals gone 4 s,
+' back at random corners; 3 runners (2 spare shown), one more at rounds 4,
+' 8, 12...; the round timer runs on through deaths; a death keeps the
+' round; 26.00 miles to go; the track colour changes with every round and
+' life; the messages; the high score.
+'
+' Liberties: the round lasts 25 seconds (the listing counts 750 passes of
+' its BASIC loop, about 25-30 s on a C-128); a hundredth of a mile every
+' 12 frames of running (the listing: every 6 loop passes); collisions are
+' 8 x 8 boxes, not sprite pixels, and a flag and a rival touched on the
+' same frame both count; rivals that come back after the button never
+' land on a corner next to you (the opposite corner instead); a diagonal
+' on the stick turns the runner across its way (the original ignores
+' diagonals); 9 x 10 crossings instead of 10 x 12 (the screen).
+'
+' Controls: either controller; the stick steers, either button clears the
+' rivals once a life. On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes.
+
+const TTr000 = 128
+const TTr001 = 129
+const TTr002 = 130
+const TTr010 = 131
+const TTr011 = 132
+const TTr012 = 133
+const TTr100 = 134
+const TTr101 = 135
+const TTr102 = 136
+const TTr110 = 137
+const TTr111 = 138
+const TTr112 = 139
+const TTr200 = 140
+const TTr201 = 141
+const TTr202 = 142
+const TTr210 = 143
+const TTr211 = 144
+const TTr212 = 145
+const TTr300 = 146
+const TTr301 = 147
+const TTr302 = 148
+const TTr310 = 149
+const TTr311 = 150
+const TTr312 = 151
+const TIcon = 152
+const SRunu0 = 0
+const SRunu1 = 4
+const SRunr0 = 8
+const SRunr1 = 12
+const SRund0 = 16
+const SRund1 = 20
+const SRunl0 = 24
+const SRunl1 = 28
+const SFlag0 = 32
+const SFlag1 = 36
+const SFall = 40
+const NTiles8 = 200
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndFlag = 4
+const SndClear = 5
+const SndCrash = 6
+const SndBack = 7
+const SndLevel = 8
+const SndStart = 9
+const SndOver = 10
+const SndWin = 11
+const NSpr = 8
+const GX0 = 16
+const GY0 = 16
+const XMax = 208
+const YMax = 160
+const LevN = 1500
+const MiN = 12
+const BombN = 240
+const DeadN = 90
+const MsgN = 180
+const NLv = 17
+
+' rivals and their step period by round (the listing's DATA line 640)
+data NsT bytes
+  2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6
+end data
+data SpT bytes
+  3, 2, 2, 3, 2, 2, 3, 2, 2, 4, 3, 3, 3, 4, 4, 3, 3
+end data
+data CornX bytes
+  16, 208
+end data
+data CornY bytes
+  16, 160
+end data
+' runner pattern by direction (0 up, 1 right, 2 down, 3 left)
+data DirPat bytes
+  0, 8, 16, 24
+end data
+
+record Runner:
+  u8 X
+  u8 Y
+  u8 D
+  u8 R
+end record
+
+Runner Rv[6]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Off = 0
+u16 Sc = 0
+u16 Hi = 0
+u16 Mi = 2600
+u16 Ym = 0
+u8 Lv = 1
+u8 Li = 0
+u8 Ns = 2
+u8 Sp = 3
+u8 EnT = 0
+u8 Fa = 0
+u8 Rn = 2
+u8 Co = 0
+u8 Over = 0
+' the player: sprite corner, direction, pixels to the next crossing, the
+' latched stick direction, moved this pass, moves since the last
+' hundredth of a mile
+u8 Px = 112
+u8 Py = 96
+u8 Pd = 0
+u8 Pr = 0
+u8 Pw = 0
+u8 Moved = 0
+u8 MvC = 0
+' the flag
+u8 Fx = 0
+u8 Fy = 0
+u8 FlagOn = 0
+u8 Flags = 0
+' button: used this life, rivals gone for BombT frames
+u8 Bomb = 0
+u8 BombT = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ri = 0
+u8 Si = 0
+' a rival being moved
+u8 EX = 0
+u8 EY = 0
+u8 ED = 0
+u8 ER = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Hit = 0
+u8 RowA[26]
+u8 RowB[26]
+
+  tile screen
+  set sound table MrSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayPass
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  if Over = 2 then
+    print at 4,10, "                        "
+    print at 4,11, "  YOU'RE THE GREATEST   "
+    print at 4,12, "   RUNNER IN HISTORY    "
+    print at 4,13, "                        "
+    play sound SndWin
+  else
+    print at 2,10, "                           "
+    print at 2,11, "THE MARATHON HAS TERMINATED"
+    print at 2,12, "                           "
+    play sound SndOver
+  end if
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayPass:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      if Rn = 0 then
+        Over = 1
+      else
+        dec Rn
+        NewLife
+      end if
+    end if
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      inc Lv
+      V = Lv & 3
+      if V = 0 then inc Rn
+      Ym = 0
+      NewLife
+    end if
+    return
+  end if
+  if Press = 1 then
+    if Bomb = 0 then
+      Bomb = 1
+      BombT = BombN
+      play sound SndClear
+      ShowBreak
+    end if
+  end if
+  MovePlayer
+  if BombT > 0 then
+    dec BombT
+    if BombT = 0 then
+      PlaceRivals
+      play sound SndBack
+    end if
+  else
+    MoveRivals
+  end if
+  Collide
+  if Moved = 1 then
+    inc MvC
+    if MvC >= MiN then
+      MvC = 0
+      dec Mi
+      play sound SndStep
+      ShowMiles
+      if Mi = 0 then
+        Over = 2
+        return
+      end if
+    end if
+  end if
+  if DeadT > 0 then return
+  inc Ym
+  if Ym >= LevN then
+    MsgT = MsgN
+    BombT = 0
+    print at 4,11, "                        "
+    print at 4,12, "  PREPARE FOR LEVEL "
+    NumU = Lv + 1
+    print at 24,12, digits$(NumU, 2)
+    print at 26,12, "  "
+    print at 4,13, "                        "
+    play sound SndLevel
+  end if
+  return
+end sub
+
+' can a runner at a crossing (Gx, Gy) go way Gd? (the grid's bounds)
+function CanGo(u8 Gx, u8 Gy, u8 Gd) as u8
+  u8 Ok = 0
+  select case Gd
+  case 0
+    if Gy > GY0 then Ok = 1
+  case 1
+    if Gx < XMax then Ok = 1
+  case 2
+    if Gy < YMax then Ok = 1
+  case else
+    if Gx > GX0 then Ok = 1
+  end select
+  return Ok
+
+' pixels to the next crossing along way D (24 across, 16 up and down)
+function Span(u8 D) as u8
+  u8 S = 16
+  if D = 1 then S = 24
+  if D = 3 then S = 24
+  return S
+
+' you: at a crossing take the latched direction; a pixel a frame
+sub MovePlayer:
+  Moved = 0
+  if Pr = 0 then
+    Pd = Pw
+    if CanGo(Px, Py, Pd) = 1 then Pr = Span(Pd)
+  end if
+  if Pr > 0 then
+    select case Pd
+    case 0
+      dec Py
+    case 1
+      inc Px
+    case 2
+      inc Py
+    case 3
+      dec Px
+    end select
+    dec Pr
+    Moved = 1
+  end if
+  return
+end sub
+
+' the rivals: every Sp frames each takes two steps (MARATHON ML $14DF)
+sub MoveRivals:
+  if EnT = 0 then
+    EnT = Sp
+    for Ci = 0 to Ns - 1
+      EX = Rv[Ci].X
+      EY = Rv[Ci].Y
+      ED = Rv[Ci].D
+      ER = Rv[Ci].R
+      RivalStep
+      RivalStep
+      Rv[Ci].X = EX
+      Rv[Ci].Y = EY
+      Rv[Ci].D = ED
+      Rv[Ci].R = ER
+    next
+  end if
+  dec EnT
+  return
+end sub
+
+' one pixel step of the rival in EX, EY, ED, ER ($13ED-$1373): at a
+' crossing it heads for you, along X three times out of four
+sub RivalStep:
+  if ER = 0 then
+    inc Fa
+    V = Fa & 3
+    T = 0
+    if V >= 1 then
+      if EX > Px then
+        ED = 3
+        T = 1
+      elseif EX < Px then
+        ED = 1
+        T = 1
+      end if
+    end if
+    if T = 0 then
+      if EY > Py then
+        ED = 0
+      elseif EY < Py then
+        ED = 2
+      end if
+    end if
+    if CanGo(EX, EY, ED) = 1 then ER = Span(ED)
+  end if
+  if ER > 0 then
+    select case ED
+    case 0
+      dec EY
+    case 1
+      inc EX
+    case 2
+      inc EY
+    case 3
+      dec EX
+    end select
+    dec ER
+  end if
+  return
+end sub
+
+' a flag taken scores 15 x the round; a rival touched costs a runner
+sub Collide:
+  if FlagOn = 1 then
+    if Near(Fx, Fy, 10) = 1 then
+      W16 = Lv
+      W16 = W16 * 15
+      Sc = Sc + W16
+      inc Flags
+      play sound SndFlag
+      ShowScore
+      PlaceFlag
+    end if
+  end if
+  Hit = 0
+  if BombT = 0 then
+    for Ci = 0 to Ns - 1
+      EX = Rv[Ci].X
+      EY = Rv[Ci].Y
+      if Near(EX, EY, 8) = 1 then Hit = 1
+    next
+  end if
+  if Hit = 1 then
+    DeadT = DeadN
+    play sound SndCrash
+  end if
+  return
+end sub
+
+' is a sprite at (Ax, Ay) closer to you than Lim on both axes?
+function Near(u8 Ax, u8 Ay, u8 Lim) as u8
+  u8 Res = 0
+  i16 Dx = Ax - Px
+  i16 Dy = Ay - Py
+  if abs(Dx) < Lim then
+    if abs(Dy) < Lim then Res = 1
+  end if
+  return Res
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a flag at a random inner crossing (the listing's ZX(2-7), ZY(2-8))
+sub PlaceFlag:
+  Rand
+  V = Rs & 255
+  V = V % 7
+  Fx = V * 24
+  Fx = Fx + 40
+  V = highbyte(Rs)
+  V = V % 8
+  Fy = V << 4
+  Fy = Fy + 32
+  FlagOn = 1
+  return
+end sub
+
+' the rivals at random corners, never the one next to you
+sub PlaceRivals:
+  for Si = 0 to Ns - 1
+    Rand
+    V = Rs & 1
+    K = Rs & 2
+    K = K >> 1
+    X = CornX[V]
+    Y = CornY[K]
+    if Near(X, Y, 72) = 1 then
+      V = V ^ 1
+      K = K ^ 1
+      X = CornX[V]
+      Y = CornY[K]
+    end if
+    Rv[Si].X = X
+    Rv[Si].Y = Y
+    Rv[Si].D = 0
+    Rv[Si].R = 0
+  next
+  EnT = 0
+  return
+end sub
+
+' a new life or round: you in the middle going up, rivals at corners,
+' a new flag, the button back, the track in its next colour
+sub NewLife:
+  Li = Lv
+  if Li > NLv then Li = NLv
+  Ns = NsT[Li - 1]
+  Sp = SpT[Li - 1]
+  Px = 112
+  Py = 96
+  Pd = 0
+  Pw = 0
+  Pr = 0
+  Bomb = 0
+  BombT = 0
+  DeadT = 0
+  MsgT = 0
+  Flags = 0
+  inc Co
+  PlaceRivals
+  PlaceFlag
+  HideSprites
+  Rearm
+  wait
+  nmi off
+  DrawTrack
+  ShowHud
+  DrawSprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite 0 you, 1-6 the rivals, 7 the flag
+sub DrawSprites:
+  Y = Py - 1
+  if DeadT > 0 then
+    set sprite 0 to Y,Px,SFall,15
+  elseif TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    V = Px + Py
+    V = V >> 2
+    V = V & 1
+    K = V << 2
+    K = K + DirPat[Pd]
+    set sprite 0 to Y,Px,K,15
+  end if
+  for Ci = 0 to 5
+    N = Ci + 1
+    T = 0
+    if Ci < Ns then T = 1
+    if BombT > 0 then T = 0
+    if MsgT > 0 then T = 0
+    if T = 0 then
+      set sprite N to 192,0,0,0
+    else
+      X = Rv[Ci].X
+      Y = Rv[Ci].Y
+      C = Rv[Ci].D
+      V = X + Y
+      V = V >> 2
+      V = V & 1
+      K = V << 2
+      K = K + DirPat[C]
+      Y = Y - 1
+      set sprite N to Y,X,K,11
+    end if
+  next
+  if FlagOn = 1 then
+    if MsgT = 0 then
+      V = Tick >> 4
+      V = V & 1
+      K = V << 2
+      K = K + SFlag0
+      C = Flags & 1
+      if C = 0 then
+        C = 7
+      else
+        C = 13
+      end if
+      Y = Fy - 1
+      set sprite 7 to Y,Fx,K,C
+    else
+      set sprite 7 to 192,0,0,0
+    end if
+  else
+    set sprite 7 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' the track: rows 2-21, columns 2-27, lanes 16 pixels high, lines down
+' every 24 pixels; colour scheme Co & 3
+sub DrawTrack:
+  V = Co & 3
+  T = V * 6
+  T = T + TTr000
+  for Ri = 0 to 25
+    V = Ri % 3
+    if V = 0 then
+      K = 1
+    elseif V = 1 then
+      K = 2
+    else
+      K = 0
+    end if
+    RowA[Ri] = T + K
+    RowB[Ri] = T + K + 3
+  next
+  for Ri = 2 to 21
+    Off = Ri
+    Off = Off * 32
+    Off = Off + 2
+    V = Ri & 1
+    if V = 0 then
+      copy RowA count 26 to vram.name + Off
+    else
+      copy RowB count 26 to vram.name + Off
+    end if
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "LV"
+  NumU = Lv
+  print at 5,1, digits$(NumU, 2)
+  print at 9,1, "SCORE"
+  print at 22,1, "HI"
+  NumU = Hi
+  print at 25,1, digits$(NumU, 5)
+  ShowScore
+  print at 2,22, "RUNNERS"
+  NumU = Rn
+  print at 10,22, digits$(NumU, 1)
+  print at 19,22, "MILES"
+  ShowBreak
+  ShowMiles
+  return
+end sub
+
+sub ShowScore:
+  NumU = Sc
+  print at 15,1, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowBreak:
+  if Bomb = 0 then
+    print at 12,22, "BREAK"
+  else
+    print at 12,22, "     "
+  end if
+  return
+end sub
+
+sub ShowMiles:
+  NumU = Mi / 100
+  print at 25,22, digits$(NumU, 2)
+  print at 27,22, "."
+  W16 = NumU * 100
+  NumU = Mi - W16
+  print at 28,22, digits$(NumU, 2)
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lv = 1
+  Rn = 2
+  Mi = 2600
+  Ym = 0
+  MvC = 0
+  Fa = 0
+  Over = 0
+  TitleOn = 0
+  Co = 255
+  NewScreen
+  NewLife
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' the stick: a straight direction is latched; a diagonal turns across the
+' way you run
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  N = V & 3
+  K = V & 12
+  if N = 3 then N = 0
+  if K = 12 then K = 0
+  if N > 0 then
+    if K > 0 then
+      ' diagonal: the part across the way you run
+      C = Pd & 1
+      if C = 0 then
+        N = 0
+      else
+        K = 0
+      end if
+    end if
+  end if
+  if N = 1 then Pw = 0
+  if N = 2 then Pw = 2
+  if K = 4 then Pw = 3
+  if K = 8 then Pw = 1
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for Si = 0 to 7
+    set sprite Si to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the track, three runners jogging, the tune once,
+' START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  Co = 1
+  DrawTrack
+  for Ri = 6 to 17
+    fill 32 count 22 at 5,Ri
+  next
+  print at 8,7, "M A R A T H O N"
+  print at 6,9, "COMPUTE!'S GAZETTE"
+  print at 10,10, "AUGUST 1989"
+  print at 11,13, "START GAME"
+  print at 11,14, "CREDITS"
+  print at 7,16, "HIGH SCORE"
+  NumU = Hi
+  print at 18,16, digits$(NumU, 5)
+  put char TIcon at 6,7
+  put char TIcon at 24,7
+  ShowMenu
+  ' three runners jog along the top and bottom lanes
+  Ns = 3
+  Rv[0].X = 16
+  Rv[0].Y = 16
+  Rv[1].X = 88
+  Rv[1].Y = 160
+  Rv[2].X = 160
+  Rv[2].Y = 16
+  for Si = 0 to 2
+    Rv[Si].D = 1
+  next
+  TitleOn = 1
+  FlagOn = 0
+  BombT = 0
+  MsgT = 0
+  DeadT = 0
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 540
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  V = Tick & 1
+  if V = 0 then
+    for Si = 0 to 2
+      X = Rv[Si].X
+      inc X
+      if X > XMax then X = GX0
+      Rv[Si].X = X
+    next
+  end if
+  DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,14
+  V = Menu + 13
+  put char 62 at 9,V
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "MARATHON"
+  print at 2,5, "BASED ON MARATHON,"
+  print at 2,6, "COMPUTE!'S GAZETTE AUGUST"
+  print at 2,7, "1989 (COMMODORE 128)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: LONG ROAD RUN"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $18,$18,$C5,$A3,$18,$24,$42,$00
+end data
+data TileCol bytes
+  $06,$06,$06,$06,$06,$06,$06,$0F
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$0F
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$0F
+  $0F,$06,$06,$06,$06,$06,$06,$06
+  $0F,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $0F,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $04,$04,$04,$04,$04,$04,$04,$0F
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$0F
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$0F
+  $0F,$04,$04,$04,$04,$04,$04,$04
+  $0F,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $0F,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$0F
+  $0F,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0F,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $0F,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0F
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$0F
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$0F
+  $0F,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0F,$FD,$FD,$FD,$FD,$FD,$FD,$FD
+  $0F,$FD,$FD,$FD,$FD,$FD,$FD,$FD
+  $B1,$B1,$1B,$1B,$B1,$B1,$B1,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$01,$01,$00,$07,$0B,$0B,$03,$02,$02,$02,$00,$00,$00
+  $00,$00,$00,$80,$80,$80,$E0,$D0,$C0,$C0,$40,$20,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$07,$0B,$03,$03,$02,$04,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$E0,$D0,$D0,$C0,$40,$40,$40,$00,$00,$00
+  $00,$00,$00,$01,$01,$00,$03,$05,$09,$01,$02,$04,$08,$00,$00,$00
+  $00,$00,$00,$80,$80,$80,$D0,$C0,$80,$C0,$40,$20,$10,$00,$00,$00
+  $00,$00,$00,$01,$01,$00,$03,$05,$01,$01,$01,$02,$02,$00,$00,$00
+  $00,$00,$00,$80,$80,$80,$C0,$D0,$80,$80,$40,$40,$20,$00,$00,$00
+  $00,$00,$00,$01,$03,$01,$07,$0B,$03,$03,$02,$04,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$80,$E0,$D0,$D0,$C0,$40,$40,$40,$00,$00,$00
+  $00,$00,$00,$01,$03,$01,$07,$0B,$0B,$03,$02,$02,$02,$00,$00,$00
+  $00,$00,$00,$80,$C0,$80,$E0,$D0,$C0,$C0,$40,$20,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$0B,$03,$01,$03,$02,$04,$08,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$C0,$A0,$90,$80,$40,$20,$10,$00,$00,$00
+  $00,$00,$00,$01,$01,$01,$03,$0B,$01,$01,$02,$02,$04,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$C0,$A0,$80,$80,$80,$40,$40,$00,$00,$00
+  $00,$00,$00,$03,$02,$03,$02,$03,$02,$02,$02,$02,$07,$00,$00,$00
+  $00,$00,$00,$E0,$A0,$60,$A0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$02,$03,$02,$03,$02,$02,$02,$02,$07,$00,$00,$00
+  $00,$00,$00,$C0,$B0,$50,$B0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$08,$35,$0F,$13,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$20,$80,$D8,$C8,$40,$00,$00,$00,$00
+end data
+
+asm {
+MrStep:
+    db $00,$00,$32,$01,$00,$00,$62,$01,$10
+MrFlag:
+    db $40,$47,$10,$03,$40,$35,$10,$03,$40,$2A,$20,$08,$50
+MrClear:
+    db $00,$00,$15,$04,$00,$00,$25,$06,$00,$00,$46,$08,$00,$00,$76,$0A,$10
+MrCrash:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$56,$0E,$10
+MrBack:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$30,$08,$50
+MrLevel:
+    db $40,$FE,$10,$08,$40,$E2,$10,$04,$40,$FE,$10,$04,$40,$E2,$10,$04,$40,$BF,$10,$08,$40,$D6,$10,$08
+    db $40,$AA,$20,$10,$40,$7F,$20,$18,$50
+MrStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$0E,$50
+MrOver:
+    db $40,$E2,$10,$0C,$40,$FE,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+MrWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+MrSoundTable:
+    dw MrTuneMel,$702B
+    dw MrTuneBass,$7035
+    dw MrStep,$703F
+    dw MrFlag,$7049
+    dw MrClear,$703F
+    dw MrCrash,$703F
+    dw MrBack,$7049
+    dw MrLevel,$7049
+    dw MrStart,$7049
+    dw MrOver,$7049
+    dw MrWin,$7049
+; Long Road Run (original)
+; Tiny Sound, 8 frames per step
+MrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$01,$21,$01,$01,$1E,$1F,$01,$23,$01
+    db $21,$01,$01,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$23,$01,$21,$01
+    db $1F,$01,$1E,$01,$1C,$01,$01,$1F,$01,$1E,$01,$1C,$1A,$01,$01,$1E
+    db $01,$1C,$01,$1A,$01,$19,$01,$1C,$01,$21,$01,$1F,$01,$1C,$01,$1A
+    db $01,$01,$01,$00,$01,$01
+    db $FF
+MrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$15,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$0D,$01
+    db $0E,$01,$01,$01,$00,$01
+    db $FF
+}

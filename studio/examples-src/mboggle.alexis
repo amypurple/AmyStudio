@@ -1,0 +1,946 @@
+cartridge "MIND BOGGLE/COMPUTE'S GAZETTE/1984"
+
+' MIND BOGGLE
+' A ColecoVision game based on "Mind Boggle", COMPUTE!'s Gazette, May
+' 1984 (Commodore 64 and VIC-20 BASIC, disk 1984-05; no author is named
+' in the listings or on the disk). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-for-line port: the rules are the C64 listing's (orig/,
+' checked against the VIC-20 one); the game is rebuilt for the
+' ColecoVision with colour bars, a hand that picks colours from a
+' palette, sound effects and a title tune.
+'
+' The game: the computer chooses four different colours out of six and
+' hides them in a row. Find them, in order, in ten tries. After each try
+' a black ball for each colour in its right place, a white ball for each
+' other right colour in a wrong place.
+'
+' From the original: the six colours (black, white, red, blue, purple,
+' green) shown as a numbered bar at the start; "I AM CHOOSING 4 COLORS
+' NOW" with random high notes; the code of four DIFFERENT colours (lines
+' 400-406), guesses may repeat colours; the beep asking for a guess;
+' each colour played as a bar three cells wide with its own note (lines
+' 1700-1705); the scoring of lines 900-912 (blacks, then for each code
+' colour left one white at most); the black balls with a rising sweep,
+' the white balls with a falling one (lines 3100/3200), blacks first;
+' tries listed top to bottom and numbered 1-10; after ten misses the
+' correct colours, "TOO BAD YOU MISSED!" / "10 TRIES IS ENOUGH." and the
+' low buzz; "YOU WIN!!" with the warble and the rating by tries: LUCKY
+' GUESS! (1), EXPERT!!! (2-3), PRETTY GOOD! (4-6), SO SO! (7-8), YOU
+' BARELY GOT IT! (9-10).
+'
+' Liberties: the joystick replaces typing four digits: left/right moves
+' the hand along the palette, the left button drops that colour into the
+' next hole, the right button takes the last one back, and with four
+' holes filled the left button tries the guess (so ILLEGAL INPUT! can't
+' happen; the buzz is kept for pressing the right button on an empty
+' row). The hidden row is shown as four "?" bars and opened at the end
+' (the original printed the answer under the board). A caret marks the
+' next hole. The palette bars are not numbered (nothing to type). No play-again question (and no CHICKEN!!): the title comes
+' back; it shows codes broken, games played and the best game, kept
+' until power off. The original's stray POKE S2 (S2 never set on the
+' C64, so it POKEs location 0) is the burble of the "thinking" sound.
+' Different from the earlier code-breaking port CYPHER: four bars from
+' six colours with no repeats in the code, ten tries, a palette and hand
+' instead of hole-by-hole colour cycling, no give-up, the original's
+' ratings.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes.
+
+const TC0l = 128
+const TC0m = 129
+const TC0r = 130
+const TC1l = 131
+const TC1m = 132
+const TC1r = 133
+const TC2l = 134
+const TC2m = 135
+const TC2r = 136
+const TC3l = 137
+const TC3m = 138
+const TC3r = 139
+const TC4l = 140
+const TC4m = 141
+const TC4r = 142
+const TC5l = 143
+const TC5m = 144
+const TC5r = 145
+const TEl = 146
+const TEm = 147
+const TEr = 148
+const TQl = 149
+const TQm = 150
+const TQr = 151
+const TKb = 152
+const TKw = 153
+const TKd = 154
+const TB0 = 155
+const TB1 = 156
+const TB2 = 157
+const TB3 = 158
+const TB4 = 159
+const TB5 = 160
+const TRule = 161
+const SHand = 0
+const SCaret = 4
+const NTiles8 = 272
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndNote0 = 3
+const SndNote1 = 4
+const SndNote2 = 5
+const SndNote3 = 6
+const SndNote4 = 7
+const SndNote5 = 8
+const SndThink = 9
+const SndAsk = 10
+const SndStep = 11
+const SndBlack = 12
+const SndWhite = 13
+const SndUndo = 14
+const SndBad = 15
+const SndWin = 16
+const SndLose = 17
+const NSpr = 2
+const TuneLen = 640
+const NoCol = 255
+const CodeY = 3
+const FirstY = 5
+const KeyX = 25
+const PalY = 17
+const Tries = 10
+
+record Hand:
+  u8 Pos
+  u8 X
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the code, the guess being made, all guesses (10 x 4)
+u8 Sec[4]
+u8 Gu[4]
+u8 Hist[40]
+' the listing's work arrays G() and C() (lines 900-912)
+u8 Gw[4]
+u8 Cw[4]
+u8 Bk = 0
+u8 Wh = 0
+u8 Turn = 0
+u8 NPut = 0
+u8 Best = 0
+bcd digits 4 Wins = 0
+bcd digits 4 Played = 0
+Hand Hd
+' game state: 0 title, 1 choosing, 2 playing, 4 over; Why 1 won, 2 lost
+u8 Gs = 0
+u8 Why = 0
+u8 Rpt = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 HelpMode = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Si = 0
+' scratch
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayInput
+  MoveHand
+  if Gs <> 4 then goto play_loop
+
+  ' the end: the code opened, a message, then the title on a press
+  HideSprites
+  Played += 1
+  ClearMsg
+  if Why = 1 then
+    Wins += 1
+    if Best = 0 or Turn < Best then Best = Turn
+    print at 10,20, "YOU WIN!!"
+    play sound SndWin
+    Reveal
+    ShowRating
+  else
+    print at 5,20, "TOO BAD YOU MISSED!"
+    print at 5,21, "10 TRIES IS ENOUGH."
+    print at 5,22, "CORRECT COLORS ABOVE"
+    Reveal
+    play sound SndLose
+  end if
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the board
+
+' the left column of hole I (0-3) in a try row
+function HoleCol(u8 I) as u8
+  return I * 4 + 8
+
+' the left column of palette colour I (0-5)
+function PalCol(u8 I) as u8
+  return I * 4 + 5
+
+' a bar of colour C (or an empty hole) three cells wide at Bx,By
+sub PutBar(u8 Bx, u8 By, u8 C):
+  u8 T = 0
+  if C = NoCol then
+    T = TEl
+  else
+    T = C * 3 + TC0l
+  end if
+  put char T at Bx,By
+  put char T + 1 at Bx + 1,By
+  put char T + 2 at Bx + 2,By
+  return
+
+sub PutHole(u8 I, u8 Ty, u8 C):
+  PutBar(HoleCol(I), Ty, C)
+  return
+
+sub ClearMsg:
+  for Si = 19 to 22
+    fill 32 count 28 at 2,Si
+  next
+  return
+
+sub DrawBoard:
+  u8 Ry = 0
+  u8 I = 0
+  print at 10,1, "MIND BOGGLE"
+  fill TRule count 28 at 2,2
+  print at 2,CodeY, "CODE"
+  for I = 0 to 3
+    X = HoleCol(I)
+    put char TQl at X,CodeY
+    put char TQm at X + 1,CodeY
+    put char TQr at X + 2,CodeY
+  next
+  for I = 0 to Tries - 1
+    Ry = I + FirstY
+    NumU = I + 1
+    print at 3,Ry, digits$(NumU, 2)
+    for Si = 0 to 3
+      PutHole(Si, Ry, NoCol)
+    next
+    fill TKd count 4 at KeyX,Ry
+  next
+  fill TRule count 28 at 2,15
+  for I = 0 to 5
+    PutBar(PalCol(I), PalY, I)
+  next
+  return
+
+' the key balls of try T: blacks first (with the rising sweep), then
+' whites (the falling sweep), each with a short pause like the listing
+sub DrawKeys(u8 T):
+  u8 Ry = 0
+  u8 Kx = 0
+  u8 K = 0
+  Ry = T + FirstY
+  Kx = KeyX
+  for K = 1 to Bk
+    put char TKb at Kx,Ry
+    inc Kx
+    play sound SndBlack
+    Pause(8)
+  next
+  for K = 1 to Wh
+    put char TKw at Kx,Ry
+    inc Kx
+    play sound SndWhite
+    Pause(8)
+  next
+  return
+
+sub Pause(u8 N):
+  u8 K = 0
+  for K = 1 to N
+    Frame1
+  next
+  return
+
+sub ShowHelp:
+  ClearMsg
+  put char TKb at 2,19
+  print at 3,19, "RIGHT PLACE"
+  put char TKw at 15,19
+  print at 16,19, "WRONG PLACE"
+  if NPut < 4 then
+    print at 2,21, "STICK, LEFT BUTTON: PUT IN"
+  else
+    print at 2,21, "LEFT BUTTON: TRY THESE!"
+  end if
+  print at 2,22, "RIGHT BUTTON: TAKE BACK"
+  HelpMode = NPut / 4
+  return
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' lines 900-912: B = same colour same place (both cleared); then each
+' code colour left matches at most one guess colour left (H flag)
+sub ScoreGuess:
+  u8 H = 0
+  u8 I = 0
+  u8 K = 0
+  Bk = 0
+  Wh = 0
+  for I = 0 to 3
+    Gw[I] = Gu[I] + 1
+    Cw[I] = Sec[I] + 1
+    if Gw[I] = Cw[I] then
+      inc Bk
+      Gw[I] = 0
+      Cw[I] = 0
+    end if
+  next
+  for I = 0 to 3
+    if Cw[I] <> 0 then
+      H = 0
+      for K = 0 to 3
+        if Cw[I] <> 0 and Cw[I] = Gw[K] then
+          H = 1
+          Gw[K] = 0
+          Cw[I] = 0
+        end if
+      next
+      Wh += H
+    end if
+  next
+  return
+
+' the guess is tried
+sub TryGuess:
+  u16 Hx = 0
+  u8 I = 0
+  ScoreGuess
+  for I = 0 to 3
+    Hx = Turn * 4 + I
+    Hist[Hx] = Gu[I]
+  next
+  DrawKeys(Turn)
+  inc Turn
+  if Bk = 4 then
+    Why = 1
+    Gs = 4
+  elseif Turn = Tries then
+    Why = 2
+    Gs = 4
+  else
+    NPut = 0
+    for I = 0 to 3
+      Gu[I] = NoCol
+    next
+    Pause(10)
+    play sound SndAsk
+    ShowHelp
+  end if
+  return
+
+' the correct colours, bar by bar with their notes (lines 2070-2075)
+sub Reveal:
+  u8 C = 0
+  for Si = 0 to 3
+    C = Sec[Si]
+    PutHole(Si, CodeY, C)
+    if Why <> 1 then play sound SndNote0 + C
+    Pause(16)
+  next
+  return
+
+' lines 4015-4019
+function Rating(u8 T) as u8
+  select case T
+  case 1
+    return 0
+  case 2 to 3
+    return 1
+  case 4 to 6
+    return 2
+  case 7, 8
+    return 3
+  end select
+  return 4
+
+sub ShowRating:
+  NumU = Turn
+  print at 9,21, "IN ", digits$(NumU, 2), " TRIES"
+  select case Rating(Turn)
+  case 0
+    print at 6,22, "LUCKY GUESS!"
+  case 1
+    print at 6,22, "EXPERT!!!"
+  case 2
+    print at 6,22, "PRETTY GOOD!"
+  case 3
+    print at 6,22, "SO SO!"
+  case else
+    print at 6,22, "YOU BARELY GOT IT!"
+  end select
+  return
+
+' ---------------------------------------------------------------------------
+' play
+
+sub PlayInput:
+  u8 St = 0
+  u8 Ry = 0
+  St = J1 | J2
+  St = St & 12
+  if St = 0 then
+    Rpt = 0
+  elseif Rpt > 0 then
+    dec Rpt
+  else
+    if WasStick = 0 then
+      Rpt = 14
+    else
+      Rpt = 7
+    end if
+    if St = 4 and Hd.Pos > 0 then
+      dec Hd.Pos
+      play sound SndStep
+    end if
+    if St = 8 and Hd.Pos < 5 then
+      inc Hd.Pos
+      play sound SndStep
+    end if
+  end if
+  WasStick = St
+  Ry = Turn + FirstY
+  if Press1 = 1 then
+    if NPut < 4 then
+      Gu[NPut] = Hd.Pos
+      PutHole(NPut, Ry, Hd.Pos)
+      play sound SndNote0 + Hd.Pos
+      inc NPut
+    else
+      TryGuess
+    end if
+  elseif Press2 = 1 then
+    if NPut > 0 then
+      dec NPut
+      Gu[NPut] = NoCol
+      PutHole(NPut, Ry, NoCol)
+      play sound SndUndo
+    else
+      play sound SndBad
+    end if
+  end if
+  if Gs = 2 and HelpMode <> NPut / 4 then ShowHelp
+  return
+
+' the hand glides 4 pixels a frame over its palette colour; the caret
+' sits under the next hole of the row being filled
+sub MoveHand:
+  u8 Tx = 0
+  u8 Cy = 0
+  u8 Cx = 0
+  Tx = PalCol(Hd.Pos) * 8 + 4
+  if Hd.X < Tx then Hd.X += 4
+  if Hd.X > Tx then Hd.X -= 4
+  Y = PalY * 8 - 13
+  set sprite 0 to Y,Hd.X,SHand,15
+  if NPut < 4 and Gs = 2 then
+    Cy = Turn + FirstY
+    Cy = Cy * 8 - 4
+    Cx = HoleCol(NPut) * 8 + 4
+    set sprite 1 to Cy,Cx,SCaret,11
+  else
+    set sprite 1 to 192,0,SCaret,0
+  end if
+  update sprites
+  return
+
+' ---------------------------------------------------------------------------
+' games
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+' a colour 0-5 not yet in the code's first N places (lines 400-406)
+function FreshColour(u8 N) as u8
+  u8 C = 0
+  u8 Ok = 0
+  u8 I = 0
+  while Ok = 0
+    W16 = Rand
+    C = W16 % 6
+    Ok = 1
+    for I = 0 to 3
+      if I < N and Sec[I] = C then Ok = 0
+    next
+  end while
+  return C
+
+sub NewGame:
+  Gs = 1
+  Why = 0
+  Turn = 0
+  NPut = 0
+  NewScreen
+  DrawBoard
+  for Si = 0 to 3
+    Gu[Si] = NoCol
+    Sec[Si] = NoCol
+  next
+  fill array Hist with NoCol
+  Hd.Pos = 0
+  Hd.X = PalCol(0) * 8 + 4
+  print at 3,20, "I AM CHOOSING 4 COLORS NOW"
+  ShowScreen
+  play sound SndThink
+  for Si = 0 to 3
+    Sec[Si] = FreshColour(Si)
+  next
+  Pause(50)
+  Gs = 2
+  ShowHelp
+  play sound SndAsk
+  MoveHand
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 48
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 | J2
+  Btn = V & 48
+  V = Btn & ~WasBtn
+  Press1 = 0
+  Press2 = 0
+  if (V & 16) > 0 then Press1 = 1
+  if (V & 32) > 0 then Press2 = 1
+  WasBtn = Btn
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title in blocks: MIND over BOGGLE, 3 x 5 letters, rows of 3 bits
+' letters: M I N D B O G L E
+data TitleFont bytes
+  5, 7, 5, 5, 5
+  7, 2, 2, 2, 7
+  6, 5, 5, 5, 5
+  6, 5, 5, 5, 6
+  6, 5, 6, 5, 6
+  2, 5, 5, 5, 2
+  3, 4, 5, 5, 3
+  4, 4, 4, 4, 7
+  7, 4, 6, 4, 7
+end data
+
+' MIND BOGGLE as font indexes
+data TitleText bytes
+  0, 1, 2, 3, 4, 5, 6, 6, 7, 8
+end data
+
+' one 3 x 5 letter L of colour block Tb with its top left at Lx,Ly
+sub DrawLetter(u8 L, u8 Lx, u8 Ly, u8 Tb):
+  u8 Bits = 0
+  u8 R = 0
+  u8 C = 0
+  u16 Fi = 0
+  for R = 0 to 4
+    Fi = L * 5 + R
+    Bits = TitleFont[Fi]
+    for C = 0 to 2
+      if (Bits & (4 >> C)) > 0 then put char Tb at Lx + C,Ly + R
+    next
+  next
+  return
+
+sub DrawTitleWord:
+  u8 K = 0
+  u8 Lx = 0
+  u8 Ly = 0
+  for K = 0 to 9
+    if K < 4 then
+      Lx = K * 4 + 8
+      Ly = 2
+    else
+      Lx = K * 4 - 12
+      Ly = 8
+    end if
+    DrawLetter(TitleText[K], Lx, Ly, TB0 + K % 6)
+  next
+  return
+
+' the title: MIND BOGGLE in blocks, the tune once, PLAY / CREDITS
+sub TitlePage:
+  u8 I = 0
+  Gs = 0
+  NewScreen
+  DrawTitleWord
+  print at 6,14, "COMPUTE!'S GAZETTE 1984"
+  print at 3,16, "FIND MY 4 COLORS IN"
+  print at 3,17, "10 TRIES."
+  for I = 0 to 5
+    PutBar(I * 4 + 5, 18, I)
+  next
+  print at 12,20, "PLAY"
+  print at 12,21, "CREDITS"
+  if Played > 0 then
+    print at 3,22, "WON "
+    print Wins at 7,22
+    print at 12,22, "OF"
+    print Played at 15,22
+    if Best > 0 then
+      NumU = Best
+      print at 21,22, "BEST ", digits$(NumU, 2)
+    end if
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if (V & 1) > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      play sound SndStep
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  V = Press1 | Press2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,20
+  put char 32 at 10,21
+  J = Menu + 20
+  put char 62 at 10,J
+  return
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "MIND BOGGLE"
+  print at 2,4, "BASED ON MIND BOGGLE,"
+  print at 2,5, "COMPUTE!'S GAZETTE, MAY 1984"
+  print at 2,6, "(COMMODORE 64 AND VIC-20)."
+  print at 2,7, "NO AUTHOR NAMED."
+  print at 2,9, "A CODE-BREAKING GAME IN THE"
+  print at 2,10, "TRADITION OF BULLS AND COWS."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,18, "MUSIC: FOUR IN HIDING"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$C0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C3,$06,$0C,$18,$00,$18,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $0E,$0F,$0F,$0F,$0F,$0F,$0F,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $0E,$E8,$E8,$E8,$E8,$E8,$E8,$0E
+  $0E,$08,$08,$08,$08,$08,$08,$0E
+  $0E,$E8,$E8,$E8,$E8,$E8,$E8,$0E
+  $0E,$E5,$E5,$E5,$E5,$E5,$E5,$0E
+  $0E,$05,$05,$05,$05,$05,$05,$0E
+  $0E,$E5,$E5,$E5,$E5,$E5,$E5,$0E
+  $0E,$ED,$ED,$ED,$ED,$ED,$ED,$0E
+  $0E,$0D,$0D,$0D,$0D,$0D,$0D,$0E
+  $0E,$ED,$ED,$ED,$ED,$ED,$ED,$0E
+  $0E,$E3,$E3,$E3,$E3,$E3,$E3,$0E
+  $0E,$03,$03,$03,$03,$03,$03,$0E
+  $0E,$E3,$E3,$E3,$E3,$E3,$E3,$0E
+  $04,$04,$04,$41,$41,$04,$04,$04
+  $04,$04,$04,$01,$01,$04,$04,$04
+  $04,$04,$04,$41,$41,$04,$04,$04
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $0E,$E1,$1E,$1E,$1E,$0E,$1E,$0E
+  $01,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $04,$41,$41,$41,$41,$41,$41,$04
+  $04,$4F,$4F,$4F,$4F,$4F,$4F,$04
+  $04,$04,$04,$14,$14,$04,$04,$04
+  $4F,$0F,$0F,$0F,$0F,$0F,$0F,$4F
+  $48,$08,$08,$08,$08,$08,$08,$48
+  $45,$05,$05,$05,$05,$05,$05,$45
+  $4D,$0D,$0D,$0D,$0D,$0D,$0D,$4D
+  $43,$03,$03,$03,$03,$03,$03,$43
+  $4B,$0B,$0B,$0B,$0B,$0B,$0B,$4B
+  $04,$04,$04,$0E,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $03,$03,$03,$03,$03,$03,$3F,$1F,$0F,$07,$03,$01,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$FC,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$00
+end data
+
+asm {
+MbNote0:
+    db $40,$93,$10,$02,$40,$93,$20,$03,$40,$93,$40,$03,$40,$93,$70,$03,$50
+MbNote1:
+    db $40,$76,$10,$02,$40,$76,$20,$03,$40,$76,$40,$03,$40,$76,$70,$03,$50
+MbNote2:
+    db $40,$69,$10,$02,$40,$69,$20,$03,$40,$69,$40,$03,$40,$69,$70,$03,$50
+MbNote3:
+    db $40,$58,$10,$02,$40,$58,$20,$03,$40,$58,$40,$03,$40,$58,$70,$03,$50
+MbNote4:
+    db $40,$62,$10,$02,$40,$62,$20,$03,$40,$62,$40,$03,$40,$62,$70,$03,$50
+MbNote5:
+    db $40,$4F,$10,$02,$40,$4F,$20,$03,$40,$4F,$40,$03,$40,$4F,$70,$03,$50
+MbThink:
+    db $40,$62,$40,$02,$40,$3F,$40,$02,$40,$43,$40,$02,$40,$59,$40,$02,$40,$2E,$40,$02,$40,$78,$40,$02
+    db $40,$3E,$40,$02,$40,$30,$40,$02,$40,$51,$40,$02,$40,$2F,$40,$02,$40,$61,$40,$02,$40,$65,$40,$02
+    db $40,$64,$40,$02,$40,$48,$40,$02,$40,$58,$40,$02,$40,$33,$40,$02,$40,$45,$40,$02,$40,$4B,$40,$02
+    db $40,$34,$40,$02,$40,$74,$40,$02,$40,$7C,$F0,$02,$50
+MbAsk:
+    db $40,$93,$30,$03,$40,$93,$70,$03,$50
+MbStep:
+    db $40,$1D,$61,$01,$40,$41,$91,$01,$50
+MbBlack:
+    db $40,$93,$20,$01,$40,$86,$30,$01,$40,$7C,$30,$01,$40,$73,$40,$01,$40,$6C,$40,$01,$40,$65,$50,$01
+    db $40,$5F,$50,$01,$50
+MbWhite:
+    db $40,$93,$20,$01,$40,$A0,$30,$01,$40,$B1,$30,$01,$40,$C6,$40,$01,$40,$E1,$40,$01,$40,$03,$51,$01
+    db $40,$32,$51,$01,$50
+MbUndo:
+    db $40,$53,$41,$02,$40,$AB,$71,$02,$50
+MbBad:
+    db $00,$00,$22,$03,$00,$00,$41,$04,$00,$00,$72,$04,$10
+MbWin:
+    db $40,$6B,$10,$04,$40,$7F,$10,$04,$40,$5F,$10,$04,$40,$71,$10,$04,$40,$55,$10,$04,$40,$5F,$20,$04
+    db $40,$47,$20,$04,$40,$47,$30,$14,$40,$47,$70,$08,$50
+MbLose:
+    db $00,$00,$26,$0C,$00,$00,$F6,$0C,$00,$00,$26,$0C,$00,$00,$F6,$0C,$00,$00,$26,$0C,$00,$00,$66,$10
+    db $10
+
+MbSoundTable:
+    dw MbTuneMel,$702B
+    dw MbTuneBass,$7035
+    dw MbNote0,$7049
+    dw MbNote1,$7049
+    dw MbNote2,$7049
+    dw MbNote3,$7049
+    dw MbNote4,$7049
+    dw MbNote5,$7049
+    dw MbThink,$7049
+    dw MbAsk,$7049
+    dw MbStep,$7049
+    dw MbBlack,$7049
+    dw MbWhite,$7049
+    dw MbUndo,$7049
+    dw MbBad,$703F
+    dw MbWin,$7049
+    dw MbLose,$703F
+; Four in Hiding (original)
+; Tiny Sound, 10 frames per step
+MbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$70,$F1,$22,$1C,$1F,$23,$21,$01,$01,$1F,$01,$1E,$21,$24,$23
+    db $01,$01,$21,$01,$1F,$23,$28,$26,$01,$24,$23,$01,$21,$01,$1E,$01
+    db $1F,$01,$01,$01,$1C,$1F,$23,$21,$01,$01,$1F,$01,$1E,$21,$26,$24
+    db $01,$23,$21,$01,$1F,$01,$1E,$01,$23,$01,$1B,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$90,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $17,$01,$1B,$01,$10,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$18,$01,$15,$01,$17,$01,$17,$01,$10,$01,$17,$01
+    db $00,$01,$01,$01
+    db $FF
+}

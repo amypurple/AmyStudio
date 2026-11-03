@@ -1,0 +1,1221 @@
+cartridge "POOL/COMPUTE'S GAZETTE/1985"
+
+' POOL
+' A ColecoVision game based on "Pool", COMPUTE!'s Gazette April 1985
+' (Commodore 64 machine language, POOL/64 loading PL at $C000; a separate
+' VIC-20 BASIC version on the same disk). No author is named on the disk.
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a cue ball and six coloured balls racked in a triangle. Move
+' the ring (the aim) with the stick: the cue ball is sent towards the
+' ring, and the farther the ring, the harder the shot. Press a button to
+' shoot. Sink every ball. One player: the fewer shots, the better the
+' rank (PRO, POOL SHARK, AMATEUR, NOVICE). Two players: you shoot again
+' after sinking a ball; whoever sinks more balls wins.
+'
+' From the C64 machine code (orig/pl.dis):
+' - six object balls in a triangle (sprites 2-7, rack at $CC96), the cue
+'   ball on the head spot; the aim is a pointer sprite moved inside a box
+'   of 80 pixels round the cue ball ($C12A); the shot's speed is the
+'   pointer's offset from the cue ball, per axis ($C17E)
+' - fixed-point motion (8.8, $6500/$6520), friction that halves the speed
+'   of every ball ($CD41) until all are below 6/256 pixel a step ($C25D)
+' - balls collide when their centres are within 8 pixels; the collision
+'   exchanges the speed along the line between the centres, by a rotation
+'   table ($CDC7, $C6A8-$C918): an elastic collision of equal balls
+' - the rails bounce; a ball that reaches a rail at a corner or at the
+'   middle of a long rail drops into the pocket ($C290, $C2B5)
+' - a sunk ball goes to the shooter's side; with the cue ball sunk
+'   (scratch) or with no ball touched in the shot ($C285) it is a foul:
+'   one of the shooter's balls comes back to the table, the next shot is
+'   taken with the cue ball in hand behind the head string, shooting away
+'   from it ($C30A, $C36E)
+' - two players: the turn passes when no ball was sunk or after a foul
+'   (CCF8); the one with more balls wins, or IT'S A TIE (3-3)
+' - one player counts shots: under 9 PRO, 9-11 POOL SHARK, 12-20
+'   AMATEUR, 21 or more NOVICE ($CE1B)
+'
+' Liberties: the table is drawn sideways (the C64's stood upright) and
+' larger: 184 x 120 pixels of travel against 92 x 104, so it is longer
+' than wide like a real table; motion is computed once a frame in 1/256
+' pixel (the C64 stepped many times a frame); its friction (halving the
+' speed every 1024 steps, about 2.4 seconds measured by counting the
+' loop's cycles) becomes a smooth 1/32 every third frame, keeping the
+' direction, and a ball stops below 40/256 pixel a frame (the C64's
+' 6/256 a step at about 7 steps a frame); the fastest shot is 3 pixels a
+' frame (the C64's 80/256 a step, about 2.2 pixels a frame), and the aim
+' ring goes 48 pixels from the cue ball (the C64's 80, on a smaller
+' table); collisions use the true line between the centres (the C64
+' rounded it by its table) and a circle of 8 pixels (the C64's was a
+' square); pockets are wider at the corners (8 pixels along each rail)
+' and 12 pixels at the sides, so a player can aim at them on a TV; after
+' a foul the returned ball goes to the foot spot (the C64 put it in the
+' middle) and slides along until it is clear; a power bar; the sunk balls
+' shown in trays; no keypad (joystick menus); sounds and the title tune
+' "Corner Pocket" are new.
+'
+' Controls: the stick moves the aim ring (faster after a moment), either
+' button shoots. With the cue ball in hand, the stick moves the cue ball
+' behind the head string and a button sets it down. Two players share
+' controller 1 or use 1 and 2 by turns (either works for the shooter).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off.
+
+const TFelt = 128
+const THead = 129
+const TSpot = 130
+const TRailt = 131
+const TRailb = 132
+const TRaill = 133
+const TRailr = 134
+const TDot = 135
+const TPktl = 136
+const TPktr = 137
+const TPkbl = 138
+const TPkbr = 139
+const TPkt1 = 140
+const TPkt2 = 141
+const TPkb1 = 142
+const TPkb2 = 143
+const TBall0 = 144
+const TBall1 = 145
+const TBall2 = 146
+const TBall3 = 147
+const TBall4 = 148
+const TBall5 = 149
+const TBall6 = 150
+const TPow = 151
+const TPow0 = 152
+const TCue1 = 153
+const TCue2 = 154
+const SBall = 0
+const SAim = 4
+const NTiles8 = 216
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRail = 3
+const SndCue = 4
+const SndClack = 5
+const SndDrop = 6
+const SndFoul = 7
+const SndWin = 8
+const SndMove = 9
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$20,$02,$00,$40,$08,$00,$00
+  $00,$00,$00,$20,$02,$00,$40,$08
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$07,$F0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$F0,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$F0,$07,$00,$00
+  $03,$03,$03,$07,$F0,$E0,$00,$00
+  $00,$00,$00,$07,$F0,$E0,$C0,$C0
+  $00,$00,$00,$E0,$F0,$07,$03,$03
+  $C0,$C0,$E0,$F0,$07,$00,$00,$00
+  $03,$03,$07,$F0,$E0,$00,$00,$00
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$00,$00,$00,$00,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$00,$00,$00
+end data
+data TileCol bytes
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $2C,$0C,$0C,$0C,$2C,$0C,$0C,$0C
+  $0C,$0C,$0C,$2C,$2C,$0C,$0C,$0C
+  $06,$86,$86,$06,$86,$86,$02,$02
+  $02,$02,$06,$86,$86,$06,$86,$86
+  $26,$26,$26,$26,$26,$26,$26,$26
+  $26,$26,$26,$26,$26,$26,$26,$26
+  $06,$06,$B6,$6B,$6B,$B6,$06,$06
+  $06,$06,$16,$61,$61,$61,$61,$61
+  $06,$06,$16,$16,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$16,$06,$06
+  $61,$61,$61,$61,$16,$16,$06,$06
+  $06,$06,$06,$16,$61,$61,$61,$61
+  $06,$06,$06,$16,$16,$61,$61,$61
+  $61,$61,$61,$61,$16,$06,$06,$06
+  $61,$61,$61,$16,$16,$06,$06,$06
+  $F1,$1F,$1F,$0F,$0F,$1F,$1F,$F1
+  $B1,$1B,$1B,$0B,$0B,$1B,$1B,$B1
+  $41,$14,$14,$04,$04,$14,$14,$41
+  $81,$18,$18,$08,$08,$18,$18,$81
+  $D1,$1D,$1D,$0D,$0D,$1D,$1D,$D1
+  $71,$17,$17,$07,$07,$17,$17,$71
+  $E1,$1E,$1E,$0E,$0E,$1E,$1E,$E1
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$1E,$01,$01,$01,$01,$1E,$01
+  $01,$01,$01,$0A,$0A,$01,$01,$01
+  $01,$01,$01,$FA,$FA,$01,$01,$01
+end data
+data SpritePat bytes
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$42,$81,$81,$81,$81,$42,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  32,32,32,32,145,145,145,145,32,32,32,146,146,146,32,32
+  32,147,147,147,32,32,148,32,32,32,32,32,32,32,32,32
+  32,32,32,32,145,32,32,32,145,32,146,32,32,32,146,32
+  147,32,32,32,147,32,148,32,32,32,32,32,32,32,32,32
+  32,32,32,32,145,32,32,32,145,32,146,32,32,32,146,32
+  147,32,32,32,147,32,148,32,32,32,32,32,32,32,32,32
+  32,32,32,32,145,145,145,145,32,32,146,32,32,32,146,32
+  147,32,32,32,147,32,148,32,32,32,32,32,32,32,32,32
+  32,32,32,32,145,32,32,32,32,32,146,32,32,32,146,32
+  147,32,32,32,147,32,148,32,32,32,32,32,32,32,32,32
+  32,32,32,32,145,32,32,32,32,32,146,32,32,32,146,32
+  147,32,32,32,147,32,148,32,32,32,32,32,32,32,32,32
+  32,32,32,32,145,32,32,32,32,32,32,146,146,146,32,32
+  32,147,147,147,32,32,148,148,148,148,148,32,32,32,32,32
+end data
+
+' (V - 8) squared for V = 0 to 16: the distance test without multiplying
+data SqT bytes
+  64,49,36,25,16,9,4,1,0,1,4,9,16,25,36,49,64
+end data
+' ball colours as sprites: cue white, then yellow, blue, red, magenta,
+' cyan, grey (the tray tiles use the same order)
+data BallCol bytes
+  15,11,4,8,13,7,14
+end data
+' the rack (pixels, top left of each ball): apex at the foot spot
+data RackX bytes
+  76,160,167,167,174,174,174
+end data
+data RackY bytes
+  92,92,88,96,84,92,100
+end data
+
+const NBall = 7
+const NSpr = 8
+const XMin = 32
+const XMax = 216
+const YMin = 32
+const YMax = 152
+const HeadX = 64
+const MaxOff = 48
+
+' the tune now playing: frames left (counted in Rearm)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' the balls (0 the cue ball): position in 1/256 pixel (top left), speed
+' in 1/256 pixel a frame, Live 1 on the table, Owner who sank it
+u16 Px[7]
+u16 Py[7]
+i16 Vx[7]
+i16 Vy[7]
+u8 Live[7]
+u8 Owner[7]
+' the balls' pixel places this frame (top left), for the collision tests
+u8 Gx[7]
+u8 Gy[7]
+
+' play: Ph 1 aim, 2 rolling, 3 cue ball in hand, 4 game over
+u8 Ph = 0
+u8 Np = 1
+u8 Pl = 0
+u8 Sc[2]
+bcd digits 4 Shots
+u8 ShotsN = 0
+u8 Hits = 0
+u8 Sunk = 0
+u8 Scr = 0
+u8 Foul = 0
+u8 InHand = 0
+u8 Moving = 0
+u8 FrC = 0
+u8 Clacked = 0
+u8 Railed = 0
+i16 Ax = 24
+i16 Ay = 0
+u8 Hold = 0
+u8 PowShown = 255
+u16 Rolls = 0
+
+' input
+u8 Jx = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+
+' loop counters of their own
+u8 Bi = 0
+u8 Bj = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+i16 T = 0
+i16 T2 = 0
+u16 W16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table PlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu > 1 then goto title
+  Np = Menu + 1
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  select case Ph
+    case 1
+      AimStep
+    case 2
+      Roll
+      if Moving = 0 then EndShot
+    case 3
+      HandStep
+  end select
+  DrawBalls
+  if Ph < 4 then goto play_loop
+
+  ' the end: the result, then back to the title on a press
+  mute all
+  play sound SndWin
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+sub NewGame:
+  for Bi = 0 to 6
+    Px[Bi] = RackX[Bi] * 256
+    Py[Bi] = RackY[Bi] * 256
+    Gx[Bi] = RackX[Bi]
+    Gy[Bi] = RackY[Bi]
+    Vx[Bi] = 0
+    Vy[Bi] = 0
+    Live[Bi] = 1
+    Owner[Bi] = 255
+  next
+  Sc[0] = 0
+  Sc[1] = 0
+  Shots = 0
+  ShotsN = 0
+  Pl = 0
+  Ax = 24
+  Ay = 0
+  Ph = 1
+  PowShown = 255
+  DrawTable
+  ShowHud
+  ShowPower
+  DrawBalls
+  ShowScreen
+  if Np = 2 then
+    Say(1)
+  else
+    Say(0)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' AimStep: the stick moves the ring (1 pixel a frame, 2 after 16 frames
+' held), a button shoots
+sub AimStep:
+  V = 1
+  if Hold >= 16 then V = 2
+  T = V
+  if Jx > 0 then
+    if Hold < 255 then inc Hold
+  else
+    Hold = 0
+  end if
+  if Jx & 1 then MoveAim(0, 0 - T)
+  if Jx & 2 then MoveAim(0, T)
+  if Jx & 4 then MoveAim(0 - T, 0)
+  if Jx & 8 then MoveAim(T, 0)
+  ShowPower
+  if Press = 0 then return
+  if Ax = 0 then
+    if Ay = 0 then return
+  end if
+  Shoot
+  return
+end sub
+
+' MoveAim(Dx, Dy): move the ring, kept within MaxOff of the cue ball, on
+' the screen, and (cue ball just placed by hand) away from the head string
+sub MoveAim(i16 Dx, i16 Dy):
+  i16 Nx
+  i16 Ny
+  i16 Sx
+  i16 Sy
+  Nx = Ax + Dx
+  Ny = Ay + Dy
+  if Nx > MaxOff then Nx = MaxOff
+  if Nx < -MaxOff then Nx = -MaxOff
+  if Ny > MaxOff then Ny = MaxOff
+  if Ny < -MaxOff then Ny = -MaxOff
+  if InHand = 1 then
+    if Nx < 0 then Nx = 0
+  end if
+  Sx = highbyte Px[0]
+  Sx = Sx + Nx
+  Sy = highbyte Py[0]
+  Sy = Sy + Ny
+  if Sx < 16 then Nx = Nx + 16 - Sx
+  if Sx > 232 then Nx = Nx + 232 - Sx
+  if Sy < 8 then Ny = Ny + 8 - Sy
+  if Sy > 175 then Ny = Ny + 175 - Sy
+  Ax = Nx
+  Ay = Ny
+  return
+end sub
+
+' Shoot: the cue ball's speed is the ring's offset times 16
+sub Shoot:
+  Vx[0] = Ax * 16
+  Vy[0] = Ay * 16
+  Hits = 0
+  Sunk = 0
+  Scr = 0
+  FrC = 0
+  Rolls = 0
+  Moving = 1
+  Ph = 2
+  if Np = 1 then
+    Shots += 1
+    inc ShotsN
+    ShowHud
+  end if
+  Say(9)
+  play sound SndCue
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Roll: one frame of motion for every ball on the table: move, rails and
+' pockets, then the collisions of every pair, then friction
+sub Roll:
+  Clacked = 0
+  Railed = 0
+  inc Rolls
+  for Bi = 0 to 6
+    if Live[Bi] = 1 then MoveBall(Bi)
+  next
+  for Bi = 0 to 5
+    if Live[Bi] = 1 then
+      Bj = Bi + 1
+      Pairs
+    end if
+  next
+  inc FrC
+  if FrC >= 3 then FrC = 0
+  Moving = 0
+  for Bi = 0 to 6
+    if Live[Bi] = 1 then Slow(Bi)
+  next
+  if Clacked = 1 then play sound SndClack
+  if Railed = 1 then play sound SndRail
+  return
+end sub
+
+' Pairs: ball Bi against every ball after it (from Bj on); a quick
+' test of the pixel places first, the full one in Bump
+sub Pairs:
+  X = Gx[Bi]
+  Y = Gy[Bi]
+  for Ci = Bj to 6
+    if Live[Ci] = 1 then
+      V = Gx[Ci] - X
+      V = V + 8
+      if V <= 16 then
+        W = Gy[Ci] - Y
+        W = W + 8
+        if W <= 16 then
+          K = SqT[V] + SqT[W]
+          if K < 64 then Bump(Bi, Ci)
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' MoveBall(B): add the speed, bounce off the rails; a rail touched at a
+' pocket's mouth sinks the ball
+sub MoveBall(u8 B):
+  u16 Qx
+  u16 Qy
+  u8 Hx
+  u8 Hy
+  Qx = Px[B]
+  Qy = Py[B]
+  Qx = Qx + Vx[B]
+  Qy = Qy + Vy[B]
+  Hx = highbyte Qx
+  Hy = highbyte Qy
+  if Hx < XMin then
+    Qx = 8192
+    Vx[B] = 0 - Vx[B]
+    Railed = 1
+    if AtPocketY(Hy) = 1 then
+      Sink(B)
+    end if
+  end if
+  if Hx > XMax then
+    Qx = 55296
+    Vx[B] = 0 - Vx[B]
+    Railed = 1
+    if AtPocketY(Hy) = 1 then
+      Sink(B)
+    end if
+  end if
+  if Hy < YMin then
+    Qy = 8192
+    Vy[B] = 0 - Vy[B]
+    Railed = 1
+    if AtPocketX(Hx) = 1 then
+      Sink(B)
+    end if
+  end if
+  if Hy > YMax then
+    Qy = 38912
+    Vy[B] = 0 - Vy[B]
+    Railed = 1
+    if AtPocketX(Hx) = 1 then
+      Sink(B)
+    end if
+  end if
+  Px[B] = Qx
+  Py[B] = Qy
+  Gx[B] = highbyte Qx
+  Gy[B] = highbyte Qy
+  return
+end sub
+
+' a short rail (left or right): the corner pockets only
+function AtPocketY(u8 Hy) as u8
+  if Hy <= YMin + 8 then return 1
+  if Hy >= YMax - 8 then return 1
+  return 0
+
+' a long rail (top or bottom): the corners and the side pocket
+function AtPocketX(u8 Hx) as u8
+  if Hx <= XMin + 8 then return 1
+  if Hx >= XMax - 8 then return 1
+  select case Hx
+    case 118 to 130
+      return 1
+  end select
+  return 0
+
+' Sink(B): the ball drops; the cue ball is a scratch, any other goes to
+' the shooter's tray
+sub Sink(u8 B):
+  if Live[B] = 0 then return
+  Live[B] = 0
+  Vx[B] = 0
+  Vy[B] = 0
+  play sound SndDrop
+  if B = 0 then
+    Scr = 1
+    return
+  end if
+  inc Sunk
+  Owner[B] = Pl
+  inc Sc[Pl]
+  ShowTrays
+  ShowHud
+  return
+end sub
+
+' Bump(A, B): two balls closer than 8 pixels and closing exchange their
+' speeds along the line between the centres (equal balls, elastic)
+sub Bump(u8 A, u8 B):
+  i16 Dx
+  i16 Dy
+  i16 Nn
+  i16 Dot
+  i16 Kq
+  i16 Rx
+  i16 Ry
+  Dx = Gx[B]
+  T = Gx[A]
+  Dx = Dx - T
+  Dy = Gy[B]
+  T = Gy[A]
+  Dy = Dy - T
+  Nn = Dx * Dx + Dy * Dy
+  if Nn >= 64 then return
+  if Nn = 0 then
+    Dx = 1
+    Nn = 1
+  end if
+  Rx = Vx[A] - Vx[B]
+  Ry = Vy[A] - Vy[B]
+  Dot = Rx * Dx + Ry * Dy
+  if Dot <= 0 then return
+  Kq = Dot / Nn
+  Rx = Kq * Dx
+  Ry = Kq * Dy
+  Vx[A] = Vx[A] - Rx
+  Vy[A] = Vy[A] - Ry
+  Vx[B] = Vx[B] + Rx
+  Vy[B] = Vy[B] + Ry
+  Hits = 1
+  Clacked = 1
+  return
+end sub
+
+' Slow(B): friction every third frame (the speed shifted right 5), and a ball
+' slower than 40/256 pixel a frame on both axes stops
+sub Slow(u8 B):
+  i16 Sx
+  i16 Sy
+  Sx = Vx[B]
+  Sy = Vy[B]
+  if FrC = 0 then
+    T = Sx >> 5
+    Sx = Sx - T
+    T = Sy >> 5
+    Sy = Sy - T
+  end if
+  if Sx < 40 then
+    if Sx > -40 then
+      if Sy < 40 then
+        if Sy > -40 then
+          Sx = 0
+          Sy = 0
+        end if
+      end if
+    end if
+  end if
+  Vx[B] = Sx
+  Vy[B] = Sy
+  if Sx <> 0 then Moving = 1
+  if Sy <> 0 then Moving = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' EndShot: fouls, the turn, the end of the game
+sub EndShot:
+  Foul = 0
+  if Scr = 1 then Foul = 1
+  if Hits = 0 then Foul = 1
+  if Foul = 1 then
+    play sound SndFoul
+    ReturnBall
+    if Np = 2 then Pl = Pl ^ 1
+    Live[0] = 1
+    Px[0] = 48 * 256
+    Py[0] = 92 * 256
+    Gx[0] = 48
+    Gy[0] = 92
+    Vx[0] = 0
+    Vy[0] = 0
+    if Scr = 1 then
+      Say(2)
+    else
+      Say(3)
+    end if
+    ShowTrays
+    ShowHud
+    if BallsLeft = 0 then
+      GameOver
+      return
+    end if
+    InHand = 1
+    Ph = 3
+    return
+  end if
+  if BallsLeft = 0 then
+    GameOver
+    return
+  end if
+  if Np = 2 then
+    if Sunk = 0 then
+      Pl = Pl ^ 1
+      Say(5)
+    else
+      Say(6)
+    end if
+  else
+    Say(0)
+  end if
+  ShowHud
+  InHand = 0
+  ' the ring starts on the side of the table's middle
+  Ax = 24
+  W = highbyte Px[0]
+  if W >= 124 then Ax = -24
+  Ay = 0
+  Ph = 1
+  return
+end sub
+
+function BallsLeft as u8
+  u8 N
+  N = 0
+  for K = 1 to 6
+    N = N + Live[K]
+  next
+  return N
+
+' ReturnBall: after a foul, the shooter's last sunk ball (if any) goes
+' back to the foot spot, slid right (then from the head string) until
+' it touches no ball
+sub ReturnBall:
+  u8 Rb
+  u8 Rx
+  Rb = 0
+  for K = 1 to 6
+    if Live[K] = 0 then
+      if Owner[K] = Pl then Rb = K
+    end if
+  next
+  if Rb = 0 then return
+  Live[Rb] = 1
+  Owner[Rb] = 255
+  dec Sc[Pl]
+  Rx = 160
+  while Clear8(Rx, 92) = 0
+    inc Rx
+    if Rx > XMax then Rx = 72
+  end while
+  Px[Rb] = Rx * 256
+  Py[Rb] = 92 * 256
+  Gx[Rb] = Rx
+  Gy[Rb] = 92
+  Vx[Rb] = 0
+  Vy[Rb] = 0
+  return
+end sub
+
+' Clear8(X, Y): 1 when no ball on the table (the cue ball included) is
+' within 8 pixels of a ball at X, Y
+function Clear8(u8 Qx, u8 Qy) as u8
+  u8 R
+  R = 1
+  for J = 0 to 6
+    if Live[J] = 1 then
+      if Near8(J, Qx, Qy) = 1 then R = 0
+    end if
+  next
+  return R
+
+' Near8(B, X, Y): 1 when ball B is within 8 pixels of a ball at X, Y
+' (by the pixel places Gx, Gy and the table of squares)
+function Near8(u8 B, u8 Qx, u8 Qy) as u8
+  u8 Dx
+  u8 Dy
+  Dx = Gx[B] - Qx
+  Dx = Dx + 8
+  if Dx > 16 then return 0
+  Dy = Gy[B] - Qy
+  Dy = Dy + 8
+  if Dy > 16 then return 0
+  if SqT[Dx] + SqT[Dy] < 64 then return 1
+  return 0
+
+' HandStep: the cue ball in hand behind the head string; a button sets
+' it down where it touches no ball
+sub HandStep:
+  X = highbyte Px[0]
+  Y = highbyte Py[0]
+  if Jx & 1 then
+    if Y > YMin then dec Y
+  end if
+  if Jx & 2 then
+    if Y < YMax then inc Y
+  end if
+  if Jx & 4 then
+    if X > XMin then dec X
+  end if
+  if Jx & 8 then
+    if X < HeadX then inc X
+  end if
+  Px[0] = X * 256
+  Py[0] = Y * 256
+  Gx[0] = X
+  Gy[0] = Y
+  if Press = 0 then return
+  Live[0] = 0
+  V = Clear8(X, Y)
+  Live[0] = 1
+  if V = 0 then return
+  Ax = 24
+  Ay = 0
+  Ph = 1
+  Say(4)
+  play sound SndMove
+  return
+end sub
+
+' GameOver: the result on the message line
+sub GameOver:
+  Ph = 4
+  if Np = 1 then
+    if ShotsN < 9 then Say(10)
+    if ShotsN >= 9 then
+      if ShotsN < 12 then Say(11)
+    end if
+    if ShotsN >= 12 then
+      if ShotsN < 21 then Say(12)
+    end if
+    if ShotsN >= 21 then Say(13)
+  else
+    if Sc[0] > Sc[1] then Say(14)
+    if Sc[0] < Sc[1] then Say(15)
+    if Sc[0] = Sc[1] then Say(16)
+  end if
+  ShowHud
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+sub DrawBalls:
+  u8 Sy
+  u8 Sx
+  u8 Cl
+  for Bi = 0 to 6
+    J = Bi + 1
+    if Live[Bi] = 1 then
+      Sy = highbyte Py[Bi]
+      Sy = Sy - 1
+      Sx = highbyte Px[Bi]
+      Cl = BallCol[Bi]
+      set sprite J to Sy, Sx, SBall, Cl
+    else
+      set sprite J to 192, 0, SBall, 0
+    end if
+  next
+  if Ph = 1 then
+    T = highbyte Py[0]
+    T = T + Ay
+    T = T - 1
+    Sy = lowbyte T
+    T = highbyte Px[0]
+    T = T + Ax
+    Sx = lowbyte T
+    set sprite 0 to Sy, Sx, SAim, 15
+  else
+    set sprite 0 to 192, 0, SAim, 0
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawTable:
+  NewScreen
+  backdrop black
+  ' rails and pockets
+  fill TRailt count 24 at 4,3
+  fill TRailb count 24 at 4,20
+  for K = 4 to 19
+    put char TRaill at 3,K
+    put char TRailr at 28,K
+    fill TFelt count 24 at 4,K
+    put char THead at 9,K
+  next
+  put char TPktl at 3,3
+  put char TPktr at 28,3
+  put char TPkbl at 3,20
+  put char TPkbr at 28,20
+  put char TPkt1 at 15,3
+  put char TPkt2 at 16,3
+  put char TPkb1 at 15,20
+  put char TPkb2 at 16,20
+  put char TDot at 9,3
+  put char TDot at 21,3
+  put char TDot at 9,20
+  put char TDot at 21,20
+  put char TDot at 3,11
+  put char TDot at 28,11
+  put char TSpot at 20,11
+  ShowTrays
+  return
+end sub
+
+' ShowHud: row 1 (shots or the two players' balls, the shooter marked)
+sub ShowHud:
+  if Np = 1 then
+    print at 2,1, "SHOTS "
+    print at 8,1, Shots
+    print at 17,1, "BALLS LEFT "
+    W = BallsLeft
+    NumU = W
+    print at 28,1, digits$(NumU, 1)
+    return
+  end if
+  print at 2,1, " PLAYER 1 "
+  print at 12,1, Sc[0]
+  print at 16,1, " PLAYER 2 "
+  print at 26,1, Sc[1]
+  if Ph < 4 then
+    if Pl = 0 then
+      put char 62 at 2,1
+    else
+      put char 62 at 16,1
+    end if
+  end if
+  return
+end sub
+
+' ShowPower: the ring's distance as a bar of 8 cells on row 21
+sub ShowPower:
+  T = Ax
+  if T < 0 then T = 0 - T
+  T2 = Ay
+  if T2 < 0 then T2 = 0 - T2
+  if T2 > T then T = T2
+  T = T + 5
+  T = T / 6
+  V = lowbyte T
+  if V = PowShown then return
+  PowShown = V
+  for K = 0 to 7
+    J = K + 9
+    if K < V then
+      put char TPow at J,21
+    else
+      put char TPow0 at J,21
+    end if
+  next
+  return
+end sub
+
+' ShowTrays: row 22, the balls each player has sunk
+sub ShowTrays:
+  print at 2,21, "POWER"
+  put char TCue1 at 7,21
+  put char TCue2 at 8,21
+  fill 32 count 28 at 2,22
+  if Np = 1 then
+    print at 2,22, "SUNK"
+    J = 7
+    for K = 1 to 6
+      if Live[K] = 0 then
+        put char TBall0 + K at J,22
+        inc J
+      end if
+    next
+    return
+  end if
+  print at 2,22, "P1"
+  print at 17,22, "P2"
+  J = 5
+  for K = 1 to 6
+    if Live[K] = 0 then
+      if Owner[K] = 0 then
+        put char TBall0 + K at J,22
+        inc J
+      end if
+    end if
+  next
+  J = 20
+  for K = 1 to 6
+    if Live[K] = 0 then
+      if Owner[K] = 1 then
+        put char TBall0 + K at J,22
+        inc J
+      end if
+    end if
+  next
+  return
+end sub
+
+' Say(M): a message on row 2
+sub Say(u8 M):
+  fill 32 count 28 at 2,2
+  select case M
+    case 0
+      print at 6,2, "SINK ALL SIX BALLS"
+    case 1
+      print at 7,2, "PLAYER 1 BREAKS"
+    case 2
+      print at 2,2, "SCRATCH! CUE BALL IN HAND"
+    case 3
+      print at 3,2, "NO BALL HIT! BALL IN HAND"
+    case 4
+      print at 9,2, "AIM AND SHOOT"
+    case 5
+      if Pl = 0 then
+        print at 7,2, "PLAYER 1 TO SHOOT"
+      else
+        print at 7,2, "PLAYER 2 TO SHOOT"
+      end if
+    case 6
+      print at 7,2, "GOOD! SHOOT AGAIN"
+    case 9
+      Rolls = 0
+    case 10
+      print at 8,2, "YOU'RE A PRO"
+    case 11
+      print at 6,2, "YOU'RE A POOL SHARK"
+    case 12
+      print at 7,2, "YOU'RE AN AMATEUR"
+    case 13
+      print at 7,2, "YOU'RE A NOVICE"
+    case 14
+      print at 8,2, "PLAYER 1 WINS"
+    case 15
+      print at 8,2, "PLAYER 2 WINS"
+    case 16
+      print at 9,2, "IT'S A TIE"
+  end select
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: Jx the stick of both controllers (1 up, 2 down, 4 left,
+' 8 right), Press a new press of either button
+sub ReadPad:
+  Jx = 0
+  Btn = 0
+  if joypad(1).up then Jx = Jx | 1
+  if joypad(1).down then Jx = Jx | 2
+  if joypad(1).left then Jx = Jx | 4
+  if joypad(1).right then Jx = Jx | 8
+  if joypad(1).fire then Btn = 1
+  if joypad(2).up then Jx = Jx | 1
+  if joypad(2).down then Jx = Jx | 2
+  if joypad(2).left then Jx = Jx | 4
+  if joypad(2).right then Jx = Jx | 8
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  tile screen
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: POOL in pool balls, a cue, the menu
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 224 to vram.name + 96
+  fill TCue1 count 16 at 7,12
+  put char TCue2 at 23,12
+  put char TBall0 at 24,12
+  print at 4,1, "COMPUTE!'S GAZETTE 4/1985"
+  print at 10,18, "ONE PLAYER"
+  print at 10,19, "TWO PLAYERS"
+  print at 10,20, "CREDITS"
+  print at 5,15, "STICK AND BUTTON"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  V = Jx & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 18 to 20
+    put char 32 at 8,J
+  next
+  J = Menu + 18
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 13,2, "POOL"
+  print at 2,4, "BASED ON POOL, COMPUTE!'S"
+  print at 2,5, "GAZETTE APRIL 1985"
+  print at 2,6, "(COMMODORE 64 MACHINE"
+  print at 2,7, "LANGUAGE AND VIC-20 BASIC;"
+  print at 2,8, "NO AUTHOR NAMED ON THE"
+  print at 2,9, "DISK)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: CORNER POCKET"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+asm {
+PlRail:
+    db $00,$00,$35,$01,$00,$00,$76,$02,$10
+PlCue:
+    db $40,$47,$20,$01,$40,$5F,$60,$02,$50
+PlClack:
+    db $40,$2A,$10,$01,$40,$30,$50,$02,$50
+PlDrop:
+    db $80,$1D,$11,$03,$80,$53,$21,$03,$80,$AB,$31,$04,$80,$3B,$52,$06,$90
+PlFoul:
+    db $C0,$8D,$13,$0C,$C0,$F9,$23,$0C,$D0
+PlWin:
+    db $C0,$D6,$10,$08,$C0,$AA,$10,$08,$C0,$8F,$10,$08,$C0,$6B,$10,$14,$C0,$6B,$50,$0A,$D0
+PlMove:
+    db $40,$7F,$70,$01,$50
+
+PlSoundTable:
+    dw PlTuneMel,$702B
+    dw PlTuneBass,$7035
+    dw PlRail,$703F
+    dw PlCue,$7049
+    dw PlClack,$7049
+    dw PlDrop,$7053
+    dw PlFoul,$705D
+    dw PlWin,$705D
+    dw PlMove,$7049
+; Corner Pocket (original)
+; Tiny Sound, 8 frames per step
+PlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$1A,$21,$24,$01,$01,$28,$2B,$01,$28,$01,$26,$01,$24,$01
+    db $21,$01,$01,$01,$23,$01,$01,$26,$29,$01,$26,$01,$24,$01,$23,$01
+    db $1F,$01,$01,$01,$21,$01,$24,$01,$28,$01,$2D,$01,$2B,$01,$28,$01
+    db $24,$01,$26,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$24,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+PlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$10,$01,$13,$01,$10,$01,$05,$01,$09,$01
+    db $0C,$01,$09,$01,$07,$01,$0B,$01,$0E,$01,$0B,$01,$0C,$01,$10,$01
+    db $13,$01,$10,$01,$09,$01,$0C,$01,$10,$01,$0C,$01,$05,$01,$09,$01
+    db $0E,$01,$0B,$01,$07,$01,$0B,$01,$0E,$01,$07,$01,$0C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1114 @@
+cartridge "THE HUMAN RAT RACE/COMPUTE!'S GAZETTE/1988"
+
+' THE HUMAN RAT RACE
+' A ColecoVision game based on "Human Rat Race", COMPUTE!'s Gazette March
+' 1988 (Commodore 64 machine language at $C000, HUMAN RAT RACE, started
+' by RAT RACE.BOOT; no author is named on the disk, its title screen says
+' only COMPUTE! 1988). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/dis.txt), the game is rebuilt for the ColecoVision: a
+' hedge maze drawn in tiles, rats and drones as smooth 8 x 8 sprites that
+' glide a pixel at a time, gold nuggets, home pads, a title tune and sounds.
+'
+' The game: two rats in a maze, red on the right, blue on the left, each at
+' its home on the maze's edge (marked by an arrow). RACE TO THE OTHER SIDE:
+' the first rat to reach the other's home wins (both at once: a tie). GRAB
+' THE GOLD: every path is strewn with gold; a rat picks up a nugget on every
+' square it walks onto and carries it home, where it is banked at the
+' nugget's value of the moment: 500 at the start, 5 less every second, for
+' 60 seconds; the bigger bank wins. Drones wander the maze; a rat a drone
+' touches goes back to its home and drops what it carries. The maze can be
+' VISIBLE or INVISIBLE (shown at the end).
+'
+' From the original (orig/): the maze is a perfect maze carved by the
+' original's method (scan the cells over and over; from an open cell, a
+' random direction; a closed cell two squares away is opened with the wall
+' between, until every cell is open); homes at random rows on the left and
+' right edges, a cell row apart from the maze walls; each rat moves a
+' square at a time on the stick (straight directions only on the C64), the
+' drones as fast as the rats; a drone keeps its direction and changes it at
+' random 56 times in 256, again whenever the way is blocked; a drone and a
+' rat on the same square: the rat goes home and loses what it carries; the
+' race is won on the other's home square, both at once is a tie; gold:
+' 60 seconds (61 counts, 60 to 0), the value 500 then 5 less every second,
+' banked on the home square as carried x value; 0 to 15 drones on the C64.
+'
+' Liberties: the maze is 12 x 10 cells (the C64's 18 x 12 does not fit
+' the TV-safe area of a 32-column screen) and 0 to 9 drones (scaled with
+' the area); speeds are in sixtieths of a second (the C64's speed depended
+' on its delay loop and the number of drones; here a rat moves 1.5 pixels a
+' frame, 11 squares a second, a drone 3 pixels in 4 frames so a human
+' can dodge them, the computer rat 1 pixel a frame); a rat can turn back in the middle of a square and a diagonal turns
+' at the next corner (the C64 read only exact straight directions); drones
+' start at least 5 squares from the homes and never enter them (on the
+' C64 a drone could sit on a home and catch its rat again and again); the homes are drawn as coloured
+' pads, visible in the invisible maze too; a touch is two sprites less than
+' 6 pixels apart (the C64 compared squares); in the C64's gold code the
+' banking reads the other player's index (a rat at home banks the other's
+' carried gold, it seems): here each rat banks its own; one player can play
+' against a computer rat (blue), which follows the wall with one hand
+' (in GRAB THE GOLD it turns back with the other hand to bank at 12
+' nuggets or in the last 20 seconds); a sound for gold, banking and the
+' end (the C64 had the catch buzz and the end buzz); the end message, then
+' the title (the C64 waited for F1 for its menu).
+'
+' Controls: joystick only. Red (right) uses controller 1, blue (left)
+' controller 2. On the title, up and down choose a line, left, right or a
+' button change it; a button on START begins.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off after
+' a wait, display off. Music first in the sound table, effects after; the
+' title tune is played once. `set sprite count` after every `clear sprites`.
+' Own xorshift random numbers.
+
+const TPath = 128
+const THedge = 129
+const TGoldv = 130
+const TTakenv = 131
+const TWall = 132
+const TGold = 133
+const TTaken = 134
+const TPadb = 135
+const TPadr = 136
+const TArrb = 137
+const TArrl = 138
+const TLogo = 139
+const NTiles8 = 96
+const SprBytes = 48
+const SRatR0 = 0
+const SRatR1 = 1
+const SRatL0 = 2
+const SRatL1 = 3
+const SDrone0 = 4
+const SDrone1 = 5
+const LogoW = 28
+const LogoX = 2
+const LogoN = 140
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCaught = 3
+const SndGold = 4
+const SndBank = 5
+const SndTick = 6
+const SndStart = 7
+const SndWin = 8
+const SndOver = 9
+' the maze: columns 3-27, rows 2-22; cells at even columns 4-26 and odd
+' rows 3-21 (12 x 10)
+const MinC = 3
+const MaxC = 27
+const MinR = 2
+const MaxR = 22
+const NCX = 12
+const NCY = 10
+const NCell = 120
+const NAct = 12
+const ValStart = 500
+const BackCarry = 12
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $49,$49,$52,$24,$95,$49,$64,$92
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$20,$00,$04,$00,$40,$00,$08
+  $49,$49,$49,$49,$49,$49,$49,$49
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$42,$00,$18,$18,$00,$42,$00
+  $00,$42,$00,$18,$18,$00,$42,$00
+  $00,$10,$18,$03,$03,$18,$10,$00
+  $00,$08,$18,$C0,$C0,$18,$08,$00
+  $00,$AA,$AA,$AA,$AA,$AA,$AA,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $2C,$C2,$2C,$2C,$2C,$2C,$2C,$2C
+  $01,$01,$B1,$1B,$1A,$A1,$01,$01
+  $01,$E1,$01,$E1,$01,$E1,$01,$E1
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $04,$54,$04,$54,$54,$04,$54,$04
+  $06,$86,$06,$86,$86,$06,$86,$06
+  $01,$51,$51,$15,$15,$51,$51,$01
+  $01,$81,$81,$18,$18,$81,$81,$01
+  $03,$32,$23,$32,$23,$32,$23,$0C
+end data
+data SpritePat bytes
+  $00,$02,$3D,$7F,$FF,$7E,$A4,$40
+  $00,$02,$3D,$7F,$FF,$7E,$25,$10
+  $00,$40,$BC,$FE,$FF,$7E,$25,$02
+  $00,$40,$BC,$FE,$FF,$7E,$A4,$08
+  $E7,$18,$3C,$66,$5A,$7E,$24,$42
+  $66,$18,$3C,$66,$5A,$7E,$24,$81
+end data
+data LogoMap bytes
+  139,139,139,32,32,139,32,32,139,139,139,32,32,139,139,139,32,32,139,32,32,32,139,139,32,139,139,139
+  139,32,139,32,139,32,139,32,32,139,32,32,32,139,32,139,32,139,32,139,32,139,32,32,32,139,32,32
+  139,139,32,32,139,139,139,32,32,139,32,32,32,139,139,32,32,139,139,139,32,139,32,32,32,139,139,32
+  139,32,139,32,139,32,139,32,32,139,32,32,32,139,32,139,32,139,32,139,32,139,32,32,32,139,32,32
+  139,32,139,32,139,32,139,32,32,139,32,32,32,139,32,139,32,139,32,139,32,32,139,139,32,139,139,139
+end data
+
+' title lines
+data MenuRow bytes 11,13,15,17,19,21
+
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 ValueU = 0
+u8 TzOn = 0
+u8 RndB = 0
+bcd digits 6 Value = 0
+bcd digits 6 Five = 5
+bcd digits 6 Purse[2] = 0
+' settings
+u8 Mode = 0
+u8 Invis = 0
+u8 Drones = 2
+u8 Players = 1
+u8 Sel = 4
+' state for the bots: 0 credits/logo, 1 title, 2 play, 3 end
+u8 GState = 0
+' the actors: 0 red rat, 1 blue rat, 2.. drones; square, direction moving
+' (0 none, 1 up, 2 right, 3 down, 4 left), pixels into the move, heading
+u8 AC[12]
+u8 AR[12]
+u8 AD[12]
+u8 AO[12]
+u8 AL[12]
+u8 Face[2]
+' pixel places, worked out once a pass (Places)
+u8 QX[12]
+u8 QY[12]
+u8 Carry[2]
+u8 Got[2]
+u8 HC[2]
+u8 HR[2]
+u8 Vis[120]
+u8 NA = 2
+u8 Over = 0
+u8 Winner = 0
+u8 Secs = 0
+u8 Fr60 = 0
+u8 Hand = 0
+u8 Ret = 0
+u8 Caughts = 0
+u8 Banked = 0
+u8 Floor0 = 0
+' input
+u8 Joy0 = 0
+u8 Joy1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ai = 0
+u8 Sx = 0
+u8 Pi = 0
+u8 Di = 0
+u8 Ci = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nc = 0
+u8 Nr = 0
+
+  tile screen
+  set sound table RrSoundTable areas 6
+  sprites 8x8
+  set sprite count NAct
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  EndGame
+  goto title
+
+' ---------------------------------------------------------------------------
+' xorshift, 16 bits
+function Rand() as u8
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  ' (highbyte inside a u16 expression is refused: bugs/finald-lowbyte-u16-dest)
+  RndB = highbyte(Rs)
+  W16 = RndB >> 1
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs & 255
+
+' the square one step from (c, r) in direction d
+function StepC(u8 Cc, u8 Dd) as u8
+  select case Dd
+    case 2
+      return Cc + 1
+    case 4
+      return Cc - 1
+  end select
+  return Cc
+
+function StepR(u8 Rr, u8 Dd) as u8
+  select case Dd
+    case 1
+      return Rr - 1
+    case 3
+      return Rr + 1
+  end select
+  return Rr
+
+function Back(u8 Dd) as u8
+  return ((Dd + 1) & 3) + 1
+
+function RightOf(u8 Dd) as u8
+  return (Dd & 3) + 1
+
+function LeftOf(u8 Dd) as u8
+  return ((Dd + 2) & 3) + 1
+
+' 1 when the square next to actor A in direction d can be walked onto
+function Open(u8 A, u8 Dd) as u8
+  u8 Tc
+  Nc = StepC(AC[A], Dd)
+  Nr = StepR(AR[A], Dd)
+  if Nc < MinC then return 0
+  if Nc > MaxC then return 0
+  Tc = get char at Nc, Nr
+  if Tc = TWall then return 0
+  ' drones keep out of the homes
+  if A >= 2 then
+    if Tc = TPadb or Tc = TPadr then return 0
+  end if
+  return 1
+
+' ---------------------------------------------------------------------------
+' one frame of play: every actor, the touches, the clock, the race
+sub PlayStep:
+  for Ai = 0 to NA - 1
+    Sx = 1
+    if Ai < 2 then
+      if Ai = 0 or Players = 2 then Sx = 1 + (Tick & 1)
+    else
+      ' drones rest one frame in four
+      if (Tick & 3) = 0 then Sx = 0
+    end if
+    while Sx > 0
+      StepActor(Ai)
+      dec Sx
+    end while
+  next
+  Places
+  Touches
+  if Mode = 1 then
+    Clock
+  else
+    if Got[0] = 1 then Winner = 1
+    if Got[1] = 1 then Winner = Winner + 2
+    if Winner > 0 then Over = 1
+  end if
+  return
+end sub
+
+' a pixel for actor A; at the middle of a square it chooses where to go
+sub StepActor(u8 A)
+  u8 D
+  u8 Oc
+  u8 Dc
+  if AO[A] = 0 then
+    D = 0
+    if A >= 2 then
+      D = DroneWay(A)
+    else
+      if A = 1 and Players = 1 then
+        D = RobotWay()
+      else
+        D = StickWay(A)
+      end if
+    end if
+    AD[A] = D
+    if D = 0 then return
+    AL[A] = D
+    if D = 2 then Face[A & 1] = 0
+    if D = 4 then Face[A & 1] = 1
+  else
+    ' a rat on the stick may turn back in the middle of a square
+    if A < 2 then
+      if A = 0 or Players = 2 then
+        D = StickBits(A)
+        K = Back(AD[A])
+        if WantDir(D, K) = 1 then
+          AC[A] = StepC(AC[A], AD[A])
+          AR[A] = StepR(AR[A], AD[A])
+          AO[A] = 8 - AO[A]
+          AD[A] = K
+          AL[A] = K
+          if K = 2 then Face[A] = 0
+          if K = 4 then Face[A] = 1
+        end if
+      end if
+    end if
+  end if
+  Oc = AO[A] + 1
+  if Oc = 8 then
+    AO[A] = 0
+    Dc = AD[A]
+    AC[A] = StepC(AC[A], Dc)
+    AR[A] = StepR(AR[A], Dc)
+    if A < 2 then Arrive(A)
+  else
+    AO[A] = Oc
+  end if
+end sub
+
+function StickBits(u8 A) as u8
+  if A = 0 then return Joy0
+  return Joy1
+
+' 1 when stick bits S hold direction d (1 up, 2 right, 3 down, 4 left)
+function WantDir(u8 S, u8 Dd) as u8
+  select case Dd
+    case 1
+      if S & 1 then return 1
+    case 2
+      if S & 8 then return 1
+    case 3
+      if S & 2 then return 1
+    case 4
+      if S & 4 then return 1
+  end select
+  return 0
+
+' a rat on the stick: a straight direction; a diagonal tries the turn first
+function StickWay(u8 A) as u8
+  u8 S
+  u8 Va
+  u8 Ho
+  S = StickBits(A)
+  Va = 0
+  Ho = 0
+  if S & 1 then Va = 1
+  if S & 2 then Va = 3
+  if S & 4 then Ho = 4
+  if S & 8 then Ho = 2
+  if AL[A] = 1 or AL[A] = 3 then
+    if Ho > 0 then
+      if Open(A, Ho) = 1 then return Ho
+    end if
+    if Va > 0 then
+      if Open(A, Va) = 1 then return Va
+    end if
+  else
+    if Va > 0 then
+      if Open(A, Va) = 1 then return Va
+    end if
+    if Ho > 0 then
+      if Open(A, Ho) = 1 then return Ho
+    end if
+  end if
+  return 0
+
+' a drone: keeps its way, a new one 56 times in 256 or when blocked
+function DroneWay(u8 A) as u8
+  u8 D
+  D = AL[A]
+  if Rand() >= 200 then D = (Rand() & 3) + 1
+  while Open(A, D) = 0
+    D = (Rand() & 3) + 1
+  end while
+  return D
+
+' the computer's blue rat follows the wall with one hand
+function RobotWay() as u8
+  u8 H
+  u8 D
+  H = AL[1]
+  if Mode = 1 and Ret = 0 then
+    if Carry[1] >= BackCarry or (Secs < 20 and Carry[1] > 0) then
+      ' turn back with the other hand: the way it came, home
+      Ret = 1
+      Hand = Hand ^ 1
+      D = Back(H)
+      if Open(1, D) = 1 then return D
+    end if
+  end if
+  if Hand = 0 then
+    D = RightOf(H)
+  else
+    D = LeftOf(H)
+  end if
+  if Open(1, D) = 1 then return D
+  if Open(1, H) = 1 then return H
+  D = Back(D)
+  if Open(1, D) = 1 then return D
+  return Back(H)
+
+' a rat arrives on a square: gold, its home (banking), the other's home
+sub Arrive(u8 A)
+  u8 Tc
+  Tc = get char at AC[A], AR[A]
+  if Tc = TGold then
+    put char TTaken at AC[A], AR[A]
+    Carry[A] = Carry[A] + 1
+    play sound SndGold
+    ShowCarry(A)
+  end if
+  if Mode = 1 then
+    if AC[A] = HC[A] and AR[A] = HR[A] then
+      if Carry[A] > 0 then BankIt(A)
+      if A = 1 then Ret = 0
+    end if
+  else
+    K = A ^ 1
+    if AC[A] = HC[K] and AR[A] = HR[K] then Got[A] = 1
+  end if
+end sub
+
+' carried x value into the bank, a nugget at a time (BCD)
+sub BankIt(u8 A)
+  u8 N
+  for N = 1 to Carry[A]
+    Purse[A] += Value
+  next
+  Carry[A] = 0
+  inc Banked
+  play sound SndBank
+  ShowCarry(A)
+  ShowBank(A)
+end sub
+
+' the pixel position of actor A
+function PixX(u8 A) as u8
+  V = AC[A] * 8
+  if AD[A] = 2 then V = V + AO[A]
+  if AD[A] = 4 then V = V - AO[A]
+  return V
+
+function PixY(u8 A) as u8
+  V = AR[A] * 8
+  if AD[A] = 3 then V = V + AO[A]
+  if AD[A] = 1 then V = V - AO[A]
+  return V
+
+sub Places:
+  for Ri = 0 to NA - 1
+    QX[Ri] = PixX(Ri)
+    QY[Ri] = PixY(Ri)
+  next
+end sub
+
+' a drone touching a rat sends it home with empty paws
+sub Touches:
+  u8 Px
+  u8 Py
+  u8 Dx
+  u8 Dy
+  for Pi = 0 to 1
+    Px = PixX(Pi)
+    Py = PixY(Pi)
+    for Di = 2 to NA - 1
+      Dx = QX[Di]
+      Dy = QY[Di]
+      if Dx > Px then
+        Dx = Dx - Px
+      else
+        Dx = Px - Dx
+      end if
+      if Dy > Py then
+        Dy = Dy - Py
+      else
+        Dy = Py - Dy
+      end if
+      if Dx < 6 and Dy < 6 then
+        Caught(Pi)
+        Px = PixX(Pi)
+        Py = PixY(Pi)
+      end if
+    next
+  next
+end sub
+
+sub Caught(u8 P)
+  AC[P] = HC[P]
+  AR[P] = HR[P]
+  AD[P] = 0
+  AO[P] = 0
+  Carry[P] = 0
+  if P = 1 then Ret = 0
+  inc Caughts
+  play sound SndCaught
+  ShowCarry(P)
+end sub
+
+' GRAB THE GOLD: 60 to 0, then the end; the value 5 less every second
+sub Clock:
+  inc Fr60
+  if Fr60 < 60 then return
+  Fr60 = 0
+  if Secs = 0 then
+    Over = 1
+    if Purse[0] > Purse[1] then
+      Winner = 1
+    else
+      if Purse[1] > Purse[0] then
+        Winner = 2
+      else
+        Winner = 3
+      end if
+    end if
+    return
+  end if
+  dec Secs
+  ValueU = ValueU - 5
+  Value -= Five
+  if Secs < 10 then play sound SndTick
+  ShowClock
+end sub
+
+' ---------------------------------------------------------------------------
+' the maze, carved the C64's way: scan the cells over and over; from an open
+' cell a random direction; a closed cell two squares away is opened, with
+' the wall between, until all 120 are open
+sub Carve:
+  u8 Done
+  u8 Ix
+  u8 D
+  u8 Ti
+  fill array Vis with 0
+  Vis[0] = 1
+  put char Floor0 at 4, 3
+  Done = 1
+  while Done < NCell
+    for Ri = 0 to NCY - 1
+      for Ci = 0 to NCX - 1
+        Ix = Ri * NCX + Ci
+        if Vis[Ix] = 1 then
+          D = Rand() & 3
+          Ti = 255
+          select case D
+            case 0
+              if Ri > 0 then Ti = Ix - NCX
+            case 1
+              if Ci < NCX - 1 then Ti = Ix + 1
+            case 2
+              if Ri < NCY - 1 then Ti = Ix + NCX
+            case 3
+              if Ci > 0 then Ti = Ix - 1
+          end select
+          if Ti < 255 then
+            if Vis[Ti] = 0 then
+              Vis[Ti] = 1
+              inc Done
+              X = Ci * 2 + 4
+              Y = Ri * 2 + 3
+              select case D
+                case 0
+                  put char Floor0 at X, Y - 1
+                  put char Floor0 at X, Y - 2
+                case 1
+                  put char Floor0 at X + 1, Y
+                  put char Floor0 at X + 2, Y
+                case 2
+                  put char Floor0 at X, Y + 1
+                  put char Floor0 at X, Y + 2
+                case 3
+                  put char Floor0 at X - 1, Y
+                  put char Floor0 at X - 2, Y
+              end select
+            end if
+          end if
+        end if
+      next
+    next
+  end while
+end sub
+
+' a live tile code takes the look of source tile S
+sub LookAs(u8 T, u8 S)
+  W16 = (S - 128) * 8
+  NumU = T * 8
+  copy TilePat + W16 count 8 to vram.pattern + NumU
+  copy TilePat + W16 count 8 to vram.pattern + 2048 + NumU
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + NumU
+  copy TileCol + W16 count 8 to vram.color + NumU
+end sub
+
+sub NewGame:
+  NewScreen
+  if Invis = 1 then
+    LookAs(TWall, TPath)
+    LookAs(TGold, TPath)
+    LookAs(TTaken, TPath)
+  else
+    LookAs(TWall, THedge)
+    LookAs(TGold, TGoldv)
+    LookAs(TTaken, TTakenv)
+  end if
+  for Ri = MinR to MaxR
+    fill TWall count 25 at MinC, Ri
+  next
+  if Mode = 1 then
+    Floor0 = TGold
+  else
+    Floor0 = TPath
+  end if
+  Carve
+  ' the homes: blue on the left, red on the right, at random cell rows
+  HC[0] = MaxC
+  HR[0] = (Rand() % NCY) * 2 + 3
+  HC[1] = MinC
+  HR[1] = (Rand() % NCY) * 2 + 3
+  put char TPadr at HC[0], HR[0]
+  put char TArrl at MaxC + 1, HR[0]
+  put char TPadb at HC[1], HR[1]
+  put char TArrb at MinC - 1, HR[1]
+  NA = Drones + 2
+  for Ai = 0 to NAct - 1
+    AD[Ai] = 0
+    AO[Ai] = 0
+    AL[Ai] = 1
+  next
+  for Ai = 0 to 1
+    AC[Ai] = HC[Ai]
+    AR[Ai] = HR[Ai]
+    Carry[Ai] = 0
+    Got[Ai] = 0
+    Purse[Ai] = 0
+  next
+  AL[0] = 4
+  AL[1] = 2
+  Face[0] = 1
+  Face[1] = 0
+  PlaceDrones
+  Over = 0
+  Winner = 0
+  Hand = 0
+  Ret = 0
+  Caughts = 0
+  Banked = 0
+  Secs = 60
+  Fr60 = 0
+  ValueU = ValStart
+  Value = ValStart
+  if Mode = 1 then
+    print at 2,1, "000000+00"
+    print at 21,1, "000000+00"
+    ShowClock
+  else
+    print at 5,1, "RACE TO THE OTHER SIDE"
+  end if
+  HideSprites
+  Places
+  DrawSprites
+  ShowScreen
+  GState = 2
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+end sub
+
+' drones on random cells at least 5 squares from either home
+sub PlaceDrones:
+  for Ai = 2 to NA - 1
+    AC[Ai] = (Rand() % 8) * 2 + 8
+    AR[Ai] = (Rand() % NCY) * 2 + 3
+    AL[Ai] = (Rand() & 3) + 1
+  next
+end sub
+
+' the end: the maze shown, who won, then back to the title on a press
+sub EndGame:
+  DrawSprites
+  if Invis = 1 then
+    Rearm
+    wait
+    nmi off
+    LookAs(TWall, THedge)
+    LookAs(TGold, TGoldv)
+    LookAs(TTaken, TTakenv)
+  end if
+  GState = 3
+  print at 9,11, "            "
+  select case Winner
+    case 1
+      print at 9,12, " RED WINS!  "
+    case 2
+      print at 9,12, " BLUE WINS! "
+    case 3
+      print at 9,12, " IT'S A TIE "
+  end select
+  print at 9,13, "            "
+  mute all
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  HideSprites
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0 red rat, 1 blue rat, 2.. drones (8 x 8)
+sub DrawSprites:
+  u8 Pat
+  for Ai = 0 to NA - 1
+    X = QX[Ai]
+    Y = QY[Ai] - 1
+    if Ai < 2 then
+      Pat = SRatR0 + Face[Ai] * 2
+      if AD[Ai] > 0 then Pat = Pat + ((AO[Ai] >> 2) & 1)
+      if Ai = 0 then
+        set sprite Ai to Y,X,Pat,9
+      else
+        set sprite Ai to Y,X,Pat,7
+      end if
+    else
+      Pat = SDrone0 + ((Tick >> 4) & 1)
+      set sprite Ai to Y,X,Pat,15
+    end if
+  next
+  update sprites
+end sub
+
+sub ShowCarry(u8 A)
+  if Mode = 0 then return
+  NumU = Carry[A]
+  if A = 0 then
+    print at 28,1, digits$(NumU, 2)
+  else
+    print at 9,1, digits$(NumU, 2)
+  end if
+end sub
+
+sub ShowBank(u8 A)
+  if A = 0 then
+    print at 21,1, Purse[0]
+  else
+    print at 2,1, Purse[1]
+  end if
+end sub
+
+sub ShowClock:
+  NumU = Secs
+  print at 12,1, digits$(NumU, 2)
+  print at 15,1, digits$(ValueU, 3)
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+end sub
+
+' Joy0: controller 1 (red), Joy1: controller 2 (blue); bits 1 up, 2 down,
+' 4 left, 8 right, 16 a button. In one-player games either controller
+' moves red.
+sub ReadPad:
+  Joy0 = 0
+  Joy1 = 0
+  if joypad(1).up then Joy0 = Joy0 | 1
+  if joypad(1).down then Joy0 = Joy0 | 2
+  if joypad(1).left then Joy0 = Joy0 | 4
+  if joypad(1).right then Joy0 = Joy0 | 8
+  if joypad(1).fire then Joy0 = Joy0 | 16
+  if joypad(2).up then Joy1 = Joy1 | 1
+  if joypad(2).down then Joy1 = Joy1 | 2
+  if joypad(2).left then Joy1 = Joy1 | 4
+  if joypad(2).right then Joy1 = Joy1 | 8
+  if joypad(2).fire then Joy1 = Joy1 | 16
+  if Players = 1 or GState <> 2 then
+    Joy0 = Joy0 | Joy1
+    Joy1 = 0
+  end if
+  Btn = Joy0 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NAct
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NAct - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+end sub
+
+' the title: THE HUMAN / RAT RACE in hedge blocks, the C64 menu's choices
+sub TitlePage:
+  NewScreen
+  LookAs(TWall, THedge)
+  print at 11,2, "THE HUMAN"
+  copy LogoMap count LogoW to vram.name + 128 + LogoX
+  for J = 1 to 4
+    W16 = J * LogoW
+    NumU = J * 32 + 128 + LogoX
+    copy LogoMap + W16 count LogoW to vram.name + NumU
+  next
+  print at 9,9, "COMPUTE! 1988"
+  for J = 0 to 5
+    ShowLine(J)
+  next
+  ShowCursor
+  ShowScreen
+  GState = 1
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  V = Joy0 & 15
+  if V > 0 and WasStick = 0 then
+    if V & 1 then
+      if Sel > 0 then Sel = Sel - 1
+      ShowCursor
+    end if
+    if V & 2 then
+      if Sel < 5 then Sel = Sel + 1
+      ShowCursor
+    end if
+    if V & 4 then Change(255)
+    if V & 8 then Change(1)
+  end if
+  WasStick = V
+  if Press = 1 then
+    if Sel = 4 then goto tp_go
+    if Sel = 5 then
+      CreditsPage
+      goto title_again
+    end if
+    Change(1)
+  end if
+  goto tp_loop
+tp_go:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+title_again:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitlePage
+end sub
+
+' change line Sel by +1 or -1 (255)
+sub Change(u8 Dd)
+  select case Sel
+    case 0
+      Mode = Mode ^ 1
+    case 1
+      Invis = Invis ^ 1
+    case 2
+      Drones = Drones + Dd
+      if Drones = 255 then Drones = 9
+      if Drones = 10 then Drones = 0
+    case 3
+      Players = 3 - Players
+  end select
+  if Sel < 4 then ShowLine(Sel)
+end sub
+
+sub ShowLine(u8 L)
+  Y = MenuRow[L]
+  fill 32 count 24 at 5, Y
+  select case L
+    case 0
+      if Mode = 0 then
+        print at 5,Y, "RACE TO THE OTHER SIDE"
+      else
+        print at 5,Y, "GRAB THE GOLD"
+      end if
+    case 1
+      if Invis = 0 then
+        print at 5,Y, "VISIBLE MAZE"
+      else
+        print at 5,Y, "INVISIBLE MAZE"
+      end if
+    case 2
+      NumU = Drones
+      print at 5,Y, digits$(NumU, 1), " DRONES"
+    case 3
+      if Players = 1 then
+        print at 5,Y, "1 PLAYER (BLUE: COMPUTER)"
+      else
+        print at 5,Y, "2 PLAYERS"
+      end if
+    case 4
+      print at 5,Y, "START GAME"
+    case 5
+      print at 5,Y, "CREDITS"
+  end select
+end sub
+
+sub ShowCursor:
+  for J = 0 to 5
+    put char 32 at 3, MenuRow[J]
+  next
+  put char 62 at 3, MenuRow[Sel]
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 7,2, "THE HUMAN RAT RACE"
+  print at 2,4, "BASED ON HUMAN RAT RACE,"
+  print at 2,5, "COMPUTE!'S GAZETTE, MARCH"
+  print at 2,6, "1988 (COMMODORE 64 MACHINE"
+  print at 2,7, "LANGUAGE; NO AUTHOR NAMED"
+  print at 2,8, "ON THE DISK)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: COMMUTER SHUFFLE"
+  print at 2,17, "(ORIGINAL)"
+  print at 2,19, "RED: CONTROLLER 1"
+  print at 2,20, "BLUE: CONTROLLER 2"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  GState = 0
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+end sub
+
+asm {
+RrCaught:
+    db $40,$75,$11,$02,$40,$1F,$11,$02,$40,$E9,$10,$02,$40,$C4,$10,$02,$40,$A9,$20,$02,$40,$95,$20,$02
+    db $40,$85,$20,$02,$40,$78,$20,$02,$40,$6E,$20,$02,$40,$65,$20,$02,$40,$5D,$20,$02,$40,$57,$20,$02
+    db $50
+RrGold:
+    db $40,$47,$40,$01,$40,$35,$50,$02,$50
+RrBank:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$30,$08,$50
+RrTick:
+    db $00,$00,$64,$02,$10
+RrStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+RrWin:
+    db $40,$8F,$10,$08,$40,$AA,$20,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$71,$20,$0A,$40,$6B,$20,$18
+    db $50
+RrOver:
+    db $40,$D6,$10,$0A,$40,$FE,$20,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+
+RrSoundTable:
+    dw RrTuneMel,$702B
+    dw RrTuneBass,$7035
+    dw RrCaught,$7049
+    dw RrGold,$7049
+    dw RrBank,$7049
+    dw RrTick,$703F
+    dw RrStart,$7049
+    dw RrWin,$7049
+    dw RrOver,$7049
+; Commuter Shuffle (original)
+; Tiny Sound, 7 frames per step
+RrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$F1,$22,$23,$26,$2B,$26,$23,$01,$21,$01,$23,$24,$26,$01
+    db $28,$26,$23,$01,$21,$24,$28,$24,$21,$01,$1F,$01,$1E,$21,$26,$01
+    db $24,$23,$21,$01,$23,$26,$2B,$26,$23,$01,$21,$01,$23,$24,$26,$01
+    db $28,$01,$2A,$01,$2B,$01,$26,$01,$23,$21,$1F,$01,$1A,$01,$1F,$01
+    db $01,$01,$00,$01
+    db $FF
+RrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$12,$01
+    db $09,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$10,$01
+    db $0E,$01,$12,$01,$07,$01,$0B,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$00,$01
+    db $FF
+}

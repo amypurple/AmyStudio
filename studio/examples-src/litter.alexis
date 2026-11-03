@@ -1,0 +1,1055 @@
+cartridge "LITTERBUG/PAUL CHOQUETTE/1987"
+
+' LITTERBUG
+' A ColecoVision game based on "Litterbug" by Paul Choquette, COMPUTE!'s
+' Gazette November 1987 (Commodore 64, machine code). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/litterbug.dis, and timed in jsc64), the game is rebuilt
+' for the ColecoVision: litter drawn as tiles on a park lawn, sprites for the
+' worker, the bugs, the garbage bag and the badge, sound effects and a tune.
+'
+' The game: you are a sanitation worker sweeping a park. Walk over every
+' piece of litter to pick it up (10 points) while the litterbugs chase you;
+' one that touches you dirties your uniform and costs a life. A button puts
+' down a garbage bag: the two first bugs go for the bag instead of you, and
+' while the bag lies there every piece of litter is worth ten times as much.
+' When a bug reaches the bag it is gone. Now and then a badge appears: pick
+' it up for 1000 points and one more bag. A clean park ends the level with a
+' bonus for the time left; the next level has new litter.
+'
+' From the original (orig/): the worker walks a pixel a pass, up/down
+' before left/right; three chasers: bug 1 moves up/down until level with its
+' target, then sideways; bug 2 moves on both axes at once; bug 3 (from level
+' 2) moves sideways first, then up/down, always after the worker; a chaser
+' that is level with its target on its last axis wobbles a pixel either way
+' (as on the C64); bugs step every second pass, every 5th pass while a bag is
+' down (4th from level 3, 3rd from level 4, 2nd from level 5), and from
+' level 3 bug 3 also cuts diagonally while a bag is down; bugs 1 and 2 head
+' for the bag and eat it; 8 bags a life, refilled after every lost life; a
+' badge try each pass (1 in 256, every 6th success shows it) while fewer than
+' 7 bags are left, 1000 points and a bag; 4 workers, one more on reaching
+' level 5; litter 10 points (100 from level 5), x10 while a bag is down;
+' time bar of 48 units, refilled for every life and level; level bonus
+' (units left + 1) x 100, x 1000 from level 5, counted down with a tick; a
+' new life waits for the stick to move; speed 1-9 chosen on the title.
+'
+' Liberties: the field is 26 x 18 pieces of litter on 8-pixel cells (the
+' C64 had 29 x 24 single pixels on its bitmap) inside a hedge, so the time
+' bar runs 134 s instead of 200 s (a unit every 168 frames); speeds are in
+' sixtieths of a second (the C64 ran 54 passes a second at speed 1, 71 at
+' speed 9: here 58/64 .. 76/64 passes a frame; bugs and worker as on the
+' C64 in pixels); touches are box tests, a bug within 7 pixels both ways
+' (the C64 used hardware collisions of its sparse multicolour sprites); the C64 let a worker standing on his own bag be untouchable
+' (the collision register then read a bag hit, not a bug hit): here a bug
+' always catches him, so the bag cannot be used as a shelter; a bag still
+' down when the worker is caught is cleared; the screen does not flash when
+' a bag is put down (the C64 flashed the background); the C64's F1 key for
+' the speed is the joystick on the title; the high score is kept until the
+' console is switched off. EASY (the title's default, added for first-time
+' players): bugs step every 3rd pass instead of every 2nd (bag cadences
+' unchanged), bug 3 joins on level 3 instead of 2, and the time bar lasts
+' 201 s; NORMAL is the original's pace.
+'
+' Controls: joystick only. The stick walks, a side button puts down a bag.
+' On the title, left and right choose the speed 1-9, up and down EASY or
+' NORMAL, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TLit0 = 128
+const TLit1 = 129
+const TLit2 = 130
+const TClean = 131
+const THedge = 132
+const TLife = 133
+const TBag = 134
+const TClock = 135
+const TBar0 = 136
+const TBar1 = 137
+const TBar2 = 138
+const TBar3 = 139
+const TBar4 = 140
+const TBlock = 141
+const SWorkw0 = 0
+const SWorkw1 = 4
+const SWorkp0 = 8
+const SWorkp1 = 12
+const SBug0 = 16
+const SBug1 = 20
+const SSack = 24
+const SBadge = 28
+const NTiles8 = 112
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSweep = 3
+const SndDrop = 4
+const SndMunch = 5
+const SndBadge = 6
+const SndCaught = 7
+const SndCount = 8
+const SndReady = 9
+const SndClear = 10
+const SndOver = 11
+const SndPick = 12
+const MinX = 20
+const MaxX = 219
+const MinY = 20
+const MaxY = 155
+const StartX = 120
+const StartY = 88
+const HitD = 8
+const BagD = 8
+const PickD = 12
+const NUnits = 48
+const UnitLen = 168
+const NLitter = 468
+const NSpr = 7
+
+' passes per frame in 64ths for speeds 1-9 (C64: 54 .. 71 passes a second)
+data RateTab bytes 58,60,61,63,66,68,70,73,76
+' the bugs' start places and colours (red, magenta, cyan)
+data EStartX bytes 120,120,20
+data EStartY bytes 155,20,88
+data ECol bytes 8,13,7
+
+data TilePat bytes
+  $00,$38,$83,$C1,$1C,$08,$00,$00
+  $00,$1C,$1C,$1C,$1C,$1C,$1C,$00
+  $00,$00,$42,$81,$81,$42,$00,$00
+  $00,$04,$00,$40,$00,$02,$20,$00
+  $49,$94,$25,$A2,$14,$8A,$21,$00
+  $C3,$81,$C3,$C3,$81,$00,$99,$99
+  $18,$18,$C3,$81,$00,$00,$81,$C3
+  $C3,$99,$18,$E1,$00,$81,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$20,$40,$01,$01,$01,$07,$81
+end data
+data TileCol bytes
+  $0C,$FC,$CF,$CF,$FC,$FC,$0C,$0C
+  $0C,$8C,$FC,$8C,$8C,$FC,$8C,$0C
+  $0C,$0C,$BC,$CB,$CB,$BC,$0C,$0C
+  $0C,$2C,$0C,$2C,$0C,$2C,$2C,$0C
+  $32,$32,$32,$32,$32,$32,$32,$01
+  $1F,$1F,$19,$19,$1F,$0F,$1F,$1F
+  $F1,$E1,$1E,$1E,$0E,$0E,$1E,$1E
+  $1F,$1F,$1F,$F1,$0F,$1F,$1F,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $1B,$FB,$FB,$AB,$AB,$AB,$AB,$1A
+end data
+data SpritePat bytes
+  $03,$07,$0F,$00,$00,$00,$0F,$1F,$1F,$0F,$0F,$0F,$07,$07,$06,$0E
+  $C0,$E0,$F0,$00,$00,$00,$F0,$F8,$F8,$F0,$F0,$F0,$70,$70,$30,$38
+  $03,$07,$0F,$00,$00,$00,$0F,$1F,$1F,$0F,$0F,$0F,$07,$0E,$0C,$1C
+  $C0,$E0,$F0,$00,$00,$00,$F0,$F8,$F8,$F0,$F0,$F0,$70,$30,$18,$1C
+  $00,$00,$00,$03,$03,$01,$00,$00,$20,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$04,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$01,$00,$00,$20,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$80,$00,$00,$04,$04,$00,$00,$00,$00,$00,$00
+  $08,$04,$03,$07,$25,$17,$0F,$9F,$7F,$1F,$3F,$5F,$8F,$0F,$07,$00
+  $10,$20,$C0,$E0,$A4,$E8,$F0,$F9,$FE,$F8,$FC,$FA,$F1,$F0,$E0,$00
+  $10,$08,$03,$27,$15,$0F,$0F,$1F,$FF,$1F,$1F,$7F,$9F,$0F,$07,$00
+  $08,$10,$C0,$E4,$A8,$F0,$F0,$F8,$FF,$F8,$F8,$FE,$F9,$F0,$E0,$00
+  $00,$01,$02,$01,$03,$07,$0F,$1F,$3F,$3F,$7F,$7F,$7F,$3F,$1F,$00
+  $00,$80,$40,$80,$C0,$E0,$F0,$F8,$FC,$FC,$FE,$FE,$FE,$FC,$F8,$00
+  $00,$01,$01,$03,$FF,$7F,$3F,$1F,$1F,$3C,$38,$60,$40,$00,$00,$00
+  $00,$80,$80,$C0,$FC,$F8,$F0,$E0,$E0,$F0,$70,$18,$08,$00,$00,$00
+end data
+
+record Bug:
+  u8 X
+  u8 Y
+end record
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 7 Score
+bcd digits 7 Hi
+' the worker
+u8 Px = StartX
+u8 Py = StartY
+u8 Walk = 0
+u8 WalkC = 0
+u8 Dirty = 0
+' the bugs, the bag, the badge
+Bug En[3]
+u8 NEn = 2
+u8 Cad = 0
+u8 DkOn = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 DkSlow = 4
+u8 ItemOn = 0
+u8 Ix = 0
+u8 Iy = 0
+u8 ItemC = 0
+' the game
+u8 Level = 1
+u8 Lives = 4
+u8 Bags = 8
+u8 Speed = 1
+u8 Easy = 1
+u8 NormCad = 1
+u8 UnitL = UnitLen
+u8 Rate = 58
+u8 Acc = 0
+u8 TimeU = NUnits
+u8 TimeF = 0
+u16 Left = 0
+u8 Phase = 0
+u8 Over = 0
+u8 Steps = 0
+u8 Keep[6]
+' input: J the stick (1 up, 2 down, 4 left, 8 right, 16 a button)
+u8 J = 0
+u8 OldJ = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ri = 0
+u8 Ci = 0
+u8 Ei = 0
+u8 Bi = 0
+u8 Ti = 0
+u8 Qi = 0
+' scratch
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table LbSoundTable areas 6
+  sprites 16x16
+  sprites stable 0 to 1
+  sprites flicker on
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Hi = 0
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+level_loop:
+  NewField
+life_loop:
+  RunLife
+  if Phase = 3 then
+    LevelDone
+    goto level_loop
+  end if
+  LoseLife
+  if Over = 0 then goto life_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  HideSprites
+  print at 9,11, "            "
+  print at 9,12, " GAME  OVER "
+  print at 9,13, "            "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub NewGame:
+  Score = 0
+  Level = 1
+  Lives = 4
+  Bags = 8
+  NEn = 2
+  DkSlow = 4
+  Over = 0
+  Rate = RateTab[Speed - 1]
+  ' EASY: bugs step every 3rd pass, the time bar lasts 1.5 times longer
+  if Easy = 1 then
+    NormCad = 2
+    UnitL = 252
+  else
+    NormCad = 1
+    UnitL = UnitLen
+  end if
+  return
+end sub
+
+' a new park: the hedge, fresh litter, the status lines
+sub NewField:
+  NewScreen
+  fill THedge count 28 at 2,2
+  fill THedge count 28 at 2,21
+  for Ri = 3 to 20
+    put char THedge at 2,Ri
+    put char THedge at 29,Ri
+    for Ci = 3 to 28
+      ' the kind of litter in a cell: a fixed scatter
+      T = (Ci + Ri * 2 + (Ci >> 2) + Level) % 3
+      put char TLit0 + T at Ci,Ri
+    next
+  next
+  Left = NLitter
+  ShowTop
+  return
+end sub
+
+' one life: everything in place, wait for the stick, play until caught
+' (Phase 2) or the park is clean (Phase 3)
+sub RunLife:
+  Px = StartX
+  Py = StartY
+  Walk = 0
+  WalkC = 0
+  Dirty = 0
+  for Ei = 0 to 2
+    En[Ei].X = EStartX[Ei]
+    En[Ei].Y = EStartY[Ei]
+  next
+  Cad = 0
+  DkOn = 0
+  ItemOn = 0
+  ItemC = 0
+  TimeU = NUnits
+  TimeF = 0
+  Acc = 0
+  ShowTop
+  ShowStatus
+  DrawSprites
+  ShowScreen
+  SaveRow
+  print at 11,11, "READY!"
+  play sound SndReady
+  ' the C64 waited for the stick to move before the bugs set off
+  OldJ = 31
+rl_wait:
+  Frame1
+  ReadStick
+  inc Rs
+  if (J & 15) = 0 then goto rl_wait
+  print at 11,11, "      "
+  RestoreRow
+  Phase = 1
+rl_loop:
+  Frame1
+  ReadStick
+  if Press = 1 then DropBag
+  Acc = Acc + Rate
+  while Acc >= 64
+    Acc = Acc - 64
+    StepOnce
+    if Phase <> 1 then exit while
+  end while
+  TimeTick
+  DrawSprites
+  if Phase = 1 then goto rl_loop
+  return
+end sub
+
+' the READY! message covers six cells of row 11: kept and put back
+sub SaveRow:
+  for Ci = 0 to 5
+    vpeek vram.name + 363 + Ci into Keep[Ci]
+  next
+  return
+end sub
+
+sub RestoreRow:
+  for Ci = 0 to 5
+    vpoke vram.name + 363 + Ci, Keep[Ci]
+  next
+  return
+end sub
+
+' one pass of the C64's loop
+sub StepOnce:
+  MoveWorker
+  Sweep
+  MoveBugs
+  Touches
+  BadgeTry
+  return
+end sub
+
+' up/down before left/right, a pixel a pass
+sub MoveWorker:
+  N = 0
+  if (J & 1) <> 0 then
+    if Py > MinY then
+      dec Py
+      N = 1
+    end if
+  else
+    if (J & 2) <> 0 then
+      if Py < MaxY then
+        inc Py
+        N = 1
+      end if
+    else
+      if (J & 4) <> 0 then
+        if Px > MinX then
+          dec Px
+          N = 1
+        end if
+      else
+        if (J & 8) <> 0 then
+          if Px < MaxX then
+            inc Px
+            N = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  if N = 1 then
+    inc WalkC
+    if WalkC >= 6 then
+      WalkC = 0
+      Walk = Walk ^ 1
+    end if
+  end if
+  return
+end sub
+
+' the litter in the cell under the worker's middle
+sub Sweep:
+  X = (Px + 8) >> 3
+  Y = (Py + 8) >> 3
+  W16 = Y
+  W16 = W16 * 32 + X
+  vpeek vram.name + W16 into V
+  if V < TLit0 then return
+  if V > TLit2 then return
+  vpoke vram.name + W16, TClean
+  dec Left
+  AddLitter
+  play sound SndSweep
+  if Left = 0 then Phase = 3
+  return
+end sub
+
+sub AddLitter:
+  if Level >= 5 then
+    if DkOn = 1 then
+      Score += 1000
+    else
+      Score += 100
+    end if
+  else
+    if DkOn = 1 then
+      Score += 100
+    else
+      Score += 10
+    end if
+  end if
+  return
+end sub
+
+' the bugs step every (Cad + 1)th pass
+sub MoveBugs:
+  if Cad > 0 then
+    dec Cad
+    return
+  end if
+  if DkOn = 1 then
+    Cad = DkSlow
+    X = Dx
+    Y = Dy
+  else
+    Cad = NormCad
+    X = Px
+    Y = Py
+  end if
+  ' bug 2: both axes (wobbles up/down when level)
+  En[1].X = Toward(En[1].X, X)
+  En[1].Y = Wobble(En[1].Y, Y)
+  ' bug 1: up/down first; with a bag down, both axes
+  if DkOn = 1 then
+    En[0].Y = Toward(En[0].Y, Y)
+    En[0].X = Wobble(En[0].X, X)
+  else
+    if En[0].Y = Y then
+      En[0].X = Wobble(En[0].X, X)
+    else
+      En[0].Y = Toward(En[0].Y, Y)
+    end if
+  end if
+  if NEn < 3 then return
+  ' bug 3: always after the worker, sideways first
+  if En[2].X = Px then
+    En[2].Y = Wobble(En[2].Y, Py)
+  else
+    En[2].X = Toward(En[2].X, Px)
+    if DkOn = 1 then
+      if Level >= 3 then En[2].Y = Wobble(En[2].Y, Py)
+    end if
+  end if
+  return
+end sub
+
+' a step toward the target, none when there
+function Toward(u8 A, u8 Tg) as u8
+  if Tg < A then return A - 1
+  if Tg > A then return A + 1
+  return A
+
+' a step toward the target, a step up when there (the C64's wobble)
+function Wobble(u8 A, u8 Tg) as u8
+  if Tg < A then return A - 1
+  return A + 1
+
+function Near(u8 Ax, u8 Ay, u8 Bx, u8 By, u8 D) as u8
+  if Ax >= Bx then
+    if Ax - Bx >= D then return 0
+  else
+    if Bx - Ax >= D then return 0
+  end if
+  if Ay >= By then
+    if Ay - By >= D then return 0
+  else
+    if By - Ay >= D then return 0
+  end if
+  return 1
+
+sub Touches:
+  for Ti = 0 to NEn - 1
+    X = En[Ti].X
+    Y = En[Ti].Y
+    N = Near(X, Y, Px, Py, HitD)
+    if N = 1 then Phase = 2
+  next
+  if DkOn = 1 then
+    for Ti = 0 to 1
+      X = En[Ti].X
+      Y = En[Ti].Y
+      N = Near(X, Y, Dx, Dy, BagD)
+      if N = 1 then
+        DkOn = 0
+        play sound SndMunch
+      end if
+    next
+  end if
+  if ItemOn = 1 then
+    N = Near(Ix, Iy, Px, Py, PickD)
+    if N = 1 then
+      ItemOn = 0
+      Score += 1000
+      inc Bags
+      ShowStatus
+      play sound SndBadge
+    end if
+  end if
+  return
+end sub
+
+' the C64 tried for a badge every pass: 1 in 256, shown on every 6th
+sub BadgeTry:
+  Rand
+  if Bags >= 7 then return
+  T = Rs & 255
+  if T <> 0 then return
+  inc ItemC
+  if ItemC < 6 then return
+  ItemC = 0
+  ItemOn = 1
+  T = Rs >> 8
+  Ix = MinX + T % 200
+  Rand
+  T = Rs >> 8
+  Iy = MinY + T % 136
+  return
+end sub
+
+sub DropBag:
+  if DkOn = 1 then return
+  if Bags = 0 then return
+  DkOn = 1
+  Dx = Px
+  Dy = Py
+  dec Bags
+  ShowStatus
+  play sound SndDrop
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the time bar: a unit every UnitLen frames
+sub TimeTick:
+  inc TimeF
+  if TimeF < UnitL then return
+  TimeF = 0
+  if TimeU = 0 then return
+  dec TimeU
+  ShowTime
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub LevelDone:
+  HideSprites
+  play sound SndClear
+  print at 9,11, "            "
+  print at 9,12, " PARK CLEAN "
+  print at 9,13, "            "
+  for Ti = 1 to 90
+    Frame1
+  next
+  ' the bonus: (units left + 1) x 100, x 1000 from level 5
+  N = TimeU + 1
+  for Bi = 1 to N
+    if Level >= 5 then
+      Score += 1000
+    else
+      Score += 100
+    end if
+    if TimeU > 0 then dec TimeU
+    ShowTime
+    ShowTop
+    play sound SndCount
+    Frame1
+    Frame1
+    Frame1
+  next
+  for Ti = 1 to 60
+    Frame1
+  next
+  inc Level
+  select case Level
+  case 2
+    if Easy = 0 then NEn = 3
+  case 3
+    NEn = 3
+    DkSlow = 3
+  case 4
+    DkSlow = 2
+  case 5
+    DkSlow = 1
+    inc Lives
+  end select
+  return
+end sub
+
+' caught: the uniform is dirty; back to headquarters
+sub LoseLife:
+  play sound SndCaught
+  Dirty = 1
+  for Ti = 1 to 75
+    Frame1
+    DrawSprites
+  next
+  dec Lives
+  Bags = 8
+  if Lives = 0 then
+    Over = 1
+    if Score > Hi then Hi = Score
+    ShowTop
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub DrawSprites:
+  if Dirty = 1 then
+    ' the dirty uniform, its brown showing 2.5 times a second
+    T = Tick / 12
+    if (T & 1) = 0 then V = 10 else V = 14
+  else
+    V = 15
+  end if
+  Y = Py - 1
+  N = Walk * 4
+  set sprite 0 to Y,Px,SWorkw0 + N,V
+  set sprite 1 to Y,Px,SWorkp0 + N,9
+  N = (Tick >> 3) & 1
+  N = SBug0 + N * 4
+  for Ei = 0 to 2
+    if Ei < NEn then
+      Y = En[Ei].Y - 1
+      set sprite Ei + 2 to Y,En[Ei].X,N,ECol[Ei]
+    else
+      set sprite Ei + 2 to 207,0,0,0
+    end if
+  next
+  if DkOn = 1 then
+    Y = Dy - 1
+    set sprite 5 to Y,Dx,SSack,14
+  else
+    set sprite 5 to 207,0,0,0
+  end if
+  if ItemOn = 1 then
+    Y = Iy - 1
+    set sprite 6 to Y,Ix,SBadge,11
+  else
+    set sprite 6 to 207,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' row 1: score, level, high score
+sub ShowTop:
+  print Score at 2,1
+  print at 11,1, "LEVEL " + digits$(Level, 2)
+  print at 20,1, "HI"
+  print Hi at 23,1
+  return
+end sub
+
+' row 22: spare workers, bags, the clock and the time bar
+sub ShowStatus:
+  for Bi = 0 to 3
+    N = Bi + 1
+    if N < Lives then
+      put char TLife at 2 + Bi,22
+    else
+      put char 32 at 2 + Bi,22
+    end if
+  next
+  for Bi = 0 to 7
+    if Bi < Bags then
+      put char TBag at 7 + Bi,22
+    else
+      put char 32 at 7 + Bi,22
+    end if
+  next
+  put char TClock at 17,22
+  ShowTime
+  return
+end sub
+
+' 48 units over 12 cells of 4 quarters (columns 18-29)
+sub ShowTime:
+  N = TimeU
+  for Qi = 0 to 11
+    if N >= 4 then
+      put char TBar4 at 18 + Qi,22
+      N = N - 4
+    else
+      put char TBar0 + N at 18 + Qi,22
+      N = 0
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub ReadStick:
+  T = 0
+  if joypad(1).up or joypad(2).up then T = T | 1
+  if joypad(1).down or joypad(2).down then T = T | 2
+  if joypad(1).left or joypad(2).left then T = T | 4
+  if joypad(1).right or joypad(2).right then T = T | 8
+  if joypad(1).fire or joypad(2).fire then T = T | 16
+  J = T
+  Press = 0
+  if (J & 16) <> 0 then
+    if (OldJ & 16) = 0 then Press = 1
+  end if
+  OldJ = J
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for K = 0 to NSpr - 1
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: LITTER / BUG in yellow blocks, two bugs crawling, the speed
+
+data Font3 bytes 4,4,4,4,4,4,7,0, 7,2,2,2,2,2,7,0, 7,2,2,2,2,2,2,0, 7,4,4,6,4,4,7,0, 6,5,5,6,5,5,5,0, 6,5,5,6,5,5,6,0, 5,5,5,5,5,5,7,0, 7,4,4,5,5,5,7,0
+' letters: L I T E R B U G, 7 rows of 3 bits
+data TitleWord1 bytes 0,1,2,2,3,4
+data TitleWord2 bytes 5,6,7
+
+sub TitlePage:
+  NewScreen
+  for Ci = 0 to 5
+    X = 4 + Ci * 4
+    BigLetter(TitleWord1[Ci], X, 3)
+  next
+  for Ci = 0 to 2
+    X = 10 + Ci * 4
+    BigLetter(TitleWord2[Ci], X, 11)
+  next
+  print at 2,1, "SCORE"
+  print Score at 8,1
+  print at 17,1, "HI"
+  print Hi at 20,1
+  print at 4,19, "BUTTON: START"
+  print at 4,20, "LEFT/RIGHT: SPEED"
+  print at 4,21, "UP/DOWN:"
+  ShowSpeed
+  ' the bugs pace 32 pixels out and back every 256 frames
+  Tick = 0
+  En[0].X = 32
+  En[0].Y = 112
+  En[1].X = 208
+  En[1].Y = 112
+  TitleBugs
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  OldJ = 31
+  Ti = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadStick
+  TitleBugs
+  N = J & (J ^ Ti)
+  Ti = J
+  if (N & 3) <> 0 then
+    Easy = Easy ^ 1
+    play sound SndPick
+    ShowSpeed
+  end if
+  if (N & 4) <> 0 then
+    if Speed > 1 then dec Speed
+    play sound SndPick
+    ShowSpeed
+  end if
+  if (N & 8) <> 0 then
+    if Speed < 9 then inc Speed
+    play sound SndPick
+    ShowSpeed
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+' one 3 x 7 letter of blocks
+sub BigLetter(u8 L, u8 Cx, u8 Cy):
+  for Ri = 0 to 6
+    K = L * 8 + Ri
+    V = Font3[K]
+    for Bi = 0 to 2
+      T = V & (4 >> Bi)
+      if T <> 0 then put char TBlock at Cx + Bi,Cy + Ri
+    next
+  next
+  return
+end sub
+
+sub ShowSpeed:
+  print at 22,20, digits$(Speed, 1)
+  if Easy = 1 then
+    print at 13,21, "EASY  "
+  else
+    print at 13,21, "NORMAL"
+  end if
+  return
+end sub
+
+' two bugs pace under the title, turning at the edges
+sub TitleBugs:
+  N = (Tick >> 3) & 1
+  N = SBug0 + N * 4
+  T = Tick & 3
+  if T = 0 then
+    if (Tick & 128) = 0 then
+      inc En[0].X
+      dec En[1].X
+    else
+      dec En[0].X
+      inc En[1].X
+    end if
+  end if
+  Y = En[0].Y - 1
+  set sprite 2 to Y,En[0].X,N,8
+  set sprite 3 to Y,En[1].X,N,13
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "LITTERBUG"
+  print at 2,5, "BASED ON LITTERBUG BY"
+  print at 2,6, "PAUL CHOQUETTE, COMPUTE!'S"
+  print at 2,7, "GAZETTE, NOVEMBER 1987"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: CLEAN SWEEP"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+LbSweep:
+    db $00,$00,$55,$01,$00,$00,$96,$01,$10
+LbDrop:
+    db $40,$FC,$21,$03,$40,$3B,$22,$03,$40,$7F,$32,$04,$50
+LbMunch:
+    db $00,$00,$24,$02,$00,$00,$35,$02,$00,$00,$44,$03,$00,$00,$66,$04,$10
+LbBadge:
+    db $40,$55,$20,$03,$40,$47,$20,$03,$40,$39,$20,$03,$40,$2A,$30,$06,$50
+LbCaught:
+    db $40,$1D,$11,$04,$40,$2E,$21,$04,$40,$53,$21,$04,$40,$7C,$21,$04,$40,$C5,$21,$06,$40,$3B,$32,$0A
+    db $50
+LbCount:
+    db $40,$40,$40,$02,$40,$40,$F0,$01,$50
+LbReady:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$08,$50
+LbClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$8F,$20,$04,$40,$6B,$20,$10
+    db $50
+LbOver:
+    db $40,$D6,$10,$0A,$40,$F0,$20,$0A,$40,$1D,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+LbPick:
+    db $40,$55,$40,$02,$50
+
+LbSoundTable:
+    dw LbTuneMel,$702B
+    dw LbTuneBass,$7035
+    dw LbSweep,$703F
+    dw LbDrop,$7049
+    dw LbMunch,$703F
+    dw LbBadge,$7049
+    dw LbCaught,$7049
+    dw LbCount,$7049
+    dw LbReady,$7049
+    dw LbClear,$7049
+    dw LbOver,$7049
+    dw LbPick,$7049
+; Clean Sweep (original)
+; Tiny Sound, 8 frames per step
+LbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1E,$01,$1A,$01,$1E,$01,$21,$01,$01,$01
+    db $26,$01,$25,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $1E,$01,$1F,$01,$21,$01,$1F,$01,$21,$01,$23,$01,$21,$01,$1E,$01
+    db $1A,$01,$1C,$01,$1E,$01,$1C,$01,$1A,$01,$19,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+LbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$13,$01,$0E,$01,$13,$01,$0E,$01,$15,$01,$10,$01
+    db $15,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$0E,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

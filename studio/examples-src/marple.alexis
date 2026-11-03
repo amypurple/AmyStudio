@@ -1,0 +1,1489 @@
+cartridge "MYSTERY AT MARPLE MANOR/COMPUTE'S GAZETTE/1984"
+
+' MYSTERY AT MARPLE MANOR
+' A ColecoVision game based on "Mystery at Marple Manor", COMPUTE!'s
+' Gazette, September 1984 (Commodore 64 and VIC-20 BASIC, disk 1984-09;
+' no author is named in the listings or on the disk; the listing's REM
+' calls it MURDER AT MYSTERY MANOR, its title screen MYSTERY AT MARPLE
+' MANOR). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a line-for-line port: the rules are the C64 listing's (orig/); the
+' game is rebuilt for the ColecoVision with a top view of each room, a
+' detective who walks through the doorways, icons for what is in the
+' room, sound effects and the listing's title music.
+'
+' The game: one of ten guests and staff has been murdered somewhere in
+' the fourteen rooms of the manor, and the murderer has fled with the
+' weapon. Walk the manor, search the rooms, and work out the victim, the
+' murderer (the one suspect you never find), the weapon (the one weapon
+' you never find) and the room (where the body lies). One wrong
+' accusation and you are off the case.
+'
+' Controls: joystick and side buttons only. In a room, the stick moves
+' the cursor over LEAVE SEARCH TAKE / DROP NOTES ACCUSE and either
+' button chooses. LEAVE: push the stick towards a door (the right button
+' stays). TAKE: left/right picks the thing, left button takes it, right
+' button cancels. ACCUSE: up/down picks the line, left/right the name,
+' a button on ACCUSE! makes the arrest (GO BACK returns).
+'
+' From the original (C64 listing): the ten suspects, twelve weapons and
+' fourteen rooms and the listing's map (lines 5000-5065: doors in the
+' north, east, south and west walls; eleven doors between the house and
+' the outer rooms, lines 3030); suspects placed in rooms 4-14, weapons
+' in rooms 2-14, the eight room keys (Study to Garage) all in the Pantry,
+' the skeleton key in rooms 7-14 (lines 112-121); the victim, the
+' murderer (gone from the manor) and the weapon (gone too) drawn at
+' random, the body in the victim's room (lines 124-130); each suspect and
+' weapon hidden with a chance of 3 in 4 (line 133); each door locked
+' with a chance of 9 in 10 (line 142); one thing carried at a time,
+' taking another drops it (lines 841-845); a locked door opens with the
+' skeleton key or the key of either room it joins, and stays unlocked
+' (lines 266-272, 1760-1773); SEARCH finds each hidden thing in the room
+' with a chance of 1 in 2 (lines 930-945); a turn is an optional move and
+' one action (lines 221-456); the accusation asks victim, murderer,
+' weapon, room (lines 700-745), then the police are summoned with the
+' siren (lines 746-751), and the verdict YOUR SOLUTION IS CORRECT! /
+' NO!...THAT WAS A FALSE ARREST! with the solution (lines 760-791); the
+' end-turn, false-arrest (a funeral-march figure, public domain) and
+' case-cracked tunes as effects (DATA 4000, 6000, 7000). The listing's
+' title music (the opening of Bach's Toccata in D minor, DATA 2000-2025)
+' is replaced by an original tune, "Footsteps in the Hall" (house rule).
+'
+' Liberties: one detective. The listing is a party game for 1-6 players
+' at one keyboard with two-key secret codes; this port is one player,
+' so the secret codes, PILFER (stealing from another player), HIDE (only
+' useful against rivals) and locking a door behind you (likewise) are
+' left out; the turns are counted instead and the verdict says how many
+' were used. Moving twice in a row ends the turn between the moves (the
+' listing's N = no action). TAKE and DROP with nothing to take or drop
+' don't use the turn. The rooms are drawn from above with their doors
+' (open passages, unlocked and locked doors) instead of a list of door
+' directions, and what is in the room is shown as icons and a list. A
+' locked door the detective can't open names the room behind it (so the
+' player knows which key to fetch). A NOTES page ticks every suspect and
+' weapon seen so far (players of the original kept notes on paper). The
+' accusation picks names with the stick instead of typing numbers. The
+' listing's spelling CHAUFFER is written CHAUFFEUR. The flashing
+' title border is left out (too fast), the big title M's are kept.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title music played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes.
+
+const TWall = 128
+const TFl0 = 129
+const TFl1 = 130
+const TFl2 = 131
+const TFl3 = 132
+const TWater = 133
+const TDopen = 134
+const TDlockl = 135
+const TDlockr = 136
+const TSuspect = 137
+const TWeapon = 138
+const TKey = 139
+const TSkey = 140
+const TSheetl = 141
+const TSheetr = 142
+const TTick = 143
+const TDot = 144
+const TVic = 145
+const TBlk0 = 146
+const TBlk1 = 147
+const TBlk2 = 148
+const TRule = 149
+const SDet = 0
+const NTiles8 = 176
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndStep = 4
+const SndDoor = 5
+const SndLocked = 6
+const SndUnlock = 7
+const SndFound = 8
+const SndNone = 9
+const SndTake = 10
+const SndDrop = 11
+const SndBad = 12
+const SndEndTurn = 13
+const SndSiren = 14
+const SndWin = 15
+const SndLose = 16
+const NSpr = 1
+const TuneLen = 576
+const NItems = 31
+const Carried = 15
+const Hidden = 128
+const CenX = 120
+const CenY = 47
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Off = 0
+' where everything is: 1-10 suspects, 11-22 weapons, 23 the skeleton
+' key, 24-31 the keys of rooms 7-14. 0 gone, 1-14 a room (+128 hidden),
+' 15 carried
+u8 Pos[32]
+' the notebook: suspects and weapons seen (1-22)
+u8 Seen[23]
+' doors 0-10: 1 locked
+u8 Locked[11]
+u8 Victim = 0
+u8 Killer = 0
+u8 Weapon = 0
+u8 BodyRm = 0
+u8 BodySeen = 0
+u8 Room = 1
+u8 Carry = 0
+u16 Turn = 0
+u8 Moved = 0
+u8 Found = 0
+u8 FoundOne = 0
+u8 LastLock = 0
+' things that can be taken here
+u8 TkList[22]
+u8 TkN = 0
+u8 TkI = 0
+' the accusation: victim, murderer, weapon, room
+u8 Ac[4]
+u8 Af = 0
+u8 Solved = 0
+u8 Done = 0
+bcd digits 4 Cases = 0
+bcd digits 4 Cracked = 0
+' game state: 0 title, 2 in a room, 3 notes, 5 accusing, 4 over
+u8 Gs = 0
+' in a room: 0 menu, 1 choosing a door, 2 choosing a thing to take
+u8 Mode = 0
+u8 Mi = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Dx = 0
+u8 Dy = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rpt = 0
+u8 Tap = 0
+' loop counters (never shared with the helpers)
+u8 Li = 0
+u8 Si = 0
+u8 Ni = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewCase
+  EnterRoom(4)
+
+play_loop:
+  Frame1
+  ReadPad
+  if Gs = 2 then RoomInput
+  if Gs <> 4 then goto play_loop
+
+  ' the end: the verdict, then the title on a press
+  HideSprites
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' data
+
+' names, 18 wide: 0 nothing, 1-10 suspects, 11-22 weapons
+data ItemName chars
+  "NOTHING           "
+  "COOK              "
+  "BUTLER            "
+  "GARDENER          "
+  "CHAUFFEUR         "
+  "DUKE              "
+  "DUCHESS           "
+  "NANNY             "
+  "OPERA STAR        "
+  "AMBASSADOR        "
+  "PRIME MINISTER    "
+  "CARVING KNIFE     "
+  "ROPE              "
+  "BOX OF WEED KILLER"
+  "ANTIQUE MACE      "
+  "DUELLING PISTOL   "
+  "FENCING FOIL      "
+  "ICE PICK          "
+  "PLASTIC BAG       "
+  "CHAIN SAW         "
+  "HEDGE TRIMMERS    "
+  "POLO MALLET       "
+  "GARDEN SPADE      "
+end data
+
+' weapon names for the notebook, 12 wide (0-11)
+data ShortName chars
+  "KNIFE       "
+  "ROPE        "
+  "WEED KILLER "
+  "ANTIQUE MACE"
+  "PISTOL      "
+  "FENCING FOIL"
+  "ICE PICK    "
+  "PLASTIC BAG "
+  "CHAIN SAW   "
+  "TRIMMERS    "
+  "POLO MALLET "
+  "GARDEN SPADE"
+end data
+
+' rooms, 12 wide (0-14)
+data RoomName chars
+  "            "
+  "ENTRY FOYER "
+  "CORRIDOR    "
+  "HALL        "
+  "PANTRY      "
+  "DINING ROOM "
+  "KITCHEN     "
+  "STUDY       "
+  "BEDROOM     "
+  "BATHROOM    "
+  "CLOSET      "
+  "GREENHOUSE  "
+  "GARDEN      "
+  "POOL        "
+  "GARAGE      "
+end data
+
+' lines 5000-5065: per room the north, east, south and west wall:
+' 0 no door, 1-14 an open way to that room, 100 + n door n
+data RoomExits bytes
+  5, 3, 0, 2
+  4, 1, 101, 100
+  104, 103, 102, 1
+  0, 6, 2, 0
+  6, 0, 1, 0
+  0, 0, 5, 4
+  102, 105, 0, 0
+  0, 107, 106, 103
+  106, 0, 0, 105
+  0, 0, 0, 107
+  0, 0, 104, 108
+  0, 108, 109, 0
+  109, 100, 0, 110
+  101, 110, 0, 0
+end data
+
+' line 3030: the two rooms each door joins
+data DoorA bytes
+  2, 2, 3, 3, 3, 7, 8, 8, 11, 12, 13
+end data
+data DoorB bytes
+  13, 14, 7, 8, 11, 9, 9, 10, 12, 13, 14
+end data
+
+' floor of each room (0 wood, 1 tiles, 2 lawn, 3 paving), 0-14
+data RoomFloor bytes
+  0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 2, 2, 3, 3
+end data
+
+' the length of each room name
+data RoomLenT bytes
+  0, 11, 8, 4, 6, 11, 7, 5, 7, 8, 6, 10, 6, 4, 6
+end data
+
+' the title's big M, 5 x 5, rows of bits (16 = left)
+data BigM bytes
+  17, 27, 21, 17, 17
+end data
+
+' ---------------------------------------------------------------------------
+' the case
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+' a number 1-N (the listing's FNR)
+function Rnd(u8 N) as u8
+  u8 R = 0
+  W16 = Rand
+  R = W16 % N
+  return R + 1
+
+' lines 112-142
+sub NewCase:
+  u8 I = 0
+  u8 C = 0
+  for I = 1 to 10
+    Pos[I] = Rnd(11) + 3
+  next
+  for I = 11 to 22
+    Pos[I] = Rnd(13) + 1
+  next
+  for I = 24 to 31
+    Pos[I] = 4
+  next
+  Pos[23] = Rnd(8) + 6
+  Victim = Rnd(10)
+  BodyRm = Pos[Victim]
+  Pos[Victim] = 0
+  Killer = Victim
+  while Pos[Killer] = 0
+    Killer = Rnd(10)
+  end while
+  Pos[Killer] = 0
+  Weapon = Rnd(12)
+  C = Weapon + 10
+  Pos[C] = 0
+  for I = 1 to 22
+    if Pos[I] <> 0 and Rnd(4) < 4 then Pos[I] = Pos[I] | Hidden
+  next
+  for I = 0 to 10
+    Locked[I] = 0
+    if Rnd(10) < 10 then Locked[I] = 1
+  next
+  fill array Seen with 0
+  BodySeen = 0
+  Room = 1
+  Carry = 0
+  Turn = 0
+  Moved = 0
+  Mi = 0
+  inc Cases
+  return
+
+' the notebook takes in whatever is in plain sight here
+sub MarkSeen:
+  u8 I = 0
+  for I = 1 to 22
+    if Pos[I] = Room then Seen[I] = 1
+  next
+  if BodyRm = Room then BodySeen = 1
+  return
+
+' ---------------------------------------------------------------------------
+' printing
+
+' "THE <thing>" at Px,Py (the line is cleared first)
+sub PutThing(u8 I, u8 Px, u8 Py):
+  u8 R = 0
+  u8 Ex = 0
+  fill 32 count 22 at Px,Py
+  if I = 0 then
+    print at Px,Py, "NOTHING"
+    return
+  end if
+  print at Px,Py, "THE "
+  Ex = Px + 4
+  if I <= 22 then
+    Off = I * 18
+    put ItemName + Off count 18 at Ex,Py
+  elseif I = 23 then
+    print at Ex,Py, "SKELETON KEY"
+  else
+    R = I - 17
+    PutRoom(R, Ex, Py)
+    ' the key word right after the room name
+    Ex = Ex + RoomLen(R)
+    print at Ex,Py, " KEY"
+  end if
+  return
+
+function RoomLen(u8 R) as u8
+  u8 L = 0
+  L = RoomLenT[R]
+  return L
+
+sub PutRoom(u8 R, u8 Px, u8 Py):
+  Off = R * 12
+  put RoomName + Off count 12 at Px,Py
+  return
+
+sub PutName(u8 I, u8 Px, u8 Py):
+  Off = I * 18
+  put ItemName + Off count 14 at Px,Py
+  return
+
+sub ClearRows(u8 A, u8 B):
+  u8 R = 0
+  for R = A to B
+    fill 32 count 28 at 2,R
+  next
+  return
+
+sub Msg2:
+  ClearRows(19, 20)
+  return
+
+' ---------------------------------------------------------------------------
+' the room
+
+' a doorway in wall D (0 N, 1 E, 2 S, 3 W) drawn as Ta, Tb
+sub PutDoor(u8 D, u8 Ta, u8 Tb):
+  select case D
+  case 0
+    put char Ta at 15,2
+    put char Tb at 16,2
+  case 1
+    put char Ta at 27,6
+    put char Tb at 27,7
+  case 2
+    put char Ta at 15,11
+    put char Tb at 16,11
+  case else
+    put char Ta at 4,6
+    put char Tb at 4,7
+  end select
+  return
+
+function ExitOf(u8 R, u8 D) as u8
+  u8 E = 0
+  K = R - 1
+  K = K * 4 + D
+  E = RoomExits[K]
+  return E
+
+sub DrawDoors:
+  u8 D = 0
+  u8 E = 0
+  u8 Z = 0
+  u8 Ft = 0
+  Ft = RoomFloor[Room] + TFl0
+  for D = 0 to 3
+    E = ExitOf(Room, D)
+    if E > 0 and E < 100 then
+      PutDoor(D, Ft, Ft)
+    elseif E >= 100 then
+      Z = E - 100
+      if Locked[Z] = 1 then
+        PutDoor(D, TDlockl, TDlockr)
+      else
+        PutDoor(D, TDopen, TDopen)
+      end if
+    end if
+  next
+  return
+
+' icons: row 4 and row 9, columns 6, 8 .. 24; the body at 7-8 row 7
+sub DrawIcons:
+  u8 I = 0
+  u8 N = 0
+  u8 T = 0
+  u8 Ix = 0
+  u8 Iy = 0
+  u8 Ft = 0
+  Ft = RoomFloor[Room] + TFl0
+  for I = 3 to 10
+    fill Ft count 22 at 5,I
+  next
+  if Room = 13 then
+    for I = 5 to 8
+      fill TWater count 6 at 20,I
+    next
+  end if
+  if BodyRm = Room then
+    put char TSheetl at 7,7
+    put char TSheetr at 8,7
+  end if
+  for I = 1 to NItems
+    if Pos[I] = Room and N < 20 then
+      if I <= 10 then
+        T = TSuspect
+      elseif I <= 22 then
+        T = TWeapon
+      elseif I = 23 then
+        T = TSkey
+      else
+        T = TKey
+      end if
+      if N < 10 then
+        Ix = N * 2 + 6
+        Iy = 4
+      else
+        Ix = N * 2 - 14
+        Iy = 9
+      end if
+      put char T at Ix,Iy
+      inc N
+    end if
+  next
+  return
+
+' rows 13-18: what is here (the body, then the rest in the listing's order)
+sub DrawList:
+  u8 I = 0
+  u8 Row = 13
+  u8 More = 0
+  ClearRows(13, 18)
+  print at 2,13, "YOU SEE:"
+  Row = 14
+  if BodyRm = Room then
+    print at 3,Row, "BODY: THE "
+    PutName(Victim, 13, Row)
+    inc Row
+  end if
+  for I = 1 to NItems
+    if Pos[I] = Room then
+      if Row < 18 then
+        PutThing(I, 3, Row)
+        inc Row
+      else
+        inc More
+      end if
+    end if
+  next
+  if Row = 14 then print at 3,14, "NOTHING OF INTEREST."
+  if More > 0 then
+    NumU = More
+    print at 3,18, "AND ", digits$(NumU, 2), " MORE (SEE TAKE)"
+  end if
+  fill 32 count 28 at 2,12
+  print at 2,12, "HELD: "
+  PutThing(Carry, 8, 12)
+  return
+
+sub DrawStatus:
+  NumU = Turn + 1
+  print at 21,1, "TURN ", digits$(NumU, 3)
+  return
+
+sub DrawMenu:
+  ClearRows(21, 22)
+  print at 3,21, "LEAVE"
+  print at 12,21, "SEARCH"
+  print at 21,21, "TAKE"
+  print at 3,22, "DROP"
+  print at 12,22, "NOTES"
+  print at 21,22, "ACCUSE"
+  ShowCursor
+  return
+
+sub ShowCursor:
+  u8 R = 0
+  u8 C = 0
+  for R = 21 to 22
+    put char 32 at 2,R
+    put char 32 at 11,R
+    put char 32 at 20,R
+  next
+  R = Mi / 3
+  R = R + 21
+  C = Mi % 3
+  C = C * 9 + 2
+  put char 62 at C,R
+  return
+
+' the whole room screen
+sub DrawRoom:
+  NewScreen
+  backdrop black
+  fill TWall count 24 at 4,2
+  fill TWall count 24 at 4,11
+  for Si = 3 to 10
+    put char TWall at 4,Si
+    put char TWall at 27,Si
+  next
+  DrawIcons
+  DrawDoors
+  print at 2,1, "THE "
+  PutRoom(Room, 6, 1)
+  DrawStatus
+  DrawList
+  DrawMenu
+  ShowScreen
+  return
+
+' the detective walks in from wall D (4 = none) to the middle
+sub EnterRoom(u8 D):
+  MarkSeen
+  Gs = 2
+  Mode = 0
+  DrawRoom
+  DoorXY(D)
+  WalkTo(CenX, CenY)
+  return
+
+' the doorway's sprite position for wall D (4 = the middle)
+sub DoorXY(u8 D):
+  select case D
+  case 0
+    Dx = CenX
+    Dy = 15
+  case 1
+    Dx = 204
+    Dy = CenY
+  case 2
+    Dx = CenX
+    Dy = 79
+  case 3
+    Dx = 36
+    Dy = CenY
+  case else
+    Dx = CenX
+    Dy = CenY
+  end select
+  return
+
+sub WalkTo(u8 Tx, u8 Ty):
+  u8 Cnt = 0
+  while Dx <> Tx or Dy <> Ty
+    if Dx < Tx then Dx += 2
+    if Dx > Tx then Dx -= 2
+    if Dy < Ty then Dy += 2
+    if Dy > Ty then Dy -= 2
+    inc Cnt
+    if (Cnt & 7) = 0 then play sound SndStep
+    PutDet
+    Frame1
+  end while
+  PutDet
+  return
+
+sub PutDet:
+  set sprite 0 to Dy,Dx,SDet,11
+  update sprites
+  return
+
+' ---------------------------------------------------------------------------
+' turns and actions
+
+' line 456: the turn ends
+sub EndTurn:
+  inc Turn
+  Moved = 0
+  DrawStatus
+  play sound SndEndTurn
+  return
+
+sub RoomInput:
+  ' a stick press (not held) in Tap: 1 up 2 down 4 left 8 right
+  select case Mode
+  case 0
+    MenuInput
+  case 1
+    if Press2 = 1 then
+      Mode = 0
+      Msg2
+      DrawMenu
+    elseif Tap <> 0 then
+      select case Tap
+      case 1
+        TryExit(0)
+      case 8
+        TryExit(1)
+      case 2
+        TryExit(2)
+      case 4
+        TryExit(3)
+      end select
+    end if
+  case 2
+    TakeInput
+  end select
+  return
+
+sub MenuInput:
+  u8 Old = 0
+  Old = Mi
+  if Tap = 4 and Mi % 3 > 0 then dec Mi
+  if Tap = 8 and Mi % 3 < 2 then inc Mi
+  if Tap = 1 and Mi >= 3 then Mi -= 3
+  if Tap = 2 and Mi < 3 then Mi += 3
+  if Old <> Mi then
+    play sound SndTick
+    ShowCursor
+  end if
+  if Press1 = 0 and Press2 = 0 then return
+  Msg2
+  select case Mi
+  case 0
+    Mode = 1
+    ClearRows(21, 22)
+    print at 2,21, "PUSH THE STICK TO A DOOR"
+    print at 2,22, "RIGHT BUTTON: STAY HERE"
+  case 1
+    DoSearch
+  case 2
+    StartTake
+  case 3
+    DoDrop
+  case 4
+    NotesPage
+  case else
+    AccusePage
+  end select
+  return
+
+' lines 233-303: through the door in wall D, if there is one and it opens
+sub TryExit(u8 D):
+  u8 E = 0
+  u8 Z = 0
+  u8 Dest = 0
+  u8 Kr = 0
+  u8 Back = 0
+  E = ExitOf(Room, D)
+  Msg2
+  if E = 0 then
+    print at 2,19, "NO DOOR THIS WAY."
+    play sound SndBad
+    return
+  end if
+  if E < 100 then
+    Dest = E
+  else
+    Z = E - 100
+    Dest = DoorA[Z]
+    if Dest = Room then Dest = DoorB[Z]
+    if Locked[Z] = 1 then
+      ' line 1760: the skeleton key, or the key of either room
+      Kr = 0
+      if Carry = 23 then Kr = 1
+      if Carry >= 24 then
+        V = Carry - 17
+        if V = DoorA[Z] or V = DoorB[Z] then Kr = 1
+      end if
+      LastLock = Dest
+      if Kr = 0 then
+        print at 2,19, "THE DOOR TO THE "
+        PutRoom(Dest, 18, 19)
+        print at 2,20, "IS LOCKED. NO KEY FOR IT."
+        play sound SndLocked
+        return
+      end if
+      Locked[Z] = 0
+      DrawDoors
+      print at 2,19, "YOUR KEY OPENS THE DOOR."
+      play sound SndUnlock
+      Pause(30)
+    else
+      play sound SndDoor
+    end if
+  end if
+  ' a second move in one turn: the turn ends between them (no action)
+  if Moved = 1 then EndTurn
+  DoorXY(D)
+  Y = Dy
+  X = Dx
+  DoorXY(4)
+  WalkTo(X, Y)
+  Room = Dest
+  Moved = 1
+  Back = (D + 2) & 3
+  EnterRoom(Back)
+  return
+
+' lines 930-948
+sub DoSearch:
+  u8 I = 0
+  Found = 0
+  FoundOne = 0
+  V = Room | Hidden
+  for I = 1 to NItems
+    if Pos[I] = V then
+      if Rnd(2) = 1 then
+        Pos[I] = Room
+        inc Found
+        FoundOne = I
+      end if
+    end if
+  next
+  if Found = 0 then
+    print at 2,19, "YOU FIND NOTHING."
+    play sound SndNone
+  else
+    MarkSeen
+    DrawIcons
+    DrawList
+    if Found = 1 then
+      print at 2,19, "YOU FIND"
+      PutThing(FoundOne, 2, 20)
+    else
+      NumU = Found
+      print at 2,19, "YOU FIND ", digits$(NumU, 1), " THINGS!"
+    end if
+    play sound SndFound
+  end if
+  Pause(20)
+  EndTurn
+  return
+
+' lines 800-806
+sub DoDrop:
+  if Carry = 0 then
+    print at 2,19, "YOU AREN'T CARRYING ANYTHING"
+    play sound SndBad
+    return
+  end if
+  print at 2,19, "YOU DROP"
+  PutThing(Carry, 2, 20)
+  Pos[Carry] = Room
+  Carry = 0
+  DrawIcons
+  DrawList
+  play sound SndDrop
+  Pause(20)
+  EndTurn
+  return
+
+' lines 820-845: a weapon or a key in plain sight
+sub StartTake:
+  u8 I = 0
+  TkN = 0
+  for I = 11 to NItems
+    if Pos[I] = Room then
+      TkList[TkN] = I
+      inc TkN
+    end if
+  next
+  if TkN = 0 then
+    print at 2,19, "NO ITEMS TO TAKE HERE."
+    play sound SndBad
+    return
+  end if
+  Mode = 2
+  TkI = 0
+  ClearRows(21, 22)
+  print at 2,22, "LEFT: TAKE IT RIGHT: CANCEL"
+  ShowTake
+  return
+
+sub ShowTake:
+  V = TkList[TkI]
+  PutThing(V, 4, 21)
+  put char 60 at 2,21
+  put char 62 at 27,21
+  return
+
+sub TakeInput:
+  u8 It = 0
+  if Tap = 4 then
+    if TkI = 0 then
+      TkI = TkN - 1
+    else
+      dec TkI
+    end if
+    play sound SndTick
+    ShowTake
+  elseif Tap = 8 then
+    inc TkI
+    if TkI >= TkN then TkI = 0
+    play sound SndTick
+    ShowTake
+  end if
+  if Press2 = 1 then
+    Mode = 0
+    DrawMenu
+    return
+  end if
+  if Press1 = 0 then return
+  It = TkList[TkI]
+  Msg2
+  if Carry <> 0 then
+    print at 2,19, "YOU DROP"
+    PutThing(Carry, 11, 19)
+    Pos[Carry] = Room
+  end if
+  print at 2,20, "YOU TAKE"
+  PutThing(It, 11, 20)
+  Pos[It] = Carried
+  Carry = It
+  Mode = 0
+  DrawIcons
+  DrawList
+  DrawMenu
+  play sound SndTake
+  Pause(20)
+  EndTurn
+  return
+
+sub Pause(u8 N):
+  u8 Pk = 0
+  for Pk = 1 to N
+    Frame1
+  next
+  return
+
+' ---------------------------------------------------------------------------
+' the notebook
+
+sub NotesPage:
+  u8 I = 0
+  u8 T = 0
+  u8 Ns = 0
+  u8 Nw = 0
+  Gs = 3
+  NewScreen
+  print at 9,1, "CASE NOTES"
+  print at 2,2, "SUSPECTS"
+  print at 17,2, "WEAPONS"
+  for I = 1 to 10
+    T = TDot
+    if Seen[I] = 1 then
+      T = TTick
+    elseif BodySeen = 1 and I = Victim then
+      T = TVic
+    else
+      inc Ns
+    end if
+    Y = I + 2
+    put char T at 2,Y
+    PutName(I, 3, Y)
+  next
+  for I = 11 to 22
+    T = TDot
+    if Seen[I] = 1 then
+      T = TTick
+    else
+      inc Nw
+    end if
+    Y = I - 8
+    put char T at 17,Y
+    K = I - 11
+    Off = K * 12
+    put ShortName + Off count 12 at 18,Y
+  next
+  if BodySeen = 1 then
+    put char TVic at 2,16
+    print at 3,16, "VICTIM: THE "
+    PutName(Victim, 15, 16)
+    print at 3,17, "FOUND IN THE "
+    PutRoom(BodyRm, 16, 17)
+  else
+    print at 2,16, "THE BODY: NOT FOUND YET"
+  end if
+  NumU = Ns
+  print at 2,19, "SUSPECTS NOT SEEN: ", digits$(NumU, 2)
+  NumU = Nw
+  print at 2,20, "WEAPONS NOT SEEN:  ", digits$(NumU, 2)
+  print at 7,22, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  EnterRoom(4)
+  return
+
+sub WaitPress:
+  Press1 = 0
+  Press2 = 0
+  while Press1 = 0 and Press2 = 0
+    Frame1
+    ReadPad
+  end while
+  return
+
+' ---------------------------------------------------------------------------
+' the accusation (lines 700-791)
+
+function AcMax(u8 F) as u8
+  select case F
+  case 0, 1
+    return 10
+  case 2
+    return 12
+  end select
+  return 14
+
+sub ShowAcLine(u8 F):
+  u8 Ry = 0
+  u8 Vl = 0
+  Ry = F * 3 + 5
+  Vl = Ac[F]
+  fill 32 count 24 at 4,Ry
+  select case F
+  case 0, 1
+    PutThing(Vl, 6, Ry)
+  case 2
+    Vl = Vl + 10
+    PutThing(Vl, 6, Ry)
+  case else
+    print at 6,Ry, "THE "
+    PutRoom(Vl, 10, Ry)
+  end select
+  put char 60 at 4,Ry
+  put char 62 at 28,Ry
+  return
+
+sub ShowAcCursor:
+  u8 F = 0
+  u8 Ry = 0
+  for F = 0 to 5
+    Ry = F * 3 + 4
+    if F >= 4 then Ry = F * 2 + 10
+    if F = Af then
+      put char 62 at 2,Ry
+    else
+      put char 32 at 2,Ry
+    end if
+  next
+  return
+
+sub AccusePage:
+  u8 F = 0
+  Gs = 5
+  NewScreen
+  print at 5,1, "MAKE AN ACCUSATION"
+  print at 3,4, "THE VICTIM"
+  print at 3,7, "THE MURDERER"
+  print at 3,10, "THE WEAPON"
+  print at 3,13, "THE ROOM"
+  print at 3,18, "ACCUSE!"
+  print at 3,20, "GO BACK"
+  for F = 0 to 3
+    Ac[F] = 1
+    ShowAcLine(F)
+  next
+  Af = 0
+  ShowAcCursor
+  ShowScreen
+  Press1 = 0
+  Press2 = 0
+  Done = 0
+  while Done = 0
+    Frame1
+    ReadPad
+    if Tap = 1 and Af > 0 then
+      dec Af
+      play sound SndTick
+      ShowAcCursor
+    elseif Tap = 2 and Af < 5 then
+      inc Af
+      play sound SndTick
+      ShowAcCursor
+    elseif Af < 4 and Tap = 4 then
+      if Ac[Af] = 1 then
+        Ac[Af] = AcMax(Af)
+      else
+        Ac[Af] -= 1
+      end if
+      play sound SndTick
+      ShowAcLine(Af)
+    elseif Af < 4 and Tap = 8 then
+      Ac[Af] += 1
+      if Ac[Af] > AcMax(Af) then Ac[Af] = 1
+      play sound SndTick
+      ShowAcLine(Af)
+    end if
+    if Af >= 4 then
+      if Press1 = 1 or Press2 = 1 then Done = 1
+    end if
+  end while
+  if Af = 5 then
+    EnterRoom(4)
+  else
+    Arrest
+  end if
+  return
+
+sub Arrest:
+  HideSprites
+  Solved = 0
+  if Ac[0] = Victim and Ac[1] = Killer and Ac[2] = Weapon and Ac[3] = BodyRm then Solved = 1
+  NewScreen
+  print at 2,5, "SUMMONING THE POLICE TO"
+  print at 2,6, "MAKE AN ARREST......"
+  ShowScreen
+  play sound SndSiren
+  Pause(160)
+  if Solved = 1 then
+    inc Cracked
+    print at 2,8, "YOUR SOLUTION IS CORRECT!"
+    print at 2,10, "YOU HAVE CRACKED THE CASE"
+    NumU = Turn + 1
+    print at 2,11, "IN ", digits$(NumU, 3), " TURNS!"
+    play sound SndWin
+  else
+    print at 2,8, "NO!...THAT WAS A FALSE"
+    print at 2,9, "ARREST! YOU'RE OFF THE CASE."
+    print at 2,11, "HERE IS THE CORRECT SOLUTION"
+    play sound SndLose
+  end if
+  print at 2,13, "THE "
+  PutName(Killer, 6, 13)
+  print at 2,14, "KILLED THE "
+  PutName(Victim, 13, 14)
+  print at 2,15, "IN THE "
+  PutRoom(BodyRm, 9, 15)
+  K = Weapon + 10
+  print at 2,16, "USING"
+  PutThing(K, 8, 16)
+  Gs = 4
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Press1/Press2 = a button pressed this frame; Tap = a
+' stick direction pressed this frame (or repeating while held)
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up or joypad(2).up then J1 = J1 | 1
+  if joypad(1).down or joypad(2).down then J1 = J1 | 2
+  if joypad(1).left or joypad(2).left then J1 = J1 | 4
+  if joypad(1).right or joypad(2).right then J1 = J1 | 8
+  if joypad(1).button1 or joypad(2).button1 then J1 = J1 | 16
+  if joypad(1).button2 or joypad(2).button2 then J1 = J1 | 32
+  Btn = J1 & 48
+  V = Btn & ~WasBtn
+  Press1 = 0
+  Press2 = 0
+  if (V & 16) > 0 then Press1 = 1
+  if (V & 32) > 0 then Press2 = 1
+  WasBtn = Btn
+  Stick = J1 & 15
+  Tap = 0
+  if Stick = 0 then
+    Rpt = 0
+  elseif Stick <> WasStick then
+    Tap = Stick
+    Rpt = 18
+  else
+    dec Rpt
+    if Rpt = 0 then
+      Tap = Stick
+      Rpt = 8
+    end if
+  end if
+  WasStick = Stick
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a big M of block tile Tb with its top left at Mx,My
+sub DrawM(u8 Mx, u8 My, u8 Tb):
+  u8 R = 0
+  u8 C = 0
+  u8 Bits = 0
+  for R = 0 to 4
+    Bits = BigM[R]
+    for C = 0 to 4
+      if (Bits & (16 >> C)) > 0 then put char Tb at Mx + C,My + R
+    next
+  next
+  return
+
+' the title as printed by the listing (lines 12-36): three big M's
+sub TitlePage:
+  Gs = 0
+  NewScreen
+  print at 4,1, "COMPUTE!'S GAZETTE 1984"
+  DrawM(4, 3, TBlk0)
+  print at 10,7, "YSTERY"
+  print at 18,7, "AT"
+  DrawM(9, 9, TBlk1)
+  print at 15,13, "ARPLE"
+  DrawM(14, 15, TBlk2)
+  print at 20,19, "ANOR"
+  print at 4,21, "PLAY"
+  print at 4,22, "CREDITS"
+  if Cases > 0 then
+    print at 15,21, "SOLVED "
+    print Cracked at 22,21
+    print at 15,22, "CASES  "
+    print Cases at 22,22
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Press1 = 0
+  Press2 = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Tap = 1 or Tap = 2 then
+    if Tap = 1 then
+      Menu = 0
+    else
+      Menu = 1
+    end if
+    play sound SndTick
+    ShowMenu
+  end if
+  V = Press1 | Press2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 2,21
+  put char 32 at 2,22
+  J = Menu + 21
+  put char 62 at 2,J
+  return
+
+sub CreditsPage:
+  NewScreen
+  print at 4,1, "MYSTERY AT MARPLE MANOR"
+  print at 2,3, "BASED ON THE GAME OF THAT"
+  print at 2,4, "NAME IN COMPUTE!'S GAZETTE,"
+  print at 2,5, "SEPTEMBER 1984 (COMMODORE 64"
+  print at 2,6, "AND VIC-20). NO AUTHOR NAMED"
+  print at 2,8, "A MURDER MYSTERY: SEARCH THE"
+  print at 2,9, "MANOR, THEN NAME THE VICTIM,"
+  print at 2,10, "THE MURDERER, THE WEAPON AND"
+  print at 2,11, "THE ROOM."
+  print at 2,13, "COLECOVISION GAME AND"
+  print at 2,14, "PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,18, "MUSIC: FOOTSTEPS IN THE HALL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$AA,$00,$AA,$00,$AA,$00,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$20,$02,$00,$08,$80,$00,$04
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$40,$00,$04,$00,$00,$20,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$80,$80,$81,$81,$80,$80,$00
+  $00,$01,$01,$81,$81,$21,$01,$00
+  $18,$C3,$18,$81,$42,$C3,$24,$24
+  $02,$04,$08,$10,$20,$20,$40,$80
+  $00,$60,$90,$60,$9A,$00,$00,$00
+  $00,$60,$90,$60,$9A,$05,$00,$00
+  $00,$E0,$80,$00,$00,$80,$E0,$00
+  $00,$07,$01,$00,$00,$01,$07,$00
+  $00,$01,$02,$06,$8C,$D8,$60,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$83,$44,$83,$44,$44,$83,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $06,$6A,$06,$A6,$06,$6A,$06,$A6
+  $0A,$0A,$01,$0A,$0A,$0A,$01,$0A
+  $FE,$FE,$FE,$FE,$EF,$EF,$EF,$EF
+  $02,$C2,$C2,$02,$C2,$C2,$02,$C2
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $07,$F7,$07,$F7,$07,$07,$F7,$07
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $B1,$1B,$B1,$1B,$1B,$1B,$B1,$B1
+  $F1,$F1,$F1,$F1,$F1,$E1,$E1,$E1
+  $01,$B1,$B1,$1B,$1B,$01,$01,$01
+  $01,$F1,$F1,$1F,$1F,$F1,$01,$01
+  $01,$1F,$1F,$0F,$0F,$1F,$1F,$01
+  $01,$1F,$1F,$0F,$0F,$1F,$1F,$01
+  $04,$34,$34,$34,$34,$34,$34,$04
+  $04,$04,$04,$E4,$E4,$04,$04,$04
+  $04,$4F,$F4,$4F,$F4,$F4,$4F,$04
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $04,$04,$04,$0E,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $03,$07,$1F,$03,$03,$07,$0F,$1F,$3F,$37,$37,$0F,$0E,$0E,$0C,$1C
+  $C0,$E0,$F8,$C0,$C0,$E0,$F0,$FB,$FA,$E6,$E0,$F0,$70,$70,$30,$38
+end data
+
+asm {
+MmTick:
+    db $40,$7F,$50,$01,$40,$7F,$A0,$01,$50
+MmStep:
+    db $00,$00,$55,$02,$00,$00,$A5,$02,$10
+MmDoor:
+    db $40,$FC,$31,$03,$40,$C5,$41,$03,$40,$AB,$61,$04,$40,$AB,$C1,$02,$50
+MmLocked:
+    db $00,$00,$26,$03,$00,$00,$56,$03,$00,$00,$26,$03,$00,$00,$86,$04,$10
+MmUnlock:
+    db $40,$55,$20,$02,$40,$47,$20,$02,$40,$35,$30,$03,$40,$35,$80,$03,$50
+MmFound:
+    db $40,$D6,$20,$03,$40,$AA,$20,$03,$40,$8F,$20,$03,$40,$6B,$30,$06,$40,$6B,$90,$04,$50
+MmNone:
+    db $40,$3B,$32,$04,$40,$A6,$52,$06,$40,$A6,$B2,$04,$50
+MmTake:
+    db $40,$8F,$20,$02,$40,$5F,$30,$03,$40,$5F,$90,$03,$50
+MmDrop:
+    db $40,$5F,$20,$02,$40,$8F,$30,$03,$40,$8F,$90,$03,$50
+MmBad:
+    db $00,$00,$22,$04,$00,$00,$72,$04,$10
+MmEndTurn:
+    db $40,$FE,$30,$0B,$40,$FE,$F0,$01,$40,$E3,$30,$05,$40,$E3,$F0,$01,$40,$D5,$30,$0B,$40,$D5,$F0,$01
+    db $40,$A9,$30,$05,$40,$A9,$F0,$01,$40,$BE,$30,$01,$40,$BE,$F0,$01,$40,$B4,$30,$01,$40,$B4,$F0,$01
+    db $40,$BE,$30,$01,$40,$BE,$F0,$01,$40,$B4,$30,$01,$40,$B4,$F0,$01,$40,$A9,$30,$0F,$40,$A9,$F0,$01
+    db $50
+MmSiren:
+    db $40,$BA,$20,$02,$40,$AF,$20,$02,$40,$A5,$20,$02,$40,$9B,$20,$02,$40,$93,$20,$02,$40,$8C,$20,$02
+    db $40,$85,$20,$02,$40,$7F,$20,$02,$40,$7A,$20,$02,$40,$75,$20,$02,$40,$70,$20,$02,$40,$6C,$20,$02
+    db $40,$68,$20,$02,$40,$6C,$20,$02,$40,$70,$20,$02,$40,$75,$20,$02,$40,$7A,$20,$02,$40,$7F,$20,$02
+    db $40,$85,$20,$02,$40,$8C,$20,$02,$40,$93,$20,$02,$40,$9B,$20,$02,$40,$A5,$20,$02,$40,$AF,$20,$02
+    db $40,$BA,$20,$02,$40,$AF,$20,$02,$40,$A5,$20,$02,$40,$9B,$20,$02,$40,$93,$20,$02,$40,$8C,$20,$02
+    db $40,$85,$20,$02,$40,$7F,$20,$02,$40,$7A,$20,$02,$40,$75,$20,$02,$40,$70,$20,$02,$40,$6C,$20,$02
+    db $40,$68,$20,$02,$40,$6C,$20,$02,$40,$70,$20,$02,$40,$75,$20,$02,$40,$7A,$20,$02,$40,$7F,$20,$02
+    db $40,$85,$20,$02,$40,$8C,$20,$02,$40,$93,$20,$02,$40,$9B,$20,$02,$40,$A5,$20,$02,$40,$AF,$20,$02
+    db $40,$BA,$20,$02,$40,$AF,$20,$02,$40,$A5,$20,$02,$40,$9B,$20,$02,$40,$93,$20,$02,$40,$8C,$20,$02
+    db $40,$85,$20,$02,$40,$7F,$20,$02,$40,$7A,$20,$02,$40,$75,$20,$02,$40,$70,$20,$02,$40,$6C,$20,$02
+    db $40,$68,$20,$02,$40,$6C,$20,$02,$40,$70,$20,$02,$40,$75,$20,$02,$40,$7A,$20,$02,$40,$7F,$20,$02
+    db $40,$85,$20,$02,$40,$8C,$20,$02,$40,$93,$20,$02,$40,$9B,$20,$02,$40,$A5,$20,$02,$40,$AF,$20,$02
+    db $40,$BA,$F0,$02,$50
+MmWin:
+    db $40,$BE,$20,$0F,$40,$BE,$F0,$01,$40,$8F,$20,$2F,$40,$8F,$F0,$01,$40,$7F,$20,$04,$40,$7F,$F0,$01
+    db $40,$BE,$20,$04,$40,$BE,$F0,$01,$40,$7F,$20,$04,$40,$7F,$F0,$01,$40,$71,$20,$0F,$40,$71,$F0,$01
+    db $40,$71,$20,$0F,$40,$71,$F0,$01,$40,$71,$20,$0F,$40,$71,$F0,$01,$40,$71,$20,$04,$40,$71,$F0,$01
+    db $40,$6B,$20,$04,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$71,$20,$17,$40,$71,$F0,$01
+    db $40,$7F,$20,$07,$40,$7F,$F0,$01,$40,$8F,$20,$1F,$40,$8F,$F0,$01,$50
+MmLose:
+    db $40,$FC,$21,$17,$40,$FC,$F1,$01,$40,$FC,$21,$11,$40,$FC,$F1,$01,$40,$FC,$21,$05,$40,$FC,$F1,$01
+    db $40,$FC,$21,$17,$40,$FC,$F1,$01,$40,$AB,$21,$11,$40,$AB,$F1,$01,$40,$C7,$21,$05,$40,$C7,$F1,$01
+    db $40,$C7,$21,$11,$40,$C7,$F1,$01,$40,$FC,$21,$05,$40,$FC,$F1,$01,$40,$FC,$21,$11,$40,$FC,$F1,$01
+    db $40,$FC,$21,$05,$40,$FC,$F1,$01,$40,$FC,$21,$2F,$40,$FC,$F1,$01,$50
+
+MmSoundTable:
+    dw MmTuneMel,$702B
+    dw MmTuneBass,$7035
+    dw MmTick,$7049
+    dw MmStep,$703F
+    dw MmDoor,$7049
+    dw MmLocked,$703F
+    dw MmUnlock,$7049
+    dw MmFound,$7049
+    dw MmNone,$7049
+    dw MmTake,$7049
+    dw MmDrop,$7049
+    dw MmBad,$703F
+    dw MmEndTurn,$7049
+    dw MmSiren,$7049
+    dw MmWin,$7049
+    dw MmLose,$7049
+; Footsteps in the Hall (original)
+; Tiny Sound, 9 frames per step
+MmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$1A,$21,$21,$00,$24,$00,$23,$00,$1C,$00,$01,$01,$1D,$00
+    db $1C,$00,$1A,$00,$18,$00,$1A,$00,$1C,$00,$00,$00,$01,$01,$01,$01
+    db $21,$00,$24,$00,$28,$00,$26,$00,$24,$00,$23,$00,$20,$00,$00,$00
+    db $21,$00,$1C,$00,$18,$00,$17,$00,$15,$00,$00,$00,$00,$00,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+MmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0B,$01,$10,$01,$00,$01,$01,$01
+    db $09,$01,$10,$01,$0C,$01,$10,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $00,$01,$09,$01,$10,$01,$04,$01,$08,$01,$09,$01,$00,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1335 @@
+cartridge "MOSAIC/COMPUTE'S GAZETTE/1988"
+
+' MOSAIC
+' A ColecoVision game based on "Mosaic" by Jay A. Reeve, COMPUTE!'s
+' Gazette, February 1988 (Commodore 64 BASIC with a small machine-code
+' sprite mover, disk 1988-02; author from the article on the Best of '88
+' disk). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Controls (joystick only, either controller): left/right moves the
+' arrow under your tiles; the left button takes the face-up tile into the
+' slot above the arrow (or presses DRAW / PASS when the arrow is under
+' that word); the right button is DRAW, then PASS. Title menu: up/down,
+' a button to choose; left/right also switches the computer's tiles
+' between SHOWN and HIDDEN.
+'
+' The game (from orig/mosaic.bas and the article): 64 tiles numbered
+' 1-64, ten dealt face up to each hand. On your turn a tile is face up in
+' the middle (the one the last player traded in): take it into any of
+' your ten places (the tile there becomes the face-up tile for the next
+' player), or draw a new one (the old face-up tile is out of the game)
+' and take that or pass. The first hand in rising order, left to right,
+' wins the round. Everyone scores 5 points for each tile of the rising
+' run from the first place (50 for the winner, lines 550-560 and
+' 630-660). The starting player moves on each round (line 630). Modes:
+' player vs player, player vs computer, player vs player vs computer,
+' player vs computer vs computer (the listing's names PLAYER 1 / 2,
+' COMPUTER 1 / 2 and seating, line 270), show or hide the computer's
+' tiles (F7): the computer never looks at anyone else's tiles.
+'
+' Improvements: tiles with a colour band that climbs with the number (a
+' hand in order reads as a gradient: a mosaic), sliding tiles in
+' sprites like the C64's, a deck counter, sounds, a title tune.
+'
+' Liberties: the joystick replaces the number keys and the space bar
+' (an arrow and DRAW / PASS). The computer player is this port's own
+' (Rate/Choose below): it rates a hand by the best chain of tiles that
+' can stay (each step leaves room for the numbers between, nearer the
+' ideal place is better) and takes a tile only when that improves; the
+' listing's 27-line interpolation search (lines 740-1000) also swapped
+' drawn tiles in nearly always. A game ends at 150 points (the original
+' played rounds for ever; the menu key F1 is gone); ties at the top play
+' another round. The run is counted for every hand at the round's end
+' (the listing kept a hand's count from its last move, so a player who
+' only passed scored the previous round's run). When the deck is empty
+' the tiles out of the game are shuffled back (the listing's deck string
+' wrapped round into tiles still in the hands). The computer's tiles are
+' turned over at the end of a round. No "continue" menu item.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title tune played
+' once. `set sprite count` always given. Own xorshift random numbers.
+' Nothing flashes.
+
+const TTt0 = 128
+const TTt1 = 129
+const TTt2 = 130
+const TTt3 = 131
+const TTt4 = 132
+const TTt5 = 133
+const TTt6 = 134
+const TTu0 = 135
+const TTu1 = 136
+const TTu2 = 137
+const TTu3 = 138
+const TTu4 = 139
+const TTu5 = 140
+const TTu6 = 141
+const TTu7 = 142
+const TTu8 = 143
+const TTu9 = 144
+const TBl0 = 145
+const TBr0 = 146
+const TBl1 = 147
+const TBr1 = 148
+const TBl2 = 149
+const TBr2 = 150
+const TBl3 = 151
+const TBr3 = 152
+const TBl4 = 153
+const TBr4 = 154
+const TBl5 = 155
+const TBr5 = 156
+const TBl6 = 157
+const TBr6 = 158
+const TBl7 = 159
+const TBr7 = 160
+const THl = 161
+const THr = 162
+const THbl = 163
+const THbr = 164
+const TRule = 165
+const TSq0 = 166
+const TSq1 = 167
+const TSq2 = 168
+const TSq3 = 169
+const TSq4 = 170
+const TSq5 = 171
+const TSq6 = 172
+const TSq7 = 173
+const SBody = 0
+const SBand = 4
+const SDs0 = 8
+const SDs1 = 12
+const SDs2 = 16
+const SDs3 = 20
+const SDs4 = 24
+const SDs5 = 28
+const SDs6 = 32
+const SDs7 = 36
+const SDs8 = 40
+const SDs9 = 44
+const SDu0 = 48
+const SDu1 = 52
+const SDu2 = 56
+const SDu3 = 60
+const SDu4 = 64
+const SDu5 = 68
+const SDu6 = 72
+const SDu7 = 76
+const SDu8 = 80
+const SDu9 = 84
+const SCur = 88
+const NTiles8 = 368
+const SprBytes = 736
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndSlide = 4
+const SndClack = 5
+const SndDraw = 6
+const SndPass = 7
+const SndWin = 8
+const SndLose = 9
+const SndBad = 10
+const NSpr = 5
+const TuneLen = 640
+const WinPts = 150
+const NoSlot = 255
+const RuleY = 18
+const FaceX = 8
+const DeckX = 20
+const PanY = 19
+const MsgY = 22
+const BtnX = 25
+
+' the band colours: r R y G m c b M (sprite colours of the tile bottoms)
+data BandCol bytes
+  6, 8, 10, 12, 2, 7, 5, 13
+end data
+
+record Seat:
+  u8 Name
+  u8 Kind
+  u8 Run
+  u16 Pts
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the hands (seat * 10 + place), the deck (first DeckN are left)
+u8 Hand[30]
+u8 Deck[64]
+u8 Work[10]
+u16 Dp[10]
+u8 DeckN = 0
+u8 Face = 0
+Seat Seats[3]
+u8 NP = 2
+u8 Mode = 4
+u8 HideCpu = 0
+u8 OpenAll = 0
+u8 Cur = 0
+u8 First = 0
+u8 Drawn = 0
+u8 CurPos = 0
+u8 Winner = 0
+u8 TopSeat = 0
+u8 LastSlot = 0
+u8 LastOld = 0
+u8 LastNew = 0
+u8 Moves = 0
+bcd digits 2 Rounds = 0
+bcd digits 4 Games = 0
+' game state: 0 title, 1 dealing, 2 human turn, 3 computer turn,
+' 4 round over, 5 game over
+u8 Gs = 0
+u8 Menu = 3
+u8 TitleGo = 0
+u8 Tick = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Rpt = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Si = 0
+u8 Ri = 0
+' scratch
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MoSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if TitleGo = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+round_start:
+  NewRound
+
+play_loop:
+  if Gs = 2 then
+    HumanTurn
+  else
+    ComputerTurn
+  end if
+  if Gs < 4 then goto play_loop
+
+  ' the round is over
+  RoundOver
+  if Gs = 4 then
+    Rearm
+    wait 60 frames
+    nmi on
+    pause until press and release
+    nmi off
+    goto round_start
+  end if
+  ' the game is over
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the table
+
+' the top row of seat P's block (name row; tiles on the next two rows)
+function BlkR(u8 P) as u8
+  if NP = 2 then return P * 8 + 2
+  return P * 6 + 1
+
+function SlotCol(u8 S) as u8
+  return S * 2 + 4
+
+function IsHidden(u8 P) as u8
+  if OpenAll = 1 then return 0
+  if HideCpu = 0 then return 0
+  return Seats[P].Kind
+
+' a tile face (V 1-64) or nothing (0) with its top left at Tx,Ty
+sub PutTile(u8 Tv, u8 Tx, u8 Ty):
+  u8 Tn = 0
+  u8 Un = 0
+  u8 Bd = 0
+  if Tv = 0 then
+    fill 32 count 2 at Tx,Ty
+    fill 32 count 2 at Tx,Ty + 1
+    return
+  end if
+  Tn = Tv / 10
+  Un = Tv % 10
+  Bd = (Tv - 1) / 8
+  Bd = Bd * 2
+  put char TTt0 + Tn at Tx,Ty
+  put char TTu0 + Un at Tx + 1,Ty
+  put char TBl0 + Bd at Tx,Ty + 1
+  put char TBr0 + Bd at Tx + 1,Ty + 1
+  return
+
+sub PutBack(u8 Tx, u8 Ty):
+  put char THl at Tx,Ty
+  put char THr at Tx + 1,Ty
+  put char THbl at Tx,Ty + 1
+  put char THbr at Tx + 1,Ty + 1
+  return
+
+sub DrawSlot(u8 P, u8 S):
+  u8 Ty = 0
+  u8 Tx = 0
+  u8 Hv = 0
+  Ty = BlkR(P) + 1
+  Tx = SlotCol(S)
+  Hv = Hand[P * 10 + S]
+  if IsHidden(P) = 1 then
+    PutBack(Tx, Ty)
+  else
+    PutTile(Hv, Tx, Ty)
+  end if
+  return
+
+sub DrawHand(u8 P):
+  u8 S = 0
+  for S = 0 to 9
+    DrawSlot(P, S)
+  next
+  return
+
+sub PrintName(u8 Nm, u8 Nx, u8 Ny):
+  select case Nm
+  case 0
+    print at Nx,Ny, "PLAYER 1"
+  case 1
+    print at Nx,Ny, "COMPUTER 1"
+  case 2
+    print at Nx,Ny, "PLAYER 2"
+  case else
+    print at Nx,Ny, "COMPUTER 2"
+  end select
+  return
+
+sub DrawScore(u8 P):
+  u8 Ry = 0
+  Ry = BlkR(P)
+  NumU = Seats[P].Pts
+  print at 26,Ry, digits$(NumU, 3)
+  return
+
+sub DrawNames:
+  u8 Ry = 0
+  for Pi = 0 to NP - 1
+    Ry = BlkR(Pi)
+    fill 32 count 28 at 2,Ry
+    PrintName(Seats[Pi].Name, 4, Ry)
+    if Pi = Cur and Gs < 4 then put char 62 at 2,Ry
+    DrawScore(Pi)
+  next
+  return
+
+sub DrawFace:
+  print at 3,PanY, "TILE"
+  PutTile(Face, FaceX, PanY)
+  return
+
+sub DrawDeck:
+  print at 23,PanY, "DECK"
+  NumU = DeckN
+  print at 24,PanY + 1, digits$(NumU, 2)
+  if DeckN > 0 then
+    PutBack(DeckX, PanY)
+  else
+    PutTile(0, DeckX, PanY)
+  end if
+  return
+
+sub Msg(u8 M):
+  fill 32 count 28 at 2,MsgY
+  select case M
+  case 1
+    print at 3,MsgY, "TAKE THE TILE, OR DRAW"
+  case 2
+    print at 3,MsgY, "TAKE THE NEW TILE, OR PASS"
+  case 3
+    print at 3,MsgY, "THINKING..."
+  case 4
+    print at 3,MsgY, "DRAWS A TILE"
+  case 5
+    print at 3,MsgY, "PASSES"
+  end select
+  return
+
+sub DrawButton:
+  u8 Ry = 0
+  for Pi = 0 to NP - 1
+    Ry = BlkR(Pi) + 1
+    fill 32 count 4 at BtnX,Ry
+  next
+  Ry = BlkR(Cur) + 1
+  if Gs = 2 then
+    if Drawn = 0 then
+      print at BtnX,Ry, "DRAW"
+    else
+      print at BtnX,Ry, "PASS"
+    end if
+  end if
+  return
+
+sub DrawTable:
+  DrawNames
+  for Si = 0 to NP - 1
+    DrawHand(Si)
+  next
+  fill TRule count 28 at 2,RuleY
+  DrawFace
+  DrawDeck
+  return
+
+' ---------------------------------------------------------------------------
+' sprites: the moving tile and the arrow
+
+sub TileSprite(u8 Tv, u8 Sx, u8 Sy):
+  u8 Tn = 0
+  u8 Un = 0
+  u8 Bc = 0
+  u8 Pt = 0
+  Tn = Tv / 10
+  Un = Tv % 10
+  Bc = Tv - 1
+  Bc = Bc / 8
+  Bc = BandCol[Bc]
+  if Tn > 0 then
+    Pt = Tn * 4 + SDs0
+    set sprite 0 to Sy,Sx,Pt,1
+  else
+    set sprite 0 to 192,0,SDs0,0
+  end if
+  Pt = Un * 4 + SDu0
+  set sprite 1 to Sy,Sx,Pt,1
+  set sprite 2 to Sy,Sx,SBody,15
+  set sprite 3 to Sy,Sx,SBand,Bc
+  return
+
+sub NoTileSprite:
+  for Si = 0 to 3
+    set sprite Si to 192,0,0,0
+  next
+  return
+
+' slide tile Tv from cell (Ax,Ay) to (Bx,By) in 12 frames
+sub Slide(u8 Tv, u8 Ax, u8 Ay, u8 Bx, u8 By):
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Px = 0
+  i16 Py = 0
+  u8 K = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  Dx = Bx * 8
+  Dx = Dx - Ax * 8
+  Dy = By * 8
+  Dy = Dy - Ay * 8
+  play sound SndSlide
+  for K = 1 to 12
+    Px = Dx * K / 12
+    Py = Dy * K / 12
+    Px = Px + Ax * 8
+    Py = Py + Ay * 8
+    Sx = Px
+    Sy = Py - 1
+    TileSprite(Tv, Sx, Sy)
+    update sprites
+    Frame1
+  next
+  return
+
+sub Arrow:
+  u8 Ax = 0
+  u8 Ay = 0
+  if Gs > 3 then
+    set sprite 4 to 192,0,SCur,0
+    return
+  end if
+  if CurPos < 10 then
+    Ax = SlotCol(CurPos) * 8
+  else
+    Ax = BtnX * 8 + 8
+  end if
+  Ay = BlkR(Cur) + 3
+  Ay = Ay * 8 - 3
+  set sprite 4 to Ay,Ax,SCur,11
+  return
+
+' ---------------------------------------------------------------------------
+' the rules
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+' is tile Tv in a hand or face up?
+function InPlay(u8 Tv) as u8
+  u8 I = 0
+  u8 F = 0
+  F = 0
+  if Face = Tv then F = 1
+  for I = 0 to 29
+    if Hand[I] = Tv then F = 1
+  next
+  return F
+
+' the deck is empty: the tiles out of the game go back in (a liberty)
+sub Refill:
+  u8 Tv = 0
+  DeckN = 0
+  for Tv = 1 to 64
+    if InPlay(Tv) = 0 then
+      Deck[DeckN] = Tv
+      inc DeckN
+    end if
+  next
+  return
+
+function DrawTileNum as u8
+  u8 Ix = 0
+  u8 Tv = 0
+  u8 Last = 0
+  if DeckN = 0 then Refill
+  W16 = Rand
+  Ix = W16 % DeckN
+  Tv = Deck[Ix]
+  Last = DeckN - 1
+  Deck[Ix] = Deck[Last]
+  DeckN = Last
+  return Tv
+
+' the rising run from place 1 (C(P), line 560): 1-10
+function RunLen(u8 P) as u8
+  u8 R = 0
+  u8 Bs = 0
+  u8 Go = 0
+  Bs = P * 10
+  R = 1
+  Go = 1
+  while Go = 1
+    if R = 10 then
+      Go = 0
+    elseif Hand[Bs + R - 1] < Hand[Bs + R] then
+      inc R
+    else
+      Go = 0
+    end if
+  end while
+  return R
+
+' the computer's rating of the hand in Work: the best chain of tiles that
+' can stay (each step leaves room for the numbers between), 1024 a tile,
+' less the distance from each tile's ideal place
+function Rate as u16
+  u8 Jj = 0
+  u8 Ii = 0
+  u8 Tv = 0
+  u8 Ideal = 0
+  u8 Dev = 0
+  u16 M = 0
+  u16 Best = 0
+  u16 Dj = 0
+  Best = 0
+  for Jj = 0 to 9
+    Tv = Work[Jj]
+    Dp[Jj] = 0
+    if Tv > Jj and Tv <= Jj + 55 then
+      Ideal = Jj * 32 / 5 + 3
+      if Tv > Ideal then
+        Dev = Tv - Ideal
+      else
+        Dev = Ideal - Tv
+      end if
+      M = 0
+      if Jj > 0 then
+        for Ii = 0 to Jj - 1
+          if Dp[Ii] > M and Work[Ii] < Tv then
+            if Tv - Work[Ii] >= Jj - Ii then M = Dp[Ii]
+          end if
+        next
+      end if
+      Dj = M + 1024 - Dev
+      Dp[Jj] = Dj
+      if Dj > Best then Best = Dj
+    end if
+  next
+  return Best
+
+' the place (0-9) seat P puts tile Tv in, or NoSlot to refuse it
+function Choose(u8 P, u8 Tv) as u8
+  u8 S = 0
+  u8 Bs = 0
+  u8 Old = 0
+  u16 Best = 0
+  u16 R = 0
+  Bs = NoSlot
+  for S = 0 to 9
+    Work[S] = Hand[P * 10 + S]
+  next
+  Best = Rate
+  for S = 0 to 9
+    Old = Work[S]
+    Work[S] = Tv
+    R = Rate
+    Work[S] = Old
+    if R > Best then
+      Best = R
+      Bs = S
+    end if
+  next
+  return Bs
+
+' ---------------------------------------------------------------------------
+' moves
+
+' the face-up tile goes into place S of the current seat; the old tile
+' comes back face up
+sub Place(u8 S):
+  u8 Hi = 0
+  u8 Old = 0
+  u8 Ty = 0
+  u8 Tx = 0
+  u8 Tv = 0
+  Hi = Cur * 10 + S
+  Old = Hand[Hi]
+  Ty = BlkR(Cur) + 1
+  Tx = SlotCol(S)
+  Tv = Face
+  set sprite 4 to 192,0,SCur,0
+  PutTile(0, FaceX, PanY)
+  Slide(Tv, FaceX, PanY, Tx, Ty)
+  Hand[Hi] = Tv
+  Face = 0
+  ' the old tile shows face up while it leaves (even a hidden hand's)
+  PutTile(0, Tx, Ty)
+  Slide(Old, Tx, Ty, FaceX, PanY)
+  DrawSlot(Cur, S)
+  Face = Old
+  NoTileSprite
+  update sprites
+  DrawFace
+  play sound SndClack
+  LastSlot = S
+  LastOld = Old
+  LastNew = Tv
+  inc Moves
+  if RunLen(Cur) = 10 then
+    Winner = Cur
+    Gs = 4
+  end if
+  return
+
+' a new tile from the deck replaces the face-up one
+sub DrawNew:
+  u8 Tv = 0
+  Tv = DrawTileNum
+  PutTile(0, FaceX, PanY)
+  DrawDeck
+  Slide(Tv, DeckX, PanY, FaceX, PanY)
+  Face = Tv
+  NoTileSprite
+  update sprites
+  DrawFace
+  play sound SndDraw
+  Drawn = 1
+  inc Moves
+  return
+
+sub NextTurn:
+  if Gs >= 4 then return
+  inc Cur
+  if Cur >= NP then Cur = 0
+  StartTurn
+  return
+
+sub StartTurn:
+  Drawn = 0
+  CurPos = 0
+  if Seats[Cur].Kind = 0 then
+    Gs = 2
+  else
+    Gs = 3
+  end if
+  DrawNames
+  DrawButton
+  if Gs = 2 then
+    Msg(1)
+  else
+    Msg(3)
+  end if
+  Arrow
+  update sprites
+  return
+
+sub Pause(u8 N):
+  u8 K = 0
+  for K = 1 to N
+    Frame1
+  next
+  return
+
+sub HumanTurn:
+  u8 St = 0
+  Frame1
+  ReadPad
+  St = J1 | J2
+  St = St & 12
+  if St = 0 then
+    Rpt = 0
+  elseif Rpt > 0 then
+    dec Rpt
+  else
+    if WasStick = 0 then
+      Rpt = 14
+    else
+      Rpt = 6
+    end if
+    if St = 4 and CurPos > 0 then
+      dec CurPos
+      play sound SndStep
+    end if
+    if St = 8 and CurPos < 10 then
+      inc CurPos
+      play sound SndStep
+    end if
+  end if
+  WasStick = St
+  Arrow
+  update sprites
+  if Press1 = 1 and CurPos < 10 then
+    Place(CurPos)
+    NextTurn
+  elseif Press1 = 1 or Press2 = 1 then
+    if Drawn = 0 then
+      DrawNew
+      DrawButton
+      Msg(2)
+    else
+      play sound SndPass
+      NextTurn
+    end if
+  end if
+  return
+
+' the computer: the face-up tile if it helps, else a new one if it
+' helps, else pass; the arrow shows its choice first
+sub ComputerShow(u8 S):
+  CurPos = S
+  Arrow
+  update sprites
+  Pause(24)
+  return
+
+sub ComputerTurn:
+  u8 S = 0
+  Pause(30)
+  S = Choose(Cur, Face)
+  if S = NoSlot then
+    Msg(4)
+    Pause(20)
+    DrawNew
+    Pause(20)
+    S = Choose(Cur, Face)
+  end if
+  if S = NoSlot then
+    Msg(5)
+    play sound SndPass
+    Pause(30)
+  else
+    ComputerShow(S)
+    Place(S)
+  end if
+  NextTurn
+  return
+
+' ---------------------------------------------------------------------------
+' rounds and games
+
+sub NewGame:
+  u8 Hum = 0
+  Games += 1
+  NP = 2
+  if Mode > 2 then NP = 3
+  ' the listing's seating (line 270): seat 0 is PLAYER 2 or a computer,
+  ' seat 1 PLAYER 1, seat 2 COMPUTER 1
+  select case Mode
+  case 1
+    Seats[0].Name = 2
+  case 2
+    Seats[0].Name = 1
+  case 3
+    Seats[0].Name = 2
+  case else
+    Seats[0].Name = 3
+  end select
+  Seats[1].Name = 0
+  Seats[2].Name = 1
+  for Pi = 0 to 2
+    Hum = Seats[Pi].Name & 1
+    Seats[Pi].Kind = Hum
+    Seats[Pi].Pts = 0
+    Seats[Pi].Run = 0
+  next
+  First = 0
+  Rounds = 0
+  return
+
+sub Deal:
+  u8 I = 0
+  DeckN = 64
+  for I = 0 to 63
+    Deck[I] = I + 1
+  next
+  fill array Hand with 0
+  Face = 0
+  for Pi = 0 to NP - 1
+    for Si = 0 to 9
+      Hand[Pi * 10 + Si] = DrawTileNum
+    next
+  next
+  Face = DrawTileNum
+  return
+
+sub NewRound:
+  Gs = 1
+  OpenAll = 0
+  Moves = 0
+  Rounds += 1
+  NewScreen
+  Deal
+  Cur = First
+  DrawTable
+  ShowScreen
+  Pause(20)
+  Cur = First + 1
+  if Cur >= NP then Cur = 0
+  StartTurn
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 48
+  return
+
+' scores: 5 a tile of each hand's rising run; the game ends at WinPts
+sub RoundOver:
+  u8 Ry = 0
+  u8 Pts = 0
+  u16 Top = 0
+  u8 TopN = 0
+  set sprite 4 to 192,0,SCur,0
+  update sprites
+  OpenAll = 1
+  DrawButton
+  for Ri = 0 to NP - 1
+    DrawHand(Ri)
+    Seats[Ri].Run = RunLen(Ri)
+    Pts = Seats[Ri].Run * 5
+    Seats[Ri].Pts += Pts
+  next
+  DrawNames
+  for Ri = 0 to NP - 1
+    Ry = BlkR(Ri)
+    NumU = Seats[Ri].Run * 5
+    print at 20,Ry, "+", digits$(NumU, 2)
+  next
+  for Ri = PanY to MsgY
+    fill 32 count 28 at 2,Ri
+  next
+  PrintName(Seats[Winner].Name, 3, PanY)
+  print at 14,PanY, "WINS ROUND"
+  print Rounds at 25,PanY
+  if Seats[Winner].Kind = 0 then
+    play sound SndWin
+  else
+    play sound SndLose
+  end if
+  inc First
+  if First >= NP then First = 0
+  ' the end of the game: one seat alone on top with WinPts or more
+  Top = 0
+  TopN = 0
+  for Ri = 0 to NP - 1
+    if Seats[Ri].Pts > Top then
+      Top = Seats[Ri].Pts
+      TopN = 1
+      TopSeat = Ri
+    elseif Seats[Ri].Pts = Top then
+      inc TopN
+    end if
+  next
+  if Top >= WinPts and TopN = 1 then
+    Gs = 5
+    PrintName(Seats[TopSeat].Name, 3, PanY + 2)
+    print at 14,PanY + 2, "WINS THE GAME!"
+  else
+    Gs = 4
+    print at 7,MsgY, "PRESS THE BUTTON"
+  end if
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 32
+  V = J1 | J2
+  Btn = V & 48
+  V = Btn & ~WasBtn
+  Press1 = 0
+  Press2 = 0
+  if (V & 16) > 0 then Press1 = 1
+  if (V & 32) > 0 then Press2 = 1
+  WasBtn = Btn
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title in mosaic squares: 3 x 5 letters, rows of 3 bits, doubled
+' in height; letters M O S A I C
+data TitleFont bytes
+  5, 7, 7, 5, 5
+  7, 5, 5, 5, 7
+  7, 4, 7, 1, 7
+  2, 5, 7, 5, 5
+  7, 2, 2, 2, 7
+  7, 4, 4, 4, 7
+end data
+
+sub DrawLogo:
+  u8 L = 0
+  u8 R = 0
+  u8 C = 0
+  u8 Bits = 0
+  u8 Lx = 0
+  u8 Ly = 0
+  u8 Sq = 0
+  for L = 0 to 5
+    for R = 0 to 4
+      Bits = TitleFont[L * 5 + R]
+      for C = 0 to 2
+        if (Bits & (4 >> C)) > 0 then
+          Lx = L * 4 + C + 4
+          Ly = R * 2 + 2
+          Sq = Lx * 5 + Ly * 3
+          Sq = Sq + L
+          Sq = Sq & 7
+          put char TSq0 + Sq at Lx,Ly
+          Sq = Sq + 3
+          Sq = Sq & 7
+          put char TSq0 + Sq at Lx,Ly + 1
+        end if
+      next
+    next
+  next
+  return
+
+sub ShowMenu:
+  for Si = 15 to 20
+    put char 32 at 3,Si
+  next
+  J = Menu + 15
+  put char 62 at 3,J
+  if HideCpu = 0 then
+    print at 21,19, "SHOWN "
+  else
+    print at 21,19, "HIDDEN"
+  end if
+  return
+
+' the title: MOSAIC in squares, the tune once, the four games, the
+' computer's tiles shown or hidden, credits
+sub TitlePage:
+  u8 St = 0
+  u8 Go = 0
+  Gs = 0
+  NewScreen
+  DrawLogo
+  print at 3,13, "COMPUTE!'S GAZETTE  1988"
+  print at 5,15, "PLAYER VS PLAYER"
+  print at 5,16, "PLAYER VS COMPUTER"
+  print at 5,17, "2 PLAYERS VS COMPUTER"
+  print at 5,18, "PLAYER VS 2 COMPUTERS"
+  print at 5,19, "COMPUTER TILES"
+  print at 5,20, "CREDITS"
+  print at 4,22, "FIRST TO 150 POINTS WINS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Go = 0
+  while Go = 0
+    Frame1
+    inc Rs
+    ReadPad
+    St = J1 | J2
+    if (St & 3) > 0 and WasStick = 0 then
+      if (St & 1) > 0 and Menu > 0 then dec Menu
+      if (St & 2) > 0 and Menu < 5 then inc Menu
+      play sound SndStep
+      ShowMenu
+    end if
+    if (St & 12) > 0 and WasStick = 0 and Menu = 4 then
+      HideCpu = HideCpu ^ 1
+      play sound SndStep
+      ShowMenu
+    end if
+    WasStick = St & 15
+    if Press1 = 1 or Press2 = 1 then
+      if Menu < 4 then
+        Go = 1
+      elseif Menu = 4 then
+        HideCpu = HideCpu ^ 1
+        play sound SndStep
+        ShowMenu
+      else
+        Go = 2
+      end if
+    end if
+  end while
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  TitleGo = Go
+  if Go = 1 then Mode = Menu + 1
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "MOSAIC"
+  print at 2,4, "BY JAY A. REEVE,"
+  print at 2,5, "COMPUTE!'S GAZETTE,"
+  print at 2,6, "FEBRUARY 1988 (COMMODORE 64)"
+  print at 2,8, "PUT YOUR TEN TILES IN RISING"
+  print at 2,9, "ORDER BEFORE THE OTHERS DO:"
+  print at 2,10, "TAKE THE FACE-UP TILE OR"
+  print at 2,11, "DRAW ONE, AND TRADE IT IN."
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,18, "MUSIC: THE SULTAN'S TILES"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $C0,$80,$80,$80,$80,$80,$80,$80
+  $C0,$88,$98,$88,$88,$88,$9C,$80
+  $C0,$98,$A4,$84,$88,$90,$43,$80
+  $C0,$B8,$84,$98,$84,$84,$B8,$80
+  $C0,$A4,$A4,$A4,$43,$84,$84,$80
+  $C0,$43,$A0,$B8,$84,$84,$B8,$80
+  $C0,$98,$A0,$B8,$A4,$A4,$98,$80
+  $03,$19,$25,$25,$25,$25,$19,$01
+  $03,$09,$19,$09,$09,$09,$E2,$01
+  $03,$19,$25,$05,$09,$11,$C2,$01
+  $03,$C6,$05,$19,$05,$05,$C6,$01
+  $03,$25,$25,$25,$C2,$05,$05,$01
+  $03,$C2,$21,$C6,$05,$05,$C6,$01
+  $03,$19,$21,$C6,$25,$25,$19,$01
+  $03,$C2,$05,$09,$09,$11,$11,$01
+  $03,$19,$25,$19,$25,$25,$19,$01
+  $03,$19,$25,$25,$E2,$05,$19,$01
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $80,$80,$80,$80,$80,$80,$C0,$00
+  $01,$01,$01,$01,$01,$01,$03,$00
+  $C0,$80,$80,$A2,$80,$80,$A2,$80
+  $03,$01,$01,$23,$01,$01,$23,$01
+  $A2,$80,$80,$A2,$80,$80,$C0,$00
+  $23,$01,$01,$23,$01,$01,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$F1,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $1F,$F1,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$F1,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$F1,$1F
+  $1F,$F1,$1F,$1F,$1F,$1F,$F1,$1F
+  $1F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $1F,$F1,$1F,$F1,$1F,$1F,$F1,$1F
+  $1F,$1F,$1F,$F1,$1F,$1F,$1F,$1F
+  $1F,$F1,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$F1,$1F,$1F,$1F
+  $16,$16,$16,$16,$16,$16,$16,$01
+  $16,$16,$16,$16,$16,$16,$16,$01
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$01
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$01
+  $12,$12,$12,$12,$12,$12,$12,$01
+  $12,$12,$12,$12,$12,$12,$12,$01
+  $17,$17,$17,$17,$17,$17,$17,$01
+  $17,$17,$17,$17,$17,$17,$17,$01
+  $15,$15,$15,$15,$15,$15,$15,$01
+  $15,$15,$15,$15,$15,$15,$15,$01
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$01,$01,$04,$04,$01,$01,$01
+  $16,$16,$16,$16,$16,$16,$16,$01
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$01
+  $12,$12,$12,$12,$12,$12,$12,$01
+  $17,$17,$17,$17,$17,$17,$17,$01
+  $15,$15,$15,$15,$15,$15,$15,$01
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+end data
+data SpritePat bytes
+  $3F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$7F,$7F,$7F,$7F,$7F,$7F,$3F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$FC,$00
+  $00,$18,$24,$24,$24,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$18,$08,$08,$08,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$04,$08,$10,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$04,$18,$04,$04,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$24,$24,$24,$3C,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3C,$20,$38,$04,$04,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$20,$38,$24,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3C,$04,$08,$08,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$18,$24,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$24,$1C,$04,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$24,$24,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$18,$08,$08,$08,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$04,$08,$10,$3C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$04,$18,$04,$04,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$24,$24,$24,$3C,$04,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3C,$20,$38,$04,$04,$38,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$20,$38,$24,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3C,$04,$08,$08,$10,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$18,$24,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$24,$24,$1C,$04,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$07,$0F,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+MoStep:
+    db $40,$D6,$50,$01,$40,$E2,$90,$01,$50
+MoSlide:
+    db $00,$00,$53,$01,$00,$00,$73,$01,$00,$00,$83,$01,$00,$00,$A3,$01,$00,$00,$B3,$01,$00,$00,$D3,$01
+    db $10
+MoClack:
+    db $40,$47,$10,$01,$40,$8F,$30,$01,$40,$1D,$61,$02,$50
+MoDraw:
+    db $40,$AA,$30,$02,$40,$8F,$30,$02,$40,$71,$50,$02,$50
+MoPass:
+    db $40,$1D,$41,$03,$40,$53,$61,$04,$50
+MoWin:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$04,$40,$6B,$20,$10
+    db $40,$6B,$50,$0A,$50
+MoLose:
+    db $40,$1D,$21,$08,$40,$2E,$31,$08,$40,$41,$31,$08,$40,$53,$41,$14,$40,$53,$81,$0A,$50
+MoBad:
+    db $00,$00,$32,$03,$00,$00,$72,$04,$10
+
+MoSoundTable:
+    dw MoTuneMel,$702B
+    dw MoTuneBass,$7035
+    dw MoStep,$7049
+    dw MoSlide,$703F
+    dw MoClack,$7049
+    dw MoDraw,$7049
+    dw MoPass,$7049
+    dw MoWin,$7049
+    dw MoLose,$7049
+    dw MoBad,$703F
+; The Sultan's Tiles (original)
+; Tiny Sound, 10 frames per step
+MoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$70,$F1,$22,$21,$01,$23,$24,$27,$01,$28,$01,$26,$24,$23,$01
+    db $21,$01,$01,$01,$1C,$01,$1F,$21,$23,$01,$24,$01,$23,$21,$20,$01
+    db $21,$01,$01,$01,$21,$23,$24,$26,$28,$01,$29,$01,$28,$26,$24,$01
+    db $23,$01,$28,$01,$24,$23,$21,$20,$23,$01,$21,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$90,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$0C,$01,$13,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$0E,$01,$05,$01,$0C,$01
+    db $04,$01,$0B,$01,$05,$01,$04,$01,$05,$01,$04,$01,$09,$01,$10,$01
+    db $00,$01,$01,$01
+    db $FF
+}

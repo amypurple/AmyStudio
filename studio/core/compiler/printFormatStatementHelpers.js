@@ -86,6 +86,23 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
+  // Disambiguate a legal variable named At from `print at X,Y,...` without
+  // diverting ordinary value-first prints from the established parser below.
+  const printAutoAt = line.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
+  if (printAutoAt && /^at$/i.test(printAutoAt[1].trim())) {
+    const size = resolveFormatSize(printAutoAt[5], rawLine);
+    if (!size.ok) return { handled: true, ok: false, log: size.log };
+    const floatDigitsError = getFloatDigitsError(normalizeExpression(printAutoAt[1]), printAutoAt[4], size.token, rawLine);
+    if (floatDigitsError) return { handled: true, ok: false, log: floatDigitsError };
+    const mode = (printAutoAt[4] || "").toLowerCase();
+    const code = emitPrintAutoAt(normalizeExpression(printAutoAt[1]), printAutoAt[2], printAutoAt[3], size.token, mode === "width");
+    if (!code) {
+      return { handled: true, ok: false, log: `print requires a supported typed value, u8 coordinates, and valid optional digits/width: ${rawLine}` };
+    }
+    body.push(...code);
+    return { handled: true, ok: true };
+  }
+
   if (/^print\s+at\s+/i.test(line)) {
     const argText = line.replace(/^print\s+at\s+/i, "");
     const dynamicTextWidth = argText.match(/\b(?:digits|width)\$\s*\([^,]+,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/i);
@@ -164,22 +181,15 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const printAutoAt = line.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
   if (printAutoAt) {
     const size = resolveFormatSize(printAutoAt[5], rawLine);
     if (!size.ok) return { handled: true, ok: false, log: size.log };
     const floatDigitsError = getFloatDigitsError(normalizeExpression(printAutoAt[1]), printAutoAt[4], size.token, rawLine);
-    if (floatDigitsError) {
-      return { handled: true, ok: false, log: floatDigitsError };
-    }
+    if (floatDigitsError) return { handled: true, ok: false, log: floatDigitsError };
     const mode = (printAutoAt[4] || "").toLowerCase();
     const code = emitPrintAutoAt(normalizeExpression(printAutoAt[1]), printAutoAt[2], printAutoAt[3], size.token, mode === "width");
     if (!code) {
-      return {
-        handled: true,
-        ok: false,
-        log: `print requires a supported typed value, u8 coordinates, and valid optional digits/width: ${rawLine}`
-      };
+      return { handled: true, ok: false, log: `print requires a supported typed value, u8 coordinates, and valid optional digits/width: ${rawLine}` };
     }
     body.push(...code);
     return { handled: true, ok: true };

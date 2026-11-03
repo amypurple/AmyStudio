@@ -1,0 +1,1287 @@
+cartridge "MATH ATTACK/COMPUTE!'S GAZETTE/1986"
+
+' MATH ATTACK
+' A ColecoVision game based on "Math Attack", COMPUTE!'s Gazette October
+' 1986 (Commodore 64, BASIC; no author named in the listing).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: three bombs fall on a city at night. Each carries a math
+' problem (addition, subtraction or multiplication, chosen on the title).
+' Dial the answer at the bottom of the screen and press the button: every
+' falling bomb whose problem has that answer bursts and a new bomb starts
+' at the top. A wrong answer drops all the bombs closer to the city and
+' speeds them up. Twenty right answers raise the limits of the numbers
+' (9 and 9, 99 and 9, 99 and 99, 999 and 99); the game is won after a
+' level with limits 999 and 99. Three bombs reaching the city lose it.
+'
+' From the original (orig/mattack.bas): the three operations and the three
+' start levels with their limits (1: 9 and 9, 2: 99 and 9, 3: 99 and 99),
+' the operands drawn from 0 to limit - 1 (INT(RND*L)), the second operand
+' cut to two digits, the problem written on the bomb (the first number
+' above, the operation and the second below, underlined), negative answers
+' for subtraction, an answer bursts every bomb it fits, 20 right answers a
+' level, new limits by adding a 9 to the smaller one (the first when
+' equal), the win once the limits add up to more than 1000, a wrong answer
+' moves the bombs (3 - L) x 10 C64 lines down (stopping above the city) and
+' lowers L, the start level, which sets the delay of the fall (level 3 the
+' slowest; below 1 no faster), three bombs reaching the city end the game,
+' the end messages and the results (right, wrong, bombs reaching the city).
+'
+' Liberties: the answer is dialled with the joystick instead of typed: one
+' slot per digit of the largest possible answer (and a sign slot for
+' subtraction), left/right choose a slot, up/down turn it, the button
+' fires; the dial goes back to zero after each answer, so sweeping through
+' answers costs a wrong-answer penalty each time and loses the city. The
+' fall speed also depends on the size of the answers (two, three, four or
+' five digits) so that dialling them is possible; 3-digit x 2-digit
+' products get five slots (the C64 accepted four characters and could not
+' answer them). Bombs burst with a short animation and the city shows
+' damage; the level message stays four seconds. The start positions of the
+' bombs are the C64's (staggered), scaled to the ColecoVision screen. The
+' C64 set a bomb below the stop line back up to it on a wrong answer, so
+' typing wrong answers fast held the bombs off the city for ever; here a
+' wrong answer never lifts a bomb.
+'
+' Controls: either controller. Title: up/down choose a line, left/right
+' change the operation or the level, the button starts. Play: left/right
+' choose a slot of the dial, up/down change it (hold to repeat), a button
+' fires the answer.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, the title
+' tune played once. Own xorshift random numbers. Nothing flashes.
+
+const TStar = 128
+const TStar2 = 129
+const TRoof = 130
+const TRoofb = 131
+const TWall = 132
+const TWalld = 133
+const TStreet = 134
+const TRubble = 135
+const TFire = 136
+const THd0 = 137
+const THd1 = 138
+const THd2 = 139
+const THd3 = 140
+const THd4 = 141
+const THd5 = 142
+const THd6 = 143
+const THd7 = 144
+const THd8 = 145
+const THd9 = 146
+const THd10 = 147
+const THd11 = 148
+const TBM00 = 149
+const TBM01 = 150
+const TBM10 = 151
+const TBM11 = 152
+const TBA00 = 153
+const TBA01 = 154
+const TBA10 = 155
+const TBA11 = 156
+const TBT00 = 157
+const TBT01 = 158
+const TBT10 = 159
+const TBT11 = 160
+const TBH00 = 161
+const TBH01 = 162
+const TBH10 = 163
+const TBH11 = 164
+const TBC00 = 165
+const TBC01 = 166
+const TBC10 = 167
+const TBC11 = 168
+const TBK00 = 169
+const TBK01 = 170
+const TBK10 = 171
+const TBK11 = 172
+const SLab0 = 0
+const SLab1 = 4
+const SLab2 = 8
+const SBomb = 12
+const SPop = 16
+const SBoom = 20
+const SBoom2 = 24
+const NTiles8 = 360
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndFire = 4
+const SndRight = 5
+const SndPop = 6
+const SndWrong = 7
+const SndBoom = 8
+const SndLevel = 9
+const SndStart = 10
+const SndOver = 11
+const SndWin = 12
+const NSpr = 6
+const TopY = 16
+const HitY = 129
+const CapY = 124
+const PopN = 24
+const BoomN = 40
+const MsgN = 240
+const EndN = 50
+const Need = 20
+
+data LaneX bytes
+  40, 112, 184
+end data
+' start lines of the three bombs (C64: 0, 30, 10)
+data StartY bytes
+  16, 38, 24
+end data
+' fall speed in 1/256 pixel a frame: by answer size (2, 3, 4+ digits) and
+' delay level 1-3
+data SpdT bytes
+  22, 16, 12
+  16, 11, 9
+  11, 8, 6
+end data
+' building heights, columns 0-31 (rows 21 up)
+data CityH bytes
+  2, 3, 3, 2, 4, 4, 1, 3, 3, 2, 4, 2, 2, 3, 3, 1, 4, 4, 2, 3, 2, 2, 4, 3, 3, 1, 2, 4, 4, 2, 3, 3
+end data
+' stars: column, row pairs
+data StarT bytes
+  3, 3, 9, 2, 14, 5, 21, 3, 27, 6, 6, 8, 18, 9, 25, 11, 4, 13, 11, 12, 16, 15, 28, 14, 8, 16, 22, 16
+end data
+' title letters: tile base offsets (M A T H C K = 0,4,8,12,16,20), 255 a gap
+data LogoT bytes
+  0, 4, 8, 12, 255, 4, 8, 8, 4, 16, 20
+end data
+data OpChar bytes
+  43, 45, 88
+end data
+
+record BombR:
+  u16 Yf
+  u8 St
+  u8 Kd
+  u8 Sg
+  u32 Av
+end record
+
+BombR Bm[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 N1 = 0
+u16 N2 = 0
+u16 L1 = 9
+u16 L2 = 9
+u16 Sum16 = 0
+u32 V32 = 0
+u32 M32 = 0
+u32 A32 = 0
+u8 Op = 0
+u8 Lsel = 1
+i8 L = 1
+u8 Spd = 30
+u8 Nd = 1
+u8 CurMin = 1
+u8 Cur = 1
+u8 Sg = 0
+u8 Dg[5]
+u8 Buf[32]
+u8 Tc = 0
+u16 RtN = 0
+u16 Wt = 0
+u8 Bh = 0
+u8 MsgT = 0
+u8 EndT = 0
+u8 Over = 0
+u8 Hit = 0
+u8 Lane = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 LastDir = 0
+u8 Rep = 0
+u8 Act = 0
+u8 Mrow = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 InPlay = 0
+' loop counters (never shared with the helpers)
+u8 Bi = 0
+u8 Ki = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 U = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Ga = 0
+u8 Gb = 0
+u8 Gc = 0
+u16 Wa = 0
+u16 Wb = 0
+
+  tile screen
+  set sound table MaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Mrow = 3 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the message and the results, then back to the title
+  InPlay = 0
+  HideSprites
+  mute all
+  for Ri = 4 to 17
+    fill 32 count 28 at 2,Ri
+  next
+  if Over = 2 then
+    print at 4,5, "YOU'VE BEATEN THE MATH"
+    print at 3,6, "PROBLEMS AT THEIR OWN GAME"
+    play sound SndWin
+  else
+    print at 4,5, "MATH PROBLEMS INVADE"
+    print at 4,6, "THE CITY"
+    play sound SndOver
+  end if
+  print at 4,9, "GAME RESULTS:"
+  print at 4,11, "RIGHT ANSWERS:"
+  print RtN at 19,11 width 5
+  print at 4,13, "WRONG ANSWERS:"
+  print Wt at 19,13 width 5
+  print at 4,15, "BOMBS REACHING"
+  print at 4,16, "THE CITY:"
+  W16 = Bh
+  print W16 at 19,16 width 5
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if EndT > 0 then
+    MoveBombs
+    dec EndT
+    if EndT = 0 then Over = 1
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then ResumeLevel
+    return
+  end if
+  DialInput
+  if Press = 1 then
+    Submit
+    if Over > 0 then return
+    if MsgT > 0 then return
+  end if
+  MoveBombs
+  return
+end sub
+
+' the stick turns the dial: a move at once, then every 6 frames after 16
+sub DialInput:
+  V = J1 | J2
+  V = V & 15
+  Act = 0
+  if V = 0 then
+    Rep = 0
+  elseif V <> LastDir then
+    Act = 1
+    Rep = 16
+  else
+    dec Rep
+    if Rep = 0 then
+      Act = 1
+      Rep = 6
+    end if
+  end if
+  LastDir = V
+  if Act = 0 then return
+  K = V & 1
+  if K > 0 then
+    Turn(1)
+  else
+    K = V & 2
+    if K > 0 then
+      Turn(9)
+    else
+      K = V & 4
+      if K > 0 then
+        if Cur > CurMin then dec Cur
+      else
+        if Cur < Nd then inc Cur
+      end if
+    end if
+  end if
+  play sound SndTick
+  DrawDial
+  return
+end sub
+
+' turn the slot under the cursor by D (1 up, 9 down)
+sub Turn(u8 D):
+  if Cur = 0 then
+    Sg = Sg ^ 1
+    return
+  end if
+  N = Cur - 1
+  T = Dg[N] + D
+  if T >= 10 then T = T - 10
+  Dg[N] = T
+  return
+end sub
+
+' the value of the dial into V32
+sub DialValue:
+  V32 = 0
+  for Ki = 1 to Nd
+    T = Ki - 1
+    V32 *= 10
+    V32 += Dg[T]
+  next
+  return
+end sub
+
+sub ClearDial:
+  for Ki = 0 to 4
+    Dg[Ki] = 0
+  next
+  Sg = 0
+  Cur = Nd
+  return
+end sub
+
+' the button: every falling bomb with this answer bursts
+sub Submit:
+  DialValue
+  Hit = 0
+  for Bi = 0 to 2
+    if Bm[Bi].St = 0 then
+      if Matches(Bi) = 1 then
+        Hit = 1
+        inc Tc
+        inc RtN
+        Bm[Bi].St = PopN
+        Bm[Bi].Kd = 1
+      end if
+    end if
+  next
+  ClearDial
+  DrawDial
+  if Hit = 1 then
+    play sound SndPop
+    play sound SndRight
+    ShowRight
+    if Tc >= Need then LevelDone
+    return
+  end if
+  ' wrong: every falling bomb drops (3 - L) x 8 lines, the fall speeds up
+  inc Wt
+  Wa = 3 - L
+  Wa = Wa << 11
+  for Bi = 0 to 2
+    if Bm[Bi].St = 0 then
+      W16 = Bm[Bi].Yf
+      Wb = W16 + Wa
+      if Wb > CapY * 256 then Wb = CapY * 256
+      if Wb > W16 then Bm[Bi].Yf = Wb
+    end if
+  next
+  if L > -20 then L = L - 1
+  SetSpeed
+  play sound SndWrong
+  return
+end sub
+
+function Matches(u8 I) as u8
+  if Bm[I].Av <> V32 then return 0
+  if V32 = 0 then return 1
+  if Bm[I].Sg <> Sg then return 0
+  return 1
+
+sub MoveBombs:
+  for Bi = 0 to 2
+    if Bm[Bi].St > 0 then
+      T = Bm[Bi].St - 1
+      Bm[Bi].St = T
+      if T = 0 then
+        if EndT = 0 then Spawn
+      end if
+    elseif EndT = 0 then
+      Wb = Bm[Bi].Yf + Spd
+      Bm[Bi].Yf = Wb
+      Y = highbyte Wb
+      if Y >= HitY then CityHit
+    end if
+  next
+  return
+end sub
+
+' bomb Bi reached the city
+sub CityHit:
+  inc Bh
+  Bm[Bi].St = BoomN
+  Bm[Bi].Kd = 2
+  play sound SndBoom
+  ShowMissed
+  ' the buildings under the lane fall
+  C = LaneX[Bi] >> 3
+  for Ki = 18 to 20
+    fill 32 count 2 at C,Ki
+  next
+  put char TFire at C,21
+  C = C + 1
+  put char TRubble at C,21
+  if Bh >= 3 then EndT = EndN
+  return
+end sub
+
+' twenty right answers: the next limits, or the win
+sub LevelDone:
+  Sum16 = L1 + L2
+  if Sum16 > 1000 then
+    Over = 2
+    return
+  end if
+  if L2 < L1 then
+    L2 = L2 * 10
+    L2 = L2 + 9
+  else
+    L1 = L1 * 10
+    L1 = L1 + 9
+  end if
+  MsgT = MsgN
+  for Bi = 0 to 2
+    Bm[Bi].St = 0
+    Bm[Bi].Yf = 0
+  next
+  for Ri = 6 to 13
+    fill 32 count 26 at 3,Ri
+  next
+  print at 7,7, "20 CORRECT ANSWERS"
+  print at 5,9, "YOU MAY GO ON . . . ."
+  print at 9,10, "TO THE NEXT LEVEL"
+  print at 5,12, "NEW LIMITS:"
+  print L1 at 17,12 width 3
+  print at 21,12, "AND"
+  print L2 at 25,12 width 2
+  play sound SndLevel
+  return
+end sub
+
+sub ResumeLevel:
+  for Ri = 6 to 13
+    DrawSkyRow
+  next
+  Tc = 0
+  StartLevel
+  return
+end sub
+
+' limits, dial size and speed for the current limits; three new bombs
+sub StartLevel:
+  Wa = L1 - 1
+  Wb = L2 - 1
+  select case Op
+    case 0
+      M32 = Wa
+      M32 += Wb
+    case 1
+      M32 = Wa
+      if Wb > Wa then M32 = Wb
+    case else
+      M32 = Wa
+      M32 *= Wb
+  end select
+  Nd = DigitsOf()
+  CurMin = 1
+  if Op = 1 then CurMin = 0
+  ClearDial
+  SetSpeed
+  for Bi = 0 to 2
+    Spawn
+    Bm[Bi].Yf = StartY[Bi] * 256
+  next
+  ShowHud
+  return
+end sub
+
+function DigitsOf as u8
+  if M32 >= 10000 then return 5
+  if M32 >= 1000 then return 4
+  if M32 >= 100 then return 3
+  if M32 >= 10 then return 2
+  return 1
+
+sub SetSpeed:
+  V = 0
+  if Nd >= 3 then V = 3
+  if Nd >= 4 then V = 6
+  T = 1
+  if L >= 2 then T = 2
+  if L >= 3 then T = 3
+  V = V + T - 1
+  Spd = SpdT[V]
+  return
+end sub
+
+' a new problem for bomb Bi, at the top
+sub Spawn:
+  Rand
+  N1 = Rs % L1
+  Rand
+  N2 = Rs % L2
+  N2 = N2 % 100
+  Bm[Bi].Sg = 0
+  select case Op
+    case 0
+      A32 = N1
+      A32 += N2
+    case 1
+      if N1 >= N2 then
+        W16 = N1 - N2
+      else
+        W16 = N2 - N1
+        Bm[Bi].Sg = 1
+      end if
+      A32 = W16
+    case else
+      A32 = N1
+      A32 *= N2
+  end select
+  Bm[Bi].Av = A32
+  Bm[Bi].St = 0
+  Bm[Bi].Kd = 0
+  Bm[Bi].Yf = TopY * 256
+  MakeLabel
+  return
+end sub
+
+' the label sprite of bomb Bi: N1 above, the operation and N2 below
+sub MakeLabel:
+  W16 = N1 / 100
+  Ga = W16
+  if Ga = 0 then Ga = 13
+  W16 = N1 / 10
+  W16 = W16 % 10
+  Gb = W16
+  if N1 < 10 then Gb = 13
+  W16 = N1 % 10
+  Gc = W16
+  for Ri = 0 to 6
+    PackRow
+    Buf[Ri] = highbyte Wa
+    K = Ri + 16
+    Buf[K] = Wa
+  next
+  Ga = 10 + Op
+  W16 = N2 / 10
+  Gb = W16
+  if Gb = 0 then Gb = 13
+  W16 = N2 % 10
+  Gc = W16
+  for Ri = 0 to 6
+    PackRow
+    K = Ri + 8
+    Buf[K] = highbyte Wa
+    K = Ri + 24
+    Buf[K] = Wa
+  next
+  Buf[7] = 0
+  Buf[23] = 0
+  Buf[15] = $7F
+  Buf[31] = $FE
+  W16 = Bi
+  W16 = W16 << 5
+  copy Buf count 32 to vram.spr_pat + W16
+  return
+end sub
+
+' one pixel row Ri of glyphs Ga, Gb, Gc into Wa (columns 1-4, 6-9, 11-14)
+sub PackRow:
+  K = Ga * 7
+  K = K + Ri
+  Wa = GlyphT[K]
+  Wa = Wa << 11
+  K = Gb * 7
+  K = K + Ri
+  Wb = GlyphT[K]
+  Wb = Wb << 6
+  Wa = Wa | Wb
+  K = Gc * 7
+  K = K + Ri
+  Wb = GlyphT[K]
+  Wb = Wb << 1
+  Wa = Wa | Wb
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites 2i: the label of bomb i, 2i+1: the bomb (or its burst)
+sub DrawSprites:
+  for Bi = 0 to 2
+    J = Bi << 1
+    N = J + 1
+    X = LaneX[Bi]
+    Wb = Bm[Bi].Yf
+    Y = highbyte Wb
+    T = Bm[Bi].St
+    if InPlay = 0 then
+      set sprite J to 192,0,0,0
+      set sprite N to 192,0,0,0
+    elseif MsgT > 0 then
+      set sprite J to 192,0,0,0
+      set sprite N to 192,0,0,0
+    elseif T = 0 then
+      K = Bi << 2
+      Y = Y - 1
+      set sprite J to Y,X,K,15
+      Y = Y + 16
+      set sprite N to Y,X,SBomb,14
+    else
+      set sprite J to 192,0,0,0
+      Y = Y + 15
+      if Bm[Bi].Kd = 1 then
+        set sprite N to Y,X,SPop,11
+      elseif T > 20 then
+        set sprite N to Y,X,SBoom,9
+      else
+        set sprite N to Y,X,SBoom2,11
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  print at 2,1, "LIMITS"
+  print L1 at 9,1 width 3
+  C = OpChar[Op]
+  put char C at 13,1
+  print L2 at 15,1 width 2
+  print at 19,1, "RIGHT"
+  ShowRight
+  print at 27,1, "/20"
+  print at 2,22, "ANSWER"
+  print at 21,22, "MISSED"
+  ShowMissed
+  DrawDial
+  return
+end sub
+
+sub ShowRight:
+  print Tc at 25,1 digits 2
+  return
+end sub
+
+sub ShowMissed:
+  print Bh at 28,22 digits 1
+  return
+end sub
+
+' the dial: sign slot at column 9, digits from column 10; the slot under
+' the cursor on yellow
+sub DrawDial:
+  fill 32 count 7 at 9,22
+  if CurMin = 0 then
+    C = 43
+    if Sg = 1 then C = 45
+    if Cur = 0 then
+      C = THd0 + 10
+      if Sg = 1 then C = THd0 + 11
+    end if
+    put char C at 9,22
+  end if
+  for Ki = 1 to Nd
+    T = Ki - 1
+    C = Dg[T]
+    if Ki = Cur then
+      C = C + THd0
+    else
+      C = C + 48
+    end if
+    X = Ki + 9
+    put char C at X,22
+  next
+  return
+end sub
+
+sub DrawSkyRow:
+  fill 32 count 32 at 0,Ri
+  for Ki = 0 to 13
+    K = Ki << 1
+    X = StarT[K]
+    inc K
+    if StarT[K] = Ri then
+      T = TStar
+      U = Ki & 1
+      if U = 1 then T = TStar2
+      put char T at X,Ri
+    end if
+  next
+  return
+end sub
+
+sub DrawCity:
+  for Ki = 0 to 31
+    N = CityH[Ki]
+    T = 22 - N
+    put char TRoof at Ki,T
+    U = Ki & 3
+    if U = 1 then put char TRoofb at Ki,T
+    for Ri = T to 21
+      if Ri > T then
+        U = Ki + Ri
+        U = U & 1
+        C = TWall + U
+        put char C at Ki,Ri
+      end if
+    next
+  next
+  return
+end sub
+
+sub DrawField:
+  for Ri = 2 to 21
+    DrawSkyRow
+  next
+  DrawCity
+  return
+end sub
+
+sub NewGame:
+  L1 = 9
+  L2 = 9
+  if Lsel >= 2 then L1 = 99
+  if Lsel = 3 then L2 = 99
+  L = Lsel
+  Tc = 0
+  RtN = 0
+  Wt = 0
+  Bh = 0
+  MsgT = 0
+  EndT = 0
+  Over = 0
+  LastDir = 0
+  Rep = 0
+  NewScreen
+  DrawField
+  StartLevel
+  InPlay = 1
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo, the city, a bomb falling with a problem; choose the
+' operation and the start level
+sub TitlePage:
+  InPlay = 0
+  NewScreen
+  DrawField
+  for Ri = 2 to 17
+    fill 32 count 28 at 2,Ri
+  next
+  X = 4
+  for Ki = 0 to 10
+    T = LogoT[Ki]
+    if T < 255 then
+      C = TBM00 + T
+      put char C at X,3
+      inc C
+      U = X + 1
+      put char C at U,3
+      inc C
+      put char C at X,4
+      inc C
+      put char C at U,4
+    end if
+    X = X + 2
+  next
+  print at 2,6, "COMPUTE!'S GAZETTE OCT 1986"
+  print at 8,9, "TYPE"
+  print at 8,11, "LEVEL"
+  print at 8,13, "START"
+  print at 8,15, "CREDITS"
+  print at 2,22, "STICK CHOOSES, BUTTON GOES"
+  Mrow = 2
+  ShowMenu
+  ' a sample bomb in the third lane
+  Bi = 2
+  L1 = 9
+  L2 = 9
+  N1 = 7
+  N2 = 5
+  MakeLabel
+  Bm[2].Yf = 72 * 256
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleBomb
+  V = J1 | J2
+  V = V & 15
+  if V <> LastDir then
+    K = V & 1
+    if K > 0 then
+      if Mrow > 0 then dec Mrow
+    end if
+    K = V & 2
+    if K > 0 then
+      if Mrow < 3 then inc Mrow
+    end if
+    K = V & 12
+    if K > 0 then
+      K = V & 8
+      if Mrow = 0 then
+        if K > 0 then
+          inc Op
+          if Op > 2 then Op = 0
+        else
+          if Op = 0 then
+            Op = 2
+          else
+            dec Op
+          end if
+        end if
+        N1 = 7
+        N2 = 5
+        Bi = 2
+        MakeLabel
+      end if
+      if Mrow = 1 then
+        if K > 0 then
+          if Lsel < 3 then inc Lsel
+        else
+          if Lsel > 1 then dec Lsel
+        end if
+      end if
+    end if
+    if V > 0 then
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  LastDir = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Mrow = 3 then CreditsPage
+  return
+end sub
+
+' the sample bomb falls and starts again at the top
+sub TitleBomb:
+  Wb = Bm[2].Yf + 48
+  if Wb > 120 * 256 then Wb = 64 * 256
+  Bm[2].Yf = Wb
+  Y = highbyte Wb
+  Y = Y - 1
+  X = LaneX[2] + 24
+  set sprite 0 to Y,X,8,15
+  Y = Y + 16
+  set sprite 1 to Y,X,SBomb,14
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for Ki = 0 to 3
+    K = Ki << 1
+    K = K + 9
+    put char 32 at 6,K
+  next
+  K = Mrow << 1
+  K = K + 9
+  put char 62 at 6,K
+  fill 32 count 16 at 14,9
+  select case Op
+    case 0
+      print at 14,9, "+ ADDITION"
+    case 1
+      print at 14,9, "- SUBTRACTION"
+    case else
+      print at 14,9, "X MULTIPLY"
+  end select
+  fill 32 count 16 at 14,11
+  W16 = Lsel
+  print W16 at 14,11 width 1
+  Wa = 9
+  if Lsel >= 2 then Wa = 99
+  Wb = 9
+  if Lsel = 3 then Wb = 99
+  print at 16,11, "("
+  print Wa at 17,11 width 2
+  C = OpChar[Op]
+  put char C at 20,11
+  print Wb at 22,11 width 2
+  print at 24,11, ")"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "MATH ATTACK"
+  print at 2,5, "BASED ON MATH ATTACK,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "OCTOBER 1986 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: NUMBER RAIN"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$44,$44,$00
+  $00,$10,$10,$38,$83,$00,$24,$00
+  $00,$44,$44,$00,$00,$11,$11,$00
+  $00,$40,$40,$00,$00,$01,$01,$00
+  $00,$00,$18,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$2C,$81,$24,$42
+  $00,$10,$34,$83,$38,$83,$00,$42
+  $00,$38,$44,$4C,$54,$64,$44,$38
+  $00,$10,$30,$10,$10,$10,$10,$38
+  $00,$38,$44,$04,$18,$20,$40,$83
+  $00,$38,$44,$04,$18,$04,$44,$38
+  $00,$08,$18,$28,$48,$83,$08,$08
+  $00,$83,$40,$87,$04,$04,$44,$38
+  $00,$18,$20,$40,$87,$44,$44,$38
+  $00,$83,$04,$08,$10,$20,$20,$20
+  $00,$38,$44,$44,$38,$44,$44,$38
+  $00,$38,$44,$44,$C3,$04,$08,$30
+  $00,$00,$10,$10,$83,$10,$10,$00
+  $00,$00,$00,$00,$83,$00,$00,$00
+  $00,$70,$70,$81,$81,$8E,$8E,$8E
+  $00,$07,$07,$C0,$C0,$38,$38,$38
+  $8E,$70,$70,$70,$70,$70,$70,$00
+  $38,$07,$07,$07,$07,$07,$07,$00
+  $00,$F0,$F0,$70,$70,$70,$70,$80
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $80,$70,$70,$70,$70,$70,$70,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$80,$80,$01,$01,$01,$01,$01
+  $00,$00,$00,$C0,$C0,$C0,$C0,$C0
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$70,$70,$70,$70,$70,$70,$80
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $80,$70,$70,$70,$70,$70,$70,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$F0,$F0,$70,$70,$70,$70,$70
+  $00,$07,$07,$07,$07,$00,$00,$00
+  $70,$70,$70,$70,$70,$F0,$F0,$00
+  $00,$00,$00,$07,$07,$07,$07,$00
+  $00,$70,$70,$70,$70,$8E,$8E,$81
+  $00,$07,$07,$38,$38,$C0,$C0,$00
+  $81,$8E,$8E,$70,$70,$70,$70,$00
+  $00,$C0,$C0,$38,$38,$07,$07,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$0E,$04,$B4,$B4,$04
+  $01,$91,$E1,$E1,$1E,$04,$B4,$04
+  $04,$B4,$B4,$04,$04,$B4,$B4,$04
+  $04,$B4,$B4,$04,$04,$B4,$B4,$04
+  $0E,$01,$B1,$01,$01,$01,$01,$01
+  $01,$01,$01,$61,$61,$16,$E6,$E6
+  $01,$81,$81,$18,$98,$89,$06,$E6
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$B1
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$B1,$1B,$1B
+  $0B,$B1,$1B,$B1,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $0B,$B1,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$B1,$1B,$1B,$1B
+  $0B,$0B,$1B,$1B,$B1,$1B,$1B,$0B
+  $0B,$0B,$0B,$0B,$B1,$0B,$0B,$0B
+  $01,$81,$91,$19,$1B,$1B,$1B,$1B
+  $01,$81,$91,$19,$1B,$1B,$1B,$1B
+  $1F,$F1,$B1,$B1,$91,$91,$81,$01
+  $1F,$F1,$B1,$B1,$91,$91,$81,$01
+  $01,$18,$19,$91,$B1,$B1,$B1,$1B
+  $01,$18,$19,$91,$B1,$B1,$B1,$0B
+  $1F,$F1,$B1,$B1,$91,$91,$81,$01
+  $0F,$F1,$B1,$B1,$91,$91,$81,$01
+  $01,$18,$19,$91,$B1,$B1,$B1,$B1
+  $01,$08,$09,$91,$B1,$B1,$B1,$B1
+  $F1,$F1,$B1,$B1,$91,$91,$81,$01
+  $F1,$F1,$B1,$B1,$91,$91,$81,$01
+  $01,$81,$91,$91,$B1,$B1,$B1,$1B
+  $01,$81,$91,$91,$B1,$B1,$B1,$0B
+  $1F,$F1,$B1,$B1,$91,$91,$81,$01
+  $0F,$F1,$B1,$B1,$91,$91,$81,$01
+  $01,$18,$19,$91,$B1,$B1,$B1,$B1
+  $01,$18,$19,$91,$B1,$01,$01,$01
+  $F1,$F1,$B1,$B1,$91,$19,$18,$01
+  $01,$01,$01,$B1,$91,$19,$18,$01
+  $01,$81,$91,$91,$B1,$1B,$1B,$1B
+  $01,$81,$91,$91,$B1,$B1,$B1,$01
+  $1F,$1F,$1B,$B1,$91,$91,$81,$01
+  $01,$F1,$B1,$B1,$91,$91,$81,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$06,$03,$07,$0F,$1F,$3F,$3F,$3E,$3C,$1F,$0F,$07,$02,$06,$0E
+  $C0,$60,$C0,$E0,$F0,$F8,$FC,$FC,$FC,$FC,$F8,$F0,$E0,$40,$60,$70
+  $00,$01,$21,$11,$08,$00,$38,$00,$08,$11,$21,$01,$00,$00,$00,$00
+  $00,$00,$08,$10,$20,$00,$38,$00,$20,$10,$08,$00,$00,$00,$00,$00
+  $04,$26,$17,$0F,$7F,$3F,$FF,$7F,$3F,$7F,$1F,$27,$05,$09,$10,$00
+  $20,$64,$E8,$F0,$FC,$FC,$FF,$FE,$FC,$FC,$F8,$E4,$A0,$90,$08,$00
+  $40,$08,$22,$84,$11,$48,$81,$10,$42,$10,$82,$24,$02,$10,$41,$00
+  $82,$08,$42,$20,$89,$10,$01,$08,$22,$10,$82,$24,$40,$08,$04,$00
+end data
+data GlyphT bytes
+  6,9,11,9,13,9,6
+  2,6,2,2,2,2,7
+  6,9,1,2,4,8,15
+  14,1,1,6,1,1,14
+  2,6,10,10,15,2,2
+  15,8,14,1,1,9,6
+  6,8,8,14,9,9,6
+  15,1,2,2,4,4,4
+  6,9,9,6,9,9,6
+  6,9,9,7,1,1,6
+  0,2,2,15,2,2,0
+  0,0,0,15,0,0,0
+  0,9,9,6,9,9,0
+  0,0,0,0,0,0,0
+end data
+
+asm {
+MaTick:
+    db $40,$40,$40,$01,$40,$50,$60,$01,$50
+MaFire:
+    db $40,$7F,$20,$02,$40,$5F,$30,$02,$50
+MaRight:
+    db $40,$6B,$10,$03,$40,$55,$10,$03,$40,$47,$20,$08,$50
+MaPop:
+    db $00,$00,$15,$03,$00,$00,$36,$06,$10
+MaWrong:
+    db $40,$FE,$20,$04,$40,$1D,$21,$04,$40,$41,$21,$04,$40,$68,$31,$04,$40,$AB,$31,$0A,$50
+MaBoom:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$57,$10,$10
+MaLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$14
+    db $50
+MaStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+MaOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+MaWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+MaSoundTable:
+    dw MaTuneMel,$702B
+    dw MaTuneBass,$7035
+    dw MaTick,$7049
+    dw MaFire,$7049
+    dw MaRight,$7049
+    dw MaPop,$703F
+    dw MaWrong,$7049
+    dw MaBoom,$703F
+    dw MaLevel,$7049
+    dw MaStart,$7049
+    dw MaOver,$7049
+    dw MaWin,$7049
+; Number Rain (original)
+; Tiny Sound, 8 frames per step
+MaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$21,$01,$24,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$28,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$1D,$01,$1C,$01
+    db $1A,$01,$01,$01,$1C,$01,$20,$01,$23,$01,$26,$01,$24,$01,$23,$01
+    db $21,$01,$01,$00
+    db $FF
+MaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$04,$01,$0B,$01,$04,$01,$08,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}
