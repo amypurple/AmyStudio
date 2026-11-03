@@ -253,6 +253,10 @@ export function scanAmyFirstPass({
     const functionBare = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
     if (functionBare && isSupportedSourceTypeName(functionBare[2])) {
       const functionName = functionBare[1];
+      if (lowerName(functionName) === "sgn") {
+        firstPassNameError = `Function name '${functionName}' collides with a reserved Amy builtin: ${rawLine}`;
+        break;
+      }
       const nameError = validateGlobalUserName(functionName, "Function", rawLine);
       if (nameError) {
         firstPassNameError = nameError;
@@ -308,6 +312,10 @@ export function scanAmyFirstPass({
     const m = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
     if (!m || !isSupportedSourceTypeName(m[3])) continue;
     const functionName = m[1];
+    if (lowerName(functionName) === "sgn") {
+      firstPassNameError = `Function name '${functionName}' collides with a reserved Amy builtin: ${rawLine}`;
+      break;
+    }
     ensureProcAsmSymbol(functionName);
     const rawParamsText = m[2].trim();
     const rawParams = rawParamsText ? splitTopLevelArgs(rawParamsText) : [];

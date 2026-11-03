@@ -1229,8 +1229,13 @@ export function createAssignmentArithmeticHelpers({
           if (storeValue && storeTarget) return [...storeValue, ...storeTarget];
         }
         const isCompatibleWideOperand = (token) => {
-          if (resolveValueType(token) === targetType) return true;
-          if (resolveValueType(token)) return false;
+          const valueType = resolveValueType(token);
+          if (valueType === targetType) return true;
+          if (targetType === "u32" && (valueType === "int8" || valueType === "int16")) {
+            const declared = normalizeDeclaredType(resolveDeclaredValueType(token));
+            return !isSignedDeclaredType(declared);
+          }
+          if (valueType) return false;
           const numeric = parseNumericLiteral(token);
           if (!Number.isInteger(numeric)) return false;
           return targetType === "u32"

@@ -516,13 +516,16 @@ export function createU32Helpers({
   }
 
   function emitU32ArrayCompareGoto(leftToken, operator, rightToken, label, signedCompare = false) {
-    const leftInfo = getU32Info(leftToken);
-    const rightInfo = getU32Info(rightToken);
-    if (!leftInfo || !rightInfo) return null;
+    const scratch = ensureCompareScratch32();
+    const leftSource = emitPrepareU32Source(leftToken, scratch.leftLabel);
+    const rightSource = emitPrepareU32Source(rightToken, scratch.rightLabel);
+    if (!leftSource || !rightSource) return null;
     const compareCall = signedCompare ? "AMY_CMP_S32_MEM" : "AMY_CMP_U32_MEM";
     const lines = [
-      `    ld hl,${leftInfo.asmName}`,
-      `    ld de,${rightInfo.asmName}`,
+      ...leftSource.lines,
+      ...rightSource.lines,
+      `    ld hl,${leftSource.pointer}`,
+      `    ld de,${rightSource.pointer}`,
       `    call ${compareCall}`
     ];
     if (operator === "==") lines.push(`    jp z,${label}`);
