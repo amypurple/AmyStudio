@@ -1,0 +1,2269 @@
+cartridge "CRIBBAGE 128/COMPUTE!'S GAZETTE/1988"
+
+' CRIBBAGE 128
+' A ColecoVision game based on "CRIBBAGE 128", COMPUTE!'s Gazette, August
+' 1988 (Commodore 128, BASIC 7.0 with a machine-language helper, CR128,
+' that shuffles, counts hands and chooses the computer's discards). The
+' listing names no author (orig/cribbage128.bas, orig/cr128.prg and its
+' disassembly orig/cr128.dis.txt).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: two-hand cribbage against the computer, to 121. The low cut
+' deals first, then the deal alternates. Six cards each; each player lays
+' two in the dealer's crib. The cut card (starter) is turned: a jack gives
+' the dealer two for his heels. The play: the non-dealer leads, cards are
+' laid in turn with the count kept to 31; a pair is 2, three of a kind 6,
+' four 12, runs of three or more one a card (in any order), 15 and 31 two
+' each; a player who cannot play says go and the other plays on, the last
+' to play pegs one (none at 31), the count starts again; the last card of
+' all pegs one. Then the hands are counted, the non-dealer first, then the
+' dealer and the crib: fifteens 2, pairs 2, runs, a four-card flush 4 (5
+' with the starter; the crib only with five), his nobs 1. First past 120
+' wins; under 91 points the loser is skunked (double), under 61 double
+' skunked (triple). The match table (match points, games won, hand, crib
+' and pegging points) stays until the power is turned off.
+'
+' From the original, kept as the listing does it:
+' - The computer's discard is the machine code's search ($169D): every
+'   pair of the six, every starter rank 1-13 weighted by how many of that
+'   rank are unseen, the kept hand counted (fifteens, pairs, runs, four-
+'   card flush) plus one point a jack. With its own crib it adds what the
+'   two discards and the starter make; with yours it subtracts the
+'   routine's $1A7A byte (the first index of the best pair found so far,
+'   kept from call to call) instead of the crib's value: a slip in the
+'   listing, kept because it is the computer's play. Ties go to the later
+'   pair. The hint (right button) is the same search from your side.
+' - The computer's pegging is the listing's scoring of each card (lines
+'   1750-1980 and 2150-2290, 3330-3590): a card that makes three of a
+'   kind (30), a run (5 a card), 31 or 15 (11), a pair (7), and the
+'   listing's small preferences on leads and counts, the first best card
+'   in its hand order winning.
+' - The counting, the pegging scores, his heels, the go, the last card,
+'   the skunk rules and the match points (3 x, 2 x or 1 x the loser's
+'   shortfall) and games won (3, 2 or 1) of the listing.
+'
+' Liberties:
+' - Joystick and buttons instead of the keys: the stick chooses a card,
+'   the left button lays it, the right button asks for a hint (before
+'   your first discard). You cut for the deal with a press.
+' - No name is asked: the player is YOU.
+' - The shuffle is a new random shuffle (the listing's was a machine-code
+'   riffle on the CIA timers); the deal is the listing's (computer six,
+'   your six, then the starter).
+' - Your cards are sorted by rank; the computer keeps its dealt order, as
+'   in the listing (its hint and choices depend on it).
+' - A cribbage board with pegs that hop along the holes; every count shows
+'   what it is made of (fifteens, pairs, runs, flush, nobs).
+' - The $1A7A byte starts at 0 at power on (on the C-128 it held whatever
+'   was in memory).
+' - Messages say "SKUNK" or "DOUBLE SKUNK" for either winner (the listing
+'   skipped the double skunk message when the computer won).
+' - The end of a game shows the table and the winner, then the title (no
+'   ANOTHER GAME? question).
+' - New sounds and an original title tune, "Fifteen Two".
+'
+' Controls: joystick left/right chooses a card, left button lays it, right
+' button asks for a hint while discarding. Any button goes on after a
+' count. Keypad not used.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, the title tune
+' played once. `set sprite count` always given. Nothing flashes.
+
+const TRk0 = 128
+const TRk1 = 129
+const TRk2 = 130
+const TRk3 = 131
+const TRk4 = 132
+const TRk5 = 133
+const TRk6 = 134
+const TRk7 = 135
+const TRk8 = 136
+const TRk9 = 137
+const TRk10 = 138
+const TRk11 = 139
+const TRk12 = 140
+const TRr0 = 141
+const TRr1 = 142
+const TRr2 = 143
+const TRr3 = 144
+const TRr4 = 145
+const TRr5 = 146
+const TRr6 = 147
+const TRr7 = 148
+const TRr8 = 149
+const TRr9 = 150
+const TRr10 = 151
+const TRr11 = 152
+const TRr12 = 153
+const TSs0 = 154
+const TSs1 = 155
+const TSs2 = 156
+const TSs3 = 157
+const TPipa00 = 158
+const TPipa01 = 159
+const TPipa10 = 160
+const TPipa11 = 161
+const TPipb00 = 162
+const TPipb01 = 163
+const TPipb10 = 164
+const TPipb11 = 165
+const TPipc00 = 166
+const TPipc01 = 167
+const TPipc10 = 168
+const TPipc11 = 169
+const TPipd00 = 170
+const TPipd01 = 171
+const TPipd10 = 172
+const TPipd11 = 173
+const TEtl = 174
+const TEtr = 175
+const TEl = 176
+const TEr = 177
+const TEbl = 178
+const TEbr = 179
+const TBack00 = 180
+const TBack01 = 181
+const TBack02 = 182
+const TBack03 = 183
+const TBack10 = 184
+const TBack11 = 185
+const TBack12 = 186
+const TBack13 = 187
+const TBack20 = 188
+const TBack21 = 189
+const TBack22 = 190
+const TBack23 = 191
+const TFelt = 192
+const TDot = 193
+const THc0 = 194
+const THc1 = 195
+const THc2 = 196
+const THc3 = 197
+const THc4 = 198
+const THp0 = 199
+const THp1 = 200
+const THp2 = 201
+const THp3 = 202
+const THp4 = 203
+const TWood = 204
+const SArrow = 0
+const SPeg = 4
+const NTiles8 = 616
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndCard = 4
+const SndShuffle = 5
+const SndPeg = 6
+const SndScore = 7
+const SndGo = 8
+const SndNo = 9
+const SndHint = 10
+const SndWin = 11
+const SndLose = 12
+const CBack = 254
+const CNone = 253
+const Gone = 32
+const NoCard = 255
+const PegRowC = 1
+const PegRowP = 3
+
+record Side:
+  u8 Hand
+  u8 Crib
+  u8 Peg
+  u8 Score
+  u8 Won
+  bcd digits 4 Match
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 N16 = 0
+u16 NumU = 0
+u16 Acc = 0
+u16 BestAcc = 0
+u16 Prod = 0
+Side Sd[2]
+' the deal: computer six (Dk 0-5), your six (6-11), the starter (12)
+u8 Dk[52]
+u8 Pl6[6]
+u8 Av[6]
+u8 Cn[5]
+u8 Pn[5]
+u8 Cb[4]
+u8 Hc4[4]
+u8 Cnr[5]
+u8 Pnr[5]
+' the play, slots 1-8 as in the listing (0 and 9 kept zero)
+u8 Np[10]
+u8 Plv[10]
+u8 Plw[10]
+u8 Pcd[10]
+u8 Rt[10]
+u8 Qt[10]
+i16 Pra[5]
+i16 Prb = 0
+' the machine code's work areas
+u8 R6[6]
+u8 S6[6]
+u8 Kr[5]
+u8 Ka[5]
+u8 Wy[16]
+u8 MlFlag = 0
+u8 BestI = 0
+u8 BestJ = 0
+u8 BiPre = 0
+u8 D3 = 0
+u8 D4 = 0
+u8 H1 = 0
+u8 H2 = 0
+' counts
+u8 C15 = 0
+u8 CPr = 0
+u8 CRn = 0
+u8 CNob = 0
+u8 CFl = 0
+u8 Cv = 0
+u8 Cw = 0
+' game state
+u8 Stc = 0
+u8 Cr = 0
+u8 Hd = 0
+u8 Pp = 0
+u8 Pc = 0
+u8 Ch = 0
+u8 Ph = 0
+u8 Rh = 0
+u8 Tc = 0
+u8 Tp = 0
+u8 ShC = 0
+u8 ShP = 0
+u8 Over = 0
+u8 Win = 0
+u8 St = 0
+u8 Ev = 0
+u8 EvK = 0
+u8 EvW = 0
+' the play
+u8 Ip = 0
+u8 Sf = 0
+u8 Sg = 0
+u8 Tal = 0
+u8 Tu = 0
+u8 Sp = 0
+u8 Du = 0
+u8 Bsel = 1
+u8 Plx = 0
+u8 Pts = 0
+u8 Mx = 0
+' input
+u8 Cur = 0
+u8 NSlot = 0
+u8 Pick = 0
+u8 HintOk = 0
+u8 Btn1 = 0
+u8 Btn2 = 0
+u8 Was1 = 1
+u8 Was2 = 1
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 BoardOn = 0
+u8 Tt = 0
+u8 Ts = 0
+u8 Tv = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Tch = 0
+u8 Gx = 0
+u8 Gy = 0
+' loop counters (each its own)
+u8 Ai = 0
+u8 Wi = 0
+u8 Ad = 0
+u8 Gi = 0
+u8 Hi = 0
+u8 Li = 0
+u8 Di = 0
+u8 Dj = 0
+u8 Qi = 0
+u8 Qj = 0
+u8 Si = 0
+u8 Ti = 0
+u8 Ei = 0
+' scratch
+u8 A8 = 0
+u8 B8 = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CbSoundTable areas 4
+  sprites 16x16
+  set sprite count 3
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+  CutForDeal
+hand_loop:
+  OneHand
+  if Over = 0 then goto hand_loop
+
+  ' the end of the game: the table, the winner, then the title
+  GameOver
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  St = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' small helpers
+
+function Rk(u8 Rc) as u8
+  return Rc % 13 + 1
+
+function Su(u8 Uc) as u8
+  return Uc / 13
+
+' DEF FNV: the value of a rank (court cards 10)
+function Fnv(u8 Fr) as u8
+  u8 Fv = 0
+  Fv = Fr
+  if Fv > 10 then Fv = 10
+  return Fv
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the machine code's hand count ($161F with the flush switched off, as
+' BASIC calls it): Kr[0..4] = four ranks and the starter's rank
+
+function RunsMl as u8
+  u8 Rx = 0
+  u8 Rp = 0
+  u8 Ry = 0
+  u8 Rr = 0
+  u8 Rsum = 0
+  u8 Ra = 0
+  u8 Rb = 0
+  u8 Rgo = 0
+  u8 Rdone = 0
+  while Rdone = 0
+    Ry = 1
+    Rr = 1
+    Rgo = 1
+    while Rgo = 1
+      Ra = Ka[Rx]
+      Rb = Ka[Rx + 1]
+      if Ra = Rb then
+        inc Ry
+        if Ry = 3 then
+          if Ra <> Rp then inc Ry
+        end if
+        Rp = Ra
+        inc Rx
+        if Rx = 4 then Rgo = 0
+      else
+        if Ra + 1 = Rb then
+          inc Rr
+          inc Rx
+          if Rx = 4 then Rgo = 0
+        else
+          inc Rx
+          Rgo = 0
+        end if
+      end if
+    end while
+    if Rr >= 3 then Rsum = Rsum + Rr * Ry
+    if Rx = 4 then Rdone = 1
+  end while
+  return Rsum
+
+function Core5 as u8
+  u8 Cq = 0
+  u8 Ct = 0
+  for Qi = 0 to 4
+    Ka[Qi] = Kr[Qi]
+  next
+  for Qi = 0 to 3
+    for Qj = 0 to 3
+      if Ka[Qj] > Ka[Qj + 1] then swap Ka[Qj] with Ka[Qj + 1]
+    next
+  next
+  CPr = 0
+  for Qi = 0 to 3
+    for Qj = Qi + 1 to 4
+      if Kr[Qi] = Kr[Qj] then CPr += 2
+    next
+  next
+  ' fifteens: the number of ways each total can be made
+  fill array Wy with 0
+  Wy[0] = 1
+  for Qi = 0 to 4
+    Cq = Fnv(Ka[Qi])
+    Ct = 15
+    while Ct >= Cq
+      Wy[Ct] += Wy[Ct - Cq]
+      dec Ct
+    end while
+  next
+  C15 = Wy[15] * 2
+  CRn = RunsMl
+  return CPr + C15 + CRn
+
+' $1632: two discards and a starter rank
+function CribPart(u8 Xa, u8 Xb, u8 Xs) as u8
+  u8 Xp = 0
+  u8 Xt = 0
+  if Xa = Xb then Xp += 2
+  if Xb = Xs then Xp += 2
+  if Xa = Xs then Xp += 2
+  if Xa > Xb then swap Xa with Xb
+  if Xb > Xs then swap Xb with Xs
+  if Xa > Xb then swap Xa with Xb
+  if Xa + 1 = Xb then
+    if Xb + 1 = Xs then Xp += 3
+  end if
+  Xa = Fnv(Xa)
+  Xb = Fnv(Xb)
+  Xs = Fnv(Xs)
+  Xt = Xa + Xb
+  if Xt = 15 then Xp += 2
+  Xt = Xb + Xs
+  if Xt = 15 then Xp += 2
+  Xt = Xt + Xa
+  if Xt = 15 then Xp += 2
+  Xt = Xa + Xs
+  if Xt = 15 then Xp += 2
+  return Xp
+
+' $169D: choose two of R6/S6 for the crib. MlFlag = 1 when the crib is the
+' chooser's own. Leaves the pair in BestI, BestJ ($1A7A, $1A7B).
+sub MlDiscard:
+  BestAcc = 0
+  for Di = 0 to 4
+    for Dj = Di + 1 to 5
+      MlPair
+    next
+  next
+  return
+end sub
+
+sub MlPair:
+  u8 Mk = 0
+  u8 Mjk = 0
+  u8 Mfl = 4
+  u8 Ms = 0
+  u8 Mw = 0
+  u8 Mh = 0
+  u8 Ma = 0
+  u8 Mfirst = 255
+  for Si = 0 to 5
+    if Si <> Di then
+      if Si <> Dj then
+        Kr[Mk] = R6[Si]
+        if R6[Si] = 11 then inc Mjk
+        if Mfirst = 255 then Mfirst = S6[Si]
+        if S6[Si] <> Mfirst then Mfl = 0
+        inc Mk
+      end if
+    end if
+  next
+  Acc = 0
+  for Ms = 1 to 13
+    Mw = 4
+    for Si = 0 to 5
+      if R6[Si] = Ms then dec Mw
+    next
+    Kr[4] = Ms
+    Mh = Core5 + Mfl
+    if MlFlag = 1 then
+      Ma = Mh + CribPart(R6[Di], R6[Dj], Ms)
+    else
+      if Mh > BestI then
+        Ma = Mh - BestI
+      else
+        Ma = 0
+      end if
+    end if
+    Prod = Ma * Mw
+    Prod = Prod & 255
+    Acc = Acc + Prod
+    Acc = Acc + Mjk
+  next
+  if Acc >= BestAcc then
+    BestAcc = Acc
+    BestI = Di
+    BestJ = Dj
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' counting a hand (BASIC 2440-2560): Hc4 and the starter; Cw = 2 the crib
+
+sub CountHand:
+  for Qi = 0 to 3
+    Kr[Qi] = Rk(Hc4[Qi])
+  next
+  Kr[4] = Rk(Stc)
+  Cv = Core5
+  CNob = 0
+  K = Su(Stc)
+  for Qi = 0 to 3
+    if Kr[Qi] = 11 and Su(Hc4[Qi]) = K then inc CNob
+  next
+  N = 1
+  for Qi = 0 to 2
+    if Su(Hc4[Qi]) = Su(Hc4[Qi + 1]) then inc N
+  next
+  CFl = 0
+  if N = 4 then
+    if Su(Hc4[0]) = K then
+      CFl = 5
+    else
+      if Cw < 2 then CFl = 4
+    end if
+  end if
+  Cv = Cv + CNob + CFl
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's choice in the play (BASIC 1750-1980)
+
+sub CompChoose:
+  Prb = 0
+  Np[Ip] = 0
+  for Ai = 1 to 4
+    Pra[Ai] = 0
+    A8 = Cnr[Ai]
+    if A8 <> Gone then
+      Plx = Fnv(A8)
+      if Tal + Plx <= 31 then
+        CardPrio
+        ' K = 1: the listing reached line 1900, which keeps the best
+        if K = 1 then
+          if Pra[Ai] > Prb then Prb = Pra[Ai]
+        end if
+      end if
+    end if
+  next
+  Prb = -10
+  for Ai = 1 to 4
+    A8 = Cnr[Ai]
+    if A8 <> Gone then
+      Plx = Fnv(A8)
+      if Tal + Plx <= 31 then
+        if Pra[Ai] > Prb then
+          Prb = Pra[Ai]
+          Bsel = Ai
+          Np[Ip] = A8
+          Plv[Ip] = Plx
+        end if
+      end if
+    end if
+  next
+  Plx = Fnv(Cnr[Bsel])
+  Pcd[Ip] = Cn[Bsel]
+  Cnr[Bsel] = Gone
+  return
+end sub
+
+' one card's priority: Pra[Ai] (lines 1790-1890). The thresholds read the
+' best so far (Prb). K = 0 when the listing went to NEXT (line 1910).
+sub CardPrio:
+  K = 1
+  if Sf = Sg then
+    From3430
+    return
+  end if
+  if Np[Ip - 2] = Np[Ip - 1] then
+    if A8 = Np[Ip - 1] then Pra[Ai] += 30
+  end if
+  if Prb > 29 then
+    K = 0
+    return
+  end if
+  if Sf - Sg > 1 then
+    Runs2150
+    if Prb > 14 then return
+  end if
+  if Plx + Tal = 31 then
+    Pra[Ai] += 11
+    return
+  end if
+  if Plx + Tal = 15 then
+    Pra[Ai] += 11
+    return
+  end if
+  if Prb > 10 then
+    K = 0
+    return
+  end if
+  if A8 = Np[Ip - 1] then
+    if Plx + Tal < 31 then
+      Pra[Ai] += 7
+      return
+    end if
+  end if
+  if Prb > 6 then
+    K = 0
+    return
+  end if
+  H3340
+  return
+end sub
+
+' 3340: a card that does not score now
+sub H3340:
+  B8 = Tal + Plx
+  if B8 < 15 then
+    Pra[Ai] -= 3
+    From3430
+    return
+  end if
+  if Plx = 5 then Pra[Ai] -= 1
+  if B8 > 27 then
+    if Plx <> 10 then
+      Pra[Ai] += 2
+    else
+      Pra[Ai] += 1
+    end if
+  else
+    if B8 < 20 and Plx > 6 then
+      Pra[Ai] += 1
+    else
+      if B8 = 21 then
+        Pra[Ai] -= 2
+      else
+        if B8 = 26 then Pra[Ai] -= 1
+      end if
+    end if
+  end if
+  Tail3460
+  return
+end sub
+
+' 3430: leads and low counts
+sub From3430:
+  B8 = Tal + Plx
+  if B8 = 10 or Plx = 10 then Pra[Ai] -= 1
+  if B8 = 5 or Plx = 5 then Pra[Ai] -= 2
+  B8 = Plv[Ip - 1] * 2
+  B8 = B8 + Plx
+  if B8 = 15 then Pra[Ai] -= 2
+  Tail3460
+  return
+end sub
+
+' 3460-3590: what the opponent could answer, what the rest of the hand holds
+sub Tail3460:
+  i16 Nx = 0
+  i16 Tq = 0
+  u8 Pv = 0
+  u8 Dff = 0
+  u8 Cud = 0
+  u8 Cw2 = 0
+  Pv = Np[Ip - 1]
+  if A8 > Pv then
+    Dff = A8 - Pv
+  else
+    Dff = Pv - A8
+  end if
+  ' NX = INT((CN + NP) / 2 + 1.5 * DFF - 3), floored for negatives
+  Nx = A8 + Pv
+  Nx = Nx + Dff * 3
+  Nx = Nx + 2
+  Nx = Nx / 2
+  Nx = Nx - 4
+  Tq = Plx + Tal
+  Tq = Tq + Nx
+  if Tq < 32 then
+    if A8 = Pv + 1 or A8 + 1 = Pv then Pra[Ai] -= 3
+    if A8 = Pv + 2 or A8 + 2 = Pv then Pra[Ai] -= 2
+  end if
+  for Wi = 1 to 4
+    Cw2 = Cnr[Wi]
+    if Wi <> Ai and Cw2 <> Gone then
+      Cud = Fnv(Cw2)
+      B8 = Plx * 2
+      B8 = B8 + Cud
+      if B8 = 31 then
+        Pra[Ai] += 2
+      else
+        if B8 = 15 and Plx <> 5 then Pra[Ai] += 2
+      end if
+      B8 = Cud + 10
+      B8 = B8 + Plx
+      if B8 = 31 then
+        Pra[Ai] += 3
+      else
+        if B8 = 15 and Plx <> 5 then Pra[Ai] += 3
+      end if
+      if Sg = Sf then
+        if A8 = Cw2 and Plx <> 5 then Pra[Ai] += 4
+        if Plx + Cud = 15 then Pra[Ai] += 2
+        if A8 <> 5 then
+          if A8 + 1 = Cw2 or A8 = Cw2 + 1 then Pra[Ai] += 3
+          if A8 + 2 = Cw2 or A8 = Cw2 + 2 then Pra[Ai] += 2
+        end if
+        if Plx < 5 then Pra[Ai] += 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' 2150: would this card make a run? (5 a card)
+sub Runs2150:
+  u8 Rn = 0
+  u8 Ra2 = 0
+  u8 Rlo = 0
+  u8 Rhi = 0
+  u8 Rdone2 = 0
+  Rn = Sf - Sg
+  Rn = Rn - 1
+  if Rn = 0 then Rn = 1
+  Ad = 1
+  while Ad <= Rn and Rdone2 = 0
+    Rlo = Sg + Ad
+    for Hi = Rlo to Sf
+      Rt[Hi] = Np[Hi]
+    next
+    Rt[Sf + 1] = A8
+    for Gi = Rlo to Sf
+      for Hi = Rlo to Sf
+        if Rt[Hi + 1] < Rt[Hi] then swap Rt[Hi] with Rt[Hi + 1]
+      next
+    next
+    Rhi = Rt[Sf] - Rt[Rlo]
+    if Rhi <= Sf - Rlo then
+      Ra2 = 0
+      for Hi = Rlo to Sf
+        if Rt[Hi] + 1 = Rt[Hi + 1] then inc Ra2
+      next
+      if Sf + 1 - Rlo = Ra2 then
+        Pra[Ai] += Ra2 * 5
+        Rdone2 = 1
+      end if
+    end if
+    inc Ad
+  end while
+  return
+end sub
+
+' 1310: what the card just laid (slot Ip) scores; Pts and the message
+sub Score1310:
+  Pts = 0
+  MsgStart
+  if Sg <> Sf then
+    Score1310b
+  end if
+  if Pts = 0 then ClearMsg
+  return
+end sub
+
+sub Score1310b:
+  u8 Rn3 = 0
+  u8 Rlo3 = 0
+  u8 Cnt3 = 0
+  u8 Done3 = 0
+  u8 Pv3 = 0
+  Pv3 = Np[Ip]
+  if Sf - Sg >= 3 then
+    if Pv3 = Np[Ip - 1] and Pv3 = Np[Ip - 2] and Pv3 = Np[Ip - 3] then
+      Pts = 12
+      Done3 = 1
+      MsgWord(3, 12)
+    end if
+  end if
+  if Done3 = 0 and Sf - Sg >= 2 then
+    if Pv3 = Np[Ip - 1] and Pv3 = Np[Ip - 2] then
+      Pts = 6
+      Done3 = 1
+      MsgWord(2, 6)
+    end if
+  end if
+  if Done3 = 0 and Pv3 = Np[Ip - 1] then
+    Pts = 2
+    MsgWord(1, 2)
+  end if
+  if Tal = 31 then
+    Pts += 2
+    MsgWord(4, 2)
+  end if
+  if Tal = 15 then
+    Pts += 2
+    MsgWord(5, 2)
+  end if
+  if Sf - Sg >= 2 then
+    Runs1400
+  end if
+  return
+end sub
+
+sub Runs1400:
+  u8 Rn3 = 0
+  u8 Rlo3 = 0
+  u8 Cnt3 = 0
+  u8 Done3 = 0
+  Rn3 = Sf - Sg
+  Rn3 = Rn3 - 1
+  Done3 = 0
+  for Ad = 1 to Rn3
+    if Done3 = 0 then
+      Rlo3 = Sg + Ad
+      for Hi = Rlo3 to Sf + 1
+        Qt[Hi] = Np[Hi]
+      next
+      for Gi = Rlo3 to Sf + 1
+        for Hi = Rlo3 to Sf
+          if Qt[Hi + 1] < Qt[Hi] then swap Qt[Hi] with Qt[Hi + 1]
+        next
+      next
+      if Qt[Sf] - Qt[Rlo3] <= Sf - Rlo3 then
+        Cnt3 = 0
+        for Hi = Rlo3 to Sf
+          if Qt[Hi] + 1 = Qt[Hi + 1] then inc Cnt3
+        next
+        if Sf + 1 - Rlo3 = Cnt3 then
+          Cnt3 = Cnt3 + 1
+          Pts = Pts + Cnt3
+          MsgWord(6, Cnt3)
+          Done3 = 1
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' can the player (Du) play?
+sub PlayerCan:
+  Du = 0
+  for Ei = 1 to 4
+    V = Pnr[Ei]
+    if V <> Gone then
+      if Tal + Fnv(V) <= 31 then Du = 1
+    end if
+  next
+  return
+end sub
+
+sub CompCan:
+  Du = 0
+  for Ei = 1 to 4
+    V = Cnr[Ei]
+    if V <> Gone then
+      if Tal + Fnv(V) <= 31 then Du = 1
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' scores: totals, pegs, the end of the game (BASIC 3600)
+
+sub Rescore:
+  Tc = Sd[0].Score + Pc
+  Tc = Tc + Ch
+  Tp = Sd[1].Score + Pp
+  Tp = Tp + Ph
+  if Cr = 1 then
+    Tc = Tc + Rh
+  else
+    Tp = Tp + Rh
+  end if
+  ShowTotals
+  if Over = 0 then
+    if Tc > 120 then
+      Over = 1
+      Win = 0
+    end if
+    if Tp > 120 then
+      Over = 1
+      Win = 1
+    end if
+  end if
+  return
+end sub
+
+' BASIC 4110: the hand's points into the table
+sub Accumulate:
+  Sd[0].Hand = Sd[0].Hand + Ch
+  Sd[1].Hand = Sd[1].Hand + Ph
+  if Cr = 1 then
+    Sd[0].Crib = Sd[0].Crib + Rh
+  else
+    Sd[1].Crib = Sd[1].Crib + Rh
+  end if
+  Sd[0].Peg = Sd[0].Peg + Pc
+  Sd[1].Peg = Sd[1].Peg + Pp
+  for Ti = 0 to 1
+    V = Sd[Ti].Hand + Sd[Ti].Crib
+    V = V + Sd[Ti].Peg
+    Sd[Ti].Score = V
+  next
+  Pc = 0
+  Pp = 0
+  Ch = 0
+  Ph = 0
+  Rh = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a whole hand (BASIC 140-290)
+
+sub NewGame:
+  for Ti = 0 to 1
+    Sd[Ti].Hand = 0
+    Sd[Ti].Crib = 0
+    Sd[Ti].Peg = 0
+    Sd[Ti].Score = 0
+  next
+  Hd = 0
+  Over = 0
+  Pc = 0
+  Pp = 0
+  Ch = 0
+  Ph = 0
+  Rh = 0
+  Tc = 0
+  Tp = 0
+  ShC = 0
+  ShP = 0
+  return
+end sub
+
+sub Shuffle:
+  for J = 0 to 51
+    Dk[J] = J
+  next
+  J = 51
+  while J > 0
+    Rand
+    N16 = J + 1
+    W16 = Rs % N16
+    K = W16
+    swap Dk[J] with Dk[K]
+    dec J
+  end while
+  return
+end sub
+
+' BASIC 380: two cards, the lower deals (and has the crib); equal: again
+sub CutForDeal:
+  St = 6
+  Cr = 2
+  TableScreen
+  print at 9,9, "CUT FOR DEAL"
+  print at 4,14, "PRESS THE BUTTON TO CUT"
+  ShowScreen
+  WaitButton
+  Cr = 2
+  while Cr = 2
+    play sound SndShuffle
+    Shuffle
+    DrawCard(Dk[0], 6, 10)
+    DrawCard(Dk[1], 18, 10)
+    print at 4,14, "                       "
+    print at 4,9, "  COMPUTER     YOU     "
+    A8 = Rk(Dk[0])
+    B8 = Rk(Dk[1])
+    if A8 < B8 then
+      Cr = 1
+      print at 4,14, " THE COMPUTER DEALS"
+    end if
+    if A8 > B8 then
+      Cr = 0
+      print at 4,14, "     YOU DEAL"
+    end if
+    if A8 = B8 then
+      print at 4,14, "  A TIE: CUT AGAIN"
+    end if
+    Pause(90)
+  end while
+  return
+end sub
+
+sub OneHand:
+  inc Hd
+  Pc = 0
+  Pp = 0
+  Ch = 0
+  Ph = 0
+  Rh = 0
+  St = 0
+  TableScreen
+  print at 2,13, "SHUFFLING CARDS"
+  ShowScreen
+  play sound SndShuffle
+  Shuffle
+  ' your six, sorted by rank
+  for J = 0 to 5
+    Pl6[J] = Dk[J + 6]
+    Av[J] = 1
+  next
+  for J = 0 to 4
+    for K = 0 to 4
+      if Rk(Pl6[K]) > Rk(Pl6[K + 1]) then swap Pl6[K] with Pl6[K + 1]
+    next
+  next
+  Stc = Dk[12]
+  Pause(20)
+  ClearMsg
+  for J = 0 to 5
+    DrawCard(CBack, J * 4 + 2, 6)
+    DrawCard(Pl6[J], J * 4 + 2, 15)
+    play sound SndCard
+    Pause(6)
+  next
+  DrawCard(CBack, 26, 6)
+  ' the computer's discards (BASIC 2370, SYS 5789)
+  print at 2,13, "THE COMPUTER IS THINKING"
+  for J = 0 to 5
+    R6[J] = Rk(Dk[J])
+    S6[J] = Su(Dk[J])
+  next
+  MlFlag = Cr
+  BiPre = BestI
+  Rescore
+  MlDiscard
+  D3 = BestI
+  D4 = BestJ
+  K = 1
+  for J = 0 to 5
+    if J <> D3 and J <> D4 then
+      Cn[K] = Dk[J]
+      Cnr[K] = Rk(Dk[J])
+      inc K
+    end if
+  next
+  Cb[2] = Dk[D3]
+  Cb[3] = Dk[D4]
+  DrawCard(CNone, D3 * 4 + 2, 6)
+  DrawCard(CNone, D4 * 4 + 2, 6)
+  play sound SndCard
+  DrawCrib
+  ClearMsg
+  ' your discards (BASIC 770)
+  PlayerDiscard
+  ' the starter
+  ClearMsg
+  ClearHands
+  DrawCard(Stc, 26, 6)
+  play sound SndCard
+  print at 26,5, "CUT"
+  ' the play
+  Pegging
+  if Over = 1 then return
+  ClearMsg
+  print at 2,13, "THE PLAY IS OVER"
+  Pause(60)
+  ' the counts: the non-dealer first (BASIC 180-240)
+  if Cr = 1 then
+    CountPlayer
+    if Over = 1 then return
+    CountComputer
+  else
+    CountComputer
+    if Over = 1 then return
+    CountPlayer
+  end if
+  if Over = 1 then return
+  CountCrib
+  if Over = 1 then return
+  Accumulate
+  StatsPage(0)
+  St = 4
+  WaitButton
+  St = 0
+  Cr = 1 - Cr
+  return
+end sub
+
+sub PlayerDiscard:
+  St = 1
+  HintOk = 1
+  NSlot = 6
+  Cur = 0
+  print at 2,19, "LAY TWO CARDS IN THE CRIB"
+  print at 2,20, "RIGHT BUTTON: A HINT"
+  if Cr = 1 then
+    print at 2,21, "(THE COMPUTER'S CRIB)"
+  else
+    print at 2,21, "(YOUR CRIB)"
+  end if
+  for N = 0 to 1
+    PickCard
+    while Pick = 200
+      ' the hint: the computer's search from your side (BASIC 2300)
+      print at 2,13, "THINKING...             "
+      for J = 0 to 5
+        R6[J] = Rk(Pl6[J])
+        S6[J] = Su(Pl6[J])
+      next
+      MlFlag = 1 - Cr
+      MlDiscard
+      print at 2,13, "HINT: THE MARKED CARDS  "
+      X = BestI * 4 + 3
+      print at X,18, "**"
+      X = BestJ * 4 + 3
+      print at X,18, "**"
+      play sound SndHint
+      HintOk = 0
+      PickCard
+    end while
+    HintOk = 0
+    print at 2,18, "                          "
+    print at 2,13, "                          "
+    print at 2,20, "                          "
+    Av[Pick] = 0
+    if N = 0 then
+      H1 = Pick
+    else
+      H2 = Pick
+    end if
+    DrawCard(CNone, Pick * 4 + 2, 15)
+    play sound SndCard
+  next
+  St = 0
+  HideCursor
+  fill 32 count 28 at 2,19
+  fill 32 count 28 at 2,20
+  fill 32 count 28 at 2,21
+  Cb[0] = Pl6[H1]
+  Cb[1] = Pl6[H2]
+  K = 1
+  for J = 0 to 5
+    if Av[J] = 1 then
+      Pn[K] = Pl6[J]
+      Pnr[K] = Rk(Pl6[J])
+      inc K
+    end if
+  next
+  return
+end sub
+
+' redraw both hands closed up: your four, the computer's four backs
+sub ClearHands:
+  fill 32 count 24 at 2,6
+  fill 32 count 24 at 2,7
+  fill 32 count 24 at 2,8
+  fill 32 count 28 at 2,15
+  fill 32 count 28 at 2,16
+  fill 32 count 28 at 2,17
+  for J = 1 to 4
+    DrawCard(CBack, J * 4 - 2, 6)
+    DrawCard(Pn[J], J * 4 - 2, 15)
+    Av[J - 1] = 1
+  next
+  return
+end sub
+
+sub DrawCrib:
+  if Cr = 1 then
+    print at 26,9, "CRIB"
+    DrawCard(CBack, 26, 10)
+  else
+    print at 26,18, "CRIB"
+    DrawCard(CBack, 26, 15)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the play (BASIC 1530-1740)
+
+sub Pegging:
+  Pc = 0
+  Pp = 0
+  Tal = 0
+  Sf = 0
+  Sg = 0
+  Du = 0
+  Ip = 1
+  Sp = 0
+  Tu = Cr
+  for Li = 0 to 9
+    Np[Li] = 0
+    Plv[Li] = 0
+    Plw[Li] = 0
+    Pcd[Li] = NoCard
+  next
+  ShowTally
+  if Rk(Stc) = 11 then
+    if Cr = 1 then
+      Pc = 2
+      EvW = 0
+      print at 2,13, "THE COMPUTER: HIS HEELS 2"
+    else
+      Pp = 2
+      EvW = 1
+      print at 2,13, "YOU: TWO FOR HIS HEELS"
+    end if
+    EvK = 3
+    inc Ev
+    play sound SndScore
+    Rescore
+    Pause(70)
+    ClearMsg
+    if Over = 1 then return
+  end if
+pg_top:
+  if Ip = 9 then return
+  Plv[Ip] = 0
+pg_turn:
+  if Tu = 1 then
+    PlayerCan
+    if Du = 1 then goto pg_human
+    if Sp = 1 then goto pg_go
+    Sp = 1
+  end if
+  Tu = 0
+  CompCan
+  if Du = 1 then
+    Pause(25)
+    CompChoose
+    goto pg_played
+  end if
+  if Sp = 1 then goto pg_go
+  Sp = 1
+  Tu = 1
+  goto pg_turn
+pg_human:
+  HumanPlay
+pg_played:
+  Plw[Ip] = Tu
+  Tal = Tal + Plx
+  DrawPlayed
+  Score1310
+  if Tu = 1 then
+    Pp = Pp + Pts
+  else
+    Pc = Pc + Pts
+  end if
+  EvK = 1
+  EvW = Tu
+  inc Ev
+  ShowTally
+  if Pts > 0 then
+    play sound SndScore
+  else
+    play sound SndCard
+  end if
+  Rescore
+  Pause(30)
+  if Over = 1 then return
+  if Tal = 31 then goto pg_reset
+  if Ip = 8 then
+    EvK = 4
+    goto pg_point
+  end if
+  goto pg_next
+pg_go:
+  dec Ip
+  dec Sf
+  EvK = 2
+pg_point:
+  ' the go (or the last card) for the one who played last
+  if Tu = 1 then
+    inc Pp
+  else
+    inc Pc
+  end if
+  EvW = Tu
+  inc Ev
+  MsgStart
+  if EvK = 4 then
+    print at Mx,13, "LAST CARD 1"
+  else
+    print at Mx,13, "GO 1"
+  end if
+  play sound SndGo
+  Rescore
+  Pause(40)
+  if Over = 1 then return
+pg_reset:
+  Tal = 0
+  Sg = Sf + 1
+  Pause(30)
+  fill 32 count 24 at 2,10
+  fill 32 count 24 at 2,11
+  fill 32 count 24 at 2,12
+  ClearMsg
+  ShowTally
+pg_next:
+  inc Ip
+  Tu = 1 - Tu
+  inc Sf
+  Sp = 0
+  goto pg_top
+end sub
+
+' the player picks a card that keeps the count to 31 (BASIC 1620-1650)
+sub HumanPlay:
+  St = 2
+  NSlot = 4
+  HintOk = 0
+  print at 2,19, "YOUR CARD: KEEP IT TO 31"
+hp_again:
+  PickCard
+  V = Pnr[Pick + 1]
+  if Tal + Fnv(V) > 31 then
+    play sound SndNo
+    print at 2,20, "TOO HIGH FOR THE COUNT"
+    goto hp_again
+  end if
+  St = 0
+  HideCursor
+  fill 32 count 28 at 2,19
+  fill 32 count 28 at 2,20
+  K = Pick + 1
+  Plx = Fnv(V)
+  Plv[Ip] = Plx
+  Np[Ip] = V
+  Pcd[Ip] = Pn[K]
+  Pnr[K] = Gone
+  Av[Pick] = 0
+  DrawCard(CNone, Pick * 4 + 2, 15)
+  return
+end sub
+
+' the card in slot Ip goes to the play row (cards of this count only)
+sub DrawPlayed:
+  if Tu = 0 then DrawCard(CNone, Bsel * 4 - 2, 6)
+  K = Ip - Sg
+  K = K - 1
+  X = K * 3 + 2
+  if K = 7 then X = 22
+  DrawCard(Pcd[Ip], X, 10)
+  return
+end sub
+
+sub ShowTally:
+  print at 2,9, "COUNT"
+  NumU = Tal
+  print at 8,9, width$(NumU, 2)
+  return
+end sub
+
+' the message line: who scores, then the words
+sub MsgStart:
+  fill 32 count 28 at 2,13
+  if Tu = 1 then
+    print at 2,13, "YOU:"
+    Mx = 7
+  else
+    print at 2,13, "COMPUTER:"
+    Mx = 12
+  end if
+  return
+end sub
+
+sub MsgWord(u8 Mk2, u8 Mp):
+  select case Mk2
+  case 1
+    print at Mx,13, "PAIR"
+    Mx = Mx + 5
+  case 2
+    print at Mx,13, "THREE"
+    Mx = Mx + 6
+  case 3
+    print at Mx,13, "FOUR"
+    Mx = Mx + 5
+  case 4
+    print at Mx,13, "31"
+    Mx = Mx + 3
+  case 5
+    print at Mx,13, "15"
+    Mx = Mx + 3
+  case else
+    print at Mx,13, "RUN"
+    Mx = Mx + 4
+  end select
+  NumU = Mp
+  if Mp >= 10 then
+    print at Mx,13, digits$(NumU, 2)
+    Mx = Mx + 3
+  else
+    print at Mx,13, digits$(NumU, 1)
+    Mx = Mx + 2
+  end if
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,13
+  fill 32 count 28 at 2,14
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the counts (BASIC 2440-3000)
+
+sub CountComputer:
+  for J = 0 to 3
+    Hc4[J] = Cn[J + 1]
+    DrawCard(Hc4[J], J * 4 + 2, 6)
+  next
+  Cw = 0
+  CountHand
+  Ch = Cv
+  ShowCount
+  return
+end sub
+
+sub CountPlayer:
+  for J = 0 to 3
+    Hc4[J] = Pn[J + 1]
+    DrawCard(Hc4[J], J * 4 + 2, 15)
+  next
+  Cw = 1
+  CountHand
+  Ph = Cv
+  ShowCount
+  return
+end sub
+
+sub CountCrib:
+  fill 32 count 24 at 2,10
+  fill 32 count 24 at 2,11
+  fill 32 count 24 at 2,12
+  for J = 0 to 3
+    Hc4[J] = Cb[J]
+    DrawCard(Hc4[J], J * 4 + 2, 10)
+  next
+  Cw = 2
+  CountHand
+  Rh = Cv
+  ShowCount
+  return
+end sub
+
+sub ShowCount:
+  ClearMsg
+  select case Cw
+  case 0
+    print at 2,9, "THE COMPUTER'S HAND"
+  case 1
+    print at 2,9, "YOUR HAND           "
+  case else
+    if Cr = 1 then
+      print at 2,9, "THE COMPUTER'S CRIB"
+    else
+      print at 2,9, "YOUR CRIB           "
+    end if
+  end select
+  print at 2,13, "15S"
+  NumU = C15
+  print at 6,13, width$(NumU, 2)
+  print at 9,13, "PAIRS"
+  NumU = CPr
+  print at 15,13, width$(NumU, 2)
+  print at 18,13, "RUNS"
+  NumU = CRn
+  print at 23,13, width$(NumU, 2)
+  print at 2,14, "FLUSH"
+  NumU = CFl
+  print at 8,14, digits$(NumU, 1)
+  print at 10,14, "NOBS"
+  NumU = CNob
+  print at 15,14, digits$(NumU, 1)
+  print at 18,14, "TOTAL"
+  NumU = Cv
+  print at 24,14, width$(NumU, 2)
+  print at 2,20, "PRESS A BUTTON"
+  if Cv > 0 then play sound SndScore
+  Rescore
+  St = 3
+  WaitButton
+  St = 0
+  fill 32 count 28 at 2,20
+  fill 32 count 22 at 2,9
+  ClearMsg
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the end of a game (BASIC 4170-4280)
+
+sub GameOver:
+  u8 Lose = 0
+  Accumulate
+  if Win = 0 then
+    Lose = Sd[1].Score
+  else
+    Lose = Sd[0].Score
+  end if
+  V = 121 - Lose
+  K = 1
+  if Lose < 91 then K = 2
+  if Lose < 61 then K = 3
+  for J = 1 to K
+    Sd[Win].Match += V
+  next
+  Sd[Win].Won = Sd[Win].Won + K
+  StatsPage(1)
+  if Win = 0 then
+    print at 3,20, "THE COMPUTER HAS WON."
+    play sound SndLose
+  else
+    print at 6,20, "YOU HAVE WON!"
+    play sound SndWin
+  end if
+  if K = 3 then print at 6,21, "DOUBLE SKUNK"
+  if K = 2 then print at 10,21, "SKUNK"
+  St = 5
+  Rearm
+  wait 90 frames
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the table (BASIC 3200): after every hand and at the end
+sub StatsPage(u8 Final):
+  NewScreen
+  print at 3,2, "AFTER"
+  NumU = Hd
+  print at 9,2, width$(NumU, 2)
+  print at 12,2, "HANDS"
+  if Final = 1 then print at 19,2, "GAME OVER"
+  print at 17,5, "COMPUTER"
+  print at 26,5, "YOU"
+  print at 2,7, "MATCH POINTS"
+  print at 2,9, "GAMES WON"
+  print at 2,12, "HAND POINTS"
+  print at 2,13, "CRIB POINTS"
+  print at 2,14, "PEGGED"
+  print at 2,16, "SCORE"
+  for Ti = 0 to 1
+    X = Ti * 8 + 18
+    print at X,7, Sd[Ti].Match
+    NumU = Sd[Ti].Won
+    print at X,9, width$(NumU, 4)
+    NumU = Sd[Ti].Hand
+    print at X,12, width$(NumU, 4)
+    NumU = Sd[Ti].Crib
+    print at X,13, width$(NumU, 4)
+    NumU = Sd[Ti].Peg
+    print at X,14, width$(NumU, 4)
+    NumU = Sd[Ti].Score
+    print at X,16, width$(NumU, 4)
+  next
+  fill 45 count 26 at 2,10
+  fill 45 count 26 at 2,15
+  if Final = 0 then print at 7,20, "PRESS A BUTTON"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input
+
+sub ReadPad:
+  Btn1 = 0
+  Btn2 = 0
+  V = 0
+  if joypad(1).button1 then V = 1
+  if joypad(2).button1 then V = 1
+  if V = 1 and Was1 = 0 then Btn1 = 1
+  Was1 = V
+  V = 0
+  if joypad(1).button2 then V = 1
+  if joypad(2).button2 then V = 1
+  if V = 1 and Was2 = 0 then Btn2 = 1
+  Was2 = V
+  Stick = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  return
+end sub
+
+sub WaitButton:
+  Was1 = 1
+  Was2 = 1
+wb_loop:
+  Frame1
+  ReadPad
+  if Btn1 = 0 and Btn2 = 0 then goto wb_loop
+  return
+end sub
+
+' choose one of NSlot cards in your row (Av = 1): Pick, or 200 for a hint
+sub PickCard:
+  Was1 = 1
+  Was2 = 1
+  WasStick = 3
+  Rep = 0
+  if Av[Cur] = 0 then NextSlot(1)
+  DrawCursor
+pc_loop:
+  Frame1
+  ReadPad
+  if Stick <> 0 then
+    if Stick <> WasStick or Rep = 0 then
+      if Stick = 1 then
+        NextSlot(0)
+      else
+        NextSlot(1)
+      end if
+      play sound SndMove
+      DrawCursor
+      if Stick = WasStick then
+        Rep = 8
+      else
+        Rep = 18
+      end if
+    else
+      dec Rep
+    end if
+  end if
+  WasStick = Stick
+  if Btn2 = 1 and HintOk = 1 then
+    Pick = 200
+    return
+  end if
+  if Btn1 = 0 then goto pc_loop
+  Pick = Cur
+  return
+end sub
+
+' the next card still in the hand, right (Dir 1) or left (0)
+sub NextSlot(u8 Dir):
+  u8 Ns = 0
+  u8 Nf = 0
+  for Ns = 1 to 6
+    if Nf = 0 then
+    if Dir = 1 then
+      inc Cur
+      if Cur >= NSlot then Cur = 0
+    else
+      if Cur = 0 then
+        Cur = NSlot - 1
+      else
+        dec Cur
+      end if
+    end if
+    if Av[Cur] = 1 then Nf = 1
+    end if
+  next
+  return
+end sub
+
+sub DrawCursor:
+  X = Cur * 32
+  X = X + 24
+  set sprite 0 to 142,X,SArrow,11
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  set sprite 0 to 192,0,SArrow,11
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the board
+
+sub ShowTotals:
+  NumU = Tc
+  print at 2,2, width$(NumU, 3)
+  NumU = Tp
+  print at 2,4, width$(NumU, 3)
+  return
+end sub
+
+' one tile of a track: Tt side (0 computer), Ts tile 0-29, holes passed Tv
+sub TrackTile:
+  Ty = Ts / 15
+  if Tt = 0 then
+    Ty = Ty + PegRowC
+  else
+    Ty = Ty + PegRowP
+  end if
+  Tx = Ts % 15
+  Tx = Tx + 14
+  Tch = Ts * 4
+  if Tv > Tch then
+    Tch = Tv - Tch
+    if Tch > 4 then Tch = 4
+  else
+    Tch = 0
+  end if
+  if Tt = 0 then
+    Tch = Tch + THc0
+  else
+    Tch = Tch + THp0
+  end if
+  put char Tch at Tx,Ty
+  return
+end sub
+
+sub DrawTracks:
+  for Tt = 0 to 1
+    if Tt = 0 then
+      Tv = ShC
+    else
+      Tv = ShP
+    end if
+    for Ts = 0 to 29
+      TrackTile
+    next
+  next
+  put char TWood at 13,1
+  put char TWood at 13,2
+  put char TWood at 13,3
+  put char TWood at 13,4
+  put char TWood at 29,1
+  put char TWood at 29,2
+  put char TWood at 29,3
+  put char TWood at 29,4
+  PegSprites
+  return
+end sub
+
+sub PegSprites:
+  u8 Px = 0
+  u8 Py = 0
+  u8 Ph2 = 0
+  Ph2 = ShC
+  Py = PegRowC
+  PegPos(Ph2, Py)
+  set sprite 1 to Gy,Gx,SPeg,8
+  Ph2 = ShP
+  Py = PegRowP
+  PegPos(Ph2, Py)
+  set sprite 2 to Gy,Gx,SPeg,15
+  update sprites
+  return
+end sub
+
+' a peg's sprite place for score Hs on rows R0, R0 + 1: Tx, Ty
+sub PegPos(u8 Hs, u8 R0):
+  u8 Hk = 0
+  if Hs = 0 then
+    Gx = 105
+    Gy = R0 * 8
+    Gy = Gy - 1
+  else
+    Hk = Hs - 1
+    if Hk >= 60 then
+      Hk = Hk - 60
+      R0 = R0 + 1
+    end if
+    Gx = Hk * 2
+    Gx = Gx + 112
+    Gy = R0 * 8
+    Gy = Gy - 1
+  end if
+  return
+end sub
+
+' pegs hop one hole every two frames towards the totals
+sub AnimPegs:
+  u8 Gc = 0
+  u8 Gp = 0
+  Gc = Tc
+  if Gc > 120 then Gc = 120
+  Gp = Tp
+  if Gp > 120 then Gp = 120
+  if BoardOn = 1 and (Tick & 1) <> 0 then
+    if ShC < Gc then
+      inc ShC
+      Tt = 0
+      Tv = ShC
+      Ts = (ShC - 1) / 4
+      TrackTile
+      PegSprites
+      play sound SndPeg
+    end if
+    if ShP < Gp then
+      inc ShP
+      Tt = 1
+      Tv = ShP
+      Ts = (ShP - 1) / 4
+      TrackTile
+      PegSprites
+      play sound SndPeg
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' cards: Dc a card 0-51, CBack or CNone (felt), at Dx, Dy (4 x 3 tiles)
+
+sub DrawCard(u8 Dc, u8 Dx, u8 Dy):
+  if Dc = CNone then
+    fill 32 count 4 at Dx,Dy
+    fill 32 count 4 at Dx,Dy + 1
+    fill 32 count 4 at Dx,Dy + 2
+  else
+    if Dc = CBack then
+      DrawBack(Dx, Dy)
+    else
+      DrawFace(Dc, Dx, Dy)
+    end if
+  end if
+  return
+end sub
+
+sub DrawBack(u8 Bx, u8 By):
+  u8 Br = 0
+  u8 Bt = 0
+  Bt = TBack00
+  for Br = 0 to 2
+    put char Bt at Bx,By + Br
+    put char Bt + 1 at Bx + 1,By + Br
+    put char Bt + 2 at Bx + 2,By + Br
+    put char Bt + 3 at Bx + 3,By + Br
+    Bt = Bt + 4
+  next
+  return
+end sub
+
+sub DrawFace(u8 Dc, u8 Dx, u8 Dy):
+  u8 Dr = 0
+  u8 Dt = 0
+  u8 Ds = 0
+  if 0 = 1 then
+  end if
+  Dr = Dc % 13
+  Ds = Dc / 13
+  Dt = TRk0 + Dr
+  if Ds >= 2 then Dt = TRr0 + Dr
+  put char TEtl at Dx,Dy
+  put char Dt at Dx + 1,Dy
+  put char TSs0 + Ds at Dx + 2,Dy
+  put char TEtr at Dx + 3,Dy
+  Dt = Ds * 4
+  Dt = Dt + TPipa00
+  put char TEl at Dx,Dy + 1
+  put char Dt at Dx + 1,Dy + 1
+  put char Dt + 1 at Dx + 2,Dy + 1
+  put char TEr at Dx + 3,Dy + 1
+  put char TEbl at Dx,Dy + 2
+  put char Dt + 2 at Dx + 1,Dy + 2
+  put char Dt + 3 at Dx + 2,Dy + 2
+  put char TEbr at Dx + 3,Dy + 2
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens, frames, sound
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  AnimPegs
+  return
+end sub
+
+sub Pause(u8 Pf):
+  u8 Pk = 0
+  for Pk = 1 to Pf
+    Frame1
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  BoardOn = 0
+  HideSprites
+  fill mode 2 text color with $FC
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the table: the board on rows 1-4, the rest is felt
+sub TableScreen:
+  NewScreen
+  print at 2,1, "COMPUTER"
+  print at 6,2, "PTS"
+  print at 2,3, "YOU"
+  print at 6,4, "PTS"
+  if Cr = 1 then print at 10,1, "*"
+  if Cr = 0 then print at 10,3, "*"
+  ShowTotals
+  BoardOn = 1
+  DrawTracks
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 7,2, "C R I B B A G E  128"
+  print at 2,5, "BASED ON CRIBBAGE 128,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "AUGUST 1988 (COMMODORE 128"
+  print at 2,8, "BASIC AND MACHINE CODE)."
+  print at 2,9, "THE LISTING NAMES NO AUTHOR."
+  print at 2,12, "COLECOVISION GAME AND MUSIC"
+  print at 2,13, "BY CLAUDE (ANTHROPIC) FOR"
+  print at 2,14, "AMY STUDIO, IN AMY BY AMY"
+  print at 2,15, "BIENVENU, 2026."
+  print at 2,17, "THE COMPUTER PLAYS AS THE"
+  print at 2,18, "LISTING'S COMPUTER DID."
+  print at 2,19, "MUSIC: FIFTEEN TWO, ORIGINAL"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  St = 0
+  NewScreen
+  print at 7,2, "C R I B B A G E  128"
+  print at 4,4, "CRIBBAGE FOR TWO, TO 121"
+  for J = 0 to 4
+    K = J * 13
+    K = K + 4
+    if J = 4 then K = 23
+    DrawCard(K, J * 5 + 4, 7)
+  next
+  print at 2,12, "THE COMPUTER IS YOUR"
+  print at 2,13, "OPPONENT. STICK: CHOOSE A"
+  print at 2,14, "CARD. LEFT BUTTON: LAY IT."
+  print at 2,15, "RIGHT BUTTON: A HINT WHEN"
+  print at 2,16, "YOU DISCARD TO THE CRIB."
+  print at 2,17, "A STAR MARKS THE DEALER."
+  print at 6,19, "PRESS THE BUTTON"
+  print at 3,22, "COMPUTE!'S GAZETTE AUG 1988"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 660
+  TzOn = 1
+  Was1 = 1
+  Was2 = 1
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPad
+  if Btn1 = 0 and Btn2 = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+data TilePat bytes
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$00,$10,$38,$83,$83,$28,$00
+  $00,$00,$38,$38,$83,$93,$10,$00
+  $00,$00,$28,$83,$83,$38,$10,$00
+  $00,$00,$10,$38,$83,$38,$10,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C1,$E2,$01,$03,$07,$00,$00
+  $01,$83,$B8,$80,$C0,$E0,$00,$00
+  $00,$03,$07,$07,$03,$C6,$82,$80
+  $00,$C0,$E0,$E0,$C0,$9C,$41,$01
+  $82,$C6,$01,$03,$07,$00,$00,$00
+  $41,$9C,$80,$C0,$E0,$00,$00,$00
+  $00,$00,$1C,$C1,$80,$80,$80,$C0
+  $00,$00,$38,$83,$01,$01,$01,$03
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $C0,$E0,$F0,$07,$03,$01,$00,$00
+  $03,$07,$F0,$E0,$C0,$80,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $54,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $54,$45,$54,$11,$54,$45,$54,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$AA,$AA,$00,$00,$00
+  $00,$00,$00,$AA,$AA,$00,$C0,$00
+  $00,$00,$00,$AA,$AA,$00,$F0,$00
+  $00,$00,$00,$AA,$AA,$00,$03,$00
+  $00,$00,$00,$AA,$AA,$00,$00,$00
+  $00,$00,$00,$AA,$AA,$00,$00,$00
+  $00,$00,$00,$AA,$AA,$00,$C0,$00
+  $00,$00,$00,$AA,$AA,$00,$F0,$00
+  $00,$00,$00,$AA,$AA,$00,$03,$00
+  $00,$00,$00,$AA,$AA,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$1F,$1F,$F1,$1F,$0F
+  $0E,$F1,$1F,$F1,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$F1,$1F,$1F,$1F,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$8F,$8F,$F8,$8F,$0F
+  $0E,$F8,$8F,$F8,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$F8,$8F,$8F,$8F,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0E,$0F,$8F,$F8,$F8,$8F,$8F,$0F
+  $0E,$0F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$F1,$1F,$1F,$1F,$0F,$0E
+  $F1,$F1,$1F,$1F,$1F,$1F,$0F,$0E
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$1F,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$0F,$0F,$0E
+  $F1,$1F,$1F,$1F,$1F,$0F,$0F,$0E
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$8F,$8F,$8F,$0F,$0F,$0E
+  $F8,$8F,$8F,$8F,$8F,$0F,$0F,$0E
+  $0F,$8F,$8F,$8F,$F8,$F8,$F8,$F8
+  $0F,$8F,$8F,$8F,$8F,$F8,$F8,$F8
+  $F8,$F8,$F8,$8F,$8F,$8F,$0F,$0E
+  $F8,$F8,$8F,$8F,$8F,$8F,$0F,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$54,$54,$54,$54,$54,$54
+  $05,$54,$45,$54,$45,$54,$45,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $45,$54,$45,$54,$45,$54,$45,$54
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $54,$54,$54,$54,$54,$54,$54,$05
+  $45,$54,$45,$54,$45,$54,$45,$05
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$2C,$2C,$0C,$0C,$0C
+  $0A,$0A,$0A,$A1,$A1,$0A,$0A,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$8A,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$8A,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$A8,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$08,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$0A,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$FA,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$FA,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$AF,$0A
+  $0A,$0A,$0A,$A1,$A1,$0A,$0F,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+end data
+data SpritePat bytes
+  $00,$00,$01,$03,$07,$0F,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$F8,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$40,$40,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+CbMove:
+    db $40,$47,$50,$01,$50
+CbCard:
+    db $00,$00,$26,$02,$00,$00,$55,$03,$10
+CbShuffle:
+    db $00,$00,$35,$03,$00,$00,$66,$02,$00,$00,$35,$03,$00,$00,$66,$02,$00,$00,$35,$03,$00,$00,$66,$02
+    db $00,$00,$45,$04,$10
+CbPeg:
+    db $40,$35,$40,$01,$40,$35,$A0,$01,$50
+CbScore:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$30,$06,$50
+CbGo:
+    db $40,$D6,$30,$04,$40,$1D,$41,$08,$50
+CbNo:
+    db $40,$3B,$22,$04,$40,$5D,$32,$06,$50
+CbHint:
+    db $40,$55,$30,$03,$40,$40,$30,$03,$40,$55,$50,$06,$50
+CbWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$08,$40,$6B,$10,$18
+    db $50
+CbLose:
+    db $40,$1D,$21,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$AB,$31,$1E,$50
+
+CbSoundTable:
+    dw CbTuneMel,$702B
+    dw CbTuneBass,$7035
+    dw CbMove,$7049
+    dw CbCard,$703F
+    dw CbShuffle,$703F
+    dw CbPeg,$7049
+    dw CbScore,$7049
+    dw CbGo,$7049
+    dw CbNo,$7049
+    dw CbHint,$7049
+    dw CbWin,$7049
+    dw CbLose,$7049
+; Fifteen Two (original)
+; Tiny Sound, 9 frames per step
+CbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1F,$01,$1C,$18,$01,$1C,$1F,$01,$24,$23,$01,$21
+    db $1F,$01,$1C,$1A,$01,$01,$1C,$01,$1F,$1D,$01,$1A,$17,$01,$1A,$1F
+    db $01,$1D,$1C,$01,$1A,$18,$01,$01,$24,$01,$23,$21,$01,$1F,$1D,$01
+    db $21,$1F,$01,$1C,$18,$01,$1C,$1A,$01,$01,$1C,$01,$1D,$1F,$01,$21
+    db $1F,$01,$1C,$1A,$01,$17,$18,$01,$01,$00,$01,$01
+    db $FF
+CbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0C,$01,$13,$10,$01,$13,$0C,$01,$13,$10,$01,$13
+    db $0C,$01,$13,$07,$01,$0E,$0C,$01,$13,$11,$01,$15,$07,$01,$0E,$07
+    db $01,$0E,$0C,$01,$13,$0C,$01,$01,$09,$01,$10,$05,$01,$0C,$0E,$01
+    db $15,$10,$01,$0C,$05,$01,$0C,$07,$01,$0E,$0C,$01,$13,$05,$01,$0C
+    db $07,$01,$0E,$07,$01,$01,$0C,$01,$13,$0C,$01,$01
+    db $FF
+}

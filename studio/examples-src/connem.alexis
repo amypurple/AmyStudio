@@ -1,0 +1,1156 @@
+cartridge "CONNECT'EM/COMPUTE!'S GAZETTE/1987"
+
+' CONNECT'EM
+' A ColecoVision game based on "Connect'em", COMPUTE!'s Gazette January
+' 1987 (Commodore 64 and 128, BASIC; the listing names no author).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules and the computer player are the
+' original's (read from its listing, orig/), the game is built for the
+' ColecoVision: a peg board drawn in tiles, a cursor sprite that glides
+' from peg to peg, rails in each player's colour, sound effects and an
+' original title tune.
+'
+' The game (dots and boxes): two players take turns joining two
+' neighbouring pegs, across or down, with a rail. Whoever puts the fourth
+' side on a box claims it (it fills with the player's colour) and must
+' play again. When every box is claimed the player with more boxes wins;
+' an equal count is a tie. Either player may be the computer, or both.
+'
+' From the original (orig/connect_em.bas): the two-step move (choose a
+' peg, then a neighbouring peg; anything else buzzes and starts the move
+' again), the regular board (8 x 12 pegs: 7 x 11 boxes) and the mini
+' board (8 x 7 pegs: 7 x 6 boxes), the fourth side claims a box and plays
+' again, the scoreboard and the clock of the game's time, the winner or
+' the tie; the computer player of lines 1210-1430: if any box has three
+' sides it takes the first one found (row by row) and fills its side;
+' otherwise it looks at the boxes with 0 sides, then 1, then 2 (a count
+' found empty once is skipped for the rest of the game), picks one of
+' them at random, tries its four sides in random order, and plays the
+' first free side whose box on the other side has no more sides than
+' this one has (so it never gives a third side away while it can help
+' it); when no box of a count has such a side it goes on to the next
+' count. The computer's thinking noise and its blinking line; the box
+' warble; a computer named after its machine.
+'
+' Liberties: the listing ends the regular game at 84 boxes (TS=84), but
+' its board has 77 (twelve pegs a row, eleven boxes): the game could never
+' end; here it ends when all 77 are claimed. Players are chosen on a
+' joystick menu (HUMAN / COMPUTER) instead of typing names: "PLAYER 1",
+' "PLAYER 2", "COMPUTER" (the listing's "C-64"), and "MACHINE" when both
+' are the computer (the listing's "COMMODORE"). Both controllers drive
+' whichever human is to play (the listing gives player 1 joystick 1 and
+' player 2 joystick 2). The cursor moves from peg to peg (on the C64 it
+' stepped over every character cell, rails included). Claimed boxes show
+' an emblem in the owner's colour instead of the initial of the name, and
+' rails take the colour of the player who laid them. The computer's line
+' blinks three times at 3 Hz (the C64 flashed it about 8 times a second).
+' No play-again question: the end message, then the title.
+'
+' Controls: either controller. The stick moves the cursor from peg to
+' peg (hold to keep moving); a side button chooses the peg under it. Press
+' a button on a second peg next to the first (across or down) to lay the
+' rail. On the title, up and down choose a line, left, right or a button
+' change it, a button on START GAME or CREDITS goes there.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given. Own
+' xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TDot = 128
+const TSloth = 129
+const TSlotv = 130
+const TH1 = 131
+const TV1 = 132
+const TH2 = 133
+const TV2 = 134
+const TBox1 = 135
+const TBox2 = 136
+const TBar = 137
+const SRing = 0
+const SPick = 4
+const NTiles8 = 80
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPick = 3
+const SndBuzz = 4
+const SndLine = 5
+const SndBox = 6
+const SndThink = 7
+const SndCpu = 8
+const SndStart = 9
+const SndWin = 10
+const SndTie = 11
+const NSpr = 2
+const Y0 = 5
+const BW = 13
+const Glide = 2
+const TuneLen = 544
+' a box already tried (the listing's 99; box numbers here reach 103)
+const Tried = 255
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 RsAt = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 MoveN = 0
+' boxes: sides drawn, BW to a row; rows 0 and 8, columns 0 and 12 are the
+' listing's spare cells round the board (the edge rails count there)
+u8 Bx[117]
+' the computer's candidate boxes, counts found empty, sides tried
+u8 Zo[80]
+u8 Bz[6]
+u8 Rx[5]
+' the game: box columns (11 or 6), boxes, left peg column, players
+' (0 human, 1 computer) and scores (index 1 and 2), player to move
+u8 Nc = 11
+u8 Total = 77
+u8 X0 = 5
+u8 Ptype[3]
+u8 Sc[3]
+u8 Pl = 1
+u8 Over = 0
+u8 Got = 0
+bcd digits 2 Secs
+bcd digits 2 Mins
+u8 ClkF = 0
+u8 ClkOn = 0
+' the move: upper or left peg, 0 across or 1 down
+u8 Mr = 0
+u8 Mc = 0
+u8 Md = 0
+' the cursor (peg), its sprite, the first peg chosen
+u8 Cr = 0
+u8 Cc = 0
+u8 Px = 0
+u8 Py = 0
+u8 Sel = 0
+u8 Sr = 0
+u8 Sk = 0
+u8 Rep = 0
+' the computer's search
+u8 Va = 0
+u8 Nl = 0
+u8 Nz = 0
+u8 Nx = 0
+u8 Found = 0
+u8 Three = 0
+' menu
+u8 Opt1 = 0
+u8 Opt2 = 1
+u8 OptB = 0
+u8 Mrow = 0
+u8 Menu = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Phase = 0
+u8 NameLen = 8
+' loop counters (never shared with the helpers)
+u8 Ca = 0
+u8 Cb = 0
+u8 Ri = 0
+u8 Bl = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CeSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    CreditsPage
+    goto title
+  end if
+
+new_game:
+  NewGame
+
+turn_loop:
+  ShowTurn
+  if Ptype[Pl] = 1 then
+    CpuTurn
+  else
+    HumanTurn
+  end if
+  ApplyMove
+  if Got = 0 then
+    Pl = 3 - Pl
+  end if
+  V = Sc[1] + Sc[2]
+  if V < Total then goto turn_loop
+
+  ' the end: who won, then back to the title on a press
+  ClkOn = 0
+  Over = 1
+  HideCursor
+  ShowScores
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  if Sc[1] = Sc[2] then
+    print at 9,21, "IT'S A TIE!!"
+    play sound SndTie
+  else
+    K = 1
+    if Sc[2] > Sc[1] then K = 2
+    PutName(K, 8, 21)
+    X = NameLen + 9
+    print at X,21, "WINS!!"
+    play sound SndWin
+  end if
+  print at 9,22, "PRESS A BUTTON"
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a move
+
+' the human: move the cursor, choose two neighbouring pegs (lines 150-400)
+sub HumanTurn:
+  Phase = 1
+  Found = 0
+  while Found = 0
+    Frame1
+    ReadPad
+    Clock
+    MoveCursor
+    if Press = 1 then
+      if Px = PegX(Cc) then
+        if Py = PegY(Cr) then ChoosePeg
+      end if
+    end if
+    DrawCursor
+  end while
+  Sel = 0
+  DrawCursor
+  Phase = 0
+  return
+end sub
+
+' a press on the peg under the cursor: the first peg, or the second (the
+' move is made when the rail between them is free)
+sub ChoosePeg:
+  if Sel = 0 then
+    Sel = 1
+    Sr = Cr
+    Sk = Cc
+    play sound SndPick
+    return
+  end if
+  Sel = 0
+  Got = 0
+  if Cr = Sr then
+    if Cc = Sk + 1 then
+      Got = 1
+      Mc = Sk
+    end if
+    if Sk = Cc + 1 then
+      Got = 1
+      Mc = Cc
+    end if
+    Mr = Cr
+    Md = 0
+  elseif Cc = Sk then
+    if Cr = Sr + 1 then
+      Got = 1
+      Mr = Sr
+    end if
+    if Sr = Cr + 1 then
+      Got = 1
+      Mr = Cr
+    end if
+    Mc = Cc
+    Md = 1
+  end if
+  if Got = 1 then
+    Got = LineFree(Md, Mr, Mc)
+  end if
+  if Got = 0 then
+    play sound SndBuzz
+    return
+  end if
+  Found = 1
+  return
+end sub
+
+' the stick: one peg a step, gliding Glide pixels a frame; held, it keeps
+' going after a short pause at each peg
+sub MoveCursor:
+  T = PegX(Cc)
+  if Px < T then Px = Px + Glide
+  if Px > T then Px = Px - Glide
+  T = PegY(Cr)
+  if Py < T then Py = Py + Glide
+  if Py > T then Py = Py - Glide
+  K = J1 | J2
+  K = K & 15
+  if K = 0 then
+    Rep = 0
+    return
+  end if
+  if Px <> PegX(Cc) then return
+  if Py <> PegY(Cr) then return
+  if Rep > 0 then
+    dec Rep
+    return
+  end if
+  V = K & 1
+  if V > 0 then
+    if Cr > 0 then dec Cr
+  end if
+  V = K & 2
+  if V > 0 then
+    if Cr < 7 then inc Cr
+  end if
+  V = K & 4
+  if V > 0 then
+    if Cc > 0 then dec Cc
+  end if
+  V = K & 8
+  if V > 0 then
+    if Cc < Nc then inc Cc
+  end if
+  Rep = 3
+  return
+end sub
+
+' the computer: think, choose, blink the line three times (line 1210 on)
+sub CpuTurn:
+  Phase = 2
+  HideCursor
+  play sound SndThink
+  for Bl = 1 to 30
+    Frame1
+    Clock
+  next
+  CpuChoose
+  play sound SndCpu
+  for Bl = 1 to 60
+    Frame1
+    Clock
+    V = Bl / 10
+    V = V & 1
+    if V = 0 then
+      DrawLine(Pl)
+    else
+      DrawLine(0)
+    end if
+  next
+  Phase = 0
+  return
+end sub
+
+' lay the rail Md, Mr, Mc for player Pl and count sides (lines 360-660):
+' Got = boxes claimed
+sub ApplyMove:
+  inc MoveN
+  DrawLine(Pl)
+  Got = 0
+  if Md = 0 then
+    ' across: the box below, then the box above
+    Ca = Mr + 1
+    Cb = Mc + 1
+    AddSide
+    Ca = Mr
+    AddSide
+  else
+    ' down: the box to the right, then the box to the left
+    Ca = Mr + 1
+    Cb = Mc + 1
+    AddSide
+    Cb = Mc
+    AddSide
+  end if
+  if Got > 0 then
+    play sound SndBox
+  else
+    play sound SndLine
+  end if
+  ShowScores
+  return
+end sub
+
+sub AddSide:
+  K = BoxIx(Ca, Cb)
+  V = Bx[K] + 1
+  Bx[K] = V
+  if V = 4 then
+    ClaimBox(Ca, Cb)
+  end if
+  return
+end sub
+
+sub ClaimBox(u8 Br, u8 Bc):
+  inc Got
+  Sc[Pl] += 1
+  X = Bc << 1
+  X = X + X0
+  X = X - 1
+  Y = Br << 1
+  Y = Y + Y0
+  Y = Y - 1
+  if Pl = 1 then
+    put char TBox1 at X,Y
+  else
+    put char TBox2 at X,Y
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's choice (lines 1210-1430)
+
+sub CpuChoose:
+  RsAt = Rs
+  Va = 255
+  Found = 0
+  while Found = 0
+    inc Va
+    if Va > 4 then
+      ' (no box left: cannot happen while the game runs)
+      Found = 2
+    elseif Bz[Va] = 0 then
+      Nl = Va + 1
+      Collect
+      if Nz = 0 then
+        Bz[Va] = 1
+      else
+        PickBox
+      end if
+    end if
+  end while
+  return
+end sub
+
+' the boxes with Va sides, or the first box with three (lines 1240-1280)
+sub Collect:
+  Nz = 0
+  Three = 0
+  for Ca = 1 to 7
+    for Cb = 1 to Nc
+      if Three = 0 then
+        K = BoxIx(Ca, Cb)
+        V = Bx[K]
+        if V = 3 then
+          Three = 1
+          Nl = 4
+          Zo[0] = K
+          Nz = 1
+        elseif V = Va then
+          Zo[Nz] = K
+          inc Nz
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+' boxes at random until one has a side to play (lines 1290-1330)
+sub PickBox:
+  Nx = 0
+  B = 0
+  while B = 0
+    R = RandN(Nz)
+    if Nx = Nz then
+      B = 1
+    elseif Zo[R] <> Tried then
+      inc Nx
+      TrySides(Zo[R])
+      if Found = 1 then
+        B = 1
+      else
+        Zo[R] = Tried
+      end if
+    end if
+  end while
+  return
+end sub
+
+' the sides of box K in random order: the first free one whose other box
+' has fewer than Nl sides (lines 1320-1430)
+sub TrySides(u8 Kb):
+  u8 Ta = 0
+  u8 Tb = 0
+  u8 Tz = 0
+  u8 Tn = 0
+  u8 Nb = 0
+  Ta = Kb / BW
+  Tb = Ta * BW
+  Tb = Kb - Tb
+  for Tz = 1 to 4
+    Rx[Tz] = 0
+  next
+  Tn = 0
+  while Tn < 4
+    Tz = RandN(4) + 1
+    while Rx[Tz] = 1
+      Tz = RandN(4) + 1
+    end while
+    Rx[Tz] = 1
+    inc Tn
+    select case Tz
+    case 1
+      ' top: across from the upper left peg; the box above
+      Md = 0
+      Mr = Ta - 1
+      Mc = Tb - 1
+      Nb = Kb - BW
+    case 2
+      ' left: down from the upper left peg; the box to the left
+      Md = 1
+      Mr = Ta - 1
+      Mc = Tb - 1
+      Nb = Kb - 1
+    case 3
+      ' right: down from the upper right peg; the box to the right
+      Md = 1
+      Mr = Ta - 1
+      Mc = Tb
+      Nb = Kb + 1
+    case else
+      ' bottom: across from the lower left peg; the box below
+      Md = 0
+      Mr = Ta
+      Mc = Tb - 1
+      Nb = Kb + BW
+    end select
+    if LineFree(Md, Mr, Mc) = 1 then
+      if Bx[Nb] < Nl then
+        Found = 1
+        Tn = 4
+      end if
+    end if
+  end while
+  return
+end sub
+
+function BoxIx(u8 Br, u8 Bc) as u8
+  u8 Q = 0
+  Q = Br * BW
+  Q = Q + Bc
+  return Q
+
+' the screen column of peg column C, as a sprite X (the ring is 16 wide)
+function PegX(u8 Pc) as u8
+  u8 Q = 0
+  Q = Pc << 1
+  Q = Q + X0
+  Q = Q << 3
+  return Q - 4
+
+function PegY(u8 Pr) as u8
+  u8 Q = 0
+  Q = Pr << 1
+  Q = Q + Y0
+  Q = Q << 3
+  return Q - 5
+
+' 1 when the rail (D 0 across, 1 down) from peg R, C is not laid
+function LineFree(u8 D, u8 Lr, u8 Lc) as u8
+  u8 Q = 0
+  u8 Lx = 0
+  u8 Ly = 0
+  Lx = Lc << 1
+  Lx = Lx + X0
+  Ly = Lr << 1
+  Ly = Ly + Y0
+  if D = 0 then
+    Lx = Lx + 1
+  else
+    Ly = Ly + 1
+  end if
+  Q = get char at Lx,Ly
+  Lx = 0
+  if Q = TSloth then Lx = 1
+  if Q = TSlotv then Lx = 1
+  return Lx
+
+' a number 0 .. N-1 from the xorshift generator
+function RandN(u8 N) as u8
+  u8 Q = 0
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * N
+  W16 = W16 >> 8
+  Q = W16
+  return Q
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the rail Md, Mr, Mc in player P's colour (0: the empty place)
+sub DrawLine(u8 P):
+  X = Mc << 1
+  X = X + X0
+  Y = Mr << 1
+  Y = Y + Y0
+  if Md = 0 then
+    X = X + 1
+    select case P
+    case 0
+      T = TSloth
+    case 1
+      T = TH1
+    case else
+      T = TH2
+    end select
+  else
+    Y = Y + 1
+    select case P
+    case 0
+      T = TSlotv
+    case 1
+      T = TV1
+    case else
+      T = TV2
+    end select
+  end if
+  put char T at X,Y
+  return
+end sub
+
+sub DrawBoard:
+  for Ri = 0 to 7
+    DrawPegRow
+  next
+  return
+end sub
+
+' a row of pegs and the across places, and (above row 7) the down places
+sub DrawPegRow:
+  Y = Ri << 1
+  Y = Y + Y0
+  X = X0
+  for Cb = 0 to Nc
+    put char TDot at X,Y
+    if Cb < Nc then
+      J = X + 1
+      put char TSloth at J,Y
+    end if
+    if Ri < 7 then
+      J = Y + 1
+      put char TSlotv at X,J
+    end if
+    X = X + 2
+  next
+  return
+end sub
+
+sub HideCursor:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub DrawCursor:
+  C = 9
+  if Pl = 2 then C = 11
+  set sprite 0 to Py,Px,SRing,C
+  if Sel = 1 then
+    X = PegX(Sk)
+    Y = PegY(Sr)
+    set sprite 1 to Y,X,SPick,15
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' player K's name at X, Y
+sub PutName(u8 Pk, u8 Nx2, u8 Ny):
+  u8 Q = 0
+  Q = Ptype[Pk]
+  if Q = 1 then
+    ' the second computer of two is the machine
+    if Pk = 2 then Q = Q + Ptype[1]
+  else
+    Q = Pk + 2
+  end if
+  NameLen = 8
+  select case Q
+  case 1
+    print at Nx2,Ny, "COMPUTER"
+  case 2
+    print at Nx2,Ny, "MACHINE "
+    NameLen = 7
+  case 3
+    print at Nx2,Ny, "PLAYER 1"
+  case else
+    print at Nx2,Ny, "PLAYER 2"
+  end select
+  return
+end sub
+
+sub ShowScores:
+  put char TBox1 at 2,1
+  PutName(1, 4, 1)
+  NumU = Sc[1]
+  print at 13,1, digits$(NumU, 2)
+  NumU = Sc[2]
+  print at 17,1, digits$(NumU, 2)
+  PutName(2, 20, 1)
+  put char TBox2 at 29,1
+  return
+end sub
+
+sub ShowTurn:
+  fill 32 count 28 at 2,22
+  PutName(Pl, 7, 22)
+  X = NameLen + 7
+  print at X,22, "'S TURN"
+  if Pl = 1 then
+    put char TBox1 at 5,22
+  else
+    put char TBox2 at 5,22
+  end if
+  return
+end sub
+
+' the game's time, mm:ss (line 1200)
+sub Clock:
+  if ClkOn = 0 then return
+  inc ClkF
+  if ClkF < 60 then return
+  ClkF = 0
+  Secs += 1
+  if Secs = 60 then
+    Secs = 0
+    Mins += 1
+  end if
+  ShowClock
+  return
+end sub
+
+sub ShowClock:
+  print Mins at 13,2
+  print at 15,2, ":"
+  print Secs at 16,2
+  return
+end sub
+
+sub NewGame:
+  fill array Bx with 0
+  for Ri = 0 to 5
+    Bz[Ri] = 0
+  next
+  Sc[1] = 0
+  Sc[2] = 0
+  Ptype[1] = Opt1
+  Ptype[2] = Opt2
+  if OptB = 0 then
+    Nc = 11
+    Total = 77
+    X0 = 5
+  else
+    Nc = 6
+    Total = 42
+    X0 = 10
+  end if
+  NewScreen
+  DrawBoard
+  ShowScores
+  Secs = 0
+  Mins = 0
+  ClkF = 0
+  ShowClock
+  Pl = 1
+  Cr = 0
+  Cc = 0
+  Px = PegX(0)
+  Py = PegY(0)
+  Sel = 0
+  Over = 0
+  MoveN = 0
+  TitleOn = 0
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  ClkOn = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a small board with a few rails and boxes, the tune once, the
+' menu (players, board, START GAME, CREDITS)
+sub TitlePage:
+  TitleOn = 1
+  ClkOn = 0
+  NewScreen
+  print at 10,2, "CONNECT'EM"
+  print at 5,4, "COMPUTE!'S GAZETTE 1987"
+  ' a corner of a game: 3 x 2 boxes, two claimed
+  Nc = 5
+  X0 = 11
+  for Ri = 0 to 2
+    Y = Ri << 1
+    Y = Y + 6
+    X = X0
+    for Cb = 0 to Nc
+      put char TDot at X,Y
+      if Cb < Nc then
+        J = X + 1
+        put char TH1 at J,Y
+      end if
+      if Ri < 2 then
+        J = Y + 1
+        put char TV2 at X,J
+      end if
+      X = X + 2
+    next
+  next
+  put char TBox1 at 12,7
+  put char TBox2 at 14,7
+  put char TBox1 at 18,9
+  put char TBox2 at 20,9
+  put char TSloth at 16,6
+  put char TSlotv at 17,9
+  print at 6,13, "PLAYER 1"
+  print at 6,14, "PLAYER 2"
+  print at 6,15, "BOARD"
+  print at 6,17, "START GAME"
+  print at 6,18, "CREDITS"
+  print at 4,21, "STICK AND BUTTON"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Menu = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V <> WasStick then
+    K = V & 1
+    if K > 0 then
+      if Mrow > 0 then dec Mrow
+    end if
+    K = V & 2
+    if K > 0 then
+      if Mrow < 4 then inc Mrow
+    end if
+    K = V & 12
+    if K > 0 then Toggle
+    ShowMenu
+  end if
+  WasStick = V
+  if Press = 1 then
+    if Mrow < 3 then
+      Toggle
+      ShowMenu
+    elseif Mrow = 4 then
+      Menu = 1
+      goto tp_go
+    else
+      Menu = 0
+      goto tp_go
+    end if
+  end if
+  goto tp_loop
+tp_go:
+  StopTune
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub StopTune:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub Toggle:
+  select case Mrow
+  case 0
+    Opt1 = 1 - Opt1
+  case 1
+    Opt2 = 1 - Opt2
+  case 2
+    OptB = 1 - OptB
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 13 to 18
+    put char 32 at 4,Ri
+  next
+  if Opt1 = 0 then
+    print at 16,13, "HUMAN   "
+  else
+    print at 16,13, "COMPUTER"
+  end if
+  if Opt2 = 0 then
+    print at 16,14, "HUMAN   "
+  else
+    print at 16,14, "COMPUTER"
+  end if
+  if OptB = 0 then
+    print at 16,15, "REGULAR"
+  else
+    print at 16,15, "MINI   "
+  end if
+  J = Mrow + 13
+  if Mrow > 2 then J = J + 1
+  put char 62 at 4,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "CONNECT'EM"
+  print at 2,5, "BASED ON CONNECT'EM,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "JANUARY 1987 (COMMODORE 64"
+  print at 2,8, "AND 128; NO AUTHOR NAMED)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: PEG BY PEG"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $C3,$81,$00,$01,$03,$87,$81,$C3
+  $00,$00,$00,$24,$24,$00,$00,$00
+  $00,$00,$18,$00,$00,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$10,$10,$81,$C3,$24,$42,$00
+  $00,$18,$C3,$81,$81,$C3,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0F,$0F,$0F,$EF,$EF,$EF,$0E,$0E
+  $00,$00,$00,$10,$10,$00,$00,$00
+  $00,$00,$10,$00,$00,$10,$00,$00
+  $00,$00,$09,$09,$09,$09,$00,$00
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $00,$00,$0B,$0B,$0B,$0B,$00,$00
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $06,$96,$96,$69,$69,$96,$96,$06
+  $0A,$BA,$AB,$AB,$AB,$AB,$BA,$0A
+  $00,$00,$00,$04,$04,$00,$00,$00
+end data
+data SpritePat bytes
+  $00,$0F,$18,$30,$60,$40,$40,$40,$40,$40,$40,$60,$30,$18,$0F,$00
+  $00,$F0,$18,$0C,$06,$02,$02,$02,$02,$02,$02,$06,$0C,$18,$F0,$00
+  $00,$00,$00,$1C,$10,$10,$00,$00,$00,$00,$10,$10,$1C,$00,$00,$00
+  $00,$00,$00,$38,$08,$08,$00,$00,$00,$00,$08,$08,$38,$00,$00,$00
+end data
+
+asm {
+CePick:
+    db $40,$47,$20,$04,$40,$47,$50,$02,$50
+CeBuzz:
+    db $40,$F9,$13,$0C,$40,$F9,$43,$04,$50
+CeLine:
+    db $40,$71,$20,$02,$40,$55,$30,$03,$50
+CeBox:
+    db $40,$D6,$10,$03,$40,$BF,$10,$03,$40,$AA,$10,$03,$40,$A0,$10,$03,$40,$8F,$10,$03,$40,$7F,$10,$03
+    db $40,$6B,$20,$06,$50
+CeThink:
+    db $00,$00,$45,$03,$00,$00,$76,$02,$00,$00,$54,$04,$00,$00,$86,$02,$00,$00,$45,$03,$00,$00,$76,$02
+    db $00,$00,$57,$04,$00,$00,$86,$06,$10
+CeCpu:
+    db $40,$40,$20,$02,$40,$50,$20,$02,$40,$5F,$30,$02,$40,$71,$30,$02,$40,$8F,$30,$02,$40,$AA,$40,$04
+    db $50
+CeStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+CeWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$20,$1E
+    db $50
+CeTie:
+    db $40,$AA,$20,$0A,$40,$BF,$20,$0A,$40,$AA,$20,$0A,$40,$D6,$20,$18,$50
+
+CeSoundTable:
+    dw CeTuneMel,$702B
+    dw CeTuneBass,$7035
+    dw CePick,$7049
+    dw CeBuzz,$7049
+    dw CeLine,$7049
+    dw CeBox,$7049
+    dw CeThink,$703F
+    dw CeCpu,$7049
+    dw CeStart,$7049
+    dw CeWin,$7049
+    dw CeTie,$7049
+; Peg by Peg (original)
+; Tiny Sound, 8 frames per step
+CeTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$01,$21,$01,$1E,$01,$1F,$01,$23,$01
+    db $21,$01,$01,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$23,$01,$21,$01
+    db $1F,$01,$1E,$01,$1C,$01,$1F,$01,$23,$01,$1F,$01,$1E,$01,$21,$01
+    db $26,$01,$01,$01,$25,$01,$28,$01,$25,$01,$21,$01,$23,$01,$25,$01
+    db $26,$01,$01,$01,$00,$01,$01
+    db $FF
+CeTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $0E,$01,$15,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$09,$01
+    db $0E,$01,$01,$01,$00,$01,$01
+    db $FF
+}

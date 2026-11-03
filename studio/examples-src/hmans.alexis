@@ -1,0 +1,1046 @@
+cartridge "HAUNTED MANSION/COMPUTE!S GAZETTE/1984"
+
+' HAUNTED MANSION
+' A ColecoVision game based on "Haunted Mansion" by Calvin Overhulser,
+' COMPUTE!'s Gazette, February 1984 (Commodore 64 and VIC-20 + 8K
+' BASIC, disk 1984-02; the disk's copy was retyped by a reader in 1988,
+' whose REM names him as the typist). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/hmans-c64.bas, checked line by line against the VIC-20
+' one, orig/hmans-vic.bas), the game is built for the ColecoVision: a
+' smooth sprite visitor gliding from cell to cell, tiled house, moon,
+' cats, ghosts, bats and spirits, sound effects and an original title tune.
+'
+' The game: the witch is away on her broom. Inside her house (a maze
+' under a pointed roof) she keeps ten yellow cats. Pick up one cat at a
+' time (you turn yellow while carrying it) and bring it to the bottom row
+' of the house; each saved cat sits outside on the grass. Ten saved cats:
+' a new house, one round more. A ghost or a bat makes you jump in fear:
+' it vanishes, you drop the cat you carry (it lands somewhere else in the
+' house), lose points and jump one cell in a random direction. Purple
+' spirits float along the hallways; touching one, or being touched by
+' one, ends the game. The bottom row is safe from spirits. Skill 1-6:
+' 3 x skill ghosts, 3 x skill bats, 2 x skill spirits, and a saved cat is
+' worth 10 x skill x skill points (a fright costs skill x skill, and
+' twice that again if you drop a cat).
+'
+' From the original: the house drawn as a pointed roof over a body, the
+' maze made by a random depth-first carve from the bottom-left cell of a
+' 2-cell grid (the backtrack direction kept in the screen cell itself, as
+' the listing POKEs it), then long corridors opened through it; the
+' visitor starting in the middle of the bottom row; ghosts, bats and cats
+' each placed on an empty cell whose four neighbours are empty or wall,
+' spirits on any empty cell (all in the upper rows); four-way moves; walls
+' stop you; carrying a cat you cannot walk onto another one; reaching the
+' bottom row with a cat saves it; ghost/bat = fright (the creature is
+' gone, the cat dropped on a random empty cell, the points, the random
+' jump, then the new cell is checked again); spirit = gotcha; one random
+' spirit tries one random direction for each step of the game loop, into
+' empty cells only, never into the bottom row, and into the visitor =
+' gotcha; skill counts and points as listed above; ANOTHER VICTIM! with
+' skill, round and score.
+'
+' Liberties: the house is 27 cells wide inside cols 3-29 (C64: 29 in a
+' 40-column screen) under a roof one cell narrower per row, so the extra
+' corridors are new ones on the cell columns (col 16 from the top, cols 12
+' and 20, cols 8 and 24, rows 9, 13, 17 and 21), not the listing's
+' positions. The visitor glides a cell in 8 frames; one spirit moves every
+' 8 frames (the original's one spirit move per pass of its loop, a
+' player step per pass). A diagonal on the stick tries the vertical move,
+' then the horizontal one (the C64 ignored diagonals). Placement gives up
+' its neighbour test after 200 tries (never seen; a safety net). Score is
+' 6 BCD digits; the best score is kept until power-off. No "PLAY AGAIN?":
+' a press goes back to the title.
+'
+' Controls: either controller; the stick moves (hold to keep walking). On
+' the title, up and down choose, left and right change the skill level,
+' a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` always given. Own
+' xorshift random numbers. The spirits change shape every 12 frames.
+
+const TWall = 128
+const TRoofl = 129
+const TRoofr = 130
+const TSky = 131
+const TStar = 132
+const TStar2 = 133
+const TGround = 134
+const TCat = 135
+const TScat = 136
+const TGhost = 137
+const TBat = 138
+const TSpirit = 139
+const TSpirit0 = 140
+const TSpirit1 = 141
+const TMoon00 = 142
+const TMoon01 = 143
+const TMoon10 = 144
+const TMoon11 = 145
+const SMan0 = 0
+const SMan1 = 4
+const SFear = 8
+const SGhostly = 12
+const NTiles8 = 144
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndMeow = 4
+const SndSave = 5
+const SndScare = 6
+const SndGotcha = 7
+const SndHouse = 8
+const SndStart = 9
+const NSpr = 2
+const StepN = 8
+const SpN = 8
+const FearN = 40
+const StartC = 16
+const StartR = 21
+const BotR = 21
+
+record Ghoul:
+  u8 C
+  u8 R
+end record
+
+' four directions: up, right, down, left (255 = -1)
+data DcT bytes
+  0, 1, 0, 255
+end data
+data DrT bytes
+  255, 0, 1, 0
+end data
+' maze carving steps (the listing's A(0..3): right, up, left, down)
+data McT bytes
+  2, 0, 254, 0
+end data
+data MrT bytes
+  0, 254, 0, 2
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+' the game
+u8 Skill = 1
+u8 Round = 0
+bcd digits 6 Score = 0
+bcd digits 6 Best = 0
+u8 Pts = 1
+u8 Saved = 0
+u8 Carry = 0
+u8 NSp = 2
+u8 Over = 0
+Ghoul Sp[12]
+' the visitor: cell, sprite corner, direction, frames left of the glide,
+' what happens when it ends (1 cat, 2 save, 3 fright, 4 gotcha), look
+u8 Pc = 16
+u8 Pr = 21
+u8 Px = 0
+u8 Py = 0
+u8 Pd = 0
+u8 Ph = 0
+u8 Pend = 0
+u8 Look = 0
+u8 ManOn = 0
+u8 SpT = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 GameOn = 0
+u8 Busy = 0
+u8 TitleOn = 0
+u8 Frights = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+
+  tile screen
+  set sound table HmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  GameOn = 0
+  EndMessage
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  u8 Moved = 0
+  AnimSpirits
+  if Ph > 0 then
+    Glide
+  else
+    V = J1 | J2
+    if (V & 3) > 0 then
+      Pd = 0
+      if (V & 2) > 0 then Pd = 2
+      Moved = TryStep
+    end if
+    if Moved = 0 then
+      if (V & 12) > 0 then
+        Pd = 3
+        if (V & 8) > 0 then Pd = 1
+        Moved = TryStep
+      end if
+    end if
+  end if
+  if Over > 0 then return
+  inc SpT
+  if SpT >= SpN then
+    SpT = 0
+    if Busy = 0 then MoveSpirit
+  end if
+  return
+end sub
+
+' x 0..n-1 from the xorshift (the high byte of low byte x n)
+function RandN(u8 N) as u8
+  u16 Prod = 0
+  Rand
+  Prod = lowbyte Rs
+  Prod = Prod * N
+  return highbyte Prod
+
+function Solid(u8 Tl) as u8
+  select case Tl
+  case TWall to TGround
+    return 1
+  case TScat
+    return 1
+  end select
+  return 0
+
+' a step in direction Pd from the visitor's cell (the listing's collision
+' check, lines 405-425): 1 when he moves
+function TryStep() as u8
+  Qc = Pc + DcT[Pd]
+  Qr = Pr + DrT[Pd]
+  T = get char at Qc,Qr
+  if Solid(T) = 1 then return 0
+  if Carry = 1 then
+    if Qr = BotR then
+      Pend = 2
+    elseif T = TCat then
+      return 0
+    end if
+  end if
+  if Pend = 0 then
+    select case T
+    case TCat
+      Pend = 1
+    case TGhost, TBat
+      Pend = 3
+    case TSpirit
+      Pend = 4
+    case else
+      play sound SndStep
+    end select
+  end if
+  Pc = Qc
+  Pr = Qr
+  Ph = StepN
+  return 1
+
+' the glide: one pixel a frame; at the end of the step, what was met
+sub Glide:
+  u8 Ev = 0
+  Px = Px + DcT[Pd]
+  Py = Py + DrT[Pd]
+  dec Ph
+  if Ph > 0 then return
+  Ev = Pend
+  Pend = 0
+  select case Ev
+  case 1
+    put char 32 at Pc,Pr
+    Carry = 1
+    play sound SndMeow
+  case 2
+    SaveCat
+  case 3
+    Fright
+  case 4
+    Gotcha
+  end select
+  return
+end sub
+
+sub SaveCat:
+  u8 Li = 0
+  Carry = 0
+  inc Saved
+  V = Saved + 18
+  put char TScat at V,22
+  for Li = 1 to 10
+    Score += Pts
+  next
+  ShowScore
+  play sound SndSave
+  if Saved < 10 then return
+  ' ten cats: a new house
+  Busy = 1
+  DrawSprites
+  print at 11,11, " NEW HOUSE "
+  for Li = 1 to 90
+    Frame1
+    AnimSpirits
+  next
+  BuildHouse
+  Busy = 0
+  return
+end sub
+
+' less points, never below zero
+sub LosePts:
+  ' (BCD subtraction stops at zero)
+  Score -= Pts
+  return
+end sub
+
+' a ghost or a bat: it is gone, the cat dropped somewhere else, points
+' lost, a jump in a random direction (lines 1800-1870)
+sub Fright:
+  Busy = 1
+  inc Frights
+  put char 32 at Pc,Pr
+  if Carry = 1 then
+    Carry = 0
+    PickFree
+    put char TCat at Qc,Qr
+    LosePts
+    LosePts
+  end if
+  Look = 1
+  DrawSprites
+  play sound SndScare
+  for Gi = 1 to FearN
+    Frame1
+    AnimSpirits
+    Y = Py - 1
+    if Gi < 20 then
+      V = Gi >> 1
+      Y = Y - V
+    else
+      V = 20 - Gi
+      V = V >> 1
+      Y = Y - 10 + V
+    end if
+    set sprite 0 to Y,Px,SFear,15
+    update sprites
+  next
+  Look = 0
+  LosePts
+  ShowScore
+  Pd = RandN(4)
+  T = TryStep
+  Busy = 0
+  return
+end sub
+
+' a spirit: four flashes between him and the spirit, then the end
+sub Gotcha:
+  Busy = 1
+  mute all
+  play sound SndGotcha
+  for Gi = 1 to 4
+    Look = 2
+    DrawSprites
+    for Ri = 1 to 15
+      Frame1
+    next
+    Look = 0
+    DrawSprites
+    for Ri = 1 to 15
+      Frame1
+    next
+  next
+  Look = 2
+  DrawSprites
+  for Ri = 1 to 30
+    Frame1
+  next
+  Over = 1
+  return
+end sub
+
+' one spirit, picked at random, tries one random direction (lines 600-660)
+sub MoveSpirit:
+  K = RandN(NSp)
+  D = RandN(4)
+  C = Sp[K].C
+  Y = Sp[K].R
+  Qc = C + DcT[D]
+  Qr = Y + DrT[D]
+  if Qr = BotR then return
+  if Qc = Pc and Qr = Pr then
+    ' into the visitor: at once when he stands, else when his step ends
+    if Ph = 0 then
+      Gotcha
+    else
+      Pend = 4
+    end if
+    return
+  end if
+  T = get char at Qc,Qr
+  if T <> 32 then return
+  put char 32 at C,Y
+  put char TSpirit at Qc,Qr
+  Sp[K].C = Qc
+  Sp[K].R = Qr
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the house
+
+' the visitor's sprite corner from his cell
+sub ManAt:
+  Px = Pc << 3
+  V = Pr << 3
+  Py = V
+  Ph = 0
+  return
+end sub
+
+' a random empty cell of the upper house, rows 3-19 (Qc, Qr)
+sub PickFree:
+  do
+    Qc = RandN(25) + 4
+    Qr = RandN(17) + 3
+    T = get char at Qc,Qr
+  loop until T = 32
+  return
+end sub
+
+function OpenOrWall(u8 Oc, u8 Orow) as u8
+  u8 Tl = 0
+  Tl = get char at Oc,Orow
+  if Tl = 32 or Tl = TWall then return 1
+  return 0
+
+' an empty cell with four empty-or-wall neighbours (line 1700); after 200
+' tries any empty cell
+sub PickRoomy:
+  u8 Tries = 0
+  u8 Ok = 0
+  do
+    PickFree
+    Ok = OpenOrWall(Qc + 1, Qr) + OpenOrWall(Qc - 1, Qr)
+    Ok = Ok + OpenOrWall(Qc, Qr + 1) + OpenOrWall(Qc, Qr - 1)
+    inc Tries
+    if Tries > 200 then Ok = 4
+  loop until Ok = 4
+  return
+end sub
+
+' the sky, the roof and the walls: rows 2-14 the roof (two slope tiles
+' at 17 - r and 15 + r), rows 15-21 the body, row 22 the grass
+sub DrawShell:
+  u8 Lc = 0
+  u8 Wd = 0
+  for Ri = 2 to 21
+    fill TSky count 28 at 2,Ri
+  next
+  for Ri = 2 to 14
+    Lc = 17 - Ri
+    put char TRoofl at Lc,Ri
+    Wd = Ri + Ri - 3
+    fill TWall count Wd at Lc + 1,Ri
+    put char TRoofr at 15 + Ri,Ri
+  next
+  for Ri = 15 to 21
+    fill TWall count 27 at 3,Ri
+  next
+  fill TGround count 28 at 2,22
+  ' stars and the moon with the witch
+  put char TStar at 3,3
+  put char TStar2 at 9,2
+  put char TStar at 5,7
+  put char TStar2 at 11,5
+  put char TStar at 2,11
+  put char TStar2 at 21,2
+  put char TStar at 28,8
+  put char TStar2 at 23,6
+  put char TStar at 29,12
+  put char TMoon00 at 25,3
+  put char TMoon01 at 26,3
+  put char TMoon10 at 25,4
+  put char TMoon11 at 26,4
+  return
+end sub
+
+' the listing's maze carve: from the bottom-left cell, a random direction,
+' two cells on while that cell is still wall; else the next direction; when
+' none is left, back along the direction stored in the cell (0-3; 4 marks
+' the start)
+sub CarveMaze:
+  u8 Ac = 4
+  u8 Ar = 21
+  u8 Bc = 0
+  u8 Br = 0
+  u8 Dj = 0
+  u8 Dx = 0
+  u8 Tl = 0
+  u8 Done = 0
+  put char 4 at Ac,Ar
+  do
+    Dj = RandN(4)
+    Dx = Dj
+    do
+      Bc = Ac + McT[Dj]
+      Br = Ar + MrT[Dj]
+      Tl = get char at Bc,Br
+      if Tl = TWall then
+        put char Dj at Bc,Br
+        Bc = Ac + DcT[Dj ^ 1]
+        Br = Ar + DrT[Dj ^ 1]
+        put char 32 at Bc,Br
+        Ac = Ac + McT[Dj]
+        Ar = Ar + MrT[Dj]
+        Dx = 9
+      else
+        Dj = (Dj + 1) & 3
+      end if
+    loop until Dx = 9 or Dj = Dx
+    if Dx <> 9 then
+      ' a dead end: go back
+      Tl = get char at Ac,Ar
+      put char 32 at Ac,Ar
+      if Tl < 4 then
+        Ac = Ac - McT[Tl]
+        Ar = Ar - MrT[Tl]
+      else
+        Done = 1
+      end if
+    end if
+  loop until Done = 1
+  return
+end sub
+
+' the long corridors (a vertical line from row Top to row 21 at col Col)
+sub VLine(u8 Col, u8 Top)
+  for Ri = Top to 21
+    put char 32 at Col,Ri
+  next
+  return
+end sub
+
+sub BuildHouse:
+  u8 Ii = 0
+  u8 Lim = 0
+  NewScreen
+  inc Round
+  Saved = 0
+  Carry = 0
+  Pend = 0
+  Look = 0
+  SpT = 0
+  DrawShell
+  CarveMaze
+  VLine(16, 3)
+  VLine(12, 7)
+  VLine(20, 7)
+  VLine(8, 11)
+  VLine(24, 11)
+  fill 32 count 15 at 9,9
+  fill 32 count 23 at 5,13
+  fill 32 count 25 at 4,17
+  fill 32 count 25 at 4,21
+  ' ghosts, bats, cats with room round them; spirits anywhere
+  Lim = Skill * 3
+  for Ii = 1 to Lim
+    PickRoomy
+    put char TGhost at Qc,Qr
+  next
+  for Ii = 1 to Lim
+    PickRoomy
+    put char TBat at Qc,Qr
+  next
+  for Ii = 1 to 10
+    PickRoomy
+    put char TCat at Qc,Qr
+  next
+  for Ii = 0 to NSp - 1
+    PickFree
+    put char TSpirit at Qc,Qr
+    Sp[Ii].C = Qc
+    Sp[Ii].R = Qr
+  next
+  ShowHud
+  Pc = StartC
+  Pr = StartR
+  ManAt
+  ManOn = 1
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  return
+end sub
+
+sub NewGame:
+  Round = 0
+  Score = 0
+  Over = 0
+  Busy = 0
+  Frights = 0
+  Pts = Skill * Skill
+  NSp = Skill * 2
+  BuildHouse
+  Rearm
+  wait no fire
+  nmi off
+  GameOn = 1
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the spirits' two shapes, copied over their tile every 12 frames
+sub AnimSpirits:
+  inc AnimT
+  if AnimT < 12 then return
+  AnimT = 0
+  V = AnimF + 1
+  AnimF = V & 1
+  W16 = TSpirit0 - 128 + AnimF
+  W16 = W16 << 3
+  A16 = TSpirit << 3
+  copy TilePat + W16 count 8 to vram.pattern + A16
+  copy TilePat + W16 count 8 to vram.pattern + 2048 + A16
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  return
+end sub
+
+' sprite 0 the visitor: white, yellow with a cat; walking shape while
+' gliding; the spirit's shape in the gotcha flashes
+sub DrawSprites:
+  u8 Pat = SMan0
+  u8 Col = 15
+  if ManOn = 0 then
+    set sprite 0 to 192,0,0,0
+    update sprites
+    return
+  end if
+  if Ph > 0 then
+    if (Ph & 4) > 0 then Pat = SMan1
+  end if
+  if Carry = 1 then Col = 11
+  if Look = 1 then Pat = SFear
+  if Look = 2 then
+    Pat = SGhostly
+    Col = 13
+  end if
+  Y = Py - 1
+  set sprite 0 to Y,Px,Pat,Col
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  print at 2,1, "ROUND"
+  NumU = Round
+  print at 8,1, digits$(NumU, 2)
+  print at 11,1, "SCORE"
+  ShowScore
+  print at 25,1, "SK"
+  NumU = Skill
+  print at 28,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowScore:
+  print Score at 17,1
+  return
+end sub
+
+sub EndMessage:
+  mute all
+  ManOn = 0
+  DrawSprites
+  for Ri = 7 to 15
+    fill 32 count 22 at 5,Ri
+  next
+  print at 8,8, "ANOTHER VICTIM!"
+  print at 8,10, "SKILL LEVEL"
+  NumU = Skill
+  print at 20,10, digits$(NumU, 1)
+  print at 8,12, "ROUND"
+  NumU = Round
+  print at 14,12, digits$(NumU, 2)
+  print at 8,13, "SCORE"
+  print Score at 14,13
+  if Score > Best then
+    Best = Score
+    print at 9,14, "BEST SCORE!"
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the rules, the four creatures, the skill level, START /
+' CREDITS; the tune once
+sub TitlePage:
+  NewScreen
+  ManOn = 0
+  TitleOn = 1
+  fill TWall count 28 at 2,1
+  print at 8,2, "HAUNTED MANSION"
+  fill TWall count 28 at 2,3
+  print at 2,5, "THE WITCH IS AWAY ON HER"
+  print at 2,6, "BROOM. SAVE THE TEN YELLOW"
+  print at 2,7, "CATS IN HER HOUSE: CARRY"
+  print at 2,8, "ONE AT A TIME TO THE BOTTOM"
+  print at 2,9, "ROW. GHOSTS AND BATS SCARE"
+  print at 2,10, "YOU: YOU DROP THE CAT AND"
+  print at 2,11, "LOSE POINTS. A SPIRIT IS"
+  print at 2,12, "DEADLY. BOTTOM ROW IS SAFE."
+  put char TCat at 2,14
+  print at 3,14, "CAT"
+  put char TGhost at 8,14
+  print at 9,14, "GHOST"
+  put char TBat at 16,14
+  print at 17,14, "BAT"
+  put char TSpirit at 22,14
+  print at 23,14, "SPIRIT"
+  print at 6,16, "SKILL LEVEL  <   >"
+  print at 6,17, "START"
+  print at 6,18, "CREDITS"
+  print at 6,21, "GAZETTE FEB 1984"
+  Menu = 1
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  AnimSpirits
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 and Menu > 0 then dec Menu
+      if V = 2 and Menu < 2 then inc Menu
+      if V = 4 and Skill > 1 then dec Skill
+      if V = 8 and Skill < 6 then inc Skill
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 16 to 18
+    put char 32 at 4,J
+  next
+  J = Menu + 16
+  put char 62 at 4,J
+  NumU = Skill
+  print at 21,16, digits$(NumU, 1)
+  print at 6,19, "BEST"
+  print Best at 11,19
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "HAUNTED MANSION"
+  print at 2,5, "BASED ON HAUNTED MANSION"
+  print at 2,6, "BY CALVIN OVERHULSER,"
+  print at 2,7, "COMPUTE!'S GAZETTE"
+  print at 2,8, "FEBRUARY 1984 (COMMODORE"
+  print at 2,9, "64 AND VIC-20)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: WITCH'S CATS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $10,$10,$00,$40,$40,$00,$04,$04
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$42,$00,$10,$00,$04,$40,$00
+  $44,$83,$54,$83,$C6,$86,$82,$81
+  $44,$83,$54,$83,$C6,$86,$82,$81
+  $C3,$81,$24,$24,$00,$18,$00,$49
+  $00,$81,$2A,$00,$00,$A5,$00,$00
+  $C3,$81,$24,$00,$18,$81,$A5,$92
+  $C3,$81,$24,$00,$18,$81,$A5,$92
+  $C3,$81,$24,$00,$18,$81,$A5,$49
+  $07,$E0,$C0,$80,$80,$01,$00,$41
+  $E0,$07,$03,$41,$E1,$F0,$E0,$F0
+  $9C,$00,$E1,$C0,$C0,$E0,$07,$00
+  $07,$00,$E1,$C3,$1C,$07,$E0,$00
+end data
+data TileCol bytes
+  $45,$45,$04,$45,$45,$04,$45,$45
+  $51,$51,$51,$15,$15,$15,$15,$05
+  $51,$51,$51,$51,$15,$15,$15,$05
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $0C,$2C,$0C,$2C,$0C,$2C,$2C,$0C
+  $B1,$1B,$B1,$1B,$1B,$1B,$1B,$1B
+  $BC,$CB,$BC,$CB,$CB,$CB,$CB,$CB
+  $1F,$1F,$1F,$1F,$0F,$1F,$0F,$1F
+  $01,$31,$13,$03,$03,$13,$01,$01
+  $1D,$1D,$1D,$0D,$1D,$1D,$1D,$D1
+  $1D,$1D,$1D,$0D,$1D,$1D,$1D,$D1
+  $1D,$1D,$1D,$0D,$1D,$1D,$D1,$D1
+  $B1,$1B,$1B,$1B,$1B,$1B,$0B,$1B
+  $B1,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$01,$1B,$1B,$1B,$1B,$B1,$01
+  $B1,$01,$1B,$1B,$B1,$1B,$B1,$01
+end data
+data SpritePat bytes
+  $18,$18,$3C,$5A,$18,$24,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$7E,$18,$18,$18,$24,$22,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $99,$5A,$3C,$18,$18,$24,$42,$81,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$DB,$FF,$E7,$7E,$5A,$92,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+HmStep:
+    db $40,$53,$61,$01,$40,$7C,$81,$01,$50
+HmMeow:
+    db $40,$8F,$20,$02,$40,$71,$20,$02,$40,$5F,$30,$03,$40,$6B,$40,$03,$50
+HmSave:
+    db $40,$D6,$20,$03,$40,$AA,$20,$03,$40,$8F,$20,$03,$40,$6B,$20,$08,$50
+HmScare:
+    db $40,$50,$10,$03,$40,$7C,$20,$03,$40,$50,$30,$03,$40,$7C,$40,$03,$40,$56,$50,$03,$40,$84,$60,$03
+    db $40,$5D,$70,$03,$40,$8C,$90,$06,$50
+HmGotcha:
+    db $40,$F9,$13,$09,$40,$FF,$F3,$05,$40,$FF,$13,$09,$40,$FF,$F3,$05,$40,$FF,$13,$09,$40,$FF,$F3,$05
+    db $40,$FF,$13,$0C,$40,$FF,$F3,$14,$50
+HmHouse:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$AA,$20,$05,$40,$6B,$20,$0E
+    db $50
+HmStart:
+    db $40,$FE,$20,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$7F,$20,$0E,$50
+
+HmSoundTable:
+    dw HmTuneMel,$702B
+    dw HmTuneBass,$7035
+    dw HmStep,$7049
+    dw HmMeow,$7049
+    dw HmSave,$7049
+    dw HmScare,$7049
+    dw HmGotcha,$7049
+    dw HmHouse,$7049
+    dw HmStart,$7049
+; Witch's Cats (original)
+; Tiny Sound, 8 frames per step
+HmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$01,$23,$01,$22,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$1A,$01,$1E,$01,$21,$01,$20,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$18,$01,$1C,$01,$1F,$01,$23,$21,$1F,$01,$1E,$01
+    db $1B,$01,$1E,$01,$23,$01,$21,$1F,$1E,$01,$1B,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+HmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$1C,$01,$17,$01,$10,$01,$17,$01
+    db $1C,$01,$17,$01,$0E,$01,$15,$01,$1A,$01,$15,$01,$0E,$01,$15,$01
+    db $1A,$01,$15,$01,$0C,$01,$13,$01,$18,$01,$13,$01,$0B,$01,$12,$01
+    db $17,$01,$12,$01,$0B,$01,$12,$01,$17,$01,$0F,$01,$10,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

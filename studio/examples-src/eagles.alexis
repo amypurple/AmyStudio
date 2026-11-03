@@ -1,0 +1,1359 @@
+cartridge "EAGLES AND GATORS/COMPUTE!'S GAZETTE/1986"
+
+' EAGLES AND GATORS
+' Ported from "Eagles And Gators", COMPUTE!'s Gazette, September 1986
+' (Commodore 64, machine language, SYS 2076; no author is named on the
+' disk). Made for the ColecoVision in Amy (the language by Amy Bienvenu)
+' by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' The rules, read from the disassembly (orig/e4000.dis) and seen in jsc64:
+' the screen is cut in two by a border, sky above (eight eagles) and swamp
+' below (eight gators), one creature of each kind in each of eight
+' columns. Free creatures fly or swim up and down at one speed, turning at
+' the border and at the far edge. Each player has one selected creature
+' (stick left/right picks another, wrapping round) and the button:
+'  - free and touching the border: it CLAMPS to the border, and knocks
+'    the other side's clamped creature in the same column loose (it
+'    swims or flies off, away from the border);
+'  - free and not at the border: it turns back, away from the border;
+'  - clamped: it lets go and goes back to the far edge.
+' Every 16 pixels of creature travel the border moves one pixel towards
+' the side with fewer clamped creatures, carrying the clamped ones; a
+' side pushed to its edge loses. Skill 1-9 sets the speed.
+'
+' Made for this machine: smooth 16 x 16 sprites in 1/16 pixel steps at
+' 60 frames a second; the border drawn in tiles with a pixel-exact line;
+' selector arrows; counts of clamped creatures on top; an original title
+' tune ("High Wire Swamp", played once) and sound effects.
+'
+' Liberties:
+'  - one player against the computer's gators (the C64 game needs two;
+'    at low skills the computer rests longer after a press and presses
+'    too early more often); two players as in the original;
+'  - the C64 put the eagles in joystick port 2 and the gators in port 1:
+'    here the eagles take joystick 1 (either joystick with one player);
+'  - the clamping window is six pixels before and after the turn (the C64
+'    allowed about three, read every 61 passes), the stick and button are
+'    read every frame, and one press does one thing (holding the button
+'    on the C64 repeated it);
+'  - the speeds: the C64 ran from about 0.9 to 4 pixels a frame (skill 1
+'    to 9, timed in jsc64); here 0.6 to 1.9, scaled to the smaller screen
+'    and kept humanly playable;
+'  - a clamped creature tires and lets go by itself after 15 seconds
+'    (shown in a paler colour for the last 3): with eight against eight
+'    clamped the C64 game could stand still for ever;
+'  - the C64 flashed the selected creature in cycling colours: here it is
+'    steady white, with an arrow over (or under) its column.
+'
+' Controls: stick left/right picks a creature, either button acts.
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TSky = 128
+const TSky2 = 129
+const TSwamp = 130
+const TSwamp2 = 131
+const TB0000 = 132
+const TB0001 = 133
+const TB0010 = 134
+const TB0011 = 135
+const TB0100 = 136
+const TB0101 = 137
+const TB0110 = 138
+const TB0111 = 139
+const TB1000 = 140
+const TB1001 = 141
+const TB1010 = 142
+const TB1011 = 143
+const TB1100 = 144
+const TB1101 = 145
+const TB1110 = 146
+const TB1111 = 147
+const TB2000 = 148
+const TB2001 = 149
+const TB2010 = 150
+const TB2011 = 151
+const TB2100 = 152
+const TB2101 = 153
+const TB2110 = 154
+const TB2111 = 155
+const TB3000 = 156
+const TB3001 = 157
+const TB3010 = 158
+const TB3011 = 159
+const TB3100 = 160
+const TB3101 = 161
+const TB3110 = 162
+const TB3111 = 163
+const TB4000 = 164
+const TB4001 = 165
+const TB4010 = 166
+const TB4011 = 167
+const TB4100 = 168
+const TB4101 = 169
+const TB4110 = 170
+const TB4111 = 171
+const TB5000 = 172
+const TB5001 = 173
+const TB5010 = 174
+const TB5011 = 175
+const TB5100 = 176
+const TB5101 = 177
+const TB5110 = 178
+const TB5111 = 179
+const TB6000 = 180
+const TB6001 = 181
+const TB6010 = 182
+const TB6011 = 183
+const TB6100 = 184
+const TB6101 = 185
+const TB6110 = 186
+const TB6111 = 187
+const TB7000 = 188
+const TB7001 = 189
+const TB7010 = 190
+const TB7011 = 191
+const TB7100 = 192
+const TB7101 = 193
+const TB7110 = 194
+const TB7111 = 195
+const TEc00 = 196
+const TEc01 = 197
+const TEc10 = 198
+const TEc11 = 199
+const TEt00 = 200
+const TEt01 = 201
+const TEt10 = 202
+const TEt11 = 203
+const TGc00 = 204
+const TGc01 = 205
+const TGc10 = 206
+const TGc11 = 207
+const TGt00 = 208
+const TGt01 = 209
+const TGt10 = 210
+const TGt11 = 211
+const TDark = 212
+const TCliff = 213
+const TMud = 214
+const SEagle1 = 0
+const SEagle2 = 4
+const SEaglec = 8
+const SGator1 = 12
+const SGator2 = 16
+const SGatorc = 20
+const SDown = 24
+const SUp = 28
+const NTiles8 = 696
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndChomp = 3
+const SndPush = 4
+const SndClamp = 5
+const SndWin = 6
+const SndMiss = 7
+const SndFree = 8
+const SndTick = 9
+const SndBump = 10
+
+' the field: FT the eagles' top row, FB the row under the gators' room;
+' the border line B moves between BTop (gators win) and BBot (eagles win)
+const FT = 24
+const FB = 168
+const GBot = 152
+const BTop = 44
+const BBot = 148
+const BStart = 96
+const Win = 6
+const GripT = 225
+const Tired = 45
+const RelE = 30
+const RelG = 146
+const NoTgt = 255
+
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' a creature: its top row, its way (-1 up, 1 down, 0 clamped) and the
+' grip left (one step every 4 frames)
+record Beast:
+  u8 Y
+  i8 D
+  u8 Grip
+end record
+Beast Eg[8]
+Beast Gt[8]
+
+' speeds in 1/16 pixel a frame for skill 1-9
+data SpTab bytes
+  0,10,12,14,16,18,20,23,26,30
+end data
+
+u8 B = BStart
+u8 EMax = 78
+u8 GMin = 99
+u8 NE = 0
+u8 NG = 0
+u8 Acc = 0
+u8 BAcc = 0
+u8 Steps = 0
+u8 Sp = 14
+u8 Skill = 3
+u8 Np = 1
+u8 Winner = 0
+u8 Playing = 0
+' Dirty: the clamped creatures changed, redraw the border's band
+u8 Dirty = 0
+' Drew: the border's row was drawn this pass (no queued row then)
+u8 Drew = 0
+u8 Sel[2]
+u8 Rep[2]
+u8 Held[2]
+i8 InX[2]
+u8 InF[2]
+u8 WasF[2]
+' the computer's gators: target column, frames to the next look, how
+' near the border it presses
+u8 Tgt = NoTgt
+u8 Think = 0
+u8 Aim = 3
+u8 Cool = 0
+i8 CpuX = 0
+u8 CpuF = 0
+u16 Rs = $5A3C
+u16 T16 = 0
+u8 RowBuf[28]
+' rows of the field waiting to be redrawn
+u8 RowQ[21]
+
+' work
+u8 I = 0
+u8 Pl = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 Menu = 0
+u8 Tick = 0
+' Idle: 1 while the play loop waits for the next frame (bots read then)
+u8 Idle = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u16 NumU = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table EgSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+new_game:
+  SetupGame
+  DrawField
+  DrawBeasts
+  ShowScreen
+  play sound SndFree
+  Playing = 1
+
+play_loop:
+  Frame1
+  ReadSticks
+  if Np = 1 then Brain
+  for Pl = 0 to 1
+    Steer(Pl)
+  next
+  MoveBeasts
+  if Tick & 3 = 0 then Grips
+  if Dirty = 1 then
+    V = B >> 3
+    DrawBand(V)
+    ShowCounts
+    Dirty = 0
+  end if
+  if Drew = 0 then DrawQueued
+  Drew = 0
+  DrawBeasts
+  if Winner = 0 then goto play_loop
+
+game_over:
+  Playing = 2
+  fill 32 count 28 at 2,22
+  if Winner = 1 then
+    print at 7,22, "THE EAGLES WIN!"
+  else
+    print at 7,22, "THE GATORS WIN!"
+  end if
+  play sound SndWin
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' SetupGame: the C64's start: eagles and gators staggered, alternately
+' going up and down, nothing clamped, the border in the middle
+sub SetupGame:
+  B = BStart
+  SetLimits
+  NE = 0
+  NG = 0
+  Acc = 0
+  BAcc = 0
+  Winner = 0
+  Sp = SpTab[Skill]
+  for I = 0 to 7
+    Eg[I].Y = FT + 4 + I * 6
+    Gt[I].Y = GBot - 4 - I * 6
+    V = I & 1
+    if V = 0 then
+      Eg[I].D = 1
+      Gt[I].D = -1
+    else
+      Eg[I].D = -1
+      Gt[I].D = 1
+    end if
+    Eg[I].Grip = 0
+    Gt[I].Grip = 0
+  next
+  Sel[0] = 3
+  Sel[1] = 4
+  for Pl = 0 to 1
+    Rep[Pl] = 0
+    Held[Pl] = 0
+    WasF[Pl] = 1
+  next
+  Tgt = NoTgt
+  Think = 0
+  Cool = 0
+  NewAim
+  return
+end sub
+
+sub SetLimits:
+  EMax = B - 18
+  GMin = B + 3
+  return
+end sub
+
+' ReadSticks: eagles on joystick 1 (either one with one player), gators
+' on joystick 2; InF is a new press of either button
+sub ReadSticks:
+  for Pl = 0 to 1
+    InX[Pl] = 0
+    InF[Pl] = 0
+  next
+  K = 0
+  N = 0
+  if joypad(1).left then InX[0] = -1
+  if joypad(1).right then InX[0] = 1
+  if joypad(1).fire then K = 1
+  if joypad(2).left then InX[1] = -1
+  if joypad(2).right then InX[1] = 1
+  if joypad(2).fire then N = 1
+  if Np = 1 then
+    if InX[0] = 0 then InX[0] = InX[1]
+    K = K | N
+    InX[1] = CpuX
+    N = CpuF
+  end if
+  if K = 1 then
+    if WasF[0] = 0 then InF[0] = 1
+  end if
+  if N = 1 then
+    if WasF[1] = 0 then InF[1] = 1
+  end if
+  WasF[0] = K
+  WasF[1] = N
+  return
+end sub
+
+' Steer(P): the stick picks a creature (at once, then every 8 frames
+' while held), the button acts on it
+sub Steer(u8 P):
+  if Rep[P] > 0 then Rep[P] = Rep[P] - 1
+  if InX[P] = 0 then
+    Held[P] = 0
+    Rep[P] = 0
+  else
+    if Rep[P] = 0 then
+      if InX[P] = 1 then
+        Sel[P] = (Sel[P] + 1) & 7
+      else
+        Sel[P] = (Sel[P] + 7) & 7
+      end if
+      if Held[P] = 0 then
+        Rep[P] = 14
+      else
+        Rep[P] = 8
+      end if
+      Held[P] = 1
+      if P = 0 then play sound SndTick
+      if Np = 2 then play sound SndTick
+    end if
+  end if
+  if InF[P] = 1 then
+    if P = 0 then
+      ActEagle(Sel[0])
+    else
+      ActGator(Sel[1])
+    end if
+  end if
+  return
+end sub
+
+' ActEagle(E): clamp (and knock the gator below loose), turn back, or let go
+sub ActEagle(u8 E):
+  select case Eg[E].D
+  case 0
+    Eg[E].Y = RelE
+    Eg[E].D = -1
+    dec NE
+    Dirty = 1
+    play sound SndFree
+  case else
+    if Eg[E].Y + Win >= EMax then
+      Eg[E].Y = EMax
+      Eg[E].D = 0
+      Eg[E].Grip = GripT
+      inc NE
+      Dirty = 1
+      if Gt[E].D = 0 then
+        Gt[E].D = 1
+        dec NG
+        Dirty = 1
+    Dirty = 1
+      end if
+      play sound SndClamp
+    else
+      Eg[E].D = -1
+      play sound SndMiss
+    end if
+  end select
+  return
+end sub
+
+sub ActGator(u8 G):
+  if Gt[G].D = 0 then
+    Gt[G].Y = RelG
+    Gt[G].D = 1
+    dec NG
+    Dirty = 1
+    play sound SndFree
+  elseif Gt[G].Y <= GMin + Win then
+    Gt[G].Y = GMin
+    Gt[G].D = 0
+    Gt[G].Grip = GripT
+    inc NG
+    Dirty = 1
+    if Eg[G].D = 0 then
+      Eg[G].D = -1
+      dec NE
+    Dirty = 1
+    end if
+    play sound SndChomp
+  else
+    Gt[G].D = 1
+    play sound SndMiss
+  end if
+  return
+end sub
+
+' MoveBeasts: the speed in 1/16 pixels; each whole pixel moves every free
+' creature one pixel, and every 16 pixels the border shifts
+sub MoveBeasts:
+  Acc = Acc + Sp
+  Steps = Acc >> 4
+  Acc = Acc & 15
+  while Steps > 0
+    StepAll
+    inc BAcc
+    if BAcc >= 16 then
+      BAcc = 0
+      ShiftBorder
+    end if
+    dec Steps
+  end while
+  return
+end sub
+
+sub StepAll:
+  u8 Ly = 0
+  i8 Ld = 0
+  for I = 0 to 7
+    Ly = Eg[I].Y
+    Ld = Eg[I].D
+    select case Ld
+    case 1
+      if Ly >= EMax then
+        Ld = -1
+        if I = Sel[0] then play sound SndBump
+      else
+        inc Ly
+      end if
+    case -1
+      if Ly <= FT then
+        Ld = 1
+      else
+        dec Ly
+      end if
+    end select
+    Eg[I].Y = Ly
+    Eg[I].D = Ld
+    Ly = Gt[I].Y
+    Ld = Gt[I].D
+    if Ld = -1 then
+      if Ly <= GMin then
+        Ld = 1
+        if I = Sel[1] then play sound SndBump
+      else
+        dec Ly
+      end if
+    elseif Ld = 1 then
+      if Ly >= GBot then
+        Ld = -1
+      else
+        inc Ly
+      end if
+    end if
+    Gt[I].Y = Ly
+    Gt[I].D = Ld
+  next
+  return
+end sub
+
+' ShiftBorder: one pixel towards the side with fewer clamped creatures;
+' the clamped ones ride along, free ones in the way are pushed back
+sub ShiftBorder:
+  if NE = NG then return
+  Ri = B >> 3
+  if NE > NG then
+    inc B
+    SetLimits
+    for I = 0 to 7
+      if Eg[I].D = 0 then Eg[I].Y = EMax
+      if Gt[I].D = 0 then Gt[I].Y = GMin
+      if Gt[I].Y < GMin then
+        Gt[I].Y = GMin
+        Gt[I].D = 1
+      end if
+    next
+  else
+    dec B
+    SetLimits
+    for I = 0 to 7
+      if Eg[I].D = 0 then Eg[I].Y = EMax
+      if Gt[I].D = 0 then Gt[I].Y = GMin
+      if Eg[I].Y > EMax then
+        Eg[I].Y = EMax
+        Eg[I].D = -1
+      end if
+    next
+  end if
+  V = B >> 3
+  DrawRow(V)
+  Drew = 1
+  if V <> Ri then
+    DrawBand(Ri)
+    DrawBand(V)
+    RowQ[V] = 0
+  end if
+  if B >= BBot then Winner = 1
+  if B <= BTop then Winner = 2
+  play sound SndPush
+  return
+end sub
+
+' Grips: every 4 frames; a clamped creature that has held for 15
+' seconds lets go and moves off
+sub Grips:
+  for I = 0 to 7
+    if Eg[I].D = 0 then
+      Eg[I].Grip = Eg[I].Grip - 1
+      if Eg[I].Grip = Tired - 1 then Dirty = 1
+      if Eg[I].Grip = 0 then
+        Eg[I].D = -1
+        dec NE
+        Dirty = 1
+    Dirty = 1
+      end if
+    end if
+    if Gt[I].D = 0 then
+      Gt[I].Grip = Gt[I].Grip - 1
+      if Gt[I].Grip = Tired - 1 then Dirty = 1
+      if Gt[I].Grip = 0 then
+        Gt[I].D = 1
+        dec NG
+        Dirty = 1
+    Dirty = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' the computer's gators: look for the gator that will reach the border
+' first (counting the steps to move the arrow there), go to it, press
+' when it is near the border (a random distance, sometimes too early)
+sub Brain:
+  CpuX = 0
+  CpuF = 0
+  if Cool > 0 then dec Cool
+  if Think > 0 then
+    dec Think
+  else
+    Think = 10
+    Tgt = BestGator()
+  end if
+  if Tgt <> NoTgt then CpuGo
+  return
+end sub
+
+sub CpuGo:
+  if Gt[Tgt].D = 0 then
+    Think = 0
+  elseif Sel[1] <> Tgt then
+    V = (Tgt - Sel[1]) & 7
+    if V <= 4 then
+      CpuX = 1
+    else
+      CpuX = -1
+    end if
+  elseif Cool = 0 then
+    if Gt[Tgt].D = -1 then
+      V = GMin + Aim
+      if Gt[Tgt].Y <= V then
+        CpuF = 1
+        ' a slower computer at low skill: it rests after each press
+        Cool = 9 - Skill
+        Cool = Cool * 8 + 20
+        Think = 0
+        NewAim
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub NewAim:
+  Rnd16
+  V = (10 - Skill) / 2
+  V = V + Win + 1
+  Aim = Rs mod V
+  return
+end sub
+
+' BestGator: the free gator with the least travel to the border, the
+' arrow's steps counted at 12 pixels each (NoTgt when none is free)
+function BestGator as u8
+  u16 Best = 65535
+  u16 Dist = 0
+  u8 Bi = NoTgt
+  u8 Gi = 0
+  u8 Cs = 0
+  for Gi = 0 to 7
+    if Gt[Gi].D <> 0 then
+      if Gt[Gi].D = -1 then
+        Dist = Gt[Gi].Y - GMin
+      else
+        Dist = GBot - Gt[Gi].Y
+        Dist = Dist + GBot - GMin
+      end if
+      Cs = (Gi - Sel[1]) & 7
+      if Cs > 4 then Cs = 8 - Cs
+      Dist = Dist + Cs * 12
+      if Dist < Best then
+        Best = Dist
+        Bi = Gi
+      end if
+    end if
+  next
+  return Bi
+
+sub Rnd16:
+  T16 = Rs << 7
+  Rs = Rs ^ T16
+  T16 = Rs >> 9
+  Rs = Rs ^ T16
+  T16 = Rs << 8
+  Rs = Rs ^ T16
+  return
+end sub
+
+' DrawBeasts: arrows (sprites 0, 1), eagles (2-9), gators (10-17)
+sub DrawBeasts:
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Pt = 0
+  u8 Cl = 0
+  u8 Ph = 0
+  Sx = Sel[0] * 24 + 32
+  set sprite 0 to 17,Sx,SDown,15
+  Sx = Sel[1] * 24 + 32
+  set sprite 1 to 167,Sx,SUp,15
+  for I = 0 to 7
+    Sx = I * 24 + 32
+    Ph = Tick + I * 3
+    Ph = (Ph >> 3) & 1
+    Sy = Eg[I].Y - 1
+    if Eg[I].D = 0 then
+      ' clamped: drawn in tiles (DrawRow)
+      Sy = 192
+      Pt = SEaglec
+      Cl = 6
+    else
+      Pt = SEagle1 + Ph * 4
+      Cl = 1
+    end if
+    if I = Sel[0] then Cl = 15
+    set sprite I + 2 to Sy,Sx,Pt,Cl
+    Sy = Gt[I].Y - 1
+    if Gt[I].D = 0 then
+      Sy = 192
+      Pt = SGatorc
+      Cl = 10
+    else
+      Pt = SGator1 + Ph * 4
+      Cl = 3
+    end if
+    if I = Sel[1] then Cl = 15
+    set sprite I + 10 to Sy,Sx,Pt,Cl
+  next
+  update sprites
+  return
+end sub
+
+sub ShowCounts:
+  NumU = NE
+  print at 9,1, digits$(NumU, 1)
+  NumU = NG
+  print at 29,1, digits$(NumU, 1)
+  return
+end sub
+
+' each screen column's creature (8: none) and half (0 left, 1 right)
+data ColB bytes
+  8,8,8,8,0,0,8,1,1,8,2,2,8,3,3,8,4,4,8,5,5,8,6,6,8,7,7,8,8,8,8,8
+end data
+data ColH bytes
+  0,0,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,0,0
+end data
+
+' DrawBand(R): the rows round border row R (3 above, 3 below)
+sub DrawBand(u8 R):
+  u8 R0 = 3
+  u8 R1 = 20
+  u8 Rr = 0
+  if R > 6 then R0 = R - 3
+  if R < 17 then R1 = R + 3
+  for Rr = R0 to R1
+    RowQ[Rr] = 1
+  next
+  return
+end sub
+
+' DrawQueued: redraw at most one waiting row a frame (the border's own
+' row is drawn at once by ShiftBorder)
+sub DrawQueued:
+  u8 Done = 0
+  u8 Rq = 0
+  for Rq = 3 to 20
+    if RowQ[Rq] = 1 then
+      if Done < 1 then
+        DrawRow(Rq)
+        RowQ[Rq] = 0
+        inc Done
+      end if
+    end if
+  next
+  return
+end sub
+
+' DrawRow(R): one row of the field (as FieldTile, column by column, but
+' with the row's kind worked out once), built in RAM and copied
+sub DrawRow(u8 R):
+  u16 Addr = 0
+  u8 Top = 0
+  u8 Br = 0
+  u8 Kind = 0
+  u8 Pic = 255
+  u8 T = 0
+  u8 Bc = 0
+  u8 Res = 0
+  Top = R * 8
+  Br = B >> 3
+  if Top + 7 < B then
+    Kind = 0
+    T = R + 2
+    if T >= Br then Pic = T - Br
+  elseif Top > B then
+    Kind = 1
+    T = Br + 2
+    if R <= T then Pic = R - Br - 1
+  else
+    Kind = 2
+  end if
+  for Ci = 0 to 27
+    Bc = ColB[Ci + 2]
+    select case Kind
+    case 0
+      T = Ci * 3 + R * 5
+      Res = TSky
+      if T & 7 = 0 then Res = TSky2
+      if Pic < 2 then
+        if Bc < 8 then
+          if Eg[Bc].D = 0 then
+            Res = TEc00 + Pic * 2 + ColH[Ci + 2]
+            if Eg[Bc].Grip < Tired then Res = Res + 4
+          end if
+        end if
+      end if
+    case 1
+      T = (Ci + R) & 1
+      Res = TSwamp + T
+      if Pic < 2 then
+        if Bc < 8 then
+          if Gt[Bc].D = 0 then
+            Res = TGc00 + Pic * 2 + ColH[Ci + 2]
+            if Gt[Bc].Grip < Tired then Res = Res + 4
+          end if
+        end if
+      end if
+    case else
+      Res = TB0000 + (B & 7) * 8
+      if Bc < 8 then
+        if Eg[Bc].D = 0 then Res = Res + 4
+        if Gt[Bc].D = 0 then Res = Res + 2
+        Res = Res + ColH[Ci + 2]
+      end if
+    end select
+    RowBuf[Ci] = Res
+  next
+  Addr = R * 32 + 2
+  copy RowBuf count 28 to vram.name + Addr
+  return
+end sub
+
+sub DrawField:
+  NewScreen
+  fill TDark count 28 at 2,1
+  print at 2,1, "EAGLES"
+  print at 22,1, "GATORS"
+  fill TCliff count 28 at 2,2
+  for Y = 3 to 20
+    DrawRow(Y)
+    RowQ[Y] = 0
+  next
+  fill TMud count 28 at 2,21
+  if Np = 1 then
+    print at 2,22, "1 PLAYER"
+  else
+    print at 2,22, "2 PLAYERS"
+  end if
+  print at 21,22, "SKILL"
+  NumU = Skill
+  print at 27,22, digits$(NumU, 1)
+  ShowCounts
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: let the NMI run during the wait, then keep it off
+' (the NMI flag is cleared before the NMI is re-armed, so an NMI that
+' comes at once, a pass that ran past the frame's start, still counts:
+' Amy's wait clears it after re-arming and lost a frame; from
+' games/xroads2)
+sub Frame1:
+  call asm EgClr
+  Rearm
+  Idle = 1
+  call asm EgPoll
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: the menus' reading (either joystick)
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 18
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 17
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every new screen starts here: wait, NMI off, display off, tiles, cls
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of sky and swamp with an eagle and a gator, a menu
+sub TitlePage:
+  Playing = 0
+  NewScreen
+  fill TSky count 28 at 2,2
+  fill TSky count 28 at 2,3
+  fill TSky count 28 at 2,4
+  fill TB4000 count 28 at 2,5
+  fill TSwamp count 28 at 2,6
+  fill TSwamp count 28 at 2,7
+  fill TSwamp count 28 at 2,8
+  print at 5,10, "E A G L E S   A N D"
+  print at 9,11, "G A T O R S"
+  print at 6,13, "COMPUTE!'S GAZETTE 1986"
+  print at 10,15, "ONE PLAYER"
+  print at 10,16, "TWO PLAYERS"
+  print at 10,17, "SKILL"
+  print at 10,18, "CREDITS"
+  print at 2,20, "STICK PICKS A CREATURE, A"
+  print at 2,21, "BUTTON CLAMPS IT AT THE LINE"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  X = 40
+  K = 1
+tp_loop:
+  Frame1
+  Rnd16
+  ReadPad
+  ' an eagle and a gator patrol the title's line
+  X = X + K
+  if X >= 200 then K = 255
+  if X <= 40 then K = 1
+  V = (Tick >> 3) & 1
+  N = SEagle1 + V * 4
+  set sprite 2 to 23,X,N,1
+  Y = 240 - X
+  N = SGator1 + V * 4
+  set sprite 10 to 48,Y,N,3
+  update sprites
+  if Up1 = 1 then
+    if WasStick = 0 then
+      if Menu > 0 then dec Menu
+      ShowMenu
+    end if
+  end if
+  if Dn1 = 1 then
+    if WasStick = 0 then
+      if Menu < 3 then inc Menu
+      ShowMenu
+    end if
+  end if
+  if Menu = 2 then
+    if Lf1 = 1 then
+      if WasStick = 0 then
+        if Skill > 1 then dec Skill
+        ShowMenu
+      end if
+    end if
+    if Rt1 = 1 then
+      if WasStick = 0 then
+        if Skill < 9 then inc Skill
+        ShowMenu
+      end if
+    end if
+  end if
+  WasStick = Up1 | Dn1 | Lf1 | Rt1
+  if Press = 0 then goto tp_loop
+  if Menu = 2 then
+    inc Skill
+    if Skill > 9 then Skill = 1
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu < 2 then Np = Menu + 1
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 15 to 18
+    put char 32 at 8,J
+  next
+  V = Menu + 15
+  put char 62 at 8,V
+  print at 16,17, "< "
+  NumU = Skill
+  print at 18,17, digits$(NumU, 1)
+  print at 19,17, " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 4,2, "EAGLES AND GATORS"
+  print at 4,4, "PORTED FROM EAGLES AND"
+  print at 4,5, "GATORS, COMPUTE!'S GAZETTE"
+  print at 4,6, "SEPTEMBER 1986"
+  print at 4,7, "(COMMODORE 64)."
+  print at 4,9, "MADE FOR THE COLECOVISION"
+  print at 4,10, "BY CLAUDE (AN AI MADE BY"
+  print at 4,11, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 4,12, "2026, IN AMY BY AMY"
+  print at 4,13, "BIENVENU."
+  print at 4,15, "MUSIC (ORIGINAL):"
+  print at 4,16, "HIGH WIRE SWAMP"
+  print at 8,20, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $00,$00,$60,$00,$00,$00,$06,$00
+  $00,$1C,$00,$00,$00,$00,$00,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$05,$05,$07,$07,$07,$07,$07
+  $00,$A0,$A0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$05,$05,$07,$07,$07,$07,$07
+  $00,$A0,$A0,$E0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$05,$05,$07,$07,$07,$07
+  $00,$00,$A0,$A0,$E0,$E0,$E0,$E0
+  $07,$00,$00,$00,$00,$00,$00,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $07,$00,$05,$05,$07,$07,$07,$07
+  $E0,$00,$A0,$A0,$E0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$05,$05,$07,$07,$07
+  $00,$00,$00,$A0,$A0,$E0,$E0,$E0
+  $02,$07,$00,$00,$00,$00,$00,$00
+  $40,$E0,$00,$00,$00,$00,$00,$00
+  $02,$07,$00,$05,$05,$07,$07,$07
+  $40,$E0,$00,$A0,$A0,$E0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$05,$05,$07,$07
+  $00,$00,$00,$00,$A0,$A0,$E0,$E0
+  $02,$02,$07,$00,$00,$00,$00,$00
+  $40,$40,$E0,$00,$00,$00,$00,$00
+  $02,$02,$07,$00,$05,$05,$07,$07
+  $40,$40,$E0,$00,$A0,$A0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$05,$05,$07
+  $00,$00,$00,$00,$00,$A0,$A0,$E0
+  $02,$02,$02,$07,$00,$00,$00,$00
+  $40,$40,$40,$E0,$00,$00,$00,$00
+  $02,$02,$02,$07,$00,$05,$05,$07
+  $40,$40,$40,$E0,$00,$A0,$A0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$05,$05
+  $00,$00,$00,$00,$00,$00,$A0,$A0
+  $02,$02,$02,$02,$07,$00,$00,$00
+  $40,$40,$40,$40,$E0,$00,$00,$00
+  $02,$02,$02,$02,$07,$00,$05,$05
+  $40,$40,$40,$40,$E0,$00,$A0,$A0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$05
+  $00,$00,$00,$00,$00,$00,$00,$A0
+  $02,$02,$02,$02,$02,$07,$00,$00
+  $40,$40,$40,$40,$40,$E0,$00,$00
+  $02,$02,$02,$02,$02,$07,$00,$05
+  $40,$40,$40,$40,$40,$E0,$00,$A0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$02,$02,$02,$02,$07,$00
+  $40,$40,$40,$40,$40,$40,$E0,$00
+  $02,$02,$02,$02,$02,$02,$07,$00
+  $40,$40,$40,$40,$40,$40,$E0,$00
+  $00,$03,$07,$0A,$0D,$E8,$C8,$8C
+  $00,$C0,$E0,$50,$B0,$E8,$13,$31
+  $1C,$38,$87,$07,$02,$02,$02,$02
+  $38,$1C,$E1,$E0,$40,$40,$40,$40
+  $00,$03,$07,$0A,$0D,$E8,$C8,$8C
+  $00,$C0,$E0,$50,$B0,$E8,$13,$31
+  $1C,$38,$87,$07,$02,$02,$02,$02
+  $38,$1C,$E1,$E0,$40,$40,$40,$40
+  $04,$04,$07,$03,$D8,$C0,$E0,$F0
+  $20,$20,$E0,$C0,$E4,$0B,$E0,$C0
+  $F0,$E0,$C8,$D8,$03,$01,$00,$00
+  $C0,$E0,$B0,$90,$80,$C0,$C0,$40
+  $04,$04,$07,$03,$D8,$C0,$E0,$F0
+  $20,$20,$E0,$C0,$E4,$0B,$E0,$C0
+  $F0,$E0,$C8,$D8,$03,$01,$00,$00
+  $C0,$E0,$B0,$90,$80,$C0,$C0,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$02,$00,$40,$00,$00
+  $00,$00,$10,$00,$02,$40,$00,$00
+end data
+data TileCol bytes
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$F7,$07,$07,$07,$07
+  $0C,$0C,$1C,$0C,$0C,$0C,$1C,$0C
+  $0C,$1C,$0C,$0C,$0C,$0C,$0C,$1C
+  $0B,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0B,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0B,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $0B,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $0B,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0B,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0B,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $0B,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $07,$0B,$0C,$0C,$0C,$0C,$0C,$0C
+  $07,$0B,$0C,$0C,$0C,$0C,$0C,$0C
+  $07,$0B,$AC,$AC,$AC,$AC,$AC,$AC
+  $07,$0B,$AC,$AC,$AC,$AC,$AC,$AC
+  $A7,$0B,$0C,$0C,$0C,$0C,$0C,$0C
+  $A7,$0B,$0C,$0C,$0C,$0C,$0C,$0C
+  $A7,$0B,$AC,$AC,$AC,$AC,$AC,$AC
+  $A7,$0B,$AC,$AC,$AC,$AC,$AC,$AC
+  $07,$07,$0B,$0C,$0C,$0C,$0C,$0C
+  $07,$07,$0B,$0C,$0C,$0C,$0C,$0C
+  $07,$07,$0B,$AC,$AC,$AC,$AC,$AC
+  $07,$07,$0B,$AC,$AC,$AC,$AC,$AC
+  $A7,$A7,$0B,$0C,$0C,$0C,$0C,$0C
+  $A7,$A7,$0B,$0C,$0C,$0C,$0C,$0C
+  $A7,$A7,$0B,$AC,$AC,$AC,$AC,$AC
+  $A7,$A7,$0B,$AC,$AC,$AC,$AC,$AC
+  $07,$07,$07,$0B,$0C,$0C,$0C,$0C
+  $07,$07,$07,$0B,$0C,$0C,$0C,$0C
+  $07,$07,$07,$0B,$AC,$AC,$AC,$AC
+  $07,$07,$07,$0B,$AC,$AC,$AC,$AC
+  $A7,$A7,$A7,$0B,$0C,$0C,$0C,$0C
+  $A7,$A7,$A7,$0B,$0C,$0C,$0C,$0C
+  $A7,$A7,$A7,$0B,$AC,$AC,$AC,$AC
+  $A7,$A7,$A7,$0B,$AC,$AC,$AC,$AC
+  $07,$07,$07,$07,$0B,$0C,$0C,$0C
+  $07,$07,$07,$07,$0B,$0C,$0C,$0C
+  $07,$07,$07,$07,$0B,$AC,$AC,$AC
+  $07,$07,$07,$07,$0B,$AC,$AC,$AC
+  $A7,$A7,$A7,$A7,$0B,$0C,$0C,$0C
+  $A7,$A7,$A7,$A7,$0B,$0C,$0C,$0C
+  $A7,$A7,$A7,$A7,$0B,$AC,$AC,$AC
+  $A7,$A7,$A7,$A7,$0B,$AC,$AC,$AC
+  $07,$07,$07,$07,$07,$0B,$0C,$0C
+  $07,$07,$07,$07,$07,$0B,$0C,$0C
+  $07,$07,$07,$07,$07,$0B,$AC,$AC
+  $07,$07,$07,$07,$07,$0B,$AC,$AC
+  $A7,$A7,$A7,$A7,$A7,$0B,$0C,$0C
+  $A7,$A7,$A7,$A7,$A7,$0B,$0C,$0C
+  $A7,$A7,$A7,$A7,$A7,$0B,$AC,$AC
+  $A7,$A7,$A7,$A7,$A7,$0B,$AC,$AC
+  $07,$07,$07,$07,$07,$07,$0B,$0C
+  $07,$07,$07,$07,$07,$07,$0B,$0C
+  $07,$07,$07,$07,$07,$07,$0B,$AC
+  $07,$07,$07,$07,$07,$07,$0B,$AC
+  $A7,$A7,$A7,$A7,$A7,$A7,$0B,$0C
+  $A7,$A7,$A7,$A7,$A7,$A7,$0B,$0C
+  $A7,$A7,$A7,$A7,$A7,$A7,$0B,$AC
+  $A7,$A7,$A7,$A7,$A7,$A7,$0B,$AC
+  $07,$07,$07,$07,$07,$07,$07,$0B
+  $07,$07,$07,$07,$07,$07,$07,$0B
+  $07,$07,$07,$07,$07,$07,$07,$0B
+  $07,$07,$07,$07,$07,$07,$07,$0B
+  $A7,$A7,$A7,$A7,$A7,$A7,$A7,$0B
+  $A7,$A7,$A7,$A7,$A7,$A7,$A7,$0B
+  $A7,$A7,$A7,$A7,$A7,$A7,$A7,$0B
+  $A7,$A7,$A7,$A7,$A7,$A7,$A7,$0B
+  $07,$67,$67,$67,$67,$76,$76,$76
+  $07,$67,$67,$67,$67,$67,$76,$76
+  $76,$76,$67,$67,$67,$67,$67,$67
+  $76,$76,$67,$67,$67,$67,$67,$67
+  $07,$E7,$E7,$E7,$E7,$7E,$7E,$7E
+  $07,$E7,$E7,$E7,$E7,$E7,$7E,$7E
+  $7E,$7E,$E7,$E7,$E7,$E7,$E7,$E7
+  $7E,$7E,$E7,$E7,$E7,$E7,$E7,$E7
+  $AC,$AC,$AC,$AC,$CA,$CA,$CA,$CA
+  $AC,$AC,$AC,$AC,$AC,$CA,$AC,$AC
+  $CA,$CA,$CA,$CA,$AC,$AC,$0C,$0C
+  $AC,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $EC,$EC,$EC,$EC,$CE,$CE,$CE,$CE
+  $EC,$EC,$EC,$EC,$EC,$CE,$EC,$EC
+  $CE,$CE,$CE,$CE,$EC,$EC,$0C,$0C
+  $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$FE,$0E,$FE,$0E,$FE,$0E,$01
+  $01,$06,$A6,$06,$A6,$A6,$06,$06
+end data
+data SpritePat bytes
+  $80,$C0,$E3,$77,$7A,$3E,$1E,$0D,$03,$03,$07,$06,$02,$06,$00,$00
+  $01,$03,$C7,$EE,$5E,$7C,$F8,$B0,$C0,$C0,$E0,$60,$40,$60,$00,$00
+  $00,$00,$03,$07,$0A,$75,$FF,$EF,$C3,$83,$07,$06,$02,$06,$00,$00
+  $00,$00,$C0,$E0,$50,$AE,$FF,$F7,$C3,$C1,$E0,$60,$40,$60,$00,$00
+  $00,$03,$07,$0A,$0D,$17,$37,$73,$E3,$C7,$87,$05,$09,$0A,$14,$00
+  $00,$C0,$E0,$50,$B0,$E8,$EC,$CE,$C7,$E3,$E1,$A0,$90,$50,$28,$00
+  $03,$05,$03,$03,$27,$3F,$1F,$0F,$0F,$1F,$37,$27,$03,$01,$00,$00
+  $C0,$A0,$C0,$C0,$E4,$F4,$E0,$C0,$C0,$E0,$B0,$90,$80,$C0,$C0,$40
+  $03,$05,$03,$03,$27,$2F,$07,$03,$03,$07,$0D,$09,$01,$03,$03,$02
+  $C0,$A0,$C0,$C0,$E4,$FC,$F8,$F0,$F0,$F8,$EC,$E4,$C0,$80,$00,$00
+  $04,$0C,$0E,$07,$27,$3F,$1F,$0F,$0F,$1F,$37,$27,$03,$03,$01,$01
+  $20,$30,$70,$E0,$E4,$F4,$E0,$C0,$C0,$E0,$B0,$90,$80,$80,$80,$00
+  $0F,$07,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$0F,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+; EgClr / EgPoll: clear the NMI flag; wait until an NMI has set it
+EgClr:
+    xor a
+    ld (NMI_FLAG),a
+    ret
+EgPoll:
+    ld a,(NMI_FLAG)
+    or a
+    jr z,EgPoll
+    ret
+EgChomp:
+    db $00,$00,$05,$02,$00,$00,$26,$02,$00,$00,$15,$03,$00,$00,$56,$04,$10
+EgPush:
+    db $00,$00,$51,$01,$00,$00,$92,$01,$10
+EgClamp:
+    db $40,$7F,$10,$02,$40,$5F,$10,$02,$40,$47,$10,$02,$40,$40,$40,$06,$50
+EgWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$08,$40,$8F,$20,$06,$40,$6B,$30,$18
+    db $50
+EgMiss:
+    db $80,$1D,$21,$03,$80,$53,$31,$03,$80,$AB,$51,$06,$90
+EgFree:
+    db $80,$A9,$30,$02,$80,$71,$40,$02,$80,$55,$50,$02,$90
+EgTick:
+    db $C0,$39,$50,$01,$C0,$40,$80,$01,$D0
+EgBump:
+    db $C0,$FC,$51,$01,$C0,$3B,$82,$02,$D0
+
+EgSoundTable:
+    dw EgTuneMel,$702B
+    dw EgTuneBass,$7035
+    dw EgChomp,$703F
+    dw EgPush,$703F
+    dw EgClamp,$7049
+    dw EgWin,$7049
+    dw EgMiss,$7053
+    dw EgFree,$7053
+    dw EgTick,$705D
+    dw EgBump,$705D
+; High Wire Swamp (original)
+; Tiny Sound, 6 frames per step
+EgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$1A,$21,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $21,$01,$1F,$01,$21,$01,$24,$01,$28,$01,$24,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$21,$01,$23,$01
+    db $24,$01,$21,$01,$23,$01,$1F,$01,$1E,$01,$1A,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+EgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$18,$32,$04,$01,$0B,$01,$04,$01,$0B,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0B,$01,$12,$01
+    db $0B,$01,$06,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$0F,$01,$04,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

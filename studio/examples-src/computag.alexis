@@ -1,0 +1,1030 @@
+cartridge "COMPUTAG/COMPUTE!'S GAZETTE/1988"
+
+' COMPUTAG
+' A ColecoVision game based on "COMPUTAG", a two-player game of tag from
+' COMPUTE!'s Gazette, October 1988 (Commodore 64, BASIC with a small
+' machine-language interrupt routine that turns the arrows). The listing
+' and the disk name no author (orig/computag.bas).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: the board is 13 x 10 squares, each with an arrow. Every few
+' moments all the arrows turn a quarter turn counter-clockwise together.
+' Each player has one button: press it and your marker steps one square
+' the way the arrow under it points (if that leaves the board, nothing
+' happens). One player is IT and chases; the other runs and scores a point
+' for every step. When the two markers meet on one square, the runner is
+' tagged: roles swap and both markers jump to new random squares. The
+' timer bar fills slowly, and faster with every button press; when it is
+' full the round is over. Round 2 starts from the corners with the same
+' board. After round 2 the higher score wins.
+'
+' From the original: the 13 x 10 board of random arrows (the same for both
+' rounds), arrows turning together counter-clockwise (up, left, down,
+' right), moves of one square in the arrow's direction, blocked at the
+' edges, the runner's point for each step, the tag on the same square (by
+' either player's move) with the roles swapped and random new squares
+' (never the same), player 1 running first, round 2 from the top-left and
+' bottom-right corners, the timer that grows by .04 a pass and .25 a press
+' (97 units), five arrow speeds (50 to 250 jiffies a turn), the score
+' report and winner by so many points or a tie.
+'
+' Liberties: one button per controller instead of a chosen key and SHIFT.
+' A one-player mode against the computer (player 2) was added. ARROW SPEED
+' 5 is the fastest here (on the C64, 1 was: the number was the delay). The
+' markers slide to their square in 8 frames instead of jumping; a press
+' while sliding is ignored. The timer is a bar above the board instead of
+' a line drawn round the border; its idle rate assumes the C64's BASIC
+' loop ran about 18 passes a second (an estimate, not measured), so an idle
+' round lasts about 2.5 minutes. Each player's press adds to the timer
+' (the C64 counted one press a pass even when both keys were down). The
+' IT player wears four white corners instead of a colour change. Messages
+' appear in a box over the board.
+'
+' Controls: controller 1's button moves player 1, controller 2's button
+' player 2. On the title the stick chooses (up/down an item, left/right a
+' value) and a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, the title tune
+' played once. `set sprite count` always given. Nothing flashes.
+
+const TArr000 = 128
+const TArr001 = 129
+const TArr010 = 130
+const TArr011 = 131
+const TArr100 = 132
+const TArr101 = 133
+const TArr110 = 134
+const TArr111 = 135
+const TArr200 = 136
+const TArr201 = 137
+const TArr210 = 138
+const TArr211 = 139
+const TArr300 = 140
+const TArr301 = 141
+const TArr310 = 142
+const TArr311 = 143
+const TFrame = 144
+const TBar0 = 145
+const TBar1 = 146
+const TBar2 = 147
+const TBar3 = 148
+const TBar4 = 149
+const TBar5 = 150
+const TBar6 = 151
+const TBar7 = 152
+const TBar8 = 153
+const TCur = 154
+const SP1 = 0
+const SP2 = 4
+const SIt = 8
+const NTiles8 = 216
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep1 = 3
+const SndStep2 = 4
+const SndBump = 5
+const SndTag = 6
+const SndTagged = 7
+const SndRound = 8
+const SndStart = 9
+const SndOver = 10
+const SlideN = 8
+const MsgN = 110
+const IdleT = 3
+const PressT = 64
+const MaxT = 26624
+const NoCell = 255
+
+record Plr:
+  u8 Cell
+  u8 Col
+  u8 Row
+  u8 X
+  u8 Y
+  u8 Mv
+  u8 Sl
+  bcd digits 4 Score
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 Ma = 0
+u16 Pts[2]
+Plr P[2]
+u8 Dir[130]
+u8 Btn[2]
+u8 Was[2]
+' game state
+u8 Np = 1
+u8 Spd = 3
+u8 Ch = 0
+u8 Rot = 0
+u8 RotT = 0
+u8 RotP = 150
+u8 RotDirty = 0
+u8 Round = 1
+u8 MsgT = 0
+u8 Phase = 0
+u8 Over = 0
+u8 Tagged = 0
+u8 Pl = 0
+u8 Bp = 0
+u8 CpuT = 0
+u8 Mi = 0
+u8 TitleOn = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 WasStick = 0
+u8 Press = 0
+u8 Stick = 0
+' loop counters
+u8 Ci = 0
+u8 Ri = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 S = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CtSoundTable areas 4
+  sprites 16x16
+  set sprite count 3
+  sprites stable 0 to 2
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Np > 10 then
+    Np = Np - 10
+    goto title
+  end if
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  if Np = 1 then CpuThink
+  PlayStep
+  DrawSprites
+  if RotDirty = 1 then ApplyRot
+  DrawBar
+  if Over = 0 then goto play_loop
+
+  ' the end: the scores and the winner, then back to the title on a press
+  mute all
+  NewScreen
+  print at 7,4, "G A M E   O V E R"
+  print at 3,8, "PLAYER ONE SCORED"
+  print at 21,8, P[0].Score
+  if Np = 1 then
+    print at 3,10, "COMPUTER SCORED"
+  else
+    print at 3,10, "PLAYER TWO SCORED"
+  end if
+  print at 21,10, P[1].Score
+  if Pts[0] = Pts[1] then
+    print at 7,14, "IT'S A TIE GAME"
+  else
+    if Pts[0] > Pts[1] then
+      NumU = Pts[0] - Pts[1]
+      print at 3,14, "PLAYER 1 WINS BY"
+    else
+      NumU = Pts[1] - Pts[0]
+      if Np = 1 then
+        print at 3,14, "COMPUTER WINS BY"
+      else
+        print at 3,14, "PLAYER 2 WINS BY"
+      end if
+    end if
+    K = NumDigits(NumU)
+    X = 21 + K
+    select case K
+    case 1
+      print at 20,14, digits$(NumU, 1)
+    case 2
+      print at 20,14, digits$(NumU, 2)
+    case 3
+      print at 20,14, digits$(NumU, 3)
+    case else
+      print at 20,14, digits$(NumU, 4)
+    end select
+    if NumU = 1 then
+      print at X,14, "POINT"
+    else
+      print at X,14, "POINTS"
+    end if
+  end if
+  ShowScreen
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  Rearm
+  wait no fire
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then EndMsg
+    return
+  end if
+  ' the interrupt routine of the original: turn every arrow
+  inc RotT
+  if RotT >= RotP then
+    RotT = 0
+    Rot = (Rot + 1) & 3
+    RotDirty = 1
+  end if
+  Ma += IdleT
+  Tagged = 0
+  Pl = 0
+  StepPlayer
+  Pl = 1
+  StepPlayer
+  if Tagged = 1 then
+    DoTag
+    return
+  end if
+  if Ma >= MaxT then RoundEnd
+  return
+end sub
+
+' player Pl: slide on, or step the way the arrow under it points
+sub StepPlayer:
+  S = P[Pl].Sl
+  if S > 0 then
+    X = P[Pl].X
+    Y = P[Pl].Y
+    select case P[Pl].Mv
+    case 0
+      Y = Y - 2
+    case 1
+      X = X - 2
+    case 2
+      Y = Y + 2
+    case else
+      X = X + 2
+    end select
+    P[Pl].X = X
+    P[Pl].Y = Y
+    dec S
+    P[Pl].Sl = S
+    if S = 0 then
+      if P[0].Cell = P[1].Cell then Tagged = 1
+    end if
+    return
+  end if
+  if Btn[Pl] = 0 then return
+  Ma += PressT
+  C = P[Pl].Cell
+  D = CellDir(C)
+  T = Target(C, D)
+  if T = NoCell then
+    play sound SndBump
+    return
+  end if
+  P[Pl].Cell = T
+  P[Pl].Col = T % 13
+  P[Pl].Row = T / 13
+  P[Pl].Mv = D
+  P[Pl].Sl = SlideN
+  if Pl = Ch then
+    Pts[Pl] += 1
+    P[Pl].Score += 1
+    ShowScores
+  end if
+  if Pl = 0 then
+    play sound SndStep1
+  else
+    play sound SndStep2
+  end if
+  return
+end sub
+
+' the direction (0 up, 1 left, 2 down, 3 right) the arrow on cell Cc shows
+function CellDir(u8 Cc) as u8
+  return (Dir[Cc] + Rot) & 3
+
+' the cell one step from Cc in direction Dd, or NoCell off the board
+function Target(u8 Cc, u8 Dd) as u8
+  u8 Tcol = 0
+  u8 Trow = 0
+  u8 Tres = NoCell
+  Tcol = Cc % 13
+  Trow = Cc / 13
+  select case Dd
+  case 0
+    if Trow > 0 then Tres = Cc - 13
+  case 1
+    if Tcol > 0 then Tres = Cc - 1
+  case 2
+    if Trow < 9 then Tres = Cc + 13
+  case else
+    if Tcol < 12 then Tres = Cc + 1
+  end select
+  return Tres
+
+' squares between two cells (across plus down)
+function Dist(u8 Ca, u8 Cb) as u8
+  i8 Dx = 0
+  i8 Dy = 0
+  Dx = Ca % 13
+  Dx = Dx - Cb % 13
+  Dy = Ca / 13
+  Dy = Dy - Cb / 13
+  if Dx < 0 then Dx = -Dx
+  if Dy < 0 then Dy = -Dy
+  return Dx + Dy
+
+function NumDigits(u16 Nv) as u8
+  u8 Nd = 1
+  if Nv >= 10 then Nd = 2
+  if Nv >= 100 then Nd = 3
+  if Nv >= 1000 then Nd = 4
+  return Nd
+
+' the computer as player 2: it looks at its arrow every so often and presses
+' when the step helps (IT: closer to the runner; runner: not next to IT)
+sub CpuThink:
+  Btn[1] = 0
+  if MsgT > 0 then return
+  if P[1].Sl > 0 then return
+  if CpuT > 0 then
+    dec CpuT
+    return
+  end if
+  C = P[1].Cell
+  D = CellDir(C)
+  T = Target(C, D)
+  K = 0
+  if T <> NoCell then
+    J = P[0].Cell
+    S = Dist(T, J)
+    V = Dist(C, J)
+    if Ch = 0 then
+      if S < V then K = 1
+    else
+      if S >= 2 then K = 1
+    end if
+  end if
+  Rand
+  V = Rs & 7
+  if K = 1 then
+    Btn[1] = 1
+    CpuT = 10 + V
+  else
+    CpuT = 8 + V
+  end if
+  return
+end sub
+
+sub DoTag:
+  Ch = 1 - Ch
+  Phase = 1
+  MsgT = MsgN
+  K = 2 - Ch
+  MsgBox
+  print at 7,12, "PLAYER   IS NOW IT"
+  put char 48 + K at 14,12
+  if Np = 1 then
+    if K = 2 then print at 7,12, "COMPUTER IS NOW IT"
+  end if
+  play sound SndTagged
+  ShowHud
+  return
+end sub
+
+sub RoundEnd:
+  if Round = 2 then
+    Over = 1
+    return
+  end if
+  Round = 2
+  Phase = 2
+  MsgT = MsgN
+  MsgBox
+  print at 9,12, "ROUND 1 OVER"
+  play sound SndRound
+  ShowHud
+  return
+end sub
+
+' the message is over: the new squares (after a tag) or round 2
+sub EndMsg:
+  Ri = 4
+  DrawCellRow
+  Ri = 5
+  DrawCellRow
+  if Phase = 1 then
+    RandomPlace
+  else
+    FixedPlace
+    Ma = 0
+    DrawBarAll
+  end if
+  Phase = 0
+  ShowHud
+  return
+end sub
+
+sub MsgBox:
+  print at 5,11, "                      "
+  print at 5,12, "                      "
+  print at 5,13, "                      "
+  return
+end sub
+
+sub RandomPlace:
+  Rand
+  W16 = Rs % 130
+  C = W16
+  do
+    Rand
+    W16 = Rs % 130
+    T = W16
+  loop until T <> C
+  Pl = 0
+  PlaceAt(C)
+  Pl = 1
+  PlaceAt(T)
+  return
+end sub
+
+sub FixedPlace:
+  Pl = 0
+  PlaceAt(0)
+  Pl = 1
+  PlaceAt(129)
+  return
+end sub
+
+sub PlaceAt(u8 Cn):
+  P[Pl].Cell = Cn
+  P[Pl].Col = Cn % 13
+  P[Pl].Row = Cn / 13
+  P[Pl].X = P[Pl].Col * 16 + 24
+  P[Pl].Y = P[Pl].Row * 16 + 24
+  P[Pl].Sl = 0
+  P[Pl].Mv = 0
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' every arrow set k shows direction (k + Rot) & 3
+sub ApplyRot:
+  RotDirty = 0
+  for Ki = 0 to 3
+    V = (Ki + Rot) & 3
+    W16 = V
+    W16 = W16 << 5
+    A16 = Ki
+    A16 = A16 << 5
+    A16 = A16 + TArr000 * 8
+    copy TilePat + W16 count 32 to vram.pattern + A16
+    copy TilePat + W16 count 32 to vram.pattern + 2048 + A16
+    copy TilePat + W16 count 32 to vram.pattern + 4096 + A16
+    copy TileCol + W16 count 32 to vram.color + A16
+  next
+  return
+end sub
+
+' sprite 0 the IT corners, 1 player 1, 2 player 2
+sub DrawSprites:
+  if TitleOn = 1 then return
+  Y = P[0].Y - 1
+  set sprite 1 to Y,P[0].X,SP1,9
+  Y = P[1].Y - 1
+  set sprite 2 to Y,P[1].X,SP2,3
+  J = 1 - Ch
+  Y = P[J].Y - 1
+  set sprite 0 to Y,P[J].X,SIt,15
+  update sprites
+  return
+end sub
+
+' the timer bar: one pixel for every 128 units
+sub DrawBar:
+  W16 = Ma >> 7
+  if W16 > 208 then W16 = 208
+  V = W16
+  if V = Bp then return
+  Bp = V
+  K = V >> 3
+  S = V & 7
+  X = K + 3
+  if K > 0 then put char TBar8 at X - 1,2
+  if K < 26 then put char TBar0 + S at X,2
+  return
+end sub
+
+sub DrawBarAll:
+  fill TBar0 count 26 at 3,2
+  Bp = 0
+  return
+end sub
+
+sub ShowScores:
+  print at 5,1, P[0].Score
+  print at 26,1, P[1].Score
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "P1"
+  print at 23,1, "P2"
+  print at 11,1, "IT:P"
+  K = 2 - Ch
+  put char 48 + K at 15,1
+  print at 18,1, "R"
+  put char 48 + Round at 19,1
+  ShowScores
+  return
+end sub
+
+sub DrawCell(u8 Cd):
+  K = Dir[Cd] << 2
+  K = K + TArr000
+  X = Cd % 13
+  X = X * 2 + 3
+  Y = Cd / 13
+  Y = Y * 2 + 3
+  put char K at X,Y
+  put char K + 1 at X + 1,Y
+  inc Y
+  put char K + 2 at X,Y
+  put char K + 3 at X + 1,Y
+  return
+end sub
+
+' one row of cells (Ri)
+sub DrawCellRow:
+  Ci = Ri * 13
+  for J = 0 to 12
+    DrawCell(Ci)
+    inc Ci
+  next
+  return
+end sub
+
+sub DrawBoard:
+  for Ri = 0 to 9
+    DrawCellRow
+  next
+  for Ri = 2 to 22
+    put char TFrame at 2,Ri
+    put char TFrame at 29,Ri
+  next
+  return
+end sub
+
+sub NewGame:
+  for Ci = 0 to 129
+    Rand
+    V = Rs & 3
+    Dir[Ci] = V
+  next
+  V = 6 - Spd
+  RotP = V * 50
+  Rot = 0
+  RotT = 0
+  RotDirty = 1
+  Ch = 0
+  Round = 1
+  Phase = 0
+  MsgT = 0
+  Over = 0
+  Ma = 0
+  Pts[0] = 0
+  Pts[1] = 0
+  P[0].Score = 0
+  P[1].Score = 0
+  Btn[0] = 0
+  Btn[1] = 0
+  CpuT = 20
+  FixedPlace
+  TitleOn = 0
+  NewScreen
+  ApplyRot
+  DrawBoard
+  DrawBarAll
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  Was[0] = 0
+  Was[1] = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' a press is the button down now and up the frame before
+sub ReadPad:
+  Btn[0] = 0
+  Btn[1] = 0
+  V = 0
+  if joypad(1).fire then V = 1
+  if V = 1 then
+    if Was[0] = 0 then Btn[0] = 1
+  end if
+  Was[0] = V
+  V = 0
+  if joypad(2).fire then V = 1
+  if V = 1 then
+    if Was[1] = 0 then Btn[1] = 1
+  end if
+  Was[1] = V
+  return
+end sub
+
+' the title's input: Stick 1 up 2 down 4 left 8 right on its first frame,
+' Press a new button press on either controller
+sub ReadMenu:
+  V = 0
+  if joypad(1).up then V = V | 1
+  if joypad(1).down then V = V | 2
+  if joypad(1).left then V = V | 4
+  if joypad(1).right then V = V | 8
+  if joypad(2).up then V = V | 1
+  if joypad(2).down then V = V | 2
+  if joypad(2).left then V = V | 4
+  if joypad(2).right then V = V | 8
+  Stick = 0
+  if WasStick = 0 then Stick = V
+  WasStick = V
+  ReadPad
+  Press = Btn[0] | Btn[1]
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of turning arrows, the tune once, the menu
+sub TitlePage:
+  TitleOn = 1
+  if Rs = 0 then Rs = 1
+  NewScreen
+  print at 10,2, "C O M P U T A G"
+  print at 4,4, "TAG ON A BOARD OF ARROWS"
+  for Ci = 0 to 12
+    Rand
+    V = Rs & 3
+    Dir[Ci] = V
+  next
+  Ri = 0
+  Y = 3
+  RotDirty = 1
+  Rot = 0
+  ApplyRot
+  ' the strip on rows 6-7 (cells of row 0 drawn 3 rows lower)
+  for J = 0 to 12
+    K = Dir[J] << 2
+    K = K + TArr000
+    X = J * 2 + 3
+    put char K at X,6
+    put char K + 1 at X + 1,6
+    put char K + 2 at X,7
+    put char K + 3 at X + 1,7
+  next
+  print at 4,17, "PRESS YOUR BUTTON TO STEP"
+  print at 4,18, "THE WAY YOUR ARROW POINTS."
+  print at 4,19, "TAG OR RUN: RUNNERS SCORE."
+  print at 3,22, "COMPUTE!'S GAZETTE OCT 1988"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Was[0] = 1
+  Was[1] = 1
+  RotT = 0
+tp_loop:
+  Frame1
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadMenu
+  inc RotT
+  if RotT >= 60 then
+    RotT = 0
+    Rot = (Rot + 1) & 3
+    ApplyRot
+  end if
+  if Stick > 0 then MenuStick
+  if Press = 0 then goto tp_loop
+  if Mi = 0 then
+    Np = 3 - Np
+    ShowMenu
+    goto tp_loop
+  end if
+  if Mi = 1 then
+    inc Spd
+    if Spd > 5 then Spd = 1
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Mi = 3 then
+    CreditsPage
+    Mi = 2
+    Np = Np + 10
+  end if
+  return
+end sub
+
+sub MenuStick:
+  K = Stick & 1
+  if K > 0 then
+    if Mi > 0 then dec Mi
+  end if
+  K = Stick & 2
+  if K > 0 then
+    if Mi < 3 then inc Mi
+  end if
+  K = Stick & 12
+  if K > 0 then
+    if Mi = 0 then Np = 3 - Np
+    if Mi = 1 then
+      K = Stick & 4
+      if K > 0 then
+        if Spd > 1 then dec Spd
+      else
+        if Spd < 5 then inc Spd
+      end if
+    end if
+  end if
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  print at 8,10, "PLAYERS"
+  put char 48 + Np at 22,10
+  print at 8,11, "ARROW SPEED"
+  put char 48 + Spd at 22,11
+  print at 8,12, "START GAME"
+  print at 8,13, "CREDITS"
+  if Np = 1 then
+    print at 8,14, "(P2 IS THE COMPUTER)"
+  else
+    print at 8,14, "                    "
+  end if
+  for J = 10 to 13
+    put char 32 at 6,J
+  next
+  J = Mi + 10
+  put char TCur at 6,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "C O M P U T A G"
+  print at 2,5, "BASED ON COMPUTAG, A GAME"
+  print at 2,6, "OF TAG FROM COMPUTE!'S"
+  print at 2,7, "GAZETTE, OCTOBER 1988"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SPIN AND CHASE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $03,$03,$03,$03,$03,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$07,$07
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $07,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$03,$03,$03
+  $00,$00,$00,$C0,$C0,$C0,$C0,$C0
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$E0
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $E0,$E0,$00,$00,$00,$00,$00,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$30,$38,$C3,$38,$30,$20
+end data
+data TileCol bytes
+  $04,$04,$04,$B4,$B4,$B4,$4B,$4B
+  $04,$04,$04,$B4,$B4,$B4,$B4,$4B
+  $B4,$B4,$B4,$B4,$B4,$04,$04,$04
+  $B4,$B4,$B4,$B4,$B4,$04,$04,$04
+  $04,$04,$04,$B4,$B4,$B4,$4B,$4B
+  $04,$04,$04,$04,$04,$04,$4B,$4B
+  $4B,$4B,$B4,$B4,$B4,$04,$04,$04
+  $4B,$4B,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$B4,$B4,$B4,$B4,$B4
+  $04,$04,$04,$B4,$B4,$B4,$B4,$B4
+  $4B,$4B,$B4,$B4,$B4,$04,$04,$04
+  $4B,$B4,$B4,$B4,$B4,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$4B,$4B
+  $04,$04,$04,$B4,$B4,$B4,$B4,$4B
+  $4B,$4B,$04,$04,$04,$04,$04,$04
+  $4B,$B4,$B4,$B4,$B4,$04,$04,$04
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $01,$9E,$9E,$9E,$9E,$9E,$9E,$01
+  $01,$9E,$9E,$9E,$9E,$9E,$9E,$01
+  $01,$9E,$9E,$9E,$9E,$9E,$9E,$01
+  $01,$9E,$9E,$9E,$9E,$9E,$9E,$01
+  $01,$E9,$E9,$E9,$E9,$E9,$E9,$01
+  $01,$E9,$E9,$E9,$E9,$E9,$E9,$01
+  $01,$E9,$E9,$E9,$E9,$E9,$E9,$01
+  $01,$09,$09,$09,$09,$09,$09,$01
+  $01,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+end data
+data SpritePat bytes
+  $FF,$FF,$FF,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$FF,$FF,$FF
+  $FF,$FF,$FF,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$FF,$FF,$FF
+  $1F,$3F,$7F,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$7F,$3F,$1F
+  $F8,$FC,$FE,$07,$07,$07,$03,$03,$03,$03,$07,$07,$07,$FE,$FC,$F8
+  $F8,$98,$90,$E0,$C0,$00,$00,$00,$00,$00,$00,$C0,$E0,$90,$98,$F8
+  $1F,$19,$09,$07,$03,$00,$00,$00,$00,$00,$00,$03,$07,$09,$19,$1F
+end data
+
+asm {
+CtStep1:
+    db $40,$7F,$20,$02,$40,$5F,$30,$03,$50
+CtStep2:
+    db $40,$BF,$20,$02,$40,$8F,$30,$03,$50
+CtBump:
+    db $40,$3B,$32,$03,$50
+CtTag:
+    db $00,$00,$03,$04,$00,$00,$25,$06,$00,$00,$56,$0A,$10
+CtTagged:
+    db $40,$47,$10,$05,$40,$5F,$10,$05,$40,$47,$10,$05,$40,$5F,$20,$0C,$50
+CtRound:
+    db $40,$8F,$10,$08,$40,$AA,$10,$08,$40,$D6,$20,$08,$40,$1D,$21,$14,$50
+CtStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+CtOver:
+    db $40,$D6,$10,$0A,$40,$AA,$10,$0A,$40,$8F,$10,$0A,$40,$6B,$20,$1E,$50
+
+CtSoundTable:
+    dw CtTuneMel,$702B
+    dw CtTuneBass,$7035
+    dw CtStep1,$7049
+    dw CtStep2,$7049
+    dw CtBump,$7049
+    dw CtTag,$703F
+    dw CtTagged,$7049
+    dw CtRound,$7049
+    dw CtStart,$7049
+    dw CtOver,$7049
+; Spin and Chase (original)
+; Tiny Sound, 8 frames per step
+CtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1E,$01,$21,$01,$1E,$01,$1F,$01,$23,$01
+    db $21,$01,$1E,$01,$1C,$01,$1F,$01,$1E,$01,$1A,$01,$1C,$01,$01,$01
+    db $15,$01,$01,$01,$1A,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$1C,$01,$1A,$01,$19,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+CtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $0E,$01,$15,$01,$09,$01,$10,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $09,$01,$0D,$01,$0E,$01,$15,$01,$12,$01,$15,$01,$09,$01,$10,$01
+    db $12,$01,$17,$01,$13,$01,$0E,$01,$09,$01,$10,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

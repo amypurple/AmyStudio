@@ -1,0 +1,1567 @@
+cartridge "FINAL DEFENSE/GAZETTE/1989"
+
+' FINAL DEFENSE
+' A ColecoVision game based on "Final Defense", COMPUTE!'s Gazette,
+' December 1989 (Commodore 64 machine language FINAL.ML with the BASIC
+' loader FINAL.BOOT, disk 1989-12; no author named on the disk). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a line-by-line port: the rules are the C64 original's (read from its
+' machine code, orig/dis.txt, and watched in jsc64, orig/run64.mjs and
+' orig/probe64.mjs); the pictures, sounds and music are new.
+'
+' The game: you are the last defender. Take off from the airfield, fly out
+' over the sea and the fields where hundreds of ships and tanks are coming,
+' bomb as many as you can while their missiles fly up at you, then fly back
+' and land on the airfield and stop on the runway: MISSION COMPLETED.
+'
+' From the original (orig/dis.txt):
+' - the route is the original's script ($309A flags, $30CF lengths in
+'   columns): airfield, fields, GET READY, the battle over sea and fields
+'   (three rounds), PREPARE TO LAND, the airfield again, and further
+'   airfields if you fly past; each run's flags: field (else sea), message
+'   (GET READY / PREPARE TO LAND), battle mode, airfield, enemies come,
+'   bombing allowed;
+' - take-off and landing: the stick left speeds up (+$40/256 a frame),
+'   right slows down; up and down only work at speed 80 or more (lift):
+'   climb or dive at min(speed - 60, 50) x 8 / 256 pixels a frame, eased
+'   by 16/256 a frame when the stick is let go; in the air the speed stays
+'   80 or more; top speed 127; touching the ground anywhere but the
+'   airfield: SPLASH! or CRASH! and the game is over;
+' - the battle (levels 1-9): the speed is held at 36 and the stick moves
+'   the jet along a slant into and out of the picture; the button drops a
+'   torpedo at sea (fast, flat) or a bomb over the fields (slow, steep),
+'   one at a time, which goes off 68 pixels below the jet (70 C64 lines)
+'   and destroys a ship (10) or a tank (50) it lands on;
+' - an enemy comes every 6-12 columns while the run says so, on the sea or
+'   the field it comes in on, at a random depth; one missile at a time: on
+'   a frame a random byte is below 16 x level, a random enemy fires if it
+'   is near the left edge; the missile's speed grows with the level; a
+'   missile that reaches the jet costs a life (5 lives);
+' - land on the airfield and stop: MISSION COMPLETED, the next level (up to
+'   9) with the score and lives kept; level 0 has no battle (practice).
+'
+' Liberties: the band scrolls in 4-pixel steps (tiles of two half columns);
+' x speeds are 0.8 of the C64's (a 256-pixel screen for its 320); the stick up/down also
+' moves it in battle; enemies come in at the left edge of the visible
+' screen and fire within its first 60 pixels; the enemy's own kind gives
+' its points (the C64 used the terrain at the left edge); the torpedo or
+' bomb is picked by the terrain under the jet (the C64: the left edge);
+' landing and crashing are judged by the terrain under the jet (the C64
+' used flags of the column entering at the left, matched to its map);
+' PREPARE TO LAND shows on level 0 too; no engine drone (the speed is
+' shown); the start level is chosen with the stick; a button (the C64: the
+' stick) starts the next level; high score; after GAME
+' OVER the title (the C64 went back to CHOOSE LEVEL).
+'
+' Controls: controller 1 (or 2). Take-off and landing: left faster, right
+' slower, up climb, down dive. Battle: the stick slides the jet (left or
+' down: nearer, right or up: farther), a button drops a bomb. On the title
+' up/down choose the level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TB0_00 = 128
+const TB0_01 = 129
+const TB0_02 = 130
+const TB0_10 = 131
+const TB0_11 = 132
+const TB0_12 = 133
+const TB0_20 = 134
+const TB0_21 = 135
+const TB0_22 = 136
+const TB1_00 = 137
+const TB1_01 = 138
+const TB1_02 = 139
+const TB1_10 = 140
+const TB1_11 = 141
+const TB1_12 = 142
+const TB1_20 = 143
+const TB1_21 = 144
+const TB1_22 = 145
+const TB2_00 = 146
+const TB2_01 = 147
+const TB2_02 = 148
+const TB2_10 = 149
+const TB2_11 = 150
+const TB2_12 = 151
+const TB2_20 = 152
+const TB2_21 = 153
+const TB2_22 = 154
+const TB3_00 = 155
+const TB3_01 = 156
+const TB3_02 = 157
+const TB3_10 = 158
+const TB3_11 = 159
+const TB3_12 = 160
+const TB3_20 = 161
+const TB3_21 = 162
+const TB3_22 = 163
+const TB4_00 = 164
+const TB4_01 = 165
+const TB4_02 = 166
+const TB4_10 = 167
+const TB4_11 = 168
+const TB4_12 = 169
+const TB4_20 = 170
+const TB4_21 = 171
+const TB4_22 = 172
+const TB5_00 = 173
+const TB5_01 = 174
+const TB5_02 = 175
+const TB5_10 = 176
+const TB5_11 = 177
+const TB5_12 = 178
+const TB5_20 = 179
+const TB5_21 = 180
+const TB5_22 = 181
+const TB6_00 = 182
+const TB6_01 = 183
+const TB6_02 = 184
+const TB6_10 = 185
+const TB6_11 = 186
+const TB6_12 = 187
+const TB6_20 = 188
+const TB6_21 = 189
+const TB6_22 = 190
+const TB7_00 = 191
+const TB7_01 = 192
+const TB7_02 = 193
+const TB7_10 = 194
+const TB7_11 = 195
+const TB7_12 = 196
+const TB7_20 = 197
+const TB7_21 = 198
+const TB7_22 = 199
+const TB8_00 = 200
+const TB8_01 = 201
+const TB8_02 = 202
+const TB8_10 = 203
+const TB8_11 = 204
+const TB8_12 = 205
+const TB8_20 = 206
+const TB8_21 = 207
+const TB8_22 = 208
+const TB9_00 = 209
+const TB9_01 = 210
+const TB9_02 = 211
+const TB9_10 = 212
+const TB9_11 = 213
+const TB9_12 = 214
+const TB9_20 = 215
+const TB9_21 = 216
+const TB9_22 = 217
+const TB10_00 = 218
+const TB10_01 = 219
+const TB10_02 = 220
+const TB10_10 = 221
+const TB10_11 = 222
+const TB10_12 = 223
+const TB10_20 = 224
+const TB10_21 = 225
+const TB10_22 = 226
+const TB11_00 = 227
+const TB11_01 = 228
+const TB11_02 = 229
+const TB11_10 = 230
+const TB11_11 = 231
+const TB11_12 = 232
+const TB11_20 = 233
+const TB11_21 = 234
+const TB11_22 = 235
+const TSky = 236
+const TCloud00 = 237
+const TCloud01 = 238
+const TEarth = 239
+const TBar = 240
+const SJetw = 0
+const SJetr = 4
+const SShip = 8
+const STank = 12
+const SMissile = 16
+const SBomb = 20
+const STorp = 24
+const SBlast0 = 28
+const SBlast1 = 32
+const SSplash = 36
+const NTiles8 = 904
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrop = 3
+const SndLaunch = 4
+const SndBoom = 5
+const SndPuff = 6
+const SndHit = 7
+const SndCrash = 8
+const SndTouch = 9
+const SndBeep = 10
+const SndDone = 11
+const SndOver = 12
+const NSpr = 9
+const NFoe = 4
+const NSc = 53
+const JetX = 208
+const GroundY = 118
+const TopY = 16
+const BatTop = 16
+const BatBot = 84
+const BatStart = 48
+const FoeTop = 88
+const BombDrop = 68
+const BombLow = 152
+
+' the original's route: flags and lengths in columns ($309A, $30CF)
+' flags: 1 field (else sea), 2-14 message (1 GET READY, 2 PREPARE TO
+' LAND), 16 battle, 32 airfield, 64 enemies, 128 bombing
+data ScF bytes $01,$01,$21,$01,$01,$01,$03,$13,$11,$50,$D0,$D0,$90,$10,$12,$53,$D1,$91,$13,$52,$D0,$D0,$90,$10,$12,$53,$D1,$91,$13,$52,$D0,$D0,$90,$10,$10,$05,$05,$01,$01,$01,$21,$01,$05,$05,$01,$01,$01,$21,$01,$05,$05,$01,$01
+data ScN bytes 40,4,145,11,3,176,32,32,11,12,240,192,16,32,23,11,207,48,23,12,240,192,16,32,23,13,207,48,13,12,240,192,16,32,23,11,176,64,2,4,145,11,3,176,64,2,4,145,11,3,176,24,2
+' points: ship, tank
+data FoePts bytes 10,50
+data FoeSpr bytes SShip,STank
+data FoeCol bytes 14,12
+' clouds: column, row
+data Clouds bytes 4,2, 13,4, 22,2, 27,6, 9,7, 18,6
+
+data TilePat bytes
+  $00,$00,$00,$99,$00,$00,$00,$88
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$44,$00,$99,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $AA,$00,$AA,$AA,$00,$00,$00,$00
+  $00,$11,$00,$00,$44,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$22,$99,$00,$99,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$44,$00,$00,$00,$22,$00
+  $00,$00,$CC,$00,$00,$00,$CC,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$88,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$88,$00,$00
+  $00,$00,$00,$22,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$44,$11,$00,$44,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$22,$00,$00,$00,$00,$00,$00
+  $99,$00,$00,$00,$00,$88,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$22,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$11,$00,$00,$00,$00,$99
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$22,$99,$00,$99,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$CC,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$44,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$CC,$CC,$00,$00,$00
+  $00,$22,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $44,$11,$00,$44,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$88,$00,$00,$CC,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$11,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$44,$00,$00,$00,$00,$22
+  $00,$00,$00,$00,$00,$44,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$22,$99,$00,$99,$00,$00
+  $F0,$F0,$F0,$F0,$07,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$70,$F0,$F0,$F0
+  $00,$00,$00,$00,$88,$00,$00,$00
+  $22,$00,$00,$00,$00,$00,$00,$CC
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $AA,$00,$AA,$AA,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $AA,$00,$AA,$AA,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$F0,$C0,$80,$00,$80,$00
+  $00,$C0,$F0,$07,$01,$00,$03,$00
+  $00,$40,$04,$00,$20,$01,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $05,$04,$04,$45,$04,$04,$04,$54
+  $5C,$4C,$4C,$4C,$4C,$4B,$4B,$4B
+  $53,$41,$43,$43,$43,$43,$43,$43
+  $C5,$C4,$C4,$C4,$C4,$B4,$B4,$B4
+  $0C,$2C,$0C,$2C,$0C,$0B,$0B,$0B
+  $C3,$C1,$C3,$C3,$C3,$B3,$B3,$B3
+  $35,$14,$34,$34,$34,$34,$34,$34
+  $3C,$1C,$3C,$3C,$3C,$3B,$3B,$3B
+  $13,$01,$13,$13,$03,$03,$03,$03
+  $04,$54,$04,$04,$54,$04,$04,$04
+  $4B,$4B,$4B,$4B,$42,$4C,$4B,$4B
+  $43,$43,$43,$43,$43,$43,$43,$43
+  $B4,$B4,$B4,$B4,$24,$C4,$B4,$B4
+  $0B,$0B,$2B,$B2,$02,$BC,$0B,$0B
+  $B3,$B3,$B3,$B3,$23,$C3,$B3,$B3
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $3B,$3B,$3B,$3B,$32,$3C,$3B,$3B
+  $03,$03,$23,$03,$03,$03,$23,$03
+  $04,$04,$54,$04,$04,$04,$45,$04
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $43,$43,$43,$43,$43,$43,$43,$43
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $0B,$0B,$0B,$0B,$0B,$AB,$0B,$0B
+  $B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $03,$03,$03,$03,$03,$23,$03,$03
+  $04,$04,$04,$54,$04,$04,$04,$04
+  $4B,$4B,$42,$42,$4B,$4B,$4B,$4B
+  $43,$43,$43,$43,$43,$43,$43,$43
+  $B4,$B4,$24,$24,$B4,$B4,$B4,$B4
+  $0B,$2B,$B2,$02,$CB,$0B,$0B,$0B
+  $B3,$B3,$23,$23,$B3,$B3,$B3,$B3
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $3B,$3B,$32,$32,$3B,$3B,$3B,$3B
+  $03,$23,$03,$03,$03,$03,$03,$03
+  $45,$04,$04,$04,$04,$54,$04,$04
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $43,$43,$43,$43,$43,$43,$4F,$4E
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $0B,$0B,$0B,$AB,$0B,$0B,$0B,$0B
+  $B3,$B3,$B3,$B3,$B3,$B3,$BF,$BE
+  $34,$34,$34,$34,$34,$34,$F4,$E4
+  $3B,$3B,$3B,$3B,$3B,$3B,$FB,$EB
+  $03,$03,$03,$03,$03,$03,$0F,$0E
+  $04,$04,$54,$04,$04,$04,$04,$45
+  $4B,$4B,$4B,$4B,$42,$4C,$4B,$4B
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $B4,$B4,$B4,$B4,$24,$C4,$B4,$B4
+  $0B,$0B,$2B,$B2,$02,$BC,$0B,$0B
+  $BE,$BE,$BE,$BE,$2E,$CE,$BE,$BE
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $EB,$EB,$EB,$EB,$E2,$EC,$EB,$EB
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $04,$04,$04,$04,$54,$04,$04,$04
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $0B,$0B,$0B,$0B,$0B,$0B,$AB,$0B
+  $BE,$BE,$BE,$BE,$BE,$BE,$BE,$BE
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $0E,$0E,$0E,$FE,$FE,$0E,$0E,$0E
+  $04,$54,$04,$04,$04,$04,$04,$04
+  $4B,$42,$42,$4B,$4B,$4B,$4B,$4B
+  $4E,$4E,$4E,$4E,$4E,$4E,$4F,$43
+  $B4,$24,$24,$B4,$B4,$B4,$B4,$B4
+  $2B,$B2,$02,$CB,$0B,$0B,$0B,$0B
+  $BE,$2E,$2E,$BE,$BE,$BE,$BF,$B3
+  $E4,$E4,$E4,$E4,$E4,$E4,$F4,$34
+  $EB,$E2,$E2,$EB,$EB,$EB,$FB,$3B
+  $0E,$0E,$0E,$0E,$0E,$0E,$0F,$03
+  $04,$04,$04,$54,$04,$04,$45,$04
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $43,$43,$43,$43,$43,$43,$43,$43
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $0B,$0B,$0B,$0B,$AB,$0B,$0B,$0B
+  $B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $03,$03,$23,$03,$03,$03,$03,$23
+  $04,$04,$04,$04,$04,$54,$04,$04
+  $4B,$4B,$4B,$4B,$42,$4C,$4B,$4B
+  $43,$43,$43,$43,$43,$43,$43,$43
+  $B4,$B4,$B4,$B4,$24,$C4,$B4,$B4
+  $0B,$0B,$2B,$B2,$02,$BC,$0B,$0B
+  $B3,$B3,$B3,$B3,$32,$C3,$B3,$B3
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $3B,$3B,$3B,$3B,$32,$3C,$3B,$3B
+  $03,$03,$03,$03,$23,$03,$03,$03
+  $54,$04,$04,$04,$04,$04,$04,$54
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $43,$41,$43,$43,$43,$43,$43,$43
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $B3,$B1,$B3,$B3,$B3,$B3,$B3,$B3
+  $34,$14,$34,$34,$34,$34,$34,$34
+  $3B,$1B,$3B,$3B,$3B,$3B,$3B,$3B
+  $13,$01,$13,$13,$03,$03,$03,$03
+  $04,$04,$04,$04,$04,$04,$05,$0F
+  $41,$41,$41,$41,$4A,$4A,$5A,$FA
+  $4A,$4A,$4A,$4A,$4A,$4A,$5A,$FA
+  $14,$14,$14,$14,$A4,$A4,$A5,$AF
+  $1B,$01,$1B,$1B,$0A,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$0A,$0A,$0A,$0A
+  $A4,$A4,$A4,$A4,$A4,$A4,$A5,$AF
+  $A1,$A1,$A1,$A1,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$F5,$5F,$5F,$5F,$0F,$5F,$05
+  $05,$F5,$F5,$5F,$5F,$0F,$5F,$05
+  $09,$A9,$A9,$09,$A9,$A9,$A9,$09
+  $08,$09,$08,$01,$01,$08,$09,$08
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$1F,$7F,$78,$7F,$0F,$07,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$FF,$1F,$FE,$C0,$E0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$87,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$1C,$1C,$0E,$00,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$0F,$FF,$7F,$3F,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$C0,$C0,$F0,$F8,$FF,$FE,$FC,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$FF,$07,$1F,$3F,$2D,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$C0,$F0,$F8,$FC,$B4,$F8,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$05,$0A,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$38,$70,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$07,$03,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$0F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$0E,$0C,$07,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$E0,$70,$30,$E0,$40,$00,$00,$00,$00,$00,$00
+  $00,$20,$11,$0F,$3F,$7F,$FF,$7F,$3F,$0F,$11,$21,$00,$00,$00,$00
+  $00,$84,$C8,$E0,$F8,$FC,$FE,$FC,$F8,$E0,$10,$08,$00,$00,$00,$00
+  $00,$00,$01,$09,$05,$27,$17,$0F,$3F,$FF,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$40,$C8,$D0,$E0,$F8,$FF,$00,$00,$00,$00,$00,$00
+end data
+
+record Foe:
+  u16 X
+  u8 Y
+  u8 T
+  u8 S
+end record
+
+Foe Fs[NFoe]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+' the jet
+u16 Spd16 = 0
+u16 PYf = 0
+i16 Vv = 0
+u8 PX = JetX
+u8 PY = GroundY
+u8 Air = 0
+u8 Combat = 0
+u8 Lives = 5
+u8 Level = 1
+u8 StartLv = 1
+u8 Over = 0
+u8 Boom = 0
+' the route
+u8 Si = 0
+u8 SLeft = 0
+u8 Flags = 0
+u8 Half = 0
+u8 Fed = 0
+u16 Fine = 0
+u16 Su = 0
+u8 Steps = 0
+u8 SpawnT = 0
+u8 Msg = 0
+u8 Kr[128]
+u8 Pr[128]
+u8 Cols[32]
+' the bomb
+u8 BOn = 0
+u8 BK = 0
+u16 BX = 0
+u16 BY = 0
+i16 BVX = 0
+u16 BVY = 0
+u8 BTgt = 0
+' the missile
+u8 MOn = 0
+u16 MX = 0
+u16 MY = 0
+u16 MVX = 0
+u16 MVY = 0
+' a blast (bomb, missile or jet)
+u8 XT = 0
+u8 XX = 0
+u8 XY = 0
+u8 XK = 0
+' counts for the bots
+u8 Kills = 0
+u8 Hits = 0
+u8 Shots = 0
+u8 Launches = 0
+u8 Done = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Anim = 0
+u8 Phase = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ci = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table FdSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Phase = 1
+  CreditsPage
+
+title:
+  TitlePage
+  Score = 0
+  Lives = 5
+  Level = StartLv
+  Kills = 0
+  Hits = 0
+
+new_level:
+  NewLevel
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+  Phase = 5
+
+  if Over = 3 then
+    ' MISSION COMPLETED
+    inc Done
+    mute all
+    play sound SndDone
+    DrawSkyRow(3)
+    print at 7,3, " MISSION COMPLETED "
+    if Level > 0 then
+      print at 6,5, " BUTTON: NEXT LEVEL "
+      Rearm
+      wait 60 frames
+      nmi on
+      pause until press and release sleep after 30 seconds
+      nmi off
+      if Level < 9 then inc Level
+      goto new_level
+    end if
+    Rearm
+    wait 120 frames
+    nmi on
+    pause until press and release sleep after 30 seconds
+    nmi off
+    goto title
+  end if
+
+  ' the end: SPLASH! / CRASH! or the last life, then GAME OVER
+  Pause(60)
+  DrawSkyRow(3)
+  print at 9,3, "  GAME  OVER  "
+  print at 9,5, " SCORE ", Score, " "
+  print at 9,6, " BEST  ", Hi, " "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the route: one half column comes in at the left edge
+sub FeedHalf:
+  u8 Kd
+  u8 H
+  u8 Hp
+  if Half = 0 then
+    ' a new column: the next run when this one is used up
+    if SLeft = 0 then
+      inc Si
+      if Si >= NSc then Si = 0
+      Flags = ScF[Si]
+      SLeft = ScN[Si]
+    end if
+    dec SLeft
+    if SpawnT > 0 then dec SpawnT
+  end if
+  Half = Half ^ 1
+  Kd = TerrainOf(Flags)
+  H = Fed & 127
+  Hp = (Fed - 1) & 127
+  Kr[H] = Kd
+  Pr[Hp] = Kd * 3 + Kr[Hp]
+  inc Fed
+  return
+end sub
+
+function TerrainOf(u8 F) as u8
+  if F & 32 then return 2
+  return F & 1
+
+' the kind of terrain under a screen x (0 sea, 1 field, 2 airfield)
+function KindAt(u8 Sx) as u8
+  u8 Cc
+  u8 Hh
+  Cc = Sx >> 3
+  Hh = Fed - 2 - Cc * 2
+  if (Sx & 7) < 4 then inc Hh
+  return Kr[Hh & 127]
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  inc Anim
+  if XT > 0 then dec XT
+  if Boom > 0 then
+    dec Boom
+    if Boom = 0 then Over = 1
+    return
+  end if
+  if Combat = 1 then
+    BattleStick
+  else
+    FlyStick
+  end if
+  ' the ground scrolls: speed x 13 / 256 pixels a frame
+  K = highbyte Spd16
+  Su = K * 13
+  Fine = Fine + Su
+  Steps = 0
+  while Fine >= 1024
+    Fine = Fine - 1024
+    FeedHalf
+    inc Steps
+    for Fi = 0 to NFoe - 1
+      if Fs[Fi].S > 0 then Fs[Fi].X = Fs[Fi].X + 1024
+    next
+  end while
+  if Steps > 0 then
+    call asm FdBand
+  end if
+  RunFlags
+  MoveFoes
+  MoveBomb
+  MoveMissile
+  if Combat = 0 then GroundCheck
+  return
+end sub
+
+' take-off and landing: speed with left/right, climb and dive with up/down
+sub FlyStick:
+  u16 Ns
+  u8 Fa
+  u8 Ok
+  u8 Up
+  i16 Lift
+  Ok = 0
+  select case J1 & 12
+    case 4
+      Ns = Spd16 + $40
+      if Ns < $8000 then Ok = 1
+    case 8
+      if Spd16 >= $40 then
+        Ns = Spd16 - $40
+        Ok = 1
+      end if
+  end select
+  if Ok = 1 then
+    Fa = highbyte Ns
+    if PY < GroundY then
+      if Fa < 80 then Ok = 0
+    end if
+    if Ok = 1 then Spd16 = Ns
+  end if
+  Fa = highbyte Spd16
+  Up = J1 & 3
+  if Up = 1 or Up = 2 then
+    if Fa >= 80 then
+      Lift = Fa - 60
+      if Lift > 50 then Lift = 50
+      Lift = Lift * 8
+      if Up = 1 then
+        Vv = 0 - Lift
+      else
+        Vv = Lift
+      end if
+      MoveJet
+    end if
+  else
+    if Vv < 0 then
+      Vv = Vv + 16
+    elseif Vv > 0 then
+      Vv = Vv - 16
+    end if
+    MoveJet
+  end if
+  return
+end sub
+
+' the jet's height moves by Vv (1/256 pixels), kept between the top and
+' the ground
+sub MoveJet:
+  PYf = PYf + Vv
+  PY = highbyte PYf
+  if PY < TopY then
+    PY = TopY
+    PYf = (PYf & 255) + PY * 256
+  end if
+  if PY >= GroundY then
+    PY = GroundY
+    PYf = (PYf & 255) + PY * 256
+  else
+    Air = 1
+  end if
+  return
+end sub
+
+' on the ground: the airfield is safe, anywhere else ends the game; stopped
+' on the airfield after a flight completes the mission
+sub GroundCheck:
+  u8 Kd
+  if PY >= GroundY then
+    Kd = KindAt(PX + 8)
+    if Kd = 2 then
+      if Air = 1 then
+        if highbyte Spd16 = 0 then Over = 3
+      end if
+    else
+      DrawSkyRow(3)
+      if Kd = 0 then
+        print at 11,3, " SPLASH! "
+        XK = SSplash
+      else
+        print at 11,3, " CRASH! "
+        XK = SBlast1
+      end if
+      play sound SndCrash
+      XT = 60
+      XX = PX
+      XY = PY
+      Boom = 60
+      BOn = 0
+      MOn = 0
+    end if
+  end if
+  return
+end sub
+
+' the battle: the stick slides the jet along the slant (3 pixels a frame), a button bombs
+sub BattleStick:
+  u8 Ny
+  Ny = PY
+  if J1 & 5 then
+    if Ny <= BatBot - 3 then Ny = Ny + 3
+  elseif J1 & 10 then
+    if Ny >= BatTop + 3 then Ny = Ny - 3
+  end if
+  SetBattleY(Ny)
+  if Btn > 0 then
+    if BOn = 0 then
+      if Level > 0 then
+        if Flags & 128 then DropBomb
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub SetBattleY(u8 Y):
+  W16 = (Y - BatTop) * 13
+  PY = Y
+  PX = JetX - (W16 >> 4)
+  PYf = Y * 256
+  return
+end sub
+
+sub DropBomb:
+  u8 Kd
+  Kd = KindAt(PX + 8)
+  BOn = 1
+  inc Shots
+  BTgt = PY + BombDrop
+  if Kd = 0 then
+    BK = 0
+    BX = (PX - 18) * 256
+    BY = (PY + 4) * 256
+    BVX = -2048
+    BVY = 1280
+  else
+    BK = 1
+    BX = (PX - 8) * 256
+    BY = PY * 256
+    BVX = -717
+    BVY = 768
+  end if
+  play sound SndDrop
+  return
+end sub
+
+sub MoveBomb:
+  u8 Bpx
+  u8 Bpy
+  u8 Ex
+  u8 Ey
+  u8 Hit
+  if BOn = 0 then return
+  BX = BX + BVX + Su
+  BY = BY + BVY
+  Bpy = highbyte BY
+  Bpx = highbyte BX
+  if Bpy >= BTgt or Bpy >= BombLow then
+    BOn = 0
+    Hit = 255
+    for Ci = 0 to NFoe - 1
+      if Fs[Ci].S = 1 then
+        Ex = highbyte Fs[Ci].X
+        Ey = Fs[Ci].Y
+        if Near(Bpx, Ex) < 14 then
+          if Bpy + 12 >= Ey then
+            if Bpy <= Ey + 10 then Hit = Ci
+          end if
+        end if
+      end if
+    next
+    if Hit < NFoe then
+      Fs[Hit].S = 24
+      J = Fs[Hit].T
+      V = FoePts[J]
+      Score += V
+      if Score > Hi then Hi = Score
+      inc Kills
+      ShowScore
+      play sound SndBoom
+    else
+      XT = 12
+      XX = Bpx
+      XY = Bpy
+      if BK = 0 then
+        XK = SSplash
+      else
+        XK = SBlast0
+      end if
+      play sound SndPuff
+    end if
+  end if
+  return
+end sub
+
+function Near(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' enemies: on the ground, carried by the scroll; a missile now and then
+sub MoveFoes:
+  u8 Ex
+  u8 Sl
+  u8 St
+  u8 Kd
+  for Ci = 0 to NFoe - 1
+    St = Fs[Ci].S
+    if St > 0 then
+      Ex = highbyte Fs[Ci].X
+      if Ex > 224 then
+        Fs[Ci].S = 0
+      elseif St > 1 then
+        Fs[Ci].S = St - 1
+        if St = 2 then Fs[Ci].S = 0
+      end if
+    end if
+  next
+  if Level = 0 then return
+  ' a new enemy every 6-12 columns while the run brings them
+  if SpawnT = 0 then
+    Rand
+    SpawnT = (Rs & 7) % 7 + 6
+    if Flags & 64 then
+      Sl = 255
+      for Ci = 0 to NFoe - 1
+        if Fs[Ci].S = 0 then Sl = Ci
+      next
+      if Sl < NFoe then
+        Kd = Flags & 1
+        Fs[Sl].T = Kd
+        Fs[Sl].X = 16 * 256
+        Rand
+        Fs[Sl].Y = (Rs >> 8) % 61 + FoeTop
+        Fs[Sl].S = 1
+      end if
+    end if
+  end if
+  ' a missile: a random byte below 16 x level, a random enemy near the left
+  if MOn = 0 then
+    if Boom = 0 then
+      Rand
+      V = lowbyte Rs
+      K = Level * 16
+      if V < K then
+        Sl = (Rs >> 8) & 3
+        if Fs[Sl].S = 1 then
+          Ex = highbyte Fs[Sl].X
+          if Ex < 60 then Launch(Sl, Ex)
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Launch(u8 N, u8 Ex):
+  u8 Ey
+  Ey = Fs[N].Y
+  if Fs[N].T = 0 then
+    MX = (Ex + 27) * 256
+  else
+    MX = (Ex + 13) * 256
+  end if
+  MY = (Ey - 18) * 256
+  MVX = Level * 102 + 819
+  MVY = Level * 64 + 256
+  MOn = 1
+  inc Launches
+  play sound SndLaunch
+  return
+end sub
+
+sub MoveMissile:
+  u8 Mpx
+  u8 Mpy
+  if MOn = 0 then return
+  MX = MX + MVX + Su
+  MY = MY - MVY
+  Mpx = highbyte MX
+  Mpy = highbyte MY
+  if Mpy < 16 or Mpx > 232 then
+    MOn = 0
+  elseif Mpx >= PX then
+    if Mpx < PX + 14 then
+      if Near(Mpy, PY) < 10 then JetHit(Mpx, Mpy)
+    end if
+  end if
+  return
+end sub
+
+sub JetHit(u8 Hx, u8 Hy):
+  MOn = 0
+  inc Hits
+  XT = 20
+  XX = Hx
+  XY = Hy
+  XK = SBlast1
+  if Lives > 0 then dec Lives
+  ShowLives
+  play sound SndHit
+  if Lives = 0 then
+    Boom = 60
+    XT = 60
+    XX = PX
+    XY = PY
+  end if
+  return
+end sub
+
+' the run at the left edge: messages and the battle
+sub RunFlags:
+  u8 M
+  u8 Cb
+  M = (Flags >> 1) & 7
+  if M <> Msg then
+    Msg = M
+    DrawSkyRow(3)
+    select case M
+      case 1
+        print at 9,3, " GET READY "
+        play sound SndBeep
+      case 2
+        print at 6,3, " PREPARE TO LAND "
+        play sound SndBeep
+    end select
+  end if
+  if Level = 0 then return
+  Cb = (Flags >> 4) & 1
+  if Cb <> Combat then
+    Combat = Cb
+    if Cb = 1 then
+      Spd16 = $2400
+      Vv = 0
+      SetBattleY(BatStart)
+    else
+      Spd16 = (Spd16 & 255) + $7F00
+      Vv = 0
+      PX = JetX
+      PY = TopY
+      PYf = TopY * 256
+      BOn = 0
+    end if
+    ShowSpeed
+  end if
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub Pause(u8 F):
+  u8 Pc
+  for Pc = 1 to F
+    Frame1
+    inc Anim
+    if XT > 0 then dec XT
+    DrawSprites
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+sub DrawSkyRow(u8 R):
+  u8 Cx
+  fill TSky count 32 at 0,R
+  for Cx = 0 to 5
+    J = Cx * 2
+    if Clouds[J + 1] = R then
+      put char TCloud00 at Clouds[J],R
+      put char TCloud01 at Clouds[J] + 1,R
+    end if
+  next
+  return
+end sub
+
+sub DrawField:
+  for Ci = 1 to 8
+    DrawSkyRow(Ci)
+  next
+  fill TEarth count 32 at 0,21
+  return
+end sub
+
+sub ShowAll:
+  print at 2,1, "SPEED"
+  print at 20,1, "LEVEL"
+  print at 2,22, "SCORE"
+  print at 20,22, "LIVES"
+  NumU = Level
+  print at 26,1, digits$(NumU, 1)
+  ShowScore
+  ShowLives
+  ShowSpeed
+  return
+end sub
+
+sub ShowScore:
+  print at 8,22, Score
+  return
+end sub
+
+sub ShowLives:
+  NumU = Lives
+  print at 26,22, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowSpeed:
+  NumU = highbyte Spd16
+  print at 8,1, digits$(NumU, 3)
+  return
+end sub
+
+sub HideFoes:
+  for Ci = 2 to NSpr - 1
+    set sprite Ci to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' sprites 0-1 the jet, 2 the bomb, 3 the missile, 4 a blast, 5-8 enemies
+sub DrawSprites:
+  u8 Ex
+  u8 Ey
+  u8 St
+  u8 Pt
+  u8 Col
+  if Boom = 0 then
+    set sprite 0 to PY - 1,PX,SJetr,8
+    set sprite 1 to PY - 1,PX,SJetw,15
+  else
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  end if
+  if BOn = 1 then
+    Ex = highbyte BX
+    Ey = highbyte BY
+    if BK = 0 then
+      set sprite 2 to Ey - 1,Ex,STorp,15
+    else
+      set sprite 2 to Ey - 1,Ex,SBomb,1
+    end if
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  if MOn = 1 then
+    Ex = highbyte MX
+    Ey = highbyte MY
+    set sprite 3 to Ey - 1,Ex,SMissile,8
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  if XT > 0 then
+    Col = 11
+    if XK = SSplash then Col = 15
+    if (XT & 8) = 0 then Col = 9
+    set sprite 4 to XY - 1,XX,XK,Col
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  for Ci = 0 to NFoe - 1
+    J = Ci + 5
+    St = Fs[Ci].S
+    if St > 0 then
+      Ex = highbyte Fs[Ci].X
+      Ey = Fs[Ci].Y
+      if St = 1 then
+        K = Fs[Ci].T
+        Pt = FoeSpr[K]
+        Col = FoeCol[K]
+      else
+        Pt = SBlast1
+        if St < 12 then Pt = SBlast0
+        Col = 11
+        if (St & 8) = 0 then Col = 9
+      end if
+      set sprite J to Ey - 1,Ex,Pt,Col
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  if (Anim & 7) = 0 then ShowSpeed
+  return
+end sub
+
+sub NewLevel:
+  u8 Pf
+  NewScreen
+  Over = 0
+  Boom = 0
+  Combat = 0
+  Air = 0
+  BOn = 0
+  MOn = 0
+  XT = 0
+  Msg = 0
+  Spd16 = 0
+  Vv = 0
+  PX = JetX
+  PY = GroundY
+  PYf = GroundY * 256
+  for Ci = 0 to NFoe - 1
+    Fs[Ci].S = 0
+  next
+  ' the route starts in the airfield run with a screen of it already
+  ' there (the C64 drew its first screen the same way, $271A)
+  Si = 2
+  Flags = ScF[2]
+  SLeft = ScN[2]
+  Half = 0
+  Fed = 0
+  Fine = 0
+  SpawnT = 6
+  for Pf = 1 to 64
+    FeedHalf
+  next
+  DrawField
+  call asm FdBand
+  ShowAll
+  NumU = Level
+  print at 10,3, " LEVEL ", digits$(NumU, 1), " "
+  ShowScreen
+  play sound SndBeep
+  DrawSprites
+  Pause(90)
+  DrawSkyRow(3)
+  Phase = 4
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the name on red bars over the airfield, the level chooser,
+' how to fly, the best score, the tune once
+sub TitlePage:
+  u8 Lv
+  u8 Hold
+  NewScreen
+  for Ci = 1 to 8
+    DrawSkyRow(Ci)
+  next
+  fill TBar count 32 at 0,4
+  fill TBar count 32 at 0,6
+  print at 8,5, " FINAL DEFENSE "
+  print at 6,8, " COMPUTE!'S GAZETTE "
+  fill TEarth count 32 at 0,21
+  print at 2,10, " LEFT/RIGHT: SPEED       "
+  print at 2,11, " UP/DOWN: CLIMB/DIVE     "
+  print at 2,12, "  (SPEED 80 OR MORE)     "
+  print at 2,13, " BUTTON: BOMB            "
+  print at 2,14, " LAND AND STOP ON THE    "
+  print at 2,15, " AIRFIELD TO WIN         "
+  print at 5,18, " LEVEL    (UP/DOWN) "
+  print at 6,22, " PRESS THE BUTTON "
+  if Hi > 0 then
+    print at 10,1, " BEST ", Hi, " "
+  end if
+  Lv = StartLv
+  NumU = Lv
+  print at 12,18, digits$(NumU, 1)
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Hold = 0
+  Phase = 2
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Hold > 0 then dec Hold
+  if (J1 & 3) = 0 then Hold = 0
+  if Hold = 0 then
+    if J1 & 1 then
+      if Lv < 9 then inc Lv
+      Hold = 12
+    elseif J1 & 2 then
+      if Lv > 0 then dec Lv
+      Hold = 12
+    end if
+    NumU = Lv
+    print at 12,18, digits$(NumU, 1)
+  end if
+  ' a jet crossing the sky
+  Fi = 232 - (Anim & 255)
+  inc Anim
+  if Fi > 16 and Fi < 232 then
+    set sprite 0 to 55,Fi,SJetr,8
+    set sprite 1 to 55,Fi,SJetw,15
+  else
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  if Press = 0 then goto tp_loop
+  StartLv = Lv
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  Phase = 3
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "FINAL DEFENSE"
+  print at 2,5, "BASED ON FINAL DEFENSE,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "DECEMBER 1989 (COMMODORE"
+  print at 2,8, "64 MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: LAST DEFENDER"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; FdBand: the scrolling band, screen rows 9-20. The tile at column c of
+; band row r is TB0_00 + 9 r + Pr[(Fed - 2 - 2 c) & 127] (copied to Cols
+; first), Pr[h] being
+; 3 x kind[h + 1] + kind[h] (left half newer). NMI off (the frame loop).
+FdBand:
+    ld a,(AMY_UVAR_Fed)
+    sub 2
+    ld c,a
+    ld de,AMY_UVAR_Cols
+    ld b,32
+FdBuf:
+    ld a,c
+    and 127
+    ld hl,AMY_UVAR_Pr
+    add a,l
+    ld l,a
+    jr nc,FdNc
+    inc h
+FdNc:
+    ld a,(hl)
+    ld (de),a
+    inc de
+    dec c
+    dec c
+    djnz FdBuf
+    ld d,AMY_UCONST_TB0_00
+    ld hl,VRAM_NAME + 288
+    ld b,12
+FdRow:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    push hl
+    push bc
+    ld hl,AMY_UVAR_Cols
+    ld b,32
+FdCol:
+    ld a,(hl)
+    add a,d
+    out ($BE),a
+    inc hl
+    djnz FdCol
+    pop bc
+    pop hl
+    ld a,d
+    add a,9
+    ld d,a
+    ld a,l
+    add a,32
+    ld l,a
+    jr nc,FdN2
+    inc h
+FdN2:
+    djnz FdRow
+    ret
+FdDrop:
+    db $40,$3E,$30,$01,$40,$43,$30,$01,$40,$48,$30,$01,$40,$4D,$30,$01,$40,$53,$40,$01,$40,$59,$40,$01
+    db $40,$60,$40,$01,$40,$67,$40,$01,$40,$6F,$40,$01,$40,$77,$40,$01,$40,$80,$40,$01,$40,$8A,$40,$01
+    db $50
+FdLaunch:
+    db $40,$E0,$40,$01,$40,$C8,$40,$01,$40,$B2,$50,$01,$40,$9F,$50,$01,$40,$8E,$50,$01,$40,$7F,$50,$01
+    db $40,$71,$60,$01,$40,$65,$60,$01,$50
+FdBoom:
+    db $00,$00,$06,$03,$00,$00,$17,$05,$00,$00,$37,$06,$00,$00,$57,$08,$00,$00,$77,$0A,$10
+FdPuff:
+    db $00,$00,$25,$02,$00,$00,$35,$03,$00,$00,$56,$04,$00,$00,$76,$04,$10
+FdHit:
+    db $00,$00,$06,$04,$00,$00,$17,$06,$00,$00,$27,$08,$00,$00,$47,$0A,$00,$00,$67,$0E,$10
+FdCrash:
+    db $00,$00,$07,$06,$00,$00,$16,$08,$00,$00,$27,$0A,$00,$00,$37,$0C,$00,$00,$57,$0E,$00,$00,$77,$12
+    db $10
+FdTouch:
+    db $40,$FC,$21,$02,$40,$6D,$32,$02,$40,$EA,$42,$02,$50
+FdBeep:
+    db $40,$7F,$20,$05,$40,$FF,$F3,$03,$40,$7F,$20,$05,$50
+FdDone:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$55,$20,$12,$50
+FdOver:
+    db $40,$FE,$10,$0C,$40,$0E,$21,$0C,$40,$2E,$21,$0C,$40,$53,$21,$0C,$40,$FC,$31,$20,$50
+
+FdSoundTable:
+    dw FdTuneMel,$702B
+    dw FdTuneBass,$7035
+    dw FdDrop,$7049
+    dw FdLaunch,$7049
+    dw FdBoom,$703F
+    dw FdPuff,$703F
+    dw FdHit,$703F
+    dw FdCrash,$703F
+    dw FdTouch,$7049
+    dw FdBeep,$7049
+    dw FdDone,$7049
+    dw FdOver,$7049
+; Last Defender (original)
+; Tiny Sound, 8 frames per step
+FdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$1A,$21,$21,$01,$01,$1C,$21,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$1C,$01,$1F,$01,$21,$01,$23,$01,$24,$01,$01,$23
+    db $21,$01,$01,$01,$24,$01,$01,$23,$24,$01,$26,$01,$28,$01,$26,$01
+    db $24,$01,$23,$01,$21,$01,$1F,$01,$1C,$01,$1F,$01,$21,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+FdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$11,$01,$0C,$01,$11,$01,$0C,$01,$13,$01,$0E,$01
+    db $13,$01,$0E,$01,$10,$01,$0B,$01,$10,$01,$14,$01,$15,$01,$01,$01
+    db $09,$01,$01,$01
+    db $FF
+}

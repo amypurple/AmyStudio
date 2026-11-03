@@ -1,0 +1,1116 @@
+cartridge "GRIDLOC/COMPUTE!'S GAZETTE/1989"
+
+' GRIDLOC
+' A ColecoVision game based on "GRIDLOC", COMPUTE!'s Gazette disk,
+' February 1989 (Commodore 128, BASIC 7.0; no author named in the
+' listing, only "COPYRIGHT 1989 COMPUTE! PUBLICATIONS, INC."; the listing
+' is orig/gridloc.128.bas). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the listing's rules, built for the
+' ColecoVision with drawn squares and dice, a gliding cursor, a falling
+' stamp, sound effects and an original title tune.
+'
+' The game (from the listing): a 6 x 6 grid, columns 1-6 and rows A-F.
+' One to five players and the computer take turns. Each turn throws two
+' different columns and two different rows (lines 380-430); the player
+' claims any square inside that rectangle (lines 280-310), even one that
+' another player owns (it becomes his) or one of his own. The first to
+' own a square in every column AND every row achieves GRIDLOC and wins
+' (line 350: PC=126 AND PR=126); only the player who moves can win.
+' The computer (lines 520-600) scores each square in the rectangle: its
+' own squares 1; others 1, +2 if it has no square in that column, +2 if
+' none in that row, +1 if another player owns it, +5 if that player is
+' near GRIDLOC (5+ columns and 5+ rows); it scans columns from the right
+' and rows from the bottom and keeps the first best.
+'
+' Liberties:
+' - The computer's +5 "stop the leader" bonus: the listing sets the near
+'   flag as GW OR 2^PL (PL is the computer's own number), so the bonus
+'   never applied; here it marks the near player, as clearly meant, and
+'   is worked out for all players at the computer's turn.
+' - Names are not typed (no keyboard): PLAYER 1-5 and COMPUTER, each with
+'   its colour and number on its squares; the computer's squares are a
+'   grey robot block (the listing's solid block BL$(7)).
+' - A cursor on the board (kept inside the rectangle) instead of typing
+'   a column digit and a row letter; a stamp drops on the square.
+' - The dice: pips for the columns, letters for the rows, tumbling six
+'   times as the listing's six throws; the rectangle is outlined between
+'   the squares as the listing's OUTLINE routine did.
+' - A score list beside the board (columns and rows each player covers):
+'   the same information as the board, easier to read on a TV.
+' - No PLAY AGAIN question: the house rule end (message, button, title).
+'   The listing's colour-cycling finish is replaced by a fanfare.
+'
+' Controls: either controller (players share it, hot seat). Stick:
+' move the cursor; either button: claim the square. On the title, up and
+' down choose, left and right change the number of players, a button
+' starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes.
+
+const TO000 = 128
+const TO001 = 129
+const TO010 = 130
+const TO011 = 131
+const TO100 = 132
+const TO101 = 133
+const TO110 = 134
+const TO111 = 135
+const TO200 = 136
+const TO201 = 137
+const TO210 = 138
+const TO211 = 139
+const TO300 = 140
+const TO301 = 141
+const TO310 = 142
+const TO311 = 143
+const TO400 = 144
+const TO401 = 145
+const TO410 = 146
+const TO411 = 147
+const TO500 = 148
+const TO501 = 149
+const TO510 = 150
+const TO511 = 151
+const TO600 = 152
+const TO601 = 153
+const TO610 = 154
+const TO611 = 155
+const TM0 = 156
+const TM1 = 157
+const TM2 = 158
+const TM3 = 159
+const TM4 = 160
+const TM5 = 161
+const TM6 = 162
+const TDot = 163
+const THl = 164
+const TVl = 165
+const TCtl = 166
+const TCtr = 167
+const TCbl = 168
+const TCbr = 169
+const TP100 = 170
+const TP101 = 171
+const TP110 = 172
+const TP111 = 173
+const TP200 = 174
+const TP201 = 175
+const TP210 = 176
+const TP211 = 177
+const TP300 = 178
+const TP301 = 179
+const TP310 = 180
+const TP311 = 181
+const TP400 = 182
+const TP401 = 183
+const TP410 = 184
+const TP411 = 185
+const TP500 = 186
+const TP501 = 187
+const TP510 = 188
+const TP511 = 189
+const TP600 = 190
+const TP601 = 191
+const TP610 = 192
+const TP611 = 193
+const TDa00 = 194
+const TDa01 = 195
+const TDa10 = 196
+const TDa11 = 197
+const TDb00 = 198
+const TDb01 = 199
+const TDb10 = 200
+const TDb11 = 201
+const TDc00 = 202
+const TDc01 = 203
+const TDc10 = 204
+const TDc11 = 205
+const TDd00 = 206
+const TDd01 = 207
+const TDd10 = 208
+const TDd11 = 209
+const TDe00 = 210
+const TDe01 = 211
+const TDe10 = 212
+const TDe11 = 213
+const TDf00 = 214
+const TDf01 = 215
+const TDf10 = 216
+const TDf11 = 217
+const SCur = 0
+const SStamp = 4
+const NTiles8 = 720
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndRattle = 3
+const SndTick = 4
+const SndLand = 5
+const SndSteal = 6
+const SndBump = 7
+const SndTurn = 8
+const SndWin = 9
+const NSpr = 2
+const TuneLen = 512
+const BX = 4
+const BY = 2
+const Comp = 6
+
+record Range:
+  u8 Lo
+  u8 Hi
+end record
+
+' sprite colour of each owner (0 empty .. 6 computer)
+data OwnCol bytes
+  4,8,10,3,5,13,14
+end data
+' the title's letters, 3 x 5 blocks each: G R I D L O C
+data Logo bytes
+  7,4,5,5,7, 6,5,6,5,5, 7,2,2,2,7, 6,5,5,5,6, 4,4,4,4,7, 7,5,5,5,7, 7,4,4,4,7
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the board: Grid[row * 6 + col] = owner (0 empty, 1-5 players, 6 computer)
+u8 Grid[36]
+Range ColR
+Range RowR
+' covered columns and rows (bit masks) of the owner last given to Masks
+u8 Mc = 0
+u8 Mr = 0
+' humans 1-5, whose turn (1-5 or Comp), cursor square, cursor pixels
+u8 Nh = 1
+u8 Who = 1
+u8 Cc = 0
+u8 Cr = 0
+u8 Sx = 0
+u8 Sy = 0
+' game state: 0 title, 1 throwing, 2 player choosing, 3 computer, 4 claim, 5 over
+u8 Gs = 0
+u8 Winner = 0
+u16 Turns = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 J1 = 0
+u8 J2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Rpt = 0
+u8 Pi = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table GlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+turn_loop:
+  ShowTurn
+  ThrowDice
+  Outline(1)
+  if Who = Comp then
+    ComputerTurn
+  else
+    PlayerTurn
+  end if
+  Claim
+  Outline(0)
+  ShowScores
+  Masks(Who)
+  if Mc = 63 then
+    if Mr = 63 then goto achieved
+  end if
+  Who = NextPlayer(Who)
+  goto turn_loop
+
+achieved:
+  Gs = 5
+  Winner = Who
+  HideSprites
+  fill 32 count 28 at 2,22
+  if Who = Comp then
+    print at 2,22, "GRIDLOC ACHIEVED BY COMPUTER"
+  else
+    print at 2,22, "GRIDLOC ACHIEVED BY PLAYER"
+    put char 48 + Who at 29,22
+  end if
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+function NextPlayer(u8 P) as u8
+  if P = Comp then return 1
+  if P = Nh then return Comp
+  return P + 1
+
+' Mc / Mr: the columns and rows where owner P has a square
+sub Masks(u8 P):
+  u8 I = 0
+  u8 Bit = 1
+  Mc = 0
+  Mr = 0
+  for Ri = 0 to 5
+    Bit = 1
+    for Ci = 0 to 5
+      if Grid[I] = P then
+        Mc = Mc | Bit
+        Mr = Mr | (1 << Ri)
+      end if
+      Bit = Bit << 1
+      inc I
+    next
+  next
+  return
+
+function Bits(u8 M) as u8
+  u8 N = 0
+  while M > 0
+    if (M & 1) = 1 then inc N
+    M = M >> 1
+  end while
+  return N
+
+' lines 520-600 (see the header for the +5 fix): columns C2 down to C1,
+' rows R2 down to R1, the first best square wins
+sub ComputerChoice:
+  u8 Near = 0
+  u8 Qc = 0
+  u8 Qr = 0
+  u8 Best = 0
+  u8 Sc = 0
+  u8 O = 0
+  u8 Xx = 0
+  u8 Yy = 0
+  u8 P = 0
+  u8 Hi = 0
+  for P = 1 to Nh
+    Masks(P)
+    if Bits(Mc) > 4 then
+      if Bits(Mr) > 4 then Near = Near | (1 << P)
+    end if
+  next
+  Masks(Comp)
+  Qc = Mc
+  Qr = Mr
+  Hi = ColR.Hi
+  for Xx = Hi to ColR.Lo step -1
+    for Yy = RowR.Hi to RowR.Lo step -1
+      O = Grid[Yy * 6 + Xx]
+      Sc = 1
+      if O <> Comp then
+        if (Near & (1 << O)) <> 0 then Sc += 5
+        if (Qc & (1 << Xx)) = 0 then Sc += 2
+        if (Qr & (1 << Yy)) = 0 then Sc += 2
+        if O <> 0 then inc Sc
+      end if
+      if Sc > Best then
+        Best = Sc
+        Cc = Xx
+        Cr = Yy
+      end if
+    next
+  next
+  return
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+function Die6 as u8
+  u16 R = 0
+  R = Rand
+  R = highbyte R
+  return R % 6
+
+' two different values 0-5, low first (lines 390-420)
+sub ThrowPair(u8 Which):
+  u8 A = 0
+  u8 B = 0
+  A = Die6
+  B = Die6
+  while A = B
+    B = Die6
+  end while
+  if A > B then swap A with B
+  if Which = 0 then
+    ColR.Lo = A
+    ColR.Hi = B
+  else
+    RowR.Lo = A
+    RowR.Hi = B
+  end if
+  return
+
+' ---------------------------------------------------------------------------
+' turns
+
+sub ShowTurn:
+  Gs = 1
+  put char TO000 + Who * 4 at 24,11
+  put char TO001 + Who * 4 at 25,11
+  put char TO010 + Who * 4 at 24,12
+  put char TO011 + Who * 4 at 25,12
+  fill 32 count 28 at 2,22
+  if Who = Comp then
+    print at 2,22, "COMPUTER THROWS"
+  else
+    print at 2,22, "PLAYER"
+    put char 48 + Who at 9,22
+    print at 11,22, "THROWS"
+  end if
+  play sound SndTurn
+  for J = 1 to 20
+    Frame1
+  next
+  return
+
+' six tumbles, as the listing's six throws; the last one counts
+sub ThrowDice:
+  u8 K = 0
+  for K = 1 to 6
+    ThrowPair(0)
+    ThrowPair(1)
+    ShowDice
+    play sound SndRattle
+    for J = 1 to 8
+      Frame1
+    next
+  next
+  inc Turns
+  return
+
+sub PutBig(u8 T, u8 Px, u8 Py):
+  put char T at Px,Py
+  put char T + 1 at Px + 1,Py
+  put char T + 2 at Px,Py + 1
+  put char T + 3 at Px + 1,Py + 1
+  return
+
+sub ShowDice:
+  PutBig(TP100 + ColR.Lo * 4, 24, 3)
+  PutBig(TP100 + ColR.Hi * 4, 27, 3)
+  PutBig(TDa00 + RowR.Lo * 4, 24, 7)
+  PutBig(TDa00 + RowR.Hi * 4, 27, 7)
+  return
+
+' the rectangle's outline in the gutters (On 1), or the plain grid (On 0)
+sub Outline(u8 Lit):
+  u8 X0 = 0
+  u8 X1 = 0
+  u8 Y0 = 0
+  u8 Y1 = 0
+  u8 Xi = 0
+  u8 Yi = 0
+  u8 T = 0
+  X0 = ColR.Lo * 3 + BX
+  X1 = ColR.Hi * 3 + BX + 3
+  Y0 = RowR.Lo * 3 + BY
+  Y1 = RowR.Hi * 3 + BY + 3
+  for Xi = X0 to X1
+    T = 32
+    if ((Xi - BX) % 3) = 0 then T = TDot
+    if Lit = 1 then T = THl
+    put char T at Xi,Y0
+    put char T at Xi,Y1
+  next
+  for Yi = Y0 to Y1
+    T = 32
+    if ((Yi - BY) % 3) = 0 then T = TDot
+    if Lit = 1 then T = TVl
+    put char T at X0,Yi
+    put char T at X1,Yi
+  next
+  if Lit = 1 then
+    put char TCtl at X0,Y0
+    put char TCtr at X1,Y0
+    put char TCbl at X0,Y1
+    put char TCbr at X1,Y1
+  end if
+  return
+
+sub PlayerTurn:
+  Gs = 2
+  fill 32 count 28 at 2,22
+  print at 2,22, "PLAYER"
+  put char 48 + Who at 9,22
+  print at 11,22, "PICKS A SQUARE"
+  Cc = (ColR.Lo + ColR.Hi) / 2
+  Cr = (RowR.Lo + RowR.Hi) / 2
+  JumpCursor
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Rpt = 0
+pt_loop:
+  Frame1
+  ReadPad
+  MoveCursor
+  if Press = 1 then goto pt_done
+  if Stick = 0 then
+    Rpt = 0
+    goto pt_loop
+  end if
+  if Rpt > 0 then
+    dec Rpt
+    goto pt_loop
+  end if
+  if WasStick = 0 then
+    Rpt = 15
+  else
+    Rpt = 9
+  end if
+  StepCursor(Stick)
+  goto pt_loop
+pt_done:
+  return
+
+' one square in the stick's direction, never out of the rectangle
+sub StepCursor(u8 St):
+  u8 Moved = 0
+  if (St & 1) > 0 then
+    if Cr > RowR.Lo then
+      dec Cr
+      Moved = 1
+    end if
+  end if
+  if (St & 2) > 0 then
+    if Cr < RowR.Hi then
+      inc Cr
+      Moved = 1
+    end if
+  end if
+  if (St & 4) > 0 then
+    if Cc > ColR.Lo then
+      dec Cc
+      Moved = 1
+    end if
+  end if
+  if (St & 8) > 0 then
+    if Cc < ColR.Hi then
+      inc Cc
+      Moved = 1
+    end if
+  end if
+  if Moved = 1 then
+    play sound SndTick
+  else
+    play sound SndBump
+  end if
+  return
+
+sub ComputerTurn:
+  u8 Tc = 0
+  u8 Tr = 0
+  Gs = 3
+  fill 32 count 28 at 2,22
+  print at 2,22, "COMPUTER MOVES"
+  ComputerChoice
+  Tc = Cc
+  Tr = Cr
+  ' show the cursor walking there from the middle, a step at a time
+  Cc = (ColR.Lo + ColR.Hi) / 2
+  Cr = (RowR.Lo + RowR.Hi) / 2
+  JumpCursor
+  Pause(30)
+  while Cc <> Tc or Cr <> Tr
+    if Cc < Tc then inc Cc
+    if Cc > Tc then dec Cc
+    if Cr < Tr then inc Cr
+    if Cr > Tr then dec Cr
+    play sound SndTick
+    Pause(14)
+  end while
+  print at 17,22, digits$(Cc + 1, 1)
+  print at 18,22, ","
+  put char 65 + Cr at 19,22
+  Pause(30)
+  return
+
+sub Pause(u8 N):
+  for J = 1 to N
+    Frame1
+    MoveCursor
+  next
+  return
+
+' the stamp drops onto the square, then the square takes its owner's tiles
+sub Claim:
+  u8 Old = 0
+  u8 Ty = 0
+  u8 Col = 0
+  Gs = 4
+  Old = Grid[Cr * 6 + Cc]
+  Ty = Sy - 30
+  Col = OwnCol[Who]
+  while Ty < Sy
+    Ty += 2
+    Frame1
+    MoveCursor
+    set sprite 1 to Ty,Sx,SStamp,Col
+    update sprites
+  end while
+  Grid[Cr * 6 + Cc] = Who
+  Frame1
+  DrawSquare(Cc, Cr)
+  set sprite 1 to 192,0,0,0
+  set sprite 0 to 192,0,0,0
+  update sprites
+  if Old <> 0 and Old <> Who then
+    play sound SndSteal
+  else
+    play sound SndLand
+  end if
+  Pause(20)
+  return
+
+sub DrawSquare(u8 C, u8 R):
+  u8 T = 0
+  T = Grid[R * 6 + C]
+  T = TO000 + T * 4
+  PutBig(T, C * 3 + BX + 1, R * 3 + BY + 1)
+  return
+
+' ---------------------------------------------------------------------------
+' cursor
+
+sub JumpCursor:
+  Sx = (Cc * 3 + BX + 1) * 8
+  Sy = (Cr * 3 + BY + 1) * 8 - 1
+  MoveCursor
+  return
+
+' glides 4 pixels a frame toward the cursor's square
+sub MoveCursor:
+  u8 Tx = 0
+  u8 Ty = 0
+  Tx = (Cc * 3 + BX + 1) * 8
+  Ty = (Cr * 3 + BY + 1) * 8 - 1
+  if Sx < Tx then Sx += 4
+  if Sx > Tx then Sx -= 4
+  if Sy < Ty then Sy += 4
+  if Sy > Ty then Sy -= 4
+  set sprite 0 to Sy,Sx,SCur,15
+  update sprites
+  return
+
+' ---------------------------------------------------------------------------
+' screens
+
+sub ShowScores:
+  u8 P = 0
+  u8 Row = 14
+  P = 1
+  while Row < 20
+    put char TM0 + P at 24,Row
+    Masks(P)
+    print at 25,Row, "C"
+    print at 26,Row, digits$(Bits(Mc), 1)
+    print at 27,Row, "R"
+    print at 28,Row, digits$(Bits(Mr), 1)
+    inc Row
+    if P = Comp then Row = 20
+    P = NextPlayer(P)
+  end while
+  return
+
+sub NewGame:
+  NewScreen
+  fill array Grid with 0
+  ' the grid: dots where the gutters cross, empty squares
+  for Ri = 0 to 6
+    for Ci = 0 to 6
+      put char TDot at Ci * 3 + BX, Ri * 3 + BY
+    next
+  next
+  for Ri = 0 to 5
+    for Ci = 0 to 5
+      DrawSquare(Ci, Ri)
+    next
+    put char 65 + Ri at 2, Ri * 3 + BY + 1
+    print at Ri * 3 + BX + 1, 1, digits$(Ri + 1, 1)
+  next
+  print at 24,2, "COLS"
+  print at 24,6, "ROWS"
+  print at 24,10, "TURN"
+  ShowScores
+  ShowScreen
+  Who = 1
+  Turns = 0
+  Winner = 0
+  return
+
+sub TitlePage:
+  u8 L = 0
+  u8 Ro = 0
+  u8 B = 0
+  u8 Xx = 0
+  Gs = 0
+  NewScreen
+  ' GRIDLOC in blocks, each letter in a player's colour (the listing
+  ' coloured its title letters PC$(1)-PC$(7))
+  for L = 0 to 6
+    for Ro = 0 to 4
+      B = Logo[L * 5 + Ro]
+      Xx = L * 4 + 2
+      if (B & 4) > 0 then put char TM0 + 1 + L % 6 at Xx,Ro + 3
+      if (B & 2) > 0 then put char TM0 + 1 + L % 6 at Xx + 1,Ro + 3
+      if (B & 1) > 0 then put char TM0 + 1 + L % 6 at Xx + 2,Ro + 3
+    next
+  next
+  print at 2,10, "COMPUTE!'S GAZETTE FEB 1989"
+  print at 3,12, "OWN A SQUARE IN EVERY ROW"
+  print at 5,13, "AND EVERY COLUMN TO WIN"
+  print at 7,16, "PLAYERS"
+  print at 7,17, "PLUS THE COMPUTER"
+  print at 7,19, "START"
+  print at 7,20, "CREDITS"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Stick <> 0 and WasStick = 0 then
+    select case Stick
+    case 1
+      if Menu > 0 then dec Menu
+    case 2
+      if Menu < 2 then inc Menu
+    case 4
+      if Menu = 0 and Nh > 1 then dec Nh
+    case 8
+      if Menu = 0 and Nh < 5 then inc Nh
+    end select
+    play sound SndTick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu = 0 then
+    inc Nh
+    if Nh > 5 then Nh = 1
+    play sound SndTick
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 16 to 20
+    put char 32 at 5,Ri
+  next
+  J = 16
+  if Menu > 0 then J = Menu + 18
+  put char 62 at 5,J
+  print at 15,16, "<   >"
+  put char 48 + Nh at 17,16
+  return
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "GRIDLOC"
+  print at 2,4, "BASED ON GRIDLOC FROM THE"
+  print at 2,5, "COMPUTE!'S GAZETTE DISK OF"
+  print at 2,6, "FEBRUARY 1989 (C-128)."
+  print at 2,8, "THROW TWO COLUMNS AND TWO"
+  print at 2,9, "ROWS, CLAIM A SQUARE IN THE"
+  print at 2,10, "BOX. OWN ONE IN EVERY ROW"
+  print at 2,11, "AND COLUMN: GRIDLOC!"
+  print at 2,13, "COLECOVISION GAME, MUSIC"
+  print at 2,14, "AND PICTURES BY CLAUDE"
+  print at 2,15, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,16, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,18, "MUSIC: SIX BY SIX"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  WasStick = Stick
+  Stick = V & 15
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $80,$80,$80,$80,$80,$80,$80,$81
+  $01,$01,$01,$01,$01,$01,$01,$81
+  $81,$80,$80,$80,$80,$80,$80,$80
+  $81,$01,$01,$01,$01,$01,$01,$01
+  $80,$01,$01,$07,$07,$01,$01,$01
+  $01,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$07,$07,$80
+  $80,$80,$80,$80,$80,$E0,$E0,$01
+  $80,$07,$07,$18,$18,$00,$00,$00
+  $01,$E0,$E0,$18,$18,$18,$18,$60
+  $00,$01,$01,$06,$06,$E0,$E0,$80
+  $60,$80,$80,$00,$00,$07,$07,$01
+  $80,$E0,$E0,$00,$00,$00,$00,$07
+  $01,$E0,$E0,$18,$18,$18,$18,$E0
+  $07,$00,$00,$00,$00,$E0,$E0,$80
+  $E0,$18,$18,$18,$18,$E0,$E0,$01
+  $80,$00,$00,$01,$01,$06,$06,$18
+  $01,$60,$60,$E0,$E0,$60,$60,$60
+  $18,$E0,$E0,$00,$00,$00,$00,$80
+  $60,$07,$07,$60,$60,$60,$60,$01
+  $80,$E0,$E0,$18,$18,$E0,$E0,$00
+  $01,$07,$07,$00,$00,$E0,$E0,$18
+  $00,$00,$00,$18,$18,$07,$07,$80
+  $18,$18,$18,$18,$18,$E0,$E0,$01
+  $80,$00,$00,$C0,$18,$18,$C0,$00
+  $01,$00,$00,$03,$18,$18,$03,$00
+  $00,$E0,$15,$15,$E0,$00,$00,$80
+  $00,$07,$54,$54,$07,$00,$00,$01
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$E0,$E0,$18,$18,$18
+  $00,$00,$00,$07,$07,$18,$18,$18
+  $18,$18,$18,$E0,$E0,$00,$00,$00
+  $18,$18,$18,$07,$07,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$03,$03
+  $01,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$80
+  $C0,$C0,$00,$00,$00,$00,$00,$01
+  $80,$00,$C3,$C3,$C3,$C3,$00,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$C3,$C3,$C3,$C3,$00,$01
+  $80,$00,$C3,$C3,$C3,$C3,$03,$03
+  $01,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$80
+  $C0,$C0,$C3,$C3,$C3,$C3,$00,$01
+  $80,$00,$C3,$C3,$C3,$C3,$00,$00
+  $01,$00,$C3,$C3,$C3,$C3,$00,$00
+  $00,$00,$C3,$C3,$C3,$C3,$00,$80
+  $00,$00,$C3,$C3,$C3,$C3,$00,$01
+  $80,$00,$C3,$C3,$C3,$C3,$03,$03
+  $01,$00,$C3,$C3,$C3,$C3,$C0,$C0
+  $03,$03,$C3,$C3,$C3,$C3,$00,$80
+  $C0,$C0,$C3,$C3,$C3,$C3,$00,$01
+  $80,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $01,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$00,$80
+  $C3,$C3,$C3,$C3,$C3,$C3,$00,$01
+  $80,$07,$07,$18,$18,$18,$18,$E0
+  $01,$E0,$E0,$18,$18,$18,$18,$07
+  $E0,$18,$18,$18,$18,$18,$18,$80
+  $07,$18,$18,$18,$18,$18,$18,$01
+  $80,$E0,$E0,$18,$18,$18,$18,$E0
+  $01,$E0,$E0,$18,$18,$18,$18,$E0
+  $E0,$18,$18,$18,$18,$E0,$E0,$80
+  $E0,$18,$18,$18,$18,$E0,$E0,$01
+  $80,$07,$07,$18,$18,$18,$18,$18
+  $01,$E0,$E0,$18,$18,$00,$00,$00
+  $18,$18,$18,$18,$18,$07,$07,$80
+  $00,$00,$00,$18,$18,$E0,$E0,$01
+  $80,$E0,$E0,$18,$18,$18,$18,$18
+  $01,$E0,$E0,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$E0,$E0,$80
+  $18,$18,$18,$18,$18,$E0,$E0,$01
+  $80,$E0,$E0,$18,$18,$18,$18,$E0
+  $01,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$18,$18,$18,$18,$E0,$E0,$80
+  $E0,$00,$00,$00,$00,$07,$07,$01
+  $80,$E0,$E0,$18,$18,$18,$18,$E0
+  $01,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$18,$18,$18,$18,$18,$18,$80
+  $E0,$00,$00,$00,$00,$00,$00,$01
+end data
+data TileCol bytes
+  $14,$41,$41,$41,$41,$41,$41,$41
+  $14,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$14
+  $41,$41,$41,$41,$41,$41,$41,$14
+  $18,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $18,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$F8,$F8,$F8,$F8,$F8,$18
+  $F8,$F8,$F8,$F8,$F8,$F8,$F8,$18
+  $1A,$1A,$1A,$1A,$1A,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $0A,$1A,$1A,$1A,$1A,$A1,$A1,$1A
+  $1A,$1A,$1A,$0A,$0A,$A1,$A1,$1A
+  $13,$31,$31,$03,$03,$03,$03,$13
+  $13,$13,$13,$13,$13,$13,$13,$13
+  $13,$03,$03,$03,$03,$31,$31,$13
+  $13,$13,$13,$13,$13,$13,$13,$13
+  $15,$05,$05,$F5,$F5,$F5,$F5,$F5
+  $15,$F5,$F5,$F5,$F5,$F5,$F5,$F5
+  $F5,$5F,$5F,$05,$05,$05,$05,$15
+  $F5,$5F,$5F,$F5,$F5,$F5,$F5,$15
+  $1D,$DF,$DF,$FD,$FD,$DF,$DF,$0D
+  $1D,$DF,$DF,$0D,$0D,$FD,$FD,$FD
+  $0D,$0D,$0D,$FD,$FD,$FD,$FD,$1D
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$1D
+  $1E,$0E,$0E,$E1,$81,$81,$E1,$0E
+  $1E,$0E,$0E,$E1,$81,$81,$E1,$0E
+  $0E,$E1,$1E,$1E,$E1,$0E,$0E,$1E
+  $0E,$E1,$1E,$1E,$E1,$0E,$0E,$1E
+  $14,$14,$14,$14,$14,$14,$14,$01
+  $18,$18,$18,$18,$18,$18,$18,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $13,$13,$13,$13,$13,$13,$13,$01
+  $15,$15,$15,$15,$15,$15,$15,$01
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$01,$01,$E1,$E1,$01,$01,$01
+  $01,$01,$01,$0F,$0F,$01,$01,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$01,$01,$1F,$1F,$F1,$F1,$F1
+  $01,$01,$01,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$F1,$1F,$1F,$01,$01,$01
+  $F1,$F1,$F1,$1F,$1F,$01,$01,$01
+  $1F,$0F,$0F,$0F,$0F,$0F,$1F,$1F
+  $1F,$0F,$0F,$0F,$0F,$0F,$1F,$1F
+  $1F,$1F,$0F,$0F,$0F,$0F,$0F,$1F
+  $1F,$1F,$0F,$0F,$0F,$0F,$0F,$1F
+  $1F,$0F,$F1,$F1,$F1,$F1,$0F,$0F
+  $1F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$1F
+  $0F,$0F,$F1,$F1,$F1,$F1,$0F,$1F
+  $1F,$0F,$F1,$F1,$F1,$F1,$1F,$1F
+  $1F,$0F,$0F,$0F,$0F,$0F,$1F,$1F
+  $1F,$1F,$0F,$0F,$0F,$0F,$0F,$1F
+  $1F,$1F,$F1,$F1,$F1,$F1,$0F,$1F
+  $1F,$0F,$F1,$F1,$F1,$F1,$0F,$0F
+  $1F,$0F,$F1,$F1,$F1,$F1,$0F,$0F
+  $0F,$0F,$F1,$F1,$F1,$F1,$0F,$1F
+  $0F,$0F,$F1,$F1,$F1,$F1,$0F,$1F
+  $1F,$0F,$F1,$F1,$F1,$F1,$1F,$1F
+  $1F,$0F,$F1,$F1,$F1,$F1,$1F,$1F
+  $1F,$1F,$F1,$F1,$F1,$F1,$0F,$1F
+  $1F,$1F,$F1,$F1,$F1,$F1,$0F,$1F
+  $1F,$0F,$F1,$F1,$F1,$F1,$F1,$F1
+  $1F,$0F,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$0F,$1F
+  $F1,$F1,$F1,$F1,$F1,$F1,$0F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$F1
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$F1
+  $F1,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $F1,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$F1,$F1,$1F,$1F,$1F,$1F,$F1
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $F1,$1F,$1F,$1F,$1F,$F1,$F1,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$0F,$0F,$0F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $0F,$0F,$0F,$1F,$1F,$1F,$1F,$1F
+  $1F,$F1,$F1,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$F1,$F1,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$F1,$F1,$1F,$1F,$1F,$1F,$F1
+  $1F,$F1,$F1,$0F,$0F,$0F,$0F,$1F
+  $F1,$1F,$1F,$1F,$1F,$F1,$F1,$1F
+  $1F,$0F,$0F,$0F,$0F,$F1,$F1,$1F
+  $1F,$F1,$F1,$1F,$1F,$1F,$1F,$F1
+  $1F,$F1,$F1,$0F,$0F,$0F,$0F,$1F
+  $F1,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$0F,$0F,$0F,$0F,$0F,$0F,$1F
+end data
+data SpritePat bytes
+  $FC,$FC,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$FC,$FC
+  $3F,$3F,$03,$03,$03,$03,$00,$00,$00,$00,$03,$03,$03,$03,$3F,$3F
+  $7F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F
+  $FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE
+end data
+
+asm {
+GlRattle:
+    db $00,$00,$35,$02,$00,$00,$56,$02,$10
+GlTick:
+    db $40,$55,$40,$01,$40,$6B,$70,$01,$50
+GlLand:
+    db $40,$46,$20,$02,$40,$3E,$20,$02,$40,$38,$20,$02,$40,$33,$20,$02,$40,$4B,$30,$08,$50
+GlSteal:
+    db $40,$7F,$20,$03,$40,$A9,$20,$03,$40,$FE,$30,$03,$40,$53,$31,$0A,$50
+GlBump:
+    db $40,$EA,$32,$04,$50
+GlTurn:
+    db $40,$8F,$40,$03,$40,$6B,$40,$06,$50
+GlWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08
+    db $40,$55,$20,$1E,$50
+
+GlSoundTable:
+    dw GlTuneMel,$702B
+    dw GlTuneBass,$7035
+    dw GlRattle,$703F
+    dw GlTick,$7049
+    dw GlLand,$7049
+    dw GlSteal,$7049
+    dw GlBump,$7049
+    dw GlTurn,$7049
+    dw GlWin,$7049
+; Six by Six (original)
+; Tiny Sound, 8 frames per step
+GlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$26,$01,$2A,$2D,$2B,$2A,$28,$01,$23,$01,$28,$2B
+    db $2A,$28,$26,$01,$21,$26,$2A,$26,$23,$28,$2B,$28,$25,$26,$28,$2A
+    db $28,$01,$01,$01,$26,$01,$2A,$2D,$2F,$2D,$2B,$2A,$28,$01,$2B,$2F
+    db $2D,$2B,$2A,$01,$26,$2A,$28,$26,$25,$28,$21,$25,$26,$01,$2A,$01
+    db $26,$01,$00,$01
+    db $FF
+GlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$07,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$0D,$01,$0E,$01,$15,$01,$07,$01,$0E,$01,$10,$01,$17,$01
+    db $0E,$01,$15,$01,$0B,$01,$12,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$00,$01
+    db $FF
+}

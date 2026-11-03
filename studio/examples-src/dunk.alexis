@@ -1,0 +1,989 @@
+cartridge "DUNK/COMPUTE!'S GAZETTE/1986"
+
+' DUNK
+' A ColecoVision game based on "Dunk", COMPUTE!'s Gazette April 1986
+' (Commodore 64 machine language at $C000, started by a four-line BASIC
+' boot; the author is not named on the disk). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/dunk.dis, and watched in jsc64), the game is built
+' for the ColecoVision: three slanted boards with grain lines, slanted
+' holes, the scoring spots in colour, open wire crates as smooth sprites,
+' a ball with a shadow while it falls, sound effects and a title tune.
+'
+' The game: 25 balls drop one at a time onto the top board and roll left
+' or right (towards the far side from where they land; on the bottom
+' board always left). One stick moves
+' three crates at once, one on each board: up and down slide them back and
+' forth along the boards' slant, left and right move them along. A crate
+' that touches the ball while it moves sends the ball off in the crate's
+' direction. A ball over a board's hole drops to the board below. A ball
+' that rolls off any edge is a miss, except off the right-hand end of the
+' bottom board while rolling straight right: that scores 3, 2, 1, 2 or 3
+' points by how far back it leaves (the coloured spots). After every score
+' the top and bottom crates may get swapped controls (up/down or
+' left/right), at random.
+'
+' From the original (orig/): five crate steps to one ball step (a crate
+' step a loop, the ball every 5th; here 5 crate steps every 3 frames,
+' 2-2-1, and the ball a pixel every 3 frames, as measured in jsc64: C64
+' 2.1 and 0.43 pixels a frame, scaled to the smaller screen); the crate's
+' up moves back and left, down front and right, only one direction a step
+' (up, down, left, right in that order); its depth limit 33 pixels and the
+' slanted side limits; a moving crate within -5..6 pixels across and -7..3
+' in depth of the ball gives the ball its direction; the ball's four
+' directions (left, right, back-left, front-right); landing on a board, it
+' rolls right when it lands left of the middle, else left; a new ball
+' drops at X 100-163 (C64), depth 7-22, onto the top board; one hole two
+' characters wide in each of the top two boards, on its 2nd or 4th row, at
+' random each game; the points 3,2,1,2,3 by depth in steps of 8; the
+' controls swap table 00,03,0C,00,03,0C,03,0C for the top and bottom crate
+' (the middle one is never swapped), drawn again after every score; 25
+' balls; BALL, HITS, MISSES, POINTS, HIGH.
+'
+' Liberties: on the bottom board a ball always lands rolling left, away
+' from the scoring spots (on the C64 it rolled right when it landed left of
+' the middle, so a ball that dropped through both holes often scored with
+' no help: a player who never touched the stick scored as much as one who
+' played); the boards' edges and holes are tested as shapes (the C64
+' tested its ball sprite against the screen characters); a ball off the
+' front edge is a miss (the C64 dropped it again and could stall when it
+' was on the bottom board); balls fall three times as fast as they roll
+' (the C64: the same speed), and the next ball comes half a second after
+' the last has gone (the C64 dropped it at once); signs at the left of the
+' top and bottom boards show which controls are swapped (the C64 showed
+' nothing); a buzz only when a crate pushes the ball (the C64 buzzed on
+' every crate step); GAME OVER then the title (the C64 went straight back
+' to its title).
+'
+' Controls: controller 1 (or 2): the stick moves the three crates. On the
+' title, up and down choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TIn0 = 128
+const TInF0 = 129
+const TLf0 = 130
+const TLfF0 = 131
+const TRt0 = 132
+const TRtF0 = 133
+const TIn1 = 134
+const TInF1 = 135
+const TLf1 = 136
+const TLfF1 = 137
+const TRt1 = 138
+const TRtF1 = 139
+const TIn2 = 140
+const TInF2 = 141
+const TLf2 = 142
+const TLfF2 = 143
+const TRt2 = 144
+const TRtF2 = 145
+const THA0 = 146
+const THC0 = 147
+const THA1 = 148
+const THC1 = 149
+const TVoid = 150
+const TG3 = 151
+const TG2 = 152
+const TG1 = 153
+const TSwv = 154
+const TSwh = 155
+const TSt1 = 156
+const TSt2 = 157
+const TTb0 = 158
+const TTb1 = 159
+const TTb2 = 160
+const SCrate = 0
+const SBall = 4
+const SShadow = 8
+const NTiles8 = 264
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndDrop = 3
+const SndLand = 4
+const SndPush = 5
+const SndHole = 6
+const SndPoint = 7
+const SndMiss = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 6
+const NBalls = 25
+' boards: left edge at depth 0, right edge at depth 0, depth of the floor
+const EdgeL = 24
+const EdgeR = 184
+const Deep = 37
+const CubeDeep = 33
+
+' each board's top pixel row and tile row
+data BTop bytes 24,80,136
+data BRow bytes 3,10,17
+' crate steps per frame, in a cycle of three
+data SubT bytes 2,2,1
+' points by depth / 8
+data PtT bytes 3,2,1,2,3
+' the controls swap table (bit 0 up/down, bit 1 left/right)
+data SwapT bytes 0,1,2,0,1,2,1,2
+data CubeCol bytes 15,9,3
+
+data TilePat bytes
+  $08,$04,$02,$01,$80,$40,$20,$10
+  $08,$04,$02,$01,$80,$40,$00,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $08,$04,$02,$01,$80,$40,$20,$10
+  $08,$04,$02,$01,$80,$40,$00,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $08,$04,$02,$01,$80,$40,$20,$10
+  $08,$04,$02,$01,$80,$40,$00,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$04,$18,$04,$38,$00,$00
+  $00,$38,$04,$18,$20,$C3,$00,$00
+  $00,$10,$30,$10,$10,$38,$00,$00
+  $10,$38,$54,$10,$10,$54,$38,$10
+  $00,$24,$42,$00,$42,$24,$00,$00
+  $00,$00,$10,$00,$00,$00,$01,$00
+  $00,$40,$00,$00,$04,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $57,$57,$57,$57,$57,$57,$57,$57
+  $57,$57,$57,$57,$57,$57,$04,$04
+  $07,$17,$17,$17,$17,$71,$71,$71
+  $07,$17,$17,$17,$17,$71,$41,$41
+  $71,$71,$71,$71,$17,$17,$17,$07
+  $71,$71,$71,$71,$17,$17,$14,$04
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$0E,$0E
+  $04,$14,$14,$14,$14,$41,$41,$41
+  $04,$14,$14,$14,$14,$41,$E1,$E1
+  $41,$41,$41,$41,$14,$14,$14,$04
+  $41,$41,$41,$41,$14,$14,$1E,$0E
+  $9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D
+  $9D,$9D,$9D,$9D,$9D,$9D,$06,$06
+  $0D,$1D,$1D,$1D,$1D,$D1,$D1,$D1
+  $0D,$1D,$1D,$1D,$1D,$D1,$61,$61
+  $D1,$D1,$D1,$D1,$1D,$1D,$1D,$0D
+  $D1,$D1,$D1,$D1,$1D,$1D,$16,$06
+  $01,$71,$71,$71,$71,$17,$17,$17
+  $07,$17,$17,$17,$17,$71,$71,$71
+  $01,$41,$41,$41,$41,$14,$14,$14
+  $04,$14,$14,$14,$14,$41,$41,$41
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $08,$F8,$F8,$F8,$F8,$F8,$08,$01
+  $0A,$FA,$FA,$FA,$FA,$AF,$0A,$01
+  $02,$F2,$F2,$F2,$F2,$F2,$02,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $01,$F1,$F1,$0F,$F1,$F1,$01,$01
+  $01,$01,$F1,$01,$01,$01,$E1,$01
+  $01,$E1,$01,$01,$51,$01,$01,$01
+  $05,$47,$47,$47,$47,$47,$47,$04
+  $05,$E4,$E4,$E4,$E4,$E4,$E4,$0E
+  $09,$6D,$6D,$6D,$6D,$6D,$6D,$06
+end data
+data SpritePat bytes
+  $FF,$C0,$A0,$90,$8F,$88,$88,$88,$88,$88,$48,$28,$18,$0F,$00,$00
+  $C0,$60,$30,$18,$FC,$04,$04,$04,$04,$04,$04,$04,$04,$FC,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$0D,$0B,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$0F,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$9E,$9E,$9E,$20,$20,$9F,$20,$20,$9F,$20,$A0,$20,$20,$A0,$20,$9E,$20,$20,$9E,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$9E,$20,$20,$9E,$20,$9F,$20,$20,$9F,$20,$A0,$A0,$20,$A0,$20,$9E,$20,$9E,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$9E,$20,$20,$9E,$20,$9F,$20,$20,$9F,$20,$A0,$20,$A0,$A0,$20,$9E,$9E,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$9E,$20,$20,$9E,$20,$9F,$20,$20,$9F,$20,$A0,$20,$20,$A0,$20,$9E,$20,$9E,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$9E,$9E,$9E,$20,$20,$20,$9F,$9F,$20,$20,$A0,$20,$20,$A0,$20,$9E,$20,$20,$9E,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record Crate:
+  u8 X
+  u8 D
+  u8 Dir
+  u8 Swp
+end record
+
+Crate Cubes[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 2 Hits = 0
+bcd digits 2 Misses = 0
+bcd digits 4 Points = 0
+bcd digits 4 Hi = 0
+' the ball: state (0 none, 1 falling onto a board, 2 rolling, 3 falling
+' away), x, depth, board, direction, screen y while falling, target y
+u8 BState = 0
+u8 BX = 0
+u8 BD = 0
+u8 BF = 0
+u8 BDir = 0
+u8 BY = 0
+u8 BTarget = 0
+u8 BallsLeft = 0
+u8 Gap = 0
+u8 Beeps = 0
+u8 BeepT = 0
+u8 Phase = 0
+u8 Over = 0
+' the holes of the top two boards: tile column and row in the board
+u8 HC[2]
+u8 HR[2]
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Sb = 0
+u8 Cn = 0
+u8 Bn = 0
+u8 Rw = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 NX = 0
+u8 ND = 0
+u8 Pad = 0
+
+  tile screen
+  set sound table DkSoundTable areas 5
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  HideSprites
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  POINTS  ", Points, "  "
+  print at 8,13, "  HIGH    ", Hi, "  "
+  print at 8,14, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: 2, 2 or 1 crate steps, the ball a step every third
+' frame (a falling ball every frame), the point beeps, the next ball
+sub PlayStep:
+  K = SubT[Phase]
+  for Sb = 1 to K
+    MoveCubes
+    Touch
+  next
+  if Phase = 0 then
+    if BState = 2 then RollBall
+  end if
+  inc Phase
+  if Phase = 3 then Phase = 0
+  if BState = 1 then FallIn
+  if BState = 3 then FallAway
+  if BState = 0 then NextBall
+  if Beeps > 0 then
+    if BeepT = 0 then
+      play sound SndPoint
+      dec Beeps
+      BeepT = 20
+    else
+      dec BeepT
+    end if
+  end if
+  return
+end sub
+
+' the stick as this crate sees it (its swapped directions)
+function SwapPad(u8 P, u8 S) as u8
+  u8 R = 0
+  R = P
+  if S = 1 then
+    R = P & 12
+    if P & 1 then R = R | 2
+    if P & 2 then R = R | 1
+  end if
+  if S = 2 then
+    R = P & 3
+    if P & 4 then R = R | 8
+    if P & 8 then R = R | 4
+  end if
+  return R
+
+' 1 when (NX, ND) is a place crate may stand on
+function CubeFits(u8 Px, u8 Pd) as u8
+  if Pd > CubeDeep then return 0
+  W16 = EdgeL + 6
+  W16 = W16 + Pd
+  if Px < W16 then return 0
+  W16 = EdgeR - 6
+  W16 = W16 + Pd
+  if Px > W16 then return 0
+  return 1
+
+' one crate step for all three: up (back and left), down (front and
+' right), left or right; the first direction held wins
+sub MoveCubes:
+  for Cn = 0 to 2
+    Pad = SwapPad(J1, Cubes[Cn].Swp)
+    X = Cubes[Cn].X
+    Y = Cubes[Cn].D
+    Cubes[Cn].Dir = 4
+    select case 1
+      case Pad & 1
+        if Y > 0 then
+          NX = X - 1
+          ND = Y - 1
+          K = 2
+        else
+          K = 4
+        end if
+      case (Pad >> 1) & 1
+        if Y < CubeDeep then
+          NX = X + 1
+          ND = Y + 1
+          K = 3
+        else
+          K = 4
+        end if
+      case (Pad >> 2) & 1
+        NX = X - 1
+        ND = Y
+        K = 0
+      case (Pad >> 3) & 1
+        NX = X + 1
+        ND = Y
+        K = 1
+      case else
+        K = 4
+    end select
+    if K < 4 then
+      V = CubeFits(NX, ND)
+      if V = 1 then
+        Cubes[Cn].X = NX
+        Cubes[Cn].D = ND
+        Cubes[Cn].Dir = K
+      end if
+    end if
+  next
+  return
+end sub
+
+' a moving crate touching the rolling ball gives it its direction
+sub Touch:
+  if BState <> 2 then return
+  X = Cubes[BF].X
+  Y = Cubes[BF].D
+  K = Cubes[BF].Dir
+  if K = 4 then return
+  if BX + 5 < X then return
+  if BX > X + 6 then return
+  if BD + 7 < Y then return
+  if BD > Y + 3 then return
+  if BDir <> K then play sound SndPush
+  BDir = K
+  return
+end sub
+
+' 1 when the ball is over the hole of board F
+function InHole(u8 F) as u8
+  u8 Hrow = 0
+  u8 Hp = 0
+  Hrow = HR[F] * 8
+  if BD < Hrow then return 0
+  Hp = BD - Hrow
+  if Hp > 7 then return 0
+  ' the hole's left edge on this pixel row, two pixels in from each side
+  Hp = HC[F] * 8 + Hp + 2
+  if BX < Hp then return 0
+  if BX > Hp + 11 then return 0
+  return 1
+
+' a ball step on its board
+sub RollBall:
+  select case BDir
+    case 0
+      dec BX
+    case 1
+      inc BX
+    case 2
+      if BD = 0 then
+        Miss
+        return
+      end if
+      dec BD
+      dec BX
+    case 3
+      inc BD
+      inc BX
+  end select
+  if BD > Deep then
+    Miss
+    return
+  end if
+  W16 = EdgeL + BD
+  if BX < W16 then
+    Miss
+    return
+  end if
+  W16 = EdgeR + BD
+  if BX > W16 then
+    if BF = 2 then
+      if BDir = 1 then
+        Score
+        return
+      end if
+    end if
+    Miss
+    return
+  end if
+  if BF < 2 then
+    V = InHole(BF)
+    if V = 1 then
+      BY = BTop[BF] + BD
+      inc BF
+      BTarget = BTop[BF] + BD
+      BState = 1
+      play sound SndHole
+    end if
+  end if
+  return
+end sub
+
+' down onto a board, a pixel a frame; it rolls away from the side it lands
+' on (on the bottom board: always left)
+sub FallIn:
+  inc BY
+  if BY < BTarget then return
+  BState = 2
+  V = BX - EdgeL
+  V = V - BD
+  if V < 80 then
+    BDir = 1
+  else
+    BDir = 0
+  end if
+  ' on the bottom board always away from the scoring spots (a liberty)
+  if BF = 2 then BDir = 0
+  play sound SndLand
+  return
+end sub
+
+' off the edge (or into the scoring spot) and out of sight
+sub FallAway:
+  BY = BY + 2
+  if BY >= 190 then
+    BState = 0
+    Gap = 30
+  end if
+  return
+end sub
+
+sub StartFall:
+  BY = BTop[BF] + BD
+  BState = 3
+  return
+end sub
+
+sub Miss:
+  Misses += 1
+  StartFall
+  play sound SndMiss
+  ShowHud
+  return
+end sub
+
+sub Score:
+  K = BD >> 3
+  V = PtT[K]
+  Points += V
+  if Points > Hi then Hi = Points
+  Hits += 1
+  Beeps = V
+  BeepT = 0
+  StartFall
+  NewSwaps
+  ShowHud
+  return
+end sub
+
+' the next ball, half a second after the last; none left: the end
+sub NextBall:
+  if Gap > 0 then
+    dec Gap
+    return
+  end if
+  if BallsLeft = 0 then
+    if Beeps = 0 then Over = 1
+    return
+  end if
+  dec BallsLeft
+  Rand
+  BX = (Rs & 63) + 64
+  Rand
+  BD = (Rs & 15) + 7
+  BF = 0
+  BY = 12
+  BTarget = 24 + BD
+  BState = 1
+  play sound SndDrop
+  ShowHud
+  return
+end sub
+
+sub NewSwaps:
+  Rand
+  K = Rs & 7
+  Cubes[0].Swp = SwapT[K]
+  Rand
+  K = Rs & 7
+  Cubes[2].Swp = SwapT[K]
+  ShowSwaps
+  return
+end sub
+
+sub ShowSwaps:
+  for Bn = 0 to 2
+    K = Cubes[Bn].Swp
+    Y = BRow[Bn] + 2
+    select case K
+      case 1
+        put char TSwv at 2,Y
+      case 2
+        put char TSwh at 2,Y
+      case else
+        put char 32 at 2,Y
+    end select
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0 the ball, 1 its shadow, 2-4 the crates
+sub DrawSprites:
+  for Cn = 0 to 2
+    X = Cubes[Cn].X - 7
+    Y = BTop[Cn] + Cubes[Cn].D
+    Y = Y - 14
+    C = CubeCol[Cn]
+    set sprite Cn + 2 to Y,X,SCrate,C
+  next
+  select case BState
+    case 0
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+    case 1
+      X = BX - 7
+      set sprite 0 to BY - 10,X,SBall,11
+      set sprite 1 to BTarget - 14,X,SShadow,1
+    case 2
+      X = BX - 7
+      Y = BTop[BF] + BD
+      set sprite 0 to Y - 10,X,SBall,11
+      set sprite 1 to 192,0,0,0
+    case else
+      X = BX - 7
+      set sprite 0 to BY - 10,X,SBall,11
+      set sprite 1 to 192,0,0,0
+  end select
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  NumU = BallsLeft
+  print at 2,1, "BALL ", digits$(NumU, 2)
+  print at 11,1, "HITS ", Hits
+  print at 20,1, "MISSES ", Misses
+  print at 2,22, "POINTS ", Points
+  print at 18,22, "HIGH ", Hi
+  return
+end sub
+
+' (each board's tiles in, inF, lf, lfF, rt, rtF are 6 codes apart)
+' one board: five rows, each a slanted left side, 19 floor tiles, a slanted
+' right side; the bottom row has the board's front face
+sub DrawBoard(u8 B)
+  u8 Tr = 0
+  u8 Base = 0
+  Tr = BRow[B]
+  Base = B * 6
+  for Rw = 0 to 4
+    Y = Tr + Rw
+    X = 3 + Rw
+    if Rw < 4 then
+      put char TLf0 + Base at X,Y
+      fill TIn0 + Base count 19 at X + 1,Y
+      put char TRt0 + Base at X + 20,Y
+    else
+      put char TLfF0 + Base at X,Y
+      fill TInF0 + Base count 19 at X + 1,Y
+      put char TRtF0 + Base at X + 20,Y
+    end if
+  next
+  return
+end sub
+
+sub DrawCourt:
+  for Bn = 0 to 2
+    DrawBoard(Bn)
+  next
+  ' the holes: a slanted gap 16 pixels wide in the top two boards
+  for Bn = 0 to 1
+    Y = BRow[Bn] + HR[Bn]
+    X = HC[Bn]
+    K = Bn * 2
+    put char THA0 + K at X,Y
+    put char TVoid at X + 1,Y
+    put char THC0 + K at X + 2,Y
+  next
+  ' the scoring spots at the end of the bottom board
+  put char TG3 at 24,17
+  put char TG2 at 25,18
+  put char TG1 at 26,19
+  put char TG2 at 27,20
+  put char TG3 at 28,21
+  ' a few stars
+  put char TSt1 at 27,4
+  put char TSt2 at 4,9
+  put char TSt1 at 29,12
+  put char TSt2 at 3,15
+  put char TSt1 at 14,9
+  put char TSt2 at 22,16
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  ' the holes: 2nd or 4th row of the board, the column at random
+  for Bn = 0 to 1
+    Rand
+    K = Rs & 2
+    HR[Bn] = K + 1
+    Rand
+    K = Rs & 15
+    HC[Bn] = K + 5 + HR[Bn]
+  next
+  DrawCourt
+  Hits = 0
+  Misses = 0
+  Points = 0
+  BallsLeft = NBalls
+  BState = 0
+  Gap = 40
+  Beeps = 0
+  Phase = 0
+  Over = 0
+  for Cn = 0 to 2
+    Cubes[Cn].X = 120
+    Cubes[Cn].D = 16
+    Cubes[Cn].Dir = 4
+    Cubes[Cn].Swp = 0
+  next
+  NewSwaps
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: DUNK in slanted bricks, a crate on a board, START / CREDITS,
+' the best score, the tune once
+sub TitlePage:
+  NewScreen
+  print at 4,2, "COMPUTE!'S GAZETTE 1986"
+  copy TitleMap count 160 to vram.name + 160
+  for Rw = 0 to 2
+    Y = Rw + 12
+    X = 6 + Rw
+    put char TLf2 at X,Y
+    fill TIn2 count 13 at X + 1,Y
+    put char TRt2 at X + 14,Y
+  next
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  if Hi > 0 then
+    print at 10,20, "HIGH ", Hi
+  end if
+  ShowMenu
+  set sprite 2 to 98,92,SCrate,15
+  set sprite 0 to 90,140,SBall,11
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 500
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  J = Menu + 17
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "DUNK"
+  print at 2,5, "BASED ON DUNK FROM"
+  print at 2,6, "COMPUTE!'S GAZETTE, APRIL"
+  print at 2,7, "1986 (COMMODORE 64 MACHINE"
+  print at 2,8, "LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: THREE FLOORS DOWN"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+DkDrop:
+    db $40,$3E,$50,$02,$40,$44,$50,$02,$40,$49,$50,$02,$40,$50,$50,$02,$40,$57,$50,$02,$40,$5E,$50,$02
+    db $40,$67,$50,$02,$40,$6F,$50,$02,$40,$79,$60,$02,$40,$84,$60,$02,$50
+DkLand:
+    db $00,$00,$25,$02,$00,$00,$56,$03,$10
+DkPush:
+    db $40,$FC,$31,$02,$40,$6D,$52,$02,$50
+DkHole:
+    db $40,$5D,$30,$02,$40,$68,$30,$02,$40,$73,$40,$02,$40,$80,$40,$02,$40,$8E,$40,$02,$40,$9E,$40,$02
+    db $40,$AF,$50,$02,$40,$C3,$50,$02,$40,$D8,$50,$02,$40,$F1,$50,$02,$40,$0C,$61,$02,$40,$29,$61,$02
+    db $50
+DkPoint:
+    db $40,$7F,$20,$03,$40,$5F,$20,$03,$40,$40,$40,$04,$50
+DkMiss:
+    db $00,$00,$16,$04,$00,$00,$37,$08,$00,$00,$67,$0A,$10
+DkStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+DkOver:
+    db $40,$AA,$10,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$53,$31,$1E,$50
+
+DkSoundTable:
+    dw DkTuneMel,$702B
+    dw DkTuneBass,$7035
+    dw DkDrop,$7049
+    dw DkLand,$703F
+    dw DkPush,$7049
+    dw DkHole,$7049
+    dw DkPoint,$7049
+    dw DkMiss,$703F
+    dw DkStart,$7049
+    dw DkOver,$7049
+; Three Floors Down (original)
+; Tiny Sound, 8 frames per step
+DkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$26,$01,$2A,$01,$2D,$01,$2A,$01,$26,$01,$01,$01
+    db $21,$01,$26,$01,$25,$01,$28,$01,$2B,$01,$28,$01,$25,$01,$01,$01
+    db $21,$01,$25,$01,$23,$01,$26,$01,$2A,$01,$26,$01,$23,$01,$21,$01
+    db $1F,$01,$23,$01,$21,$01,$1E,$01,$1C,$01,$19,$01,$1A,$01,$01,$01
+    db $00,$01
+    db $FF
+DkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0B,$01,$12,$01
+    db $10,$01,$13,$01,$09,$01,$09,$01,$09,$01,$09,$01,$0E,$01,$01,$01
+    db $00,$01
+    db $FF
+}

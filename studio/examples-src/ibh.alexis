@@ -1,0 +1,1932 @@
+cartridge "INTERNATIONAL BOUNTY HUNTER/COMPUTE!'S GAZETTE/1990"
+
+' INTERNATIONAL BOUNTY HUNTER
+' A ColecoVision game based on "International Bounty Hunter", COMPUTE!'s
+' Gazette disk, March 1990 (Commodore 128, BASIC 7.0 with machine code and
+' a map file). The listing names no author (only the COMPUTE! Publications
+' copyright).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: a political map of the world in 1990, 149 countries. A
+' criminal hides in one of them; you start in another. Travel from country
+' to neighbouring country (by land, or the listing's sea links) to reach
+' the criminal's country. An arrow at the edge of the map points toward
+' the criminal, and you see him when he is on your part of the map. Each
+' turn he may slip away to one of his neighbours, and each of his moves
+' takes $100 off the $10,000 bounty. Catch him and take him back to the
+' country you started from before the time runs out (6 minutes at level 1
+' down to 1 minute at level 6), or he escapes to a random country and the
+' chase starts again.
+'
+' From the original (orig/ibh128.bas, orig/ibh map data.prg): the 149
+' countries with their capitals, map positions and neighbour lists (DATA
+' 1320-2800); the world map (the disk's 176 x 93 cell colour map); games
+' with COUNTRIES or CAPITALS names (the player goes by the chosen kind of
+' name; the current place shows both); levels 1-6: the criminal moves
+' before each turn's capture check with chance 1 in 13 - 2 x level (line
+' 230; at level 6 always), to a random neighbour, $100 off the bounty; the
+' capture when you are in his country after his move (line 240); the time
+' to take him home 6:00 - (level - 1) minutes (line 180); escape to a
+' random country when it runs out (line 250); the edge arrow in eight
+' directions toward him (lines 520-540) and his sprite when he is near
+' (550); LOOK (free map scrolling with the stick, line 490); any command
+' is a turn; the end texts (560-590).
+'
+' Liberties: no typing (the ColecoVision has no keyboard): the stick
+' points at a neighbour, the right button steps through the neighbours,
+' STAY (pass a turn, as a mistyped name did) and LOOK, the left button
+' acts. The names of the neighbours are therefore shown (the listing's
+' HELP gave one at random; it is dropped). The window is 56 x 32 cells
+' (the C-128's 40 x 22) in 4 x 4 pixel cells; the trip slides the hunter
+' toward the new capital before the map recentres. After the catch the
+' arrow points home and home is marked (the listing showed nothing). The
+' clock is checked every second (the listing noticed it at the next
+' command), and the escaped criminal never lands in your own country.
+' When the bounty reaches $0 the criminal gets away and the game ends
+' (the listing went below zero for ever), so waiting in one place cannot
+' win. Sierre Leone is spelt Sierra Leone, and the one-way Angola to
+' Botswana link (no border) is dropped. Capitals and countries are the
+' listing's of 1990 (README lists what changed since).
+'
+' Controls: either controller. Stick: point at a neighbour. Right
+' button: next choice. Left button: go. LOOK: the stick scrolls, a button
+' returns. On the title, up/down choose a line, left/right change it, a
+' button starts.
+'
+' House rules: text in columns 2-29; tiles from code 128; music first in
+' the sound table, the title tune once; screens drawn with the NMI off;
+' `set sprite count` always given; own xorshift random numbers; nothing
+' flashes.
+
+const TRule = 128
+const TDot = 129
+const TUl = 130
+const SHunter = 0
+const SHunterl = 4
+const SCrook = 8
+const SCrookl = 12
+const SCursor = 16
+const SHouse = 20
+const SArr0 = 24
+const SArr1 = 28
+const SArr2 = 32
+const SArr3 = 36
+const SArr4 = 40
+const SArr5 = 44
+const SArr6 = 48
+const SArr7 = 52
+const NTiles8 = 24
+const SprBytes = 448
+const NC = 149
+const NNb = 578
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFly = 3
+const SndStep = 4
+const SndClick = 5
+const SndFlee = 6
+const SndGot = 7
+const SndLost = 8
+const SndWin = 9
+const SndTick = 10
+const NSpr = 7
+const MapRows = 16
+const MsgN = 180
+
+u16 Rs = 1
+u16 W16 = 0
+u16 Bounty = 10000
+u16 TimeLeft = 0
+u16 Off16 = 0
+' settings: names (0 countries, 1 capitals), level 1-6
+u8 NameK = 0
+u8 Level = 1
+u8 Line = 0
+' play
+u8 Here = 1
+u8 Home = 1
+u8 Crook = 2
+u8 Carry = 0
+u8 Over = 0
+u8 Turn = 0
+u8 MR = 11
+u8 Pick = 0
+u8 NbCnt = 0
+u8 NbBuf[16]
+u8 ViewX = 0
+u8 ViewY = 0
+u8 DrawRows = 16
+u8 HunX = 0
+u8 HunY = 0
+u8 TgX = 0
+u8 TgY = 0
+u8 Moving = 0
+u8 Looking = 0
+u8 LookT = 0
+u8 SecT = 0
+u8 MsgT = 0
+u8 InPlay = 0
+u8 TitleOn = 0
+u8 Dest = 0
+u8 Moves = 0
+' input
+u8 J1 = 0
+u8 Btn1 = 0
+u8 Btn2 = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Si = 0
+
+  tile screen
+  set sound table IbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the message, then back to the title on a press
+  mute all
+  ClearHud
+  select case Over
+  case 1
+    print at 2,18, "YOU HAVE EARNED A BOUNTY OF"
+    print at 2,19, "$"
+    print Bounty at 3,19 width 5
+    print at 2,20, "FOR BRINGING THIS CRIMINAL"
+    print at 2,21, "TO JUSTICE. SINCERE THANKS"
+    print at 2,22, "FROM"
+    PutName(Home, 7, 22)
+    play sound SndWin
+  case else
+    print at 2,19, "THE BOUNTY IS GONE."
+    print at 2,20, "THE CRIMINAL GOT AWAY."
+    print at 2,22, "HE WAS IN"
+    PutName(Crook, 12, 22)
+    play sound SndLost
+  end select
+  InPlay = 0
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 28 at 2,22
+  end if
+  if Carry = 1 then Clock
+  if Over > 0 then return
+  if Looking = 1 then
+    LookStep
+    return
+  end if
+  if Moving = 1 then
+    Glide
+    if HunX = TgX then
+      if HunY = TgY then Arrive
+    end if
+    return
+  end if
+  TakeInput
+end sub
+
+' the time to take him home, a second at a time
+sub Clock:
+  inc SecT
+  if SecT < 60 then return
+  SecT = 0
+  if TimeLeft > 0 then dec TimeLeft
+  ShowTime
+  if TimeLeft < 11 then play sound SndTick
+  if TimeLeft = 0 then Escape
+end sub
+
+' time is up: the criminal escapes to a random country (never yours)
+sub Escape:
+  u8 C = 0
+  C = Here
+  while C = Here
+    C = RandN(NC) + 1
+  end while
+  Crook = C
+  Carry = 0
+  play sound SndFlee
+  ShowHud
+  Say(3)
+end sub
+
+sub TakeInput:
+  u8 Old = 0
+  Old = Pick
+  V = J1 & 15
+  if V > 0 then
+    if V <> WasStick then PointAt(V)
+  end if
+  WasStick = V
+  if Press2 = 1 then
+    inc Pick
+    if Pick > NbCnt + 1 then Pick = 0
+  end if
+  if Pick <> Old then
+    ShowPick
+    play sound SndClick
+  end if
+  if Press1 = 0 then return
+  if Pick < NbCnt then
+    Dest = NbBuf[Pick]
+    TgX = PixX(Dest)
+    TgY = PixY(Dest)
+    Moving = 1
+    play sound SndFly
+  elseif Pick = NbCnt then
+    play sound SndStep
+    EndTurn
+  else
+    Looking = 1
+    LookT = 0
+    print at 2,22, "LOOK: STICK. BUTTON: BACK   "
+    MsgT = 0
+  end if
+end sub
+
+' the neighbour most in the stick's direction
+sub PointAt(u8 Stk):
+  i16 Sx = 0
+  i16 Sy = 0
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Sc = 0
+  i16 Best = 0
+  u8 I = 0
+  u8 M = 0
+  u16 Ln = 0
+  if Stk & 4 then Sx = -1
+  if Stk & 8 then Sx = 1
+  if Stk & 1 then Sy = -1
+  if Stk & 2 then Sy = 1
+  for I = 1 to NbCnt
+    M = NbBuf[I - 1]
+    Dx = CX[M]
+    Dx = Dx - CX[Here]
+    Dy = CY[M]
+    Dy = Dy - CY[Here]
+    Ln = abs(Dx) + abs(Dy)
+    if Ln = 0 then Ln = 1
+    Sc = Dx * Sx + Dy * Sy
+    Sc = Sc * 16
+    Sc = Sc / Ln
+    if Sc > Best then
+      Best = Sc
+      Pick = I - 1
+    end if
+  next
+end sub
+
+' LOOK: the stick scrolls the map a tile every 4 frames
+sub LookStep:
+  u8 Mv = 0
+  if Press1 | Press2 then
+    Looking = 0
+    fill 32 count 28 at 2,22
+    CentreOn(Here)
+    IbRedraw
+    EndTurn
+    return
+  end if
+  inc LookT
+  if LookT < 4 then return
+  LookT = 0
+  if J1 & 1 then
+    if ViewY > 0 then
+      dec ViewY
+      Mv = 1
+    end if
+  end if
+  if J1 & 2 then
+    if ViewY < 31 then
+      inc ViewY
+      Mv = 1
+    end if
+  end if
+  if J1 & 4 then
+    if ViewX > 0 then
+      dec ViewX
+      Mv = 1
+    end if
+  end if
+  if J1 & 8 then
+    if ViewX < 60 then
+      inc ViewX
+      Mv = 1
+    end if
+  end if
+  if Mv = 1 then IbRedraw
+end sub
+
+' the hunter glides 2 pixels a frame toward the next capital
+sub Glide:
+  if HunX < TgX then
+    HunX = HunX + 2
+    if HunX > TgX then HunX = TgX
+  elseif HunX > TgX then
+    HunX = HunX - 2
+    if HunX < TgX then HunX = TgX
+  end if
+  if HunY < TgY then
+    HunY = HunY + 2
+    if HunY > TgY then HunY = TgY
+  elseif HunY > TgY then
+    HunY = HunY - 2
+    if HunY < TgY then HunY = TgY
+  end if
+end sub
+
+' the hunter reaches the next country
+sub Arrive:
+  Moving = 0
+  Here = Dest
+  inc Moves
+  CentreOn(Here)
+  IbRedraw
+  EndTurn
+end sub
+
+' the end of a turn (the listing's lines 230-260)
+sub EndTurn:
+  u8 R = 0
+  inc Turn
+  if Carry = 0 then
+    R = RandN(MR)
+    if R = 0 then CrookMove
+  end if
+  if Over > 0 then return
+  if Carry = 0 then
+    if Here = Crook then
+      Carry = 1
+      W16 = 7 - Level
+      TimeLeft = W16 * 60
+      SecT = 0
+      play sound SndGot
+      Say(2)
+    end if
+  end if
+  if Carry = 1 then
+    if Here = Home then Over = 1
+  end if
+  LoadNb
+  Pick = 0
+  HunX = PixX(Here)
+  HunY = PixY(Here)
+  ShowHud
+end sub
+
+sub CrookMove:
+  u8 N = 0
+  u8 R = 0
+  N = NbN[Crook]
+  R = RandN(N)
+  Crook = NbOf(Crook, R)
+  if Bounty >= 100 then Bounty = Bounty - 100
+  play sound SndFlee
+  if Bounty = 0 then Over = 2
+end sub
+
+' the neighbour number Idx of country C
+function NbOf(u8 C, u8 Idx) as u8
+  u8 Res = 0
+  u8 Tmp[1]
+  Off16 = NbHi[C]
+  Off16 = Off16 * 256 + NbLo[C] + Idx
+  copy NbList + Off16 count 1 to Tmp
+  Res = Tmp[0]
+  return Res
+
+' the neighbours of the hunter's country into NbBuf
+sub LoadNb:
+  NbCnt = NbN[Here]
+  Off16 = NbHi[Here]
+  Off16 = Off16 * 256 + NbLo[Here]
+  copy NbList + Off16 count NbCnt to NbBuf
+end sub
+
+' xorshift random 0..N-1
+function RandN(u8 N) as u8
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  W16 = Rs % N
+  return W16
+
+' ---------------------------------------------------------------------------
+' the map window
+
+' the window's corner so that the country's capital is near the middle
+sub CentreOn(u8 C):
+  i16 T = 0
+  T = CX[C] / 2
+  T = T - 14
+  if T < 0 then T = 0
+  if T > 60 then T = 60
+  ViewX = T
+  T = CY[C] / 2
+  T = T - 8
+  if T < 0 then T = 0
+  if T > 31 then T = 31
+  ViewY = T
+end sub
+
+sub IbRedraw:
+  call asm IbDraw
+end sub
+
+' a capital's sprite corner on screen, kept inside the window
+function PixX(u8 C) as u8
+  i16 P = 0
+  i16 Vx = 0
+  Vx = ViewX
+  P = CX[C]
+  P = P - Vx * 2
+  P = P * 4 + 10
+  if P < 16 then P = 16
+  if P > 224 then P = 224
+  return P
+
+function PixY(u8 C) as u8
+  i16 P = 0
+  i16 Vy = 0
+  Vy = ViewY
+  P = CY[C]
+  P = P - Vy * 2
+  P = P * 4 + 2
+  if P < 8 then P = 8
+  if P > 120 then P = 120
+  return P
+
+' is the capital inside the window? (1 = yes)
+function InView(u8 C) as u8
+  u8 Res = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  Tx = CX[C] >> 1
+  Ty = CY[C] >> 1
+  if Tx >= ViewX then
+    if Tx < ViewX + 28 then
+      if Ty >= ViewY then
+        if Ty < ViewY + 16 then Res = 1
+      end if
+    end if
+  end if
+  return Res
+
+' the edge arrow toward country C (the listing's eight edge spots)
+sub Arrow(u8 C):
+  u8 Ax = 120
+  u8 Ay = 64
+  u8 D = 0
+  u8 Hx = 0
+  u8 Hy = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  Hx = CX[Here]
+  Hy = CY[Here]
+  Tx = CX[C]
+  Ty = CY[C]
+  if C = Here then
+    set sprite 5 to 208,0,0,0
+    return
+  end if
+  ' D: 0 up, 1 up-right, 2 right ... 7 up-left
+  if Tx > Hx then
+    Ax = 224
+    if Ty < Hy then
+      D = 1
+      Ay = 8
+    elseif Ty > Hy then
+      D = 3
+      Ay = 120
+    else
+      D = 2
+    end if
+  elseif Tx < Hx then
+    Ax = 16
+    if Ty < Hy then
+      D = 7
+      Ay = 8
+    elseif Ty > Hy then
+      D = 5
+      Ay = 120
+    else
+      D = 6
+    end if
+  else
+    if Ty < Hy then
+      D = 0
+      Ay = 8
+    else
+      D = 4
+      Ay = 120
+    end if
+  end if
+  Ay = Ay - 1
+  D = D * 4 + SArr0
+  set sprite 5 to Ay,Ax,D,15
+end sub
+
+' sprites: 0/1 the hunter, 2 the choice, 3/4 the criminal, 5 the arrow,
+' 6 home after the catch
+sub DrawSprites:
+  u8 Px = 0
+  u8 Py = 0
+  u8 T = 0
+  if InPlay = 0 then return
+  Py = HunY - 1
+  set sprite 0 to Py,HunX,SHunter,15
+  set sprite 1 to Py,HunX,SHunterl,1
+  if Moving + Looking = 0 then
+    if Pick < NbCnt then
+      T = NbBuf[Pick]
+      Px = PixX(T)
+      Py = PixY(T) - 1
+      set sprite 2 to Py,Px,SCursor,7
+    else
+      set sprite 2 to 208,0,0,0
+    end if
+  else
+    set sprite 2 to 208,0,0,0
+  end if
+  if Carry = 0 then
+    if InView(Crook) = 1 then
+      Px = PixX(Crook)
+      Py = PixY(Crook) - 1
+      set sprite 3 to Py,Px,SCrook,14
+      set sprite 4 to Py,Px,SCrookl,1
+    else
+      set sprite 3 to 208,0,0,0
+      set sprite 4 to 208,0,0,0
+    end if
+    set sprite 6 to 208,0,0,0
+    if Looking = 0 then
+      Arrow(Crook)
+    else
+      set sprite 5 to 208,0,0,0
+    end if
+  else
+    set sprite 3 to 208,0,0,0
+    set sprite 4 to 208,0,0,0
+    if InView(Home) = 1 then
+      Px = PixX(Home)
+      Py = PixY(Home) - 1
+      set sprite 6 to Py,Px,SHouse,11
+    else
+      set sprite 6 to 208,0,0,0
+    end if
+    if Looking = 0 then
+      Arrow(Home)
+    else
+      set sprite 5 to 208,0,0,0
+    end if
+  end if
+  if Looking = 1 then
+    ' the hunter stays on his capital while the map scrolls
+    if InView(Here) = 1 then
+      Px = PixX(Here)
+      Py = PixY(Here) - 1
+      set sprite 0 to Py,Px,SHunter,15
+      set sprite 1 to Py,Px,SHunterl,1
+    else
+      set sprite 0 to 208,0,0,0
+      set sprite 1 to 208,0,0,0
+    end if
+  end if
+  update sprites
+end sub
+
+' ---------------------------------------------------------------------------
+' the text under the map
+
+' a country's name (Kind 0) or capital (Kind 1) at Px,Py, the rest of the
+' line cleared up to column 29
+sub PutText(u8 C, u8 Kind, u8 Px, u8 Py):
+  u8 Ln = 0
+  u8 Rest = 0
+  u8 Ex = 0
+  if Kind = 0 then
+    Off16 = NHi[C]
+    Off16 = Off16 * 256 + NLo[C]
+    Ln = NLen[C]
+  else
+    Off16 = KHi[C]
+    Off16 = Off16 * 256 + KLo[C]
+    Ln = KLen[C]
+  end if
+  put TxText + Off16 count Ln at Px,Py
+  Ex = Px + Ln
+  Rest = 30 - Ex
+  if Rest > 0 then fill 32 count Rest at Ex,Py
+end sub
+
+sub PutName(u8 C, u8 Px, u8 Py):
+  PutText(C, 0, Px, Py)
+end sub
+
+sub ShowPick:
+  print at 2,20, "TO "
+  if Pick < NbCnt then
+    PutText(NbBuf[Pick], NameK, 5, 20)
+  elseif Pick = NbCnt then
+    print at 5,20, "(STAY A TURN)           "
+  else
+    print at 5,20, "(LOOK AT THE MAP)       "
+  end if
+end sub
+
+sub ShowTime:
+  u8 Mn = 0
+  u8 Sc = 0
+  if Carry = 0 then
+    print at 21,21, "         "
+    return
+  end if
+  W16 = TimeLeft
+  Mn = W16 / 60
+  Sc = W16 % 60
+  print at 21,21, "TIME "
+  print Mn at 26,21 width 1
+  print at 27,21, ":"
+  print Sc at 28,21 width 2
+end sub
+
+sub ShowHud:
+  print at 2,18, "IN "
+  PutText(Here, 0, 5, 18)
+  PutText(Here, 1, 5, 19)
+  fill 32 count 3 at 2,19
+  ShowPick
+  print at 2,21, "BOUNTY $"
+  print Bounty at 10,21 width 5
+  ShowTime
+end sub
+
+sub ClearHud:
+  for Si = 18 to 22
+    fill 32 count 28 at 2,Si
+  next
+end sub
+
+' the message line: 1 the start, 2 the catch, 3 the escape
+sub Say(u8 Which):
+  fill 32 count 28 at 2,22
+  select case Which
+  case 1
+    print at 2,22, "FIND THE CRIMINAL!"
+  case 2
+    print at 2,22, "CAUGHT! TAKE HIM HOME!"
+  case 3
+    print at 2,22, "TIME IS UP: HE ESCAPED!"
+  end select
+  MsgT = MsgN
+end sub
+
+' ---------------------------------------------------------------------------
+' a new game
+
+sub NewGame:
+  NewScreen
+  backdrop black
+  DrawRows = MapRows
+  call asm IbPatInit
+  call asm IbNames
+  fill TRule count 28 at 2,17
+  Over = 0
+  Carry = 0
+  Moving = 0
+  Looking = 0
+  Turn = 0
+  Moves = 0
+  MsgT = 0
+  SecT = 0
+  Bounty = 10000
+  MR = 13 - Level * 2
+  ' the listing's start: two different random countries (line 210)
+  Crook = RandN(NC) + 1
+  Here = Crook
+  while Here = Crook
+    Here = RandN(NC) + 1
+  end while
+  Home = Here
+  CentreOn(Here)
+  call asm IbDraw
+  LoadNb
+  Pick = 0
+  HunX = PixX(Here)
+  HunY = PixY(Here)
+  ShowHud
+  Say(1)
+  InPlay = 1
+  DrawSprites
+  ShowScreen
+  play sound SndStep
+end sub
+
+' ---------------------------------------------------------------------------
+' frames, input, screens
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+end sub
+
+sub ReadPad:
+  J1 = 0
+  Btn1 = 0
+  Btn2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then Btn1 = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).button1 then Btn1 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press1 = 0
+  Press2 = 0
+  if Btn1 = 1 then
+    if WasB1 = 0 then Press1 = 1
+  end if
+  if Btn2 = 1 then
+    if WasB2 = 0 then Press2 = 1
+  end if
+  WasB1 = Btn1
+  WasB2 = Btn2
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 6
+    set sprite J to 208,0,0,0
+  next
+  update sprites
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  InPlay = 0
+  HideSprites
+  load default ascii
+  duplicate mode 2 patterns
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  fill full mode 2 text color with $F1
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TileCol count NTiles8 to vram.color + 5120
+  call asm IbSetR3
+  backdrop black
+  cls
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+end sub
+
+' the title: a strip of the map, the name, the settings, the tune once
+sub TitlePage:
+  NewScreen
+  DrawRows = 7
+  ViewX = 30
+  ViewY = 12
+  call asm IbPatInit
+  call asm IbNames
+  call asm IbDraw
+  fill TRule count 28 at 2,9
+  print at 2,10, "INTERNATIONAL BOUNTY HUNTER"
+  fill TRule count 28 at 2,11
+  print at 7,12, "COMPUTE!'S GAZETTE"
+  print at 11,13, "MARCH 1990"
+  ShowMenu
+  print at 3,20, "UP/DOWN: CHOOSE A LINE"
+  print at 3,21, "LEFT/RIGHT: CHANGE IT"
+  print at 3,22, "BUTTON: START"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 470
+  TzOn = 1
+  TitleOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasB1 = 1
+  WasB2 = 1
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 15
+  if V <> WasStick then
+    if V > 0 then MenuKey(V)
+  end if
+  WasStick = V
+  K = Press1 | Press2
+  if K = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Line = 3 then
+    CreditsPage
+    goto title
+  end if
+end sub
+
+sub MenuKey(u8 Stk):
+  if Stk & 1 then
+    if Line > 0 then dec Line
+  end if
+  if Stk & 2 then
+    if Line < 3 then inc Line
+  end if
+  if Stk & 12 then
+    select case Line
+    case 0
+      NameK = NameK ^ 1
+    case 1
+      if Stk & 8 then
+        if Level < 6 then inc Level
+      else
+        if Level > 1 then dec Level
+      end if
+    end select
+  end if
+  ShowMenu
+  play sound SndClick
+end sub
+
+sub ShowMenu:
+  u8 Row = 0
+  for Si = 15 to 18
+    put char 32 at 4,Si
+  next
+  Row = Line + 15
+  put char 62 at 4,Row
+  if NameK = 0 then
+    print at 6,15, "GO BY  COUNTRIES"
+  else
+    print at 6,15, "GO BY  CAPITALS "
+  end if
+  print at 6,16, "LEVEL  "
+  print Level at 13,16 width 1
+  select case Level
+  case 1
+    print at 14,16, " EASY     "
+  case 6
+    print at 14,16, " DIFFICULT"
+  case else
+    print at 14,16, "          "
+  end select
+  print at 6,17, "START"
+  print at 6,18, "CREDITS"
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 2,2, "INTERNATIONAL BOUNTY HUNTER"
+  print at 2,4, "BASED ON INTERNATIONAL"
+  print at 2,5, "BOUNTY HUNTER, COMPUTE!'S"
+  print at 2,6, "GAZETTE DISK, MARCH 1990"
+  print at 2,7, "(COMMODORE 128). COPYRIGHT"
+  print at 2,8, "1990 COMPUTE! PUBLICATIONS,"
+  print at 2,9, "INC. MAP FROM THE DISK."
+  print at 2,11, "COUNTRIES AND CAPITALS AS"
+  print at 2,12, "THEY WERE IN 1990."
+  print at 2,14, "COLECOVISION GAME AND MUSIC"
+  print at 2,15, "BY CLAUDE (ANTHROPIC) FOR"
+  print at 2,16, "AMY STUDIO, IN AMY BY AMY"
+  print at 2,17, "BIENVENU, 2026."
+  print at 2,19, "MUSIC: PASSPORT STAMP"
+  print at 2,20, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $00,$00,$00,$0B,$09,$00,$00,$00
+  $00,$00,$B0,$0B,$0B,$B0,$00,$00
+  $00,$00,$00,$07,$07,$00,$00,$00
+end data
+data SpritePat bytes
+  $00,$00,$07,$07,$1F,$03,$03,$01,$07,$0F,$0B,$03,$02,$02,$06,$00
+  $00,$00,$E0,$E0,$F8,$C0,$C0,$80,$E0,$F0,$D0,$C0,$40,$40,$60,$00
+  $00,$0F,$08,$38,$20,$3C,$04,$0E,$18,$10,$14,$1C,$05,$0D,$09,$0F
+  $00,$F0,$10,$1C,$04,$3C,$20,$70,$18,$08,$28,$38,$A0,$B0,$90,$F0
+  $00,$00,$03,$07,$05,$03,$01,$07,$0B,$0B,$03,$02,$02,$06,$00,$00
+  $00,$00,$C0,$E0,$A0,$C0,$80,$E0,$D0,$D0,$C0,$40,$40,$60,$00,$00
+  $00,$07,$0C,$08,$0A,$0C,$0E,$18,$14,$14,$1C,$05,$0D,$09,$0F,$00
+  $00,$E0,$30,$10,$50,$30,$70,$18,$28,$28,$38,$A0,$B0,$90,$F0,$00
+  $00,$00,$00,$07,$0C,$18,$10,$10,$10,$10,$18,$0C,$07,$00,$00,$00
+  $00,$00,$00,$E0,$30,$18,$08,$08,$08,$08,$18,$30,$E0,$00,$00,$00
+  $00,$00,$01,$03,$07,$0F,$1F,$07,$06,$06,$06,$00,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$F8,$E0,$60,$60,$60,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$0F,$1F,$03,$03,$03,$03,$03,$03,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$F8,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$03,$01,$00,$01,$03,$07,$0F,$1F,$3E,$1C,$08,$00,$00,$00
+  $00,$00,$FC,$FC,$FC,$FC,$FC,$DC,$8C,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$30,$38,$FC,$FE,$FE,$FC,$38,$30,$20,$00,$00,$00
+  $00,$00,$04,$0E,$1F,$0F,$07,$03,$01,$00,$00,$00,$01,$01,$00,$00
+  $00,$00,$00,$00,$00,$80,$C4,$EC,$FC,$FC,$7C,$FC,$FC,$FC,$00,$00
+  $00,$00,$00,$00,$03,$03,$03,$03,$03,$03,$1F,$0F,$07,$03,$01,$00
+  $00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$F8,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$31,$3B,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $00,$00,$00,$10,$38,$7C,$F8,$F0,$E0,$C0,$80,$00,$80,$C0,$00,$00
+  $00,$00,$00,$04,$0C,$1C,$3F,$7F,$7F,$3F,$1C,$0C,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00
+  $00,$00,$3F,$3F,$3F,$3E,$3F,$3F,$37,$23,$01,$00,$00,$00,$00,$00
+  $00,$00,$80,$80,$00,$00,$00,$80,$C0,$E0,$F0,$F8,$70,$20,$00,$00
+end data
+data CX bytes
+  0, 119, 93, 85, 91, 53, 161, 89, 41, 133, 85, 35, 85, 133, 49, 97
+  59, 95, 81, 137, 99, 141, 89, 47, 93, 93, 47, 143, 43, 91, 37, 39
+  99, 89, 85, 107, 45, 89, 41, 101, 35, 89, 105, 55, 91, 83, 89, 83
+  95, 61, 33, 77, 75, 53, 55, 45, 37, 145, 91, 73, 125, 143, 111, 107
+  79, 101, 87, 81, 41, 155, 103, 105, 109, 139, 101, 97, 77, 91, 109, 101
+  141, 123, 79, 75, 29, 135, 81, 101, 93, 129, 85, 173, 37, 85, 87, 149
+  85, 115, 121, 41, 165, 53, 43, 151, 91, 79, 47, 111, 95, 99, 109, 75
+  77, 141, 170, 109, 97, 149, 109, 83, 127, 101, 55, 99, 89, 85, 103, 149
+  105, 139, 75, 83, 89, 99, 101, 81, 55, 113, 43, 99, 174, 47, 141, 87
+  77, 107, 91, 93, 99, 99
+end data
+data CY bytes
+  0, 27, 24, 25, 54, 71, 71, 19, 33, 35, 18, 37, 45, 31, 61, 64
+  59, 22, 41, 39, 51, 42, 45, 19, 45, 40, 71, 23, 45, 50, 43, 35
+  27, 18, 14, 41, 38, 16, 49, 30, 41, 47, 43, 81, 11, 19, 48, 46
+  25, 10, 39, 41, 41, 45, 47, 37, 39, 35, 20, 10, 32, 53, 27, 28
+  16, 29, 22, 45, 38, 27, 30, 48, 32, 37, 27, 67, 44, 29, 60, 58
+  46, 45, 39, 36, 37, 19, 28, 64, 63, 31, 16, 74, 41, 39, 44, 24
+  11, 34, 28, 43, 55, 65, 57, 41, 16, 24, 37, 33, 21, 49, 34, 38
+  43, 48, 53, 46, 65, 27, 40, 23, 45, 39, 45, 66, 13, 19, 27, 33
+  53, 41, 39, 45, 26, 24, 48, 16, 71, 33, 25, 14, 59, 42, 36, 18
+  31, 39, 21, 51, 58, 60
+end data
+data NbLo bytes
+  0, 0, 3, 5, 12, 15, 21, 25, 31, 33, 35, 39, 41, 45, 47, 52
+  56, 67, 71, 77, 82, 85, 88, 94, 96, 101, 107, 110, 122, 127, 131, 133
+  137, 138, 144, 146, 148, 150, 153, 155, 160, 163, 165, 169, 170, 173, 179, 182
+  185, 189, 191, 195, 201, 203, 206, 208, 210, 214, 215, 220, 223, 231, 236, 241
+  247, 248, 252, 0, 5, 7, 9, 14, 19, 21, 26, 29, 30, 34, 40, 42
+  45, 47, 50, 57, 61, 64, 66, 69, 76, 80, 82, 84, 86, 89, 96, 100
+  103, 107, 110, 115, 117, 120, 123, 128, 130, 133, 134, 136, 138, 142, 146, 155
+  160, 162, 164, 166, 169, 175, 177, 180, 183, 186, 194, 197, 199, 202, 206, 211
+  214, 222, 226, 227, 230, 232, 238, 243, 247, 249, 252, 1, 15, 18, 22, 25
+  33, 36, 38, 45, 54, 62
+end data
+data NbHi bytes
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 2
+end data
+data NbN bytes
+  0, 3, 2, 7, 3, 6, 4, 6, 2, 2, 4, 2, 4, 2, 5, 4
+  11, 4, 6, 5, 3, 3, 6, 2, 5, 6, 3, 12, 5, 4, 2, 4
+  1, 6, 2, 2, 2, 3, 2, 5, 3, 2, 4, 1, 3, 6, 3, 3
+  4, 2, 4, 6, 2, 3, 2, 2, 4, 1, 5, 3, 8, 5, 5, 6
+  1, 4, 4, 5, 2, 2, 5, 5, 2, 5, 3, 1, 4, 6, 2, 3
+  2, 3, 7, 4, 3, 2, 3, 7, 4, 2, 2, 2, 3, 7, 4, 3
+  4, 3, 5, 2, 3, 3, 5, 2, 3, 1, 2, 2, 4, 4, 9, 5
+  2, 2, 2, 3, 6, 2, 3, 3, 3, 8, 3, 2, 3, 4, 5, 3
+  8, 4, 1, 3, 2, 6, 5, 4, 2, 3, 5, 14, 3, 4, 3, 8
+  3, 2, 7, 9, 8, 4
+end data
+data NbList bytes
+  62, 98, 139, 48, 146, 77, 82, 83, 86, 93, 132, 144, 88, 147, 148, 14
+  16, 26, 43, 101, 136, 61, 91, 100, 140, 33, 58, 66, 125, 143, 146, 31
+  138, 19, 60, 45, 90, 135, 143, 50, 84, 18, 93, 94, 131, 27, 60, 5
+  16, 26, 101, 102, 88, 116, 148, 149, 5, 14, 28, 53, 54, 76, 101, 102
+  122, 136, 141, 48, 108, 133, 146, 12, 47, 67, 82, 93, 131, 9, 27, 60
+  73, 129, 109, 128, 147, 73, 129, 142, 24, 25, 29, 41, 46, 94, 49, 138
+  22, 25, 29, 121, 147, 22, 24, 77, 93, 94, 121, 5, 14, 102, 13, 19
+  57, 60, 73, 85, 89, 95, 98, 127, 139, 142, 16, 38, 99, 102, 141, 22
+  24, 46, 147, 92, 99, 8, 55, 68, 138, 74, 7, 37, 58, 104, 139, 143
+  124, 143, 42, 115, 55, 106, 33, 104, 143, 28, 102, 65, 70, 77, 110, 121
+  50, 56, 92, 22, 46, 35, 71, 115, 121, 5, 96, 124, 139, 10, 66, 119
+  125, 135, 143, 22, 29, 41, 18, 67, 131, 2, 17, 133, 146, 23, 59, 11
+  40, 56, 84, 52, 67, 76, 82, 111, 112, 51, 111, 16, 122, 141, 16, 122
+  31, 36, 40, 50, 68, 92, 27, 7, 33, 108, 139, 146, 49, 96, 135, 9
+  13, 19, 27, 81, 89, 98, 120, 6, 100, 103, 113, 120, 1, 63, 98, 133
+  139, 62, 70, 72, 110, 126, 133, 135, 39, 70, 74, 126, 7, 45, 125, 146
+  18, 47, 51, 76, 82, 31, 56, 117, 127, 39, 63, 65, 110, 126, 42, 115
+  121, 128, 134, 63, 110, 19, 21, 27, 129, 142, 32, 65, 126, 116, 16, 51
+  67, 112, 3, 25, 39, 93, 121, 132, 81, 87, 87, 128, 148, 113, 129, 60
+  78, 120, 3, 18, 51, 67, 83, 93, 111, 3, 82, 111, 144, 11, 50, 138
+  27, 139, 3, 119, 144, 78, 79, 116, 123, 128, 148, 149, 4, 15, 116, 148
+  27, 60, 10, 143, 6, 140, 30, 40, 56, 3, 12, 18, 25, 77, 82, 94
+  12, 22, 25, 93, 27, 117, 139, 44, 59, 124, 139, 110, 118, 137, 1, 27
+  60, 62, 139, 28, 30, 6, 61, 114, 5, 14, 16, 14, 16, 26, 28, 38
+  61, 127, 33, 37, 139, 119, 36, 141, 110, 137, 17, 58, 139, 146, 20, 128
+  134, 147, 39, 63, 70, 72, 97, 107, 118, 137, 145, 51, 52, 82, 83, 130
+  51, 76, 61, 80, 100, 140, 35, 42, 71, 15, 75, 87, 88, 123, 149, 69
+  95, 97, 110, 145, 45, 86, 105, 60, 61, 81, 24, 25, 39, 42, 71, 77
+  134, 147, 16, 53, 54, 87, 116, 34, 44, 96, 7, 45, 66, 143, 63, 65
+  70, 74, 133, 27, 69, 103, 20, 71, 79, 87, 109, 134, 147, 148, 19, 21
+  73, 80, 111, 12, 18, 47, 3, 77, 17, 48, 62, 63, 126, 139, 71, 109
+  121, 128, 147, 10, 45, 59, 64, 5, 16, 97, 107, 110, 8, 23, 31, 84
+  139, 1, 27, 33, 44, 58, 62, 85, 95, 96, 98, 104, 108, 133, 138, 6
+  91, 114, 16, 28, 53, 106, 21, 27, 73, 7, 10, 33, 34, 37, 45, 90
+  125, 3, 83, 86, 110, 118, 2, 7, 17, 48, 58, 66, 108, 4, 20, 24
+  29, 109, 121, 128, 134, 148, 4, 15, 79, 87, 88, 128, 147, 149, 15, 87
+  116, 148
+end data
+data NLo bytes
+  0, 0, 11, 18, 25, 31, 40, 49, 56, 63, 73, 80, 86, 91, 97, 104
+  112, 118, 126, 138, 143, 150, 158, 166, 172, 196, 200, 205, 210, 218, 223, 233
+  237, 243, 1, 8, 16, 34, 46, 53, 58, 69, 86, 94, 110, 117, 123, 128
+  133, 139, 148, 157, 163, 176, 182, 195, 200, 208, 217, 224, 231, 236, 245, 249
+  253, 4, 10, 15, 26, 33, 38, 44, 49, 55, 59, 66, 73, 80, 85, 95
+  101, 109, 117, 121, 131, 137, 145, 152, 162, 169, 174, 185, 196, 205, 210, 217
+  228, 234, 238, 246, 252, 12, 20, 24, 35, 41, 49, 60, 65, 72, 78, 90
+  97, 109, 118, 133, 140, 152, 163, 174, 179, 188, 193, 200, 209, 215, 226, 231
+  237, 245, 253, 7, 11, 18, 24, 30, 44, 51, 57, 63, 71, 78, 87, 94
+  106, 120, 125, 135, 140, 146
+end data
+data NHi bytes
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+  3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+  3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4
+end data
+data NLen bytes
+  0, 11, 7, 7, 6, 9, 9, 7, 7, 10, 7, 6, 5, 6, 7, 8
+  6, 8, 12, 5, 7, 8, 8, 6, 24, 4, 5, 5, 8, 5, 10, 4
+  6, 14, 7, 8, 18, 12, 7, 5, 11, 17, 8, 16, 7, 6, 5, 5
+  6, 9, 9, 6, 13, 6, 13, 5, 8, 9, 7, 7, 5, 9, 4, 4
+  7, 6, 5, 11, 7, 5, 6, 5, 6, 4, 7, 7, 7, 5, 10, 6
+  8, 8, 4, 10, 6, 8, 7, 10, 7, 5, 11, 11, 9, 5, 7, 11
+  6, 4, 8, 6, 16, 8, 4, 11, 6, 8, 11, 5, 7, 6, 12, 7
+  12, 9, 15, 7, 12, 11, 11, 5, 9, 5, 7, 9, 6, 11, 5, 6
+  8, 8, 10, 4, 7, 6, 6, 14, 7, 6, 6, 8, 7, 9, 7, 12
+  14, 5, 10, 5, 6, 8
+end data
+data KLo bytes
+  0, 154, 159, 165, 172, 178, 190, 198, 204, 210, 215, 223, 231, 241, 248, 254
+  6, 14, 19, 30, 37, 46, 56, 63, 69, 75, 83, 91, 98, 104, 115, 123
+  129, 136, 142, 152, 160, 173, 184, 189, 194, 206, 212, 223, 230, 238, 243, 253
+  2, 8, 16, 30, 37, 43, 53, 60, 74, 85, 93, 101, 110, 119, 126, 132
+  139, 145, 154, 158, 165, 173, 178, 183, 190, 201, 210, 216, 222, 230, 237, 249
+  1, 13, 17, 23, 33, 44, 54, 59, 65, 73, 82, 91, 101, 108, 114, 119
+  128, 132, 138, 147, 158, 170, 178, 182, 188, 194, 200, 208, 212, 221, 227, 233
+  238, 246, 255, 6, 15, 23, 28, 32, 38, 45, 53, 63, 70, 79, 83, 91
+  97, 110, 117, 123, 127, 132, 138, 145, 151, 161, 170, 185, 191, 200, 207, 212
+  216, 224, 229, 237, 245, 251
+end data
+data KHi bytes
+  0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+  7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8
+  8, 8, 8, 8, 8, 8
+end data
+data KLen bytes
+  0, 5, 6, 7, 6, 12, 8, 6, 6, 5, 8, 8, 10, 7, 6, 8
+  8, 5, 11, 7, 9, 10, 7, 6, 6, 8, 8, 7, 6, 11, 8, 6
+  7, 6, 10, 8, 13, 11, 5, 5, 12, 6, 11, 7, 8, 5, 10, 5
+  6, 8, 14, 7, 6, 10, 7, 14, 11, 8, 8, 9, 9, 7, 6, 7
+  6, 9, 4, 7, 8, 5, 5, 7, 11, 9, 6, 6, 8, 7, 12, 8
+  12, 4, 6, 10, 11, 10, 5, 6, 8, 9, 9, 10, 7, 6, 5, 9
+  4, 6, 9, 11, 12, 8, 4, 6, 6, 6, 8, 4, 9, 6, 6, 5
+  8, 9, 7, 9, 8, 5, 4, 6, 7, 8, 10, 7, 9, 4, 8, 6
+  13, 7, 6, 4, 5, 6, 7, 6, 10, 9, 15, 6, 9, 7, 5, 4
+  8, 5, 8, 8, 6, 6
+end data
+data TxText bytes
+  65, 70, 71, 72, 65, 78, 73, 83, 84, 65, 78, 65, 76, 66, 65, 78
+  73, 65, 65, 76, 71, 69, 82, 73, 65, 65, 78, 71, 79, 76, 65, 65
+  82, 71, 69, 78, 84, 73, 78, 65, 65, 85, 83, 84, 82, 65, 76, 73
+  65, 65, 85, 83, 84, 82, 73, 65, 66, 65, 72, 65, 77, 65, 83, 66
+  65, 78, 71, 76, 65, 68, 69, 83, 72, 66, 69, 76, 71, 73, 85, 77
+  66, 69, 76, 73, 90, 69, 66, 69, 78, 73, 78, 66, 72, 85, 84, 65
+  78, 66, 79, 76, 73, 86, 73, 65, 66, 79, 84, 83, 87, 65, 78, 65
+  66, 82, 65, 90, 73, 76, 66, 85, 76, 71, 65, 82, 73, 65, 66, 85
+  82, 75, 73, 78, 65, 32, 70, 65, 83, 79, 66, 85, 82, 77, 65, 66
+  85, 82, 85, 78, 68, 73, 67, 65, 77, 66, 79, 68, 73, 65, 67, 65
+  77, 69, 82, 79, 79, 78, 67, 65, 78, 65, 68, 65, 67, 69, 78, 84
+  82, 65, 76, 32, 65, 70, 82, 73, 67, 65, 78, 32, 82, 69, 80, 85
+  66, 76, 73, 67, 67, 72, 65, 68, 67, 72, 73, 76, 69, 67, 72, 73
+  78, 65, 67, 79, 76, 79, 77, 66, 73, 65, 67, 79, 78, 71, 79, 67
+  79, 83, 84, 65, 32, 82, 73, 67, 65, 67, 85, 66, 65, 67, 89, 80
+  82, 85, 83, 67, 90, 69, 67, 72, 79, 83, 76, 79, 86, 65, 75, 73
+  65, 68, 69, 78, 77, 65, 82, 75, 68, 74, 73, 66, 79, 85, 84, 73
+  68, 79, 77, 73, 78, 73, 67, 65, 78, 32, 82, 69, 80, 85, 66, 76
+  73, 67, 69, 65, 83, 84, 32, 71, 69, 82, 77, 65, 78, 89, 69, 67
+  85, 65, 68, 79, 82, 69, 71, 89, 80, 84, 69, 76, 32, 83, 65, 76
+  86, 65, 68, 79, 82, 69, 81, 85, 65, 84, 79, 82, 73, 65, 76, 32
+  71, 85, 73, 78, 69, 65, 69, 84, 72, 73, 79, 80, 73, 65, 70, 65
+  76, 75, 76, 65, 78, 68, 32, 73, 83, 76, 65, 78, 68, 83, 70, 73
+  78, 76, 65, 78, 68, 70, 82, 65, 78, 67, 69, 71, 65, 66, 79, 78
+  71, 72, 65, 78, 65, 71, 82, 69, 69, 67, 69, 71, 82, 69, 69, 78
+  76, 65, 78, 68, 71, 85, 65, 84, 69, 77, 65, 76, 65, 71, 85, 73
+  78, 69, 65, 71, 85, 73, 78, 69, 65, 45, 66, 73, 83, 83, 65, 85
+  71, 85, 89, 65, 78, 65, 70, 82, 69, 78, 67, 72, 32, 71, 85, 73
+  65, 78, 65, 72, 65, 73, 84, 73, 72, 79, 78, 68, 85, 82, 65, 83
+  72, 79, 78, 71, 32, 75, 79, 78, 71, 72, 85, 78, 71, 65, 82, 89
+  73, 67, 69, 76, 65, 78, 68, 73, 78, 68, 73, 65, 73, 78, 68, 79
+  78, 69, 83, 73, 65, 73, 82, 65, 78, 73, 82, 65, 81, 73, 82, 69
+  76, 65, 78, 68, 73, 83, 82, 65, 69, 76, 73, 84, 65, 76, 89, 73
+  86, 79, 82, 89, 32, 67, 79, 65, 83, 84, 74, 65, 77, 65, 73, 67
+  65, 74, 65, 80, 65, 78, 74, 79, 82, 68, 65, 78, 75, 69, 78, 89
+  65, 75, 85, 87, 65, 73, 84, 76, 65, 79, 83, 76, 69, 66, 65, 78
+  79, 78, 76, 69, 83, 79, 84, 72, 79, 76, 73, 66, 69, 82, 73, 65
+  76, 73, 66, 89, 65, 77, 65, 68, 65, 71, 65, 83, 67, 65, 82, 77
+  65, 76, 65, 87, 73, 77, 65, 76, 65, 89, 83, 73, 65, 77, 65, 76
+  68, 73, 86, 69, 83, 77, 65, 76, 73, 77, 65, 85, 82, 73, 84, 65
+  78, 73, 65, 77, 69, 88, 73, 67, 79, 77, 79, 78, 71, 79, 76, 73
+  65, 77, 79, 82, 79, 67, 67, 79, 77, 79, 90, 65, 77, 66, 73, 81
+  85, 69, 78, 65, 77, 73, 66, 73, 65, 78, 69, 80, 65, 76, 78, 69
+  84, 72, 69, 82, 76, 65, 78, 68, 83, 78, 69, 87, 32, 90, 69, 65
+  76, 65, 78, 68, 78, 73, 67, 65, 82, 65, 71, 85, 65, 78, 73, 71
+  69, 82, 78, 73, 71, 69, 82, 73, 65, 78, 79, 82, 84, 72, 32, 75
+  79, 82, 69, 65, 78, 79, 82, 87, 65, 89, 79, 77, 65, 78, 80, 65
+  75, 73, 83, 84, 65, 78, 80, 65, 78, 65, 77, 65, 80, 65, 80, 85
+  65, 32, 78, 69, 87, 32, 71, 85, 73, 78, 69, 65, 80, 65, 82, 65
+  71, 85, 65, 89, 80, 69, 82, 85, 80, 72, 73, 76, 73, 80, 80, 73
+  78, 69, 83, 80, 79, 76, 65, 78, 68, 80, 79, 82, 84, 85, 71, 65
+  76, 80, 85, 69, 82, 84, 79, 32, 82, 73, 67, 79, 81, 65, 84, 65
+  82, 82, 79, 77, 65, 78, 73, 65, 82, 87, 65, 78, 68, 65, 83, 65
+  85, 68, 73, 32, 65, 82, 65, 66, 73, 65, 83, 69, 78, 69, 71, 65
+  76, 83, 73, 69, 82, 82, 65, 32, 76, 69, 79, 78, 69, 83, 73, 78
+  71, 65, 80, 79, 82, 69, 83, 79, 76, 79, 77, 79, 78, 32, 73, 83
+  76, 65, 78, 68, 83, 83, 79, 77, 65, 76, 73, 65, 83, 79, 85, 84
+  72, 32, 65, 70, 82, 73, 67, 65, 83, 79, 85, 84, 72, 32, 75, 79
+  82, 69, 65, 83, 79, 85, 84, 72, 32, 89, 69, 77, 69, 78, 83, 80
+  65, 73, 78, 83, 82, 73, 32, 76, 65, 78, 75, 65, 83, 85, 68, 65
+  78, 83, 85, 82, 73, 78, 65, 77, 83, 87, 65, 90, 73, 76, 65, 78
+  68, 83, 87, 69, 68, 69, 78, 83, 87, 73, 84, 90, 69, 82, 76, 65
+  78, 68, 83, 89, 82, 73, 65, 84, 65, 73, 87, 65, 78, 84, 65, 78
+  90, 65, 78, 73, 65, 84, 72, 65, 73, 76, 65, 78, 68, 84, 72, 69
+  32, 71, 65, 77, 66, 73, 65, 84, 79, 71, 79, 84, 85, 78, 73, 83
+  73, 65, 84, 85, 82, 75, 69, 89, 85, 71, 65, 78, 68, 65, 85, 78
+  73, 84, 69, 68, 32, 75, 73, 78, 71, 68, 79, 77, 85, 82, 85, 71
+  85, 65, 89, 85, 46, 65, 46, 69, 46, 85, 46, 83, 46, 65, 46, 85
+  46, 83, 46, 83, 46, 82, 46, 86, 65, 78, 85, 65, 84, 85, 86, 69
+  78, 69, 90, 85, 69, 76, 65, 86, 73, 69, 84, 78, 65, 77, 87, 69
+  83, 84, 32, 71, 69, 82, 77, 65, 78, 89, 87, 69, 83, 84, 69, 82
+  78, 32, 83, 65, 72, 65, 82, 65, 89, 69, 77, 69, 78, 89, 85, 71
+  79, 83, 76, 65, 86, 73, 65, 90, 65, 73, 82, 69, 90, 65, 77, 66
+  73, 65, 90, 73, 77, 66, 65, 66, 87, 69, 75, 65, 66, 85, 76, 84
+  73, 82, 65, 78, 69, 65, 76, 71, 73, 69, 82, 83, 76, 85, 65, 78
+  68, 65, 66, 85, 69, 78, 79, 83, 32, 65, 73, 82, 69, 83, 67, 65
+  78, 66, 69, 82, 82, 65, 86, 73, 69, 78, 78, 65, 78, 65, 83, 83
+  65, 85, 68, 72, 65, 75, 65, 66, 82, 85, 83, 83, 69, 76, 83, 66
+  69, 76, 77, 79, 80, 65, 78, 80, 79, 82, 84, 79, 32, 78, 79, 86
+  79, 84, 72, 73, 77, 80, 72, 85, 76, 65, 32, 80, 65, 90, 71, 65
+  66, 79, 82, 79, 78, 69, 66, 82, 65, 83, 73, 76, 73, 65, 83, 79
+  70, 73, 65, 79, 85, 65, 71, 65, 68, 79, 85, 71, 79, 85, 82, 65
+  78, 71, 79, 79, 78, 66, 85, 74, 85, 77, 66, 85, 82, 65, 80, 72
+  78, 79, 77, 32, 80, 69, 78, 72, 89, 65, 79, 85, 78, 68, 69, 79
+  84, 84, 65, 87, 65, 66, 65, 78, 71, 85, 73, 78, 68, 74, 65, 77
+  69, 78, 65, 83, 65, 78, 84, 73, 65, 71, 79, 66, 69, 73, 74, 73
+  78, 71, 66, 79, 71, 79, 84, 65, 66, 82, 65, 90, 90, 65, 86, 73
+  76, 76, 69, 83, 65, 78, 32, 74, 79, 83, 69, 72, 65, 86, 65, 78
+  65, 78, 73, 67, 79, 83, 73, 65, 80, 82, 65, 71, 85, 69, 67, 79
+  80, 69, 78, 72, 65, 71, 69, 78, 68, 74, 73, 66, 79, 85, 84, 73
+  83, 65, 78, 84, 79, 32, 68, 79, 77, 73, 78, 71, 79, 69, 65, 83
+  84, 32, 66, 69, 82, 76, 73, 78, 81, 85, 73, 84, 79, 67, 65, 73
+  82, 79, 83, 65, 78, 32, 83, 65, 76, 86, 65, 68, 79, 82, 77, 65
+  76, 65, 66, 79, 65, 68, 68, 73, 83, 32, 65, 66, 65, 66, 65, 83
+  84, 65, 78, 76, 69, 89, 72, 69, 76, 83, 73, 78, 75, 73, 80, 65
+  82, 73, 83, 76, 73, 66, 82, 69, 86, 73, 76, 76, 69, 65, 67, 67
+  82, 65, 65, 84, 72, 69, 78, 83, 71, 79, 68, 84, 72, 65, 65, 66
+  71, 85, 65, 84, 69, 77, 65, 76, 65, 32, 67, 73, 84, 89, 67, 79
+  78, 65, 75, 82, 89, 66, 73, 83, 83, 65, 85, 71, 69, 79, 82, 71
+  69, 84, 79, 87, 78, 67, 65, 89, 69, 78, 78, 69, 80, 79, 82, 84
+  45, 65, 85, 45, 80, 82, 73, 78, 67, 69, 84, 69, 71, 85, 67, 73
+  71, 65, 76, 80, 65, 86, 73, 67, 84, 79, 82, 73, 65, 66, 85, 68
+  65, 80, 69, 83, 84, 82, 69, 89, 75, 74, 65, 86, 73, 75, 78, 69
+  87, 32, 68, 69, 76, 72, 73, 74, 65, 75, 65, 82, 84, 65, 84, 69
+  72, 82, 65, 78, 66, 65, 71, 72, 68, 65, 68, 68, 85, 66, 76, 73
+  78, 74, 69, 82, 85, 83, 65, 76, 69, 77, 82, 79, 77, 69, 65, 66
+  73, 68, 74, 65, 78, 75, 73, 78, 71, 83, 84, 79, 78, 84, 79, 75
+  89, 79, 65, 77, 77, 65, 78, 78, 65, 73, 82, 79, 66, 73, 75, 85
+  87, 65, 73, 84, 32, 67, 73, 84, 89, 86, 73, 69, 78, 84, 73, 65
+  78, 69, 66, 69, 73, 82, 85, 84, 77, 65, 83, 69, 82, 85, 77, 79
+  78, 82, 79, 86, 73, 65, 84, 82, 73, 80, 79, 76, 73, 65, 78, 84
+  65, 78, 65, 78, 65, 82, 73, 86, 79, 76, 73, 76, 79, 78, 71, 87
+  69, 75, 85, 65, 76, 65, 32, 76, 85, 77, 80, 85, 82, 77, 65, 76
+  69, 66, 65, 77, 65, 75, 79, 78, 79, 85, 65, 75, 67, 72, 79, 84
+  84, 77, 69, 88, 73, 67, 79, 32, 67, 73, 84, 89, 85, 76, 65, 78
+  32, 66, 65, 84, 79, 82, 82, 65, 66, 65, 84, 77, 65, 80, 85, 84
+  79, 87, 73, 78, 68, 72, 79, 69, 75, 75, 65, 84, 72, 77, 65, 78
+  68, 85, 65, 77, 83, 84, 69, 82, 68, 65, 77, 87, 69, 76, 76, 73
+  78, 71, 84, 79, 78, 77, 65, 78, 65, 71, 85, 65, 78, 73, 65, 77
+  69, 89, 76, 65, 71, 79, 83, 80, 89, 79, 78, 71, 89, 65, 78, 71
+  79, 83, 76, 79, 77, 85, 83, 67, 65, 84, 73, 83, 76, 65, 77, 65
+  66, 65, 68, 80, 65, 78, 65, 77, 65, 32, 67, 73, 84, 89, 80, 79
+  82, 84, 32, 77, 79, 82, 69, 83, 66, 89, 65, 83, 85, 78, 67, 73
+  79, 78, 76, 73, 77, 65, 77, 65, 78, 73, 76, 65, 87, 65, 82, 83
+  65, 87, 76, 73, 83, 66, 79, 78, 83, 65, 78, 32, 74, 85, 65, 78
+  68, 79, 72, 65, 66, 85, 67, 72, 65, 82, 69, 83, 84, 75, 73, 71
+  65, 76, 73, 82, 73, 89, 65, 68, 72, 68, 65, 75, 65, 82, 70, 82
+  69, 69, 84, 79, 87, 78, 83, 73, 78, 71, 65, 80, 79, 82, 69, 72
+  79, 78, 73, 65, 82, 65, 77, 79, 71, 65, 68, 73, 83, 72, 85, 80
+  82, 69, 84, 79, 82, 73, 65, 83, 69, 79, 85, 76, 65, 68, 69, 78
+  77, 65, 68, 82, 73, 68, 67, 79, 76, 79, 77, 66, 79, 75, 72, 65
+  82, 84, 79, 85, 77, 80, 65, 82, 65, 77, 65, 82, 73, 66, 79, 77
+  66, 65, 66, 65, 78, 69, 83, 84, 79, 67, 75, 72, 79, 76, 77, 66
+  69, 82, 78, 68, 65, 77, 65, 83, 67, 85, 83, 84, 65, 73, 80, 69
+  73, 68, 65, 82, 32, 69, 83, 32, 83, 65, 76, 65, 65, 77, 66, 65
+  78, 71, 75, 79, 75, 66, 65, 78, 74, 85, 76, 76, 79, 77, 69, 84
+  85, 78, 73, 83, 65, 78, 75, 65, 82, 65, 75, 65, 77, 80, 65, 76
+  65, 76, 79, 78, 68, 79, 78, 77, 79, 78, 84, 69, 86, 73, 68, 69
+  79, 65, 66, 85, 32, 68, 72, 65, 66, 73, 87, 65, 83, 72, 73, 78
+  71, 84, 79, 78, 32, 68, 46, 67, 46, 77, 79, 83, 67, 79, 87, 80
+  79, 82, 84, 45, 86, 73, 76, 65, 67, 65, 82, 65, 67, 65, 83, 72
+  65, 78, 79, 73, 66, 79, 78, 78, 76, 65, 65, 89, 79, 85, 78, 69
+  83, 65, 78, 39, 65, 66, 69, 76, 71, 82, 65, 68, 69, 75, 73, 78
+  83, 72, 65, 83, 65, 76, 85, 83, 65, 75, 65, 72, 65, 82, 65, 82
+  69
+end data
+
+asm {
+; INTERNATIONAL BOUNTY HUNTER: the map window (Z80, called with the NMI off).
+; The window is 28 tiles wide (columns 2-29) and DrawRows tiles high from
+; row 1. Every window tile has its own code (Graphics II, R3 = $FF), its
+; pattern is $F0 on all 8 rows and its colour bytes pick two map cells a
+; row: rows 0-3 the map byte of the upper cell row, rows 4-7 the lower one
+; (a byte holds the left and right cell colours). So one tile = 2 x 2
+; cells of 4 x 4 pixels. VDP writes are 32 cycles apart (display on).
+; Uses AF BC DE HL.
+
+IbSetR3:
+    ld bc,$03FF
+    jp WRITE_REGISTER
+
+; the window's patterns: $F0 everywhere
+IbPatInit:
+    ld a,(AMY_UVAR_DrawRows)
+    ld b,a
+    ld d,1
+IbPiRow:
+    ld a,16
+    out (VDP_CTRL_PORT),a
+    ld a,d
+    or $40
+    out (VDP_CTRL_PORT),a
+    ld e,224
+    ld a,$F0
+IbPiLoop:
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    dec e
+    jr nz,IbPiLoop
+    inc d
+    djnz IbPiRow
+    ret
+
+; the window's colours from the map at tile ViewX, ViewY
+IbDraw:
+    ld a,(AMY_UVAR_ViewY)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    push hl
+    add hl,hl
+    add hl,hl
+    pop bc
+    add hl,bc
+    add hl,de
+    ld de,IbMap
+    add hl,de
+    ld a,(AMY_UVAR_ViewX)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,(AMY_UVAR_DrawRows)
+    ld b,a
+    ld a,$21
+IbDrRow:
+    push bc
+    push af
+    ld c,a
+    ld a,16
+    out (VDP_CTRL_PORT),a
+    ld a,c
+    or $40
+    out (VDP_CTRL_PORT),a
+    push hl
+    ld de,88
+    ex de,hl
+    add hl,de
+    ex de,hl
+    ld b,28
+IbDrTile:
+    ld a,(hl)
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    ld a,(de)
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    out (VDP_DATA_PORT),a
+    inc hl
+    inc de
+    djnz IbDrTile
+    pop hl
+    ld de,176
+    add hl,de
+    pop af
+    inc a
+    pop bc
+    djnz IbDrRow
+    ret
+
+; the window's names: row r (1..DrawRows), column c (2..29) -> code
+; (r mod 8) * 32 + c, so every window tile has its own pattern and colour
+IbNames:
+    ld a,(AMY_UVAR_DrawRows)
+    ld b,a
+    ld d,1
+IbNmRow:
+    ld a,d
+    rrca
+    rrca
+    rrca
+    ld l,a
+    and $1F
+    ld h,a
+    ld a,l
+    and $E0
+    or 2
+    ld l,a
+    ld a,l
+    out (VDP_CTRL_PORT),a
+    ld a,h
+    or $58
+    out (VDP_CTRL_PORT),a
+    ld a,d
+    and 7
+    rrca
+    rrca
+    rrca
+    or 2
+    ld e,28
+IbNmLoop:
+    out (VDP_DATA_PORT),a
+    push af
+    pop af
+    inc a
+    dec e
+    jr nz,IbNmLoop
+    inc d
+    djnz IbNmRow
+    ret
+; the world map: 94 rows x 88 bytes, a byte = two cells (TMS colours
+; left << 4 | right), from the disk's IBH MAP DATA (art.py)
+IbMap:
+    db $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$BB,$44,$44,$44,$44,$44,$44,$44,$22,$22,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$BB,$BB,$BB,$BB,$BB,$22,$22,$22,$22,$22,$22,$22,$22,$24,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$46,$46,$46,$44,$44,$44,$44,$44,$46,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$B4
+    db $4B,$44,$4B,$BB,$BB,$B4,$22,$22,$22,$22,$22,$22,$22,$22,$22,$24,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$64,$64,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$B4,$B4
+    db $BB,$4B,$4B,$BB,$B4,$44,$42,$22,$22,$22,$22,$22,$22,$22,$22,$24,$44,$44,$44,$4D,$DD,$DD
+    db $44,$44,$44,$44,$44,$44,$44,$46,$66,$44,$44,$44,$44,$46,$46,$66,$66,$64,$44,$44,$44,$44
+    db $66,$44,$64,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$B4,$44,$44,$44
+    db $44,$B4,$44,$44,$44,$44,$44,$44,$42,$22,$22,$22,$22,$22,$22,$24,$44,$44,$44,$4D,$DD,$44
+    db $44,$44,$44,$44,$44,$44,$44,$66,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$44,$44,$46,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$BB,$BB,$4B,$4B
+    db $B4,$4B,$B4,$BB,$B4,$44,$44,$44,$42,$22,$22,$22,$22,$22,$22,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$46,$64,$44,$44,$64,$44,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $44,$44,$66,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$14,$44,$44,$44,$4D,$DD,$44,$44,$44,$44,$44,$44,$44,$BB,$BB,$BB,$44
+    db $44,$44,$BB,$BB,$BB,$B4,$44,$44,$44,$22,$22,$22,$22,$22,$22,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$D4,$44,$44,$44,$44,$66,$44,$44,$66,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$44,$44,$64,$41,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$11,$44,$44,$DD,$DD,$DD,$DD,$DD,$DB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44
+    db $BB,$44,$44,$4B,$BB,$B4,$44,$44,$42,$22,$22,$22,$24,$22,$44,$44,$44,$44,$44,$44,$44,$44
+    db $DD,$DD,$26,$66,$64,$44,$64,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$61,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$66,$64,$44,$4D,$DD,$DD,$DD,$DD,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+    db $BB,$BB,$B4,$44,$BB,$BB,$B4,$44,$42,$22,$22,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$4D
+    db $DB,$B2,$22,$66,$66,$64,$64,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$61,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$16,$66,$64,$DD,$DD,$DD,$DD,$DD,$DB,$BB,$BB,$BB,$B4,$4B,$BB,$BB,$BB,$BB,$BB
+    db $BB,$BB,$44,$BB,$BB,$4B,$44,$44,$42,$22,$22,$24,$44,$44,$46,$66,$64,$44,$44,$44,$44,$4D
+    db $BB,$BB,$22,$66,$64,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$61,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$14,$44,$46,$44,$DD,$DD,$DD,$DD,$DD,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+    db $44,$B4,$44,$44,$BB,$B4,$44,$44,$44,$22,$24,$44,$44,$44,$44,$64,$44,$44,$44,$44,$4D,$DD
+    db $BB,$B4,$22,$26,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DB,$BB,$BB,$BB,$BB,$BB,$44,$BB,$BB,$BB,$BB,$44
+    db $44,$44,$4B,$B4,$44,$44,$44,$44,$42,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD
+    db $BB,$42,$22,$26,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$66,$66,$64,$66,$66,$66,$64,$41,$11,$11,$11,$11,$11,$11,$11
+    db $11,$14,$44,$44,$44,$DD,$DD,$DD,$44,$44,$DD,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44
+    db $44,$44,$4B,$BB,$44,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DB
+    db $BB,$44,$24,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$66,$66,$64,$44,$66,$44,$64,$44,$41,$11,$11,$11,$11,$11,$11
+    db $14,$44,$44,$44,$44,$4D,$DD,$44,$44,$44,$4D,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44
+    db $44,$44,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$44,$44,$4B
+    db $BB,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$44,$66,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11
+    db $44,$44,$44,$44,$4D,$D4,$D4,$44,$44,$44,$4D,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4
+    db $44,$44,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$24,$44,$44
+    db $BB,$44,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$44,$46,$66,$44,$44,$44,$41,$11,$11,$11,$11,$11
+    db $44,$44,$44,$4D,$D4,$44,$44,$44,$44,$44,$4D,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+    db $B4,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$24,$24,$44,$24
+    db $44,$44,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$46,$66,$66,$66,$66,$66,$64,$44,$44,$44,$46,$66,$44,$44,$44,$44,$11,$11,$11,$11,$11
+    db $44,$44,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+    db $B4,$BB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$B4,$22,$44,$66
+    db $DD,$99,$96,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66
+    db $66,$46,$66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$46,$64,$44,$44,$44,$44,$11,$11,$11,$11
+    db $D4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$BB,$BB,$BB
+    db $B4,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22,$4B,$66
+    db $DD,$99,$96,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$69,$96
+    db $66,$66,$66,$66,$BB,$B6,$66,$66,$66,$66,$44,$44,$44,$64,$44,$44,$44,$44,$41,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+    db $BB,$BB,$BB,$B4,$44,$44,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99,$66
+    db $6B,$BB,$99,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$99,$99,$99
+    db $99,$96,$66,$66,$6B,$BB,$66,$66,$66,$64,$64,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DB,$44,$BB
+    db $BB,$BB,$BB,$4B,$44,$4B,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$BB,$66
+    db $66,$BB,$BB,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$6B,$B9,$99,$99
+    db $99,$99,$99,$99,$BB,$BB,$BB,$66,$6B,$66,$46,$44,$44,$44,$44,$44,$44,$44,$44,$41,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$D4,$44,$BB
+    db $BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$BB,$22
+    db $99,$92,$22,$BB,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$6B,$BB,$B9,$99
+    db $99,$99,$99,$99,$99,$9B,$BB,$BB,$BB,$66,$46,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$44,$44
+    db $BB,$BD,$DD,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$66
+    db $64,$DD,$DB,$BB,$B6,$44,$64,$66,$66,$64,$46,$66,$46,$66,$66,$66,$66,$66,$BB,$BB,$BB,$99
+    db $99,$99,$99,$99,$9B,$BB,$BB,$BB,$BB,$66,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$4D,$4B
+    db $DD,$DD,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22,$BB,$46
+    db $64,$4D,$DD,$BB,$B4,$44,$44,$46,$66,$64,$46,$66,$44,$66,$66,$66,$66,$66,$BB,$BB,$BB,$BB
+    db $99,$99,$99,$99,$BB,$BB,$BB,$BB,$B6,$66,$44,$4D,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$41
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$B4
+    db $DD,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$24,$44
+    db $66,$64,$4D,$D9,$94,$44,$44,$44,$66,$66,$44,$66,$66,$66,$66,$66,$66,$66,$BB,$BB,$BB,$BB
+    db $BB,$99,$99,$9B,$BB,$BB,$BB,$BB,$B2,$44,$44,$4D,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD
+    db $DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$62,$22,$24,$44
+    db $44,$66,$4B,$22,$2D,$DD,$DD,$DD,$DD,$66,$64,$46,$66,$66,$66,$66,$66,$BB,$BB,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$B4,$BB,$22,$44,$44,$4D,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD
+    db $DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$62,$22,$44,$44
+    db $44,$46,$44,$22,$4D,$DD,$DD,$DD,$DD,$6B,$B4,$46,$66,$66,$66,$66,$D6,$BB,$BB,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$44,$B4,$22,$44,$44,$44,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD
+    db $D4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$44,$46,$66
+    db $44,$44,$44,$42,$4D,$DD,$DD,$DD,$DD,$DB,$BB,$46,$BB,$BB,$6D,$DD,$DD,$6B,$BB,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$B4,$44,$42,$94,$44,$44,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$66,$66
+    db $DD,$44,$44,$44,$44,$44,$44,$99,$99,$22,$BB,$BB,$BB,$BB,$DD,$DD,$DD,$22,$BB,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44,$99,$44,$4D,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$B6,$66,$66
+    db $D4,$44,$44,$44,$44,$44,$B4,$69,$99,$22,$2B,$BB,$BB,$BB,$DD,$DD,$D2,$29,$9B,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$99,$4D,$DD,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$BB,$B6,$66,$66
+    db $DD,$D2,$22,$42,$22,$44,$44,$29,$92,$22,$22,$BB,$BB,$BB,$BD,$DD,$D2,$22,$9B,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44,$4D,$4D,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$22,$DD,$DD,$DD,$DD,$DD,$DD,$D4,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$B6,$66,$66,$66
+    db $66,$22,$22,$22,$22,$99,$99,$2B,$B2,$22,$22,$2B,$BB,$BB,$BD,$DD,$22,$22,$99,$BB,$BB,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44,$4D,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$22,$2D,$2D,$DD,$DD,$DD,$4D,$D4,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$66,$66,$66,$66
+    db $66,$22,$22,$22,$22,$99,$99,$9B,$66,$62,$22,$4B,$BB,$BB,$B2,$22,$22,$29,$99,$9D,$DD,$BB
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$42,$22,$22,$2D,$D4,$44,$44,$44,$D4,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$DD,$26,$66,$66,$66
+    db $66,$22,$22,$22,$22,$99,$99,$96,$66,$66,$66,$D4,$44,$BB,$B2,$22,$22,$99,$99,$99,$9D,$DD
+    db $96,$99,$9B,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$24,$22,$22,$22,$44,$44,$44,$44,$D4,$94
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$D2,$22,$26,$66,$66
+    db $66,$22,$22,$22,$22,$99,$99,$46,$66,$66,$66,$66,$44,$44,$42,$22,$29,$99,$99,$99,$99,$99
+    db $99,$99,$DD,$BB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$24,$22,$22,$22,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$22,$22,$BB,$66,$66
+    db $66,$92,$66,$22,$22,$99,$99,$94,$66,$66,$66,$66,$2B,$B2,$44,$44,$29,$99,$99,$99,$99,$99
+    db $22,$99,$DD,$BB,$BB,$BB,$BB,$BB,$42,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$24,$42,$22,$22,$44,$44,$44,$4B,$B4,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$22,$22,$BB,$B6,$66
+    db $99,$99,$66,$62,$22,$99,$99,$94,$46,$66,$66,$66,$66,$62,$24,$44,$99,$99,$99,$99,$99,$99
+    db $22,$9D,$DD,$BB,$B6,$BB,$BB,$94,$42,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22,$22,$44,$42,$24,$44,$4B,$B4
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$22,$BB,$BB,$99
+    db $99,$99,$66,$66,$62,$BB,$BB,$BB,$46,$66,$66,$66,$66,$62,$44,$44,$44,$94,$99,$99,$99,$99
+    db $42,$2D,$DD,$DB,$66,$64,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22,$22,$44,$42,$24,$44,$44,$4B
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$22,$BB,$BB,$99
+    db $99,$99,$66,$66,$66,$BB,$BB,$BB,$44,$66,$66,$66,$66,$22,$44,$44,$44,$44,$99,$99,$99,$94
+    db $44,$4D,$DD,$D9,$96,$64,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$22,$22,$D4,$44,$49,$44
+    db $4D,$24,$64,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$92,$2B,$BB,$BB,$B9,$99
+    db $99,$99,$66,$66,$66,$BB,$BB,$BB,$B4,$46,$66,$66,$22,$24,$44,$44,$44,$44,$99,$99,$99,$44
+    db $44,$44,$DD,$22,$99,$64,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22,$99,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99,$BB,$BB,$B6,$99,$99
+    db $99,$99,$66,$66,$66,$BB,$BB,$BB,$24,$46,$B6,$DD,$D2,$44,$44,$44,$44,$44,$99,$99,$94,$44
+    db $44,$44,$DD,$22,$29,$96,$44,$44,$44,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$96,$66,$64,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$D9,$BB,$BB,$66,$69,$99
+    db $99,$96,$66,$66,$6B,$BB,$BB,$BB,$22,$44,$BD,$DD,$44,$44,$44,$44,$44,$44,$49,$99,$94,$44
+    db $44,$44,$44,$D2,$22,$96,$44,$44,$44,$4D,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$B9,$94,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$26,$66,$B6,$66,$69,$22
+    db $22,$29,$66,$66,$6B,$BB,$BB,$BB,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$49,$99,$44,$44
+    db $44,$44,$44,$D2,$2D,$DD,$64,$44,$44,$4D,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$49,$94,$44,$44
+    db $94,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$66,$66,$B6,$66,$DB,$22
+    db $22,$29,$96,$66,$6B,$BB,$BB,$BB,$22,$29,$44,$BB,$B4,$44,$44,$44,$44,$44,$44,$99,$44,$44
+    db $44,$44,$44,$42,$4D,$D6,$64,$44,$44,$44,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$B4,$44,$49
+    db $92,$22,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$66,$96,$62,$DB,$22
+    db $22,$29,$96,$62,$22,$BB,$BB,$BB,$22,$22,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$99,$44,$44
+    db $44,$44,$44,$42,$44,$46,$44,$44,$44,$4D,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$22,$29
+    db $92,$22,$22,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$B6,$99,$22,$DB,$22
+    db $22,$99,$92,$22,$22,$BB,$BB,$BB,$22,$22,$22,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$B4,$44
+    db $44,$44,$44,$42,$44,$44,$44,$44,$44,$44,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99
+    db $99,$99,$22,$22,$64,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$99,$22,$DB,$22
+    db $29,$99,$22,$22,$22,$2B,$BB,$B2,$22,$22,$22,$B4,$44,$44,$44,$44,$44,$44,$D4,$44,$BB,$44
+    db $44,$44,$44,$44,$B4,$44,$44,$44,$4B,$44,$4D,$D4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99
+    db $99,$99,$22,$22,$66,$99,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99,$22,$44,$42
+    db $29,$99,$92,$92,$29,$99,$92,$26,$62,$22,$2B,$B4,$44,$44,$44,$44,$44,$44,$D4,$44,$44,$44
+    db $44,$44,$42,$44,$BB,$44,$44,$44,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99
+    db $99,$99,$22,$B2,$66,$92,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $4D,$22,$BB,$99,$99,$99,$92,$26,$66,$6B,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$24,$BB,$44,$44,$4B,$B2,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$99
+    db $99,$BB,$22,$BB,$B6,$B2,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $42,$22,$BB,$99,$99,$99,$92,$26,$66,$6B,$B4,$44,$44,$44,$44,$44,$44,$44,$D4,$44,$44,$44
+    db $44,$44,$44,$22,$4B,$94,$44,$BB,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4D,$D9
+    db $99,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $42,$22,$BB,$99,$99,$99,$22,$44,$66,$66,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$42,$24,$44,$42,$22,$22,$42,$24,$42,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$D2
+    db $99,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $42,$2B,$B9,$99,$99,$99,$6D,$44,$66,$64,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$22,$44,$42,$22,$22,$42,$44,$44,$42,$24,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$DD,$22
+    db $22,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$BB,$99,$99,$99,$99,$BD,$DD,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$42,$22,$44,$22,$24,$22,$24,$44,$44,$22,$22,$24,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$D2,$22
+    db $B2,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$49,$99,$99,$99,$99,$DD,$DD,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$24,$44,$44,$44,$22,$42,$44,$24,$44,$22,$29,$94,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22,$22
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$69,$66,$99,$99,$DD,$DD,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$29,$99,$49,$94,$B4,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$66,$66,$99,$99,$9D,$DD,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$42,$22,$22,$44,$24,$44,$44,$44,$44,$42,$29,$99,$44,$44,$4B,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22
+    db $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$66,$66,$99,$99,$22,$DD,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$42,$22,$44,$44,$44,$44,$44,$44,$94,$44,$44,$B4,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$22
+    db $2B,$2B,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$66,$66,$62,$99,$22,$B4,$DD,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$49,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42
+    db $22,$BB,$9B,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$66,$66,$62,$29,$22,$B4,$99,$44,$44,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$66,$44,$46,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42
+    db $22,$22,$99,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$66,$66,$22,$22,$22,$BB,$99,$44,$44,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$66,$66,$44,$46,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$42
+    db $22,$22,$99,$9B,$BB,$BB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$66,$66,$22,$22,$29,$9B,$99,$44,$42,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$64,$66,$66,$44,$66,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $42,$22,$99,$9B,$BB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$46,$66,$66,$22,$26,$69,$99,$94,$44,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$66,$66,$66,$66,$64,$66,$44,$44,$44,$44,$44,$4D
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$22,$99,$99,$BB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$49,$99,$99,$DD,$66,$66,$99,$44,$44,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$66,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$99,$99,$9B,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$49,$99,$9D,$DD,$66,$66,$94,$44,$44,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$99,$9D,$DB,$BB,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$49,$99,$9D,$DD,$D6,$69,$94,$44,$42,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$99,$9D,$DB,$BB,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$99,$DD,$DD,$DB,$B9,$94,$44,$42,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$92,$2D,$DD,$DB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$99,$DD,$DB,$BB,$B9,$44,$44,$44,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$22,$2D,$DD,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$99,$BB,$BB,$BB,$2B,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$22,$22,$DD,$2B,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$99,$BB,$BB,$9B,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$64,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$DD,$22,$22,$22,$22,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$4B,$BB,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$DD,$22,$22,$22,$29,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$4B,$BB,$BB,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$46,$66,$66,$66,$66,$66,$66,$66,$66,$66,$66,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$DD,$22,$22,$22,$99,$94,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$4B,$BB,$BB,$B4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$46,$66,$66,$64,$44,$46,$66,$66,$66,$66,$64,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$22,$22,$29,$94,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$BB,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$66,$64,$64,$44,$44,$46,$66,$66,$66,$66,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$DD,$22,$22,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$66,$66,$64,$44,$44,$44,$44,$44,$4B
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$DD,$22,$22,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$66,$66,$44,$44,$44,$44,$44,$44,$4B
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$BB
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$66,$44,$44,$44,$44,$44,$44,$B4,$B4
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$46,$64,$44,$44,$44,$44,$44,$4B,$B4,$41
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$22,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$BB,$B4,$44,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$22,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$4B,$B4,$44,$41,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$D2,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$4D,$D2,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$41,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$D2,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$D2,$24,$44,$46,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$41,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$4D,$D2,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$42,$24,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$41,$11,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$42,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11
+    db $11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11
+    db $11,$14,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$41,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$14,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$4F,$F4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$41,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$14,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$F4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$4F,$F4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$FF,$44
+    db $44,$44,$4F,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$4F,$F4,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$FF,$4F,$FF,$FF,$FF,$44,$44,$F4,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$44,$44,$44,$44,$44,$44,$44,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $11,$11,$11,$11,$14,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$FF,$FF,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$4F,$F4,$FF,$FF,$FF,$FF,$FF,$FF,$44,$4F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$44,$44,$44,$44,$41,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+IbFly:
+    db $40,$D6,$40,$03,$40,$AA,$40,$03,$40,$8F,$50,$03,$50
+IbStep:
+    db $40,$FC,$61,$02,$40,$3B,$82,$02,$50
+IbClick:
+    db $40,$6B,$40,$02,$50
+IbFlee:
+    db $40,$53,$41,$03,$40,$AB,$51,$03,$50
+IbGot:
+    db $40,$8F,$10,$05,$40,$71,$10,$05,$40,$5F,$10,$05,$40,$47,$20,$10,$50
+IbLost:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$53,$21,$0A,$40,$AB,$21,$1C,$50
+IbWin:
+    db $40,$D6,$10,$07,$40,$AA,$10,$07,$40,$8F,$10,$07,$40,$6B,$10,$07,$40,$55,$10,$07,$40,$47,$20,$1C
+    db $50
+IbTick:
+    db $40,$40,$60,$01,$50
+
+IbSoundTable:
+    dw IbTuneMel,$702B
+    dw IbTuneBass,$7035
+    dw IbFly,$7049
+    dw IbStep,$7049
+    dw IbClick,$7049
+    dw IbFlee,$7049
+    dw IbGot,$7049
+    dw IbLost,$7049
+    dw IbWin,$7049
+    dw IbTick,$7049
+; Passport Stamp (original)
+; Tiny Sound, 9 frames per step
+IbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1A,$01,$1D,$21,$01,$01,$1F,$1D,$1C,$01,$1A,$01
+    db $21,$01,$01,$01,$22,$01,$21,$1F,$01,$1D,$1C,$01,$1D,$01,$1F,$01
+    db $21,$01,$01,$01,$26,$01,$24,$22,$01,$21,$1F,$01,$1D,$01,$1C,$01
+    db $1A,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+IbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$0C,$01,$13,$01
+    db $15,$01,$10,$01,$13,$01,$1A,$01,$11,$01,$18,$01,$0E,$01,$16,$01
+    db $15,$01,$01,$01,$16,$01,$11,$01,$13,$01,$0E,$01,$15,$01,$15,$01
+    db $0E,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

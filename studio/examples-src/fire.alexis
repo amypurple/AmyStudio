@@ -1,0 +1,1129 @@
+cartridge "FIRE!/COMPUTE!'S GAZETTE/1988"
+
+' FIRE!
+' FIRE! (COMPUTE!'s Gazette, February 1988, for the Commodore 64; no
+' author is named in the listing), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026.
+'
+' Source: the listing (orig/fire_.bas, from the issue's disk). Labels and
+' comments such as "1040" are its line numbers.
+'
+' A ten-floor building is on fire, one person at a window on every floor.
+' The fire engine comes, the ladder goes up and the fireman climbs to the
+' top floor. Answer one arithmetic problem per floor, top to bottom: each
+' right answer puts that floor's fire out and saves its person, and the
+' fireman goes down a floor. Save all ten before the time runs out, or the
+' building burns down.
+'
+' Rules kept from the listing: four kinds of problems (810-940): addition
+' (0-9) + (0-9), subtraction (0-18) - (0-9) with a 0-9 answer,
+' multiplication (0-9) x (0-9), division (1-81) / (1-9) with a 1-9
+' answer, drawn the listing's way (two digits 0-9, redrawn until they
+' fit); three levels whose clock runs for the whole building (400); a
+' wrong answer says NO!!!, and the same problem stays (1050-1070) while
+' the clock runs on; the fire's spread with the cries of the people
+' (590-630); truck, ladder and climb before the clock starts (450, 640-
+' 790); the building burning down when the time is up (1180-1270); the
+' fanfare and YAY!!! when all ten are saved (1290-1370).
+'
+' Controls (either joystick): menus: the stick up/down, the button picks.
+' The answer is set on one or two digit wheels beside the floor: the stick
+' up/down turns the wheel under the arrows, left/right moves between the
+' wheels, the button gives the answer. Keypad not used.
+'
+' Liberties taken:
+' - Joystick answers instead of typing: one wheel for subtraction and
+'   division (answers 0-9), two (tens, units) for addition and
+'   multiplication. Setting a wheel is slower than typing a digit, so the
+'   time limits are half as long again as the listing's: 90, 68 and 45
+'   seconds (the listing's 60, 45 and 30).
+' - The clock counts the seconds left (the listing showed the seconds
+'   gone by). The last ten seconds tick.
+' - A building of 10 windows by 10 floors drawn in tiles, flickering
+'   flames, a waving person on each floor; every person saved stands on
+'   the sidewalk; the fire engine and the fireman are sprites. The
+'   building burns down to rubble and embers as in the listing.
+' - The end of the game says how it went (the seconds to spare when all
+'   are saved), then waits for a button and goes back to the menus (the
+'   listing asked PLAY AGAIN? Y/N).
+' - RND: a 16-bit xorshift, seeded by the time taken at the credits.
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; an
+' original title tune that plays once; the screens are drawn with the NMI
+' off; nothing flashes faster than 3 Hz (the flames change every 15
+' frames).
+
+const TBrick = 128
+const TWin = 129
+const TWinp = 130
+const TFlw = 131
+const TFlb = 132
+const TPfl = 133
+const TWins = 134
+const TSoot = 135
+const TFlw2 = 136
+const TFlb2 = 137
+const TPfl2 = 138
+const TWinp2 = 139
+const TRoof = 140
+const TRoofl = 141
+const TDoor = 142
+const TLadder = 143
+const TWalk = 144
+const TRoad = 145
+const TRoadl = 146
+const TCurb = 147
+const TGrass = 148
+const TRubble = 149
+const TRubble2 = 150
+const TEmber = 151
+const TStar = 152
+const TSaved = 153
+const TArrup = 154
+const TArrdn = 155
+const TArrr = 156
+const SBack = 0
+const SCab = 4
+const SBackw = 8
+const SCabw = 12
+const SFm1 = 16
+const SFmd1 = 20
+const SFm2 = 24
+const SFmd2 = 28
+const NTiles8 = 232
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndWhoosh = 3
+const SndCrash = 4
+const SndSiren = 5
+const SndRung = 6
+const SndStep = 7
+const SndRight = 8
+const SndWrong = 9
+const SndClick = 10
+const SndTick = 11
+const SndYay = 12
+u16 TzLeft = 0
+u8 TzOn = 0
+
+record Problem:
+  u8 X
+  u8 Y
+  u8 Ans
+  u8 Op
+end record
+
+' Pb: the problem on screen (X op Y = Ans; Op is 1-4 as T$ in the listing)
+Problem Pb
+' Typ: the kind of problems (T$), Lvl: the level (WH$), WH: seconds, PR:
+' the floor of the problem (1 top .. 10 bottom), Saved: people saved
+u8 Typ = 1
+u8 Lvl = 1
+u8 WH = 90
+u8 PR = 1
+u8 Saved = 0
+u8 Outcome = 0
+bcd digits 2 Left = 0
+u8 Clock = 0
+u8 Sec60 = 0
+' FlState[f]: 0 not burning, 1 burning, 2 saved (floors 1-10)
+u8 FlState[11]
+' the answer wheels: Dial[0] tens, Dial[1] units; NWh wheels, Cur the one turned
+u8 Dial[2]
+u8 NWh = 2
+u8 Cur = 0
+u8 Value = 0
+u8 Wrongs = 0
+u16 Tries = 0
+
+u8 FmX = 99
+u8 FmY = 200
+u8 FmStep = 0
+u8 TrX = 0
+u8 AnimF = 0
+u8 AnimT = 0
+u8 Ask = 0
+u8 Tick = 0
+u16 Pass = 0
+
+u16 Rs = $ACE1
+u16 Rt = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 StickDir = 0
+u8 HoldDir = 0
+u8 HoldN = 0
+u8 Ev = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 Tx = 0
+u8 Ty = 0
+u16 V16 = 0
+
+' the people's cries as the fire takes each floor (UU$, 170-180)
+data Cries chars
+  "WHOOPS..."
+  "UH-OH... "
+  "EEK!!!   "
+  "OH, NO!  "
+  "OUCH!!!  "
+  "LOOK OUT!"
+  "STOP!    "
+  "DROP!    "
+  "ROLL!    "
+  "HELP!!!  "
+end data
+
+  tile screen
+  set sound table FrSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  ' 300-340: the kind of problems
+  NewScreen
+  print at 13,1, "FIRE!"
+  print at 2,3, "PICK THE TYPE OF PROBLEMS:"
+  print at 6,6, "ADDITION"
+  print at 6,8, "SUBTRACTION"
+  print at 6,10, "MULTIPLICATION"
+  print at 6,12, "DIVISION"
+  print at 2,20, "STICK: UP/DOWN"
+  print at 2,21, "BUTTON: PICK"
+  ShowScreen
+  Typ = Menu(4, 6)
+  ' 350-390: the level
+  NewScreen
+  print at 13,1, "FIRE!"
+  print at 2,3, "PICK THE LEVEL OF DIFFICULTY"
+  print at 6,6, "BEGINNER"
+  print at 6,8, "INTERMEDIATE"
+  print at 6,10, "EINSTEIN"
+  ShowScreen
+  Lvl = Menu(3, 6)
+  ' 400 (half as long again: see the liberties)
+  select case Lvl
+  case 1
+    WH = 90
+  case 2
+    WH = 68
+  case else
+    WH = 45
+  end select
+  ' 410-430
+  NewScreen
+  print at 2,8, "YOU WILL HAVE"
+  print WH at 16,8 width 2
+  print at 19,8, "SECONDS"
+  print at 2,10, "TO PUT OUT THE FIRE...."
+  print at 2,14, "TURN THE ANSWER WHEELS WITH"
+  print at 2,15, "THE STICK, PRESS THE BUTTON"
+  print at 2,16, "TO GIVE THE ANSWER."
+  print at 2,20, "PRESS THE BUTTON TO START..."
+  ShowScreen
+  Ask = 1
+  WaitPress
+  Ask = 0
+
+' 440-510: the main loop
+game_start:
+  Scene
+  Intro
+  ' 450: the clock starts after the climb
+  Left = 0
+  Left += WH
+  Sec60 = 0
+  Wrongs = 0
+  Tries = 0
+  ShowTime
+  Clock = 1
+  PR = 1
+  Saved = 0
+next_problem:
+  NewProblem
+  ShowProblem
+ask_loop:
+  Ask = 2
+  Frame1
+  inc Pass
+  if Left = 0 then goto burn
+  Stick
+  select case Ev
+  case 1
+    Turn(1)
+  case 2
+    Turn(9)
+  case 3
+    MoveCur(0)
+  case 4
+    MoveCur(1)
+  case 5
+    Ask = 0
+    inc Tries
+    Value = WheelValue
+    if Value = Pb.Ans then
+      Rescue
+      inc PR
+      if PR < 11 then goto next_problem
+      goto all_saved
+    end if
+    WrongAnswer
+  end select
+  goto ask_loop
+
+' 1180-1270: too long: the building burns down
+burn:
+  Clock = 0
+  Ask = 0
+  Outcome = 2
+  ClearProblem
+  BurnDown
+  print at 2,21, "OOPS... TOO LONG!!!"
+  print at 2,22, "THE BUILDING BURNED DOWN."
+  goto game_end
+
+' 1290-1370: all ten saved
+all_saved:
+  Clock = 0
+  Outcome = 1
+  Hooray
+  print at 2,21, "ALL TEN PEOPLE SAVED, WITH"
+  print Left at 2,22
+  print at 5,22, "SECONDS TO SPARE!"
+
+game_end:
+  Ask = 9
+  Rearm
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Ask = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Menu: an arrow beside Items lines (two rows apart from Row0); the stick
+' moves it, the button picks; returns 1..Items
+function Menu(u8 Items, u8 Row0) as u8
+  u8 Sel = 1
+  u8 I = 0
+  u8 Row = 0
+  u8 Done = 0
+  Ask = 1
+  while Done = 0
+    for I = 1 to Items
+      Row = I - 1
+      Row = Row * 2
+      Row = Row + Row0
+      if I = Sel then
+        put char TArrr at 4,Row
+      else
+        put char 32 at 4,Row
+      end if
+    next
+    Frame1
+    Stick
+    if Ev = 1 then
+      if Sel > 1 then dec Sel
+      play sound SndClick
+    end if
+    if Ev = 2 then
+      if Sel < Items then inc Sel
+      play sound SndClick
+    end if
+    if Ev = 5 then Done = 1
+  end while
+  Ask = 0
+  play sound SndRight
+  return Sel
+
+' WheelValue: the answer set on the wheels
+function WheelValue as u8
+  if NWh = 1 then return Dial[1]
+  return Dial[0] * 10 + Dial[1]
+
+' Turn: the wheel under the arrows up one (D = 1) or down one (D = 9)
+sub Turn(u8 D):
+  u8 N = 0
+  N = Dial[Cur] + D
+  if N >= 10 then N = N - 10
+  Dial[Cur] = N
+  play sound SndClick
+  DrawWheels
+  return
+end sub
+
+sub MoveCur(u8 C):
+  if NWh = 1 then return
+  Cur = C
+  play sound SndClick
+  DrawWheels
+  return
+end sub
+
+' Rnd10: INT(RND(1) * 10)
+function Rnd10 as u8
+  u16 T = 0
+  Rnd16
+  T = highbyte Rs
+  T = T * 10
+  return highbyte T
+
+' 800-960: a problem of the chosen kind
+sub NewProblem:
+  u8 A = 0
+  u8 B = 0
+  u8 Ok = 0
+  while Ok = 0
+    ' 940
+    A = Rnd10
+    B = Rnd10
+    Ok = 1
+    if Typ = 2 then
+      if B > A then Ok = 0
+    end if
+    if Typ = 4 then
+      if A = 0 then Ok = 0
+      if B = 0 then Ok = 0
+    end if
+  end while
+  Pb.Y = B
+  Pb.Op = Typ
+  select case Typ
+  case 1
+    Pb.X = A
+    Pb.Ans = A + B
+  case 2
+    ' 870: (A + B) - B = A
+    Pb.X = A + B
+    Pb.Ans = A
+  case 3
+    Pb.X = A
+    Pb.Ans = A * B
+  case 4
+    ' 920: (A * B) / B = A
+    Pb.X = A * B
+    Pb.Ans = A
+  end select
+  NWh = 2
+  if Typ = 2 then NWh = 1
+  if Typ = 4 then NWh = 1
+  Dial[0] = 0
+  Dial[1] = 0
+  Cur = 2 - NWh
+  return
+end sub
+
+' 470: the problem beside its floor
+sub ShowProblem:
+  u8 Row = 0
+  u8 Xv = 0
+  Row = PR + 4
+  Xv = Pb.X
+  print Xv at 15,Row width 2
+  select case Pb.Op
+  case 1
+    print at 18,Row, "+"
+  case 2
+    print at 18,Row, "-"
+  case 3
+    print at 18,Row, "X"
+  case else
+    print at 18,Row, "/"
+  end select
+  Xv = Pb.Y
+  print Xv at 20,Row width 1
+  print at 22,Row, "="
+  DrawWheels
+  return
+end sub
+
+' the wheels at columns 24-25 (one wheel: column 25), arrows above and below
+sub DrawWheels:
+  u8 Row = 0
+  u8 Up = 0
+  u8 Dn = 0
+  u8 Col = 0
+  u8 Dg = 0
+  Row = PR + 4
+  Up = Row - 1
+  Dn = Row + 1
+  put char 32 at 24,Up
+  put char 32 at 25,Up
+  put char 32 at 24,Dn
+  put char 32 at 25,Dn
+  if NWh = 2 then
+    Dg = Dial[0]
+    print Dg at 24,Row width 1
+  end if
+  Dg = Dial[1]
+  print Dg at 25,Row width 1
+  Col = 24 + Cur
+  put char TArrup at Col,Up
+  put char TArrdn at Col,Dn
+  return
+end sub
+
+' the problem's row and its wheel arrows cleared
+sub ClearProblem:
+  u8 Row = 0
+  Row = PR + 4
+  fill 32 count 15 at 15,Row
+  V = Row - 1
+  fill 32 count 2 at 24,V
+  V = Row + 1
+  fill 32 count 2 at 24,V
+  return
+end sub
+
+' 1050-1070: NO!!!, then the same problem again
+sub WrongAnswer:
+  inc Wrongs
+  print at 2,22, "NO!!!"
+  play sound SndWrong
+  Pause(20)
+  print at 2,22, "     "
+  Dial[0] = 0
+  Dial[1] = 0
+  Cur = 2 - NWh
+  DrawWheels
+  return
+end sub
+
+' 1090-1120: right: the floor's fire goes out, its person is saved, the
+' fireman goes down a floor
+sub Rescue:
+  u8 Row = 0
+  u8 K = 0
+  Row = PR + 4
+  play sound SndRight
+  ClearProblem
+  FlState[PR] = 2
+  DrawFloor(PR)
+  inc Saved
+  V = 15 + Saved
+  put char TSaved at V,16
+  if PR < 10 then
+    for K = 1 to 8
+      inc FmY
+      FmStep = K >> 2
+      DrawFireman
+      Frame1
+    next
+  end if
+  Pause(10)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the scene (570-580): sky, building, street
+sub Scene:
+  u8 F = 0
+  NewScreen
+  for F = 3 to 15
+    fill 32 count 30 at 1,F
+  next
+  put char TStar at 20,3
+  put char TStar at 27,4
+  put char TStar at 16,6
+  put char TStar at 29,9
+  put char TStar at 2,7
+  put char TStar at 14,3
+  put char TRoofl at 2,4
+  fill TRoof count 11 at 3,4
+  for F = 1 to 10
+    FlState[F] = 0
+    DrawFloor(F)
+  next
+  fill TBrick count 10 at 3,15
+  put char TDoor at 7,15
+  put char TDoor at 8,15
+  fill TWalk count 30 at 1,16
+  fill TRoad count 30 at 1,17
+  fill TRoad count 30 at 1,18
+  fill TRoadl count 30 at 1,19
+  fill TCurb count 30 at 1,20
+  ' 1390-1440: the level and the time limit
+  select case Typ
+  case 1
+    print at 2,1, "ADDITION"
+  case 2
+    print at 2,1, "SUBTRACTION"
+  case 3
+    print at 2,1, "MULTIPLICATION"
+  case else
+    print at 2,1, "DIVISION"
+  end select
+  select case Lvl
+  case 1
+    print at 20,1, "BEGINNER"
+  case 2
+    print at 20,1, "INTERMED."
+  case else
+    print at 20,1, "EINSTEIN"
+  end select
+  print at 2,2, "TIME LIMIT:"
+  print WH at 14,2 width 2
+  print at 17,2, "SECONDS"
+  FmY = 200
+  TrX = 0
+  ShowScreen
+  return
+end sub
+
+' a floor (1-10) as its state shows it: 0 lit windows and a person, 1
+' burning, 2 the fire out
+sub DrawFloor(u8 F):
+  u8 Row = 0
+  u8 Pc = 0
+  u8 Sb = 0
+  u8 Sw = 0
+  u8 Sp = 0
+  u8 Col = 0
+  Row = F + 4
+  ' the person's window: columns 4, 6, 8 or 10
+  Pc = F * 3
+  Pc = Pc & 3
+  Pc = Pc * 2
+  Pc = Pc + 4
+  select case FlState[F]
+  case 0
+    Sb = TBrick
+    Sw = TWin
+    Sp = TWinp
+  case 1
+    Sb = TFlb
+    Sw = TFlw
+    Sp = TPfl
+  case else
+    Sb = TSoot
+    Sw = TWins
+    Sp = TWins
+  end select
+  fill Sb count 10 at 3,Row
+  for Col = 4 to 10 step 2
+    if Col = Pc then
+      put char Sp at Col,Row
+    else
+      put char Sw at Col,Row
+    end if
+  next
+  return
+end sub
+
+' 580-790: the fire takes the building floor by floor from the bottom, the
+' truck comes, the ladder goes up, the fireman climbs to the top
+sub Intro:
+  u8 F = 0
+  u8 Off = 0
+  u8 Row = 0
+  u8 Sx = 0
+  Ask = 0
+  Pause(30)
+  for F = 10 to 1 step -1
+    FlState[F] = 1
+    DrawFloor(F)
+    play sound SndWhoosh
+    Row = F + 4
+    ' 620: the cry, UU$ from the start for the bottom floor
+    Off = 10 - F
+    Off = Off * 9
+    put Cries + Off count 9 at 16,Row
+    Pause(20)
+    fill 32 count 9 at 16,Row
+  next
+  ' 650-730: the fire engine, siren on, from the right
+  TrX = 208
+  while TrX > 96
+    TrX = TrX - 1
+    DrawTruck
+    Sx = Tick & 15
+    if Sx = 0 then play sound SndSiren
+    Frame1
+  end while
+  Pause(10)
+  ' 750: the ladder, rung by rung
+  for Row = 16 to 5 step -1
+    put char TLadder at 13,Row
+    play sound SndRung
+    Pause(4)
+  next
+  ' 780: the fireman up to the top floor
+  FmY = 112
+  while FmY > 36
+    dec FmY
+    Sx = FmY & 7
+    if Sx = 0 then play sound SndStep
+    FmStep = FmY >> 2
+    FmStep = FmStep & 1
+    DrawFireman
+    Frame1
+  end while
+  FmStep = 0
+  DrawFireman
+  Pause(10)
+  return
+end sub
+
+sub DrawTruck:
+  u8 Cx = 0
+  Cx = TrX + 16
+  set sprite 2 to 135,TrX,SBackw,14
+  set sprite 3 to 135,Cx,SCabw,14
+  set sprite 4 to 135,TrX,SBack,8
+  set sprite 5 to 135,Cx,SCab,8
+  update sprites
+  return
+end sub
+
+sub DrawFireman:
+  if FmStep = 0 then
+    set sprite 0 to FmY,FmX,SFmd1,9
+    set sprite 1 to FmY,FmX,SFm1,6
+  else
+    set sprite 0 to FmY,FmX,SFmd2,9
+    set sprite 1 to FmY,FmX,SFm2,6
+  end if
+  update sprites
+  return
+end sub
+
+' 1180-1270: the building burns down
+sub BurnDown:
+  u8 F = 0
+  u8 K = 0
+  u8 Ex = 0
+  u8 Ey = 0
+  play sound SndCrash
+  for F = 10 to 1 step -1
+    if FlState[F] <> 1 then
+      FlState[F] = 1
+      DrawFloor(F)
+      play sound SndWhoosh
+    end if
+    Pause(6)
+  next
+  ' the fireman gets down
+  while FmY < 112
+    inc FmY
+    FmStep = FmY >> 2
+    FmStep = FmStep & 1
+    DrawFireman
+    Frame1
+  end while
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  Pause(30)
+  ' 1210-1220: down it comes, from the roof
+  for F = 4 to 15
+    fill 32 count 11 at 2,F
+    if F < 15 then put char TLadder at 13,F
+    play sound SndCrash
+    Pause(5)
+  next
+  ' 1230-1250: rubble
+  for K = 3 to 12
+    V = K & 1
+    if V = 0 then
+      put char TRubble at K,15
+    else
+      put char TRubble2 at K,15
+    end if
+  next
+  ' 1260-1270: embers
+  for K = 1 to 8
+    Ex = Rnd10
+    Ex = Ex + 3
+    Ey = Rnd10
+    Ey = Ey + 5
+    put char TEmber at Ex,Ey
+    Pause(10)
+  next
+  return
+end sub
+
+' 1290-1370: the fanfare and YAY!!!
+sub Hooray:
+  u8 K = 0
+  play sound SndYay
+  print at 16,4, "YAY!!!"
+  for K = 1 to 6
+    FmStep = K & 1
+    DrawFireman
+    Pause(12)
+  next
+  FmStep = 0
+  DrawFireman
+  return
+end sub
+
+' the seconds left (row 21)
+sub ShowTime:
+  print at 2,21, "TIME LEFT:"
+  print Left at 13,21
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the flames' second frame swaps with the first every 15 frames
+sub Flicker:
+  inc AnimT
+  if AnimT < 15 then return
+  AnimT = 0
+  AnimF = AnimF ^ 1
+  if AnimF = 1 then
+    AnimTile(TFlw, TFlw2)
+    AnimTile(TFlb, TFlb2)
+    AnimTile(TPfl, TPfl2)
+    AnimTile(TWinp, TWinp2)
+  else
+    AnimTile(TFlw, TFlw)
+    AnimTile(TFlb, TFlb)
+    AnimTile(TPfl, TPfl)
+    AnimTile(TWinp, TWinp)
+  end if
+  return
+end sub
+
+' AnimTile: tile Src's pattern and colours to code Dst (top two thirds)
+sub AnimTile(u8 Dst, u8 Src):
+  u16 S = 0
+  u16 D = 0
+  S = Src - 128
+  S = S * 8
+  D = Dst
+  D = D * 8
+  copy TilePat + S count 8 to vram.pattern + D
+  copy TileCol + S count 8 to vram.color + D
+  D = D + 2048
+  copy TilePat + S count 8 to vram.pattern + D
+  copy TileCol + S count 8 to vram.color + D
+  return
+end sub
+
+' the clock (1000): one second every 60 frames while it runs
+sub Clockwork:
+  if Clock = 0 then return
+  inc Sec60
+  if Sec60 < 60 then return
+  Sec60 = 0
+  Left -= 1
+  print Left at 13,21
+  if Left < 10 then play sound SndTick
+  return
+end sub
+
+sub Pause(u8 Nf):
+  u8 K = 0
+  for K = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  Flicker
+  Clockwork
+  return
+end sub
+
+' Stick: what the stick or button did this frame, in Ev: 1 up, 2 down, 3
+' left, 4 right (on the push, then repeating while held), 5 a new press
+sub Stick:
+  Ev = 0
+  StickDir = 0
+  V = joypad(1).up | joypad(2).up
+  if V = 1 then StickDir = 1
+  V = joypad(1).down | joypad(2).down
+  if V = 1 then StickDir = 2
+  V = joypad(1).left | joypad(2).left
+  if V = 1 then StickDir = 3
+  V = joypad(1).right | joypad(2).right
+  if V = 1 then StickDir = 4
+  Btn = joypad(1).fire | joypad(2).fire
+  if Btn = 1 then
+    if WasBtn = 0 then Ev = 5
+  end if
+  WasBtn = Btn
+  if Ev = 5 then return
+  if StickDir = 0 then
+    HoldDir = 0
+    return
+  end if
+  if StickDir <> HoldDir then
+    HoldDir = StickDir
+    HoldN = 0
+    Ev = StickDir
+    return
+  end if
+  inc HoldN
+  if HoldN >= 20 then
+    HoldN = 12
+    Ev = StickDir
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for J8 = 0 to 5
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  AnimF = 0
+  AnimT = 0
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  return
+end sub
+
+' WaitPress: a new press of a button
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  Btn = joypad(1).fire | joypad(2).fire
+  if Btn = 0 then
+    WasBtn = 0
+    goto wp_loop
+  end if
+  if WasBtn = 1 then goto wp_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 13,1, "FIRE!"
+  print at 2,3, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,4, "FEBRUARY 1988 (COMMODORE 64;"
+  print at 2,5, "NO AUTHOR NAMED)."
+  print at 2,7, "FOR THE COLECOVISION BY"
+  print at 2,8, "CLAUDE (AN AI MADE BY"
+  print at 2,9, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,10, "2026, IN AMY, THE LANGUAGE"
+  print at 2,11, "BY AMY BIENVENU."
+  print at 2,13, "MUSIC: LADDER COMPANY"
+  print at 2,14, "(ORIGINAL)."
+  print at 2,16, "SAVE THE TEN PEOPLE: ANSWER"
+  print at 2,17, "A PROBLEM FOR EACH FLOOR."
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Ask = 1
+  WaitPress
+  Ask = 0
+  Rs = Rs ^ Tick
+  Rt = TzLeft
+  Rt = Rt << 5
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $ACE1
+  return
+end sub
+
+data TilePat bytes
+  $10,$10,$00,$41,$41,$00,$08,$00
+  $00,$81,$81,$00,$81,$81,$81,$00
+  $00,$40,$4C,$4C,$81,$C3,$C3,$00
+  $00,$10,$A5,$10,$89,$20,$64,$00
+  $10,$31,$8C,$08,$20,$64,$00,$00
+  $00,$40,$4C,$4C,$81,$C3,$C3,$00
+  $00,$81,$89,$00,$81,$A1,$81,$00
+  $10,$10,$00,$41,$41,$00,$08,$00
+  $00,$42,$99,$22,$91,$08,$2C,$00
+  $40,$64,$99,$02,$08,$2C,$00,$00
+  $00,$00,$0C,$0C,$81,$43,$C3,$00
+  $00,$00,$0C,$0C,$81,$43,$C3,$00
+  $00,$00,$00,$00,$10,$00,$41,$00
+  $F0,$F0,$00,$00,$10,$00,$41,$00
+  $00,$00,$81,$81,$81,$81,$81,$81
+  $44,$83,$44,$44,$83,$44,$44,$44
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$F0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$00,$40
+  $00,$40,$00,$08,$00,$00,$40,$00
+  $00,$00,$0C,$C3,$81,$30,$64,$00
+  $00,$00,$00,$18,$81,$10,$44,$00
+  $00,$10,$38,$10,$00,$04,$00,$00
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $30,$30,$87,$B4,$30,$30,$48,$00
+  $00,$10,$38,$83,$00,$00,$00,$00
+  $00,$00,$00,$83,$38,$10,$00,$00
+  $00,$40,$60,$70,$60,$40,$00,$00
+end data
+data TileCol bytes
+  $68,$68,$06,$68,$68,$06,$68,$06
+  $0E,$E1,$E1,$0E,$E1,$E1,$E1,$0E
+  $0E,$91,$91,$91,$15,$15,$15,$0E
+  $0E,$81,$18,$B8,$8B,$FB,$FB,$0E
+  $B8,$B8,$6B,$8B,$FB,$FB,$0B,$0B
+  $0E,$98,$98,$98,$85,$B5,$B5,$0E
+  $0E,$E1,$E1,$0E,$E1,$E1,$E1,$0E
+  $6E,$6E,$06,$6E,$6E,$06,$6E,$06
+  $0E,$81,$18,$B8,$8B,$FB,$FB,$0E
+  $B8,$B8,$6B,$8B,$FB,$FB,$0B,$0B
+  $0E,$08,$98,$98,$85,$B5,$B5,$0E
+  $0E,$01,$91,$91,$15,$15,$15,$0E
+  $0E,$0F,$0E,$06,$68,$06,$68,$06
+  $0E,$0F,$0E,$06,$68,$06,$68,$06
+  $08,$0E,$E1,$E1,$E1,$E1,$E1,$E1
+  $E0,$0E,$E0,$E0,$0E,$E0,$E0,$E0
+  $0E,$0F,$0E,$0E,$0E,$0E,$0E,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$B1,$B1,$01,$01,$01
+  $01,$0E,$0F,$02,$03,$C3,$03,$C3
+  $03,$C3,$03,$C3,$03,$03,$C3,$03
+  $00,$00,$E0,$0E,$0E,$6E,$6E,$0E
+  $00,$00,$00,$E0,$0E,$6E,$6E,$0E
+  $00,$80,$B0,$80,$00,$80,$00,$00
+  $00,$00,$F0,$00,$00,$00,$00,$00
+  $BE,$BE,$EB,$BE,$BE,$BE,$BE,$01
+  $00,$B0,$B0,$0B,$00,$00,$00,$00
+  $00,$00,$00,$0B,$B0,$B0,$00,$00
+  $00,$B0,$B0,$B0,$B0,$B0,$00,$00
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$FF,$FF,$CC,$FF,$FF,$FF,$FF,$E1,$C0,$00,$00
+  $00,$00,$00,$00,$00,$FF,$FF,$CF,$FF,$FF,$FF,$FF,$F8,$F0,$00,$00
+  $00,$00,$00,$F0,$FB,$FA,$FA,$FA,$FB,$FF,$FF,$FF,$0F,$07,$00,$00
+  $00,$00,$00,$00,$C0,$60,$30,$18,$FC,$FE,$FF,$FF,$C3,$81,$00,$00
+  $00,$00,$FF,$AA,$FF,$00,$00,$00,$00,$00,$00,$00,$1E,$3F,$33,$1E
+  $00,$00,$FF,$AA,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$F0,$F8,$CC,$78
+  $00,$00,$00,$00,$00,$00,$80,$C0,$00,$00,$00,$00,$3C,$7E,$66,$3C
+  $00,$03,$07,$0F,$00,$00,$07,$0F,$1D,$1D,$1D,$0E,$07,$06,$00,$00
+  $00,$C0,$E0,$F0,$00,$00,$E0,$F0,$B8,$B8,$B8,$70,$70,$30,$00,$00
+  $00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$18,$00,$00,$07,$07
+  $00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$18,$00,$00,$70,$70
+  $00,$03,$07,$0F,$00,$00,$07,$0F,$1D,$1D,$0D,$0E,$0E,$0C,$00,$00
+  $00,$C0,$E0,$F0,$00,$00,$E0,$F0,$B8,$B8,$B8,$70,$38,$18,$00,$00
+  $00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$18,$00,$00,$00,$0E,$0E
+  $00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$18,$00,$00,$38,$38
+end data
+
+asm {
+FrWhoosh:
+    db $00,$00,$34,$02,$00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$56,$06,$10
+FrCrash:
+    db $00,$00,$06,$06,$00,$00,$17,$0A,$00,$00,$37,$0E,$00,$00,$67,$14,$10
+FrSiren:
+    db $40,$97,$30,$07,$40,$71,$30,$07,$50
+FrRung:
+    db $40,$47,$40,$01,$40,$55,$70,$02,$50
+FrStep:
+    db $80,$53,$51,$01,$80,$AB,$81,$01,$90
+FrRight:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$47,$30,$0C,$50
+FrWrong:
+    db $40,$F9,$12,$0A,$40,$25,$33,$0C,$50
+FrClick:
+    db $C0,$35,$50,$01,$C0,$40,$80,$01,$D0
+FrTick:
+    db $C0,$71,$60,$01,$C0,$7F,$90,$01,$D0
+FrYay:
+    db $80,$D6,$20,$06,$80,$AA,$20,$06,$80,$8F,$20,$06,$80,$6B,$10,$0A,$80,$8F,$20,$06,$80,$6B,$20,$18
+    db $90
+
+FrSoundTable:
+    dw FrTuneMel,$702B
+    dw FrTuneBass,$7035
+    dw FrWhoosh,$703F
+    dw FrCrash,$703F
+    dw FrSiren,$7049
+    dw FrRung,$7049
+    dw FrStep,$7053
+    dw FrRight,$7049
+    dw FrWrong,$7049
+    dw FrClick,$705D
+    dw FrTick,$705D
+    dw FrYay,$7053
+; Ladder Company (original)
+; Tiny Sound, 6 frames per step
+FrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$1A,$21,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01
+    db $26,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$01,$01,$21,$01,$23,$01
+    db $24,$01,$21,$01,$26,$01,$01,$01,$24,$01,$23,$01,$21,$01,$1F,$01
+    db $21,$01,$01,$01,$00,$01,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01
+    db $23,$01,$26,$01,$28,$01,$2B,$01,$2A,$01,$28,$01,$26,$01,$01,$01
+    db $24,$01,$28,$01,$26,$01,$23,$01,$21,$01,$26,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+FrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $0C,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$01,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$12,$01,$0E,$01,$09,$01
+    db $0E,$01,$01,$01,$00,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01
+    db $0E,$01,$0C,$01,$10,$01,$0E,$01,$0C,$01,$0B,$01,$01,$01,$01,$01
+    db $0C,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

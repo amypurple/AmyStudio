@@ -1,0 +1,1096 @@
+cartridge "FACE-OFF/MYKYTYN & TUTTLE/1986"
+
+' FACE-OFF
+' A ColecoVision game based on "Face-Off" by Kevin Mykytyn and Mark
+' Tuttle, COMPUTE!'s Gazette, January 1986 (Commodore 64, BASIC with a machine-language core).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: air hockey seen from above. Each player has a mallet in one
+' half of the rink; the puck slides, bounces off the boards and slows
+' down until a mallet strikes it again. Put it in the goal in the middle
+' of the far board. Nine goals are played; the one with more wins.
+' One player plays the blue mallet (right) against the computer's red
+' goalie (left); two players share the rink (red: controller 2, blue:
+' controller 1).
+'
+' From the original (orig/face-off.bas, its machine code disassembled in
+' orig/ml.dis): the field in C64 sprite coordinates (puck X 27-321, Y
+' 71-212; the mallets' boxes: left X 35-169, right X 184-310, Y 72-209);
+' the goals (puck Y 126-156 at an end board); the walls reverse the puck's
+' speed; a mallet within 9 pixels of the puck sets the puck's speed from
+' where it was struck, and a mallet move into the puck is undone; the puck
+' moves once every D loop passes, D growing by one every 130 moves up to
+' 45 (friction) and reset to the chosen speed on every strike; the speeds
+' (D = 21, 11, ...), the player's mallet one pixel every 20 passes, the
+' computer's every 100 - 10 x level passes; the computer's goalie logic
+' (it only moves up and down: idle while the puck is deep in the far
+' half, follows the puck's height, backs off near the boards, moves away
+' when the puck is behind it); the face-off on the side that let in the
+' goal (X 55, or 80 with two players, or 265); nine goals a game.
+'
+' Liberties: time runs at 80 C64 loop passes a frame (the C64 loop is not
+' tied to the screen); speed 3 is D = 6 instead of 1 (D = 1 crossed the
+' rink in about a frame here). The strike table is made symmetric about
+' the mallet's centre (the C64 table was offset by a few pixels, so a
+' dead-centre hit sent the puck left for both players); a dead-centre hit
+' goes toward the opponent. Collisions use the true distance (the C64
+' code ignored hits across X = 256). A strike that would drive the puck
+' into the board it touches is turned along it (on the C64 a mallet could
+' pin the puck against a board for ever). The first face-off is on the right.
+' The goal is a banner and the siren, not a flashing screen. The rink is
+' drawn at 11/16 scale. Options are chosen with the joystick on the
+' title, and the end names the winner.
+'
+' Controls: the stick moves the mallet (eight directions). Title: up/down
+' choose a line, left/right change it, a button on START.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off and
+' the display off; music first in the sound table, the title tune once.
+
+const TRk0 = 128
+const TRk1 = 129
+const TRk2 = 130
+const TRk3 = 131
+const TRk4 = 132
+const TRk5 = 133
+const TRk6 = 134
+const TRk7 = 135
+const TRk8 = 136
+const TRk9 = 137
+const TRk10 = 138
+const TRk11 = 139
+const TRk12 = 140
+const TRk13 = 141
+const TRk14 = 142
+const TRk15 = 143
+const TRk16 = 144
+const TRk17 = 145
+const TRk18 = 146
+const TRk19 = 147
+const TRk20 = 148
+const TRk21 = 149
+const TRk22 = 150
+const TRk23 = 151
+const TRk24 = 152
+const TRk25 = 153
+const TRk26 = 154
+const TRk27 = 155
+const TRk28 = 156
+const TRk29 = 157
+const TRk30 = 158
+const TRk31 = 159
+const TRk32 = 160
+const TRk33 = 161
+const TRk34 = 162
+const TRk35 = 163
+const TRk36 = 164
+const TRk37 = 165
+const TRk38 = 166
+const TRk39 = 167
+const TRk40 = 168
+const TRk41 = 169
+const TRk42 = 170
+const TRk43 = 171
+const TRk44 = 172
+const TRk45 = 173
+const TRk46 = 174
+const TRk47 = 175
+const TRk48 = 176
+const TRk49 = 177
+const TRk50 = 178
+const TRk51 = 179
+const TRk52 = 180
+const TRk53 = 181
+const TRk54 = 182
+const TRk55 = 183
+const TRk56 = 184
+const TRk57 = 185
+const TRk58 = 186
+const TRk59 = 187
+const TRk60 = 188
+const TRk61 = 189
+const TRk62 = 190
+const TRk63 = 191
+const TRk64 = 192
+const TRk65 = 193
+const TRk66 = 194
+const TRk67 = 195
+const TRk68 = 196
+const TRk69 = 197
+const TRk70 = 198
+const TRk71 = 199
+const TRk72 = 200
+const TRk73 = 201
+const TRk74 = 202
+const TRk75 = 203
+const TRk76 = 204
+const TRk77 = 205
+const TRk78 = 206
+const TRk79 = 207
+const TRk80 = 208
+const SPuck = 0
+const SMallet = 4
+const NTiles8 = 648
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHit = 3
+const SndWall = 4
+const SndGoal = 5
+const SndStart = 6
+const SndOver = 7
+const SndWin = 8
+const SndTick = 9
+const NSpr = 3
+const GoalN = 150
+const ItsHuman = 64
+const FricN = 130
+const DMax = 45
+
+record Mallet:
+  u16 X
+  u8 Y
+  u8 Acc
+  u8 Rate
+  u8 Cpu
+end record
+
+Mallet Ml[2]
+
+' strike: |dx| by the horizontal offset from the mallet's centre (the
+' C64's own values), the bounds of each mallet's half
+data DxMag bytes 41, 41, 52, 63, 74, 85, 96, 107, 118, 124, 124
+data MinX words 35, 184
+data MaxX words 169, 310
+data MenuRow bytes 11, 12, 13, 15, 16
+
+u16 TzLeft = 0
+u8 TzOn = 0
+' the puck: position, fractions, speed (1/256 pixel a move), delay,
+' friction count, pass accumulator
+u16 PX = 265
+u8 PY = 140
+u8 FX = 0
+u8 FY = 0
+i8 DX = 0
+i8 DY = 0
+u8 PD = DMax
+u8 PFr = FricN
+u16 PAcc = 0
+u8 HitBy = 2
+u8 Goal = 0
+u8 ScL = 0
+u8 ScR = 0
+u8 Over = 0
+u8 BanT = 0
+' options
+u8 NP = 1
+u8 Spd = 1
+u8 Lvl = 1
+u8 DBase = 21
+u8 Menu = 3
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Moves = 0
+' scratch
+u8 M = 0
+u8 Mi = 0
+u8 Bits = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 Ri = 0
+u16 NumU = 0
+u16 W16 = 0
+
+  tile screen
+  set sound table FoSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+
+  NewGame
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: the winner, then back to the title on a press
+  mute all
+  ShowEnd
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the mallets, then the puck's moves
+
+sub PlayFrame:
+  if BanT > 0 then
+    dec BanT
+    if BanT = 0 then AfterGoal
+    return
+  end if
+  for Mi = 0 to 1
+    RunMallet(Mi)
+  next
+  W16 = RateT[PD]
+  PAcc = PAcc + W16
+  while PAcc >= 256
+    PAcc = PAcc - 256
+    if Goal = 0 then PuckStep
+  end while
+  if Goal > 0 then GoalScored
+  return
+end sub
+
+' a mallet's moves this frame: one pixel per 16 of its accumulator
+sub RunMallet(u8 Who):
+  u8 A = 0
+  A = Ml[Who].Acc + Ml[Who].Rate
+  while A >= 16
+    A = A - 16
+    if Goal = 0 then
+      if Ml[Who].Cpu = 1 then
+        Bits = CpuStick
+      elseif Who = 1 then
+        Bits = J1
+        if NP = 1 then Bits = J1 | J2
+      else
+        Bits = J2
+      end if
+      MoveMallet(Who, Bits)
+    end if
+  end while
+  Ml[Who].Acc = A
+  return
+end sub
+
+' one pixel of a mallet's move (bits: 1 up, 2 down, 4 left, 8 right); a
+' move that strikes the puck is undone (the C64 rule)
+sub MoveMallet(u8 Who, u8 B):
+  u16 OldX = 0
+  u16 Lo = 0
+  u16 Hi = 0
+  u8 OldY = 0
+  OldX = Ml[Who].X
+  OldY = Ml[Who].Y
+  Lo = MinX[Who]
+  Hi = MaxX[Who]
+  if (B & 1) <> 0 then
+    if Ml[Who].Y <> 72 then dec Ml[Who].Y
+  end if
+  if (B & 2) <> 0 then
+    if Ml[Who].Y <> 209 then inc Ml[Who].Y
+  end if
+  if (B & 4) <> 0 then
+    if Ml[Who].X <> Lo then Ml[Who].X = Ml[Who].X - 1
+  end if
+  if (B & 8) <> 0 then
+    if Ml[Who].X <> Hi then Ml[Who].X = Ml[Who].X + 1
+  end if
+  CheckHits
+  if HitBy = Who then
+    Ml[Who].X = OldX
+    Ml[Who].Y = OldY
+  end if
+  return
+end sub
+
+' the computer's goalie (C64 $C1F9-$C24B): up and down only
+function CpuStick as u8
+  u8 Ahead = 0
+  u8 A = 0
+  u8 R = 0
+  if PX >= 256 then
+    Ahead = 1
+  elseif PX >= 140 then
+    return 0
+  elseif PX >= 40 then
+    Ahead = 1
+  end if
+  A = PY
+  if A < 141 then
+    A = A - 2
+  else
+    A = A + 1
+  end if
+  if A < 74 then return 2
+  if A >= 207 then return 1
+  R = 1
+  if A >= Ml[0].Y then R = 2
+  if Ahead = 0 then R = R xor 3
+  return R
+
+' one move of the puck: position, boards, goals, mallets, friction
+sub PuckStep:
+  i16 T = 0
+  T = FX
+  T = T + DX
+  if T < 0 then
+    FX = T + 256
+    PX = PX - 1
+  elseif T > 255 then
+    FX = T - 256
+    PX = PX + 1
+  else
+    FX = T
+  end if
+  T = FY
+  T = T + DY
+  if T < 0 then
+    FY = T + 256
+    dec PY
+  elseif T > 255 then
+    FY = T - 256
+    inc PY
+  else
+    FY = T
+  end if
+  ' boards: the speed toward a board is reversed
+  if PY < 71 then
+    if DY < 0 then Bounce(2)
+  end if
+  if PY >= 212 then
+    if DY >= 0 then Bounce(2)
+  end if
+  if PX < 27 then
+    if DX < 0 then
+      Bounce(1)
+      if InMouth = 1 then Goal = 1
+    end if
+  end if
+  if PX >= 321 then
+    if DX >= 0 then
+      Bounce(1)
+      if InMouth = 1 then Goal = 2
+    end if
+  end if
+  CheckHits
+  dec PFr
+  if PFr = 0 then
+    PFr = FricN
+    if PD < DMax then inc PD
+  end if
+  return
+end sub
+
+function InMouth as u8
+  if PY < 126 then return 0
+  if PY > 156 then return 0
+  return 1
+
+sub Bounce(u8 Axis):
+  select case Axis
+  case 1
+    DX = 0 - DX
+  case else
+    DY = 0 - DY
+  end select
+  play sound SndWall
+  return
+end sub
+
+' both mallets against the puck (right one first, as on the C64); HitBy
+' is the last mallet that struck it, 2 for none
+sub CheckHits:
+  HitBy = 2
+  for M = 1 to 0 step -1
+    TryHit(M)
+  next
+  return
+end sub
+
+sub TryHit(u8 Who):
+  i16 Ex = 0
+  i16 Ey = 0
+  u8 Ax = 0
+  Ex = PX - Ml[Who].X
+  if Ex < -9 then exit sub
+  if Ex > 8 then exit sub
+  Ey = PY
+  Ey = Ey - Ml[Who].Y
+  if Ey < -9 then exit sub
+  if Ey > 8 then exit sub
+  HitBy = Who
+  ' centre to centre: puck (X+10, Y+8.5), mallet (X+11, Y+9)
+  Ex = Ex - 1
+  Ey = Ey * 2 - 1
+  if Ex < 0 then
+    Ax = 0 - Ex
+    DX = 0 - DxMag[Ax]
+  elseif Ex > 0 then
+    Ax = Ex
+    DX = DxMag[Ax]
+  elseif Who = 0 then
+    DX = DxMag[0]
+  else
+    DX = 0 - DxMag[0]
+  end if
+  Ey = Ey * 7
+  if Ey > 124 then Ey = 124
+  if Ey < -124 then Ey = -124
+  DY = Ey
+  ' a puck pinned against a board slips out along it (liberty)
+  if PY < 74 then
+    if DY < 0 then DY = 0 - DY
+  end if
+  if PY > 209 then
+    if DY > 0 then DY = 0 - DY
+  end if
+  if PX < 30 then
+    if DX < 0 then DX = 0 - DX
+  end if
+  if PX > 318 then
+    if DX > 0 then DX = 0 - DX
+  end if
+  PD = DBase
+  play sound SndHit
+  return
+end sub
+
+sub GoalScored:
+  if Goal = 1 then
+    inc ScR
+  else
+    inc ScL
+  end if
+  ShowScores
+  print at 11,8, " GOAL! "
+  play sound SndGoal
+  BanT = GoalN
+  return
+end sub
+
+sub AfterGoal:
+  DrawRinkRow(8)
+  if ScL + ScR >= 9 then
+    Over = 1
+    return
+  end if
+  FaceOff
+  return
+end sub
+
+' puck and mallets back in place; the puck on the side that let in the goal
+sub FaceOff:
+  if Goal = 1 then
+    PX = 55
+    if NP = 2 then PX = 80
+  else
+    PX = 265
+  end if
+  PY = 140
+  FX = 0
+  FY = 0
+  DX = 0
+  DY = 0
+  Ml[0].X = 50
+  Ml[1].X = 295
+  for Mi = 0 to 1
+    Ml[Mi].Y = 140
+    Ml[Mi].Acc = 0
+  next
+  Goal = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' a C64 coordinate (centre) to the screen: 11/16 about the rink's centre
+function ToScreen(u16 C, u16 Mid, u8 Base) as u8
+  i16 D = 0
+  D = C - Mid
+  D = D * 11
+  D = D >> 4
+  D = D + Base
+  return D
+
+sub DrawSprites:
+  u8 Sx = 0
+  u8 Sy = 0
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    Sx = ToScreen(PX + 10, 184, 128) - 8
+    Sy = ToScreen(PY + 8, 150, 96) - 9
+    set sprite 0 to Sy,Sx,SPuck,1
+  end if
+  for Mi = 0 to 1
+    Sx = ToScreen(Ml[Mi].X + 11, 184, 128) - 8
+    Sy = ToScreen(Ml[Mi].Y + 9, 150, 96) - 9
+    K = Mi + 1
+    V = 8
+    if Mi = 1 then V = 4
+    set sprite K to Sy,Sx,SMallet,V
+  next
+  update sprites
+  return
+end sub
+
+sub DrawRinkRow(u8 R):
+  W16 = R - 5
+  W16 = W16 * 28
+  copy RinkMap + W16 count 28 to vram.name + 2 + R * 32
+  return
+end sub
+
+sub DrawRink:
+  for Ri = 5 to 18
+    DrawRinkRow(Ri)
+  next
+  return
+end sub
+
+sub ShowScores:
+  print at 2,2, "RED"
+  NumU = ScL
+  print at 6,2, digits$(NumU, 1)
+  print at 23,2, "BLUE"
+  NumU = ScR
+  print at 28,2, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowEnd:
+  print at 7,8, "                  "
+  print at 7,9, "    GAME  OVER    "
+  print at 7,10, "                  "
+  if NP = 1 then
+    if ScR > ScL then
+      print at 7,10, "     YOU WIN!     "
+      play sound SndWin
+    else
+      print at 7,10, "  COMPUTER WINS   "
+      play sound SndOver
+    end if
+  else
+    if ScR > ScL then
+      print at 7,10, "    BLUE WINS!    "
+    else
+      print at 7,10, "    RED WINS!     "
+    end if
+    play sound SndWin
+  end if
+  print at 7,11, "                  "
+  return
+end sub
+
+sub NewGame:
+  ScL = 0
+  ScR = 0
+  Over = 0
+  BanT = 0
+  TitleOn = 0
+  select case Spd
+  case 1
+    DBase = 21
+  case 2
+    DBase = 11
+  case else
+    DBase = 6
+  end select
+  PD = DMax
+  PFr = FricN
+  PAcc = 0
+  Goal = 2
+  FaceOff
+  Ml[0].Cpu = 0
+  Ml[0].Rate = ItsHuman
+  if NP = 1 then
+    Ml[0].Cpu = 1
+    Ml[0].Rate = CpuRate[Lvl]
+  end if
+  Ml[1].Cpu = 0
+  Ml[1].Rate = ItsHuman
+  NewScreen
+  DrawRink
+  ShowScores
+  print at 8,20, "F A C E - O F F"
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the rink, the options, START and CREDITS; the tune once
+sub TitlePage:
+  NewScreen
+  DrawRink
+  print at 8,2, "F A C E - O F F"
+  print at 5,3, "MYKYTYN AND TUTTLE"
+  print at 8,22, "STICK AND BUTTON"
+  FaceOff
+  Ml[1].X = 295
+  TitleOn = 1
+  ShowMenu
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 530
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V <> WasStick then
+    if V <> 0 then MenuStick(V)
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu < 3 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 4 then CreditsPage
+  return
+end sub
+
+sub MenuStick(u8 S):
+  if (S & 1) <> 0 then
+    if Menu > 0 then dec Menu
+  end if
+  if (S & 2) <> 0 then
+    if Menu < 4 then inc Menu
+  end if
+  if (S & 12) <> 0 then
+    select case Menu
+    case 0
+      NP = 3 - NP
+    case 1
+      if (S & 4) <> 0 then
+        if Spd > 1 then dec Spd
+      else
+        if Spd < 3 then inc Spd
+      end if
+    case 2
+      if (S & 4) <> 0 then
+        if Lvl > 1 then dec Lvl
+      else
+        if Lvl < 9 then inc Lvl
+      end if
+    end select
+  end if
+  play sound SndTick
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  print at 9,11, "PLAYERS  "
+  NumU = NP
+  print at 19,11, digits$(NumU, 1)
+  print at 9,12, "SPEED    "
+  NumU = Spd
+  print at 19,12, digits$(NumU, 1)
+  if NP = 1 then
+    print at 9,13, "LEVEL    "
+    NumU = Lvl
+    print at 19,13, digits$(NumU, 1)
+  else
+    print at 9,13, "           "
+  end if
+  print at 9,15, "START    "
+  print at 9,16, "CREDITS  "
+  for Ri = 0 to 4
+    put char 32 at 7,MenuRow[Ri]
+  next
+  put char 62 at 7,MenuRow[Menu]
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "F A C E - O F F"
+  print at 2,4, "BASED ON FACE-OFF BY KEVIN"
+  print at 2,5, "MYKYTYN AND MARK TUTTLE,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "JANUARY 1986 (COMMODORE 64)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,17, "MUSIC: CENTRE ICE"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$07,$E0,$C0,$80,$03,$F0,$E0
+  $C0,$00,$00,$00,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$01
+  $00,$00,$00,$00,$80,$80,$80,$80
+  $03,$00,$00,$00,$03,$00,$00,$00
+  $00,$E0,$07,$03,$01,$C0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $03,$07,$07,$07,$07,$07,$F0,$F0
+  $C0,$C0,$80,$80,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $03,$03,$01,$01,$01,$01,$00,$00
+  $C0,$E0,$E0,$E0,$E0,$E0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$07
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $01,$01,$01,$01,$01,$F0,$80,$0E
+  $80,$80,$80,$80,$80,$F0,$01,$70
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$E0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $01,$F0,$01,$00,$00,$00,$00,$00
+  $00,$80,$E0,$70,$38,$1C,$0E,$06
+  $07,$0E,$1C,$30,$60,$E0,$C0,$80
+  $81,$01,$01,$01,$01,$01,$01,$01
+  $81,$80,$80,$80,$80,$80,$80,$80
+  $E0,$70,$38,$0C,$06,$07,$03,$01
+  $00,$01,$07,$0E,$1C,$38,$70,$60
+  $80,$F0,$80,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $07,$03,$03,$01,$01,$01,$01,$01
+  $00,$00,$80,$80,$80,$80,$80,$80
+  $01,$03,$03,$03,$06,$06,$06,$06
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$03,$03
+  $80,$80,$80,$80,$80,$80,$C0,$C0
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$C0,$C0,$60,$60,$60,$60
+  $00,$00,$01,$01,$01,$01,$01,$01
+  $E0,$C0,$C0,$80,$80,$80,$80,$80
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $01,$01,$01,$01,$01,$03,$03,$07
+  $80,$80,$80,$80,$80,$80,$00,$00
+  $06,$06,$06,$06,$03,$03,$03,$01
+  $03,$03,$01,$01,$01,$01,$01,$01
+  $C0,$C0,$80,$80,$80,$80,$80,$80
+  $60,$60,$60,$60,$C0,$C0,$C0,$80
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $80,$80,$80,$80,$80,$C0,$C0,$E0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$01,$F0,$01
+  $06,$0E,$1C,$38,$70,$E0,$80,$00
+  $80,$C0,$E0,$60,$30,$1C,$0E,$07
+  $01,$01,$01,$01,$01,$01,$01,$81
+  $80,$80,$80,$80,$80,$80,$80,$81
+  $01,$03,$07,$06,$0C,$38,$70,$E0
+  $60,$70,$38,$1C,$0E,$07,$01,$00
+  $00,$00,$00,$00,$00,$80,$F0,$80
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $07,$00,$00,$00,$00,$00,$00,$00
+  $0E,$80,$F0,$01,$01,$01,$01,$01
+  $70,$01,$F0,$80,$80,$80,$80,$80
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$07,$07,$07,$07,$07,$03
+  $00,$00,$80,$80,$80,$80,$C0,$C0
+  $00,$00,$01,$01,$01,$01,$03,$03
+  $F0,$F0,$E0,$E0,$E0,$E0,$E0,$C0
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$03,$80,$C0,$E0,$07,$00
+  $00,$00,$00,$C0,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$00,$00,$00,$00
+  $80,$80,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$03,$00,$00,$00,$03
+  $07,$F0,$C0,$01,$03,$07,$E0,$00
+  $C0,$80,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $00,$00,$00,$00,$00,$00,$40,$40
+  $00,$40,$04,$04,$04,$F4,$4F,$4F
+  $04,$04,$04,$04,$4F,$0F,$0F,$0F
+  $04,$04,$04,$04,$0F,$0F,$0F,$0F
+  $04,$04,$04,$04,$8F,$8F,$8F,$8F
+  $04,$04,$04,$04,$8F,$8F,$8F,$8F
+  $04,$04,$04,$04,$4F,$0F,$0F,$0F
+  $00,$40,$04,$04,$04,$F4,$F4,$4F
+  $00,$00,$00,$00,$00,$00,$40,$40
+  $40,$40,$40,$40,$40,$40,$04,$04
+  $4F,$4F,$4F,$4F,$4F,$4F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $4F,$4F,$4F,$4F,$4F,$4F,$0F,$0F
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$F4
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$8F
+  $8F,$8F,$8F,$8F,$8F,$F8,$F8,$F8
+  $8F,$8F,$8F,$8F,$8F,$8F,$F8,$F8
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$8F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$F4
+  $04,$04,$04,$01,$01,$01,$01,$01
+  $F4,$F4,$4F,$0F,$0F,$0F,$0F,$0F
+  $0F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $F4,$4F,$4F,$0F,$0F,$0F,$0F,$0F
+  $40,$40,$40,$10,$10,$10,$10,$10
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $0F,$0F,$4F,$4F,$4F,$4F,$4F,$4F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $0F,$0F,$4F,$4F,$4F,$4F,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$4F,$0F,$0F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $4F,$4F,$4F,$4F,$4F,$4F,$0F,$0F
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+  $01,$01,$01,$01,$01,$04,$04,$04
+  $0F,$0F,$0F,$0F,$0F,$4F,$F4,$F4
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$0F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $4F,$4F,$4F,$4F,$4F,$4F,$4F,$0F
+  $0F,$0F,$0F,$0F,$0F,$4F,$4F,$F4
+  $10,$10,$10,$10,$10,$40,$40,$40
+  $F4,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F8,$F8,$F8,$8F,$8F,$8F,$8F,$8F
+  $F8,$F8,$8F,$8F,$8F,$8F,$8F,$8F
+  $F4,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $04,$04,$40,$40,$40,$40,$40,$40
+  $0F,$0F,$4F,$4F,$4F,$4F,$4F,$4F
+  $0F,$0F,$4F,$4F,$4F,$4F,$4F,$4F
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $40,$40,$00,$00,$00,$00,$00,$00
+  $4F,$4F,$F4,$04,$04,$04,$40,$00
+  $0F,$0F,$0F,$4F,$04,$04,$04,$04
+  $0F,$0F,$0F,$0F,$04,$04,$04,$04
+  $8F,$8F,$8F,$8F,$04,$04,$04,$04
+  $8F,$8F,$8F,$8F,$04,$04,$04,$04
+  $0F,$0F,$0F,$4F,$04,$04,$04,$04
+  $4F,$F4,$F4,$04,$04,$04,$40,$00
+  $40,$40,$00,$00,$00,$00,$00,$00
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$0E,$19,$1B,$17,$17,$1B,$19,$0E,$07,$00,$00,$00
+  $00,$00,$00,$E0,$70,$98,$D8,$E8,$E8,$D8,$98,$70,$E0,$00,$00,$00
+end data
+data RinkMap bytes
+  128,129,130,131,131,131,131,131,131,131,131,131,131,132,133,131,131,131,131,131,131,131,131,131,131,134,135,136
+  137,138,139,139,139,139,139,139,139,139,139,139,139,140,141,139,139,139,139,139,139,139,139,139,139,139,142,143
+  144,139,139,139,139,139,139,139,139,139,139,139,139,140,141,139,139,139,139,139,139,139,139,139,139,139,139,145
+  144,139,139,139,139,139,139,139,139,139,139,139,139,140,141,139,139,139,139,139,139,139,139,139,139,139,139,145
+  144,146,139,139,139,139,139,139,139,139,139,139,147,148,149,150,139,139,139,139,139,139,139,139,139,139,151,145
+  152,153,154,139,139,139,139,139,139,139,139,147,155,156,157,158,150,139,139,139,139,139,139,139,139,159,160,161
+  162,139,163,164,139,139,139,139,139,139,139,165,166,167,168,169,170,139,139,139,139,139,139,139,171,172,139,173
+  162,139,174,175,139,139,139,139,139,139,139,176,150,177,178,147,179,139,139,139,139,139,139,139,180,181,139,173
+  182,183,184,139,139,139,139,139,139,139,139,169,185,186,187,188,166,139,139,139,139,139,139,139,139,189,190,191
+  144,192,139,139,139,139,139,139,139,139,139,139,169,193,194,166,139,139,139,139,139,139,139,139,139,139,195,145
+  144,139,139,139,139,139,139,139,139,139,139,139,139,140,141,139,139,139,139,139,139,139,139,139,139,139,139,145
+  144,139,139,139,139,139,139,139,139,139,139,139,139,140,141,139,139,139,139,139,139,139,139,139,139,139,139,145
+  196,197,139,139,139,139,139,139,139,139,139,139,139,140,141,139,139,139,139,139,139,139,139,139,139,139,198,199
+  200,201,202,203,203,203,203,203,203,203,203,203,203,204,205,203,203,203,203,203,203,203,203,203,203,206,207,208
+end data
+data RateT words
+  0,20480,10240,6827,5120,4096,3413,2926,2560,2276,2048,1862
+  1707,1575,1463,1365,1280,1205,1138,1078,1024,975,931,890
+  853,819,788,759,731,706,683,661,640,621,602,585
+  569,554,539,525,512,500,488,476,465,455
+end data
+data CpuRate bytes 0,14,16,18,21,26,32,43,64,128
+
+asm {
+FoHit:
+    db $40,$47,$00,$02,$40,$5F,$10,$03,$40,$7F,$30,$02,$50
+FoWall:
+    db $40,$D6,$20,$02,$40,$1D,$41,$02,$50
+FoGoal:
+    db $40,$53,$11,$03,$40,$FE,$10,$03,$40,$BF,$10,$03,$40,$8F,$10,$03,$40,$53,$11,$03,$40,$FE,$10,$03
+    db $40,$BF,$10,$03,$40,$8F,$10,$03,$40,$53,$11,$03,$40,$FE,$10,$03,$40,$BF,$10,$03,$40,$8F,$10,$03
+    db $40,$53,$11,$03,$40,$FE,$10,$03,$40,$BF,$10,$03,$40,$8F,$10,$03,$40,$53,$11,$03,$40,$FE,$10,$03
+    db $40,$BF,$10,$03,$40,$71,$10,$0A,$50
+FoStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+FoOver:
+    db $40,$AA,$10,$0C,$40,$BF,$20,$0C,$40,$D6,$20,$0C,$40,$1D,$21,$1E,$50
+FoWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$1E,$50
+FoTick:
+    db $00,$00,$24,$02,$10
+
+FoSoundTable:
+    dw FoTuneMel,$702B
+    dw FoTuneBass,$7035
+    dw FoHit,$7049
+    dw FoWall,$7049
+    dw FoGoal,$7049
+    dw FoStart,$7049
+    dw FoOver,$7049
+    dw FoWin,$7049
+    dw FoTick,$703F
+; Centre Ice (original)
+; Tiny Sound, 8 frames per step
+FoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01
+    db $1F,$01,$21,$01,$23,$01,$24,$01,$28,$01,$01,$01,$26,$01,$24,$01
+    db $23,$01,$21,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$01,$2A,$28,$01
+    db $26,$01,$23,$01,$24,$01,$21,$01,$1E,$01,$21,$01,$1F,$01,$01,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+FoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$13,$01,$1A,$01,$13,$01,$1A,$01,$10,$01,$17,$01
+    db $10,$01,$17,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $0E,$01,$12,$01,$13,$01,$1A,$01,$17,$01,$1A,$01,$0C,$01,$10,$01
+    db $13,$01,$18,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$13,$01,$0E,$01
+    db $13,$01,$00,$01,$01,$01
+    db $FF
+}

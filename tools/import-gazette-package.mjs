@@ -65,7 +65,28 @@ const projects = [
   ["Descent-To-Kaylon", "kaylon", "Descent to Kaylon", null, "November 1984"],
   ["Digger", "digger", "Digger", null, "March 1985"],
   ["Disc-Blitz", "disc", "Disc Blitz", null, "January 1989"],
-  ["Double-Take", "dtake", "Double Take", null, "December 1988"]
+  ["Double-Take", "dtake", "Double Take", null, "December 1988"],
+  ["Computag", "computag", "Computag", null, "October 1988"],
+  ["Connectem", "connem", "Connect'em", null, "January 1987"],
+  ["Cribbage-128", "cribbage", "Cribbage 128", null, "August 1988"],
+  ["Crossroads-Ii", "xroads2", "Crossroads II: Pandemonium", "Steve Harter", "December 1988"],
+  ["Delta-War", "deltaw", "Delta War", null, "January 1988"],
+  ["Dragons-Den", "dden", "Dragon's Den", null, "December 1985"],
+  ["Dunk", "dunk", "Dunk", null, "April 1986"],
+  ["Eagles-And-Gators", "eagles", "Eagles and Gators", null, "September 1986"],
+  ["Face-Off", "faceoff", "Face-Off", "Kevin Mykytyn and Mark Tuttle", "January 1986"],
+  ["Final-Defense", "finald", "Final Defense", null, "December 1989"],
+  ["Fire", "fire", "Fire!", null, "February 1988"],
+  ["Flags", "flags", "Flags", null, "January 1990"],
+  ["Friendly-Alien", "falien", "Friendly Alien", null, "September 1985"],
+  ["Front-Line", "fline", "Front Line", "Georg Zimmer and Paul Zimmer", "August 1987"],
+  ["Geopuzzle", "geopuz", "Geopuzzle", "Rhett Anderson and David Hensley Jr.", "October 1987"],
+  ["Give-N-Take", "givetake", "Give 'N' Take", null, "August 1987"],
+  ["Going-Up", "goingup", "Going Up?", null, "June 1987"],
+  ["Gridloc", "gridloc", "Gridloc", null, "February 1989"],
+  ["Guess-America", "guessam", "Guess America!", null, "March 1984"],
+  ["Haunted-Mansion", "hmans", "Haunted Mansion", "Calvin Overhulser", "February 1984"],
+  ["International-Bounty-Hunter", "ibh", "International Bounty Hunter", null, "March 1990"]
 ];
 
 const knownIds = new Set(index.map((entry) => entry.id));

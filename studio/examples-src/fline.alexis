@@ -1,0 +1,1766 @@
+cartridge "FRONT LINE/G. AND P. ZIMMER/1987"
+
+' FRONT LINE
+' A ColecoVision game based on "Front Line" by Georg Zimmer and Paul
+' Zimmer, COMPUTE!'s Gazette disk, August 1987 (Commodore 64, BASIC with a
+' machine-language arena). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing and its machine code, orig/), rebuilt for the ColecoVision with
+' tile scenery, smooth 16 x 16 sprites, sound effects and an original
+' title tune. Original art: nothing here resembles any arcade game.
+'
+' The game: two platoons of eight soldiers (red and blue) fight over the
+' last forest. Players take turns. On your turn pick one of your soldiers
+' with the cursor and a button, carry it up to its MOVE number of cells in
+' any direction (a square around it) and drop it with a button. Pines and
+' your own soldiers block a cell. Drop it on an enemy and the two fight it
+' out in the arena: each trooper runs and shoots with its own speed,
+' bolt speed, damage and weapon (AUTO reloads fast, SEMI slowly). A hit
+' takes the shooter's damage off the target's strength; at 0 the trooper
+' falls. The winner takes the cell and keeps what strength it has left.
+' The attacker gets 10 extra strength for the fight (at most 31). Win the
+' battle by beating all eight enemy soldiers, or by holding all three
+' hilltops (the cells with the flags) at once.
+'
+' From the original (orig/front line.bas, orig/front line.ml.prg): the
+' eight soldier types (strength, damage, speed, bolt speed, AUTO/SEMI:
+' 31,1,2,3,A 30,5,4,4,A 10,8,4,5,S 8,14,5,2,S 27,2,2,3,A 25,6,3,5,A
+' 16,9,6,1,S 10,10,5,2,S), the same eight on both sides; MOVE = 10 -
+' speed, in a square; 15 two-cell pines at random; each soldier on its own
+' row near its side, at a random one of five columns; three hills (near
+' each side and in the middle), all three held = victory; turns
+' alternate; the attacker's +10 (cap 31) that the winner keeps; the arena
+' with five bunkers, attacker top left, defender bottom right; one bolt
+' in the air per trooper, the bolt leaves in the stick direction and a
+' trooper always aims left or right (the way it last faced, plus up or
+' down from the stick), so bolts fly sideways or diagonally; holding the
+' button keeps firing as fast as the weapon reloads (reload counted once
+' the bolt is gone); a hit within about 15 pixels; damage off strength.
+'
+' Liberties: a ONE PLAYER mode with a computer commander for the blue
+' platoon (map moves and arena fighting with a reaction delay); the
+' original is two players only. Speeds in pixels a second are set for a
+' 60 Hz loop (trooper 20-60, bolts 70-240) instead of the C64's loop
+' timing. The cursor clamps to the soldier's MOVE square. Button 2 puts a
+' carried soldier back (the original had no undo; dropping it on its
+' own cell still ends the turn, as there). Pines never cover a hill or
+' the starting columns (on the C64 a pine on a hilltop could count as a
+' red soldier). The cursor shows the strength, move and weapon of any
+' soldier it is on, either side. Bunkers are 3 x 3 solid blocks (on the
+' C64 only their 2 x 2 middle stopped troopers). Messages are shown, not
+' flashed. No play-again question: back to the title.
+'
+' Controls: ONE PLAYER: either controller plays red. TWO PLAYERS:
+' controller 1 red, controller 2 blue. Stick: cursor / trooper; either
+' button: pick up, drop, fire (hold); button 2 also undoes a pick-up.
+' On the title, up and down choose, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` always given. Nothing
+' flashes.
+
+const TGrass = 128
+const TGrass2 = 129
+const TPine00 = 130
+const TPine01 = 131
+const TPine10 = 132
+const TPine11 = 133
+const THilll = 134
+const THillt = 135
+const THillr = 136
+const TRedA = 137
+const TRedS = 138
+const TBluA = 139
+const TBluS = 140
+const TFloor = 141
+const TBlock = 142
+const TWall = 143
+const TBar0 = 144
+const TBar1 = 145
+const TBar2 = 146
+const TBar3 = 147
+const TBar4 = 148
+const SCursor = 0
+const SCursor2 = 4
+const SPiece = 8
+const STr0 = 12
+const STr1 = 16
+const STl0 = 20
+const STl1 = 24
+const SBolt = 28
+const SBurst = 32
+const NTiles8 = 168
+const SprBytes = 288
+const SndTuneA = 1
+const SndTuneB = 2
+const SndPick = 3
+const SndDrop = 4
+const SndNo = 5
+const SndShot = 6
+const SndHit = 7
+const SndDown = 8
+const SndClash = 9
+const SndWin = 10
+const NSpr = 6
+const NTree = 15
+
+' the eight soldier types (both platoons)
+data TStr bytes
+  31, 30, 10, 8, 27, 25, 16, 10
+end data
+data TDmg bytes
+  1, 5, 8, 14, 2, 6, 9, 10
+end data
+data TSpd bytes
+  2, 4, 4, 5, 2, 3, 6, 5
+end data
+data TFs bytes
+  3, 4, 5, 2, 3, 5, 1, 2
+end data
+data TSemi bytes
+  0, 0, 1, 1, 0, 0, 1, 1
+end data
+' trooper speed (sixteenths of a pixel a frame) by speed value 0-6
+data RunT bytes
+  20, 20, 18, 14, 11, 9, 7
+end data
+' bolt speed by bolt value 0-5
+data BoltT bytes
+  64, 64, 44, 32, 24, 18
+end data
+' the hills (top cell)
+data HillX bytes
+  5, 15, 26
+end data
+data HillY bytes
+  12, 14, 12
+end data
+' arena bunkers (top-left cell, 3 x 3)
+data BkC bytes
+  7, 22, 7, 22, 14
+end data
+data BkR bytes
+  7, 7, 17, 17, 12
+end data
+
+record Unit:
+  u8 X
+  u8 Y
+  u8 Str
+  u8 Alive
+end record
+
+record Fighter:
+  u8 X
+  u8 Y
+  u8 Acc
+  u8 Face
+  u8 Walk
+  u8 Str
+  u8 Dmg
+  u8 Run
+  u8 Bolt
+  u8 Reload
+  u8 Cool
+  u8 Bon
+  u8 Bx
+  u8 By
+  u8 Bdx
+  u8 Bdy
+  u8 Bacc
+  u8 Joy
+end record
+
+Unit Units[16]
+Fighter Fi[2]
+u8 TreeX[15]
+u8 TreeY[15]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Players = 1
+u8 Menu = 0
+' turn state: player to move (0 red, 1 blue), map state (0 choose,
+' 1 carrying), the carried soldier, its cell of origin, its MOVE
+u8 Pl = 0
+u8 Ms = 0
+u8 Sel = 0
+u8 Ox = 0
+u8 Oy = 0
+u8 Mv = 0
+u8 Cx = 15
+u8 Cy = 12
+u8 Spx = 0
+u8 Spy = 0
+u8 RepT = 0
+u8 Over = 0
+u8 Winner = 0
+u8 Turns = 0
+u8 Phase = 0
+u8 Moved = 0
+' the fight: the attacker and defender (unit numbers), fight result
+u8 Att = 0
+u8 Def = 0
+u8 FWin = 0
+u8 FEnd = 0
+u8 Hits = 0
+' computer: its goal cell, its wait, its fighter's view of the enemy
+u8 Gx = 0
+u8 Gy = 0
+u8 CpuT = 0
+u8 CpuSel = 0
+u8 Vx = 0
+u8 Vy = 0
+u8 ViewT = 0
+u8 Dodge = 0
+u8 DodgeJ = 0
+u8 LastX = 0
+u8 LastY = 0
+u8 StuckT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Was1 = 0
+u8 Was2 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 Jm = 0
+u8 Pm = 0
+u8 Pb2 = 0
+u8 WasB2 = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+' loop counters (never shared with the helpers)
+u8 Ui = 0
+u8 Ti = 0
+u8 Hi3 = 0
+u8 Fk = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table FlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  Players = Menu + 1
+
+  NewGame
+battle:
+  MapTurn
+  if Over = 0 then goto battle
+
+  ' the end: a message, then back to the title on a press
+  mute all
+  HideSprites
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,2
+  if Winner = 0 then
+    print at 3,1, "RED PLATOON WINS THE BATTLE"
+  else
+    print at 2,1, "BLUE PLATOON WINS THE BATTLE"
+  end if
+  if Over = 2 then
+    print at 6,2, "ALL THREE HILLS HELD"
+  else
+    print at 6,2, "THE ENEMY IS BEATEN"
+  end if
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the map
+
+' one turn of the player Pl, until a soldier is dropped (and any fight
+' is over); then the victory checks and the other player's turn
+sub MapTurn:
+  Ms = 0
+  Moved = 0
+  CpuT = 30
+  CpuSel = 0
+  ShowTurn
+  ShowHover
+  do
+    Frame1
+    ReadPad
+    MapInput
+    MapStep
+    DrawCursor
+  loop until Moved = 1
+  inc Turns
+  CheckWin
+  Pl = Pl ^ 1
+  return
+end sub
+
+' the stick and buttons that drive this turn: the player's controller,
+' or the computer's
+sub MapInput:
+  if Players = 1 then
+    if Pl = 0 then
+      Jm = J1 | J2
+      Pm = P1 | P2
+    else
+      CpuMap
+    end if
+  else
+    if Pl = 0 then
+      Jm = J1
+      Pm = P1
+      Pb2 = Pb2 & 1
+    else
+      Jm = J2
+      Pm = P2
+      Pb2 = Pb2 & 2
+    end if
+  end if
+  return
+end sub
+
+sub MapStep:
+  K = Jm & 15
+  if K = 0 then
+    RepT = 0
+  else
+    if RepT = 0 then
+      MoveCursor
+      if WasStick = 0 then
+        RepT = 12
+      else
+        RepT = 5
+      end if
+    else
+      dec RepT
+    end if
+  end if
+  WasStick = K
+  if Pb2 > 0 then
+    if Ms = 1 then
+      ' put the carried soldier back: still your turn
+      Ms = 0
+      DrawUnit(Sel)
+      play sound SndDrop
+      ShowTurn
+      return
+    end if
+  end if
+  if Pm = 0 then return
+  if Ms = 0 then
+    TryPick
+  else
+    TryDrop
+  end if
+  return
+end sub
+
+sub MoveCursor:
+  X = Cx
+  Y = Cy
+  V = K & 1
+  if V > 0 then dec Y
+  V = K & 2
+  if V > 0 then inc Y
+  V = K & 4
+  if V > 0 then dec X
+  V = K & 8
+  if V > 0 then inc X
+  if X < 2 then X = 2
+  if X > 29 then X = 29
+  if Y < 3 then Y = 3
+  if Y > 22 then Y = 22
+  if Ms = 1 then
+    ' the carried soldier's MOVE square
+    if absdiff(X, Ox) > Mv then X = Cx
+    if absdiff(Y, Oy) > Mv then Y = Cy
+  end if
+  if X <> Cx then
+    Cx = X
+  end if
+  if Y <> Cy then
+    Cy = Y
+  end if
+  ShowHover
+  return
+end sub
+
+' pick up one of your own soldiers
+sub TryPick:
+  N = UnitAt(Cx, Cy)
+  if N = 255 then
+    play sound SndNo
+    return
+  end if
+  V = N >> 3
+  if V <> Pl then
+    play sound SndNo
+    return
+  end if
+  Sel = N
+  Ox = Cx
+  Oy = Cy
+  K = N & 7
+  Mv = 10 - TSpd[K]
+  Ms = 1
+  ' the cell shows the ground while the soldier is carried
+  T = Terrain(Cx, Cy)
+  put char T at Cx,Cy
+  play sound SndPick
+  ShowTurn
+  return
+end sub
+
+' drop the carried soldier: on a free cell (the turn ends), on a pine or
+' a friend (refused), on an enemy (a fight)
+sub TryDrop:
+  T = get char at Cx,Cy
+  if T >= TPine00 then
+    if T <= TPine11 then
+      play sound SndNo
+      return
+    end if
+  end if
+  N = UnitAt(Cx, Cy)
+  ' (its own cell of origin is free: the soldier is carried)
+  if N = Sel then N = 255
+  if N = 255 then
+    with Units[Sel] as Su
+      Su.X = Cx
+      Su.Y = Cy
+    end with
+    DrawUnit(Sel)
+    Ms = 0
+    Moved = 1
+    play sound SndDrop
+    return
+  end if
+  V = N >> 3
+  if V = Pl then
+    play sound SndNo
+    return
+  end if
+  Att = Sel
+  Def = N
+  Ms = 0
+  play sound SndClash
+  Rearm
+  wait 30 frames
+  nmi off
+  Fight
+  Moved = 1
+  DrawMap
+  ShowScreen
+  return
+end sub
+
+' the soldier on a cell, or 255
+function UnitAt(u8 Qx, u8 Qy) as u8
+  u8 Found = 255
+  u8 Q = 0
+  for Q = 0 to 15
+    if Units[Q].Alive = 1 then
+      if Units[Q].X = Qx then
+        if Units[Q].Y = Qy then Found = Q
+      end if
+    end if
+  next
+  return Found
+
+' the ground of a cell: a hill or grass
+function Terrain(u8 Qx, u8 Qy) as u8
+  u8 Tc = TGrass
+  u8 H = 0
+  u8 D = 0
+  V = Qx + Qy
+  V = V + Qy
+  V = V & 7
+  if V = 3 then Tc = TGrass2
+  for H = 0 to 2
+    if HillY[H] = Qy then
+      D = Qx + 1
+      D = D - HillX[H]
+      if D < 3 then Tc = THilll + D
+    end if
+  next
+  return Tc
+
+sub DrawUnit(u8 Q):
+  u8 Tc = 0
+  u8 Ty = 0
+  Ty = Q & 7
+  Tc = TRedA
+  if Q >= 8 then Tc = TBluA
+  Tc = Tc + TSemi[Ty]
+  with Units[Q] as Uq
+    if Uq.Alive = 1 then
+      put char Tc at Uq.X,Uq.Y
+    else
+      Tc = Terrain(Uq.X, Uq.Y)
+      put char Tc at Uq.X,Uq.Y
+    end if
+  end with
+  return
+end sub
+
+' the cursor (and a carried soldier) glide to the cursor cell
+sub DrawCursor:
+  V = Cx << 3
+  X = V - 4
+  V = Cy << 3
+  Y = V - 5
+  if Spx < X then
+    Spx = Spx + 4
+    if Spx > X then Spx = X
+  end if
+  if Spx > X then
+    Spx = Spx - 4
+    if Spx < X then Spx = X
+  end if
+  if Spy < Y then
+    Spy = Spy + 4
+    if Spy > Y then Spy = Y
+  end if
+  if Spy > Y then
+    Spy = Spy - 4
+    if Spy < Y then Spy = Y
+  end if
+  C = 15
+  if Pl = 1 then C = 7
+  K = SCursor
+  if Ms = 1 then K = SCursor2
+  set sprite 0 to Spy,Spx,K,C
+  if Ms = 1 then
+    C = 8
+    if Pl = 1 then C = 4
+    set sprite 1 to Spy,Spx,SPiece,C
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowTurn:
+  fill 32 count 28 at 2,2
+  if Pl = 0 then
+    print at 2,2, "RED"
+  else
+    print at 2,2, "BLUE"
+  end if
+  if Ms = 0 then
+    print at 7,2, "PICK A SOLDIER"
+  else
+    print at 7,2, "MOVE"
+    NumU = Mv
+    print at 12,2, digits$(NumU, 1)
+    print at 14,2, "DROP IT"
+  end if
+  ' soldiers left on each side
+  NumU = CountSide(0)
+  print at 25,2, digits$(NumU, 1)
+  print at 26,2, "-"
+  NumU = CountSide(1)
+  print at 27,2, digits$(NumU, 1)
+  return
+end sub
+
+function CountSide(u8 Side) as u8
+  u8 Cnt = 0
+  u8 Q = 0
+  u8 B = 0
+  B = Side << 3
+  for Q = 0 to 7
+    if Units[B + Q].Alive = 1 then inc Cnt
+  next
+  return Cnt
+
+' the soldier under the cursor: strength, move, weapon, damage
+sub ShowHover:
+  fill 32 count 28 at 2,1
+  N = UnitAt(Cx, Cy)
+  if N = 255 then return
+  K = N & 7
+  if N < 8 then
+    print at 2,1, "R"
+  else
+    print at 2,1, "B"
+  end if
+  print at 4,1, "STR"
+  NumU = Units[N].Str
+  print at 7,1, digits$(NumU, 2)
+  print at 10,1, "MOVE"
+  NumU = 10 - TSpd[K]
+  print at 14,1, digits$(NumU, 1)
+  if TSemi[K] = 1 then
+    print at 16,1, "SEMI"
+  else
+    print at 16,1, "AUTO"
+  end if
+  print at 21,1, "DMG"
+  NumU = TDmg[K]
+  print at 24,1, digits$(NumU, 2)
+  return
+end sub
+
+' victory: one side has no soldiers, or holds all three hilltops
+sub CheckWin:
+  if CountSide(1) = 0 then
+    Over = 1
+    Winner = 0
+  end if
+  if CountSide(0) = 0 then
+    Over = 1
+    Winner = 1
+  end if
+  if Over > 0 then return
+  for Hi3 = 0 to 1
+    if HillsHeld(Hi3) = 3 then
+      Over = 2
+      Winner = Hi3
+    end if
+  next
+  return
+end sub
+
+function HillsHeld(u8 Side) as u8
+  u8 Cnt = 0
+  u8 H = 0
+  u8 Q = 0
+  for H = 0 to 2
+    Q = UnitAt(HillX[H], HillY[H])
+    if Q <> 255 then
+      Q = Q >> 3
+      if Q = Side then inc Cnt
+    end if
+  next
+  return Cnt
+
+' ---------------------------------------------------------------------------
+' a new battle: pines, hills, the two platoons
+
+sub NewGame:
+  NewScreen
+  for Ri = 3 to 22
+    for Ti = 2 to 29
+      T = Terrain(Ti, Ri)
+      put char T at Ti,Ri
+    next
+  next
+  ' pines: two cells by two, never on a hill or a starting column
+  for Ti = 0 to NTree - 1
+    PlaceTree
+  next
+  for Ui = 0 to 15
+    with Units[Ui] as Uu
+      K = Ui & 7
+      Uu.Str = TStr[K]
+      Uu.Alive = 1
+      Uu.Y = K << 1
+      Uu.Y = Uu.Y + 5
+      Rand
+      V = lowbyte(Rs) & 3
+      V = V + (highbyte(Rs) & 1)
+      if Ui < 8 then
+        Uu.X = 5 + V
+      else
+        Uu.X = 22 + V
+      end if
+    end with
+  next
+  Pl = 0
+  Over = 0
+  Winner = 0
+  Turns = 0
+  Cx = 9
+  Cy = 12
+  DrawMap
+  ShowScreen
+  return
+end sub
+
+sub PlaceTree:
+  do
+    Rand
+    X = lowbyte(Rs) & 31
+    Rand
+    Y = lowbyte(Rs) & 31
+    R = 1
+    if X < 2 then R = 0
+    if X > 28 then R = 0
+    if Y < 3 then R = 0
+    if Y > 21 then R = 0
+    if X >= 3 then
+      if X <= 9 then R = 0
+    end if
+    if X >= 20 then
+      if X <= 26 then R = 0
+    end if
+    if R = 1 then
+      for K = 0 to 1
+        for J = 0 to 1
+          V = X + J
+          N = Y + K
+          T = get char at V,N
+          if T > TGrass2 then R = 0
+        next
+      next
+    end if
+  loop until R = 1
+  TreeX[Ti] = X
+  TreeY[Ti] = Y
+  put char TPine00 at X,Y
+  V = X + 1
+  put char TPine01 at V,Y
+  N = Y + 1
+  put char TPine10 at X,N
+  put char TPine11 at V,N
+  return
+end sub
+
+' the whole map from the units, the pines and the hills
+sub DrawMap:
+  NewScreen
+  for Ri = 3 to 22
+    for Ti = 2 to 29
+      T = Terrain(Ti, Ri)
+      put char T at Ti,Ri
+    next
+  next
+  for Ti = 0 to NTree - 1
+    X = TreeX[Ti]
+    Y = TreeY[Ti]
+    put char TPine00 at X,Y
+    V = X + 1
+    put char TPine01 at V,Y
+    N = Y + 1
+    put char TPine10 at X,N
+    put char TPine11 at V,N
+  next
+  for Ui = 0 to 15
+    if Units[Ui].Alive = 1 then DrawUnit(Ui)
+  next
+  ShowTurn
+  ShowHover
+  Spx = Cx << 3
+  Spx = Spx - 4
+  Spy = Cy << 3
+  Spy = Spy - 5
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer commander (blue, one player mode)
+
+' a virtual stick toward the goal, then the button
+sub CpuMap:
+  Jm = 0
+  Pm = 0
+  Pb2 = 0
+  if CpuSel = 0 then
+    CpuPlan
+    CpuSel = 1
+    Gx = Units[Sel].X
+    Gy = Units[Sel].Y
+  end if
+  if Ms = 1 then
+    if CpuSel = 1 then
+      CpuSel = 2
+      Gx = Ox + 0
+      CpuDest
+    end if
+  end if
+  if Cx < Gx then Jm = Jm | 8
+  if Cx > Gx then Jm = Jm | 4
+  if Cy < Gy then Jm = Jm | 2
+  if Cy > Gy then Jm = Jm | 1
+  if Jm = 0 then
+    if CpuT > 0 then
+      dec CpuT
+    else
+      Pm = 1
+      CpuT = 20
+    end if
+  end if
+  return
+end sub
+
+' the attack score of unit A on unit B: how much sooner A wins (frames),
+' less than 0 when B is likely to win
+function FightScore(u8 A, u8 B) as i16
+  i16 Sc = 0
+  u8 Sa = 0
+  u8 Sb = 0
+  u8 Ka = 0
+  u8 Kb = 0
+  u8 Ha = 0
+  u8 Hb = 0
+  i16 Ta = 0
+  i16 Tb = 0
+  Ka = A & 7
+  Kb = B & 7
+  Sa = Units[A].Str + 10
+  if Sa > 31 then Sa = 31
+  Sb = Units[B].Str
+  Ha = Sb + TDmg[Ka] - 1
+  Ha = Ha / TDmg[Ka]
+  Hb = Sa + TDmg[Kb] - 1
+  Hb = Hb / TDmg[Kb]
+  Ta = Ha * CoolOf(Ka)
+  Tb = Hb * CoolOf(Kb)
+  Sc = Tb - Ta
+  return Sc
+
+function CoolOf(u8 Ty) as u8
+  u8 Cl = 40
+  select case TSemi[Ty]
+  case 1
+    Cl = 95
+  case else
+    Cl = 40
+  end select
+  Cl = Cl + TFs[Ty] * 4
+  return Cl
+
+' choose the soldier to move: the best attack in reach, else the nearest
+' soldier off the hills to the nearest hill not held
+sub CpuPlan:
+  i16 Best = -30000
+  i16 S = 0
+  u8 A = 0
+  u8 B = 0
+  u8 Ka = 0
+  u8 M = 0
+  u8 Dd = 0
+  u8 Bd = 255
+  for A = 8 to 15
+    if Units[A].Alive = 1 then
+      Ka = A & 7
+      M = 10 - TSpd[Ka]
+      for B = 0 to 7
+        if Units[B].Alive = 1 then
+          if absdiff(Units[A].X, Units[B].X) <= M then
+            if absdiff(Units[A].Y, Units[B].Y) <= M then
+              S = FightScore(A, B)
+              if OnHill(B) = 1 then S = S + 60
+              if S > Best then
+                Best = S
+                Sel = A
+                Def = B
+              end if
+            end if
+          end if
+        end if
+      next
+    end if
+  next
+  ' no good attack: march on a hill
+  Bd = 255
+  if Best > 0 then Bd = 0
+  for B = 0 to 2
+    if HillOwner(B) <> 1 then
+      for A = 8 to 15
+        if Units[A].Alive = 1 then
+          if OnHill(A) = 0 then
+            Dd = max(absdiff(Units[A].X, HillX[B]), absdiff(Units[A].Y, HillY[B]))
+            if Dd < Bd then
+              ' (Bd is 0 when an attack was chosen)
+              Bd = Dd
+              Sel = A
+              Def = B + 100
+            end if
+          end if
+        end if
+      next
+    end if
+  next
+  ' nothing to march with (all on hills): close in on the nearest enemy
+  if Bd = 255 then
+    for A = 8 to 15
+      if Units[A].Alive = 1 then
+        for B = 0 to 7
+          if Units[B].Alive = 1 then
+            Dd = max(absdiff(Units[A].X, Units[B].X), absdiff(Units[A].Y, Units[B].Y))
+            if Dd < Bd then
+              Bd = Dd
+              Sel = A
+              Def = B + 200
+            end if
+          end if
+        next
+      end if
+    next
+  end if
+  return
+end sub
+
+function OnHill(u8 Q) as u8
+  u8 Res = 0
+  u8 H = 0
+  for H = 0 to 2
+    if Units[Q].X = HillX[H] then
+      if Units[Q].Y = HillY[H] then Res = 1
+    end if
+  next
+  return Res
+
+' 0 red, 1 blue, 2 nobody
+function HillOwner(u8 H) as u8
+  u8 Q = 0
+  u8 Res = 2
+  Q = UnitAt(HillX[H], HillY[H])
+  if Q <> 255 then Res = Q >> 3
+  return Res
+
+' the drop cell: the enemy to attack, or the free cell in the MOVE square
+' nearest the hill
+sub CpuDest:
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 Lx = 0
+  u8 Hx = 0
+  u8 Ly = 0
+  u8 Hy = 0
+  u8 Bd = 255
+  u8 Dd = 0
+  u8 Ix = 0
+  u8 Iy = 0
+  if Def < 100 then
+    Gx = Units[Def].X
+    Gy = Units[Def].Y
+  else
+    if Def >= 200 then
+      Tx = Units[Def - 200].X
+      Ty = Units[Def - 200].Y
+    else
+      Tx = HillX[Def - 100]
+      Ty = HillY[Def - 100]
+    end if
+    Lx = Ox - min(Ox - 2, Mv)
+    Hx = Ox + min(29 - Ox, Mv)
+    Ly = Oy - min(Oy - 3, Mv)
+    Hy = Oy + min(22 - Oy, Mv)
+    Gx = Ox
+    Gy = Oy
+    for Iy = Ly to Hy
+      for Ix = Lx to Hx
+        Dd = max(absdiff(Ix, Tx), absdiff(Iy, Ty))
+        if Dd < Bd then
+          if FreeCell(Ix, Iy) = 1 then
+            Bd = Dd
+            Gx = Ix
+            Gy = Iy
+          end if
+        end if
+      next
+    next
+  end if
+  return
+end sub
+
+function FreeCell(u8 Qx, u8 Qy) as u8
+  u8 Res = 1
+  u8 Tc = 0
+  Tc = get char at Qx,Qy
+  if Tc > THillr then Res = 0
+  if Tc >= TPine00 then
+    if Tc <= TPine11 then Res = 0
+  end if
+  return Res
+
+' ---------------------------------------------------------------------------
+' the arena
+
+sub Fight:
+  NewScreen
+  for Ri = 3 to 22
+    for Ti = 2 to 29
+      T = TFloor
+      if Solid(Ti, Ri) = 1 then
+        T = TBlock
+        if Ri = 3 then T = TWall
+        if Ri = 22 then T = TWall
+        if Ti = 2 then T = TWall
+        if Ti = 29 then T = TWall
+      end if
+      put char T at Ti,Ri
+    next
+  next
+  ' the attacker's bonus, kept by a winner
+  V = Units[Att].Str + 10
+  if V > 31 then V = 31
+  Units[Att].Str = V
+  ' red top left, blue bottom right
+  if Att < 8 then
+    SetFighter(0, Att)
+    SetFighter(1, Def)
+  else
+    SetFighter(0, Def)
+    SetFighter(1, Att)
+  end if
+  Fi[0].X = 28
+  Fi[0].Y = 34
+  Fi[0].Face = 0
+  Fi[1].X = 212
+  Fi[1].Y = 156
+  Fi[1].Face = 1
+  print at 2,1, "RED"
+  print at 16,1, "BLUE"
+  for Fk = 0 to 1
+    ShowWeapon
+    DrawBar
+  next
+  FEnd = 0
+  ViewT = 0
+  Dodge = 0
+  Hits = 0
+  Phase = 1
+  DrawFighters
+  ShowScreen
+  Rearm
+  wait 40 frames
+  nmi off
+  do
+    Frame1
+    ReadPad
+    Fi[0].Joy = J1
+    if Players = 1 then Fi[0].Joy = J1 | J2
+    Fi[1].Joy = J2
+    if Players = 1 then CpuFight
+    for Fk = 0 to 1
+      MoveFighter
+    next
+    for Fk = 0 to 1
+      MoveBolt
+    next
+    DrawFighters
+  loop until FEnd > 0
+  ' the fall, then the message
+  Phase = 2
+  K = FWin ^ 1
+  for Ti = 1 to 60
+    Frame1
+    DrawFighters
+  next
+  HideSprites
+  fill 32 count 28 at 2,2
+  if FWin = 0 then
+    print at 6,2, "RED WINS THE FIGHT"
+  else
+    print at 5,2, "BLUE WINS THE FIGHT"
+  end if
+  Rearm
+  wait 100 frames
+  nmi off
+  ' back to the map: the loser is gone, the winner holds the cell
+  Units[Att].Str = Fi[Att >> 3].Str
+  Units[Def].Str = Fi[Def >> 3].Str
+  V = Att >> 3
+  if V = FWin then
+    Units[Att].X = Units[Def].X
+    Units[Att].Y = Units[Def].Y
+    Units[Def].Alive = 0
+  else
+    Units[Att].Alive = 0
+  end if
+  Phase = 0
+  return
+end sub
+
+sub SetFighter(u8 Side, u8 Q):
+  u8 Ty = 0
+  Ty = Q & 7
+  with Fi[Side] as F
+    F.Str = Units[Q].Str
+    F.Dmg = TDmg[Ty]
+    F.Run = RunT[TSpd[Ty]]
+    F.Bolt = BoltT[TFs[Ty]]
+    F.Reload = 30
+    if TSemi[Ty] = 1 then F.Reload = 85
+    F.Cool = 0
+    F.Bon = 0
+    F.Acc = 0
+    F.Walk = 0
+    F.Joy = 0
+  end with
+  return
+end sub
+
+sub ShowWeapon:
+  X = 2
+  if Fk = 1 then X = 16
+  if Fi[Fk].Reload > 40 then
+    print at X,2, "SEMI DMG"
+  else
+    print at X,2, "AUTO DMG"
+  end if
+  X = X + 9
+  NumU = Fi[Fk].Dmg
+  print at X,2, digits$(NumU, 2)
+  return
+end sub
+
+' strength bar: 8 cells of 4
+sub DrawBar:
+  X = 6
+  if Fk = 1 then X = 21
+  V = Fi[Fk].Str
+  for J = 0 to 7
+    if V >= 4 then
+      T = TBar4
+      V = V - 4
+    else
+      T = TBar0 + V
+      V = 0
+    end if
+    put char T at X,1
+    inc X
+  next
+  return
+end sub
+
+' cell C,R is a wall or a bunker
+function Solid(u8 Qc, u8 Qr) as u8
+  u8 Res = 0
+  u8 B = 0
+  if Qc <= 2 then Res = 1
+  if Qc >= 29 then Res = 1
+  if Qr <= 3 then Res = 1
+  if Qr >= 22 then Res = 1
+  for B = 0 to 4
+    if Qc - BkC[B] < 3 then
+      if Qr - BkR[B] < 3 then Res = 1
+    end if
+  next
+  return Res
+
+' trooper Fk at X,Y (sprite corner) would stand clear of walls
+function ClearAt(u8 Px, u8 Py) as u8
+  u8 Res = 1
+  u8 L = 0
+  u8 Rr = 0
+  u8 Tp = 0
+  u8 Bt = 0
+  L = (Px + 3) >> 3
+  Rr = (Px + 12) >> 3
+  Tp = (Py + 4) >> 3
+  Bt = (Py + 15) >> 3
+  if Solid(L, Tp) = 1 then Res = 0
+  if Solid(Rr, Tp) = 1 then Res = 0
+  if Solid(L, Bt) = 1 then Res = 0
+  if Solid(Rr, Bt) = 1 then Res = 0
+  return Res
+
+' run with the stick (each axis on its own, a blocked one stops), fire
+' with a button
+sub MoveFighter:
+  u8 Js = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Steps = 0
+  with Fi[Fk] as F
+    Js = F.Joy
+    F.Acc = F.Acc + F.Run
+    Steps = F.Acc >> 4
+    F.Acc = F.Acc & 15
+    while Steps > 0
+      Nx = F.X
+      Ny = F.Y
+      if (Js & 8) > 0 then
+        inc Nx
+        F.Face = 0
+      end if
+      if (Js & 4) > 0 then
+        dec Nx
+        F.Face = 1
+      end if
+      if Nx <> F.X then
+        if ClearAt(Nx, F.Y) = 1 then
+          F.X = Nx
+          inc F.Walk
+        end if
+      end if
+      if (Js & 2) > 0 then inc Ny
+      if (Js & 1) > 0 then dec Ny
+      if Ny <> F.Y then
+        if ClearAt(F.X, Ny) = 1 then
+          F.Y = Ny
+          inc F.Walk
+        end if
+      end if
+      dec Steps
+    end while
+    ' the weapon reloads once the bolt is gone
+    if F.Bon = 0 then
+      if F.Cool > 0 then dec F.Cool
+      if F.Cool = 0 then
+        if (Js & 16) > 0 then
+          F.Bon = 1
+          F.Bx = F.X + 8
+          F.By = F.Y + 8
+          F.Bacc = 0
+          ' always sideways: the stick, else the way it faces
+          F.Bdx = 1
+          if F.Face = 1 then F.Bdx = 255
+          if (Js & 8) > 0 then F.Bdx = 1
+          if (Js & 4) > 0 then F.Bdx = 255
+          F.Bdy = 0
+          if (Js & 2) > 0 then F.Bdy = 1
+          if (Js & 1) > 0 then F.Bdy = 255
+          F.Cool = F.Reload
+          play sound SndShot
+        end if
+      end if
+    end if
+  end with
+  return
+end sub
+
+' the bolt of trooper Fk flies; a wall stops it, the enemy takes the hit
+sub MoveBolt:
+  u8 Steps = 0
+  u8 E = 0
+  u8 Ex = 0
+  u8 Ey = 0
+  E = Fk ^ 1
+  Ex = Fi[E].X + 8
+  Ey = Fi[E].Y + 8
+  with Fi[Fk] as F
+    if F.Bon = 1 then
+      if FEnd = 0 then
+        F.Bacc = F.Bacc + F.Bolt
+        Steps = F.Bacc >> 4
+        F.Bacc = F.Bacc & 15
+        while Steps > 0
+          if F.Bon = 1 then
+            F.Bx = F.Bx + F.Bdx
+            F.By = F.By + F.Bdy
+            if Solid(F.Bx >> 3, F.By >> 3) = 1 then F.Bon = 0
+          end if
+          if F.Bon = 1 then
+            if absdiff(F.Bx, Ex) <= 7 then
+              if absdiff(F.By, Ey) <= 8 then
+                F.Bon = 0
+                HitEnemy(E, F.Dmg)
+              end if
+            end if
+          end if
+          dec Steps
+        end while
+      else
+        F.Bon = 0
+      end if
+    end if
+  end with
+  return
+end sub
+
+sub HitEnemy(u8 E, u8 Dm):
+  inc Hits
+  if Fi[E].Str > Dm then
+    Fi[E].Str = Fi[E].Str - Dm
+    play sound SndHit
+  else
+    Fi[E].Str = 0
+    FEnd = 1
+    FWin = E ^ 1
+    play sound SndDown
+  end if
+  Fk = Fk + 0
+  T = Fk
+  Fk = E
+  DrawBar
+  Fk = T
+  return
+end sub
+
+' the two troopers and their bolts (sprites 0-1 troopers, 2-3 bolts);
+' after the fight the loser is a burst
+sub DrawFighters:
+  u8 Q = 0
+  u8 Pt = 0
+  u8 Cl = 0
+  u8 Sy = 0
+  for Q = 0 to 1
+    with Fi[Q] as F
+      Pt = STr0
+      if F.Face = 1 then Pt = STl0
+      if (F.Walk & 8) > 0 then Pt = Pt + 4
+      Cl = 8
+      if Q = 1 then Cl = 5
+      Sy = F.Y - 1
+      if Phase = 2 then
+        if Q <> FWin then
+          Pt = SBurst
+          Cl = 11
+          if (Ti & 8) > 0 then Cl = 9
+        end if
+      end if
+      set sprite Q to Sy,F.X,Pt,Cl
+      if F.Bon = 1 then
+        Sy = F.By - 9
+        set sprite Q + 2 to Sy,F.Bx - 8,SBolt,Cl + 3
+      else
+        set sprite Q + 2 to 192,0,0,0
+      end if
+    end with
+  next
+  update sprites
+  return
+end sub
+
+' the computer's trooper (blue): it sees the red trooper with a delay,
+' lines up (level or diagonal) and fires when lined up
+sub CpuFight:
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Ax = 0
+  i16 Ay = 0
+  u8 Js = 0
+  if ViewT = 0 then
+    Vx = Fi[0].X
+    Vy = Fi[0].Y
+    ViewT = 14
+  else
+    dec ViewT
+  end if
+  Dx = Vx - Fi[1].X
+  Dy = Vy - Fi[1].Y
+  Ax = abs(Dx)
+  Ay = abs(Dy)
+  ' stuck on a bunker: go round it for a while
+  if Fi[1].X = LastX then
+    if Fi[1].Y = LastY then
+      inc StuckT
+    else
+      StuckT = 0
+    end if
+  else
+    StuckT = 0
+  end if
+  LastX = Fi[1].X
+  LastY = Fi[1].Y
+  if StuckT > 20 then
+    Rand
+    DodgeJ = lowbyte(Rs) & 15
+    Dodge = 40
+    StuckT = 0
+  end if
+  if Dodge > 0 then
+    dec Dodge
+    Js = DodgeJ
+  else
+    if Ay > 4 then
+      if Dy > 0 then
+        Js = 2
+      else
+        Js = 1
+      end if
+    end if
+    if Ax > 100 then
+      if Dx > 0 then
+        Js = Js | 8
+      else
+        Js = Js | 4
+      end if
+    end if
+    if Ax < 40 then
+      if Dx > 0 then
+        Js = Js | 4
+      else
+        Js = Js | 8
+      end if
+    end if
+  end if
+  ' lined up: turn to the enemy and fire
+  if Ay < 7 then
+    Js = Js & 3
+    if Dx > 0 then
+      Js = Js | 24
+    else
+      Js = Js | 20
+    end if
+  elseif absdiff(Ax, Ay) < 8 then
+    Js = 16
+    if Dx > 0 then
+      Js = Js | 8
+    else
+      Js = Js | 4
+    end if
+    if Dy > 0 then
+      Js = Js | 2
+    else
+      Js = Js | 1
+    end if
+  end if
+  Fi[1].Joy = Js
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  P1 = 0
+  P2 = 0
+  V = J1 & 16
+  if V > 0 then
+    if Was1 = 0 then P1 = 1
+  end if
+  Was1 = V
+  V = J2 & 16
+  if V > 0 then
+    if Was2 = 0 then P2 = 1
+  end if
+  Was2 = V
+  ' button 2 (right) of each controller, for the undo
+  V = 0
+  if joypad(1).button2 then V = 1
+  if joypad(2).button2 then V = V | 2
+  Pb2 = V & (WasB2 ^ 3)
+  WasB2 = V
+  if Players = 1 then
+    if Pb2 > 0 then Pb2 = 1
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: a strip of forest, ONE PLAYER / TWO PLAYERS / CREDITS
+sub TitlePage:
+  NewScreen
+  for Ri = 3 to 6
+    for Ti = 2 to 29
+      T = Terrain(Ti, Ri)
+      put char T at Ti,Ri
+    next
+  next
+  for Ti = 0 to 6
+    X = Ti << 2
+    X = X + 2
+    put char TPine00 at X,3
+    V = X + 1
+    put char TPine01 at V,3
+    put char TPine10 at X,4
+    put char TPine11 at V,4
+  next
+  for Ti = 0 to 7
+    X = Ti + 4
+    put char TRedA + TSemi[Ti] at X,6
+    X = Ti + 20
+    put char TBluA + TSemi[Ti] at X,6
+  next
+  put char THilll at 14,6
+  put char THillt at 15,6
+  put char THillr at 16,6
+  print at 11,9, "FRONT LINE"
+  print at 5,11, "BY GEORG AND PAUL ZIMMER"
+  print at 10,14, "ONE PLAYER"
+  print at 10,15, "TWO PLAYERS"
+  print at 10,16, "CREDITS"
+  print at 4,20, "COMPUTE!'S GAZETTE 1987"
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  do
+    Frame1
+    inc Rs
+    ReadPad
+    V = J1 | J2
+    V = V & 3
+    if V > 0 then
+      if WasStick = 0 then
+        K = V & 1
+        if K > 0 then
+          if Menu > 0 then dec Menu
+        else
+          if Menu < 2 then inc Menu
+        end if
+        ShowMenu
+      end if
+    end if
+    WasStick = V
+  loop until (P1 | P2) > 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,14
+  put char 32 at 8,15
+  put char 32 at 8,16
+  J = Menu + 14
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "FRONT LINE"
+  print at 2,5, "BASED ON FRONT LINE BY"
+  print at 2,6, "GEORG ZIMMER AND PAUL"
+  print at 2,7, "ZIMMER, COMPUTE!'S GAZETTE"
+  print at 2,8, "AUGUST 1987 (COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: RIDGE MARCH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$00,$40,$00,$04,$00,$00,$00
+  $01,$03,$07,$F0,$03,$07,$F0,$E0
+  $80,$C0,$E0,$F0,$C0,$E0,$F0,$07
+  $07,$F0,$E0,$C0,$01,$01,$03,$00
+  $F0,$07,$03,$01,$80,$80,$C0,$00
+  $00,$00,$01,$07,$F0,$E0,$C0,$80
+  $10,$18,$10,$00,$20,$00,$04,$00
+  $00,$00,$80,$E0,$F0,$07,$03,$01
+  $00,$18,$C3,$18,$C3,$E1,$14,$00
+  $00,$18,$C3,$18,$C1,$C0,$14,$00
+  $00,$18,$C3,$18,$C3,$E1,$14,$00
+  $00,$18,$C3,$18,$C1,$C0,$14,$00
+  $00,$00,$20,$00,$00,$02,$00,$00
+  $01,$80,$80,$80,$80,$80,$80,$00
+  $01,$80,$80,$80,$00,$01,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0C,$2C,$0C,$2C,$0C,$2C,$0C,$2C
+  $0C,$0C,$2C,$0C,$2C,$0C,$0C,$0C
+  $2C,$2C,$2C,$C2,$2C,$2C,$C2,$C2
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$C2
+  $2C,$C2,$C2,$C2,$AC,$AC,$AC,$0C
+  $2C,$C2,$C2,$C2,$AC,$AC,$AC,$0C
+  $0C,$0C,$AC,$AC,$CA,$CA,$CA,$CA
+  $FC,$FC,$FC,$0A,$BA,$0A,$BA,$0A
+  $0C,$0C,$AC,$AC,$AC,$CA,$CA,$CA
+  $08,$F8,$8F,$F8,$8F,$8F,$F8,$08
+  $08,$F8,$8F,$F8,$8F,$8F,$F8,$08
+  $04,$F4,$4F,$F4,$4F,$4F,$F4,$04
+  $04,$F4,$4F,$F4,$4F,$4F,$F4,$04
+  $01,$01,$41,$01,$01,$41,$01,$01
+  $EF,$FE,$FE,$FE,$FE,$FE,$FE,$0E
+  $45,$54,$54,$54,$04,$45,$54,$54
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $01,$FE,$FE,$FE,$FE,$FE,$FE,$01
+  $01,$FE,$FE,$FE,$FE,$FE,$FE,$01
+  $01,$EF,$EF,$EF,$EF,$EF,$EF,$01
+  $01,$0F,$0F,$0F,$0F,$0F,$0F,$01
+end data
+data SpritePat bytes
+  $C3,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$C0
+  $F0,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$03
+  $E0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$E0
+  $07,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$07
+  $00,$00,$00,$00,$07,$06,$04,$06,$04,$06,$05,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$60,$20,$60,$20,$60,$60,$E0,$00,$00,$00,$00
+  $00,$03,$07,$06,$07,$03,$0F,$1F,$1B,$1B,$0F,$06,$06,$0C,$0C,$1C
+  $00,$C0,$E0,$78,$E0,$C0,$E0,$F0,$FF,$F0,$E0,$60,$60,$30,$30,$38
+  $00,$03,$07,$06,$07,$03,$0F,$1F,$1B,$1B,$0F,$06,$03,$03,$06,$07
+  $00,$C0,$E0,$78,$E0,$C0,$E0,$F0,$FF,$F0,$E0,$60,$C0,$C0,$C0,$70
+  $00,$03,$07,$1E,$07,$03,$07,$0F,$FF,$0F,$07,$06,$06,$0C,$0C,$1C
+  $00,$C0,$E0,$60,$E0,$C0,$F0,$F8,$D8,$D8,$F0,$60,$60,$30,$30,$38
+  $00,$03,$07,$1E,$07,$03,$07,$0F,$FF,$0F,$07,$06,$03,$03,$03,$0E
+  $00,$C0,$E0,$60,$E0,$C0,$F0,$F8,$D8,$D8,$F0,$60,$C0,$C0,$60,$E0
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$10,$09,$05,$27,$16,$0C,$F8,$0C,$16,$27,$05,$09,$10,$00,$00
+  $00,$10,$20,$40,$C8,$D0,$60,$3E,$60,$D0,$C8,$40,$20,$10,$00,$00
+end data
+
+asm {
+FlPick:
+    db $40,$7F,$20,$02,$40,$5F,$30,$03,$50
+FlDrop:
+    db $40,$A9,$20,$02,$40,$FE,$30,$04,$50
+FlNo:
+    db $40,$F9,$22,$06,$40,$25,$33,$06,$50
+FlShot:
+    db $40,$40,$20,$02,$40,$55,$30,$02,$40,$71,$40,$02,$40,$8F,$50,$02,$50
+FlHit:
+    db $00,$00,$04,$02,$00,$00,$25,$04,$00,$00,$46,$06,$10
+FlDown:
+    db $00,$00,$04,$04,$00,$00,$25,$08,$00,$00,$36,$0C,$00,$00,$56,$10,$10
+FlClash:
+    db $40,$1D,$11,$05,$40,$D6,$10,$05,$40,$1D,$11,$05,$40,$D6,$20,$0E,$50
+FlWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$18,$40,$6B,$20,$1E
+    db $50
+
+FlSoundTable:
+    dw FlTuneMel,$702B
+    dw FlTuneBass,$7035
+    dw FlPick,$7049
+    dw FlDrop,$7049
+    dw FlNo,$7049
+    dw FlShot,$7049
+    dw FlHit,$703F
+    dw FlDown,$703F
+    dw FlClash,$7049
+    dw FlWin,$7049
+; Ridge March (original)
+; Tiny Sound, 8 frames per step
+FlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$01,$21,$24,$01,$28,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$01,$21,$24,$01,$28,$01,$2B,$01,$28,$01
+    db $26,$01,$01,$01,$28,$01,$01,$26,$24,$01,$23,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$21,$01,$23,$01,$24,$01,$26,$01,$23,$01,$20,$01
+    db $21,$01,$01,$00
+    db $FF
+FlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$13,$01
+    db $0B,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $10,$01,$17,$01,$11,$01,$0C,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $15,$01,$01,$00
+    db $FF
+}

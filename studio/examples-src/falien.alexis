@@ -1,0 +1,1163 @@
+cartridge "FRIENDLY ALIEN/COMPUTE!S GAZETTE/1985"
+
+' FRIENDLY ALIEN
+' A ColecoVision game based on "Friendly Alien", COMPUTE!'s Gazette,
+' September 1985 (Commodore 64 and VIC-20 BASIC, disk 1985-09; no author
+' is named in the listing or on the disk). Made for Amy Studio by Claude
+' (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/falien-c64.bas; the VIC-20 one is the same game), the
+' game is built for the ColecoVision: a smooth sprite alien that walks
+' from cell to cell, tiled candy, cola, flu bugs, phone and spaceship,
+' sound effects and an original title tune.
+'
+' The game: guide the little alien (two cells tall) round a fenced field
+' and pick up all 20 candies. Then a space phone appears in the top left
+' corner: walk to it and he calls home. A spaceship lands in the middle:
+' walk onto its ramp and he flies home. A can of cola gives him an
+' allergic reaction: he drinks it (glug-glug) and staggers one step in a
+' random direction (which may land on more cola, candy or a flu bug). A
+' flu bug, or running out of the minute, gives him the flu and he
+' cannot go home. Skill levels 1-5 set the number of flu bugs and cans;
+' at level N, N of the flu bugs wander about.
+'
+' From the original: the fenced field, the 2-cell alien moving in eight
+' directions one cell at a time, the alien starting each phase in the
+' bottom right corner, 20 candies each placed with four empty neighbours
+' in six colours in turn, the cans never placed above or below each other,
+' flu bugs 9 x skill and cans 15 x skill (scaled, see below), the first
+' SKILL bugs wandering: every pass one of them, picked at random, tries a
+' random one of eight directions and moves only into an empty cell (into
+' the alien = the flu); touching a bug = flu; cola = glug then one random
+' step; candy, then the phone (wandering bugs near it moved away), the
+' phone ringing, the ship built in stages (bugs moved away), the ramp;
+' one clock for the whole game; the end messages and the time of a win.
+'
+' Liberties: the field is 26 x 19 cells inside the fence (C64: 38 x 22),
+' so the hazards are scaled to the area: flu bugs 5 x skill (C64 9 x),
+' cans 8 x skill (C64 15 x), candies still 20. The alien glides a cell in
+' 10 frames; one wandering bug moves every 8 frames. The clock is ONE
+' minute, not two: the C64's BASIC loop was far slower on a bigger field
+' (a human-paced bot needs about 20 s here; with two minutes the clock
+' would never matter). Any part of the phone
+' answers (the C64 only took its lower row and cord). The phone's corner
+' and the cells round the ship's ramp and the alien's start are cleared
+' of still bugs and cans when they appear, and wandering bugs are moved
+' to a free cell elsewhere (the C64 moved them 7 rows down, onto whatever
+' was there), so the phone and the ramp can always be reached. The clock
+' stops while the phone rings and the ship lands. A candy and a can under
+' the alien in one step both count (the C64 lost the candy). Best time
+' for each skill level. No "PLAY AGAIN?": a press goes back to the title.
+'
+' Controls: either controller; the stick walks the alien (eight
+' directions, hold to keep walking). On the title, up and down choose,
+' left and right change the skill level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` always given. Own
+' xorshift random numbers. The wandering bugs change shape every 12 frames
+' (2.5 Hz).
+
+const TWall = 128
+const TBug = 129
+const TMbug0 = 130
+const TMbug1 = 131
+const TMbug = 132
+const TCola = 133
+const TCandy0 = 134
+const TCandy1 = 135
+const TCandy2 = 136
+const TCandy3 = 137
+const TCandy4 = 138
+const TCandy5 = 139
+const TPhone00 = 140
+const TPhone01 = 141
+const TPhone10 = 142
+const TPhone11 = 143
+const TCord = 144
+const TDomel = 145
+const TDome = 146
+const TDomer = 147
+const TCabin = 148
+const TRim = 149
+const TRiml = 150
+const TRimr = 151
+const TBody = 152
+const TBotl = 153
+const TBot = 154
+const TBotr = 155
+const TRamp = 156
+const TStar = 157
+const SEyes0 = 0
+const SAlien0 = 4
+const SEyes1 = 8
+const SAlien1 = 12
+const SEyes2 = 16
+const SAlien2 = 20
+const NTiles8 = 240
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndCandy = 4
+const SndGlug = 5
+const SndFlu = 6
+const SndRing = 7
+const SndShip = 8
+const SndStart = 9
+const SndWin = 10
+const NSpr = 4
+const StepN = 10
+const BugN = 8
+const GlugN = 45
+const TimeLim = 60
+const StartC = 28
+const StartR = 20
+const NCandy = 20
+
+record Germ:
+  u8 C
+  u8 R
+end record
+
+' eight directions: up, up-right, right, down-right, down, down-left,
+' left, up-left (255 = -1)
+data DcT bytes
+  0, 1, 1, 1, 0, 255, 255, 255
+end data
+data DrT bytes
+  255, 255, 0, 1, 1, 1, 0, 255
+end data
+' the stick bits (1 up, 2 down, 4 left, 8 right) to a direction, 8 = none
+data JoyDir bytes
+  8, 0, 4, 8, 6, 7, 5, 8, 2, 1, 3, 8, 8, 8, 8, 8
+end data
+data NBugT bytes
+  5, 10, 15, 20, 25
+end data
+data NColaT bytes
+  8, 16, 24, 32, 40
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+' the game
+u8 Skill = 1
+u8 Phase = 0
+bcd digits 2 CandyB = 0
+u8 Secs = 0
+u8 Sub60 = 0
+u8 Over = 0
+u8 WinT = 0
+u8 BestT[5]
+bcd digits 3 Wins = 0
+Germ Mv[5]
+' the alien: head cell, sprite corner, direction, frames left of the step,
+' what happens when the step ends, cola pending, glug frames, look
+u8 Pc = 28
+u8 Pr = 20
+u8 Px = 0
+u8 Py = 0
+u8 Pd = 0
+u8 Ph = 0
+u8 Pend = 0
+u8 GlugP = 0
+u8 Glug = 0
+u8 Look = 0
+u8 AlienOn = 0
+u8 BugT = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 GameOn = 0
+u8 Busy = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Gi = 0
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+u8 Qb = 0
+u8 Th = 0
+u8 Tb = 0
+
+  tile screen
+  set sound table FaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  fill array BestT with 0
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  GameOn = 0
+  EndMessage
+  Rearm
+  wait 60 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  AnimGerms
+  if Pend = 0 then TickClock
+  if Over > 0 then return
+  if Glug > 0 then
+    dec Glug
+    if Glug = 0 then
+      Look = 0
+      Pd = RandN(8)
+      TryStep
+    end if
+  elseif Ph > 0 then
+    Glide
+  else
+    V = J1 | J2
+    V = V & 15
+    D = JoyDir[V]
+    if D < 8 then
+      Pd = D
+      TryStep
+    end if
+  end if
+  inc BugT
+  if BugT >= BugN then
+    BugT = 0
+    if Glug = 0 then
+      if Pend = 0 then MoveGerm
+    end if
+  end if
+  return
+end sub
+
+' the two-minute clock (seconds counted up)
+sub TickClock:
+  inc Sub60
+  if Sub60 < 60 then return
+  Sub60 = 0
+  inc Secs
+  ShowTime
+  if Secs >= TimeLim then Over = 2
+  return
+end sub
+
+' x 0..n-1 from the xorshift (the high byte of low byte x n)
+function RandN(u8 N) as u8
+  u16 Prod = 0
+  Rand
+  Prod = lowbyte Rs
+  Prod = Prod * N
+  return highbyte Prod
+
+function Solid(u8 Tl) as u8
+  u8 Res = 0
+  select case Tl
+  case TWall
+    Res = 1
+  case TDomel to TBotr
+    Res = 1
+  end select
+  return Res
+
+function IsCandy(u8 Tl) as u8
+  if Tl < TCandy0 then return 0
+  if Tl > TCandy5 then return 0
+  return 1
+
+' a step in direction Pd from the alien's cell: walls and the ship stop
+' it; otherwise the alien starts gliding and what it walked into is dealt
+' with (the original's order: flu bug, ramp, cola, candy, phone)
+sub TryStep:
+  Qc = Pc + DcT[Pd]
+  Qr = Pr + DrT[Pd]
+  Qb = Qr + 1
+  Th = get char at Qc,Qr
+  Tb = get char at Qc,Qb
+  V = Solid(Th) + Solid(Tb)
+  if V > 0 then return
+  Pc = Qc
+  Pr = Qr
+  Ph = StepN
+  if Th = TBug or Th = TMbug or Tb = TBug or Tb = TMbug then
+    Pend = 1
+    return
+  end if
+  if Th = TRamp or Tb = TRamp then
+    Pend = 2
+    return
+  end if
+  if Th = TCola then
+    put char 32 at Qc,Qr
+    GlugP = 1
+  end if
+  if Tb = TCola then
+    put char 32 at Qc,Qb
+    GlugP = 1
+  end if
+  K = IsCandy(Th) + IsCandy(Tb)
+  if K > 0 then
+    if IsCandy(Th) = 1 then put char 32 at Qc,Qr
+    if IsCandy(Tb) = 1 then put char 32 at Qc,Qb
+    dec CandyB
+    if K = 2 then dec CandyB
+    ShowCandy
+    play sound SndCandy
+    if CandyB = 0 then Pend = 3
+    return
+  end if
+  if Phase = 1 then
+    if Th >= TPhone00 and Th <= TCord then Pend = 4
+    if Tb >= TPhone00 and Tb <= TCord then Pend = 4
+  end if
+  if GlugP = 0 then play sound SndStep
+  return
+end sub
+
+' the glide: one pixel a frame; at the end of the step, what was met
+sub Glide:
+  Px = Px + DcT[Pd]
+  Py = Py + DrT[Pd]
+  dec Ph
+  if Ph > 0 then return
+  select case Pend
+  case 1
+    GlugP = 0
+    Flu
+  case 2
+    GlugP = 0
+    Board
+  case 3
+    GlugP = 0
+    BuildPhone
+  case 4
+    GlugP = 0
+    RingPhone
+    BuildShip
+  end select
+  Pend = 0
+  Busy = 0
+  if GlugP = 1 then
+    GlugP = 0
+    Glug = GlugN
+    Look = 1
+    play sound SndGlug
+  end if
+  return
+end sub
+
+' one wandering bug, picked at random, tries one random direction
+sub MoveGerm:
+  K = RandN(Skill)
+  D = RandN(8)
+  C = Mv[K].C
+  Y = Mv[K].R
+  Qc = C + DcT[D]
+  Qr = Y + DrT[D]
+  if Qc = Pc then
+    Qb = Qr - Pr
+    if Qb < 2 then
+      ' into the alien: the flu (at once when he stands, else when his
+      ' step ends)
+      Pend = 1
+      if Ph = 0 then
+        Flu
+        Pend = 0
+        Busy = 0
+      end if
+      return
+    end if
+  end if
+  T = get char at Qc,Qr
+  if T <> 32 then return
+  put char 32 at C,Y
+  put char TMbug at Qc,Qr
+  Mv[K].C = Qc
+  Mv[K].R = Qr
+  return
+end sub
+
+sub Flu:
+  Busy = 1
+  Look = 2
+  DrawSprites
+  mute all
+  play sound SndFlu
+  for Gi = 1 to 90
+    Frame1
+    AnimGerms
+  next
+  Over = 1
+  return
+end sub
+
+' onto the ramp: he walks up and boards, the ramp is raised
+sub Board:
+  Busy = 1
+  WinT = Secs
+  play sound SndWin
+  Pc = 20
+  Pr = 9
+  AlienAt
+  DrawSprites
+  for Gi = 1 to 30
+    Frame1
+  next
+  Pc = 19
+  Pr = 8
+  AlienAt
+  DrawSprites
+  for Gi = 1 to 30
+    Frame1
+  next
+  AlienOn = 0
+  DrawSprites
+  put char 32 at 19,9
+  put char 32 at 20,10
+  put char 32 at 21,11
+  for Gi = 1 to 60
+    Frame1
+  next
+  inc Wins
+  Over = 3
+  V = Skill - 1
+  K = BestT[V]
+  if K = 0 or WinT < K then BestT[V] = WinT
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the phone and the ship
+
+' the alien's sprite corner from his cell
+sub AlienAt:
+  V = Pc << 3
+  Px = V - 4
+  V = Pr << 3
+  Py = V
+  Ph = 0
+  return
+end sub
+
+sub BuildPhone:
+  Busy = 1
+  Phase = 1
+  put char TPhone00 at 3,3
+  put char TPhone01 at 4,3
+  put char TPhone10 at 3,4
+  put char TPhone11 at 4,4
+  put char TCord at 5,4
+  for Ri = 3 to 6
+    for Ci = 3 to 7
+      T = get char at Ci,Ri
+      if T = TBug or T = TCola then put char 32 at Ci,Ri
+    next
+  next
+  Pc = StartC
+  Pr = StartR
+  AlienAt
+  Rehome
+  print at 13,1, "GO PHONE"
+  play sound SndStart
+  return
+end sub
+
+sub RingPhone:
+  Busy = 1
+  Pc = 6
+  Pr = 3
+  AlienAt
+  DrawSprites
+  for Gi = 1 to 3
+    play sound SndRing
+    for Ri = 1 to 40
+      Frame1
+      AnimGerms
+    next
+  next
+  return
+end sub
+
+sub BuildShip:
+  Busy = 1
+  Phase = 2
+  Pc = StartC
+  Pr = StartR
+  AlienAt
+  DrawSprites
+  print at 13,1, "GO SHIP "
+  play sound SndShip
+  put char TDomel at 14,6
+  fill TDome count 3 at 15,6
+  put char TDomer at 18,6
+  ShipWait
+  fill TCabin count 5 at 14,7
+  ShipWait
+  put char TRiml at 9,8
+  fill TRim count 13 at 10,8
+  put char TRimr at 23,8
+  play sound SndShip
+  ShipWait
+  fill TBody count 5 at 14,9
+  put char TBotl at 14,10
+  fill TBot count 3 at 15,10
+  put char TBotr at 18,10
+  ShipWait
+  put char TRamp at 19,9
+  put char TRamp at 20,10
+  put char TRamp at 21,11
+  for Ri = 9 to 13
+    for Ci = 18 to 23
+      T = get char at Ci,Ri
+      V = Solid(T)
+      if V = 0 and T <> TRamp then put char 32 at Ci,Ri
+    next
+  next
+  Rehome
+  return
+end sub
+
+sub ShipWait:
+  for Ri = 1 to 25
+    Frame1
+    AnimGerms
+  next
+  return
+end sub
+
+' the cells kept clear: the start, and the phone's corner or the ramp's
+function InKeep(u8 Kc, u8 Kr) as u8
+  u8 Res = 0
+  if Kc >= 25 and Kr >= 16 then Res = 1
+  if Phase = 1 and Kc <= 7 and Kr <= 6 then Res = 1
+  if Phase = 2 and Kc >= 18 and Kc <= 23 and Kr >= 9 and Kr <= 13 then Res = 1
+  return Res
+
+' wandering bugs on a kept cell or under the ship go to a free cell
+sub Rehome:
+  for Gi = 0 to Skill - 1
+    C = Mv[Gi].C
+    Y = Mv[Gi].R
+    T = get char at C,Y
+    K = InKeep(C, Y)
+    if T = TMbug and K = 1 then put char 32 at C,Y
+    if T <> TMbug or K = 1 then
+      do
+        PickFree
+        K = InKeep(Qc, Qr)
+      loop until K = 0
+      put char TMbug at Qc,Qr
+      Mv[Gi].C = Qc
+      Mv[Gi].R = Qr
+    end if
+  next
+  return
+end sub
+
+' a random empty cell in rows 4-19 (Qc, Qr)
+sub PickFree:
+  do
+    Qc = RandN(26) + 3
+    Qr = RandN(16) + 4
+    T = get char at Qc,Qr
+  loop until T = 32
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the field
+
+sub BuildField:
+  u8 Lim = 0
+  u8 Ok = 0
+  u8 Ii = 0
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,22
+  for Ri = 3 to 21
+    put char TWall at 2,Ri
+    put char TWall at 29,Ri
+  next
+  ' flu bugs; the first SKILL of them wander
+  Lim = NBugT[Skill - 1]
+  for Ii = 1 to Lim
+    PickFree
+    if Ii <= Skill then
+      put char TMbug at Qc,Qr
+      Mv[Ii - 1].C = Qc
+      Mv[Ii - 1].R = Qr
+    else
+      put char TBug at Qc,Qr
+    end if
+  next
+  ' cola, never right above or below another can
+  Lim = NColaT[Skill - 1]
+  for Ii = 1 to Lim
+    do
+      PickFree
+      Qb = Qr - 1
+      Th = get char at Qc,Qb
+      Qb = Qr + 1
+      Tb = get char at Qc,Qb
+      Ok = 1
+      if Th = TCola or Tb = TCola then Ok = 0
+    loop until Ok = 1
+    put char TCola at Qc,Qr
+  next
+  ' candy, each with four empty neighbours, six colours in turn
+  C = 0
+  for Ii = 1 to NCandy
+    do
+      PickFree
+      Ok = 1
+      Qb = Qr - 1
+      T = get char at Qc,Qb
+      if T <> 32 then Ok = 0
+      Qb = Qr + 1
+      T = get char at Qc,Qb
+      if T <> 32 then Ok = 0
+      Qb = Qc - 1
+      T = get char at Qb,Qr
+      if T <> 32 then Ok = 0
+      Qb = Qc + 1
+      T = get char at Qb,Qr
+      if T <> 32 then Ok = 0
+    loop until Ok = 1
+    T = TCandy0 + C
+    put char T at Qc,Qr
+    inc C
+    if C >= 6 then C = 0
+  next
+  return
+end sub
+
+sub NewGame:
+  Phase = 0
+  CandyB = NCandy
+  Secs = 0
+  Sub60 = 0
+  Over = 0
+  Pend = 0
+  GlugP = 0
+  Glug = 0
+  Look = 0
+  BugT = 0
+  Busy = 0
+  NewScreen
+  BuildField
+  ShowHud
+  Pc = StartC
+  Pr = StartR
+  AlienAt
+  AlienOn = 1
+  TitleOn = 0
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  GameOn = 1
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the wandering bugs' two shapes, copied over their tile every 12 frames
+sub AnimGerms:
+  inc AnimT
+  if AnimT < 12 then return
+  AnimT = 0
+  V = AnimF + 1
+  AnimF = V & 1
+  W16 = TMbug0 - 128 + AnimF
+  W16 = W16 << 3
+  A16 = TMbug << 3
+  copy TilePat + W16 count 8 to vram.pattern + A16
+  copy TilePat + W16 count 8 to vram.pattern + 2048 + A16
+  copy TilePat + W16 count 8 to vram.pattern + 4096 + A16
+  return
+end sub
+
+' sprite 0 the eyes and antennae (white), 1 the body: light green, magenta
+' after cola, cyan with the flu
+sub DrawSprites:
+  if AlienOn = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    update sprites
+    return
+  end if
+  K = 0
+  if Ph > 0 then
+    V = Ph >> 2
+    K = V & 1
+  end if
+  if Look > 0 then K = 2
+  K = K << 3
+  C = 3
+  if Look = 1 then C = 13
+  if Look = 2 then C = 7
+  Y = Py - 1
+  set sprite 0 to Y,Px,K,15
+  K = K + 4
+  set sprite 1 to Y,Px,K,C
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "TIME"
+  ShowTime
+  print at 13,1, "CANDY"
+  ShowCandy
+  print at 23,1, "SKILL"
+  NumU = Skill
+  print at 29,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowTime:
+  NumU = Secs / 60
+  print at 7,1, digits$(NumU, 1)
+  print at 8,1, ":"
+  NumU = Secs % 60
+  print at 9,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowCandy:
+  if Phase > 0 then return
+  print CandyB at 19,1
+  return
+end sub
+
+sub EndMessage:
+  mute all
+  for Ri = 13 to 20
+    fill 32 count 26 at 3,Ri
+  next
+  if Over = 3 then
+    print at 11,14, "YOU WON!!"
+    NumU = WinT / 60
+    print at 6,16, digits$(NumU, 1)
+    print at 8,16, "MINUTE"
+    NumU = WinT % 60
+    print at 15,16, digits$(NumU, 2)
+    print at 18,16, "SECONDS"
+    print at 9,18, "SKILL LEVEL"
+    NumU = Skill
+    print at 21,18, digits$(NumU, 1)
+    return
+  end if
+  if Over = 2 then
+    print at 9,16, "TIME IS UP!!!"
+    play sound SndFlu
+    Rearm
+    wait 90 frames
+    nmi off
+    fill 32 count 26 at 3,16
+  end if
+  print at 4,15, "HE CAUGHT THE FLU FROM"
+  print at 4,16, "THE FLU BUG AND CAN NOT"
+  print at 4,17, "GO HOME."
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the rules, the three things on the field, the skill level,
+' START / CREDITS; the tune once
+sub TitlePage:
+  NewScreen
+  AlienOn = 0
+  TitleOn = 1
+  fill TWall count 28 at 2,1
+  print at 8,2, "FRIENDLY  ALIEN"
+  fill TWall count 28 at 2,3
+  print at 2,5, "GUIDE THE LITTLE ALIEN AND"
+  print at 2,6, "PICK UP ALL THE CANDY. THEN"
+  print at 2,7, "GUIDE HIM TO THE PHONE AND"
+  print at 2,8, "THEN TO THE SPACESHIP."
+  print at 2,9, "COLA MAKES HIM STAGGER."
+  print at 2,10, "A FLU BUG OR THE END OF ONE"
+  print at 2,11, "MINUTE GIVES HIM THE FLU"
+  print at 2,12, "AND HE CANNOT GO HOME."
+  put char TCandy0 at 3,14
+  print at 5,14, "CANDY"
+  put char TCola at 12,14
+  print at 14,14, "COLA"
+  put char TBug at 20,14
+  put char TMbug at 21,14
+  print at 23,14, "FLU"
+  print at 6,16, "SKILL LEVEL  <   >"
+  print at 6,17, "START"
+  print at 6,18, "CREDITS"
+  print at 6,21, "GAZETTE SEPT 1985"
+  Menu = 1
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  AnimGerms
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 and Menu > 0 then dec Menu
+      if V = 2 and Menu < 2 then inc Menu
+      if V = 4 and Skill > 1 then dec Skill
+      if V = 8 and Skill < 5 then inc Skill
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 16 to 18
+    put char 32 at 4,J
+  next
+  J = Menu + 16
+  put char 62 at 4,J
+  NumU = Skill
+  print at 21,16, digits$(NumU, 1)
+  print at 6,19, "BEST "
+  V = Skill - 1
+  K = BestT[V]
+  if K = 0 then
+    print at 11,19, "-:--"
+  else
+    NumU = K / 60
+    print at 11,19, digits$(NumU, 1)
+    print at 12,19, ":"
+    NumU = K % 60
+    print at 13,19, digits$(NumU, 2)
+  end if
+  print at 17,19, "WINS"
+  print Wins at 22,19
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "FRIENDLY  ALIEN"
+  print at 2,5, "BASED ON FRIENDLY ALIEN,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "SEPTEMBER 1985 (COMMODORE"
+  print at 2,8, "64 AND VIC-20). NO AUTHOR"
+  print at 2,9, "IS NAMED ON THE DISK."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: CANDY TRAIL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $42,$34,$81,$24,$81,$99,$C3,$42
+  $42,$34,$81,$24,$81,$99,$C3,$42
+  $10,$42,$81,$A5,$01,$99,$42,$08
+  $42,$34,$81,$24,$81,$99,$C3,$42
+  $C3,$81,$30,$18,$0C,$81,$81,$C3
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$00,$C3,$81,$81,$C3,$00,$00
+  $00,$07,$E0,$38,$30,$03,$07,$F0
+  $00,$E0,$07,$1C,$0C,$C0,$E0,$F0
+  $1A,$E0,$34,$C0,$8B,$80,$80,$00
+  $58,$07,$43,$03,$41,$01,$01,$00
+  $00,$00,$00,$00,$C0,$62,$C5,$0E
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $00,$00,$C3,$00,$60,$C0,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F0,$07
+  $00,$00,$99,$99,$00,$00,$00,$00
+  $00,$00,$00,$00,$49,$00,$00,$00
+  $07,$E0,$80,$00,$80,$C0,$00,$00
+  $E0,$07,$01,$00,$01,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$C0,$E0,$F0,$06,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$07,$F0,$60,$F0
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $00,$00,$00,$10,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $45,$45,$45,$04,$45,$45,$45,$04
+  $71,$71,$17,$17,$17,$17,$17,$71
+  $B1,$B1,$1B,$1B,$1B,$1B,$1B,$B1
+  $B1,$1B,$1B,$1B,$1B,$1B,$1B,$B1
+  $B1,$B1,$1B,$1B,$1B,$1B,$1B,$B1
+  $1E,$18,$F8,$F8,$F8,$18,$18,$1E
+  $01,$01,$19,$19,$19,$19,$01,$01
+  $01,$01,$17,$17,$17,$17,$01,$01
+  $01,$01,$1D,$1D,$1D,$1D,$01,$01
+  $01,$01,$13,$13,$13,$13,$01,$01
+  $01,$01,$15,$15,$15,$15,$01,$01
+  $01,$01,$1B,$1B,$1B,$1B,$01,$01
+  $01,$E1,$1E,$E1,$E1,$E1,$E1,$1E
+  $01,$E1,$1E,$E1,$E1,$E1,$E1,$E1
+  $E1,$1E,$E1,$1E,$1E,$1E,$1E,$01
+  $E1,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $01,$01,$01,$01,$E1,$E1,$1E,$E1
+  $01,$01,$01,$51,$51,$51,$15,$15
+  $01,$01,$15,$05,$F5,$F5,$05,$05
+  $01,$01,$01,$51,$51,$51,$51,$15
+  $0E,$0E,$EB,$EB,$0E,$0E,$0E,$0E
+  $0E,$0F,$0E,$0E,$9E,$0E,$01,$01
+  $E1,$1F,$1E,$0E,$1E,$1E,$01,$01
+  $E1,$1F,$1E,$0E,$1E,$1E,$01,$01
+  $0E,$0E,$0E,$06,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$B1,$1B
+  $0E,$0E,$0E,$0E,$0E,$0E,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$E1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$F1,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $08,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$00,$00,$00,$60,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$03,$07,$0C,$0C,$07,$03,$0F,$17,$17,$07,$03,$06,$04,$0C
+  $10,$20,$C0,$E0,$90,$90,$E0,$C0,$F0,$E8,$E8,$E0,$C0,$60,$20,$30
+  $08,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$00,$00,$00,$60,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$04,$03,$07,$0C,$0C,$07,$03,$1F,$07,$07,$07,$03,$02,$02,$06
+  $10,$20,$C0,$E0,$90,$90,$E0,$C0,$F8,$E0,$E0,$E0,$C0,$40,$40,$60
+  $00,$08,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$00,$00,$B0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$08,$04,$03,$07,$0E,$07,$03,$07,$0F,$17,$27,$03,$06,$04,$0C
+  $00,$10,$20,$C0,$E0,$40,$E0,$C0,$E0,$E8,$E4,$E0,$C0,$60,$20,$30
+end data
+
+asm {
+FaStep:
+    db $40,$7F,$50,$01,$40,$71,$70,$01,$50
+FaCandy:
+    db $40,$47,$10,$03,$40,$35,$10,$03,$40,$2A,$20,$04,$50
+FaGlug:
+    db $40,$F9,$12,$04,$40,$FF,$F3,$06,$40,$56,$13,$04,$40,$FF,$F3,$06,$40,$F9,$12,$04,$40,$FF,$F3,$06
+    db $40,$F9,$13,$04,$40,$FF,$F3,$08,$50
+FaFlu:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$41,$21,$0A,$40,$53,$21,$0C,$40,$3B,$32,$1E,$50
+FaRing:
+    db $40,$55,$20,$03,$40,$6B,$20,$03,$40,$55,$20,$03,$40,$6B,$20,$03,$40,$55,$20,$03,$40,$6B,$20,$03
+    db $40,$55,$20,$03,$40,$6B,$20,$03,$40,$FF,$F3,$10,$50
+FaShip:
+    db $40,$AB,$21,$04,$40,$53,$21,$04,$40,$1D,$21,$04,$40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04
+    db $40,$6B,$20,$04,$40,$55,$30,$08,$50
+FaStart:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0E,$50
+FaWin:
+    db $40,$8F,$10,$08,$40,$71,$10,$08,$40,$5F,$10,$08,$40,$47,$10,$08,$40,$5F,$10,$08,$40,$47,$20,$1E
+    db $50
+
+FaSoundTable:
+    dw FaTuneMel,$702B
+    dw FaTuneBass,$7035
+    dw FaStep,$7049
+    dw FaCandy,$7049
+    dw FaGlug,$7049
+    dw FaFlu,$7049
+    dw FaRing,$7049
+    dw FaShip,$7049
+    dw FaStart,$7049
+    dw FaWin,$7049
+; Candy Trail (original)
+; Tiny Sound, 8 frames per step
+FaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2B,$01,$2A,$28,$26,$01,$23,$01
+    db $21,$01,$01,$01,$24,$01,$28,$01,$2D,$01,$2B,$2A,$28,$01,$26,$01
+    db $23,$01,$01,$01,$1F,$23,$26,$01,$28,$01,$26,$23,$24,$01,$21,$01
+    db $1E,$01,$1A,$01,$1F,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+FaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$13,$01,$0E,$01,$0B,$01,$0E,$01
+    db $13,$01,$0E,$01,$09,$01,$10,$01,$15,$01,$10,$01,$0E,$01,$15,$01
+    db $0E,$01,$12,$01,$10,$01,$17,$01,$10,$01,$17,$01,$0C,$01,$13,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$0E,$01,$12,$01,$07,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

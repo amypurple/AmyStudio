@@ -12424,5 +12424,425 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "computag",
+    "label": "Computag (October 1988)",
+    "detail": "A COMPUTE!'s Gazette game from October 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Computag",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "connem",
+    "label": "Connect'em (January 1987)",
+    "detail": "A COMPUTE!'s Gazette game from January 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Connect'em",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "cribbage",
+    "label": "Cribbage 128 (August 1988)",
+    "detail": "A COMPUTE!'s Gazette game from August 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Cribbage 128",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "xroads2",
+    "label": "Crossroads II: Pandemonium (December 1988)",
+    "detail": "Steve Harter's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Crossroads II: Pandemonium",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "deltaw",
+    "label": "Delta War (January 1988)",
+    "detail": "A COMPUTE!'s Gazette game from January 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Delta War",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dden",
+    "label": "Dragon's Den (December 1985)",
+    "detail": "A COMPUTE!'s Gazette game from December 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Dragon's Den",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dunk",
+    "label": "Dunk (April 1986)",
+    "detail": "A COMPUTE!'s Gazette game from April 1986, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Dunk",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "eagles",
+    "label": "Eagles and Gators (September 1986)",
+    "detail": "A COMPUTE!'s Gazette game from September 1986, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Eagles and Gators",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "faceoff",
+    "label": "Face-Off (January 1986)",
+    "detail": "Kevin Mykytyn and Mark Tuttle's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Face-Off",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "finald",
+    "label": "Final Defense (December 1989)",
+    "detail": "A COMPUTE!'s Gazette game from December 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Final Defense",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fire",
+    "label": "Fire! (February 1988)",
+    "detail": "A COMPUTE!'s Gazette game from February 1988, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Fire!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "flags",
+    "label": "Flags (January 1990)",
+    "detail": "A COMPUTE!'s Gazette game from January 1990, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Flags",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "falien",
+    "label": "Friendly Alien (September 1985)",
+    "detail": "A COMPUTE!'s Gazette game from September 1985, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Friendly Alien",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fline",
+    "label": "Front Line (August 1987)",
+    "detail": "Georg Zimmer and Paul Zimmer's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Front Line",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "geopuz",
+    "label": "Geopuzzle (October 1987)",
+    "detail": "Rhett Anderson and David Hensley Jr.'s COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Geopuzzle",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "givetake",
+    "label": "Give 'N' Take (August 1987)",
+    "detail": "A COMPUTE!'s Gazette game from August 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Give 'N' Take",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "goingup",
+    "label": "Going Up? (June 1987)",
+    "detail": "A COMPUTE!'s Gazette game from June 1987, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Going Up?",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gridloc",
+    "label": "Gridloc (February 1989)",
+    "detail": "A COMPUTE!'s Gazette game from February 1989, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Gridloc",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "guessam",
+    "label": "Guess America! (March 1984)",
+    "detail": "A COMPUTE!'s Gazette game from March 1984, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "Guess America!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "hmans",
+    "label": "Haunted Mansion (February 1984)",
+    "detail": "Calvin Overhulser's COMPUTE!'s Gazette game, adapted for ColecoVision with Amy Studio.",
+    "projectName": "Haunted Mansion",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ibh",
+    "label": "International Bounty Hunter (March 1990)",
+    "detail": "A COMPUTE!'s Gazette game from March 1990, adapted for ColecoVision with Amy Studio; no original author is named in the available listing.",
+    "projectName": "International Bounty Hunter",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

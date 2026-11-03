@@ -1,0 +1,897 @@
+cartridge "GOING UP?/GAZETTE/1987"
+
+' GOING UP?
+' A ColecoVision game based on "Going Up?", COMPUTE!'s Gazette disk, June
+' 1987 (Commodore 64 machine language, SYS 2063). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: a worker has to cross the four floors of a tower that is all
+' lift shafts. Seven lift cars run up and down their shafts without
+' stopping, each at its own speed, and wrap round from the roof to the
+' basement. Walk floor 1 from right to left, ride the landing's platform up,
+' walk floor 2 left to right, and so on; after floor 4 the platform takes
+' you off the roof. A car that touches the worker in a shaft knocks him
+' flat. Each floor is worth 100, the bonus clock (1000) what is left of it
+' at the end of the level. The cars get faster every level.
+'
+' Controls: controller 1 (or 2): the stick walks left and right. On the
+' title, up and down choose, a button chooses.
+'
+' From the original (orig/goingup.dis, run in jsc64): seven cars, the odd
+' ones going down, the even ones up, each moving one pixel every D passes
+' of the main loop with D = 40, 60, 55, 50, 45, 65, 70 ($10B2); every new
+' level takes 4 off each D, never under 8 ($11E2), and puts all the cars
+' back in the hidden band ($11CB); the worker moves a pixel every 45 loop
+' passes going left and every 48 going right ($0FB0/$0FC8); floors 1 and
+' 3 are walked right to left, 2 and 4 left to right ($0E96); the landings
+' are safe (the hit test only counts between X $22 and $FC, $0E37); 100 a
+' floor ($0ED6); the bonus starts at 1000 and loses 1 every 230 passes
+' ($1111), is added to the score after floor 4 ($11A8) and is set back to
+' 1000 after a death; a bonus run down to 0 ends the game at once ($114D);
+' five men, one more at levels 5, 10 and 15 ($1190); after a death the man
+' starts the same floor again from its start ($0E69).
+'
+' Liberties: the C64's main loop has no fixed rate: its passes, measured
+' against the jiffy clock while walking (about 39 a frame), set the speeds
+' here, scaled by 0.8 for the smaller tower (cars 7987 / D 256ths of a pixel
+' a frame, 0.78 for the fastest at level 1; the man 0.74 left, 0.70 right);
+' the tower is 7 shafts 20 pixels apart with cars 10 wide (the C64's 29 and
+' 15) and floors 40 apart (48), so the score panel fits on the right; hits
+' are box tests on the man's body (4 pixels wide) and the car (the C64 used
+' sprite collisions, its arms and legs could touch too); the bonus loses 1
+' every 6 frames; the bonus is counted into the score with a tick (the C64
+' added it at once); no pause key (the C64 paused on SHIFT); a sound for
+' every step, floor and level; GAME OVER then the title (the C64 waited for
+' the button and started again).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TW0 = 128
+const TW1 = 129
+const TW2 = 130
+const TW3 = 131
+const TW4 = 132
+const TW5 = 133
+const TW6 = 134
+const TW7 = 135
+const TW8 = 136
+const TW9 = 137
+const TW10 = 138
+const TW11 = 139
+const TW12 = 140
+const TCap = 141
+const TTl = 142
+const SM0rd = 0
+const SM0rb = 4
+const SM0ld = 8
+const SM0lb = 12
+const SM1rd = 16
+const SM1rb = 20
+const SM1ld = 24
+const SM1lb = 28
+const SM2rd = 32
+const SM2rb = 36
+const SM2ld = 40
+const SM2lb = 44
+const SFlatd = 48
+const SFlatb = 52
+const SCar = 56
+const SArrow = 60
+const NTiles8 = 120
+const SprBytes = 512
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndRise = 4
+const SndDing = 5
+const SndCrash = 6
+const SndFall = 7
+const SndTick = 8
+const SndLevel = 9
+const SndStart = 10
+const SndOver = 11
+const NSpr = 9
+const NCar = 7
+' the man's limits and speeds in 1/256 pixels (sprite X 16 and 172)
+const XLf = 4096
+const XRf = 44032
+const LSpd = 190
+const RSpd = 178
+const Ten = 10
+const BonusStart = 1000
+const ExitY = 232
+const StartY = 192
+const Hidden = 51200
+
+data FloorY bytes 151,111,71,31
+data CarD0 bytes 40,60,55,50,45,65,70
+data CarCol bytes 3,8,7,11,13,9,10
+' the title's big letters: 5 rows of 5 letters, 3 pixels a letter (bit 3 left)
+data WordGoing bytes 14,14,14,12,14, 8,10,4,10,8, 10,10,4,10,10, 10,10,4,10,10, 14,14,14,10,14
+data WordUp bytes 10,14,14,0,0, 10,10,2,0,0, 10,14,6,0,0, 10,8,0,0,0, 14,8,4,0,0
+
+record Car:
+  u16 Pos
+  u16 Spd
+  u8 D
+  u8 Up
+  u8 X
+end record
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$40
+  $00,$00,$00,$00,$00,$00,$00,$02
+  $00,$00,$38,$70,$E0,$00,$00,$00
+  $00,$00,$38,$70,$E0,$00,$00,$20
+  $00,$00,$38,$70,$E0,$00,$00,$02
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$C3,$81,$80,$43,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$54,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $0B,$0A,$0A,$0A,$0A,$0A,$01,$14
+  $0B,$0A,$0A,$0A,$0A,$0A,$01,$14
+  $0F,$0E,$1E,$1E,$1E,$0E,$01,$04
+  $0F,$0E,$1E,$1E,$1E,$0E,$01,$E4
+  $0F,$0E,$1E,$1E,$1E,$0E,$01,$E4
+  $3B,$3A,$3A,$3A,$3A,$3A,$31,$34
+  $01,$18,$18,$18,$81,$01,$01,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1A,$01
+end data
+data SpritePat bytes
+  $03,$03,$03,$03,$03,$01,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$C0,$A0,$C0,$80,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$03,$02,$02,$02,$06
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$C0,$40,$40,$40,$60
+  $03,$07,$03,$05,$03,$01,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$80,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$03,$03,$03,$02,$02,$02,$06
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$C0,$40,$40,$40,$60
+  $03,$03,$03,$03,$03,$01,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$C0,$A0,$C0,$80,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$03,$03,$06,$0C,$08,$18
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$C0,$C0,$E0,$60,$30,$10,$18
+  $03,$07,$03,$05,$03,$01,$00,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$80,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$03,$07,$06,$0C,$08,$18
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$C0,$C0,$C0,$60,$30,$10,$18
+  $03,$03,$03,$03,$03,$01,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$C0,$A0,$C0,$80,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$03,$03,$03,$01,$01,$03
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$C0,$C0,$C0,$80,$80,$80,$C0
+  $03,$07,$03,$05,$03,$01,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$80,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$03,$03,$01,$01,$01,$03
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$C0,$C0,$C0,$C0,$80,$80,$C0
+  $00,$20,$51,$20,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$F0,$20
+  $00,$80,$40,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$F6,$FF
+  $1F,$1F,$10,$17,$1F,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1F,$1F
+  $F8,$F8,$08,$E8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $00,$01,$03,$07,$0F,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' 13 scene tiles
+data GameMap bytes
+  $80,$81,$82,$83,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$85,$80,$81,$84,$80,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$80,$82,$83,$80,$84,$81,$85,$81,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $80,$81,$87,$88,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$87,$8C,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$80,$82,$83,$80,$84,$81,$85,$81,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$87,$88,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$87,$8C,$20,$20,$20,$20,$20,$20,$20,$20
+  $80,$81,$82,$83,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$85,$80,$81,$84,$80,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$80,$87,$88,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$87,$8C,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $80,$81,$82,$83,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$85,$80,$81,$84,$80,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$87,$88,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$8B,$89,$89,$8A,$89,$87,$8C,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$80,$82,$83,$80,$84,$81,$85,$81,$81,$84,$81,$85,$80,$81,$84,$80,$85,$81,$80,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+  $81,$81,$82,$83,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$85,$81,$81,$84,$81,$82,$86,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+Car Cars[NCar]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 MX = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+bcd digits 4 Bonus = 0
+u8 MXp = 0
+u8 MY = 0
+u8 Face = 0
+u8 Fr = 0
+u8 StepC = 0
+u8 Fl = 0
+u8 Phase = 0
+u8 TY = 0
+u8 Timer = 0
+u8 Lv = 0
+u8 Men = 0
+u8 BonT = 0
+u8 NoTime = 0
+u8 Over = 0
+u8 Hit = 0
+u8 Floors = 0
+u8 Deaths = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TaY = 100
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ds = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table GuSoundTable areas 4
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  if Score > Hi then Hi = Score
+  print at 6,9, "             "
+  print at 6,10, "  GAME OVER  "
+  print at 6,11, "             "
+  if NoTime = 1 then print at 6,11, " OUT OF TIME "
+  print at 6,12, "             "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play: the cars always move; then the man by phase
+sub PlayStep:
+  MoveCars
+  select case Phase
+    case 0
+      WalkStep
+    case 1
+      RiseStep
+    case 2
+      DeathStep
+    case 5
+      TallyStep
+  end select
+  return
+end sub
+
+' every car one step along its shaft (positions wrap round: 256 pixels)
+sub MoveCars:
+  u16 P
+  u16 S
+  for Ci = 0 to NCar - 1
+    P = Cars[Ci].Pos
+    S = Cars[Ci].Spd
+    if Cars[Ci].Up = 1 then
+      P = P - S
+    else
+      P = P + S
+    end if
+    Cars[Ci].Pos = P
+  next
+  return
+end sub
+
+' walking: the stick, the floor's end, the cars, the bonus clock
+sub WalkStep:
+  u8 Moved
+  Moved = 0
+  K = J1 & 12
+  if K = 4 then
+    MX = MX - LSpd
+    if MX < XLf then MX = XLf
+    Face = 1
+    Moved = 1
+  end if
+  if K = 8 then
+    MX = MX + RSpd
+    if MX > XRf then MX = XRf
+    Face = 0
+    Moved = 1
+  end if
+  V = highbyte MX
+  if Moved = 1 then
+    if V <> MXp then
+      inc StepC
+      if StepC >= 6 then
+        StepC = 0
+        play sound SndStep
+      end if
+    end if
+    Fr = (V >> 2) & 1
+    inc Fr
+  else
+    Fr = 0
+  end if
+  MXp = V
+  Hit = CarHit(MXp, MY)
+  if Hit = 1 then
+    Knocked
+    return
+  end if
+  if FloorDone() = 1 then
+    Score += 100
+    inc Floors
+    play sound SndDing
+    if Fl = 4 then
+      TY = ExitY
+    else
+      TY = FloorY[Fl]
+    end if
+    Phase = 1
+    Fr = 0
+    ShowScore
+    return
+  end if
+  inc BonT
+  if BonT >= 6 then
+    BonT = 0
+    dec Bonus
+    ShowBonus
+    if Bonus = 0 then
+      NoTime = 1
+      Knocked
+    end if
+  end if
+  return
+end sub
+
+' 1 when the man stands at the far end of his floor
+function FloorDone() as u8
+  u8 R
+  R = 0
+  K = Fl & 1
+  if K = 1 then
+    if MX = XLf then R = 1
+  else
+    if MX = XRf then R = 1
+  end if
+  return R
+
+' 1 when a car's box touches the man's body (columns 6-9 of his sprite)
+function CarHit(u8 Hx, u8 Hy) as u8
+  u8 R
+  u8 Dy
+  u8 Dx
+  u8 I
+  R = 0
+  for I = 0 to NCar - 1
+    Dy = highbyte Cars[I].Pos
+    Dy = Dy - Hy + 13
+    if Dy <= 26 then
+      Dx = Hx - Cars[I].X + 6
+      if Dx <= 12 then R = 1
+    end if
+  next
+  return R
+
+sub Knocked:
+  Phase = 2
+  Timer = 90
+  inc Deaths
+  play sound SndCrash
+  play sound SndFall
+  return
+end sub
+
+' the landing's platform lifts the man a pixel a frame
+sub RiseStep:
+  dec MY
+  if MY <> TY then return
+  if TY = ExitY then
+    Phase = 5
+    Timer = 0
+    return
+  end if
+  inc Fl
+  Face = Fl & 1
+  Phase = 0
+  BonT = 0
+  return
+end sub
+
+sub DeathStep:
+  dec Timer
+  if Timer > 0 then return
+  dec Men
+  ShowMen
+  if Men = 0 then Over = 1
+  if NoTime = 1 then Over = 1
+  if Over = 1 then return
+  StartFloor
+  Bonus = BonusStart
+  ShowBonus
+  Phase = 0
+  return
+end sub
+
+' the man at the start of his floor (right end on 1 and 3)
+sub StartFloor:
+  K = Fl & 1
+  if K = 1 then
+    MX = XRf
+    Face = 1
+  else
+    MX = XLf
+    Face = 0
+  end if
+  MXp = highbyte MX
+  MY = FloorY[Fl - 1]
+  Fr = 0
+  BonT = 0
+  return
+end sub
+
+' the bonus counted into the score, 10 a frame, then the next level
+sub TallyStep:
+  inc Timer
+  if Timer < 30 then return
+  if Bonus >= Ten then
+    Bonus -= 10
+    Score += 10
+  else
+    if Bonus > 0 then
+      dec Bonus
+      inc Score
+    end if
+  end if
+  V = Timer & 3
+  if V = 0 then play sound SndTick
+  ShowBonus
+  ShowScore
+  if Bonus > 0 then return
+  NextLevel
+  play sound SndLevel
+  return
+end sub
+
+' a new level: faster cars, all back in the hidden band, the man rises to
+' floor 1 on the right landing
+sub NextLevel:
+  inc Lv
+  select case Lv
+    case 5, 10, 15
+      inc Men
+  end select
+  SetCars
+  Fl = 1
+  StartFloor
+  MY = StartY
+  TY = FloorY[0]
+  Fl = 0
+  Phase = 1
+  Bonus = BonusStart
+  NoTime = 0
+  ShowLevel
+  ShowBonus
+  ShowMen
+  return
+end sub
+
+' car speeds for level Lv: D from the C64's table, 4 less a level, not
+' under 8; speed = 7987 / D 256ths of a pixel a frame
+sub SetCars:
+  u8 Dv
+  u8 N
+  for Ci = 0 to NCar - 1
+    Dv = CarD0[Ci]
+    if Lv > 1 then
+      for N = 2 to Lv
+        if Dv >= 12 then
+          Dv = Dv - 4
+        else
+          Dv = 8
+        end if
+      next
+    end if
+    Cars[Ci].D = Dv
+    Cars[Ci].Spd = 7987 / Dv
+    Cars[Ci].Pos = Hidden
+    Cars[Ci].Up = Ci & 1
+    Cars[Ci].X = Ci * 20 + 34
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the man (detail, body), 2-8 the cars
+sub DrawSprites:
+  u8 Cy
+  u8 P
+  u8 Cc
+  if Phase = 2 then
+    P = SFlatd
+  else
+    P = Fr * 16 + Face * 8
+    P = P + SM0rd
+  end if
+  Y = MY
+  if Y = 208 then Y = 209
+  set sprite 0 to Y,MXp,P,9
+  set sprite 1 to Y,MXp,P + 4,15
+  for Ds = 0 to NCar - 1
+    Cy = highbyte Cars[Ds].Pos
+    if Cy = 208 then Cy = 209
+    Cc = CarCol[Ds]
+    set sprite Ds + 2 to Cy,Cars[Ds].X,SCar,Cc
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 24,6, Score
+  return
+end sub
+
+sub ShowBonus:
+  print at 25,12, Bonus
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 25,9, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowMen:
+  NumU = Men
+  print at 25,15, digits$(NumU, 2)
+  fill 32 count 6 at 24,16
+  K = Men
+  if K > 6 then K = 6
+  if K > 0 then fill TCap count K at 24,16
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  print at 24,2, "GOING"
+  print at 24,3, "UP?"
+  print at 24,5, "SCORE"
+  print at 24,8, "LEVEL"
+  print at 24,11, "BONUS"
+  print at 24,14, "MEN"
+  Score = 0
+  Men = 5
+  Lv = 0
+  Over = 0
+  Floors = 0
+  Deaths = 0
+  NextLevel
+  ShowScore
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' big letters made of lit windows
+sub BigWord(u8 Wx, u8 Wy, u8 Which)
+  u8 Gi
+  u8 Gr
+  u8 Bits
+  u8 Col
+  u8 B
+  for Gi = 0 to 24
+    Gr = Gi / 5
+    Col = Gi - Gr * 5
+    if Which = 0 then
+      Bits = WordGoing[Gi]
+    else
+      Bits = WordUp[Gi]
+    end if
+    for B = 0 to 3
+      V = Bits & (8 >> B)
+      if V > 0 then put char TTl at Wx + Col * 4 + B, Wy + Gr
+    next
+  next
+  return
+end sub
+
+' the title: GOING UP? in lit windows, a car riding up the side, START /
+' CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  BigWord(4, 2, 0)
+  BigWord(8, 8, 1)
+  print at 7,14, "COMPUTE!'S GAZETTE"
+  print at 11,15, "JUNE 1987"
+  print at 13,18, "START"
+  print at 13,19, "CREDITS"
+  if Hi > 0 then
+    print at 10,21, "BEST ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' a lift car rides up the left edge, another down the right
+sub TitleAnim:
+  dec TaY
+  set sprite 2 to TaY,16,SCar,3
+  V = 0 - TaY
+  set sprite 3 to V,224,SCar,8
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 18
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "GOING UP?"
+  print at 2,5, "BASED ON GOING UP?,"
+  print at 2,6, "COMPUTE!'S GAZETTE DISK,"
+  print at 2,7, "JUNE 1987 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: MIND THE DOORS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+GuStep:
+    db $00,$00,$63,$01,$00,$00,$93,$01,$10
+GuRise:
+    db $40,$FC,$51,$04,$40,$DC,$51,$04,$40,$BC,$51,$04,$40,$9E,$51,$04,$40,$84,$51,$04,$40,$6A,$51,$04
+    db $40,$53,$51,$04,$40,$3D,$51,$04,$40,$28,$51,$04,$40,$15,$51,$04,$50
+GuDing:
+    db $40,$55,$20,$06,$40,$6B,$30,$10,$50
+GuCrash:
+    db $00,$00,$06,$03,$00,$00,$26,$05,$00,$00,$37,$08,$00,$00,$67,$0C,$10
+GuFall:
+    db $40,$50,$20,$03,$40,$5E,$20,$03,$40,$6F,$30,$03,$40,$82,$30,$03,$40,$99,$30,$03,$40,$B4,$30,$03
+    db $40,$D4,$40,$03,$40,$F9,$40,$03,$40,$26,$41,$03,$40,$59,$41,$03,$40,$95,$51,$03,$40,$DE,$51,$03
+    db $40,$32,$52,$03,$40,$96,$52,$03,$50
+GuTick:
+    db $40,$40,$40,$01,$50
+GuLevel:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$0E,$50
+GuStart:
+    db $40,$1D,$21,$06,$40,$E2,$20,$06,$40,$BF,$20,$06,$40,$8F,$20,$0E,$50
+GuOver:
+    db $40,$AA,$10,$0A,$40,$BF,$20,$0A,$40,$D6,$20,$0A,$40,$FE,$20,$0A,$40,$53,$31,$1E,$50
+
+GuSoundTable:
+    dw GuTuneMel,$702B
+    dw GuTuneBass,$7035
+    dw GuStep,$703F
+    dw GuRise,$7049
+    dw GuDing,$7049
+    dw GuCrash,$703F
+    dw GuFall,$7049
+    dw GuTick,$7049
+    dw GuLevel,$7049
+    dw GuStart,$7049
+    dw GuOver,$7049
+; Mind the Doors (original)
+; Tiny Sound, 8 frames per step
+GuTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$23,$01,$26,$01,$23,$01,$21,$01,$24,$01
+    db $28,$01,$24,$01,$23,$01,$26,$01,$2A,$01,$26,$01,$2B,$01,$01,$01
+    db $26,$01,$01,$01,$28,$01,$24,$01,$21,$01,$24,$01,$26,$01,$23,$01
+    db $1F,$01,$23,$01,$21,$01,$1E,$01,$1A,$01,$1E,$01,$1F,$01,$01,$01
+    db $2B,$01,$01,$00,$01
+    db $FF
+GuTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$01,$01
+    db $07,$01,$01,$00,$01
+    db $FF
+}
