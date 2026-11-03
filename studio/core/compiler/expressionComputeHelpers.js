@@ -1088,6 +1088,12 @@ export function createExpressionComputeHelpers({
         const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
         if (!loadLeft) return null;
         const declaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
+        if (node.op === ">>" && shiftCount === 8) {
+          const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+          if (!isSignedDeclaredType(leftType?.declaredType) && !isAnyFixedDeclaredType(leftType?.declaredType)) {
+            return [...loadLeft, "    ld l,h", "    ld h,0"];
+          }
+        }
         const oneShift = node.op === "<<"
           ? ["    add hl,hl"]
           : isSignedDeclaredType(declaredType)
@@ -1193,6 +1199,14 @@ export function createExpressionComputeHelpers({
               const loadLeft = emitLoadInt16AstIntoHL(node.left, "u16");
               if (!loadLeft) return null;
               return [...loadLeft, "    srl h", "    rr l"];
+            }
+          }
+          if (rightValue === 256) {
+            const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+            if (!isSignedDeclaredType(leftType?.declaredType) && !isAnyFixedDeclaredType(leftType?.declaredType)) {
+              const loadLeft = emitLoadInt16AstIntoHL(node.left, "u16");
+              if (!loadLeft) return null;
+              return [...loadLeft, "    ld l,h", "    ld h,0"];
             }
           }
           return emitLoadInt16RuntimeDivideAstIntoHL(node, preferredDeclaredType);

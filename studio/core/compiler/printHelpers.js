@@ -575,7 +575,12 @@ export function createPrintHelpers(ctx) {
       return emitPrintFix8_8At(valueToken, xToken, yToken);
     }
     if (declaredType === "bcd") {
-      if (digitsToken) return null;
+      if (widthMode) return null;
+      if (digitsToken) {
+        const requestedDigits = Number.parseInt(String(digitsToken), 10);
+        const declaredDigits = getBcdDigitCount(valueToken);
+        if (!Number.isInteger(requestedDigits) || requestedDigits !== declaredDigits) return null;
+      }
       return emitBcdPrint(valueToken, xToken, yToken, null);
     }
     if (declaredType === "u8") {
