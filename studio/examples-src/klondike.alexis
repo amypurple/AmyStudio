@@ -1,0 +1,1592 @@
+cartridge "KLONDIKE/COMPUTE!'S GAZETTE/1986"
+
+' KLONDIKE
+' From "Klondike", COMPUTE!'s Gazette, May 1986 (Commodore 64 BASIC with
+' a machine-language character-set copier; disk 1986-05, orig/). The
+' listing carries no author's name (no REM credit, no title screen), so
+' it is credited to the magazine. Made for the ColecoVision in Amy (the
+' language by Amy Bienvenu) by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Not a line-for-line port: a ColecoVision game on the listing's rules.
+' The rules, as the listing plays them (Klondike with a bank and bets):
+' - The bank starts at $500 (the listing keeps it on disk per player name;
+'   a bank at or below $0 is refilled to $500, line 125).
+' - Before each deal you see it (the seven columns' face-up cards and the
+'   stack's first card) and bet: at most (bank + 51) / 52, rounded down
+'   (line 130). F1 bets it all, F7 shuffles and deals again (lines
+'   780-930). The bet is charged 52 times (line 280: TT = TT - 52 * BG).
+' - Each card that reaches its pile (foundation) pays 5 x the bet (line
+'   580); all 52 home pays 740 x the bet more (line 1160). So a won deal
+'   brings back 1000 x the bet for the 52 x paid.
+' - Seven columns of 1..7 cards, the last face up (line 720). The deck
+'   deals ONE card at a time onto the stack, ONE pass only (line 370);
+'   when the stack runs out a card is dealt onto it by itself (1170).
+' - FROM a column you always move its WHOLE face-up run, onto a card one
+'   higher of the other colour (lines 600-700); only a king (and its run)
+'   goes to an empty column. FROM the stack: its top card. To a PILE:
+'   the column's last card or the stack's card, ace up in suit (420).
+'   Nothing comes back from the piles. A column's new last card turns.
+' - After every move the game plays cards home by itself, but only when
+'   safe (lines 430-500, 960-1000): a card goes up when both piles of the
+'   other colour are no more than two ranks behind; a stack card of 3 or
+'   more stays when a column's run starts with a card one lower of the
+'   other colour.
+' - F2 ends the deal (the bet is lost), F8 quits (the bank is saved).
+'
+' Made for this machine: cards of 3 x 2 tiles drawn from the listing's own
+' rank and suit characters, cream on blue felt with the listing's
+' diagonal backs; the four piles down the right side in the listing's
+' order (hearts, spades, diamonds, clubs), then the deck and the stack;
+' the listing's FROM prompt; a cursor frame and arrow (sprites); the
+' self-played cards going home one by one with a sound; an original title
+' tune, "Gold Camp", played once; the bank in 32 bits (i32).
+'
+' Liberties: the keyboard FROM/TO keys become a cursor (fire picks up, fire
+' again puts down; the right button sends a card home at once); the bet
+' is set with the stick (LEFT/RIGHT by 1, UP/DOWN through BET, BET IT ALL,
+' RE-SHUFFLE, CASH OUT); holding both buttons for half a second is F2;
+' CASH OUT on the bet screen is F8 and ends the game; a bank at or below
+' $0 ends the game (BROKE) instead of refilling (the next game starts
+' with $500 again, as the listing's refill does); no disk file, so the
+' bank lasts one game. Table limits: a bet is at most $9999 and the bank
+' at most $9,999,999 (the listing had none). The self-play tries every
+' column, then the stack, over and over until nothing moves (the listing
+' started from the column just played); its stack test ignores empty
+' columns (the listing read a stale card there), and an empty stack can
+' no longer be "moved" as a card 0 (a listing slip).
+'
+' Controls (either joystick): LEFT/RIGHT move the cursor over the seven
+' columns and on to the right-hand panel, where UP/DOWN choose PILES,
+' DECK or STACK. Left button: on the deck it deals a card; elsewhere it
+' picks up (a column's whole face-up run, or the stack's card) and puts
+' down where the cursor is (on the same place: puts back). Right button:
+' sends the card in hand, or the one under the cursor, to its pile. Hold
+' both buttons: end the deal.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const TRk00 = 128
+const TRk01 = 129
+const TRk02 = 130
+const TRk03 = 131
+const TRk04 = 132
+const TRk05 = 133
+const TRk06 = 134
+const TRk07 = 135
+const TRk08 = 136
+const TRk09 = 137
+const TRk10 = 138
+const TRk11 = 139
+const TRk12 = 140
+const TRR00 = 141
+const TRR01 = 142
+const TRR02 = 143
+const TRR03 = 144
+const TRR04 = 145
+const TRR05 = 146
+const TRR06 = 147
+const TRR07 = 148
+const TRR08 = 149
+const TRR09 = 150
+const TRR10 = 151
+const TRR11 = 152
+const TRR12 = 153
+const TS0 = 154
+const TS1 = 155
+const TS2 = 156
+const TS3 = 157
+const TB0 = 158
+const TB1 = 159
+const TB2 = 160
+const TB3 = 161
+const TCtr = 162
+const TCbl = 163
+const TCbr = 164
+const TKtl = 165
+const TKtm = 166
+const TKtr = 167
+const TKbl = 168
+const TKbm = 169
+const TKbr = 170
+const TOtl = 171
+const TOtm = 172
+const TOtr = 173
+const TObl = 174
+const TObm = 175
+const TObr = 176
+const TF0 = 177
+const TF1 = 178
+const TF2 = 179
+const TF3 = 180
+const TOk = 181
+const TOm = 182
+const SFrame = 0
+const SArrow = 4
+const NTiles8 = 440
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFlick = 3
+const SndDeal = 4
+const SndLay = 5
+const SndBuzz = 6
+const SndPick = 7
+const SndFlip = 8
+const SndHome = 9
+const SndCoin = 10
+const SndWin = 11
+const SndLose = 12
+
+const PurseStart = 500
+const BetLimit = 9999
+
+' the tune now playing once: frames left (counted in Rearm)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' a column, as the listing's LY, TP and UC: C[1..Tp] the cards (C[0]
+' stays 0), the first Uc of them face down. A card is 1..52: 1-13 hearts,
+' 14-26 spades, 27-39 diamonds, 40-52 clubs (the listing's FNSU, FNVL).
+record Column:
+  u8 Tp
+  u8 Uc
+  u8 C[20]
+end record
+Column Ly[8]
+' the deck Dk[1..Dp] (dealt from Dp down) and the stack St[1..Sp]
+u8 Dk[53]
+u8 Dp = 0
+u8 St[26]
+u8 Sp = 0
+' Pl[suit 1..4]: the value on that pile (0 empty)
+u8 Pl[5]
+u8 Up = 0
+' the money: the bank (may dip below 0 after the charge) and the bet
+i32 Purse = 0
+i32 BetW = 0
+i32 Tmp32 = 0
+i32 Pw[8]
+u8 Dg[8]
+u16 Bet = 1
+u16 MaxBet = 1
+' Ph: 1 waiting for a move, 2 on the bet screen, 3 self-play,
+' 5 a game over message, 0 elsewhere (for the bot)
+u8 Ph = 0
+u8 Idle = 0
+u8 Done = 0
+' the cursor: Cp 1-7 a column, 8 the piles, 9 the deck, 10 the stack;
+' in hand: Hs 1 with Hf the source (0 the stack, 1-7 a column)
+u8 Cp = 1
+u8 Pp = 9
+u8 Hs = 0
+u8 Hf = 0
+u8 Ok = 0
+u8 Moved = 0
+u8 Both = 0
+u8 Bm = 0
+' drawing
+u8 Cx = 0
+u8 Cy = 0
+u8 Cv = 0
+u8 Pn = 0
+u16 Rs = 4321
+u16 NumU = 0
+u8 Menu = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Tm = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table KlSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  SetPowers
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    CreditsPage
+    goto title
+  end if
+  Purse = PurseStart
+
+next_deal:
+  Shuffle
+  DrawTable
+  BetPage
+  if Done = 8 then goto cash_out
+  ' the charge: 52 times the bet (line 280)
+  BetW = Bet
+  for I = 1 to 52
+    Purse -= BetW
+  next
+  ClearBetBox
+  ShowBank
+  Prompt
+  Cp = 1
+  Hs = 0
+  Aim
+  WasBtn = 1
+  WasBtn2 = 1
+  SelfPlay
+  if Up = 52 then goto won
+
+gp_loop:
+  Ph = 1
+  Frame1
+  ReadPad
+  ' both buttons held for 30 frames: F2, end the deal
+  V = Btn & Btn2
+  if V = 1 then
+    inc Both
+    if Both = 30 then goto ended
+    goto gp_loop
+  end if
+  Both = 0
+  if Press = 1 then
+    LeftButton
+    if Up = 52 then goto won
+  end if
+  if Press2 = 1 then
+    RightButton
+    if Up = 52 then goto won
+  end if
+  Stk = Lf1 | Rt1
+  Stk = Stk | Up1
+  Stk = Stk | Dn1
+  if Stk = 0 then
+    WasStk = 0
+    goto gp_loop
+  end if
+  if WasStk = 0 then
+    Rep = 16
+    WasStk = 1
+    MoveCursor
+    goto gp_loop
+  end if
+  dec Rep
+  if Rep = 0 then
+    Rep = 8
+    MoveCursor
+  end if
+  goto gp_loop
+
+won:
+  ' all 52 home: 740 x the bet more (line 1160)
+  Ph = 3
+  HideCursor
+  for I = 1 to 74
+    for J = 1 to 10
+      Purse += BetW
+    next
+  next
+  CapBank
+  ShowBank
+  play sound SndWin
+  Note1
+  print at 2,20, "YOU WON!"
+  print at 2,21, "PAID 1000 X BET"
+  Linger
+  goto next_deal
+
+ended:
+  Ph = 3
+  HideCursor
+  play sound SndLose
+  Note1
+  print at 2,20, "DEAL ENDED"
+  print at 2,21, "THE BET IS LOST"
+  Linger
+  if Purse <= 0 then goto broke
+  goto next_deal
+
+broke:
+  Ph = 5
+  Note1
+  print at 2,20, "BROKE! THE BANK"
+  print at 2,21, "IS EMPTY."
+  goto game_end
+
+cash_out:
+  Ph = 5
+  play sound SndCoin
+  ClearBetBox
+  print at 2,12, "YOU CASH OUT WITH"
+  PrintMoney(3, 14)
+  print at 2,16, "GOODBYE..."
+
+game_end:
+  HideCursor
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  Ph = 0
+  goto title
+
+' ---------------------------------------------------------------------
+' the cards (the listing's FNSU, FNVL, FNSC)
+
+function SuitOf(u8 C) as u8
+  if C = 0 then return 1
+  return (C - 1) / 13 + 1
+
+function ValOf(u8 C) as u8
+  u8 S = 0
+  if C = 0 then return 0
+  S = (C - 1) / 13
+  return C - S * 13
+
+' 1 for the black suits (spades, clubs: the even ones)
+function Black(u8 S) as u8
+  return 1 - (S & 1)
+
+' Rnd16: a 16-bit xorshift (seeded by the time spent on the title)
+function Rnd16 as u16
+  Rs = Rs ^ (Rs << 7)
+  Rs = Rs ^ (Rs >> 9)
+  Rs = Rs ^ (Rs << 8)
+  return Rs
+
+' Shuffle and deal (lines 710-730)
+sub Shuffle:
+  u8 R = 0
+  u8 T = 0
+  u8 Q = 0
+  u16 Z = 0
+  for R = 1 to 52
+    Dk[R] = R
+  next
+  for R = 1 to 52
+    Z = Rnd16()
+    T = Z % 52
+    inc T
+    Q = Dk[T]
+    Dk[T] = Dk[R]
+    Dk[R] = Q
+  next
+  Dp = 52
+  for R = 1 to 7
+    Ly[R].Tp = 0
+    Ly[R].Uc = 0
+    for T = 0 to 19
+      Ly[R].C[T] = 0
+    next
+  next
+  for R = 1 to 7
+    for T = R to 7
+      Ly[T].C[R] = Dk[Dp]
+      dec Dp
+    next
+    Ly[R].Tp = R
+    Ly[R].Uc = R - 1
+  next
+  St[0] = 0
+  St[1] = Dk[Dp]
+  dec Dp
+  Sp = 1
+  for R = 1 to 4
+    Pl[R] = 0
+  next
+  Up = 0
+  Hs = 0
+  Done = 0
+  return
+end sub
+
+' TopOf: the card a move takes FROM place M (0 the stack, 1-7 the base of
+' a column's face-up run), 0 for none
+function RunBase(u8 M) as u8
+  u8 T = 0
+  if M = 0 then return St[Sp]
+  T = Ly[M].Tp
+  if T = 0 then return 0
+  T = Ly[M].Uc + 1
+  return Ly[M].C[T]
+
+' the card that goes home from place M: the stack's or the column's last
+function LastOf(u8 M) as u8
+  u8 T = 0
+  if M = 0 then return St[Sp]
+  T = Ly[M].Tp
+  return Ly[M].C[T]
+
+' PopStack: the stack's card leaves; an empty stack gets the next card
+' from the deck (line 1170)
+sub PopStack:
+  dec Sp
+  if Sp = 0 then
+    if Dp > 0 then
+      Sp = 1
+      St[1] = Dk[Dp]
+      dec Dp
+    end if
+  end if
+  DrawDeck
+  return
+end sub
+
+' DealOne: the deck's next card onto the stack (line 370)
+sub DealOne:
+  if Dp = 0 then
+    Ok = 0
+    return
+  end if
+  inc Sp
+  St[Sp] = Dk[Dp]
+  dec Dp
+  DrawDeck
+  Ok = 1
+  return
+end sub
+
+' SafeHome: 0 when the self-play must leave card C3 from place M (lines
+' 440-500)
+function SafeHome(u8 M, u8 C3) as u8
+  u8 S3 = 0
+  u8 V3 = 0
+  u8 B3 = 0
+  u8 Q = 0
+  u8 C4 = 0
+  u8 Lim = 0
+  S3 = SuitOf(C3)
+  V3 = ValOf(C3)
+  B3 = Black(S3)
+  for Q = 1 to 4
+    if Black(Q) <> B3 then
+      Lim = Pl[Q] + 2
+      if V3 > Lim then return 0
+    end if
+  next
+  if M > 0 then return 1
+  if V3 < 3 then return 1
+  for Q = 1 to 7
+    C4 = RunBase(Q)
+    if C4 <> 0 then
+      if ValOf(C4) = V3 - 1 then
+        if Black(SuitOf(C4)) <> B3 then return 0
+      end if
+    end if
+  next
+  return 1
+
+' TryHome: the card from place M to its pile; Am 1 for the self-play's
+' safety test. Ok 1 when it went.
+sub TryHome(u8 M, u8 Am):
+  u8 C3 = 0
+  u8 S3 = 0
+  u8 V3 = 0
+  u8 T = 0
+  Ok = 0
+  C3 = LastOf(M)
+  if C3 = 0 then return
+  S3 = SuitOf(C3)
+  V3 = ValOf(C3)
+  if V3 - 1 <> Pl[S3] then return
+  if Am = 1 then
+    if SafeHome(M, C3) = 0 then return
+  end if
+  if M = 0 then
+    PopStack
+  else
+    T = Ly[M].Tp - 1
+    Ly[M].Tp = T
+    if T > 0 then
+      if T = Ly[M].Uc then
+        Ly[M].Uc = T - 1
+        play sound SndFlip
+      end if
+    end if
+    Pn = M
+    DrawCol
+  end if
+  Pl[S3] = V3
+  inc Up
+  ' 5 x the bet a card (line 580)
+  for T = 1 to 5
+    Purse += BetW
+  next
+  CapBank
+  Pn = S3
+  DrawPile
+  ShowBank
+  Ok = 1
+  return
+end sub
+
+' TryColumn: from place M onto column D (lines 600-700); Ok 1 when moved
+sub TryColumn(u8 M, u8 D):
+  u8 C1 = 0
+  u8 C2 = 0
+  u8 V1 = 0
+  u8 V2 = 0
+  u8 N = 0
+  u8 A = 0
+  u8 B = 0
+  u8 E = 0
+  Ok = 0
+  C1 = RunBase(M)
+  if C1 = 0 then return
+  C2 = LastOf(D)
+  V1 = ValOf(C1)
+  V2 = ValOf(C2)
+  if C2 = 0 then
+    if V1 <> 13 then return
+  else
+    if Black(SuitOf(C1)) = Black(SuitOf(C2)) then return
+    if V1 + 1 <> V2 then return
+  end if
+  B = Ly[D].Tp
+  if M = 0 then
+    inc B
+    Ly[D].C[B] = C1
+    Ly[D].Tp = B
+    PopStack
+  else
+    A = Ly[M].Uc
+    E = Ly[M].Tp
+    N = E - A
+    for E = 1 to N
+      inc A
+      inc B
+      Ly[D].C[B] = Ly[M].C[A]
+    next
+    Ly[D].Tp = B
+    A = Ly[M].Uc
+    Ly[M].Tp = A
+    if A > 0 then
+      Ly[M].Uc = A - 1
+      play sound SndFlip
+    end if
+    Pn = M
+    DrawCol
+  end if
+  Pn = D
+  DrawCol
+  Ok = 1
+  return
+end sub
+
+' SelfPlay: safe cards home, every column then the stack, until none goes
+sub SelfPlay:
+  Ph = 3
+sp_again:
+  Moved = 0
+  for K = 1 to 7
+    TryHome(K, 1)
+    if Ok = 1 then
+      Moved = 1
+      HomeBeat
+    end if
+  next
+  TryHome(0, 1)
+  if Ok = 1 then
+    Moved = 1
+    HomeBeat
+  end if
+  if Moved = 1 then goto sp_again
+  return
+end sub
+
+sub HomeBeat:
+  play sound SndHome
+  for Tm = 1 to 8
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the buttons
+
+sub LeftButton:
+  if Hs = 0 then
+    select case Cp
+    case 9
+      DealOne
+      if Ok = 1 then
+        play sound SndDeal
+        Done = 1
+      else
+        play sound SndBuzz
+      end if
+    case 8
+      play sound SndBuzz
+    case 10
+      if Sp > 0 then
+        Hs = 1
+        Hf = 0
+        play sound SndPick
+      else
+        play sound SndBuzz
+      end if
+    case else
+      V = Ly[Cp].Tp
+      if V > 0 then
+        Hs = 1
+        Hf = Cp
+        play sound SndPick
+      else
+        play sound SndBuzz
+      end if
+    end select
+    Prompt
+    Aim
+    if Done = 1 then
+      Done = 0
+      SelfPlay
+    end if
+    return
+  end if
+  ' cards in hand: put them down where the cursor is
+  V = PlaceOfCursor()
+  if V = Hf then
+    PutBack
+    return
+  end if
+  select case Cp
+  case 8
+    TryHome(Hf, 0)
+    if Ok = 1 then play sound SndHome
+  case 9
+    PutBack
+    return
+  case 10
+    Ok = 0
+  case else
+    TryColumn(Hf, Cp)
+    if Ok = 1 then play sound SndLay
+  end select
+  Settle
+  return
+end sub
+
+' the place under the cursor as a move source (0 the stack, 1-7), or 99
+function PlaceOfCursor as u8
+  if Cp = 10 then return 0
+  if Cp < 8 then return Cp
+  return 99
+
+sub RightButton:
+  if Hs = 0 then
+    V = PlaceOfCursor()
+    if V = 99 then
+      play sound SndBuzz
+      return
+    end if
+    Hf = V
+  end if
+  TryHome(Hf, 0)
+  if Ok = 1 then play sound SndHome
+  Settle
+  return
+end sub
+
+' Settle: after a try, empty the hand; a good move sets off the self-play
+sub Settle:
+  Hs = 0
+  if Ok = 0 then play sound SndBuzz
+  Prompt
+  Aim
+  if Ok = 1 then
+    SelfPlay
+    Ph = 1
+    Aim
+  end if
+  return
+end sub
+
+sub PutBack:
+  Hs = 0
+  play sound SndFlick
+  Prompt
+  Aim
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the cursor
+
+sub MoveCursor:
+  if Lf1 = 1 then
+    if Cp >= 8 then
+      Pp = Cp
+      Cp = 7
+    else
+      if Cp > 1 then dec Cp
+    end if
+  end if
+  if Rt1 = 1 then
+    if Cp = 7 then
+      Cp = Pp
+    else
+      if Cp < 7 then inc Cp
+    end if
+  end if
+  if Cp >= 8 then
+    if Up1 = 1 then
+      if Cp > 8 then dec Cp
+    end if
+    if Dn1 = 1 then
+      if Cp < 10 then inc Cp
+    end if
+  end if
+  play sound SndFlick
+  Aim
+  return
+end sub
+
+' Aim: sprite 0 the cursor, sprite 1 the place the cards in hand came from
+sub Aim:
+  ShowMark(0, Cp, 15)
+  if Hs = 1 then
+    if Hf = 0 then
+      ShowMark(1, 10, 7)
+    else
+      ShowMark(1, Hf, 7)
+    end if
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' ShowMark: sprite Sn on place P (brackets round a column's number, arrow by
+' a panel place) in colour Co
+sub ShowMark(u8 Sn, u8 P, u8 Co):
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Pt = 0
+  u8 S = 0
+  if P < 8 then
+    Sx = P * 24
+    Sx = Sx - 3
+    Sy = 7
+    Pt = SFrame
+  else
+    Sx = 176
+    Pt = SArrow
+    select case P
+    case 8
+      ' at the pile the card in hand would go to, else the middle
+      Sy = 47
+      if Hs = 1 then
+        S = SuitOf(LastOf(Hf))
+        Sy = S * 24
+        Sy = Sy - 7
+      end if
+    case 9
+      Sy = 121
+    case else
+      Sy = 145
+    end select
+  end if
+  set sprite Sn to Sy,Sx,Pt,Co
+  return
+end sub
+
+sub HideCursor:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' drawing
+
+sub DrawTable:
+  NewScreen
+  for I = 1 to 7
+    X = I * 3
+    put char 48 + I at X,1
+  next
+  print at 24,1, "PILES"
+  print at 24,14, "DECK"
+  print at 24,17, "STACK"
+  for Pn = 1 to 7
+    DrawCol
+  next
+  for Pn = 1 to 4
+    DrawPile
+  next
+  DrawDeck
+  ShowBank
+  ShowScreen
+  return
+end sub
+
+sub ShowBank:
+  print at 2,22, "BANK"
+  PrintMoney(7, 22)
+  print at 18,22, "BET $"
+  NumU = Bet
+  print at 23,22, digits$(NumU, 4)
+  return
+end sub
+
+' PrintMoney: the bank as -$1234567 / $1234567 at X,Y (9 columns)
+sub PrintMoney(u8 Mx, u8 My):
+  u8 P = 0
+  u8 Lead = 1
+  u8 Ch = 0
+  print at Mx,My, "         "
+  Tmp32 = Purse
+  if Tmp32 < 0 then
+    put char 45 at Mx,My
+    inc Mx
+    Tmp32 = 0
+    Tmp32 -= Purse
+  end if
+  put char 36 at Mx,My
+  inc Mx
+  PurseDigits
+  for P = 0 to 6
+    Ch = Dg[P]
+    if Ch <> 0 then Lead = 0
+    if P = 6 then Lead = 0
+    if Lead = 0 then
+      put char 48 + Ch at Mx,My
+      inc Mx
+    end if
+  next
+  return
+end sub
+
+' the powers of ten for the bank's digits
+sub SetPowers:
+  Pw[0] = 1000000
+  Pw[1] = 100000
+  Pw[2] = 10000
+  Pw[3] = 1000
+  Pw[4] = 100
+  Pw[5] = 10
+  Pw[6] = 1
+  return
+end sub
+
+' PurseDigits: Tmp32 (0..9999999) into Dg[0..6], by subtraction
+sub PurseDigits:
+  u8 P = 0
+  for P = 0 to 6
+    Dg[P] = 0
+    while Tmp32 >= Pw[P]
+      Tmp32 -= Pw[P]
+      inc Dg[P]
+    end while
+  next
+  return
+end sub
+
+sub CapBank:
+  if Purse > 9999999 then Purse = 9999999
+  return
+end sub
+
+' MaxBetOf: (bank + 51) / 52 by long division of the bank's digits,
+' at most BetLimit (line 130)
+sub MaxBetOf:
+  u8 P = 0
+  u16 R = 0
+  u16 Q = 0
+  MaxBet = 1
+  if Purse <= 0 then return
+  Tmp32 = Purse
+  PurseDigits
+  for P = 0 to 6
+    R = R * 10 + Dg[P]
+    Q = Q * 10 + R / 52
+    R = R % 52
+    if Q > BetLimit then
+      MaxBet = BetLimit
+      P = 7
+    end if
+  next
+  if MaxBet = BetLimit then return
+  if R > 0 then inc Q
+  MaxBet = Q
+  return
+end sub
+
+sub Prompt:
+  print at 24,20, "FROM  "
+  print at 24,21, "      "
+  if Hs = 1 then
+    if Hf = 0 then
+      print at 24,21, "STACK"
+    else
+      print at 25,21, "#"
+      put char 48 + Hf at 26,21
+    end if
+  end if
+  return
+end sub
+
+' Note1: clears rows 20-21 for a two-line message
+sub Note1:
+  print at 2,20, "                            "
+  print at 2,21, "                            "
+  return
+end sub
+
+' Linger: a message stays 3 seconds (a press cuts it short)
+sub Linger:
+  Rearm
+  wait no fire
+  nmi off
+  for Tm = 1 to 180
+    Frame1
+    ReadPad
+    if Press = 1 then Tm = 180
+  next
+  return
+end sub
+
+' DrawCol: column Pn from row 2 down: a back row per face-down card, a top
+' row per covered face-up card, the last card whole
+sub DrawCol:
+  u8 M = 0
+  u8 D = 0
+  u8 R = 2
+  u8 A = 0
+  M = Ly[Pn].Tp
+  D = Ly[Pn].Uc
+  Cx = Pn * 3
+  dec Cx
+  if M = 0 then
+    Cy = 2
+    DrawEmpty(TOk)
+    R = 4
+  else
+    for A = 1 to M
+      Cy = R
+      if A <= D then
+        BackTop
+      else
+        Cv = Ly[Pn].C[A]
+        CardTop
+      end if
+      inc R
+    next
+    Cy = R
+    Cv = Ly[Pn].C[M]
+    CardBottom
+    inc R
+  end if
+  while R < 22
+    fill 32 count 3 at Cx,R
+    inc R
+  end while
+  return
+end sub
+
+' DrawPile: suit Pn's pile on the right
+sub DrawPile:
+  u8 F = 0
+  Cx = 24
+  Cy = Pn * 3
+  Cy = Cy - 1
+  F = Pl[Pn]
+  if F = 0 then
+    DrawEmpty(TF0 + Pn - 1)
+  else
+    Cv = Pn - 1
+    Cv = Cv * 13 + F
+    CardTop
+    inc Cy
+    CardBottom
+  end if
+  return
+end sub
+
+' DrawDeck: the deck (a back or an outline) and the stack's top card
+sub DrawDeck:
+  Cx = 24
+  Cy = 15
+  if Dp > 0 then
+    BackTop
+    inc Cy
+    BackBottom
+  else
+    DrawEmpty(TOm)
+  end if
+  NumU = Dp
+  print at 27,15, digits$(NumU, 2)
+  Cy = 18
+  if Sp > 0 then
+    Cv = St[Sp]
+    CardTop
+    inc Cy
+    CardBottom
+  else
+    DrawEmpty(TOm)
+  end if
+  NumU = Sp
+  print at 27,18, digits$(NumU, 2)
+  return
+end sub
+
+sub CardTop:
+  u8 S = 0
+  u8 T = 0
+  S = SuitOf(Cv)
+  T = TRk00
+  if Black(S) = 0 then T = TRR00
+  T = T + ValOf(Cv) - 1
+  put char T at Cx,Cy
+  T = TS0 + S - 1
+  put char T at Cx + 1,Cy
+  put char TCtr at Cx + 2,Cy
+  return
+end sub
+
+sub CardBottom:
+  u8 T = 0
+  T = TB0 + SuitOf(Cv) - 1
+  put char TCbl at Cx,Cy
+  put char T at Cx + 1,Cy
+  put char TCbr at Cx + 2,Cy
+  return
+end sub
+
+sub BackTop:
+  put char TKtl at Cx,Cy
+  put char TKtm at Cx + 1,Cy
+  put char TKtr at Cx + 2,Cy
+  return
+end sub
+
+sub BackBottom:
+  put char TKbl at Cx,Cy
+  put char TKbm at Cx + 1,Cy
+  put char TKbr at Cx + 2,Cy
+  return
+end sub
+
+' DrawEmpty: an empty place (3 x 2) at Cx, Cy with tile Mid in its middle
+sub DrawEmpty(u8 Mid):
+  Y = Cy + 1
+  put char TOtl at Cx,Cy
+  put char Mid at Cx + 1,Cy
+  put char TOtr at Cx + 2,Cy
+  put char TObl at Cx,Y
+  put char TObm at Cx + 1,Y
+  put char TObr at Cx + 2,Y
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the bet (lines 760-930)
+
+sub BetPage:
+  Ph = 2
+  MaxBetOf
+  if Bet > MaxBet then Bet = MaxBet
+  if Bet = 0 then Bet = 1
+  Menu = 0
+  ShowBetBox
+  WasBtn = 1
+  WasStk = 1
+bp_loop:
+  Frame1
+  ReadPad
+  Rs = Rs + Tick
+  Stk = Lf1 | Rt1
+  Stk = Stk | Up1
+  Stk = Stk | Dn1
+  if Stk = 0 then
+    WasStk = 0
+  else
+    if WasStk = 0 then
+      Rep = 16
+      WasStk = 1
+      BetStick
+    else
+      dec Rep
+      if Rep = 0 then
+        Rep = 3
+        BetStick
+      end if
+    end if
+  end if
+  if Press = 0 then goto bp_loop
+  select case Menu
+  case 0
+    Done = 0
+  case 1
+    Bet = MaxBet
+    Done = 0
+  case 2
+    play sound SndDeal
+    Shuffle
+    nmi off
+    for Pn = 1 to 7
+      DrawCol
+    next
+    DrawDeck
+    Rearm
+    goto bp_loop
+  case else
+    Done = 8
+  end select
+  play sound SndCoin
+  return
+end sub
+
+sub BetStick:
+  if Up1 = 1 then
+    if Menu > 0 then dec Menu
+  end if
+  if Dn1 = 1 then
+    if Menu < 3 then inc Menu
+  end if
+  if Menu = 0 then
+    if Lf1 = 1 then
+      if Bet > 1 then dec Bet
+    end if
+    if Rt1 = 1 then
+      if Bet < MaxBet then inc Bet
+    end if
+  end if
+  play sound SndFlick
+  ShowBetBox
+  return
+end sub
+
+sub ShowBetBox:
+  print at 2,12, "PLEASE ENTER YOUR BET"
+  print at 2,13, "MAXIMUM BET $"
+  NumU = MaxBet
+  print at 15,13, digits$(NumU, 4)
+  print at 4,15, "BET $"
+  NumU = Bet
+  print at 9,15, digits$(NumU, 4)
+  print at 14,15, "<STICK>"
+  print at 4,16, "BET IT ALL"
+  print at 4,17, "RE-SHUFFLE"
+  print at 4,18, "CASH OUT"
+  for K = 0 to 3
+    put char 32 at 2,15 + K
+  next
+  put char 62 at 2,15 + Menu
+  NumU = Bet
+  print at 23,22, digits$(NumU, 4)
+  return
+end sub
+
+sub ClearBetBox:
+  for K = 12 to 18
+    print at 2,K, "                     "
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' screens and the frame
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: four aces from the listing's characters, the rules in short
+sub TitlePage:
+  Ph = 0
+  NewScreen
+  print at 11,2, "KLONDIKE"
+  Cy = 4
+  for K = 1 to 4
+    Cx = K * 4
+    Cx = Cx + 6
+    Cv = K - 1
+    Cv = Cv * 13 + 1
+    CardTop
+    inc Cy
+    CardBottom
+    dec Cy
+  next
+  print at 3,7, "BET ON A DEAL OF KLONDIKE."
+  print at 3,8, "TURN ONE CARD AT A TIME,"
+  print at 3,9, "ONE PASS. EACH CARD HOME"
+  print at 3,10, "PAYS 5 X THE BET, A WIN"
+  print at 3,11, "1000 X. A DEAL COSTS 52 X."
+  print at 3,12, "COLUMNS MOVE AS A WHOLE."
+  print at 9,14, "PLAY ($500)"
+  print at 9,15, "CREDITS"
+  print at 3,18, "STICK: CURSOR  FIRE: TAKE"
+  print at 3,19, "OR PUT  RIGHT: SEND HOME"
+  print at 3,20, "HOLD BOTH: END THE DEAL"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 420
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  ReadPad
+  Rs = Rs + 257
+  Rs = Rs + Tick
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStk = 0 then
+      Menu = 1 - Menu
+      ShowMenu
+      play sound SndFlick
+    end if
+  end if
+  WasStk = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 7,14
+  put char 32 at 7,15
+  put char 62 at 7,14 + Menu
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  Cy = 2
+  for K = 1 to 4
+    Cx = K * 4
+    Cx = Cx + 6
+    Cv = K - 1
+    Cv = Cv * 13 + 13
+    CardTop
+    inc Cy
+    CardBottom
+    dec Cy
+  next
+  print at 3,6, "KLONDIKE: FROM COMPUTE!'S"
+  print at 3,7, "GAZETTE, MAY 1986"
+  print at 3,8, "(COMMODORE 64 BASIC)."
+  print at 3,9, "THE LISTING'S RULES, BETS"
+  print at 3,10, "AND CARD CHARACTERS."
+  print at 3,12, "MADE FOR THE COLECOVISION"
+  print at 3,13, "BY CLAUDE (AN AI MADE BY"
+  print at 3,14, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,15, "2026, IN AMY BY AMY"
+  print at 3,16, "BIENVENU."
+  print at 3,18, "MUSIC: GOLD CAMP"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  Menu = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$18,$C3,$99,$81,$99,$00
+  $00,$00,$C3,$99,$0C,$30,$81,$00
+  $00,$00,$C3,$99,$0C,$99,$C3,$00
+  $00,$00,$99,$99,$81,$06,$06,$00
+  $00,$00,$81,$60,$83,$06,$83,$00
+  $00,$00,$C3,$60,$83,$99,$C3,$00
+  $00,$00,$81,$06,$0C,$18,$18,$00
+  $00,$00,$C3,$99,$C3,$99,$C3,$00
+  $00,$00,$C3,$99,$C1,$06,$C3,$00
+  $00,$00,$81,$18,$18,$18,$18,$00
+  $00,$00,$E1,$0C,$0C,$93,$38,$00
+  $00,$00,$C3,$99,$99,$C3,$0E,$00
+  $00,$00,$99,$93,$87,$93,$99,$00
+  $00,$00,$18,$C3,$99,$81,$99,$00
+  $00,$00,$C3,$99,$0C,$30,$81,$00
+  $00,$00,$C3,$99,$0C,$99,$C3,$00
+  $00,$00,$99,$99,$81,$06,$06,$00
+  $00,$00,$81,$60,$83,$06,$83,$00
+  $00,$00,$C3,$60,$83,$99,$C3,$00
+  $00,$00,$81,$06,$0C,$18,$18,$00
+  $00,$00,$C3,$99,$C3,$99,$C3,$00
+  $00,$00,$C3,$99,$C1,$06,$C3,$00
+  $00,$00,$81,$18,$18,$18,$18,$00
+  $00,$00,$E1,$0C,$0C,$93,$38,$00
+  $00,$00,$C3,$99,$99,$C3,$0E,$00
+  $00,$00,$99,$93,$87,$93,$99,$00
+  $00,$00,$93,$01,$01,$83,$38,$10
+  $00,$00,$10,$38,$83,$01,$38,$83
+  $00,$00,$18,$C3,$81,$81,$C3,$18
+  $00,$00,$38,$38,$01,$01,$38,$83
+  $00,$93,$01,$01,$83,$38,$10,$00
+  $00,$10,$38,$83,$01,$38,$83,$00
+  $00,$18,$C3,$81,$81,$C3,$18,$00
+  $00,$38,$38,$01,$01,$38,$83,$00
+  $00,$03,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $01,$01,$01,$01,$01,$01,$07,$00
+  $00,$11,$22,$44,$88,$11,$22,$44
+  $00,$11,$22,$44,$88,$11,$22,$44
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $88,$11,$22,$44,$88,$11,$22,$00
+  $88,$11,$22,$44,$88,$11,$22,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$80,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$04,$04,$04,$04,$04
+  $40,$40,$40,$40,$40,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $04,$04,$04,$04,$04,$03,$00,$00
+  $00,$00,$93,$01,$01,$83,$38,$10
+  $00,$00,$10,$38,$83,$01,$38,$83
+  $00,$00,$18,$C3,$81,$81,$C3,$18
+  $00,$00,$38,$38,$01,$01,$38,$83
+  $00,$00,$99,$93,$87,$93,$99,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$0B,$1B,$B1,$B1,$B1,$B1,$0B
+  $04,$0B,$B1,$B1,$1B,$1B,$B1,$0B
+  $04,$0B,$B1,$B1,$1B,$B1,$B1,$0B
+  $04,$0B,$B1,$B1,$B1,$1B,$1B,$0B
+  $04,$0B,$B1,$1B,$B1,$1B,$B1,$0B
+  $04,$0B,$B1,$1B,$B1,$B1,$B1,$0B
+  $04,$0B,$B1,$1B,$1B,$1B,$1B,$0B
+  $04,$0B,$B1,$B1,$B1,$B1,$B1,$0B
+  $04,$0B,$B1,$B1,$B1,$1B,$B1,$0B
+  $04,$0B,$B1,$1B,$1B,$1B,$1B,$0B
+  $04,$0B,$B1,$1B,$1B,$B1,$1B,$0B
+  $04,$0B,$B1,$B1,$B1,$B1,$1B,$0B
+  $04,$0B,$B1,$B1,$B1,$B1,$B1,$0B
+  $04,$0B,$8B,$B8,$B8,$B8,$B8,$0B
+  $04,$0B,$B8,$B8,$8B,$8B,$B8,$0B
+  $04,$0B,$B8,$B8,$8B,$B8,$B8,$0B
+  $04,$0B,$B8,$B8,$B8,$8B,$8B,$0B
+  $04,$0B,$B8,$8B,$B8,$8B,$B8,$0B
+  $04,$0B,$B8,$8B,$B8,$B8,$B8,$0B
+  $04,$0B,$B8,$8B,$8B,$8B,$8B,$0B
+  $04,$0B,$B8,$B8,$B8,$B8,$B8,$0B
+  $04,$0B,$B8,$B8,$B8,$8B,$B8,$0B
+  $04,$0B,$B8,$8B,$8B,$8B,$8B,$0B
+  $04,$0B,$B8,$8B,$8B,$B8,$8B,$0B
+  $04,$0B,$B8,$B8,$B8,$B8,$8B,$0B
+  $04,$0B,$B8,$B8,$B8,$B8,$B8,$0B
+  $04,$0B,$B8,$B8,$B8,$B8,$8B,$8B
+  $04,$0B,$1B,$1B,$B1,$B1,$1B,$B1
+  $04,$0B,$8B,$B8,$B8,$B8,$B8,$8B
+  $04,$0B,$1B,$1B,$B1,$B1,$1B,$B1
+  $0B,$B8,$B8,$B8,$B8,$8B,$8B,$04
+  $0B,$1B,$1B,$B1,$B1,$1B,$B1,$04
+  $0B,$8B,$B8,$B8,$B8,$B8,$8B,$04
+  $0B,$1B,$1B,$B1,$B1,$1B,$B1,$04
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$4B
+  $0B,$0B,$0B,$0B,$0B,$0B,$4B,$04
+  $4B,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $04,$96,$96,$96,$96,$96,$96,$96
+  $04,$96,$96,$96,$96,$96,$96,$96
+  $04,$46,$46,$46,$46,$46,$46,$46
+  $96,$96,$96,$96,$96,$96,$96,$04
+  $96,$96,$96,$96,$96,$96,$96,$04
+  $46,$46,$46,$46,$46,$46,$46,$04
+  $04,$04,$45,$54,$54,$54,$54,$54
+  $04,$04,$05,$04,$04,$04,$04,$04
+  $04,$04,$45,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$45,$04,$04
+  $04,$04,$04,$04,$04,$05,$04,$04
+  $54,$54,$54,$54,$54,$45,$04,$04
+  $04,$04,$45,$45,$45,$45,$54,$54
+  $04,$04,$54,$54,$45,$45,$54,$45
+  $04,$04,$54,$45,$45,$45,$45,$54
+  $04,$04,$54,$54,$45,$45,$54,$45
+  $04,$04,$45,$45,$45,$45,$45,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $C0,$80,$80,$80,$80,$80,$80,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$08,$08,$08,$08,$08,$08,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$FC,$F8,$F0,$E0,$C0,$80,$00,$00
+end data
+
+asm {
+KlFlick:
+    db $00,$00,$23,$01,$00,$00,$54,$01,$10
+KlDeal:
+    db $00,$00,$14,$02,$00,$00,$35,$02,$00,$00,$66,$03,$10
+KlLay:
+    db $40,$71,$20,$02,$40,$5A,$40,$04,$50
+KlBuzz:
+    db $40,$FF,$13,$08,$40,$FF,$33,$08,$50
+KlPick:
+    db $80,$8F,$20,$02,$80,$6B,$40,$03,$90
+KlFlip:
+    db $80,$50,$30,$02,$80,$3C,$50,$03,$90
+KlHome:
+    db $40,$AA,$20,$03,$40,$7F,$20,$03,$40,$55,$30,$06,$50
+KlCoin:
+    db $80,$35,$20,$01,$80,$2A,$50,$02,$90
+KlWin:
+    db $40,$FE,$20,$05,$40,$CA,$20,$05,$40,$AA,$20,$05,$40,$7F,$20,$05,$40,$AA,$20,$05,$40,$7F,$20,$05
+    db $40,$65,$20,$05,$40,$55,$30,$18,$50
+KlLose:
+    db $40,$53,$21,$0A,$40,$68,$31,$0A,$40,$7C,$31,$0A,$40,$FC,$41,$18,$50
+
+KlSoundTable:
+    dw KlTuneMel,$702B
+    dw KlTuneBass,$7035
+    dw KlFlick,$703F
+    dw KlDeal,$703F
+    dw KlLay,$7049
+    dw KlBuzz,$7049
+    dw KlPick,$7053
+    dw KlFlip,$7053
+    dw KlHome,$7049
+    dw KlCoin,$7053
+    dw KlWin,$7049
+    dw KlLose,$7049
+; Gold Camp (original)
+; Tiny Sound, 8 frames per step
+KlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$F1,$22,$1C,$01,$1F,$23,$01,$21,$1F,$01,$1E,$1C,$01,$01
+    db $1A,$01,$1E,$21,$01,$1F,$1E,$01,$1C,$1B,$01,$01,$1C,$01,$1F,$23
+    db $01,$28,$26,$01,$23,$24,$01,$21,$23,$01,$1F,$1E,$01,$1B,$1C,$01
+    db $01,$01,$01,$01,$00,$01,$01
+    db $FF
+KlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$18,$32,$10,$01,$17,$10,$01,$17,$10,$01,$17,$10,$01,$17
+    db $0E,$01,$15,$0E,$01,$15,$0B,$01,$12,$0B,$01,$12,$10,$01,$17,$10
+    db $01,$17,$13,$01,$1A,$15,$01,$1C,$0B,$01,$12,$0B,$01,$12,$10,$01
+    db $01,$01,$01,$01,$00,$01,$01
+    db $FF
+}

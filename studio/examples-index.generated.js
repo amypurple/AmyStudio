@@ -12844,5 +12844,27 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "klondike",
+    "label": "Klondike (May 1986)",
+    "detail": "COMPUTE!'s Gazette's Klondike card game, faithfully adapted for ColecoVision with its original bank, betting, one-pass deal and safe automatic foundation play; no author is named in the listing.",
+    "projectName": "Klondike",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "faithful-adaptation",
+      "game",
+      "card-game",
+      "solitaire",
+      "commodore-64",
+      "compute!"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];
