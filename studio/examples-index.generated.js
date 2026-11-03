@@ -14029,5 +14029,68 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "queens",
+    "label": "QUEENS' QUARREL (July 1986)",
+    "detail": "Based on Queens' Quarrel from COMPUTE!'s Gazette, July 1986. The eight-queens puzzle is expanded with twelve symmetry classes, four-pattern goals, an animated solver, joystick controls, music and ColecoVision graphics; no original author is named in the available listing.",
+    "projectName": "QUEENS' QUARREL",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "puzzle",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "qbird",
+    "label": "Q-BIRD (December 1986)",
+    "detail": "Based on Q-Bird from COMPUTE!'s Gazette, December 1986. Hop across a 7 by 6 cube field, change every tile, evade the cat, toads, hawk and marble, and use flapping long jumps; no original author is named on the disk.",
+    "projectName": "Q-BIRD",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "quoler",
+    "label": "QUOLERUS (November 1988)",
+    "detail": "Based on Quolerus from COMPUTE!'s Gazette, November 1988. Pilot a rotating ship through moving wall openings, destroy hostile orbs and missiles, and shoot the hidden pod; no original author is named in the listing.",
+    "projectName": "QUOLERUS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action",
+      "compute!"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

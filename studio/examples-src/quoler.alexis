@@ -1,0 +1,1426 @@
+cartridge "QUOLERUS/COMPUTE!'S GAZETTE/1988"
+
+' QUOLERUS
+' A ColecoVision game based on "Quolerus", COMPUTE!'s Gazette, November
+' 1988 (Commodore 64, a BASIC program QUOLERUS with machine language
+' QUOLERUS.ML at $C000 and sprites QUOLERUS.SPR at $3000; no author named
+' in the listing). The listing notes that its game is based on a 1981
+' Atari game, used with permission; this version uses none of that game's
+' names, characters or pictures. Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' BASIC and machine code, orig/quolerus-ml.dis, and timed in jsc64), the
+' game is built for the ColecoVision: a wall of bevelled coloured cells,
+' a dart-shaped ship in eight headings, a one-eyed pod, spinning orbs,
+' smooth sprites and sound effects, an original title tune.
+'
+' The game: a pod hides behind a wall of cells on the left and rides up
+' and down. Every time it turns it may let out an orb (up to the level's
+' number); orbs bounce all over the screen and, when one lines up with
+' your ship across or down, it fires a missile straight at you. Turn your
+' ship, thrust, and shoot: each shot knocks one cell out of the wall. The
+' wall's columns keep rolling, the even ones up and the odd ones down, so
+' the holes move. Touching the wall, the pod, an orb or a missile costs a
+' ship. Shoot the pod through a gap to clear the level.
+'
+' From the original: the pod at the far left riding between the top and
+' the bottom (1.5 pixels a frame here, the C64's about 2.5 of its larger
+' pixels), turning and letting out an orb at the turn when a slot is free
+' and the turn is not the same way as the last orb's; an orb leaves up and
+' left when the pod turns up, down and right when it turns down, moves
+' diagonally and bounces off the field's edges, flies over the wall, and
+' fires a missile (one at a time) along a row or a column when it lines
+' up with the ship; missiles stop at the wall; the ship turns through
+' eight headings (about 10 a second while held), thrusts in the heading
+' and coasts to a stop over about 24 pixels when the stick is let go,
+' still in the heading of its last thrust; one shot at a time, held
+' button fires again; the wall's columns roll (wrapping round), the even
+' ones up and the odd ones down, and shot cells stay shot when a ship is
+' lost; the levels: wall 4 columns and 1-4 orbs (levels 1-4), 6 columns
+' and 2-4 orbs (5-7), 8 columns and 2-4 orbs (8-10, then 8-10 again and
+' again); at 3 or 4 orbs the top orb slot is retired after 5 of its orbs
+' are shot, then the next one down (never the first two); scoring: a cell
+' 50, an orb 100, a missile 50, the pod 2100 (the C64 gave 2000 + 100),
+' an extra ship every 10000; three ships to start.
+'
+' Liberties: the field is 28 x 21 tiles (the C64's 40 x 25) with the
+' wall in columns 9-16; the wall rolls every 6 frames (the C64 every 4
+' jiffies) and the speeds are slowed for a human player (see above; the
+' missile 1.5 pixels a frame like the ship, the shot 4, the C64's shot
+' as fast as the ship); collisions are box tests (the
+' C64 used its sprite collision registers); an orb's missile is aimed
+' when the orb is within one pixel of the ship's row or column (the C64
+' needed an exact match); an orb's kills count when it is hit (the C64
+' counted when its burst ended); pulling the stick down brakes a coasting
+' ship (the C64 had no brake); a ship lost or the pod shot freezes the
+' field while the burst plays, as on the C64; the explosion art and all
+' sounds are new; GAME OVER, then the title (the C64 showed its title
+' with the score).
+'
+' Controls: controller 1 (or 2): left and right turn the ship, up
+' thrusts, down brakes, either button fires. On the title, up and down
+' choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given.
+
+const TCell0 = 128
+const TCell1 = 129
+const TCell2 = 130
+const TCell3 = 131
+const TCell4 = 132
+const TCell5 = 133
+const TCell6 = 134
+const TStar0 = 135
+const TStar1 = 136
+const TStar2 = 137
+const TLife = 138
+const TLg0 = 139
+const TLg1 = 140
+const TLg2 = 141
+const TLg3 = 142
+const TLg4 = 143
+const TLg5 = 144
+const TLg6 = 145
+const TLg7 = 146
+const TLg8 = 147
+const TLg9 = 148
+const TLg10 = 149
+const TLg11 = 150
+const TLg12 = 151
+const TLg13 = 152
+const TLg14 = 153
+const TLg15 = 154
+const TLg16 = 155
+const TLg17 = 156
+const TLg18 = 157
+const TLg19 = 158
+const TLg20 = 159
+const TLg21 = 160
+const TLg22 = 161
+const TLg23 = 162
+const TLg24 = 163
+const TLg25 = 164
+const TLg26 = 165
+const SShip0 = 0
+const SShip1 = 4
+const SShip2 = 8
+const SShip3 = 12
+const SShip4 = 16
+const SShip5 = 20
+const SShip6 = 24
+const SShip7 = 28
+const SShot = 32
+const SMiss = 36
+const SPod0 = 40
+const SPod1 = 44
+const SEye0 = 48
+const SEye1 = 52
+const SOrb0 = 56
+const SOrb1 = 60
+const SBst0 = 64
+const SBst1 = 68
+const SBst2 = 72
+const NTiles8 = 304
+const SprBytes = 608
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndCell = 4
+const SndPop = 5
+const SndLaunch = 6
+const SndBoom = 7
+const SndBig = 8
+const SndLevel = 9
+const SndExtra = 10
+const SndStart = 11
+const SndOver = 12
+const NSpr = 9
+const WallC = 9
+const PodX = 32
+
+' per heading 0-7 (up-left, left, down-left, down, down-right, right,
+' up-right, up): the step in X and Y plus one
+data DXT bytes 0,0,0,1,2,2,2,1
+data DYT bytes 0,1,2,2,2,1,0,0
+' missile directions 0-3 (up, down, left, right)
+data MXT bytes 1,1,0,2
+data MYT bytes 0,2,1,1
+data OrbCol bytes 7,3,9,11
+
+data TilePat bytes
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $01,$01,$C6,$45,$45,$C6,$01,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$01
+  $00,$18,$18,$C3,$81,$18,$C3,$00
+  $00,$00,$0E,$0E,$0E,$00,$E0,$E0
+  $00,$00,$11,$11,$11,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$E0
+  $00,$00,$E0,$E0,$E0,$00,$E0,$E0
+  $00,$00,$11,$11,$11,$00,$E0,$E0
+  $00,$00,$E0,$E0,$E0,$00,$00,$00
+  $E0,$00,$E0,$E0,$E0,$00,$E0,$E0
+  $E0,$00,$E0,$E0,$E0,$00,$11,$11
+  $00,$00,$00,$00,$00,$00,$11,$11
+  $E0,$00,$E0,$E0,$E0,$00,$00,$00
+  $E0,$00,$E0,$E0,$E0,$00,$0E,$0E
+  $E0,$00,$E0,$E0,$E0,$00,$E0,$E0
+  $00,$00,$E0,$E0,$E0,$00,$0E,$0E
+  $E0,$00,$E0,$E0,$E0,$00,$00,$00
+  $11,$00,$E0,$E0,$E0,$00,$E0,$E0
+  $11,$00,$00,$00,$00,$00,$00,$00
+  $11,$00,$E0,$E0,$E0,$00,$0E,$0E
+  $0E,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$00,$E0,$E0
+  $E0,$00,$0E,$0E,$0E,$00,$00,$00
+  $0E,$00,$E0,$E0,$E0,$00,$00,$00
+  $00,$00,$E0,$E0,$E0,$00,$00,$00
+  $00,$00,$11,$11,$11,$00,$00,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $E0,$00,$11,$11,$11,$00,$00,$00
+  $E0,$00,$E0,$E0,$E0,$00,$00,$00
+  $0E,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $18,$18,$81,$18,$18,$81,$18,$01
+  $19,$19,$91,$19,$19,$91,$19,$01
+  $1B,$1B,$B1,$1B,$1B,$B1,$1B,$01
+  $13,$13,$31,$13,$13,$31,$13,$01
+  $17,$17,$71,$17,$17,$71,$17,$01
+  $15,$15,$51,$15,$15,$51,$15,$01
+  $1D,$1D,$D1,$1D,$1D,$D1,$1D,$01
+  $01,$01,$E1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$01,$01,$41,$01,$01,$01,$41
+  $01,$F1,$F1,$1F,$1F,$1F,$F1,$01
+  $01,$01,$81,$81,$91,$01,$91,$91
+  $01,$01,$18,$18,$19,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$91,$91
+  $01,$01,$81,$81,$91,$01,$91,$91
+  $01,$01,$18,$18,$19,$01,$91,$91
+  $01,$01,$81,$81,$91,$01,$01,$01
+  $B1,$01,$B1,$B1,$31,$01,$31,$31
+  $B1,$01,$B1,$B1,$31,$01,$13,$13
+  $01,$01,$01,$01,$01,$01,$13,$13
+  $B1,$01,$B1,$B1,$31,$01,$01,$01
+  $B1,$01,$B1,$B1,$31,$01,$31,$31
+  $71,$01,$71,$71,$51,$01,$51,$51
+  $01,$01,$71,$71,$51,$01,$51,$51
+  $71,$01,$71,$71,$51,$01,$01,$01
+  $17,$01,$71,$71,$51,$01,$51,$51
+  $17,$01,$01,$01,$01,$01,$01,$01
+  $17,$01,$71,$71,$51,$01,$51,$51
+  $71,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$71,$71,$51,$01,$51,$51
+  $D1,$01,$D1,$D1,$81,$01,$01,$01
+  $D1,$01,$D1,$D1,$81,$01,$01,$01
+  $01,$01,$D1,$D1,$81,$01,$01,$01
+  $01,$01,$1D,$1D,$18,$01,$01,$01
+  $D1,$01,$01,$01,$01,$01,$01,$01
+  $D1,$01,$1D,$1D,$18,$01,$01,$01
+  $D1,$01,$D1,$D1,$81,$01,$01,$01
+  $D1,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$38,$3C,$1F,$1A,$0D,$0D,$07,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$30,$F8,$E0,$C0,$F0,$F8,$C4,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$03,$0F,$39,$39,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$38,$70,$E0,$C0,$80,$F0,$F0,$80,$C0,$E0,$70,$38,$00,$00
+  $00,$00,$00,$02,$06,$07,$0B,$0B,$0B,$0C,$1B,$3F,$3C,$30,$00,$00
+  $00,$00,$10,$20,$60,$60,$F0,$FC,$F0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$31,$39,$1D,$0F,$07,$06,$02,$03,$01,$01,$00,$00
+  $00,$00,$00,$04,$8C,$9C,$B8,$F0,$E0,$60,$40,$C0,$80,$80,$00,$00
+  $00,$00,$01,$01,$23,$1F,$0F,$03,$07,$1F,$0C,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$E0,$B0,$B0,$58,$F8,$3C,$1C,$00,$00
+  $00,$00,$1C,$0E,$07,$03,$01,$0F,$0F,$01,$03,$07,$0E,$1C,$00,$00
+  $00,$00,$00,$00,$00,$C0,$F0,$9C,$9C,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$0F,$3F,$0F,$06,$06,$04,$08,$00,$00
+  $00,$00,$0C,$3C,$FC,$D8,$30,$D0,$D0,$D0,$E0,$60,$40,$00,$00,$00
+  $00,$00,$01,$01,$03,$02,$06,$07,$0F,$1D,$39,$31,$20,$00,$00,$00
+  $00,$00,$80,$80,$C0,$40,$60,$E0,$F0,$B8,$9C,$8C,$04,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$0F,$07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$3F,$7F,$7C,$F8,$F9,$F9,$F8,$7C,$7F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$FE,$3E,$1F,$9F,$9F,$1F,$3E,$FE,$FC,$F8,$E0,$00
+  $00,$07,$1F,$3F,$7F,$7F,$FF,$F8,$F8,$FF,$7F,$7F,$3F,$1F,$07,$00
+  $00,$E0,$F8,$FC,$FE,$FE,$FF,$1F,$1F,$FF,$FE,$FE,$FC,$F8,$E0,$00
+  $00,$00,$00,$00,$00,$03,$07,$06,$06,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$60,$60,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0C,$11,$13,$13,$11,$0C,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$30,$88,$C8,$C8,$88,$30,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$08,$12,$03,$03,$12,$08,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$10,$48,$C0,$C0,$48,$10,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$01,$07,$01,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$80,$E0,$80,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$11,$09,$05,$13,$3F,$13,$05,$09,$11,$00,$00,$00,$00,$00
+  $00,$00,$10,$20,$40,$90,$BC,$90,$40,$20,$10,$00,$00,$00,$00,$00
+  $81,$41,$20,$00,$08,$00,$80,$00,$00,$80,$00,$08,$00,$20,$41,$81
+  $01,$02,$04,$00,$20,$00,$01,$00,$00,$01,$00,$20,$00,$04,$02,$01
+end data
+
+data GameMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$89,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$20,$87,$88,$20,$20,$20,$87,$20,$20,$20,$20,$20
+  $20,$20,$87,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$89,$20,$20,$20,$20,$87,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$89,$20,$20,$20,$20,$88,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20,$20,$88,$87,$20,$20,$89,$20,$87,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$89,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$87,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+const LogoW = 26
+data LogoMap bytes
+  $20,$8B,$8C,$8D,$8E,$20,$8E,$8B,$8C,$8D,$8E,$20,$20,$8F,$8C,$90,$8F,$8C,$8D,$8E,$20,$8E,$8B,$8C,$90,$20
+  $20,$91,$20,$91,$91,$20,$91,$91,$20,$91,$91,$20,$20,$92,$93,$20,$92,$93,$94,$91,$20,$91,$95,$93,$20,$20
+  $20,$96,$97,$98,$96,$20,$96,$96,$20,$96,$96,$20,$20,$99,$9A,$20,$99,$9B,$20,$96,$20,$96,$9C,$9A,$9D,$20
+  $20,$9E,$9F,$A0,$9E,$A1,$A2,$9E,$A1,$A2,$A3,$A1,$A0,$A3,$A1,$A0,$A4,$A5,$A0,$9E,$A1,$A2,$A1,$A1,$A2,$20
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 W16 = 0
+u16 Addr = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+bcd digits 6 NextX = 0
+
+' the wall: 21 rows of 8 cells, a tile code or 32 (empty)
+u8 Sh[168]
+u8 Wc = 4
+
+' the ship (centre), heading, turn timer, coast
+u8 PX = 200
+u8 PY = 100
+u8 PDir = 7
+u8 RotT = 0
+u8 CDir = 7
+u8 Coast = 0
+u8 CoastT = 0
+u8 PSt = 0
+' the shot
+u8 SOn = 0
+u8 SX = 0
+u8 SY = 0
+u8 SDir = 0
+' the missile
+u8 MOn = 0
+u8 MX = 0
+u8 MY = 0
+u8 MD = 0
+' the pod
+u8 EY = 100
+u8 EDir = 0
+u8 EnSt = 0
+u8 LastSp = 255
+' the orbs: state (0 free, 1 flying, 2+ bursting), place, direction
+u8 BSt[4]
+u8 BX[4]
+u8 BY[4]
+u8 BDX[4]
+u8 BDY[4]
+u8 NB = 1
+u8 NLim = 1
+u8 RetSlot = 255
+u8 RetCnt = 0
+
+u8 Lv = 0
+u8 Ships = 3
+u8 Over = 0
+u8 Played = 0
+u8 ScrT = 0
+u8 Cells = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' title animation
+u8 TbY = 100
+u8 TbD = 0
+' loop counters (never shared with the helpers)
+u8 Ob = 0
+u8 Rc = 0
+u8 Rr = 0
+u8 Sub2 = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Dd = 0
+u8 Ri = 0
+u8 Tmp = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Qi = 0
+u8 Dif = 0
+u8 Hit = 0
+
+  tile screen
+  set sound table QuSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  HideSprites
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, "  SCORE ", Score, "  "
+  print at 8,13, "  BEST  ", Hi, "  "
+  print at 8,14, "                "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  BurstTick
+  if EnSt > 0 then
+    dec EnSt
+    if EnSt = 0 then
+      NextLevel
+      play sound SndLevel
+    end if
+  else
+    if PSt > 0 then
+      dec PSt
+      if PSt = 0 then LoseShip
+    else
+      MovePlayer
+      MoveShot
+      MovePod
+      MoveOrbs
+      MoveMissile
+      inc ScrT
+      if ScrT >= 6 then
+        ScrT = 0
+        RollWall
+      end if
+      Collide
+    end if
+  end if
+  return
+end sub
+
+' orbs bursting count down; a burst over frees the slot
+sub BurstTick:
+  for Ob = 0 to 3
+    if BSt[Ob] >= 2 then
+      BSt[Ob] = BSt[Ob] - 1
+      if BSt[Ob] = 1 then BSt[Ob] = 0
+    end if
+  next
+  return
+end sub
+
+' turning, thrust, coasting, the button
+sub MovePlayer:
+  K = J1 & 12
+  if K = 0 then
+    RotT = 0
+  else
+    if RotT = 0 then
+      if K = 4 then
+        PDir = (PDir + 1) & 7
+      else
+        PDir = (PDir + 7) & 7
+      end if
+      RotT = 6
+    else
+      dec RotT
+    end if
+  end if
+  K = J1 & 1
+  if K > 0 then
+    Dd = PDir
+    StepP
+    V = Tick & 1
+    if V = 1 then StepP
+    CDir = PDir
+    Coast = 1
+    CoastT = 0
+  else
+    if Coast > 0 then
+      K = J1 & 2
+      if K > 0 then
+        Coast = 0
+      else
+        if CoastT = 0 then
+          Dd = CDir
+          StepP
+          inc Coast
+          CoastT = Coast >> 2
+          if Coast > 24 then Coast = 0
+        else
+          dec CoastT
+        end if
+      end if
+    end if
+  end if
+  K = J1 & 16
+  if K > 0 then
+    if SOn = 0 then
+      SOn = 1
+      SDir = PDir
+      SX = PX
+      SY = PY
+      play sound SndZap
+    end if
+  end if
+  return
+end sub
+
+' the ship one pixel in heading Dd, kept in the field
+sub StepP:
+  V = PX + DXT[Dd]
+  V = V - 1
+  if V >= 24 then
+    if V <= 231 then PX = V
+  end if
+  V = PY + DYT[Dd]
+  V = V - 1
+  if V >= 24 then
+    if V <= 175 then PY = V
+  end if
+  return
+end sub
+
+' the cell under Qx, Qy: Qi (255 = outside the wall)
+sub CellAt:
+  Qi = 255
+  if Qx >= 72 then
+    if Qx < 136 then
+      if Qy >= 16 then
+        if Qy < 184 then
+          C = Qx - 72
+          C = C >> 3
+          V = Qy - 16
+          V = V >> 3
+          Qi = V * 8 + C
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the shot: 4 pixels a frame in two steps, a cell it meets is knocked out
+sub MoveShot:
+  for Sub2 = 1 to 2
+    if SOn = 1 then
+      SX = SX + DXT[SDir] * 2
+      SX = SX - 2
+      SY = SY + DYT[SDir] * 2
+      SY = SY - 2
+      if SX < 16 then SOn = 0
+      if SX > 239 then SOn = 0
+      if SY < 16 then SOn = 0
+      if SY > 183 then SOn = 0
+      if SOn = 1 then
+        Qx = SX
+        Qy = SY
+        CellAt
+        if Qi < 255 then
+          if Sh[Qi] >= 128 then
+            Sh[Qi] = 32
+            X = Qi & 7
+            Y = Qi >> 3
+            put char 32 at X + WallC,Y + 2
+            SOn = 0
+            Score += 50
+            inc Cells
+            ScoreUp
+            play sound SndCell
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the pod rides up and down, 1.5 pixels a frame
+sub MovePod:
+  K = Tick & 1
+  K = K + 1
+  for Sub2 = 1 to K
+    if EDir = 0 then
+      if EY > 28 then
+        dec EY
+      else
+        EDir = 1
+      end if
+    else
+      if EY < 171 then
+        inc EY
+      else
+        EDir = 0
+      end if
+    end if
+  next
+  if EDir <> LastSp then SpawnOrb
+  return
+end sub
+
+' a new orb at the pod in the lowest free slot, if there is one
+sub SpawnOrb:
+  Hit = 255
+  for Ob = 0 to 3
+    if Hit = 255 then
+      if Ob < NLim then
+        if BSt[Ob] = 0 then Hit = Ob
+      end if
+    end if
+  next
+  if Hit < 255 then
+    BSt[Hit] = 1
+    BX[Hit] = PodX
+    BY[Hit] = EY
+    BDX[Hit] = EDir
+    BDY[Hit] = EDir
+    LastSp = EDir
+  end if
+  return
+end sub
+
+' the orbs: a diagonal pixel on 5 frames of 8, bouncing off the edges;
+' an orb in line with the ship fires the missile
+sub MoveOrbs:
+  K = Tick & 7
+  if K < 5 then
+    for Ob = 0 to 3
+      if BSt[Ob] = 1 then
+        X = BX[Ob]
+        Y = BY[Ob]
+        if BDX[Ob] = 0 then
+          if X > 24 then
+            dec X
+          else
+            BDX[Ob] = 1
+          end if
+        else
+          if X < 231 then
+            inc X
+          else
+            BDX[Ob] = 0
+          end if
+        end if
+        if BDY[Ob] = 0 then
+          if Y > 24 then
+            dec Y
+          else
+            BDY[Ob] = 1
+          end if
+        else
+          if Y < 175 then
+            inc Y
+          else
+            BDY[Ob] = 0
+          end if
+        end if
+        BX[Ob] = X
+        BY[Ob] = Y
+        if MOn = 0 then Aim
+      end if
+    next
+  end if
+  return
+end sub
+
+' orb Ob (at X, Y) fires if it is within a pixel of the ship's column/row
+sub Aim:
+  Dif = AbsD(X, PX)
+  if Dif <= 1 then
+    MOn = 1
+    if PY > Y then
+      MD = 1
+    else
+      MD = 0
+    end if
+  else
+    Dif = AbsD(Y, PY)
+    if Dif <= 1 then
+      MOn = 1
+      if PX > X then
+        MD = 3
+      else
+        MD = 2
+      end if
+    end if
+  end if
+  if MOn = 1 then
+    MX = X
+    MY = Y
+    play sound SndLaunch
+  end if
+  return
+end sub
+
+function AbsD(u8 Aa, u8 Bb) as u8
+  if Aa >= Bb then
+    Tmp = Aa - Bb
+  else
+    Tmp = Bb - Aa
+  end if
+  return Tmp
+
+' the missile: 1.5 pixels a frame (as fast as the ship, as on the C64);
+' it stops at the edges and at the wall
+sub MoveMissile:
+  K = Tick & 1
+  K = K + 1
+  for Sub2 = 1 to K
+    if MOn = 1 then
+      MX = MX + MXT[MD]
+      MX = MX - 1
+      MY = MY + MYT[MD]
+      MY = MY - 1
+      if MX < 16 then MOn = 0
+      if MX > 239 then MOn = 0
+      if MY < 16 then MOn = 0
+      if MY > 183 then MOn = 0
+      if MOn = 1 then
+        Qx = MX
+        Qy = MY
+        CellAt
+        if Qi < 255 then
+          if Sh[Qi] >= 128 then MOn = 0
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' hits: the shot on the pod, an orb or the missile; the ship on the wall,
+' the pod, an orb or the missile
+sub Collide:
+  if SOn = 1 then
+    Dif = AbsD(SX, PodX)
+    if Dif < 9 then
+      Dif = AbsD(SY, EY)
+      if Dif < 10 then
+        SOn = 0
+        EnSt = 90
+        Score += 2100
+        ScoreUp
+        mute all
+        play sound SndBig
+      end if
+    end if
+  end if
+  if EnSt = 0 then
+    for Ob = 0 to 3
+      if SOn = 1 then
+        if BSt[Ob] = 1 then
+          Dif = AbsD(SX, BX[Ob])
+          if Dif < 7 then
+            Dif = AbsD(SY, BY[Ob])
+            if Dif < 7 then
+              SOn = 0
+              BSt[Ob] = 25
+              Score += 100
+              ScoreUp
+              play sound SndPop
+              if Ob = RetSlot then Retire
+            end if
+          end if
+        end if
+      end if
+    next
+    if SOn = 1 then
+      if MOn = 1 then
+        Dif = AbsD(SX, MX)
+        if Dif < 6 then
+          Dif = AbsD(SY, MY)
+          if Dif < 6 then
+            SOn = 0
+            MOn = 0
+            Score += 50
+            ScoreUp
+            play sound SndPop
+          end if
+        end if
+      end if
+    end if
+    ShipHits
+  end if
+  return
+end sub
+
+' a kill of the slot being retired; at 5 the slot closes for the level
+sub Retire:
+  inc RetCnt
+  if RetCnt >= 5 then
+    RetCnt = 0
+    NLim = RetSlot
+    if RetSlot > 2 then
+      dec RetSlot
+    else
+      RetSlot = 255
+    end if
+  end if
+  return
+end sub
+
+sub ShipHits:
+  Hit = 0
+  Qx = PX - 4
+  Qy = PY - 4
+  WallHit
+  Qx = PX + 3
+  WallHit
+  Qy = PY + 3
+  WallHit
+  Qx = PX - 4
+  WallHit
+  Dif = AbsD(PX, PodX)
+  if Dif < 12 then
+    Dif = AbsD(PY, EY)
+    if Dif < 12 then Hit = 1
+  end if
+  for Ob = 0 to 3
+    if BSt[Ob] = 1 then
+      Dif = AbsD(PX, BX[Ob])
+      if Dif < 9 then
+        Dif = AbsD(PY, BY[Ob])
+        if Dif < 9 then Hit = 1
+      end if
+    end if
+  next
+  if MOn = 1 then
+    Dif = AbsD(PX, MX)
+    if Dif < 7 then
+      Dif = AbsD(PY, MY)
+      if Dif < 7 then Hit = 1
+    end if
+  end if
+  if Hit = 1 then
+    PSt = 70
+    SOn = 0
+    MOn = 0
+    Coast = 0
+    mute all
+    play sound SndBoom
+  end if
+  return
+end sub
+
+sub WallHit:
+  CellAt
+  if Qi < 255 then
+    if Sh[Qi] >= 128 then Hit = 1
+  end if
+  return
+end sub
+
+' every 10000 points an extra ship
+sub ScoreUp:
+  if Score >= NextX then
+    NextX += 10000
+    inc Ships
+    play sound SndExtra
+  end if
+  if Score > Hi then Hi = Score
+  ShowHud
+  return
+end sub
+
+sub LoseShip:
+  dec Ships
+  if Ships = 0 then
+    Over = 1
+  else
+    ResetField
+    ShowHud
+  end if
+  return
+end sub
+
+' a new ship: the ship, pod, orbs and missile back to the start; the wall
+' stays as it is
+sub ResetField:
+  PX = 200
+  PY = 100
+  PDir = 7
+  CDir = 7
+  RotT = 0
+  Coast = 0
+  CoastT = 0
+  PSt = 0
+  SOn = 0
+  MOn = 0
+  EY = 100
+  EDir = 0
+  LastSp = 255
+  for Ob = 0 to 3
+    BSt[Ob] = 0
+    BX[Ob] = 0
+    BY[Ob] = 0
+    BDX[Ob] = 0
+    BDY[Ob] = 0
+  next
+  return
+end sub
+
+' the next level: the wall's width and the orbs as the C64's BASIC set them
+sub NextLevel:
+  inc Lv
+  select case Lv
+    case is < 5
+      Wc = 4
+      NB = Lv
+    case is < 8
+      Wc = 6
+      NB = Lv - 3
+    case else
+      K = Lv - 8
+      while K >= 3
+        K = K - 3
+      end while
+      Wc = 8
+      NB = K + 2
+  end select
+  NLim = NB
+  RetSlot = 255
+  if NB >= 3 then RetSlot = NB - 1
+  RetCnt = 0
+  EnSt = 0
+  ResetField
+  BuildWall
+  DrawWall
+  ShowHud
+  return
+end sub
+
+' the wall's cells: colour bands three rows deep
+sub BuildWall:
+  K = 0
+  J = 0
+  Ri = 0
+  for Rr = 0 to 20
+    for Rc = 0 to 7
+      if Rc < Wc then
+        Sh[Ri] = TCell0 + K
+      else
+        Sh[Ri] = 32
+      end if
+      inc Ri
+    next
+    inc J
+    if J = 3 then
+      J = 0
+      inc K
+      if K = 7 then K = 0
+    end if
+  next
+  return
+end sub
+
+sub DrawWall:
+  for Rr = 0 to 20
+    Ri = Rr * 8
+    Addr = Rr + 2
+    Addr = Addr * 32 + WallC
+    copy Sh + Ri count 8 to vram.name + Addr
+  next
+  return
+end sub
+
+' roll the wall: even columns up, odd columns down, wrapping round
+sub RollWall:
+  call asm QuRoll
+  DrawWall
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 ship, 1 shot, 2 missile, 3 pod, 4 its eye, 5-8 orbs
+sub DrawSprites:
+  Y = PY - 9
+  X = PX - 8
+  if PSt > 0 then
+    K = SBst2
+    if PSt > 45 then K = SBst1
+    if PSt > 60 then K = SBst0
+    set sprite 0 to Y,X,K,11
+  else
+    K = PDir * 4 + SShip0
+    set sprite 0 to Y,X,K,15
+  end if
+  if SOn = 1 then
+    Y = SY - 9
+    X = SX - 8
+    set sprite 1 to Y,X,SShot,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if MOn = 1 then
+    Y = MY - 9
+    X = MX - 8
+    set sprite 2 to Y,X,SMiss,9
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  Y = EY - 9
+  X = PodX - 8
+  if EnSt > 0 then
+    K = SBst2
+    if EnSt > 60 then K = SBst1
+    if EnSt > 80 then K = SBst0
+    set sprite 3 to Y,X,K,11
+    set sprite 4 to 192,0,0,0
+  else
+    K = Tick & 63
+    if K < 8 then
+      set sprite 3 to Y,X,SPod1,13
+      set sprite 4 to Y,X,SEye1,10
+    else
+      set sprite 3 to Y,X,SPod0,13
+      set sprite 4 to Y,X,SEye0,11
+    end if
+  end if
+  for Ob = 0 to 3
+    J = Ob + 5
+    V = BSt[Ob]
+    if V = 0 then
+      set sprite J to 192,0,0,0
+    else
+      Y = BY[Ob] - 9
+      X = BX[Ob] - 8
+      if V = 1 then
+        K = Tick >> 3
+        K = K & 1
+        K = K * 4 + SOrb0
+        C = OrbCol[Ob]
+        set sprite J to Y,X,K,C
+      else
+        K = SBst2
+        if V > 9 then K = SBst1
+        if V > 17 then K = SBst0
+        set sprite J to Y,X,K,11
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, Score
+  NumU = Ships
+  print at 15,1, "SHIPS ", digits$(NumU, 2)
+  NumU = Lv
+  print at 25,1, "L", digits$(NumU, 2)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  copy GameMap count 768 to vram.name
+  Score = 0
+  NextX = 10000
+  Lv = 0
+  Ships = 3
+  Over = 0
+  Cells = 0
+  Played = 1
+  ScrT = 0
+  NextLevel
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: QUOLERUS in wall cells, the pod riding at the left, START /
+' CREDITS, the last and best scores, the tune once
+sub TitlePage:
+  NewScreen
+  for J = 0 to 3
+    Ri = J * LogoW
+    Addr = J + 3
+    Addr = Addr * 32 + 3
+    copy LogoMap + Ri count LogoW to vram.name + Addr
+  next
+  print at 7,9, "COMPUTE!'S GAZETTE"
+  print at 10,10, "NOVEMBER 1988"
+  print at 13,14, "START"
+  print at 13,15, "CREDITS"
+  if Played = 1 then
+    print at 9,19, "SCORE ", Score
+  end if
+  if Hi > 0 then
+    print at 9,20, "BEST  ", Hi
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  TitleAnim
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+' the pod rides up and down the left side, the ship waits at the right
+sub TitleAnim:
+  if TbD = 0 then
+    if TbY > 80 then
+      dec TbY
+    else
+      TbD = 1
+    end if
+  else
+    if TbY < 168 then
+      inc TbY
+    else
+      TbD = 0
+    end if
+  end if
+  Y = TbY - 9
+  K = Tick & 63
+  if K < 8 then
+    set sprite 3 to Y,24,SPod1,13
+    set sprite 4 to Y,24,SEye1,10
+  else
+    set sprite 3 to Y,24,SPod0,13
+    set sprite 4 to Y,24,SEye0,11
+  end if
+  set sprite 0 to 119,216,SShip1,15
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,14
+  put char 32 at 11,15
+  J = Menu + 14
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "QUOLERUS"
+  print at 2,4, "BASED ON QUOLERUS,"
+  print at 2,5, "COMPUTE!'S GAZETTE,"
+  print at 2,6, "NOVEMBER 1988 (COMMODORE 64"
+  print at 2,7, "BASIC AND MACHINE CODE)."
+  print at 2,8, "THE LISTING CREDITS ITS"
+  print at 2,9, "INSPIRATION: A 1981 ATARI"
+  print at 2,10, "GAME, BY PERMISSION."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: CELL WALL"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; QuRoll: roll the wall's first Wc columns of Sh (21 rows of 8 cells,
+; row by row): even columns up one row, odd ones down, wrapping round.
+; Wc is even, so a column is even when the count left (C) is even.
+; Runs with the NMI off. Uses AF BC DE HL (IX saved).
+QuRoll:
+    push ix
+    ld a,(AMY_UVAR_Wc)
+    or a
+    jr z,QrDone
+    ld c,a
+    ld ix,AMY_UVAR_Sh
+QrCol:
+    push ix
+    pop hl
+    bit 0,c
+    jr nz,QrDown
+    ld a,(hl)
+    push af
+    ld b,20
+QrU1:
+    push bc
+    ld d,h
+    ld e,l
+    ld bc,8
+    add hl,bc
+    ld a,(hl)
+    ld (de),a
+    pop bc
+    djnz QrU1
+    pop af
+    ld (hl),a
+    jr QrNext
+QrDown:
+    ld de,160
+    add hl,de
+    ld a,(hl)
+    push af
+    ld b,20
+QrD1:
+    push bc
+    ld d,h
+    ld e,l
+    ld bc,0FFF8h
+    add hl,bc
+    ld a,(hl)
+    ld (de),a
+    pop bc
+    djnz QrD1
+    pop af
+    ld (hl),a
+QrNext:
+    inc ix
+    dec c
+    jr nz,QrCol
+QrDone:
+    pop ix
+    ret
+QuZap:
+    db $40,$3E,$30,$01,$40,$4E,$40,$01,$40,$61,$40,$01,$40,$79,$50,$01,$40,$98,$50,$01,$40,$BE,$60,$01
+    db $50
+QuCell:
+    db $00,$00,$42,$01,$00,$00,$61,$02,$10
+QuPop:
+    db $00,$00,$25,$03,$00,$00,$46,$05,$00,$00,$66,$06,$10
+QuLaunch:
+    db $40,$BA,$50,$02,$40,$9B,$50,$02,$40,$85,$50,$02,$40,$75,$50,$02,$40,$68,$50,$02,$40,$5D,$50,$02
+    db $40,$55,$50,$02,$40,$4E,$50,$02,$50
+QuBoom:
+    db $00,$00,$06,$04,$00,$00,$16,$06,$00,$00,$27,$0A,$00,$00,$47,$0E,$00,$00,$77,$10,$10
+QuBig:
+    db $00,$00,$06,$08,$00,$00,$16,$0A,$00,$00,$27,$0C,$00,$00,$37,$10,$00,$00,$57,$14,$00,$00,$77,$14
+    db $10
+QuLevel:
+    db $40,$AA,$20,$06,$40,$8F,$20,$06,$40,$71,$20,$06,$40,$55,$20,$06,$40,$47,$20,$12,$50
+QuExtra:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$6B,$20,$04,$40,$47,$20,$0A,$50
+QuStart:
+    db $40,$53,$21,$06,$40,$E2,$20,$06,$40,$AA,$20,$06,$40,$71,$20,$0E,$50
+QuOver:
+    db $40,$E2,$10,$0C,$40,$FE,$20,$0C,$40,$1D,$21,$0C,$40,$53,$21,$0C,$40,$C5,$31,$1E,$50
+
+QuSoundTable:
+    dw QuTuneMel,$702B
+    dw QuTuneBass,$7035
+    dw QuZap,$7049
+    dw QuCell,$703F
+    dw QuPop,$703F
+    dw QuLaunch,$7049
+    dw QuBoom,$703F
+    dw QuBig,$703F
+    dw QuLevel,$7049
+    dw QuExtra,$7049
+    dw QuStart,$7049
+    dw QuOver,$7049
+; Cell Wall (original)
+; Tiny Sound, 8 frames per step
+QuTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$2A,$01,$01,$28,$01,$26,$01,$25
+    db $23,$01,$01,$01,$21,$01,$23,$01,$25,$01,$26,$01,$28,$01,$26,$01
+    db $25,$01,$21,$01,$23,$01,$26,$01,$2A,$01,$01,$2D,$01,$2B,$01,$2A
+    db $28,$01,$26,$01,$25,$01,$28,$01,$26,$01,$25,$01,$23,$01,$2A,$01
+    db $2F,$01,$00,$01
+    db $FF
+QuTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $09,$01,$10,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$10,$01,$0B,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $12,$01,$00,$01
+    db $FF
+}

@@ -1,0 +1,1298 @@
+cartridge "Q-BIRD/COMPUTE!'S GAZETTE/1986"
+
+' Q-BIRD
+' A ColecoVision game based on "Q-Bird", COMPUTE!'s Gazette December 1986
+' (Commodore 64 machine language, one file started with SYS 2061; the
+' disk and the program do not name the author). Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: a baby bluebird, too young to fly, hops from cube to cube on a
+' slanted board of 7 x 6 cube tops. Each landing changes a top's colour one
+' step toward the colour shown at the bottom (CHANGE TO); turn every top to
+' it to clear the level. Hop off the edge and you fall. A cat stalks you,
+' toads hop about at random, a hawk sweeps across one row, a marble rolls
+' down the slope. Hold the button while you push the stick for a flapping
+' long jump: two cubes at once, and nothing can touch you in mid-air.
+'
+' From the original (orig/qbird.dis, read from the code and timed in
+' jsc64): the board of 7 x 6 tops in rows shifted one step per row; the
+' four hop directions (stick up = up the slope, down = down the slope,
+' left, right) of 25 one-pixel steps a jiffy; fire held doubles every step
+' (the long jump) and makes you safe from the enemies in mid-hop; a top
+' changes colour one step per landing and stops at the level's colour,
+' level N needing N steps (level select on the title with the stick, 1 to
+' 15); 10 points per colour step times the step number; a level ends when
+' all 42 tops are done; three random hoppers that only land on tops, a
+' chaser that hops toward your row first and then along it, a bird that
+' flies across a random row from the left, a ball that drops down the
+' slope, a bonus item on a random top (100 points, the enemies stop for a
+' while); hopping off the board loses a life; five lives shown, the game
+' ends on a death with none shown; GET READY, GAME OVER, a high score.
+'
+' Liberties: original drawings (a bluebird, a cat, toads, a hawk, a glass
+' marble, a worm as the bonus) on cubes with a front face; the tops are
+' squared (the C64 drew slanted ones); hops follow an arc (the C64 drew a
+' three-segment path); the long jump is chosen when a hop starts (the C64
+' read the button every step); levels need at most 4 colour steps a top
+' (the C64 went up to 15, which needs 630 landings): from level 5 the
+' enemies are faster instead; the number of toads grows from 2 to 3 after
+' level 1; the enemies go back to their starting places after a death so
+' the bird is not caught at once again (the C64 left them where they
+' were); the hawk and the marble wait a few seconds before coming back;
+' the chaser stays on the board; collisions are box tests on the sprites'
+' places (the C64 compared positions too); sounds for every hop, landing,
+' fall and catch; the title tune; GAME OVER then the title (the C64
+' restarted after a delay).
+'
+' Controls: controller 1 (or 2): the stick hops; hold a side button with
+' the stick for the long jump. On the title, up and down choose the level,
+' a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. Own xorshift random numbers.
+
+const TS0t0 = 128
+const TS0b0 = 129
+const TS0t1 = 130
+const TS0b1 = 131
+const TS0t2 = 132
+const TS0b2 = 133
+const TSw0 = 134
+const TS1t0 = 135
+const TS1b0 = 136
+const TS1t1 = 137
+const TS1b1 = 138
+const TS1t2 = 139
+const TS1b2 = 140
+const TSw1 = 141
+const TS2t0 = 142
+const TS2b0 = 143
+const TS2t1 = 144
+const TS2b1 = 145
+const TS2t2 = 146
+const TS2b2 = 147
+const TSw2 = 148
+const TS3t0 = 149
+const TS3b0 = 150
+const TS3t1 = 151
+const TS3b1 = 152
+const TS3t2 = 153
+const TS3b2 = 154
+const TSw3 = 155
+const TS4t0 = 156
+const TS4b0 = 157
+const TS4t1 = 158
+const TS4b1 = 159
+const TS4t2 = 160
+const TS4b2 = 161
+const TSw4 = 162
+const TFr0 = 163
+const TFr1 = 164
+const TFr2 = 165
+const TArrow = 166
+const TLife = 167
+const TTq = 168
+const SBird = 0
+const SBirdd = 4
+const SBirdl = 8
+const SBirddl = 12
+const SCat = 16
+const SToad = 20
+const SToad2 = 24
+const SHawk = 28
+const SHawk2 = 32
+const SMarble = 36
+const SWorm = 40
+const NTiles8 = 328
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHop = 3
+const SndLeap = 4
+const SndPaint = 5
+const SndFall = 6
+const SndCaught = 7
+const SndWorm = 8
+const SndClear = 9
+const SndReady = 10
+const SndOver = 11
+const NSpr = 9
+const NTop = 42
+const HopT = 24
+const LongT = 48
+' the hop's arc in pixels, by frame of a 24-frame hop (and of a 48-frame one)
+data Arc bytes 0,2,4,5,7,8,9,10,11,11,12,12,12,12,12,11,11,10,9,8,7,5,4,2,0
+data ArcL bytes 0,2,3,5,6,7,9,10,11,12,13,14,15,16,17,17,18,18,19,19,19,20,20,20,20,20,20,20,19,19,19,18,18,17,17,16,15,14,13,12,11,10,9,7,6,5,3,2,0
+data Third bytes 0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,9,9,9,10,10,10,11,11,11,12,12,12,13,13,13,14,14,14,15,15,15,16
+' the chaser's pause between hops, by level 1-8 (then 10)
+data CatWait bytes 30,28,26,24,20,16,13,10
+
+data TilePat bytes
+  $00,$00,$00,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $00,$81,$81,$81,$81,$81,$00,$00
+  $00,$00,$00,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$04,$04,$04,$00
+  $00,$20,$20,$00,$00,$00,$00,$00
+  $01,$01,$01,$00,$41,$41,$41,$00
+  $00,$10,$08,$83,$08,$10,$00,$00
+  $00,$38,$91,$03,$03,$87,$28,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $05,$04,$04,$54,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$01,$01
+  $05,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$01,$01
+  $15,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$01,$01
+  $01,$15,$14,$14,$14,$14,$01,$01
+  $0F,$0B,$0B,$FB,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0A,$0A
+  $0F,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0A,$0A
+  $1F,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1A,$1A
+  $01,$1F,$1B,$1B,$1B,$1B,$1A,$01
+  $09,$08,$08,$98,$08,$08,$08,$08
+  $08,$08,$08,$08,$08,$08,$06,$06
+  $09,$08,$08,$08,$08,$08,$08,$08
+  $08,$08,$08,$08,$08,$08,$06,$06
+  $19,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$16,$16
+  $01,$19,$18,$18,$18,$18,$16,$01
+  $09,$0D,$0D,$9D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0D,$0D,$0D,$06,$06
+  $09,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0D,$0D,$0D,$06,$06
+  $19,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $1D,$1D,$1D,$1D,$1D,$1D,$16,$16
+  $01,$19,$1D,$1D,$1D,$1D,$16,$01
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0E,$0E
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0E,$0E
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $1F,$1F,$1F,$1F,$1F,$1F,$1E,$1E
+  $01,$1F,$1F,$1F,$1F,$1F,$1E,$01
+  $0A,$0A,$0A,$01,$16,$16,$16,$01
+  $0A,$1A,$1A,$01,$06,$06,$06,$01
+  $1A,$1A,$1A,$01,$16,$16,$16,$01
+  $01,$F1,$F1,$1F,$F1,$F1,$01,$01
+  $01,$51,$15,$15,$15,$15,$B1,$01
+  $15,$14,$14,$14,$14,$14,$1A,$01
+end data
+data SpritePat bytes
+  $00,$03,$07,$0E,$0E,$0F,$0F,$1F,$30,$70,$F0,$60,$00,$07,$00,$00
+  $00,$C0,$E0,$70,$70,$F0,$E0,$E0,$F0,$78,$38,$38,$70,$E0,$00,$00
+  $00,$00,$00,$01,$01,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$00,$02,$06
+  $00,$00,$00,$80,$00,$0C,$1C,$00,$00,$80,$C0,$C0,$80,$00,$40,$C0
+  $00,$03,$07,$0E,$0E,$0F,$07,$07,$0F,$1E,$1C,$1C,$0E,$07,$00,$00
+  $00,$C0,$E0,$70,$70,$F0,$F0,$F8,$0C,$0E,$0F,$06,$00,$E0,$00,$00
+  $00,$00,$00,$01,$00,$30,$38,$00,$00,$01,$03,$03,$01,$00,$02,$03
+  $00,$00,$00,$80,$80,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$00,$40,$60
+  $20,$30,$3F,$37,$3F,$3E,$1F,$0F,$1F,$3F,$3F,$3F,$3F,$1F,$18,$38
+  $08,$18,$F8,$78,$F8,$F8,$F0,$E0,$F2,$FA,$FA,$F4,$F4,$E8,$60,$E0
+  $00,$00,$00,$18,$2C,$3C,$7F,$FE,$FF,$7F,$3F,$1F,$78,$F0,$00,$00
+  $00,$00,$00,$30,$68,$78,$FE,$FF,$FF,$FE,$FC,$F8,$1E,$0F,$00,$00
+  $18,$2C,$3C,$7F,$FE,$FF,$7F,$3F,$3F,$30,$30,$60,$60,$00,$00,$00
+  $30,$68,$78,$FE,$FF,$FF,$FE,$FC,$FC,$0C,$0C,$06,$06,$00,$00,$00
+  $C0,$E0,$70,$38,$1D,$0F,$07,$03,$02,$03,$01,$02,$00,$00,$00,$00
+  $03,$07,$0E,$1C,$B8,$F0,$E0,$C0,$40,$C0,$80,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0F,$3F,$7F,$E3,$C3,$01,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$F0,$FC,$FE,$C7,$C3,$80,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0E,$1E,$1F,$3F,$3F,$3F,$1F,$1F,$0F,$03,$00
+  $00,$00,$00,$00,$C0,$70,$F8,$F8,$FC,$FC,$FC,$F8,$F8,$F0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$1F,$31,$60,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$1C,$36,$3E,$30,$30,$B0,$F0,$60,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$A8,$A8,$A8,$20,$20,$20,$20,$20,$A8,$A8,$20,$20,$A8,$A8,$A8,$20,$A8,$A8,$20,$20,$A8,$A8,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$A8,$20,$A8,$20,$20,$20,$20,$20,$A8,$20,$A8,$20,$20,$A8,$20,$20,$A8,$20,$A8,$20,$A8,$20,$A8,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$A8,$20,$A8,$20,$A8,$A8,$A8,$20,$A8,$A8,$20,$20,$20,$A8,$20,$20,$A8,$A8,$20,$20,$A8,$20,$A8,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$A8,$A8,$20,$20,$20,$20,$20,$20,$A8,$20,$A8,$20,$20,$A8,$20,$20,$A8,$20,$A8,$20,$A8,$20,$A8,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$A8,$A8,$20,$20,$20,$20,$20,$A8,$A8,$20,$20,$A8,$A8,$A8,$20,$A8,$20,$A8,$20,$A8,$A8,$20,$20,$20,$20,$20
+end data
+
+' a hopping thing: its cube (I, J), the hop under way (Dir 1 up 2 down
+' 3 left 4 right, T frames done of Dur, Long), the wait before the next
+' hop, the screen place (X, Y) and where the hop began (FX, FY), Fall = 1
+' once it has left the board
+record Mover:
+  u8 Act
+  u8 I
+  u8 J
+  u8 Dir
+  u8 T
+  u8 Dur
+  u8 Long
+  u8 Pause
+  u8 X
+  u8 Y
+  u8 FX
+  u8 FY
+  u8 Fall
+  u8 Face
+end record
+
+' 0 the bird, 1 the cat, 2-4 the toads, 5 the hawk, 6 the marble, 7 the worm
+Mover Mv[8]
+u8 Tl[42]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 Lv = 1
+u8 StartLv = 1
+u8 Tgt = 1
+u8 Done = 0
+u8 Lives = 5
+u8 Over = 0
+u8 Dying = 0
+u8 ClrT = 0
+u8 Freeze = 0
+u8 NToad = 2
+u8 CatT = 0
+u8 HawkT = 0
+u8 HawkSpd = 1
+u8 MarbT = 0
+u8 WormT = 0
+u8 Deaths = 0
+u8 Landed = 0
+u8 Pts = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+' loop counters (never shared with the helpers)
+u8 Mi = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 Ti = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Ni = 0
+u8 Nj = 0
+u8 Ok = 0
+u8 Hit = 0
+
+  tile screen
+  set sound table QbSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER, then back to the title on a press
+  print at 9,2, "  GAME  OVER  "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the board: cube (I, J) has its top at column 8 - J + 3 I, rows 4 + 3 J
+' and 5 + 3 J, its front at row 6 + 3 J; the sprite standing on it is at
+' X 8 x column + 4, Y 26 + 24 J
+function TopCol(u8 Ci2, u8 Cj2) as u8
+  u8 Col
+  Col = Ci2 * 3 + 8
+  Col = Col - Cj2
+  return Col
+
+function SprX(u8 Si, u8 Sj) as u8
+  u8 Cc
+  Cc = TopCol(Si, Sj)
+  return Cc * 8 + 4
+
+function SprY(u8 Sj) as u8
+  return Sj * 24 + 26
+
+sub DrawTop(u8 Di, u8 Dj):
+  u8 Col
+  u8 Row
+  u8 Base
+  Col = TopCol(Di, Dj)
+  Row = Dj * 3 + 4
+  K = Dj * 7 + Di
+  Base = Tl[K] * 7 + 128
+  put char Base at Col,Row
+  put char Base + 2 at Col + 1,Row
+  put char Base + 4 at Col + 2,Row
+  put char Base + 1 at Col,Row + 1
+  put char Base + 3 at Col + 1,Row + 1
+  put char Base + 5 at Col + 2,Row + 1
+  put char TFr0 at Col,Row + 2
+  put char TFr1 at Col + 1,Row + 2
+  put char TFr2 at Col + 2,Row + 2
+  return
+end sub
+
+sub DrawBoard:
+  for Ri = 0 to 5
+    for Ci = 0 to 6
+      DrawTop(Ci, Ri)
+    next
+  next
+  return
+end sub
+
+' CHANGE TO: the colours from the first to the level's, with arrows
+sub DrawGoal:
+  fill 32 count 28 at 2,22
+  print at 2,22, "CHANGE TO"
+  for Ci = 0 to Tgt
+    K = Ci * 2 + 12
+    put char Ci * 7 + TSw0 at K,22
+    if Ci < Tgt then put char TArrow at K + 1,22
+  next
+  fill 32 count 5 at 24,22
+  if Lives > 0 then fill TLife count Lives at 24,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a new hop for mover Mi in direction Dir (Long = two cubes)
+sub StartHop(u8 Hd, u8 Hl):
+  Mv[Mi].Dir = Hd
+  Mv[Mi].Long = Hl
+  Mv[Mi].T = 0
+  Mv[Mi].FX = Mv[Mi].X
+  Mv[Mi].FY = Mv[Mi].Y
+  if Hl = 1 then
+    Mv[Mi].Dur = LongT
+  else
+    Mv[Mi].Dur = HopT
+  end if
+  select case Hd
+    case 1, 4
+      Mv[Mi].Face = 0
+    case else
+      Mv[Mi].Face = 1
+  end select
+  return
+end sub
+
+' the cube a hop in direction Hd from (I, J) lands on: Ni, Nj, Ok = 1 when
+' it is on the board
+sub Target(u8 Hd, u8 Hl):
+  u8 Steps
+  Steps = Hl + 1
+  Ni = Mv[Mi].I
+  Nj = Mv[Mi].J
+  select case Hd
+    case 1
+      Nj = Nj - Steps
+    case 2
+      Nj = Nj + Steps
+    case 3
+      Ni = Ni - Steps
+    case 4
+      Ni = Ni + Steps
+  end select
+  Ok = 0
+  if Ni < 7 then
+    if Nj < 6 then Ok = 1
+  end if
+  return
+end sub
+
+' one frame of mover Mi's hop; Landed = 1 when it lands
+sub HopStep:
+  u8 P
+  u8 Q
+  u8 A
+  u8 Fx
+  u8 Fy
+  Landed = 0
+  if Mv[Mi].Fall = 1 then
+    Mv[Mi].Y = Mv[Mi].Y + 3
+    return
+  end if
+  inc Mv[Mi].T
+  P = Mv[Mi].T
+  Fx = Mv[Mi].FX
+  Fy = Mv[Mi].FY
+  Q = Third[P]
+  if Mv[Mi].Long = 1 then
+    A = ArcL[P]
+  else
+    A = Arc[P]
+  end if
+  select case Mv[Mi].Dir
+    case 1
+      Mv[Mi].X = Fx + Q
+      Mv[Mi].Y = Fy - P - A
+    case 2
+      Mv[Mi].X = Fx - Q
+      Mv[Mi].Y = Fy + P - A
+    case 3
+      Mv[Mi].X = Fx - P
+      Mv[Mi].Y = Fy - A
+    case 4
+      Mv[Mi].X = Fx + P
+      Mv[Mi].Y = Fy - A
+  end select
+  Target(Mv[Mi].Dir, Mv[Mi].Long)
+  if Ok = 0 then
+    ' off the board: a few frames out, then the fall
+    if P = 8 then
+      Mv[Mi].Fall = 1
+      if Mi = 0 then play sound SndFall
+    end if
+    return
+  end if
+  if P = Mv[Mi].Dur then
+    Mv[Mi].I = Ni
+    Mv[Mi].J = Nj
+    Mv[Mi].T = 0
+    Mv[Mi].Dir = 0
+    Mv[Mi].X = SprX(Ni, Nj)
+    Mv[Mi].Y = SprY(Nj)
+    Landed = 1
+  end if
+  return
+end sub
+
+sub PlaceAt(u8 Pi2, u8 Pj2):
+  Mv[Mi].Act = 1
+  Mv[Mi].I = Pi2
+  Mv[Mi].J = Pj2
+  Mv[Mi].X = SprX(Pi2, Pj2)
+  Mv[Mi].Y = SprY(Pj2)
+  Mv[Mi].T = 0
+  Mv[Mi].Dir = 0
+  Mv[Mi].Fall = 0
+  Mv[Mi].Long = 0
+  return
+end sub
+
+' everyone back to the start: the bird at the bottom middle, the toads on
+' the top row, the cat later at the top right, no hawk or marble yet
+sub ResetMovers:
+  for Mi = 0 to 7
+    Mv[Mi].Act = 0
+    Mv[Mi].Fall = 0
+    Mv[Mi].T = 0
+    Mv[Mi].Dir = 0
+    Mv[Mi].Face = 0
+  next
+  Mi = 0
+  PlaceAt(3, 5)
+  for Mi = 2 to 4
+    K = Mi - 2
+    if K < NToad then
+      PlaceAt(K * 3, 0)
+      Mv[Mi].Pause = K * 12 + 40
+    end if
+  next
+  CatT = 150
+  HawkT = 240
+  MarbT = 180
+  WormT = 250
+  Freeze = 0
+  Dying = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if ClrT > 0 then
+    dec ClrT
+    if ClrT = 0 then NextLevel
+    return
+  end if
+  if Dying > 0 then
+    dec Dying
+    if Mv[0].Fall = 1 then
+      Mi = 0
+      HopStep
+      if Mv[0].Y > 150 then Mv[0].Act = 0
+    end if
+    if Dying = 0 then LoseLife
+    return
+  end if
+  MoveBird
+  if Dying > 0 then return
+  if ClrT > 0 then return
+  if Freeze > 0 then
+    dec Freeze
+  else
+    MoveEnemies
+  end if
+  Touches
+  return
+end sub
+
+sub MoveBird:
+  Mi = 0
+  if Mv[0].Dir = 0 then
+    V = 0
+    K = J1 & 15
+    if K > 0 then
+      C = J1 & 1
+      if C > 0 then
+        V = 1
+      else
+        C = J1 & 2
+        if C > 0 then
+          V = 2
+        else
+          C = J1 & 4
+          if C > 0 then
+            V = 3
+          else
+            V = 4
+          end if
+        end if
+      end if
+    end if
+    if V > 0 then
+      if Btn > 0 then
+        StartHop(V, 1)
+        play sound SndLeap
+      else
+        StartHop(V, 0)
+        play sound SndHop
+      end if
+    end if
+  end if
+  if Mv[0].Dir > 0 then
+    HopStep
+    if Mv[0].Fall = 1 then
+      Dying = 50
+      return
+    end if
+    if Landed = 1 then Paint
+  end if
+  return
+end sub
+
+' the bird has landed: its cube's top one colour step on
+sub Paint:
+  u8 St
+  K = Mv[0].J * 7 + Mv[0].I
+  St = Tl[K]
+  if St >= Tgt then return
+  inc St
+  Tl[K] = St
+  DrawTop(Mv[0].I, Mv[0].J)
+  Pts = St * 10
+  AddScore
+  play sound SndPaint
+  if St = Tgt then
+    inc Done
+    if Done = NTop then
+      ClrT = 120
+      mute all
+      play sound SndClear
+      print at 9,2, "LEVEL CLEAR!"
+    end if
+  end if
+  return
+end sub
+
+sub AddScore:
+  Score += Pts
+  if Score > Hi then Hi = Score
+  ShowScore
+  return
+end sub
+
+sub MoveEnemies:
+  ' the cat comes in after a while, then hops toward the bird
+  if Mv[1].Act = 0 then
+    dec CatT
+    if CatT = 0 then
+      Mi = 1
+      if Mv[0].J < 2 then
+        if Mv[0].I > 3 then
+          PlaceAt(0, 0)
+        else
+          PlaceAt(6, 0)
+        end if
+      else
+        PlaceAt(6, 0)
+      end if
+      Mv[1].Pause = 30
+    end if
+  else
+    Mi = 1
+    if Mv[1].Dir = 0 then
+      if Mv[1].Pause > 0 then
+        dec Mv[1].Pause
+      else
+        V = CatDir()
+        StartHop(V, 0)
+      end if
+    else
+      HopStep
+      if Landed = 1 then
+        K = Lv
+        if K > 8 then K = 8
+        Mv[1].Pause = CatWait[K - 1]
+      end if
+    end if
+  end if
+  ' the toads: a random hop onto the board
+  for Mi = 2 to 4
+    if Mv[Mi].Act = 1 then
+      if Mv[Mi].Dir = 0 then
+        if Mv[Mi].Pause > 0 then
+          dec Mv[Mi].Pause
+        else
+          ToadHop
+        end if
+      else
+        HopStep
+        if Landed = 1 then
+          Rand
+          V = Rs & 15
+          Mv[Mi].Pause = V + 12
+        end if
+      end if
+    end if
+  next
+  MoveHawk
+  MoveMarble
+  MoveWorm
+  return
+end sub
+
+' the cat: toward the bird's row first, then along it
+function CatDir as u8
+  u8 Dd
+  if Mv[1].J > Mv[0].J then
+    Dd = 1
+  else
+    if Mv[1].J < Mv[0].J then
+      Dd = 2
+    else
+      if Mv[1].I > Mv[0].I then
+        Dd = 3
+      else
+        Dd = 4
+      end if
+    end if
+  end if
+  return Dd
+
+sub ToadHop:
+  u8 Tries
+  Tries = 0
+  while Tries < 4
+    Rand
+    V = Rs & 3
+    V = V + 1
+    Target(V, 0)
+    if Ok = 1 then
+      StartHop(V, 0)
+      Tries = 4
+    end if
+    inc Tries
+  end while
+  return
+end sub
+
+' the hawk: from the left edge across a random row
+sub MoveHawk:
+  if Mv[5].Act = 0 then
+    dec HawkT
+    if HawkT = 0 then
+      Rand
+      V = Rs & 7
+      if V > 5 then V = V - 3
+      Mv[5].Act = 1
+      Mv[5].J = V
+      Mv[5].X = 16
+      Mv[5].Y = SprY(V) - 2
+    end if
+    return
+  end if
+  Mv[5].X = Mv[5].X + HawkSpd
+  if Mv[5].X >= 224 then
+    Mv[5].Act = 0
+    Rand
+    V = Rs & 63
+    HawkT = V + 200
+  end if
+  return
+end sub
+
+' the marble: drops onto the top row and rolls down the slope
+sub MoveMarble:
+  Mi = 6
+  if Mv[6].Act = 0 then
+    dec MarbT
+    if MarbT = 0 then
+      Rand
+      V = Rs & 7
+      if V > 6 then V = 3
+      ' never straight onto the bird
+      if Mv[0].J < 2 then
+        if V = Mv[0].I then V = 6 - V
+        if V = Mv[0].I then V = 0
+      end if
+      PlaceAt(V, 0)
+      Mv[6].Pause = 20
+    end if
+    return
+  end if
+  if Mv[6].Fall = 1 then
+    HopStep
+    if Mv[6].Y > 150 then
+      Mv[6].Act = 0
+      Mv[6].Fall = 0
+      Rand
+      V = Rs & 63
+      MarbT = V + 150
+    end if
+    return
+  end if
+  if Mv[6].Dir = 0 then
+    if Mv[6].Pause > 0 then
+      dec Mv[6].Pause
+    else
+      StartHop(2, 0)
+    end if
+  else
+    HopStep
+    if Landed = 1 then Mv[6].Pause = 10
+  end if
+  return
+end sub
+
+' the worm: now and then on a random top for five seconds
+sub MoveWorm:
+  if Mv[7].Act = 0 then
+    dec WormT
+    if WormT = 0 then
+      Rand
+      V = Rs & 7
+      if V > 6 then V = 0
+      W16 = Rs >> 8
+      K = W16 & 7
+      if K > 5 then K = 2
+      if V = Mv[0].I then
+        if K = Mv[0].J then V = V ^ 1
+      end if
+      Mi = 7
+      PlaceAt(V, K)
+      Mv[7].Pause = 0
+      WormT = 255
+    end if
+    return
+  end if
+  dec WormT
+  if WormT < 2 then
+    Mv[7].Act = 0
+    WormT = 255
+  end if
+  return
+end sub
+
+' the bird against the others (box tests on the sprites' places); safe in
+' the middle of a long jump
+sub Touches:
+  u8 Bx
+  u8 By
+  u8 Safe
+  Bx = Mv[0].X
+  By = Mv[0].Y
+  Safe = 0
+  if Mv[0].Long = 1 then
+    if Mv[0].T > 5 then
+      if Mv[0].T < 43 then Safe = 1
+    end if
+  end if
+  for Ti = 1 to 7
+    if Mv[Ti].Act = 1 then
+      Hit = 0
+      X = Mv[Ti].X
+      Y = Mv[Ti].Y
+      if Bx + 10 > X then
+        if X + 10 > Bx then
+          if By + 10 > Y then
+            if Y + 10 > By then Hit = 1
+          end if
+        end if
+      end if
+      if Hit = 1 then
+        if Ti = 7 then
+          Mv[7].Act = 0
+          WormT = 255
+          Score += 100
+          if Score > Hi then Hi = Score
+          ShowScore
+          Freeze = 180
+          play sound SndWorm
+        else
+          if Safe = 0 then
+            Dying = 60
+            mute all
+            play sound SndCaught
+            Ti = 7
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub LoseLife:
+  inc Deaths
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  dec Lives
+  ResetMovers
+  DrawGoal
+  GetReady
+  return
+end sub
+
+sub GetReady:
+  DrawSprites
+  print at 10,2, "GET READY"
+  play sound SndReady
+  for Ti = 1 to 60
+    Frame1
+  next
+  print at 9,2, "            "
+  return
+end sub
+
+sub NextLevel:
+  if Lv < 15 then inc Lv
+  StartLevel
+  return
+end sub
+
+sub StartLevel:
+  Tgt = Lv
+  if Tgt > 4 then Tgt = 4
+  NToad = 3
+  if Lv = 1 then NToad = 2
+  HawkSpd = 1
+  if Lv > 4 then HawkSpd = 2
+  fill array Tl with 0
+  Done = 0
+  ClrT = 0
+  print at 9,2, "            "
+  DrawBoard
+  ShowLevel
+  ResetMovers
+  DrawGoal
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites 0-1 the bird (detail, body), 2 the cat, 3-5 the toads, 6 the
+' hawk, 7 the marble, 8 the worm
+sub DrawSprites:
+  u8 Pat
+  if Mv[0].Act = 1 then
+    Pat = Mv[0].Face * 8
+    set sprite 0 to Mv[0].Y - 1,Mv[0].X,SBirdd + Pat,15
+    set sprite 1 to Mv[0].Y - 1,Mv[0].X,SBird + Pat,5
+  else
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  end if
+  for Ti = 1 to 7
+    Ci = Ti + 1
+    if Mv[Ti].Act = 1 then
+      select case Ti
+        case 1
+          set sprite Ci to Mv[Ti].Y - 1,Mv[Ti].X,SCat,14
+        case 2, 3, 4
+          Pat = SToad
+          if Mv[Ti].Dir > 0 then Pat = SToad2
+          set sprite Ci to Mv[Ti].Y - 1,Mv[Ti].X,Pat,3
+        case 5
+          V = Tick & 8
+          Pat = SHawk
+          if V > 0 then Pat = SHawk2
+          set sprite Ci to Mv[Ti].Y - 1,Mv[Ti].X,Pat,10
+        case 6
+          set sprite Ci to Mv[Ti].Y - 1,Mv[Ti].X,SMarble,7
+        case 7
+          set sprite Ci to Mv[Ti].Y - 1,Mv[Ti].X,SWorm,9
+      end select
+    else
+      set sprite Ci to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 8,1, Score
+  print at 19,1, Hi
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 27,1, "L"
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  print at 2,1, "SCORE"
+  print at 16,1, "HI"
+  Score = 0
+  Lives = 5
+  Over = 0
+  Deaths = 0
+  Lv = StartLv
+  StartLevel
+  ShowScore
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  GetReady
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: Q-BIRD in blue cubes, a row of cubes the bird hops along, the
+' level choice, the best score, the tune once
+sub TitlePage:
+  u8 Bx
+  u8 Bd
+  u8 Ph
+  NewScreen
+  print at 2,1, "COMPUTE!'S GAZETTE DEC 1986"
+  copy TitleMap count 160 to vram.name + 96
+  for Ci = 0 to 7
+    K = Ci * 3 + 4
+    V = Ci & 3
+    V = V * 7 + 128
+    put char V at K,12
+    put char V + 2 at K + 1,12
+    put char V + 4 at K + 2,12
+    put char V + 1 at K,13
+    put char V + 3 at K + 1,13
+    put char V + 5 at K + 2,13
+    put char TFr0 at K,14
+    put char TFr1 at K + 1,14
+    put char TFr2 at K + 2,14
+  next
+  print at 5,16, "UP/DOWN: START LEVEL"
+  ShowStartLv
+  print at 5,19, "PRESS BUTTON TO START"
+  if Hi > 0 then
+    print at 10,21, "BEST ", Hi
+  end if
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Bx = 32
+  Bd = 4
+  Ph = 0
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  ' the bird hops along the cubes: 24 pixels a hop, then a short rest
+  inc Ph
+  if Ph >= 36 then
+    Ph = 0
+    if Bx >= 200 then Bd = 3
+    if Bx <= 32 then Bd = 4
+  end if
+  V = 0
+  if Ph < 24 then
+    if Bd = 4 then
+      inc Bx
+    else
+      dec Bx
+    end if
+    V = Arc[Ph]
+  end if
+  K = 0
+  if Bd = 3 then K = 8
+  Y = 89 - V
+  set sprite 0 to Y,Bx,SBirdd + K,15
+  set sprite 1 to Y,Bx,SBird + K,5
+  update sprites
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if StartLv < 15 then inc StartLv
+      else
+        if StartLv > 1 then dec StartLv
+      end if
+      ShowStartLv
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub ShowStartLv:
+  NumU = StartLv
+  print at 11,17, "LEVEL ", digits$(NumU, 2)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "Q-BIRD"
+  print at 2,5, "BASED ON Q-BIRD,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "DECEMBER 1986 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: FIRST FLIGHT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+QbHop:
+    db $40,$7F,$40,$02,$40,$5F,$50,$02,$50
+QbLeap:
+    db $40,$A9,$30,$02,$40,$7F,$40,$02,$40,$66,$40,$02,$40,$55,$50,$02,$50
+QbPaint:
+    db $40,$47,$30,$02,$40,$35,$40,$03,$50
+QbFall:
+    db $40,$46,$20,$02,$40,$4E,$20,$02,$40,$56,$20,$02,$40,$60,$20,$02,$40,$6B,$30,$02,$40,$76,$30,$02
+    db $40,$84,$30,$02,$40,$92,$30,$02,$40,$A2,$30,$02,$40,$B4,$30,$02,$40,$C8,$30,$02,$40,$DF,$30,$02
+    db $40,$F7,$40,$02,$40,$13,$41,$02,$40,$32,$41,$02,$40,$54,$41,$02,$50
+QbCaught:
+    db $00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$67,$0A,$10
+QbWorm:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$30,$06,$50
+QbClear:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$55,$20,$14,$50
+QbReady:
+    db $40,$8F,$20,$08,$40,$71,$20,$08,$40,$5F,$30,$0E,$50
+QbOver:
+    db $40,$E2,$20,$0C,$40,$FE,$20,$0C,$40,$1D,$21,$0C,$40,$53,$31,$1E,$50
+
+QbSoundTable:
+    dw QbTuneMel,$702B
+    dw QbTuneBass,$7035
+    dw QbHop,$7049
+    dw QbLeap,$7049
+    dw QbPaint,$7049
+    dw QbFall,$7049
+    dw QbCaught,$703F
+    dw QbWorm,$7049
+    dw QbClear,$7049
+    dw QbReady,$7049
+    dw QbOver,$7049
+; First Flight (original)
+; Tiny Sound, 8 frames per step
+QbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$26,$01,$2A,$01,$2D,$01,$2A,$01,$2B,$01,$28,$01
+    db $01,$01,$25,$01,$28,$01,$2B,$01,$28,$01,$2A,$01,$26,$01,$01,$01
+    db $23,$01,$26,$01,$2A,$01,$26,$01,$28,$01,$25,$01,$21,$01,$01,$01
+    db $01,$21,$01,$26,$01,$28,$01,$2A,$01,$2D,$01,$2A,$01,$32,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+QbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$12,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$07,$01,$06,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$01,$0E
+    db $01,$01,$00,$01
+    db $FF
+}

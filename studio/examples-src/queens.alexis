@@ -1,0 +1,1102 @@
+cartridge "QUEENS' QUARREL/COMPUTE!'S GAZETTE/1986"
+
+' QUEENS' QUARREL
+' Based on "Queens' Quarrel", COMPUTE!'s Gazette July 1986 (Commodore 64
+' BASIC with a sprite queen; no author named on the disk; orig/ has the
+' listing). Made for the ColecoVision in Amy (the language by Amy
+' Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' The original's rules (the listing, lines 60-520): eight queens go on a
+' chessboard one row at a time, top to bottom; for each row you give the
+' column. A queen that shares a column or a diagonal with one already
+' placed is refused ("SORRY! TRY AGAIN"). R lifts the last queen, C has
+' the computer work out a solution from the board as it stands (it may
+' lift your queens), E ends. Eight queens down: "SOLUTION!".
+'
+' Liberties (listed):
+' - A goal. The listing stops at one solution. Here a game asks for four
+'   different PATTERNS: the 92 solutions fall into 12 patterns once
+'   turned and mirrored boards count as the same (the panel shows the 12).
+'   A solution whose pattern is already found does not count again, so
+'   one solution turned round four times does not win. Misses (refused
+'   queens) are the score: fewer is better.
+' - The computer's solution never counts: its pattern is marked SHOWN
+'   (grey crown) and can no longer be found by you. If too few patterns
+'   are left to reach four, the game ends.
+' - The listing's solver (lines 450-520) goes back a row but finds the
+'   queen it left there again and loops for ever (orig/sim.py shows it);
+'   here it is a proper search, row by row, that steps back and moves
+'   the queen of the row above on (lifting yours if it must). Each step
+'   is shown; a press finishes it at once.
+' - A refused queen shows which queen attacks it (white on red) until the
+'   next move.
+'
+' Made for this machine: a marble board, the held queen as a sprite that
+' glides along the row, placed queens as tiles, a menu on the right button
+' in place of the keys R, C and E, sounds and an original title tune,
+' "Eight Crowns".
+'
+' Controls (either joystick): left and right move the queen along the
+' row, the left button places her; the right button opens the menu (LIFT
+' QUEEN, SOLVE, END, BACK; up and down choose, a button picks).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; every screen drawn with the NMI off after a wait; at the end a
+' press goes back to the title, and the screen sleeps after 30 seconds.
+
+const TLt00 = 128
+const TLt01 = 129
+const TLt10 = 130
+const TLt11 = 131
+const TDk00 = 132
+const TDk01 = 133
+const TDk10 = 134
+const TDk11 = 135
+const TLtq00 = 136
+const TLtq01 = 137
+const TLtq10 = 138
+const TLtq11 = 139
+const TDkq00 = 140
+const TDkq01 = 141
+const TDkq10 = 142
+const TDkq11 = 143
+const TAtq00 = 144
+const TAtq01 = 145
+const TAtq10 = 146
+const TAtq11 = 147
+const TFh = 148
+const TFv = 149
+const TFc = 150
+const TPm0 = 151
+const TPm1 = 152
+const TPm2 = 153
+const SHold = 0
+const SHoldl = 4
+const NTiles8 = 208
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndPlace = 4
+const SndLift = 5
+const SndSorry = 6
+const SndStep = 7
+const SndSolved = 8
+const SndWin = 9
+const Goal = 4
+' the tune now playing once: frames left (counted in Rearm)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' a pattern: St 0 not found, 1 found by you, 2 shown by the computer; Mx,
+' My where its marker sits on the panel
+record PatRec
+  u8 St
+  u8 Mx
+  u8 My
+end record
+PatRec Pat[13]
+
+' the board: Q(row) the column of the queen in rows 1-8, 0 none; Row the
+' row to fill next (9 when full); Kc the held queen's column
+u8 Q[10]
+u8 Row = 1
+u8 Kc = 4
+' Ar the row of the queen shown attacking (0 none)
+u8 Ar = 0
+u8 Found = 0
+u8 NShown = 0
+bcd digits 3 MissB = 0
+u16 Misses = 0
+' Fm the pattern of the last full board, Res what it was (1 a new
+' pattern, 2 found already, 3 shown already, 4 the computer's)
+u8 Fm = 0
+u8 Res = 0
+u8 SolIx = 0
+u16 Steps = 0
+u8 Fast = 0
+' Ph: 1 placing, 2 the menu, 3 the computer searching, 4 a full board
+' (waiting for a press), 5 the end, 0 elsewhere (for the bot); Idle 1
+' inside the frame wait
+u8 Ph = 0
+u8 Idle = 0
+u8 Mi = 0
+u8 Menu = 0
+u8 Over = 0
+' the held queen's sprite position
+u8 Gx = 0
+u8 Gy = 0
+' work
+u8 Qr = 0
+u8 Qc = 0
+u8 Sr = 0
+u8 Sc = 0
+u8 Fr = 0
+u16 NumU = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stk = 0
+u8 WasStk = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table QqSoundTable areas 6
+  sprites 16x16
+  set sprite count 2
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  NewGame
+
+new_board:
+  ClearQueens
+  NewScreen
+  DrawBoard
+  DrawPanel
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  Gx = HoldX(Kc)
+  PlaceHold
+
+place_loop:
+  Ph = 1
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Lf1 = 1 then
+      if Kc > 1 then dec Kc
+    end if
+    if Rt1 = 1 then
+      if Kc < 8 then inc Kc
+    end if
+    play sound SndTick
+  end if
+  GlideHold
+  if Press2 = 1 then goto menu_open
+  if Press = 0 then goto place_loop
+  TryQueen
+  if Row = 9 then goto board_full
+  goto place_loop
+
+menu_open:
+  Mi = 0
+  ShowMenu
+  play sound SndTick
+menu_loop:
+  Ph = 2
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Up1 = 1 then
+      if Mi > 0 then dec Mi
+    end if
+    if Dn1 = 1 then
+      if Mi < 3 then inc Mi
+    end if
+    ShowMenu
+    play sound SndTick
+  end if
+  if Press2 = 1 then Mi = 3
+  V = Press | Press2
+  if V = 0 then goto menu_loop
+  play sound SndPlace
+  ShowHelp
+  select case Mi
+  case 0
+    LiftQueen
+    goto place_loop
+  case 1
+    goto computer
+  case 2
+    print at 2,21, "THE QUARREL IS OVER.        "
+    goto game_over
+  case else
+    goto place_loop
+  end select
+
+' the computer works out a solution from the board as it stands
+computer:
+  Ph = 3
+  ClearMark
+  HideHold
+  Msg
+  print at 2,21, "WORKING ON A SOLUTION...    "
+  print at 2,22, "(A BUTTON: FINISH AT ONCE)  "
+  Search
+  Fm = PatternOf()
+  Res = 4
+  if Pat[Fm].St = 0 then
+    Pat[Fm].St = 2
+    inc NShown
+    DrawMarker(Fm)
+  end if
+  play sound SndSolved
+  Msg
+  print at 2,21, "THE COMPUTER'S SOLUTION:    "
+  NumU = Fm
+  print at 2,22, "PATTERN "
+  print at 10,22, digits$(NumU, 2)
+  print at 12,22, " (NOT COUNTED)"
+  goto board_wait
+
+board_full:
+  HideHold
+  Fm = PatternOf()
+  Res = Pat[Fm].St + 1
+  if Res = 1 then
+    Pat[Fm].St = 1
+    inc Found
+    DrawMarker(Fm)
+    ShowFound
+    play sound SndWin
+  else
+    play sound SndSolved
+  end if
+  Msg
+  print at 2,21, "SOLUTION! PATTERN "
+  NumU = Fm
+  print at 20,21, digits$(NumU, 2)
+  select case Res
+  case 1
+    print at 2,22, "A NEW PATTERN: IT COUNTS!"
+  case 2
+    print at 2,22, "YOU HAVE FOUND IT ALREADY."
+  case else
+    print at 2,22, "THE COMPUTER SHOWED IT."
+  end select
+  if Found >= Goal then
+    Over = 1
+    goto board_wait
+  end if
+
+board_wait:
+  Ph = 4
+  for Fr = 1 to 60
+    Frame1
+    ReadPad
+  next
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+bw_loop:
+  Frame1
+  ReadPad
+  V = Press | Press2
+  if V = 0 then goto bw_loop
+  if Over = 1 then goto game_won
+  ' too few patterns left to reach the goal?
+  V = 12 - NShown
+  W = Goal - Found
+  if V < W then
+    Msg
+    print at 2,21, "TOO FEW PATTERNS ARE LEFT.  "
+    goto game_over
+  end if
+  goto new_board
+
+game_won:
+  Msg
+  print at 2,21, "ALL FOUR PATTERNS FOUND!    "
+  print at 2,22, "MISSES: "
+  print MissB at 10,22
+  play sound SndWin
+  goto the_end
+
+game_over:
+  play sound SndLift
+  print at 2,22, "PATTERNS FOUND: "
+  NumU = Found
+  print at 18,22, digits$(NumU, 1)
+  print at 19,22, " OF 4      "
+
+' the end: a press goes back to the title; left alone the screen sleeps
+the_end:
+  Ph = 5
+  HideHold
+  for Fr = 1 to 60
+    Frame1
+  next
+  Rearm
+  pause until press and release sleep after 30 seconds
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  goto title
+
+' ---------------------------------------------------------------------
+' the rules
+
+sub NewGame:
+  Found = 0
+  NShown = 0
+  MissB = 0
+  Misses = 0
+  Over = 0
+  Kc = 4
+  for I = 1 to 12
+    Pat[I].St = 0
+    J = I - 1
+    J = J & 3
+    Pat[I].Mx = J * 2 + 22
+    J = I - 1
+    J = J >> 2
+    Pat[I].My = J + 13
+  next
+  return
+end sub
+
+sub ClearQueens:
+  for I = 0 to 9
+    Q[I] = 0
+  next
+  Row = 1
+  Ar = 0
+  return
+end sub
+
+function AbsDiff(u8 Pa, u8 Pb) as u8
+  if Pa >= Pb then return Pa - Pb
+  return Pb - Pa
+
+' Attacker: the row of a placed queen that attacks the square Rr, Cc, or
+' 0 (the listing's column and diagonal checks, lines 60-220)
+function Attacker(u8 Rr, u8 Cc) as u8
+  u8 Ay = 0
+  u8 Ac = 0
+  u8 Ad = 0
+  for Ay = 1 to 8
+    if Ay <> Rr then
+      Ac = Q[Ay]
+      if Ac <> 0 then
+        if Ac = Cc then return Ay
+        Ad = AbsDiff(Ac, Cc)
+        if Ad = AbsDiff(Ay, Rr) then return Ay
+      end if
+    end if
+  next
+  return 0
+
+' TryQueen: the held queen goes down on Row, Kc, or is refused
+sub TryQueen:
+  ClearMark
+  V = Attacker(Row, Kc)
+  if V <> 0 then
+    Ar = V
+    Qr = V
+    Qc = Q[V]
+    DrawSq
+    MissB += 1
+    inc Misses
+    ShowMisses
+    Msg
+    print at 2,21, "SORRY! THAT QUEEN ATTACKS."
+    print at 2,22, "TRY AGAIN, OR RIGHT: MENU."
+    play sound SndSorry
+    return
+  end if
+  Msg
+  Q[Row] = Kc
+  Qr = Row
+  Qc = Kc
+  DrawSq
+  inc Row
+  ShowRow
+  play sound SndPlace
+  if Row < 9 then PlaceHold
+  return
+end sub
+
+' LiftQueen: the queen of the last row comes off (the listing's R)
+sub LiftQueen:
+  ClearMark
+  Msg
+  if Row = 1 then return
+  dec Row
+  Qr = Row
+  Qc = Q[Row]
+  Q[Row] = 0
+  DrawSq
+  Kc = Qc
+  ShowRow
+  PlaceHold
+  play sound SndLift
+  return
+end sub
+
+sub ClearMark:
+  if Ar = 0 then return
+  Qr = Ar
+  Qc = Q[Ar]
+  Ar = 0
+  DrawSq
+  return
+end sub
+
+' Search: the computer's backtracking search from the first empty row
+sub Search:
+  Fast = 0
+  Steps = 0
+  Sr = Row
+  Sc = 1
+sv_row:
+  if Sr = 9 then goto sv_done
+sv_col:
+  if Sc <= 8 then
+    if Attacker(Sr, Sc) <> 0 then
+      inc Sc
+      goto sv_col
+    end if
+  end if
+  if Sc <= 8 then
+    Q[Sr] = Sc
+    Qr = Sr
+    Qc = Sc
+    DrawSq
+    inc Sr
+    Sc = 1
+  else
+    dec Sr
+    Qr = Sr
+    Qc = Q[Sr]
+    Sc = Qc + 1
+    Q[Sr] = 0
+    DrawSq
+  end if
+  inc Steps
+  StepWait
+  goto sv_row
+sv_done:
+  Row = 9
+  ShowRow
+  return
+end sub
+
+sub StepWait:
+  if Fast = 1 then return
+  play sound SndStep
+  for Fr = 1 to 3
+    Frame1
+    ReadPad
+    if Press = 1 then Fast = 1
+    if Press2 = 1 then Fast = 1
+  next
+  return
+end sub
+
+' PatternOf: the pattern (1-12) of the full board, found in the table of
+' the 92 solutions
+function PatternOf() as u8
+  u8 Pi = 0
+  u8 Pk = 0
+  u8 Pm = 0
+  u16 Pb = 0
+  for Pi = 0 to 91
+    Pb = Pi * 8
+    Pm = 1
+    for Pk = 1 to 8
+      if Sols[Pb + Pk - 1] <> Q[Pk] then Pm = 0
+    next
+    if Pm = 1 then
+      SolIx = Pi
+      return Fam[Pi]
+    end if
+  next
+  SolIx = 255
+  return 0
+
+' ---------------------------------------------------------------------
+' the controls
+
+' StickDir: Rep 1 on a new push, then again every 6 frames after 14
+sub StickDir:
+  Stk = Up1 | Dn1
+  Stk = Stk | Lf1
+  Stk = Stk | Rt1
+  Rep = 0
+  if Stk = 0 then
+    WasStk = 0
+    return
+  end if
+  if WasStk = 0 then
+    Rep = 1
+    WasStk = 14
+    return
+  end if
+  dec WasStk
+  if WasStk = 0 then
+    Rep = 1
+    WasStk = 6
+  end if
+  return
+end sub
+
+sub ReadPad:
+  Lf1 = 0
+  Rt1 = 0
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' drawing
+
+function HoldX(u8 Hc) as u8
+  return Hc * 16 + 16
+
+' DrawSq: the square Qr, Qc (marble, a queen if one stands there, white
+' on red if she is the attacker)
+sub DrawSq:
+  V = TLt00
+  K = Qr + Qc
+  K = K & 1
+  if K = 1 then V = TDk00
+  if Q[Qr] = Qc then
+    V = V + 8
+    if Ar = Qr then V = TAtq00
+  end if
+  X = Qc * 2 + 2
+  Y = Qr * 2 + 2
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  inc V
+  dec X
+  inc Y
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  return
+end sub
+
+' DrawBoard: the frame (columns 3-20, rows 3-20), the numbers, the squares
+sub DrawBoard:
+  put char TFc at 3,3
+  put char TFc at 20,3
+  put char TFc at 3,20
+  put char TFc at 20,20
+  for I = 4 to 19
+    put char TFh at I,3
+    put char TFh at I,20
+    put char TFv at 3,I
+    put char TFv at 20,I
+  next
+  for I = 1 to 8
+    V = I * 2 + 2
+    W = I + 48
+    put char W at V,2
+    put char W at 2,V
+  next
+  for Qr = 1 to 8
+    for Qc = 1 to 8
+      DrawSq
+    next
+  next
+  return
+end sub
+
+sub DrawPanel:
+  print at 6,1, "QUEENS' QUARREL"
+  print at 22,3, "ROW"
+  ShowRow
+  print at 22,6, "FOUND"
+  ShowFound
+  print at 22,9, "MISSES"
+  ShowMisses
+  print at 22,12, "PATTERNS"
+  for I = 1 to 12
+    DrawMarker(I)
+  next
+  ShowHelp
+  return
+end sub
+
+sub DrawMarker(u8 Mk):
+  u8 Mt = 0
+  Mt = TPm0 + Pat[Mk].St
+  put char Mt at Pat[Mk].Mx, Pat[Mk].My
+  return
+end sub
+
+sub ShowRow:
+  if Row > 8 then
+    print at 22,4, "-"
+  else
+    V = Row + 48
+    put char V at 22,4
+  end if
+  return
+end sub
+
+sub ShowFound:
+  NumU = Found
+  print at 22,7, digits$(NumU, 1)
+  print at 23,7, " OF 4"
+  return
+end sub
+
+sub ShowMisses:
+  print MissB at 22,10
+  return
+end sub
+
+sub ShowHelp:
+  print at 22,17, "FIRE:   "
+  print at 22,18, " PLACE  "
+  print at 22,19, "RIGHT:  "
+  print at 22,20, " MENU   "
+  return
+end sub
+
+sub ShowMenu:
+  print at 22,17, " LIFT Q "
+  print at 22,18, " SOLVE  "
+  print at 22,19, " END    "
+  print at 22,20, " BACK   "
+  V = Mi + 17
+  put char 62 at 22,V
+  return
+end sub
+
+sub Msg:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' the held queen: a sprite over the row, gliding to the column
+sub PlaceHold:
+  Gy = Row * 16 + 15
+  PutHold
+  return
+end sub
+
+sub GlideHold:
+  V = HoldX(Kc)
+  if V > Gx then Gx = Gx + 4
+  if V < Gx then Gx = Gx - 4
+  PutHold
+  return
+end sub
+
+sub PutHold:
+  set sprite 0 to Gy,Gx,SHoldl,1
+  set sprite 1 to Gy,Gx,SHold,9
+  update sprites
+  return
+end sub
+
+sub HideHold:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' screens and the frame
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  HideHold
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  Ph = 0
+  NewScreen
+  print at 8,2, "QUEENS' QUARREL"
+  ' a little board: the first solution, its rows drawn as 8 strips
+  for Qr = 1 to 8
+    for Qc = 1 to 8
+      V = TLt00
+      K = Qr + Qc
+      K = K & 1
+      if K = 1 then V = TDk00
+      J = Qr - 1
+      if Sols[J] = Qc then V = V + 8
+      X = Qc * 2 + 6
+      Y = Qr * 2 + 2
+      put char V at X,Y
+      inc V
+      inc X
+      put char V at X,Y
+      inc V
+      dec X
+      inc Y
+      put char V at X,Y
+      inc V
+      inc X
+      put char V at X,Y
+    next
+  next
+  print at 3,20, "PLACE EIGHT QUEENS SO NONE"
+  print at 3,21, "CAN TAKE ANOTHER."
+  Menu = 0
+  print at 25,8, "PLAY"
+  print at 25,10, "HOW"
+  print at 25,11, "TO"
+  print at 25,12, "PLAY"
+  print at 25,14, "CRED-"
+  print at 25,15, "ITS"
+  ShowTitleMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasStk = 1
+tp_loop:
+  Frame1
+  ReadPad
+  StickDir
+  if Rep = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    ShowTitleMenu
+    play sound SndTick
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowTitleMenu:
+  put char 32 at 24,8
+  put char 32 at 24,10
+  put char 32 at 24,14
+  select case Menu
+  case 0
+    put char 62 at 24,8
+  case 1
+    put char 62 at 24,10
+  case else
+    put char 62 at 24,14
+  end select
+  return
+end sub
+
+sub RulesPage:
+  Ph = 0
+  NewScreen
+  print at 7,1, "QUEENS' QUARREL"
+  print at 2,3, "PUT A QUEEN IN EACH ROW, TOP"
+  print at 2,4, "TO BOTTOM. NO QUEEN MAY"
+  print at 2,5, "SHARE A COLUMN OR A DIAGONAL"
+  print at 2,6, "WITH ANOTHER. SUCH A QUEEN"
+  print at 2,7, "IS REFUSED: IT IS A MISS."
+  print at 2,9, "THE 92 SOLUTIONS MAKE 12"
+  print at 2,10, "PATTERNS (TURNED OR MIRRORED"
+  print at 2,11, "BOARDS ARE THE SAME). FIND"
+  print at 2,12, "FOUR DIFFERENT PATTERNS."
+  print at 2,14, "THE COMPUTER CAN SOLVE A"
+  print at 2,15, "BOARD, BUT ITS PATTERN IS"
+  print at 2,16, "THEN LOST TO YOU."
+  print at 2,18, "STICK: MOVE. FIRE: PLACE."
+  print at 2,19, "RIGHT: LIFT, SOLVE OR END."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  print at 7,2, "QUEENS' QUARREL"
+  print at 3,5, "BASED ON QUEENS' QUARREL,"
+  print at 3,6, "COMPUTE!'S GAZETTE, JULY"
+  print at 3,7, "1986 (COMMODORE 64)."
+  print at 3,9, "MADE FOR THE COLECOVISION"
+  print at 3,10, "BY CLAUDE (AN AI MADE BY"
+  print at 3,11, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 3,12, "2026, IN AMY BY AMY"
+  print at 3,13, "BIENVENU."
+  print at 3,15, "MUSIC: EIGHT CROWNS"
+  print at 3,16, "(ORIGINAL)"
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+  return
+end sub
+
+' the 92 solutions (columns of rows 1-8) and their patterns (sols.py)
+data Sols bytes
+  1,5,8,6,3,7,2,4, 1,6,8,3,7,4,2,5, 1,7,4,6,8,2,5,3, 1,7,5,8,2,4,6,3
+  2,4,6,8,3,1,7,5, 2,5,7,1,3,8,6,4, 2,5,7,4,1,8,6,3, 2,6,1,7,4,8,3,5
+  2,6,8,3,1,4,7,5, 2,7,3,6,8,5,1,4, 2,7,5,8,1,4,6,3, 2,8,6,1,3,5,7,4
+  3,1,7,5,8,2,4,6, 3,5,2,8,1,7,4,6, 3,5,2,8,6,4,7,1, 3,5,7,1,4,2,8,6
+  3,5,8,4,1,7,2,6, 3,6,2,5,8,1,7,4, 3,6,2,7,1,4,8,5, 3,6,2,7,5,1,8,4
+  3,6,4,1,8,5,7,2, 3,6,4,2,8,5,7,1, 3,6,8,1,4,7,5,2, 3,6,8,1,5,7,2,4
+  3,6,8,2,4,1,7,5, 3,7,2,8,5,1,4,6, 3,7,2,8,6,4,1,5, 3,8,4,7,1,6,2,5
+  4,1,5,8,2,7,3,6, 4,1,5,8,6,3,7,2, 4,2,5,8,6,1,3,7, 4,2,7,3,6,8,1,5
+  4,2,7,3,6,8,5,1, 4,2,7,5,1,8,6,3, 4,2,8,5,7,1,3,6, 4,2,8,6,1,3,5,7
+  4,6,1,5,2,8,3,7, 4,6,8,2,7,1,3,5, 4,6,8,3,1,7,5,2, 4,7,1,8,5,2,6,3
+  4,7,3,8,2,5,1,6, 4,7,5,2,6,1,3,8, 4,7,5,3,1,6,8,2, 4,8,1,3,6,2,7,5
+  4,8,1,5,7,2,6,3, 4,8,5,3,1,7,2,6, 5,1,4,6,8,2,7,3, 5,1,8,4,2,7,3,6
+  5,1,8,6,3,7,2,4, 5,2,4,6,8,3,1,7, 5,2,4,7,3,8,6,1, 5,2,6,1,7,4,8,3
+  5,2,8,1,4,7,3,6, 5,3,1,6,8,2,4,7, 5,3,1,7,2,8,6,4, 5,3,8,4,7,1,6,2
+  5,7,1,3,8,6,4,2, 5,7,1,4,2,8,6,3, 5,7,2,4,8,1,3,6, 5,7,2,6,3,1,4,8
+  5,7,2,6,3,1,8,4, 5,7,4,1,3,8,6,2, 5,8,4,1,3,6,2,7, 5,8,4,1,7,2,6,3
+  6,1,5,2,8,3,7,4, 6,2,7,1,3,5,8,4, 6,2,7,1,4,8,5,3, 6,3,1,7,5,8,2,4
+  6,3,1,8,4,2,7,5, 6,3,1,8,5,2,4,7, 6,3,5,7,1,4,2,8, 6,3,5,8,1,4,2,7
+  6,3,7,2,4,8,1,5, 6,3,7,2,8,5,1,4, 6,3,7,4,1,8,2,5, 6,4,1,5,8,2,7,3
+  6,4,2,8,5,7,1,3, 6,4,7,1,3,5,2,8, 6,4,7,1,8,2,5,3, 6,8,2,4,1,7,5,3
+  7,1,3,8,6,4,2,5, 7,2,4,1,8,5,3,6, 7,2,6,3,1,4,8,5, 7,3,1,6,8,5,2,4
+  7,3,8,2,5,1,6,4, 7,4,2,5,8,1,3,6, 7,4,2,8,6,1,3,5, 7,5,3,1,6,8,2,4
+  8,2,4,1,7,5,3,6, 8,2,5,3,1,7,4,6, 8,3,1,6,2,5,7,4, 8,4,1,3,6,2,7,5
+end data
+data Fam bytes
+  1,2,2,1,3,4,5,6,7,8,9,8,6,10,2,6,11,12,4,5,9,1,5
+  12,11,11,7,3,4,8,7,9,1,12,11,3,6,10,4,12,3,2,8,9,5,7
+  7,5,9,8,2,3,12,4,10,6,3,11,12,1,9,7,8,4,3,7,11,11,12
+  5,1,9,5,4,12,11,6,2,10,6,8,9,8,7,6,5,4,3,1,2,2,1
+end data
+data TilePat bytes
+  $00,$00,$00,$00,$00,$01,$02,$04
+  $00,$00,$00,$40,$80,$00,$08,$04
+  $08,$10,$20,$40,$00,$00,$00,$00
+  $02,$01,$00,$00,$00,$00,$C3,$00
+  $00,$00,$00,$00,$00,$01,$02,$04
+  $00,$00,$00,$40,$80,$00,$08,$04
+  $08,$10,$20,$40,$00,$00,$00,$00
+  $02,$01,$00,$00,$00,$00,$C3,$00
+  $00,$00,$09,$0D,$F0,$07,$03,$03
+  $00,$00,$90,$B0,$F0,$E0,$C0,$C0
+  $07,$07,$F0,$F0,$E0,$E0,$00,$00
+  $E0,$E0,$F0,$F0,$07,$07,$00,$00
+  $00,$00,$09,$0D,$F0,$07,$03,$03
+  $00,$00,$90,$B0,$F0,$E0,$C0,$C0
+  $07,$07,$F0,$F0,$E0,$E0,$00,$00
+  $E0,$E0,$F0,$F0,$07,$07,$00,$00
+  $00,$00,$09,$0D,$F0,$07,$03,$03
+  $00,$00,$90,$B0,$F0,$E0,$C0,$C0
+  $07,$07,$F0,$F0,$E0,$E0,$00,$00
+  $E0,$E0,$F0,$F0,$07,$07,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $00,$00,$C3,$24,$24,$C3,$00,$00
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$49,$94,$80,$80,$C1,$C1,$00
+  $00,$49,$94,$80,$80,$C1,$C1,$00
+end data
+data TileCol bytes
+  $0F,$0F,$0F,$0F,$0F,$EF,$EF,$EF
+  $0F,$0F,$0F,$EF,$EF,$0F,$EF,$EF
+  $EF,$EF,$EF,$EF,$0F,$0F,$0F,$0F
+  $EF,$EF,$0F,$0F,$0F,$0F,$FE,$0F
+  $04,$04,$04,$04,$04,$54,$54,$54
+  $04,$04,$04,$54,$54,$04,$54,$54
+  $54,$54,$54,$54,$04,$04,$04,$04
+  $54,$54,$04,$04,$04,$04,$45,$04
+  $0F,$0F,$8F,$8F,$F8,$8F,$8F,$8F
+  $0F,$0F,$8F,$8F,$8F,$8F,$8F,$8F
+  $8F,$8F,$F8,$F8,$F8,$F8,$0F,$0F
+  $8F,$8F,$8F,$8F,$F8,$F8,$0F,$0F
+  $04,$04,$84,$84,$48,$84,$84,$84
+  $04,$04,$84,$84,$84,$84,$84,$84
+  $84,$84,$48,$48,$48,$48,$04,$04
+  $84,$84,$84,$84,$48,$48,$04,$04
+  $08,$08,$F8,$F8,$8F,$F8,$F8,$F8
+  $08,$08,$F8,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$8F,$8F,$8F,$8F,$08,$08
+  $F8,$F8,$F8,$F8,$8F,$8F,$08,$08
+  $0E,$0E,$01,$0E,$0E,$01,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$E1,$1E,$1E,$E1,$0E,$0E
+  $00,$00,$00,$E0,$E0,$00,$00,$00
+  $00,$B0,$0B,$0B,$0B,$0B,$0B,$00
+  $00,$E0,$0E,$0E,$0E,$0E,$0E,$00
+end data
+data SpritePat bytes
+  $00,$00,$09,$0D,$0F,$07,$03,$03,$07,$07,$0F,$0F,$1F,$1F,$00,$00
+  $00,$00,$90,$B0,$F0,$E0,$C0,$C0,$E0,$E0,$F0,$F0,$F8,$F8,$00,$00
+  $00,$1F,$16,$12,$10,$18,$0C,$0C,$08,$18,$10,$30,$20,$20,$3F,$00
+  $00,$F8,$68,$48,$08,$18,$30,$30,$10,$18,$08,$0C,$04,$04,$FC,$00
+end data
+
+asm {
+QqTick:
+    db $80,$47,$30,$01,$80,$47,$70,$01,$90
+QqPlace:
+    db $40,$AA,$20,$02,$40,$7F,$40,$05,$50
+QqLift:
+    db $40,$7F,$20,$02,$40,$BF,$50,$04,$50
+QqSorry:
+    db $40,$F9,$12,$06,$40,$25,$23,$06,$40,$56,$43,$0A,$50
+QqStep:
+    db $80,$6B,$40,$01,$80,$6B,$80,$01,$90
+QqSolved:
+    db $40,$BF,$20,$05,$40,$97,$20,$05,$40,$7F,$20,$05,$40,$5F,$20,$0E,$50
+QqWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$7F,$20,$06,$40,$6B,$20,$06
+    db $40,$55,$20,$06,$40,$47,$30,$18,$50
+
+QqSoundTable:
+    dw QqTuneMel,$702B
+    dw QqTuneBass,$7035
+    dw QqTick,$7053
+    dw QqPlace,$7049
+    dw QqLift,$7049
+    dw QqSorry,$7049
+    dw QqStep,$7053
+    dw QqSolved,$7049
+    dw QqWin,$7049
+; Eight Crowns (original)
+; Tiny Sound, 8 frames per step
+QqTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$50,$41,$66,$21,$01,$1C,$01,$18,$01,$1A,$01,$1C,$01,$1D,$01
+    db $1C,$01,$01,$01,$1A,$01,$18,$01,$17,$01,$18,$01,$1A,$01,$17,$01
+    db $01,$01,$15,$01,$18,$01,$1C,$01,$21,$01,$23,$01,$24,$01,$23,$01
+    db $01,$01,$21,$01,$20,$01,$1C,$01,$21,$01,$01,$01,$01,$01,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+QqTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$01,$01,$04,$01,$01,$01,$05,$01,$01,$01
+    db $0C,$01,$01,$01,$07,$01,$01,$01,$0E,$01,$01,$01,$04,$01,$01,$01
+    db $04,$01,$01,$01,$09,$01,$01,$01,$0C,$01,$01,$01,$05,$01,$01,$01
+    db $0E,$01,$01,$01,$04,$01,$01,$01,$04,$01,$01,$01,$09,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

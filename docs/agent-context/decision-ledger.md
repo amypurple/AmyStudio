@@ -880,4 +880,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   aggregate difference is pre-existing tree divergence, not a failed example. One project is
   delegated to its target-specific validator. The focused runtime suite passes all five profiles.
 
+## 2026-11-03 - Three additional Gazette ports
+
+- Added Queens' Quarrel (July 1986), Q-Bird (December 1986), and Quolerus (November 1988).
+  Each Balanced ROM is byte-identical to the supplied reference ROM; all three also compile at
+  Off, Safe, Aggressive, and Experimental.
+- Attribution validation passes for 263 COMPUTE!/Gazette examples, including 167 Gazette entries.
+  Full Alexis-Z80 gates pass 760/760: 7,350,990 Balanced bytes and 7,350,067 Aggressive bytes;
+  the promoted clean tree passes at 7,354,540 and 7,353,617 bytes respectively. The unchanged
+  3,550-byte aggregate difference remains pre-existing tree divergence. In both trees 759 ROMs
+  assemble and one project remains delegated to its target-specific validator.
+
 
