@@ -14471,5 +14471,257 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "sbee",
+    "label": "SPELLING BEE (December 1983)",
+    "detail": "Based on Spelling Bee from COMPUTE!'s Gazette, December 1983. Study and spell twenty-five words at easy, medium or hard difficulty; no original author is named in the listings.",
+    "projectName": "SPELLING BEE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "educational"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gpatrol",
+    "label": "SPACE PATROL (July 1984, Gazette)",
+    "detail": "Based on Space Patrol from COMPUTE!'s Gazette, July 1984, a different game from the Ahoy! title of the same name. Shoot descending saucers and land on pads to reload; no original author is named in the listing.",
+    "projectName": "SPACE PATROL - GAZETTE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "robomath",
+    "label": "ROBOT MATH (July 1984)",
+    "detail": "Based on Robot Math from COMPUTE!'s Gazette, July 1984. Configure addition or subtraction drills and enter column answers digit by digit; no original author is named in the listing.",
+    "projectName": "ROBOT MATH",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "educational"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "snocat",
+    "label": "SNO-CAT (August 1984)",
+    "detail": "Based on Sno-Cat from COMPUTE!'s Gazette, August 1984. Drive a snowcat uphill through trees, manage speed and braking, and reach the Mount Crumb ski lodge.",
+    "projectName": "SNO-CAT",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "sgall",
+    "label": "SPACE GALLERY (July 1985)",
+    "detail": "Based on Space Gallery from COMPUTE!'s Gazette, July 1985. Defend a launch deck from looping aliens and falling bombs while conserving shots; no original author is named in the program.",
+    "projectName": "SPACE GALLERY",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "sdock",
+    "label": "SPACE DOCK (August 1985)",
+    "detail": "Based on Space Dock from COMPUTE!'s Gazette, August 1985. Guide a continuously climbing rocket through six traffic lanes and dock beneath the moving station.",
+    "projectName": "SPACE DOCK",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "sarena",
+    "label": "SPACE ARENA (January 1986)",
+    "detail": "Based on Space Arena by Bryan Files from COMPUTE!'s Gazette, January 1986. Two drifting ships duel around central rocks with turning, thrust and wall-bouncing shots.",
+    "projectName": "SPACE ARENA",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "slots",
+    "label": "SLOTS (August 1986)",
+    "detail": "Based on Slots from COMPUTE!'s Gazette, August 1986. Drop pieces into an eight-column rack and form a line of four against the computer; no original author is named in the listing.",
+    "projectName": "SLOTS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "strategy"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "snakepit",
+    "label": "SNAKE PIT (December 1987)",
+    "detail": "Based on Snake Pit from COMPUTE!'s Gazette, December 1987. One or two continuously moving snakes chase mice through a walled pit during a five-minute match; no original author is named in the program.",
+    "projectName": "SNAKE PIT",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "sworms",
+    "label": "SPACE WORMS (April 1989)",
+    "detail": "Based on Space Worms from COMPUTE!'s Gazette, April 1989. Shoot a looping six-segment worm from a moving ship and survive its attacks; no original author is named in the program.",
+    "projectName": "SPACE WORMS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "slap",
+    "label": "SLAP SHOT (October 1989)",
+    "detail": "Based on Slap Shot by John Fedor from COMPUTE!'s Gazette, October 1989. Play one-on-one overhead hockey with skating, goalies, body checks and chargeable shots.",
+    "projectName": "SLAP SHOT",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "sports"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "qewb",
+    "label": "QEWB (February 1990)",
+    "detail": "Based on Qewb from COMPUTE!'s Gazette, February 1990. Rotate and place sideways-drifting block pieces, clear full columns and keep the central spawn area open; no original author is named in the program.",
+    "projectName": "QEWB",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "puzzle"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

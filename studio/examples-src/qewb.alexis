@@ -1,0 +1,997 @@
+cartridge "QEWB/COMPUTE!'S GAZETTE/1990"
+
+' QEWB
+' A ColecoVision game based on "Qewb", COMPUTE!'s Gazette, February 1990
+' (Commodore 64, machine code, SYS 2288; the program says "Copyright 1989
+' COMPUTE! Publications", the author's name is not in the program). Made
+' for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' The game: a falling-block puzzle turned on its side. Every piece appears
+' in the middle of the box and drifts left or right, a column a step, until
+' it hits the wall or the blocks already there. Move it up and down, turn
+' it, or drop it at once. A column filled from top to bottom vanishes and
+' the blocks between it and the middle close up toward the wall. The game
+' ends when a new piece cannot move from where it appears.
+'
+' From the original (rules read from its machine code, orig/qewb.dis, and
+' watched running in jsc64): sixteen 4 x 4 piece kinds with four turns each
+' (the C64's table, $0E03, is copied as is), the first DIFFICULTY kinds are
+' dealt (up to 15: the sixteenth is never dealt, as on the C64) at a random
+' turn; a step every 25 - SPEED loop passes; every 64 pieces one more kind
+' (from piece 32 on) and one pass less a step (at piece 63, never under 1);
+' every 128 pieces the box is wiped; settings DIFFICULTY 1-19 and SPEED
+' 1-19 (both 10 at first), ROTATING (pieces turn by themselves every step)
+' or NONROTATING, EVOLVING (the whole box rolls up a row before every new
+' piece) or NONEVOLVING, DOUBLE-SIDED (pieces start in the middle and go
+' either way, chosen by the key held when they appear, else at random) or
+' SINGLE-SIDED (pieces start at the right and always go left); a piece
+' that cannot make its first step ends the game; 1 point a piece.
+'
+' Liberties: the box is 26 x 19 cells (the C64's was 30 x 22) to fit the
+' safe area; the piece in flight is drawn with sprites and glides between
+' cells; a full column is worth 10 points (the C64 gave 1) and flashes
+' before it goes; the C64's column removal is reconstructed: in the copy on
+' the damaged 1990-02 disk a jump at $1263 goes back into the scan ($1226)
+' instead of into the shifting code ($1266, one bit away), so a full column
+' never went away there; the step time is in frames (5/2 frames a C64 loop
+' pass of about 41 ms); a new piece that overlaps the blocks also ends the
+' game (the C64 drew it over them first); the wipe every 128 pieces counts
+' pieces, not points; the C64's high-score file (QEWB.ARC on disk, with
+' names) is a best score kept until the console is switched off; the C64's
+' halt and pause keys are left out (joystick only); the C64 had no sound:
+' all sounds and the title tune are new.
+'
+' Controls: joystick only. Up and down move the piece, the left button
+' turns it, the right button (or pushing the stick the way the piece is
+' going) drops it. In DOUBLE-SIDED games, hold left or right as a piece
+' appears to send it that way. On the title, up and down choose a line,
+' left and right change a setting, a button starts (or shows the credits).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TEmpty = 128
+const TWall = 129
+const TBlk0 = 130
+const TBlk1 = 131
+const TBlk2 = 132
+const TBlk3 = 133
+const TBlk4 = 134
+const TBlk5 = 135
+const TBlk6 = 136
+const TBlk7 = 137
+const TBlk8 = 138
+const TBlk9 = 139
+const TBlk10 = 140
+const TBlk11 = 141
+const TBlk12 = 142
+const TBlk13 = 143
+const TBlk14 = 144
+const TFlash = 145
+const TArrow = 146
+const SCell = 0
+const NTiles8 = 152
+const SprBytes = 32
+const TBlk = TBlk0
+const LogoX = 5
+const LogoW = 23
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndMove = 4
+const SndTurn = 5
+const SndLand = 6
+const SndDrop = 7
+const SndCol = 8
+const SndWipe = 9
+const SndOver = 10
+const SndPick = 11
+' the box: cells in columns FL..FR, rows FT..FBot; walls round it
+const FL = 3
+const FR = 28
+const FT = 3
+const FBot = 21
+const FW = 26
+const FH = 19
+const MidF = 13
+const SpawnD = 14
+const SpawnS = 25
+const SpawnY = 10
+const MsgRow = 11
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $11,$11,$00,$44,$44,$00,$11,$11
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $01,$01,$01,$01,$01,$01,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$20,$30,$38,$38,$30,$20,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $FE,$FE,$01,$FE,$FE,$01,$FE,$FE
+  $1F,$1F,$1F,$1F,$1F,$1F,$1E,$01
+  $19,$18,$18,$18,$18,$18,$16,$01
+  $1F,$17,$17,$17,$17,$17,$15,$01
+  $19,$1D,$1D,$1D,$1D,$1D,$16,$01
+  $13,$12,$12,$12,$12,$12,$1C,$01
+  $17,$15,$15,$15,$15,$15,$14,$01
+  $1F,$1B,$1B,$1B,$1B,$1B,$1A,$01
+  $1B,$1A,$1A,$1A,$1A,$1A,$16,$01
+  $19,$16,$16,$16,$16,$16,$01,$01
+  $1F,$19,$19,$19,$19,$19,$18,$01
+  $13,$1C,$1C,$1C,$1C,$1C,$01,$01
+  $1F,$1E,$1E,$1E,$1E,$1E,$01,$01
+  $1F,$13,$13,$13,$13,$13,$12,$01
+  $1F,$17,$17,$17,$17,$17,$14,$01
+  $1B,$1B,$1B,$1B,$1B,$1B,$1E,$01
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+end data
+data SpritePat bytes
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data Shapes bytes
+  $00,$F0,$22,$22,$0F,$00,$44,$44
+  $06,$22,$07,$40,$44,$60,$02,$E0
+  $0E,$20,$06,$44,$04,$70,$22,$60
+  $04,$E0,$02,$62,$07,$20,$46,$40
+  $06,$60,$06,$60,$06,$60,$06,$60
+  $07,$E0,$46,$62,$07,$E0,$46,$62
+  $0E,$70,$26,$64,$0E,$70,$26,$64
+  $C4,$60,$2E,$80,$C4,$60,$2E,$80
+  $4E,$40,$04,$E4,$02,$72,$27,$20
+  $0F,$F0,$66,$66,$0F,$F0,$66,$66
+  $4E,$A0,$6C,$60,$AE,$40,$C6,$C0
+  $44,$57,$31,$F0,$EA,$22,$0F,$8C
+  $E4,$E0,$AE,$A0,$E4,$E0,$AE,$A0
+  $0E,$00,$44,$40,$0E,$00,$44,$40
+  $22,$E0,$88,$E0,$E8,$80,$E2,$20
+  $C6,$31,$13,$6C,$63,$8C,$C8,$36
+end data
+data Logo bytes
+  32,131,131,131,32,32,136,136,136,136,136,32,132,32,32,32,132,32,134,134,134,134,32
+  131,32,32,32,131,32,136,32,32,32,32,32,132,32,32,32,132,32,134,32,32,32,134
+  131,32,32,32,131,32,136,32,32,32,32,32,132,32,32,32,132,32,134,32,32,32,134
+  131,32,32,32,131,32,136,136,136,136,32,32,132,32,132,32,132,32,134,134,134,134,32
+  131,32,131,32,131,32,136,32,32,32,32,32,132,32,132,32,132,32,134,32,32,32,134
+  131,32,32,131,32,32,136,32,32,32,32,32,132,132,32,132,132,32,134,32,32,32,134
+  32,131,131,32,131,32,136,136,136,136,136,32,132,32,32,32,132,32,134,134,134,134,32
+end data
+
+' the colour of each kind's sprite (the tiles' body colour)
+data KindCol bytes 15,8,7,13,2,5,11,10,6,9,12,14,3,7,11
+data Bit4 bytes 8,4,2,1
+
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+' settings
+u8 Diff = 10
+u8 Speed = 10
+u8 Spin = 0
+u8 Evolve = 0
+u8 Single = 0
+u8 Sel = 0
+' the game
+u16 Score = 0
+u16 Best = 0
+u16 Pieces = 0
+u16 Cols = 0
+u8 Types = 10
+u8 Per8 = 15
+u8 Period = 37
+u8 PType = 0
+u8 PRot = 0
+u8 PX = 0
+u8 PY = 0
+u8 Dir = 0
+u8 Moved = 0
+u8 Landed = 0
+u8 StepT = 0
+u8 Over = 0
+u8 Phase = 0
+u8 NC = 0
+u8 CX[8]
+u8 CY[8]
+u8 Cnt[26]
+u8 RowB[32]
+u8 Tmp[32]
+u8 DispX = 0
+u8 DispY = 0
+u8 Glide = 1
+u8 Rep = 0
+u8 Ok = 0
+' input: 1 up, 2 down, 4 left, 8 right, 16 left button, 32 right button
+u8 J = 0
+u8 OldJ = 0
+u8 Ed = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Pass = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Ri = 0
+u8 Fi = 0
+u8 Bi = 0
+u8 Ti = 0
+u8 Gi = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table QwSoundTable areas 6
+  sprites 16x16
+  sprites flicker on
+  set sprite count 8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 6 then goto title
+  NewGame
+
+play_loop:
+  Frame1
+  GetInput
+  PlayStep
+  DrawPiece
+  inc Pass
+  if Over = 0 then goto play_loop
+
+  ' the end: GAME OVER over the box, then back to the title on a press
+  HideSprites
+  print at 8,MsgRow - 1, "              "
+  print at 8,MsgRow, "  GAME  OVER  "
+  print at 8,MsgRow + 1, " SCORE " + digits$(Score, 5) + "  "
+  print at 8,MsgRow + 2, "              "
+  if Score > Best then
+    Best = Score
+    print at 8,MsgRow + 2, "  NEW  BEST!  "
+  end if
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' a new game: the box, the settings, the first piece
+
+sub NewGame:
+  NewScreen
+  for Ri = 2 to 22
+    put char TWall at 2,Ri
+    put char TWall at 29,Ri
+  next
+  fill TWall count FW at FL,2
+  fill TWall count FW at FL,22
+  WipeBox
+  Score = 0
+  Pieces = 0
+  Cols = 0
+  Types = Diff
+  if Types > 15 then Types = 15
+  Per8 = 25 - Speed
+  SetPeriod
+  Over = 0
+  OldJ = 63
+  Rep = 0
+  ShowHud
+  ShowScreen
+  NextPiece
+  return
+end sub
+
+sub WipeBox:
+  for Ri = FT to FBot
+    fill TEmpty count FW at FL,Ri
+  next
+  return
+end sub
+
+' a step every Per8 C64 passes of about 41 ms: 5/2 frames a pass
+sub SetPeriod:
+  W16 = Per8 * 5
+  Period = W16 / 2
+  if Period < 2 then Period = 2
+  select case Period
+  case is >= 12
+    Glide = 1
+  case is >= 6
+    Glide = 2
+  case else
+    Glide = 8
+  end select
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC " + digits$(Score, 5)
+  V = 25 - Per8
+  print at 12,1, "SP " + digits$(V, 2)
+  print at 19,1, "DIF " + digits$(Types, 2)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one pass of play
+
+sub PlayStep:
+  ' up and down: a step on the push, then every 5 frames while held
+  T = J & 3
+  if T = 0 then
+    Rep = 0
+  else
+    if Rep = 0 then
+      MoveUpDown(T)
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        MoveUpDown(T)
+        Rep = 5
+      end if
+    end if
+  end if
+  if (Ed & 16) <> 0 then TryTurn(1)
+  ' the right button, or the stick the way the piece goes, drops it
+  N = 32
+  if Dir = 0 then N = N | 4 else N = N | 8
+  if (Ed & N) <> 0 then
+    DropPiece
+    return
+  end if
+  dec StepT
+  if StepT = 0 then
+    StepT = Period
+    if Spin = 1 then TryTurn(0)
+    StepPiece
+    if Landed = 1 then AfterLand
+  end if
+  return
+end sub
+
+sub MoveUpDown(u8 Way):
+  if Way = 1 then
+    if PY = 0 then return
+    Y = PY - 1
+  else
+    Y = PY + 1
+  end if
+  if Fits(PX, Y) = 1 then
+    PY = Y
+    play sound SndMove
+  end if
+  return
+end sub
+
+' turn the piece a quarter (Snd = 1: with a sound); stays put if blocked
+sub TryTurn(u8 Snd):
+  V = (PRot + 1) & 3
+  BuildCells(PType, V)
+  if Fits(PX, PY) = 1 then
+    PRot = V
+    if Snd = 1 then play sound SndTurn
+  else
+    BuildCells(PType, PRot)
+  end if
+  return
+end sub
+
+' one column toward the piece's wall; Landed = 1 when it cannot
+sub StepPiece:
+  Landed = 0
+  if Dir = 0 then
+    if PX = 0 then
+      Landed = 1
+      return
+    end if
+    X = PX - 1
+  else
+    X = PX + 1
+  end if
+  if Fits(X, PY) = 1 then
+    PX = X
+    Moved = 1
+  else
+    Landed = 1
+  end if
+  return
+end sub
+
+sub DropPiece:
+  Landed = 0
+  while Landed = 0
+    StepPiece
+  end while
+  DispX = PX * 8
+  play sound SndDrop
+  AfterLand
+  return
+end sub
+
+' a piece that never moved ends the game; else it settles into the box
+sub AfterLand:
+  if Moved = 0 then
+    Over = 1
+  else
+    V = TBlk + PType
+    for Bi = 1 to NC
+      K = Bi - 1
+      X = PX + CX[K]
+      Y = PY + CY[K]
+      put char V at X,Y
+    next
+    HideSprites
+    play sound SndLand
+    NextPiece
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the piece's cells: CX/CY for kind Kd turned Rt times
+
+function RowBits(u8 Kd, u8 Rt, u8 Cy) as u8
+  u8 Ix
+  u8 Rb
+  Ix = Kd * 8 + Rt * 2 + (Cy >> 1)
+  Rb = Shapes[Ix]
+  if (Cy & 1) = 0 then
+    Rb = Rb >> 4
+  else
+    Rb = Rb & 15
+  end if
+  return Rb
+
+sub BuildCells(u8 Kd, u8 Rt):
+  NC = 0
+  for Gi = 0 to 3
+    B = RowBits(Kd, Rt, Gi)
+    for Ci = 0 to 3
+      if (B & Bit4[Ci]) <> 0 then
+        CX[NC] = Ci
+        CY[NC] = Gi
+        inc NC
+      end if
+    next
+  next
+  return
+end sub
+
+' 1 when every cell of the piece at box column Bx, row By is empty
+function Fits(u8 Bx, u8 By) as u8
+  u8 Res
+  u8 Qk
+  u8 Qx
+  u8 Qy
+  u8 Qt
+  Res = 1
+  for Fi = 1 to NC
+    Qk = Fi - 1
+    Qx = Bx + CX[Qk]
+    Qy = By + CY[Qk]
+    Qt = get char at Qx,Qy
+    if Qt <> TEmpty then Res = 0
+  next
+  return Res
+
+' ---------------------------------------------------------------------------
+' between pieces: full columns, the rolling box, the count, a new piece
+
+sub NextPiece:
+  ClearCols
+  if Evolve = 1 then RollBox
+  inc Pieces
+  inc Score
+  ' every 64 pieces: one more kind at 32, a faster step at 63
+  T = Pieces & 63
+  if T = 32 then
+    if Types < 15 then inc Types
+  end if
+  if T = 63 then
+    if Per8 >= 2 then
+      dec Per8
+      SetPeriod
+    end if
+  end if
+  T = Pieces & 127
+  if T = 127 then
+    WipeBox
+    play sound SndWipe
+  end if
+  Rand
+  T = Rs & 255
+  PType = T % Types
+  T = Rs >> 8
+  PRot = T & 3
+  PY = SpawnY
+  if Single = 1 then
+    PX = SpawnS
+    Dir = 0
+  else
+    PX = SpawnD
+    ' the way the stick is held when the piece appears, else a coin toss
+    if (J & 4) <> 0 then
+      Dir = 0
+    else
+      if (J & 8) <> 0 then
+        Dir = 1
+      else
+        Dir = (Rs >> 3) & 1
+      end if
+    end if
+    ' a push already held is not a drop
+    OldJ = OldJ | 12
+  end if
+  BuildCells(PType, PRot)
+  Moved = 0
+  Landed = 0
+  StepT = Period
+  DispX = PX * 8
+  DispY = PY * 8
+  if Fits(PX, PY) = 0 then Over = 1
+  ShowHud
+  return
+end sub
+
+' every full column flashes and goes; the ones toward the middle close up
+sub ClearCols:
+  u8 Found
+  Found = 1
+  while Found = 1
+    Found = 0
+    CountCols
+    for Ci = 0 to FW - 1
+      if Cnt[Ci] = FH then
+        Found = 1
+        RemoveCol(Ci)
+        exit for
+      end if
+    next
+  end while
+  return
+end sub
+
+sub CountCols:
+  fill array Cnt with 0
+  for Ri = FT to FBot
+    W16 = Ri * 32
+    copy vram.name + W16 + FL count FW to RowB
+    for Ti = 0 to FW - 1
+      if RowB[Ti] <> TEmpty then inc Cnt[Ti]
+    next
+  next
+  return
+end sub
+
+sub RemoveCol(u8 Fc):
+  u8 Lc
+  Lc = Fc + FL
+  for Ti = 1 to 3
+    for Ri = FT to FBot
+      put char TFlash at Lc,Ri
+    next
+    Frames(4)
+    for Ri = FT to FBot
+      V = TBlk + Ri % 7
+      put char V at Lc,Ri
+    next
+    Frames(4)
+  next
+  for Ri = FT to FBot
+    W16 = Ri * 32
+    copy vram.name + W16 + FL count FW to RowB
+    if Single = 1 then
+      ' all close up toward the left wall
+      for Ti = Fc to FW - 2
+        RowB[Ti] = RowB[Ti + 1]
+      next
+      RowB[FW - 1] = TEmpty
+    else
+      if Fc < MidF then
+        for Ti = Fc to MidF - 2
+          RowB[Ti] = RowB[Ti + 1]
+        next
+        RowB[MidF - 1] = TEmpty
+      else
+        Ti = Fc
+        while Ti > MidF
+          RowB[Ti] = RowB[Ti - 1]
+          dec Ti
+        end while
+        RowB[MidF] = TEmpty
+      end if
+    end if
+    copy RowB count FW to vram.name + W16 + FL
+  next
+  Score = Score + 10
+  inc Cols
+  play sound SndCol
+  return
+end sub
+
+' EVOLVING: the box rolls up a row (the top row comes in at the bottom)
+sub RollBox:
+  copy vram.name + FT * 32 + FL count FW to Tmp
+  for Ri = FT to FBot - 1
+    W16 = Ri * 32
+    copy vram.name + W16 + 32 + FL count FW to RowB
+    copy RowB count FW to vram.name + W16 + FL
+  next
+  copy Tmp count FW to vram.name + FBot * 32 + FL
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the piece in flight: sprites gliding toward its cells
+
+sub DrawPiece:
+  if Over = 1 then return
+  X = PX * 8
+  if DispX < X then
+    DispX = DispX + Glide
+    if DispX > X then DispX = X
+  end if
+  if DispX > X then
+    DispX = DispX - Glide
+    if DispX < X then DispX = X
+  end if
+  Y = PY * 8
+  if DispY < Y then
+    DispY = DispY + 4
+    if DispY > Y then DispY = Y
+  end if
+  if DispY > Y then
+    DispY = DispY - 4
+    if DispY < Y then DispY = Y
+  end if
+  C = KindCol[PType]
+  for Bi = 0 to 7
+    if Bi < NC then
+      Y = CY[Bi] * 8 + DispY - 1
+      X = CX[Bi] * 8 + DispX
+      set sprite Bi to Y,X,SCell,C
+    else
+      set sprite Bi to 207,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub GetInput:
+  J = PadOf(1) | PadOf(2)
+  Ed = J & (J ^ OldJ)
+  OldJ = J
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  u8 Pv
+  Pv = 0
+  if joypad(P).up then Pv = Pv | 1
+  if joypad(P).down then Pv = Pv | 2
+  if joypad(P).left then Pv = Pv | 4
+  if joypad(P).right then Pv = Pv | 8
+  if joypad(P).button1 then Pv = Pv | 16
+  if joypad(P).button2 then Pv = Pv | 32
+  return Pv
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  inc Rs
+  return
+end sub
+
+sub Frames(u8 Nf):
+  for Gi = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for K = 0 to 7
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: QEWB in blocks, the settings, the tune once
+
+sub TitlePage:
+  NewScreen
+  for Ri = 0 to 6
+    W16 = Ri * LogoW
+    copy Logo + W16 count LogoW to RowB
+    V = Ri + 3
+    W16 = V * 32 + LogoX
+    copy RowB count LogoW to vram.name + W16
+  next
+  print at 5,11, "A PUZZLE ON ITS SIDE"
+  print at 4,20, "BEST " + digits$(Best, 5)
+  print at 4,21, "STICK: CHOOSE  BUTTON: GO"
+  Sel = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 660
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  OldJ = 63
+tp_loop:
+  Frame1
+  GetInput
+  if (Ed & 1) <> 0 then
+    if Sel > 0 then dec Sel else Sel = 6
+    play sound SndPick
+    ShowMenu
+  end if
+  if (Ed & 2) <> 0 then
+    if Sel < 6 then inc Sel else Sel = 0
+    play sound SndPick
+    ShowMenu
+  end if
+  if (Ed & 12) <> 0 then
+    ChangeSetting(Ed & 12)
+  end if
+  if (Ed & 48) <> 0 then
+    if Sel = 0 or Sel = 6 then goto tp_done
+    ChangeSetting(8)
+  end if
+  goto tp_loop
+tp_done:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Sel = 6 then CreditsPage
+  return
+end sub
+
+' left (4) or right (8) on the line Sel
+sub ChangeSetting(u8 Way):
+  select case Sel
+  case 1
+    if Way = 4 then
+      if Diff > 1 then dec Diff
+    else
+      if Diff < 19 then inc Diff
+    end if
+  case 2
+    if Way = 4 then
+      if Speed > 1 then dec Speed
+    else
+      if Speed < 19 then inc Speed
+    end if
+  case 3
+    Spin = Spin ^ 1
+  case 4
+    Evolve = Evolve ^ 1
+  case 5
+    Single = Single ^ 1
+  case else
+    return
+  end select
+  play sound SndPick
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  for Ti = 0 to 6
+    V = Ti + 13
+    put char 32 at 4,V
+  next
+  V = Sel + 13
+  put char TArrow at 4,V
+  print at 6,13, "START"
+  print at 6,14, "DIFFICULTY   " + digits$(Diff, 2)
+  print at 6,15, "SPEED        " + digits$(Speed, 2)
+  if Spin = 1 then
+    print at 6,16, "ROTATING    "
+  else
+    print at 6,16, "NONROTATING "
+  end if
+  if Evolve = 1 then
+    print at 6,17, "EVOLVING    "
+  else
+    print at 6,17, "NONEVOLVING "
+  end if
+  if Single = 1 then
+    print at 6,18, "SINGLE-SIDED"
+  else
+    print at 6,18, "DOUBLE-SIDED"
+  end if
+  print at 6,19, "CREDITS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 14,1, "QEWB"
+  print at 2,3, "BASED ON QEWB, COMPUTE!'S"
+  print at 2,4, "GAZETTE, FEBRUARY 1990"
+  print at 2,5, "(COMMODORE 64), COPYRIGHT"
+  print at 2,6, "1989 COMPUTE! PUBLICATIONS."
+  print at 2,8, "COLECOVISION GAME, MUSIC"
+  print at 2,9, "AND PICTURES BY CLAUDE"
+  print at 2,10, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "IN AMY BY AMY BIENVENU,"
+  print at 2,12, "2026. MUSIC: FOUR BY FOUR"
+  print at 2,13, "(ORIGINAL)."
+  print at 2,15, "UP/DOWN  MOVE THE PIECE"
+  print at 2,16, "LEFT BUTTON  TURN IT"
+  print at 2,17, "RIGHT BUTTON  DROP IT"
+  print at 2,18, "FILL A COLUMN TO CLEAR IT."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+QwTick:
+    db $40,$47,$80,$01,$40,$47,$F0,$01,$50
+QwMove:
+    db $40,$71,$50,$01,$40,$55,$70,$01,$50
+QwTurn:
+    db $40,$5F,$40,$01,$40,$47,$40,$01,$40,$35,$60,$01,$50
+QwLand:
+    db $00,$00,$25,$02,$00,$00,$56,$03,$00,$00,$96,$03,$10
+QwDrop:
+    db $40,$40,$40,$01,$40,$55,$40,$01,$40,$71,$40,$01,$40,$97,$50,$01,$40,$CA,$60,$01,$50
+QwCol:
+    db $40,$8F,$10,$03,$40,$71,$10,$03,$40,$5F,$10,$03,$40,$47,$10,$03,$40,$39,$20,$08,$50
+QwWipe:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$20,$0C
+    db $50
+QwOver:
+    db $40,$D6,$10,$0A,$40,$E2,$20,$0A,$40,$FE,$20,$0A,$40,$1D,$21,$0A,$40,$AB,$31,$1E,$50
+QwPick:
+    db $40,$55,$40,$02,$50
+
+QwSoundTable:
+    dw QwTuneMel,$702B
+    dw QwTuneBass,$7035
+    dw QwTick,$7049
+    dw QwMove,$7049
+    dw QwTurn,$7049
+    dw QwLand,$703F
+    dw QwDrop,$7049
+    dw QwCol,$7049
+    dw QwWipe,$7049
+    dw QwOver,$7049
+    dw QwPick,$7049
+; Four by Four (original)
+; Tiny Sound, 8 frames per step
+QwTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$21,$01,$26,$01,$23,$01,$1F,$01,$01,$01
+    db $1E,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$01,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$01,$1A,$01,$1E,$01,$21,$01,$1F,$01,$23,$01
+    db $28,$01,$26,$01,$24,$01,$01,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $23,$01,$01,$01,$1C,$01,$1F,$01,$1E,$01,$1B,$01,$1C,$01,$01,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+QwTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$17,$01,$10,$01,$17,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$0B,$01,$12,$01,$0E,$01,$12,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$0B,$01,$12,$01
+    db $17,$01,$1B,$01,$10,$01,$17,$01,$0B,$01,$17,$01,$10,$01,$01,$01
+    db $01,$01,$00,$01,$01,$01
+    db $FF
+}

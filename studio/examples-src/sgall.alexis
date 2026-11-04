@@ -1,0 +1,1079 @@
+cartridge "SPACE GALLERY/COMPUTE GAZETTE/1985"
+
+' SPACE GALLERY
+' A ColecoVision game based on "Space Gallery", COMPUTE!'s Gazette, July
+' 1985 disk (Commodore 64 machine language, SYS2062; no author named on the
+' disk or in the program). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/sgall.dis, timed in jsc64 with orig/time-sgall.mjs and
+' orig/bomb-sgall.mjs), rebuilt for the ColecoVision with new aliens, a
+' starry sky, sprites, sounds and a title tune.
+'
+' The game (one player): a laser cannon slides along a launch deck at the
+' bottom. Four aliens fly the same looping path across the sky, one behind
+' the other, and drop bombs (at most three at a time). Shoot all four to
+' clear the wave: 5 points an alien, then a SHOT BONUS of 5 points for each
+' shot under 60 fired in that wave. A bomb on the cannon costs one of the
+' five cannons and starts the wave again with all four aliens on a new
+' path. The game is over when the last cannon is lost.
+'
+' From the original (orig/sgall.dis): the 16 flight paths (the C64's
+' tables, mapped to this screen; the aliens cycle through the first
+' (n - 1) / 2 waypoints, starting together at one point and fanning out to
+' waypoints 1-4); every leg of the path takes the same time (256 passes,
+' 31-33 jiffies measured: 32 frames here), so long legs are fast; a new
+' random path every wave and after every lost cannon; up to eleven shots in
+' the air, one row (8 pixels) a frame; a press fires at once, holding fires
+' again every 24 frames (200 passes); a shot flies on through what it hits;
+' 5 points an alien; 3 bomb places; only the second, third and fourth alien
+' drop bombs (the first never does), very often when right above the cannon
+' (6 in 128 a pass) and now and then anywhere, so the three bombs are
+' almost always falling; bombs fall about 2 C64 pixels a frame (here 5
+' pixels in 3 frames over a shorter sky, the same time); the cannon moves
+' about 2.8 pixels a frame (here 8 in 3 frames); SHOT BONUS (60 - shots) x
+' 5 (shots counted up to 60); LEVEL shown between waves; one extra cannon
+' on reaching level 5; HEAT SEEKER (an option on the title, off at the
+' start): from level 4 the third bomb steers toward the cannon as fast as
+' it falls; a high score.
+'
+' Liberties: shots are bolt tiles in four colours (the C64 drew a random
+' line character); hits are tested against each alien's box instead of
+' the C64's sprite-to-character collision; an alien's explosion lasts 16
+' frames (the C64: about 7) and scores at once; a smaller playfield (the
+' C64's sky was wider and taller; the paths are scaled to it); aliens and
+' bombs stay inside the screen (the C64 let them run into the border); the
+' first alien, which never bombs on the C64, bombs when it is the last one
+' left (on the C64 a player could leave it flying and never be bombed); the
+' C64's "PRESS UP TO PLAY AGAIN / DOWN TO END" is replaced by the house
+' ending (a press goes back to the title); new aliens, cannon, deck and
+' starry sky; sounds and a new title tune; a credits page.
+'
+' Controls: joystick only (either controller): left/right move the
+' cannon, either button fires (hold to keep firing). On the title,
+' up/down choose PLAY / HEAT SEEKER / CREDITS, a button confirms (on HEAT
+' SEEKER it switches the option on or off).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TSky = 128
+const TStar1 = 129
+const TStar2 = 130
+const TStar3 = 131
+const TDecktop = 132
+const TDeck = 133
+const TLegtop = 134
+const TVoid = 135
+const TRivet = 136
+const TShot0 = 137
+const TShot1 = 138
+const TShot2 = 139
+const TShot3 = 140
+const TBar = 141
+const TLg0 = 142
+const TLg1 = 143
+const TLg2 = 144
+const TLg3 = 145
+const TLg4 = 146
+const TLg5 = 147
+const TLg6 = 148
+const TLg7 = 149
+const TLg8 = 150
+const TLg9 = 151
+const TLg10 = 152
+const TLg11 = 153
+const TLg12 = 154
+const TLg13 = 155
+const TLg14 = 156
+const TLg15 = 157
+const TLg16 = 158
+const TLg17 = 159
+const TLg18 = 160
+const TLg19 = 161
+const TLg20 = 162
+const TLg21 = 163
+const TLg22 = 164
+const TLg23 = 165
+const TLg24 = 166
+const TLg25 = 167
+const SAlien1 = 0
+const SAlien2 = 4
+const SBoom1 = 8
+const SBoom2 = 12
+const SBomb = 16
+const SCannon = 20
+const STip = 24
+const NTiles8 = 320
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndDrop = 5
+const SndCrash = 6
+const SndBonus = 7
+const SndExtra = 8
+const SndOver = 9
+const SndPick = 10
+const CxMin = 16
+const CxMax = 223
+const CanY = 136
+const SegLen = 32
+const NShot = 11
+const ShotRow = 17
+const TopRow = 2
+const FireRep = 24
+const BombEnd = 140
+const MsgRow = 22
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$02,$00,$00,$00,$00
+  $00,$10,$00,$54,$00,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$C3,$18,$18,$18,$18,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$00,$00,$00,$00,$00
+  $00,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$18,$18,$18,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $01,$01,$01,$00,$00,$00,$F0,$F0
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $F0,$0E,$0E,$0E,$F0,$F0,$F0,$00
+  $00,$00,$00,$E0,$E0,$E0,$00,$00
+  $F0,$F0,$F0,$0E,$0E,$0E,$F0,$F0
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $F0,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $F0,$F0,$F0,$0E,$0E,$0E,$01,$01
+  $01,$0E,$0E,$0E,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $01,$01,$01,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$00,$00,$00,$01,$01,$01,$00
+  $00,$E0,$E0,$E0,$00,$00,$00,$00
+  $F0,$00,$00,$00,$01,$01,$01,$00
+  $01,$01,$01,$00,$00,$00,$81,$81
+  $81,$0E,$0E,$0E,$F0,$F0,$F0,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$00,$00,$00,$00
+  $F0,$70,$70,$70,$0E,$0E,$0E,$00
+  $E0,$E0,$E0,$1C,$1C,$1C,$03,$03
+  $0E,$0E,$0E,$70,$70,$70,$80,$80
+  $03,$03,$03,$03,$03,$03,$03,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$51,$01,$01,$01,$01
+  $01,$51,$01,$F1,$01,$51,$01,$01
+  $0F,$0E,$0E,$0E,$01,$0E,$0E,$0E
+  $0E,$0E,$0E,$01,$0E,$0E,$01,$01
+  $08,$18,$18,$81,$81,$81,$81,$18
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$FE,$0E,$01,$0E,$0E,$01,$01
+  $01,$B1,$B1,$F1,$F1,$B1,$B1,$01
+  $01,$71,$71,$F1,$F1,$71,$71,$01
+  $01,$91,$91,$F1,$F1,$91,$91,$01
+  $01,$31,$31,$F1,$F1,$31,$31,$01
+  $01,$01,$01,$0D,$0D,$01,$01,$01
+  $1F,$1F,$1F,$71,$71,$71,$17,$17
+  $1F,$1F,$1F,$01,$01,$01,$71,$71
+  $17,$01,$01,$01,$05,$05,$04,$01
+  $71,$51,$51,$51,$51,$51,$41,$01
+  $0F,$0F,$0F,$71,$71,$71,$07,$07
+  $F1,$F1,$F1,$71,$71,$71,$71,$71
+  $07,$51,$51,$51,$51,$51,$41,$01
+  $71,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$1F,$71,$71,$71,$07,$07
+  $F1,$F1,$F1,$71,$71,$71,$17,$17
+  $17,$51,$51,$51,$51,$51,$41,$01
+  $1F,$1F,$1F,$71,$71,$71,$71,$71
+  $1F,$1F,$1F,$01,$01,$01,$01,$01
+  $71,$51,$51,$51,$15,$15,$14,$01
+  $01,$01,$01,$01,$15,$15,$14,$01
+  $07,$51,$51,$51,$05,$05,$04,$01
+  $71,$01,$01,$01,$15,$15,$14,$01
+  $1F,$1F,$1F,$01,$01,$01,$17,$17
+  $17,$51,$51,$51,$51,$51,$41,$01
+  $F1,$F1,$F1,$71,$71,$71,$71,$71
+  $71,$51,$51,$51,$05,$05,$04,$01
+  $71,$51,$51,$51,$51,$51,$41,$01
+  $F1,$F1,$F1,$71,$71,$71,$71,$71
+  $F1,$F1,$F1,$71,$71,$71,$71,$71
+  $71,$51,$51,$51,$51,$51,$41,$01
+  $71,$51,$51,$51,$51,$51,$41,$01
+end data
+data SpritePat bytes
+  $10,$08,$07,$1F,$39,$31,$7F,$FF,$B6,$3F,$18,$30,$60,$00,$00,$00
+  $08,$10,$E0,$F8,$9C,$8C,$FE,$FF,$6D,$FC,$18,$0C,$06,$00,$00,$00
+  $40,$20,$17,$1F,$39,$31,$7F,$FF,$B6,$3F,$0C,$0C,$18,$00,$00,$00
+  $02,$04,$E8,$F8,$9C,$8C,$FE,$FF,$6D,$FC,$30,$30,$18,$00,$00,$00
+  $00,$02,$21,$13,$0F,$3B,$7F,$1F,$3F,$4F,$0E,$12,$21,$00,$00,$00
+  $00,$40,$84,$C8,$F0,$DC,$FC,$F8,$FC,$F2,$70,$48,$84,$00,$00,$00
+  $81,$41,$20,$02,$20,$88,$09,$01,$09,$88,$20,$02,$20,$41,$81,$00
+  $01,$02,$02,$40,$04,$11,$90,$80,$90,$11,$04,$40,$02,$02,$01,$00
+  $00,$00,$00,$03,$07,$07,$07,$03,$01,$02,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$E0,$E0,$C0,$80,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$03,$07,$0F,$1F,$3F,$7F,$FF,$FF,$67,$30,$00
+  $00,$00,$00,$80,$C0,$C0,$E0,$F0,$F8,$FC,$FE,$FF,$FF,$E6,$0C,$00
+  $00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data PathX bytes 35,130,223,136,57,107,107,190,190,223,57,57,157,223,223,41,132,223,223,132,41,82,124,107,182,223,16,115,115,41,99,173,223,99,41,132,223,132,223,140,41,124,16,115,215,148,223,148,115,82,41,91,117,219,117,41,140,223,223,124,41,41,41,132,223,132,223,140,41,124,16,115,215,148,223,148,115,82,41,91,16,117,218,218,124,74,124,223,124,41,16,117,117,140,165,190,223,165,107,41,16,35,130,223,136,57,107,107,190,190,223,57,57,157,223,223,16,115,115,41,99,173,223,99,41,132,223,132,223,140,41,124,41,132,223,223,132,41,82,124,107,182,223,16,115,215,148,223,148,115,82,41,91,117,219,117,41,140,223,223,124,41,41,16,117,218,218,124,74,124,223,124,41,16,117,117,140,165,190,223,165,107,41,16
+data PathY bytes 72,101,72,44,61,61,112,112,61,61,61,106,61,106,61,39,72,106,39,72,106,61,61,101,101,61,16,16,84,112,44,112,72,72,44,78,112,84,44,67,112,61,16,16,16,44,72,101,72,101,72,44,44,44,78,106,106,106,95,95,95,44,44,78,112,84,44,67,112,61,16,16,16,44,72,101,72,101,72,44,16,16,16,84,112,89,44,89,89,84,16,16,84,112,72,112,72,112,72,112,61,72,101,72,44,61,61,112,112,61,61,61,106,61,106,61,16,16,84,112,44,112,72,72,44,78,112,84,44,67,112,61,39,72,106,39,72,106,61,61,101,101,61,16,16,16,44,72,101,72,101,72,44,44,44,78,106,106,106,95,95,95,44,16,16,16,84,112,89,44,89,89,84,16,16,84,112,72,112,72,112,72,112,61
+data PathStart bytes 0,4,15,21,26,34,42,52,62,80,90,101,116,132,143,163
+data PathLen bytes 4,11,6,5,8,8,10,10,18,10,11,15,16,11,20,21
+const StartX = 33
+const StartY = 61
+data TitleMap bytes
+  32,32,32,32,32,32,32,32,32,32,32,142,143,146,147,150,151,153,154,146,143,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,144,145,148,149,148,152,155,156,157,158,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,153,159,150,151,161,32,161,32,146,143,146,147,164,165,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,155,160,148,152,162,156,162,156,157,158,148,163,166,167,32,32,32,32,32,32,32,32,32
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Score = 0
+u16 HiSc = 0
+u8 R8 = 0
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Sel = 0
+u8 Heat = 0
+u8 Phase = 0
+u8 PhT = 0
+u8 Cx = 0
+u8 CStep = 0
+u8 Cannons = 0
+u8 Level = 0
+u8 Shots = 0
+u8 FireT = 0
+u8 Path = 0
+u8 PBase = 0
+u8 PLen = 0
+u8 SegT = 0
+u8 Pose = 0
+u16 AxF[4]
+u16 AyF[4]
+i16 Vx[4]
+i16 Vy[4]
+u8 AIdx[4]
+u8 ASt[4]
+u8 AT[4]
+u8 ShC[11]
+u8 ShR[11]
+u8 ShK[11]
+u8 BOn[3]
+u8 BX[3]
+u8 BY[3]
+u8 BombF = 0
+u8 NewHi = 0
+u8 Bonus = 0
+' loop counters (never shared with the helpers)
+u8 Ai = 0
+u8 Si = 0
+u8 Bi = 0
+u8 Ri = 0
+u8 Ci = 0
+' scratch
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SgSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+  DrawField
+  ShowHud
+  DrawSprites
+  ShowScreen
+
+play_loop:
+  Frame1
+  ReadPads
+  select case Phase
+  case 0
+    PlayStep
+  case 1
+    HitStep
+  case 2
+    ClearStep
+  end select
+  DrawSprites
+  inc Tick
+  if Phase < 3 then goto play_loop
+
+  ' the end: GAME OVER, the score, then back to the title on a press
+  mute all
+  play sound SndOver
+  print at 10,10, "GAME OVER"
+  NewHi = 0
+  if Score > HiSc then
+    HiSc = Score
+    NewHi = 1
+    ShowHi
+  end if
+  Rearm
+  wait 90 frames
+  nmi off
+  if NewHi = 1 then
+    print at 8,12, "NEW HIGH SCORE!"
+  end if
+  print at 8,14, "PRESS THE BUTTON"
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the game
+
+sub NewGame:
+  Score = 0
+  Cannons = 5
+  Level = 1
+  Shots = 0
+  Cx = 112
+  CStep = 0
+  FireT = 0
+  Phase = 0
+  PhT = 0
+  BombF = 0
+  ClearShots
+  NewWave
+  ' a button still held from the title must be let go first
+  Pads = 16
+  OldPads = 16
+  return
+end sub
+
+' all four aliens back at the start point, a new random path
+sub NewWave:
+  Rand
+  Path = R8 & 15
+  PBase = PathStart[Path]
+  PLen = PathLen[Path]
+  for Ai = 0 to 3
+    AxF[Ai] = StartX * 256
+    AyF[Ai] = StartY * 256
+    ASt[Ai] = 1
+    AT[Ai] = 0
+    AIdx[Ai] = Ai
+    Aim(Ai)
+  next
+  SegT = SegLen
+  for Bi = 0 to 2
+    BOn[Bi] = 0
+  next
+  return
+end sub
+
+' the velocity (8.8 pixels a frame) that brings alien A to its waypoint in
+' SegLen frames
+sub Aim(u8 A):
+  u8 Wp = 0
+  i16 D = 0
+  Wp = PBase + AIdx[A]
+  D = PathX[Wp]
+  D = D - highbyte(AxF[A])
+  Vx[A] = D * 8
+  D = PathY[Wp]
+  D = D - highbyte(AyF[A])
+  Vy[A] = D * 8
+  return
+end sub
+
+' one pass (one frame) of play
+sub PlayStep:
+  MoveCannon
+  if (Pads & 16) <> 0 then
+    if (OldPads & 16) = 0 then
+      Shoot
+      FireT = FireRep
+    else
+      if FireT > 1 then
+        dec FireT
+      else
+        Shoot
+        FireT = FireRep
+      end if
+    end if
+  end if
+  MoveShots
+  MoveAliens
+  DropBombs
+  MoveBombs
+  if Phase = 0 then
+    N = 0
+    for Ai = 0 to 3
+      N = N | ASt[Ai]
+    next
+    if N = 0 then
+      ' the wave is clear
+      Phase = 2
+      PhT = 180
+      ClearShots
+      for Bi = 0 to 2
+        BOn[Bi] = 0
+      next
+      inc Level
+      if Level = 5 then
+        inc Cannons
+        play sound SndExtra
+      else
+        play sound SndBonus
+      end if
+      Bonus = 60 - Shots
+      NumU = Bonus * 5
+      Score = Score + NumU
+      Shots = 0
+      ShowScore
+      ShowStatus
+      print at 10,9, "LEVEL "
+      NumU = Level
+      print at 16,9, digits$(NumU, 2)
+      print at 8,11, "SHOT BONUS "
+      NumU = Bonus * 5
+      print at 19,11, digits$(NumU, 3)
+    end if
+  end if
+  return
+end sub
+
+sub MoveCannon:
+  inc CStep
+  if CStep = 3 then CStep = 0
+  V = 3
+  if CStep = 2 then V = 2
+  if (Pads & 4) <> 0 then
+    if Cx >= CxMin + V then
+      Cx = Cx - V
+    else
+      Cx = CxMin
+    end if
+  end if
+  if (Pads & 8) <> 0 then
+    if Cx + V <= CxMax then
+      Cx = Cx + V
+    else
+      Cx = CxMax
+    end if
+  end if
+  return
+end sub
+
+' a new shot over the cannon's middle, when one of the eleven is free
+sub Shoot:
+  u8 Free = 255
+  for Si = 0 to NShot - 1
+    if ShR[Si] = 0 then Free = Si
+  next
+  if Free = 255 then return
+  ShC[Free] = (Cx + 8) >> 3
+  ShR[Free] = ShotRow
+  Rand
+  ShK[Free] = TShot0 + (R8 & 3)
+  put char ShK[Free] at ShC[Free],ShotRow
+  if Shots < 60 then inc Shots
+  ShowShots
+  play sound SndZap
+  HitTest(Free)
+  return
+end sub
+
+' every shot one row up; off the top it is gone
+sub MoveShots:
+  u8 Sc = 0
+  u8 Sr = 0
+  for Si = 0 to NShot - 1
+    Sr = ShR[Si]
+    if Sr <> 0 then
+      Sc = ShC[Si]
+      put char SkyAt(Sc, Sr) at Sc,Sr
+      dec Sr
+      if Sr < TopRow then
+        ShR[Si] = 0
+      else
+        ShR[Si] = Sr
+        put char ShK[Si] at Sc,Sr
+        HitTest(Si)
+      end if
+    end if
+  next
+  return
+end sub
+
+' shot S against every flying alien (the shot flies on)
+sub HitTest(u8 S):
+  u8 Px = 0
+  u8 Py = 0
+  u8 Hx = 0
+  u8 Hy = 0
+  Px = ShC[S] * 8 + 4
+  Py = ShR[S] * 8
+  for Ci = 0 to 3
+    if ASt[Ci] = 1 then
+      Hx = highbyte(AxF[Ci])
+      Hy = highbyte(AyF[Ci])
+      if Px + 1 >= Hx + 1 and Px <= Hx + 14 then
+        if Py + 7 >= Hy + 1 and Py <= Hy + 12 then
+          ASt[Ci] = 2
+          AT[Ci] = 16
+          Score = Score + 5
+          ShowScore
+          play sound SndPop
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the aliens fly their legs; every SegLen frames, the next waypoint
+sub MoveAliens:
+  dec SegT
+  for Ai = 0 to 3
+    AxF[Ai] = AxF[Ai] + Vx[Ai]
+    AyF[Ai] = AyF[Ai] + Vy[Ai]
+    if ASt[Ai] = 2 then
+      dec AT[Ai]
+      if AT[Ai] = 0 then ASt[Ai] = 0
+    end if
+  next
+  if SegT = 0 then
+    SegT = SegLen
+    for Ai = 0 to 3
+      ' land exactly on the waypoint, then aim at the next
+      K = PBase + AIdx[Ai]
+      AxF[Ai] = PathX[K] * 256
+      AyF[Ai] = PathY[K] * 256
+      N = AIdx[Ai] + 1
+      if N = PLen then N = 0
+      AIdx[Ai] = N
+      Aim(Ai)
+    next
+  end if
+  inc Pose
+  return
+end sub
+
+' aliens 4, 3, 2 may drop a bomb into a free place (the first only when
+' it is the last one left)
+sub DropBombs:
+  u8 Ax = 0
+  u8 Dd = 0
+  u8 Bf = 0
+  u8 Others = 0
+  Others = ASt[1] | ASt[2] | ASt[3]
+  for Ai = 1 to 4
+    K = 4 - Ai
+    V = ASt[K]
+    ' the first alien only bombs when it is the last one left
+    if K = 0 and Others <> 0 then V = 0
+    if V = 1 then
+      Ax = highbyte(AxF[K])
+      if Ax >= Cx then
+        Dd = Ax - Cx
+      else
+        Dd = Cx - Ax
+      end if
+      Rand
+      V = 10
+      if Dd < 4 then V = 85
+      if R8 < V then
+        Bf = FreeBomb()
+        if Bf < 3 then
+          BOn[Bf] = 1
+          BX[Bf] = Ax
+          BY[Bf] = highbyte(AyF[K]) + 6
+          play sound SndDrop
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the third place first (the heat seeker), then the second, the first
+function FreeBomb as u8
+  T = 3
+  if BOn[0] = 0 then T = 0
+  if BOn[1] = 0 then T = 1
+  if BOn[2] = 0 then T = 2
+  return T
+
+sub MoveBombs:
+  u8 Dy = 2
+  u8 Byy = 0
+  u8 Bxx = 0
+  inc BombF
+  if BombF = 3 then BombF = 0
+  if BombF = 2 then Dy = 1
+  for Bi = 0 to 2
+    if BOn[Bi] = 1 then
+      Byy = BY[Bi] + Dy
+      Bxx = BX[Bi]
+      if Bi = 2 and Heat = 1 and Level >= 4 then
+        if Bxx < Cx then
+          Bxx = Bxx + Dy
+        else
+          if Bxx > Cx then Bxx = Bxx - Dy
+        end if
+        BX[Bi] = Bxx
+      end if
+      BY[Bi] = Byy
+      if Byy >= BombEnd then BOn[Bi] = 0
+      ' the cannon's body: x Cx+2..Cx+13, y 140..150; the bomb x+5..x+10,
+      ' y+3..y+10
+      if Byy + 10 >= 140 then
+        if Bxx + 10 >= Cx + 2 and Bxx + 5 <= Cx + 13 then
+          CannonHit
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub CannonHit:
+  Phase = 1
+  PhT = 90
+  play sound SndCrash
+  ClearShots
+  for Bi = 0 to 2
+    BOn[Bi] = 0
+  next
+  return
+end sub
+
+' the cannon explodes; then the next cannon, or the end
+sub HitStep:
+  dec PhT
+  if PhT = 0 then
+    dec Cannons
+    ShowStatus
+    if Cannons = 0 then
+      Phase = 3
+    else
+      Phase = 0
+      Cx = 112
+      NewWave
+    end if
+  end if
+  return
+end sub
+
+' LEVEL and SHOT BONUS on show, then the next wave
+sub ClearStep:
+  dec PhT
+  if PhT = 0 then
+    print at 8,9, "              "
+    print at 8,11, "              "
+    Phase = 0
+    NewWave
+  end if
+  return
+end sub
+
+sub ClearShots:
+  u8 Sc = 0
+  u8 Sr = 0
+  for Si = 0 to NShot - 1
+    Sr = ShR[Si]
+    if Sr <> 0 then
+      Sc = ShC[Si]
+      put char SkyAt(Sc, Sr) at Sc,Sr
+    end if
+    ShR[Si] = 0
+  next
+  return
+end sub
+
+' the sky's tile at a place: a scatter of stars from the column and row
+function SkyAt(u8 C, u8 R) as u8
+  u8 H = 0
+  H = C * 7 + R * 13
+  H = H ^ (C * R)
+  T = TSky
+  if C < 2 or C > 29 then return T
+  if (H & 31) = 3 then T = TStar1
+  if (H & 31) = 17 then T = TStar2
+  if (H & 63) = 40 then T = TStar3
+  return T
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  R8 = Rs
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub ShowScore:
+  print at 9,1, digits$(Score, 5)
+  return
+end sub
+
+sub ShowHi:
+  print at 23,1, digits$(HiSc, 5)
+  return
+end sub
+
+sub ShowShots:
+  NumU = Shots
+  print at 17,MsgRow, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowStatus:
+  NumU = Level
+  print at 8,MsgRow, digits$(NumU, 2)
+  ShowShots
+  NumU = Cannons
+  print at 28,MsgRow, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE 000000   HIGH 000000"
+  ShowScore
+  ShowHi
+  print at 2,MsgRow, "LEVEL 00 SHOTS 00 CANNONS 0"
+  ShowStatus
+  return
+end sub
+
+' sprites: 0 cannon tip, 1 cannon, 2-5 aliens, 6-8 bombs
+sub DrawSprites:
+  u8 Sp = 0
+  u8 Col = 0
+  if Phase = 1 then
+    if (PhT & 8) = 0 then
+      Sp = SBoom1
+    else
+      Sp = SBoom2
+    end if
+    set sprite 0 to 207,0,0,0
+    set sprite 1 to CanY - 1,Cx,Sp,9
+  else
+    set sprite 0 to CanY - 1,Cx,STip,11
+    set sprite 1 to CanY - 1,Cx,SCannon,7
+  end if
+  Sp = SAlien1
+  if (Pose & 8) <> 0 then Sp = SAlien2
+  for Ci = 0 to 3
+    K = Ci + 2
+    select case ASt[Ci]
+    case 1
+      Col = 10
+      if Ci = 0 then Col = 13
+      set sprite K to highbyte(AyF[Ci]) - 1,highbyte(AxF[Ci]),Sp,Col
+    case 2
+      if AT[Ci] >= 8 then
+        set sprite K to highbyte(AyF[Ci]) - 1,highbyte(AxF[Ci]),SBoom1,11
+      else
+        set sprite K to highbyte(AyF[Ci]) - 1,highbyte(AxF[Ci]),SBoom2,9
+      end if
+    case else
+      set sprite K to 207,0,0,0
+    end select
+  next
+  for Bi = 0 to 2
+    K = Bi + 6
+    if BOn[Bi] = 1 then
+      Col = 15
+      if Bi = 2 and Heat = 1 and Level >= 4 then Col = 8
+      set sprite K to BY[Bi] - 1,BX[Bi],SBomb,Col
+    else
+      set sprite K to 207,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub DrawField:
+  NewScreen
+  for Ri = 2 to 18
+    for Ci = 0 to 31
+      put char SkyAt(Ci, Ri) at Ci,Ri
+    next
+  next
+  fill TDecktop count 32 at 0,19
+  fill TDeck count 32 at 0,20
+  put char TRivet at 4,20
+  put char TRivet at 27,20
+  fill TVoid count 32 at 0,21
+  for Ci = 0 to 1
+    K = 5 + Ci * 20
+    put char TLegtop at K,21
+    put char TLegtop at K + 1,21
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 9
+  sprites stable 0 to 1
+  sprites flicker on
+  for K = 0 to 8
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: SPACE GALLERY, two aliens over the cannon, the menu, the tune
+' once
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 160 to vram.name + 96
+  print at 8,17, "HIGH SCORE"
+  print at 19,17, "0"
+  print at 20,17, digits$(HiSc, 5)
+  Sel = 0
+  ShowMenu
+  print at 4,20, "COMPUTE!'S GAZETTE 1985"
+  set sprite 2 to 63,40,SAlien1,13
+  set sprite 3 to 63,200,SAlien2,10
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Tick
+  inc Rs
+  if Rs = 0 then Rs = 1
+  ReadPads
+  N = Pads & (Pads ^ OldPads)
+  if (N & 1) <> 0 and Sel > 0 then
+    dec Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 2) <> 0 and Sel < 2 then
+    inc Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 16) = 0 then goto tp_loop
+  if Sel = 1 then
+    Heat = Heat ^ 1
+    play sound SndPick
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 0 to 2
+    put char 32 at 8,Ri + 11
+  next
+  put char 62 at 8,Sel + 11
+  print at 10,11, "PLAY"
+  if Heat = 1 then
+    print at 10,12, "HEAT SEEKER ON "
+  else
+    print at 10,12, "HEAT SEEKER OFF"
+  end if
+  print at 10,13, "CREDITS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $71
+  backdrop black
+  print at 9,2, "SPACE GALLERY"
+  print at 2,5, "BASED ON SPACE GALLERY,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "JULY 1985 DISK"
+  print at 2,8, "(COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: GALLERY LIGHTS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SgZap:
+    db $40,$39,$20,$01,$40,$47,$30,$01,$40,$5A,$40,$01,$40,$71,$60,$02,$50
+SgPop:
+    db $00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$76,$06,$10
+SgDrop:
+    db $40,$7F,$90,$02,$40,$87,$90,$02,$40,$8F,$A0,$02,$50
+SgCrash:
+    db $00,$00,$04,$06,$00,$00,$25,$0A,$00,$00,$46,$0E,$00,$00,$76,$14,$00,$00,$A7,$14,$10
+SgBonus:
+    db $40,$AA,$20,$04,$40,$8F,$20,$04,$40,$71,$20,$04,$40,$55,$20,$04,$40,$47,$20,$0A,$50
+SgExtra:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$20,$03,$40,$47,$20,$03,$40,$35,$20,$08
+    db $50
+SgOver:
+    db $40,$1D,$21,$0A,$40,$41,$21,$0A,$40,$68,$21,$0A,$40,$E0,$21,$1C,$50
+SgPick:
+    db $40,$55,$40,$02,$50
+
+SgSoundTable:
+    dw SgTuneMel,$702B
+    dw SgTuneBass,$7035
+    dw SgZap,$7049
+    dw SgPop,$703F
+    dw SgDrop,$7049
+    dw SgCrash,$703F
+    dw SgBonus,$7049
+    dw SgExtra,$7049
+    dw SgOver,$7049
+    dw SgPick,$7049
+; Gallery Lights (original)
+; Tiny Sound, 9 frames per step
+SgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$50,$F1,$22,$1C,$01,$23,$01,$28,$26,$23,$01,$24,$01,$23,$21
+    db $1F,$01,$21,$23,$21,$01,$1A,$01,$1E,$21,$26,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$1F,$23,$26,$01,$23,$1F,$1A,$01,$1C,$1F,$24,$01
+    db $23,$21,$1F,$01,$1E,$21,$26,$01,$24,$23,$21,$1E,$1F,$01,$1A,$01
+    db $1F,$01,$01,$01,$00,$01
+    db $FF
+SgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$F1,$22,$10,$01,$17,$01,$10,$01,$17,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$10,$01,$17,$01
+    db $10,$13,$17,$01,$13,$01,$0E,$01,$13,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$12,$01,$13,$01,$0E,$01
+    db $13,$01,$01,$01,$00,$01
+    db $FF
+}

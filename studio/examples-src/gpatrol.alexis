@@ -1,0 +1,1313 @@
+cartridge "SPACE PATROL/COMPUTE!'S GAZETTE/1984"
+
+' SPACE PATROL
+' A ColecoVision game based on "Space Patrol", COMPUTE!'s Gazette July 1984
+' (Commodore 64 and VIC-20; BASIC with a machine-language routine). Not the
+' Ahoy! game of the same name (games/spatrol): a different game.
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: saucers drift down out of space, one row at a time, towards the
+' landing pads on the ground. Your patrol ship stays in the middle of the
+' screen: the stick moves it up and down, left and right turn it round
+' and then fly it along the ground (the ground scrolls under you). The
+' button fires a laser along your row, the way you face: it hits the first
+' saucer in its path. Each shot costs a bomb from your load (the AMMO bar).
+' With the bar empty, set down on a landing pad (fly the pad under the
+' ship, go all the way down and hold down) to load up again. Every saucer
+' that reaches the ground has landed: five landed saucers end the game.
+' Points earn a bonus: after 500, then every 300 more, the supply ship
+' takes one landed saucer away again.
+'
+' From the original (orig/space patrol_64.bas and its routines at $C000,
+' disassembled in orig/ml.dis; run in jsc64): the ship fixed in the middle,
+' 1 pixel a frame up and down; facing left or right, the first push only
+' turning round; the ground strip with three pads scrolling (one cell
+' about every 8 frames on the C64, 1 pixel a frame here); a laser that
+' finds the first saucer in the ship's row on the facing side; levels 1-5
+' with NL = 13 - level saucer slots, a game tick every 20 - 4 x level
+' jiffies (+ the BASIC loop's time) picking one slot at random: an empty
+' slot spawns a saucer at the top in a random column (never the ship's
+' columns), a full one moves its saucer down a row if the row below is
+' free; points per saucer 1 + 2L + int(L*L/2) (3, 7, 12, 17, 23); 20
+' bombs, refuelling only with the load empty, the ship at the bottom over
+' a pad and the stick held down; every refuel gives 2 + int(L/2) fewer
+' bombs (never fewer than 5) and makes the tick 1 jiffy faster; the bonus
+' at 500 and every 300 after it (a landed saucer back, or just the points
+' when none has landed); five landed saucers end the game; the best score.
+'
+' Additions and liberties: saucers slide smoothly down (2 pixels a frame,
+' a whole row per move) instead of jumping a row; the laser is a beam
+' sprite crossing at 8 pixels a frame and the game keeps running (the
+' C64 froze for the shot); the play field is 17 rows (the C64's 22), so a
+' tick lasts 13/10 of the C64's to keep the same fall time; saucers keep a
+' free row between them in a column (on the C64 a saucer that met another
+' below it also counted as landed, an odd rule a player could not see);
+' saucers only in 12 even columns (tile graphics); the laser hits a saucer
+' whose body crosses the beam's line (pixel exact); a pad sets the ship
+' down within 4 pixels of its middle; a bomb loads every 4 frames (the
+' C64 froze while loading, with a blip a bomb); explosions, a supply ship rising for the bonus,
+' a starfield; no pause (F1 on the C64: keypad not used); no play-again
+' question; levels chosen with the stick.
+'
+' Controls: either controller. Stick up/down moves the ship, left/right
+' turns and flies it along the ground, either side button fires. On the
+' title, up/down choose, left/right set the level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, the title tune
+' played once. `set sprite count` always given. Own xorshift random
+' numbers. Nothing flashes faster than 3 Hz.
+
+const TAli0tl = 128
+const TAli0tr = 129
+const TAli0bl = 130
+const TAli0br = 131
+const TAli2tl = 132
+const TAli2tr = 133
+const TAli2bl = 134
+const TAli2br = 135
+const TAli4tl = 136
+const TAli4tr = 137
+const TAli4bl = 138
+const TAli4br = 139
+const TAli6tl = 140
+const TAli6tr = 141
+const TAli6bl = 142
+const TAli6br = 143
+const TStar1 = 144
+const TStar2 = 145
+const TStrip00 = 146
+const TStrip01 = 147
+const TStrip10 = 148
+const TStrip11 = 149
+const TStrip20 = 150
+const TStrip21 = 151
+const TStrip30 = 152
+const TStrip31 = 153
+const TGnd = 154
+const TAmmo0 = 155
+const TAmmo1 = 156
+const TAmmo2 = 157
+const TLnd = 158
+const TSlot = 159
+const TBlk = 160
+const SShipr = 0
+const SShipl = 4
+const SShot = 8
+const SBoom1 = 12
+const SBoom2 = 16
+const STanker = 20
+const NTiles8 = 264
+const SprBytes = 192
+const LogoW = 23
+const StripBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndLaser = 3
+const SndHit = 4
+const SndLand = 5
+const SndLoad = 6
+const SndEmpty = 7
+const SndBonus = 8
+const SndStart = 9
+const SndOver = 10
+const SndTick = 11
+data TilePat bytes
+  $03,$F0,$C0,$44,$80,$18,$00,$00
+  $C0,$F0,$03,$44,$01,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$F0,$C0,$44,$80,$18
+  $00,$00,$C0,$F0,$03,$44,$01,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$F0,$C0,$44
+  $00,$00,$00,$00,$C0,$F0,$03,$44
+  $80,$18,$00,$00,$00,$00,$00,$00
+  $01,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$F0
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $C0,$44,$80,$18,$00,$00,$00,$00
+  $03,$44,$01,$18,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$3F,$0F,$0C,$0C,$0C,$0C,$1E
+  $FF,$3F,$0F,$0C,$0C,$0C,$0C,$1E
+  $FF,$FF,$66,$00,$00,$00,$00,$00
+  $FF,$FF,$66,$00,$00,$00,$00,$00
+  $FF,$FC,$F0,$30,$30,$30,$30,$78
+  $FF,$FC,$F0,$30,$30,$30,$30,$78
+  $00,$AA,$00,$44,$00,$44,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$70,$07,$70,$00,$00,$00
+  $00,$00,$88,$00,$88,$00,$00,$00
+  $00,$18,$C3,$81,$49,$81,$24,$00
+  $00,$00,$00,$00,$00,$00,$81,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $71,$17,$1B,$6B,$1B,$B1,$01,$01
+  $71,$71,$1B,$6B,$1B,$B1,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$71,$17,$1B,$6B,$1B,$B1
+  $01,$01,$71,$71,$1B,$6B,$1B,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$71,$17,$1B,$6B
+  $01,$01,$01,$01,$71,$71,$1B,$6B
+  $1B,$B1,$01,$01,$01,$01,$01,$01
+  $1B,$B1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$71,$17
+  $01,$01,$01,$01,$01,$01,$71,$71
+  $1B,$6B,$1B,$B1,$01,$01,$01,$01
+  $1B,$6B,$1B,$B1,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $02,$32,$02,$C2,$0C,$2C,$0C,$0C
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$81,$18,$81,$01,$01,$01
+  $01,$01,$18,$08,$18,$01,$01,$01
+  $01,$71,$17,$1B,$6B,$1B,$B1,$01
+  $01,$01,$01,$01,$01,$01,$1E,$01
+  $47,$47,$47,$47,$47,$47,$47,$04
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$C0,$E3,$FF,$FF,$7F,$3F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$B0,$FC,$FE,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$0D,$3F,$7F,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$C7,$FF,$FF,$FE,$FC,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$02,$12,$0B,$4F,$1F,$0F,$4B,$12,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$48,$D0,$F2,$F8,$F0,$D2,$48,$00,$00,$00,$00,$00
+  $00,$00,$21,$08,$42,$14,$82,$20,$09,$48,$02,$20,$00,$00,$00,$00
+  $00,$00,$04,$20,$42,$28,$41,$04,$90,$12,$40,$04,$00,$00,$00,$00
+  $00,$03,$07,$0D,$1F,$3F,$55,$3F,$10,$30,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$B0,$F8,$FC,$54,$FC,$08,$0C,$00,$00,$00,$00,$00,$00
+end data
+data AliAnim bytes
+  $03,$F0,$C0,$44,$80,$18,$00,$00,$C0,$F0,$03,$44,$01,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$F0,$C0,$44,$80,$18,$00,$00,$C0,$F0,$03,$44,$01,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$F0,$C0,$44,$00,$00,$00,$00,$C0,$F0,$03,$44
+  $80,$18,$00,$00,$00,$00,$00,$00,$01,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$F0,$00,$00,$00,$00,$00,$00,$C0,$F0
+  $C0,$44,$80,$18,$00,$00,$00,$00,$03,$44,$01,$18,$00,$00,$00,$00
+  $03,$F0,$C0,$11,$80,$18,$00,$00,$C0,$F0,$03,$11,$01,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$F0,$C0,$11,$80,$18,$00,$00,$C0,$F0,$03,$11,$01,$18
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$F0,$C0,$11,$00,$00,$00,$00,$C0,$F0,$03,$11
+  $80,$18,$00,$00,$00,$00,$00,$00,$01,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$F0,$00,$00,$00,$00,$00,$00,$C0,$F0
+  $C0,$11,$80,$18,$00,$00,$00,$00,$03,$11,$01,$18,$00,$00,$00,$00
+end data
+data StripTab bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$3F,$0F,$0C,$0C,$0C,$0C,$1E,$FF,$3F,$0F,$0C,$0C,$0C,$0C,$1E
+  $FF,$FF,$66,$00,$00,$00,$00,$00,$FF,$FF,$66,$00,$00,$00,$00,$00
+  $FF,$FC,$F0,$30,$30,$30,$30,$78,$FF,$FC,$F0,$30,$30,$30,$30,$78
+  $01,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $FF,$7F,$1E,$18,$18,$18,$18,$3C,$FF,$7F,$1E,$18,$18,$18,$18,$3C
+  $FF,$FF,$CD,$00,$00,$00,$00,$00,$FF,$FF,$CD,$00,$00,$00,$00,$00
+  $FE,$F8,$E0,$60,$60,$60,$60,$F0,$FE,$F8,$E0,$60,$60,$60,$60,$F0
+  $03,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$3D,$30,$30,$30,$30,$78,$FF,$FF,$3D,$30,$30,$30,$30,$78
+  $FF,$FF,$9B,$00,$00,$00,$00,$01,$FF,$FF,$9B,$00,$00,$00,$00,$01
+  $FC,$F0,$C0,$C0,$C0,$C0,$C0,$E0,$FC,$F0,$C0,$C0,$C0,$C0,$C0,$E0
+  $07,$01,$00,$00,$00,$00,$00,$00,$07,$01,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$7B,$60,$60,$60,$60,$F0,$FF,$FF,$7B,$60,$60,$60,$60,$F0
+  $FF,$FF,$37,$01,$01,$01,$01,$03,$FF,$FF,$37,$01,$01,$01,$01,$03
+  $F8,$E0,$80,$80,$80,$80,$80,$C0,$F8,$E0,$80,$80,$80,$80,$80,$C0
+  $0F,$03,$00,$00,$00,$00,$00,$01,$0F,$03,$00,$00,$00,$00,$00,$01
+  $FF,$FF,$F6,$C0,$C0,$C0,$C0,$E0,$FF,$FF,$F6,$C0,$C0,$C0,$C0,$E0
+  $FF,$FF,$6F,$03,$03,$03,$03,$07,$FF,$FF,$6F,$03,$03,$03,$03,$07
+  $F0,$C0,$00,$00,$00,$00,$00,$80,$F0,$C0,$00,$00,$00,$00,$00,$80
+  $1F,$07,$01,$01,$01,$01,$01,$03,$1F,$07,$01,$01,$01,$01,$01,$03
+  $FF,$FF,$EC,$80,$80,$80,$80,$C0,$FF,$FF,$EC,$80,$80,$80,$80,$C0
+  $FF,$FF,$DE,$06,$06,$06,$06,$0F,$FF,$FF,$DE,$06,$06,$06,$06,$0F
+  $E0,$80,$00,$00,$00,$00,$00,$00,$E0,$80,$00,$00,$00,$00,$00,$00
+  $3F,$0F,$03,$03,$03,$03,$03,$07,$3F,$0F,$03,$03,$03,$03,$03,$07
+  $FF,$FF,$D9,$00,$00,$00,$00,$80,$FF,$FF,$D9,$00,$00,$00,$00,$80
+  $FF,$FF,$BC,$0C,$0C,$0C,$0C,$1E,$FF,$FF,$BC,$0C,$0C,$0C,$0C,$1E
+  $C0,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $7F,$1F,$07,$06,$06,$06,$06,$0F,$7F,$1F,$07,$06,$06,$06,$06,$0F
+  $FF,$FF,$B3,$00,$00,$00,$00,$00,$FF,$FF,$B3,$00,$00,$00,$00,$00
+  $FF,$FE,$78,$18,$18,$18,$18,$3C,$FF,$FE,$78,$18,$18,$18,$18,$3C
+  $80,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+data LogoTab bytes
+  1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,0,0,0
+  1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,0
+  1,1,1,0,1,1,1,0,1,1,1,0,1,0,0,0,1,1,0,0,0,0,0
+  0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,0
+  1,1,1,0,1,0,0,0,1,0,1,0,1,1,1,0,1,1,1,0,0,0,0
+  1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,0
+  1,0,1,0,1,0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,1,0,0
+  1,1,1,0,1,1,1,0,0,1,0,0,1,1,1,0,1,0,1,0,1,0,0
+  1,0,0,0,1,0,1,0,0,1,0,0,1,1,0,0,1,0,1,0,1,0,0
+  1,0,0,0,1,0,1,0,0,1,0,0,1,0,1,0,1,1,1,0,1,1,1
+end data
+const NSpr = 5
+const NAli = 12
+const ShipX = 120
+const SyMin = 12
+const SyMax = 139
+const AliTop = 16
+const AliLast = 144
+const StripRow = 19
+const StripLen = 50
+const StripPx = 400
+const BoomN = 14
+const OverN = 90
+const GapY = 24
+
+record Ali:
+  u8 Live
+  u8 Col
+  u8 Y
+  u8 Mv
+end record
+
+data StripCell bytes
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 10, 11, 0, 0
+end data
+
+data PadAt bytes
+  10, 29, 45
+end data
+
+data SpawnCol bytes
+  2, 4, 6, 8, 10, 12, 18, 20, 22, 24, 26, 28
+end data
+
+data SiTab bytes
+  0, 3, 7, 12, 17, 23
+end data
+
+Ali Al[12]
+u8 StripBuf[28]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Score = 0
+u16 Hi = 0
+u16 Bo = 0
+u16 BonusAt = 500
+u16 StripP = 0
+u16 OldP = 999
+u8 Level = 1
+u8 Hf = 16
+u8 Nl = 12
+u8 Si = 3
+u8 TickP = 24
+u8 TickT = 0
+u8 Sy = 74
+u8 Face = 0
+u8 FlipT = 0
+u8 Ammo = 20
+u8 Load = 20
+u8 OldAmmo = 255
+u8 RefT = 0
+u8 RefPad = 255
+u8 UsedPad = 255
+u8 Landed = 0
+u8 OldLanded = 255
+u8 ShotOn = 0
+u8 ShotX = 0
+u8 ShotL = 0
+u8 ShotDir = 0
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 TankT = 0
+u8 TankY = 0
+u8 AnimF = 0
+u8 AnimT = 0
+u8 Over = 0
+u8 OverT = 0
+u8 Kills = 0
+u8 TitleOn = 0
+u16 OldScore = 999
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with helpers)
+u8 Ai = 0
+u8 Ri = 0
+u8 Ki = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Q = 0
+
+  tile screen
+  set sound table GpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  DrawStrip
+  DrawSprites
+  Animate
+  ReadPad
+  PlayPass
+  ShowHud
+  if Over = 0 then goto play_loop
+
+  EndMessage
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one pass of play (one frame)
+
+sub PlayPass:
+  if OverT > 0 then
+    dec OverT
+    if OverT = 0 then Over = 1
+    MoveAliens
+    return
+  end if
+  V = J1 | J2
+  MoveShip
+  Refuel
+  FireLaser
+  MoveShot
+  GameTick
+  MoveAliens
+  Effects
+  return
+end sub
+
+' up/down 1 pixel a frame; left/right: turn round first, then fly (the
+' ground scrolls 1 pixel a frame) after 8 frames held
+sub MoveShip:
+  if RefT > 0 then return
+  K = V & 1
+  if K > 0 then
+    if Sy > SyMin then dec Sy
+  end if
+  K = V & 2
+  if K > 0 then
+    if Sy < SyMax then inc Sy
+  end if
+  if FlipT > 0 then dec FlipT
+  K = V & 4
+  if K > 0 then
+    if Face = 1 then
+      Face = 0
+      FlipT = 8
+    elseif FlipT = 0 then
+      if StripP = 0 then
+        StripP = StripPx - 1
+      else
+        dec StripP
+      end if
+    end if
+    return
+  end if
+  K = V & 8
+  if K > 0 then
+    if Face = 0 then
+      Face = 1
+      FlipT = 8
+    elseif FlipT = 0 then
+      inc StripP
+      if StripP >= StripPx then StripP = 0
+    end if
+  end if
+  return
+end sub
+
+' the pad under the ship (0-2), or 255: its middle within 4 pixels of the
+' ship's middle (pixel 128)
+function PadUnder as u8
+  u8 Pi = 0
+  u16 Px = 0
+  for Pi = 0 to 2
+    Px = PadAt[Pi]
+    Px = Px << 3
+    Px = Px + StripPx
+    Px = Px - StripP
+    if Px >= StripPx then Px = Px - StripPx
+    ' Px: the pad's left pixel from column 2 (pixel 16); middle + 12
+    Px = Px + 28
+    if Px >= 124 then
+      if Px <= 132 then return Pi
+    end if
+  next
+  return 255
+
+' loading: with no bombs, at the bottom, over a lit pad, stick held down
+sub Refuel:
+  if RefT > 0 then
+    dec RefT
+    K = RefT & 3
+    if K = 0 then
+      if Ammo < Load then
+        inc Ammo
+        play sound SndLoad
+      end if
+    end if
+    if Ammo >= Load then
+      RefT = 0
+      FinishLoad
+    end if
+    return
+  end if
+  if Ammo > 0 then return
+  if Sy < SyMax then return
+  K = V & 2
+  if K = 0 then return
+  N = PadUnder()
+  if N = 255 then return
+  if N = UsedPad then return
+  RefPad = N
+  RefT = 200
+  return
+end sub
+
+' after a load: the next load is smaller, the ticks faster
+sub FinishLoad:
+  K = Level >> 1
+  K = K + 2
+  if Load > K + 5 then
+    Load = Load - K
+  else
+    Load = 5
+  end if
+  if Hf > 0 then dec Hf
+  SetTickP
+  return
+end sub
+
+' a tick lasts (Hf + 4) x 13 / 10 frames (Hf jiffies + about 4 for the
+' C64's BASIC loop, measured in jsc64: 19 frames at level 1, 4.3 at 5)
+sub SetTickP:
+  W16 = Hf + 4
+  W16 = W16 * 13
+  W16 = W16 / 10
+  TickP = W16
+  return
+end sub
+
+sub FireLaser:
+  if Press = 0 then return
+  if ShotOn = 1 then return
+  if RefT > 0 then return
+  if Ammo = 0 then
+    play sound SndEmpty
+    return
+  end if
+  dec Ammo
+  ShotOn = 1
+  ShotDir = Face
+  ShotL = Sy + 7
+  if Face = 1 then
+    ShotX = 128
+  else
+    ShotX = 112
+  end if
+  play sound SndLaser
+  return
+end sub
+
+' the beam: 8 pixels a frame; the first saucer whose body (6 lines) crosses
+' its line and whose 16 pixels meet the beam's is hit
+sub MoveShot:
+  if ShotOn = 0 then return
+  if ShotDir = 1 then
+    ShotX = ShotX + 8
+    if ShotX > 224 then
+      ShotOn = 0
+      return
+    end if
+  else
+    ShotX = ShotX - 8
+    if ShotX < 16 then
+      ShotOn = 0
+      return
+    end if
+  end if
+  for Ai = 0 to 11
+    if Al[Ai].Live = 1 then
+      X = Al[Ai].Col
+      X = X << 3
+      Y = Al[Ai].Y
+      if ShotX >= X then
+        K = ShotX - X
+      else
+        K = X - ShotX
+      end if
+      if K < 16 then
+        if ShotL >= Y then
+          K = ShotL - Y
+          if K < 6 then
+            HitAlien
+            ShotOn = 0
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' saucer Ai shot: points, the bonus every 500 / 300
+sub HitAlien:
+  BoomX = X
+  BoomY = Y
+  BoomT = BoomN
+  EraseAli
+  Al[Ai].Live = 0
+  play sound SndHit
+  Score = Score + Si
+  Bo = Bo + Si
+  inc Kills
+  if Bo >= BonusAt then
+    Bo = Bo - BonusAt
+    BonusAt = 300
+    Score = Score + Si
+    if Landed > 0 then dec Landed
+    TankT = 50
+    TankY = 150
+    play sound SndBonus
+  end if
+  return
+end sub
+
+' the game tick: one saucer slot at random
+sub GameTick:
+  inc TickT
+  if TickT < TickP then return
+  TickT = 0
+  Rand
+  K = Rs & 15
+  if K >= Nl then K = K - Nl
+  if Al[K].Live = 0 then
+    SpawnAt
+    return
+  end if
+  if Al[K].Mv > 0 then return
+  Ai = K
+  C = Al[Ai].Col
+  Y = Al[Ai].Y
+  if Y >= AliLast then
+    LandAlien
+    return
+  end if
+  if Blocked() = 1 then return
+  Al[Ai].Mv = 8
+  return
+end sub
+
+' a saucer below in the same column closer than GapY lines
+function Blocked as u8
+  u8 Bi = 0
+  u8 By = 0
+  for Bi = 0 to 11
+    if Al[Bi].Live = 1 then
+      if Al[Bi].Col = C then
+        By = Al[Bi].Y
+        if By > Y then
+          By = By - Y
+          if By < GapY then return 1
+        end if
+      end if
+    end if
+  next
+  return 0
+
+' an empty slot K: a saucer at the top in a random column, if it is free
+sub SpawnAt:
+  Ai = K
+  J = Rs >> 4
+  J = J & 15
+  if J >= 12 then J = J - 12
+  C = SpawnCol[J]
+  for Ki = 0 to 11
+    if Al[Ki].Live = 1 then
+      if Al[Ki].Col = C then
+        if Al[Ki].Y < AliTop + GapY then return
+      end if
+    end if
+  next
+  Al[Ai].Live = 1
+  Al[Ai].Col = C
+  Al[Ai].Y = AliTop
+  Al[Ai].Mv = 0
+  DrawAli
+  return
+end sub
+
+' saucer Ai reaches the ground
+sub LandAlien:
+  BoomX = C << 3
+  BoomY = Y
+  BoomT = BoomN
+  EraseAli
+  Al[Ai].Live = 0
+  inc Landed
+  play sound SndLand
+  if Landed >= 5 then
+    OverT = OverN
+    ShotOn = 0
+  end if
+  return
+end sub
+
+' saucers sliding: 2 lines a frame
+sub MoveAliens:
+  for Ai = 0 to 11
+    if Al[Ai].Live = 1 then
+      if Al[Ai].Mv > 0 then
+        Al[Ai].Y = Al[Ai].Y + 2
+        Al[Ai].Mv = Al[Ai].Mv - 2
+        DrawAli
+        if Al[Ai].Mv = 0 then
+          ' arrived: the row above is free again
+          C = Al[Ai].Col
+          Y = Al[Ai].Y
+          Y = Y >> 3
+          dec Y
+          J = C
+          ClearCell
+          J = C + 1
+          ClearCell
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the cell J, Y back to the starfield
+sub ClearCell:
+  K = BgAt(J, Y)
+  put char K at J,Y
+  return
+end sub
+
+function BgAt(u8 Cc, u8 Rr) as u8
+  u8 H = 0
+  H = Cc * 5
+  H = H + Rr * 11
+  H = H & 31
+  if H = 3 then return TStar1
+  if H = 20 then return TStar2
+  return 32
+
+' draw saucer Ai at its Y: top tiles in row Y / 8, bottom tiles below it
+' when Y is between rows
+sub DrawAli:
+  C = Al[Ai].Col
+  Y = Al[Ai].Y
+  N = Y & 7
+  Y = Y >> 3
+  K = N << 1
+  K = K + TAli0tl
+  put char K at C,Y
+  inc K
+  X = C + 1
+  put char K at X,Y
+  if N > 0 then
+    inc K
+    inc Y
+    put char K at C,Y
+    inc K
+    put char K at X,Y
+  end if
+  return
+end sub
+
+sub EraseAli:
+  C = Al[Ai].Col
+  Y = Al[Ai].Y
+  N = Y & 7
+  Y = Y >> 3
+  J = C
+  ClearCell
+  J = C + 1
+  ClearCell
+  if N > 0 then
+    inc Y
+    J = C
+    ClearCell
+    J = C + 1
+    ClearCell
+  end if
+  return
+end sub
+
+' timers of the explosion and the supply ship
+sub Effects:
+  if BoomT > 0 then dec BoomT
+  if TankT > 0 then
+    dec TankT
+    if TankY > 10 then TankY = TankY - 3
+  end if
+  return
+end sub
+
+' the saucers' lights move every 16 frames (patterns of tiles 128-143)
+sub Animate:
+  inc AnimT
+  if AnimT < 16 then return
+  AnimT = 0
+  AnimF = AnimF ^ 1
+  if AnimF = 1 then
+    copy AliAnim + 128 count 128 to vram.pattern + 1024
+    copy AliAnim + 128 count 128 to vram.pattern + 3072
+    copy AliAnim + 128 count 128 to vram.pattern + 5120
+  else
+    copy AliAnim count 128 to vram.pattern + 1024
+    copy AliAnim count 128 to vram.pattern + 3072
+    copy AliAnim count 128 to vram.pattern + 5120
+  end if
+  return
+end sub
+
+' the ground strip, row 19: cells StripP / 8 on, moved left StripP & 7
+sub DrawStrip:
+  u8 Sh = 0
+  u8 Ce = 0
+  u8 Ca = 0
+  u8 Cb = 0
+  u8 Pa = 0
+  u8 Ti = 0
+  if StripP = OldP then return
+  OldP = StripP
+  W16 = StripP & 7
+  Sh = W16
+  W16 = W16 << 6
+  copy StripTab + W16 count 64 to vram.pattern + 5264
+  W16 = StripP >> 3
+  Ce = W16
+  for Ti = 0 to 27
+    Ca = StripCell[Ce]
+    inc Ce
+    if Ce >= StripLen then Ce = 0
+    Cb = StripCell[Ce]
+    Pa = Ca & 3
+    if Pa = 0 then
+      Pa = Cb & 3
+      if Pa = 1 then
+        Ca = Cb
+        Pa = 0
+      else
+        Pa = 255
+      end if
+    end if
+    if Pa = 255 then
+      StripBuf[Ti] = 32
+    else
+      K = Pa << 1
+      K = K + TStrip00
+      Ca = Ca >> 2
+      if Ca = UsedPad then inc K
+      StripBuf[Ti] = K
+    end if
+  next
+  copy StripBuf count 28 to vram.name + 610
+  return
+end sub
+
+' xorshift (7, 9, 8)
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' sprites: 0 the ship, 1 the beam, 2 an explosion, 3 the supply ship
+sub DrawSprites:
+  Y = Sy - 1
+  K = SShipl
+  if Face = 1 then K = SShipr
+  C = 15
+  if Ammo = 0 then C = 9
+  if RefT > 0 then C = 11
+  set sprite 0 to Y,ShipX,K,C
+  if ShotOn = 1 then
+    Y = ShotL - 8
+    set sprite 1 to Y,ShotX,SShot,9
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if BoomT > 0 then
+    K = SBoom1
+    if BoomT < 7 then K = SBoom2
+    Y = BoomY - 6
+    set sprite 2 to Y,BoomX,K,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  if TankT > 0 then
+    Y = TankY - 1
+    set sprite 3 to Y,200,STanker,7
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' score (row 1), ammo and landed saucers (row 21); only what changed
+sub ShowHud:
+  if Score <> OldScore then
+    OldScore = Score
+    NumU = Score
+    print at 8,1, digits$(NumU, 5)
+    if Score > Hi then Hi = Score
+    NumU = Hi
+    print at 24,1, digits$(NumU, 5)
+  end if
+  if Ammo <> OldAmmo then
+    OldAmmo = Ammo
+    N = Ammo
+    for Ki = 0 to 9
+      K = TAmmo0
+      if N >= 2 then
+        K = TAmmo2
+        N = N - 2
+      elseif N = 1 then
+        K = TAmmo1
+        N = 0
+      end if
+      X = Ki + 7
+      put char K at X,21
+    next
+  end if
+  if Landed <> OldLanded then
+    OldLanded = Landed
+    for Ki = 0 to 4
+      K = TSlot
+      if Ki < Landed then K = TLnd
+      X = Ki << 1
+      X = X + 20
+      put char K at X,21
+    next
+  end if
+  return
+end sub
+
+sub EndMessage:
+  mute all
+  play sound SndOver
+  for Ri = 8 to 14
+    fill 32 count 24 at 4,Ri
+  next
+  print at 7,9, "FIVE SAUCERS LANDED"
+  print at 11,11, "GAME OVER"
+  print at 8,13, "YOUR SCORE"
+  NumU = Score
+  print at 19,13, digits$(NumU, 5)
+  return
+end sub
+
+' the field: stars, the strip, the ground, the HUD
+sub DrawField:
+  for Ri = 2 to 18
+    for Ki = 2 to 29
+      K = BgAt(Ki, Ri)
+      put char K at Ki,Ri
+    next
+  next
+  fill TGnd count 32 at 0,20
+  OldP = 999
+  DrawStrip
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  DrawField
+  print at 2,1, "SCORE"
+  print at 21,1, "HI"
+  print at 2,21, "AMMO"
+  print at 2,22, "LEVEL"
+  NumU = Level
+  print at 8,22, digits$(NumU, 1)
+  print at 20,22, "LANDED"
+  for Ai = 0 to 11
+    Al[Ai].Live = 0
+    Al[Ai].Mv = 0
+  next
+  Hf = 4 * Level
+  Hf = 20 - Hf
+  Nl = 13 - Level
+  Si = SiTab[Level]
+  SetTickP
+  TickT = 0
+  Sy = 74
+  Face = 0
+  FlipT = 0
+  Ammo = 20
+  Load = 20
+  RefT = 0
+  UsedPad = 255
+  Landed = 0
+  ShotOn = 0
+  BoomT = 0
+  TankT = 0
+  Over = 0
+  OverT = 0
+  Score = 0
+  Bo = 0
+  Kills = 0
+  BonusAt = 500
+  StripP = 0
+  OldP = 999
+  OldScore = 999
+  OldAmmo = 255
+  OldLanded = 255
+  TitleOn = 0
+  DrawStrip
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  AnimF = 0
+  AnimT = 0
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: starfield, the SPACE PATROL logo, the ship; the tune once;
+' START GAME / LEVEL / CREDITS
+sub TitlePage:
+  NewScreen
+  for Ri = 1 to 22
+    for Ki = 2 to 29
+      K = BgAt(Ki, Ri)
+      put char K at Ki,Ri
+    next
+  next
+  DrawLogo
+  print at 2,14, "COMPUTE!'S GAZETTE JULY 1984"
+  print at 10,16, "START GAME"
+  print at 10,18, "LEVEL"
+  print at 10,20, "CREDITS"
+  print at 3,22, "BEST"
+  NumU = Hi
+  print at 8,22, digits$(NumU, 5)
+  ShowMenu
+  TitleOn = 1
+  set sprite 0 to 172,200,SShipl,15
+  set sprite 1 to 192,0,0,0
+  set sprite 2 to 192,0,0,0
+  set sprite 3 to 192,0,0,0
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 530
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  Animate
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  K = V & 15
+  if K > 0 then
+    if WasStick = 0 then TitleStick
+  end if
+  WasStick = K
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  W16 = W16 << 8
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub TitleStick:
+  C = K & 1
+  if C > 0 then
+    if Menu > 0 then dec Menu
+  end if
+  C = K & 2
+  if C > 0 then
+    if Menu < 2 then inc Menu
+  end if
+  if Menu = 1 then
+    C = K & 4
+    if C > 0 then
+      if Level > 1 then dec Level
+    end if
+    C = K & 8
+    if C > 0 then
+      if Level < 5 then inc Level
+    end if
+  end if
+  play sound SndTick
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,16
+  put char 32 at 8,18
+  put char 32 at 8,20
+  J = Menu << 1
+  J = J + 16
+  put char 62 at 8,J
+  NumU = Level
+  print at 17,18, "< ", digits$(NumU, 1), " >"
+  return
+end sub
+
+' the logo: SPACE (19 blocks wide) at column 6, rows 2-6; PATROL (23 wide)
+' at column 4, rows 8-12; LogoTab rows are LogoW (23) wide
+sub DrawLogo:
+  u8 Off = 0
+  N = 0
+  for Ri = 0 to 9
+    Y = Ri + 2
+    Off = 6
+    if Ri >= 5 then
+      Y = Ri + 3
+      Off = 4
+    end if
+    for J = 0 to 22
+      if LogoTab[N] = 1 then
+        X = J + Off
+        put char TBlk at X,Y
+      end if
+      inc N
+    next
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "SPACE PATROL"
+  print at 2,4, "BASED ON SPACE PATROL,"
+  print at 2,5, "COMPUTE!'S GAZETTE JULY"
+  print at 2,6, "1984 (COMMODORE 64 AND"
+  print at 2,7, "VIC-20)."
+  print at 2,9, "COLECOVISION GAME, MUSIC"
+  print at 2,10, "AND PICTURES BY CLAUDE"
+  print at 2,11, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "IN AMY BY AMY BIENVENU,"
+  print at 2,13, "2026."
+  print at 2,15, "MUSIC: PAD WATCH"
+  print at 2,16, "(ORIGINAL)"
+  print at 2,18, "STICK MOVES, BUTTON FIRES"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+GpLaser:
+    db $40,$50,$10,$02,$40,$66,$20,$02,$40,$84,$20,$02,$40,$AC,$30,$02,$40,$E0,$50,$02,$50
+GpHit:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$46,$08,$00,$00,$66,$0A,$10
+GpLand:
+    db $40,$FC,$11,$06,$40,$A6,$12,$06,$40,$FC,$11,$06,$40,$A6,$12,$06,$40,$F9,$23,$0C,$50
+GpLoad:
+    db $40,$7F,$20,$02,$40,$55,$30,$02,$50
+GpEmpty:
+    db $40,$EA,$22,$04,$40,$A4,$33,$06,$50
+GpBonus:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$55,$20,$0C,$50
+GpStart:
+    db $40,$1D,$21,$06,$40,$BF,$20,$06,$40,$8F,$20,$06,$40,$5F,$20,$0E,$50
+GpOver:
+    db $40,$1D,$11,$0A,$40,$53,$11,$0A,$40,$AB,$11,$0A,$40,$3B,$22,$1E,$50
+GpTick:
+    db $40,$5D,$40,$02,$50
+
+GpSoundTable:
+    dw GpTuneMel,$702B
+    dw GpTuneBass,$7035
+    dw GpLaser,$7049
+    dw GpHit,$703F
+    dw GpLand,$7049
+    dw GpLoad,$7049
+    dw GpEmpty,$7049
+    dw GpBonus,$7049
+    dw GpStart,$7049
+    dw GpOver,$7049
+    dw GpTick,$7049
+; Pad Watch (original)
+; Tiny Sound, 8 frames per step
+GpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$21,$01,$1C,$01,$21,$24,$01,$23,$21,$01,$1F,$01
+    db $1C,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$26,$24,$23,$01,$1F,$01
+    db $23,$01,$01,$01,$21,$01,$1C,$01,$21,$24,$01,$28,$26,$01,$24,$01
+    db $23,$01,$1F,$01,$21,$01,$24,$01,$23,$01,$20,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+GpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$07,$01,$0E,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $09,$01,$01,$01
+    db $FF
+}

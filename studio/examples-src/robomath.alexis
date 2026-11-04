@@ -1,0 +1,1365 @@
+cartridge "ROBOT MATH/COMPUTE'S GAZETTE/1984"
+
+' ROBOT MATH
+' A ColecoVision game based on "Robot Math", COMPUTE!'s Gazette July 1984
+' (Commodore 64 and VIC-20 BASIC, disk 1984-07; no author named on the
+' listing). Made for Amy Studio by Claude (an AI made by Anthropic), 2026,
+' in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/robomath64.bas), rebuilt for the ColecoVision: an LED
+' read-out panel with seven-segment digits, a robot of our own design (a
+' smooth two-colour sprite) on a conveyor belt, sound effects and an
+' original title tune ("Counting Gears").
+'
+' The game: set up the drill on the title (add or subtract, 2-6 digits,
+' carry/borrow allowed or not, how many problems), then solve column
+' problems. Dial the answer digit by digit, from the units column leftward
+' as on paper, and press the button to check it. Three tries a problem and
+' four minutes. A right answer sends the robot walking along the belt and
+' back; solve them all to win. A problem missed three times (or timed out)
+' shows its answer and costs the robot one of its three batteries.
+'
+' From the original: the four settings (+/-, digits 1-6, carry/borrow Y/N,
+' problems up to 9) and its defaults (-, 2, N); its problem maker column by
+' column: random digits 0-8, three numbers for 2- and 3-digit sums (two
+' otherwise), no-carry columns lowered until their sum is 9 or less, carry
+' columns raised until the sum reaches 9 + a random 0-8, no-borrow columns
+' with the larger digit on top, borrow columns with the larger one below
+' (not the leftmost), a number that is all zeros or a negative difference
+' thrown away, leading zeros not shown; answers entered from the units
+' column leftward under a cursor, three tries, the four-minute limit, the
+' answer shown after the third miss, the rising sweep for a right answer and
+' the buzz for a wrong one, the robot walking across and back for each right
+' answer, the end after the last problem.
+'
+' Liberties: the keyboard digits are a joystick dial (up/down rolls the
+' digit under the cursor 0-9 or blank, left/right moves the cursor; blank
+' counts as 0) and the answer is checked only on a button press: the C64
+' checked as soon as as many digits as the answer had were typed, which told
+' the player the answer's length; here every problem has one slot more than
+' its digits and any slot may be wrong. A way to lose was added: the C64
+' just replaced a missed problem with a new one, so mashing keys eventually
+' reached the end; here a missed problem costs a battery and the third one
+' ends the game. Problems 5-9 (the C64 allowed 1-9: with fewer, dialling
+' the likeliest answers, 99, 98, 89 for a no-carry sum, won 1 game in 10).
+' Digits 2-6 (the C64 allowed 1: one-digit answers are so few and so
+' lopsided, 0-2 for a no-borrow difference, 8-9 for a no-carry sum, that
+' dialling 0, 1, 2 or 9, 8, 7 won most games). A score: 5 x digits x
+' (3 - misses) for each solved problem. The robot's eyes stay steady (the
+' C64 flickered them every pass); its big problem-count digit at the right
+' is the PROBLEM n OF m line.
+' No "another game?" question: the end message, then the title.
+'
+' Controls: either controller. Title: up/down choose a line, left/right set
+' it, a button starts (or opens the credits). Play: up/down dial the digit,
+' left/right move the cursor, either button checks the answer.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes.
+
+const TAt0 = 128
+const TAt1 = 129
+const TAt2 = 130
+const TAt3 = 131
+const TAt4 = 132
+const TAt5 = 133
+const TAt6 = 134
+const TAt7 = 135
+const TAt8 = 136
+const TAt9 = 137
+const TAb0 = 138
+const TAb1 = 139
+const TAb2 = 140
+const TAb3 = 141
+const TAb4 = 142
+const TAb5 = 143
+const TAb6 = 144
+const TAb7 = 145
+const TAb8 = 146
+const TAb9 = 147
+const TGt0 = 148
+const TGt1 = 149
+const TGt2 = 150
+const TGt3 = 151
+const TGt4 = 152
+const TGt5 = 153
+const TGt6 = 154
+const TGt7 = 155
+const TGt8 = 156
+const TGt9 = 157
+const TGb0 = 158
+const TGb1 = 159
+const TGb2 = 160
+const TGb3 = 161
+const TGb4 = 162
+const TGb5 = 163
+const TGb6 = 164
+const TGb7 = 165
+const TGb8 = 166
+const TGb9 = 167
+const TPan = 168
+const TPtl = 169
+const TPtr = 170
+const TPbl = 171
+const TPbr = 172
+const TPt = 173
+const TPb = 174
+const TPl = 175
+const TPr = 176
+const TPlt = 177
+const TPlb = 178
+const TMit = 179
+const TMib = 180
+const TLine = 181
+const TSlot = 182
+const TCur = 183
+const TBelt = 184
+const TRoll = 185
+const TBatf = 186
+const TBate = 187
+const TRobo00 = 188
+const TRobo01 = 189
+const TRobo02 = 190
+const TRobo03 = 191
+const TRobo10 = 192
+const TRobo11 = 193
+const TRobo12 = 194
+const TRobo13 = 195
+const TRobo20 = 196
+const TRobo21 = 197
+const TRobo22 = 198
+const TRobo23 = 199
+const TRobo30 = 200
+const TRobo31 = 201
+const TRobo32 = 202
+const TRobo33 = 203
+const SFace = 0
+const SSad = 4
+const SWalka = 8
+const SWalkb = 12
+const SSadbody = 16
+const NTiles8 = 608
+const SprBytes = 160
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndMove = 4
+const SndYay = 5
+const SndBuzz = 6
+const SndClank = 7
+const SndOver = 8
+const SndWin = 9
+const NSpr = 2
+const MaxTries = 3
+const Blank = 10
+const HomeX = 24
+const FarX = 208
+const RobY = 135
+const RevealN = 180
+const ShakeN = 32
+const TimeN = 240
+
+' the robot: its column, direction (0 home, 1 out, 2 back), legs
+record Robo:
+  u8 X
+  u8 Dir
+  u8 Leg
+end record
+Robo Rb
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TimeLeft = 0
+bcd digits 4 Score
+' the settings
+u8 Op = 1
+u8 NDig = 2
+u8 Carry = 0
+u8 NProb = 5
+' the problem: digits by row (row * 8 + column, column 0 = units),
+' the answer and the dial
+u8 NRows = 2
+u8 Dg[24]
+u8 Ans[8]
+u8 Ent[8]
+u8 Cur = 0
+u8 LineRow = 8
+' the game
+u8 Tries = 0
+u8 Power = 3
+u8 Solved = 0
+u8 Pts = 0
+u8 St = 0
+u8 StT = 0
+u8 Sixty = 0
+u8 Over = 0
+u8 Checks = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 RepT = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+' loop counters (never shared with the helpers)
+u8 Gc = 0
+u8 Gk = 0
+u8 Ri = 0
+u8 Si = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table RmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 5 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawRobot
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  EndScreen
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  select case St
+  case 0
+    Dial
+  case 1
+    WalkStep
+  case 2
+    dec StT
+    if StT = 0 then
+      St = 0
+      ClearMsg
+    end if
+  case else
+    dec StT
+    if StT = 0 then
+      if Power = 0 then
+        Over = 1
+      else
+        NextProblem
+      end if
+    end if
+  end select
+  return
+end sub
+
+' the dial, the cursor, the clock and the check
+sub Dial:
+  inc Sixty
+  if Sixty >= 60 then
+    Sixty = 0
+    dec TimeLeft
+    ShowTime
+    if TimeLeft = 0 then
+      Missed
+      return
+    end if
+  end if
+  V = J1 | J2
+  V = V & 15
+  if V = 0 then
+    RepT = 0
+  else
+    if WasStick = 0 then
+      StickAct(V)
+      RepT = 16
+    else
+      dec RepT
+      if RepT = 0 then
+        StickAct(V)
+        RepT = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  if Press = 1 then Check
+  return
+end sub
+
+sub StickAct(u8 Sv):
+  u8 E = 0
+  E = Ent[Cur]
+  if Sv & 1 then
+    if E = Blank then
+      E = 0
+    elseif E = 9 then
+      E = Blank
+    else
+      inc E
+    end if
+    Ent[Cur] = E
+    play sound SndClick
+  elseif Sv & 2 then
+    if E = Blank then
+      E = 9
+    elseif E = 0 then
+      E = Blank
+    else
+      dec E
+    end if
+    Ent[Cur] = E
+    play sound SndClick
+  elseif Sv & 4 then
+    if Cur < NDig then
+      inc Cur
+      play sound SndMove
+    end if
+  elseif Sv & 8 then
+    if Cur > 0 then
+      dec Cur
+      play sound SndMove
+    end if
+  end if
+  DrawEntry
+  return
+end sub
+
+' 1 when every slot of the dial matches the answer (blank = 0)
+function Right() as u8
+  u8 Ok = 1
+  u8 E = 0
+  for Si = 0 to 7
+    E = Ent[Si]
+    if E = Blank then E = 0
+    if E <> Ans[Si] then Ok = 0
+  next
+  return Ok
+
+sub Check:
+  inc Checks
+  if Right() = 1 then
+    inc Solved
+    T = MaxTries - Tries
+    Pts = T * NDig
+    Pts = Pts * 5
+    Score += Pts
+    ShowHud
+    St = 1
+    Rb.Dir = 1
+    play sound SndYay
+    print at 2,15, "  RIGHT! WATCH ROBOT GO!"
+  else
+    inc Tries
+    ShowTries
+    if Tries >= MaxTries then
+      Missed
+    else
+      St = 2
+      StT = ShakeN
+      play sound SndBuzz
+      print at 2,15, "  NOT QUITE. TRY AGAIN."
+    end if
+  end if
+  return
+end sub
+
+' three misses or the clock: the answer is shown, a battery is lost
+sub Missed:
+  dec Power
+  ShowPower
+  St = 3
+  StT = RevealN
+  play sound SndClank
+  ShowAnswer
+  ClearMsg
+  print at 2,15, "  THE ANSWER IS SHOWN."
+  if Power = 0 then
+    print at 2,16, "  THE ROBOT IS OUT OF POWER"
+  end if
+  return
+end sub
+
+' the robot walks to the far end of the belt and back
+sub WalkStep:
+  with Rb as Ro
+    if Ro.Dir = 1 then
+      Ro.X = Ro.X + 2
+      if Ro.X >= FarX then Ro.Dir = 2
+    else
+      Ro.X = Ro.X - 2
+      if Ro.X <= HomeX then
+        Ro.X = HomeX
+        Ro.Dir = 0
+      end if
+    end if
+    T = Ro.X & 8
+    Ro.Leg = T >> 3
+  end with
+  if Rb.Dir = 0 then
+    if Solved >= NProb then
+      Over = 2
+    else
+      NextProblem
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the problem maker (the C64's lines 180-380, column by column)
+
+function RandBelow(u8 M) as u8
+  u8 L = 0
+  Rand
+  L = Rs & 255
+  L = L mod M
+  return L
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the sum of column Col over the rows
+function ColSum(u8 Col) as u8
+  u8 Sm = 0
+  u8 Ix = 0
+  Ix = Col
+  for Gk = 1 to NRows
+    Sm = Sm + Dg[Ix]
+    Ix = Ix + 8
+  next
+  return Sm
+
+' every digit of column Col one step up (Up = 1) or down, inside 0-9
+sub Bump(u8 Col, u8 Up):
+  u8 Ix = 0
+  u8 Dv = 0
+  Ix = Col
+  for Gk = 1 to NRows
+    Dv = Dg[Ix]
+    if Up = 1 then
+      if Dv < 9 then inc Dv
+    else
+      if Dv > 0 then dec Dv
+    end if
+    Dg[Ix] = Dv
+    Ix = Ix + 8
+  next
+  return
+end sub
+
+sub GenColumn(u8 Col):
+  u8 Ix = 0
+  u8 Fv = 0
+  u8 Sm = 0
+  u8 Again = 0
+  u8 Top = 0
+  u8 Bot = 0
+  Ix = Col
+  for Gk = 1 to NRows
+    Dg[Ix] = RandBelow(9)
+    Ix = Ix + 8
+  next
+  if Op = 0 then
+    if Carry = 0 then
+      do while ColSum(Col) > 9
+        Bump(Col, 0)
+      loop
+    else
+      do
+        Fv = RandBelow(9)
+        Sm = ColSum(Col)
+        Again = 0
+        if Sm < Fv + 9 then
+          Bump(Col, 1)
+          Again = 1
+        end if
+      loop until Again = 0
+    end if
+  else
+    Top = Dg[Col]
+    Ix = Col + 8
+    Bot = Dg[Ix]
+    Again = 0
+    if Carry = 0 then
+      if Bot >= Top then Again = 1
+    else
+      if Col + 1 < NDig then
+        if Bot < Top then Again = 1
+      end if
+    end if
+    if Again = 1 then
+      Dg[Col] = Bot
+      Dg[Ix] = Top
+    end if
+  end if
+  return
+end sub
+
+' 1 when a number is all zeros or the difference would be negative
+function BadProblem() as u8
+  u8 Bad = 0
+  u8 Nz = 0
+  u8 Ix = 0
+  u8 Top = 0
+  u8 Bot = 0
+  for Ri = 0 to NRows - 1
+    Nz = 0
+    Ix = Ri << 3
+    for Gc = 1 to NDig
+      if Dg[Ix] > 0 then Nz = 1
+      inc Ix
+    next
+    if Nz = 0 then Bad = 1
+  next
+  if Op = 1 then
+    ' from the leftmost column: the first difference decides
+    Nz = 0
+    Gc = NDig
+    do while Gc > 0
+      dec Gc
+      if Nz = 0 then
+        Top = Dg[Gc]
+        Ix = Gc + 8
+        Bot = Dg[Ix]
+        if Top > Bot then Nz = 1
+        if Top < Bot then
+          Nz = 1
+          Bad = 1
+        end if
+      end if
+    loop
+  end if
+  return Bad
+
+sub ComputeAnswer:
+  u8 Cy = 0
+  u8 Sm = 0
+  u8 Top = 0
+  u8 Bot = 0
+  u8 Ix = 0
+  fill array Ans with 0
+  for Gc = 0 to NDig - 1
+    if Op = 0 then
+      Sm = ColSum(Gc) + Cy
+      Ans[Gc] = Sm mod 10
+      Cy = Sm / 10
+    else
+      Top = Dg[Gc]
+      Ix = Gc + 8
+      Bot = Dg[Ix] + Cy
+      if Top >= Bot then
+        Ans[Gc] = Top - Bot
+        Cy = 0
+      else
+        Ans[Gc] = Top + 10 - Bot
+        Cy = 1
+      end if
+    end if
+  next
+  if Op = 0 then
+    Ix = NDig
+    Ans[Ix] = Cy
+  end if
+  return
+end sub
+
+sub GenProblem:
+  u8 Bad = 1
+  NRows = 2
+  if Op = 0 then
+    if NDig >= 2 then
+      if NDig <= 3 then NRows = NDig
+    end if
+  end if
+  do while Bad = 1
+    fill array Dg with 0
+    for Gc = 0 to NDig - 1
+      GenColumn(Gc)
+    next
+    Bad = BadProblem()
+  loop
+  ComputeAnswer
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' a seven-segment digit (amber Gr = 0, green Gr = 1) at X, Rw and Rw + 1
+sub PutDig(u8 Dv, u8 Px, u8 Rw, u8 Gr):
+  u8 Tt = 0
+  if Gr = 0 then
+    Tt = TAt0 + Dv
+  else
+    Tt = TGt0 + Dv
+  end if
+  put char Tt at Px,Rw
+  Tt = Tt + 10
+  inc Rw
+  put char Tt at Px,Rw
+  return
+end sub
+
+sub PutGap(u8 Px, u8 Rw):
+  put char TPan at Px,Rw
+  inc Rw
+  put char TPan at Px,Rw
+  return
+end sub
+
+sub DrawProblem:
+  u8 Lead = 0
+  u8 Ix = 0
+  u8 Rw = 0
+  u8 Px = 0
+  for Ri = 4 to 13
+    fill TPan count 20 at 6,Ri
+  next
+  for Ri = 0 to NRows - 1
+    ' the leftmost digit that isn't zero
+    Lead = 0
+    Ix = Ri << 3
+    for Gc = 0 to NDig - 1
+      if Dg[Ix] > 0 then Lead = Gc
+      inc Ix
+    next
+    Rw = Ri << 1
+    Rw = Rw + 4
+    Ix = Ri << 3
+    for Gc = 0 to NDig - 1
+      Px = Gc << 1
+      Px = 22 - Px
+      if Gc > Lead then
+        PutGap(Px, Rw)
+      else
+        PutDig(Dg[Ix], Px, Rw, 0)
+      end if
+      inc Ix
+    next
+  next
+  ' the sign beside the last number, the line under it
+  Rw = NRows << 1
+  Rw = Rw + 2
+  if Op = 0 then
+    put char TPlt at 8,Rw
+    inc Rw
+    put char TPlb at 8,Rw
+  else
+    put char TMit at 8,Rw
+    inc Rw
+    put char TMib at 8,Rw
+  end if
+  LineRow = Rw + 1
+  fill TLine count 16 at 8,LineRow
+  DrawEntry
+  return
+end sub
+
+sub DrawEntry:
+  u8 Rw = 0
+  u8 Px = 0
+  u8 E = 0
+  Rw = LineRow + 1
+  for Gc = 0 to NDig
+    Px = Gc << 1
+    Px = 22 - Px
+    E = Ent[Gc]
+    if E = Blank then
+      put char TPan at Px,Rw
+      Y = Rw + 1
+      put char TSlot at Px,Y
+    else
+      PutDig(E, Px, Rw, 1)
+    end if
+  next
+  Rw = LineRow + 3
+  fill TPan count 16 at 8,Rw
+  Px = Cur << 1
+  Px = 22 - Px
+  put char TCur at Px,Rw
+  return
+end sub
+
+' the answer, amber, in the dial's place (leading zeros blank)
+sub ShowAnswer:
+  u8 Lead = 0
+  u8 Rw = 0
+  u8 Px = 0
+  for Gc = 0 to 7
+    if Ans[Gc] > 0 then Lead = Gc
+  next
+  Rw = LineRow + 1
+  for Gc = 0 to NDig
+    Px = Gc << 1
+    Px = 22 - Px
+    if Gc > Lead then
+      PutGap(Px, Rw)
+    else
+      PutDig(Ans[Gc], Px, Rw, 0)
+    end if
+  next
+  Rw = LineRow + 3
+  fill TPan count 16 at 8,Rw
+  return
+end sub
+
+sub DrawPanel:
+  put char TPtl at 5,3
+  fill TPt count 20 at 6,3
+  put char TPtr at 26,3
+  for Ri = 4 to 13
+    put char TPl at 5,Ri
+    put char TPr at 26,Ri
+  next
+  put char TPbl at 5,14
+  fill TPb count 20 at 6,14
+  put char TPbr at 26,14
+  fill TBelt count 28 at 2,19
+  fill TRoll count 28 at 2,20
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,15
+  fill 32 count 28 at 2,16
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "PROBLEM"
+  NumU = Solved + 1
+  if NumU > NProb then NumU = NProb
+  print at 10,1, digits$(NumU, 1)
+  print at 12,1, "OF"
+  NumU = NProb
+  print at 15,1, digits$(NumU, 1)
+  print at 19,1, "SCORE"
+  print Score at 25,1
+  return
+end sub
+
+sub ShowTime:
+  print at 2,2, "TIME"
+  print at 7,2, digits$(TimeLeft, 3)
+  return
+end sub
+
+sub ShowTries:
+  print at 17,2, "TRIES LEFT"
+  T = MaxTries - Tries
+  NumU = T
+  print at 28,2, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowPower:
+  print at 2,22, "POWER"
+  for Ri = 0 to 2
+    X = Ri + 8
+    if Ri < Power then
+      put char TBatf at X,22
+    else
+      put char TBate at X,22
+    end if
+  next
+  return
+end sub
+
+' sprite 0 the face (yellow, red when sad), 1 the body
+sub DrawRobot:
+  u8 Rx = 0
+  u8 Pb = 0
+  u8 Pf = 0
+  u8 Fc = 0
+  Rx = Rb.X
+  Pf = SFace
+  Fc = 11
+  Pb = SWalka
+  if Rb.Leg = 1 then Pb = SWalkb
+  if St = 2 then
+    T = StT >> 2
+    T = T & 1
+    T = T << 2
+    Rx = Rx + T
+  end if
+  if St = 3 then
+    Pf = SSad
+    Pb = SSadbody
+    Fc = 8
+  end if
+  if Over = 1 then
+    Pf = SSad
+    Pb = SSadbody
+    Fc = 8
+  end if
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    set sprite 0 to RobY,Rx,Pf,Fc
+    set sprite 1 to RobY,Rx,Pb,14
+  end if
+  update sprites
+  return
+end sub
+
+sub NextProblem:
+  Tries = 0
+  Cur = 0
+  St = 0
+  Sixty = 0
+  TimeLeft = TimeN
+  fill array Ent with Blank
+  GenProblem
+  Rearm
+  wait
+  nmi off
+  ClearMsg
+  ShowHud
+  ShowTime
+  ShowTries
+  DrawProblem
+  return
+end sub
+
+sub NewGame:
+  Over = 0
+  TitleOn = 0
+  Power = 3
+  Solved = 0
+  Score = 0
+  Checks = 0
+  Rb.X = HomeX
+  Rb.Dir = 0
+  Rb.Leg = 0
+  NewScreen
+  DrawPanel
+  ShowPower
+  print at 2,21, "STICK:DIAL+MOVE BUTTON:CHECK"
+  NextProblem
+  DrawRobot
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EndScreen:
+  Rearm
+  wait
+  nmi off
+  ClearMsg
+  if Over = 2 then
+    print at 2,15, "  ALL PROBLEMS SOLVED!"
+    print at 2,16, "  WELL DONE. SCORE"
+    print Score at 21,16
+    play sound SndWin
+  else
+    print at 2,15, "  THE ROBOT IS OUT OF POWER."
+    print at 2,16, "  SOLVED"
+    NumU = Solved
+    print at 11,16, digits$(NumU, 1)
+    print at 13,16, "OF"
+    NumU = NProb
+    print at 16,16, digits$(NumU, 1)
+    play sound SndOver
+  end if
+  DrawRobot
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the big robot, the tune once, the settings
+sub TitlePage:
+  TitleOn = 1
+  NewScreen
+  put char TRobo00 at 14,2
+  put char TRobo01 at 15,2
+  put char TRobo02 at 16,2
+  put char TRobo03 at 17,2
+  put char TRobo10 at 14,3
+  put char TRobo11 at 15,3
+  put char TRobo12 at 16,3
+  put char TRobo13 at 17,3
+  put char TRobo20 at 14,4
+  put char TRobo21 at 15,4
+  put char TRobo22 at 16,4
+  put char TRobo23 at 17,4
+  put char TRobo30 at 14,5
+  put char TRobo31 at 15,5
+  put char TRobo32 at 16,5
+  put char TRobo33 at 17,5
+  fill TBelt count 28 at 2,6
+  print at 11,8, "ROBOT MATH"
+  print at 2,9, "COMPUTE!'S GAZETTE JULY 1984"
+  print at 6,12, "OPERATION"
+  print at 6,13, "DIGITS"
+  print at 6,14, "CARRY/BORROW"
+  print at 6,15, "PROBLEMS"
+  print at 6,16, "START"
+  print at 6,17, "CREDITS"
+  print at 5,20, "STICK: CHOOSE AND SET"
+  print at 5,21, "BUTTON: START"
+  Menu = 4
+  ShowMenu
+  DrawRobot
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      MenuAct(V)
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 5 then CreditsPage
+  return
+end sub
+
+sub MenuAct(u8 Mv):
+  if Mv & 1 then
+    if Menu > 0 then dec Menu
+  elseif Mv & 2 then
+    if Menu < 5 then inc Menu
+  else
+    ' left or right: change the line's setting
+    select case Menu
+    case 0
+      Op = Op ^ 1
+    case 1
+      if Mv & 4 then
+        if NDig > 2 then dec NDig
+      else
+        if NDig < 6 then inc NDig
+      end if
+    case 2
+      Carry = Carry ^ 1
+    case 3
+      if Mv & 4 then
+        if NProb > 5 then dec NProb
+      else
+        if NProb < 9 then inc NProb
+      end if
+    end select
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 12 to 17
+    put char 32 at 4,Ri
+  next
+  J = Menu + 12
+  put char 62 at 4,J
+  if Op = 0 then
+    print at 20,12, "ADD     "
+  else
+    print at 20,12, "SUBTRACT"
+  end if
+  NumU = NDig
+  print at 20,13, digits$(NumU, 1)
+  if Carry = 0 then
+    print at 20,14, "NO "
+  else
+    print at 20,14, "YES"
+  end if
+  NumU = NProb
+  print at 20,15, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "ROBOT MATH"
+  print at 2,5, "BASED ON ROBOT MATH,"
+  print at 2,6, "COMPUTE!'S GAZETTE, JULY"
+  print at 2,7, "1984 (COMMODORE 64 AND"
+  print at 2,8, "VIC-20 BASIC)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: COUNTING GEARS"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $00,$00,$03,$03,$03,$03,$03,$00
+  $00,$C3,$03,$03,$03,$03,$03,$C3
+  $00,$C3,$03,$03,$03,$03,$03,$C3
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$C3,$C0,$C0,$C0,$C0,$C0,$C3
+  $00,$C3,$C0,$C0,$C0,$C0,$C0,$C3
+  $00,$C3,$03,$03,$03,$03,$03,$00
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C3,$00
+  $03,$03,$03,$03,$03,$03,$C3,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $03,$03,$03,$03,$03,$03,$C3,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $03,$03,$03,$03,$03,$03,$C3,$00
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $00,$00,$03,$03,$03,$03,$03,$00
+  $00,$C3,$03,$03,$03,$03,$03,$C3
+  $00,$C3,$03,$03,$03,$03,$03,$C3
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$C3,$C0,$C0,$C0,$C0,$C0,$C3
+  $00,$C3,$C0,$C0,$C0,$C0,$C0,$C3
+  $00,$C3,$03,$03,$03,$03,$03,$00
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C3,$00
+  $03,$03,$03,$03,$03,$03,$C3,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $03,$03,$03,$03,$03,$03,$C3,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$00
+  $03,$03,$03,$03,$03,$03,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$18,$18,$18
+  $00,$00,$18,$18,$18,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$81,$00
+  $00,$18,$C3,$81,$00,$00,$00,$00
+  $00,$00,$CC,$99,$CC,$99,$00,$00
+  $86,$30,$87,$87,$30,$86,$00,$00
+  $18,$81,$C3,$C3,$C3,$C3,$00,$00
+  $18,$81,$C3,$C3,$C3,$C3,$00,$00
+  $00,$00,$00,$00,$03,$03,$03,$03
+  $01,$01,$01,$01,$00,$00,$00,$C3
+  $80,$80,$80,$80,$00,$00,$00,$C3
+  $00,$00,$00,$00,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$00,$F0,$00,$00,$07,$07
+  $C3,$C3,$00,$F0,$00,$00,$E0,$E0
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$03,$03
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $10,$10,$F0,$F0,$00,$00,$00,$00
+  $00,$07,$00,$00,$03,$03,$03,$03
+  $00,$E0,$00,$00,$C0,$C0,$C0,$C0
+  $08,$08,$F0,$F0,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$1B
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$1B
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$1B
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$1B
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$1B
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$1B
+  $01,$1B,$B1,$B1,$B1,$B1,$B1,$1B
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$1B,$01
+  $01,$13,$31,$31,$31,$31,$31,$01
+  $01,$01,$31,$31,$31,$31,$31,$01
+  $01,$13,$31,$31,$31,$31,$31,$13
+  $01,$13,$31,$31,$31,$31,$31,$13
+  $01,$01,$31,$31,$31,$31,$31,$13
+  $01,$13,$31,$31,$31,$31,$31,$13
+  $01,$13,$31,$31,$31,$31,$31,$13
+  $01,$13,$31,$31,$31,$31,$31,$01
+  $01,$13,$31,$31,$31,$31,$31,$13
+  $01,$13,$31,$31,$31,$31,$31,$13
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $31,$31,$31,$31,$31,$31,$01,$01
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $31,$31,$31,$31,$31,$31,$01,$01
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $31,$31,$31,$31,$31,$31,$01,$01
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $31,$31,$31,$31,$31,$31,$13,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0E,$0E,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$0E,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$0E,$0E
+  $E1,$E1,$E1,$E1,$E1,$E1,$0E,$0E
+  $0E,$0F,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$0F,$0E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$B1,$B1,$B1
+  $0B,$0B,$B1,$B1,$B1,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0B,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$1C,$01
+  $01,$31,$13,$13,$03,$01,$01,$01
+  $0E,$0F,$B1,$B1,$1B,$1B,$0E,$01
+  $1E,$FE,$EF,$EF,$FE,$1E,$01,$04
+  $E4,$4E,$43,$43,$43,$43,$04,$04
+  $E4,$4E,$4E,$4E,$4E,$4E,$04,$04
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0
+  $B0,$B0,$E0,$E0,$0E,$0E,$0E,$E8
+  $B0,$B0,$E0,$E0,$0E,$0E,$0E,$E8
+  $00,$00,$00,$00,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $E8,$E8,$0E,$E1,$0E,$0E,$E0,$E0
+  $E8,$E8,$0E,$1E,$0E,$0E,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$E7,$E7,$E7,$E7,$E7,$E7
+  $0E,$0E,$E7,$E7,$E7,$E7,$E7,$E7
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$00,$00,$00,$00
+  $0E,$1E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$1E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$E0,$E0,$00,$00,$00,$00
+end data
+data SpritePat bytes
+  $00,$00,$00,$06,$06,$00,$07,$00,$00,$00,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$60,$60,$00,$E0,$00,$00,$00,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$06,$00,$03,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$60,$00,$C0,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$1F,$19,$19,$1F,$18,$03,$7F,$BF,$BE,$BF,$3F,$1C,$1C,$3C
+  $00,$80,$F8,$98,$98,$F8,$18,$C0,$FE,$FD,$7D,$FD,$FC,$38,$38,$3C
+  $01,$03,$1F,$19,$19,$1F,$18,$03,$7F,$BF,$BE,$BF,$3F,$0E,$1C,$38
+  $00,$80,$F8,$98,$98,$F8,$18,$C0,$FE,$FD,$7D,$FD,$FC,$70,$38,$1C
+  $01,$03,$1F,$1F,$19,$1F,$1C,$03,$7F,$BF,$BF,$BF,$3F,$1C,$1C,$3C
+  $00,$80,$F8,$F8,$98,$F8,$38,$C0,$FE,$FD,$FD,$FD,$FC,$38,$38,$3C
+end data
+
+asm {
+RmClick:
+    db $40,$3E,$30,$01,$40,$5D,$50,$01,$50
+RmMove:
+    db $40,$7C,$40,$01,$50
+RmYay:
+    db $40,$18,$11,$01,$40,$E0,$10,$01,$40,$BA,$10,$01,$40,$A0,$10,$01,$40,$8C,$10,$01,$40,$7C,$10,$01
+    db $40,$70,$10,$01,$40,$66,$10,$01,$40,$5D,$10,$01,$40,$56,$10,$01,$40,$50,$10,$01,$40,$4B,$10,$01
+    db $40,$46,$10,$01,$40,$55,$20,$06,$40,$47,$20,$0A,$50
+RmBuzz:
+    db $40,$F9,$13,$08,$40,$FF,$F3,$04,$40,$FF,$13,$0C,$50
+RmClank:
+    db $00,$00,$14,$03,$00,$00,$25,$05,$00,$00,$46,$08,$10
+RmOver:
+    db $40,$1D,$11,$0C,$40,$53,$21,$0C,$40,$AB,$21,$0C,$40,$3B,$22,$1E,$50
+RmWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$8F,$20,$06,$40,$6B,$10,$1E
+    db $50
+
+RmSoundTable:
+    dw RmTuneMel,$702B
+    dw RmTuneBass,$7035
+    dw RmClick,$7049
+    dw RmMove,$7049
+    dw RmYay,$7049
+    dw RmBuzz,$7049
+    dw RmClank,$703F
+    dw RmOver,$7049
+    dw RmWin,$7049
+; Counting Gears (original)
+; Tiny Sound, 8 frames per step
+RmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1F,$01,$23,$01,$26,$01,$23,$01,$1F,$01
+    db $21,$01,$23,$01,$24,$01,$01,$01,$28,$01,$01,$01,$26,$01,$24,$01
+    db $23,$01,$21,$01,$1F,$01,$01,$01,$1C,$01,$1F,$01,$24,$01,$28,$01
+    db $26,$01,$23,$01,$1F,$01,$23,$01,$21,$01,$01,$01,$1A,$01,$1E,$01
+    db $21,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$01,$01,$00,$01
+    db $FF
+RmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0E,$01,$09,$01
+    db $07,$01,$0E,$01,$0C,$01,$07,$01,$0C,$01,$07,$01,$0B,$01,$06,$01
+    db $04,$01,$0B,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$06,$01
+    db $07,$01,$0E,$01,$0B,$01,$0E,$01,$0E,$01,$07,$01,$00,$01
+    db $FF
+}

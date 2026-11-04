@@ -907,4 +907,22 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   each profile 777 ROMs assemble and one project remains delegated to its target-specific validator.
   The clean repository also passes 778/778 at 7,594,771 Balanced and 7,593,816 Aggressive bytes.
 
+## 2026-11-03 - Claude audit refresh keeps Ahoy and Gazette provenance separate
+
+- Imported 12 additional COMPUTE!'s Gazette ports from Claude's `Amy-Audit-for-Codex (1)` corpus:
+  Spelling Bee, the Gazette Space Patrol, Robot Math, Sno-Cat, Space Gallery, Space Dock, Space
+  Arena, Slots, Snake Pit, Space Worms, Slap Shot, and Qewb. The Gazette Space Patrol uses its own
+  `gpatrol` identity and does not replace the unrelated Ahoy! game of the same name.
+- Updated 11 existing Ahoy! sources to their audited natural-code versions, removing obsolete
+  compiler workarounds for signed word data, named constants, Mode 2, nested indexes, records,
+  string conversion, modulo, and expression-based numeric formatting. These remain Ahoy! entries
+  and are not counted or tagged as Gazette games.
+- Documented the OS7 RAM-shadow behavior of `vdp.status`, unsigned modulo-256 semantics of negative
+  `data ... bytes` literals, and the absence of a backslash double-quote escape in Amy strings.
+- The 23 affected sources compile in all five optimization profiles. Attribution validation passes
+  for 293 COMPUTE!-related examples, including 197 Gazette entries. Alexis-Z80 gates pass 790/790:
+  7,724,237 Balanced bytes and 7,723,309 Aggressive bytes; 789 ROMs assemble and one project remains
+  delegated to its target-specific validator. The clean repository also passes 790/790 at
+  7,727,844 Balanced and 7,726,916 Aggressive bytes.
+
 

@@ -100,6 +100,10 @@ Supported title escapes:
 - `{c}`
 - `{tm}`
 
+Ordinary quoted Amy strings do not currently have a backslash escape for an embedded
+double quote: `\"` is rejected. For tile data, insert character 34 with `{34}`; for
+screen output, split the output or emit the quote tile explicitly.
+
 Lowercase letters are accepted in source, but the ColecoVision BIOS title screen is uppercase-only.
 The compiler and Studio preview normalize lowercase to uppercase for cartridge title rendering.
 
@@ -2180,6 +2184,11 @@ load mode 2 text colors LegacyColorTable
 ByteVar = vdp.status
 ```
 
+`vdp.status` reads Amy/OS7's RAM status shadow, not the TMS9918A status port directly.
+With NMI disabled that shadow does not update, so it must not be used to pace frames in
+an NMI-disabled loop. Use `wait` with NMI enabled or a documented inline-ASM port read
+when direct hardware status is required.
+
 The `vpeek` destination may be a byte variable, array element, record field,
 local-record field, or overlay-qualified byte field. Wider destinations are rejected.
 
@@ -3236,6 +3245,11 @@ end data
 
 DiamondsNeeded = MinimumDiamonds[Mountain]
 ```
+
+`data ... bytes` always stores unsigned bytes. A negative literal is encoded modulo
+256 (`-4` becomes 252), and reading it into `i16` still zero-extends to 252. Use a
+separate sign convention, explicit conversion, or a word table when signed values are
+required; Amy does not currently provide a signed-byte ROM table declaration.
 
 The indexed form reads one byte from ROM. The table name must be a known
 `data ... bytes` block, the index may be an 8- or 16-bit expression, and the

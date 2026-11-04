@@ -1,0 +1,1191 @@
+cartridge "SLOTS/COMPUTE! GAZETTE/1986"
+
+' SLOTS
+' A ColecoVision game based on "Slots", COMPUTE!'s Gazette, August 1986
+' (Commodore 64 / Plus/4 BASIC with a 528-byte machine-language computer
+' player at $309D, disk 1986-08; no author named in the listing).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy
+' by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from the
+' BASIC listing, orig/slots.bas, and the disassembly, orig/ml.dis),
+' rebuilt for the ColecoVision: falling piece sprites, a rack of tiles,
+' sound effects, a title tune and a match.
+'
+' From the original:
+' - you against the computer on a rack of 8 slots (columns), 8 pieces
+'   deep; a piece drops to the lowest free place of the slot you choose;
+' - you win with four of your pieces in a line (across, up-down or
+'   diagonal) or by putting a piece in the TOP row (the 8th place of a
+'   slot); the computer wins the same ways. The top-row rule means a
+'   full rack can never happen (the 57th piece at the latest is in the
+'   top row), so there is no draw; the port still checks for a full rack;
+' - you choose who goes first; the computer's opening move is random,
+'   slot INT(RND * 7 + .2) + 1 (slot 8 only 3 times in 100);
+' - level 1-4 = how many moves the computer looks ahead (its own, yours,
+'   its own, yours); the original changed it with L during your move;
+' - the computer (orig/ml.dis, ported exactly, quirks included): for each
+'   slot in turn it scores the place a piece would land: 64 + place / 8
+'   (place = row * 9 + slot), reset to 0 first in row 7 (it would hand
+'   the top row to the other side); +2, +8, +36 for the 1st, 2nd, 3rd
+'   neighbouring enemy piece along each line through the place (a
+'   block), +1, +2, +16 for its own; three of its own in a line = a win,
+'   played at once; a top-row place is played at once too; if the
+'   place above would give the enemy three in a line, the score drops to
+'   0; deeper levels add the best reply's score halved, quartered, ...
+'   (as the ML does: the reply's best score ADDED, and the best scores of
+'   deeper levels carried over between sibling moves); each score gets a
+'   random 0-3 (the C64's raster line AND 3) and the highest wins, the
+'   later slot on a tie.
+'
+' Liberties: joystick: left/right moves the piece over the slots, the
+' button drops it (the C64 typed 1-8); "go first" and the level are a
+' menu before each game (L on the C64); a match: first to 3 games, with
+' the score shown; the top row is marked red and "TOP ROW OR 4 IN A LINE
+' WINS" is shown (the C64 did not explain its top-row rule on screen);
+' the computer's random 0-3 comes from a 16-bit xorshift instead of the
+' raster line; the computer's thinking time is the Z80's (level 4 takes a
+' few seconds, as it did on the C64).
+'
+' Controls: controller 1: left/right choose a slot, a button drops the
+' piece. Menus: up/down choose a line, left/right change it, a button
+' picks.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off after a wait, display off. Music first
+' in the sound table, effects after; the title tune is played once.
+' `set sprite count` is always given.
+
+const TE00 = 128
+const TE01 = 129
+const TE10 = 130
+const TE11 = 131
+const TH00 = 132
+const TH01 = 133
+const TH10 = 134
+const TH11 = 135
+const TC00 = 136
+const TC01 = 137
+const TC10 = 138
+const TC11 = 139
+const TEtop00 = 140
+const TEtop01 = 141
+const TEtop10 = 142
+const TEtop11 = 143
+const THtop00 = 144
+const THtop01 = 145
+const THtop10 = 146
+const THtop11 = 147
+const TCtop00 = 148
+const TCtop01 = 149
+const TCtop10 = 150
+const TCtop11 = 151
+const TPost = 152
+const TPostT = 153
+const TBase = 154
+const TCap = 155
+const TMkH = 156
+const TMkC = 157
+const TLS00 = 158
+const TLS01 = 159
+const TLS10 = 160
+const TLS11 = 161
+const TLL00 = 162
+const TLL01 = 163
+const TLL10 = 164
+const TLL11 = 165
+const TLO00 = 166
+const TLO01 = 167
+const TLO10 = 168
+const TLO11 = 169
+const TLT00 = 170
+const TLT01 = 171
+const TLT10 = 172
+const TLT11 = 173
+const SCoin = 0
+const SDiam = 4
+const NTiles8 = 368
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndDrop = 4
+const SndLand = 5
+const SndThink = 6
+const SndWon = 7
+const SndLost = 8
+const SndOver = 9
+const NSpr = 1
+const NoSprite = 192
+const WinGames = 3
+const HoverY = 15
+const RepD = 14
+const RepR = 8
+
+' the computer's tables (orig/ml.dis $3072-$3088)
+' line steps along the board (row * 9 + slot): -1 +1, +8 -8, +10 -10, -9
+data DirT bytes 255,1,8,248,10,246,247
+' scores for the 1st, 2nd, 3rd enemy neighbour (block) and own neighbour
+data TabA bytes 0,2,8,36
+data TabB bytes 0,1,2,16
+' the piece played at look-ahead depth 0-3 and the other side's
+data PV bytes 255,1,255,1
+data OP bytes 1,255,1,255
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$E0,$C3,$8C,$98,$13,$13
+  $00,$E0,$07,$C3,$31,$19,$C8,$C8
+  $13,$13,$98,$8C,$C3,$E0,$07,$00
+  $C8,$C8,$19,$31,$C3,$07,$E0,$00
+  $00,$01,$03,$07,$0E,$1C,$C6,$8C
+  $00,$80,$C0,$E0,$70,$38,$9C,$31
+  $8C,$C6,$1C,$0E,$07,$03,$01,$00
+  $31,$9C,$38,$70,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$E0,$C3,$8C,$98,$13,$13
+  $00,$E0,$07,$C3,$31,$19,$C8,$C8
+  $13,$13,$98,$8C,$C3,$E0,$07,$00
+  $C8,$C8,$19,$31,$C3,$07,$E0,$00
+  $00,$01,$03,$07,$0E,$1C,$C6,$8C
+  $00,$80,$C0,$E0,$70,$38,$9C,$31
+  $8C,$C6,$1C,$0E,$07,$03,$01,$00
+  $31,$9C,$38,$70,$E0,$C0,$80,$00
+  $00,$30,$30,$00,$00,$0C,$0C,$00
+  $00,$30,$30,$00,$00,$0C,$0C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$99,$24,$A5,$A5,$24,$99,$C3
+  $18,$C3,$99,$24,$24,$99,$C3,$18
+  $00,$07,$07,$18,$18,$18,$18,$07
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $07,$00,$00,$00,$00,$E0,$E0,$00
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$00,$00,$00,$00,$07,$07,$00
+  $00,$07,$07,$18,$18,$18,$18,$18
+  $00,$E0,$E0,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$07,$07,$00
+  $18,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$E0,$E0,$01,$01,$01,$01,$01
+  $00,$07,$07,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$01
+  $04,$04,$04,$04,$04,$04,$04,$01
+  $04,$B4,$4B,$4B,$4B,$4B,$4B,$4B
+  $04,$B4,$4B,$4B,$4B,$4B,$4B,$4B
+  $4B,$4B,$4B,$4B,$4B,$4B,$B4,$01
+  $4B,$4B,$4B,$4B,$4B,$4B,$B4,$01
+  $04,$74,$74,$74,$74,$74,$47,$47
+  $04,$74,$74,$74,$74,$74,$74,$47
+  $47,$47,$74,$74,$74,$74,$74,$01
+  $47,$74,$74,$74,$74,$74,$74,$01
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$06,$06,$06,$06,$01
+  $06,$06,$06,$06,$06,$06,$06,$01
+  $06,$B6,$6B,$6B,$6B,$6B,$6B,$6B
+  $06,$B6,$6B,$6B,$6B,$6B,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$B6,$01
+  $6B,$6B,$6B,$6B,$6B,$6B,$B6,$01
+  $06,$76,$76,$76,$76,$76,$67,$67
+  $06,$76,$76,$76,$76,$76,$76,$67
+  $67,$67,$76,$76,$76,$76,$76,$01
+  $67,$76,$76,$76,$76,$76,$76,$01
+  $0E,$FE,$FE,$0E,$0E,$FE,$FE,$0E
+  $08,$F8,$F8,$08,$08,$F8,$F8,$08
+  $0F,$0E,$0E,$0E,$0E,$0E,$01,$01
+  $01,$01,$0E,$0E,$0E,$0E,$0E,$0F
+  $1B,$1B,$1B,$B1,$B1,$1B,$1B,$1B
+  $71,$17,$17,$17,$17,$17,$17,$71
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$A4
+  $04,$4B,$4B,$04,$04,$04,$04,$A4
+  $A4,$04,$04,$04,$04,$48,$48,$04
+  $A4,$A4,$84,$84,$84,$84,$84,$04
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$A4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $A4,$A4,$84,$84,$84,$48,$48,$04
+  $04,$04,$04,$04,$04,$48,$48,$04
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$A4
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$A4
+  $A4,$A4,$84,$84,$84,$84,$84,$04
+  $A4,$A4,$84,$84,$84,$84,$84,$04
+  $04,$4B,$4B,$B4,$B4,$A4,$A4,$A4
+  $04,$4B,$4B,$B4,$B4,$A4,$A4,$A4
+  $A4,$A4,$84,$84,$84,$84,$84,$04
+  $A4,$A4,$84,$84,$84,$84,$84,$04
+end data
+data SpritePat bytes
+  $00,$07,$1F,$3C,$73,$67,$EC,$EC,$EC,$EC,$67,$73,$3C,$1F,$07,$00
+  $00,$E0,$F8,$3C,$CE,$E6,$37,$37,$37,$37,$E6,$CE,$3C,$F8,$E0,$00
+  $00,$01,$03,$07,$0E,$1C,$39,$73,$73,$39,$1C,$0E,$07,$03,$01,$00
+  $00,$80,$C0,$E0,$70,$38,$9C,$CE,$CE,$9C,$38,$70,$E0,$C0,$80,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$98,$80,$81,$98,$80,$81,$98,$A6,$A7,$98,$80,$81,$98,$9E,$9F,$98,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$98,$82,$83,$98,$82,$83,$98,$A8,$A9,$98,$82,$83,$98,$A0,$A1,$98,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$98,$9E,$9F,$98,$80,$81,$98,$80,$81,$98,$AA,$AB,$98,$80,$81,$98,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$98,$A0,$A1,$98,$82,$83,$98,$82,$83,$98,$AC,$AD,$98,$82,$83,$98,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$98,$80,$81,$98,$A2,$A3,$98,$80,$81,$98,$80,$81,$98,$80,$81,$98,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$98,$82,$83,$98,$A4,$A5,$98,$82,$83,$98,$82,$83,$98,$82,$83,$98,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+' the rack as the ML keeps it: place = row * 9 + slot (slot 8 always
+' empty, row 8 always empty), 0 empty, 1 you, 255 the computer
+u8 Bd[81]
+' the next free place of each slot
+u8 Ht[8]
+' the computer's look-ahead: slot, score, best score, best slot per depth
+u8 Cand[4]
+u8 Sc[4]
+u8 Best[4]
+u8 BCol[4]
+u8 Found = 0
+u8 MaxD = 0
+u8 WinV = 0
+u8 LastH = 0
+u8 SPos = 0
+u8 SCmp = 0
+u8 STab = 0
+u8 AiY = 0
+u8 ScDir = 0
+u16 Seed = 12345
+u16 AiSeed = 0
+u16 Rolls = 0
+' the match
+u8 Level = 1
+u8 YouFirst = 1
+u8 WinsY = 0
+u8 WinsC = 0
+u8 GameNo = 0
+u8 Phase = 0
+u8 HovC = 3
+u8 Dest = 0
+u8 CpuCol = 0
+u8 Moves = 0
+u8 Result = 0
+u8 How = 0
+u8 InPlay = 0
+u8 MenuMode = 0
+u8 Menu = 0
+' the falling piece
+u16 SprX = 0
+u16 Fy = 0
+u16 Vy = 0
+u8 SprP = 0
+u8 SprC = 0
+u8 SprOn = 0
+' tune
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+' input
+u8 J0 = 0
+u8 WasBtn = 0
+u8 WasStick = 0
+u8 HoldT = 0
+u8 Tick = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table SfSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  MenuMode = 0
+  MenuPage
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  WinsY = 0
+  WinsC = 0
+  GameNo = 0
+
+next_game:
+  inc GameNo
+  PlayGame
+  if WinsY < WinGames and WinsC < WinGames then
+    AfterGame
+    MenuMode = 1
+    MenuPage
+    goto next_game
+  end if
+
+  InPlay = 0
+  Phase = 6
+  ShowScore
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  if WinsY = WinGames then
+    print at 5,21, "YOU WIN THE MATCH!"
+  else
+    print at 3,21, "THE COMPUTER WINS THE MATCH"
+  end if
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------- random
+function Rnd as u8
+  u8 Lo = 0
+  Seed = Seed ^ (Seed << 7)
+  Seed = Seed ^ (Seed >> 9)
+  Seed = Seed ^ (Seed << 8)
+  Lo = Seed & 255
+  return Lo
+
+' ------------------------------------------------------- the computer
+' a place on the rack; off the board reads empty (the ML reads its own
+' code bytes there, none of them 1 or 255)
+function Cell(u8 P) as u8
+  u8 R = 0
+  if P < 81 then R = Bd[P]
+  return R
+
+' the ML's line scan ($310C), in Z80 (AiScanZ below; the frame budget):
+' from place SPos along each line, counting pieces equal to SCmp, the
+' count carried from one direction to its opposite; STab 0 counts only,
+' 1 adds TabA (block), 2 TabB (own), each piece found; at three: STab 0-2
+' set Found = WinV and stop, STab 3 (the place-above check, $31ED) zeroes
+' the score and stops. Off the board reads empty (the ML reads its own
+' code bytes there, none of them 1 or 255).
+sub AiScan:
+  call asm AiScanZ
+end sub
+
+' the ML's move ($30B4): first your last piece is checked for four in a
+' line (Found = 1: you won); else the look-ahead leaves the slot in
+' BCol[0] and Found = 255 when that move wins
+sub Think:
+  u8 Y = 0
+  u8 X = 0
+  u8 A = 0
+  u8 Fin = 0
+  u8 Desc = 0
+  u8 Done = 0
+  u8 R = 0
+  u8 Vs = 0
+  AiSeed = Seed
+  Rolls = 0
+  Y = MaxD
+  do
+    Best[Y] = 0
+    Sc[Y] = 64
+    if Y = 0 then exit do
+    dec Y
+  loop
+  WinV = 1
+  STab = 0
+  SCmp = 1
+  AiY = 0
+  X = LastH
+  A = Ht[X] - 9
+  SPos = A
+  AiScan
+  if Found = 0 then
+    Y = 0
+    Cand[0] = 0
+    do
+      X = Cand[Y]
+      A = Ht[X]
+      Fin = 0
+      Desc = 0
+      if A >= $3F then
+        ' the top row: played at once
+        BCol[Y] = X
+        Found = PV[Y]
+        Best[Y] = Found
+        Fin = 1
+      else
+        if A >= $36 then Sc[Y] = 0
+        Vs = A >> 3
+        Sc[Y] = Sc[Y] + Vs
+        AiY = Y
+        SPos = A
+        SCmp = OP[Y]
+        STab = 1
+        AiScan
+        Found = 0
+        WinV = PV[Y]
+        SCmp = PV[Y]
+        STab = 2
+        AiScan
+        if Found <> 0 then
+          ' three of its own in a line: the winning move
+          Best[Y] = Found
+          BCol[Y] = X
+          Fin = 1
+        else
+          Found = 0
+          SPos = A + 9
+          SCmp = OP[Y]
+          STab = 3
+          AiScan
+          if Y <> MaxD then
+            Bd[A] = PV[Y]
+            Ht[X] = A + 9
+            inc Y
+            Cand[Y] = 0
+            Desc = 1
+          end if
+        end if
+      end if
+      if Desc = 0 then
+        do
+          if Fin = 1 then
+            if Y = 0 then
+              Done = 1
+              exit do
+            end if
+            Vs = Best[Y]
+            Vs = Vs >> Y
+            dec Y
+            Sc[Y] = Sc[Y] + Vs
+            Found = 0
+            X = Cand[Y]
+            A = Ht[X] - 9
+            Ht[X] = A
+            Bd[A] = 0
+          end if
+          Fin = 0
+          R = Rnd()
+          R = R & 3
+          inc Rolls
+          Vs = R + Sc[Y]
+          if Vs >= Best[Y] then
+            Best[Y] = Vs
+            BCol[Y] = Cand[Y]
+          end if
+          Sc[Y] = 64
+          if Cand[Y] = 7 then
+            Fin = 1
+          else
+            inc Cand[Y]
+            exit do
+          end if
+        loop
+      end if
+      if Done = 1 then exit do
+    loop
+  end if
+end sub
+
+' ------------------------------------------------------------- a game
+sub PlayGame:
+  u8 P = 0
+  u8 Q = 0
+  NewScreen
+  backdrop black
+  for Q = 0 to 80
+    Bd[Q] = 0
+  next
+  for Q = 0 to 7
+    Ht[Q] = Q
+  next
+  MaxD = Level - 1
+  Found = 0
+  Result = 0
+  Moves = 0
+  HovC = 3
+  DrawRack
+  ShowScore
+  print at 3,21, "TOP ROW OR 4 IN A LINE WINS"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+  if YouFirst = 0 then
+    CpuFirst
+    CpuPlay
+  end if
+  do while Result = 0
+    HumanTurn
+    P = Ht[HovC]
+    Bd[P] = 1
+    Ht[HovC] = P + 9
+    LastH = HovC
+    inc Moves
+    Dest = P
+    SprP = SCoin
+    SprC = 11
+    DropPiece
+    if P >= 63 then
+      Result = 1
+      How = 1
+      exit do
+    end if
+    Phase = 3
+    ShowStatus
+    play sound SndThink
+    Think
+    if Found = 1 then
+      Result = 1
+      How = 2
+      exit do
+    end if
+    CpuCol = BCol[0]
+    CpuPlay
+    if Found = 255 then
+      Result = 2
+      How = 2
+      if Dest >= 63 then How = 1
+      exit do
+    end if
+    if FullRack() = 1 then
+      Result = 3
+      exit do
+    end if
+  loop
+  if Result = 1 then inc WinsY
+  if Result = 2 then inc WinsC
+  Phase = 5
+  ShowScore
+  ShowStatus
+  mute all
+  if Result = 1 then
+    play sound SndWon
+  else
+    play sound SndLost
+  end if
+end sub
+
+function FullRack as u8
+  u8 R = 1
+  u8 Q = 0
+  for Q = 0 to 7
+    if Ht[Q] < 72 then R = 0
+  next
+  return R
+
+' the computer's opening move: slot INT(RND * 7 + .2), from a 10-bit draw
+sub CpuFirst:
+  u16 T = 0
+  u8 Lo = 0
+  Lo = Rnd()
+  T = Seed >> 6
+  T = T * 7
+  T = T + 205
+  T = T >> 10
+  CpuCol = T
+end sub
+
+' the computer's piece glides over to its slot and drops
+sub CpuPlay:
+  u8 P = 0
+  u16 Tx = 0
+  Phase = 4
+  ShowStatus
+  P = Ht[CpuCol]
+  Bd[P] = 255
+  Ht[CpuCol] = P + 9
+  inc Moves
+  Dest = P
+  SprP = SDiam
+  SprC = 7
+  SprX = HovC * 24
+  SprX = SprX + 32
+  Tx = CpuCol * 24
+  Tx = Tx + 32
+  Fy = HoverY * 16
+  SprOn = 1
+  do while SprX <> Tx
+    if SprX < Tx then
+      SprX = SprX + 3
+    else
+      SprX = SprX - 3
+    end if
+    DrawSpr
+    Frame1
+  loop
+  HovC = CpuCol
+  for Tx = 1 to 10
+    Frame1
+  next
+  DropPiece
+end sub
+
+' you move the coin over the slots and drop it
+sub HumanTurn:
+  u16 Tx = 0
+  u8 S = 0
+  u8 Btn = 0
+  u8 Ok = 0
+  Phase = 1
+  ShowStatus
+  SprP = SCoin
+  SprC = 11
+  SprX = HovC * 24
+  SprX = SprX + 32
+  Fy = HoverY * 16
+  SprOn = 1
+  HoldT = 0
+  do
+    Frame1
+    ReadPad
+    S = J0 & 12
+    if S = 0 then
+      HoldT = 0
+    else
+      inc HoldT
+      Ok = 0
+      if HoldT = 1 then Ok = 1
+      if HoldT >= RepD then
+        K = HoldT - RepD
+        K = K % RepR
+        if K = 0 then Ok = 1
+        if HoldT > 200 then HoldT = RepD
+      end if
+      if Ok = 1 then
+        if S = 4 and HovC > 0 then
+          dec HovC
+          play sound SndTick
+        end if
+        if S = 8 and HovC < 7 then
+          inc HovC
+          play sound SndTick
+        end if
+      end if
+    end if
+    Tx = HovC * 24
+    Tx = Tx + 32
+    if SprX < Tx then
+      SprX = SprX + 4
+      if SprX > Tx then SprX = Tx
+    end if
+    if SprX > Tx then
+      SprX = SprX - 4
+      if SprX < Tx then SprX = Tx
+    end if
+    DrawSpr
+    Btn = J0 & 16
+    if Btn > 0 and WasBtn = 0 then
+      if Ht[HovC] < 72 then
+        WasBtn = Btn
+        exit do
+      end if
+    end if
+    WasBtn = Btn
+  loop
+  SprX = Tx
+  Phase = 2
+end sub
+
+' the piece falls from the hover line to place Dest with gravity
+sub DropPiece:
+  u16 Ty = 0
+  u8 Row = 0
+  Row = Dest / 9
+  Ty = Row * 2
+  Ty = 18 - Ty
+  Ty = Ty * 8
+  Ty = Ty - 1
+  Ty = Ty * 16
+  Vy = 0
+  play sound SndDrop
+  do while Fy < Ty
+    Vy = Vy + 5
+    if Vy > 96 then Vy = 96
+    Fy = Fy + Vy
+    if Fy > Ty then Fy = Ty
+    DrawSpr
+    Frame1
+  loop
+  DrawCell(Dest)
+  SprOn = 0
+  DrawSpr
+  play sound SndLand
+end sub
+
+sub DrawSpr:
+  u8 X = 0
+  u8 Y = 0
+  X = SprX
+  Y = NoSprite
+  if SprOn = 1 then
+    NumU = Fy >> 4
+    Y = NumU
+  end if
+  set sprite 0 to Y,X,SprP,SprC
+  update sprites
+end sub
+
+' ------------------------------------------------------------- drawing
+sub DrawCell(u8 P):
+  u8 R = 0
+  u8 C = 0
+  u8 T = 0
+  u8 X = 0
+  u8 Y = 0
+  R = P / 9
+  C = P % 9
+  T = TE00
+  if Bd[P] = 1 then T = TH00
+  if Bd[P] = 255 then T = TC00
+  if R = 7 then T = T + 12
+  X = C * 3
+  X = X + 4
+  Y = R * 2
+  Y = 18 - Y
+  put char T at X,Y
+  T = T + 1
+  put char T at X + 1,Y
+  T = T + 1
+  Y = Y + 1
+  put char T at X,Y
+  T = T + 1
+  put char T at X + 1,Y
+end sub
+
+sub DrawRack:
+  u8 R = 0
+  u8 C = 0
+  u8 X = 0
+  u8 P = 0
+  for R = 0 to 7
+    for C = 0 to 7
+      P = R * 9
+      P = P + C
+      DrawCell(P)
+    next
+  next
+  for C = 0 to 8
+    X = C * 3
+    X = X + 3
+    for R = 6 to 19
+      put char TPost at X,R
+    next
+    put char TPostT at X,4
+    put char TPostT at X,5
+  next
+  fill TBase count 25 at 3,20
+end sub
+
+sub ShowScore:
+  put char TMkH at 2,1
+  print at 4,1, "YOU"
+  NumU = WinsY
+  print at 8,1, digits$(NumU, 1)
+  print at 11,1, "LEVEL"
+  NumU = Level
+  print at 17,1, digits$(NumU, 1)
+  print at 20,1, "CPU"
+  NumU = WinsC
+  print at 24,1, digits$(NumU, 1)
+  put char TMkC at 26,1
+end sub
+
+sub ShowStatus:
+  fill 32 count 28 at 2,22
+  select case Phase
+  case 1
+    print at 10,22, "YOUR MOVE"
+  case 3
+    print at 9,22, "THINKING..."
+  case 4
+    print at 7,22, "COMPUTER MOVES"
+    NumU = CpuCol + 1
+    print at 22,22, digits$(NumU, 1)
+  case 5
+    fill 32 count 28 at 2,21
+    select case Result
+    case 1
+      print at 10,21, "YOU WIN!"
+      if How = 1 then
+        print at 6,22, "A PIECE IN THE TOP ROW"
+      else
+        print at 9,22, "FOUR IN A LINE"
+      end if
+    case 2
+      print at 9,21, "YOU LOSE"
+      if How = 1 then
+        print at 4,22, "COMPUTER TOOK THE TOP ROW"
+      else
+        print at 5,22, "COMPUTER: FOUR IN A LINE"
+      end if
+    case else
+      print at 4,21, "THE RACK IS FULL: A DRAW"
+    end select
+  end select
+end sub
+
+sub AfterGame:
+  Rearm
+  wait 150 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  InPlay = 0
+end sub
+
+' --------------------------------------------------------- frame, input
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      mute all
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+end sub
+
+function PadBits(u8 P) as u8
+  u8 B = 0
+  if joypad(P).up then B = B | 1
+  if joypad(P).down then B = B | 2
+  if joypad(P).left then B = B | 4
+  if joypad(P).right then B = B | 8
+  if joypad(P).fire then B = B | 16
+  return B
+
+sub ReadPad:
+  J0 = PadBits(1)
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  set sprite 0 to NoSprite,0,0,0
+  update sprites
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  cls
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+end sub
+
+' ------------------------------------------------------- title, menus
+' MenuMode 0: the title (FIRST, LEVEL, START, CREDITS); 1: between the
+' games of a match (FIRST, LEVEL, PLAY)
+sub MenuPage:
+  u8 Btn = 0
+  u8 Press = 0
+  u8 Last = 0
+  NewScreen
+  backdrop black
+  if MenuMode = 0 then
+    copy TitleMap count 192 to vram.name + 64
+    print at 7,10, "COMPUTE!'S GAZETTE"
+    print at 10,11, "AUGUST 1986"
+  else
+    print at 12,4, "SLOTS"
+    print at 11,6, "GAME"
+    NumU = GameNo
+    print at 16,6, digits$(NumU, 1)
+    print at 8,8, "YOU"
+    NumU = WinsY
+    print at 12,8, digits$(NumU, 1)
+    print at 15,8, "COMPUTER"
+    NumU = WinsC
+    print at 24,8, digits$(NumU, 1)
+    print at 7,10, "FIRST TO 3 GAMES"
+  end if
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  if MenuMode = 0 then
+    play sound SndTuneA
+    play sound SndTuneB
+    TzLeft = 512
+    TzOn = 1
+  end if
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  Last = 2
+  if MenuMode = 0 then Last = 3
+mp_loop:
+  Frame1
+  K = Rnd()
+  J0 = PadBits(1)
+  K = PadBits(2)
+  K = J0 | K
+  Btn = K & 16
+  Press = 0
+  if Btn > 0 and WasBtn = 0 then Press = 1
+  WasBtn = Btn
+  V = K & 15
+  if V > 0 and WasStick = 0 then MenuMove(V, Last)
+  WasStick = V
+  if Press = 0 then goto mp_loop
+  if Menu < 2 then goto mp_loop
+  mute all
+  TzOn = 0
+end sub
+
+sub MenuMove(u8 S, u8 Last):
+  select case S
+  case 1
+    if Menu > 0 then dec Menu
+  case 2
+    if Menu < Last then inc Menu
+  case 4
+    if Menu = 0 then YouFirst = 1 - YouFirst
+    if Menu = 1 and Level > 1 then dec Level
+  case 8
+    if Menu = 0 then YouFirst = 1 - YouFirst
+    if Menu = 1 and Level < 4 then inc Level
+  end select
+  play sound SndTick
+  ShowMenu
+end sub
+
+sub ShowMenu:
+  for J = 13 to 19 step 2
+    put char 32 at 7,J
+  next
+  if YouFirst = 1 then
+    print at 9,13, "FIRST: YOU     "
+  else
+    print at 9,13, "FIRST: COMPUTER"
+  end if
+  print at 9,15, "LEVEL: "
+  NumU = Level
+  print at 16,15, digits$(NumU, 1)
+  if MenuMode = 0 then
+    print at 9,17, "START"
+    print at 9,19, "CREDITS"
+  else
+    print at 9,17, "PLAY"
+  end if
+  J = Menu * 2
+  J = J + 13
+  put char 62 at 7,J
+  print at 3,21, "UP/DOWN: CHOOSE A LINE"
+  print at 3,22, "LEFT/RIGHT: CHANGE IT"
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F1
+  backdrop black
+  print at 13,1, "SLOTS"
+  print at 2,3, "BASED ON SLOTS, COMPUTE!'S"
+  print at 2,4, "GAZETTE, AUGUST 1986, NO"
+  print at 2,5, "AUTHOR NAMED (COMMODORE 64"
+  print at 2,6, "BASIC AND MACHINE LANGUAGE)."
+  print at 2,8, "COLECOVISION GAME, MUSIC"
+  print at 2,9, "AND PICTURES BY CLAUDE"
+  print at 2,10, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "IN AMY BY AMY BIENVENU,"
+  print at 2,12, "2026. MUSIC: EIGHT SLOTS"
+  print at 2,13, "(ORIGINAL)."
+  print at 2,15, "DROP PIECES INTO THE RACK."
+  print at 2,16, "FOUR IN A LINE WINS, AND SO"
+  print at 2,17, "DOES ANY PIECE IN THE TOP"
+  print at 2,18, "ROW. FIRST TO 3 GAMES WINS"
+  print at 2,19, "THE MATCH."
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+end sub
+
+asm {
+; AiScan: b = place, c = direction 0-6, d = count, e = opposite flag
+AiScanZ:
+  ld c,0
+  ld e,0
+AsDir:
+  ld a,(AMY_UVAR_SPos)
+  ld b,a
+  ld a,e
+  or a
+  jr nz,AsStep0
+  ld d,0
+AsStep0:
+  ld hl,AMY_UDATA_DirT
+  ld a,l
+  add a,c
+  ld l,a
+  jr nc,AsS1
+  inc h
+AsS1:
+  ld a,(hl)
+  ld (AMY_UVAR_ScDir),a
+AsStep:
+  ld a,(AMY_UVAR_ScDir)
+  add a,b
+  ld b,a
+  cp 81
+  jr nc,AsOff
+  ld hl,AMY_UVAR_Bd
+  add a,l
+  ld l,a
+  jr nc,AsS2
+  inc h
+AsS2:
+  ld a,(hl)
+  jr AsCmp
+AsOff:
+  xor a
+AsCmp:
+  ld hl,AMY_UVAR_SCmp
+  cp (hl)
+  jr nz,AsNo
+  inc d
+  ld a,(AMY_UVAR_STab)
+  cp 1
+  jr z,AsTA
+  cp 2
+  jr nz,AsChk
+  ld hl,AMY_UDATA_TabB
+  jr AsAdd
+AsTA:
+  ld hl,AMY_UDATA_TabA
+AsAdd:
+  ld a,l
+  add a,d
+  ld l,a
+  jr nc,AsA1
+  inc h
+AsA1:
+  ld a,(hl)
+  call AsScP
+  add a,(hl)
+  ld (hl),a
+AsChk:
+  ld a,d
+  cp 3
+  jr nz,AsStep
+  ld a,(AMY_UVAR_STab)
+  cp 3
+  jr nz,AsWin
+  xor a
+  call AsScP
+  ld (hl),a
+  ret
+AsWin:
+  ld a,(AMY_UVAR_WinV)
+  ld (AMY_UVAR_Found),a
+  ret
+AsNo:
+  ld a,e
+  xor 1
+  ld e,a
+  inc c
+  ld a,c
+  cp 7
+  jr nz,AsDir
+  ret
+; hl = address of Sc[AiY] (a kept)
+AsScP:
+  push af
+  ld hl,AMY_UVAR_Sc
+  ld a,(AMY_UVAR_AiY)
+  add a,l
+  ld l,a
+  jr nc,AsP1
+  inc h
+AsP1:
+  pop af
+  ret
+SfTick:
+    db $40,$40,$40,$01,$40,$40,$70,$01,$50
+SfDrop:
+    db $40,$55,$30,$02,$40,$5F,$40,$02,$40,$6B,$40,$02,$40,$71,$50,$02,$40,$7F,$50,$02,$50
+SfLand:
+    db $00,$00,$25,$02,$00,$00,$46,$03,$00,$00,$76,$03,$10
+SfThink:
+    db $40,$AA,$60,$02,$40,$8F,$60,$02,$50
+SfWon:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$12,$50
+SfLost:
+    db $40,$E2,$20,$08,$40,$F0,$20,$08,$40,$FE,$20,$08,$40,$53,$21,$18,$50
+SfOver:
+    db $40,$8F,$10,$0A,$40,$71,$10,$0A,$40,$5F,$10,$0A,$40,$47,$20,$1E,$50
+
+SfSoundTable:
+    dw SfTuneMel,$702B
+    dw SfTuneBass,$7035
+    dw SfTick,$7049
+    dw SfDrop,$7049
+    dw SfLand,$703F
+    dw SfThink,$7049
+    dw SfWon,$7049
+    dw SfLost,$7049
+    dw SfOver,$7049
+; Eight Slots (original)
+; Tiny Sound, 8 frames per step
+SfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$26,$01,$23,$01,$1F,$01,$23,$26,$28,$01,$24,$01
+    db $21,$01,$01,$01,$24,$01,$21,$01,$1E,$01,$21,$24,$26,$01,$23,$01
+    db $1F,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$2A,$28,$26,$01,$24,$01
+    db $23,$01,$21,$01,$1F,$01,$23,$01,$21,$01,$1A,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $0B,$01,$0E,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$09,$01,$10,$01
+    db $0E,$01,$12,$01,$07,$01,$0E,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$00,$01
+    db $FF
+}

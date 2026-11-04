@@ -1,0 +1,1428 @@
+cartridge "SPACE WORMS/COMPUTE!'S GAZETTE/1989"
+
+' SPACE WORMS
+' A ColecoVision game based on "Space Worms", COMPUTE!'s Gazette April 1989
+' disk (Commodore 64 machine language, SYS 2064: a packed program that
+' unpacks itself to $5000-$78FF). No author is named in the program or on
+' the disk menu; it is credited to the magazine. Made for Amy Studio by
+' Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (played in jsc64
+' and read from its machine code, orig/sworms-ml.dis), the game is built for
+' the ColecoVision: rising stars, a dart ship, a six-segment worm of round
+' wriggling sprites, sounds, a title tune.
+'
+' The game: a space worm of six segments loops across the sky. Your ship
+' moves in a band at the bottom of the screen and fires one shot at a time
+' straight up. Every shot that hits the worm scores 1; every 8 hits the
+' worm loses its tail segment (10 points, except the first). When the head
+' goes the level is cleared: 100 points, and a new worm comes on a new path.
+' Touching the worm costs a ship. Five ships (LIVES:4 plus the one in play).
+'
+' From the original (orig/): the worm's six segments follow one of eight X
+' loops and one of eight Y loops (C64 tables at $5000-$5865, kept as
+' numbers), each segment one step a frame behind the one before (level 1:
+' X 3 steps apart, Y 3 steps apart with the X phase 28 steps ahead; levels
+' 2-4: 3, 5-9: 4, 10-19: 6, 20 on: 7 steps apart, so the worm stretches);
+' each new level picks an X loop and a Y loop other than the last ones, a
+' head (3 kinds), bodies (3 kinds, all alike or mixed) and colours (one of
+' three palettes or one random colour), and maybe a colour ripple along the
+' worm; the ship moves 2 C64 pixels a frame inside X 32-312, Y 185-227;
+' button held = a shot whenever none is in the air, 5 pixels a frame up;
+' explosion 54 frames, 75 more, then the next ship at the far left or far
+' right; the worm keeps moving all the while; 40 frames after a clear the
+' next worm; stars rise at 1-7 pixels a frame (16 of them).
+'
+' Liberties: the field is scaled (C64 X 32..312 -> 16..224, Y by 0.88) and
+' hits are box tests on the drawn bodies (the C64 used its sprite collision
+' register); a shot ends at the top of the field (C64 Y 60) under the score
+' line, not at Y 25; the level counter stops at 99. The colour ripple moves
+' every 20 frames (C64: 4) and the GAME OVER screen does not flash (house
+' rule: nothing faster than 3 Hz); the ship's flame flickers every 8
+' frames (C64: 4).
+' Added, so the game can't be won by parking (on the C64 level 1's loop
+' never comes down to the ship's band, and the far left corner is out of
+' every loop's reach): SPORES. Every 230 frames (10 fewer a level, at least
+' 90) the head, when it is above the ship, drops a spore aimed at where the
+' ship is, falling 2 C64 pixels a frame (3 from level 6, 4 from level 12).
+' A spore kills like the worm; a shot destroys it (no points). A ship that
+' keeps moving dodges every spore. Also added: a title page, a credits page,
+' sound effects (the original was silent), a title tune.
+'
+' Controls: controller 1 (or 2): the stick moves the ship, either button
+' fires (hold it for a stream of single shots). On the title, up and down
+' choose, a button chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TSw0 = 128
+const TSw1 = 129
+const TSw2 = 130
+const TSw3 = 131
+const TSw4 = 132
+const TSw5 = 133
+const TSw6 = 134
+const TSw7 = 135
+const TSa0 = 136
+const TSa1 = 137
+const TSa2 = 138
+const TSa3 = 139
+const TSa4 = 140
+const TSa5 = 141
+const TSa6 = 142
+const TSa7 = 143
+const TSb0 = 144
+const TSb1 = 145
+const TSb2 = 146
+const TSb3 = 147
+const TSb4 = 148
+const TSb5 = 149
+const TSb6 = 150
+const TSb7 = 151
+const TTbl = 152
+const SShip0 = 0
+const SShip1 = 4
+const SBoom0 = 8
+const SBoom1 = 12
+const SBoom2 = 16
+const SMissile = 20
+const SSpore = 24
+const SH00 = 28
+const SH01 = 32
+const SH02 = 36
+const SH10 = 40
+const SH11 = 44
+const SH12 = 48
+const SH20 = 52
+const SH21 = 56
+const SH22 = 60
+const SB00 = 64
+const SB01 = 68
+const SB02 = 72
+const SB10 = 76
+const SB11 = 80
+const SB12 = 84
+const NTiles8 = 200
+const SprBytes = 704
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndTick = 4
+const SndPop = 5
+const SndSpore = 6
+const SndBoom = 7
+const SndClear = 8
+const SndStart = 9
+const SndOver = 10
+const NSpr = 9
+const NSt = 16
+const ShotTop = 65
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$10
+  $00,$00,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $08,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$10
+  $00,$00,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $08,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$10
+  $00,$00,$00,$00,$00,$00,$02,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $08,$00,$00,$00,$00,$00,$00,$00
+  $01,$60,$40,$00,$00,$00,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$F1
+  $01,$01,$01,$01,$01,$01,$F1,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$01,$01,$01,$F1,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$F1,$01,$01,$01,$01,$01,$01
+  $F1,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$E1
+  $01,$01,$01,$01,$01,$01,$E1,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$01,$01,$01,$E1,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$01,$E1,$01,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $E1,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$51
+  $01,$01,$01,$01,$01,$01,$51,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$01,$01,$01,$51,$01,$01,$01
+  $01,$01,$01,$51,$01,$01,$01,$01
+  $01,$01,$51,$01,$01,$01,$01,$01
+  $01,$51,$01,$01,$01,$01,$01,$01
+  $51,$01,$01,$01,$01,$01,$01,$01
+  $23,$F3,$F3,$03,$03,$03,$23,$02
+end data
+data SpritePat bytes
+  $01,$01,$03,$03,$06,$05,$0E,$0F,$1F,$3D,$39,$71,$61,$02,$00,$00
+  $80,$80,$C0,$C0,$60,$A0,$70,$F0,$F8,$BC,$9C,$8E,$86,$40,$00,$00
+  $01,$01,$03,$03,$06,$05,$0E,$0F,$1F,$3D,$39,$71,$61,$02,$01,$00
+  $80,$80,$C0,$C0,$60,$A0,$70,$F0,$F8,$BC,$9C,$8E,$86,$40,$80,$00
+  $00,$00,$00,$00,$03,$07,$00,$0C,$0C,$00,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$00,$30,$30,$00,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$03,$0F,$00,$18,$30,$00,$30,$30,$00,$1C,$0F,$00,$00,$00
+  $00,$00,$C0,$F0,$00,$18,$0C,$00,$0C,$0C,$00,$38,$F0,$00,$00,$00
+  $07,$1F,$00,$70,$60,$00,$C0,$C0,$00,$C0,$E0,$00,$70,$3C,$00,$07
+  $E0,$F8,$00,$0E,$06,$00,$03,$03,$00,$03,$07,$00,$0E,$3C,$00,$E0
+  $00,$00,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$80,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$01,$03,$06,$07,$03,$01,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$10,$80,$C0,$E0,$E0,$C0,$80,$10,$00,$00,$00,$00
+  $00,$00,$0F,$1F,$3F,$33,$73,$7F,$7F,$7F,$3D,$3E,$1F,$0F,$00,$00
+  $00,$00,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$FE,$BC,$7C,$F8,$F0,$00,$00
+  $00,$00,$0F,$1F,$3F,$33,$73,$7F,$7F,$7F,$3D,$3E,$1F,$0F,$00,$00
+  $00,$00,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$FE,$BC,$7C,$F8,$F0,$00,$00
+  $00,$00,$0F,$1F,$3F,$33,$73,$7F,$7F,$7D,$3E,$3F,$1F,$0F,$00,$00
+  $00,$00,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$BE,$7C,$FC,$F8,$F0,$00,$00
+  $10,$08,$0F,$1F,$3F,$33,$73,$7F,$7F,$7F,$3C,$3F,$1F,$0F,$00,$00
+  $08,$10,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$FE,$3C,$FC,$F8,$F0,$00,$00
+  $10,$08,$0F,$1F,$3F,$33,$73,$7F,$7F,$7F,$3C,$3F,$1F,$0F,$00,$00
+  $08,$10,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$FE,$3C,$FC,$F8,$F0,$00,$00
+  $10,$08,$0F,$1F,$3F,$33,$73,$7F,$7F,$7C,$3F,$3F,$1F,$0F,$00,$00
+  $08,$10,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$3E,$FC,$FC,$F8,$F0,$00,$00
+  $00,$00,$0F,$1F,$3F,$33,$73,$7F,$7F,$7F,$3E,$3E,$1F,$0F,$08,$08
+  $00,$00,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$FE,$7C,$7C,$F8,$F0,$10,$10
+  $00,$00,$0F,$1F,$3F,$33,$73,$7F,$7F,$7F,$3E,$3E,$1F,$1F,$10,$10
+  $00,$00,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$FE,$7C,$7C,$F8,$F8,$08,$08
+  $00,$00,$0F,$1F,$3F,$33,$73,$7F,$7F,$7E,$3E,$3F,$1F,$0F,$08,$08
+  $00,$00,$F0,$F8,$FC,$CC,$CE,$FE,$FE,$7E,$7C,$FC,$F8,$F0,$10,$10
+  $00,$01,$0F,$1F,$30,$3F,$7B,$7F,$7F,$30,$3F,$1F,$0F,$11,$08,$00
+  $00,$80,$F0,$F8,$0C,$FC,$FE,$DE,$FE,$0C,$FC,$F8,$F0,$88,$10,$00
+  $00,$01,$0F,$1F,$30,$3F,$7B,$7F,$7F,$30,$3F,$1F,$0F,$09,$08,$00
+  $00,$80,$F0,$F8,$0C,$FC,$FE,$DE,$FE,$0C,$FC,$F8,$F0,$90,$10,$00
+  $00,$01,$0F,$1F,$30,$3F,$7B,$7F,$7F,$30,$3F,$1F,$0F,$05,$02,$00
+  $00,$80,$F0,$F8,$0C,$FC,$FE,$DE,$FE,$0C,$FC,$F8,$F0,$A0,$40,$00
+  $00,$01,$0F,$1F,$3F,$3E,$7C,$79,$7C,$3E,$3F,$1F,$0F,$11,$08,$00
+  $00,$80,$F0,$F8,$FC,$7C,$3E,$9E,$3E,$7C,$FC,$F8,$F0,$88,$10,$00
+  $00,$01,$0F,$1F,$3F,$3F,$7E,$7D,$7E,$3F,$3F,$1F,$0F,$09,$08,$00
+  $00,$80,$F0,$F8,$FC,$FC,$7E,$BE,$7E,$FC,$FC,$F8,$F0,$90,$10,$00
+  $00,$01,$0F,$1F,$3F,$3E,$7C,$79,$7C,$3E,$3F,$1F,$0F,$05,$02,$00
+  $00,$80,$F0,$F8,$FC,$7C,$3E,$9E,$3E,$7C,$FC,$F8,$F0,$A0,$40,$00
+end data
+data PXOff words 0,92,262,428,583,740,866,966
+data PXLen bytes 92,170,166,155,157,126,100,152
+data PXTab bytes
+  140,140,140,141,141,142,143,144,145,146,147,148,149,150,151,152,154,156,158,160,162,165,168,171
+  174,177,180,183,186,188,190,192,194,196,197,198,199,200,201,202,203,204,205,206,207,207,208,208
+  208,207,207,206,205,204,203,202,201,200,199,198,197,196,194,192,190,188,186,183,180,177,174,171
+  168,165,162,160,158,156,154,152,151,150,149,148,147,146,145,144,143,142,141,141,114,114,115,116
+  117,118,120,122,124,126,128,130,132,134,135,136,137,138,138,139,140,141,142,144,146,148,150,152
+  154,156,158,159,160,161,162,162,163,164,165,166,168,170,172,174,176,178,180,182,183,184,185,186
+  186,187,188,189,190,192,194,196,198,200,202,204,206,207,208,209,210,210,211,212,213,214,216,218
+  220,222,224,226,228,230,231,232,233,234,234,233,232,231,230,228,226,224,222,220,218,216,214,213
+  212,211,210,210,209,208,207,206,204,202,200,198,196,194,192,190,189,188,187,186,186,185,184,183
+  182,180,178,176,174,172,170,168,166,165,164,163,162,162,161,160,159,158,156,154,152,150,148,146
+  144,142,141,140,139,138,138,137,136,135,134,132,130,128,126,124,122,120,118,117,116,115,93,93
+  94,95,97,99,101,103,105,107,109,111,113,115,117,119,121,123,125,127,129,131,133,135,137,139
+  141,143,145,147,149,151,153,155,157,159,161,163,165,167,169,171,173,175,177,179,181,183,185,187
+  189,191,193,195,197,199,201,203,205,207,209,211,213,215,217,219,221,223,225,227,229,231,233,235
+  237,239,241,243,245,247,249,251,253,254,254,253,251,249,247,245,243,241,239,237,235,233,231,229
+  227,225,223,221,219,217,215,213,211,209,207,205,203,201,199,197,195,193,191,189,187,185,183,181
+  179,177,175,173,171,169,167,165,163,161,159,157,155,153,151,149,147,145,143,141,139,137,135,133
+  131,129,127,125,123,121,119,117,115,113,111,109,107,105,103,101,99,97,95,94,93,98,102,106
+  110,114,118,122,126,130,133,136,139,142,145,148,151,154,157,160,162,164,166,168,170,172,174,176
+  178,180,182,184,186,188,190,192,194,196,198,200,202,204,206,208,210,212,214,216,218,220,222,224
+  226,228,230,232,234,236,238,240,241,242,243,244,245,246,247,248,249,250,251,252,252,253,253,253
+  254,254,254,254,253,253,253,252,252,251,250,249,248,247,246,245,244,243,242,241,240,238,236,234
+  232,230,228,226,224,222,220,218,216,214,212,210,208,206,204,202,200,198,196,194,192,190,188,186
+  184,182,180,178,176,174,172,170,168,166,164,162,160,157,154,151,148,145,142,139,136,133,130,126
+  122,118,114,110,106,102,98,254,250,246,242,238,234,230,226,222,218,215,212,209,206,203,200,197
+  194,191,188,186,184,182,180,178,176,174,172,170,168,166,164,162,160,158,156,154,152,150,148,146
+  144,142,140,138,136,134,132,130,128,126,124,122,120,118,116,114,112,110,108,107,106,105,104,103
+  102,101,100,99,98,97,96,95,95,94,94,94,93,93,93,93,94,94,94,95,95,96,97,98
+  99,100,101,102,103,104,105,106,107,108,110,112,114,116,118,120,122,124,126,128,130,132,134,136
+  138,140,142,144,146,148,150,152,154,156,158,160,162,164,166,168,170,172,174,176,178,180,182,184
+  186,188,191,194,197,200,203,206,209,212,215,218,222,226,230,234,238,242,246,250,110,114,118,122
+  126,130,133,136,139,142,145,148,150,152,154,156,158,160,162,164,166,168,169,170,171,172,172,173
+  173,173,174,174,174,174,175,175,175,176,176,177,178,179,180,182,184,186,188,190,192,194,196,198
+  200,203,206,209,212,215,218,222,226,230,234,238,234,230,226,222,218,215,212,209,206,203,200,198
+  196,194,192,190,188,186,184,182,180,179,178,177,176,176,175,175,175,174,174,174,174,173,173,173
+  172,172,171,170,169,168,166,164,162,160,158,156,154,152,150,148,145,142,139,136,133,130,126,122
+  118,114,93,93,93,94,94,95,96,98,101,105,109,113,117,121,125,129,133,137,141,145,149,153
+  157,161,165,169,173,177,181,185,189,193,197,201,205,209,213,217,221,225,229,233,237,241,245,248
+  250,251,252,252,253,253,253,252,252,251,250,248,245,241,237,233,229,225,221,217,213,209,205,201
+  197,193,189,185,181,177,173,169,165,161,157,153,149,145,141,137,133,129,125,121,117,113,109,105
+  101,98,96,95,94,94,134,134,134,134,134,134,134,134,134,134,136,138,140,142,144,146,148,150
+  152,154,154,154,154,154,154,154,154,154,154,156,158,160,162,164,166,168,170,172,174,174,174,174
+  174,174,174,174,174,174,176,178,180,182,184,186,188,190,192,194,194,194,194,194,194,194,194,194
+  194,196,198,200,202,204,206,208,210,212,214,214,214,214,214,214,214,214,214,214,212,210,208,206
+  204,202,200,198,196,194,194,194,194,194,194,194,194,194,194,192,190,188,186,184,182,180,178,176
+  174,174,174,174,174,174,174,174,174,174,172,170,168,166,164,162,160,158,156,154,154,154,154,154
+  154,154,154,154,154,152,150,148,146,144,142,140,138,136
+end data
+data PYOff words 0,84,219,354,459,627,823,915
+data PYLen bytes 84,135,135,105,168,196,92,80
+data PYTab bytes
+  100,100,100,100,101,101,101,102,102,103,104,105,106,107,108,110,112,114,116,118,121,124,127,130
+  133,136,138,140,142,144,146,147,148,149,150,151,152,153,153,154,154,154,155,155,155,155,154,154
+  154,153,153,152,151,150,149,148,147,146,144,142,140,138,136,133,130,127,124,121,118,116,114,112
+  110,108,107,106,105,104,103,102,102,101,101,101,100,100,100,100,101,101,101,102,102,103,104,105
+  106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129
+  130,132,134,136,138,140,142,144,146,148,150,152,154,156,158,160,163,166,169,172,175,178,181,184
+  187,190,194,198,202,206,210,214,218,223,218,214,210,206,202,198,194,190,187,184,181,178,175,172
+  169,166,163,160,158,156,154,152,150,148,146,144,142,140,138,136,134,132,130,129,128,127,126,125
+  124,123,122,121,120,119,118,117,116,115,114,113,112,111,110,109,108,107,106,105,104,103,102,102
+  101,101,101,100,105,109,113,117,121,125,129,133,136,139,142,145,148,151,154,157,160,163,165,167
+  169,171,173,175,177,179,181,183,185,187,189,191,193,194,195,196,197,198,199,200,201,202,203,204
+  205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,221,222,222,222,223,223,223
+  223,222,222,222,221,221,220,219,218,217,216,215,214,213,212,211,210,209,208,207,206,205,204,203
+  202,201,200,199,198,197,196,195,194,193,191,189,187,185,183,181,179,177,175,173,171,169,167,165
+  163,160,157,154,151,148,145,142,139,136,133,129,125,121,117,113,109,105,60,60,60,61,61,62
+  63,65,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128,132,136,140,144,148,152
+  156,160,164,168,172,176,180,184,188,192,196,200,204,208,212,216,220,223,225,226,227,228,228,229
+  229,229,228,227,226,225,223,220,216,212,208,204,200,196,192,188,184,180,176,172,168,164,160,156
+  152,148,144,140,136,132,128,124,120,116,112,108,104,100,96,92,88,84,80,76,72,68,65,63
+  62,61,61,60,60,60,61,61,62,63,65,68,72,76,80,84,88,92,96,100,104,108,112,116
+  120,124,128,132,136,140,144,148,152,156,160,164,168,172,175,177,178,179,179,180,180,180,181,181
+  182,183,185,188,192,196,200,204,208,212,216,220,223,225,226,227,227,228,228,228,227,227,226,225
+  223,220,216,212,208,204,200,196,192,188,185,183,182,181,181,180,180,180,181,181,182,183,185,188
+  192,196,200,204,208,212,216,220,223,225,226,227,227,228,228,228,227,227,226,225,223,220,216,212
+  208,204,200,196,192,188,185,183,182,181,181,180,180,180,179,179,178,177,175,172,168,164,160,156
+  152,148,144,140,136,132,128,124,120,116,112,108,104,100,96,92,88,84,80,76,72,68,65,63
+  62,61,61,80,80,80,80,80,80,80,80,82,84,86,88,90,92,94,96,98,100,100,100,100
+  100,100,100,100,104,108,112,116,120,120,120,120,120,120,120,120,122,124,126,128,130,132,134,136
+  138,140,140,140,140,140,140,140,140,144,148,152,156,160,160,160,160,160,160,160,160,162,164,166
+  168,170,172,174,176,178,180,180,180,180,180,180,180,180,184,188,192,196,200,202,204,206,208,210
+  212,214,216,218,220,220,220,220,220,220,220,220,216,212,208,204,200,200,200,200,200,200,200,200
+  198,196,194,192,190,188,186,184,182,180,180,180,180,180,180,180,180,176,172,168,164,160,160,160
+  160,160,160,160,160,158,156,154,152,150,148,146,144,142,140,140,140,140,140,140,140,140,136,132
+  128,124,120,120,120,120,120,120,120,120,118,116,114,112,110,108,106,104,102,100,100,100,100,100
+  100,100,100,96,92,88,84,60,60,60,60,60,60,60,60,60,60,61,61,61,61,61,62,63
+  65,67,69,72,75,78,82,86,90,95,100,105,110,115,121,127,133,139,146,153,160,167,174,182
+  190,198,206,214,222,230,230,230,230,230,230,230,230,230,230,229,229,229,229,229,228,227,225,223
+  221,218,215,212,208,204,200,195,190,185,180,175,169,163,157,151,144,137,130,123,116,108,100,92
+  84,76,68,160,160,160,160,161,161,161,162,162,163,164,165,167,169,171,173,176,179,182,185,189
+  193,197,201,205,208,211,214,217,219,221,223,225,226,227,228,228,229,229,229,230,230,230,230,229
+  229,229,228,228,227,226,225,223,221,219,217,214,211,208,205,201,197,193,189,185,182,179,176,173
+  171,169,167,165,164,163,162,162,161,161,161
+end data
+data MapX bytes
+  16,17,17,18,19,20,20,21,22,23,23,24,25,26,26,27,28,29,29,30,31,32,32,33
+  34,35,35,36,37,38,38,39,40,41,41,42,43,43,44,45,46,46,47,48,49,49,50,51
+  52,52,53,54,55,55,56,57,58,58,59,60,61,61,62,63,64,64,65,66,67,67,68,69
+  69,70,71,72,72,73,74,75,75,76,77,78,78,79,80,81,81,82,83,84,84,85,86,87
+  87,88,89,90,90,91,92,93,93,94,95,95,96,97,98,98,99,100,101,101,102,103,104,104
+  105,106,107,107,108,109,110,110,111,112,113,113,114,115,116,116,117,118,119,119,120,121,121,122
+  123,124,124,125,126,127,127,128,129,130,130,131,132,133,133,134,135,136,136,137,138,139,139,140
+  141,142,142,143,144,145,145,146,147,147,148,149,150,150,151,152,153,153,154,155,156,156,157,158
+  159,159,160,161,162,162,163,164,165,165,166,167,168,168,169,170,171,171,172,173,173,174,175,176
+  176,177,178,179,179,180,181,182,182,183,184,185,185,186,187,188,188,189,190,191,191,192,193,194
+  194,195,196,197,197,198,199,199,200,201,202,202,203,204,205,205,206,207,208,208,209,210,211,211
+  212,213,214,214,215,216,217,217,218,219,220,220,221,222,223,223,224
+end data
+data MapY bytes
+  16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16
+  16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,17,18,19
+  20,20,21,22,23,24,25,26,27,27,28,29,30,31,32,33,34,34,35,36,37,38,39,40,41,42,42,43,44,45,46,47
+  48,49,49,50,51,52,53,54,55,56,56,57,58,59,60,61,62,63,64,64,65,66,67,68,69,70,71,71,72,73,74,75
+  76,77,78,78,79,80,81,82,83,84,85,86,86,87,88,89,90,91,92,93,93,94,95,96,97,98,99,100,100,101,102,103
+  104,105,106,107,108,108,109,110,111,112,113,114,115,115,116,117,118,119,120,121,122,122,123,124,125,126,127,128,129,130,130,131
+  132,133,134,135,136,137,137,138,139,140,141,142,143,144,144,145,146,147,148,149,150,151,152,152,153,154,155,156,157,158,159,159
+  160,161,162,163,164,165,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166,166
+end data
+
+' palettes for segments 0 (head) .. 5, as on the C64 ($767C, $7684, $768C)
+data PalA bytes 15,7,7,5,5,4
+data PalB bytes 15,15,15,14,14,1
+data PalC bytes 15,11,10,9,8,6
+' level spacing in path steps (index: level band)
+data Spacing bytes 3,3,4,6,7
+' big title letters, 3 x 5 blocks, 5 rows each: S P A C E W O R M
+data Glyph bytes 7,4,7,1,7, 7,5,7,4,4, 7,5,7,5,5, 7,4,4,4,7, 7,4,6,4,7, 5,5,7,7,5, 7,5,5,5,7, 6,5,6,5,5, 5,7,7,5,5
+data TitleA bytes 0,1,2,3,4
+data TitleB bytes 5,6,7,8,0
+data TitleStC bytes 3,28,4,27,2,29,8,23,3,26,5,21
+data TitleStR bytes 2,3,9,8,14,13,19,21,22,19,16,15
+data TitleStT bytes TSw5,TSa2,TSb6,TSw3,TSa4,TSb1,TSw6,TSa0,TSb3,TSw1,TSa7,TSb5
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 5 Score = 0
+bcd digits 5 Hi = 0
+bcd digits 2 Lvl = 1
+u8 LvN = 1
+' the ship (C64 coordinates), its frame, the shot
+u16 Sx = 174
+u8 Sy = 185
+u8 ShipF = 0
+u8 ShipT = 0
+u8 Mis = 0
+u16 Mx = 0
+u8 My = 0
+' the worm: segments alive (0 = head), path steps, paths
+u8 NSeg = 6
+u8 StepX[6]
+u8 StepY[6]
+u8 SegX[6]
+u8 SegY[6]
+u8 Col[6]
+u8 BodyK[6]
+u8 HeadK = 0
+u8 XPath = 0
+u8 YPath = 0
+u16 XO = 0
+u16 YO = 0
+u8 XL = 0
+u8 YL = 0
+u8 HitLeft = 7
+u8 ClrT = 0
+u8 Rip = 0
+u8 RipT = 0
+u8 Wig = 0
+u8 WigPh = 0
+u8 WigT = 0
+' dying: 0 alive, else frames since the hit
+u8 Dead = 0
+u8 DeadT = 0
+u8 Lives = 4
+u8 Over = 0
+' the spore (x in 1/16 C64 pixels)
+u8 SpOn = 0
+u16 SpXf = 0
+u16 SpDx = 0
+u8 SpNeg = 0
+u8 SpY = 0
+u8 SpVy = 2
+u8 SpT = 150
+u8 Spores = 0
+u8 Shots = 0
+' stars: column, row, sub-row, speed; their own random numbers
+u16 StO[NSt]
+u8 StB[NSt]
+u8 StS[NSt]
+u8 StV[NSt]
+u8 SRs = 77
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 HudDirty = 0
+' loop counters (never shared with the helpers)
+u8 Sl = 0
+u8 Gx = 0
+' the box tested against the worm (C64 pixels)
+u16 BX0 = 0
+u16 BX1 = 0
+u8 BY0 = 0
+u8 BY1 = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SwSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  Stars
+  if HudDirty > 0 then ShowHud
+  if Over = 0 then goto play_loop
+
+  print at 9,9, "            "
+  print at 9,10, " GAME  OVER "
+  print at 9,11, "            "
+  print at 9,12, " SCORE ", Score
+  print at 9,13, " BEST  ", Hi
+  print at 9,14, "            "
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play (the C64's raster interrupt, in its order)
+sub PlayStep:
+  if Dead = 0 then
+    K = J1 & 16
+    if K > 0 then
+      if Mis = 0 then
+        Mis = 1
+        Mx = Sx
+        My = Sy
+        inc Shots
+        play sound SndZap
+      end if
+    end if
+    K = J1 & 4
+    if K > 0 then
+      if Sx > 32 then Sx = Sx - 2
+    end if
+    K = J1 & 8
+    if K > 0 then
+      if Sx < 312 then Sx = Sx + 2
+    end if
+    K = J1 & 1
+    if K > 0 then
+      if Sy > 185 then Sy = Sy - 2
+    end if
+    K = J1 & 2
+    if K > 0 then
+      if Sy < 227 then Sy = Sy + 2
+    end if
+  end if
+  MoveWorm
+  if Mis = 1 then
+    if My >= ShotTop then
+      My = My - 5
+    else
+      Mis = 0
+    end if
+  end if
+  if Dead = 0 then
+    inc ShipT
+    if ShipT >= 8 then
+      ShipT = 0
+      ShipF = ShipF ^ 1
+    end if
+  end if
+  MoveSpore
+  Collide
+  if Dead > 0 then Dying
+  if NSeg = 0 then
+    inc ClrT
+    if ClrT = 40 then NextLevel
+  end if
+  Animate
+  return
+end sub
+
+' each live segment one step on along both loops
+sub MoveWorm:
+  for Gx = 0 to 5
+    if Gx < NSeg then
+      V = StepX[Gx] + 1
+      if V >= XL then V = 0
+      StepX[Gx] = V
+      W16 = XO + V
+      SegX[Gx] = PXTab[W16]
+      V = StepY[Gx] + 1
+      if V >= YL then V = 0
+      StepY[Gx] = V
+      W16 = YO + V
+      SegY[Gx] = PYTab[W16]
+    end if
+  next
+  return
+end sub
+
+' the worm's wiggle (0,1,2,1 every 5 frames) and the colour ripple
+sub Animate:
+  inc WigT
+  if WigT >= 5 then
+    WigT = 0
+    WigPh = (WigPh + 1) & 3
+    Wig = WigPh
+    if WigPh = 3 then Wig = 1
+  end if
+  if Rip = 1 then
+    inc RipT
+    if RipT >= 20 then
+      RipT = 0
+      V = Col[0]
+      for Gx = 0 to 4
+        Col[Gx] = Col[Gx + 1]
+      next
+      Col[5] = V
+    end if
+  end if
+  return
+end sub
+
+' 1 when the box X0..X1, Y0..Y1 (C64 pixels) meets segment S's body
+' (the box is BX0..BX1, BY0..BY1; the rows are tested first, in bytes)
+function SegTouch(u8 S) as u8
+  u16 Ax = 0
+  u8 Ay = 0
+  Ay = SegY[S]
+  if BY1 < Ay + 3 then return 0
+  if BY0 > Ay + 18 then return 0
+  Ax = SegX[S]
+  if BX1 < Ax + 3 then return 0
+  if BX0 > Ax + 20 then return 0
+  return 1
+
+' 1 when the box meets the spore
+function SporeTouch(u16 X0, u16 X1, u8 Y0, u8 Y1) as u8
+  u16 Ax = 0
+  if SpOn = 0 then return 0
+  Ax = SpXf >> 4
+  if X1 < Ax + 7 then return 0
+  if X0 > Ax + 13 then return 0
+  if Y1 < SpY + 6 then return 0
+  if Y0 > SpY + 12 then return 0
+  return 1
+
+' the ship against the worm and the spore; the shot against both
+sub Collide:
+  if Dead = 0 then
+    BX0 = Sx + 7
+    BX1 = Sx + 16
+    BY0 = Sy + 4
+    BY1 = Sy + 17
+    for Sl = 0 to 5
+      if Sl < NSeg then
+        if SegTouch(Sl) = 1 then Dead = 1
+      end if
+    next
+    if SporeTouch(Sx + 7, Sx + 16, Sy + 4, Sy + 17) = 1 then Dead = 1
+    if Dead = 1 then
+      DeadT = 0
+      SpOn = 0
+      play sound SndBoom
+    end if
+  end if
+  if Mis = 0 then return
+  if SporeTouch(Mx + 10, Mx + 12, My, My + 4) = 1 then
+    Mis = 0
+    SpOn = 0
+    play sound SndTick
+    return
+  end if
+  K = 0
+  BX0 = Mx + 10
+  BX1 = Mx + 12
+  BY0 = My
+  BY1 = My + 4
+  for Sl = 0 to 5
+    if Sl < NSeg then
+      if SegTouch(Sl) = 1 then K = 1
+    end if
+  next
+  if K = 0 then return
+  Mis = 0
+  Score += 1
+  HudDirty = HudDirty | 1
+  if HitLeft > 0 then
+    dec HitLeft
+    play sound SndTick
+    return
+  end if
+  HitLeft = 7
+  ' the tail goes; the first one is worth nothing (as on the C64)
+  if NSeg < 6 then Score += 10
+  dec NSeg
+  play sound SndPop
+  if NSeg = 0 then
+    ClrT = 0
+    SpOn = 0
+    play sound SndClear
+  end if
+  return
+end sub
+
+' the explosion (54 frames), 75 frames more, the next ship or the end
+sub Dying:
+  inc DeadT
+  if DeadT < 129 then return
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  Dead = 0
+  DeadT = 0
+  dec Lives
+  HudDirty = 2
+  ShipF = 0
+  ShipT = 0
+  Sy = 185
+  K = RandTo(1)
+  if K = 1 then
+    Sx = 286
+  else
+    Sx = 50
+  end if
+  return
+end sub
+
+' a spore: dropped by the head when the clock runs out and the head is
+' above the ship, aimed at the ship, then straight on
+sub MoveSpore:
+  if SpOn = 1 then
+    if SpNeg = 1 then
+      SpXf = SpXf - SpDx
+      if SpXf < 512 then SpXf = 512
+    else
+      SpXf = SpXf + SpDx
+      if SpXf > 4992 then SpXf = 4992
+    end if
+    SpY = SpY + SpVy
+    if SpY > 232 then SpOn = 0
+    return
+  end if
+  if SpT > 0 then dec SpT
+  if SpT > 0 then return
+  if Dead > 0 then return
+  if NSeg = 0 then return
+  V = SegY[0] + 8
+  K = Sy - 20
+  if V >= K then return
+  DropSpore
+  return
+end sub
+
+sub DropSpore:
+  u8 T = 0
+  u16 Hx = 0
+  u16 D = 0
+  T = (Sy - SegY[0] - 8) / SpVy
+  if T = 0 then T = 1
+  Hx = SegX[0]
+  SpXf = Hx * 16
+  SpY = SegY[0] + 8
+  if Sx >= Hx then
+    D = Sx - Hx
+    SpNeg = 0
+  else
+    D = Hx - Sx
+    SpNeg = 1
+  end if
+  D = D * 16
+  SpDx = D / T
+  SpOn = 1
+  inc Spores
+  SpT = SporeGap()
+  play sound SndSpore
+  return
+end sub
+
+' frames between spores: 240, 10 fewer a level, at least 90
+function SporeGap() as u8
+  u8 G = 240
+  if LvN >= 15 then return 90
+  G = 240 - LvN * 10
+  return G
+
+' 0..N, as a mask to the next power of two and a retry above N
+function RandTo(u8 N) as u8
+  u8 M = 255
+  u8 R = 0
+  if N = 0 then return 0
+  while M >> 1 >= N
+    M = M >> 1
+  end while
+  Rand
+  R = Rs & M
+  while R > N
+    Rand
+    R = Rs & M
+  end while
+  return R
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' path P's table offsets
+sub SetPaths:
+  XO = PXOff[XPath]
+  XL = PXLen[XPath]
+  YO = PYOff[YPath]
+  YL = PYLen[YPath]
+  return
+end sub
+
+' the worm of a new level: spacing by level, new loops, looks
+sub NextLevel:
+  u8 Sp = 0
+  u8 Band = 0
+  ClrT = 0
+  if LvN < 99 then
+    inc LvN
+    Lvl += 1
+  end if
+  Score += 100
+  HudDirty = 2
+  Band = 1
+  if LvN >= 5 then Band = 2
+  if LvN >= 10 then Band = 3
+  if LvN >= 20 then Band = 4
+  Sp = Spacing[Band]
+  for Sl = 0 to 5
+    V = (5 - Sl) * Sp
+    StepX[Sl] = V
+    StepY[Sl] = V
+  next
+  V = XPath
+  while V = XPath
+    V = RandTo(7)
+  end while
+  XPath = V
+  V = YPath
+  while V = YPath
+    V = RandTo(7)
+  end while
+  YPath = V
+  SetPaths
+  HeadK = RandTo(2)
+  K = RandTo(3)
+  for Sl = 0 to 5
+    select case K
+      case 0
+        BodyK[Sl] = RandTo(2)
+      case 1
+        BodyK[Sl] = 0
+      case 2
+        BodyK[Sl] = 1
+      case else
+        BodyK[Sl] = 2
+    end select
+  next
+  K = RandTo(3)
+  if K = 0 then
+    V = RandTo(13) + 2
+    for Sl = 0 to 5
+      Col[Sl] = V
+    next
+    Col[0] = 15
+  else
+    for Sl = 0 to 5
+      select case K
+        case 1
+          Col[Sl] = PalA[Sl]
+        case 2
+          Col[Sl] = PalB[Sl]
+        case else
+          Col[Sl] = PalC[Sl]
+      end select
+    next
+  end if
+  Rip = RandTo(1)
+  RipT = 0
+  WigPh = 3
+  Wig = 0
+  WigT = 0
+  NSeg = 6
+  SpVy = 2
+  if LvN >= 6 then SpVy = 3
+  if LvN >= 12 then SpVy = 4
+  SpT = SporeGap()
+  MoveWorm
+  play sound SndStart
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 ship, 1 shot, 2 spore, 3-8 the worm (head first)
+sub DrawSprites:
+  W16 = Sx - 32
+  X = MapX[W16]
+  Y = MapY[Sy]
+  if Dead = 0 then
+    K = ShipF * 4 + SShip0
+    set sprite 0 to Y - 1,X,K,15
+  else
+    if DeadT < 54 then
+      K = DeadT / 18
+      K = K * 4 + SBoom0
+      V = 11
+      if DeadT >= 18 then V = 9
+      if DeadT >= 36 then V = 6
+      set sprite 0 to Y - 1,X,K,V
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+  end if
+  if Mis = 1 then
+    W16 = Mx - 32
+    X = MapX[W16]
+    Y = MapY[My]
+    set sprite 1 to Y - 1,X,SMissile,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if SpOn = 1 then
+    W16 = SpXf >> 4
+    W16 = W16 - 32
+    X = MapX[W16]
+    Y = MapY[SpY]
+    set sprite 2 to Y - 1,X,SSpore,3
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for Gx = 0 to 5
+    J = Gx + 3
+    if Gx < NSeg then
+      W16 = SegX[Gx] - 32
+      X = MapX[W16]
+      V = SegY[Gx]
+      Y = MapY[V]
+      if Gx = 0 then
+        K = HeadK * 3 + Wig
+        K = K * 4 + SH00
+      else
+        K = BodyK[Gx] * 3 + Wig
+        K = K * 4 + SB00
+      end if
+      V = Col[Gx]
+      set sprite J to Y - 1,X,K,V
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the stars rise StV pixels a frame; above row 2 a new one at the bottom:
+' SwStars in stars.asm (Z80, for frame time)
+sub Stars:
+  call asm SwStars
+  return
+end sub
+
+' 0..N for the stars (their own generator, so the play's numbers stay put)
+function StarRnd(u8 N) as u8
+  u8 R = 0
+  SRs = SRs * 5 + 17
+  R = SRs >> 2
+  while R > N
+    R = R - N - 1
+  end while
+  return R
+
+sub StarsInit:
+  u8 C = 0
+  u8 R = 0
+  for Gx = 0 to NSt - 1
+    C = StarRnd(27) + 2
+    R = StarRnd(20) + 2
+    StO[Gx] = R * 32 + C
+    StS[Gx] = 0
+    StV[Gx] = StarRnd(6) + 1
+    StB[Gx] = TSb0
+    if StV[Gx] >= 3 then StB[Gx] = TSa0
+    if StV[Gx] >= 5 then StB[Gx] = TSw0
+  next
+  return
+end sub
+
+' the score alone after a hit (bit 0), the whole line otherwise
+sub ShowHud:
+  if HudDirty = 1 then
+    print at 17,1, Score
+  else
+    print at 2,1, "LEVEL:", Lvl, " SCORE:", Score, " LIVES:"
+    put char 48 + Lives at 29,1
+  end if
+  HudDirty = 0
+  if Score > Hi then Hi = Score
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  StarsInit
+  Score = 0
+  Lvl = 1
+  LvN = 1
+  Lives = 4
+  Over = 0
+  Dead = 0
+  DeadT = 0
+  Sx = 174
+  Sy = 185
+  ShipF = 0
+  ShipT = 0
+  Mis = 0
+  SpOn = 0
+  SpVy = 2
+  SpT = SporeGap()
+  Spores = 0
+  Shots = 0
+  HitLeft = 7
+  ClrT = 0
+  ' level 1 as on the C64: loops 0 and 0, X phase 28 steps ahead of Y
+  XPath = 0
+  YPath = 0
+  SetPaths
+  for Sl = 0 to 5
+    V = 15 - Sl * 3
+    StepY[Sl] = 13 + V
+    StepX[Sl] = 41 + V
+    BodyK[Sl] = 1
+    Col[Sl] = PalA[Sl]
+  next
+  HeadK = 0
+  Rip = 0
+  RipT = 0
+  WigPh = 3
+  Wig = 0
+  WigT = 0
+  NSeg = 6
+  MoveWorm
+  HudDirty = 2
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub BigLetter(u8 Lt, u8 Cx, u8 Cy)
+  u8 Ly = 0
+  u8 Bits = 0
+  u8 Gi = 0
+  for Ly = 0 to 4
+    Gi = Lt * 5 + Ly
+    Bits = Glyph[Gi]
+    if Bits & 4 then put char TTbl at Cx,Cy + Ly
+    if Bits & 2 then put char TTbl at Cx + 1,Cy + Ly
+    if Bits & 1 then put char TTbl at Cx + 2,Cy + Ly
+  next
+  return
+end sub
+
+' the title: SPACE WORMS in green blocks among stars, a worm and the ship,
+' START / CREDITS, the best score, the tune once
+sub TitlePage:
+  NewScreen
+  for Gx = 0 to 11
+    put char TitleStT[Gx] at TitleStC[Gx],TitleStR[Gx]
+  next
+  for Gx = 0 to 4
+    BigLetter(TitleA[Gx], Gx * 4 + 6, 3)
+    BigLetter(TitleB[Gx], Gx * 4 + 6, 9)
+  next
+  print at 7,1, "COMPUTE!'S GAZETTE"
+  print at 10,15, "APRIL  1989"
+  print at 13,17, "START"
+  print at 13,18, "CREDITS"
+  if Hi > 0 then
+    print at 10,20, "BEST ", Hi
+  end if
+  ShowMenu
+  set sprite 0 to 150,200,SShip0,15
+  for Gx = 0 to 4
+    J = Gx + 3
+    X = 60 + Gx * 13
+    K = 1
+    if Gx = 0 then K = 0
+    V = SB10
+    if Gx = 0 then V = SH00
+    set sprite J to 164 + K * 2,X,V,PalA[Gx]
+  next
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  J = Menu + 17
+  put char 62 at 11,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 10,2, "SPACE WORMS"
+  print at 2,5, "BASED ON SPACE WORMS,"
+  print at 2,6, "COMPUTE!'S GAZETTE DISK,"
+  print at 2,7, "APRIL 1989 (COMMODORE 64"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: WRIGGLE ORBIT"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SwZap:
+    db $40,$3E,$20,$01,$40,$4C,$20,$01,$40,$5C,$30,$01,$40,$71,$30,$01,$40,$89,$40,$01,$40,$A8,$40,$01
+    db $50
+SwTick:
+    db $00,$00,$25,$01,$00,$00,$56,$02,$10
+SwPop:
+    db $40,$75,$11,$02,$40,$2A,$21,$02,$40,$EF,$20,$02,$40,$BF,$30,$02,$40,$99,$30,$02,$40,$7A,$40,$02
+    db $50
+SwSpore:
+    db $40,$A0,$40,$02,$40,$BC,$50,$02,$40,$DD,$50,$02,$40,$04,$61,$02,$40,$32,$61,$02,$50
+SwBoom:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$36,$0A,$00,$00,$47,$0E,$00,$00,$67,$10,$10
+SwClear:
+    db $40,$AA,$20,$05,$40,$8F,$20,$05,$40,$71,$20,$05,$40,$55,$20,$05,$40,$47,$30,$0E,$50
+SwStart:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$0C,$50
+SwOver:
+    db $40,$1D,$11,$0A,$40,$41,$21,$0A,$40,$53,$21,$0A,$40,$7C,$21,$0A,$40,$AB,$31,$1E,$50
+
+SwSoundTable:
+    dw SwTuneMel,$702B
+    dw SwTuneBass,$7035
+    dw SwZap,$7049
+    dw SwTick,$703F
+    dw SwPop,$7049
+    dw SwSpore,$7049
+    dw SwBoom,$703F
+    dw SwClear,$7049
+    dw SwStart,$7049
+    dw SwOver,$7049
+; Wriggle Orbit (original)
+; Tiny Sound, 8 frames per step
+SwTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$17,$01,$1A,$01,$19,$01,$1A,$1C,$01,$1E,$01,$01
+    db $1D,$1E,$01,$01,$21,$01,$1F,$1E,$01,$1C,$1A,$01,$1C,$01,$01,$00
+    db $01,$01,$01,$01,$1E,$01,$21,$01,$20,$01,$21,$23,$01,$25,$01,$01
+    db $23,$21,$01,$01,$1E,$01,$1F,$1E,$01,$1C,$19,$01,$17,$01,$01,$00
+    db $01,$01,$01,$01
+    db $FF
+SwTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$06,$01,$0B,$01,$06,$01,$0B,$01,$06,$01
+    db $0B,$01,$06,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$06,$01,$0D,$01
+    db $06,$01,$01,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0B,$01,$06,$01
+    db $0B,$01,$06,$01,$07,$01,$0E,$01,$06,$01,$0D,$01,$0B,$01,$06,$01
+    db $0B,$01,$01,$01
+    db $FF
+; SwStars: the 16 stars one frame on (main.alexis Stars' rules in Z80, for
+; frame time). Star I: StO[I] = name-table offset (row x 32 + column),
+; StS[I] = sub-row 0..7, StV[I] = speed 1..7, StB[I] = its first tile.
+; S += V; at 8 or more the old cell is blanked, S -= 8 and the star goes up
+; a row; above row 2 it comes back on row 22 in a new column with a new
+; speed (and tile colour). Then tile StB + S goes in its cell. Uses all
+; registers but IX/IY. Called with the NMI off; holds Amy's VDP guard.
+SwStars:
+    ld a,$A5
+    ld ($701F),a
+    ld b,0
+SwStLoop:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_StS
+    add hl,de
+    push hl                     ; &StS[b]
+    ld hl,AMY_UVAR_StV
+    add hl,de
+    ld a,(hl)
+    pop hl
+    add a,(hl)
+    ld c,a                      ; c = S
+    ld (hl),a
+    ld hl,AMY_UVAR_StO
+    add hl,de
+    add hl,de                   ; &StO[b]
+    ld a,c
+    cp 8
+    jr c,SwStDraw
+    sub 8
+    ld c,a
+    push hl
+    ld hl,AMY_UVAR_StS
+    add hl,de
+    ld (hl),c
+    pop hl
+    ; blank the old cell
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    push hl
+    push de
+    ld hl,($73F6)
+    add hl,de
+    ld a,l
+    out (VDP_CTRL_PORT),a
+    ld a,h
+    or $40
+    out (VDP_CTRL_PORT),a
+    ld a,32
+    nop
+    out (VDP_DATA_PORT),a
+    pop hl                      ; old offset
+    ld de,-32
+    add hl,de
+    ld a,h
+    or a
+    jr nz,SwStKeep
+    ld a,l
+    cp 64
+    jr nc,SwStKeep
+    ; above row 2: back on row 22, a new column 2..29 and speed 1..7
+    push bc
+    call SwStRnd
+    and 31
+    cp 28
+    jr c,SwStCol
+    sub 16
+SwStCol:
+    add a,2
+    ld l,a
+    ld h,2                      ; 22 x 32 = $2C0
+    ld a,l
+    add a,$C0
+    ld l,a
+    push hl
+    call SwStRnd
+    and 7
+    jr nz,SwStSp
+    inc a
+SwStSp:
+    pop hl
+    pop bc
+    push hl
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_StV
+    add hl,de
+    ld (hl),a
+    ld c,a
+    ld a,TSb0
+    ld e,c
+    ld c,a
+    ld a,e
+    cp 3
+    jr c,SwStTile
+    ld c,TSa0
+    cp 5
+    jr c,SwStTile
+    ld c,TSw0
+SwStTile:
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_StB
+    add hl,de
+    ld (hl),c
+    ld hl,AMY_UVAR_StS
+    add hl,de
+    ld c,(hl)
+    pop hl
+SwStKeep:
+    ex de,hl                    ; de = new offset
+    pop hl                      ; &StO[b] + 1
+    ld (hl),d
+    dec hl
+    ld (hl),e
+SwStDraw:
+    ; tile StB + S at StO
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,($73F6)
+    add hl,de
+    ld a,l
+    out (VDP_CTRL_PORT),a
+    ld a,h
+    or $40
+    out (VDP_CTRL_PORT),a
+    ld e,b
+    ld d,0
+    ld hl,AMY_UVAR_StB
+    add hl,de
+    ld a,(hl)
+    add a,c
+    out (VDP_DATA_PORT),a
+    inc b
+    ld a,b
+    cp 16
+    jp c,SwStLoop
+    jp AMY_RELEASE_VDP_GUARD
+; the stars' own numbers: SRs = SRs x 5 + 17, A = SRs >> 2
+SwStRnd:
+    ld a,(AMY_UVAR_SRs)
+    ld c,a
+    add a,a
+    add a,a
+    add a,c
+    add a,17
+    ld (AMY_UVAR_SRs),a
+    srl a
+    srl a
+    ret
+}
