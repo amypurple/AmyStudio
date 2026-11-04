@@ -38,7 +38,7 @@ import { createBcdHelpers } from "./core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "./core/compiler/addressHelpers.js?v=20261103-literal-vram-offset";
 import { handleArrayBulkStatement } from "./core/compiler/arrayBulkStatementHelpers.js";
 import { handleAdamStatement } from "./core/compiler/adamStatementHelpers.js";
-import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentArithmeticHelpers.js";
+import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentArithmeticHelpers.js?v=20261103-rom-table-compound";
 import { createFx16Helpers } from "./core/compiler/fx16Helpers.js";
 import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20261103-preserve-all-live-pairs";
 import { createCompareLiteralHelpers } from "./core/compiler/compareLiteralHelpers.js";

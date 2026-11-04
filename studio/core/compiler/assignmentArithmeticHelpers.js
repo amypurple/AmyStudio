@@ -1359,6 +1359,12 @@ export function createAssignmentArithmeticHelpers({
       && (targetType === "int8" || targetType === "int16" || targetType === "u32" || targetType === "i32")) {
       const operator = opToken === "&=" ? "and" : opToken === "|=" ? "or" : "xor";
       if (targetType === "int8") {
+        const sourceArrayRef = parseArrayRef(valueToken);
+        if (sourceArrayRef && !resolveValueType(valueToken)) {
+          // Indexed ROM data is an expression, not an assembler immediate.
+          // Reuse the proven long-form lowering used by R = R | Bits[G].
+          return emitCompoundExpressionStore(opToken[0]);
+        }
         const arrayRef = parseArrayRef(target);
         const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
         if (arrayRef &&

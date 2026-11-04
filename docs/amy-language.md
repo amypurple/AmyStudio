@@ -4005,6 +4005,8 @@ Notes:
 - Byte and word compound arithmetic accepts indexed array elements on the
   right, including runtime indexes (`Total *= Values[Index]`). The compiler
   preserves the left operand while calculating the element address.
+- Byte `&=`, `|=`, and `^=` also accept variable-indexed ROM `data bytes`
+  elements, for example `Flags |= Masks[Index]`.
 - signed integer division truncates toward zero; `int()` on fp5 remains floor-style.
 - fixed/fixed32/fp5 operators use dedicated runtime helpers and may cost more
   ROM than byte/word arithmetic.

@@ -949,4 +949,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   bytes for Tank Ambush. Attribution validation covers 301 COMPUTE!-related examples, including
   205 Gazette entries.
 
+## 2026-11-03 - Bitwise compound assignment from ROM tables
+
+- `R |= Bits[G]`, `R &= Bits[G]`, and `R ^= Bits[G]` now lower through the same typed
+  expression path as their long assignment forms when `Bits` is a ROM `data bytes` table.
+  The previous short path emitted the indexed table expression as an invalid assembler immediate.
+- GearColeco verifies exact results for all three operators at Off, Safe, Balanced, Aggressive,
+  and Experimental. Existing compound-array, expression, and fail-closed suites remain green.
+  Full Alexis-Z80 gates pass 798/798 at 7,811,798 Balanced bytes and 7,810,860 Aggressive bytes;
+  797 ROMs assemble and one project remains delegated to its target-specific validator. The clean
+  repository also passes 798/798 at 7,815,405 Balanced bytes and 7,814,467 Aggressive bytes.
+
 
