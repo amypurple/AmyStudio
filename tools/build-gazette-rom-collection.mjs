@@ -16,6 +16,9 @@ const months = new Map([
   ["january", 1], ["february", 2], ["march", 3], ["april", 4], ["may", 5], ["june", 6],
   ["july", 7], ["august", 8], ["september", 9], ["october", 10], ["november", 11], ["december", 12]
 ]);
+const knownAuthorCredits = new Map([
+  ["treasure-diver-ocean-expedition", "Brian Casey"],
+]);
 
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 const safePart = (value) => clean(value).replace(/[<>:"/\\|?*]/g, "-").replace(/\.+$/g, "");
@@ -37,12 +40,15 @@ function titleFor(entry) {
 }
 
 function authorFor(entry, source) {
+  if (knownAuthorCredits.has(entry.id)) return knownAuthorCredits.get(entry.id);
   const text = clean(`${entry.detail || ""} ${head(source)}`);
   if (/no (?:original )?author (?:is |was )?named|author not named|listing names no author|credit is the magazine/i.test(text)) return "Author not named";
   const patterns = [
     /(?:^|[.;]\s+)([A-Z][A-Za-z .,&'-]{2,80})['’]s\s+COMPUTE!'s Gazette\b/i,
     /(?:port|adaptation|reinterpretation|reimagining) of\s+["“]?[^"”]+["”]?\s+by\s+(.+?)(?=,\s*(?:COMPUTE|originally|published)|\s+for\s+COMPUTE|$)/i,
+    /\binspired by\s+(.+?)['’]s\s+[^,]+,\s+(?:published in\s+)?COMPUTE/i,
     /(?:port|adaptation|reinterpretation|reimagining) of\s+(.+?)['’]s\s+COMPUTE!/i,
+    /(?:^|[.;]\s+)([A-Z][A-Za-z .,&'-]{2,80})['’]s\s+[A-Z0-9][A-Z0-9 !'&.-]+\s+\(COMPUTE/i,
     /\bby\s+(.+?)(?=,\s*(?:COMPUTE|originally|published|from|a\s|an\s|the\s)|\s+for\s+COMPUTE|$)/i,
     /\b(.+?)['’]s\s+COMPUTE!'s Gazette\s+(?:game|program|adaptation)/i,
     /\bORIGINAL (?:GAME )?(?:BY|AUTHOR)\s*[:=-]?\s*(.+?)(?=\s{2,}| ORIGINAL| COMPUTE|$)/i
@@ -50,6 +56,12 @@ function authorFor(entry, source) {
   for (const pattern of patterns) {
     const candidate = clean(text.match(pattern)?.[1]);
     if (candidate && candidate.length <= 90 && !/magazine|Amy Bienvenu|Claude|Anthropic|ChatGPT|OpenAI/i.test(candidate)) return candidate;
+  }
+  const cartridge = source.match(/^\s*cartridge\s+"([^"]+)"/im)?.[1] || "";
+  const creditField = clean(cartridge.split("/")[1]);
+  if (creditField && !/^(?:COMPUTE!?|COMPUTE!'?S GAZETTE|GAZETTE|AMY STUDIO|COLECOVISION|PRESENTS|OCEAN EXPEDITION)(?:\b|$)/i.test(creditField)) {
+    const candidate = clean(creditField.replace(/,?\s*(?:COMPUTE!?|GAZETTE).*$/i, "").replace(/^BY\s+/i, ""));
+    if (candidate && !/^(?:19|20)\d{2}$/.test(candidate)) return candidate;
   }
   return "Author not named";
 }
