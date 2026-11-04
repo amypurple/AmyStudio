@@ -960,4 +960,21 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   797 ROMs assemble and one project remains delegated to its target-specific validator. The clean
   repository also passes 798/798 at 7,815,405 Balanced bytes and 7,814,467 Aggressive bytes.
 
+## 2026-11-03 - Final Claude expression gaps: signed magnitude, byte returns, and data expressions
+
+- Direct comparisons of `abs(i16)` now preserve the unsigned 16-bit magnitude while widening a
+  signed 16-bit peer by sign to a signed 32-bit comparison. This handles `abs(-32768)` without
+  treating its `$8000` magnitude as negative.
+- Byte functions accept expression-aware returns such as `return lowbyte(Value)` and
+  `return highbyte(Value)` through the established typed byte loader.
+- Comma-delimited `data ... bytes` entries accept compile-time integer expressions such as
+  `TBase + 8`. Historical whitespace-separated lists and `Value count N` retain their existing
+  grammar. GearColeco validates all three paths at all five optimization profiles.
+- `Table[(Value-1)/8]` remains an explicit unsupported index-expression shape; it still requires
+  assigning the quotient to a temporary variable. This avoids silently broadening address
+  arithmetic without a complete index-width and bounds proof.
+- Full Alexis-Z80 gates pass 798/798: 7,811,766 Balanced bytes and 7,810,830 Aggressive bytes;
+  797 ROMs assemble and one project remains delegated to its target-specific validator. The clean
+  repository also passes 798/798 at 7,815,373 Balanced bytes and 7,814,437 Aggressive bytes.
+
 

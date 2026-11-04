@@ -153,6 +153,19 @@ export function createDataHelpers(ctx) {
       .filter(Boolean);
   }
 
+  function splitDataEntries(tokenText) {
+    const text = String(tokenText).trim().replace(/^db\s+/i, "");
+    if (!text.includes(",")) return splitDataTokens(text);
+    return text.split(",").map((entry) => entry.trim()).filter(Boolean);
+  }
+
+  function normalizeDataValue(entry) {
+    const normalized = normalizeDataToken(entry);
+    if (normalized) return normalized;
+    const value = tryEvaluateConstantExpression(String(entry).trim());
+    return Number.isInteger(value) ? String(entry).trim() : false;
+  }
+
   function parseDataRepeatCountToken(token) {
     const raw = String(token || "").trim();
     if (!raw) return null;
@@ -164,14 +177,22 @@ export function createDataHelpers(ctx) {
   }
 
   function appendDataTokens(block, tokenText, rawLine) {
-    const tokens = splitDataTokens(tokenText);
+    const tokens = splitDataEntries(tokenText);
     const values = [];
     for (let index = 0; index < tokens.length; index += 1) {
-      const token = normalizeDataToken(tokens[index]);
+      const repeatEntry = String(tokens[index]).match(/^(.*?)\s+count\s+(\S+)$/i);
+      const valueEntry = repeatEntry ? repeatEntry[1].trim() : tokens[index];
+      const token = normalizeDataValue(valueEntry);
       if (!token || token === false) {
         throw new Error(`Invalid data byte list: ${rawLine}`);
       }
-      if (/^count$/i.test(tokens[index + 1] || "")) {
+      if (repeatEntry) {
+        const repeat = parseDataRepeatCountToken(repeatEntry[2]);
+        if (repeat == null) {
+          throw new Error(`Invalid data repeat count: ${rawLine}`);
+        }
+        for (let j = 0; j < repeat; j += 1) values.push(token);
+      } else if (/^count$/i.test(tokens[index + 1] || "")) {
         const repeat = parseDataRepeatCountToken(tokens[index + 2]);
         if (repeat == null) {
           throw new Error(`Invalid data repeat count: ${rawLine}`);
@@ -187,12 +208,15 @@ export function createDataHelpers(ctx) {
 
   function looksLikeDataTokens(tokenText) {
     if (/^\s*data\s+/i.test(String(tokenText || ""))) return false;
-    const tokens = splitDataTokens(tokenText);
+    const tokens = splitDataEntries(tokenText);
     if (!tokens.length) return false;
     for (let index = 0; index < tokens.length; index += 1) {
-      const token = normalizeDataToken(tokens[index]);
+      const repeatEntry = String(tokens[index]).match(/^(.*?)\s+count\s+(\S+)$/i);
+      const token = normalizeDataValue(repeatEntry ? repeatEntry[1].trim() : tokens[index]);
       if (!token || token === false) return false;
-      if (/^count$/i.test(tokens[index + 1] || "")) {
+      if (repeatEntry) {
+        if (parseDataRepeatCountToken(repeatEntry[2]) == null) return false;
+      } else if (/^count$/i.test(tokens[index + 1] || "")) {
         const repeat = parseDataRepeatCountToken(tokens[index + 2]);
         if (repeat == null) return false;
         index += 2;

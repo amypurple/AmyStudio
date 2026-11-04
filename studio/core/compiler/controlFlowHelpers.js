@@ -620,7 +620,12 @@ export function createControlFlowHelpers(ctx) {
     const computedMixedSignedness = effectiveOperator !== "=="
       && effectiveOperator !== "!="
       && isSignedDeclaredType(leftComputedDeclared) !== isSignedDeclaredType(rightComputedDeclared);
-    const preserveSignedMixedCompare = computedMixedSignedness && compareMode === "unsigned";
+    // Mixed signed/unsigned expressions must be widened from their native
+    // domains: zero-extend the unsigned operand and sign-extend the signed one.
+    // Recomputing both directly as i32 loses that distinction and rejects
+    // otherwise valid 16-bit expressions such as abs(i16) <= i16.
+    const preserveSignedMixedCompare = computedMixedSignedness
+      && (compareMode === "unsigned" || compareMode === "auto");
     const computedSigned = compareMode === "signed"
       || preserveSignedMixedCompare
       || (compareMode === "auto" && (isSignedDeclaredType(leftComputedDeclared) || isSignedDeclaredType(rightComputedDeclared)));

@@ -162,7 +162,7 @@ export function handleRoutineStatement({
         const loadWord = emitLoadInt16IntoHL(valueToken);
         if (loadWord) returnLines = [...loadWord, "    ld a,l"];
       }
-      if (!returnLines) returnLines = emitLoadInt8Into("a", valueToken);
+      if (!returnLines) returnLines = emitLoadInt8ValueInto("a", valueToken) || emitLoadInt8Into("a", valueToken);
       if (!returnLines) {
         const loadWord = emitLoadInt16IntoHL(valueToken);
         if (loadWord) returnLines = [...loadWord, "    ld a,l"];

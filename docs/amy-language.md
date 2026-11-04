@@ -3236,6 +3236,17 @@ data BlankRows bytes
 end data
 ```
 
+Comma-delimited byte entries may be compile-time integer expressions. This is useful for
+small related tables while keeping their base value in one named constant:
+
+```basic
+const TBase = 16
+data TileKinds bytes = TBase + 8, TBase + 9
+```
+
+Use commas between expression entries. Whitespace-separated lists retain their historical
+literal/constant-only interpretation.
+
 `chars` converts each quoted text row to byte character/tile codes in ROM.
 
 `data ... bytes` can also be used as a ROM lookup table:
@@ -3637,6 +3648,7 @@ false, and the right side of `or` is skipped when the left side is true.
 | `function Name as Type` ... `return Value` | Value-returning function |
 | `function Name(Type p, ...) as Type` | Parameterized function |
 | `return Value` | Return from function |
+| `return lowbyte(Value)` / `return highbyte(Value)` | Return one byte selected from a 16-bit value |
 | `Name(...)` / `Name` | Preferred subroutine call |
 
 ### Screen / graphics
@@ -4068,7 +4080,7 @@ Current partial implementation note:
 - `random fp5 into Var`, `random fixed32 into Var`, and `rnd fp5 into Var` were removed; write `Var = random()`
 - `Var = sqrt(Value)` is the canonical form for fp5/fixed32 square root
 - `Var = abs(Value)` works for `fp5`, `fixed32`, and integer expressions; for `u16`/`i16` targets, byte operands are widened before subtraction so `Distance = abs(X1 - X2)` avoids `u8` wraparound
-- Integer `abs(Value)` may also be compared directly in a condition, for example `if abs(Error) <= Limit then ...`.
+- Integer `abs(Value)` may also be compared directly in a condition, for example `if abs(Error) <= Limit then ...`. Signed 16-bit inputs produce an unsigned 16-bit magnitude, including 32768 for `abs(-32768)`; mixed `u16`/`i16` comparisons widen both operands before comparing.
 - `Var = absdiff(A, B)` computes the absolute scalar difference directly. It is equivalent in intent to `abs(A-B)`, but can stay compact for two unsigned bytes and uses signed-aware comparison when signed operands are involved. Do not mix signed and unsigned variables; a numeric constant is accepted only when it fits the other operand's signedness/range.
 - `Var = sgn(Value)` works for `fp5`, integer, `fixed`, `ufixed`, and `fixed32` sources into byte/word/`fixed`/`fixed32`/`fp5` targets
 - `Var = int(Value)` works for fp5-oriented floor/integerization into byte/word/`fixed32`/`fp5` targets; floor-style for negatives (`int -0.5 = -1`, `int -1.25 = -2`)
