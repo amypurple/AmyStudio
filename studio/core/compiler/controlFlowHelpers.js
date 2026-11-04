@@ -43,6 +43,7 @@ export function createControlFlowHelpers(ctx) {
     emitLoadBuiltinInputInto,
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
+    findUnknownValueIdentifier,
     getTileTypeInfo,
     getHitboxInfo,
     resolveWholeRecord
@@ -1447,6 +1448,8 @@ export function createControlFlowHelpers(ctx) {
         ifCompare.mode
       );
       if (!lines) {
+        const unknownName = findUnknownValueIdentifier?.(`${leftToken} ${rightToken}`);
+        if (unknownName) return { ok: false, lines: [], log: `Unknown name '${unknownName}' in comparison: ${condition}` };
         return { ok: false, lines: [], log: `Unsupported comparison: ${condition}` };
       }
       return { ok: true, lines, log: "" };

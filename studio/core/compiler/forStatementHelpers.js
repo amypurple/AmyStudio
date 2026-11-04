@@ -21,6 +21,7 @@ export function handleForStatement({
   emitStoreInt16FromHL,
   isAnyFixedDeclaredType,
   captureForRuntimeValue,
+  findUnknownValueIdentifier,
   useConstantDownStep = true
 }) {
   const _dep = checkForDeprecation(line, rawLine);
@@ -60,6 +61,10 @@ export function handleForStatement({
   const forDownto = line.match(new RegExp(`^for\\s+${qualifiedCounterPattern}\\s*(?:=|from)\\s*(.+?)\\s+downto\\s+(.+?)(?:\\s+step\\s+(.+?))?\\s*:?$`, "i"));
   if (forDownto) {
     const info = resolveCounterInfo(forDownto[1]);
+    if (!info) {
+      const unknownName = findUnknownValueIdentifier?.(forDownto[1]);
+      if (unknownName) return { ok: false, handled: true, log: `Unknown name '${unknownName}' used as for-loop variable: ${rawLine}` };
+    }
     if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
       return { ok: false, handled: true, log: `for..downto loop variable must be a scalar byte/integer variable: ${rawLine}` };
     }
@@ -123,6 +128,10 @@ export function handleForStatement({
   const forDecl = line.match(new RegExp(`^for\\s+${qualifiedCounterPattern}\\s*(?:=|from)\\s*(.+?)\\s+to\\s+(.+?)(?:\\s+step\\s+(.+?))?\\s*:?$`, "i"));
   if (forDecl) {
     const info = resolveCounterInfo(forDecl[1]);
+    if (!info) {
+      const unknownName = findUnknownValueIdentifier?.(forDecl[1]);
+      if (unknownName) return { ok: false, handled: true, log: `Unknown name '${unknownName}' used as for-loop variable: ${rawLine}` };
+    }
     if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
       return { ok: false, handled: true, log: `for loop variable must be a scalar byte/integer variable: ${rawLine}` };
     }

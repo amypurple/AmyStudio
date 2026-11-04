@@ -86,7 +86,9 @@ const invalidCases = [
   ["replace-frame-word-count", `u8 Area[4]\nu16 Count = 0\nsub start:\n  replace 1 with 0 in Area frame size 2,2 into Count\n  loop forever\nend sub`, /replace .* frame into Count requires a byte variable/],
   ["get-char-word-target", `u16 Value = 0\nsub start:\n  Value = get char at 0,0\n  loop forever\nend sub`, /get char assignment target must be a byte RAM variable/],
   ["random-no-arg-u8", `u8 X = 0\nsub start:\n  X = random()\n  loop forever\nend sub`, /Invalid runtime assignment/],
-  ["unknown-symbol", `u8 X = 0\nsub start:\n  X = mysteryVar + 1\n  loop forever\nend sub`, /Invalid runtime assignment/],
+  ["unknown-symbol", `u8 X = 0\nsub start:\n  X = mysteryVar + 1\n  loop forever\nend sub`, /Unknown name 'mysteryVar' in assignment/],
+  ["unknown-comparison-symbol", `u8 X = 0\nsub start:\n  if X = mysteryVar then X = 1\n  loop forever\nend sub`, /Unknown name 'mysteryVar' in comparison/],
+  ["unknown-for-variable", `sub start:\n  for Counter = 0 to 3\n  next Counter\nend sub`, /Unknown name 'Counter' used as for-loop variable/],
   ["unknown-call", `u8 X = 0\nsub start:\n  X = frobnicate(2)\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["word-table-oob", `data L0 bytes $01\ndata Levels words = @L0\nu16 Address = 0\nsub start:\n  Address = Levels[9]\n  loop forever\nend sub`, /Word table Levels index 9 is out-of-range/]
 ];

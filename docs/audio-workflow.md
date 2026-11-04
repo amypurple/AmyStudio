@@ -118,6 +118,12 @@ formats: a simple bass noise command contains its filler byte, while a faded bas
 command does not. This low-level layer is tested independently before a visual
 music editor is allowed to emit project data.
 
+At the OS7 byte level, noise command types 0, 1, and 3 use the tone-shaped layout
+and therefore include the unused filler byte before attenuation/control. Type 2
+(volume sweep) is the only compact noise layout without that filler. This rule is
+validated against real commercial streams and must not be inferred from Amy's own
+decoder alone.
+
 The low-level encoder covers all four BIOS tone forms: simple note, frequency
 sweep, volume sweep, and combined frequency-plus-volume sweep. The friendly note
 helper supplies periods and a standard fade, while expert controls retain exact

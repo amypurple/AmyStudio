@@ -2179,6 +2179,23 @@ export function transpileAmyCore(sourceText, deps) {
     sourceTypeAliases
   });
 
+  function findUnknownValueIdentifier(expression) {
+    const source = String(expression || "")
+      .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, " ");
+    const identifierPattern = /[A-Za-z_][A-Za-z0-9_]*/g;
+    for (const match of source.matchAll(identifierPattern)) {
+      const name = match[0];
+      const offset = match.index || 0;
+      const before = source.slice(0, offset);
+      const after = source.slice(offset + name.length);
+      if (/[$@.]\s*$/.test(before) || /^\s*\(/.test(after)) continue;
+      if (isReservedAmyIdentifier(name)) continue;
+      if (getRuntimeInfo(name) || resolveNamedAsmSymbol(name) || describeGlobalNameCollision(name)) continue;
+      return name;
+    }
+    return null;
+  }
+
   function formatHex16(value) {
     return `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
   }
@@ -4154,6 +4171,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadBuiltinInputInto,
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
+    findUnknownValueIdentifier,
     emitComputedCompareGoto: (...args) => emitComputedCompareGoto(...args),
     getTileTypeInfo,
     getHitboxInfo,
@@ -5897,6 +5915,10 @@ export function transpileAmyCore(sourceText, deps) {
         if (declarationOrderError) {
           return { ok: false, asmBody: "", log: declarationOrderError };
         }
+        const unknownName = findUnknownValueIdentifier(`${formulaAssignment.target} ${formulaAssignment.value}`);
+        if (unknownName) {
+          return { ok: false, asmBody: "", log: `Unknown name '${unknownName}' in assignment: ${rawLine}` };
+        }
         if (/\b(?:and|or)\b/i.test(formulaAssignment.value)) {
           return {
             ok: false,
@@ -6279,6 +6301,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitStoreInt16FromHL,
         isAnyFixedDeclaredType,
         captureForRuntimeValue,
+        findUnknownValueIdentifier,
         useConstantDownStep: semanticOptimizerOptions.constantDownStep !== false
       });
       if (forStmt.handled) {

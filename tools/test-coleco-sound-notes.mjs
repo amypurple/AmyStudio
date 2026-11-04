@@ -34,12 +34,32 @@ assert.deepEqual(encodeNoiseCommand({
   length: 256,
   frequencySweep: { stepLength: 16, firstLength: 16, step: -2 },
   volumeSweep: { step: 2, count: 16, stepLength: 4, firstLength: 16 }
-}), [0x03, 0x54, 0x00, 0x00, 0xfe, 0x20, 0x40]);
+}), [0x03, 0x00, 0x54, 0x00, 0x00, 0xfe, 0x20, 0x40]);
+
+assert.deepEqual(encodeNoiseCommand({
+  noise: 4,
+  volume: 10,
+  length: 0xf8,
+  frequencySweep: { stepLength: 1, firstLength: 1, step: -1 }
+}), [0x01, 0x00, 0x54, 0xf8, 0x11, 0xff], "noise type 1 keeps the OS7 filler before control and length");
+assert.deepEqual(encodeNoiseCommand({
+  noise: 4,
+  volume: 10,
+  length: 0xf8,
+  volumeSweep: { step: 1, count: 2, stepLength: 1, firstLength: 1 }
+}), [0x02, 0x54, 0xf8, 0x12, 0x11], "noise type 2 is the sole compact OS7 layout");
+assert.deepEqual(encodeNoiseCommand({
+  noise: 4,
+  volume: 10,
+  length: 0xf8,
+  frequencySweep: { stepLength: 1, firstLength: 1, step: -1 },
+  volumeSweep: { step: 1, count: 2, stepLength: 1, firstLength: 1 }
+}), [0x03, 0x00, 0x54, 0xf8, 0x11, 0xff, 0x12, 0x11], "noise type 3 keeps the OS7 filler before control and length");
 
 const simpleBass = encodeBassNote({ note: "G", octave: 1, length: 16 });
 const fadeBass = encodeBassNote({ note: "G", octave: 1, length: 16, fade: true });
 assert.deepEqual(simpleBass.noise, [0x00, 0x00, 0x03, 0x10], "simple bass keeps its filler byte");
-assert.deepEqual(fadeBass.noise, [0x02, 0x03, 0x10, 0x1f, 0x12], "fade bass must not gain a filler byte");
+assert.deepEqual(fadeBass.noise, [0x02, 0x03, 0x10, 0x1f, 0x12], "type 2 fade bass uses the compact noise layout");
 assert.equal(fadeBass.tone3[0], 0xc0);
 
 assert.throws(() => encodeToneNote({ channel: 4, note: "A", octave: 4, length: 8 }), /channel/);

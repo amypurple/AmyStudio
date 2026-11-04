@@ -1012,3 +1012,16 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   its 1,255-byte baseline, while the remaining 14-byte difference predates this IX-safety change.
 
 
+## 2026-11-04 - OS7 noise layouts and unknown-name diagnostics
+
+- The Coleco BIOS sound encoder and decoder now apply the real OS7 noise layouts: command types
+  0, 1, and 3 include the unused filler byte before attenuation/control, while type 2 remains the
+  sole compact form. Exact byte tests cover all four layouts, historical commercial streams still
+  decode correctly, and the real-OS7 note ROM audio test passes at all five optimization profiles.
+- Failed assignments, comparisons, and `for` declarations now identify a genuinely undeclared bare
+  symbol before reporting a generic type error. The check runs only after normal lowering fails, so
+  valid programs and generated assembly are unchanged.
+- Focused expression and Claude runtime suites pass, including all five profiles. Full corpus gates
+  remain 832/832 and byte-identical to the prior audit: 8,559,606 Balanced bytes and 8,558,614
+  Aggressive bytes; 831 ROMs assemble and one project remains delegated.
+

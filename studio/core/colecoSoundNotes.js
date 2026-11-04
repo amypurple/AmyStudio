@@ -138,7 +138,9 @@ export function encodeNoiseCommand({ noise = 4, volume = 15, length, fade = fals
     };
   }
   const type = (frequencySweep ? 1 : 0) | (volumeSweep ? 2 : 0);
-  return [type, ...(type === 0 ? [0x00] : []), control, encodedLength, ...encodeSweepParameters(frequencySweep, volumeSweep)];
+  // OS7 noise commands use the tone-shaped filler for types 0, 1 and 3.
+  // Type 2 is the sole compact layout documented by Figure 8.
+  return [type, ...(type !== 2 ? [0x00] : []), control, encodedLength, ...encodeSweepParameters(frequencySweep, volumeSweep)];
 }
 
 export function buildColecoNoise(options) {
@@ -297,13 +299,14 @@ export function decodeColecoSoundStream(input, { maxEvents = 65536 } = {}) {
     if (code > 0x03) throw new Error(`Unknown sound code $${code.toString(16).toUpperCase()} at byte ${start}.`);
 
     const payload = [];
-    if (channel === 0 && code === 0) payload.push(...take(1, start)); // Noise simple-note filler byte.
+    const noiseHasFiller = channel === 0 && code !== 2;
+    if (noiseHasFiller) payload.push(...take(1, start));
     if (channel !== 0) payload.push(...take(1, start)); // Tone period low byte.
     payload.push(...take(2, start)); // Noise/attenuation or tone attenuation+period high, then length.
     if (code & 0x01) payload.push(...take(2, start));
     if (code & 0x02) payload.push(...take(2, start));
 
-    const lengthIndex = channel === 0 ? (code === 0 ? 2 : 1) : 2;
+    const lengthIndex = channel === 0 ? (noiseHasFiller ? 2 : 1) : 2;
     let parameterIndex = lengthIndex + 1;
     const event = {
       offset: start,
@@ -313,7 +316,7 @@ export function decodeColecoSoundStream(input, { maxEvents = 65536 } = {}) {
       bytes: [header, ...payload]
     };
     if (channel === 0) {
-      const controlIndex = code === 0 ? 1 : 0;
+      const controlIndex = noiseHasFiller ? 1 : 0;
       event.noise = payload[controlIndex] & 0x07;
       event.attenuation = payload[controlIndex] >> 4;
     } else {
