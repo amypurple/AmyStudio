@@ -186,15 +186,9 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_FILL_AT: abi({ inputs: { d: "row", e: "column", a: "tile", b: "count" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_TEXT_CALC_NAME_ADDRESS: abi({ inputs: { d: "row", e: "column" }, outputs: { hl: "name table VRAM address" }, clobbers: ["af", "de", "hl"] }),
   AMY_CLEAR_NAME_TABLE: abi({ clobbers: ["af", "bc", "de", "hl"] }),
-  AMY_LOAD_ASCII_PRESERVE_INDEX: abi({
-    clobbers: ["af", "bc", "de", "hl"],
-    preserves: ["ix", "iy"],
-    notes: "Preserves Amy stack-frame registers around stock OS7 LOAD_ASCII."
-  }),
   AMY_LOAD_DEFAULT_ASCII: abi({
-    clobbers: ["af", "bc", "de", "hl"],
-    preserves: ["ix", "iy"],
-    notes: "Preserves IX/IY around stock OS7 LOAD_ASCII, then uploads the three omitted BIOS glyphs $7D-$7F to the active pattern table."
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "Calls stock OS7 LOAD_ASCII, then uploads the three omitted BIOS glyphs $7D-$7F to the active pattern table. The emitter guards IX/IY only inside routines that use them."
   }),
   AMY_LOAD_DEFAULT_ASCII_STYLE: abi({ inputs: { a: "style flags" }, clobbers: ["af", "bc", "de", "hl"] }),
 
@@ -202,7 +196,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_SET_BITMAP_GRAPHICS_MODE: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_GRAPHICS_MODE1_BITMAP: abi({ inputs: { a: "default color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_GRAPHICS_MODE1_TEXT: abi({ clobbers: ["af", "bc", "de", "hl"] }),
-  AMY_SET_GRAPHICS_MODE2_TEXT: abi({ clobbers: ["af", "bc", "de", "hl"], preserves: ["ix", "iy"] }),
+  AMY_SET_GRAPHICS_MODE2_TEXT: abi({ clobbers: ["af", "bc", "de", "hl", "ix", "iy"] }),
   AMY_SET_GRAPHICS_MODE2_RAW: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_GRAPHICS_MODE3_MULTICOLOR: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),

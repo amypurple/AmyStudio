@@ -710,17 +710,9 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/alexis_lib/coleco_bitmap_wipe.asm",
     "asm": "AMY_WIPE_BITMAP_DOWN:\n    ld hl,($73FA)\n    ld b,24\nAMY_WIPE_BITMAP_DOWN_TILE_ROW:\n    push bc\n    ld b,8\nAMY_WIPE_BITMAP_DOWN_PIXEL_ROW:\n    push bc\n    halt\n    ld b,32\nAMY_WIPE_BITMAP_DOWN_COLUMN:\n    xor a\n    ld de,1\n    push de\n    call FILL_VRAM\n    ld de,$0008\n    add hl,de\n    pop de\n    djnz AMY_WIPE_BITMAP_DOWN_COLUMN\n    ld de,$FF01\n    add hl,de\n    pop bc\n    djnz AMY_WIPE_BITMAP_DOWN_PIXEL_ROW\n    ld de,$00F8\n    add hl,de\n    pop bc\n    djnz AMY_WIPE_BITMAP_DOWN_TILE_ROW\n    ret"
   },
-  "AMY_LOAD_ASCII_PRESERVE_INDEX": {
-    "group": "text",
-    "sourcePath": "src/alexis_lib/coleco_text_ascii_preserve.asm",
-    "asm": "AMY_LOAD_ASCII_PRESERVE_INDEX:\n    push ix\n    push iy\n    call LOAD_ASCII\n    pop iy\n    pop ix\n    ret"
-  },
   "AMY_LOAD_DEFAULT_ASCII": {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
-    "deps": [
-      "AMY_LOAD_ASCII_PRESERVE_INDEX"
-    ],
     "asm": "AMY_LOAD_DEFAULT_ASCII:\n    jp LOAD_ASCII\n\n; Calculate a NAME-table VRAM address from x/y coordinates.\n; Matches getput11/gpcaloff.s:\n;   - BIOS CALC_OFFSET computes y*32 + x in DE\n;   - BIOS shadow $73F6 provides the current NAME table base\n; Input: D = y, E = x\n; Output: HL = NAME + y*32 + x"
   },
   "AMY_PUT_CHAR_AT": {

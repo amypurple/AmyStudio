@@ -999,16 +999,16 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   missing visible author/issue credits.
 - Parameters are now rejected when their case-insensitive name collides with a named constant.
   This prevents a function parameter such as `Gx` from silently resolving to `const GX`.
-- OS7 `INIT_TABLE` and `LOAD_ASCII` calls used by Amy display setup now preserve IX/IY, preventing
-  `tile screen` from corrupting a routine's IX-based stack frame. A small dedicated wrapper avoids
-  pulling the extended glyph uploader into ordinary tile-screen setup.
+- OS7 `INIT_TABLE` and `LOAD_ASCII` calls used by Amy display setup now preserve IX/IY only while
+  compiling a routine that actually uses an IX frame or alias. This prevents `tile screen` from
+  corrupting locals without charging top-level code or fixed-RAM routines for blanket wrappers.
 - Compile-time numeric expressions, including named constants, are folded in byte-array and record
   indexes. The focused Vampyre-shaped repro falls from 80 to 69 bytes without changing semantics.
 - GearColeco with the real OS7 BIOS verifies the parameter diagnostic, folded index, and IX-frame
-  runtime result at all five optimization profiles. Full corpus gates pass 832/832: 8,571,899
-  Balanced bytes and 8,570,907 Aggressive bytes; 831 ROMs assemble and one project remains delegated
-  to its target-specific validator. The six-sample comparison is 7,407 bytes; its 35-byte increase
-  over the published 7,372-byte baseline is the measured cost of preserving IX/IY around affected
-  OS7 mode/font calls.
+  runtime result at all five optimization profiles. Full corpus gates pass 832/832: 8,559,606
+  Balanced bytes and 8,558,614 Aggressive bytes; 831 ROMs assemble and one project remains delegated
+  to its target-specific validator. Selective guarding removes 12,293 bytes from the Balanced corpus
+  compared with the blanket wrapper. The six-sample total is 7,386 bytes; Tile Animation returns to
+  its 1,255-byte baseline, while the remaining 14-byte difference predates this IX-safety change.
 
 

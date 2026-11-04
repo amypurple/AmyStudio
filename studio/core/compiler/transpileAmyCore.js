@@ -5622,6 +5622,10 @@ export function transpileAmyCore(sourceText, deps) {
         usesSpriteFlicker,
         clsModeAmbiguous: currentClsModeAmbiguous,
         needsCompleteDefaultAscii: inferredMemoryCaps.needsCompleteDefaultAscii,
+        preserveIndexRegisters: Boolean(currentProc && (() => {
+          const frame = procFrames.get(currentProc);
+          return frame && (frame.usesIxFrame || frame.usesIxAlias || frame.size > 0);
+        })()),
         supportsNmi: !buildContext || ["os7", "eos"].some((capability) => buildContext.capabilities?.includes(capability)),
         supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
       });
@@ -6055,6 +6059,10 @@ export function transpileAmyCore(sourceText, deps) {
         makeGeneratedLabel,
         usesSpriteFlicker,
         needsCompleteDefaultAscii: inferredMemoryCaps.needsCompleteDefaultAscii,
+        preserveIndexRegisters: Boolean(currentProc && (() => {
+          const frame = procFrames.get(currentProc);
+          return frame && (frame.usesIxFrame || frame.usesIxAlias || frame.size > 0);
+        })()),
         supportsNmi: !buildContext || ["os7", "eos"].some((capability) => buildContext.capabilities?.includes(capability)),
         supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
       }),

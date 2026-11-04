@@ -16,7 +16,8 @@ export function handleDisplayGraphicsSpriteStatement({
   clsModeAmbiguous = false,
   supportsNmi = true,
   supportsColecoBios = true,
-  needsCompleteDefaultAscii = false
+  needsCompleteDefaultAscii = false,
+  preserveIndexRegisters = false
 }) {
   const _dep = checkDisplayGraphicsDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -24,6 +25,9 @@ export function handleDisplayGraphicsSpriteStatement({
     ? "AMY_LOAD_DEFAULT_ASCII"
     : "LOAD_ASCII";
   const explicitAsciiRoutine = supportsColecoBios ? "AMY_LOAD_DEFAULT_ASCII" : "LOAD_ASCII";
+  const guardIndexRegisters = (lines) => preserveIndexRegisters && supportsColecoBios
+    ? ["    push ix", "    push iy", ...lines, "    pop iy", "    pop ix"]
+    : lines;
 
   if (/^120\s+colors\s+on$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_120C_ON"] };
@@ -93,9 +97,9 @@ export function handleDisplayGraphicsSpriteStatement({
     return {
       ok: true,
       handled: true,
-      lines: [
+      lines: guardIndexRegisters([
         "    call AMY_SET_GRAPHICS_MODE2_TEXT",
-        `    call ${supportsColecoBios ? "AMY_LOAD_ASCII_PRESERVE_INDEX" : automaticAsciiRoutine}`,
+        `    call ${automaticAsciiRoutine}`,
         "    call AMY_DUPLICATE_PATTERN_THIRDS",
         "    ld hl,VRAM_COLOR",
         "    ld de,$0800",
@@ -105,7 +109,7 @@ export function handleDisplayGraphicsSpriteStatement({
         "    ld de,$0300",
         "    ld a,$20",
         "    call FILL_VRAM"
-      ]
+      ])
     };
   }
 
@@ -125,14 +129,14 @@ export function handleDisplayGraphicsSpriteStatement({
     return {
       ok: true,
       handled: true,
-      lines: [
+      lines: guardIndexRegisters([
         "    call AMY_SET_GRAPHICS_MODE1_TEXT",
         `    call ${automaticAsciiRoutine}`,
         "    ld a,$F0",
         "    ld hl,VRAM_COLOR",
         "    ld de,$0020",
         "    call FILL_VRAM"
-      ]
+      ])
     };
   }
 
@@ -229,7 +233,7 @@ export function handleDisplayGraphicsSpriteStatement({
   if (loadDefaultAscii) {
     const style = (loadDefaultAscii[1] || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!style) {
-      return { ok: true, handled: true, lines: [`    call ${explicitAsciiRoutine}`] };
+      return { ok: true, handled: true, lines: guardIndexRegisters([`    call ${explicitAsciiRoutine}`]) };
     }
     const styleFlags = style === "normal" ? "$00"
       : style === "italic" ? "$01"

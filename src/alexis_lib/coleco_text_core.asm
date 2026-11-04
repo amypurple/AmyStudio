@@ -14,7 +14,7 @@ AMY_CLEAR_NAME_TABLE:
 ; Load the complete Coleco BIOS default ASCII font into VRAM.
 ; Stock OS7 stops at $7C even though glyphs $7D-$7F follow in ROM.
 AMY_LOAD_DEFAULT_ASCII:
-    call AMY_LOAD_ASCII_PRESERVE_INDEX
+    call LOAD_ASCII
     ld hl,($73F8)
     ld de,$03E8
     add hl,de
