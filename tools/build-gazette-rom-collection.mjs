@@ -45,6 +45,12 @@ function titleFor(entry) {
 
 function authorFor(entry, source) {
   if (knownAuthorCredits.has(entry.id)) return knownAuthorCredits.get(entry.id);
+  const cartridge = source.match(/^\s*cartridge\s+"([^"]+)"/im)?.[1] || "";
+  const creditField = clean(cartridge.split("/")[1]);
+  if (creditField && !/^(?:COMPUTE!?|COMPUTE!'?S GAZETTE|GAZETTE|AMY STUDIO|COLECOVISION|PRESENTS|OCEAN EXPEDITION)(?:\b|$)/i.test(creditField)) {
+    const candidate = clean(creditField.replace(/,?\s*(?:COMPUTE!?|GAZETTE).*$/i, "").replace(/^BY\s+/i, ""));
+    if (candidate && !/^(?:19|20)\d{2}$/.test(candidate)) return candidate;
+  }
   const text = clean(`${entry.detail || ""} ${head(source)}`);
   if (/no (?:original )?author (?:is |was )?named|author not named|listing names no author|credit is the magazine/i.test(text)) return "Author not named";
   const patterns = [
@@ -60,12 +66,6 @@ function authorFor(entry, source) {
   for (const pattern of patterns) {
     const candidate = clean(text.match(pattern)?.[1]);
     if (candidate && candidate.length <= 90 && !/magazine|Amy Bienvenu|Claude|Anthropic|ChatGPT|OpenAI/i.test(candidate)) return candidate;
-  }
-  const cartridge = source.match(/^\s*cartridge\s+"([^"]+)"/im)?.[1] || "";
-  const creditField = clean(cartridge.split("/")[1]);
-  if (creditField && !/^(?:COMPUTE!?|COMPUTE!'?S GAZETTE|GAZETTE|AMY STUDIO|COLECOVISION|PRESENTS|OCEAN EXPEDITION)(?:\b|$)/i.test(creditField)) {
-    const candidate = clean(creditField.replace(/,?\s*(?:COMPUTE!?|GAZETTE).*$/i, "").replace(/^BY\s+/i, ""));
-    if (candidate && !/^(?:19|20)\d{2}$/.test(candidate)) return candidate;
   }
   return "Author not named";
 }

@@ -1038,3 +1038,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   credits correct metadata extraction for Spike (Eric Brandon), Omicron (Sean Wagle), Basketball
   Sam & Ed (Rhett Anderson and David Hensley Jr.), and Squeeze (Stephen Shull).
 
+## 2026-11-04 - Gazette cartridge-credit audit
+
+- Claude's issue list contains 208 lines representing 209 games because Atom Shoot covers separate
+  VIC-20 and C64 adaptations. Every represented game is present in the example catalog.
+- Corrected 129 `cartridge` author fields: 113 generic magazine credits and 16 abbreviated credits
+  were replaced with the supplied author names. GeoPuzzle, Arcade Volleyball, and Scrambler retain
+  unambiguous initials because the OS7 title line is limited to 32 characters. Atom Shoot and Atom
+  Shoot 64 remain `Author not named`; Crossroads II retains its more specific `S.HARTER` credit.
+- All 129 changed examples compile and assemble with Aggressive optimization (1,667,671 bytes total).
+  The package generator now prioritizes an explicit cartridge credit over stale catalog prose, and
+  the 239-ROM archive was regenerated from the targeted builds.
+
