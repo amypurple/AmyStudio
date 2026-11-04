@@ -1,0 +1,1389 @@
+cartridge "THE FORBIDDEN CRYPT/COMPUTE!'S GAZETTE/1985"
+
+' THE FORBIDDEN CRYPT
+' A ColecoVision game based on "The Forbidden Crypt", COMPUTE!'s Gazette
+' February 1985 (Commodore 64 BASIC with machine language in DATA lines,
+' disk file "crypt/64"; a VIC-20 8K version "crypt/vic" with "a" and "b";
+' no author named on the disk). Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from the C64
+' BASIC and its machine code, orig/crypt_64.bas, and watched in jsc64),
+' rebuilt for the ColecoVision: drawn stone walls, smooth sprites, sound
+' effects and a title tune.
+'
+' The game (as the C64 code plays it): the crypt is a hall with four
+' tomb chambers, each with a door on its left and right side. Walk the
+' corridors and step into a door to enter its chamber. Inside wait four
+' creatures (snakes, spiders, idols or bats: one kind per chamber) and
+' the chamber's treasure (chest, chalice, shield, urn). The creatures
+' close in on the hero, one pixel at a time on both axes, and bump each
+' other and the treasure. The button throws a magic bolt the way the hero
+' last walked: at most 3 bolts a visit, one in the air at a time; a bolt
+' that meets a creature ends it (10 points). Touching the treasure takes
+' it (300 points). The door you came in by is sealed behind you: the way
+' out is the door on the far side of the chamber, and you come out of
+' the tomb on that side. A creature touching the hero costs a life and the
+' treasure taken on this visit (minus 300), and he is put back in the
+' corridors. A robbed chamber's doors are barred. When all four treasures are
+' out the next level starts; every fourth level gives a life and makes
+' everything faster. 5 lives; no lives left ends the game.
+'
+' Speeds: the C64 machine code moves the hero one pixel and one of the
+' four creatures one pixel per pass of its loop, the bolt two (about 95
+' passes a second at level 1 by its delay loop; creatures timed in jsc64
+' at about 20 pixels a second). The port's chamber is 208 pixels wide (the
+' C64's 304), so: hero 1 px a frame, each creature 0.25, the bolt 2; each
+' fourth level all of them about 15% faster (the C64 shortened its delay
+' loop), up to level 16.
+'
+' Liberties: the corridors are walked with a small sprite gliding from
+' cell to cell (the C64 moved a ball character); a diagonal into a wall
+' slides along it; creatures are never placed within reach of the door
+' you enter by, and the treasure never on a creature (the C64 could put a
+' creature on the doorstep); a blocked creature tries one axis, then the
+' other (the C64 stepped it back); contact is a box of 11 pixels; a robbed
+' chamber's door shows bars and a gold mark inside the tomb (the C64 a
+' solid block); a caught hero is put back outside the door he came in by
+' (the C64 put him outside the right-hand door unless he was caught at the
+' very left wall); the chamber number and bolts left are shown on the top
+' line; the caught burst lasts 1.5 s; the game ends with a message and
+' returns to the title (the C64 asked for a key to play again).
+'
+' Controls: joystick (either controller) walks; either button throws a
+' bolt (held: one every half second). On the title, up and down choose a
+' line and a button starts (or shows the credits).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFloor = 128
+const TWall = 129
+const TTomb = 130
+const TTombin = 131
+const TDoor = 132
+const TBars = 133
+const TGold = 134
+const TLife = 135
+const TShot1 = 136
+const TShot0 = 137
+const TQy0 = 138
+const TQy1 = 139
+const TQy2 = 140
+const TQy3 = 141
+const TQy4 = 142
+const TQy5 = 143
+const TQy6 = 144
+const TQy7 = 145
+const TQy8 = 146
+const TQy9 = 147
+const TQy10 = 148
+const TQy11 = 149
+const TQy12 = 150
+const TQy13 = 151
+const TQy14 = 152
+const TQy15 = 153
+const TQr0 = 154
+const TQr1 = 155
+const TQr2 = 156
+const TQr3 = 157
+const TQr4 = 158
+const TQr5 = 159
+const TQr6 = 160
+const TQr7 = 161
+const TQr8 = 162
+const TQr9 = 163
+const TQr10 = 164
+const TQr11 = 165
+const TQr12 = 166
+const TQr13 = 167
+const TQr14 = 168
+const TQr15 = 169
+const SHero = 0
+const SHero2 = 4
+const SMini = 8
+const SMini2 = 12
+const SSnake = 16
+const SSnake2 = 20
+const SSpider = 24
+const SSpider2 = 28
+const SIdol = 32
+const SIdol2 = 36
+const SBat = 40
+const SBat2 = 44
+const SChest = 48
+const SChalice = 52
+const SShield = 56
+const SUrn = 60
+const SBolt = 64
+const SBur0 = 68
+const SBur1 = 72
+const NTiles8 = 336
+const SprBytes = 608
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndGem = 5
+const SndCaught = 6
+const SndDoor = 7
+const SndBump = 8
+const SndLevel = 9
+const SndOver = 10
+const NSpr = 7
+const SprTre = 5
+const SprBolt = 6
+' the chamber's floor in sprite coordinates (top-left of a 16 x 16 sprite)
+const InX0 = 24
+const InX1 = 216
+const InY0 = 24
+const InY1 = 144
+const GapY0 = 84
+const GapY1 = 92
+const OutL = 16
+const OutR = 224
+const Touch = 11
+const Block = 12
+const BoltHit = 10
+const Cool = 30
+const DieLen = 90
+const MaxShots = 3
+
+' per speed tier (every fourth level), in 1/64 pixel a frame
+data HeroSpd bytes 64,74,85,98,113
+data MonSpd bytes 16,18,21,24,28
+' per chamber: creature pattern, colour, treasure pattern, colour
+data MonPat bytes SSnake, SSpider, SIdol, SBat
+data MonCol bytes 10, 9, 5, 7
+data TrePat bytes SChest, SChalice, SShield, SUrn
+data TreCol bytes 5, 11, 3, 8
+' where the four creatures are placed (one quarter each)
+data QuadX bytes 40, 128, 40, 128
+data QuadY bytes 24, 24, 96, 96
+' the eight doors: column, row (rooms 0..3, left door then right door)
+data DoorCol bytes 4, 14, 17, 27, 4, 14, 17, 27
+data DoorRow bytes 7, 7, 7, 7, 16, 16, 16, 16
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$10,$00,$00
+  $01,$40,$01,$00,$10,$14,$10,$00
+  $01,$40,$01,$00,$10,$04,$10,$00
+  $80,$04,$00,$20,$00,$02,$40,$00
+  $81,$48,$00,$22,$00,$48,$00,$81
+  $4A,$4A,$00,$4A,$4A,$00,$4A,$4A
+  $00,$C3,$81,$18,$18,$81,$C3,$00
+  $C3,$81,$A5,$81,$24,$18,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$41,$01,$01
+  $1E,$FE,$1E,$01,$1E,$FE,$1E,$01
+  $68,$98,$68,$06,$68,$98,$68,$06
+  $61,$61,$01,$61,$01,$61,$61,$01
+  $1A,$BA,$0A,$BA,$0A,$BA,$0A,$1A
+  $E1,$E1,$0E,$E1,$E1,$0E,$E1,$E1
+  $01,$1B,$1B,$AB,$AB,$1B,$1B,$01
+  $1F,$1F,$1F,$1F,$F1,$F1,$01,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+end data
+data SpritePat bytes
+  $03,$07,$05,$07,$03,$1F,$3F,$37,$37,$37,$07,$06,$06,$06,$0E,$00
+  $C0,$E0,$A0,$E0,$C0,$F8,$FC,$EC,$EC,$EC,$E0,$60,$60,$60,$70,$00
+  $03,$07,$05,$07,$03,$1F,$3F,$37,$37,$37,$07,$0C,$0C,$18,$38,$00
+  $C0,$E0,$A0,$E0,$C0,$F8,$FC,$EC,$EC,$EC,$E0,$30,$30,$18,$1C,$00
+  $00,$00,$00,$00,$03,$07,$03,$0F,$03,$03,$04,$04,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$00,$C0,$00,$00,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0B,$07,$03,$03,$04,$08,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$40,$80,$00,$00,$80,$40,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0F,$1F,$99,$D8,$78,$30,$00,$00
+  $00,$1C,$36,$3E,$38,$1C,$0E,$06,$06,$8E,$DC,$F8,$70,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$1E,$3F,$33,$60,$C0,$80,$00,$00
+  $00,$38,$6C,$7C,$70,$38,$1C,$0C,$0C,$1C,$B8,$F8,$70,$00,$00,$00
+  $00,$20,$51,$4B,$87,$17,$2F,$57,$95,$13,$21,$40,$40,$00,$00,$00
+  $00,$04,$8A,$D2,$E1,$E8,$F4,$EA,$A9,$C8,$84,$02,$02,$00,$00,$00
+  $00,$00,$20,$51,$4B,$8B,$37,$4B,$95,$13,$11,$20,$20,$00,$00,$00
+  $00,$00,$C2,$E5,$F2,$F4,$F8,$F6,$A9,$C8,$88,$04,$04,$00,$00,$00
+  $01,$03,$04,$05,$03,$0F,$1D,$3B,$27,$0F,$0D,$0F,$1F,$18,$38,$00
+  $80,$C0,$20,$A0,$C0,$F0,$B8,$DC,$E4,$F0,$B0,$F0,$F8,$18,$1C,$00
+  $01,$03,$04,$05,$03,$0F,$1D,$3B,$27,$0F,$0D,$0F,$0F,$0C,$0E,$00
+  $80,$C0,$20,$A0,$C0,$F0,$B8,$DC,$E4,$F0,$B0,$F0,$F0,$30,$38,$00
+  $00,$00,$80,$C4,$E7,$FF,$DB,$8A,$06,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$02,$26,$EE,$FA,$DC,$52,$60,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$0F,$1F,$3D,$65,$C6,$83,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$F0,$F8,$BC,$A6,$63,$C1,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$3F,$60,$FF,$C1,$C1,$C3,$C1,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$FC,$06,$FF,$83,$83,$C3,$83,$FF,$00,$00,$00,$00
+  $00,$00,$FF,$BF,$5F,$27,$1B,$07,$01,$01,$01,$03,$0F,$1F,$00,$00
+  $00,$00,$FF,$FD,$FA,$E4,$D8,$E0,$80,$80,$80,$C0,$F0,$F8,$00,$00
+  $00,$3F,$60,$4F,$5B,$53,$5F,$53,$5B,$27,$33,$19,$0C,$03,$00,$00
+  $00,$FC,$06,$F2,$DA,$CA,$F5,$CA,$DA,$E4,$CC,$98,$30,$C0,$00,$00
+  $00,$03,$06,$03,$01,$01,$03,$07,$0F,$1F,$1F,$1F,$0F,$07,$00,$00
+  $00,$C0,$60,$C0,$80,$80,$C0,$E0,$F0,$F8,$F8,$F8,$F0,$E0,$00,$00
+  $00,$00,$00,$00,$00,$03,$05,$07,$07,$05,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$A0,$E0,$E0,$A0,$C0,$00,$00,$00,$00,$00
+  $81,$41,$21,$10,$00,$04,$F9,$04,$00,$10,$21,$41,$81,$00,$00,$00
+  $02,$04,$08,$10,$00,$40,$3E,$40,$00,$10,$08,$04,$02,$00,$00,$00
+  $00,$00,$21,$11,$08,$00,$39,$00,$08,$11,$21,$00,$00,$00,$00,$00
+  $00,$00,$08,$10,$20,$00,$38,$00,$20,$10,$08,$00,$00,$00,$00,$00
+end data
+
+data Logo1Map bytes
+  $91,$8B,$91,$8F,$91,$8E,$91,$8E,$95,$8B,$91,$8E,$91,$8E,$91,$8B,$97,$8F
+  $91,$20,$8F,$8F,$91,$8E,$91,$8E,$94,$20,$8F,$8F,$8F,$8F,$91,$20,$91,$8F
+  $8B,$20,$8D,$8B,$8B,$8B,$8D,$20,$8D,$8B,$8D,$20,$8D,$20,$8D,$8B,$8B,$8B
+end data
+const Logo1X = 7
+const Logo1W = 18
+
+data Logo2Map bytes
+  $A1,$9B,$A1,$9E,$9F,$9F,$A1,$9E,$A5,$9B
+  $9F,$20,$A1,$9E,$A4,$20,$A1,$20,$A4,$20
+  $9D,$9B,$9B,$9B,$9C,$20,$9B,$20,$9C,$20
+end data
+const Logo2X = 11
+const Logo2W = 10
+
+record Creature:
+  u8 X
+  u8 Y
+  u8 Live
+end record
+Creature Mon[4]
+
+' the game
+u16 Score = 0
+u8 Lives = 5
+u8 Level = 1
+u8 Tier = 0
+u8 Got[4]
+u8 Over = 0
+' where we are: 0 corridors, 1 a chamber, 2 the caught burst
+u8 Mode = 0
+' corridors: the hero's cell and pixel place
+u8 Cx = 15
+u8 Cy = 11
+u8 Qx = 0
+u8 Qy = 0
+u8 Tx = 0
+u8 Ty = 0
+' chamber state
+u8 Room = 0
+u8 Side = 0
+u8 Px = 0
+u8 Py = 0
+u8 PAcc = 0
+u8 Fx = 1
+u8 Fy = 0
+u8 TreX = 0
+u8 TreY = 0
+u8 TreOn = 0
+u8 Taken = 0
+u8 BoltOn = 0
+u8 Bx = 0
+u8 By = 0
+u8 Bdx = 0
+u8 Bdy = 0
+u8 BAcc = 0
+u8 Shots = 0
+u8 CoolT = 0
+u8 MAcc = 0
+u8 DieT = 0
+u8 Dirty = 0
+' counters the test bot reads
+u8 Visits = 0
+u8 Kills = 0
+u8 Deaths = 0
+u8 Treas = 0
+u8 Levels = 0
+' options
+u8 Menu = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+' input: 1 up, 2 down, 4 left, 8 right, 16 button
+u8 JM = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' random numbers
+u16 Rs = 12345
+u16 Rt = 0
+u8 Rb = 0
+' loop counters (never shared with the helpers)
+u8 Li = 0
+u8 Mi = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table FcSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  GameFrame
+  DrawSprites
+  ' the status line after the sprites: a long print never delays them
+  if Dirty = 1 then
+    Dirty = 0
+    if Mode <> 0 then ShowShots
+    ShowStatus
+  end if
+  if Over = 0 then goto play_loop
+
+  ' the end: game over, then the title
+  mute all
+  HideSprites
+  print at 9,10, "           "
+  print at 9,11, " GAME OVER "
+  print at 9,12, "           "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rb = lowbyte Rs
+  return
+end sub
+
+' a random number 0..N-1 (N up to 255)
+function RndTo(u8 N) as u8
+  u16 W = 0
+  Rnd
+  W = Rb * N
+  return highbyte W
+
+' the distance between two coordinates
+function Gap(u8 A, u8 B) as u8
+  u8 D = 0
+  if A >= B then
+    D = A - B
+  else
+    D = B - A
+  end if
+  return D
+
+' one step towards: 1, 0 or 255 (minus one)
+function Toward(u8 A, u8 B) as u8
+  if A < B then return 1
+  if A > B then return 255
+  return 0
+
+' are two sprites closer than N on both axes?
+function Near(u8 X1, u8 Y1, u8 X2, u8 Y2, u8 N) as u8
+  u8 R = 0
+  if Gap(X1, X2) < N then
+    if Gap(Y1, Y2) < N then R = 1
+  end if
+  return R
+
+' ---------------------------------------------------------------------------
+' the corridors: is cell (X, Y) floor (1), a door (2) or wall (0)?
+function Cell(u8 X, u8 Y) as u8
+  u8 R = 0
+  select case Y
+    case 3, 11, 12, 20
+      if X >= 3 then
+        if X <= 28 then R = 1
+      end if
+  end select
+  select case X
+    case 3, 15, 16, 28
+      if Y >= 3 then
+        if Y <= 20 then R = 1
+      end if
+    case 4, 14, 17, 27
+      if Y = 7 then R = 2
+      if Y = 16 then R = 2
+  end select
+  return R
+
+' the door at cell (X, Y): 0..7 = room * 2 + side
+function DoorAt(u8 X, u8 Y) as u8
+  u8 D = 0
+  if Y > 11 then D = 4
+  if X > 15 then D = D + 2
+  if X = 14 then inc D
+  if X = 27 then inc D
+  return D
+
+' ---------------------------------------------------------------------------
+sub GameFrame:
+  select case Mode
+    case 0
+      MazeStep
+    case 1
+      RoomStep
+    case 2
+      Caught
+  end select
+  return
+end sub
+
+' one frame in the corridors: glide 2 pixels to the next cell, or choose one
+sub MazeStep:
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 C = 0
+  if Qx <> Tx then
+    if Qx < Tx then
+      Qx = Qx + 2
+    else
+      Qx = Qx - 2
+    end if
+  end if
+  if Qy <> Ty then
+    if Qy < Ty then
+      Qy = Qy + 2
+    else
+      Qy = Qy - 2
+    end if
+  end if
+  if Qx <> Tx then return
+  if Qy <> Ty then return
+  if (JM & 4) > 0 then Dx = 255
+  if (JM & 8) > 0 then Dx = 1
+  if (JM & 1) > 0 then Dy = 255
+  if (JM & 2) > 0 then Dy = 1
+  if Dx = 0 then
+    if Dy = 0 then return
+  end if
+  Nx = Cx + Dx
+  Ny = Cy + Dy
+  C = Cell(Nx, Ny)
+  if C = 0 then
+    ' a diagonal into a wall slides along it
+    if Dx <> 0 then
+      if Dy <> 0 then
+        C = Cell(Nx, Cy)
+        if C <> 0 then
+          Ny = Cy
+        else
+          C = Cell(Cx, Ny)
+          if C <> 0 then Nx = Cx
+        end if
+      end if
+    end if
+  end if
+  if C = 0 then return
+  if C = 2 then
+    EnterDoor(Nx, Ny)
+    return
+  end if
+  Cx = Nx
+  Cy = Ny
+  Tx = Cx * 8
+  Ty = Cy * 8
+  return
+end sub
+
+sub EnterDoor(u8 X, u8 Y):
+  u8 D = 0
+  D = DoorAt(X, Y)
+  Room = D >> 1
+  Side = D & 1
+  if Got[Room] = 1 then
+    play sound SndBump
+    return
+  end if
+  play sound SndDoor
+  EnterRoom
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame in a chamber
+sub RoomStep:
+  HeroMove
+  if Mode <> 1 then return
+  BoltStep
+  BoltStep
+  MonStep
+  CheckTouch
+  return
+end sub
+
+sub HeroMove:
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 Sp = 0
+  u8 N = 0
+  if CoolT > 0 then dec CoolT
+  if (JM & 4) > 0 then Dx = 255
+  if (JM & 8) > 0 then Dx = 1
+  if (JM & 1) > 0 then Dy = 255
+  if (JM & 2) > 0 then Dy = 1
+  if (Dx | Dy) <> 0 then
+    Fx = Dx
+    Fy = Dy
+    Sp = HeroSpd[Tier]
+    PAcc = PAcc + Sp
+    while PAcc >= 64
+      PAcc = PAcc - 64
+      N = Px + Dx
+      if CanX(N) = 1 then Px = N
+      N = Py + Dy
+      if CanY(N) = 1 then Py = N
+    end while
+  end if
+  ' out through the far door
+  if Px = OutL then
+    LeaveRoom(0)
+    return
+  end if
+  if Px = OutR then
+    LeaveRoom(1)
+    return
+  end if
+  if TreOn = 1 then
+    if Near(Px, Py, TreX, TreY, Block) = 1 then
+      TreOn = 0
+      Taken = 1
+      Got[Room] = 1
+      Score = Score + 300
+      inc Treas
+      play sound SndGem
+      Dirty = 1
+    end if
+  end if
+  ' the button throws a bolt
+  if (JM & 16) > 0 then
+    if BoltOn = 0 then
+      if CoolT = 0 then
+        if Shots > 0 then
+          dec Shots
+          BoltOn = 1
+          Bx = Px
+          By = Py
+          Bdx = Fx
+          Bdy = Fy
+          BAcc = 0
+          CoolT = Cool
+          play sound SndZap
+          Dirty = 1
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' may the hero stand at column N (row Py)?
+function CanX(u8 N) as u8
+  u8 R = 0
+  if N >= InX0 then
+    if N <= InX1 then R = 1
+  end if
+  if R = 0 then
+    if Py >= GapY0 then
+      if Py <= GapY1 then
+        if Side = 1 then
+          if N >= OutL then
+            if N < InX0 then R = 1
+          end if
+        else
+          if N > InX1 then
+            if N <= OutR then R = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  return R
+
+' may the hero stand at row N (column Px)?
+function CanY(u8 N) as u8
+  u8 R = 0
+  if N >= InY0 then
+    if N <= InY1 then R = 1
+  end if
+  if Px < InX0 then
+    if N < GapY0 then R = 0
+    if N > GapY1 then R = 0
+  end if
+  if Px > InX1 then
+    if N < GapY0 then R = 0
+    if N > GapY1 then R = 0
+  end if
+  return R
+
+' the bolt: the hero's speed, called twice a frame
+sub BoltStep:
+  u8 Sp = 0
+  if BoltOn = 0 then return
+  Sp = HeroSpd[Tier]
+  BAcc = BAcc + Sp
+  while BAcc >= 64
+    BAcc = BAcc - 64
+    if BoltOn = 1 then
+      Bx = Bx + Bdx
+      By = By + Bdy
+      if Bx < InX0 then BoltOn = 0
+      if Bx > InX1 then BoltOn = 0
+      if By < InY0 then BoltOn = 0
+      if By > InY1 then BoltOn = 0
+      if BoltOn = 1 then BoltHits
+    end if
+  end while
+  return
+end sub
+
+sub BoltHits:
+  u8 Mx = 0
+  u8 My = 0
+  for Mi = 0 to 3
+    if Mon[Mi].Live = 1 then
+      Mx = Mon[Mi].X
+      My = Mon[Mi].Y
+      if Near(Bx, By, Mx, My, BoltHit) = 1 then
+        if BoltOn = 1 then
+          Mon[Mi].Live = 0
+          BoltOn = 0
+          Score = Score + 10
+          inc Kills
+          play sound SndPop
+          Dirty = 1
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the creatures: all step together, one pixel on each axis towards the hero
+sub MonStep:
+  u8 Sp = 0
+  Sp = MonSpd[Tier]
+  MAcc = MAcc + Sp
+  while MAcc >= 64
+    MAcc = MAcc - 64
+    for Li = 0 to 3
+      if Mon[Li].Live = 1 then MonMove(Li)
+    next
+  end while
+  return
+end sub
+
+sub MonMove(u8 M):
+  u8 X = 0
+  u8 Y = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  X = Mon[M].X
+  Y = Mon[M].Y
+  Dx = Toward(X, Px)
+  Dy = Toward(Y, Py)
+  Nx = X + Dx
+  Ny = Y + Dy
+  if Nx < InX0 then Nx = InX0
+  if Nx > InX1 then Nx = InX1
+  if Ny < InY0 then Ny = InY0
+  if Ny > InY1 then Ny = InY1
+  if Free(M, Nx, Ny) = 0 then
+    if Free(M, Nx, Y) = 1 then
+      Ny = Y
+    else
+      if Free(M, X, Ny) = 1 then
+        Nx = X
+      else
+        Nx = X
+        Ny = Y
+      end if
+    end if
+  end if
+  Mon[M].X = Nx
+  Mon[M].Y = Ny
+  return
+end sub
+
+' is (X, Y) clear of the other creatures and the treasure for creature M?
+' (written out without calls: it runs up to 12 times a frame)
+function Free(u8 M, u8 X, u8 Y) as u8
+  u8 R = 1
+  u8 I = 0
+  u8 D = 0
+  u8 E = 0
+  for I = 0 to 3
+    if I <> M then
+      if Mon[I].Live = 1 then
+        D = Mon[I].X
+        if D >= X then
+          D = D - X
+        else
+          D = X - D
+        end if
+        if D < Block then
+          E = Mon[I].Y
+          if E >= Y then
+            E = E - Y
+          else
+            E = Y - E
+          end if
+          if E < Block then R = 0
+        end if
+      end if
+    end if
+  next
+  if TreOn = 1 then
+    if Near(X, Y, TreX, TreY, Block) = 1 then R = 0
+  end if
+  return R
+
+sub CheckTouch:
+  u8 Mx = 0
+  u8 My = 0
+  for Mi = 0 to 3
+    if Mon[Mi].Live = 1 then
+      Mx = Mon[Mi].X
+      My = Mon[Mi].Y
+      if Near(Px, Py, Mx, My, Touch) = 1 then
+        if Mode = 1 then
+          Mode = 2
+          DieT = DieLen
+          BoltOn = 0
+          inc Deaths
+          play sound SndCaught
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the caught burst, then a life less and back outside the door
+sub Caught:
+  dec DieT
+  if DieT > 0 then return
+  dec Lives
+  if Taken = 1 then
+    Got[Room] = 0
+    Score = Score - 300
+    dec Treas
+  end if
+  if Lives = 0 then
+    Over = 1
+    ShowStatus
+    return
+  end if
+  LeaveRoom(Side)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub EnterRoom:
+  u8 Tries = 0
+  u8 Ok = 0
+  u8 X = 0
+  u8 Y = 0
+  inc Visits
+  Mode = 1
+  Taken = 0
+  BoltOn = 0
+  Shots = MaxShots
+  CoolT = 0
+  PAcc = 0
+  MAcc = 0
+  BAcc = 0
+  Py = 88
+  if Side = 0 then
+    Px = InX0
+    Fx = 1
+  else
+    Px = InX1
+    Fx = 255
+  end if
+  Fy = 0
+  ' four creatures, one per quarter, none near the door
+  for Li = 0 to 3
+    Mon[Li].Live = 1
+    Ok = 0
+    Tries = 0
+    while Ok = 0
+      X = QuadX[Li] + RndTo(73)
+      Y = QuadY[Li] + RndTo(49)
+      Ok = 1
+      if Gap(X, Px) < 64 then
+        if Gap(Y, Py) < 48 then Ok = 0
+      end if
+      inc Tries
+      if Tries = 8 then
+        Ok = 1
+        if Side = 0 then
+          X = QuadX[Li] + 72
+        else
+          X = QuadX[Li]
+        end if
+      end if
+    end while
+    Mon[Li].X = X
+    Mon[Li].Y = Y
+  next
+  ' the treasure: anywhere free
+  Ok = 0
+  Tries = 0
+  while Ok = 0
+    X = RndTo(161) + 40
+    Y = RndTo(121) + InY0
+    Ok = 1
+    if Gap(X, Px) < 40 then
+      if Gap(Y, Py) < 40 then Ok = 0
+    end if
+    for Mi = 0 to 3
+      if Near(X, Y, Mon[Mi].X, Mon[Mi].Y, 18) = 1 then Ok = 0
+    next
+    inc Tries
+    if Tries = 20 then Ok = 1
+  end while
+  TreX = X
+  TreY = Y
+  TreOn = 1
+  DrawRoom
+  return
+end sub
+
+' back in the corridors outside door S (0 left, 1 right) of the chamber
+sub LeaveRoom(u8 S):
+  u8 D = 0
+  D = Room * 2 + S
+  Cx = DoorCol[D]
+  Cy = DoorRow[D]
+  if S = 0 then
+    dec Cx
+  else
+    inc Cx
+  end if
+  Tx = Cx * 8
+  Ty = Cy * 8
+  Qx = Tx
+  Qy = Ty
+  Mode = 0
+  ' all four treasures: the next level
+  if (Got[0] & Got[1] & Got[2] & Got[3]) = 1 then NextLevel
+  DrawMaze
+  return
+end sub
+
+sub NextLevel:
+  inc Level
+  inc Levels
+  fill array Got with 0
+  K = Level >> 2
+  if K > 4 then K = 4
+  Tier = K
+  if (Level & 3) = 0 then
+    if Lives < 9 then inc Lives
+  end if
+  NewScreen
+  print at 6,10, "YOU HAVE ACHIEVED"
+  print at 10,12, "LEVEL "
+  print at 16,12, width$(Level, 2)
+  print at 18,12, " !"
+  ShowScreen
+  play sound SndLevel
+  for Li = 1 to 120
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub NewGame:
+  Score = 0
+  Lives = 5
+  Level = 1
+  Tier = 0
+  Over = 0
+  fill array Got with 0
+  Cx = 15
+  Cy = 11
+  Tx = Cx * 8
+  Ty = Cy * 8
+  Qx = Tx
+  Qy = Ty
+  Mode = 0
+  Visits = 0
+  Kills = 0
+  Deaths = 0
+  Treas = 0
+  Levels = 0
+  DrawMaze
+  return
+end sub
+
+sub DrawMaze:
+  u8 X = 0
+  u8 W = 0
+  NewScreen
+  DrawWalls
+  ' the four tombs
+  for Mi = 0 to 3
+    X = 4
+    if (Mi & 1) = 1 then X = 17
+    W = 4
+    if Mi > 1 then W = 13
+    DrawTomb(X, W, Mi)
+  next
+  print at 2,1, "THE FORBIDDEN CRYPT"
+  ShowStatus
+  ShowScreen
+  return
+end sub
+
+' a tomb: 11 x 7 cells from column X, row Y, doors on both sides
+sub DrawTomb(u8 X, u8 Y, u8 R):
+  u8 Ry = 0
+  u8 Dc = 0
+  u8 Last = 0
+  Last = Y + 6
+  fill TTomb count 11 at X,Y
+  fill TTomb count 11 at X,Last
+  for Ry = Y + 1 to Last - 1
+    put char TTomb at X,Ry
+    fill TTombin count 9 at X + 1,Ry
+    put char TTomb at X + 10,Ry
+  next
+  Dc = TDoor
+  if Got[R] = 1 then
+    Dc = TBars
+    put char TGold at X + 5,Y + 3
+  end if
+  put char Dc at X,Y + 3
+  put char Dc at X + 10,Y + 3
+  return
+end sub
+
+' the outer wall round a floor of 26 x 18 cells
+sub DrawWalls:
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,21
+  for Li = 3 to 20
+    put char TWall at 2,Li
+    fill TFloor count 26 at 3,Li
+    put char TWall at 29,Li
+  next
+  return
+end sub
+
+sub DrawRoom:
+  u8 C = 0
+  NewScreen
+  DrawWalls
+  ' the door you came in by is sealed behind you, the far one is open
+  C = 29
+  if Side = 1 then C = 2
+  for Li = 10 to 13
+    put char TFloor at C,Li
+    put char TBars at 31 - C,Li
+  next
+  print at 2,1, "CHAMBER"
+  put char 49 + Room at 10,1
+  ShowShots
+  ShowStatus
+  ShowScreen
+  return
+end sub
+
+' the bolts left on the top line
+sub ShowShots:
+  print at 17,1, "BOLTS"
+  for Li = 1 to MaxShots
+    if Li <= Shots then
+      put char TShot1 at 22 + Li,1
+    else
+      put char TShot0 at 22 + Li,1
+    end if
+  next
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,22, "SCORE "
+  print at 8,22, digits$(Score, 5)
+  print at 13,22, " LEVEL "
+  print at 20,22, width$(Level, 2)
+  print at 22,22, " LIVES "
+  put char 48 + Lives at 29,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub DrawSprites:
+  u8 Pt = 0
+  u8 Cl = 0
+  u8 Sy = 0
+  u8 Sx = 0
+  if Mode = 0 then
+    Pt = SMini
+    if ((Qx + Qy) & 8) > 0 then Pt = SMini2
+    Sx = Qx - 4
+    Sy = Qy - 5
+    set sprite 0 to Sy,Sx,Pt,15
+    for Li = 1 to 6
+      set sprite Li to 192,0,0,0
+    next
+    update sprites
+    return
+  end if
+  Pt = SHero
+  if ((Px + Py) & 8) > 0 then Pt = SHero2
+  if Mode = 2 then
+    Pt = SBur0
+    if (DieT & 8) > 0 then Pt = SBur1
+  end if
+  set sprite 0 to Py - 1,Px,Pt,15
+  Pt = MonPat[Room]
+  if (Tick & 16) > 0 then Pt = Pt + 4
+  Cl = MonCol[Room]
+  for Li = 1 to 4
+    Mi = Li - 1
+    if Mon[Mi].Live = 1 then
+      Sx = Mon[Mi].X
+      Sy = Mon[Mi].Y - 1
+      set sprite Li to Sy,Sx,Pt,Cl
+    else
+      set sprite Li to 192,0,0,0
+    end if
+  next
+  if TreOn = 1 then
+    Pt = TrePat[Room]
+    Cl = TreCol[Room]
+    set sprite SprTre to TreY - 1,TreX,Pt,Cl
+  else
+    set sprite SprTre to 192,0,0,0
+  end if
+  if BoltOn = 1 then
+    set sprite SprBolt to By - 1,Bx,SBolt,11
+  else
+    set sprite SprBolt to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      mute all
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  Rnd
+  return
+end sub
+
+sub ReadPad:
+  JM = 0
+  if joypad(1).up then JM = JM | 1
+  if joypad(1).down then JM = JM | 2
+  if joypad(1).left then JM = JM | 4
+  if joypad(1).right then JM = JM | 8
+  if joypad(1).fire then JM = JM | 16
+  if joypad(2).up then JM = JM | 1
+  if joypad(2).down then JM = JM | 2
+  if joypad(2).left then JM = JM | 4
+  if joypad(2).right then JM = JM | 8
+  if joypad(2).fire then JM = JM | 16
+  Btn = JM & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 14,2, "THE"
+  for Li = 0 to 2
+    K = Li * Logo1W
+    copy Logo1Map + K count Logo1W to vram.name + 128 + Logo1X + Li * 32
+    K = Li * Logo2W
+    copy Logo2Map + K count Logo2W to vram.name + 256 + Logo2X + Li * 32
+  next
+  print at 7,13, "COMPUTE!'S GAZETTE"
+  print at 10,14, "FEBRUARY 1985"
+  print at 11,16, "PLAY"
+  print at 11,17, "CREDITS"
+  print at 3,19, "TAKE THE FOUR TREASURES,"
+  print at 3,20, "BOLT THE CREATURES"
+  print at 3,22, "STICK: CHOOSE  BUTTON: GO"
+  if Menu > 1 then Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  if Menu = 1 then Menu = 0
+  ShowMenu
+tp_loop:
+  Frame1
+  ReadPad
+  V = JM & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 0 to 1
+    if Li = Menu then
+      put char 62 at 9,16 + Li
+    else
+      put char 32 at 9,16 + Li
+    end if
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 6,2, "THE FORBIDDEN CRYPT"
+  print at 2,5, "BASED ON THE FORBIDDEN"
+  print at 2,6, "CRYPT FROM COMPUTE!'S"
+  print at 2,7, "GAZETTE, FEBRUARY 1985"
+  print at 2,8, "(COMMODORE 64 AND VIC-20,"
+  print at 2,9, "BASIC AND MACHINE CODE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: DOWN THE CRYPT STEPS"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+FcZap:
+    db $40,$4B,$20,$02,$40,$5D,$30,$02,$40,$76,$40,$02,$50
+FcPop:
+    db $00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$56,$05,$10
+FcGem:
+    db $40,$75,$11,$02,$40,$0A,$11,$02,$40,$CF,$10,$02,$40,$A9,$10,$02,$40,$8F,$20,$02,$40,$7C,$20,$02
+    db $40,$6E,$20,$02,$40,$62,$20,$02,$40,$59,$20,$02,$40,$51,$20,$02,$50
+FcCaught:
+    db $40,$7C,$10,$03,$40,$84,$10,$03,$40,$8E,$10,$03,$40,$98,$10,$03,$40,$A5,$20,$03,$40,$B3,$20,$03
+    db $40,$C4,$20,$03,$40,$D9,$20,$03,$40,$F3,$30,$03,$40,$14,$31,$03,$40,$40,$31,$03,$40,$7B,$31,$03
+    db $40,$D2,$41,$03,$40,$5D,$42,$03,$50
+FcDoor:
+    db $00,$00,$26,$03,$00,$00,$47,$04,$10
+FcBump:
+    db $40,$F9,$33,$03,$50
+FcLevel:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$14,$50
+FcOver:
+    db $40,$1D,$11,$0C,$40,$41,$21,$0C,$40,$68,$21,$0C,$40,$AB,$31,$24,$50
+
+FcSoundTable:
+    dw FcTuneMel,$702B
+    dw FcTuneBass,$7035
+    dw FcZap,$7049
+    dw FcPop,$703F
+    dw FcGem,$7049
+    dw FcCaught,$7049
+    dw FcDoor,$703F
+    dw FcBump,$7049
+    dw FcLevel,$7049
+    dw FcOver,$7049
+; Down the Crypt Steps (original)
+; Tiny Sound, 9 frames per step
+FcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$24,$01,$23,$21,$20,$01,$21,$01,$1C,$01
+    db $01,$01,$01,$01,$21,$01,$24,$01,$26,$24,$23,$01,$24,$01,$28,$01
+    db $01,$01,$01,$01,$29,$01,$28,$26,$24,$01,$26,$01,$28,$01,$24,$21
+    db $01,$01,$20,$01,$21,$01,$23,$24,$23,$01,$20,$01,$1C,$01,$21,$01
+    db $00,$01,$01,$01
+    db $FF
+FcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$15,$01,$01,$10,$15,$01,$01,$10,$15,$01,$01,$10
+    db $15,$01,$14,$01,$15,$01,$01,$10,$15,$01,$01,$10,$18,$01,$01,$13
+    db $18,$01,$10,$01,$11,$01,$01,$15,$11,$01,$0E,$01,$10,$01,$01,$17
+    db $10,$01,$10,$01,$10,$01,$01,$17,$10,$01,$14,$01,$15,$01,$10,$01
+    db $15,$01,$00,$01
+    db $FF
+}

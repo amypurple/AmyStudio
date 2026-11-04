@@ -977,4 +977,18 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   797 ROMs assemble and one project remains delegated to its target-specific validator. The clean
   repository also passes 798/798 at 7,815,373 Balanced bytes and 7,814,437 Aggressive bytes.
 
+## 2026-11-04 - Fill arrays from ROM data and eleven Gazette adaptations
+
+- `fill array Buffer with Table[Index]` now accepts the same typed byte expressions as ordinary
+  assignments. The fill value is evaluated once, preserved while the destination address is
+  calculated, and then reused by the byte loop. GearColeco verifies the indexed ROM-table case at
+  all five optimization profiles.
+- Added The Anglers, The Forbidden Crypt, The Farm Game, The Frantic Fisherman, The Enchanted
+  Journey, The Freeze Factory, The Tomb, Thinking, The Gumball Rally, Tile Trader, and Trap. All
+  eleven compile at all five profiles; the ten supplied reference ROMs are byte-identical to the
+  new Balanced builds. Gazette attribution validation passes for all entries.
+- Full Alexis-Z80 gates pass 809/809 at 7,952,216 Balanced bytes and 7,951,270 Aggressive bytes;
+  808 ROMs assemble and one project remains delegated to its target-specific validator. The clean
+  repository also passes 809/809 at 7,955,823 Balanced bytes and 7,954,877 Aggressive bytes.
+
 

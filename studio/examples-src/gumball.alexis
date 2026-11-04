@@ -1,0 +1,1100 @@
+cartridge "THE GUMBALL RALLY/COMPUTE'S GAZETTE/1987"
+
+' THE GUMBALL RALLY - a ColecoVision port of "The Gumball Rally",
+' COMPUTE!'s Gazette, November 1987 (Commodore 128 BASIC 7.0, disk file
+' "gumball rally"; the listing names no author, so the credit is the
+' magazine's).
+'
+' Six gumball machines, two players racing for their coin slots. Each
+' player starts with 5 quarters, 5 dimes, 5 nickels and 5 pennies ($2.05).
+' A coin buys as many gumballs as it is worth in cents. Sell your gumballs
+' back for coins to keep buying. When all 60 coin slots are full the game
+' ends; the score is the gumballs you hold, plus your money in cents, plus
+' every gumball you got during the game.
+'
+' Controls (joystick only, no keypad):
+'   stick left/right   move your hand along: SELL, machines 1-6, CHANGE
+'   stick up/down      choose the coin (Q, D, N, P)
+'   either button      put the coin in / sell your gumballs / change it
+'                      (held: again every 12 frames, as the C-128 repeated
+'                      while the button was down)
+'   1 player:  either joystick plays the left hand, the computer the right
+'   2 players: joystick 1 the left (cyan) hand, joystick 2 the right (pink)
+'
+' Rules kept from the listing:
+' - 26 gumballs per machine, at most 10 coins each (MC=10); 60 coins end it
+' - a coin worth V cents gives V gumballs; if the machine holds V or fewer
+'   it gives what is left and is refilled to 26 (the shortfall is lost)
+' - a coin needs one of that kind in hand and a slot free, else nothing
+' - SELL turns all your gumballs into coins, quarters first (greedy)
+' - CHANGE breaks the chosen coin: Q -> 2 D + 1 N, D -> 2 N, N -> 5 P;
+'   a penny is not changed
+' - the hands sit in a row SELL, 1..6, CHANGE; a hand jumps over the other
+'   one, and does not move when the only place left is taken; diagonals do
+'   nothing; up/down cycles the coins (Q above D above N above P)
+' - score = gumballs held + money in cents + every gumball received
+'
+' Liberties:
+' - a ONE PLAYER game against a computer hand (the C-128 was two players),
+'   COMPUTER SPEED slow/medium/fast on the title menu
+' - the machines are drawn in tiles, emptying a pixel line at a time (the
+'   C-128 had 27 expanded sprite images); hands are smooth sprites gliding
+'   between places (the C-128 jumped its X markers)
+' - a held stick moves again after 15 frames, then every 8 (the C-128 went
+'   as fast as its BASIC loop polled); a refused button sounds a low beep
+' - the winner is named at the end (the C-128 printed both scores only)
+' - original tune "Penny Candy Polka" (the C-128 played its own two-voice
+'   tune); block-letter title, credits page
+' - if no coin goes into a machine for 30 seconds the game ends there
+'   (a hand parked on the last machine with free slots stalled the C-128
+'   game for ever, since hands cannot share a place)
+' - game end: message, then any button returns to the title (no PLAY AGAIN
+'   Y/N question)
+
+const TGlassl0 = 128
+const TGlassl1 = 129
+const TGlassl2 = 130
+const TGlassl3 = 131
+const TGlassl4 = 132
+const TGlassl5 = 133
+const TGlassl6 = 134
+const TGlassl7 = 135
+const TGlassl8 = 136
+const TGlassm0 = 137
+const TGlassm1 = 138
+const TGlassm2 = 139
+const TGlassm3 = 140
+const TGlassm4 = 141
+const TGlassm5 = 142
+const TGlassm6 = 143
+const TGlassm7 = 144
+const TGlassm8 = 145
+const TGlassr0 = 146
+const TGlassr1 = 147
+const TGlassr2 = 148
+const TGlassr3 = 149
+const TGlassr4 = 150
+const TGlassr5 = 151
+const TGlassr6 = 152
+const TGlassr7 = 153
+const TGlassr8 = 154
+const TLidl = 155
+const TLidm = 156
+const TLidr = 157
+const TBodyl = 158
+const TBodym = 159
+const TBodyr = 160
+const TBasel = 161
+const TBasem = 162
+const TBaser = 163
+const TGum = 164
+const TCoin = 165
+const TBall = 166
+const TBigcoin = 167
+const TDesk = 168
+const TArrow = 169
+const SHand = 0
+const SHandol = 4
+const NTiles8 = 336
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCoin1 = 3
+const SndCoin2 = 4
+const SndBell = 5
+const SndClick = 6
+const SndBlip = 7
+const SndNope = 8
+const SndGo = 9
+const SndOver = 10
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+const MaxCoins = 10
+const Full = 26
+const AllSlots = 60
+const PSell = 0
+const IdleEnd = 1800
+const PChange = 7
+const HandY1 = 71
+const HandY2 = 127
+
+record Hand:
+  u8 Pos
+  u8 Cs
+  u8 Was
+  u8 Rep
+  u8 Hx
+  u8 Hy
+  u16 Held
+  u16 Tg
+end record
+
+Hand Pl[2]
+' coins in hand: player P, kind C (0 quarter, 1 dime, 2 nickel, 3 penny) at P*4+C
+u8 Qn[8]
+u8 Gc[6]
+u8 Cc[6]
+u16 Final[2]
+data CoinV bytes
+  25,10,5,1
+end data
+data CoinCh bytes
+  81,68,78,80
+end data
+data PanelX bytes
+  3,17
+end data
+data HandCol bytes
+  7,13
+end data
+data AiGapF bytes
+  24,16,10
+end data
+' each place's hand position: SELL, machines 1-6, CHANGE
+data PlaceX bytes
+  40,36,68,100,132,164,196,196
+end data
+data PlaceY bytes
+  127,71,71,71,71,71,71,127
+end data
+
+u16 NumU = 0
+u16 Rs = 12345
+u8 Phase = 0
+u8 Players = 1
+u8 Speed = 2
+u8 AiGap = 18
+u8 AiWait = 0
+u8 Menu = 0
+u8 Tot = 0
+u16 Idle = 0
+u8 Acts = 0
+u8 Refused = 0
+u8 WasFire = 0
+u8 WasStick = 0
+u8 Press = 0
+u8 Tick = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+u8 AiPos = 0
+u8 AiCoin = 0
+
+  tile screen
+  set sound table GbSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  Phase = 0
+  TitlePage
+  if Menu = 3 then goto title
+  AiGap = AiGapF[Speed - 1]
+  StartGame
+  print at 11,15, ">>> GO! <<<"
+  play sound SndGo
+  for J = 1 to 60
+    Frame1
+    DrawHands
+  next
+  fill 32 count 11 at 11,15
+  Phase = 1
+
+play_loop:
+  Frame1
+  PlayerInput(0)
+  if Players = 1 then
+    CpuTurn
+  else
+    PlayerInput(1)
+  end if
+  DrawHands
+  if Tot >= AllSlots then goto game_over
+  inc Idle
+  if Idle >= IdleEnd then goto game_over
+  goto play_loop
+
+game_over:
+  Phase = 3
+  Scores
+  Phase = 4
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' 16-bit xorshift; returns its low byte
+function Rnd as u8
+  Rs ^= Rs << 7
+  Rs ^= Rs >> 9
+  Rs ^= Rs << 8
+  return Rs & 255
+
+' a stick as bits: 1 up, 2 down, 4 left, 8 right, 16 a button
+function PadBits(u8 P) as u8
+  u8 B = 0
+  if joypad(P).up then B |= 1
+  if joypad(P).down then B |= 2
+  if joypad(P).left then B |= 4
+  if joypad(P).right then B |= 8
+  if joypad(P).fire then B |= 16
+  return B
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 3
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' how many of the globe's 32 pixel lines gumballs fill
+function FillLines(u8 G) as u8
+  u16 L = 0
+  L = G
+  L = L * 32 + 13
+  L = L / Full
+  return L
+
+' redraw machine K: the globe, the gumballs left and the coins in it
+sub ShowMachine(u8 K):
+  u8 Mx = 0
+  u8 Lines = 0
+  u8 R = 0
+  u8 F = 0
+  u8 Below = 0
+  Mx = K * 4 + 4
+  Lines = FillLines(Gc[K])
+  for R = 0 to 3
+    ' globe row R (0 top): the lines below it come first
+    Below = (3 - R) * 8
+    if Lines <= Below then
+      F = 0
+    elseif Lines - Below >= 8 then
+      F = 8
+    else
+      F = Lines - Below
+    end if
+    put char TGlassl0 + F at Mx, R + 3
+    put char TGlassm0 + F at Mx + 1, R + 3
+    put char TGlassr0 + F at Mx + 2, R + 3
+  next
+  print Gc[K] at Mx + 1,11 width 2
+  print Cc[K] at Mx + 1,12 width 2
+  return
+end sub
+
+sub DrawMachines:
+  u8 K = 0
+  u8 Mx = 0
+  for K = 0 to 5
+    Mx = K * 4 + 4
+    put char TLidl at Mx, 2
+    put char TLidm at Mx + 1, 2
+    put char TLidr at Mx + 2, 2
+    put char TBodyl at Mx, 7
+    put char TBodym at Mx + 1, 7
+    put char TBodyr at Mx + 2, 7
+    put char TBasel at Mx, 8
+    put char TBasem at Mx + 1, 8
+    put char TBaser at Mx + 2, 8
+    put char TGum at Mx, 11
+    put char TCoin at Mx, 12
+    ShowMachine(K)
+  next
+  return
+end sub
+
+' the money a player holds, in cents
+function Cash(u8 P) as u16
+  u16 T = 0
+  u8 C = 0
+  u8 I = 0
+  I = P * 4
+  for C = 0 to 3
+    T += Qn[I + C] * CoinV[C]
+  next
+  return T
+
+sub ShowPanel(u8 P):
+  u8 X = 0
+  u8 C = 0
+  u8 R = 0
+  u8 N = 0
+  u16 T = 0
+  u16 Cents = 0
+  X = PanelX[P]
+  for C = 0 to 3
+    R = C + 19
+    if Pl[P].Cs = C then put char TArrow at X, R else put char 32 at X, R
+    put char CoinCh[C] at X + 1, R
+    N = Qn[P * 4 + C]
+    print N at X + 3,R width 3
+  next
+  T = Cash(P)
+  Cents = T mod 100
+  T = T / 100
+  print at X + 7,19, "$"
+  print T at X + 8,19 width 1
+  print at X + 9,19, "."
+  print Cents at X + 10,19 digits 2
+  print at X + 7,20, "G"
+  NumU = Pl[P].Held
+  print NumU at X + 9,20 width 3
+  return
+end sub
+
+sub StartGame:
+  u8 P = 0
+  u8 K = 0
+  NewScreen
+  print at 7,1, "THE GUMBALL RALLY"
+  fill TDesk count 8 at 2,13
+  fill TDesk count 8 at 21,13
+  print at 4,14, "SELL"
+  print at 2,15, "GUMBALLS"
+  print at 22,14, "CHANGE"
+  print at 22,15, "MACHINE"
+  if Players = 1 then
+    print at 3,18, "YOU"
+    print at 17,18, "COMPUTER"
+  else
+    print at 3,18, "PLAYER 1"
+    print at 17,18, "PLAYER 2"
+  end if
+  for K = 0 to 5
+    Gc[K] = Full
+    Cc[K] = 0
+  next
+  for K = 0 to 7
+    Qn[K] = 5
+  next
+  for P = 0 to 1
+    Pl[P].Cs = 0
+    Pl[P].Held = 0
+    Pl[P].Tg = 0
+    Pl[P].Was = 255
+    Pl[P].Rep = 0
+  next
+  ' the C-128 started the hands on machines 3 and 4 (CG(1)=3, CG(2)=4)
+  Pl[0].Pos = 3
+  Pl[1].Pos = 4
+  for P = 0 to 1
+    K = Pl[P].Pos
+    Pl[P].Hx = PlaceX[K]
+    Pl[P].Hy = PlaceY[K]
+    ShowPanel(P)
+  next
+  Tot = 0
+  Idle = 0
+  Acts = 0
+  AiWait = 30
+  DrawMachines
+  DrawHands
+  ShowScreen
+  return
+end sub
+
+' glide each hand toward its place, at most 4 pixels a frame
+function Toward(u8 A, u8 B) as u8
+  if A + 4 < B then return A + 4
+  if A > B + 4 then return A - 4
+  return B
+
+sub DrawHands:
+  u8 P = 0
+  u8 K = 0
+  u8 X = 0
+  u8 Y = 0
+  u8 Col = 0
+  for P = 0 to 1
+    K = Pl[P].Pos
+    X = Toward(Pl[P].Hx, PlaceX[K])
+    Y = Toward(Pl[P].Hy, PlaceY[K])
+    Pl[P].Hx = X
+    Pl[P].Hy = Y
+    Col = HandCol[P]
+    set sprite P to Y,X,SHand,Col
+    set sprite P + 2 to Y,X,SHandol,1
+  next
+  update sprites
+  return
+end sub
+
+' the place a hand goes to from Pos, one step D (1 right, 255 left),
+' jumping over the other hand at Op; Pos itself when it cannot go
+function NextPlace(u8 Pos, u8 Op, u8 D) as u8
+  u8 N = 0
+  N = Pos + D
+  if N = Op then N += D
+  if N > PChange then return Pos
+  return N
+
+sub MoveHand(u8 P, u8 D):
+  u8 Op = 0
+  u8 N = 0
+  Op = Pl[1 - P].Pos
+  N = NextPlace(Pl[P].Pos, Op, D)
+  if N <> Pl[P].Pos then
+    Pl[P].Pos = N
+    play sound SndClick
+  end if
+  return
+end sub
+
+sub PickCoin(u8 P, u8 D):
+  u8 C = 0
+  C = Pl[P].Cs + D
+  C = C & 3
+  Pl[P].Cs = C
+  play sound SndBlip
+  ShowPanel(P)
+  return
+end sub
+
+' put coin kind C into machine K for player P; 0 when refused
+function PutCoin(u8 P, u8 K, u8 C) as u8
+  u8 I = 0
+  u8 Cv = 0
+  u8 G = 0
+  I = P * 4 + C
+  if Qn[I] = 0 then return 0
+  if Cc[K] >= MaxCoins then return 0
+  dec Qn[I]
+  Cv = CoinV[C]
+  G = Gc[K]
+  if G <= Cv then
+    ' the machine gives what it has left and is filled up again
+    Pl[P].Held += G
+    Pl[P].Tg += G
+    Gc[K] = Full
+  else
+    Gc[K] = G - Cv
+    Pl[P].Held += Cv
+    Pl[P].Tg += Cv
+  end if
+  inc Cc[K]
+  inc Tot
+  Idle = 0
+  return 1
+
+' sell all the gumballs for coins, quarters first
+function SellAll(u8 P) as u8
+  u16 S = 0
+  u8 C = 0
+  u8 I = 0
+  u8 Cv = 0
+  S = Pl[P].Held
+  if S = 0 then return 0
+  I = P * 4
+  for C = 0 to 3
+    Cv = CoinV[C]
+    while S >= Cv
+      S -= Cv
+      Qn[I + C] += 1
+    end while
+  next
+  Pl[P].Held = 0
+  return 1
+
+' break the chosen coin into smaller ones
+function ChangeCoin(u8 P, u8 C) as u8
+  u8 I = 0
+  I = P * 4
+  if Qn[I + C] = 0 then return 0
+  select case C
+  case 0
+    dec Qn[I]
+    Qn[I + 1] += 2
+    Qn[I + 2] += 1
+  case 1
+    dec Qn[I + 1]
+    Qn[I + 2] += 2
+  case 2
+    dec Qn[I + 2]
+    Qn[I + 3] += 5
+  case else
+    ' a penny: nothing to change (the C-128 just redrew the panel)
+    return 1
+  end select
+  return 1
+
+sub Act(u8 P):
+  u8 Pos = 0
+  u8 Ok = 0
+  u8 K = 0
+  Pos = Pl[P].Pos
+  if Pos = PSell then
+    Ok = SellAll(P)
+    if Ok = 1 then play sound SndBell
+  elseif Pos = PChange then
+    Ok = ChangeCoin(P, Pl[P].Cs)
+    if Ok = 1 then play sound SndBell
+  else
+    K = Pos - 1
+    Ok = PutCoin(P, K, Pl[P].Cs)
+    if Ok = 1 then
+      if P = 0 then play sound SndCoin1 else play sound SndCoin2
+      ShowMachine(K)
+    end if
+  end if
+  if Ok = 0 then
+    inc Refused
+    play sound SndNope
+  else
+    inc Acts
+    ShowPanel(P)
+  end if
+  return
+end sub
+
+' one frame of a human player's stick (P 0 or 1)
+sub PlayerInput(u8 P):
+  u8 B = 0
+  u8 Was = 0
+  u8 Go = 0
+  u8 Dir = 0
+  if Players = 1 then
+    B = PadBits(1) | PadBits(2)
+  else
+    B = PadBits(P + 1)
+  end if
+  Was = Pl[P].Was
+  ' at the start, wait for the stick and buttons to be let go once
+  if Was = 255 then
+    if B = 0 then Pl[P].Was = 0
+    return
+  end if
+  Pl[P].Was = B
+  if B & 16 then
+    ' the button wins over the stick (the C-128: JOY > 127 first)
+    if Was & 16 then
+      dec Pl[P].Rep
+      if Pl[P].Rep = 0 then Go = 1
+    else
+      Go = 1
+    end if
+    if Go = 1 then
+      Pl[P].Rep = 12
+      Act(P)
+    end if
+    return
+  end if
+  Dir = B & 15
+  ' diagonals do nothing (the C-128 tested JOY = 1, 3, 5, 7 only)
+  select case Dir
+  case 1, 2, 4, 8
+    if Dir = Was then
+      dec Pl[P].Rep
+      if Pl[P].Rep = 0 then Go = 1
+      if Go = 1 then Pl[P].Rep = 8
+    else
+      Go = 1
+      Pl[P].Rep = 15
+    end if
+  case else
+    return
+  end select
+  if Go = 0 then return
+  select case Dir
+  case 1
+    PickCoin(P, 255)
+  case 2
+    PickCoin(P, 1)
+  case 4
+    MoveHand(P, 255)
+  case 8
+    MoveHand(P, 1)
+  end select
+  return
+end sub
+
+' how good it is for the computer to put coin C in machine K
+function CoinWorth(u8 K, u8 C) as i16
+  i16 Gain = 0
+  i16 Loss = 0
+  u8 Cv = 0
+  u8 G = 0
+  Cv = CoinV[C]
+  G = Gc[K]
+  if G < Cv then
+    Gain = G
+    Loss = Cv - G
+  else
+    Gain = Cv
+  end if
+  return Gain * 2 - Loss * 3
+
+function Steps(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' the computer chooses a place (AiPos) and a coin (AiCoin)
+sub CpuChoose:
+  u8 K = 0
+  u8 C = 0
+  u8 Op = 0
+  u8 Me = 0
+  i16 Best = -999
+  i16 Wv = 0
+  u16 H = 0
+  Op = Pl[0].Pos
+  Me = Pl[1].Pos
+  H = Pl[1].Held
+  AiPos = Me
+  AiCoin = Pl[1].Cs
+  if H >= 25 then
+    if Qn[4] = 0 then
+      if Op <> PSell then
+        AiPos = PSell
+        return
+      end if
+    end if
+  end if
+  for K = 0 to 5
+    if Cc[K] < MaxCoins then
+      if K + 1 <> Op then
+        for C = 0 to 3
+          if Qn[4 + C] > 0 then
+            Wv = CoinWorth(K, C)
+            Wv -= Steps(Me, K + 1)
+            if Wv > Best then
+              Best = Wv
+              AiPos = K + 1
+              AiCoin = C
+            end if
+          end if
+        next
+      end if
+    end if
+  next
+  if Best > 0 then return
+  if H > 0 then
+    if Op <> PSell then AiPos = PSell
+    return
+  end if
+  ' only bad buys left and no pennies: break a coin into small ones
+  if Qn[7] > 0 then return
+  if Op = PChange then return
+  for C = 2 to 0 step -1
+    if Qn[4 + C] > 0 then
+      AiPos = PChange
+      AiCoin = C
+      return
+    end if
+  next
+  return
+end sub
+
+' the computer does one thing every AiGap frames (give or take a few)
+sub CpuTurn:
+  u8 Me = 0
+  u8 Cs = 0
+  u8 D = 0
+  if AiWait > 0 then
+    dec AiWait
+    return
+  end if
+  AiWait = AiGap + (Rnd & 7)
+  CpuChoose
+  Me = Pl[1].Pos
+  Cs = Pl[1].Cs
+  if AiPos < Me then
+    MoveHand(1, 255)
+  elseif AiPos > Me then
+    MoveHand(1, 1)
+  elseif AiPos = PSell then
+    Act(1)
+  elseif AiCoin = Cs then
+    Act(1)
+  else
+    ' the short way round the four coins
+    D = (AiCoin - Cs) & 3
+    if D = 3 then PickCoin(1, 255) else PickCoin(1, 1)
+  end if
+  return
+end sub
+
+sub Scores:
+  u8 P = 0
+  u8 X = 0
+  for P = 0 to 1
+    Final[P] = Pl[P].Held + Cash(P) + Pl[P].Tg
+  next
+  fill 32 count 10 at 10,14
+  fill 32 count 10 at 10,15
+  fill 32 count 10 at 10,16
+  print at 11,14, "GAME OVER"
+  if Tot < AllSlots then print at 12,16, "TIME UP"
+  for P = 0 to 1
+    X = PanelX[P]
+    NumU = Final[P]
+    print at X + 7,21, "SCORE"
+    print NumU at X + 7,22 width 5
+  next
+  if Final[0] > Final[1] then
+    if Players = 1 then print at 11,17, "YOU WIN!" else print at 9,17, "PLAYER 1 WINS"
+  elseif Final[1] > Final[0] then
+    if Players = 1 then print at 9,17, "COMPUTER WINS" else print at 9,17, "PLAYER 2 WINS"
+  else
+    print at 11,17, "A DRAW!"
+  end if
+  play sound SndOver
+  return
+end sub
+
+sub TitlePage:
+  u8 Tr = 0
+  u8 Ty = 0
+  NewScreen
+  for Tr = 0 to 10
+    Ty = Tr + 2
+    NumU = Tr * 28
+    put TitleMap + NumU count 28 at 2,Ty
+  next
+  print at 7,1, "THE"
+  print at 7,14, "COMPUTE!'S GAZETTE"
+  print at 10,15, "NOVEMBER 1987"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 408
+  TzOn = 1
+  Menu = 0
+  ShowMenu
+  Rearm
+  wait no fire
+  nmi off
+  WasFire = 1
+tp_loop:
+  Frame1
+  V = Rnd
+  V = PadBits(1) | PadBits(2)
+  W = V & 15
+  if W > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu = 0 then Menu = 3 else dec Menu
+      elseif V & 2 then
+        if Menu = 3 then Menu = 0 else inc Menu
+      elseif Menu > 0 then
+        if Menu < 3 then ChangeOpt(V)
+      end if
+      play sound SndBlip
+      ShowMenu
+    end if
+  end if
+  WasStick = W
+  Press = 0
+  W = V & 16
+  if W > 0 then
+    if WasFire = 0 then Press = 1
+  end if
+  WasFire = W
+  if Press = 0 then goto tp_loop
+  if Menu > 0 then
+    if Menu < 3 then
+      ChangeOpt(8)
+      play sound SndBlip
+      ShowMenu
+      goto tp_loop
+    end if
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 3 then EditorialPage
+  return
+end sub
+
+' change the option under the arrow: left goes down, right or a button up
+sub ChangeOpt(u8 B):
+  u8 Up = 1
+  if B & 4 then Up = 0
+  select case Menu
+  case 1
+    Players = 3 - Players
+  case 2
+    if Up = 1 then
+      if Speed = 3 then Speed = 1 else inc Speed
+    else
+      if Speed = 1 then Speed = 3 else dec Speed
+    end if
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  u8 R = 0
+  for R = 17 to 21
+    fill 32 count 26 at 3,R
+  next
+  print at 7,17, "START"
+  if Players = 1 then print at 7,18, "ONE PLAYER" else print at 7,18, "TWO PLAYERS"
+  select case Speed
+  case 1
+    print at 7,19, "COMPUTER SLOW"
+  case 2
+    print at 7,19, "COMPUTER MEDIUM"
+  case else
+    print at 7,19, "COMPUTER FAST"
+  end select
+  print at 7,20, "CREDITS"
+  R = Menu + 17
+  put char 62 at 5,R
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 7,2, "THE GUMBALL RALLY"
+  print at 2,4, "COMPUTE!'S GAZETTE, NOVEMBER"
+  print at 2,5, "1987 (COMMODORE 128)."
+  print at 2,6, "A COLECOVISION PORT."
+  print at 2,8, "RACE FOR THE 60 COIN SLOTS"
+  print at 2,9, "OF SIX GUMBALL MACHINES. A"
+  print at 2,10, "COIN BUYS ITS WORTH IN CENTS"
+  print at 2,11, "OF GUMBALLS; SELL THEM BACK"
+  print at 2,12, "FOR COINS AND BUY AGAIN."
+  print at 2,13, "SCORE: GUMBALLS + CENTS +"
+  print at 2,14, "ALL GUMBALLS YOU GOT."
+  print at 2,16, "MADE FOR THE COLECOVISION BY"
+  print at 2,17, "CLAUDE (AN AI MADE BY"
+  print at 2,18, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,19, "2026, IN AMY BY AMY BIENVENU"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$19
+  $80,$80,$80,$80,$80,$80,$C4,$19
+  $80,$80,$80,$80,$80,$C4,$C4,$19
+  $80,$80,$80,$80,$19,$C4,$C4,$19
+  $80,$80,$80,$99,$19,$C4,$C4,$19
+  $80,$80,$91,$99,$19,$C4,$C4,$19
+  $80,$91,$91,$99,$19,$C4,$C4,$19
+  $99,$91,$91,$99,$19,$C4,$C4,$19
+  $04,$04,$04,$04,$04,$04,$00,$00
+  $04,$04,$04,$04,$04,$04,$00,$99
+  $04,$04,$04,$04,$04,$04,$44,$99
+  $04,$04,$04,$04,$04,$44,$44,$99
+  $04,$04,$04,$04,$99,$44,$44,$99
+  $04,$04,$04,$99,$99,$44,$44,$99
+  $04,$04,$11,$99,$99,$44,$44,$99
+  $04,$11,$11,$99,$99,$44,$44,$99
+  $99,$11,$11,$99,$99,$44,$44,$99
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$98
+  $01,$01,$01,$01,$01,$01,$45,$98
+  $01,$01,$01,$01,$01,$45,$45,$98
+  $01,$01,$01,$01,$98,$45,$45,$98
+  $01,$01,$01,$99,$98,$45,$45,$98
+  $01,$01,$11,$99,$98,$45,$45,$98
+  $01,$11,$11,$99,$98,$45,$45,$98
+  $99,$11,$11,$99,$98,$45,$45,$98
+  $00,$00,$03,$F0,$C0,$80,$80,$80
+  $18,$C3,$00,$38,$00,$00,$00,$00
+  $00,$00,$C0,$F0,$03,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$18,$18,$18,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$C0,$C0,$C0,$C0,$00,$00
+  $81,$C3,$C3,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$03,$03,$00,$00
+  $00,$38,$83,$83,$83,$38,$00,$00
+  $00,$38,$83,$93,$83,$38,$00,$00
+  $C3,$81,$30,$20,$00,$00,$81,$C3
+  $C3,$81,$C3,$24,$24,$C3,$81,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$30,$18,$0C,$18,$30,$00,$00
+end data
+data TileCol bytes
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $17,$17,$17,$17,$17,$17,$17,$B1
+  $17,$17,$17,$17,$17,$17,$1B,$B1
+  $17,$17,$17,$17,$17,$1B,$1B,$B1
+  $17,$17,$17,$17,$B1,$1B,$1B,$B1
+  $17,$17,$17,$18,$B1,$1B,$1B,$B1
+  $17,$17,$18,$18,$B1,$1B,$1B,$B1
+  $17,$18,$18,$18,$B1,$1B,$1B,$B1
+  $18,$18,$18,$18,$B1,$1B,$1B,$B1
+  $F7,$F7,$F7,$F7,$F7,$F7,$07,$07
+  $F7,$F7,$F7,$F7,$F7,$F7,$07,$D1
+  $F7,$F7,$F7,$F7,$F7,$F7,$1D,$D1
+  $F7,$F7,$F7,$F7,$F7,$1D,$1D,$D1
+  $F7,$F7,$F7,$F7,$D1,$1D,$1D,$D1
+  $F7,$F7,$F7,$1B,$D1,$1D,$1D,$D1
+  $F7,$F7,$1B,$1B,$D1,$1D,$1D,$D1
+  $F7,$1B,$1B,$1B,$D1,$1D,$1D,$D1
+  $1B,$1B,$1B,$1B,$D1,$1D,$1D,$D1
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $17,$17,$17,$17,$17,$17,$17,$81
+  $17,$17,$17,$17,$17,$17,$18,$81
+  $17,$17,$17,$17,$17,$18,$18,$81
+  $17,$17,$17,$17,$81,$18,$18,$81
+  $17,$17,$17,$13,$81,$18,$18,$81
+  $17,$17,$13,$13,$81,$18,$18,$81
+  $17,$13,$13,$13,$81,$18,$18,$81
+  $13,$13,$13,$13,$81,$18,$18,$81
+  $00,$00,$80,$08,$08,$08,$08,$01
+  $80,$08,$08,$98,$08,$08,$08,$01
+  $00,$00,$80,$80,$08,$08,$08,$01
+  $01,$08,$08,$08,$08,$08,$08,$08
+  $01,$08,$0E,$1E,$1E,$1E,$0E,$08
+  $01,$08,$08,$08,$08,$08,$08,$08
+  $08,$08,$08,$08,$06,$06,$00,$00
+  $81,$1E,$1E,$08,$06,$06,$00,$00
+  $08,$08,$08,$08,$06,$06,$00,$00
+  $00,$80,$08,$08,$08,$80,$00,$00
+  $00,$B0,$0B,$0B,$0B,$B0,$00,$00
+  $08,$08,$F8,$F8,$08,$08,$08,$08
+  $0B,$0B,$BA,$AB,$AB,$BA,$0B,$0B
+  $0E,$0F,$0E,$0E,$01,$00,$00,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$00,$00
+end data
+data SpritePat bytes
+  $01,$03,$03,$03,$03,$03,$03,$1F,$1F,$1F,$0F,$0F,$07,$07,$07,$00
+  $80,$C0,$C0,$C0,$C0,$F0,$FC,$FC,$FE,$FE,$FE,$FC,$F8,$F8,$F8,$00
+  $06,$04,$04,$04,$04,$04,$3C,$20,$20,$20,$30,$10,$18,$08,$08,$0F
+  $60,$20,$20,$20,$38,$0E,$02,$03,$01,$01,$01,$03,$06,$04,$04,$FC
+end data
+data TitleMap bytes
+  $A6,$A6,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$A6,$20,$20,$A6,$A6,$A6,$20,$A6,$20,$20,$20,$A6,$20,$20,$20
+  $A6,$20,$20,$20,$A6,$20,$A6,$20,$A6,$A6,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$20,$20,$A6,$20,$20,$20
+  $A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$A6,$A6,$20,$A6,$A6,$20,$20,$A6,$A6,$A6,$20,$A6,$20,$20,$20,$A6,$20,$20,$20
+  $A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$A6,$20,$20,$20,$A6,$20,$20,$20
+  $A6,$A6,$A6,$20,$A6,$A6,$A6,$20,$A6,$20,$A6,$20,$A6,$A6,$20,$20,$A6,$20,$A6,$20,$A6,$A6,$A6,$20,$A6,$A6,$A6,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$A7,$A7,$20,$20,$A7,$A7,$A7,$20,$A7,$20,$20,$20,$A7,$20,$20,$20,$A7,$20,$A7,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$A7,$20,$A7,$20,$A7,$20,$A7,$20,$A7,$20,$20,$20,$A7,$20,$20,$20,$A7,$20,$A7,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$A7,$A7,$20,$20,$A7,$A7,$A7,$20,$A7,$20,$20,$20,$A7,$20,$20,$20,$A7,$A7,$A7,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$A7,$20,$A7,$20,$A7,$20,$A7,$20,$A7,$20,$20,$20,$A7,$20,$20,$20,$20,$A7,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$A7,$20,$A7,$20,$A7,$20,$A7,$20,$A7,$A7,$A7,$20,$A7,$A7,$A7,$20,$20,$A7,$20,$20,$20,$20,$20,$20
+end data
+
+asm {
+GbCoin1:
+    db $40,$A9,$20,$02,$40,$7F,$20,$02,$40,$5F,$30,$02,$40,$47,$50,$03,$50
+GbCoin2:
+    db $40,$7F,$20,$02,$40,$5F,$20,$02,$40,$47,$30,$02,$40,$35,$50,$03,$50
+GbBell:
+    db $40,$55,$10,$03,$40,$55,$30,$04,$40,$55,$50,$06,$40,$55,$80,$08,$50
+GbClick:
+    db $00,$00,$41,$01,$10
+GbBlip:
+    db $40,$71,$50,$02,$50
+GbNope:
+    db $40,$F9,$32,$04,$50
+GbGo:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$10,$50
+GbOver:
+    db $40,$8F,$20,$0C,$40,$AA,$20,$0C,$40,$D6,$20,$0C,$40,$1D,$31,$1E,$50
+
+GbSoundTable:
+    dw GbTuneMel,$702B
+    dw GbTuneBass,$7035
+    dw GbCoin1,$7049
+    dw GbCoin2,$7049
+    dw GbBell,$7049
+    dw GbClick,$703F
+    dw GbBlip,$7049
+    dw GbNope,$7049
+    dw GbGo,$7049
+    dw GbOver,$7049
+; Penny Candy Polka (original)
+; Tiny Sound, 8 frames per step
+GbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$21,$1F,$21,$23,$01,$26,$01,$23,$21,$1F,$21
+    db $23,$01,$21,$01,$1F,$23,$26,$28,$26,$01,$23,$01,$24,$23,$21,$23
+    db $1F,$01,$01,$01,$28,$26,$24,$26,$28,$01,$24,$01,$26,$24,$23,$21
+    db $1F,$01,$01,$01,$00,$01,$01
+    db $FF
+GbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$13,$01,$0E,$01,$13,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$07,$01,$0E,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $13,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0E,$01,$12,$01
+    db $13,$01,$01,$01,$00,$01,$01
+    db $FF
+}

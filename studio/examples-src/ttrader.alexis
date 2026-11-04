@@ -1,0 +1,1385 @@
+cartridge "TILE TRADER/COMPUTE'S GAZETTE/1987"
+
+' TILE TRADER
+' A ColecoVision game based on "Tile Trader", COMPUTE!'s Gazette, March
+' 1987, by Michael Wiens and Kevin Black (Commodore 128, BASIC 7.0;
+' disk file "tile trader"; article orig/ttrader-1987-03.png). Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: a picture cut into a 3 x 3 grid of pieces; the bottom-right
+' piece is taken out, leaving a gap. The picture is mixed by sliding
+' pieces into the gap; slide them back until the picture is whole again,
+' in as few moves as you can.
+'
+' From the original (the article and orig/tile-trader.bas):
+' - four pictures: BULLSEYE, HAPPY FACE, "E", 3-D BOXES (lines 640-940);
+'   the eight pieces of a 3 x 3 cut, the ninth cell empty (lines 100-130,
+'   420-500).
+' - HOW MANY MOVES TO BE MIXED UP: the mix is that many random slides of
+'   a piece next to the gap, never the piece that just moved (lines
+'   530-610), shown as it happens; STUDY THE PICTURE first (line 630).
+'   A mix of real slides can always be solved.
+' - only a piece next to the gap can move (lines 300-310); each slide
+'   counts one move (line 320); the picture is whole when every piece is
+'   home (lines 380-390): YOU DID IT! IT TOOK YOU n MOVES (line 400).
+' - a short tone for each slide and each mixing move (lines 510-520);
+'   a siren when the picture is solved (article; line 400).
+'
+' Liberties:
+' - Joystick: push the stick toward the gap's side and the piece on the
+'   other side of the gap slides in (the original typed the piece's cell
+'   on the numeric keypad). Pushes that move nothing are not counted.
+' - Mix size from a title menu (4, 10, 20, 30 or 60: the article suggests
+'   4 or 5 for children, 20 or 30 later) instead of a typed number. If the mix ends with fewer than three pieces out of place it
+'   goes on until three are, so no mix can be undone by two slides (and
+'   repeating one push never solves it). It is never already solved.
+' - Pieces glide into the gap a tile at a time; the ninth piece drops in
+'   when the picture is whole; sparkles.
+' - The pictures are new drawings on the original's four subjects
+'   (puzzle 1 BULLSEYE as in the article); the
+'   title shows the chosen picture; best moves per picture on the title.
+' - The end screen waits for a button, then the title (no PLAY AGAIN?).
+' - No keypad: the stick picks the piece (house rule: joystick only).
+' - The art, the sounds and the title tune ("Shuffle Step") are new.
+'
+' Controls: either joystick; stick and side buttons.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' frame loop protected from the NMI; screens drawn with the NMI off and
+' the display off. Music first in the sound table, the title tune once.
+
+const TGap = 128
+const TFrt = 129
+const TFrb = 130
+const TFrl = 131
+const TFrr = 132
+const TFrtl = 133
+const TFrtr = 134
+const TFrbl = 135
+const TFrbr = 136
+const TChr = 137
+const TChy = 138
+const TChg = 139
+const TChb = 140
+const SSpark = 0
+const NTiles8 = 104
+const SprBytes = 32
+const PicBase = 141
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndBump = 4
+const SndSlide = 5
+const SndMix = 6
+const SndWin = 7
+const NSpr = 4
+const BoardC = 10
+const BoardR = 5
+const NoCell = 255
+const PicPatAt = PicBase * 8
+
+record PicInfo:
+  u16 Best
+  u8 Solved
+end record
+
+data MixSizes bytes
+  4, 10, 20, 30, 60
+end data
+
+PicInfo Pics[4]
+u8 Pos[9]
+u8 Nb[4]
+u8 NbN = 0
+u8 Gap = 8
+u8 LastW = 255
+u8 Pic = 0
+u8 MixOpt = 2
+u8 MixN = 20
+u16 Moves = 0
+u16 Mixed = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Ask = 0
+u8 Over = 0
+u8 Menu = 0
+u8 TitleOn = 0
+u8 RepT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with helpers)
+u8 Li = 0
+u8 Lj = 0
+u8 Lw = 0
+' scratch
+u8 C = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+
+  tile screen
+  set sound table TtSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  for Li = 0 to 3
+    Pics[Li].Best = 0
+    Pics[Li].Solved = 0
+  next
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then
+    Menu = 2
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Over = 0 then goto play_loop
+
+  Ask = 0
+  WinShow
+  Ask = 9
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs % M
+  Rv = W16
+  return Rv
+
+' the cells next to the gap: Nb[0 .. NbN - 1]
+sub Neighbours:
+  u8 Gc = 0
+  NbN = 0
+  Gc = Gap % 3
+  if Gap >= 3 then
+    Nb[NbN] = Gap - 3
+    inc NbN
+  end if
+  if Gap < 6 then
+    Nb[NbN] = Gap + 3
+    inc NbN
+  end if
+  if Gc > 0 then
+    Nb[NbN] = Gap - 1
+    inc NbN
+  end if
+  if Gc < 2 then
+    Nb[NbN] = Gap + 1
+    inc NbN
+  end if
+  return
+end sub
+
+' the cell whose piece a push in direction D (1 up, 2 down, 4 left,
+' 8 right) slides into the gap, or NoCell
+function SourceFor(u8 D) as u8
+  u8 Sc = NoCell
+  u8 Gc = 0
+  Gc = Gap % 3
+  select case D
+  case 1
+    if Gap < 6 then Sc = Gap + 3
+  case 2
+    if Gap >= 3 then Sc = Gap - 3
+  case 4
+    if Gc < 2 then Sc = Gap + 1
+  case 8
+    if Gc > 0 then Sc = Gap - 1
+  end select
+  return Sc
+
+function Misplaced as u8
+  u8 Mn = 0
+  u8 Mi = 0
+  for Mi = 0 to 8
+    if Pos[Mi] <> Mi then
+      if Pos[Mi] <> 8 then inc Mn
+    end if
+  next
+  return Mn
+
+' the piece in cell Fc slides into the gap (no drawing)
+sub Trade(u8 Fc):
+  LastW = Pos[Fc]
+  Pos[Gap] = LastW
+  Pos[Fc] = 8
+  Gap = Fc
+  return
+end sub
+
+' one mixing move: a random neighbour of the gap, never the piece that
+' just moved (line 570)
+sub MixMove:
+  u8 Mc = 0
+  u8 Mk = 0
+  Neighbours
+  Mc = NoCell
+  while Mc = NoCell
+    Mk = RandBelow(NbN)
+    Mc = Nb[Mk]
+    if Pos[Mc] = LastW then Mc = NoCell
+  end while
+  Mk = Gap
+  Trade(Mc)
+  DrawCell(Mk)
+  DrawCell(Mc)
+  play sound SndMix
+  inc Mixed
+  return
+end sub
+
+sub Mix:
+  u8 Mi = 0
+  u8 Ml = 0
+  LastW = 255
+  Mixed = 0
+  Ml = MixN
+  for Mi = 1 to Ml
+    MixMove
+    Frame1
+    Frame1
+    Frame1
+  next
+  while Misplaced < 3
+    MixMove
+    Frame1
+    Frame1
+    Frame1
+  end while
+  return
+end sub
+
+sub NewGame:
+  for Li = 0 to 8
+    Pos[Li] = Li
+  next
+  Gap = 8
+  Moves = 0
+  Mixed = 0
+  Over = 0
+  DrawPlay
+  ' STUDY THE PICTURE (line 630: five seconds), the whole picture first
+  print at 7,17, "STUDY THE PICTURE"
+  for Lw = 1 to 240
+    Frame1
+  next
+  DrawCell(8)
+  for Lw = 1 to 60
+    Frame1
+  next
+  ClearMsg
+  print at 11,17, "MIXING..."
+  Mix
+  ShowMoves
+  ClearMsg
+  print at 6,17, "PUSH THE STICK TO SLIDE"
+  print at 6,18, "A PIECE INTO THE GAP."
+  print at 6,20, "MIXED BY"
+  print Mixed at 15,20 width 3
+  print at 19,20, "MOVES"
+  return
+end sub
+
+sub PlayStep:
+  Ask = 1
+  K = 0
+  if Edge > 0 then
+    K = Edge
+    RepT = 18
+  else
+    if Jk > 0 then
+      dec RepT
+      if RepT = 0 then
+        K = Jk
+        RepT = 10
+      end if
+    end if
+  end if
+  select case K
+  case 1, 2, 4, 8
+    Push(K)
+  end select
+  return
+end sub
+
+sub Push(u8 Pd):
+  u8 Fc = 0
+  u8 Pp = 0
+  u8 Tc = 0
+  Fc = SourceFor(Pd)
+  if Fc = NoCell then
+    play sound SndBump
+  else
+    Ask = 0
+    Pp = Pos[Fc]
+    Tc = Gap
+    Trade(Fc)
+    play sound SndSlide
+    Glide(Pp, Fc, Tc)
+    if Moves < 999 then inc Moves
+    ShowMoves
+    if Misplaced = 0 then Over = 1
+  end if
+  return
+end sub
+
+' the piece Gp glides from cell Ga to cell Gb a tile at a time
+sub Glide(u8 Gp, u8 Ga, u8 Gb):
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Bx = 0
+  u8 By = 0
+  u8 Gs = 0
+  Ax = CellCol(Ga)
+  Ay = CellRow(Ga)
+  Bx = CellCol(Gb)
+  By = CellRow(Gb)
+  while Ax <> Bx
+    if Ax < Bx then
+      put char TGap at Ax,Ay
+      put char TGap at Ax,Ay + 1
+      put char TGap at Ax,Ay + 2
+      inc Ax
+    else
+      Gs = Ax + 3
+      put char TGap at Gs,Ay
+      put char TGap at Gs,Ay + 1
+      put char TGap at Gs,Ay + 2
+      dec Ax
+    end if
+    DrawPieceAt(Gp, Ax, Ay)
+    Frame1
+    Frame1
+  end while
+  while Ay <> By
+    if Ay < By then
+      fill TGap count 4 at Ax,Ay
+      inc Ay
+    else
+      Gs = Ay + 2
+      fill TGap count 4 at Ax,Gs
+      dec Ay
+    end if
+    DrawPieceAt(Gp, Ax, Ay)
+    Frame1
+    Frame1
+  end while
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the win: the ninth piece drops in, sparkles
+
+sub WinShow:
+  u16 Bv = 0
+  play sound SndWin
+  for Lw = 1 to 20
+    Frame1
+  next
+  Pos[8] = 8
+  DrawPieceAt(8, CellCol(8), CellRow(8))
+  for Lj = 0 to 5
+    for Lw = 0 to 11
+      Frame1
+      Sparkles(Lj, Lw)
+    next
+  next
+  HideSprites
+  Bv = Pics[Pic].Best
+  if Bv = 0 then
+    Pics[Pic].Best = Moves
+  else
+    if Moves < Bv then Pics[Pic].Best = Moves
+  end if
+  if Pics[Pic].Solved < 99 then Pics[Pic].Solved += 1
+  ClearMsg
+  print at 2,20, "                            "
+  print at 10,17, "YOU DID IT!"
+  print at 5,19, "IT TOOK YOU"
+  print Moves at 17,19 width 3
+  if Moves = 1 then
+    print at 21,19, "MOVE."
+  else
+    print at 21,19, "MOVES."
+  end if
+  print at 9,22, "PRESS BUTTON"
+  return
+end sub
+
+sub Sparkles(u8 Sa, u8 Sb):
+  u8 Sy = 0
+  u8 Sx = 0
+  u8 Sn = 0
+  for Sn = 0 to 3
+    Sx = Sn * 24
+    Sx = Sx + 80
+    Sy = Sa * 12
+    Sy = Sy + Sb
+    Sy = Sy + Sn * 19
+    Sy = Sy % 72
+    Sy = 112 - Sy
+    set sprite Sn to Sy,Sx,SSpark,15
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+function CellCol(u8 Cc) as u8
+  u8 Xc = 0
+  Xc = Cc % 3
+  Xc = Xc << 2
+  Xc = Xc + BoardC
+  return Xc
+
+function CellRow(u8 Cr) as u8
+  u8 Yr = 0
+  Yr = Cr / 3
+  Yr = Yr * 3
+  Yr = Yr + BoardR
+  return Yr
+
+' piece Dp (0-8) with its top-left tile at Dx,Dy
+sub DrawPieceAt(u8 Dp, u8 Dx, u8 Dy):
+  u8 Dt = 0
+  u8 Dr = 0
+  Dt = Dp * 12
+  Dt = Dt + PicBase
+  for Dr = 0 to 2
+    put char Dt at Dx,Dy
+    put char Dt + 1 at Dx + 1,Dy
+    put char Dt + 2 at Dx + 2,Dy
+    put char Dt + 3 at Dx + 3,Dy
+    Dt += 4
+    inc Dy
+  next
+  return
+end sub
+
+sub DrawCell(u8 Ce):
+  u8 Ex = 0
+  u8 Ey = 0
+  u8 Ep = 0
+  Ex = CellCol(Ce)
+  Ey = CellRow(Ce)
+  Ep = Pos[Ce]
+  if Ep = 8 then
+    fill TGap count 4 at Ex,Ey
+    inc Ey
+    fill TGap count 4 at Ex,Ey
+    inc Ey
+    fill TGap count 4 at Ex,Ey
+  else
+    DrawPieceAt(Ep, Ex, Ey)
+  end if
+  return
+end sub
+
+' the whole picture (every piece home, the ninth too)
+sub DrawWhole:
+  u8 Wc = 0
+  for Wc = 0 to 8
+    DrawPieceAt(Wc, CellCol(Wc), CellRow(Wc))
+  next
+  return
+end sub
+
+sub DrawFrame:
+  u8 Fr = 0
+  u8 Fb = 0
+  Fb = BoardR + 9
+  put char TFrtl at BoardC - 1,BoardR - 1
+  fill TFrt count 12 at BoardC,BoardR - 1
+  put char TFrtr at BoardC + 12,BoardR - 1
+  for Fr = BoardR to BoardR + 8
+    put char TFrl at BoardC - 1,Fr
+    put char TFrr at BoardC + 12,Fr
+  next
+  put char TFrbl at BoardC - 1,Fb
+  fill TFrb count 12 at BoardC,Fb
+  put char TFrbr at BoardC + 12,Fb
+  return
+end sub
+
+sub PicName(u8 Nx, u8 Ny):
+  select case Pic
+  case 0
+    print at Nx,Ny, "  BULLSEYE  "
+  case 1
+    print at Nx,Ny, " HAPPY FACE "
+  case 2
+    print at Nx,Ny, "     E      "
+    put char 34 at Nx + 4,Ny
+    put char 34 at Nx + 6,Ny
+  case else
+    print at Nx,Ny, " 3-D BOXES  "
+  end select
+  return
+end sub
+
+sub LoadPic:
+  select case Pic
+  case 0
+    copy PicPat0 count 864 to vram.pattern + PicPatAt
+    copy PicPat0 count 864 to vram.pattern + PicPatAt + 2048
+    copy PicPat0 count 864 to vram.pattern + PicPatAt + 4096
+    copy PicCol0 count 864 to vram.color + PicPatAt
+  case 1
+    copy PicPat1 count 864 to vram.pattern + PicPatAt
+    copy PicPat1 count 864 to vram.pattern + PicPatAt + 2048
+    copy PicPat1 count 864 to vram.pattern + PicPatAt + 4096
+    copy PicCol1 count 864 to vram.color + PicPatAt
+  case 2
+    copy PicPat2 count 864 to vram.pattern + PicPatAt
+    copy PicPat2 count 864 to vram.pattern + PicPatAt + 2048
+    copy PicPat2 count 864 to vram.pattern + PicPatAt + 4096
+    copy PicCol2 count 864 to vram.color + PicPatAt
+  case else
+    copy PicPat3 count 864 to vram.pattern + PicPatAt
+    copy PicPat3 count 864 to vram.pattern + PicPatAt + 2048
+    copy PicPat3 count 864 to vram.pattern + PicPatAt + 4096
+    copy PicCol3 count 864 to vram.color + PicPatAt
+  end select
+  return
+end sub
+
+sub ShowMoves:
+  print at 19,1, "MOVES"
+  print Moves at 25,1 width 3
+  return
+end sub
+
+sub ClearMsg:
+  for Lj = 17 to 22
+    fill 32 count 28 at 2,Lj
+  next
+  return
+end sub
+
+sub Logo(u8 Lr):
+  print at 2,Lr, "TILE TRADER"
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  LoadPic
+  Logo(1)
+  ShowMoves
+  PicName(BoardC, 3)
+  DrawFrame
+  DrawWhole
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for T = 0 to 3
+    set sprite T to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowBest(u8 Br):
+  u16 Bb = 0
+  Bb = Pics[Pic].Best
+  print at 2,Br, "BEST           SOLVED   "
+  if Bb = 0 then
+    print at 7,Br, "---"
+  else
+    print Bb at 7,Br width 3
+  end if
+  V = Pics[Pic].Solved
+  print V at 25,Br width 2
+  return
+end sub
+
+sub TitlePage:
+  Ask = 0
+  TitleOn = 1
+  NewScreen
+  LoadPic
+  put char TChr at 6,1
+  put char TChy at 8,1
+  print at 10,1, "TILE TRADER"
+  put char TChg at 22,1
+  put char TChb at 24,1
+  print at 4,3, "SLIDE THE PICTURE BACK"
+  DrawFrame
+  DrawWhole
+  print at 4,22, "COMPUTE!'S GAZETTE 1987"
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 540
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  K = Edge & 12
+  if K > 0 then
+    TitleSide(K)
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  TitleOn = 0
+  HideSprites
+  return
+end sub
+
+' left/right on the title: change the picture or the mix size
+sub TitleSide(u8 Sd):
+  select case Menu
+  case 0
+    if Sd = 4 then
+      if Pic = 0 then
+        Pic = 3
+      else
+        dec Pic
+      end if
+    else
+      inc Pic
+      if Pic > 3 then Pic = 0
+    end if
+    play sound SndClick
+    LoadPic
+    ShowMenu
+  case 1
+    if Sd = 4 then
+      if MixOpt = 0 then
+        MixOpt = 4
+      else
+        dec MixOpt
+      end if
+    else
+      inc MixOpt
+      if MixOpt > 4 then MixOpt = 0
+    end if
+    MixN = MixSizes[MixOpt]
+    play sound SndClick
+    ShowMenu
+  case else
+    play sound SndBump
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  print at 4,16, "PICTURE  <"
+  PicName(14, 16)
+  print at 26,16, ">"
+  print at 4,17, "MIXING MOVES  <     >"
+  print MixN at 20,17 width 3
+  print at 4,18, "START"
+  print at 4,19, "CREDITS"
+  ShowBest(20)
+  for T = 16 to 19
+    put char 32 at 2,T
+  next
+  C = Menu + 16
+  put char 62 at 2,C
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $B4
+  print at 9,2, "TILE TRADER"
+  print at 2,5, "BASED ON TILE TRADER,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "MARCH 1987 (COMMODORE 128)."
+  print at 2,8, "BY MICHAEL WIENS AND"
+  print at 2,9, "KEVIN BLACK."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: SHUFFLE STEP"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$80,$80,$80,$80,$80,$81,$81
+  $00,$01,$01,$01,$01,$01,$81,$81
+  $81,$81,$80,$80,$80,$80,$80,$00
+  $81,$81,$01,$01,$01,$01,$01,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $06,$0A,$0A,$0A,$0A,$0A,$0A,$06
+  $06,$0A,$0A,$0A,$0A,$0A,$0A,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $06,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $06,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$06
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$15,$15,$15,$15,$15,$15,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$11,$09,$00,$3C,$00,$09,$11,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$10,$20,$00,$78,$00,$20,$10,$00,$00,$00,$00,$00,$00
+end data
+data PicPat0 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$F0,$E0,$C0,$80,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$F0,$E0,$E0,$C0,$C0,$00,$01,$02,$06,$0E,$E1,$C1,$C1,$00
+  $00,$00,$00,$00,$03,$E0,$80,$00,$00,$00,$00,$C0,$00,$00,$00,$00
+  $00,$00,$00,$03,$00,$00,$00,$00,$01,$01,$01,$01,$C1,$06,$01,$01
+  $00,$00,$00,$01,$07,$E0,$80,$00,$00,$00,$E0,$00,$00,$00,$00,$00
+  $00,$00,$07,$00,$00,$00,$00,$00,$01,$01,$01,$80,$E0,$07,$01,$01
+  $00,$00,$00,$01,$07,$F0,$E0,$00,$00,$F0,$80,$00,$00,$00,$00,$00
+  $00,$F0,$01,$00,$00,$00,$00,$00,$01,$01,$01,$81,$E1,$0E,$06,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $C0,$F0,$07,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$C0,$E0,$F0,$07,$03,$03,$00,$E0,$E0,$F0,$07,$07,$03,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $80,$80,$00,$01,$01,$01,$01,$03,$81,$01,$01,$01,$01,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $03,$03,$03,$03,$03,$03,$03,$03,$07,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00
+  $03,$01,$01,$01,$01,$00,$80,$00,$03,$03,$03,$01,$01,$01,$01,$00
+  $80,$00,$00,$00,$01,$03,$07,$07,$07,$C0,$80,$00,$00,$00,$03,$F0
+  $E0,$03,$01,$00,$00,$00,$C0,$F0,$01,$01,$01,$01,$80,$C0,$E0,$E0
+  $07,$F0,$F0,$F0,$F0,$F0,$F0,$07,$E0,$E0,$C0,$C0,$C0,$C0,$E0,$E0
+  $07,$07,$03,$03,$03,$03,$07,$07,$E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0
+  $07,$07,$03,$01,$00,$00,$00,$00,$F0,$03,$00,$00,$00,$80,$C0,$00
+  $F0,$C0,$00,$00,$00,$01,$03,$00,$E0,$E0,$C0,$80,$01,$01,$01,$00
+  $01,$00,$00,$80,$80,$C0,$C0,$C0,$01,$01,$00,$80,$80,$80,$80,$C0
+  $00,$00,$00,$00,$00,$00,$80,$80,$01,$01,$01,$01,$01,$01,$01,$01
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $80,$80,$80,$80,$80,$80,$80,$80,$01,$01,$01,$01,$01,$01,$01,$01
+  $C0,$C0,$C0,$80,$80,$00,$00,$00,$C0,$80,$80,$80,$80,$00,$01,$00
+  $80,$80,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$C0,$E0,$E0,$F0,$07,$07,$81,$C1,$C1,$E1,$0E,$06,$02,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$00,$00,$00,$00,$00,$00,$01,$01,$01,$80,$C0,$E0,$F0,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $C0,$E0,$F0,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$80,$F0,$00
+  $00,$00,$00,$00,$00,$01,$F0,$00,$02,$06,$0E,$E1,$81,$01,$01,$01
+  $00,$80,$E0,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$00,$00
+  $00,$00,$00,$00,$00,$07,$00,$00,$01,$01,$07,$E0,$80,$01,$01,$01
+  $00,$80,$E0,$03,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00
+  $00,$00,$00,$00,$03,$00,$00,$00,$01,$01,$06,$C1,$01,$01,$01,$00
+  $01,$03,$03,$07,$F0,$E0,$C0,$80,$01,$03,$03,$07,$07,$F0,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$01,$03,$07,$F0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+end data
+data PicCol0 bytes
+  $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05,$15,$15,$15,$15,$15,$15,$15,$15
+  $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$85,$85,$85,$58,$58,$58,$58,$18,$18,$18
+  $05,$05,$05,$05,$05,$05,$05,$01,$05,$05,$05,$05,$05,$05,$05,$01
+  $85,$85,$58,$58,$58,$58,$58,$01,$18,$F8,$F8,$F8,$8F,$8F,$8F,$01
+  $05,$05,$05,$05,$85,$58,$58,$08,$05,$05,$05,$58,$08,$08,$08,$08
+  $05,$05,$05,$58,$08,$08,$08,$08,$15,$15,$15,$15,$85,$58,$18,$18
+  $08,$08,$08,$F8,$F8,$8F,$8F,$0F,$08,$08,$8F,$0F,$0F,$0F,$0F,$0F
+  $08,$08,$8F,$0F,$0F,$0F,$0F,$0F,$18,$18,$18,$F8,$F8,$8F,$1F,$1F
+  $0F,$0F,$0F,$8F,$8F,$F8,$F8,$01,$0F,$F8,$F8,$08,$08,$08,$08,$01
+  $0F,$8F,$F8,$08,$08,$08,$08,$01,$1F,$1F,$1F,$8F,$8F,$F8,$F8,$01
+  $05,$05,$05,$05,$05,$05,$05,$85,$05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05,$15,$15,$15,$15,$15,$15,$15,$15
+  $85,$85,$58,$58,$58,$08,$08,$08,$05,$05,$05,$05,$05,$05,$85,$85
+  $05,$05,$05,$05,$05,$05,$05,$05,$15,$15,$15,$15,$15,$15,$15,$15
+  $F8,$F8,$F8,$F8,$8F,$8F,$8F,$01,$85,$85,$85,$58,$58,$58,$58,$01
+  $05,$05,$05,$05,$05,$05,$05,$01,$15,$15,$15,$15,$15,$15,$15,$01
+  $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$85,$85
+  $58,$58,$08,$F8,$F8,$F8,$F8,$F8,$8F,$1F,$1F,$1F,$1F,$8F,$8F,$8F
+  $05,$05,$05,$05,$05,$05,$05,$05,$85,$85,$85,$85,$85,$85,$85,$85
+  $F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $05,$05,$05,$05,$05,$05,$05,$01,$85,$85,$05,$05,$05,$05,$05,$01
+  $F8,$F8,$F8,$F8,$F8,$08,$58,$01,$8F,$8F,$8F,$1F,$1F,$1F,$1F,$01
+  $F8,$08,$08,$08,$F8,$F8,$F8,$F8,$F8,$8F,$8F,$0F,$0F,$0F,$8F,$F8
+  $F8,$8F,$8F,$0F,$0F,$0F,$8F,$8F,$18,$18,$18,$18,$F8,$F8,$F8,$F8
+  $F8,$8F,$8F,$8F,$8F,$8F,$8F,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$F8,$F8,$08,$08,$08,$01,$F8,$8F,$0F,$0F,$0F,$8F,$8F,$01
+  $8F,$8F,$0F,$0F,$0F,$8F,$8F,$01,$F8,$F8,$F8,$F8,$18,$18,$18,$01
+  $8F,$0F,$0F,$8F,$8F,$8F,$8F,$8F,$58,$58,$08,$F8,$F8,$F8,$F8,$F8
+  $05,$05,$05,$05,$05,$05,$85,$85,$15,$15,$15,$15,$15,$15,$15,$15
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $85,$85,$85,$85,$85,$85,$85,$85,$15,$15,$15,$15,$15,$15,$15,$15
+  $8F,$8F,$8F,$8F,$8F,$0F,$0F,$01,$F8,$F8,$F8,$F8,$F8,$08,$58,$01
+  $85,$85,$05,$05,$05,$05,$05,$01,$15,$15,$15,$15,$15,$15,$15,$01
+  $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05
+  $58,$58,$58,$58,$58,$58,$85,$85,$8F,$8F,$8F,$8F,$F8,$F8,$F8,$18
+  $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05
+  $85,$85,$05,$05,$05,$05,$05,$05,$18,$18,$18,$58,$58,$58,$58,$85
+  $05,$05,$05,$05,$05,$05,$05,$01,$05,$05,$05,$05,$05,$05,$05,$01
+  $05,$05,$05,$05,$05,$05,$05,$01,$15,$15,$15,$15,$15,$15,$15,$01
+  $F8,$F8,$F8,$8F,$8F,$0F,$0F,$0F,$08,$08,$08,$08,$08,$F8,$F8,$0F
+  $08,$08,$08,$08,$08,$F8,$8F,$0F,$F8,$F8,$F8,$8F,$8F,$1F,$1F,$1F
+  $0F,$8F,$8F,$F8,$F8,$08,$08,$08,$0F,$0F,$0F,$0F,$0F,$8F,$08,$08
+  $0F,$0F,$0F,$0F,$0F,$8F,$08,$08,$1F,$1F,$8F,$F8,$F8,$18,$18,$18
+  $08,$58,$58,$85,$05,$05,$05,$01,$08,$08,$08,$08,$58,$05,$05,$01
+  $08,$08,$08,$08,$58,$05,$05,$01,$18,$18,$58,$85,$15,$15,$15,$01
+  $8F,$8F,$8F,$8F,$F8,$F8,$F8,$F8,$58,$58,$58,$58,$58,$85,$85,$85
+  $05,$05,$05,$05,$05,$05,$05,$05,$15,$15,$15,$15,$15,$15,$15,$15
+  $08,$08,$08,$58,$58,$58,$85,$85,$85,$85,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05,$15,$15,$15,$15,$15,$15,$15,$15
+  $85,$05,$05,$05,$05,$05,$05,$01,$05,$05,$05,$05,$05,$05,$05,$01
+  $05,$05,$05,$05,$05,$05,$05,$01,$15,$15,$15,$15,$15,$15,$15,$01
+end data
+data PicPat1 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$F0,$E2,$C6,$8E,$E1,$C1,$81
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$06,$0C,$1C,$E0,$38,$C0,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$03,$E0,$83,$F0,$00,$00,$00,$C0,$00,$C0,$00,$00
+  $00,$00,$00,$03,$00,$03,$00,$00,$01,$01,$01,$01,$C1,$06,$C0,$F0
+  $C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $C0,$F0,$38,$1C,$0E,$07,$03,$01,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$60,$F0,$38,$07,$1C,$0C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $60,$60,$C0,$C0,$C0,$C0,$80,$80,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$C0,$C0,$C0,$60,$00,$01,$F0,$07,$07,$03,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$81,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$03
+  $00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$C0,$E0,$E0,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$03,$07,$07,$F0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$06,$06,$03,$03,$03,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$80,$80,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$F0,$E0,$E0,$C0,$C0,$80,$00,$01,$01,$03,$03,$03,$03,$06,$00
+  $80,$80,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $70,$C0,$38,$E0,$1C,$0C,$06,$07,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$00,$00,$00,$00,$00,$00,$81,$C1,$E1,$8E,$C6,$E2,$F0,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $81,$C0,$E0,$F0,$03,$00,$00,$00,$00,$80,$F0,$00,$00,$00,$E0,$00
+  $00,$01,$F0,$00,$00,$00,$07,$00,$80,$02,$06,$0E,$C1,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$03
+  $F0,$83,$E0,$03,$00,$00,$00,$00,$00,$00,$C0,$00,$C0,$00,$00,$00
+  $00,$00,$03,$00,$03,$00,$00,$00,$F0,$C0,$06,$C1,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0E,$0C,$1C,$07,$38,$F0,$60,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$03,$07,$0E,$1C,$38,$F0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+end data
+data PicCol1 bytes
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$07,$17,$17,$17,$71,$71,$71,$B1,$1B,$1B,$1B
+  $07,$07,$07,$07,$07,$07,$07,$01,$07,$07,$07,$07,$07,$07,$07,$01
+  $17,$17,$17,$17,$7B,$1B,$7B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $07,$07,$07,$07,$17,$71,$B1,$1B,$07,$07,$07,$71,$01,$1B,$0B,$0B
+  $07,$07,$07,$71,$01,$1B,$0B,$0B,$17,$17,$17,$17,$17,$71,$B1,$B1
+  $1B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $07,$07,$07,$07,$07,$07,$07,$17,$07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17
+  $17,$17,$17,$1B,$1B,$1B,$1B,$1B,$07,$07,$07,$07,$07,$07,$17,$17
+  $07,$07,$07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$17,$17,$B7,$17,$7B,$1B,$1B,$01
+  $07,$07,$07,$07,$07,$07,$07,$01,$17,$17,$17,$17,$17,$17,$17,$01
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$17,$17
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $07,$07,$07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $07,$07,$07,$07,$07,$07,$07,$01,$17,$17,$07,$07,$07,$07,$07,$01
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$01,$1B,$B1,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$01,$01,$01,$01,$01,$B1,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$01,$01,$01,$01,$01,$B1,$1B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$8B,$8B,$8B,$8B,$8B,$8B
+  $0B,$0B,$8B,$8B,$8B,$8B,$8B,$8B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$01,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$B1,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $17,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17
+  $0B,$1B,$1B,$1B,$1B,$1B,$1B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $17,$17,$07,$07,$07,$07,$07,$01,$17,$17,$17,$17,$17,$17,$17,$01
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07
+  $1B,$7B,$1B,$7B,$17,$17,$17,$17,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07
+  $17,$17,$07,$07,$07,$07,$07,$07,$1B,$1B,$1B,$B1,$71,$71,$71,$17
+  $07,$07,$07,$07,$07,$07,$07,$01,$07,$07,$07,$07,$07,$07,$07,$01
+  $07,$07,$07,$07,$07,$07,$07,$01,$17,$17,$17,$17,$17,$17,$17,$01
+  $B1,$B1,$B1,$B1,$1B,$0B,$0B,$0B,$0B,$1B,$1B,$01,$01,$01,$B1,$0B
+  $0B,$1B,$B1,$01,$01,$01,$B1,$0B,$B1,$B1,$B1,$B1,$1B,$1B,$1B,$1B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $1B,$B1,$71,$17,$07,$07,$07,$01,$0B,$0B,$1B,$01,$71,$07,$07,$01
+  $0B,$0B,$1B,$01,$71,$07,$07,$01,$B1,$B1,$71,$17,$17,$17,$17,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$7B,$17,$B7,$17,$17
+  $07,$07,$07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17
+  $1B,$1B,$1B,$1B,$1B,$17,$17,$17,$17,$17,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$07,$07,$07,$17,$17,$17,$17,$17,$17,$17,$17
+  $17,$07,$07,$07,$07,$07,$07,$01,$07,$07,$07,$07,$07,$07,$07,$01
+  $07,$07,$07,$07,$07,$07,$07,$01,$17,$17,$17,$17,$17,$17,$17,$01
+end data
+data PicPat2 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $03,$03,$03,$03,$03,$03,$03,$03,$00,$00,$00,$00,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $03,$03,$03,$03,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $03,$03,$03,$03,$03,$03,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$02,$03,$03,$03,$03,$03,$03
+  $00,$00,$03,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$01,$01,$01,$00
+  $03,$03,$03,$03,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $03,$03,$03,$03,$03,$03,$03,$03,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+end data
+data PicCol2 bytes
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0D,$0D,$0D,$0D,$6D,$6D,$6D,$01,$0D,$0D,$0D,$0D,$06,$06,$06,$01
+  $0D,$0D,$0D,$0D,$06,$06,$06,$01,$1D,$1D,$1D,$1D,$16,$16,$16,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $BD,$BD,$BD,$BD,$6D,$6D,$6D,$6D,$0B,$0B,$0B,$0B,$6B,$6B,$6B,$6B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $6D,$6D,$6D,$6D,$06,$06,$06,$01,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $6D,$6D,$6D,$6D,$6D,$6D,$0D,$0D,$6B,$6B,$6B,$6B,$6B,$6B,$0D,$0D
+  $0B,$0B,$0B,$0B,$0B,$0B,$0D,$0D,$1B,$1B,$1B,$1B,$1B,$1B,$BD,$BD
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$BD,$BD,$6D,$6D,$6D,$6D,$6D,$6D
+  $0D,$0D,$6D,$6D,$6D,$6D,$6D,$01,$0D,$0D,$06,$06,$06,$06,$6B,$01
+  $0D,$0D,$06,$06,$06,$06,$0B,$01,$6D,$6D,$16,$16,$16,$16,$1B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $0B,$0B,$6B,$6B,$6B,$6B,$6B,$6B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $6B,$6B,$6B,$6B,$6B,$6B,$0B,$01,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$B6,$B6,$B6,$B6,$1B,$1B,$1B,$01
+  $6D,$6D,$6D,$6D,$0D,$0D,$0D,$0D,$6B,$6B,$6B,$6B,$0D,$0D,$0D,$0D
+  $0B,$0B,$0B,$0B,$0D,$0D,$0D,$0D,$1B,$1B,$1B,$1B,$1D,$1D,$1D,$1D
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $06,$06,$06,$06,$0B,$0B,$0B,$01,$06,$06,$06,$06,$0B,$0B,$0B,$01
+  $06,$06,$06,$06,$0B,$0B,$0B,$01,$16,$16,$16,$16,$1B,$1B,$1B,$01
+  $0B,$0B,$0B,$0B,$BD,$BD,$BD,$BD,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $06,$06,$06,$06,$0B,$0B,$0B,$01,$6B,$6B,$6B,$6B,$0B,$0B,$0B,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$01
+end data
+data PicPat3 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07
+  $00,$00,$00,$00,$00,$00,$80,$E0,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$01,$07,$07,$0E,$F0,$F0,$E0,$80,$00,$00,$00,$00,$80,$E0
+  $07,$01,$00,$00,$00,$00,$01,$07,$01,$01,$80,$E0,$E0,$8E,$0E,$0E
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$07,$01,$00,$00,$00,$00,$00,$00
+  $E0,$80,$00,$00,$00,$00,$00,$00,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$06,$E1,$81,$81,$E1
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$06,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$01,$07,$E0,$80,$00,$00,$01,$01,$01,$01,$01,$01,$80,$00
+  $F0,$F0,$F0,$F0,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0
+  $00,$00,$00,$00,$00,$00,$01,$07,$0E,$0E,$0E,$0E,$E1,$81,$01,$01
+  $00,$00,$81,$07,$F0,$F0,$F0,$F0,$E0,$80,$00,$00,$00,$00,$00,$00
+  $07,$80,$00,$00,$00,$00,$00,$00,$01,$01,$81,$18,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$80,$00,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$00,$80,$E0,$07,$01,$01,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $E0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$80,$E0,$07,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$0E,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$80,$E0,$07,$01,$00,$00,$07,$01,$01,$07,$E0,$80,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$E0,$07,$01,$00,$00,$01,$01,$01,$06,$E1,$81,$01,$00
+  $F0,$F0,$8E,$E8,$F0,$F0,$F0,$F0,$E0,$80,$80,$E0,$07,$01,$00,$00
+  $07,$01,$01,$07,$E0,$80,$00,$00,$F0,$F0,$70,$16,$0E,$0E,$0E,$0E
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $E0,$81,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$07,$01,$00,$00
+  $00,$00,$01,$07,$E0,$80,$00,$00,$18,$81,$01,$01,$01,$01,$01,$00
+  $E0,$80,$80,$E0,$07,$01,$00,$00,$00,$00,$01,$07,$E0,$80,$00,$00
+  $E0,$70,$F0,$F0,$F0,$F0,$F0,$F0,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$80,$E0,$07,$01,$00,$00,$00,$00,$01,$07,$E0,$80,$00,$00
+  $E0,$80,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+end data
+data PicCol3 bytes
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$FE,$FE
+  $0E,$0E,$0E,$0E,$0E,$0E,$FE,$FE,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$FE,$FE,$FE,$5E,$E5,$E5,$EF,$EF,$0F,$0F,$0F,$0F,$5F,$5F
+  $EF,$EF,$0F,$0F,$0F,$0F,$4F,$4F,$1E,$1E,$FE,$FE,$FE,$E4,$E4,$E4
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$01,$F5,$F5,$05,$05,$05,$05,$05,$01
+  $F4,$F4,$04,$04,$04,$04,$04,$01,$E4,$E4,$E4,$E4,$E4,$E4,$E4,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$FE,$EF,$EF,$5F,$5F
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$F5,$15,$15,$15,$15,$15,$15,$15
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01,$0E,$0E,$0E,$0E,$0E,$0E,$FE,$01
+  $0E,$0E,$FE,$FE,$EF,$EF,$0F,$01,$15,$15,$15,$15,$15,$15,$F5,$01
+  $E5,$F5,$F5,$F5,$5F,$5F,$0F,$0F,$05,$05,$05,$05,$05,$05,$F5,$F5
+  $04,$04,$04,$04,$04,$04,$F4,$F4,$E4,$F4,$F4,$F4,$4F,$4F,$1F,$1F
+  $0F,$0F,$5F,$45,$54,$54,$54,$54,$F5,$F4,$04,$04,$04,$04,$04,$04
+  $F4,$45,$05,$05,$05,$05,$05,$05,$1F,$1F,$5F,$F5,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$01,$04,$04,$04,$04,$04,$04,$F4,$01
+  $05,$05,$05,$05,$05,$05,$F5,$01,$54,$54,$54,$54,$54,$54,$54,$01
+  $0E,$0E,$FE,$FE,$EF,$EF,$4F,$4F,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $F4,$F4,$04,$04,$04,$04,$04,$04,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $04,$04,$04,$04,$04,$04,$F4,$01,$0E,$0E,$FE,$FE,$EF,$EF,$0F,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$FE,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$FE,$5E,$E5,$E5,$E5,$E5,$E5,$E5
+  $0F,$0F,$5F,$5F,$F5,$F5,$05,$05,$5F,$1F,$1F,$4F,$F4,$F4,$14,$14
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E,$E5,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $05,$05,$05,$05,$05,$05,$05,$05,$14,$14,$14,$14,$14,$14,$14,$14
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$01,$5E,$5E,$0E,$0E,$0E,$0E,$0E,$01
+  $05,$05,$E5,$E5,$5E,$5E,$0E,$01,$14,$14,$14,$E4,$4E,$4E,$1E,$01
+  $54,$54,$45,$45,$45,$45,$45,$45,$4F,$4F,$5F,$5F,$F5,$F5,$05,$05
+  $5F,$5F,$4F,$4F,$F4,$F4,$04,$04,$54,$54,$54,$54,$54,$54,$54,$54
+  $45,$45,$45,$45,$45,$45,$45,$45,$05,$05,$05,$05,$05,$05,$05,$05
+  $04,$04,$04,$04,$04,$04,$04,$04,$54,$54,$54,$54,$54,$54,$54,$54
+  $45,$4E,$0E,$0E,$0E,$0E,$0E,$01,$05,$05,$E5,$E5,$5E,$5E,$0E,$01
+  $04,$04,$E4,$E4,$4E,$4E,$0E,$01,$E4,$4E,$1E,$1E,$1E,$1E,$1E,$01
+  $4F,$4F,$5F,$5F,$F5,$F5,$05,$05,$0F,$0F,$4F,$4F,$F4,$F4,$04,$04
+  $FE,$4E,$4E,$4E,$4E,$4E,$4E,$4E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $05,$05,$05,$05,$05,$05,$05,$05,$04,$04,$04,$04,$04,$04,$04,$04
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $05,$05,$E5,$E5,$5E,$5E,$0E,$01,$04,$04,$E4,$E4,$4E,$4E,$0E,$01
+  $4E,$4E,$0E,$0E,$0E,$0E,$0E,$01,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$01
+end data
+
+asm {
+TtClick:
+    db $40,$40,$30,$01,$50
+TtBump:
+    db $40,$3B,$42,$03,$50
+TtSlide:
+    db $40,$D6,$30,$02,$40,$AA,$40,$03,$50
+TtMix:
+    db $40,$8F,$50,$01,$50
+TtWin:
+    db $40,$7F,$20,$06,$40,$5F,$20,$06,$40,$7F,$20,$06,$40,$5F,$20,$06,$40,$7F,$20,$06,$40,$5F,$20,$06
+    db $40,$7F,$20,$06,$40,$5F,$20,$0C,$50
+
+TtSoundTable:
+    dw TtTuneMel,$702B
+    dw TtTuneBass,$7035
+    dw TtClick,$7049
+    dw TtBump,$7049
+    dw TtSlide,$7049
+    dw TtMix,$7049
+    dw TtWin,$7049
+; Shuffle Step (original)
+; Tiny Sound, 8 frames per step
+TtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1F,$01,$23,$26,$23,$01,$1F,$01,$21,$01,$24,$28
+    db $24,$01,$21,$01,$23,$01,$26,$2B,$2A,$01,$26,$01,$28,$26,$24,$23
+    db $21,$01,$01,$01,$1F,$01,$23,$26,$23,$01,$1F,$01,$24,$01,$28,$2B
+    db $28,$01,$24,$01,$26,$24,$23,$21,$1A,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$0B,$01,$0E,$01,$0C,$01,$13,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$0C,$01,$13,$01
+    db $0C,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01
+    db $FF
+}

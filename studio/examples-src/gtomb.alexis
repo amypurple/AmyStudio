@@ -1,0 +1,813 @@
+cartridge "THE TOMB/COMPUTE!'S GAZETTE/1984"
+
+' THE TOMB
+' A ColecoVision game based on "The Tomb", COMPUTE!'s Gazette October
+' 1984, issue 16 p. 58 (Commodore 64 and VIC-20, BASIC; no author is named
+' in the listing). Made for Amy Studio by Claude (an AI made by Anthropic),
+' 2026, in Amy by Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/tomb_64.bas, and timed in jsc64), rebuilt for the
+' ColecoVision: smooth 8 x 8 sprites that glide from cell to cell, tiled
+' sandstone walls, sound effects and an original title tune.
+'
+' The game: you are an explorer in a pharaoh's tomb, top left. The
+' treasure rests in the outer wall, bottom right. Every turn you may step
+' one cell (diagonals too) unless a block is in the way; then one of the
+' three guardians, chosen at random, takes a step toward you: across first,
+' and up or down at the same time, but it stays put if a block is where it
+' would land. Step on a guardian, or let one step on you, and you are
+' caught: the game is over. Every guardian step costs one piece of the
+' 500 gold; reach the treasure and what is left is added to your score,
+' and a new tomb is built. The score adds up from tomb to tomb.
+'
+' From the original: the walled field, the random blocks (one cell in
+' three, never two side by side, so the first column is always free),
+' the explorer's start in the top-left corner, the treasure in the
+' bottom-right corner of the outer wall reached only diagonally from the
+' cell in front of it (kept free), three guardians starting at the
+' listing's places (scaled), one random guardian moving per turn even
+' when the explorer stands still or walks into a block, its step rule
+' (across, then up/down, both undone when the landing cell is a block),
+' 500 gold less one per guardian step, the gold added to a score that
+' carries on until you are caught, the best score.
+'
+' Liberties: the field is 26 x 19 cells inside the wall (the C64's was
+' 38 x 23); a turn every 20 frames (the C64 BASIC loop measured at 3.05
+' turns a second in jsc64, 3.0 here); a tap of the stick during a turn counts
+' for the next turn. When the gold runs out the tomb is sealed: the
+' guardians (now purple) pass through blocks, so hiding where they are
+' stuck cannot last for ever (on the C64 the gold went negative and the
+' game could idle for ever). A guardian standing on another one stays
+' deadly (on the C64 it could become invisible and harmless). A tomb
+' cut in two by a full column of blocks is built again (it never happens
+' in practice). No keyboard Q to quit; a press after the end goes back to
+' the title.
+'
+' Controls: either controller; the stick walks (eight directions, hold to
+' keep walking). On the title, up and down choose, a button starts.
+'
+' House rules: text and tiles in columns 2-29, rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI; screens drawn with the
+' NMI off, display off. Music first in the sound table, effects after; the
+' title tune is played once. `set sprite count` is always given. Nothing
+' flashes.
+
+const TFloor = 128
+const TWall = 129
+const TBrick = 130
+const TChest = 131
+const TBig = 132
+const SHead = 0
+const SBody0 = 4
+const SBody1 = 8
+const SGuard0 = 12
+const SGuard1 = 16
+const SBurst = 20
+const NTiles8 = 40
+const SprBytes = 192
+const LogoW = 17
+const LogoX = 7
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndCaught = 4
+const SndGrab = 5
+const SndCount = 6
+const SndSeal = 7
+const SndStart = 8
+const SndOver = 9
+const TurnN = 20
+const NSpr = 5
+const GoldStart = 500
+const TreasX = 27
+const TreasY = 20
+
+data TilePat bytes
+  $00,$00,$00,$04,$00,$00,$40,$00
+  $01,$C0,$80,$05,$01,$41,$01,$00
+  $10,$10,$10,$00,$01,$01,$01,$00
+  $81,$81,$81,$18,$18,$81,$00,$81
+  $01,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$41,$01,$01,$41,$01
+  $1B,$BA,$BA,$1A,$1A,$1A,$1A,$01
+  $16,$16,$16,$01,$16,$16,$16,$01
+  $61,$1B,$BA,$FB,$FB,$BA,$0B,$61
+  $AB,$BA,$BA,$BA,$BA,$BA,$BA,$0A
+end data
+data SpritePat bytes
+  $38,$7C,$38,$00,$82,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$7C,$54,$38,$28,$6C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$7C,$54,$38,$44,$C6,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$DB,$DB,$FF,$5A,$7E,$A5,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$DB,$DB,$FF,$5A,$7E,$5A,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$EE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TombBits bytes
+  1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0
+  0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1
+  0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0
+  0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1
+  0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0
+end data
+
+data Bit bytes
+  1, 2, 4, 8, 16, 32, 64, 128
+end data
+' guardian starting cells (the listing's 5,12 / 20,6 / 35,22, scaled)
+data GStartX bytes
+  4, 14, 24
+end data
+data GStartY bytes
+  10, 5, 18
+end data
+
+record Guard:
+  u8 X
+  u8 Y
+  u8 Px
+  u8 Py
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Hi = 0
+u16 Gold = 500
+u8 Tomb = 1
+' the blocks: 21 rows of 4 bytes, bit x of row y
+u8 Wl[84]
+Guard Gd[3]
+' the explorer: cell, pixels (sprite corner), the step frame
+u8 Pc = 1
+u8 Pr = 1
+u8 Ppx = 24
+u8 Ppy = 24
+' 0 playing, 1 caught, 2 the treasure
+u8 State = 0
+u8 TurnT = 20
+u8 Want = 0
+u8 GLast = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters
+u8 Gi = 0
+u8 Gx = 0
+u8 Gy = 0
+' scratch
+u8 Wi = 0
+u8 Wt = 0
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nx = 0
+u8 Ny = 0
+i8 Sx = 0
+i8 Sy = 0
+
+  tile screen
+  set sound table TbSoundTable areas 6
+  sprites 8x8
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if State = 0 then goto play_loop
+  if State = 2 then
+    Treasure
+    goto play_loop
+  end if
+
+  ' caught: the message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  print at 2,10, "                           "
+  print at 2,11, " THE GUARDIAN HAS CAUGHT YOU"
+  print at 2,12, "                           "
+  print at 2,13, "         GOLD              "
+  NumU = Sc
+  print at 16,13, digits$(NumU, 5)
+  print at 2,14, "                           "
+  play sound SndCaught
+  Rearm
+  wait 120 frames
+  play sound SndOver
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the blocks
+
+function IsWall(u8 X, u8 Y) as u8
+  if X = TreasX and Y = TreasY then return 0
+  if X = 0 or X >= 27 then return 1
+  if Y = 0 or Y >= 20 then return 1
+  Wi = Y * 4 + (X >> 3)
+  Wt = Wl[Wi] & Bit[X & 7]
+  if Wt <> 0 then return 1
+  return 0
+
+sub SetWall(u8 X, u8 Y):
+  Wi = Y * 4 + (X >> 3)
+  Wt = Bit[X & 7]
+  Wl[Wi] = Wl[Wi] | Wt
+  return
+
+sub ClearWall(u8 X, u8 Y):
+  Wi = Y * 4 + (X >> 3)
+  Wt = Bit[X & 7] ^ 255
+  Wl[Wi] = Wl[Wi] & Wt
+  return
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+
+function Rand3 as u8
+  Rand
+  return Rs mod 3
+
+' a column of blocks from top to bottom would cut the tomb in two
+function CutColumn as u8
+  u8 Full = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  Full = 0
+  for Cx = 2 to 26
+    Cy = 1
+    while Cy < 20 and IsWall(Cx, Cy) = 1
+      inc Cy
+    end while
+    if Cy = 20 then Full = 1
+  next
+  return Full
+
+' the listing's maze: each cell a block one time in three, never right
+' after a block
+sub BuildTomb:
+  fill array Wl with 0
+  for Gy = 1 to 19
+    for Gx = 1 to 26
+      V = Rand3
+      if V = 1 then
+        if IsWall(Gx - 1, Gy) = 0 then SetWall(Gx, Gy)
+      end if
+    next
+  next
+  ClearWall(1, 1)
+  ClearWall(26, 19)
+  for Gi = 0 to 2
+    ClearWall(GStartX[Gi], GStartY[Gi])
+  next
+  return
+
+sub NewTomb:
+  do
+    BuildTomb
+  loop while CutColumn = 1
+  Pc = 1
+  Pr = 1
+  Ppx = 24
+  Ppy = 24
+  for Gi = 0 to 2
+    with Gd[Gi] as G
+      G.X = GStartX[Gi]
+      G.Y = GStartY[Gi]
+      G.Px = G.X * 8 + 16
+      G.Py = G.Y * 8 + 16
+    end with
+  next
+  Gold = GoldStart
+  TurnT = TurnN
+  Want = 0
+  State = 0
+  return
+
+' ---------------------------------------------------------------------------
+' one frame of play: the stick is remembered, a turn every TurnN frames,
+' the sprites glide a pixel every other frame (8 pixels a turn)
+
+sub PlayFrame:
+  K = J1 | J2
+  K = K & 15
+  if K <> 0 then Want = K
+  dec TurnT
+  if TurnT = 0 then
+    TurnT = TurnN
+    Turn
+  end if
+  V = TurnT & 1
+  if V = 0 then Glide
+  ' the gold is printed on the pass after the turn (a turn and a print
+  ' together could overrun the frame)
+  if TurnT = TurnN - 1 then ShowGold
+  return
+
+function Toward(u8 Here, u8 There) as u8
+  if There > Here then return Here + 1
+  if There < Here then return Here - 1
+  return Here
+
+sub Glide:
+  Ppx = Toward(Ppx, Pc * 8 + 16)
+  Ppy = Toward(Ppy, Pr * 8 + 16)
+  for Gi = 0 to 2
+    with Gd[Gi] as G
+      X = G.X * 8 + 16
+      Y = G.Y * 8 + 16
+      G.Px = Toward(G.Px, X)
+      G.Py = Toward(G.Py, Y)
+    end with
+  next
+  return
+
+function GuardAt(u8 X, u8 Y) as u8
+  u8 R = 0
+  u8 I = 0
+  R = 0
+  for I = 0 to 2
+    if Gd[I].X = X and Gd[I].Y = Y then R = 1
+  next
+  return R
+
+' the explorer's step, then one guardian's
+sub Turn:
+  B = Want
+  Want = 0
+  if B <> 0 then
+    Sx = 0
+    Sy = 0
+    select case B & 12
+    case 4
+      Sx = -1
+    case 8
+      Sx = 1
+    end select
+    select case B & 3
+    case 1
+      Sy = -1
+    case 2
+      Sy = 1
+    end select
+    Nx = Pc + Sx
+    Ny = Pr + Sy
+    if IsWall(Nx, Ny) = 0 then
+      Pc = Nx
+      Pr = Ny
+      play sound SndStep
+      if GuardAt(Pc, Pr) = 1 then
+        State = 1
+        return
+      end if
+      if Pc = TreasX then
+        State = 2
+        return
+      end if
+    end if
+  end if
+  MoveGuard
+  if State <> 0 then return
+  if Gold > 0 then
+    dec Gold
+    if Gold = 0 then play sound SndSeal
+  end if
+  return
+
+' one guardian, chosen at random: across toward the explorer and up or
+' down at once; it stays when a block is where it would land (until the
+' gold is gone and the tomb is sealed)
+sub MoveGuard:
+  GLast = Rand3
+  with Gd[GLast] as G
+    Nx = Toward(G.X, Pc)
+    Ny = Toward(G.Y, Pr)
+    C = 1
+    if Gold > 0 then
+      if IsWall(Nx, Ny) = 1 then C = 0
+    end if
+    if C = 1 then
+      G.X = Nx
+      G.Y = Ny
+    end if
+  end with
+  if Nx = Pc and Ny = Pr and C = 1 then State = 1
+  return
+
+' the treasure: the gold counted into the score, then a new tomb
+sub Treasure:
+  play sound SndGrab
+  print at 4,11, "                      "
+  print at 4,12, " YOU GRAB THE TREASURE"
+  print at 4,13, "                      "
+  Ppx = Pc * 8 + 16
+  Ppy = Pr * 8 + 16
+  DrawSprites
+  for Gi = 1 to 40
+    Frame1
+  next
+  while Gold > 0
+    Frame1
+    if Gold >= 5 then
+      Gold -= 5
+      Sc += 5
+    else
+      Sc += Gold
+      Gold = 0
+    end if
+    V = Tick & 3
+    if V = 0 then play sound SndCount
+    ShowGold
+    ShowScore
+  end while
+  if Sc > Hi then Hi = Sc
+  for Gi = 1 to 60
+    Frame1
+  next
+  inc Tomb
+  NewTomb
+  NewScreen
+  DrawField
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  return
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites 0-1 the explorer (helmet and hands, body), 2-4 the guardians
+sub DrawSprites:
+  if TitleOn = 1 then
+    update sprites
+    return
+  end if
+  Y = Ppy - 1
+  if State = 1 then
+    set sprite 0 to Y,Ppx,SBurst,15
+    set sprite 1 to 192,0,0,0
+  else
+    V = Ppx + Ppy
+    V = V >> 2
+    V = V & 1
+    K = V << 2
+    K = K + SBody0
+    set sprite 0 to Y,Ppx,SHead,15
+    set sprite 1 to Y,Ppx,K,7
+  end if
+  C = 9
+  if Gold = 0 then C = 13
+  for Gi = 0 to 2
+    J = Gi + 2
+    with Gd[Gi] as G
+      X = G.Px
+      Y = G.Py - 1
+    end with
+    V = Tick >> 3
+    V = V + Gi
+    V = V & 1
+    K = V << 2
+    K = K + SGuard0
+    set sprite J to Y,X,K,C
+  next
+  update sprites
+  return
+
+sub ShowGold:
+  NumU = Gold
+  print at 7,1, digits$(NumU, 3)
+  return
+
+sub ShowScore:
+  NumU = Sc
+  print at 14,1, digits$(NumU, 5)
+  return
+
+sub ShowHud:
+  print at 2,1, "GOLD"
+  print at 11,1, "SC"
+  print at 21,1, "HI"
+  ShowGold
+  ShowScore
+  NumU = Hi
+  print at 24,1, digits$(NumU, 5)
+  return
+
+' the tomb: outer wall, blocks, floor, the treasure in the corner
+sub DrawField:
+  for Gy = 0 to 20
+    for Gx = 0 to 27
+      X = Gx + 2
+      Y = Gy + 2
+      if Gx = 0 or Gx = 27 or Gy = 0 or Gy = 20 then
+        put char TBrick at X,Y
+      elseif IsWall(Gx, Gy) = 1 then
+        put char TWall at X,Y
+      else
+        put char TFloor at X,Y
+      end if
+    next
+  next
+  put char TChest at 29,22
+  return
+
+sub NewGame:
+  Sc = 0
+  Tomb = 1
+  TitleOn = 0
+  NewTomb
+  NewScreen
+  DrawField
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the big TOMB in blocks, the tune once, START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  for Gx = 2 to 29
+    put char TBrick at Gx,2
+    put char TBrick at Gx,21
+  next
+  print at 14,4, "THE"
+  for Gy = 0 to 4
+    for Gx = 0 to LogoW - 1
+      K = Gy * LogoW + Gx
+      V = TombBits[K]
+      if V = 1 then
+        X = Gx + LogoX
+        Y = Gy + 6
+        put char TBig at X,Y
+      end if
+    next
+  next
+  print at 3,12, "COMPUTE!'S GAZETTE  OCT 84"
+  print at 11,15, "START GAME"
+  print at 11,16, "CREDITS"
+  put char TChest at 22,15
+  print at 2,19, "HI"
+  NumU = Hi
+  print at 5,19, digits$(NumU, 5)
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,15
+  put char 32 at 9,16
+  J = Menu + 15
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "THE TOMB"
+  print at 2,5, "BASED ON THE TOMB,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "OCTOBER 1984 (COMMODORE 64"
+  print at 2,8, "AND VIC-20, BASIC)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SAND OVER THE DOOR"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+TbStep:
+    db $00,$00,$46,$01,$00,$00,$66,$01,$10
+TbCaught:
+    db $40,$7F,$10,$03,$40,$97,$10,$03,$40,$B4,$20,$03,$40,$D6,$20,$03,$40,$FE,$10,$03,$40,$2E,$11,$03
+    db $40,$68,$21,$03,$40,$AB,$21,$03,$40,$FE,$10,$03,$40,$2E,$11,$03,$40,$68,$21,$03,$40,$AB,$21,$03
+    db $40,$53,$11,$03,$40,$94,$21,$03,$40,$E0,$21,$03,$40,$3B,$32,$0C,$50
+TbGrab:
+    db $40,$47,$10,$02,$40,$5F,$10,$02,$40,$39,$10,$02,$40,$55,$10,$02,$40,$40,$10,$02,$40,$6B,$10,$02
+    db $40,$35,$10,$02,$40,$50,$10,$02,$40,$43,$10,$02,$40,$5A,$10,$02,$40,$3C,$10,$02,$40,$65,$10,$02
+    db $40,$47,$20,$02,$40,$30,$20,$02,$40,$35,$20,$0A,$50
+TbCount:
+    db $40,$2A,$30,$01,$50
+TbSeal:
+    db $00,$00,$14,$04,$00,$00,$25,$06,$00,$00,$46,$0A,$10
+TbStart:
+    db $40,$7C,$21,$06,$40,$41,$21,$06,$40,$FE,$20,$06,$40,$BF,$20,$0E,$50
+TbOver:
+    db $40,$FE,$10,$0C,$40,$0E,$21,$0C,$40,$41,$21,$0C,$40,$7C,$21,$1E,$50
+
+TbSoundTable:
+    dw TbTuneMel,$702B
+    dw TbTuneBass,$7035
+    dw TbStep,$703F
+    dw TbCaught,$7049
+    dw TbGrab,$7049
+    dw TbCount,$7049
+    dw TbSeal,$703F
+    dw TbStart,$7049
+    dw TbOver,$7049
+; Sand Over the Door (original)
+; Tiny Sound, 9 frames per step
+TbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$23,$24,$01,$01,$23,$21,$20,$01,$21,$01
+    db $1C,$01,$01,$01,$1D,$01,$1C,$1A,$01,$01,$18,$01,$17,$01,$18,$01
+    db $15,$01,$01,$01,$21,$01,$24,$28,$01,$01,$26,$24,$23,$01,$24,$01
+    db $21,$01,$01,$01,$20,$01,$23,$01,$1C,$01,$1D,$1C,$1A,$01,$17,$01
+    db $15,$01,$01,$01,$00
+    db $FF
+TbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$04,$01,$0B,$01
+    db $09,$01,$10,$01,$09,$01,$10,$01,$0C,$01,$10,$01,$0E,$01,$09,$01
+    db $05,$01,$0C,$01,$04,$01,$0B,$01,$04,$01,$08,$01,$09,$01,$01,$01
+    db $01,$01,$01,$01,$00
+    db $FF
+}

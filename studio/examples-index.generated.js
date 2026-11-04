@@ -14891,5 +14891,239 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "anglers",
+    "label": "THE ANGLERS (March 1989)",
+    "detail": "Based on The Anglers by Tai Bush from COMPUTE!'s Gazette, March 1989. Two anglers cast and reel along a lakeshore; the first to catch eight fish wins.",
+    "projectName": "THE ANGLERS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "sports"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "fcrypt",
+    "label": "THE FORBIDDEN CRYPT (February 1985)",
+    "detail": "Based on The Forbidden Crypt from COMPUTE!'s Gazette, February 1985. Explore four tomb chambers, confront their creatures and escape the crypt; no original author is named in the listing.",
+    "projectName": "THE FORBIDDEN CRYPT",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "adventure"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "farm",
+    "label": "THE FARM GAME (October 1985)",
+    "detail": "Based on The Farm Game by Daniel M. Seurer from COMPUTE!'s Gazette, October 1985. Manage fields, crops, markets, loans, weather and pests across a multi-year farming simulation.",
+    "projectName": "THE FARM GAME",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "simulation",
+      "strategy"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "frantic",
+    "label": "THE FRANTIC FISHERMAN (June 1984)",
+    "detail": "Based on The Frantic Fisherman from COMPUTE!'s Gazette, June 1984. Defend both ends of a sailboat from sharks and rain; no original author is named in the listings.",
+    "projectName": "THE FRANTIC FISHERMAN",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ejourn",
+    "label": "THE ENCHANTED JOURNEY (May 1985)",
+    "detail": "Based on The Enchanted Journey by Brent Lackie from COMPUTE!'s Gazette, May 1985. Search a dreamlike forest and castle for the king's stolen magic sword using enchanted items.",
+    "projectName": "THE ENCHANTED JOURNEY",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "vic-20",
+      "adventure"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "freeze",
+    "label": "THE FREEZE FACTORY (June 1985)",
+    "detail": "Based on The Freeze Factory from COMPUTE!'s Gazette, June 1985. Slide ice blocks through a factory to freeze pursuing sparks; no original author is named in the listings.",
+    "projectName": "THE FREEZE FACTORY",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "puzzle",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gtomb",
+    "label": "THE TOMB (October 1984)",
+    "detail": "Based on The Tomb from COMPUTE!'s Gazette, October 1984. Cross a blocked tomb, preserve its gold and evade three moving guardians; no original author is named in the listing.",
+    "projectName": "THE TOMB",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "strategy"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "think",
+    "label": "THINKING (December 1983)",
+    "detail": "Based on Thinking from COMPUTE!'s Gazette, December 1983. Discover which number patterns toggle a three-by-three grid and turn every block purple; no original author is named in the listings.",
+    "projectName": "THINKING",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "puzzle"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gumball",
+    "label": "THE GUMBALL RALLY (November 1987)",
+    "detail": "Based on The Gumball Rally from COMPUTE!'s Gazette, November 1987. Buy, sell and exchange coins across six gumball machines in a one- or two-player economy race; no original author is named in the listing.",
+    "projectName": "THE GUMBALL RALLY",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-128",
+      "strategy"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "ttrader",
+    "label": "TILE TRADER (March 1987)",
+    "detail": "Based on Tile Trader by Michael Wiens and Kevin Black from COMPUTE!'s Gazette, March 1987. Restore one of four pictures by sliding its mixed three-by-three tiles into the empty space.",
+    "projectName": "TILE TRADER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-128",
+      "puzzle"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "gtrap",
+    "label": "TRAP (May 1988)",
+    "detail": "Based on Trap by Eric Haines from COMPUTE!'s Gazette, May 1988. Lay a four-block trail across a suspended grid and trap the continuously bouncing sphere.",
+    "projectName": "TRAP",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action",
+      "strategy"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

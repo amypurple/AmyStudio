@@ -1,0 +1,1124 @@
+cartridge "THE FREEZE FACTORY/GAZETTE/1985"
+
+' THE FREEZE FACTORY
+' A ColecoVision game based on "The Freeze Factory", COMPUTE!'s Gazette
+' June 1985 (Commodore 64 and VIC-20 BASIC, disk files "freeze factory"
+' and "freeze/vic"; the listing names no author).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' listings, orig/), the game is built for the ColecoVision: smooth sprites
+' that glide from cell to cell, a sliding ice block drawn as a sprite,
+' tiled factory scenery, sound effects and an original title tune.
+'
+' The game: a worker walks the floor of a walled factory strewn with ice
+' blocks; four sparks chase him. Walk into a block: if the cell behind it
+' is free, the block slides until it hits something; if it hits a spark,
+' the spark is frozen (1000 points). If the cell behind is a wall, a block
+' or a spark, the block is crushed (10 points). A spark that reaches the
+' worker, or a worker who walks into a spark, costs a life. Four freezes
+' clear the level: 25 points for each block left, a time bonus, one more
+' life, ten more blocks (here seven), and the clock runs faster. The clock
+' counts down from 60; at 0 the game is over, as it is when the last life
+' goes.
+'
+' From the original (orig/freeze-c64.bas, orig/freeze-vic.bas): the walled
+' field, about one block in ten cells at the start, the player and four
+' chasers at the original's start cells (middle, left, right, below,
+' above), the stick order (down, left, up, right), the push rules
+' (slide when the cell behind is free, else crush, a slide stops on a
+' wall or block and freezes a chaser it hits), 10 / 1000 / 25 points,
+' freezes counted per level (the same chaser can be frozen twice), the
+' chasers' rule (compare the player's and the chaser's screen addresses:
+' if the player is "after", try down then right, if "before", try up then
+' left; the horizontal choice wins; a chaser keeps its last direction when
+' it finds nothing free), a chaser catches the worker when its direction
+' points at him, 3 lives (+1 a level), the clock (60 units, one unit
+' every HT+1 passes, HT from 4 down to 1), the high score.
+'
+' Liberties: the worker glides a cell in 8 frames; the chasers move all
+' together, a cell in 16 frames at level 1, a little faster each level up
+' to 12 frames from level 5 (in the BASIC they stepped as often as the
+' player, about 5 cells a second measured in jsc64, and a still player
+' lost his three lives in 6 s); the clock unit is (HT+1)*12 frames (60 s
+' a level at first, as measured: about 5 BASIC passes a second); each chaser remembers its own last direction (the
+' BASIC shared one variable between all four); the time bonus is the time
+' left x 10 (the listing set the time to 60 just before adding it, always
+' 600); after a catch the worker and the chasers go back to their start
+' cells and those cells are cleared (in the BASIC nothing moved, so the
+' same chaser could catch him again at once); at a new level the chasers
+' go back to their starts too; the 26 x 18 field holds 45 blocks at first
+' (the C64's 38 x 18 had 70) and gets 7 more a level (up to 180 blocks).
+' Everything else waits while a block slides or a chaser freezes, as in
+' the BASIC's loops.
+'
+' Controls: either controller; the stick walks (hold to keep walking) and
+' pushes. A button starts from the title.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects
+' after; the title tune is played once. `set sprite count` is always
+' given. Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TFloor = 128
+const TIce = 129
+const TCrack = 130
+const TWall = 131
+const TPipe = 132
+const TLife = 133
+const TClock = 134
+const SHoodr = 0
+const SHoodl = 4
+const SBodyr0 = 8
+const SBodyr1 = 12
+const SBodyl0 = 16
+const SBodyl1 = 20
+const SSpark0 = 24
+const SSpark1 = 28
+const SFrozen = 32
+const SBlock = 36
+const SPuff = 40
+const NTiles8 = 56
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndCrush = 4
+const SndSlide = 5
+const SndFreeze = 6
+const SndCaught = 7
+const SndClear = 8
+const SndTally = 9
+const SndStart = 10
+const SndOver = 11
+const NSpr = 7
+const FieldL = 3
+const FieldR = 28
+const FieldT = 4
+const FieldB = 21
+const MidC = 15
+const MidR = 12
+const StepN = 8
+const CrushN = 12
+const FreezeN = 48
+const CaughtN = 60
+const BannerN = 120
+const MaxBlocks = 180
+const StartBlocks = 45
+const MoreBlocks = 7
+
+record Foe:
+  u8 C
+  u8 R
+  u8 D
+  u8 M
+end record
+
+' the chasers' start cells (the original's: left, right, below, above)
+data FoeC bytes
+  5, 26, 15, 15
+end data
+data FoeR bytes
+  12, 12, 18, 5
+end data
+' chaser speed (1/256 pixel a frame) by level
+data RateT bytes
+  128, 140, 152, 164, 171, 171, 171
+end data
+
+Foe Foes[4]
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Lv = 1
+u8 Lives = 3
+u8 Eg = 0
+u8 Nb = 0
+u8 Tm = 60
+u8 Tt = 0
+u8 Tu = 60
+u8 Ht = 4
+u8 Over = 0
+u8 Mode = 0
+u8 Bt = 0
+' the worker: cell, direction of the last step (0 up 1 right 2 down
+' 3 left), facing (0 right 1 left), frames left of the step
+u8 Pc = MidC
+u8 Pr = MidR
+u8 Pd = 1
+u8 Pf = 0
+u8 Ph = 0
+' the chasers' common step: offset (0-8 pixels), accumulator, rate
+u8 Eo = 8
+u8 Eacc = 0
+u8 Erate = 128
+' the sliding block: cell, direction, pixel offset; the frozen chaser
+u8 Bc = 0
+u8 Br = 0
+u8 Bd = 0
+u8 Bo = 0
+u8 Fe = 0
+' a neighbour cell (Neigh)
+u8 Nc = 0
+u8 Nr = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Fi = 0
+u8 Ai = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 D = 0
+u8 G = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table FzSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+
+new_game:
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message, then back to the title on a press
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  mute all
+  print at 9,11, "            "
+  print at 9,12, "  GAME OVER "
+  print at 9,13, "            "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' rules
+
+' 1 when a block or a chaser may enter cell Qc,Qr: floor, no chaser, not
+' the worker
+function Free(u8 Qc, u8 Qr) as u8
+  u8 Ok
+  u8 Q
+  Ok = 0
+  Q = get char at Qc,Qr
+  if Q = TFloor then Ok = 1
+  if Qc = Pc then
+    if Qr = Pr then Ok = 0
+  end if
+  if FoeAt(Qc, Qr) < 4 then Ok = 0
+  return Ok
+
+' the chaser on cell Qc,Qr (0-3), 4 when none
+function FoeAt(u8 Qc, u8 Qr) as u8
+  u8 Who
+  u8 Q
+  Who = 4
+  for Q = 0 to 3
+    if Foes[Q].C = Qc then
+      if Foes[Q].R = Qr then Who = Q
+    end if
+  next
+  return Who
+
+' 1 when the worker is "after" chaser Q in screen order, 2 "before"
+function Ahead(u8 Q) as u8
+  u8 A
+  u8 Fc
+  u8 Fr
+  Fc = Foes[Q].C
+  Fr = Foes[Q].R
+  A = 0
+  if Pr > Fr then
+    A = 1
+  elseif Pr < Fr then
+    A = 2
+  elseif Pc > Fc then
+    A = 1
+  elseif Pc < Fc then
+    A = 2
+  end if
+  return A
+
+' the neighbour of cell Qc,Qr in direction Qd -> Nc,Nr
+sub Neigh(u8 Qc, u8 Qr, u8 Qd):
+  Nc = Qc
+  Nr = Qr
+  select case Qd
+  case 0
+    Nr = Qr - 1
+  case 1
+    Nc = Qc + 1
+  case 2
+    Nr = Qr + 1
+  case 3
+    Nc = Qc - 1
+  end select
+  return
+
+sub PlayStep:
+  select case Mode
+  case 0
+    Normal
+  case 1
+    ' a block being crushed
+    dec Bt
+    if Bt = 0 then
+      put char TFloor at Bc,Br
+      Mode = 0
+    end if
+  case 2
+    SlideStep
+  case 3
+    ' a chaser frozen
+    dec Bt
+    if Bt = 0 then
+      Mode = 0
+      if Eg >= 4 then LevelUp
+    end if
+  case 4
+    ' the worker caught
+    dec Bt
+    if Bt = 0 then AfterCatch
+  case 5
+    ' the level banner in the top lines
+    dec Bt
+    if Bt = 0 then
+      Mode = 0
+      ShowHud
+    end if
+  end select
+  return
+end sub
+
+sub Normal:
+  if Ph > 0 then dec Ph
+  if Ph = 0 then TryMove
+  if Mode <> 0 then return
+  ' the chasers: a pixel each time the accumulator carries
+  W16 = Eacc + Erate
+  Eacc = W16 & 255
+  if W16 > 255 then
+    if Eo < 8 then inc Eo
+  end if
+  if Eo >= 8 then
+    Chase
+    if Mode <> 0 then return
+  end if
+  ' the clock: one unit every Tu frames
+  inc Tt
+  if Tt >= Tu then
+    Tt = 0
+    if Tm = 0 then
+      Over = 1
+      return
+    end if
+    dec Tm
+    ShowTime
+  end if
+  return
+end sub
+
+' the stick, in the original's order: down, left, up, right
+sub TryMove:
+  K = J1 | J2
+  D = 255
+  if K & 2 then
+    D = 2
+  elseif K & 4 then
+    D = 3
+  elseif K & 1 then
+    D = 0
+  elseif K & 8 then
+    D = 1
+  end if
+  if D = 255 then return
+  if D = 1 then Pf = 0
+  if D = 3 then Pf = 1
+  Neigh(Pc, Pr, D)
+  if FoeAt(Nc, Nr) < 4 then
+    Caught
+    return
+  end if
+  T = get char at Nc,Nr
+  if T = TFloor then
+    Pc = Nc
+    Pr = Nr
+    Pd = D
+    Ph = StepN
+    play sound SndStep
+    return
+  end if
+  if T <> TIce then return
+  Bc = Nc
+  Br = Nr
+  Bd = D
+  Neigh(Bc, Br, Bd)
+  if Free(Nc, Nr) = 1 then
+    ' the block slides
+    put char TFloor at Bc,Br
+    Bo = 0
+    Mode = 2
+    play sound SndSlide
+  else
+    ' crushed against a wall, a block or a chaser
+    put char TCrack at Bc,Br
+    Bt = CrushN
+    Mode = 1
+    dec Nb
+    Sc += 10
+    ShowScore
+    play sound SndCrush
+  end if
+  return
+end sub
+
+' the block slides 4 pixels a frame; at each cell it looks at the next
+sub SlideStep:
+  Bo = Bo + 4
+  if Bo < 8 then return
+  Bo = 0
+  Neigh(Bc, Br, Bd)
+  Bc = Nc
+  Br = Nr
+  Neigh(Bc, Br, Bd)
+  if Free(Nc, Nr) = 1 then return
+  Fe = FoeAt(Nc, Nr)
+  if Fe < 4 then
+    ' a chaser frozen: the block is spent
+    dec Nb
+    inc Eg
+    Sc += 1000
+    ShowScore
+    ShowEg
+    Bt = FreezeN
+    Mode = 3
+    play sound SndFreeze
+  else
+    put char TIce at Bc,Br
+    Mode = 0
+  end if
+  return
+end sub
+
+' every chaser picks its step (the original's rule)
+sub Chase:
+  Eo = 0
+  for Fi = 0 to 3
+    ChaseOne
+    if Mode <> 0 then return
+  next
+  return
+end sub
+
+sub ChaseOne:
+  C = Foes[Fi].C
+  R = Foes[Fi].R
+  G = Ahead(Fi)
+  Foes[Fi].M = 0
+  if G = 1 then
+    if Free(C, R + 1) = 1 then Foes[Fi].D = 2
+  else
+    if Free(C, R - 1) = 1 then Foes[Fi].D = 0
+  end if
+  if G = 1 then
+    if Free(C + 1, R) = 1 then Foes[Fi].D = 1
+  else
+    if Free(C - 1, R) = 1 then Foes[Fi].D = 3
+  end if
+  V = Foes[Fi].D
+  if V > 3 then return
+  Neigh(C, R, V)
+  if Nc = Pc then
+    if Nr = Pr then
+      Caught
+      return
+    end if
+  end if
+  if Free(Nc, Nr) = 1 then
+    Foes[Fi].C = Nc
+    Foes[Fi].R = Nr
+    Foes[Fi].M = 1
+  end if
+  return
+end sub
+
+sub Caught:
+  Mode = 4
+  Bt = CaughtN
+  play sound SndCaught
+  return
+end sub
+
+sub AfterCatch:
+  dec Lives
+  ShowLives
+  if Lives = 0 then
+    Over = 1
+    return
+  end if
+  Mode = 0
+  ResetPlaces
+  return
+end sub
+
+' four freezes: bonus, next level
+sub LevelUp:
+  NumU = Nb
+  NumU = NumU * 25
+  V = Tm
+  W16 = V * 10
+  NumU = NumU + W16
+  for Ri = 1 to 200
+    if Ri <= Nb then Sc += 25
+  next
+  for Ri = 1 to 60
+    if Ri <= Tm then Sc += 10
+  next
+  inc Lv
+  if Lives < 9 then inc Lives
+  if Ht > 1 then dec Ht
+  V = Ht + 1
+  Tu = V * 12
+  SetRate
+  Eg = 0
+  Tm = 60
+  Tt = 0
+  ResetPlaces
+  AddBlocks(MoreBlocks)
+  ' the banner in the HUD lines
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,2
+  print at 3,1, "LEVEL CLEARED!"
+  print at 3,2, "BONUS"
+  print at 9,2, digits$(NumU, 5)
+  Mode = 5
+  Bt = BannerN
+  play sound SndClear
+  return
+end sub
+
+sub SetRate:
+  V = Lv - 1
+  if V > 6 then V = 6
+  Erate = RateT[V]
+  return
+end sub
+
+' the worker in the middle, the chasers on their start cells (cleared)
+sub ResetPlaces:
+  Pc = MidC
+  Pr = MidR
+  Ph = 0
+  Pd = 1
+  ClearCell(Pc, Pr)
+  for Ai = 0 to 3
+    Foes[Ai].C = FoeC[Ai]
+    Foes[Ai].R = FoeR[Ai]
+    Foes[Ai].D = 255
+    Foes[Ai].M = 0
+    ClearCell(Foes[Ai].C, Foes[Ai].R)
+  next
+  Eo = 8
+  Eacc = 0
+  return
+end sub
+
+sub ClearCell(u8 Qc, u8 Qr):
+  u8 Q
+  Q = get char at Qc,Qr
+  if Q = TIce then
+    put char TFloor at Qc,Qr
+    dec Nb
+  end if
+  return
+
+' Count blocks on free floor cells (not a start cell, not a chaser, not
+' the worker); a few tries for each
+sub AddBlocks(u8 Want):
+  u8 Got
+  u8 Tries
+  u8 Qc
+  u8 Qr
+  Got = 0
+  Tries = 0
+  while Got < Want
+    if Nb >= MaxBlocks then exit while
+    if Tries >= 250 then exit while
+    inc Tries
+    Rand
+    Qc = Rs mod 26
+    Qc = Qc + FieldL
+    Rand
+    Qr = Rs mod 18
+    Qr = Qr + FieldT
+    if Free(Qc, Qr) = 1 then
+      if StartCell(Qc, Qr) = 0 then
+        put char TIce at Qc,Qr
+        inc Nb
+        inc Got
+      end if
+    end if
+  end while
+  return
+
+function StartCell(u8 Qc, u8 Qr) as u8
+  u8 S
+  u8 Q
+  S = 0
+  if Qc = MidC then
+    if Qr = MidR then S = 1
+  end if
+  for Q = 0 to 3
+    if FoeC[Q] = Qc then
+      if FoeR[Q] = Qr then S = 1
+    end if
+  next
+  return S
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites 0-1 the worker (hood, body), 2-5 the chasers, 6 the sliding block
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+  else
+    X = Pc << 3
+    Y = Pr << 3
+    select case Pd
+    case 0
+      Y = Y + Ph
+    case 1
+      X = X - Ph
+    case 2
+      Y = Y - Ph
+    case 3
+      X = X + Ph
+    end select
+    Y = Y - 1
+    if Mode = 4 then
+      V = Tick & 8
+      if V = 0 then
+        set sprite 0 to Y,X,SPuff,15
+      else
+        set sprite 0 to Y,X,SPuff,11
+      end if
+      set sprite 1 to 192,0,0,0
+    else
+      V = Ph & 4
+      if Pf = 0 then
+        K = SBodyr0
+        if V > 0 then K = SBodyr1
+        set sprite 0 to Y,X,SHoodr,15
+      else
+        K = SBodyl0
+        if V > 0 then K = SBodyl1
+        set sprite 0 to Y,X,SHoodl,15
+      end if
+      set sprite 1 to Y,X,K,9
+    end if
+  end if
+  for Ai = 0 to 3
+    DrawFoe
+  next
+  if Mode = 2 then
+    X = Bc << 3
+    Y = Br << 3
+    select case Bd
+    case 0
+      Y = Y - Bo
+    case 1
+      X = X + Bo
+    case 2
+      Y = Y + Bo
+    case 3
+      X = X - Bo
+    end select
+    Y = Y - 1
+    set sprite 6 to Y,X,SBlock,7
+  else
+    set sprite 6 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawFoe:
+  J = Ai + 2
+  X = Foes[Ai].C << 3
+  Y = Foes[Ai].R << 3
+  if Foes[Ai].M = 1 then
+    V = 8 - Eo
+    select case Foes[Ai].D
+    case 0
+      Y = Y + V
+    case 1
+      X = X - V
+    case 2
+      Y = Y - V
+    case 3
+      X = X + V
+    end select
+  end if
+  Y = Y - 1
+  if Mode = 3 then
+    if Ai = Fe then
+      V = Bt / 12
+      V = V & 1
+      if V = 0 then
+        set sprite J to Y,X,SFrozen,7
+      else
+        set sprite J to Y,X,SFrozen,15
+      end if
+      return
+    end if
+  end if
+  V = Tick >> 3
+  V = V + Ai
+  V = V & 1
+  K = SSpark0
+  if V = 1 then K = SSpark1
+  set sprite J to Y,X,K,10
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,2
+  print at 2,1, "SCORE"
+  print at 18,1, "HI"
+  print Hi at 21,1
+  ShowScore
+  print at 2,2, "LEVEL"
+  NumU = Lv
+  print at 8,2, digits$(NumU, 2)
+  put char TClock at 11,2
+  ShowTime
+  put char TLife at 15,2
+  ShowLives
+  print at 19,2, "FROZEN"
+  ShowEg
+  return
+end sub
+
+sub ShowScore:
+  if Mode = 5 then return
+  print Sc at 8,1
+  return
+end sub
+
+sub ShowTime:
+  if Mode = 5 then return
+  NumU = Tm
+  print at 12,2, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLives:
+  if Mode = 5 then return
+  NumU = Lives
+  print at 16,2, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowEg:
+  if Mode = 5 then return
+  NumU = Eg
+  print at 26,2, digits$(NumU, 1)
+  print at 27,2, "/4"
+  return
+end sub
+
+' the walls round the floor (rows 3-22, columns 2-29)
+sub DrawField:
+  fill TWall count 28 at 2,3
+  fill TWall count 28 at 2,22
+  for Ri = FieldT to FieldB
+    put char TWall at 2,Ri
+    fill TFloor count 26 at 3,Ri
+    put char TWall at 29,Ri
+  next
+  return
+end sub
+
+sub NewGame:
+  Sc = 0
+  Lv = 1
+  Lives = 3
+  Eg = 0
+  Nb = 0
+  Tm = 60
+  Tt = 0
+  Ht = 4
+  Tu = 60
+  Mode = 0
+  Over = 0
+  TitleOn = 0
+  SetRate
+  NewScreen
+  DrawField
+  ResetPlaces
+  AddBlocks(StartBlocks)
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the factory, sparks wandering, the tune once
+sub TitlePage:
+  NewScreen
+  DrawField
+  for Ri = 7 to 16
+    fill 32 count 22 at 5,Ri
+  next
+  print at 8,8, "THE FREEZE FACTORY"
+  print at 7,10, "COMPUTE!'S GAZETTE"
+  print at 11,11, "JUNE 1985"
+  print at 8,14, "PRESS THE BUTTON"
+  print at 2,1, "HI"
+  print Hi at 5,1
+  Lv = 1
+  SetRate
+  Mode = 0
+  Nb = 0
+  Pc = MidC
+  Pr = 20
+  ResetPlaces
+  Pr = 20
+  for Ai = 0 to 3
+    Foes[Ai].R = FieldT
+    if Ai > 1 then Foes[Ai].R = FieldB
+  next
+  Foes[0].C = 4
+  Foes[1].C = 27
+  Foes[2].C = 4
+  Foes[3].C = 27
+  TitleOn = 1
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  TitleSparks
+  DrawSprites
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+' four sparks run round the walls of the title
+sub TitleSparks:
+  Eo = Eo + 1
+  if Eo < 8 then return
+  Eo = 0
+  for Ai = 0 to 3
+    C = Foes[Ai].C
+    R = Foes[Ai].R
+    if R = FieldT then
+      if C < 27 then
+        D = 1
+      else
+        D = 2
+      end if
+    elseif R = FieldB then
+      if C > 4 then
+        D = 3
+      else
+        D = 0
+      end if
+    elseif C = 4 then
+      D = 0
+    else
+      D = 2
+    end if
+    Neigh(C, R, D)
+    Foes[Ai].C = Nc
+    Foes[Ai].R = Nr
+    Foes[Ai].D = D
+    Foes[Ai].M = 1
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 6,2, "THE FREEZE FACTORY"
+  print at 2,5, "BASED ON THE FREEZE FACTORY"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "JUNE 1985 (COMMODORE 64"
+  print at 2,8, "AND VIC-20)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: COLD STORAGE"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$01,$00
+  $81,$C0,$A0,$80,$01,$03,$07,$81
+  $91,$D0,$49,$91,$58,$22,$8C,$A5
+  $01,$44,$01,$01,$01,$44,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+  $38,$44,$92,$9A,$82,$44,$38,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$14,$04,$04,$14,$04
+  $4F,$F7,$F7,$F7,$57,$57,$57,$45
+  $4F,$F7,$47,$47,$47,$47,$47,$45
+  $1E,$FE,$1E,$1E,$1E,$FE,$1E,$01
+  $01,$0E,$0F,$0E,$0E,$01,$04,$04
+  $01,$19,$19,$19,$19,$91,$91,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$01
+end data
+data SpritePat bytes
+  $38,$7C,$68,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1C,$3E,$16,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$7C,$BA,$28,$6C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$7C,$7A,$30,$38,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$3E,$5D,$14,$36,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$3E,$5E,$0C,$1C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$34,$78,$FC,$7C,$BD,$30,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $08,$58,$3C,$3F,$3E,$BD,$0C,$08,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$81,$A5,$99,$99,$A5,$81,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7E,$FF,$DF,$FF,$FF,$FF,$FF,$7E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$EE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+FzStep:
+    db $40,$7F,$50,$01,$40,$A9,$70,$01,$50
+FzCrush:
+    db $00,$00,$14,$02,$00,$00,$25,$03,$00,$00,$46,$04,$10
+FzSlide:
+    db $40,$47,$30,$02,$40,$40,$40,$02,$40,$39,$50,$02,$50
+FzFreeze:
+    db $40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$10,$04,$40,$35,$20,$04,$40,$47,$20,$0C,$50
+FzCaught:
+    db $00,$00,$03,$04,$00,$00,$14,$06,$00,$00,$35,$0A,$00,$00,$56,$10,$10
+FzClear:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$14,$50
+FzTally:
+    db $40,$55,$30,$02,$50
+FzStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+FzOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+
+FzSoundTable:
+    dw FzTuneMel,$702B
+    dw FzTuneBass,$7035
+    dw FzStep,$7049
+    dw FzCrush,$703F
+    dw FzSlide,$7049
+    dw FzFreeze,$7049
+    dw FzCaught,$703F
+    dw FzClear,$7049
+    dw FzTally,$7049
+    dw FzStart,$7049
+    dw FzOver,$7049
+; Cold Storage (original)
+; Tiny Sound, 8 frames per step
+FzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$23,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$01
+    db $01,$01,$01,$1A,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$21,$01,$23
+    db $01,$1F,$01,$1C,$01,$1F,$01,$1E,$01,$1A,$01,$17,$01,$01,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+FzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $0E,$01,$12,$01,$10,$01,$17,$01,$10,$01,$17,$01,$06,$01,$0D,$01
+    db $06,$01,$0A,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$09,$01,$10,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

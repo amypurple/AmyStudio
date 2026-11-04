@@ -1,0 +1,1182 @@
+cartridge "TRAP/COMPUTE!'S GAZETTE/1988"
+
+' TRAP
+' A ColecoVision game based on "Trap" by Eric Haines, COMPUTE!'s Gazette
+' May 1988 pp. 26-27 (Commodore 64, machine language, SYS 2061). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (from the article
+' and a disassembly of the machine code, orig/trap.dis, timed in jsc64),
+' rebuilt for the ColecoVision: tiled 3-D blocks over a twinkling
+' starfield, a sphere sprite that bounces in smooth arcs with a shadow,
+' sound effects and an original title tune.
+'
+' The game: sixteen coloured blocks (4 x 4) hang in space. You are the
+' blinking flat square; the sphere bounces from block to block, on its own,
+' up, down, left or right, never off the grid. You leave a snake-like
+' trail of four discoloured blocks (your own block and the three behind
+' you); the sphere cannot take off toward a discoloured block (if it is
+' already in the air it still lands where it was going), and you cannot
+' move onto your trail. Trap the sphere where all four sides are
+' discoloured blocks or the void: one point for every unit left on the time
+' bar, then the next screen, in new colours. Every third screen the sphere
+' is faster, up to a limit. When the time bar runs out you take a shock
+' (two are shown at the top); the third ends the game.
+'
+' From the original (numbers from the machine code): the 4 x 4 grid, the
+' start (square bottom right with its trail along the bottom row, sphere
+' second row, second column), the trail of four that only moves when you
+' do (so a square boxed in by its own trail is helpless until time runs
+' out), the sphere's random direction among the free sides, the trap test
+' made when the sphere is about to take off, 280 time units at one unit
+' per 42 ticks (POKE 3258), 16 ticks a frame (the main delay of 170,
+' POKE 2910, measured in jsc64: a sphere hop of 560 ticks = 35 frames), a
+' hop of 56 steps at one step per 10 ticks at first, one tick less every
+' three screens down to 3 (the 2 of POKE 4211), the square's move of 32
+' steps at 9 ticks, a point per time unit left, seven colour sets, two
+' shocks survived, the high score.
+'
+' Liberties: the grid is drawn 5 tiles across a block (the C64's 7) to fit
+' 28 columns; the sphere flies in a smooth arc with a shadow (the C64's path
+' was three straight legs); a diagonal on the stick takes its up/down part,
+' or its left/right part when that way is blocked (the C64 ignored
+' diagonals); the trail blocks are dithered as well as recoloured; the
+' square blinks at 2 Hz and the stars twinkle slowly (the C64's star colours
+' changed about ten times a second); the shock and the end pulse at 2.5 Hz
+' (the C64 flashed faster); no RUN/STOP pause (joystick only); a press
+' after the end goes back to the title.
+'
+' Controls: either controller; the stick moves the square one block. On
+' the title, up and down choose, a button starts.
+'
+' House rules: text and tiles in columns 2-29, rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI; screens drawn with the
+' NMI off, display off. Music first in the sound table, effects after; the
+' title tune is played once. `set sprite count` is always given. Nothing
+' flashes faster than 3 Hz.
+
+const TBk00 = 128
+const TBk01 = 129
+const TBk02 = 130
+const TBk03 = 131
+const TBk04 = 132
+const TBk10 = 133
+const TBk11 = 134
+const TBk12 = 135
+const TBk13 = 136
+const TBk14 = 137
+const TBk20 = 138
+const TBk21 = 139
+const TBk22 = 140
+const TBk23 = 141
+const TBk24 = 142
+const TTr00 = 143
+const TTr01 = 144
+const TTr02 = 145
+const TTr03 = 146
+const TTr04 = 147
+const TTr10 = 148
+const TTr11 = 149
+const TTr12 = 150
+const TTr13 = 151
+const TTr14 = 152
+const TTr20 = 153
+const TTr21 = 154
+const TTr22 = 155
+const TTr23 = 156
+const TTr24 = 157
+const TStar0 = 158
+const TStar1 = 159
+const TStar2 = 160
+const TBar0 = 161
+const TBar1 = 162
+const TBar2 = 163
+const TBar3 = 164
+const TBar4 = 165
+const TBar5 = 166
+const TBar6 = 167
+const TBar7 = 168
+const TBar8 = 169
+const TBolt = 170
+const TBig = 171
+const SSquare = 0
+const SBallhl = 4
+const SBall = 8
+const SShadow = 12
+const NTiles8 = 352
+const SprBytes = 128
+const LogoW = 23
+const LogoX = 4
+const NPal = 9
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHop = 3
+const SndLand = 4
+const SndSlide = 5
+const SndTrapped = 6
+const SndCount = 7
+const SndShock = 8
+const SndMourn = 9
+const SndStart = 10
+const NSpr = 4
+' ticks of the original's main loop per video frame (delay 170)
+const TPF = 16
+' the time bar: units, ticks per unit (POKE 3258: the C64 used 42; 63
+' gives a human 18 s a screen instead of 12)
+const TimeFull = 280
+const TimeRate = 63
+' the square: 32 steps a move, one step every 9 ticks
+const PSteps = 32
+const PStep = 9
+' the sphere: 56 steps a hop, first one step every 10 ticks; the limit of
+' POKE 4211 (the C64's 2 let it reach 3 ticks a step, a hop in 11 frames,
+' faster than the square can move; 7 stops it at 8, a hop in 28 frames)
+const BSteps = 56
+const BSpeed0 = 10
+const BallLimit = 7
+' the grid on screen: block (row 1, column 1) stamp corner, in tiles
+const GridX = 3
+const GridY = 5
+const StartP = 28
+const StartB = 14
+
+data TilePat bytes
+  $01,$01,$03,$03,$07,$07,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$07,$07,$F0,$F0
+  $E0,$E0,$C0,$C0,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$E0,$C0,$C0,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$07,$07,$0E,$F0
+  $00,$00,$AA,$2A,$AA,$AA,$AA,$AA
+  $00,$00,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$00,$AA,$AA,$AA,$AA,$AA,$AA
+  $01,$01,$43,$A3,$B8,$87,$F0,$70
+  $E1,$E2,$C5,$C2,$85,$8A,$00,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$00,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$00,$00
+  $AA,$AA,$54,$AA,$54,$A8,$00,$00
+  $E0,$E0,$C0,$C0,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$08,$1C,$08,$00,$00,$00
+  $00,$20,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$18,$30,$83,$18,$30,$60,$80
+  $E0,$C0,$81,$03,$03,$03,$03,$00
+end data
+data TileCol bytes
+  $F1,$F1,$F1,$F1,$F1,$F1,$1F,$1F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $1F,$1F,$1F,$1F,$1F,$1F,$F1,$F1
+  $1F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F1,$F1,$F1,$F1,$F1,$F1,$01,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$1F
+  $0F,$0F,$F1,$1F,$F1,$1F,$F1,$1F
+  $0F,$0F,$F1,$1F,$F1,$1F,$F1,$1F
+  $0F,$0F,$F1,$1F,$F1,$1F,$F1,$1F
+  $1F,$1F,$1F,$1F,$F1,$1F,$F1,$F1
+  $1F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $F1,$1F,$F1,$1F,$F1,$1F,$0F,$0F
+  $F1,$1F,$F1,$1F,$F1,$1F,$0F,$0F
+  $F1,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $F1,$F1,$F1,$F1,$F1,$F1,$01,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$F1,$F1,$F1,$01,$01,$01
+  $01,$F1,$01,$01,$01,$F1,$01,$01
+  $01,$04,$04,$04,$04,$04,$04,$01
+  $01,$B4,$B4,$B4,$B4,$B4,$B4,$01
+  $01,$B4,$B4,$B4,$B4,$B4,$B4,$01
+  $01,$B4,$B4,$B4,$B4,$B4,$B4,$01
+  $01,$B4,$B4,$B4,$B4,$B4,$B4,$01
+  $01,$4B,$4B,$4B,$4B,$4B,$4B,$01
+  $01,$4B,$4B,$4B,$4B,$4B,$4B,$01
+  $01,$4B,$4B,$4B,$4B,$4B,$4B,$01
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $B1,$B1,$B1,$1B,$B1,$B1,$B1,$B1
+  $15,$15,$15,$15,$14,$14,$14,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$01,$03,$07,$0F,$1F,$1F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FC,$FC,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$0E,$1F,$1F,$0E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$0F,$1F,$31,$60,$60,$F1,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F,$03
+  $C0,$F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$C0,$00,$00,$00,$00
+end data
+data PalCol bytes
+  81, 81, 81, 81, 81, 81, 21, 21, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
+  5, 5, 5, 5, 5, 5, 5, 5, 21, 21, 21, 21, 21, 21, 81, 81, 21, 21, 21, 21, 21, 21, 5, 5
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
+  81, 81, 81, 81, 81, 81, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+  81, 81, 81, 81, 81, 81, 81, 21, 5, 5, 81, 21, 81, 21, 81, 21, 5, 5, 81, 21, 81, 21, 81, 21
+  5, 5, 81, 21, 81, 21, 81, 21, 21, 21, 21, 21, 81, 21, 81, 81, 21, 21, 21, 21, 21, 21, 5, 5
+  81, 21, 81, 21, 81, 21, 5, 5, 81, 21, 81, 21, 81, 21, 5, 5, 81, 21, 21, 21, 21, 21, 5, 5
+  81, 81, 81, 81, 81, 81, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+  145, 145, 145, 145, 145, 145, 25, 25, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9
+  9, 9, 9, 9, 9, 9, 9, 9, 25, 25, 25, 25, 25, 25, 145, 145, 25, 25, 25, 25, 25, 25, 9, 9
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9
+  145, 145, 145, 145, 145, 145, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1
+  145, 145, 145, 145, 145, 145, 145, 25, 9, 9, 145, 25, 145, 25, 145, 25, 9, 9, 145, 25, 145, 25, 145, 25
+  9, 9, 145, 25, 145, 25, 145, 25, 25, 25, 25, 25, 145, 25, 145, 145, 25, 25, 25, 25, 25, 25, 9, 9
+  145, 25, 145, 25, 145, 25, 9, 9, 145, 25, 145, 25, 145, 25, 9, 9, 145, 25, 25, 25, 25, 25, 9, 9
+  145, 145, 145, 145, 145, 145, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1
+  177, 177, 177, 177, 177, 177, 27, 27, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11
+  11, 11, 11, 11, 11, 11, 11, 11, 27, 27, 27, 27, 27, 27, 177, 177, 27, 27, 27, 27, 27, 27, 11, 11
+  11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11
+  177, 177, 177, 177, 177, 177, 1, 1, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10
+  10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1
+  177, 177, 177, 177, 177, 177, 177, 27, 11, 11, 177, 27, 177, 27, 177, 27, 11, 11, 177, 27, 177, 27, 177, 27
+  11, 11, 177, 27, 177, 27, 177, 27, 27, 27, 27, 27, 177, 27, 177, 177, 27, 27, 27, 27, 27, 27, 11, 11
+  177, 27, 177, 27, 177, 27, 11, 11, 177, 27, 177, 27, 177, 27, 11, 11, 177, 27, 27, 27, 27, 27, 11, 11
+  177, 177, 177, 177, 177, 177, 1, 1, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10
+  10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1
+  49, 49, 49, 49, 49, 49, 19, 19, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+  3, 3, 3, 3, 3, 3, 3, 3, 19, 19, 19, 19, 19, 19, 49, 49, 19, 19, 19, 19, 19, 19, 3, 3
+  3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+  49, 49, 49, 49, 49, 49, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1
+  49, 49, 49, 49, 49, 49, 49, 19, 3, 3, 49, 19, 49, 19, 49, 19, 3, 3, 49, 19, 49, 19, 49, 19
+  3, 3, 49, 19, 49, 19, 49, 19, 19, 19, 19, 19, 49, 19, 49, 49, 19, 19, 19, 19, 19, 19, 3, 3
+  49, 19, 49, 19, 49, 19, 3, 3, 49, 19, 49, 19, 49, 19, 3, 3, 49, 19, 19, 19, 19, 19, 3, 3
+  49, 49, 49, 49, 49, 49, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1
+  113, 113, 113, 113, 113, 113, 23, 23, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+  7, 7, 7, 7, 7, 7, 7, 7, 23, 23, 23, 23, 23, 23, 113, 113, 23, 23, 23, 23, 23, 23, 7, 7
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+  113, 113, 113, 113, 113, 113, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+  113, 113, 113, 113, 113, 113, 113, 23, 7, 7, 113, 23, 113, 23, 113, 23, 7, 7, 113, 23, 113, 23, 113, 23
+  7, 7, 113, 23, 113, 23, 113, 23, 23, 23, 23, 23, 113, 23, 113, 113, 23, 23, 23, 23, 23, 23, 7, 7
+  113, 23, 113, 23, 113, 23, 7, 7, 113, 23, 113, 23, 113, 23, 7, 7, 113, 23, 23, 23, 23, 23, 7, 7
+  113, 113, 113, 113, 113, 113, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+  209, 209, 209, 209, 209, 209, 29, 29, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13
+  13, 13, 13, 13, 13, 13, 13, 13, 29, 29, 29, 29, 29, 29, 209, 209, 29, 29, 29, 29, 29, 29, 13, 13
+  13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13
+  209, 209, 209, 209, 209, 209, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1
+  209, 209, 209, 209, 209, 209, 209, 29, 13, 13, 209, 29, 209, 29, 209, 29, 13, 13, 209, 29, 209, 29, 209, 29
+  13, 13, 209, 29, 209, 29, 209, 29, 29, 29, 29, 29, 209, 29, 209, 209, 29, 29, 29, 29, 29, 29, 13, 13
+  209, 29, 209, 29, 209, 29, 13, 13, 209, 29, 209, 29, 209, 29, 13, 13, 209, 29, 29, 29, 29, 29, 13, 13
+  209, 209, 209, 209, 209, 209, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1
+  129, 129, 129, 129, 129, 129, 24, 24, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8
+  8, 8, 8, 8, 8, 8, 8, 8, 24, 24, 24, 24, 24, 24, 129, 129, 24, 24, 24, 24, 24, 24, 8, 8
+  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8
+  129, 129, 129, 129, 129, 129, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1
+  129, 129, 129, 129, 129, 129, 129, 24, 8, 8, 129, 24, 129, 24, 129, 24, 8, 8, 129, 24, 129, 24, 129, 24
+  8, 8, 129, 24, 129, 24, 129, 24, 24, 24, 24, 24, 129, 24, 129, 129, 24, 24, 24, 24, 24, 24, 8, 8
+  129, 24, 129, 24, 129, 24, 8, 8, 129, 24, 129, 24, 129, 24, 8, 8, 129, 24, 24, 24, 24, 24, 8, 8
+  129, 129, 129, 129, 129, 129, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1
+  241, 241, 241, 241, 241, 241, 31, 31, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15
+  15, 15, 15, 15, 15, 15, 15, 15, 31, 31, 31, 31, 31, 31, 241, 241, 31, 31, 31, 31, 31, 31, 15, 15
+  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15
+  241, 241, 241, 241, 241, 241, 1, 1, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14
+  14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 1, 1, 1, 1, 1, 1, 1, 1
+  241, 241, 241, 241, 241, 241, 241, 31, 15, 15, 241, 31, 241, 31, 241, 31, 15, 15, 241, 31, 241, 31, 241, 31
+  15, 15, 241, 31, 241, 31, 241, 31, 31, 31, 31, 31, 241, 31, 241, 241, 31, 31, 31, 31, 31, 31, 15, 15
+  241, 31, 241, 31, 241, 31, 15, 15, 241, 31, 241, 31, 241, 31, 15, 15, 241, 31, 31, 31, 31, 31, 15, 15
+  241, 241, 241, 241, 241, 241, 1, 1, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14
+  14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 1, 1, 1, 1, 1, 1, 1, 1
+  225, 225, 225, 225, 225, 225, 30, 30, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14
+  14, 14, 14, 14, 14, 14, 14, 14, 30, 30, 30, 30, 30, 30, 225, 225, 30, 30, 30, 30, 30, 30, 14, 14
+  14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14
+  225, 225, 225, 225, 225, 225, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+  225, 225, 225, 225, 225, 225, 225, 30, 14, 14, 225, 30, 225, 30, 225, 30, 14, 14, 225, 30, 225, 30, 225, 30
+  14, 14, 225, 30, 225, 30, 225, 30, 30, 30, 30, 30, 225, 30, 225, 225, 30, 30, 30, 30, 30, 30, 14, 14
+  225, 30, 225, 30, 225, 30, 14, 14, 225, 30, 225, 30, 225, 30, 14, 14, 225, 30, 30, 30, 30, 30, 14, 14
+  225, 225, 225, 225, 225, 225, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1
+end data
+data BlankT bytes
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+end data
+data LogoBits bytes
+  1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0
+  0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1
+  0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0
+  0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0
+  0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0
+end data
+data HopX bytes
+  0, 1, 1, 2, 3, 4, 4, 5, 6, 6, 7, 8, 9, 9, 10, 11, 11, 12, 13, 14, 14, 15, 16, 16, 17, 18, 19, 19, 20, 21, 21, 22, 23, 24, 24, 25, 26, 26, 27, 28, 29, 29, 30, 31, 31, 32, 33, 34, 34, 35, 36, 36, 37, 38, 39, 39, 40
+end data
+data HopVY bytes
+  0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7, 8, 9, 9, 10, 10, 11, 11, 12, 13, 13, 14, 14, 15, 15, 16, 17, 17, 18, 18, 19, 19, 20, 21, 21, 22, 22, 23, 23, 24, 25, 25, 26, 26, 27, 27, 28, 29, 29, 30, 30, 31, 31, 32
+end data
+data HopVX bytes
+  0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 15, 15, 15, 15, 16, 16
+end data
+data HopArc bytes
+  0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 15, 16, 16, 17, 18, 18, 18, 19, 19, 19, 20, 20, 20, 20, 20, 20, 20, 19, 19, 19, 18, 18, 18, 17, 16, 16, 15, 14, 13, 12, 12, 11, 10, 9, 8, 7, 6, 4, 3, 2, 1, 0
+end data
+
+data StarCols bytes
+  $F1, $B1, $71, $E1, $51, $91, $F1, $A1, $E1
+end data
+data TrailStart bytes
+  25, 26, 27, 28
+end data
+
+record Ball:
+  u8 C
+  u8 T
+  u8 D
+  u8 H
+  u8 K
+  u8 Acc
+  u8 Spd
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Hi = 0
+u16 Time = 280
+u16 BarPx = 224
+u8 TAcc = 0
+u8 Lvl = 1
+u8 Lives = 3
+u8 TrapN = 0
+' the grid with its border: 6 x 6, 1 = void, 2 = trail, 0 = a plain block
+u8 Occ[36]
+' the trail, oldest first; TrQ[3] is the square's own block
+u8 TrQ[4]
+Ball Bl
+' the square: cell, target, direction (0 still), steps, ticks
+u8 Pi = 28
+u8 Pt = 28
+u8 Pd = 0
+u8 Ps = 0
+u8 PAcc = 0
+' 0 playing, 2 trapped, 3 out of time
+u8 State = 0
+u8 TitleOn = 0
+u8 Blink = 0
+u8 StarPh = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters
+u8 Ci = 0
+u8 Gx = 0
+u8 Gy = 0
+u8 Pu = 0
+' scratch
+u8 Buf[8]
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if State = 0 then goto play_loop
+  if State = 2 then
+    Trapped
+    goto play_loop
+  end if
+
+  ' out of time: a shock
+  dec Lives
+  Shock
+  if Lives > 0 then
+    StartLevel
+    goto play_loop
+  end if
+
+  ' the third shock: the screen pulses and fades, mourning, the end
+  if Sc > Hi then Hi = Sc
+  ShowHud
+  Mourning
+  print at 9,10, "            "
+  print at 9,11, "  GAME OVER "
+  print at 9,12, "            "
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the grid
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+
+' the block next to cell I in direction D (1 up, 2 down, 3 left, 4 right)
+function Next(u8 I, u8 D) as u8
+  select case D
+  case 1
+    return I - 6
+  case 2
+    return I + 6
+  case 3
+    return I - 1
+  end select
+  return I + 1
+
+' how many sides of cell I are plain blocks
+function FreeSides(u8 I) as u8
+  u8 N = 0
+  u8 D = 0
+  N = 0
+  for D = 1 to 4
+    if Occ[Next(I, D)] = 0 then inc N
+  next
+  return N
+
+' the top face's centre of cell I, in pixels
+function CellX(u8 I) as u8
+  u8 R = 0
+  u8 Q = 0
+  R = I / 6
+  Q = I mod 6
+  return (GridX + (Q - 1) * 5 + (4 - R) * 2) * 8 + 19
+
+function CellY(u8 I) as u8
+  u8 R = 0
+  R = I / 6
+  return (GridY + (R - 1) * 4) * 8 + 8
+
+' one block's 5 x 3 stamp, plain or discoloured (blank tiles skipped)
+sub DrawCell(u8 I):
+  u8 R = 0
+  u8 Q = 0
+  u8 T0 = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 K5 = 0
+  R = I / 6
+  Q = I mod 6
+  Tx = GridX + (Q - 1) * 5 + (4 - R) * 2
+  Ty = GridY + (R - 1) * 4
+  T0 = TBk00
+  if Occ[I] = 2 then T0 = TTr00
+  for K5 = 0 to 14
+    if BlankT[K5] = 0 then
+      R = K5 / 5
+      Q = K5 mod 5
+      put char T0 + K5 at Tx + Q, Ty + R
+    end if
+  next
+  return
+
+sub DrawGrid:
+  for Gy = 1 to 4
+    for Gx = 1 to 4
+      Ci = Gy * 6 + Gx
+      DrawCell(Ci)
+    next
+  next
+  return
+
+' the level's colours: plain blocks in set L, the trail in set L + 1
+sub SetColours(u8 P):
+  W16 = P * 240
+  copy PalCol + W16 count 120 to vram.color + 1024
+  W16 = W16 + 360
+  copy PalCol + W16 count 120 to vram.color + 1144
+  return
+
+' a fresh grid: void border, plain blocks, the trail along the bottom row
+sub ResetGrid:
+  fill array Occ with 1
+  for Gy = 1 to 4
+    for Gx = 1 to 4
+      Occ[Gy * 6 + Gx] = 0
+    next
+  next
+  for Ci = 0 to 3
+    TrQ[Ci] = TrailStart[Ci]
+    K = TrailStart[Ci]
+    Occ[K] = 2
+  next
+  Pi = StartP
+  Pt = StartP
+  Pd = 0
+  Ps = 0
+  PAcc = 0
+  Bl.C = StartB
+  Bl.T = StartB
+  Bl.D = 0
+  Bl.H = 0
+  Bl.K = 0
+  Bl.Acc = 0
+  Time = TimeFull
+  TAcc = 0
+  State = 0
+  return
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayFrame:
+  inc Blink
+  if Blink >= 28 then Blink = 0
+  ' the square
+  if Pd = 0 then
+    PAcc = 0
+    K = J1 | J2
+    StartMove(K & 15)
+  end if
+  if Pd <> 0 then
+    PAcc += TPF
+    while PAcc >= PStep and Pd <> 0
+      PAcc -= PStep
+      inc Ps
+      if Ps = PSteps then Arrive
+    end while
+  end if
+  ' the sphere
+  Bl.Acc += TPF
+  while Bl.Acc >= Bl.Spd and State = 0
+    Bl.Acc -= Bl.Spd
+    BallEvent
+  end while
+  if State <> 0 then return
+  ' the time bar
+  TAcc += TPF
+  if TAcc >= TimeRate then
+    TAcc -= TimeRate
+    dec Time
+    DrawBar
+    if Time = 0 then State = 3
+  end if
+  Twinkle
+  return
+
+' a move begins if the block that way is plain (or the void's not there)
+sub StartMove(u8 S):
+  u8 Dv = 0
+  u8 Dh = 0
+  Dv = 0
+  Dh = 0
+  if S & 1 then Dv = 1
+  if S & 2 then Dv = 2
+  if S & 4 then Dh = 3
+  if S & 8 then Dh = 4
+  if Dv <> 0 then
+    if Occ[Next(Pi, Dv)] = 0 then
+      Pd = Dv
+    end if
+  end if
+  if Pd = 0 and Dh <> 0 then
+    if Occ[Next(Pi, Dh)] = 0 then Pd = Dh
+  end if
+  if Pd <> 0 then
+    Pt = Next(Pi, Pd)
+    Ps = 0
+    play sound SndSlide
+  end if
+  return
+
+' the square arrives: its block joins the trail, the oldest leaves it
+sub Arrive:
+  B = TrQ[0]
+  Occ[B] = 0
+  DrawCell(B)
+  TrQ[0] = TrQ[1]
+  TrQ[1] = TrQ[2]
+  TrQ[2] = TrQ[3]
+  TrQ[3] = Pt
+  Occ[Pt] = 2
+  DrawCell(Pt)
+  Pi = Pt
+  Pd = 0
+  Ps = 0
+  return
+
+' one step of the sphere's clock: take off, fly one step or land
+sub BallEvent:
+  if Bl.H = 0 then
+    if FreeSides(Bl.C) = 0 then
+      State = 2
+    else
+      do
+        Rand
+        C = Rs & 3
+        C = C + 1
+        B = Next(Bl.C, C)
+      loop while Occ[B] <> 0
+      Bl.D = C
+      Bl.T = B
+      Bl.H = 1
+      Bl.K = 0
+      play sound SndHop
+    end if
+  else
+    Bl.K += 1
+    if Bl.K = BSteps then
+      Bl.C = Bl.T
+      Bl.H = 0
+      Bl.K = 0
+      play sound SndLand
+    end if
+  end if
+  return
+
+' the bar is 224 pixels for 280 units
+sub DrawBar:
+  W16 = Time * 4
+  W16 = W16 / 5
+  BarPx = W16
+  X = BarPx >> 3
+  V = BarPx & 7
+  if X < 28 then
+    put char TBar0 + V at X + 2,21
+    if X < 27 then put char TBar0 at X + 3,21
+  end if
+  return
+
+sub FullBar:
+  fill TBar8 count 28 at 2,21
+  BarPx = 224
+  return
+
+' a star shape changes colour every 8 frames (each one every 24)
+sub Twinkle:
+  V = Tick & 7
+  if V = 0 then
+    inc StarPh
+    if StarPh >= 27 then StarPh = 0
+    J = StarPh / 3
+    V = StarCols[J]
+    fill array Buf with V
+    J = StarPh mod 3
+    W16 = J * 8
+    copy Buf count 8 to vram.color + 1264 + W16
+  end if
+  return
+
+' trapped: the time left counted into the score, then the next screen
+sub Trapped:
+  play sound SndTrapped
+  for Pu = 1 to 40
+    Frame1
+    DrawSprites
+  next
+  while Time > 0
+    Frame1
+    if Time >= 2 then
+      Time -= 2
+      Sc += 2
+    else
+      Sc += Time
+      Time = 0
+    end if
+    V = Tick & 3
+    if V = 0 then play sound SndCount
+    DrawBar
+    if Time < 2 then DrawBar
+    ShowScore
+  end while
+  if Sc > Hi then Hi = Sc
+  for Pu = 1 to 40
+    Frame1
+  next
+  inc Lvl
+  inc TrapN
+  if TrapN >= 3 then
+    TrapN = 0
+    V = Bl.Spd - 1
+    if V = BallLimit then V = V + 1
+    Bl.Spd = V
+  end if
+  StartLevel
+  return
+
+' a shock: the blocks pulse in white, a shock icon goes
+sub Shock:
+  play sound SndShock
+  for Pu = 1 to 6
+    for Ci = 1 to 12
+      Frame1
+    next
+    V = Pu & 1
+    if V = 1 then
+      SetColours(7)
+    else
+      LevelColours
+    end if
+  next
+  ShowHud
+  for Pu = 1 to 30
+    Frame1
+  next
+  return
+
+' the end: slow pulses fading to dark blocks, a lament
+sub Mourning:
+  play sound SndMourn
+  for Pu = 1 to 8
+    for Ci = 1 to 12
+      Frame1
+    next
+    V = Pu & 1
+    if V = 1 then
+      SetColours(7)
+    else
+      LevelColours
+    end if
+  next
+  LevelColours
+  for Pu = 1 to 60
+    Frame1
+  next
+  return
+
+sub LevelColours:
+  V = Lvl - 1
+  V = V mod 7
+  SetColours(V)
+  return
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites: 0 the sphere's highlight, 1 its body, 2 the square, 3 the shadow
+sub DrawSprites:
+  u8 Gxs = 0
+  u8 Gys = 0
+  u8 Ar = 0
+  if TitleOn = 1 then
+    update sprites
+    return
+  end if
+  ' the square, sliding between blocks
+  X = CellX(Pi)
+  Y = CellY(Pi)
+  select case Pd
+  case 1
+    Y = Y - Ps
+    X = X + (Ps >> 1)
+  case 2
+    Y = Y + Ps
+    X = X - (Ps >> 1)
+  case 3
+    X = X - Ps - (Ps >> 2)
+  case 4
+    X = X + Ps + (Ps >> 2)
+  end select
+  C = 15
+  if Blink >= 14 then C = 1
+  X = X - 9
+  Y = Y - 9
+  set sprite 2 to Y,X,SSquare,C
+  ' the sphere: along the ground, then up by the arc
+  Gxs = CellX(Bl.C)
+  Gys = CellY(Bl.C)
+  Ar = 0
+  if Bl.H = 1 then
+    K = Bl.K
+    Ar = HopArc[K]
+    select case Bl.D
+    case 1
+      Gys = Gys - HopVY[K]
+      Gxs = Gxs + HopVX[K]
+    case 2
+      Gys = Gys + HopVY[K]
+      Gxs = Gxs - HopVX[K]
+    case 3
+      Gxs = Gxs - HopX[K]
+    case 4
+      Gxs = Gxs + HopX[K]
+    end select
+  end if
+  X = Gxs - 8
+  Y = Gys - 11
+  set sprite 3 to Y,X,SShadow,1
+  Y = Gys - 15
+  Y = Y - Ar
+  set sprite 0 to Y,X,SBallhl,15
+  set sprite 1 to Y,X,SBall,14
+  update sprites
+  return
+
+sub ShowScore:
+  NumU = Sc
+  print at 8,1, digits$(NumU, 5)
+  return
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 20,1, "HIGH"
+  ShowScore
+  NumU = Hi
+  print at 25,1, digits$(NumU, 5)
+  ' the shocks you can still survive
+  put char 32 at 15,1
+  put char 32 at 17,1
+  if Lives >= 2 then put char TBolt at 15,1
+  if Lives >= 3 then put char TBolt at 17,1
+  print at 20,20, "SCREEN"
+  NumU = Lvl
+  print at 27,20, digits$(NumU, 3)
+  print at 2,20, "TIME"
+  return
+
+' the starfield: a star in about one cell in nine (never in the HUD rows)
+sub DrawStars:
+  for Gy = 3 to 19
+    for Gx = 2 to 29
+      Rand
+      V = Rs & 255
+      if V < 28 then
+        K = V mod 3
+        put char TStar0 + K at Gx,Gy
+      end if
+    next
+  next
+  return
+
+sub StartLevel:
+  ResetGrid
+  NewScreen
+  LevelColours
+  DrawStars
+  DrawGrid
+  ShowHud
+  FullBar
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  return
+
+sub NewGame:
+  Sc = 0
+  Lvl = 1
+  Lives = 3
+  TrapN = 0
+  Bl.Spd = BSpeed0
+  TitleOn = 0
+  StartLevel
+  Rearm
+  wait no fire
+  nmi off
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: TRAP in little blocks, the tune once, START GAME / CREDITS
+sub TitlePage:
+  NewScreen
+  DrawStars
+  for Gy = 0 to 4
+    for Gx = 0 to LogoW - 1
+      K = Gy * LogoW + Gx
+      V = LogoBits[K]
+      if V = 1 then
+        X = Gx + LogoX
+        Y = Gy + 4
+        put char TBig at X,Y
+      end if
+    next
+  next
+  print at 10,10, "ERIC HAINES"
+  print at 3,12, "COMPUTE!'S GAZETTE MAY 1988"
+  print at 11,15, "START GAME"
+  print at 11,16, "CREDITS   "
+  print at 2,19, "HIGH"
+  NumU = Hi
+  print at 7,19, digits$(NumU, 5)
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Twinkle
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,15
+  put char 32 at 9,16
+  J = Menu + 15
+  put char 62 at 9,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 14,2, "TRAP"
+  print at 2,5, "BASED ON TRAP BY ERIC"
+  print at 2,6, "HAINES, COMPUTE!'S GAZETTE,"
+  print at 2,7, "MAY 1988 (COMMODORE 64,"
+  print at 2,8, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SPHERE IN THE VOID"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+TpHop:
+    db $40,$53,$31,$01,$40,$1D,$41,$01,$40,$E2,$40,$01,$40,$BF,$50,$01,$50
+TpLand:
+    db $40,$3B,$32,$01,$40,$F9,$42,$02,$40,$F9,$63,$02,$50
+TpSlide:
+    db $00,$00,$53,$02,$00,$00,$73,$02,$10
+TpTrapped:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$20,$0A
+    db $50
+TpCount:
+    db $40,$40,$40,$01,$50
+TpShock:
+    db $00,$00,$04,$03,$00,$00,$16,$03,$00,$00,$14,$03,$00,$00,$25,$03,$00,$00,$36,$06,$00,$00,$57,$0A
+    db $10
+TpMourn:
+    db $40,$1D,$21,$14,$40,$41,$21,$14,$40,$68,$31,$14,$40,$7C,$31,$28,$40,$AB,$41,$14,$40,$E0,$41,$32
+    db $50
+TpStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+
+TpSoundTable:
+    dw TpTuneMel,$702B
+    dw TpTuneBass,$7035
+    dw TpHop,$7049
+    dw TpLand,$7049
+    dw TpSlide,$703F
+    dw TpTrapped,$7049
+    dw TpCount,$7049
+    dw TpShock,$703F
+    dw TpMourn,$7049
+    dw TpStart,$7049
+; Sphere in the Void (original)
+; Tiny Sound, 9 frames per step
+TpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$23,$01,$1E,$01,$26,$01,$25,$23,$21,$01,$1E,$01
+    db $01,$01,$1C,$1E,$1F,$01,$23,$01,$21,$1F,$1E,$01,$1A,$01,$1C,$01
+    db $1E,$01,$01,$01,$23,$01,$26,$2A,$01,$01,$28,$26,$25,$01,$21,$01
+    db $23,$01,$01,$01,$1F,$01,$23,$01,$1E,$01,$1A,$1C,$1E,$01,$22,$01
+    db $23,$01,$01,$01,$00
+    db $FF
+TpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$04,$01,$0B,$01,$04,$01,$0B,$01,$06,$01,$0D,$01
+    db $06,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$09,$01,$10,$01
+    db $07,$01,$0E,$01,$04,$01,$0B,$01,$06,$01,$0D,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01,$00
+    db $FF
+}

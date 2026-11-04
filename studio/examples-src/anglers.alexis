@@ -1,0 +1,1232 @@
+cartridge "THE ANGLERS/COMPUTE'S GAZETTE/1989"
+
+' THE ANGLERS - a ColecoVision port of "The Anglers" by Tai Bush,
+' COMPUTE!'s Gazette, March 1989 (C64 machine language, SYS2061).
+'
+' The First Annual Great Lakes Fish Off: two anglers walk the bank of a
+' lake, cast where small ripples show a fish, and reel it in. A tally
+' mark shows each catch; the first angler to eight catches wins.
+'
+' Controls (joystick only, no keypad):
+'   left / right   walk along the bank (only while the line is in)
+'   push forward   cast: the line runs out as long as you hold it
+'   pull back      reel the line in; a fish bites when the line's end
+'                  passes it while you reel, and comes in with the line
+'   1 player:  either joystick plays the blue angler on the left, the
+'              computer fishes on the right
+'   2 players: joystick 1 the left angler, joystick 2 the right one
+'
+' Rules (from the article and the C64 code, orig/anglers.dis):
+' - one fish is always in the lake; each of the three hazard slots chosen
+'   on the title adds a fish (the default), a clump of seaweed or a
+'   speedboat. Fish are hidden: only their ripples show now and then.
+' - once you let go of the stick the line can only come in; a fish bites
+'   when the line's end passes within a few pixels of it while reeling
+' - seaweed caught on the line comes in with it; nothing else bites until
+'   it is landed
+' - a speedboat that runs over your line hauls you into the drink: the
+'   line and anything on it are lost and you swim back to the bank
+'
+' Liberties:
+' - a ONE PLAYER game against a computer angler (the C64 was two players)
+' - the anglers can't walk through each other (on the C64 they could
+'   overlap); their lines never share a column
+' - speeds scaled to the 256-pixel screen: walk 1 px a frame (C64 about
+'   1.2 px a jiffy over 320 px), cast 1.5 px a frame, reel 1 px a frame,
+'   fish 1 px every 4 frames (C64 about 6-15 px/s); the lake is deeper
+'   (88 px of line) than the C64's (about 40 px)
+' - ripples: a fish shows one about every second (the C64 animated them at
+'   random); in the drink for 2.5 s
+' - the line is drawn with tiles, the hook as a sprite; joystick menu
+'   instead of F1/F3/F5/F7, block-letter title, credits page, original
+'   tune "Lazy Lines" and effects
+
+const THud = 128
+const TSky = 129
+const TCloud = 130
+const TTrees = 131
+const TTrees2 = 132
+const TShore = 133
+const TWater = 134
+const TWave = 135
+const TLine0 = 136
+const TLine1 = 137
+const TLine2 = 138
+const TLine3 = 139
+const TLine4 = 140
+const TLine5 = 141
+const TLine6 = 142
+const TLine7 = 143
+const TEdge = 144
+const TGrass = 145
+const TGrass2 = 146
+const TTally = 147
+const TSlot = 148
+const TBlock = 149
+const SShirt = 0
+const SDark = 4
+const SSwim = 8
+const SHook = 12
+const SFish = 16
+const SRip1 = 20
+const SRip2 = 24
+const SRip3 = 28
+const SWeed = 32
+const SBoatr = 36
+const SBoatl = 40
+const NTiles8 = 176
+const SprBytes = 352
+const SndTuneA = 1
+const SndTuneB = 2
+const SndCast = 3
+const SndClick = 4
+const SndHook = 5
+const SndCatch = 6
+const SndSnag = 7
+const SndSplash = 8
+const SndMotor = 9
+const SndBlip = 10
+const SndWin = 11
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+const XMin = 16
+const XMax = 224
+const LenMax = 88
+const FishYMin = 56
+const FishYMax = 120
+const DunkTime = 150
+const ToWin = 8
+
+record Ang:
+  u8 X
+  u8 LSt
+  u8 Len
+  u8 Hook
+  u8 Snag
+  u8 Dunk
+  u8 In
+  u8 Top
+  u8 Catch
+end record
+
+record Obj:
+  u8 Kind
+  u8 Live
+  u8 X
+  u8 Y
+  u8 Dx
+  u8 Dy
+  u8 Turn
+  u8 StepT
+  u8 Rip
+  u8 Hook
+  u8 Delay
+end record
+
+Ang Angs[2]
+Obj Objs[4]
+u8 Haz[3]
+u8 LineSave[24]
+data ShirtCol bytes
+  7,11
+end data
+data StartX bytes
+  40,184
+end data
+data DirX bytes
+  1,255,0,0,1,1,255,255
+end data
+data DirY bytes
+  0,0,1,255,1,255,1,255
+end data
+data RipPat bytes
+  SRip3,SRip2,SRip1
+end data
+
+u16 NumU = 0
+u16 Rs = 12345
+u8 Phase = 0
+u8 Players = 1
+u8 Menu = 0
+u8 Winner = 0
+u8 Events = 0
+u8 WasFire = 0
+u8 WasStick = 0
+u8 Press = 0
+u8 Tick = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+' the computer angler
+u8 AiTx = 0
+u8 AiTy = 0
+u8 AiAge = 255
+u8 AiDepth = 0
+u8 AiWait = 0
+
+  tile screen
+  set sound table AnSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  Phase = 0
+  TitlePage
+  if Menu = 5 then goto title
+
+  StartGame
+  Phase = 1
+
+play_loop:
+  Frame1
+  ReadPads
+  ' the computer thinks on odd frames (its stick stays held between)
+  if Players = 1 then
+    V = Tick & 1
+    if V = 1 then CpuThink
+  end if
+  MoveAngler(0)
+  MoveAngler(1)
+  MoveObjs
+  CheckLines
+  ' one line's tiles a frame (keeps every pass inside one frame)
+  V = Tick & 1
+  DrawLine(V)
+  DrawSprites
+  if Winner > 0 then goto game_won
+  goto play_loop
+
+game_won:
+  Phase = 3
+  Rearm
+  wait 40 frames
+  nmi off
+  HideSprites
+  if Winner = 1 then
+    if Players = 1 then
+      print at 10,10, " YOU WIN! "
+    else
+      print at 6,10, " LEFT ANGLER WINS! "
+    end if
+  else
+    if Players = 1 then
+      print at 6,10, " THE COMPUTER WINS "
+    else
+      print at 6,10, " RIGHT ANGLER WINS! "
+    end if
+  end if
+  print at 7,12, " EIGHT FISH CAUGHT "
+  play sound SndWin
+  Phase = 4
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame; the NMI flag is cleared before the NMI is re-armed, so a
+' pass that ran a little past the frame's start still counts the frame
+' (the catch-up wait of games/eagles and games/xroads2)
+sub Frame1:
+  call asm AnClr
+  Rearm
+  call asm AnPoll
+  nmi off
+  inc Tick
+  return
+end sub
+
+' 16-bit xorshift; returns its low byte
+function Rnd as u8
+  Rs ^= Rs << 7
+  Rs ^= Rs >> 9
+  Rs ^= Rs << 8
+  return Rs & 255
+
+' a random number from Lo to Hi (Hi - Lo < 128)
+function RndIn(u8 Lo, u8 Hi) as u8
+  u8 R = 0
+  u8 Span = 0
+  Span = Hi - Lo
+  inc Span
+  R = Rnd & 127
+  while R >= Span
+    R -= Span
+  end while
+  return Lo + R
+
+' a random x for an object anywhere across the lake (16..224)
+function RndX as u8
+  u8 R = 0
+  R = Rnd
+  if R > 208 then R -= 209
+  return R + XMin
+
+function Dist(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' a stick as bits: 1 up, 2 down, 4 left, 8 right, 16 a button
+function PadBits(u8 P) as u8
+  u8 B = 0
+  if joypad(P).up then B |= 1
+  if joypad(P).down then B |= 2
+  if joypad(P).left then B |= 4
+  if joypad(P).right then B |= 8
+  if joypad(P).fire then B |= 16
+  return B
+
+sub ReadPads:
+  u8 A = 0
+  u8 B = 0
+  A = PadBits(1)
+  B = PadBits(2)
+  if Players = 1 then
+    Angs[0].In = A | B
+  else
+    Angs[0].In = A
+    Angs[1].In = B
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  sprites stable 0 to 3
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the lake: HUD rows 0-2, sky 3-4, trees 5, far shore 6, water 7-17,
+' the bank from row 18
+sub DrawLake:
+  u8 Row = 0
+  u8 C = 0
+  for Row = 0 to 2
+    fill THud count 32 at 0,Row
+  next
+  fill TSky count 32 at 0,3
+  fill TSky count 32 at 0,4
+  put char TCloud at 5,3
+  put char TCloud at 6,3
+  put char TCloud at 20,4
+  for C = 0 to 31
+    V = C & 3
+    if V = 1 then put char TTrees2 at C,5 else put char TTrees at C,5
+  next
+  fill TShore count 32 at 0,6
+  for Row = 7 to 17
+    fill TWater count 32 at 0,Row
+  next
+  for C = 0 to 13
+    Row = RndIn(7, 17)
+    V = RndIn(0, 31)
+    put char TWave at V,Row
+  next
+  fill TEdge count 32 at 0,18
+  for Row = 19 to 23
+    for C = 0 to 31
+      V = (C + Row) & 3
+      if V = 0 then put char TGrass2 at C,Row else put char TGrass at C,Row
+    next
+  next
+  return
+end sub
+
+sub ShowHud:
+  u8 I = 0
+  u8 C = 0
+  print at 2,1, "PLAYER 1"
+  if Players = 1 then print at 22,1, "COMPUTER" else print at 22,1, "PLAYER 2"
+  for I = 0 to 7
+    C = I + 2
+    put char TSlot at C,2
+    C = I + 22
+    put char TSlot at C,2
+  next
+  return
+end sub
+
+' a tally mark for player P's latest catch
+sub Tally(u8 P):
+  u8 C = 0
+  C = Angs[P].Catch + 2
+  if P = 1 then C += 20
+  put char TTally at C,2
+  return
+end sub
+
+' an object somewhere in the lake, swimming in a random direction
+sub PlaceObj(u8 I):
+  u8 D = 0
+  Objs[I].X = RndX
+  Objs[I].Y = RndIn(FishYMin, FishYMax)
+  D = Rnd & 7
+  Objs[I].Dx = DirX[D]
+  Objs[I].Dy = DirY[D]
+  Objs[I].Turn = RndIn(10, 40)
+  Objs[I].Hook = 0
+  Objs[I].Rip = 0
+  Objs[I].Live = 1
+  return
+end sub
+
+sub StartGame:
+  u8 I = 0
+  u8 K = 0
+  Winner = 0
+  Events = 0
+  AiAge = 255
+  AiWait = 0
+  for I = 0 to 1
+    Angs[I].X = StartX[I]
+    Angs[I].LSt = 0
+    Angs[I].Len = 0
+    Angs[I].Hook = 0
+    Angs[I].Snag = 0
+    Angs[I].Dunk = 0
+    Angs[I].In = 0
+    Angs[I].Top = 18
+    Angs[I].Catch = 0
+  next
+  Objs[0].Kind = 0
+  for I = 1 to 3
+    K = I - 1
+    Objs[I].Kind = Haz[K]
+  next
+  for I = 0 to 3
+    Objs[I].StepT = 0
+    Objs[I].Delay = 0
+    PlaceObj(I)
+    if Objs[I].Kind = 2 then
+      Objs[I].Live = 0
+      Objs[I].Delay = RndIn(60, 180)
+    end if
+  next
+  NewScreen
+  DrawLake
+  ShowHud
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the anglers
+
+sub MoveAngler(u8 P):
+  u8 X = 0
+  u8 In = 0
+  u8 St = 0
+  u8 Ln = 0
+  u8 Ox = 0
+  u8 Dk = 0
+  X = Angs[P].X
+  In = Angs[P].In
+  St = Angs[P].LSt
+  Ln = Angs[P].Len
+  Dk = Angs[P].Dunk
+  V = P ^ 1
+  Ox = Angs[V].X
+  if Dk > 0 then
+    dec Dk
+    Angs[P].Dunk = Dk
+  else
+    select case St
+    case 0
+      V = In & 1
+      if V > 0 then
+        St = 1
+        Ln = 2
+        play sound SndCast
+      else
+        V = In & 4
+        if V > 0 then
+          if X > XMin then
+            if Ox < X then
+              if X - Ox > 18 then dec X
+            else
+              dec X
+            end if
+          end if
+        end if
+        V = In & 8
+        if V > 0 then
+          if X < XMax then
+            if Ox > X then
+              if Ox - X > 18 then inc X
+            else
+              inc X
+            end if
+          end if
+        end if
+      end if
+    case 1
+      V = In & 1
+      if V > 0 then
+        V = Tick & 1
+        Ln += V + 1
+        if Ln > LenMax then Ln = LenMax
+      else
+        St = 2
+      end if
+    case 2
+      V = In & 2
+      if V > 0 then
+        dec Ln
+        V = Tick & 7
+        if V = 0 then play sound SndClick
+        if Ln = 0 then St = 0
+      end if
+    end select
+  end if
+  Angs[P].X = X
+  Angs[P].LSt = St
+  Angs[P].Len = Ln
+  if St = 0 then
+    if Angs[P].Hook > 0 then LandLine(P)
+  end if
+  return
+end sub
+
+' the line is in: whatever is on it is landed
+sub LandLine(u8 P):
+  u8 I = 0
+  I = Angs[P].Hook - 1
+  if Angs[P].Snag = 1 then
+    Objs[I].Live = 0
+    Objs[I].Hook = 0
+    Objs[I].Delay = RndIn(60, 180)
+    play sound SndSnag
+  else
+    Tally(P)
+    inc Angs[P].Catch
+    if Angs[P].Catch >= ToWin then Winner = P + 1
+    PlaceObj(I)
+    play sound SndCatch
+    inc Events
+  end if
+  Angs[P].Hook = 0
+  Angs[P].Snag = 0
+  return
+end sub
+
+' a speedboat ran over player P's line
+sub Dunk(u8 P):
+  u8 I = 0
+  if Angs[P].Hook > 0 then
+    I = Angs[P].Hook - 1
+    Objs[I].Hook = 0
+  end if
+  Angs[P].Hook = 0
+  Angs[P].Snag = 0
+  Angs[P].Len = 0
+  Angs[P].LSt = 0
+  Angs[P].Dunk = DunkTime
+  play sound SndSplash
+  inc Events
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' fish, seaweed and speedboats
+
+sub MoveObjs:
+  u8 I = 0
+  u8 X = 0
+  u8 Y = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 K = 0
+  u8 Sp = 0
+  u8 D = 0
+  for I = 0 to 3
+    K = Objs[I].Kind
+    X = Objs[I].X
+    Y = Objs[I].Y
+    Dx = Objs[I].Dx
+    Dy = Objs[I].Dy
+    if Objs[I].Live = 0 then
+      if Objs[I].Delay > 0 then dec Objs[I].Delay
+      if Objs[I].Delay = 0 then
+        if K = 2 then
+          Y = Rnd & 3
+          Y = Y << 4
+          Y += FishYMin
+          V = Rnd & 1
+          if V = 1 then
+            X = XMin
+            Dx = 1
+          else
+            X = XMax
+            Dx = 255
+          end if
+          Objs[I].Live = 1
+          play sound SndMotor
+        else
+          PlaceObj(I)
+          X = Objs[I].X
+          Y = Objs[I].Y
+          Dx = Objs[I].Dx
+          Dy = Objs[I].Dy
+        end if
+      end if
+    elseif Objs[I].Hook = 0 then
+      if K = 2 then
+        X += Dx
+        if X = XMin then Objs[I].Live = 0
+        if X = XMax then Objs[I].Live = 0
+        if Objs[I].Live = 0 then
+          Objs[I].Delay = RndIn(100, 220)
+        end if
+      else
+        Sp = 8
+        if K = 1 then Sp = 10
+        inc Objs[I].StepT
+        if Objs[I].StepT >= Sp then
+          Objs[I].StepT = 0
+          if Dx = 1 then
+            if X >= XMax then Dx = 255
+          elseif Dx = 255 then
+            if X <= XMin then Dx = 1
+          end if
+          if Dy = 1 then
+            if Y >= FishYMax then Dy = 255
+          elseif Dy = 255 then
+            if Y <= FishYMin then Dy = 1
+          end if
+          X += Dx
+          Y += Dy
+          dec Objs[I].Turn
+          if Objs[I].Turn = 0 then
+            D = Rnd & 7
+            Dx = DirX[D]
+            Dy = DirY[D]
+            Objs[I].Turn = RndIn(20, 40)
+          end if
+        end if
+        ' fish show a ripple now and then
+        if K = 0 then
+          if Objs[I].Rip > 0 then
+            dec Objs[I].Rip
+          else
+            V = Rnd
+            if V < 8 then Objs[I].Rip = 23
+          end if
+        end if
+      end if
+    end if
+    Objs[I].X = X
+    Objs[I].Y = Y
+    Objs[I].Dx = Dx
+    Objs[I].Dy = Dy
+  next
+  return
+end sub
+
+' the end of each line against the fish, the seaweed and the boats
+sub CheckLines:
+  u8 P = 0
+  u8 I = 0
+  u8 Lx = 0
+  u8 Ty = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  u8 K = 0
+  u8 Ox = 0
+  u8 Oy = 0
+  for P = 0 to 1
+    if Angs[P].Len > 0 then
+      Lx = Angs[P].X + 13
+      Ty = 144 - Angs[P].Len
+      for I = 0 to 3
+        if Objs[I].Live = 1 then
+          K = Objs[I].Kind
+          Ox = Objs[I].X
+          Oy = Objs[I].Y
+          Cx = Ox + 8
+          Cy = Oy + 8
+          if Objs[I].Hook > 0 then
+            ' it comes in with the line
+            V = Objs[I].Hook - 1
+            if V = P then
+              Objs[I].X = Lx - 7
+              Objs[I].Y = Ty - 2
+            end if
+          elseif K = 2 then
+            if Lx > Ox then
+              if Lx < Ox + 15 then
+                if Ty <= Oy + 12 then
+                  if Angs[P].Len > 0 then Dunk(P)
+                end if
+              end if
+            end if
+          elseif Angs[P].Hook = 0 then
+            if K = 0 then
+              if Angs[P].LSt = 2 then
+                if Dist(Cx, Lx) <= 5 then
+                  if Dist(Cy, Ty) <= 3 then
+                    Objs[I].Hook = P + 1
+                    Angs[P].Hook = I + 1
+                    play sound SndHook
+                  end if
+                end if
+              end if
+            elseif Angs[P].Len > 0 then
+              if Dist(Cx, Lx) <= 6 then
+                if Dist(Cy, Ty) <= 4 then
+                  Objs[I].Hook = P + 1
+                  Angs[P].Hook = I + 1
+                  Angs[P].Snag = 1
+                  Angs[P].LSt = 2
+                  play sound SndSnag
+                end if
+              end if
+            end if
+          end if
+        end if
+      next
+    end if
+  next
+  return
+end sub
+
+' the line as tiles: rows from the first one wholly below the hook down to
+' row 17; the tiles it covers are kept in LineSave and put back
+sub DrawLine(u8 P):
+  u8 Nt = 0
+  u8 Ot = 0
+  u8 Col = 0
+  u8 Lt = 0
+  u8 R = 0
+  u8 Ix = 0
+  u8 Lx = 0
+  Nt = 18
+  Lx = Angs[P].X + 13
+  if Angs[P].Len > 0 then
+    Nt = 144 - Angs[P].Len
+    Nt += 7
+    Nt = Nt >> 3
+  end if
+  Ot = Angs[P].Top
+  Col = Lx >> 3
+  Lt = Lx & 7
+  Lt += TLine0
+  R = Nt
+  while R < Ot
+    Ix = P * 12
+    Ix += R - 7
+    LineSave[Ix] = get char at Col,R
+    put char Lt at Col,R
+    inc R
+  end while
+  R = Ot
+  while R < Nt
+    Ix = P * 12
+    Ix += R - 7
+    put char LineSave[Ix] at Col,R
+    inc R
+  end while
+  Angs[P].Top = Nt
+  return
+end sub
+
+sub DrawSprites:
+  u8 P = 0
+  u8 Sy = 0
+  u8 Sx = 0
+  u8 Sn = 0
+  u8 Col = 0
+  u8 I = 0
+  u8 K = 0
+  u8 Pat = 0
+  for P = 0 to 1
+    Sn = P * 2
+    Sx = Angs[P].X
+    Col = ShirtCol[P]
+    if Angs[P].Dunk > 0 then
+      V = Angs[P].Dunk & 16
+      Sy = 131
+      if V > 0 then Sy = 132
+      set sprite Sn to Sy,Sx,SSwim,Col
+      inc Sn
+      set sprite Sn to 192,0,0,0
+    else
+      set sprite Sn to 143,Sx,SShirt,Col
+      inc Sn
+      set sprite Sn to 143,Sx,SDark,1
+    end if
+    Sn = P + 4
+    if Angs[P].Len > 0 then
+      Sy = 143 - Angs[P].Len
+      Sx += 6
+      set sprite Sn to Sy,Sx,SHook,15
+    else
+      set sprite Sn to 192,0,0,0
+    end if
+  next
+  for I = 0 to 3
+    Sn = I + 6
+    K = Objs[I].Kind
+    Sy = Objs[I].Y - 1
+    Sx = Objs[I].X
+    Pat = 255
+    if Objs[I].Live = 1 then
+      select case K
+      case 0
+        if Objs[I].Hook > 0 then
+          Pat = SFish
+          Col = 3
+        elseif Objs[I].Rip > 0 then
+          V = Objs[I].Rip >> 3
+          Pat = RipPat[V]
+          Col = 15
+        end if
+      case 1
+        Pat = SWeed
+        Col = 2
+      case else
+        Pat = SBoatl
+        if Objs[I].Dx = 1 then Pat = SBoatr
+        Col = 15
+      end select
+    end if
+    if Pat = 255 then
+      set sprite Sn to 192,0,0,0
+    else
+      set sprite Sn to Sy,Sx,Pat,Col
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer angler (right): it goes by the ripples it has seen, as a
+' player would, looks every 10 frames, and keeps clear of speedboats
+
+sub CpuThink:
+  u8 In = 0
+  u8 Lx = 0
+  u8 Ty = 0
+  u8 I = 0
+  u8 Best = 0
+  u8 D = 0
+  u8 Bx = 0
+  u8 Boat = 0
+  Lx = Angs[1].X + 13
+  Ty = 144 - Angs[1].Len
+  if AiAge < 254 then AiAge += 2
+  ' look for ripples
+  V = Tick & 7
+  if V = 1 then
+    Best = 255
+    for I = 0 to 3
+      if Objs[I].Kind = 0 then
+        if Objs[I].Rip > 0 then
+          if Objs[I].Hook = 0 then
+            Bx = Objs[I].X + 8
+            D = Dist(Bx, Lx)
+            if D < Best then
+              Best = D
+              AiTx = Bx
+              AiTy = Objs[I].Y + 8
+              AiAge = 0
+            end if
+          end if
+        end if
+      end if
+    next
+  end if
+  ' a speedboat heading this way?
+  Boat = 0
+  for I = 1 to 3
+    if Objs[I].Kind = 2 then
+      if Objs[I].Live = 1 then
+        Bx = Objs[I].X + 8
+        if Objs[I].Dx = 1 then
+          if Bx <= Lx then
+            if Lx - Bx < 80 then Boat = 1
+          end if
+        else
+          if Bx >= Lx then
+            if Bx - Lx < 80 then Boat = 1
+          end if
+        end if
+      end if
+    end if
+  next
+  select case Angs[1].LSt
+  case 0
+    if AiWait > 0 then
+      dec AiWait
+    elseif AiAge < 150 then
+      D = Dist(AiTx, Lx)
+      if D > 2 then
+        if AiTx < Lx then In = 4 else In = 8
+      elseif Boat = 0 then
+        In = 1
+        AiDepth = FishYMin
+        if AiTy > FishYMin + 12 then AiDepth = AiTy - 12
+      end if
+    end if
+  case 1
+    if Ty > AiDepth then In = 1
+  case else
+    In = 2
+    if Angs[1].Len <= 2 then
+      AiWait = 8
+      AiAge = 255
+    end if
+  end select
+  Angs[1].In = In
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' title, menu and credits
+
+sub TitlePage:
+  u8 Tr = 0
+  u8 Ty = 0
+  NewScreen
+  for Tr = 0 to 10
+    Ty = Tr + 1
+    NumU = Tr * 28
+    put TitleMap + NumU count 28 at 2,Ty
+  next
+  print at 10,13, "BY TAI BUSH"
+  print at 3,14, "COMPUTE!'S GAZETTE 3/1989"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 510
+  TzOn = 1
+  Menu = 0
+  ShowMenu
+  Rearm
+  wait no fire
+  nmi off
+  WasFire = 1
+tp_loop:
+  Frame1
+  V = Rnd
+  V = PadBits(1) | PadBits(2)
+  W = V & 15
+  if W > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu = 0 then Menu = 5 else dec Menu
+      elseif V & 2 then
+        if Menu = 5 then Menu = 0 else inc Menu
+      elseif Menu > 0 then
+        if Menu < 5 then ChangeOpt
+      end if
+      play sound SndBlip
+      ShowMenu
+    end if
+  end if
+  WasStick = W
+  Press = 0
+  W = V & 16
+  if W > 0 then
+    if WasFire = 0 then Press = 1
+  end if
+  WasFire = W
+  if Press = 0 then goto tp_loop
+  if Menu > 0 then
+    if Menu < 5 then
+      ChangeOpt
+      play sound SndBlip
+      ShowMenu
+      goto tp_loop
+    end if
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 5 then EditorialPage
+  return
+end sub
+
+sub ChangeOpt:
+  u8 K = 0
+  if Menu = 1 then
+    Players = 3 - Players
+  else
+    K = Menu - 2
+    inc Haz[K]
+    if Haz[K] > 2 then Haz[K] = 0
+  end if
+  return
+end sub
+
+sub ShowHaz(u8 K, u8 Row):
+  select case Haz[K]
+  case 0
+    print at 17,Row, "FISH     "
+  case 1
+    print at 17,Row, "SEAWEED  "
+  case else
+    print at 17,Row, "SPEEDBOAT"
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  u8 R = 0
+  u8 K = 0
+  for R = 16 to 21
+    fill 32 count 26 at 3,R
+  next
+  print at 7,16, "START"
+  if Players = 1 then print at 7,17, "ONE PLAYER" else print at 7,17, "TWO PLAYERS"
+  for K = 0 to 2
+    R = K + 18
+    NumU = K + 1
+    print at 7,R, "HAZARD ", digits$(NumU, 1)
+    ShowHaz(K, R)
+  next
+  print at 7,21, "CREDITS"
+  R = Menu + 16
+  put char 62 at 5,R
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,2, "THE ANGLERS"
+  print at 2,4, "BY TAI BUSH, FROM COMPUTE!'S"
+  print at 2,5, "GAZETTE, MARCH 1989 (C64)."
+  print at 2,6, "A COLECOVISION PORT."
+  print at 2,8, "THE GREAT LAKES FISH OFF:"
+  print at 2,9, "WALK THE BANK TO A RIPPLE,"
+  print at 2,10, "PUSH THE STICK TO CAST PAST"
+  print at 2,11, "THE FISH, PULL BACK TO REEL"
+  print at 2,12, "IT IN. EIGHT FISH WIN."
+  print at 2,13, "SEAWEED MUST BE REELED IN;"
+  print at 2,14, "SPEEDBOATS DUNK YOUR LINE."
+  print at 2,17, "MADE FOR THE COLECOVISION BY"
+  print at 2,18, "CLAUDE (AN AI MADE BY"
+  print at 2,19, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,20, "2026, IN AMY BY AMY BIENVENU"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$C3,$81,$00,$00,$00,$00
+  $00,$08,$1C,$C1,$80,$00,$00,$00
+  $00,$00,$80,$C1,$1C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$48,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$20,$02,$00,$40
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$00,$22,$00,$00,$08,$40,$00
+  $00,$02,$04,$08,$10,$20,$40,$00
+  $00,$00,$00,$00,$00,$00,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$F5,$5F,$5F,$05,$05,$05,$05
+  $05,$C5,$C5,$5C,$5C,$0C,$0C,$0C
+  $05,$05,$C5,$C5,$5C,$0C,$0C,$0C
+  $0C,$0A,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$54,$54,$04,$04,$04
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $04,$0B,$0A,$02,$32,$32,$02,$32
+  $02,$32,$02,$32,$02,$32,$02,$32
+  $02,$02,$32,$02,$02,$32,$32,$02
+  $01,$F1,$F1,$F1,$F1,$F1,$F1,$01
+  $01,$01,$01,$01,$01,$01,$1E,$01
+  $01,$07,$07,$05,$05,$04,$04,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$07,$0F,$00,$00,$1F,$3F,$2F,$2F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$00,$C0,$C0,$80,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$02,$00,$00,$00,$00,$00,$0D,$0D,$0D,$1D
+  $04,$04,$08,$08,$10,$10,$20,$10,$00,$20,$20,$00,$80,$80,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$23,$53,$8F,$71,$1F,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$C4,$CA,$F1,$8E,$F8,$00
+  $01,$01,$09,$07,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$06,$07,$07,$03,$03,$01,$03,$07,$00,$00,$00,$00
+  $00,$00,$80,$C0,$C0,$C0,$C0,$80,$80,$00,$80,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$04,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$20,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$18,$20,$18,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$18,$04,$18,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0F,$30,$40,$80,$40,$30,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$0C,$02,$01,$02,$0C,$F0,$00,$00,$00,$00,$00
+  $00,$00,$02,$04,$02,$44,$24,$22,$12,$14,$0D,$07,$03,$01,$00,$00
+  $00,$00,$20,$48,$50,$50,$92,$A4,$A8,$C8,$50,$70,$E0,$C0,$00,$00
+  $00,$00,$00,$02,$03,$07,$04,$84,$FF,$FF,$7F,$3F,$00,$29,$A4,$00
+  $00,$00,$00,$00,$00,$80,$C0,$60,$FC,$FE,$FE,$FC,$00,$28,$4A,$00
+  $00,$00,$00,$00,$00,$01,$03,$06,$3F,$7F,$7F,$3F,$00,$14,$52,$00
+  $00,$00,$00,$40,$C0,$E0,$20,$21,$FF,$FF,$FE,$FC,$00,$94,$25,$00
+end data
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$95,$95,$95,$20,$95,$20,$95,$20,$95,$95,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$95,$20,$20,$95,$20,$95,$20,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$95,$20,$20,$95,$95,$95,$20,$95,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$95,$20,$20,$95,$20,$95,$20,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$95,$20,$20,$95,$20,$95,$20,$95,$95,$95,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$95,$20,$20,$95,$20,$95,$20,$95,$95,$95,$20,$95,$20,$20,$20,$95,$95,$95,$20,$95,$95,$20,$20,$95,$95,$95,$20
+  $95,$20,$95,$20,$95,$95,$95,$20,$95,$20,$20,$20,$95,$20,$20,$20,$95,$20,$20,$20,$95,$20,$95,$20,$95,$20,$20,$20
+  $95,$95,$95,$20,$95,$95,$95,$20,$95,$20,$95,$20,$95,$20,$20,$20,$95,$95,$20,$20,$95,$95,$20,$20,$95,$95,$95,$20
+  $95,$20,$95,$20,$95,$95,$95,$20,$95,$20,$95,$20,$95,$20,$20,$20,$95,$20,$20,$20,$95,$20,$95,$20,$20,$20,$95,$20
+  $95,$20,$95,$20,$95,$20,$95,$20,$95,$95,$95,$20,$95,$95,$95,$20,$95,$95,$95,$20,$95,$20,$95,$20,$95,$95,$95,$20
+end data
+
+asm {
+AnClr:
+    xor a
+    ld (NMI_FLAG),a
+    ret
+AnPoll:
+    ld a,(NMI_FLAG)
+    or a
+    jr z,AnPoll
+    ret
+AnCast:
+    db $40,$50,$40,$02,$40,$5D,$50,$02,$40,$70,$50,$02,$40,$84,$60,$02,$40,$A0,$80,$03,$50
+AnClick:
+    db $40,$38,$60,$01,$50
+AnHook:
+    db $40,$47,$20,$03,$40,$35,$30,$03,$40,$35,$60,$06,$50
+AnCatch:
+    db $40,$D6,$20,$04,$40,$AA,$20,$04,$40,$8F,$20,$04,$40,$6B,$30,$0A,$40,$6B,$70,$08,$50
+AnSnag:
+    db $40,$F9,$22,$04,$40,$56,$43,$06,$40,$BC,$73,$06,$50
+AnSplash:
+    db $00,$00,$04,$04,$00,$00,$25,$08,$00,$00,$46,$0C,$00,$00,$77,$10,$10
+AnMotor:
+    db $00,$00,$62,$03,$00,$00,$71,$03,$00,$00,$62,$03,$00,$00,$81,$03,$10
+AnBlip:
+    db $40,$71,$40,$02,$50
+AnWin:
+    db $40,$D6,$20,$08,$40,$AA,$20,$08,$40,$8F,$20,$08,$40,$6B,$20,$08,$40,$8F,$20,$18,$40,$6B,$30,$1E
+    db $50
+
+AnSoundTable:
+    dw AnTuneMel,$702B
+    dw AnTuneBass,$7035
+    dw AnCast,$7049
+    dw AnClick,$7049
+    dw AnHook,$7049
+    dw AnCatch,$7049
+    dw AnSnag,$7049
+    dw AnSplash,$703F
+    dw AnMotor,$703F
+    dw AnBlip,$7049
+    dw AnWin,$7049
+; Lazy Lines (original)
+; Tiny Sound, 10 frames per step
+AnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$60,$F1,$22,$21,$01,$1E,$1A,$01,$1C,$1E,$01,$21,$23,$01,$01
+    db $21,$01,$1E,$1C,$01,$1A,$17,$01,$01,$01,$01,$01,$1A,$01,$1C,$1E
+    db $01,$21,$23,$01,$26,$25,$01,$23,$21,$01,$01,$1E,$01,$1C,$1A,$01
+    db $01,$01,$01,$01,$00,$01,$01
+    db $FF
+AnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$01,$15,$0E,$01,$15,$13,$01,$1A
+    db $01,$01,$1A,$09,$01,$10,$13,$01,$17,$01,$01,$01,$0E,$01,$15,$01
+    db $01,$15,$13,$01,$1A,$01,$01,$1A,$09,$01,$10,$01,$01,$0D,$0E,$01
+    db $01,$01,$01,$01,$00,$01,$01
+    db $FF
+}

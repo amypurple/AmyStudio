@@ -47,6 +47,7 @@ try {
       assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_LowResult"), 1)[0], 0x34, `${profile}: return lowbyte(u16)`);
       assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_DataFirst"), 1)[0], 24, `${profile}: first data expression`);
       assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_DataSecond"), 1)[0], 25, `${profile}: second data expression`);
+      assert.deepEqual([...core.readRam(addressOf(built.asm, "AMY_UVAR_FillBuffer"), 6)], [9, 9, 9, 9, 9, 9], `${profile}: fill array from indexed ROM data`);
     } finally {
       core.destroy();
     }

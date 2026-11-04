@@ -153,7 +153,7 @@ export function handleArrayBulkStatement({
       ]
     };
   }
-  const fillArray = line.match(new RegExp(`^fill\\s+array\\s+(${qualifiedByteTarget})\\s+with\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+)(?:\\s+count\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+))?$`, "i"));
+  const fillArray = line.match(new RegExp(`^fill\\s+array\\s+(${qualifiedByteTarget})\\s+with\\s+(.+?)(?:\\s+count\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+))?$`, "i"));
   if (fillArray) {
     const arrName = fillArray[1];
     const arrInfo = getByteArrayBufferInfo?.(arrName, 1) || getRuntimeInfo(arrName);
@@ -164,7 +164,7 @@ export function handleArrayBulkStatement({
     if (countToken && getRuntimeInfo(countToken)) {
       return { ok: false, handled: true, log: `fill array count must be a constant, not a RAM variable: ${rawLine}` };
     }
-    const loadValue = emitLoadInt8Into("a", fillArray[2]);
+    const loadValue = emitLoadInt8ValueInto?.("a", fillArray[2]) || emitLoadInt8Into("a", fillArray[2]);
     if (!loadValue) return { ok: false, handled: true, log: `fill array: invalid fill value: ${rawLine}` };
     const baseAddress = emitLoadArrayAddressIntoHL(arrName, "0");
     if (!baseAddress) return { ok: false, handled: true, log: `fill array: cannot resolve array base: ${rawLine}` };

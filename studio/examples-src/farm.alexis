@@ -1,0 +1,2119 @@
+cartridge "THE FARM GAME/COMPUTE!'S GAZETTE/1985"
+
+' THE FARM GAME
+' A ColecoVision game based on "The Farm Game" by Daniel M. Seurer,
+' COMPUTE!'s Gazette, October 1985, p. 44 (Commodore 64 and VIC-20 16K,
+' BASIC; orig/farmgame64.bas). Made for Amy Studio by Claude (an AI made
+' by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: you run a 200-acre farm (five fields of 40 acres) for 1 to 25
+' years, starting with $20,000 in the bank. Each year prices inflate, you
+' may read the market news and your finances and sell stored grain on the
+' futures market, then you plant wheat, corn or soybeans in each field and
+' choose how much insecticide and herbicide to spread. The weather and
+' the pests decide the yield; the market decides the price. At harvest
+' you sell what you want (the rest goes to storage), pay at least a third
+' of your loan, and pay the bills. A negative balance must be covered by
+' a loan at 12% (credit line $50,000); past the line you are bankrupt.
+' At the end stored grain is sold, the loan repaid: $20,000 or more wins.
+'
+' From the original: every price, rate and formula (README.md lists
+' them): seed prices and seed per acre, base crop prices, yields per acre,
+' fuel per acre, $70 an acre, $2,000 overhead, $4,000 harvesting, $1 a
+' unit chemicals, inflation (none, or 1-5%, applied twice a year as in
+' lines 50/2110-2180), the weather (two draws, line 2200), pest years
+' halving the chemicals' effect, the effect curves sqrt(units)/5 and
+' sqrt(units)/5 + .12 capped at 1.1, field qualities 1.1/1.03/1/.98/.9,
+' the four market factors per crop and the futures price rule (2360-2610),
+' storage at $.015 a bushel a month, the loan rules (minimum a third,
+' 12% on borrowing and on what is left, $50,000 line), the $20,000 test.
+'
+' Liberties:
+' - Joystick menus replace the F keys and typed numbers: amounts are set
+'   digit by digit (stick), the right button jumps to the maximum (then
+'   the minimum), the left button accepts. Years 1-25 (any number in the
+'   64); units 0-99 a acre; borrowing and loan payments in whole dollars;
+'   the smallest loan is the shortfall rounded up to the dollar.
+' - Crop rotation (added): a field planted with the same crop as last year
+'   yields 15% less; wheat or corn after soybeans yields 10% more. Without
+'   it, corn every year with the same chemicals was the best play in
+'   every year (a one-choice strategy). Shown on the planting screen.
+' - Fair hints: the planting screen shows each field's quality and last
+'   crop, and the chemical screens show the protection the units give
+'   (the article told players 15-35 units was best).
+' - Two listing slips fixed: selling the same grain twice on the futures
+'   market replaced the first sale (TS(J)=K) and the sold bushels were
+'   taken out of storage twice (lines 2050 and 230).
+' - Money is kept in cents (i32), prices in 1/10000 dollar; the listing's
+'   floating point is followed with exact integer steps, so a cent can
+'   differ now and then. Stored grain is capped at 250,000 bushels a crop
+'   and money at $9,999,999.99.
+' - Pictures: a farm scene with the fields, a growing season with weather
+'   and a tractor; the year's weather is described (the 64 printed only
+'   "YOUR CROPS ARE GROWING"). No play-again question: the title follows.
+'
+' Amy notes: see README.md (bugs found while making it).
+'
+' Controls: either controller. Stick up/down chooses, left/right changes,
+' a button accepts. Keypad not used.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off after a wait, display off; music first in
+' the sound table, the title tune played once; `set sprite count` given
+' after every `clear sprites`; nothing flashes.
+
+const TSoil = 128
+const TFurrow = 129
+const TSprout = 130
+const TWheat = 131
+const TCorn = 132
+const TSoy = 133
+const TGrass = 134
+const TFence = 135
+const TSky = 136
+const TSun = 137
+const TCloud = 138
+const TRain = 139
+const TRule = 140
+const TCaret = 141
+const TPtr = 142
+const TIwh = 143
+const TIco = 144
+const TIsy = 145
+const TBn0 = 146
+const TBn1 = 147
+const TBn2 = 148
+const TBn3 = 149
+const TBn4 = 150
+const TBn5 = 151
+const TBn6 = 152
+const TBn7 = 153
+const TBn8 = 154
+const TBn9 = 155
+const TBn10 = 156
+const TBn11 = 157
+const TBn12 = 158
+const TBn13 = 159
+const TBn14 = 160
+const TBn15 = 161
+const TBn16 = 162
+const TBn17 = 163
+const TBn18 = 164
+const TBn19 = 165
+const TBn20 = 166
+const TBn21 = 167
+const TBn22 = 168
+const TBn23 = 169
+const TBn24 = 170
+const TBn25 = 171
+const TBn26 = 172
+const TBn27 = 173
+const TBn28 = 174
+const TBn29 = 175
+const TBn30 = 176
+const TBn31 = 177
+const SCur = 0
+const SWheels = 4
+const STract = 8
+const NTiles8 = 400
+const SprBytes = 96
+const BarnW = 10
+const BarnH = 6
+const BarnCol = 11
+const SndTuneA = 1
+const SndTuneB = 2
+const SndMove = 3
+const SndOk = 4
+const SndNo = 5
+const SndClick = 6
+const SndCash = 7
+const SndPay = 8
+const SndRain = 9
+const SndPutt = 10
+const SndBell = 11
+const SndDoom = 12
+const NSpr = 3
+const ShowFrames = 680
+
+data CropName chars
+  "WHEAT   "
+  "CORN    "
+  "SOYBEANS"
+end data
+
+' yields per acre, fuel gallons per acre, seed bushels*100 per 40 acres
+data ByT bytes
+  62, 100, 31
+end data
+data FuT bytes
+  50, 85, 60
+end data
+data SeedT words
+  6000, 1336, 6000
+end data
+' field qualities (x10000) and how they read
+data FfT words
+  11000, 10300, 10000, 9800, 9000
+end data
+data FfTxt chars
+  "+10%"
+  " +3%"
+  "  0%"
+  " -2%"
+  "-10%"
+end data
+' 2000 * sqrt(units), units 0-99
+data SqT words
+  0, 2000, 2828, 3464, 4000, 4472, 4899, 5292, 5657, 6000
+  6325, 6633, 6928, 7211, 7483, 7746, 8000, 8246, 8485, 8718
+  8944, 9165, 9381, 9592, 9798, 10000, 10198, 10392, 10583, 10770
+  10954, 11136, 11314, 11489, 11662, 11832, 12000, 12166, 12329, 12490
+  12649, 12806, 12961, 13115, 13266, 13416, 13565, 13711, 13856, 14000
+  14142, 14283, 14422, 14560, 14697, 14832, 14967, 15100, 15232, 15362
+  15492, 15620, 15748, 15875, 16000, 16125, 16248, 16371, 16492, 16613
+  16733, 16852, 16971, 17088, 17205, 17321, 17436, 17550, 17664, 17776
+  17889, 18000, 18111, 18221, 18330, 18439, 18547, 18655, 18762, 18868
+  18974, 19079, 19183, 19287, 19391, 19494, 19596, 19698, 19799, 19900
+end data
+
+' --- state (money in cents, prices in 1/10000 dollar)
+i32 Ba = 0
+i32 Lo = 0
+i32 Bs[3]
+i32 Ga = 0
+i32 Ce = 0
+i32 IsC = 0
+i32 HsC = 0
+i32 Ov = 0
+i32 Hv = 0
+i32 Bp[3]
+i32 Yp[3]
+i32 Sr[3]
+i32 Ty[3]
+i32 Ts[3]
+i32 Fx = 0
+i32 Gt = 0
+i32 Pt = 0
+i32 Sbf = 0
+i32 Lp = 0
+i32 Pay = 0
+' scratch wide values
+i32 Ua = 0
+i32 Ub = 0
+i32 Uq = 0
+i32 Ur = 0
+i32 Uf = 0
+i32 Uv = 0
+i32 Ed = 0
+i32 EdMin = 0
+i32 EdMax = 0
+i32 Pow[10]
+u16 Fp[3]
+u16 Inn = 0
+u16 Hee = 0
+u16 Xx = 0
+u16 Fw = 0
+u16 Ir = 0
+u16 Rs = 1
+u16 Rw = 0
+u16 W16 = 0
+u16 Seed0 = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 Fl[5]
+u8 Last[5]
+u8 Ta[3]
+u8 Years = 3
+u8 Yr = 0
+u8 Pest = 0
+u8 Ins = 25
+u8 Her = 25
+u8 Choice = 0
+u8 Broke = 0
+u8 Scr = 0
+u8 Menu = 0
+u8 Sel = 0
+u8 Ok = 0
+u8 EdDig = 5
+u8 EdCur = 0
+u8 EdRow = 0
+u8 EdCol = 0
+u8 Buf[13]
+' input
+u8 J1 = 0
+u8 Was = 0
+u8 Nw = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never shared with the helpers)
+u8 Ci = 0
+u8 Fi = 0
+' scratch
+u8 C = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table FmSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 2
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Pow[0] = 1000000000
+  Pow[1] = 100000000
+  Pow[2] = 10000000
+  Pow[3] = 1000000
+  Pow[4] = 100000
+  Pow[5] = 10000
+  Pow[6] = 1000
+  Pow[7] = 100
+  Pow[8] = 10
+  Pow[9] = 1
+  CreditsPage
+
+title:
+  Scr = 1
+  TitlePage
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+  Yr = 0
+next_year:
+  inc Yr
+  StartYear
+season:
+  YearMenu
+  if Choice = 0 then
+    NewsPage
+    goto season
+  end if
+  if Choice = 1 then
+    FinancePage
+    goto season
+  end if
+  if Choice = 2 then
+    FuturesPage
+    goto season
+  end if
+  PlantingPage
+  if Broke = 1 then goto bankrupt
+  GrowingPage
+  HarvestPage
+  SellPage
+  LoanPage
+  PayBills
+  if Broke = 1 then goto bankrupt
+  if Yr < Years then goto next_year
+  TallyPage
+  goto game_end
+
+bankrupt:
+  BankruptPage
+
+game_end:
+  Scr = 9
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' arithmetic helpers
+
+' MulF: Ua = Ua * Fw / 10000 (Rd = 0 truncates, 1 rounds half up), exact
+' for Ua up to 2^31 / 2 and Fw up to 20000
+sub MulF(u8 Rd):
+  Uq = Ua
+  Uq /= 10000
+  Ur = Uq
+  Ur *= 10000
+  Ur = Ua - Ur
+  Uf = Fw
+  Uq *= Uf
+  Ur *= Uf
+  if Rd = 1 then Ur = Ur + 5000
+  Ur /= 10000
+  Ua = Uq + Ur
+  return
+end sub
+
+' RndX: a draw .0100-.9899 as 100-9899 (the listing's RND*.98+.01)
+function RndX as u16
+  u16 T = 0
+  Rnd16
+  T = Rw % 9800
+  T = T + 100
+  return T
+
+' the market factor of line 2580
+function MkFactor as u16
+  u16 T = 0
+  T = RndX
+  if T < 4500 then return T + 10000
+  if T > 7000 then return T
+  return 10000
+
+' ---------------------------------------------------------------------------
+' the game
+
+sub NewGame:
+  Ba = 2000000
+  Lo = 0
+  Ga = 100
+  Ce = 7000
+  IsC = 10000
+  HsC = 10000
+  Ov = 20000000
+  Hv = 40000000
+  Bs[0] = 700
+  Bs[1] = 6500
+  Bs[2] = 725
+  Bp[0] = 28000
+  Bp[1] = 23300
+  Bp[2] = 63000
+  for Ci = 0 to 2
+    Sr[Ci] = 0
+    Ts[Ci] = 0
+    Ty[Ci] = 0
+    Yp[Ci] = 0
+    Fp[Ci] = 0
+  next
+  for Fi = 0 to 4
+    Last[Fi] = 255
+    Fl[Fi] = 1
+  next
+  Ins = 25
+  Her = 25
+  Broke = 0
+  Seed0 = Rs
+  return
+end sub
+
+' lines 50, 2110-2190: inflation, applied twice; futures prices of year 1
+sub StartYear:
+  Rnd16
+  W16 = Rw % 7
+  inc W16
+  Ir = 10000
+  if W16 <= 5 then Ir = W16 * 100 + 10000
+  Inflate
+  Inflate
+  if Yr = 1 then
+    for Ci = 0 to 2
+      Fp[Ci] = 10500
+    next
+  end if
+  for Ci = 0 to 2
+    Ts[Ci] = 0
+  next
+  return
+end sub
+
+sub Inflate:
+  u16 Ir1 = 0
+  u16 Irm = 0
+  Ir1 = Ir + 100
+  Irm = Ir - 100
+  for Ci = 0 to 2
+    Ua = Bs[Ci]
+    Fw = Ir
+    MulF(0)
+    Bs[Ci] = Ua
+    Ua = Bp[Ci]
+    Fw = Irm
+    MulF(0)
+    Bp[Ci] = Ua
+  next
+  Ua = Ga
+  Fw = Ir
+  MulF(1)
+  Ga = Ua
+  Ua = IsC
+  Fw = Ir1
+  MulF(0)
+  IsC = Ua
+  Ua = HsC
+  Fw = Ir
+  MulF(0)
+  HsC = Ua
+  Ua = Ov
+  Fw = Ir1
+  MulF(0)
+  Ov = Ua
+  Ua = Hv
+  Fw = Ir
+  MulF(0)
+  Hv = Ua
+  Ua = Ce
+  Fw = Ir1
+  MulF(1)
+  Ce = Ua
+  return
+end sub
+
+' Round100: Ua (1/10000 dollar) rounded to whole cents, still in 1/10000
+sub Round100:
+  Ua = Ua + 50
+  Ua /= 100
+  Ua *= 100
+  return
+end sub
+
+' FutPrice(Ci): the futures price in cents, round(BP * FP)
+sub FutPrice(u8 Cr):
+  Ua = Bp[Cr]
+  Fw = Fp[Cr]
+  MulF(0)
+  Ua = Ua + 50
+  Ua /= 100
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens
+
+sub YearMenu:
+  Scr = 2
+  NewScreen
+  print at 2,1, "THE FARM GAME"
+  print at 20,1, "YEAR"
+  print at 25,1, digits$(Yr, 2), "/"
+  print at 28,1, digits$(Years, 2)
+  DrawFarm(3)
+  print at 4,10, "BANK"
+  Uv = Ba
+  PutMoney(11, 10)
+  print at 4,11, "LOAN"
+  Uv = Lo
+  PutMoney(11, 11)
+  print at 6,13, "PLANTING SEASON:"
+  print at 6,15, "MARKET NEWS"
+  print at 6,16, "YOUR FINANCES"
+  print at 6,17, "SELL GRAIN FUTURES"
+  print at 6,18, "PLANT THE FIELDS"
+  print at 2,21, "STICK: CHOOSE  BUTTON: GO"
+  print at 2,22, "(PLANTING ENDS THE SEASON)"
+  ShowScreen
+  Sel = Choice
+  MenuLoop(15, 4)
+  Choice = Sel
+  play sound SndOk
+  return
+end sub
+
+' MenuLoop(first row, items): Sel moves with the stick; a button ends
+sub MenuLoop(u8 Row0, u8 Nit):
+  u8 Cy = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+ml_loop:
+  Cy = Sel + Row0
+  Cy = Cy * 8
+  Cy = Cy - 1
+  set sprite 0 to Cy,24,SCur,11
+  update sprites
+  Frame1
+  ReadPad
+  V = J1 & 3
+  if V <> WasStick then
+    if V = 1 then
+      if Sel > 0 then
+        dec Sel
+        play sound SndMove
+      end if
+    end if
+    if V = 2 then
+      if Sel < Nit - 1 then
+        inc Sel
+        play sound SndMove
+      end if
+    end if
+  end if
+  WasStick = V
+  if Nw = 0 then goto ml_loop
+  HideSprites
+  return
+end sub
+
+' the farm picture: sky, sun, five fields with their crops (rows R..R+5)
+sub DrawFarm(u8 R0):
+  u8 Rr = 0
+  u8 T = 0
+  u8 Cx = 0
+  fill TSky count 28 at 2,R0
+  Rr = R0 + 1
+  fill TSky count 28 at 2,Rr
+  put char TSun at 26,R0
+  put char TCloud at 6,Rr
+  put char TCloud at 7,Rr
+  put char TCloud at 15,R0
+  Rr = R0 + 2
+  fill TFence count 28 at 2,Rr
+  for Fi = 0 to 4
+    Cx = Fi * 5 + 4
+    T = TFurrow
+    if Scr = 4 then
+      if Fl[Fi] = 0 then T = TWheat
+      if Fl[Fi] = 1 then T = TCorn
+      if Fl[Fi] = 2 then T = TSoy
+    else
+      if Last[Fi] = 0 then T = TWheat
+      if Last[Fi] = 1 then T = TCorn
+      if Last[Fi] = 2 then T = TSoy
+    end if
+    for Rr = 3 to 4
+      Y = R0 + Rr
+      fill T count 4 at Cx,Y
+    next
+  next
+  Rr = R0 + 3
+  for Fi = 0 to 5
+    Cx = Fi * 5 + 3
+    put char TGrass at Cx,Rr
+    Y = Rr + 1
+    put char TGrass at Cx,Y
+  next
+  Rr = R0 + 5
+  fill TGrass count 28 at 2,Rr
+  return
+end sub
+
+' line 1150: the news release
+sub NewsPage:
+  Scr = 3
+  NewScreen
+  print at 8,1, "NEWS RELEASE"
+  fill TRule count 28 at 2,2
+  print at 2,4, "INFLATION RATE"
+  V = Ir - 10000
+  V = V / 100
+  print at 27,4, digits$(V, 1), "%"
+  ' viewing the news rounds these to the cent (lines 1230-1260)
+  Ua = IsC
+  Round100
+  IsC = Ua
+  Ua = HsC
+  Round100
+  HsC = Ua
+  Ua = Ov
+  Round100
+  Ov = Ua
+  print at 2,5, "FUEL PER GALLON"
+  Uv = Ga
+  PutMoney(17, 5)
+  print at 2,6, "HERBICIDE A UNIT"
+  Uv = HsC / 100
+  PutMoney(17, 6)
+  print at 2,7, "INSECTICIDE A UNIT"
+  Uv = IsC / 100
+  PutMoney(17, 7)
+  print at 2,8, "OVERHEAD"
+  Uv = Ov / 100
+  PutMoney(17, 8)
+  print at 2,9, "COST PER ACRE"
+  Uv = Ce
+  PutMoney(17, 9)
+  print at 2,11, "SEED, A BUSHEL"
+  for Ci = 0 to 2
+    Y = Ci + 12
+    PutCrop(Ci, 4, Y)
+    Uv = Bs[Ci]
+    PutMoney(17, Y)
+  next
+  print at 2,16, "FUTURES MARKET PRICE"
+  for Ci = 0 to 2
+    Y = Ci + 17
+    PutCrop(Ci, 4, Y)
+    FutPrice(Ci)
+    Uv = Ua
+    PutMoney(17, Y)
+  next
+  print at 7,22, "PRESS A BUTTON"
+  ShowScreen
+  WaitButton
+  return
+end sub
+
+' PutCrop(crop, col, row): its icon and name
+sub PutCrop(u8 Cr, u8 Cx, u8 Cy):
+  C = TIwh + Cr
+  put char C at Cx,Cy
+  Cx = Cx + 2
+  put CropName + Cr * 8 count 8 at Cx,Cy
+  return
+end sub
+
+' line 1370: your financial status
+sub FinancePage:
+  Scr = 3
+  NewScreen
+  print at 5,1, "YOUR FINANCIAL STATUS"
+  fill TRule count 28 at 2,2
+  print at 2,4, "SAVINGS"
+  Uv = Ba
+  PutMoney(17, 4)
+  print at 2,5, "YOU OWE THE BANK"
+  Uv = Lo
+  PutMoney(17, 5)
+  print at 2,8, "CROPS IN STORAGE"
+  print at 21,9, "BUSHELS"
+  Ub = 0
+  for Ci = 0 to 2
+    Y = Ci + 10
+    PutCrop(Ci, 4, Y)
+    Uv = Sr[Ci]
+    Ub = Ub + Uv
+    PutNum(20, Y, 8)
+  next
+  print at 2,15, "STORAGE FEE A MONTH"
+  Uv = Ub * 15
+  Uv /= 1000
+  Uv *= 100
+  PutMoney(17, 16)
+  print at 7,22, "PRESS A BUTTON"
+  ShowScreen
+  WaitButton
+  return
+end sub
+
+' line 1890: grain futures market sales
+sub FuturesPage:
+  u8 Cr = 0
+fp_top:
+  Scr = 13
+  NewScreen
+  print at 3,1, "GRAIN FUTURES MARKET"
+  fill TRule count 28 at 2,2
+  print at 2,3, "CROP"
+  print at 13,3, "STORED"
+  print at 22,3, "PRICE"
+  for Ci = 0 to 2
+    Y = Ci + 5
+    PutCrop(Ci, 2, Y)
+    Uv = Sr[Ci]
+    PutNum(12, Y, 7)
+    FutPrice(Ci)
+    Uv = Ua
+    PutMoney(17, Y)
+  next
+  print at 2,9, "SOLD FOR THIS YEAR:"
+  for Ci = 0 to 2
+    Y = Ci + 10
+    PutCrop(Ci, 4, Y)
+    Uv = Ts[Ci]
+    PutNum(16, Y, 7)
+  next
+  print at 2,14, "PAID AT HARVEST, AT THIS"
+  print at 2,15, "PRICE. SELL WHICH GRAIN?"
+  print at 6,17, "WHEAT"
+  print at 6,18, "CORN"
+  print at 6,19, "SOYBEANS"
+  print at 6,20, "NONE: BACK"
+  ShowScreen
+  Sel = 3
+  MenuLoop(17, 4)
+  if Sel = 3 then return
+  Cr = Sel
+  if Sr[Cr] = 0 then
+    play sound SndNo
+    print at 2,22, "YOU DON'T HAVE ANY!"
+    Rearm
+    wait 90 frames
+    nmi off
+    goto fp_top
+  end if
+  ' how many bushels (line 2010)
+  Scr = 14
+  NewScreen
+  print at 3,1, "GRAIN FUTURES MARKET"
+  fill TRule count 28 at 2,2
+  print at 2,4, "SELL HOW MANY BUSHELS OF"
+  PutCrop(Cr, 2, 5)
+  print at 2,7, "STORED"
+  Uv = Sr[Cr]
+  PutNum(14, 7, 7)
+  print at 2,8, "PRICE"
+  FutPrice(Cr)
+  Uv = Ua
+  PutMoney(15, 8)
+  print at 2,10, "BUSHELS"
+  EdMin = 0
+  EdMax = Sr[Cr]
+  Ed = 0
+  EdDig = 6
+  EdRow = 10
+  EdCol = 14
+  HelpLines
+  ShowScreen
+  EditNum
+  if Ed > 0 then
+    Sr[Cr] = Sr[Cr] - Ed
+    Ts[Cr] = Ts[Cr] + Ed
+    play sound SndOk
+  end if
+  goto fp_top
+end sub
+
+sub HelpLines:
+  print at 2,18, "UP/DOWN: DIGIT LEFT/RIGHT:"
+  print at 2,19, "PLACE  RIGHT BUTTON: MOST"
+  print at 2,20, "(AGAIN: LEAST)"
+  print at 2,21, "LEFT BUTTON: OK"
+  return
+end sub
+
+' line 1520: planting time
+sub PlantingPage:
+  Scr = 4
+  NewScreen
+  print at 2,1, "PLANTING TIME   YEAR"
+  print at 23,1, digits$(Yr, 2)
+  fill TRule count 28 at 2,2
+  print at 2,3, "5 FIELDS OF 40 ACRES"
+  print at 2,5, "FLD SOIL LAST      CROP"
+  for Fi = 0 to 4
+    Y = Fi + 6
+    V = Fi + 1
+    print at 4,Y, digits$(V, 1)
+    put FfTxt + Fi * 4 count 4 at 6,Y
+    if Last[Fi] = 255 then
+      print at 11,Y, "-"
+    else
+      put CropName + Last[Fi] * 8 count 8 at 11,Y
+    end if
+    DrawField
+  next
+  print at 6,11, "READY TO PLANT"
+  print at 2,13, "SEED COSTS"
+  print at 2,14, "BANK AFTER"
+  print at 2,19, "UP/DOWN: FIELD"
+  print at 2,20, "LEFT/RIGHT: CROP"
+  print at 2,21, "BUTTON ON READY: PLANT"
+  print at 2,22, "SAME CROP -15% SOY THEN +10"
+  SeedCost
+  ShowScreen
+  Sel = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Rep = 0
+pl_loop:
+  Y = Sel + 6
+  Y = Y * 8
+  Y = Y - 1
+  set sprite 0 to Y,16,SCur,11
+  update sprites
+  Frame1
+  ReadPad
+  V = J1 & 15
+  if V <> WasStick then
+    if V = 1 then
+      if Sel > 0 then
+        dec Sel
+        play sound SndMove
+      end if
+    end if
+    if V = 2 then
+      if Sel < 5 then
+        inc Sel
+        play sound SndMove
+      end if
+    end if
+    if Sel < 5 then
+      Fi = Sel
+      if V = 8 then
+        inc Fl[Fi]
+        if Fl[Fi] > 2 then Fl[Fi] = 0
+        play sound SndClick
+        DrawField
+        SeedCost
+      end if
+      if V = 4 then
+        if Fl[Fi] = 0 then
+          Fl[Fi] = 2
+        else
+          dec Fl[Fi]
+        end if
+        play sound SndClick
+        DrawField
+        SeedCost
+      end if
+    end if
+  end if
+  WasStick = V
+  if Nw = 0 then goto pl_loop
+  if Sel < 5 then goto pl_loop
+  HideSprites
+  play sound SndPay
+  ' lines 1690-1720: the seed is paid
+  Ba = Ba - Ua
+  ' lines 1760-1850: insecticide and herbicide
+  ChemPage(0)
+  Ua = Ed
+  Ua *= 2
+  Ub = IsC
+  Ua *= Ub
+  Ba = Ba - Ua
+  W16 = lowword Ed
+  Ins = W16
+  ChemPage(1)
+  Ua = Ed
+  Ua *= 2
+  Ub = HsC
+  Ua *= Ub
+  Ba = Ba - Ua
+  W16 = lowword Ed
+  Her = W16
+  Inn = SqT[Ins]
+  Hee = SqT[Her]
+  Hee = Hee + 1200
+  if Ba < 0 then BorrowPage
+  return
+end sub
+
+' one field's crop on the planting screen (Fi), and its rotation mark
+sub DrawField:
+  u8 Cr = 0
+  Y = Fi + 6
+  Cr = Fl[Fi]
+  put CropName + Cr * 8 count 8 at 21,Y
+  C = 32
+  if Last[Fi] = Cr then C = 45
+  if Last[Fi] = 2 then
+    if Cr < 2 then C = 43
+  end if
+  put char C at 29,Y
+  return
+end sub
+
+' SeedCost: Ua = the seed bill in cents (line 1690), shown with the bank after
+sub SeedCost:
+  for Ci = 0 to 2
+    Ta[Ci] = 0
+  next
+  for Fi = 0 to 4
+    C = Fl[Fi]
+    inc Ta[C]
+  next
+  Ub = 0
+  for Ci = 0 to 2
+    W16 = SeedT[Ci]
+    Uq = W16
+    Ur = Ta[Ci]
+    Uq *= Ur
+    Ur = Bs[Ci]
+    Uq *= Ur
+    Ub = Ub + Uq
+  next
+  Ub = Ub + 50
+  Ub /= 100
+  Uv = Ub
+  fill 32 count 13 at 14,13
+  PutMoney(14, 13)
+  Uv = Ba - Ub
+  fill 32 count 13 at 14,14
+  PutMoney(14, 14)
+  Ua = Ub
+  return
+end sub
+
+' ChemPage(0 insecticide, 1 herbicide): Ed units an acre
+sub ChemPage(u8 Kind):
+  u8 Last2 = 255
+  NewScreen
+  if Kind = 0 then
+    print at 2,1, "INSECTICIDE"
+    Ua = IsC
+    Ed = Ins
+  else
+    print at 2,1, "HERBICIDE"
+    Ua = HsC
+    Ed = Her
+  end if
+  fill TRule count 28 at 2,2
+  print at 2,4, "UNITS AN ACRE (200 ACRES)"
+  print at 2,5, "COST A UNIT"
+  Uv = Ua / 100
+  PutMoney(16, 5)
+  print at 2,7, "UNITS"
+  print at 2,9, "COST"
+  print at 2,10, "PROTECTION"
+  print at 2,11, "BANK AFTER"
+  print at 2,13, "THE ARTICLE: 15 TO 35 UNITS"
+  print at 2,14, "IS BEST. TOO MANY ADD NO"
+  print at 2,15, "MORE; PEST YEARS HALVE IT."
+  EdMin = 0
+  EdMax = 99
+  EdDig = 2
+  EdRow = 7
+  EdCol = 14
+  Scr = 5 + Kind
+  HelpLines
+  ChemShow
+  ShowScreen
+  EditNum
+  return
+end sub
+
+' the chemical's cost and protection for Ed units (called by EditNum)
+sub ChemShow:
+  u16 Ef = 0
+  u8 Ue = 0
+  W16 = lowword Ed
+  Ue = W16
+  if Scr = 5 then
+    Ua = IsC
+    Ef = SqT[Ue]
+  else
+    Ua = HsC
+    Ef = SqT[Ue]
+    Ef = Ef + 1200
+  end if
+  Ub = Ed
+  Ub *= 2
+  Ua *= Ub
+  Uv = Ua
+  fill 32 count 13 at 14,9
+  PutMoney(14, 9)
+  if Ef > 11000 then Ef = 11000
+  Ef = Ef / 100
+  print at 17,10, width$(Ef, 4), "%"
+  Uv = Ba - Ua
+  fill 32 count 13 at 14,11
+  PutMoney(14, 11)
+  return
+end sub
+
+' line 2620: borrowing to cover a negative balance
+sub BorrowPage:
+  Scr = 12
+  Ua = Lo - Ba
+  if Ua > 5000000 then
+    Broke = 1
+    return
+  end if
+  ' the least: the shortfall in dollars, rounded up; the most: the line
+  EdMin = 99 - Ba
+  EdMin /= 100
+  EdMax = 5000000 - Lo
+  EdMax /= 100
+  if EdMin > EdMax then
+    Broke = 1
+    return
+  end if
+  NewScreen
+  play sound SndNo
+  print at 2,1, "YOU NEED TO BORROW MONEY"
+  fill TRule count 28 at 2,2
+  print at 2,4, "YOUR BALANCE IS BELOW $0."
+  print at 2,5, "LOANS COST 12% INTEREST;"
+  print at 2,6, "A THIRD IS DUE EACH YEAR."
+  print at 2,8, "BANK"
+  Uv = Ba
+  PutMoney(14, 8)
+  print at 2,9, "YOU OWE"
+  Uv = Lo
+  PutMoney(14, 9)
+  print at 2,10, "BORROW AT LEAST"
+  Uv = EdMin * 100
+  PutMoney(14, 11)
+  print at 2,12, "AT MOST"
+  Uv = EdMax * 100
+  PutMoney(14, 12)
+  print at 2,14, "BORROW $"
+  Ed = EdMin
+  EdDig = 5
+  EdRow = 14
+  EdCol = 11
+  HelpLines
+  ShowScreen
+  EditNum
+  ' line 2760
+  Ua = Ed * 100
+  Lo = Lo + Ua
+  Ba = Ba + Ua
+  Lo *= 112
+  Lo = Lo + 50
+  Lo /= 100
+  play sound SndCash
+  return
+end sub
+
+' line 180-240: the crops grow; the weather (2200) and the market (2360)
+sub GrowingPage:
+  u16 Sf = 0
+  u16 Hf = 0
+  u16 F = 0
+  u16 G = 0
+  u16 X2 = 0
+  u8 Cr = 0
+  u8 Tx = 0
+  ' futures check: sold grain at BP * FP (line 200)
+  Fx = 0
+  for Ci = 0 to 2
+    FutPrice(Ci)
+    Ua *= Ts[Ci]
+    Fx = Fx + Ua
+  next
+  ' storage: the grain kept (line 220)
+  Ub = Sr[0] + Sr[1]
+  Ub = Ub + Sr[2]
+  Sbf = Ub * 18
+  ' the weather
+  Xx = RndX
+  if Xx < 4500 then
+    Xx = Xx + 10000
+  else
+    if Xx > 8000 then
+      Xx = Xx
+    else
+      if Xx > 4500 then
+        if Xx < 5000 then
+          Xx = 10300
+        else
+          Xx = 10000
+        end if
+      else
+        Xx = 10000
+      end if
+    end if
+  end if
+  X2 = RndX
+  if X2 < 1000 then
+    Xx = Xx + 10000
+    Xx = Xx + X2
+  else
+    if X2 > 7500 then
+      Xx = Xx + X2
+    else
+      if X2 > 4000 then
+        if X2 < 5000 then
+          Xx = Xx + 10200
+        else
+          Xx = Xx + 10000
+        end if
+      else
+        Xx = Xx + 10000
+      end if
+    end if
+  end if
+  Xx = Xx / 2
+  Pest = 0
+  if X2 < 2000 then
+    Pest = 1
+    Inn = Inn / 2
+    Hee = Hee / 2
+  end if
+  Sf = Inn
+  if Sf > 11000 then Sf = 11000
+  Hf = Hee
+  if Hf > 11000 then Hf = 11000
+  ' line 2350, with the rotation (a liberty)
+  Ua = Xx
+  Fw = Hf
+  MulF(0)
+  Fw = Sf
+  MulF(0)
+  F = lowword Ua
+  for Ci = 0 to 2
+    Ty[Ci] = 0
+  next
+  for Fi = 0 to 4
+    Cr = Fl[Fi]
+    Ua = F
+    Fw = FfT[Fi]
+    MulF(0)
+    Fw = 10000
+    if Last[Fi] = Cr then Fw = 8500
+    if Last[Fi] = 2 then
+      if Cr < 2 then Fw = 11000
+    end if
+    MulF(0)
+    G = lowword Ua
+    W16 = ByT[Cr]
+    W16 = W16 * 40
+    Ua = W16
+    Fw = G
+    MulF(0)
+    Ty[Cr] = Ty[Cr] + Ua
+  next
+  ' the market (2360-2570)
+  MarketDraw
+  ' the picture: sprouts, then the crops with the tractor
+  Scr = 11
+  NewScreen
+  print at 5,1, "YOUR CROPS ARE GROWING"
+  DrawFarm(3)
+  for Fi = 0 to 4
+    Tx = Fi * 5 + 4
+    fill TSprout count 4 at Tx,6
+    fill TSprout count 4 at Tx,7
+  next
+  print at 2,11, "WEATHER:"
+  if Xx >= 11500 then
+    print at 11,11, "A BUMPER YEAR!"
+  else
+    if Xx >= 10200 then
+      print at 11,11, "GOOD RAINS"
+    else
+      if Xx >= 9000 then
+        print at 11,11, "FAIR"
+      else
+        print at 11,11, "DROUGHT"
+      end if
+    end if
+  end if
+  if Pest = 1 then print at 2,13, "INSECTS AND WEEDS STRUCK!"
+  ShowScreen
+  if Xx >= 10200 then
+    play sound SndRain
+  end if
+  ' the tractor drives across while the crops ripen field by field
+  for Tx = 16 to 224
+    W16 = Tx
+    set sprite 1 to 71,Tx,STract,8
+    set sprite 2 to 71,Tx,SWheels,1
+    update sprites
+    K = Tx & 15
+    if K = 0 then play sound SndPutt
+    Frame1
+    if Tx > 30 then
+      K = Tx - 24
+      K = K & 7
+      if K = 0 then
+        K = Tx - 24
+        K = K / 8
+        ' K: the screen column under the tractor's back
+        if K >= 4 then
+          if K <= 27 then
+            V = K - 4
+            Fi = V / 5
+            J = V % 5
+            if J < 4 then
+              if Fl[Fi] = 0 then C = TWheat
+              if Fl[Fi] = 1 then C = TCorn
+              if Fl[Fi] = 2 then C = TSoy
+              put char C at K,6
+              put char C at K,7
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  HideSprites
+  print at 7,22, "PRESS A BUTTON"
+  WaitButton
+  return
+end sub
+
+' the four market factors of each crop: the price (YP) and next futures (FP)
+sub MarketDraw:
+  u16 Dm = 0
+  u16 Dc = 0
+  u16 Em = 0
+  u16 Fc = 0
+  u16 S = 0
+  for Ci = 0 to 2
+    Dm = MkFactor
+    Dc = MkFactor
+    Em = MkFactor
+    Fc = MkFactor
+    Ua = Dm
+    Ub = Dc
+    Ua = Ua + Ub
+    Ub = Em
+    Ua = Ua + Ub
+    Ub = Fc
+    Ua = Ua + Ub
+    Ua /= 4
+    W16 = lowword Ua
+    Fw = W16
+    Ua = Bp[Ci]
+    MulF(0)
+    Ua = Ua + 50
+    Ua /= 100
+    Yp[Ci] = Ua
+    S = 10000
+    if Dc > 10500 then S = 9500
+    if Dc < 9000 then S = 11000
+    W16 = 10000
+    if Em > 10500 then W16 = 9500
+    if Em < 9500 then W16 = 11200
+    S = S + W16
+    W16 = 10000
+    if Fc > 11000 then W16 = 8000
+    if Fc < 9700 then W16 = 10900
+    S = S + W16
+    if S = 30000 then
+      S = 10300
+    else
+      S = S / 3
+    end if
+    Fp[Ci] = S
+  next
+  return
+end sub
+
+' lines 250-570: harvest time on the farm
+sub HarvestPage:
+  Scr = 10
+  ' the round of HV and OV (lines 430, 490)
+  Ua = Hv
+  Round100
+  Hv = Ua
+  Ua = Ov
+  Round100
+  Ov = Ua
+  Gt = 0
+  for Ci = 0 to 2
+    Ua = Ty[Ci]
+    Ua *= Yp[Ci]
+    Gt = Gt + Ua
+  next
+  Pt = 0
+  for Ci = 0 to 2
+    W16 = FuT[Ci]
+    Ua = W16
+    Ub = Ta[Ci]
+    Ub *= 40
+    Ua *= Ub
+    Pt = Pt + Ua
+  next
+  Pt *= Ga
+  Lp = Lo * 2
+  Lp = Lp + 3
+  Lp /= 6
+  play sound SndBell
+  NewScreen
+  print at 6,1, "HARVEST TIME"
+  fill TRule count 28 at 2,2
+  print at 2,3, "CROP"
+  print at 16,3, "PRICE"
+  print at 23,3, "YIELD"
+  for Ci = 0 to 2
+    Y = Ci + 4
+    PutCrop(Ci, 2, Y)
+    Uv = Yp[Ci]
+    PutMoney(10, Y)
+    Uv = Ty[Ci]
+    PutNum(23, Y, 7)
+  next
+  print at 2,8, "BANK BALANCE"
+  Uv = Ba
+  PutMoney(17, 8)
+  print at 2,9, "FUTURES CHECK"
+  Uv = Fx
+  PutMoney(17, 9)
+  print at 2,10, "TOTAL YIELD"
+  Uv = Gt
+  PutMoney(17, 10)
+  print at 2,11, "LOAN PAYMENT"
+  Uv = Lp
+  PutMoney(17, 11)
+  print at 2,12, "HARVESTING"
+  Uv = Hv / 100
+  PutMoney(17, 12)
+  print at 2,13, "200 ACRES"
+  Uv = Ce * 200
+  PutMoney(17, 13)
+  print at 2,14, "FUEL"
+  Uv = Pt
+  PutMoney(17, 14)
+  print at 2,15, "OVERHEAD"
+  Uv = Ov / 100
+  PutMoney(17, 15)
+  print at 2,16, "STORAGE FEES"
+  Uv = Sbf
+  PutMoney(17, 16)
+  fill TRule count 28 at 2,17
+  print at 2,18, "TOTAL ASSETS"
+  Uv = Ba + Fx
+  Uv = Uv + Gt
+  PutMoney(17, 18)
+  print at 2,19, "TOTAL DEBITS"
+  Uv = Hv / 100
+  Ua = Ov / 100
+  Uv = Uv + Ua
+  Uv = Uv + Lp
+  Uv = Uv + Pt
+  Uv = Uv + Sbf
+  Ua = Ce * 200
+  Uv = Uv + Ua
+  PutMoney(17, 19)
+  print at 7,22, "PRESS A BUTTON"
+  ShowScreen
+  WaitButton
+  return
+end sub
+
+' lines 580-730: sell the harvest; the rest goes to storage
+sub SellPage:
+  u8 Cr = 0
+  for Cr = 0 to 2
+    if Ty[Cr] > 0 then
+      Scr = 8
+      NewScreen
+      print at 2,1, "SELLING THE HARVEST"
+      fill TRule count 28 at 2,2
+      PutCrop(Cr, 2, 4)
+      print at 2,6, "HARVESTED"
+      Uv = Ty[Cr]
+      PutNum(14, 6, 7)
+      print at 2,7, "PRICE"
+      Uv = Yp[Cr]
+      PutMoney(14, 7)
+      print at 2,9, "SELL"
+      print at 2,11, "WOULD SELL FOR"
+      print at 2,13, "THE REST GOES TO STORAGE"
+      print at 2,14, "($.18 A BUSHEL A YEAR)"
+      EdMin = 0
+      EdMax = Ty[Cr]
+      Ed = Ty[Cr]
+      EdDig = 5
+      EdRow = 9
+      EdCol = 14
+      Sel = Cr
+      HelpLines
+      SaleShow
+      ShowScreen
+      EditNum
+      Ua = Ed
+      Ua *= Yp[Cr]
+      Ba = Ba + Ua
+      Ua = Ty[Cr] - Ed
+      Ua = Ua + Sr[Cr]
+      if Ua > 250000 then Ua = 250000
+      Sr[Cr] = Ua
+      if Ed > 0 then play sound SndCash
+    end if
+  next
+  ' line 740: the futures check is paid
+  Ba = Ba + Fx
+  return
+end sub
+
+sub SaleShow:
+  Uv = Ed
+  Uv *= Yp[Sel]
+  fill 32 count 13 at 17,11
+  PutMoney(17, 11)
+  return
+end sub
+
+' lines 750-840: the loan payment
+sub LoanPage:
+  if Lo = 0 then return
+  Scr = 7
+  NewScreen
+  print at 2,1, "PAYING YOUR LOAN"
+  fill TRule count 28 at 2,2
+  print at 2,4, "YOU OWE"
+  Uv = Lo
+  PutMoney(14, 4)
+  print at 2,5, "LEAST PAYMENT"
+  Uv = Lp
+  PutMoney(14, 5)
+  print at 2,6, "BANK"
+  Uv = Ba
+  PutMoney(14, 6)
+  print at 2,8, "WHAT IS LEFT GROWS 12%."
+  print at 2,10, "PAY $"
+  EdMin = Lp + 99
+  EdMin /= 100
+  EdMax = Lo + 99
+  EdMax /= 100
+  Ed = EdMin
+  EdDig = 5
+  EdRow = 10
+  EdCol = 8
+  HelpLines
+  ShowScreen
+  EditNum
+  Pay = Ed * 100
+  if Pay > Lo then Pay = Lo
+  Ba = Ba - Pay
+  Lo = Lo - Pay
+  Lo *= 112
+  Lo = Lo + 50
+  Lo /= 100
+  play sound SndPay
+  return
+end sub
+
+' lines 850-920: the bills; a loan if the balance is below zero
+sub PayBills:
+  Ua = Ce * 200
+  Ba = Ba - Ua
+  Ua = Ov / 100
+  Ba = Ba - Ua
+  Ua = Hv / 100
+  Ba = Ba - Ua
+  Ba = Ba - Pt
+  Ba = Ba - Sbf
+  if Ba < 0 then BorrowPage
+  for Fi = 0 to 4
+    Last[Fi] = Fl[Fi]
+  next
+  for Ci = 0 to 2
+    Ty[Ci] = 0
+    Ts[Ci] = 0
+  next
+  return
+end sub
+
+' lines 930-1100: the end of game tally
+sub TallyPage:
+  Scr = 9
+  NewScreen
+  print at 6,1, "END OF GAME TALLY"
+  fill TRule count 28 at 2,2
+  print at 2,4, "BANK BALANCE"
+  Uv = Ba
+  PutMoney(17, 4)
+  print at 2,6, "CROPS IN STORAGE"
+  Ub = 0
+  for Ci = 0 to 2
+    Y = Ci + 7
+    PutCrop(Ci, 4, Y)
+    Uv = Sr[Ci]
+    PutNum(14, Y, 7)
+    Ua = Sr[Ci]
+    Ua *= Yp[Ci]
+    Ub = Ub + Ua
+  next
+  print at 2,11, "STORED CROP VALUE"
+  Uv = Ub
+  PutMoney(17, 11)
+  print at 2,12, "OWED TO THE BANK"
+  Uv = Lo
+  PutMoney(17, 12)
+  Ba = Ba + Ub
+  Ba = Ba - Lo
+  Lo = 0
+  print at 2,14, "GRAND TOTAL"
+  Uv = Ba
+  PutMoney(17, 14)
+  if Ba >= 2000000 then
+    print at 2,16, "CONGRATULATIONS! YOU HAVE"
+    print at 2,17, "MANAGED THE NEARLY"
+    print at 2,18, "IMPOSSIBLE TASK OF MAKING"
+    print at 2,19, "MONEY AT FARMING. THE BANK"
+    print at 2,20, "CONSIDERS YOU A GOOD RISK."
+    play sound SndCash
+  else
+    print at 2,16, "YOU HAVE PROVEN YOURSELF A"
+    print at 2,17, "VERY POOR FARMER! YOU LOST"
+    print at 2,18, "MONEY, AND NOW YOUR FARM"
+    print at 2,19, "MUST BE SOLD TO PAY YOUR"
+    print at 2,20, "CREDITORS!"
+    play sound SndDoom
+  end if
+  ShowScreen
+  return
+end sub
+
+sub BankruptPage:
+  Scr = 9
+  NewScreen
+  print at 4,2, "SORRY, YOU ARE BANKRUPT."
+  fill TRule count 28 at 2,3
+  print at 2,5, "YOU HAVE RUN YOUR CREDIT"
+  print at 2,6, "LINE TO THE LIMIT, AND NOW"
+  print at 2,7, "YOU ARE BROKE! YOU OWE"
+  print at 2,8, "CONSIDERABLE BACK TAXES AND"
+  print at 2,9, "YOUR FARM WILL BE SOLD AT A"
+  print at 2,10, "SHERIFF'S AUCTION TO PAY"
+  print at 2,11, "YOUR DEBTS."
+  print at 2,14, "YEAR"
+  print at 7,14, digits$(Yr, 2)
+  print at 2,15, "BANK"
+  Uv = Ba
+  PutMoney(14, 15)
+  print at 2,16, "LOAN"
+  Uv = Lo
+  PutMoney(14, 16)
+  play sound SndDoom
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the number editor: Ed between EdMin and EdMax, EdDig digits at
+' EdCol,EdRow; up/down change the digit under the caret, left/right move
+' it, the right button jumps to the most (then the least), the left
+' button accepts
+
+sub EditNum:
+  u8 Bt = 0
+  u8 St = 0
+  EdCur = EdDig - 1
+  EdShow
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Rep = 0
+en_loop:
+  Frame1
+  ReadPad
+  St = J1 & 15
+  V = 0
+  if St <> WasStick then
+    V = 1
+    Rep = 0
+  else
+    inc Rep
+    if Rep >= 16 then
+      K = Rep & 3
+      if K = 0 then V = 1
+    end if
+  end if
+  WasStick = St
+  if V = 1 then
+    if St = 4 then
+      if EdCur > 0 then dec EdCur
+      play sound SndMove
+    end if
+    if St = 8 then
+      if EdCur < EdDig - 1 then inc EdCur
+      play sound SndMove
+    end if
+    if St = 1 then EdStep(1)
+    if St = 2 then EdStep(0)
+    EdShow
+  end if
+  Bt = Nw & 32
+  if Bt > 0 then
+    if Ed = EdMax then
+      Ed = EdMin
+    else
+      Ed = EdMax
+    end if
+    play sound SndClick
+    EdShow
+  end if
+  Bt = Nw & 16
+  if Bt = 0 then goto en_loop
+  play sound SndOk
+  return
+end sub
+
+' EdStep(1 up, 0 down): the digit under the caret, kept in the range
+sub EdStep(u8 Up):
+  u8 Pi = 0
+  Pi = 10 - EdDig
+  Pi = Pi + EdCur
+  Ua = Pow[Pi]
+  if Up = 1 then
+    Ed = Ed + Ua
+    if Ed > EdMax then Ed = EdMax
+  else
+    Ed = Ed - Ua
+    if Ed < EdMin then Ed = EdMin
+  end if
+  play sound SndClick
+  return
+end sub
+
+sub EdShow:
+  u8 Cx = 0
+  u8 Ry = 0
+  Uv = Ed
+  Digits
+  K = 10 - EdDig
+  K = K + 3
+  for J = 0 to 12
+    if Buf[J] = 32 then Buf[J] = 48
+  next
+  put Buf + K count EdDig at EdCol,EdRow
+  Ry = EdRow + 1
+  fill 32 count EdDig at EdCol,Ry
+  Cx = EdCol + EdCur
+  put char TCaret at Cx,Ry
+  if Scr = 5 then ChemShow
+  if Scr = 6 then ChemShow
+  if Scr = 8 then SaleShow
+  return
+end sub
+
+' Digits: Uv (sign dropped) into Buf[3..12] as ten digits, leading zeros
+' as spaces; Buf[0..2] spaces
+sub Digits:
+  u8 D = 0
+  u8 Lead = 1
+  u8 Pk = 0
+  if Uv < 0 then Uv = 0 - Uv
+  Buf[0] = 32
+  Buf[1] = 32
+  Buf[2] = 32
+  for Pk = 0 to 9
+    D = 48
+    while Uv >= Pow[Pk]
+      Uv = Uv - Pow[Pk]
+      inc D
+    end while
+    if D <> 48 then Lead = 0
+    if Pk = 9 then Lead = 0
+    if Lead = 1 then D = 32
+    Buf[Pk + 3] = D
+  next
+  return
+end sub
+
+' PutNum(col, row, width): Uv right-aligned
+sub PutNum(u8 Cx, u8 Cy, u8 Wd):
+  Digits
+  K = 13 - Wd
+  put Buf + K count Wd at Cx,Cy
+  return
+end sub
+
+' PutMoney: Uv cents as "-$1234567.89", right-aligned in 12 columns
+sub PutMoney(u8 Cx, u8 Cy):
+  u8 N = 0
+  u8 Neg = 0
+  if Uv < 0 then Neg = 1
+  Digits
+  ' make room for the point: shift digits 3..10 left by one
+  for N = 1 to 10
+    Buf[N - 1] = Buf[N]
+  next
+  Buf[10] = 46
+  if Buf[9] = 32 then Buf[9] = 48
+  if Buf[11] = 32 then Buf[11] = 48
+  N = 0
+  while Buf[N] = 32
+    inc N
+  end while
+  dec N
+  Buf[N] = 36
+  if Neg = 1 then
+    dec N
+    Buf[N] = 45
+  end if
+  ' only the figure: labels to its left stay
+  K = 13 - N
+  Cx = Cx + N
+  put Buf + N count K at Cx,Cy
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+' Rnd16: a 16-bit xorshift (7 9 8) in Rw
+sub Rnd16:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  Rw = Rs
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: J1 both pads (1 up, 2 down, 4 left, 8 right, 16 left button,
+' 32 right button); Nw the buttons newly pressed
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 32
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).button1 then J1 = J1 | 16
+  if joypad(2).button2 then J1 = J1 | 32
+  V = J1 & 48
+  Nw = V & ~Was
+  Was = V
+  return
+end sub
+
+sub WaitButton:
+  Rearm
+  wait no fire
+  nmi off
+wb_loop:
+  Frame1
+  ReadPad
+  if Nw = 0 then goto wb_loop
+  play sound SndOk
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the barn, the menu (years, start, credits)
+sub TitlePage:
+  NewScreen
+  print at 9,2, "THE FARM GAME"
+  for I = 0 to 5
+    Y = I + 4
+    put BarnMap + I * BarnW count BarnW at BarnCol,Y
+  next
+  print at 2,11, "COMPUTE!'S GAZETTE OCT 1985"
+  print at 6,14, "YEARS"
+  print at 6,16, "START FARMING"
+  print at 6,18, "CREDITS"
+  print at 2,21, "STICK: CHOOSE  BUTTON: GO"
+  print at 2,22, "LEFT/RIGHT: YEARS"
+  Menu = 1
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = ShowFrames
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 15
+  Rep = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 15
+  K = 0
+  if V <> WasStick then
+    K = 1
+    Rep = 0
+  else
+    inc Rep
+    if Rep >= 20 then
+      C = Rep & 3
+      if C = 0 then K = 1
+    end if
+  end if
+  if K = 1 then
+    if V = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if V = 2 then
+      if Menu < 2 then inc Menu
+    end if
+    if Menu = 0 then
+      if V = 8 then
+        if Years < 25 then inc Years
+      end if
+      if V = 4 then
+        if Years > 1 then dec Years
+      end if
+    end if
+    ShowMenu
+  end if
+  WasStick = V
+  if Nw = 0 then goto tp_loop
+  if Menu = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  W16 = W16 << 8
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for I = 0 to 2
+    Y = I * 2 + 14
+    C = 32
+    if I = Menu then C = TPtr
+    put char C at 4,Y
+  next
+  print at 16,14, "< ", width$(Years, 2), " >"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,1, "THE FARM GAME"
+  print at 2,3, "BASED ON THE FARM GAME BY"
+  print at 2,4, "DANIEL M. SEURER,"
+  print at 2,5, "COMPUTE!'S GAZETTE, OCTOBER"
+  print at 2,6, "1985 (COMMODORE 64 AND"
+  print at 2,7, "VIC-20), COPYRIGHT COMPUTE!"
+  print at 2,8, "PUBLICATIONS, INC."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: HARVEST MOON"
+  print at 2,18, "TWO-STEP (ORIGINAL)"
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$20,$02,$00,$40,$04,$00,$10
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$28,$10,$00,$04,$0A,$04,$00
+  $44,$11,$99,$44,$22,$88,$CC,$22
+  $88,$CC,$11,$11,$CC,$AA,$99,$88
+  $00,$30,$86,$04,$80,$C1,$81,$24
+  $00,$40,$04,$00,$20,$01,$00,$10
+  $00,$C6,$01,$C6,$C6,$01,$C6,$C6
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$81,$81,$00,$00,$81,$81,$18
+  $00,$18,$C3,$81,$00,$81,$00,$00
+  $88,$88,$22,$22,$88,$88,$22,$22
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$38,$83,$00,$00,$00,$00
+  $40,$60,$70,$87,$70,$60,$40,$00
+  $20,$70,$70,$70,$20,$20,$20,$00
+  $20,$70,$70,$07,$70,$20,$20,$00
+  $00,$60,$F0,$87,$38,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$F0,$E0
+  $00,$00,$F0,$E0,$80,$00,$00,$00
+  $00,$00,$F0,$07,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$F0,$07
+  $00,$00,$00,$00,$00,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$03,$F0,$00
+  $00,$03,$F0,$E0,$80,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$F0,$07,$01,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$07,$07,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$80,$40,$20,$10,$08,$04
+  $00,$00,$01,$02,$04,$08,$10,$20
+  $02,$01,$01,$02,$04,$08,$10,$20
+  $40,$80,$80,$40,$20,$10,$08,$04
+  $84,$08,$10,$21,$42,$84,$08,$10
+  $21,$42,$84,$08,$10,$21,$42,$84
+  $00,$00,$21,$42,$84,$08,$10,$21
+  $00,$00,$08,$10,$21,$42,$84,$08
+  $40,$80,$42,$84,$08,$10,$21,$42
+  $02,$01,$10,$21,$42,$84,$08,$10
+  $00,$00,$84,$08,$10,$21,$42,$84
+  $B0,$70,$08,$10,$21,$42,$84,$08
+  $F0,$70,$42,$84,$08,$10,$21,$42
+end data
+data TileCol bytes
+  $06,$A6,$A6,$06,$A6,$A6,$06,$A6
+  $06,$01,$06,$06,$06,$01,$06,$06
+  $36,$31,$36,$06,$36,$31,$36,$06
+  $BA,$AB,$AB,$BA,$BA,$AB,$AB,$BA
+  $C2,$C2,$CB,$CB,$C2,$C2,$C2,$C2
+  $06,$C6,$6C,$6C,$6C,$6C,$6C,$6C
+  $03,$23,$23,$03,$23,$23,$03,$23
+  $00,$F0,$0F,$F0,$F0,$0F,$F0,$F0
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $B5,$5B,$5B,$0B,$0B,$5B,$5B,$B5
+  $05,$F5,$5F,$5F,$0F,$5F,$05,$05
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $00,$00,$00,$00,$00,$00,$0B,$00
+  $00,$B0,$B0,$0B,$00,$00,$00,$00
+  $B0,$B0,$B0,$0B,$B0,$B0,$B0,$00
+  $B0,$B0,$B0,$B0,$B0,$A0,$A0,$00
+  $C0,$B0,$B0,$0B,$B0,$C0,$C0,$00
+  $00,$30,$30,$03,$30,$30,$00,$00
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$F5,$56,$56
+  $05,$05,$56,$56,$F6,$06,$06,$06
+  $05,$05,$65,$56,$F6,$06,$06,$06
+  $05,$05,$05,$05,$05,$F5,$65,$56
+  $05,$05,$05,$05,$05,$5F,$5F,$5F
+  $05,$05,$05,$05,$05,$F5,$F5,$F5
+  $05,$05,$05,$05,$05,$F5,$56,$05
+  $05,$F5,$56,$56,$F6,$06,$06,$08
+  $F6,$06,$06,$06,$06,$06,$06,$08
+  $06,$06,$06,$06,$06,$06,$06,$08
+  $F6,$06,$06,$06,$06,$06,$06,$08
+  $05,$F5,$65,$56,$F6,$06,$06,$08
+  $5E,$5E,$5E,$5E,$5E,$EF,$E6,$5E
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $81,$81,$81,$81,$81,$81,$08,$08
+  $18,$18,$18,$18,$18,$18,$08,$08
+  $5E,$5E,$5E,$5E,$5E,$5E,$5E,$5E
+  $08,$08,$F6,$F6,$F6,$F6,$F6,$F6
+  $08,$08,$F6,$F6,$F6,$F6,$F6,$F6
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $23,$23,$23,$23,$23,$23,$23,$23
+  $23,$23,$23,$23,$23,$23,$23,$23
+  $08,$08,$23,$23,$23,$23,$23,$23
+  $08,$08,$23,$23,$23,$23,$23,$23
+  $F6,$F6,$23,$23,$23,$23,$23,$23
+  $F6,$F6,$23,$23,$23,$23,$23,$23
+  $08,$08,$23,$23,$23,$23,$23,$23
+  $3E,$3E,$23,$23,$23,$23,$23,$23
+  $E3,$E3,$23,$23,$23,$23,$23,$23
+end data
+data SpritePat bytes
+  $00,$C0,$E0,$F0,$F8,$FC,$F8,$F0,$E0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$78,$FC,$CC,$CC,$FC,$78,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$3E,$36,$3E,$1C,$00,$00
+  $00,$00,$00,$00,$0F,$08,$08,$FF,$FF,$87,$03,$33,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$40,$40,$F0,$F8,$E0,$C1,$C9,$00,$00,$00,$00
+end data
+
+data BarnMap bytes
+  146, 146, 146, 147, 148, 149, 150, 146, 151, 152
+  146, 153, 154, 155, 156, 156, 157, 158, 159, 160
+  146, 146, 161, 161, 162, 163, 161, 161, 164, 160
+  146, 146, 161, 161, 165, 166, 161, 161, 164, 160
+  146, 146, 161, 161, 167, 168, 161, 161, 164, 160
+  169, 170, 171, 172, 173, 174, 175, 171, 176, 177
+end data
+
+asm {
+FmMove:
+    db $40,$55,$40,$02,$50
+FmOk:
+    db $40,$8F,$20,$03,$40,$6B,$20,$05,$50
+FmNo:
+    db $40,$EA,$22,$06,$40,$1F,$33,$06,$50
+FmClick:
+    db $40,$40,$50,$02,$50
+FmCash:
+    db $40,$47,$10,$03,$40,$35,$10,$03,$40,$2A,$30,$08,$50
+FmPay:
+    db $40,$AA,$20,$04,$40,$D6,$30,$06,$50
+FmRain:
+    db $00,$00,$54,$1E,$00,$00,$64,$1E,$00,$00,$84,$1E,$10
+FmPutt:
+    db $00,$00,$46,$03,$00,$00,$76,$03,$10
+FmBell:
+    db $40,$55,$00,$06,$40,$55,$20,$08,$40,$55,$40,$0A,$40,$55,$70,$0E,$50
+FmDoom:
+    db $40,$1D,$11,$0A,$40,$2E,$21,$0A,$40,$41,$31,$0A,$40,$53,$41,$18,$50
+
+FmSoundTable:
+    dw FmTuneMel,$702B
+    dw FmTuneBass,$7035
+    dw FmMove,$7049
+    dw FmOk,$7049
+    dw FmNo,$7049
+    dw FmClick,$7049
+    dw FmCash,$7049
+    dw FmPay,$7049
+    dw FmRain,$703F
+    dw FmPutt,$703F
+    dw FmBell,$7049
+    dw FmDoom,$7049
+; Harvest Moon Two-Step (original)
+; Tiny Sound, 8 frames per step
+FmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1E,$01,$1A,$01,$1E,$01,$21,$01,$01,$01
+    db $23,$01,$21,$01,$1E,$01,$1A,$01,$1C,$01,$01,$01,$01,$01,$1F,$01
+    db $1C,$01,$19,$01,$1C,$01,$1F,$01,$01,$01,$21,$01,$1F,$01,$1C,$01
+    db $19,$01,$1A,$01,$01,$01,$01,$01,$1E,$01,$21,$01,$26,$01,$25,$01
+    db $23,$01,$21,$01,$1E,$01,$1A,$01,$1C,$01,$1F,$01,$1E,$01,$1C,$01
+    db $1A,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+FmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $13,$01,$1A,$01,$13,$01,$1A,$01,$15,$01,$1C,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$13,$01,$1A,$01,$15,$01,$1C,$01,$15,$01,$1C,$01
+    db $0E,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}
