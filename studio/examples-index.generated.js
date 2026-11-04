@@ -14769,8 +14769,29 @@ export const exampleManifest = [
   {
     "id": "stank",
     "label": "SUPERTANK (November 1984)",
-    "detail": "Based on Supertank from COMPUTE!'s Gazette, November 1984. Lead moving enemy tanks with a delayed shell while protecting your armor; no original author is named in the listing.",
+    "detail": "Based on Supertank from COMPUTE!'s Gazette, November 1984. Lead moving enemy tanks with a perspective shell fired from your gun barrel while protecting your armor; no original author is named in the listing.",
     "projectName": "SUPERTANK",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "tambush",
+    "label": "TANK AMBUSH (February 1989)",
+    "detail": "Based on Tank Ambush by Anthony Bertram from COMPUTE!'s Gazette, February 1989. Swivel a tank turret through a panoramic desert and stop approaching soldiers and jeeps.",
+    "projectName": "TANK AMBUSH",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",

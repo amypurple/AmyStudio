@@ -940,4 +940,13 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   delegated to its target-specific validator. The promoted clean repository also passes 797/797 at
   7,803,559 Balanced bytes and 7,802,622 Aggressive bytes.
 
+## 2026-11-03 - Perspective Supertank and Tank Ambush
+
+- Updated Supertank to fire its shell in perspective from the bottom-centre gun barrel toward
+  the sight. Added Tank Ambush by Anthony Bertram from COMPUTE!'s Gazette, February 1989.
+- Both sources compile at Off, Safe, Balanced, Aggressive, and Experimental. Their Balanced ROMs
+  are byte-identical in size to the supplied references: 11,466 bytes for Supertank and 11,574
+  bytes for Tank Ambush. Attribution validation covers 301 COMPUTE!-related examples, including
+  205 Gazette entries.
+
 

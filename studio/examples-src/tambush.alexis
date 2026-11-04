@@ -1,0 +1,1333 @@
+cartridge "TANK AMBUSH/COMPUTE!'S GAZETTE/1989"
+
+' TANK AMBUSH
+' A ColecoVision game based on "Tank Ambush" by Anthony Bertram, COMPUTE!'s
+' Gazette February 1989 p. 26 (Commodore 64 machine language, SYS 2062).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the article's and the original's
+' (run in jsc64 and read from its machine code, orig/tankamb.dis), rebuilt
+' for the ColecoVision: a smooth-turning horizon, enemy sprites in three
+' sizes, sounds, a tune.
+'
+' The game: you sit in a tank in the desert, out of fuel. Enemy soldiers
+' and jeeps come in from the horizon on every side. Left/right swivel the
+' turret all the way round (the ridge line and the enemies slide past);
+' up/down raise and lower the gun: the higher the gun, the farther the
+' shell bursts. A shell that bursts on an enemy destroys it (25 points)
+' and a new one appears on the horizon. An enemy that gets close fires:
+' his ammo bursts in front of your tank (a warning); one that reaches the
+' tank destroys it. Three tanks. Levels 1-3 set the enemies' speed.
+'
+' From the original (orig/tankamb.dis, timed in jsc64 with
+' orig/c64speed-tambush.mjs, about 768 main-loop passes a second, 12.8 a
+' frame): four enemies (two soldiers, two jeeps) start on the horizon at
+' fixed places round the tank; all of them step 1 pixel nearer every N
+' passes, N = 256 / 215 / 185 for levels 1-3 (here 13 passes are counted
+' a frame: level 1 crosses the 80 pixels of desert in about 26 s, as
+' measured); each kill makes N one smaller (faster), losing a tank sets N
+' half way back to the start. The gun's elevation steps every 150 passes
+' (12 frames), 19 steps; the burst lands 8 + 4 x step pixels from the
+' horizon. A shot flies 56 passes and bursts for 200 (4 and 15 frames);
+' while it is out the turret can't turn or tilt. The button is taken at
+' most every 512 passes (40 frames). An enemy hit explodes for 510 passes
+' (40 frames), during which the others stand still, then comes back on
+' the horizon at its own starting place round the tank. Every 1024 passes
+' (80 frames) the game checks the nearest enemy: 45 pixels from the
+' horizon or more, a burst in front of the tank (23 frames); 75 or more,
+' the tank is hit (83 frames), all enemies go back to the horizon. Score
+' 25 a kill, six digits.
+'
+' Liberties: the C64 view wrapped sprites over a 512-pixel circle with far
+' enemies sliding three times faster than near ones as you turned; here
+' the world is a 1024-pixel circle and everything slides together, 3
+' pixels a frame (a full turn in under 6 s), with the ridge line scrolling
+' pixel by pixel. A small range mark shows where the shell will burst (the
+' C64 showed only the barrel's height). The warning burst appears on the
+' side of the nearest enemy (the C64 picked a side at random), a fair hint
+' for enemies behind you. Enemies come back with a random shift of up to
+' 32 pixels round the circle (the C64 used the same four places every
+' time). Everything stands still while your tank explodes (the C64 kept
+' the other enemies moving). The enemies' speed never goes above 40
+' passes a step (the C64's counter would wrap and slow down again after
+' 185+ kills at level 3). The button fires at once when 40 frames have
+' passed since the last shot (the C64 sampled it every 40 frames). The
+' C64 used SHIFT to pause; there is no pause here. Hits: the C64 used the
+' sprite collision of the burst with an enemy; here a box: the enemy's
+' centre within 4/7/10 pixels (far/middle/near) of the gun's line and
+' within 4 pixels of the burst's distance. Added: a title tune,
+' a credits page, sound effects for the turret, the gun and the bursts.
+'
+' Controls: controller 1 (or 2): left/right turn the turret, up raises the
+' gun (farther), down lowers it (nearer), either button fires. On the
+' title, up and down choose the level, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const THz00 = 128
+const THz01 = 129
+const THz02 = 130
+const THz03 = 131
+const THz04 = 132
+const THz05 = 133
+const THz06 = 134
+const THz07 = 135
+const THz08 = 136
+const THz09 = 137
+const THz10 = 138
+const THz11 = 139
+const THz12 = 140
+const THz13 = 141
+const THz14 = 142
+const THz15 = 143
+const THz16 = 144
+const THz17 = 145
+const THz18 = 146
+const THz19 = 147
+const THz20 = 148
+const THz21 = 149
+const THz22 = 150
+const THz23 = 151
+const THz24 = 152
+const THz25 = 153
+const THz26 = 154
+const THz27 = 155
+const THz28 = 156
+const THz29 = 157
+const THz30 = 158
+const THz31 = 159
+const THz32 = 160
+const THz33 = 161
+const THz34 = 162
+const THz35 = 163
+const THz36 = 164
+const THz37 = 165
+const THz38 = 166
+const THz39 = 167
+const THz40 = 168
+const THz41 = 169
+const THz42 = 170
+const THz43 = 171
+const THz44 = 172
+const THz45 = 173
+const THz46 = 174
+const THz47 = 175
+const THz48 = 176
+const THz49 = 177
+const THz50 = 178
+const THz51 = 179
+const THz52 = 180
+const THz53 = 181
+const THz54 = 182
+const THz55 = 183
+const THz56 = 184
+const THz57 = 185
+const THz58 = 186
+const THz59 = 187
+const THz60 = 188
+const THz61 = 189
+const THz62 = 190
+const THz63 = 191
+const TSky = 192
+const TBlk = 193
+const TG0 = 194
+const TG1 = 195
+const TG2 = 196
+const TG3 = 197
+const TG4 = 198
+const TG5 = 199
+const THtop = 200
+const THpl = 201
+const THpl2 = 202
+const TTrk = 203
+const TTur00 = 204
+const TTur01 = 205
+const TTur02 = 206
+const TTur03 = 207
+const TTur04 = 208
+const TTur05 = 209
+const TTur10 = 210
+const TTur11 = 211
+const TTur12 = 212
+const TTur13 = 213
+const TTur14 = 214
+const TTur15 = 215
+const TLgo = 216
+const SBarrel = 0
+const SMark = 4
+const SShell = 8
+const SSol0 = 12
+const SSol1 = 16
+const SSol2 = 20
+const SJep0 = 24
+const SJep1 = 28
+const SJep2 = 32
+const SBurst0 = 36
+const SBurst1 = 40
+const SBurst2 = 44
+const SBoom0 = 48
+const SBoom1 = 52
+const SBoom2 = 56
+const SPuff = 60
+const SBlast = 64
+const NTiles8 = 712
+const SprBytes = 544
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndBurst = 4
+const SndBoom = 5
+const SndPuff = 6
+const SndBlast = 7
+const SndWhirr = 8
+const SndClick = 9
+const SndOver = 10
+const NSpr = 8
+const HorY = 64
+const DWarn = 45
+const DLose = 75
+const DMax = 80
+const TurnSp = 3
+const NoFoe = 255
+
+data TilePat bytes
+  $00,$00,$00,$00,$1C,$7F,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$0F,$7F
+  $00,$00,$00,$00,$00,$00,$00,$E0
+  $00,$00,$01,$03,$0F,$1F,$3F,$7F
+  $00,$00,$E0,$F8,$FE,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$80,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $F8,$FC,$FE,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$80,$E3,$FF,$FF
+  $00,$00,$0F,$3F,$FF,$FF,$FF,$FF
+  $00,$00,$80,$F0,$FF,$FF,$FF,$FF
+  $00,$00,$1F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$C0,$E0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$01,$07,$FF
+  $00,$00,$00,$00,$7F,$FF,$FF,$FF
+  $03,$07,$0F,$3F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$1C,$7F,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$0F,$7F
+  $00,$00,$00,$00,$00,$00,$00,$E0
+  $00,$00,$01,$03,$0F,$1F,$3F,$7F
+  $00,$00,$E0,$F8,$FE,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$80,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $F8,$FC,$FE,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$80,$E3,$FF,$FF
+  $00,$00,$0F,$3F,$FF,$FF,$FF,$FF
+  $00,$00,$80,$F0,$FF,$FF,$FF,$FF
+  $00,$00,$1F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$C0,$E0,$F0,$FC,$FF
+  $00,$00,$00,$00,$00,$01,$07,$FF
+  $00,$00,$00,$00,$7F,$FF,$FF,$FF
+  $03,$07,$0F,$3F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$00,$00,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$92,$24,$92,$00,$49,$00,$00
+  $00,$00,$00,$00,$03,$F0,$C0,$80
+  $00,$00,$00,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$03,$01
+  $00,$80,$00,$02,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$00,$80,$00,$00,$00,$00
+  $01,$60,$40,$01,$01,$01,$01,$00
+end data
+data TileCol bytes
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0B,$0A,$0B,$0A,$0A,$0B,$0A
+  $0B,$0B,$0A,$0B,$0B,$0B,$0B,$0A
+  $0B,$0B,$0B,$0B,$0B,$0A,$0B,$0B
+  $0B,$0B,$0B,$0B,$0A,$0B,$0B,$0B
+  $0B,$0B,$0A,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$01,$0E,$0F,$0E,$0E
+  $0E,$1E,$0E,$0E,$0E,$1E,$0E,$01
+  $0E,$0E,$0E,$01,$0E,$0E,$0E,$0E
+  $01,$E1,$1E,$E1,$01,$E1,$01,$01
+  $0B,$0B,$0B,$0B,$EB,$BE,$BE,$BE
+  $0B,$0B,$0B,$BE,$0E,$0E,$0E,$0E
+  $0B,$0B,$01,$0E,$0E,$0E,$0E,$0E
+  $0B,$0B,$01,$0E,$0E,$0E,$0E,$0E
+  $0B,$0B,$0B,$BE,$0E,$0E,$0E,$0E
+  $0B,$0B,$0B,$0B,$EB,$EB,$BE,$BE
+  $0E,$EF,$0E,$1E,$0E,$01,$0E,$0E
+  $0E,$0F,$0E,$0E,$0E,$01,$0E,$0E
+  $0E,$0F,$0E,$0E,$0E,$01,$0E,$0E
+  $0E,$0F,$0E,$0E,$0E,$01,$0E,$0E
+  $0E,$0F,$0E,$0E,$0E,$01,$0E,$0E
+  $0E,$EF,$0E,$1E,$0E,$01,$0E,$0E
+  $18,$98,$98,$18,$18,$18,$16,$01
+end data
+data SpritePat bytes
+  $07,$0F,$07,$03,$03,$03,$03,$03,$03,$07,$07,$07,$07,$0F,$0F,$0F
+  $E0,$F0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$E0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$02,$01,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$03,$07,$03,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$D0,$E0,$C0,$40,$40
+  $00,$00,$00,$00,$03,$07,$03,$0F,$1B,$1B,$13,$03,$03,$03,$06,$06
+  $00,$00,$00,$00,$80,$C0,$80,$EC,$B8,$E0,$E0,$E0,$60,$60,$30,$30
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$0F,$1F,$08
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$F0,$F8,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$3F,$7F,$7F,$38,$38
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$F0,$FC,$FE,$FE,$1C,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$40,$A0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$0B,$0D,$0E,$07,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$60,$B0,$D0,$E0,$70,$A0,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$16,$2D,$1B,$36,$2D,$1B,$36,$0D,$03,$00
+  $00,$00,$00,$00,$00,$60,$D8,$B4,$6C,$D8,$B4,$6C,$D8,$B0,$60,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$02,$05,$0A,$05,$02,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$40,$A0,$50,$A0,$40,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$05,$0A,$15,$2A,$15,$0A,$15,$0A,$01,$00
+  $00,$00,$00,$00,$00,$80,$50,$A8,$50,$A8,$54,$A8,$50,$A0,$00,$00
+  $00,$00,$00,$00,$0A,$15,$2A,$55,$AA,$55,$AA,$55,$2A,$55,$2A,$05
+  $00,$00,$00,$00,$A0,$54,$AA,$54,$AA,$55,$AA,$55,$AA,$54,$A8,$50
+  $00,$00,$00,$00,$00,$00,$05,$0B,$16,$0D,$1B,$16,$0D,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$A0,$60,$D8,$B0,$68,$D8,$B0,$60,$00,$00
+  $00,$00,$00,$05,$0A,$15,$2A,$55,$AA,$55,$AA,$55,$AA,$55,$2A,$15
+  $00,$00,$00,$40,$A8,$54,$AA,$55,$AA,$55,$AA,$55,$AA,$54,$A8,$50
+end data
+data HzN bytes
+  128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143
+  144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159
+  160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175
+  176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191
+end data
+data HzPat bytes
+  $00,$00,$00,$00,$1C,$7F,$FF,$FF,$00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$0F,$7F,$00,$00,$00,$00,$00,$00,$00,$E0
+  $00,$00,$01,$03,$0F,$1F,$3F,$7F,$00,$00,$E0,$F8,$FE,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$80,$FF,$FF,$00,$00,$00,$00,$00,$00,$C0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F8,$FC,$FE,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$80,$E3,$FF,$FF,$00,$00,$0F,$3F,$FF,$FF,$FF,$FF
+  $00,$00,$80,$F0,$FF,$FF,$FF,$FF,$00,$00,$1F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$C0,$E0,$F0,$FC,$FF,$00,$00,$00,$00,$00,$01,$07,$FF
+  $00,$00,$00,$00,$7F,$FF,$FF,$FF,$03,$07,$0F,$3F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$38,$FE,$FF,$FF,$00,$00,$00,$00,$00,$00,$80,$E0
+  $00,$00,$00,$00,$00,$00,$1E,$FF,$00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$03,$07,$1F,$3F,$7F,$FF,$00,$00,$C0,$F0,$FC,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$80,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F0,$F8,$FC,$FE,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$01,$C7,$FF,$FF,$00,$00,$1F,$7F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$E1,$FF,$FF,$FF,$FF,$00,$00,$3F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$80,$C0,$E0,$F8,$FF,$00,$00,$00,$00,$00,$03,$0F,$FF
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$07,$0F,$1F,$7F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$70,$FC,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$C1
+  $00,$00,$00,$00,$00,$00,$3C,$FF,$00,$00,$00,$00,$00,$00,$00,$81
+  $00,$00,$07,$0F,$3F,$7F,$FF,$FF,$00,$00,$80,$E0,$F8,$FE,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$07
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$E0,$F0,$F8,$FC,$FE,$FF,$FF,$FF
+  $00,$00,$00,$00,$03,$8F,$FF,$FF,$00,$00,$3E,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$C3,$FF,$FF,$FF,$FF,$00,$00,$7E,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$80,$C0,$F0,$FF,$00,$00,$00,$00,$01,$07,$1F,$FF
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF,$0F,$1F,$3F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$E0,$F8,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$83
+  $00,$00,$00,$00,$00,$00,$78,$FF,$00,$00,$00,$00,$00,$00,$01,$03
+  $00,$00,$0F,$1F,$7F,$FF,$FF,$FF,$00,$00,$00,$C0,$F0,$FC,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$C0,$E0,$F0,$F8,$FC,$FF,$FF,$FF
+  $00,$00,$00,$01,$07,$1F,$FF,$FF,$00,$00,$7C,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$87,$FF,$FF,$FF,$FF,$00,$00,$FC,$FE,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$80,$E0,$FF,$00,$00,$00,$00,$03,$0F,$3F,$FF
+  $00,$00,$00,$01,$FF,$FF,$FF,$FF,$1F,$3F,$7F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$C0,$F0,$FC,$FF,$00,$00,$00,$00,$00,$00,$00,$07
+  $00,$00,$00,$00,$00,$00,$F0,$FE,$00,$00,$00,$00,$00,$01,$03,$07
+  $00,$00,$1E,$3F,$FF,$FF,$FF,$FF,$00,$00,$00,$80,$E0,$F8,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FC,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$0F,$1F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$80,$C0,$E0,$F0,$F8,$FE,$FF,$FF
+  $00,$00,$00,$03,$0F,$3F,$FF,$FF,$00,$00,$F8,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$01,$0F,$FF,$FF,$FF,$FF,$00,$00,$F8,$FC,$FE,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C0,$FF,$00,$00,$00,$00,$07,$1F,$7F,$FF
+  $00,$00,$00,$03,$FF,$FF,$FF,$FF,$3F,$7F,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$80,$E0,$F8,$FE,$00,$00,$00,$00,$00,$00,$01,$0F
+  $00,$00,$00,$00,$00,$00,$E0,$FC,$00,$00,$00,$00,$01,$03,$07,$0F
+  $00,$00,$3C,$7F,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$C0,$F0,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$F8,$FE,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$1F,$3F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$80,$C0,$E0,$F0,$FC,$FF,$FF
+  $00,$00,$01,$07,$1F,$7F,$FF,$FF,$00,$00,$F0,$FE,$FF,$FF,$FF,$FF
+  $00,$00,$03,$1F,$FF,$FF,$FF,$FF,$00,$00,$F0,$F8,$FC,$FE,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$80,$FF,$00,$00,$00,$00,$0F,$3F,$FF,$FF
+  $00,$00,$01,$07,$FF,$FF,$FF,$FF,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$C0,$F0,$FC,$00,$00,$00,$00,$00,$00,$03,$1F
+  $00,$00,$00,$00,$00,$00,$C0,$F8,$00,$00,$00,$00,$03,$07,$0F,$1F
+  $00,$00,$78,$FE,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$80,$E0,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$F0,$FC,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$1F,$3F,$7F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$80,$C0,$E0,$F8,$FF,$FF
+  $00,$00,$03,$0F,$3F,$FF,$FF,$FF,$00,$00,$E0,$FC,$FF,$FF,$FF,$FF
+  $00,$00,$07,$3F,$FF,$FF,$FF,$FF,$00,$00,$E0,$F0,$F8,$FC,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$01,$FF,$00,$00,$00,$00,$1F,$7F,$FF,$FF
+  $00,$01,$03,$0F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$80,$E0,$F8,$00,$00,$00,$00,$00,$00,$07,$3F
+  $00,$00,$00,$00,$00,$00,$80,$F0,$00,$00,$00,$01,$07,$0F,$1F,$3F
+  $00,$00,$F0,$FC,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$C0,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$E0,$F8,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$3F,$7F,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$80,$C0,$F1,$FF,$FF
+  $00,$00,$07,$1F,$7F,$FF,$FF,$FF,$00,$00,$C0,$F8,$FF,$FF,$FF,$FF
+  $00,$00,$0F,$7F,$FF,$FF,$FF,$FF,$00,$00,$C0,$E0,$F0,$F8,$FE,$FF
+  $00,$00,$00,$00,$00,$00,$03,$FF,$00,$00,$00,$00,$3F,$FF,$FF,$FF
+  $01,$03,$07,$1F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+
+' where each enemy (re)appears, round the circle from the gun's line
+data Slot words 704, 904, 80, 272
+' passes a step at levels 1-3
+data Dly0T words 256, 215, 185
+' big title letters, 3 x 5 blocks: T A N K M B U S H
+data Glyph bytes 7,2,2,2,2, 7,5,7,5,5, 7,5,5,5,5, 5,5,6,5,5, 5,7,7,5,5, 6,5,6,5,6, 5,5,5,5,7, 7,4,7,1,7, 5,5,7,5,5
+data TitleA bytes 0,1,2,3
+data TitleB bytes 1,4,5,6,7,8
+
+record Foe:
+  u16 A
+  u8 D
+  u8 Sx
+end record
+
+Foe Foes[4]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 Lvl = 1
+' heading round the 1024-pixel circle; the screen shows Hd .. Hd + 255
+u16 Hd = 0
+u16 DrawnHd = 1
+u8 HzSet = 0
+u8 HzCoarse = 0
+u8 HzPend = 0
+' enemy step counter (C64 passes) and the passes per step now / at start
+u16 Acc = 0
+u16 Dly = 256
+u16 Dly0 = 256
+' the gun
+u8 Elev = 8
+u8 ElT = 12
+u8 ShT = 0
+u8 Reload = 0
+u8 Db = 40
+u8 TurnT = 0
+' the enemy being blown up (NoFoe = none) and its timer
+u8 HitE = NoFoe
+u8 HitT = 0
+' threat check: 0 calm, 1 warning burst, 2 tank hit
+u8 ChkT = 80
+u8 Warn = 0
+u8 WarnT = 0
+u8 WarnX = 0
+u8 Tanks = 3
+u8 Over = 0
+' counters for the tests
+u8 Fired = 0
+u8 Kills = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 HudDirty = 0
+u8 InPlay = 0
+' loop counters (never shared with the helpers)
+u8 Fk = 0
+u8 Gk = 0
+u8 Hk = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TaSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewGame
+
+play_loop:
+  Frame1
+  DrawHorizon
+  ReadPad
+  PlayStep
+  DrawSprites
+  PrepHorizon
+  if HudDirty > 0 then ShowHud
+  if Over = 0 then goto play_loop
+
+  InPlay = 0
+  print at 9,10, "            "
+  print at 9,11, "  GAME OVER "
+  print at 9,12, "            "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if Warn = 2 then
+    TankHit
+    return
+  end if
+  if Warn = 0 then
+    dec ChkT
+    if ChkT = 0 then
+      ChkT = 80
+      CheckThreat
+      if Warn = 2 then return
+    end if
+  else
+    dec WarnT
+    if WarnT = 0 then Warn = 0
+  end if
+  if ShT > 0 then
+    dec ShT
+  else
+    Controls
+  end if
+  if Reload > 0 then dec Reload
+  if HitE <> NoFoe then
+    dec HitT
+    if HitT = 0 then
+      Respawn(HitE)
+      HitE = NoFoe
+    end if
+  else
+    Advance
+    if ShT > 0 then
+      if ShT < 16 then Collide
+    end if
+  end if
+  return
+end sub
+
+' stick and button, when no shell is out
+sub Controls:
+  V = J1 & 12
+  select case V
+    case 4
+      Hd = (Hd + 1024 - TurnSp) & 1023
+    case 8
+      Hd = (Hd + TurnSp) & 1023
+  end select
+  if V = 4 or V = 8 then
+    inc TurnT
+    if (TurnT & 7) = 1 then play sound SndWhirr
+  else
+    TurnT = 0
+  end if
+  dec ElT
+  if ElT = 0 then
+    ElT = 12
+    K = J1 & 3
+    if K = 1 then
+      if Elev > 0 then
+        dec Elev
+        play sound SndClick
+      end if
+    end if
+    if K = 2 then
+      if Elev < 18 then
+        inc Elev
+        play sound SndClick
+      end if
+    end if
+    Db = Elev * 4 + 8
+  end if
+  if Btn > 0 then
+    if Reload = 0 then
+      ShT = 20
+      Reload = 40
+      inc Fired
+      play sound SndShot
+    end if
+  end if
+  return
+end sub
+
+' all enemies step nearer every Dly passes (13 passes a frame)
+sub Advance:
+  Acc = Acc + 13
+  if Acc >= Dly then
+    Acc = Acc - Dly
+    for Fk = 0 to 3
+      if Foes[Fk].D < DMax then Foes[Fk].D = Foes[Fk].D + 1
+    next
+  end if
+  return
+end sub
+
+' screen x of an enemy's centre, 0 when it is outside the view (24..232)
+function ScreenX(u16 Ang) as u8
+  u16 Rel = 0
+  Rel = (Ang + 1024 - Hd) & 1023
+  if Rel < 24 then return 0
+  if Rel > 232 then return 0
+  return Rel
+
+' half the width of an enemy that is D pixels from the horizon
+function HalfW(u8 Dd) as u8
+  if Dd < 20 then return 4
+  if Dd < 55 then return 7
+  return 10
+
+sub Collide:
+  u8 Ex = 0
+  u8 Ed = 0
+  u8 Dx = 0
+  u8 Dd = 0
+  for Gk = 0 to 3
+    if HitE = NoFoe then
+      Ex = ScreenX(Foes[Gk].A)
+      Ed = Foes[Gk].D
+      if Ex > 0 then
+        if Ex >= 128 then
+          Dx = Ex - 128
+        else
+          Dx = 128 - Ex
+        end if
+        if Ed >= Db then
+          Dd = Ed - Db
+        else
+          Dd = Db - Ed
+        end if
+        if Dx <= HalfW(Ed) then
+          if Dd <= 4 then
+            HitE = Gk
+            HitT = 40
+            Score += 25
+            inc Kills
+            if Dly > 40 then dec Dly
+            HudDirty = 1
+            play sound SndBoom
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' back on the horizon at its starting place, shifted -32..+31
+sub Respawn(u8 Which)
+  u16 Ang = 0
+  Rand
+  Ang = Rs & 63
+  Ang = Hd + 128 + Slot[Which] + Ang + 1024 - 32
+  Foes[Which].A = Ang & 1023
+  Foes[Which].D = 0
+  return
+end sub
+
+' every 80 frames: the nearest enemy decides warning or hit
+sub CheckThreat:
+  u8 Near = 0
+  u8 Who = 0
+  u16 Rel = 0
+  for Hk = 0 to 3
+    if Foes[Hk].D >= Near then
+      Near = Foes[Hk].D
+      Who = Hk
+    end if
+  next
+  if Near >= DLose then
+    Warn = 2
+    WarnT = 83
+    play sound SndBlast
+  else
+    if Near >= DWarn then
+      Warn = 1
+      WarnT = 23
+      Rel = (Foes[Who].A + 1024 - Hd) & 1023
+      if Rel >= 128 and Rel < 640 then
+        WarnX = 168
+      else
+        WarnX = 72
+      end if
+      play sound SndPuff
+    end if
+  end if
+  return
+end sub
+
+sub TankHit:
+  dec WarnT
+  if WarnT > 0 then return
+  Warn = 0
+  ChkT = 80
+  dec Tanks
+  HudDirty = 1
+  Dly = (Dly + Dly0) / 2
+  if Tanks = 0 then
+    Over = 1
+    return
+  end if
+  HitE = NoFoe
+  ShT = 0
+  for Hk = 0 to 3
+    Respawn(Hk)
+  next
+  return
+end sub
+
+' Rs ^= Rs << 7, Rs ^= Rs >> 9, Rs ^= Rs << 8 (xorshift in Z80)
+sub Rand:
+  call asm TaRand
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the ridge band, double-buffered: PrepHorizon (end of a pass) writes the
+' fine-shifted patterns into the hidden set of 32 codes; DrawHorizon (start
+' of the next frame, in the blank) points the names at that set
+sub PrepHorizon:
+  u16 Off = 0
+  if Hd = DrawnHd then return
+  HzSet = HzSet ^ 1
+  Off = Hd & 7
+  Off = Off * 256
+  if HzSet = 0 then
+    copy HzPat + Off count 256 to vram.pattern + 1024
+  else
+    copy HzPat + Off count 256 to vram.pattern + 1280
+  end if
+  W16 = Hd >> 3
+  HzCoarse = W16 & 15
+  HzPend = 1
+  DrawnHd = Hd
+  return
+end sub
+
+sub DrawHorizon:
+  u16 Nx = 0
+  if HzPend = 0 then return
+  Nx = HzSet * 96 + HzCoarse
+  copy HzN + Nx count 32 to vram.name + 192
+  Nx = Nx + 48
+  copy HzN + Nx count 32 to vram.name + 224
+  HzPend = 0
+  return
+end sub
+
+sub DrawSprites:
+  u8 Bt = 0
+  u8 Pat = 0
+  u8 Col = 0
+  u8 Ex = 0
+  u8 Ed = 0
+  u8 Sy = 0
+  Bt = Elev + 122
+  if ShT > 0 then Bt = Bt + 3
+  set sprite 0 to Bt - 1,120,SBarrel,14
+  if ShT = 0 then
+    Sy = HorY + Db - 9
+    set sprite 1 to Sy - 1,120,SMark,15
+    set sprite 2 to 192,0,0,0
+  else
+    set sprite 1 to 192,0,0,0
+    if ShT >= 16 then
+      ' flying: from the muzzle to the burst point in 4 frames
+      K = 20 - ShT
+      Sy = HorY + Db - 6
+      V = Bt - Sy
+      V = V / 4
+      V = V * K
+      Sy = Bt - V
+      set sprite 2 to Sy - 1,120,SShell,15
+    else
+      Pat = SBurst2
+      if Db < 44 then Pat = SBurst1
+      if Db < 24 then Pat = SBurst0
+      Sy = HorY + Db - 10
+      set sprite 2 to Sy - 1,120,Pat,15
+    end if
+  end if
+  if Warn = 1 then
+    set sprite 3 to 127,WarnX,SPuff,9
+  else
+    if Warn = 2 then
+      Col = 11
+      if (WarnT / 10) & 1 then Col = 8
+      set sprite 3 to 135,120,SBlast,Col
+    else
+      set sprite 3 to 192,0,0,0
+    end if
+  end if
+  for Fk = 0 to 3
+    Ex = ScreenX(Foes[Fk].A)
+    Ed = Foes[Fk].D
+    Foes[Fk].Sx = Ex
+    J = Fk + 4
+    if Ex = 0 then
+      set sprite J to 192,0,0,0
+    else
+      K = 0
+      if Ed >= 20 then K = 4
+      if Ed >= 55 then K = 8
+      if Fk = HitE then
+        Pat = SBoom0 + K
+        Col = 11
+        if (HitT / 10) & 1 then Col = 9
+      else
+        if (Fk & 1) = 0 then
+          Pat = SSol0 + K
+          Col = 6
+        else
+          Pat = SJep0 + K
+          Col = 1
+        end if
+      end if
+      Sy = HorY + Ed - 16
+      set sprite J to Sy - 1,Ex - 8,Pat,Col
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 3,21, "TANKS"
+  put char 48 + Tanks at 9,21
+  print at 11,21, "LV"
+  put char 48 + Lvl at 13,21
+  print at 17,21, "SCORE ", Score
+  HudDirty = 0
+  if Score > Hi then Hi = Score
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  backdrop light blue
+  ' sky, ridge band, desert furrows, the deck
+  for Gk = 0 to 5
+    fill TSky count 32 at 0,Gk
+  next
+  fill TBlk count 32 at 0,0
+  fill TG0 count 32 at 0,8
+  fill TG1 count 32 at 0,9
+  fill TG2 count 32 at 0,10
+  fill TG5 count 32 at 0,11
+  fill TG3 count 32 at 0,12
+  for Gk = 13 to 16
+    fill TG5 count 32 at 0,Gk
+  next
+  fill TG4 count 32 at 0,15
+  fill TG5 count 32 at 0,17
+  fill THtop count 32 at 0,18
+  for Gk = 0 to 5
+    put char TTur00 + Gk at 13 + Gk,17
+    put char TTur10 + Gk at 13 + Gk,18
+  next
+  fill THpl count 32 at 0,19
+  fill THpl2 count 32 at 0,20
+  fill THpl count 32 at 0,21
+  fill TBlk count 26 at 3,21
+  fill TTrk count 32 at 0,22
+  fill TBlk count 32 at 0,23
+  Score = 0
+  Tanks = 3
+  Over = 0
+  W16 = Lvl - 1
+  Dly0 = Dly0T[W16]
+  Dly = Dly0
+  Acc = 0
+  Hd = 0
+  DrawnHd = 1
+  HzSet = 1
+  Elev = 8
+  Db = 40
+  ElT = 12
+  ShT = 0
+  Reload = 0
+  HitE = NoFoe
+  HitT = 0
+  ChkT = 80
+  Warn = 0
+  WarnT = 0
+  Fired = 0
+  Kills = 0
+  TurnT = 0
+  for Gk = 0 to 3
+    Respawn(Gk)
+  next
+  PrepHorizon
+  DrawHorizon
+  ShowHud
+  DrawSprites
+  ShowScreen
+  InPlay = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait
+sub Frame1:
+  call asm TaClr
+  Rearm
+  Idle = 1
+  call asm TaPoll
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub BigLetter(u8 Lt, u8 Cx, u8 Cy)
+  u8 Bits = 0
+  u8 Rr = 0
+  u8 Cc = 0
+  for Rr = 0 to 4
+    Bits = Glyph[Lt * 5 + Rr]
+    for Cc = 0 to 2
+      if Bits & (4 >> Cc) then put char TLgo at Cx + Cc,Cy + Rr
+    next
+  next
+  return
+end sub
+
+sub ShowLevel:
+  print at 7,17, "DIFFICULTY LEVEL"
+  put char 48 + Lvl at 24,17
+  return
+end sub
+
+' the title: up/down choose the level (1-3), a button starts
+sub TitlePage:
+  NewScreen
+  for Gk = 0 to 3
+    BigLetter(TitleA[Gk], Gk * 4 + 9, 2)
+  next
+  for Gk = 0 to 5
+    BigLetter(TitleB[Gk], Gk * 4 + 5, 8)
+  next
+  print at 7,14, "BY ANTHONY BERTRAM"
+  print at 2,15, "COMPUTE!'S GAZETTE FEB 1989"
+  ShowLevel
+  print at 6,19, "UP/DOWN, THEN FIRE"
+  if Hi > 0 then
+    print at 9,21, "BEST ", Hi
+  end if
+  set sprite 4 to 175 - 16,40,SSol2,6
+  set sprite 5 to 175 - 16,200,SJep2,9
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Lvl < 3 then inc Lvl
+      else
+        if Lvl > 1 then dec Lvl
+      end if
+      ShowLevel
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "TANK AMBUSH"
+  print at 2,5, "BASED ON TANK AMBUSH BY"
+  print at 2,6, "ANTHONY BERTRAM, COMPUTE!'S"
+  print at 2,7, "GAZETTE, FEBRUARY 1989"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: DUST ON THE TURRET"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; TaClr / TaPoll: clear the NMI flag; wait until an NMI has set it
+TaClr:
+    xor a
+    ld (NMI_FLAG),a
+    ret
+TaPoll:
+    ld a,(NMI_FLAG)
+    or a
+    jr z,TaPoll
+    ret
+TaRand:
+    ld hl,(AMY_UVAR_Rs)
+    ld a,h
+    rra
+    ld a,l
+    rra
+    xor h
+    ld h,a
+    ld a,l
+    rra
+    ld a,h
+    rra
+    xor l
+    ld l,a
+    xor h
+    ld h,a
+    ld (AMY_UVAR_Rs),hl
+    ret
+TaShot:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$36,$06,$00,$00,$57,$08,$10
+TaBurst:
+    db $00,$00,$15,$03,$00,$00,$26,$05,$00,$00,$47,$08,$10
+TaBoom:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$26,$0A,$00,$00,$47,$0E,$00,$00,$67,$12,$10
+TaPuff:
+    db $00,$00,$26,$04,$00,$00,$47,$06,$10
+TaBlast:
+    db $00,$00,$04,$0A,$00,$00,$14,$0E,$00,$00,$25,$10,$00,$00,$36,$14,$00,$00,$47,$18,$00,$00,$67,$1E
+    db $10
+TaWhirr:
+    db $40,$6D,$52,$01,$40,$FC,$51,$01,$40,$6D,$62,$01,$40,$FC,$61,$01,$50
+TaClick:
+    db $40,$5D,$30,$01,$40,$7C,$50,$01,$50
+TaOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$53,$21,$0C,$40,$AB,$31,$1E,$50
+
+TaSoundTable:
+    dw TaTuneMel,$702B
+    dw TaTuneBass,$7035
+    dw TaShot,$703F
+    dw TaBurst,$703F
+    dw TaBoom,$703F
+    dw TaPuff,$703F
+    dw TaBlast,$703F
+    dw TaWhirr,$7049
+    dw TaClick,$7049
+    dw TaOver,$7049
+; Dust on the Turret (original)
+; Tiny Sound, 8 frames per step
+TaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1C,$1F,$23,$01,$21,$1F,$1E,$01,$1A,$01
+    db $1C,$01,$01,$01,$23,$01,$23,$26,$28,$01,$26,$23,$21,$01,$1E,$01
+    db $1F,$01,$01,$01,$28,$01,$26,$23,$24,$01,$23,$21,$1F,$01,$1E,$1A
+    db $1C,$01,$01,$01,$23,$21,$1F,$1E,$1C,$01,$17,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$0E,$01,$09,$01
+    db $10,$01,$0B,$01,$13,$01,$0E,$01,$13,$01,$0E,$01,$0E,$01,$09,$01
+    db $10,$01,$0B,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$10,$01,$0B,$01,$0B,$01,$12,$01,$10,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

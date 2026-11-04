@@ -13,9 +13,9 @@ cartridge "SUPERTANK/COMPUTE'S GAZETTE/1984"
 '
 ' The game: you sit in your tank behind a gunsight. Enemy tanks drive
 ' across the battlefield from the left, each on a row of its own. Move the
-' sight and fire: your shell flies in from the left along the sight's row
-' and bursts when it reaches the sight, so lead the target (shots to the
-' right take longer). A tank under the sight when the shell bursts is
+' sight and fire: your shell leaves your gun barrel (bottom centre) and
+' flies straight to the sight, shrinking as it goes, and bursts there, so
+' lead the target (far and high targets take longer). A tank under the sight when the shell bursts is
 ' destroyed (10 points). A tank that gets across fires at you: one armor
 ' point lost. With no armor left the screen cracks and the game is over;
 ' a survival bonus (a point for each 200 frames of aiming) is added and
@@ -25,15 +25,21 @@ cartridge "SUPERTANK/COMPUTE'S GAZETTE/1984"
 ' T-34: armor 3, speed 2; SHERMAN: armor 1, speed 3), the sight's window,
 ' the enemy's band of rows (a random row each time), its constant speed
 ' (5 C64 pixels a BASIC pass, measured 0.8 pixel a jiffy in jsc64) and its
-' fire point; the shell entering from the left at the sight's row (2.2
-' pixels a jiffy), sight frozen while it flies, the hit decided when it
+' fire point; a shell whose flight time grows with the distance to the
+' sight and that gets smaller halfway; the sight frozen while it flies, the hit decided when it
 ' arrives; the enemy's shell dropping on you and the armor point; 10
 ' points a tank, bonus = passes / 20, shots fired, survival time, high
 ' score and the ranks TRAITOR to MARSHAL (by the points for tanks, the
 ' bonus not counted); the cracked screen at the end.
 ' The firing button may be held (the original fired while it was down).
 '
-' Liberties: the sight moves 3 times faster than on the C64 (its BASIC
+' Liberties: deliberate change from the C64 (Amy's request): the view is
+' first-person from your tank, so the shell starts at the gun barrel at
+' the bottom centre and flies in a straight line to the sight, instead of
+' entering from the left edge along the sight's row (2.2 pixels a jiffy
+' on the C64); it covers 1 pixel a frame of the distance (longer side +
+' half the shorter), tuned so the lead and the difficulty stay as before.
+' The sight moves 3 times faster than on the C64 (its BASIC
 ' loop crawled at 6, 12 or 18 pixels a second; here 15, 30 and 45); the
 ' enemy speeds up by 1/16 pixel a frame every 5 tanks destroyed (up to
 ' 1.8 times; the original never changed); a hit needs the tank's centre
@@ -198,7 +204,9 @@ const SxMax = 208
 const SyMin = 56
 const SyMax = 124
 const EyMin = 64
-const ShellV = 28
+const ShellV = 16
+const BarX = 112
+const BarY = 152
 const BoomN = 48
 const EshN = 80
 const BonusN = 200
@@ -236,7 +244,10 @@ u8 Fc = 0
 ' the sight (top-left corner, x in 1/16 pixel), the enemy, the shells
 Mover Sg
 Mover En
-u16 Fx16 = 0
+u8 FlT = 0
+u8 FlN = 1
+i16 FlDx = 0
+i16 FlDy = 0
 u8 Fy = 0
 u8 Ph = 0
 u8 Tk = 0
@@ -269,6 +280,8 @@ u8 V = 0
 u8 X = 0
 u8 Y = 0
 u8 Got = 0
+u8 ShX = 0
+u8 ShY = 0
 
   tile screen
   set sound table StSoundTable areas 6
@@ -386,7 +399,7 @@ sub Aim:
   end if
   if Btn > 0 then
     Ph = 1
-    Fx16 = ExStart * 16
+    StartShell
     inc Shots
     play sound SndFire
   end if
@@ -394,11 +407,36 @@ sub Aim:
 end sub
 
 ' the shell flies right along the sight's row until it reaches the sight
+' the shell leaves the barrel (bottom centre) for the sight: its flight
+' takes (distance x 16 / ShellV) frames, the distance measured as the
+' longer side + half the shorter one
+sub StartShell:
+  i16 Ax
+  i16 Ay
+  u16 D16
+  FlDx = Sg.X16 >> 4
+  FlDx = FlDx - BarX
+  FlDy = Sg.Y
+  FlDy = FlDy - BarY
+  Ax = abs(FlDx)
+  Ay = abs(FlDy)
+  if Ax > Ay then
+    D16 = Ax + Ay / 2
+  else
+    D16 = Ay + Ax / 2
+  end if
+  D16 = D16 * 16 + ShellV - 1
+  D16 = D16 / ShellV
+  if D16 < 1 then D16 = 1
+  FlN = D16
+  FlT = 0
+  return
+end sub
+
+' the shell flies; it bursts at the sight
 sub Fly:
-  Fx16 += ShellV
-  W16 = Sg.X16 >> 4
-  W16 = W16 << 4
-  if Fx16 < W16 then return
+  inc FlT
+  if FlT < FlN then return
   if HitNow() = 1 then
     Ph = 2
     BoomT = BoomN
@@ -476,13 +514,12 @@ sub DrawSprites:
   Y = Sg.Y - 1
   set sprite 0 to Y,X,SSight,11
   if Ph = 1 then
-    X = Fx16 >> 4
-    W16 = Sg.X16 >> 4
-    W16 = W16 - X
-    ' the shell gets smaller as it goes away (the C64 changed it halfway)
+    ShellPos
+    ' the shell gets smaller as it goes away (big for the first half)
     K = SShellb
-    if W16 < 60 then K = SShells
-    set sprite 1 to Y,X,K,15
+    V = FlT + FlT
+    if V >= FlN then K = SShells
+    set sprite 1 to ShY,ShX,K,15
   else
     set sprite 1 to 192,0,0,0
   end if
@@ -521,6 +558,20 @@ sub DrawSprites:
     set sprite 3 to 192,0,0,0
   end if
   update sprites
+  return
+end sub
+
+' the shell's place on the straight line from the barrel to the sight
+sub ShellPos:
+  i16 P
+  P = FlDx * FlT
+  P = P / FlN
+  P = P + BarX
+  ShX = P
+  P = FlDy * FlT
+  P = P / FlN
+  P = P + BarY - 1
+  ShY = P
   return
 end sub
 
