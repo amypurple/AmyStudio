@@ -1025,3 +1025,16 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   remain 832/832 and byte-identical to the prior audit: 8,559,606 Balanced bytes and 8,558,614
   Aggressive bytes; 831 ROMs assemble and one project remains delegated.
 
+## 2026-11-04 - Representative QA gate and Gazette package credits
+
+- `node tools/amy-qa.mjs quick` now assembles a fixed 35-example cross-section covering the six
+  comparison samples, numeric and record self-tests, MegaCart, graphics, codecs, audio, complex
+  ColecoVision games, and ADAM projects. It then runs bounded runtime, optimizer, ABI, codec, and
+  benchmark checks. This is the default subsystem gate; the complete 832-example corpus remains
+  the promotion and release gate rather than the cost of every local change.
+- The representative gate passes 35/35 examples: 34 ROMs assemble at 252,185 Balanced bytes and one
+  ADAM project delegates to its target-specific validator.
+- The 239-ROM COMPUTE!'s Gazette package contains every requested 1983-1988 title. Explicit source
+  credits correct metadata extraction for Spike (Eric Brandon), Omicron (Sean Wagle), Basketball
+  Sam & Ed (Rhett Anderson and David Hensley Jr.), and Squeeze (Stephen Shull).
+

@@ -17,6 +17,10 @@ const months = new Map([
   ["july", 7], ["august", 8], ["september", 9], ["october", 10], ["november", 11], ["december", 12]
 ]);
 const knownAuthorCredits = new Map([
+  ["spike", "Eric Brandon"],
+  ["omicron", "Sean Wagle"],
+  ["basketball-sam-ed", "Rhett Anderson and David Hensley Jr."],
+  ["squeeze", "Stephen Shull"],
   ["treasure-diver-ocean-expedition", "Brian Casey"],
 ]);
 

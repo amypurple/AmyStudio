@@ -34,6 +34,7 @@ const tests = [
   { file: "test-os7-u8-short-format-runtime.mjs", area: "os7-short-u8-formatting", evidence: "rom" },
   { file: "test-screen-pages-register-runtime.mjs", area: "screen-page-register-preservation", evidence: "rom" },
   { file: "test-set-sprite-codegen.mjs", area: "sprites", evidence: "compile+assemble" },
+  { file: "test-sprite-count-init-runtime.mjs", area: "sprite-count-initialization", evidence: "rom", suite: "graphics" },
   { file: "test-animation-service-prototype.mjs", area: "cooperative-animation", evidence: "rom" },
   { file: "test-sprite-flicker-codegen.mjs", area: "sprite-flicker", evidence: "rom" },
   { file: "test-120-color-codegen.mjs", area: "120-color-mode", evidence: "compile+assemble" },

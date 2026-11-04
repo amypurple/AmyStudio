@@ -5,6 +5,43 @@ import { dirname, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
+const representativeExamples = [
+  "toolchain-benchmark-hello",
+  "toolchain-benchmark-warrior-bitmap",
+  "toolchain-benchmark-controller",
+  "toolchain-benchmark-sprite-metasprite",
+  "toolchain-benchmark-state-update",
+  "toolchain-benchmark-tile-animation",
+  "amy-2d-array-selftest",
+  "amy-wide-array-selftest",
+  "amy-record-array-safety-selftest",
+  "amy-bcd-selftest",
+  "amy-fixed32-selftest",
+  "amy-float-muldiv-lab",
+  "amy-overlay-layout-selftest",
+  "megacart-bank-demo",
+  "mickey-120-color-picture",
+  "picture-show-120c",
+  "commando-tiny-music-box",
+  "brinquitos-tiny-music-demo",
+  "msx-forest-zx0-benchmark",
+  "title-screens-zx0-slideshow",
+  "amy-chess",
+  "pitdemons",
+  "caverns",
+  "laser-chess",
+  "the-stacks",
+  "skydiver",
+  "oil-tycoon",
+  "martian-prisoner",
+  "omicron",
+  "treasure-diver",
+  "adam-eos-filesystem-demo",
+  "adam-os7-eos-hybrid-storage",
+  "where-on-earth-adam",
+  "adam-multifile-adventure-demo",
+  "timelost-adam-anthology-lab"
+];
 const quickTests = [
   "test-semantic-optimization-equivalence.mjs",
   "test-branch-tail-factoring.mjs",
@@ -13,13 +50,10 @@ const quickTests = [
   "test-expression-fail-closed.mjs",
   "test-array-store-layout-rom.mjs",
   "test-call-asm-abi-rom.mjs",
-  "test-global-initializers-rom.mjs",
   "test-overlay-layout-rom.mjs",
-  "test-controller-backend-selection-rom.mjs",
   "test-sprite-count-init-runtime.mjs",
   "test-optimizer-indexed-immediate-a-liveness.mjs",
   "test-optimizer-indexed-inc-dec-liveness.mjs",
-  "test-record-for-each-ix-runtime.mjs",
   "test-unsigned-byte-zero-bound-codegen.mjs",
   "test-optimizer-djnz-reachability.mjs",
   "test-megalz-codec.mjs",
@@ -102,7 +136,12 @@ function compare() {
 
 const command = process.argv[2] || "help";
 if (command === "quick") {
-  run(["tools/check-examples.mjs"]);
+  run([
+    "tools/check-examples.mjs",
+    "--assemble",
+    "--optimization", "balanced",
+    "--only", representativeExamples.join(",")
+  ]);
   run(["tools/amy-feature-matrix.mjs", "--only", quickTests.join(",")]);
 } else if (command === "full") {
   run(["tools/amy-feature-matrix.mjs", "--full"]);
