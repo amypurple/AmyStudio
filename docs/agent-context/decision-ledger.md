@@ -903,9 +903,9 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   their supplied references byte for byte; Shape Match rebuilds 57 bytes smaller because its
   supplied ROM predates its final source.
 - Attribution validation passes for 281 COMPUTE!/Gazette examples, including 185 Gazette entries.
-  Full Alexis-Z80 gates pass 778/778: 7,591,164 Balanced bytes and 7,590,209 Aggressive bytes. In
-  each profile 777 ROMs assemble and one project remains delegated to its target-specific validator.
-  The clean repository also passes 778/778 at 7,594,771 Balanced and 7,593,816 Aggressive bytes.
+  Full gates pass 778/778: 7,591,164 Balanced bytes and 7,590,209 Aggressive bytes. In each profile
+  777 ROMs assemble and one project remains delegated to its target-specific validator. The clean
+  repository also passes 778/778 at 7,594,771 Balanced and 7,593,816 Aggressive bytes.
 
 ## 2026-11-03 - Claude audit refresh keeps Ahoy and Gazette provenance separate
 
@@ -920,9 +920,24 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Documented the OS7 RAM-shadow behavior of `vdp.status`, unsigned modulo-256 semantics of negative
   `data ... bytes` literals, and the absence of a backslash double-quote escape in Amy strings.
 - The 23 affected sources compile in all five optimization profiles. Attribution validation passes
-  for 293 COMPUTE!-related examples, including 197 Gazette entries. Alexis-Z80 gates pass 790/790:
+  for 293 COMPUTE!-related examples, including 197 Gazette entries. Full gates pass 790/790:
   7,724,237 Balanced bytes and 7,723,309 Aggressive bytes; 789 ROMs assemble and one project remains
   delegated to its target-specific validator. The clean repository also passes 790/790 at
   7,727,844 Balanced and 7,726,916 Aggressive bytes.
+
+## 2026-11-03 - Computed IF operands and width-preserving modulo
+
+- Byte comparisons now accept computed AST operands such as `abs(Value)` and direct
+  `get char at X,Y` reads. The latter stages both coordinates through the same proven BIOS-call
+  ABI used by assignment form and treats the call as a register-clobber barrier.
+- Remainder expressions preserve a 16-bit intermediate for compound left operands. In particular,
+  `(37 * 14) mod 50` and `(37 * 14) % 50` now produce 18 instead of the byte-truncated value 6.
+  GearColeco verifies both spellings and both new condition forms at all five profiles.
+- Added seven distinct COMPUTE!'s Gazette adaptations: States & Capitals Tutor, Spelling Critter,
+  Supertank, Squares, Spy Defense, Square Logix, and Spheroids. Attribution validation now covers
+  300 COMPUTE!-related examples, including 204 Gazette entries. Full Alexis-Z80 gates pass 797/797:
+  7,799,952 Balanced bytes and 7,799,015 Aggressive bytes; 796 ROMs assemble and one project remains
+  delegated to its target-specific validator. The promoted clean repository also passes 797/797 at
+  7,803,559 Balanced bytes and 7,802,622 Aggressive bytes.
 
 

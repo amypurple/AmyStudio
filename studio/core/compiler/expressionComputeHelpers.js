@@ -743,6 +743,12 @@ export function createExpressionComputeHelpers({
         return emitLoadInt8RuntimeDivideAstIntoA(node);
       }
       if (node.op === "%") {
+        const computationType = resolveExpressionAstComputationType(node);
+        const needsWideIntermediate = node.left?.kind === "binary" && ["+", "-", "*"].includes(node.left.op);
+        if (computationType?.runtimeType === "int16" || needsWideIntermediate) {
+          const lines = emitLoadModulo16AstIntoHL(node, computationType?.declaredType || "u16");
+          return lines ? [...lines, "    ld a,l"] : null;
+        }
         const rightValue = tryEvaluateAstInteger(node.right);
         const leftDeclaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
         if (Number.isInteger(rightValue) && rightValue > 0 && rightValue <= 256 && (rightValue & (rightValue - 1)) === 0) {

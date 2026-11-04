@@ -220,6 +220,28 @@ export function createControlFlowHelpers(ctx) {
     });
   }
 
+  function emitLoadByteComparisonOperand(register, token) {
+    const text = String(token || "").trim();
+    const getChar = text.match(/^get\s+char\s+at\s+(.+?)\s*,\s*(.+)$/i);
+    if (getChar) {
+      const loadInputs = emitLoadRoutineByteInputsFromTokens({
+        routineName: "AMY_GET_CHAR_AT",
+        values: { e: getChar[1], d: getChar[2] },
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving
+      });
+      if (!loadInputs) return null;
+      return [...loadInputs, "    call AMY_GET_CHAR_AT", ...(register.toLowerCase() === "a" ? [] : [`    ld ${register},a`])];
+    }
+    const direct = emitLoadInt8ValueInto(register, text);
+    if (direct) return direct;
+    const ast = parseExpressionAst(text);
+    if (!ast || resolveExpressionAstValueType(ast) !== "int8") return null;
+    const computed = emitLoadInt8AstIntoA(ast);
+    if (!computed) return null;
+    return [...computed, ...(register.toLowerCase() === "a" ? [] : [`    ld ${register},a`])];
+  }
+
   function emitUnsignedFixedWholeByteCompareGoto(fixedToken, byteToken, operator, asmLabel, fixedOnLeft = true) {
     const leftOperand = fixedOnLeft ? "whole " + fixedToken : byteToken;
     const rightOperand = fixedOnLeft ? byteToken : "whole " + fixedToken;
@@ -826,18 +848,18 @@ export function createControlFlowHelpers(ctx) {
       } else return null;
       return lines;
     }
-    const loadLeft = emitLoadInt8ValueInto("a", leftToken);
+    const loadLeft = emitLoadByteComparisonOperand("a", leftToken);
     if (!loadLeft) return null;
     const lines = [];
     if (rightType) {
       if (rightType !== "int8") return null;
-      const loadRightB = emitLoadInt8ValueInto("b", rightToken);
+      const loadRightB = emitLoadByteComparisonOperand("b", rightToken);
       if (loadRightB && !loadLinesClobberB(loadLeft)) {
         lines.push(...loadRightB);
         lines.push(...loadLeft);
         lines.push("    cp b");
       } else {
-        const loadRight = emitLoadInt8ValueInto("a", rightToken);
+        const loadRight = emitLoadByteComparisonOperand("a", rightToken);
         if (!loadRight) return null;
         lines.push(...loadLeft);
         lines.push("    push af");
@@ -864,13 +886,13 @@ export function createControlFlowHelpers(ctx) {
           lines.push(`    cp ${rightImmediate}`);
         }
       } else {
-      const loadRightB = emitLoadInt8ValueInto("b", rightToken);
+      const loadRightB = emitLoadByteComparisonOperand("b", rightToken);
       if (loadRightB && !loadLinesClobberB(loadLeft)) {
         lines.push(...loadRightB);
         lines.push(...loadLeft);
         lines.push("    cp b");
       } else {
-        const loadRight = emitLoadInt8ValueInto("a", rightToken);
+        const loadRight = emitLoadByteComparisonOperand("a", rightToken);
         if (!loadRight) return null;
         lines.push(...loadLeft);
         lines.push("    push af");

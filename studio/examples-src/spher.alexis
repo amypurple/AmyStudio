@@ -1,0 +1,1593 @@
+cartridge "SPHEROIDS/COMPUTE!'S GAZETTE/1990"
+
+' SPHEROIDS
+' A ColecoVision game based on "Spheroids" by Kevin Dixon, COMPUTE!'s
+' Gazette June 1990, p. 34 (Commodore 64: a BASIC arena builder, SPHERE.BAS,
+' and a machine-language battle, SPHERE.ML, SYS 2624). Made for Amy Studio
+' by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/sphere.dis, and its BASIC, orig/sphere.bas.bas, and
+' watched in jsc64), the game is rebuilt for the ColecoVision: shaded
+' mounds and depressions, a swirling teleporter, smooth sprites, sound
+' effects and a title tune.
+'
+' The game (as the C64 code plays it): two hovercraft (blue and green)
+' duel in a walled arena with six spheroids. All movement runs in ticks
+' (one pass of the C64's main loop, measured at about 43 a second). Every
+' object has a speed of -9..9 on each axis; a phase counter 8..0 decides,
+' through the C64's spread table 1,6,4,2,8,7,3,5, which ticks take a step
+' (so a speed of n moves on min(n, 8) ticks in 9). Spheroids may step every
+' tick, craft every second tick. The stick is read every 8 ticks: each
+' held direction adds 1 to the craft's speed that way (up to 9); friction
+' takes 1 off each axis every 12 ticks (craft) or 7 (spheroids). Walls
+' turn a speed round AND add 2 to it (bounces speed things up). Every 5
+' ticks (spheroids) or 8 (craft) the face under an object nudges its speed
+' by 1 on both axes: a mound pushes away from its top; a depression's
+' upper-left and lower-right faces push outward and its other two inward
+' (the C64's colour codes; a saddle more than a pit); the teleporter throws the object to a random place.
+' A craft that touches a plain (red) spheroid while holding none picks it
+' up and carries it. Button + a direction (read on the stick's 8-tick
+' beat) throws it at speed 9 that way (8 directions); with no direction
+' nothing happens. A thrown spheroid takes the thrower's colour and is
+' ARMED for 360 ticks (no friction, bouncing faster and faster); it cannot
+' hurt its own thrower. An armed spheroid that touches the other craft
+' blows it up: every spheroid turns plain at once, the burst lasts 112
+' ticks, and after the pause the round restarts (craft back to their
+' corners, spheroids scattered at random, the arena unchanged). Each
+' player has 9 craft; the one who loses all 9 loses the battle. Arenas:
+' OPEN, LATTICE, DIAMONDS, CYCLONE, QUADRATE, RANDOM (the BASIC builder's
+' six layouts; each mound is a mound or a depression at random).
+'
+' Additions: a ONE PLAYER mode against the computer (the C64 game is for
+' two players only), at two levels: EASY (it looks at the field every 16
+' frames, aims loosely, dodges late) and NORMAL (every 8 frames). The
+' computer drives the green craft through the same stick rules as a
+' player.
+'
+' Liberties: the arena is 26 x 19 cells (the C64's 40 x 24), layouts
+' scaled to it; a step is 1 or 2 pixels across in turn (1.5 on average:
+' the C64 stepped 2 of its narrower pixels) and 1 down; the face under an
+' object is read under its centre (the C64 read the character at the
+' sprite's corner after a sprite-background collision); contact is a
+' 13 x 13 box; the teleporter blinks every 12 ticks (the C64: every 9, too
+' fast for the 3 Hz rule); the pause after a burst is 240 ticks in all
+' (the C64's 464, almost 11 s); the arena is chosen on the title with the
+' stick (the C64 used F1-F8 in its BASIC builder) and is built when the
+' battle starts; at the end the winner is named, then the title.
+'
+' Controls: controller 1 drives the blue craft, controller 2 the green
+' craft (in ONE PLAYER mode either controller drives blue). The stick
+' pushes the craft; a button with a direction throws the spheroid you
+' carry. On the title, up and down choose a line, left and right change
+' it, a button starts (or shows the credits).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TFloor = 128
+const TFT = 129
+const TFB = 130
+const TFL = 131
+const TFR = 132
+const TFTL = 133
+const TFTR = 134
+const TFBL = 135
+const TFBR = 136
+const TM0 = 137
+const TM0e = 138
+const TM1 = 139
+const TM1e = 140
+const TM2 = 141
+const TM2e = 142
+const TM3 = 143
+const TM3e = 144
+const TD0 = 145
+const TD0e = 146
+const TD1 = 147
+const TD1e = 148
+const TD2 = 149
+const TD2e = 150
+const TD3 = 151
+const TD3e = 152
+const TTp0 = 153
+const TTp1 = 154
+const TTp2 = 155
+const TTp3 = 156
+const TTq0 = 157
+const TTq1 = 158
+const TTq2 = 159
+const TTq3 = 160
+const TQb0 = 161
+const TQb1 = 162
+const TQb2 = 163
+const TQb3 = 164
+const TQb4 = 165
+const TQb5 = 166
+const TQb6 = 167
+const TQb7 = 168
+const TQb8 = 169
+const TQb9 = 170
+const TQb10 = 171
+const TQb11 = 172
+const TQb12 = 173
+const TQb13 = 174
+const TQb14 = 175
+const TQb15 = 176
+const SCraft = 0
+const SBall = 4
+const SBur0 = 8
+const SBur1 = 12
+const NTiles8 = 392
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBounce = 3
+const SndTele = 4
+const SndThrow = 5
+const SndPick = 6
+const SndBoom = 7
+const SndStart = 8
+const SndOver = 9
+const NSpr = 8
+const LoX = 24
+const HiX = 231
+const LoY = 24
+const HiY = 175
+const ArmLen = 80
+const BurstLen = 112
+const RoundGap = 240
+const NoBall = 255
+const TickRate = 43
+
+' the C64's step spread: phase 1..8 steps when |speed| >= Spread[phase]
+' (phase 0 never steps)
+data Spread bytes 99,1,6,4,2,8,7,3,5
+' per object (0-5 spheroids, 6 blue, 7 green): step, face and friction
+' periods in ticks
+data StepP bytes 1,1,1,1,1,1,2,2
+data FaceP bytes 5,5,5,5,5,5,8,8
+data FricP bytes 7,7,7,7,7,7,12,12
+' the logo's colours (foreground << 4 | black), rolled slowly
+data LogoPal bytes $91,$A1,$B1,$31,$71,$51,$D1,$F1
+' the computer's look interval, aim slack and dodge range, by level
+data AiGapT bytes 16,8
+data AiSlack bytes 12,5
+data AiDodge bytes 26,46
+
+data TilePat bytes
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $AA,$AA,$54,$A8,$50,$A0,$40,$80
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $01,$02,$05,$0A,$15,$2A,$AA,$AA
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $80,$40,$A0,$50,$A8,$54,$AA,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $C0,$60,$30,$90,$58,$A9,$54,$AA
+  $03,$06,$0C,$09,$1A,$15,$2A,$8A
+  $51,$54,$A8,$58,$90,$30,$60,$C0
+  $AA,$2A,$95,$1A,$09,$0C,$06,$03
+  $C0,$60,$30,$90,$58,$A9,$54,$AA
+  $03,$06,$0C,$09,$1A,$15,$2A,$8A
+  $51,$54,$A8,$58,$90,$30,$60,$C0
+  $AA,$2A,$95,$1A,$09,$0C,$06,$03
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+data TileCol bytes
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $0D,$0D,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$0D,$0D
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $0D,$0D,$D1,$D1,$D1,$D1,$D1,$D1
+  $0D,$0D,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$0D,$0D
+  $D1,$D1,$D1,$D1,$D1,$D1,$0D,$0D
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $71,$71,$71,$17,$17,$17,$17,$07
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $51,$51,$51,$51,$15,$15,$15,$05
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$14,$14,$14,$14,$41,$41,$41
+  $14,$41,$14,$41,$14,$41,$14,$41
+  $14,$41,$41,$41,$41,$41,$41,$41
+  $1E,$E1,$1E,$E1,$1E,$E1,$1E,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$1E,$E1
+  $E1,$1E,$E1,$1E,$E1,$1E,$E1,$1E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$1E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$1E,$1E,$1E,$1E,$E1,$E1,$E1
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $1B,$B1,$1B,$B1,$1B,$B1,$1B,$B1
+  $1B,$B1,$1B,$B1,$1B,$B1,$1B,$1B
+  $1B,$1B,$B1,$1B,$B1,$1B,$B1,$1B
+  $1B,$1B,$B1,$1B,$B1,$1B,$B1,$1B
+  $1A,$A1,$1A,$A1,$1A,$A1,$1A,$A1
+  $1A,$A1,$1A,$A1,$1A,$A1,$1A,$1A
+  $1A,$1A,$A1,$1A,$A1,$1A,$A1,$1A
+  $1A,$1A,$A1,$1A,$A1,$1A,$A1,$1A
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+end data
+data SpritePat bytes
+  $00,$00,$01,$03,$07,$0E,$1C,$3C,$1C,$0E,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$70,$78,$70,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$0C,$1D,$1F,$1F,$0F,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$04,$22,$0B,$1F,$6F,$1B,$07,$2A,$08,$10,$00,$00,$00,$00
+  $00,$00,$40,$88,$A0,$F0,$EC,$B0,$C0,$A8,$88,$10,$00,$00,$00,$00
+  $00,$41,$10,$09,$00,$88,$22,$00,$22,$88,$00,$09,$10,$41,$00,$00
+  $00,$04,$10,$20,$00,$22,$88,$00,$88,$22,$00,$20,$10,$04,$00,$00
+end data
+
+data LogoMap bytes
+  $A8,$A2,$A8,$A6,$A6,$A6,$A8,$A2,$A8,$A5,$A8,$A6,$AC,$A2,$A8,$A5,$A8,$A2
+  $A4,$A6,$A8,$A2,$A8,$A6,$A8,$20,$A8,$A5,$A6,$A6,$AB,$20,$A6,$A6,$A4,$A6
+  $A4,$A2,$A2,$20,$A2,$A2,$A4,$A2,$A2,$A2,$A4,$A2,$A4,$A2,$A4,$20,$A4,$A2
+end data
+const LogoX = 7
+const LogoW = 18
+
+' objects: centre in pixels, speed, phase, counters
+u8 PX[8]
+u8 PY[8]
+i8 Vx[8]
+i8 Vy[8]
+u8 Ph[8]
+u8 StC[8]
+u8 FaC[8]
+u8 FrC[8]
+u8 XHalf[8]
+' spheroids: carried by (0, 6 or 7), armed count and its 9-count, owner
+u8 Carry[6]
+u8 Arm[6]
+u8 ArmC[6]
+u8 Owner[6]
+' craft (0 blue, 1 green): the spheroid held, the burst clock, craft left,
+' the stick's 8-tick beat
+u8 Hold[2]
+u8 Ex[2]
+u8 Lives[2]
+u8 JoyC[2]
+u8 Loser = 0
+u8 GapT = 0
+u8 TelT = 12
+u8 TelPh = 0
+u8 TelX = 0
+u8 TelY = 0
+u8 Acc = 0
+u8 Over = 0
+u8 Winner = 0
+' counters the test bot reads (random events)
+u8 Teles = 0
+u8 Rounds = 0
+u8 Throws = 0
+u8 Picks = 0
+u8 Booms = 0
+' options
+u8 Players = 1
+u8 Level = 1
+u8 Arena = 2
+u8 Menu = 3
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 LogoPh = 0
+u8 LogoBuf[8]
+' the computer's stick and clock
+u8 AiPad = 0
+u8 AiT = 0
+' input: 1 up, 2 down, 4 left, 8 right, 16 button
+u8 J1 = 0
+u8 J2 = 0
+u8 JM = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' random numbers
+u16 Rs = 12345
+u16 Rt = 0
+u8 Rb = 0
+' loop counters (never shared with the helpers)
+u8 Mi = 0
+u8 Si = 0
+u8 Li = 0
+u8 Ci = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X8 = 0
+u8 Y8 = 0
+i8 E8 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table SpSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: who won, then the title
+  mute all
+  HideSprites
+  print at 8,10, "              "
+  if Winner = 0 then
+    if Players = 1 then
+      print at 8,11, "   YOU WIN!   "
+    else
+      print at 8,11, "  BLUE WINS!  "
+    end if
+  else
+    if Players = 1 then
+      print at 8,11, "COMPUTER WINS!"
+    else
+      print at 8,11, " GREEN WINS!  "
+    end if
+  end if
+  print at 8,12, "              "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rb = lowbyte Rs
+  return
+end sub
+
+' a random number 0..N-1 (N up to 255)
+function RndTo(u8 N) as u8
+  u16 W = 0
+  Rnd
+  W = Rb * N
+  return highbyte W
+
+' ---------------------------------------------------------------------------
+' one frame: about 43 ticks a second, so a tick on most frames
+sub PlayFrame:
+  if Players = 1 then
+    ' it thinks on a frame without a tick (the frame budget)
+    if AiT > 0 then dec AiT
+    if AiT = 0 then
+      if Acc < 17 then
+        AiThink
+        AiT = AiGapT[Level]
+      end if
+    end if
+    J2 = AiPad
+  end if
+  Acc += TickRate
+  if Acc >= 60 then
+    Acc -= 60
+    DoTick
+  end if
+  return
+end sub
+
+' one pass of the C64's main loop
+sub DoTick:
+  if TelT > 0 then dec TelT
+  if TelT = 0 then
+    TelT = 12
+    TelPh = 1 - TelPh
+    DrawTel
+  end if
+  Stick(0, J1)
+  Stick(1, J2)
+  for Mi = 0 to 5
+    MoveOne
+    FaceOne
+    Friction
+    Follow(6)
+    Follow(7)
+  next
+  for Mi = 6 to 7
+    MoveOne
+    FaceOne
+    Friction
+    Burst
+  next
+  for Ci = 0 to 1
+    for Si = 0 to 5
+      Contact
+    next
+  next
+  if GapT > 0 then
+    dec GapT
+    if GapT = 0 then EndRound
+  end if
+  return
+end sub
+
+' the stick, on the craft's 8-tick beat: the button throws, each
+' direction adds 1 to the speed that way
+sub Stick(u8 P, u8 Pad):
+  u8 O = 0
+  if Ex[P] > 0 then return
+  dec JoyC[P]
+  if JoyC[P] > 0 then return
+  JoyC[P] = 8
+  O = P + 6
+  if (Pad & 16) > 0 then Throw(P, Pad)
+  if (Pad & 1) > 0 then SpeedUp(O, 0)
+  if (Pad & 2) > 0 then SpeedUp(O, 1)
+  if (Pad & 4) > 0 then SpeedUp(O, 2)
+  if (Pad & 8) > 0 then SpeedUp(O, 3)
+  return
+end sub
+
+' one more on a speed: D 0 up, 1 down, 2 left, 3 right (never past 9)
+sub SpeedUp(u8 O, u8 D):
+  select case D
+    case 0
+      if Vy[O] > -9 then Vy[O] = Vy[O] - 1
+    case 1
+      if Vy[O] < 9 then Vy[O] = Vy[O] + 1
+    case 2
+      if Vx[O] > -9 then Vx[O] = Vx[O] - 1
+    case 3
+      if Vx[O] < 9 then Vx[O] = Vx[O] + 1
+  end select
+  return
+end sub
+
+' throw the held spheroid at speed 9 the way the stick points
+sub Throw(u8 P, u8 Pad):
+  u8 B = 0
+  i8 Tx = 0
+  i8 Ty = 0
+  B = Hold[P]
+  if B = NoBall then return
+  if Arm[B] > 0 then return
+  if (Pad & 1) > 0 then Ty = -9
+  if (Pad & 2) > 0 then Ty = 9
+  if (Pad & 4) > 0 then Tx = -9
+  if (Pad & 8) > 0 then Tx = 9
+  Vx[B] = Tx
+  Vy[B] = Ty
+  if Tx = 0 then
+    if Ty = 0 then return
+  end if
+  Carry[B] = 0
+  Hold[P] = NoBall
+  Arm[B] = ArmLen
+  ArmC[B] = 9
+  Owner[B] = P + 6
+  inc Throws
+  play sound SndThrow
+  return
+end sub
+
+' object Mi's step: on its step tick the phase turns, and each axis whose
+' speed reaches the spread value for the phase moves a step (walls turn it)
+sub MoveOne:
+  u8 P = 0
+  u8 S = 0
+  u8 A = 0
+  if Mi < 6 then
+    if Carry[Mi] > 0 then return
+  else
+    if Ex[Mi - 6] > 0 then return
+  end if
+  dec StC[Mi]
+  if StC[Mi] > 0 then return
+  StC[Mi] = StepP[Mi]
+  P = Ph[Mi]
+  if P = 0 then
+    P = 8
+  else
+    dec P
+  end if
+  Ph[Mi] = P
+  if P = 0 then return
+  S = Spread[P]
+  E8 = Vx[Mi]
+  if E8 > 0 then
+    A = E8
+    if A >= S then GoRight
+  else
+    if E8 < 0 then
+      A = -E8
+      if A >= S then GoLeft
+    end if
+  end if
+  E8 = Vy[Mi]
+  if E8 > 0 then
+    A = E8
+    if A >= S then GoDown
+  else
+    if E8 < 0 then
+      A = -E8
+      if A >= S then GoUp
+    end if
+  end if
+  return
+end sub
+
+' across: 1 and 2 pixels in turn
+function XStep() as u8
+  XHalf[Mi] = 1 - XHalf[Mi]
+  return XHalf[Mi] + 1
+
+sub GoRight:
+  u8 X = 0
+  X = PX[Mi]
+  if X >= HiX then
+    Vx[Mi] = -Vx[Mi]
+    SpeedUp(Mi, 2)
+    SpeedUp(Mi, 2)
+    play sound SndBounce
+    return
+  end if
+  X = X + XStep()
+  if X > HiX then X = HiX
+  PX[Mi] = X
+  return
+end sub
+
+sub GoLeft:
+  u8 X = 0
+  X = PX[Mi]
+  if X <= LoX then
+    Vx[Mi] = -Vx[Mi]
+    SpeedUp(Mi, 3)
+    SpeedUp(Mi, 3)
+    play sound SndBounce
+    return
+  end if
+  X = X - XStep()
+  if X < LoX then X = LoX
+  PX[Mi] = X
+  return
+end sub
+
+sub GoDown:
+  if PY[Mi] >= HiY then
+    Vy[Mi] = -Vy[Mi]
+    SpeedUp(Mi, 0)
+    SpeedUp(Mi, 0)
+    play sound SndBounce
+    return
+  end if
+  inc PY[Mi]
+  return
+end sub
+
+sub GoUp:
+  if PY[Mi] <= LoY then
+    Vy[Mi] = -Vy[Mi]
+    SpeedUp(Mi, 1)
+    SpeedUp(Mi, 1)
+    play sound SndBounce
+    return
+  end if
+  dec PY[Mi]
+  return
+end sub
+
+' the face under object Mi, every 5 ticks (spheroids) or 8 (craft)
+sub FaceOne:
+  u8 T = 0
+  u8 Q = 0
+  if Mi < 6 then
+    if Carry[Mi] > 0 then return
+  else
+    if Ex[Mi - 6] > 0 then return
+  end if
+  dec FaC[Mi]
+  if FaC[Mi] > 0 then return
+  FaC[Mi] = FaceP[Mi]
+  X8 = PX[Mi] >> 3
+  Y8 = PY[Mi] >> 3
+  T = get char at X8,Y8
+  if T >= TTp0 then
+    if T <= TTq3 then Teleport
+    return
+  end if
+  if T < TM0 then return
+  if T > TD3e then return
+  ' tiles: kind * 8 + quarter * 2 + edge; a mound pushes away from its
+  ' top (the quarter's own way: NW up-left ...); a depression's NW and SE
+  ' quarters push outward too, its NE and SW quarters inward (the C64's
+  ' colours 12, 11, 1, 15 do that: a saddle more than a bowl)
+  T = T - TM0
+  Q = (T >> 1) & 3
+  if T >= 8 then
+    if Q = 1 then
+      Q = 2
+    else
+      if Q = 2 then Q = 1
+    end if
+  end if
+  if Q < 2 then
+    SpeedUp(Mi, 0)
+  else
+    SpeedUp(Mi, 1)
+  end if
+  if (Q & 1) = 0 then
+    SpeedUp(Mi, 2)
+  else
+    SpeedUp(Mi, 3)
+  end if
+  return
+end sub
+
+' to a random place in the arena, not on the teleporter itself
+sub Teleport:
+  u8 N = 0
+  u8 X = 0
+  u8 Y = 0
+  N = 0
+  while N < 20
+    X = RndTo(208) + LoX
+    Y = RndTo(152) + LoY
+    N = 20
+    if X >= TelX then
+      if X < TelX + 16 then
+        if Y >= TelY then
+          if Y < TelY + 16 then N = 1
+        end if
+      end if
+    end if
+  end while
+  PX[Mi] = X
+  PY[Mi] = Y
+  inc Teles
+  play sound SndTele
+  return
+end sub
+
+' friction: every 7 ticks (spheroids) or 12 (craft) each speed 1 nearer
+' to 0; armed spheroids roll free
+sub Friction:
+  if Mi < 6 then
+    if Arm[Mi] > 0 then return
+  end if
+  dec FrC[Mi]
+  if FrC[Mi] > 0 then return
+  FrC[Mi] = FricP[Mi]
+  E8 = Vx[Mi]
+  if E8 > 0 then Vx[Mi] = E8 - 1
+  if E8 < 0 then Vx[Mi] = E8 + 1
+  E8 = Vy[Mi]
+  if E8 > 0 then Vy[Mi] = E8 - 1
+  if E8 < 0 then Vy[Mi] = E8 + 1
+  return
+end sub
+
+' the C64 runs this twice a tick per spheroid (once for each craft): an
+' armed spheroid's clock runs (9 counts a unit); a plain one held by
+' craft O rides on it
+sub Follow(u8 O):
+  if Arm[Mi] > 0 then
+    dec ArmC[Mi]
+    if ArmC[Mi] = 0 then
+      ArmC[Mi] = 9
+      dec Arm[Mi]
+      if Arm[Mi] = 0 then Owner[Mi] = 0
+    end if
+    return
+  end if
+  if Carry[Mi] = O then
+    PX[Mi] = PX[O]
+    PY[Mi] = PY[O]
+  end if
+  return
+end sub
+
+' a craft's burst: its clock runs while it shows
+sub Burst:
+  K = Mi - 6
+  if Ex[K] = 0 then return
+  if Ex[K] < 255 then inc Ex[K]
+  return
+end sub
+
+' craft Ci (0 blue, 1 green) against spheroid Si
+sub Contact:
+  u8 O = 0
+  u8 D = 0
+  O = Ci + 6
+  if Ex[Ci] > 0 then return
+  D = PX[O] - PX[Si]
+  if D > 128 then D = -D
+  if D > 6 then return
+  D = PY[O] - PY[Si]
+  if D > 128 then D = -D
+  if D > 6 then return
+  if Arm[Si] > 0 then
+    if Owner[Si] = O then return
+    Hit
+    return
+  end if
+  ' a plain spheroid: picked up by a craft holding none, if it is free and
+  ' no craft is bursting
+  if Hold[Ci] <> NoBall then return
+  if Carry[Si] > 0 then return
+  if Ex[0] > 0 then return
+  if Ex[1] > 0 then return
+  Carry[Si] = O
+  Hold[Ci] = Si
+  Vx[Si] = 0
+  Vy[Si] = 0
+  inc Picks
+  play sound SndPick
+  return
+end sub
+
+' craft Ci is hit: every spheroid turns plain; the craft bursts unless the
+' other one already is
+sub Hit:
+  for Li = 0 to 5
+    Arm[Li] = 0
+    Owner[Li] = 0
+  next
+  K = 1 - Ci
+  if Ex[K] > 0 then return
+  Ex[Ci] = 1
+  Loser = Ci
+  GapT = RoundGap
+  inc Booms
+  play sound SndBoom
+  return
+end sub
+
+' the pause is over: the loser has one craft less
+sub EndRound:
+  K = Loser
+  dec Lives[K]
+  ShowLives
+  if Lives[K] = 0 then
+    Winner = 1 - K
+    Over = 1
+    return
+  end if
+  NewRound
+  return
+end sub
+
+' craft back to their corners, spheroids scattered, every counter at 1
+sub NewRound:
+  for Li = 0 to 7
+    Vx[Li] = 0
+    Vy[Li] = 0
+    Ph[Li] = 1
+    StC[Li] = 1
+    FaC[Li] = 1
+    FrC[Li] = 1
+    XHalf[Li] = 0
+  next
+  for Li = 0 to 5
+    Carry[Li] = 0
+    Arm[Li] = 0
+    ArmC[Li] = 1
+    Owner[Li] = 0
+    Mi = Li
+    Scatter
+  next
+  PX[6] = LoX
+  PY[6] = HiY
+  PX[7] = HiX
+  PY[7] = LoY
+  Hold[0] = NoBall
+  Hold[1] = NoBall
+  Ex[0] = 0
+  Ex[1] = 0
+  JoyC[0] = 1
+  JoyC[1] = 1
+  GapT = 0
+  inc Rounds
+  return
+end sub
+
+' spheroid Mi to a random place on the floor (not on a face or the
+' teleporter, not in a craft's corner)
+sub Scatter:
+  u8 X = 0
+  u8 Y = 0
+  u8 T = 0
+  u8 N = 0
+  while N = 0
+    X = RndTo(200) + 28
+    Y = RndTo(140) + 30
+    X8 = X >> 3
+    Y8 = Y >> 3
+    T = get char at X8,Y8
+    if T = TFloor then N = 1
+  end while
+  PX[Mi] = X
+  PY[Mi] = Y
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer (green): every few frames it sets its stick. It dodges a
+' blue spheroid coming close, else fetches the nearest plain spheroid,
+' else lines up with the blue craft (across, down or on a diagonal) and
+' throws
+function Side(i16 D, u8 Neg, u8 Pos) as u8
+  if D > 2 then return Pos
+  if D < -2 then return Neg
+  return 0
+
+' a stick that drives toward a speed: Want the speed wanted on one axis
+function Drive(i8 Want, i8 Have, u8 Neg, u8 Pos) as u8
+  if Want > Have then return Pos
+  if Want < Have then return Neg
+  return 0
+
+function WantV(i16 D) as i8
+  i16 W = 0
+  W = D / 6
+  if W > 9 then W = 9
+  if W < -9 then W = -9
+  return W
+
+sub AiThink:
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Ax = 0
+  i16 Ay = 0
+  i16 Best = 0
+  i16 Dd = 0
+  u8 B = 0
+  u8 Pad = 0
+  u8 Rg = 0
+  u8 Sl = 0
+  Pad = 0
+  AiPad = 0
+  if Ex[1] > 0 then return
+  Rg = AiDodge[Level]
+  Sl = AiSlack[Level]
+  ' dodge: an armed blue spheroid near and heading this way
+  for Li = 0 to 5
+    if Owner[Li] = 6 then
+      Dx = PX[7] - PX[Li]
+      Dy = PY[7] - PY[Li]
+      Ax = abs(Dx)
+      Ay = abs(Dy)
+      if Ax < Rg then
+        if Ay < Rg then
+          ' move across its path
+          E8 = Vx[Li]
+          Best = abs(E8)
+          E8 = Vy[Li]
+          Dd = abs(E8)
+          if Best >= Dd then
+            Pad = Side(Dy, 1, 2)
+            if Pad = 0 then Pad = 1
+            if PY[7] < 40 then Pad = 2
+            if PY[7] > 160 then Pad = 1
+          else
+            Pad = Side(Dx, 4, 8)
+            if Pad = 0 then Pad = 4
+            if PX[7] < 40 then Pad = 8
+            if PX[7] > 215 then Pad = 4
+          end if
+          AiPad = Pad
+          return
+        end if
+      end if
+    end if
+  next
+  if Hold[1] = NoBall then
+    ' fetch the nearest free plain spheroid
+    B = NoBall
+    Best = 999
+    for Li = 0 to 5
+      if Arm[Li] = 0 then
+        if Carry[Li] = 0 then
+          Dx = PX[Li] - PX[7]
+          Dy = PY[Li] - PY[7]
+          Dd = abs(Dx) + abs(Dy)
+          if Dd < Best then
+            Best = Dd
+            B = Li
+          end if
+        end if
+      end if
+    next
+    if B = NoBall then
+      Dx = 128 - PX[7]
+      Dy = 100 - PY[7]
+    else
+      Dx = PX[B] - PX[7]
+      Dy = PY[B] - PY[7]
+    end if
+    Pad = Drive(WantV(Dx), Vx[7], 4, 8)
+    Pad = Pad | Drive(WantV(Dy), Vy[7], 1, 2)
+    AiPad = Pad
+    return
+  end if
+  ' holding: line up with blue and throw
+  Dx = PX[6] - PX[7]
+  Dy = PY[6] - PY[7]
+  Ax = abs(Dx)
+  Ay = abs(Dy)
+  if Ax <= Sl then
+    AiPad = 16 | Side(Dy, 1, 2)
+    return
+  end if
+  if Ay <= Sl then
+    AiPad = 16 | Side(Dx, 4, 8)
+    return
+  end if
+  ' a diagonal throw goes 3 across for 2 down
+  Best = Ay * 3
+  Best = Best >> 1
+  Dd = Ax - Best
+  Best = Sl * 2
+  Dd = abs(Dd)
+  if Dd <= Best then
+    Pad = Side(Dx, 4, 8)
+    AiPad = 16 | Pad | Side(Dy, 1, 2)
+    return
+  end if
+  ' move to the nearer line (across if blue is mostly above or below),
+  ' closing in to about 56 pixels along the other way
+  if Ax < Ay then
+    Pad = Drive(WantV(Dx), Vx[7], 4, 8)
+    Dd = Dy - 56
+    if Dy < 0 then Dd = Dy + 56
+    Pad = Pad | Drive(WantV(Dd), Vy[7], 1, 2)
+  else
+    Pad = Drive(WantV(Dy), Vy[7], 1, 2)
+    Dd = Dx - 56
+    if Dx < 0 then Dd = Dx + 56
+    Pad = Pad | Drive(WantV(Dd), Vx[7], 4, 8)
+  end if
+  AiPad = Pad
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' sprites: 0 blue craft, 1 green craft, 2-7 spheroids (a carried one under
+' its craft's number, drawn under it)
+sub DrawSprites:
+  for Si = 0 to 1
+    J = Si + 6
+    X8 = PX[J] - 7
+    Y8 = PY[J] - 8
+    if Ex[Si] > 0 then
+      if Ex[Si] < BurstLen then
+        K = SBur0
+        if (Ex[Si] & 16) > 0 then K = SBur1
+        set sprite Si to Y8,X8,K,11
+      else
+        set sprite Si to 192,0,0,0
+      end if
+    else
+      if Si = 0 then
+        set sprite 0 to Y8,X8,SCraft,5
+      else
+        set sprite 1 to Y8,X8,SCraft,3
+      end if
+    end if
+  next
+  for Si = 0 to 5
+    K = Si + 2
+    X8 = PX[Si] - 7
+    Y8 = PY[Si] - 8
+    C = 9
+    if Owner[Si] = 6 then C = 5
+    if Owner[Si] = 7 then C = 3
+    set sprite K to Y8,X8,SBall,C
+  next
+  update sprites
+  return
+end sub
+
+sub ShowLives:
+  put char 48 + Lives[0] at 7,1
+  put char 48 + Lives[1] at 23,1
+  return
+end sub
+
+' the teleporter's four tiles (bright or dim)
+sub DrawTel:
+  X8 = TelX >> 3
+  Y8 = TelY >> 3
+  C = TTp0
+  if TelPh = 1 then C = TTq0
+  put char C at X8,Y8
+  put char C + 1 at X8 + 1,Y8
+  put char C + 2 at X8,Y8 + 1
+  put char C + 3 at X8 + 1,Y8 + 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the arena: frame, floor, then the chosen layout (corner Cx,Cy of the
+' 26 x 19 floor grid, columns 3-28 and rows 3-21)
+sub BuildArena:
+  put char TFTL at 2,2
+  fill TFT count 26 at 3,2
+  put char TFTR at 29,2
+  for Li = 3 to 21
+    put char TFL at 2,Li
+    fill TFloor count 26 at 3,Li
+    put char TFR at 29,Li
+  next
+  put char TFBL at 2,22
+  fill TFB count 26 at 3,22
+  put char TFBR at 29,22
+  select case Arena
+    case 0
+      RandomTel
+    case 1
+      Lattice
+      RandomTel
+    case 2
+      Mound(7, 10, 3)
+      Mound(19, 10, 3)
+      Mound(13, 4, 3)
+      Mound(13, 16, 3)
+      PlaceTel(12, 9)
+    case 3
+      Mound(3, 3, 2)
+      Mound(23, 3, 2)
+      Mound(3, 16, 2)
+      Mound(23, 16, 2)
+      Mound(13, 10, 6)
+      RandomTel
+    case 4
+      K = RndTo(3) + 2
+      Mound(6, 6, K)
+      Mound(20, 13, K)
+      K = RndTo(2) + 2
+      Mound(20, 5, K)
+      Mound(6, 14, K)
+      RandomTel
+    case 5
+      Scattered
+      RandomTel
+  end select
+  return
+end sub
+
+' staggered rows of little mounds and depressions
+sub Lattice:
+  u8 R = 0
+  u8 X = 0
+  for R = 0 to 5
+    X = 3
+    if (R & 1) = 1 then X = 5
+    while X < 25
+      Mound(X, R * 3 + 2, 1)
+      X = X + 4
+    end while
+  next
+  return
+end sub
+
+' rows of little faces, each there by a chance chosen for the arena
+sub Scattered:
+  u8 R = 0
+  u8 X = 0
+  u8 N = 0
+  N = RndTo(170)
+  for R = 0 to 5
+    X = 3
+    if (R & 1) = 1 then X = 6
+    while X < 25
+      if RndTo(255) < N then Mound(X, R * 3 + 3, 1)
+      X = X + 5
+    end while
+  next
+  return
+end sub
+
+' a mound or a depression (at random) of size S around grid corner Cx,Cy
+sub Mound(u8 Cx, u8 Cy, u8 S):
+  u8 Kd = 0
+  u8 S2 = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 A = 0
+  u8 B = 0
+  u8 Q = 0
+  u8 T = 0
+  Kd = 0
+  if RndTo(2) = 1 then Kd = 8
+  S2 = S * 2
+  for Dy = 0 to S2 - 1
+    for Dx = 0 to S2 - 1
+      ' distance from the corner in half cells
+      A = Dx * 2 + 1
+      if A > S2 then
+        A = A - S2
+      else
+        A = S2 - A
+      end if
+      B = Dy * 2 + 1
+      if B > S2 then
+        B = B - S2
+      else
+        B = S2 - B
+      end if
+      A = A + B
+      if A <= S2 then
+        Q = 0
+        if Dx >= S then Q = 1
+        if Dy >= S then Q = Q + 2
+        T = TM0 + Kd + Q * 2
+        if A = S2 then inc T
+        X8 = Cx + Dx + 3 - S
+        Y8 = Cy + Dy + 3 - S
+        put char T at X8,Y8
+      end if
+    next
+  next
+  return
+end sub
+
+' the teleporter at grid cell Gx,Gy (its top-left)
+sub PlaceTel(u8 Gx, u8 Gy):
+  TelX = (Gx + 3) * 8
+  TelY = (Gy + 3) * 8
+  TelPh = 0
+  TelT = 12
+  DrawTel
+  return
+end sub
+
+' on four floor cells at random, away from the craft corners
+sub RandomTel:
+  u8 Gx = 0
+  u8 Gy = 0
+  u8 N = 0
+  while N = 0
+    Gx = RndTo(22) + 2
+    Gy = RndTo(15) + 2
+    N = 1
+    X8 = Gx + 3
+    Y8 = Gy + 3
+    C = get char at X8,Y8
+    if C <> TFloor then N = 0
+    X8 = X8 + 1
+    C = get char at X8,Y8
+    if C <> TFloor then N = 0
+    Y8 = Y8 + 1
+    C = get char at X8,Y8
+    if C <> TFloor then N = 0
+    X8 = X8 - 1
+    C = get char at X8,Y8
+    if C <> TFloor then N = 0
+  end while
+  PlaceTel(Gx, Gy)
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  BuildArena
+  print at 2,1, "BLUE"
+  print at 25,1, "GREEN"
+  ArenaName(12, 1)
+  Lives[0] = 9
+  Lives[1] = 9
+  ShowLives
+  Over = 0
+  Acc = 0
+  AiT = 0
+  AiPad = 0
+  Teles = 0
+  Rounds = 0
+  Throws = 0
+  Picks = 0
+  Booms = 0
+  NewRound
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      mute all
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  Rnd
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  JM = J1 | J2
+  if Players = 1 then J1 = JM
+  Btn = JM & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo, what is what, the options menu, the tune once
+sub TitlePage:
+  NewScreen
+  print at 2,1, "COMPUTE!'S GAZETTE JUNE 1990"
+  for Li = 0 to 2
+    K = Li * LogoW
+    copy LogoMap + K count LogoW to vram.name + 103 + Li * 32
+  next
+  print at 6,8, "CRAFT"
+  print at 6,10, "SPHEROID"
+  print at 6,12, "ARMED"
+  Mound2(16, 7, 0)
+  print at 19,8, "MOUND"
+  Mound2(16, 9, 8)
+  print at 19,10, "DEPRESSION"
+  put char TTp0 at 16,11
+  put char TTp1 at 17,11
+  put char TTp2 at 16,12
+  put char TTp3 at 17,12
+  print at 19,12, "TELEPORTER"
+  print at 6,15, "PLAYERS"
+  print at 6,16, "LEVEL"
+  print at 6,17, "ARENA"
+  print at 6,18, "START"
+  print at 6,19, "CREDITS"
+  print at 3,21, "STICK: CHOOSE  BUTTON: GO"
+  if Menu > 4 then Menu = 3
+  ShowMenu
+  set sprite 0 to 55,25,SCraft,5
+  set sprite 1 to 71,25,SBall,9
+  set sprite 2 to 87,25,SBall,5
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Menu = 3
+  ShowMenu
+tp_loop:
+  Frame1
+  ReadPad
+  LogoRoll
+  V = JM & 15
+  if V > 0 then
+    if WasStick = 0 then
+      MenuMove
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 4 then
+    CreditsPage
+  end if
+  return
+end sub
+
+' a 2 x 2 mound (Kd 0) or depression (Kd 8) for the title's key
+sub Mound2(u8 X, u8 Y, u8 Kd):
+  C = TM0e + Kd
+  put char C at X,Y
+  put char C + 2 at X + 1,Y
+  put char C + 4 at X,Y + 1
+  put char C + 6 at X + 1,Y + 1
+  return
+end sub
+
+' the logo's colours roll down a row every 8 frames
+sub LogoRoll:
+  u16 A = 0
+  if (Tick & 7) > 0 then return
+  inc LogoPh
+  for Li = 0 to 7
+    K = Li + LogoPh
+    K = K & 7
+    LogoBuf[Li] = LogoPal[K]
+  next
+  for Li = 0 to 15
+    A = TQb0 + Li
+    A = A * 8
+    copy LogoBuf count 8 to vram.color + A
+  next
+  return
+end sub
+
+sub MenuMove:
+  select case V
+    case 1
+      if Menu > 0 then dec Menu
+    case 2
+      if Menu < 4 then inc Menu
+    case 4
+      Change(255)
+    case 8
+      Change(1)
+  end select
+  ShowMenu
+  return
+end sub
+
+' left or right on an option line
+sub Change(u8 D):
+  select case Menu
+    case 0
+      Players = 3 - Players
+    case 1
+      Level = 1 - Level
+    case 2
+      Arena = Arena + D
+      if Arena = 255 then Arena = 5
+      if Arena = 6 then Arena = 0
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 15 to 19
+    put char 32 at 4,Li
+  next
+  J = Menu + 15
+  put char 62 at 4,J
+  if Players = 1 then
+    print at 15,15, "1 VS CPU"
+  else
+    print at 15,15, "2       "
+  end if
+  if Level = 0 then
+    print at 15,16, "EASY  "
+  else
+    print at 15,16, "NORMAL"
+  end if
+  ArenaName(15, 17)
+  return
+end sub
+
+sub ArenaName(u8 X, u8 Y):
+  select case Arena
+    case 0
+      print at X,Y, "OPEN    "
+    case 1
+      print at X,Y, "LATTICE "
+    case 2
+      print at X,Y, "DIAMONDS"
+    case 3
+      print at X,Y, "CYCLONE "
+    case 4
+      print at X,Y, "QUADRATE"
+    case 5
+      print at X,Y, "RANDOM  "
+  end select
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "SPHEROIDS"
+  print at 2,5, "BASED ON SPHEROIDS BY"
+  print at 2,6, "KEVIN DIXON, COMPUTE!'S"
+  print at 2,7, "GAZETTE JUNE 1990"
+  print at 2,8, "(COMMODORE 64 BASIC AND"
+  print at 2,9, "MACHINE LANGUAGE)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: ROLLING SPHERES"
+  print at 2,18, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SpBounce:
+    db $40,$75,$31,$01,$40,$F3,$40,$01,$40,$B4,$40,$01,$40,$8F,$50,$01,$40,$77,$50,$01,$40,$66,$60,$01
+    db $50
+SpTele:
+    db $40,$5D,$20,$01,$40,$4F,$20,$01,$40,$44,$30,$01,$40,$3C,$30,$01,$40,$36,$40,$01,$40,$31,$40,$01
+    db $40,$2C,$50,$01,$40,$29,$50,$01,$40,$26,$60,$01,$40,$23,$60,$01,$50
+SpThrow:
+    db $00,$00,$14,$03,$00,$00,$25,$03,$00,$00,$35,$03,$00,$00,$56,$04,$00,$00,$66,$05,$10
+SpPick:
+    db $40,$7F,$20,$02,$40,$55,$30,$03,$50
+SpBoom:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$26,$08,$00,$00,$36,$0A,$00,$00,$47,$0E,$00,$00,$67,$12
+    db $00,$00,$77,$16,$10
+SpStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+SpOver:
+    db $40,$AA,$10,$0A,$40,$BF,$20,$0A,$40,$D6,$20,$0A,$40,$E2,$20,$0A,$40,$FE,$30,$1E,$50
+
+SpSoundTable:
+    dw SpTuneMel,$702B
+    dw SpTuneBass,$7035
+    dw SpBounce,$7049
+    dw SpTele,$7049
+    dw SpThrow,$703F
+    dw SpPick,$7049
+    dw SpBoom,$703F
+    dw SpStart,$7049
+    dw SpOver,$7049
+; Rolling Spheres (original)
+; Tiny Sound, 8 frames per step
+SpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$24,$28,$01,$26,$24,$23,$01,$24,$28,$2D,$01
+    db $2B,$28,$01,$01,$1D,$21,$24,$01,$23,$21,$1F,$01,$21,$23,$24,$01
+    db $1C,$01,$01,$01,$21,$24,$28,$01,$29,$28,$26,$01,$28,$26,$24,$01
+    db $23,$1F,$01,$01,$26,$24,$23,$01,$21,$23,$1F,$01,$21,$01,$1C,$01
+    db $21,$01,$00,$01
+    db $FF
+SpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$04,$01,$09,$01,$04,$01,$09,$01,$0C,$01
+    db $04,$01,$09,$01,$05,$01,$0C,$01,$05,$01,$0C,$01,$04,$01,$0B,$01
+    db $04,$01,$07,$01,$09,$01,$04,$01,$0E,$01,$09,$01,$0C,$01,$07,$01
+    db $04,$01,$0B,$01,$07,$01,$0E,$01,$07,$01,$0B,$01,$04,$01,$0B,$01
+    db $09,$01,$00,$01
+    db $FF
+}

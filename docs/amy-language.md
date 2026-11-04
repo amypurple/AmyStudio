@@ -1788,6 +1788,8 @@ provably zero is rejected at compile time. A runtime divisor whose value becomes
 stores `0`. Signed modulo uses
 truncation-toward-zero division and keeps the sign of the dividend:
 `-7 % 3 = -1`, `7 % -3 = 1`, `-7 % -3 = -1`.
+Intermediate arithmetic is preserved before the remainder is taken: `(A * B) mod 50`
+does not truncate the product merely because the destination is a `u8`.
 `sqrt`: either unsigned `u16`-sized input with `u16` result, or `fixed32` / `fp5`-capable source into a matching target. `A = sqrt(B)` is the canonical form.
 Prefer `<<=` / `>>=` for powers of two.
 
@@ -2562,7 +2564,7 @@ fill Char count N at X,Y
 ```
 
 `get char at X,Y` is a byte-valued input. It may be returned directly from a byte
-function and may be passed directly to a one-parameter byte routine. Assign it to a
+function, compared directly in an `if`, and passed directly to a one-parameter byte routine. Assign it to a
 temporary first when a larger argument list would make its coordinate comma ambiguous.
 
 For `put Name at X,Y` and `put Name centered at Y`, `Name` must be a known-length
@@ -4064,6 +4066,7 @@ Current partial implementation note:
 - `random fp5 into Var`, `random fixed32 into Var`, and `rnd fp5 into Var` were removed; write `Var = random()`
 - `Var = sqrt(Value)` is the canonical form for fp5/fixed32 square root
 - `Var = abs(Value)` works for `fp5`, `fixed32`, and integer expressions; for `u16`/`i16` targets, byte operands are widened before subtraction so `Distance = abs(X1 - X2)` avoids `u8` wraparound
+- Integer `abs(Value)` may also be compared directly in a condition, for example `if abs(Error) <= Limit then ...`.
 - `Var = absdiff(A, B)` computes the absolute scalar difference directly. It is equivalent in intent to `abs(A-B)`, but can stay compact for two unsigned bytes and uses signed-aware comparison when signed operands are involved. Do not mix signed and unsigned variables; a numeric constant is accepted only when it fits the other operand's signedness/range.
 - `Var = sgn(Value)` works for `fp5`, integer, `fixed`, `ufixed`, and `fixed32` sources into byte/word/`fixed`/`fixed32`/`fp5` targets
 - `Var = int(Value)` works for fp5-oriented floor/integerization into byte/word/`fixed32`/`fp5` targets; floor-style for negatives (`int -0.5 = -1`, `int -1.25 = -2`)

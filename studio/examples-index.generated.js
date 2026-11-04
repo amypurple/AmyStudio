@@ -14723,5 +14723,152 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "critter",
+    "label": "SPELLING CRITTER (June 1984)",
+    "detail": "Based on Spelling Critter from COMPUTE!'s Gazette, June 1984. Study a word, then rebuild it with a joystick-controlled letter wheel; no original author is named in the listings.",
+    "projectName": "SPELLING CRITTER",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "educational"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "states",
+    "label": "STATES & CAPITALS TUTOR (September 1983)",
+    "detail": "Based on States & Capitals Tutor from COMPUTE!'s Gazette, September 1983. Match American states and capitals from multiple-choice lists; no original author is named in the listings.",
+    "projectName": "STATES & CAPITALS TUTOR",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "educational"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "stank",
+    "label": "SUPERTANK (November 1984)",
+    "detail": "Based on Supertank from COMPUTE!'s Gazette, November 1984. Lead moving enemy tanks with a delayed shell while protecting your armor; no original author is named in the listing.",
+    "projectName": "SUPERTANK",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "squares",
+    "label": "SQUARES (June 1985)",
+    "detail": "Based on Squares from COMPUTE!'s Gazette, June 1985. Program four snakes to draw lines and complete squares on a shared grid; no original author is named in the listing.",
+    "projectName": "SQUARES",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "strategy"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "spydef",
+    "label": "SPY DEFENSE (April 1988)",
+    "detail": "Based on Spy Defense by John Dalton from COMPUTE!'s Gazette, April 1988. Fly the Laser Striker, fight aliens and build bridges to rescue imprisoned spies.",
+    "projectName": "SPY DEFENSE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "sqlogix",
+    "label": "SQUARE LOGIX (June 1988)",
+    "detail": "Based on Square Logix from COMPUTE!'s Gazette, June 1988. Restore a mixed 6x6 board through row shifts and block rotations; no original author is named in the listing.",
+    "projectName": "SQUARE LOGIX",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-128",
+      "puzzle"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "spher",
+    "label": "SPHEROIDS (June 1990)",
+    "detail": "Based on Spheroids by Kevin Dixon from COMPUTE!'s Gazette, June 1990. Two hovercraft collect and throw armed spheroids across a terrain-shaped arena.",
+    "projectName": "SPHEROIDS",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "gazette",
+      "reimagined-adaptation",
+      "game",
+      "commodore-64",
+      "action"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];

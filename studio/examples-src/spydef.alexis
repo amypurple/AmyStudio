@@ -1,0 +1,1400 @@
+cartridge "SPY DEFENSE/COMPUTE'S GAZETTE/1988"
+
+' SPY DEFENSE - a ColecoVision port of "Spy Defense" by John Dalton,
+' COMPUTE!'s Gazette, April 1988 (C64 machine language, SYS2063).
+'
+' Spies wait on the left cliff of an alien prison camp; a pit keeps them in.
+' You fly the Laser Striker: shoot the aliens, dock with the supply
+' satellite for bricks and repairs, and drop bricks into the pit until the
+' bridge is complete. The spy walks across; the next, wider pit begins.
+'
+' Controls (joystick 1 or 2, no keypad):
+'   stick                fly the craft (it sinks slowly when idle)
+'   fire + left/right    phaser that way (as in the article)
+'   fire + down          drop a brick (as in the article)
+'   left button alone    phaser the way the craft last moved
+'   right button         drop a brick
+'   release the button between shots or drops (as in the article)
+'
+' Rules (article + the C64 code):
+' - aliens appear at the top or the sides and chase the craft; a collision
+'   damages the craft (4-9%) and destroys the aliens near it; at 100% the
+'   craft can't hold height, sinks and crashes: game over (one ship)
+' - craft colour shows damage: grey, yellow, flashing red, many colours
+' - pits 1..8: aliens 2,2,3,3,4,4,4,4; brick capacity 3,4,4,5,5,6,6,7;
+'   speed rises each pit
+' - cyan and blue aliens drop charges that break bricks (harmless once
+'   the bridge is complete)
+' - after (pit + 6) kills a supply satellite crosses the top; docking gives
+'   1..pit/2+1 bricks and repairs a quarter of the damage
+' - points: white 5, yellow 5, cyan 10, blue 25, sparkling 50; a brick 20,
+'   a bridge 200, a spy across 750 x pit, the spy reaching base (after
+'   pit 8) 10,000
+'
+' Liberties:
+' - pits scaled to 28 columns: 4..8 bricks of 16 pixels (article: 7..15)
+' - the side buttons as extra shoot/drop buttons
+' - the game ends after pit 8 with the congratulations (the C64 looped)
+' - charges also hurt the craft (5%); one charge at a time
+' - tuned for a human (see README): collision damage 4-9% (C64 code:
+'   10-25%), charges 3%, a one-second grace after a hit, aliens never
+'   appear within 48 px of the craft, a crossed pit repairs fully, one
+'   satellite guaranteed per pit (15 s in) and another every 15 s while
+'   the craft has no bricks
+' - speeds about 0.6-0.8 of the C64's, slower in pits 1-4
+' - block-letter title, credits page, original tune and effects
+
+const TSky = 128
+const TCeil = 129
+const TDrip = 130
+const TRock = 131
+const TTop = 132
+const TSlopel = 133
+const TSloper = 134
+const TSpike = 135
+const TGirl = 136
+const TGirr = 137
+const TGround = 138
+const TBlock = 139
+const THud = 140
+const SCraft = 0
+const SDome = 4
+const SShot = 8
+const SPiece = 12
+const SBomb = 16
+const SSat = 20
+const SSpy1 = 24
+const SSpy2 = 28
+const SAl1a = 32
+const SAl1b = 36
+const SAl2a = 40
+const SAl2b = 44
+const SAl3a = 48
+const SAl3b = 52
+const SBoom = 56
+const NTiles8 = 104
+const SprBytes = 480
+const TitleRows = 11
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPop = 4
+const SndHit = 5
+const SndDrop = 6
+const SndPlace = 7
+const SndClank = 8
+const SndBomb = 9
+const SndSat = 10
+const SndEmpty = 11
+const SndBridge = 12
+const SndStep = 13
+const SndSafe = 14
+const SndCrash = 15
+const SndOver = 16
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+const NFoe = 4
+const PxMin = 16
+const PxMax = 224
+const PyMin = 34
+const PyMax = 124
+const SpyEnd = 216
+
+record Foe:
+  u8 X
+  u8 Y
+  u8 Kind
+  u8 Dir
+  u8 Steps
+  u8 Delay
+  u8 Acc
+end record
+
+Foe Foes[NFoe]
+u8 Filled[8]
+' attacker kinds of the four slots for pits 1..8 (0 = slot unused)
+' attacker kinds of the four slots for pits 1..8 (0 = slot unused), after
+' the article's table: 2,2,3,3,4,4,4,4 aliens. 1 white, 2 yellow, 3 cyan
+' (drops charges), 4 blue (drops charges), 5 sparkling
+data KindTab bytes
+  1,2,0,0
+  1,2,0,0
+  1,2,3,0
+  1,2,3,0
+  1,2,3,4
+  1,2,3,4
+  1,2,3,5
+  1,2,3,5
+end data
+data KindPts bytes
+  0,5,5,10,25,50
+end data
+data KindCol bytes
+  0,15,11,7,5,13
+end data
+data SparkCol bytes
+  15,13,11,7
+end data
+data CritCol bytes
+  8,11,13,7,15,3,9,5
+end data
+data CapTab bytes
+  3,4,4,5,5,6,6,7
+end data
+' direction steps: 0 right, 1 down-right, 2 down, 3 down-left, 4 left,
+' 5 up-left, 6 up, 7 up-right
+data DirDx bytes
+  1,1,0,255,255,255,0,1
+end data
+data DirDy bytes
+  0,1,1,1,0,255,255,255
+end data
+
+bcd digits 6 Score = 0
+u16 NumU = 0
+u16 Rs = 12345
+u8 Phase = 0
+u8 Pit = 1
+u8 Need = 4
+u8 Placed = 0
+u8 Pieces = 3
+u8 Cap = 3
+u8 Damage = 0
+u8 Kills = 0
+u8 SatGiven = 0
+u16 PitTime = 0
+u8 PitL = 0
+u8 PitR = 0
+u8 Px = 0
+u8 Py = 0
+u8 Face = 0
+u8 Moved = 0
+u8 Sinking = 0
+u8 ShX = 0
+u8 ShY = 0
+u8 ShOn = 0
+u8 ShLeft = 0
+u8 PcX = 0
+u8 PcY = 0
+u8 PcOn = 0
+u8 BmX = 0
+u8 BmY = 0
+u8 BmOn = 0
+u8 SaX = 0
+u8 SaY = 0
+u8 SaOn = 0
+u8 SaDx = 0
+u8 SaUp = 0
+u8 SpyX = 0
+u8 SpyY = 0
+u8 Walking = 0
+u8 Boom = 0
+u8 HitFlash = 0
+u8 HudDirty = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 Btn = 0
+u8 WasB1 = 0
+u8 WasB2 = 0
+u8 Press = 0
+u8 Shoot = 0
+u8 DropReq = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Fi = 0
+u8 Fk = 0
+u8 Lk = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 BoomX = 0
+u8 BoomY = 0
+
+  tile screen
+  set sound table SdSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  Phase = 0
+  TitlePage
+  if Menu = 1 then goto title
+
+  Score = 0
+  Pit = 1
+  Pieces = 3
+  Damage = 0
+
+new_pit:
+  StartPit
+  Phase = 1
+
+play_loop:
+  Frame1
+  ReadPad
+  MoveCraft
+  MoveShot
+  MovePiece
+  MoveBomb
+  MoveFoes
+  MoveSat
+  ' one supply satellite guaranteed each pit, 15 s in; another every
+  ' 15 s while the craft has no bricks
+  inc PitTime
+  if PitTime >= 900 then
+    if SaOn = 0 then
+      if SatGiven = 0 or Pieces = 0 then
+        if Walking = 0 then
+          LaunchSat
+          PitTime = 0
+        end if
+      end if
+    end if
+  end if
+  if Walking = 1 then WalkSpy
+  DrawSprites
+  if HudDirty = 1 then ShowHud
+  if Phase = 3 then goto crashed
+  if Phase = 2 then goto pit_done
+  goto play_loop
+
+pit_done:
+  Rearm
+  wait 30 frames
+  nmi off
+  PitBonus
+  ShowHud
+  play sound SndSafe
+  print at 9,9, " SPY SAFE! "
+  NumU = Pit
+  print at 8,11, " PIT ", digits$(NumU, 1), " CLEARED "
+  Rearm
+  wait 150 frames
+  nmi off
+  if Pit >= 8 then goto won_base
+  inc Pit
+  ' a crossed pit repairs the craft fully (article: "further repair")
+  Damage = 0
+  goto new_pit
+
+won_base:
+  ' the article: the spy reaching base is worth 10,000
+  Score += 10000
+  ShowHud
+won:
+  HideSprites
+  print at 5,9, " CONGRATULATIONS! "
+  print at 4,11, " YOU'VE SAVED THE SPY. "
+  NumU = 0
+  goto game_end
+
+crashed:
+  HideSprites
+  set sprite 0 to Py,Px,SBoom,11
+  update sprites
+  print at 8,9, " CRAFT DOWN! "
+  print at 6,11, " THE SPY IS TAKEN. "
+game_end:
+  Phase = 4
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' 16-bit xorshift; returns its low byte
+function Rnd as u8
+  Rs ^= Rs << 7
+  Rs ^= Rs >> 9
+  Rs ^= Rs << 8
+  return Rs & 255
+
+' a random number from Lo to Hi (Hi - Lo < 128)
+function RndIn(u8 Lo, u8 Hi) as u8
+  u8 R = 0
+  u8 Span = 0
+  Span = Hi - Lo
+  inc Span
+  R = Rnd & 127
+  while R >= Span
+    R -= Span
+  end while
+  return Lo + R
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  B1 = 0
+  B2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then B1 = 1
+  if joypad(2).button1 then B1 = 1
+  if joypad(1).button2 then B2 = 1
+  if joypad(2).button2 then B2 = 1
+  Btn = B1 | B2
+  Press = 0
+  Shoot = 0
+  DropReq = 0
+  if B1 = 1 then
+    if WasB1 = 0 then
+      Press = 1
+      Shoot = 1
+      ' fire + down drops a piece, as on the C64
+      if Dn1 = 1 then
+        if Lf1 = 0 then
+          if Rt1 = 0 then
+            Shoot = 0
+            DropReq = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  if B2 = 1 then
+    if WasB2 = 0 then
+      Press = 1
+      DropReq = 1
+    end if
+  end if
+  WasB1 = B1
+  WasB2 = B2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the ground's top (pixel row) under pixel column Gx: the cliffs at 144,
+' 45-degree slopes down to the pit floor (the bridge's top) at 168
+function SurfY(u8 Gx) as u8
+  u8 A = 0
+  u8 B = 0
+  u8 Res = 144
+  A = PitL << 3
+  A -= 24
+  B = PitR + 1
+  B = B << 3
+  if Gx >= A then
+    if Gx < B then
+      Res = Gx - A
+      Res += 144
+      if Res > 168 then Res = 168
+    else
+      Res = 168
+      if Gx >= B then
+        Res = Gx - B
+        if Res > 24 then Res = 24
+        Res = 168 - Res
+      end if
+    end if
+  end if
+  return Res
+
+sub DrawPit:
+  u8 Row = 0
+  u8 Dd = 0
+  u8 Ca = 0
+  u8 Cb = 0
+  u8 Cn = 0
+  ' sky, ceiling, HUD band
+  for Row = 1 to 2
+    fill THud count 32 at 0,Row
+  next
+  fill THud count 32 at 0,0
+  fill TCeil count 32 at 0,3
+  for Row = 4 to 17
+    fill TSky count 32 at 0,Row
+  next
+  for Cn = 0 to 15
+    Ca = Cn << 1
+    put char TDrip at Ca,4
+  next
+  ' rows 18..20: rock, a slope, sky over the pit, a slope, rock
+  for Row = 18 to 20
+    Dd = 20 - Row
+    if Row = 18 then
+      fill TTop count 32 at 0,Row
+    else
+      fill TRock count 32 at 0,Row
+    end if
+    Ca = PitL - Dd
+    Cb = PitR + Dd
+    Cn = Cb - Ca
+    inc Cn
+    fill TSky count Cn at Ca,Row
+    dec Ca
+    inc Cb
+    put char TSlopel at Ca,Row
+    put char TSloper at Cb,Row
+  next
+  fill TRock count 32 at 0,21
+  Cn = Need << 1
+  fill TSpike count Cn at PitL,21
+  fill TGround count 32 at 0,22
+  fill TGround count 32 at 0,23
+  return
+end sub
+
+sub DrawSlot(u8 S):
+  u8 Col = 0
+  Col = S << 1
+  Col += PitL
+  if Filled[S] = 1 then
+    put char TGirl at Col,21
+    inc Col
+    put char TGirr at Col,21
+  else
+    put char TSpike at Col,21
+    inc Col
+    put char TSpike at Col,21
+  end if
+  return
+end sub
+
+sub ShowHud:
+  HudDirty = 0
+  print at 2,1, "SCORE ", Score
+  print at 20,1, "PIT"
+  NumU = Pit
+  print at 24,1, digits$(NumU, 1)
+  print at 2,2, "DAMAGE"
+  NumU = Damage
+  print at 9,2, digits$(NumU, 3), "%"
+  print at 16,2, "PIECES"
+  NumU = Pieces
+  print at 23,2, digits$(NumU, 1)
+  print at 24,2, "/"
+  NumU = Cap
+  print at 25,2, digits$(NumU, 1)
+  return
+end sub
+
+sub StartPit:
+  u8 Lim = 0
+  u8 Si = 0
+  NewScreen
+  Lim = Pit
+  if Lim > 5 then Lim = 5
+  Need = Lim + 3
+  PitL = 16 - Need
+  PitR = Need << 1
+  PitR += PitL
+  dec PitR
+  Lk = Pit - 1
+  Cap = CapTab[Lk]
+  if Pieces > Cap then Pieces = Cap
+  Placed = 0
+  fill array Filled with 0
+  Kills = 0
+  SatGiven = 0
+  PitTime = 0
+  DrawPit
+  ShowHud
+  ' the slots: what kind of attacker each one holds this pit
+  K = Pit - 1
+  K = K << 2
+  for Si = 0 to 3
+    Foes[Si].Kind = KindTab[K]
+    Foes[Si].X = 0
+    Foes[Si].Y = 0
+    Foes[Si].Steps = 0
+    Foes[Si].Acc = 0
+    V = Si * 40
+    Foes[Si].Delay = V + 60
+    inc K
+  next
+  Px = 112
+  Py = 70
+  Face = 0
+  Sinking = 0
+  ShOn = 0
+  PcOn = 0
+  BmOn = 0
+  SaOn = 0
+  Walking = 0
+  Boom = 0
+  HitFlash = 0
+  SpyX = 24
+  SpyY = 127
+  NumU = Pit
+  print at 11,9, " PIT ", digits$(NumU, 1), " "
+  print at 7,11, " BUILD THE BRIDGE "
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait 100 frames
+  nmi off
+  fill TSky count 20 at 6,9
+  fill TSky count 20 at 6,11
+  return
+end sub
+
+' the craft: 3 pixels in 2 frames; sinks slowly when the stick is idle;
+' at 100% damage it can't climb and sinks to a crash
+sub MoveCraft:
+  u8 Sp = 1
+  if Tick & 1 then Sp = 2
+  Moved = 0
+  if Lf1 = 1 then
+    Face = 1
+    if Px >= PxMin + Sp then Px -= Sp else Px = PxMin
+  end if
+  if Rt1 = 1 then
+    Face = 0
+    if Px + Sp <= PxMax then Px += Sp else Px = PxMax
+  end if
+  if Sinking = 1 then
+    inc Py
+    if Py >= 132 then
+      Phase = 3
+      play sound SndCrash
+    end if
+  else
+    if Up1 = 1 then
+      if Py >= PyMin + Sp then Py -= Sp else Py = PyMin
+    elseif Dn1 = 1 then
+      if Py + Sp <= PyMax then Py += Sp else Py = PyMax
+    else
+      ' idle: sink a pixel every fourth frame
+      V = Tick & 3
+      if V = 0 then
+        if Py < PyMax then inc Py
+      end if
+    end if
+  end if
+  if Shoot = 1 then
+    if ShOn = 0 then
+      ShOn = 1
+      ShY = Py + 2
+      ShLeft = Face
+      if Lf1 = 1 then ShLeft = 1
+      if Rt1 = 1 then ShLeft = 0
+      ShX = Px
+      play sound SndZap
+    end if
+  end if
+  if DropReq = 1 then
+    if PcOn = 0 then
+      if Pieces > 0 then
+        dec Pieces
+        HudDirty = 1
+        PcOn = 1
+        PcX = Px
+        PcY = Py + 6
+        play sound SndDrop
+      else
+        play sound SndEmpty
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub MoveShot:
+  if ShOn = 0 then return
+  if ShLeft = 1 then
+    if ShX < PxMin + 4 then
+      ShOn = 0
+    else
+      ShX -= 4
+    end if
+  else
+    if ShX > PxMax - 4 then
+      ShOn = 0
+    else
+      ShX += 4
+    end if
+  end if
+  return
+end sub
+
+' a falling bridge piece: into an empty slot of the pit floor it stays
+sub MovePiece:
+  u8 Cx = 0
+  u8 Gy = 0
+  u8 Sl = 0
+  u8 Lp = 0
+  if PcOn = 0 then return
+  PcY += 2
+  Cx = PcX + 8
+  Gy = SurfY(Cx)
+  ' the piece's girder is drawn on rows 6..8 of its sprite
+  V = PcY + 9
+  if V < Gy then return
+  PcOn = 0
+  Lp = PitL << 3
+  W = PitR + 1
+  W = W << 3
+  if Cx >= Lp then
+    if Cx < W then
+      Sl = Cx - Lp
+      Sl = Sl >> 4
+      if Filled[Sl] = 0 then
+        Filled[Sl] = 1
+        DrawSlot(Sl)
+        inc Placed
+        Score += 20
+        HudDirty = 1
+        play sound SndPlace
+        if Placed = Need then BridgeDone
+        return
+      end if
+    end if
+  end if
+  play sound SndClank
+  return
+end sub
+
+sub BridgeDone:
+  Score += 200
+  Walking = 1
+  play sound SndBridge
+  return
+end sub
+
+sub MoveBomb:
+  u8 Cx = 0
+  u8 Gy = 0
+  u8 Sl = 0
+  if BmOn = 0 then return
+  inc BmY
+  if Tick & 1 then inc BmY
+  ' the craft
+  if box BmX + 6,BmY + 5 size 4,5 collides with box Px + 1,Py + 4 size 14,8 then
+    BmOn = 0
+    AddDamage(3)
+    play sound SndHit
+    return
+  end if
+  Cx = BmX + 8
+  Gy = SurfY(Cx)
+  V = BmY + 9
+  if V < Gy then return
+  BmOn = 0
+  play sound SndBomb
+  if Walking = 1 then return
+  W = PitL << 3
+  if Cx < W then return
+  Sl = Cx - W
+  Sl = Sl >> 4
+  if Sl >= Need then return
+  if Filled[Sl] = 1 then
+    Filled[Sl] = 0
+    DrawSlot(Sl)
+    dec Placed
+  end if
+  return
+end sub
+
+sub AddDamage(u8 D):
+  u8 T = 0
+  T = 100 - Damage
+  if D >= T then
+    Damage = 100
+    Sinking = 1
+  else
+    Damage += D
+  end if
+  HitFlash = 60
+  HudDirty = 1
+  return
+end sub
+
+sub FoeAim(u8 I):
+  u8 Dx = 0
+  u8 Dy = 0
+  u8 Fx = 0
+  u8 Fy = 0
+  Fx = Foes[I].X
+  Fy = Foes[I].Y
+  ' one time in three a random heading, else toward the craft
+  V = Rnd
+  if V < 85 then
+    Foes[I].Dir = V & 7
+  else
+    Dx = 1
+    if Fx + 4 < Px then Dx = 2
+    if Fx > Px + 4 then Dx = 0
+    Dy = 1
+    if Fy + 4 < Py then Dy = 2
+    if Fy > Py + 4 then Dy = 0
+    select case (Dx, Dy)
+    case (2, 1)
+      Foes[I].Dir = 0
+    case (2, 2)
+      Foes[I].Dir = 1
+    case (1, 2)
+      Foes[I].Dir = 2
+    case (0, 2)
+      Foes[I].Dir = 3
+    case (0, 1)
+      Foes[I].Dir = 4
+    case (0, 0)
+      Foes[I].Dir = 5
+    case (1, 0)
+      Foes[I].Dir = 6
+    case (2, 0)
+      Foes[I].Dir = 7
+    case else
+      Foes[I].Dir = V & 7
+    end select
+  end if
+  Foes[I].Steps = RndIn(16, 40)
+  return
+end sub
+
+sub FoeSpawn(u8 I):
+  u8 Side = 0
+  u8 Dsx = 0
+  u8 Dsy = 0
+  Side = Rnd & 3
+  if Side = 0 then
+    if Px < 80 then Side = 1
+  end if
+  if Side = 1 then
+    if Px > 160 then Side = 0
+  end if
+  select case Side
+  case 0
+    Foes[I].X = PxMin
+    Foes[I].Y = RndIn(PyMin, 110)
+  case 1
+    Foes[I].X = PxMax
+    Foes[I].Y = RndIn(PyMin, 110)
+  case else
+    Foes[I].Y = PyMin
+    Foes[I].X = RndIn(24, 140)
+    Foes[I].X += RndIn(0, 60)
+  end select
+  Foes[I].Steps = 0
+  ' never right next to the craft: try again a third of a second later
+  Dsx = absdiff(Foes[I].X, Px)
+  Dsy = absdiff(Foes[I].Y, Py)
+  if Dsx < 48 and Dsy < 48 then
+    Foes[I].Delay = 20
+  else
+    Foes[I].Delay = 0
+  end if
+  return
+end sub
+
+' every attacker: wait to (re)appear, move by its speed along its heading,
+' ram the craft, be shot, drop a bomb
+sub MoveFoes:
+  u8 Ex = 0
+  u8 Ey = 0
+  u8 Kd = 0
+  u8 Mv = 0
+  u8 Pts = 0
+  for Fi = 0 to 3
+    Kd = Foes[Fi].Kind
+    if Kd > 0 then
+      if Foes[Fi].Delay > 0 then
+        dec Foes[Fi].Delay
+        if Foes[Fi].Delay = 0 then FoeSpawn(Fi)
+      else
+        if Foes[Fi].Steps = 0 then FoeAim(Fi)
+        ' speed in 1/16 pixels a frame: 8, 12, 9 by kind, + 1 per pit
+        ' the article: slow, normal, medium ... maniacal
+        Mv = Pit + 2
+        if Pit <= 4 then Mv = Pit + 3
+        if Kd = 2 then Mv += 2
+        if Kd >= 4 then Mv += 2
+        Mv += Foes[Fi].Acc
+        Foes[Fi].Acc = Mv & 15
+        Mv = Mv >> 4
+        Ex = Foes[Fi].X
+        Ey = Foes[Fi].Y
+        if Mv > 0 then
+          dec Foes[Fi].Steps
+          Fk = Foes[Fi].Dir
+          Ex += DirDx[Fk]
+          Ey += DirDy[Fk]
+          if Ex < PxMin then
+            Ex = PxMin
+            Foes[Fi].Steps = 0
+          end if
+          if Ex > PxMax then
+            Ex = PxMax
+            Foes[Fi].Steps = 0
+          end if
+          if Ey < PyMin then
+            Ey = PyMin
+            Foes[Fi].Steps = 0
+          end if
+          if Ey > 128 then
+            Ey = 128
+            Foes[Fi].Steps = 0
+          end if
+          Foes[Fi].X = Ex
+          Foes[Fi].Y = Ey
+        end if
+        ' rammed the craft: damage, knocked down, every attacker retreats
+        if HitFlash = 0 then
+          if box Ex + 3,Ey + 2 size 10,6 collides with box Px + 3,Py + 4 size 10,7 then
+            AddDamage(RndIn(4, 9))
+            play sound SndHit
+            BoomAt(Ex, Ey)
+            Boom = 8
+            ' the collision also destroys the aliens near the craft
+            for Lk = 0 to 3
+              if Foes[Lk].Delay = 0 then
+                N = absdiff(Foes[Lk].X, Px)
+                W = absdiff(Foes[Lk].Y, Py)
+                if N < 56 then
+                  if W < 56 then Foes[Lk].Delay = 90
+                end if
+              end if
+            next
+            return
+          end if
+        end if
+        ' shot
+        if ShOn = 1 then
+          if box ShX + 1,ShY + 7 size 14,2 collides with box Ex + 1,Ey size 14,9 then
+            ShOn = 0
+            Pts = KindPts[Kd]
+            Score += Pts
+            HudDirty = 1
+            inc Kills
+            Boom = 8
+            BoomAt(Ex, Ey)
+            Foes[Fi].Delay = 30
+            if Kd >= 3 then Foes[Fi].Delay = 60
+            play sound SndPop
+            CheckSat
+          end if
+        end if
+        ' cyan and blue aliens drop charges now and then
+        if Kd = 3 or Kd = 4 then
+          if BmOn = 0 then
+            if Foes[Fi].Delay = 0 then
+              V = Rnd
+              if V < 1 then
+                BmOn = 1
+                BmX = Foes[Fi].X
+                BmY = Foes[Fi].Y + 4
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub BoomAt(u8 Bx, u8 By):
+  BoomX = Bx
+  BoomY = By
+  return
+end sub
+
+sub CheckSat:
+  u8 Lim = 0
+  Lim = Pit
+  if Lim > 8 then Lim = 8
+  Lim += 6
+  if Kills < Lim then return
+  if SaOn = 1 then return
+  Kills = 0
+  LaunchSat
+  return
+end sub
+
+sub LaunchSat:
+  SatGiven = 1
+  SaOn = 1
+  SaY = RndIn(36, 52)
+  SaUp = Rnd & 1
+  if Px < 120 then
+    SaX = PxMax
+    SaDx = 0
+  else
+    SaX = PxMin
+    SaDx = 1
+  end if
+  return
+end sub
+
+' the black satellite: across the sky once, zigzagging; touch it for
+' bridge pieces and repairs
+sub MoveSat:
+  u8 Gain = 0
+  u8 Mx = 0
+  if SaOn = 0 then return
+  if SaDx = 1 then
+    inc SaX
+    if SaX >= PxMax then SaOn = 0
+  else
+    dec SaX
+    if SaX <= PxMin then SaOn = 0
+  end if
+  if Tick & 1 then
+    if SaUp = 1 then
+      dec SaY
+      if SaY <= 34 then SaUp = 0
+    else
+      inc SaY
+      if SaY >= 56 then SaUp = 1
+    end if
+  end if
+  if box SaX + 1,SaY + 1 size 14,9 collides with box Px + 1,Py + 1 size 14,11 then
+    SaOn = 0
+    Mx = Pit
+    if Mx > 8 then Mx = 8
+    Mx = Mx >> 1
+    inc Mx
+    Gain = RndIn(1, Mx)
+    Pieces += Gain
+    if Pieces > Cap then Pieces = Cap
+    V = Damage >> 2
+    Damage -= V
+    if Damage < 100 then Sinking = 0
+    HudDirty = 1
+    play sound SndSat
+  end if
+  return
+end sub
+
+' the spy crosses the finished bridge: a pixel every other frame
+sub WalkSpy:
+  u8 Fy = 0
+  if Tick & 1 then return
+  inc SpyX
+  Fy = SpyX + 8
+  Fy = SurfY(Fy)
+  SpyY = Fy - 17
+  V = SpyX & 7
+  if V = 0 then play sound SndStep
+  if SpyX >= SpyEnd then
+    Walking = 0
+    Phase = 2
+  end if
+  return
+end sub
+
+sub PitBonus:
+  u8 Pb = 0
+  for Pb = 1 to Pit
+    Score += 750
+  next
+  HudDirty = 1
+  return
+end sub
+
+sub DrawSprites:
+  u8 Ds = 0
+  u8 Pat = 0
+  u8 Col = 0
+  u8 Sy = 0
+  u8 Kk = 0
+  ' 0 the craft (blinks red after a hit), 1 the spy
+  ' the craft's colour tells its damage (article): grey, then yellow, then
+  ' flashing red, then many colours (changes every 10 frames, 3 Hz)
+  if HitFlash > 0 then dec HitFlash
+  Kk = Tick / 10
+  Col = 14
+  if Damage > 0 then Col = 11
+  if Damage >= 50 then
+    Col = 8
+    if Kk & 1 then Col = 14
+  end if
+  if Damage >= 75 then
+    V = Kk & 7
+    Col = CritCol[V]
+  end if
+  if Sinking = 1 then Col = 6
+  Sy = Py - 1
+  set sprite 0 to Sy,Px,SCraft,Col
+  Pat = SSpy1
+  if Walking = 1 then
+    V = SpyX & 4
+    if V > 0 then Pat = SSpy2
+  end if
+  set sprite 1 to SpyY,SpyX,Pat,1
+  ' 2 shot, 3 piece, 4 bomb, 5 satellite (or a burst)
+  if ShOn = 1 then
+    Sy = ShY - 1
+    set sprite 2 to Sy,ShX,SShot,11
+  else
+    set sprite 2 to 192,0,SShot,0
+  end if
+  if PcOn = 1 then
+    Sy = PcY - 1
+    set sprite 3 to Sy,PcX,SPiece,10
+  else
+    set sprite 3 to 192,0,SPiece,0
+  end if
+  if BmOn = 1 then
+    Sy = BmY - 1
+    set sprite 4 to Sy,BmX,SBomb,6
+  else
+    set sprite 4 to 192,0,SBomb,0
+  end if
+  if SaOn = 1 then
+    Sy = SaY - 1
+    set sprite 5 to Sy,SaX,SSat,1
+  elseif Boom > 0 then
+    dec Boom
+    Sy = BoomY - 1
+    set sprite 5 to Sy,BoomX,SBoom,11
+  else
+    set sprite 5 to 192,0,SSat,0
+  end if
+  ' 6..9 the attackers
+  for Ds = 0 to 3
+    Kk = Ds + 6
+    if Foes[Ds].Kind = 0 then
+      set sprite Kk to 192,0,SAl1a,0
+    elseif Foes[Ds].Delay > 0 then
+      set sprite Kk to 192,0,SAl1a,0
+    else
+      Kk = Foes[Ds].Kind
+      Col = KindCol[Kk]
+      select case Kk
+      case 1, 2
+        Pat = SAl1a
+      case 3, 4
+        Pat = SAl2a
+      case else
+        Pat = SAl3a
+        ' sparkling: changes colour every 10 frames
+        V = Tick / 10
+        V = V & 3
+        Col = SparkCol[V]
+      end select
+      Kk = Ds + 6
+      V = Tick & 16
+      if V > 0 then Pat += 4
+      Sy = Foes[Ds].Y - 1
+      set sprite Kk to Sy,Foes[Ds].X,Pat,Col
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' title: block letters, the spy and the craft, a menu
+sub TitlePage:
+  u8 Tr = 0
+  u8 Ty = 0
+  NewScreen
+  for Tr = 0 to 10
+    Ty = Tr + 3
+    NumU = Tr * 28
+    put TitleMap + NumU count 28 at 2,Ty
+  next
+  print at 6,15, "COMPUTE!'S GAZETTE"
+  print at 11,16, "APRIL 1988"
+  ShowMenu
+  set sprite 0 to 160,120,SCraft,15
+  set sprite 1 to 168,100,SSpy1,15
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Menu = 0
+  Rearm
+  wait no fire
+  nmi off
+  WasB1 = 1
+  WasB2 = 1
+tp_loop:
+  Frame1
+  V = Rnd
+  ReadPad
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 1 then EditorialPage
+  return
+end sub
+
+sub ShowMenu:
+  fill 32 count 28 at 2,18
+  fill 32 count 28 at 2,19
+  print at 12,18, "START"
+  print at 12,19, "CREDITS"
+  V = Menu + 18
+  put char 62 at 10,V
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,2, "SPY DEFENSE"
+  print at 2,4, "BY JOHN DALTON, COMPUTE!'S"
+  print at 2,5, "GAZETTE, APRIL 1988 (C64)."
+  print at 2,6, "A COLECOVISION PORT."
+  print at 2,8, "FLY THE DEFENDER, SHOOT THE"
+  print at 2,9, "ATTACKERS, CATCH THE BLACK"
+  print at 2,10, "SATELLITE FOR PIECES, AND"
+  print at 2,11, "BRIDGE THE PIT SO THE SPY"
+  print at 2,12, "CAN CROSS. EIGHT PITS."
+  print at 2,14, "LEFT BUTTON: SHOOT"
+  print at 2,15, "RIGHT BUTTON: DROP A PIECE"
+  print at 2,17, "MADE FOR THE COLECOVISION BY"
+  print at 2,18, "CLAUDE (AN AI MADE BY"
+  print at 2,19, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,20, "2026, IN AMY BY AMY BIENVENU"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$42,$00,$00,$08,$00,$00,$00
+  $00,$99,$22,$02,$00,$00,$00,$00
+  $00,$10,$00,$81,$00,$04,$00,$20
+  $00,$00,$00,$81,$00,$04,$00,$20
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$10,$10,$38,$38,$83,$83,$00
+  $00,$80,$CC,$49,$49,$CC,$80,$00
+  $00,$01,$32,$92,$92,$32,$01,$00
+  $00,$84,$00,$21,$00,$44,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $08,$68,$08,$06,$68,$08,$06,$01
+  $06,$56,$65,$65,$05,$05,$05,$05
+  $08,$68,$08,$68,$08,$68,$08,$68
+  $09,$08,$08,$68,$08,$68,$08,$68
+  $95,$95,$85,$85,$58,$58,$58,$08
+  $95,$95,$85,$58,$58,$58,$58,$08
+  $01,$B1,$B1,$E1,$E1,$1E,$1E,$0E
+  $0A,$BA,$B1,$1B,$1B,$B1,$BA,$0A
+  $0A,$BA,$1B,$1B,$1B,$1B,$BA,$0A
+  $06,$86,$06,$86,$06,$86,$06,$01
+  $09,$09,$08,$08,$08,$08,$06,$06
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$03,$06,$04,$3F,$7F,$FF,$5B,$3F,$0F,$02,$04,$00,$00,$00,$00
+  $00,$C0,$60,$20,$FC,$FE,$FF,$6C,$FC,$F0,$40,$20,$00,$00,$00,$00
+  $00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$3F,$7F,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FC,$FE,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$CC,$FF,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$CF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$01,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$80,$40,$00,$00,$00,$00,$00,$00
+  $00,$F9,$A9,$FB,$AF,$FB,$A9,$F9,$01,$03,$00,$00,$00,$00,$00,$00
+  $00,$3E,$2A,$BE,$EA,$BE,$2A,$3E,$00,$80,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$02,$03,$07,$0E,$0F,$0F,$07,$07,$06,$06,$0E,$00,$00
+  $C0,$E0,$F0,$40,$C0,$E0,$70,$F0,$F0,$E0,$E0,$60,$60,$70,$00,$00
+  $03,$07,$0F,$02,$03,$07,$0E,$0F,$0F,$07,$07,$06,$0C,$1C,$00,$00
+  $C0,$E0,$F0,$40,$C0,$E0,$70,$F0,$F0,$E0,$E0,$60,$30,$38,$00,$00
+  $00,$07,$1F,$39,$3F,$1F,$0A,$12,$22,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F8,$9C,$FC,$F8,$50,$48,$44,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$1F,$39,$3F,$1F,$0A,$05,$09,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$F8,$9C,$FC,$F8,$50,$A0,$90,$00,$00,$00,$00,$00,$00,$00
+  $80,$43,$2F,$1D,$1F,$0F,$17,$21,$40,$00,$00,$00,$00,$00,$00,$00
+  $01,$C2,$F4,$B8,$F8,$F0,$E8,$84,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$8F,$7B,$1F,$0F,$0B,$09,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$F1,$DE,$F8,$F0,$D0,$90,$18,$00,$00,$00,$00,$00,$00,$00
+  $03,$0F,$1B,$3F,$FF,$AA,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$F0,$D8,$FC,$FF,$55,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$0F,$1E,$3F,$FF,$55,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$F0,$78,$FC,$FF,$AA,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$11,$09,$45,$20,$13,$02,$F4,$02,$13,$20,$45,$09,$11,$00,$00
+  $00,$10,$20,$44,$04,$C8,$40,$2F,$40,$C8,$04,$44,$20,$10,$00,$00
+end data
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$20,$20,$20,$8B,$20,$8B,$20,$8B,$20,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8B,$20,$8B,$20,$20,$20,$20,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$20,$20,$20,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $8B,$8B,$20,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20
+  $8B,$20,$8B,$20,$8B,$20,$20,$20,$8B,$20,$20,$20,$8B,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$20,$20,$8B,$20,$20,$20
+  $8B,$20,$8B,$20,$8B,$8B,$20,$20,$8B,$8B,$20,$20,$8B,$8B,$20,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$8B,$8B,$20,$20
+  $8B,$20,$8B,$20,$8B,$20,$20,$20,$8B,$20,$20,$20,$8B,$20,$20,$20,$8B,$20,$8B,$20,$20,$20,$8B,$20,$8B,$20,$20,$20
+  $8B,$8B,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20
+end data
+
+asm {
+SdZap:
+    db $40,$40,$30,$01,$40,$50,$40,$01,$40,$5F,$50,$01,$40,$71,$70,$01,$50
+SdPop:
+    db $00,$00,$24,$02,$00,$00,$45,$03,$00,$00,$76,$04,$10
+SdHit:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$56,$08,$10
+SdDrop:
+    db $40,$7F,$50,$02,$40,$A9,$60,$02,$50
+SdPlace:
+    db $40,$D6,$20,$03,$40,$8F,$20,$03,$40,$6B,$30,$05,$50
+SdClank:
+    db $40,$FC,$31,$02,$40,$A6,$52,$03,$50
+SdBomb:
+    db $00,$00,$35,$03,$00,$00,$56,$06,$10
+SdSat:
+    db $40,$55,$30,$03,$40,$47,$30,$03,$40,$39,$30,$03,$40,$2A,$40,$06,$50
+SdEmpty:
+    db $40,$F9,$52,$03,$50
+SdBridge:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$50
+SdStep:
+    db $00,$00,$A6,$01,$10
+SdSafe:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$20,$05,$40,$5F,$20,$14,$50
+SdCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$08,$00,$00,$36,$0C,$00,$00,$67,$10,$10
+SdOver:
+    db $40,$1D,$21,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$AB,$31,$1E,$50
+
+SdSoundTable:
+    dw SdTuneMel,$702B
+    dw SdTuneBass,$7035
+    dw SdZap,$7049
+    dw SdPop,$703F
+    dw SdHit,$703F
+    dw SdDrop,$7049
+    dw SdPlace,$7049
+    dw SdClank,$7049
+    dw SdBomb,$703F
+    dw SdSat,$7049
+    dw SdEmpty,$7049
+    dw SdBridge,$7049
+    dw SdStep,$703F
+    dw SdSafe,$7049
+    dw SdCrash,$703F
+    dw SdOver,$7049
+; Cliff-Top Rendezvous (original)
+; Tiny Sound, 8 frames per step
+SdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$01,$1F,$01,$23,$21,$01,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$23,$01,$01,$26,$01,$24,$23,$01,$21,$01,$23,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$1F,$01,$23,$21,$01,$1F,$01,$1E,$01
+    db $1B,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $0B,$01,$12,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$0C,$01,$13,$01
+    db $0B,$01,$12,$01,$10,$01,$0B,$01,$0B,$01,$12,$01,$10,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,1200 @@
+cartridge "SQUARE LOGIX/COMPUTE'S GAZETTE/1988"
+
+' SQUARE LOGIX
+' A ColecoVision game based on "Square Logix", COMPUTE!'s Gazette June 1988
+' (Commodore 128, BASIC 7.0 with a sprite file, SQRS.SPR). No author is
+' named in the listing. Made for Amy Studio by Claude (an AI made by
+' Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' The game: 36 square pieces lie on a 6 x 6 board. The computer mixes them
+' with random moves (three per level, levels 1-9); put them back so the
+' board matches the pattern shown on the right. Four games:
+'   1 SHIFTS   a row or column slides one piece along, the end piece wraps
+'              round; each row must hold one colour again
+'   2 SHUFFLE  the same moves, but the pieces are lettered A-Z, 1-9 and one
+'              blank: every piece must go back to its own square
+'   3 ROTATE 1 four pieces (a 2 x 2 block) turn round one step
+'   4 ROTATE 2 the eight pieces round a 3 x 3 block turn round one step
+' A timer runs and the turns are counted. The computer can show the
+' solution: it undoes every move, the player's and its own.
+'
+' From the original (orig/square logix.bas): the four games and their
+' boards (row colours grey, green, cyan, blue, red, brown; SHUFFLE's
+' letters A-Z, 1-9 coloured by row and a blank last); the moves (lines
+' 71-90: shifts wrap round; fire + right turns clockwise, fire + left
+' anticlockwise; the 2 x 2 block's corner goes from 0 to 4, the 3 x 3's
+' from 0 to 3); the mix of level x 3 random moves (line 29); the win test
+' (a piece equals the pattern: in the colour games any piece of the right
+' colour will do, line 92); the pattern panel, the timer, the turn count,
+' the computer solution (line 118: undo the history), the end message
+' "YOU HAVE COMPLETED GAME n AT LEVEL n".
+'
+' Liberties: the stick moves a cursor (brackets round the piece or block)
+' and fire + a direction makes the move; in the original the stick turned
+' an arrow sprite and moved it, and fire shifted the line the arrow
+' pointed along. Arrows at the board's edges show the cursor's row and
+' column. Every move counts as a turn (the original only counted turns in
+' the ROTATE games). The computer solution is asked for by holding fire
+' for two seconds without the stick (the original: the * key), and it
+' ends the game ("SOLVED BY THE COMPUTER") instead of replaying your moves
+' so you could go on. A mix that happens to leave the board solved is
+' mixed again. No Q key: a game ends when solved. The timer stops at
+' 99:59; after 240 moves the solution is no longer kept.
+'
+' Controls: either controller. Stick: move the cursor (hold to repeat).
+' SHIFTS / SHUFFLE: hold fire and push the stick: up or down slides the
+' cursor's column, left or right its row. ROTATE: fire + right turns the
+' block clockwise, fire + left anticlockwise. Hold fire alone for two
+' seconds: the computer solves it. On the title: up/down choose GAME,
+' LEVEL or START, left/right change, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, the title
+' tune played once. Nothing flashes.
+
+const TP000 = 128
+const TP001 = 129
+const TP002 = 130
+const TP010 = 131
+const TP011 = 132
+const TP012 = 133
+const TP020 = 134
+const TP021 = 135
+const TP022 = 136
+const TP100 = 137
+const TP101 = 138
+const TP102 = 139
+const TP110 = 140
+const TP111 = 141
+const TP112 = 142
+const TP120 = 143
+const TP121 = 144
+const TP122 = 145
+const TP200 = 146
+const TP201 = 147
+const TP202 = 148
+const TP210 = 149
+const TP211 = 150
+const TP212 = 151
+const TP220 = 152
+const TP221 = 153
+const TP222 = 154
+const TP300 = 155
+const TP301 = 156
+const TP302 = 157
+const TP310 = 158
+const TP311 = 159
+const TP312 = 160
+const TP320 = 161
+const TP321 = 162
+const TP322 = 163
+const TP400 = 164
+const TP401 = 165
+const TP402 = 166
+const TP410 = 167
+const TP411 = 168
+const TP412 = 169
+const TP420 = 170
+const TP421 = 171
+const TP422 = 172
+const TP500 = 173
+const TP501 = 174
+const TP502 = 175
+const TP510 = 176
+const TP511 = 177
+const TP512 = 178
+const TP520 = 179
+const TP521 = 180
+const TP522 = 181
+const THole = 182
+const TArrr = 183
+const TArrl = 184
+const TArrd = 185
+const TArru = 186
+const TFh = 187
+const TFv = 188
+const TFtl = 189
+const TFtr = 190
+const TFbl = 191
+const TFbr = 192
+const SCtl = 0
+const SCtr = 4
+const SCbl = 8
+const SCbr = 12
+const NTiles8 = 520
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndShift = 4
+const SndTurn = 5
+const SndMix = 6
+const SndPick = 7
+const SndSolve = 8
+const SndWin = 9
+const TLet = 200          ' 35 lettered centres made from the font
+const HoldSolve = 120     ' frames of fire alone that ask for the solution
+const RepFirst = 14       ' stick auto-repeat: first delay, then every
+const RepNext = 7
+const HistMax = 240
+const SixtySecs = 60
+const GridX = 3           ' board origin in tiles
+const GridY = 3
+
+record Cursor:
+  u8 X
+  u8 Y
+  u8 Max                  ' highest corner position (5, 4 or 3)
+  u8 Span                 ' block size in pieces (1, 2 or 3)
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+u16 Rs = 1
+u16 Frames = 0
+u16 Turns = 0
+bcd digits 2 Secs
+bcd digits 2 Mins
+u8 TimeOn = 0
+u8 Bd[36]
+u8 Hist[240]
+u8 HN = 0
+u8 HFull = 0
+u8 Game = 1
+u8 Lv = 1
+u8 Menu = 0
+u8 Solved = 0
+u8 ByCpu = 0
+u8 Idle = 0
+Cursor Cur
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 RepT = 0
+u8 FireT = 0
+u8 Used = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tmp[6]
+u8 Keep8[8]
+
+data Ring2 bytes
+  0,1,7,6
+end data
+data Ring3 bytes
+  0,1,2,8,14,13,12,6
+end data
+' letter colour on each row colour (black on light colours, white on dark)
+data LetCol bytes
+  $1E,$12,$17,$F4,$F8,$1A
+end data
+
+  tile screen
+  set sound table SqSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+  StartGame
+
+play_loop:
+  Frame1
+  ReadPad
+  Clock
+  PlayInput
+  if Solved = 0 then goto play_loop
+
+  ' the end: the message, then a press (or 30 s of sleep) to the title
+  HideSprites
+  TimeOn = 0
+  Idle = 2
+  fill 32 count 28 at 2,22
+  if ByCpu = 1 then
+    print at 4,22, "SOLVED BY THE COMPUTER"
+    play sound SndSolve
+  else
+    print at 2,22, "YOU HAVE COMPLETED GAME"
+    NumU = Game
+    print at 26,22, digits$(NumU, 1)
+    fill 32 count 8 at 22,19
+    fill 32 count 8 at 22,20
+    fill 32 count 8 at 22,21
+    print at 22,19, "AT"
+    print at 22,20, "LEVEL"
+    NumU = Lv
+    print at 28,20, digits$(NumU, 1)
+    play sound SndWin
+  end if
+  Rearm
+  wait 60 frames
+  wait no fire
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  ' one direction only: up, down, left, right (first one held)
+  Stick = 0
+  if Rt1 = 1 then Stick = 2
+  if Lf1 = 1 then Stick = 4
+  if Dn1 = 1 then Stick = 3
+  if Up1 = 1 then Stick = 1
+  return
+end sub
+
+' xorshift random numbers; Pick(N) is 0 .. N-1
+function Pick(u8 Range) as u8
+  u16 T = 0
+  Rs = Rs ^ (Rs << 7)
+  Rs = Rs ^ (Rs >> 9)
+  Rs = Rs ^ (Rs << 8)
+  T = highbyte(Rs) * Range
+  return highbyte T
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  BuildLetters
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the lettered centres A-Z, 1-9 (tiles TLet..TLet+34): the font's glyph in
+' the row's colours, written into all three pattern/colour thirds
+sub BuildLetters:
+  u8 P = 0
+  u8 Ch = 0
+  u8 Row = 0
+  u8 B = 0
+  u8 Cb = 0
+  u8 Th = 0
+  u16 Src = 0
+  u16 Dst = 0
+  for P = 0 to 34
+    if P < 26 then
+      Ch = 65 + P
+    else
+      Ch = P + 23
+    end if
+    Row = P / 6
+    Cb = LetCol[Row]
+    Src = Ch
+    Src = Src * 8
+    for Row = 0 to 7
+      vpeek vram.pattern + Src into B
+      Tmp[0] = B
+      for Th = 0 to 2
+        Dst = Th * 2048 + (TLet + P) * 8 + Row
+        vpoke vram.pattern + Dst, Tmp[0]
+        vpoke vram.color + Dst, Cb
+      next
+      inc Src
+    next
+  next
+  return
+end sub
+
+' one piece on the board, Idx = row * 6 + column
+sub DrawCell(u8 Idx):
+  u8 P = 0
+  u8 C = 0
+  u8 R = 0
+  u8 T = 0
+  u8 Mid = 0
+  P = Bd[Idx]
+  C = (Idx % 6) * 3 + GridX
+  R = (Idx / 6) * 3 + GridY
+  DrawPiece(P, C, R)
+  return
+end sub
+
+sub DrawPiece(u8 P, u8 C, u8 R):
+  u8 T = 0
+  u8 Mid = 0
+  u8 C2 = 0
+  T = (P / 6) * 9 + TP000
+  Mid = T + 4
+  if Game = 2 then Mid = TLet + P
+  C2 = C + 1
+  if Game = 2 then
+    if P = 35 then
+      fill THole count 3 at C,R
+      fill THole count 3 at C,R + 1
+      fill THole count 3 at C,R + 2
+      goto dp_done
+    end if
+  end if
+  put char T at C,R
+  put char T + 1 at C2,R
+  put char T + 2 at C + 2,R
+  put char T + 3 at C,R + 1
+  put char Mid at C2,R + 1
+  put char T + 5 at C + 2,R + 1
+  put char T + 6 at C,R + 2
+  put char T + 7 at C2,R + 2
+  put char T + 8 at C + 2,R + 2
+dp_done:
+  return
+end sub
+
+sub DrawBoard:
+  u8 I = 0
+  for I = 0 to 35
+    DrawCell(I)
+  next
+  return
+end sub
+
+' the pattern to match: one tile a piece
+sub DrawPattern:
+  u8 I = 0
+  u8 T = 0
+  for I = 0 to 35
+    if Game = 2 then
+      T = TLet + I
+      if I = 35 then T = THole
+    else
+      T = (I / 6) * 9 + TP000 + 4
+    end if
+    put char T at 23 + I % 6, 5 + I / 6
+  next
+  put char TFtl at 22,4
+  fill TFh count 6 at 23,4
+  put char TFtr at 29,4
+  put char TFbl at 22,11
+  fill TFh count 6 at 23,11
+  put char TFbr at 29,11
+  for I = 5 to 10
+    put char TFv at 22,I
+    put char TFv at 29,I
+  next
+  return
+end sub
+
+' --- moves -----------------------------------------------------------------
+' a line of six pieces: Base, Base + Step, ...; Fwd = 1 moves every piece
+' to the next square (right / down), 0 to the one before (up / left)
+sub Roll(u8 Base, u8 Stp, u8 Fwd)
+  u8 I = 0
+  u8 Keep = 0
+  u8 A = 0
+  if Fwd = 1 then
+    A = Base + Stp * 5
+    Keep = Bd[A]
+    for I = 5 downto 1
+      A = Base + Stp * I
+      Bd[A] = Bd[A - Stp]
+    next
+    Bd[Base] = Keep
+  else
+    Keep = Bd[Base]
+    for I = 0 to 4
+      A = Base + Stp * I
+      Bd[A] = Bd[A + Stp]
+    next
+    A = Base + Stp * 5
+    Bd[A] = Keep
+  end if
+  return
+end sub
+
+' turn the ring of the block at Corner one step; Cw = 1 clockwise
+sub Turn(u8 Corner, u8 Cw)
+  u8 I = 0
+  u8 Keep = 0
+  u8 Cnt = 4
+  u8 A = 0
+  u8 B = 0
+  if Game = 4 then Cnt = 8
+  for I = 0 to Cnt - 1
+    if Game = 4 then
+      Tmp[0] = Ring3[I]
+    else
+      Tmp[0] = Ring2[I]
+    end if
+    A = Corner + Tmp[0]
+    Keep8[I] = Bd[A]
+  next
+  ' clockwise: the piece at ring place I goes to place I + 1
+  for I = 0 to Cnt - 1
+    if Game = 4 then
+      A = Ring3[I]
+    else
+      A = Ring2[I]
+    end if
+    B = I + 1
+    if Cw = 0 then B = I + Cnt - 1
+    if B >= Cnt then B -= Cnt
+    Keep = Keep8[I]
+    if Game = 4 then
+      B = Ring3[B]
+    else
+      B = Ring2[B]
+    end if
+    Bd[Corner + B] = Keep
+  next
+  return
+end sub
+
+' one move: Kind 1 up, 2 right, 3 down, 4 left (shift games; column Cx or
+' row Cy) or 2 clockwise, 4 anticlockwise (rotate games, block at Cx,Cy)
+sub DoMove(u8 Kind, u8 Cx, u8 Cy)
+  select case Game
+  case 1 to 2
+    select case Kind
+    case 1
+      Roll(Cx, 6, 0)
+    case 2
+      Roll(Cy * 6, 1, 1)
+    case 3
+      Roll(Cx, 6, 1)
+    case else
+      Roll(Cy * 6, 1, 0)
+    end select
+  case else
+    if Kind = 2 then
+      Turn(Cy * 6 + Cx, 1)
+    else
+      Turn(Cy * 6 + Cx, 0)
+    end if
+  end select
+  return
+end sub
+
+' the move undoing Kind
+function Undo(u8 Kind) as u8
+  u8 R = 0
+  R = Kind + 2
+  if R > 4 then R -= 4
+  return R
+
+function IsSolved as u8
+  u8 I = 0
+  u8 Ok = 1
+  u8 A = 0
+  for I = 0 to 35
+    A = Bd[I]
+    if Game = 2 then
+      if A <> I then Ok = 0
+    else
+      if A / 6 <> I / 6 then Ok = 0
+    end if
+  next
+  return Ok
+
+sub Remember(u8 Kind)
+  u8 B = 0
+  if HN >= HistMax then HFull = 1
+  if HFull = 0 then
+    B = (Kind - 1) * 64 + Cur.X * 8 + Cur.Y
+    Hist[HN] = B
+    inc HN
+  end if
+  return
+end sub
+
+' --- the game --------------------------------------------------------------
+
+sub StartGame:
+  u8 I = 0
+  u8 Kind = 0
+  u8 Moves = 0
+  for I = 0 to 35
+    Bd[I] = I
+  next
+  HN = 0
+  HFull = 0
+  Turns = 0
+  Frames = 0
+  Secs = 0
+  Mins = 0
+  Solved = 0
+  ByCpu = 0
+  FireT = 0
+  Used = 0
+  Cur.Span = 1
+  Cur.Max = 5
+  if Game = 3 then
+    Cur.Span = 2
+    Cur.Max = 4
+  end if
+  if Game = 4 then
+    Cur.Span = 3
+    Cur.Max = 3
+  end if
+  DrawScreen
+  ' mix: level x 3 random moves, shown as they happen; again if solved
+  Moves = Lv * 3
+  Idle = 0
+  do
+    HN = 0
+    for I = 1 to Moves
+      if Game < 3 then
+        Kind = Pick(4) + 1
+        Cur.X = Pick(6)
+        Cur.Y = Pick(6)
+      else
+        Kind = Pick(2) * 2 + 2
+        Cur.X = Pick(Cur.Max + 1)
+        Cur.Y = Pick(Cur.Max + 1)
+      end if
+      DoMove(Kind, Cur.X, Cur.Y)
+      Remember(Kind)
+      play sound SndMix
+      DrawBoard
+      Frame1
+      Frame1
+    next
+  loop until IsSolved = 0
+  Cur.X = 2
+  Cur.Y = 2
+  if Game = 4 then Cur.X = 1
+  if Game = 4 then Cur.Y = 1
+  Turns = 0
+  ShowCursor
+  ShowStats
+  TimeOn = 1
+  Idle = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 0
+  WasStick = 0
+  return
+end sub
+
+sub DrawScreen:
+  NewScreen
+  print at 2,1, "SQUARE LOGIX"
+  print at 22,3, "PATTERN"
+  select case Game
+  case 1
+    print at 22,12, "SHIFTS"
+  case 2
+    print at 22,12, "SHUFFLE"
+  case 3
+    print at 22,12, "ROTATE 1"
+  case else
+    print at 22,12, "ROTATE 2"
+  end select
+  print at 22,13, "LEVEL"
+  NumU = Lv
+  print at 28,13, digits$(NumU, 1)
+  print at 22,15, "TURNS"
+  print at 22,17, "TIME"
+  print at 22,19, "TO SOLVE"
+  print at 22,20, "HOLD"
+  print at 22,21, "FIRE"
+  if Game < 3 then
+    print at 2,22, "FIRE+STICK SLIDES A LINE"
+  else
+    print at 2,22, "FIRE+LEFT/RIGHT TURNS"
+  end if
+  DrawPattern
+  DrawBoard
+  ShowStats
+  ShowScreen
+  return
+end sub
+
+sub ShowStats:
+  NumU = Turns
+  print at 23,16, digits$(NumU, 4)
+  print Mins at 23,18
+  print at 25,18, ":"
+  print Secs at 26,18
+  return
+end sub
+
+sub Clock:
+  if TimeOn = 0 then exit sub
+  inc Frames
+  if Frames < 60 then exit sub
+  Frames = 0
+  if Mins = 99 then
+    if Secs = 59 then exit sub
+  end if
+  Secs += 1
+  if Secs >= SixtySecs then
+    Secs = 0
+    Mins += 1
+  end if
+  print Mins at 23,18
+  print Secs at 26,18
+  return
+end sub
+
+' the cursor: four corner brackets round the piece / block, and in the
+' shift games arrows at the edges on its row and column
+sub ShowCursor:
+  u8 X0 = 0
+  u8 Y0 = 0
+  u8 X1 = 0
+  u8 Y1 = 0
+  u8 W = 0
+  W = Cur.Span * 24
+  X0 = Cur.X * 24 + GridX * 8 - 2
+  Y0 = Cur.Y * 24 + GridY * 8 - 3
+  X1 = X0 + W - 4
+  Y1 = Y0 + W - 4
+  set sprite 0 to Y0,X0,SCtl,13
+  set sprite 1 to Y0,X1,SCtr,13
+  set sprite 2 to Y1,X0,SCbl,13
+  set sprite 3 to Y1,X1,SCbr,13
+  update sprites
+  if Game < 3 then
+    fill 32 count 18 at GridX,2
+    fill 32 count 18 at GridX,21
+    for W = 3 to 20
+      put char 32 at 2,W
+      put char 32 at 21,W
+    next
+    X0 = Cur.X * 3 + GridX + 1
+    Y0 = Cur.Y * 3 + GridY + 1
+    put char TArrd at X0,2
+    put char TArru at X0,21
+    put char TArrr at 2,Y0
+    put char TArrl at 21,Y0
+  end if
+  return
+end sub
+
+' one pass of play: cursor, moves, the computer solution
+sub PlayInput:
+  u8 Kind = 0
+  u8 Fresh = 0
+  if Stick <> WasStick then
+    Fresh = 1
+    RepT = RepFirst
+  else
+    if Stick <> 0 then
+      dec RepT
+      if RepT = 0 then
+        Fresh = 1
+        RepT = RepNext
+      end if
+    end if
+  end if
+  WasStick = Stick
+  if Btn = 1 then
+    ' fire held: a fresh push of the stick makes a move
+    if Stick <> 0 then Used = 1
+    if Stick <> 0 then FireT = 0
+    if Stick = 0 then
+      if Used = 0 then inc FireT
+    end if
+    if FireT >= HoldSolve then
+      CpuSolve
+      FireT = 0
+    end if
+    if Fresh = 1 then
+      if Stick <> 0 then
+        if RepT = RepFirst then
+          Kind = Stick
+          if Game >= 3 then
+            if Kind = 1 then Kind = 0
+            if Kind = 3 then Kind = 0
+          end if
+          if Kind <> 0 then PlayerMove(Kind)
+        end if
+      end if
+    end if
+  else
+    FireT = 0
+    Used = 0
+    if Fresh = 1 then
+      if Stick <> 0 then MoveCursor
+    end if
+  end if
+  return
+end sub
+
+sub MoveCursor:
+  select case Stick
+  case 1
+    if Cur.Y > 0 then dec Cur.Y
+  case 2
+    if Cur.X < Cur.Max then inc Cur.X
+  case 3
+    if Cur.Y < Cur.Max then inc Cur.Y
+  case 4
+    if Cur.X > 0 then dec Cur.X
+  end select
+  play sound SndTick
+  ShowCursor
+  return
+end sub
+
+sub PlayerMove(u8 Kind)
+  DoMove(Kind, Cur.X, Cur.Y)
+  Remember(Kind)
+  inc Turns
+  if Game < 3 then
+    play sound SndShift
+  else
+    play sound SndTurn
+  end if
+  DrawBoard
+  NumU = Turns
+  print at 23,16, digits$(NumU, 4)
+  if IsSolved = 1 then Solved = 1
+  return
+end sub
+
+' the computer's solution: undo the history, newest move first
+sub CpuSolve:
+  u8 B = 0
+  u8 Kind = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  if HFull = 1 then
+    fill 32 count 28 at 2,22
+    print at 2,22, "TOO MANY TURNS TO UNDO"
+    exit sub
+  end if
+  TimeOn = 0
+  Idle = 3
+  fill 32 count 28 at 2,22
+  print at 2,22, "THE COMPUTER SOLVES IT"
+  while HN > 0
+    dec HN
+    B = Hist[HN]
+    Kind = (B >> 6) + 1
+    Cx = (B >> 3) & 7
+    Cy = B & 7
+    Cur.X = Cx
+    Cur.Y = Cy
+    ShowCursor
+    DoMove(Undo(Kind), Cx, Cy)
+    play sound SndSolve
+    DrawBoard
+    for B = 1 to 20
+      Frame1
+    next
+  end while
+  ByCpu = 1
+  Solved = 1
+  return
+end sub
+
+' --- title and credits -------------------------------------------------------
+
+sub TitlePage:
+  u8 I = 0
+  NewScreen
+  print at 10,2, "SQUARE LOGIX"
+  ' one piece of each colour
+  for I = 0 to 5
+    DrawPiece(I * 6, I * 3 + 7, 5)
+  next
+  print at 3,10, "PUT THE PIECES BACK IN"
+  print at 3,11, "THEIR PLACES"
+  ShowMenu
+  print at 4,21, "UP/DOWN CHOOSE  BUTTON"
+  print at 4,22, "STARTS  LEFT/RIGHT SET"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 560
+  TzOn = 1
+  Idle = 0
+  Menu = 2
+  Rearm
+  wait no fire
+  nmi off
+  WasStick = 0
+  WasBtn = 0
+  ShowMenu
+tp_loop:
+  Frame1
+  ReadPad
+  inc Mix
+  I = 0
+  if Stick <> WasStick then I = Stick
+  WasStick = Stick
+  select case I
+  case 1
+    if Menu > 0 then dec Menu
+    play sound SndTick
+    ShowMenu
+  case 3
+    if Menu < 2 then inc Menu
+    play sound SndTick
+    ShowMenu
+  case 2
+    if Menu = 0 then
+      inc Game
+      if Game > 4 then Game = 1
+    end if
+    if Menu = 1 then
+      inc Lv
+      if Lv > 9 then Lv = 1
+    end if
+    play sound SndTick
+    ShowMenu
+  case 4
+    if Menu = 0 then
+      dec Game
+      if Game = 0 then Game = 4
+    end if
+    if Menu = 1 then
+      dec Lv
+      if Lv = 0 then Lv = 9
+    end if
+    play sound SndTick
+    ShowMenu
+  end select
+  Idle = 4
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  play sound SndPick
+  ' seed from how long the title was shown
+  Rs = Rs + Mix
+  Rs = Rs + Tick * 256
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for J = 14 to 18
+    fill 32 count 28 at 2,J
+  next
+  print at 8,14, "GAME"
+  NumU = Game
+  print at 13,14, digits$(NumU, 1)
+  select case Game
+  case 1
+    print at 15,14, "SHIFTS"
+  case 2
+    print at 15,14, "SHUFFLE"
+  case 3
+    print at 15,14, "ROTATE 1"
+  case else
+    print at 15,14, "ROTATE 2"
+  end select
+  print at 8,16, "LEVEL"
+  NumU = Lv
+  print at 15,16, digits$(NumU, 1)
+  print at 8,18, "START"
+  V = Menu * 2 + 14
+  put char 62 at 6,V
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,2, "SQUARE LOGIX"
+  print at 2,5, "SLIDE AND TURN THE PIECES"
+  print at 2,6, "OF A 6 X 6 SQUARE BACK"
+  print at 2,7, "INTO THEIR PATTERN."
+  print at 2,10, "FROM COMPUTE!'S GAZETTE"
+  print at 2,11, "JUNE 1988 (COMMODORE 128)."
+  print at 2,13, "COLECOVISION VERSION BY"
+  print at 2,14, "CLAUDE (ANTHROPIC), 2026,"
+  print at 2,15, "IN AMY BY AMY BIENVENU."
+  print at 2,17, "MUSIC: SIX BY SIX"
+  print at 2,18, "(ORIGINAL)."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$30,$38,$38,$30,$20,$00
+  $00,$04,$0C,$1C,$1C,$0C,$04,$00
+  $00,$00,$81,$C3,$18,$00,$00,$00
+  $00,$00,$00,$18,$C3,$81,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $00,$00,$00,$E0,$10,$10,$10,$10
+  $00,$00,$00,$F0,$10,$10,$10,$10
+  $10,$10,$10,$E0,$00,$00,$00,$00
+  $10,$10,$10,$F0,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0F,$0F,$FE,$FE,$FE,$FE,$FE,$FE
+  $0F,$0F,$0E,$0E,$0E,$0E,$0E,$0E
+  $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $FE,$FE,$FE,$FE,$FE,$FE,$F1,$01
+  $0E,$0E,$0E,$0E,$0E,$0E,$01,$01
+  $1E,$1E,$1E,$1E,$1E,$1E,$01,$01
+  $0F,$0F,$F2,$F2,$F2,$F2,$F2,$F2
+  $0F,$0F,$02,$02,$02,$02,$02,$02
+  $1F,$1F,$12,$12,$12,$12,$12,$12
+  $F2,$F2,$F2,$F2,$F2,$F2,$F2,$F2
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $12,$12,$12,$12,$12,$12,$12,$12
+  $F2,$F2,$F2,$F2,$F2,$F2,$F1,$01
+  $02,$02,$02,$02,$02,$02,$01,$01
+  $12,$12,$12,$12,$12,$12,$01,$01
+  $0F,$0F,$F7,$F7,$F7,$F7,$F7,$F7
+  $0F,$0F,$07,$07,$07,$07,$07,$07
+  $1F,$1F,$17,$17,$17,$17,$17,$17
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $17,$17,$17,$17,$17,$17,$17,$17
+  $F7,$F7,$F7,$F7,$F7,$F7,$F1,$01
+  $07,$07,$07,$07,$07,$07,$01,$01
+  $17,$17,$17,$17,$17,$17,$01,$01
+  $0F,$0F,$F4,$F4,$F4,$F4,$F4,$F4
+  $0F,$0F,$04,$04,$04,$04,$04,$04
+  $1F,$1F,$14,$14,$14,$14,$14,$14
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $F4,$F4,$F4,$F4,$F4,$F4,$F1,$01
+  $04,$04,$04,$04,$04,$04,$01,$01
+  $14,$14,$14,$14,$14,$14,$01,$01
+  $0F,$0F,$F8,$F8,$F8,$F8,$F8,$F8
+  $0F,$0F,$08,$08,$08,$08,$08,$08
+  $1F,$1F,$18,$18,$18,$18,$18,$18
+  $F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $F8,$F8,$F8,$F8,$F8,$F8,$F1,$01
+  $08,$08,$08,$08,$08,$08,$01,$01
+  $18,$18,$18,$18,$18,$18,$01,$01
+  $0F,$0F,$FA,$FA,$FA,$FA,$FA,$FA
+  $0F,$0F,$0A,$0A,$0A,$0A,$0A,$0A
+  $1F,$1F,$1A,$1A,$1A,$1A,$1A,$1A
+  $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $FA,$FA,$FA,$FA,$FA,$FA,$F1,$01
+  $0A,$0A,$0A,$0A,$0A,$0A,$01,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$01,$1B,$1B,$B1,$01,$01,$01
+  $01,$01,$01,$B1,$1B,$1B,$01,$01
+  $01,$01,$01,$0E,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$1E,$E1,$E1,$E1,$E1
+  $01,$01,$01,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$1E,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $FF,$FF,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$03,$03,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+SqTick:
+    db $40,$40,$30,$02,$50
+SqShift:
+    db $40,$7F,$20,$02,$40,$5F,$20,$02,$40,$4C,$30,$03,$50
+SqTurn:
+    db $40,$AA,$20,$02,$40,$71,$20,$02,$40,$55,$30,$03,$50
+SqMix:
+    db $00,$00,$25,$02,$00,$00,$46,$02,$10
+SqPick:
+    db $40,$6B,$20,$03,$40,$47,$20,$06,$50
+SqSolve:
+    db $40,$D6,$20,$03,$40,$1D,$31,$03,$50
+SqWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+SqSoundTable:
+    dw SqTuneMel,$702B
+    dw SqTuneBass,$7035
+    dw SqTick,$7049
+    dw SqShift,$7049
+    dw SqTurn,$7049
+    dw SqMix,$703F
+    dw SqPick,$7049
+    dw SqSolve,$7049
+    dw SqWin,$7049
+; Six by Six (original)
+; Tiny Sound, 9 frames per step
+SqTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$18,$1C,$21,$01,$23,$01,$1F,$01
+    db $1C,$01,$1A,$01,$18,$01,$1C,$01,$21,$24,$23,$01,$21,$01,$20,$01
+    db $1C,$01,$01,$01,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$26,$01
+    db $1F,$01,$23,$01,$21,$24,$23,$20,$21,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+SqTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$05,$01,$0C,$01,$0E,$01,$09,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0B,$01,$04,$01,$04,$01,$09,$01,$01,$01,$00,$01,$01,$01
+    db $FF
+}

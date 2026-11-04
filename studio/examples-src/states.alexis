@@ -1,0 +1,818 @@
+cartridge "STATES & CAPITALS TUTOR/COMPUTE!'S GAZETTE/1983"
+
+' STATES & CAPITALS TUTOR
+' From "States & Capitals Tutor", COMPUTE!'s Gazette, September 1983,
+' pages 82, 119-120 (Commodore 64 and VIC-20 BASIC plus a data generator
+' that writes the SEQ file STATES). The listing names no author (its REMs
+' were retyped by a reader on April 9, 1994). For the ColecoVision in Amy
+' by Amy Bienvenu; ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Source: orig/states_cap.64.bas (the VIC file differs only in screen
+' line breaks), orig/states_cap.data.bas and the data file orig/states.prg.
+' Line numbers in the comments are the C64 listing's.
+'
+' The game (lines 100-450): a random state still in the pool is asked one
+' of two ways, at even odds: THE CAPITAL OF <STATE> IS ... or <CAPITAL>
+' IS THE CAPITAL OF WHAT STATE? Right: RIGHT + 1 and the state leaves the
+' pool (swapped to the end, 180-205). Wrong: WRONG + 1, the right answer
+' shown, the state stays in the pool. HELP: HELPS + 1, the answer shown,
+' it stays. The score (RIGHT / WRONG / HELPS) after every question. When
+' every state is answered right: YOU DID IT!!!!! A PERFECT SCORE AND I
+' DIDN'T HELP! if there were no wrongs or helps, else THAT'S ALL! BUT NOT
+' ALL OF YOUR ANSWERS WERE CORRECT, OR I HAD TO HELP YOU.
+'
+' Controls (either joystick): up and down move the pencil, a side button
+' answers or goes on. Keypad not used.
+'
+' Improvements: the answer is picked from a list of six with a sliding
+' pencil (green tick on the right answer, red cross on a wrong pick), a
+' stars-and-stripes banner, sound effects, an original title tune played
+' once ("Fifty Stars"), a states-to-go count.
+' Liberties taken:
+' - Typing became a pick-from-list: the right answer and five others of
+'   the same kind (states or capitals) in random order, plus HELP as the
+'   seventh line (the original's typed HELP). A guesser now has 1 in 6
+'   instead of none, but a wrong pick still counts and the state comes
+'   back, so a perfect round (the original's win) can't be had by
+'   guessing or by pressing the button over and over: the pencil starts
+'   on the first line every question and the answer's place is random.
+' - The title offers rounds of 10, 25 or all 50 states (the original
+'   always asked all 50, which is still the default); a shorter round
+'   draws its states at random from the 50.
+' - The 1983 data is kept as it was: all 50 capitals were right then and
+'   still are (statedata.py checks them); spelled as printed (SAINT PAUL).
+' - The cassette/disk question (500-570) and the file load are gone: the
+'   data is in the cartridge. A finished round ends with the message, then
+'   the title (the original started over at once).
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; music
+' first in the sound table; screens drawn with the NMI off; nothing
+' flashes.
+
+const TTick = 128
+const TCross = 129
+const TStars = 130
+const TStripes = 131
+const THline = 132
+const TDot = 133
+const TCstar = 134
+const SPen = 0
+const NTiles8 = 56
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndClick = 3
+const SndRight = 4
+const SndWrong = 5
+const SndHelp = 6
+const SndWin = 7
+const SndDone = 8
+' the 50 states and capitals of the original data file, 14 characters each
+const NameW = 14
+const NStates = 50
+data StName chars
+  "ALABAMA       "
+  "ALASKA        "
+  "ARIZONA       "
+  "ARKANSAS      "
+  "CALIFORNIA    "
+  "COLORADO      "
+  "CONNECTICUT   "
+  "DELAWARE      "
+  "FLORIDA       "
+  "GEORGIA       "
+  "HAWAII        "
+  "IDAHO         "
+  "ILLINOIS      "
+  "INDIANA       "
+  "IOWA          "
+  "KANSAS        "
+  "KENTUCKY      "
+  "LOUISIANA     "
+  "MAINE         "
+  "MARYLAND      "
+  "MASSACHUSETTS "
+  "MICHIGAN      "
+  "MINNESOTA     "
+  "MISSISSIPPI   "
+  "MISSOURI      "
+  "MONTANA       "
+  "NEBRASKA      "
+  "NEVADA        "
+  "NEW HAMPSHIRE "
+  "NEW JERSEY    "
+  "NEW MEXICO    "
+  "NEW YORK      "
+  "NORTH CAROLINA"
+  "NORTH DAKOTA  "
+  "OHIO          "
+  "OKLAHOMA      "
+  "OREGON        "
+  "PENNSYLVANIA  "
+  "RHODE ISLAND  "
+  "SOUTH CAROLINA"
+  "SOUTH DAKOTA  "
+  "TENNESSEE     "
+  "TEXAS         "
+  "UTAH          "
+  "VERMONT       "
+  "VIRGINIA      "
+  "WASHINGTON    "
+  "WEST VIRGINIA "
+  "WISCONSIN     "
+  "WYOMING       "
+end data
+data CapName chars
+  "MONTGOMERY    "
+  "JUNEAU        "
+  "PHOENIX       "
+  "LITTLE ROCK   "
+  "SACRAMENTO    "
+  "DENVER        "
+  "HARTFORD      "
+  "DOVER         "
+  "TALLAHASSEE   "
+  "ATLANTA       "
+  "HONOLULU      "
+  "BOISE         "
+  "SPRINGFIELD   "
+  "INDIANAPOLIS  "
+  "DES MOINES    "
+  "TOPEKA        "
+  "FRANKFORT     "
+  "BATON ROUGE   "
+  "AUGUSTA       "
+  "ANNAPOLIS     "
+  "BOSTON        "
+  "LANSING       "
+  "SAINT PAUL    "
+  "JACKSON       "
+  "JEFFERSON CITY"
+  "HELENA        "
+  "LINCOLN       "
+  "CARSON CITY   "
+  "CONCORD       "
+  "TRENTON       "
+  "SANTA FE      "
+  "ALBANY        "
+  "RALEIGH       "
+  "BISMARCK      "
+  "COLUMBUS      "
+  "OKLAHOMA CITY "
+  "SALEM         "
+  "HARRISBURG    "
+  "PROVIDENCE    "
+  "COLUMBIA      "
+  "PIERRE        "
+  "NASHVILLE     "
+  "AUSTIN        "
+  "SALT LAKE CITY"
+  "MONTPELIER    "
+  "RICHMOND      "
+  "OLYMPIA       "
+  "CHARLESTON    "
+  "MADISON       "
+  "CHEYENNE      "
+end data
+data StLen bytes 7,6,7,8,10,8,11,8,7,7,6,5,8,7,4,6,8,9,5,8,13,8,9,11,8,7,8,6,13,10,10,8,14,12,4,8,6,12,12,14,12,9,5,4,7,8,10,13,9,7
+data CapLen bytes 10,6,7,11,10,6,8,5,11,7,8,5,11,12,10,6,9,11,7,9,6,7,10,7,14,6,7,11,7,7,8,6,7,8,8,13,5,10,10,8,6,9,6,14,10,8,7,10,7,8
+const NChoice = 6
+const HelpLine = 6
+const Row0 = 7
+const TextCol = 6
+const PenX = 16
+const TuneLen = 512
+
+data RoundLen bytes 10,25,50
+
+' the question being asked
+record Question:
+  u8 Slot
+  u8 Idx
+  u8 Typ
+  u8 AnsPos
+end record
+Question Q
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' St: what the cartridge waits for (bots read it): 0 busy, 1 a button on
+' the credits or title, 2 an answer, 3 a button after the answer, 9 the end
+u8 St = 0
+u8 Ord[50]
+u8 Ch[6]
+u8 NRound = 50
+u8 RoundSel = 2
+u8 K = 0
+u8 Rt = 0
+u8 Wr = 0
+u8 He = 0
+bcd digits 2 RtB
+bcd digits 2 WrB
+bcd digits 2 HeB
+u8 Pick = 0
+u8 Outcome = 0
+u8 Perfect = 0
+u8 PenY = 0
+u8 PenGoal = 0
+u8 Tick = 0
+u8 JoyNow = 0
+u8 JoyWas = 0
+u8 Hold = 0
+u8 Done = 0
+u16 Rs = $ACE1
+u16 Rt16 = 0
+u16 RsStart = 0
+u16 RsAsk = 0
+u16 NumU = 0
+u16 Off = 0
+u8 I = 0
+u8 Kc = 0
+u8 Lj = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+
+' --- small helpers ----------------------------------------------------------
+' a random number 0 .. L-1
+function RndBelow(u8 L) as u8
+  Rnd16
+  return Rs mod L
+
+' the screen row of choice line N
+function LineRow(u8 N) as u8
+  return Row0 + N * 2
+
+' is state S already among the first N choices? (1 yes)
+function InChoices(u8 S, u8 N) as u8
+  u8 M
+  if N = 0 then return 0
+  for M = 0 to N - 1
+    if Ch[M] = S then return 1
+  next
+  return 0
+
+' a new press of a side button (down now, up the frame before)
+function FirePressed as u8
+  V = JoyWas & 16
+  if V <> 0 then return 0
+  V = JoyNow & 16
+  if V <> 0 then return 1
+  return 0
+
+  tile screen
+  set sound table SqSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  NewRound
+  PlayScreen
+
+' 100-340: a question, an answer, the score
+play_loop:
+  AskQuestion
+  GetAnswer
+  Judge
+  ShowScore
+  if K >= NRound then goto round_done
+  print at 18,21, "PRESS BUTTON"
+  St = 3
+  WaitPress
+  St = 0
+  goto play_loop
+
+' 400-450: every state answered right
+round_done:
+  ' the last tick stays a moment before the message
+  Pause(90)
+  EndMessage
+  St = 9
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  St = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' 45: a new round: the tallies to zero, the pool shuffled (a short round
+' takes the first NRound states of the shuffle)
+sub NewRound:
+  RsStart = Rs
+  NRound = RoundLen[RoundSel]
+  for I = 0 to 49
+    Ord[I] = I
+  next
+  for I = 49 to 1 step -1
+    V = I + 1
+    W = RndBelow(V)
+    Kc = Ord[I]
+    Ord[I] = Ord[W]
+    Ord[W] = Kc
+  next
+  K = 0
+  Rt = 0
+  Wr = 0
+  He = 0
+  RtB = 0
+  WrB = 0
+  HeB = 0
+  Perfect = 0
+  return
+end sub
+
+' 100-130: a state from the pool, asked one way or the other
+sub AskQuestion:
+  RsAsk = Rs
+  V = NRound - K
+  Q.Slot = RndBelow(V)
+  Q.Idx = Ord[Q.Slot]
+  Rnd16
+  Q.Typ = Rs & 1
+  Q.AnsPos = RndBelow(NChoice)
+  for Lj = 0 to NChoice - 1
+    if Lj = Q.AnsPos then
+      Ch[Lj] = Q.Idx
+    else
+      Ch[Lj] = Q.Idx
+      while Ch[Lj] = Q.Idx
+        W = RndBelow(NStates)
+        if W <> Q.Idx then
+          if InChoices(W, Lj) = 0 then Ch[Lj] = W
+        end if
+      end while
+    end if
+  next
+  DrawQuestion
+  return
+end sub
+
+' the question lines and the choices
+sub DrawQuestion:
+  HidePen
+  for Ty = 3 to 4
+    fill 32 count 28 at 2,Ty
+  next
+  if Q.Typ = 1 then
+    ' 120: THE CAPITAL OF / <STATE> IS
+    print at 2,3, "THE CAPITAL OF"
+    PutName(0, Q.Idx, 2, 4)
+    Tx = 2 + StLen[Q.Idx]
+    print at Tx,4, " IS ..."
+  else
+    ' 130: <CAPITAL> / IS THE CAPITAL OF WHAT STATE?
+    PutName(1, Q.Idx, 2, 3)
+    Tx = 2 + CapLen[Q.Idx]
+    print at Tx,3, " IS THE"
+    print at 2,4, "CAPITAL OF WHAT STATE?"
+  end if
+  for Lj = 0 to NChoice - 1
+    Ty = LineRow(Lj)
+    put char 32 at 4,Ty
+    put char TDot at 5,Ty
+    PutName(Q.Typ, Ch[Lj], TextCol, Ty)
+  next
+  Ty = LineRow(HelpLine)
+  put char 32 at 4,Ty
+  print at TextCol,Ty, "HELP          "
+  fill 32 count 28 at 2,21
+  return
+end sub
+
+' a state's (Typ 0) or a capital's (Typ 1) name, 14 columns, at X,Y
+sub PutName(u8 Typ, u8 Idx, u8 X, u8 Y):
+  Off = Idx * NameW
+  if Typ = 0 then
+    put StName + Off count NameW at X,Y
+  else
+    put CapName + Off count NameW at X,Y
+  end if
+  return
+end sub
+
+' 140: the pencil picks a line, a button answers
+sub GetAnswer:
+  Pick = 0
+  PenGoal = LineRow(0) * 8 - 2
+  PenY = PenGoal
+  DrawPen
+  St = 2
+  Hold = 0
+  Done = 0
+  while Done = 0
+    Frame1
+    V = JoyNow & 3
+    select case V
+    case 1
+      StepPick(HelpLine)
+    case 2
+      StepPick(1)
+    case else
+      Hold = 0
+    end select
+    SlidePen
+    Done = FirePressed
+  end while
+  St = 0
+  return
+end sub
+
+' a step of the pencil: at once, then again every 6 frames after 20
+sub StepPick(u8 Dlt):
+  inc Hold
+  if Hold = 1 then MovePick(Dlt)
+  if Hold >= 20 then
+    MovePick(Dlt)
+    Hold = 14
+  end if
+  return
+end sub
+
+' Dlt 1 = down a line, HelpLine (6) = up a line (mod 7)
+sub MovePick(u8 Dlt):
+  Pick = (Pick + Dlt) mod 7
+  PenGoal = LineRow(Pick) * 8 - 2
+  play sound SndClick
+  return
+end sub
+
+' the pencil slides 4 pixels a frame towards its line
+sub SlidePen:
+  if PenY < PenGoal then
+    PenY = PenY + 4
+    if PenY > PenGoal then PenY = PenGoal
+  elseif PenY > PenGoal then
+    PenY = PenY - 4
+    if PenY < PenGoal then PenY = PenGoal
+  end if
+  DrawPen
+  return
+end sub
+
+sub DrawPen:
+  set sprite 0 to PenY,PenX,SPen,11
+  update sprites
+  return
+end sub
+
+sub HidePen:
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' 145-260: right, wrong or help
+sub Judge:
+  HidePen
+  Ty = LineRow(Q.AnsPos)
+  if Pick = HelpLine then
+    ' 220-230: HELP
+    Outcome = 2
+    inc He
+    HeB += 1
+    play sound SndHelp
+    put char TTick at 4,Ty
+    print at 2,21, "THE ANSWER IS:"
+  elseif Ch[Pick] = Q.Idx then
+    ' 170-205: right; the state leaves the pool
+    Outcome = 0
+    inc Rt
+    RtB += 1
+    play sound SndRight
+    put char TTick at 4,Ty
+    print at 2,21, "THAT'S RIGHT!"
+    V = NRound - 1 - K
+    W = Ord[V]
+    Ord[V] = Ord[Q.Slot]
+    Ord[Q.Slot] = W
+    inc K
+  else
+    ' 250-260: wrong
+    Outcome = 1
+    inc Wr
+    WrB += 1
+    play sound SndWrong
+    put char TTick at 4,Ty
+    Tx = LineRow(Pick)
+    put char TCross at 4,Tx
+    print at 2,21, "SORRY! WRONG."
+  end if
+  return
+end sub
+
+' 300-320: the score, and how many states are left
+sub ShowScore:
+  print at 2,22, "RIGHT ", RtB, " WRONG ", WrB, " HELPS ", HeB
+  NumU = NRound - K
+  print at 20,1, "TO GO ", digits$(NumU, 2)
+  return
+end sub
+
+' 400-435: the end of the round
+sub EndMessage:
+  for Ty = 3 to 21
+    fill 32 count 28 at 2,Ty
+  next
+  V = Wr + He
+  if V = 0 then
+    Perfect = 1
+    play sound SndWin
+    print at 2,6, "YOU DID IT!!!!!"
+    print at 2,8, "A PERFECT SCORE AND"
+    print at 2,9, "I DIDN'T HELP!"
+    for Kc = 0 to 4
+      Tx = 6 + Kc * 4
+      put char TCstar at Tx,12
+    next
+  else
+    play sound SndDone
+    print at 2,6, "THAT'S ALL! BUT NOT ALL"
+    print at 2,7, "OF YOUR ANSWERS WERE"
+    print at 2,8, "CORRECT, OR I HAD TO"
+    print at 2,9, "HELP YOU."
+  end if
+  print at 2,14, "STATES IN THE ROUND: ", digits$(NRound, 2)
+  print at 2,16, "QUESTIONS ASKED:     "
+  NumU = Rt + Wr
+  NumU = NumU + He
+  print at 23,16, digits$(NumU, 3)
+  print at 8,20, "PRESS THE BUTTON"
+  return
+end sub
+
+' the play screen: banner, frame lines, labels
+sub PlayScreen:
+  NewScreen
+  fill TStars count 4 at 2,1
+  fill TStripes count 13 at 6,1
+  fill THline count 28 at 2,5
+  fill THline count 28 at 2,20
+  ShowScore
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame; the sticks and buttons of both controllers: bit 0 up,
+' bit 1 down, bit 4 a button
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  JoyWas = JoyNow
+  V = joypad(1).up | joypad(2).up
+  W = joypad(1).down | joypad(2).down
+  W = W << 1
+  JoyNow = V | W
+  V = joypad(1).fire | joypad(2).fire
+  V = V << 4
+  JoyNow = JoyNow | V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  for J8 = 0 to 1
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rnd16:
+  Rt16 = Rs << 7
+  Rs = Rs ^ Rt16
+  Rt16 = Rs >> 9
+  Rs = Rs ^ Rt16
+  Rt16 = Rs << 8
+  Rs = Rs ^ Rt16
+  return
+end sub
+
+' a new press of a button; the random numbers run meanwhile
+sub WaitPress:
+  Done = 0
+  while Done = 0
+    Frame1
+    Rnd16
+    Done = FirePressed
+  end while
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill TStars count 4 at 2,1
+  fill TStripes count 24 at 6,1
+  print at 4,3, "STATES & CAPITALS TUTOR"
+  print at 2,5, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,6, "SEPTEMBER 1983 (COMMODORE"
+  print at 2,7, "64 AND VIC-20; THE LISTING"
+  print at 2,8, "NAMES NO AUTHOR)."
+  print at 2,10, "FOR THE COLECOVISION BY"
+  print at 2,11, "CLAUDE (AN AI MADE BY"
+  print at 2,12, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "2026, IN AMY, THE LANGUAGE"
+  print at 2,14, "BY AMY BIENVENU."
+  print at 2,16, "MUSIC: FIFTY STARS"
+  print at 2,17, "(ORIGINAL)."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  St = 1
+  WaitPress
+  St = 0
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  fill TStars count 4 at 2,1
+  fill TStripes count 24 at 6,1
+  print at 4,3, "STATES & CAPITALS TUTOR"
+  print at 2,5, "THIS PROGRAM TUTORS THE"
+  print at 2,6, "STUDENT IN STATES AND"
+  print at 2,7, "CAPITALS."
+  print at 2,9, "PICK THE ANSWER WITH THE"
+  print at 2,10, "PENCIL (STICK UP/DOWN) AND"
+  print at 2,11, "PRESS THE BUTTON. IF YOU"
+  print at 2,12, "DON'T KNOW, PICK HELP."
+  print at 2,14, "ANSWER EVERY STATE RIGHT"
+  print at 2,15, "TO FINISH THE ROUND."
+  print at 4,18, "STATES IN THE ROUND:"
+  ShowRound
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  St = 1
+  Hold = 0
+  Done = 0
+  while Done = 0
+    Frame1
+    Rnd16
+    V = JoyNow & 3
+    if V = 0 then
+      Hold = 0
+    else
+      inc Hold
+      if Hold = 1 then
+        if V = 1 then
+          if RoundSel < 2 then inc RoundSel
+        else
+          if RoundSel > 0 then dec RoundSel
+        end if
+        play sound SndClick
+        ShowRound
+      end if
+    end if
+    Done = FirePressed
+  end while
+  St = 0
+  stop sound SndTuneA
+  stop sound SndTuneB
+  TzOn = 0
+  return
+end sub
+
+' the round length on the title, with arrows hinting the stick
+sub ShowRound:
+  NumU = RoundLen[RoundSel]
+  print at 25,18, digits$(NumU, 2)
+  print at 4,19, "(UP: MORE, DOWN: FEWER)"
+  return
+end sub
+
+data TilePat bytes
+  $01,$03,$06,$8C,$D8,$70,$20,$00
+  $82,$C6,$93,$38,$93,$C6,$82,$00
+  $00,$44,$00,$11,$00,$44,$00,$11
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $10,$10,$01,$83,$38,$93,$44,$00
+end data
+data TileCol bytes
+  $31,$31,$31,$31,$31,$31,$31,$01
+  $91,$91,$19,$91,$19,$91,$91,$01
+  $04,$F4,$04,$F4,$04,$F4,$04,$F4
+  $08,$08,$0F,$0F,$08,$08,$0F,$0F
+  $01,$01,$01,$05,$04,$01,$01,$01
+  $01,$01,$E1,$1E,$1E,$E1,$01,$01
+  $B1,$B1,$1B,$1B,$B1,$1B,$B1,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$E0,$F8,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+SqClick:
+    db $40,$47,$20,$01,$40,$47,$50,$01,$50
+SqRight:
+    db $40,$8F,$20,$03,$40,$71,$20,$03,$40,$5F,$20,$08,$50
+SqWrong:
+    db $40,$FC,$21,$06,$40,$3B,$32,$10,$50
+SqHelp:
+    db $40,$A9,$20,$04,$40,$A9,$40,$08,$50
+SqWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06
+    db $40,$55,$20,$18,$50
+SqDone:
+    db $40,$1D,$21,$08,$40,$53,$21,$10,$50
+
+SqSoundTable:
+    dw SqTuneMel,$702B
+    dw SqTuneBass,$7035
+    dw SqClick,$7049
+    dw SqRight,$7049
+    dw SqWrong,$7049
+    dw SqHelp,$7049
+    dw SqWin,$7049
+    dw SqDone,$7049
+; Fifty Stars (original)
+; Tiny Sound, 8 frames per step
+SqTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$24,$01,$24,$01,$28,$01,$26,$01,$24,$01
+    db $2B,$01,$01,$01,$28,$01,$26,$01,$24,$01,$26,$01,$28,$01,$26,$01
+    db $01,$01,$1F,$01,$24,$01,$28,$01,$2B,$01,$2D,$01,$2B,$01,$28,$01
+    db $01,$01,$24,$01,$26,$01,$28,$01,$26,$01,$23,$01,$24,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SqTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0C,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $0C,$01,$13,$01,$0C,$01,$13,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01,$0C,$01,$13,$01,$0C,$01,$10,$01,$06,$01,$0C,$01
+    db $0C,$01,$13,$01,$09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $0C,$01,$01,$01
+    db $FF
+}

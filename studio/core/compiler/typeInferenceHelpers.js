@@ -263,7 +263,7 @@ export function createTypeInferenceHelpers({
     if (node.kind === "binary") {
       const leftType = resolveExpressionAstComputationType(node.left);
       const rightType = resolveExpressionAstComputationType(node.right);
-      const needsWideIntermediate = (node.op === "/" || node.op === ">>")
+      const needsWideIntermediate = (node.op === "/" || node.op === "%" || node.op === ">>")
         && node.left?.kind === "binary"
         && ["+", "-", "*"].includes(node.left.op)
         && declaredTypeBitWidth(preferredDeclaredType) <= 8;
