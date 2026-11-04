@@ -1,0 +1,854 @@
+cartridge "REACT/COMPUTE!'S GAZETTE/1984"
+
+' REACT
+' A ColecoVision game based on "React", COMPUTE!'s Gazette February 1984
+' (Commodore 64 and VIC-20 BASIC with custom characters; no author named
+' on the disk, whose REM names the 1989 typist).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' The game: steer your maynerd round a walled field and grab every
+' treasure. The maynerd leaves a solid trail behind it; running into a
+' wall, a mine or your own trail costs a maynerd. Each field is a new
+' random layout (one of three inner wall plans, or none) with more mines
+' and treasures. Clear it quickly for a time bonus. Lose all five
+' maynerds and the game is over.
+'
+' From the original (orig/react.64.bas): the field with its border and
+' the three inner wall plans (chosen 3 times in 5, else an open field),
+' moves of one cell in eight directions, standing still when the stick is
+' centred, the trail, mines and treasures placed at random on empty cells,
+' 2 mines and 1 treasure at first and 2 more of each every field, 50
+' points a treasure, 1 point a step, a bonus of 100 - seconds taken, a
+' mine hit turns into a blast, 5 maynerds, the score screen between fields,
+' the high score, the treasure and mine pictures (the original's chars).
+'
+' Liberties: the 40 x 25 C64 screen is a 28 x 21 field (the wall plans
+' scaled to it); the maynerd glides a cell in 10 frames (6 cells a second)
+' as a sprite; standing still scores nothing (on the C64 each idle pass
+' scored a point, so standing still won points); after a lost maynerd the
+' same field size is played again with a new layout (the C64 went on to
+' the next, bigger field); the cells next to the start are kept clear;
+' treasures are the original's 21 picture characters (the C64 also used
+' letters and signs); the bonus is shown counting down on the top line;
+' counts stop growing at field 15.
+'
+' Controls: either controller; the stick moves (diagonals too), a button
+' goes on from the score screen. On the title, up and down choose, a
+' button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off,
+' display off. Music first in the sound table; the title tune once.
+
+const TWall = 128
+const TTrail = 129
+const TMine = 130
+const TBoom = 131
+const TDead = 132
+const TIt00 = 133
+const TIt01 = 134
+const TIt02 = 135
+const TIt03 = 136
+const TIt04 = 137
+const TIt05 = 138
+const TIt06 = 139
+const TIt07 = 140
+const TIt08 = 141
+const TIt09 = 142
+const TIt10 = 143
+const TIt11 = 144
+const TIt12 = 145
+const TIt13 = 146
+const TIt14 = 147
+const TIt15 = 148
+const TIt16 = 149
+const TIt17 = 150
+const TIt18 = 151
+const TIt19 = 152
+const TIt20 = 153
+const TLogo = 154
+const SMan0 = 0
+const SMan1 = 4
+const NTiles8 = 216
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndGrab = 4
+const SndMine = 5
+const SndCrash = 6
+const SndClear = 7
+const SndStart = 8
+const SndOver = 9
+const StepN = 10
+const DeadN = 60
+const ClearN = 50
+const NSpr = 1
+const StartC = 3
+const StartR = 3
+
+' glide: pixels still to go with Ph frames left of a step
+data DistT bytes
+  0, 1, 2, 2, 3, 4, 5, 6, 6, 7, 8
+end data
+' inner wall plans: column, row, length, 0 down / 1 across
+data SegT bytes
+  8, 6, 12, 0
+  16, 6, 12, 0
+  16, 3, 5, 0
+  17, 3, 5, 0
+  23, 9, 6, 0
+  24, 9, 6, 0
+  3, 12, 8, 1
+  12, 12, 9, 1
+  9, 3, 6, 0
+  10, 3, 6, 0
+  13, 10, 11, 0
+  21, 10, 11, 0
+end data
+data PlanFirst bytes
+  0, 2, 8
+end data
+data PlanCount bytes
+  2, 6, 4
+end data
+' the big R of the title (one string per row, # = brick)
+data LogoT bytes
+  1,1,1,1,1,1,1,1,1
+  1,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,1
+  1,0,0,0,0,0,0,0,1
+  1,1,1,1,1,1,1,1,1
+  1,1,0,0,0,0,0,0,0
+  1,0,1,0,0,0,0,0,0
+  1,0,0,1,0,0,0,0,0
+  1,0,0,0,1,0,0,0,0
+  1,0,0,0,0,1,0,0,0
+  1,0,0,0,0,0,1,0,0
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 6 Sc = 0
+bcd digits 6 Hi = 0
+u8 Lv = 1
+u8 Ml = 5
+u8 Left = 0
+u8 Secs = 0
+u8 FrT = 0
+u8 Bonus = 0
+u8 Plan = 0
+' the maynerd: cell, step direction (0, 1 or 255), frames left of the
+' glide, pixel corner
+u8 Pc = 3
+u8 Pr = 3
+u8 Dc = 0
+u8 Dr = 0
+u8 Ph = 0
+u8 Px = 0
+u8 Py = 0
+u8 DeadT = 0
+u8 ClrT = 0
+' the end of a field: 0 playing, 1 maynerd lost, 2 field cleared
+u8 Ev = 0
+u8 Over = 0
+u8 Mode = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters
+u8 Ci = 0
+u8 Ri = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Qc = 0
+u8 Qr = 0
+
+  tile screen
+  set sound table RxSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  Sc = 0
+  Lv = 1
+  Ml = 5
+  Over = 0
+new_field:
+  NewField
+  Mode = 1
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawMan
+  if Ev = 0 then goto play_loop
+  Mode = 0
+  if Ev = 2 then
+    if Lv < 99 then inc Lv
+  else
+    dec Ml
+    if Ml = 0 then goto game_end
+  end if
+  Between
+  goto new_field
+
+game_end:
+  if Sc > Hi then Hi = Sc
+  mute all
+  print at 8,9, "                "
+  print at 8,10, "   GAME  OVER   "
+  print at 8,11, "                "
+  print at 8,12, " SCORE          "
+  print Sc at 16,12
+  print at 8,13, "                "
+  print at 8,14, " HIGH           "
+  print Hi at 16,14
+  print at 8,15, "                "
+  play sound SndOver
+  Over = 1
+  Rearm
+  wait 90 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one pass of play
+
+sub PlayStep:
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then Ev = 1
+    return
+  end if
+  if ClrT > 0 then
+    dec ClrT
+    if ClrT = 0 then Ev = 2
+    return
+  end if
+  Clock
+  if Ph > 0 then
+    dec Ph
+    if Ph = 0 then
+      if Left = 0 then
+        ClrT = ClearN
+        play sound SndClear
+      end if
+    end if
+    return
+  end if
+  StickDir
+  if Dc = 0 then
+    if Dr = 0 then return
+  end if
+  Qc = Pc + Dc
+  Qr = Pr + Dr
+  T = get char at Qc,Qr
+  if IsHazard(T) = 1 then
+    put char TDead at Pc,Pr
+    if T = TMine then put char TBoom at Qc,Qr
+    DeadT = DeadN
+    play sound SndCrash
+    return
+  end if
+  put char TTrail at Pc,Pr
+  Pc = Qc
+  Pr = Qr
+  Ph = StepN
+  Sc += 1
+  if T >= TIt00 then
+    put char 32 at Qc,Qr
+    Sc += 50
+    dec Left
+    play sound SndGrab
+  else
+    play sound SndStep
+  end if
+  ShowScore
+  return
+end sub
+
+' the bonus clock: a second every 60 passes of play
+sub Clock:
+  inc FrT
+  if FrT < 60 then return
+  FrT = 0
+  if Secs < 250 then inc Secs
+  ShowBonus
+  return
+end sub
+
+' the stick as a step: Dc, Dr = 0, 1 or 255 (-1)
+sub StickDir:
+  K = J1 | J2
+  Dc = 0
+  Dr = 0
+  select case K & 12
+  case 4
+    Dc = 255
+  case 8
+    Dc = 1
+  end select
+  select case K & 3
+  case 1
+    Dr = 255
+  case 2
+    Dr = 1
+  end select
+  return
+end sub
+
+' 1 when the cell kills the maynerd
+function IsHazard(u8 Tc) as u8
+  u8 Hz
+  Hz = 0
+  select case Tc
+  case TWall, TTrail, TMine, TBoom, TDead
+    Hz = 1
+  end select
+  return Hz
+
+' a random number 0 .. N - 1
+function Rnd(u8 N1) as u8
+  u16 P
+  Rand
+  P = Rs & 255
+  P = P * N1
+  return highbyte P
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the time bonus: 100 - seconds, not below 0
+function BonusNow as u8
+  if Secs >= 100 then return 0
+  return 100 - Secs
+
+' ---------------------------------------------------------------------------
+' a field
+
+sub NewField:
+  NewScreen
+  backdrop black
+  DrawBorder
+  Plan = Rnd(5)
+  if Plan < 3 then DrawPlan(Plan)
+  Pc = StartC
+  Pr = StartR
+  Ph = 0
+  Dc = 0
+  Dr = 0
+  DeadT = 0
+  ClrT = 0
+  Ev = 0
+  Secs = 0
+  FrT = 0
+  N = Lv
+  if N > 15 then N = 15
+  N = N * 2
+  Scatter(N, 0)
+  N = N - 1
+  Left = N
+  Scatter(N, 1)
+  ShowHud
+  DrawMan
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub DrawBorder:
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,22
+  for Ri = 3 to 21
+    put char TWall at 2,Ri
+    put char TWall at 29,Ri
+  next
+  return
+end sub
+
+' one of the inner wall plans
+sub DrawPlan(u8 Pl):
+  u8 First
+  u8 Last
+  u8 Sg
+  u8 Ln
+  u8 I
+  First = PlanFirst[Pl]
+  Last = First + PlanCount[Pl] - 1
+  for Sg = First to Last
+    W16 = Sg * 4
+    C = SegT[W16]
+    R = SegT[W16 + 1]
+    Ln = SegT[W16 + 2]
+    if SegT[W16 + 3] = 0 then
+      for I = 1 to Ln
+        put char TWall at C,R
+        inc R
+      next
+    else
+      fill TWall count Ln at C,R
+    end if
+  next
+  return
+end sub
+
+' Cnt mines (Kind 0) or treasures (Kind 1) on empty cells, away from the
+' start
+sub Scatter(u8 Cnt, u8 Kind):
+  u8 I
+  u8 Tl
+  for I = 1 to Cnt
+    PickCell
+    if Kind = 0 then
+      Tl = TMine
+      play sound SndMine
+    else
+      Tl = Rnd(21) + TIt00
+    end if
+    put char Tl at Qc,Qr
+  next
+  return
+end sub
+
+' Qc, Qr: a random empty cell not next to the start
+sub PickCell:
+pick_again:
+  Qc = Rnd(26) + 3
+  Qr = Rnd(19) + 3
+  V = get char at Qc,Qr
+  if V <> 32 then goto pick_again
+  if Qc <= StartC + 1 then
+    if Qr <= StartR + 1 then goto pick_again
+  end if
+  return
+end sub
+
+' the score screen between fields
+sub Between:
+  mute all
+  if Ev = 2 then
+    Bonus = BonusNow
+    Sc += Bonus
+  else
+    Bonus = 0
+  end if
+  NewScreen
+  backdrop dark blue
+  fill mode 2 text color with $B4
+  print at 8,6, "SCORE"
+  print Sc at 18,6
+  print at 8,8, "MAYNERDS LEFT"
+  NumOut(Ml, 23, 8)
+  print at 8,10, "BONUS"
+  NumOut(Bonus, 21, 10)
+  if Ev = 2 then
+    print at 8,3, "FIELD CLEARED!"
+  else
+    print at 8,3, "MAYNERD LOST!"
+  end if
+  print at 4,16, "PRESS BUTTON TO CONTINUE"
+  ShowScreen
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub NumOut(u8 Nv, u8 Cx, u8 Cy):
+  W16 = Nv
+  print at Cx,Cy, digits$(W16, 3)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawMan:
+  X = Pc << 3
+  Y = Pr << 3
+  V = DistT[Ph]
+  if Dc = 1 then X = X - V
+  if Dc = 255 then X = X + V
+  if Dr = 1 then Y = Y - V
+  if Dr = 255 then Y = Y + V
+  Px = X
+  Py = Y
+  if DeadT > 0 then
+    set sprite 0 to 192,0,0,0
+  elseif Mode = 0 then
+    set sprite 0 to 192,0,0,0
+  else
+    K = SMan0
+    if Ph > 0 then
+      V = Ph & 4
+      if V > 0 then K = SMan1
+    end if
+    Y = Y - 1
+    set sprite 0 to Y,X,K,15
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SC"
+  print at 12,1, "MEN"
+  print at 18,1, "LV"
+  print at 24,1, "BON"
+  ShowScore
+  W16 = Ml
+  print at 16,1, digits$(W16, 1)
+  W16 = Lv
+  print at 20,1, digits$(W16, 2)
+  ShowBonus
+  return
+end sub
+
+sub ShowScore:
+  print Sc at 4,1
+  return
+end sub
+
+sub ShowBonus:
+  NumOut(BonusNow, 27, 1)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the big R, the tune once, START GAME / CREDITS
+sub TitlePage:
+  u8 Lr
+  u8 Lc
+  u8 Li
+  Mode = 0
+  NewScreen
+  Li = 0
+  for Lr = 3 to 13
+    for Lc = 6 to 14
+      if LogoT[Li] = 1 then put char TLogo at Lc,Lr
+      inc Li
+    next
+  next
+  print at 16,7, "E A C T"
+  print at 4,15, "COMPUTE!'S GAZETTE 1984"
+  print at 10,17, "START GAME"
+  print at 10,18, "CREDITS"
+  print at 3,20, "GRAB EVERY TREASURE. MISS"
+  print at 3,21, "WALLS, MINES AND YOUR TRAIL"
+  print at 2,1, "HI"
+  print Hi at 5,1
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        Menu = 0
+      else
+        Menu = 1
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,17
+  put char 32 at 8,18
+  J = Menu + 17
+  put char 62 at 8,J
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 13,2, "REACT"
+  print at 2,5, "BASED ON REACT,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "FEBRUARY 1984 (COMMODORE 64"
+  print at 2,8, "AND VIC-20). NO AUTHOR NAMED"
+  print at 2,9, "IN THE LISTING."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: SNAP DECISION"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$81,$81,$99,$99,$81,$81,$00
+  $C3,$42,$A5,$81,$A5,$9A,$42,$C3
+  $00,$81,$A5,$81,$42,$A5,$42,$00
+  $00,$00,$18,$18,$C3,$A5,$C3,$42
+  $00,$06,$08,$C3,$81,$81,$81,$C3
+  $18,$C3,$81,$00,$00,$00,$C3,$C3
+  $38,$C3,$01,$00,$00,$01,$C3,$38
+  $C3,$C3,$00,$00,$00,$81,$C3,$18
+  $1C,$C3,$80,$00,$00,$80,$C3,$1C
+  $00,$00,$38,$28,$08,$14,$22,$80
+  $1C,$22,$2A,$22,$1C,$14,$88,$00
+  $24,$C3,$24,$99,$99,$24,$C3,$24
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $81,$99,$42,$81,$18,$24,$C3,$42
+  $C3,$42,$42,$00,$00,$42,$42,$C3
+  $00,$00,$38,$44,$92,$44,$38,$00
+  $00,$C3,$C3,$C3,$C3,$C3,$00,$00
+  $81,$C3,$18,$00,$00,$18,$C3,$81
+  $00,$99,$99,$00,$42,$99,$C3,$18
+  $54,$54,$52,$52,$4A,$4A,$2A,$2A
+  $C3,$C3,$00,$18,$18,$00,$C3,$C3
+  $00,$91,$91,$60,$06,$89,$89,$00
+  $00,$00,$68,$92,$0D,$92,$68,$00
+  $A5,$24,$18,$18,$18,$18,$24,$A5
+  $C3,$18,$81,$C3,$C3,$81,$18,$C3
+  $01,$01,$01,$00,$10,$10,$10,$00
+end data
+data TileCol bytes
+  $45,$45,$45,$04,$45,$45,$45,$04
+  $01,$17,$17,$17,$17,$17,$17,$01
+  $19,$91,$91,$91,$91,$91,$91,$19
+  $0B,$B8,$B8,$B8,$8B,$B8,$8B,$0B
+  $08,$08,$F8,$F8,$8F,$8F,$8F,$F8
+  $01,$B1,$B1,$1B,$1B,$1B,$1B,$1B
+  $31,$13,$13,$03,$03,$03,$13,$13
+  $D1,$1D,$1D,$0D,$0D,$1D,$1D,$D1
+  $15,$15,$05,$05,$05,$15,$15,$51
+  $F1,$1F,$1F,$0F,$0F,$1F,$1F,$F1
+  $01,$01,$21,$21,$21,$21,$21,$12
+  $A1,$A1,$A1,$A1,$A1,$A1,$1A,$01
+  $18,$81,$81,$81,$81,$81,$81,$18
+  $17,$17,$17,$17,$71,$71,$71,$71
+  $19,$19,$91,$19,$91,$91,$91,$91
+  $1B,$B1,$1B,$0B,$0B,$1B,$B1,$1B
+  $01,$01,$31,$31,$31,$31,$31,$01
+  $01,$1D,$1D,$1D,$1D,$1D,$0D,$01
+  $51,$51,$15,$05,$05,$15,$51,$51
+  $01,$1F,$1F,$01,$F1,$1F,$1F,$F1
+  $12,$12,$12,$12,$12,$12,$12,$12
+  $A1,$A1,$01,$A1,$A1,$01,$A1,$A1
+  $08,$81,$81,$18,$18,$81,$81,$08
+  $01,$01,$17,$71,$17,$71,$17,$01
+  $91,$91,$19,$91,$91,$19,$91,$91
+  $B1,$1B,$1B,$1B,$1B,$1B,$1B,$B1
+  $18,$18,$18,$01,$18,$18,$18,$01
+end data
+data SpritePat bytes
+  $18,$5A,$24,$18,$18,$18,$24,$42,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$5A,$24,$18,$18,$18,$14,$14,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+RxStep:
+    db $40,$F9,$32,$02,$50
+RxGrab:
+    db $40,$6B,$10,$03,$40,$55,$10,$03,$40,$40,$20,$06,$50
+RxMine:
+    db $40,$7F,$20,$03,$50
+RxCrash:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$56,$0E,$10
+RxClear:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$55,$10,$04,$40,$47,$20,$10
+    db $50
+RxStart:
+    db $40,$1D,$21,$05,$40,$E2,$20,$05,$40,$BF,$20,$0C,$50
+RxOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$53,$21,$0C,$40,$3B,$22,$1E,$50
+
+RxSoundTable:
+    dw RxTuneMel,$702B
+    dw RxTuneBass,$7035
+    dw RxStep,$7049
+    dw RxGrab,$7049
+    dw RxMine,$7049
+    dw RxCrash,$703F
+    dw RxClear,$7049
+    dw RxStart,$7049
+    dw RxOver,$7049
+; Snap Decision (original)
+; Tiny Sound, 8 frames per step
+RxTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$24,$28,$01,$26,$24,$01,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$1C,$01,$21,$24,$01,$23,$21,$01,$20,$01,$23,$01
+    db $28,$01,$01,$01,$29,$01,$28,$26,$01,$24,$23,$01,$24,$01,$21,$01
+    db $23,$01,$20,$01,$21,$24,$28,$2D,$01,$2B,$28,$01,$26,$23,$20,$01
+    db $21,$01,$01,$00
+    db $FF
+RxTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$13,$01,$1A,$01
+    db $15,$01,$1C,$01,$15,$01,$1C,$01,$15,$01,$1C,$01,$10,$01,$17,$01
+    db $10,$01,$14,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$11,$01,$18,$01
+    db $10,$01,$17,$01,$15,$01,$1C,$01,$18,$01,$21,$01,$10,$01,$17,$01
+    db $15,$01,$01,$00
+    db $FF
+}

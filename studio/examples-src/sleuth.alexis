@@ -1,0 +1,1347 @@
+cartridge "SLEUTH/COMPUTE'S GAZETTE/1985"
+
+' SLEUTH
+' A ColecoVision game based on "Sleuth", COMPUTE!'s Gazette, July 1985
+' (Commodore 64 and VIC-20 BASIC, disk 1985-07, files "sleuth" and
+' "sleuth/vic"; no author is named in the listings or on the disk; the
+' article could not be reached). Made for Amy Studio by Claude (an AI
+' made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-for-line port: the rules are the C64 listing's (orig/); the
+' game is rebuilt for the ColecoVision with portraits of the suspects, a
+' magnifying glass that glides to whoever is talking, statements typed
+' out line by line, a casebook and sound.
+'
+' The game: Lord Crumbly has been shot at his country house. Five other
+' people are staying there. The murderer is the only one who had a
+' motive, a gun AND the opportunity. Grill the household: each time, one
+' of them tells you something about another. One of the five is a
+' compulsive liar who always says the opposite of the truth; nobody
+' tells you who. Accuse when you are sure: a wrong accusation and you are
+' framed for the murder yourself.
+'
+' Controls: joystick and side buttons only. Up/down move the cursor over
+' GRILL THE SUSPECTS / CASEBOOK / ACCUSE, either button chooses. In the
+' casebook, left/right turn the pages (one page per suspect), a button
+' goes back. Accusing: left/right move the glass, the left button
+' accuses, the right button goes back.
+'
+' From the original (C64 listing, lines 95-410): the murderer drawn at
+' random has motive, gun and opportunity (line 100); for motive, then
+' gun, then opportunity, each other suspect gets the trait with a chance
+' of 1 in 2, at most two of them per trait, and never two traits in a row
+' (no one but the murderer has a motive and a gun, or a gun and the
+' opportunity; lines 105-150); one liar drawn at random (it may be the
+' murderer, line 95); each clue: a random speaker talks about a random
+' other suspect and a random trait (lines 155-160), true from an honest
+' speaker and the opposite from the liar (lines 185-300), in one of
+' three wordings for a yes and the one wording for a no (lines 195-300);
+' the clue count; the accusation (lines 330-340), the verdict texts
+' "... DID IT! YOU CAUGHT THE KILLER AFTER n CLUES" and "AFTER n CLUES
+' YOU HAVE ACCUSED THE WRONG PERSON / BEFORE YOU CAN CORRECT YOUR
+' MISTAKE, YOU ARE FRAMED FOR THE MURDER", the murderer and the liar
+' revealed (lines 345-400); the shot (noise fading away, lines 455-470)
+' and the framing buzz (line 355) as effects; the story text (40-75).
+'
+' Liberties: the five suspects are new characters (the listing's maid,
+' butler, French "Madam" and professor read as stock types, and two
+' names were too close to a board game's): NELL PARRISH, OWEN TRASK, IRIS
+' VALE, MILES BRAY, RUTH OKAFOR; Lord Crumbly is kept. One wording was
+' softened ("SECRETLY KILLED X'S LOVER" is "HAD RUINED X'S FAMILY") and
+' "WAS BY ... ROOM" reads "WAS NEAR ...". The C64's four free-typing
+' notepads (F1-F7) are replaced by a CASEBOOK that records every
+' statement heard, by suspect, speaker and trait (yes / no). A statement
+' heard before is marked as such (it still counts as a clue). A game is
+' five cases (the listing asked ANOTHER CASE (Y/N)); the end shows the
+' cases solved, the clues used and a rank, so a lucky guess (1 in 5)
+' cannot win a game. The title tune of the listing is replaced by an
+' original tune, "Who Was by the Stairs?" (house rule).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
+' screens drawn with the NMI off and the display off; music first in the
+' sound table, the title music played once; `set sprite count` always
+' given. Own xorshift random numbers. Nothing flashes.
+
+const TF000 = 128
+const TF001 = 129
+const TF002 = 130
+const TF010 = 131
+const TF011 = 132
+const TF012 = 133
+const TF020 = 134
+const TF021 = 135
+const TF022 = 136
+const TF100 = 137
+const TF101 = 138
+const TF102 = 139
+const TF110 = 140
+const TF111 = 141
+const TF112 = 142
+const TF120 = 143
+const TF121 = 144
+const TF122 = 145
+const TF200 = 146
+const TF201 = 147
+const TF202 = 148
+const TF210 = 149
+const TF211 = 150
+const TF212 = 151
+const TF220 = 152
+const TF221 = 153
+const TF222 = 154
+const TF300 = 155
+const TF301 = 156
+const TF302 = 157
+const TF310 = 158
+const TF311 = 159
+const TF312 = 160
+const TF320 = 161
+const TF321 = 162
+const TF322 = 163
+const TF400 = 164
+const TF401 = 165
+const TF402 = 166
+const TF410 = 167
+const TF411 = 168
+const TF412 = 169
+const TF420 = 170
+const TF421 = 171
+const TF422 = 172
+const TBlk = 173
+const TBlk2 = 174
+const TRule = 175
+const TYes = 176
+const TNo = 177
+const SGlass = 0
+const NTiles8 = 400
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTick = 3
+const SndBad = 4
+const SndClue = 5
+const SndAgain = 6
+const SndPage = 7
+const SndShot = 8
+const SndBuzz = 9
+const SndWin = 10
+const NSpr = 2
+const TuneLen = 640
+const NCases = 5
+
+record Person:
+  ' 0 motive, 1 gun, 2 opportunity, 3 the murderer
+  u8 Tr[4]
+  u8 Lie
+end record
+
+Person Sus[5]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Off = 0
+' what was said: (speaker * 5 + subject) * 3 + trait -> 0 not heard, 1 yes, 2 no
+u8 Said[75]
+' the statement being typed: 3 lines of 28
+u8 Txt[84]
+u8 TxL = 0
+u8 TxP = 0
+u8 Killer = 0
+u8 Liar = 0
+u8 ClueN = 0
+bcd digits 4 Clues = 0
+bcd digits 4 TotClues = 0
+u8 CaseN = 0
+u8 NSolved = 0
+u8 Solved = 0
+u8 Accused = 0
+' the last clue: speaker, subject, trait, said yes, heard before
+u8 LastW = 255
+u8 LastX = 0
+u8 LastY = 0
+u8 LastS = 0
+u8 LastAgain = 0
+' game state: 0 title, 1 story, 2 grilling, 3 casebook, 5 accusing,
+' 4 verdict, 6 game over
+u8 Gs = 0
+u8 Busy = 0
+u8 Mi = 0
+u8 Ai = 0
+u8 Cb = 0
+u8 Menu = 0
+u8 Tick = 0
+' the glass sprite and where it is heading
+u8 Gx = 120
+u8 Gy = 192
+u8 Tx = 120
+u8 Ty = 192
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press1 = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rpt = 0
+u8 Tap = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table SlSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then goto title
+
+  NSolved = 0
+  TotClues = 0
+  CaseN = 0
+case_loop:
+  inc CaseN
+  NewCase
+  StoryPage
+  GrillPage
+  if CaseN < NCases then goto case_loop
+
+  ' the end of the game: the record, then the title on a press
+  FinalPage
+  HideSprites
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' data
+
+' full names, 12 wide
+data FullName chars
+  "NELL PARRISH"
+  "OWEN TRASK  "
+  "IRIS VALE   "
+  "MILES BRAY  "
+  "RUTH OKAFOR "
+end data
+data FullLen bytes 12, 10, 9, 10, 11
+' first names, 5 wide
+data FirstName chars
+  "NELL "
+  "OWEN "
+  "IRIS "
+  "MILES"
+  "RUTH "
+end data
+' what each of them is
+data Calling chars
+  "THE HOUSEKEEPER      "
+  "LORD CRUMBLY'S NEPHEW"
+  "A PAINTER            "
+  "THE FAMILY LAWYER    "
+  "THE FAMILY DOCTOR    "
+end data
+
+' the statement phrases (lines 195-300), 26 wide, and their lengths
+data Phr chars
+  "LORD CRUMBLY              "
+  "WAS BLACKMAILING          "
+  "HATED                     "
+  "HAD RUINED                "
+  "'S FAMILY                 "
+  "HAD NO MOTIVE             "
+  "CARRIES A GUN             "
+  "A GUN WAS KEPT IN         "
+  "'S ROOM                   "
+  "JUST BOUGHT A GUN         "
+  "HAD NO ACCESS TO A GUN    "
+  "WENT TO BED VERY EARLY    "
+  "HAD NOT BEEN SEEN         "
+  "SINCE DINNER              "
+  "WAS NEAR LORD CRUMBLY'S   "
+  "ROOM JUST BEFORE THE SHOT "
+  "WAS WITH SOMEONE WHEN     "
+  "THE SHOT WAS FIRED        "
+end data
+data PhrLen bytes 12, 16, 5, 10, 9, 13, 13, 17, 7, 17, 22, 22, 17, 12, 23, 25, 21, 18
+
+' the big title letters S L E U T H, 3 x 5, rows of bits (4 = left)
+data BigL bytes
+  7, 4, 7, 1, 7
+  4, 4, 4, 4, 7
+  7, 4, 6, 4, 7
+  5, 5, 5, 5, 7
+  7, 2, 2, 2, 2
+  5, 5, 7, 5, 5
+end data
+
+data RankName chars
+  "FRAMED AGAIN    "
+  "CONSTABLE       "
+  "SERGEANT        "
+  "INSPECTOR       "
+  "CHIEF INSPECTOR "
+  "MASTER SLEUTH   "
+end data
+
+' ---------------------------------------------------------------------------
+' the case
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+' a number 0 .. N-1
+function Rnd(u8 N) as u8
+  u8 R = 0
+  W16 = Rand
+  R = W16 % N
+  return R
+
+' a coin toss (the listing's RND(1) > .5)
+function Coin as u8
+  u8 R = 0
+  W16 = Rand
+  R = highbyte(W16) & 1
+  return R
+
+' lines 95-150
+sub NewCase:
+  u8 I = 0
+  u8 T = 0
+  u8 C = 0
+  u8 P = 0
+  for I = 0 to 4
+    for T = 0 to 3
+      Sus[I].Tr[T] = 0
+    next
+    Sus[I].Lie = 0
+  next
+  for I = 0 to 74
+    Said[I] = 0
+  next
+  Liar = Rnd(5)
+  Sus[Liar].Lie = 1
+  Killer = Rnd(5)
+  for T = 0 to 3
+    Sus[Killer].Tr[T] = 1
+  next
+  for T = 0 to 2
+    C = 0
+    for I = 0 to 4
+      if I <> Killer and C < 2 then
+        P = 0
+        if T > 0 then
+          J = T - 1
+          P = Sus[I].Tr[J]
+        end if
+        if P = 0 then
+          if Coin = 1 then
+            Sus[I].Tr[T] = 1
+            inc C
+          end if
+        end if
+      end if
+    next
+  next
+  ClueN = 0
+  Clues = 0
+  LastW = 255
+  Mi = 0
+  Ai = 0
+  return
+
+' ---------------------------------------------------------------------------
+' printing helpers
+
+sub PutFull(u8 N, u8 Px, u8 Py):
+  Off = N * 12
+  put FullName + Off count 12 at Px,Py
+  return
+
+sub PutFirst(u8 N, u8 Px, u8 Py):
+  Off = N * 5
+  put FirstName + Off count 5 at Px,Py
+  return
+
+sub ClearRows(u8 A, u8 B):
+  u8 R = 0
+  for R = A to B
+    fill 32 count 28 at 2,R
+  next
+  return
+
+' portrait N with its top left at Px,Py
+sub PutFace(u8 N, u8 Px, u8 Py):
+  u8 R = 0
+  u8 C = 0
+  u8 T = 0
+  T = N * 9
+  T = T + TF000
+  for R = 0 to 2
+    for C = 0 to 2
+      put char T at Px + C,Py + R
+      inc T
+    next
+  next
+  return
+
+function FaceCol(u8 N) as u8
+  u8 C = 0
+  C = N * 6
+  return C + 3
+
+' the five portraits on rows 3-5, first names on row 6
+sub PutHousehold:
+  u8 I = 0
+  u8 Cx = 0
+  for I = 0 to 4
+    Cx = FaceCol(I)
+    PutFace(I, Cx, 3)
+    dec Cx
+    PutFirst(I, Cx, 6)
+  next
+  return
+
+' send the glass to portrait N (255: off screen)
+sub AimGlass(u8 N):
+  if N = 255 then
+    Ty = 192
+  else
+    Tx = FaceCol(N) * 8
+    Tx = Tx + 6
+    Ty = 34
+    if Gy = 192 then
+      Gx = Tx
+      Gy = Ty
+    end if
+  end if
+  return
+
+sub MoveGlass:
+  u8 Sp = 0
+  for Sp = 1 to 3
+    if Gx < Tx then inc Gx
+    if Gx > Tx then dec Gx
+  next
+  if Ty = 192 then Gy = 192
+  if Gy = 192 then
+    set sprite 0 to 192,0,SGlass,11
+    set sprite 1 to 192,0,SGlass,1
+  else
+    set sprite 1 to Gy + 1,Gx + 1,SGlass,1
+    set sprite 0 to Gy,Gx,SGlass,11
+  end if
+  update sprites
+  return
+
+' ---------------------------------------------------------------------------
+' composing a statement into Txt (3 lines of 28)
+
+sub TxClear:
+  u8 I = 0
+  for I = 0 to 83
+    Txt[I] = 32
+  next
+  TxL = 0
+  TxP = 0
+  return
+
+sub TxNl:
+  inc TxL
+  TxP = 0
+  return
+
+sub TxName(u8 N):
+  u8 I = 0
+  u8 L = 0
+  u8 B = 0
+  L = FullLen[N]
+  B = TxL * 28
+  Off = N * 12
+  for I = 1 to L
+    Txt[B + TxP] = FullName[Off]
+    inc Off
+    inc TxP
+  next
+  return
+
+sub TxPhr(u8 P):
+  u8 I = 0
+  u8 L = 0
+  u8 B = 0
+  L = PhrLen[P]
+  B = TxL * 28
+  Off = P * 26
+  for I = 1 to L
+    Txt[B + TxP] = Phr[Off]
+    inc Off
+    inc TxP
+  next
+  return
+
+' the statement: subject X, trait Y, said yes S, wording Wd (0-2)
+' (lines 185-300)
+sub Compose(u8 X, u8 Y, u8 S, u8 Wd):
+  TxClear
+  select case Y
+  case 0
+    if S = 0 then
+      TxName(X)
+      TxNl
+      TxPhr(5)
+    elseif Wd = 0 then
+      TxPhr(0)
+      TxNl
+      TxPhr(1)
+      TxNl
+      TxName(X)
+    elseif Wd = 1 then
+      TxName(X)
+      TxNl
+      TxPhr(2)
+      TxNl
+      TxPhr(0)
+    else
+      TxPhr(0)
+      TxNl
+      TxPhr(3)
+      TxNl
+      TxName(X)
+      TxPhr(4)
+    end if
+  case 1
+    if S = 0 then
+      TxName(X)
+      TxNl
+      TxPhr(10)
+    else
+      select case Wd
+      case 0
+        TxName(X)
+        TxNl
+        TxPhr(6)
+      case 1
+        TxPhr(7)
+        TxNl
+        TxName(X)
+        TxPhr(8)
+      case else
+        TxName(X)
+        TxNl
+        TxPhr(9)
+      end select
+    end if
+  case else
+    TxName(X)
+    TxNl
+    if S = 0 then
+      TxPhr(16)
+      TxNl
+      TxPhr(17)
+    else
+      select case Wd
+      case 0
+        TxPhr(11)
+      case 1
+        TxPhr(12)
+        TxNl
+        TxPhr(13)
+      case else
+        TxPhr(14)
+        TxNl
+        TxPhr(15)
+      end select
+    end if
+  end select
+  return
+
+' type the statement out on rows 13-15, a character a frame
+sub TypeOut(u8 Slow):
+  u8 R = 0
+  u8 C = 0
+  u8 Ch = 0
+  u8 I = 0
+  I = 0
+  for R = 0 to 2
+    for C = 0 to 27
+      Ch = Txt[I]
+      inc I
+      if Ch <> 32 then
+        put char Ch at C + 2,R + 13
+        if Slow = 1 then
+          Frame1
+          MoveGlass
+        end if
+      end if
+    next
+  next
+  return
+
+' ---------------------------------------------------------------------------
+' grilling (lines 155-325)
+
+sub GrillTop:
+  print at 2,1, "CASE ", digits$(CaseN, 1), " OF 5"
+  print at 20,1, "CLUES"
+  print Clues at 26,1
+  return
+
+sub DrawMenu:
+  u8 R = 0
+  for R = 19 to 21
+    put char 32 at 3,R
+  next
+  R = Mi + 19
+  put char 62 at 3,R
+  return
+
+sub DrawGrill:
+  NewScreen
+  GrillTop
+  PutHousehold
+  fill TRule count 28 at 2,8
+  print at 4,9, "ONE OF THEM ALWAYS LIES"
+  fill TRule count 28 at 2,18
+  print at 5,19, "GRILL THE SUSPECTS"
+  print at 5,20, "CASEBOOK"
+  print at 5,21, "ACCUSE"
+  DrawMenu
+  if LastW = 255 then
+    print at 2,11, "WHO WILL YOU QUESTION FIRST?"
+    AimGlass(255)
+  else
+    ShowSays
+    TypeOut(0)
+    ShowAgain
+    AimGlass(LastW)
+    Gx = Tx
+  end if
+  ShowScreen
+  return
+
+sub ShowSays:
+  PutFull(LastW, 2, 11)
+  V = FullLen[LastW]
+  V = V + 3
+  print at V,11, "SAYS:"
+  return
+
+sub ShowAgain:
+  if LastAgain = 1 then print at 2,16, "(YOU HAVE HEARD THIS BEFORE)"
+  return
+
+sub Grill:
+  u8 W = 0
+  u8 X = 0
+  u8 Y = 0
+  u8 Wd = 0
+  u8 T = 0
+  u8 S = 0
+  u8 Ix = 0
+  Busy = 1
+  W = Rnd(5)
+  Y = Rnd(3)
+  Wd = Rnd(3)
+  X = Rnd(4)
+  if X >= W then inc X
+  T = Sus[X].Tr[Y]
+  S = T ^ Sus[W].Lie
+  Ix = W * 5
+  Ix = Ix + X
+  Ix = Ix * 3
+  Ix = Ix + Y
+  LastAgain = 0
+  if Said[Ix] <> 0 then LastAgain = 1
+  Said[Ix] = 2 - S
+  LastW = W
+  LastX = X
+  LastY = Y
+  LastS = S
+  inc ClueN
+  Clues += 1
+  GrillTop
+  ClearRows(10, 16)
+  ' the glass glides to the speaker, then the statement is typed
+  AimGlass(W)
+  while Gx <> Tx
+    Frame1
+    MoveGlass
+  end while
+  play sound SndClue
+  ShowSays
+  Compose(X, Y, S, Wd)
+  TypeOut(1)
+  if LastAgain = 1 then
+    play sound SndAgain
+    ShowAgain
+  end if
+  Busy = 0
+  return
+
+sub GrillPage:
+  Gs = 2
+  DrawGrill
+gp_loop:
+  Frame1
+  MoveGlass
+  ReadPad
+  if Tap = 1 and Mi > 0 then
+    dec Mi
+    play sound SndTick
+    DrawMenu
+  elseif Tap = 2 and Mi < 2 then
+    inc Mi
+    play sound SndTick
+    DrawMenu
+  end if
+  V = Press1 | Press2
+  if V = 0 then goto gp_loop
+  select case Mi
+  case 0
+    Grill
+  case 1
+    CaseBook
+    Gs = 2
+    DrawGrill
+  case else
+    AccusePage
+    if Accused = 1 then goto gp_done
+    Gs = 2
+    DrawGrill
+  end select
+  goto gp_loop
+gp_done:
+  return
+
+' ---------------------------------------------------------------------------
+' the casebook (replaces the listing's four notepads)
+
+sub DrawBook:
+  u8 W = 0
+  u8 Y = 0
+  u8 Ix = 0
+  u8 R = 0
+  u8 Mk = 0
+  NewScreen
+  print at 10,1, "CASEBOOK"
+  PutFace(Cb, 3, 3)
+  print at 7,3, "ABOUT"
+  PutFull(Cb, 7, 4)
+  Off = Cb * 21
+  put Calling + Off count 21 at 7,5
+  print at 2,8, "SAID BY  MOTIVE  GUN CHANCE"
+  fill TRule count 28 at 2,9
+  R = 10
+  for W = 0 to 4
+    PutFirst(W, 2, R)
+    if W = Cb then
+      print at 10,R, "-"
+      print at 18,R, "-"
+      print at 24,R, "-"
+    else
+      for Y = 0 to 2
+        Ix = W * 5
+        Ix = Ix + Cb
+        Ix = Ix * 3
+        Ix = Ix + Y
+        Mk = Said[Ix]
+        select case Mk
+        case 1
+          put char TYes at BookCol(Y),R
+        case 2
+          put char TNo at BookCol(Y),R
+        case else
+          put char 46 at BookCol(Y),R
+        end select
+      next
+    end if
+    R = R + 2
+  next
+  fill TRule count 28 at 2,19
+  print at 2,20, "LEFT/RIGHT: ANOTHER SUSPECT"
+  print at 2,21, "BUTTON: BACK"
+  print at 21,1, digits$(Cb + 1, 1), " OF 5"
+  ShowScreen
+  return
+
+function BookCol(u8 Y) as u8
+  u8 C = 10
+  if Y = 1 then C = 18
+  if Y = 2 then C = 24
+  return C
+
+sub CaseBook:
+  Gs = 3
+  if LastW <> 255 then Cb = LastX
+  DrawBook
+cb_loop:
+  Frame1
+  ReadPad
+  if Tap = 4 or Tap = 8 then
+    if Tap = 4 then
+      if Cb = 0 then
+        Cb = 4
+      else
+        dec Cb
+      end if
+    else
+      inc Cb
+      if Cb = 5 then Cb = 0
+    end if
+    play sound SndPage
+    DrawBook
+  end if
+  V = Press1 | Press2
+  if V = 0 then goto cb_loop
+  play sound SndTick
+  return
+
+' ---------------------------------------------------------------------------
+' the accusation (lines 330-400)
+
+sub ShowAi:
+  fill 32 count 28 at 2,10
+  PutFull(Ai, 2, 10)
+  AimGlass(Ai)
+  return
+
+sub AccusePage:
+  Gs = 5
+  Accused = 0
+  NewScreen
+  print at 9,1, "WHO DID IT?"
+  PutHousehold
+  fill TRule count 28 at 2,8
+  print at 2,12, "LEFT/RIGHT: CHOOSE"
+  print at 2,13, "LEFT BUTTON: ACCUSE"
+  print at 2,14, "RIGHT BUTTON: NOT YET"
+  print at 2,17, "A WRONG ACCUSATION AND YOU"
+  print at 2,18, "WILL BE FRAMED YOURSELF."
+  ShowAi
+  Gx = Tx
+  ShowScreen
+ac_loop:
+  Frame1
+  MoveGlass
+  ReadPad
+  if Tap = 4 and Ai > 0 then
+    dec Ai
+    play sound SndTick
+    ShowAi
+  elseif Tap = 8 and Ai < 4 then
+    inc Ai
+    play sound SndTick
+    ShowAi
+  end if
+  if Press2 = 1 then
+    play sound SndTick
+    return
+  end if
+  if Press1 = 0 then goto ac_loop
+  Accused = 1
+  Verdict
+  return
+
+sub Verdict:
+  u8 I = 0
+  Gs = 4
+  NewScreen
+  if Ai = Killer then
+    Solved = 1
+    inc NSolved
+    PutFace(Ai, 14, 2)
+    PutFull(Ai, 2, 6)
+    V = FullLen[Ai]
+    V = V + 3
+    print at V,6, "DID IT!"
+    print at 2,8, "YOU CAUGHT THE KILLER AFTER"
+    print Clues at 2,9
+    print at 7,9, "CLUES."
+  else
+    Solved = 0
+    print at 2,2, "AFTER "
+    print Clues at 8,2
+    print at 13,2, "CLUES YOU HAVE"
+    print at 2,3, "ACCUSED THE WRONG PERSON."
+    print at 2,5, "BEFORE YOU CAN CORRECT YOUR"
+    print at 2,6, "MISTAKE, YOU ARE FRAMED FOR"
+    print at 2,7, "THE MURDER."
+    PutFull(Killer, 2, 9)
+    print at 2,10, "WAS THE MURDERER!"
+  end if
+  PutFull(Liar, 2, 12)
+  print at 2,13, "WAS THE LIAR."
+  ' the truth, for the record
+  print at 2,15, "         MOTIVE  GUN CHANCE"
+  for I = 0 to 4
+    PutFirst(I, 2, I + 16)
+    for J = 0 to 2
+      if Sus[I].Tr[J] = 1 then
+        put char TYes at BookCol(J),I + 16
+      else
+        put char TNo at BookCol(J),I + 16
+      end if
+    next
+  next
+  TotClues += ClueN
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  if Solved = 1 then
+    play sound SndWin
+  else
+    play sound SndBuzz
+  end if
+  Pause(45)
+  WaitPress
+  return
+
+' ---------------------------------------------------------------------------
+' story, end of game
+
+sub StoryPage:
+  Gs = 1
+  NewScreen
+  print at 2,1, "CASE ", digits$(CaseN, 1), " OF 5"
+  print at 2,3, "ONE EVENING, WHILE ON"
+  print at 2,4, "HOLIDAY AT LORD CRUMBLY'S"
+  print at 2,5, "MANSION, YOU HEAR A SHOT AND"
+  print at 2,6, "FIND LORD CRUMBLY DEAD."
+  print at 2,8, "THE OTHER PEOPLE HERE ARE:"
+  for J = 0 to 4
+    PutFull(J, 2, J + 10)
+  next
+  print at 2,16, "HOW QUICKLY CAN YOU SOLVE"
+  print at 2,17, "THE MURDER? WHO HAD MOTIVE,"
+  print at 2,18, "WEAPON AND OPPORTUNITY?"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  play sound SndShot
+  Pause(30)
+  WaitPress
+  return
+
+sub FinalPage:
+  u8 Rk = 0
+  Gs = 6
+  NewScreen
+  print at 10,2, "CASE CLOSED"
+  print at 2,5, "CASES SOLVED:  ", digits$(NSolved, 1), " OF 5"
+  print at 2,7, "CLUES HEARD:"
+  print TotClues at 17,7
+  Rk = NSolved
+  if Rk = 5 then
+    ' a perfect record earns the top rank only with few clues
+    if TotClues > 70 then Rk = 4
+    if TotClues <= 70 then Rk = 5
+  end if
+  print at 2,10, "YOUR RANK:"
+  Off = Rk * 16
+  put RankName + Off count 16 at 2,12
+  PutFace(Killer, 23, 4)
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  if NSolved >= 3 then play sound SndWin
+  return
+
+sub Pause(u8 N):
+  u8 Pk = 0
+  for Pk = 1 to N
+    Frame1
+  next
+  return
+
+sub WaitPress:
+  Press1 = 0
+  Press2 = 0
+  while Press1 = 0 and Press2 = 0
+    Frame1
+    ReadPad
+  end while
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Press1/Press2 = a button pressed this frame; Tap = a
+' stick direction pressed this frame (or repeating while held)
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up or joypad(2).up then J1 = J1 | 1
+  if joypad(1).down or joypad(2).down then J1 = J1 | 2
+  if joypad(1).left or joypad(2).left then J1 = J1 | 4
+  if joypad(1).right or joypad(2).right then J1 = J1 | 8
+  if joypad(1).button1 or joypad(2).button1 then J1 = J1 | 16
+  if joypad(1).button2 or joypad(2).button2 then J1 = J1 | 32
+  Btn = J1 & 48
+  V = Btn & ~WasBtn
+  Press1 = 0
+  Press2 = 0
+  if (V & 16) > 0 then Press1 = 1
+  if (V & 32) > 0 then Press2 = 1
+  WasBtn = Btn
+  Stick = J1 & 15
+  Tap = 0
+  if Stick = 0 then
+    Rpt = 0
+  elseif Stick <> WasStick then
+    Tap = Stick
+    Rpt = 18
+  else
+    dec Rpt
+    if Rpt = 0 then
+      Tap = Stick
+      Rpt = 8
+    end if
+  end if
+  WasStick = Stick
+  return
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  Gy = 192
+  Ty = 192
+  return
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' big letter L (0-5) of tile Tb with its top left at Mx,My
+sub DrawBig(u8 L, u8 Mx, u8 My, u8 Tb):
+  u8 R = 0
+  u8 C = 0
+  u8 Bits = 0
+  u8 Ix = 0
+  Ix = L * 5
+  for R = 0 to 4
+    Bits = BigL[Ix + R]
+    for C = 0 to 2
+      if (Bits & (4 >> C)) > 0 then put char Tb at Mx + C,My + R
+    next
+  next
+  return
+
+sub TitlePage:
+  u8 L = 0
+  u8 Mx = 0
+  Gs = 0
+  NewScreen
+  print at 6,1, "COMPUTE!'S GAZETTE 1985"
+  Mx = 4
+  for L = 0 to 5
+    DrawBig(L, Mx, 5, TBlk2)
+    DrawBig(L, Mx, 4, TBlk)
+    Mx = Mx + 4
+  next
+  print at 2,16, "WHO HAD MOTIVE, WEAPON AND"
+  print at 2,17, "OPPORTUNITY?"
+  print at 4,20, "PLAY"
+  print at 4,21, "CREDITS"
+  if CaseN > 0 then
+    print at 15,20, "SOLVED ", digits$(NSolved, 1), " OF 5"
+  end if
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = TuneLen
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Press1 = 0
+  Press2 = 0
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  if Tap = 1 or Tap = 2 then
+    if Tap = 1 then
+      Menu = 0
+    else
+      Menu = 1
+    end if
+    play sound SndTick
+    ShowMenu
+  end if
+  V = Press1 | Press2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  if Menu = 1 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 2,20
+  put char 32 at 2,21
+  J = Menu + 20
+  put char 62 at 2,J
+  return
+
+sub CreditsPage:
+  NewScreen
+  print at 12,1, "SLEUTH"
+  print at 2,3, "BASED ON THE GAME OF THAT"
+  print at 2,4, "NAME IN COMPUTE!'S GAZETTE,"
+  print at 2,5, "JULY 1985 (C-64 AND VIC-20)."
+  print at 2,6, "NO AUTHOR NAMED ON THE DISK."
+  print at 2,8, "FIND LORD CRUMBLY'S KILLER:"
+  print at 2,9, "MOTIVE, GUN AND OPPORTUNITY."
+  print at 2,10, "BEWARE THE ONE WHO LIES."
+  print at 2,12, "COLECOVISION GAME AND"
+  print at 2,13, "PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,17, "MUSIC: WHO WAS BY THE"
+  print at 2,18, "STAIRS? (ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$03,$07,$F0,$F0,$F0,$F0
+  $C3,$81,$00,$00,$00,$00,$54,$00
+  $00,$00,$C0,$E0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$07,$03,$00
+  $42,$42,$00,$00,$C3,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$E0,$C0,$00
+  $00,$F0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$00,$03,$07,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$C0,$E0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$07,$03,$00
+  $42,$42,$00,$00,$C3,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$E0,$C0,$00
+  $00,$F0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$00,$03,$07,$F0,$F0,$F0,$F0
+  $A5,$00,$00,$00,$00,$00,$AA,$00
+  $00,$00,$C0,$E0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$07,$03,$00
+  $42,$42,$00,$00,$C3,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$E0,$C0,$00
+  $00,$F0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$81,$C3,$00,$00,$00,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$00,$03,$07,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$54,$00
+  $00,$00,$C0,$E0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$07,$03,$00
+  $00,$99,$00,$00,$C3,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$E0,$C0,$00
+  $00,$F0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$81,$C3,$18,$18,$00,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$03,$03,$07,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$54,$00
+  $00,$C0,$C0,$E0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$07,$03,$00
+  $42,$42,$00,$00,$C3,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$E0,$C0,$00
+  $00,$F0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$81,$81,$81,$81,$00,$00
+  $00,$F0,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$AA,$00,$00,$00,$00
+  $00,$01,$02,$06,$84,$4C,$30,$00
+  $00,$42,$24,$18,$18,$24,$42,$00
+end data
+data TileCol bytes
+  $00,$00,$E0,$E0,$0E,$0E,$0B,$0B
+  $0E,$0E,$0E,$0E,$0E,$0E,$BE,$0B
+  $00,$00,$E0,$E0,$E0,$E0,$B0,$B0
+  $0B,$0B,$0B,$0B,$0B,$B0,$B0,$00
+  $1B,$1B,$0B,$0B,$B8,$0B,$0B,$0B
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $00,$02,$02,$02,$02,$02,$02,$02
+  $0B,$0B,$2B,$2B,$02,$02,$02,$02
+  $00,$20,$02,$02,$02,$02,$02,$02
+  $00,$00,$A0,$A0,$0A,$0A,$0B,$0B
+  $00,$0A,$0A,$0A,$0A,$0A,$BA,$0B
+  $00,$00,$A0,$A0,$A0,$A0,$B0,$B0
+  $0B,$0B,$0B,$0B,$0B,$B0,$B0,$00
+  $1B,$1B,$0B,$0B,$B8,$0B,$0B,$0B
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$00
+  $00,$07,$07,$07,$07,$07,$07,$07
+  $0B,$0B,$7B,$7B,$07,$07,$07,$07
+  $00,$70,$07,$07,$07,$07,$07,$07
+  $00,$00,$D0,$D0,$0D,$0D,$06,$06
+  $0D,$0D,$0D,$0D,$0D,$0D,$6D,$06
+  $00,$00,$D0,$D0,$D0,$D0,$60,$60
+  $06,$06,$06,$06,$06,$60,$60,$00
+  $16,$16,$06,$06,$61,$06,$06,$06
+  $60,$60,$60,$60,$60,$60,$60,$00
+  $00,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $06,$06,$F6,$F6,$0F,$0F,$0F,$0F
+  $00,$F0,$0F,$0F,$0F,$0F,$0F,$0F
+  $00,$00,$10,$10,$01,$01,$0A,$0A
+  $00,$01,$01,$01,$01,$01,$A1,$0A
+  $00,$00,$10,$10,$10,$10,$A0,$A0
+  $0A,$0A,$0A,$0A,$0A,$A0,$A0,$00
+  $01,$A1,$0A,$0A,$A6,$0A,$0A,$0A
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$00
+  $00,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0A,$0A,$EA,$E8,$8E,$8E,$0E,$0E
+  $00,$E0,$0E,$0E,$0E,$0E,$0E,$0E
+  $00,$10,$10,$10,$01,$01,$06,$06
+  $01,$01,$01,$01,$01,$01,$61,$06
+  $00,$10,$10,$10,$10,$10,$60,$60
+  $06,$06,$06,$06,$06,$60,$60,$00
+  $16,$16,$06,$06,$61,$06,$06,$06
+  $60,$60,$60,$60,$60,$60,$60,$00
+  $00,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $06,$06,$F6,$1F,$1F,$F1,$0F,$0F
+  $00,$F0,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $00,$00,$00,$E0,$00,$00,$00,$00
+  $00,$30,$30,$30,$30,$30,$30,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+end data
+data SpritePat bytes
+  $0F,$30,$40,$40,$80,$80,$80,$80,$40,$40,$30,$0F,$00,$00,$00,$00
+  $C0,$30,$08,$08,$04,$04,$04,$04,$08,$08,$30,$D8,$0C,$06,$03,$01
+end data
+
+asm {
+SlTick:
+    db $40,$7F,$50,$01,$40,$7F,$A0,$01,$50
+SlBad:
+    db $00,$00,$22,$04,$00,$00,$72,$04,$10
+SlClue:
+    db $40,$47,$40,$02,$40,$55,$50,$02,$40,$6B,$50,$04,$40,$6B,$B0,$03,$50
+SlAgain:
+    db $40,$1D,$41,$04,$40,$1D,$81,$06,$50
+SlPage:
+    db $00,$00,$65,$02,$00,$00,$B5,$02,$10
+SlShot:
+    db $00,$00,$04,$02,$00,$00,$14,$03,$00,$00,$24,$03,$00,$00,$34,$03,$00,$00,$44,$03,$00,$00,$54,$03
+    db $00,$00,$64,$03,$00,$00,$74,$03,$00,$00,$84,$03,$00,$00,$94,$03,$00,$00,$A4,$03,$00,$00,$B4,$03
+    db $00,$00,$C4,$03,$00,$00,$D4,$03,$00,$00,$E4,$03,$00,$00,$F4,$01,$10
+SlBuzz:
+    db $40,$F9,$23,$03,$40,$FF,$33,$03,$40,$F9,$23,$03,$40,$FF,$33,$03,$40,$F9,$23,$03,$40,$FF,$33,$03
+    db $40,$F9,$23,$03,$40,$FF,$33,$03,$40,$F9,$23,$03,$40,$FF,$33,$03,$40,$F9,$23,$03,$40,$FF,$33,$03
+    db $40,$F9,$23,$03,$40,$FF,$33,$03,$40,$F9,$23,$03,$40,$FF,$33,$03,$40,$F9,$23,$03,$40,$FF,$33,$03
+    db $40,$F9,$23,$03,$40,$FF,$33,$03,$40,$FF,$F3,$02,$50
+SlWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$10,$0E,$40,$6B,$70,$0A,$40,$6B,$F0,$02
+    db $50
+
+SlSoundTable:
+    dw SlTuneMel,$702B
+    dw SlTuneBass,$7035
+    dw SlTick,$7049
+    dw SlBad,$703F
+    dw SlClue,$7049
+    dw SlAgain,$7049
+    dw SlPage,$703F
+    dw SlShot,$703F
+    dw SlBuzz,$7049
+    dw SlWin,$7049
+; Who Was by the Stairs? (original)
+; Tiny Sound, 9 frames per step
+SlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$1A,$21,$23,$01,$26,$01,$25,$01,$23,$01,$1E,$00,$00,$00
+    db $01,$01,$21,$01,$1F,$01,$23,$01,$22,$01,$1F,$01,$1C,$00,$00,$00
+    db $01,$01,$1E,$01,$1A,$01,$1E,$01,$23,$01,$26,$01,$2A,$00,$00,$00
+    db $28,$01,$26,$01,$25,$01,$22,$01,$1E,$01,$25,$01,$23,$00,$00,$00
+    db $00,$00,$01,$01,$01,$01,$01,$01
+    db $FF
+SlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$0B,$01,$01,$01,$06,$01,$01,$01,$0B,$01,$01,$01
+    db $06,$01,$01,$01,$04,$01,$01,$01,$0B,$01,$01,$01,$04,$01,$01,$01
+    db $0D,$01,$01,$01,$0B,$01,$01,$01,$0E,$01,$01,$01,$07,$01,$01,$01
+    db $04,$01,$01,$01,$06,$01,$01,$01,$06,$01,$01,$01,$0B,$01,$01,$01
+    db $00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+}

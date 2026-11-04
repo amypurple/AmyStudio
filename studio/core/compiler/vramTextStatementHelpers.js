@@ -665,6 +665,12 @@ export function handleVramTextStatement({
     const sourceExpr = normalizeExpression(copyTransfer[1].trim());
     const countBeforeTo = copyTransfer[2];
     const targetExpr = copyTransfer[3].trim();
+    const targetArrayOffset = targetExpr.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\+\s*(.+)$/);
+    const targetArrayBaseInfo = targetArrayOffset ? getRuntimeInfo(targetArrayOffset[1]) : null;
+    const targetArrayName = targetArrayBaseInfo?.kind === "array" ? targetArrayOffset[1] : targetExpr;
+    const targetArrayIndex = targetArrayBaseInfo?.kind === "array"
+      ? normalizeExpression(targetArrayOffset[2])
+      : "0";
     const countAfterTo = copyTransfer[4];
     if (countBeforeTo && countAfterTo) {
       return { ok: false, handled: true, log: `copy count may appear before or after TO, but not both: ${rawLine}` };
@@ -697,7 +703,9 @@ export function handleVramTextStatement({
             length: targetFieldRef.fieldInfo.length,
             qualifiedField: true
           }
-        : getRuntimeInfo(targetExpr);
+        : targetArrayBaseInfo?.kind === "array"
+          ? targetArrayBaseInfo
+          : getRuntimeInfo(targetExpr);
 
     if (targetVram) {
       const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);
@@ -881,16 +889,16 @@ export function handleVramTextStatement({
           : emitLoadArrayAddressIntoHL(sourceExpr, "0");
         const loadDst = targetInfo.qualifiedField
           ? emitLoadRecordFieldAddressIntoHL(targetExpr)
-          : emitLoadArrayAddressIntoHL(targetExpr, "0");
+          : emitLoadArrayAddressIntoHL(targetArrayName, targetArrayIndex);
         if (!loadSrc || !loadDst) {
           return { ok: false, handled: true, log: `copy array: cannot resolve array base: ${rawLine}` };
         }
         return { ok: true, handled: true, lines: [...loadSrc, "    push hl", ...loadDst, "    ex de,hl", "    pop hl", `    ld bc,${byteCount}`, "    ldir"] };
       }
 
-      const targetBufferInfo = getByteArrayBufferInfo(targetExpr, 1);
+      const targetBufferInfo = getByteArrayBufferInfo(targetArrayName, 1);
       const sourceCode = targetBufferInfo ? emitLoadSourceAddressIntoHL(sourceExpr) : null;
-      const targetCode = targetBufferInfo ? emitLoadArrayAddressIntoHL(targetExpr, "0") : null;
+      const targetCode = targetBufferInfo ? emitLoadArrayAddressIntoHL(targetArrayName, targetArrayIndex) : null;
       if (sourceCode && targetCode) {
         let resolvedCountToken = countToken;
         if (!resolvedCountToken) {

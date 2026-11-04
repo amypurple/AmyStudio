@@ -57,14 +57,18 @@ export function scanAmyFirstPass({
       return { error: `Array parameters are not supported; pass an index, a ROM/RAM address, or use a global array in ${rawLine}` };
     }
     const pm = rawParam.trim().match(/^(ref\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-    if (!pm) return { invalid: true };
+    if (!pm) {
+      return {
+        error: `Parameter '${rawParam.trim()}' in ${rawLine} must use 'Type Name' or 'ref Type Name' syntax`
+      };
+    }
     const isRef = !!pm[1];
     const typeName = pm[2];
     const paramName = pm[3];
     const isRecordType = typeof isSupportedRecordTypeName === "function" && isSupportedRecordTypeName(typeName);
     if (!isRecordType && !isSupportedSourceTypeName(typeName)) {
       if (isRef) return { error: `Unknown ref parameter type '${typeName}' in ${rawLine}` };
-      return { invalid: true };
+      return { error: `Unknown or unsupported parameter type '${typeName}' in ${rawLine}` };
     }
     if (isRecordType && !isRef) {
       return { error: `Record parameter '${paramName}' must be passed by reference: use 'ref ${typeName} ${paramName}' in ${rawLine}` };

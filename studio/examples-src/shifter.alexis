@@ -1,0 +1,1238 @@
+cartridge "SHIFTER/COMPUTE! GAZETTE/1986"
+
+' SHIFTER
+' A ColecoVision game based on "Shifter" by Kevin Mykytyn and Mark Tuttle,
+' COMPUTE!'s Gazette, March 1986, page 40 (Commodore 64 / Plus/4 BASIC
+' with a 854-byte machine-language core at $3C00, disk 1986-03). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from the
+' BASIC listing and the disassembly, orig/ml.dis, and watched in jsc64),
+' rebuilt for the ColecoVision: a smooth ball sprite, highlight tiles,
+' cursor arrows on the frame, sound effects and a title tune.
+'
+' From the original (orig/shifter.bas, orig/ml.dis):
+' - two players share a square board of mirror lines (each cell: one of
+'   - | \ / with 1 chance in 28 each, else empty) designed at random for
+'   each new game and kept from round to round;
+' - ROWS (yellow; C64 joystick port 2) moves a row cursor up and down and
+'   slides that whole row left or right, wrapping around; COLUMNS (red;
+'   port 1) moves a column cursor left and right and slides that column
+'   up or down; nobody can slide the row (ROWS) or the column (COLUMNS)
+'   the ball is in;
+' - each round a ball starts in the middle in a random direction and
+'   runs one cell at a time: - turns back a ball going up or down, | one
+'   going left or right, \ and / turn it a quarter, as mirrors;
+' - a ball leaving by a side gives ROWS a point, by the top or bottom
+'   COLUMNS a point; the scorer's frame edges flash 8 times;
+' - first to 5 points wins; the board stays between rounds;
+' - level 1 FAST, 2, 3 SLOW: the ball moves every 3/4/5 passes of the
+'   main loop (measured in jsc64: about 9 and 18 jiffies a cell for
+'   levels 1 and 3).
+'
+' Liberties: the board is 19 x 19 (the C64's 23 x 23 does not fit the
+' TV-safe 22 rows); speeds 10/14/18 frames a cell (FAST/MEDIUM/SLOW); the
+' ball glides between cells; a held stick repeats after 12 frames every 5
+' (the C64 repeated every pass, about 4 frames); one player against a
+' computer COLUMNS that looks ahead along the ball's path, one column
+' slide at a time, about 40 frames late, moving its cursor every 6
+' frames; a ball still on the board after 200 cells ends the round with no
+' point (DRAW) so a ball trapped between mirrors cannot stall the game;
+' the end names the winner (the C64 said GAME OVER); the middle cell is
+' always empty (on the C64 the ball's first move erased it).
+'
+' Controls: controller 1 is ROWS: up/down move the row cursor, left/right
+' slide the row. Controller 2 is COLUMNS: left/right move the column
+' cursor, up/down slide the column. Title: up/down choose a line,
+' left/right change it, a button picks.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TC0blank = 128
+const TC0h = 129
+const TC0v = 130
+const TC0bs = 131
+const TC0sl = 132
+const TC1blank = 133
+const TC1h = 134
+const TC1v = 135
+const TC1bs = 136
+const TC1sl = 137
+const TC2blank = 138
+const TC2h = 139
+const TC2v = 140
+const TC2bs = 141
+const TC2sl = 142
+const TC3blank = 143
+const TC3h = 144
+const TC3v = 145
+const TC3bs = 146
+const TC3sl = 147
+const TFr = 148
+const TFrY = 149
+const TFrR = 150
+const TArR = 151
+const TArL = 152
+const TArD = 153
+const TArU = 154
+const TMkR = 155
+const TMkC = 156
+const TLS00 = 157
+const TLS01 = 158
+const TLS10 = 159
+const TLS11 = 160
+const TLH00 = 161
+const TLH01 = 162
+const TLH10 = 163
+const TLH11 = 164
+const TLI00 = 165
+const TLI01 = 166
+const TLI10 = 167
+const TLI11 = 168
+const TLF00 = 169
+const TLF01 = 170
+const TLF10 = 171
+const TLF11 = 172
+const TLT00 = 173
+const TLT01 = 174
+const TLT10 = 175
+const TLT11 = 176
+const TLE00 = 177
+const TLE01 = 178
+const TLE10 = 179
+const TLE11 = 180
+const TLR00 = 181
+const TLR01 = 182
+const TLR10 = 183
+const TLR11 = 184
+const SBall = 0
+const SShine = 4
+const NTiles8 = 456
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSlide = 3
+const SndPing = 4
+const SndStart = 5
+const SndPtRow = 6
+const SndPtCol = 7
+const SndDraw = 8
+const SndOver = 9
+const N = 19
+const NN = 361
+const Mid = 9
+const BCol = 10
+const BRow = 2
+const NSpr = 1
+const NoSprite = 192
+const WinPts = 5
+const ReadyT = 60
+const FlashT = 96
+const DrawSteps = 200
+const RepD = 12
+const RepR = 5
+const SimLen = 40
+const NCand = 38
+const CpuRate = 6
+
+' frames a cell for FAST, MEDIUM, SLOW
+data SpeedT bytes 10,14,18
+' the ball's row and column steps for up, right, down, left (255 = -1)
+data DRow bytes 255,0,1,0
+data DCol bytes 0,1,0,255
+' where each board row starts in Bd
+' a direction after a cell: TurnT[kind * 4 + direction] (as Turn)
+data TurnT bytes 0,1,2,3, 2,1,0,3, 0,3,2,1, 3,2,1,0, 1,0,3,2
+' the row read in a slid column: SlidR[Vd * 32 + row], Vd 1 up, 2 down
+data SlidR bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  18,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data RowOff words 0,19,38,57,76,95,114,133,152,171,190,209,228,247,266,285,304,323,342
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$70,$83,$83,$70,$40,$00
+  $00,$02,$0E,$C1,$C1,$0E,$02,$00
+  $00,$81,$81,$C3,$C3,$18,$18,$00
+  $00,$18,$18,$C3,$C3,$81,$81,$00
+  $00,$00,$42,$00,$00,$42,$00,$00
+  $18,$C3,$18,$18,$18,$18,$C3,$18
+  $00,$07,$07,$18,$18,$18,$18,$07
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $07,$00,$00,$00,$00,$E0,$E0,$00
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$18,$18,$E0
+  $00,$18,$18,$18,$18,$18,$18,$07
+  $E0,$18,$18,$18,$18,$18,$18,$00
+  $07,$18,$18,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$01,$01,$01,$01,$01
+  $00,$07,$07,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$E0,$E0,$00
+  $80,$80,$80,$80,$80,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$18,$18,$18,$18,$18,$18,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$E0,$01,$01,$01,$01,$01
+  $00,$07,$07,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $E0,$00,$00,$00,$00,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $E0,$19,$19,$18,$18,$18,$18,$00
+  $E0,$80,$80,$60,$60,$18,$18,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $01,$01,$01,$0F,$0F,$01,$01,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$01,$01,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$0F,$0F,$06,$06,$06
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0D,$0D,$0D,$0F,$0F,$0D,$0D,$0D
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD
+  $FD,$FD,$FD,$FD,$FD,$FD,$FD,$FD
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $05,$B5,$B5,$5B,$5B,$B5,$B5,$05
+  $05,$B5,$B5,$5B,$5B,$B5,$B5,$05
+  $05,$59,$59,$59,$59,$95,$95,$05
+  $05,$95,$95,$59,$59,$59,$59,$05
+  $04,$04,$B4,$0B,$0B,$B4,$04,$04
+  $94,$49,$94,$94,$94,$94,$49,$94
+  $04,$F4,$F4,$F4,$74,$74,$74,$74
+  $04,$4F,$4F,$04,$04,$04,$04,$74
+  $74,$04,$04,$04,$04,$45,$45,$04
+  $74,$74,$54,$54,$54,$54,$54,$04
+  $04,$F4,$F4,$F4,$74,$74,$74,$47
+  $04,$F4,$F4,$F4,$74,$74,$74,$47
+  $47,$74,$54,$54,$54,$54,$54,$04
+  $47,$74,$54,$54,$54,$54,$54,$04
+  $04,$4F,$4F,$F4,$74,$74,$74,$74
+  $04,$4F,$4F,$F4,$74,$74,$74,$74
+  $74,$74,$54,$54,$54,$45,$45,$04
+  $74,$74,$54,$54,$54,$45,$45,$04
+  $04,$4F,$4F,$F4,$74,$74,$74,$47
+  $04,$4F,$4F,$04,$04,$04,$04,$74
+  $47,$74,$54,$54,$54,$54,$54,$04
+  $74,$04,$04,$04,$04,$04,$04,$04
+  $04,$4F,$4F,$F4,$74,$74,$74,$74
+  $04,$4F,$4F,$F4,$74,$74,$74,$74
+  $74,$74,$54,$54,$54,$54,$54,$04
+  $74,$74,$54,$54,$54,$54,$54,$04
+  $04,$4F,$4F,$F4,$74,$74,$74,$47
+  $04,$4F,$4F,$04,$04,$04,$04,$74
+  $47,$74,$54,$54,$54,$45,$45,$04
+  $74,$04,$04,$04,$04,$45,$45,$04
+  $04,$4F,$4F,$F4,$74,$74,$74,$47
+  $04,$F4,$F4,$F4,$74,$74,$74,$74
+  $47,$74,$54,$54,$54,$54,$54,$04
+  $74,$74,$54,$54,$54,$54,$54,$04
+end data
+data SpritePat bytes
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$30,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$A1,$A2,$20,$20,$20,$20,$A9,$AA,$20,$20,$20,$20,$B1,$B2,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$9D,$9E,$20,$A3,$A4,$20,$A5,$A6,$20,$AB,$AC,$20,$AD,$AE,$20,$B3,$B4,$20,$B5,$B6,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$9F,$A0,$20,$20,$20,$20,$A7,$A8,$20,$20,$20,$20,$AF,$B0,$20,$20,$20,$20,$B7,$B8,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+u8 Bd[361]
+u8 RowBuf[19]
+u16 Seed = 12345
+u8 Br = 9
+u8 Bc = 9
+u8 Dir = 0
+u8 St = 0
+u8 Speed = 14
+u8 SpeedSel = 1
+u8 Rc = 9
+u8 Cc = 9
+u8 ScR = 0
+u8 ScC = 0
+u8 RoundNo = 1
+u8 Phase = 0
+u8 Timer = 0
+u8 Who = 0
+u16 Steps = 0
+u8 Over = 0
+u8 Players = 1
+u8 InPlay = 0
+u8 Hold[2]
+u8 Last[2]
+' computer
+u8 Ei = 0
+u8 BestS = 0
+u8 BestE = 0
+u8 BaseS = 0
+u8 CpuTgt = 0
+u8 CpuDir = 0
+u8 CpuCnt = 0
+u8 Drew = 0
+u16 ColAdr = 0
+' tune
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+' input
+u8 J0 = 0
+u8 J1 = 0
+u8 WasBtn = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+' loop counters
+u8 Dr = 0
+u8 Gk = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table SfSoundTable areas 6
+  sprites 8x8
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 3 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  GameFrame
+  DrawBall
+  inc Tick
+  if Over = 0 then goto play_loop
+
+  InPlay = 0
+  EndMessage
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------- random
+function Rnd as u8
+  u8 Lo = 0
+  Seed = Seed ^ (Seed << 7)
+  Seed = Seed ^ (Seed >> 9)
+  Seed = Seed ^ (Seed << 8)
+  Lo = Seed & 255
+  return Lo
+
+' index of cell (R, C) in Bd
+function Idx(u8 R, u8 C) as u16
+  u16 I = 0
+  I = RowOff[R]
+  I = I + C
+  return I
+
+' ---------------------------------------------------------------- rules
+sub GameFrame:
+  u8 E0 = 0
+  u8 E1 = 0
+  Drew = 0
+  if Players = 1 then J1 = CpuStick()
+  select case Phase
+  case 0
+    E0 = Repeat(0, J0)
+    E1 = Repeat(1, J1)
+    RowsMove(E0)
+    ColsMove(E1)
+    dec Timer
+    if Timer = 0 then
+      Phase = 1
+      St = 0
+    end if
+  case 1
+    E0 = Repeat(0, J0)
+    E1 = Repeat(1, J1)
+    RowsMove(E0)
+    ColsMove(E1)
+    inc St
+    if St >= Speed then
+      St = 0
+      Advance
+    end if
+  case 2
+    dec Timer
+    FlashFrame
+    if Timer = 0 then AfterPoint
+  end select
+  if Players = 1 then CpuThink
+  return
+end sub
+
+' a stick held: 1 up, 2 down, 3 left, 4 right, at the first frame and
+' then every RepR frames after RepD
+function Repeat(u8 P, u8 Jv) as u8
+  u8 S = 0
+  u8 R = 0
+  u8 H = 0
+  S = Jv & 15
+  if S = 0 then
+    Hold[P] = 0
+    Last[P] = 0
+    return R
+  end if
+  if S <> Last[P] then Hold[P] = 0
+  Last[P] = S
+  H = Hold[P]
+  if H < 250 then H = H + 1
+  Hold[P] = H
+  if H = 1 then R = 1
+  if H >= RepD then
+    K = H - RepD
+    K = K % RepR
+    if K = 0 then R = 1
+  end if
+  if R = 0 then return R
+  R = 4
+  V = S & 4
+  if V > 0 then R = 3
+  V = S & 2
+  if V > 0 then R = 2
+  V = S & 1
+  if V > 0 then R = 1
+  return R
+
+sub RowsMove(u8 E):
+  u8 Old = 0
+  select case E
+  case 1, 2
+    Old = Rc
+    if E = 1 and Rc > 0 then dec Rc
+    if E = 2 and Rc < N - 1 then inc Rc
+    if Old <> Rc then
+      DrawRow(Old)
+      DrawRow(Rc)
+      FrameMarks(Old, Cc)
+    end if
+  case 3, 4
+    if Rc <> Br then
+      ShiftRow(Rc, E)
+      DrawRow(Rc)
+      play sound SndSlide
+    end if
+  end select
+  return
+end sub
+
+sub ColsMove(u8 E):
+  u8 Old = 0
+  select case E
+  case 3, 4
+    Old = Cc
+    if E = 3 and Cc > 0 then dec Cc
+    if E = 4 and Cc < N - 1 then inc Cc
+    if Old <> Cc then
+      DrawCol(Old)
+      DrawCol(Cc)
+      FrameMarks(Rc, Old)
+    end if
+  case 1, 2
+    if Cc <> Bc then
+      ShiftCol(Cc, E)
+      DrawCol(Cc)
+      play sound SndSlide
+    end if
+  end select
+  return
+end sub
+
+' slide row R: 3 left, 4 right, wrapping
+sub ShiftRow(u8 R, u8 E):
+  u16 I0 = 0
+  u8 T = 0
+  u8 Q = 0
+  I0 = Idx(R, 0)
+  for Q = 0 to 18
+    RowBuf[Q] = Bd[I0 + Q]
+  next
+  if E = 3 then
+    T = RowBuf[0]
+    for Q = 0 to 17
+      RowBuf[Q] = RowBuf[Q + 1]
+    next
+    RowBuf[18] = T
+  else
+    T = RowBuf[18]
+    for Q = 18 to 1 step -1
+      RowBuf[Q] = RowBuf[Q - 1]
+    next
+    RowBuf[0] = T
+  end if
+  for Q = 0 to 18
+    Bd[I0 + Q] = RowBuf[Q]
+  next
+  return
+end sub
+
+' slide column C: 1 up, 2 down, wrapping
+sub ShiftCol(u8 C, u8 E):
+  u16 I = 0
+  u8 T = 0
+  u8 Q = 0
+  I = C
+  for Q = 0 to 18
+    RowBuf[Q] = Bd[I]
+    I = I + N
+  next
+  if E = 1 then
+    T = RowBuf[0]
+    for Q = 0 to 17
+      RowBuf[Q] = RowBuf[Q + 1]
+    next
+    RowBuf[18] = T
+  else
+    T = RowBuf[18]
+    for Q = 18 to 1 step -1
+      RowBuf[Q] = RowBuf[Q - 1]
+    next
+    RowBuf[0] = T
+  end if
+  I = C
+  for Q = 0 to 18
+    Bd[I] = RowBuf[Q]
+    I = I + N
+  next
+  return
+end sub
+
+' the ball moves one cell, turns on a mirror, or leaves the board
+sub Advance:
+  u8 Kd = 0
+  u16 I = 0
+  Br = Br + DRow[Dir]
+  Bc = Bc + DCol[Dir]
+  if Br >= N then
+    Point(2)
+    return
+  end if
+  if Bc >= N then
+    Point(1)
+    return
+  end if
+  I = Idx(Br, Bc)
+  Kd = Bd[I]
+  Dir = Turn(Dir, Kd)
+  if Kd > 0 then play sound SndPing
+  inc Steps
+  if Steps >= DrawSteps then Point(0)
+  return
+end sub
+
+' a direction after a cell of kind Kd (0 empty, 1 -, 2 |, 3 \, 4 /)
+function Turn(u8 D, u8 Kd) as u8
+  u8 R = 0
+  u8 Odd = 0
+  R = D
+  Odd = D & 1
+  select case Kd
+  case 1
+    if Odd = 0 then R = D ^ 2
+  case 2
+    if Odd = 1 then R = D ^ 2
+  case 3
+    R = D ^ 3
+  case 4
+    R = D ^ 1
+  end select
+  return R
+
+' 1 ROWS scores, 2 COLUMNS scores, 0 a draw
+sub Point(u8 P):
+  Who = P
+  Phase = 2
+  Timer = FlashT
+  select case P
+  case 1
+    inc ScR
+    play sound SndPtRow
+  case 2
+    inc ScC
+    play sound SndPtCol
+  case else
+    play sound SndDraw
+  end select
+  ShowScores
+  return
+end sub
+
+sub AfterPoint:
+  DrawFrame(TFr)
+  FrameMarks(255, 255)
+  if ScR = WinPts or ScC = WinPts then
+    Over = 1
+    return
+  end if
+  inc RoundNo
+  NewRound
+  return
+end sub
+
+sub NewRound:
+  u8 Rv = 0
+  Br = Mid
+  Bc = Mid
+  Rv = Rnd()
+  Dir = Rv & 3
+  St = 0
+  Steps = 0
+  Phase = 0
+  Timer = ReadyT
+  ShowScores
+  play sound SndStart
+  return
+end sub
+
+' ------------------------------------------------------------ computer
+' COLUMNS' stick: one candidate slide judged a frame, a press every
+' CpuRate frames toward the best one found in the last sweep
+function CpuStick() as u8
+  u8 R = 0
+  if Phase > 1 then return R
+  inc CpuCnt
+  if CpuCnt < CpuRate then return R
+  CpuCnt = 0
+  if CpuDir = 0 then return R
+  if Cc < CpuTgt then
+    R = 8
+  elseif Cc > CpuTgt then
+    R = 4
+  elseif CpuTgt <> Bc then
+    if CpuDir = 1 then
+      R = 1
+    else
+      R = 2
+    end if
+    CpuDir = 0
+  end if
+  return R
+
+' one candidate slide judged, on a frame that drew nothing (frame budget);
+' after the last one the best slide (if better than none) becomes the plan
+sub CpuThink:
+  u8 S = 0
+  u8 Cn = 0
+  u8 Cd = 0
+  if Drew > 0 then return
+  if Phase > 1 then return
+  if Ei = NCand then
+    BaseS = SimPath(255, 0)
+    if BestS > BaseS then
+      CpuTgt = BestE >> 1
+      CpuDir = BestE & 1
+      CpuDir = CpuDir + 1
+    else
+      CpuDir = 0
+    end if
+    Ei = 0
+    BestS = 0
+    return
+  end if
+  Cn = Ei >> 1
+  Cd = Ei & 1
+  Cd = Cd + 1
+  S = 0
+  if Cn <> Bc then S = SimPath(Cn, Cd)
+  if S > BestS then
+    BestS = S
+    BestE = Ei
+  end if
+  inc Ei
+  return
+end sub
+
+' the ball's path from where it is, with column Vc slid (1 up, 2 down):
+' 200 - cells for a top/bottom exit, cells for a side exit, 60 if it stays
+function SimPath(u8 Vc, u8 Vd) as u8
+  u8 R = 0
+  u8 C = 0
+  u8 D = 0
+  u8 Rr = 0
+  u8 Kd = 0
+  u8 Ks = 0
+  u16 I = 0
+  R = Br
+  C = Bc
+  D = Dir
+  for Ks = 1 to SimLen
+    R = R + DRow[D]
+    if R >= N then
+      Kd = 200 - Ks
+      return Kd
+    end if
+    C = C + DCol[D]
+    if C >= N then return Ks
+    Rr = R
+    if C = Vc then Rr = SlidR[Vd * 32 + R]
+    I = RowOff[Rr]
+    I = I + C
+    Kd = Bd[I]
+    Kd = Kd * 4
+    Kd = Kd + D
+    D = TurnT[Kd]
+  next
+  Kd = 60
+  return Kd
+
+' ------------------------------------------------------------- game
+sub NewGame:
+  NewScreen
+  backdrop dark blue
+  MakeBoard
+  ScR = 0
+  ScC = 0
+  RoundNo = 1
+  Over = 0
+  Who = 0
+  Rc = Mid
+  Cc = Mid
+  for Gk = 0 to 1
+    Hold[Gk] = 0
+    Last[Gk] = 0
+  next
+  Ei = 0
+  BestS = 0
+  BestE = 0
+  CpuTgt = 0
+  CpuDir = 0
+  CpuCnt = 0
+  Speed = SpeedT[SpeedSel]
+  DrawFrame(TFr)
+  for Gk = 0 to 18
+    DrawRow(Gk)
+  next
+  put char TMkR at 2,3
+  print at 3,3, "ROWS"
+  print at 2,9, "ROUND"
+  put char TMkC at 2,15
+  print at 3,15, "COLS"
+  select case SpeedSel
+  case 0
+    print at 2,20, "FAST"
+  case 1
+    print at 2,20, "MEDIUM"
+  case else
+    print at 2,20, "SLOW"
+  end select
+  print at 10,22, "FIRST TO 5 POINTS"
+  NewRound
+  FrameMarks(255, 255)
+  DrawBall
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+  return
+end sub
+
+' the C64's chances: each mirror 1 in 28, empty 24 in 28
+sub MakeBoard:
+  u16 I = 0
+  u8 Rv = 0
+  for I = 0 to 360
+    Rv = Rnd()
+    Rv = Rv % 28
+    if Rv < 4 then
+      Bd[I] = Rv + 1
+    else
+      Bd[I] = 0
+    end if
+  next
+  Bd[180] = 0
+  return
+end sub
+
+' ------------------------------------------------------------- drawing
+function CellT(u8 R, u8 C) as u8
+  u8 T = 0
+  u16 I = 0
+  I = Idx(R, C)
+  T = Bd[I]
+  T = T + TC0blank
+  if R = Rc then T = T + 5
+  if C = Cc then T = T + 10
+  return T
+
+sub DrawRow(u8 R):
+  u8 Q = 0
+  u16 A = 0
+  for Q = 0 to 18
+    RowBuf[Q] = CellT(R, Q)
+  next
+  A = R + BRow
+  A = A * 32
+  A = A + BCol
+  copy RowBuf count N to vram.name + A
+  Drew = 1
+  return
+end sub
+
+sub DrawCol(u8 C):
+  u8 Q = 0
+  for Q = 0 to 18
+    RowBuf[Q] = CellT(Q, C)
+  next
+  ColAdr = C + BCol
+  ColAdr = ColAdr + $1840
+  call asm ColPut
+  Drew = 1
+  return
+end sub
+
+' the frame round the board, all in tile T
+sub DrawFrame(u8 T):
+  fill T count 21 at 9,1
+  fill T count 21 at 9,21
+  for Dr = 2 to 20
+    put char T at 9,Dr
+    put char T at 29,Dr
+  next
+  return
+end sub
+
+' cursor arrows on the frame; clear the old row OldR / column OldC
+sub FrameMarks(u8 OldR, u8 OldC):
+  u8 Y = 0
+  u8 X = 0
+  if OldR < N then
+    Y = OldR + BRow
+    put char TFr at 9,Y
+    put char TFr at 29,Y
+  end if
+  if OldC < N then
+    X = OldC + BCol
+    put char TFr at X,1
+    put char TFr at X,21
+  end if
+  Y = Rc + BRow
+  put char TArR at 9,Y
+  put char TArL at 29,Y
+  X = Cc + BCol
+  put char TArD at X,1
+  put char TArU at X,21
+  return
+end sub
+
+' the scorer's edges flash 8 times, slower than the 3 Hz limit
+' (each state lasts 12 frames: 2.5 flashes a second)
+sub FlashFrame:
+  u8 T = 0
+  u8 Ph = 0
+  if Who = 0 then return
+  Ph = Timer / 12
+  Ph = Ph & 1
+  T = TFr
+  if Ph = 0 then
+    if Who = 1 then
+      T = TFrY
+    else
+      T = TFrR
+    end if
+  end if
+  K = Timer % 12
+  if K <> 11 then return
+  if Who = 1 then
+    for Dr = 1 to 21
+      put char T at 9,Dr
+      put char T at 29,Dr
+    next
+  else
+    fill T count 21 at 9,1
+    fill T count 21 at 9,21
+  end if
+  return
+end sub
+
+sub ShowScores:
+  NumU = ScR
+  print at 4,5, digits$(NumU, 1)
+  NumU = ScC
+  print at 4,17, digits$(NumU, 1)
+  NumU = RoundNo
+  print at 3,11, digits$(NumU, 2)
+  return
+end sub
+
+' the ball: gliding from the cell it left into the cell it is in
+sub DrawBall:
+  i16 Px = 0
+  i16 Py = 0
+  i16 Off = 0
+  u8 X = 0
+  u8 Y = 0
+  Px = Bc
+  if Bc = 255 then Px = -1
+  Px = Px * 8
+  Px = Px + 80
+  Py = Br
+  if Br = 255 then Py = -1
+  Py = Py * 8
+  Py = Py + 15
+  if Phase = 1 then
+    Off = St * 8
+    Off = Off / Speed
+    Off = 8 - Off
+    select case Dir
+    case 0
+      Py = Py + Off
+    case 1
+      Px = Px - Off
+    case 2
+      Py = Py - Off
+    case 3
+      Px = Px + Off
+    end select
+  end if
+  X = Px
+  Y = Py
+  if Phase = 2 and Who = 0 then Y = NoSprite
+  set sprite 0 to Y,X,SBall,3
+  update sprites
+  return
+end sub
+
+sub EndMessage:
+  DrawBall
+  if ScR = WinPts then
+    print at 13,10, " ROWS WIN! "
+  else
+    print at 11,10, " COLUMNS WIN! "
+  end if
+  return
+end sub
+
+' --------------------------------------------------------- frame, input
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  return
+end sub
+
+function PadBits(u8 P) as u8
+  u8 B = 0
+  if joypad(P).up then B = B | 1
+  if joypad(P).down then B = B | 2
+  if joypad(P).left then B = B | 4
+  if joypad(P).right then B = B | 8
+  if joypad(P).fire then B = B | 16
+  return B
+
+sub ReadPad:
+  J0 = PadBits(1)
+  J1 = 0
+  if Players = 2 then J1 = PadBits(2)
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  set sprite 0 to NoSprite,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ------------------------------------------------------- title, credits
+sub TitlePage:
+  u8 Btn = 0
+  u8 Press = 0
+  NewScreen
+  backdrop dark blue
+  copy TitleMap count 128 to vram.name + 128
+  print at 7,8, "COMPUTE!'S GAZETTE"
+  print at 10,9, "MARCH 1986"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Tick
+  K = Rnd()
+  J0 = PadBits(1)
+  J1 = PadBits(2)
+  K = J0 | J1
+  Btn = K & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  V = K & 15
+  if V > 0 then
+    if WasStick = 0 then MenuMove(V)
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu < 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub MenuMove(u8 S):
+  select case S
+  case 1
+    if Menu > 0 then dec Menu
+  case 2
+    if Menu < 3 then inc Menu
+  case 4
+    if Menu = 0 then Players = 3 - Players
+    if Menu = 1 and SpeedSel > 0 then dec SpeedSel
+  case 8
+    if Menu = 0 then Players = 3 - Players
+    if Menu = 1 and SpeedSel < 2 then inc SpeedSel
+  end select
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  for J = 12 to 18 step 2
+    put char 32 at 8,J
+  next
+  if Players = 1 then
+    print at 10,12, "1 PLAYER "
+  else
+    print at 10,12, "2 PLAYERS"
+  end if
+  select case SpeedSel
+  case 0
+    print at 10,14, "FAST  "
+  case 1
+    print at 10,14, "MEDIUM"
+  case else
+    print at 10,14, "SLOW  "
+  end select
+  print at 10,16, "START"
+  print at 10,18, "CREDITS"
+  J = Menu * 2
+  J = J + 12
+  put char 62 at 8,J
+  print at 6,21, "CONTROLLER 1: ROWS   "
+  if Players = 1 then
+    print at 6,22, "COMPUTER: COLUMNS    "
+  else
+    print at 6,22, "CONTROLLER 2: COLUMNS"
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,1, "SHIFTER"
+  print at 2,3, "BASED ON SHIFTER BY KEVIN"
+  print at 2,4, "MYKYTYN AND MARK TUTTLE,"
+  print at 2,5, "COMPUTE!'S GAZETTE, MARCH"
+  print at 2,6, "1986 (COMMODORE 64 BASIC"
+  print at 2,7, "AND MACHINE LANGUAGE)."
+  print at 2,9, "COLECOVISION GAME, MUSIC"
+  print at 2,10, "AND PICTURES BY CLAUDE"
+  print at 2,11, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "IN AMY BY AMY BIENVENU,"
+  print at 2,13, "2026. MUSIC: MIRROR LINES"
+  print at 2,14, "(ORIGINAL)."
+  print at 2,16, "SLIDE ROWS OR COLUMNS OF"
+  print at 2,17, "MIRRORS TO STEER THE BALL."
+  print at 2,18, "ROWS WINS IT OFF A SIDE,"
+  print at 2,19, "COLUMNS OFF THE TOP OR"
+  print at 2,20, "BOTTOM. FIRST TO 5 WINS."
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; RowBuf (19 tiles) down a name-table column from ColAdr, stride 32
+; (NMI off; the VDP gets far more than 29 cycles between writes)
+ColPut:
+  ld hl,(AMY_UVAR_ColAdr)
+  ld de,AMY_UVAR_RowBuf
+  ld b,19
+ColPut1:
+  ld a,l
+  out ($BF),a
+  ld a,h
+  or $40
+  out ($BF),a
+  ld a,(de)
+  out ($BE),a
+  inc de
+  ld a,l
+  add a,32
+  ld l,a
+  jr nc,ColPut2
+  inc h
+ColPut2:
+  djnz ColPut1
+  ret
+SfSlide:
+    db $00,$00,$35,$01,$00,$00,$75,$02,$10
+SfPing:
+    db $40,$35,$30,$01,$40,$47,$50,$02,$50
+SfStart:
+    db $40,$1D,$21,$03,$40,$D6,$20,$03,$40,$AA,$20,$03,$40,$8F,$30,$06,$50
+SfPtRow:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$20,$0E,$50
+SfPtCol:
+    db $40,$6B,$10,$05,$40,$8F,$10,$05,$40,$AA,$10,$05,$40,$D6,$20,$0E,$50
+SfDraw:
+    db $00,$00,$26,$0A,$00,$00,$56,$0A,$10
+SfOver:
+    db $40,$AA,$10,$0A,$40,$8F,$10,$0A,$40,$71,$10,$0A,$40,$55,$20,$1E,$50
+
+SfSoundTable:
+    dw SfTuneMel,$702B
+    dw SfTuneBass,$7035
+    dw SfSlide,$703F
+    dw SfPing,$7049
+    dw SfStart,$7049
+    dw SfPtRow,$7049
+    dw SfPtCol,$7049
+    dw SfDraw,$703F
+    dw SfOver,$7049
+; Mirror Lines (original)
+; Tiny Sound, 8 frames per step
+SfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1C,$01,$1F,$23,$01,$21,$1F,$01,$1E,$01,$21,$01
+    db $1A,$01,$01,$01,$1E,$01,$21,$24,$01,$23,$21,$01,$1F,$01,$23,$01
+    db $1C,$01,$01,$01,$1F,$01,$23,$26,$01,$24,$23,$01,$21,$01,$24,$01
+    db $1E,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01,$1B,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$0F,$01,$10,$01,$0B,$01,$13,$01,$0E,$01,$09,$01,$10,$01
+    db $0E,$01,$15,$01,$0B,$01,$12,$01,$0B,$01,$0F,$01,$10,$01,$0B,$01
+    db $10,$01,$00,$01
+    db $FF
+}

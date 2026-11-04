@@ -1,0 +1,1143 @@
+cartridge "REVENGE OF CYON/COMPUTE'S GAZETTE/1984"
+
+' REVENGE OF CYON
+' A ColecoVision game based on "Revenge Of Cyon", COMPUTE!'s Gazette June
+' 1984 (Commodore 64 and VIC-20 BASIC; no author named on the listing).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from the
+' C64 listing, orig/cyon64.bas), the game is rebuilt for the ColecoVision:
+' smooth sprites (crosshair, Cyon ships, shot burst, explosion), a tiled
+' night sky with a moon, twinkling stars, a hilly horizon with three domed
+' bases and a blinking beacon, sound effects and an original title tune.
+'
+' The game: a Cyon ship appears high in the sky and sinks toward the
+' ground, jumping from side to side to dodge your fire (the higher the
+' skill level, 1-6, the wider it jumps). Steer the crosshair over it and
+' press a button to shoot. Seven shots per ship; a hit sends it fleeing
+' and tells how many shots and seconds it took. From wave 7 two ships come
+' at once, six columns apart, jumping together: both must be hit. A ship
+' that reaches the ground lands: one base is lost and the wave starts
+' again. Survive 11 waves to save the Earth; the end screen gives your rank
+' (Private to Mr. President, the original's eleven titles).
+'
+' From the original: the skill level 1-6 as the width of the ship's random
+' jumps (PO = 1..D), a ship starting in the top rows at a random column and
+' falling straight down one row every two passes, the crosshair moving in
+' eight directions, seven shots then no more (TH > 7), a hit only when the
+' crosshair is on the ship, the shots and seconds printed after a hit, the
+' shot counter cleared by a hit, the wave siren, the hit warble, the
+' fleeing ship, a second ship six columns right from wave 7 (both must be
+' hit), 11 waves, three landings end the game, the rank by waves survived
+' and the "YOU SAVED THE EARTH FROM ALIEN ATTACK!!" ending.
+'
+' Liberties: a shot is one press (the C64 counted every pass the button
+' was held, so holding it wasted shots); the shot count is cleared at each
+' new wave as well (the listing never cleared it after a landing, so a
+' player out of shots could never fire again; and it never redrew the ship
+' after the first hit, S1 stays 1, leaving it invisible from wave 2: both
+' fixed); the ship jumps every 50 - 4 x skill frames (on the C64 every
+' pass, about 7 a second) so a quick human can catch it; ships fall a
+' little faster each wave (the C64 kept one speed); the crosshair stays
+' inside the screen instead of wrapping round its sides; the three bases
+' are drawn as domes and a landing wrecks the nearest one; the C64's
+' border colour flash at the end is an explosion and a message.
+'
+' Controls: either controller; the stick moves the crosshair, either
+' button fires. On the title, up and down choose, left and right set the
+' skill, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+' Own xorshift random numbers. Nothing flashes faster than 3 Hz.
+
+const TStar1 = 128
+const TStar2 = 129
+const TStar3 = 130
+const TMoon00 = 131
+const TMoon01 = 132
+const TMoon10 = 133
+const TMoon11 = 134
+const THflat = 135
+const THup = 136
+const THtop = 137
+const THdn = 138
+const TGnd = 139
+const TGnd2 = 140
+const TDome00 = 141
+const TDome01 = 142
+const TDome10 = 143
+const TDome11 = 144
+const TWreck00 = 145
+const TWreck01 = 146
+const TWreck10 = 147
+const TWreck11 = 148
+const TBeaon = 149
+const TBeaoff = 150
+const TMast = 151
+const SCross = 0
+const SShip0 = 4
+const SShip1 = 8
+const SBurst = 12
+const SBoom0 = 16
+const SBoom1 = 20
+const NTiles8 = 192
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSiren = 3
+const SndZap = 4
+const SndHit = 5
+const SndBoom = 6
+const SndEmpty = 7
+const SndOver = 8
+const SndWin = 9
+const NSpr = 5
+const MaxShots = 7
+const LandY = 140
+const IntroN = 70
+const DeadN = 110
+const MsgN = 130
+const LastWave = 11
+const NStars = 12
+
+' the bases: left column of each dome
+data DomeC bytes
+  6, 14, 22
+end data
+' the horizon (row 19): 0 flat, 1 up, 2 top, 3 down
+data HorT bytes
+  0,0,1,2,3,0,0,0,0,1,3,0,0,0,0,0,0,1,2,2,3,0,0,0,0,1,3,0,1,2,3,0
+end data
+
+record StarCell:
+  u8 C
+  u8 R
+end record
+StarCell Stars[NStars]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 Rc = 7
+u16 W16 = 0
+u16 NumU = 0
+bcd digits 2 Secs
+' the game
+u8 Skill = 3
+u8 Wave = 1
+u8 Lives = 3
+u8 Shots = 0
+u8 LastShots = 0
+u8 NShip = 1
+u8 Spd = 5
+u8 Po = 0
+u8 HopT = 0
+u8 HopN = 28
+u8 Sixty = 0
+u8 IntroT = 0
+u8 DeadT = 0
+u8 MsgT = 0
+u8 BurstT = 0
+u8 Over = 0
+u8 DomeOk[3]
+' the ships: base X (jump 0), Y, sub-pixel, alive; the fleeing ones
+u8 ShX[2]
+u8 ShY[2]
+u8 ShF[2]
+u8 ShA[2]
+u8 FlX[2]
+u8 FlY[2]
+u8 BoomX = 0
+' the crosshair (sprite corner; the aim is 7, 7 into it), its half step
+u8 Cx = 120
+u8 Cy = 80
+u8 CxPh = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 TitleOn = 0
+u8 BeaT = 0
+u8 BeaF = 0
+u8 StarI = 0
+' loop counters (never shared with the helpers)
+u8 Si = 0
+u8 Di = 0
+u8 Ki = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CySoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  Animate
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: a message and the rank, then back to the title on a press
+  mute all
+  EndScreen
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  MoveCross
+  Flee
+  if BurstT > 0 then dec BurstT
+  if DeadT > 0 then
+    dec DeadT
+    if DeadT = 0 then
+      if Lives = 0 then
+        Over = 1
+      else
+        StartWave
+      end if
+    end if
+    return
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      if Wave > LastWave then
+        Over = 2
+      else
+        StartWave
+      end if
+    end if
+    return
+  end if
+  if IntroT > 0 then
+    dec IntroT
+    if IntroT = 0 then ClearMsg
+    return
+  end if
+  ' the clock
+  inc Sixty
+  if Sixty >= 60 then
+    Sixty = 0
+    Secs += 1
+    ShowTime
+  end if
+  ' the ships jump together
+  inc HopT
+  if HopT >= HopN then
+    HopT = 0
+    Po = RandBelow(Skill)
+  end if
+  if Press = 1 then Shoot
+  if MsgT = 0 then Descend
+  return
+end sub
+
+' the stick: 1.5 pixels a frame in eight directions, inside the sky
+sub MoveCross:
+  K = J1 | J2
+  N = 1 + CxPh
+  CxPh = CxPh ^ 1
+  V = K & 4
+  if V > 0 then
+    if Cx >= 16 + N then
+      Cx = Cx - N
+    else
+      Cx = 16
+    end if
+  end if
+  V = K & 8
+  if V > 0 then
+    Cx = Cx + N
+    if Cx > 224 then Cx = 224
+  end if
+  V = K & 1
+  if V > 0 then
+    if Cy >= 16 + N then
+      Cy = Cy - N
+    else
+      Cy = 16
+    end if
+  end if
+  V = K & 2
+  if V > 0 then
+    Cy = Cy + N
+    if Cy > LandY then Cy = LandY
+  end if
+  return
+end sub
+
+' a press: one shot (seven a ship), checked against every ship in flight
+sub Shoot:
+  if Shots >= MaxShots then
+    play sound SndEmpty
+    return
+  end if
+  inc Shots
+  BurstT = 8
+  play sound SndZap
+  ShowShots
+  for Si = 0 to 1
+    if HitShip(Si) = 1 then
+      ShA[Si] = 0
+      FlX[Si] = ShipX(Si)
+      FlY[Si] = ShY[Si]
+      LastShots = Shots
+      Shots = 0
+      play sound SndHit
+      ShowShots
+      if ShA[0] + ShA[1] = 0 then WaveWon
+    end if
+  next
+  return
+end sub
+
+' the ship's sprite column: its base plus the jump
+function ShipX(u8 I) as u8
+  u8 L = 0
+  L = Po << 3
+  L = L + ShX[I]
+  return L
+
+' 1 when the aim (the crosshair's centre) is on ship I's body
+function HitShip(u8 I) as u8
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Lx = 0
+  u8 Ly = 0
+  u8 Got = 0
+  if ShA[I] = 1 then
+    Ax = Cx + 7
+    Ay = Cy + 7
+    Lx = ShipX(I)
+    Ly = ShY[I]
+    if Ax > Lx then
+      if Ax <= Lx + 13 then
+        if Ay >= Ly + 2 then
+          if Ay <= Ly + 11 then Got = 1
+        end if
+      end if
+    end if
+  end if
+  return Got
+
+' every ship hit: the wave's report, then the next wave
+sub WaveWon:
+  inc Wave
+  MsgT = MsgN
+  print at 4,10, "DIRECT HIT AFTER"
+  NumU = LastShots
+  print at 21,10, digits$(NumU, 1)
+  if LastShots = 1 then
+    print at 23,10, "SHOT"
+  else
+    print at 23,10, "SHOTS"
+  end if
+  print at 4,11, "IN"
+  print Secs at 7,11
+  print at 10,11, "SECONDS"
+  return
+end sub
+
+' the ships sink; one on the ground has landed
+sub Descend:
+  for Si = 0 to 1
+    if ShA[Si] = 1 then
+      V = ShF[Si] + Spd
+      N = V >> 4
+      ShF[Si] = V & 15
+      V = ShY[Si] + N
+      ShY[Si] = V
+      if V >= LandY then
+        if DeadT = 0 then Landed
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Landed:
+  BoomX = ShipX(Si)
+  DeadT = DeadN
+  ShA[0] = 0
+  ShA[1] = 0
+  dec Lives
+  play sound SndBoom
+  WreckNear
+  print at 3,10, "THE CYON SHIP HAS LANDED!"
+  return
+end sub
+
+' the base nearest the landing is wrecked
+sub WreckNear:
+  u8 Best = 255
+  u8 Bi = 0
+  u8 Dc = 0
+  u8 Mid = 0
+  Mid = BoomX + 8
+  for Di = 0 to 2
+    if DomeOk[Di] = 1 then
+      Dc = DomeC[Di] << 3
+      Dc = Dc + 8
+      if Dc > Mid then
+        Dc = Dc - Mid
+      else
+        Dc = Mid - Dc
+      end if
+      if Dc < Best then
+        Best = Dc
+        Bi = Di
+      end if
+    end if
+  next
+  DomeOk[Bi] = 0
+  Di = Bi
+  DrawDome
+  return
+end sub
+
+' the hit ships fly away upward
+sub Flee:
+  for Ki = 0 to 1
+    V = FlY[Ki]
+    if V > 0 then
+      if V < 20 then
+        FlY[Ki] = 0
+      else
+        FlY[Ki] = V - 4
+      end if
+    end if
+  next
+  return
+end sub
+
+' a new wave (or the same one after a landing)
+sub StartWave:
+  u8 Kmax = 0
+  ClearMsg
+  NShip = 1
+  if Wave >= 7 then NShip = 2
+  Spd = Wave / 3
+  Spd = Spd + 5
+  HopN = Skill << 2
+  HopN = 50 - HopN
+  HopT = 0
+  Po = 0
+  Shots = 0
+  Sixty = 0
+  Secs = 0
+  ' the base column, 16 + 8 k, with the widest jump (and the second
+  ' ship 48 to the right) still inside column 29
+  Kmax = 27 - Skill
+  if NShip = 2 then Kmax = Kmax - 6
+  K = RandBelow(Kmax)
+  K = K << 3
+  ShX[0] = K + 16
+  ShX[1] = K + 64
+  K = RandBelow(4)
+  K = K << 3
+  ShY[0] = K + 16
+  ShY[1] = K + 16
+  ShF[0] = 0
+  ShF[1] = 0
+  ShA[0] = 1
+  ShA[1] = 0
+  if NShip = 2 then ShA[1] = 1
+  FlY[0] = 0
+  FlY[1] = 0
+  IntroT = IntroN
+  print at 9,10, "ATTACK WAVE"
+  NumU = Wave
+  print at 21,10, digits$(NumU, 2)
+  ShowHud
+  play sound SndSiren
+  return
+end sub
+
+' a random number 0 .. N - 1 from the game's xorshift
+function RandBelow(u8 M) as u8
+  u8 L = 0
+  Rand
+  L = Rs & 255
+  L = L mod M
+  return L
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the stars' own random numbers (the scenery never touches Rs)
+sub RandC:
+  W16 = Rc << 7
+  Rc = Rc ^ W16
+  W16 = Rc >> 9
+  Rc = Rc ^ W16
+  W16 = Rc << 8
+  Rc = Rc ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the beacon blinks (1.5 times a second) and a star moves now and then
+sub Animate:
+  inc BeaT
+  if BeaT >= 20 then
+    BeaT = 0
+    BeaF = BeaF ^ 1
+    if BeaF = 1 then
+      put char TBeaon at 11,19
+    else
+      put char TBeaoff at 11,19
+    end if
+    if TitleOn = 0 then MoveStar
+  end if
+  return
+end sub
+
+sub MoveStar:
+  inc StarI
+  if StarI >= NStars then StarI = 0
+  with Stars[StarI] as St
+    put char 32 at St.C,St.R
+    NewStarCell
+    St.C = C
+    St.R = R
+    PutStar
+  end with
+  return
+end sub
+
+' C, R: a free sky cell for a star (not on the moon or the message rows)
+sub NewStarCell:
+  RandC
+  C = Rc & 31
+  if C < 2 then C = C + 4
+  if C > 29 then C = C - 4
+  R = highbyte(Rc)
+  R = R & 15
+  R = R + 2
+  if R >= 10 then
+    if R <= 11 then R = R + 4
+  end if
+  if C >= 5 then
+    if C <= 8 then
+      if R <= 5 then R = R + 3
+    end if
+  end if
+  return
+end sub
+
+' the star at C, R (its kind from its place)
+sub PutStar:
+  T = C + R
+  T = T mod 5
+  select case T
+  case 0
+    put char TStar3 at C,R
+  case 1 to 2
+    put char TStar1 at C,R
+  case else
+    put char TStar2 at C,R
+  end select
+  return
+end sub
+
+sub DrawStars:
+  for each St, Ki in Stars
+    C = St.C
+    R = St.R
+    PutStar
+  next
+  return
+end sub
+
+sub NewStars:
+  for Ki = 0 to NStars - 1
+    NewStarCell
+    Stars[Ki].C = C
+    Stars[Ki].R = R
+  next
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,10
+  fill 32 count 28 at 2,11
+  DrawStars
+  return
+end sub
+
+' sprite 0 the crosshair, 1 the shot burst, 2-3 the ships, 4 the explosion
+sub DrawSprites:
+  if TitleOn = 1 then
+    set sprite 0 to 192,0,0,0
+  else
+    Y = Cy - 1
+    set sprite 0 to Y,Cx,SCross,15
+  end if
+  if BurstT > 0 then
+    Y = Cy - 1
+    set sprite 1 to Y,Cx,SBurst,11
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  V = Tick >> 5
+  V = V & 1
+  K = V << 2
+  K = K + SShip0
+  for Si = 0 to 1
+    J = Si + 2
+    if ShA[Si] = 1 then
+      X = ShipX(Si)
+      Y = ShY[Si] - 1
+      set sprite J to Y,X,K,3
+    elseif FlY[Si] > 0 then
+      Y = FlY[Si] - 1
+      X = FlX[Si]
+      set sprite J to Y,X,K,9
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if DeadT > 0 then
+    V = DeadT >> 4
+    V = V & 1
+    K = V << 2
+    K = K + SBoom0
+    if DeadT > 40 then
+      Y = LandY - 1
+      set sprite 4 to Y,BoomX,K,9
+    else
+      set sprite 4 to 192,0,0,0
+    end if
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "WAVE"
+  NumU = Wave
+  print at 7,1, digits$(NumU, 2)
+  print at 11,1, "SHOTS"
+  ShowShots
+  print at 22,1, "TIME"
+  ShowTime
+  print at 11,22, "SKILL"
+  NumU = Skill
+  print at 17,22, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowShots:
+  V = MaxShots - Shots
+  NumU = V
+  print at 17,1, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowTime:
+  print Secs at 27,1
+  return
+end sub
+
+sub DrawDome:
+  C = DomeC[Di]
+  if DomeOk[Di] = 1 then
+    put char TDome00 at C,19
+    put char TDome10 at C,20
+    inc C
+    put char TDome01 at C,19
+    put char TDome11 at C,20
+  else
+    put char TWreck00 at C,19
+    put char TWreck10 at C,20
+    inc C
+    put char TWreck01 at C,19
+    put char TWreck11 at C,20
+  end if
+  return
+end sub
+
+' the scene: stars, moon, horizon, ground, bases, beacon
+sub DrawScene:
+  NewStars
+  DrawStars
+  put char TMoon00 at 6,3
+  put char TMoon01 at 7,3
+  put char TMoon10 at 6,4
+  put char TMoon11 at 7,4
+  for Ki = 0 to 31
+    V = HorT[Ki]
+    T = THflat + V
+    put char T at Ki,19
+  next
+  fill TGnd count 32 at 0,20
+  fill TGnd2 count 32 at 0,21
+  for Di = 0 to 2
+    DrawDome
+  next
+  put char TBeaoff at 11,19
+  put char TMast at 11,20
+  return
+end sub
+
+sub NewGame:
+  Wave = 1
+  Lives = 3
+  Over = 0
+  TitleOn = 0
+  DeadT = 0
+  MsgT = 0
+  BurstT = 0
+  Cx = 112
+  Cy = 80
+  CxPh = 0
+  for Di = 0 to 2
+    DomeOk[Di] = 1
+  next
+  NewScreen
+  DrawScene
+  StartWave
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' the rank: the original's eleven titles, by the wave reached
+sub ShowRank(u8 Rk):
+  select case Rk
+  case 1
+    print at 7,15, "SORRY, PRIVATE."
+  case 2
+    print at 4,15, "NOT TOO BAD, CORPORAL."
+  case 3
+    print at 4,15, "NICE GOING, SERGEANT."
+  case 4
+    print at 10,15, "WAY TO GO,"
+    print at 5,16, "SECOND LIEUTENANT."
+  case 5
+    print at 9,15, "YOU ARE NOW"
+    print at 7,16, "FIRST LIEUTENANT."
+  case 6
+    print at 4,15, "YOU ARE NOW A CAPTAIN."
+  case 7
+    print at 5,15, "YOU ARE NOW A MAJOR."
+  case 8
+    print at 4,15, "YOU ARE NOW A COLONEL."
+  case 9
+    print at 4,15, "YOU ARE NOW A GENERAL."
+  case 10
+    print at 9,15, "YOU ARE NOW A"
+    print at 8,16, "FIELD MARSHALL."
+  case else
+    print at 5,15, "HELLO, MR. PRESIDENT."
+  end select
+  return
+end sub
+
+sub EndScreen:
+  u8 Survived = 0
+  Rearm
+  wait
+  nmi off
+  HideSprites
+  for Ki = 7 to 17
+    fill 32 count 28 at 2,Ki
+  next
+  Survived = Wave - 1
+  if Over = 2 then
+    print at 4,9, "YOU SAVED THE EARTH"
+    print at 4,10, "FROM ALIEN ATTACK!!"
+    play sound SndWin
+  else
+    print at 2,9, "YOU SURVIVED"
+    NumU = Survived
+    print at 15,9, digits$(NumU, 2)
+    print at 18,9, "ATTACK WAVES"
+    play sound SndOver
+  end if
+  ShowRank(Wave)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the night scene, a ship hovering, the tune once,
+' START GAME / SKILL / CREDITS
+sub TitlePage:
+  TitleOn = 1
+  DeadT = 0
+  BurstT = 0
+  Wave = 1
+  Po = 0
+  for Di = 0 to 2
+    DomeOk[Di] = 1
+  next
+  NewScreen
+  DrawScene
+  for Ki = 6 to 17
+    fill 32 count 24 at 4,Ki
+  next
+  print at 8,6, "REVENGE OF CYON"
+  print at 2,8, "COMPUTE!'S GAZETTE JUNE 1984"
+  print at 10,13, "START GAME"
+  print at 10,14, "SKILL"
+  print at 10,15, "CREDITS"
+  print at 6,17, "LEFT/RIGHT: SKILL"
+  Menu = 0
+  ShowMenu
+  ShA[0] = 1
+  ShA[1] = 0
+  FlY[0] = 0
+  FlY[1] = 0
+  ShX[0] = 120
+  ShY[0] = 84
+  DrawSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  Animate
+  DrawSprites
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      end if
+      K = V & 2
+      if K > 0 then
+        if Menu < 2 then inc Menu
+      end if
+      K = V & 4
+      if K > 0 then
+        if Skill > 1 then dec Skill
+      end if
+      K = V & 8
+      if K > 0 then
+        if Skill < 6 then inc Skill
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  TitleOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,13
+  put char 32 at 8,14
+  put char 32 at 8,15
+  J = Menu + 13
+  put char 62 at 8,J
+  NumU = Skill
+  print at 16,14, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 8,2, "REVENGE OF CYON"
+  print at 2,5, "BASED ON REVENGE OF CYON,"
+  print at 2,6, "COMPUTE!'S GAZETTE, JUNE"
+  print at 2,7, "1984 (COMMODORE 64 AND"
+  print at 2,8, "VIC-20 BASIC)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: CYON APPROACH"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$00
+  $00,$00,$10,$38,$10,$00,$00,$00
+  $00,$03,$F0,$1C,$38,$C3,$80,$80
+  $00,$C0,$F0,$07,$03,$03,$11,$C6
+  $80,$88,$23,$C8,$E0,$F0,$03,$00
+  $11,$01,$03,$03,$07,$F0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$F0,$C0,$C0,$00
+  $00,$00,$C3,$C3,$00,$00,$00,$00
+  $00,$00,$00,$C0,$F0,$03,$03,$00
+  $00,$10,$00,$02,$00,$40,$00,$08
+  $00,$20,$00,$04,$00,$00,$80,$00
+  $00,$00,$01,$01,$07,$E0,$CC,$80
+  $00,$00,$80,$80,$E0,$07,$CC,$01
+  $00,$00,$00,$10,$00,$02,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$04
+  $00,$00,$00,$00,$00,$00,$0C,$C8
+  $00,$00,$00,$00,$00,$00,$10,$8B
+  $44,$00,$00,$10,$00,$02,$00,$00
+  $20,$00,$00,$08,$00,$00,$00,$04
+  $00,$18,$C3,$C3,$18,$18,$18,$C3
+  $00,$18,$C3,$C3,$18,$18,$18,$C3
+  $24,$C3,$42,$00,$00,$10,$00,$02
+end data
+data TileCol bytes
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$51,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$01,$01,$01
+  $01,$B1,$1B,$B1,$B1,$1B,$1B,$1B
+  $01,$B1,$B1,$1B,$1B,$1B,$1B,$B1
+  $1B,$1B,$B1,$1B,$1B,$1B,$B1,$01
+  $1B,$1B,$1B,$1B,$1B,$B1,$B1,$01
+  $01,$01,$01,$01,$01,$01,$0C,$02
+  $01,$01,$01,$C1,$12,$12,$C2,$02
+  $01,$01,$1C,$C2,$02,$02,$02,$02
+  $01,$01,$01,$C1,$21,$12,$C2,$02
+  $02,$C2,$02,$C2,$02,$C2,$02,$C2
+  $0C,$2C,$0C,$2C,$0C,$0C,$2C,$0C
+  $01,$01,$E1,$E1,$F1,$1F,$1F,$1F
+  $01,$01,$E1,$E1,$F1,$1F,$F1,$1F
+  $0E,$0E,$02,$C2,$02,$C2,$02,$02
+  $0E,$0E,$02,$C2,$02,$02,$02,$C2
+  $01,$01,$01,$01,$01,$01,$E1,$1E
+  $01,$01,$01,$01,$01,$01,$E1,$1E
+  $8E,$0E,$02,$C2,$02,$C2,$02,$02
+  $8E,$0E,$02,$C2,$02,$02,$02,$C2
+  $01,$81,$19,$18,$81,$E1,$E1,$1E
+  $01,$61,$16,$16,$61,$E1,$E1,$1E
+  $E1,$1E,$E1,$0E,$02,$C2,$02,$C2
+end data
+data SpritePat bytes
+  $03,$01,$01,$01,$00,$00,$80,$F0,$80,$00,$00,$01,$01,$01,$03,$00
+  $80,$00,$00,$00,$00,$00,$02,$1E,$02,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$01,$03,$07,$0D,$3F,$7F,$2A,$1F,$08,$10,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$60,$F8,$FC,$A8,$F0,$20,$10,$00,$00,$00,$00
+  $00,$00,$02,$03,$07,$0D,$3F,$7F,$35,$1F,$08,$10,$00,$00,$00,$00
+  $00,$00,$80,$80,$C0,$60,$F8,$FC,$58,$F0,$20,$10,$00,$00,$00,$00
+  $00,$00,$00,$10,$08,$05,$03,$0F,$03,$05,$08,$10,$00,$00,$00,$00
+  $00,$00,$00,$10,$20,$40,$80,$E0,$80,$40,$20,$10,$00,$00,$00,$00
+  $00,$00,$00,$02,$0B,$1F,$3F,$1F,$3F,$1F,$2F,$0B,$02,$00,$00,$00
+  $00,$00,$00,$40,$D0,$F0,$F8,$F8,$FC,$F8,$F4,$D0,$40,$00,$00,$00
+  $10,$42,$08,$22,$88,$21,$0A,$44,$0A,$21,$88,$22,$08,$42,$10,$00
+  $10,$84,$20,$44,$11,$84,$50,$22,$50,$84,$11,$44,$20,$84,$10,$00
+end data
+
+asm {
+CySiren:
+    db $40,$75,$21,$02,$40,$18,$21,$02,$40,$E0,$20,$02,$40,$BA,$20,$02,$40,$A0,$20,$02,$40,$8C,$20,$02
+    db $40,$7C,$20,$02,$40,$70,$20,$02,$40,$66,$20,$02,$40,$75,$21,$02,$40,$18,$21,$02,$40,$E0,$20,$02
+    db $40,$BA,$20,$02,$40,$A0,$20,$02,$40,$8C,$20,$02,$40,$7C,$20,$02,$40,$70,$20,$02,$40,$66,$20,$02
+    db $40,$75,$21,$02,$40,$18,$21,$02,$40,$E0,$20,$02,$40,$BA,$20,$02,$40,$A0,$20,$02,$40,$8C,$20,$02
+    db $40,$7C,$20,$02,$40,$70,$20,$02,$40,$66,$20,$02,$50
+CyZap:
+    db $00,$00,$04,$02,$00,$00,$15,$02,$00,$00,$35,$03,$00,$00,$56,$04,$10
+CyHit:
+    db $40,$4B,$10,$01,$40,$53,$10,$01,$40,$5D,$10,$01,$40,$6B,$10,$01,$40,$7C,$10,$01,$40,$4B,$10,$01
+    db $40,$53,$10,$01,$40,$5D,$10,$01,$40,$6B,$10,$01,$40,$7C,$10,$01,$40,$4B,$10,$01,$40,$53,$10,$01
+    db $40,$5D,$10,$01,$40,$6B,$10,$01,$40,$7C,$10,$01,$50
+CyBoom:
+    db $00,$00,$04,$04,$00,$00,$16,$06,$00,$00,$36,$0A,$00,$00,$57,$10,$00,$00,$77,$14,$10
+CyEmpty:
+    db $40,$6D,$22,$03,$40,$EA,$42,$03,$50
+CyOver:
+    db $40,$D6,$10,$0C,$40,$FE,$20,$0C,$40,$41,$21,$0C,$40,$FC,$21,$1E,$50
+CyWin:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$08,$40,$55,$10,$08,$40,$47,$20,$1E
+    db $50
+
+CySoundTable:
+    dw CyTuneMel,$702B
+    dw CyTuneBass,$7035
+    dw CySiren,$7049
+    dw CyZap,$703F
+    dw CyHit,$7049
+    dw CyBoom,$703F
+    dw CyEmpty,$7049
+    dw CyOver,$7049
+    dw CyWin,$7049
+; Cyon Approach (original)
+; Tiny Sound, 8 frames per step
+CyTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$01,$1E,$01,$1A,$01,$1E,$23,$01,$25,$01
+    db $26,$01,$01,$01,$25,$01,$23,$01,$21,$01,$1E,$01,$1F,$01,$01,$1E
+    db $01,$1C,$01,$01,$1A,$01,$1C,$01,$1E,$01,$23,$01,$21,$01,$1F,$01
+    db $1E,$01,$1C,$01,$1A,$01,$19,$01,$1A,$1C,$1E,$01,$22,$01,$23,$01
+    db $01,$01,$00,$01
+    db $FF
+CyTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$09,$01,$10,$01,$06,$01,$0D,$01,$06,$01,$0A,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

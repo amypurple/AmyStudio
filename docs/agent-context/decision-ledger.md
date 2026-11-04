@@ -891,4 +891,20 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   3,550-byte aggregate difference remains pre-existing tree divergence. In both trees 759 ROMs
   assemble and one project remains delegated to its target-specific validator.
 
+## 2026-11-03 - Strict routine parameters, RAM copy offsets, and 18 Gazette ports
+
+- Routine signatures no longer silently discard malformed parameters such as `Msg as string`.
+  Amy now requires the documented `Type Name` or `ref Type Name` order and reports the offending
+  parameter before assembly.
+- `copy Source count N to RamArray + Offset` now computes constant and runtime RAM destination
+  offsets with 16-bit address arithmetic. GearColeco verifies both forms at all five optimization
+  profiles, alongside the existing ROM/VRAM copy regression cases.
+- Added 18 Gazette adaptations from React through Royal Rescue. Seventeen Balanced ROMs reproduce
+  their supplied references byte for byte; Shape Match rebuilds 57 bytes smaller because its
+  supplied ROM predates its final source.
+- Attribution validation passes for 281 COMPUTE!/Gazette examples, including 185 Gazette entries.
+  Full Alexis-Z80 gates pass 778/778: 7,591,164 Balanced bytes and 7,590,209 Aggressive bytes. In
+  each profile 777 ROMs assemble and one project remains delegated to its target-specific validator.
+  The clean repository also passes 778/778 at 7,594,771 Balanced and 7,593,816 Aggressive bytes.
+
 

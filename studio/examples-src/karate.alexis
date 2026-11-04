@@ -1,0 +1,1428 @@
+cartridge "RINGSIDE KARATE/COMPUTE GAZETTE/1986"
+
+' RINGSIDE KARATE
+' A ColecoVision game based on "Ringside Karate" by Anthony Bertram,
+' COMPUTE!'s Gazette, October 1986, p. 52 (Commodore 64, machine code). Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in
+' Amy by Amy Bienvenu.
+'
+' Not a byte-for-byte port: the rules are the original's (read from its
+' machine code, orig/karate.dis, timed in jsc64 with orig/c64run-karate.mjs),
+' the game is rebuilt for the ColecoVision with new fighters, ring, sounds
+' and a title tune.
+'
+' The game: two karateka in a ring, one in a white gi (left, controller 1)
+' and one in a black gi (right, controller 2). Walk in and out; a button
+' with the stick toward the other fighter punches, with toward-and-up
+' kicks, with toward-and-down sweeps the feet; a button with any other
+' direction (or none) blocks. A move that reaches the other fighter while
+' he is neither attacking nor blocking knocks him down (100 points); a
+' block stops a punch or a kick but not a foot sweep. Ten knockdowns
+' (1000) win. The button must be let go for a moment between moves: pressed
+' again too quickly, the fighter freezes and is easy to knock down.
+'
+' From the original (orig/karate.dis): white on the left, black on the
+' right; the four moves and their stick directions (up-toward, toward,
+' down-toward, anything else = block); the button must be let go between
+' two moves; walking in and out with a closest distance and the ring's
+' sides; a hit counts only when the attacker is in a move and the other
+' fighter is in neither a move nor a block (two moves at once score
+' nothing, a block cancels a hit); 100 points a hit, the hit fighter
+' knocked back, then both back to their starting places; the first to 1000
+' wins ("WHITE WINS!" / "BLACK WINS!"); the scores and RINGSIDE KARATE on
+' the ring's apron.
+'
+' From the article: the moves and their directions, block "a limited
+' defense", ten knockdowns of 100 points, and the button released between
+' attacks ("if the button is pressed rapidly, the fighter won't move and
+' will likely be knocked down"): here pressing again within 4 frames of
+' letting go freezes the fighter for 24 frames.
+'
+' Liberties: the C64 ran one pass of about 0.19 s (a move shown for 0.13 s,
+' then checked); here every move has a wind-up, a striking moment and a
+' recovery in sixtieths of a second (punch quick and short, low kick
+' middling, high kick slow and long), and a fighter in wind-up or recovery
+' can be hit; a blocked move staggers its attacker; two moves that meet
+' push both fighters apart; a block lasts a moment and is followed by a
+' short recovery (on the C64 it lasted one pass too). Reach is in pixels
+' between the fighters (the C64 used sprite collisions). Walking is 30
+' pixels a second (the C64: 5 pixels a pass, about 26 a second). Added: a
+' one-player mode against a computer black belt that reacts no faster than
+' a person (it decides every 8 to 15 frames) and learns to block a move
+' repeated over and over, so neither standing still nor mashing one move
+' wins; a READY and the bell before every bout; a title, a credits page,
+' sounds and an original title tune ("Bow In"). A 90-second match clock
+' (fighting time, shown at the top): at time-out the higher score wins and
+' equal scores are a DRAW (the C64 match had no limit). The computer has two
+' levels, EASY (default: it acts 5 frames after each look) and NORMAL (2).
+' The foot sweep is slow (16-frame wind-up) and needs to be close (12
+' pixels, inside the punch's 14), so a punch beats it. After the same move
+' three times running the computer expects it: a punch for a sweeper (it
+' waits just outside the sweep's reach), a block for punches and kicks,
+' answered 2 frames after its look even on EASY.
+'
+' Controls: joystick only. Player 1 (white) controller 1, player 2 (black)
+' controller 2; in one-player mode white plays on either controller. On the
+' title, up and down choose, a button starts (on COMPUTER, a button or
+' left/right changes EASY / NORMAL).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` after every `clear
+' sprites`. Own xorshift random numbers.
+
+const TCrowd1 = 128
+const TCrowd2 = 129
+const TCrowd3 = 130
+const TRope = 131
+const TPost = 132
+const TPtop = 133
+const TCanvasf = 134
+const TCanvas = 135
+const TCanvasl = 136
+const TApron = 137
+const TApronb = 138
+const TMark = 139
+const TDot = 140
+const TDot0 = 141
+const TLg0 = 142
+const TLg1 = 143
+const TLg2 = 144
+const TLg3 = 145
+const TLg4 = 146
+const TLg5 = 147
+const TLg6 = 148
+const TLg7 = 149
+const TLg8 = 150
+const TLg9 = 151
+const TLg10 = 152
+const TLg11 = 153
+const TLg12 = 154
+const TLg13 = 155
+const TLg14 = 156
+const TLg15 = 157
+const TLg16 = 158
+const TLg17 = 159
+const TLg18 = 160
+const TLg19 = 161
+const TLg20 = 162
+const TLg21 = 163
+const TLg22 = 164
+const TLg23 = 165
+const TLg24 = 166
+const TLg25 = 167
+const TLg26 = 168
+const TLg27 = 169
+const TLg28 = 170
+const TLg29 = 171
+const TLg30 = 172
+const TLg31 = 173
+const TLg32 = 174
+const TLg33 = 175
+const TLg34 = 176
+const TLg35 = 177
+const TLg36 = 178
+const TLg37 = 179
+const TLg38 = 180
+const TLg39 = 181
+const TLg40 = 182
+const SF0 = 0
+const SF1 = 4
+const SF2 = 8
+const SF3 = 12
+const SF4 = 16
+const SF5 = 20
+const SF6 = 24
+const SF7 = 28
+const SF8 = 32
+const SF9 = 36
+const SF10 = 40
+const SF11 = 44
+const SF12 = 48
+const SF13 = 52
+const SF14 = 56
+const SF15 = 60
+const SF16 = 64
+const SF17 = 68
+const SF18 = 72
+const SF19 = 76
+const SF20 = 80
+const SF21 = 84
+const SF22 = 88
+const SF23 = 92
+const SF24 = 96
+const SF25 = 100
+const SF26 = 104
+const SF27 = 108
+const SF28 = 112
+const SF29 = 116
+const SF30 = 120
+const SF31 = 124
+const SF32 = 128
+const SF33 = 132
+const SF34 = 136
+const SF35 = 140
+const SF36 = 144
+const SF37 = 148
+const SF38 = 152
+const SF39 = 156
+const SF40 = 160
+const SF41 = 164
+const SF42 = 168
+const SF43 = 172
+const SF44 = 176
+const SF45 = 180
+const SF46 = 184
+const SF47 = 188
+const SF48 = 192
+const SF49 = 196
+const SF50 = 200
+const SF51 = 204
+const SF52 = 208
+const SF53 = 212
+const SF54 = 216
+const SNone = 220
+const NTiles8 = 440
+const SprBytes = 1792
+const PNames = 10
+const MinGap = 9
+const ReachP = 14
+const ReachH = 17
+const ReachL = 12
+const BackF = 4
+const PoStance = 0
+const PoWalk = 1
+const PoWind = 2
+const PoPunch = 3
+const PoKwind = 4
+const PoLow = 5
+const PoHigh = 6
+const PoBlock = 7
+const PoHit = 8
+const PoWin = 9
+const SndTuneA = 1
+const SndTuneB = 2
+const SndWhoosh = 3
+const SndThump = 4
+const SndClack = 5
+const SndKiai = 6
+const SndBell = 7
+const SndPoint = 8
+const SndWin = 9
+const SndPick = 10
+const SIdle = 0
+const SWind = 1
+const SAct = 2
+const SRec = 3
+const SBlock = 4
+const SHit = 5
+const SWon = 6
+const BlockT = 18
+const BlockRec = 6
+const Stagger = 18
+const FY = 103
+const X0W = 76
+const X0B = 132
+const MinXW = 16
+const MaxXB = 208
+const MsgRow = 21
+const Win = 1000
+const AiReact = 2
+const AiEasy = 5
+const Bout = 90
+const TapMin = 4
+const Froze = 24
+
+' moves: 0 punch, 1 high kick, 2 low kick
+data WindT bytes 10,16,16
+data ActT bytes 4,5,4
+data RecT bytes 10,16,16
+data ReachT bytes ReachP,ReachH,ReachL
+data ActPose bytes PoPunch,PoHigh,PoLow
+data WindPose bytes PoWind,PoKwind,PoKwind
+data GiCol bytes 15,1
+data LayerDY bytes 0,0,16,16
+
+data TilePat bytes
+  $40,$E0,$E0,$04,$0E,$0E,$00,$00
+  $00,$04,$0E,$0E,$40,$E0,$E0,$00
+  $00,$20,$70,$70,$02,$07,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$C3,$81,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$18
+  $00,$38,$83,$83,$83,$38,$00,$00
+  $00,$38,$44,$44,$44,$38,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C3,$C3
+  $C3,$C3,$C0,$C0,$C0,$C0,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $C3,$C3,$C0,$C0,$C0,$C0,$C0,$C0
+  $C3,$C3,$C3,$C3,$C3,$C3,$00,$00
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C3,$C3,$C3,$C3,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$C3,$C3
+  $00,$00,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$C0,$C0,$C0,$C0,$00,$00
+  $C3,$C3,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$00,$00
+  $00,$00,$C3,$C3,$C3,$C3,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $C0,$C0,$C3,$C3,$C3,$C3,$C3,$C3
+  $C0,$C0,$C3,$C3,$C3,$C3,$03,$03
+  $C3,$C3,$C3,$C3,$C3,$C3,$03,$03
+  $03,$03,$C3,$C3,$C3,$C3,$00,$00
+  $00,$00,$03,$03,$03,$03,$C3,$C3
+  $00,$00,$03,$03,$03,$03,$00,$00
+  $00,$00,$03,$03,$03,$03,$C3,$C3
+  $C3,$C3,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C0,$C0,$C0,$C0,$00,$00
+  $C3,$C3,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C3,$C3
+  $C3,$C3,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$03,$03,$03,$03,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$00,$00,$00,$00,$C0,$C0
+  $C0,$C0,$03,$03,$03,$03,$00,$00
+  $C0,$C0,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$03,$03,$03,$03,$C3,$C3
+end data
+data TileCol bytes
+  $94,$94,$94,$A4,$A4,$A4,$04,$04
+  $04,$F4,$F4,$F4,$B4,$B4,$B4,$04
+  $04,$84,$84,$84,$D4,$D4,$D4,$04
+  $04,$04,$08,$0F,$08,$04,$04,$04
+  $4E,$4E,$8E,$FE,$8E,$4E,$4E,$4E
+  $04,$48,$48,$4E,$4E,$4E,$4E,$4E
+  $04,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$04,$0F
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$01,$01,$01,$01,$01
+  $05,$05,$05,$05,$05,$05,$05,$F5
+  $01,$81,$18,$18,$18,$81,$01,$01
+  $01,$E1,$E1,$E1,$E1,$E1,$01,$01
+  $01,$01,$1B,$1B,$1A,$1A,$1A,$1A
+  $01,$01,$0B,$0B,$0A,$0A,$01,$01
+  $01,$01,$B1,$B1,$A1,$A1,$1A,$1A
+  $18,$18,$18,$18,$18,$18,$16,$16
+  $01,$01,$08,$08,$08,$08,$61,$61
+  $18,$18,$81,$81,$81,$81,$61,$61
+  $16,$16,$16,$16,$16,$16,$01,$01
+  $61,$61,$01,$01,$01,$01,$01,$01
+  $61,$61,$16,$16,$16,$16,$01,$01
+  $01,$01,$1B,$1B,$1A,$1A,$01,$01
+  $01,$01,$0B,$0B,$0A,$0A,$1A,$1A
+  $01,$01,$1B,$1B,$1A,$1A,$01,$01
+  $18,$18,$18,$18,$18,$18,$16,$16
+  $01,$01,$16,$16,$16,$16,$01,$01
+  $16,$16,$06,$06,$06,$06,$01,$01
+  $01,$01,$16,$16,$16,$16,$01,$01
+  $01,$01,$1B,$1B,$1A,$1A,$1A,$1A
+  $01,$01,$01,$01,$01,$01,$A1,$A1
+  $01,$01,$1B,$1B,$1A,$1A,$1A,$1A
+  $18,$18,$18,$18,$18,$18,$16,$16
+  $81,$81,$18,$18,$18,$18,$61,$61
+  $18,$18,$18,$18,$18,$18,$16,$16
+  $16,$16,$16,$16,$16,$16,$01,$01
+  $01,$01,$B1,$B1,$A1,$A1,$1A,$1A
+  $01,$01,$81,$81,$81,$81,$01,$01
+  $01,$01,$18,$18,$18,$18,$16,$16
+  $16,$16,$61,$61,$61,$61,$01,$01
+  $01,$01,$06,$06,$06,$06,$01,$01
+  $16,$16,$61,$61,$61,$61,$01,$01
+  $18,$18,$81,$81,$81,$81,$01,$01
+  $01,$01,$08,$08,$08,$08,$01,$01
+  $01,$01,$81,$81,$81,$81,$16,$16
+  $16,$16,$16,$16,$16,$16,$01,$01
+  $01,$01,$81,$81,$81,$81,$01,$01
+  $01,$01,$B1,$B1,$A1,$A1,$1A,$1A
+  $01,$01,$1B,$1B,$1A,$1A,$A1,$A1
+  $18,$18,$81,$81,$81,$81,$16,$16
+  $81,$81,$01,$01,$01,$01,$61,$61
+  $16,$16,$61,$61,$61,$61,$01,$01
+  $61,$61,$16,$16,$16,$16,$01,$01
+  $18,$18,$18,$18,$18,$18,$16,$16
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$7F,$FF,$FF,$FF,$7F,$7F,$7F,$7F,$7F,$7F
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E0,$80,$00,$00,$00,$00,$00,$80
+  $78,$FC,$FC,$FC,$78,$30,$00,$00,$00,$01,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$60,$60,$80,$00,$00,$00,$00,$00,$00
+  $3F,$7F,$1C,$38,$38,$38,$70,$70,$70,$E0,$E0,$E0,$00,$00,$00,$00
+  $F0,$F8,$E0,$E0,$E0,$70,$70,$70,$38,$38,$38,$1C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$70,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$0F,$00,$00
+  $7F,$FF,$39,$39,$39,$39,$39,$39,$39,$39,$39,$39,$00,$00,$00,$00
+  $E0,$F0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$73,$F3,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$7F,$FF,$FF,$FF,$7F,$7F,$7F,$7F,$7F,$7F
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E0,$80,$C0,$80,$80,$00,$00,$80
+  $78,$FC,$FC,$FC,$78,$30,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$60,$60,$00,$00,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FE,$FE,$FE,$FE,$FE,$FF
+  $00,$00,$00,$00,$00,$00,$00,$FE,$FE,$00,$00,$00,$00,$00,$00,$00
+  $78,$FC,$FC,$FC,$78,$30,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$7F,$FF,$7F,$3F,$3F,$3F,$3F,$3F,$3F
+  $00,$00,$00,$00,$00,$00,$C0,$F0,$E0,$C0,$80,$80,$80,$80,$C0,$E0
+  $78,$FC,$FC,$FC,$78,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$60,$60,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$70,$70,$70,$70,$70,$70,$70,$70,$70,$00,$00,$00,$00
+  $C0,$FC,$FE,$1E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$70,$F8,$00,$00
+  $00,$00,$00,$00,$0E,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$F1,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$F0,$00,$00
+  $80,$F0,$FE,$3F,$07,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$F0,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$7F,$FF,$FF,$7E,$7E,$7E,$7E,$7F,$7F,$7F
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$0E,$1C,$38,$70,$F0,$E0,$80
+  $78,$FC,$FC,$FC,$78,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$0F,$1E,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FE,$70,$70,$70,$70,$70,$70,$70,$70,$70,$70,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$70,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$7F,$FF,$FF,$FF,$7F,$7F,$7F,$7F,$7F,$7F
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$E0,$C0,$00,$00,$00,$80
+  $78,$FC,$FC,$FC,$78,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$60,$30,$60,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$FF,$3F,$3F,$1F,$1F,$1F,$0F,$0F,$07
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$C0,$C0,$C0,$C0,$E0,$F0,$F8
+  $07,$0F,$0F,$0F,$07,$03,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$C0,$C0,$80,$00,$00,$0C,$0C,$00,$00,$00,$00,$00,$00,$00
+  $3F,$7F,$1D,$39,$39,$39,$71,$71,$71,$E1,$E1,$E0,$00,$00,$00,$00
+  $E0,$F0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$70,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$70,$78,$00,$00
+  $00,$00,$E0,$60,$60,$70,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+  $00,$00,$38,$30,$30,$70,$E0,$E0,$C0,$C0,$80,$80,$80,$80,$80,$C0
+  $CF,$DF,$1F,$1F,$0F,$06,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$98,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$39,$71,$71,$71,$71,$E0,$E0,$E0,$E0,$E0,$00,$00,$00,$00
+  $E0,$F0,$C0,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$E0,$70,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$70,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$38,$3C,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$7F,$FF,$3F,$1F,$1F,$1F,$1F,$1F,$3F
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$07,$07,$07,$03,$01,$00,$C0,$C0,$30,$18,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$7F,$1C,$1C,$1C,$38,$38,$38,$70,$70,$70,$E0,$00,$00,$00,$00
+  $F0,$F8,$E0,$70,$70,$70,$38,$38,$38,$1C,$1C,$1C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$7F,$FF,$3F,$7F,$3F,$3F,$1F,$1F,$3F
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$07,$07,$07,$03,$01,$00,$C0,$C0,$00,$00,$30,$30,$00,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$FF,$FF,$01,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $1E,$3F,$3F,$3F,$1E,$0C,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$FF,$7F,$3F,$1F,$1F,$1F,$1F,$3F,$7F
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$E0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$07,$07,$07,$03,$01,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$7F,$FF,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FE,$FE,$FE,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$00,$00,$00,$00
+  $00,$00,$00,$00,$70,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$1F,$00,$00
+  $01,$0F,$7F,$FC,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$8F,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$0F,$00,$00
+  $00,$00,$00,$00,$1C,$FC,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$01,$E0,$70,$38,$1C,$1F,$0F,$03
+  $00,$00,$00,$00,$00,$00,$FC,$FE,$FE,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$78,$00,$00,$00,$00,$00,$00,$00
+  $1E,$3F,$3F,$3F,$1E,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$3F,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$00,$00,$00,$00
+  $80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$0F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$1F,$3F,$7F,$FF,$7F,$3F,$0F,$0F,$0F,$1F
+  $00,$00,$00,$00,$00,$00,$E0,$F0,$F0,$F0,$E0,$E0,$E0,$E0,$E0,$E0
+  $01,$03,$03,$03,$01,$00,$00,$30,$60,$C0,$60,$30,$00,$00,$00,$00
+  $E0,$F0,$F0,$F0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$1F,$0F,$0F,$0F,$0F,$0F,$1F,$3F,$7F
+  $00,$00,$00,$00,$00,$00,$F0,$FC,$F0,$F0,$E0,$E0,$E0,$C0,$C0,$80
+  $03,$07,$07,$07,$03,$01,$00,$60,$60,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$80,$00,$00,$0E,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$3B,$39,$39,$39,$38,$38,$38,$38,$38,$70,$00,$00,$00,$00
+  $C0,$E0,$80,$C0,$C0,$C0,$E0,$E0,$E0,$70,$70,$70,$00,$00,$00,$00
+  $00,$00,$E0,$60,$60,$70,$3F,$3F,$1F,$1F,$0F,$0F,$0F,$0F,$0F,$1F
+  $00,$00,$38,$30,$30,$70,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $C7,$CF,$0F,$0F,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $98,$D8,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7F,$FF,$39,$38,$38,$38,$38,$70,$70,$70,$70,$E0,$00,$00,$00,$00
+  $E0,$F0,$C0,$E0,$E0,$E0,$E0,$70,$70,$70,$70,$70,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data PosePat0 bytes 0,4,8,12,0,4,16,20,24,28,8,12,32,36,16,20,40,44,48,52,40,44,56,60,64,68,72,76,80,84,8,12,88,92,96,100,104,108,112,116
+data PoseX0 bytes 7,9,5,4,7,9,6,7,6,8,5,4,10,11,6,7,4,7,6,6,4,7,6,16,7,9,7,7,6,8,5,4,2,1,4,3,6,6,6,5
+data PosePat1 bytes 120,124,128,12,120,124,16,20,132,136,128,12,140,144,16,20,148,152,156,160,148,152,164,168,172,176,180,184,188,192,128,12,196,200,204,100,208,212,216,116
+data PoseX1 bytes 14,12,13,12,14,12,14,15,15,13,13,12,7,5,14,15,16,14,11,10,16,14,10,4,10,7,16,16,14,12,13,12,16,16,16,16,13,13,14,13
+data TitleMap bytes
+  32,32,32,32,142,143,144,151,152,153,158,159,160,165,143,153,165,143,153,151,152,153,142,143,144,142,143,153,32,32,32,32
+  32,32,32,32,145,146,147,32,154,32,161,162,163,154,166,167,171,172,173,32,154,32,154,32,154,145,172,175,32,32,32,32
+  32,32,32,32,148,149,150,155,156,157,148,149,164,168,169,170,155,169,170,155,156,157,174,169,170,174,169,157,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,160,176,177,165,143,144,142,143,144,165,143,144,151,152,153,142,143,153,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,145,178,179,145,172,182,145,146,147,145,172,182,32,154,32,145,172,175,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,148,180,181,148,32,148,148,149,150,148,32,148,32,148,32,174,169,157,32,32,32,32,32,32,32
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+' the fighters (0 white, 1 black)
+u8 Fx[2]
+u8 Fs[2]
+u8 Fm[2]
+u8 Ft[2]
+u8 Lat[2]
+u8 Up[2]
+u8 Wc[2]
+u8 Mv[2]
+u8 Hd[2]
+u8 Jp[2]
+u16 Score[2]
+u8 NPl = 1
+u8 Hard = 0
+u8 React = 5
+u8 ClkS = 90
+u8 ClkF = 60
+u8 Cpu = 1
+u8 Phase = 0
+u8 PtT = 0
+u8 Winner = 0
+u8 Hits = 0
+' the computer
+u8 AiT = 0
+u8 AiJ = 0
+u8 AiN = 0
+u8 AiD = 0
+u8 AiRep = 0
+u8 AiLast = 9
+u8 Pads = 0
+u8 OldPads = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Sel = 0
+' loop counters (never shared with the helpers)
+u8 Pi = 0
+u8 Hi = 0
+u8 Ti = 0
+u8 Li = 0
+u8 Ci = 0
+' scratch
+u8 G = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table RkSoundTable areas 6
+  sprites 16x16
+  sprites flicker off
+  set sprite count 8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 3 then goto title
+  NewMatch
+  DrawRing
+  ShowScores
+  ResetBout
+  DrawFighters
+  ShowScreen
+
+play_loop:
+  Frame1
+  GetInput
+  select case Phase
+  case 0
+    ReadyStep
+  case 1
+    FightStep
+  case 2
+    PointStep
+  end select
+  DrawFighters
+  if Phase <> 3 then goto play_loop
+
+  ' the end: WHITE WINS! / BLACK WINS!, then back to the title on a press
+  if Winner < 2 then
+    Fs[Winner] = SWon
+    DrawFighters
+  end if
+  select case Winner
+  case 0
+    print at 10,MsgRow, "WHITE WINS!"
+  case 1
+    print at 10,MsgRow, "BLACK WINS!"
+  case else
+    print at 13,MsgRow, "DRAW"
+  end select
+  mute all
+  play sound SndWin
+  Rearm
+  wait 90 frames
+  ' left alone, Amy's sleep blanks the screen after 30 seconds to spare
+  ' the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the bout
+
+sub NewMatch:
+  Score[0] = 0
+  Score[1] = 0
+  AiRep = 0
+  AiLast = 9
+  Hits = 0
+  ClkS = Bout
+  ClkF = 60
+  React = AiEasy
+  if Hard = 1 then React = AiReact
+  return
+end sub
+
+' both fighters back to their marks, READY, then the bell
+sub ResetBout:
+  Fx[0] = X0W
+  Fx[1] = X0B
+  for Pi = 0 to 1
+    Fs[Pi] = SIdle
+    Fm[Pi] = 0
+    Ft[Pi] = 0
+    Wc[Pi] = 0
+    Mv[Pi] = 0
+    Hd[Pi] = 0
+    ' a button still held must be let go first
+    Lat[Pi] = 1
+    Up[Pi] = 0
+  next
+  AiT = 20
+  AiJ = 0
+  AiD = 0
+  Phase = 0
+  PtT = 50
+  print at 2,MsgRow, "            READY           "
+  return
+end sub
+
+sub ReadyStep:
+  dec PtT
+  if PtT = 0 then
+    Phase = 1
+    play sound SndBell
+    print at 2,MsgRow, "                            "
+  end if
+  return
+end sub
+
+sub FightStep:
+  for Pi = 0 to 1
+    Control(Pi)
+  next
+  HitCheck
+  if Phase = 1 then Clock
+  return
+end sub
+
+' the match clock: Bout seconds of fighting; at time-out the higher score
+' wins, equal scores are a DRAW (Winner 2)
+sub Clock:
+  dec ClkF
+  if ClkF = 0 then
+    ClkF = 60
+    dec ClkS
+    ShowClock
+    if ClkS = 0 then
+      Phase = 3
+      Winner = 2
+      if Score[0] > Score[1] then Winner = 0
+      if Score[1] > Score[0] then Winner = 1
+      print at 2,MsgRow, "          TIME UP           "
+      Rearm
+      wait 60 frames
+      nmi off
+      print at 2,MsgRow, "                            "
+    end if
+  end if
+  return
+end sub
+
+sub ShowClock:
+  print at 14,1, digits$(ClkS, 2)
+  return
+end sub
+
+function Gap as u8
+  V = Fx[1] - Fx[0]
+  return V
+
+' one fighter's pass: the button (let go between moves), moves, walking
+sub Control(u8 P):
+  u8 Jx = 0
+  u8 Pr = 0
+  u8 Tw = 8
+  u8 Aw = 4
+  u8 M = 0
+  Jx = Jp[P]
+  if (Jx & 16) = 0 then
+    Lat[P] = 0
+    if Up[P] < 250 then inc Up[P]
+  else
+    if Lat[P] = 0 then
+      Pr = 1
+      ' pressed again too soon after letting go: the fighter freezes
+      if Up[P] < TapMin then Pr = 2
+      Lat[P] = 1
+      Up[P] = 0
+    end if
+  end if
+  if P = 1 then
+    Tw = 4
+    Aw = 8
+  end if
+  if Mv[P] > 0 then dec Mv[P]
+  select case Fs[P]
+  case SIdle
+    if Pr = 2 then
+      Fs[P] = SRec
+      Fm[P] = 3
+      Ft[P] = Froze
+    else
+    if Pr = 1 then
+      if (Jx & Tw) <> 0 then
+        M = 0
+        if (Jx & 1) <> 0 then
+          M = 1
+        else
+          if (Jx & 2) <> 0 then M = 2
+        end if
+        Fs[P] = SWind
+        Fm[P] = M
+        Ft[P] = WindT[M]
+        Hd[P] = 0
+        play sound SndWhoosh
+        if P = 0 then Track(M)
+      else
+        Fs[P] = SBlock
+        Ft[P] = BlockT
+      end if
+    else
+      Wc[P] = Wc[P] ^ 1
+      if Wc[P] = 1 then Walk(P, Jx & Tw, Jx & Aw)
+    end if
+    end if
+  case SWind
+    dec Ft[P]
+    if Ft[P] = 0 then
+      Fs[P] = SAct
+      M = Fm[P]
+      Ft[P] = ActT[M]
+    end if
+  case SAct
+    dec Ft[P]
+    if Ft[P] = 0 then
+      Fs[P] = SRec
+      M = Fm[P]
+      Ft[P] = RecT[M]
+    end if
+  case SBlock
+    dec Ft[P]
+    if Ft[P] = 0 then
+      Fs[P] = SRec
+      Fm[P] = 3
+      Ft[P] = BlockRec
+    end if
+  case else
+    dec Ft[P]
+    if Ft[P] = 0 then Fs[P] = SIdle
+  end select
+  return
+end sub
+
+' a pixel toward (In) or away from (Out) the other fighter
+sub Walk(u8 P, u8 In, u8 Out):
+  if In <> 0 then
+    if Gap() > MinGap then
+      if P = 0 then
+        inc Fx[0]
+      else
+        dec Fx[1]
+      end if
+      Mv[P] = 8
+    end if
+  else
+    if Out <> 0 then
+      if P = 0 then
+        if Fx[0] > MinXW then dec Fx[0]
+      else
+        if Fx[1] < MaxXB then inc Fx[1]
+      end if
+      Mv[P] = 8
+    end if
+  end if
+  return
+end sub
+
+' the computer remembers the player's last move and how often in a row
+sub Track(u8 M):
+  if M = AiLast then
+    if AiRep < 4 then inc AiRep
+  else
+    AiRep = 0
+  end if
+  AiLast = M
+  return
+end sub
+
+' a move at its striking moment: within reach it scores, unless the other
+' fighter strikes too (both pushed apart) or blocks (the attacker staggers)
+sub HitCheck:
+  u8 O = 0
+  u8 M = 0
+  for Hi = 0 to 1
+    if Phase = 1 then
+      if Fs[Hi] = SAct and Hd[Hi] = 0 then
+        M = Fm[Hi]
+        if Gap() <= ReachT[M] then
+          Hd[Hi] = 1
+          O = 1 - Hi
+          if Fs[O] = SAct then
+            Hd[O] = 1
+            Clash
+          else
+            ' a block stops a punch or a kick, not a foot sweep
+            if Fs[O] = SBlock and M < 2 then
+              Fs[Hi] = SRec
+              Ft[Hi] = RecT[M] + Stagger
+              play sound SndClack
+            else
+              Point(Hi)
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Clash:
+  for Ci = 0 to 1
+    Fs[Ci] = SRec
+    K = Fm[Ci]
+    Ft[Ci] = RecT[K]
+  next
+  if Fx[0] >= MinXW + 4 then Fx[0] -= 4
+  if Fx[1] <= MaxXB - 4 then Fx[1] += 4
+  play sound SndClack
+  return
+end sub
+
+sub Point(u8 W):
+  u8 L = 0
+  Winner = W
+  L = 1 - W
+  Score[W] += 100
+  inc Hits
+  Fs[L] = SHit
+  Phase = 2
+  PtT = 90
+  play sound SndThump
+  play sound SndKiai
+  ShowScores
+  if W = 0 then
+    print at 2,MsgRow, "     KNOCKDOWN FOR WHITE    "
+  else
+    print at 2,MsgRow, "     KNOCKDOWN FOR BLACK    "
+  end if
+  return
+end sub
+
+' the hit fighter is knocked back, then the next bout or the end
+sub PointStep:
+  dec PtT
+  if PtT >= 78 then
+    if Winner = 0 then
+      if Fx[1] < MaxXB then inc Fx[1]
+    else
+      if Fx[0] > MinXW then dec Fx[0]
+    end if
+  end if
+  if PtT = 0 then
+    if Score[Winner] >= Win then
+      Phase = 3
+      print at 2,MsgRow, "                            "
+    else
+      ResetBout
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input: controller 1 white, controller 2 black or the computer
+
+sub GetInput:
+  ReadPads
+  if NPl = 1 then
+    Jp[0] = Pads
+  else
+    Jp[0] = PadOf(1)
+  end if
+  if Cpu = 1 then
+    if Phase = 1 then
+      Jp[1] = AiPad()
+    else
+      Jp[1] = 0
+    end if
+  else
+    Jp[1] = PadOf(2)
+  end if
+  return
+end sub
+
+sub ReadPads:
+  OldPads = Pads
+  Pads = PadOf(1) | PadOf(2)
+  return
+end sub
+
+function PadOf(u8 P) as u8
+  T = 0
+  if joypad(P).up then T = T | 1
+  if joypad(P).down then T = T | 2
+  if joypad(P).left then T = T | 4
+  if joypad(P).right then T = T | 8
+  if joypad(P).fire then T = T | 16
+  return T
+
+' the computer (black): it looks at the bout every 8 to 15 frames, like a
+' person reacting; between looks it keeps its stick (the button only on
+' the look itself). Toward white is left (4), away is right (8).
+function AiPad as u8
+  u8 R8 = 0
+  u8 Ch = 0
+  u8 Mx = 0
+  u8 Ps = 0
+  if Fs[1] <> SIdle then
+    AiT = 0
+    AiJ = 0
+    AiD = 0
+    return 0
+  end if
+  if AiD > 0 then
+    ' the decision is carried out a reaction time after the look
+    dec AiD
+    if AiD = 0 then
+      AiJ = AiN
+      return AiJ
+    end if
+    V = AiJ & 15
+    return V
+  end if
+  if AiT > 0 then
+    dec AiT
+    V = AiJ & 15
+    return V
+  end if
+  Rand
+  R8 = Rs & 255
+  W16 = Rs >> 8
+  AiT = 7 + (W16 & 7)
+  G = Gap()
+  Ps = Fs[0]
+  AiN = 0
+  if Ps = SWind or Ps = SAct then
+    ' white is attacking: block (more often against a repeated move) or
+    ' step back
+    Mx = Fm[0]
+    if G <= ReachT[Mx] + 4 then
+      Ch = 90 + AiRep * 40
+      if Mx = 2 then
+        ' a block doesn't stop a sweep: punch into its wind-up, or back off
+        AiN = 8
+        if G <= ReachP and R8 < Ch then AiN = 20
+      else
+        if R8 < Ch then
+          AiN = 16
+        else
+          AiN = 8
+        end if
+      end if
+    end if
+  else
+    if Ps = SRec then
+      ' white is open: punish
+      Ch = 130 + AiRep * 25
+      if AiRep >= 2 and G > ReachP and G <= ReachL then
+        ' against a move repeated over and over: the long low kick into
+        ' its recovery, from outside the punch's reach
+        if R8 < 230 then AiN = 22
+      else
+      if G <= ReachP then
+        if R8 < Ch then AiN = 20
+      else
+        if G <= ReachL then
+          if R8 < 160 then AiN = 22
+        else
+          if R8 < 200 then AiN = 4
+        end if
+      end if
+      end if
+    else
+      if Ps = SBlock then
+        if R8 < 120 then AiN = 8
+      else
+        ' white is waiting. After the same move three times running it
+        ' expects it again: a punch into a sweep, a block for the others
+        Mx = AiLast
+        if AiRep >= 2 and Mx < 3 then
+          Ch = ReachT[Mx] + 3
+          ' a sweeper must come close: wait for him just outside
+          if Mx = 2 then Ch = 20
+        else
+          Ch = 0
+        end if
+        if G <= Ch then
+          if Mx = 2 then
+            if G <= ReachP then
+              if R8 < 245 then AiN = 20
+            else
+              AiT = 1
+            end if
+          else
+            if R8 < 245 then AiN = 16
+          end if
+        else
+        if G > ReachH then
+          if R8 < 200 then AiN = 4
+        else
+          if R8 < 80 then
+            Mx = R8 % 3
+            if G <= ReachT[Mx] then
+              AiN = 20
+              if Mx = 1 then AiN = 21
+              if Mx = 2 then AiN = 22
+            else
+              AiN = 4
+            end if
+          else
+            if R8 < 130 then AiN = 8
+          end if
+        end if
+        end if
+      end if
+    end if
+  end if
+  ' walking in: look again sooner
+  if AiN = 4 then AiT = 3 + (W16 & 1)
+  AiD = React
+  ' a move it has seen three times running it answers at once
+  if AiRep >= 2 then AiD = AiReact
+  V = AiJ & 15
+  return V
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+function PoseOf(u8 P) as u8
+  u8 M = 0
+  M = Fm[P]
+  select case Fs[P]
+  case SWind
+    V = WindPose[M]
+  case SAct
+    V = ActPose[M]
+  case SRec
+    V = PoStance
+    if M < 3 then
+      if Ft[P] > 6 then V = WindPose[M]
+    end if
+  case SBlock
+    V = PoBlock
+  case SHit
+    V = PoHit
+  case SWon
+    V = PoWin
+  case else
+    V = PoStance
+    if Mv[P] > 0 then
+      if (Fx[P] & 4) <> 0 then V = PoWalk
+    end if
+  end select
+  return V
+
+sub DrawFighters:
+  u8 Po = 0
+  u8 Base = 0
+  u8 Sp = 0
+  u8 Cl = 0
+  u8 Px = 0
+  u8 Pt = 0
+  for Pi = 0 to 1
+    Po = PoseOf(Pi)
+    Base = Po * 4
+    for Li = 0 to 3
+      K = Base + Li
+      if Pi = 0 then
+        Pt = PosePat0[K]
+        Px = Fx[0] + PoseX0[K]
+      else
+        Pt = PosePat1[K]
+        Px = Fx[1] + PoseX1[K]
+      end if
+      Cl = 9
+      if (Li & 1) = 0 then Cl = GiCol[Pi]
+      Sp = Pi * 4 + Li
+      Y = FY + LayerDY[Li]
+      set sprite Sp to Y,Px,Pt,Cl
+    next
+  next
+  update sprites
+  return
+end sub
+
+' row 1: WHITE 0000 ... BLACK 0000
+sub ShowScores:
+  print at 2,1, "WHITE"
+  NumU = Score[0]
+  print at 8,1, digits$(NumU, 4)
+  print at 20,1, "BLACK"
+  NumU = Score[1]
+  print at 26,1, digits$(NumU, 4)
+  ShowClock
+  return
+end sub
+
+sub DrawRing:
+  NewScreen
+  ' the crowd (decoration may run to the screen's edges)
+  for Ti = 2 to 11
+    for Ci = 0 to 31
+      K = (Ci + Ti * 2) % 3
+      put char TCrowd1 + K at Ci,Ti
+    next
+  next
+  ' corner posts and two ropes
+  put char TPtop at 2,8
+  put char TPtop at 29,8
+  for Ti = 9 to 11
+    put char TPost at 2,Ti
+    put char TPost at 29,Ti
+  next
+  fill TRope count 26 at 3,9
+  fill TRope count 26 at 3,11
+  ' the canvas
+  fill TCanvasf count 32 at 0,12
+  for Ti = 13 to 16
+    fill TCanvas count 32 at 0,Ti
+  next
+  fill TCanvasl count 32 at 0,17
+  put char TMark at 12,16
+  put char TMark at 19,16
+  ' the apron with the name
+  fill TApron count 32 at 0,18
+  fill TApronb count 32 at 0,19
+  print at 8,18, "RINGSIDE KARATE"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  for K = 0 to 7
+    set sprite K to 207,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the title: RINGSIDE KARATE, two fighters bowing in, the menu, the tune once
+
+sub TitlePage:
+  NewScreen
+  copy TitleMap count 224 to vram.name + 64
+  fill TCanvasf count 28 at 2,12
+  for Ti = 13 to 15
+    fill TCanvas count 28 at 2,Ti
+  next
+  fill TCanvasl count 28 at 2,16
+  Fx[0] = 84
+  Fx[1] = 124
+  for Pi = 0 to 1
+    Fs[Pi] = SIdle
+    Mv[Pi] = 0
+  next
+  Sel = 0
+  ShowMenu
+  print at 6,22, "COMPUTE!'S GAZETTE 1986"
+  TitleSprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 648
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPads
+  N = Pads & (Pads ^ OldPads)
+  if (N & 1) <> 0 then
+    if Sel > 0 then dec Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if (N & 2) <> 0 then
+    if Sel < 3 then inc Sel
+    play sound SndPick
+    ShowMenu
+  end if
+  if Sel = 2 then
+    ' the computer's level: a button or left/right changes it
+    if (N & 28) <> 0 then
+      Hard = Hard ^ 1
+      play sound SndPick
+      ShowMenu
+    end if
+    goto tp_loop
+  end if
+  if (N & 16) = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  NPl = 1
+  Cpu = 1
+  if Sel = 1 then
+    NPl = 2
+    Cpu = 0
+  end if
+  if Sel = 3 then CreditsPage
+  return
+end sub
+
+sub TitleSprites:
+  for Pi = 0 to 1
+    Fs[Pi] = SIdle
+  next
+  DrawTitleFighters
+  return
+end sub
+
+' the fighters stand on the title's strip of canvas (rows 12-15)
+sub DrawTitleFighters:
+  u8 Px = 0
+  u8 Pt = 0
+  u8 Cl = 0
+  for Li = 0 to 3
+    Y = 95 + LayerDY[Li]
+    Pt = PosePat0[Li]
+    Px = Fx[0] + PoseX0[Li]
+    Cl = 9
+    if (Li & 1) = 0 then Cl = 15
+    set sprite Li to Y,Px,Pt,Cl
+    Pt = PosePat1[Li]
+    Px = Fx[1] + PoseX1[Li]
+    if (Li & 1) = 0 then Cl = 1
+    set sprite Li + 4 to Y,Px,Pt,Cl
+  next
+  update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for Ti = 0 to 3
+    put char 32 at 7,Ti + 17
+  next
+  put char 62 at 7,Sel + 17
+  print at 9,17, "ONE PLAYER"
+  print at 9,18, "TWO PLAYERS"
+  if Hard = 0 then
+    print at 9,19, "COMPUTER: EASY  "
+  else
+    print at 9,19, "COMPUTER: NORMAL"
+  end if
+  print at 9,20, "CREDITS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F6
+  backdrop dark red
+  print at 8,2, "RINGSIDE KARATE"
+  print at 2,5, "BASED ON RINGSIDE KARATE"
+  print at 2,6, "BY ANTHONY BERTRAM,"
+  print at 2,7, "COMPUTE!'S GAZETTE"
+  print at 2,8, "OCTOBER 1986 (COMMODORE 64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,17, "MUSIC: BOW IN (ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+RkWhoosh:
+    db $00,$00,$65,$02,$00,$00,$85,$02,$00,$00,$B6,$02,$10
+RkThump:
+    db $00,$00,$06,$02,$00,$00,$17,$03,$00,$00,$47,$05,$00,$00,$87,$06,$10
+RkClack:
+    db $40,$47,$20,$02,$40,$6B,$50,$02,$50
+RkKiai:
+    db $40,$7F,$30,$03,$40,$71,$30,$03,$40,$8F,$50,$04,$50
+RkBell:
+    db $40,$55,$10,$06,$40,$55,$40,$06,$40,$55,$70,$06,$40,$55,$B0,$0C,$50
+RkPoint:
+    db $40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$0A,$50
+RkWin:
+    db $40,$D6,$20,$08,$40,$AA,$20,$08,$40,$8F,$20,$08,$40,$6B,$20,$08,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+RkPick:
+    db $40,$55,$40,$02,$50
+
+RkSoundTable:
+    dw RkTuneMel,$702B
+    dw RkTuneBass,$7035
+    dw RkWhoosh,$703F
+    dw RkThump,$703F
+    dw RkClack,$7049
+    dw RkKiai,$7049
+    dw RkBell,$7049
+    dw RkPoint,$7049
+    dw RkWin,$7049
+    dw RkPick,$7049
+; Bow In (original)
+; Tiny Sound, 9 frames per step
+RkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$50,$31,$88,$1C,$01,$01,$01,$1F,$01,$21,$01,$23,$01,$01,$01
+    db $26,$01,$23,$01,$21,$01,$01,$01,$1F,$01,$1C,$01,$1A,$01,$01,$01
+    db $1C,$01,$1F,$01,$21,$01,$01,$01,$01,$01,$01,$01,$23,$01,$01,$01
+    db $26,$01,$28,$01,$26,$01,$23,$01,$21,$01,$1F,$01,$21,$01,$23,$01
+    db $1F,$01,$1C,$01,$1C,$01,$01,$01,$01,$01,$00,$01
+    db $FF
+RkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$F1,$22,$10,$01,$10,$01,$17,$01,$10,$01,$10,$01,$10,$01
+    db $17,$01,$10,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$0B,$01,$0B,$01
+    db $12,$01,$0B,$01,$15,$01,$15,$01,$10,$01,$15,$01,$13,$01,$13,$01
+    db $1A,$01,$13,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$0B,$01,$0B,$01
+    db $12,$01,$0B,$01,$10,$01,$01,$01,$10,$01,$00,$01
+    db $FF
+}

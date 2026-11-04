@@ -1,0 +1,1039 @@
+cartridge "SCHNIP/COMPUTE! GAZETTE/1987"
+
+' SCHNIP
+' A ColecoVision game based on "Schnip", COMPUTE!'s Gazette disk, October
+' 1987 (Commodore 64 machine language at $C000, 2,758 bytes, started by
+' schnip.boot with SYS 49152; no author named on the disk). Made for Amy
+' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/schnip.dis; jsc64 shows the court but has no sprite
+' collisions, so hits were read from the code), the game is rebuilt for the
+' ColecoVision: a squash-style court with a brick front wall, two racket
+' players as smooth sprites (BLACK and WHITE, as on the C64), sound
+' effects and a title tune.
+'
+' From the original (orig/schnip.dis):
+' - two players (BLACK on controller 1, WHITE on controller 2) run
+'   anywhere on the court, eight directions; the ball flies diagonally,
+'   bounces off the front wall and both side walls and leaves the court
+'   at the back;
+' - touching the ball sends it back up toward the front wall, to the
+'   side of the player it hit, and gives it the other player's colour:
+'   the ball's colour shows who must play it next;
+' - when the ball leaves the court, the player whose colour it has loses
+'   the point (a ball nobody touched yet, yellow, is replayed);
+' - the point's winner serves (presses the button) and must reach his own
+'   serve: the new ball has the winner's colour; it starts on the far
+'   side and flies up and left; players start each point at the back;
+' - first to 21 wins ("BLACK WINS!" / "WHITE WINS!");
+' - every 5 points played the level rises and the ball speeds up; the
+'   original's speeds cycle: levels 2-4 faster and faster, 5-7 repeat
+'   them (kept).
+'
+' Liberties: the C64 asked each player's name from the keyboard: the
+' names are BLACK and WHITE; a hit sends the ball away from the player's
+' middle (steeper near the middle, flatter at the edges; the C64 decided
+' by a signed byte compare of the left edges, which sent balls hit by the
+' racket back across the body); each player touches the ball once per
+' 12 frames; a racket that has not moved for 2 s does not return the
+' ball (it drops off to the back and the still player loses the point);
+' the computer aims its returns flat and away from BLACK; a long rally speeds the ball up a little every 2 hits (so
+' every point ends); a serve not taken in 2.5 seconds goes by itself; the
+' players move faster than the ball (they matched it on the C64, at
+' speeds of 2-5 pixels a frame); the level shows on the court for two
+' seconds instead of waiting for F1; one player against a computer WHITE
+' that sees the ball 20 frames late (6 on a serve) and carries its motion on and keeps away when the ball is
+' BLACK's; the end message, then the title.
+'
+' Controls: stick moves; a button serves. Title: up/down choose a line,
+' left/right change it, a button starts.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TBrick = 128
+const TBrick2 = 129
+const TTin = 130
+const TWallL = 131
+const TWallR = 132
+const TFloor = 133
+const TFloor2 = 134
+const TLineH = 135
+const TLineV = 136
+const TLineX = 137
+const TBack = 138
+const TLS00 = 139
+const TLS01 = 140
+const TLS10 = 141
+const TLS11 = 142
+const TLC00 = 143
+const TLC01 = 144
+const TLC10 = 145
+const TLC11 = 146
+const TLH00 = 147
+const TLH01 = 148
+const TLH10 = 149
+const TLH11 = 150
+const TLN00 = 151
+const TLN01 = 152
+const TLN10 = 153
+const TLN11 = 154
+const TLI00 = 155
+const TLI01 = 156
+const TLI10 = 157
+const TLI11 = 158
+const TLP00 = 159
+const TLP01 = 160
+const TLP10 = 161
+const TLP11 = 162
+const SPl1 = 0
+const SPl2 = 4
+const SBall = 8
+const NTiles8 = 280
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndHit = 3
+const SndWall = 4
+const SndServe = 5
+const SndPoint = 6
+const SndLevel = 7
+const SndOver = 8
+const NSpr = 3
+const BxMin = 192
+const BxMax = 1792
+const ByMin = 256
+const ByOut = 1376
+const PxMin = 192
+const PxMax = 1728
+const PyMin = 288
+const PyMax = 1280
+const HitR = 12
+const CoolT = 12
+const ServeT = 150
+const CpuServe = 120
+const CpuLag = 20
+const PauseT = 60
+const LevelT = 120
+const WinPts = 21
+const NoSprite = 192
+const StillT = 120
+
+' ball speed (1/8 pixel a frame) of each speed step; the players' speed
+data BallSpd bytes 14,16,18,20
+data PlaySpd bytes 24,26,28,30
+' speed step of each level 1-7 (the original's cycle)
+data LvStep bytes 0,0,1,2,3,1,2,3
+' ball colour by who must play it: nobody (yellow), BLACK, WHITE
+data BallCol bytes 11,1,15
+
+data TilePat bytes
+  $00,$10,$10,$00,$41,$41,$00,$10
+  $10,$00,$41,$41,$00,$10,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$08
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$00,$00,$18,$18,$18
+  $00,$AA,$00,$AA,$00,$AA,$00,$AA
+  $00,$07,$07,$18,$18,$18,$18,$07
+  $00,$07,$07,$00,$00,$00,$00,$E0
+  $07,$00,$00,$00,$00,$E0,$E0,$00
+  $E0,$18,$18,$18,$18,$E0,$E0,$00
+  $00,$07,$07,$18,$18,$18,$18,$18
+  $00,$E0,$E0,$18,$18,$00,$00,$00
+  $18,$18,$18,$18,$18,$07,$07,$00
+  $00,$00,$00,$18,$18,$E0,$E0,$00
+  $00,$18,$18,$18,$18,$18,$18,$E0
+  $00,$18,$18,$18,$18,$18,$18,$07
+  $E0,$18,$18,$18,$18,$18,$18,$00
+  $07,$18,$18,$18,$18,$18,$18,$00
+  $00,$18,$18,$E1,$E1,$19,$19,$19
+  $00,$18,$18,$18,$18,$98,$98,$98
+  $19,$18,$18,$18,$18,$18,$18,$00
+  $98,$87,$87,$18,$18,$18,$18,$00
+  $00,$E0,$E0,$01,$01,$01,$01,$01
+  $00,$07,$07,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$E0,$E0,$00
+  $80,$80,$80,$80,$80,$07,$07,$00
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $00,$E0,$E0,$18,$18,$18,$18,$E0
+  $E0,$18,$18,$18,$18,$18,$18,$00
+  $E0,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $06,$6E,$6E,$06,$6E,$6E,$06,$6E
+  $6E,$06,$6E,$6E,$06,$6E,$6E,$06
+  $0F,$09,$08,$08,$06,$01,$02,$02
+  $FE,$FE,$F6,$FE,$FE,$FE,$FE,$FE
+  $FE,$FE,$F6,$FE,$FE,$FE,$FE,$FE
+  $02,$02,$02,$02,$02,$02,$02,$C2
+  $02,$02,$02,$C2,$02,$02,$02,$02
+  $02,$02,$02,$03,$03,$02,$02,$02
+  $32,$32,$32,$32,$32,$32,$32,$32
+  $32,$32,$32,$03,$03,$32,$32,$32
+  $0C,$2C,$0C,$C2,$0C,$2C,$0C,$C2
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$94
+  $04,$4B,$4B,$04,$04,$04,$04,$94
+  $94,$04,$04,$04,$04,$46,$46,$04
+  $94,$84,$84,$84,$84,$64,$64,$04
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$94
+  $04,$B4,$B4,$B4,$B4,$04,$04,$04
+  $94,$84,$84,$84,$84,$64,$64,$04
+  $04,$04,$04,$84,$84,$64,$64,$04
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$49
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$49
+  $49,$84,$84,$84,$84,$64,$64,$04
+  $49,$84,$84,$84,$84,$64,$64,$04
+  $04,$B4,$B4,$4B,$4B,$A4,$A4,$94
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$94
+  $94,$84,$84,$84,$84,$64,$64,$04
+  $94,$48,$48,$84,$84,$64,$64,$04
+  $04,$4B,$4B,$B4,$B4,$A4,$A4,$94
+  $04,$4B,$4B,$B4,$B4,$A4,$A4,$94
+  $94,$84,$84,$84,$84,$46,$46,$04
+  $94,$84,$84,$84,$84,$46,$46,$04
+  $04,$4B,$4B,$B4,$B4,$A4,$A4,$49
+  $04,$B4,$B4,$B4,$B4,$A4,$A4,$94
+  $49,$84,$84,$84,$84,$64,$64,$04
+  $94,$04,$04,$04,$04,$04,$04,$04
+end data
+data SpritePat bytes
+  $0C,$1E,$1E,$0C,$3F,$7F,$DE,$9E,$1E,$1E,$12,$33,$21,$21,$61,$00
+  $00,$0E,$11,$11,$11,$8E,$C8,$78,$00,$00,$00,$00,$00,$00,$80,$00
+  $0C,$1E,$1E,$0C,$3F,$7F,$DE,$9E,$1E,$1E,$12,$13,$11,$31,$00,$00
+  $00,$0E,$11,$11,$11,$8E,$C8,$78,$00,$00,$00,$00,$00,$00,$C0,$00
+  $70,$F8,$F8,$F8,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data CourtMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$20,$20
+  $20,$20,$83,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$84,$20,$20
+  $20,$20,$83,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$84,$20,$20
+  $20,$20,$83,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$84,$20,$20
+  $20,$20,$83,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$84,$20,$20
+  $20,$20,$83,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$84,$20,$20
+  $20,$20,$83,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$84,$20,$20
+  $20,$20,$83,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$84,$20,$20
+  $20,$20,$83,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$84,$20,$20
+  $20,$20,$83,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$84,$20,$20
+  $20,$20,$83,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$84,$20,$20
+  $20,$20,$83,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$84,$20,$20
+  $20,$20,$83,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$89,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$84,$20,$20
+  $20,$20,$83,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$88,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$84,$20,$20
+  $20,$20,$83,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$88,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$84,$20,$20
+  $20,$20,$83,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$88,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$84,$20,$20
+  $20,$20,$83,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$88,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$84,$20,$20
+  $20,$20,$83,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$88,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$84,$20,$20
+  $20,$20,$83,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$88,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$84,$20,$20
+  $20,$20,$83,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$88,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$85,$86,$85,$84,$20,$20
+  $20,$20,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8C,$20,$8F,$90,$20,$93,$94,$20,$97,$98,$20,$9B,$9C,$20,$9F,$A0,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8D,$8E,$20,$91,$92,$20,$95,$96,$20,$99,$9A,$20,$9D,$9E,$20,$A1,$A2,$20,$20,$20,$20,$20,$20,$20
+end data
+
+record Plr:
+  u16 X
+  u16 Y
+  u8 Cd
+  u8 An
+  u8 Sc
+  u8 Latch
+  u8 St
+end record
+Plr Pl[2]
+
+u16 BX = 0
+u16 BY = 0
+i16 VX = 0
+i16 VY = 0
+u8 Must = 0
+u8 Srv = 1
+u8 Phase = 0
+u8 Timer = 0
+u8 Level = 1
+u8 Pts = 0
+u8 Boost = 0
+u8 Hits = 0
+u8 Spd = 10
+u8 PSpd = 16
+u8 Over = 0
+u8 Winner = 0
+u8 NextLv = 0
+u8 Players = 1
+u8 InPlay = 0
+u8 HbX[32]
+u8 HbY[32]
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 NumU = 0
+' what the HUD shows
+u8 ShSc0 = 255
+u8 ShSc1 = 255
+u8 ShLv = 255
+' input
+u8 J0 = 0
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+' loop counters
+u8 Pq = 0
+u8 Dr = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+
+  tile screen
+  set sound table SnSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  StepFrame
+  DrawAll
+  if Over = 0 then goto play_loop
+
+  InPlay = 0
+  EndMessage
+  mute all
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------- rules
+sub StepFrame:
+  K = Tick & 31
+  HbX[K] = BX >> 3
+  HbY[K] = BY >> 3
+  if Players = 1 then J1 = CpuStick()
+  select case Phase
+  case 0
+    ServeWait
+  case 1
+    MovePlayer(0, J0)
+    MovePlayer(1, J1)
+    MoveBall
+  case 2
+    dec Timer
+    if Timer = 0 then AfterPoint
+  case 3
+    dec Timer
+    if Timer = 0 then
+      RedrawRow
+      NewPoint
+    end if
+  end select
+  return
+end sub
+
+' the button, as a press (down now, up before)
+function Pressed(u8 P, u8 Jv) as u8
+  u8 R = 0
+  K = Jv & 16
+  if K > 0 then
+    if Pl[P].Latch = 0 then R = 1
+    Pl[P].Latch = 1
+  else
+    Pl[P].Latch = 0
+  end if
+  return R
+
+sub ServeWait:
+  u8 A = 0
+  u8 B = 0
+  A = Pressed(0, J0)
+  B = Pressed(1, J1)
+  dec Timer
+  if Srv = 0 and A = 1 then Timer = 0
+  if Srv = 1 and B = 1 then Timer = 0
+  if Timer = 0 then
+    Phase = 1
+    VX = 0 - Spd
+    VY = 0 - Spd
+    play sound SndServe
+  end if
+  return
+end sub
+
+sub MovePlayer(u8 P, u8 Jv):
+  u16 X = 0
+  u16 Y = 0
+  u8 Mv = 0
+  K = Pressed(P, Jv)
+  X = Pl[P].X
+  Y = Pl[P].Y
+  if Pl[P].Cd > 0 then Pl[P].Cd = Pl[P].Cd - 1
+  V = Jv & 1
+  if V > 0 then
+    if Y >= PyMin + PSpd then
+      Y = Y - PSpd
+    else
+      Y = PyMin
+    end if
+    Mv = 1
+  end if
+  V = Jv & 2
+  if V > 0 then
+    Y = Y + PSpd
+    if Y > PyMax then Y = PyMax
+    Mv = 1
+  end if
+  V = Jv & 4
+  if V > 0 then
+    if X >= PxMin + PSpd then
+      X = X - PSpd
+    else
+      X = PxMin
+    end if
+    Mv = 1
+  end if
+  V = Jv & 8
+  if V > 0 then
+    X = X + PSpd
+    if X > PxMax then X = PxMax
+    Mv = 1
+  end if
+  Pl[P].X = X
+  Pl[P].Y = Y
+  if Mv = 1 then
+    Pl[P].An = Pl[P].An + 1
+    Pl[P].St = 0
+  else
+    if Pl[P].St < 255 then Pl[P].St = Pl[P].St + 1
+  end if
+  return
+end sub
+
+sub MoveBall:
+  BX = BX + VX
+  if BX < BxMin then
+    BX = 384 - BX
+    VX = 0 - VX
+    play sound SndWall
+  end if
+  if BX > BxMax then
+    BX = 3584 - BX
+    VX = 0 - VX
+    play sound SndWall
+  end if
+  BY = BY + VY
+  if BY < ByMin then
+    BY = 512 - BY
+    VY = 0 - VY
+    play sound SndWall
+  end if
+  if BY >= ByOut then
+    BallOut
+  else
+    for Pq = 0 to 1
+      CheckHit(Pq)
+    next
+  end if
+  return
+end sub
+
+function AbsI(i16 D) as i16
+  i16 R = 0
+  R = D
+  if R < 0 then R = 0 - R
+  return R
+
+sub CheckHit(u8 P):
+  i16 Dx = 0
+  i16 Dy = 0
+  i16 Sp = 0
+  i16 Half = 0
+  u16 Pc = 0
+  u16 Bc = 0
+  if Pl[P].Cd > 0 then return
+  Bc = BX >> 3
+  Pc = Pl[P].X >> 3
+  Dx = Bc + 2
+  Dx = Dx - Pc
+  Dx = Dx - 8
+  Bc = BY >> 3
+  Pc = Pl[P].Y >> 3
+  Dy = Bc + 2
+  Dy = Dy - Pc
+  Dy = Dy - 8
+  if AbsI(Dx) > HitR then return
+  if AbsI(Dy) > HitR then return
+  Pl[P].Cd = CoolT
+  if Pl[P].St >= StillT then
+    ' a racket held still for 2 s: the ball drops off it to the back
+    Must = P + 1
+    VY = Spd
+    VX = 0
+    play sound SndWall
+    return
+  end if
+  Must = 2 - P
+  inc Hits
+  K = Hits % 2
+  if K = 0 and Boost < 30 then
+    inc Boost
+    Spd = Spd + 1
+  end if
+  Sp = Spd
+  Half = Sp >> 1
+  VY = 0 - Sp
+  if Dx <= -5 then
+    VX = 0 - Sp - Half
+  elseif Dx < 0 then
+    VX = 0 - Half
+  elseif Dx < 5 then
+    VX = Half
+  else
+    VX = Sp + Half
+  end if
+  if P = 1 and Players = 1 then CpuAim
+  play sound SndHit
+  return
+end sub
+
+' the computer returns the ball steeply away from BLACK
+sub CpuAim:
+  u16 Wv = 0
+  i16 Sp = 0
+  Sp = Spd
+  Wv = Spd >> 1
+  Sp = Sp + Wv
+  Wv = Pl[0].X >> 3
+  if Wv < 120 then
+    VX = Sp
+  else
+    VX = 0 - Sp
+  end if
+  return
+end sub
+
+sub BallOut:
+  Phase = 2
+  Timer = PauseT
+  select case Must
+  case 0
+    Srv = 1
+  case 1
+    Score(1)
+  case 2
+    Score(0)
+  end select
+  return
+end sub
+
+' P wins the point: he serves the next ball and must reach it
+sub Score(u8 P):
+  Pl[P].Sc = Pl[P].Sc + 1
+  inc Pts
+  Srv = P
+  Must = P + 1
+  play sound SndPoint
+  if Pl[P].Sc = WinPts then
+    Over = 1
+    Winner = P + 1
+  end if
+  K = Pts % 5
+  if K = 0 and Level < 7 then
+    inc Level
+    NextLv = 1
+  end if
+  return
+end sub
+
+sub AfterPoint:
+  if NextLv = 1 then
+    NextLv = 0
+    Phase = 3
+    Timer = LevelT
+    NumU = Level
+    print at 10,9, " LEVEL "
+    print at 17,9, digits$(NumU, 1)
+    print at 18,9, " "
+    play sound SndLevel
+  else
+    NewPoint
+  end if
+  return
+end sub
+
+sub RedrawRow:
+  copy CourtMap + 288 count 32 to vram.name + 288
+  return
+end sub
+
+sub NewPoint:
+  u8 St = 0
+  St = LvStep[Level]
+  Spd = BallSpd[St]
+  PSpd = PlaySpd[St]
+  Boost = 0
+  Hits = 0
+  Pl[0].X = 568
+  Pl[0].Y = 1200
+  Pl[1].X = 1256
+  Pl[1].Y = 1200
+  for Pq = 0 to 1
+    Pl[Pq].Cd = 0
+  next
+  ' a ball for BLACK starts on the right, any other on the left
+  if Must = 1 then
+    BX = 1264
+  else
+    BX = 720
+  end if
+  BY = 704
+  VX = 0
+  VY = 0
+  Phase = 0
+  Timer = ServeT
+  return
+end sub
+
+' ------------------------------------------------------------ computer
+' WHITE's stick: from the ball as seen CpuLag frames ago
+function CpuStick() as u8
+  u8 R = 0
+  u8 Ix = 0
+  u8 Ex = 0
+  u8 Ey = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 Px = 0
+  u8 Py = 0
+  u16 Wv = 0
+  u8 Iy = 0
+  u8 Lg = 0
+  u8 Ma = 0
+  u8 Mb = 0
+  i16 W3 = 0
+  i16 Gx = 0
+  i16 Gy = 0
+  if Phase = 0 then
+    if Srv = 1 and Timer < CpuServe then R = 16
+    return R
+  end if
+  if Phase <> 1 then return R
+  Lg = CpuLag
+  Ma = 4
+  Mb = 3
+  if Hits = 0 then
+    Lg = 6
+    Ma = 2
+    Mb = 1
+  end if
+  Ix = Tick - Lg
+  Ix = Ix & 31
+  Ex = HbX[Ix]
+  Ey = HbY[Ix]
+  Iy = Ix - 5
+  Iy = Iy & 31
+  ' where the ball will be now: the seen motion carried on (clamped)
+  Gx = Ex
+  Gx = Gx * Ma
+  W3 = HbX[Iy]
+  W3 = W3 * Mb
+  Gx = Gx - W3
+  ' off a side wall, as it will bounce
+  if Gx < 24 then Gx = 48 - Gx
+  if Gx > 224 then Gx = 448 - Gx
+  if Gx < 24 then Gx = 24
+  if Gx > 224 then Gx = 224
+  Ex = Gx
+  Gy = Ey
+  Gy = Gy * Ma
+  W3 = HbY[Iy]
+  W3 = W3 * Mb
+  Gy = Gy - W3
+  if Gy < 32 then Gy = 32
+  if Gy > 172 then Gy = 172
+  Ey = Gy
+  if Must = 1 then
+    ' BLACK's ball: keep out of its way
+    Tx = 112
+    if Ex >= 80 and Ex < 120 then Tx = Ex + 40
+    if Ex >= 120 and Ex < 160 then Tx = Ex - 40
+    Ty = 140
+  else
+    Tx = 24
+    if Ex > 30 then Tx = Ex - 6
+    Ty = 64
+    if Ey > 68 then Ty = Ey - 4
+    if Ty > 156 then Ty = 156
+  end if
+  Wv = Pl[1].X >> 3
+  Px = Wv
+  Wv = Pl[1].Y >> 3
+  Py = Wv
+  if Px + 3 < Tx then R = R | 8
+  if Px > Tx + 3 then R = R | 4
+  if Py + 3 < Ty then R = R | 2
+  if Py > Ty + 3 then R = R | 1
+  return R
+
+' ------------------------------------------------------------- game
+sub NewGame:
+  NewScreen
+  backdrop black
+  copy CourtMap count 768 to vram.name
+  print at 2,1, "BLACK"
+  print at 22,1, "WHITE"
+  print at 13,1, "LEVEL"
+  for Pq = 0 to 1
+    Pl[Pq].Sc = 0
+    Pl[Pq].Latch = 1
+    Pl[Pq].An = 0
+    Pl[Pq].St = 0
+  next
+  Level = 1
+  Pts = 0
+  Over = 0
+  Winner = 0
+  NextLv = 0
+  Must = 0
+  Srv = 1
+  ShSc0 = 255
+  ShSc1 = 255
+  ShLv = 255
+  NewPoint
+  DrawAll
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  InPlay = 1
+  return
+end sub
+
+' ------------------------------------------------------------- drawing
+sub DrawAll:
+  u8 Bx8 = 0
+  u8 By8 = 0
+  u8 Cl = 0
+  u16 Wv = 0
+  DrawHud
+  if Phase = 2 or Phase = 3 then
+    set sprite 0 to NoSprite,0,SBall,0
+  else
+    Wv = BX >> 3
+    Bx8 = Wv
+    Wv = BY >> 3
+    By8 = Wv - 1
+    Cl = BallCol[Must]
+    set sprite 0 to By8,Bx8,SBall,Cl
+  end if
+  for Dr = 0 to 1
+    DrawPlayer(Dr)
+  next
+  update sprites
+  return
+end sub
+
+sub DrawPlayer(u8 P):
+  u8 Px = 0
+  u8 Py = 0
+  u8 Pt = 0
+  u8 Cl = 1
+  u16 Wv = 0
+  Wv = Pl[P].X >> 3
+  Px = Wv
+  Wv = Pl[P].Y >> 3
+  Py = Wv - 1
+  Pt = SPl1
+  K = Pl[P].An & 8
+  if K > 0 then Pt = SPl2
+  if P = 1 then Cl = 15
+  set sprite P + 1 to Py,Px,Pt,Cl
+  return
+end sub
+
+sub DrawHud:
+  if Pl[0].Sc <> ShSc0 then
+    ShSc0 = Pl[0].Sc
+    NumU = ShSc0
+    print at 8,1, digits$(NumU, 2)
+  end if
+  if Pl[1].Sc <> ShSc1 then
+    ShSc1 = Pl[1].Sc
+    NumU = ShSc1
+    print at 28,1, digits$(NumU, 2)
+  end if
+  if Level <> ShLv then
+    ShLv = Level
+    NumU = Level
+    print at 19,1, digits$(NumU, 1)
+  end if
+  return
+end sub
+
+sub EndMessage:
+  DrawAll
+  if Winner = 1 then
+    print at 9,9, " BLACK WINS! "
+  else
+    print at 9,9, " WHITE WINS! "
+  end if
+  return
+end sub
+
+' --------------------------------------------------------- frame, input
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+function PadBits(u8 N) as u8
+  u8 B = 0
+  if joypad(N).up then B = B | 1
+  if joypad(N).down then B = B | 2
+  if joypad(N).left then B = B | 4
+  if joypad(N).right then B = B | 8
+  if joypad(N).fire then B = B | 16
+  return B
+
+sub ReadPad:
+  J0 = PadBits(1)
+  J1 = 0
+  if Players = 2 then J1 = PadBits(2)
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 2
+    set sprite J to NoSprite,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ------------------------------------------------------- title, credits
+sub TitlePage:
+  NewScreen
+  backdrop dark blue
+  copy TitleMap count 64 to vram.name + 96
+  print at 7,7, "COMPUTE!'S GAZETTE"
+  print at 10,8, "OCTOBER 1987"
+  Menu = 0
+  ShowMenu
+  set sprite 1 to 143,40,SPl1,1
+  set sprite 2 to 143,200,SPl2,15
+  set sprite 0 to 103,124,SBall,11
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  J0 = PadBits(1)
+  J1 = PadBits(2)
+  K = J0 | J1
+  Btn = K & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  V = K & 15
+  if V > 0 then
+    if WasStick = 0 then MenuMove(V)
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub MenuMove(u8 S):
+  select case S
+  case 1
+    if Menu > 0 then dec Menu
+  case 2
+    if Menu < 2 then inc Menu
+  case 4, 8
+    if Menu = 0 then Players = 3 - Players
+  end select
+  ShowMenu
+  return
+end sub
+
+sub ShowMenu:
+  for J = 12 to 16 step 2
+    put char 32 at 9,J
+  next
+  if Players = 1 then
+    print at 11,12, "1 PLAYER "
+  else
+    print at 11,12, "2 PLAYERS"
+  end if
+  print at 11,14, "START"
+  print at 11,16, "CREDITS"
+  J = Menu * 2 + 12
+  put char 62 at 9,J
+  print at 4,20, "FIRST TO 21 POINTS WINS"
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 12,2, "SCHNIP"
+  print at 2,4, "BASED ON SCHNIP, COMPUTE!'S"
+  print at 2,5, "GAZETTE DISK, OCTOBER 1987"
+  print at 2,6, "(COMMODORE 64 MACHINE"
+  print at 2,7, "LANGUAGE; NO AUTHOR NAMED"
+  print at 2,8, "ON THE DISK)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026. MUSIC: OFF THE FRONT"
+  print at 2,15, "WALL (ORIGINAL)."
+  print at 2,17, "TOUCH THE BALL TO SEND IT"
+  print at 2,18, "UP. ITS COLOUR SHOWS WHO"
+  print at 2,19, "MUST PLAY IT; IF IT GETS"
+  print at 2,20, "PAST, THAT PLAYER LOSES."
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+SnHit:
+    db $40,$40,$00,$01,$40,$55,$10,$02,$40,$66,$40,$02,$50
+SnWall:
+    db $00,$00,$26,$01,$00,$00,$66,$02,$10
+SnServe:
+    db $40,$7F,$10,$02,$40,$5F,$20,$03,$50
+SnPoint:
+    db $40,$AA,$10,$06,$40,$D6,$20,$06,$40,$1D,$31,$0E,$50
+SnLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$20,$10,$50
+SnOver:
+    db $40,$8F,$10,$0A,$40,$AA,$10,$0A,$40,$8F,$10,$0A,$40,$6B,$10,$0A,$40,$55,$20,$1E,$50
+
+SnSoundTable:
+    dw SnTuneMel,$702B
+    dw SnTuneBass,$7035
+    dw SnHit,$7049
+    dw SnWall,$703F
+    dw SnServe,$7049
+    dw SnPoint,$7049
+    dw SnLevel,$7049
+    dw SnOver,$7049
+; Off the Front Wall (original)
+; Tiny Sound, 8 frames per step
+SnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$25,$28,$01,$25,$23,$01,$21,$01,$1E,$01
+    db $1C,$01,$01,$01,$1E,$01,$21,$26,$01,$25,$23,$01,$25,$01,$28,$01
+    db $23,$01,$01,$01,$21,$01,$25,$28,$01,$2A,$28,$01,$26,$01,$23,$01
+    db $20,$01,$23,$01,$21,$01,$1C,$01,$19,$01,$1A,$1C,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$15,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$17,$01
+    db $10,$01,$14,$01,$09,$01,$10,$01,$12,$01,$19,$01,$0E,$01,$15,$01
+    db $10,$01,$17,$01,$15,$01,$10,$01,$12,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$00,$01
+    db $FF
+}

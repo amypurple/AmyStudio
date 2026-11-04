@@ -36,6 +36,12 @@ u16 SelectValue = 250
 u16 At = 5
 u16 WideArrayResult = 0
 u16 WideFieldResult = 0
+u8 Big[40]
+u8 BigConst[40]
+u8 Buf[4]
+u16 RamOffset = 20
+u8 RamOffsetResult = 0
+u8 RamConstOffsetResult = 0
 record Mine:
   u8 X
   u8 Y
@@ -91,8 +97,26 @@ sub start:
   WideFieldResult = Twice16(Mines[MineIndex].Y)
   set sprite 2 to Mines[MineIndex].Y,Mines[MineIndex].X,MinePattern,MineColor
   update sprites
+  Buf[0] = 7
+  Buf[1] = 8
+  Buf[2] = 9
+  Buf[3] = 10
+  copy Buf count 4 to Big + RamOffset
+  copy Buf count 4 to BigConst + 12
+  RamOffsetResult = Big[20]
+  RamConstOffsetResult = BigConst[12]
   Done = 1
   loop forever
+end sub
+`);
+
+const invalidParamSource = join(temp, "claude-invalid-param.alexis");
+writeFileSync(invalidParamSource, `project "INVALID PARAMETER"
+sub start:
+  loop forever
+end sub
+sub SayIt(Msg as string):
+  return
 end sub
 `);
 
@@ -140,9 +164,21 @@ function compile(source, profile, stem) {
   return { asm: readFileSync(asmPath, "utf8"), rom: readFileSync(romPath) };
 }
 
+function assertInvalidParameterRejected(profile) {
+  const result = spawnSync(process.execPath, [amyc, invalidParamSource, "--rom", join(temp, `invalid-param-${profile}.rom`), "--opt", profile], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024
+  });
+  assert.notEqual(result.status, 0, `${profile}: invalid parameter declaration compiled successfully`);
+  const output = `${result.error?.stack || result.error || ""}${result.stdout || ""}${result.stderr || ""}`;
+  assert.match(output, /Parameter 'Msg as string'.*Type Name/i, `${profile}: unclear invalid parameter diagnostic: ${output}`);
+}
+
 try {
   const bios = readFileSync(process.env.AMY_COLECO_BIOS || resolve(root, "studio/bios/colecovision.rom"));
   for (const profile of profiles) {
+    assertInvalidParameterRejected(profile);
     compile(aliasSource, profile, "alias");
     const built = compile(runtimeSource, profile, "runtime");
     const core = await GearcolecoTestCore.create({ seed: 0x434C4155 });
@@ -172,6 +208,8 @@ try {
       assert.equal(wideField[0] | (wideField[1] << 8), 140, `${profile}: byte record field widened for u16 parameter`);
       assert.deepEqual([...core.readVram(0x1882, 3)], [32, 32, 53], `${profile}: value-first print with At variable`);
       assert.deepEqual([...core.readVram(0x1B08, 4)], [70, 220, 16, 8], `${profile}: record-field sprite inputs`);
+      assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_RamOffsetResult"), 1)[0], 7, `${profile}: dynamic RAM destination offset`);
+      assert.equal(core.readRam(addressOf(built.asm, "AMY_UVAR_RamConstOffsetResult"), 1)[0], 7, `${profile}: constant RAM destination offset`);
     } finally {
       core.destroy();
     }

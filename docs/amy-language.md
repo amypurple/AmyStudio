@@ -2204,6 +2204,7 @@ copy Charset to vram.pattern
 copy PixelBitmaps + StarOffset count 8 to vram.pattern + 128
 copy Source count 32 to vram $0800
 copy Source count 32 to vram $1C00 + RowOffset
+copy RowBuffer count RowSize to Board + DestinationOffset
 copy vram.name count 64 to Buffer
 copy vram.name to Buffer count 64
 merge PatternBytes count 8 to vram.pattern mask $F0 xor $0F
@@ -2230,6 +2231,8 @@ copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 Source and destination address expressions use 16-bit arithmetic. For example,
 `copy Big + Row * 32 count 32 to vram.name + Row * 32` reaches rows beyond 7
 without wrapping the computed offset at 255; no temporary `u16` is required.
+The same rule applies to declared RAM arrays: `copy RowBuffer count RowSize to
+Board + DestinationOffset` adds the byte offset to `Board` with 16-bit arithmetic.
 
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 

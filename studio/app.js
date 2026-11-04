@@ -49,7 +49,7 @@ import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHe
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
 import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260714-fixed-const-compare";
 import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20261103-claude-open6";
-import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
+import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20261103-param-diagnostic";
 import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js?v=20260803-120-colors";
 import { handleForStatement } from "./core/compiler/forStatementHelpers.js";
 import { handleIfStatement } from "./core/compiler/ifStatementHelpers.js";
@@ -74,7 +74,7 @@ import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
 import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js?v=20261103-claude-open6";
 import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20261007-adam-dual-reset1";
-import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20261103-claude-open6";
+import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20261103-ram-copy-offset";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js?v=20260802-keypad-blank";
 import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
 import {
