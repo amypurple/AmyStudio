@@ -11,9 +11,17 @@ AMY_CLEAR_NAME_TABLE:
     ld a,$20
     jp FILL_VRAM
 
-; Load the Coleco BIOS default ASCII font into VRAM.
+; Load the complete Coleco BIOS default ASCII font into VRAM.
+; Stock OS7 stops at $7C even though glyphs $7D-$7F follow in ROM.
 AMY_LOAD_DEFAULT_ASCII:
-    jp LOAD_ASCII
+    call AMY_LOAD_ASCII_PRESERVE_INDEX
+    ld hl,($73F8)
+    ld de,$03E8
+    add hl,de
+    ex de,hl
+    ld hl,$188B
+    ld bc,$0118
+    jp WRITE_VRAM
 
 ; Calculate a NAME-table VRAM address from x/y coordinates.
 ; Matches getput11/gpcaloff.s:

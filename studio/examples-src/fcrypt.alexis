@@ -2,9 +2,9 @@ cartridge "THE FORBIDDEN CRYPT/COMPUTE!'S GAZETTE/1985"
 
 ' THE FORBIDDEN CRYPT
 ' A ColecoVision game based on "The Forbidden Crypt", COMPUTE!'s Gazette
-' February 1985 (Commodore 64 BASIC with machine language in DATA lines,
-' disk file "crypt/64"; a VIC-20 8K version "crypt/vic" with "a" and "b";
-' no author named on the disk). Made for Amy Studio by Claude (an AI made
+' February 1985 pp. 52-53, by Ted Reynolds (Commodore 64 BASIC with machine
+' language in DATA lines, disk file "crypt/64"; a VIC-20 8K version
+' "crypt/vic" with "a" and "b"). Made for Amy Studio by Claude (an AI made
 ' by Anthropic), 2026, in Amy by Amy Bienvenu.
 '
 ' Not a line-by-line port: the rules are the original's (read from the C64
@@ -15,7 +15,7 @@ cartridge "THE FORBIDDEN CRYPT/COMPUTE!'S GAZETTE/1985"
 ' The game (as the C64 code plays it): the crypt is a hall with four
 ' tomb chambers, each with a door on its left and right side. Walk the
 ' corridors and step into a door to enter its chamber. Inside wait four
-' creatures (snakes, spiders, idols or bats: one kind per chamber) and
+' creatures (snakes, spiders, ghouls or bats: one kind per chamber) and
 ' the chamber's treasure (chest, chalice, shield, urn). The creatures
 ' close in on the hero, one pixel at a time on both axes, and bump each
 ' other and the treasure. The button throws a magic bolt the way the hero
@@ -27,14 +27,18 @@ cartridge "THE FORBIDDEN CRYPT/COMPUTE!'S GAZETTE/1985"
 ' treasure taken on this visit (minus 300), and he is put back in the
 ' corridors. A robbed chamber's doors are barred. When all four treasures are
 ' out the next level starts; every fourth level gives a life and makes
-' everything faster. 5 lives; no lives left ends the game.
+' everything faster. As the article says for the 64, the guardians move
+' faster after a companion is eliminated. Liberty: +25% a kill; the C64
+' moves one live creature per pass in turn (x4 / creatures left, the last
+' one as fast as the hero), which left the bolts useless. 5 lives; no lives left ends the game.
 '
 ' Speeds: the C64 machine code moves the hero one pixel and one of the
 ' four creatures one pixel per pass of its loop, the bolt two (about 95
 ' passes a second at level 1 by its delay loop; creatures timed in jsc64
 ' at about 20 pixels a second). The port's chamber is 208 pixels wide (the
 ' C64's 304), so: hero 1 px a frame, each creature 0.25, the bolt 2; each
-' fourth level all of them about 15% faster (the C64 shortened its delay
+' fourth level all of them about 15% faster; each kill adds 25% to the
+' others (0.31, 0.38, 0.44 px at level 1), always slower than the hero (the C64 shortened its delay
 ' loop), up to level 16.
 '
 ' Liberties: the corridors are walked with a small sprite gliding from
@@ -109,8 +113,8 @@ const SSnake = 16
 const SSnake2 = 20
 const SSpider = 24
 const SSpider2 = 28
-const SIdol = 32
-const SIdol2 = 36
+const SGhoul = 32
+const SGhoul2 = 36
 const SBat = 40
 const SBat2 = 44
 const SChest = 48
@@ -154,8 +158,10 @@ const MaxShots = 3
 ' per speed tier (every fourth level), in 1/64 pixel a frame
 data HeroSpd bytes 64,74,85,98,113
 data MonSpd bytes 16,18,21,24,28
+' the same plus 25% per guardian killed (guardians left 1..4), per tier
+data MonSpdN bytes 28,24,20,16, 31,27,22,18, 36,31,26,21, 42,36,30,24, 49,42,35,28
 ' per chamber: creature pattern, colour, treasure pattern, colour
-data MonPat bytes SSnake, SSpider, SIdol, SBat
+data MonPat bytes SSnake, SSpider, SGhoul, SBat
 data MonCol bytes 10, 9, 5, 7
 data TrePat bytes SChest, SChalice, SShield, SUrn
 data TreCol bytes 5, 11, 3, 8
@@ -271,10 +277,10 @@ data SpritePat bytes
   $00,$04,$8A,$D2,$E1,$E8,$F4,$EA,$A9,$C8,$84,$02,$02,$00,$00,$00
   $00,$00,$20,$51,$4B,$8B,$37,$4B,$95,$13,$11,$20,$20,$00,$00,$00
   $00,$00,$C2,$E5,$F2,$F4,$F8,$F6,$A9,$C8,$88,$04,$04,$00,$00,$00
-  $01,$03,$04,$05,$03,$0F,$1D,$3B,$27,$0F,$0D,$0F,$1F,$18,$38,$00
-  $80,$C0,$20,$A0,$C0,$F0,$B8,$DC,$E4,$F0,$B0,$F0,$F8,$18,$1C,$00
-  $01,$03,$04,$05,$03,$0F,$1D,$3B,$27,$0F,$0D,$0F,$0F,$0C,$0E,$00
-  $80,$C0,$20,$A0,$C0,$F0,$B8,$DC,$E4,$F0,$B0,$F0,$F0,$30,$38,$00
+  $01,$03,$07,$0D,$0A,$0C,$07,$0F,$1F,$2F,$2F,$0F,$1F,$1F,$3F,$2A
+  $80,$C0,$E0,$B0,$50,$30,$E0,$F0,$F8,$F4,$F4,$F0,$F8,$F8,$FC,$54
+  $01,$03,$07,$0D,$0A,$0C,$07,$0F,$3F,$4F,$0F,$0F,$1F,$1F,$3F,$15
+  $80,$C0,$E0,$B0,$50,$30,$E0,$F0,$FC,$F2,$F0,$F0,$F8,$F8,$FC,$A8
   $00,$00,$80,$C4,$E7,$FF,$DB,$8A,$06,$03,$01,$00,$00,$00,$00,$00
   $00,$00,$02,$26,$EE,$FA,$DC,$52,$60,$C0,$80,$00,$00,$00,$00,$00
   $00,$00,$00,$04,$0F,$1F,$3D,$65,$C6,$83,$01,$00,$00,$00,$00,$00
@@ -365,6 +371,7 @@ u8 Treas = 0
 u8 Levels = 0
 ' options
 u8 Menu = 0
+u16 HowT = 0
 u16 TzLeft = 0
 u8 TzOn = 0
 ' input: 1 up, 2 down, 4 left, 8 right, 16 button
@@ -399,7 +406,7 @@ u8 V = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu >= 1 then goto title
 
   NewGame
 
@@ -752,7 +759,14 @@ end sub
 ' the creatures: all step together, one pixel on each axis towards the hero
 sub MonStep:
   u8 Sp = 0
-  Sp = MonSpd[Tier]
+  u8 N = 0
+  ' fewer guardians left: each moves faster (+25% a kill)
+  for Li = 0 to 3
+    N = N + Mon[Li].Live
+  next
+  if N = 0 then return
+  K = Tier * 4 + N - 1
+  Sp = MonSpdN[K]
   MAcc = MAcc + Sp
   while MAcc >= 64
     MAcc = MAcc - 64
@@ -1255,12 +1269,14 @@ sub TitlePage:
   next
   print at 7,13, "COMPUTE!'S GAZETTE"
   print at 10,14, "FEBRUARY 1985"
+  print at 8,15, "BY TED REYNOLDS"
   print at 11,16, "PLAY"
-  print at 11,17, "CREDITS"
-  print at 3,19, "TAKE THE FOUR TREASURES,"
-  print at 3,20, "BOLT THE CREATURES"
+  print at 11,17, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  print at 3,20, "TAKE THE FOUR TREASURES,"
+  print at 3,21, "BOLT THE CREATURES"
   print at 3,22, "STICK: CHOOSE  BUTTON: GO"
-  if Menu > 1 then Menu = 0
+  if Menu > 2 then Menu = 0
   ShowMenu
   ShowScreen
   play sound SndTuneA
@@ -1270,7 +1286,7 @@ sub TitlePage:
   Rearm
   wait no fire
   nmi off
-  if Menu = 1 then Menu = 0
+  if Menu >= 1 then Menu = 0
   ShowMenu
 tp_loop:
   Frame1
@@ -1279,9 +1295,9 @@ tp_loop:
   if V > 0 then
     if WasStick = 0 then
       if V = 1 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -1291,12 +1307,13 @@ tp_loop:
   mute all
   TzOn = 0
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowTo
+  if Menu = 2 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
-  for Li = 0 to 1
+  for Li = 0 to 2
     if Li = Menu then
       put char 62 at 9,16 + Li
     else
@@ -1315,20 +1332,88 @@ sub CreditsPage:
   print at 2,6, "CRYPT FROM COMPUTE!'S"
   print at 2,7, "GAZETTE, FEBRUARY 1985"
   print at 2,8, "(COMMODORE 64 AND VIC-20,"
-  print at 2,9, "BASIC AND MACHINE CODE)."
-  print at 2,11, "COLECOVISION GAME, MUSIC"
-  print at 2,12, "AND PICTURES BY CLAUDE"
-  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
-  print at 2,14, "IN AMY BY AMY BIENVENU,"
-  print at 2,15, "2026."
-  print at 2,17, "MUSIC: DOWN THE CRYPT STEPS"
-  print at 2,18, "(ORIGINAL)"
+  print at 2,9, "BASIC AND MACHINE CODE)"
+  print at 2,10, "BY TED REYNOLDS."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: DOWN THE CRYPT STEPS"
+  print at 2,19, "(ORIGINAL)"
   print at 7,21, "PRESS THE BUTTON"
   ShowScreen
   Rearm
   pause until press
   wait no fire
   nmi off
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own tiles and sprites; the
+' button turns the page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "YOU EXPLORE A CRYPT WITH"
+  print at 2,4, "FOUR TOMBS. EACH TOMB HOLDS"
+  print at 2,5, "A TREASURE AND FOUR"
+  print at 2,6, "GUARDIANS."
+  fill TWall count 28 at 2,8
+  fill TFloor count 28 at 2,9
+  fill TWall count 28 at 2,10
+  put char TDoor at 18,9
+  put char TBars at 24,9
+  set sprite 0 to 67,60,SMini,15
+  update sprites
+  print at 2,12, "IN THE HALLS, WALK WITH THE"
+  print at 2,13, "STICK INTO A DOOR TO ENTER"
+  print at 2,14, "A TOMB."
+  print at 2,16, "IN A TOMB: GRAB THE TREASURE"
+  print at 2,17, "(300 POINTS) AND LEAVE BY"
+  print at 2,18, "THE GAP IN THE FAR WALL. A"
+  print at 2,19, "DONE TOMB IS BARRED."
+  print at 2,21, "TIP: DON'T WASTE BOLTS!"
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  print at 2,3, "BUTTON: THROW A BOLT THE WAY"
+  print at 2,4, "YOU LAST MOVED. 3 BOLTS A"
+  print at 2,5, "VISIT. A GUARDIAN HIT: 10."
+  set sprite 0 to 55,48,SSnake,10
+  set sprite 1 to 55,88,SSpider,9
+  set sprite 2 to 55,128,SGhoul,5
+  set sprite 3 to 55,168,SBat,7
+  set sprite 4 to 79,40,SHero,15
+  set sprite 5 to 79,72,SBolt,11
+  set sprite 6 to 79,192,SChest,5
+  update sprites
+  print at 2,12, "WHEN ONE IS HIT, THE OTHERS"
+  print at 2,13, "GET FASTER."
+  print at 2,15, "IF A GUARDIAN TOUCHES YOU,"
+  print at 2,16, "YOU LOSE A LIFE. YOU HAVE 5."
+  print at 2,17, "NO LIVES LEFT: GAME OVER."
+  print at 2,19, "TAKE ALL 4 TREASURES FOR A"
+  print at 2,20, "NEW LEVEL. EVERY 4 LEVELS:"
+  print at 2,21, "+1 LIFE, FASTER GUARDIANS."
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HowT = 0
+hw_loop:
+  Frame1
+  ReadPad
+  inc HowT
+  if HowT >= 1800 then return
+  if Press = 0 then goto hw_loop
   return
 end sub
 

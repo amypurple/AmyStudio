@@ -40,9 +40,10 @@ cartridge "THE ENCHANTED JOURNEY/BRENT LACKIE/1985"
 ' random room, choose treasures with 0 = random) and four lives.
 '
 ' Liberties: the hero glides a cell in 8 frames and the monsters step
-' every 14 frames (in the BASIC they moved as often as you did); a falling
+' every 18 frames and wait 1 second after you arrive on a screen (in the BASIC they moved as often as you did); a falling
 ' brick shows a crack for 20 frames before it lands and never lands on a
-' door; treasures are visible without the torch (the listing drew them
+' door; forests grow 30-59 trees (the listing 50-99: without monsters
+' eating them, so many trees could wall you in); treasures are visible without the torch (the listing drew them
 ' only when the torch was carried) except in dark screens, where the
 ' whole screen is black but the hero; the sword, the treasures, a respawn
 ' and every teleport go to screens that can be reached from the forest
@@ -52,7 +53,12 @@ cartridge "THE ENCHANTED JOURNEY/BRENT LACKIE/1985"
 ' its screen); the singing globe sings highest on the sword's own screen;
 ' holding the button 1 second without the cross ends the quest (one
 ' press did); the hero stays visible in the dark; the item menu is driven
-' by the stick.
+' by the stick. Monsters no longer erase the scenery they cross (the
+' listing poked a blank behind them): an underlay of the room's background
+' in spare VRAM puts back trees, tombstones, doors, cracks and treasures
+' behind every actor; only the brick monster still leaves brick, and the
+' hero only clears what he uses up (a chopped tree, crossed brick, a
+' passed tombstone, a treasure taken).
 '
 ' Controls: the stick moves (diagonals do nothing, as in the original);
 ' either button: freeze the monsters with the cross, or hold 1 second to
@@ -121,7 +127,8 @@ const SndOver = 17
 const SndStart = 18
 const SndBump = 19
 const StepN = 8
-const MonN = 14
+const MonN = 18
+const SafeN = 60
 const ShkN = 20
 const NSpr = 2
 
@@ -255,6 +262,11 @@ u8 Moves = 0
 u8 Died = 0
 u8 RmF = 0
 u8 Busy = 0
+' what killed the hero last (for the test bot): 1 tombstone, 2 false
+' sword, 3 walked into a monster, 4 fluffer, 5 brick monster, 6 eyes,
+' 7 bobcat, 8 zombie, 9 falling brick
+u8 Cause = 0
+u8 SafeT = 0
 u8 Rm2 = 0
 ' treasures: carried, screen, cell
 u8 Have[10]
@@ -345,6 +357,10 @@ title:
 title_menu:
   TitlePage
   if Menu = 3 then
+    HowTo
+    goto title_menu
+  end if
+  if Menu = 4 then
     CreditsPage
     goto title_menu
   end if
@@ -430,6 +446,48 @@ sub PutCell(u8 Ca, u8 Cb, u8 Ct):
   return
 end sub
 
+' the underlay: the room's background (terrain, doors, treasures, no
+' actors) at $1C00 + 22 * row + column in spare VRAM; a cell an actor
+' leaves gets its background back from there
+function BgAddr(u8 Ca, u8 Cb) as u16
+  u16 Ad = 0
+  Ad = Cb
+  Ad = Ad * 22
+  Ad = Ad + Ca
+  return Ad + $0400
+
+sub SetBg(u8 Ca, u8 Cb, u8 Ct):
+  u16 Ad = 0
+  Ad = BgAddr(Ca, Cb)
+  vpoke vram.name + Ad, Ct
+  put char Ct at Ca + 3, Cb + 1
+  return
+end sub
+
+sub BgBack(u8 Ca, u8 Cb):
+  u16 Ad = 0
+  u8 Ct = 0
+  Ad = BgAddr(Ca, Cb)
+  vpeek vram.name + Ad into Ct
+  put char Ct at Ca + 3, Cb + 1
+  return
+end sub
+
+sub SaveBg:
+  u8 Sa = 0
+  u8 Sb = 0
+  u8 St = 0
+  u16 Ad = 0
+  for Sb = 0 to 21
+    for Sa = 0 to 21
+      St = get char at Sa + 3, Sb + 1
+      Ad = BgAddr(Sa, Sb)
+      vpoke vram.name + Ad, St
+    next
+  next
+  return
+end sub
+
 ' one step of a chaser towards the hero
 function Near(u8 F, u8 Tg) as u8
   if F < Tg then return F + 1
@@ -474,7 +532,9 @@ sub PlayStep:
   end if
   if Ph = 0 then TryMove
   if Over > 0 then return
+  if SafeT > 0 then dec SafeT
   inc MonT
+  if SafeT > 0 then MonT = 0
   if MonT >= MonN then
     MonT = 0
     if Frz = 0 then MoveMonsters
@@ -577,6 +637,7 @@ sub EnterCell:
   case TTomb, TCross, TCrossl
     if IsCross = 0 then
       if Have[3] = 0 then
+        Cause = 1
         Kill
         return
       end if
@@ -589,11 +650,13 @@ sub EnterCell:
     if Got = 1 then
       Over = 2
     else
+      Cause = 2
       Kill
     end if
     return
   case TFluff, TBrickm, TPhant, TCatl, TCatr, TZomb
     if Frz = 0 then
+      Cause = 3
       Kill
       return
     end if
@@ -627,7 +690,12 @@ sub EnterCell:
   Pb = Qb
   Ph = StepN
   inc Moves
-  PutCell(Pa, Pb, 32)
+  select case C
+  case TBrick, TTree, TTomb
+    SetBg(Pa, Pb, 32)
+  case TThief
+    BgBack(Pa, Pb)
+  end select
   play sound SndStep
   PickUp
   return
@@ -649,6 +717,7 @@ sub PickUp:
         if IB[Ci] = Pb then
           Have[Ci] = 1
           IRm[Ci] = 0
+          SetBg(Pa, Pb, 32)
           play sound SndPick
           ShowPanel
         end if
@@ -696,8 +765,9 @@ sub ChangeRoom:
     if Pb = 0 then Pb = 1
     DrawRoom
   end if
-  PutCell(Pa, Pb, 32)
   PlaceHero
+  SafeT = SafeN
+  MonT = 0
   PickUp
   Globe
   return
@@ -827,12 +897,13 @@ sub MoveMonsters:
       Ci = Rn(4)
       A = FA[Ci]
       B = FB[Ci]
-      PutCell(A, B, 32)
+      BgBack(A, B)
       A = Near(A, Pa)
       B = Near(B, Pb)
       FA[Ci] = A
       FB[Ci] = B
       PutCell(A, B, TFluff)
+      Cause = 4
       HitAt
       if Died = 1 then return
     end if
@@ -866,7 +937,7 @@ end sub
 sub MoveBrickM:
   A = BX
   B = BY
-  PutCell(A, B, TBrick)
+  SetBg(A, B, TBrick)
   if A <> Pa then
     A = Near(A, Pa)
   else
@@ -884,13 +955,14 @@ sub MoveBrickM:
   BX = A
   BY = B
   PutCell(A, B, TBrickm)
+  Cause = 5
   HitAt
   return
 end sub
 
 ' the creeping eyes: diagonal steps, brick stops them, they eat the rest
 sub MoveEyes:
-  PutCell(CX, CY, 32)
+  BgBack(CX, CY)
   A = Near(CX, Pa)
   B = Near(CY, Pb)
   C = CellAt(A, B)
@@ -901,15 +973,16 @@ sub MoveEyes:
   CX = A
   CY = B
   PutCell(A, B, TPhant)
+  Cause = 6
   HitAt
   return
 end sub
 
 ' the bobcat: two cells wide, always diagonal, passes everything
 sub MoveCat:
-  PutCell(DX, DY, 32)
+  BgBack(DX, DY)
   T = DX - 1
-  PutCell(T, DY, 32)
+  BgBack(T, DY)
   if DX < Pa then
     inc DX
   else
@@ -928,9 +1001,11 @@ sub MoveCat:
   PutCell(A, B, TCatr)
   T = A - 1
   PutCell(T, B, TCatl)
+  Cause = 7
   HitAt
   if Died = 1 then return
   A = T
+  Cause = 7
   HitAt
   return
 end sub
@@ -938,7 +1013,7 @@ end sub
 ' the blue thief: brick, trees and tombstones stop him; he steals one
 ' treasure and is gone
 sub MoveThief:
-  PutCell(TX, TY, 32)
+  BgBack(TX, TY)
   A = Near(TX, Pa)
   B = Near(TY, Pb)
   C = CellAt(A, B)
@@ -963,12 +1038,13 @@ sub MoveZombie:
   Ci = Rn(13)
   A = ZA[Ci]
   B = ZB[Ci]
-  PutCell(A, B, 32)
+  BgBack(A, B)
   A = Near(A, Pa)
   B = Near(B, Pb)
   ZA[Ci] = A
   ZB[Ci] = B
   PutCell(A, B, TZomb)
+  Cause = 8
   HitAt
   return
 end sub
@@ -981,11 +1057,12 @@ sub Shake:
   if ShkT < ShkN then return
   ShkT = 0
   if ShA < 22 then
-    PutCell(ShA, ShB, TBrick)
+    SetBg(ShA, ShB, TBrick)
     play sound SndThud
     if ShA = Pa then
       if ShB = Pb then
         ShA = 255
+        Cause = 9
         Kill
         return
       end if
@@ -998,7 +1075,7 @@ sub Shake:
     ShA = 255
     return
   end if
-  PutCell(ShA, ShB, TCrack)
+  SetBg(ShA, ShB, TCrack)
   play sound SndRumble
   return
 end sub
@@ -1057,7 +1134,7 @@ sub DrawRoom:
   end if
   U = RmF & 1
   if U > 0 then
-    N = Rn(50) + 50
+    N = Rn(30) + 30
     Scatter(N, TTree)
   end if
   U = RmF & 2
@@ -1190,6 +1267,7 @@ sub DrawThings:
       PutCell(SwA[Ci], SwB[Ci], T)
     next
   end if
+  SaveBg
   ' monsters
   for Mi = 0 to 2
     if ERm[Mi] = Rm then
@@ -1450,7 +1528,8 @@ sub TitlePage:
   print at 6,10, "START IN THE FOREST"
   print at 6,11, "START IN A ROOM"
   print at 6,12, "CHOOSE TREASURES"
-  print at 6,13, "CREDITS"
+  print at 6,13, "HOW TO PLAY"
+  print at 6,14, "CREDITS"
   print at 5,16, "TREASURES CARRIED:"
   for Ci = 0 to 9
     T = 32
@@ -1469,7 +1548,7 @@ sub TitlePage:
     end if
   end if
   InPlay = 2
-  Menu = MenuPick(10, 4, 0)
+  Menu = MenuPick(10, 5, 0)
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
@@ -1517,6 +1596,99 @@ items_again:
   Have[V] = T
   goto items_again
 end sub
+
+' HOW TO PLAY: three pages; a button turns the page, 30 s alone goes back
+sub HowTo:
+  NewScreen
+  backdrop dark green
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "A THIEF HAS STOLEN THE"
+  print at 2,4, "KING'S MAGIC SWORD AND HID"
+  print at 2,5, "IT IN THE LAND OF DREAMS."
+  print at 2,6, "FIND THE REAL SWORD!"
+  put char TQuest at 8,8
+  put char TQuest at 11,8
+  put char TSword at 14,8
+  put char TQuest at 17,8
+  print at 2,10, "IT HIDES AMONG 3 FALSE"
+  print at 2,11, "SWORDS (?). A FALSE ONE"
+  print at 2,12, "KILLS YOU."
+  print at 2,14, "STICK: WALK ONE SQUARE. NO"
+  print at 2,15, "DIAGONALS. WALK OFF THE"
+  print at 2,16, "EDGE TO THE NEXT SCREEN."
+  fill TBrick count 5 at 8,18
+  put char TDoor at 13,18
+  fill TBrick count 5 at 14,18
+  print at 2,19, "ENTER THE CASTLE BY DOORS."
+  print at 2,21, "4 DREAMS (LIVES)."
+  ShowScreen
+  if HowWait = 1 then return
+  NewScreen
+  backdrop dark blue
+  print at 4,1, "MAGIC ITEMS (MENU)"
+  print at 2,2, "PICK THEM BEFORE YOU GO:"
+  for Ci = 0 to 8
+    Y = Ci << 1
+    Y = Y + 4
+    T = ItemT[Ci]
+    put char T at 2,Y
+  next
+  print at 4,4, "BOOTS: WALK THROUGH BRICK"
+  print at 4,6, "SECRETS: SHOW * DOORS"
+  print at 4,8, "GLOBE: SINGS HIGHER NEAR"
+  print at 4,10, "CROSS: PASS TOMBSTONES"
+  print at 4,12, "WAND OF THE WAY: SHOWS"
+  print at 4,13, "THE REAL SWORD"
+  print at 4,14, "PURPLE KEY: PURPLE DOORS"
+  print at 4,16, "BLUE KEY: BLUE DOORS"
+  print at 4,18, "AXE: CHOP TREES"
+  print at 4,20, "TORCH: LIGHT DARK ROOMS"
+  ShowScreen
+  if HowWait = 1 then return
+  NewScreen
+  backdrop black
+  print at 10,1, "DANGERS"
+  put char TFluff at 3,3
+  put char TBrickm at 5,3
+  put char TPhant at 7,3
+  put char TCatl at 9,3
+  put char TCatr at 10,3
+  put char TZomb at 12,3
+  put char TThief at 14,3
+  print at 2,5, "MONSTERS CHASE YOU. ONE"
+  print at 2,6, "TOUCH COSTS A DREAM. THE"
+  print at 2,7, "BLUE THIEF STEALS AN ITEM."
+  put char TTomb at 3,9
+  put char TCrack at 5,9
+  print at 2,11, "TOMBSTONES KILL (NOT WITH"
+  print at 2,12, "THE CROSS). RUN FROM"
+  print at 2,13, "CRACKS: BRICKS FALL THERE."
+  print at 2,14, "YELLOW: STICK REVERSED!"
+  print at 2,16, "BUTTON: CROSS FREEZES ALL"
+  print at 2,17, "MONSTERS (ONCE). HOLD 1 S"
+  print at 2,18, "TO GIVE UP."
+  print at 2,20, "TIP: TAKE THE WAND OF THE"
+  print at 2,21, "WAY AND THE TORCH. MAP IT!"
+  ShowScreen
+  if HowWait = 1 then return
+  return
+end sub
+
+' wait for a press (0) or 30 seconds (1)
+function HowWait as u8
+  u16 Hw = 0
+  Rearm
+  wait no fire
+  nmi off
+  Press = 0
+  Hw = 0
+  while Press = 0
+    Frame1
+    ReadPad
+    inc Hw
+    if Hw > 1800 then return 1
+  end while
+  return 0
 
 sub CreditsPage:
   NewScreen

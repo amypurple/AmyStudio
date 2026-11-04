@@ -38,7 +38,9 @@ cartridge "PUDDING MOUNTAIN MINER/GAZETTE/1985"
 ' The target blinks at 3 Hz on a hit (the C64's flashed every frame), and
 ' a miss shows a banner instead of the C64's colour cycling.
 '
-' Controls: either controller's button drops a bomb (one at a time).
+' Controls: either controller's button drops a bomb (one at a time). The
+' title has a menu (START GAME, HOW TO PLAY: two pages, CREDITS): the
+' stick up and down, the button chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off,
@@ -123,6 +125,9 @@ u8 J1 = 0
 u8 Btn = 0
 u8 WasBtn = 0
 u8 Press = 0
+u8 Ud = 0
+u8 WasUd = 0
+u8 Menu = 0
 u8 Tick = 0
 u8 Idle = 0
 ' scratch
@@ -148,6 +153,14 @@ u8 Q = 0
 
 title:
   TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
 
 new_game:
   NewGame
@@ -498,11 +511,16 @@ sub Frame1:
   return
 end sub
 
-' the button of either controller (the stick does nothing in this game)
+' the button of either controller (the stick only moves the title menu)
 sub ReadPad:
   J1 = 0
   if joypad(1).fire then J1 = 16
   if joypad(2).fire then J1 = 16
+  Ud = 0
+  if joypad(1).up then Ud = 1
+  if joypad(2).up then Ud = 1
+  if joypad(1).down then Ud = 2
+  if joypad(2).down then Ud = 2
   Btn = J1
   Press = 0
   if Btn > 0 then
@@ -563,7 +581,11 @@ sub TitlePage:
   fill 32 count 28 at 2,2
   print at 4,4, "PUDDING MOUNTAIN MINER"
   print at 4,6, "COMPUTE!'S GAZETTE 1985"
-  print at 5,8, "PRESS THE BUTTON"
+  print at 10,8, "START GAME"
+  print at 10,9, "HOW TO PLAY"
+  print at 10,10, "CREDITS"
+  Menu = 0
+  ShowMenu
   print at 2,1, "HI"
   NumU = Hi
   print at 5,1, digits$(NumU, 5)
@@ -573,7 +595,7 @@ sub TitlePage:
   Bu.T = 0
   Sx = 16
   Sf = 0
-  Sr = 10
+  Sr = 12
   Spd = 16
   ShowScreen
   play sound SndTuneA
@@ -584,10 +606,22 @@ sub TitlePage:
   wait no fire
   nmi off
   WasBtn = 0
+  WasUd = 1
 tp_loop:
   Frame1
   inc Rs
   ReadPad
+  if Ud > 0 then
+    if WasUd = 0 then
+      if Ud = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasUd = Ud
   V = Sf + Spd
   K = V >> 4
   Sf = V & 15
@@ -603,6 +637,93 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 8 to 10
+    put char 32 at 8,Ri
+  next
+  V = Menu + 8
+  put char 62 at 8,V
+  return
+end sub
+
+' HOW TO PLAY: two pages; the button turns the page, after the last
+' page (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 1
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "YOUR AIRSHIP FLIES OVER"
+    print at 2,4, "PUDDING MOUNTAIN, LEFT TO"
+    print at 2,5, "RIGHT, AGAIN AND AGAIN."
+    print at 2,7, "A GREEN TARGET IS HIDDEN"
+    print at 2,8, "IN THE ROCK AT THE BOTTOM."
+    print at 2,10, "EACH BOMB BLOWS AWAY ONE"
+    print at 2,11, "BLOCK OF PUDDING. DIG A"
+    print at 2,12, "HOLE DOWN TO THE TARGET,"
+    print at 2,13, "THEN DROP A BOMB ON IT!"
+    for Ci = 8 to 23
+      V = Ci & 3
+      Y = 16 + V
+      if Ci = 15 then Y = 20
+      if Y < 20 then put char TRtop at Ci,Y
+      for Ri = 17 to 19
+        if Ri > Y then
+          V = Ci + Ri
+          V = V & 1
+          V = V + TRock
+          put char V at Ci,Ri
+        end if
+      next
+      put char TGround at Ci,20
+    next
+    put char TTarget at 15,20
+    set sprite 0 to 111,112,SWin,15
+    set sprite 1 to 111,112,SShip0,14
+    set sprite 2 to 135,116,SBomb,1
+  else
+    print at 2,1, "CONTROLS               2/2"
+    print at 2,3, "BUTTON: DROP A BOMB. THE"
+    print at 2,4, "SHIP STOPS WHILE IT FALLS."
+    print at 2,6, "A BOMB THAT HITS THE ROCK"
+    print at 2,7, "FLOOR BUT NOT THE TARGET"
+    print at 2,8, "IS A MISS: YOU LOSE A SHIP"
+    print at 2,9, "AND GET A NEW MOUNTAIN."
+    print at 2,11, "HIT THE TARGET TO SCORE."
+    print at 2,12, "THE FEWER BOMBS YOU USE,"
+    print at 2,13, "THE MORE POINTS YOU GET."
+    print at 2,15, "CLEAR 9 LEVELS TO WIN. LOSE"
+    print at 2,16, "ALL 3 SHIPS AND IT'S OVER."
+    print at 2,18, "TIP: WATCH THE TARGET, AND"
+    print at 2,19, "DIG RIGHT ABOVE IT."
+    set sprite 0 to 135,216,SWin,15
+    set sprite 1 to 135,216,SShip1,14
+    set sprite 3 to 159,216,SBoom0,11
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_end:
   HideSprites
   return
 end sub

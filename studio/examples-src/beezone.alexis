@@ -47,7 +47,8 @@ cartridge "BEEZONE/COMPUTE GAZETTE/1987"
 ' GAME OVER then the title (the C64 went back to its title animation).
 '
 ' Controls: controller 1 (or 2): the stick moves the bear one chamber.
-' On the title, up and down choose, a button chooses.
+' On the title, up and down choose (START, HOW TO PLAY, CREDITS), a
+' button chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -266,7 +267,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu >= 1 then goto title
 
   NewGame
 
@@ -813,7 +814,9 @@ sub TitlePage:
   put char TApos at 15,10
   print at 10,11, "SEPTEMBER 1987"
   print at 13,15, "START"
-  print at 13,16, "CREDITS"
+  print at 13,16, "HOW TO PLAY"
+  print at 13,17, "CREDITS"
+  Menu = 0
   if Hi > 0 then
     print at 9,20, "BEST ", Hi
   end if
@@ -838,9 +841,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -855,7 +858,8 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
@@ -903,8 +907,105 @@ end sub
 sub ShowMenu:
   put char 32 at 11,15
   put char 32 at 11,16
+  put char 32 at 11,17
   J = Menu + 15
   put char 62 at 11,J
+  return
+end sub
+
+' a chamber's nine tiles from tile T at Tx,Ty (HOW TO PLAY pictures)
+sub HtCell(u8 T, u8 Tx, u8 Ty):
+  put char T at Tx,Ty
+  put char T + 1 at Tx + 1,Ty
+  put char T + 2 at Tx + 2,Ty
+  put char T + 3 at Tx,Ty + 1
+  put char T + 4 at Tx + 1,Ty + 1
+  put char T + 5 at Tx + 2,Ty + 1
+  put char T + 6 at Tx,Ty + 2
+  put char T + 7 at Tx + 1,Ty + 2
+  put char T + 8 at Tx + 2,Ty + 2
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Wt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "YOU ARE A HONEY BEAR IN A"
+    print at 2,4, "HONEYCOMB. STEP INTO FULL"
+    print at 2,5, "CHAMBERS TO EAT THE HONEY."
+    print at 2,7, "EMPTY EVERY CHAMBER TO GET"
+    print at 2,8, "A NEW COMB. EACH NEW COMB"
+    print at 2,9, "IS A BIT FASTER."
+    HtCell(TFull00, 8, 12)
+    HtCell(TFull00, 11, 12)
+    HtCell(TEmpty00, 14, 12)
+    HtCell(TEmpty00, 17, 12)
+    HtCell(TFull00, 20, 12)
+    set sprite 0 to 99,92,SBear0f,15
+    set sprite 1 to 99,92,SBear0b,6
+  case 2
+    print at 2,1, "CONTROLS               2/3"
+    print at 2,3, "PUSH THE JOYSTICK UP, DOWN,"
+    print at 2,4, "LEFT OR RIGHT. THE BEAR"
+    print at 2,5, "STEPS ONE CHAMBER THAT WAY."
+    print at 2,6, "HOLD IT TO KEEP WALKING."
+    print at 2,8, "THREE GUARD BEES FLY AROUND"
+    print at 2,9, "AND THE QUEEN DIVES DOWN A"
+    print at 2,10, "COLUMN, FILLING IT AGAIN."
+    print at 2,11, "IF A BEE TOUCHES YOU, YOU"
+    print at 2,12, "LOSE A LIFE."
+    HtCell(TEmpty00, 8, 15)
+    HtCell(TFull00, 14, 15)
+    HtCell(TFull00, 20, 15)
+    set sprite 0 to 123,68,SBear0f,15
+    set sprite 1 to 123,68,SBear0b,6
+    set sprite 2 to 123,116,SBee0,13
+    set sprite 5 to 123,164,SDive,9
+  case 3
+    print at 2,1, "SCORING                3/3"
+    print at 2,3, "FULL CHAMBER          10"
+    print at 2,4, "FLOWER                50"
+    print at 2,5, "WHOLE COMB EMPTIED    75"
+    print at 2,7, "A FLOWER OPENS IN THE"
+    print at 2,8, "MIDDLE NOW AND THEN. GRAB"
+    print at 2,9, "IT FOR AN EXTRA LIFE TOO."
+    print at 2,11, "YOU HAVE FOUR LIVES. WHEN"
+    print at 2,12, "THEY ARE ALL GONE, THE GAME"
+    print at 2,13, "IS OVER."
+    print at 2,15, "TIP: WATCH THE QUEEN. DO"
+    print at 2,16, "NOT STAND UNDER HER!"
+    set sprite 6 to 143,80,SFlower,7
+    put char TLife at 18,19
+    print at 20,19, "X 4"
+  end select
+  print at 9,22, "PRESS A BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then
+    HideSprites
+    return
+  end if
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  HideSprites
   return
 end sub
 

@@ -63,7 +63,7 @@ cartridge "POWERBALL/GAZETTE/1987"
 ' boxes (the C64 compared screen cells); the "PRESS FIRE TO CONTINUE AT
 ' THIS LEVEL" choice after a game is gone (game over goes to the title);
 ' the right button pauses (the C64 paused while SHIFT was held); a SCREEN
-' n banner; the capsule legend on the title page.
+' n banner; the capsule legend on a HOW TO PLAY page.
 '
 ' Controls: controller 1 (or 2): the stick moves the paddle left and
 ' right; a button serves a held ball and fires shots; the right button
@@ -313,6 +313,8 @@ u8 Bricks = 0
 u8 Pads = 0
 ' input
 u8 J1 = 0
+u8 Menu = 0
+u8 WasJ = 0
 u8 Btn = 0
 u8 B2 = 0
 u8 WasB2 = 0
@@ -367,6 +369,14 @@ u8 Got = 0
 
 title:
   TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
   NewGame
 
 level:
@@ -1273,6 +1283,10 @@ end sub
 
 sub ReadPad:
   J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
   if joypad(1).left then J1 = J1 | 4
   if joypad(1).right then J1 = J1 | 8
   if joypad(1).button1 then J1 = J1 | 16
@@ -1341,14 +1355,14 @@ sub TitlePage:
   print at 3,1, "COMPUTE!'S GAZETTE MAY 1987"
   copy TitleMap count 352 to vram.name + 96
   print at 11,14, "POWERBALL"
-  print at 4,16, "S SLOW       C CATCH"
-  print at 4,17, "L LONG       3 THREE BALLS"
-  print at 4,18, "F FIRE       N NEXT SCREEN"
-  print at 4,19, "+ PADDLE     P POWERBALL"
-  print at 7,21, "PRESS THE BUTTON"
+  print at 11,16, "START"
+  print at 11,17, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
   if Hi > 0 then
-    print at 9,22, "HIGH ", Hi
+    print at 9,21, "HIGH ", Hi
   end if
+  Menu = 0
+  TitleArrow
   ShowScreen
   play sound SndTuneA
   play sound SndTuneB
@@ -1361,11 +1375,118 @@ tp_loop:
   Frame1
   inc Rs
   ReadPad
+  K = J1 & 3
+  V = K & WasJ
+  V = K ^ V
+  WasJ = K
+  if V = 1 then
+    if Menu > 0 then dec Menu
+    TitleArrow
+  end if
+  if V = 2 then
+    if Menu < 2 then inc Menu
+    TitleArrow
+  end if
   if Press = 0 then goto tp_loop
   StopTune
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub TitleArrow:
+  put char 32 at 9,16
+  put char 32 at 9,17
+  put char 32 at 9,18
+  Y = Menu + 16
+  put char 62 at 9,Y
+  return
+end sub
+
+data HtCapY bytes 55,55,71,71,87,87,103,103
+data HtCapX bytes 24,128,24,128,24,128,24,128
+
+' HOW TO PLAY: two pages; the button turns the page, after the last
+' page (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 1
+  u16 HtWt = 0
+  u8 Hk = 0
+  u8 Hy = 0
+  u8 Hx = 0
+  u8 Hc = 0
+  Pg = 1
+ht_page:
+  Phase = 6
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "BOUNCE THE BALL OFF YOUR"
+    print at 2,4, "PADDLE TO KNOCK OUT EVERY"
+    print at 2,5, "GREY AND GREEN BRICK."
+    print at 2,6, "STEEL NEVER BREAKS."
+    print at 2,8, "GREEN BRICKS BREAK AT ONCE."
+    print at 2,9, "HIT ANY OTHER BRICK AND IT"
+    print at 2,10, "CHANGES COLOUR."
+    print at 2,12, "STICK: MOVE THE PADDLE."
+    print at 2,13, "BUTTON: SERVE AND FIRE."
+    print at 2,14, "RIGHT BUTTON: PAUSE."
+    print at 2,16, "MISS EVERY BALL AND YOU LOSE"
+    print at 2,17, "A PADDLE. NO PADDLES LEFT:"
+    print at 2,18, "GAME OVER."
+    for Hk = 0 to 7
+      Hx = Hk + Hk
+      Hx = Hx + 8
+      Hc = TBr1 + Hk
+      put char Hc at Hx,19
+      inc Hx
+      put char Hc at Hx,19
+    next
+    set sprite 0 to 167,104,SPadl,9
+    set sprite 1 to 167,120,SPad16,9
+    set sprite 2 to 159,140,SBall,15
+  else
+    print at 2,1, "CAPSULES               2/2"
+    print at 2,3, "A BROKEN GREEN BRICK MAY"
+    print at 2,4, "DROP A CAPSULE. CATCH IT"
+    print at 2,5, "WITH THE PADDLE:"
+    print at 6,7, "SLOW"
+    print at 19,7, "CATCH"
+    print at 6,9, "LONG"
+    print at 19,9, "3 BALLS"
+    print at 6,11, "FIRE"
+    print at 19,11, "NEXT SCREEN"
+    print at 6,13, "+1 PADDLE"
+    print at 19,13, "POWERBALL"
+    for Hk = 0 to 7
+      Hy = HtCapY[Hk]
+      Hx = HtCapX[Hk]
+      Hc = Hk * 4 + SCap0
+      set sprite Hk to Hy,Hx,Hc,CapCol[Hk]
+    next
+    print at 2,16, "DRONES BOUNCE THE BALL BACK."
+    print at 2,18, "TIP: HIT THE BALL WITH THE"
+    print at 2,19, "PADDLE'S MIDDLE FOR A STEEP,"
+    print at 2,20, "EASY BOUNCE."
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_end:
+  HideSprites
   return
 end sub
 

@@ -51,7 +51,7 @@ cartridge "SPACE WORMS/COMPUTE!'S GAZETTE/1989"
 '
 ' Controls: controller 1 (or 2): the stick moves the ship, either button
 ' fires (hold it for a stream of single shots). On the title, up and down
-' choose, a button chooses.
+' choose, a button chooses. (START / HOW TO PLAY / CREDITS)
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -423,6 +423,8 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+u8 Pg = 0
+u16 Wt = 0
 u8 Tick = 0
 u8 Idle = 0
 u8 HudDirty = 0
@@ -453,7 +455,11 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then goto title
 
   NewGame
 
@@ -1132,10 +1138,12 @@ sub TitlePage:
   print at 7,1, "COMPUTE!'S GAZETTE"
   print at 10,15, "APRIL  1989"
   print at 13,17, "START"
-  print at 13,18, "CREDITS"
+  print at 13,18, "HOW TO PLAY"
+  print at 13,19, "CREDITS"
   if Hi > 0 then
-    print at 10,20, "BEST ", Hi
+    print at 10,21, "BEST ", Hi
   end if
+  Menu = 0
   ShowMenu
   set sprite 0 to 150,200,SShip0,15
   for Gx = 0 to 4
@@ -1165,9 +1173,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -1182,15 +1190,101 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
   put char 32 at 11,17
   put char 32 at 11,18
+  put char 32 at 11,19
   J = Menu + 17
   put char 62 at 11,J
+  return
+end sub
+
+' a worm of five segments for the HOW TO PLAY pages: head at X,Y, the
+' body trailing to the left and down
+sub HtWorm:
+  for Gx = 0 to 4
+    J = Gx + 3
+    V = SB10
+    if Gx = 0 then V = SH00
+    set sprite J to Y,X,V,PalA[Gx]
+    X = X - 13
+    Y = Y + 6
+  next
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "A SPACE WORM LOOPS ACROSS"
+    print at 2,4, "THE SKY. SHOOT IT FROM YOUR"
+    print at 2,5, "SHIP AT THE BOTTOM."
+    print at 2,7, "SHOOT IT 8 TIMES AND IT"
+    print at 2,8, "LOSES ITS TAIL. HIT THE"
+    print at 2,9, "HEAD WHEN IT IS ALONE TO"
+    print at 2,10, "WIN THE LEVEL."
+    X = 170
+    Y = 100
+    HtWorm
+    set sprite 1 to 140,170,SMissile,11
+    set sprite 0 to 159,170,SShip0,15
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "STICK: MOVE YOUR SHIP IN"
+    print at 2,4, "ITS AREA AT THE BOTTOM."
+    print at 2,5, "BUTTON: FIRE STRAIGHT UP."
+    print at 2,6, "HOLD IT TO KEEP FIRING."
+    print at 2,8, "DON'T TOUCH THE WORM!"
+    print at 2,9, "THE HEAD DROPS SPORES AT"
+    print at 2,10, "YOU. DODGE OR SHOOT THEM."
+    X = 90
+    Y = 100
+    HtWorm
+    set sprite 2 to 132,140,SSpore,3
+    set sprite 0 to 155,140,SShip0,15
+  case 3
+    print at 2,1, "SCORING                 3/3"
+    print at 2,3, "A HIT ON THE WORM: 1 POINT."
+    print at 2,4, "IT LOSES ITS TAIL: 10."
+    print at 2,5, "THE HEAD IS GONE: 100, AND A"
+    print at 2,6, "LONGER WORM COMES NEXT."
+    print at 2,8, "YOU HAVE 5 SHIPS. THE WORM"
+    print at 2,9, "OR A SPORE COSTS ONE. NO"
+    print at 2,10, "SHIPS LEFT: GAME OVER."
+    print at 2,12, "TIP: KEEP MOVING! A MOVING"
+    print at 2,13, "SHIP DODGES THE SPORES."
+    set sprite 0 to 150,120,SBoom0,11
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then
+    HideSprites
+    return
+  end if
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  HideSprites
   return
 end sub
 

@@ -1,0 +1,1471 @@
+cartridge "TANK MANIA/COMPUTE'S GAZETTE/1984"
+
+' TANK MANIA - a ColecoVision port of "Tank Mania" by Ken Gibbons and
+' Curtis Rich, COMPUTE!'s Gazette, April 1984 (VIC-20 BASIC, disk files
+' "tank mania.vic/1" and "tank mania.vic/2").
+'
+' Two tanks in a field of blockades and mines. Each tank never stops: it
+' rolls on the way it last pointed. Destroy the other tank.
+'
+' Controls (joystick only, no keypad):
+'   stick           turn the tank (eight directions); it keeps rolling
+'   either button   fire a shell the way the tank points (held: again as
+'                   soon as the last shell is spent)
+'   1 player:  either joystick drives the blue tank, the computer the red
+'   2 players: joystick 1 the blue tank, joystick 2 the red tank
+'
+' Rules kept from the listing (tank mania.vic/2):
+' - a tank moves one cell per turn, the way the stick last pointed; it can
+'   squeeze between two blocks diagonally; a block or the wall stops it
+' - driving into a mine or into the other tank sets off a blast there
+' - a shell flies up to 10 cells; a block or the wall stops it, a mine or a
+'   tank sets off a blast
+' - a blast wipes out everything in the 3 x 3 cells round it: blocks,
+'   mines, wall, tanks (no chain reactions)
+' - a blast on the border opens it: tanks and shells wrap round the screen
+' - SL (skill level) sets SL*10+1 blocks and 3+2*SL mines
+' - both tanks gone: "YOU GOT EACH OTHER!" and both score; the field is
+'   redrawn after each round
+'
+' Liberties:
+' - a ONE PLAYER game against a computer red tank (the VIC was two players)
+' - a match ends when a side has 5 (the VIC went on until a key); a tie at
+'   5-5 is a draw
+' - smooth sprites moving between cells; the game does not stop while a
+'   shell flies (the VIC froze everything for the shell); shells take 2
+'   frames a cell; it still pauses for a blast, as the VIC did
+' - SPEED slow/medium/fast: a cell every 14, 11 or 8 frames (the VIC's
+'   BASIC speed, estimated from the listing, was about 5-8 cells a second)
+' - each round starts with a one-second wait, as on the VIC
+' - field 28 x 21 cells (the VIC's 22 x 23) inside a wall; two of the
+'   mines always lie in the wall (on the VIC they fell there by chance) and
+'   no mine starts next to a tank; blue starts in the left 8 columns, red in
+'   the right 8 (the VIC: anywhere)
+' - a blast that opens the wall opens the opposite wall too, so a tank that
+'   goes out one side comes in the other (on the VIC the wrap ran into the
+'   next row of memory and mostly met the opposite wall)
+' - SL is chosen on the menu (the VIC: by editing line 1); original tune
+'   "Treads and Turrets", block-letter title, credits page
+
+const TGround = 128
+const TBlock = 129
+const TWall = 130
+const TMine = 131
+const TBlasta00 = 132
+const TBlasta01 = 133
+const TBlasta02 = 134
+const TBlasta10 = 135
+const TBlasta11 = 136
+const TBlasta12 = 137
+const TBlasta20 = 138
+const TBlasta21 = 139
+const TBlasta22 = 140
+const TBlastb00 = 141
+const TBlastb01 = 142
+const TBlastb02 = 143
+const TBlastb10 = 144
+const TBlastb11 = 145
+const TBlastb12 = 146
+const TBlastb20 = 147
+const TBlastb21 = 148
+const TBlastb22 = 149
+const THud = 150
+const STankul = 0
+const STankl = 4
+const STankdl = 8
+const STanku = 12
+const STankd = 16
+const STankur = 20
+const STankr = 24
+const STankdr = 28
+const SBlank = 32
+const SShellsl = 36
+const SShellbs = 40
+const SShellv = 44
+const SShellh = 48
+const NTiles8 = 184
+const SprBytes = 416
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFire = 3
+const SndBoom = 4
+const SndClank = 5
+const SndBlip = 6
+const SndRound = 7
+const SndOver = 8
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+const FW = 28
+const FH = 21
+const Range = 10
+const ShF = 2
+const WinAt = 5
+
+' cell contents
+const CEmpty = 0
+const CBlock = 1
+const CMine = 2
+const CWall = 3
+
+record Tank:
+  u8 CX
+  u8 CY
+  u8 PX
+  u8 PY
+  u8 Dx
+  u8 Dy
+  u8 Stp
+  u8 Latch
+  u8 In
+  u8 Alive
+  u8 BOn
+  u8 BX
+  u8 BY
+  u8 BDx
+  u8 BDy
+  u8 BN
+  u8 BT
+end record
+
+Tank Tk[2]
+bcd digits 2 Score[2] = 0
+data TankCol bytes
+  5,8
+end data
+' tank sprite by (dx+1)*3 + (dy+1), as the VIC's DC%(U+1, O+1)
+data TankPat bytes
+  STankul,STankl,STankdl,STanku,SBlank,STankd,STankur,STankr,STankdr
+end data
+' the eight ways: up, up-right, right, down-right, down, down-left, left, up-left
+data DirDx bytes
+  0,1,1,1,0,255,255,255
+end data
+data DirDy bytes
+  255,255,0,1,1,1,0,255
+end data
+data DirBits bytes
+  1,9,8,10,2,6,4,5
+end data
+data SpeedF bytes
+  14,11,8
+end data
+
+u16 NumU = 0
+u16 Rs = 12345
+u8 Phase = 0
+u8 Players = 1
+u8 Skill = 5
+u8 Speed = 2
+u8 StepF = 11
+u8 Menu = 0
+u8 Rounds = 0
+u8 Booms = 0
+u8 BoomX[4]
+u8 BoomY[4]
+u8 Who = 0
+u8 WasFire = 0
+u8 WasStick = 0
+u8 Press = 0
+u8 Tick = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+' the computer
+u8 AiAim = 0
+u8 AiDir = 0
+u8 AimNeed = 24
+u8 Bored = 0
+u8 AiPref = 8
+u8 AiBest = 0
+u8 AiBestS = 255
+u8 PathN = 0
+u8 GoalX = 0
+u8 GoalY = 0
+u8 GoalD = 0
+u8 CandX = 0
+u8 CandY = 0
+u8 CandBd = 255
+u8 PathX[10]
+u8 PathY[10]
+u8 Wander = 0
+
+  tile screen
+  set sound table TmSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  Phase = 0
+  TitlePage
+  if Menu >= 4 then goto title
+
+  Score[0] = 0
+  Score[1] = 0
+  Rounds = 0
+  StepF = SpeedF[Speed - 1]
+
+round:
+  StartRound
+  ' the VIC waited a moment (FOR I=1 TO 500) before the tanks roll
+  for J = 1 to 60
+    Frame1
+  next
+  Phase = 1
+
+play_loop:
+  Frame1
+  ReadPads
+  if Players = 1 then CpuThink
+  TankFrame(0)
+  TankFrame(1)
+  ShellFrame(0)
+  ShellFrame(1)
+  DrawSprites
+  if Booms > 0 then BlastShow
+  if Tk[0].Alive = 0 then goto round_over
+  if Tk[1].Alive = 0 then goto round_over
+  goto play_loop
+
+round_over:
+  Phase = 2
+  HideSprites
+  RoundMessage
+  ShowHud
+  inc Rounds
+  play sound SndRound
+  for J = 1 to 150
+    Frame1
+  next
+  if Score[0] >= WinAt then goto match_over
+  if Score[1] >= WinAt then goto match_over
+  goto round
+
+match_over:
+  Phase = 3
+  NewScreen
+  ShowHud
+  if Score[0] > Score[1] then
+    if Players = 1 then
+      print at 11,10, "YOU WIN!"
+    else
+      print at 10,10, "BLUE WINS!"
+    end if
+  elseif Score[1] > Score[0] then
+    if Players = 1 then
+      print at 7,10, "THE COMPUTER WINS"
+    else
+      print at 10,10, "RED WINS!"
+    end if
+  else
+    print at 10,10, "A DRAW GAME"
+  end if
+  print at 9,12, "BLUE ", Score[0], "  RED ", Score[1]
+  ShowScreen
+  play sound SndOver
+  Phase = 4
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' 16-bit xorshift; returns its low byte
+function Rnd as u8
+  Rs ^= Rs << 7
+  Rs ^= Rs >> 9
+  Rs ^= Rs << 8
+  return Rs & 255
+
+' a random number from 0 to N - 1 (N <= 128)
+function RndBelow(u8 N) as u8
+  u8 R = 0
+  R = Rnd & 127
+  while R >= N
+    R -= N
+  end while
+  return R
+
+function Dist(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' a stick as bits: 1 up, 2 down, 4 left, 8 right, 16 a button
+function PadBits(u8 P) as u8
+  u8 B = 0
+  if joypad(P).up then B |= 1
+  if joypad(P).down then B |= 2
+  if joypad(P).left then B |= 4
+  if joypad(P).right then B |= 8
+  if joypad(P).fire then B |= 16
+  return B
+
+sub ReadPads:
+  u8 A = 0
+  u8 B = 0
+  A = PadBits(1)
+  B = PadBits(2)
+  if Players = 1 then
+    Tk[0].In = A | B
+  else
+    Tk[0].In = A
+    Tk[1].In = B
+  end if
+  return
+end sub
+
+' the field lives in the name table itself (no RAM to spare for 588
+' cells): field cell X, Y is screen tile X + 2, Y + 2
+function CellAt(u8 X, u8 Y) as u8
+  u8 T = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  Sx = X + 2
+  Sy = Y + 2
+  T = get char at Sx, Sy
+  select case T
+  case TBlock
+    return CBlock
+  case TMine
+    return CMine
+  case TWall
+    return CWall
+  end select
+  return CEmpty
+
+sub SetCell(u8 X, u8 Y, u8 C):
+  u8 T = TGround
+  select case C
+  case CBlock
+    T = TBlock
+  case CMine
+    T = TMine
+  case CWall
+    T = TWall
+  end select
+  put char T at X + 2, Y + 2
+  return
+end sub
+
+' one step from X the way D (0, 1 or 255), wrapping round the field
+function StepX(u8 X, u8 D) as u8
+  X += D
+  if X = 255 then return FW - 1
+  if X >= FW then return 0
+  return X
+
+function StepY(u8 Y, u8 D) as u8
+  Y += D
+  if Y = 255 then return FH - 1
+  if Y >= FH then return 0
+  return Y
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 1
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "BLUE ", Score[0]
+  print at 22,1, "RED ", Score[1]
+  NumU = Skill
+  if Players = 1 then print at 11,1, "SL ", digits$(NumU, 1), " 1P" else print at 11,1, "SL ", digits$(NumU, 1), " 2P"
+  return
+end sub
+
+' a free inner cell (not the wall), in columns Lo to Lo + Span - 1
+sub FreeCell(u8 Lo, u8 Span):
+  u8 X = 0
+  u8 Y = 0
+  u8 Ok = 0
+  while Ok = 0
+    X = Lo + RndBelow(Span)
+    Y = 1 + RndBelow(FH - 2)
+    if CellAt(X, Y) = CEmpty then Ok = 1
+  end while
+  BoomX[3] = X
+  BoomY[3] = Y
+  return
+end sub
+
+' is a mine on any of the 8 cells round X, Y?
+function MineNear(u8 X, u8 Y) as u8
+  u8 A = 0
+  u8 B = 0
+  u8 Xx = 0
+  u8 Yy = 0
+  for A = 0 to 2
+    for B = 0 to 2
+      Xx = X + A
+      Yy = Y + B
+      if Xx > 0 then
+        if Yy > 0 then
+          dec Xx
+          dec Yy
+          if Xx < FW then
+            if Yy < FH then
+              if CellAt(Xx, Yy) = CMine then return 1
+            end if
+          end if
+        end if
+      end if
+    next
+  next
+  return 0
+
+sub PlaceTank(u8 P, u8 Lo):
+  u8 Ok = 0
+  while Ok = 0
+    FreeCell(Lo, 8)
+    if MineNear(BoomX[3], BoomY[3]) = 0 then Ok = 1
+  end while
+  Tk[P].CX = BoomX[3]
+  Tk[P].CY = BoomY[3]
+  Tk[P].PX = BoomX[3]
+  Tk[P].PY = BoomY[3]
+  ' the VIC: red starts heading left, blue right, up/down at random
+  if P = 0 then Tk[P].Dx = 1 else Tk[P].Dx = 255
+  Tk[P].Dy = RndBelow(3) - 1
+  Tk[P].Latch = 0
+  Tk[P].In = 0
+  Tk[P].Alive = 1
+  Tk[P].BOn = 0
+  if P = 0 then Tk[P].Stp = 0 else Tk[P].Stp = StepF >> 1
+  return
+end sub
+
+' a new field: wall, SL*10+1 blocks, 3+2*SL mines (two in the wall)
+sub StartRound:
+  u8 X = 0
+  u8 Y = 0
+  u8 N = 0
+  u8 K = 0
+  NewScreen
+  for Y = 2 to FH + 1
+    fill TGround count FW at 2,Y
+  next
+  fill TWall count FW at 2,2
+  fill TWall count FW at 2,FH + 1
+  for Y = 0 to FH - 1
+    SetCell(0, Y, CWall)
+    SetCell(FW - 1, Y, CWall)
+  next
+  N = Skill * 10 + 1
+  for K = 1 to N
+    FreeCell(1, FW - 2)
+    SetCell(BoomX[3], BoomY[3], CBlock)
+  next
+  ' one mine in a side wall and one in the top or bottom wall
+  Y = 2 + RndBelow(FH - 4)
+  if Rnd & 1 then X = 0 else X = FW - 1
+  SetCell(X, Y, CMine)
+  X = 2 + RndBelow(FW - 4)
+  if Rnd & 1 then Y = 0 else Y = FH - 1
+  SetCell(X, Y, CMine)
+  N = Skill + Skill + 1
+  for K = 1 to N
+    FreeCell(1, FW - 2)
+    SetCell(BoomX[3], BoomY[3], CMine)
+  next
+  PlaceTank(0, 1)
+  PlaceTank(1, 19)
+  Booms = 0
+  AiAim = 0
+  Bored = 0
+  Wander = 0
+  ShowHud
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+' one frame of a tank: remember the stick; fire; every StepF frames a move
+sub TankFrame(u8 P):
+  u8 In = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 C = 0
+  u8 Q = 0
+  if Tk[P].Alive = 0 then return
+  In = Tk[P].In
+  V = In & 15
+  if V > 0 then Tk[P].Latch = V
+  if In & 16 then
+    if Tk[P].BOn = 0 then Launch(P)
+  end if
+  inc Tk[P].Stp
+  if Tk[P].Stp < StepF then return
+  Tk[P].Stp = 0
+  V = Tk[P].Latch
+  Tk[P].Latch = 0
+  if V > 0 then
+    if V & 1 then
+      Tk[P].Dy = 255
+    elseif V & 2 then
+      Tk[P].Dy = 1
+    else
+      Tk[P].Dy = 0
+    end if
+    if V & 4 then
+      Tk[P].Dx = 255
+    elseif V & 8 then
+      Tk[P].Dx = 1
+    else
+      Tk[P].Dx = 0
+    end if
+  end if
+  Tk[P].PX = Tk[P].CX
+  Tk[P].PY = Tk[P].CY
+  Nx = StepX(Tk[P].CX, Tk[P].Dx)
+  Ny = StepY(Tk[P].CY, Tk[P].Dy)
+  Q = P ^ 1
+  if Tk[Q].Alive = 1 then
+    if Tk[Q].CX = Nx then
+      if Tk[Q].CY = Ny then
+        Explode(Nx, Ny)
+        return
+      end if
+    end if
+  end if
+  C = CellAt(Nx, Ny)
+  select case C
+  case CEmpty
+    Tk[P].CX = Nx
+    Tk[P].CY = Ny
+    ' through a hole in the wall: no slide across the screen
+    if Dist(Nx, Tk[P].PX) > 1 then Tk[P].PX = Nx
+    if Dist(Ny, Tk[P].PY) > 1 then Tk[P].PY = Ny
+  case CMine
+    Explode(Nx, Ny)
+  end select
+  return
+end sub
+
+sub Launch(u8 P):
+  Tk[P].BOn = 1
+  Tk[P].BX = Tk[P].CX
+  Tk[P].BY = Tk[P].CY
+  Tk[P].BDx = Tk[P].Dx
+  Tk[P].BDy = Tk[P].Dy
+  Tk[P].BN = 0
+  Tk[P].BT = 0
+  play sound SndFire
+  return
+end sub
+
+' a shell: a cell every ShF frames, up to Range cells
+sub ShellFrame(u8 P):
+  u8 X = 0
+  u8 Y = 0
+  u8 K = 0
+  if Tk[P].BOn = 0 then return
+  inc Tk[P].BT
+  if Tk[P].BT < ShF then return
+  Tk[P].BT = 0
+  if Tk[P].BN >= Range then
+    Tk[P].BOn = 0
+    return
+  end if
+  inc Tk[P].BN
+  X = StepX(Tk[P].BX, Tk[P].BDx)
+  Y = StepY(Tk[P].BY, Tk[P].BDy)
+  Tk[P].BX = X
+  Tk[P].BY = Y
+  for K = 0 to 1
+    if Tk[K].Alive = 1 then
+      if Tk[K].CX = X then
+        if Tk[K].CY = Y then
+          Tk[P].BOn = 0
+          Explode(X, Y)
+          return
+        end if
+      end if
+    end if
+  next
+  select case CellAt(X, Y)
+  case CMine
+    Tk[P].BOn = 0
+    Explode(X, Y)
+  case CBlock, CWall
+    Tk[P].BOn = 0
+    play sound SndClank
+  end select
+  return
+end sub
+
+' a blast at X, Y: clear the 3 x 3 cells (wall too, and the wall opposite),
+' destroy any tank there. Drawn by BlastShow at the end of the frame.
+sub Explode(u8 X, u8 Y):
+  u8 X0 = 0
+  u8 Y0 = 0
+  u8 X1 = 0
+  u8 Y1 = 0
+  u8 A = 0
+  u8 B = 0
+  u8 K = 0
+  if X > 0 then X0 = X - 1
+  if Y > 0 then Y0 = Y - 1
+  X1 = X + 1
+  if X1 >= FW then X1 = FW - 1
+  Y1 = Y + 1
+  if Y1 >= FH then Y1 = FH - 1
+  for A = X0 to X1
+    for B = Y0 to Y1
+      ClearCell(A, B)
+      if A = 0 then ClearCell(FW - 1, B)
+      if A = FW - 1 then ClearCell(0, B)
+      if B = 0 then ClearCell(A, FH - 1)
+      if B = FH - 1 then ClearCell(A, 0)
+      for K = 0 to 1
+        if Tk[K].CX = A then
+          if Tk[K].CY = B then
+            Tk[K].Alive = 0
+            Tk[K].BOn = 0
+          end if
+        end if
+      next
+    next
+  next
+  if Booms < 3 then
+    BoomX[Booms] = X
+    BoomY[Booms] = Y
+    inc Booms
+  end if
+  return
+end sub
+
+sub ClearCell(u8 X, u8 Y):
+  put char TGround at X + 2, Y + 2
+  return
+end sub
+
+' draw the blasts (the VIC's 3 x 3 picture), let the noise fade, clear them
+sub BlastShow:
+  u8 F = 0
+  u8 K = 0
+  play sound SndBoom
+  for F = 0 to 47
+    V = F & 8
+    for K = 0 to Booms - 1
+      BlastAt(BoomX[K], BoomY[K], V)
+    next
+    update sprites
+    Frame1
+  next
+  for K = 0 to Booms - 1
+    BlastAt(BoomX[K], BoomY[K], 255)
+  next
+  Booms = 0
+  return
+end sub
+
+' Mode: 0 or 8 the two blast colourings, 255 back to the ground
+sub BlastAt(u8 X, u8 Y, u8 Mode):
+  u8 A = 0
+  u8 B = 0
+  u8 Xx = 0
+  u8 Yy = 0
+  u8 T = 0
+  for A = 0 to 2
+    for B = 0 to 2
+      Xx = X + A
+      Yy = Y + B
+      if Xx > 0 then
+        if Yy > 0 then
+          dec Xx
+          dec Yy
+          if Xx < FW then
+            if Yy < FH then
+              if Mode = 255 then
+                put char TGround at Xx + 2, Yy + 2
+              else
+                T = TBlasta00 + A * 3 + B
+                if Mode > 0 then T += 9
+                put char T at Xx + 2, Yy + 2
+              end if
+            end if
+          end if
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+sub RoundMessage:
+  u8 R = 0
+  for R = 10 to 12
+    fill THud count 24 at 4,R
+  next
+  if Tk[0].Alive = 0 then
+    if Tk[1].Alive = 0 then
+      Score[0] += 1
+      Score[1] += 1
+      print at 5,11, "YOU GOT EACH OTHER!"
+      return
+    end if
+    Score[1] += 1
+    print at 6,11, "BLUE IS TANK DUST!"
+    return
+  end if
+  Score[0] += 1
+  print at 6,11, "RED IS REARRANGED!"
+  return
+end sub
+
+' the pixel of a tank between its last cell and this one
+function Glide(u8 Pc, u8 Cc, u8 St) as u8
+  u8 Off = 0
+  u8 Base = 0
+  Base = (Pc + 2) << 3
+  if Pc = Cc then return Base
+  Off = (St << 3) / StepF
+  if Cc > Pc then return Base + Off
+  return Base - Off
+
+sub DrawSprites:
+  u8 P = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Pat = 0
+  u8 Col = 0
+  u8 Sn = 0
+  for P = 0 to 1
+    if Tk[P].Alive = 1 then
+      Sx = Glide(Tk[P].PX, Tk[P].CX, Tk[P].Stp)
+      Sy = Glide(Tk[P].PY, Tk[P].CY, Tk[P].Stp) - 1
+      V = Tk[P].Dx + 1
+      W = Tk[P].Dy + 1
+      J = V * 3 + W
+      Pat = TankPat[J]
+      Col = TankCol[P]
+      set sprite P to Sy,Sx,Pat,Col
+    else
+      set sprite P to 192,0,0,0
+    end if
+    Sn = P + 2
+    if Tk[P].BOn = 1 then
+      Pat = SShellh
+      if Tk[P].BDx = 0 then
+        Pat = SShellv
+      elseif Tk[P].BDy <> 0 then
+        if Tk[P].BDx = Tk[P].BDy then Pat = SShellbs else Pat = SShellsl
+      end if
+      Sx = (Tk[P].BX + 2) << 3
+      Sy = (Tk[P].BY + 2) << 3
+      dec Sy
+      set sprite Sn to Sy,Sx,Pat,15
+    else
+      set sprite Sn to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's red tank (one-player game). It decides once a move, just
+' before it rolls (its reaction time). It dodges the blue shell, fires when
+' blue sits on its line of fire with nothing in between (after aiming for
+' AimNeed moves), turns onto blue's line when it can, and otherwise heads
+' for a cell on a line with blue about 6 cells away.
+sub CpuThink:
+  u8 Mx = 0
+  u8 My = 0
+  u8 Px = 0
+  u8 Py = 0
+  u8 D = 0
+  u8 Best = 0
+  u8 BestS = 255
+  u8 S = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 LineD = 8
+  u8 Out = 0
+  Tk[1].In = 0
+  if Tk[1].Alive = 0 then return
+  Mx = Tk[1].CX
+  My = Tk[1].CY
+  Px = Tk[0].CX
+  Py = Tk[0].CY
+  ' the way to blue when blue is on a line (row, column or diagonal)
+  Ax = Dist(Mx, Px)
+  Ay = Dist(My, Py)
+  if Ax <= Range then
+    if Ay <= Range then
+      if Ax = 0 then
+        LineD = 0
+      elseif Ay = 0 then
+        LineD = 2
+      elseif Ax = Ay then
+        LineD = 1
+      end if
+    end if
+  end if
+  if LineD < 8 then
+    ' the direction number from the signs
+    LineD = WayTo(Mx, My, Px, Py)
+    if ClearPath(Mx, My, LineD, Ax + Ay) = 0 then LineD = 8
+  end if
+  ' aim: blue on a clear line for AimNeed frames in a row (its reaction
+  ' time), then fire as soon as the tank points that way
+  if LineD < 8 then
+    if AiAim < 255 then inc AiAim
+    if AiAim >= AimNeed then
+      if DirDx[LineD] = Tk[1].Dx then
+        if DirDy[LineD] = Tk[1].Dy then
+          Out = 16
+          Bored = 0
+        end if
+      end if
+    end if
+  else
+    AiAim = 0
+  end if
+  ' the move is weighed over the five frames before the tank rolls
+  ' (all eight ways at once overran a frame)
+  AiPref = LineD
+  if Ax < 3 then
+    if Ay < 3 then AiPref = 8
+  end if
+  V = Tk[1].Stp + 5
+  select case V
+  case StepF
+    ShellPath
+  case StepF + 1
+    ' no shot for a long while (circling round a block?): wander a bit
+    inc Bored
+    if Bored >= 30 then
+      Bored = 0
+      Wander = 8
+    end if
+    if Wander > 0 then dec Wander
+    AiBestS = 255
+    AiBest = 0
+    EvalWays(0, 1)
+  case StepF + 2
+    EvalWays(2, 3)
+  case StepF + 3
+    EvalWays(4, 5)
+  case StepF + 4
+    EvalWays(6, 7)
+    if AiBestS < 200 then
+      AiDir = AiBest
+      ' (Out |= DirBits[AiBest] fails to assemble: bugs/tankm-or-assign-data-index.alexis)
+      V = DirBits[AiBest]
+      Out |= V
+    end if
+  case else
+    ' on the other frames: one way of the goal search
+    FindGoal
+  end select
+  Tk[1].In = Out
+  return
+end sub
+
+' score the ways Lo to Hi for the computer's next move (lower is better)
+sub EvalWays(u8 Lo, u8 Hi):
+  u8 D = 0
+  u8 S = 0
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Mx = 0
+  u8 My = 0
+  u8 Px = 0
+  u8 Py = 0
+  Mx = Tk[1].CX
+  My = Tk[1].CY
+  Px = Tk[0].CX
+  Py = Tk[0].CY
+  D = Lo
+  while D <= Hi
+    Nx = StepX(Mx, DirDx[D])
+    Ny = StepY(My, DirDy[D])
+    S = 200
+    if CellAt(Nx, Ny) = CEmpty then
+      S = 0
+      if Nx = Px then
+        if Ny = Py then S = 200
+      end if
+      if S = 0 then
+        S = Score1(Nx, Ny)
+        if D = AiPref then S = 0
+        if InShellPath(Nx, Ny) = 1 then S += 100
+        ' a turn back costs a little (no dithering)
+        V = D ^ 4
+        if V = AiDir then S += 3
+        S += Rnd & 1
+        if Wander > 0 then S += Rnd & 31
+      end if
+    end if
+    if S < AiBestS then
+      AiBestS = S
+      AiBest = D
+    end if
+    inc D
+  end while
+  return
+end sub
+
+' how good a cell is for the computer: near its goal (lower is better)
+function Score1(u8 X, u8 Y) as u8
+  u8 Ax = 0
+  u8 Ay = 0
+  Ax = Dist(X, GoalX)
+  Ay = Dist(Y, GoalY)
+  if Ay > Ax then Ax = Ay
+  return Ax * 4 + 1
+
+' the computer's goal: the nearest cell (to it) from which blue can be shot,
+' 4 to 8 cells from blue along a clear row, column or diagonal; blue itself
+' when there is none. One way (of 8) a frame, on frames with no other work.
+sub FindGoal:
+  u8 D = 0
+  u8 K = 0
+  u8 X = 0
+  u8 Y = 0
+  u8 Go = 0
+  u8 Ds = 0
+  u8 Ay = 0
+  if GoalD = 0 then
+    CandBd = 255
+    CandX = Tk[0].CX
+    CandY = Tk[0].CY
+  end if
+  D = GoalD
+  X = Tk[0].CX
+  Y = Tk[0].CY
+  Go = 1
+  K = 1
+  while Go = 1
+    X = StepX(X, DirDx[D])
+    Y = StepY(Y, DirDy[D])
+    if CellAt(X, Y) <> CEmpty then
+      Go = 0
+    else
+      if K >= 4 then
+        Ds = Dist(X, Tk[1].CX)
+        Ay = Dist(Y, Tk[1].CY)
+        if Ay > Ds then Ds = Ay
+        if Ds < CandBd then
+          CandBd = Ds
+          CandX = X
+          CandY = Y
+        end if
+      end if
+      inc K
+      if K > 8 then Go = 0
+    end if
+  end while
+  inc GoalD
+  if GoalD = 8 then
+    GoalD = 0
+    GoalX = CandX
+    GoalY = CandY
+  end if
+  return
+end sub
+
+' the way number (0-7) from A to B
+function WayTo(u8 Ax, u8 Ay, u8 Bx, u8 By) as u8
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 D = 0
+  if Bx > Ax then Sx = 1
+  if Bx < Ax then Sx = 255
+  if By > Ay then Sy = 1
+  if By < Ay then Sy = 255
+  for D = 0 to 7
+    if DirDx[D] = Sx then
+      if DirDy[D] = Sy then return D
+    end if
+  next
+  return 0
+
+' no block, wall or mine between X, Y and the target N cells away (N is a
+' sum: straight lines have one part 0, diagonals count twice)
+function ClearPath(u8 X, u8 Y, u8 D, u8 N) as u8
+  u8 K = 0
+  u8 Cnt = 0
+  Cnt = N
+  if DirDx[D] <> 0 then
+    if DirDy[D] <> 0 then Cnt = N >> 1
+  end if
+  while Cnt > 1
+    X = StepX(X, DirDx[D])
+    Y = StepY(Y, DirDy[D])
+    if CellAt(X, Y) <> CEmpty then return 0
+    dec Cnt
+  end while
+  return 1
+
+' the cells the blue shell will still cross (worked out once a move)
+sub ShellPath:
+  u8 Bx = 0
+  u8 By = 0
+  u8 N = 0
+  PathN = 0
+  if Tk[0].BOn = 0 then return
+  Bx = Tk[0].BX
+  By = Tk[0].BY
+  N = Tk[0].BN
+  while N < Range
+    Bx = StepX(Bx, Tk[0].BDx)
+    By = StepY(By, Tk[0].BDy)
+    PathX[PathN] = Bx
+    PathY[PathN] = By
+    inc PathN
+    N += 1
+    if CellAt(Bx, By) <> CEmpty then N = Range
+  end while
+  return
+end sub
+
+' will the blue shell pass X, Y?
+function InShellPath(u8 X, u8 Y) as u8
+  u8 K = 0
+  while K < PathN
+    if PathX[K] = X then
+      if PathY[K] = Y then return 1
+    end if
+    inc K
+  end while
+  return 0
+
+' ---------------------------------------------------------------------------
+' title: block letters, the two tanks, a menu
+sub TitlePage:
+  u8 Tr = 0
+  u8 Ty = 0
+  NewScreen
+  for Tr = 0 to 10
+    Ty = Tr + 2
+    NumU = Tr * 28
+    put TitleMap + NumU count 28 at 2,Ty
+  next
+  print at 7,14, "COMPUTE!'S GAZETTE"
+  print at 10,15, "APRIL 1984"
+  set sprite 0 to 71,48,STankr,5
+  set sprite 1 to 71,200,STankl,8
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 420
+  TzOn = 1
+  Menu = 0
+  ShowMenu
+  Rearm
+  wait no fire
+  nmi off
+  WasFire = 1
+tp_loop:
+  Frame1
+  V = Rnd
+  V = PadBits(1) | PadBits(2)
+  W = V & 15
+  if W > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu = 0 then Menu = 5 else dec Menu
+      elseif V & 2 then
+        if Menu = 5 then Menu = 0 else inc Menu
+      elseif Menu > 0 then
+        if Menu < 4 then ChangeOpt(V)
+      end if
+      play sound SndBlip
+      ShowMenu
+    end if
+  end if
+  WasStick = W
+  Press = 0
+  W = V & 16
+  if W > 0 then
+    if WasFire = 0 then Press = 1
+  end if
+  WasFire = W
+  if Press = 0 then goto tp_loop
+  if Menu > 0 then
+    if Menu < 4 then
+      ChangeOpt(8)
+      play sound SndBlip
+      ShowMenu
+      goto tp_loop
+    end if
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 4 then HowTo
+  if Menu = 5 then EditorialPage
+  return
+end sub
+
+' change the option under the arrow: left goes down, right or a button up
+sub ChangeOpt(u8 B):
+  u8 Up = 1
+  if B & 4 then Up = 0
+  select case Menu
+  case 1
+    Players = 3 - Players
+  case 2
+    if Up = 1 then
+      if Skill = 9 then Skill = 1 else inc Skill
+    else
+      if Skill = 1 then Skill = 9 else dec Skill
+    end if
+  case 3
+    if Up = 1 then
+      if Speed = 3 then Speed = 1 else inc Speed
+    else
+      if Speed = 1 then Speed = 3 else dec Speed
+    end if
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  u8 R = 0
+  for R = 17 to 22
+    fill 32 count 26 at 3,R
+  next
+  print at 9,17, "START"
+  if Players = 1 then print at 9,18, "ONE PLAYER" else print at 9,18, "TWO PLAYERS"
+  NumU = Skill
+  print at 9,19, "SKILL LEVEL ", digits$(NumU, 1)
+  select case Speed
+  case 1
+    print at 9,20, "SPEED SLOW"
+  case 2
+    print at 9,20, "SPEED MEDIUM"
+  case else
+    print at 9,20, "SPEED FAST"
+  end select
+  print at 9,21, "HOW TO PLAY"
+  print at 9,22, "CREDITS"
+  R = Menu + 17
+  put char 62 at 7,R
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,2, "TANK MANIA"
+  print at 2,4, "BY KEN GIBBONS AND CURTIS"
+  print at 2,5, "RICH, COMPUTE!'S GAZETTE"
+  print at 2,6, "APRIL 1984 (VIC-20)."
+  print at 2,7, "A COLECOVISION PORT."
+  print at 2,9, "YOUR TANK NEVER STOPS: STEER"
+  print at 2,10, "IT AND SHOOT THE OTHER ONE."
+  print at 2,11, "BLOCKS STOP TANKS, SHELLS."
+  print at 2,12, "A SHOT MINE BLOWS UP ALL"
+  print at 2,13, "ROUND IT. BLOW A HOLE IN THE"
+  print at 2,14, "WALL TO WRAP ROUND. FIRST"
+  print at 2,15, "TO 5 WINS."
+  print at 2,17, "MADE FOR THE COLECOVISION BY"
+  print at 2,18, "CLAUDE (AN AI MADE BY"
+  print at 2,19, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,20, "2026, IN AMY BY AMY BIENVENU"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own tiles and sprites; the
+' button turns the page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "TWO TANKS IN A FIELD OF"
+  print at 2,4, "BLOCKS AND MINES. DESTROY"
+  print at 2,5, "THE OTHER TANK!"
+  fill TWall count 28 at 2,7
+  fill TGround count 28 at 2,8
+  fill TGround count 28 at 2,9
+  fill TGround count 28 at 2,10
+  fill TWall count 28 at 2,11
+  put char TBlock at 16,8
+  put char TBlock at 16,9
+  put char TMine at 22,10
+  set sprite 0 to 71,32,STankr,5
+  set sprite 1 to 71,64,SShellh,15
+  set sprite 2 to 63,208,STankl,8
+  update sprites
+  print at 2,13, "YOUR TANK NEVER STOPS: IT"
+  print at 2,14, "ROLLS THE WAY THE STICK"
+  print at 2,15, "LAST POINTED (8 WAYS)."
+  print at 2,16, "BUTTON: FIRE A SHELL THE"
+  print at 2,17, "WAY YOUR TANK POINTS."
+  print at 2,19, "ONE PLAYER: YOU ARE BLUE,"
+  print at 2,20, "THE COMPUTER IS RED. TWO"
+  print at 2,21, "PLAYERS: STICK 2 IS RED."
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  print at 2,3, "BLOCKS STOP TANKS AND"
+  print at 2,4, "SHELLS. HITTING A MINE OR A"
+  print at 2,5, "TANK MAKES A BLAST THAT"
+  print at 2,6, "WIPES OUT ALL AROUND IT."
+  fill TGround count 28 at 2,8
+  fill TGround count 28 at 2,9
+  fill TGround count 28 at 2,10
+  for J = 0 to 2
+    for W = 0 to 2
+      V = J * 3
+      V = V + W
+      put char TBlasta00 + V at 9 + W,8 + J
+    next
+  next
+  put char TMine at 17,9
+  put char TBlock at 22,8
+  put char TBlock at 23,8
+  put char TBlock at 23,9
+  print at 2,12, "A BLAST IN THE WALL MAKES A"
+  print at 2,13, "HOLE: GO OUT ONE SIDE AND"
+  print at 2,14, "COME IN THE OTHER!"
+  print at 2,16, "DESTROY THE OTHER TANK TO"
+  print at 2,17, "WIN THE ROUND. FIRST TO 5"
+  print at 2,18, "ROUNDS WINS THE GAME."
+  print at 2,20, "TIP: SHOOT A MINE NEXT TO"
+  print at 2,21, "THE OTHER TANK!"
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasFire = 1
+  NumU = 0
+hw_loop:
+  Frame1
+  V = PadBits(1) | PadBits(2)
+  W = V & 16
+  Press = 0
+  if W > 0 then
+    if WasFire = 0 then Press = 1
+  end if
+  WasFire = W
+  inc NumU
+  if NumU >= 1800 then return
+  if Press = 0 then goto hw_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$04,$00,$00,$40,$00,$00
+  $81,$60,$40,$00,$00,$01,$03,$81
+  $81,$40,$01,$01,$01,$01,$03,$81
+  $00,$00,$42,$24,$18,$24,$42,$00
+  $00,$70,$81,$99,$20,$30,$30,$00
+  $E4,$12,$25,$44,$24,$12,$21,$C6
+  $00,$30,$30,$20,$99,$81,$70,$00
+  $44,$AA,$91,$00,$22,$AA,$89,$81
+  $99,$A5,$C3,$00,$00,$C3,$A5,$99
+  $81,$89,$AA,$22,$00,$91,$AA,$44
+  $00,$0E,$81,$99,$04,$0C,$0C,$00
+  $C6,$21,$12,$24,$44,$25,$12,$E4
+  $00,$0C,$0C,$04,$99,$81,$0E,$00
+  $00,$70,$81,$99,$20,$30,$30,$00
+  $E4,$12,$25,$44,$24,$12,$21,$C6
+  $00,$30,$30,$20,$99,$81,$70,$00
+  $44,$AA,$91,$00,$22,$AA,$89,$81
+  $99,$A5,$C3,$00,$00,$C3,$A5,$99
+  $81,$89,$AA,$22,$00,$91,$AA,$44
+  $00,$0E,$81,$99,$04,$0C,$0C,$00
+  $C6,$21,$12,$24,$44,$25,$12,$E4
+  $00,$0C,$0C,$04,$99,$81,$0E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$C1,$01,$01,$C1,$01,$01
+  $1E,$FE,$FE,$0E,$0E,$CE,$CE,$1C
+  $1B,$FB,$AB,$AB,$AB,$AB,$AB,$1A
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$91,$19,$19,$91,$91,$91,$01
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$19,$19,$91,$01
+  $91,$91,$91,$01,$91,$19,$91,$91
+  $91,$19,$19,$09,$09,$19,$19,$91
+  $91,$91,$19,$91,$01,$91,$91,$91
+  $01,$91,$19,$19,$91,$91,$91,$01
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $01,$91,$91,$91,$19,$19,$91,$01
+  $08,$B8,$8B,$8B,$B8,$B8,$B8,$08
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $08,$B8,$B8,$B8,$8B,$8B,$B8,$08
+  $B8,$B8,$B8,$08,$B8,$8B,$B8,$B8
+  $B8,$8B,$8B,$0B,$0B,$8B,$8B,$B8
+  $B8,$B8,$8B,$B8,$08,$B8,$B8,$B8
+  $08,$B8,$8B,$8B,$B8,$B8,$B8,$08
+  $B8,$B8,$B8,$B8,$B8,$B8,$B8,$B8
+  $08,$B8,$B8,$B8,$8B,$8B,$B8,$08
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $48,$EC,$7E,$37,$EF,$7C,$38,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$1E,$76,$76,$1E,$3F,$3F,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$38,$7C,$EF,$37,$7E,$EC,$48,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$5A,$7E,$66,$7E,$7E,$42,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $42,$7E,$7E,$66,$7E,$5A,$18,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $12,$37,$7E,$EC,$F7,$3E,$1C,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$FC,$78,$6E,$6E,$78,$FC,$FC,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$1C,$3E,$F7,$EC,$7E,$37,$12,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$0C,$1C,$38,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$30,$38,$1C,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$18,$18,$18,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$82,$82,$82,$20,$20,$82,$20,$20,$82,$82,$20,$20,$82,$20,$82,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$82,$20,$20,$82,$20,$82,$20,$82,$20,$82,$20,$82,$20,$82,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$82,$20,$20,$82,$82,$82,$20,$82,$20,$82,$20,$82,$82,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$82,$20,$20,$82,$20,$82,$20,$82,$20,$82,$20,$82,$20,$82,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$82,$20,$20,$82,$20,$82,$20,$82,$20,$82,$20,$82,$20,$82,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$81,$20,$81,$20,$20,$81,$20,$20,$81,$81,$20,$20,$81,$81,$81,$20,$20,$81,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$81,$81,$81,$20,$81,$20,$81,$20,$81,$20,$81,$20,$20,$81,$20,$20,$81,$20,$81,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$81,$20,$81,$20,$81,$81,$81,$20,$81,$20,$81,$20,$20,$81,$20,$20,$81,$81,$81,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$81,$20,$81,$20,$81,$20,$81,$20,$81,$20,$81,$20,$20,$81,$20,$20,$81,$20,$81,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$81,$20,$81,$20,$81,$20,$81,$20,$81,$20,$81,$20,$81,$81,$81,$20,$81,$20,$81,$20,$20,$20,$20,$20
+end data
+
+asm {
+TmFire:
+    db $40,$7F,$20,$02,$40,$8F,$30,$02,$40,$A0,$40,$02,$40,$B4,$50,$02,$40,$CA,$60,$02,$40,$E2,$80,$03
+    db $50
+TmBoom:
+    db $00,$00,$04,$06,$00,$00,$15,$0A,$00,$00,$36,$0C,$00,$00,$56,$0E,$00,$00,$77,$10,$00,$00,$A7,$10
+    db $10
+TmClank:
+    db $00,$00,$31,$02,$00,$00,$62,$03,$10
+TmBlip:
+    db $40,$71,$40,$02,$50
+TmRound:
+    db $40,$D6,$20,$08,$40,$AA,$20,$08,$40,$8F,$30,$0E,$50
+TmOver:
+    db $40,$1D,$21,$0C,$40,$D6,$20,$0C,$40,$AA,$20,$0C,$40,$8F,$30,$1E,$50
+
+TmSoundTable:
+    dw TmTuneMel,$702B
+    dw TmTuneBass,$7035
+    dw TmFire,$7049
+    dw TmBoom,$703F
+    dw TmClank,$703F
+    dw TmBlip,$7049
+    dw TmRound,$7049
+    dw TmOver,$7049
+; Treads and Turrets (original)
+; Tiny Sound, 8 frames per step
+TmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1A,$01,$1A,$1D,$21,$01,$01,$1F,$1D,$01,$1C,$1A
+    db $1C,$01,$01,$01,$1A,$01,$1A,$1D,$21,$01,$24,$01,$22,$01,$21,$1F
+    db $21,$01,$01,$01,$21,$1F,$1D,$1C,$1A,$01,$1C,$1D,$1F,$01,$1C,$18
+    db $1A,$01,$01,$01,$00,$01,$01
+    db $FF
+TmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$0A,$01,$11,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$11,$01,$18,$01,$13,$01,$1A,$01
+    db $15,$01,$10,$01,$0A,$01,$11,$01,$13,$01,$0E,$01,$09,$01,$10,$01
+    db $0E,$01,$15,$01,$00,$01,$01
+    db $FF
+}

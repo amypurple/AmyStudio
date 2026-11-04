@@ -53,8 +53,10 @@ cartridge "LITTERBUG/PAUL CHOQUETTE/1987"
 ' 201 s; NORMAL is the original's pace.
 '
 ' Controls: joystick only. The stick walks, a side button puts down a bag.
-' On the title, left and right choose the speed 1-9, up and down EASY or
-' NORMAL, a button starts.
+' On the title, up and down move the cursor over START, SPEED, EASY/NORMAL,
+' HOW TO PLAY (three pages) and CREDITS; left and right change the speed
+' 1-9 (on START or SPEED) or EASY/NORMAL (on that line); a button starts
+' the game from the first three lines.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -206,6 +208,7 @@ u8 Lives = 4
 u8 Bags = 8
 u8 Speed = 1
 u8 Easy = 1
+u8 Menu = 0
 u8 NormCad = 1
 u8 UnitL = UnitLen
 u8 Rate = 58
@@ -253,6 +256,14 @@ u8 Y = 0
 
 title:
   TitlePage
+  if Menu >= 3 then
+    if Menu = 3 then
+      HowToPage
+    else
+      CreditsPage
+    end if
+    goto title
+  end if
   NewGame
 
 level_loop:
@@ -869,9 +880,13 @@ sub TitlePage:
   print Score at 8,1
   print at 17,1, "HI"
   print Hi at 20,1
-  print at 4,19, "BUTTON: START"
-  print at 4,20, "LEFT/RIGHT: SPEED"
-  print at 4,21, "UP/DOWN:"
+  print at 6,18, "START"
+  print at 6,19, "SPEED"
+  print at 16,19, "(LEFT/RIGHT)"
+  print at 16,20, "(LEFT/RIGHT)"
+  print at 6,21, "HOW TO PLAY"
+  print at 6,22, "CREDITS"
+  Menu = 0
   ShowSpeed
   ' the bugs pace 32 pixels out and back every 256 frames
   Tick = 0
@@ -897,18 +912,26 @@ tp_loop:
   TitleBugs
   N = J & (J ^ Ti)
   Ti = J
-  if (N & 3) <> 0 then
-    Easy = Easy ^ 1
+  if (N & 1) <> 0 then
+    if Menu > 0 then dec Menu
     play sound SndPick
     ShowSpeed
   end if
-  if (N & 4) <> 0 then
-    if Speed > 1 then dec Speed
+  if (N & 2) <> 0 then
+    if Menu < 4 then inc Menu
     play sound SndPick
     ShowSpeed
   end if
-  if (N & 8) <> 0 then
-    if Speed < 9 then inc Speed
+  if (N & 12) <> 0 then
+    if Menu = 2 then
+      Easy = Easy ^ 1
+    elseif Menu < 2 then
+      if (N & 4) <> 0 then
+        if Speed > 1 then dec Speed
+      else
+        if Speed < 9 then inc Speed
+      end if
+    end if
     play sound SndPick
     ShowSpeed
   end if
@@ -938,12 +961,105 @@ sub BigLetter(u8 L, u8 Cx, u8 Cy):
 end sub
 
 sub ShowSpeed:
-  print at 22,20, digits$(Speed, 1)
+  print at 12,19, digits$(Speed, 1)
   if Easy = 1 then
-    print at 13,21, "EASY  "
+    print at 6,20, "EASY  "
   else
-    print at 13,21, "NORMAL"
+    print at 6,20, "NORMAL"
   end if
+  for Ri = 18 to 22
+    put char 32 at 4,Ri
+  next
+  put char 62 at 4,Menu + 18
+  return
+end sub
+
+' HOW TO PLAY: 3 pages; a button turns the page; after the last page,
+' or 30 seconds untouched, back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Hw = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "YOU KEEP THE PARK CLEAN."
+    print at 2,4, "WALK OVER EVERY PIECE OF"
+    print at 2,5, "LITTER TO PICK IT UP."
+    set sprite 0 to 55,64,SWorkw0,15
+    set sprite 1 to 55,64,SWorkp0,9
+    put char TLit0 at 12,7
+    put char TLit1 at 15,7
+    put char TLit2 at 18,7
+    put char TLit1 at 21,7
+    print at 2,10, "THE LITTERBUGS CHASE YOU."
+    print at 2,11, "IF ONE TOUCHES YOU, YOU"
+    print at 2,12, "LOSE A WORKER (YOU HAVE 4)."
+    set sprite 2 to 111,104,SBug0,8
+    set sprite 3 to 111,136,SBug1,13
+    print at 2,17, "CLEAN THE WHOLE PARK TO GO"
+    print at 2,18, "TO THE NEXT LEVEL."
+    print at 2,19, "NO WORKERS LEFT: GAME OVER."
+  case 2
+    print at 2,1, "CONTROLS AND BAGS       2/3"
+    print at 2,3, "STICK: WALK."
+    print at 2,4, "BUTTON: PUT DOWN A GARBAGE"
+    print at 2,5, "BAG."
+    set sprite 0 to 55,80,SBug0,8
+    set sprite 1 to 55,120,SSack,14
+    print at 2,10, "BUGS GO FOR THE BAG AND EAT"
+    print at 2,11, "IT, NOT YOU. WHILE IT LIES"
+    print at 2,12, "THERE, LITTER IS WORTH TEN"
+    print at 2,13, "TIMES AS MUCH!"
+    print at 2,15, "YOU HAVE 8 BAGS A WORKER."
+    print at 2,17, "A BADGE SHOWS UP NOW AND"
+    print at 2,18, "THEN: 1000 POINTS AND ONE"
+    print at 2,19, "MORE BAG."
+    set sprite 2 to 135,216,SBadge,11
+  case else
+    print at 2,1, "SCORE AND TIME          3/3"
+    print at 2,3, "LITTER: 10 POINTS."
+    print at 2,4, "WITH A BAG DOWN: 100."
+    print at 2,6, "THE CLOCK BAR AT THE BOTTOM"
+    print at 2,7, "RUNS DOWN. A CLEAN PARK PAYS"
+    print at 2,8, "A BONUS FOR THE TIME LEFT."
+    put char TClock at 2,10
+    fill TBar4 count 8 at 3,10
+    put char TBar2 at 11,10
+    for Bi = 0 to 2
+      put char TLife at 2 + Bi,12
+    next
+    print at 6,12, "SPARE WORKERS"
+    for Bi = 0 to 3
+      put char TBag at 2 + Bi,13
+    next
+    print at 7,13, "BAGS LEFT"
+    print at 2,15, "ON THE TITLE: SPEED 1-9 AND"
+    print at 2,16, "EASY OR NORMAL BUGS."
+    print at 2,18, "TIP: DROP A BAG WHEN THE"
+    print at 2,19, "BUGS GET CLOSE, THEN SWEEP"
+    print at 2,20, "FAST WHILE IT IS WORTH MORE."
+  end select
+  print at 7,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  OldJ = 31
+  Hw = 0
+ht_wait:
+  Frame1
+  ReadStick
+  Hw = Hw + 1
+  if Hw >= 1800 then goto ht_out
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+ht_out:
+  HideSprites
   return
 end sub
 

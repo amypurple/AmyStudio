@@ -43,8 +43,9 @@ cartridge "DISC BLITZ/COMPUTE!'S GAZETTE/1989"
 ' is new; a high score was added. Collisions are boxes, not pixels.
 '
 ' Controls: either controller; stick up/down moves the ship, either
-' button fires (hold to keep firing). On the title, up and down choose,
-' a button starts.
+' button fires (hold to keep firing). On the title, up and down choose
+' (START GAME, HOW TO PLAY, CREDITS), a button picks; HOW TO PLAY has two
+' pages (a button turns the page, 30 s idle goes back).
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop protected from the NMI; screens drawn with the NMI off after
@@ -166,6 +167,8 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 u8 Tick = 0
 u8 Idle = 0
 ' loop counters (never shared with the helpers)
@@ -196,7 +199,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu > 0 then goto title
 
   NewGame
 
@@ -732,6 +735,7 @@ end sub
 ' the title: the field, DISC BLITZ in blocks, the tune
 ' once, START GAME / CREDITS
 sub TitlePage:
+  Menu = 0
   NewScreen
   DrawField
   ' DISC (letters 0 1 2 3), BLITZ (4 5 1 6 7)
@@ -747,7 +751,8 @@ sub TitlePage:
   print at 4,14, "COMPUTE!'S GAZETTE"
   print at 7,15, "JANUARY 1989"
   print at 7,18, "START GAME"
-  print at 7,19, "CREDITS"
+  print at 7,19, "HOW TO PLAY"
+  print at 7,20, "CREDITS"
   print at PanelC,7, "HIGH"
   print at PanelC,8, Best
   ShowMenu
@@ -778,9 +783,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -796,15 +801,80 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
   put char 32 at 5,18
   put char 32 at 5,19
+  put char 32 at 5,20
   J = Menu + 18
   put char 62 at 5,J
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "YOUR SHIP SITS ON THE LEFT."
+    print at 2,4, "SIX DISCS BOUNCE AROUND THE"
+    print at 2,5, "SPACE. SHOOT THEM ALL!"
+    print at 2,7, "STICK UP/DOWN: MOVE SHIP."
+    print at 2,8, "BUTTON: FIRE (HOLD IT TO"
+    print at 2,9, "KEEP FIRING)."
+    print at 2,11, "EACH DISC: 10 POINTS. SHOOT"
+    print at 2,12, "ALL SIX TO CLEAR THE WAVE."
+    print at 2,13, "FOUR WAVES MAKE A LEVEL, AND"
+    print at 2,14, "EACH LEVEL THE DISCS MOVE A"
+    print at 2,15, "NEW WAY."
+    for J = 17 to 21
+      fill TSpace count 22 at 4,J
+    next
+    set sprite 0 to 150,40,SShip,15
+    set sprite 1 to 150,40,SCanopy,8
+    set sprite 2 to 151,80,SShot,11
+    set sprite 3 to 135,136,SDisc0,13
+    set sprite 4 to 159,168,SDisc0,13
+    set sprite 5 to 143,184,SPop,15
+  else
+    print at 2,3, "IF A DISC TOUCHES YOUR SHIP,"
+    print at 2,4, "THE SHIP BLOWS UP AND THE"
+    print at 2,5, "WHOLE WAVE COMES BACK."
+    print at 2,7, "YOU HAVE THREE SPARE SHIPS."
+    print at 2,8, "WHEN THEY ARE ALL GONE, THE"
+    print at 2,9, "GAME IS OVER."
+    print at 2,11, "TIP: WATCH THE PATH OF THE"
+    print at 2,12, "DISCS, AND KEEP AWAY FROM"
+    print at 2,13, "THE SPOT WHERE THEY BOUNCE"
+    print at 2,14, "OFF THE LEFT EDGE."
+    put char TLife at 12,18
+    put char TLife at 14,18
+    put char TLife at 16,18
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then goto ht_done
+  if Press = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  HideSprites
   return
 end sub
 

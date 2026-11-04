@@ -47,8 +47,9 @@ cartridge "LEXITRON/RON WILSON/1986"
 ' level menu is on the title. The title tune and sounds are new.
 '
 ' Controls: either controller; the stick moves the cursor, a side button
-' marks the letter under it. On the title, up and down choose, a button
-' starts.
+' marks the letter under it. On the title, up and down choose a level,
+' HOW TO PLAY or CREDITS, a button starts or shows the page (the cursor
+' comes back on the last level played).
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -381,7 +382,7 @@ u8 Ok = 0
 
 title:
   TitlePage
-  if Menu = 3 then goto title
+  if Menu >= 3 then goto title
 
   NewGame
 
@@ -934,7 +935,8 @@ sub TitlePage:
   print at 5,13, "LEVEL 1  FORWARDS"
   print at 5,14, "LEVEL 2  BACKWARDS TOO"
   print at 5,15, "LEVEL 3  DIAGONALS TOO"
-  print at 5,16, "CREDITS"
+  print at 5,16, "HOW TO PLAY"
+  print at 5,17, "CREDITS"
   print at 2,19, "BEST TIME"
   if Hi > 0 then
     W16 = Hi / 60
@@ -960,6 +962,7 @@ sub TitlePage:
     X = X - 1
     put char T at X,Y
   next
+  Menu = Lv - 1
   ShowMenu
   TitleOn = 1
   ShowScreen
@@ -983,7 +986,7 @@ tp_loop:
       if K > 0 then
         if Menu > 0 then dec Menu
       else
-        if Menu < 3 then inc Menu
+        if Menu < 4 then inc Menu
       end if
       ShowMenu
       play sound SndTick
@@ -1000,22 +1003,103 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 3 then
-    CreditsPage
-  else
-    Lv = Menu + 1
-  end if
+  if Menu = 3 then HowToPage
+  if Menu = 4 then CreditsPage
+  if Menu < 3 then Lv = Menu + 1
   return
 end sub
 
 sub ShowMenu:
-  for Li = 13 to 16
+  for Li = 13 to 17
     put char 32 at 3,Li
   next
   J = Menu + 13
   put char 62 at 3,J
   return
 end sub
+
+' HOW TO PLAY: two pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "TEN WORDS ARE HIDDEN IN A"
+    print at 2,4, "FIELD OF LETTERS. FIND THEM"
+    print at 2,5, "ALL TO WIN!"
+    print at 2,7, "MOVE THE RING WITH THE"
+    print at 2,8, "JOYSTICK AND PRESS THE"
+    print at 2,9, "BUTTON ON EVERY LETTER OF A"
+    print at 2,10, "WORD. FOUND LETTERS LIGHT"
+    print at 2,11, "UP. LIGHT THEM ALL AND THE"
+    print at 2,12, "WORD IS FOUND."
+    for Ri = 14 to 19
+      for Li = 6 to 25
+        T = Ri * 7 + Li * 11
+        T = T % 26
+        T = T + TLA
+        put char T at Li,Ri
+      next
+    next
+    for Li = 0 to 3
+      T = WordT[Li]
+      put char T at Li + 10,16
+    next
+    for Ri = 0 to 2
+      T = WordT[Ri + 4]
+      put char T at 20,Ri + 15
+    next
+    set sprite 0 to 123,84,SRing,15
+  else
+    print at 2,1, "ENERGY                 2/2"
+    print at 2,3, "THE TUBES SHOW YOUR ENERGY."
+    print at 2,4, "A GOOD LETTER ADDS 1. A"
+    print at 2,5, "LETTER IN NO WORD TAKES 1,"
+    print at 2,6, "AND IT ALSO DRAINS AWAY BY"
+    print at 2,7, "ITSELF. AT 0, GAME OVER:"
+    print at 2,8, "THE MISSED WORDS SHOW RED."
+    print at 2,10, "SOMETIMES A CLUE NAMES A"
+    print at 2,11, "WORD YOU HAVE NOT STARTED."
+    print at 2,13, "LEVEL 1: WORDS GO ACROSS"
+    print at 2,14, "OR DOWN. LEVEL 2: BACKWARDS"
+    print at 2,15, "TOO. LEVEL 3: DIAGONALS TOO."
+    print at 2,17, "TIP: WHEN YOU FIND ONE"
+    print at 2,18, "LETTER, LOOK AROUND IT FOR"
+    print at 2,19, "THE NEXT ONE."
+    for Ri = 0 to 5
+      Y = 21 - Ri
+      T = TEon
+      if Ri >= 4 then T = TEoff
+      put char T at 29,Y
+    next
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  HtWt = HtWt + 1
+  if HtWt >= 1800 then goto ht_out
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_out:
+  HideSprites
+  return
+end sub
+
+' WORD across and CAT down, lit, for the HOW TO PLAY picture
+data WordT bytes TFW, TFO, TFR, TFD, TFC, TFA, TFT
 
 sub CreditsPage:
   NewScreen

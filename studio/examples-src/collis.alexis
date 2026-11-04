@@ -43,7 +43,9 @@ cartridge "COLLISION COURSE/GAZETTE/1987"
 ' crash, level, bonus car. Own track drawing on a 28-column screen.
 '
 ' Controls: either controller; stick left/right chooses the lane (hold to
-' repeat), either button brakes the computer's car. Any button starts.
+' repeat), either button brakes the computer's car. On the title,
+' up and down choose START, HOW TO PLAY or CREDITS (the demo cars keep to
+' the three outer lanes), a button chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -132,6 +134,8 @@ u8 Demo = 0
 u8 RepT = 0
 u8 OldLR = 0
 u8 TitleT = 0
+u8 Menu = 0
+u8 WasStick = 0
 ' input
 u8 J1 = 0
 u8 J2 = 0
@@ -185,6 +189,7 @@ u8 Q = 0
 
 title:
   TitlePage
+  if Menu > 0 then goto title
 
   NewGame
 play_loop:
@@ -849,9 +854,28 @@ sub TitlePage:
   print at 5,1, Hi
   print at 14,1, "GAZETTE 1987"
   ResetCars
-  print at 11,11, "COLLISION "
-  print at 11,12, "  COURSE  "
-  print at 11,13, "PRESS FIRE"
+  ' the middle (the inner lane and the box) cleared for the name and the
+  ' menu; the demo cars keep to the three outer lanes
+  for Rr = 9 to 15
+    fill 32 count 14 at 9,Rr
+  next
+  fill TWh count 2 at 15,8
+  fill TWh count 2 at 15,16
+  put char TWh at 14,8
+  put char TWh at 17,8
+  put char TWh at 14,16
+  put char TWh at 17,16
+  for Rr = 10 to 14
+    put char TWv at 8,Rr
+    put char TWv at 23,Rr
+  next
+  print at 11,9, "COLLISION"
+  print at 12,10, "COURSE"
+  print at 11,12, "START"
+  print at 11,13, "HOW TO PLAY"
+  print at 11,14, "CREDITS"
+  Menu = 0
+  ShowMenu
   Demo = 1
   CrashT = 0
   TitleT = 0
@@ -870,7 +894,7 @@ tp_loop:
   inc TitleT
   if TitleT >= 120 then
     TitleT = 0
-    V = Tick & 3
+    V = Tick % 3
     PTgt = V
   end if
   Ci = 0
@@ -878,6 +902,20 @@ tp_loop:
   Ci = 1
   MoveCar
   DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if V = 2 then
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
   if Press = 0 then goto tp_loop
   stop sound SndTuneA
   stop sound SndTuneB
@@ -885,6 +923,135 @@ tp_loop:
   TzOn = 0
   Demo = 0
   HideSprites
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Rr = 12 to 14
+    put char 32 at 9,Rr
+  next
+  Rr = Menu + 12
+  put char 62 at 9,Rr
+  return
+end sub
+
+' a car for the HOW TO PLAY pages: sprites Rj * 2, Rj * 2 + 1 at (X, Y)
+' facing K (0-3), colour V
+sub HtCar:
+  J = Rj << 1
+  T = J + 1
+  P = K << 2
+  set sprite J to Y,X,P,1
+  set sprite T to Y,X,P + SBody0,V
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Wt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "YOUR YELLOW CAR DRIVES"
+    print at 2,4, "ROUND THE TRACK. THE RED"
+    print at 2,5, "COMPUTER CAR COMES THE"
+    print at 2,6, "OTHER WAY AND TRIES TO HIT"
+    print at 2,7, "YOU HEAD ON!"
+    print at 2,9, "DRIVE OVER EVERY DOT TO"
+    print at 2,10, "CLEAR THE LEVEL. THE WALLS"
+    print at 2,11, "OPEN IN THE MIDDLE OF EACH"
+    print at 2,12, "SIDE: THERE YOU CAN CHANGE"
+    print at 2,13, "LANES."
+    fill TWh count 28 at 2,15
+    for Cc = 2 to 29
+      Rr = 16
+      LaneCell
+      Rr = 17
+      LaneCell
+    next
+    fill TWh count 28 at 2,18
+    Rj = 0
+    X = 40
+    Y = 120
+    K = 1
+    V = 11
+    HtCar
+    Rj = 1
+    X = 200
+    K = 3
+    V = 8
+    HtCar
+  case 2
+    print at 2,1, "CONTROLS               2/3"
+    print at 2,3, "PUSH THE JOYSTICK LEFT TO"
+    print at 2,4, "PICK A LANE FURTHER IN,"
+    print at 2,5, "RIGHT FOR ONE FURTHER OUT."
+    print at 2,6, "THE LANE METER SHOWS YOUR"
+    print at 2,7, "CHOICE. YOU MOVE OVER AT"
+    print at 2,8, "THE NEXT OPENING."
+    print at 2,10, "WATCH OUT: THE RED CAR"
+    print at 2,11, "TAKES YOUR LANE TOO!"
+    print at 2,13, "HOLD A BUTTON TO SLOW THE"
+    print at 2,14, "RED CAR DOWN. THE BRAKE BAR"
+    print at 2,15, "EMPTIES, THEN FILLS AGAIN."
+    print at 2,17, "LANE"
+    put char TLmoff at 7,17
+    put char TLmon at 8,17
+    put char TLmoff at 9,17
+    put char TLmoff at 10,17
+    print at 14,17, "BRK"
+    fill TBfull count 5 at 18,17
+    fill TBempty count 3 at 23,17
+  case 3
+    print at 2,1, "SCORING                3/3"
+    print at 2,3, "EACH DOT IS 1 POINT. A"
+    print at 2,4, "CLEARED LEVEL GIVES A BONUS"
+    print at 2,5, "AND THE NEXT ONE IS FASTER."
+    print at 2,6, "FROM LEVEL 4 YOU MUST DRIVE"
+    print at 2,7, "OVER EACH DOT TWICE."
+    print at 2,9, "A CRASH COSTS A CAR. YOU"
+    print at 2,10, "HAVE 3, AND GET ONE MORE AT"
+    print at 2,11, "LEVELS 3 AND 6. NO CARS"
+    print at 2,12, "LEFT: GAME OVER."
+    print at 2,14, "TIP: CHANGE LANE JUST"
+    print at 2,15, "BEFORE AN OPENING, SO THE"
+    print at 2,16, "RED CAR HAS NO TIME TO"
+    print at 2,17, "FOLLOW."
+    put char TLife at 23,19
+    put char TLife at 25,19
+    put char TLife at 27,19
+    put char TDot at 5,19
+    put char TDot2 at 7,19
+    Rj = 0
+    X = 112
+    Y = 144
+    K = 1
+    V = 11
+    HtCar
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
   return
 end sub
 

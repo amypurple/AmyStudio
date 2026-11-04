@@ -60,7 +60,7 @@ cartridge "QUOLERUS/COMPUTE!'S GAZETTE/1988"
 '
 ' Controls: controller 1 (or 2): left and right turn the ship, up
 ' thrusts, down brakes, either button fires. On the title, up and down
-' choose, a button chooses.
+' choose START, HOW TO PLAY (three pages) or CREDITS, a button chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -369,6 +369,10 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+' the HOW TO PLAY page and its idle timer (globals: this program has
+' `call asm`, so no locals in the subs that draw screens)
+u8 HtPg = 0
+u16 HtWt = 0
 u8 Tick = 0
 u8 Idle = 0
 ' title animation
@@ -407,7 +411,7 @@ u8 Hit = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu >= 1 then goto title
 
   NewGame
 
@@ -1198,7 +1202,9 @@ sub TitlePage:
   print at 7,9, "COMPUTE!'S GAZETTE"
   print at 10,10, "NOVEMBER 1988"
   print at 13,14, "START"
-  print at 13,15, "CREDITS"
+  print at 13,15, "HOW TO PLAY"
+  print at 13,16, "CREDITS"
+  Menu = 0
   if Played = 1 then
     print at 9,19, "SCORE ", Score
   end if
@@ -1223,9 +1229,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -1237,7 +1243,8 @@ tp_loop:
   mute all
   TzOn = 0
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
@@ -1273,8 +1280,89 @@ end sub
 sub ShowMenu:
   put char 32 at 11,14
   put char 32 at 11,15
+  put char 32 at 11,16
   J = Menu + 14
   put char 62 at 11,J
+  return
+end sub
+
+' HOW TO PLAY: three pages; the button turns the page, after the last
+' page (or 30 seconds untouched) back to the title
+sub HowToPage:
+  HtPg = 1
+ht_page:
+  NewScreen
+  if HtPg = 1 then
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "A POD HIDES BEHIND A WALL"
+    print at 2,4, "AND RIDES UP AND DOWN."
+    print at 2,6, "SHOOT HOLES IN THE WALL,"
+    print at 2,7, "THEN SHOOT THE POD THROUGH"
+    print at 2,8, "A GAP TO CLEAR THE LEVEL."
+    print at 2,10, "THE WALL KEEPS ROLLING, SO"
+    print at 2,11, "THE HOLES MOVE!"
+    for Rr = 13 to 21
+      K = Rr & 3
+      K = K + TCell0
+      put char K at 8,Rr
+      K = K + 2
+      put char K at 9,Rr
+      K = K + 1
+      if Rr < 16 or Rr > 17 then put char K at 10,Rr
+    next
+    set sprite 0 to 128,176,SShip1,15
+    set sprite 1 to 132,120,SShot,15
+    set sprite 2 to 128,40,SPod0,13
+    set sprite 3 to 128,40,SEye0,11
+  elseif HtPg = 2 then
+    print at 2,1, "WATCH OUT!             2/3"
+    print at 2,3, "WHEN THE POD TURNS IT CAN"
+    print at 2,4, "LET OUT AN ORB. ORBS BOUNCE"
+    print at 2,5, "ALL OVER THE SCREEN."
+    print at 2,7, "WHEN AN ORB LINES UP WITH"
+    print at 2,8, "YOUR SHIP, ACROSS OR DOWN,"
+    print at 2,9, "IT FIRES A MISSILE AT YOU."
+    print at 2,11, "TOUCH THE WALL, THE POD, AN"
+    print at 2,12, "ORB OR A MISSILE AND YOU"
+    print at 2,13, "LOSE A SHIP. LOSE ALL YOUR"
+    print at 2,14, "SHIPS: GAME OVER."
+    set sprite 0 to 151,200,SShip1,15
+    set sprite 1 to 151,152,SMiss,9
+    set sprite 2 to 151,80,SOrb0,7
+  else
+    print at 2,1, "CONTROLS               3/3"
+    print at 2,3, "STICK LEFT/RIGHT: TURN."
+    print at 2,4, "STICK UP: THRUST."
+    print at 2,5, "STICK DOWN: BRAKE."
+    print at 2,6, "BUTTON: FIRE."
+    print at 2,8, "CELL 50, MISSILE 50, ORB"
+    print at 2,9, "100, POD 2100 POINTS."
+    print at 2,10, "AN EXTRA SHIP EVERY 10000."
+    print at 2,12, "TIP: SHOOT ORBS BEFORE THEY"
+    print at 2,13, "LINE UP WITH YOU, AND DON'T"
+    print at 2,14, "STAY IN ONE ROW TOO LONG."
+    set sprite 0 to 151,96,SShip0,15
+    set sprite 1 to 151,128,SShip2,15
+    set sprite 2 to 151,160,SShip4,15
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  if Press = 0 then goto ht_wait
+  inc HtPg
+  if HtPg <= 3 then goto ht_page
+ht_end:
+  HideSprites
   return
 end sub
 

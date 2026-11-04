@@ -251,6 +251,8 @@ u8 ObjBuf[70]
 u8 J = 0
 u8 Tick = 0
 u8 Idle = 0
+u8 Menu = 0
+u8 WasJ = 0
 ' loop counters (never shared with helpers)
 u8 Oi = 0
 u8 Ri = 0
@@ -282,6 +284,14 @@ u8 Cr = 0
 
 title:
   TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
   NewGame
   EnterRoom
 play_loop:
@@ -1045,7 +1055,11 @@ sub TitlePage:
   print at 3,16, "LOST IN THE CASTLE OF 16"
   print at 4,17, "ROOMS. KEYS OPEN GATES."
   print at 3,18, "BEWARE THE MARSHMALLOWS!"
-  print at 5,20, "PRESS THE BUTTON"
+  print at 10,20, "START GAME"
+  print at 10,21, "HOW TO PLAY"
+  print at 10,22, "CREDITS"
+  Menu = 0
+  ShowMenu
   set sprite 2 to 103,120,SHeirB,13
   set sprite 3 to 103,120,SHeirT,11
   set sprite 0 to 103,96,SHeroR1T,9
@@ -1061,10 +1075,21 @@ sub TitlePage:
   Rearm
   wait no fire
   nmi off
+  WasJ = 31
 tp_loop:
   Frame1
   ReadPad
-  if (J & 16) = 0 then goto tp_loop
+  K = J & (J ^ WasJ)
+  WasJ = J
+  if (K & 1) <> 0 then
+    if Menu > 0 then dec Menu
+    ShowMenu
+  end if
+  if (K & 2) <> 0 then
+    if Menu < 2 then inc Menu
+    ShowMenu
+  end if
+  if (K & 16) = 0 then goto tp_loop
   stop sound SndTuneA
   stop sound SndTuneB
   mute all
@@ -1072,6 +1097,103 @@ tp_loop:
   Rearm
   wait no fire
   nmi off
+  HideSprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,20
+  put char 32 at 8,21
+  put char 32 at 8,22
+  K = Menu + 20
+  put char 62 at 8,K
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Wt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "THE ROYAL HEIR IS LOST IN"
+    print at 2,4, "THE DARK CASTLE, 16 ROOMS"
+    print at 2,5, "BIG. FIND THE HEIR TO WIN!"
+    print at 2,7, "CLIMB LADDERS AND JUMP FROM"
+    print at 2,8, "LEDGE TO LEDGE. KEYS OPEN"
+    print at 2,9, "LOCKED GATES. THE DRAGON"
+    print at 2,10, "GUARDS THE HEIR."
+    fill TBrick count 20 at 6,18
+    for Ri = 14 to 17
+      put char TLad at 9,Ri
+    next
+    put char TBrick at 9,14
+    fill TBrick count 4 at 6,14
+    put char TGate at 20,16
+    put char TGate at 20,17
+    set sprite 0 to 126,112,SHeroR1T,9
+    set sprite 1 to 126,112,SHeroR1B,4
+    set sprite 2 to 126,184,SHeirB,13
+    set sprite 3 to 126,184,SHeirT,11
+    set sprite 4 to 100,144,SKey,11
+    set sprite 5 to 100,208,SDragon1,12
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "JOYSTICK LEFT/RIGHT: WALK"
+    print at 2,4, "JOYSTICK UP/DOWN: CLIMB A"
+    print at 2,5, "LADDER"
+    print at 2,6, "EITHER BUTTON: JUMP"
+    print at 2,8, "YOU CAN'T STEER IN THE AIR."
+    print at 2,9, "A FALL OF SEVEN ROWS OR"
+    print at 2,10, "MORE KILLS YOU, SO TAKE"
+    print at 2,11, "THE LADDERS!"
+    fill TBrick count 6 at 6,15
+    fill TBrick count 6 at 16,15
+    fill TBeltl count 4 at 7,19
+    fill TBeltr count 4 at 17,19
+    set sprite 0 to 102,120,SHeroR2T,9
+    set sprite 1 to 102,120,SHeroR2B,4
+  case 3
+    print at 2,1, "SCORE AND LIVES         3/3"
+    print at 2,3, "PINK MARSHMALLOWS KILL YOU!"
+    print at 2,4, "YOU HAVE 6 LIVES."
+    print at 2,6, "CHERRIES 50, FLOWER 100,"
+    print at 2,7, "BELL 200 AND AN EXTRA LIFE,"
+    print at 2,8, "KEY 500, A GATE YOU OPEN"
+    print at 2,9, "1000 POINTS."
+    print at 2,11, "TIP: WATCH THE FIRE. CROSS"
+    print at 2,12, "WHEN IT DIES DOWN."
+    set sprite 0 to 126,56,SMallow,9
+    set sprite 1 to 126,88,SCherry,8
+    set sprite 2 to 126,120,SFlower,15
+    set sprite 3 to 126,152,SBell,10
+    set sprite 4 to 126,184,SKey,11
+    fill TBrick count 20 at 6,18
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasJ = 31
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  K = J & (J ^ WasJ)
+  WasJ = J
+  Wt = Wt + 1
+  if Wt >= 1800 then goto ht_out
+  if (K & 16) = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+ht_out:
   HideSprites
   return
 end sub

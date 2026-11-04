@@ -57,7 +57,9 @@ cartridge "DELTA WAR/GAZETTE/1988"
 ' Controls: controller 1 flies the red ship, controller 2 the blue one
 ' (or the computer). Stick left/right turns, up thrusts, down jumps through
 ' hyperspace, either button fires. On the title: up/down choose a line,
-' left/right (or the button) change it, the button on START plays.
+' left/right (or the button) change it, the button on START plays; HOW TO
+' PLAY shows two pages (a button turns the page, 30 s idle goes back). The
+' cursor is back on the first line each time the title comes back.
 '
 ' House rules: text in columns 2-29; tiles from code 128; the frame loop is
 ' protected from the NMI; screens drawn with the NMI off after a wait,
@@ -408,6 +410,8 @@ u8 OptMins = 1
 u8 OptHyper = 0
 u8 Row = 0
 u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 
 u16 TzLeft = 0
 u8 TzOn = 0
@@ -473,6 +477,10 @@ title:
   TitlePage
   if Menu = 1 then
     CreditsPage
+    goto title
+  end if
+  if Menu = 2 then
+    HowToPage
     goto title
   end if
   NewGame
@@ -1039,6 +1047,7 @@ end sub
 
 ' the title: DELTA WAR, the options, START / CREDITS, the tune once
 sub TitlePage:
+  Row = 0
   NewScreen
   copy TitleMap count 352 to vram.name + 32
   print at 3,13, "PLAYERS"
@@ -1048,7 +1057,8 @@ sub TitlePage:
   print at 3,17, "MINUTES"
   print at 3,18, "HYPERSPACE"
   print at 3,19, "START"
-  print at 3,20, "CREDITS"
+  print at 3,20, "HOW TO PLAY"
+  print at 3,21, "CREDITS"
   print at 2,22, "COMPUTE!'S GAZETTE JAN 1988"
   for J = 0 to 5
     ShowOpt(J)
@@ -1073,7 +1083,7 @@ tp_loop:
       case 1
         if Row > 0 then dec Row
       case 2
-        if Row < 7 then inc Row
+        if Row < 8 then inc Row
       case 4
         ChangeOpt(15)
       case 8
@@ -1088,7 +1098,8 @@ tp_loop:
     goto tp_loop
   end if
   Menu = 0
-  if Row = 7 then Menu = 1
+  if Row = 7 then Menu = 2
+  if Row = 8 then Menu = 1
   StopTune
   W = Tick
   Rs = Rs ^ W
@@ -1187,11 +1198,77 @@ sub ShowOpt(u8 R)
 end sub
 
 sub ShowCursor:
-  for J = 13 to 20
+  for J = 13 to 21
     put char 32 at 2,J
   next
   J = Row + 13
   put char 62 at 2,J
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back.
+' Globals only here (this program has call asm subs).
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "TWO FIGHTERS DUEL UNTIL THE"
+    print at 2,4, "CLOCK RUNS OUT. RED USES"
+    print at 2,5, "CONTROLLER 1. BLUE USES"
+    print at 2,6, "CONTROLLER 2, OR IT IS THE"
+    print at 2,7, "COMPUTER IN A 1-PLAYER GAME."
+    print at 2,9, "STICK LEFT/RIGHT: TURN."
+    print at 2,10, "STICK UP: THRUST (SPEED UP)."
+    print at 2,11, "STICK DOWN: HYPERSPACE JUMP"
+    print at 2,12, "TO A RANDOM PLACE."
+    print at 2,13, "BUTTON: FIRE (3 FIREBALLS IN"
+    print at 2,14, "THE AIR AT MOST)."
+    put char TSp1 at 4,17
+    put char TSp2 at 24,19
+    put char TSp0 at 9,20
+    set sprite 0 to 150,176,SSh4,8
+    set sprite 1 to 150,136,SBall,9
+    set sprite 2 to 150,64,SSh12,5
+  else
+    print at 2,3, "A FIGHTER HIT BY A FIREBALL"
+    print at 2,4, "(EVEN ITS OWN!), OR BY THE"
+    print at 2,5, "STAR OR BLACK HOLE, BLOWS"
+    print at 2,6, "UP: THE OTHER PILOT SCORES"
+    print at 2,7, "ONE. IF THE TWO SHIPS CRASH,"
+    print at 2,8, "NOBODY SCORES."
+    print at 2,10, "WHEN THE TIME IS UP, THE"
+    print at 2,11, "HIGHER SCORE WINS."
+    print at 2,13, "ON THE TITLE YOU CAN PICK"
+    print at 2,14, "EDGES, A STAR OR BLACK HOLE"
+    print at 2,15, "IN THE CENTRE, FIREBALL"
+    print at 2,16, "RANGE AND MINUTES."
+    print at 2,18, "TIP: THE STAR PULLS YOU IN."
+    print at 2,19, "THRUST AWAY FROM IT!"
+    put char TSt000 at 15,20
+    put char TSt001 at 16,20
+    put char TSt010 at 15,21
+    put char TSt011 at 16,21
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then goto ht_done
+  if Press = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  HideSprites
   return
 end sub
 

@@ -46,7 +46,8 @@ cartridge "ATOM SHOOT 64/COMPUTE'S GAZETTE/1985"
 ' Controls: either controller; the stick moves the cursor (it repeats
 ' when held); left button: shoot from a port, or guess / on a cell;
 ' right button: shoot from a port, or guess \ on a cell. On the title,
-' up and down choose, a button starts.
+' up and down choose PLAY, HOW TO PLAY (three pages) or CREDITS, a button
+' picks.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop protected from the NMI; screens drawn with the NMI off and
@@ -184,7 +185,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu >= 1 then goto title
 
   NewGame
 
@@ -708,11 +709,13 @@ sub TitlePage:
   print at 3,13, "THEY COME OUT, AND GUESS"
   print at 3,14, "EACH MIRROR AND ITS SLANT."
   print at 12,16, "PLAY"
-  print at 12,17, "CREDITS"
+  print at 12,17, "HOW TO PLAY"
+  print at 12,18, "CREDITS"
   if HasBest = 1 then
     print at 8,20, "BEST SCORE"
     ShowScore(19, 20, Best)
   end if
+  Menu = 0
   ShowMenu
   ShowScreen
   play sound SndTuneA
@@ -731,9 +734,9 @@ tp_loop:
   if V > 0 then
     if WasStick = 0 then
       if (V & 1) > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       play sound SndStep
       ShowMenu
@@ -748,13 +751,120 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
+
+' HOW TO PLAY: 3 pages; a button turns the page; after the last page,
+' or 30 seconds untouched, back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Wt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "25 MIRRORS HIDE IN A BOX."
+    print at 2,4, "EACH ONE LEANS ONE OF TWO"
+    print at 2,5, "WAYS. FIND THEM ALL!"
+    print at 2,7, "SHOOT A BEAM IN FROM THE"
+    print at 2,8, "EDGE. IT BOUNCES OFF EVERY"
+    print at 2,9, "MIRROR IT MEETS. THE TURN'S"
+    print at 2,10, "LETTER IS PUT WHERE IT WENT"
+    print at 2,11, "IN AND WHERE IT CAME OUT."
+    put char TCorner at 12,14
+    put char TCorner at 19,14
+    put char TCorner at 12,18
+    put char TCorner at 19,18
+    for Ci = 13 to 18
+      put char TPort at Ci,14
+      put char TPort at Ci,18
+      for Ri = 15 to 17
+        put char TCell at Ci,Ri
+      next
+    next
+    for Ri = 15 to 17
+      put char TPort at 12,Ri
+      put char TPort at 19,Ri
+    next
+    put char TFbs at 14,16
+    put char TLa at 14,14
+    put char TLa at 19,16
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "JOYSTICK: MOVE THE CURSOR."
+    print at 2,5, "ON THE EDGE OF THE BOX, A"
+    print at 2,6, "BUTTON SHOOTS A BEAM."
+    print at 2,8, "ON A SQUARE INSIDE:"
+    print at 2,9, "LEFT BUTTON GUESSES"
+    print at 2,10, "RIGHT BUTTON GUESSES"
+    print at 2,12, "YOU HAVE 25 TURNS. A SHOT"
+    print at 2,13, "OR A GUESS USES ONE TURN."
+    put char TFsl at 22,9
+    put char TFbs at 23,10
+    put char TCorner at 12,14
+    put char TCorner at 19,14
+    put char TCorner at 12,18
+    put char TCorner at 19,18
+    for Ci = 13 to 18
+      put char TPort at Ci,14
+      put char TPort at Ci,18
+      for Ri = 15 to 17
+        put char TCell at Ci,Ri
+      next
+    next
+    for Ri = 15 to 17
+      put char TPort at 12,Ri
+      put char TPort at 19,Ri
+    next
+    set sprite 0 to 117,111,SCur,15
+  case 3
+    print at 2,1, "SCORING                 3/3"
+    print at 2,3, "A RIGHT GUESS SCORES MORE"
+    print at 2,4, "EARLY: 52 ON TURN 1, THEN"
+    print at 2,5, "2 FEWER EACH TURN. A WRONG"
+    print at 2,6, "GUESS LOSES HALF THAT."
+    print at 2,7, "FIND ALL 25 FOR A BONUS."
+    print at 2,9, "AFTER TURN 25 THE BOX OPENS"
+    print at 2,10, "AND SHOWS THE ONES YOU"
+    print at 2,11, "MISSED."
+    print at 2,13, "TIP: A BEAM THAT GOES"
+    print at 2,14, "STRAIGHT ACROSS MOST LIKELY"
+    print at 2,15, "MET NO MIRROR ON THE WAY."
+    put char TFsl at 3,19
+    print at 5,19, "FOUND"
+    put char TWrong at 12,19
+    print at 14,19, "WRONG"
+    put char TMsl at 21,19
+    print at 23,19, "MISSED"
+  end select
+  print at 9,22, "PRESS A BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 3
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  return
+end sub
+
 
 sub ShowMenu:
   put char 32 at 10,16
   put char 32 at 10,17
+  put char 32 at 10,18
   J = Menu + 16
   put char 62 at 10,J
   return

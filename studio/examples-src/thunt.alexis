@@ -1,0 +1,1188 @@
+cartridge "TREASURE HUNT/CALVIN OVERHULSER/1984"
+
+' TREASURE HUNT
+' A ColecoVision game based on "Treasure Hunt" by Calvin Overhulser,
+' COMPUTE!'s Gazette September 1984, pp. 110-111 (VIC-20 and Commodore 64,
+' BASIC with a machine-language joystick routine; rules from the article
+' and the C64 listing, orig/thunt_64.bas, run and timed in jsc64). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's, rebuilt for the
+' ColecoVision: sprites that glide from cell to cell, tiled palm trees,
+' sea, bogs and treasure, sound effects and an original title tune.
+'
+' The game: you hunt lost pirate treasure on a secluded island. Walk the
+' hunter (eight directions) to the gold coins (1 point x skill) and gold
+' bars (10 x skill). The treasure chest (100 x skill) lies in a palm grove,
+' ringed by quicksand bogs: hold the button as you step onto a bog and
+' you have an 8 in 10 chance to get across (the listing's roll; its help
+' text says 70%); without the button, or unlucky, the bog swallows you.
+' While the chest is there, crossing lands you on it; the spirits make it
+' vanish and come back now and then, and crossing while it is gone throws
+' you over the bogs. Skulls (the spirits of ancient pirates) are death to
+' touch; some of them wander: one of them, chosen at random, takes a
+' random step after each move of the hunter. Rum barrels make the hunter
+' stagger: a random step at once and one more after his next move. When
+' you have at most one coin and one bar left, a new island comes. One
+' life: the round and the score are shown at the end.
+'
+' From the original: skill 1-5 sets 4 x skill barrels and 4 x skill skulls
+' (the listing: 7 x and 6 x on a bigger screen), skill of them wandering,
+' and the points; a hazard is never put next to another thing; coins and
+' bars never with something above or below; hazards only in the top three
+' quarters, gold a row lower; the hunter starts bottom right; the skulls'
+' random step into empty sand only (a step onto the hunter kills); the
+' chest's random 1-in-15 appear and 1-in-15 vanish each turn and never
+' again once taken; the bog roll D > 2 of 1-10 with the button held; the
+' barrel's stagger (now and after the next move); the round ends when
+' fewer than two coins and fewer than two bars are left; the score carries
+' on; one life.
+'
+' Liberties: the field is 26 x 19 cells inside the sea (the C64's 38 x 22),
+' so 16 coins and 4 bars (C64 25 and 5); the hunter is one cell (C64 two
+' cells tall); a turn every 16 frames, 3.75 a second, while the stick is
+' held (the C64 BASIC loop measured 0.96 steps a second in jsc64: far too
+' slow for a cartridge); a skull still moves each turn when the hunter
+' stands still, as in the original. The grove is our own drawing: two
+' palms round the chest's bog ring, plus two lone palms. A leap over the
+' bog while the chest is away carries the hunter straight on past the
+' bogs (the C64 threw him 1 down and 7 across); a leap onto a palm or the
+' sea leaves him where he was. A barrel is used up when walked on (on the
+' C64 the hunter erased it as he went). A gentle ramp (not in the
+' original, where a careful player could go on for ever): every 2 rounds
+' one more skull wanders (up to 8) and one more wandering skull steps
+' each turn (up to all of them); the fixed skulls stay as set by skill. Skill is chosen on the title with
+' the stick (left/right), not the keyboard. No play-again prompt.
+'
+' Controls: either controller; the stick walks (hold to keep walking),
+' either button held while stepping onto a bog. On the title, up and down
+' choose, left and right set the skill, a button starts.
+'
+' House rules: text and tiles in columns 2-29, rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI; screens drawn with the
+' NMI off, display off. Music first in the sound table, effects after; the
+' title tune is played once. `set sprite count` is always given. Nothing
+' flashes.
+
+const TSand = 128
+const TSea = 129
+const TFrondl = 130
+const TFrondm = 131
+const TFrondr = 132
+const TTrunk = 133
+const TBog = 134
+const TBarrel = 135
+const TSkull = 136
+const TCoin = 137
+const TBar = 138
+const TChest = 139
+const TBig = 140
+const SHead = 0
+const SBody0 = 4
+const SBody1 = 8
+const SSkul0 = 12
+const SSkul1 = 16
+const SBurst = 20
+const NTiles8 = 104
+const SprBytes = 192
+const LogoW = 15
+const LogoX = 8
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndCoin = 4
+const SndBar = 5
+const SndChest = 6
+const SndSwig = 7
+const SndLeap = 8
+const SndDead = 9
+const SndSink = 10
+const SndRound = 11
+const SndOver = 12
+const TurnN = 16
+const NSpr = 10
+const MaxW = 8
+const FW = 28
+const FH = 21
+const NCoins = 16
+const NBars = 4
+const MSk = 143
+const StartX = 26
+const StartY = 19
+
+data TilePat bytes
+  $00,$00,$04,$00,$00,$40,$00,$00
+  $00,$60,$90,$00,$06,$09,$00,$00
+  $03,$F0,$C0,$F0,$C0,$80,$00,$00
+  $C3,$81,$18,$00,$18,$18,$18,$18
+  $C0,$F0,$03,$F0,$03,$01,$00,$00
+  $18,$38,$18,$1C,$18,$38,$18,$1C
+  $81,$30,$44,$18,$02,$40,$30,$81
+  $C3,$81,$81,$00,$00,$81,$81,$C3
+  $C3,$81,$24,$24,$00,$99,$C3,$28
+  $00,$C3,$81,$E0,$C0,$81,$C3,$00
+  $00,$00,$C1,$81,$01,$03,$00,$00
+  $81,$81,$00,$18,$18,$00,$81,$00
+  $01,$80,$80,$80,$80,$80,$80,$00
+end data
+data TileCol bytes
+  $0F,$0F,$EF,$0F,$0F,$EF,$0F,$0F
+  $04,$54,$54,$04,$54,$54,$04,$04
+  $CF,$FC,$FC,$C2,$C2,$C2,$0F,$0F
+  $FC,$FC,$2C,$02,$C2,$CF,$6F,$6F
+  $CF,$CF,$FC,$2C,$C2,$C2,$0F,$0F
+  $6F,$6F,$6F,$6F,$6F,$6F,$6F,$6F
+  $F1,$A1,$A1,$A1,$A1,$A1,$A1,$F1
+  $F6,$F1,$F6,$06,$06,$F6,$F1,$F6
+  $F1,$F1,$F1,$F1,$01,$F1,$F1,$1F
+  $0F,$FA,$FA,$BA,$BA,$FA,$FA,$0F
+  $0F,$0F,$FB,$FB,$FA,$FA,$0F,$0F
+  $F6,$6A,$06,$B6,$B6,$06,$6A,$06
+  $AB,$BA,$BA,$BA,$BA,$BA,$BA,$0A
+end data
+data SpritePat bytes
+  $38,$7C,$38,$00,$82,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$7C,$54,$38,$28,$6C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$7C,$54,$38,$44,$C6,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$DB,$DB,$FF,$66,$3C,$28,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$DB,$DB,$FF,$66,$3C,$14,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$EE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data LogoBits bytes
+  1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1
+  1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0
+  1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0
+  1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0
+  1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0
+end data
+
+' the grove, 7 x 4 cells: 0 sand, 1-3 fronds, 4 trunk, 5 bog, 6 chest
+data Grove bytes
+  1, 2, 3, 5, 1, 2, 3
+  0, 4, 5, 6, 5, 4, 0
+  0, 4, 5, 5, 5, 4, 0
+  0, 4, 0, 0, 0, 4, 0
+end data
+data GroveTile bytes
+  TSand, TFrondl, TFrondm, TFrondr, TTrunk, TBog, TChest
+end data
+' the eight directions: dx, dy (+1 kept as 1, -1 as 255)
+data DirX bytes
+  0, 1, 1, 1, 0, 255, 255, 255
+end data
+data DirY bytes
+  255, 255, 0, 1, 1, 1, 0, 255
+end data
+
+record Skull:
+  u8 X
+  u8 Y
+  u8 Px
+  u8 Py
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Hi = 0
+u16 Mi = 0
+u8 Round = 1
+u8 Skill = 1
+' two cells a byte (low nibble the even cell), tile code - 128
+u8 Map[294]
+u16 Pi = 0
+u8 Pb = 0
+Skull Sk[8]
+' wandering skulls this round, skull steps a turn (the ramp)
+u8 Nw = 1
+u8 Nm = 1
+' the hunter: cell, pixels
+u8 Hx = 26
+u8 Hy = 19
+u8 Hpx = 224
+u8 Hpy = 160
+u8 Coins = 0
+u8 Bars = 0
+u8 ChX = 0
+u8 ChY = 0
+u8 ChestOn = 0
+u8 ChestGone = 0
+u8 Drunk = 0
+u8 Reel = 0
+u8 FireW = 0
+u8 FireT = 0
+u8 Roll = 0
+' 0 playing, 1 dead, 2 round cleared
+u8 State = 0
+' 1 a skull, 2 the bog
+u8 Cause = 0
+u8 HudDue = 0
+u8 TurnT = 16
+u8 Want = 0
+u8 TitleOn = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' loops
+u8 Gi = 0
+u8 Tw = 0
+u8 Gx = 0
+u8 Gy = 0
+' scratch
+u8 B = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Dx = 0
+u8 Dy = 0
+
+  tile screen
+  set sound table ThSoundTable areas 6
+  sprites 8x8
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu >= 1 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  DrawSprites
+  if State = 0 then goto play_loop
+  if State = 2 then
+    NextRound
+    goto play_loop
+  end if
+
+  ' the end: the message, then back to the title on a press
+  if Cause = 2 then
+    play sound SndSink
+  else
+    play sound SndDead
+  end if
+  for Tw = 1 to 50
+    Frame1
+    DrawSprites
+  next
+  if Sc > Hi then Hi = Sc
+  print at 2,7, "                            "
+  print at 2,8, "   ANOTHER VICTIM OF THE    "
+  print at 2,9, "     PIRATE'S CURSE!!!      "
+  print at 2,10, "                            "
+  print at 2,11, "   SKILL LEVEL   "
+  NumU = Skill
+  print at 19,11, digits$(NumU, 1)
+  print at 20,11, "          "
+  print at 2,12, "   ROUNDS        "
+  NumU = Round
+  print at 19,12, digits$(NumU, 2)
+  print at 21,12, "         "
+  print at 2,13, "   SCORE         "
+  NumU = Sc
+  print at 19,13, digits$(NumU, 5)
+  print at 24,13, "      "
+  print at 2,14, "                            "
+  play sound SndOver
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the island map: one tile code per cell, MSk for a wandering skull
+
+function CellAt(u8 X, u8 Y) as u8
+  u16 I = 0
+  u8 Nib = 0
+  I = Y * FW + X
+  Nib = Map[I >> 1]
+  if (I & 1) = 1 then Nib = Nib >> 4
+  Nib = Nib & 15
+  return Nib + 128
+
+' cell I (Y * FW + X) gets tile T
+sub PutAt(u16 I, u8 T):
+  Pi = I >> 1
+  Pb = T - 128
+  if (I & 1) = 1 then
+    Pb = Pb << 4
+    Map[Pi] = (Map[Pi] & 15) | Pb
+  else
+    Map[Pi] = (Map[Pi] & $F0) | Pb
+  end if
+  return
+
+sub SetCell(u8 X, u8 Y, u8 T):
+  Mi = Y * FW + X
+  PutAt(Mi, T)
+  if T <> MSk then put char T at X + 2, Y + 1
+  return
+
+function Blocked(u8 T) as u8
+  if T = TSea then return 1
+  if T >= TFrondl and T <= TTrunk then return 1
+  return 0
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+
+function RandN(u8 N) as u8
+  Rand
+  return Rs mod N
+
+' a free cell for a hazard (the listing: it and its four neighbours sand)
+function FreeAround(u8 X, u8 Y) as u8
+  if CellAt(X, Y) <> TSand then return 0
+  if CellAt(X - 1, Y) <> TSand then return 0
+  if CellAt(X + 1, Y) <> TSand then return 0
+  if CellAt(X, Y - 1) <> TSand then return 0
+  if CellAt(X, Y + 1) <> TSand then return 0
+  return 1
+
+' a free cell for gold: it and the cells above and below sand
+function FreeColumn(u8 X, u8 Y) as u8
+  if CellAt(X, Y) <> TSand then return 0
+  if CellAt(X, Y - 1) <> TSand then return 0
+  if CellAt(X, Y + 1) <> TSand then return 0
+  return 1
+
+sub PlaceGrove:
+  u8 Gc = 0
+  u8 Ox = 0
+  u8 Oy = 0
+  Ox = RandN(18) + 1
+  Oy = RandN(3) + 1
+  for Gy = 0 to 3
+    for Gx = 0 to 6
+      Gc = Grove[Gy * 7 + Gx]
+      Mi = Gy + Oy
+      Mi = Mi * FW + Gx + Ox
+      PutAt(Mi, GroveTile[Gc])
+    next
+  next
+  ChX = Ox + 3
+  ChY = Oy + 1
+  return
+
+' a lone palm (three fronds over a trunk) on clear sand, or none after
+' twenty tries
+sub PlacePalm:
+  u8 Tries = 0
+  u8 Ok = 0
+  Tries = 0
+  while Tries < 20
+    inc Tries
+    X = RandN(24) + 2
+    Y = RandN(12) + 2
+    Ok = 1
+    for Gy = 0 to 2
+      for Gx = 0 to 2
+        if CellAt(X + Gx - 1, Y + Gy - 1) <> TSand then Ok = 0
+      next
+    next
+    if Ok = 1 then
+      Mi = Y * FW + X
+      PutAt(Mi - 1, TFrondl)
+      PutAt(Mi, TFrondm)
+      PutAt(Mi + 1, TFrondr)
+      PutAt(Mi + FW, TTrunk)
+      Tries = 99
+    end if
+  end while
+  return
+
+sub PlaceHazards(u8 N, u8 T):
+  for Gi = 1 to N
+    do
+      X = RandN(26) + 1
+      Y = RandN(15) + 1
+    loop while FreeAround(X, Y) = 0
+    Mi = Y * FW + X
+    PutAt(Mi, T)
+  next
+  return
+
+sub PlaceGold(u8 N, u8 T):
+  for Gi = 1 to N
+    do
+      X = RandN(26) + 1
+      Y = RandN(16) + 1
+    loop while FreeColumn(X, Y) = 0
+    Mi = Y * FW + X
+    PutAt(Mi, T)
+  next
+  return
+
+sub BuildIsland:
+  fill array Map with 0
+  for Gx = 0 to FW - 1
+    PutAt(Gx, TSea)
+    Mi = 20 * FW + Gx
+    PutAt(Mi, TSea)
+  next
+  for Gy = 1 to FH - 2
+    Mi = Gy * FW
+    PutAt(Mi, TSea)
+    PutAt(Mi + FW - 1, TSea)
+  next
+  PlaceGrove
+  PlacePalm
+  PlacePalm
+  V = Skill * 4
+  PlaceHazards(V, TBarrel)
+  ' the first Skill skulls are the wanderers
+  ' the ramp: every 2 rounds one more wanderer and one more skull step a turn
+  V = Round - 1
+  V = V >> 1
+  Nw = Skill + V
+  if Nw > MaxW then Nw = MaxW
+  Nm = V + 1
+  if Nm > Nw then Nm = Nw
+  for J = 0 to Nw - 1
+    do
+      X = RandN(26) + 1
+      Y = RandN(15) + 1
+    loop while FreeAround(X, Y) = 0
+    Mi = Y * FW + X
+    PutAt(Mi, MSk)
+    with Sk[J] as S
+      S.X = X
+      S.Y = Y
+      S.Px = X * 8 + 16
+      S.Py = Y * 8 + 8
+    end with
+  next
+  V = Skill * 3
+  PlaceHazards(V, TSkull)
+  PlaceGold(NCoins, TCoin)
+  PlaceGold(NBars, TBar)
+  Coins = NCoins
+  Bars = NBars
+  ChestOn = 1
+  ChestGone = 0
+  Hx = StartX
+  Hy = StartY
+  Hpx = Hx * 8 + 16
+  Hpy = Hy * 8 + 8
+  Drunk = 0
+  Reel = 0
+  FireW = 0
+  TurnT = TurnN
+  Want = 0
+  State = 0
+  Cause = 0
+  return
+
+' ---------------------------------------------------------------------------
+' one frame of play: the stick and button remembered, a turn every TurnN
+' frames while the stick is held (and a skull's step every TurnN frames)
+
+sub PlayFrame:
+  K = J1 | J2
+  V = K & 15
+  if V <> 0 then Want = V
+  V = K & 16
+  if V <> 0 then FireW = 1
+  dec TurnT
+  if TurnT = 0 then
+    TurnT = TurnN
+    Turn
+    HudDue = 1
+  elseif HudDue = 1 then
+    HudDue = 0
+    ShowScore
+  end if
+  Glide
+  return
+
+function Toward(u8 Here, u8 There) as u8
+  u8 D = 0
+  if There > Here then
+    D = There - Here
+    if D > 8 then return Here + 3
+    return Here + 1
+  end if
+  if There < Here then
+    D = Here - There
+    if D > 8 then return Here - 3
+    return Here - 1
+  end if
+  return Here
+
+sub Glide:
+  X = Hx * 8 + 16
+  Y = Hy * 8 + 8
+  Hpx = Toward(Hpx, X)
+  Hpy = Toward(Hpy, Y)
+  for Gi = 0 to Nw - 1
+    with Sk[Gi] as S
+      X = S.X * 8 + 16
+      Y = S.Y * 8 + 8
+      S.Px = Toward(S.Px, X)
+      S.Py = Toward(S.Py, Y)
+    end with
+  next
+  return
+
+' the turn: the hunter's step, a stagger, the chest, then one skull
+sub Turn:
+  B = Want
+  Want = 0
+  FireT = FireW
+  FireW = 0
+  if B <> 0 then
+    Dx = 0
+    Dy = 0
+    select case B & 12
+    case 4
+      Dx = 255
+    case 8
+      Dx = 1
+    end select
+    select case B & 3
+    case 1
+      Dy = 255
+    case 2
+      Dy = 1
+    end select
+    Enter(0)
+  end if
+  if State <> 0 then return
+  if Reel = 1 then
+    Reel = 0
+    Drunk = 1
+    Stagger
+  elseif Drunk = 1 then
+    Drunk = 0
+    Stagger
+  end if
+  if State <> 0 then return
+  Flicker
+  if Coins < 2 and Bars < 2 then
+    State = 2
+    return
+  end if
+  for Tw = 1 to Nm
+    if State = 0 then MoveSkull
+  next
+  return
+
+sub Stagger:
+  V = RandN(8)
+  Dx = DirX[V]
+  Dy = DirY[V]
+  Enter(1)
+  return
+
+' the hunter steps by Dx, Dy (Reeling 1 for a stagger step)
+sub Enter(u8 Reeling):
+  u8 T = 0
+  u8 N = 0
+  Nx = Hx + Dx
+  Ny = Hy + Dy
+  T = CellAt(Nx, Ny)
+  if Blocked(T) = 1 then return
+  if T = TBog then
+    Roll = RandN(10) + 1
+    if FireT = 1 and Roll > 2 then
+      if ChestOn = 1 then
+        Hx = ChX
+        Hy = ChY
+        TakeChest
+        play sound SndLeap
+        return
+      end if
+      ' thrown on past the bogs and the empty pocket
+      N = 0
+      while N < 4 and (CellAt(Nx, Ny) = TBog or (Nx = ChX and Ny = ChY))
+        Nx += Dx
+        Ny += Dy
+        inc N
+      end while
+      T = CellAt(Nx, Ny)
+      if Blocked(T) = 1 or T = TBog then return
+      play sound SndLeap
+    else
+      Hx = Nx
+      Hy = Ny
+      State = 1
+      Cause = 2
+      return
+    end if
+  end if
+  Hx = Nx
+  Hy = Ny
+  select case T
+  case MSk, TSkull
+    State = 1
+    Cause = 1
+  case TBarrel
+    SetCell(Hx, Hy, TSand)
+    play sound SndSwig
+    if Reeling = 0 then
+      Reel = 1
+    else
+      Drunk = 1
+    end if
+  case TCoin
+    SetCell(Hx, Hy, TSand)
+    dec Coins
+    Sc += Skill
+    play sound SndCoin
+  case TBar
+    SetCell(Hx, Hy, TSand)
+    dec Bars
+    W16 = Skill * 10
+    Sc += W16
+    play sound SndBar
+  case TChest
+    TakeChest
+  case else
+    if Reeling = 0 then play sound SndStep
+  end select
+  return
+
+sub TakeChest:
+  SetCell(ChX, ChY, TSand)
+  ChestOn = 0
+  ChestGone = 1
+  W16 = Skill * 100
+  Sc += W16
+  play sound SndChest
+  return
+
+' the spirits: the chest comes back 1 time in 15 and vanishes 1 in 15
+sub Flicker:
+  if ChestGone = 1 then return
+  V = RandN(15)
+  if V = 7 then
+    if ChestOn = 0 and CellAt(ChX, ChY) = TSand then
+      if Hx <> ChX or Hy <> ChY then
+        ChestOn = 1
+        SetCell(ChX, ChY, TChest)
+      end if
+    end if
+  elseif V = 13 then
+    if ChestOn = 1 then
+      ChestOn = 0
+      SetCell(ChX, ChY, TSand)
+    end if
+  end if
+  return
+
+' one wandering skull, chosen at random, tries a random step into sand
+sub MoveSkull:
+  u8 W = 0
+  u8 T = 0
+  W = RandN(Nw)
+  V = RandN(8)
+  with Sk[W] as S
+    Nx = S.X + DirX[V]
+    Ny = S.Y + DirY[V]
+    if Nx = Hx and Ny = Hy then
+      State = 1
+      Cause = 1
+      S.X = Nx
+      S.Y = Ny
+    else
+      T = CellAt(Nx, Ny)
+      if T = TSand then
+        SetCell(S.X, S.Y, TSand)
+        S.X = Nx
+        S.Y = Ny
+        SetCell(Nx, Ny, MSk)
+      end if
+    end if
+  end with
+  return
+
+sub NextRound:
+  u8 F = 0
+  play sound SndRound
+  print at 9,11, "            "
+  print at 9,12, "  ROUND "
+  NumU = Round + 1
+  print at 17,12, digits$(NumU, 2)
+  print at 19,12, "  "
+  print at 9,13, "            "
+  for F = 1 to 90
+    Frame1
+    Glide
+    DrawSprites
+  next
+  inc Round
+  NewScreen
+  BuildIsland
+  DrawField
+  ShowHud
+  DrawSprites
+  ShowScreen
+  return
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprites 0-1 the hunter (hat and hands, body), 2-9 the wandering skulls
+sub DrawSprites:
+  if TitleOn = 1 then
+    update sprites
+    return
+  end if
+  Y = Hpy - 1
+  if State = 1 then
+    set sprite 0 to Y,Hpx,SBurst,15
+    set sprite 1 to Y,Hpx,SBody0,6
+  else
+    V = Hpx + Hpy
+    V = V >> 2
+    V = V & 1
+    K = V << 2
+    K = K + SBody0
+    C = 4
+    if Drunk = 1 or Reel = 1 then C = 13
+    set sprite 0 to Y,Hpx,SHead,1
+    set sprite 1 to Y,Hpx,K,C
+  end if
+  for Gi = 0 to MaxW - 1
+    J = Gi + 2
+    if Gi < Nw then
+      with Sk[Gi] as S
+        X = S.Px
+        Y = S.Py - 1
+      end with
+      V = Tick >> 4
+      V = V + Gi
+      V = V & 1
+      K = V << 2
+      K = K + SSkul0
+      set sprite J to Y,X,K,13
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+
+sub ShowScore:
+  NumU = Sc
+  print at 17,22, digits$(NumU, 5)
+  return
+
+sub ShowHud:
+  print at 2,22, "ROUND"
+  NumU = Round
+  print at 8,22, digits$(NumU, 2)
+  print at 11,22, "SCORE"
+  print at 23,22, "SKILL"
+  NumU = Skill
+  print at 29,22, digits$(NumU, 1)
+  ShowScore
+  return
+
+sub DrawField:
+  for Gy = 0 to FH - 1
+    for Gx = 0 to FW - 1
+      V = CellAt(Gx, Gy)
+      if V = MSk then V = TSand
+      X = Gx + 2
+      Y = Gy + 1
+      put char V at X,Y
+    next
+  next
+  return
+
+sub NewGame:
+  Sc = 0
+  Round = 1
+  TitleOn = 0
+  NewScreen
+  BuildIsland
+  DrawField
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndRound
+  Rearm
+  wait no fire
+  nmi off
+  return
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the big HUNT in gold bricks, the tune once, START GAME /
+' HOW TO PLAY / CREDITS, the skill
+sub TitlePage:
+  NewScreen
+  for Gx = 2 to 29
+    put char TSea at Gx,1
+    put char TSea at Gx,22
+  next
+  print at 10,3, "TREASURE"
+  print at 6,11, "BY CALVIN OVERHULSER"
+  for Gy = 0 to 4
+    for Gx = 0 to LogoW - 1
+      K = Gy * LogoW + Gx
+      V = LogoBits[K]
+      if V = 1 then
+        X = Gx + LogoX
+        Y = Gy + 5
+        put char TBig at X,Y
+      end if
+    next
+  next
+  print at 3,13, "COMPUTE!'S GAZETTE SEPT 84"
+  print at 11,15, "START GAME"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
+  Menu = 0
+  print at 11,18, "SKILL"
+  put char TSkull at 4,15
+  put char TCoin at 5,17
+  put char TBar at 26,15
+  put char TChest at 27,17
+  print at 2,20, "HI"
+  NumU = Hi
+  print at 5,20, digits$(NumU, 5)
+  ShowMenu
+  TitleOn = 1
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 600
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 3
+      if K = 1 and Menu > 0 then dec Menu
+      if K = 2 and Menu < 2 then inc Menu
+      K = V & 12
+      if K = 4 and Skill > 1 then dec Skill
+      if K = 8 and Skill < 5 then inc Skill
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 1 then HowTo
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,15
+  put char 32 at 9,16
+  put char 32 at 9,17
+  J = Menu + 15
+  put char 62 at 9,J
+  print at 17,18, "< "
+  NumU = Skill
+  print at 19,18, digits$(NumU, 1)
+  print at 20,18, " >"
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own tiles and sprites; the
+' button turns the page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "FIND THE PIRATES' GOLD ON A"
+  print at 2,4, "DESERT ISLAND!"
+  fill TSea count 28 at 2,6
+  for Gy = 7 to 9
+    put char TSea at 2,Gy
+    fill TSand count 26 at 3,Gy
+    put char TSea at 29,Gy
+  next
+  fill TSea count 28 at 2,10
+  put char TBog at 21,7
+  put char TBog at 20,8
+  put char TChest at 21,8
+  put char TBog at 22,8
+  put char TBog at 21,9
+  put char TCoin at 13,8
+  put char TBar at 16,9
+  set sprite 0 to 63,48,SHead,1
+  set sprite 1 to 63,48,SBody0,4
+  update sprites
+  put char TCoin at 2,12
+  print at 4,12, "COIN: 1 POINT X SKILL"
+  put char TBar at 2,13
+  print at 4,13, "GOLD BAR: 10 X SKILL"
+  put char TChest at 2,14
+  print at 4,14, "CHEST: 100 X SKILL"
+  print at 2,16, "STICK: WALK (8 WAYS)."
+  print at 2,17, "THE CHEST SITS IN A RING OF"
+  print at 2,18, "QUICKSAND. HOLD THE BUTTON"
+  print at 2,19, "AS YOU STEP ONTO THE"
+  print at 2,20, "QUICKSAND TO JUMP TO THE"
+  print at 2,21, "CHEST (YOU MAY STILL SINK!)."
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  put char TSkull at 2,3
+  print at 4,3, "A SKULL IS DEADLY, AND"
+  print at 4,4, "SOME SKULLS WANDER!"
+  put char TBarrel at 2,6
+  print at 4,6, "RUM BARRELS MAKE YOU"
+  print at 4,7, "STAGGER."
+  put char TBog at 2,9
+  print at 4,9, "QUICKSAND WITHOUT THE"
+  print at 4,10, "BUTTON SWALLOWS YOU."
+  set sprite 2 to 31,200,SSkul0,13
+  update sprites
+  print at 2,12, "YOU HAVE ONE LIFE."
+  print at 2,14, "TAKE MOST OF THE GOLD AND A"
+  print at 2,15, "NEW ISLAND APPEARS. SKILL"
+  print at 2,16, "1-5 ON THE TITLE: MORE"
+  print at 2,17, "SKULLS AND BARRELS, MORE"
+  print at 2,18, "POINTS."
+  print at 2,20, "TIP: THE CHEST COMES AND"
+  print at 2,21, "GOES. GRAB IT WHEN YOU CAN!"
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  NumU = 0
+hw_loop:
+  Frame1
+  ReadPad
+  inc NumU
+  if NumU >= 1800 then return
+  if Press = 0 then goto hw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "TREASURE HUNT"
+  print at 2,4, "BASED ON TREASURE HUNT BY"
+  print at 2,5, "CALVIN OVERHULSER,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "SEPTEMBER 1984 (VIC-20 AND"
+  print at 2,8, "COMMODORE 64, BASIC)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: PALM GROVE GOLD"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+ThStep:
+    db $40,$3B,$52,$01,$40,$3B,$72,$01,$50
+ThCoin:
+    db $40,$47,$20,$02,$40,$35,$20,$04,$50
+ThBar:
+    db $40,$8F,$10,$03,$40,$6B,$10,$03,$40,$55,$20,$06,$50
+ThChest:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04
+    db $40,$55,$20,$0C,$50
+ThSwig:
+    db $40,$53,$21,$03,$40,$7C,$21,$03,$40,$41,$21,$03,$40,$AB,$21,$03,$40,$68,$31,$06,$50
+ThLeap:
+    db $40,$1D,$21,$02,$40,$D6,$20,$02,$40,$AA,$20,$02,$40,$8F,$20,$02,$40,$6B,$20,$04,$50
+ThDead:
+    db $40,$53,$11,$04,$40,$A6,$12,$04,$40,$53,$11,$04,$40,$A6,$12,$04,$40,$68,$11,$04,$40,$CD,$22,$04
+    db $40,$7C,$11,$04,$40,$F9,$22,$04,$40,$94,$21,$04,$40,$25,$23,$10,$50
+ThSink:
+    db $00,$00,$14,$06,$00,$00,$25,$08,$00,$00,$36,$0C,$00,$00,$57,$10,$10
+ThRound:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$20,$0E,$50
+ThOver:
+    db $40,$FE,$10,$0C,$40,$0E,$21,$0C,$40,$41,$21,$0C,$40,$7C,$21,$1E,$50
+
+ThSoundTable:
+    dw ThTuneMel,$702B
+    dw ThTuneBass,$7035
+    dw ThStep,$7049
+    dw ThCoin,$7049
+    dw ThBar,$7049
+    dw ThChest,$7049
+    dw ThSwig,$7049
+    dw ThLeap,$7049
+    dw ThDead,$7049
+    dw ThSink,$703F
+    dw ThRound,$7049
+    dw ThOver,$7049
+; Palm Grove Gold (original)
+; Tiny Sound, 9 frames per step
+ThTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$1C,$01,$1F,$23,$01,$28,$26,$01,$23,$21,$01,$1F
+    db $1E,$01,$1A,$1C,$01,$01,$1F,$01,$23,$21,$01,$1E,$1F,$01,$1C,$1E
+    db $01,$01,$01,$01,$23,$01,$24,$26,$01,$23,$1F,$01,$21,$23,$01,$1F
+    db $1C,$01,$1E,$1F,$01,$21,$1E,$01,$1B,$1C,$01,$1F,$1E,$01,$1B,$1C
+    db $01,$01,$01,$01,$00
+    db $FF
+ThTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$04,$01,$0B,$01,$04,$01,$07,$01,$0E,$01,$09,$01
+    db $0E,$01,$06,$01,$0C,$01,$07,$01,$0B,$01,$06,$01,$0B,$01,$0F,$01
+    db $0B,$01,$01,$01,$07,$01,$0E,$01,$07,$01,$0B,$01,$09,$01,$04,$01
+    db $0C,$01,$07,$01,$0B,$01,$06,$01,$0B,$01,$0F,$01,$04,$01,$0B,$01
+    db $04,$01,$01,$01,$00
+    db $FF
+}

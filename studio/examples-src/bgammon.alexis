@@ -56,7 +56,8 @@ cartridge "BACKGAMMON/COMPUTE'S GAZETTE/1985"
 ' Controls: either controller. The stick moves the cursor between the
 ' checkers that can move; the left button picks one, then the stick
 ' chooses where it goes and the left button moves it; the right button
-' puts it back. On the title, up and down choose, a button starts.
+' puts it back. On the title, up and down choose I GO FIRST, YOU GO
+' FIRST, HOW TO PLAY (three pages) or CREDITS; a button picks.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop protected from the NMI; screens drawn with the NMI off and
@@ -315,7 +316,10 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 2 then goto title
+  if Menu >= 2 then
+    Menu = 0
+    goto title
+  end if
   MeFirst = 1
   if Menu = 1 then MeFirst = 0
 
@@ -1360,7 +1364,8 @@ sub TitlePage:
   print at 3,14, "BEAR THEM OFF FIRST."
   print at 11,16, "I GO FIRST"
   print at 11,17, "YOU GO FIRST"
-  print at 11,18, "CREDITS"
+  print at 11,18, "HOW TO PLAY"
+  print at 11,19, "CREDITS"
   print at 5,21, "GAMES: YOU ", Wins, " ME ", Losses
   ShowMenu
   ShowScreen
@@ -1382,7 +1387,7 @@ tp_loop:
       if (V & 1) > 0 then
         if Menu > 0 then dec Menu
       else
-        if Menu < 2 then inc Menu
+        if Menu < 3 then inc Menu
       end if
       play sound SndStep
       ShowMenu
@@ -1397,14 +1402,111 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
-  if Menu = 2 then CreditsPage
+  if Menu = 2 then HowToPage
+  if Menu = 3 then CreditsPage
   return
 end sub
+
+' HOW TO PLAY: 3 pages; a button turns the page; after the last page,
+' or 30 seconds untouched, back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Wt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "YOU ARE WHITE, THE MACHINE"
+    print at 2,4, "IS BLACK. MOVE ALL FIFTEEN"
+    print at 2,5, "OF YOUR CHECKERS AROUND THE"
+    print at 2,6, "BOARD TO YOUR HOME (POINTS"
+    print at 2,7, "1-6, AT THE BOTTOM RIGHT),"
+    print at 2,8, "THEN BEAR THEM OFF INTO THE"
+    print at 2,9, "TRAY. THE FIRST TO BEAR OFF"
+    print at 2,10, "ALL FIFTEEN WINS."
+    for Ci = 0 to 5
+      X = Ci * 2 + 2
+      Quad(TTri + (Ci & 1) * 32, X, 14)
+      Quad(TTri + (Ci & 1) * 32 + 4, X, 16)
+      X = Ci * 2 + 16
+      Quad(TTri + (Ci & 1) * 32, X, 14)
+      Quad(TTri + (Ci & 1) * 32 + 4, X, 16)
+    next
+    for Ci = 14 to 17
+      put char TBarl at 14,Ci
+      put char TBarr at 15,Ci
+    next
+    Checker(0, 1, 2, 14)
+    Checker(0, 1, 2, 16)
+    Checker(1, 1, 26, 14)
+    Checker(1, 1, 26, 16)
+    Checker(1, 1, 8, 14)
+    Checker(0, 1, 20, 14)
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "EACH TURN TWO DICE ARE"
+    print at 2,4, "ROLLED. MOVE A CHECKER BY"
+    print at 2,5, "EACH DIE. DOUBLES GIVE FOUR"
+    print at 2,6, "MOVES."
+    print at 2,8, "JOYSTICK: MOVE THE CURSOR"
+    print at 2,9, "TO A CHECKER THAT CAN MOVE."
+    print at 2,10, "LEFT BUTTON: PICK IT UP."
+    print at 2,11, "JOYSTICK: CHOOSE WHERE IT"
+    print at 2,12, "GOES. LEFT BUTTON: MOVE IT."
+    print at 2,13, "RIGHT BUTTON: PUT IT BACK."
+    Checker(0, 1, 10, 17)
+    set sprite SpCur to 135,80,SCur,7
+    set sprite SpDie to 140,136,SDie3,15
+    set sprite SpDie + 1 to 140,160,SDie5,15
+  case 3
+    print at 2,1, "THE RULES               3/3"
+    print at 2,3, "A POINT WITH TWO OR MORE"
+    print at 2,4, "CHECKERS OF ONE COLOR IS"
+    print at 2,5, "CLOSED TO THE OTHER SIDE."
+    print at 2,6, "LAND ON A LONE CHECKER (A"
+    print at 2,7, "BLOT) TO HIT IT: IT GOES TO"
+    print at 2,8, "THE BAR AND MUST COME BACK"
+    print at 2,9, "IN BEFORE ANYTHING ELSE"
+    print at 2,10, "MOVES. A SIDE THAT CAN'T"
+    print at 2,11, "MOVE LOSES ITS TURN."
+    print at 2,13, "TIP: KEEP YOUR CHECKERS IN"
+    print at 2,14, "PAIRS SO THEY CAN'T BE HIT."
+    for Ci = 0 to 3
+      X = Ci * 2 + 10
+      Quad(TTri + (Ci & 1) * 32, X, 16)
+      Quad(TTri + (Ci & 1) * 32 + 4, X, 18)
+    next
+    Checker(0, 1, 10, 16)
+    Checker(0, 1, 10, 18)
+    Checker(1, 1, 14, 16)
+  end select
+  print at 9,22, "PRESS A BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  return
+end sub
+
 
 sub ShowMenu:
   put char 32 at 9,16
   put char 32 at 9,17
   put char 32 at 9,18
+  put char 32 at 9,19
   J = Menu + 16
   put char 62 at 9,J
   return

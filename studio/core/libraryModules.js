@@ -292,6 +292,7 @@ const splitLibraryCatalog = {
     }
   ],
   "src/alexis_lib/coleco_text.asm": [
+    { path: "src/alexis_lib/coleco_text_ascii_preserve.asm", symbols: ["AMY_LOAD_ASCII_PRESERVE_INDEX"] },
     { path: "src/alexis_lib/coleco_text_core.asm", symbols: ["AMY_CLEAR_NAME_TABLE", "AMY_LOAD_DEFAULT_ASCII", "AMY_TEXT_CALC_NAME_ADDRESS"] },
     {
       path: "src/alexis_lib/coleco_text_io.asm",

@@ -1,0 +1,1428 @@
+cartridge "STAR DRAGON/COMPUTE!'S GAZETTE/1986"
+
+' STAR DRAGON
+' A ColecoVision game based on "Star Dragon" by Sean D. Wagle, COMPUTE!'s
+' Gazette June 1986 p. 54 (Commodore 64 machine language "STAR", SYS 49392,
+' with the 16-sprite raster routine "16" from the same article). Made for
+' Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy
+' Bienvenu.
+'
+' Not a line-by-line port: the rules are the article's and the original's
+' (run in jsc64 and read from its machine code, orig/star.dis), rebuilt for
+' the ColecoVision: tile stars for the body, a sprite head, sounds, a tune.
+'
+' The game: a dragon made of a trail of 15 stars slithers across the
+' screen. The Dragon Gun at the bottom moves left and right and fires.
+' Only a shot on the dragon's HEAD counts: that star falls away and the
+' next one becomes the head. A shot that hits any other star ricochets
+' down at a random slant, and a bouncing shot that reaches the gun
+' destroys it; so does the dragon touching the gun. Three guns. When the
+' last star of a dragon falls: dragons 1 and 2 of a level are worth 20
+' points, the third 60. Ten levels, 30 dragons, 1000 points in all.
+'
+' From the original (orig/star.dis): the head flies in straight lines with
+' a random speed per axis (0-63/256 a step, the sign random); at a wall it
+' takes a new random speed whose sign points back into the field, and a
+' random 0-31 x 4 steps later it turns once more to another random
+' velocity; the body follows the same path; each level makes the dragon
+' faster; a fire press (not a held button) fires; losing a gun starts the
+' dragon over with all 15 stars; the gun is destroyed by a ricochet or by a
+' star level with it. Measured in jsc64 (orig/c64speed-sdragon.mjs): the
+' head covers about 2.2 C64 pixels a frame (|dx| + |dy|) at level 1, 4.3 at
+' level 5, 5.5 at level 10 (the C64 game was not frame-locked: more work
+' made each step slower).
+'
+' Liberties: the C64 drew the stars as 15 multiplexed sprites (each half
+' shown every other frame, so they looked see-through). Here the body is
+' made of background tiles that snap to the 8-pixel grid (no flicker on
+' the 4-sprites-a-line ColecoVision), the head is a sprite, white with
+' eyes, so it can be told apart. On the C64 the body stars trailed only 4
+' steps apart and bunched into a clump; here they are laid every 7 pixels
+' along the head's path, so the dragon is a long trail as the article
+' describes. Speeds are per frame: head speed m x Spd(level) / 256 pixels
+' a frame per axis, m 8-63 (the C64 allowed 0, a dragon that could hang
+' still), Spd 4, 5, 7, 9, 10 at levels 1-5 (gentler than measured), up to 18 at level 10. The C64 kept
+' up to 64 shots and ricochets as bitmap pixels; here 3 shots and 3
+' ricochets (a shot that would ricochet with no free slot just vanishes).
+' The gun moves 3 pixels a frame (the C64's moved several times faster,
+' as fast as its loop ran). The dragon stops while the gun explodes. The
+' C64 used + and - and CTRL, SHIFT LOCK to pause; here the joystick.
+' Added so the gun can't win by standing still (a parked gun cleared
+' levels in tests): when the gun has not moved for 2 seconds, a head above it within 40 pixels flies up
+' and away, and a shot that ricochets comes straight back at the gun.
+' After 3 seconds the dragon dives past the floor line, keeping clear of
+' the gun's column, and slides slowly along the bottom into it (an idle
+' player loses all three guns in about a minute).
+' Added for fairness (tuned so a player reacting a quarter second late
+' clears levels): the head bounces off a floor line 3 rows above the gun;
+' one time in six it dives past it at half its vertical speed; ricochets
+' fall 2 pixels a frame (C64 about 3); a new gun
+' is safe for 1 second (drawn grey). Levels 1-5 are slower than measured.
+' Added: a title page, a credits page, a title tune, sound effects, the
+' "DRAGON SLAIN" pause between dragons, the best score.
+'
+' Controls: controller 1 (or 2): left/right move the gun, either button
+' fires (one shot a press). On the title (START, HOW TO PLAY, CREDITS),
+' up and down choose, a button
+' chooses.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TSt00 = 128
+const TSt01 = 129
+const TSt10 = 130
+const TSt11 = 131
+const TSt20 = 132
+const TSt21 = 133
+const TSt30 = 134
+const TSt31 = 135
+const TSt40 = 136
+const TSt41 = 137
+const TSt50 = 138
+const TSt51 = 139
+const TBlk = 140
+const TGnd = 141
+const SGun = 0
+const SBoom0 = 4
+const SBoom1 = 8
+const SBoom2 = 12
+const SHead0 = 16
+const SHead1 = 20
+const SShot = 24
+const SPellet = 28
+const SFall = 32
+const NTiles8 = 112
+const SprBytes = 288
+const SndTuneA = 1
+const SndTuneB = 2
+const SndZap = 3
+const SndPing = 4
+const SndHit = 5
+const SndBoom = 6
+const SndClear = 7
+const SndOver = 8
+const SndWin = 9
+const NSpr = 9
+const NBody = 14
+const GunY = 160
+const XMin = 4096
+const XMax = 57344
+const YMax = 40960
+' the floor line the head bounces off, 3 rows above the gun (unless diving)
+const YFloor = 34816
+
+data TilePat bytes
+  $10,$10,$54,$38,$01,$38,$54,$10
+  $00,$44,$28,$10,$83,$10,$28,$44
+  $10,$10,$54,$38,$01,$38,$54,$10
+  $00,$44,$28,$10,$83,$10,$28,$44
+  $10,$10,$54,$38,$01,$38,$54,$10
+  $00,$44,$28,$10,$83,$10,$28,$44
+  $10,$10,$54,$38,$01,$38,$54,$10
+  $00,$44,$28,$10,$83,$10,$28,$44
+  $10,$10,$54,$38,$01,$38,$54,$10
+  $00,$44,$28,$10,$83,$10,$28,$44
+  $10,$10,$54,$38,$01,$38,$54,$10
+  $00,$44,$28,$10,$83,$10,$28,$44
+  $00,$60,$40,$01,$01,$01,$01,$00
+  $00,$AA,$00,$44,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $81,$81,$81,$81,$18,$81,$81,$81
+  $01,$81,$81,$81,$18,$81,$81,$81
+  $71,$71,$71,$71,$17,$71,$71,$71
+  $01,$71,$71,$71,$17,$71,$71,$71
+  $D1,$D1,$D1,$D1,$1D,$D1,$D1,$D1
+  $01,$D1,$D1,$D1,$1D,$D1,$D1,$D1
+  $31,$31,$31,$31,$13,$31,$31,$31
+  $01,$31,$31,$31,$13,$31,$31,$31
+  $51,$51,$51,$51,$15,$51,$51,$51
+  $01,$51,$51,$51,$15,$51,$51,$51
+  $B1,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+  $01,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+  $05,$F5,$F5,$15,$15,$15,$14,$01
+  $02,$C2,$0C,$C1,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$01,$01,$01,$03,$03,$07,$0D,$1D,$3F,$7F,$FF,$DB,$60,$00,$00
+  $00,$80,$80,$80,$C0,$C0,$E0,$B0,$B8,$FC,$FE,$FF,$DB,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$02,$04,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$20,$40,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$10,$08,$04,$02,$01
+  $00,$00,$00,$00,$80,$40,$20,$10,$08,$04,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$87,$6F,$3F,$33,$33,$3F,$7F,$3F,$1F,$1E,$38,$60,$00
+  $00,$80,$80,$C2,$EC,$F8,$98,$98,$F8,$FC,$F8,$F0,$F0,$38,$0C,$00
+  $00,$03,$23,$17,$0F,$7F,$33,$33,$3F,$3F,$7F,$1F,$1D,$30,$40,$00
+  $00,$80,$88,$D0,$E0,$FC,$98,$98,$F8,$F8,$FC,$F0,$70,$18,$04,$00
+  $01,$03,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$09,$05,$3F,$05,$09,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$40,$F8,$40,$20,$00,$00,$00,$00,$00,$00
+end data
+
+' head speed factor by level (1/256 pixel per m unit a frame)
+data Spd bytes 4,5,7,9,10,12,14,16,17,18
+' sprite colour of each star colour (red, cyan, magenta, green, blue, yellow)
+data SCol bytes 8,7,13,3,5,11
+' big title letters, 3 x 5 blocks: S T A R D G O N
+data Glyph bytes 7,4,7,1,7, 7,2,2,2,2, 7,5,7,5,5, 6,5,6,5,5, 6,5,5,5,6, 7,4,5,5,7, 7,5,5,5,7, 5,7,7,5,5
+data TitleA bytes 0,1,2,3
+data TitleB bytes 4,3,2,5,6,7
+data DecoC bytes 3,27,4,26,2,29,25,6
+data DecoR bytes 2,3,8,9,15,14,19,20
+
+record Shot:
+  u8 Live
+  u8 X
+  u8 Y
+end record
+
+record Pellet:
+  u8 Live
+  u16 X
+  u8 Y
+  u16 V
+  u8 N
+end record
+
+Shot Shots[3]
+Pellet Pels[3]
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+u16 W16 = 0
+bcd digits 4 Score = 0
+bcd digits 4 Hi = 0
+bcd digits 2 LvB = 1
+u8 Lvl = 1
+u8 DrN = 0
+u8 SpdNow = 6
+' the head (8.8 pixels), its speed per axis, signs, turn timer
+u16 Hx = 0
+u16 Hy = 0
+u16 DXv = 0
+u16 DYv = 0
+u8 XNeg = 0
+u8 YNeg = 0
+u8 TurnT = 0
+u8 Hpx = 0
+u8 Hpy = 0
+' stars alive (head included), the path crumbs, colours
+u8 NSeg = 15
+u8 NB = 14
+u8 CX[NBody]
+u8 CY[NBody]
+u8 LX = 0
+u8 LY = 0
+u8 SegC[15]
+' body cells now (BC, BR) and as drawn (OC, OR)
+u8 BC[NBody]
+u8 BR[NBody]
+u8 OldC[NBody]
+u8 OldR[NBody]
+u8 PrevN = 0
+' rows the body spans (skips most tests)
+u8 BMinR = 255
+u8 BMaxR = 0
+u8 BodyDirty = 0
+u8 Tw = 0
+u8 TwT = 0
+' the gun
+u8 Gx = 120
+' frames the gun has stood still (camping makes the dragon wary)
+u8 StillT = 0
+' 1 while the head dives below the floor line; frames the new gun can't be hit
+u8 Dive = 0
+u8 Inv = 0
+u8 Dead = 0
+u8 DeadT = 0
+u8 Guns = 3
+u8 ClrT = 0
+u8 Over = 0
+u8 Won = 0
+' the falling star
+u8 DyOn = 0
+u8 DyX = 0
+u8 DyY = 0
+u8 DyC = 15
+' counters for the tests
+u8 Fired = 0
+u8 Ricos = 0
+u8 Kills = 0
+' input
+u8 J1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Pg = 0
+u16 Wt = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 HudDirty = 0
+' loop counters (never shared with the helpers)
+u8 Sl = 0
+u8 Gk = 0
+u8 Bk = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table SdSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawBody
+  DrawSprites
+  if HudDirty > 0 then ShowHud
+  if Over = 0 then goto play_loop
+
+  if Won = 1 then
+    print at 6,9, "                  "
+    print at 6,10, " ALL 30 DRAGONS   "
+    print at 6,11, " SLAIN! WELL DONE "
+    print at 6,12, "                  "
+    play sound SndWin
+  else
+    print at 6,10, "                  "
+    print at 6,11, "    GAME  OVER    "
+    print at 6,12, "                  "
+    play sound SndOver
+  end if
+  print at 6,13, "   SCORE ", Score, "     "
+  print at 6,14, "   BEST  ", Hi, "     "
+  print at 6,15, "                  "
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one frame of play
+sub PlayStep:
+  if ClrT > 0 then
+    BetweenDragons
+    return
+  end if
+  if Dead > 0 then
+    Dying
+    return
+  end if
+  if Inv > 0 then dec Inv
+  GunInput
+  MoveHead
+  if BodyDirty > 0 then BodyCells
+  MoveShots
+  MovePellets
+  MoveFall
+  Collide
+  inc TwT
+  if TwT >= 20 then
+    TwT = 0
+    Tw = Tw ^ 1
+    Dirty(3)
+  end if
+  return
+end sub
+
+sub GunInput:
+  K = J1 & 12
+  if K > 0 then
+    StillT = 0
+  else
+    if StillT < 250 then inc StillT
+  end if
+  K = J1 & 4
+  if K > 0 then
+    if Gx > 18 then
+      Gx = Gx - 3
+    else
+      Gx = 16
+    end if
+  end if
+  K = J1 & 8
+  if K > 0 then
+    if Gx < 222 then
+      Gx = Gx + 3
+    else
+      Gx = 224
+    end if
+  end if
+  if Press = 0 then return
+  for Sl = 0 to 2
+    if Shots[Sl].Live = 0 then
+      Shots[Sl].Live = 1
+      Shots[Sl].X = Gx
+      Shots[Sl].Y = GunY - 6
+      inc Fired
+      play sound SndZap
+      return
+    end if
+  next
+  return
+end sub
+
+' a new speed: Fx/Fy 0 random sign, 1 forced +, 2 forced -; Tm 1 sets the
+' turn timer (after a wall)
+sub NewVel(u8 Fx, u8 Fy, u8 Tm)
+  u8 M = 0
+  M = RandTo(55) + 8
+  DXv = M
+  DXv = DXv * SpdNow
+  if Fx = 0 then
+    XNeg = RandTo(1)
+  else
+    XNeg = Fx - 1
+  end if
+  M = RandTo(55) + 8
+  DYv = M
+  DYv = DYv * SpdNow
+  if Fy = 0 then
+    YNeg = RandTo(1)
+  else
+    YNeg = Fy - 1
+  end if
+  if Tm = 1 then
+    TurnT = RandTo(31) + 1
+  else
+    TurnT = 0
+  end if
+  return
+end sub
+
+' the head one frame on; walls bounce it; a crumb every 7 pixels
+sub MoveHead:
+  u8 Bx = 0
+  u8 By = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  if TurnT > 0 then
+    dec TurnT
+    if TurnT = 0 then NewVel(0, 0, 0)
+  end if
+  ' a gun parked for 2 s: a head over it flies up and away
+  if Hpx >= Gx then
+    Dx = Hpx - Gx
+  else
+    Dx = Gx - Hpx
+  end if
+  if StillT >= 120 and Hpy < 136 then
+    if Dx <= 40 then
+      XNeg = 0
+      if Hpx < Gx then XNeg = 1
+      YNeg = 1
+    end if
+  end if
+  ' a gun parked for 3 s: the dragon dives past the floor line, keeps clear
+  ' of the gun's column on the way down, then slides along the bottom at it
+  if StillT >= 180 then
+    Dive = 1
+    YNeg = 0
+    ' a slow, steady descent (Spd x 16 / 256 pixels a frame)
+    DYv = SpdNow
+    DYv = DYv * 16
+    if Hpy >= 150 then
+      XNeg = 0
+      if Hpx > Gx then XNeg = 1
+      ' a slow slide (Spd x 16 / 256 pixels a frame)
+      DXv = SpdNow
+      DXv = DXv * 16
+    else
+      if Dx <= 40 then
+        XNeg = 0
+        if Hpx < Gx then XNeg = 1
+      end if
+    end if
+  end if
+  if XNeg = 1 then
+    W16 = XMin + DXv
+    if Hx < W16 then
+      Hx = XMin
+      Bx = 1
+    else
+      Hx = Hx - DXv
+    end if
+  else
+    Hx = Hx + DXv
+    if Hx > XMax then
+      Hx = XMax
+      Bx = 2
+    end if
+  end if
+  if YNeg = 1 then
+    W16 = XMin + DYv
+    if Hy < W16 then
+      Hy = XMin
+  Dive = 0
+      By = 1
+    else
+      Hy = Hy - DYv
+    end if
+  else
+    Hy = Hy + DYv
+    if Dive = 0 and Hy > YFloor then
+      ' at the floor line: one time in six a slow dive at the gun's row
+      if RandTo(5) = 0 then
+        Dive = 1
+        DYv = DYv >> 1
+      else
+        Hy = YFloor
+        By = 2
+      end if
+    end if
+    if Hy > YMax then
+      Hy = YMax
+      By = 2
+    end if
+  end if
+  if By > 0 then Dive = 0
+  if Bx + By > 0 then NewVel(Bx, By, 1)
+  Hpx = highbyte Hx
+  Hpy = highbyte Hy
+  if Hpx >= LX then
+    Dx = Hpx - LX
+  else
+    Dx = LX - Hpx
+  end if
+  if Hpy >= LY then
+    Dy = Hpy - LY
+  else
+    Dy = LY - Hpy
+  end if
+  if Dx >= 7 or Dy >= 7 then
+    for Gk = 0 to 12
+      Bk = 13 - Gk
+      CX[Bk] = CX[Bk - 1]
+      CY[Bk] = CY[Bk - 1]
+    next
+    CX[0] = LX
+    CY[0] = LY
+    LX = Hpx
+    LY = Hpy
+    Dirty(1)
+  end if
+  return
+end sub
+
+' what changed in the body since it was drawn (two different changes: all)
+sub Dirty(u8 Kd)
+  ' a twinkle adds nothing to another change (no cell moves)
+  if Kd = 3 and BodyDirty > 0 then return
+  if BodyDirty = 0 or BodyDirty = 3 then
+    BodyDirty = Kd
+  else
+    if BodyDirty <> Kd then BodyDirty = 2
+  end if
+  return
+end sub
+
+' the cell of each body star (its centre)
+sub BodyCells:
+  u8 R = 0
+  BMinR = 255
+  BMaxR = 0
+  for Gk = 0 to NBody - 1
+    if Gk < NB then
+      BC[Gk] = (CX[Gk] + 8) >> 3
+      R = (CY[Gk] + 8) >> 3
+      BR[Gk] = R
+      if R < BMinR then BMinR = R
+      if R > BMaxR then BMaxR = R
+    end if
+  next
+  return
+end sub
+
+sub MoveShots:
+  for Sl = 0 to 2
+    if Shots[Sl].Live = 1 then
+      Y = Shots[Sl].Y
+      if Y < 18 then
+        Shots[Sl].Live = 0
+      else
+        Shots[Sl].Y = Y - 6
+      end if
+    end if
+  next
+  return
+end sub
+
+sub MovePellets:
+  u16 Px = 0
+  u16 Pv = 0
+  for Sl = 0 to 2
+    if Pels[Sl].Live = 1 then
+      Px = Pels[Sl].X
+      Pv = Pels[Sl].V
+      if Pels[Sl].N = 1 then
+        W16 = XMin + Pv
+        if Px < W16 then
+          Pels[Sl].Live = 0
+        else
+          Pels[Sl].X = Px - Pv
+        end if
+      else
+        Px = Px + Pv
+        if Px > XMax then
+          Pels[Sl].Live = 0
+        else
+          Pels[Sl].X = Px
+        end if
+      end if
+      Y = Pels[Sl].Y + 2
+      Pels[Sl].Y = Y
+      if Y > 166 then Pels[Sl].Live = 0
+    end if
+  next
+  return
+end sub
+
+sub MoveFall:
+  if DyOn = 0 then return
+  if DyY < 14 then
+    DyOn = 0
+  else
+    DyY = DyY - 2
+  end if
+  return
+end sub
+
+' 1 when the shot's tip is on the head star
+function HitsHead(u8 Sx, u8 Sy) as u8
+  if Sx + 6 < Hpx then return 0
+  if Sx > Hpx + 6 then return 0
+  if Sy > Hpy + 13 then return 0
+  if Sy + 6 < Hpy + 2 then return 0
+  return 1
+
+' 1 when the shot's tip is in a body star's cell
+function HitsBody(u8 Sx, u8 Sy) as u8
+  u8 Tc = 0
+  u8 Tr = 0
+  u8 Q = 0
+  Tc = (Sx + 8) >> 3
+  Tr = Sy >> 3
+  if Tr < BMinR then return 0
+  if Tr > BMaxR then return 0
+  while Q < NB
+    if BC[Q] = Tc then
+      if BR[Q] = Tr then return 1
+    end if
+    inc Q
+  end while
+  return 0
+
+' shots against the head, then the body; ricochets and stars against the gun
+sub Collide:
+  u8 Sx = 0
+  u8 Sy = 0
+  for Sl = 0 to 2
+    if Shots[Sl].Live = 1 then
+      if NSeg > 0 then
+        Sx = Shots[Sl].X
+        Sy = Shots[Sl].Y
+        V = HitsHead(Sx, Sy)
+        if V = 1 then
+          Shots[Sl].Live = 0
+          KillHead
+        else
+          V = HitsBody(Sx, Sy)
+          if V = 1 then
+            Shots[Sl].Live = 0
+            Ricochet(Sx, Sy)
+          end if
+        end if
+      end if
+    end if
+  next
+  if ClrT > 0 then return
+  for Sl = 0 to 2
+    if Pels[Sl].Live = 1 then
+      X = highbyte Pels[Sl].X
+      Y = Pels[Sl].Y
+      if X + 7 >= Gx then
+        if X <= Gx + 7 then
+          if Y >= 153 then GunHit
+        end if
+      end if
+    end if
+  next
+  if Hpx + 10 >= Gx then
+    if Hpx <= Gx + 10 then
+      if Hpy >= 150 then GunHit
+    end if
+  end if
+  if BMaxR < 20 then return
+  for Gk = 0 to NBody - 1
+    if Gk < NB then
+      if BR[Gk] >= 20 then
+        X = BC[Gk] * 8
+        if X + 4 >= Gx then
+          if X <= Gx + 12 then GunHit
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub GunHit:
+  if Dead > 0 then return
+  if Inv > 0 then return
+  Dead = 1
+  DeadT = 0
+  play sound SndBoom
+  return
+end sub
+
+' a shot on the body bounces down at a random slant
+sub Ricochet(u8 Sx, u8 Sy)
+  u8 Q = 0
+  u8 Free = 255
+  u8 Steps = 1
+  u8 Dist = 0
+  for Q = 0 to 2
+    if Pels[Q].Live = 0 then Free = Q
+  next
+  if Free = 255 then return
+  Pels[Free].Live = 1
+  W16 = Sx
+  Pels[Free].X = W16 * 256
+  Pels[Free].Y = Sy + 4
+  W16 = RandTo(127)
+  Pels[Free].V = W16 * 9
+  Pels[Free].N = RandTo(1)
+  ' at a gun parked for 2 s the bounce comes straight back at it
+  if StillT >= 120 then
+    Steps = (166 - Sy) / 2
+    if Sx >= Gx then
+      Dist = Sx - Gx
+      Pels[Free].N = 1
+    else
+      Dist = Gx - Sx
+      Pels[Free].N = 0
+    end if
+    W16 = Dist
+    W16 = W16 * 256
+    Pels[Free].V = W16 / Steps
+  end if
+  inc Ricos
+  play sound SndPing
+  return
+end sub
+
+' the head star falls away; the next star is the head
+sub KillHead:
+  K = 15 - NSeg
+  DyOn = 1
+  DyX = Hpx
+  DyY = Hpy
+  DyC = SCol[SegC[K]]
+  dec NSeg
+  inc Kills
+  play sound SndHit
+  if NSeg = 0 then
+    NB = 0
+    DragonSlain
+    return
+  end if
+  W16 = CX[0]
+  Hx = W16 * 256
+  W16 = CY[0]
+  Hy = W16 * 256
+  Hpx = CX[0]
+  Hpy = CY[0]
+  LX = Hpx
+  LY = Hpy
+  for Gk = 0 to 12
+    CX[Gk] = CX[Gk + 1]
+    CY[Gk] = CY[Gk + 1]
+  next
+  NB = NSeg - 1
+  Dirty(4)
+  BodyCells
+  return
+end sub
+
+sub DragonSlain:
+  if DrN = 2 then
+    Score += 60
+  else
+    Score += 20
+  end if
+  HudDirty = 1
+  ClrT = 120
+  BodyDirty = 2
+  ClearShots
+  play sound SndClear
+  return
+end sub
+
+' the pause after a dragon; then the next one, or the next level
+sub BetweenDragons:
+  MoveFall
+  if ClrT = 118 then
+    print at 9,10, " DRAGON  SLAIN "
+    if DrN = 2 then
+      print at 9,11, "   +60  POINTS "
+    else
+      print at 9,11, "   +20  POINTS "
+    end if
+  end if
+  dec ClrT
+  if ClrT > 0 then return
+  print at 9,10, "               "
+  print at 9,11, "               "
+  inc DrN
+  if DrN = 3 then
+    DrN = 0
+    if Lvl = 10 then
+      Won = 1
+      Over = 1
+      return
+    end if
+    inc Lvl
+    LvB += 1
+  end if
+  NewDragon
+  HudDirty = 1
+  return
+end sub
+
+' the gun's explosion (90 frames), then the next gun and a whole dragon
+sub Dying:
+  inc DeadT
+  if DeadT < 90 then return
+  dec Guns
+  HudDirty = 1
+  if Guns = 0 then
+    Over = 1
+    return
+  end if
+  Dead = 0
+  DeadT = 0
+  Gx = 120
+  Inv = 60
+  StillT = 0
+  NewDragon
+  return
+end sub
+
+sub ClearShots:
+  for Sl = 0 to 2
+    Shots[Sl].Live = 0
+    Pels[Sl].Live = 0
+  next
+  return
+end sub
+
+' a new dragon of 15 stars at the top, somewhere left of the middle
+sub NewDragon:
+  SpdNow = Spd[Lvl - 1]
+  W16 = RandTo(160) + 16
+  Hx = W16 * 256
+  Hy = XMin
+  Dive = 0
+  Hpx = highbyte Hx
+  Hpy = 16
+  LX = Hpx
+  LY = Hpy
+  for Gk = 0 to NBody - 1
+    CX[Gk] = Hpx
+    CY[Gk] = Hpy
+  next
+  for Gk = 0 to 14
+    SegC[Gk] = RandTo(5)
+  next
+  NSeg = 15
+  NB = NBody
+  NewVel(0, 1, 1)
+  ClearShots
+  DyOn = 0
+  BodyDirty = 2
+  BodyCells
+  return
+end sub
+
+' 0..N, as a mask to the next power of two and a retry above N
+function RandTo(u8 N) as u8
+  u8 M = 255
+  u8 R = 0
+  if N = 0 then return 0
+  while M >> 1 >= N
+    M = M >> 1
+  end while
+  Rand
+  R = Rs & M
+  while R > N
+    Rand
+    R = Rs & M
+  end while
+  return R
+
+' Rs ^= Rs << 7, Rs ^= Rs >> 9, Rs ^= Rs << 8 (xorshift; SdRand in Z80:
+' Amy's 16-bit shifts loop bit by bit and cost a frame's margin)
+sub Rand:
+  call asm SdRand
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the body: tiles. Only when it changed: cells left behind are cleared,
+' then every star is drawn (no cell blinks off and on). After a plain
+' shift along the path (BodyDirty 1) only the old tail can be left behind,
+' after a head shot (4) only the old first star, after a twinkle (3) none;
+' 2 (a new dragon, or two changes at once) clears them all.
+sub DrawBody:
+  u8 Q = 0
+  u8 Keep = 0
+  u8 Base = 0
+  u8 First = 0
+  u8 Last = 0
+  if BodyDirty = 0 then return
+  ' the old cells that may be left behind: First..Last - 1
+  First = 0
+  Last = PrevN
+  select case BodyDirty
+    case 1
+      if PrevN > 0 then First = PrevN - 1
+    case 3
+      Last = 0
+    case 4
+      if PrevN > 0 then Last = 1
+  end select
+  for Gk = 0 to NBody - 1
+    if Gk >= First and Gk < Last then
+      Keep = 0
+      Q = 0
+      ' a full change (2) clears every old cell: rare, and the search is slow
+      if BodyDirty = 2 then Q = NB
+      while Q < NB
+        if OldC[Gk] = BC[Q] then
+          if OldR[Gk] = BR[Q] then
+            Keep = 1
+            Q = NB
+          end if
+        end if
+        inc Q
+      end while
+      if Keep = 0 then put char 32 at OldC[Gk],OldR[Gk]
+    end if
+  next
+  Base = 16 - NSeg
+  for Gk = 0 to NBody - 1
+    if Gk < NB then
+      K = SegC[Base + Gk] * 2 + TSt00
+      V = (Gk + Tw) & 1
+      put char K + V at BC[Gk],BR[Gk]
+      OldC[Gk] = BC[Gk]
+      OldR[Gk] = BR[Gk]
+    end if
+  next
+  PrevN = NB
+  BodyDirty = 0
+  return
+end sub
+
+' sprites: 0 gun, 1 head, 2-4 shots, 5-7 ricochets, 8 the falling star
+sub DrawSprites:
+  if Dead = 0 then
+    V = 15
+    if Inv > 0 then V = 14
+    set sprite 0 to GunY - 1,Gx,SGun,V
+  else
+    if DeadT < 54 then
+      K = DeadT / 18
+      K = K * 4 + SBoom0
+      V = 11
+      if DeadT >= 18 then V = 9
+      if DeadT >= 36 then V = 6
+      set sprite 0 to GunY - 1,Gx,K,V
+    else
+      set sprite 0 to 192,0,0,0
+    end if
+  end if
+  if NSeg > 0 then
+    K = Tw * 4 + SHead0
+    set sprite 1 to Hpy - 1,Hpx,K,15
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for Sl = 0 to 2
+    J = Sl + 2
+    if Shots[Sl].Live = 1 then
+      set sprite J to Shots[Sl].Y - 1,Shots[Sl].X,SShot,11
+    else
+      set sprite J to 192,0,0,0
+    end if
+    J = Sl + 5
+    if Pels[Sl].Live = 1 then
+      X = highbyte Pels[Sl].X
+      set sprite J to Pels[Sl].Y - 1,X,SPellet,9
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if DyOn = 1 then
+    set sprite 8 to DyY - 1,DyX,SFall,DyC
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE ", Score, "  LEVEL ", LvB, "  GUNS "
+  put char 48 + Guns at 29,1
+  HudDirty = 0
+  if Score > Hi then Hi = Score
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  fill TGnd count 28 at 2,22
+  Score = 0
+  LvB = 1
+  Lvl = 1
+  DrN = 0
+  Guns = 3
+  Over = 0
+  Won = 0
+  Dead = 0
+  DeadT = 0
+  ClrT = 0
+  Gx = 120
+  StillT = 0
+  Inv = 0
+  Fired = 0
+  Ricos = 0
+  Kills = 0
+  PrevN = 0
+  Tw = 0
+  TwT = 0
+  NewDragon
+  HudDirty = 1
+  ShowHud
+  DrawBody
+  DrawSprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one play frame. The NMI flag is cleared before re-arming and polled after,
+' so a vblank that came during a long pass is not missed (Amy's wait clears
+' it after re-arming and lost a frame; from games/eagles, games/xroads2)
+sub Frame1:
+  call asm SdClr
+  Rearm
+  Idle = 1
+  call asm SdPoll
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to NSpr - 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub BigLetter(u8 Lt, u8 Cx, u8 Cy)
+  u8 Lrow = 0
+  u8 Bits = 0
+  u8 Gi = 0
+  for Lrow = 0 to 4
+    Gi = Lt * 5 + Lrow
+    Bits = Glyph[Gi]
+    if Bits & 4 then put char TBlk at Cx,Cy + Lrow
+    if Bits & 2 then put char TBlk at Cx + 1,Cy + Lrow
+    if Bits & 1 then put char TBlk at Cx + 2,Cy + Lrow
+  next
+  return
+end sub
+
+' the title: STAR DRAGON in blocks among star tiles, the author, START /
+' CREDITS, the best score, a little dragon, the tune once
+sub TitlePage:
+  NewScreen
+  for Gk = 0 to 7
+    K = (Gk % 6) * 2 + TSt00
+    put char K at DecoC[Gk],DecoR[Gk]
+  next
+  for Gk = 0 to 3
+    BigLetter(TitleA[Gk], Gk * 4 + 9, 3)
+  next
+  for Gk = 0 to 5
+    BigLetter(TitleB[Gk], Gk * 4 + 5, 9)
+  next
+  print at 2,1, "COMPUTE!'S GAZETTE JUNE 1986"
+  print at 7,15, "BY SEAN D. WAGLE"
+  print at 13,17, "START"
+  print at 13,18, "HOW TO PLAY"
+  print at 13,19, "CREDITS"
+  if Hi > 0 then
+    print at 8,21, "BEST ", Hi
+  end if
+  fill TGnd count 28 at 2,22
+  for Gk = 0 to 6
+    K = Gk * 2 + TSt00
+    if Gk = 6 then K = TSt00
+    put char K at 20 + Gk,21 - (Gk & 1)
+  next
+  Menu = 0
+  ShowMenu
+  set sprite 0 to GunY - 1,40,SGun,15
+  set sprite 1 to 155,186,SHead0,15
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  inc Rs
+  ReadPad
+  V = J1 & 3
+  if V > 0 then
+    if WasStick = 0 then
+      K = V & 1
+      if K > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,17
+  put char 32 at 11,18
+  put char 32 at 11,19
+  J = Menu + 17
+  put char 62 at 11,J
+  return
+end sub
+
+' a short dragon of star tiles for the HOW TO PLAY pages: Y the row of
+' its first star, the head sprite in front (right)
+sub HtDragon:
+  for Gk = 0 to 6
+    K = Gk * 2 + TSt00
+    if Gk = 6 then K = TSt00
+    X = Gk + 9
+    V = Gk & 1
+    V = Y - V
+    put char K at X,V
+  next
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "A DRAGON MADE OF STARS"
+    print at 2,4, "SLITHERS ACROSS THE SKY."
+    print at 2,5, "SHOOT IT FROM YOUR GUN AT"
+    print at 2,6, "THE BOTTOM."
+    print at 2,8, "ONLY A HIT ON THE HEAD"
+    print at 2,9, "COUNTS: THAT STAR FALLS"
+    print at 2,10, "AWAY. SHOOT EVERY STAR TO"
+    print at 2,11, "SLAY THE DRAGON."
+    Y = 15
+    HtDragon
+    set sprite 1 to 111,128,SHead0,15
+    set sprite 2 to 135,132,SShot,11
+    set sprite 0 to GunY - 1,128,SGun,15
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "STICK LEFT/RIGHT: MOVE THE"
+    print at 2,4, "GUN."
+    print at 2,5, "BUTTON: FIRE (ONE SHOT FOR"
+    print at 2,6, "EACH PRESS)."
+    print at 2,8, "A SHOT THAT HITS THE BODY"
+    print at 2,9, "BOUNCES BACK DOWN. IF IT"
+    print at 2,10, "HITS YOUR GUN, OR THE"
+    print at 2,11, "DRAGON TOUCHES IT, YOU LOSE"
+    print at 2,12, "A GUN. YOU HAVE 3 GUNS."
+    Y = 16
+    HtDragon
+    set sprite 1 to 119,128,SHead0,15
+    set sprite 5 to 143,90,SPellet,9
+    set sprite 0 to GunY - 1,80,SGun,15
+  case 3
+    print at 2,1, "SCORING                 3/3"
+    print at 2,3, "EACH LEVEL HAS 3 DRAGONS."
+    print at 2,4, "DRAGONS 1 AND 2: 20 POINTS."
+    print at 2,5, "DRAGON 3: 60 POINTS."
+    print at 2,7, "10 LEVELS, EACH ONE FASTER."
+    print at 2,8, "LOSE ALL 3 GUNS: GAME OVER."
+    print at 2,10, "TIP: KEEP MOVING! A GUN"
+    print at 2,11, "THAT SITS STILL GETS"
+    print at 2,12, "ATTACKED. FIRE ONLY WHEN"
+    print at 2,13, "THE HEAD IS CLEAR."
+    set sprite 8 to 143,100,SFall,10
+    set sprite 0 to GunY - 1,140,SBoom1,9
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then
+    HideSprites
+    return
+  end if
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  HideSprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 9,2, "STAR DRAGON"
+  print at 2,5, "BASED ON STAR DRAGON BY"
+  print at 2,6, "SEAN D. WAGLE, COMPUTE!'S"
+  print at 2,7, "GAZETTE, JUNE 1986"
+  print at 2,8, "(COMMODORE 64 MACHINE"
+  print at 2,9, "LANGUAGE)."
+  print at 2,12, "COLECOVISION GAME, MUSIC"
+  print at 2,13, "AND PICTURES BY CLAUDE"
+  print at 2,14, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,15, "IN AMY BY AMY BIENVENU,"
+  print at 2,16, "2026."
+  print at 2,18, "MUSIC: COMET SCALES"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+asm {
+; SdClr / SdPoll: clear the NMI flag; wait until an NMI has set it
+SdClr:
+    xor a
+    ld (NMI_FLAG),a
+    ret
+SdPoll:
+    ld a,(NMI_FLAG)
+    or a
+    jr z,SdPoll
+    ret
+SdRand:
+    ld hl,(AMY_UVAR_Rs)
+    ld a,h
+    rra
+    ld a,l
+    rra
+    xor h
+    ld h,a
+    ld a,l
+    rra
+    ld a,h
+    rra
+    xor l
+    ld l,a
+    xor h
+    ld h,a
+    ld (AMY_UVAR_Rs),hl
+    ret
+SdZap:
+    db $40,$4B,$10,$01,$40,$43,$20,$01,$40,$3B,$20,$01,$40,$35,$30,$01,$40,$2F,$30,$01,$40,$2A,$40,$01
+    db $50
+SdPing:
+    db $40,$2F,$20,$02,$40,$31,$30,$02,$40,$34,$40,$02,$40,$37,$50,$02,$40,$3A,$60,$02,$50
+SdHit:
+    db $40,$E0,$10,$02,$40,$BE,$10,$02,$40,$A1,$20,$02,$40,$88,$20,$02,$40,$73,$30,$02,$40,$62,$30,$02
+    db $40,$53,$40,$02,$40,$46,$40,$02,$50
+SdBoom:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$26,$0A,$00,$00,$47,$0E,$00,$00,$67,$12,$10
+SdClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$20,$05,$40,$55,$30,$0E,$50
+SdOver:
+    db $40,$1D,$11,$0C,$40,$2E,$21,$0C,$40,$41,$21,$0C,$40,$53,$21,$0C,$40,$AB,$31,$1E,$50
+SdWin:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06
+    db $40,$55,$20,$18,$50
+
+SdSoundTable:
+    dw SdTuneMel,$702B
+    dw SdTuneBass,$7035
+    dw SdZap,$7049
+    dw SdPing,$7049
+    dw SdHit,$7049
+    dw SdBoom,$703F
+    dw SdClear,$7049
+    dw SdOver,$7049
+    dw SdWin,$7049
+; Comet Scales (original)
+; Tiny Sound, 8 frames per step
+SdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$21,$01,$1C,$01,$1F,$01,$21,$23,$24,$01,$23,$21
+    db $1F,$01,$1C,$01,$1A,$01,$1C,$1F,$21,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01,$24,$01,$23,$01,$21,$01,$1F,$21,$1C,$01,$1A,$01
+    db $18,$01,$1A,$1C,$1E,$01,$1F,$01,$21,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+SdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$15,$01,$01,$01,$10,$01,$01,$01,$13,$01,$01,$01
+    db $15,$01,$01,$01,$0E,$01,$01,$01,$10,$01,$01,$01,$15,$01,$01,$01
+    db $01,$01,$01,$01,$18,$01,$01,$01,$13,$01,$01,$01,$0E,$01,$01,$01
+    db $15,$01,$01,$01,$17,$01,$01,$01,$10,$01,$01,$01,$15,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+}

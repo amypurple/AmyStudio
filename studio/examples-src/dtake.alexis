@@ -42,7 +42,9 @@ cartridge "DOUBLE TAKE/COMPUTE'S GAZETTE/1988"
 ' own digit shapes.
 '
 ' Controls: the stick moves the cursor, a button claims. On the title, up
-' and down choose, left/right or a button change PLAYERS, a button starts.
+' and down choose, left/right or a button change PLAYERS, a button starts;
+' HOW TO PLAY shows two pages (a button turns the page, 30 s idle goes
+' back). The cursor is back on START GAME each time the title comes back.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128;
 ' screens drawn with the NMI off after a wait, display off; music first in
@@ -223,6 +225,8 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 u8 Tick = 0
 u8 Idle = 0
 u8 InPlay = 0
@@ -251,7 +255,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 2 then goto title
+  if Menu >= 2 then goto title
 
   NewGame
 play_loop:
@@ -1029,6 +1033,7 @@ end sub
 
 ' the title: START GAME / PLAYERS / CREDITS, the tune once
 sub TitlePage:
+  Menu = 0
   NewScreen
   backdrop dark blue
   print at 5,2, "D O U B L E   T A K E"
@@ -1056,7 +1061,8 @@ sub TitlePage:
   print at 3,12, "EITHER BOARD WINS."
   print at 6,15, "START GAME"
   print at 6,16, "PLAYERS"
-  print at 6,17, "CREDITS"
+  print at 6,17, "HOW TO PLAY"
+  print at 6,18, "CREDITS"
   print at 3,21, "COMPUTE'S GAZETTE 12/88"
   ShowMenu
   TitleOn = 1
@@ -1078,7 +1084,7 @@ tp_loop:
     case 1
       if Menu > 0 then dec Menu
     case 2
-      if Menu < 2 then inc Menu
+      if Menu < 3 then inc Menu
     case 4, 8
       if Menu = 1 then NPlay = 3 - NPlay
     end select
@@ -1096,12 +1102,13 @@ tp_loop:
   mute all
   TzOn = 0
   TitleOn = 0
-  if Menu = 2 then CreditsPage
+  if Menu = 2 then HowToPage
+  if Menu = 3 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
-  for Ci = 15 to 17
+  for Ci = 15 to 18
     put char 32 at 4,Ci
   next
   J = Menu + 15
@@ -1111,6 +1118,84 @@ sub ShowMenu:
   else
     print at 14,16, "2            "
   end if
+  return
+end sub
+
+' one cell picture (2 x 2 tiles) for HOW TO PLAY: style Bs, number Nm
+sub HowCell(u8 Bs, u8 Nm, u8 Cx, u8 Cy):
+  u8 Te = 0
+  u8 Un = 0
+  Te = Nm / 10
+  Un = Nm % 10
+  put char Bs + Te at Cx,Cy
+  put char Bs + 6 + Un at Cx + 1,Cy
+  put char Bs + 3 + Te at Cx,Cy + 1
+  put char Bs + 16 + Un at Cx + 1,Cy + 1
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  backdrop dark blue
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "TWO BOARDS HOLD THE NUMBERS"
+    print at 2,4, "1 TO 25, MIXED UP IN TWO"
+    print at 2,5, "DIFFERENT WAYS."
+    print at 2,7, "STICK: MOVE THE CURSOR ON"
+    print at 2,8, "BOARD 1."
+    print at 2,9, "BUTTON: CLAIM THAT NUMBER."
+    print at 2,10, "YOU GET IT ON BOTH BOARDS!"
+    print at 2,12, "PLAYER 1 IS BLUE, PLAYER 2"
+    print at 2,13, "(OR THE COMPUTER) YELLOW."
+    print at 2,15, "WIN: FIVE IN A ROW, COLUMN"
+    print at 2,16, "OR DIAGONAL ON EITHER BOARD."
+    print at 2,17, "ALL 25 TAKEN: A DRAW."
+    HowCell(TAt0, 7, 6, 19)
+    HowCell(TFt0, 12, 8, 19)
+    HowCell(TBt0, 19, 10, 19)
+    put char TEq at 15,19
+    put char TEq at 16,19
+    HowCell(TFt0, 3, 20, 19)
+    HowCell(TFt0, 12, 22, 19)
+    HowCell(TAt0, 25, 24, 19)
+  else
+    print at 2,3, "CAPTURE: CLAIM A CELL THAT"
+    print at 2,4, "SITS BETWEEN TWO CELLS OF"
+    print at 2,5, "THE OTHER PLAYER (SIDE BY"
+    print at 2,6, "SIDE OR ONE ABOVE THE"
+    print at 2,7, "OTHER): BOTH BECOME YOURS."
+    print at 2,8, "EACH BOARD COUNTS ALONE."
+    HowCell(TBt0, 4, 9, 10)
+    HowCell(TFt0, 9, 11, 10)
+    HowCell(TBt0, 21, 13, 10)
+    print at 6,12, "BLUE CLAIMS 09: THE"
+    print at 6,13, "YELLOW CELLS TURN BLUE"
+    HowCell(TAt0, 4, 9, 14)
+    HowCell(TAt0, 9, 11, 14)
+    HowCell(TAt0, 21, 13, 14)
+    print at 2,17, "TIP: A NUMBER CAN HELP YOU"
+    print at 2,18, "ON ONE BOARD AND BLOCK ON"
+    print at 2,19, "THE OTHER. LOOK AT BOTH!"
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then return
+  if Press = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
   return
 end sub
 

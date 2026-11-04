@@ -1,0 +1,1229 @@
+cartridge "TRACKER/NED W. SCHULTZ/1985"
+
+' TRACKER
+' A ColecoVision game based on "Tracker", COMPUTE!'s Gazette September 1985
+' by Ned W. Schultz (Commodore 64 BASIC, disk file "tracker"; rules from
+' the listing and the article, pp. 69-70).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a cell-for-cell port: the rules are the original's (read from its
+' listing, orig/tracker.bas), the game is built for the ColecoVision:
+' smooth sprites that glide from cell to cell, tiled graphics, sound
+' effects and an original title tune.
+'
+' The game: purple Herbie waits in the top-left corner; home is the house
+' in the bottom-right corner. Drive the tracker with the stick; hold the
+' button to lay track behind it (straight moves only), let go to drive
+' freely (diagonals too) and erase any track you drive over. When the
+' tracker parks on the house, Herbie rides the track (and any gem or coin
+' touching it) toward home: first down, else right, else left, else up,
+' eating the track behind him. Gems score 2 x level x 10, coins 1 x, home
+' 4 x. Meanies sweep four cells to the right every few seconds (every 28,
+' 13, 8, 6 or 4 s by level), turning track, gems and coins into deadly X's
+' and leaving one more X; while a meanie runs, the tracker and Herbie are
+' paralyzed. Drive into an X and the tracker is zapped; if Herbie is not
+' home within 120 seconds he is stranded. Either costs one of the three
+' trackers.
+'
+' From the original: the field (Herbie top-left, the tracker beside him,
+' home bottom-right, Herbie home on reaching the cell above or left of
+' it), 5 gems and 10 coins at random (not on the top rows), fire lays
+' track and allows only straight moves, moving without fire erases track,
+' the tracker hides items it stands on, Herbie's move order (down, right,
+' left, up) on track, gems or coins, Herbie eats the track behind him and
+' his starting cell becomes an X, Herbie moves only while the tracker is
+' home, meanies (random row in the lower field, sweep 4 cells, X's on
+' anything they hit, one more X after; a meanie at the start of a round
+' and every SK = INT(30 / SKILL - 1.5) seconds), paralysis, the 120 s
+' clock, the scores (gem 2BV, coin BV, home 4BV, BV = 10 x level), the
+' perfect-round bonus of 500 (every item and home), the penalty of 4BV
+' for a round under 10BV from level 2, three trackers, round and game
+' totals, a high score, the round-end messages.
+'
+' Tuning (to make games end): meanies every 20/10/5/3/2 s, from level 3
+' each leaves two X's after its sweep; Herbie rides a cell in 12 frames;
+' the round clock loses 10 s after each home round (at least 60 s).
+' Liberties: the field is 28 x 21 cells (C64: 40 x 24); the tracker wraps
+' round the left and right edges as the article says, appearing at once on
+' the other side (no glide), but stops at the top and bottom (the C64 code
+' also wrapped those, the article mentions only left/right); the tracker and
+' Herbie glide a cell in 8 frames (7.5 cells a second; the BASIC version
+' ran about 8-10 moves a second in jsc64); the meanie glides across in 32
+' frames and the clock keeps running meanwhile (as on the C64, whose
+' meanies took about as long); one meanie per trigger; a home round raises
+' the level by one up to 5 (the C64 kept the level chosen at the start);
+' the level is chosen on the title with the stick, not typed; the cast and
+' instructions are shown as pages, not asked about; no play-again prompt.
+'
+' Controls: either controller; stick drives, a button lays track. On the
+' title, up and down choose, left and right change the level, a button
+' picks.
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off,
+' display off. Music first in the sound table, effects after; the title
+' tune is played once. `set sprite count` always given. Own xorshift
+' random numbers. Nothing flashes.
+
+const TGround = 128
+const TBord = 129
+const TTrack = 130
+const TGem = 131
+const TCoin = 132
+const TX = 133
+const THome = 134
+const TLife = 135
+const THerbie = 136
+const TMeanie = 137
+const STrk0 = 0
+const STrk1 = 4
+const SHerb0 = 8
+const SHerb1 = 12
+const SMean0 = 16
+const SMean1 = 20
+const SZap = 24
+const NTiles8 = 80
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndStep = 3
+const SndHerb = 4
+const SndCoin = 5
+const SndGem = 6
+const SndMeanie = 7
+const SndZap = 8
+const SndHome = 9
+const SndLost = 10
+const SndStart = 11
+const SndOver = 12
+const CellN = 8
+const HerbN = 12
+const MeanN = 8
+const EndN = 90
+const HomeC = 29
+const HomeR = 22
+const NSpr = 3
+const KEmpty = 0
+const KTrack = 1
+const KGem = 2
+const KCoin = 3
+const KX = 4
+const KHome = 5
+const NoDir = 255
+
+' stick bits (1 up, 2 down, 4 left, 8 right) -> direction 0-7 (0 up,
+' clockwise), 255 for none or impossible
+data DirT bytes
+  255, 0, 4, 255, 6, 7, 5, 255, 2, 1, 3, 255, 255, 255, 255, 255
+end data
+' cell and pixel steps by direction (255 is -1)
+' (direction 8: a wrap round the side, the sprite already in place)
+data DcT bytes
+  0, 1, 1, 1, 0, 255, 255, 255, 0
+end data
+data DrT bytes
+  255, 255, 0, 1, 1, 1, 0, 255, 0
+end data
+' meanie interval (seconds) by level 1-5: INT(30 / SK - 1.5)
+' (tuned: the C64's 28, 13, 8, 6, 4 made the game endless here)
+data SkT bytes
+  0, 20, 10, 5, 3, 2
+end data
+' Herbie's order: down, right, left, up
+data HerbD bytes
+  4, 2, 6, 0
+end data
+
+record Mover:
+  u8 C
+  u8 R
+  u8 X
+  u8 Y
+  u8 M
+  u8 D
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+u16 Rs = 1
+' the random number at the start of the round (for the tests)
+u16 Rs0 = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Sc = 0
+u16 Ts = 0
+u16 Hi = 0
+u8 Lv = 1
+u8 StartLv = 1
+u8 Bv = 10
+u8 Sk = 28
+u8 Lives = 3
+u8 RoundNo = 0
+u8 Secs = 120
+' the round's clock: 120 s, 10 s less after each home round, at least 60
+u8 Clock = 120
+u8 Fr = 0
+u8 MeanC = 0
+' the tracker (T) and Herbie (H): cell, pixels, frames left of the step,
+' direction
+Mover Tk
+Mover Hb
+' the meanie: on, cell, pixel x, frames into the cell, cells done
+u8 Mon = 0
+u8 Mc = 0
+u8 Mr = 0
+u8 Mx = 0
+u8 Mf = 0
+u8 Mk = 0
+u8 EndT = 0
+u8 EndK = 0
+u8 Ended = 0
+u8 InPlay = 0
+u8 Perfect = 0
+u8 NewHi = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Menu = 0
+u8 Tick = 0
+u8 Idle = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TkSoundTable areas 6
+  sprites 16x16
+  set sprite count NSpr
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu <> 0 then goto title
+
+  NewGame
+round_loop:
+  NewRound
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  DrawSprites
+  if Ended = 0 then goto play_loop
+  InPlay = 0
+  RoundSummary
+  if Lives > 0 then goto round_loop
+
+  ' the end: a message, then back to the title on a press
+  print at 7,19, " SORRY, GAME OVER. "
+  play sound SndOver
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the field
+
+' the screen is the field (as on the C64): a cell's kind from its tile
+function KindAt(u8 Cc, u8 Rr) as u8
+  u8 Tt = 0
+  Tt = get char at Cc,Rr
+  select case Tt
+  case TTrack
+    return KTrack
+  case TGem
+    return KGem
+  case TCoin
+    return KCoin
+  case TX
+    return KX
+  case THome
+    return KHome
+  end select
+  return KEmpty
+
+function TileOf(u8 Kk) as u8
+  select case Kk
+  case KTrack
+    return TTrack
+  case KGem
+    return TGem
+  case KCoin
+    return TCoin
+  case KX
+    return TX
+  case KHome
+    return THome
+  case else
+    return TGround
+  end select
+  return TGround
+
+sub SetCell(u8 Cc, u8 Rr, u8 Kk)
+  u8 Tt = 0
+  Tt = TileOf(Kk)
+  put char Tt at Cc,Rr
+  return
+end sub
+
+' 1 when the cell is inside the field
+function InField(u8 Cc, u8 Rr) as u8
+  if Cc < 2 then return 0
+  if Cc > 29 then return 0
+  if Rr < 2 then return 0
+  if Rr > 22 then return 0
+  return 1
+
+' 1 when the tracker or Herbie is on the cell
+function Busy(u8 Cc, u8 Rr) as u8
+  if Cc = Tk.C and Rr = Tk.R then return 1
+  if Cc = Hb.C and Rr = Hb.R then return 1
+  return 0
+
+function Rand as u16
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return Rs
+
+' an empty cell for an item, rows 4-22 (the C64 version: rows 3-23 of 25)
+sub PlaceItem(u8 Kk)
+  u8 Pc = 0
+  u8 Pr = 0
+  u16 Q = 0
+  u8 Ok = 0
+  while Ok = 0
+    Q = Rand
+    Pc = lowbyte(Q) & 31
+    Pr = highbyte(Q) & 31
+    if Pc < 28 and Pr < 19 then
+      Pc = Pc + 2
+      Pr = Pr + 4
+      if KindAt(Pc, Pr) = KEmpty then Ok = 1
+    end if
+  end while
+  SetCell(Pc, Pr, Kk)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' one frame of play
+
+sub PlayStep:
+  if EndT > 0 then
+    dec EndT
+    if EndT = 0 then Ended = EndK
+    return
+  end if
+  TickClock
+  if EndT > 0 then return
+  if Mon = 1 then
+    MeanieStep
+    return
+  end if
+  TrackerStep
+  if EndT > 0 then return
+  HerbieStep
+  return
+end sub
+
+sub EndRound(u8 Kk)
+  EndK = Kk
+  EndT = EndN
+  select case Kk
+  case 1
+    play sound SndHome
+  case 2
+    play sound SndZap
+  case else
+    play sound SndLost
+  end select
+  return
+end sub
+
+sub TickClock:
+  inc Fr
+  if Fr < 60 then return
+  Fr = 0
+  dec Secs
+  ShowTime
+  if Secs = 0 then
+    EndRound(3)
+    return
+  end if
+  dec MeanC
+  if MeanC = 0 then
+    MeanC = Sk
+    if Mon = 0 then StartMeanie
+  end if
+  return
+end sub
+
+sub StartMeanie:
+  u16 Q = 0
+  u8 Ok = 0
+  while Ok = 0
+    Q = Rand
+    Mr = lowbyte(Q) & 15
+    Mc = highbyte(Q) & 31
+    if Mr < 12 and Mc < 23 then Ok = 1
+  end while
+  Mr = Mr + 10
+  Mc = Mc + 2
+  while Busy(Mc, Mr) = 1 and Mc < 24
+    inc Mc
+  end while
+  Mx = Mc << 3
+  Mf = 0
+  Mk = 0
+  Mon = 1
+  MeanHit
+  play sound SndMeanie
+  return
+end sub
+
+' the meanie on cell Mc, Mr: track, gems, coins (and X's) become X's
+sub MeanHit:
+  u8 Kk = 0
+  if Busy(Mc, Mr) = 1 then return
+  Kk = KindAt(Mc, Mr)
+  if Kk >= KTrack and Kk <= KX then SetCell(Mc, Mr, KX)
+  return
+end sub
+
+sub MeanieStep:
+  inc Mx
+  inc Mf
+  if Mf < MeanN then return
+  Mf = 0
+  inc Mk
+  inc Mc
+  if Mk < 4 then
+    MeanHit
+    return
+  end if
+  ' the fifth cell: one more X (from level 3 the sixth too), and the
+  ' meanie is gone
+  if Mk = 4 then
+    if Busy(Mc, Mr) = 0 then SetCell(Mc, Mr, KX)
+    if Lv >= 3 then return
+  else
+    if Busy(Mc, Mr) = 0 then SetCell(Mc, Mr, KX)
+  end if
+  Mon = 0
+  return
+end sub
+
+sub TrackerStep:
+  u8 Dd = 0
+  if Tk.M > 0 then
+    Dd = Tk.D
+    Tk.X = Tk.X + DcT[Dd]
+    Tk.Y = Tk.Y + DrT[Dd]
+    dec Tk.M
+    if Tk.M = 0 then
+      if KindAt(Tk.C, Tk.R) = KX then EndRound(2)
+    end if
+    return
+  end if
+  TryTracker
+  return
+end sub
+
+' the stick: with the button only straight moves, laying track
+sub TryTracker:
+  u8 Kj = 0
+  u8 Fb = 0
+  u8 Dd = 0
+  u8 Qc = 0
+  u8 Qr = 0
+  u8 Old = 0
+  u8 Wrap = 0
+  Kj = J1 | J2
+  Fb = Kj & 16
+  Kj = Kj & 15
+  Dd = DirT[Kj]
+  if Dd = NoDir then return
+  if Fb > 0 then
+    if (Dd & 1) = 1 then return
+  end if
+  Qc = Tk.C + DcT[Dd]
+  Qr = Tk.R + DrT[Dd]
+  ' the tracker wraps round the left and right edges (the article)
+  Wrap = 0
+  if Qc = 1 then
+    Qc = 29
+    Wrap = 1
+  end if
+  if Qc = 30 then
+    Qc = 2
+    Wrap = 1
+  end if
+  if InField(Qc, Qr) = 0 then return
+  if Qc = Hb.C and Qr = Hb.R then return
+  Old = KindAt(Tk.C, Tk.R)
+  if Old <= KTrack then
+    if Fb > 0 then
+      SetCell(Tk.C, Tk.R, KTrack)
+    else
+      SetCell(Tk.C, Tk.R, KEmpty)
+    end if
+  end if
+  Tk.C = Qc
+  Tk.R = Qr
+  Tk.D = Dd
+  Tk.M = CellN
+  if Wrap = 1 then
+    Tk.D = 8
+    Tk.X = Qc << 3
+    Tk.Y = Qr << 3
+  end if
+  play sound SndStep
+  return
+end sub
+
+' Herbie rides while the tracker is parked at home
+sub HerbieStep:
+  u8 Dd = 0
+  u8 I = 0
+  u8 Qc = 0
+  u8 Qr = 0
+  u8 Kk = 0
+  u8 Go = 0
+  if Hb.M > 0 then
+    ' 8 pixels in 12 frames: no step when the count is a multiple of 3
+    if Hb.M % 3 <> 0 then
+      Dd = Hb.D
+      Hb.X = Hb.X + DcT[Dd]
+      Hb.Y = Hb.Y + DrT[Dd]
+    end if
+    dec Hb.M
+    if Hb.M = 0 then HerbArrive
+    return
+  end if
+  if Tk.M > 0 then return
+  if Tk.C <> HomeC or Tk.R <> HomeR then return
+  for I = 0 to 3
+    if Go = 0 then
+      Dd = HerbD[I]
+      Qc = Hb.C + DcT[Dd]
+      Qr = Hb.R + DrT[Dd]
+      if InField(Qc, Qr) = 1 then
+        Kk = KindAt(Qc, Qr)
+        if Kk >= KTrack and Kk <= KCoin then
+          if Busy(Qc, Qr) = 0 then Go = 1
+        end if
+      end if
+    end if
+  next
+  if Go = 0 then return
+  ' the cell left behind: empty, or an X at the starting corner
+  if Hb.C = 2 and Hb.R = 2 then
+    SetCell(2, 2, KX)
+  else
+    SetCell(Hb.C, Hb.R, KEmpty)
+  end if
+  Hb.C = Qc
+  Hb.R = Qr
+  Hb.D = Dd
+  Hb.M = HerbN
+  play sound SndHerb
+  return
+end sub
+
+sub HerbArrive:
+  u8 Kk = 0
+  u8 AtHome = 0
+  if Hb.C = HomeC - 1 and Hb.R = HomeR then AtHome = 1
+  if Hb.C = HomeC and Hb.R = HomeR - 1 then AtHome = 1
+  if AtHome = 1 then
+    W16 = Bv
+    W16 = W16 << 2
+    Sc = Sc + W16
+    ShowScore
+    EndRound(1)
+    return
+  end if
+  Kk = KindAt(Hb.C, Hb.R)
+  W16 = 0
+  if Kk = KGem then
+    W16 = Bv
+    W16 = W16 << 1
+    play sound SndGem
+  end if
+  if Kk = KCoin then
+    W16 = Bv
+    play sound SndCoin
+  end if
+  if W16 > 0 then
+    Sc = Sc + W16
+    ShowScore
+  end if
+  SetCell(Hb.C, Hb.R, KEmpty)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' rounds
+
+sub NewGame:
+  Ts = 0
+  Lives = 3
+  Lv = StartLv
+  RoundNo = 0
+  Clock = 120
+  return
+end sub
+
+sub NewRound:
+  u8 I = 0
+  Bv = Lv * 10
+  Sk = SkT[Lv]
+  Sc = 0
+  Secs = Clock
+  Fr = 0
+  MeanC = Sk
+  EndT = 0
+  EndK = 0
+  Ended = 0
+  Mon = 0
+  inc RoundNo
+  Rs0 = Rs
+  NewScreen
+  DrawField
+  SetCell(HomeC, HomeR, KHome)
+  Hb.C = 2
+  Hb.R = 2
+  Hb.M = 0
+  Hb.D = 4
+  Hb.X = 16
+  Hb.Y = 16
+  Tk.C = 3
+  Tk.R = 2
+  Tk.M = 0
+  Tk.D = 2
+  Tk.X = 24
+  Tk.Y = 16
+  for I = 1 to 5
+    PlaceItem(KGem)
+  next
+  for I = 1 to 10
+    PlaceItem(KCoin)
+  next
+  ShowHud
+  DrawSprites
+  ShowScreen
+  play sound SndStart
+  Rearm
+  wait 30 frames
+  wait no fire
+  nmi off
+  ' a meanie at the start, as on the C64 (the clock's first second)
+  StartMeanie
+  InPlay = 1
+  return
+end sub
+
+' the scores of the round (the original's lines 470-494) on a page
+sub RoundSummary:
+  u16 Ten = 0
+  u16 Four = 0
+  u16 Full = 0
+  Rearm
+  wait 20 frames
+  nmi off
+  Ten = Bv
+  Ten = Ten * 10
+  Four = Bv
+  Four = Four << 2
+  Full = Bv
+  Full = Full * 24
+  if Lv > 1 and Sc < Ten then
+    if Sc >= Four then
+      Sc = Sc - Four
+    else
+      Sc = 0
+    end if
+  end if
+  Ts = Ts + Sc
+  Perfect = 0
+  if Sc = Full then
+    Perfect = 1
+    Ts = Ts + 500
+  end if
+  if EndK <> 1 then dec Lives
+  NewHi = 0
+  if Ts > Hi then
+    Hi = Ts
+    NewHi = 1
+  end if
+  NewScreen
+  fill TGround count 28 at 2,8
+  select case EndK
+  case 1
+    print at 2,6, "HOORAY! HERBIE'S HOME SAFE!"
+  case 2
+    print at 2,6, "OUCH! ZAPPED BY A DEADLY X!"
+  case else
+    print at 2,6, "OH, NO! HERBIE IS STRANDED!"
+  end select
+  NumU = Lv
+  print at 11,8, "LEVEL ", digits$(NumU, 1)
+  print at 8,10, "HIGH SCORE ", Hi
+  print at 4,12, "THIS ROUND:  ", Sc
+  print at 4,13, "GAME TOTAL:  ", Ts
+  if Perfect = 1 then print at 3,15, "PERFECT ROUND BONUS 500!"
+  if NewHi = 1 then print at 8,16, "A NEW HIGH SCORE!"
+  if Lives > 0 then
+    print at 6,18, "TRACKERS LEFT"
+    for J = 1 to Lives
+      C = J << 1
+      C = C + 20
+      put char TLife at C,18
+    next
+  end if
+  ShowScreen
+  if EndK = 1 then
+    if Lv < 5 then inc Lv
+    if Clock > 60 then Clock = Clock - 10
+  end if
+  Rearm
+  if Lives > 0 then
+    wait 200 frames
+  end if
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawField:
+  for R = 0 to 23
+    fill TBord count 32 at 0,R
+  next
+  fill 32 count 28 at 2,1
+  for R = 2 to 22
+    fill TGround count 28 at 2,R
+  next
+  return
+end sub
+
+sub DrawSprites:
+  u8 Pp = 0
+  u8 Yy = 0
+  ' the tracker (zapped: a burst)
+  Yy = Tk.Y - 1
+  Pp = Tk.X + Tk.Y
+  Pp = Pp & 4
+  if EndT > 0 and EndK = 2 then
+    set sprite 0 to Yy,Tk.X,SZap,6
+  else
+    set sprite 0 to Yy,Tk.X,Pp,4
+  end if
+  ' Herbie
+  Yy = Hb.Y - 1
+  Pp = Hb.X + Hb.Y
+  Pp = Pp & 4
+  Pp = Pp + SHerb0
+  set sprite 1 to Yy,Hb.X,Pp,13
+  ' the meanie
+  if Mon = 1 then
+    Yy = Mr << 3
+    Yy = Yy - 1
+    Pp = Mx & 4
+    Pp = Pp + SMean0
+    set sprite 2 to Yy,Mx,Pp,8
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 14,1, "TIME"
+  print at 23,1, "LV"
+  ShowScore
+  ShowTime
+  NumU = Lv
+  print at 25,1, digits$(NumU, 1)
+  fill 32 count 3 at 27,1
+  for J = 1 to Lives
+    C = 26 + J
+    put char TLife at C,1
+  next
+  return
+end sub
+
+sub ShowScore:
+  NumU = Ts + Sc
+  print at 8,1, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowTime:
+  NumU = Secs
+  print at 19,1, digits$(NumU, 3)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $1F
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop light yellow
+  cls
+  for R = 0 to 23
+    fill TBord count 32 at 0,R
+  next
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the logo in track, the cast, the menu
+sub TitlePage:
+  u8 Lr = 0
+  u8 Lc = 0
+  u16 Li = 0
+  NewScreen
+  for R = 1 to 22
+    fill TGround count 28 at 2,R
+  next
+  print at 2,1, "HI "
+  NumU = Hi
+  print at 5,1, digits$(NumU, 5)
+  print at 14,1, "GAZETTE 9/1985"
+  Li = 0
+  for Lr = 0 to 4
+    for Lc = 0 to LogoW - 1
+      if LogoT[Li] = 1 then
+        C = LogoC + Lc
+        R = Lr + 3
+        put char TTrack at C,R
+      end if
+      inc Li
+    next
+  next
+  put char TLife at 4,10
+  print at 6,10, "TRACKER"
+  put char TTrack at 4,11
+  print at 6,11, "TRACK"
+  put char THerbie at 4,12
+  print at 6,12, "PURPLE HERBIE"
+  put char TGem at 4,13
+  print at 6,13, "20-100 PTS"
+  put char TCoin at 4,14
+  print at 6,14, "10-50 PTS"
+  put char THome at 4,15
+  print at 6,15, "HOME 40-200 PTS"
+  put char TMeanie at 4,16
+  print at 6,16, "MEANIE"
+  put char TX at 4,17
+  print at 6,17, "DEADLY X"
+  print at 10,19, "START GAME"
+  print at 10,20, "LEVEL"
+  print at 10,21, "HOW TO PLAY"
+  print at 10,22, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  W16 = Rand
+  ReadPad
+  V = J1 | J2
+  V = V & 15
+  if V > 0 then
+    if WasStick = 0 then
+      select case V
+      case 1
+        if Menu > 0 then dec Menu
+      case 2
+        if Menu < 3 then inc Menu
+      case 4
+        if Menu = 1 and StartLv > 1 then dec StartLv
+      case 8
+        if Menu = 1 and StartLv < 5 then inc StartLv
+      end select
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then
+    if StartLv < 5 then
+      inc StartLv
+    else
+      StartLv = 1
+    end if
+    ShowMenu
+    goto tp_loop
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  if Menu = 2 then HowPage
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for J = 19 to 22
+    put char 32 at 8,J
+  next
+  J = Menu + 19
+  put char 62 at 8,J
+  NumU = StartLv
+  print at 16,20, digits$(NumU, 1)
+  return
+end sub
+
+' HOW TO PLAY: three pages with pictures from the game; the button turns
+' the page, 30 seconds alone goes back to the title
+sub HowPage:
+  HowTop
+  print at 9,2, "HOW TO PLAY 1/3"
+  print at 2,4, "YOU ARE THE TRACKER. HELP"
+  print at 2,5, "PURPLE HERBIE GET HOME TO"
+  print at 2,6, "THE PINK HOUSE."
+  put char THerbie at 4,8
+  fill TTrack count 6 at 5,8
+  put char TLife at 11,8
+  put char THome at 14,8
+  print at 2,10, "HOLD THE BUTTON AND MOVE"
+  print at 2,11, "THE STICK TO LAY TRACK."
+  print at 2,12, "MOVE WITHOUT THE BUTTON TO"
+  print at 2,13, "ERASE TRACK (OR GO SIDEWAYS"
+  print at 2,14, "ON A SLANT)."
+  print at 2,16, "RUN OFF THE LEFT OR RIGHT"
+  print at 2,17, "SIDE TO COME BACK ON THE"
+  print at 2,18, "OTHER SIDE."
+  if HowNext = 0 then return
+  HowTop
+  print at 9,2, "HOW TO PLAY 2/3"
+  print at 2,4, "BUILD ONE PATH FROM HERBIE"
+  print at 2,5, "TO THE HOUSE. PARK THE"
+  print at 2,6, "TRACKER ON THE HOUSE AND"
+  print at 2,7, "HERBIE RIDES THE TRACK."
+  put char THerbie at 4,9
+  put char TTrack at 5,9
+  put char TGem at 6,9
+  put char TTrack at 7,9
+  put char TCoin at 8,9
+  put char TTrack at 9,9
+  put char THome at 10,9
+  put char TLife at 10,10
+  print at 2,12, "HE EATS GEMS AND COINS ON"
+  print at 2,13, "OR NEXT TO HIS PATH:"
+  put char TGem at 3,15
+  print at 5,15, "GEM  2 X LEVEL X 10"
+  put char TCoin at 3,16
+  print at 5,16, "COIN 1 X LEVEL X 10"
+  put char THome at 3,17
+  print at 5,17, "HOME 4 X LEVEL X 10"
+  print at 2,19, "BRANCHES CONFUSE HERBIE!"
+  if HowNext = 0 then return
+  HowTop
+  print at 9,2, "HOW TO PLAY 3/3"
+  put char TMeanie at 3,4
+  print at 5,4, "MEANIES TURN TRACK, GEMS"
+  print at 5,5, "AND COINS INTO X'S."
+  put char TX at 3,7
+  print at 5,7, "DRIVE INTO AN X: ZAPPED!"
+  print at 2,9, "THE CLOCK NEVER STOPS. GET"
+  print at 2,10, "HERBIE HOME IN TIME."
+  print at 2,12, "AN X OR TIME UP COSTS ONE"
+  print at 2,13, "OF YOUR 3 TRACKERS:"
+  fill TLife count 3 at 23,13
+  print at 2,15, "FROM LEVEL 2, LESS THAN"
+  print at 2,16, "HALF THE PRIZES COSTS"
+  print at 2,17, "POINTS. ALL OF THEM: +500."
+  print at 2,19, "TIP: PASS MANY PRIZES BUT"
+  print at 2,20, "LEAVE HERBIE TIME!"
+  W16 = HowNext
+  return
+end sub
+
+sub HowTop:
+  NewScreen
+  for R = 1 to 22
+    fill TGround count 28 at 2,R
+  next
+  print at 7,22, "PRESS THE BUTTON"
+  return
+end sub
+
+' shows the page; 1 when the button was pressed, 0 after 30 s alone
+function HowNext as u8
+  u16 Left = 1800
+  u8 Got = 0
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  while Left > 0
+    Frame1
+    ReadPad
+    if Press = 1 then
+      Got = 1
+      Left = 0
+    else
+      dec Left
+    end if
+  end while
+  if Got = 1 then
+    Rearm
+    wait no fire
+    nmi off
+  end if
+  return Got
+
+sub CreditsPage:
+  NewScreen
+  for R = 1 to 22
+    fill TGround count 28 at 2,R
+  next
+  print at 12,2, "TRACKER"
+  print at 2,5, "BASED ON TRACKER,"
+  print at 2,6, "COMPUTE!'S GAZETTE"
+  print at 2,7, "SEPTEMBER 1985, BY"
+  print at 2,8, "NED W. SCHULTZ (C64)."
+  print at 2,11, "COLECOVISION GAME, MUSIC"
+  print at 2,12, "AND PICTURES BY CLAUDE"
+  print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,14, "IN AMY BY AMY BIENVENU,"
+  print at 2,15, "2026."
+  print at 2,18, "MUSIC: RAILS TO HOME"
+  print at 2,19, "(ORIGINAL)"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $42,$00,$42,$42,$00,$42,$42,$00
+  $18,$C3,$81,$40,$00,$81,$C3,$18
+  $C3,$99,$C3,$99,$99,$C3,$99,$C3
+  $81,$C3,$99,$C3,$C3,$99,$C3,$81
+  $18,$C3,$81,$00,$99,$99,$0C,$0C
+  $C3,$24,$00,$00,$00,$48,$18,$81
+  $81,$24,$24,$00,$00,$C3,$81,$42
+  $00,$24,$00,$42,$C3,$00,$AA,$AA
+end data
+data TileCol bytes
+  $0F,$0F,$0F,$EF,$0F,$0F,$0F,$0F
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $6F,$06,$6F,$6F,$06,$6F,$6F,$06
+  $2F,$F2,$F2,$32,$02,$F2,$F2,$2F
+  $F5,$F5,$5F,$5F,$5F,$5F,$F5,$F5
+  $1F,$1F,$F1,$F1,$F1,$F1,$1F,$1F
+  $9F,$F9,$F9,$09,$9F,$9F,$F9,$F9
+  $F4,$4F,$04,$04,$04,$F4,$4F,$F4
+  $FD,$FD,$1D,$0D,$0D,$D1,$FD,$DF
+  $08,$F8,$08,$18,$81,$08,$8F,$8F
+end data
+data SpritePat bytes
+  $3C,$24,$FF,$FF,$FF,$B6,$18,$7E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$24,$FF,$FF,$FF,$6D,$18,$7E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7E,$DB,$DB,$FF,$FF,$C3,$7E,$42,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7E,$DB,$DB,$FF,$FF,$C3,$7E,$81,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$DB,$FF,$BD,$C3,$FF,$AA,$AA,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$DB,$FF,$BD,$C3,$FF,$55,$55,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$EF,$38,$54,$92,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+const LogoW = 27
+const LogoC = 2
+data LogoT bytes
+  1,1,1,0,1,1,0,0,0,1,0,0,0,1,1,0,1,0,1,0,1,1,1,0,1,1,0
+  0,1,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1
+  0,1,0,0,1,1,0,0,1,1,1,0,1,0,0,0,1,1,0,0,1,1,0,0,1,1,0
+  0,1,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1
+  0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,0,1,0,1,0,1,1,1,0,1,0,1
+end data
+
+asm {
+TkStep:
+    db $00,$00,$41,$01,$00,$00,$71,$01,$10
+TkHerb:
+    db $40,$7F,$40,$02,$40,$A9,$60,$01,$50
+TkCoin:
+    db $40,$55,$20,$03,$40,$47,$20,$03,$40,$39,$30,$06,$50
+TkGem:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$30,$08,$50
+TkMeanie:
+    db $40,$FC,$21,$04,$40,$E0,$21,$04,$40,$FC,$21,$04,$40,$E0,$21,$04,$40,$FC,$21,$04,$40,$E0,$21,$04
+    db $40,$FC,$21,$04,$40,$E0,$31,$04,$50
+TkZap:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$66,$14,$10
+TkHome:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$20,$06,$40,$6B,$20,$18
+    db $50
+TkLost:
+    db $40,$8F,$10,$06,$40,$A0,$20,$06,$40,$B4,$20,$06,$40,$D6,$20,$06,$40,$FE,$30,$0A,$40,$41,$31,$18
+    db $50
+TkStart:
+    db $40,$1D,$21,$06,$40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0E,$50
+TkOver:
+    db $40,$D6,$10,$0C,$40,$F0,$20,$0C,$40,$1D,$21,$0C,$40,$AB,$21,$1E,$50
+
+TkSoundTable:
+    dw TkTuneMel,$702B
+    dw TkTuneBass,$7035
+    dw TkStep,$703F
+    dw TkHerb,$7049
+    dw TkCoin,$7049
+    dw TkGem,$7049
+    dw TkMeanie,$7049
+    dw TkZap,$703F
+    dw TkHome,$7049
+    dw TkLost,$7049
+    dw TkStart,$7049
+    dw TkOver,$7049
+; Rails to Home (original)
+; Tiny Sound, 8 frames per step
+TkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$1F,$01,$23,$26,$01,$23,$1F,$01,$21,$01,$24,$28
+    db $01,$24,$21,$01,$23,$01,$26,$2B,$01,$26,$23,$01,$21,$01,$01,$01
+    db $1A,$01,$01,$01,$1F,$01,$23,$26,$01,$23,$1F,$01,$24,$01,$28,$2B
+    db $01,$28,$24,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+TkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$13,$01,$1A,$01,$13,$01,$0E,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$13,$01,$0E,$01,$13,$01,$0E,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$13,$01,$1A,$01,$13,$01,$0E,$01,$18,$01,$13,$01
+    db $18,$01,$13,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$13,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

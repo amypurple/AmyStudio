@@ -58,7 +58,9 @@ cartridge "DUNK/COMPUTE!'S GAZETTE/1986"
 ' to its title).
 '
 ' Controls: controller 1 (or 2): the stick moves the three crates. On the
-' title, up and down choose, a button chooses.
+' title, up and down choose (START, HOW TO PLAY, CREDITS), a button
+' chooses; HOW TO PLAY has two pages (a button turns the page, 30 s idle
+' goes back).
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -262,6 +264,8 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 u8 Tick = 0
 u8 Idle = 0
 ' loop counters (never shared with the helpers)
@@ -292,7 +296,7 @@ u8 Pad = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu > 0 then goto title
 
   NewGame
 
@@ -842,6 +846,7 @@ end sub
 ' the title: DUNK in slanted bricks, a crate on a board, START / CREDITS,
 ' the best score, the tune once
 sub TitlePage:
+  Menu = 0
   NewScreen
   print at 4,2, "COMPUTE!'S GAZETTE 1986"
   copy TitleMap count 160 to vram.name + 160
@@ -853,9 +858,10 @@ sub TitlePage:
     put char TRt2 at X + 14,Y
   next
   print at 13,17, "START"
-  print at 13,18, "CREDITS"
+  print at 13,18, "HOW TO PLAY"
+  print at 13,19, "CREDITS"
   if Hi > 0 then
-    print at 10,20, "HIGH ", Hi
+    print at 10,21, "HIGH ", Hi
   end if
   ShowMenu
   set sprite 2 to 98,92,SCrate,15
@@ -878,9 +884,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -895,15 +901,90 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
   put char 32 at 11,17
   put char 32 at 11,18
+  put char 32 at 11,19
   J = Menu + 17
   put char 62 at 11,J
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "25 BALLS DROP ONE AT A TIME"
+    print at 2,4, "ONTO THE TOP OF THREE"
+    print at 2,5, "SLANTED BOARDS. BAT THEM"
+    print at 2,6, "DOWN TO THE SCORING SPOTS."
+    print at 2,8, "THE STICK MOVES ALL THREE"
+    print at 2,9, "CRATES AT ONCE: UP/DOWN"
+    print at 2,10, "SLIDE THEM BACK AND FORTH,"
+    print at 2,11, "LEFT/RIGHT MOVE THEM ALONG."
+    print at 2,13, "A MOVING CRATE THAT TOUCHES"
+    print at 2,14, "THE BALL SENDS IT ITS WAY."
+    print at 2,15, "A BALL OVER A HOLE DROPS TO"
+    print at 2,16, "THE BOARD BELOW."
+    for Rw = 0 to 2
+      Y = Rw + 18
+      X = 5 + Rw
+      put char TLf1 at X,Y
+      fill TIn1 count 13 at X + 1,Y
+      put char TRt1 at X + 14,Y
+    next
+    put char THA1 at 12,19
+    put char TVoid at 13,19
+    put char THC1 at 14,19
+    set sprite 2 to 136,64,SCrate,15
+    set sprite 0 to 140,88,SBall,11
+  else
+    print at 2,3, "SCORE: THE BALL MUST ROLL"
+    print at 2,4, "STRAIGHT RIGHT OFF THE END"
+    print at 2,5, "OF THE BOTTOM BOARD, OVER A"
+    print at 2,6, "SPOT: 3,2,1,2 OR 3 POINTS."
+    print at 2,8, "OFF ANY OTHER EDGE: A MISS."
+    print at 2,10, "AFTER A SCORE THE TOP AND"
+    print at 2,11, "BOTTOM CRATES MAY SWAP THEIR"
+    print at 2,12, "CONTROLS. THE SIGNS ON THE"
+    print at 2,13, "LEFT OF THOSE BOARDS TELL."
+    print at 2,15, "AFTER 25 BALLS: GAME OVER."
+    print at 2,17, "TIP: WAIT FOR THE"
+    print at 2,18, "BALL ON THE BOTTOM"
+    print at 2,19, "BOARD, THEN PUSH IT"
+    print at 2,20, "RIGHT FROM BEHIND."
+    put char TG3 at 23,17
+    put char TG2 at 24,18
+    put char TG1 at 25,19
+    put char TG2 at 26,20
+    put char TG3 at 27,21
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then goto ht_done
+  if Press = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  HideSprites
   return
 end sub
 

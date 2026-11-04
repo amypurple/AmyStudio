@@ -1,0 +1,6315 @@
+cartridge "VAMPYRE HUNTER/MARC SUGIYAMA/1986"
+' VAMPYRE HUNTER
+' Based on Vampyre Hunter by Marc Sugiyama (game concept by Gregg Keizer
+' and Randy Fosner), COMPUTE!'s Gazette, May 1986 (Commodore 64, BASIC
+' text adventure with a machine-language castle), for the ColecoVision in
+' Amy by Amy Bienvenu; this version by Claude (Anthropic).
+'
+' A vampire terrorizes a small village in the mountains of eastern Europe;
+' the townspeople have fled. Find what you need in the village, enter the
+' old castle, find his coffin and drive a wooden stake into him while he
+' sleeps (or keep him out of his coffin until the sun rises).
+'
+' Screen: a picture of the place on rows 1-7, the day and the time on row
+' 8, the story on rows 9-18 (MORE waits for a button when a long text
+' fills it), the menu on rows 20-22. In the castle, rows 1-7 show the
+' castle round the hunter (it scrolls up and down; dark without the
+' lantern), and the menu opens with a button.
+'
+' Controls (either joystick):
+'   Outside: up/down choose a verb (left column) or a noun (right column);
+'   right or the left button moves to the nouns; the left button carries
+'   out the command; the right button goes back.
+'   In the castle: the stick walks one cell a push (repeating while held);
+'   the left button opens the menu; the right button (on the verbs)
+'   closes it again.
+' Keypad not used.
+'
+' Inside: the places, objects and messages are the listing's DATA (adv.py
+' reads orig/world.json, made by orig/parse.py from the listing), compiled
+' by advc.py to packed text and bytecode for engine.asm (The Hermit's
+' engine, by way of Grim Oak Manor). This file keeps the clock, hunger,
+' weariness, the lantern, the wolves, the dog, the vampire and the castle.
+'
+' Liberties taken:
+' - A verb and noun menu instead of typing (the listing's parser took
+'   two-word and longer sentences). Synonyms merged; GIVE and THROW find
+'   their target themselves (the vampire, the dog or the wolves here).
+'   WAIT and SLEEP offer 10 minutes, 1, 3 or 10 hours. MAKE offers
+'   STAKES; DRIVE offers STAKE IN VAMPIRE (the listing's one fixed
+'   sentence) once the stakes are carried. LOOK <direction>, HELP, JUMP,
+'   SCREAM, HELLO, COLOR, CLEAR, BRIEF and VERBOSE are left out.
+' - The castle is one fixed castle of four 28 x 21 floors made by
+'   castle.py (the listing's machine language built a new 64 x 32 x 4
+'   castle each game). Stairs are taken by walking onto them (the listing
+'   had UP and DOWN on a stairway cell); stairs and trapdoors never close
+'   a passage. Rats and bats are drawn as tiles that wander (toward the
+'   hunter when near) and bite one turn in two when next to him (the
+'   listing: while on his cell); a bump on a wall costs no time and prints
+'   nothing. Only one batch of stakes.
+' - The vampire in the castle at night is a figure that walks toward the
+'   hunter and attacks next to him (the listing: anywhere in the castle).
+' - Warnings that the listing printed every turn (rest, hunger, lamp
+'   fuel) come when they first apply and then now and then.
+' - KILL DOG makes the dog run off (no gore). Food is ten portions of one
+'   weight. Things the bats take land in a gate house by the north gate.
+' - The day and the time are always shown (TIME still says it).
+' - New pictures for every kind of place, sprites, sounds and a title tune.
+'
+' House rules: tiles 128+, the tune once, NMI off when drawing,
+' `set sprite count`, nothing flashes faster than 3 Hz (rats and bats
+' change frames at 2 Hz).
+
+const SndHush = 1
+const SndTick = 2
+const SndMore = 3
+const SndOk = 4
+const SndBack = 5
+const SndStep = 6
+const SndBump = 7
+const SndStairs = 8
+const SndFall = 9
+const SndBite = 10
+const SndBell = 11
+const SndDie = 12
+const SndWin = 13
+const SndScream = 14
+const SndTuneA = 15
+const SndTuneB = 16
+u16 TzLeft = 0
+u8 TzOn = 0
+const FgLt = 0
+const FgSc = 1
+const FgDead = 2
+const FgWin = 3
+const FgQuit = 4
+const FgNight = 5
+const FgTired = 6
+const FgWpn = 7
+const FgAct = 8
+const FgXt = 9
+const FgNuadd = 10
+const FgVempty = 11
+const FgHempty = 12
+const FgBookp = 13
+const FgDogf = 14
+const FgNofuel = 15
+const FgMuchfuel = 16
+const FgFullup = 17
+const FgHasstk = 18
+const FgVnear = 19
+const FgCoffin = 20
+const FgSleepok = 21
+const FgAlways = 22
+record FlagRec:
+  u8 FLt
+  u8 FSc
+  u8 FDead
+  u8 FWin
+  u8 FQuit
+  u8 FNight
+  u8 FTired
+  u8 FWpn
+  u8 FAct
+  u8 FXt
+  u8 FNuadd
+  u8 FVempty
+  u8 FHempty
+  u8 FBookp
+  u8 FDogf
+  u8 FNofuel
+  u8 FMuchfuel
+  u8 FFullup
+  u8 FHasstk
+  u8 FVnear
+  u8 FCoffin
+  u8 FSleepok
+  u8 FAlways
+  u8 FPad[7]
+end record
+record ObjRec:
+  u8 ONone
+  u8 OTree
+  u8 OSign
+  u8 ODog
+  u8 OWolves
+  u8 ORope
+  u8 OLantern
+  u8 OFood
+  u8 OVinegar
+  u8 OMallet
+  u8 OFuel
+  u8 OAxe
+  u8 OGarlic
+  u8 OBook
+  u8 OWater
+  u8 OWafers
+  u8 OCrucifix
+  u8 OKnife
+  u8 OPales
+  u8 OMirror
+  u8 OStakes
+  u8 OLogs
+  u8 OStump
+  u8 OStone
+  u8 OWell
+  u8 OChurch
+  u8 OInn
+  u8 OShop
+  u8 OHouse
+  u8 OCottage
+  u8 OGate
+  u8 OGatehouse
+  u8 ORiver
+  u8 OSwamp
+  u8 OField
+  u8 OCastlew
+  u8 OGarden
+  u8 OVillage
+  u8 OWall
+  u8 ORats
+  u8 OBats
+  u8 OVampire
+  u8 OPad[18]
+end record
+const VbGo = 0
+const VbLook = 1
+const VbExamine = 2
+const VbTake = 3
+const VbDrop = 4
+const VbInventory = 5
+const VbEat = 6
+const VbDrink = 7
+const VbRead = 8
+const VbLampOn = 9
+const VbLampOff = 10
+const VbRefuel = 11
+const VbMake = 12
+const VbChop = 13
+const VbKill = 14
+const VbGive = 15
+const VbThrow = 16
+const VbWait = 17
+const VbSleep = 18
+const VbTime = 19
+const VbDrive = 20
+const VbQuit = 21
+const NVerbs = 22
+const MxSunset = 186
+const MxSetting = 187
+const MxSunrise = 188
+const MxWolvesAtk = 189
+const MxDogDefends = 190
+const MxLampOut = 191
+const MxOnly = 192
+const MxMoreFuel = 193
+const MxVampAtk = 194
+const MxRatsAtk = 195
+const MxBatsAtk = 196
+const MxRest = 197
+const MxHungry = 198
+const MxExhaust = 199
+const MxStarved = 200
+const MxMelts = 201
+const MxKilled = 202
+const MxAt = 203
+const MxChamp = 204
+const MxIts = 205
+const MxOfDay = 206
+const MxDot = 207
+const MxColon = 208
+const MxZero = 209
+const MxAm = 210
+const MxPm = 211
+const MxFoodLeft = 212
+const MxNoMoreFood = 213
+const MxEatFood = 214
+const MxFood = 215
+const MxFuelLeft = 216
+const MxTrap = 217
+const MxRatsHere = 218
+const MxBatsHere = 219
+const MxStairsDown = 220
+const MxStairsUp = 221
+const MxCoffin = 222
+const MxVampAsleep = 223
+const MxCoffinEmpty = 224
+const MxLeave = 225
+const MxTooDark = 1
+const MxWake = 226
+const MxDogFollows = 227
+const MxWolvesFollow = 228
+const MxEnterCastle = 229
+const MxHelp1 = 230
+const MxHelp1b = 231
+const MxHelp2 = 232
+const MxHelp3 = 233
+const MxHelp3b = 234
+const MxCredit1 = 235
+const MxCredit2 = 236
+const ObTree = 1
+const ObSign = 2
+const ObDog = 3
+const ObWolves = 4
+const ObRope = 5
+const ObLantern = 6
+const ObFood = 7
+const ObVinegar = 8
+const ObMallet = 9
+const ObFuel = 10
+const ObAxe = 11
+const ObGarlic = 12
+const ObBook = 13
+const ObWater = 14
+const ObWafers = 15
+const ObCrucifix = 16
+const ObKnife = 17
+const ObPales = 18
+const ObMirror = 19
+const ObStakes = 20
+const ObLogs = 21
+const ObStump = 22
+const ObStone = 23
+const ObWell = 24
+const ObChurch = 25
+const ObInn = 26
+const ObShop = 27
+const ObHouse = 28
+const ObCottage = 29
+const ObGate = 30
+const ObGatehouse = 31
+const ObRiver = 32
+const ObSwamp = 33
+const ObField = 34
+const ObCastlew = 35
+const ObGarden = 36
+const ObVillage = 37
+const ObWall = 38
+const ObRats = 39
+const ObBats = 40
+const ObVampire = 41
+const AcWait = 1
+const AcSleep = 2
+const AcTime = 3
+const AcEatfood = 4
+const AcFeeddog = 5
+const AcFeedwolf = 6
+const AcLunge = 7
+const AcBataway = 8
+const AcWolfrun = 9
+const AcZaprat = 10
+const AcZapbat = 11
+const AcRefuel = 12
+const AcFoodleft = 13
+const AcFuelleft = 14
+const AcDogrun = 15
+const WdMin10 = 50
+const WdHour1 = 51
+const WdHour3 = 52
+const WdHour10 = 53
+const TitleScene = 10
+const TCfloor = 128
+const TCwall = 129
+const TCdoor = 130
+const TCdown = 131
+const TCup = 132
+const TCcoffin = 133
+const TRatA = 134
+const TRatB = 135
+const TBatA = 136
+const TBatB = 137
+const SVampireDL = 0
+const SVampireDR = 4
+const SVampireBL = 8
+const SVampireBR = 12
+const SBatA = 16
+const SBatB = 20
+const SHunter = 24
+const SHunter2 = 28
+const SVamp = 32
+const NTiles8 = 80
+const SprBytes = 288
+' minutes for each exit (rooms 0-93; N S E W U D; DATA 2995-3195): a nibble
+' a exit, index into TimeVal (even exits in the high nibble)
+data TimeVal bytes 0,3,4,5,6,7,8,10,12,13,14,15,20,26,30,40
+data ExitTime bytes
+  0,0,0,112,0,0,119,16,0,0,17,0,0,20,48,0,0,3,0,4,0,48,48,0
+  7,115,0,16,199,0,17,0,0,48,12,0,115,64,0,0,132,0,0,8,11,0,0,192
+  115,0,0,119,177,0,0,17,0,7,16,0,112,0,0,119,48,0,0,62,0,0,0,48
+  1,0,51,0,0,3,192,155,0,192,89,0,119,37,0,0,34,0,0,2,0,0,2,0
+  0,34,0,119,42,0,204,173,0,204,222,0,240,192,0,192,0,0,252,60,0,0,115,0
+  32,119,0,7,183,0,44,155,0,12,89,0,119,117,0,0,119,0,0,7,0,0,32,0
+  34,34,0,0,2,0,194,0,0,0,32,0,50,34,0,16,2,0,183,198,0,224,204,0
+  224,204,0,224,12,0,0,7,192,238,199,11,238,12,0,238,119,0,187,118,0,238,100,0
+  224,100,0,224,76,0,4,192,0,238,64,0,51,0,0,188,4,0,123,4,0,224,72,0
+  14,72,0,206,126,0,239,124,0,191,192,0,124,176,0,7,0,0,7,187,0,0,187,0
+  0,32,0,35,34,0,4,2,0,64,192,0,14,140,0,14,100,0,187,200,0,14,204,0
+  14,204,0,12,14,0,123,5,0,7,0,0,0,89,0,2,155,0
+end data
+data VerbTime bytes 0,1,6,2,1,0,0,0,5,3,2,0,0,0,0,5,5,0,0,0,0,0
+data SleepRooms bytes 5,19,20,50,41,30
+const NSleepRooms = 6
+' castle.py: four floors of 28 x 21 cells, a bit a cell (1 = wall), 4 bytes a row
+data CastleWall bytes
+  255,251,255,255,128,128,2,63,190,184,42,191,130,136,40,191,186,232,62,191,138,40,2,63
+  235,238,250,255,136,136,10,63,190,186,10,191,130,34,2,191,254,238,15,191,130,42,0,63
+  187,171,174,255,168,40,34,63,170,232,47,191,160,8,40,191,191,248,42,191,130,8,40,191
+  186,238,186,191,136,8,2,63,255,251,255,255,255,255,255,255,136,34,0,63,171,174,238,191
+  170,32,136,191,170,234,171,191,162,136,170,63,170,251,186,255,162,8,34,63,190,232,47,191
+  162,128,40,191,187,128,42,191,160,0,42,63,174,131,171,191,128,2,40,191,255,234,238,255
+  136,2,2,63,168,63,190,191,168,0,162,191,168,62,235,191,160,0,8,63,255,255,255,255
+  255,255,255,255,130,8,8,63,186,187,171,191,136,130,40,191,175,130,235,191,162,2,138,63
+  187,130,186,255,168,130,138,63,174,250,187,191,162,10,160,191,187,186,239,191,136,130,136,63
+  234,190,186,191,138,32,10,63,187,160,250,255,138,128,128,191,234,224,130,191,130,32,130,63
+  190,234,131,191,128,2,128,63,255,255,255,255,255,255,255,255,128,8,0,63,251,234,8,63
+  130,34,8,63,191,190,8,63,128,34,8,63,190,174,235,255,130,136,136,63,186,235,191,191
+  162,130,34,63,174,250,250,255,162,2,0,63,187,238,160,191,168,32,160,191,175,191,160,191
+  136,162,0,191,234,171,254,191,162,138,2,191,186,250,250,191,128,8,10,63,255,255,255,255
+end data
+' features: floor, column, row, kind (1/2 doors north/south, 3 stairs down,
+' 4 stairs up, 5 trapdoor, 6 coffin)
+const NFeat = 24
+data FeatL bytes 0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,3,3,3
+data FeatX bytes 7,13,13,17,17,23,25,1,7,11,13,19,23,25,1,5,5,15,19,23,25,5,25,25
+data FeatY bytes 11,0,20,1,15,1,13,5,11,17,15,7,11,13,5,5,15,3,7,13,15,15,1,15
+data FeatK bytes 3,1,2,5,5,5,3,3,4,5,5,3,5,4,4,5,3,5,4,5,3,4,6,4
+const NCrit = 16
+data CritK0 bytes 1,1,2,2,1,1,2,2,1,1,2,2,1,1,2,2
+data CritL0 bytes 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3
+data CritX0 bytes 25,7,21,3,9,9,15,21,23,17,7,21,25,13,1,23
+data CritY0 bytes 5,5,19,5,5,7,13,13,5,9,1,19,5,1,17,11
+
+' places where wolves may roam (DATA 4005, rooms = places + 1)
+data WolfRooms bytes 84,85,86,87,88,89,67,63,65,61,59,60,65,64,54,55,56,57
+const NWolfRooms = 18
+
+' world (engine.asm)
+ObjRec OL
+FlagRec Fl
+u8 Opn[4]
+u8 Pt[4]
+u8 NL[70]
+u8 WBuf[30]
+u8 RowBuf[28]
+u8 TxStk[16]
+u16 TxPtr = 0
+u16 Moves = 0
+u8 Rm = 1
+u8 Verb = 0
+u8 Noun = 0
+u8 Noun2 = 0
+u8 Score = 0
+u8 Scene = 0
+u8 Dark = 0
+u8 NCount = 0
+u8 NeedNoun = 0
+u8 PkV = 0
+u8 PkN = 0
+u8 PkCol = 0
+u8 PkMode = 0
+u8 InMore = 0
+u8 TxDepth = 0
+u8 TCol = 0
+u8 TPend = 0
+u8 TWLen = 0
+u8 TAlt = 0
+u8 TLines = 0
+u8 StopF = 0
+u8 ContF = 0
+u8 Neg = 0
+u8 RootOp = 0
+u8 T1 = 0
+u8 T2 = 0
+u8 T3 = 0
+u8 T4 = 0
+u8 NStart = 0
+u8 SaveN = 0
+u16 MsgId = 0
+' the cartridge
+u16 NumU = 0
+u8 Shown = 255
+u8 FamShown = 255
+u8 Fam = 0
+u8 Menu = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Dirty = 0
+u8 HistN = 0
+u8 Pg = 0
+u8 Blink = 0
+u8 Ended = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 Y = 0
+u8 X = 0
+u8 BatX = 0
+u8 BatY = 10
+u8 Anim = 0
+u8 Spooky = 0
+u16 Seed = 12345
+u16 W16 = 0
+u16 RW = 0
+u8 RS = 0
+u16 IW = 0
+u8 IV = 0
+u8 IT = 0
+u16 RE = 0
+u8 RK = 0
+u8 RC = 0
+u8 RT = 0
+u8 RR = 0
+u8 RQ = 0
+u8 FK = 0
+u8 CK = 0
+u8 NV = 0
+u8 WK = 0
+u8 QX = 0
+u8 QY = 0
+u16 WLeft = 0
+' the clock and the hunter (listing names in comments)
+u16 TT = 1100          ' minutes since midnight (TT)
+u8 Day = 1             ' DY
+u8 S0 = 0              ' the sun is setting said
+u8 S1 = 0              ' sunset said
+u8 S2 = 1              ' sunrise said
+u8 Night = 0           ' NT: from sunset to sunrise
+u16 HV = 0             ' weariness in hundredths (HV)
+i16 NU = 8000          ' nourishment in hundredths (NU)
+i16 Fuel = 1020        ' lantern fuel in minutes (AF)
+u8 Portions = 10       ' days of food (NS%(6))
+u8 VLoc = 68           ' the vampire's room (NP%(VR))
+u8 VF = 0              ' turns he follows after the holy water (VF)
+u8 WolfFed = 0         ' DG
+u8 OldRm = 0
+u8 Mins = 0
+u8 Act = 0
+u8 Warn = 0
+u8 WarnHung = 0
+u8 WarnRest = 0
+u8 FuelWarn = 99
+u8 Dir = 0
+u8 Hour = 0
+u8 Minute = 0
+' the castle
+u8 InCastle = 0
+u8 CLv = 0
+u8 CX = 13
+u8 CY = 1
+u8 NX = 0
+u8 NY = 0
+u8 ViewTop = 0
+u8 MenuOpen = 0
+u8 CellK = 0
+u8 CrK[16]
+u8 CrL[16]
+u8 CrX[16]
+u8 CrY[16]
+u8 VCX = 0
+u8 VCY = 0
+u8 VCL = 255
+u8 RowB[28]
+u8 Glide = 0
+
+  tile screen
+  set sound table VhSoundTable areas 4
+  sprites 16x16
+  set sprite count 4
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HelpPages
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+
+new_game:
+  NewWorld
+  GameScreen
+  call asm HeStart
+  NewPicture
+  ShowCreatures
+  ShowStatus
+  PkV = 0
+  NewVerb
+
+play_loop:
+  Frame1
+  Animate
+  ReadPad
+  Dirty = 0
+  if InCastle = 1 then
+    if MenuOpen = 0 then
+      CastleInput
+    else
+      MenuInput
+    end if
+  else
+    MenuInput
+  end if
+  if Ended > 0 then goto game_end
+  if Dirty = 1 then
+    call asm HeDrawPick
+  end if
+  goto play_loop
+
+game_end:
+  mute all
+  TzOn = 0
+  if Ended = 1 then play sound SndDie
+  if Ended = 2 then play sound SndScream
+  EndPicker
+  Rearm
+  wait 90 frames
+  if Ended = 2 then play sound SndWin
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' A new game: the listing's starting values (DATA 2785-2815)
+
+sub NewWorld:
+  TT = 1100
+  Day = 1
+  S0 = 0
+  S1 = 0
+  S2 = 1
+  Night = 0
+  HV = 0
+  NU = 8000
+  Fuel = 1020
+  Portions = 10
+  VLoc = 68
+  VF = 0
+  WolfFed = 0
+  InCastle = 0
+  MenuOpen = 0
+  CLv = 0
+  VCL = 255
+  WarnHung = 0
+  WarnRest = 0
+  FuelWarn = 99
+  for J = 0 to 15
+    CrK[J] = CritK0[J]
+    CrL[J] = CritL0[J]
+    CrX[J] = CritX0[J]
+    CrY[J] = CritY0[J]
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Random numbers: a 16-bit xorshift, stirred every frame on the title
+
+function Rnd(u8 N) as u8
+  RW = Seed << 7
+  Seed = Seed xor RW
+  RW = Seed >> 9
+  Seed = Seed xor RW
+  RW = Seed << 8
+  Seed = Seed xor RW
+  RS = highbyte(Seed) xor lowbyte(Seed)
+  return RS % N
+
+' Chance: 1 with a probability of P in 100
+function Chance(u8 P) as u8
+  if Rnd(100) < P then return 1
+  return 0
+
+' ---------------------------------------------------------------------------
+' The menu
+
+sub NewVerb:
+  Verb = PkV
+  PkN = 0
+  PkCol = 0
+  PkMode = 0
+  SetFlags
+  call asm HeNouns
+  call asm HeDrawPick
+  return
+end sub
+
+sub MenuInput:
+  if Stick = 1 then MoveStick
+  if Press = 1 then FireLeft
+  if Press2 = 1 then FireRight
+  return
+end sub
+
+sub MoveStick:
+  if Up1 = 1 then
+    if PkCol = 0 then
+      if PkV = 0 then
+        PkV = NVerbs - 1
+      else
+        dec PkV
+      end if
+      NewVerb
+      play sound SndTick
+    else
+      if PkN > 0 then
+        dec PkN
+        Dirty = 1
+        play sound SndTick
+      end if
+    end if
+  end if
+  if Dn1 = 1 then
+    if PkCol = 0 then
+      inc PkV
+      if PkV = NVerbs then PkV = 0
+      NewVerb
+      play sound SndTick
+    else
+      V = PkN + 1
+      if V < NCount then
+        PkN = V
+        Dirty = 1
+        play sound SndTick
+      end if
+    end if
+  end if
+  if Rt1 = 1 then
+    if PkCol = 0 then
+      if NeedNoun > 0 then
+        if NCount > 0 then
+          PkCol = 1
+          Dirty = 1
+          play sound SndTick
+        end if
+      end if
+    end if
+  end if
+  if Lf1 = 1 then
+    if PkCol = 1 then
+      PkCol = 0
+      Dirty = 1
+      play sound SndTick
+    end if
+  end if
+  return
+end sub
+
+sub FireLeft:
+  if PkCol = 0 then
+    if NeedNoun = 0 then
+      Noun = 0
+      Noun2 = 0
+      RunTurn
+      return
+    end if
+    if NCount > 0 then
+      PkCol = 1
+      Dirty = 1
+      play sound SndTick
+    end if
+    return
+  end if
+  if NCount = 0 then return
+  Noun = NL[PkN]
+  Noun2 = 0
+  RunTurn
+  return
+end sub
+
+sub FireRight:
+  if PkCol = 1 then
+    PkCol = 0
+    Dirty = 1
+    play sound SndBack
+    return
+  end if
+  ' in the castle the right button on the verbs closes the menu
+  if InCastle = 1 then
+    MenuOpen = 0
+    play sound SndBack
+    WalkHint
+  end if
+  return
+end sub
+
+' SetFlags: what the rules need to know (Amy keeps these values)
+sub SetFlags:
+  Fl.FNight = Night
+  Fl.FTired = 0
+  if HV > 500 then Fl.FTired = 1
+  Fl.FFullup = 0
+  if NU > 17000 then Fl.FFullup = 1
+  Fl.FNofuel = 0
+  if Fuel <= 0 then Fl.FNofuel = 1
+  Fl.FMuchfuel = 0
+  if Fuel > 500 then Fl.FMuchfuel = 1
+  Fl.FHasstk = 0
+  if OL.OStakes = 100 then Fl.FHasstk = 1
+  Fl.FSleepok = 0
+  for J = 0 to NSleepRooms - 1
+    if SleepRooms[J] = Rm then Fl.FSleepok = 1
+  next
+  ' the best weapon carried (DATA 4015)
+  V = 0
+  if OL.OLantern = 100 then V = 1
+  if OL.ORope = 100 then V = 2
+  if OL.OMallet = 100 then V = 3
+  if OL.OPales = 100 then V = 4
+  if OL.OStakes = 100 then V = 5
+  if OL.OKnife = 100 then V = 6
+  if OL.OAxe = 100 then V = 7
+  Fl.FWpn = V
+  Fl.FAct = 0
+  Fl.FXt = 0
+  Fl.FNuadd = 0
+  ' who is here: the vampire outside at night; in the castle the creatures
+  ' next to the hunter
+  OL.OVampire = 0
+  OL.ORats = 0
+  OL.OBats = 0
+  Fl.FVnear = 0
+  Fl.FCoffin = 0
+  if InCastle = 0 then
+    if VLoc = Rm then
+      if Fl.FNight = 1 then OL.OVampire = Rm
+      if VF > 0 then OL.OVampire = Rm
+    end if
+  else
+    CastleFlags
+  end if
+  return
+end sub
+
+' RunTurn: the engine plays the command (the NMI is off: Frame1 ended)
+sub RunTurn:
+  play sound SndOk
+  SetFlags
+  OldRm = Rm
+  call asm HeTurn
+  AfterTurn
+  if InCastle = 1 then
+    MenuOpen = 0
+  end if
+  Refresh
+  if HistN > 0 then Pager
+  if Fl.FDead = 1 then
+    Ended = 1
+    return
+  end if
+  if Fl.FWin = 1 then
+    Ended = 2
+    return
+  end if
+  if Fl.FQuit = 1 then
+    Ended = 3
+    return
+  end if
+  if InCastle = 1 then
+    WalkHint
+  else
+    NewVerb
+  end if
+  return
+end sub
+
+' Refresh: the picture (or the castle), the creatures, the status line
+sub Refresh:
+  if InCastle = 1 then
+    DrawCastle
+  else
+    if Scene <> Shown then NewPicture
+    ShowCreatures
+  end if
+  ShowStatus
+  return
+end sub
+
+' AfterTurn: what the rules asked for (ACT), then the time it took
+sub AfterTurn:
+  Act = Fl.FAct
+  Mins = VerbTime[Verb] + Fl.FXt
+  if Fl.FWin = 1 then
+    WinText
+    return
+  end if
+  if Rm <> OldRm then
+    ' the minutes of the exit taken (line 1095)
+    Dir = Noun - 70
+    if Dir > 7 then Dir = Dir - 4
+    W16 = OldRm * 3
+    T1 = Dir >> 1
+    W16 = W16 + T1
+    T1 = ExitTime[W16]
+    V = Dir & 1
+    if V = 0 then
+      T1 = T1 >> 4
+    else
+      T1 = T1 & 15
+    end if
+    T1 = TimeVal[T1]
+    W16 = HV / 20
+    Mins = Mins + T1
+    Mins = Mins + lowbyte(W16)
+    W16 = T1 * 5
+    W16 = W16 / 2
+    HV = HV + W16
+    Followers
+  end if
+  W16 = Fl.FNuadd
+  W16 = W16 * 100
+  NU = NU + W16
+  select case Act
+  case AcTime
+    SayTime
+  case AcEatfood
+    EatPortion
+  case AcFeeddog
+    LosePortion
+  case AcFeedwolf
+    LosePortion
+    WolfFed = 1
+  case AcFoodleft
+    FoodLeft
+  case AcFuelleft
+    MsgId = MxFuelLeft
+    NumU = 0
+    if Fuel > 0 then NumU = Fuel
+    call asm HeNumV
+    call asm HeMsgV
+  case AcRefuel
+    Fuel = Fuel + 600
+  case AcLunge
+    VF = Rnd(5) + 5
+    VampBite
+  case AcBataway
+    VF = 0
+    VLoc = 68
+    VCL = 255
+    if InCastle = 0 then
+      ' line 915: he flies off to a place next to this one
+      VLoc = RandomExit(Rm, 0)
+    end if
+  case AcWolfrun
+    OL.OWolves = RandomExit(Rm, 1)
+    if OL.OWolves = Rm then OL.OWolves = 86
+  case AcDogrun
+    Fl.FDogf = 0
+    OL.ODog = 61
+  case AcZaprat
+    ZapNear(1)
+  case AcZapbat
+    ZapNear(2)
+  case AcWait
+    WaitLoop(5)
+    return
+  case AcSleep
+    WaitLoop(20)
+    SayMsg(MxWake)
+    return
+  end select
+  Pass
+  if Rm = 68 then
+    if InCastle = 0 then EnterCastle
+  end if
+  return
+end sub
+
+' WaitLoop: WAIT (steps of 5 minutes, line 2735) and SLEEP (steps of 20,
+' line 2700); the world goes on at every step
+sub WaitLoop(u8 StepM):
+  WLeft = 10
+  if Noun = WdHour1 then WLeft = 60
+  if Noun = WdHour3 then WLeft = 180
+  if Noun = WdHour10 then WLeft = 600
+  while WLeft > 0
+    Mins = StepM
+    if StepM = 20 then
+      if HV > 13 then
+        HV = HV - 13
+      else
+        HV = 0
+      end if
+    else
+      if HV > 2 then
+        HV = HV - 2
+      else
+        HV = 0
+      end if
+    end if
+    Pass
+    if WLeft > StepM then
+      WLeft = WLeft - StepM
+    else
+      WLeft = 0
+    end if
+    if Fl.FDead = 1 then WLeft = 0
+    if Fl.FWin = 1 then WLeft = 0
+  end while
+  return
+end sub
+
+' Followers: the dog follows (line 1110) and so do the wolves (line 1100)
+sub Followers:
+  if Dir > 3 then return
+  if Fl.FDogf = 1 then
+    if OL.ODog = OldRm then
+      OL.ODog = Rm
+      SayMsg(MxDogFollows)
+    end if
+  end if
+  if OL.OWolves = OldRm then
+    if IsWolfRoom(Rm) = 1 then
+      OL.OWolves = Rm
+      SayMsg(MxWolvesFollow)
+    end if
+  end if
+  return
+end sub
+
+function IsWolfRoom(u8 R) as u8
+  for WK = 0 to NWolfRooms - 1
+    if WolfRooms[WK] = R then return 1
+  next
+  return 0
+
+' RandomExit: a room next to R (NoUD = 1: not up or down); R if none
+function RandomExit(u8 R, u8 NoUD) as u8
+  RQ = R
+  RC = 0
+  for RK = 0 to 5
+    call asm HeExitV
+    if IV > 0 then
+      if NoUD = 0 then
+        inc RC
+      else
+        if RK < 4 then inc RC
+      end if
+    end if
+  next
+  if RC = 0 then return R
+  RT = Rnd(RC)
+  RC = 0
+  RR = R
+  for RK = 0 to 5
+    call asm HeExitV
+    if IV > 0 then
+      if NoUD = 0 then
+        if RC = RT then RR = IV
+        inc RC
+      else
+        if RK < 4 then
+          if RC = RT then RR = IV
+          inc RC
+        end if
+      end if
+    end if
+  next
+  return RR
+
+sub SayMsg(u16 M):
+  MsgId = M
+  call asm HeSayV
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pass: one turn of the world (lines 800-1000), Mins minutes long
+
+sub Pass:
+  TT = TT + Mins
+  if TT >= 1440 then
+    TT = TT - 1440
+    inc Day
+    S0 = 0
+    S1 = 0
+    S2 = 0
+  end if
+  ' the sun (850-865)
+  V = 0
+  if S1 = 0 then
+    if TT > 1260 then
+      SayMsg(MxSunset)
+      S1 = 1
+      Night = 1
+      V = 1
+      play sound SndBell
+    end if
+  end if
+  if V = 0 then
+    if S0 = 0 then
+      if TT > 1220 then
+        SayMsg(MxSetting)
+        S0 = 1
+        V = 1
+      end if
+    end if
+  end if
+  if V = 0 then
+    if S2 = 0 then
+      if TT > 300 then
+        SayMsg(MxSunrise)
+        S2 = 1
+        Night = 0
+        play sound SndBell
+      end if
+    end if
+  end if
+  SetNight
+  if InCastle = 0 then
+    WolvesMove
+    WolvesBite
+  end if
+  VampMove
+  VampAttack
+  if InCastle = 1 then CritBite
+  LampBurn
+  ' line 805: rest a little every turn
+  if HV > 10 then
+    HV = HV - 10
+  else
+    HV = 0
+  end if
+  ' line 815: hunger
+  W16 = Mins
+  W16 = W16 * 6
+  NU = NU - W16
+  ' line 310: out of his coffin when the sun is up
+  if VF > 0 then
+    if VLoc <> 68 then
+      if Fl.FNight = 0 then
+        SayMsg(MxMelts)
+        Fl.FWin = 1
+        WinText
+        return
+      end if
+    end if
+  end if
+  Warnings
+  return
+end sub
+
+sub SetNight:
+  Fl.FNight = Night
+  return
+end sub
+
+' Warnings and the two ways to die (lines 235-250)
+sub Warnings:
+  if HV > 900 then
+    SayMsg(MxExhaust)
+    TimeWords
+    Fl.FDead = 1
+    return
+  end if
+  if NU < -1000 then
+    SayMsg(MxStarved)
+    NumU = Day
+    call asm HeNumV
+    MsgId = MxDot
+    call asm HeMsgV
+    Fl.FDead = 1
+    return
+  end if
+  if HV > 500 then
+    if WarnRest = 0 then SayMsg(MxRest)
+    inc WarnRest
+    if WarnRest = 12 then WarnRest = 0
+  else
+    WarnRest = 0
+  end if
+  if NU < 3000 then
+    if WarnHung = 0 then SayMsg(MxHungry)
+    inc WarnHung
+    if WarnHung = 12 then WarnHung = 0
+  else
+    WarnHung = 0
+  end if
+  return
+end sub
+
+' the wolves wander among their places (880-900)
+sub WolvesMove:
+  if WolfFed = 1 then
+    WolfFed = 0
+    return
+  end if
+  if OL.OWolves = 0 then return
+  if Chance(40) = 0 then return
+  V = RandomExit(OL.OWolves, 1)
+  if IsWolfRoom(V) = 1 then OL.OWolves = V
+  return
+end sub
+
+' the wolves attack (925-935)
+sub WolvesBite:
+  if OL.OWolves <> Rm then return
+  if Chance(60) = 0 then return
+  SayMsg(MxWolvesAtk)
+  play sound SndBite
+  if Fl.FDogf = 1 then
+    if OL.ODog = Rm then
+      SayMsg(MxDogDefends)
+      return
+    end if
+  end if
+  ' HV = HV + 2 - NU / 170
+  W16 = 200
+  if NU > 0 then
+    W16 = NU / 170
+    if W16 > 200 then W16 = 200
+    W16 = 200 - W16
+  end if
+  HV = HV + W16
+  return
+end sub
+
+' the vampire: in his coffin by day, out at night (905-920)
+sub VampMove:
+  if VF = 0 then
+    if Fl.FNight = 0 then
+      VLoc = 68
+      VCL = 255
+      return
+    end if
+  end if
+  if VF > 0 then
+    dec VF
+    if VF > 0 then
+      VLoc = Rm
+      return
+    end if
+  end if
+  if VLoc = 68 then
+    if InCastle = 1 then
+      ' in the castle he hunts the hunter (CastleVamp)
+      CastleVamp
+      return
+    end if
+  end if
+  VLoc = RandomExit(VLoc, 0)
+  if VLoc <> 68 then VCL = 255
+  return
+end sub
+
+sub VampAttack:
+  if Fl.FNight = 0 then
+    if VF = 0 then return
+  end if
+  if VLoc <> Rm then return
+  if InCastle = 1 then
+    if VampNext = 0 then return
+  end if
+  if Chance(40) = 0 then return
+  VampBite
+  return
+end sub
+
+' line 975: garlic or the crucifix in hand soften the bite
+sub VampBite:
+  SayMsg(MxVampAtk)
+  play sound SndBite
+  W16 = 300
+  if OL.OCrucifix = 100 then W16 = 200
+  if OL.OGarlic = 100 then W16 = 200
+  HV = HV + W16
+  return
+end sub
+
+' the lantern burns (940-965); it goes out when left behind
+sub LampBurn:
+  if Fl.FLt = 0 then return
+  if OL.OLantern <> 100 then
+    if OL.OLantern <> Rm then
+      Fl.FLt = 0
+      return
+    end if
+  end if
+  Fuel = Fuel - Mins
+  if Fuel > 60 then
+    FuelWarn = 99
+    return
+  end if
+  if Fuel <= 0 then
+    Fuel = 0
+    Fl.FLt = 0
+    SayMsg(MxLampOut)
+    return
+  end if
+  V = lowbyte(Fuel) / 15
+  if V <> FuelWarn then
+    FuelWarn = V
+    SayMsg(MxOnly)
+    MsgId = MxMoreFuel
+    NumU = Fuel
+    call asm HeNumV
+    call asm HeMsgV
+  end if
+  return
+end sub
+
+' food (2550-2640): one portion is a day's food
+sub EatPortion:
+  if Portions = 0 then return
+  SayMsg(MxEatFood)
+  NU = NU + 10000
+  LosePortion
+  return
+end sub
+
+sub LosePortion:
+  if Portions > 0 then dec Portions
+  if Portions = 0 then
+    OL.OFood = 0
+    SayMsg(MxNoMoreFood)
+    return
+  end if
+  if Portions < 3 then
+    SayMsg(MxOnly)
+    MsgId = MxFoodLeft
+  else
+    SayMsg(MxFood)
+    MsgId = MxFoodLeft
+  end if
+  NumU = Portions
+  call asm HeNumV
+  call asm HeMsgV
+  return
+end sub
+
+sub FoodLeft:
+  SayMsg(MxFood)
+  MsgId = MxFoodLeft
+  NumU = Portions
+  call asm HeNumV
+  call asm HeMsgV
+  return
+end sub
+
+' the time (575-595): "IT'S 9:40 PM OF DAY 1."
+sub SayTime:
+  SayMsg(MxIts)
+  TimeWords
+  MsgId = MxOfDay
+  call asm HeMsgV
+  NumU = Day
+  call asm HeNumV
+  MsgId = MxDot
+  call asm HeMsgV
+  return
+end sub
+
+sub ClockParts:
+  W16 = TT / 60
+  Hour = lowbyte(W16)
+  W16 = W16 * 60
+  W16 = TT - W16
+  Minute = lowbyte(W16)
+  return
+end sub
+
+sub TimeWords:
+  ClockParts
+  V = Hour
+  if V >= 12 then V = V - 12
+  if V = 0 then V = 12
+  NumU = V
+  call asm HeNumV
+  MsgId = MxColon
+  call asm HeMsgV
+  if Minute < 10 then
+    MsgId = MxZero
+    call asm HeMsgV
+  end if
+  NumU = Minute
+  call asm HeNumV
+  MsgId = MxAm
+  if Hour >= 12 then MsgId = MxPm
+  call asm HeMsgV
+  return
+end sub
+
+' the end (505-510)
+sub WinText:
+  SayMsg(MxKilled)
+  NumU = Day
+  call asm HeNumV
+  MsgId = MxAt
+  call asm HeMsgV
+  TimeWords
+  MsgId = MxChamp
+  call asm HeMsgV
+  return
+end sub
+
+' ShowStatus: row 8, the day and the time (and the floor in the castle)
+sub ShowStatus:
+  fill 32 count 28 at 2,8
+  ClockParts
+  print at 2,8, "DAY"
+  NumU = Day
+  print at 6,8, digits$(NumU, 1)
+  V = Hour
+  if V >= 12 then V = V - 12
+  if V = 0 then V = 12
+  NumU = V
+  if V < 10 then
+    print at 10,8, digits$(NumU, 1)
+  else
+    print at 9,8, digits$(NumU, 2)
+  end if
+  print at 11,8, ":"
+  NumU = Minute
+  print at 12,8, digits$(NumU, 2)
+  if Hour >= 12 then
+    print at 15,8, "PM"
+  else
+    print at 15,8, "AM"
+  end if
+  if InCastle = 1 then
+    print at 21,8, "FLOOR"
+    NumU = 4 - CLv
+    print at 27,8, digits$(NumU, 1)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The castle
+
+' the castle tests work on the hunter's floor at (QX, QY)
+function WallAt as u8
+  if QX > 27 then return 1
+  if QY > 20 then return 1
+  IW = CLv * 84
+  IW = IW + QY * 4
+  IV = QX >> 3
+  IW = IW + IV
+  IV = QX & 7
+  IT = 128 >> IV
+  IV = CastleWall[IW] & IT
+  if IV > 0 then return 1
+  return 0
+
+' FeatAt: the feature kind at (QX, QY), 0 when none
+function FeatAt as u8
+  for FK = 0 to NFeat - 1
+    if FeatL[FK] = CLv then
+      if FeatX[FK] = QX then
+        if FeatY[FK] = QY then return FeatK[FK]
+      end if
+    end if
+  next
+  return 0
+
+' CritAt: the index + 1 of a rat or bat at (QX, QY), 0 when none
+function CritAt as u8
+  for CK = 0 to 15
+    if CrK[CK] > 0 then
+      if CrL[CK] = CLv then
+        if CrX[CK] = QX then
+          if CrY[CK] = QY then return CK + 1
+        end if
+      end if
+    end if
+  next
+  return 0
+
+' Near: 1 when (QX, QY) is the hunter's cell or next to it
+function Near as u8
+  NV = 0
+  if QX = CX then
+    if QY = CY then NV = 1
+    if QY + 1 = CY then NV = 1
+    if QY = CY + 1 then NV = 1
+  end if
+  if QY = CY then
+    if QX + 1 = CX then NV = 1
+    if QX = CX + 1 then NV = 1
+  end if
+  return NV
+
+function VampNext as u8
+  if VCL <> CLv then return 0
+  QX = VCX
+  QY = VCY
+  return Near
+
+sub CastleFlags:
+  for J = 0 to 15
+    if CrK[J] > 0 then
+      if CrL[J] = CLv then
+        QX = CrX[J]
+        QY = CrY[J]
+        if Near = 1 then
+          if CrK[J] = 1 then OL.ORats = 68
+          if CrK[J] = 2 then OL.OBats = 68
+        end if
+      end if
+    end if
+  next
+  if Fl.FNight = 1 then
+    if VLoc = 68 then
+      if VampNext = 1 then
+        OL.OVampire = 68
+        Fl.FVnear = 1
+      end if
+    end if
+  end if
+  QX = CX
+  QY = CY
+  if FeatAt = 6 then
+    Fl.FCoffin = 1
+    if Fl.FNight = 0 then OL.OVampire = 68
+  end if
+  return
+end sub
+
+' ZapNear: KILL RATS / BATS clears those next to the hunter (line 2390)
+sub ZapNear(u8 Kind):
+  for J = 0 to 15
+    if CrK[J] = Kind then
+      if CrL[J] = CLv then
+        QX = CrX[J]
+        QY = CrY[J]
+        if Near = 1 then CrK[J] = 0
+      end if
+    end if
+  next
+  return
+end sub
+
+sub EnterCastle:
+  InCastle = 1
+  MenuOpen = 0
+  CLv = 0
+  CX = 13
+  CY = 1
+  if OldRm = 52 then CY = 19
+  ViewTop = 0
+  SayMsg(MxEnterCastle)
+  Rearm
+  wait
+  nmi off
+  display off
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  FamShown = 255
+  Shown = 255
+  call asm HeDisplayOn
+  return
+end sub
+
+sub LeaveCastle:
+  InCastle = 0
+  MenuOpen = 0
+  VCL = 255
+  OldRm = Rm
+  Rm = 81
+  if CY > 10 then Rm = 52
+  SayMsg(MxLeave)
+  call asm HeLookV
+  HideCast
+  NewPicture
+  ShowCreatures
+  ShowStatus
+  if HistN > 0 then Pager
+  NewVerb
+  return
+end sub
+
+' CastleInput: walking (the stick) or opening the menu (the left button)
+sub CastleInput:
+  if Press = 1 then
+    MenuOpen = 1
+    play sound SndTick
+    NewVerb
+    return
+  end if
+  if Stick = 0 then return
+  NX = CX
+  NY = CY
+  if Up1 = 1 then
+    if NY = 0 then
+      NY = 255
+    else
+      dec NY
+    end if
+  else
+    if Dn1 = 1 then
+      inc NY
+    else
+      if Lf1 = 1 then dec NX
+      if Rt1 = 1 then inc NX
+    end if
+  end if
+  CastleStep
+  return
+end sub
+
+' CastleStep: one step is one turn (lines 1190-1280)
+sub CastleStep:
+  ' out through a door of the top floor
+  if CLv = 0 then
+    if NY > 20 then
+      call asm HeBegin
+      Mins = 5
+      Pass
+      LeaveCastle
+      return
+    end if
+  end if
+  QX = NX
+  QY = NY
+  if WallAt = 1 then
+    play sound SndBump
+    return
+  end if
+  call asm HeBegin
+  CX = NX
+  CY = NY
+  play sound SndStep
+  ' line 1205: two minutes a step, more when weary
+  W16 = HV / 50
+  Mins = 2 + lowbyte(W16)
+  QX = CX
+  QY = CY
+  CellK = FeatAt
+  if CellK = 3 then
+    inc CLv
+    play sound SndStairs
+    SayMsg(MxStairsDown)
+  end if
+  if CellK = 4 then
+    dec CLv
+    play sound SndStairs
+    SayMsg(MxStairsUp)
+  end if
+  if CellK = 5 then
+    ' line 1250: four times in five the trapdoor gives way
+    if Chance(80) = 1 then
+      play sound SndFall
+      SayMsg(MxTrap)
+      inc CLv
+      ' line 1260: unconscious for 10 to 19 minutes
+      Mins = Mins + 10 + Rnd(10)
+    end if
+  end if
+  if CellK = 6 then
+    SayMsg(MxCoffin)
+    SetNight
+    if Fl.FNight = 0 then
+      SayMsg(MxVampAsleep)
+    else
+      SayMsg(MxCoffinEmpty)
+    end if
+  end if
+  CritMove
+  Pass
+  QX = CX
+  QY = CY
+  V = CritAt
+  if V > 0 then
+    dec V
+    if CrK[V] = 1 then SayMsg(MxRatsHere)
+    if CrK[V] = 2 then SayMsg(MxBatsHere)
+  end if
+  if Fl.FLt = 0 then
+    if Fl.FDead = 0 then SayMsg(MxTooDark)
+  end if
+  DrawCastle
+  ShowStatus
+  if HistN > 0 then Pager
+  if Fl.FDead = 1 then Ended = 1
+  if Fl.FWin = 1 then Ended = 2
+  return
+end sub
+
+' CritMove: rats and bats on the hunter's floor take a step, toward him
+' when he is near (within 5 cells), else at random
+sub CritMove:
+  for J = 0 to 15
+    if CrK[J] > 0 then
+      if CrL[J] = CLv then
+        if Chance(50) = 1 then CritStep
+      end if
+    end if
+  next
+  return
+end sub
+
+sub CritStep:
+  X = CrX[J]
+  Y = CrY[J]
+  NX = X
+  NY = Y
+  V = Rnd(4)
+  if Chance(60) = 1 then
+    ' toward the hunter
+    if X < CX then
+      V = 1
+    else
+      if X > CX then V = 0
+    end if
+    if Y < CY then
+      if Rnd(2) = 0 then V = 3
+    else
+      if Y > CY then
+        if Rnd(2) = 0 then V = 2
+      end if
+    end if
+  end if
+  select case V
+  case 0
+    dec NX
+  case 1
+    inc NX
+  case 2
+    dec NY
+  case else
+    inc NY
+  end select
+  if NX = CX then
+    if NY = CY then return
+  end if
+  QX = NX
+  QY = NY
+  if WallAt = 1 then return
+  if FeatAt > 0 then return
+  if CritAt > 0 then return
+  CrX[J] = NX
+  CrY[J] = NY
+  return
+end sub
+
+' CritBite: rats and bats next to the hunter bite (line 990)
+sub CritBite:
+  T1 = 0
+  T2 = 0
+  for J = 0 to 15
+    if CrK[J] > 0 then
+      if CrL[J] = CLv then
+        QX = CrX[J]
+        QY = CrY[J]
+        if Near = 1 then
+          if CrK[J] = 1 then T1 = 1
+          if CrK[J] = 2 then T2 = 1
+        end if
+      end if
+    end if
+  next
+  ' they bite one turn in two (the listing: while on the hunter's cell)
+  if Chance(50) = 0 then return
+  if T1 = 1 then
+    SayMsg(MxRatsAtk)
+    HV = HV + 30
+    play sound SndBite
+  end if
+  if T2 = 1 then
+    SayMsg(MxBatsAtk)
+    HV = HV + 20
+    play sound SndBite
+  end if
+  return
+end sub
+
+' CastleVamp: at night the vampire walks the hunter's floor toward him
+sub CastleVamp:
+  if VCL <> CLv then
+    ' he comes up from the far side of the floor
+    VCL = CLv
+    VCX = 1
+    if CX < 14 then VCX = 25
+    VCY = 1
+    if CY < 10 then VCY = 19
+    return
+  end if
+  if VampNext = 1 then return
+  NX = VCX
+  NY = VCY
+  if Rnd(2) = 0 then
+    if VCX < CX then inc NX
+    if VCX > CX then dec NX
+  else
+    if VCY < CY then inc NY
+    if VCY > CY then dec NY
+  end if
+  QX = NX
+  QY = NY
+  if WallAt = 0 then
+    VCX = NX
+    VCY = NY
+    return
+  end if
+  ' blocked: a step to the side
+  NX = VCX
+  NY = VCY
+  V = Rnd(4)
+  if V = 0 then dec NX
+  if V = 1 then inc NX
+  if V = 2 then dec NY
+  if V = 3 then inc NY
+  QX = NX
+  QY = NY
+  if WallAt = 0 then
+    VCX = NX
+    VCY = NY
+  end if
+  return
+end sub
+
+' DrawCastle: rows 1-7 show the floor round the hunter; black without light
+sub DrawCastle:
+  ViewTop = 0
+  if CY > 3 then ViewTop = CY - 3
+  if ViewTop > 14 then ViewTop = 14
+  if Fl.FLt = 0 then
+    for Y = 1 to 7
+      fill TCfloor count 28 at 2,Y
+    next
+    CastSprites
+    return
+  end if
+  for Y = 0 to 6
+    V = ViewTop + Y
+    W16 = CLv * 84
+    W16 = W16 + V * 4
+    for X = 0 to 27
+      T3 = X >> 3
+      T4 = X & 7
+      T2 = 128 >> T4
+      T4 = CastleWall[W16 + T3] & T2
+      if T4 > 0 then
+        RowB[X] = TCwall
+      else
+        RowB[X] = TCfloor
+      end if
+    next
+    T1 = Y + 1
+    put RowB count 28 at 2,T1
+  next
+  ' the features (the trapdoors stay hidden)
+  for K = 0 to NFeat - 1
+    if FeatL[K] = CLv then
+      V = FeatY[K]
+      if V >= ViewTop then
+        if V < ViewTop + 7 then
+          T1 = V - ViewTop
+          T1 = T1 + 1
+          T2 = FeatX[K] + 2
+          T3 = FeatK[K]
+          if T3 < 3 then put char TCdoor at T2,T1
+          if T3 = 3 then put char TCdown at T2,T1
+          if T3 = 4 then put char TCup at T2,T1
+          if T3 = 6 then put char TCcoffin at T2,T1
+        end if
+      end if
+    end if
+  next
+  ' rats and bats (two frames a second)
+  DrawCastleCrit
+  CastSprites
+  return
+end sub
+
+' CastSprites: the hunter (sprite 0) and the vampire (sprite 1)
+sub CastSprites:
+  T1 = CY - ViewTop
+  T1 = T1 + 1
+  T1 = T1 * 8
+  dec T1
+  T2 = CX + 2
+  T2 = T2 * 8
+  V = SHunter
+  T4 = Anim & 16
+  if T4 > 0 then V = SHunter2
+  set sprite 0 to T1, T2, V, 15
+  T3 = 192
+  if VCL = CLv then
+    if VLoc = 68 then
+      if VCY >= ViewTop then
+        if VCY < ViewTop + 7 then
+          T3 = VCY - ViewTop
+          T3 = T3 + 1
+          T3 = T3 * 8
+          dec T3
+        end if
+      end if
+    end if
+  end if
+  T2 = VCX + 2
+  T2 = T2 * 8
+  if Fl.FLt = 0 then
+    if VampNext = 0 then T3 = 192
+  end if
+  set sprite 1 to T3, T2, SVamp, 13
+  set sprite 2 to 192, 0, 0, 0
+  set sprite 3 to 192, 0, 0, 0
+  update sprites
+  return
+end sub
+
+sub HideCast:
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub WalkHint:
+  for Y = 19 to 22
+    fill 32 count 28 at 2,Y
+  next
+  call asm HeDrawDivider
+  print at 3,20, "STICK: WALK THE CASTLE"
+  print at 3,21, "LEFT BUTTON: COMMANDS"
+  return
+end sub
+
+' Pager: when a turn wrote more than the window holds, the engine kept the
+' lines that scrolled away (VRAM history). Show them ten at a time from
+' the start, MORE between pages, ending on the window as it was.
+sub Pager:
+  call asm HeHistFinish
+  Pg = 0
+  V = HistN - 10
+  while Pg < V
+    call asm HeHistShow
+    InMore = 1
+    play sound SndMore
+    Blink = 0
+    Press = 0
+    Press2 = 0
+    while Press = 0 and Press2 = 0
+      if Blink = 0 then
+        call asm HeMoreMark
+      end if
+      if Blink = 20 then
+        call asm HeDrawDivider
+      end if
+      Frame1
+      ReadPad
+      inc Blink
+      if Blink = 32 then Blink = 0
+    end while
+    play sound SndTick
+    InMore = 0
+    Pg = Pg + 10
+    if Pg > V then Pg = V
+  end while
+  call asm HeHistShow
+  call asm HeDrawDivider
+  HistN = 0
+  return
+end sub
+
+' NewPicture: the screen goes blank for a moment while a picture unpacks
+sub NewPicture:
+  display off
+  ShowScene
+  call asm HeDisplayOn
+  return
+end sub
+
+sub EndPicker:
+  for Y = 20 to 22
+    fill 32 count 28 at 2,Y
+  next
+  if Ended = 1 then print at 9,20, "YOU HAVE DIED."
+  if Ended = 2 then print at 4,20, "THE VILLAGE IS SAVED!"
+  if Ended = 3 then print at 10,20, "GAME OVER"
+  print at 8,22, "PRESS A BUTTON"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame and controls
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  call asm HePad
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 18
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 8
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub GameScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop black
+  cls
+  call asm HeFonts
+  FamShown = 255
+  Shown = 255
+  Ended = 0
+  WasBtn = 1
+  WasBtn2 = 1
+  screen on
+  nmi off
+  return
+end sub
+
+data HeFamPat0 bytes
+  $68,$00,$04,$00,$8F,$40,$00,$F0,$28,$03,$83,$01,$07,$5F,$3F,$E0,$EF,$D1,$81,$80,$E0,$F8,$FC,$BE
+  $C0,$F0,$0E,$43,$0F,$1F,$7F,$A1,$60,$60,$F0,$FC,$7F,$B9,$C0,$29,$01,$3B,$8F,$03,$B8,$F8,$FE,$BB
+  $C4,$B2,$D9,$B0,$28,$C0,$F0,$FE,$88,$00,$22,$3A,$AA,$44,$AA,$11,$F0,$4F,$03,$AF,$5F,$80,$00,$8F
+  $B3,$C3,$FE,$FF,$28,$FE,$A0,$C0,$BC,$C0,$FA,$FC,$FE,$A0,$BD,$91,$90,$E6,$F0,$28,$AB,$17,$3C,$03
+  $27,$1F,$BF,$90,$28,$FE,$09,$9E,$80,$EA,$F4,$41,$28,$01,$A8,$A2,$AB,$13,$1F,$7F,$46,$09,$88,$E0
+  $FA,$FE,$7A,$61,$E4,$23,$AA,$55,$AA,$FD,$EE,$BB,$88,$BF,$7F,$BE,$C0,$F9,$A6,$6E,$FC,$FF,$86,$00
+  $A8,$F0,$00,$6A,$0F,$82,$00,$88,$C0,$E8,$FE,$FD,$FC,$B9,$7D,$83,$16,$F8,$FF,$A2,$FE,$C3,$C1,$FE
+  $A6,$03,$82,$00,$88,$01,$E9,$FA,$F5,$FD,$F0,$88,$AB,$57,$AA,$FC,$BB,$EB,$D4,$1F,$FF,$FE,$74,$F9
+  $FE,$40,$89,$E0,$E0,$3F,$D1,$26,$FE,$FE,$B0,$0A,$55,$B8,$77,$1A,$DB,$D4,$F7,$A0,$DA,$3F,$B7,$FE
+  $29,$0F,$7D,$6A,$D8,$DD,$FD,$83,$03,$FE,$CA,$DA,$00,$6F,$FC,$FE,$A5,$03,$A3,$01,$9A,$80,$F5,$4D
+  $8F,$D9,$FC,$77,$C0,$F9,$2F,$FE,$F9,$75,$FE,$A5,$E0,$A5,$1F,$BC,$F0,$D0,$FC,$B1,$FE,$6B,$3F,$DC
+  $EC,$85,$AC,$CF,$7A,$C2,$C2,$D9,$01,$11,$A2,$FE,$FE,$0E,$77,$F7,$62,$BE,$BE,$BB,$F7,$F0,$27,$27
+  $B0,$03,$F6,$F3,$E0,$8A,$A3,$80,$21,$DC,$3C,$18,$82,$BD,$DB,$F7,$BE,$08,$A9,$BF,$DF,$BF,$0E,$37
+  $4F,$07,$17,$03,$0F,$E0,$3E,$60,$8E,$EF,$EF,$50,$67,$C0,$E0,$07,$9D,$40,$E9,$D4,$3F,$2E,$FD,$81
+  $A3,$FE,$04,$E3,$BE,$FE,$B7,$F1,$08,$8E,$8E,$CE,$8E,$32,$D3,$8E,$43,$F0,$86,$38,$38,$78,$38,$EC
+  $74,$9D,$D8,$FE,$B5,$AB,$69,$C1,$1A,$02,$06,$02,$00,$8B,$B3,$23,$10,$9D,$EC,$EC,$EE,$2D,$18,$29
+  $B1,$AA,$8D,$FA,$F4,$7E,$51,$C0,$3E,$FA,$F6,$ED,$F0,$EA,$A1,$FC,$6D,$01,$EE,$ED,$9C,$41,$DD,$3F
+  $37,$8A,$D8,$DD,$98,$77,$CF,$CF,$E0,$E1,$93,$F3,$73,$F3,$F3,$E7,$7B,$F0,$F6,$F7,$F0,$F3,$7D,$30
+  $EA,$F0,$C6,$2D,$C7,$C7,$28,$83,$FD,$F8,$E0,$FA,$3F,$3E,$75,$FD,$3D,$8A,$CF,$4E,$8A,$CF,$4D,$8A
+  $F3,$72,$8A,$F3,$71,$8B,$FC,$7C,$F2,$FF,$F7,$55,$83,$7E,$FC,$B1,$F1,$A7,$F5,$D0,$55,$58
+end data
+data HeFamCol0 bytes
+  $7F,$11,$F1,$11,$FA,$FE,$F6,$FA,$AB,$61,$F1,$AB,$FE,$66,$DF,$F0,$D0,$7E,$F6,$EF,$D1,$FE,$F1,$AF
+  $F6,$DD,$FF,$9F,$D0,$EB,$97,$C0,$FF,$9E,$F8,$FF,$FE,$E6,$F3,$F5,$80,$BE,$E8,$AF,$FC,$FF,$FF,$F0
+  $AB,$CC,$D6,$BC,$C4,$FE,$3D,$E0,$E7,$C0,$F3,$E7,$A0,$F5,$FF,$F0,$FA,$FE,$DD,$13,$DF,$E4,$C4,$3F
+  $F0,$EF,$45,$35,$A1,$78,$EB,$FF,$AA,$FF,$58,$F0,$FF,$56,$F0,$8F,$70,$C1,$82,$FE,$98,$A1,$8A,$DA
+  $A1,$AA,$0A,$BA,$28,$AA,$6B,$A6,$C2,$F0,$F7,$A1,$FE,$BE,$AD,$EE,$FE,$8F,$E1,$F2,$BB,$E6,$58,$8E
+  $F0,$FE,$F7,$D0,$E9,$FC,$ED,$FA,$40,$DA,$7F,$54,$FD,$FE,$F0,$F5,$40,$F7,$44,$DD,$F0,$A1,$5F,$DD
+  $FB,$2D,$FC,$BC,$FE,$9A,$FD,$AD,$FE,$37,$9A,$7F,$B4,$F7,$FE,$DA,$2B,$EE,$A4,$FF,$E6,$3D,$D0,$DB
+  $D8,$8D,$FE,$FF,$D9,$FD,$A0,$E7,$55,$FE,$B9,$F0,$40,$1F,$D0,$3E,$F1,$FE,$6A,$11,$87,$CC,$E7,$13
+  $F0,$E7,$DD,$F0,$F7,$AD,$F0,$C7,$C0,$CB,$A0,$EC,$92,$F1,$C1,$C1,$EC,$C1,$E1,$E1,$FE,$FF,$F7,$FA
+  $F7,$E0,$DF,$C0,$A1,$91,$70,$FA,$FE,$C1,$79,$F0,$A3,$CC,$97,$FE,$F8,$7D,$FF,$76,$CF,$24,$9F,$50
+  $E0,$7D,$C0,$F7,$80,$4D,$07,$27,$84,$C1,$F0,$F4,$FB,$9E,$48,$F8,$53,$C7,$FE,$E9,$D0,$D1,$0A,$DD
+  $BA,$D6,$FE,$B5,$66,$FF,$90,$F0,$D7,$E0,$59,$60,$F7,$F0,$79,$47,$88,$E1,$F0,$FF,$D0,$F0,$CA,$1A
+  $F1,$C6,$F8,$6A,$AA,$CB,$AA,$18,$EE,$B1,$FB,$C1,$FE,$35,$55,$58
+end data
+data HeFamPat1 bytes
+  $48,$0F,$1F,$3F,$7F,$80,$00,$59,$7E,$80,$C0,$E0,$EA,$F0,$FA,$F8,$EF,$FD,$99,$AA,$69,$0F,$0F,$1F
+  $1F,$A0,$3F,$BF,$6F,$F0,$F0,$F8,$F8,$FA,$FC,$FE,$D0,$2E,$03,$9D,$64,$0F,$3F,$80,$BE,$C0,$A1,$CD
+  $1E,$03,$07,$07,$0F,$AF,$AC,$F7,$72,$BD,$AB,$FE,$EA,$E6,$A1,$80,$2A,$C0,$BE,$03,$C1,$70,$AB,$7F
+  $FC,$87,$D0,$8E,$D5,$2A,$E0,$C0,$27,$03,$AF,$0F,$FF,$F0,$75,$F8,$83,$FE,$FD,$FE,$01,$8A,$FD,$AA
+  $44,$A8,$11,$55,$89,$80,$7F,$EF,$C8,$63,$BA,$D4,$B8,$02,$A8,$47,$A8,$1F,$AF,$5F,$A0,$5F,$F3,$40
+  $9A,$B0,$2A,$E2,$A0,$A2,$54,$54,$AF,$39,$D0,$97,$C4,$EA,$F1,$FA,$05,$FA,$FD,$E6,$1D,$7C,$E8,$2A
+  $E0,$37,$EA,$15,$EA,$F5,$98,$2A,$00,$BB,$F4,$C0,$F2,$FD,$30,$25,$54,$A0,$9E,$EE,$55,$00,$FD,$AF
+  $DD,$76,$F0,$25,$E4,$77,$E0,$5F,$C0,$7F,$C0,$C0,$F9,$A0,$6E,$55,$3F,$15,$3F,$1D,$E7,$37,$EC,$57
+  $F8,$FD,$D8,$F0,$70,$7F,$E5,$FE,$9E,$A1,$0E,$F5,$0F,$FD,$A0,$0D,$8A,$07,$EE,$54,$FC,$DC,$82,$74
+  $06,$FD,$03,$0B,$03,$A1,$E1,$FE,$D8,$B3,$3A,$81,$83,$83,$C3,$FF,$7F,$89,$80,$C0,$33,$21,$C8,$FF
+  $31,$8E,$3F,$3F,$FF,$A9,$F0,$00,$7C,$ED,$CF,$2D,$28,$7F,$2F,$55,$85,$E2,$9B,$5D,$F8,$F8,$E2,$FE
+  $8E,$07,$CC,$F6,$D9,$1C,$7F,$E1,$ED,$EF,$DC,$C3,$FE,$A8,$C1,$82,$81,$C0,$8A,$80,$F0,$5A,$00,$58
+  $92,$1F,$3F,$F3,$83,$AE,$9F,$68,$59,$FF,$6D,$FE,$45,$CB,$B2,$FE,$CA,$E0,$0F,$5B,$79,$CB,$F0,$F9
+  $8E,$C6,$A1,$33,$E0,$81,$9E,$79,$A9,$BD,$7F,$3F,$1F,$E8,$B9,$3C,$C2,$FD,$23,$C2,$89,$7F,$7F,$E9
+  $C1,$03,$6F,$CF,$B0,$76,$36,$DB,$C2,$FE,$EF,$C7,$FF,$12,$F3,$C0,$98,$8B,$C1,$80,$80,$4E,$4F,$96
+  $07,$F2,$9F,$F0,$EE,$9E,$4B,$F0,$8C,$F7,$BB,$2B,$72,$21,$30,$D3,$52,$68,$F3,$DE,$74,$2E,$F0,$C0
+  $CF,$82,$07,$69,$EF,$C7,$97,$7C,$DF,$F9,$BF,$EF,$EF,$C4,$94,$9D,$F7,$49,$B0,$8E,$D1,$07,$17,$23
+  $8B,$FC,$0E,$FD,$FF,$E9,$FF,$3E,$80,$F0,$0D,$AF,$D8,$0F,$F0,$82,$FE,$BF,$7E,$EF,$0D,$AF,$02,$F0
+  $E0,$20,$BB,$FE,$CE,$E6,$E6,$4A,$5C,$41,$6B,$2A,$E9,$DE,$FF,$EF,$FF,$0E,$00,$8F,$8E,$8C,$90,$68
+  $6F,$CA,$3A,$E4,$07,$81,$83,$FB,$00,$5D,$B7,$DF,$7D,$B5,$40,$AE,$8C,$7F,$70,$3B,$42,$A2,$D0,$C0
+  $F6,$09,$69,$32,$82,$C6,$00,$F8,$BC,$FE,$A4,$F8,$F8,$F8,$BB,$69,$E3,$72,$12,$C8,$F2,$71,$2F,$7A
+  $2B,$80,$82,$01,$3A,$FD,$F7,$FD,$FE,$E2,$71,$5F,$BF,$EE,$87,$BF,$FB,$35,$C0,$C1,$9F,$AE,$D0,$DF
+  $80,$FF,$40,$F0,$F7,$C0,$58,$72,$20,$C2,$A0,$37,$11,$D6,$F9,$0A,$EA,$FE,$80,$80,$E7,$BB,$D7,$EF
+  $7D,$BD,$DB,$F7,$BE,$F0,$B3,$BF,$BF,$52,$3B,$E1,$3F,$3B,$20,$FE,$55,$55,$80
+end data
+data HeFamCol1 bytes
+  $98,$C1,$84,$DC,$CC,$89,$11,$C1,$2B,$11,$A7,$FD,$D1,$8F,$C0,$F6,$F1,$D0,$B8,$21,$F5,$3A,$21,$21
+  $D2,$22,$FF,$11,$28,$21,$49,$97,$D2,$21,$22,$E7,$E9,$EA,$8A,$A0,$21,$7F,$C4,$FD,$BA,$D0,$7F,$F0
+  $CF,$50,$F5,$FF,$01,$F9,$1E,$BC,$FD,$D1,$FE,$ED,$EA,$8E,$C0,$D4,$3B,$F0,$A5,$6D,$D2,$FE,$71,$FE
+  $95,$D1,$DC,$64,$F7,$B1,$8E,$3B,$A8,$FD,$FC,$B1,$9F,$C2,$FB,$61,$C0,$E3,$CA,$D7,$30,$B8,$ED,$DD
+  $FC,$F7,$F0,$8F,$84,$FF,$7F,$AD,$ED,$FC,$B8,$D2,$B0,$F9,$FF,$F6,$EF,$9E,$C0,$28,$D2,$3F,$F2,$8A
+  $E0,$21,$0A,$DC,$FF,$C1,$F8,$27,$90,$DB,$F0,$D2,$73,$8A,$FE,$F0,$FE,$A8,$DD,$11,$7D,$C0,$AC,$DD
+  $CE,$6C,$F0,$17,$6E,$90,$B0,$E4,$FE,$29,$21,$69,$11,$7C,$D0,$7B,$F0,$D3,$FE,$37,$F2,$DD,$B0,$73
+  $02,$C3,$F0,$9E,$CC,$60,$7F,$E2,$FD,$E6,$C0,$F7,$E0,$E7,$FD,$FE,$D7,$50,$DD,$F0,$DE,$D4,$30,$1F
+  $4C,$1E,$B8,$F1,$90,$3F,$8F,$80,$7D,$D0,$37,$91,$CB,$7A,$C2,$FF,$FF,$65,$F9,$FB,$A2,$FF,$CA,$20
+  $A2,$AA,$3F,$E0,$AD,$E3,$CA,$6B,$6E,$11,$D7,$F8,$2B,$79,$D1,$FF,$F0,$83,$B7,$9A,$E0,$DC,$02,$87
+  $C1,$4B,$72,$90,$90,$A3,$C1,$59,$0A,$DF,$73,$1A,$FB,$80,$D2,$8E,$E0,$70,$7B,$FB,$CC,$E8,$D0,$C1
+  $36,$BE,$A7,$11,$CF,$D0,$EF,$DF,$F0,$80,$A1,$D1,$FE,$82,$70,$39,$FA,$F3,$FE,$F3,$D0,$BC,$FE,$D6
+  $F0,$5F,$FE,$A7,$CA,$9D,$F0,$D2,$41,$F4,$47,$BB,$CD,$A1,$C6,$FF,$FE,$E8,$F5,$FF,$E3,$55,$58
+end data
+data HeFamPat2 bytes
+  $68,$00,$04,$00,$8F,$40,$00,$F0,$83,$41,$03,$0F,$3F,$99,$E1,$18,$7E,$00,$64,$2E,$C0,$C0,$F0,$FC
+  $88,$00,$22,$00,$AA,$44,$AA,$11,$FF,$48,$F0,$FA,$F4,$FA,$F1,$00,$F6,$E0,$47,$03,$AB,$47,$AB,$13
+  $C8,$C0,$E2,$C0,$EA,$C4,$EA,$D1,$89,$B0,$3E,$45,$A8,$1F,$88,$03,$2F,$79,$FE,$0E,$79,$AB,$88,$F2
+  $F8,$F0,$C0,$E7,$B1,$F9,$AA,$55,$AA,$FD,$EE,$BB,$88,$FA,$F5,$AA,$0E,$0B,$88,$AB,$57,$AA,$EC,$BB
+  $88,$EA,$D5,$AA,$EE,$3B,$FA,$E0,$FC,$78,$86,$BA,$E0,$FF,$00,$0A,$3F,$29,$00,$0A,$FC,$28,$00,$28
+  $07,$E6,$90,$A0,$3F,$FE,$00,$55,$00,$77,$DA,$F0,$24,$E2,$07,$1F,$3F,$0F,$F5,$0F,$FF,$F8,$F0,$E6
+  $D1,$0F,$00,$F0,$4E,$FE,$3A,$E1,$F0,$A4,$0F,$E3,$EF,$1F,$03,$98,$A0,$FB,$E0,$F8,$5F,$15,$77,$E2
+  $F7,$FD,$3F,$D5,$AE,$37,$FE,$F7,$E0,$64,$FA,$F5,$0A,$E7,$D0,$E2,$A1,$FE,$96,$00,$88,$3F,$89,$C0
+  $2F,$23,$C0,$00,$C0,$F8,$00,$EF,$FF,$DA,$31,$F1,$CF,$C4,$F0,$FE,$02,$D0,$99,$03,$1F,$00,$F8,$60
+  $E2,$03,$EC,$FF,$03,$FC,$5A,$3F,$5E,$C6,$97,$7D,$BD,$DB,$F7,$BE,$3E,$3E,$98,$F0,$93,$FE,$FE,$F1
+  $BD,$F0,$F9,$AD,$F0,$80,$A1,$00,$C9,$B7,$BC,$D8,$B4,$A2,$E1,$FE,$E0,$AE,$EE,$EA,$EE,$FE,$F0,$69
+  $EF,$62,$00,$07,$59,$7B,$93,$ED,$3D,$1B,$2D,$45,$87,$EA,$DA,$B0,$FE,$E9,$B2,$DD,$E8,$E6,$A1,$2D
+  $89,$26,$86,$8F,$5F,$70,$7B,$06,$86,$C6,$FE,$7A,$9E,$40,$FA,$FE,$03,$88,$43,$03,$FA,$60,$FA,$7A
+  $EB,$AF,$B6,$EB,$3E,$EB,$99,$A0,$E3,$FE,$1F,$0F,$99,$B0,$3D,$E6,$16,$0C,$02,$47,$06,$FF,$22,$80
+  $0C,$40,$30,$0C,$03,$BF,$B2,$90,$8F,$9D,$FE,$C0,$FE,$EC,$F0,$FE,$D0,$F9,$F0,$08,$9E,$02,$03,$C0
+  $DF,$C0,$BA,$A9,$0E,$FE,$EE,$0A,$F8,$51,$9F,$FC,$D5,$FA,$70,$FF,$EE,$A7,$06,$E2,$F1,$E1,$02,$05
+  $48,$3F,$03,$87,$63,$13,$47,$F1,$E7,$5D,$50,$33,$C1,$1B,$A8,$F0,$00,$C9,$2C,$EB,$F1,$02,$A7,$12
+  $00,$02,$02,$9F,$40,$DD,$67,$B0,$C9,$F1,$F0,$FF,$F1,$30,$9F,$FE,$E9,$FE,$E7,$00,$79,$20,$FE,$C2
+  $FF,$F8,$FE,$7E,$83,$70,$7B,$9A,$EE,$4D,$C1,$FA,$7A,$AB,$F0,$F0,$FF,$FF,$90,$7A,$BA,$C2,$FE,$EF
+  $00,$F8,$9B,$9F,$C0,$F0,$7E,$8D,$F0,$7F,$83,$F0,$1F,$FB,$9F,$F0,$7D,$9F,$F0,$7B,$9F,$F0,$7D,$9D
+  $F0,$55,$56
+end data
+data HeFamCol2 bytes
+  $7F,$11,$F1,$11,$FA,$8B,$F6,$61,$BE,$FE,$F1,$F9,$EF,$66,$FE,$E0,$63,$D1,$11,$BA,$FC,$FE,$8A,$AA
+  $61,$0E,$F0,$F7,$E0,$EB,$C9,$FC,$A1,$FF,$FF,$F0,$B0,$2E,$D6,$EC,$E8,$FF,$66,$5F,$E0,$79,$C0,$EF
+  $60,$FE,$3F,$68,$FE,$A5,$FD,$E8,$F3,$D6,$D8,$DB,$EC,$DA,$FF,$40,$FE,$B9,$46,$F0,$7F,$70,$D6,$D0
+  $F2,$D1,$9C,$FF,$DD,$FC,$FE,$FB,$F0,$ED,$E8,$FF,$48,$EE,$E6,$E6,$38,$E5,$76,$ED,$EE,$E1,$42,$EA
+  $F1,$EE,$9F,$11,$E0,$7F,$B4,$FD,$EF,$ED,$A0,$FB,$0D,$FC,$FE,$FE,$F5,$FE,$3E,$5D,$FC,$EF,$FE,$2A
+  $79,$F0,$5F,$B4,$FA,$FE,$CC,$5A,$EC,$2F,$C1,$F8,$BE,$11,$49,$42,$FF,$2C,$ED,$FE,$30,$FE,$B9,$EE
+  $E0,$FF,$F0,$C0,$FF,$D0,$A0,$6F,$C6,$FE,$4A,$CC,$A1,$C1,$F9,$CB,$F0,$FC,$AB,$E0,$7F,$BD,$F0,$19
+  $EE,$EE,$EA,$E6,$FC,$FF,$61,$EE,$EA,$A6,$1F,$D0,$7F,$B0,$E8,$FE,$A6,$56,$AA,$66,$B1,$22,$EB,$B1
+  $A8,$66,$61,$7D,$F1,$27,$C0,$DF,$E0,$B0,$7D,$7C,$7F,$9C,$FC,$B0,$BD,$D2,$13,$70,$7B,$E1,$E1,$BF
+  $FE,$7C,$98,$90,$9E,$61,$A1,$F8,$FF,$CB,$C2,$83,$F0,$E4,$FF,$50,$CE,$61,$5C,$1E,$DA,$7F,$06,$E7
+  $7D,$B6,$FF,$F0,$5D,$E0,$7F,$2C,$F7,$F1,$50,$F9,$68,$F8,$C8,$2A,$EF,$F0,$40,$1F,$4C,$7D,$F0,$7E
+  $E6,$85,$AA,$F7,$90,$F5,$FF,$70,$E9,$C1,$66,$F5,$F0,$7E,$AB,$F0,$7F,$8D,$E0,$1E,$80,$15,$D5,$55
+  $60
+end data
+data HeFamPat3 bytes
+  $88,$FE,$88,$00,$EF,$F2,$00,$FC,$F0,$99,$FE,$86,$AF,$AF,$CF,$67,$EC,$E8,$E0,$FE,$F9,$FE,$F1,$97
+  $06,$9A,$A1,$2F,$0F,$0F,$68,$F6,$FA,$FA,$93,$EE,$EE,$A9,$91,$6F,$AE,$C0,$80,$80,$1F,$FE,$A6,$00
+  $9A,$07,$00,$69,$F9,$BF,$02,$98,$88,$FE,$2F,$FC,$00,$EB,$E7,$A0,$23,$E3,$1C,$9F,$A8,$F9,$9F,$A8
+  $F9,$FF,$A8,$9C,$FE,$AC,$9C,$76,$EE,$DE,$DE,$E0,$20,$FA,$E2,$E2,$14,$1C,$FE,$1F,$1F,$AC,$FF,$FE
+  $AC,$FF,$FE,$48,$76,$D0,$6F,$EC,$FF,$8F,$F0,$FE,$EA,$32,$03,$E2,$FF,$03,$1C,$A4,$00,$76,$20,$A6
+  $C0,$D8,$C0,$70,$F7,$FF,$11,$88,$FF,$00,$0F,$B9,$0C,$C0,$3E,$E0,$9B,$0F,$03,$9F,$F0,$FE,$FE,$F1
+  $90,$3B,$CF,$CF,$F1,$3E,$88,$FF,$00,$CF,$88,$0F,$F3,$BD,$F0,$C0,$FA,$F5,$FF,$F0,$7C,$F0,$B8,$30
+  $D0,$A2,$04,$F9,$40,$76,$28,$07,$02,$00,$43,$03,$03,$C9,$8E,$8E,$40,$9D,$38,$3C,$FC,$FB,$B0,$F0
+  $BA,$71,$6F,$00,$39,$E3,$E7,$D0,$9A,$80,$84,$C0,$E7,$C0,$FF,$00,$02,$06,$9D,$A0,$F7,$D0,$80,$FB
+  $70,$C3,$BB,$FE,$10,$E6,$B0,$C0,$C0,$C4,$49,$A4,$88,$00,$22,$E0,$AA,$44,$AA,$11,$8A,$02,$F1,$C9
+  $AB,$47,$AB,$10,$50,$F9,$13,$F0,$A1,$EE,$8D,$E0,$80,$CB,$60,$01,$9A,$F1,$C8,$C0,$E2,$4E,$EA,$C4
+  $EA,$11,$AA,$55,$FD,$AA,$EE,$BB,$29,$AA,$56,$79,$54,$03,$57,$BB,$54,$1E,$1E,$00,$D6,$63,$78,$F2
+  $02,$E2,$FF,$96,$02,$10,$97,$84,$8C,$13,$2E,$20,$A0,$B0,$6A,$20,$EA,$D5,$EA,$15,$EE,$D5,$C0,$15
+  $55,$A1,$77,$A8,$56,$E2,$74,$03,$FF,$FC,$F2,$E6,$90,$39,$2E,$2E,$B0,$BB,$C0,$B9,$37,$6B,$C0,$3F
+  $22,$62,$B6,$C1,$61,$E6,$02,$F0,$24,$FE,$FE,$E4,$A3,$F2,$0F,$1F,$3F,$3F,$7F,$7F,$3D,$4C,$7E,$3D
+  $F0,$78,$83,$DF,$F0,$F8,$1B,$B5,$E3,$8B,$B0,$B5,$FF,$18,$D2,$90,$FB,$7C,$FE,$FE,$C8,$F0,$97,$00
+  $0F,$DA,$D0,$F0,$4A,$0F,$06,$3E,$FC,$70,$FE,$59,$FC,$0C,$18,$1C,$3C,$7E,$E7,$A6,$3E,$F5,$7E,$FB
+  $BF,$C9,$7F,$D5,$C0,$FF,$FE,$B0,$A5,$00,$FA,$DC,$40,$FA,$FE,$18,$88,$58,$18,$8E,$FE,$0C,$A0,$77
+  $DD,$4A,$1C,$2F,$05,$05,$60,$FD,$00,$7F,$E0,$F0,$F9,$51,$F0,$E3,$BB,$0C,$0C,$61,$D0,$CC,$DF,$73
+  $C0,$76,$A0,$61,$FC,$03,$7F,$C3,$F4,$3F,$F0,$9E,$E0,$E9,$EF,$3C,$FE,$F1,$77,$90,$A3,$C5,$EE,$8E
+  $F7,$FA,$C2,$FE,$BB,$00,$F8,$2D,$E9,$EC,$3B,$FF,$F7,$F8,$6B,$F5,$2E,$AE,$36,$3A,$C0,$73,$E6,$88
+  $E0,$F0,$CD,$D6,$FE,$FB,$AD,$90,$7E,$AB,$F0,$7E,$AB,$F0,$7F,$B0,$9F,$F0,$FF,$F5,$F0,$55,$58
+end data
+data HeFamCol3 bytes
+  $8B,$E1,$11,$D5,$F8,$EF,$FE,$F0,$7D,$B0,$0B,$41,$A9,$FE,$11,$A6,$84,$9A,$11,$81,$7E,$D5,$FF,$9F
+  $B1,$A8,$18,$93,$EB,$B1,$E6,$F9,$A8,$20,$D4,$D4,$A8,$11,$83,$D1,$D1,$FD,$8C,$A8,$87,$EB,$EB,$FE
+  $F1,$FE,$88,$FF,$F1,$41,$7F,$AC,$FF,$FE,$AC,$FF,$FE,$AC,$9D,$8C,$E6,$E8,$EA,$EA,$E6,$19,$BA,$AA
+  $AA,$66,$83,$EE,$FA,$FE,$FE,$AA,$EE,$FF,$7F,$BD,$F0,$E9,$FF,$E1,$7D,$A0,$BA,$E6,$98,$19,$A1,$A1
+  $61,$E1,$66,$FF,$90,$10,$3F,$85,$FF,$8F,$B6,$98,$FF,$EA,$FE,$7F,$A0,$93,$78,$FC,$90,$E0,$2F,$61
+  $69,$98,$46,$FF,$F1,$11,$FA,$C8,$F4,$F8,$5F,$70,$F7,$40,$97,$F0,$7F,$01,$FC,$EE,$FE,$E1,$F0,$79
+  $80,$0F,$FB,$87,$F0,$FF,$B0,$F9,$FE,$0B,$ED,$97,$90,$D4,$FE,$F6,$9C,$FE,$DD,$FC,$FE,$E3,$E4,$FD
+  $FF,$81,$FE,$3F,$DD,$FD,$FB,$D0,$1D,$44,$BF,$FF,$54,$FB,$DD,$D6,$F0,$E2,$A4,$FF,$A5,$A4,$AA,$E1
+  $AA,$1E,$F0,$1F,$D9,$FD,$FE,$B0,$EE,$F9,$CC,$FE,$2A,$AA,$86,$CC,$20,$61,$A6,$8E,$61,$11,$F0,$62
+  $66,$61,$5B,$66,$CF,$D0,$E0,$22,$A6,$A1,$4F,$95,$CF,$D0,$FE,$89,$B1,$B6,$E3,$EC,$83,$B2,$FF,$1C
+  $89,$B0,$A5,$66,$F5,$E5,$9F,$A0,$F1,$DF,$AE,$F0,$23,$A1,$BA,$A3,$FE,$F6,$F1,$DF,$00,$B7,$FF,$BD
+  $F0,$CF,$DE,$F0,$D0,$7D,$00,$8F,$F6,$FA,$FE,$F7,$00,$4E,$4D,$D2,$7F,$A9,$DD,$FF,$66,$F0,$9F,$E0
+  $CD,$65,$80,$F3,$B4,$D5,$F0,$D8,$90,$F7,$F0,$FE,$89,$F0,$A0,$57,$F7,$CD,$F0,$FD,$B0,$FF,$55,$56
+end data
+data HeFamPat4 bytes
+  $6B,$00,$04,$00,$40,$EA,$FB,$FC,$22,$8A,$AA,$44,$A8,$11,$55,$A3,$00,$98,$FE,$9A,$C1,$00,$C0,$AA
+  $3F,$00,$5A,$E0,$A0,$00,$64,$E6,$7F,$BF,$30,$C9,$04,$02,$B0,$3D,$03,$07,$A0,$E6,$F0,$24,$1F,$1F
+  $8A,$1C,$1C,$83,$18,$BC,$8C,$FE,$B9,$01,$E0,$E0,$41,$83,$98,$60,$10,$08,$89,$E0,$67,$02,$04,$0B
+  $13,$20,$40,$80,$DF,$70,$7D,$9F,$A0,$7D,$9E,$F0,$70,$68,$04,$7E,$F0,$F2,$08,$E0,$0A,$BB,$BB,$A9
+  $21,$89,$40,$3A,$EE,$EE,$AE,$EE,$EA,$EE,$FF,$00,$A2,$66,$8A,$00,$F0,$5A,$00,$06,$9F,$0F,$F4,$82
+  $FE,$FE,$FA,$FE,$3D,$D4,$EB,$9D,$BF,$FF,$56,$F1,$E0,$7F,$FF,$70,$FB,$B5,$FB,$00,$BA,$AA,$71,$E0
+  $A1,$00,$7C,$D0,$A2,$1F,$FB,$EF,$69,$CE,$E9,$60,$F0,$F9,$ED,$A0,$F9,$BD,$F0,$86,$3F,$7F,$7F,$3F
+  $1F,$61,$9F,$C0,$E0,$E0,$C0,$80,$C0,$5F,$9D,$9C,$F0,$94,$25,$FB,$A2,$15,$A8,$45,$AA,$11,$AE,$5E
+  $AE,$10,$AF,$4F,$AF,$10,$DB,$D3,$EF,$E3,$FF,$1A,$7B,$2A,$03,$CA,$FE,$0E,$37,$7C,$81,$F3,$00,$FA
+  $F5,$F2,$05,$E8,$E5,$EA,$01,$C0,$60,$70,$F3,$C0,$E8,$D5,$D1,$0F,$3A,$E0,$83,$F0,$55,$55,$80
+end data
+data HeFamCol4 bytes
+  $7F,$11,$F1,$11,$FA,$A8,$FC,$D1,$F2,$FE,$61,$DD,$D1,$CC,$9B,$44,$54,$44,$82,$F1,$CA,$CA,$A4,$A5
+  $0B,$AA,$AB,$FE,$64,$9F,$F0,$D0,$27,$54,$A4,$A4,$9F,$B0,$F0,$7E,$CD,$F0,$62,$A6,$A6,$03,$FE,$78
+  $F8,$F2,$64,$FE,$F3,$A4,$E0,$FC,$98,$E8,$3F,$FE,$BE,$E8,$7D,$D8,$7E,$8D,$A0,$7D,$F0,$E6,$70,$87
+  $54,$FF,$F0,$A8,$E0,$F0,$9F,$C1,$C1,$C4,$C4,$A1,$C9,$FE,$88,$66,$11,$B1,$28,$66,$AA,$11,$A1,$82
+  $61,$A1,$81,$11,$E7,$E4,$FF,$F9,$B4,$EC,$DF,$70,$EF,$F5,$E6,$F3,$FE,$F9,$F2,$FF,$8A,$66,$A6,$17
+  $F7,$E7,$F0,$A5,$FF,$66,$F2,$E0,$EA,$BA,$70,$AA,$A3,$AA,$CB,$60,$61,$87,$B0,$FA,$F0,$FF,$BA,$6E
+  $B6,$F0,$4F,$B1,$9F,$D0,$1D,$FD,$F0,$E0,$E9,$FF,$61,$68,$D1,$F6,$F8,$90,$11,$BC,$A1,$FE,$F7,$E0
+  $C6,$B0,$36,$D4,$41,$48,$73,$EB,$D8,$E0,$F1,$D4,$D4,$F8,$D5,$55,$60
+end data
+data HeMap0 bytes
+  $A9,$20,$80,$17,$F8,$C5,$C0,$21,$81,$82,$83,$84,$98,$85,$86,$87,$61,$93,$88,$89,$8A,$8B,$8C,$82
+  $FF,$8D,$8E,$8F,$90,$96,$91,$92,$93,$94,$95,$96,$97,$98,$98,$99,$94,$99,$9A,$9B,$9C,$9A,$9D,$9E
+  $94,$98,$20,$08,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$9F,$87,$A6,$A7,$A8,$A9,$AA,$A5,$F0,$BA,$AB,$AC,$AD
+  $AE,$AF,$B0,$B1,$FF,$20,$60,$22,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B2,$1E,$B9,$BA,$BB,$BC,$BD,$F0,$96
+  $BE,$BF,$C0,$C1,$C2,$C3,$C4,$E9,$FF,$20,$80,$89,$C5,$C6,$C7,$C8,$C9,$C7,$CA,$C5,$98,$CB,$CC,$CD
+  $29,$CE,$CF,$D0,$C7,$A8,$D1,$D2,$C7,$C5,$A6,$20,$92,$D3,$18,$D4,$D5,$D6,$D7,$D8,$66,$D9,$DA,$D5
+  $B9,$DB,$D6,$F5,$C5,$55,$58
+end data
+data HeMap1 bytes
+  $A9,$20,$80,$17,$E4,$C5,$C0,$66,$81,$82,$83,$5E,$FF,$92,$84,$21,$85,$86,$9A,$87,$88,$84,$62,$89
+  $8A,$8B,$62,$8C,$8D,$84,$9A,$20,$8E,$4B,$8F,$98,$F0,$89,$90,$91,$6E,$92,$93,$94,$95,$96,$97,$98
+  $FF,$9A,$20,$99,$18,$29,$9A,$9B,$9C,$9D,$28,$9E,$9F,$A0,$A1,$A2,$99,$08,$A3,$A4,$A5,$8B,$A6,$A7
+  $A8,$99,$A6,$20,$86,$A9,$0A,$AA,$AB,$AC,$AD,$48,$AE,$AF,$B0,$B1,$B2,$A9,$5A,$20,$68,$B3,$62,$B4
+  $B5,$18,$21,$B6,$B7,$B8,$B3,$7D,$C5,$55,$56
+end data
+data HeMap2 bytes
+  $A9,$20,$B0,$20,$88,$B1,$B2,$B3,$9C,$99,$B4,$9C,$F3,$B5,$B2,$B6,$D6,$E0,$C5,$C0,$44,$8F,$B7,$B8
+  $FE,$2E,$B9,$C0,$46,$3C,$BA,$8C,$FE,$B9,$BB,$C0,$35,$55,$58
+end data
+data HeMap3 bytes
+  $AA,$20,$D5,$22,$D6,$D7,$20,$D8,$D5,$49,$BE,$D9,$DA,$20,$C0,$18,$DB,$AB,$DC,$AB,$DD,$12,$64,$D9
+  $DE,$DF,$87,$E0,$E1,$E2,$E1,$E3,$9A,$C2,$E4,$47,$C8,$C0,$68,$E5,$E6,$E7,$E6,$E8,$EB,$E9,$DA,$FE
+  $EA,$EF,$F6,$EB,$C2,$7E,$C1,$FE,$A5,$D7,$99,$EC,$ED,$EE,$6E,$EF,$E4,$BF,$F0,$C3,$C0,$2F,$F1,$FE
+  $6F,$F2,$F0,$22,$F3,$F4,$27,$F5,$F6,$F7,$FC,$FE,$C0,$29,$F8,$62,$F9,$FA,$23,$FB,$FC,$8F,$FE,$C5
+  $55,$55,$80
+end data
+data HeMap4 bytes
+  $A8,$20,$80,$99,$81,$82,$80,$21,$85,$83,$84,$85,$86,$80,$F8,$C5,$C0,$99,$80,$87,$88,$20,$84,$89
+  $8A,$8B,$8C,$22,$8D,$80,$19,$20,$8E,$8F,$90,$91,$92,$8E,$5A,$93,$49,$25,$94,$95,$96,$97,$98,$94
+  $63,$99,$9A,$9A,$FE,$80,$99,$9B,$9C,$9D,$9A,$9C,$9E,$80,$92,$9A,$26,$9F,$20,$24,$A0,$A1,$A8,$A2
+  $86,$A3,$A4,$2A,$A5,$A2,$A1,$48,$98,$A6,$20,$92,$A7,$A8,$85,$A9,$F2,$DA,$F5,$AA,$C5,$55,$58
+end data
+data HeMap5 bytes
+  $A9,$20,$99,$16,$98,$20,$81,$99,$9A,$E3,$D8,$98,$EC,$E3,$9B,$9C,$FF,$9D,$9E,$D0,$C0,$89,$9D,$9F
+  $47,$F2,$C3,$C0,$79,$99,$A0,$A1,$FE,$2E,$A2,$B6,$3F,$C1,$C3,$FA,$C0,$FE,$A2,$A3,$A4,$A5,$16,$8B
+  $A3,$A6,$AF,$F8,$A7,$C5,$A4,$C1,$A8,$8E,$A9,$AA,$FE,$4A,$A3,$26,$AB,$AC,$A3,$89,$AD,$AE,$BD,$AF
+  $C5,$55,$56
+end data
+data HeMap6 bytes
+  $A6,$20,$B9,$BA,$BB,$14,$9F,$BC,$BD,$BE,$C5,$89,$C1,$BF,$C0,$58,$66,$C1,$C2,$C3,$C4,$C5,$60,$BB
+  $C6,$C7,$FD,$F1,$C0,$21,$A1,$C8,$C9,$CA,$CB,$CC,$97,$CD,$CE,$CF,$CE,$D0,$A4,$FF,$D1,$8E,$BB,$D2
+  $C0,$86,$D3,$D4,$D5,$D6,$D7,$86,$D8,$D9,$DA,$DB,$DC,$06,$3E,$DD,$DE,$FE,$19,$DF,$BB,$E0,$E1,$BB
+  $39,$C1,$86,$E2,$E3,$E4,$FB,$E5,$FE,$E6,$8A,$F4,$E7,$8B,$E7,$E8,$C9,$FE,$26,$E9,$EA,$EB,$EC,$ED
+  $20,$82,$EE,$E2,$EF,$F4,$A2,$F0,$F0,$F1,$E5,$FE,$F5,$C5,$55,$58
+end data
+data HeMap7 bytes
+  $A4,$20,$21,$80,$81,$82,$83,$84,$81,$85,$83,$86,$87,$88,$83,$90,$BA,$89,$8A,$8B,$8C,$83,$8D,$8E
+  $8F,$83,$90,$91,$20,$C1,$81,$9A,$92,$93,$94,$42,$95,$93,$96,$8A,$97,$98,$93,$99,$9A,$9B,$93,$9C
+  $81,$87,$8A,$9D,$99,$9E,$8A,$9F,$A0,$A1,$81,$BA,$FF,$A2,$F8,$06,$A3,$A4,$8A,$8A,$A5,$A3,$A6,$81
+  $A7,$E6,$C3,$8A,$A8,$A9,$9B,$8A,$AA,$AB,$DA,$C0,$AC,$62,$AD,$AE,$26,$AF,$B0,$B1,$89,$81,$B2,$88
+  $B3,$B4,$88,$B5,$B6,$1A,$B7,$62,$B8,$8A,$26,$B9,$BA,$BB,$29,$BC,$88,$BD,$BE,$89,$BF,$C0,$24,$2A
+  $C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$85,$92,$CE,$CF,$D0,$D1,$D2,$D3,$D4,$CB,$D5
+  $D6,$D7,$E1,$D8,$FE,$89,$D9,$DA,$B9,$DB,$DE,$3D,$C5,$55,$56
+end data
+data HeMap8 bytes
+  $A9,$20,$80,$16,$9A,$20,$81,$45,$A6,$20,$91,$82,$69,$20,$82,$83,$84,$85,$86,$E2,$FA,$39,$87,$83
+  $FE,$83,$88,$89,$8A,$89,$E3,$FA,$8B,$83,$E7,$C0,$8C,$8C,$8D,$C8,$FA,$BE,$8E,$8F,$FE,$1F,$90,$91
+  $92,$93,$92,$FA,$8F,$94,$8C,$C0,$9F,$95,$95,$96,$FA,$3C,$FE,$B8,$97,$DC,$7E,$C5,$FF,$91,$98,$7D
+  $C5,$55,$56
+end data
+data HeMap9 bytes
+  $A8,$20,$80,$12,$66,$DC,$DD,$80,$09,$DE,$DD,$DF,$20,$A0,$E0,$4A,$E1,$FA,$F4,$E2,$BE,$E3,$C5,$FF
+  $81,$E4,$2A,$E1,$99,$E5,$F8,$E6,$E1,$E7,$C0,$78,$E8,$E9,$EA,$EB,$EC,$F6,$BD,$ED,$FE,$AB,$EE,$EF
+  $8B,$FC,$F0,$E1,$C0,$E3,$F1,$F2,$F3,$F4,$F5,$F6,$81,$FE,$A6,$20,$91,$F5,$69,$20,$A4,$F6,$5F,$C5
+  $55,$55,$80
+end data
+data HeMap10 bytes
+  $AA,$20,$AB,$08,$AC,$AD,$AE,$AB,$06,$0A,$AF,$B0,$B1,$AB,$9A,$20,$AB,$82,$B2,$80,$B3,$B4,$01,$9E
+  $B5,$80,$B6,$C0,$66,$B7,$B7,$B8,$8E,$80,$B9,$FC,$61,$93,$BA,$BB,$BC,$B9,$80,$BF,$FF,$BD,$CD,$C0
+  $98,$BE,$BE,$BF,$B9,$C0,$FC,$83,$C1,$C2,$C3,$C4,$CE,$E8,$FF,$2A,$C5,$BE,$20,$6A,$C6,$20,$C7,$80
+  $2E,$C8,$C1,$BD,$C9,$FE,$8A,$CA,$C6,$9A,$20,$CB,$88,$CC,$CD,$08,$60,$CE,$CF,$D0,$D1,$CD,$22,$D2
+  $CB,$A6,$20,$85,$D3,$A7,$D4,$97,$E0,$D5,$C5,$55,$60
+end data
+data HeMap11 bytes
+  $A9,$20,$DC,$16,$9A,$20,$DD,$45,$A6,$20,$21,$DE,$DF,$BE,$E0,$E5,$EC,$61,$F3,$E1,$E2,$E3,$E4,$E5
+  $D8,$E2,$C5,$FF,$E6,$E7,$18,$B9,$E8,$E9,$EC,$87,$EA,$EB,$EC,$ED,$EE,$CF,$D8,$C0,$A4,$EF,$9F,$F0
+  $81,$81,$EC,$68,$F1,$1F,$C5,$88,$FF,$F2,$F3,$67,$F4,$F5,$F6,$D8,$EC,$80,$F7,$81,$FA,$C5,$FF,$F8
+  $48,$60,$F9,$FA,$DA,$FB,$F8,$0F,$C5,$55,$55,$80
+end data
+data SceneFam bytes 0,2,4,3,3,4,2,1,4,0,3,1
+data FamPatTab words = @HeFamPat0, @HeFamPat1, @HeFamPat2, @HeFamPat3, @HeFamPat4
+data FamColTab words = @HeFamCol0, @HeFamCol1, @HeFamCol2, @HeFamCol3, @HeFamCol4
+data SceneMapTab words
+  @HeMap0, @HeMap1, @HeMap2, @HeMap3, @HeMap4, @HeMap5, @HeMap6, @HeMap7,
+  @HeMap8, @HeMap9, @HeMap10, @HeMap11
+end data
+
+' ShowScene: the picture of Scene on rows 1-7 (255 = darkness). The tile
+' set of its family is unpacked only when the family changes.
+sub ShowScene:
+  Shown = Scene
+  if Scene = 255 then
+    for Y = 1 to 7
+      fill 32 count 28 at 2,Y
+    next
+    print at 7,4, "IT IS PITCH DARK."
+    return
+  end if
+  Fam = SceneFam[Scene]
+  if Fam <> FamShown then
+    decompress zx0 FamPatTab[Fam] to vram.pattern + 1024
+    decompress zx0 FamColTab[Fam] to vram.color + 1024
+    FamShown = Fam
+  end if
+  decompress zx0 SceneMapTab[Scene] to vram.name + 32
+  return
+end sub
+
+' ShowCreatures: the vampire stands in the picture when he is here; a bat
+' flits over the outdoor places at night
+sub ShowCreatures:
+  sprites 16x16
+  sprites simple
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  Spooky = 0
+  if Dark = 0 then
+    if OL.OVampire = Rm then
+      Creature(6, 96, SVampireDL, 13, 15)
+    else
+      SetNight
+      if Fl.FNight = 1 then
+        select case Scene
+        case 2 to 6
+          Spooky = 0
+        case else
+          Spooky = 2
+        end select
+      end if
+    end if
+  end if
+  Animate
+  return
+end sub
+
+' Animate: once a frame; the bat over the picture, the castle's creatures
+sub Animate:
+  inc Anim
+  if InCastle = 1 then
+    V = Anim & 31
+    if V = 0 then
+      if MenuOpen = 0 then DrawCastleCrit
+    end if
+    return
+  end if
+  if Spooky = 0 then return
+  V = Anim & 1
+  if V = 0 then
+    inc BatX
+    V = BatX & 63
+    if V < 32 then
+      BatY = 6 + V / 4
+    else
+      V = 63 - V
+      BatY = 6 + V / 4
+    end if
+  end if
+  J = SBatA
+  V = Anim & 16
+  if V > 0 then J = SBatB
+  set sprite 0 to BatY, BatX, J, 14
+  update sprites
+  return
+end sub
+
+' DrawCastleCrit: the creatures change frames (every 32 frames)
+sub DrawCastleCrit:
+  if Fl.FLt = 0 then return
+  T4 = Anim & 32
+  for J = 0 to 15
+    if CrK[J] > 0 then
+      if CrL[J] = CLv then
+        V = CrY[J]
+        if V >= ViewTop then
+          if V < ViewTop + 7 then
+            T1 = V - ViewTop
+            T1 = T1 + 1
+            T2 = CrX[J] + 2
+            if CrK[J] = 1 then
+              T3 = TRatA
+              if T4 > 0 then T3 = TRatB
+            else
+              T3 = TBatA
+              if T4 > 0 then T3 = TBatB
+            end if
+            put char T3 at T2,T1
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Creature: four sprites (details first, so they are drawn on top)
+sub Creature(u8 CYp, u8 CXp, u8 CP, u8 CBody, u8 CDet):
+  V = CXp + 16
+  J = CP + 4
+  set sprite 0 to CYp, CXp, CP, CDet
+  set sprite 1 to CYp, V, J, CDet
+  J = CP + 8
+  set sprite 2 to CYp, CXp, J, CBody
+  J = CP + 12
+  set sprite 3 to CYp, V, J, CBody
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub EditorialPage:
+  PageStart
+  Scene = TitleScene
+  ShowScene
+  print at 8,8, "VAMPYRE HUNTER"
+  SayMsg(MxCredit1)
+  SayMsg(MxCredit2)
+  print at 8,20, "BY MARC SUGIYAMA"
+  print at 3,21, "COMPUTE!'S GAZETTE MAY 1986"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  nmi off
+  WaitPress
+  return
+end sub
+
+' PageStart: a blank page with the fonts and an empty text window
+sub PageStart:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop black
+  cls
+  call asm HeFonts
+  call asm HeClearWin
+  FamShown = 255
+  Shown = 255
+  InCastle = 0
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+  WasBtn2 = 1
+  Press = 0
+  Press2 = 0
+  while Press = 0 and Press2 = 0
+    Frame1
+    ReadPad
+  end while
+  return
+end sub
+
+sub TitlePage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop black
+  cls
+  call asm HeFonts
+  Scene = TitleScene
+  Shown = 255
+  FamShown = 255
+  ShowScene
+  print at 8,10, "VAMPYRE HUNTER"
+  print at 3,12, "HUNT THE VAMPYRE DOWN!"
+  print at 12,16, "PLAY"
+  print at 12,18, "HOW TO PLAY"
+  print at 12,20, "CREDITS"
+  print at 2,22, "1986 MARC SUGIYAMA    2026"
+  Menu = 0
+  Spooky = 2
+  InCastle = 0
+  BatX = 200
+  screen on
+  nmi off
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 672
+  TzOn = 1
+  WasBtn = 1
+  WasBtn2 = 1
+title_loop:
+  Frame1
+  Animate
+  ReadPad
+  ' stir the random numbers while the player looks at the title
+  inc Seed
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndTick
+  end if
+  print at 10,16, " "
+  print at 10,18, " "
+  print at 10,20, " "
+  Y = Menu * 2
+  Y = Y + 16
+  print at 10,Y, ">"
+  if Press = 1 then goto title_done
+  goto title_loop
+title_done:
+  mute all
+  TzOn = 0
+  Spooky = 0
+  play sound SndOk
+  return
+end sub
+
+' HOW TO PLAY: three pages with pictures from the game; a button turns
+' the page; the last page or 30 seconds alone go back to the title
+sub HelpPages:
+  for Pg = 0 to 2
+    PageStart
+    if Pg = 0 then
+      Scene = 0
+      ShowScene
+      print at 8,8, "HOW TO PLAY 1/3"
+      SayMsg(MxHelp1)
+      SayMsg(MxHelp1b)
+    end if
+    if Pg = 1 then
+      ' a corner of the castle's second floor, lit
+      copy TilePat count NTiles8 to vram.pattern + 1024
+      copy TileCol count NTiles8 to vram.color + 1024
+      NewWorld
+      CLv = 1
+      CX = 3
+      CY = 17
+      Fl.FLt = 1
+      DrawCastle
+      print at 8,8, "HOW TO PLAY 2/3"
+      SayMsg(MxHelp2)
+    end if
+    if Pg = 2 then
+      Creature(6, 104, SVampireDL, 13, 15)
+      print at 8,8, "HOW TO PLAY 3/3"
+      SayMsg(MxHelp3)
+      SayMsg(MxHelp3b)
+    end if
+    print at 8,22, "PRESS A BUTTON"
+    screen on
+    nmi off
+    WasBtn = 1
+    WasBtn2 = 1
+    Press = 0
+    Press2 = 0
+    W16 = 0
+    while Press = 0 and Press2 = 0
+      Frame1
+      ReadPad
+      inc W16
+      if W16 = 1800 then
+        Press = 1
+        Pg = 2
+      end if
+    end while
+    play sound SndTick
+  next
+  HideSprites
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$00,$10,$10,$10,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$81,$00,$C3,$00,$18,$00
+  $18,$00,$C3,$00,$81,$00,$00,$00
+  $C3,$81,$18,$C3,$18,$18,$81,$C3
+  $00,$00,$00,$18,$C1,$81,$44,$00
+  $00,$00,$00,$0C,$83,$81,$22,$00
+  $00,$81,$24,$81,$C3,$00,$00,$00
+  $00,$00,$18,$81,$24,$81,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1E,$1E,$1E,$01,$1E,$1E,$1E,$01
+  $06,$6A,$6A,$6A,$6A,$6A,$6A,$06
+  $0F,$01,$1F,$01,$1F,$01,$F1,$01
+  $F1,$01,$1F,$01,$1F,$01,$0F,$01
+  $16,$16,$F6,$6F,$F6,$F6,$16,$16
+  $01,$01,$01,$E1,$1E,$1E,$E1,$01
+  $01,$01,$01,$E1,$1E,$1E,$E1,$01
+  $01,$D1,$1D,$1D,$1D,$01,$01,$01
+  $01,$01,$D1,$1D,$1D,$D1,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$05,$07,$05,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$A0,$E0,$A0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0C,$0F,$07,$03,$01,$00,$00,$00,$00,$00
+  $03,$07,$0C,$08,$08,$00,$04,$0F,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$3C
+  $C0,$E0,$30,$10,$10,$00,$20,$F0,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$3C
+  $00,$00,$00,$00,$00,$00,$30,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$80,$C0,$71,$7D,$3F,$1E,$0C,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$47,$DF,$FE,$BC,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$0F,$3F,$78,$60,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$C0,$F8,$7E,$0F,$03,$01,$00,$00,$00,$00,$00
+  $18,$18,$3C,$5A,$18,$24,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$3C,$5A,$18,$18,$28,$24,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$24,$7E,$FF,$BD,$3C,$3C,$24,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+VhHush:
+    db $00,$00,$F4,$01,$10
+VhTick:
+    db $40,$47,$60,$01,$50
+VhMore:
+    db $40,$55,$30,$02,$40,$55,$F0,$01,$40,$40,$30,$02,$40,$40,$F0,$01,$40,$55,$30,$02,$40,$55,$F0,$01
+    db $40,$40,$30,$05,$40,$40,$F0,$01,$50
+VhOk:
+    db $40,$7F,$30,$02,$40,$5F,$40,$02,$50
+VhBack:
+    db $40,$5F,$40,$02,$40,$7F,$50,$02,$50
+VhStep:
+    db $40,$FC,$51,$01,$40,$3B,$72,$01,$50
+VhBump:
+    db $40,$F9,$33,$02,$40,$FF,$53,$02,$50
+VhStairs:
+    db $40,$D6,$30,$02,$40,$D6,$F0,$01,$40,$FE,$30,$02,$40,$FE,$F0,$01,$40,$1D,$31,$02,$40,$1D,$F1,$01
+    db $40,$53,$31,$04,$40,$53,$F1,$01,$50
+VhFall:
+    db $40,$7F,$20,$03,$40,$AA,$30,$03,$40,$E2,$30,$03,$40,$2E,$41,$03,$40,$94,$41,$03,$40,$1A,$52,$06
+    db $50
+VhBite:
+    db $40,$40,$30,$01,$40,$50,$40,$01,$40,$5F,$50,$02,$50
+VhBell:
+    db $40,$8F,$30,$07,$40,$8F,$F0,$01,$40,$D6,$30,$0D,$40,$D6,$F0,$01,$50
+VhDie:
+    db $40,$1D,$21,$0B,$40,$1D,$F1,$01,$40,$2E,$21,$0B,$40,$2E,$F1,$01,$40,$41,$21,$0B,$40,$41,$F1,$01
+    db $40,$AB,$21,$1D,$40,$AB,$F1,$01,$50
+VhWin:
+    db $40,$FE,$20,$05,$40,$FE,$F0,$01,$40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$AA,$20,$05,$40,$AA,$F0,$01
+    db $40,$7F,$20,$07,$40,$7F,$F0,$01,$40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$7F,$20,$05,$40,$7F,$F0,$01
+    db $40,$6B,$20,$1D,$40,$6B,$F0,$01,$50
+VhScream:
+    db $40,$40,$10,$03,$40,$47,$20,$03,$40,$50,$20,$03,$40,$5F,$30,$04,$40,$71,$40,$05,$40,$8F,$60,$08
+    db $50
+
+VhSoundTable:
+    dw VhHush,$702B
+    dw VhTick,$7035
+    dw VhMore,$7035
+    dw VhOk,$7035
+    dw VhBack,$7035
+    dw VhStep,$7035
+    dw VhBump,$7035
+    dw VhStairs,$7035
+    dw VhFall,$7035
+    dw VhBite,$7035
+    dw VhBell,$7035
+    dw VhDie,$7035
+    dw VhWin,$7035
+    dw VhScream,$7035
+    dw VhTuneMel,$703F
+    dw VhTuneBass,$7049
+; Hunter's Dusk, D minor (original for this game)
+; Tiny Sound, 14 frames per step
+VhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 14
+    db $02,$70,$F1,$22,$15,$00,$18,$1C,$00,$1A,$18,$00,$17,$15,$00,$00
+    db $14,$00,$17,$1C,$00,$1A,$17,$00,$14,$10,$00,$00,$15,$00,$18,$1C
+    db $00,$21,$1F,$00,$1D,$1C,$00,$1A,$18,$00,$17,$14,$00,$17,$15,$00
+    db $00,$00,$00,$00
+    db $FF
+VhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 14
+    db $02,$80,$18,$32,$09,$10,$15,$09,$10,$15,$04,$0B,$10,$04,$0B,$10
+    db $04,$0B,$10,$04,$0B,$10,$09,$10,$15,$09,$10,$15,$09,$10,$15,$11
+    db $18,$1D,$0E,$15,$1A,$04,$0B,$10,$04,$0B,$10,$04,$08,$0B,$09,$10
+    db $15,$09,$01,$01
+    db $FF
+; engine.asm: the adventure engine (Z80), from The Hermit's (by way of
+; Grim Oak Manor), for Vampyre Hunter: ten exits a room (six used), dark
+; at night or in the castle without the lit lantern, the listing's carry
+; limit by weight (50), word lists per verb kind, entry points for Amy to
+; print messages and numbers.
+; - text: packed messages (advc.py), word wrap and scrolling in the text
+;   window (rows 9-18, columns 2-29), a MORE pause read straight from the
+;   controller ports;
+; - world: object locations, containers, exits, darkness, score;
+; - rules: runs the bytecode lists made by advc.py (conditions, actions);
+; - menus: builds the noun list for the verb picked and draws the picker.
+; Call every entry point with the NMI off.
+; Locations: 0 nowhere, 1-56 rooms, 100 carried, 102-112 inside a
+; container (index = code - 101), 113 out of reach (the vine).
+
+V_Rm      equ AMY_UVAR_Rm
+V_Verb    equ AMY_UVAR_Verb
+V_Noun    equ AMY_UVAR_Noun
+V_Noun2   equ AMY_UVAR_Noun2
+V_Score   equ AMY_UVAR_Score
+V_Scene   equ AMY_UVAR_Scene
+V_Dark    equ AMY_UVAR_Dark
+V_Moves   equ AMY_UVAR_Moves
+V_NCount  equ AMY_UVAR_NCount
+V_Need    equ AMY_UVAR_NeedNoun
+V_PkV     equ AMY_UVAR_PkV
+V_PkN     equ AMY_UVAR_PkN
+V_PkCol   equ AMY_UVAR_PkCol
+V_PkMode  equ AMY_UVAR_PkMode
+V_InMore  equ AMY_UVAR_InMore
+V_OL      equ AMY_UVAR_OL
+V_Fl      equ AMY_UVAR_Fl
+V_Opn     equ AMY_UVAR_Opn
+V_Pt      equ AMY_UVAR_Pt
+V_NL      equ AMY_UVAR_NL
+V_WBuf    equ AMY_UVAR_WBuf
+V_RowBuf  equ AMY_UVAR_RowBuf
+V_TxStk   equ AMY_UVAR_TxStk
+V_TxPtr   equ AMY_UVAR_TxPtr
+V_TxDepth equ AMY_UVAR_TxDepth
+V_TCol    equ AMY_UVAR_TCol
+V_TPend   equ AMY_UVAR_TPend
+V_TWLen   equ AMY_UVAR_TWLen
+V_TAlt    equ AMY_UVAR_TAlt
+V_TLines  equ AMY_UVAR_TLines
+V_StopF   equ AMY_UVAR_StopF
+V_ContF   equ AMY_UVAR_ContF
+V_Neg     equ AMY_UVAR_Neg
+V_RootOp  equ AMY_UVAR_RootOp
+V_T1      equ AMY_UVAR_T1
+V_T2      equ AMY_UVAR_T2
+V_T3      equ AMY_UVAR_T3
+V_T4      equ AMY_UVAR_T4
+V_NStart  equ AMY_UVAR_NStart
+V_SaveN   equ AMY_UVAR_SaveN
+
+HE_NAME   equ $1800
+HE_PAT    equ $0000
+HE_COL    equ $2000
+HE_CARRIED equ 100
+HE_LANTERN equ 6
+HE_MAXWEIGHT equ 50
+HE_CASTLE equ 68
+HE_DIVIDER equ 96
+HE_DARKSCENE equ 255
+
+; ---------------------------------------------------------------------------
+; Small helpers
+
+; OLAddr: A = object -> HL = its location byte
+OLAddr:
+    ld e,a
+    ld d,0
+    ld hl,V_OL
+    add hl,de
+    ret
+
+; FlAddr: A = flag -> HL
+FlAddr:
+    ld e,a
+    ld d,0
+    ld hl,V_Fl
+    add hl,de
+    ret
+
+; ObjEnt: A = object or word -> HL = its 6-byte entry
+ObjEnt:
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,de
+    ld de,HeObjs
+    add hl,de
+    ret
+
+; ResObj: operand 255 = the noun, 254 = the second noun
+ResObj:
+    cp 255
+    jr nz,RoTwo
+    ld a,(V_Noun)
+    ret
+RoTwo:
+    cp 254
+    ret nz
+    ld a,(V_Noun2)
+    ret
+
+; ResLoc: operand 250 = the player's room
+ResLoc:
+    cp 250
+    ret nz
+    ld a,(V_Rm)
+    ret
+
+; Root: A = object -> A = room it is in, 100 when carried, 0 when nowhere
+; or out of sight. V_RootOp = 1: a closed container hides what is inside.
+Root:
+    call OLAddr
+    ld a,(hl)
+    ret
+
+; Visible: A = object -> A = 1 when the player can see it
+Visible:
+    ld (V_T1),a
+    ld a,1
+    ld (V_RootOp),a
+    ld a,(V_T1)
+    call Root
+    cp HE_CARRIED
+    jr z,VsYes
+    ld c,a
+    ld a,(V_Dark)
+    or a
+    jr nz,VsNo
+    ld a,(V_Rm)
+    cp c
+    jr z,VsYes
+    ld hl,HeScenery
+VsSc:
+    ld a,(hl)
+    or a
+    jr z,VsNo
+    ld c,a
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld a,(V_T1)
+    cp c
+    jr nz,VsSc
+    ld a,(V_Rm)
+    cp b
+    jr nz,VsSc
+VsYes:
+    ld a,1
+    ret
+VsNo:
+    xor a
+    ret
+
+; Have: A = object -> A = 1 when carried (even inside a closed container)
+Have:
+    ld c,a
+    xor a
+    ld (V_RootOp),a
+    ld a,c
+    call Root
+    cp HE_CARRIED
+    ld a,1
+    ret z
+    xor a
+    ret
+
+; Reach: A = object -> A = 1 when in hand or in an open container in hand
+Reach:
+    ld c,a
+    ld a,1
+    ld (V_RootOp),a
+    ld a,c
+    call Root
+    cp HE_CARRIED
+    ld a,1
+    ret z
+    xor a
+    ret
+
+; HasLight: A = 1 when the lit lantern is carried
+HasLight:
+    ld a,HF_LT
+    call FlAddr
+    ld a,(hl)
+    or a
+    ret z
+    ld a,HE_LANTERN
+    call OLAddr
+    ld a,(V_Rm)
+    cp (hl)
+    ld a,1
+    ret z
+    ld a,HE_LANTERN
+    jp Have
+
+; UpdDark: dark at night (line 1880) and always in the castle (line 1180)
+; without the lit lantern
+UpdDark:
+    xor a
+    ld (V_Dark),a
+    ld a,(V_Rm)
+    cp HE_CASTLE
+    jr z,UdChk
+    ld a,HF_NIGHT
+    call FlAddr
+    ld a,(hl)
+    or a
+    ret z
+UdChk:
+    call HasLight
+    or a
+    ret nz
+    ld a,1
+    ld (V_Dark),a
+    ret
+
+; RoomEnt: HL = the entry (9 bytes: N S E W U D, description, picture)
+; of the player's room
+RoomEnt:
+    ld a,(V_Rm)
+    ld l,a
+    ld h,0
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld de,HeRooms
+    add hl,de
+    ret
+
+; GetExit: A = direction 0-9 -> A = room it leads to (0 = none); only
+; N S E W (0-3) and U D (8, 9) are used
+GetExit:
+    cp 4
+    jr c,GxSlot
+    cp 8
+    jr c,GxNone
+    sub 4
+GxSlot:
+    ld (V_T2),a
+    call RoomEnt
+    ld a,(V_T2)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    ret
+GxNone:
+    xor a
+    ret
+
+; CalcScore: Score = points earned
+CalcScore:
+    ld a,HF_SC
+    call FlAddr
+    ld a,(hl)
+    ld (V_Score),a
+    ret
+
+; SetScene: the picture for the room (255 = darkness)
+SetScene:
+    ld a,(V_Dark)
+    or a
+    ld a,HE_DARKSCENE
+    jr nz,SsSet
+    call RoomEnt
+    ld de,8
+    add hl,de
+    ld a,(hl)
+    ld (V_Scene),a
+    ret
+SsSet:
+    ld (V_Scene),a
+    ret
+
+; ---------------------------------------------------------------------------
+; VDP
+
+; VSetW / VSetR: HL = VRAM address to write / read
+VSetW:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    and $3F
+    or $40
+    out ($BF),a
+    ret
+VSetR:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    and $3F
+    out ($BF),a
+    ret
+
+; RowCol: D = row, E = column -> HL = name table address
+RowCol:
+    ld l,d
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,e
+    add a,l
+    ld l,a
+    ld a,h
+    adc a,HE_NAME/256
+    ld h,a
+    ret
+
+; AltMap: A = character -> A = code in the current font (TAlt 0 white,
+; 1 yellow, 2 black on yellow). Keeps BC, DE, HL.
+AltMap:
+    push bc
+    ld c,a
+    ld a,(V_TAlt)
+    or a
+    jr z,AmPlain
+    dec a
+    jr nz,AmInv
+    ld a,c
+    add a,128
+    pop bc
+    ret
+AmInv:
+    ld a,c
+    cp 64
+    jr nc,AmInvHi
+    add a,96
+    pop bc
+    ret
+AmInvHi:
+    add a,160
+    pop bc
+    ret
+AmPlain:
+    ld a,c
+    pop bc
+    ret
+
+; ---------------------------------------------------------------------------
+; Text
+
+; MsgStart: HL = message number
+MsgStart:
+    add hl,hl
+    ld de,HeMsgTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld (V_TxPtr),hl
+    xor a
+    ld (V_TxDepth),a
+    ret
+
+; NextCh: A = next character of the message, 0 at its end
+NextCh:
+    ld hl,(V_TxPtr)
+NcLp:
+    ld a,(hl)
+    inc hl
+    or a
+    jr z,NcEnd
+    cp 32
+    jr c,NcDict
+    cp 96
+    jr nc,NcHi
+    ld (V_TxPtr),hl
+    ret
+NcHi:
+    sub 65
+    jr NcIdx
+NcDict:
+    dec a
+NcIdx:
+    ld c,a
+    ex de,hl
+    ld a,(V_TxDepth)
+    ld l,a
+    inc a
+    ld (V_TxDepth),a
+    ld h,0
+    add hl,hl
+    push bc
+    ld bc,V_TxStk
+    add hl,bc
+    pop bc
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    ld l,c
+    ld h,0
+    add hl,hl
+    ld de,HeDict
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jr NcLp
+NcEnd:
+    ld a,(V_TxDepth)
+    or a
+    jr z,NcDone
+    dec a
+    ld (V_TxDepth),a
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,V_TxStk
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jr NcLp
+NcDone:
+    ld (V_TxPtr),hl
+    xor a
+    ret
+
+; PrintMsg: HL = message number, added to the text at the cursor
+PrintMsg:
+    call MsgStart
+PmLp:
+    call NextCh
+    or a
+    ret z
+    call PutCh
+    jr PmLp
+
+; Say: HL = message number, as a new paragraph
+Say:
+    push hl
+    call Para
+    pop hl
+    jr PrintMsg
+
+; PutCh: A = character into the word buffer (a space ends the word)
+PutCh:
+    cp 32
+    jr nz,PcWord
+    call FlushWord
+    ld a,(V_TCol)
+    or a
+    ret z
+    ld a,1
+    ld (V_TPend),a
+    ret
+PcWord:
+    ld c,a
+    ld a,(V_TWLen)
+    cp 28
+    jr c,PcAdd
+    push bc
+    call FlushWord
+    pop bc
+    ld a,(V_TWLen)
+PcAdd:
+    ld e,a
+    ld d,0
+    ld hl,V_WBuf
+    add hl,de
+    ld (hl),c
+    inc a
+    ld (V_TWLen),a
+    ret
+
+; FlushWord: write the buffered word on the bottom line, wrapping first
+FlushWord:
+    ld a,(V_TWLen)
+    or a
+    ret z
+    ld b,a
+    ld a,(V_TPend)
+    add a,b
+    ld b,a
+    ld a,(V_TCol)
+    add a,b
+    cp 29
+    jr c,FwFits
+    call NewLine
+FwFits:
+    ld d,18
+    ld a,(V_TCol)
+    add a,2
+    ld e,a
+    call RowCol
+    call VSetW
+    ld a,(V_TPend)
+    or a
+    jr z,FwWord
+    ld a,32
+    out ($BE),a
+    ld hl,V_TCol
+    inc (hl)
+FwWord:
+    xor a
+    ld (V_TPend),a
+    ld a,(V_TWLen)
+    ld b,a
+    ld hl,V_WBuf
+FwLp:
+    ld a,(hl)
+    call AltMap
+    out ($BE),a
+    inc hl
+    djnz FwLp
+    ld a,(V_TWLen)
+    ld b,a
+    ld a,(V_TCol)
+    add a,b
+    ld (V_TCol),a
+    xor a
+    ld (V_TWLen),a
+    ret
+
+; Para: start a new paragraph on a fresh line
+Para:
+    call FlushWord
+    xor a
+    ld (V_TPend),a
+    ld a,(V_TCol)
+    or a
+    ret z
+    ; fall into NewLine
+
+; NewLine: scroll the window up one line (pausing when it is full)
+NewLine:
+    ld a,(V_TLines)
+    cp 10
+    call nc,SaveTop
+    call ScrollUp
+    xor a
+    ld (V_TCol),a
+    ld (V_TPend),a
+    ld hl,V_TLines
+    inc (hl)
+    ret
+
+; ScrollUp: rows 10-18 move to 9-17; row 18 is cleared
+ScrollUp:
+    ld d,10
+SuLp:
+    push de
+    ld e,2
+    call RowCol
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,28
+SuRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz SuRd
+    pop de
+    push de
+    dec d
+    ld e,2
+    call RowCol
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,28
+SuWr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz SuWr
+    pop de
+    inc d
+    ld a,d
+    cp 19
+    jr c,SuLp
+    ld d,18
+    ld e,2
+    call RowCol
+    call VSetW
+    ld b,28
+SuClr:
+    ld a,32
+    out ($BE),a
+    nop
+    djnz SuClr
+    ret
+
+; ClearRows: D = first row, B = number of rows (columns 2-29)
+ClearRows:
+    push bc
+    push de
+    ld e,2
+    call RowCol
+    call VSetW
+    ld b,28
+CrLp:
+    ld a,32
+    out ($BE),a
+    nop
+    djnz CrLp
+    pop de
+    pop bc
+    inc d
+    djnz ClearRows
+    ret
+
+; More: the window is full; show MORE and wait for a side button
+; SaveTop: the window is full: the top line goes to the history in VRAM
+; ($3A80, 28 bytes a line) before it scrolls away. After the turn, Amy
+; pages through it (MORE) when the turn wrote more than the window holds.
+HE_HIST equ $3A80
+HE_HISTMAX equ 40
+SaveTop:
+    ld a,(AMY_UVAR_HistN)
+    cp HE_HISTMAX
+    ret nc
+    ld d,9
+    jp HistPut
+
+; HistPut: row D of the window -> history line HistN, HistN + 1
+HistPut:
+    ld e,2
+    call RowCol
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,28
+HpRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz HpRd
+    ld a,(AMY_UVAR_HistN)
+    call HistAddr
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,28
+HpWr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HpWr
+    ld hl,AMY_UVAR_HistN
+    inc (hl)
+    ret
+
+; HistAddr: A = history line -> HL = its VRAM address
+HistAddr:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    or a
+    sbc hl,de
+    ld de,HE_HIST
+    add hl,de
+    ret
+
+; HeHistFinish: add the ten lines of the window to the history
+HeHistFinish:
+    ld d,9
+HhfLp:
+    push de
+    call HistPut
+    pop de
+    inc d
+    ld a,d
+    cp 19
+    jr c,HhfLp
+    ret
+
+; HeHistShow: history lines Pg .. Pg + 9 into the window
+HeHistShow:
+    ld d,9
+HhsLp:
+    push de
+    ld a,d
+    sub 9
+    ld hl,AMY_UVAR_Pg
+    add a,(hl)
+    call HistAddr
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,28
+HhsRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz HhsRd
+    pop de
+    push de
+    ld e,2
+    call RowCol
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,28
+HhsWr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HhsWr
+    pop de
+    inc d
+    ld a,d
+    cp 19
+    jr c,HhsLp
+    ret
+
+; HeMoreMark: " - MORE - " on row 19
+HeMoreMark:
+    ld d,19
+    ld e,11
+    call RowCol
+    call VSetW
+    ld hl,HeMoreTxt
+    ld b,10
+MoLp:
+    ld a,(hl)
+    add a,128
+    out ($BE),a
+    inc hl
+    djnz MoLp
+    ret
+HeMoreTxt:
+    db " - MORE - "
+
+; DrawDivider: the line on row 19
+HeDrawDivider:
+DrawDivider:
+    ld d,19
+    ld e,2
+    call RowCol
+    call VSetW
+    ld b,28
+DdLp:
+    ld a,HE_DIVIDER
+    out ($BE),a
+    nop
+    djnz DdLp
+    ret
+
+; PrintNum: HL = number (0-9999), into the text
+PrintNum:
+    xor a
+    ld (V_NStart),a
+    ld de,1000
+    call PnDig
+    ld de,100
+    call PnDig
+    ld de,10
+    call PnDig
+    ld a,l
+    add a,48
+    jp PutCh
+PnDig:
+    ld a,47
+PnSub:
+    inc a
+    or a
+    sbc hl,de
+    jr nc,PnSub
+    add hl,de
+    cp 48
+    jr nz,PnOut
+    ld c,a
+    ld a,(V_NStart)
+    or a
+    ret z
+    ld a,c
+PnOut:
+    ld c,a
+    ld a,1
+    ld (V_NStart),a
+    ld a,c
+    push hl
+    call PutCh
+    pop hl
+    ret
+
+; PrintObj: A = object -> its menu name; PrintFull: its full name;
+; PrintArt: "A ", "AN " or "SOME " and its full name
+PrintObj:
+    call ObjEnt
+    jr PoMsg
+PrintFull:
+    call ObjEnt
+    inc hl
+    inc hl
+PoMsg:
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jp PrintMsg
+PrintArt:
+    push af
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    rrca
+    rrca
+    rrca
+    and 3
+    ld l,a
+    ld h,0
+    ld de,SysA
+    add hl,de
+    call PrintMsg
+    pop af
+    jr PrintFull
+
+; ---------------------------------------------------------------------------
+; Rules
+
+; RunList: HL = rule list, A = 1 to run every rule that matches.
+; Returns A = 1 when a rule ran.
+RunList:
+    ld c,a
+    ld b,0
+RlRule:
+    ld a,(hl)
+    or a
+    jr z,RlEnd
+    push bc
+    ld e,a
+    ld d,0
+    inc hl
+    push hl
+    add hl,de
+    ex (sp),hl
+    call EvalConds
+    or a
+    jr z,RlSkip
+    pop de
+    push de
+    xor a
+    ld (V_ContF),a
+    call ExecActs
+    pop hl
+    pop bc
+    ld b,1
+    ld a,(V_StopF)
+    or a
+    jr nz,RlEnd
+    ld a,c
+    or a
+    jr nz,RlRule
+    ld a,(V_ContF)
+    or a
+    jr nz,RlRule
+RlEnd:
+    ld a,b
+    ret
+RlSkip:
+    pop hl
+    pop bc
+    jr RlRule
+
+; EvalConds: HL = conditions -> A = 1 when all hold (HL = first action)
+EvalConds:
+    xor a
+    ld (V_Neg),a
+EcLp:
+    ld a,(hl)
+    cp $40
+    jr nc,EcPass
+    inc hl
+    cp $0B
+    jr nz,EcGo
+    ld a,1
+    ld (V_Neg),a
+    jr EcLp
+EcGo:
+    dec a
+    add a,a
+    push hl
+    ld l,a
+    ld h,0
+    ld de,EcTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ex (sp),hl
+    ret
+EcRes:
+    ld c,a
+    ld a,(V_Neg)
+    xor c
+    ld c,a
+    xor a
+    ld (V_Neg),a
+    ld a,c
+    or a
+    jr nz,EcLp
+    ret
+EcPass:
+    ld a,1
+    ret
+
+EcTab:
+    dw CNoun, CNoun2, CRoom, CRoomIn, CHere, CHave, CAt, CFlag
+    dw CFlagGe, EcPass, EcPass, CLight, EcPass, EcPass, CNounIn
+
+CmpRes:
+    ld a,1
+    jp z,EcRes
+    xor a
+    jp EcRes
+
+CNoun:
+    ld a,(V_Noun)
+    cp (hl)
+    inc hl
+    jr CmpRes
+CNoun2:
+    ld a,(V_Noun2)
+    cp (hl)
+    inc hl
+    jr CmpRes
+CRoom:
+    ld a,(V_Rm)
+    cp (hl)
+    inc hl
+    jr CmpRes
+CRoomIn:
+    ld a,(V_Rm)
+    ld c,a
+    ld a,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld e,0
+    cp c
+    jr z,CriLo
+    jr nc,CriNo
+CriLo:
+    ld a,b
+    cp c
+    jr c,CriNo
+    ld e,1
+CriNo:
+    ld a,e
+    jp EcRes
+CHere:
+    ld a,(hl)
+    inc hl
+    push hl
+    call ResObj
+    call Visible
+    pop hl
+    jp EcRes
+CHave:
+    ld a,(hl)
+    inc hl
+    push hl
+    call ResObj
+    call Have
+    pop hl
+    jp EcRes
+CAt:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    push bc
+    call ResObj
+    call OLAddr
+    pop bc
+    ld a,c
+    push hl
+    call ResLoc
+    pop hl
+    cp (hl)
+    pop hl
+    jr CmpRes
+CFlag:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld a,(hl)
+    pop hl
+    cp c
+    jr CmpRes
+CFlagGe:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld a,(hl)
+    pop hl
+    cp c
+    ld a,0
+    jp c,EcRes
+    inc a
+    jp EcRes
+CLight:
+    push hl
+    call UpdDark
+    pop hl
+    ld a,(V_Dark)
+    xor 1
+    jp EcRes
+CNounIn:
+    ld b,(hl)
+    inc hl
+    ld e,0
+    ld a,(V_Noun)
+CniLp:
+    cp (hl)
+    inc hl
+    jr nz,CniNext
+    ld e,1
+CniNext:
+    djnz CniLp
+    ld a,e
+    jp EcRes
+
+; IsOpen: A = object -> A = 1 when it is an open container
+ExecActs:
+    ld a,l
+    cp e
+    jr nz,EaGo
+    ld a,h
+    cp d
+    ret z
+EaGo:
+    push de
+    ld a,(hl)
+    inc hl
+    sub $40
+    add a,a
+    push hl
+    ld l,a
+    ld h,0
+    ld de,EaTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ex (sp),hl
+    ret
+EaNext:
+    pop de
+    ld a,(V_StopF)
+    or a
+    ret nz
+    jr ExecActs
+
+EaTab:
+    dw AMsg, ASetL, ASetF, AAddF, AGoto, AStop, AStop, ADie
+    dw AWin, ALook, ACont, ABuiltin, AStop, AStop, ASetNoun
+
+AMsg:
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    push hl
+    ex de,hl
+    call Say
+    pop hl
+    jp EaNext
+ASetL:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    push bc
+    call ResObj
+    call OLAddr
+    pop bc
+    ld a,c
+    push hl
+    call ResLoc
+    pop hl
+    ld (hl),a
+    pop hl
+    jp EaNext
+ASetF:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld (hl),c
+    pop hl
+    jp EaNext
+AAddF:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld a,(hl)
+    add a,c
+    ld (hl),a
+    pop hl
+    jp EaNext
+AGoto:
+    ld a,(hl)
+    inc hl
+    push hl
+    ld (V_Rm),a
+    call EnterRoom
+    call DoLook
+    pop hl
+    jp EaNext
+ADie:
+    ld a,HF_DEAD
+    jr AStop
+AWin:
+    ld a,HF_WIN
+AStop:
+    push hl
+    call FlAddr
+    ld (hl),1
+    ld a,1
+    ld (V_StopF),a
+    pop hl
+    jp EaNext
+ALook:
+    push hl
+    call DoLook
+    pop hl
+    jp EaNext
+ACont:
+    ld a,1
+    ld (V_ContF),a
+    jp EaNext
+ABuiltin:
+    ld a,(hl)
+    inc hl
+    push hl
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,BiTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld de,AbRet
+    push de
+    jp (hl)
+AbRet:
+    pop hl
+    jp EaNext
+ASetNoun:
+    ld a,(hl)
+    inc hl
+    ld (V_Noun),a
+    jp EaNext
+
+BiTab:
+    dw BGo, BInv, BGo, BTake, BDrop, BExam, BGo, BGo, BGo
+
+; ---------------------------------------------------------------------------
+; Built-in verbs
+
+; EnterRoom: darkness changes with the room
+EnterRoom:
+    jp UpdDark
+
+BGo:
+    ld a,(V_Noun)
+    sub 70
+    call GetExit
+    or a
+    jr nz,BgMove
+    ld hl,SysNoWay
+    jp Say
+BgMove:
+    ld (V_Rm),a
+    call EnterRoom
+    jp DoLook
+
+BInv:
+    ld hl,SysCarrying
+    call Say
+    xor a
+    ld (V_T3),a
+    ld c,1
+BiLp:
+    push bc
+    ld a,c
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr nz,BiNext
+    call Para
+    pop bc
+    push bc
+    ld a,c
+    call PrintFull
+    ld a,1
+    ld (V_T3),a
+BiNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,BiLp
+    ld a,(V_T3)
+    or a
+    ret nz
+    ld hl,SysNothing
+    jp Say
+
+BTake:
+    ld a,(V_Noun)
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr nz,BtNotYet
+    ld hl,SysHaveIt
+    jp Say
+BtNotYet:
+    ld a,(V_Noun)
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    and 3
+    jr nz,BtSolid
+    ld hl,SysFlows
+    jp Say
+BtSolid:
+    cp 2
+    jr nz,BtOk
+    ld hl,SysStays
+    jp Say
+BtOk:
+    ; the listing (line 1385): the load may weigh 50 at most
+    ld a,(V_Noun)
+    call WeightOf
+    ld c,a
+    ld hl,V_OL+1
+    ld b,1
+BtCnt:
+    ld a,(hl)
+    cp HE_CARRIED
+    jr nz,BtCn2
+    push hl
+    push bc
+    ld a,b
+    call WeightOf
+    pop bc
+    add a,c
+    ld c,a
+    pop hl
+BtCn2:
+    inc hl
+    inc b
+    ld a,b
+    cp HE_NOBJ+1
+    jr c,BtCnt
+    ld a,c
+    cp HE_MAXWEIGHT+1
+    jr c,BtRoom
+    ld hl,SysHeavy
+    jp Say
+; WeightOf: A = object -> A = its weight
+WeightOf:
+    ld e,a
+    ld d,0
+    ld hl,HeWeight
+    add hl,de
+    ld a,(hl)
+    ret
+BtRoom:
+    ld a,(V_Noun)
+    call OLAddr
+    ld (hl),HE_CARRIED
+    ld hl,SysTaken
+    jp Say
+
+BDrop:
+    ld a,(V_Noun)
+    call Have
+    or a
+    jr nz,BdOk
+    ld hl,SysNoHave
+    jp Say
+BdOk:
+    ld a,(V_Noun)
+    call OLAddr
+    ld a,(V_Rm)
+    ld (hl),a
+    ld hl,SysDropped
+    jp Say
+
+BExam:
+    ld hl,SysNothingSpecial
+    jp Say
+
+; DoLook: describe the room
+DoLook:
+    call UpdDark
+    ld a,(V_Dark)
+    or a
+    jr z,LkLit
+    ld hl,SysDark
+    call Say
+    jp LkExits
+LkLit:
+    ld hl,SysYouAre
+    call Say
+    call RoomEnt
+    ld de,6
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    call PrintMsg
+LkRules:
+    ld hl,HeR_LOOKX
+    ld a,1
+    call RunList
+    ld c,1
+LkObj:
+    push bc
+    ld a,c
+    call OLAddr
+    ld a,(V_Rm)
+    cp (hl)
+    jr nz,LkON
+    ; things that stay put are part of the description (LOOKX)
+    pop bc
+    push bc
+    ld a,c
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    and 3
+    cp 2
+    jr z,LkON
+    ld hl,SysThereIs
+    call Say
+    pop bc
+    push bc
+    ld a,c
+    call PrintArt
+    ld hl,SysHere
+    call PrintMsg
+LkON:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,LkObj
+LkExits:
+    ld a,(V_Rm)
+    cp HE_CASTLE
+    ret z
+    ld hl,SysExits
+    call Say
+    ld a,(V_Dark)
+    or a
+    jr z,LkEx2
+    ld hl,SysWhoKnows
+    jp PrintMsg
+LkEx2:
+    xor a
+    ld (V_T3),a
+    ld c,0
+LkE:
+    push bc
+    ld a,c
+    call GetExit
+    or a
+    jr z,LkEN
+    ld a,32
+    call PutCh
+    pop bc
+    push bc
+    ld l,c
+    ld h,0
+    ld de,SysDir0
+    add hl,de
+    call PrintMsg
+    ld a,1
+    ld (V_T3),a
+LkEN:
+    pop bc
+    inc c
+    ld a,c
+    cp 10
+    jr c,LkE
+    ld a,(V_T3)
+    or a
+    jr nz,LkDot
+    ld hl,SysNoExits
+    jp PrintMsg
+LkDot:
+    ld a,46
+    jp PutCh
+
+; ---------------------------------------------------------------------------
+; Entry points (called from Amy)
+
+; HeStart: a new game
+HeStart:
+    ld hl,HeObjStart
+    ld de,V_OL
+    ld bc,HE_NOBJ+1
+    ldir
+    ld hl,HeFlagStart
+    ld de,V_Fl
+    ld bc,HE_NFLAGS
+    ldir
+    ld hl,HeContOpen
+    ld de,V_Opn
+    ld bc,HE_NCONT+1
+    ldir
+    xor a
+    ld (V_StopF),a
+    ld (V_TCol),a
+    ld (V_TPend),a
+    ld (V_TWLen),a
+    ld (V_TAlt),a
+    ld (V_TLines),a
+    ld (V_InMore),a
+    ld hl,0
+    ld (V_Moves),hl
+    ld a,1
+    ld (V_Rm),a
+    ld d,9
+    ld b,10
+    call ClearRows
+    call DrawDivider
+    call DoLook
+    call FlushWord
+    call UpdDark
+    call CalcScore
+    jp SetScene
+
+; HeTurn: run Verb / Noun / Noun2
+HeTurn:
+    xor a
+    ld (AMY_UVAR_HistN),a
+    ld (V_StopF),a
+    ld (V_TLines),a
+    call Echo
+    ld hl,(V_Moves)
+    inc hl
+    ld (V_Moves),hl
+    call UpdDark
+    ld a,(V_Verb)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeVerbRules
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    xor a
+    call RunList
+    ld a,(V_StopF)
+    or a
+    jr nz,HtEnd
+    call UpdDark
+    ld hl,HeR_EVERY
+    ld a,1
+    call RunList
+HtEnd:
+    call FlushWord
+    call UpdDark
+    call CalcScore
+    jp SetScene
+
+; HeSay: HL = message number as a paragraph (for Amy), then flush
+HeSay:
+    call Say
+    jp FlushWord
+; For Amy: AMY_UVAR_MsgId as a paragraph / added to the line; AMY_UVAR_NumU
+; as a number added to the line; HeEnd ends the text (flushes the word)
+HeSayV:
+    ld hl,(AMY_UVAR_MsgId)
+    call Say
+    jp FlushWord
+HeMsgV:
+    ld hl,(AMY_UVAR_MsgId)
+    call PrintMsg
+    jp FlushWord
+HeNumV:
+    ld hl,(AMY_UVAR_NumU)
+    call PrintNum
+    jp FlushWord
+HeLookV:
+    call DoLook
+    call FlushWord
+    call UpdDark
+    jp SetScene
+HeDarkV:
+    call UpdDark
+    jp SetScene
+; HeClearWin: an empty text window (for the HOW TO PLAY and credits pages)
+HeClearWin:
+    ld d,9
+    ld b,10
+    call ClearRows
+    xor a
+    ld (V_TCol),a
+    ld (V_TPend),a
+    ld (V_TWLen),a
+    ld (V_TLines),a
+    ld (V_TAlt),a
+    ld (AMY_UVAR_HistN),a
+    ret
+; HeExitV: AMY_UVAR_RQ = room, AMY_UVAR_RK = slot 0-5 (N S E W U D) ->
+; AMY_UVAR_IV = the room that way (0 = none)
+HeExitV:
+    ld a,(V_Rm)
+    push af
+    ld a,(AMY_UVAR_RQ)
+    ld (V_Rm),a
+    call RoomEnt
+    pop af
+    ld (V_Rm),a
+    ld a,(AMY_UVAR_RK)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_IV),a
+    ret
+; HePad: both controllers -> Up1 Dn1 Lf1 Rt1 Btn Btn2 (0/1)
+HePad:
+    ld a,(JOYPAD_1)
+    ld b,a
+    ld a,(JOYPAD_2)
+    or b
+    ld b,a
+    and 1
+    ld (AMY_UVAR_Up1),a
+    ld a,b
+    rrca
+    and 1
+    ld (AMY_UVAR_Rt1),a
+    ld a,b
+    rrca
+    rrca
+    and 1
+    ld (AMY_UVAR_Dn1),a
+    ld a,b
+    rrca
+    rrca
+    rrca
+    and 1
+    ld (AMY_UVAR_Lf1),a
+    ld a,b
+    rlca
+    and 1
+    ld (AMY_UVAR_Btn),a
+    ld a,b
+    rlca
+    rlca
+    and 1
+    ld (AMY_UVAR_Btn2),a
+    ret
+; HeBegin: a castle step starts a fresh page of text (as HeTurn does)
+HeBegin:
+    xor a
+    ld (AMY_UVAR_HistN),a
+    ld (V_StopF),a
+    ld (V_TLines),a
+    ret
+
+; Echo: "> VERB NOUN [IN NOUN2]" in yellow
+Echo:
+    call Para
+    ld a,1
+    ld (V_TAlt),a
+    ld hl,SysPrompt
+    call PrintMsg
+    ld a,(V_Verb)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeVerbMsg
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    call PrintMsg
+    ld a,(V_Noun)
+    or a
+    jr z,EchoEnd
+    ld a,32
+    call PutCh
+    ld a,(V_Noun)
+    call PrintObj
+    ld a,(V_Noun2)
+    or a
+    jr z,EchoEnd
+    ld hl,SysIn
+    call PrintMsg
+    ld a,(V_Noun2)
+    call PrintObj
+EchoEnd:
+    call FlushWord
+    xor a
+    ld (V_TAlt),a
+    ret
+
+; HeNouns: the noun list for Verb (NL, NCount, NeedNoun)
+HeNouns:
+    call UpdDark
+    xor a
+    ld (V_NCount),a
+    ld a,(V_Verb)
+    ld e,a
+    ld d,0
+    ld hl,HeVerbKind
+    add hl,de
+    ld a,(hl)
+    ld (V_Need),a
+    ld (V_T3),a
+    or a
+    ret z
+    cp 1
+    jr z,HnDir
+    cp 5
+    jr nc,HnSay
+    ld c,1
+HnLp:
+    push bc
+    ld a,c
+    ld (V_T4),a
+    ld a,(V_T3)
+    cp 4
+    jr z,HnHeld
+    ld a,(V_T4)
+    call Visible
+    or a
+    jr z,HnNext
+    ld a,(V_T3)
+    cp 3
+    jr nz,HnAdd
+    ld a,(V_T4)
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr z,HnNext
+    jr HnAdd
+HnHeld:
+    ld a,(V_T4)
+    call Reach
+    or a
+    jr z,HnNext
+HnAdd:
+    ld a,(V_T4)
+    call AddNoun
+HnNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,HnLp
+    ret
+; GO lists the ways out (all ten in the dark: who knows?)
+HnDir:
+    ld c,0
+HndLp:
+    push bc
+    ld a,(V_Dark)
+    or a
+    jr nz,HndAdd
+    ld a,c
+    call GetExit
+    or a
+    jr z,HndNx
+HndAdd:
+    pop bc
+    push bc
+    ld a,c
+    add a,70
+    call AddNoun
+HndNx:
+    pop bc
+    inc c
+    ld a,c
+    cp 10
+    jr c,HndLp
+    ret
+; SAY and CRACK: word, flag pairs (255 = always; else once the flag is set)
+HnSay:
+HnDial:
+    ; kind 5 and up: word list kind - 5
+    ld a,(V_T3)
+    sub 5
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeWordLists
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+HnWords:
+    ld a,(hl)
+    or a
+    ret z
+    ld b,a
+    inc hl
+    ld a,(hl)
+    inc hl
+    cp 255
+    jr z,HnwAdd
+    push hl
+    push bc
+    call FlAddr
+    ld a,(hl)
+    pop bc
+    pop hl
+    or a
+    jr z,HnWords
+HnwAdd:
+    push hl
+    ld a,b
+    call AddNoun
+    pop hl
+    jr HnWords
+AddNoun:
+    ld hl,V_NCount
+    ld e,(hl)
+    inc (hl)
+    ld d,0
+    ld hl,V_NL
+    add hl,de
+    ld (hl),a
+    ret
+
+; PrintFixed: HL = message, D = row, E = column, B = width (no wrap,
+; padded with spaces in the current font)
+PrintFixed:
+    push bc
+    push de
+    call MsgStart
+    pop de
+    call RowCol
+    call VSetW
+    pop bc
+PfLp:
+    push bc
+    call NextCh
+    pop bc
+    or a
+    jr z,PfPad
+    call AltMap
+    out ($BE),a
+    djnz PfLp
+    ret
+PfPad:
+    ld a,32
+    call AltMap
+    out ($BE),a
+    nop
+    djnz PfPad
+    ret
+
+; PutAt: A = character at D,E
+PutAt:
+    push af
+    call RowCol
+    call VSetW
+    pop af
+    out ($BE),a
+    ret
+
+; HeDrawPick: the verb and noun picker on rows 20-22
+HeDrawPick:
+    ld d,20
+    ld b,3
+    call ClearRows
+    ; verbs: the one before, the current one, the one after
+    ld c,0
+DpV:
+    push bc
+    ld a,(V_PkMode)
+    or a
+    jr z,DpVShow
+    ld a,c
+    cp 1
+    jr nz,DpVNext
+DpVShow:
+    ld a,(V_PkV)
+    add a,c
+    dec a
+    jp p,DpVPos
+    add a,HE_NVERBS
+DpVPos:
+    cp HE_NVERBS
+    jr c,DpVOk
+    sub HE_NVERBS
+DpVOk:
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeVerbMsg
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    xor a
+    ld (V_TAlt),a
+    ld a,c
+    cp 1
+    jr nz,DpVDraw
+    ld a,(V_PkCol)
+    or a
+    jr nz,DpVDraw
+    ld a,2
+    ld (V_TAlt),a
+DpVDraw:
+    ld a,20
+    add a,c
+    ld d,a
+    ld e,3
+    ld b,9
+    call PrintFixed
+DpVNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 3
+    jr c,DpV
+    xor a
+    ld (V_TAlt),a
+    ; nouns
+    ld a,(V_Need)
+    or a
+    jr z,DpMarks
+    ld a,(V_NCount)
+    or a
+    jr nz,DpNList
+    ld hl,SysNone
+    ld d,21
+    ld e,14
+    ld b,16
+    call PrintFixed
+    jr DpMarks
+DpNList:
+    ld c,0
+DpN:
+    push bc
+    ld a,(V_PkN)
+    add a,c
+    dec a
+    jp m,DpNNext
+    ld hl,V_NCount
+    cp (hl)
+    jr nc,DpNNext
+    ld e,a
+    ld d,0
+    ld hl,V_NL
+    add hl,de
+    ld a,(hl)
+    call ObjEnt
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    xor a
+    ld (V_TAlt),a
+    ld a,c
+    cp 1
+    jr nz,DpNDraw
+    ld a,(V_PkCol)
+    or a
+    jr z,DpNDraw
+    ld a,2
+    ld (V_TAlt),a
+DpNDraw:
+    ld a,20
+    add a,c
+    ld d,a
+    ld e,14
+    ld b,16
+    call PrintFixed
+DpNNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 3
+    jr c,DpN
+    xor a
+    ld (V_TAlt),a
+DpMarks:
+    ld a,(V_PkCol)
+    or a
+    ld a,62
+    jr z,DpM1
+    ld a,32
+DpM1:
+    ld d,21
+    ld e,2
+    call PutAt
+    ld a,(V_PkCol)
+    or a
+    ld a,32
+    jr z,DpM2
+    ld a,62
+DpM2:
+    ld d,21
+    ld e,13
+    call PutAt
+    ; row 19: the divider, with "IN WHAT?" while choosing where to put
+    call DrawDivider
+    ld a,(V_PkMode)
+    or a
+    ret z
+    ld a,1
+    ld (V_TAlt),a
+    ld hl,SysInWhat
+    ld d,19
+    ld e,14
+    ld b,8
+    call PrintFixed
+    xor a
+    ld (V_TAlt),a
+    ret
+
+; HeFonts: the fonts: yellow font (codes 160-223) in the middle and bottom thirds,
+; black-on-yellow font (codes 128-159, 224-255) and the divider (96) in
+; the bottom third
+HeFonts:
+    ld bc,$03FF         ; R3: three colour tables, one per screen third
+    call WRITE_REGISTER
+    ld a,1
+    call HfThird
+    ld a,2
+    call HfThird
+    ; divider
+    ld hl,HE_PAT+$1000+HE_DIVIDER*8
+    call VSetW
+    ld hl,HeDivPat
+    ld b,8
+HfDp:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HfDp
+    ld hl,HE_COL+$1000+HE_DIVIDER*8
+    call VSetW
+    ld b,8
+HfDc:
+    ld a,$40
+    out ($BE),a
+    nop
+    djnz HfDc
+    ret
+HeDivPat:
+    db $00,$00,$00,$AA,$55,$00,$00,$00
+
+; HfThird: A = third (1 or 2)
+HfThird:
+    add a,a
+    add a,a
+    add a,a
+    ld (V_T3),a         ; high byte of the third's offset ($0800 or $1000)
+    ld c,32
+HfCh:
+    push bc
+    ; read the glyph
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(V_T3)
+    add a,h
+    ld h,a
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,8
+HfRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz HfRd
+    pop bc
+    push bc
+    ; yellow copy at code + 128
+    ld a,c
+    add a,128
+    ld (V_T4),a
+    ld a,$B0
+    call HfPut
+    ; black on yellow copy (bottom third only)
+    ld a,(V_T3)
+    cp $10
+    jr nz,HfNext
+    pop bc
+    push bc
+    ld a,c
+    cp 64
+    jr nc,HfHi
+    add a,96
+    jr HfInv
+HfHi:
+    add a,160
+HfInv:
+    ld (V_T4),a
+    ld a,$1B
+    call HfPut
+HfNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 96
+    jr c,HfCh
+    ret
+
+; HfPut: glyph in RowBuf -> code T4 of third T3, colour A
+HfPut:
+    push af
+    ld a,(V_T4)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(V_T3)
+    add a,h
+    ld h,a
+    push hl
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,8
+HpP:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HpP
+    pop hl
+    ld de,HE_COL
+    add hl,de
+    call VSetW
+    pop af
+    ld b,8
+HpC:
+    out ($BE),a
+    nop
+    djnz HpC
+    ret
+
+; HeDisplayOn: display on, NMI left off (R1 bit 6 on, bit 5 off)
+HeDisplayOn:
+    ld a,(VDP_R1_SHADOW)
+    or $40
+    and $DF
+    ld (VDP_R1_SHADOW),a
+    ld c,a
+    ld b,1
+    jp WRITE_REGISTER
+; generated by advc.py from adv.py - do not edit
+SysYouAre equ 0
+SysDark equ 1
+SysThereIs equ 2
+SysA equ 3
+SysAn equ 4
+SysSome equ 5
+SysHere equ 6
+SysInThe equ 0
+SysExits equ 7
+SysNoExits equ 8
+SysNoWay equ 9
+SysWhoKnows equ 10
+SysCarrying equ 11
+SysNothing equ 12
+SysHaveIt equ 13
+SysFlows equ 0
+SysStays equ 14
+SysTaken equ 15
+SysHeavy equ 16
+SysNoHave equ 17
+SysDropped equ 18
+SysNothingSpecial equ 19
+SysIsOpen equ 0
+SysIsClosed equ 0
+SysCantOpen equ 0
+SysCantClose equ 0
+SysAlreadyOpen equ 0
+SysAlreadyClosed equ 0
+SysOk equ 0
+SysFull equ 0
+SysClosed equ 0
+SysCantPut equ 0
+SysScore1 equ 0
+SysScore2 equ 0
+SysScore3 equ 0
+SysScore4 equ 0
+SysRank0 equ 0
+SysRank1 equ 0
+SysRank2 equ 0
+SysRank3 equ 0
+SysRank4 equ 0
+SysRank5 equ 0
+SysDied equ 0
+SysIn equ 20
+SysDir0 equ 21
+SysDir1 equ 22
+SysDir2 equ 23
+SysDir3 equ 24
+SysDir4 equ 25
+SysDir5 equ 26
+SysDir6 equ 27
+SysDir7 equ 28
+SysDir8 equ 29
+SysDir9 equ 30
+SysNone equ 31
+SysPrompt equ 32
+SysInWhat equ 0
+SysScoreW equ 0
+SysMovesW equ 0
+HF_LT equ 0
+HF_SC equ 1
+HF_DEAD equ 2
+HF_WIN equ 3
+HF_QUIT equ 4
+HF_NIGHT equ 5
+HF_TIRED equ 6
+HF_WPN equ 7
+HF_ACT equ 8
+HF_XT equ 9
+HF_NUADD equ 10
+HF_VEMPTY equ 11
+HF_HEMPTY equ 12
+HF_BOOKP equ 13
+HF_DOGF equ 14
+HF_NOFUEL equ 15
+HF_MUCHFUEL equ 16
+HF_FULLUP equ 17
+HF_HASSTK equ 18
+HF_VNEAR equ 19
+HF_COFFIN equ 20
+HF_SLEEPOK equ 21
+HF_ALWAYS equ 22
+HE_NVERBS equ 22
+HeDict:
+    dw HeD0,HeD1,HeD2,HeD3,HeD4,HeD5,HeD6,HeD7,HeD8,HeD9,HeD10,HeD11
+    dw HeD12,HeD13,HeD14,HeD15,HeD16,HeD17,HeD18,HeD19,HeD20,HeD21,HeD22,HeD23
+    dw HeD24,HeD25,HeD26,HeD27,HeD28,HeD29,HeD30,HeD31,HeD32,HeD33,HeD34,HeD35
+    dw HeD36,HeD37,HeD38,HeD39,HeD40,HeD41,HeD42,HeD43,HeD44,HeD45,HeD46,HeD47
+    dw HeD48,HeD49,HeD50,HeD51,HeD52,HeD53,HeD54,HeD55,HeD56,HeD57,HeD58,HeD59
+    dw HeD60,HeD61,HeD62,HeD63,HeD64,HeD65,HeD66,HeD67,HeD68,HeD69,HeD70,HeD71
+    dw HeD72,HeD73,HeD74,HeD75,HeD76,HeD77,HeD78,HeD79,HeD80,HeD81,HeD82,HeD83
+    dw HeD84,HeD85,HeD86,HeD87,HeD88,HeD89,HeD90,HeD91,HeD92,HeD93,HeD94,HeD95
+    dw HeD96,HeD97,HeD98,HeD99,HeD100,HeD101,HeD102,HeD103,HeD104,HeD105,HeD106,HeD107
+    dw HeD108,HeD109,HeD110,HeD111,HeD112,HeD113,HeD114,HeD115,HeD116,HeD117,HeD118,HeD119
+    dw HeD120,HeD121,HeD122,HeD123,HeD124,HeD125,HeD126,HeD127,HeD128,HeD129,HeD130,HeD131
+    dw HeD132,HeD133,HeD134,HeD135,HeD136,HeD137,HeD138,HeD139,HeD140,HeD141,HeD142,HeD143
+    dw HeD144,HeD145,HeD146,HeD147,HeD148,HeD149,HeD150,HeD151,HeD152,HeD153,HeD154,HeD155
+    dw HeD156,HeD157,HeD158,HeD159,HeD160,HeD161,HeD162,HeD163,HeD164,HeD165,HeD166,HeD167
+    dw HeD168,HeD169,HeD170,HeD171,HeD172,HeD173,HeD174,HeD175,HeD176,HeD177,HeD178,HeD179
+    dw HeD180,HeD181,HeD182,HeD183,HeD184,HeD185,HeD186,HeD187,HeD188,HeD189,HeD190
+HeD0:
+    db 32,84,72,69,32,0
+HeD1:
+    db 69,32,0
+HeD2:
+    db 84,72,0
+HeD3:
+    db 83,32,0
+HeD4:
+    db 69,82,0
+HeD5:
+    db 84,32,0
+HeD6:
+    db 73,78,0
+HeD7:
+    db 83,84,0
+HeD8:
+    db 79,78,0
+HeD9:
+    db 73,4,0
+HeD10:
+    db 80,65,3,0
+HeD11:
+    db 68,32,0
+HeD12:
+    db 79,85,0
+HeD13:
+    db 65,78,0
+HeD14:
+    db 46,32,0
+HeD15:
+    db 65,82,0
+HeD16:
+    db 89,32,0
+HeD17:
+    db 78,79,82,3,0
+HeD18:
+    db 86,65,77,80,73,82,0
+HeD19:
+    db 79,70,0
+HeD20:
+    db 65,76,76,0
+HeD21:
+    db 69,78,0
+HeD22:
+    db 86,73,76,76,65,71,0
+HeD23:
+    db 84,79,0
+HeD24:
+    db 67,65,8,76,69,0
+HeD25:
+    db 3,5,2,0
+HeD26:
+    db 7,71,32,0
+HeD27:
+    db 65,84,0
+HeD28:
+    db 72,13,83,69,0
+HeD29:
+    db 65,32,0
+HeD30:
+    db 79,82,0
+HeD31:
+    db 44,32,66,85,6,0
+HeD32:
+    db 87,65,0
+HeD33:
+    db 69,65,0
+HeD34:
+    db 67,72,85,82,67,72,0
+HeD35:
+    db 82,79,0
+HeD36:
+    db 69,76,0
+HeD37:
+    db 72,5,69,0
+HeD38:
+    db 89,13,32,0
+HeD39:
+    db 20,32,0
+HeD40:
+    db 69,83,0
+HeD41:
+    db 83,13,3,0
+HeD42:
+    db 69,12,0
+HeD43:
+    db 83,77,21,32,0
+HeD44:
+    db 15,3,10,0
+HeD45:
+    db 78,79,0
+HeD46:
+    db 3,2,0
+HeD47:
+    db 76,14,84,5,78,0
+HeD48:
+    db 71,28,2,0
+HeD49:
+    db 83,79,77,2,0
+HeD50:
+    db 44,32,0
+HeD51:
+    db 69,4,0
+HeD52:
+    db 24,32,0
+HeD53:
+    db 73,32,65,77,32,110,6,67,16,82,0
+HeD54:
+    db 68,79,87,78,0
+HeD55:
+    db 14,12,0
+HeD56:
+    db 71,82,13,78,68,83,75,69,69,80,0
+HeD57:
+    db 20,1,0
+HeD58:
+    db 83,72,79,80,0
+HeD59:
+    db 79,79,0
+HeD60:
+    db 24,1,0
+HeD61:
+    db 46,1,0
+HeD62:
+    db 77,69,68,73,69,86,65,76,32,0
+HeD63:
+    db 16,2,0
+HeD64:
+    db 7,71,0
+HeD65:
+    db 32,70,0
+HeD66:
+    db 76,73,0
+HeD67:
+    db 98,8,45,87,105,6,0
+HeD68:
+    db 79,32,0
+HeD69:
+    db 100,79,77,0
+HeD70:
+    db 72,65,0
+HeD71:
+    db 83,73,71,78,32,0
+HeD72:
+    db 79,76,0
+HeD73:
+    db 5,32,0
+HeD74:
+    db 135,4,66,69,22,32,76,69,70,6,0
+HeD75:
+    db 69,46,0
+HeD76:
+    db 73,82,0
+HeD77:
+    db 97,76,75,0
+HeD78:
+    db 77,80,0
+HeD79:
+    db 9,2,0
+HeD80:
+    db 11,32,0
+HeD81:
+    db 3,82,13,71,72,32,0
+HeD82:
+    db 73,84,0
+HeD83:
+    db 69,69,80,0
+HeD84:
+    db 87,124,68,22,32,0
+HeD85:
+    db 66,85,73,76,68,0
+HeD86:
+    db 84,87,133,113,29,4,70,31,1,0
+HeD87:
+    db 76,16,71,2,0
+HeD88:
+    db 111,136,83,65,89,83,58,32,39,0
+HeD89:
+    db 85,83,0
+HeD90:
+    db 82,69,0
+HeD91:
+    db 85,78,0
+HeD92:
+    db 82,73,0
+HeD93:
+    db 65,67,75,0
+HeD94:
+    db 98,83,6,0
+HeD95:
+    db 32,10,0
+HeD96:
+    db 71,16,68,22,0
+HeD97:
+    db 32,79,86,5,71,100,87,78,0
+HeD98:
+    db 69,68,0
+HeD99:
+    db 87,69,8,0
+HeD100:
+    db 76,2,0
+HeD101:
+    db 87,101,76,0
+HeD102:
+    db 67,79,84,84,65,71,0
+HeD103:
+    db 9,32,0
+HeD104:
+    db 84,82,65,86,101,0
+HeD105:
+    db 68,105,5,84,107,0
+HeD106:
+    db 67,9,84,7,85,0
+HeD107:
+    db 97,4,9,67,2,0
+HeD108:
+    db 111,19,2,0
+HeD109:
+    db 73,32,78,69,107,0
+HeD110:
+    db 73,6,0
+HeD111:
+    db 26,10,0
+HeD112:
+    db 76,17,0
+HeD113:
+    db 8,65,75,0
+HeD114:
+    db 145,7,130,82,9,6,104,0
+HeD115:
+    db 72,5,2,0
+HeD116:
+    db 73,83,1,0
+HeD117:
+    db 70,73,101,12,172,154,107,69,88,84,0
+HeD118:
+    db 182,22,83,73,86,101,17,70,31,130,0
+HeD119:
+    db 89,46,0
+HeD120:
+    db 7,32,0
+HeD121:
+    db 102,46,0
+HeD122:
+    db 32,77,0
+HeD123:
+    db 73,76,76,0
+HeD124:
+    db 86,5,0
+HeD125:
+    db 83,97,143,0
+HeD126:
+    db 3,10,0
+HeD127:
+    db 11,126,145,84,85,82,78,4,180,0
+HeD128:
+    db 30,76,9,71,32,0
+HeD129:
+    db 65,6,0
+HeD130:
+    db 87,21,0
+HeD131:
+    db 142,97,17,117,0
+HeD132:
+    db 18,32,0
+HeD133:
+    db 73,67,0
+HeD134:
+    db 77,32,0
+HeD135:
+    db 76,124,75,4,0
+HeD136:
+    db 66,157,68,71,0
+HeD137:
+    db 67,65,8,165,0
+HeD138:
+    db 73,32,68,133,110,6,0
+HeD139:
+    db 83,69,0
+HeD140:
+    db 85,80,0
+HeD141:
+    db 80,16,6,0
+HeD142:
+    db 166,187,65,7,84,65,7,163,0
+HeD143:
+    db 122,25,46,0
+HeD144:
+    db 14,32,0
+HeD145:
+    db 69,70,0
+HeD146:
+    db 76,79,0
+HeD147:
+    db 71,72,0
+HeD148:
+    db 66,69,0
+HeD149:
+    db 98,68,0
+HeD150:
+    db 83,76,148,0
+HeD151:
+    db 87,137,86,0
+HeD152:
+    db 84,84,0
+HeD153:
+    db 71,16,131,67,0
+HeD154:
+    db 72,137,17,0
+HeD155:
+    db 7,78,0
+HeD156:
+    db 18,45,106,0
+HeD157:
+    db 22,84,0
+HeD158:
+    db 15,176,30,0
+HeD159:
+    db 15,26,128,0
+HeD160:
+    db 135,86,2,0
+HeD161:
+    db 69,67,84,73,9,0
+HeD162:
+    db 28,84,158,129,46,0
+HeD163:
+    db 77,65,0
+HeD164:
+    db 131,116,0
+HeD165:
+    db 66,2,0
+HeD166:
+    db 22,32,0
+HeD167:
+    db 82,65,0
+HeD168:
+    db 31,32,0
+HeD169:
+    db 73,32,67,14,39,6,0
+HeD170:
+    db 14,68,0
+HeD171:
+    db 98,8,0
+HeD172:
+    db 76,65,0
+HeD173:
+    db 20,70,0
+HeD174:
+    db 85,101,0
+HeD175:
+    db 83,73,0
+HeD176:
+    db 32,104,0
+HeD177:
+    db 67,79,0
+HeD178:
+    db 8,65,141,0
+HeD179:
+    db 14,17,0
+HeD180:
+    db 66,17,0
+HeD181:
+    db 69,77,4,0
+HeD182:
+    db 83,46,0
+HeD183:
+    db 70,100,199,0
+HeD184:
+    db 110,6,0
+HeD185:
+    db 79,80,22,0
+HeD186:
+    db 65,76,0
+HeD187:
+    db 76,210,84,46,0
+HeD188:
+    db 68,79,0
+HeD189:
+    db 66,79,217,165,0
+HeD190:
+    db 67,31,78,138,0
+HeMsgTab:
+    dw HeM0,HeM1,HeM2,HeM3,HeM4,HeM5,HeM6,HeM7,HeM8,HeM9,HeM10,HeM11
+    dw HeM12,HeM13,HeM14,HeM15,HeM16,HeM17,HeM18,HeM19,HeM20,HeM21,HeM22,HeM23
+    dw HeM24,HeM25,HeM26,HeM27,HeM28,HeM29,HeM30,HeM31,HeM32,HeM33,HeM34,HeM35
+    dw HeM36,HeM37,HeM38,HeM39,HeM40,HeM41,HeM42,HeM43,HeM44,HeM45,HeM46,HeM47
+    dw HeM48,HeM49,HeM50,HeM51,HeM52,HeM53,HeM54,HeM55,HeM56,HeM57,HeM58,HeM59
+    dw HeM60,HeM61,HeM62,HeM63,HeM64,HeM65,HeM66,HeM67,HeM68,HeM69,HeM70,HeM71
+    dw HeM72,HeM73,HeM74,HeM75,HeM76,HeM77,HeM78,HeM79,HeM80,HeM81,HeM82,HeM83
+    dw HeM84,HeM85,HeM86,HeM87,HeM88,HeM89,HeM90,HeM91,HeM92,HeM93,HeM94,HeM95
+    dw HeM96,HeM97,HeM98,HeM99,HeM100,HeM101,HeM102,HeM103,HeM104,HeM105,HeM106,HeM107
+    dw HeM108,HeM109,HeM110,HeM111,HeM112,HeM113,HeM114,HeM115,HeM116,HeM117,HeM118,HeM119
+    dw HeM120,HeM121,HeM122,HeM123,HeM124,HeM125,HeM126,HeM127,HeM128,HeM129,HeM130,HeM131
+    dw HeM132,HeM133,HeM134,HeM135,HeM136,HeM137,HeM138,HeM139,HeM140,HeM141,HeM142,HeM143
+    dw HeM144,HeM145,HeM146,HeM147,HeM148,HeM149,HeM150,HeM151,HeM152,HeM153,HeM154,HeM155
+    dw HeM156,HeM157,HeM158,HeM159,HeM160,HeM161,HeM162,HeM163,HeM164,HeM165,HeM166,HeM167
+    dw HeM168,HeM169,HeM170,HeM171,HeM172,HeM173,HeM174,HeM175,HeM176,HeM177,HeM178,HeM179
+    dw HeM180,HeM181,HeM182,HeM183,HeM184,HeM185,HeM186,HeM187,HeM188,HeM189,HeM190,HeM191
+    dw HeM192,HeM193,HeM194,HeM195,HeM196,HeM197,HeM198,HeM199,HeM200,HeM201,HeM202,HeM203
+    dw HeM204,HeM205,HeM206,HeM207,HeM208,HeM209,HeM210,HeM211,HeM212,HeM213,HeM214,HeM215
+    dw HeM216,HeM217,HeM218,HeM219,HeM220,HeM221,HeM222,HeM223,HeM224,HeM225,HeM226,HeM227
+    dw HeM228,HeM229,HeM230,HeM231,HeM232,HeM233,HeM234,HeM235,HeM236,HeM237,HeM238,HeM239
+    dw HeM240,HeM241,HeM242,HeM243,HeM244,HeM245,HeM246,HeM247,HeM248,HeM249,HeM250,HeM251
+    dw HeM252,HeM253,HeM254,HeM255,HeM256,HeM257,HeM258,HeM259,HeM260,HeM261,HeM262,HeM263
+    dw HeM264,HeM265,HeM266,HeM267,HeM268,HeM269,HeM270,HeM271,HeM272,HeM273,HeM274,HeM275
+    dw HeM276,HeM277,HeM278,HeM279,HeM280,HeM281,HeM282,HeM283,HeM284,HeM285,HeM286,HeM287
+    dw HeM288,HeM289,HeM290,HeM291,HeM292,HeM293,HeM294,HeM295,HeM296,HeM297,HeM298,HeM299
+    dw HeM300,HeM301,HeM302,HeM303,HeM304,HeM305,HeM306,HeM307,HeM308,HeM309,HeM310,HeM311
+    dw HeM312,HeM313,HeM314,HeM315,HeM316,HeM317,HeM318,HeM319,HeM320,HeM321,HeM322,HeM323
+    dw HeM324,HeM325
+HeM0:
+    db 0
+HeM1:
+    db 175,10,24,133,68,16,75,32,117,204,140,0
+HeM2:
+    db 176,0
+HeM3:
+    db 30,0
+HeM4:
+    db 209,0
+HeM5:
+    db 114,0
+HeM6:
+    db 32,186,0
+HeM7:
+    db 79,66,86,73,13,4,69,88,147,4,24,58,0
+HeM8:
+    db 32,78,9,140,0
+HeM9:
+    db 234,71,133,3,194,97,184,0
+HeM10:
+    db 32,87,72,133,75,110,87,83,63,0
+HeM11:
+    db 103,128,67,16,82,89,129,58,0
+HeM12:
+    db 103,128,69,143,84,17,72,235,163,46,0
+HeM13:
+    db 103,128,251,82,214,17,67,16,82,89,27,147,46,0
+HeM14:
+    db 128,103,75,73,68,68,129,63,0
+HeM15:
+    db 84,65,75,22,46,0
+HeM16:
+    db 73,187,154,6,68,100,80,32,83,79,77,69,3,27,70,141,8,46,0
+HeM17:
+    db 118,89,27,147,46,0
+HeM18:
+    db 252,0
+HeM19:
+    db 73,32,204,2,110,3,27,83,80,69,67,73,251,46,0
+HeM20:
+    db 32,185,0
+HeM21:
+    db 18,0
+HeM22:
+    db 106,0
+HeM23:
+    db 236,0
+HeM24:
+    db 164,0
+HeM25:
+    db 18,164,0
+HeM26:
+    db 18,236,0
+HeM27:
+    db 106,236,0
+HeM28:
+    db 106,164,0
+HeM29:
+    db 205,0
+HeM30:
+    db 119,0
+HeM31:
+    db 40,110,3,129,41,0
+HeM32:
+    db 62,32,0
+HeM33:
+    db 71,79,0
+HeM34:
+    db 76,124,75,0
+HeM35:
+    db 69,88,65,77,7,69,0
+HeM36:
+    db 84,65,75,69,0
+HeM37:
+    db 68,100,80,0
+HeM38:
+    db 7,86,22,24,82,89,0
+HeM39:
+    db 69,28,0
+HeM40:
+    db 68,82,7,75,0
+HeM41:
+    db 82,214,0
+HeM42:
+    db 237,143,32,9,0
+HeM43:
+    db 237,143,32,238,0
+HeM44:
+    db 155,70,239,0
+HeM45:
+    db 228,75,69,0
+HeM46:
+    db 67,72,79,80,0
+HeM47:
+    db 75,188,0
+HeM48:
+    db 71,73,86,69,0
+HeM49:
+    db 3,100,87,0
+HeM50:
+    db 97,147,0
+HeM51:
+    db 215,0
+HeM52:
+    db 84,73,77,69,0
+HeM53:
+    db 68,157,86,69,0
+HeM54:
+    db 81,85,147,0
+HeM55:
+    db 108,84,155,69,0
+HeM56:
+    db 240,71,78,0
+HeM57:
+    db 253,71,0
+HeM58:
+    db 216,105,0
+HeM59:
+    db 80,158,241,216,105,0
+HeM60:
+    db 100,80,69,0
+HeM61:
+    db 112,0
+HeM62:
+    db 70,124,68,0
+HeM63:
+    db 86,7,69,71,16,0
+HeM64:
+    db 254,104,86,7,69,71,16,0
+HeM65:
+    db 149,77,21,69,84,0
+HeM66:
+    db 112,130,239,0
+HeM67:
+    db 67,209,104,112,130,239,0
+HeM68:
+    db 65,88,69,0
+HeM69:
+    db 218,0
+HeM70:
+    db 8,82,27,104,218,0
+HeM71:
+    db 66,124,75,0
+HeM72:
+    db 219,87,28,5,0
+HeM73:
+    db 254,104,219,87,28,5,0
+HeM74:
+    db 219,97,70,5,83,0
+HeM75:
+    db 84,185,104,219,97,70,5,83,0
+HeM76:
+    db 67,82,85,67,73,70,73,88,0
+HeM77:
+    db 75,78,73,70,69,0
+HeM78:
+    db 70,22,67,2,80,251,105,0
+HeM79:
+    db 66,100,75,22,130,22,67,2,80,251,105,0
+HeM80:
+    db 77,141,82,31,0
+HeM81:
+    db 80,73,69,67,2,104,77,141,82,31,0
+HeM82:
+    db 149,178,105,0
+HeM83:
+    db 211,71,83,0
+HeM84:
+    db 8,85,143,0
+HeM85:
+    db 255,8,9,69,0
+HeM86:
+    db 166,0
+HeM87:
+    db 99,0
+HeM88:
+    db 23,2,220,0
+HeM89:
+    db 23,2,123,0
+HeM90:
+    db 29,0
+HeM91:
+    db 167,69,0
+HeM92:
+    db 141,168,71,28,69,0
+HeM93:
+    db 113,29,0
+HeM94:
+    db 157,189,0
+HeM95:
+    db 190,0
+HeM96:
+    db 70,73,101,68,0
+HeM97:
+    db 25,0
+HeM98:
+    db 161,0
+HeM99:
+    db 23,69,0
+HeM100:
+    db 8,144,195,0
+HeM101:
+    db 82,28,83,0
+HeM102:
+    db 66,28,83,0
+HeM103:
+    db 19,69,0
+HeM104:
+    db 49,48,187,7,85,84,105,0
+HeM105:
+    db 49,32,72,13,82,0
+HeM106:
+    db 51,32,72,13,82,83,0
+HeM107:
+    db 49,48,32,72,13,82,83,0
+HeM108:
+    db 178,2,185,19,69,0
+HeM109:
+    db 145,65,80,80,100,65,67,72,27,23,69,15,30,108,23,2,229,125,18,46,0
+HeM110:
+    db 179,220,126,142,32,117,209,220,32,229,125,159,104,191,221,32,11,46,0
+HeM111:
+    db 196,220,15,103,128,9,1,242,66,66,165,8,144,142,32,122,220,46,0
+HeM112:
+    db 220,32,68,7,27,134,126,68,7,27,72,21,32,122,220,160,80,79,31,177,131,84,15,175
+    db 120,30,108,66,158,134,32,79,67,67,205,89,1,222,141,2,119,243,4,122,67,82,85,77
+    db 66,76,27,150,129,15,30,243,97,17,76,214,4,205,32,117,30,86,65,67,14,6,66,163
+    db 134,46,0
+HeM113:
+    db 66,163,134,109,108,66,163,134,32,135,4,204,22,187,244,169,5,83,223,108,66,107,87,180
+    db 103,67,209,215,32,242,77,70,31,84,65,66,76,89,15,114,147,246,76,210,6,245,79,3
+    db 5,4,65,68,31,78,1,134,96,176,110,3,27,154,210,85,76,46,0
+HeM114:
+    db 66,158,134,126,66,158,134,32,122,220,160,154,107,117,8,31,2,156,154,107,147,69,77,247
+    db 0
+HeM115:
+    db 192,120,72,214,4,197,120,236,46,0
+HeM116:
+    db 11,109,132,145,67,85,84,4,3,13,212,1,23,140,0
+HeM117:
+    db 179,123,126,142,32,125,23,2,123,32,229,197,104,186,0
+HeM118:
+    db 196,123,15,30,170,123,32,229,125,18,15,175,10,137,68,96,144,122,213,217,138,75,69,80
+    db 6,150,129,4,7,1,23,140,0
+HeM119:
+    db 192,120,171,116,197,120,164,46,0
+HeM120:
+    db 11,126,145,10,221,15,125,159,128,114,79,67,67,205,73,107,167,105,46,0
+HeM121:
+    db 179,29,83,15,114,79,67,67,205,73,107,29,4,128,106,241,191,11,46,0
+HeM122:
+    db 166,126,145,22,68,4,194,30,68,82,17,166,46,0
+HeM123:
+    db 7,240,68,69,1,166,15,176,110,32,97,17,13,6,66,85,6,205,46,0
+HeM124:
+    db 11,223,136,125,197,87,72,198,72,160,24,133,108,117,230,82,98,12,248,191,68,73,8,14
+    db 67,140,0
+HeM125:
+    db 179,99,15,125,87,105,6,131,105,1,142,32,125,9,177,99,32,7,1,23,140,0
+HeM126:
+    db 196,99,126,23,2,99,32,229,70,85,82,3,138,125,164,46,0
+HeM127:
+    db 99,32,83,14,67,84,85,16,89,109,206,122,99,160,207,96,200,65,4,73,70,32,175,135
+    db 12,213,231,68,65,228,71,107,155,67,222,76,184,0
+HeM128:
+    db 99,32,251,242,86,69,109,134,160,83,77,21,138,3,14,1,134,32,125,18,224,114,154,210
+    db 85,76,32,3,129,4,186,0
+HeM129:
+    db 11,126,100,65,12,68,73,86,73,68,116,125,18,223,136,120,30,108,150,27,125,106,46,0
+HeM130:
+    db 11,126,145,213,242,77,116,77,31,2,131,75,2,30,84,232,73,76,32,65,4,175,72,214
+    db 4,159,7,125,70,31,69,8,46,0
+HeM131:
+    db 100,79,6,67,101,76,5,15,175,10,67,124,76,32,120,68,82,17,102,224,69,143,84,17
+    db 66,65,83,75,69,84,4,9,1,83,72,101,86,116,87,72,198,72,32,76,7,69,1,195
+    db 4,104,191,134,46,0
+HeM132:
+    db 123,126,71,82,13,78,12,70,211,233,122,123,32,200,155,67,222,177,65,66,235,9,163,224
+    db 8,188,32,114,83,205,80,131,105,96,77,79,83,6,128,83,67,28,84,5,107,154,101,105
+    db 83,177,65,66,13,84,15,243,97,89,4,76,98,12,205,32,120,119,130,100,199,186,0
+HeM133:
+    db 66,163,134,241,123,109,65,80,80,69,16,4,117,225,213,22,1,66,163,134,32,122,123,75
+    db 148,5,115,251,3,13,212,32,26,128,110,32,76,9,71,138,244,240,71,78,4,122,80,5
+    db 83,168,87,72,133,9,67,2,131,86,107,186,0
+HeM134:
+    db 11,15,125,106,32,26,181,155,16,241,30,84,87,133,8,31,17,150,129,96,176,110,32,97
+    db 17,26,248,186,0
+HeM135:
+    db 11,15,70,16,32,125,159,128,114,170,29,247,0
+HeM136:
+    db 11,109,10,206,104,193,221,32,80,65,83,83,65,71,2,146,30,3,198,75,130,31,69,8
+    db 46,0
+HeM137:
+    db 196,29,15,30,170,72,13,83,2,229,125,236,15,125,18,115,146,114,84,155,105,115,10,14
+    db 79,3,138,170,29,46,0
+HeM138:
+    db 170,29,109,181,7,240,68,2,104,30,83,77,21,115,144,134,32,167,69,15,249,77,85,67
+    db 72,32,155,228,7,4,122,150,27,120,147,4,237,83,6,79,67,67,205,14,84,83,96,26
+    db 128,228,17,230,114,154,210,85,76,32,3,129,4,186,0
+HeM139:
+    db 196,29,15,30,170,72,13,83,2,229,125,236,15,125,106,115,213,89,9,12,114,84,155,116
+    db 229,14,79,3,138,29,46,0
+HeM140:
+    db 70,31,69,8,126,70,31,105,6,180,10,189,17,68,22,204,59,32,131,217,165,67,209,230
+    db 204,231,185,244,68,141,226,46,0
+HeM141:
+    db 157,86,138,66,14,75,126,157,86,138,180,70,211,87,4,8,214,73,76,184,0
+HeM142:
+    db 190,109,181,106,32,22,12,122,190,46,0
+HeM143:
+    db 66,100,75,231,201,69,109,201,2,9,67,2,83,80,14,78,163,1,87,73,68,3,32,122
+    db 157,189,46,0
+HeM144:
+    db 11,223,136,125,159,87,72,198,72,160,24,133,108,117,230,82,98,12,248,186,0
+HeM145:
+    db 11,15,125,197,181,121,5,39,4,108,167,140,0
+HeM146:
+    db 192,72,214,27,197,120,236,15,30,83,77,21,138,11,115,76,105,4,155,67,222,177,154,163
+    db 115,72,214,4,164,15,125,197,181,77,79,194,122,137,12,127,25,46,0
+HeM147:
+    db 11,15,125,197,181,113,122,137,12,127,25,126,145,171,116,236,45,164,46,0
+HeM148:
+    db 11,126,145,171,116,236,45,164,15,125,197,181,77,79,194,122,137,12,127,25,46,0
+HeM149:
+    db 11,15,84,87,133,11,4,67,100,83,4,102,115,144,236,45,164,44,1,79,3,138,221,15
+    db 66,79,3,32,87,5,2,9,67,2,154,107,72,98,86,73,76,184,0
+HeM150:
+    db 11,109,132,145,76,214,4,68,148,138,7,125,70,31,69,8,46,0
+HeM151:
+    db 11,15,70,85,82,3,138,169,32,159,10,66,211,67,75,107,245,70,21,231,84,155,105,46
+    db 0
+HeM152:
+    db 70,22,67,69,15,26,172,30,80,198,75,69,6,70,22,67,2,102,96,189,17,131,217,165
+    db 155,228,7,247,0
+HeM153:
+    db 196,121,5,39,4,29,126,242,66,66,165,8,144,142,32,125,121,5,39,4,167,2,200,131
+    db 75,2,175,172,207,15,110,87,32,175,10,189,17,77,85,67,72,162,46,0
+HeM154:
+    db 121,5,39,4,29,224,70,69,87,32,80,5,83,9,251,32,147,246,102,96,114,3,129,4
+    db 228,17,230,154,210,85,76,46,0
+HeM155:
+    db 87,105,6,113,29,109,10,144,104,151,106,45,113,208,0
+HeM156:
+    db 106,32,71,28,69,126,152,141,168,113,139,250,59,1,68,232,87,201,2,79,189,1,77,79
+    db 194,139,119,15,222,5,129,1,202,180,87,188,32,80,85,6,103,9,1,71,82,13,78,12
+    db 70,211,233,122,25,15,26,68,133,249,65,80,80,69,16,32,117,230,244,79,3,138,222,82
+    db 14,67,116,168,191,70,65,67,2,208,0
+HeM157:
+    db 159,113,29,109,10,144,104,151,106,45,113,208,0
+HeM158:
+    db 11,109,221,32,145,67,85,84,4,146,14,162,32,161,46,0
+HeM159:
+    db 161,109,10,9,177,144,206,104,14,162,32,161,46,0
+HeM160:
+    db 7,240,68,69,1,166,15,176,65,66,13,6,30,70,124,6,104,87,28,138,102,15,8,82
+    db 14,71,69,115,176,30,83,131,212,6,68,232,70,6,242,77,27,70,100,77,1,164,46,0
+HeM161:
+    db 166,109,67,141,67,85,76,16,32,145,16,13,78,68,1,166,32,204,246,82,16,101,17,154
+    db 163,46,0
+HeM162:
+    db 11,109,132,145,67,85,84,4,146,14,162,32,161,46,0
+HeM163:
+    db 11,126,145,171,116,221,59,32,176,30,78,69,87,32,145,72,214,27,236,46,0
+HeM164:
+    db 161,109,206,122,161,32,229,213,84,87,69,231,30,221,32,145,235,1,159,202,195,46,0
+HeM165:
+    db 195,109,181,106,45,159,255,122,8,144,195,32,208,0
+HeM166:
+    db 195,126,9,177,65,67,67,105,73,66,165,80,31,84,73,168,122,106,32,195,32,208,0
+HeM167:
+    db 195,109,181,159,195,32,122,25,224,110,32,222,82,14,67,116,186,0
+HeM168:
+    db 7,240,68,69,1,127,25,46,0
+HeM169:
+    db 106,130,73,101,68,109,152,183,16,77,129,46,0
+HeM170:
+    db 18,130,73,101,68,109,152,183,16,77,129,46,0
+HeM171:
+    db 108,68,73,75,69,15,30,108,68,73,75,2,97,4,67,9,8,82,85,67,84,107,180,117
+    db 75,148,1,157,189,130,100,77,130,76,124,68,129,1,70,73,101,68,4,68,85,82,129,1
+    db 83,80,82,27,82,156,238,46,0
+HeM172:
+    db 190,126,159,22,12,122,190,15,68,141,226,4,71,69,6,67,9,70,154,107,186,0
+HeM173:
+    db 190,126,87,105,6,22,12,122,190,223,157,86,138,78,69,16,66,184,0
+HeM174:
+    db 157,189,126,67,85,82,82,22,6,10,8,82,9,71,96,249,83,133,8,82,9,71,32,3
+    db 194,234,75,148,187,17,70,124,84,129,46,0
+HeM175:
+    db 11,126,132,145,22,68,4,180,120,250,4,7,117,30,152,70,73,101,12,125,106,46,0
+HeM176:
+    db 11,126,145,10,132,248,186,0
+HeM177:
+    db 87,105,6,113,29,15,144,122,151,197,113,208,0
+HeM178:
+    db 197,71,28,69,223,108,141,168,113,102,109,228,17,225,213,231,114,75,7,12,104,83,5,86
+    db 198,2,222,82,14,67,69,126,113,139,250,115,235,1,68,232,87,201,2,119,32,79,189,1
+    db 77,79,28,46,0
+HeM179:
+    db 159,113,29,15,144,122,151,197,113,208,0
+HeM180:
+    db 195,126,9,177,65,67,67,105,240,66,165,80,31,84,73,168,122,197,195,32,208,0
+HeM181:
+    db 195,126,197,87,105,6,255,122,202,195,46,0
+HeM182:
+    db 11,15,30,78,69,87,32,145,72,214,4,164,115,87,72,73,165,191,145,171,116,18,46,0
+HeM183:
+    db 11,15,70,85,82,3,138,169,32,18,160,66,211,67,75,32,245,70,21,231,84,155,105,46
+    db 0
+HeM184:
+    db 11,15,206,104,193,132,11,46,0
+HeM185:
+    db 11,15,125,106,32,181,197,113,104,30,127,8,89,165,25,126,132,145,171,105,46,0
+HeM186:
+    db 83,156,204,84,46,0
+HeM187:
+    db 111,83,156,160,204,217,129,46,0
+HeM188:
+    db 83,156,157,83,140,0
+HeM189:
+    db 111,216,116,128,227,0
+HeM190:
+    db 111,253,71,32,68,210,22,68,4,89,13,46,0
+HeM191:
+    db 111,237,143,160,13,6,104,70,239,46,0
+HeM192:
+    db 9,76,89,0
+HeM193:
+    db 187,31,2,77,7,85,84,116,104,237,143,130,239,46,0
+HeM194:
+    db 173,10,227,0
+HeM195:
+    db 82,28,4,128,227,0
+HeM196:
+    db 66,28,4,128,227,0
+HeM197:
+    db 174,114,155,8,46,0
+HeM198:
+    db 73,39,199,72,156,71,82,184,0
+HeM199:
+    db 103,68,73,107,104,69,88,135,85,8,73,168,194,0
+HeM200:
+    db 103,225,8,16,86,107,117,68,98,3,32,168,68,65,17,0
+HeM201:
+    db 173,200,205,32,7,125,83,156,32,120,77,101,84,4,65,97,184,0
+HeM202:
+    db 173,97,4,75,188,107,168,68,65,17,0
+HeM203:
+    db 115,194,0
+HeM204:
+    db 15,67,9,71,82,28,85,76,28,73,9,83,115,103,128,110,87,1,67,135,143,73,168,86
+    db 65,143,89,82,2,72,156,84,5,33,0
+HeM205:
+    db 147,39,4,0
+HeM206:
+    db 241,68,65,17,0
+HeM207:
+    db 46,0
+HeM208:
+    db 58,0
+HeM209:
+    db 48,0
+HeM210:
+    db 32,65,77,0
+HeM211:
+    db 32,80,77,0
+HeM212:
+    db 32,68,65,89,40,83,41,241,70,124,12,252,0
+HeM213:
+    db 110,187,31,2,70,124,68,46,0
+HeM214:
+    db 3,194,155,21,17,72,147,83,1,83,80,79,84,46,0
+HeM215:
+    db 70,124,68,58,0
+HeM216:
+    db 187,7,85,84,116,104,70,239,32,252,0
+HeM217:
+    db 103,225,70,21,231,146,30,84,232,80,32,253,233,120,128,156,67,9,83,67,73,13,247,0
+HeM218:
+    db 26,128,82,28,4,186,0
+HeM219:
+    db 26,128,66,28,4,186,0
+HeM220:
+    db 103,71,133,119,1,243,247,0
+HeM221:
+    db 103,71,133,205,1,243,247,0
+HeM222:
+    db 176,30,67,238,185,186,0
+HeM223:
+    db 173,229,65,215,32,185,72,10,67,238,7,46,0
+HeM224:
+    db 111,67,238,7,160,69,143,84,184,0
+HeM225:
+    db 103,76,98,86,69,1,25,46,0
+HeM226:
+    db 103,97,75,2,205,46,0
+HeM227:
+    db 111,253,71,130,137,211,87,4,89,13,46,0
+HeM228:
+    db 111,216,116,70,137,211,87,32,89,13,46,0
+HeM229:
+    db 103,222,5,1,202,168,147,4,24,80,130,211,31,46,0
+HeM230:
+    db 30,19,2,135,156,84,83,1,23,69,15,70,7,12,87,135,6,103,78,69,163,115,222,5
+    db 1,25,115,70,7,12,72,10,67,238,185,120,178,2,72,73,199,65,4,72,2,215,4,245
+    db 68,65,184,0
+HeM231:
+    db 8,198,75,32,205,47,119,58,32,189,66,15,157,212,84,58,32,87,72,28,15,76,210,6
+    db 66,85,217,9,58,32,68,133,147,15,157,212,6,66,85,217,9,58,32,66,158,46,0
+HeM232:
+    db 7,1,25,1,8,198,75,32,142,83,44,1,76,210,6,66,85,217,168,250,83,1,77,22
+    db 85,15,70,13,82,130,211,31,83,115,24,80,32,119,58,32,243,83,115,82,28,83,115,66
+    db 28,83,115,72,73,68,68,231,84,232,80,253,31,83,15,110,32,131,212,84,115,110,32,240
+    db 212,84,59,1,237,143,39,4,70,239,32,82,156,4,13,84,15,66,28,4,84,65,75,2
+    db 87,135,6,103,76,98,86,140,0
+HeM233:
+    db 72,2,142,4,248,57,32,80,199,117,53,32,65,77,15,69,28,115,120,215,32,185,30,66
+    db 107,233,81,85,73,69,6,80,237,67,69,115,233,68,73,2,104,72,156,71,138,233,69,88
+    db 135,85,8,73,9,46,0
+HeM234:
+    db 87,7,58,32,178,116,120,77,21,69,6,185,72,235,115,194,72,10,67,238,185,245,68,65
+    db 89,115,68,157,86,2,178,2,185,19,69,15,84,73,80,58,187,65,80,1,23,140,0
+HeM235:
+    db 245,77,16,67,32,83,85,71,73,89,65,228,115,71,65,77,2,67,9,67,69,80,6,245
+    db 71,155,71,71,32,75,69,73,90,138,120,82,235,17,70,79,83,78,5,15,242,143,85,84
+    db 69,33,39,4,71,65,90,69,217,69,115,228,17,49,57,56,54,115,242,77,77,79,68,31
+    db 2,54,52,46,0
+HeM236:
+    db 67,137,69,242,86,73,240,168,189,240,168,245,67,237,85,68,2,40,14,3,100,80,198,41
+    db 130,233,65,77,17,8,85,68,73,79,115,185,65,77,17,245,65,77,17,66,73,22,86,22
+    db 85,115,50,48,50,54,15,77,154,198,58,32,72,156,84,5,39,4,68,154,75,46,0
+HeM237:
+    db 154,69,1,74,79,89,8,198,75,32,117,142,32,3,82,13,212,1,25,46,0
+HeM238:
+    db 174,117,230,67,16,82,89,129,1,100,80,140,0
+HeM239:
+    db 174,30,100,80,140,0
+HeM240:
+    db 40,154,27,100,80,69,41,0
+HeM241:
+    db 111,112,160,9,46,0
+HeM242:
+    db 111,112,160,238,46,0
+HeM243:
+    db 111,254,10,69,143,84,184,0
+HeM244:
+    db 209,137,12,149,136,87,73,3,32,87,31,68,4,22,71,232,86,107,168,147,46,0
+HeM245:
+    db 191,80,158,241,86,198,73,13,4,216,116,204,246,117,230,69,89,69,27,77,2,72,156,71
+    db 157,76,184,0
+HeM246:
+    db 30,71,124,12,76,22,71,3,241,8,85,82,68,17,72,69,143,32,100,80,2,8,82,9
+    db 71,32,22,13,212,32,117,83,205,80,31,84,1,87,69,73,212,6,104,30,72,85,77,14
+    db 46,0
+HeM247:
+    db 191,14,67,73,22,6,254,104,86,7,69,71,16,160,251,77,79,83,6,70,85,76,76,46
+    db 0
+HeM248:
+    db 193,8,82,27,104,80,79,84,22,6,83,77,101,76,27,218,46,0
+HeM249:
+    db 191,68,85,8,17,137,12,66,124,75,187,65,17,230,87,31,3,32,82,214,129,46,0
+HeM250:
+    db 30,83,72,31,84,45,66,237,68,107,87,124,12,72,235,76,107,75,78,73,70,2,87,72
+    db 198,72,32,200,83,79,77,69,3,27,131,75,2,30,68,65,71,71,5,15,175,204,246,117
+    db 225,213,231,154,107,70,31,187,244,3,129,83,96,175,10,8,188,32,185,189,17,71,124,12
+    db 67,9,68,147,73,168,68,105,80,147,2,147,4,65,71,140,0
+HeM251:
+    db 3,105,2,178,116,128,67,16,86,107,87,73,3,32,144,83,72,16,80,32,22,68,46,0
+HeM252:
+    db 30,83,72,31,6,211,71,130,100,199,30,155,67,222,177,119,107,101,199,84,155,140,0
+HeM253:
+    db 191,255,8,144,135,4,30,83,72,31,6,68,163,198,28,73,168,22,71,232,86,107,168,147
+    db 46,0
+HeM254:
+    db 111,166,160,67,141,67,85,76,16,32,87,73,3,32,209,250,27,152,22,13,212,130,233,30
+    db 77,209,117,67,131,77,66,32,119,223,8,82,9,71,32,80,79,83,6,117,84,73,2,30
+    db 100,80,2,117,78,69,16,66,184,0
+HeM255:
+    db 111,99,160,30,8,144,150,27,185,71,124,12,67,9,68,147,73,9,130,233,147,4,65,71
+    db 140,0
+HeM256:
+    db 111,23,2,220,160,30,68,69,67,65,89,27,84,87,133,8,31,17,149,150,129,15,175,65
+    db 80,80,69,16,4,117,213,1,9,177,220,32,7,1,23,140,0
+HeM257:
+    db 111,23,2,123,32,200,155,67,222,177,65,66,235,9,163,15,175,10,207,96,10,213,71,220
+    db 27,117,83,72,79,87,32,147,4,65,71,140,0
+HeM258:
+    db 191,29,115,131,75,2,77,244,122,79,3,5,4,7,1,23,69,115,10,137,68,115,120,189
+    db 17,83,77,21,15,175,135,4,9,177,144,8,31,17,120,30,83,129,165,134,46,0
+HeM259:
+    db 191,152,141,168,113,125,202,10,82,85,8,107,120,87,188,32,249,77,79,86,69,15,70,31
+    db 84,156,28,101,89,115,175,139,250,130,233,244,87,235,5,27,169,5,46,0
+HeM260:
+    db 191,8,144,113,72,13,83,2,72,137,68,4,144,240,68,2,122,141,168,71,28,140,0
+HeM261:
+    db 111,157,189,130,211,87,4,8,214,73,177,120,10,70,65,141,177,68,148,46,0
+HeM262:
+    db 111,190,160,249,24,133,68,14,71,5,13,83,96,175,10,68,73,70,70,198,85,76,6,117
+    db 169,32,146,147,15,68,141,226,4,84,22,12,117,71,69,6,67,9,70,154,107,7,1,190
+    db 46,0
+HeM263:
+    db 191,183,16,77,129,96,110,32,76,9,71,5,15,175,135,4,249,213,231,80,76,13,212,107
+    db 70,31,187,244,89,69,16,247,0
+HeM264:
+    db 191,202,242,77,116,242,143,76,69,84,2,87,73,3,32,30,77,79,194,120,68,232,87,201
+    db 69,126,201,2,10,119,32,120,83,65,70,2,70,233,169,126,13,84,138,195,160,228,68,2
+    db 104,8,9,69,96,176,9,177,144,100,87,241,108,87,7,253,87,83,126,113,204,246,117,213
+    db 1,9,177,97,17,7,125,25,46,0
+HeM265:
+    db 191,172,30,211,86,101,17,161,96,3,13,212,32,89,69,16,4,104,78,69,71,76,69,67
+    db 6,135,4,155,189,84,107,117,70,31,105,6,76,235,46,0
+HeM266:
+    db 111,108,23,2,3,194,229,125,197,80,100,66,65,66,177,135,4,30,108,220,115,123,32,120
+    db 99,224,114,29,83,15,203,204,2,77,244,80,69,79,80,165,65,66,13,6,120,3,69,17
+    db 128,21,32,189,17,83,72,89,15,68,9,39,6,69,88,80,69,67,6,244,67,9,189,83
+    db 28,73,9,247,0
+HeM267:
+    db 111,8,144,195,4,128,228,68,2,205,241,77,244,141,155,71,85,76,16,177,83,135,80,107
+    db 8,9,105,115,72,101,12,24,71,69,3,138,87,73,3,187,31,84,16,224,110,32,71,65
+    db 80,4,213,84,87,69,22,1,8,9,105,15,79,68,68,76,89,115,176,9,177,144,100,87
+    db 241,87,7,253,87,4,9,1,195,46,0
+HeM268:
+    db 30,66,147,2,248,144,104,3,105,2,152,82,28,4,77,73,212,6,80,100,86,2,70,28
+    db 251,46,0
+HeM269:
+    db 3,105,2,128,152,19,2,66,28,83,15,3,69,141,32,66,147,2,10,7,67,65,80,65
+    db 67,147,28,129,46,0
+HeM270:
+    db 173,135,4,193,66,76,158,32,67,65,80,2,120,83,72,16,80,130,14,71,247,0
+HeM271:
+    db 111,216,116,71,100,87,76,46,0
+HeM272:
+    db 30,152,66,194,67,65,77,2,119,32,120,24,79,75,32,175,65,97,184,0
+HeM273:
+    db 73,39,199,249,72,156,71,82,184,0
+HeM274:
+    db 232,87,32,218,115,89,85,67,75,33,0
+HeM275:
+    db 87,72,17,68,73,12,73,32,69,28,1,219,97,70,5,83,63,0
+HeM276:
+    db 3,194,10,249,163,73,66,76,140,0
+HeM277:
+    db 73,39,199,249,3,141,8,184,0
+HeM278:
+    db 3,5,69,39,4,78,144,252,0
+HeM279:
+    db 89,198,75,33,0
+HeM280:
+    db 3,14,75,83,115,73,32,97,4,3,141,8,184,0
+HeM281:
+    db 234,68,82,7,75,32,3,28,46,0
+HeM282:
+    db 153,220,39,46,0
+HeM283:
+    db 153,111,23,2,99,39,46,0
+HeM284:
+    db 153,121,5,39,46,0
+HeM285:
+    db 153,123,32,120,84,232,68,27,80,79,8,39,46,0
+HeM286:
+    db 175,83,65,89,83,58,32,86,65,143,89,82,2,72,156,84,5,46,0
+HeM287:
+    db 118,89,129,1,66,124,75,46,0
+HeM288:
+    db 39,83,237,89,27,19,105,39,32,40,82,98,12,77,31,69,41,46,0
+HeM289:
+    db 206,9,69,58,209,156,7,84,5,69,8,27,72,73,8,31,17,104,19,105,46,0
+HeM290:
+    db 206,84,87,79,58,173,70,69,16,4,77,141,82,31,83,115,213,67,65,154,2,72,2,253
+    db 116,249,67,65,83,6,155,70,76,226,4,120,67,209,230,73,68,222,73,70,73,163,15,219
+    db 87,28,138,66,85,82,78,4,72,10,83,75,185,120,72,2,70,69,16,83,1,67,82,85
+    db 67,73,70,73,88,15,218,160,251,83,133,30,71,124,12,68,210,22,204,15,72,2,67,209
+    db 67,21,32,66,28,83,115,82,28,4,120,216,116,117,72,10,68,210,22,83,140,0
+HeM291:
+    db 206,3,155,69,58,173,67,209,230,75,188,107,185,144,104,84,87,133,97,89,83,58,32,245
+    db 68,157,86,27,30,149,178,2,7,117,72,10,66,79,68,17,233,245,75,148,27,72,73,199
+    db 13,6,104,72,10,67,65,83,75,69,6,156,84,73,76,32,68,65,87,78,46,0
+HeM292:
+    db 203,156,68,5,8,235,46,0
+HeM293:
+    db 203,204,69,1,112,32,186,0
+HeM294:
+    db 176,110,130,239,46,0
+HeM295:
+    db 111,112,160,110,87,32,9,46,0
+HeM296:
+    db 111,112,160,110,87,32,238,46,0
+HeM297:
+    db 118,89,129,1,112,46,0
+HeM298:
+    db 118,89,129,1,112,130,239,46,0
+HeM299:
+    db 176,8,188,32,24,133,77,85,67,72,130,239,32,7,1,112,46,0
+HeM300:
+    db 111,237,143,160,155,70,239,163,46,0
+HeM301:
+    db 174,76,124,83,2,87,124,68,46,0
+HeM302:
+    db 174,30,24,137,46,0
+HeM303:
+    db 178,116,228,68,140,0
+HeM304:
+    db 174,209,65,88,140,0
+HeM305:
+    db 84,155,2,119,163,46,0
+HeM306:
+    db 103,225,110,32,87,98,80,9,46,0
+HeM307:
+    db 111,253,71,32,89,101,80,4,120,82,156,4,65,97,184,0
+HeM308:
+    db 103,7,74,85,82,2,144,87,137,70,59,32,3,69,17,21,32,82,156,32,238,46,0
+HeM309:
+    db 111,82,28,4,83,67,28,84,138,120,128,71,9,140,0
+HeM310:
+    db 111,66,28,4,83,67,28,84,138,120,128,71,9,140,0
+HeM311:
+    db 66,82,85,84,2,8,82,22,71,3,32,87,188,32,68,133,131,217,165,71,124,68,46,0
+HeM312:
+    db 110,3,27,135,80,80,22,247,0
+HeM313:
+    db 173,67,76,85,84,67,72,116,87,102,1,219,87,28,138,72,175,72,73,199,120,76,156,71
+    db 116,194,103,185,232,71,140,0
+HeM314:
+    db 173,67,72,14,71,116,7,117,30,66,194,120,70,229,65,97,184,0
+HeM315:
+    db 111,253,71,160,70,137,211,87,27,103,110,87,46,0
+HeM316:
+    db 3,69,17,98,6,72,156,71,157,177,66,85,6,8,65,17,70,31,187,31,140,0
+HeM317:
+    db 176,110,32,144,180,117,71,73,86,2,175,24,46,0
+HeM318:
+    db 73,32,67,209,249,215,32,186,0
+HeM319:
+    db 118,89,129,1,149,178,105,46,0
+HeM320:
+    db 73,187,154,6,135,86,69,1,77,21,69,84,46,0
+HeM321:
+    db 203,204,69,1,67,238,185,186,0
+HeM322:
+    db 173,77,154,6,230,65,215,46,0
+HeM323:
+    db 103,128,24,133,84,141,107,117,68,133,191,68,69,163,46,0
+HeM324:
+    db 103,225,68,157,86,231,30,149,178,2,7,125,19,140,0
+HeM325:
+    db 173,10,102,33,1,19,2,135,4,193,66,76,158,32,67,65,80,2,120,83,72,16,80,130
+    db 14,71,247,0
+HeRooms:
+    db 0,0,0,0,0,0,0,0,0
+    db 2,0,0,0,0,0,109,0,0
+    db 8,1,3,0,0,0,110,0,0
+    db 0,0,4,2,0,0,111,0,0
+    db 0,0,6,3,5,0,112,0,3
+    db 0,0,0,0,0,4,113,0,3
+    db 0,0,0,4,0,0,114,0,3
+    db 16,0,8,0,0,0,115,0,0
+    db 0,2,9,7,0,0,116,0,0
+    db 10,0,11,8,0,0,117,0,0
+    db 24,9,0,0,0,0,118,0,0
+    db 12,0,0,9,0,0,119,0,0
+    db 28,11,13,0,0,0,120,0,0
+    db 0,0,14,12,0,0,121,0,0
+    db 0,0,0,13,0,15,122,0,1
+    db 0,0,0,0,14,0,123,0,2
+    db 17,7,0,0,0,0,124,0,0
+    db 21,16,26,18,0,0,125,0,0
+    db 0,0,17,19,0,0,126,0,0
+    db 0,20,18,0,0,0,127,0,4
+    db 19,0,0,0,0,0,128,0,4
+    db 41,17,22,0,0,0,129,0,0
+    db 0,0,35,21,0,0,130,0,7
+    db 0,0,0,0,24,0,131,0,5
+    db 0,10,0,0,25,23,132,0,5
+    db 0,0,0,0,0,24,133,0,5
+    db 35,0,27,17,0,0,134,0,0
+    db 34,0,28,26,0,0,135,0,0
+    db 33,12,29,27,0,0,136,0,7
+    db 0,0,30,28,0,0,137,0,0
+    db 0,0,0,29,0,0,138,0,6
+    db 0,0,0,32,0,0,138,0,6
+    db 0,0,31,33,0,0,139,0,0
+    db 44,28,32,34,0,0,136,0,7
+    db 43,27,33,35,0,0,140,0,7
+    db 42,26,34,22,0,0,140,0,7
+    db 75,0,38,0,0,0,141,0,8
+    db 38,0,0,0,0,0,142,0,8
+    db 74,37,39,36,0,0,143,0,8
+    db 0,0,40,38,0,0,144,0,7
+    db 48,0,41,39,0,0,145,0,7
+    db 0,21,42,40,0,0,146,0,10
+    db 52,35,43,41,0,0,147,0,10
+    db 0,34,44,42,0,0,148,0,10
+    db 54,33,45,43,0,0,149,0,7
+    db 0,0,46,44,0,0,150,0,7
+    db 0,0,0,45,0,0,151,0,7
+    db 0,0,48,0,0,0,152,0,7
+    db 50,40,49,47,0,0,153,0,7
+    db 0,0,0,48,0,0,152,0,7
+    db 69,48,0,0,0,0,154,0,6
+    db 0,0,52,0,0,0,155,0,6
+    db 68,42,53,51,0,0,156,0,10
+    db 66,0,0,52,0,0,157,0,6
+    db 62,44,55,64,0,0,158,0,11
+    db 61,0,56,54,0,0,159,0,11
+    db 59,0,57,55,0,0,159,0,11
+    db 60,0,0,56,0,0,159,0,11
+    db 0,0,0,68,59,0,160,0,2
+    db 88,56,60,61,0,58,161,0,1
+    db 89,57,0,59,0,0,159,0,11
+    db 87,55,59,62,0,0,162,0,11
+    db 86,54,61,63,0,0,163,0,11
+    db 85,64,62,67,0,0,164,0,11
+    db 63,0,54,65,0,0,164,0,11
+    db 67,0,64,66,0,0,165,0,10
+    db 0,53,65,0,0,0,166,0,10
+    db 84,65,63,0,0,0,167,0,10
+    db 0,0,0,0,0,0,168,0,2
+    db 70,50,0,71,0,0,169,0,9
+    db 78,69,0,72,0,0,170,0,9
+    db 72,0,69,74,0,0,171,0,8
+    db 0,71,70,73,0,0,171,0,8
+    db 76,74,72,75,0,0,172,0,8
+    db 73,38,71,75,0,0,172,0,8
+    db 73,36,74,0,0,0,173,0,8
+    db 77,73,78,0,0,0,141,0,8
+    db 0,76,0,0,0,0,174,0,8
+    db 0,70,79,76,0,0,175,0,9
+    db 0,0,93,78,0,0,176,0,9
+    db 0,0,81,0,0,0,177,0,6
+    db 93,68,82,80,0,0,178,0,10
+    db 0,83,0,81,0,0,179,0,6
+    db 82,0,84,0,0,0,180,0,10
+    db 0,67,85,83,0,0,181,0,10
+    db 0,63,86,84,0,0,164,0,11
+    db 90,62,87,85,0,0,158,0,11
+    db 0,61,88,86,0,0,159,0,11
+    db 0,59,89,87,0,0,159,0,11
+    db 0,60,0,88,0,0,159,0,11
+    db 91,86,0,92,0,0,182,0,7
+    db 0,90,0,0,0,0,183,0,7
+    db 0,0,90,93,0,0,184,0,7
+    db 0,81,92,79,0,0,185,0,10
+HePatchWhere:
+HE_NPATCH equ 0
+HeObjs:
+    db 0,0,0,0,0,0,55,0,55,0,1,0,56,0,56,0,2,0,57,0,57,0,1,0
+    db 58,0,59,0,1,0,60,0,60,0,1,0,61,0,61,0,1,0,62,0,62,0,1,0
+    db 63,0,64,0,1,0,65,0,65,0,1,0,66,0,67,0,1,0,68,0,68,0,9,0
+    db 69,0,70,0,1,0,71,0,71,0,1,0,72,0,73,0,1,0,74,0,75,0,1,0
+    db 76,0,76,0,1,0,77,0,77,0,1,0,78,0,79,0,17,0,80,0,81,0,1,0
+    db 82,0,82,0,17,0,83,0,83,0,17,0,84,0,84,0,1,0,85,0,85,0,1,0
+    db 86,0,86,0,2,0,87,0,87,0,2,0,88,0,88,0,2,0,89,0,89,0,2,0
+    db 90,0,90,0,2,0,91,0,91,0,2,0,92,0,92,0,10,0,93,0,93,0,2,0
+    db 94,0,94,0,2,0,95,0,95,0,2,0,96,0,96,0,2,0,97,0,97,0,2,0
+    db 98,0,98,0,2,0,99,0,99,0,2,0,100,0,100,0,2,0,101,0,101,0,18,0
+    db 102,0,102,0,18,0,103,0,103,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,104,0,104,0,0,0,105,0,105,0,0,0
+    db 106,0,106,0,0,0,107,0,107,0,0,0,0,0,0,0,0,0,108,0,108,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,21,0,21,0,0,0,22,0,22,0,0,0
+    db 23,0,23,0,0,0,24,0,24,0,0,0,25,0,25,0,0,0,26,0,26,0,0,0
+    db 27,0,27,0,0,0,28,0,28,0,0,0,29,0,29,0,0,0,30,0,30,0,0,0
+    db 0,0,0,0,0,0
+HE_NOBJ equ 41
+HeObjStart:
+    db 0,22,0,61,86,24,6,4,6,6,24,30,23,31,20,20,19,50,49,25,0,0,0,65
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0
+HeContCode:
+    db 0
+HeContCap:
+    db 0
+HeContOpen:
+    db 0
+HeContObj:
+    db 0
+HE_NCONT equ 0
+HeScenery:
+    db 2,2,2,17,2,40,2,9,24,59,24,14,25,17,25,18,26,2,26,3,27,9,27,10
+    db 28,28,28,29,28,32,28,33,28,13,28,40,28,47,28,48,28,49,29,28,29,29,29,32
+    db 29,33,29,13,29,40,29,47,29,48,29,49,30,42,30,52,30,93,30,81,31,52,31,42
+    db 31,93,31,81,32,38,32,76,33,38,33,71,33,72,33,76,33,36,34,73,34,70,34,74
+    db 34,69,34,72,34,71,35,42,35,93,35,52,35,81,36,62,36,61,36,59,36,84,36,67
+    db 36,65,38,66,38,65,38,67,38,84,38,83,0
+HeFlagStart:
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+HE_NFLAGS equ 23
+HeVerbKind:
+    db 1,0,2,3,4,0,2,2,2,0,0,0,7,2,2,4,4,5,5,0,6,0
+HeVerbMsg:
+    dw 33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54
+HeSceneIf:
+    db 0
+HeOverlays:
+    db 0
+HeWordLists:
+    dw HeWords0,HeWords1,HeWords2
+HeWords0:
+    db 50,255,51,255,52,255,53,255,0
+HeWords1:
+    db 55,18,0
+HeWords2:
+    db 20,255,0
+HeWeight:
+    db 0,0,0,0,0,5,5,10,1,2,1,10,1,2,2,2,2,1,10,1,2,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+HeVerbRules:
+    dw HeR_GO,HeR_LOOK,HeR_EXAMINE,HeR_TAKE,HeR_DROP,HeR_INVENTORY,HeR_EAT,HeR_DRINK,HeR_READ,HeR_LAMP_ON,HeR_LAMP_OFF,HeR_REFUEL,HeR_MAKE,HeR_CHOP,HeR_KILL,HeR_GIVE,HeR_THROW,HeR_WAIT,HeR_SLEEP,HeR_TIME,HeR_DRIVE,HeR_QUIT
+HeR_GO:
+    db 5,3,68,64,237,0,13,3,14,1,79,11,6,5,7,5,250,64,238,0,10,3,14,1
+    db 79,11,6,5,64,239,0,12,3,14,1,79,64,240,0,66,9,5,75,0,13,3,15,1
+    db 78,11,6,5,7,5,250,64,238,0,10,3,15,1,78,11,6,5,64,239,0,12,3,15
+    db 1,78,64,240,0,66,9,5,75,0,13,3,58,1,78,11,6,5,7,5,250,64,238,0
+    db 10,3,58,1,78,11,6,5,64,239,0,12,3,58,1,78,64,240,0,66,9,5,75,0
+    db 13,3,59,1,79,11,6,5,7,5,250,64,238,0,10,3,59,1,79,11,6,5,64,239
+    db 0,12,3,59,1,79,64,240,0,66,9,5,75,0,2,75,0,0
+HeR_LOOK:
+    db 1,73,0
+HeR_EXAMINE:
+    db 5,11,12,64,1,0,11,1,6,8,0,1,64,241,0,66,8,14,8,1,6,64,242,0
+    db 66,8,14,5,1,7,66,8,13,8,1,8,8,11,1,64,243,0,8,1,14,8,12,1
+    db 64,243,0,5,1,2,64,244,0,5,1,4,64,245,0,5,1,5,64,246,0,5,1,8
+    db 64,247,0,5,1,12,64,248,0,5,1,13,64,249,0,5,1,17,64,250,0,5,1,20
+    db 64,251,0,5,1,21,64,252,0,5,1,23,64,253,0,5,1,24,64,254,0,5,1,25
+    db 64,255,0,5,1,26,64,0,1,5,1,27,64,1,1,5,1,28,64,2,1,5,1,29
+    db 64,2,1,5,1,30,64,3,1,5,1,31,64,4,1,5,1,32,64,5,1,5,1,33
+    db 64,6,1,5,1,34,64,7,1,5,1,35,64,8,1,5,1,36,64,9,1,5,1,37
+    db 64,10,1,5,1,38,64,11,1,5,1,39,64,12,1,5,1,40,64,13,1,5,1,41
+    db 64,14,1,3,64,19,0,0
+HeR_TAKE:
+    db 5,1,4,64,15,1,13,15,8,1,3,21,22,23,39,40,41,64,14,0,2,75,3,0
+HeR_DROP:
+    db 10,3,68,6,255,65,255,81,64,16,1,2,75,4,0
+HeR_INVENTORY:
+    db 2,75,1,0
+HeR_EAT:
+    db 6,8,17,1,64,17,1,5,1,7,66,8,4,13,1,12,6,12,64,18,1,65,12,0
+    db 66,10,20,13,1,15,6,15,64,19,1,65,15,0,66,10,15,7,15,2,12,15,64,17
+    db 0,3,64,20,1,0
+HeR_DRINK:
+    db 6,8,17,1,64,21,1,8,1,8,8,11,1,64,22,1,8,1,14,8,12,1,64,22
+    db 1,13,1,8,6,8,64,23,1,66,11,1,66,10,5,13,1,14,6,14,64,24,1,66
+    db 12,1,66,10,5,7,15,2,8,14,64,17,0,3,64,25,1,0
+HeR_READ:
+    db 5,11,12,64,1,0,7,1,2,3,2,64,26,1,7,1,2,3,17,64,27,1,7,1
+    db 2,3,40,64,28,1,7,1,2,3,9,64,29,1,5,1,23,64,30,1,8,1,13,11
+    db 6,13,64,31,1,14,1,13,8,13,0,64,32,1,66,13,1,66,9,25,14,1,13,8
+    db 13,1,64,33,1,66,13,2,66,9,25,14,1,13,8,13,2,64,34,1,66,13,3,66
+    db 9,25,14,1,13,8,13,3,64,35,1,66,13,0,66,9,25,3,64,36,1,0
+HeR_LAMP_ON:
+    db 10,11,6,6,11,7,6,250,64,37,1,6,8,15,1,64,38,1,7,66,0,1,64,39
+    db 1,73,0
+HeR_LAMP_OFF:
+    db 10,11,6,6,11,7,6,250,64,37,1,6,66,0,0,64,40,1,0
+HeR_REFUEL:
+    db 6,11,6,6,64,41,1,6,11,6,10,64,42,1,6,8,16,1,64,43,1,9,65,10
+    db 0,66,8,12,64,44,1,0
+HeR_MAKE:
+    db 5,11,12,64,1,0,10,11,5,18,11,7,21,250,64,45,1,9,11,6,11,11,6,17
+    db 64,46,1,14,5,18,65,18,0,65,20,250,64,47,1,66,9,30,12,65,21,0,65,20
+    db 250,64,47,1,66,9,30,0
+HeR_CHOP:
+    db 5,11,12,64,1,0,6,11,1,1,64,36,1,6,11,6,11,64,48,1,15,65,1,0
+    db 65,22,250,65,21,250,64,49,1,66,9,30,0
+HeR_KILL:
+    db 5,11,12,64,1,0,6,8,7,0,64,50,1,8,1,3,64,51,1,66,8,15,11,1
+    db 4,9,7,5,64,52,1,66,8,9,11,1,39,9,7,6,64,53,1,66,8,10,11,1
+    db 40,9,7,6,64,54,1,66,8,11,5,1,41,64,55,1,8,15,3,4,39,40,64,56
+    db 1,3,64,36,1,0
+HeR_GIVE:
+    db 17,7,41,250,1,14,8,12,0,66,12,1,64,57,1,66,8,7,17,7,41,250,1,8
+    db 8,11,0,66,11,1,64,58,1,66,8,8,21,7,41,250,15,4,12,15,16,19,11,3
+    db 68,65,255,250,64,58,1,66,8,8,18,7,41,250,15,4,12,15,16,19,65,255,81,64
+    db 58,1,66,8,8,6,7,41,250,64,56,1,14,7,3,250,1,7,66,14,1,66,8,5
+    db 64,59,1,11,7,4,250,1,7,66,8,6,64,60,1,6,7,3,250,64,56,1,6,7
+    db 4,250,64,56,1,8,3,68,65,255,81,64,16,1,3,64,61,1,0
+HeR_THROW:
+    db 17,7,41,250,1,14,8,12,0,66,12,1,64,57,1,66,8,7,17,7,41,250,1,8
+    db 8,11,0,66,11,1,64,58,1,66,8,8,21,7,41,250,15,4,12,15,16,19,11,3
+    db 68,65,255,250,64,58,1,66,8,8,18,7,41,250,15,4,12,15,16,19,65,255,81,64
+    db 58,1,66,8,8,6,7,41,250,64,56,1,14,7,3,250,1,7,66,14,1,66,8,5
+    db 64,59,1,11,7,4,250,1,7,66,8,6,64,60,1,6,7,3,250,64,56,1,6,7
+    db 4,250,64,56,1,8,3,68,65,255,81,64,16,1,2,75,4,0
+HeR_WAIT:
+    db 3,66,8,1,0
+HeR_SLEEP:
+    db 6,8,21,0,64,62,1,3,66,8,2,0
+HeR_TIME:
+    db 3,66,8,3,0
+HeR_DRIVE:
+    db 6,11,6,20,64,63,1,6,11,6,9,64,64,1,6,11,3,68,64,65,1,5,11,12
+    db 64,1,0,6,8,5,1,64,66,1,6,8,19,1,64,66,1,6,8,20,0,64,65,1
+    db 6,8,6,1,64,67,1,4,64,68,1,72,0
+HeR_QUIT:
+    db 3,66,4,1,0
+HeR_EVERY:
+    db 3,8,22,2,0
+HeR_LOOKX:
+    db 9,7,41,250,11,3,68,64,69,1,11,3,68,8,20,1,8,5,0,64,223,0,11,3
+    db 68,8,20,1,8,5,1,64,224,0,0
+}

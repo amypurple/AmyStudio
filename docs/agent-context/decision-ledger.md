@@ -991,4 +991,24 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   808 ROMs assemble and one project remains delegated to its target-specific validator. The clean
   repository also passes 809/809 at 7,955,823 Balanced bytes and 7,954,877 Aggressive bytes.
 
+## 2026-11-04 - Final 209-game Gazette corpus and silent-codegen fixes
+
+- Imported Claude's final 209-game COMPUTE!'s Gazette package: 186 existing sources were refreshed
+  and 23 new examples were added. Of the imported sources, 207 remain byte-for-byte identical;
+  Boomer renames a parameter that collided case-insensitively with a constant, and Vampyre adds
+  missing visible author/issue credits.
+- Parameters are now rejected when their case-insensitive name collides with a named constant.
+  This prevents a function parameter such as `Gx` from silently resolving to `const GX`.
+- OS7 `INIT_TABLE` and `LOAD_ASCII` calls used by Amy display setup now preserve IX/IY, preventing
+  `tile screen` from corrupting a routine's IX-based stack frame. A small dedicated wrapper avoids
+  pulling the extended glyph uploader into ordinary tile-screen setup.
+- Compile-time numeric expressions, including named constants, are folded in byte-array and record
+  indexes. The focused Vampyre-shaped repro falls from 80 to 69 bytes without changing semantics.
+- GearColeco with the real OS7 BIOS verifies the parameter diagnostic, folded index, and IX-frame
+  runtime result at all five optimization profiles. Full corpus gates pass 832/832: 8,571,899
+  Balanced bytes and 8,570,907 Aggressive bytes; 831 ROMs assemble and one project remains delegated
+  to its target-specific validator. The six-sample comparison is 7,407 bytes; its 35-byte increase
+  over the published 7,372-byte baseline is the measured cost of preserving IX/IY around affected
+  OS7 mode/font calls.
+
 

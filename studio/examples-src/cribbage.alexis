@@ -65,7 +65,8 @@ cartridge "CRIBBAGE 128/COMPUTE!'S GAZETTE/1988"
 '
 ' Controls: joystick left/right chooses a card, left button lays it, right
 ' button asks for a hint while discarding. Any button goes on after a
-' count. Keypad not used.
+' count. Keypad not used. Title: up/down choose START, HOW TO PLAY (three
+' pages) or CREDITS, a button picks.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -277,6 +278,8 @@ u8 WasStick = 0
 u8 Rep = 0
 u8 Tick = 0
 u8 Idle = 0
+u8 Menu = 0
+u8 WasUd = 0
 u8 BoardOn = 0
 u8 Tt = 0
 u8 Ts = 0
@@ -323,6 +326,14 @@ u8 Y = 0
 
 title:
   TitlePage
+  if Menu > 0 then
+    if Menu = 1 then
+      HowToPage
+    else
+      CreditsPage
+    end if
+    goto title
+  end if
   NewGame
   CutForDeal
 hand_loop:
@@ -2011,13 +2022,12 @@ sub TitlePage:
     if J = 4 then K = 23
     DrawCard(K, J * 5 + 4, 7)
   next
-  print at 2,12, "THE COMPUTER IS YOUR"
-  print at 2,13, "OPPONENT. STICK: CHOOSE A"
-  print at 2,14, "CARD. LEFT BUTTON: LAY IT."
-  print at 2,15, "RIGHT BUTTON: A HINT WHEN"
-  print at 2,16, "YOU DISCARD TO THE CRIB."
-  print at 2,17, "A STAR MARKS THE DEALER."
-  print at 6,19, "PRESS THE BUTTON"
+  print at 10,12, "START"
+  print at 10,14, "HOW TO PLAY"
+  print at 10,16, "CREDITS"
+  print at 3,19, "STICK: CHOOSE  BUTTON: GO"
+  Menu = 0
+  ShowTMenu
   print at 3,22, "COMPUTE!'S GAZETTE AUG 1988"
   ShowScreen
   play sound SndTuneA
@@ -2031,6 +2041,18 @@ tp_loop:
   inc Rs
   if Rs = 0 then Rs = 1
   ReadPad
+  V = 0
+  if joypad(1).up or joypad(2).up then V = 1
+  if joypad(1).down or joypad(2).down then V = 2
+  if V > 0 and WasUd = 0 then
+    if V = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Menu < 2 then inc Menu
+    end if
+    ShowTMenu
+  end if
+  WasUd = V
   if Btn1 = 0 and Btn2 = 0 then goto tp_loop
   stop sound SndTuneA
   stop sound SndTuneB
@@ -2039,6 +2061,96 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowTMenu:
+  put char 32 at 8,12
+  put char 32 at 8,14
+  put char 32 at 8,16
+  K = Menu << 1
+  K = K + 12
+  put char 62 at 8,K
+  return
+end sub
+
+' HOW TO PLAY: 3 pages; a button turns the page; after the last page,
+' or 30 seconds untouched, back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Hw = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "CRIBBAGE FOR YOU AND THE"
+    print at 2,4, "COMPUTER. THE FIRST TO GO"
+    print at 2,5, "PAST 120 POINTS WINS!"
+    print at 2,7, "EACH HAND YOU GET SIX CARDS."
+    print at 2,8, "PUT TWO IN THE CRIB. THE"
+    print at 2,9, "CRIB'S POINTS GO TO THE"
+    print at 2,10, "DEALER (THE STAR *)."
+    DrawCard(4, 3, 12)
+    DrawCard(48, 8, 12)
+    DrawCard(17, 15, 12)
+    DrawCard(36, 20, 12)
+    print at 2,16, "5 + 10 = 15:  2 POINTS"
+    print at 2,18, "THEN ONE CARD IS CUT: THE"
+    print at 2,19, "STARTER. IT COUNTS FOR BOTH"
+    print at 2,20, "HANDS AND THE CRIB."
+  case 2
+    print at 2,1, "THE PLAY                2/3"
+    print at 2,3, "TAKE TURNS LAYING A CARD."
+    print at 2,4, "THE COUNT GOES UP; IT MAY"
+    print at 2,5, "NOT PASS 31."
+    print at 2,7, "PEG POINTS FOR: 15 (2),"
+    print at 2,8, "31 (2), A PAIR (2), A RUN"
+    print at 2,9, "OF 3 OR MORE (1 A CARD),"
+    print at 2,10, "THE LAST CARD (1). CAN'T"
+    print at 2,11, "PLAY? THAT IS A GO."
+    print at 2,13, "THEN THE HANDS AND THE CRIB"
+    print at 2,14, "ARE COUNTED: 15S, PAIRS,"
+    print at 2,15, "RUNS, FLUSHES, HIS NOBS."
+    DrawCard(18, 3, 17)
+    DrawCard(32, 8, 17)
+    DrawCard(7, 13, 17)
+    print at 19,18, "A RUN OF 3"
+  case else
+    print at 2,1, "CONTROLS AND THE END    3/3"
+    print at 2,3, "STICK LEFT/RIGHT: CHOOSE A"
+    print at 2,4, "CARD. LEFT BUTTON: LAY IT."
+    print at 2,6, "RIGHT BUTTON: A HINT WHILE"
+    print at 2,7, "YOU DISCARD TO THE CRIB."
+    print at 2,9, "ANY BUTTON GOES ON AFTER A"
+    print at 2,10, "COUNT. THE PEGS ON THE BOARD"
+    print at 2,11, "AT THE TOP SHOW THE SCORES."
+    DrawCard(30, 13, 13)
+    set sprite 0 to 128,108,SArrow,11
+    print at 2,18, "LOSER UNDER 91: SKUNK!"
+    print at 2,19, "UNDER 61: DOUBLE SKUNK."
+    print at 2,21, "TIP: KEEP FIVES AND PAIRS."
+  end select
+  print at 7,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Was1 = 1
+  Was2 = 1
+  Hw = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Hw = Hw + 1
+  if Hw >= 1800 then goto ht_out
+  if Btn1 = 0 and Btn2 = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+ht_out:
+  HideSprites
   return
 end sub
 

@@ -95,7 +95,7 @@ export function handleDisplayGraphicsSpriteStatement({
       handled: true,
       lines: [
         "    call AMY_SET_GRAPHICS_MODE2_TEXT",
-        `    call ${automaticAsciiRoutine}`,
+        `    call ${supportsColecoBios ? "AMY_LOAD_ASCII_PRESERVE_INDEX" : automaticAsciiRoutine}`,
         "    call AMY_DUPLICATE_PATTERN_THIRDS",
         "    ld hl,VRAM_COLOR",
         "    ld de,$0800",

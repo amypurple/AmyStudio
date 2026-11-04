@@ -54,7 +54,8 @@ cartridge "BAGGER/GAZETTE/1988"
 ' as the C64's did; the shopper's kind (three looks) is chosen at random.
 '
 ' Controls: controller 1 (or 2): up and down change aisle, a button
-' throws a bag. On the title, up and down choose, a button chooses.
+' throws a bag. On the title, up and down choose START, HOW TO PLAY
+' (three pages) or CREDITS, a button chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -306,7 +307,7 @@ u8 Blink = 255
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu >= 1 then goto title
 
   NewGame
 
@@ -876,8 +877,10 @@ sub TitlePage:
   put char TStand at 28,15
   put char TStand at 29,15
   print at 13,19, "START"
-  print at 13,20, "CREDITS"
+  print at 13,20, "HOW TO PLAY"
+  print at 13,21, "CREDITS"
   print at 5,22, "UP/DOWN AISLE  FIRE BAG"
+  Menu = 0
   ShowMenu
   ShowScreen
   play sound SndTuneA
@@ -897,9 +900,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -914,7 +917,8 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
@@ -934,9 +938,108 @@ sub TitleAnim:
   return
 end sub
 
+' HOW TO PLAY: 3 pages; a button turns the page; after the last page,
+' or 30 seconds untouched, back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 Wt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "YOU BAG GROCERIES AT THE"
+    print at 2,4, "END OF FOUR CHECKOUT BELTS."
+    print at 2,5, "SHOPPERS WALK IN FROM THE"
+    print at 2,6, "LEFT. THROW A BAG DOWN THE"
+    print at 2,7, "BELT TO SERVE A SHOPPER."
+    print at 2,9, "YOU LOSE A LIFE IF A"
+    print at 2,10, "SHOPPER REACHES YOU UNSERVED"
+    print at 2,11, "OR A BAG FALLS OFF THE FAR"
+    print at 2,12, "END OF THE BELT."
+    fill TBelt count 23 at 4,17
+    fill TPan count 23 at 4,18
+    put char TBeltL at 3,17
+    put char TPanL at 3,18
+    put char TBeltR at 27,17
+    put char TPanR at 27,18
+    put char TStand at 28,17
+    put char TStand at 29,17
+    set sprite 2 to 116,64,SSha0,KindCol[0]
+    set sprite 14 to 132,136,SBag,10
+    set sprite 0 to 116,224,SBgt0,15
+    set sprite 1 to 132,224,SBgb0,12
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "JOYSTICK UP/DOWN: MOVE TO"
+    print at 2,4, "ANOTHER BELT."
+    print at 2,6, "BUTTON: THROW A BAG."
+    print at 2,8, "ONLY THREE BAGS FIT ON A"
+    print at 2,9, "BELT AT ONCE. DON'T THROW"
+    print at 2,10, "WHEN NOBODY IS COMING!"
+    fill TBelt count 23 at 4,17
+    fill TPan count 23 at 4,18
+    put char TBeltL at 3,17
+    put char TPanL at 3,18
+    put char TBeltR at 27,17
+    put char TPanR at 27,18
+    put char TStand at 28,17
+    put char TStand at 29,17
+    set sprite 14 to 132,120,SBag,10
+    set sprite 15 to 132,168,SBag,10
+    set sprite 0 to 116,224,SBgt1,15
+    set sprite 1 to 132,224,SBgb1,12
+  case 3
+    print at 2,1, "SCORING                 3/3"
+    print at 2,3, "SERVE A SHOPPER: 5 POINTS."
+    print at 2,4, "SHOPPERS MAY DROP A TIP. IT"
+    print at 2,5, "ROLLS TO YOUR END: BE IN"
+    print at 2,6, "THAT AISLE TO CATCH IT FOR"
+    print at 2,7, "20 POINTS, OR LOSE A LIFE."
+    print at 2,9, "SERVE ENOUGH SHOPPERS TO"
+    print at 2,10, "FINISH A LEVEL (+100). YOU"
+    print at 2,11, "HAVE 4 LIVES. LOSE THEM"
+    print at 2,12, "ALL: GAME OVER."
+    print at 2,14, "TIP: WATCH THE TIPS! THEY"
+    print at 2,15, "ROLL TWICE AS FAST."
+    fill TBelt count 23 at 4,18
+    fill TPan count 23 at 4,19
+    put char TBeltL at 3,18
+    put char TPanL at 3,19
+    put char TBeltR at 27,18
+    put char TPanR at 27,19
+    put char TStand at 28,18
+    put char TStand at 29,18
+    set sprite 2 to 124,88,SShc0,KindCol[2]
+    set sprite 26 to 151,160,STip,3
+    set sprite 0 to 124,224,SBgt0,15
+    set sprite 1 to 140,224,SBgb0,12
+  end select
+  print at 9,22, "PRESS A BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  return
+end sub
+
+
 sub ShowMenu:
   put char 32 at 11,19
   put char 32 at 11,20
+  put char 32 at 11,21
   J = Menu + 19
   put char 62 at 11,J
   return

@@ -198,6 +198,11 @@ u8 Cur = 1
 u8 Btn = 0
 u8 WasB = 1
 u8 Stick = 0
+u8 Vert = 0
+u8 WasVert = 0
+u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 u8 Held = 0
 u8 Tick = 0
 ' scratch
@@ -518,6 +523,11 @@ sub ReadPad:
   if joypad(2).left then Stick = 1
   if joypad(1).right then Stick = 2
   if joypad(2).right then Stick = 2
+  Vert = 0
+  if joypad(1).up then Vert = 1
+  if joypad(2).up then Vert = 1
+  if joypad(1).down then Vert = 2
+  if joypad(2).down then Vert = 2
   return
 end sub
 
@@ -779,6 +789,72 @@ sub ShowScreen:
   return
 end sub
 
+sub ShowMenu:
+  put char 32 at 9,18
+  put char 32 at 9,19
+  put char 32 at 9,20
+  put char 62 at 9,Menu + 18
+  return
+end sub
+
+' HOW TO PLAY: two pages; the button turns the page, 30 s idle goes back.
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "A CARD GAME OF BIDDING."
+    print at 2,4, "YOU HAVE THE 13 HEARTS, THE"
+    print at 2,5, "COMPUTER THE 13 SPADES."
+    print at 2,6, "EACH ROUND ONE CLUB IS"
+    print at 2,7, "TURNED OVER. YOU BOTH BID"
+    print at 2,8, "ONE CARD FOR IT."
+    DrawBig(3, 2, 6, 10)
+    DrawBig(9, 1, 14, 10)
+    DrawBig(7, 0, 22, 10)
+    print at 6,13, "YOU"
+    print at 14,13, "CLUB"
+    print at 22,13, "CPU"
+    print at 2,15, "STICK LEFT/RIGHT: CHOOSE A"
+    print at 2,16, "HEART. BUTTON: BID IT."
+    print at 2,18, "THE HIGHER BID TAKES THE"
+    print at 2,19, "CLUB. A TIE: NOBODY GETS IT."
+  else
+    print at 2,3, "A CLUB SCORES ITS VALUE:"
+    print at 2,4, "ACE 1, 2 TO 10, JACK 11,"
+    print at 2,5, "QUEEN 12, KING 13."
+    print at 2,7, "A CARD YOU BID IS USED UP,"
+    print at 2,8, "SO SPEND YOUR HIGH HEARTS"
+    print at 2,9, "WISELY!"
+    print at 2,11, "THE GAME ENDS WHEN SOMEONE"
+    print at 2,12, "HAS 46 POINTS, OR AFTER THE"
+    print at 2,13, "13TH CLUB. MORE POINTS WINS."
+    print at 2,15, "TIP: BID LOW ON SMALL CLUBS"
+    print at 2,16, "AND SAVE BIG HEARTS FOR THE"
+    print at 2,17, "KINGS AND QUEENS. BUT WATCH"
+    print at 2,18, "OUT: THE COMPUTER LEARNS IF"
+    print at 2,19, "YOU ALWAYS BID YOUR LOWEST!"
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasB = 1
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then goto ht_done
+  if Btn = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  return
+end sub
+
 sub CreditsPage:
   St = 5
   NewScreen
@@ -804,13 +880,16 @@ sub CreditsPage:
   return
 end sub
 
-' the title: the logo is 7 letters at columns 9-21 (2 apart), rows 2-3
+' the title: START / HOW TO PLAY / CREDITS (a press on START plays); the
+' logo is 7 letters at columns 9-21 (2 apart), rows 2-3
 data LogoT bytes TLJt, TLUt, TLJt, TLIt, TLTt, TLSt, TLUt
 
 sub TitlePage:
   u8 Ti = 0
   u8 Tx = 0
+tp_top:
   St = 0
+  Menu = 0
   NewScreen
   for Ti = 0 to 6
     Tx = Ti * 2 + 9
@@ -827,8 +906,10 @@ sub TitlePage:
   print at 2,14, "CLUB; A TIE TAKES NOTHING."
   print at 2,15, "ACE 1 ... KING 13."
   print at 2,16, "FIRST TO 46 POINTS WINS."
-  print at 2,18, "STICK: CHOOSE  BUTTON: BID"
-  print at 7,20, "PRESS THE BUTTON"
+  print at 11,18, "START"
+  print at 11,19, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  ShowMenu
   print at 2,22, "COMPUTE!'S GAZETTE SEP 1986"
   ShowScreen
   play sound SndTuneA
@@ -836,16 +917,35 @@ sub TitlePage:
   TzLeft = 512
   TzOn = 1
   WasB = 1
+  WasVert = 3
 tp_loop:
   Frame1
   inc Rs
   if Rs = 0 then Rs = 1
   ReadPad
+  if Vert <> WasVert then
+    if Vert = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Vert = 2 then
+      if Menu < 2 then inc Menu
+    end if
+    ShowMenu
+  end if
+  WasVert = Vert
   if Btn = 0 then goto tp_loop
   stop sound SndTuneA
   stop sound SndTuneB
   mute all
   TzOn = 0
+  if Menu = 1 then
+    HowToPage
+    goto tp_top
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto tp_top
+  end if
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1

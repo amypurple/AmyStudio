@@ -1,0 +1,1547 @@
+cartridge "WHAM BALL/RICK BAUER/1989"
+
+' WHAM BALL
+' Based on "Wham Ball" by Rick Bauer, COMPUTE!'s Gazette September 1989
+' (pages 22 and 80, Commodore 64 machine language, disk 1989-09 file
+' "wham ball"). Made for the ColecoVision in Amy (the language by Amy
+' Bienvenu) by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Rules kept from the article and the disassembly (orig/):
+' one-player pinball; 26 screens (the wall pattern is the bits of the
+' screen number: two top bars, a bar or two half bars below, a left and a
+' right pillar, a centre block or two small blocks; from screen 20 on the
+' small blocks and the right pillar always, screen 26 everything); 32
+' speeds; 16 Whammies on screen 1, one more a screen up to 40, placed at
+' random in empty cells; knock out all the Whammies to advance; six
+' flippers in three pairs on two posts (left flippers on the left button,
+' right flippers on the right button); left flippers send the ball right,
+' right flippers send it left, always upward, at an angle set by the
+' flipper's position at impact (resting 1:6, rising from rest 1:3, then
+' 2:3, 3:2, 3:1 and fully up 6:1, steps across : steps up, as the C64
+' code); the ball moves on straight diagonals and bounces off walls (10
+' points), the centre bumper and the flippers; it passes through
+' Whammies (200 points each) and drop targets, removing them; the centre
+' drop target raises the bumper over the middle hole and puts drop
+' targets in the left and right holes, which lower it again; a new ball
+' starts in the lower right corner moving up and left; a ball that falls
+' between the flippers is lost; 5 balls, an extra ball after each screen
+' (5 at most); a bonus for every Whammie at the end of a screen; the
+' screen after 26 is screen 1 again; bumping the machine nudges the ball
+' two pixels a frame along its way for 8 frames; bump too hard and it
+' tilts: the centre flippers vanish and the others freeze for about 14
+' seconds; trainer mode with unlimited balls, the speed and the starting
+' screen on the title.
+'
+' Liberties: a flipper catches the ball only while its button is held,
+' and not once held over 60 frames (the ball rolls off); a pressed
+' flipper also reaches over half the side hole by its tip; otherwise the
+' ball drains past (on the C64 every flipper bounced the ball in any
+' position, and a bot that never pressed cleared screens without losing
+' a ball); after 8 s without a Whammie, target or bumper the
+' ball takes the next of the six angles (no endless rallies); joystick UP bumps (the C64 used RUN/STOP); it tilts when UP
+' is held more than 6 frames (the C64: holding the key) or when a new
+' bump comes within 45 frames of the last (the rules ask for repeated
+' bumps); no screen shake (a thud instead); the playfield is 28 x 21
+' tiles (the C64 used 36 x 19) with one-tile walls, so wall positions are
+' scaled and made symmetric; the ball moves in whole pixels at 1 to 4.75
+' pixels a frame (speed 1 to 32, 20 at first = 3.25: the C64's pace,
+' measured in jsc64 at 1.3 to 3.5 px a frame for its default); the end
+' of screen bonus is 500 a Whammie (the C64 counted it while a sound
+' played, so its size depended on the CPU: about 16,000 a Whammie in
+' jsc64); targets swap colours at 1.5 Hz (the C64 flashed at 3 Hz and the
+' border at the loop rate while tilted); no pause key (SHIFT LOCK).
+'
+' Controls: left button = left flippers, right button = right flippers,
+' stick UP = bump the machine. Menus: stick up/down and left/right,
+' either button.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; tiles from code
+' 128; the frame loop is protected from the NMI and every screen is drawn
+' with the NMI off after a wait.
+
+const THwall = 128
+const TVwall = 129
+const TPost = 130
+const TWham = 131
+const TTgta = 132
+const TTgtb = 133
+const TCora = 134
+const TCorb = 135
+const TBmp00 = 136
+const TBmp01 = 137
+const TBmp10 = 138
+const TBmp11 = 139
+const TBalli = 140
+const TBlk = 141
+const TBlk2 = 142
+const TFl000 = 143
+const TFl001 = 144
+const TFl002 = 145
+const TFl010 = 146
+const TFl011 = 147
+const TFl012 = 148
+const TFl100 = 149
+const TFl101 = 150
+const TFl102 = 151
+const TFl110 = 152
+const TFl111 = 153
+const TFl112 = 154
+const TFl200 = 155
+const TFl201 = 156
+const TFl202 = 157
+const TFl210 = 158
+const TFl211 = 159
+const TFl212 = 160
+const TFl300 = 161
+const TFl301 = 162
+const TFl302 = 163
+const TFl310 = 164
+const TFl311 = 165
+const TFl312 = 166
+const TFl400 = 167
+const TFl401 = 168
+const TFl402 = 169
+const TFl410 = 170
+const TFl411 = 171
+const TFl412 = 172
+const TFr000 = 173
+const TFr001 = 174
+const TFr002 = 175
+const TFr010 = 176
+const TFr011 = 177
+const TFr012 = 178
+const TFr100 = 179
+const TFr101 = 180
+const TFr102 = 181
+const TFr110 = 182
+const TFr111 = 183
+const TFr112 = 184
+const TFr200 = 185
+const TFr201 = 186
+const TFr202 = 187
+const TFr210 = 188
+const TFr211 = 189
+const TFr212 = 190
+const TFr300 = 191
+const TFr301 = 192
+const TFr302 = 193
+const TFr310 = 194
+const TFr311 = 195
+const TFr312 = 196
+const TFr400 = 197
+const TFr401 = 198
+const TFr402 = 199
+const TFr410 = 200
+const TFr411 = 201
+const TFr412 = 202
+const SBall = 0
+const SShine = 4
+const NTiles8 = 600
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndBump = 3
+const SndLost = 4
+const SndWall = 5
+const SndFlip = 6
+const SndWham = 7
+const SndTick = 8
+const SndTarget = 9
+const SndTilt = 10
+const SndExtra = 11
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+const FlipY = 157
+const DrainY = 186
+const NoBall = 192
+
+record BallR:
+  u8 X
+  u8 Y
+  u8 Sx
+  u8 Sy
+  u8 Px
+  u8 Py
+  u8 Cx
+  u8 Cy
+end record
+
+' the ball: X Y its centre in pixels, Sx 1 right / 0 left, Sy 1 up /
+' 0 down, Px Py the frames... the substeps between moves on each axis,
+' Cx Cy the counters
+BallR B
+' the wall bitmap: 4 bytes a tile row, a bit a column
+u8 Wb[100]
+bcd digits 8 Score
+u8 Balls = 5
+u8 Lvl = 1
+u8 StartLv = 1
+u8 Speed = 20
+u8 Rate = 52
+u8 Trainer = 0
+u8 Nw = 16
+u8 WLeft = 0
+u8 Hits = 0
+u8 Raised = 0
+u8 Tilted = 0
+u16 TiltT = 0
+u8 BumpT = 0
+u8 BumpHeld = 0
+u8 Since = 255
+u8 NoScore = 0
+u8 PoseL = 0
+u8 PoseR = 0
+u8 HeldL = 0
+u8 HeldR = 0
+u8 StickUp = 0
+u8 WasUp = 0
+u8 UpPress = 0
+u8 Lost = 0
+u8 Bud = 0
+u8 Cc = 255
+u8 Cr = 255
+u8 BlinkT = 0
+u8 BlinkPh = 0
+u8 ScDirty = 0
+u8 Ph = 0
+' counts for the bots
+u16 WallHits = 0
+u16 FlipHits = 0
+u8 Bumps = 0
+u8 Tilts = 0
+u16 Rs = $3A5C
+u16 T16 = 0
+
+' work
+u8 Nx = 0
+u8 Ex = 0
+u8 Ec = 0
+u8 Er = 0
+u8 Hit = 0
+u8 Mv = 0
+u8 Pz = 0
+u8 Hz = 0
+u8 Dz = 0
+u8 Gz = 0
+u8 HoldL = 0
+u8 HoldR = 0
+u16 StaleT = 0
+u8 AngI = 0
+u8 Lb = 0
+u8 Placed = 0
+u8 Wn = 0
+u8 WaitCnt = 0
+u8 Kb = 0
+u8 Menu = 0
+u8 Rep = 0
+u16 Idle = 0
+u8 HPg = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u16 NumU = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+' the bit of a column within its byte of the wall bitmap
+data BitM bytes
+  1,2,4,8,16,32,64,128
+end data
+' what is under each column at the flippers' row: 1 a left flipper
+' (sends right), 2 a right flipper (sends left), 3 and 4 the centre ones,
+' 5 the bumper's hole; a pressed flipper reaches over half the side hole
+' next to its tip (columns 6-7, 24-25)
+data FlipOf bytes
+  0,0,0,1,1,1,1,2,2,2,2,0,3,3,3,5,5,4,4,4,0,1,1,1,1,2,2,2,2,0,0,0
+end data
+' 1 for a flipper's pivot column (next to its post or wall)
+data FlipPiv bytes
+  0,0,0,1,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,0,0
+end data
+' a flipper's angle by its position: 0 resting, 1-4 rising to fully up,
+' 5 resting with the button just pressed (substeps per move across / up)
+data PoseX bytes
+  1,2,3,3,6,1
+end data
+data PoseY bytes
+  6,3,2,1,1,3
+end data
+data Logo bytes
+  1,0,0,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1
+  1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,1,0,1,1
+  1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1
+  1,1,0,1,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1
+  1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,1,1,1,0,0,0,1,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0
+  1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,0
+  1,1,1,1,0,0,1,1,1,1,1,0,1,0,0,0,0,0,1,0,0,0,0
+  1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,0
+  1,1,1,1,0,0,1,0,0,0,1,0,1,1,1,1,1,0,1,1,1,1,1
+end data
+
+  tile screen
+  set sound table WbSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 4 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 5 then
+    CreditsPage
+    goto title
+  end if
+
+new_game:
+  Score = 0
+  Balls = 5
+  Lvl = StartLv
+  Rate = Speed * 2
+  Rate = Rate + 12
+
+new_level:
+  BuildLevel
+  Ph = 1
+
+new_ball:
+  LaunchBall
+  Ph = 2
+
+play_loop:
+  Frame1
+  ReadPlay
+  Flippers
+  Bumping
+  MoveBall
+  DrawBall
+  Blink
+  if ScDirty = 1 then ShowScore
+  if Lost = 1 then goto ball_lost
+  if WLeft = 0 then goto level_clear
+  goto play_loop
+
+ball_lost:
+  Ph = 3
+  HideBall
+  play sound SndLost
+  WaitCnt = 60
+  Frames
+  if Trainer = 0 then dec Balls
+  ShowBalls
+  if Balls = 0 then goto game_over
+  goto new_ball
+
+level_clear:
+  Ph = 4
+  HideBall
+  CountBonus
+  if Balls < 5 then
+    inc Balls
+    ShowBalls
+    print at 10,19, "EXTRA BALL"
+    play sound SndExtra
+  end if
+  WaitCnt = 90
+  Frames
+  inc Lvl
+  if Lvl > 26 then Lvl = 1
+  goto new_level
+
+game_over:
+  Ph = 5
+  HideBall
+  print at 9,18, "            "
+  print at 9,19, " GAME  OVER "
+  print at 9,20, "            "
+  nmi on
+  pause until press and release sleep after 30 seconds
+  goto title
+
+' ---------------------------------------------------------------------
+' the ball
+
+sub LaunchBall:
+  B.X = 224
+  B.Y = 150
+  B.Sx = 0
+  B.Sy = 1
+  B.Px = 1
+  B.Py = 3
+  B.Cx = 1
+  B.Cy = 1
+  Bud = 0
+  StaleT = 0
+  Lost = 0
+  Cc = 255
+  Cr = 255
+  BumpT = 0
+  Since = 255
+  if Raised = 1 then LowerBumper
+  if Tilted = 1 then
+    Tilted = 0
+    TiltT = 0
+    print at 15,1, "    "
+  end if
+  PoseL = 0
+  PoseR = 0
+  DrawFlipL
+  DrawFlipR
+  DrawBall
+  WaitCnt = 45
+  Frames
+  return
+end sub
+
+' MoveBall: the ball's budget for this frame, in sixteenths of a pixel,
+' spent one substep at a time; each axis moves when its counter runs out
+sub MoveBall:
+  ' 8 seconds without a Whammie, target or bumper (flippers and walls
+  ' don't count): the next of the six angles, so no rally goes on for ever
+  inc StaleT
+  if StaleT >= 480 then
+    StaleT = 0
+    inc AngI
+    if AngI > 5 then AngI = 0
+    B.Px = PoseX[AngI]
+    B.Py = PoseY[AngI]
+    B.Cx = 1
+    B.Cy = 1
+  end if
+  Bud += Rate
+  while Bud >= 16
+    Mv = 0
+    V = B.Cx - 1
+    if V = 0 then
+      B.Cx = B.Px
+      StepX
+      Mv = 16
+    else
+      B.Cx = V
+    end if
+    V = B.Cy - 1
+    if V = 0 then
+      B.Cy = B.Py
+      StepY
+      Mv += 16
+    else
+      B.Cy = V
+    end if
+    if Bud < Mv then
+      Bud = 0
+    else
+      Bud -= Mv
+    end if
+    if Lost = 1 then Bud = 0
+  end while
+  return
+end sub
+
+' IsWall: 1 when tile (C, R) is a wall
+function IsWall(u8 C, u8 R) as u8
+  u8 Ix = 0
+  u8 M = 0
+  Ix = R << 2
+  M = C >> 3
+  Ix = Ix + M
+  M = C & 7
+  M = Wb[Ix] & BitM[M]
+  if M > 0 then M = 1
+  return M
+
+' StepX: one pixel across; the leading edge (3 pixels from the centre)
+' tested at two heights
+sub StepX:
+  if B.Sx = 1 then
+    Nx = B.X + 1
+    Ex = Nx + 3
+  else
+    Nx = B.X - 1
+    Ex = Nx - 3
+  end if
+  Ec = Ex >> 3
+  Er = B.Y - 2
+  Er = Er >> 3
+  Hit = IsWall(Ec, Er)
+  Er = B.Y + 2
+  Er = Er >> 3
+  Hit = Hit | IsWall(Ec, Er)
+  if Hit = 1 then
+    B.Sx = B.Sx ^ 1
+    WallHit
+  else
+    B.X = Nx
+    AfterMove
+  end if
+  return
+end sub
+
+sub StepY:
+  if B.Sy = 1 then
+    Nx = B.Y - 1
+    Ex = Nx - 3
+  else
+    Nx = B.Y + 1
+    Ex = Nx + 3
+  end if
+  Er = Ex >> 3
+  Ec = B.X - 2
+  Ec = Ec >> 3
+  Hit = IsWall(Ec, Er)
+  Ec = B.X + 2
+  Ec = Ec >> 3
+  Hit = Hit | IsWall(Ec, Er)
+  if Hit = 1 then
+    B.Sy = B.Sy ^ 1
+    WallHit
+  else
+    B.Y = Nx
+    AfterMove
+  end if
+  return
+end sub
+
+sub WallHit:
+  if NoScore = 1 then return
+  Score += 10
+  ScDirty = 1
+  inc WallHits
+  play sound SndWall
+  return
+end sub
+
+sub AfterMove:
+  CellCheck
+  FlipCheck
+  if B.Y >= DrainY then Lost = 1
+  return
+end sub
+
+' CellCheck: when the centre enters a new tile, what is there
+sub CellCheck:
+  Ec = B.X >> 3
+  Er = B.Y >> 3
+  if Ec = Cc then
+    if Er = Cr then return
+  end if
+  Cc = Ec
+  Cr = Er
+  if Er > 21 then return
+  V = get char at Ec, Er
+  select case V
+  case TWham
+    put char 32 at Ec, Er
+    Score += 200
+    ScDirty = 1
+    inc Hits
+    StaleT = 0
+    dec WLeft
+    ShowLeft
+    play sound SndWham
+  case TTgta to TTgtb
+    if Raised = 0 then RaiseBumper
+  case TCora to TCorb
+    if Raised = 1 then LowerBumper
+  end select
+  return
+end sub
+
+' FlipCheck: a falling ball over the flippers' row
+sub FlipCheck:
+  if B.Sy = 1 then return
+  if B.Y < FlipY then return
+  if B.Y > 164 then return
+  Ec = B.X >> 3
+  K = FlipOf[Ec]
+  if K = 0 then return
+  if K = 5 then
+    if Raised = 1 then
+      B.Sy = 1
+      B.Sx = 1
+      if B.X < 128 then B.Sx = 0
+      StaleT = 0
+      play sound SndWall
+    end if
+    return
+  end if
+  if Tilted = 1 then
+    if K >= 3 then return
+  end if
+  Dz = K & 1
+  if Dz = 1 then
+    Pz = PoseL
+    Hz = HeldL
+    Gz = HoldL
+  else
+    Pz = PoseR
+    Hz = HeldR
+    Gz = HoldR
+  end if
+  ' a resting flipper (button up) hangs below the ball's path: the ball
+  ' drains past it
+  if Hz = 0 then return
+  if Gz > 60 then return
+  B.Sx = Dz
+  B.Sy = 1
+  if Pz = 0 then
+    if Hz = 1 then Pz = 5
+  end if
+  B.Px = PoseX[Pz]
+  B.Py = PoseY[Pz]
+  B.Cx = 1
+  B.Cy = 1
+  inc FlipHits
+  play sound SndFlip
+  return
+end sub
+
+sub DrawBall:
+  if B.Y >= 180 then
+    HideBall
+    return
+  end if
+  Y = B.Y - 9
+  X = B.X - 7
+  set sprite 0 to Y,X,SShine,15
+  set sprite 1 to Y,X,SBall,14
+  update sprites
+  return
+end sub
+
+sub HideBall:
+  set sprite 0 to NoBall,0,SShine,0
+  set sprite 1 to NoBall,0,SBall,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' flippers, bumping, tilt, targets
+
+sub ReadPlay:
+  HeldL = 0
+  HeldR = 0
+  StickUp = 0
+  if joypad(1).button1 or joypad(2).button1 then HeldL = 1
+  if joypad(1).button2 or joypad(2).button2 then HeldR = 1
+  if joypad(1).up or joypad(2).up then StickUp = 1
+  UpPress = 0
+  if StickUp = 1 then
+    if WasUp = 0 then UpPress = 1
+  end if
+  WasUp = StickUp
+  ' how long each button has been held (a flipper held up over a second
+  ' lets the ball roll off)
+  HoldL = HoldL + HeldL
+  if HeldL = 0 then HoldL = 0
+  if HoldL > 200 then HoldL = 200
+  HoldR = HoldR + HeldR
+  if HeldR = 0 then HoldR = 0
+  if HoldR > 200 then HoldR = 200
+  return
+end sub
+
+sub Flippers:
+  if Tilted = 1 then return
+  if HeldL = 1 then
+    if PoseL < 4 then
+      inc PoseL
+      DrawFlipL
+    end if
+  else
+    if PoseL > 0 then
+      dec PoseL
+      DrawFlipL
+    end if
+  end if
+  if HeldR = 1 then
+    if PoseR < 4 then
+      inc PoseR
+      DrawFlipR
+    end if
+  else
+    if PoseR > 0 then
+      dec PoseR
+      DrawFlipR
+    end if
+  end if
+  return
+end sub
+
+' DrawFlip: the six tiles of one flipper from code T
+sub DrawFlip(u8 C, u8 T):
+  put char T at C, 20
+  put char T + 1 at C + 1, 20
+  put char T + 2 at C + 2, 20
+  put char T + 3 at C, 21
+  put char T + 4 at C + 1, 21
+  put char T + 5 at C + 2, 21
+  return
+end sub
+
+sub DrawFlipL:
+  W = PoseL * 6
+  W = W + TFl000
+  DrawFlip(3, W)
+  if Tilted = 0 then DrawFlip(12, W)
+  DrawFlip(21, W)
+  return
+end sub
+
+sub DrawFlipR:
+  W = PoseR * 6
+  W = W + TFr000
+  DrawFlip(8, W)
+  if Tilted = 0 then DrawFlip(17, W)
+  DrawFlip(26, W)
+  return
+end sub
+
+' Bumping: stick UP nudges the ball two pixels a frame along its way for
+' 8 frames; held too long or bumped again too soon, the machine tilts
+sub Bumping:
+  if Tilted = 1 then
+    dec TiltT
+    if TiltT = 0 then
+      Tilted = 0
+      print at 15,1, "    "
+      DrawFlipL
+      DrawFlipR
+    end if
+    return
+  end if
+  if Since < 255 then inc Since
+  if BumpT > 0 then
+    dec BumpT
+    NoScore = 1
+    StepX
+    StepX
+    NoScore = 0
+    if StickUp = 1 then
+      inc BumpHeld
+      if BumpHeld > 6 then TiltNow
+    end if
+    if BumpT = 0 then Since = 0
+    return
+  end if
+  if UpPress = 1 then
+    if Since < 45 then
+      TiltNow
+    else
+      BumpT = 8
+      BumpHeld = 0
+      inc Bumps
+      play sound SndBump
+    end if
+  end if
+  return
+end sub
+
+sub TiltNow:
+  Tilted = 1
+  TiltT = 840
+  BumpT = 0
+  inc Tilts
+  print at 15,1, "TILT"
+  fill 32 count 3 at 12,20
+  fill 32 count 3 at 12,21
+  fill 32 count 3 at 17,20
+  fill 32 count 3 at 17,21
+  play sound SndTilt
+  return
+end sub
+
+sub RaiseBumper:
+  StaleT = 0
+  Raised = 1
+  put char 32 at 15,12
+  put char 32 at 16,12
+  put char TBmp00 at 15,20
+  put char TBmp01 at 16,20
+  put char TBmp10 at 15,21
+  put char TBmp11 at 16,21
+  DrawTargets
+  play sound SndTarget
+  return
+end sub
+
+sub LowerBumper:
+  StaleT = 0
+  Raised = 0
+  fill 32 count 2 at 15,20
+  fill 32 count 2 at 15,21
+  fill 32 count 2 at 6,21
+  fill 32 count 2 at 24,21
+  DrawTargets
+  play sound SndTarget
+  return
+end sub
+
+' DrawTargets: the centre target while the bumper is down, the corner
+' ones while it is up, in this blink phase's colours
+sub DrawTargets:
+  BlinkT = 0
+  if Raised = 0 then
+    V = TTgta + BlinkPh
+    put char V at 15,12
+    put char V at 16,12
+  else
+    V = TCora + BlinkPh
+    fill V count 2 at 6,21
+    fill V count 2 at 24,21
+  end if
+  return
+end sub
+
+' Blink: the targets swap colours every 20 frames (1.5 Hz)
+sub Blink:
+  inc BlinkT
+  if BlinkT < 21 then return
+  BlinkT = 0
+  BlinkPh = BlinkPh ^ 1
+  DrawTargets
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' the screen
+
+sub SetWall(u8 C, u8 R):
+  u8 Ix = 0
+  u8 M = 0
+  Ix = R << 2
+  M = C >> 3
+  Ix = Ix + M
+  M = C & 7
+  Wb[Ix] = Wb[Ix] | BitM[M]
+  return
+end sub
+
+sub HWall(u8 C0, u8 C1, u8 R):
+  u8 C = 0
+  for C = C0 to C1
+    SetWall(C, R)
+    put char THwall at C, R
+  next
+  return
+end sub
+
+sub VWall(u8 C, u8 R0, u8 R1):
+  u8 R = 0
+  for R = R0 to R1
+    SetWall(C, R)
+    put char TVwall at C, R
+  next
+  return
+end sub
+
+sub Post(u8 C):
+  u8 R = 0
+  for R = 20 to 22
+    SetWall(C, R)
+    put char TPost at C, R
+  next
+  return
+end sub
+
+' the two small blocks
+sub PairWalls:
+  VWall(11, 17, 17)
+  VWall(20, 15, 15)
+  return
+end sub
+
+sub BuildLevel:
+  NewScreen
+  fill array Wb with 0
+  HWall(2, 29, 2)
+  VWall(2, 3, 22)
+  VWall(29, 3, 22)
+  Post(11)
+  Post(20)
+  ' the level's walls are the bits of its number
+  Lb = Lvl
+  if Lvl >= 20 then
+    Lb = Lb | 8
+    if Lvl = 26 then Lb = 31
+    PairWalls
+  end if
+  V = Lb & 1
+  if V = 1 then
+    HWall(9, 22, 7)
+  else
+    HWall(10, 21, 5)
+  end if
+  V = Lb & 2
+  if V > 0 then
+    W = Lb & 1
+    if W = 1 then
+      HWall(9, 22, 10)
+    else
+      HWall(9, 12, 10)
+      HWall(19, 22, 10)
+    end if
+  end if
+  V = Lb & 4
+  if V > 0 then VWall(6, 5, 15)
+  V = Lb & 8
+  if V > 0 then VWall(25, 5, 15)
+  V = Lb & 16
+  if V > 0 then
+    VWall(15, 15, 17)
+    VWall(16, 15, 17)
+  else
+    PairWalls
+  end if
+  Raised = 0
+  BlinkPh = 0
+  DrawTargets
+  Nw = Lvl + 15
+  if Nw > 40 then Nw = 40
+  PlaceWhammies
+  PoseL = 0
+  PoseR = 0
+  Tilted = 0
+  DrawFlipL
+  DrawFlipR
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' PlaceWhammies: Nw of them at random in empty tiles, columns 3-28,
+' rows 3-17
+sub PlaceWhammies:
+  WLeft = Nw
+  Hits = 0
+  Placed = 0
+  while Placed < Nw
+    Rnd16
+    X = Rs & 31
+    Y = highbyte Rs
+    Y = Y & 15
+    Y = Y + 3
+    if X >= 3 then
+      if X <= 28 then
+        if Y <= 17 then
+          V = get char at X, Y
+          if V = 32 then
+            put char TWham at X, Y
+            inc Placed
+          end if
+        end if
+      end if
+    end if
+  end while
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "L"
+  NumU = Lvl
+  print at 3,1, digits$(NumU, 2)
+  ShowBalls
+  put char TWham at 11,1
+  ShowLeft
+  ShowScore
+  return
+end sub
+
+sub ShowBalls:
+  for J = 1 to 5
+    V = 32
+    if J <= Balls then V = TBalli
+    W = J + 5
+    put char V at W,1
+  next
+  return
+end sub
+
+sub ShowLeft:
+  NumU = WLeft
+  print at 12,1, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScore:
+  print at 21,1, Score
+  ScDirty = 0
+  return
+end sub
+
+' CountBonus: 500 for every Whammie, counted in with a tick
+sub CountBonus:
+  print at 8,18, "SCREEN CLEARED!"
+  for Kb = 1 to Hits
+    Score += 250
+    Score += 250
+    ShowScore
+    play sound SndTick
+    WaitCnt = 4
+    Frames
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------
+' frames and screens
+
+' Rnd16: a 16-bit xorshift (7, 9, 8)
+sub Rnd16:
+  T16 = Rs << 7
+  Rs = Rs ^ T16
+  T16 = Rs >> 9
+  Rs = Rs ^ T16
+  T16 = Rs << 8
+  Rs = Rs ^ T16
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Frames: WaitCnt frames
+sub Frames:
+  for Wn = 1 to WaitCnt
+    Frame1
+  next
+  return
+end sub
+
+' ReadPad: the menus' reading (either joystick, either button)
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up or joypad(2).up then Up1 = 1
+  if joypad(1).down or joypad(2).down then Dn1 = 1
+  if joypad(1).left or joypad(2).left then Lf1 = 1
+  if joypad(1).right or joypad(2).right then Rt1 = 1
+  if joypad(1).fire or joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  for J = 0 to 1
+    set sprite J to NoBall,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' DrawLogo: WHAM over BALL in block letters, columns 4-26, rows 1-11
+sub DrawLogo:
+  u8 Li = 0
+  u8 Lr = 0
+  u8 Lc = 0
+  u8 Lt = 0
+  Li = 0
+  for Lr = 0 to 10
+    Lt = TBlk
+    if Lr > 5 then Lt = TBlk2
+    for Lc = 0 to 22
+      if Logo[Li] = 1 then put char Lt at Lc + 4, Lr + 1
+      inc Li
+    next
+  next
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  DrawLogo
+  print at 7,12, "BY RICK BAUER 1989"
+  print at 8,14, "START GAME"
+  print at 8,15, "SPEED"
+  print at 8,16, "SCREEN"
+  print at 8,17, "TRAINER"
+  print at 8,18, "HOW TO PLAY"
+  print at 8,19, "CREDITS"
+  print at 3,21, "STICK CHOOSES AND CHANGES"
+  print at 3,22, "A BUTTON STARTS OR SHOWS"
+  ShowValues
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Ph = 0
+  Rep = 0
+tp_loop:
+  Frame1
+  Rnd16
+  ReadPad
+  if Up1 = 1 then
+    if WasStick = 0 then
+      if Menu > 0 then dec Menu
+      ShowMenu
+    end if
+  end if
+  if Dn1 = 1 then
+    if WasStick = 0 then
+      if Menu < 5 then inc Menu
+      ShowMenu
+    end if
+  end if
+  V = Lf1 | Rt1
+  if V = 1 then
+    if WasStick = 0 then Rep = 0
+    if Rep = 0 then
+      Adjust
+      Rep = 8
+      if WasStick = 0 then Rep = 20
+    end if
+    dec Rep
+  end if
+  WasStick = Up1 | Dn1
+  WasStick = WasStick | V
+  if Press = 0 then goto tp_loop
+  if Menu = 3 then
+    Trainer = Trainer ^ 1
+    ShowValues
+    goto tp_loop
+  end if
+  if Menu = 1 then goto tp_loop
+  if Menu = 2 then goto tp_loop
+  QuietTune
+  return
+end sub
+
+sub QuietTune:
+  mute all
+  TzOn = 0
+  return
+end sub
+
+' Adjust: left/right changes the speed, the screen or trainer mode
+sub Adjust:
+  select case Menu
+  case 1
+    if Lf1 = 1 then
+      if Speed > 1 then dec Speed
+    else
+      if Speed < 32 then inc Speed
+    end if
+  case 2
+    if Lf1 = 1 then
+      if StartLv > 1 then dec StartLv
+    else
+      if StartLv < 26 then inc StartLv
+    end if
+  case 3
+    Trainer = Trainer ^ 1
+  end select
+  ShowValues
+  return
+end sub
+
+sub ShowValues:
+  NumU = Speed
+  print at 17,15, digits$(NumU, 2)
+  NumU = StartLv
+  print at 17,16, digits$(NumU, 2)
+  if Trainer = 1 then
+    print at 17,17, "YES"
+  else
+    print at 17,17, "NO "
+  end if
+  return
+end sub
+
+sub ShowMenu:
+  for J = 14 to 19
+    put char 32 at 6,J
+  next
+  V = Menu + 14
+  put char 62 at 6,V
+  return
+end sub
+
+' HowToPage: two pages; a button turns the page, the last page or 30
+' seconds idle returns to the title
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "KNOCK OUT EVERY WHAMMIE"
+    put char TWham at 26,3
+    print at 2,4, "TO CLEAR THE SCREEN."
+    print at 2,5, "THE BALL BOUNCES OFF THE"
+    print at 2,6, "WALLS AND FLIPPERS AND"
+    print at 2,7, "PASSES THROUGH WHAMMIES."
+    print at 2,9, "LEFT BUTTON: LEFT FLIPPERS"
+    print at 2,10, "RIGHT BUTTON: RIGHT ONES"
+    print at 2,11, "LEFT FLIPPERS HIT RIGHT,"
+    print at 2,12, "RIGHT ONES HIT LEFT. THE"
+    print at 2,13, "HIGHER THE FLIPPER, THE"
+    print at 2,14, "STEEPER THE SHOT."
+    ' the illustration: a post with its two flippers, a wall above
+    fill THwall count 10 at 10,16
+    put char TWham at 12,18
+    put char TWham at 16,18
+    W = TFl000 + 12
+    DrawFlip(15, W)
+    W = TFr000 + 24
+    DrawFlip(11, W)
+    put char TPost at 14,20
+    put char TPost at 14,21
+  else
+    print at 2,3, "WALL 10  WHAMMIE 200"
+    print at 2,4, "SCREEN BONUS 500 A WHAMMIE"
+    print at 2,5, "AND AN EXTRA BALL (UP TO 5)"
+    print at 2,7, "HIT THE GREEN TARGET    TO"
+    put char TTgta at 23,7
+    print at 2,8, "RAISE THE BUMPER OVER THE"
+    print at 2,9, "MIDDLE HOLE. YELLOW CORNER"
+    put char TCora at 28,9
+    print at 2,10, "TARGETS LOWER IT AGAIN."
+    print at 2,12, "STICK UP BUMPS THE MACHINE"
+    print at 2,13, "AND NUDGES THE BALL. BUMP"
+    print at 2,14, "TOO HARD OR TOO OFTEN AND"
+    print at 2,15, "IT TILTS: 14 SECONDS WITH"
+    print at 2,16, "NO CENTRE FLIPPERS."
+    print at 2,18, "LOSE ALL 5 BALLS: GAME OVER"
+    print at 2,19, "TIP: RAISE THE BUMPER SOON."
+    put char TBmp00 at 14,20
+    put char TBmp01 at 15,20
+    put char TBmp10 at 14,21
+    put char TBmp11 at 15,21
+  end if
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Idle = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc Idle
+  if Idle >= 1800 then goto ht_done
+  if Press = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "WHAM BALL"
+  print at 2,4, "BASED ON WHAM BALL BY RICK"
+  print at 2,5, "BAUER, COMPUTE!'S GAZETTE"
+  print at 2,6, "SEPTEMBER 1989 (C64)."
+  print at 2,8, "ONE-PLAYER PINBALL: PLAY IT"
+  print at 2,9, "OFF THE WALLS AND KNOCK"
+  print at 2,10, "DOWN THE WHAMMIES."
+  print at 2,12, "COLECOVISION GAME AND MUSIC"
+  print at 2,13, "BY CLAUDE (ANTHROPIC) FOR"
+  print at 2,14, "AMY STUDIO, IN AMY BY AMY"
+  print at 2,15, "BIENVENU, 2026."
+  print at 2,17, "MUSIC: TILT SHUFFLE"
+  print at 2,18, "(ORIGINAL)"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$44,$00,$11,$00,$00,$00
+  $80,$90,$80,$82,$80,$A0,$80,$84
+  $81,$80,$A0,$82,$80,$90,$80,$81
+  $42,$99,$00,$42,$00,$C3,$81,$A5
+  $00,$00,$81,$A5,$81,$00,$00,$00
+  $00,$00,$81,$A5,$81,$00,$00,$00
+  $00,$00,$81,$A5,$81,$00,$00,$00
+  $00,$00,$81,$A5,$81,$00,$00,$00
+  $F0,$E0,$C0,$80,$03,$07,$06,$06
+  $F0,$07,$03,$01,$C0,$E0,$60,$60
+  $07,$03,$00,$80,$C0,$E0,$F0,$00
+  $E0,$C0,$00,$01,$03,$07,$F0,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$18,$C1,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$80,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$07,$01,$00,$00,$00,$00
+  $F0,$07,$01,$00,$80,$E0,$07,$01
+  $00,$00,$00,$00,$80,$E0,$F0,$07
+  $00,$00,$00,$18,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$C0,$07,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$07,$00,$00,$00,$00
+  $C0,$07,$01,$01,$C1,$00,$00,$00
+  $00,$00,$00,$1C,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$01,$00,$01
+  $C0,$1C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$C0,$80,$80,$80
+  $00,$01,$80,$00,$00,$00,$03,$E0
+  $00,$01,$01,$03,$F0,$80,$00,$00
+  $C0,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$E0,$C0,$80,$80,$80
+  $C0,$00,$00,$03,$07,$E0,$C0,$00
+  $E0,$C0,$00,$00,$00,$00,$00,$00
+  $C1,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$07
+  $00,$00,$00,$18,$83,$01,$01,$01
+  $00,$00,$00,$00,$01,$07,$F0,$E0
+  $F0,$E0,$80,$00,$01,$07,$E0,$80
+  $03,$07,$E0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$E0,$80
+  $00,$00,$00,$18,$03,$01,$01,$01
+  $03,$E0,$80,$80,$83,$00,$00,$00
+  $00,$00,$00,$E0,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$80,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$38,$03,$01,$01,$01
+  $03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$38,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$C0,$F0,$01,$00,$00
+  $00,$80,$01,$00,$00,$00,$C0,$07
+  $00,$00,$00,$07,$03,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$18,$00,$00,$00,$00,$00,$00
+  $07,$03,$00,$00,$00,$00,$00,$00
+  $03,$00,$00,$C0,$E0,$07,$03,$00
+  $00,$00,$E0,$07,$03,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$18,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $09,$08,$68,$08,$68,$08,$06,$01
+  $98,$98,$98,$98,$98,$98,$98,$98
+  $19,$98,$98,$98,$98,$98,$98,$16
+  $71,$17,$07,$17,$07,$71,$17,$71
+  $01,$03,$3C,$3C,$3C,$03,$01,$01
+  $01,$0C,$C3,$C3,$C3,$0C,$01,$01
+  $01,$0B,$BA,$BA,$BA,$0B,$01,$01
+  $01,$0A,$AB,$AB,$AB,$0A,$01,$01
+  $1D,$1D,$1D,$1D,$FD,$FD,$FD,$FD
+  $D1,$1D,$1D,$1D,$FD,$FD,$FD,$FD
+  $FD,$FD,$0D,$1D,$1D,$1D,$1D,$01
+  $FD,$FD,$0D,$1D,$1D,$1D,$D1,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$0A
+  $68,$68,$68,$68,$68,$68,$68,$06
+  $01,$01,$01,$F1,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$01,$01,$F1,$F1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$F1,$F1,$01,$01,$01,$01
+  $F1,$1F,$1F,$0F,$1F,$1F,$F1,$F1
+  $01,$01,$01,$01,$F1,$F1,$F1,$1F
+  $01,$01,$01,$F1,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$01,$F1,$1F,$1F
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$1F,$01,$01,$01,$01,$01,$01
+  $0F,$0F,$0F,$F1,$01,$01,$01,$01
+  $F1,$1F,$1F,$1F,$1F,$01,$01,$01
+  $01,$01,$01,$F1,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$0F,$0F,$0F,$0F
+  $01,$01,$01,$01,$F1,$1F,$0F,$1F
+  $1F,$F1,$01,$01,$01,$01,$01,$01
+  $0F,$01,$01,$01,$01,$01,$01,$01
+  $F1,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$1F,$1F,$1F,$1F,$1F
+  $01,$F1,$1F,$0F,$0F,$0F,$1F,$F1
+  $01,$1F,$1F,$1F,$F1,$F1,$01,$01
+  $1F,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$1F,$1F,$1F,$1F,$1F
+  $1F,$0F,$0F,$1F,$1F,$F1,$F1,$01
+  $F1,$F1,$01,$01,$01,$01,$01,$01
+  $1F,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$F1,$F1
+  $01,$01,$01,$F1,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$F1,$F1,$1F,$1F
+  $1F,$1F,$1F,$0F,$1F,$1F,$F1,$F1
+  $1F,$1F,$F1,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$1F,$1F
+  $01,$01,$01,$F1,$1F,$1F,$1F,$1F
+  $F1,$1F,$1F,$1F,$1F,$01,$01,$01
+  $0F,$0F,$0F,$F1,$01,$01,$01,$01
+  $1F,$1F,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$F1,$1F,$0F,$1F
+  $01,$01,$01,$01,$0F,$0F,$0F,$0F
+  $01,$01,$01,$F1,$1F,$1F,$1F,$1F
+  $F1,$01,$01,$01,$01,$01,$01,$01
+  $0F,$01,$01,$01,$01,$01,$01,$01
+  $1F,$F1,$01,$01,$01,$01,$01,$01
+  $01,$1F,$1F,$1F,$1F,$F1,$01,$01
+  $01,$F1,$1F,$0F,$0F,$0F,$1F,$F1
+  $01,$01,$01,$1F,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$F1,$01,$01,$01,$01,$01,$01
+  $F1,$F1,$01,$01,$01,$01,$01,$01
+  $1F,$0F,$0F,$1F,$1F,$F1,$F1,$01
+  $01,$01,$F1,$1F,$1F,$1F,$1F,$1F
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1F,$F1,$01,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$03,$07,$0F,$0F,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$06,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+WbBump:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$04,$10
+WbLost:
+    db $00,$00,$16,$06,$00,$00,$37,$0A,$00,$00,$67,$0E,$10
+WbWall:
+    db $40,$7F,$20,$01,$40,$A9,$50,$02,$50
+WbFlip:
+    db $40,$FC,$21,$01,$40,$53,$41,$01,$50
+WbWham:
+    db $80,$D6,$10,$02,$80,$8F,$10,$02,$80,$6B,$20,$02,$80,$47,$50,$03,$90
+WbTick:
+    db $80,$55,$20,$01,$80,$55,$70,$02,$90
+WbTarget:
+    db $C0,$1D,$11,$03,$C0,$BF,$10,$03,$C0,$8F,$10,$03,$C0,$5F,$40,$06,$D0
+WbTilt:
+    db $C0,$F9,$13,$28,$C0,$FF,$43,$14,$D0
+WbExtra:
+    db $C0,$8F,$10,$04,$C0,$71,$10,$04,$C0,$5F,$10,$04,$C0,$47,$20,$0A,$D0
+
+WbSoundTable:
+    dw WbTuneMel,$702B
+    dw WbTuneBass,$7035
+    dw WbBump,$703F
+    dw WbLost,$703F
+    dw WbWall,$7049
+    dw WbFlip,$7049
+    dw WbWham,$7053
+    dw WbTick,$7053
+    dw WbTarget,$705D
+    dw WbTilt,$705D
+    dw WbExtra,$705D
+; Tilt Shuffle (original)
+; Tiny Sound, 6 frames per step
+WbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$1A,$21,$1A,$1E,$21,$01,$26,$01,$21,$01,$23,$01,$21,$1E
+    db $1A,$01,$01,$01,$1F,$23,$26,$01,$2B,$01,$26,$01,$28,$01,$26,$23
+    db $1F,$01,$01,$01,$21,$01,$25,$01,$28,$01,$25,$01,$26,$25,$23,$21
+    db $1E,$01,$1A,$01,$1C,$01,$1F,$01,$1E,$01,$1C,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+WbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $12,$01,$09,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $0B,$01,$0E,$01,$09,$01,$10,$01,$09,$01,$10,$01,$0E,$01,$09,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+}

@@ -2,8 +2,7 @@ cartridge "SPACE GALLERY/COMPUTE GAZETTE/1985"
 
 ' SPACE GALLERY
 ' A ColecoVision game based on "Space Gallery", COMPUTE!'s Gazette, July
-' 1985 disk (Commodore 64 machine language, SYS2062; no author named on the
-' disk or in the program). Made for Amy Studio by Claude (an AI made by
+' 1985 p. 46, by Jeff A. Lapkoff (Commodore 64 machine language, SYS2062). Made for Amy Studio by Claude (an AI made by
 ' Anthropic), 2026, in Amy by Amy Bienvenu.
 '
 ' Not a byte-for-byte port: the rules are the original's (read from its
@@ -12,10 +11,11 @@ cartridge "SPACE GALLERY/COMPUTE GAZETTE/1985"
 ' starry sky, sprites, sounds and a title tune.
 '
 ' The game (one player): a laser cannon slides along a launch deck at the
-' bottom. Four aliens fly the same looping path across the sky, one behind
-' the other, and drop bombs (at most three at a time). Shoot all four to
-' clear the wave: 5 points an alien, then a SHOT BONUS of 5 points for each
-' shot under 60 fired in that wave. A bomb on the cannon costs one of the
+' bottom. Four aliens ("frisboids" in the article; their bombs are
+' "pellets") fly the same looping path, one behind the other, and drop
+' pellets (at most three at a time). Shoot all four to clear the wave, 5
+' points each; five waves make a level, then a SHOT BONUS of 5 points for
+' each shot under 60 fired in that level. A bomb on the cannon costs one of the
 ' five cannons and starts the wave again with all four aliens on a new
 ' path. The game is over when the last cannon is lost.
 '
@@ -33,10 +33,10 @@ cartridge "SPACE GALLERY/COMPUTE GAZETTE/1985"
 ' almost always falling; bombs fall about 2 C64 pixels a frame (here 5
 ' pixels in 3 frames over a shorter sky, the same time); the cannon moves
 ' about 2.8 pixels a frame (here 8 in 3 frames); SHOT BONUS (60 - shots) x
-' 5 (shots counted up to 60); LEVEL shown between waves; one extra cannon
+' 5 (shots counted up to 60) after five waves; LEVEL shown between waves; one extra cannon
 ' on reaching level 5; HEAT SEEKER (an option on the title, off at the
 ' start): from level 4 the third bomb steers toward the cannon as fast as
-' it falls; a high score.
+' it falls, drawn blue as in the article; a high score.
 '
 ' Liberties: shots are bolt tiles in four colours (the C64 drew a random
 ' line character); hits are tested against each alien's box instead of
@@ -257,6 +257,8 @@ u8 Pads = 0
 u8 OldPads = 0
 u8 Tick = 0
 u8 Sel = 0
+u8 Pg = 0
+u16 Wt = 0
 u8 Heat = 0
 u8 Phase = 0
 u8 PhT = 0
@@ -287,6 +289,7 @@ u8 BY[3]
 u8 BombF = 0
 u8 NewHi = 0
 u8 Bonus = 0
+u8 WaveN = 0
 ' loop counters (never shared with the helpers)
 u8 Ai = 0
 u8 Si = 0
@@ -313,6 +316,10 @@ u8 Y = 0
 title:
   TitlePage
   if Sel = 2 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 3 then
     CreditsPage
     goto title
   end if
@@ -369,6 +376,7 @@ sub NewGame:
   Cannons = 5
   Level = 1
   Shots = 0
+  WaveN = 0
   Cx = 112
   CStep = 0
   FireT = 0
@@ -445,7 +453,15 @@ sub PlayStep:
       N = N | ASt[Ai]
     next
     if N = 0 then
-      ' the wave is clear
+      ' the wave is clear: five waves make a level
+      inc WaveN
+    end if
+    if N = 0 and WaveN < 5 then
+      NewWave
+      N = 1
+    end if
+    if N = 0 then
+      WaveN = 0
       Phase = 2
       PhT = 180
       ClearShots
@@ -839,7 +855,7 @@ sub DrawSprites:
     K = Bi + 6
     if BOn[Bi] = 1 then
       Col = 15
-      if Bi = 2 and Heat = 1 and Level >= 4 then Col = 8
+      if Bi = 2 and Heat = 1 and Level >= 4 then Col = 5
       set sprite K to BY[Bi] - 1,BX[Bi],SBomb,Col
     else
       set sprite K to 207,0,0,0
@@ -939,6 +955,7 @@ sub TitlePage:
   print at 20,17, digits$(HiSc, 5)
   Sel = 0
   ShowMenu
+  print at 6,15, "SHOOT THE FRISBOIDS!"
   print at 4,20, "COMPUTE!'S GAZETTE 1985"
   set sprite 2 to 63,40,SAlien1,13
   set sprite 3 to 63,200,SAlien2,10
@@ -964,7 +981,7 @@ tp_loop:
     play sound SndPick
     ShowMenu
   end if
-  if (N & 2) <> 0 and Sel < 2 then
+  if (N & 2) <> 0 and Sel < 3 then
     inc Sel
     play sound SndPick
     ShowMenu
@@ -985,7 +1002,7 @@ tp_loop:
 end sub
 
 sub ShowMenu:
-  for Ri = 0 to 2
+  for Ri = 0 to 3
     put char 32 at 8,Ri + 11
   next
   put char 62 at 8,Sel + 11
@@ -995,7 +1012,84 @@ sub ShowMenu:
   else
     print at 10,12, "HEAT SEEKER OFF"
   end if
-  print at 10,13, "CREDITS"
+  print at 10,13, "HOW TO PLAY"
+  print at 10,14, "CREDITS"
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "ALIEN FRISBOIDS FLY OVER"
+    print at 2,4, "YOUR SPACE COLONY AND DROP"
+    print at 2,5, "PELLETS ON YOUR CANNON."
+    print at 2,7, "SHOOT ALL FOUR FRISBOIDS"
+    print at 2,8, "TO CLEAR A WAVE. FIVE WAVES"
+    print at 2,9, "MAKE A LEVEL."
+    set sprite 2 to 95,64,SAlien1,13
+    set sprite 3 to 95,104,SAlien2,10
+    set sprite 4 to 95,144,SAlien1,10
+    set sprite 5 to 95,184,SAlien2,10
+    set sprite 6 to 127,150,SBomb,15
+    set sprite 0 to 151,120,STip,11
+    set sprite 1 to 151,120,SCannon,7
+    put char TShot0 at 15,15
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "STICK LEFT/RIGHT: MOVE THE"
+    print at 2,4, "CANNON."
+    print at 2,5, "BUTTON: FIRE. HOLD IT TO"
+    print at 2,6, "KEEP FIRING."
+    print at 2,8, "A PELLET ON YOUR CANNON"
+    print at 2,9, "COSTS ONE OF YOUR 5 CANNONS."
+    print at 2,10, "NO CANNONS LEFT: GAME OVER."
+    set sprite 6 to 119,120,SBomb,15
+    set sprite 0 to 135,120,STip,11
+    set sprite 1 to 135,120,SCannon,7
+    set sprite 2 to 135,160,SBoom1,9
+  case 3
+    print at 2,1, "SCORING                 3/3"
+    print at 2,3, "EACH FRISBOID: 5 POINTS."
+    print at 2,5, "AFTER A LEVEL: A SHOT BONUS."
+    print at 2,6, "THE FEWER SHOTS YOU FIRED,"
+    print at 2,7, "THE MORE POINTS YOU GET."
+    print at 2,9, "AT LEVEL 5 YOU GET AN EXTRA"
+    print at 2,10, "CANNON."
+    print at 2,12, "HEAT SEEKER ON THE TITLE:"
+    print at 2,13, "FROM LEVEL 4 A BLUE PELLET"
+    print at 2,14, "CHASES YOUR CANNON!"
+    print at 2,16, "TIP: AIM, DON'T JUST HOLD"
+    print at 2,17, "THE BUTTON DOWN."
+    set sprite 2 to 151,100,SAlien1,10
+    set sprite 6 to 151,150,SBomb,5
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPads
+  N = Pads & (Pads ^ OldPads)
+  Wt = Wt + 1
+  if Wt >= 1800 then
+    HideSprites
+    return
+  end if
+  if (N & 16) = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  HideSprites
   return
 end sub
 
@@ -1004,10 +1098,11 @@ sub CreditsPage:
   fill mode 2 text color with $71
   backdrop black
   print at 9,2, "SPACE GALLERY"
-  print at 2,5, "BASED ON SPACE GALLERY,"
-  print at 2,6, "COMPUTE!'S GAZETTE"
-  print at 2,7, "JULY 1985 DISK"
-  print at 2,8, "(COMMODORE 64)."
+  print at 2,4, "2023: GUARD THE COLONY FROM"
+  print at 2,5, "THE FRISBOIDS AND PELLETS."
+  print at 2,7, "BASED ON SPACE GALLERY BY"
+  print at 2,8, "JEFF A. LAPKOFF, COMPUTE!'S"
+  print at 2,9, "GAZETTE JULY 1985 (C64)."
   print at 2,11, "COLECOVISION GAME, MUSIC"
   print at 2,12, "AND PICTURES BY CLAUDE"
   print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"

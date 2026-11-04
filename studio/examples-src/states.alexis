@@ -23,7 +23,9 @@ cartridge "STATES & CAPITALS TUTOR/COMPUTE!'S GAZETTE/1983"
 ' ALL OF YOUR ANSWERS WERE CORRECT, OR I HAD TO HELP YOU.
 '
 ' Controls (either joystick): up and down move the pencil, a side button
-' answers or goes on. Keypad not used.
+' answers or goes on. Keypad not used. On the title: up and down choose
+' START / HOW TO PLAY / CREDITS (the cursor starts on START), left and
+' right set the states in the round, a button goes.
 '
 ' Improvements: the answer is picked from a list of six with a sliding
 ' pencil (green tick on the right answer, red cross on a wrong pick), a
@@ -220,6 +222,9 @@ u8 Tick = 0
 u8 JoyNow = 0
 u8 JoyWas = 0
 u8 Hold = 0
+u8 Menu = 0
+u8 Pg = 0
+u16 Wt = 0
 u8 Done = 0
 u16 Rs = $ACE1
 u16 Rt16 = 0
@@ -274,6 +279,14 @@ function FirePressed as u8
 
 title:
   TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
   NewRound
   PlayScreen
 
@@ -601,6 +614,13 @@ sub Frame1:
   V = joypad(1).fire | joypad(2).fire
   V = V << 4
   JoyNow = JoyNow | V
+  ' bit 2 left, bit 3 right (the title's round length)
+  V = joypad(1).left | joypad(2).left
+  V = V << 2
+  JoyNow = JoyNow | V
+  V = joypad(1).right | joypad(2).right
+  V = V << 3
+  JoyNow = JoyNow | V
   return
 end sub
 
@@ -686,6 +706,8 @@ sub CreditsPage:
   return
 end sub
 
+' the title: START / HOW TO PLAY / CREDITS (up/down, the cursor starts on
+' START), left/right the states in the round (remembered)
 sub TitlePage:
   NewScreen
   fill TStars count 4 at 2,1
@@ -694,15 +716,14 @@ sub TitlePage:
   print at 2,5, "THIS PROGRAM TUTORS THE"
   print at 2,6, "STUDENT IN STATES AND"
   print at 2,7, "CAPITALS."
-  print at 2,9, "PICK THE ANSWER WITH THE"
-  print at 2,10, "PENCIL (STICK UP/DOWN) AND"
-  print at 2,11, "PRESS THE BUTTON. IF YOU"
-  print at 2,12, "DON'T KNOW, PICK HELP."
-  print at 2,14, "ANSWER EVERY STATE RIGHT"
-  print at 2,15, "TO FINISH THE ROUND."
-  print at 4,18, "STATES IN THE ROUND:"
+  print at 4,10, "STATES IN THE ROUND:"
   ShowRound
-  print at 7,21, "PRESS THE BUTTON"
+  print at 10,14, "START"
+  print at 10,15, "HOW TO PLAY"
+  print at 10,16, "CREDITS"
+  print at 3,21, "UP/DOWN: CHOOSE  BUTTON: GO"
+  Menu = 0
+  ShowMenu
   ShowScreen
   play sound SndTuneA
   play sound SndTuneB
@@ -714,19 +735,25 @@ sub TitlePage:
   while Done = 0
     Frame1
     Rnd16
-    V = JoyNow & 3
+    V = JoyNow & 15
     if V = 0 then
       Hold = 0
     else
       inc Hold
       if Hold = 1 then
-        if V = 1 then
-          if RoundSel < 2 then inc RoundSel
-        else
+        select case V
+        case 1
+          if Menu > 0 then dec Menu
+        case 2
+          if Menu < 2 then inc Menu
+        case 4
           if RoundSel > 0 then dec RoundSel
-        end if
+        case 8
+          if RoundSel < 2 then inc RoundSel
+        end select
         play sound SndClick
         ShowRound
+        ShowMenu
       end if
     end if
     Done = FirePressed
@@ -738,11 +765,89 @@ sub TitlePage:
   return
 end sub
 
+sub ShowMenu:
+  for J8 = 14 to 16
+    put char 32 at 8,J8
+  next
+  J8 = Menu + 14
+  put char 62 at 8,J8
+  return
+end sub
+
 ' the round length on the title, with arrows hinting the stick
 sub ShowRound:
   NumU = RoundLen[RoundSel]
-  print at 25,18, digits$(NumU, 2)
-  print at 4,19, "(UP: MORE, DOWN: FEWER)"
+  print at 25,10, digits$(NumU, 2)
+  print at 3,11, "(LEFT: FEWER, RIGHT: MORE)"
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  NewScreen
+  fill TStars count 4 at 2,1
+  fill TStripes count 24 at 6,1
+  select case Pg
+  case 1
+    print at 2,3, "HOW TO PLAY             1/3"
+    print at 2,5, "EVERY STATE OF THE USA HAS"
+    print at 2,6, "A CAPITAL CITY. THE TUTOR"
+    print at 2,7, "ASKS YOU ABOUT THEM:"
+    print at 2,9, "THE CAPITAL OF TEXAS IS ..."
+    print at 2,10, "OR"
+    print at 2,11, "AUSTIN IS THE CAPITAL OF"
+    print at 2,12, "WHAT STATE?"
+    print at 2,14, "PICK THE ANSWER FROM A LIST"
+    print at 2,15, "OF SIX."
+  case 2
+    print at 2,3, "CONTROLS                2/3"
+    print at 2,5, "STICK UP/DOWN: MOVE THE"
+    print at 2,6, "PENCIL TO AN ANSWER."
+    print at 2,7, "BUTTON: CHOOSE IT."
+    put char TDot at 5,10
+    print at 6,10, "AUSTIN"
+    put char TTick at 4,10
+    put char TDot at 5,12
+    print at 6,12, "DALLAS"
+    put char TCross at 4,12
+    set sprite 0 to 94,PenX,SPen,11
+    print at 2,15, "A TICK: RIGHT! A CROSS:"
+    print at 2,16, "WRONG, AND THE RIGHT ANSWER"
+    print at 2,17, "IS SHOWN. DON'T KNOW? PICK"
+    print at 2,18, "HELP AT THE BOTTOM."
+  case 3
+    print at 2,3, "SCORING                 3/3"
+    print at 2,5, "THE SCORE COUNTS RIGHT,"
+    print at 2,6, "WRONG AND HELPS."
+    print at 2,8, "A STATE ANSWERED RIGHT IS"
+    print at 2,9, "DONE. A WRONG ONE OR A HELP"
+    print at 2,10, "COMES BACK LATER."
+    print at 2,12, "THE ROUND ENDS WHEN EVERY"
+    print at 2,13, "STATE IS RIGHT (10, 25 OR"
+    print at 2,14, "ALL 50, SET ON THE TITLE)."
+    print at 2,16, "TIP: USE HELP TO LEARN. NO"
+    print at 2,17, "WRONGS AND NO HELPS IS A"
+    print at 2,18, "PERFECT SCORE!"
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Wt = 0
+  Done = 0
+  while Done = 0
+    Frame1
+    Wt = Wt + 1
+    if Wt >= 1800 then Done = 2
+    if Done = 0 then Done = FirePressed
+  end while
+  if Done = 1 then
+    inc Pg
+    if Pg <= 3 then goto ht_page
+  end if
+  HideSprites
   return
 end sub
 

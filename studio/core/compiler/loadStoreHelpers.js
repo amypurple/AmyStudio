@@ -13,6 +13,7 @@ export function createLoadStoreHelpers(ctx) {
     formatIxOffset,
     scopedRuntimeName,
     symbolOrValue,
+    tryEvaluateCompileTimeNumericExpression,
     emitLoadInt8Into,
     emitLoadInt16IntoHL,
     makeGeneratedLabel,
@@ -57,9 +58,9 @@ export function createLoadStoreHelpers(ctx) {
     if (qualifiedField?.isWholeArray) {
       const fieldInfo = qualifiedField.fieldInfo;
       const normalizedIndex = normalizeExpression(indexToken);
-      let numericIndex = null;
-      if (/^[0-9]+$/.test(normalizedIndex)) numericIndex = Number.parseInt(normalizedIndex, 10);
-      else if (/^\$[0-9A-F]+$/i.test(normalizedIndex)) numericIndex = Number.parseInt(normalizedIndex.slice(1), 16);
+      let numericIndex = tryEvaluateCompileTimeNumericExpression?.(normalizedIndex);
+      if (!Number.isInteger(numericIndex) && /^[0-9]+$/.test(normalizedIndex)) numericIndex = Number.parseInt(normalizedIndex, 10);
+      else if (!Number.isInteger(numericIndex) && /^\$[0-9A-F]+$/i.test(normalizedIndex)) numericIndex = Number.parseInt(normalizedIndex.slice(1), 16);
       if (Number.isInteger(numericIndex)) {
         if (numericIndex < 0 || numericIndex >= fieldInfo.length) return null;
         const lines = emitLoadRecordFieldAddressIntoHL(name);
@@ -100,6 +101,16 @@ export function createLoadStoreHelpers(ctx) {
     const usesStackBase = info.storage === "stack";
     const base = usesStackBase ? null : info.address;
     if (!indexInfo) {
+      const constantIndex = tryEvaluateCompileTimeNumericExpression?.(normalizedIndex);
+      if (Number.isInteger(constantIndex)) {
+        if (constantIndex < 0 || (typeof info.length === "number" && constantIndex >= info.length)) return null;
+        if (usesStackBase) {
+          const offset = info.offset + constantIndex * stride;
+          if (offset === 0) return ["    push ix", "    pop hl"];
+          return ["    push ix", "    pop hl", `    ld de,${offset}`, "    add hl,de"];
+        }
+        return [`    ld hl,${formatHex16(base + constantIndex * stride)}`];
+      }
       if (/^[0-9]+$/.test(normalizedIndex)) {
         const numericIndex = Number.parseInt(normalizedIndex, 10);
         if (!Number.isInteger(numericIndex) || numericIndex < 0) return null;

@@ -40,7 +40,9 @@ cartridge "CYPHER/COMPUTE'S GAZETTE/1985"
 '
 ' Controls: either controller; stick left/right picks the hole, up/down
 ' its colour, left button tries the guess, right button twice gives up.
-' On the title, up and down choose, a button starts.
+' On the title, up and down choose (PLAY, HOW TO PLAY, CREDITS), a
+' button picks; HOW TO PLAY has two pages (a button turns the page, 30 s
+' idle goes back).
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop protected from the NMI; screens drawn with the NMI off and
@@ -120,6 +122,8 @@ u8 Why = 0
 u8 GiveT = 0
 u8 Rpt = 0
 u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 u8 Tick = 0
 ' input
 u8 J1 = 0
@@ -150,7 +154,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu > 0 then goto title
 
   NewGame
 
@@ -623,6 +627,7 @@ sub DrawTitleWord:
 ' the title: CYPHER in pegs, the tune once, PLAY / CREDITS
 sub TitlePage:
   Gs = 0
+  Menu = 0
   NewScreen
   DrawTitleWord
   print at 6,9, "COMPUTE!'S GAZETTE 1985"
@@ -634,7 +639,8 @@ sub TitlePage:
   put char TKeyw at 3,15
   print at 5,15, "RIGHT COLOUR, WRONG HOLE"
   print at 12,17, "PLAY"
-  print at 12,18, "CREDITS"
+  print at 12,18, "HOW TO PLAY"
+  print at 12,19, "CREDITS"
   if Best > 0 then
     NumU = Best
     print at 6,21, "BEST GAME: ", digits$(NumU, 2), " MOVES"
@@ -657,9 +663,9 @@ tp_loop:
   if V > 0 then
     if WasStick = 0 then
       if (V & 1) > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       play sound SndStep
       ShowMenu
@@ -675,16 +681,88 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
   put char 32 at 10,17
   put char 32 at 10,18
+  put char 32 at 10,19
   J = Menu + 17
   put char 62 at 10,J
   return
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "THE COMPUTER HIDES A CODE"
+    print at 2,4, "OF SIX PEGS. THERE ARE"
+    print at 2,5, "EIGHT COLOURS, AND A COLOUR"
+    print at 2,6, "CAN BE USED MORE THAN ONCE."
+    print at 2,7, "FIND THE CODE IN TWELVE"
+    print at 2,8, "TURNS OR LESS."
+    print at 2,10, "STICK LEFT/RIGHT: PICK A"
+    print at 2,11, "HOLE. UP/DOWN: ITS COLOUR."
+    print at 2,12, "LEFT BUTTON: TRY THE CODE"
+    print at 2,13, "(FILL ALL SIX HOLES)."
+    print at 2,14, "RIGHT BUTTON TWICE: GIVE UP."
+    fill TRimt count 10 at 11,16
+    fill TBoard count 10 at 11,17
+    fill TRimb count 10 at 11,18
+    for J = 0 to 7
+      put char TPeg0 + J at 12 + J,17
+    next
+    print at 6,19, "THE EIGHT COLOURS"
+  else
+    print at 2,3, "AFTER EACH TRY YOU GET KEYS:"
+    put char TKeyb at 2,5
+    print at 4,5, "BLACK: RIGHT COLOUR IN THE"
+    print at 4,6, "RIGHT HOLE."
+    put char TKeyw at 2,8
+    print at 4,8, "WHITE: RIGHT COLOUR IN A"
+    print at 4,9, "WRONG HOLE."
+    print at 2,11, "THE KEYS DON'T SAY WHICH"
+    print at 2,12, "PEG THEY ARE FOR."
+    print at 2,14, "SIX BLACK KEYS: YOU WIN!"
+    print at 2,15, "NO LUCK AFTER 12 TURNS: THE"
+    print at 2,16, "CODE IS SHOWN, YOU LOSE."
+    print at 2,17, "TIP: CHANGE ONE OR TWO PEGS"
+    print at 2,18, "AT A TIME AND WATCH KEYS."
+    fill TBoard count 15 at 8,20
+    put char TPeg2 at 9,20
+    put char TPeg5 at 10,20
+    put char TPeg2 at 11,20
+    put char TPeg7 at 12,20
+    put char TPeg1 at 13,20
+    put char TPeg3 at 14,20
+    fill TKeyb count 2 at 16,20
+    put char TKeyw at 18,20
+    fill TKey0 count 3 at 19,20
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 48
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then return
+  V = Press1 | Press2
+  if V = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+  return
+end sub
 
 sub CreditsPage:
   NewScreen

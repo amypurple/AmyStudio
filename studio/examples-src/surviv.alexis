@@ -1,0 +1,1689 @@
+cartridge "SURVIVOR/COMPUTE!'S GAZETTE/1986"
+
+' SURVIVOR
+' A ColecoVision game based on "Survivor", COMPUTE!'s Gazette March 1986
+' (Commodore 64, also Plus/4: a BASIC loader and title, "survivor 1", and
+' machine language at $2800, "survivor 2"; no author named in the files).
+' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
+' Amy Bienvenu.
+'
+' Not a line-by-line port: the rules are the original's (read from its
+' machine code, orig/survivor2.dis, and its BASIC, orig/survivor 1.bas,
+' and watched and timed in jsc64), the game is rebuilt for the
+' ColecoVision: drawn city blocks, smooth sprites, sound effects and a
+' title tune.
+'
+' The game (as the C64 code plays it): two survivors duel in a city of
+' 8 x 6 blocks (streets between and round them). Player 1 starts in the
+' top-left corner, player 2 in the bottom-right. Each has 5 lives and 10
+' shots a round. The stick walks along the streets (only while held); the
+' button (pressed, not held) fires a shot the way you last walked. Four
+' monsters leave the centre and wander the streets (at a crossing they go
+' on, or turn left or right, never back). A monster, the hunter or a shot
+' touching a survivor kills him; a shot that meets a monster sends it back
+' to the centre. (Port: all of a frame's hits are checked first, then
+' applied: two survivors hit in the same frame both lose a life, and if
+' that leaves both with none the game is a draw, NOBODY SURVIVED. The C64
+' checked player 2 first, the first draft of this port blue first.) When a survivor dies everything stops for the burst, he
+' loses a life, and a new round starts (both back to their corners, the
+' monsters to the centre, 10 shots each, bonuses gone). The last one with
+' lives is the SURVIVOR. Bonus signs appear now and then on empty streets
+' (each of the four kinds by chance, about one in 128 every monster step)
+' and fade after a while:
+'   SWAP (arrows)    the two survivors change places; the sign goes
+'   SPEED (bolt)     walk twice as fast for about 27 s; the sign stays
+'   SHOTS (crate)    stand on it: one more shot every 1.3 s (up to 10)
+'   HUNTER (skull)   a hunter comes out of the top-left corner after the
+'                    OTHER survivor for about 95 s; shots do not stop it
+' Speeds (measured in jsc64 against the 60 Hz clock, then per pixel: a
+' C64 street cell is 6 of our pixels): survivors 0.31 px a frame (0.62
+' with SPEED), monsters 0.25, the hunter 0.19, shots 1.
+'
+' Additions: a ONE PLAYER mode against the computer (the C64 game is for
+' two players only; the computer plays the green survivor through the
+' same stick rules, looking at the street every 16 frames).
+'
+' Liberties: the city keeps the C64's 8 x 6 blocks, drawn 2 x 2 tiles
+' with one-tile streets (the C64: 3 x 3 characters); actors glide pixel by
+' pixel instead of jumping a character at a time; contact is a 6-pixel
+' box; holding a direction the street does not allow keeps you walking to
+' the next corner, where you turn (the C64 just stopped you); a shot
+' towards a wall is not fired and costs nothing (the C64 lost it); the
+' SHOTS crate gives its shots at a fixed beat (the C64 counted down a
+' stray byte); a burst lasts 2.5 s (the C64's three slow frames, about
+' 4 s); the countdown 3-2-1 shows in the centre of the city (the C64: in
+' its side panel); the winner is named, then the title (the C64 asked to
+' press the button to play again).
+'
+' Controls: controller 1 walks the blue survivor, controller 2 the green
+' one (in ONE PLAYER mode either controller walks blue). The stick walks,
+' either button fires. On the title, up and down choose a line, a button
+' starts (or shows the credits).
+'
+' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
+' frame loop is protected from the NMI; screens drawn with the NMI off
+' after a wait, display off. Music first in the sound table, effects after;
+' the title tune is played once. `set sprite count` is always given.
+
+const TStreet = 128
+const TBlk00 = 129
+const TBlk01 = 130
+const TBlk10 = 131
+const TBlk11 = 132
+const TFT = 133
+const TFB = 134
+const TFL = 135
+const TFR = 136
+const TFTL = 137
+const TFTR = 138
+const TFBL = 139
+const TFBR = 140
+const TBSwap = 141
+const TBFast = 142
+const TBAmmo = 143
+const TBHunt = 144
+const TI1 = 145
+const TI2 = 146
+const TS1 = 147
+const TS2 = 148
+const TS0 = 149
+const TQy0 = 150
+const TQy1 = 151
+const TQy2 = 152
+const TQy3 = 153
+const TQy4 = 154
+const TQy5 = 155
+const TQy6 = 156
+const TQy7 = 157
+const TQy8 = 158
+const TQy9 = 159
+const TQy10 = 160
+const TQy11 = 161
+const TQy12 = 162
+const TQy13 = 163
+const TQy14 = 164
+const TQy15 = 165
+const TQr0 = 166
+const TQr1 = 167
+const TQr2 = 168
+const TQr3 = 169
+const TQr4 = 170
+const TQr5 = 171
+const TQr6 = 172
+const TQr7 = 173
+const TQr8 = 174
+const TQr9 = 175
+const TQr10 = 176
+const TQr11 = 177
+const TQr12 = 178
+const TQr13 = 179
+const TQr14 = 180
+const TQr15 = 181
+const SMan = 0
+const SMan2 = 4
+const SMon = 8
+const SMon2 = 12
+const SHunt = 16
+const SShot = 20
+const SBur0 = 24
+const SBur1 = 28
+const NTiles8 = 432
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndShot = 3
+const SndAppear = 4
+const SndPick = 5
+const SndPop = 6
+const SndCaught = 7
+const SndBeep = 8
+const SndGo = 9
+const SndOver = 10
+const NAct = 13
+const FirstShot = 7
+const LastShot = 12
+const Hunter = 6
+const MaxX = 192
+const MaxY = 144
+const OrgX = 24
+const OrgY = 24
+const PlSp = 5
+const PlFast = 10
+const MonSp = 4
+const HuntSp = 3
+const ShotSp = 16
+const BoostLen = 1600
+const HuntLen = 5700
+const AmmoBeat = 80
+const ItemBeat = 22
+const DieLen = 150
+const CountLen = 120
+const AiGap = 16
+const NoDir = 255
+
+' the four bonus kinds: slot = kind (SWAP, SPEED, SHOTS, HUNTER)
+data BonTile bytes TBSwap, TBFast, TBAmmo, TBHunt
+' sprite colours: blue, green, four magenta monsters, the red hunter, shots
+data ActCol bytes 7,3,13,13,13,13,8,15,15,15,15,15,15
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$99,$99,$00,$00,$99
+  $01,$01,$01,$99,$99,$01,$01,$99
+  $99,$00,$00,$99,$99,$00,$00,$00
+  $99,$01,$01,$99,$99,$01,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $00,$00,$00,$00,$00,$07,$07,$06
+  $00,$00,$00,$00,$00,$E0,$E0,$60
+  $06,$07,$07,$00,$00,$00,$00,$00
+  $60,$E0,$E0,$00,$00,$00,$00,$00
+  $08,$83,$08,$00,$10,$C1,$10,$00
+  $0C,$18,$30,$81,$0C,$18,$30,$00
+  $81,$54,$54,$54,$81,$81,$81,$00
+  $38,$83,$54,$83,$28,$38,$00,$00
+  $C3,$80,$92,$80,$A5,$C3,$00,$00
+  $C3,$80,$92,$80,$A5,$C3,$00,$00
+  $00,$10,$30,$30,$30,$30,$00,$00
+  $00,$10,$30,$30,$30,$30,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $0F,$0F,$0F,$0F,$F0,$F0,$F0,$F0
+  $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF
+  $F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0A,$08,$81,$81,$08,$08,$81
+  $AB,$6A,$68,$81,$81,$68,$68,$81
+  $81,$08,$08,$81,$81,$08,$06,$01
+  $81,$68,$68,$81,$81,$68,$06,$01
+  $01,$01,$01,$01,$01,$0E,$0E,$01
+  $01,$0E,$0E,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$E1,$E1,$E1
+  $01,$01,$01,$01,$01,$E1,$E1,$E1
+  $E1,$E1,$E1,$01,$01,$01,$01,$01
+  $E1,$E1,$E1,$01,$01,$01,$01,$01
+  $B1,$1B,$B1,$01,$B1,$1B,$B1,$01
+  $31,$31,$31,$13,$31,$31,$31,$01
+  $1F,$F1,$F1,$F1,$1F,$1F,$1F,$01
+  $91,$19,$91,$19,$91,$91,$01,$01
+  $17,$17,$17,$17,$17,$17,$01,$01
+  $13,$13,$13,$13,$13,$13,$01,$01
+  $01,$71,$71,$71,$71,$71,$01,$01
+  $01,$31,$31,$31,$31,$31,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+end data
+data SpritePat bytes
+  $30,$30,$78,$B4,$30,$48,$48,$CC,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$30,$F8,$34,$30,$48,$84,$84,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$FE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$92,$7C,$38,$7C,$92,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7C,$FE,$92,$FE,$6C,$38,$54,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$3C,$3C,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$28,$EE,$28,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$44,$00,$82,$00,$44,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data LogoMap bytes
+  $9D,$97,$AA,$AA,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $99,$9B,$AB,$AB,$AD,$AA,$AA,$AA,$20,$20,$20,$20,$20,$20,$20,$20
+  $99,$97,$B3,$AB,$AD,$AA,$AB,$AB,$B1,$A7,$AA,$AA,$20,$20,$20,$20
+  $20,$20,$20,$20,$A7,$A7,$AF,$A7,$B0,$20,$AB,$AB,$AD,$AB,$B2,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$A9,$A7,$AF,$A7,$AB,$AB,$B3,$A7
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$A9,$A7,$AB,$AB
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+end data
+const LogoX = 8
+const LogoW = 16
+const LogoH = 7
+
+data OnLine bytes
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1
+end data
+
+record Bonus:
+  u8 X
+  u8 Y
+  u8 Life
+  u8 Here
+end record
+Bonus Bon[4]
+
+' actors: 0-1 survivors, 2-5 monsters, 6 hunter, 7-12 shots
+u8 Ax[13]
+u8 Ay[13]
+u8 Dir[13]
+u8 Fr[13]
+u8 Act[13]
+u8 Own[13]
+' survivors
+u8 Lives[2]
+u8 Shots[2]
+u8 Face[2]
+u16 Boost[2]
+u8 AmmoC[2]
+u8 WasF[2]
+u8 Moved[2]
+u16 HuntLeft = 0
+u8 HuntTg = 0
+u8 ItT = 0
+' round state: Phase 0 countdown, 1 play, 2 burst
+u8 Phase = 0
+u8 PhT = 0
+u8 Loser = 0
+' hits this frame (both are applied after every check: a fair tie)
+u8 Hit[2]
+u8 Over = 0
+u8 Winner = 0
+bcd digits 2 RoundNo = 0
+' counters the test bot reads
+u8 Rounds = 0
+u8 Kills = 0
+u8 Fired = 0
+u8 Spawns = 0
+u8 Picks = 0
+u8 Swaps = 0
+' the last way each monster (and the hunter) chose at a turn
+u8 Turn[7]
+' options
+u8 Players = 1
+u8 Menu = 0
+u16 HowT = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+' the computer's stick and clock
+u8 AiPad = 0
+u8 AiT = 0
+u8 AiShot = 0
+' input: 1 up, 2 down, 4 left, 8 right, 16 button
+u8 J1 = 0
+u8 J2 = 0
+u8 JM = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Idle = 0
+' random numbers
+u16 Rs = 12345
+u16 Rt = 0
+u8 Rb = 0
+' loop counters (never shared with the helpers)
+u8 Ai = 0
+u8 Bi = 0
+u8 Li = 0
+u8 Pi = 0
+' scratch
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X8 = 0
+u8 Y8 = 0
+
+  tile screen
+  set sound table SvSoundTable areas 6
+  sprites 16x16
+  set sprite count NAct
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu >= 2 then goto title
+
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  GameFrame
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  ' the end: who survived, then the title
+  mute all
+  HideSprites
+  print at 7,10, "                  "
+  if Winner = 2 then
+    print at 7,11, " NOBODY SURVIVED! "
+  else
+  if Winner = 0 then
+    if Players = 1 then
+      print at 7,11, "  YOU SURVIVED!   "
+    else
+      print at 7,11, " BLUE IS SURVIVOR "
+    end if
+  else
+    if Players = 1 then
+      print at 7,11, " COMPUTER SURVIVED"
+    else
+      print at 7,11, "GREEN IS SURVIVOR "
+    end if
+  end if
+  end if
+  print at 7,12, "                  "
+  print at 7,13, "    ROUNDS:       "
+  print at 19,13, RoundNo
+  print at 7,14, "                  "
+  play sound SndOver
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random numbers: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rb = lowbyte Rs
+  return
+end sub
+
+' a random number 0..N-1 (N up to 255)
+function RndTo(u8 N) as u8
+  u16 W = 0
+  Rnd
+  W = Rb * N
+  return highbyte W
+
+' ---------------------------------------------------------------------------
+' can actor I take one pixel's step in direction D (0 up 1 down 2 left
+' 3 right)? Across needs a street row, up and down a street column.
+function CanGo(u8 I, u8 D) as u8
+  u8 R = 0
+  u8 X = 0
+  u8 Y = 0
+  X = Ax[I]
+  Y = Ay[I]
+  select case D
+    case 0
+      if OnLine[X] = 1 then
+        if Y > 0 then R = 1
+      end if
+    case 1
+      if OnLine[X] = 1 then
+        if Y < MaxY then R = 1
+      end if
+    case 2
+      if OnLine[Y] = 1 then
+        if X > 0 then R = 1
+      end if
+    case 3
+      if OnLine[Y] = 1 then
+        if X < MaxX then R = 1
+      end if
+  end select
+  return R
+
+' one pixel in direction D
+sub Nudge(u8 I, u8 D):
+  select case D
+    case 0
+      dec Ay[I]
+    case 1
+      inc Ay[I]
+    case 2
+      dec Ax[I]
+    case 3
+      inc Ax[I]
+  end select
+  return
+end sub
+
+' the distance between two coordinates
+function Gap(u8 A, u8 B) as u8
+  u8 D = 0
+  if A >= B then
+    D = A - B
+  else
+    D = B - A
+  end if
+  return D
+
+' ---------------------------------------------------------------------------
+' one frame of the game
+sub GameFrame:
+  select case Phase
+    case 0
+      Countdown
+    case 1
+      PlayStep
+    case 2
+      Burst
+  end select
+  return
+end sub
+
+sub PlayStep:
+  if Players = 1 then
+    if AiT > 0 then dec AiT
+    ' (it thinks on a frame without a bonus beat: the frame budget)
+    if AiT = 0 then
+      if ItT < ItemBeat - 1 then
+        AiThink
+        AiT = AiGap
+      end if
+    end if
+    J2 = AiPad
+  end if
+  Walk(0, J1)
+  Walk(1, J2)
+  for Ai = 2 to 5
+    MonMove(Ai)
+  next
+  if Act[Hunter] = 1 then HuntMove
+  for Ai = FirstShot to LastShot
+    if Act[Ai] = 1 then ShotMove(Ai)
+  next
+  Contacts
+  Pickups
+  inc ItT
+  if ItT >= ItemBeat then
+    ItT = 0
+    BonusBeat
+  end if
+  ApplyHits
+  return
+end sub
+
+' a survivor's frame: the stick walks (the first pushed way the street
+' allows; a way it doesn't allow walks on to the next corner), the
+' button fires
+sub Walk(u8 P, u8 Pad):
+  u8 D = NoDir
+  u8 Want = NoDir
+  u8 Sp = PlSp
+  if (Pad & 8) > 0 then
+    Want = 3
+    if CanGo(P, 3) = 1 then D = 3
+  end if
+  if (Pad & 4) > 0 then
+    Want = 2
+    if CanGo(P, 2) = 1 then D = 2
+  end if
+  if (Pad & 2) > 0 then
+    Want = 1
+    if CanGo(P, 1) = 1 then D = 1
+  end if
+  if (Pad & 1) > 0 then
+    Want = 0
+    if CanGo(P, 0) = 1 then D = 0
+  end if
+  if D = NoDir then
+    if Want <> NoDir then
+      if CanGo(P, Dir[P]) = 1 then
+        V = Want ^ Dir[P]
+        if V >= 2 then D = Dir[P]
+      end if
+      Face[P] = Want
+    end if
+  else
+    Face[P] = D
+  end if
+  if Boost[P] > 0 then
+    dec Boost[P]
+    Sp = PlFast
+  end if
+  Moved[P] = 0
+  if D <> NoDir then
+    Dir[P] = D
+    Fr[P] = Fr[P] + Sp
+    if Fr[P] >= 16 then
+      Fr[P] = Fr[P] - 16
+      Nudge(P, D)
+      Moved[P] = 1
+    end if
+  end if
+  V = Pad & 16
+  if V > 0 then
+    if WasF[P] = 0 then TryShot(P)
+  end if
+  WasF[P] = V
+  return
+end sub
+
+' a shot from survivor P the way he faces (none towards a wall)
+sub TryShot(u8 P):
+  u8 S = 0
+  u8 Fd = 0
+  if Shots[P] = 0 then return
+  Fd = Face[P]
+  if CanGo(P, Fd) = 0 then return
+  S = FreeShot()
+  if S = 0 then return
+  Ax[S] = Ax[P]
+  Ay[S] = Ay[P]
+  Dir[S] = Fd
+  Fr[S] = 0
+  Own[S] = P
+  Act[S] = 1
+  dec Shots[P]
+  inc Fired
+  ShotMark(P, TS0)
+  play sound SndShot
+  return
+end sub
+
+function FreeShot() as u8
+  u8 F = 0
+  u8 S = 0
+  for S = FirstShot to LastShot
+    if F = 0 then
+      if Act[S] = 0 then F = S
+    end if
+  next
+  return F
+
+' a monster: steps at its speed; at a crossing (or a dead end) it chooses
+sub MonMove(u8 M):
+  Fr[M] = Fr[M] + MonSp
+  if Fr[M] < 16 then return
+  Fr[M] = Fr[M] - 16
+  X8 = Ax[M]
+  Y8 = Ay[M]
+  if OnLine[X8] = 1 then
+    if OnLine[Y8] = 1 then MonTurn(M)
+  end if
+  if CanGo(M, Dir[M]) = 0 then MonTurn(M)
+  Nudge(M, Dir[M])
+  return
+end sub
+
+' the C64's choice: a random way; the way back means "straight on";
+' a blocked way is drawn again (after 4 draws the first open way that is
+' not back is taken, and back only when nothing else is open)
+sub MonTurn(u8 M):
+  u8 Tries = 0
+  u8 R = 0
+  u8 Back = 0
+  u8 Q = 0
+  Back = Dir[M] ^ 1
+mt_again:
+  Rnd
+  R = Rb & 3
+  if R = Back then R = Dir[M]
+  inc Tries
+  if CanGo(M, R) = 0 then
+    if Tries < 4 then goto mt_again
+    R = Back
+    for Q = 0 to 3
+      if Q <> Back then
+        if CanGo(M, Q) = 1 then R = Q
+      end if
+    next
+  end if
+  Dir[M] = R
+  Turn[M] = R
+  return
+end sub
+
+' the hunter: at a crossing it turns towards its prey (rows or columns
+' first by chance), never back unless trapped
+sub HuntMove:
+  if HuntLeft > 0 then dec HuntLeft
+  if HuntLeft = 0 then
+    Act[Hunter] = 0
+    return
+  end if
+  Fr[Hunter] = Fr[Hunter] + HuntSp
+  if Fr[Hunter] < 16 then return
+  Fr[Hunter] = Fr[Hunter] - 16
+  X8 = Ax[Hunter]
+  Y8 = Ay[Hunter]
+  if OnLine[X8] = 1 then
+    if OnLine[Y8] = 1 then HuntTurn
+  end if
+  if CanGo(Hunter, Dir[Hunter]) = 0 then MonTurn(Hunter)
+  Nudge(Hunter, Dir[Hunter])
+  return
+end sub
+
+sub HuntTurn:
+  u8 Vd = NoDir
+  u8 Hd = NoDir
+  u8 T = 0
+  u8 Back = 0
+  T = HuntTg
+  Back = Dir[Hunter] ^ 1
+  if Ay[T] < Ay[Hunter] then Vd = 0
+  if Ay[T] > Ay[Hunter] then Vd = 1
+  if Ax[T] < Ax[Hunter] then Hd = 2
+  if Ax[T] > Ax[Hunter] then Hd = 3
+  if Vd = Back then Vd = NoDir
+  if Hd = Back then Hd = NoDir
+  if Vd <> NoDir then
+    if CanGo(Hunter, Vd) = 0 then Vd = NoDir
+  end if
+  if Hd <> NoDir then
+    if CanGo(Hunter, Hd) = 0 then Hd = NoDir
+  end if
+  Rnd
+  if (Rb & 1) = 1 then
+    if Vd <> NoDir then Hd = Vd
+  end if
+  if Hd = NoDir then Hd = Vd
+  if Hd <> NoDir then Dir[Hunter] = Hd
+  Turn[Hunter] = Dir[Hunter]
+  return
+end sub
+
+' a shot: one pixel a frame to the end of its street; it sends a monster
+' it meets back to the centre and kills the other survivor
+sub ShotMove(u8 S):
+  u8 M = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  if CanGo(S, Dir[S]) = 0 then
+    Act[S] = 0
+    return
+  end if
+  Nudge(S, Dir[S])
+  Sx = Ax[S]
+  Sy = Ay[S]
+  for M = 2 to 5
+    V = Sx - Ax[M] + 5
+    if V < 11 then
+      V = Sy - Ay[M] + 5
+      if V < 11 then
+        if Act[S] = 1 then
+          Act[S] = 0
+          MonHome(M)
+          inc Kills
+          play sound SndPop
+        end if
+      end if
+    end if
+  next
+  if Act[S] = 1 then
+    M = 1 - Own[S]
+    V = Sx - Ax[M] + 4
+    if V < 9 then
+      V = Sy - Ay[M] + 4
+      if V < 9 then
+        Act[S] = 0
+        Kill(M)
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub MonHome(u8 M):
+  Ax[M] = 96
+  Ay[M] = 72
+  Dir[M] = M - 2
+  Fr[M] = 0
+  return
+end sub
+
+' monsters and the hunter kill a survivor they touch
+sub Contacts:
+  u8 M = 0
+  u8 Mx = 0
+  u8 My = 0
+  for M = 2 to 6
+    if Act[M] = 1 then
+      Mx = Ax[M]
+      My = Ay[M]
+      ' |a - b| < 6 as one wrapped byte: a - b + 5 < 11
+      V = Mx - Ax[0] + 5
+      if V < 11 then
+        V = My - Ay[0] + 5
+        if V < 11 then Kill(0)
+      end if
+      V = Mx - Ax[1] + 5
+      if V < 11 then
+        V = My - Ay[1] + 5
+        if V < 11 then Kill(1)
+      end if
+    end if
+  next
+  return
+end sub
+
+' a hit is only noted here; PlayStep applies all of a frame's hits at
+' its end, so two survivors hit in the same frame both lose a life
+sub Kill(u8 P):
+  if Phase = 1 then Hit[P] = 1
+  return
+end sub
+
+' Loser: 0 blue, 1 green, 2 both
+sub ApplyHits:
+  V = Hit[0] + Hit[1]
+  if V = 0 then return
+  Loser = 2
+  if V = 1 then Loser = Hit[1]
+  Phase = 2
+  PhT = DieLen
+  play sound SndCaught
+  return
+end sub
+
+' the burst: everything waits, then a life goes and a round starts
+sub Burst:
+  dec PhT
+  if PhT > 0 then return
+  if Hit[0] = 1 then dec Lives[0]
+  if Hit[1] = 1 then dec Lives[1]
+  ShowLives
+  ' Winner: 0 blue, 1 green, 2 a draw (both gone in the same frame)
+  if Lives[0] = 0 then
+    Over = 1
+    Winner = 1
+    if Lives[1] = 0 then Winner = 2
+    return
+  end if
+  if Lives[1] = 0 then
+    Over = 1
+    Winner = 0
+    return
+  end if
+  NewRound
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' bonus signs: every 22 frames each one fades a step; an empty kind
+' appears by chance (1 in 128) on a free street place
+sub BonusBeat:
+  for Bi = 0 to 3
+    with Bon[Bi] as B
+      if B.Here = 1 then
+        dec B.Life
+        if B.Life = 0 then
+          B.Here = 0
+          put char TStreet at B.X + 3, B.Y + 3
+        end if
+      else
+        Rnd
+        if (Rb & 127) = 0 then PlaceBonus(Bi)
+      end if
+    end with
+  next
+  return
+end sub
+
+sub PlaceBonus(u8 Kd):
+  u8 X = 0
+  u8 Y = 0
+  u8 Ok = 0
+  u8 Q = 0
+  Rnd
+  if (Rb & 1) = 1 then
+    Y = RndTo(7) * 3
+    X = RndTo(25)
+  else
+    X = RndTo(9) * 3
+    Y = RndTo(19)
+  end if
+  Ok = 1
+  for Q = 0 to 3
+    if Bon[Q].Here = 1 then
+      if Bon[Q].X = X then
+        if Bon[Q].Y = Y then Ok = 0
+      end if
+    end if
+  next
+  ' not under or right beside a survivor
+  for Q = 0 to 1
+    V = X << 3
+    if Ax[Q] + 24 > V then
+      if Ax[Q] < V + 24 then
+        V = Y << 3
+        if Ay[Q] + 24 > V then
+          if Ay[Q] < V + 24 then Ok = 0
+        end if
+      end if
+    end if
+  next
+  if Ok = 1 then
+    Bon[Kd].X = X
+    Bon[Kd].Y = Y
+    Bon[Kd].Life = 128 + RndTo(128)
+    Bon[Kd].Here = 1
+    put char BonTile[Kd] at X + 3, Y + 3
+    inc Spawns
+    play sound SndAppear
+  end if
+  return
+end sub
+
+' a survivor on a sign
+sub Pickups:
+  u8 Q = 0
+  u8 Bx = 0
+  u8 By = 0
+  for Pi = 0 to 1
+    for Q = 0 to 3
+      if Bon[Q].Here = 1 then
+        Bx = Bon[Q].X << 3
+        By = Bon[Q].Y << 3
+        if OnSign(Pi, Bx, By) = 1 then Take(Pi, Q)
+      end if
+    next
+  next
+  return
+end sub
+
+function OnSign(u8 P, u8 Bx, u8 By) as u8
+  u8 R = 0
+  if Ax[P] + 4 > Bx then
+    if Ax[P] < Bx + 4 then
+      if Ay[P] + 4 > By then
+        if Ay[P] < By + 4 then R = 1
+      end if
+    end if
+  end if
+  return R
+
+sub Take(u8 P, u8 Q):
+  select case Q
+    case 0
+      SwapPlaces
+      TakeSign(Q)
+    case 1
+      if Boost[P] = 0 then play sound SndPick
+      Boost[P] = BoostLen
+    case 2
+      inc AmmoC[P]
+      if AmmoC[P] >= AmmoBeat then
+        AmmoC[P] = 0
+        if Shots[P] < 10 then
+          inc Shots[P]
+          ShotMark(P, TS1 + P)
+          play sound SndPick
+        end if
+      end if
+    case 3
+      if Act[Hunter] = 0 then
+        Ax[Hunter] = 0
+        Ay[Hunter] = 0
+        Dir[Hunter] = 3
+        Fr[Hunter] = 0
+        Act[Hunter] = 1
+      end if
+      HuntTg = 1 - P
+      HuntLeft = HuntLen
+      TakeSign(Q)
+  end select
+  return
+end sub
+
+sub TakeSign(u8 Q):
+  Bon[Q].Here = 0
+  put char TStreet at Bon[Q].X + 3, Bon[Q].Y + 3
+  inc Picks
+  play sound SndPick
+  return
+end sub
+
+sub SwapPlaces:
+  V = Ax[0]
+  Ax[0] = Ax[1]
+  Ax[1] = V
+  V = Ay[0]
+  Ay[0] = Ay[1]
+  Ay[1] = V
+  V = Dir[0]
+  Dir[0] = Dir[1]
+  Dir[1] = V
+  inc Swaps
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer (green): every 16 frames it looks; it shoots a monster or
+' the hunter close by on its street (or runs from it), shoots blue (one
+' look in two) when they share a street, and otherwise stalks blue from
+' about two blocks away
+function Dist(u8 A, u8 B) as u8
+  u8 Gx = 0
+  u8 Gy = 0
+  u8 D = 255
+  Gx = Gap(Ax[A], Ax[B])
+  Gy = Gap(Ay[A], Ay[B])
+  if Gx < 128 then
+    if Gy < 128 then D = Gx + Gy
+  end if
+  return D
+
+' the way from actor A towards actor B along a shared street (NoDir if none)
+function LineDir(u8 A, u8 B) as u8
+  u8 D = NoDir
+  X8 = Ax[A]
+  Y8 = Ay[A]
+  if Ay[A] = Ay[B] then
+    if OnLine[Y8] = 1 then
+      if Ax[B] < X8 then
+        D = 2
+      else
+        D = 3
+      end if
+    end if
+  end if
+  if Ax[A] = Ax[B] then
+    if OnLine[X8] = 1 then
+      if Ay[B] < Y8 then
+        D = 0
+      else
+        D = 1
+      end if
+    end if
+  end if
+  return D
+
+' a stick bit for a way
+function PadOf(u8 D) as u8
+  u8 P = 0
+  select case D
+    case 0
+      P = 1
+    case 1
+      P = 2
+    case 2
+      P = 4
+    case 3
+      P = 8
+  end select
+  return P
+
+sub AiThink:
+  u8 T = 0
+  u8 Td = 255
+  u8 M = 0
+  u8 D = 0
+  u8 Ld = 0
+  u8 Want = 0
+  AiPad = 0
+  for M = 2 to 6
+    if Act[M] = 1 then
+      D = Dist(1, M)
+      if D < Td then
+        Td = D
+        T = M
+      end if
+    end if
+  next
+  Want = 0
+  if Td < 44 then
+    Ld = LineDir(1, T)
+    if Ld <> NoDir then
+      if Shots[1] > 1 then
+        Want = PadOf(Ld) | 16
+      else
+        Want = PadOf(Ld ^ 1)
+      end if
+    else
+      Want = AwayFrom(T)
+    end if
+  else
+    Ld = LineDir(1, 0)
+    if Ld <> NoDir then
+      if Shots[1] > 0 then
+        Rnd
+        if (Rb & 1) > 0 then Want = PadOf(Ld) | 16
+      end if
+    end if
+    ' it stalks blue from a distance (closer than about two blocks it
+    ' wanders off instead)
+    if Want = 0 then
+      Rnd
+      if (Rb & 7) = 0 then
+        Want = PadOf(Rb & 3)
+      else
+        if Dist(1, 0) < 56 then
+          Want = AwayFrom(0)
+        else
+          Want = Towards(0)
+        end if
+      end if
+    end if
+  end if
+  if (Want & 16) > 0 then
+    if AiShot = 1 then Want = Want & 15
+  end if
+  AiShot = 0
+  if (Want & 16) > 0 then AiShot = 1
+  AiPad = Want
+  return
+end sub
+
+' a stick that walks green away from actor T (both ways: the street
+' allows one of them)
+function AwayFrom(u8 T) as u8
+  u8 P = 0
+  if Ax[T] < Ax[1] then
+    P = 8
+  else
+    P = 4
+  end if
+  if Ay[T] < Ay[1] then
+    P = P | 2
+  else
+    P = P | 1
+  end if
+  return P
+
+' a stick that walks green towards actor T (the longer way first)
+function Towards(u8 T) as u8
+  u8 P = 0
+  u8 Gx = 0
+  u8 Gy = 0
+  Gx = Gap(Ax[T], Ax[1])
+  Gy = Gap(Ay[T], Ay[1])
+  if Gx >= Gy then
+    if Ax[T] < Ax[1] then
+      P = 4
+    else
+      P = 8
+    end if
+  else
+    if Ay[T] < Ay[1] then
+      P = 1
+    else
+      P = 2
+    end if
+  end if
+  return P
+
+' ---------------------------------------------------------------------------
+' the countdown before a round: 3, 2, 1 in the centre, then go
+sub Countdown:
+  select case PhT
+    case 120
+      put char 51 at 15,12
+      play sound SndBeep
+    case 90
+      put char 50 at 15,12
+      play sound SndBeep
+    case 60
+      put char 49 at 15,12
+      play sound SndBeep
+    case 30
+      put char TStreet at 15,12
+      play sound SndGo
+  end select
+  dec PhT
+  if PhT = 0 then Phase = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub DrawSprites:
+  u8 Pt = 0
+  u8 Cl = 0
+  u8 Sy = 0
+  u8 Sx = 0
+  ' the survivors (a burst for the one caught)
+  for Li = 0 to 1
+    Sx = Ax[Li]
+    Sy = Ay[Li]
+    Pt = SMan
+    if ((Sx + Sy) & 4) > 0 then Pt = SMan2
+    if Phase = 2 then
+      if Hit[Li] = 1 then
+        Pt = SBur0
+        if (PhT & 16) > 0 then Pt = SBur1
+      end if
+    end if
+    Cl = 7
+    if Li = 1 then Cl = 3
+    set sprite Li to Sy + 23,Sx + OrgX,Pt,Cl
+  next
+  ' monsters and the hunter
+  Pt = SMon
+  if (Tick & 16) > 0 then Pt = SMon2
+  for Li = 2 to 5
+    set sprite Li to Ay[Li] + 23,Ax[Li] + OrgX,Pt,13
+  next
+  if Act[Hunter] = 1 then
+    set sprite Hunter to Ay[Hunter] + 23,Ax[Hunter] + OrgX,SHunt,8
+  else
+    set sprite Hunter to 192,0,0,0
+  end if
+  ' shots, in their owner's colour
+  for Li = FirstShot to LastShot
+    if Act[Li] = 1 then
+      Cl = 7
+      if Own[Li] = 1 then Cl = 3
+      set sprite Li to Ay[Li] + 23,Ax[Li] + OrgX,SShot,Cl
+    else
+      set sprite Li to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' status line: a head, the lives, the shots (10 marks) for each survivor
+sub ShowLives:
+  put char TI1 at 2,1
+  put char 48 + Lives[0] at 3,1
+  put char TI2 at 16,1
+  put char 48 + Lives[1] at 17,1
+  return
+end sub
+
+' one shot mark: the one at Shots[P] (spent) or below it (lit)
+sub ShotMark(u8 P, u8 T):
+  u8 X = 0
+  X = Shots[P] + 5
+  if T <> TS0 then dec X
+  if P = 1 then X += 14
+  put char T at X, 1
+  return
+end sub
+
+sub ShowShots(u8 P):
+  u8 X0 = 5
+  u8 T = TS1
+  u8 Q = 0
+  if P = 1 then
+    X0 = 19
+    T = TS2
+  end if
+  for Q = 0 to 9
+    if Q < Shots[P] then
+      put char T at X0 + Q, 1
+    else
+      put char TS0 at X0 + Q, 1
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the city: frame, 8 x 6 blocks of 2 x 2 tiles, one-tile streets
+sub DrawCity:
+  u8 R = 0
+  u8 Q = 0
+  u8 Y = 0
+  put char TFTL at 2,2
+  fill TFT count 25 at 3,2
+  put char TFTR at 28,2
+  put char TFBL at 2,22
+  fill TFB count 25 at 3,22
+  put char TFBR at 28,22
+  for R = 3 to 21
+    put char TFL at 2,R
+    put char TFR at 28,R
+    fill TStreet count 25 at 3,R
+  next
+  for R = 0 to 5
+    Y = R * 3 + 4
+    for Q = 0 to 7
+      X8 = Q * 3 + 4
+      put char TBlk00 at X8,Y
+      put char TBlk01 at X8 + 1,Y
+      put char TBlk10 at X8,Y + 1
+      put char TBlk11 at X8 + 1,Y + 1
+    next
+  next
+  return
+end sub
+
+sub NewGame:
+  NewScreen
+  DrawCity
+  Lives[0] = 5
+  Lives[1] = 5
+  Over = 0
+  RoundNo = 0
+  ShowLives
+  NewRound
+  ShowScreen
+  return
+end sub
+
+' a round: survivors to their corners, monsters to the centre, 10 shots,
+' no bonuses, no hunter, then the countdown
+sub NewRound:
+  u8 Q = 0
+  for Q = 0 to 12
+    Act[Q] = 0
+    Fr[Q] = 0
+  next
+  Ax[0] = 0
+  Ay[0] = 0
+  Dir[0] = 3
+  Face[0] = 3
+  Ax[1] = MaxX
+  Ay[1] = MaxY
+  Dir[1] = 2
+  Face[1] = 2
+  for Q = 0 to 1
+    Act[Q] = 1
+    Shots[Q] = 10
+    Boost[Q] = 0
+    AmmoC[Q] = 0
+    WasF[Q] = 16
+    ShowShots(Q)
+  next
+  for Q = 2 to 5
+    Act[Q] = 1
+    MonHome(Q)
+  next
+  for Q = 0 to 3
+    if Bon[Q].Here = 1 then put char TStreet at Bon[Q].X + 3, Bon[Q].Y + 3
+    Bon[Q].Here = 0
+  next
+  Hit[0] = 0
+  Hit[1] = 0
+  HuntLeft = 0
+  ItT = 0
+  AiT = 0
+  AiShot = 0
+  RoundNo += 1
+  inc Rounds
+  Phase = 0
+  PhT = CountLen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      mute all
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  Rnd
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  JM = J1 | J2
+  if Players = 1 then J1 = JM
+  Btn = JM & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NAct
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 12
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  for Li = 0 to 6
+    K = Li * LogoW
+    copy LogoMap + K count LogoW to vram.name + 64 + LogoX + Li * 32
+  next
+  print at 6,10, "COMPUTE!'S GAZETTE"
+  print at 10,11, "MARCH 1986"
+  print at 9,13, "ONE PLAYER"
+  print at 9,14, "TWO PLAYERS"
+  print at 9,15, "HOW TO PLAY"
+  print at 9,16, "CREDITS"
+  put char TBSwap at 4,17
+  print at 6,17, "SWAP"
+  put char TBFast at 16,17
+  print at 18,17, "SPEED"
+  put char TBAmmo at 4,18
+  print at 6,18, "SHOTS"
+  put char TBHunt at 16,18
+  print at 18,18, "HUNTER"
+  print at 4,20, "LAST ONE LEFT ALIVE WINS"
+  print at 3,22, "STICK: CHOOSE  BUTTON: GO"
+  if Menu > 2 then Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 512
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  if Menu >= 2 then Menu = 0
+  ShowMenu
+tp_loop:
+  Frame1
+  ReadPad
+  V = JM & 3
+  if V > 0 then
+    if WasStick = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 3 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  HideSprites
+  Players = Menu + 1
+  if Menu >= 2 then Players = 1
+  if Menu = 2 then HowTo
+  if Menu = 3 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 0 to 3
+    if Li = Menu then
+      put char 62 at 7,13 + Li
+    else
+      put char 32 at 7,13 + Li
+    end if
+  next
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  fill mode 2 text color with $F4
+  backdrop dark blue
+  print at 11,2, "SURVIVOR"
+  print at 2,5, "BASED ON SURVIVOR FROM"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "MARCH 1986 (COMMODORE 64"
+  print at 2,8, "BASIC AND MACHINE CODE)."
+  print at 2,10, "COLECOVISION GAME, MUSIC"
+  print at 2,11, "AND PICTURES BY CLAUDE"
+  print at 2,12, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,13, "IN AMY BY AMY BIENVENU,"
+  print at 2,14, "2026."
+  print at 2,16, "MUSIC: LAST ONE STANDING"
+  print at 2,17, "(ORIGINAL)"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own tiles and sprites; the
+' button turns the page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "YOU ARE A SURVIVOR IN A CITY"
+  print at 2,4, "FULL OF MONSTERS. THE LAST"
+  print at 2,5, "ONE LEFT ALIVE WINS!"
+  fill TStreet count 28 at 2,7
+  fill TStreet count 28 at 2,8
+  fill TStreet count 28 at 2,9
+  for Li = 0 to 4
+    K = Li * 6
+    K = K + 4
+    put char TBlk00 at K,7
+    put char TBlk01 at K + 1,7
+    put char TBlk10 at K,8
+    put char TBlk11 at K + 1,8
+  next
+  set sprite 0 to 71,32,SMan,7
+  set sprite 1 to 71,64,SShot,7
+  set sprite 2 to 71,112,SMon,13
+  set sprite 3 to 71,200,SMan2,3
+  update sprites
+  print at 2,11, "STICK: WALK THE STREETS."
+  print at 2,12, "BUTTON: SHOOT THE WAY YOU"
+  print at 2,13, "LAST WALKED. 10 SHOTS A"
+  print at 2,14, "ROUND."
+  print at 2,16, "A MONSTER, THE HUNTER OR A"
+  print at 2,17, "SHOT THAT TOUCHES YOU COSTS"
+  print at 2,18, "A LIFE. YOU HAVE 5. A SHOT"
+  print at 2,19, "SENDS A MONSTER BACK TO THE"
+  print at 2,20, "MIDDLE OF THE CITY."
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  print at 2,3, "SIGNS POP UP IN THE STREETS."
+  print at 2,4, "WALK ONTO ONE TO USE IT:"
+  put char TBSwap at 2,6
+  print at 4,6, "SWAP: YOU TRADE PLACES"
+  print at 4,7, "WITH THE OTHER SURVIVOR."
+  put char TBFast at 2,8
+  print at 4,8, "SPEED: YOU RUN TWICE AS"
+  print at 4,9, "FAST FOR A WHILE."
+  put char TBAmmo at 2,10
+  print at 4,10, "SHOTS: STAND ON IT TO GET"
+  print at 4,11, "MORE SHOTS."
+  put char TBHunt at 2,12
+  print at 4,12, "HUNTER: A HUNTER CHASES"
+  print at 4,13, "THE OTHER SURVIVOR!"
+  set sprite 0 to 111,104,SHunt,8
+  set sprite 1 to 111,136,SMan,3
+  update sprites
+  print at 2,16, "TIP: KEEP MOVING, AND SHOOT"
+  print at 2,17, "MONSTERS IN YOUR WAY."
+  print at 2,19, "ONE PLAYER: YOU START AT THE"
+  print at 2,20, "TOP LEFT, THE COMPUTER AT"
+  print at 2,21, "THE BOTTOM RIGHT. TWO"
+  print at 2,22, "PLAYERS: ONE STICK EACH."
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HowT = 0
+hw_loop:
+  Frame1
+  ReadPad
+  inc HowT
+  if HowT >= 1800 then return
+  if Press = 0 then goto hw_loop
+  return
+end sub
+
+asm {
+SvShot:
+    db $00,$00,$14,$02,$00,$00,$25,$02,$00,$00,$45,$03,$00,$00,$66,$03,$10
+SvAppear:
+    db $40,$50,$20,$02,$40,$59,$30,$02,$40,$66,$30,$02,$40,$76,$40,$02,$40,$8C,$40,$02,$40,$AC,$50,$02
+    db $50
+SvPick:
+    db $40,$7F,$20,$02,$40,$55,$20,$03,$50
+SvPop:
+    db $00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$56,$05,$10
+SvCaught:
+    db $00,$00,$04,$06,$00,$00,$15,$08,$00,$00,$26,$0A,$00,$00,$36,$0C,$00,$00,$47,$10,$00,$00,$67,$14
+    db $00,$00,$77,$18,$10
+SvBeep:
+    db $40,$A9,$20,$08,$50
+SvGo:
+    db $40,$71,$10,$0E,$50
+SvOver:
+    db $40,$D6,$10,$0A,$40,$F0,$20,$0A,$40,$0E,$21,$0A,$40,$41,$31,$1E,$50
+
+SvSoundTable:
+    dw SvTuneMel,$702B
+    dw SvTuneBass,$7035
+    dw SvShot,$703F
+    dw SvAppear,$7049
+    dw SvPick,$7049
+    dw SvPop,$703F
+    dw SvCaught,$703F
+    dw SvBeep,$7049
+    dw SvGo,$7049
+    dw SvOver,$7049
+; Last One Standing (original)
+; Tiny Sound, 8 frames per step
+SvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$F1,$22,$23,$01,$26,$01,$25,$23,$22,$01,$23,$01,$1E,$01
+    db $01,$01,$01,$01,$23,$01,$26,$01,$28,$26,$25,$01,$26,$01,$2A,$01
+    db $01,$01,$01,$01,$2B,$01,$2A,$28,$26,$01,$28,$01,$2A,$01,$26,$23
+    db $01,$01,$22,$01,$23,$01,$25,$26,$25,$01,$22,$01,$1E,$01,$23,$01
+    db $00,$01,$01,$01
+    db $FF
+SvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$80,$18,$32,$0B,$01,$0B,$06,$0B,$01,$0B,$06,$0B,$01,$0B,$06
+    db $0B,$01,$0A,$01,$0B,$01,$0B,$06,$0B,$01,$0B,$06,$0E,$01,$0E,$09
+    db $0E,$01,$06,$01,$07,$01,$07,$0B,$07,$01,$04,$01,$06,$01,$06,$0D
+    db $06,$01,$06,$01,$06,$01,$06,$0D,$06,$01,$0A,$01,$0B,$01,$06,$01
+    db $0B,$01,$00,$01
+    db $FF
+}

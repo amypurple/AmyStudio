@@ -1,0 +1,1434 @@
+cartridge "TURNABOUT/TUTTLE+MYKYTYN, GAZETTE/1985"
+
+' TURNABOUT
+' Based on "Turnabout" by Mark Tuttle and Kevin Mykytyn, COMPUTE!'s
+' Gazette, October 1985 (Commodore 64, machine language, SYS 49152).
+' Made for the ColecoVision by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026, in Amy by Amy Bienvenu. Built from the article's rules and
+' a disassembly of the original (orig/turnabout.dis); not a code copy.
+'
+' The game: a grid of posts joined by green doors. Run from the
+' whirligigs; walk into a door to swing it a quarter turn round the post at
+' its far end (it swings only if the two cells it swings into are empty).
+' Whirligigs can't move doors. A whirligig that can't move at all for a
+' moment (4 tries in a row) breaks up: shut one in
+' a room with four doors. Two or more shut in together survive. Clear all
+' whirligigs to finish the level. Any touch costs a life.
+'
+' Controls: joystick 1 or 2 runs (up, down, left, right; with a diagonal
+' the first of up, down, left, right wins, as on the C64). A button starts
+' each round and works the menus. No keypad.
+'
+' Rules kept from the C64 (numbers from the disassembly):
+'   level 1: two whirligigs; one more each level (the article: up to
+'     seven from level 6 on); from level 7 the whirligigs speed up each
+'     level (C64: their move period -10% a level), the runner doesn't
+'   whirligig brain: when the runner is within its two columns (rows) it
+'     heads straight up/down (left/right) at him; otherwise it keeps its
+'     way, turning toward its last aim when it can; blocked, it tries the
+'     other directions from a random start, turning one way round
+'   bonus timer = 100 x level, one off every 32 frames (C64: every 6
+'     runner steps, about 0.54 s); at zero runner and whirligigs speed up
+'     (C64: the main loop's delay halves) until the round ends
+'   50 points a whirligig; a cleared level scores the time left plus
+'     100 x level; every second level cleared gives a life (at most 3)
+'     or 250 points; no points for surviving
+'   every round (after a lost life too) starts from the first board and
+'     waits for the button
+'   C64 speeds measured: runner about 11 cells a second, whirligigs 8.3
+'     at level 1 (see the liberties)
+'
+' Liberties (made for this machine):
+'   the board is 9 x 6 rooms (C64 13 x 7) to fit columns 2-29 and rows
+'     1-19, with the score, bonus, lives and level on rows 21-22
+'   runner and whirligigs are sprites gliding between cells (the C64
+'     jumped a character at a time)
+'   seven whirligigs from level 6 as the article says (the C64 code stops
+'     at six); the whirligig speed-up is capped at level 11 (2x)
+'   the edge walls are fixed (light blue) so they read apart from the
+'     doors (on the C64 they were doors that could never swing)
+'   a whirligig blocked only by another whirligig never breaks up (the
+'     article's "two or more trapped together" rule, made exact)
+'   after a lost life, whirligigs already trapped stay gone (the C64 code
+'     brought every one back; the article doesn't say): the human-paced
+'     bot could not clear level 1 in one life
+'   retuned so a human can win: runner 10 (9.4 cells a second);
+'     whirligigs 4,4,5,6 (3.75 to 5.6 cells a second) over levels 1-4, then
+'     faster from level 7; a whirligig breaks up after 4 blocked tries (C64
+'     10); it homes in only within 3 rooms (9 cells) of the runner, else it
+'     wanders (C64: always); the bonus timer loses one every 48 frames
+'     (C64 about 32), so the hurry starts later; a touch is centres within
+'     8 pixels; a whirligig blocked on its way to the runner waits one
+'     move before turning away (C64: turns at once), so a lure works
+'   pushing a door along its length is simply blocked (the C64 used a
+'     stale up/down flag there)
+'   no pause key (no keypad); title menu, HOW TO PLAY, credits; the game
+'     ends on GAME OVER, a button, then the title
+'
+' House rules kept: text in columns 2-29, tiles from 128, the frame loop
+' is protected from the NMI and every screen is drawn with the NMI off.
+
+const TPost = 128
+const THdoor = 129
+const TVdoor = 130
+const THwall = 131
+const TVwall = 132
+const TWpost = 133
+const TLife = 134
+const TBar = 135
+const SRun1 = 0
+const SRun2 = 4
+const SGig1 = 8
+const SGig2 = 12
+const SGig3 = 16
+const SGig4 = 20
+const SHub = 24
+const SPoof1 = 28
+const SPoof2 = 32
+const SGhost = 36
+const NTiles8 = 64
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndSwing = 3
+const SndPoof = 4
+const SndCaught = 5
+const SndClear = 6
+const SndStart = 7
+const SndLife = 8
+const SndHurry = 9
+const SndTick = 10
+
+const BW = 28
+const BH = 19
+const MaxG = 7
+const NSpr = 8
+
+record Gig:
+  u8 X
+  u8 Y
+  u8 OX
+  u8 OY
+  u8 D
+  u8 W
+  u8 S
+  u8 A
+  u8 Ac
+  u8 T
+end record
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' doors: Hs[j * 9 + i] the door from post (i, j) to (i + 1, j), Vs[j * 10
+' + i] from (i, j) to (i, j + 1); 0 none, 1 a door, 2 a fixed wall
+u8 Hs[63]
+u8 Vs[60]
+Gig Gs[7]
+
+' the runner: cell (Px, Py), the cell he left (Pox, Poy), Pd his way,
+' Pmv 1 while gliding, Pac the glide (64 = one cell)
+u8 Px = 13
+u8 Py = 10
+u8 Pox = 13
+u8 Poy = 10
+u8 Pd = 0
+u8 Pmv = 0
+u8 Pac = 0
+u8 Jd = 4
+u8 Psp = 10
+u8 Gsp = 4
+u8 Ng = 2
+' Keep: bit G set = whirligig G still to trap this level (a lost life
+' brings back only those)
+u8 Keep = 127
+u8 Level = 1
+u8 Lives = 3
+u8 Two = 0
+u8 Hurry = 0
+u8 TT = 0
+u16 Bonus = 100
+u16 Score = 0
+' Ev: what the last pass did (0 nothing, 1 caught, 2 cleared)
+u8 Ev = 0
+' Ph: 0 menus, 1 waiting for the button, 2 playing, 3 caught, 4 cleared,
+' 5 game over
+u8 Ph = 0
+u8 BlkG = 0
+u8 Kills = 0
+u8 Swings = 0
+u8 Ppx = 0
+u8 Ppy = 0
+u8 Gpx = 0
+u8 Gpy = 0
+
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 Rw = 0
+u16 NumU = 0
+u16 W16 = 0
+u8 Menu = 0
+u8 J1 = 0
+u8 J2 = 0
+u8 Btn = 0
+u8 WasBtn = 1
+u8 Press = 0
+u8 WasStick = 0
+u8 Tick = 0
+' PassT: Tick at the end of the last play pass (for the test bot)
+u8 PassT = 0
+u8 Fc = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+
+data Mod3 bytes
+  0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0
+end data
+data Div3 bytes
+  0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,9
+end data
+' whirligig homes (cells, top-left of the 2 x 2) and first ways
+data GX0 bytes
+  1,25,1,25,13,13,25
+end data
+data GY0 bytes
+  1,1,16,16,1,16,7
+end data
+data GD0 bytes
+  1,2,0,3,1,3,3
+end data
+' whirligig speed by level 1-11 (64 = a cell a frame), and in a hurry
+data GBase bytes
+  4,4,5,6,6,6,7,8,9,10,12
+end data
+data GHur bytes
+  6,6,7,9,9,9,10,12,13,15,18
+end data
+' the four ways: 0 up, 1 right, 2 down, 3 left
+data DXt bytes
+  0,1,0,255
+end data
+data DYt bytes
+  255,0,1,0
+end data
+
+  tile screen
+  set sound table TbSoundTable areas 6
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  Ph = 0
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+new_game:
+  Score = 0
+  Lives = 3
+  Level = 1
+  Two = 0
+  Keep = 127
+
+round_start:
+  NewScreen
+  DrawBoard
+  SetupRound
+  ShowHud
+  DrawSprites
+  print at 5,20, "LEVEL"
+  NumU = Level
+  print at 11,20, digits$(NumU, 2)
+  print at 14,20, "PRESS BUTTON"
+  ShowScreen
+  Ph = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+rs_wait:
+  Frame1
+  Rnd16
+  ReadPad
+  DrawSprites
+  if Press = 0 then goto rs_wait
+  print at 2,20, "                            "
+  play sound SndStart
+  Ph = 2
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayPass
+  DrawSprites
+  PassT = Tick
+  if Ev = 1 then goto caught
+  if Ev = 2 then goto cleared
+  goto play_loop
+
+caught:
+  Ph = 3
+  play sound SndCaught
+  for Fc = 0 to 89
+    Frame1
+    CaughtAnim
+  next
+  dec Lives
+  KeepLeft
+  ShowHud
+  if Lives = 0 then goto over
+  goto round_start
+
+cleared:
+  Ph = 4
+  play sound SndClear
+  Frame1
+  LevelDone
+  print at 9,20, "LEVEL CLEARED"
+  for Fc = 0 to 119
+    Frame1
+    DrawSprites
+  next
+  goto round_start
+
+over:
+  Ph = 5
+  HideSprites
+  print at 2,20, "                            "
+  print at 10,20, "GAME OVER"
+  Rearm
+  wait 60 frames
+  ' a press goes back to the title; left alone, Amy's sleep blanks the
+  ' screen after 30 seconds to spare the TV, and a press wakes it
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' LevelDone: the time left plus 100 x level; every second level a life
+' (at most 3) or 250 points
+' KeepLeft: after a lost life only the whirligigs still alive come back
+sub KeepLeft:
+  u8 Bit = 1
+  Keep = 0
+  for G = 0 to 6
+    if Gs[G].A = 1 then Keep = Keep | Bit
+    Bit = Bit << 1
+  next
+  return
+end sub
+
+sub LevelDone:
+  u16 Add = 0
+  Add = Level
+  Add = Add * 100
+  Add = Add + Bonus
+  Score = Score + Add
+  Keep = 127
+  inc Level
+  Two = Two ^ 1
+  if Two = 0 then
+    if Lives < 3 then
+      inc Lives
+      play sound SndLife
+    else
+      Score = Score + 250
+    end if
+  end if
+  ShowHud
+  return
+end sub
+
+' SetupRound: the level's whirligigs at home, the runner in the middle,
+' the bonus timer and the speeds
+sub SetupRound:
+  u8 Lv = 0
+  Ng = Level + 1
+  if Ng > MaxG then Ng = MaxG
+  for G = 0 to 6
+    Gs[G].A = 0
+  next
+  PlaceGigs(Ng)
+  Px = 13
+  Py = 10
+  Pox = 13
+  Poy = 10
+  Pd = 0
+  Pmv = 0
+  Pac = 0
+  Jd = 4
+  Hurry = 0
+  TT = 0
+  Ev = 0
+  Bonus = Level
+  Bonus = Bonus * 100
+  Lv = Level
+  if Lv > 11 then Lv = 11
+  dec Lv
+  Gsp = GBase[Lv]
+  Psp = 10
+  return
+end sub
+
+sub PlaceGigs(u8 Cnt)
+  u8 Bit = 1
+  for G = 0 to Cnt - 1
+    V = Keep & Bit
+    Bit = Bit << 1
+    if V = 0 then goto pg_next
+    Gs[G].X = GX0[G]
+    Gs[G].Y = GY0[G]
+    Gs[G].OX = GX0[G]
+    Gs[G].OY = GY0[G]
+    Gs[G].D = GD0[G]
+    Gs[G].W = GD0[G]
+    Gs[G].S = 0
+    Gs[G].A = 1
+    Gs[G].T = 0
+    Gs[G].Ac = G * 9
+pg_next:
+  next
+  return
+end sub
+
+' ---- one pass of play (the model in model.mjs follows these rules) ----
+sub PlayPass:
+  u8 Alive = 0
+  u8 Dx = 0
+  u8 Dy = 0
+  Ev = 0
+  ' the runner
+  if Pmv = 1 then
+    Pac = Pac + Psp
+    if Pac >= 64 then
+      Pac = Pac - 64
+      Pox = Px
+      Poy = Py
+      Pmv = 0
+    end if
+  end if
+  if Pmv = 0 then
+    if Jd < 4 then
+      Pd = Jd
+      Pmv = PTry(Jd)
+    end if
+    if Pmv = 0 then
+      Pac = 0
+      Pox = Px
+      Poy = Py
+    end if
+  end if
+  ' the whirligigs
+  for G = 0 to 6
+    select case Gs[G].A
+    case 1
+      Gs[G].Ac = Gs[G].Ac + Gsp
+      if Gs[G].Ac >= 64 then
+        Gs[G].Ac = Gs[G].Ac - 64
+        Gs[G].OX = Gs[G].X
+        Gs[G].OY = Gs[G].Y
+        GigThink(G)
+      end if
+    case 2
+      inc Gs[G].T
+      if Gs[G].T >= 24 then Gs[G].A = 0
+    end select
+  next
+  ' a touch: centres closer than 8 pixels both ways
+  RunPix
+  for G = 0 to 6
+    if Gs[G].A = 1 then
+      inc Alive
+      GigPix(G)
+      Dx = Ppx + 4
+      Dx = Dx - Gpx
+      Dx = Dx - 8
+      if Dx >= 128 then Dx = 0 - Dx
+      Dy = Ppy + 4
+      Dy = Dy - Gpy
+      Dy = Dy - 8
+      if Dy >= 128 then Dy = 0 - Dy
+      if Dx < 8 then
+        if Dy < 8 then Ev = 1
+      end if
+    end if
+    if Gs[G].A = 2 then inc Alive
+  next
+  if Ev = 1 then return
+  if Alive = 0 then
+    Ev = 2
+    return
+  end if
+  ' the bonus timer
+  inc TT
+  if TT >= 48 then
+    TT = 0
+    if Bonus > 0 then
+      dec Bonus
+      ShowBonus
+      if Bonus = 0 then
+        Hurry = 1
+        Psp = 16
+        V = Level
+        if V > 11 then V = 11
+        dec V
+        Gsp = GHur[V]
+        play sound SndHurry
+      end if
+    end if
+  end if
+  return
+end sub
+
+' CellBlk: 0 an empty cell, 1 a door, 2 a post, a wall or off the board
+function CellBlk(u8 Cx, u8 Cy) as u8
+  u8 Mx = 0
+  u8 My = 0
+  u8 Ix = 0
+  if Cx >= BW then return 2
+  if Cy >= BH then return 2
+  Mx = Mod3[Cx]
+  My = Mod3[Cy]
+  if Mx = 0 then
+    if My = 0 then return 2
+    Ix = Div3[Cy] * 10
+    Ix = Ix + Div3[Cx]
+    return Vs[Ix]
+  end if
+  if My = 0 then
+    Ix = Div3[Cy] * 9
+    Ix = Ix + Div3[Cx]
+    return Hs[Ix]
+  end if
+  return 0
+
+' GigOn: 1 when the cell is under a live whirligig other than Ex (where it
+' is, or with Ol = 1 also where it has just left)
+function GigOn(u8 Cx, u8 Cy, u8 Ex, u8 Ol) as u8
+  u8 Q = 0
+  u8 Ddx = 0
+  u8 Ddy = 0
+  for Q = 0 to 6
+    if Q <> Ex then
+      if Gs[Q].A = 1 then
+        Ddx = Cx - Gs[Q].X
+        Ddy = Cy - Gs[Q].Y
+        if Ddx < 2 then
+          if Ddy < 2 then return 1
+        end if
+        if Ol = 0 then goto go_next
+        Ddx = Cx - Gs[Q].OX
+        Ddy = Cy - Gs[Q].OY
+        if Ddx < 2 then
+          if Ddy < 2 then return 1
+        end if
+      end if
+    end if
+go_next:
+  next
+  return 0
+
+' TryG: whirligig Tg moves one cell the way Td if its leading edge is
+' empty; 1 when it moved. BlkG = 1 when only a whirligig was in the way.
+function TryG(u8 Tg, u8 Td) as u8
+  u8 Nx = 0
+  u8 Ny = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Bx = 0
+  u8 By = 0
+  Nx = Gs[Tg].X + DXt[Td]
+  Ny = Gs[Tg].Y + DYt[Td]
+  Ax = Nx
+  Ay = Ny
+  Bx = Nx
+  By = Ny
+  select case Td
+  case 0
+    Bx = Nx + 1
+  case 1
+    Ax = Nx + 1
+    Bx = Ax
+    By = Ny + 1
+  case 2
+    Ay = Ny + 1
+    By = Ay
+    Bx = Nx + 1
+  case else
+    By = Ny + 1
+  end select
+  if CellBlk(Ax, Ay) <> 0 then return 0
+  if CellBlk(Bx, By) <> 0 then return 0
+  if GigOn(Ax, Ay, Tg, 1) = 1 then
+    BlkG = 1
+    return 0
+  end if
+  if GigOn(Bx, By, Tg, 1) = 1 then
+    BlkG = 1
+    return 0
+  end if
+  Gs[Tg].X = Nx
+  Gs[Tg].Y = Ny
+  Gs[Tg].D = Td
+  return 1
+
+' GigThink: one move of whirligig Hg (the C64's homing and turning rules)
+sub GigThink(u8 Hg)
+  u8 Dd = 0
+  u8 Wt = 0
+  u8 St = 0
+  u8 Tr = 0
+  u8 Ok = 0
+  u8 Old = 0
+  u8 Far = 0
+  u8 Hm = 0
+  Old = Gs[Hg].D
+  BlkG = 0
+  ' far away (more than 3 rooms either way): it just wanders
+  Far = 0
+  if Px >= Gs[Hg].X then
+    Dd = Px - Gs[Hg].X
+  else
+    Dd = Gs[Hg].X - Px
+  end if
+  if Dd > 9 then Far = 1
+  if Py >= Gs[Hg].Y then
+    Dd = Py - Gs[Hg].Y
+  else
+    Dd = Gs[Hg].Y - Py
+  end if
+  if Dd > 9 then Far = 1
+  ' lined up with the runner: straight at him
+  Dd = Px - Gs[Hg].X
+  if Far = 1 then
+    Ok = TryG(Hg, Old)
+  elseif Dd < 2 then
+    Wt = 2
+    if Py < Gs[Hg].Y then Wt = 0
+    Gs[Hg].W = Wt
+    Ok = TryG(Hg, Wt)
+    Hm = 1
+  else
+    Dd = Py - Gs[Hg].Y
+    if Dd < 2 then
+      Wt = 1
+      if Px < Gs[Hg].X then Wt = 3
+      Gs[Hg].W = Wt
+      Ok = TryG(Hg, Wt)
+      Hm = 1
+    else
+      ' not lined up: turn toward the last aim unless it is straight back,
+      ' else keep going
+      Wt = Gs[Hg].W
+      Dd = Old ^ 2
+      if Dd <> Wt then Ok = TryG(Hg, Wt)
+      if Ok = 0 then Ok = TryG(Hg, Old)
+    end if
+  end if
+  ' homing and blocked on its way to the runner: it waits one move before
+  ' turning away (T counts the wait while alive)
+  if Ok = 0 then
+    if Hm = 1 then
+      if Gs[Hg].T = 0 then
+        Gs[Hg].T = 1
+        Gs[Hg].D = Old
+        return
+      end if
+    end if
+  end if
+  Gs[Hg].T = 0
+  if Ok = 0 then
+    ' blocked: four tries from a random way, turning one way round
+    Rnd16
+    St = Rw & 3
+    if St = Old then St = St + 1
+    St = St & 3
+    Dd = highbyte(Rw) & 1
+    for Tr = 0 to 3
+      if Ok = 0 then
+        Ok = TryG(Hg, St)
+        if Dd = 0 then
+          St = St + 1
+        else
+          St = St + 3
+        end if
+        St = St & 3
+      end if
+    next
+  end if
+  if Ok = 1 then
+    Gs[Hg].S = 0
+  else
+    Gs[Hg].D = Old
+    if BlkG = 1 then
+      Gs[Hg].S = 0
+    else
+      inc Gs[Hg].S
+      if Gs[Hg].S >= 4 then
+        ' trapped: it breaks up
+        Gs[Hg].A = 2
+        Gs[Hg].T = 0
+        Score = Score + 50
+        inc Kills
+        play sound SndPoof
+        ShowHud
+      end if
+    end if
+  end if
+  return
+end sub
+
+' PTry: the runner steps the way Rd; a door in the way swings if it can.
+' 1 when he moved.
+function PTry(u8 Rd) as u8
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 Cb = 0
+  Tx = Px + DXt[Rd]
+  Ty = Py + DYt[Rd]
+  Cb = CellBlk(Tx, Ty)
+  if Cb = 2 then return 0
+  if Cb = 1 then
+    if Swing(Tx, Ty, Rd) = 0 then return 0
+  end if
+  Px = Tx
+  Py = Ty
+  return 1
+
+' Swing: the door at cell (Sx, Sy) pushed the way Sd turns a quarter round
+' the post at its far end, if the two cells it swings into are empty and no
+' whirligig is on them (where it is now: one gliding away from them doesn't
+' count). 1 when it swung.
+function Swing(u8 Sx, u8 Sy, u8 Sd) as u8
+  u8 Si = 0
+  u8 Sj = 0
+  u8 Ni = 0
+  u8 Nj = 0
+  u8 Ix = 0
+  u8 Cx = 0
+  u8 Cy = 0
+  Si = Div3[Sx]
+  Sj = Div3[Sy]
+  if Mod3[Sy] = 0 then
+    ' a horizontal door: pushed up or down only
+    if Sd = 1 then return 0
+    if Sd = 3 then return 0
+    Ni = Si
+    if Mod3[Sx] = 1 then Ni = Si + 1
+    Nj = Sj
+    if Sd = 0 then Nj = Sj - 1
+    if Nj >= 6 then return 0
+    Ix = Nj * 10
+    Ix = Ix + Ni
+    if Vs[Ix] <> 0 then return 0
+    Cx = Ni * 3
+    Cy = Nj * 3
+    Cy = Cy + 1
+    if GigOn(Cx, Cy, 9, 0) = 1 then return 0
+    inc Cy
+    if GigOn(Cx, Cy, 9, 0) = 1 then return 0
+    Vs[Ix] = 1
+    DrawV(Ni, Nj)
+    Ix = Sj * 9
+    Ix = Ix + Si
+    Hs[Ix] = 0
+    DrawH(Si, Sj)
+  else
+    ' a vertical door: pushed left or right only
+    if Sd = 0 then return 0
+    if Sd = 2 then return 0
+    Nj = Sj
+    if Mod3[Sy] = 1 then Nj = Sj + 1
+    Ni = Si
+    if Sd = 3 then Ni = Si - 1
+    if Ni >= 9 then return 0
+    Ix = Nj * 9
+    Ix = Ix + Ni
+    if Hs[Ix] <> 0 then return 0
+    Cx = Ni * 3
+    Cx = Cx + 1
+    Cy = Nj * 3
+    if GigOn(Cx, Cy, 9, 0) = 1 then return 0
+    inc Cx
+    if GigOn(Cx, Cy, 9, 0) = 1 then return 0
+    Hs[Ix] = 1
+    DrawH(Ni, Nj)
+    Ix = Sj * 10
+    Ix = Ix + Si
+    Vs[Ix] = 0
+    DrawV(Si, Sj)
+  end if
+  inc Swings
+  play sound SndSwing
+  return 1
+
+' ---- drawing ----
+sub DrawH(u8 Di, u8 Dj)
+  u8 Ix = 0
+  u8 Tc = 32
+  u8 Cc = 0
+  u8 Rr = 0
+  Ix = Dj * 9
+  Ix = Ix + Di
+  if Hs[Ix] = 1 then Tc = THdoor
+  if Hs[Ix] = 2 then Tc = THwall
+  Cc = Di * 3
+  Cc = Cc + 3
+  Rr = Dj * 3
+  Rr = Rr + 1
+  put char Tc at Cc,Rr
+  inc Cc
+  put char Tc at Cc,Rr
+  return
+end sub
+
+sub DrawV(u8 Di, u8 Dj)
+  u8 Ix = 0
+  u8 Tc = 32
+  u8 Cc = 0
+  u8 Rr = 0
+  Ix = Dj * 10
+  Ix = Ix + Di
+  if Vs[Ix] = 1 then Tc = TVdoor
+  if Vs[Ix] = 2 then Tc = TVwall
+  Cc = Di * 3
+  Cc = Cc + 2
+  Rr = Dj * 3
+  Rr = Rr + 2
+  put char Tc at Cc,Rr
+  inc Rr
+  put char Tc at Cc,Rr
+  return
+end sub
+
+' DrawBoard: the first board: edge walls, every other door across rows
+' 1-5 (as on the C64), the posts
+sub DrawBoard:
+  u8 Bi = 0
+  u8 Bj = 0
+  u8 Ix = 0
+  u8 Cc = 0
+  u8 Rr = 0
+  for Bj = 0 to 6
+    for Bi = 0 to 8
+      Ix = Bj * 9
+      Ix = Ix + Bi
+      V = Bi & 1
+      Hs[Ix] = 0
+      if V = 0 then Hs[Ix] = 1
+      if Bj = 0 then Hs[Ix] = 2
+      if Bj = 6 then Hs[Ix] = 2
+      DrawH(Bi, Bj)
+    next
+  next
+  for Bj = 0 to 5
+    for Bi = 0 to 9
+      Ix = Bj * 10
+      Ix = Ix + Bi
+      Vs[Ix] = 0
+      if Bi = 0 then Vs[Ix] = 2
+      if Bi = 9 then Vs[Ix] = 2
+      DrawV(Bi, Bj)
+    next
+  next
+  for Bj = 0 to 6
+    Rr = Bj * 3
+    Rr = Rr + 1
+    for Bi = 0 to 9
+      Cc = Bi * 3
+      Cc = Cc + 2
+      V = TPost
+      if Bi = 0 then V = TWpost
+      if Bi = 9 then V = TWpost
+      if Bj = 0 then V = TWpost
+      if Bj = 6 then V = TWpost
+      put char V at Cc,Rr
+    next
+  next
+  return
+end sub
+
+' RunPix / GigPix: screen pixels of the runner (Ppx, Ppy) and of
+' whirligig Pg (Gpx, Gpy), gliding from the cell left to the new one
+sub RunPix:
+  u8 Off = 0
+  Ppx = Pox * 8
+  Ppx = Ppx + 16
+  Ppy = Poy * 8
+  Ppy = Ppy + 8
+  if Pmv = 1 then
+    Off = Pac >> 3
+    select case Pd
+    case 0
+      Ppy = Ppy - Off
+    case 1
+      Ppx = Ppx + Off
+    case 2
+      Ppy = Ppy + Off
+    case else
+      Ppx = Ppx - Off
+    end select
+  end if
+  return
+end sub
+
+sub GigPix(u8 Pg)
+  u8 Off = 0
+  u8 Mv = 0
+  Gpx = Gs[Pg].OX * 8
+  Gpx = Gpx + 16
+  Gpy = Gs[Pg].OY * 8
+  Gpy = Gpy + 8
+  if Gs[Pg].X <> Gs[Pg].OX then Mv = 1
+  if Gs[Pg].Y <> Gs[Pg].OY then Mv = 1
+  if Mv = 1 then
+    Off = Gs[Pg].Ac >> 3
+    select case Gs[Pg].D
+    case 0
+      Gpy = Gpy - Off
+    case 1
+      Gpx = Gpx + Off
+    case 2
+      Gpy = Gpy + Off
+    case else
+      Gpx = Gpx - Off
+    end select
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  u8 Sy = 0
+  u8 Sp = 0
+  u8 Sc = 0
+  RunPix
+  Sy = Ppy - 1
+  Sp = SRun1
+  V = Tick & 8
+  if Pmv = 1 then
+    if V > 0 then Sp = SRun2
+  end if
+  set sprite 0 to Sy,Ppx,Sp,11
+  for G = 0 to 6
+    K = G + 1
+    select case Gs[G].A
+    case 1
+      GigPix(G)
+      Sy = Gpy - 1
+      V = Tick >> 2
+      V = V + G
+      V = V & 3
+      Sp = V << 2
+      Sp = Sp + SGig1
+      Sc = 9
+      if Gs[G].S > 0 then Sc = 13
+      set sprite K to Sy,Gpx,Sp,Sc
+    case 2
+      Gpx = Gs[G].X * 8
+      Gpx = Gpx + 16
+      Gpy = Gs[G].Y * 8
+      Gpy = Gpy + 7
+      Sp = SPoof1
+      if Gs[G].T >= 12 then Sp = SPoof2
+      set sprite K to Gpy,Gpx,Sp,15
+    case else
+      set sprite K to 192,0,0,0
+    end select
+  next
+  update sprites
+  return
+end sub
+
+' CaughtAnim: the runner fades to a ghost rising a little
+sub CaughtAnim:
+  u8 Sy = 0
+  u8 Up = 0
+  RunPix
+  Up = Fc >> 3
+  Sy = Ppy - 1
+  Sy = Sy - Up
+  V = Fc & 16
+  C = 15
+  if V > 0 then C = 14
+  set sprite 0 to Sy,Ppx,SGhost,C
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,21, "SCORE"
+  NumU = Score
+  print at 8,21, digits$(NumU, 5)
+  ShowBonus
+  print at 2,22, "LIVES"
+  for I = 1 to 3
+    X = I + 7
+    V = 32
+    if I <= Lives then V = TLife
+    put char V at X,22
+  next
+  print at 19,22, "LEVEL"
+  NumU = Level
+  print at 25,22, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowBonus:
+  print at 19,21, "BONUS"
+  NumU = Bonus
+  print at 25,21, digits$(NumU, 4)
+  return
+end sub
+
+' ---- system ----
+' Rnd16: a 16-bit xorshift (7 9 8), Rw the new value
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' ReadPad: both sticks and buttons; Jd the way (the first of up, down,
+' left, right held), Press a new button press
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).button1 then J1 = J1 | 16
+  if joypad(1).button2 then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).button1 then J2 = J2 | 16
+  if joypad(2).button2 then J2 = J2 | 16
+  V = J1 | J2
+  Jd = 4
+  C = V & 8
+  if C > 0 then Jd = 1
+  C = V & 4
+  if C > 0 then Jd = 3
+  C = V & 2
+  if C > 0 then Jd = 2
+  C = V & 1
+  if C > 0 then Jd = 0
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a little room drawn with posts and doors: (Cc, Rr) its top-left post,
+' Ww x Hh rooms
+sub Frame3(u8 Cc, u8 Rr, u8 Ww, u8 Hh)
+  u8 Ex = 0
+  u8 Ey = 0
+  u8 Q = 0
+  Ex = Ww * 3
+  Ex = Ex + Cc
+  Ey = Hh * 3
+  Ey = Ey + Rr
+  for Q = Cc to Ex
+    V = Q - Cc
+    V = Mod3[V]
+    K = THdoor
+    if V = 0 then K = TPost
+    put char K at Q,Rr
+    put char K at Q,Ey
+  next
+  for Q = Rr to Ey
+    V = Q - Rr
+    V = Mod3[V]
+    K = TVdoor
+    if V = 0 then K = TPost
+    put char K at Cc,Q
+    put char K at Ex,Q
+  next
+  return
+end sub
+
+' the title: the name in a room of doors, a whirligig chasing the runner
+' round it, the tune once; START GAME / HOW TO PLAY / CREDITS
+sub TitlePage:
+  u8 Tx = 0
+  NewScreen
+  Frame3(5, 2, 7, 3)
+  print at 10,5, "TURNABOUT"
+  print at 9,7, "TRAP THE WHIRLIGIGS"
+  print at 4,13, "MARK TUTTLE AND"
+  print at 4,14, "KEVIN MYKYTYN, COMPUTE!'S"
+  print at 4,15, "GAZETTE OCTOBER 1985"
+  print at 10,17, "START GAME"
+  print at 10,19, "HOW TO PLAY"
+  print at 10,21, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 528
+  TzOn = 1
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Tx = 48
+tp_loop:
+  Frame1
+  Rnd16
+  inc Tx
+  if Tx > 168 then Tx = 48
+  V = Tx + 24
+  set sprite 0 to 71,V,SRun1,11
+  V = Tick >> 2
+  V = V & 3
+  V = V << 2
+  V = V + SGig1
+  set sprite 1 to 67,Tx,V,9
+  update sprites
+  ReadPad
+  V = J1 | J2
+  K = V & 3
+  if K > 0 then
+    if WasStick = 0 then
+      C = K & 1
+      if C > 0 then
+        if Menu > 0 then dec Menu
+      end if
+      C = K & 2
+      if C > 0 then
+        if Menu < 2 then inc Menu
+      end if
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  WasStick = K
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  W16 = Tick
+  W16 = W16 << 8
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,17
+  put char 32 at 8,19
+  put char 32 at 8,21
+  J = Menu << 1
+  J = J + 17
+  put char 62 at 8,J
+  return
+end sub
+
+' HOW TO PLAY: three pages with the game's tiles and sprites; the button
+' turns the page; after the last one (or 30 s without a press) the title
+sub HowTo:
+  u8 Pg = 0
+  u16 Wt = 0
+  for Pg = 1 to 3
+    NewScreen
+    print at 9,1, "HOW TO PLAY"
+    HowPage(Pg)
+    print at 7,22, "BUTTON: NEXT"
+    ShowScreen
+    Rearm
+    wait no fire
+    nmi off
+    WasBtn = 1
+    Wt = 0
+hw_loop:
+    Frame1
+    ReadPad
+    if Press = 1 then goto hw_next
+    inc Wt
+    if Wt < 1800 then goto hw_loop
+    Pg = 3
+hw_next:
+    play sound SndTick
+  next
+  HideSprites
+  return
+end sub
+
+sub HowPage(u8 P)
+  select case P
+  case 1
+    print at 2,3, "RUN FROM THE WHIRLIGIGS."
+    print at 2,4, "ONE TOUCH COSTS A LIFE."
+    set sprite 0 to 47,48,SRun1,11
+    set sprite 1 to 43,88,SGig1,9
+    set sprite 2 to 43,120,SGig3,9
+    print at 2,8, "STICK: RUN. PUSH A DOOR BY"
+    print at 2,9, "WALKING INTO IT: IT SWINGS"
+    print at 2,10, "ROUND THE POST AT ITS END."
+    print at 2,11, "IT SWINGS ONLY INTO SPACE."
+    put char TPost at 6,15
+    put char THdoor at 7,15
+    put char THdoor at 8,15
+    put char TPost at 9,15
+    set sprite 3 to 127,56,SRun1,11
+    print at 11,15, "UP:"
+    put char TPost at 16,15
+    put char TPost at 19,15
+    put char TVdoor at 19,14
+    put char TVdoor at 19,13
+    put char TPost at 19,12
+    set sprite 4 to 119,136,SRun1,11
+    print at 2,18, "WHIRLIGIGS CAN'T MOVE DOORS."
+  case 2
+    print at 2,3, "TRAP A WHIRLIGIG: PUT FOUR"
+    print at 2,4, "DOORS AROUND ITS ROOM. STUCK"
+    print at 2,5, "FOR A MOMENT, IT BREAKS UP."
+    print at 2,6, "50 POINTS. TWO SHUT IN"
+    print at 2,7, "TOGETHER DO NOT BREAK."
+    Frame3(13, 9, 1, 1)
+    set sprite 1 to 79,112,SGig2,13
+    print at 2,14, "CLEAR EVERY WHIRLIGIG TO"
+    print at 2,15, "FINISH THE LEVEL. EACH LEVEL"
+    print at 2,16, "ADDS ONE (UP TO SEVEN), THEN"
+    print at 2,17, "THEY GET FASTER."
+  case else
+    print at 2,3, "LEVEL CLEARED: THE BONUS"
+    print at 2,4, "TIME LEFT PLUS 100 X LEVEL."
+    print at 2,5, "AT BONUS 0 EVERYONE SPEEDS"
+    print at 2,6, "UP. NO POINTS FOR SURVIVING."
+    print at 2,8, "THREE LIVES"
+    put char TLife at 14,8
+    put char TLife at 15,8
+    put char TLife at 16,8
+    print at 2,9, "EVERY SECOND LEVEL: A LIFE"
+    print at 2,10, "(UP TO 3) OR 250 POINTS."
+    print at 2,11, "NO LIVES LEFT: GAME OVER."
+    print at 2,14, "TIP: LURE A WHIRLIGIG INTO A"
+    print at 2,15, "ROOM WITH THREE DOORS, THEN"
+    print at 2,16, "SWING THE FOURTH SHUT. FAR"
+    print at 2,17, "AWAY THEY WANDER; CLOSE BY"
+    print at 2,18, "THEY CHASE YOU."
+  end select
+  update sprites
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,1, "TURNABOUT"
+  print at 2,3, "BASED ON TURNABOUT BY MARK"
+  print at 2,4, "TUTTLE AND KEVIN MYKYTYN,"
+  print at 2,5, "COMPUTE!'S GAZETTE, OCTOBER"
+  print at 2,6, "1985 (COMMODORE 64)."
+  print at 2,8, "COLECOVISION GAME, MUSIC AND"
+  print at 2,9, "PICTURES BY CLAUDE"
+  print at 2,10, "(ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "IN AMY BY AMY BIENVENU, 2026"
+  print at 2,12, "MUSIC: SWINGING DOORS"
+  print at 2,14, "STICK: RUN AND PUSH DOORS"
+  print at 2,15, "BUTTON: START A ROUND"
+  print at 2,17, "TRAP WHIRLIGIGS BEHIND FOUR"
+  print at 2,18, "DOORS. DON'T LET ONE TOUCH"
+  print at 2,19, "YOU."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+cr_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto cr_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $18,$18,$C3,$A5,$18,$24,$24,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01
+  $01,$01,$01,$03,$03,$01,$01,$01
+  $31,$31,$31,$31,$31,$31,$31,$31
+  $01,$01,$05,$05,$05,$05,$01,$01
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $01,$15,$15,$15,$15,$15,$15,$01
+  $B1,$B1,$1B,$1B,$B1,$B1,$B1,$01
+  $01,$01,$01,$04,$04,$01,$01,$01
+end data
+data SpritePat bytes
+  $38,$38,$10,$7C,$BA,$28,$44,$44,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $38,$38,$10,$7C,$BA,$38,$28,$28,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$60,$78,$3E,$1F,$0F,$07,$07,$07,$0F,$1F,$3E,$78,$60,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$7F,$7F,$3F,$0F,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$F0,$F8,$F0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$06,$1E,$7C,$F8,$F0,$E0,$E0,$E0,$F0,$F8,$7C,$1E,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$0F,$3F,$7F,$7F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$F0,$F8,$F0,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$21,$08,$44,$13,$04,$24,$0B,$44,$13,$28,$04,$20,$08,$00,$00
+  $00,$08,$20,$84,$20,$88,$90,$40,$88,$10,$44,$80,$88,$10,$00,$00
+  $80,$00,$10,$82,$00,$10,$01,$80,$04,$20,$00,$88,$00,$10,$00,$81
+  $81,$00,$10,$00,$21,$00,$08,$00,$10,$00,$22,$00,$40,$04,$00,$01
+  $38,$7C,$AA,$FE,$FE,$AA,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+TbSwing:
+    db $40,$53,$21,$02,$40,$FE,$30,$02,$40,$1D,$51,$03,$50
+TbPoof:
+    db $00,$00,$14,$03,$00,$00,$25,$04,$00,$00,$36,$06,$00,$00,$57,$08,$10
+TbCaught:
+    db $40,$7F,$10,$05,$40,$97,$20,$05,$40,$BF,$20,$05,$40,$FE,$30,$05,$40,$53,$31,$08,$40,$FC,$41,$0E
+    db $50
+TbClear:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$10,$05,$40,$8F,$20,$08,$40,$6B,$20,$10
+    db $50
+TbStart:
+    db $40,$1D,$21,$05,$40,$D6,$20,$05,$40,$8F,$20,$0A,$50
+TbLife:
+    db $40,$6B,$20,$04,$40,$55,$20,$04,$40,$47,$20,$08,$50
+TbHurry:
+    db $40,$5F,$20,$06,$40,$7F,$20,$06,$40,$5F,$20,$06,$40,$7F,$20,$0A,$50
+TbTick:
+    db $40,$5D,$40,$02,$50
+
+TbSoundTable:
+    dw TbTuneMel,$702B
+    dw TbTuneBass,$7035
+    dw TbSwing,$7049
+    dw TbPoof,$703F
+    dw TbCaught,$7049
+    dw TbClear,$7049
+    dw TbStart,$7049
+    dw TbLife,$7049
+    dw TbHurry,$7049
+    dw TbTick,$7049
+; Swinging Doors (original)
+; Tiny Sound, 8 frames per step
+TbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1A,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$21,$01
+    db $23,$01,$1F,$01,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $25,$01,$21,$01,$1E,$01,$21,$01,$26,$01,$2A,$01,$28,$01,$25,$01
+    db $26,$01,$23,$01,$1F,$01,$23,$01,$21,$01,$1E,$01,$1C,$01,$19,$01
+    db $1A,$01,$01,$01,$00,$01
+    db $FF
+TbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0E,$01,$15,$01,$0E,$01,$15,$01,$15,$01,$10,$01
+    db $07,$01,$0E,$01,$10,$01,$17,$01,$10,$01,$17,$01,$07,$01,$0E,$01
+    db $15,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$15,$01,$10,$01
+    db $17,$01,$12,$01,$07,$01,$0E,$01,$0E,$01,$15,$01,$15,$01,$10,$01
+    db $0E,$01,$01,$01,$01,$01
+    db $FF
+}

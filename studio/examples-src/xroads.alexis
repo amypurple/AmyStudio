@@ -55,7 +55,8 @@ cartridge "CROSSROADS/S.HARTER/1987"
 '
 ' Controls: controller 1 (player 1) and controller 2 (player 2): the stick
 ' walks (pushing a new way first turns), a button fires. On the title, up
-' and down choose, a button chooses.
+' and down choose 1 PLAYER, 2 PLAYERS, HOW TO PLAY or CREDITS, a button
+' chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -633,7 +634,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 2 then goto title
+  if Menu >= 2 then goto title
   Players = Menu + 1
   NewGame
 
@@ -1724,6 +1725,8 @@ sub ShowScreen:
 end sub
 
 ' the title: CROSSROADS in blocks, the creatures and their points, the menu
+' (1 PLAYER / 2 PLAYERS / HOW TO PLAY / CREDITS, the cursor on 1 PLAYER
+' each time)
 sub TitlePage:
   NewScreen
   copy TitleMap count 352 to vram.name + 32
@@ -1740,14 +1743,16 @@ sub TitlePage:
     NumU = NumU * 10
     print at X + 2,Y, digits$(NumU, 4)
   next
-  put char TSpar at 12,18
-  print at 14,18, "500"
-  print at 11,19, "1 PLAYER"
-  print at 11,20, "2 PLAYERS"
+  put char TSpar at 12,14
+  print at 14,14, "500"
+  print at 11,18, "1 PLAYER"
+  print at 11,19, "2 PLAYERS"
+  print at 11,20, "HOW TO PLAY"
   print at 11,21, "CREDITS"
   if Hi > 0 then
     print at 9,22, "BEST ", Hi, "0"
   end if
+  Menu = 0
   ShowMenu
   ShowScreen
   play sound SndTuneA
@@ -1768,7 +1773,7 @@ tp_loop:
       if V = 1 then
         if Menu > 0 then dec Menu
       else
-        if Menu < 2 then inc Menu
+        if Menu < 3 then inc Menu
       end if
       ShowMenu
     end if
@@ -1783,16 +1788,124 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 2 then CreditsPage
+  if Menu = 2 then HowToPage
+  if Menu = 3 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
-  for J = 19 to 21
+  for J = 18 to 21
     put char 32 at 9,J
   next
-  J = Menu + 19
+  J = Menu + 18
   put char 62 at 9,J
+  return
+end sub
+
+' a player for the HOW TO PLAY pages: player P (0-1) at pixel X, Y facing
+' K (0 down, 1 up, 2 right, 3 left)
+sub HtPlayer(u8 P)
+  K = PlPat[K]
+  J = PlCol[P]
+  set sprite P to Y,X,K + 16,15
+  set sprite P + 2 to Y,X,K,J
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "YOU ARE IN A MAZE FULL OF"
+    print at 2,4, "CREATURES. THEY FIGHT EACH"
+    print at 2,5, "OTHER AS WELL AS YOU!"
+    print at 2,7, "SHOOT CREATURES FOR POINTS"
+    print at 2,8, "AND PICK UP THE SPINNING"
+    print at 2,9, "SPARS. WHEN THE PLAYERS"
+    print at 2,10, "HAVE TAKEN 5 SPARS, THE"
+    print at 2,11, "LEVEL IS OVER."
+    print at 2,13, "CREATURES EAT SPARS TOO,"
+    print at 2,14, "AND DROP THEM WHEN THEY DIE."
+    fill TWall0 count 28 at 2,16
+    fill TWall0 count 28 at 2,20
+    for Ty = 0 to 4
+      put char TCr + Ty * 4 + 3 at Ty * 3 + 13,18
+    next
+    put char TSpar at 8,18
+    X = 24
+    Y = 135
+    K = 2
+    HtPlayer(0)
+  case 2
+    print at 2,1, "CONTROLS               2/3"
+    print at 2,3, "THE JOYSTICK WALKS (PUSH A"
+    print at 2,4, "NEW WAY AND YOU TURN"
+    print at 2,5, "FIRST). A BUTTON FIRES."
+    print at 2,7, "TWO PLAYERS: CONTROLLER 1"
+    print at 2,8, "AND CONTROLLER 2."
+    print at 2,10, "SAME COLOUR, OR CYAN AND"
+    print at 2,11, "GREEN, PURPLE AND BLUE,"
+    print at 2,12, "ORANGE AND BROWN ARE"
+    print at 2,13, "FRIENDS. ALL ELSE FIGHTS."
+    print at 2,15, "THE MAZE EDGES WRAP ROUND."
+    X = 64
+    Y = 143
+    K = 2
+    HtPlayer(0)
+    X = 168
+    K = 3
+    HtPlayer(1)
+    put char TBul0h at 12,19
+    put char TBul0h at 14,19
+    put char TCr + 4 + 3 at 17,19
+  case 3
+    print at 2,1, "SCORING                3/3"
+    for Ty = 0 to 8
+      V = Ty * 4 + TCr + 2
+      J = Ty / 3
+      K = Ty % 3
+      X = K * 9 + 3
+      Y = J + 3
+      put char V at X,Y
+      NumU = Pts[Ty]
+      NumU = NumU * 10
+      print at X + 2,Y, digits$(NumU, 4)
+    next
+    put char TSpar at 2,7
+    print at 4,7, "A SPAR GIVES A SHIELD (S)"
+    print at 4,8, "AND 500 AT THE LEVEL END."
+    print at 2,10, "A BITE OR A BULLET TAKES A"
+    print at 2,11, "SHIELD. WITH NONE LEFT YOU"
+    print at 2,12, "LOSE A LIFE (L). NO LIVES:"
+    print at 2,13, "GAME OVER. EVERY 10000"
+    print at 2,14, "POINTS: AN EXTRA LIFE."
+    print at 2,16, "TIP: LET THE CREATURES"
+    print at 2,17, "FIGHT EACH OTHER, THEN"
+    print at 2,18, "SHOOT THE WINNER."
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadMenuPad
+  HtWt = HtWt + 1
+  if HtWt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
   return
 end sub
 

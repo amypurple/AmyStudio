@@ -22,6 +22,7 @@ export function scanAmyFirstPass({
   lowerName,
   isReservedAmyIdentifier,
   describeGlobalNameCollision,
+  hasConstAsmSymbol,
   runtimeVars,
   runtimeParamSlotSize,
   splitTopLevelArgs,
@@ -80,7 +81,11 @@ export function scanAmyFirstPass({
       }
     }
     const paramLower = lowerName(paramName);
-    if (seenParams.has(paramLower) || paramLower === lowerName(ownerName) || isReservedAmyIdentifier(paramName) || describeGlobalNameCollision(paramName)) {
+    if (seenParams.has(paramLower)
+      || paramLower === lowerName(ownerName)
+      || isReservedAmyIdentifier(paramName)
+      || hasConstAsmSymbol?.(paramName)
+      || describeGlobalNameCollision(paramName)) {
       return { error: `Parameter name '${paramName}' is invalid or collides with an existing symbol in ${rawLine}` };
     }
     seenParams.add(paramLower);

@@ -59,7 +59,8 @@ cartridge "LINCOLN GREEN/R.BIXBY/1988"
 ' C64); the end goes back to the title (the C64 asked PLAY AGAIN? Y/N).
 '
 ' Controls: controller 1 (or 2): the stick walks north, south, west, east.
-' On the title, up and down choose, a button chooses.
+' On the title, up and down choose START, HOW TO PLAY or CREDITS (the
+' cursor back on START each time), a button chooses.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -369,6 +370,9 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+' the HOW TO PLAY pages (globals: subs here share the IX frame with call asm)
+u8 Pg = 0
+u16 HtWt = 0
 u8 Tick = 0
 u8 Idle = 0
 ' loop counters (never shared with the helpers)
@@ -407,7 +411,7 @@ u8 Front = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu >= 1 then goto title
 
   NewGame
 
@@ -1017,9 +1021,11 @@ sub TitlePage:
   next
   print at 8,16, "BY ROBERT BIXBY"
   print at 13,18, "START"
-  print at 13,19, "CREDITS"
+  print at 13,19, "HOW TO PLAY"
+  print at 13,20, "CREDITS"
   print at 3,21, "FIND SANCTUARY. DODGE THE"
   print at 2,22, "ARROWS. PUSH TO PASS TREES."
+  Menu = 0
   ShowMenu
   ShowScreen
   play sound SndTuneA
@@ -1038,9 +1044,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -1055,7 +1061,8 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPage
+  if Menu = 2 then CreditsPage
   return
 end sub
 
@@ -1090,8 +1097,97 @@ end sub
 sub ShowMenu:
   put char 32 at 11,18
   put char 32 at 11,19
+  put char 32 at 11,20
   J = Menu + 18
   put char 62 at 11,J
+  return
+end sub
+
+' a 4 x 4 block for the HOW TO PLAY picture: K = TTree00 or TGlade00 at
+' X, Y
+sub HtBlock:
+  for Mr = 0 to 3
+    J = Mr * 4 + K
+    V = Y + Mr
+    put char J at X,V
+    put char J + 1 at X + 1,V
+    put char J + 2 at X + 2,V
+    put char J + 3 at X + 3,V
+  next
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "YOU ARE AN OUTLAW LOST IN"
+    print at 2,4, "THE FOREST, WITH ARCHERS"
+    print at 2,5, "AFTER YOU. FIND THE SAFE"
+    print at 2,6, "PLACE: THE SANCTUARY!"
+    print at 2,8, "PUSH THE JOYSTICK UP, DOWN,"
+    print at 2,9, "LEFT OR RIGHT TO WALK."
+    print at 2,11, "WALKING INTO A TREE COSTS"
+    print at 2,12, "MONEY. KEEP PUSHING AND YOU"
+    print at 2,13, "GET THROUGH IT."
+    for Bk = 0 to 5
+      X = Bk * 4 + 4
+      K = TGlade00
+      if Bk = 1 then K = TTree00
+      if Bk = 4 then K = TTree00
+      Y = 14
+      HtBlock
+      K = TGlade00
+      if Bk = 3 then K = TTree00
+      Y = 18
+      HtBlock
+    next
+    set sprite 0 to 119,104,SSkin,9
+    set sprite 1 to 119,104,SHero0,12
+    set sprite 2 to 123,168,SArW,15
+  else
+    print at 2,1, "THE NUMBERS            2/2"
+    print at 2,3, "E-W AND N-S AT THE BOTTOM"
+    print at 2,4, "SAY HOW FAR THE SANCTUARY"
+    print at 2,5, "IS, BUT NOT WHICH WAY. WALK"
+    print at 2,6, "AND WATCH THEM: GET BOTH"
+    print at 2,7, "TO 0 AND YOU ARE SAFE!"
+    print at 2,9, "ARROWS FLY AT YOU. EACH HIT"
+    print at 2,10, "IS A NICK. 9 NICKS AND YOU"
+    print at 2,11, "ARE CAUGHT. AN EMPTY PURSE"
+    print at 2,12, "ENDS THE GAME TOO."
+    print at 2,14, "TIP: IF A NUMBER GOES UP,"
+    print at 2,15, "TURN AROUND AND WALK THE"
+    print at 2,16, "OTHER WAY."
+    print at 2,18, "NICKS 0        PURSE"
+    put char TPound at 22,18
+    print at 23,18, "600"
+    print at 2,19, "E-W 1100          N-S 1100"
+    set sprite 2 to 159,40,SArE,15
+    set sprite 3 to 159,200,SArW,15
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  HtWt = HtWt + 1
+  if HtWt >= 1800 then goto ht_out
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_out:
+  HideSprites
   return
 end sub
 

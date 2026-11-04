@@ -36,6 +36,8 @@ AMY_SET_BITMAP_GRAPHICS_MODE:
 ; standard Coleco sprite tables at VRAM_SPR_ATTR=$1B00 and VRAM_SPR_PAT=$3800.
 ; Display stays blanked until screen on is called.
 AMY_SET_GRAPHICS_MODE2_TEXT:
+    push ix
+    push iy
     ld bc,$0182
     call WRITE_REGISTER
     ld bc,$039F
@@ -50,7 +52,10 @@ AMY_SET_GRAPHICS_MODE2_TEXT:
     call WRITE_REGISTER
     ld a,2
     ld hl,VRAM_NAME
-    jp INIT_TABLE
+    call INIT_TABLE
+    pop iy
+    pop ix
+    ret
 
 ; Configure standard text mode (Mode 1) with the default name table at $1800.
 ; Display remains blanked until screen on is called.

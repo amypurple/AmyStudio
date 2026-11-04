@@ -58,7 +58,9 @@ cartridge "KNOCK 31/COMPUTE!'S GAZETTE/1989"
 '   raps) and an original title tune, "Rap on the Table".
 '
 ' Controls: joystick left/right chooses, either button confirms. Keypad not
-' used.
+' used. On the title: up/down choose START GAME, HOW TO PLAY or CREDITS
+' (the cursor back on START GAME each time), left/right the starting
+' points, a button picks.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -254,6 +256,9 @@ u8 Held = 0
 u8 Tick = 0
 ' scratch
 u8 V = 0
+u8 Menu = 0
+u8 Ud = 0
+u8 WasUd = 0
 
   tile screen
   set sound table KnSoundTable areas 4
@@ -267,6 +272,14 @@ u8 V = 0
 
 title:
   TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
   NewGame
 round_loop:
   PlayRound
@@ -1137,7 +1150,11 @@ sub TitlePage:
   print at 2,15, "POINTS. LAST ONE IN WINS."
   print at 2,17, "STARTING POINTS:"
   ShowStart
-  print at 2,19, "STICK: CHOOSE  BUTTON: GO"
+  print at 4,19, "START GAME"
+  print at 4,20, "HOW TO PLAY"
+  print at 4,21, "CREDITS"
+  Menu = 0
+  ShowMenu
   print at 2,22, "COMPUTE!'S GAZETTE MAY 1989"
   ShowScreen
   play sound SndTuneA
@@ -1146,11 +1163,27 @@ sub TitlePage:
   TzOn = 1
   WasB = 1
   Held = 0
+  WasUd = 1
 tp_loop:
   Frame1
   inc Rs
   if Rs = 0 then Rs = 1
   ReadPad
+  Ud = 0
+  if joypad(1).up then Ud = 1
+  if joypad(2).up then Ud = 1
+  if joypad(1).down then Ud = 2
+  if joypad(2).down then Ud = 2
+  if Ud > 0 and WasUd = 0 then
+    if Ud = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Menu < 2 then inc Menu
+    end if
+    ShowMenu
+    play sound SndMove
+  end if
+  WasUd = Ud
   if Stick = 0 then
     Held = 0
   else
@@ -1175,6 +1208,94 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 2,19
+  put char 32 at 2,20
+  put char 32 at 2,21
+  put char 62 at 2,19 + Menu
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 0
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "YOU AND 3 COMPUTER PLAYERS"
+    print at 2,4, "EACH HOLD 3 CARDS. TRY TO"
+    print at 2,5, "GET A HIGH TOTAL IN ONE"
+    print at 2,6, "SUIT: ACE 11, KING, QUEEN,"
+    print at 2,7, "JACK AND 10 ARE 10, THE"
+    print at 2,8, "REST WHAT THEY SAY. 31 IS"
+    print at 2,9, "THE BEST HAND."
+    DrawBig(1, 3, 11)
+    DrawBig(13, 8, 11)
+    DrawBig(9, 13, 11)
+    DrawBig(33, 20, 11)
+    print at 2,15, "11 + 10 + 9 = 30"
+    print at 20,15, "NO HELP:"
+    print at 20,16, "NOT A"
+    print at 20,17, "SPADE"
+    print at 2,19, "EVERYONE STARTS WITH THE"
+    print at 2,20, "SAME POINTS (5 TO 25)."
+  case 2
+    print at 2,1, "YOUR TURN              2/3"
+    print at 2,3, "JOYSTICK LEFT OR RIGHT"
+    print at 2,4, "PICKS THE DECK OR THE"
+    print at 2,5, "DISCARD PILE. PRESS THE"
+    print at 2,6, "BUTTON TO TAKE THAT CARD."
+    print at 2,8, "THEN PICK ONE OF YOUR 4"
+    print at 2,9, "CARDS TO THROW AWAY AND"
+    print at 2,10, "PRESS THE BUTTON."
+    print at 2,12, "WHEN YOUR HAND IS GOOD,"
+    print at 2,13, "ANSWER YES TO KNOCK."
+    DrawBack(DeckX, 16)
+    DrawBig(23, PileX, 16)
+    set sprite 0 to 147,PileX * 8 + 8,SArrow,11
+  case 3
+    print at 2,1, "KNOCKING               3/3"
+    print at 2,3, "AFTER A KNOCK, EVERYONE"
+    print at 2,4, "ELSE HAS ONE MORE TURN, THEN"
+    print at 2,5, "ALL HANDS ARE SHOWN."
+    print at 2,7, "IF YOU KNOCKED AND HAVE THE"
+    print at 2,8, "BEST HAND, THE OTHERS LOSE"
+    print at 2,9, "A POINT. IF SOMEONE TIES OR"
+    print at 2,10, "BEATS YOU, YOU LOSE 2."
+    print at 2,12, "NO POINTS LEFT: YOU ARE OUT."
+    print at 2,13, "THE LAST PLAYER IN WINS."
+    print at 2,15, "TIP: KNOCK EARLY WITH A"
+    print at 2,16, "GOOD HAND. THE OTHERS HAVE"
+    print at 2,17, "LESS TIME TO CATCH UP."
+    DrawBig(40, 10, 19)
+    DrawBig(50, 15, 19)
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasB = 1
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  HtWt = HtWt + 1
+  if HtWt >= 1800 then goto ht_out
+  if Btn = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+ht_out:
+  HideSprites
   return
 end sub
 

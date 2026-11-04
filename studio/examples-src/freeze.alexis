@@ -1,9 +1,10 @@
-cartridge "THE FREEZE FACTORY/GAZETTE/1985"
+cartridge "THE FREEZE FACTORY/CLARENCE DIN/1985"
 
 ' THE FREEZE FACTORY
 ' A ColecoVision game based on "The Freeze Factory", COMPUTE!'s Gazette
-' June 1985 (Commodore 64 and VIC-20 BASIC, disk files "freeze factory"
-' and "freeze/vic"; the listing names no author).
+' June 1985 pp. 54-55, by Clarence Din (Commodore 64 and VIC-20 BASIC,
+' disk files "freeze factory" and "freeze/vic"; rules checked against
+' the article).
 ' Made for Amy Studio by Claude (an AI made by Anthropic), 2026, in Amy by
 ' Amy Bienvenu.
 '
@@ -44,8 +45,9 @@ cartridge "THE FREEZE FACTORY/GAZETTE/1985"
 ' lost his three lives in 6 s); the clock unit is (HT+1)*12 frames (60 s
 ' a level at first, as measured: about 5 BASIC passes a second); each chaser remembers its own last direction (the
 ' BASIC shared one variable between all four); the time bonus is the time
-' left x 10 (the listing set the time to 60 just before adding it, always
-' 600); after a catch the worker and the chasers go back to their start
+' left x 10 (the article: remaining time plus 25 a cube; the listing set
+' the time to 60 just before adding it, so it always gave 600); a frozen
+' robot thaws after one second (60 frames), as the article says; after a catch the worker and the chasers go back to their start
 ' cells and those cells are cleared (in the BASIC nothing moved, so the
 ' same chaser could catch him again at once); at a new level the chasers
 ' go back to their starts too; the 26 x 18 field holds 45 blocks at first
@@ -102,7 +104,7 @@ const MidC = 15
 const MidR = 12
 const StepN = 8
 const CrushN = 12
-const FreezeN = 48
+const FreezeN = 60
 const CaughtN = 60
 const BannerN = 120
 const MaxBlocks = 180
@@ -136,6 +138,8 @@ u8 TzOn = 0
 u16 Rs = 1
 u16 W16 = 0
 u16 NumU = 0
+u8 Menu = 0
+u8 WasSt = 0
 u8 Lv = 1
 u8 Lives = 3
 u8 Eg = 0
@@ -206,6 +210,7 @@ u8 Y = 0
 
 title:
   TitlePage
+  if Menu >= 1 then goto title
 
 new_game:
   NewGame
@@ -915,9 +920,13 @@ sub TitlePage:
     fill 32 count 22 at 5,Ri
   next
   print at 8,8, "THE FREEZE FACTORY"
-  print at 7,10, "COMPUTE!'S GAZETTE"
-  print at 11,11, "JUNE 1985"
-  print at 8,14, "PRESS THE BUTTON"
+  print at 9,10, "BY CLARENCE DIN"
+  print at 7,11, "GAZETTE JUNE 1985"
+  print at 10,13, "START GAME"
+  print at 10,14, "HOW TO PLAY"
+  print at 10,15, "CREDITS"
+  Menu = 0
+  ShowMenu
   print at 2,1, "HI"
   print Hi at 5,1
   Lv = 1
@@ -952,6 +961,19 @@ tp_loop:
   ReadPad
   TitleSparks
   DrawSprites
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasSt = 0 then
+      if V = 1 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasSt = V
   if Press = 0 then goto tp_loop
   stop sound SndTuneA
   stop sound SndTuneB
@@ -962,6 +984,84 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
+  if Menu = 1 then HowTo
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for Ri = 0 to 2
+    put char 32 at 8,13 + Ri
+  next
+  put char 62 at 8,13 + Menu
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own tiles and sprites; the
+' button turns the page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "YOU WORK IN AN ICE FACTORY."
+  print at 2,4, "FOUR SPARKS CHASE YOU."
+  fill TWall count 28 at 2,6
+  fill TFloor count 28 at 2,7
+  fill TFloor count 28 at 2,8
+  fill TWall count 28 at 2,9
+  put char TIce at 8,7
+  put char TIce at 21,8
+  put char TIce at 22,8
+  set sprite 0 to 55,40,SHoodr,15
+  set sprite 1 to 55,40,SBodyr0,9
+  set sprite 6 to 55,96,SBlock,7
+  set sprite 2 to 55,144,SSpark0,10
+  update sprites
+  print at 2,11, "STICK: WALK. WALK INTO AN"
+  print at 2,12, "ICE BLOCK TO PUSH IT: IT"
+  print at 2,13, "SLIDES UNTIL IT HITS"
+  print at 2,14, "SOMETHING."
+  print at 2,16, "SLIDE A BLOCK INTO A SPARK"
+  print at 2,17, "TO FREEZE IT: 1000 POINTS."
+  print at 2,18, "A BLOCK THAT CAN'T MOVE IS"
+  print at 2,19, "CRUSHED: 10 POINTS."
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  print at 2,3, "FREEZE 4 SPARKS TO CLEAR THE"
+  print at 2,4, "LEVEL: 25 POINTS FOR EACH"
+  print at 2,5, "BLOCK LEFT, A TIME BONUS"
+  print at 2,6, "AND AN EXTRA LIFE."
+  set sprite 2 to 63,104,SFrozen,7
+  set sprite 3 to 63,136,SSpark1,10
+  update sprites
+  put char TClock at 2,11
+  print at 4,11, "THE CLOCK COUNTS DOWN FROM"
+  print at 4,12, "60. AT 0 THE GAME IS OVER."
+  put char TLife at 2,14
+  print at 4,14, "A SPARK THAT TOUCHES YOU"
+  print at 4,15, "COSTS A LIFE. YOU HAVE 3."
+  print at 4,16, "NO LIVES LEFT: GAME OVER."
+  print at 2,19, "TIP: LINE UP A BLOCK, THEN"
+  print at 2,20, "WAIT FOR A SPARK TO COME"
+  print at 2,21, "INTO ITS PATH!"
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  NumU = 0
+hw_loop:
+  Frame1
+  ReadPad
+  inc NumU
+  if NumU >= 1800 then return
+  if Press = 0 then goto hw_loop
   return
 end sub
 
@@ -1005,9 +1105,9 @@ sub CreditsPage:
   backdrop dark blue
   print at 6,2, "THE FREEZE FACTORY"
   print at 2,5, "BASED ON THE FREEZE FACTORY"
-  print at 2,6, "COMPUTE!'S GAZETTE"
-  print at 2,7, "JUNE 1985 (COMMODORE 64"
-  print at 2,8, "AND VIC-20)."
+  print at 2,6, "BY CLARENCE DIN, COMPUTE!'S"
+  print at 2,7, "GAZETTE JUNE 1985"
+  print at 2,8, "(COMMODORE 64 AND VIC-20)."
   print at 2,11, "COLECOVISION GAME, MUSIC"
   print at 2,12, "AND PICTURES BY CLAUDE"
   print at 2,13, "(ANTHROPIC) FOR AMY STUDIO,"

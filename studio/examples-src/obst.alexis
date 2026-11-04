@@ -48,8 +48,10 @@ cartridge "OBSTACLE 128/GAZETTE/1986"
 ' direction runs into the border within 26 steps.
 '
 ' Controls: controller 1 steers blue, controller 2 purple (in a one-player
-' game the computer steers purple). On the title: left/right picks 1 or 2
-' players, up/down the speed, a button starts.
+' game the computer steers purple). On the title: up/down chooses a line
+' (PLAYERS, SPEED, START, HOW TO PLAY, CREDITS; the cursor starts on
+' START), left/right picks 1 or 2 players or the speed on their lines, a
+' button starts (from PLAYERS, SPEED or START) or opens the page.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -243,6 +245,7 @@ u16 NumU = 0
 u16 Time = 0
 u8 Players = 1
 u8 Speed = 1
+u8 Menu = 2
 u8 Spd = 8
 u8 Gap = 3
 u8 El = 0
@@ -280,6 +283,14 @@ u8 K = 0
 
 title:
   TitlePage
+  if Menu = 3 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
   NewGame
 
 round_start:
@@ -768,23 +779,31 @@ sub ShowMenu:
     print at 4,14, "PLAYERS  < 2 >         "
   end if
   NumU = Speed + 1
-  print at 4,16, "SPEED         ", digits$(NumU, 1)
+  print at 4,15, "SPEED    < ", digits$(NumU, 1), " >"
+  for J = 14 to 18
+    put char 32 at 2,J
+  next
+  J = Menu + 14
+  put char 62 at 2,J
   return
 end sub
 
 ' the title: the block logo, the menu, the tune once
 sub TitlePage:
   u8 Last = 0
+  Menu = 2
   NewScreen
   for Di = 0 to 7
     W16 = Di * 28
     copy TitleMap + W16 count 28 to vram.name + (Di + 2) * 32 + 2
   next
   print at 2,11, "COMPUTE!'S GAZETTE NOV 1986"
+  print at 4,16, "START"
+  print at 4,17, "HOW TO PLAY"
+  print at 4,18, "CREDITS"
   ShowMenu
-  print at 4,18, "STICK: PLAYERS AND SPEED"
-  print at 4,19, "BUTTON: START"
-  print at 4,21, "BLUE: CONTROLLER 1"
+  print at 4,20, "UP/DOWN: CHOOSE A LINE"
+  print at 4,21, "LEFT/RIGHT: CHANGE IT"
   ShowScreen
   play sound SndTuneA
   play sound SndTuneB
@@ -810,13 +829,15 @@ tp_loop:
   if J > 0 and Rep = 0 then
     select case J
       case 1
-        if Speed < 2 then inc Speed
+        if Menu > 0 then dec Menu
       case 4
-        if Speed > 0 then dec Speed
+        if Menu < 4 then inc Menu
       case 2
-        Players = 2
+        if Menu = 0 then Players = 2
+        if Menu = 1 and Speed < 2 then inc Speed
       case 8
-        Players = 1
+        if Menu = 0 then Players = 1
+        if Menu = 1 and Speed > 0 then dec Speed
     end select
     ShowMenu
   end if
@@ -828,6 +849,73 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 1
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "BLUE AND PURPLE EACH DRAW A"
+    print at 2,4, "WALL OF BLOCKS THAT NEVER"
+    print at 2,5, "STOPS GROWING. DON'T RUN"
+    print at 2,6, "INTO ANY WALL, YOURS TOO!"
+    print at 2,8, "PUSH THE STICK UP, DOWN,"
+    print at 2,9, "LEFT OR RIGHT TO TURN."
+    print at 2,10, "CONTROLLER 1 IS BLUE,"
+    print at 2,11, "CONTROLLER 2 IS PURPLE (OR"
+    print at 2,12, "THE COMPUTER IN A 1 PLAYER"
+    print at 2,13, "GAME)."
+    fill TBlkb count 8 at 4,17
+    for J = 15 to 16
+      put char TBlkb at 11,J
+    next
+    fill TBlkp count 9 at 18,19
+    for J = 17 to 18
+      put char TBlkp at 18,J
+    next
+    set sprite 0 to 111,88,SAup,HeadCol[0]
+    set sprite 1 to 127,144,SAup,HeadCol[1]
+  else
+    print at 2,1, "SCORING                2/2"
+    print at 2,3, "WHEN ONE PLAYER CRASHES,"
+    print at 2,4, "THE OTHER GETS A POINT."
+    print at 2,5, "BOTH CRASH: BOTH SCORE."
+    print at 2,6, "THEN A NEW ROUND STARTS."
+    print at 2,8, "FIRST TO 5 POINTS, AND"
+    print at 2,9, "AHEAD, WINS THE GAME."
+    print at 2,11, "THE BORDER HAS TWO GAPS,"
+    print at 2,12, "BUT GOING OUT IS A CRASH."
+    print at 2,14, "TIP: STAY AWAY FROM THE"
+    print at 2,15, "EDGES AND TRY TO CUT YOUR"
+    print at 2,16, "RIVAL OFF FROM THE OPEN"
+    print at 2,17, "SPACE."
+    set sprite 2 to 151,120,SBoom0,11
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPads
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_end:
   HideSprites
   return
 end sub

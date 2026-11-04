@@ -40,7 +40,8 @@ cartridge "MAZE MASTER/COMPUTE!'S GAZETTE/1988"
 ' goes back to the title, which starts a new maze.
 '
 ' Controls: joystick only. The stick moves the ball. On the title, left
-' and right choose the speed, a button starts.
+' and right choose the speed, up and down START, HOW TO PLAY or CREDITS, a
+' button starts.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -137,6 +138,7 @@ u8 CHd = 2
 u8 Px8 = 0
 u16 Left = NDots
 u8 Phase = 0
+u8 Mn = 0
 u8 Speed = 1
 u8 Want = 0
 u8 Ate = 0
@@ -570,6 +572,8 @@ data Word1 bytes 0,1,2,3
 data Word2 bytes 0,1,4,5,3,6
 
 sub TitlePage:
+tp_top:
+  Mn = 0
   NewScreen
   ' MAZE: 15 columns from 8 (8-22); MASTER: 23 columns from 4 (4-26)
   for Ci = 0 to 3
@@ -580,9 +584,12 @@ sub TitlePage:
   next
   print at 3,15, "EAT MORE THAN HALF THE"
   print at 3,16, "DOTS BEFORE THE STAR DOES."
-  print at 4,19, "LEFT/RIGHT: SPEED"
-  print at 4,21, "BUTTON: START"
+  print at 4,18, "LEFT/RIGHT: SPEED"
+  print at 8,20, "START"
+  print at 8,21, "HOW TO PLAY"
+  print at 8,22, "CREDITS"
   ShowSpeed
+  ShowMn
   set sprite 0 to 39,40,SBall0,11
   set sprite 1 to 39,200,SStar0,8
   update sprites
@@ -612,11 +619,27 @@ tp_loop:
     play sound SndPick
     ShowSpeed
   end if
+  if (N & 1) <> 0 then
+    if Mn > 0 then dec Mn
+    play sound SndPick
+    ShowMn
+  end if
+  if (N & 2) <> 0 then
+    if Mn < 2 then inc Mn
+    play sound SndPick
+    ShowMn
+  end if
   if Press = 0 then goto tp_loop
   stop sound SndTuneA
   stop sound SndTuneB
   mute all
   TzOn = 0
+  if Mn > 0 then
+    HideSprites
+    if Mn = 1 then HowToPage
+    if Mn = 2 then CreditsPage
+    goto tp_top
+  end if
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
@@ -640,12 +663,91 @@ end sub
 sub ShowSpeed:
   select case Speed
   case 0
-    print at 22,19, "SLOW  "
+    print at 22,18, "SLOW  "
   case 1
-    print at 22,19, "NORMAL"
+    print at 22,18, "NORMAL"
   case 2
-    print at 22,19, "FAST  "
+    print at 22,18, "FAST  "
   end select
+  return
+end sub
+
+' the arrow on the title menu line Mn (0 START, 1 HOW TO PLAY, 2 CREDITS)
+sub ShowMn:
+  for Ri = 20 to 22
+    put char 32 at 6,Ri
+  next
+  put char 62 at 6,Mn + 20
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 1
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "YOU ARE THE BALL. THE"
+    print at 2,4, "COMPUTER IS THE STAR."
+    print at 2,5, "YOU BOTH RACE THROUGH A"
+    print at 2,6, "MAZE FULL OF DOTS."
+    print at 2,8, "EAT A DOT BY RUNNING OVER"
+    print at 2,9, "IT. THE JOYSTICK MOVES THE"
+    print at 2,10, "BALL, ONE STEP AT A TIME."
+    fill TWall count 15 at 8,13
+    fill TWall count 15 at 8,19
+    for Ri = 14 to 18
+      put char TWall at 8,Ri
+      fill TDot count 13 at 9,Ri
+      put char TWall at 22,Ri
+    next
+    fill TWall count 5 at 10,15
+    fill TWall count 3 at 18,15
+    fill TWall count 7 at 12,17
+    put char TWall at 16,16
+    fill TFloor count 4 at 9,14
+    fill TFloor count 3 at 19,18
+    set sprite 0 to 111,96,SBall1,11
+    set sprite 1 to 143,152,SStar0,8
+    update sprites
+  else
+    print at 2,1, "WINNING                2/2"
+    print at 2,3, "THE MAZE HOLDS 257 DOTS."
+    print at 2,4, "EAT MORE THAN HALF (129)"
+    print at 2,5, "TO WIN. THE GAME ENDS AS"
+    print at 2,6, "SOON AS ONE SIDE CAN NO"
+    print at 2,7, "LONGER BE CAUGHT."
+    print at 2,9, "THE STAR ALWAYS KEEPS TO"
+    print at 2,10, "THE WALL ON ITS RIGHT."
+    print at 2,12, "THE BOTTOM LINE SHOWS YOUR"
+    print at 2,13, "DOTS, THE STAR'S DOTS AND"
+    print at 2,14, "THE DOTS LEFT."
+    print at 2,16, "ON THE TITLE, LEFT/RIGHT"
+    print at 2,17, "SETS SLOW, NORMAL OR FAST."
+    print at 2,19, "TIP: GO WHERE THE STAR"
+    print at 2,20, "WILL NOT GET SOON."
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  OldJ = 31
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadStick
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_end:
+  HideSprites
   return
 end sub
 

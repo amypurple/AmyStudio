@@ -49,7 +49,8 @@ cartridge "RACE ACE/MIKE SEDORE/1990"
 ' title and credits pages are new.
 '
 ' Controls: joystick only. Up faster, down slower, left/right steer,
-' either side button brakes. Menus: up/down choose, a button starts.
+' either side button brakes. Menus: up/down choose, a button starts. The
+' title has START, HOW TO PLAY (three pages) and CREDITS.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -980,6 +981,13 @@ u8 OldPads = 0
 u8 Tick = 0
 u8 Idle = 0
 u8 Sel = 0
+' the HOW TO PLAY page and its idle timer (globals: this program has
+' `call asm`, so no locals in the subs that draw screens)
+u8 HtPg = 0
+u16 HtWt = 0
+u8 HtX = 0
+u8 HtY = 0
+u8 HtT = 0
 ' loop counters (never shared with the helpers)
 u8 Ri = 0
 u8 Ci = 0
@@ -1013,6 +1021,10 @@ u8 NewS = 0
 title:
   TitlePage
   if Sel = 1 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 2 then
     CreditsPage
     goto title
   end if
@@ -1855,7 +1867,7 @@ sub TitlePage:
   NewScreen
   copy LogoMap count 512 to vram.name + 64
   NumU = Hi
-  print at 9,19, "HIGH " + digits$(NumU, 5)
+  print at 9,18, "HIGH " + digits$(NumU, 5)
   Sel = 0
   ShowMenu
   set sprite 0 to 150,40,SCar,15
@@ -1883,7 +1895,7 @@ tp_loop:
     end if
   end if
   if (N & 2) <> 0 then
-    if Sel < 1 then
+    if Sel < 2 then
       inc Sel
       play sound SndPick
       ShowMenu
@@ -1904,12 +1916,117 @@ tp_done:
 end sub
 
 sub ShowMenu:
-  for Ti = 0 to 1
-    put char 32 at 10,Ti + 21
+  for Ti = 0 to 2
+    put char 32 at 10,Ti + 20
   next
-  put char 62 at 10,Sel + 21
-  print at 12,21, "START"
+  put char 62 at 10,Sel + 20
+  print at 12,20, "START"
+  print at 12,21, "HOW TO PLAY"
   print at 12,22, "CREDITS"
+  return
+end sub
+
+' a stretch of road for the HOW TO PLAY pages: six rows from HtY, bending
+' right (the road templates as the game draws them, HtX = the road's left
+' edge; HtT = 1: the checkpoint line on the third row)
+sub HtRoad:
+  Y = HtY + 5
+  for Ri = HtY to Y
+    V = Ri & 2
+    T = 0
+    if V <> 0 then T = 1
+    if HtT = 1 then
+      V = HtY + 2
+      if Ri = V then T = 2
+    end if
+    W16 = T * 73
+    W16 = W16 + HtX
+    W16 = W16 - 24
+    W16 = W16 * 22
+    Va = Ri * 32
+    Va = Va + 2
+    copy RoadTpl + W16 count 22 to vram.name + Va
+    dec HtX
+  next
+  return
+end sub
+
+' HOW TO PLAY: three pages; the button turns the page, after the last
+' page (or 30 seconds untouched) back to the title
+sub HowToPage:
+  HtPg = 1
+ht_page:
+  NewScreen
+  if HtPg = 1 then
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "RACE UP A WINDING ROAD"
+    print at 2,4, "AGAINST THE CLOCK!"
+    print at 2,6, "PASS THE OTHER CARS, STAY"
+    print at 2,7, "ON THE ROAD AND REACH THE"
+    print at 2,8, "CHECKPOINT LINE AT THE END"
+    print at 2,9, "OF EACH LAP."
+    HtX = 68
+    HtY = 14
+    HtT = 0
+    HtRoad
+    set sprite 0 to 135,92,SCar,15
+    set sprite 1 to 111,108,SVan,4
+  elseif HtPg = 2 then
+    print at 2,1, "CONTROLS               2/3"
+    print at 2,3, "STICK UP: GO FASTER."
+    print at 2,4, "STICK DOWN: SLOW DOWN."
+    print at 2,5, "LEFT/RIGHT: STEER."
+    print at 2,6, "BUTTON: BRAKE HARD."
+    print at 2,8, "THE RED KERB SLOWS YOU."
+    print at 2,9, "OFF THE ROAD OR INTO A CAR"
+    print at 2,10, "IS A CRASH: IT COSTS TIME."
+    HtX = 60
+    HtY = 14
+    HtT = 0
+    HtRoad
+    set sprite 0 to 127,72,SCar,15
+    set sprite 1 to 143,108,SCar,10
+  else
+    print at 2,1, "THE CLOCK              3/3"
+    print at 2,3, "THE TIME BAR RUNS DOWN. AT"
+    print at 2,4, "THE CHECKPOINT EVERY PIECE"
+    print at 2,5, "LEFT IS WORTH 100 POINTS"
+    print at 2,6, "AND THE BAR FILLS AGAIN."
+    print at 2,8, "WHEN THE BAR IS EMPTY, THE"
+    print at 2,9, "GAME IS OVER."
+    print at 2,11, "TIP: WATCH OUT AT NIGHT AND"
+    print at 2,12, "ON THE ICE: YOUR CAR SLIDES!"
+    print at 2,14, "TIME"
+    for Bi = 0 to 4
+      put char TBar8 at 7 + Bi,14
+    next
+    put char TBar3 at 12,14
+    put char TBar0 at 13,14
+    HtX = 56
+    HtY = 16
+    HtT = 1
+    HtRoad
+    set sprite 0 to 156,82,SCar,15
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 31
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPads
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  N = Pads & (Pads ^ OldPads)
+  if (N & 16) = 0 then goto ht_wait
+  inc HtPg
+  if HtPg <= 3 then goto ht_page
+ht_end:
+  HideSprites
   return
 end sub
 

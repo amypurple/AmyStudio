@@ -47,6 +47,9 @@ cartridge "DECIPEDE/COMPUTE'S GAZETTE/1987"
 '   and the crawler sweeps the bottom rows for ever.
 '
 ' Controls: joystick moves the gun, either button fires (hold to repeat).
+' On the title, up and down choose (START, HOW TO PLAY, CREDITS), a button
+' picks; HOW TO PLAY has two pages (a button turns the page, 30 s idle
+' goes back).
 ' House rules: text in columns 2-29; tiles from 128; NMI off while
 ' drawing; set sprite count after clear sprites; title tune once.
 
@@ -146,6 +149,10 @@ u8 Press = 0
 u8 Tick = 0
 u8 Idle = 0
 u8 InGame = 0
+u8 Menu = 0
+u8 WasStk = 0
+u8 HPg = 0
+u16 HWt = 0
 ' loop counters
 u8 Si = 0
 u8 Ri = 0
@@ -925,12 +932,14 @@ sub ShowScreen:
 end sub
 
 sub TitlePage:
+tp_top:
   InGame = 0
+  Menu = 0
   NewScreen
   DrawField
   N = 60
   GrowRocks
-  for Ri = 6 to 15
+  for Ri = 6 to 18
     fill 32 count 22 at 5,Ri
   next
   ' a little crawler under the title
@@ -943,7 +952,10 @@ sub TitlePage:
   print at 12,7, "DECIPEDE"
   print at 6,11, "COMPUTE!'S GAZETTE"
   print at 9,12, "JANUARY 1987"
-  print at 8,14, "PRESS THE BUTTON"
+  print at 12,14, "START"
+  print at 12,15, "HOW TO PLAY"
+  print at 12,16, "CREDITS"
+  ShowMenu
   print at 2,1, "HI"
   print Hi at 5,1
   ShowScreen
@@ -958,7 +970,27 @@ tp_loop:
   Frame1
   Rand
   ReadPad
+  V = J1 | J2
+  V = V & 3
+  if V > 0 and WasStk = 0 then
+    if V = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Menu < 2 then inc Menu
+    end if
+    ShowMenu
+  end if
+  WasStk = V
   if Press = 0 then goto tp_loop
+  if Menu > 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+    mute all
+    TzOn = 0
+    if Menu = 1 then HowToPage
+    if Menu = 2 then CreditsPage
+    goto tp_top
+  end if
   stop sound SndTuneA
   stop sound SndTuneB
   mute all
@@ -966,6 +998,87 @@ tp_loop:
   W16 = Tick
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for J = 14 to 16
+    put char 32 at 10,J
+  next
+  J = Menu + 14
+  put char 62 at 10,J
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "A CRAWLER OF BEADS RUNS"
+    print at 2,4, "ACROSS THE CRYSTALS AND"
+    print at 2,5, "COMES DOWN TOWARDS YOU."
+    print at 2,6, "SHOOT IT BEFORE IT GETS YOU!"
+    print at 2,8, "STICK: MOVE YOUR GUN IN THE"
+    print at 2,9, "FOUR BOTTOM ROWS."
+    print at 2,10, "BUTTON: FIRE (HOLD IT TO"
+    print at 2,11, "KEEP FIRING)."
+    print at 2,13, "EACH HIT TAKES ONE BEAD OFF"
+    print at 2,14, "THE END: 50 POINTS. TEN HITS"
+    print at 2,15, "CLEAR THE WAVE. A CRYSTAL"
+    print at 2,16, "SHOT TO BITS: 25 POINTS."
+    put char TRock at 8,18
+    put char THeadr at 15,18
+    for Ri = 10 to 14
+      V = Ri & 1
+      T = TBody0 + V
+      put char T at Ri,18
+    next
+    put char TRock at 18,18
+    put char TPois at 21,19
+    set sprite 0 to 163,116,SGun,3
+    set sprite 1 to 153,124,SShot,15
+  else
+    print at 2,3, "PESTS (ONE AT A TIME):"
+    print at 5,5, "HOPPER: ZIGZAGS NEAR YOU."
+    print at 5,6, "200 POINTS."
+    print at 5,8, "DROPPER: FALLS, PLANTING"
+    print at 5,9, "CRYSTALS. 400 POINTS."
+    print at 5,11, "CREEPER: POISONS CRYSTALS"
+    print at 5,12, "(RED). 1200 POINTS."
+    put char TPois at 5,13
+    print at 7,13, "A RED CRYSTAL MAKES THE"
+    print at 7,14, "CRAWLER DIVE DOWN."
+    print at 2,16, "IF THE CRAWLER, HOPPER OR"
+    print at 2,17, "DROPPER TOUCHES YOUR GUN,"
+    print at 2,18, "YOU LOSE IT. 3 GUNS, ONE"
+    print at 2,19, "MORE EVERY 12000. NO GUNS"
+    print at 2,20, "LEFT: GAME OVER."
+    print at 2,21, "TIP: DON'T STAND STILL!"
+    set sprite 0 to 39,20,SHop0,13
+    set sprite 1 to 63,20,SDrop,7
+    set sprite 2 to 87,20,SCrawl,10
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPad
+  inc HWt
+  if HWt >= 1800 then goto ht_done
+  if Press = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  HideSprites
   return
 end sub
 

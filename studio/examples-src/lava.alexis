@@ -53,7 +53,8 @@ cartridge "LAVA FLOW/COMPUTE!'S GAZETTE/1988"
 ' Controls: joystick only. BLACK: controller 1, WHITE: controller 2 (in a
 ' one-player game either controller moves BLACK). Stick: walk. A button:
 ' building on/off. On the title, up and down choose a line, left, right or
-' a button change it; a button on START begins.
+' a button change it; a button on START begins (the cursor is back on
+' START each time); HOW TO PLAY and CREDITS show their pages.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off after
@@ -179,7 +180,7 @@ data LogoMap bytes
   146,32,32,32,146,146,146,32,32,146,32,32,146,32,146
 end data
 
-data MenuRow bytes 16,18,20
+data MenuRow bytes 16,18,20,22
 
 u16 W16 = 0
 u16 NumU = 0
@@ -247,6 +248,14 @@ u8 Tg = 0
 
 title:
   TitlePage
+  if Sel = 2 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 3 then
+    CreditsPage
+    goto title
+  end if
   Lives[0] = 5
   Lives[1] = 5
 
@@ -814,7 +823,8 @@ sub TitlePage:
     copy LogoMap + W16 count LogoW to vram.name + NumU
   next
   print at 5,14, "COMPUTE!'S GAZETTE 1988"
-  for J = 0 to 2
+  Sel = 1
+  for J = 0 to 3
     ShowLine(J)
   next
   ShowCursor
@@ -837,7 +847,7 @@ tp_loop:
       ShowCursor
     end if
     if V & 2 then
-      if Sel < 2 then Sel = Sel + 1
+      if Sel < 3 then Sel = Sel + 1
       ShowCursor
     end if
     if V & 12 then
@@ -849,11 +859,7 @@ tp_loop:
   end if
   WasStick = V
   if Press = 1 then
-    if Sel = 1 then goto tp_go
-    if Sel = 2 then
-      CreditsPage
-      goto title_again
-    end if
+    if Sel >= 1 then goto tp_go
     Players = 3 - Players
     ShowLine(0)
   end if
@@ -864,13 +870,6 @@ tp_go:
   mute all
   TzOn = 0
   HideSprites
-  return
-title_again:
-  stop sound SndTuneA
-  stop sound SndTuneB
-  mute all
-  TzOn = 0
-  TitlePage
 end sub
 
 sub ShowLine(u8 L)
@@ -886,15 +885,96 @@ sub ShowLine(u8 L)
     case 1
       print at 6,Y, "START"
     case 2
+      print at 6,Y, "HOW TO PLAY"
+    case 3
       print at 6,Y, "CREDITS"
   end select
 end sub
 
 sub ShowCursor:
-  for J = 0 to 2
+  for J = 0 to 3
     put char 32 at 4, MenuRow[J]
   next
   put char 62 at 4, MenuRow[Sel]
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg
+  u16 HtWt
+  Pg = 1
+ht_page:
+  NewScreen
+  GState = 0
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "LAVA POURS OUT OF A HOLE IN"
+    print at 2,4, "THE MIDDLE AND SPREADS ONE"
+    print at 2,5, "SQUARE AT A TIME. DON'T LET"
+    print at 2,6, "IT TOUCH YOU!"
+    print at 2,8, "PRESS THE BUTTON TO START OR"
+    print at 2,9, "STOP BUILDING. WHILE YOU"
+    print at 2,10, "BUILD YOU WALK SLOWER AND"
+    print at 2,11, "DROP A BRICK ON EVERY STEP."
+    print at 2,13, "BRICKS HOLD THE LAVA BACK,"
+    print at 2,14, "BUT THEY HEAT UP AND MELT."
+    for J = 16 to 20
+      fill TFloor count 24 at 4,J
+    next
+    fill TLava count 3 at 6,18
+    put char TLava at 7,17
+    put char TLava at 7,19
+    put char TFr00 at 5,18
+    put char TFr00 at 7,16
+    put char TFr00 at 7,20
+    put char TBrick4 at 9,17
+    put char TBrick3 at 9,18
+    put char TBrick2 at 9,19
+    put char TBrick1 at 10,18
+    put char TBrick0 at 11,18
+    put char TBrick0 at 12,18
+    put char TBrick0 at 13,18
+    set sprite 0 to 143,112,SLeft0,1
+    set sprite 1 to 135,192,SLeft0,15
+  else
+    print at 2,1, "LIVES                  2/2"
+    print at 2,3, "BLACK USES CONTROLLER 1,"
+    print at 2,4, "WHITE USES CONTROLLER 2."
+    print at 2,5, "ALONE, YOU ARE BLACK AND"
+    print at 2,6, "THE COMPUTER IS WHITE."
+    print at 2,8, "JOYSTICK: WALK. YOU CANNOT"
+    print at 2,9, "WALK THROUGH BRICKS, ROCK"
+    print at 2,10, "OR THE OTHER PLAYER."
+    print at 2,12, "LAVA BURNS YOU: YOU LOSE 1"
+    print at 2,13, "OF YOUR 5 LIVES AND A NEW"
+    print at 2,14, "ROUND STARTS. THE LAST"
+    print at 2,15, "PLAYER WITH LIVES WINS."
+    print at 2,17, "TIP: BUILD A WALL BETWEEN"
+    print at 2,18, "YOU AND THE LAVA, AND KEEP"
+    print at 2,19, "MOVING AWAY FROM IT."
+    fill TFloor count 3 at 14,20
+    put char TLava at 16,20
+    set sprite 0 to 159,120,SBurnt,8
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  HtWt = HtWt + 1
+  if HtWt >= 1800 then goto ht_out
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+ht_out:
+  HideSprites
 end sub
 
 sub CreditsPage:

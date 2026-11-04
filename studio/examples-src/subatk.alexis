@@ -1,0 +1,1392 @@
+cartridge "SUB ATTACK/COMPUTE'S GAZETTE/1987"
+
+' SUB ATTACK - a ColecoVision port of "Sub Attack", COMPUTE!'s Gazette,
+' September 1987 (C64 machine language, disk files "sub attack.boot" and
+' "sub attack", SYS49152; no author named on the disk).
+'
+' Two submarines duel in a mined sea for a set time. A destroyer crosses
+' the surface and drops depth charges on any sub it passes over.
+'
+' Controls (joystick only, no keypad):
+'   stick           steer your sub (eight directions)
+'   either button   fire a torpedo: straight ahead, or diagonally when the
+'                   stick is held diagonally (as on the C64); holding the
+'                   button fires again once the torpedo is spent
+'   1 player:  either joystick steers the black-and-yellow sub on the left
+'   2 players: joystick 1 the left sub, joystick 2 the right sub
+'
+' Rules recovered from the C64 code (orig/subatk.dis; no article was found):
+' - torpedo hits the other sub: the shooter scores 5
+' - torpedo hits the destroyer: the shooter scores 3, the destroyer sinks
+' - a sub that rams the destroyer (surfaces under it): the other scores 5
+' - a depth charge (falling or bursting) hits a sub: the other scores 3
+' - a sub that touches a mine: the other scores 1
+' - after any hit both subs go back to their starting corners
+' - a torpedo that climbs to the surface stops there for a moment
+' - the destroyer drops a charge when it passes over a sub; the charge
+'   sinks to that sub's depth and bursts
+' - SPEED slow/medium/fast, TIME 1, 3 or 5 minutes; the clock counts up and
+'   the higher score wins when time is up
+'
+' Liberties:
+' - a ONE PLAYER game against a computer sub (the C64 was two players only)
+' - the destroyer comes every 3-7 s after the last one (the C64's timing
+'   came from a counter of the subs' moves: a guess)
+' - speeds scaled to the 256-pixel screen and slowed for humans: subs 1,
+'   1.5 or 2 px a frame (the C64 about 2.2 at medium), torpedoes 4 px a
+'   frame (C64 far faster), charges 2 px a frame
+' - depth charges are cleared at each restart; one burst size (16 px)
+' - 12 mines placed at random each game, apart and clear of the starting
+'   corners (the C64 drew 13 from a key-wait counter)
+' - no ship engine drone (the sonar pings are kept)
+' - menu on the joystick instead of F1/F3/F5; block-letter title, credits
+'   page, original tune "Periscope Depth" and effects; the left sub is
+'   drawn yellow (black on the C64) to show on the dark sea
+
+const THud = 128
+const TSky = 129
+const TCloud = 130
+const TWave1 = 131
+const TWave2 = 132
+const TSea = 133
+const TSea2 = 134
+const TMine = 135
+const TSand = 136
+const TBed = 137
+const TWeed = 138
+const TBlock = 139
+const SSubr = 0
+const SSubl = 4
+const SShipl = 8
+const SShipr = 12
+const STorh = 16
+const STorup = 20
+const STordn = 24
+const SCharge = 28
+const SBurst = 32
+const SBurst2 = 36
+const NTiles8 = 96
+const SprBytes = 320
+const SndTuneA = 1
+const SndTuneB = 2
+const SndFire = 3
+const SndPing = 4
+const SndPong = 5
+const SndBoom = 6
+const SndSplash = 7
+const SndDrop = 8
+const SndBlip = 9
+const SndOver = 10
+' a timer for the title tune (kit/tuneonce.py)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+const XMin = 16
+const XMax = 224
+const YTop = 36
+const YBot = 160
+const NMine = 12
+const ShipY = 28
+const TorSp = 4
+
+record Boat:
+  u8 X
+  u8 Y
+  u8 Face
+  u8 In
+  u8 TOn
+  u8 TX
+  u8 TY
+  u8 TDx
+  u8 TDy
+  u8 TLin
+  u8 COn
+  u8 CX
+  u8 CY
+  u8 CT
+  u8 CTim
+end record
+
+Boat Subs[2]
+bcd digits 4 Score[2] = 0
+bcd digits 2 Secs = 0
+u8 Mins = 0
+u8 Jiff = 0
+u8 MineC[NMine]
+u8 MineR[NMine]
+u8 MineX[NMine]
+u8 MineY[NMine]
+data SubCol bytes
+  11,15
+end data
+data StartX bytes
+  16,224
+end data
+
+u16 NumU = 0
+u16 Rs = 12345
+u8 Phase = 0
+u8 Players = 1
+u8 Speed = 2
+u8 TimeLim = 1
+u8 Menu = 0
+u8 ShipOn = 0
+u8 ShipX = 0
+u8 ShipDiv = 3
+u8 ShipCnt = 0
+u16 ShipWait = 0
+u8 PingT = 0
+u8 PingAlt = 0
+u8 HitKind = 0
+u8 HitWho = 0
+u8 HitX = 0
+u8 HitY = 0
+u8 HitT = 0
+u8 ShipHit = 0
+u8 Events = 0
+u8 WasFire = 0
+u8 WasStick = 0
+u8 Press = 0
+u8 Tick = 0
+u8 WaveF = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+' computer sub state
+u8 AiT = 0
+u8 AiMove = 0
+u8 AiAim = 0
+u8 AiFire = 0
+u8 AiTx = 0
+u8 LastPy = 0
+u8 AiTy = 0
+
+  tile screen
+  set sound table SaSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  Phase = 0
+  TitlePage
+  if Menu >= 4 then goto title
+
+  StartGame
+  Phase = 1
+
+play_loop:
+  Frame1
+  ReadPads
+  ' the computer thinks on every other frame (its stick stays held between)
+  if Players = 1 then
+    V = Tick & 1
+    if V = 1 then CpuThink
+  end if
+  MoveSub(0)
+  MoveSub(1)
+  MoveTorp(0)
+  MoveTorp(1)
+  MoveShip
+  MoveCharge(0)
+  MoveCharge(1)
+  CheckHits
+  Clock
+  DrawSprites
+  AnimWaves
+  if HitKind > 0 then HitPause
+  if Mins >= TimeLim then goto time_up
+  goto play_loop
+
+time_up:
+  Phase = 3
+  HideSprites
+  ShowHud
+  if Score[0] > Score[1] then
+    if Players = 1 then
+      print at 9,10, " YOU WIN! "
+    else
+      print at 6,10, " LEFT SUB WINS! "
+    end if
+  elseif Score[1] > Score[0] then
+    if Players = 1 then
+      print at 6,10, " THE COMPUTER WINS "
+    else
+      print at 6,10, " RIGHT SUB WINS! "
+    end if
+  else
+    print at 8,10, " A DRAW GAME "
+  end if
+  print at 9,12, " TIME IS UP "
+  play sound SndOver
+  Phase = 4
+  Rearm
+  wait 90 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' 16-bit xorshift; returns its low byte
+function Rnd as u8
+  Rs ^= Rs << 7
+  Rs ^= Rs >> 9
+  Rs ^= Rs << 8
+  return Rs & 255
+
+' a random number from Lo to Hi (Hi - Lo < 128)
+function RndIn(u8 Lo, u8 Hi) as u8
+  u8 R = 0
+  u8 Span = 0
+  Span = Hi - Lo
+  inc Span
+  R = Rnd & 127
+  while R >= Span
+    R -= Span
+  end while
+  return Lo + R
+
+' the distance between two coordinates
+function Dist(u8 A, u8 B) as u8
+  if A > B then return A - B
+  return B - A
+
+' a stick as bits: 1 up, 2 down, 4 left, 8 right, 16 a button
+function PadBits(u8 P) as u8
+  u8 B = 0
+  if joypad(P).up then B |= 1
+  if joypad(P).down then B |= 2
+  if joypad(P).left then B |= 4
+  if joypad(P).right then B |= 8
+  if joypad(P).fire then B |= 16
+  return B
+
+sub ReadPads:
+  u8 A = 0
+  u8 B = 0
+  A = PadBits(1)
+  B = PadBits(2)
+  if Players = 1 then
+    Subs[0].In = A | B
+  else
+    Subs[0].In = A
+    Subs[1].In = B
+  end if
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the sea: HUD row 1, sky rows 2-4, waves row 5, water 6-21, sea bed 22-23
+sub DrawSea:
+  u8 Row = 0
+  u8 C = 0
+  fill THud count 32 at 0,0
+  fill THud count 32 at 0,1
+  for Row = 2 to 4
+    fill TSky count 32 at 0,Row
+  next
+  put char TCloud at 6,3
+  put char TCloud at 7,2
+  put char TCloud at 21,3
+  put char TCloud at 22,3
+  fill TWave1 count 32 at 0,5
+  for Row = 6 to 21
+    fill TSea count 32 at 0,Row
+  next
+  for C = 0 to 12
+    Row = RndIn(7, 20)
+    V = RndIn(0, 31)
+    put char TSea2 at V,Row
+  next
+  fill TSand count 32 at 0,22
+  fill TBed count 32 at 0,23
+  for C = 0 to 5
+    V = RndIn(3, 28)
+    put char TWeed at V,21
+  next
+  for C = 0 to NMine - 1
+    put char TMine at MineC[C],MineR[C]
+  next
+  return
+end sub
+
+' mines: random cells in columns 4-27, rows 8-19, apart from each other
+sub PlaceMines:
+  u8 I = 0
+  u8 K = 0
+  u8 Ok = 0
+  u8 Cc = 0
+  u8 Rr = 0
+  for I = 0 to NMine - 1
+    Ok = 0
+    while Ok = 0
+      Cc = RndIn(4, 27)
+      Rr = RndIn(8, 19)
+      Ok = 1
+      ' keep the starting corners clear
+      if Rr >= 17 then
+        if Cc <= 7 then Ok = 0
+        if Cc >= 24 then Ok = 0
+      end if
+      if I > 0 then
+        for K = 0 to I - 1
+          if Dist(MineC[K], Cc) < 3 then
+            if Dist(MineR[K], Rr) < 3 then Ok = 0
+          end if
+        next
+      end if
+    end while
+    MineC[I] = Cc
+    MineR[I] = Rr
+    MineX[I] = Cc << 3
+    MineY[I] = Rr << 3
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, Score[0]
+  print at 26,1, Score[1]
+  NumU = Mins
+  print at 14,1, digits$(NumU, 1), ":", Secs
+  return
+end sub
+
+sub ResetSubs:
+  u8 I = 0
+  for I = 0 to 1
+    Subs[I].X = StartX[I]
+    Subs[I].Y = YBot
+    Subs[I].Face = I
+    Subs[I].TOn = 0
+    Subs[I].COn = 0
+  next
+  AiT = 0
+  AiFire = 0
+  return
+end sub
+
+sub StartGame:
+  Score[0] = 0
+  Score[1] = 0
+  Secs = 0
+  Mins = 0
+  Jiff = 0
+  ShipOn = 0
+  ShipWait = 240
+  HitKind = 0
+  Events = 0
+  ShipDiv = 5 - Speed
+  PlaceMines
+  NewScreen
+  DrawSea
+  ResetSubs
+  ShowHud
+  DrawSprites
+  ShowScreen
+  return
+end sub
+
+' one frame of a sub: SLOW 1 px, MEDIUM 1 or 2 (3 per 2 frames), FAST 2
+sub MoveSub(u8 P):
+  u8 X = 0
+  u8 Y = 0
+  u8 In = 0
+  u8 Sp = 1
+  X = Subs[P].X
+  Y = Subs[P].Y
+  In = Subs[P].In
+  select case Speed
+  case 2
+    Sp = (Tick & 1) + 1
+  case 3
+    Sp = 2
+  end select
+  if In & 4 then
+    Subs[P].Face = 1
+    if X >= XMin + Sp then X -= Sp else X = XMin
+  elseif In & 8 then
+    Subs[P].Face = 0
+    X += Sp
+    if X > XMax then X = XMax
+  end if
+  if In & 1 then
+    if Y >= YTop + Sp then Y -= Sp else Y = YTop
+  elseif In & 2 then
+    Y += Sp
+    if Y > YBot then Y = YBot
+  end if
+  Subs[P].X = X
+  Subs[P].Y = Y
+  ' a button fires when no torpedo of this sub is running
+  if In & 16 then
+    if Subs[P].TOn = 0 then LaunchTorp(P)
+  end if
+  return
+end sub
+
+' the torpedo's way: the stick's diagonal, else straight ahead (C64 rule:
+' with no left/right on the stick it goes the way the sub faces)
+sub LaunchTorp(u8 P):
+  u8 In = 0
+  In = Subs[P].In
+  Subs[P].TOn = 1
+  Subs[P].TX = Subs[P].X
+  Subs[P].TY = Subs[P].Y
+  Subs[P].TDy = 0
+  Subs[P].TLin = 0
+  V = In & 12
+  if V = 0 then
+    if Subs[P].Face = 0 then Subs[P].TDx = 1 else Subs[P].TDx = 255
+  else
+    if In & 4 then Subs[P].TDx = 255 else Subs[P].TDx = 1
+    if In & 1 then
+      if Subs[P].Y > YTop then Subs[P].TDy = 255
+    elseif In & 2 then
+      Subs[P].TDy = 1
+    end if
+  end if
+  play sound SndFire
+  return
+end sub
+
+sub MoveTorp(u8 P):
+  u8 X = 0
+  u8 Y = 0
+  if Subs[P].TOn = 0 then return
+  if Subs[P].TLin > 0 then
+    dec Subs[P].TLin
+    if Subs[P].TLin = 0 then Subs[P].TOn = 0
+    return
+  end if
+  X = Subs[P].TX
+  Y = Subs[P].TY
+  if Subs[P].TDx = 1 then
+    if X > XMax - TorSp then
+      Subs[P].TOn = 0
+      return
+    end if
+    X += TorSp
+  else
+    if X < XMin + TorSp then
+      Subs[P].TOn = 0
+      return
+    end if
+    X -= TorSp
+  end if
+  if Subs[P].TDy = 1 then
+    Y += TorSp
+    if Y > YBot + 4 then
+      Subs[P].TOn = 0
+      return
+    end if
+  elseif Subs[P].TDy = 255 then
+    if Y <= YTop + TorSp then
+      ' broaches at the surface and stops there for 10 frames
+      Y = YTop
+      Subs[P].TLin = 10
+      play sound SndSplash
+    else
+      Y -= TorSp
+    end if
+  end if
+  Subs[P].TX = X
+  Subs[P].TY = Y
+  return
+end sub
+
+sub MoveShip:
+  u8 I = 0
+  u8 Sx = 0
+  if ShipOn = 0 then
+    dec ShipWait
+    if ShipWait = 0 then
+      ShipOn = 1
+      ShipX = 208
+      ShipCnt = 0
+      PingT = 1
+    end if
+    return
+  end if
+  inc ShipCnt
+  if ShipCnt >= ShipDiv then
+    ShipCnt = 0
+    dec ShipX
+    if ShipX < XMin then
+      ShipGone
+      return
+    end if
+  end if
+  ' sonar: a ping every 48 frames while the destroyer is out
+  dec PingT
+  if PingT = 0 then
+    PingT = 48
+    PingAlt = PingAlt ^ 1
+    if PingAlt = 1 then play sound SndPing else play sound SndPong
+  end if
+  ' a charge for each sub the ship passes over
+  Sx = ShipX + 8
+  for I = 0 to 1
+    if Subs[I].COn = 0 then
+      if Dist(Sx, Subs[I].X) <= 1 then DropCharge(I)
+    end if
+  next
+  return
+end sub
+
+sub ShipGone:
+  ShipOn = 0
+  NumU = RndIn(0, 120)
+  NumU += NumU
+  ShipWait = NumU + 180
+  return
+end sub
+
+sub DropCharge(u8 P):
+  u8 T = 0
+  Subs[P].COn = 1
+  Subs[P].CX = Subs[P].X
+  Subs[P].CY = 40
+  T = Subs[P].Y
+  if T < 64 then T = 64
+  Subs[P].CT = T
+  play sound SndDrop
+  return
+end sub
+
+sub MoveCharge(u8 P):
+  u8 Y = 0
+  select case Subs[P].COn
+  case 1
+    Y = Subs[P].CY + 2
+    if Y >= Subs[P].CT then
+      Y = Subs[P].CT
+      Subs[P].COn = 2
+      Subs[P].CTim = 20
+      play sound SndBoom
+    end if
+    Subs[P].CY = Y
+  case 2
+    dec Subs[P].CTim
+    if Subs[P].CTim = 0 then Subs[P].COn = 0
+  end select
+  return
+end sub
+
+' do boxes [A, A+La] and [B, B+Lb] overlap?
+function Over(u8 A, u8 La, u8 B, u8 Lb) as u8
+  u8 Ea = 0
+  u8 Eb = 0
+  Ea = A + La
+  Eb = B + Lb
+  if Ea < B then return 0
+  if Eb < A then return 0
+  return 1
+
+sub Hit(u8 Kind, u8 Who, u8 X, u8 Y):
+  ' Who scores; the first hit of a frame counts
+  if HitKind > 0 then return
+  HitKind = Kind
+  HitWho = Who
+  HitX = X
+  HitY = Y
+  select case Kind
+  case 1, 3
+    Score[Who] += 5
+  case 2, 4
+    Score[Who] += 3
+  case else
+    Score[Who] += 1
+  end select
+  inc Events
+  return
+end sub
+
+' kinds: 1 torpedo hits sub, 2 torpedo hits ship, 3 sub rams ship,
+' 4 depth charge, 5 mine
+sub CheckHits:
+  u8 P = 0
+  u8 Q = 0
+  u8 Sx = 0
+  u8 Sy = 0
+  u8 Tx = 0
+  u8 Ty = 0
+  u8 K = 0
+  u8 Hy = 0
+  for P = 0 to 1
+    Q = P ^ 1
+    if Subs[P].TOn = 1 then
+      Tx = Subs[P].TX + 5
+      Ty = Subs[P].TY + 6
+      Sx = Subs[Q].X + 1
+      Sy = Subs[Q].Y + 6
+      if Over(Tx, 5, Sx, 13) = 1 then
+        if Over(Ty, 3, Sy, 5) = 1 then Hit(1, P, Subs[Q].X, Subs[Q].Y)
+      end if
+      if ShipOn = 1 then
+        if Over(Tx, 5, ShipX, 31) = 1 then
+          if Over(Ty, 3, 33, 10) = 1 then
+            ShipHit = 1
+            Hit(2, P, ShipX + 8, ShipY)
+          end if
+        end if
+      end if
+    end if
+  next
+  for P = 0 to 1
+    Q = P ^ 1
+    Sx = Subs[P].X + 1
+    Sy = Subs[P].Y + 6
+    if ShipOn = 1 then
+      if Over(Sx, 13, ShipX, 31) = 1 then
+        if Over(Sy, 5, 33, 10) = 1 then
+          ShipHit = 1
+          Hit(3, Q, Subs[P].X, Subs[P].Y)
+        end if
+      end if
+    end if
+    for K = 0 to 1
+      select case Subs[K].COn
+      case 1
+        if Over(Sx, 13, Subs[K].CX + 5, 5) = 1 then
+          if Over(Sy, 5, Subs[K].CY + 5, 6) = 1 then Hit(4, Q, Subs[P].X, Subs[P].Y)
+        end if
+      case 2
+        if Over(Sx, 13, Subs[K].CX + 1, 13) = 1 then
+          if Over(Sy, 5, Subs[K].CY + 1, 13) = 1 then Hit(4, Q, Subs[P].X, Subs[P].Y)
+        end if
+      end select
+    next
+    for K = 0 to NMine - 1
+      Ty = MineY[K]
+      if Dist(Ty, Sy) < 8 then
+        Hy = MineX[K] + 1
+        if Over(Sx, 13, Hy, 5) = 1 then
+          if Over(Sy, 5, Ty, 6) = 1 then Hit(5, Q, Subs[P].X, Subs[P].Y)
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+' a hit: the burst, a pause, then both subs back to their corners
+sub HitPause:
+  u8 F = 0
+  u8 Sy = 0
+  Phase = 2
+  play sound SndBoom
+  ShowHud
+  for F = 0 to 59
+    Frame1
+    Clock
+    V = SBurst
+    if F & 8 then V = SBurst2
+    Sy = HitY - 1
+    set sprite 9 to Sy,HitX,V,9
+    if F = 0 then
+      if HitKind <> 2 then
+        if HitKind <> 4 then
+          ' hide the sub that blew up
+          if HitWho = 0 then set sprite 1 to 192,0,0,0 else set sprite 0 to 192,0,0,0
+        end if
+      end if
+      if HitKind = 4 then
+        if HitWho = 0 then set sprite 1 to 192,0,0,0 else set sprite 0 to 192,0,0,0
+      end if
+    end if
+    update sprites
+    AnimWaves
+  next
+  set sprite 9 to 192,0,0,0
+  if ShipHit = 1 then
+    ShipHit = 0
+    ShipGone
+  end if
+  HitKind = 0
+  ResetSubs
+  DrawSprites
+  Phase = 1
+  return
+end sub
+
+' the clock counts up m:ss (the C64's 60-tick seconds)
+sub Clock:
+  inc Jiff
+  if Jiff < 60 then return
+  Jiff = 0
+  if Secs = 59 then
+    Secs = 0
+    inc Mins
+  else
+    Secs += 1
+  end if
+  ShowHud
+  return
+end sub
+
+' the surface rolls: two wave frames, swapped every 20 frames (3 Hz)
+sub AnimWaves:
+  inc WaveF
+  if WaveF < 20 then return
+  WaveF = 0
+  V = Tick & 32
+  if V > 0 then fill TWave2 count 32 at 0,5 else fill TWave1 count 32 at 0,5
+  return
+end sub
+
+sub DrawSprites:
+  u8 P = 0
+  u8 Pat = 0
+  u8 Sy = 0
+  u8 Sn = 0
+  u8 Col = 0
+  u8 X = 0
+  for P = 0 to 1
+    Sy = Subs[P].Y - 1
+    Pat = SSubr
+    if Subs[P].Face = 1 then Pat = SSubl
+    Col = SubCol[P]
+    set sprite P to Sy,Subs[P].X,Pat,Col
+    ' 4, 5 the torpedoes
+    Sn = P + 4
+    if Subs[P].TOn = 1 then
+      Pat = STorh
+      if Subs[P].TDy <> 0 then
+        V = Subs[P].TDx ^ Subs[P].TDy
+        if V = 0 then Pat = STordn else Pat = STorup
+      end if
+      Sy = Subs[P].TY - 1
+      set sprite Sn to Sy,Subs[P].TX,Pat,Col
+    else
+      set sprite Sn to 192,0,0,0
+    end if
+    ' 6, 7 the depth charges
+    Sn = P + 6
+    select case Subs[P].COn
+    case 1
+      Sy = Subs[P].CY - 1
+      set sprite Sn to Sy,Subs[P].CX,SCharge,14
+    case 2
+      Sy = Subs[P].CY - 1
+      Pat = SBurst
+      V = Subs[P].CTim & 4
+      if V > 0 then Pat = SBurst2
+      set sprite Sn to Sy,Subs[P].CX,Pat,11
+    case else
+      set sprite Sn to 192,0,0,0
+    end select
+  next
+  ' 2, 3 the destroyer
+  if ShipOn = 1 then
+    Sy = ShipY - 1
+    X = ShipX + 16
+    set sprite 2 to Sy,ShipX,SShipl,14
+    set sprite 3 to Sy,X,SShipr,14
+  else
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's sub (one-player game): it lines up with the player at a
+' distance, fires when it faces the player at the same depth, keeps off the
+' surface under the destroyer, sidesteps mines, charges and torpedoes. It
+' re-decides every 10 frames (a reaction time) and waits before firing.
+sub CpuThink:
+  u8 Mx = 0
+  u8 My = 0
+  u8 Px = 0
+  u8 Py = 0
+  u8 Want = 0
+  u8 Ty = 0
+  u8 Tx = 0
+  u8 K = 0
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Adx = 0
+  u8 Ady = 0
+  u8 Shot = 0
+  Mx = Subs[1].X
+  My = Subs[1].Y
+  Px = Subs[0].X
+  Py = Subs[0].Y
+  if AiT > 0 then
+    dec AiT
+  else
+    AiT = 7
+    Want = 0
+    ' a spot on a diagonal from the player: 44 px across, 44 px up or
+    ' down (whichever has room), never right at the surface
+    if Py > 100 then
+      Ty = Py - 44
+    else
+      Ty = Py + 44
+    end if
+    if Ty < 52 then Ty = 52
+    if Ty > YBot then Ty = YBot
+    if Mx > Px then
+      Tx = Px + 44
+      if Tx > XMax then Tx = Px - 44
+    else
+      if Px >= XMin + 44 then Tx = Px - 44 else Tx = Px + 44
+    end if
+    AiTx = Tx
+    AiTy = Ty
+    if My + 3 < Ty then Want |= 2
+    if My > Ty + 3 then Want |= 1
+    if Mx + 3 < Tx then Want |= 8
+    if Mx > Tx + 3 then Want |= 4
+    AiMove = Want
+  end if
+  Want = AiMove
+  ' arrived: stop that way (no overshooting back and forth)
+  if Dist(My, AiTy) <= 2 then Want = Want & 12
+  if Dist(Mx, AiTx) <= 2 then Want = Want & 3
+  ' a charge overhead or bursting near: move away sideways
+  for K = 0 to 1
+    if Subs[K].COn > 0 then
+      if Dist(Subs[K].CX, Mx) < 22 then
+        Want = Want & 3
+        if Subs[K].CX > Mx then
+          if Mx > XMin + 8 then Want |= 4 else Want |= 8
+        else
+          if Mx < XMax - 8 then Want |= 8 else Want |= 4
+        end if
+      end if
+    end if
+  next
+  ' the player's torpedo: where will it be when it reaches our column?
+  if Subs[0].TOn = 1 then
+    if Subs[0].TLin = 0 then
+      Tx = Subs[0].TX
+      Ty = Subs[0].TY
+      K = 0
+      if Subs[0].TDx = 1 then
+        if Tx < Mx + 8 then K = 1
+      else
+        if Tx + 8 > Mx then K = 1
+      end if
+      if K = 1 then
+        Adx = Dist(Tx, Mx)
+        ' rows travelled meanwhile = columns (diagonal), or none
+        if Subs[0].TDy = 1 then
+          Ty += Adx
+        elseif Subs[0].TDy = 255 then
+          if Ty > Adx then Ty -= Adx else Ty = 0
+        end if
+        if Dist(Ty, My) < 14 then
+          Want = Want & 12
+          if Ty > My then
+            if My > YTop + 20 then Want |= 1 else Want |= 2
+          else
+            if My < YBot - 20 then Want |= 2 else Want |= 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  ' mines just ahead: take the nearest way that keeps clear of them
+  if Blocked(Mx, My, Want) = 1 then
+    K = Want & 12
+    if Blocked(Mx, My, K) = 0 then
+      Want = K
+    else
+      K = Want & 3
+      if K > 0 then
+        if Blocked(Mx, My, K) = 0 then
+          Want = K
+        else
+          Want = 0
+        end if
+      else
+        ' only sideways and blocked: go up or down round it
+        if Blocked(Mx, My, 1) = 0 then
+          Want = 1
+        elseif Blocked(Mx, My, 2) = 0 then
+          Want = 2
+        else
+          Want = 0
+        end if
+      end if
+    end if
+  end if
+  ' firing: straight when level and facing the player, diagonally when the
+  ' player sits on a diagonal; after aiming for a few frames
+  Shot = 0
+  Adx = Dist(Mx, Px)
+  ' lead a moving player: where it will be when the torpedo gets there
+  ' (the torpedo takes Adx/4 frames; the player moves about 1.5 px a frame)
+  K = (Adx >> 2) + (Adx >> 3)
+  Ty = Py
+  if Py < LastPy then
+    if Ty > K then Ty -= K else Ty = 0
+  elseif Py > LastPy then
+    Ty += K
+  end if
+  LastPy = Py
+  Ady = Dist(My, Ty)
+  if Ady < 7 then
+    if Mx > Px then
+      if Subs[1].Face = 1 then Shot = 1
+    else
+      if Subs[1].Face = 0 then Shot = 1
+    end if
+  else
+    Ady = Dist(My, Py)
+    if Dist(Adx, Ady) < 6 then
+      if Ady > 16 then Shot = 2
+    end if
+  end if
+  if Shot > 0 then
+    inc AiAim
+  else
+    AiAim = 0
+  end if
+  ' a level shot after 4 frames of aim, a diagonal one after 14
+  V = 6
+  if Shot = 1 then V = 1
+  if AiAim > V then
+    if Subs[1].TOn = 0 then
+      AiAim = 0
+      if Shot = 2 then
+        Want = 16
+        if Mx > Px then Want |= 4 else Want |= 8
+        if My > Py then Want |= 1 else Want |= 2
+      else
+        Want |= 16
+      end if
+    end if
+  end if
+  Subs[1].In = Want
+  return
+end sub
+
+' would a sub at X,Y moving In for 6 px touch a mine on the way?
+function Blocked(u8 X, u8 Y, u8 In) as u8
+  u8 Ax = 0
+  u8 Ay = 0
+  u8 Wx = 13
+  u8 Wy = 5
+  u8 K = 0
+  u8 Mx = 0
+  u8 My = 0
+  u8 Ex = 0
+  u8 Ey = 0
+  Ax = X + 1
+  Ay = Y + 6
+  if In & 4 then Ax -= 6
+  if In & 1 then Ay -= 6
+  if In & 12 then Wx += 6
+  if In & 3 then Wy += 6
+  Ex = Ax + Wx
+  Ey = Ay + Wy
+  for K = 0 to NMine - 1
+    My = MineY[K]
+    if My <= Ey then
+      if My + 7 >= Ay then
+        Mx = MineX[K]
+        if Mx <= Ex then
+          if Mx + 7 >= Ax then return 1
+        end if
+      end if
+    end if
+  next
+  return 0
+
+' ---------------------------------------------------------------------------
+' title: block letters, the subs and the destroyer, a menu
+sub TitlePage:
+  u8 Tr = 0
+  u8 Ty = 0
+  NewScreen
+  for Tr = 0 to 10
+    Ty = Tr + 2
+    NumU = Tr * 28
+    put TitleMap + NumU count 28 at 2,Ty
+  next
+  print at 7,14, "COMPUTE!'S GAZETTE"
+  print at 9,15, "SEPTEMBER 1987"
+  ShowMenu
+  set sprite 0 to 167,40,SSubr,11
+  set sprite 1 to 167,208,SSubl,15
+  set sprite 2 to 159,168,SShipl,14
+  set sprite 3 to 159,184,SShipr,14
+  update sprites
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 440
+  TzOn = 1
+  Menu = 0
+  ShowMenu
+  Rearm
+  wait no fire
+  nmi off
+  WasFire = 1
+tp_loop:
+  Frame1
+  V = Rnd
+  V = PadBits(1) | PadBits(2)
+  W = V & 15
+  if W > 0 then
+    if WasStick = 0 then
+      if V & 1 then
+        if Menu = 0 then Menu = 5 else dec Menu
+      elseif V & 2 then
+        if Menu = 5 then Menu = 0 else inc Menu
+      elseif Menu > 0 then
+        if Menu < 4 then ChangeOpt
+      end if
+      play sound SndBlip
+      ShowMenu
+    end if
+  end if
+  WasStick = W
+  Press = 0
+  W = V & 16
+  if W > 0 then
+    if WasFire = 0 then Press = 1
+  end if
+  WasFire = W
+  if Press = 0 then goto tp_loop
+  if Menu > 0 then
+    if Menu < 4 then
+      ChangeOpt
+      play sound SndBlip
+      ShowMenu
+      goto tp_loop
+    end if
+  end if
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TzOn = 0
+  if Menu = 4 then HowTo
+  if Menu = 5 then EditorialPage
+  return
+end sub
+
+sub ChangeOpt:
+  select case Menu
+  case 1
+    Players = 3 - Players
+  case 2
+    inc Speed
+    if Speed > 3 then Speed = 1
+  case 3
+    TimeLim += 2
+    if TimeLim > 5 then TimeLim = 1
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  u8 R = 0
+  for R = 16 to 21
+    fill 32 count 26 at 3,R
+  next
+  print at 8,16, "START"
+  if Players = 1 then print at 8,17, "ONE PLAYER" else print at 8,17, "TWO PLAYERS"
+  select case Speed
+  case 1
+    print at 8,18, "SPEED  SLOW"
+  case 2
+    print at 8,18, "SPEED  MEDIUM"
+  case else
+    print at 8,18, "SPEED  FAST"
+  end select
+  NumU = TimeLim
+  print at 8,19, "TIME   ", digits$(NumU, 1), ":00"
+  print at 8,20, "HOW TO PLAY"
+  print at 8,21, "CREDITS"
+  R = Menu + 16
+  put char 62 at 6,R
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 11,2, "SUB ATTACK"
+  print at 2,4, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,5, "SEPTEMBER 1987 (C64)."
+  print at 2,6, "A COLECOVISION PORT."
+  print at 2,8, "TWO SUBS DUEL AMONG MINES."
+  print at 2,9, "TORPEDO THE OTHER SUB: 5."
+  print at 2,10, "SINK THE DESTROYER: 3."
+  print at 2,11, "THE OTHER SUB SCORES IF YOU"
+  print at 2,12, "HIT A MINE (1), A DEPTH"
+  print at 2,13, "CHARGE (3) OR THE SHIP (5)."
+  print at 2,14, "BUTTON: TORPEDO. HOLD THE"
+  print at 2,15, "STICK DIAGONALLY TO AIM."
+  print at 2,17, "MADE FOR THE COLECOVISION BY"
+  print at 2,18, "CLAUDE (AN AI MADE BY"
+  print at 2,19, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,20, "2026, IN AMY BY AMY BIENVENU"
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own sprites and tiles; the
+' button turns the page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "TWO SUBMARINES FIGHT IN A"
+  print at 2,4, "SEA FULL OF MINES. HIT THE"
+  print at 2,5, "OTHER SUB TO SCORE POINTS."
+  put char TMine at 15,9
+  set sprite 0 to 63,40,SSubr,11
+  set sprite 1 to 63,72,STorh,11
+  set sprite 2 to 63,200,SSubl,15
+  update sprites
+  print at 2,12, "STICK: STEER YOUR SUB."
+  print at 2,13, "BUTTON: FIRE A TORPEDO."
+  print at 2,14, "HOLD THE STICK DIAGONALLY"
+  print at 2,15, "TO FIRE AT AN ANGLE."
+  print at 2,17, "ONE PLAYER: YOU ARE THE"
+  print at 2,18, "LEFT SUB, THE COMPUTER IS"
+  print at 2,19, "THE RIGHT ONE."
+  print at 2,20, "TWO PLAYERS: STICK 2 STEERS"
+  print at 2,21, "THE RIGHT SUB."
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  print at 2,3, "YOUR TORPEDO HITS:"
+  print at 2,4, "THE OTHER SUB  5 POINTS"
+  print at 2,5, "THE DESTROYER  3 POINTS"
+  print at 2,7, "THE OTHER SIDE SCORES IF"
+  print at 2,8, "YOU TOUCH A MINE (1), A"
+  print at 2,9, "DEPTH CHARGE GETS YOU (3)"
+  print at 2,10, "OR YOU BUMP THE SHIP (5)."
+  put char TMine at 6,14
+  put char TMine at 24,13
+  set sprite 0 to 95,112,SShipl,14
+  set sprite 1 to 95,128,SShipr,14
+  set sprite 2 to 111,120,SCharge,14
+  update sprites
+  print at 2,17, "WHEN THE TIME IS UP, THE"
+  print at 2,18, "HIGHER SCORE WINS."
+  print at 2,20, "TIP: THE SHIP DROPS A CHARGE"
+  print at 2,21, "WHEN IT PASSES OVER YOU."
+  print at 2,22, "MOVE AWAY FAST!"
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasFire = 1
+  NumU = 0
+hw_loop:
+  Frame1
+  V = PadBits(1) | PadBits(2)
+  W = V & 16
+  Press = 0
+  if W > 0 then
+    if WasFire = 0 then Press = 1
+  end if
+  WasFire = W
+  inc NumU
+  if NumU >= 1800 then return
+  if Press = 0 then goto hw_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$C3,$81,$00,$00,$00,$00
+  $00,$00,$00,$84,$9C,$18,$00,$00
+  $00,$00,$00,$21,$CC,$06,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $10,$A2,$C1,$08,$C1,$A2,$10,$00
+  $22,$00,$42,$00,$10,$01,$80,$08
+  $00,$42,$00,$10,$01,$80,$08,$00
+  $08,$10,$08,$10,$08,$28,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$F5,$5F,$5F,$05,$05,$05,$05
+  $05,$05,$05,$F5,$4F,$F4,$04,$04
+  $05,$05,$05,$F5,$F4,$F4,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$74,$04,$04,$04,$04
+  $E4,$4E,$4E,$FE,$4E,$4E,$E4,$04
+  $A4,$0A,$BA,$0A,$BA,$BA,$BA,$BA
+  $0A,$BA,$0A,$BA,$BA,$BA,$BA,$0A
+  $C4,$C4,$C4,$C4,$C4,$C4,$C4,$0A
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$0A
+end data
+data SpritePat bytes
+  $00,$00,$00,$01,$01,$03,$1F,$7F,$FF,$FF,$7F,$1F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$F0,$FE,$FF,$FF,$FE,$F8,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$0F,$7F,$FF,$FF,$7F,$1F,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$C0,$F8,$FE,$FF,$FF,$FE,$F8,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$7F,$3F,$1F,$0F,$00
+  $00,$00,$00,$01,$01,$03,$07,$0F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E4,$EE,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$FE,$FE,$FC,$F8,$F0,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$70,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$06,$07,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$E0,$70,$30,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$05,$07,$05,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$A0,$E0,$A0,$E0,$C0,$00,$00,$00,$00
+  $02,$23,$17,$0F,$3F,$7F,$FF,$FE,$FE,$FF,$7F,$3F,$0F,$17,$23,$02
+  $40,$C4,$E8,$F0,$FC,$FE,$FF,$7F,$7F,$FF,$FE,$FC,$F0,$E8,$C4,$40
+  $00,$00,$00,$04,$13,$0F,$1C,$38,$38,$1C,$0F,$13,$04,$00,$00,$00
+  $00,$00,$00,$20,$C8,$F0,$38,$1C,$1C,$38,$F0,$C8,$20,$00,$00,$00
+end data
+data TitleMap bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$8B,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$20,$20,$20,$8B,$20,$8B,$20,$8B,$20,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$8B,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$8B,$20,$8B,$20,$8B,$20,$8B,$20,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$8B,$8B,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$8B,$20,$20,$8B,$8B,$8B,$20,$8B,$8B,$8B,$20,$20,$8B,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$20,$20
+  $20,$20,$8B,$20,$8B,$20,$20,$8B,$20,$20,$20,$8B,$20,$20,$8B,$20,$8B,$20,$8B,$20,$20,$20,$8B,$20,$8B,$20,$20,$20
+  $20,$20,$8B,$8B,$8B,$20,$20,$8B,$20,$20,$20,$8B,$20,$20,$8B,$8B,$8B,$20,$8B,$20,$20,$20,$8B,$8B,$20,$20,$20,$20
+  $20,$20,$8B,$20,$8B,$20,$20,$8B,$20,$20,$20,$8B,$20,$20,$8B,$20,$8B,$20,$8B,$20,$20,$20,$8B,$20,$8B,$20,$20,$20
+  $20,$20,$8B,$20,$8B,$20,$20,$8B,$20,$20,$20,$8B,$20,$20,$8B,$20,$8B,$20,$8B,$8B,$8B,$20,$8B,$20,$8B,$20,$20,$20
+end data
+
+asm {
+SaFire:
+    db $00,$00,$25,$02,$00,$00,$46,$03,$00,$00,$76,$04,$10
+SaPing:
+    db $40,$47,$30,$03,$40,$47,$60,$06,$40,$47,$90,$0A,$50
+SaPong:
+    db $40,$5F,$40,$03,$40,$5F,$70,$06,$40,$5F,$A0,$0A,$50
+SaBoom:
+    db $00,$00,$04,$04,$00,$00,$15,$08,$00,$00,$36,$0C,$00,$00,$67,$10,$10
+SaSplash:
+    db $00,$00,$44,$03,$00,$00,$75,$06,$10
+SaDrop:
+    db $40,$53,$41,$03,$40,$7C,$51,$03,$40,$AB,$61,$03,$50
+SaBlip:
+    db $40,$71,$40,$02,$50
+SaOver:
+    db $40,$1D,$21,$0C,$40,$53,$21,$0C,$40,$AB,$21,$0C,$40,$3B,$32,$1E,$50
+
+SaSoundTable:
+    dw SaTuneMel,$702B
+    dw SaTuneBass,$7035
+    dw SaFire,$703F
+    dw SaPing,$7049
+    dw SaPong,$7049
+    dw SaBoom,$703F
+    dw SaSplash,$703F
+    dw SaDrop,$7049
+    dw SaBlip,$7049
+    dw SaOver,$7049
+; Periscope Depth (original)
+; Tiny Sound, 9 frames per step
+SaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$F1,$22,$21,$01,$01,$1C,$01,$01,$21,$01,$23,$24,$01,$01
+    db $23,$01,$21,$1F,$01,$01,$1C,$01,$01,$01,$01,$01,$21,$01,$01,$1C
+    db $01,$01,$21,$01,$24,$26,$01,$01,$24,$01,$23,$21,$01,$01,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+SaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$15,$01,$1C,$01,$15,$01,$1C,$01,$11,$01,$18,$01
+    db $11,$01,$18,$01,$13,$01,$1A,$01,$10,$01,$17,$01,$15,$01,$1C,$01
+    db $15,$01,$1C,$01,$0E,$01,$15,$01,$10,$01,$17,$01,$15,$01,$01,$01
+    db $01,$00,$01,$01
+    db $FF
+}

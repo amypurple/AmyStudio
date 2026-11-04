@@ -61,7 +61,8 @@ cartridge "MATH DUNGEON/COMPUTE'S GAZETTE/1985"
 '   you in an unconnected cell of solid wall and leave you stuck).
 ' - Without a home key, play-again is a return to the title.
 '
-' Controls: either controller. Title: left/right choose the level, a button
+' Controls: either controller. Title: left/right choose the level, up/down
+' START, HOW TO PLAY or CREDITS, a button
 ' starts. Play: the stick walks, a button acts. Questions: up/down change
 ' the answer by 1, left/right by 10, a button answers.
 '
@@ -365,6 +366,8 @@ u8 Nright = 0
 ' 5 end, 6 a press-to-go-on page
 u8 Wt = 0
 u8 Scene = 0
+u8 Mt = 0
+u8 WasUd = 0
 ' input
 u8 J1 = 0
 u8 J2 = 0
@@ -1684,7 +1687,9 @@ end sub
 
 ' the title: the printed title, the level (listing lines 700-760), the tune once
 sub TitlePage:
+tp_top:
   Scene = 0
+  Mt = 0
   NewScreen
   for Ri = 1 to 22
     fill TWall00 count 28 at 2,Ri
@@ -1699,12 +1704,14 @@ sub TitlePage:
   Big(TMap00, 14, 9)
   Big(TGold00, 18, 9)
   Big(TRdoor00, 22, 9)
-  print at 6,13, "DESIRED LEVEL: < >"
-  print at 7,15, "LEFT/RIGHT: LEVEL"
-  print at 6,16, "BUTTON: INTO THE WOODS"
+  print at 6,12, "DESIRED LEVEL: < >"
+  print at 9,14, "START"
+  print at 9,15, "HOW TO PLAY"
+  print at 9,16, "CREDITS"
   print at 7,18, "COMPUTE!'S GAZETTE"
   print at 9,19, "JANUARY 1985"
   ShowLevel
+  ShowMt
   ShowScreen
   play sound SndTuneA
   play sound SndTuneB
@@ -1714,6 +1721,7 @@ sub TitlePage:
   wait no fire
   nmi off
   WasStick = 0
+  WasUd = 0
   Wt = 4
 tp_loop:
   Frame1
@@ -1732,9 +1740,31 @@ tp_loop:
       ShowLevel
     end if
   end if
-  WasStick = V
+  V = J1 | J2
+  V = V & 3
+  if V > 0 then
+    if WasUd = 0 then
+      if V & 1 then
+        if Mt > 0 then dec Mt
+      else
+        if Mt < 2 then inc Mt
+      end if
+      play sound SndDial
+      ShowMt
+    end if
+  end if
+  WasUd = V
   if Press = 0 then goto tp_loop
   Wt = 0
+  if Mt > 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+    mute all
+    TzOn = 0
+    if Mt = 1 then HowToPage
+    if Mt = 2 then CreditsPage
+    goto tp_top
+  end if
   stop sound SndTuneA
   stop sound SndTuneB
   mute all
@@ -1746,9 +1776,81 @@ tp_loop:
   return
 end sub
 
+' the arrow on the title menu line Mt (0 START, 1 HOW TO PLAY, 2 CREDITS)
+sub ShowMt:
+  for Ri = 14 to 16
+    put char 32 at 7,Ri
+  next
+  put char 62 at 7,Mt + 14
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  u8 Pg = 1
+  u16 HtWt = 0
+  Pg = 1
+ht_page:
+  NewScreen
+  if Pg = 1 then
+    print at 2,1, "HOW TO PLAY            1/2"
+    print at 2,3, "WALK NORTH TO THE OLD"
+    print at 2,4, "HOUSE. OPEN THE MILKBOX AND"
+    print at 2,5, "ANSWER THE MATH NOTE: YOU"
+    print at 2,6, "FALL INTO THE DUNGEON!"
+    print at 2,8, "TAKE THE LIGHT FIRST. THEN"
+    print at 2,9, "FIND THE KEYS AND DOORS."
+    Big(TLamp00, 3, 11)
+    print at 6,11, "LIGHT"
+    Big(TGkey00, 3, 14)
+    Big(TGdoor00, 6, 14)
+    print at 9,14, "GREEN DOOR: MAP"
+    Big(TBkey00, 3, 17)
+    Big(TBdoor00, 6, 17)
+    print at 9,17, "BLUE DOOR: RED KEY"
+    Big(TRdoor00, 6, 20)
+    print at 9,20, "RED DOOR: THE WAY OUT"
+  else
+    print at 2,1, "MONSTERS               2/2"
+    Big(TMon00, 3, 3)
+    print at 6,3, "A MONSTER ASKS A MATH"
+    print at 6,4, "QUESTION."
+    Big(TGold00, 3, 6)
+    print at 6,6, "RIGHT: IT LEAVES GOLD."
+    print at 6,7, "THE BUTTON TAKES IT."
+    print at 2,9, "WRONG: IT TAKES ALL YOUR"
+    print at 2,10, "GOLD AND SENDS YOU AWAY."
+    print at 2,12, "THE STICK WALKS, THE BUTTON"
+    print at 2,13, "OPENS, TAKES AND LOOKS."
+    print at 2,14, "ANSWERS: UP/DOWN +1 OR -1,"
+    print at 2,15, "LEFT/RIGHT 10, BUTTON SAYS."
+    print at 2,17, "THE GAME ENDS WHEN YOU GET"
+    print at 2,18, "OUT. YOUR SCORE IS THE GOLD"
+    print at 2,19, "YOU CARRY OUT."
+    print at 2,20, "TIP: FIND THE MAP FIRST."
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  inc HtWt
+  if HtWt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 2 then goto ht_page
+  return
+end sub
+
 sub ShowLevel:
   Nc = 22
-  Nr = 13
+  Nr = 12
   PrNum(Lv)
   return
 end sub

@@ -44,7 +44,8 @@ cartridge "SNAKE PIT/GAZETTE DEC 1987/2026"
 '
 ' Controls: controller 1 (with one player either controller): the stick
 ' steers. Player 2 uses controller 2. On the title, up and down choose a
-' line, left and right change it, a button starts (or shows the credits).
+' line, left and right change it, a button starts (or shows HOW TO PLAY or
+' the credits).
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off,
@@ -385,6 +386,10 @@ u8 WasBtn = 0
 u8 Press = 0
 u8 WasStick = 0
 u8 Menu = 0
+u8 Pg = 0
+u8 Hx0 = 0
+u8 Hy0 = 0
+u16 Wt = 0
 u8 Tick = 0
 u8 Idle = 0
 ' loop counters
@@ -416,7 +421,7 @@ u8 RndB = 0
 
 title:
   TitlePage
-  if Menu = 3 then goto title
+  if Menu >= 3 then goto title
 
   NewGame
 
@@ -1055,7 +1060,8 @@ sub TitlePage:
   print at 6,19, "SPEED"
   print at 16,19, "1 2 3 4 5"
   print at 6,20, "START"
-  print at 6,21, "CREDITS"
+  print at 6,21, "HOW TO PLAY"
+  print at 6,22, "CREDITS"
   Menu = 2
   ShowMenu
   ShowScreen
@@ -1076,7 +1082,7 @@ tp_loop:
         case 1
           if Menu > 0 then dec Menu
         case 2
-          if Menu < 3 then inc Menu
+          if Menu < 4 then inc Menu
         case 4
           if Menu = 0 then Players = 1
           if Menu = 1 then
@@ -1101,12 +1107,13 @@ tp_loop:
   mute all
   TzOn = 0
   HideSprites
-  if Menu = 3 then CreditsPage
+  if Menu = 3 then HowToPage
+  if Menu = 4 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
-  for J = 18 to 21
+  for J = 18 to 22
     put char 32 at 4,J
   next
   J = Menu + 18
@@ -1123,6 +1130,94 @@ sub ShowMenu:
   X = Speed * 2 + 13
   put char 91 at X,19
   put char 93 at X + 2,19
+  return
+end sub
+
+' a little pit: walls round rows 12-18, columns 7-24, the floor inside
+sub HtPit:
+  for Hy0 = 12 to 18
+    for Hx0 = 7 to 24
+      put char TFloor at Hx0,Hy0
+    next
+    put char TWall at 7,Hy0
+    put char TWall at 24,Hy0
+  next
+  fill TWall count 18 at 7,12
+  fill TWall count 18 at 7,18
+  put char THoleL at 7,15
+  put char THoleR at 24,15
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  NewScreen
+  copy SnCol count 256 to vram.color + TSnA0 * 8
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "STEER YOUR SNAKE ONTO THE"
+    print at 2,4, "MICE THAT RUN OUT OF THE"
+    print at 2,5, "HOLES IN THE WALLS."
+    print at 2,7, "EACH MOUSE IS 30 POINTS AND"
+    print at 2,8, "MAKES YOUR SNAKE LONGER."
+    print at 2,9, "THE GAME LASTS 5 MINUTES."
+    HtPit
+    put char TSnA2 at 9,15
+    fill TSnA10 count 5 at 10,15
+    set sprite 0 to 115,116,SHd10,1
+    set sprite 2 to 115,156,SMs30,14
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "STICK: TURN YOUR SNAKE. IT"
+    print at 2,4, "NEVER STOPS. IT CAN NOT"
+    print at 2,5, "TURN STRAIGHT BACK."
+    print at 2,7, "PLAYER 1: CONTROLLER 1."
+    print at 2,8, "PLAYER 2: CONTROLLER 2."
+    print at 2,9, "PUSH THE STICK TO START."
+    HtPit
+    put char TSnA2 at 9,14
+    fill TSnA10 count 4 at 10,14
+    put char TSnB8 at 22,16
+    fill TSnB10 count 4 at 18,16
+    set sprite 0 to 107,108,SHd10,1
+    set sprite 1 to 123,132,SHd30,12
+  case 3
+    print at 2,1, "SCORING                 3/3"
+    print at 2,3, "DON'T RUN INTO A WALL OR A"
+    print at 2,4, "SNAKE - YOUR OWN TOO! THEN"
+    print at 2,5, "THE PIT STARTS OVER, BUT"
+    print at 2,6, "THE CLOCK KEEPS RUNNING."
+    print at 2,8, "WITH 2 PLAYERS, A CRASH"
+    print at 2,9, "GIVES THE OTHER ONE 20."
+    print at 2,10, "THE BEST SCORE AT TIME UP"
+    print at 2,11, "WINS."
+    HtPit
+    fill TSnA10 count 5 at 9,15
+    put char TSnA8 at 14,15
+    set sprite 0 to 115,60,SHx,15
+    print at 2,20, "TIP: STAY AWAY FROM WALLS"
+    print at 2,21, "AND TURN EARLY."
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
   return
 end sub
 

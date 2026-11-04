@@ -56,7 +56,9 @@ cartridge "DIGGER/COMPUTE!'S GAZETTE/1985"
 '
 ' Controls: joystick only. The stick sets the digging direction (up, down,
 ' left, right; diagonals are ignored), the left button stops, the right
-' button pauses. A button starts from the title.
+' button pauses. On the title, up and down choose (START, HOW TO PLAY,
+' CREDITS), a button picks; HOW TO PLAY has two pages (a button turns the
+' page, 30 s idle goes back).
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
 ' frame loop is protected from the NMI; screens drawn with the NMI off
@@ -281,6 +283,9 @@ u8 PDir = 0
 u8 Face = 0
 u8 Paused = 0
 u8 Anim = 0
+u8 Menu = 0
+u8 HPg = 0
+u16 HWt = 0
 u8 Digs = 0
 u8 Kills = 0
 u8 Squash = 0
@@ -1002,6 +1007,8 @@ end sub
 ' high score, the tune once
 
 sub TitlePage:
+tp_top:
+  Menu = 0
   NewScreen
   copy TitleMap count 224 to vram.name + 64
   fill TGrass count 28 at 2,12
@@ -1011,7 +1018,10 @@ sub TitlePage:
   fill TDirt0 count 24 at 4,14
   fill TDirt0 count 24 at 4,15
   print at 2,18, "DROP BOULDERS ON THE TROLLS"
-  print at 5,20, "PRESS A BUTTON TO DIG"
+  print at 11,19, "START"
+  print at 11,20, "HOW TO PLAY"
+  print at 11,21, "CREDITS"
+  ShowMenu
   print at 9,22, "HI "
   print Hi at 12,22
   Act[0].X = 40
@@ -1035,7 +1045,25 @@ tp_loop:
   ReadPads
   TitleDemo
   N = Pads & (Pads ^ OldPads)
+  if (N & 3) > 0 then
+    if (N & 1) > 0 then
+      if Menu > 0 then dec Menu
+    else
+      if Menu < 2 then inc Menu
+    end if
+    ShowMenu
+  end if
   if (N & 48) = 0 then goto tp_loop
+  if Menu > 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+    mute all
+    TzOn = 0
+    HideSprites
+    if Menu = 1 then HowToPage
+    if Menu = 2 then CreditsPage
+    goto tp_top
+  end if
   stop sound SndTuneA
   stop sound SndTuneB
   mute all
@@ -1078,6 +1106,85 @@ sub TitleDemo:
   Pb = STroll1 + Fr * 4
   set sprite 3 to 110,Act[1].X,Pb,2
   update sprites
+  return
+end sub
+
+sub ShowMenu:
+  for K = 19 to 21
+    put char 32 at 9,K
+  next
+  K = Menu + 19
+  put char 62 at 9,K
+  return
+end sub
+
+' HOW TO PLAY: two pages; a button turns the page, 30 s idle goes back.
+' Globals only here (this program has call asm subs).
+sub HowToPage:
+  HPg = 0
+ht_page:
+  NewScreen
+  print at 10,1, "HOW TO PLAY"
+  if HPg = 0 then
+    print at 2,3, "DIG TUNNELS UNDER THE HILL."
+    print at 2,4, "THREE TROLLS DIG AFTER YOU."
+    print at 2,6, "STICK: THE WAY TO DIG (YOU"
+    print at 2,7, "KEEP GOING THAT WAY)."
+    print at 2,8, "LEFT BUTTON: STOP."
+    print at 2,9, "RIGHT BUTTON: PAUSE."
+    print at 2,11, "DIG AWAY THE EARTH UNDER A"
+    print at 2,12, "BOULDER: IT SHAKES, THEN"
+    print at 2,13, "FALLS AND SQUASHES ANY TROLL"
+    print at 2,14, "IT MEETS."
+    fill TGrass count 20 at 6,16
+    for Si = 17 to 21
+      fill TDirt15 count 20 at 6,Si
+    next
+    fill TDirt0 count 16 at 8,19
+    fill TDirt0 count 16 at 8,20
+    fill TDirt0 count 2 at 18,17
+    fill TDirt0 count 2 at 18,18
+    set sprite 0 to 151,72,SHat,11
+    set sprite 1 to 151,72,SFace,9
+    set sprite 2 to 151,72,SBody1,5
+    set sprite 3 to 151,148,STroll1,2
+    set sprite 4 to 135,144,SBoulder,14
+  else
+    print at 2,3, "A SQUASHED TROLL: 10 POINTS."
+    print at 2,4, "ALL THREE GONE: 100 POINTS"
+    print at 2,5, "AND THE NEXT SCREEN."
+    print at 2,7, "THE GAME ENDS IF A TROLL"
+    print at 2,8, "TOUCHES YOU, IF A BOULDER"
+    print at 2,9, "FALLS ON YOU, OR IF EVERY"
+    print at 2,10, "BOULDER IS ON THE BOTTOM."
+    print at 2,12, "TIP: DIG UP TO JUST UNDER A"
+    print at 2,13, "BOULDER AND WAIT. WHEN A"
+    print at 2,14, "TROLL COMES, DIG THE LAST"
+    print at 2,15, "BIT AND RUN AWAY: IT FOLLOWS"
+    print at 2,16, "YOU RIGHT UNDER THE ROCK!"
+    put char TThead at 13,19
+    put char TThead at 15,19
+    put char TThead at 17,19
+  end if
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  Pads = 63
+  HWt = 0
+ht_loop:
+  Frame1
+  ReadPads
+  inc HWt
+  if HWt >= 1800 then goto ht_done
+  N = Pads & (Pads ^ OldPads)
+  if (N & 48) = 0 then goto ht_loop
+  inc HPg
+  if HPg < 2 then goto ht_page
+ht_done:
+  HideSprites
   return
 end sub
 

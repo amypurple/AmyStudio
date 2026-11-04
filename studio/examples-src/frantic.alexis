@@ -1,9 +1,10 @@
-cartridge "THE FRANTIC FISHERMAN/COMPUTE'S GAZETTE/1984"
+cartridge "THE FRANTIC FISHERMAN/DAVID LACEY/1984"
 
 ' THE FRANTIC FISHERMAN
-' A ColecoVision game based on "The Frantic Fisherman", COMPUTE!'s Gazette
-' June 1984 (Commodore 64 BASIC + machine language, and a VIC-20 BASIC
-' version on the same disk; no author named in the listings). Made for Amy
+' A ColecoVision game based on "The Frantic Fisherman" by David Lacey,
+' COMPUTE!'s Gazette June 1984 pp. 58-59 (Commodore 64 BASIC + machine
+' language, and a VIC-20 BASIC version on the same disk; rules also from
+' the article). Made for Amy
 ' Studio by Claude (an AI made by Anthropic), 2026, in Amy by Amy Bienvenu.
 '
 ' Not a cell-for-cell port: the rules are the original's (read from the C64
@@ -17,7 +18,8 @@ cartridge "THE FRANTIC FISHERMAN/COMPUTE'S GAZETTE/1984"
 ' end), or a raindrop falling on the left or the right end. Stand at that
 ' end and press the button at the right moment: against a shark you swing
 ' the oar down into the water (75 points), against rain you open the
-' umbrella (50 points). A shark that reaches the boat, or a drop that
+' umbrella (50 points). The oar can be swung as often as you like; the
+' umbrella can be raised only three times for each raindrop (article). A shark that reaches the boat, or a drop that
 ' reaches the fisherman or the deck, costs a fisherman. Three fishermen;
 ' one more every 2000 points. The game is over when all are lost.
 '
@@ -28,14 +30,16 @@ cartridge "THE FRANTIC FISHERMAN/COMPUTE'S GAZETTE/1984"
 ' and a high score, the four speeds chosen before play (C64 f1/f3/f5/f7,
 ' delays 25/18/13/9; the speeds here are those delays measured in jsc64:
 ' a shark crosses its path in about 1.9 s and a drop falls in about 1.8 s
-' at the slowest), at most three swings or umbrellas against one danger
-' (VIC-20 line 3500).
+' at the slowest), at most three umbrellas against one drop (article and
+' VIC-20 line 3500), unlimited swings against a shark (article).
 '
 ' Liberties: the VIC-20 version also speeds the game up at every extra
 ' fisherman (DE = DE - 4); here every extra fisherman adds 2/16 pixel a
 ' frame, up to 8 times (the C64 never speeds up). The fisherman slides to
 ' the other end in 4 frames instead of jumping. An oar swing or umbrella
-' lasts 8 frames and needs a new press after a 20-frame rest (the C64
+' lasts 8 frames and needs a new press after a 20-frame rest (50 after
+' a swing that hits nothing; each danger is also 0-3/16 pixel a frame
+' faster at random, so timed swings beat mashing) (the C64
 ' let a held space bar repeat); moving cancels it. The oar reaches a shark
 ' in its last 10 pixels before the hull, the umbrella a drop in its last
 ' 12 pixels: a human-paced player never lost at the fastest speed with
@@ -163,6 +167,7 @@ const ManY = 111
 const SharkY = 127
 const ActN = 8
 const CoolN = 20
+const MissN = 30
 const GapN = 20
 const HitN = 24
 const LostN = 80
@@ -255,7 +260,10 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 2 then goto title
+  if Menu >= 2 then
+    Menu = 0
+    goto title
+  end if
 
 new_game:
   NewGame
@@ -292,7 +300,11 @@ sub PlayStep:
   ' the oar or umbrella: 12 frames out, then a 14-frame rest
   if Act > 0 then
     dec Act
-    if Act = 0 then Cool = CoolN
+    if Act = 0 then
+      ' the swing or umbrella hit nothing: a swing that misses costs more
+      Cool = CoolN
+      if Hz.Kind < KDropL then Cool = CoolN + MissN
+    end if
   elseif Cool > 0 then
     dec Cool
   end if
@@ -370,7 +382,9 @@ sub TryAct:
   if Phase <> PRun then return
   if Act > 0 then return
   if Cool > 0 then return
-  if Uses >= MaxUses then return
+  if Hz.Kind >= KDropL then
+    if Uses >= MaxUses then return
+  end if
   if EndOf >= 2 then return
   Act = ActN
   inc Uses
@@ -408,7 +422,10 @@ sub Spawn:
     Hz.Y = 16
     C = DropSpd[K]
   end select
-  Hz.Spd = C + Boost
+  ' a random 0-3/16 more, so a fixed button rhythm can't learn the timing
+  W16 = Rs >> 8
+  V = W16 & 3
+  Hz.Spd = C + Boost + V
   Phase = PRun
   return
 end sub
@@ -487,6 +504,8 @@ sub Beaten:
     play sound SndPlip
   end if
   if Gained = 1 then play sound SndLife
+  Act = 0
+  Cool = CoolN
   Phase = PHit
   Tm = HitN
   return
@@ -728,14 +747,16 @@ end sub
 sub TitlePage:
   NewScreen
   DrawScene
-  for Rw = 2 to 9
+  for Rw = 2 to 10
     fill 32 count 32 at 0,Rw
   next
   print at 5,3, "THE FRANTIC FISHERMAN"
-  print at 2,4, "COMPUTE!'S GAZETTE JUNE 1984"
-  print at 10,6, "START GAME"
-  print at 10,7, "SPEED"
-  print at 10,8, "CREDITS"
+  print at 8,4, "BY DAVID LACEY"
+  print at 2,5, "COMPUTE!'S GAZETTE JUNE 1984"
+  print at 10,7, "START GAME"
+  print at 10,8, "SPEED"
+  print at 10,9, "HOW TO PLAY"
+  print at 10,10, "CREDITS"
   print at 15,1, "HI"
   print at 18,1, Hi
   ShowMenu
@@ -782,7 +803,11 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 2 then CreditsPage
+  if Menu = 2 then
+    HowTo
+    Menu = 0
+  end if
+  if Menu = 3 then CreditsPage
   return
 end sub
 
@@ -793,7 +818,7 @@ sub MenuStick:
   end if
   K = V & 2
   if K > 0 then
-    if Menu < 2 then inc Menu
+    if Menu < 3 then inc Menu
   end if
   if Menu = 1 then
     K = V & 8
@@ -832,16 +857,17 @@ sub TitleShark:
 end sub
 
 sub ShowMenu:
-  put char 32 at 8,6
-  put char 32 at 8,7
-  put char 32 at 8,8
-  J = Menu + 6
+  fill 32 count 1 at 8,7
+  fill 32 count 1 at 8,8
+  fill 32 count 1 at 8,9
+  fill 32 count 1 at 8,10
+  J = Menu + 7
   put char 62 at 8,J
   NumU = Speed
-  print at 16,7, digits$(NumU, 1)
+  print at 16,8, digits$(NumU, 1)
   W16 = Speed - 1
   W16 = W16 * 6
-  copy SpeedTxt + W16 count 6 to vram.name + 242
+  copy SpeedTxt + W16 count 6 to vram.name + 274
   return
 end sub
 
@@ -850,9 +876,10 @@ sub CreditsPage:
   fill mode 2 text color with $F4
   backdrop dark blue
   print at 4,2, "THE FRANTIC FISHERMAN"
-  print at 2,5, "BASED ON THE FRANTIC"
-  print at 2,6, "FISHERMAN, COMPUTE!'S"
-  print at 2,7, "GAZETTE, JUNE 1984"
+  print at 2,4, "BASED ON THE FRANTIC"
+  print at 2,5, "FISHERMAN BY DAVID LACEY,"
+  print at 2,6, "COMPUTE!'S GAZETTE,"
+  print at 2,7, "JUNE 1984"
   print at 2,8, "(COMMODORE 64 AND VIC-20)."
   print at 2,11, "COLECOVISION GAME, MUSIC"
   print at 2,12, "AND PICTURES BY CLAUDE"
@@ -867,6 +894,67 @@ sub CreditsPage:
   pause until press
   wait no fire
   nmi off
+  return
+end sub
+
+' HOW TO PLAY: two pages with the game's own sprites; a button turns the
+' page, 30 s alone goes back to the title
+sub HowTo:
+  NewScreen
+  print at 9,1, "HOW TO PLAY  1/2"
+  print at 2,3, "YOU ARE THE FISHERMAN. A"
+  print at 2,4, "DANGER COMES FROM ONE SIDE."
+  print at 2,5, "PUSH THE STICK LEFT OR"
+  print at 2,6, "RIGHT TO GO TO THAT END."
+  print at 2,14, "SHARK: PRESS A BUTTON TO"
+  print at 2,15, "SWING THE OAR WHEN IT IS"
+  print at 2,16, "NEAR THE BOAT. SWING AS"
+  print at 2,17, "OFTEN AS YOU LIKE, BUT A"
+  print at 2,18, "MISS SLOWS YOU DOWN."
+  print at 2,19, "SHARK = 75 POINTS."
+  set sprite 0 to 79,120,SSkinl,9
+  set sprite 1 to 79,120,SBootl,1
+  set sprite 2 to 79,120,SCoatl,11
+  set sprite 3 to 87,104,SOarl,10
+  set sprite 4 to 95,72,SSharkr,14
+  update sprites
+  HowWait
+  NewScreen
+  print at 9,1, "HOW TO PLAY  2/2"
+  print at 2,3, "RAINDROP: OPEN THE UMBRELLA"
+  print at 2,4, "JUST BEFORE IT HITS YOU."
+  print at 2,5, "ONLY 3 TRIES PER DROP."
+  print at 2,6, "DROP = 50 POINTS."
+  print at 2,13, "A SHARK AT THE BOAT OR A"
+  print at 2,14, "DROP ON YOUR HEAD COSTS A"
+  print at 2,15, "FISHERMAN. YOU HAVE 3, AND"
+  print at 2,16, "A NEW ONE EVERY 2000"
+  print at 2,17, "POINTS. NO MORE: GAME OVER."
+  print at 2,19, "SPEED 1 IS PRACTICE,"
+  print at 2,20, "SPEED 4 IS FRANTIC!"
+  set sprite 0 to 87,120,SSkinr,9
+  set sprite 1 to 87,120,SBootr,1
+  set sprite 2 to 87,120,SCoatr,11
+  set sprite 3 to 71,120,SUmb,8
+  set sprite 4 to 55,120,SDrop,4
+  update sprites
+  HowWait
+  HideSprites
+  return
+end sub
+
+sub HowWait:
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  W16 = 0
+hw_loop:
+  Frame1
+  ReadPad
+  inc W16
+  if W16 >= 1800 then return
+  if Press = 0 then goto hw_loop
   return
 end sub
 

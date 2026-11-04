@@ -49,8 +49,9 @@ cartridge "RALLY RACER/SCOTT ELDER/1988"
 ' crossed anywhere in their corridor (the C64 checked 3 of 4 cells).
 '
 ' Controls: joysticks only. Stick left/right turn, up shifts up, down
-' shifts down (gear 0 brakes). Title: up/down choose, left/right change
-' the track, a button starts. Editor: stick moves, left button toggles,
+' shifts down (gear 0 brakes). Title: up/down choose (1 PLAYER, 2 PLAYERS,
+' EDIT TRACK, HOW TO PLAY: three pages, CREDITS), left/right change the
+' track, a button starts. Editor: stick moves, left button toggles,
 ' right button done.
 '
 ' House rules: text in columns 2-29, rows 1-22; tiles from code 128; the
@@ -422,6 +423,11 @@ u8 EdT = 0
 u16 TzLeft = 0
 u8 TzOn = 0
 u8 Menu = 0
+' the HOW TO PLAY page, its idle timer and the road it draws (globals:
+' this program has `call asm`, so no locals in the subs that draw screens)
+u8 HtPg = 0
+u16 HtWt = 0
+u8 HtC = 0
 u8 Btn = 0
 u8 WasBtn = 0
 u8 Press = 0
@@ -480,6 +486,9 @@ title:
     GMode = 2
   case 2
     EditTrack
+    goto title
+  case 3
+    HowToPage
     goto title
   case else
     CreditsPage
@@ -1466,8 +1475,10 @@ sub TitlePage:
   print at 9,17, "1 PLAYER"
   print at 9,18, "2 PLAYERS"
   print at 9,19, "EDIT TRACK"
-  print at 9,20, "CREDITS"
+  print at 9,20, "HOW TO PLAY"
+  print at 9,21, "CREDITS"
   print at 3,22, "COMPUTE!'S GAZETTE 1988"
+  Menu = 0
   ShowMenu
   ' the flag on the map's start line
   set sprite 2 to 64,134,SFlag,15
@@ -1492,7 +1503,7 @@ tp_loop:
     case 1
       if Menu > 0 then dec Menu
     case 2
-      if Menu < 3 then inc Menu
+      if Menu < 4 then inc Menu
     end select
     ShowMenu
     Vb = TitSt & 12
@@ -1537,11 +1548,105 @@ data TitleL bytes
 end data
 
 sub ShowMenu:
-  for Ti = 17 to 20
+  for Ti = 17 to 21
     put char 32 at 7,Ti
   next
   Va = Menu + 17
   put char 62 at 7,Va
+  return
+end sub
+
+' a stretch of road for the HOW TO PLAY pages: rows 13-20, the road in
+' columns HtC to HtC + 5 with kerbs, grass and trees round it
+sub HtRoad:
+  for Ri = 13 to 20
+    fill TGrass count 28 at 2,Ri
+    Va = HtC - 1
+    put char TEdger at Va,Ri
+    fill TRoad count 6 at HtC,Ri
+    Va = HtC + 6
+    put char TEdgel at Va,Ri
+  next
+  put char TTree at 3,14
+  put char TTree at 5,18
+  put char TTree at 26,15
+  put char TTree at 24,19
+  return
+end sub
+
+' HOW TO PLAY: three pages; the button turns the page, after the last
+' page (or 30 seconds untouched) back to the title
+sub HowToPage:
+  HtPg = 1
+ht_page:
+  NewScreen
+  LoadTiles
+  if HtPg = 1 then
+    print at 2,1, "HOW TO PLAY            1/3"
+    print at 2,3, "RACE ONE LAP AROUND A"
+    print at 2,4, "WALLED COURSE, AS FAST AS"
+    print at 2,5, "YOU CAN."
+    print at 2,7, "DRIVE DOWN TO THE YELLOW"
+    print at 2,8, "HALF-LAP LINE, THEN COME"
+    print at 2,9, "BACK OVER THE CHECKERED"
+    print at 2,10, "FINISH LINE."
+    HtC = 13
+    HtRoad
+    fill TFin count 6 at 13,15
+    fill THalf count 6 at 13,19
+    set sprite 0 to 127,120,SCar4,5
+    print at 21,15, "FINISH"
+    print at 21,19, "HALF LAP"
+  elseif HtPg = 2 then
+    print at 2,1, "CONTROLS               2/3"
+    print at 2,3, "STICK LEFT/RIGHT: TURN."
+    print at 2,4, "STICK UP: SHIFT UP A GEAR"
+    print at 2,5, "(GO FASTER)."
+    print at 2,6, "STICK DOWN: SHIFT DOWN."
+    print at 2,7, "GEAR 0 IS THE BRAKE."
+    print at 2,9, "HIT A WALL AND YOUR CAR"
+    print at 2,10, "STOPS DEAD, IN GEAR 0."
+    print at 2,11, "HOLD A BUTTON 2 SECONDS"
+    print at 2,12, "TO GIVE UP."
+    HtC = 11
+    HtRoad
+    set sprite 0 to 135,92,SCar1,5
+    set sprite 1 to 119,116,SCar0,15
+  else
+    print at 2,1, "THE RACE               3/3"
+    print at 2,3, "1 PLAYER: RACE THE CLOCK."
+    print at 2,4, "2 PLAYERS: RACE AT THE SAME"
+    print at 2,5, "TIME, EACH IN HALF OF THE"
+    print at 2,6, "SCREEN. FIRST HOME WINS!"
+    print at 2,8, "THE BEST TIME OF EACH"
+    print at 2,9, "TRACK IS KEPT. YOU HAVE 5"
+    print at 2,10, "MINUTES TO FINISH."
+    print at 2,11, "LEFT/RIGHT ON THE TITLE"
+    print at 2,12, "PICKS A TRACK; OR DRAW YOUR"
+    print at 2,13, "OWN WITH EDIT TRACK."
+    print at 2,15, "TIP: SLOW DOWN FOR CORNERS!"
+    set sprite 0 to 143,96,SCar0,5
+    set sprite 1 to 143,144,SCar0,15
+    fill TFin count 14 at 9,20
+  end if
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 16
+  HtWt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  inc HtWt
+  if HtWt >= 1800 then goto ht_end
+  if Press = 0 then goto ht_wait
+  inc HtPg
+  if HtPg <= 3 then goto ht_page
+ht_end:
+  HideSprites
   return
 end sub
 

@@ -443,7 +443,7 @@ u8 Y = 0
 
 title:
   TitlePage
-  if Menu = 1 then goto title
+  if Menu <> 0 then goto title
 
   NewGame
 
@@ -541,11 +541,19 @@ sub DrawCell(u8 I):
   Ty = GridY + (R - 1) * 4
   T0 = TBk00
   if Occ[I] = 2 then T0 = TTr00
+  Stamp(T0, Tx, Ty)
+  return
+
+' a block stamp of tiles T0.. with its corner at Tx,Ty
+sub Stamp(u8 T0, u8 Tx, u8 Ty):
+  u8 K5 = 0
+  u8 R5 = 0
+  u8 Q5 = 0
   for K5 = 0 to 14
     if BlankT[K5] = 0 then
-      R = K5 / 5
-      Q = K5 mod 5
-      put char T0 + K5 at Tx + Q, Ty + R
+      R5 = K5 / 5
+      Q5 = K5 mod 5
+      put char T0 + K5 at Tx + Q5, Ty + R5
     end if
   next
   return
@@ -926,6 +934,7 @@ sub StartLevel:
   DrawGrid
   ShowHud
   FullBar
+  if Lvl = 1 then print at 8,3, "TRAP THE SPHERE!"
   DrawSprites
   ShowScreen
   play sound SndStart
@@ -1046,7 +1055,8 @@ sub TitlePage:
   print at 10,10, "ERIC HAINES"
   print at 3,12, "COMPUTE!'S GAZETTE MAY 1988"
   print at 11,15, "START GAME"
-  print at 11,16, "CREDITS   "
+  print at 11,16, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
   print at 2,19, "HIGH"
   NumU = Hi
   print at 7,19, digits$(NumU, 5)
@@ -1071,9 +1081,9 @@ tp_loop:
     if WasStick = 0 then
       K = V & 1
       if K > 0 then
-        Menu = 0
+        if Menu > 0 then dec Menu
       else
-        Menu = 1
+        if Menu < 2 then inc Menu
       end if
       ShowMenu
     end if
@@ -1088,17 +1098,105 @@ tp_loop:
   Rs = Rs ^ W16
   if Rs = 0 then Rs = 1
   HideSprites
-  if Menu = 1 then CreditsPage
+  if Menu = 1 then HowToPlay
+  if Menu = 2 then CreditsPage
   return
 end sub
 
 sub ShowMenu:
   put char 32 at 9,15
   put char 32 at 9,16
+  put char 32 at 9,17
   J = Menu + 15
   put char 62 at 9,J
   return
 end sub
+
+' a page waits for a button (1) or 30 seconds (0)
+function PageWait as u8
+  u16 Wt = 0
+  u8 Got = 0
+  Got = 0
+  Rearm
+  wait no fire
+  nmi off
+  Wt = 0
+  while Wt < 1800 and Got = 0
+    Frame1
+    ReadPad
+    if Press = 1 then Got = 1
+    inc Wt
+  end while
+  return Got
+
+' a sprite on a stamp's top face (stamp corner Tx,Ty)
+sub FaceSprite(u8 N, u8 Tx, u8 Ty, u8 P, u8 Cl, u8 Up):
+  u8 Sx = 0
+  u8 Sy = 0
+  Sx = Tx * 8 + 10
+  Sy = Ty * 8 - 1
+  Sy = Sy - Up
+  set sprite N to Sy,Sx,P,Cl
+  return
+
+' HOW TO PLAY: two pages with the game's own blocks and sprites
+sub HowToPlay:
+  NewScreen
+  SetColours(0)
+  print at 7,1, "HOW TO PLAY  1/2"
+  print at 2,3, "YOU ARE THE BLINKING SQUARE."
+  print at 2,4, "THE SPHERE BOUNCES FROM"
+  print at 2,5, "BLOCK TO BLOCK ON ITS OWN."
+  print at 2,7, "THE LAST 4 BLOCKS YOU STOOD"
+  print at 2,8, "ON CHANGE COLOUR. THAT IS"
+  print at 2,9, "YOUR TRAIL. THE SPHERE CAN'T"
+  print at 2,10, "LAND ON IT, AND YOU CAN'T"
+  print at 2,11, "STEP ON IT EITHER."
+  Stamp(TTr00, 3, 14)
+  Stamp(TTr00, 8, 14)
+  Stamp(TTr00, 13, 14)
+  Stamp(TTr00, 18, 14)
+  Stamp(TBk00, 23, 14)
+  FaceSprite(2, 18, 14, SSquare, 15, 0)
+  FaceSprite(0, 23, 14, SBallhl, 15, 16)
+  FaceSprite(1, 23, 14, SBall, 14, 16)
+  update sprites
+  print at 8,18, "TRAIL"
+  print at 17,18, "YOU"
+  print at 23,18, "SPHERE"
+  print at 8,21, "PRESS A BUTTON"
+  ShowScreen
+  if PageWait = 1 then
+    NewScreen
+    SetColours(0)
+    print at 7,1, "HOW TO PLAY  2/2"
+    print at 2,3, "GOAL: SURROUND THE SPHERE"
+    print at 2,4, "WITH YOUR TRAIL AND THE"
+    print at 2,5, "EDGES SO IT HAS NOWHERE TO"
+    print at 2,6, "HOP. THAT TRAPS IT!"
+    print at 2,7, "TIP: HERD IT TO A CORNER."
+    Stamp(TBk00, 6, 9)
+    Stamp(TTr00, 11, 9)
+    Stamp(TTr00, 4, 13)
+    Stamp(TTr00, 9, 13)
+    FaceSprite(0, 6, 9, SBallhl, 15, 6)
+    FaceSprite(1, 6, 9, SBall, 14, 6)
+    FaceSprite(2, 9, 13, SSquare, 15, 0)
+    update sprites
+    print at 18,11, "TRAPPED!"
+    print at 2,17, "POINTS: TIME LEFT ON THE BAR"
+    print at 2,18, "NO TIME LEFT: A SHOCK. THE"
+    print at 2,19, "THIRD SHOCK ENDS THE GAME."
+    print at 2,20, "DON'T BOX YOURSELF IN!"
+    print at 8,22, "PRESS A BUTTON"
+    ShowScreen
+    V = PageWait
+  end if
+  HideSprites
+  Rearm
+  wait no fire
+  nmi off
+  return
 
 sub CreditsPage:
   NewScreen

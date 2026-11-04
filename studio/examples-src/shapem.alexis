@@ -232,6 +232,9 @@ u8 Gy = 0
 ' for the test bot: 7 credits, 8 title, 2 dealing, 1 waiting for a pick,
 ' 3 found (cheering), 4 waiting for the button after a find, 6 game over
 u8 Ph = 0
+u8 Menu = 0
+u8 Pg = 0
+u16 Wt = 0
 u8 Tick = 0
 u8 Up1 = 0
 u8 Dn1 = 0
@@ -260,6 +263,32 @@ u8 Y = 0
   screen on
 
   ' the credits page (once, after the console's logo)
+  CreditsPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowToPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  ' the press time stirs the BIOS random numbers
+  V = Tick & 31
+  for I = 0 to V
+    J = random(6)
+  next
+
+  NewGame
+  DrawPlay
+  for Round = 1 to Rounds
+    PlayRound
+  next
+  goto game_over
+
+sub CreditsPage:
   Ph = 7
   TextScreen
   DrawLogo(2)
@@ -273,9 +302,14 @@ u8 Y = 0
   print at 3,22, "CURVES (NEW)."
   ShowScreen
   WaitPress
+  return
+end sub
 
-title:
+' the title: the logo, four shapes, the menu (START, HOW TO PLAY,
+' CREDITS); the cursor starts on START every time
+sub TitlePage:
   Ph = 8
+  Menu = 0
   TextScreen
   DrawLogo(1)
   for I = 0 to 3
@@ -284,27 +318,123 @@ title:
     X = X + 5
     DrawShape(I, X, 12)
   next
-  print at 3,17, "FIND THE SHAPE THAT"
-  print at 3,18, "MATCHES. MOVE WITH THE"
-  print at 3,19, "STICK, PRESS A BUTTON."
-  print at 3,20, "FIRST TRY = A GOLD STAR."
-  print at 3,21, "8 GOLD STARS WIN!"
+  print at 3,17, "FIND THE SHAPE THAT MATCHES"
+  print at 11,19, "START"
+  print at 11,20, "HOW TO PLAY"
+  print at 11,21, "CREDITS"
+  ShowMenu
   ShowScreen
   play song SmSong once
-  WaitPress
+  WasBtn = 1
+  WasStick = 1
+tp_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = Stick
+  if Press = 0 then goto tp_loop
   mute all
-  ' the press time stirs the BIOS random numbers
-  V = Tick & 31
-  for I = 0 to V
-    J = random(6)
-  next
+  return
+end sub
 
-  NewGame
-  DrawPlay
-  for Round = 1 to Rounds
-    PlayRound
+sub ShowMenu:
+  for Y = 19 to 21
+    put char 32 at 9,Y
   next
-  goto game_over
+  Y = Menu + 19
+  put char 62 at 9,Y
+  return
+end sub
+
+' HOW TO PLAY: three pages; a button turns the page, after the last page
+' (or 30 seconds untouched) back to the title
+sub HowToPage:
+  Pg = 1
+ht_page:
+  TextScreen
+  select case Pg
+  case 1
+    print at 2,1, "HOW TO PLAY             1/3"
+    print at 2,3, "A SHAPE IS SHOWN ON THE"
+    print at 2,4, "LEFT. FIND THE SAME SHAPE"
+    print at 2,5, "IN ONE OF THE FOUR BOXES"
+    print at 2,6, "ON THE RIGHT."
+    print at 2,8, "THERE ARE 10 ROUNDS."
+    SetShapeCol(3, 4)
+    SetShapeCol(1, 13)
+    DrawShape(3, 5, 11)
+    DrawShape(1, 14, 11)
+    DrawShape(3, 22, 11)
+    set sprite 0 to 95,160,SArrowout,1
+    set sprite 1 to 95,160,SArrowin,11
+    print at 2,17, "THE ARROW POINTS AT A BOX."
+  case 2
+    print at 2,1, "CONTROLS                2/3"
+    print at 2,3, "STICK: MOVE THE ARROW FROM"
+    print at 2,4, "BOX TO BOX."
+    print at 2,5, "BUTTON: PICK THAT BOX."
+    print at 2,7, "RIGHT ON THE FIRST TRY:"
+    print at 2,8, "A GOLD STAR. RIGHT LATER:"
+    print at 2,9, "A GREY STAR. A WRONG SHAPE"
+    print at 2,10, "TURNS GREY. TRY AGAIN!"
+    print at 2,12, "8 GOLD STARS OR MORE WIN!"
+    for I = 0 to 9
+      Slot[I] = 0
+    next
+    Slot[0] = 1
+    Slot[1] = 1
+    Slot[2] = 2
+    Slot[3] = 1
+    print at 2,StarY, "STARS"
+    for I = 0 to 9
+      DrawStar(I)
+    next
+  case 3
+    print at 2,1, "TIPS                    3/3"
+    print at 2,3, "FROM ROUND 6 THE ROUNDS ARE"
+    print at 2,4, "TRICKY: ALL THE SHAPES HAVE"
+    print at 2,5, "ONE COLOUR. LOOK AT THE"
+    print at 2,6, "CORNERS AND CURVES!"
+    for I = 2 to 5
+      SetShapeCol(I, 1)
+      X = I - 2
+      X = X * 6
+      X = X + 5
+      DrawShape(I, X, 9)
+    next
+    print at 2,15, "THE GAME ENDS AFTER ROUND"
+    print at 2,16, "10. COUNT YOUR GOLD STARS!"
+    print at 2,18, "TIP: GUESSING WILL NOT WIN."
+    print at 2,19, "LOOK CAREFULLY FIRST."
+  end select
+  print at 8,22, "PRESS THE BUTTON"
+  update sprites
+  ShowScreen
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  Wt = 0
+ht_wait:
+  Frame1
+  ReadPad
+  Wt = Wt + 1
+  if Wt >= 1800 then return
+  if Press = 0 then goto ht_wait
+  inc Pg
+  if Pg <= 3 then goto ht_page
+  return
+end sub
 
 game_over:
   Ph = 6
