@@ -36,6 +36,17 @@ try {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   for (const file of ["hello.rom", "hello.asm", "hello.sym", "hello.json"]) assert.ok(existsSync(path.join(dir, "nested", file)), file);
   assert.equal(JSON.parse(readFileSync(path.join(dir, "nested", "hello.json"), "utf8")).ok, true);
+
+  const overflowSource = path.join(dir, "overflow.alexis");
+  const overflowRom = path.join(dir, "overflow.rom");
+  const overflowReport = path.join(dir, "overflow.json");
+  const payload = Array.from({ length: 33000 }, () => "$55").join(",");
+  writeFileSync(overflowSource, `u8 V = 0\nV = Big[0]\ndata Big bytes ${payload}\n`, "utf8");
+  const overflow = run(overflowSource, "--output", overflowRom, "--report-json", overflowReport, "--opt", "off");
+  assert.equal(overflow.status, 1, overflow.stderr || overflow.stdout);
+  assert.match(overflow.stderr, /exceeds its 32 KiB mapped ROM window/i);
+  assert.equal(existsSync(overflowRom), false, "overflowing cartridge must not be written");
+  assert.equal(JSON.parse(readFileSync(overflowReport, "utf8")).ok, false);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

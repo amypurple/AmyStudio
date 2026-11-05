@@ -4721,8 +4721,18 @@ export function transpileAmyCore(sourceText, deps) {
       }
     }
     const entries = tokens.map((token) => {
-      const address = token.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
-      if (address) return resolveAddressSymbol(address[1]);
+      const address = token.match(/^@([A-Za-z_][A-Za-z0-9_]*)(?:\s*([+-])\s*(\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|[0-9]+))?$/i);
+      if (address) {
+        const symbol = resolveAddressSymbol(address[1]);
+        if (!address[3]) return symbol;
+        const magnitude = /^\$/i.test(address[3])
+          ? Number.parseInt(address[3].slice(1), 16)
+          : /^0x/i.test(address[3])
+            ? Number.parseInt(address[3].slice(2), 16)
+            : Number.parseInt(address[3], 10);
+        const offset = address[2] === "-" ? -magnitude : magnitude;
+        return `${symbol}${offset > 0 ? "+" : ""}${offset}`;
+      }
       if (/^0x[0-9A-Fa-f]+$/i.test(token)) return `$${token.slice(2).toUpperCase()}`;
       return token.toUpperCase();
     });

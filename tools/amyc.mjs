@@ -399,6 +399,14 @@ async function main() {
     process.exit(1);
   }
   const rom = assembled.binary || assembled.bytes || new Uint8Array();
+  if (opts.target === "colecovision-cartridge" && rom.length > 32 * 1024) {
+    const capacity = 32 * 1024;
+    const overflow = rom.length - capacity;
+    const message = `ColecoVision cartridge exceeds its 32 KiB mapped ROM window: ${rom.length} / ${capacity} bytes (${overflow} bytes over). Optimize the project or select a MegaCart target.`;
+    writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });
+    console.error(`Compile failed: ${message}`);
+    process.exit(1);
+  }
   if (opts.optimizedAsm !== undefined) {
     const optimizedAsmPath = typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm";
     writeOutputFile(optimizedAsmPath, assembled.optimizedAsm || generatedAsm, "utf8");

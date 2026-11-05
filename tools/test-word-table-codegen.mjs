@@ -460,6 +460,18 @@ check("bare identifier entry without @ is rejected", () => {
   assert.match(String(bad.log || ""), /Invalid word table entry/i);
 });
 
+check("word table entries support constant address offsets", () => {
+  const result = transpileAmy("data Payload bytes 7,8,9\n\ndata Pointers words\n  @Payload, @Payload + 2, @Payload - 1\nend data\n\nloop forever\n");
+  assert.equal(result.ok, true, result.log || "word table address offsets failed to transpile");
+  assert.match(result.asmBody, /dw\s+AMY_UDATA_Payload,AMY_UDATA_Payload\+2,AMY_UDATA_Payload-1/i);
+});
+
+check("invalid word table address offsets are rejected clearly", () => {
+  const bad = transpileAmy("data Payload bytes 7\n\ndata Pointers words = @Payload + Missing\n\nloop forever\n");
+  assert.equal(bad.ok, false);
+  assert.match(String(bad.log || ""), /Invalid word table entry/i);
+});
+
 check("empty word table is rejected", () => {
   const bad = transpileAmy("data Levels words\nend data\nloop forever\n");
   assert.equal(bad.ok, false);
@@ -573,7 +585,7 @@ const recordDataCopyResult = transpileAmy(RECORD_DATA_COPY_DEMO);
 const recordDataCopyAsm = String(recordDataCopyResult?.asmBody || "");
 check("typed record data copies an exact ROM template into a RAM record array", () => {
   assert.equal(recordDataCopyResult.ok, true, recordDataCopyResult.log || "transpile failed");
-  assert.match(recordDataCopyAsm, /AMY_UDATA_Wave:[\s\S]*db \$28,\$30,\$06,\$05,AMY_UCONST_Flying/i);
+  assert.match(recordDataCopyAsm, /AMY_UDATA_Wave:[\s\S]*db \$28,\$30,\$06,\$05,\$01/i);
   assert.match(recordDataCopyAsm, /ld hl,AMY_UDATA_Wave[\s\S]*ld bc,15\s*\n\s*ldir/i);
 });
 const RECORD_DATA_STREAM_DEMO = `record Actor:

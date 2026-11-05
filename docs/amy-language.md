@@ -3288,7 +3288,7 @@ data Level1 bytes $01,$02,$03
 data Level2 bytes $04,$05
 
 data Levels words
-  @Level1, @Level2
+  @Level1, @Level2, @Level2 + 1
 end data
 
 data Extras words = @Level2, $8000   ' inline form; raw word values allowed
@@ -3299,7 +3299,9 @@ put Frames[Type] frame size 4,4 at X,Y
 
 Rules:
 - the instruction sequences shown here are representative codegen details, not stable language contracts
-- entries are `@Label` (a data block, asset, or label), `$xxxx`, or a decimal word
+- entries are `@Label` (a data block, asset, or label), `@Label + constant`,
+  `@Label - constant`, `$xxxx`, or a decimal word; label offsets are calculated
+  by the assembler and do not add runtime code
 - a **constant index folds to the entry label directly** (`Levels[1]` → `ld hl,Level2_label`, no table walk)
 - a variable index reads the `dw` entry at runtime with the minimal sequence
   (`add a,a` / `add hl,de` / fetch low+high / `ex de,hl`) — no runtime helper

@@ -116,8 +116,21 @@ export function createDataHelpers(ctx) {
   function normalizeWordDataToken(token) {
     const trimmed = token.trim();
     if (!trimmed) return null;
-    const addressOf = trimmed.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
-    if (addressOf) return { kind: "address", name: addressOf[1] };
+    const addressOf = trimmed.match(/^@([A-Za-z_][A-Za-z0-9_]*)(?:\s*([+-])\s*(\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|[0-9]+))?$/i);
+    if (addressOf) {
+      let offset = 0;
+      if (addressOf[3]) {
+        const rawOffset = addressOf[3];
+        const magnitude = /^\$/i.test(rawOffset)
+          ? Number.parseInt(rawOffset.slice(1), 16)
+          : /^0x/i.test(rawOffset)
+            ? Number.parseInt(rawOffset.slice(2), 16)
+            : Number.parseInt(rawOffset, 10);
+        offset = addressOf[2] === "-" ? -magnitude : magnitude;
+      }
+      if (!Number.isInteger(offset) || offset < -0xFFFF || offset > 0xFFFF) return false;
+      return { kind: "address", name: addressOf[1], offset };
+    }
     if (/^\$[0-9A-Fa-f]+$/.test(trimmed)) return { kind: "value", text: trimmed.toUpperCase() };
     if (/^0x[0-9A-Fa-f]+$/i.test(trimmed)) return { kind: "value", text: `$${trimmed.slice(2).toUpperCase()}` };
     if (/^-?[0-9]+$/.test(trimmed)) {
@@ -259,7 +272,12 @@ export function createDataHelpers(ctx) {
         throw new Error(`Word table ${name} has ${values.length} entries; byte indexing supports at most 256.`);
       }
       const asmName = ensureDataAsmSymbol(name);
-      const asmEntries = values.map((entry) => (entry.kind === "address" ? rewriteUserSymbolsInExpression(entry.name) : entry.text));
+      const asmEntries = values.map((entry) => {
+        if (entry.kind !== "address") return entry.text;
+        const symbol = rewriteUserSymbolsInExpression(entry.name);
+        if (!entry.offset) return symbol;
+        return `${symbol}${entry.offset > 0 ? "+" : ""}${entry.offset}`;
+      });
       dataWordTables?.set(name, { length: values.length, entries: asmEntries });
       romData.push(`${asmName}:`);
       for (let index = 0; index < asmEntries.length; index += 4) {

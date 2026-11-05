@@ -1011,7 +1011,6 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   compared with the blanket wrapper. The six-sample total is 7,386 bytes; Tile Animation returns to
   its 1,255-byte baseline, while the remaining 14-byte difference predates this IX-safety change.
 
-
 ## 2026-11-04 - OS7 noise layouts and unknown-name diagnostics
 
 - The Coleco BIOS sound encoder and decoder now apply the real OS7 noise layouts: command types
@@ -1029,11 +1028,11 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 
 - `node tools/amy-qa.mjs quick` now assembles a fixed 35-example cross-section covering the six
   comparison samples, numeric and record self-tests, MegaCart, graphics, codecs, audio, complex
-  ColecoVision games, and ADAM projects. It then runs bounded runtime, optimizer, ABI, codec, and
-  benchmark checks. This is the default subsystem gate; the complete 832-example corpus remains
+  ColecoVision games, and ADAM projects. It then runs 24 bounded runtime, optimizer, ABI, codec,
+  and benchmark checks. This is the default subsystem gate; the complete 832-example corpus remains
   the promotion and release gate rather than the cost of every local change.
 - The representative gate passes 35/35 examples: 34 ROMs assemble at 252,185 Balanced bytes and one
-  ADAM project delegates to its target-specific validator.
+  ADAM project delegates to its target-specific validator. All 24 selected matrix tests pass.
 - The 239-ROM COMPUTE!'s Gazette package contains every requested 1983-1988 title. Explicit source
   credits correct metadata extraction for Spike (Eric Brandon), Omicron (Sean Wagle), Basketball
   Sam & Ed (Rhett Anderson and David Hensley Jr.), and Squeeze (Stephen Shull).
@@ -1049,4 +1048,17 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - All 129 changed examples compile and assemble with Aggressive optimization (1,667,671 bytes total).
   The package generator now prioritizes an explicit cartridge credit over stale catalog prose, and
   the 239-ROM archive was regenerated from the targeted builds.
+
+## 2026-11-05 - GCM pointer tables and cartridge capacity
+
+- `data ... words` accepts `@Label + constant` and `@Label - constant` entries. Both the early
+  table-shape scan and final data emitter resolve the same symbol-plus-offset expression, avoiding
+  the former misleading empty-table error and invalid folded `ld hl,@Label + N` output.
+- The Amy CLI now enforces the same 32 KiB mapped cartridge window as the Studio compiler. A plain
+  ColecoVision cartridge that exceeds 32,768 bytes fails before any ROM is written and recommends
+  optimization or the MegaCart target; exact 32 KiB and explicitly banked targets remain valid.
+- The focused GCM regression runs all five optimization profiles in GearColeco with the real OS7:
+  `@Blk + 2` reads byte 9 as expected. A separate 33,279-byte repro fails closed and leaves no stale
+  ROM output.
+
 
