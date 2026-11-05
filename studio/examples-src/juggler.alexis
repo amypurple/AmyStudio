@@ -46,8 +46,9 @@ cartridge "JUGGLER/DOUG FERGUSON, COMPUTE!/1983"
 ' - Timing: each ball step remains visible for 3 frames. A pass of the
 '   main loop is 10 frames, giving a human player time to read the arcs;
 '   the joystick is still sampled before every ball and a catch adds a frame.
-' - A direction moves the hands by one position per press. The stick must
-'   return to neutral before another move, preventing an accidental double step.
+' - A direction moves the hands by one position per press. Amy's frame-stable
+'   `.pressed` input is sampled every display frame and queued until the next
+'   ball step, so held directions never repeat and fresh presses respond quickly.
 ' - The crash flashes the border (the backdrop) in the VIC's 8 colours.
 ' - Yellow text is drawn with tiles; white text is the ColecoVision font.
 ' - A credits page with an original tune (Three in the Air) played once.
@@ -134,7 +135,7 @@ u16 Steps = 0
 u8 Jin = 0
 u16 Rs0 = 0
 u8 Ask = 0
-u8 MoveLatch = 0
+u8 PendingMove = 0
 
 u8 Pkv = 0
 u8 Ix = 0
@@ -457,33 +458,24 @@ sub Clr:
   C = 0
   U = 0
   D = 0
-  MoveLatch = 0
+  PendingMove = 0
   return
 end sub
 
 ' Stick (150-200): left moves the hands one place left, right one place
 ' right (each test after the one before, as the listing has them)
 sub Stick:
-  Lf = joypad(1).left | joypad(2).left
-  Rg = joypad(1).right | joypad(2).right
-  Jin = Rg + Rg
-  Jin = Jin | Lf
-  if Lf = 0 then
-    if Rg = 0 then
-      MoveLatch = 0
-      return
-    end if
-  end if
-  if MoveLatch = 1 then return
-  MoveLatch = 1
-  if Lf = 1 then
-    if U = 2 then Hands1
+  Jin = PendingMove
+  if PendingMove = 1 then
+    PendingMove = 0
     if U = 1 then Hands0
+    if U = 2 then Hands1
     return
   end if
-  if Rg = 1 then
-    if U = 0 then Hands1
+  if PendingMove = 2 then
+    PendingMove = 0
     if U = 1 then Hands2
+    if U = 0 then Hands1
   end if
   return
 end sub
@@ -771,6 +763,8 @@ sub Frame1:
   Rearm
   wait
   nmi off
+  if joypad(1).left.pressed or joypad(2).left.pressed then PendingMove = 1
+  if joypad(1).right.pressed or joypad(2).right.pressed then PendingMove = 2
   inc Tick
   return
 end sub
