@@ -15585,5 +15585,26 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "great-canadian-mystery",
+    "label": "The Great Canadian Mystery Show",
+    "detail": "Original investigation game designed by Amy for Amy Studio and programmed in Amy by Claude (Anthropic), 2026. Solve one of 32 cases across 11 Canadian destinations by following leads, interviewing witnesses, consulting the atlas and dossier, and identifying the right fictional suspect before the deadline. Includes Normal and Hard modes.",
+    "projectName": "GREAT CANADIAN MYSTERY",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "mystery",
+      "investigation",
+      "canada",
+      "joystick"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   }
 ];
