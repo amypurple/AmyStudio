@@ -44,7 +44,7 @@ function rejectText(text, pattern, label) {
 }
 
 const sizes = parseCsv(fs.readFileSync(path.join(root, "competition/benchmarks/occupied-sizes.csv"), "utf8"));
-const tools = ["Amy", "Legacy devkit", "libcv", "PVColLib", "devkitSMS", "CVBasic", "z88dk", "ugBASIC"];
+const tools = ["Amy", "Legacy devkit", "libcv", "PVColLib", "CVBasic", "devkitSMS", "z88dk", "ugBASIC"];
 const labels = {
   Amy: "Amy Studio",
   "Legacy devkit": "NewColeco",

@@ -1062,3 +1062,17 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   ROM output.
 
 
+## 2026-11-06 - ugBASIC 2db87ebd becomes the ranked revision
+
+- Official ugBASIC `main` commit `2db87ebd` rebuilds and passes all six ColecoVision runtime
+  oracles. Its total is 20,022 occupied bytes, saving 855 bytes versus `afd97a3`.
+- The evidence package retains the six complete ROMs, source files, measurements and SHA-256
+  hashes. See `docs/audits/optimization/ugbasic-refresh-2026-11-06.md`.
+
+## 2026-11-06 - CVBasic e84bf978 becomes the ranked revision
+
+- CVBasic `main` commit `e84bf978` rebuilds and passes all six ColecoVision runtime oracles. Its
+  total is 11,698 occupied bytes, saving 3,691 bytes versus `e99aede0` and moving ahead of devkitSMS.
+- The evidence package retains the six complete ROMs, source files, measurements and SHA-256
+  hashes. See `docs/audits/optimization/cvbasic-refresh-2026-11-06.md`.
+

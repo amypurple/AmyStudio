@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-10-29
+Updated: 2026-11-06
 
 ## Method
 
@@ -32,9 +32,9 @@ features are listed separately from language capabilities.
 | Solution | Version or revision | Version date |
 |---|---|---|
 | Amy Studio | `472653ae1` | 2026-10-27 |
-| CVBasic | 0.9.2, tag `e99aede0` | 2026-07-24 |
+| CVBasic | `main` commit `e84bf978` | 2026-11-05 |
 | z88dk | nightly `26587-33d4c333ea-20261020`, zsdcc 4.6 | 2026-10-20 |
-| ugBASIC | `main` commit `afd97a3` | 2026-10-29 |
+| ugBASIC | `main` commit `2db87ebd` | 2026-11-01 |
 | devkitSMS | commit `533ae572`, SDCC 4.5.0 | 2026-09-29 |
 | PVColLib | 1.6.0, commit `f9335847` | 2026-05-31 |
 | NewColeco | historical `CRTCV` / `CVLIB` / GETPUT 1.1 snapshot, SDCC 2.9.0 #5416 | compiler dated 2009-03; snapshot recovered 2026-09-01 |
@@ -68,19 +68,19 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | Solution | Setting used | Observation |
 |---|---|---|
 | Amy Studio | Experimental | All six runtime oracles pass; current sizes include VDP-safe NMI deferral |
-| CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
+| CVBasic `main` `e84bf978` (2026-11-05) | Normal compiler; TMSColor `-z -p2` for Bitmap | All six rebuilt and runtime-validated; Pletter is used for its bitmap |
 | z88dk nightly 2026-10-20 | zsdcc 4.6 size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
-| ugBASIC `main` `afd97a3` (2026-10-29) | Default peephole optimizer; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | All six rebuilt and runtime-validated; testing 2 through 64 peephole passes gives the same minimum total |
+| ugBASIC `main` `2db87ebd` (2026-11-01) | Default peephole optimizer; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | All six rebuilt and runtime-validated; the complete ROMs and hashes are included in the evidence archive |
 | devkitSMS 2026-09-29 / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 200000`; `NO_FRAME_INT_HOOK`; `MAXSPRITES=3`; brief VRAM copies/fills | Includes the corrected ColecoVision VDP interrupt acknowledgement, IRQ/NMI vector protection, and bounded static-RAM clearing |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
-The October 29 ugBASIC refresh changes the ranked revision. Commit `afd97a3` fixes both the earlier
-16x16 TMS9918 pattern conversion regression and `SPRITE DISABLE`. The six rebuilt ROMs pass the
-bitmap and metasprite runtime oracles and occupy 20,877 bytes total. Source-level size settings were
-also rechecked: byte-default variables, `PRINT RAW`, a direct byte truth test for the keypad, native MSC1 compression and peephole
-optimization are active. Pass limits from 2 through 64 converge to the same result.
+The November 6 ugBASIC refresh changes the ranked revision to commit `2db87ebd`. The six rebuilt
+ROMs pass the bitmap, controller, metasprite, state-update and tile-animation runtime oracles and
+occupy 20,022 bytes total, 855 fewer than the previously ranked revision. Byte-default variables,
+`PRINT RAW`, the direct byte truth test, native MSC1 compression and the default peephole optimizer
+remain enabled.
 
 These are the most size-oriented **native settings validated in this study**, not claims about
 every release or project configuration. No other toolchain passed through Amy's optimizer or MDL.
@@ -108,21 +108,21 @@ replacement samples, dependencies, and provenance are complete. The detailed aud
 
 ### Real occupied size, excluding cartridge padding
 
-| Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
+| Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | CVBasic | devkitSMS | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 1,401 | 1,466 | 1,980 | 1,419 |
-| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,691 | 4,525 | 4,680 | 4,948 | 4,976 | 7,649 |
-| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,403 | 1,695 | 2,272 | 1,996 |
-| Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,654 | 1,845 | 2,492 | 3,711 |
-| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,291 | 1,308 | 2,099 | 2,453 | 2,712 | 4,012 |
-| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 1,838 | 2,982 | 2,729 | 2,090 |
-| **Six-sample total*** | **5,126** | **7,386** | **9,141** | **10,835** | **10,967** | **13,075** | **15,389** | **17,161** | **20,877** |
+| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,401 | 1,980 | 1,340 |
+| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,691 | 4,525 | 4,313 | 4,680 | 4,976 | 7,580 |
+| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,403 | 2,272 | 1,917 |
+| Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,261 | 1,654 | 2,492 | 3,295 |
+| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,291 | 1,308 | 1,890 | 2,099 | 2,712 | 3,931 |
+| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 2,332 | 1,838 | 2,729 | 1,959 |
+| **Six-sample total*** | **5,126** | **7,386** | **9,141** | **10,835** | **10,967** | **11,698** | **13,075** | **17,161** | **20,022** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
-The 7,649-byte ugBASIC Warrior uses native `BITMAP ENABLE(16)`, `CLS BLACK`,
+The 7,580-byte ugBASIC Warrior uses native `BITMAP ENABLE(16)`, `CLS BLACK`,
 `LOAD IMAGE ... EXACT COMPRESSED`, and `PUT IMAGE`. The oracle finds 450 Pattern-byte and 1,322
 Color-byte differences caused by equivalent foreground/background encodings, while all 49,152
 rendered pixels match. The MSC1 direct-to-VRAM result is pixel-exact.
@@ -237,7 +237,7 @@ The PDF shows every converted image. Complete per-picture ratios, decoder sizes,
 ### Observations supported by this suite
 
 - Amy produces the smallest measured ROM for Hello, Controller, and this exact bitmap fixture
-  (3,213 versus CVBasic's 4,948 bytes for the bitmap).
+  (3,213 versus CVBasic's 4,313 bytes for the bitmap).
 - Portable C/BASIC runtimes add visible fixed cost, but complete games may scale differently.
 - Cartridge length includes packaging; a padded 32 KB file is not necessarily a 32 KB program.
 - Smaller results count only after runtime validation; this finite suite cannot establish a
