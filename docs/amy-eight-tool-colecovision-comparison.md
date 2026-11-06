@@ -110,13 +110,13 @@ replacement samples, dependencies, and provenance are complete. The detailed aud
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 227 | 795 | 1,001 | 1,106 | 1,401 | 1,466 | 1,980 | 1,419 |
+| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 1,401 | 1,466 | 1,980 | 1,419 |
 | Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,691 | 4,525 | 4,680 | 4,948 | 4,976 | 7,649 |
 | Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,403 | 1,695 | 2,272 | 1,996 |
 | Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,654 | 1,845 | 2,492 | 3,711 |
-| Gameplay State Update* | **508** | 1,134 | 1,253 | 1,291 | 1,308 | 2,099 | 2,453 | 2,712 | 4,012 |
+| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,291 | 1,308 | 2,099 | 2,453 | 2,712 | 4,012 |
 | Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 1,838 | 2,982 | 2,729 | 2,090 |
-| **Six-sample total*** | **5,126** | **7,372** | **9,141** | **10,835** | **10,967** | **13,075** | **15,389** | **17,161** | **20,877** |
+| **Six-sample total*** | **5,126** | **7,386** | **9,141** | **10,835** | **10,967** | **13,075** | **15,389** | **17,161** | **20,877** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -168,13 +168,13 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 
 | Sample | Pure ASM | Amy Studio | ASM difference |
 |---|---:|---:|---:|
-| Hello World | 184 | 227 | -43 |
+| Hello World | 184 | 234 | -50 |
 | Warrior bitmap | 3,066 | 3,213 | -147 |
 | Controller Visual | 264 | 604 | -340 |
 | Sprite Metasprite | 343 | 939 | -596 |
-| Gameplay State Update | 508 | 1,134 | -626 |
+| Gameplay State Update | 508 | 1,141 | -633 |
 | Tile Animation | 761 | 1,255 | -494 |
-| **Six-sample total** | **5,126** | **7,372** | **-2,246** |
+| **Six-sample total** | **5,126** | **7,386** | **-2,260** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for
