@@ -196,6 +196,33 @@ export function createPrintHelpers(ctx) {
     ];
   }
 
+  function emitAsciiZeroPrefix(bufferRef, count) {
+    if (!Number.isInteger(count) || count < 0) return null;
+    if (count === 0) return [];
+    const lines = [
+      `    ld hl,${bufferRef}`,
+      "    ld a,$30"
+    ];
+    for (let i = 0; i < count; i++) {
+      lines.push("    ld (hl),a");
+      if (i + 1 < count) lines.push("    inc hl");
+    }
+    return lines;
+  }
+
+  function emitAsciiZeroPrefixIntoBuffer(bufferToken, count) {
+    if (!Number.isInteger(count) || count < 0) return null;
+    if (count === 0) return [];
+    const loadDest = emitLoadArrayAddressIntoHL(bufferToken, "0");
+    if (!loadDest) return null;
+    const lines = [...loadDest, "    ld a,$30"];
+    for (let i = 0; i < count; i++) {
+      lines.push("    ld (hl),a");
+      if (i + 1 < count) lines.push("    inc hl");
+    }
+    return lines;
+  }
+
   function emitPrintInt8AtAuto(valueToken, xToken, yToken, digitsToken, widthMode = false) {
     const loadValue = emitLoadInt8ValueInto("a", valueToken);
     const loadCoords = emitLoadTextCoordsIntoDE(xToken, yToken);
@@ -260,16 +287,19 @@ export function createPrintHelpers(ctx) {
 
   function emitPrintInt16AtAuto(valueToken, xToken, yToken, digitsToken, widthMode = false) {
     const digits = Number.parseInt(String(digitsToken), 10);
-    if (!Number.isInteger(digits) || digits < 1 || digits > 5) return null;
+    if (!Number.isInteger(digits) || digits < 1 || digits > 16) return null;
     const loadHL = emitLoadInt16IntoHL(valueToken);
     const loadCoords = emitLoadTextCoordsIntoDE(xToken, yToken);
     if (!loadHL || !loadCoords) return null;
-    const offset = 5 - digits;
+    const prefix = Math.max(0, digits - 5);
+    const offset = digits < 5 ? 5 - digits : 0;
+    const prefixLines = emitAsciiZeroPrefix("AMY_BUFFER32", prefix);
     const postprocess = emitNumericPostprocessAt(`AMY_BUFFER32${offset ? `+${offset}` : ""}`, digits, widthMode);
-    if (!postprocess) return null;
+    if (!prefixLines || !postprocess) return null;
     return [
+      ...prefixLines,
       ...loadHL,
-      "    ld de,AMY_BUFFER32",
+      `    ld de,AMY_BUFFER32${prefix ? `+${prefix}` : ""}`,
       "    call AMY_U16_TO_ASCII5",
       ...postprocess,
       ...loadCoords,
@@ -1292,17 +1322,20 @@ export function createPrintHelpers(ctx) {
 
   function emitFormatInt16IntoBufferAuto(valueToken, bufferToken, digitsToken, widthMode = false) {
     const digits = Number.parseInt(String(digitsToken), 10);
-    if (!Number.isInteger(digits) || digits < 1 || digits > 5) return null;
+    if (!Number.isInteger(digits) || digits < 1 || digits > 16) return null;
     const loadHL = emitLoadUnsignedInt16ValueIntoHL(valueToken);
     const bufferInfo = getByteArrayBufferInfoLocal(bufferToken, digits);
     if (!loadHL || !bufferInfo) return null;
-    const offset = 5 - digits;
+    const prefix = Math.max(0, digits - 5);
+    const offset = digits < 5 ? 5 - digits : 0;
+    const prefixLines = emitAsciiZeroPrefixIntoBuffer(bufferToken, prefix);
     const lines = [
+      ...prefixLines,
       ...loadHL,
       "    ld de,AMY_BUFFER32",
       "    call AMY_U16_TO_ASCII5"
     ];
-    const copyOut = emitCopyAsciiSliceIntoBuffer(bufferToken, "AMY_BUFFER32", offset, digits);
+    const copyOut = emitCopyAsciiSliceIntoBuffer(bufferToken, "AMY_BUFFER32", offset, Math.min(digits, 5), prefix);
     if (!copyOut) return null;
     lines.push(...copyOut);
     const postprocess = emitNumericPostprocessBuffer(bufferToken, digits, widthMode);

@@ -31,7 +31,7 @@ text screen
 print at 2,5, "L " + digits$(Lv + 1, Lv)
 `);
 assert.equal(unsupported.ok, false);
-assert.match(unsupported.log, /print at requires byte-sized coordinates plus string literals or supported typed values/i);
+assert.match(unsupported.log, /field width must be a literal integer from 1 to 16/i);
 
 const temp = mkdtempSync(join(tmpdir(), "amy-digits-expr-concat-"));
 try {
