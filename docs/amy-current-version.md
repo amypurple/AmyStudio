@@ -58,7 +58,8 @@ The canonical types are `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `fixed`,
 - `fp5` supports fixed global and local arrays with indexed assignment, arithmetic,
   comparison, clear, format, print, math builtins, random values, and `fixed32`
   conversions.
-- `inc` and `dec` support packed BCD values, including indexed global and local BCD arrays.
+- `inc`, `dec`, and `+=`/`-=` with `u8`, `i8`, or unsigned `u16` values support packed
+  BCD targets, including indexed global and local BCD arrays.
 - Legacy `u32 zero/copy/add/inc/sub` forms remain migration-only compatibility syntax;
   modern code uses assignment and compound operators.
 - `random(Max)` and `random(Min, Max)` produce integer values; zero-argument `random()` is
@@ -70,7 +71,8 @@ The canonical types are `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `fixed`,
 - `select case`, `for`/`next`, `while`, `do`/`loop`, and `loop forever`
 - `on Expr goto` and `on Expr gosub` indexed dispatch
 - typed `state machine` declarations and bounded `dispatch State using Machine`
-- calculated byte-array and ROM-table indexes using byte-sized expressions
+- calculated byte-array and ROM-table indexes using typed byte- or word-sized expressions,
+  including parenthesized arithmetic followed by division
 - gameplay verbs such as `bounce`, `clamp`, collision tests, timed waits, and input waits
 
 A `for` loop variable must be declared before the loop. Constant indexes are checked when

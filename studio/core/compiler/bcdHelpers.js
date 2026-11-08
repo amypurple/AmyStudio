@@ -9,6 +9,7 @@ export function createBcdHelpers(ctx) {
     parseNumericLiteral,
     makeGeneratedLabel,
     emitLoadInt8Into,
+    emitLoadInt16IntoHL,
     isSignedDeclaredType,
     resolveDeclaredValueType,
     emitLoadArrayAddressIntoHL,
@@ -206,6 +207,40 @@ export function createBcdHelpers(ctx) {
     return lines;
   }
 
+  function emitBcdAdjustByUint16(varName, valueToken, op) {
+    const info = getBcdInfo(varName);
+    if (!info || resolveDeclaredValueType(valueToken) !== "u16") return null;
+    const loadValue = emitLoadInt16IntoHL?.(valueToken, "u16");
+    if (!loadValue) return null;
+    const digitCount = getBcdDigitCount(info);
+    const placeValues = [1, 10, 100, 1000, 10000].slice(0, Math.min(5, digitCount));
+    const lines = [...loadValue];
+    for (const placeValue of placeValues) {
+      const digitLoop = makeGeneratedLabel("BcdU16DigitLoop");
+      const digitDone = makeGeneratedLabel("BcdU16DigitDone");
+      const adjustDigit = op === "add"
+        ? emitBcdAdd(varName, String(placeValue))
+        : emitBcdSub(varName, String(placeValue));
+      if (!adjustDigit) return null;
+      lines.push(
+        "    ld bc,10",
+        "    call AMY_U16_DIV",
+        "    push hl",
+        "    ld a,(AMY_U16_DIV_REM)",
+        "    ld b,a",
+        "    or a",
+        `    jr z,${digitDone}`,
+        `${digitLoop}:`,
+        ...adjustDigit,
+        "    dec b",
+        `    jp nz,${digitLoop}`,
+        `${digitDone}:`,
+        "    pop hl"
+      );
+    }
+    return lines;
+  }
+
   function getInt8ExpressionDeclaredType(valueToken) {
     const direct = resolveDeclaredValueType(valueToken);
     if (["u8", "i8", "byte", "boolean", "bool"].includes(String(direct || "").toLowerCase())) return direct;
@@ -225,6 +260,9 @@ export function createBcdHelpers(ctx) {
     const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
     if (getInt8ExpressionDeclaredType(valueToken) !== null) {
       return emitBcdAdjustByInt8(varName, valueToken, "add");
+    }
+    if (resolveDeclaredValueType(valueToken) === "u16") {
+      return emitBcdAdjustByUint16(varName, valueToken, "add");
     }
     if (valueInfo) {
       if (valueInfo.kind !== "bcd" || getBcdDigitCount(valueInfo) > digitCount) return null;
@@ -282,6 +320,9 @@ export function createBcdHelpers(ctx) {
     let lines = null;
     if (getInt8ExpressionDeclaredType(valueToken) !== null) {
       return emitBcdAdjustByInt8(varName, valueToken, "sub");
+    }
+    if (resolveDeclaredValueType(valueToken) === "u16") {
+      return emitBcdAdjustByUint16(varName, valueToken, "sub");
     }
     if (valueInfo) {
       lines = ["    or a"];
@@ -605,6 +646,7 @@ export function createBcdHelpers(ctx) {
     emitBcdAddOne,
     emitBcdSubOne,
     emitBcdAdjustByInt8,
+    emitBcdAdjustByUint16,
     emitBcdAdd,
     emitBcdSub,
     emitBcdClear,

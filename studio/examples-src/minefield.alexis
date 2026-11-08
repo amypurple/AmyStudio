@@ -1,0 +1,724 @@
+cartridge "MINEFIELD/SEAN IGO/1983"
+
+' MINEFIELD
+' By Sean Igo, COMPUTE! magazine, Issue 37, June 1983, page 260.
+' Original type-in versions were published for the PET/CBM, VIC-20,
+' Commodore 64, and Apple computers.
+'
+' ColecoVision adaptation by Amy Bienvenu, 2026.
+' Amy programming and release polish by OpenAI Codex.
+' The player drives a truck through a wrapping minefield and must defuse
+' every timed bomb before it explodes. Bombs become dangerous, flash, leave
+' craters, and chain-react. The truck cannot stop after it begins moving.
+'
+' Controls: joystick selects direction; either fire button starts/selects.
+' Adaptation liberties: a 26 by 17 CRT-safe field, joystick menus, explicit
+' bomb-state characters, and danger-scaled frame timing suited to the smaller
+' ColecoVision field. Danger 0 retains the original C64 timer values.
+' The original C64 has no music: its shared SID routine uses a sawtooth
+' around 546 Hz for bomb pickup and noise for both explosions and truck
+' destruction. This port approximates those effects on the SN76489; its
+' title tune and field-clear fanfare are documented ColecoVision additions.
+
+const FieldLeft = 3
+const FieldRight = 28
+const FieldTop = 5
+const FieldBottom = 21
+const EmptyChar = 32
+const MineChar = 128
+const BombChar = 129
+const HotBombChar = 130
+const FlashBombChar = 131
+const CraterChar = 132
+const ExplosionChar = 133
+const BorderVChar = 134
+const BorderHChar = 135
+const MaxBombs = 21
+const SndTitleMelody = 1
+const SndTitleBass = 2
+const SndPickup = 3
+const SndExplosion = 4
+const SndCrash = 5
+const SndClear = 6
+
+u8 BombX[21]
+u8 BombY[21]
+u16 BombTime[21]                ' elapsed frames
+u16 BombWarn[21]
+u16 BombFlash[21]
+u16 BombExplode[21]
+u8 BombState[21]                ' 0 normal, 1 hot, 2 flashing, 3 gone
+
+u16 Score = 0
+u16 HighScore = 0
+u8 Wave = 0
+u8 Trucks = 0
+u8 Skill = 0
+u8 Choice = 1
+u8 BombsLeft = 0
+u8 InitialBombs = 0
+u8 BombsGathered = 0
+u8 PX = 15
+u8 PY = 13
+u8 Direction = 0               ' 0 stopped, 1 up, 2 right, 3 down, 4 left
+u8 MoveTick = 0
+u8 FlashTick = 0
+bool TruckDead = false
+bool ExplosionPending = false
+u8 ExplodeIndex = 0
+
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 Try = 0
+u8 CX = 0
+u8 CY = 0
+u8 Ch = 0
+u8 N = 0
+u8 MinX = 0
+u8 MaxX = 0
+u8 MinY = 0
+u8 MaxY = 0
+u16 Num = 0
+u16 TileDst = 0
+u16 TileOff = 0
+u16 BaseTimer = 1680
+u16 TimerScale = 0
+u16 TimerRemainder = 0
+u16 Penalty = 0
+
+  tile screen
+  nmi off
+  screen off
+  set sound table MineSoundTable areas 6
+  sprites 8x8
+  sprites simple
+  copy TruckSprites count 32 to vram.spr_pat
+  LoadTiles
+  clear sprites
+  set sprite count 1
+  update sprites
+  screen on
+  nmi on
+
+title_screen:
+  TitleMenu
+  if Choice = 2 then
+    HowToPlay
+    goto title_screen
+  end if
+  if Choice = 3 then
+    Credits
+    goto title_screen
+  end if
+  SkillMenu
+
+new_game:
+  Score = 0
+  Wave = 0
+  Trucks = 4 - Skill
+
+new_wave:
+  inc Wave
+  SetupWave
+
+play_loop:
+  wait
+  ReadControls
+  UpdateBombClock
+  if ExplosionPending then
+    ExplosionPending = false
+    I = ExplodeIndex
+    ExplodeBomb
+  end if
+  MoveTruck
+  if TruckDead then goto truck_lost
+  if BombsLeft = 0 then goto wave_clear
+  goto play_loop
+
+wave_clear:
+  N = InitialBombs - BombsGathered
+  Penalty = N * 10
+  if Score >= Penalty then
+    Score -= Penalty
+  else
+    Score = 0
+  end if
+  print at 10,3, "FIELD CLEARED"
+  play sound SndClear
+  ShowStatus
+  wait 90 frames
+  goto new_wave
+
+truck_lost:
+  play sound SndCrash
+  print at 10,3, "TRUCK LOST!"
+  wait 75 frames
+  if Trucks > 0 then dec Trucks
+  if Trucks = 0 then goto game_over
+  FindTruckStart
+  ShowStatus
+  goto play_loop
+
+game_over:
+  if Score > HighScore then HighScore = Score
+  nmi off
+  cls
+  print centered at 7, "GAME OVER"
+  print at 9,10, "SCORE "
+  print at 15,10, digits$(Score, 5)
+  print at 9,12, "HIGH  "
+  print at 15,12, digits$(HighScore, 5)
+  print centered at 16, "PRESS FIRE"
+  nmi on
+  pause until press and release sleep after 30 seconds
+  goto title_screen
+
+sub TitleMenu:
+  nmi off
+  screen off
+  hide sprite 0
+  update sprites
+  cls
+  print centered at 3, "M I N E F I E L D"
+  print centered at 5, "BY SEAN IGO"
+  print centered at 6, "COMPUTE! JUNE 1983"
+  put char MineChar at 7,8
+  put char BombChar at 11,8
+  put char HotBombChar at 15,8
+  put char FlashBombChar at 19,8
+  put char CraterChar at 23,8
+  set sprite 0 to 63,120,0,15
+  update sprites
+  print at 13,11, "START"
+  print at 13,13, "HOW TO PLAY"
+  print at 13,15, "CREDITS"
+  Choice = 1
+  screen on
+  nmi on
+  play sounds SndTitleMelody, SndTitleBass
+  choose menu 1 to 3 into Choice cursor $3E at 11,11 step 2
+  stop sound SndTitleMelody
+  stop sound SndTitleBass
+  wait no fire
+  return
+end sub
+
+sub HowToPlay:
+  nmi off
+  screen off
+  hide sprite 0
+  update sprites
+  cls
+  print centered at 2, "HOW TO PLAY  1/2"
+  print at 3,5, "DRIVE OVER EVERY BOMB"
+  print at 3,7, "BEFORE ITS TIMER EXPIRES."
+  put char BombChar at 3,10
+  print at 5,10, "NORMAL       10 POINTS"
+  put char HotBombChar at 3,12
+  print at 5,12, "WARNING      20 POINTS"
+  put char FlashBombChar at 3,14
+  print at 5,14, "FLASHING     30 POINTS"
+  put char ExplosionChar at 3,17
+  print at 5,17, "A BLAST COSTS 10."
+  print at 3,19, "EXPLOSIONS CHAIN TOGETHER."
+  print centered at 22, "FIRE: NEXT"
+  screen on
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  screen off
+  cls
+  print centered at 2, "HOW TO PLAY  2/2"
+  print at 3,5, "STEER WITH THE JOYSTICK."
+  print at 3,8, "ONCE THE TRUCK STARTS,"
+  print at 3,9, "IT CANNOT STOP."
+  print at 3,12, "THE FIELD WRAPS AT"
+  print at 3,13, "EVERY EDGE."
+  put char MineChar at 3,16
+  put char CraterChar at 4,16
+  print at 6,16, "MINE/CRATER: AVOID"
+  print at 3,19, "TIP: TAKE FLASHING"
+  print at 3,20, "BOMBS FIRST."
+  print centered at 22, "FIRE: TITLE"
+  screen on
+  nmi on
+  pause until press and release sleep after 30 seconds
+  return
+end sub
+
+sub Credits:
+  nmi off
+  screen off
+  hide sprite 0
+  update sprites
+  cls
+  print centered at 3, "MINEFIELD"
+  print centered at 5, "ORIGINAL BY SEAN IGO"
+  print centered at 7, "COMPUTE! ISSUE 37"
+  print centered at 8, "JUNE 1983  PAGE 260"
+  print centered at 11, "COLECOVISION ADAPTATION"
+  print centered at 13, "AMY BIENVENU  2026"
+  print centered at 16, "PROGRAMMED WITH OPENAI CODEX"
+  print centered at 19, "MADE WITH AMY STUDIO"
+  print centered at 22, "FIRE: TITLE"
+  screen on
+  nmi on
+  pause until press and release sleep after 30 seconds
+  return
+end sub
+
+sub SkillMenu:
+  nmi off
+  screen off
+  hide sprite 0
+  update sprites
+  cls
+  print centered at 4, "SELECT DANGER"
+  print at 9,8, "0  CALM    4 TRUCKS"
+  print at 9,10, "1  NORMAL  3 TRUCKS"
+  print at 9,12, "2  HARD    2 TRUCKS"
+  print at 9,14, "3  PANIC   1 TRUCK"
+  Skill = 1
+  screen on
+  nmi on
+  choose menu 0 to 3 into Skill cursor $3E at 10,8 step 2
+  wait no fire
+  return
+end sub
+
+sub SetupWave:
+  nmi off
+  screen off
+  cls
+  clear sprites
+  set sprite count 1
+  update sprites
+  print at 2,1, "SCORE"
+  print at 14,1, "WAVE"
+  print at 23,1, "TRUCKS"
+  for CX = 2 to 29
+    put char BorderHChar at CX,4
+    put char BorderHChar at CX,22
+  next
+  for CY = FieldTop to FieldBottom
+    put char BorderVChar at 2,CY
+    put char BorderVChar at 29,CY
+  next
+  for I = 0 to MaxBombs - 1
+    BombState[I] = 3
+    BombTime[I] = 0
+  next
+  for I = 1 to 25
+    PlaceMine
+  next
+  BombsLeft = 20
+  if Wave <= 11 then
+    BombsLeft = Wave * 3
+    BombsLeft >>= 1
+    BombsLeft += 4
+  end if
+  InitialBombs = BombsLeft
+  BombsGathered = 0
+  BaseTimer = 1680
+  if Wave = 2 then BaseTimer = 1500
+  if Wave = 3 then BaseTimer = 1320
+  if Wave = 4 then BaseTimer = 1140
+  if Wave >= 5 then BaseTimer = 960
+  ' The compact ColecoVision field shortens every route. Danger 0 keeps the
+  ' published C64 deadlines; higher settings restore pressure without ever
+  ' shortening the warning phase independently of the full timer.
+  TimerScale = 100
+  if Skill = 1 then TimerScale = 75
+  if Skill = 2 then TimerScale = 60
+  if Skill = 3 then TimerScale = 50
+  TimerRemainder = BaseTimer / 100
+  TimerRemainder *= TimerScale
+  Penalty = TimerRemainder
+  TimerRemainder = BaseTimer % 100
+  TimerRemainder *= TimerScale
+  TimerRemainder /= 100
+  BaseTimer = Penalty + TimerRemainder
+  for I = 0 to BombsLeft - 1
+    PlaceBomb
+  next
+  FindTruckStart
+  ShowStatus
+  screen on
+  nmi on
+  return
+end sub
+
+sub PlaceMine:
+  for Try = 1 to 80
+    CX = random(6, 25)
+    CY = random(8, 18)
+    Ch = get char at CX,CY
+    if Ch = EmptyChar then
+      if CX = 15 then
+        if CY = 13 then goto mine_retry
+      end if
+      put char MineChar at CX,CY
+      return
+    end if
+mine_retry:
+  next
+  return
+end sub
+
+sub PlaceBomb:
+  for Try = 1 to 80
+    CX = random(6, 25)
+    CY = random(8, 18)
+    Ch = get char at CX,CY
+    if Ch = EmptyChar then
+      if CX = 15 then
+        if CY = 13 then goto bomb_retry
+      end if
+      BombX[I] = CX
+      BombY[I] = CY
+      BombTime[I] = 0
+      TimerScale = random(40, 100)
+      ' Compute floor(BaseTimer * TimerScale / 100) without overflowing
+      ' the Z80's 16-bit intermediate product. The C64 original used
+      ' floating-point BASIC, so its multiplication could not wrap here.
+      TimerRemainder = BaseTimer / 100
+      TimerRemainder *= TimerScale
+      BombWarn[I] = TimerRemainder
+      TimerRemainder = BaseTimer % 100
+      TimerRemainder *= TimerScale
+      TimerRemainder /= 100
+      BombWarn[I] += TimerRemainder
+      BombFlash[I] = BombWarn[I] >> 1
+      BombFlash[I] += BombWarn[I]
+      BombExplode[I] = BombWarn[I] >> 2
+      BombExplode[I] += BombFlash[I]
+      BombState[I] = 0
+      put char BombChar at CX,CY
+      return
+    end if
+bomb_retry:
+  next
+  BombX[I] = 6
+  BombY[I] = 8
+  BombTime[I] = 0
+  BombWarn[I] = BaseTimer
+  BombFlash[I] = BaseTimer + (BaseTimer >> 1)
+  BombExplode[I] = BombFlash[I] + (BaseTimer >> 2)
+  BombState[I] = 0
+  put char BombChar at 6,8
+  return
+end sub
+
+sub FindTruckStart:
+  put char EmptyChar at PX,PY
+  PX = 15
+  PY = 13
+  put char EmptyChar at PX,PY
+  Direction = 0
+  TruckDead = false
+  PlaceTruck
+  return
+end sub
+
+sub PlaceTruck:
+  CX = PX << 3
+  CY = PY << 3
+  dec CY
+  I = Direction
+  if I = 0 then I = 2
+  dec I
+  set sprite 0 to CY,CX,I,15
+  update sprites
+  return
+end sub
+
+sub ReadControls:
+  if joypad(1).up then Direction = 1
+  if joypad(1).right then Direction = 2
+  if joypad(1).down then Direction = 3
+  if joypad(1).left then Direction = 4
+  if joypad(2).up then Direction = 1
+  if joypad(2).right then Direction = 2
+  if joypad(2).down then Direction = 3
+  if joypad(2).left then Direction = 4
+  return
+end sub
+
+sub MoveTruck:
+  if TruckDead then return
+  if Direction = 0 then return
+  inc MoveTick
+  if MoveTick < 6 then return
+  MoveTick = 0
+  if Direction = 1 then
+    if PY = FieldTop then
+      PY = FieldBottom
+    else
+      dec PY
+    end if
+  end if
+  if Direction = 2 then
+    if PX = FieldRight then
+      PX = FieldLeft
+    else
+      inc PX
+    end if
+  end if
+  if Direction = 3 then
+    if PY = FieldBottom then
+      PY = FieldTop
+    else
+      inc PY
+    end if
+  end if
+  if Direction = 4 then
+    if PX = FieldLeft then
+      PX = FieldRight
+    else
+      dec PX
+    end if
+  end if
+  Ch = get char at PX,PY
+  if Ch = MineChar then TruckDead = true
+  if Ch = CraterChar then TruckDead = true
+  if TruckDead then
+    put char CraterChar at PX,PY
+    hide sprite 0
+    update sprites
+    return
+  end if
+  CheckBombPickup
+  PlaceTruck
+  return
+end sub
+
+sub CheckBombPickup:
+  for J = 0 to MaxBombs - 1
+    if BombState[J] < 3 then
+      if BombX[J] = PX then
+        if BombY[J] = PY then
+          if BombState[J] = 0 then Score += 10
+          if BombState[J] = 1 then Score += 20
+          if BombState[J] = 2 then Score += 30
+          BombState[J] = 3
+          BombTime[J] = 0
+          dec BombsLeft
+          inc BombsGathered
+          put char EmptyChar at PX,PY
+          play sound SndPickup
+          ShowStatus
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub UpdateBombClock:
+  inc FlashTick
+  if FlashTick >= 12 then
+    FlashTick = 0
+    DrawFlashingBombs
+  end if
+  for I = 0 to MaxBombs - 1
+    if BombState[I] < 3 then
+      if BombTime[I] >= BombExplode[I] then
+        ExplosionPending = true
+        ExplodeIndex = I
+        return
+      end if
+      inc BombTime[I]
+      N = BombState[I]
+      if BombTime[I] >= BombWarn[I] then BombState[I] = 1
+      if BombTime[I] >= BombFlash[I] then BombState[I] = 2
+      if BombState[I] <> N then DrawBomb
+    end if
+  next
+  return
+end sub
+
+sub DrawBomb:
+  if BombState[I] = 0 then put char BombChar at BombX[I],BombY[I]
+  if BombState[I] = 1 then put char HotBombChar at BombX[I],BombY[I]
+  if BombState[I] = 2 then put char FlashBombChar at BombX[I],BombY[I]
+  return
+end sub
+
+sub DrawFlashingBombs:
+  for I = 0 to MaxBombs - 1
+    if BombState[I] = 2 then
+      Ch = get char at BombX[I],BombY[I]
+      if Ch = FlashBombChar then
+        put char EmptyChar at BombX[I],BombY[I]
+      else
+        put char FlashBombChar at BombX[I],BombY[I]
+      end if
+    end if
+  next
+  return
+end sub
+
+sub ExplodeBomb:
+  if BombState[I] = 3 then return
+  CX = BombX[I]
+  CY = BombY[I]
+  BombState[I] = 3
+  BombTime[I] = 0
+  dec BombsLeft
+  play sound SndExplosion
+  MinY = CY - 3
+  MaxY = CY + 3
+  for K = MinY to MaxY
+    N = 3
+    if K = MinY then N = 1
+    if K = MaxY then N = 1
+    J = MinY + 1
+    if K = J then N = 2
+    J = MaxY - 1
+    if K = J then N = 2
+    MinX = CX - N
+    MaxX = CX + N
+    for J = MinX to MaxX
+      put char ExplosionChar at J,K
+      if J = PX then
+        if K = PY then TruckDead = true
+      end if
+    next
+  next
+  if TruckDead then
+    hide sprite 0
+    update sprites
+  end if
+  wait 12 frames
+  for K = MinY to MaxY
+    N = 3
+    if K = MinY then N = 1
+    if K = MaxY then N = 1
+    J = MinY + 1
+    if K = J then N = 2
+    J = MaxY - 1
+    if K = J then N = 2
+    MinX = CX - N
+    MaxX = CX + N
+    for J = MinX to MaxX
+      put char EmptyChar at J,K
+    next
+  next
+  for J = 0 to MaxBombs - 1
+    if BombState[J] < 3 then
+      if BombY[J] >= MinY then
+        if BombY[J] <= MaxY then
+          N = 3
+          if BombY[J] = MinY then N = 1
+          if BombY[J] = MaxY then N = 1
+          K = MinY + 1
+          if BombY[J] = K then N = 2
+          K = MaxY - 1
+          if BombY[J] = K then N = 2
+          MinX = CX - N
+          MaxX = CX + N
+          if BombX[J] >= MinX then
+            if BombX[J] <= MaxX then BombTime[J] = BombExplode[J]
+          end if
+        end if
+      end if
+    end if
+  next
+  put char CraterChar at CX,CY
+  ShowStatus
+  return
+end sub
+
+sub LoadTiles:
+  TileDst = 1024
+  for K = 0 to 2
+    copy FieldPatterns count 64 to vram.pattern + TileDst
+    copy FieldColors count 64 to vram.color + TileDst
+    TileDst += 2048
+  next
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,2, digits$(Score, 5)
+  Num = Wave
+  print at 15,2, digits$(Num, 2)
+  Num = Trucks
+  print at 26,2, digits$(Num, 1)
+  Num = BombsLeft
+  print at 2,3, "BOMBS "
+  print at 8,3, digits$(Num, 1)
+  return
+end sub
+
+' Four directional 8x8 truck silhouettes: up, right, down, left.
+data TruckSprites bytes
+  $18,$3C,$7E,$5A,$7E,$3C,$24,$24
+  $00,$24,$7E,$FF,$FF,$7E,$24,$00
+  $24,$24,$3C,$7E,$5A,$7E,$3C,$18
+  $00,$24,$7E,$FF,$FF,$7E,$24,$00
+end data
+
+' Mine, normal bomb, warning bomb, flashing bomb, crater, explosion, frame.
+data FieldPatterns bytes
+  $81,$42,$24,$18,$18,$24,$42,$81
+  $18,$3C,$66,$42,$42,$66,$3C,$18
+  $FF,$C3,$99,$BD,$BD,$99,$C3,$FF
+  $3C,$7E,$FF,$DB,$DB,$FF,$7E,$3C
+  $00,$24,$5A,$3C,$7E,$3C,$5A,$24
+  $99,$5A,$3C,$FF,$FF,$3C,$5A,$99
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+end data
+
+data FieldColors bytes
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+end data
+
+asm {
+MinePickupT1:
+    db $40,$CD,$00,$02,$40,$CD,$10,$02,$40,$CD,$20,$02,$50
+MineExplosionN:
+    db $00,$00,$01,$02,$00,$00,$02,$02,$00,$00,$03,$03,$10
+MineClearT1:
+    db $40,$D6,$10,$03,$40,$AA,$10,$03,$40,$8F,$10,$03,$40,$71,$20,$08,$50
+
+MineSoundTable:
+    dw MineTuneMelody,$702B
+    dw MineTuneBass,$7035
+    dw MinePickupT1,$703F
+    dw MineExplosionN,$7049
+    dw MineExplosionN,$7049
+    dw MineClearT1,$703F
+
+; "Bomb Squad March" -- original ColecoVision title music for this port.
+MineTuneMelody:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$30,$1A,$21
+    db $17,$1A,$1C,$1A,$17,$00,$17,$1A,$1F,$1C,$1A,$17,$15,$00,$15,$17
+    db $1A,$1C,$1F,$1C,$1A,$00,$17,$1A,$1C,$1F,$21,$00,$1F,$1C
+    db $17,$1A,$1C,$1A,$17,$00,$17,$1A,$1F,$21,$23,$21,$1F,$00,$1C,$1A
+    db $17,$15,$17,$1A,$1C,$1F,$1A,$17,$15,$00,$00,$01,$01,$01,$01,$01
+    db $FF
+MineTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$18,$32
+    db $07,$00,$00,$00,$0C,$00,$00,$00,$0E,$00,$00,$00,$0C,$00,$00,$00
+    db $07,$00,$00,$00,$0C,$00,$00,$00,$0E,$00,$00,$00,$10,$00,$00,$00
+    db $07,$00,$00,$00,$0C,$00,$00,$00,$0E,$00,$00,$00,$0C,$00,$00,$00
+    db $07,$00,$00,$00,$09,$00,$00,$00,$0E,$00,$00,$00,$07,$01,$01,$01
+    db $FF
+}

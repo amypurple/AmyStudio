@@ -3403,6 +3403,27 @@ export const exampleManifest = [
     "originLabel": "Faithful adaptation"
   },
   {
+    "id": "minefield",
+    "label": "Minefield (June 1983)",
+    "detail": "Sean Igo's Minefield, published in COMPUTE! Issue 37 (June 1983, pages 260-269), adapted for ColecoVision by Amy Bienvenu and programmed with OpenAI Codex. Drive a nonstop truck across a wrapping minefield, collect timed bombs through three warning stages, and survive large chain-reaction blasts.",
+    "projectName": "MINEFIELD",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "faithful-adaptation",
+      "game",
+      "commodore-64",
+      "joystick",
+      "audio"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
     "id": "gold-miner",
     "label": "Gold Miner (TI-99/4A Port)",
     "detail": "Joseph Weber and James Dunn's COMPUTE! mine exploration game, with animated digging, charges, gold and joystick controls.",
@@ -5701,6 +5722,28 @@ export const exampleManifest = [
       "fireflies",
       "sprites",
       "music",
+      "ai-assisted"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
+  },
+  {
+    "id": "afterglow-garden",
+    "label": "Afterglow Garden (2026)",
+    "detail": "Record two movement loops, then cooperate with your own returning echoes to light three flowers at the same instant.",
+    "projectName": "Afterglow Garden",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "puzzle",
+      "time-loop",
+      "echoes",
+      "sprites",
       "ai-assisted"
     ],
     "originKind": "original",

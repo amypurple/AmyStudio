@@ -137,7 +137,7 @@ export function createLoadStoreHelpers(ctx) {
         ? resolveExpressionAstValueType?.(indexAst)
         : resolveValueType(normalizedIndex);
       if (indexType === "int16") {
-        const lines = emitLoadInt16IntoHL(normalizedIndex);
+        const lines = emitLoadInt16IntoHL(normalizedIndex, "u16");
         const scaleLines = emitScaleUnsignedWordHLIntoDE(stride);
         if (!lines || !scaleLines) return null;
         lines.push(...scaleLines);
@@ -171,7 +171,7 @@ export function createLoadStoreHelpers(ctx) {
     }
     if (indexInfo.kind === "array") return null;
     if (indexInfo.type === "int16") {
-      const lines = emitLoadInt16IntoHL(normalizedIndex);
+      const lines = emitLoadInt16IntoHL(normalizedIndex, "u16");
       const scaleLines = emitScaleUnsignedWordHLIntoDE(stride);
       if (!lines || !scaleLines) return null;
       lines.push(...scaleLines);

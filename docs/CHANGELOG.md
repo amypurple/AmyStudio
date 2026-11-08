@@ -1,3 +1,13 @@
+## 2026-11-08 - Bounded BCD word adjustment and divided array indexes
+
+- `BCD += u16` and `BCD -= u16` now use a bounded five-digit decimal
+  decomposition instead of rejecting the source or looping once per binary value.
+  Addition wraps at the declared BCD digit count; subtraction saturates at zero.
+- Parenthesized division expressions such as `Table[(Value - 1) / 8]` now retain
+  unsigned word context when used as RAM-array or ROM-table indexes.
+- A five-profile GearColeco contract covers ROM and RAM indexing, scalar and indexed
+  `u16` sources, the 65,535 boundary, narrow-BCD wrapping, and subtraction below zero.
+
 ## 2026-11-02 - Text and VDP guard RAM safety
 
 - Fixed small programs using `fill ... at`, `put char`, `get char`, `screen on`,

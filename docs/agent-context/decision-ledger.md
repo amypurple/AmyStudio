@@ -1076,3 +1076,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - The evidence package retains the six complete ROMs, source files, measurements and SHA-256
   hashes. See `docs/audits/optimization/cvbasic-refresh-2026-11-06.md`.
 
+
+## 2026-11-08 - BCD word adjustment is bounded and divided indexes retain width
+
+- `BCD += u16` and `BCD -= u16` decompose an unsigned word through at most five divide-by-ten
+  steps and 45 packed-decimal additions. This closes the language gap without the rejected
+  value-proportional loop of up to 65,535 iterations. Addition retains declared-digit wrapping;
+  subtraction retains saturation at zero.
+- RAM-array and ROM-table indexes now pass explicit unsigned word context into the expression
+  loader, so forms such as `Table[(Value - 1) / 8]` compile and execute like the equivalent
+  temporary-variable workaround.
+- `tools/test-bcd-u16-index-runtime.mjs` executes scalar and indexed word sources, 65,535,
+  narrow-BCD wrapping, underflow saturation, and both index paths under all five profiles.

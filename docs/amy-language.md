@@ -1641,8 +1641,10 @@ BCD current limits:
 - BCD-to-BCD assignment and copy require identical declared digit counts
 - local BCD declarations accept non-negative compile-time initializers that fit their declared digit count
 - no implicit assignment from `u16`, `u32`, fixed, or fp5 runtime values
-- `Score += ByteValue` accepts `u8`/`i8`, but `BCD += u16` is deliberately rejected;
-  convert the binary word to BCD explicitly so code size and overflow policy are visible
+- `Score += WordValue` and `Score -= WordValue` accept unsigned `u16` values through a
+  bounded five-digit conversion; the operation performs at most five divisions and 45
+  packed-decimal additions, wraps at the target's declared digit count on addition, and
+  saturates at zero on subtraction
 - no general BCD expressions such as `Score = Score + 10`
 - indexed byte reads such as `Score[0]` are for debugging/inspection only
 

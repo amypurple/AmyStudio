@@ -4058,6 +4058,7 @@ export function transpileAmyCore(sourceText, deps) {
     parseNumericLiteral,
     makeGeneratedLabel,
     emitLoadInt8Into: (...args) => emitLoadInt8Into(...args),
+    emitLoadInt16IntoHL: (...args) => emitLoadInt16IntoHL(...args),
     isSignedDeclaredType,
     resolveDeclaredValueType,
     emitLoadArrayAddressIntoHL: (...args) => emitLoadArrayAddressIntoHL(...args),

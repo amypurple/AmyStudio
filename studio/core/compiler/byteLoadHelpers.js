@@ -45,7 +45,7 @@ export function createByteLoadHelpers(ctx) {
     const needsWideIndex = (Number.isInteger(constantIndex) && constantIndex > 0xFF) || indexType === "int16";
     let lines;
     if (needsWideIndex) {
-      const loadIndex = emitLoadInt16IntoHL(normalizedIndex);
+      const loadIndex = emitLoadInt16IntoHL(normalizedIndex, "u16");
       if (!loadIndex) return null;
       lines = [
         ...loadIndex,
