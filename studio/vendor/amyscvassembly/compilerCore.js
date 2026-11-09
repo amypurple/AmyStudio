@@ -2993,6 +2993,9 @@ function isIxIyDisplacementOperandText(value) {
                                     } else {
                                         val = this.evaluateExpression(operand);
                                     }
+                                    if (!Number.isInteger(val) || val < -128 || val > 255) {
+                                        throw new Error(`8-bit immediate out of range: ${val} (expected -128..255)`);
+                                    }
                                     this.output.push(val & 0xFF);
                                 } else if (key.includes('rel8')) {
                                     const operand = token.operands.find(o => o.type === 'symbol' || o.type === 'immediate');

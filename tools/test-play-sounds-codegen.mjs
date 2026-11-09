@@ -33,6 +33,9 @@ try {
   const expressionAsm = compile("play-sounds-expressions", "play sounds 1 + 1, random(3, 4)");
   assert.equal((expressionAsm.match(/call AMY_PLAY_SOUND/gi) || []).length, 2);
 
+  const inlineStopAsm = compile("inline-stop-sound", "u8 X = 1\nif X then stop sound 1");
+  assert.match(inlineStopAsm, /call AMY_STOP_SOUND/i);
+
   assert.match(compile("play-sound-list-rejected", "play sound 5, 6, 7", false), /use play sounds/i);
   assert.match(compile("play-sounds-single-rejected", "play sounds 5", false), /at least two/i);
   console.log("play sounds codegen: PASS");

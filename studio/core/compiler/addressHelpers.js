@@ -112,6 +112,13 @@ export function createAddressHelpers(ctx) {
     if (!offsetToken) return null;
     const lines = emitLoadAddressOfIdentifierIntoHL(baseName);
     if (!lines) return null;
+    const constantOffset = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(offsetToken)
+      : tryEvaluateConstantExpression(offsetToken);
+    if (Number.isInteger(constantOffset)) {
+      if (constantOffset < 0 || constantOffset > 0xFFFF) return null;
+      return [`    ld hl,${resolveAddressSymbol(baseName)} + ${symbolOrValue(offsetToken)}`];
+    }
     const expressionAst = parseExpressionAst(offsetToken);
     const exprType = expressionAst ? resolveExpressionAstValueType(expressionAst) : null;
     if (expressionAst?.kind === "binary" || expressionAst?.kind === "unary") {
