@@ -92,6 +92,10 @@ export function createSimpleArithmeticHelpers({
     if (numeric !== null) {
       return [`    ld de,${numeric}`];
     }
+    if (/^peek\s*\(/i.test(String(valueToken || "").trim())) {
+      const loadByte = emitLoadInt8Into("a", valueToken);
+      if (loadByte) return [...loadByte, "    ld e,a", "    ld d,0"];
+    }
     const loadValue = emitLoadInt16IntoHL(valueToken, preferredDeclaredType);
     if (loadValue) return [...loadValue, "    ex de,hl"];
     return [`    ld de,${symbolOrValue(valueToken)}`];

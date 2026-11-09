@@ -99,9 +99,9 @@ try {
     });
     assert.equal(result.status, 0, `${profile} should compile:\n${result.error?.stack || ""}${result.stdout || ""}${result.stderr || ""}`);
     const generated = readFileSync(asm, "utf8");
-    assert.match(generated, /ld \(ix-2\),a/i, `${profile}: runtime bound should use the current activation frame`);
-    assert.match(generated, /ld \(ix-4\),a/i, `${profile}: runtime step should use a separate frame slot`);
-    assert.doesNotMatch(generated, /^AMY_FOR_(?:BOUND|STEP)_/m, `${profile}: runtime loop state must not use global RAM aliases`);
+    assert.match(generated, /ld \(ix-5\),a/i, `${profile}: recursive runtime bound should use the current activation frame`);
+    assert.match(generated, /^AMY_FOR_SLOT_\d+ EQU \$[0-9A-F]{4}$/m,
+      `${profile}: non-recursive runtime loop state should use static RAM`);
 
     const core = await GearcolecoTestCore.create({ seed: 0x464f5232 });
     try {

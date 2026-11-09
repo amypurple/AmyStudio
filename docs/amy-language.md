@@ -904,6 +904,8 @@ whole    FxPos      ' integer part of a fixed / future fixed
 fraction FxPos      ' fractional byte of a fixed / future fixed
 highword Value32    ' upper 16 bits of a u32/i32
 lowword  Value32    ' lower 16 bits of a u32/i32
+highword(Value32)   ' parenthesized forms are equivalent
+lowword(Value32)
 ```
 
 ---
@@ -1315,7 +1317,9 @@ Amy evaluates the start value, end bound, and step once when execution enters th
 does not alter the active loop. Reaching the same `for` again, including an inner
 loop during a later outer iteration, evaluates those values again. Compile-time
 constant bounds retain their compact immediate form; runtime bounds and steps use
-collision-safe internal storage selected by loop nesting depth.
+collision-safe internal storage selected by loop nesting depth. Proven non-recursive
+routines use compiler-owned static RAM for this state; recursive routines use an
+activation-local IX frame so nested calls cannot overwrite one another.
 
 Fixed global and local primitive arrays, plus qualified overlay record-array fields,
 support element iteration. Omit the index when the body does not need it:
@@ -3307,8 +3311,10 @@ Rules:
 - a **constant index folds to the entry label directly** (`Levels[1]` → `ld hl,Level2_label`, no table walk)
 - a variable index reads the `dw` entry at runtime with the minimal sequence
   (`add a,a` / `add hl,de` / fetch low+high / `ex de,hl`) — no runtime helper
-- at most 256 entries with a byte index; tables above 128 entries preserve the
-  high carry from the doubled byte offset, while smaller tables retain the minimal sequence;
+- word tables may contain more than 256 entries when addressed directly, by a
+  constant, from ASM, or with a `u16` index; a `u8` index naturally reaches only
+  entries 0..255; tables above 128 entries preserve the high carry from the
+  doubled byte offset, while smaller tables retain the minimal sequence;
   out-of-range constant
   indexes and non-`@` bare identifiers are compile errors, including assignments
   such as `P = Levels[9]`; variable indexes deliberately have no runtime bounds check

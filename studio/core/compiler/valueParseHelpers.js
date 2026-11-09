@@ -220,15 +220,15 @@ export function createValueParseHelpers({
   }
 
   function parseWordByteComponent(token) {
-    const match = String(token).trim().match(/^(highbyte|lowbyte)\s+(.+)$/i);
+    const match = String(token).trim().match(/^(highbyte|lowbyte)(?:\s+(.+)|\((.+)\))$/i);
     if (!match) return null;
-    return { component: match[1].toLowerCase(), valueToken: normalizeExpression(match[2].trim()) };
+    return { component: match[1].toLowerCase(), valueToken: normalizeExpression((match[2] || match[3]).trim()) };
   }
 
   function parseDwordWordComponent(token) {
-    const match = String(token).trim().match(/^(highword|lowword)\s+(.+)$/i);
+    const match = String(token).trim().match(/^(highword|lowword)(?:\s+(.+)|\((.+)\))$/i);
     if (!match) return null;
-    return { component: match[1].toLowerCase(), valueToken: normalizeExpression(match[2].trim()) };
+    return { component: match[1].toLowerCase(), valueToken: normalizeExpression((match[2] || match[3]).trim()) };
   }
 
   function emitRoutineArgumentPushes(name, args, sig, invokeKeyword = "call") {

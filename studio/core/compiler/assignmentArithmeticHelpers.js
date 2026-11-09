@@ -1224,6 +1224,20 @@ export function createAssignmentArithmeticHelpers({
         const storeExpression = emitStoreWideExpression(valueToken, scratch.leftLabel, targetType);
         const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
         if (storeExpression && storeTarget) return [...storeExpression, ...storeTarget];
+        if (targetType === "u32" && parseArrayRef(valueToken)) {
+          const loadByte = emitLoadInt8Into("a", valueToken);
+          if (loadByte && storeTarget) {
+            return [
+              ...loadByte,
+              `    ld (${scratch.leftLabel}+0),a`,
+              "    xor a",
+              `    ld (${scratch.leftLabel}+1),a`,
+              `    ld (${scratch.leftLabel}+2),a`,
+              `    ld (${scratch.leftLabel}+3),a`,
+              ...storeTarget
+            ];
+          }
+        }
         if (parseRecordFieldRef(target)) {
           const storeValue = emitStoreExtended32(valueToken, scratch.leftLabel, true, targetType);
           if (storeValue && storeTarget) return [...storeValue, ...storeTarget];
@@ -1549,6 +1563,12 @@ export function createAssignmentArithmeticHelpers({
           && (constantNumeric & (constantNumeric - 1)) === 0) {
         const powerDivision = emitDivideUnsignedInt16ByPowerOfTwo(target, Math.log2(constantNumeric));
         if (powerDivision) return powerDivision;
+      }
+      if (/^peek\s*\(/i.test(String(valueToken || "").trim()) && opToken === "+=") {
+        return emitArithInt16Op(target, valueToken, "add");
+      }
+      if (/^peek\s*\(/i.test(String(valueToken || "").trim()) && opToken === "-=") {
+        return emitArithInt16Op(target, valueToken, "sub");
       }
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");

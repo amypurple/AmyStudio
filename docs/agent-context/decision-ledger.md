@@ -1110,6 +1110,16 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - The evidence package retains the six complete ROMs, source files, measurements and SHA-256
   hashes. See `docs/audits/optimization/ugbasic-refresh-2026-11-06.md`.
 
+## 2026-11-09 - ugBASIC metasprite uses native CSPRITE grouping
+
+- The original 3,295-byte `2db87ebd` fixture managed six sprites independently and can publish a
+  frame after only two of the three active layers have moved. The rendered-frame oracle rejects it.
+- Two native `CSPRITE` groups keep each three-color frame coherent, occupy 2,883 bytes with the
+  exact same compiler revision, and pass animation, color, movement, and all four bounds.
+- The oracle compares final TMS9918 pixels rather than requiring byte-identical hidden mask data;
+  covered pixels removed by `CSPRITE` are equivalent and do not weaken the torn-frame check.
+- The corrected ugBASIC six-sample total is 19,610 bytes. The 6,166-byte legacy fallback is retired.
+
 ## 2026-11-06 - CVBasic e84bf978 becomes the ranked revision
 
 - CVBasic `main` commit `e84bf978` rebuilds and passes all six ColecoVision runtime oracles. Its
@@ -1269,3 +1279,47 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - The same pilot exposed reusable harness gaps: OS7 startup timing, RGB565 capture,
   menu navigation, Tiny Sound schedule shape, ascending sound-area order, and
   one-VBlank presentation latency are now focused agent-kit guidance.
+
+## 2026-11-08 - Metasprite rankings require dynamic behavioral equivalence
+
+- The old sprite/metasprite fixtures were not equivalent: Pure ASM lacked movement,
+  ugBASIC could tear layers during one VBlank, PVColLib blanked alternating frames,
+  and Amy alone included presentation work.
+- The repaired oracle now proves coherent layers, colors, animation, controller
+  movement, and exact bounds. Equivalent local results are Pure ASM 482 bytes and
+  Amy Experimental 797 bytes; cached modern ugBASIC remains unranked until it can
+  rebuild and pass the corrected contract.
+- Evidence: `docs/audits/optimization/metasprite-pure-asm-gap-2026-11-08.md`.
+
+## 2026-11-08 - Leap Frog sprite flicker is active but intentionally subtle
+
+- Leap Frog correctly enables a 19-entry sprite table, protects logical sprites
+  0-5, and rotates entries 6-18 only after the TMS9918A fifth-sprite flag is set.
+- A real-ROM test observed 282 overflow frames in 1,765 gameplay frames and every
+  eligible rotation phase. The absence of obvious whole-object blinking is the
+  intended result, not evidence that the command is inactive.
+- Evidence: `tools/test-leap-frog-sprite-flicker.mjs`.
+## 2026-11-09 - Rank the smallest runtime-valid node budget per sample
+
+- SDCC allocator limits are non-monotonic; comparison entries may use different node budgets per
+  sample only when the compiler/ABI remains compatible and the dedicated runtime oracle passes.
+- PkK/libcv falls to 10,760 bytes, PVColLib to 10,771, devkitSMS to 12,921, and z88dk to 17,121.
+  Their ordering is unchanged; PkK/libcv leads PVColLib by 11 bytes.
+- Smaller incompatible PVColLib and incorrect z88dk bitmap builds were rejected.
+- The `$F0` transparent glyph colors in PVColLib/NewColeco Controller Visual are a disclosed,
+  size-neutral fixture normalization, not a library optimization.
+- Evidence: `docs/audits/optimization/toolchain-node-budget-rerank-2026-11-09.md`.
+
+## 2026-11-09 - Non-recursive dynamic FOR state belongs in static RAM
+
+- A calculated `FOR` bound or step previously forced an IX stack frame even in a
+  proven non-recursive routine. Calling an Amy helper that reached an IX-clobbering
+  OS7 service could then corrupt the loop state and return address.
+- Non-recursive routines now capture dynamic loop state in compiler-owned static
+  RAM. Recursive routines retain per-activation IX-frame slots. This avoids blanket
+  BIOS guards while preserving recursion semantics and reducing call overhead.
+- Tiny Sound initialization also explicitly silences its OS7 sound area before the
+  first stream command, so leading rests cannot expose a stale full-volume tone.
+- Evidence: `tools/test-for-runtime-limit-static-slot.mjs`,
+  `tools/test-for-runtime-bound-capture.mjs`, and
+  `tools/tiny-sound-composer/test-gearcoleco-audition.mjs`.

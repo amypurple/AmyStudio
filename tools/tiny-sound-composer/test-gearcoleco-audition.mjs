@@ -4,10 +4,10 @@ import { assembleAmysCVAssembly } from "../../studio/vendor/amyscvassembly/compi
 import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../../studio/core/gearcolecoTestCore.js";
 import { buildGearcolecoAuditionAsm, createSong } from "./core.js";
 
-const song = createSong(8);
+const song = createSong(16);
 song.tempo = 6;
-song.channels[0][0] = { code: 0x28, instrument: "bass" };
-song.channels[1][0] = { code: 0x2d, instrument: "piano" };
+song.channels[0][8] = { code: 0x28, instrument: "bass" };
+song.channels[1][8] = { code: 0x2d, instrument: "piano" };
 let source = buildGearcolecoAuditionAsm(song);
 source = source.replace(
   '    include "src/alexis_lib/coleco_tiny_sound.asm"',
@@ -26,12 +26,17 @@ try {
   core.loadBios(await readFile(new URL("../../studio/bios/colecovision.rom", import.meta.url)));
   core.loadRom(assembled.binary, { region: GEARCOLECO_TEST_REGION.NTSC });
   core.reset();
-  let peak = 0;
-  for (let frame = 0; frame < 24; frame += 1) {
+  let leadingPeak = 0;
+  let notePeak = 0;
+  for (let frame = 0; frame < 72; frame += 1) {
     core.runFrame();
-    for (const sample of core.getAudioFrame().samples) peak = Math.max(peak, Math.abs(sample));
+    for (const sample of core.getAudioFrame().samples) {
+      if (frame < 42) leadingPeak = Math.max(leadingPeak, Math.abs(sample));
+      else notePeak = Math.max(notePeak, Math.abs(sample));
+    }
   }
-  assert.ok(peak > 0, "GearColeco audition ROM must produce non-silent PCM");
+  assert.ok(leadingPeak < 0.001, `leading Tiny Sound rests must stay silent (peak ${leadingPeak})`);
+  assert.ok(notePeak > 0.001, "Tiny Sound note after leading rests must produce PCM");
 } finally {
   core.destroy();
 }

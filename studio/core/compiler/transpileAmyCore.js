@@ -773,6 +773,13 @@ export function transpileAmyCore(sourceText, deps) {
       for (const match of String(line || "").matchAll(/\bgoto\s+([A-Za-z_][A-Za-z0-9_]*)\b/gi)) {
         set.add(match[1].toLowerCase());
       }
+      const indexed = String(line || "").match(/^on\s+.+?\s+goto\s+(.+)$/i);
+      if (indexed) {
+        for (const target of indexed[1].split(",")) {
+          const name = target.trim();
+          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) set.add(name.toLowerCase());
+        }
+      }
     };
 
     for (let index = 0; index < rawLines.length; index += 1) {
@@ -3475,9 +3482,10 @@ export function transpileAmyCore(sourceText, deps) {
     let slot = forRuntimeValueSlots.get(slotKey);
     if (!slot) {
       const id = nextForRuntimeValueSlot++;
-      if (lowerName(procName) === "start") {
+      if (lowerName(procName) === "start" || staticLocalProcCandidates.has(procName)) {
         const asmName = `AMY_FOR_SLOT_${id}`;
-        const address = reserveRam(asmName, 2, `main-program FOR ${kind}`);
+        const owner = lowerName(procName) === "start" ? "main-program" : `non-recursive routine ${procName}`;
+        const address = reserveRam(asmName, 2, `${owner} FOR ${kind}`);
         runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
         hasRuntimeRamDeclarations = true;
         slot = { id, address, asmName, aliases: new Map() };
@@ -4797,7 +4805,15 @@ export function transpileAmyCore(sourceText, deps) {
     }
     if (recordDefinitionLineNumbers.has(sourceLineNumber)) continue;
     const rawLine = lines[sourceLineNumber];
-    if (/^rem(?:\s|$)/i.test(rawLine.trim())) {
+    const trimmedRawLine = rawLine.trim();
+    if (/^(?:i8|u8|i16|u16|i32|u32|bcd|bool)\s+rem(?:\s*=|\s*$)/i.test(trimmedRawLine) || /^rem\s*=/i.test(trimmedRawLine)) {
+      return {
+        ok: false,
+        asmBody: "",
+        log: `Line ${sourceLineNumber + 1}: scalar name 'Rem' conflicts with the removed REM comment syntax; choose another name`
+      };
+    }
+    if (/^rem(?:\s|$)/i.test(trimmedRawLine)) {
       return {
         ok: false,
         asmBody: "",

@@ -177,6 +177,12 @@ AMY_TINY_SOUND_FREQ_CHANGE:
     ret
 
 AMY_TINY_SOUND_INIT:
+    ; OS7 may leave the target area at attenuation 0. Silence it before the
+    ; first stream command so a song beginning with rests cannot expose a
+    ; stale full-volume tone for one scheduler step.
+    ld a,(ix+4)
+    or $F0
+    ld (ix+4),a
     ld a,(hl)
     inc hl
     ex de,hl
