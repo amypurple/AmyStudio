@@ -7,6 +7,8 @@
   unsigned word context when used as RAM-array or ROM-table indexes.
 - A five-profile GearColeco contract covers ROM and RAM indexing, scalar and indexed
   `u16` sources, the 65,535 boundary, narrow-BCD wrapping, and subtraction below zero.
+- Rebuilt the Visual Studio Code extension as version 0.1.12 with the current compiler
+  and verified its bundled toolchain against the compiler regression contracts.
 
 ## 2026-11-02 - Text and VDP guard RAM safety
 
