@@ -59,6 +59,11 @@ function copyModule(path) {
 rmSync(stageRoot, { recursive: true, force: true });
 copyModule(entry);
 cpSync(join(repoRoot, "src"), join(stageRoot, "src"), { recursive: true });
+cpSync(
+  join(repoRoot, "studio", "vendor", "retrocompress-lite"),
+  join(stageRoot, "studio", "vendor", "retrocompress-lite"),
+  { recursive: true },
+);
 writeFileSync(join(stageRoot, "package.json"), "{\n  \"type\": \"module\"\n}\n", "utf8");
 
 const hash = createHash("sha256");
@@ -67,6 +72,7 @@ for (const path of [...copied].sort()) {
   hash.update(readFileSync(path));
 }
 hash.update("src-runtime-tree");
+hash.update("retrocompress-lite-tree");
 
 writeFileSync(
   join(stageRoot, "VERSION.json"),

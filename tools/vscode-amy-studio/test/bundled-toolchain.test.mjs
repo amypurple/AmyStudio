@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const compiler = process.env.AMY_VSCODE_COMPILER
@@ -11,6 +11,13 @@ const compiler = process.env.AMY_VSCODE_COMPILER
   : resolve(root, "toolchain", "tools", "amyc.mjs");
 
 assert.ok(existsSync(compiler), `Missing staged compiler: ${compiler}`);
+const zx0Module = resolve(root, "toolchain", "studio", "vendor", "retrocompress-lite", "js", "codecs", "zx0.js");
+assert.ok(existsSync(zx0Module), `Missing staged host-side ZX0 compressor: ${zx0Module}`);
+const { ZX0Codec } = await import(pathToFileURL(zx0Module).href);
+const zx0 = new ZX0Codec();
+const zx0Input = Uint8Array.from({ length: 320 }, (_, index) => (index >> 3) & 0x0F);
+const zx0Packed = await zx0.compress(zx0Input);
+assert.deepEqual([...await zx0.decompress(zx0Packed)], [...zx0Input], "Staged ZX0 compressor round trip");
 
 function compile(name, source, expected = {}) {
   const directory = mkdtempSync(resolve(tmpdir(), "amy-vscode-test-"));
