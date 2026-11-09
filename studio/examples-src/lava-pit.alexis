@@ -1,0 +1,1762 @@
+cartridge "LAVA PIT/BY SCOTT PETERSON/2026"
+
+' LAVA PIT - ColecoVision port of "Lava Pit" by Scott Peterson, a Commodore
+' 64 BASIC + machine language duel from RUN Magazine's ReRUN "Game Pak" disk
+' (program LAVA PIT, 9,644 bytes; "BY SCOTT PETERSON" on its title screen).
+' The rules follow the original's machine code (orig/lava_ml.dis, SYS 38238,
+' one "tick"), checked against the running original with bots (c64/,
+' model.mjs: the model gives the C64's state at 99.5% of 7,837 traced ticks;
+' the rest are the C64's own raster races).
+'
+' The game: two Vadraks, the albino (white) and the pigmented (gold), fly
+' over a pit of lava. The button flaps the wings (once per press), the stick
+' steers: each tick a held direction adds 1 to the speed (up to 16), and the
+' speed stays. Gravity pulls every tick; touching a ledge bounces a bird up.
+' When the two birds touch, the LOWER one (the albino on a tie) loses a
+' point; a bird falling into the lava loses a point too. The loser starts
+' again from the top. Each point moves the marker in the bottom row one way:
+' the albino wins at the left end, the pigmented at the right end. The game
+' gets faster as one bird leads (the C64's delay loop, timed on the C64).
+'
+' Controls: controller 1 flies the albino, controller 2 the pigmented (or
+' the ColecoVision in a 1-player game). Stick left/right steers, either
+' side button flaps. Title menu: stick up/down, left/right (or the button)
+' changes PLAYERS and LEAD, the button on START starts.
+'
+' Liberties (ColecoVision adaptation): new pictures (the C64's ledges, lava
+' and bubbles redrawn from its own characters in colour, a cave ceiling, a
+' title logo; the C64's "PREPARE TO JOUST..." loading strip kept on the
+' title); the birds are drawn smoothly between ticks (the C64 moved them
+' 2-9 pixels at a time, 14-28 times a second) and are hidden or held at the
+' edge where the C64's border hid them, so nothing shows in the TV's
+' overscan; 1-PLAYER mode against the ColecoVision (new); LEAD option 5 / 10
+' / 20 (the original's 20-point lead takes a long time between equal
+' players; 10 is the default: each point moves the marker 2 steps, the
+' speed-up follows the marker as on the C64); title menu, HOW TO PLAY,
+' CREDITS; title tune (original); the victory message is the original's,
+' then one press returns to the title (no PLAY AGAIN? question).
+' Original bugs fixed: (1) the visible sprites were never placed before the
+' first tick, so both sat at X 0 and the first tick always saw a collision:
+' the albino lost a point before anyone moved; (2) Y + VY wraps at 256: a
+' bird flapping just after its restart at the top (Y 0-5) wrapped to the
+' bottom of the screen and lost another point at once (the C64 bots hit it
+' 20 times in 25 restarts while flapping): here a bird stops at Y 0; (3) the
+' pigmented bird started with facing 3, so holding the button before any
+' left/right showed sprite block 228 (empty: the bird vanished): it starts
+' facing 2 (left), the C64's picture when idle.
+' Kept as in the original: the lower bird loses on contact (equal Y: the
+' albino), a bird touching the ceiling (Y < 49) is pushed down at speed 3,
+' moving left is one pixel a tick slower than right (SEC before ADC), the
+' birds wrap at X 512 through the hidden border, collisions are tested on
+' the C64's own sprite and character pixels (in C64 units), lava bubbles
+' rise from the C64's own random sequence (x 5 + 1) and can bounce a bird.
+'
+' Compiler e0f450b5 features used: records with u16 fields in an array and
+' `with B[I] as Q` aliases; u32 shifts by a variable count (the bird-bird
+' pixel test); i16 arithmetic shifts and abs(); a typed state machine for
+' the screens (`dispatch`); `select case` with `case is` arms; functions with
+' parameters; `play song ... once` for the title tune (Tiny Sound + OS7 noise
+' bass started by a song schedule); u8 variable shifts; ZX0 decompression.
+
+const TJoust0 = 128
+const TJoust1 = 129
+const TJoust2 = 130
+const TJoust3 = 131
+const TJoust4 = 132
+const TJoust5 = 133
+const TJoust6 = 134
+const TJoust7 = 135
+const TJoust8 = 136
+const TJoust9 = 137
+const TJoust10 = 138
+const TJoust11 = 139
+const TJoust12 = 140
+const TJoust13 = 141
+const TJoust14 = 142
+const TJoust15 = 143
+const TJoust16 = 144
+const TJoust17 = 145
+const TJoust18 = 146
+const TJoust19 = 147
+const TJoust20 = 148
+const TLedgeT0 = 149
+const TLedgeT1 = 150
+const TLedgeT2 = 151
+const TLedgeB0 = 152
+const TLedgeB1 = 153
+const TLedgeB2 = 154
+const TLavaRow = 155
+const TRockRow = 156
+const TRockTop = 157
+const TBub0 = 158
+const TBub1 = 159
+const TBub2 = 160
+const TBub3 = 161
+const TBub4 = 162
+const TBub5 = 163
+const TBub6 = 164
+const TBub7 = 165
+const TBub8 = 166
+const TBub9 = 167
+const TBub10 = 168
+const UiBytes = 328
+const LogoBase = 169
+const LogoW = 24
+const LogoH = 4
+const LogoBytes = 424
+const SDRU = 0
+const SBRU = 4
+const SDRD = 8
+const SBRD = 12
+const SDLU = 16
+const SBLU = 20
+const SDLD = 24
+const SBLD = 28
+const SMark = 32
+const SBlank = 36
+const SprBytes = 320
+const LavaBase = 240
+const SndMel = 1
+const SndHarm = 2
+const SndBassV = 3
+const SndBassP = 4
+const SndFlap = 5
+const SndBump = 6
+const SndFallP = 7
+const SndFallN = 8
+const SndClick = 9
+const SndWin = 10
+const TuneFrames = 448
+const HideY = 192
+const NSpr = 5
+' bot-visible states
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+const StEnding = 8
+' C64 constants (machine code)
+const XAlbino = 139
+const XPigment = 208
+const YCeil = 49
+const YLava = 217
+
+state machine Screen:
+  Title calls TitlePage
+  How calls HowTo
+  Credits calls CreditsPage
+  Play calls PlayGame
+end state machine
+
+' a Vadrak, in the C64's units (sprite X 0-511, Y 0-255, speeds as bytes
+' 0-255 = signed -128..127, as in $9500-$9507)
+record Bird:
+  u16 X
+  u8 Y
+  u8 VY
+  u8 VX
+  u8 Fl
+  u8 Off
+  u8 Ptr
+  u16 DX
+  u16 PX
+  u8 PY
+  u8 Joy
+  u8 Hit
+end record
+
+Bird B[2]
+u8 LavaRow[40]
+u8 Bc[5]
+u8 NextScr = 1
+u8 State = 0
+u8 Wn = 20
+u8 StepPt = 2
+u8 Lead = 1
+u8 Players = 1
+u8 Over = 0
+u8 Z = 0
+u8 Bi = 0
+u8 Ss = 0
+u8 Sb = 0
+u8 Pl = 0
+u8 Pd = 0
+u8 Pb = 0
+u8 Ri = 0
+u8 Ci = 0
+u8 Fr = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Elapsed = 1
+u8 LastVb = 0
+u8 NeedCol = 0
+u8 Points = 0
+u16 Ticks = 0
+u16 TickAcc = 0
+u16 TickLenNow = 0
+u16 FracMulNow = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Waited = 0
+u16 Frames = 0
+u32 RowA = 0
+u32 RowB = 0
+u32 W32 = 0
+i16 Dx = 0
+i16 Dy = 0
+i16 Xs = 0
+i16 Ys = 0
+i16 Sy = 0
+i16 Col = 0
+i16 Ix = 0
+i16 Iy = 0
+i16 Dd = 0
+' input: bits 4 left, 8 right, 16 button (the C64's meaning); Jn = new presses
+u8 J1 = 0
+u8 J2 = 0
+u8 Jn = 0
+u8 WasJ = 0
+u8 Press = 0
+u8 WasBtn = 0
+' the computer's bird (1 player)
+u8 AiWait = 0
+u8 AiJoy = 0
+u8 AiHold = 0
+u8 AiSlow = 8
+' scratch (never kept across a sub call)
+u8 A = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 R1 = 0
+u8 B0 = 0
+u8 B1 = 0
+u8 B2 = 0
+u8 P0 = 0
+u8 P1 = 0
+u8 P2 = 0
+u8 P3 = 0
+u8 Ch = 0
+u8 Ln = 0
+u8 Crow = 0
+u8 Sx = 0
+u8 SyB = 0
+u8 Mk = 0
+u8 Sv = 0
+u8 Cc = 0
+u16 MaskIx = 0
+u16 MaskBase = 0
+u16 RowBase = 0
+u8 ColOk[4]
+u8 ColC[4]
+u8 Parts[4]
+u8 CellCh[4]
+
+  tile screen
+  mode 2 screen
+  set sound table LpSoundTable areas 8
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  NextScr = Screen.Title
+
+main_loop:
+  dispatch NextScr using Screen
+  goto main_loop
+
+' ---------------------------------------------------------------------------
+' random numbers (16-bit xorshift, stepped on every title frame): the
+' computer's bird and the lava's random sequence seed
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the game: one C64 tick (SYS 38238)
+
+sub NewGame:
+  B[0].X = XAlbino
+  B[1].X = XPigment
+  for Pd = 0 to 1
+    B[Pd].Y = 120
+    B[Pd].VY = 0
+    B[Pd].VX = 0
+    B[Pd].Fl = 0
+    B[Pd].Joy = 0
+    B[Pd].Hit = 0
+    B[Pd].DX = B[Pd].X
+    B[Pd].PX = B[Pd].X
+    B[Pd].PY = 120
+  next
+  ' facings: albino right (0), pigmented left (2; the C64 had 3: bug 3)
+  B[0].Off = 0
+  B[1].Off = 2
+  B[0].Ptr = 224
+  B[1].Ptr = 226
+  Wn = 20
+  Over = 0
+  Points = 0
+  Ticks = 0
+  TickAcc = 0
+  ' LEAD 5 / 10 / 20: the marker moves 4 / 2 / 1 steps a point
+  select case Lead
+  case 0
+    StepPt = 4
+  case 1
+    StepPt = 2
+  case else
+    StepPt = 1
+  end select
+  ' the lava row (C64 row 23) and its bubbles ($9518-$951D), the random
+  ' byte ($8F) from the title's generator
+  copy LavaRow0 count 40 to LavaRow
+  Bi = 0
+  for Pd = 0 to 4
+    Bc[Pd] = Pd + 1
+  next
+  Z = lowbyte Rs
+  AiWait = 20
+  AiJoy = 0
+  AiHold = 0
+  return
+end sub
+
+sub GameTick:
+  inc Ticks
+  for Pl = 0 to 1
+    PlayerTick
+  next
+  return
+end sub
+
+' $95B3 for bird Pl
+sub PlayerTick:
+  Bubbles
+  with B[Pl] as Q
+    J = Q.Joy
+    if Q.Y < YCeil then
+      Q.VY = 3
+      play sound SndBump
+    elseif Q.Y >= YLava then
+      Point
+    end if
+    ' stick: the speed changes by 1 a tick, the facing follows
+    C = 1
+    T = J & 12
+    select case T
+    case 4
+      Q.VX -= 1
+      Q.Off = 2
+    case 8
+      Q.VX += 1
+      Q.Off = 0
+    case 12
+      C = 0
+    end select
+    ' button: one flap (speed - 6) per press; the frame ($07F9 / $07FB)
+    T = J & 16
+    if T > 0 then
+      if Q.Fl <> 0 then
+        C = 0
+        if Q.VY >= 6 then C = 1
+        Q.VY -= 6
+        Q.Fl = 0
+        play sound SndFlap
+      end if
+      Q.Ptr = 224 + Q.Off
+      Q.Ptr += C
+    else
+      if Q.Fl = 0 then Q.Fl = 255
+      Q.Ptr = 223 + Q.Off
+      Q.Ptr += C
+    end if
+    if Q.Ptr < 224 then Q.Ptr = 224
+    if Q.Ptr > 227 then Q.Ptr = 227
+  end with
+  ' the albino's turn reads the birds' collision ($D01E)
+  if Pl = 0 then
+    if Ss > 0 then Point
+  end if
+  with B[Pl] as Q
+    T = 2
+    if Pl = 1 then T = 8
+    T = T & Sb
+    if T > 0 then
+      Q.VY = 252
+      play sound SndBump
+    end if
+    ' gravity, then Y + VY (bug 2 fixed: no wrap past the top)
+    Q.VY += 1
+    if Q.VY >= 128 then
+      V = 0 - Q.VY
+      if Q.Y < V then
+        Q.Y = 0
+      else
+        Q.Y -= V
+      end if
+    else
+      Q.Y += Q.VY
+    end if
+    ' VX clamped to -16..16; moving left is one slower (SEC before ADC)
+    V = Q.VX
+    if V >= 128 then
+      if V < 240 then V = 240
+      Q.VX = V
+      W16 = 256 - V
+      W16 -= 1
+      Q.X -= W16
+    else
+      if V > 16 then V = 16
+      Q.VX = V
+      Q.X += V
+    end if
+    Q.X = Q.X & 511
+    Q.DX = Q.X
+  end with
+  return
+end sub
+
+' $9725: a point. The lower bird loses (the albino on equal Y), starts again
+' at the top; the meter moves
+sub Point:
+  inc Points
+  play sound SndFallP
+  play sound SndFallN
+  if B[0].Y >= B[1].Y then
+    Wn += StepPt
+    B[0].Y = 0
+    B[0].VY = 0
+    B[0].VX = 0
+    B[0].X = XAlbino
+    B[0].Hit = 1
+  else
+    if Wn > StepPt then
+      Wn -= StepPt
+    else
+      Wn = 0
+    end if
+    B[1].Y = 0
+    B[1].VY = 0
+    B[1].VX = 0
+    B[1].X = XPigment
+    B[1].Hit = 1
+  end if
+  if Wn >= 40 then
+    Wn = 40
+    Over = 2
+  end if
+  if Wn = 0 then Over = 1
+  return
+end sub
+
+' $95B3's first part: one lava bubble rises a step (row 23); a finished
+' bubble moves to a new column picked by the C64's sequence Z = Z x 5 + 1
+' (columns 0-11 and 28-39)
+sub Bubbles:
+  inc Bi
+  if Bi >= 5 then Bi = 0
+  K = Bc[Bi]
+  A = LavaRow[K]
+  if A = $DA then
+    do
+      Z = Z * 5
+      Z += 1
+      V = 0
+      if Z >= 40 then V = 1
+      if Z >= 12 then
+        if Z < 28 then V = 1
+      end if
+    loop while V = 1
+    K = Z
+    Bc[Bi] = Z
+    A = $CF
+  end if
+  inc A
+  LavaRow[K] = A
+  C = LavaCell[K]
+  if C > 0 then put char LavaBase + A - 208 at C,21
+  return
+end sub
+
+' the C64's collision registers at the start of a tick, from the pixels it
+' drew: Ss = the birds touch ($D01E), Sb bit 2 / 8 = a bird touches a ledge,
+' the lava or a bubble ($D01F); C64 sprite masks and characters
+sub Collide:
+  Ss = 0
+  Sb = 0
+  W16 = B[1].DX
+  Dx = W16
+  W16 = B[0].DX
+  Dx -= W16
+  Dy = B[1].Y
+  Ys = B[0].Y
+  Dy -= Ys
+  if abs(Dx) < 24 then
+    if abs(Dy) < 21 then BirdsTouch
+  end if
+  for Pb = 0 to 1
+    BirdOnLedge
+  next
+  return
+end sub
+
+' $D01E: bird 1 is Dx, Dy pixels from bird 0. The bird further left is
+' read unshifted, the other pre-shifted by (distance & 7) pixels and placed
+' (distance / 8) bytes further right; any common pixel is a touch
+sub BirdsTouch:
+  u8 Ra = 0
+  u8 Rb = 20
+  u8 Fa = 0
+  u8 Fb = 0
+  u8 Sh = 0
+  u8 Qb = 0
+  u8 Ia = 0
+  u8 Ib = 0
+  u8 Ir = 0
+  u16 Ma = 0
+  u16 Mb = 0
+  if Dx >= 0 then
+    Fa = B[0].Ptr - 224
+    Fb = B[1].Ptr - 224
+    Sh = lowbyte Dx
+  else
+    Fa = B[1].Ptr - 224
+    Fb = B[0].Ptr - 224
+    Sh = 0 - lowbyte Dx
+  end if
+  Qb = Sh >> 3
+  Sh = Sh & 7
+  ' rows of bird 0 (Ri) and bird 1 (R1 = Ri - Dy) that overlap
+  if Dy > 0 then Ra = Dy
+  if Dy < 0 then
+    Sy = 20 + Dy
+    Rb = Sy
+  end if
+  Fa = Fa << 3
+  Fb = Fb << 3
+  Fb += Sh
+  for Ri = Ra to Rb
+    Sy = Ri
+    Sy -= Dy
+    R1 = Sy
+    ' Ia / Ib: the rows of the left / right bird
+    if Dx >= 0 then
+      Ia = Ri
+      Ib = R1
+    else
+      Ia = R1
+      Ib = Ri
+    end if
+    W16 = Fa * 21
+    W16 += Ia
+    Ma = W16 << 2
+    W16 = Fb * 21
+    W16 += Ib
+    Mb = W16 << 2
+    for Ir = Qb to 2
+      T = ShMask[Ma + Ir]
+      V = Ir - Qb
+      W16 = Mb + V
+      V = ShMask[W16]
+      T = T & V
+      if T > 0 then Ss = 1
+    next
+    if Ss > 0 then exit for
+  next
+  return
+end sub
+
+' $D01F for bird Pb: its sprite rows against the background character
+' pixels under it. Only the (at most 4 x 4) character cells under the bird
+' that hold a ledge, the floor or the lava are looked at, pixel line by line.
+sub BirdOnLedge:
+  u8 Fa = 0
+  u8 Kb = 0
+  u8 Mb = 2
+  u8 Any = 0
+  u8 Yb = 0
+  u8 CrA = 0
+  u8 CrB = 0
+  u8 Cr = 0
+  u8 Lt = 0
+  u8 Ra = 0
+  if Pb = 1 then Mb = 8
+  Yb = B[Pb].Y
+  ' the C64 text screen starts at sprite Y 50 and ends at 249
+  if Yb >= 250 then exit sub
+  W16 = B[Pb].DX
+  Xs = W16
+  Xs -= 24
+  Kb = lowbyte Xs
+  Kb = Kb & 7
+  Col = Xs >> 3
+  for Ci = 0 to 3
+    Dd = Col + Ci
+    ColOk[Ci] = 0
+    if Dd >= 0 then
+      if Dd <= 39 then
+        ColOk[Ci] = 1
+        ColC[Ci] = lowbyte Dd
+        Any = 1
+      end if
+    end if
+  next
+  if Any = 0 then exit sub
+  ' character rows under sprite rows 0-20
+  CrA = 0
+  if Yb >= 50 then
+    T = Yb - 50
+    CrA = T >> 3
+  end if
+  W16 = Yb + 20
+  if W16 < 50 then exit sub
+  W16 -= 50
+  if W16 > 199 then W16 = 199
+  T = lowbyte W16
+  CrB = T >> 3
+  Fa = B[Pb].Ptr - 224
+  Fa = Fa << 3
+  Fa += Kb
+  W16 = Fa * 21
+  MaskBase = W16 << 2
+  for Cr = CrA to CrB
+    if RowHas[Cr] > 0 then
+      ' any non-blank cell under the bird in this row?
+      Any = 0
+      RowBase = RowOff[Cr]
+      for Ci = 0 to 3
+        CellCh[Ci] = 28
+        if ColOk[Ci] > 0 then
+          Cc = ColC[Ci]
+          if Cr = 23 then
+            Ch = LavaRow[Cc] - 192
+          else
+            W16 = RowBase + Cc
+            Ch = FieldChr[W16]
+          end if
+          CellCh[Ci] = Ch
+          if Ch <> 28 then Any = 1
+        end if
+      next
+      if Any > 0 then
+        ' the pixel lines of this character row that the sprite covers
+        Lt = Cr << 3
+        for Ln = 0 to 7
+          W16 = Lt + Ln
+          W16 += 50
+          if W16 >= Yb then
+            W16 -= Yb
+            if W16 <= 20 then
+              Ra = lowbyte W16
+              MaskIx = Ra << 2
+              MaskIx += MaskBase
+              for Ci = 0 to 3
+                Ch = CellCh[Ci]
+                if Ch <> 28 then
+                  W16 = ChrOff[Ch]
+                  W16 += Ln
+                  T = ChrPat[W16]
+                  if T > 0 then
+                    W16 = MaskIx + Ci
+                    V = ShMask[W16]
+                    T = T & V
+                    if T > 0 then Sb = Sb | Mb
+                  end if
+                end if
+              next
+              T = Sb & Mb
+              if T > 0 then exit sub
+            end if
+          end if
+        next
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the computer's bird (1 player): it sees only the two birds' positions,
+' decides every 10-17 frames: climb above the albino and drop on it, keep
+' out of the lava, steer the short way round
+sub AiThink:
+  u8 Me = 0
+  u8 Op = 0
+  u8 AiFl = 0
+  u8 Want = 0
+  u8 Vx = 0
+  if AiWait > 0 then
+    dec AiWait
+  else
+    Rand
+    T = lowbyte Rs
+    AiWait = T & 7
+    AiWait += AiSlow
+    Me = B[1].Y
+    Op = B[0].Y
+    AiFl = 0
+    ' height: about 20 pixels above the albino, never low over the lava
+    V = Op
+    if V >= 26 then V -= 26
+    if Me > V then AiFl = 1
+    if Me > 165 then AiFl = 1
+    if Me < 60 then AiFl = 0
+    ' some flaps missed (a person is not perfect)
+    T = highbyte Rs
+    T = T & 3
+    if T = 0 then AiFl = 0
+    ' right over the albino: stop flapping and drop onto it
+    W16 = B[0].X
+    W16 -= B[1].X
+    W16 += 20
+    W16 = W16 & 511
+    if W16 < 40 then
+      if Me < Op then
+        if Me <= 165 then AiFl = 0
+      end if
+    end if
+    if AiFl = 1 then AiHold = 1
+    ' where to go: onto the albino when clearly above it, away when below
+    ' and close (the short way round the 512 wrap)
+    W16 = B[0].X
+    W16 -= B[1].X
+    ' far above: aim beside it (a ledge may be in between), the side by time
+    T = Op - Me
+    if Me < Op then
+      if T > 40 then
+        T = highbyte Rs
+        if T >= 128 then
+          W16 += 72
+        else
+          W16 -= 72
+        end if
+      end if
+    end if
+    W16 = W16 & 511
+    Want = 0
+    T = Me + 8
+    if T < Op then
+      if W16 < 256 then
+        Want = 8
+      else
+        Want = 4
+      end if
+    else
+      if W16 < 48 then Want = 4
+      if W16 > 464 then Want = 8
+    end if
+    ' steer: its own speed towards about 4 pixels a tick that way, else brake
+    Vx = B[1].VX
+    AiJoy = 0
+    select case Want
+    case 8
+      if Vx >= 128 then
+        AiJoy = 8
+      elseif Vx < 4 then
+        AiJoy = 8
+      end if
+    case 4
+      if Vx < 128 then
+        AiJoy = 4
+      elseif Vx > 252 then
+        AiJoy = 4
+      end if
+    case else
+      if Vx >= 128 then
+        if Vx < 254 then AiJoy = 8
+      elseif Vx > 1 then
+        AiJoy = 4
+      end if
+    end select
+  end if
+  ' the button: press 4 frames, release 4 (a flap needs a release)
+  if AiHold > 0 then
+    inc AiHold
+    if AiHold < 6 then
+      AiJoy = AiJoy | 16
+    else
+      AiJoy = AiJoy & 12
+      if AiHold > 10 then AiHold = 0
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a game: the field, the loop (ticks at the C64's rate), the end
+
+sub PlayGame:
+  NewGame
+  DrawField
+  State = StPlay
+  DrawBirds
+  Collide
+  ShowScreen
+  WasBtn = 16
+play_loop:
+  Frame1
+  ReadPad
+  if Players = 1 then
+    AiThink
+    J2 = AiJoy
+  end if
+  ' the C64 waited FOR DE=0 TO 2*(19-ABS(WN-20)) between ticks: frames per
+  ' tick measured on the C64 = 2.163 + 0.0588 x that count (TickLen, in
+  ' 1/32 frames)
+  V = Wn
+  if V > 20 then
+    V -= 20
+  else
+    V = 20 - V
+  end if
+  if V > 19 then V = 19
+  V = 19 - V
+  V = V << 1
+  TickLenNow = TickLen[V]
+  FracMulNow = FracMul[V]
+  ' every vertical blank counts (catch-up when a pass ran long)
+  TickAcc += Elapsed << 5
+  if NeedCol > 0 then
+    ' the collision registers for the next tick, from the positions drawn
+    ' (they do not change until that tick)
+    Collide
+    NeedCol = 0
+  elseif TickAcc >= TickLenNow then
+    TickAcc -= TickLenNow
+    for Pd = 0 to 1
+      B[Pd].PX = B[Pd].DX
+      B[Pd].PY = B[Pd].Y
+      B[Pd].Hit = 0
+    next
+    B[0].Joy = J1
+    B[1].Joy = J2
+    GameTick
+    DrawMeter
+    NeedCol = 1
+  end if
+  DrawBirds
+  if Over = 0 then goto play_loop
+  ' the end: the original's message
+  State = StEnding
+  Victory
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  NextScr = Screen.Title
+  return
+end sub
+
+' the birds drawn between ticks: position = previous + (current - previous)
+' x the part of the tick gone, Fr/256 (not across a restart or the wrap)
+sub DrawBirds:
+  W16 = TickAcc * FracMulNow
+  Fr = highbyte W16
+  for Pd = 0 to 1
+    with B[Pd] as Q
+      W16 = Q.DX
+      Ix = W16
+      Iy = Q.Y
+      if Q.Hit = 0 then
+        W16 = Q.PX
+        Dd = Ix - W16
+        if abs(Dd) < 40 then
+          Ix = W16
+          if Dd >= 0 then
+            W16 = Dd
+            W16 *= Fr
+            T = highbyte W16
+            Ix += T
+          else
+            W16 = 0 - Dd
+            W16 *= Fr
+            T = highbyte W16
+            Ix -= T
+          end if
+        end if
+        Dd = Q.PY
+        Dd = Iy - Dd
+        if abs(Dd) < 40 then
+          Iy = Q.PY
+          if Dd >= 0 then
+            W16 = Dd
+            W16 *= Fr
+            T = highbyte W16
+            Iy += T
+          else
+            W16 = 0 - Dd
+            W16 *= Fr
+            T = highbyte W16
+            Iy -= T
+          end if
+        end if
+      end if
+      ' frame: detail and body patterns
+      T = Q.Ptr - 224
+      T = T << 3
+    end with
+    C = Pd << 1
+    ' hidden where the C64's border hid more than half the bird
+    V = 1
+    if Ix < 12 then V = 0
+    if Ix > 331 then V = 0
+    if Iy < 40 then V = 0
+    if V = 0 then
+      set sprite C to HideY,0,SBlank,0
+      inc C
+      set sprite C to HideY,0,SBlank,0
+    else
+      ' x = 16 + (X - 24) x 178/256, y = 8 + (Y - 50) x 225/256 (+1: the
+      ' sprite's feet on the ledge line), held inside columns 2-29 / rows 1-22
+      Ix -= 24
+      if Ix < 0 then Ix = 0
+      W16 = Ix
+      W16 *= 178
+      Sx = highbyte W16
+      Sx += 16
+      if Sx > 223 then Sx = 223
+      Iy -= 50
+      if Iy < 0 then Iy = 0
+      W16 = Iy
+      W16 *= 225
+      SyB = highbyte W16
+      SyB += 9
+      if Pd = 0 then
+        set sprite C to SyB,Sx,T,9
+        inc C
+        T += 4
+        set sprite C to SyB,Sx,T,15
+      else
+        set sprite C to SyB,Sx,T,6
+        inc C
+        T += 4
+        set sprite C to SyB,Sx,T,10
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the meter: a white marker over column Wn of the bottom row (C64 row 24)
+sub DrawMeter:
+  W16 = Wn * 89
+  W16 = W16 >> 4
+  W16 += 16
+  Mk = lowbyte W16
+  if Wn >= 40 then Mk = 233
+  set sprite 4 to 175,Mk,SMark,15
+  return
+end sub
+
+sub DrawField:
+  NewScreen
+  decompress zx0 FP0 to vram.pattern
+  decompress zx0 FC0 to vram.color
+  decompress zx0 FP1 to vram.pattern + 2048
+  decompress zx0 FC1 to vram.color + 2048
+  decompress zx0 FP2 to vram.pattern + 4096
+  decompress zx0 FC2 to vram.color + 4096
+  decompress zx0 FN0 to vram.name
+  decompress zx0 FN1 to vram.name + 256
+  decompress zx0 FN2 to vram.name + 512
+  ' the lava row as the C64 starts it
+  for K = 0 to 39
+    C = LavaCell[K]
+    A = LavaRow[K]
+    if C > 0 then put char LavaBase + A - 208 at C,21
+  next
+  DrawMeter
+  return
+end sub
+
+sub Victory:
+  HideSprites
+  NewScreen
+  play sound SndWin
+  if Over = 1 then
+    print at 7,7, "THE ALBINO VADRAK"
+    print at 8,9, "IS THE VICTOR!"
+    set sprite 0 to 87,120,SDRU,9
+    set sprite 1 to 87,120,SBRU,15
+  else
+    print at 6,7, "THE PIGMENTED VADRAK"
+    print at 8,9, "IS VICTORIOUS!"
+    set sprite 0 to 87,120,SDLU,6
+    set sprite 1 to 87,120,SBLU,10
+  end if
+  update sprites
+  if Players = 1 then
+    if Over = 1 then
+      print at 10,15, "YOU WIN!"
+    else
+      print at 6,15, "THE COLECOVISION WINS"
+    end if
+  end if
+  print at 8,19, "PRESS THE BUTTON"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  V = frame
+  Elapsed = V - LastVb
+  LastVb = V
+  if Elapsed = 0 then Elapsed = 1
+  if Elapsed > 3 then Elapsed = 3
+  Frames += Elapsed
+  return
+end sub
+
+' controller 1 -> J1, controller 2 -> J2 (4 left, 8 right, 16 a button);
+' Jn = directions newly pressed (1 up 2 down 4 left 8 right, either
+' controller), Press = a button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).action then J1 = J1 | 16
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).action then J2 = J2 | 16
+  V = J1 | J2
+  V = V & 12
+  if joypad(1).up then V = V | 1
+  if joypad(2).up then V = V | 1
+  if joypad(1).down then V = V | 2
+  if joypad(2).down then V = V | 2
+  K = WasJ ^ 15
+  Jn = V & K
+  WasJ = V
+  T = J1 | J2
+  T = T & 16
+  Press = 0
+  if T > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = T
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is on screen): count again, park
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to HideY,0,SBlank,0
+  next
+  update sprites
+  return
+end sub
+
+' a text screen: the font in every third, white on black, the UI tiles at 128+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  load default ascii
+  duplicate mode 2 patterns
+  fill $F1 count 1024 to vram.color
+  fill $F1 count 1024 to vram.color + 2048
+  fill $F1 count 1024 to vram.color + 4096
+  copy UiPat count UiBytes to vram.pattern + 1024
+  copy UiCol count UiBytes to vram.color + 1024
+  copy UiPat count UiBytes to vram.pattern + 3072
+  copy UiCol count UiBytes to vram.color + 3072
+  copy UiPat count UiBytes to vram.pattern + 5120
+  copy UiCol count UiBytes to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  display on
+  return
+end sub
+
+' the title: logo, the C64's loading strip, author, menu (cursor on START),
+' the tune once
+sub TitlePage:
+  NewScreen
+  State = StTitle
+  decompress zx0 LogoP to vram.pattern + 1352
+  decompress zx0 LogoC to vram.color + 1352
+  put LogoN frame size LogoW,LogoH at 4,2
+  print at 7,7, "BY SCOTT PETERSON"
+  for K = 0 to 20
+    C = K + 5
+    put char TJoust0 + K at C,9
+  next
+  print at 11,12, "START"
+  print at 11,18, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  Menu = 0
+  ShowOptions
+  ShowMenu
+  ' the two Vadraks either side of the logo
+  set sprite 0 to 19,24,SDRU,9
+  set sprite 1 to 19,24,SBRU,15
+  set sprite 2 to 19,216,SDLU,6
+  set sprite 3 to 19,216,SBLU,10
+  update sprites
+  ShowScreen
+  play song LpTitleSong once
+  WasBtn = 16
+  Waited = 0
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  ' wings: the birds flap at 1.5 Hz (20 frames a picture)
+  inc Waited
+  V = lowbyte Waited
+  V = V & 31
+  if V = 0 then
+    set sprite 0 pattern to SDRU
+    set sprite 1 pattern to SBRU
+    set sprite 2 pattern to SDLU
+    set sprite 3 pattern to SBLU
+    update sprites
+  elseif V = 16 then
+    set sprite 0 pattern to SDRD
+    set sprite 1 pattern to SBRD
+    set sprite 2 pattern to SDLD
+    set sprite 3 pattern to SBLD
+    update sprites
+  end if
+  K = Jn & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 4
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 4 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' left/right (or the button) on PLAYERS / LEAD changes the value
+  K = Jn & 12
+  if Press > 0 then
+    if Menu = 1 then K = 8
+    if Menu = 2 then K = 8
+  end if
+  if K > 0 then
+    if Menu = 1 then
+      Players = 3 - Players
+      play sound SndClick
+      ShowOptions
+    elseif Menu = 2 then
+      if K = 4 then
+        if Lead = 0 then
+          Lead = 2
+        else
+          dec Lead
+        end if
+      else
+        inc Lead
+        if Lead > 2 then Lead = 0
+      end if
+      play sound SndClick
+      ShowOptions
+    end if
+    Press = 0
+  end if
+  if Press = 0 then goto tp_loop
+  stop song
+  mute all
+  W16 = Frames
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  select case Menu
+  case 0
+    NextScr = Screen.Play
+  case 3
+    NextScr = Screen.How
+  case else
+    NextScr = Screen.Credits
+  end select
+  return
+end sub
+
+sub ShowOptions:
+  if Players = 1 then
+    print at 11,14, "PLAYERS: 1"
+  else
+    print at 11,14, "PLAYERS: 2"
+  end if
+  select case Lead
+  case 0
+    print at 11,16, "LEAD:  5 "
+  case 1
+    print at 11,16, "LEAD: 10 "
+  case else
+    print at 11,16, "LEAD: 20 "
+  end select
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 4
+    C = J << 1
+    C += 12
+    put char 32 at 9,C
+  next
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  State = StCredits
+  print at 11,2, "LAVA PIT"
+  print at 3,4, "A DUEL BY SCOTT PETERSON"
+  print at 3,6, "FOR THE COMMODORE 64, FROM"
+  print at 3,8, "RUN MAGAZINE'S RERUN"
+  print at 3,10, "GAME PAK DISK."
+  print at 3,13, "COLECOVISION VERSION BY"
+  print at 3,15, "CLAUDE (ANTHROPIC) IN AMY,"
+  print at 3,17, "AMY BIENVENU'S LANGUAGE."
+  print at 3,19, "MUSIC: MAGMA JOUST (NEW)"
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  NextScr = Screen.Title
+  return
+end sub
+
+' HOW TO PLAY: two pages with pictures from the game's own tiles and sprites
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/2"
+  print at 3,3, "TWO VADRAKS DUEL OVER A"
+  print at 3,5, "PIT OF LAVA. TOUCH YOUR"
+  print at 3,7, "RIVAL FROM ABOVE: THE"
+  print at 3,9, "LOWER BIRD LOSES A POINT."
+  ' the picture: the albino diving onto the pigmented on a ledge
+  put char TLedgeT0 at 12,14
+  put char TLedgeT1 at 13,14
+  put char TLedgeT2 at 14,14
+  put char TLedgeT1 at 15,14
+  put char TLedgeT1 at 16,14
+  put char TLedgeT2 at 17,14
+  put char TLedgeB0 at 13,15
+  put char TLedgeB1 at 14,15
+  put char TLedgeB2 at 15,15
+  put char TLedgeB1 at 16,15
+  set sprite 0 to 80,112,SDRD,9
+  set sprite 1 to 80,112,SBRD,15
+  set sprite 2 to 95,120,SDLU,6
+  set sprite 3 to 95,120,SBLU,10
+  update sprites
+  print at 3,17, "A BIRD IN THE LAVA LOSES"
+  print at 3,19, "A POINT TOO."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/2"
+    print at 3,3, "BUTTON: FLAP THE WINGS"
+    print at 3,5, "(PRESS AGAIN FOR EACH"
+    print at 3,7, "FLAP). STICK: STEER."
+    ' the meter: lava, rock and the marker
+    for K = 4 to 27
+      T = TLavaRow
+      if K >= 13 then
+        if K <= 18 then T = TRockRow
+      end if
+      put char T at K,10
+    next
+    set sprite 4 to 79,116,SMark,15
+    update sprites
+    print at 3,12, "EACH POINT MOVES THE"
+    print at 3,14, "MARKER: TO THE LEFT END"
+    print at 3,16, "THE ALBINO WINS, TO THE"
+    print at 3,18, "RIGHT THE PIGMENTED."
+    print at 3,20, "TIP: STAY ABOVE YOUR RIVAL"
+    print at 8,22, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  NextScr = Screen.Title
+  return
+end sub
+
+data TickLen bytes = 69,71,73,75,77,79,81,82,84,86,88,90,92,94,96,97,99,101,103,105,107,109,111,112,114,116,118,120,122,124,126,128,129,131,133,135,137,139,141
+data RowHas bytes = 0,0,0,0,0,1,1,0,0,0,1,1,1,0,0,1,1,0,0,0,0,1,1,1,1
+data RowOff words = 0, 40, 80, 120, 160, 200, 240, 280, 320, 360, 400, 440, 480, 520, 560, 600, 640, 680, 720, 760, 800, 840, 880, 920, 960
+data ChrOff words = 0, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 264, 272, 280, 288, 296, 304, 312, 320, 328, 336, 344, 352, 360, 368, 376, 384, 392, 400, 408, 416, 424, 432, 440, 448, 456, 464, 472, 480, 488, 496, 504
+data FracMul words = 949, 923, 897, 873, 851, 829, 809, 799, 780, 762, 744, 728, 712, 697, 682, 675, 661, 648, 636, 624, 612, 601, 590, 585, 574, 564, 555, 546, 537, 528, 520, 511, 508, 500, 492, 485, 478, 471, 464
+
+data UiPat bytes
+  $81,$31,$CC,$C1,$70,$60,$E0,$00,$03,$26,$22,$C3,$2C,$26,$62,$1C,$C0,$81,$44,$70,$07,$3C,$20,$01
+  $81,$31,$CC,$C1,$70,$60,$E0,$00,$08,$18,$34,$24,$81,$99,$39,$C0,$03,$26,$22,$C3,$2C,$26,$62,$1C
+  $C0,$81,$44,$70,$07,$3C,$20,$01,$00,$00,$00,$00,$00,$00,$00,$00,$04,$08,$03,$6C,$30,$30,$C8,$E1
+  $C1,$80,$88,$18,$18,$11,$01,$83,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$99,$06,$0C,$0C,$27,$27,$60
+  $C1,$80,$88,$18,$18,$11,$01,$83,$98,$5C,$23,$9C,$9C,$18,$10,$84,$81,$01,$C2,$60,$E1,$43,$80,$81
+  $04,$08,$03,$6C,$30,$30,$C8,$E1,$00,$00,$00,$00,$00,$30,$38,$18,$00,$00,$00,$00,$00,$30,$38,$18
+  $00,$00,$00,$00,$00,$30,$38,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$7E,$BF,$F6,$EC,$CE,$E9,$00,$00,$FD,$00,$3D,$D7,$07,$5C,$00,$00,$B2,$57,$79,$00,$65,$6F
+  $69,$00,$00,$00,$00,$00,$00,$00,$A9,$00,$00,$00,$00,$00,$00,$00,$52,$00,$00,$00,$00,$00,$00,$00
+  $80,$04,$20,$01,$08,$40,$02,$10,$ED,$F7,$00,$70,$E7,$00,$00,$00,$FD,$AF,$00,$FE,$00,$BF,$77,$FE
+  $00,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00,$1C,$00,$00,$00,$00,$00,$00,$00,$3C,$00,$00,$00
+  $00,$00,$00,$3C,$42,$00,$00,$00,$00,$00,$1C,$20,$42,$00,$00,$00,$00,$1C,$20,$42,$42,$00,$00,$00
+  $04,$20,$42,$42,$20,$00,$00,$00,$0A,$40,$04,$42,$30,$00,$00,$00,$00,$00,$02,$04,$52,$00,$00,$00
+  $00,$00,$00,$08,$34,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data UiCol bytes
+  $6B,$B6,$6B,$6B,$B6,$B6,$B6,$16,$6B,$B6,$B6,$6B,$B6,$B6,$B6,$6B,$6B,$6B,$B6,$B6,$6B,$6B,$6B,$6B
+  $6B,$B6,$6B,$6B,$B6,$B6,$B6,$16,$B6,$B6,$B6,$B6,$6B,$6B,$6B,$B6,$6B,$B6,$B6,$6B,$B6,$B6,$B6,$6B
+  $6B,$6B,$B6,$B6,$6B,$6B,$6B,$6B,$16,$16,$16,$16,$16,$16,$16,$16,$B6,$B6,$6B,$6B,$B6,$B6,$6B,$6B
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$16,$16,$16,$16,$16,$16,$16,$16,$6B,$6B,$B6,$B6,$B6,$6B,$6B,$B6
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$B6,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$B6,$B6,$6B,$B6,$6B,$6B
+  $B6,$B6,$6B,$6B,$B6,$B6,$6B,$6B,$16,$16,$16,$16,$16,$B6,$B6,$B6,$16,$16,$16,$16,$16,$B6,$B6,$B6
+  $16,$16,$16,$16,$16,$B6,$B6,$B6,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16,$16
+  $1A,$1E,$E1,$E1,$61,$61,$61,$61,$1A,$1E,$E1,$1E,$61,$61,$61,$61,$1A,$1E,$E1,$E1,$61,$16,$61,$61
+  $61,$11,$11,$11,$11,$11,$11,$11,$61,$11,$11,$11,$11,$11,$11,$11,$61,$11,$11,$11,$11,$11,$11,$11
+  $98,$98,$98,$98,$98,$98,$98,$98,$61,$61,$16,$61,$61,$16,$16,$16,$E1,$E1,$1E,$E1,$16,$61,$61,$61
+  $11,$11,$11,$11,$91,$19,$18,$18,$11,$11,$11,$11,$91,$19,$18,$18,$11,$11,$11,$11,$91,$19,$18,$18
+  $11,$11,$11,$91,$91,$19,$18,$18,$11,$11,$B1,$91,$91,$19,$18,$18,$11,$B1,$B1,$91,$91,$19,$18,$18
+  $B1,$B1,$B1,$91,$91,$19,$18,$18,$B1,$B1,$B1,$91,$91,$19,$18,$18,$11,$11,$B1,$91,$91,$19,$18,$18
+  $11,$11,$11,$91,$91,$19,$18,$18,$11,$11,$11,$11,$11,$19,$18,$18
+end data
+data LogoN bytes
+  $A9,$A9,$A9,$AA,$AB,$A9,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3,$B1,$B4,$B5,$B6,$B7,$B8,$A9,$A9,$A9,$A9
+  $A9,$A9,$A9,$B9,$BA,$A9,$BB,$BC,$BD,$BE,$BF,$C0,$C1,$C2,$C3,$C4,$C5,$A9,$C6,$C7,$A9,$A9,$A9,$A9
+  $A9,$A9,$A9,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF,$D0,$D1,$D2,$D3,$D4,$D5,$D6,$D7,$D8,$A9,$A9,$A9,$A9
+  $A9,$A9,$A9,$A9,$A9,$D9,$A9,$DA,$A9,$A9,$A9,$A9,$DB,$A9,$A9,$A9,$DC,$A9,$DD,$A9,$A9,$A9,$A9,$A9
+end data
+data SpritePat bytes
+  $00,$40,$20,$10,$08,$04,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$01
+  $02,$00,$00,$00,$00,$00,$00,$00,$E0,$30,$58,$2C,$36,$1B,$1D,$1F,$3F,$7F,$FF,$DF,$8B,$09,$19,$00
+  $00,$00,$00,$00,$00,$02,$85,$CE,$F4,$F8,$F0,$60,$20,$20,$B0,$00,$00,$00,$00,$00,$00,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$3D,$7F,$FF,$9E,$3B,$60,$C0,$00,$00,$00,$00,$00,$00,$02,$06,$8D,$6E
+  $7C,$FC,$E0,$E0,$E0,$40,$50,$70,$00,$00,$00,$00,$00,$00,$40,$80,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$04,$08,$10,$20,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$A1,$73
+  $2F,$1F,$0F,$06,$04,$04,$0D,$00,$07,$0C,$1A,$34,$6C,$D8,$B8,$F8,$FC,$FE,$FF,$FB,$D1,$90,$98,$00
+  $00,$00,$00,$00,$00,$80,$40,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$60,$B1,$76,$3E,$3F,$07,$07,$07,$02,$0A,$0E
+  $00,$00,$00,$00,$00,$00,$F0,$BC,$FE,$FF,$79,$DC,$06,$03,$00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data ChrPat bytes
+  $EF,$0A,$00,$00,$00,$00,$00,$00,$EF,$D7,$05,$01,$00,$00,$00,$00,$DF,$76,$AB,$DE,$13,$02,$00,$00
+  $A4,$FA,$AB,$ED,$D6,$7B,$8A,$03,$DD,$BE,$F7,$D2,$AA,$D9,$CD,$8D,$87,$73,$DC,$42,$9A,$61,$24,$4A
+  $A1,$5A,$95,$45,$0A,$42,$11,$81,$4A,$A4,$B2,$51,$8A,$21,$88,$25,$A5,$54,$33,$84,$48,$83,$30,$80
+  $55,$AA,$92,$65,$10,$88,$00,$00,$2A,$D5,$20,$80,$00,$00,$00,$00,$2A,$90,$00,$00,$00,$00,$00,$00
+  $85,$52,$DE,$6A,$E0,$60,$A0,$80,$B5,$C2,$45,$85,$42,$81,$81,$81,$AB,$D6,$32,$2A,$16,$1C,$14,$08
+  $BB,$25,$0A,$1B,$12,$02,$01,$01,$00,$00,$00,$00,$18,$FF,$FF,$FF,$00,$00,$00,$00,$3C,$FF,$FF,$FF
+  $00,$00,$00,$00,$7E,$FF,$FF,$FF,$00,$00,$00,$7E,$81,$FF,$FF,$FF,$00,$00,$3C,$42,$81,$FF,$FF,$FF
+  $00,$3C,$42,$81,$81,$FF,$FF,$FF,$24,$42,$81,$81,$42,$FF,$FF,$FF,$09,$80,$24,$81,$52,$FF,$FF,$FF
+  $00,$00,$21,$04,$91,$FF,$FF,$FF,$00,$00,$00,$08,$54,$FF,$FF,$FF,$00,$00,$00,$00,$00,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$F6,$09,$37,$06,$1B,$0A,$09,$19
+  $BB,$A4,$D8,$28,$E0,$10,$90,$88,$3B,$95,$87,$E9,$C6,$63,$C5,$A6,$8A,$34,$D8,$51,$A2,$43,$C5,$C7
+  $92,$65,$DB,$18,$80,$E3,$66,$E7,$AA,$75,$CE,$C1,$30,$EF,$56,$A5,$EA,$77,$A3,$C3,$02,$29,$ED,$52
+  $10,$CD,$77,$E0,$A0,$63,$45,$C6,$4A,$A5,$CC,$32,$07,$C2,$63,$A6,$02,$03,$02,$7A,$A6,$B4,$48,$30
+  $00,$00,$00,$00,$00,$00,$00,$FF,$38,$7C,$BA,$D6,$6C,$7C,$44,$38,$10,$10,$00,$D6,$00,$18,$04,$38
+  $7E,$31,$33,$3E,$70,$60,$E0,$00,$FC,$26,$22,$3C,$2C,$26,$62,$E3,$3F,$7E,$44,$70,$F8,$C3,$DF,$FE
+  $7E,$31,$33,$3E,$70,$60,$E0,$00,$08,$18,$34,$24,$7E,$66,$C6,$C0,$FC,$26,$22,$3C,$2C,$26,$62,$E3
+  $3F,$7E,$44,$70,$F8,$C3,$DF,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$04,$08,$FC,$93,$30,$30,$37,$1E
+  $3E,$7F,$77,$E7,$E7,$EE,$FE,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$1F,$66,$06,$0C,$0C,$D8,$D8,$60
+  $3E,$7F,$77,$E7,$E7,$EE,$FE,$7C,$67,$A3,$23,$63,$63,$E7,$EF,$7B,$7E,$FE,$C2,$60,$1E,$43,$7F,$7E
+  $04,$08,$FC,$93,$30,$30,$37,$1E,$00,$00,$00,$00,$00,$30,$38,$18,$00,$00,$00,$00,$00,$30,$38,$18
+  $00,$00,$00,$00,$00,$30,$38,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data FieldChr bytes
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$27,$27,$27,$27,$27,$27,$27
+  $27,$27,$27,$27,$27,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$00,$01,$02,$03,$22,$25,$06,$1F,$08,$09,$0A,$0B,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$00,$01,$02,$03,$24,$23
+  $06,$1F,$08,$09,$0A,$0B,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27
+  $27,$27,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$00,$01,$02,$03,$04,$20,$06,$07,$08,$09,$0A,$0B,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27
+  $27,$27,$27,$27,$27,$27,$27,$27,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $00,$01,$02,$03,$04,$04,$04,$04,$05,$05,$05,$05,$06,$06,$06,$06,$07,$07,$07,$07,$08,$09,$0A,$0B
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$10,$12,$14,$16,$18,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$20,$04,$05,$06
+  $07,$24,$21,$23,$04,$05,$22,$25,$06,$0D,$07,$06,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$0D,$1E,$1F,$05,$0C,$1D,$0D,$1E,$24,$23,$1E,$0D
+  $0C,$1C,$0F,$1F,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+end data
+data SprMask bytes
+  $F8,$00,$00,$46,$00,$00,$21,$00,$00,$10,$80,$00,$7F,$E0,$00,$11,$E0,$00,$36,$40,$00,$79,$C0,$00
+  $12,$60,$00,$14,$90,$04,$18,$B8,$0C,$1F,$17,$FC,$02,$F8,$E6,$06,$61,$FF,$1C,$02,$18,$E4,$0C,$04
+  $C7,$F0,$00,$18,$00,$00,$20,$00,$00,$60,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$00,$78,$7C,$01,$80,$E4
+  $06,$3E,$7E,$04,$7D,$9F,$0E,$43,$40,$17,$3F,$F0,$24,$0C,$30,$44,$0E,$50,$E4,$02,$90,$0E,$03,$10
+  $00,$03,$88,$00,$00,$F8,$00,$00,$1F,$00,$00,$62,$00,$00,$84,$00,$01,$08,$00,$07,$FE,$00,$07,$88
+  $00,$02,$6C,$00,$03,$9E,$00,$06,$48,$20,$09,$28,$30,$1D,$18,$3F,$E8,$F8,$67,$1F,$40,$FF,$86,$38
+  $18,$40,$27,$20,$30,$23,$00,$0F,$D0,$00,$00,$08,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00
+  $3E,$1E,$00,$27,$01,$80,$7E,$7C,$60,$F9,$BE,$30,$02,$C2,$7C,$0F,$FC,$E6,$0C,$30,$22,$0A,$70,$33
+  $09,$40,$18,$08,$C0,$18,$11,$C0,$00,$1F,$00,$00
+end data
+data ShMask bytes
+  $F8,$00,$00,$00,$46,$00,$00,$00,$21,$00,$00,$00,$10,$80,$00,$00,$7F,$E0,$00,$00,$11,$E0,$00,$00
+  $36,$40,$00,$00,$79,$C0,$00,$00,$12,$60,$00,$00,$14,$90,$04,$00,$18,$B8,$0C,$00,$1F,$17,$FC,$00
+  $02,$F8,$E6,$00,$06,$61,$FF,$00,$1C,$02,$18,$00,$E4,$0C,$04,$00,$C7,$F0,$00,$00,$18,$00,$00,$00
+  $20,$00,$00,$00,$60,$00,$00,$00,$00,$00,$00,$00,$7C,$00,$00,$00,$23,$00,$00,$00,$10,$80,$00,$00
+  $08,$40,$00,$00,$3F,$F0,$00,$00,$08,$F0,$00,$00,$1B,$20,$00,$00,$3C,$E0,$00,$00,$09,$30,$00,$00
+  $0A,$48,$02,$00,$0C,$5C,$06,$00,$0F,$8B,$FE,$00,$01,$7C,$73,$00,$03,$30,$FF,$80,$0E,$01,$0C,$00
+  $72,$06,$02,$00,$63,$F8,$00,$00,$0C,$00,$00,$00,$10,$00,$00,$00,$30,$00,$00,$00,$00,$00,$00,$00
+  $3E,$00,$00,$00,$11,$80,$00,$00,$08,$40,$00,$00,$04,$20,$00,$00,$1F,$F8,$00,$00,$04,$78,$00,$00
+  $0D,$90,$00,$00,$1E,$70,$00,$00,$04,$98,$00,$00,$05,$24,$01,$00,$06,$2E,$03,$00,$07,$C5,$FF,$00
+  $00,$BE,$39,$80,$01,$98,$7F,$C0,$07,$00,$86,$00,$39,$03,$01,$00,$31,$FC,$00,$00,$06,$00,$00,$00
+  $08,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00,$1F,$00,$00,$00,$08,$C0,$00,$00,$04,$20,$00,$00
+  $02,$10,$00,$00,$0F,$FC,$00,$00,$02,$3C,$00,$00,$06,$C8,$00,$00,$0F,$38,$00,$00,$02,$4C,$00,$00
+  $02,$92,$00,$80,$03,$17,$01,$80,$03,$E2,$FF,$80,$00,$5F,$1C,$C0,$00,$CC,$3F,$E0,$03,$80,$43,$00
+  $1C,$81,$80,$80,$18,$FE,$00,$00,$03,$00,$00,$00,$04,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00
+  $0F,$80,$00,$00,$04,$60,$00,$00,$02,$10,$00,$00,$01,$08,$00,$00,$07,$FE,$00,$00,$01,$1E,$00,$00
+  $03,$64,$00,$00,$07,$9C,$00,$00,$01,$26,$00,$00,$01,$49,$00,$40,$01,$8B,$80,$C0,$01,$F1,$7F,$C0
+  $00,$2F,$8E,$60,$00,$66,$1F,$F0,$01,$C0,$21,$80,$0E,$40,$C0,$40,$0C,$7F,$00,$00,$01,$80,$00,$00
+  $02,$00,$00,$00,$06,$00,$00,$00,$00,$00,$00,$00,$07,$C0,$00,$00,$02,$30,$00,$00,$01,$08,$00,$00
+  $00,$84,$00,$00,$03,$FF,$00,$00,$00,$8F,$00,$00,$01,$B2,$00,$00,$03,$CE,$00,$00,$00,$93,$00,$00
+  $00,$A4,$80,$20,$00,$C5,$C0,$60,$00,$F8,$BF,$E0,$00,$17,$C7,$30,$00,$33,$0F,$F8,$00,$E0,$10,$C0
+  $07,$20,$60,$20,$06,$3F,$80,$00,$00,$C0,$00,$00,$01,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $03,$E0,$00,$00,$01,$18,$00,$00,$00,$84,$00,$00,$00,$42,$00,$00,$01,$FF,$80,$00,$00,$47,$80,$00
+  $00,$D9,$00,$00,$01,$E7,$00,$00,$00,$49,$80,$00,$00,$52,$40,$10,$00,$62,$E0,$30,$00,$7C,$5F,$F0
+  $00,$0B,$E3,$98,$00,$19,$87,$FC,$00,$70,$08,$60,$03,$90,$30,$10,$03,$1F,$C0,$00,$00,$60,$00,$00
+  $00,$80,$00,$00,$01,$80,$00,$00,$00,$00,$00,$00,$01,$F0,$00,$00,$00,$8C,$00,$00,$00,$42,$00,$00
+  $00,$21,$00,$00,$00,$FF,$C0,$00,$00,$23,$C0,$00,$00,$6C,$80,$00,$00,$F3,$80,$00,$00,$24,$C0,$00
+  $00,$29,$20,$08,$00,$31,$70,$18,$00,$3E,$2F,$F8,$00,$05,$F1,$CC,$00,$0C,$C3,$FE,$00,$38,$04,$30
+  $01,$C8,$18,$08,$01,$8F,$E0,$00,$00,$30,$00,$00,$00,$40,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$00,$00,$78,$7C,$00,$01,$80,$E4,$00,$06,$3E,$7E,$00
+  $04,$7D,$9F,$00,$0E,$43,$40,$00,$17,$3F,$F0,$00,$24,$0C,$30,$00,$44,$0E,$50,$00,$E4,$02,$90,$00
+  $0E,$03,$10,$00,$00,$03,$88,$00,$00,$00,$F8,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$06,$00
+  $00,$3C,$3E,$00,$00,$C0,$72,$00,$03,$1F,$3F,$00,$02,$3E,$CF,$80,$07,$21,$A0,$00,$0B,$9F,$F8,$00
+  $12,$06,$18,$00,$22,$07,$28,$00,$72,$01,$48,$00,$07,$01,$88,$00,$00,$01,$C4,$00,$00,$00,$7C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$1E,$1F,$00,$00,$60,$39,$00,$01,$8F,$9F,$80
+  $01,$1F,$67,$C0,$03,$90,$D0,$00,$05,$CF,$FC,$00,$09,$03,$0C,$00,$11,$03,$94,$00,$39,$00,$A4,$00
+  $03,$80,$C4,$00,$00,$00,$E2,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$80
+  $00,$0F,$0F,$80,$00,$30,$1C,$80,$00,$C7,$CF,$C0,$00,$8F,$B3,$E0,$01,$C8,$68,$00,$02,$E7,$FE,$00
+  $04,$81,$86,$00,$08,$81,$CA,$00,$1C,$80,$52,$00,$01,$C0,$62,$00,$00,$00,$71,$00,$00,$00,$1F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$07,$87,$C0,$00,$18,$0E,$40,$00,$63,$E7,$E0
+  $00,$47,$D9,$F0,$00,$E4,$34,$00,$01,$73,$FF,$00,$02,$40,$C3,$00,$04,$40,$E5,$00,$0E,$40,$29,$00
+  $00,$E0,$31,$00,$00,$00,$38,$80,$00,$00,$0F,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60
+  $00,$03,$C3,$E0,$00,$0C,$07,$20,$00,$31,$F3,$F0,$00,$23,$EC,$F8,$00,$72,$1A,$00,$00,$B9,$FF,$80
+  $01,$20,$61,$80,$02,$20,$72,$80,$07,$20,$14,$80,$00,$70,$18,$80,$00,$00,$1C,$40,$00,$00,$07,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$01,$E1,$F0,$00,$06,$03,$90,$00,$18,$F9,$F8
+  $00,$11,$F6,$7C,$00,$39,$0D,$00,$00,$5C,$FF,$C0,$00,$90,$30,$C0,$01,$10,$39,$40,$03,$90,$0A,$40
+  $00,$38,$0C,$40,$00,$00,$0E,$20,$00,$00,$03,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$18
+  $00,$00,$F0,$F8,$00,$03,$01,$C8,$00,$0C,$7C,$FC,$00,$08,$FB,$3E,$00,$1C,$86,$80,$00,$2E,$7F,$E0
+  $00,$48,$18,$60,$00,$88,$1C,$A0,$01,$C8,$05,$20,$00,$1C,$06,$20,$00,$00,$07,$10,$00,$00,$01,$F0
+  $00,$00,$1F,$00,$00,$00,$62,$00,$00,$00,$84,$00,$00,$01,$08,$00,$00,$07,$FE,$00,$00,$07,$88,$00
+  $00,$02,$6C,$00,$00,$03,$9E,$00,$00,$06,$48,$00,$20,$09,$28,$00,$30,$1D,$18,$00,$3F,$E8,$F8,$00
+  $67,$1F,$40,$00,$FF,$86,$38,$00,$18,$40,$27,$00,$20,$30,$23,$00,$00,$0F,$D0,$00,$00,$00,$08,$00
+  $00,$00,$0C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$80,$00,$00,$31,$00,$00,$00,$42,$00
+  $00,$00,$84,$00,$00,$03,$FF,$00,$00,$03,$C4,$00,$00,$01,$36,$00,$00,$01,$CF,$00,$00,$03,$24,$00
+  $10,$04,$94,$00,$18,$0E,$8C,$00,$1F,$F4,$7C,$00,$33,$8F,$A0,$00,$7F,$C3,$1C,$00,$0C,$20,$13,$80
+  $10,$18,$11,$80,$00,$07,$E8,$00,$00,$00,$04,$00,$00,$00,$06,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$07,$C0,$00,$00,$18,$80,$00,$00,$21,$00,$00,$00,$42,$00,$00,$01,$FF,$80,$00,$01,$E2,$00
+  $00,$00,$9B,$00,$00,$00,$E7,$80,$00,$01,$92,$00,$08,$02,$4A,$00,$0C,$07,$46,$00,$0F,$FA,$3E,$00
+  $19,$C7,$D0,$00,$3F,$E1,$8E,$00,$06,$10,$09,$C0,$08,$0C,$08,$C0,$00,$03,$F4,$00,$00,$00,$02,$00
+  $00,$00,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$E0,$00,$00,$0C,$40,$00,$00,$10,$80
+  $00,$00,$21,$00,$00,$00,$FF,$C0,$00,$00,$F1,$00,$00,$00,$4D,$80,$00,$00,$73,$C0,$00,$00,$C9,$00
+  $04,$01,$25,$00,$06,$03,$A3,$00,$07,$FD,$1F,$00,$0C,$E3,$E8,$00,$1F,$F0,$C7,$00,$03,$08,$04,$E0
+  $04,$06,$04,$60,$00,$01,$FA,$00,$00,$00,$01,$00,$00,$00,$01,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$F0,$00,$00,$06,$20,$00,$00,$08,$40,$00,$00,$10,$80,$00,$00,$7F,$E0,$00,$00,$78,$80
+  $00,$00,$26,$C0,$00,$00,$39,$E0,$00,$00,$64,$80,$02,$00,$92,$80,$03,$01,$D1,$80,$03,$FE,$8F,$80
+  $06,$71,$F4,$00,$0F,$F8,$63,$80,$01,$84,$02,$70,$02,$03,$02,$30,$00,$00,$FD,$00,$00,$00,$00,$80
+  $00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$00,$00,$03,$10,$00,$00,$04,$20
+  $00,$00,$08,$40,$00,$00,$3F,$F0,$00,$00,$3C,$40,$00,$00,$13,$60,$00,$00,$1C,$F0,$00,$00,$32,$40
+  $01,$00,$49,$40,$01,$80,$E8,$C0,$01,$FF,$47,$C0,$03,$38,$FA,$00,$07,$FC,$31,$C0,$00,$C2,$01,$38
+  $01,$01,$81,$18,$00,$00,$7E,$80,$00,$00,$00,$40,$00,$00,$00,$60,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$7C,$00,$00,$01,$88,$00,$00,$02,$10,$00,$00,$04,$20,$00,$00,$1F,$F8,$00,$00,$1E,$20
+  $00,$00,$09,$B0,$00,$00,$0E,$78,$00,$00,$19,$20,$00,$80,$24,$A0,$00,$C0,$74,$60,$00,$FF,$A3,$E0
+  $01,$9C,$7D,$00,$03,$FE,$18,$E0,$00,$61,$00,$9C,$00,$80,$C0,$8C,$00,$00,$3F,$40,$00,$00,$00,$20
+  $00,$00,$00,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$C4,$00,$00,$01,$08
+  $00,$00,$02,$10,$00,$00,$0F,$FC,$00,$00,$0F,$10,$00,$00,$04,$D8,$00,$00,$07,$3C,$00,$00,$0C,$90
+  $00,$40,$12,$50,$00,$60,$3A,$30,$00,$7F,$D1,$F0,$00,$CE,$3E,$80,$01,$FF,$0C,$70,$00,$30,$80,$4E
+  $00,$40,$60,$46,$00,$00,$1F,$A0,$00,$00,$00,$10,$00,$00,$00,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00,$00,$3E,$1E,$00,$00,$27,$01,$80,$00,$7E,$7C,$60,$00
+  $F9,$BE,$30,$00,$02,$C2,$7C,$00,$0F,$FC,$E6,$00,$0C,$30,$22,$00,$0A,$70,$33,$00,$09,$40,$18,$00
+  $08,$C0,$18,$00,$11,$C0,$00,$00,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$18,$00,$00,$00
+  $1F,$0F,$00,$00,$13,$80,$C0,$00,$3F,$3E,$30,$00,$7C,$DF,$18,$00,$01,$61,$3E,$00,$07,$FE,$73,$00
+  $06,$18,$11,$00,$05,$38,$19,$80,$04,$A0,$0C,$00,$04,$60,$0C,$00,$08,$E0,$00,$00,$0F,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0C,$00,$00,$00,$0F,$87,$80,$00,$09,$C0,$60,$00,$1F,$9F,$18,$00
+  $3E,$6F,$8C,$00,$00,$B0,$9F,$00,$03,$FF,$39,$80,$03,$0C,$08,$80,$02,$9C,$0C,$C0,$02,$50,$06,$00
+  $02,$30,$06,$00,$04,$70,$00,$00,$07,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$06,$00,$00,$00
+  $07,$C3,$C0,$00,$04,$E0,$30,$00,$0F,$CF,$8C,$00,$1F,$37,$C6,$00,$00,$58,$4F,$80,$01,$FF,$9C,$C0
+  $01,$86,$04,$40,$01,$4E,$06,$60,$01,$28,$03,$00,$01,$18,$03,$00,$02,$38,$00,$00,$03,$E0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$03,$E1,$E0,$00,$02,$70,$18,$00,$07,$E7,$C6,$00
+  $0F,$9B,$E3,$00,$00,$2C,$27,$C0,$00,$FF,$CE,$60,$00,$C3,$02,$20,$00,$A7,$03,$30,$00,$94,$01,$80
+  $00,$8C,$01,$80,$01,$1C,$00,$00,$01,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$80,$00,$00
+  $01,$F0,$F0,$00,$01,$38,$0C,$00,$03,$F3,$E3,$00,$07,$CD,$F1,$80,$00,$16,$13,$E0,$00,$7F,$E7,$30
+  $00,$61,$81,$10,$00,$53,$81,$98,$00,$4A,$00,$C0,$00,$46,$00,$C0,$00,$8E,$00,$00,$00,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$F8,$78,$00,$00,$9C,$06,$00,$01,$F9,$F1,$80
+  $03,$E6,$F8,$C0,$00,$0B,$09,$F0,$00,$3F,$F3,$98,$00,$30,$C0,$88,$00,$29,$C0,$CC,$00,$25,$00,$60
+  $00,$23,$00,$60,$00,$47,$00,$00,$00,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$00,$00
+  $00,$7C,$3C,$00,$00,$4E,$03,$00,$00,$FC,$F8,$C0,$01,$F3,$7C,$60,$00,$05,$84,$F8,$00,$1F,$F9,$CC
+  $00,$18,$60,$44,$00,$14,$E0,$66,$00,$12,$80,$30,$00,$11,$80,$30,$00,$23,$80,$00,$00,$3E,$00,$00
+end data
+data LavaCell bytes
+  $02,$03,$03,$04,$05,$05,$06,$07,$07,$08,$09,$09,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$15,$16,$17,$17,$18,$19,$19,$1A,$1B,$1C,$1C,$1D
+end data
+data LavaRow0 bytes
+  $D0,$D2,$D4,$D6,$D8,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$E0,$C4,$C5,$C6,$C7,$E4,$E1,$E3,$C4,$C5,$E2,$E5
+  $C6,$CD,$C7,$C6,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+end data
+data FP0 bytes
+  $80,$00,$8B,$30,$10,$89,$F0,$86,$63,$03,$02,$61,$CF,$06,$04,$9E,$18,$08,$08,$C0,$26,$31,$01,$01
+  $18,$92,$E7,$83,$25,$8C,$04,$F2,$80,$61,$F3,$C1,$81,$89,$C6,$82,$2F,$0C,$D0,$27,$79,$60,$40,$8A
+  $C0,$E3,$5B,$06,$CA,$1E,$3C,$B8,$20,$C0,$A5,$F1,$98,$83,$80,$80,$66,$1E,$18,$10,$1A,$78,$58,$92
+  $C1,$40,$61,$8F,$0C,$08,$A5,$3C,$89,$60,$20,$26,$C7,$06,$04,$1A,$9E,$59,$F2,$3F,$3F,$1F,$3C,$61
+  $EF,$3D,$05,$9A,$ED,$98,$9F,$F8,$84,$28,$26,$F7,$BF,$5B,$FA,$19,$BF,$DD,$FD,$7F,$C8,$86,$FB,$F9
+  $EF,$F3,$55,$62,$FC,$7B,$89,$7D,$EF,$9E,$7D,$B8,$E0,$50,$88,$F8,$F8,$63,$3B,$03,$F8,$F9,$F0,$92
+  $55,$A9,$24,$71,$60,$89,$A8,$14,$3E,$B7,$FE,$75,$55,$58
+end data
+data FC0 bytes
+  $96,$11,$23,$14,$41,$C4,$F0,$7F,$F9,$D0,$15,$E4,$F0,$16,$08,$11,$A1,$E1,$E1,$62,$1A,$1E,$88,$E1
+  $61,$08,$9A,$16,$61,$1E,$28,$61,$29,$E1,$13,$87,$80,$FD,$DD,$F9,$F0,$0A,$11,$4D,$55,$56
+end data
+data FN0 bytes
+  $95,$00,$79,$CF,$06,$01,$02,$03,$04,$05,$06,$07,$08,$09,$0A,$0B,$0C,$0D,$0E,$0F,$10,$11,$12,$13
+  $14,$15,$16,$17,$18,$19,$6E,$00,$FE,$04,$08,$1F,$1A,$1B,$1C,$1D,$1E,$1F,$20,$21,$22,$90,$02,$18
+  $23,$24,$25,$26,$27,$07,$55,$55,$80
+end data
+data FP1 bytes
+  $85,$00,$AB,$07,$03,$C8,$EC,$E6,$EF,$05,$F0,$24,$C4,$FD,$8F,$FE,$F9,$C0,$82,$FC,$FC,$A4,$EC,$48
+  $86,$7B,$D7,$61,$ED,$7F,$5F,$9B,$F8,$E9,$CF,$E3,$FE,$BC,$C0,$8A,$A6,$FE,$7D,$6C,$82,$37,$7E,$09
+  $0E,$08,$A3,$DF,$15,$75,$11,$89,$78,$F9,$78,$AC,$58,$E0,$F8,$DE,$AD,$2C,$48,$21,$D5,$44,$BC,$20
+  $BF,$28,$F4,$A5,$8F,$03,$E6,$47,$3F,$03,$01,$48,$79,$AF,$3B,$0B,$08,$06,$05,$A2,$7E,$BF,$F6,$CE
+  $E9,$2A,$FD,$A3,$3D,$07,$5C,$9A,$5B,$B2,$57,$79,$22,$65,$6F,$0A,$F6,$9F,$BD,$5B,$98,$62,$3E,$5E
+  $73,$A8,$90,$4C,$F8,$80,$70,$93,$80,$80,$55,$55,$80
+end data
+data FC1 bytes
+  $85,$11,$8B,$A1,$E1,$88,$F0,$A8,$1A,$1E,$E1,$43,$F8,$C1,$FF,$D2,$AA,$1E,$61,$4F,$F0,$4F,$B2,$7B
+  $F6,$E6,$DF,$FE,$9E,$61,$F0,$6A,$16,$86,$61,$81,$61,$F1,$C0,$F8,$F9,$86,$3D,$46,$7B,$FE,$92,$F0
+  $97,$1E,$A4,$D1,$16,$3F,$EF,$6A,$FE,$E0,$70,$5D,$55,$56
+end data
+data FN1 bytes
+  $85,$00,$02,$1F,$01,$02,$03,$04,$05,$A6,$86,$06,$07,$08,$09,$0A,$05,$82,$0B,$0C,$0D,$0E,$09,$BC
+  $0F,$10,$11,$FE,$10,$85,$84,$12,$13,$14,$15,$16,$17,$18,$19,$1A,$1B,$00,$D5,$55,$60
+end data
+data FP2 bytes
+  $96,$00,$F2,$69,$F0,$96,$A9,$96,$52,$97,$D0,$99,$C9,$0F,$0F,$04,$66,$DF,$07,$02,$18,$20,$6B,$CF
+  $B9,$D3,$83,$FB,$1D,$3B,$EC,$E2,$76,$4F,$BF,$A0,$D7,$82,$F7,$BE,$F7,$7D,$08,$21,$EE,$77,$3F,$FE
+  $98,$CF,$F6,$D5,$27,$4E,$FE,$C0,$F8,$BD,$DE,$BE,$FD,$BD,$80,$08,$EB,$FD,$FB,$7E,$67,$F7,$F7,$C7
+  $E2,$E0,$BE,$FE,$A1,$FD,$E8,$D1,$F5,$20,$82,$7D,$CE,$00,$72,$08,$DF,$47,$20,$3C,$63,$C0,$80,$AB
+  $F4,$C0,$79,$F4,$A0,$5F,$0E,$77,$E0,$E0,$E6,$E3,$E1,$D7,$23,$3E,$EA,$BF,$F7,$FA,$77,$F7,$CE,$8A
+  $F7,$77,$F9,$1E,$F1,$3E,$AB,$F7,$6E,$F3,$0D,$B3,$87,$D6,$E7,$82,$E3,$70,$7E,$FD,$AF,$D9,$F9,$38
+  $BF,$77,$FE,$7E,$F7,$B7,$19,$5B,$BF,$F5,$DF,$FD,$AF,$FD,$7F,$B9,$F7,$7D,$5D,$A1,$52,$E2,$FC,$6E
+  $FD,$EA,$7F,$09,$00,$3D,$9A,$7D,$BF,$F6,$53,$1F,$7F,$7F,$3F,$FE,$F3,$80,$04,$20,$01,$08,$40,$02
+  $10,$8F,$4D,$E1,$E0,$FE,$E5,$91,$0E,$DF,$8F,$7F,$7D,$7F,$3A,$FE,$D7,$EB,$F8,$FC,$DB,$F8,$78,$29
+  $EE,$6F,$9F,$00,$7F,$D5,$CF,$E7,$F2,$00,$EF,$7F,$E2,$49,$E3,$ED,$83,$70,$E7,$6A,$88,$5C,$97,$EF
+  $FB,$7F,$77,$CD,$FA,$BB,$D9,$DB,$C1,$47,$27,$EB,$7E,$F6,$EF,$EC,$EF,$BD,$BB,$6C,$FD,$DD,$3F,$F9
+  $EF,$FD,$1D,$7E,$FE,$F9,$6B,$DC,$AC,$B2,$E8,$4C,$C8,$8F,$0F,$9A,$FE,$00,$40,$04,$5B,$18,$CA,$F0
+  $1C,$5B,$3C,$CA,$F2,$42,$19,$96,$1C,$20,$42,$9A,$42,$04,$6E,$20,$58,$86,$0A,$40,$04,$42,$30,$19
+  $92,$02,$04,$52,$21,$08,$34,$75,$55,$58
+end data
+data FC2 bytes
+  $96,$11,$F5,$61,$F0,$38,$FF,$B8,$A1,$E1,$EE,$88,$1A,$1E,$BD,$61,$F0,$A5,$61,$2B,$16,$85,$D0,$BD
+  $1E,$E0,$4F,$F0,$E1,$60,$4D,$8D,$F0,$E2,$F4,$E1,$E6,$23,$96,$81,$FF,$FF,$D7,$C4,$FF,$FF,$F5,$53
+  $F0,$F2,$E0,$BE,$16,$D0,$87,$16,$BE,$74,$F0,$93,$E1,$DF,$A0,$A3,$CF,$90,$ED,$F7,$B1,$D0,$A5,$FF
+  $98,$A5,$81,$A0,$61,$5B,$16,$CF,$F4,$F8,$7F,$FB,$FF,$97,$C6,$F0,$FB,$FE,$69,$81,$69,$11,$00,$11
+  $66,$91,$19,$18,$E1,$F0,$29,$91,$29,$B1,$29,$B1,$29,$B1,$5F,$C0,$F0,$A0,$FE,$FE,$F0,$D5,$55,$60
+end data
+data FN2 bytes
+  $91,$00,$86,$01,$02,$03,$04,$00,$51,$08,$16,$05,$06,$07,$08,$09,$0A,$0B,$0C,$0D,$0E,$0F,$10,$11
+  $12,$13,$14,$15,$16,$00,$02,$96,$FA,$42,$17,$18,$19,$1A,$1B,$1C,$1D,$1E,$1F,$20,$21,$FA,$02,$9A
+  $00,$22,$59,$19,$23,$24,$25,$26,$27,$28,$29,$2A,$2B,$2C,$2D,$2E,$22,$78,$0E,$07,$55,$55,$80
+end data
+data LogoP bytes
+  $81,$00,$A1,$01,$AA,$00,$F8,$1A,$00,$A2,$0F,$8E,$7E,$E0,$2E,$3F,$FF,$A8,$00,$1F,$6A,$00,$86,$8F
+  $A8,$00,$C0,$A2,$C7,$82,$00,$8A,$E3,$00,$A2,$80,$8A,$F0,$00,$A1,$07,$AA,$00,$81,$3F,$E0,$FF,$FE
+  $80,$FC,$B6,$2C,$FF,$4A,$F2,$FA,$7B,$FF,$01,$5A,$F8,$5A,$7E,$28,$7F,$FF,$F7,$9A,$EF,$8E,$1F,$FE
+  $29,$8F,$69,$C7,$79,$64,$EF,$F7,$F0,$FE,$29,$07,$79,$D0,$89,$E0,$E0,$DB,$DE,$BC,$7C,$FE,$A5,$0F
+  $A5,$C0,$F2,$12,$83,$00,$76,$D2,$E2,$FC,$FF,$80,$7E,$4F,$90,$67,$04,$1F,$03,$A6,$FF,$00,$22,$8F
+  $FE,$89,$70,$87,$00,$C7,$07,$FE,$0D,$FE,$03,$96,$00,$97,$10,$E7,$0D,$FE,$37,$5C,$8E,$70,$40,$A0
+  $80,$FD,$D0,$CA,$F2,$02,$5F,$CF,$E2,$CD,$FE,$82,$04,$8A,$00,$10,$28,$00,$29,$80,$A6,$00,$B9,$02
+  $C0,$D5,$55,$60
+end data
+data LogoC bytes
+  $81,$11,$A2,$B1,$8F,$A1,$F0,$01,$BE,$1B,$FF,$C0,$15,$EF,$34,$E0,$7C,$F0,$E8,$FF,$91,$A7,$81,$84
+  $F0,$98,$19,$18,$18,$F4,$C0,$7D,$D0,$5F,$35,$95,$80,$B9,$61,$FE,$89,$11,$61,$A2,$16,$9E,$11,$E8
+  $39,$D0,$7D,$FE,$E4,$C8,$E5,$F0,$7D,$90,$7D,$60,$F7,$40,$8E,$DE,$A0,$43,$7D,$B9,$A8,$FF,$EB,$F0
+  $CF,$DE,$E2,$38,$C0,$35,$55,$58
+end data
+
+asm {
+LpFlap:
+    db $00,$00,$24,$02,$00,$00,$45,$02,$00,$00,$75,$03,$00,$00,$A6,$03,$10
+LpBump:
+    db $41,$2A,$51,$04,$44,$F2,$50
+LpFallP:
+    db $C1,$50,$F0,$10,$44,$17,$C0,$AE,$F1,$1E,$D0
+LpFallN:
+    db $00,$00,$17,$06,$00,$00,$27,$08,$00,$00,$37,$0A,$00,$00,$57,$0C,$00,$00,$67,$0E,$00,$00,$87,$10
+    db $00,$00,$B7,$12,$10
+LpClick:
+    db $80,$6B,$50,$02,$90
+LpWin:
+    db $40,$D6,$20,$08,$40,$AA,$20,$08,$40,$8F,$20,$08,$40,$6B,$20,$14,$40,$6B,$60,$0C,$50
+
+LpSoundTable:
+    dw LpMel,$702B
+    dw LpHarm,$7035
+    dw LpBassVol,$703F
+    dw LpBassPitch,$7049
+    dw LpFlap,$7053
+    dw LpBump,$705D
+    dw LpFallP,$7071
+    dw LpFallN,$7053
+    dw LpClick,$7067
+    dw LpWin,$705D
+; Magma Joust (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums
+LpMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1C,$00,$1F,$23,$28,$00,$26,$23,$24,$00,$23,$21
+    db $1F,$00,$1C,$00,$1E,$00,$21,$26,$2A,$00,$28,$26,$A7,$00,$00,$00
+    db $23,$00,$01,$01,$28,$00,$26,$23,$2B,$00,$2A,$28,$2D,$00,$2B,$28
+    db $24,$00,$21,$00,$23,$00,$27,$2A,$2D,$00,$2B,$2A,$A8,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+LpHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$00,$00,$00,$1F,$00,$00,$00,$1F,$00,$00,$00
+    db $1C,$00,$18,$00,$21,$00,$00,$00,$21,$00,$1E,$00,$A3,$00,$00,$00
+    db $1E,$00,$01,$01,$23,$00,$00,$00,$23,$00,$00,$00,$28,$00,$00,$00
+    db $21,$00,$1C,$00,$1E,$00,$00,$00,$1B,$00,$23,$00,$A3,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+LpBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$02,$36,$04,$13,$11
+    db $02,$33,$08,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$09,$14,$66,$02,$36,$04,$13,$11,$02,$33,$03,$14,$66,$02,$45,$05,$13,$11,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$02,$36,$04,$13,$11,$02,$33,$08,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$24,$14,$66,$30
+    db $10
+LpBassPitch:
+    db $C0,$88,$F0,$21,$C0,$5A,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$1B,$C0,$98,$F0,$1D,$C0,$66,$F0,$1B
+    db $C0,$B5,$F0,$1D,$C0,$79,$F0,$1B,$C0,$88,$F0,$1D,$C0,$5A,$F0,$1B,$C0,$66,$F0,$1D,$C0,$88,$F0,$1B
+    db $C0,$5A,$F0,$1D,$C0,$79,$F0,$1B,$C0,$88,$F0,$24,$F0
+    db $D0
+LpTitleSong:
+    dw $0001
+    db $C1,$02,$03,$04
+    dw $0000
+}

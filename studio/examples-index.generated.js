@@ -15654,6 +15654,29 @@ export const exampleManifest = [
     "originLabel": "Faithful adaptation"
   },
   {
+    "id": "bullseye",
+    "label": "Bull's-Eye (May/June/July 1990)",
+    "detail": "ColecoVision adaptation of Tony Brantner's Bull's-Eye, published on the May/June/July 1990 ReRUN disk. The two-player 301 darts game preserves the original scoring table, drifting aim, steering, doubles, trebles, bulls and bust rule.",
+    "projectName": "BULL'S-EYE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "run-magazine",
+      "rerun",
+      "faithful-adaptation",
+      "game",
+      "commodore-64",
+      "darts",
+      "two-player",
+      "joystick"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
     "id": "gridrun-64",
     "label": "GridRun 64 (December 1990)",
     "detail": "ColecoVision adaptation of Tony Brantner's GridRun 64, published in RUN magazine, December 1990. Reconstructed from the original article, play in jsC64 and the ReRUN executable: one BASIC SYS line followed by about 2 KB of 6502 machine code.",
@@ -15670,6 +15693,29 @@ export const exampleManifest = [
       "game",
       "commodore-64",
       "machine-language",
+      "joystick"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "rollerdash",
+    "label": "RollerDash (September/October 1991)",
+    "detail": "ColecoVision adaptation of the uncredited C64 machine-code game RollerDash from the September/October 1991 ReRUN disk. Build speed with timed strides, jump or duck obstacles and cover one mile before the clock expires across ten levels.",
+    "projectName": "ROLLERDASH",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "run-magazine",
+      "rerun",
+      "faithful-adaptation",
+      "game",
+      "commodore-64",
+      "machine-language",
+      "action",
       "joystick"
     ],
     "originKind": "faithful-adaptation",
@@ -15740,6 +15786,30 @@ export const exampleManifest = [
       "commodore-64",
       "machine-language",
       "shoot-em-up",
+      "joystick"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "lava-pit",
+    "label": "Lava Pit (ReRUN Game Pak)",
+    "detail": "ColecoVision adaptation of Scott Peterson's Lava Pit, a C64 BASIC and machine-language duel distributed on RUN magazine's ReRUN Game Pak disk. One or two players steer and flap competing Vadraks above lava while fighting for the lead.",
+    "projectName": "LAVA PIT",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "run-magazine",
+      "rerun",
+      "faithful-adaptation",
+      "game",
+      "commodore-64",
+      "action",
+      "one-player",
+      "two-player",
       "joystick"
     ],
     "originKind": "faithful-adaptation",
