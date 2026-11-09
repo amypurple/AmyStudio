@@ -1,0 +1,1652 @@
+cartridge "RUBBER BANDIT BALL/CHARLES ORCUTT/1988"
+' RUBBER BANDIT BALL - ColecoVision port of the Commodore 64 game by
+' Charles Orcutt (RUN Magazine / ReRUN, September-October 1988).
+'
+' The game: a rubber ball rolls round a closed arena of walls and bars. The
+' stick speeds it up in the direction pushed (four speeds) or brakes it to a
+' stop when pushed against its travel; walls bounce it back. Eat all 95 dots
+' before the 99-second timer runs out to reach the next level (the bandits
+' move faster and each dot is worth the level number). Two bandits roam
+' the arena: one touch, or the timer at zero, costs a ball. Five balls.
+' The button pauses.
+'
+' Rules from the original's 6502 code (orig/ml.dis), checked pass by pass
+' against C64 traces (c64/check.mjs, model.mjs):
+' - one pass a frame; a pass whose move ends in a coarse scroll step is
+'   followed by one frame of redraw with no pass (as the C64's double-buffer
+'   redraw costs a frame)
+' - the world: the original's 80 x 100 map; the view origin C0,R0 (cells)
+'   minus the fine scroll Fx,Fy (0-7 px); the ball's world box is
+'   x = C0*8 - Fx + 158..169, y = R0*8 - Fy + 82..92
+' - the port's camera moves in whole cells with C0,R0 (no fine scroll on the
+'   VDP's tile screen): the ball sprite shows the fine part (-Fx, -Fy)
+'
+' House rules: title menu by joystick, HOW TO PLAY pages with the game's own
+' tiles and sprites, one press to start, everything in columns 2-29 and rows
+' 1-22, flashing at most 3 Hz, NMI off between frames (Frame1).
+
+const TM1 = 128
+const TM2 = 129
+const TM3 = 130
+const TM4 = 131
+const TM5 = 132
+const TM6 = 133
+const TM7 = 134
+const TM8 = 135
+const TM9 = 136
+const TM11 = 137
+const TM12 = 138
+const TM16 = 139
+const TM17 = 140
+const TM18 = 141
+const TM19 = 142
+const TM20 = 143
+const TLife = 144
+const TBar = 145
+const SBall = 0
+const SBandit = 4
+const NTiles8 = 144
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndBounce = 6
+const SndDot = 7
+const SndCrash = 8
+const SndOver = 9
+const TuneFrames = 896
+const TxtHow1 = 0
+const TxtHow2 = 1
+const TxtHow3 = 2
+const TxtCredits = 3
+const NSpr = 5
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StDead = 5
+const StPause = 6
+const StNext = 7
+const StOver = 9
+const StInit = 10
+const StTable = 11
+' the HUD rows
+const HudA = 20
+const HudB = 22
+
+' the ball's sprite rows/columns, the bandit's (C64 sprite rows 6-16 / 8-11)
+data BallL bytes = 9,7,7,6,6,6,6,6,7,7,9
+data BallR bytes = 14,16,16,17,17,17,17,17,16,16,14
+data BndL bytes = 11,9,9,11
+data BndR bytes = 12,14,14,12
+' bits from column x to the end of a cell / from the start to column x
+data LeftM bytes = 255,127,63,31,15,7,3,1
+data RightM bytes = 128,192,224,240,248,252,254,255
+' map rows holding dots
+data DotRows bytes = 12,22,44,54,76,86
+data DotCnt bytes = 11,18,18,18,18,12
+' the top ten (the original's TOPTEN.O from the ReRUN disk)
+data TopInit chars "TIMTIMLOULOULOULOULOULOULOULOU"
+data TopScore words = 241,205,136,127,122,111,90,77,70,69
+data Alpha chars "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+' the view and the ball
+u8 C0 = 20
+u8 R0 = 78
+u8 Fx = 4
+u8 Fy = 4
+u8 Hs = 4
+u8 Hd = 0
+u8 Hc = 4
+u8 Vs = 4
+u8 Vd = 0
+u8 Vc = 4
+u8 Jc = 2
+u8 B1 = 1
+u8 B2 = 1
+' the view at the start of the last pass, and the one the bounce test uses
+u8 PC0 = 0
+u8 PR0 = 0
+u8 PFx = 0
+u8 PFy = 0
+u8 DC0 = 0
+u8 DR0 = 0
+u8 DFx = 0
+u8 DFy = 0
+u8 Redrew = 0
+' the display camera (dead zone): the field shows the map from row VR0+1,
+' column VC0+6; the ball's cell offset from it is DX = C0 + 8 - VC0 and
+' DY = R0 + 8 - VR0 (8 = centred)
+u8 VC0 = 20
+u8 VR0 = 78
+u8 DX = 8
+u8 DY = 8
+u8 Moved = 0
+u8 Coarse = 0
+u8 NeedRedraw = 0
+' the bandits (C64 sprite coordinates: 9-bit X, 8-bit Y)
+u16 X3 = 0
+u16 X4 = 0
+u8 Y3 = 109
+u8 Y4 = 29
+u16 BX3 = 0
+u16 BX4 = 0
+u8 BY3 = 0
+u8 BY4 = 0
+' counters
+u16 Score = 0
+u16 HiScore = 0
+u8 Tm = 99
+u8 Tc = 60
+u8 Dots = 0
+u8 Lives = 5
+u8 Lvl = 1
+u8 Died = 0
+u8 Eaten[96]
+u8 TopN[30]
+u16 TopS[10]
+u8 Rank = 0
+u8 Ini[3]
+u8 IniPos = 0
+' wall test
+u16 Sx0 = 0
+u16 Sx1 = 0
+u16 Sy = 0
+u16 Ad = 0
+u16 Ad2 = 0
+u16 Wx = 0
+u16 Wy = 0
+u8 Sn = 0
+u8 Hit = 0
+u8 HitH = 0
+u8 HitV = 0
+u8 HitB = 0
+u8 Cc0 = 0
+u8 Cc1 = 0
+u8 Ln = 0
+u8 Mk = 0
+u8 Tcode = 0
+' bandit test input
+u16 Qx = 0
+u8 Qy = 0
+u8 Qd = 0
+u8 Qe = 0
+u8 Qr = 0
+' misc
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Along = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+u8 Ri = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 R = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  TopReset
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  if NeedRedraw = 1 then
+    ' the frame after a coarse step: redraw, no pass (as the original)
+    Camera
+    if Moved = 1 then DrawField
+    DrawSprites
+    NeedRedraw = 0
+    goto play_loop
+  end if
+  if Press = 1 then
+    PauseGame
+    goto play_loop
+  end if
+  PlayStep
+  if Died = 0 then goto play_loop
+  LoseBall
+  if Lives > 0 then goto play_loop
+
+  GameOver
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (one pass = the original's $81DC)
+
+sub PlayStep:
+  ' the view the bounce test sees: the one shown before this pass (the
+  ' previous pass's start, or this pass's start after a redraw frame)
+  if Redrew = 1 then
+    DC0 = C0
+    DR0 = R0
+    DFx = Fx
+    DFy = Fy
+  else
+    DC0 = PC0
+    DR0 = PR0
+    DFx = PFx
+    DFy = PFy
+  end if
+  PC0 = C0
+  PR0 = R0
+  PFx = Fx
+  PFy = Fy
+  Redrew = 0
+  BX3 = X3
+  BY3 = Y3
+  BX4 = X4
+  BY4 = Y4
+  WallTest
+  dec B1
+  if B1 = 0 then
+    B1 = 1
+    if HitH = 1 then
+      Hd = Hd ^ 3
+      B1 = 6
+      play sound SndBounce
+    end if
+  end if
+  dec B2
+  if B2 = 0 then
+    B2 = 1
+    if HitV = 1 then
+      Vd = Vd ^ 3
+      B2 = 6
+      play sound SndBounce
+    end if
+  end if
+  dec Jc
+  if Jc = 0 then
+    Jc = 4
+    JoyAxes
+  end if
+  Coarse = 0
+  MoveH
+  MoveV
+  X4 += Lvl
+  X4 = X4 & 511
+  X3 -= Lvl
+  X3 = X3 & 511
+  DotCheck
+  if Dots >= NDots then
+    inc Lvl
+    State = StNext
+    NewLife
+    Coarse = 0
+  end if
+  dec Tc
+  if Tc = 0 then
+    Tc = 60
+    dec Tm
+    ShowTime
+  end if
+  BanditTest
+  if HitB = 1 then
+    Died = 1
+    return
+  end if
+  if Tm = 0 then
+    Died = 1
+    return
+  end if
+  if Coarse > 0 then
+    if Coarse = 1 then inc C0
+    if Coarse = 3 then dec C0
+    if Coarse = 4 then dec R0
+    if Coarse = 2 then inc R0
+    NeedRedraw = 1
+    Redrew = 1
+  else
+    DrawSprites
+  end if
+  return
+end sub
+
+' the stick, every 4th pass: along the travel speeds up (delay 4 -> 1),
+' against it slows down and stops at 4. Right before left, up before down.
+sub JoyAxes:
+  V = Jk & 8
+  if V > 0 then
+    Along = 2
+    AxH
+  else
+    V = Jk & 4
+    if V > 0 then
+      Along = 1
+      AxH
+    end if
+  end if
+  V = Jk & 1
+  if V > 0 then
+    Along = 2
+    AxV
+  else
+    V = Jk & 2
+    if V > 0 then
+      Along = 1
+      AxV
+    end if
+  end if
+  return
+end sub
+
+sub AxH:
+  T = 3 - Along
+  if Hd = T then
+    inc Hs
+    if Hs = 5 then
+      Hs = 4
+      Hd = 0
+    end if
+  else
+    dec Hs
+    if Hs = 0 then Hs = 1
+    Hd = Along
+  end if
+  return
+end sub
+
+sub AxV:
+  T = 3 - Along
+  if Vd = T then
+    inc Vs
+    if Vs = 5 then
+      Vs = 4
+      Vd = 0
+    end if
+  else
+    dec Vs
+    if Vs = 0 then Vs = 1
+    Vd = Along
+  end if
+  return
+end sub
+
+' 1 px when the delay runs out; the world (and the bandits) shift under
+' the ball. Hd 2 = right, 1 = left; Vd 2 = up, 1 = down.
+sub MoveH:
+  if Hd = 2 then
+    dec Hc
+    if Hc = 0 then
+      Hc = Hs
+      X3 -= 1
+      X3 = X3 & 511
+      X4 -= 1
+      X4 = X4 & 511
+      if Fx = 0 then
+        Fx = 7
+        Coarse = 1
+      else
+        dec Fx
+      end if
+    end if
+    return
+  end if
+  if Hd = 1 then
+    dec Hc
+    if Hc = 0 then
+      Hc = Hs
+      X3 += 1
+      X3 = X3 & 511
+      X4 += 1
+      X4 = X4 & 511
+      inc Fx
+      if Fx = 8 then
+        Fx = 0
+        Coarse = 3
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub MoveV:
+  if Vd = 2 then
+    dec Vc
+    if Vc = 0 then
+      Vc = Vs
+      if Coarse = 0 then
+        inc Y3
+        inc Y4
+        inc Fy
+        if Fy = 8 then
+          Fy = 0
+          Coarse = 4
+        end if
+      end if
+    end if
+    return
+  end if
+  if Vd = 1 then
+    dec Vc
+    if Vc = 0 then
+      Vc = Vs
+      if Coarse = 0 then
+        dec Y3
+        dec Y4
+        if Fy = 0 then
+          Fy = 7
+          Coarse = 2
+        else
+          dec Fy
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the cell under the ball: view row 10, column 20
+sub DotCheck:
+  R = R0 + 10
+  T = DotBase[R]
+  if T = 255 then return
+  C = C0 + 20
+  Ad = R
+  Ad = Ad << 4
+  Ad2 = Ad << 2
+  Ad += Ad2
+  Ad += C
+  V = MapT[Ad]
+  if V <> TDot then return
+  V = C - DotFirst[R]
+  V = V >> 1
+  T += V
+  if Eaten[T] = 1 then return
+  Eaten[T] = 1
+  Score += Lvl
+  inc Dots
+  V = C - VC0
+  V -= 4
+  K = R0 + 10
+  K -= VR0
+  put char 32 at V,K
+  play sound SndDot
+  ShowScore
+  return
+end sub
+
+' the ball's detectors on the displayed view: a 12x3 bar (sideways) and
+' two 4x4 blocks (up/down) touching a solid pixel of the map
+sub WallTest:
+  Wx = DC0
+  Wx = Wx << 3
+  Wx -= DFx
+  Wy = DR0
+  Wy = Wy << 3
+  Wy -= DFy
+  Sx0 = Wx + 158
+  Sx1 = Wx + 169
+  Sy = Wy + 86
+  Sn = 3
+  SpanTest
+  HitH = Hit
+  Sx0 = Wx + 162
+  Sx1 = Wx + 165
+  Sy = Wy + 82
+  Sn = 4
+  SpanTest
+  HitV = Hit
+  if Hit = 0 then
+    Sy = Wy + 89
+    Sn = 4
+    SpanTest
+    HitV = Hit
+  end if
+  return
+end sub
+
+' Hit = 1 when any pixel of columns Sx0..Sx1 on Sn rows from Sy is solid
+sub SpanTest:
+  Hit = 0
+  W16 = Sx0 >> 3
+  Cc0 = W16
+  W16 = Sx1 >> 3
+  Cc1 = W16
+st_row:
+  if Sn = 0 then return
+  Ln = Sy & 7
+  Ad2 = Sy >> 3
+  Ad2 = Ad2 << 4
+  Ad = Ad2 << 2
+  Ad += Ad2
+  Ad += Cc0
+  K = Cc0
+st_cell:
+  Tcode = MapT[Ad]
+  if Tcode >= 128 then
+    Tcode -= 128
+    W16 = Tcode
+    W16 = W16 << 3
+    W16 += Ln
+    Mk = SolidT[W16]
+    if K = Cc0 then
+      T = Sx0 & 7
+      Mk = Mk & LeftM[T]
+    end if
+    if K = Cc1 then
+      T = Sx1 & 7
+      Mk = Mk & RightM[T]
+    end if
+    if Mk <> 0 then
+      Hit = 1
+      return
+    end if
+  end if
+  if K < Cc1 then
+    inc K
+    Ad += 1
+    goto st_cell
+  end if
+  Sy += 1
+  dec Sn
+  goto st_row
+end sub
+
+' a bandit touching the ball (pixel rows/columns overlap), positions as
+' they were shown before this pass
+sub BanditTest:
+  HitB = 0
+  Qx = BX3
+  Qy = BY3
+  BanditOne
+  if HitB = 1 then return
+  Qx = BX4
+  Qy = BY4
+  BanditOne
+  return
+end sub
+
+sub BanditOne:
+  ' Qd = dx + 32 (bandit column offset), Qe = dy + 16 (row offset)
+  W16 = Qx + 32
+  W16 -= 176
+  W16 = W16 & 511
+  if W16 > 64 then return
+  Qd = W16
+  Qe = Qy + 16
+  Qe -= 123
+  if Qe > 32 then return
+  for Qr = 0 to 3
+    ' bandit row 8 + Qr meets ball row (8 + Qr + dy) - 6 = Qr + Qe - 14
+    T = Qr + Qe
+    if T >= 14 then
+      T -= 14
+      if T <= 10 then
+        V = BndL[Qr] + Qd
+        K = BallR[T] + 32
+        if V <= K then
+          V = BndR[Qr] + Qd
+          K = BallL[T] + 32
+          if V >= K then
+            HitB = 1
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a life, a level, the end
+
+sub NewGame:
+  Score = 0
+  Lives = 5
+  Lvl = 1
+  State = StNext
+  NewLife
+  return
+end sub
+
+' the start place, timer 99, all dots back (the original rebuilds its map)
+sub NewLife:
+  C0 = 20
+  R0 = 78
+  Fx = 4
+  Fy = 4
+  Hs = 4
+  Hd = 0
+  Hc = 4
+  Vs = 4
+  Vd = 0
+  Vc = 4
+  Jc = 2
+  B1 = 1
+  B2 = 1
+  X3 = 0
+  X4 = 0
+  Y3 = 109
+  Y4 = 29
+  Tm = 99
+  Tc = 60
+  Dots = 0
+  Died = 0
+  PC0 = C0
+  PR0 = R0
+  VC0 = C0
+  VR0 = R0
+  DX = 8
+  DY = 8
+  PFx = Fx
+  PFy = Fy
+  Redrew = 0
+  NeedRedraw = 0
+  fill array Eaten with 0
+  DrawPlay
+  State = StPlay
+  return
+end sub
+
+' a ball lost: the ball flashes (2.5 Hz) with the crash sound for 3 s
+sub LoseBall:
+  State = StDead
+  play sound SndCrash
+  for Oi = 0 to 179
+    Frame1
+    V = Oi / 12
+    V = V & 1
+    T = 15
+    if V = 1 then T = 9
+    set sprite 0 to 79 - Fy,124 - Fx,SBall,T
+    update sprites
+  next
+  dec Lives
+  ShowLives
+  if Lives > 0 then
+    State = StNext
+    NewLife
+  end if
+  return
+end sub
+
+' the button pauses (sound off) until it is pressed again
+sub PauseGame:
+  State = StPause
+  mute all
+pg_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto pg_loop
+  State = StPlay
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the field: 18 rows x 28 columns of the map from row R0+1, column C0+6,
+' then the eaten dots blanked
+sub DrawField:
+  ' map offset of row R0+1, column C0+6 (R0*80 by shifts); screen row 1, column 2
+  Ad = VR0
+  Ad = Ad << 4
+  Ad2 = Ad << 2
+  Ad += Ad2
+  Ad += VC0
+  Ad += 86
+  W16 = 34
+  for Ri = 1 to 18
+    put MapT + Ad count 28 at 2,Ri
+    Ad += 80
+    W16 += 32
+  next
+  for Ri = 0 to 5
+    R = DotRows[Ri]
+    if R > VR0 then
+      T = R - VR0
+      if T <= 18 then
+        K = DotBase[R]
+        Li = DotCnt[Ri]
+        C = DotFirst[R]
+        DotFix
+      end if
+    end if
+  next
+  return
+end sub
+
+' blank the eaten dots of one map row: K first index, Li count, C first
+' column, T screen row
+sub DotFix:
+df_loop:
+  if Eaten[K] = 1 then
+    V = C - VC0
+    if V >= 6 then
+      if V <= 33 then
+        V -= 4
+        put char 32 at V,T
+      end if
+    end if
+  end if
+  inc K
+  C += 2
+  dec Li
+  if Li > 0 then goto df_loop
+  return
+end sub
+
+' the dead-zone camera, in the redraw frame after a coarse step: the view
+' stays while the ball is within 5 cells (sideways) / 3 rows of its centre,
+' then recentres on the ball (Moved = 1: the field must be redrawn)
+sub Camera:
+  Moved = 0
+  DX = C0 + 8
+  DX -= VC0
+  if DX > 13 then Moved = 1
+  if DX < 3 then Moved = 1
+  if Moved = 1 then
+    VC0 = C0
+    DX = 8
+  end if
+  DY = R0 + 8
+  DY -= VR0
+  K = 0
+  if DY > 11 then K = 1
+  if DY < 5 then K = 1
+  if K = 1 then
+    VR0 = R0
+    if VR0 > 81 then VR0 = 81
+    DY = R0 + 8
+    DY -= VR0
+    Moved = 1
+  end if
+  return
+end sub
+
+' the ball shows the fine scroll; a bandit shows when it is inside the field
+sub DrawSprites:
+  V = DY << 3
+  V += 15
+  V -= Fy
+  K = DX << 3
+  K += 60
+  K -= Fx
+  set sprite 0 to V,K,SBall,15
+  Qx = X3
+  Qy = Y3
+  BanditSpr
+  set sprite 1 to V,K,SBandit,9
+  Qx = X4
+  Qy = Y4
+  BanditSpr
+  set sprite 2 to V,K,SBandit,9
+  update sprites
+  return
+end sub
+
+' -> V (sprite row) and W16 (column) of a bandit, V = HideY when hidden
+sub BanditSpr:
+  V = HideY
+  K = 0
+  W16 = DX
+  W16 = W16 << 3
+  W16 += Qx
+  W16 -= 56
+  W16 -= Fx
+  if W16 < 71 then return
+  if W16 > 289 then return
+  Ad = DY
+  Ad = Ad << 3
+  Ad += Qy
+  Ad -= 56
+  Ad -= Fy
+  if Ad < 55 then return
+  if Ad > 195 then return
+  W16 -= 60
+  K = W16
+  Ad -= 52
+  V = Ad
+  return
+end sub
+
+sub ShowScore:
+  print at 8,HudA, "0"
+  print Score at 9,HudA digits 5
+  print at 21,HudA, "0"
+  print HiScore at 22,HudA digits 5
+  return
+end sub
+
+sub ShowTime:
+  print Tm at 16,HudB digits 2
+  return
+end sub
+
+sub ShowLives:
+  print Lives at 8,HudB digits 1
+  return
+end sub
+
+sub ShowHud:
+  print at 2,HudA, "SCORE"
+  print at 18,HudA, "HI"
+  ShowScore
+  print at 2,HudB, "LIVES"
+  ShowLives
+  print at 11,HudB, "TIME"
+  ShowTime
+  print at 20,HudB, "LEVEL"
+  print Lvl at 26,HudB digits 2
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawField
+  ShowHud
+  ShowScreen
+  DrawSprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' game over and the top ten
+
+sub TopReset:
+  for Li = 0 to 29
+    TopN[Li] = TopInit[Li]
+  next
+  for Li = 0 to 9
+    TopS[Li] = TopScore[Li]
+  next
+  return
+end sub
+
+sub GameOver:
+  State = StOver
+  HideSprites
+  if Score > HiScore then HiScore = Score
+  print at 11,9, "GAME OVER"
+  ' the rank this score earns (10 = not on the top ten)
+  Rank = 10
+  for Li = 0 to 9
+    Oi = 9 - Li
+    if Score >= TopS[Oi] then Rank = Oi
+  next
+  Rearm
+  wait 60 frames
+  nmi off
+  NewScreen
+  print at 11,5, "GAME OVER"
+  print at 9,8, "SCORE"
+  print at 15,8, "0"
+  print Score at 16,8 digits 5
+  if Rank < 10 then
+    print at 4,12, "YOU HAVE MADE THE TOP TEN!"
+  else
+    print at 8,12, "NOT ON TOP TEN"
+  end if
+  print at 8,16, "PRESS THE BUTTON"
+  play sound SndOver
+  PageWait
+  if Rank < 10 then
+    if TimedOut = 0 then EnterInitials
+    TopInsert
+  end if
+  TopTable
+  return
+end sub
+
+' the original's initials entry: up/down change the letter, left/right
+' move between the three, the button accepts
+sub EnterInitials:
+  State = StInit
+  NewScreen
+  print at 3,3, "INPUT YOUR INITIALS WITH"
+  print at 3,5, "THE JOYSTICK:"
+  print at 3,9, "UP/DOWN CHANGES A LETTER,"
+  print at 3,11, "LEFT/RIGHT MOVES."
+  print at 3,15, "BUTTON WHEN DONE."
+  Ini[0] = 0
+  Ini[1] = 0
+  Ini[2] = 0
+  IniPos = 0
+  ShowIni
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+ei_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then return
+  K = Edge & 15
+  if K > 0 then
+    Waited = 0
+    V = K & 1
+    T = Ini[IniPos]
+    if V > 0 then
+      inc T
+      if T = 26 then T = 0
+    end if
+    V = K & 2
+    if V > 0 then
+      if T = 0 then
+        T = 25
+      else
+        dec T
+      end if
+    end if
+    Ini[IniPos] = T
+    V = K & 4
+    if V > 0 then
+      if IniPos > 0 then dec IniPos
+    end if
+    V = K & 8
+    if V > 0 then
+      if IniPos < 2 then inc IniPos
+    end if
+    play sound SndClick
+    ShowIni
+  end if
+  if Press = 0 then goto ei_loop
+  return
+end sub
+
+sub ShowIni:
+  for Li = 0 to 2
+    C = Li << 1
+    C += 13
+    T = Ini[Li]
+    T = Alpha[T]
+    put char T at C,18
+    T = 32
+    if Li = IniPos then T = 94
+    put char T at C,20
+  next
+  return
+end sub
+
+' the new entry goes in at Rank; the others move down one
+sub TopInsert:
+  Li = 9
+ti_loop:
+  if Li > Rank then
+    Oi = Li - 1
+    TopS[Li] = TopS[Oi]
+    K = Li * 3
+    J = Oi * 3
+    TopN[K] = TopN[J]
+    inc K
+    inc J
+    TopN[K] = TopN[J]
+    inc K
+    inc J
+    TopN[K] = TopN[J]
+    dec Li
+    goto ti_loop
+  end if
+  TopS[Rank] = Score
+  K = Rank * 3
+  for Li = 0 to 2
+    T = Ini[Li]
+    TopN[K] = Alpha[T]
+    inc K
+  next
+  return
+end sub
+
+sub TopTable:
+  State = StTable
+  NewScreen
+  print at 11,1, "TOP TEN"
+  for Li = 0 to 9
+    R = Li << 1
+    R += 3
+    V = Li + 1
+    print V at 6,R digits 2
+    K = Li * 3
+    for Oi = 0 to 2
+      T = TopN[K]
+      C = Oi + 10
+      put char T at C,R
+      inc K
+    next
+    print at 15,R, "0"
+    NumU = TopS[Li]
+    print NumU at 16,R digits 5
+  next
+  PageWait
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: name, author, a strip of the arena with the ball and a bandit,
+' the menu (cursor back on START), the tune once
+sub TitlePage:
+  NewScreen
+  ' a slice of the arena: map rows 42-48, columns 26-53
+  for Ri = 0 to 6
+    Ad = Ri + 42
+    Ad = Ad * 80
+    Ad += 26
+    R = Ri + 9
+    put MapT + Ad count 28 at 2,R
+  next
+  fill TBar count 28 at 2,1
+  print at 7,3, "RUBBER BANDIT BALL"
+  print at 7,5, "BY CHARLES ORCUTT"
+  print at 4,7, "RUN MAGAZINE (RERUN) 1988"
+  print at 11,17, "START"
+  print at 11,19, "HOW TO PLAY"
+  print at 11,21, "CREDITS"
+  set sprite 0 to 79,92,SBall,15
+  set sprite 1 to 79,168,SBandit,9
+  update sprites
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,17
+  put char 32 at 9,19
+  put char 32 at 9,21
+  C = Menu << 1
+  C += 17
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "CREDITS"
+  ' packed text (text.mjs -> kit/textpack.mjs), airy: lines 2 rows apart,
+  ' inside the text area [2,4,29,20] of areas.json
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, each with a picture made of the game's own
+' tiles and sprites
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  ' the picture: a row of dots with the ball on it, a wall below
+  for Li = 0 to 6
+    C = Li << 1
+    C += 9
+    put char TDot at C,5
+  next
+  fill TM2 count 14 at 9,7
+  set sprite 0 to 35,118,SBall,15
+  update sprites
+  TxT = TxtHow1
+  TxX0 = 2
+  TxY = 10
+  TxGap = 2
+  TextShow
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    set sprite 0 to 19,100,SBall,15
+    set sprite 1 to 19,140,SBandit,9
+    set sprite 2 to 19,60,SBandit,9
+    update sprites
+    TxT = TxtHow2
+    TxX0 = 2
+    TxY = 8
+    TxGap = 2
+    TextShow
+    State = StHow
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    ' a wall to bounce from
+    fill TM3 count 2 at 8,4
+    fill TM3 count 2 at 8,5
+    fill TM3 count 2 at 8,6
+    set sprite 0 to 27,80,SBall,15
+    update sprites
+    TxT = TxtHow3
+    TxX0 = 2
+    TxY = 9
+    TxGap = 2
+    TextShow
+    State = StHow
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data MapT bytes
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,141,142,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,128,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,128,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,128,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,133,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,128,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,133,32,32,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,136,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,143,141,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,137,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,137,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,141,142,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,133,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,133,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,143,141,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,137,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,137,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,138,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,141,142,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,139,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,132,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,139,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,133,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,139,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,133,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,140,32,143,141,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,135,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,134,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+  130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130
+end data
+data DotBase bytes = 255,255,255,255,255,255,255,255,255,255,255,255,0,255,255,255,255,255,255,255,255,255,11,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,29,255,255,255,255,255,255,255,255,255,47,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,65,255,255,255,255,255,255,255,255,255,83,255,255,255,255,255,255,255,255,255,255,255,255,255
+data DotFirst bytes = 0,0,0,0,0,0,0,0,0,0,0,0,31,0,0,0,0,0,0,0,0,0,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,0,0,0,0,0,0,0,0,0,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,0,0,0,0,0,0,0,0,0,27,0,0,0,0,0,0,0,0,0,0,0,0,0
+data SolidT bytes = 255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,252,252,240,240,192,192,192,192,240,240,252,252,255,255,255,255,252,252,240,240,192,192,3,3,15,15,63,63,255,255,192,192,240,240,252,252,255,255,255,255,63,63,15,15,3,3,3,3,15,15,63,63,255,255,255,255,63,63,15,15,3,3,255,255,255,255,255,255,255,255,0,0,0,0,0,0,0,0,60,255,255,255,255,255,255,60,0,3,255,255,255,255,3,0,0,192,255,255,255,255,192,0
+const TDot = 140
+const NDots = 95
+
+data TilePatZ bytes
+  $2A,$00,$03,$F0,$AA,$C0,$00,$01,$F3,$CE,$FE,$FF,$F5,$ED,$E0,$1F,$A2,$7D,$D0,$F7,$EC,$DF,$D0,$E0
+  $79,$BC,$3E,$F3,$56,$A4,$C3,$F9,$F3,$68,$F9,$FB,$A8,$E8,$D1,$81,$2B,$81,$DD,$14,$55,$56
+end data
+data TileColZ bytes
+  $2A,$09,$79,$97,$68,$07,$0A,$09,$06,$A9,$19,$91,$A6,$71,$BF,$17,$CC,$FF,$F5,$E8,$DD,$FF,$D1,$FF
+  $C5,$C8,$F9,$F1,$B0,$FF,$AC,$B4,$F7,$B0,$FF,$AC,$F1,$52,$EE,$47,$01,$FF,$BA,$B1,$F6,$F2,$19,$56
+  $BE,$01,$F2,$BD,$91,$F0,$9E,$1F,$1F,$0F,$FE,$FD,$F5,$14,$D5,$55,$60
+end data
+data SpritePatZ bytes
+  $A2,$00,$07,$1F,$A0,$3F,$A8,$1F,$82,$07,$00,$2A,$E0,$F8,$FC,$0A,$F8,$89,$E0,$00,$22,$01,$07,$88
+  $01,$00,$58,$AF,$80,$E0,$80,$E8,$75,$55,$58
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$03,$41,$4D,$59,$04,$42,$41,$4C,$4C,$02,$42,$59,$03,$41,$4C,$4C,$03,$41,$4E,$44
+  $05,$42,$41,$43,$4B,$2E,$07,$42,$41,$4E,$44,$49,$54,$53,$03,$44,$4F,$54,$04,$44,$4F,$54,$53,$04
+  $45,$41,$43,$48,$04,$47,$41,$4D,$45,$02,$49,$54,$05,$4C,$45,$56,$45,$4C,$04,$50,$55,$53,$48,$04
+  $52,$4F,$4C,$4C
+end data
+data TxD_1 bytes
+  $03,$52,$55,$4E,$05,$54,$49,$4D,$45,$52,$02,$54,$4F,$03,$28,$39,$39,$0C,$28,$41,$4E,$54,$48,$52
+  $4F,$50,$49,$43,$29,$3B,$05,$28,$46,$4F,$55,$52,$07,$28,$52,$45,$52,$55,$4E,$2C,$04,$28,$54,$48
+  $45,$06,$31,$39,$38,$38,$29,$2E,$05,$32,$30,$32,$36,$2E,$02,$39,$35,$01,$41,$07,$41,$47,$41,$49
+  $4E,$53,$54,$06,$41,$52,$45,$4E,$41,$2E,$02,$41,$54,$06,$42,$41,$4C,$4C,$53,$2E
+end data
+data TxD_2 bytes
+  $06,$42,$45,$46,$4F,$52,$45,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$06,$42,$4F,$55,$4E,$43,$45
+  $06,$42,$55,$54,$54,$4F,$4E,$03,$43,$36,$34,$07,$43,$48,$41,$52,$4C,$45,$53,$06,$43,$4C,$41,$55
+  $44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$05,$43,$4F,$53,$54,$53,$04,$44,$4F
+  $57,$4E,$06,$45,$41,$54,$45,$4E,$3A,$05,$45,$56,$45,$52,$59,$07,$46,$41,$53,$54,$45,$52,$2E,$04
+  $46,$49,$56,$45,$05,$47,$41,$4D,$45,$2E,$03,$48,$41,$53
+end data
+data TxD_3 bytes
+  $02,$49,$4E,$02,$49,$53,$03,$49,$54,$2E,$03,$49,$54,$53,$06,$4C,$45,$56,$45,$4C,$2E,$08,$4D,$41
+  $47,$41,$5A,$49,$4E,$45,$07,$4D,$55,$53,$49,$43,$29,$2E,$03,$4E,$45,$57,$04,$4E,$45,$58,$54,$02
+  $4E,$4F,$07,$4E,$55,$4D,$42,$45,$52,$2E,$03,$4F,$4E,$45,$02,$4F,$52,$07,$4F,$52,$43,$55,$54,$54
+  $2C,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$4F,$55,$54,$2E
+end data
+data TxD_4 bytes
+  $04,$4F,$56,$45,$52,$06,$50,$41,$55,$53,$45,$53,$04,$50,$4F,$52,$54,$04,$50,$55,$54,$53,$04,$52
+  $4F,$41,$4D,$06,$52,$55,$42,$42,$45,$52,$04,$52,$55,$4E,$53,$08,$53,$45,$43,$4F,$4E,$44,$53,$29
+  $0A,$53,$45,$50,$54,$2E,$2F,$4F,$43,$54,$2E,$04,$53,$4C,$4F,$57,$05,$53,$50,$45,$45,$44,$08,$53
+  $50,$45,$45,$44,$53,$29,$2E,$05,$53,$54,$49,$43,$4B,$04,$53,$54,$4F,$50,$05,$54,$49,$54,$4C,$45
+  $06,$54,$4F,$55,$43,$48,$2C
+end data
+data TxD_5 bytes
+  $05,$54,$55,$4E,$45,$3A,$03,$54,$57,$4F,$02,$55,$50,$05,$57,$41,$4C,$4C,$53,$05,$57,$4F,$52,$54
+  $48,$05,$5A,$45,$52,$4F,$2C
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4, @TxD_5
+end data
+data TxM_How1 bytes
+  $0F,$00,$45,$02,$40,$FE,$04,$1A,$09,$20,$00,$FE,$11,$13,$47,$46,$3F,$FE,$0A,$08,$31,$54,$00,$0D
+  $FE,$3A,$04,$09,$2A,$00,$FE,$38,$34,$FF
+end data
+data TxM_How2 bytes
+  $51,$07,$44,$00,$1D,$FE,$3B,$4F,$3C,$00,$11,$1E,$FE,$55,$28,$1B,$02,$05,$43,$FE,$2B,$08,$06,$2D
+  $1F,$FE,$0A,$0D,$00,$07,$10,$FE,$2C,$FF
+end data
+data TxM_How3 bytes
+  $0E,$00,$4C,$12,$4A,$00,$FE,$02,$52,$15,$4B,$0E,$FE,$1C,$33,$0F,$12,$49,$0C,$FE,$29,$05,$4D,$32
+  $53,$FE,$22,$0C,$06,$FE,$00,$23,$41,$00,$2E,$FF
+end data
+data TxM_Credits bytes
+  $3E,$0B,$03,$25,$FE,$3D,$10,$35,$FE,$16,$48,$18,$FE,$27,$42,$30,$01,$03,$FE,$26,$14,$01,$03,$FE
+  $01,$21,$19,$FE,$4E,$50,$37,$17,$24,$FE,$0B,$2F,$39,$36,$FF
+end data
+data TxMsg words
+  @TxM_How1, @TxM_How2, @TxM_How3, @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScBounce:
+    db $40,$68,$21,$02,$40,$1D,$21,$02,$40,$E2,$30,$02,$40,$B4,$50,$03,$40,$8F,$70,$03,$50
+ScDot:
+    db $40,$5A,$20,$03,$40,$4C,$20,$03,$40,$40,$30,$03,$40,$35,$30,$03,$40,$2D,$50,$04,$50
+ScCrash:
+    db $00,$00,$14,$0C,$00,$00,$35,$18,$00,$00,$56,$30,$00,$00,$66,$3C,$00,$00,$86,$24,$10
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScBounce,$705D
+    dw ScDot,$705D
+    dw ScCrash,$7053
+    dw ScOver,$705D
+; Rubber Romp (new) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1F,$01,$23,$26,$01,$23,$2B,$01,$2A,$01,$26,$01
+    db $28,$01,$26,$01,$24,$01,$28,$2B,$01,$28,$24,$01,$23,$01,$26,$01
+    db $23,$01,$21,$01,$1F,$01,$23,$26,$01,$23,$2B,$01,$2D,$01,$2B,$01
+    db $2A,$01,$28,$01,$26,$01,$24,$23,$01,$21,$23,$01,$1F,$01,$01,$01
+    db $00,$00,$01,$01,$23,$01,$23,$24,$26,$01,$26,$01,$28,$01,$26,$01
+    db $23,$01,$1F,$01,$21,$01,$21,$23,$24,$01,$24,$01,$26,$01,$24,$01
+    db $21,$01,$1E,$01,$1F,$01,$23,$26,$01,$2B,$01,$2A,$28,$01,$26,$01
+    db $23,$24,$21,$01,$1F,$01,$1A,$01,$1F,$01,$01,$01,$00,$00,$00,$01
+    db $01,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01
+    db $17,$01,$01,$01,$13,$01,$01,$01,$18,$01,$01,$01,$1A,$01,$01,$01
+    db $12,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$1C,$01,$01,$01
+    db $18,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$00,$00
+    db $01,$01,$01,$01,$13,$01,$01,$01,$17,$01,$01,$01,$18,$01,$01,$01
+    db $17,$01,$01,$01,$12,$01,$01,$01,$15,$01,$01,$01,$15,$01,$01,$01
+    db $0E,$01,$01,$01,$17,$01,$01,$01,$17,$01,$01,$01,$18,$01,$01,$01
+    db $12,$01,$01,$01,$17,$01,$01,$01,$17,$01,$00,$00,$00,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11
+    db $02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11
+    db $37,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11
+    db $02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11
+    db $02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$3E
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$21,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$1B
+    db $C0,$98,$F0,$38,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$66,$F0,$1B,$C0,$72,$F0,$1D
+    db $C0,$98,$F0,$1B,$C0,$72,$F0,$55,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$5A,$F0,$1B,$C0,$98,$F0,$1D
+    db $C0,$66,$F0,$1B,$C0,$98,$F0,$38,$C0,$72,$F0,$1D,$C0,$5A,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$98,$F0,$1B
+    db $C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$72,$F0,$16,$FE
+    db $D0
+}
