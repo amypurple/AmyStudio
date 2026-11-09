@@ -70,17 +70,17 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | Amy Studio | Experimental | All six runtime oracles pass; current sizes include VDP-safe NMI deferral |
 | CVBasic `main` `e84bf978` (2026-11-05) | Normal compiler; TMSColor `-z -p2` for Bitmap | All six rebuilt and runtime-validated; Pletter is used for its bitmap |
 | z88dk nightly 2026-10-20 | zsdcc 4.6 size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
-| ugBASIC `main` `2db87ebd` (2026-11-01) | Default peephole optimizer; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | All six rebuilt and runtime-validated; the complete ROMs and hashes are included in the evidence archive |
+| ugBASIC `main` `2db87ebd` (2026-11-01) | Default peephole optimizer; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | Five modern samples plus a documented, validated legacy-compiler metasprite fallback; complete ROMs and hashes are archived |
 | devkitSMS 2026-09-29 / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 200000`; `NO_FRAME_INT_HOOK`; `MAXSPRITES=3`; brief VRAM copies/fills | Includes the corrected ColecoVision VDP interrupt acknowledgement, IRQ/NMI vector protection, and bounded static-RAM clearing |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
-The November 6 ugBASIC refresh changes the ranked revision to commit `2db87ebd`. The six rebuilt
-ROMs pass the bitmap, controller, metasprite, state-update and tile-animation runtime oracles and
-occupy 20,022 bytes total, 855 fewer than the previously ranked revision. Byte-default variables,
-`PRINT RAW`, the direct byte truth test, native MSC1 compression and the default peephole optimizer
-remain enabled.
+The November 6 ugBASIC refresh remains ranked at commit `2db87ebd` for five samples. Its archived
+3,295-byte metasprite ROM fails the corrected dynamic oracle because sprite layers can come from
+different frames. That row uses the 6,166-byte corrected fixture built with the bundled legacy
+compiler until a corrected modern build is available. Byte-default variables, `PRINT RAW`, the
+direct byte truth test, native MSC1 compression and the default peephole optimizer remain enabled.
 
 These are the most size-oriented **native settings validated in this study**, not claims about
 every release or project configuration. No other toolchain passed through Amy's optimizer or MDL.
@@ -113,10 +113,10 @@ replacement samples, dependencies, and provenance are complete. The detailed aud
 | Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,401 | 1,980 | 1,340 |
 | Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,691 | 4,525 | 4,313 | 4,680 | 4,976 | 7,580 |
 | Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,403 | 2,272 | 1,917 |
-| Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,261 | 1,654 | 2,492 | 3,295 |
+| Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,652 | 2,492 | 6,166 |
 | Gameplay State Update* | **508** | 1,141 | 1,253 | 1,291 | 1,308 | 1,890 | 2,099 | 2,712 | 3,931 |
 | Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 2,332 | 1,838 | 2,729 | 1,959 |
-| **Six-sample total*** | **5,126** | **7,386** | **9,141** | **10,835** | **10,967** | **11,698** | **13,075** | **17,161** | **20,022** |
+| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,835** | **10,864** | **11,698** | **13,073** | **17,161** | **22,893** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -141,7 +141,7 @@ ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and co
 | Hello World | Nine ROMs complete 180 GearColeco frames | Stable startup |
 | Warrior bitmap | Nine pipelines reproduce the 256x192 image | All ranked framebuffers are pixel-exact; equivalent PATTERN/COLOR encodings are allowed |
 | Controller Visual | Nine pass injected neutral, keypad, UP, FIRE, and release states | ugBASIC uses Coleco direction bits `$01/$02/$04/$08` and FIRE bit `$40` |
-| Sprite Metasprite | Nine pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
+| Sprite Metasprite | Nine pass the same controller-driven dynamic oracle; ugBASIC uses the documented legacy fallback | Movement, bounds, animation, and coherent patterns, layers, colors, and priority |
 | Gameplay State Update | Nine match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
 | Tile Animation | Nine continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
 
@@ -171,10 +171,10 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 | Hello World | 184 | 234 | -50 |
 | Warrior bitmap | 3,066 | 3,213 | -147 |
 | Controller Visual | 264 | 604 | -340 |
-| Sprite Metasprite | 343 | 939 | -596 |
+| Sprite Metasprite | 482 | 797 | -315 |
 | Gameplay State Update | 508 | 1,141 | -633 |
 | Tile Animation | 761 | 1,255 | -494 |
-| **Six-sample total** | **5,126** | **7,386** | **-2,260** |
+| **Six-sample total** | **5,265** | **7,244** | **-1,979** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for
