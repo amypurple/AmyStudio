@@ -27,23 +27,6 @@ features are listed separately from language capabilities.
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
 | PkK's devkit | Philipp Klaus Krause's ColecoVision SDCC C devkit, using the `libcv` / `libcvu` libraries | Small link-only runtime with native graphics, input, sprites, and RLE+Huffman assets |
 
-### Versions measured
-
-| Solution | Version or revision | Version date |
-|---|---|---|
-| Amy Studio | `472653ae1` | 2026-10-27 |
-| CVBasic | `main` commit `e84bf978` | 2026-11-05 |
-| z88dk | nightly `26587-33d4c333ea-20261020`, zsdcc 4.6 | 2026-10-20 |
-| ugBASIC | `main` commit `2db87ebd` | 2026-11-01 |
-| devkitSMS | commit `533ae572`, SDCC 4.5.0 | 2026-09-29 |
-| PVColLib | 1.6.0, commit `f9335847` | 2026-05-31 |
-| NewColeco | historical `CRTCV` / `CVLIB` / GETPUT 1.1 snapshot, SDCC 2.9.0 #5416 | compiler dated 2009-03; snapshot recovered 2026-09-01 |
-| PkK's devkit | libcv 0.28 / libcvu 0.21, rebuilt with SDCC 4.5.0 | 2021-10-01 |
-
-The date identifies the measured release or source revision, not the date this document happened
-to download it. NewColeco is the exception because the recovered package has no single authoritative
-release tag; both its historical compiler date and the evidence-snapshot date are therefore shown.
-
 ## Reproducible six-sample ROM suite
 
 The suite builds six runnable programs with all eight toolchains, plus matched Pure ASM baselines:
@@ -69,54 +52,44 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 |---|---|---|
 | Amy Studio | Experimental | All six runtime oracles pass; current sizes include VDP-safe NMI deferral |
 | CVBasic `main` `e84bf978` (2026-11-05) | Normal compiler; TMSColor `-z -p2` for Bitmap | All six rebuilt and runtime-validated; Pletter is used for its bitmap |
-| z88dk nightly 2026-10-20 | zsdcc 4.6 size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
-| ugBASIC `main` `2db87ebd` (2026-11-01) | Default peephole optimizer; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | Five modern samples plus a documented, validated legacy-compiler metasprite fallback; complete ROMs and hashes are archived |
-| devkitSMS 2026-09-29 / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 200000`; `NO_FRAME_INT_HOOK`; `MAXSPRITES=3`; brief VRAM copies/fills | Includes the corrected ColecoVision VDP interrupt acknowledgement, IRQ/NMI vector protection, and bounded static-RAM clearing |
-| PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
+| z88dk | zsdcc size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
+| ugBASIC `main` `2db87ebd` (2026-11-01) | Default maximum of 16 peephole passes; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | Latest source reduces all six samples; bitmap, controller, sprite, state and tile-animation oracles pass |
+| devkitSMS / SDCC 4.6 | `--opt-code-size`; best validated per-sample node budget from 100,000 or 500,000 | All six rebuilt with corrected ColecoVision startup and runtime oracles |
+| PVColLib 1.6.0 / bundled SDCC | `--opt-code-size`; best validated per-sample node budget from 5,000 through 500,000 | Official ABI retained; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
-| PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
-
-The November 6 ugBASIC refresh remains ranked at commit `2db87ebd` for five samples. Its archived
-3,295-byte metasprite ROM fails the corrected dynamic oracle because sprite layers can come from
-different frames. That row uses the 6,166-byte corrected fixture built with the bundled legacy
-compiler until a corrected modern build is available. Byte-default variables, `PRINT RAW`, the
-direct byte truth test, native MSC1 compression and the default peephole optimizer remain enabled.
+| PkK's devkit / SDCC 4.5 | `--opt-code-size`; best validated per-sample node budget from 10,000 through 500,000 | Its `libcv` / `libcvu` libraries link only referenced modules; incompatible modern-SDCC graphical builds were rejected |
 
 These are the most size-oriented **native settings validated in this study**, not claims about
 every release or project configuration. No other toolchain passed through Amy's optimizer or MDL.
 Experimental serves this size test; Balanced remains Amy's default.
 
-### SDCC allocator-budget audit
+SDCC allocator searches are non-monotonic, so devkitSMS, PVColLib, PkK/libcv and z88dk use the
+smallest runtime-valid result per sample rather than one arbitrary global node budget. Builds that
+were smaller but changed VRAM, framebuffer, state, animation, or ABI behavior were rejected. The
+PVColLib and NewColeco controller fixtures set transparent glyph backgrounds (`$F0`) so the same
+changing VDP backdrop remains visible; this presentation-only source normalization changes neither
+controller logic nor occupied size. ugBASIC's `DEFINE BIOS ALLOWED` remains separately documented
+but unranked until the same current compiler can build and pass both variants locally.
 
-`--max-allocs-per-node` is a non-monotonic search budget, not a quality slider. Runtime validation
-is mandatory: at `3000`, both SDCC 4.5 and 4.6 emit a superficially smaller Gameplay State Update
-ROM whose stale `IY` reuse changes the expected checksum from 1,478 to 1,742.
-
-| Validated SDCC 4.6 result | Reference | 100000 nodes | 500000 nodes |
-|---|---:|---:|---:|
-| devkitSMS Hello World | 1,401 | **1,386** | 1,390 |
-| devkitSMS Warrior bitmap | 4,680 | **4,665** | 4,669 |
-| devkitSMS Controller Visual | 1,403 | **1,388** | 1,392 |
-| devkitSMS Gameplay State Update | 2,099 | 2,062 | **2,023** |
-| PVColLib State reconstruction | 1,278 | 1,238 | **1,195** |
-| PkK/libcv State Update | 1,291 | 1,257 | **1,214** |
-
-The selected node budget therefore has to be searched per program and each selected ROM must pass
-its runtime oracle. The main ranking remains on its documented reproducible settings until all six
-replacement samples, dependencies, and provenance are complete. The detailed audit is preserved in
-`docs/audits/optimization/sdcc-node-budget-audit-2026-10-24.md`.
+ugBASIC source settings were re-audited with current `main` commit `2db87ebd`. All six programs use
+`DEFINE DEFAULT TYPE BYTE`; text fixtures use `PRINT RAW`; Controller tests its byte-valued keypad
+result directly with `IF k`; Warrior uses native `EXACT COMPRESSED` MSC1 data. The selected build
+occupies 20,022 bytes on the original six fixtures. The corrected metasprite oracle subsequently
+rejected that revision's 3,295-byte ROM for incoherent frame updates. The ranked metasprite row now
+uses a documented 6,166-byte legacy-compiler fallback until a corrected modern build is available.
+All published ROMs are retained in the evidence archive with SHA-256 hashes.
 
 ### Real occupied size, excluding cartridge padding
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | CVBasic | devkitSMS | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,401 | 1,980 | 1,340 |
-| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,691 | 4,525 | 4,313 | 4,680 | 4,976 | 7,580 |
-| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,403 | 2,272 | 1,917 |
-| Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,652 | 2,492 | 6,166 |
-| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,291 | 1,308 | 1,890 | 2,099 | 2,712 | 3,931 |
-| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 2,332 | 1,838 | 2,729 | 1,959 |
-| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,835** | **10,864** | **11,698** | **13,073** | **17,161** | **22,893** |
+| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,386 | 1,980 | 1,340 |
+| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,682 | 4,525 | 4,313 | 4,665 | 4,976 | 7,580 |
+| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,388 | 2,272 | 1,917 |
+| Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,637 | 2,492 | 6,166 |
+| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,225 | 1,229 | 1,890 | 2,023 | 2,672 | 3,931 |
+| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,516 | 2,332 | 1,822 | 2,729 | 1,959 |
+| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,760** | **10,771** | **11,698** | **12,921** | **17,121** | **22,893** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -134,6 +107,12 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated `code_user`
 ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
+ugBASIC `main` `2db87ebd` (2026-11-01) remains the measured revision for five samples. Its archived
+metasprite ROM fails the corrected dynamic oracle because sprite layers can come from different
+frames. That row therefore uses the 6,166-byte corrected fixture built with the bundled legacy
+compiler. Occupied size uses the linker's exclusive `__code_user_tail` where available; reserved RAM
+and cartridge padding remain excluded.
+
 ### Runtime and comparability verdict
 
 | Sample | Runtime result | Verdict |
@@ -149,7 +128,7 @@ The State Update row is behavior-validated but not yet a strict code-size compar
 also draws a title, progress text, score, and checksum. The NewColeco, PVColLib, and PkK/libcv
 fixtures share the same C engine and run it without equivalent display output. Their sizes remain
 evidence artifacts, not a code-generator ranking, until matched headless and visible variants are
-built. Amy's verified headless engine is 678 bytes, smaller than NewColeco (1,253), PkK/libcv
+built. Amy's verified headless engine is 817 bytes, smaller than NewColeco (1,253), PkK/libcv
 (1,291), and PVColLib (1,308).
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
@@ -271,7 +250,7 @@ documented separately below from their measured fixtures and inspected APIs.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound and voice | BIOS tables, Tiny Sound, DSOUND, VoxPCM, and SP0256 Lundy/EVE modules | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Direct-to-VRAM compression | Fifteen active codecs, including Exomizer 2 and MegaLZ | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Direct-to-VRAM compression | Sixteen active codecs, including Exomizer 2 and MegaLZ | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Verified 64/128 KB MegaCart images and `bank select`; arbitrary banked Amy linking remains open | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -495,9 +474,9 @@ is credited separately because it changes the machine available to the programme
 
 | Extension | Verified or documented advantage | Scope in this comparison |
 |---|---|---|
-| MegaCart / bank switching | Amy builds editable 64 KB-1 MB projects with fixed trampolines and bank-aware debugging; CVBasic, z88dk, devkitSMS, and PVColLib also provide banking paths | Valid capability; excluded from stock-ROM size ranking |
+| MegaCart / bank switching | CVBasic, z88dk, devkitSMS, and PVColLib can exceed the normal cartridge space | Valid capability; excluded from stock-ROM size ranking |
 | F18A | PVColLib provides APIs and examples; Amy's GearColeco 1.7.0 debugger can emulate F18A video | Debug validation is available in Amy, but first-class Amy language APIs remain future work |
-| SGM / AY-3-8910-compatible sound | Amy provides an SGM project profile and direct AY commands; CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
+| SGM / AY-3-8910-compatible sound | CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
 | SP0256 voice modules | Amy provides Lundy/EVE commands and debugger-selectable module emulation | Optional external hardware; excluded from the stock sound ranking |
 | Coleco ADAM | Amy builds native EOS and OS7+EOS hybrid programs on DSK/DDP, with target-aware graphics, input, sound, compression, files, ADAMnet, serial, and modem services | Broad DSK/DDP runtime coverage; applications beyond the resident 6 KiB window and optional-EOS cartridge services remain architectural work |
 | Extra RAM | Available through SGM, ADAM, and compatible clones depending on the tool/runtime | Report separately; never count it as stock 1 KB RAM |
@@ -510,27 +489,23 @@ Studio's deliberate original-hardware target.
 | Area | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
 |---|---|---|---|---|---|---|
 | Browser IDE | Integrated | No official integrated IDE | No | IDE/web options advertised | No | No |
-| Multi-file and incremental builds | Editable project tree; dependency states and target-output reuse | External build workflow | Build-system dependent | IDE/build dependent | Build-system dependent | Build-system dependent |
 | Source breakpoints | Yes | External emulator | External debugger | IDE-dependent/unverified | External emulator | External emulator |
-| ASM stepping/rewind | Integrated GearColeco 1.7.0 workflow, including banked ROMs | External | External | External | External | External |
-| RAM/VRAM/symbol inspection | Integrated, including bank-qualified maps | External | External | External | External | External/map symbols |
+| ASM stepping/rewind | Integrated GearColeco 1.7.0 workflow | External | External | External | External | External |
+| RAM/VRAM/symbol inspection | Integrated | External | External | External | External | External/map symbols |
 | Cycle profiling | Integrated | External/manual | External/manual | Unverified | External/manual | External/manual |
 | Project graphics editors | Configurable `editors.json`; bitmap, tile, sprite, frame, tilemap, and composite previews | Separate tools | Separate tools | Resource conversion/IDE | Separate tools | `gfx2col`/separate tools |
-| External media loading | Drag-and-drop `.rom`, `.col`, `.dsk`, and `.ddp` into Debug | External emulator | External emulator | External emulator | External emulator | External emulator |
-| Optional hardware setup | Browser-local Coleco/ADAM firmware; controllers, voice, SGM/AY, ADAM sound and serial profiles | External emulator | External emulator | External emulator | External emulator | External emulator |
-| Automated runtime tests | Corpus, checkpoints, scripted inputs, recorded routes, and fast replay after recompilation | Not integrated | Buildable manually | Not established | Not established | Not established |
-| Capture and export | Record from boot or now; deterministic AVI and animated GIF export | External tools | External tools | External tools | External tools | External tools |
-| Expanded outputs | MegaCart 64 KB-1 MB; native EOS and OS7+EOS DSK/DDP | MegaCart/SGM | Banking/toolchain | Target dependent | Banked functions | MegaCart tools |
+| External ROM loading | Drag-and-drop `.rom` and `.col` into Debug | External emulator | External emulator | External emulator | External emulator | External emulator |
+| Optional hardware setup | Voice-module selection plus browser-local Coleco/ADAM firmware | External emulator | External emulator | External emulator | External emulator | External emulator |
+| Automated ROM tests | Corpus, checkpoints, runtime harness | Not integrated | Buildable manually | Not established | Not established | Not established |
 
 Amy Studio integrates this workflow; command-line-only Amy scripts remain labelled separately from
 features available directly in the IDE.
 
 ### Amy Studio emphasizes ColecoVision integration
 
-Amy Studio connects multi-file source editing, incremental target builds, assets, compression,
-assembly optimization, ROM/DSK/DDP execution, breakpoints, rewind, memory/VRAM inspection,
-hardware configuration, profiling, recorded routes, capture export, and automated tests in one
-ColecoVision and ADAM workflow. Its graphics editor follows TMS9918
+Amy Studio connects source editing, assets, compression, assembly optimization, ROM execution,
+external-ROM loading, breakpoints, rewind, memory/VRAM inspection, hardware configuration,
+profiling, and automated tests in one ColecoVision workflow. Its graphics editor follows TMS9918
 sprite priority and scanline rules while previewing tile/sprite composites. Records, overlays,
 typed state machines, BCD, fixed-point and checked wide integers, collision helpers, and BIOS-aware
 input are additional language-level strengths.
@@ -593,22 +568,24 @@ Official source: [alekmaul/pvcollib](https://github.com/alekmaul/pvcollib)
 
 ### NewColeco provides a historical baseline
 
-The recovered branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Its ASxxxx
-objects require the historical stack ABI and first-object linker convention, so the comparison pins
-SDCC 2.9.0 #5416 (March 2009); newer SDCC versions can boot while silently miscalling these routines.
-Only behavior-validated results count. GETPUT's direct-to-VRAM MDK-RLE path reproduces all 12,288
-Warrior table bytes and all 49,152 pixels.
+The recovered SDCC branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Their
+prebuilt ASxxxx objects require the historical stack-parameter ABI, `.o` object naming, and
+first-object linker output convention. The comparison pins SDCC 2.9.0 #5416 (March 2009).
+Modern SDCC 3.8/4.5 builds can link and boot while silently miscalling stack-ABI routines, so only
+behavior-validated NewColeco results count here. Warrior is decompressed directly to VRAM with
+GETPUT's MDK-RLE routine and matches all 12,288 target table bytes and all 49,152 pixels.
 
-NewColeco is Amy Studio's documented ancestor, not an unrelated competitor. Its 795-byte Hello,
-3,643-byte DAN2 bitmap, and 932-byte controller monitor already demonstrate the BIOS-aware,
-link-only-what-is-used approach. Amy Studio extends that foundation with the Amy language,
-integrated assets, diagnostics, and debugging.
+This is not an unrelated additional competitor: it is the documented historical ancestor of Amy
+Studio. Its 795-byte Hello, 3,643-byte DAN2 bitmap, and 932-byte controller monitor show that the old
+BIOS-aware and link-only-what-is-used philosophy was already effective. Amy Studio adds the Amy
+language, integrated assets, diagnostics, and debugging; this describes an evolution of workflow,
+not a judgment on the earlier kit.
 
 ### PkK's devkit is compact but deliberately low level
 
 Philipp Klaus Krause's devkit uses `libcv` / `libcvu`, links only used SDCC modules, and completes all six fixtures.
-Its six-sample total is 10,835 bytes, third overall. The deterministic state update averages 8,315
-cycles with a 10,412-cycle worst frame. Its native RLE+Huffman bitmap path reproduces all 12,288
+Its six-sample total is 10,760 bytes, third among the ranked toolchains. The deterministic state
+update averages 7,707 cycles with a 9,346-cycle worst frame. Its native RLE+Huffman bitmap path reproduces all 12,288
 Warrior bytes exactly, but the 2,934-byte payload also needs a 514-byte tree/configuration, about
 411 linked decoder bytes, and 19 bytes of runtime state. Across 42 pictures its median payload is
 4,098 bytes and it usually ranks 14th or 15th among 17 measured methods. This makes PkK's devkit useful
@@ -676,7 +653,7 @@ Completed and runtime-guarded:
 - GearColeco 1.7.0 with F18A/ADAM emulation and browser-local OS7/EOS/WP firmware; native EOS and
   OS7+EOS hybrid DSK/DDP targets now have runtime-tested graphics, input, sound, compression,
   filesystem, ADAMnet, printer, serial, and modem paths;
-- `.rom`/`.col`/`.dsk`/`.ddp` drag-and-drop, writable ADAM media, and universal graphics editors
-  with TMS9918 priority and scanline preview, tilemaps, frames, and tile/sprite composites;
+- `.rom`/`.col` drag-and-drop and universal graphics editors with TMS9918 priority and scanline
+  preview, tilemaps, frames, and tile/sprite composites;
 - 155 five-profile display tests; adaptive `u8` saves 212 corpus bytes without ROM growth, while
   explicit Amy digits match hand-written Z80 at 498 bytes and 1,905 cycles.
