@@ -74,9 +74,10 @@ but unranked until the same current compiler can build and pass both variants lo
 ugBASIC source settings were re-audited with current `main` commit `2db87ebd`. All six programs use
 `DEFINE DEFAULT TYPE BYTE`; text fixtures use `PRINT RAW`; Controller tests its byte-valued keypad
 result directly with `IF k`; Warrior uses native `EXACT COMPRESSED` MSC1 data. The selected build
-occupies 20,022 bytes on the original six fixtures. The corrected metasprite oracle subsequently
-rejected that revision's 3,295-byte ROM for incoherent frame updates. The ranked metasprite row now
-uses a documented 6,166-byte legacy-compiler fallback until a corrected modern build is available.
+occupied 20,022 bytes on the original six fixtures, but the corrected metasprite oracle rejected
+that revision's 3,295-byte ROM for incoherent frame updates. Replacing six independently managed
+sprites with ugBASIC's native `CSPRITE` grouping makes every rendered frame coherent and reduces
+the row to 2,883 bytes. The corrected six-sample total is 19,610 bytes.
 All published ROMs are retained in the evidence archive with SHA-256 hashes.
 
 ### Real occupied size, excluding cartridge padding
@@ -86,10 +87,10 @@ All published ROMs are retained in the evidence archive with SHA-256 hashes.
 | Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,386 | 1,980 | 1,340 |
 | Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,682 | 4,525 | 4,313 | 4,665 | 4,976 | 7,580 |
 | Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,388 | 2,272 | 1,917 |
-| Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,637 | 2,492 | 6,166 |
+| Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,637 | 2,492 | 2,883 |
 | Gameplay State Update* | **508** | 1,141 | 1,253 | 1,225 | 1,229 | 1,890 | 2,023 | 2,672 | 3,931 |
 | Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,516 | 2,332 | 1,822 | 2,729 | 1,959 |
-| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,760** | **10,771** | **11,698** | **12,921** | **17,121** | **22,893** |
+| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,760** | **10,771** | **11,698** | **12,921** | **17,121** | **19,610** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -107,11 +108,12 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated `code_user`
 ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
-ugBASIC `main` `2db87ebd` (2026-11-01) remains the measured revision for five samples. Its archived
+ugBASIC `main` `2db87ebd` (2026-11-01) is the measured revision for all six samples. Its original
 metasprite ROM fails the corrected dynamic oracle because sprite layers can come from different
-frames. That row therefore uses the 6,166-byte corrected fixture built with the bundled legacy
-compiler. Occupied size uses the linker's exclusive `__code_user_tail` where available; reserved RAM
-and cartridge padding remain excluded.
+frames. The revised source uses native `CSPRITE` groups and occupies 2,883 bytes; the oracle compares
+final rendered pixels so equivalent covered-mask removal is accepted without weakening the coherent-
+frame requirement. Occupied size uses the linker's exclusive `__code_user_tail` where available;
+reserved RAM and cartridge padding remain excluded.
 
 ### Runtime and comparability verdict
 
@@ -120,7 +122,7 @@ and cartridge padding remain excluded.
 | Hello World | Nine ROMs complete 180 GearColeco frames | Stable startup |
 | Warrior bitmap | Nine pipelines reproduce the 256x192 image | All ranked framebuffers are pixel-exact; equivalent PATTERN/COLOR encodings are allowed |
 | Controller Visual | Nine pass injected neutral, keypad, UP, FIRE, and release states | ugBASIC uses Coleco direction bits `$01/$02/$04/$08` and FIRE bit `$40` |
-| Sprite Metasprite | Nine pass the same controller-driven dynamic oracle; ugBASIC uses the documented legacy fallback | Movement, bounds, animation, and coherent patterns, layers, colors, and priority |
+| Sprite Metasprite | Nine pass the same controller-driven dynamic oracle; ugBASIC uses native `CSPRITE` groups | Movement, bounds, animation, and coherent rendered layers, colors, and priority |
 | Gameplay State Update | Nine match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
 | Tile Animation | Nine continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
 
