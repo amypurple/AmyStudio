@@ -1,0 +1,634 @@
+cartridge "AFTERGLOW GARDEN/AMY STUDIO/2026"
+
+' AFTERGLOW GARDEN
+' An original time-loop puzzle for Amy Studio.
+'
+' Record two paths, then walk beside their echoes. Reaching a new flower
+' seals that path automatically and fills its remaining time with waits.
+' Light all three flowers at the same moment to wake the garden.
+'
+' Controls (either joystick): move. FIRE resets the final attempt.
+' The playfield respects the practical CRT safe area (columns 2-29).
+'
+' EASY CUSTOMIZATION
+' ------------------
+' LoopSteps controls the maximum recording length. TickFrames controls how
+' quickly one grid command is sampled; larger values make movement slower.
+' StartX/StartY and Flower*X/Flower*Y use the logical 12x8 grid, not pixels.
+' TilePat/TileCol and SpritePat are exposed through this example's
+' editors.json, so no hexadecimal editing is required for the artwork.
+' The music at the end is generated from games/ag/tune.py in the development
+' evidence. Its instrument attenuation bytes are $90 (melody) and $B0
+' (bass): larger high nibbles are quieter on the SN76489.
+
+' -------------------------------------------------------------------------
+' GAME TUNING AND ART CONSTANTS
+
+const LoopSteps = 64
+const TickFrames = 6
+const StartX = 1
+const StartY = 7
+const FlowerAX = 1
+const FlowerAY = 1
+const FlowerBX = 10
+const FlowerBY = 1
+const FlowerCX = 10
+const FlowerCY = 7
+const TGround = 128
+const TGround2 = 129
+const TVine = 130
+const TFlower00 = 131
+const TFlower01 = 132
+const TFlower10 = 133
+const TFlower11 = 134
+const THedge00 = 135
+const THedge01 = 136
+const THedge10 = 137
+const THedge11 = 138
+const SGlow0 = 0
+const SGlow1 = 4
+const SGlow2 = 8
+const NTiles8 = 88
+const SprBytes = 96
+const SoundMusicA = 1
+const SoundMusicB = 2
+
+' Each path stores one command per logic tick:
+'   0 wait, 1 up, 2 down, 3 left, 4 right.
+u8 PathA[64]
+u8 PathB[64]
+
+' Phase 0 records PathA, phase 1 replays A while recording B, and phase 2
+' replays both paths beside the live player.
+u8 Phase = 0
+u8 StepNo = 0
+u8 FrameNo = 0
+u8 Px = 1
+u8 Py = 7
+u8 Ax = 1
+u8 Ay = 7
+u8 Bx = 1
+u8 By = 7
+u8 Cmd = 0
+u8 Acmd = 0
+u8 Bcmd = 0
+u8 Btn = 0
+u8 WasBtn = 1
+u8 Press = 0
+u8 FlowerMask = 0
+u8 ClaimA = 0
+u8 ClaimB = 0
+u8 Anim = 0
+u8 Wind = 0
+' Shared scratch variables used by short helper routines. Do not keep a value
+' in these across a sub call unless that sub is known not to reuse it.
+u8 X = 0
+u8 Y = 0
+u8 K = 0
+u8 V = 0
+
+' -------------------------------------------------------------------------
+' ONE-TIME HARDWARE SETUP
+  tile screen
+  set sound table AfterglowSounds areas 4
+  sprites 16x16
+  nmi off
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy SpritePat count SprBytes to vram.spr_pat
+  set sprite count 3
+  sprites stable 0 to 2
+  sprites flicker on
+  ClearPaths
+
+' -------------------------------------------------------------------------
+' TITLE AND TOP-LEVEL FLOW
+title:
+  display off
+  backdrop dark blue
+  cls
+  print at 7,3,"AFTERGLOW GARDEN"
+  print at 4,6,"RECORD TWO PATHS THROUGH"
+  print at 5,7,"A GARDEN CAUGHT IN TIME."
+  print at 4,10,"YOUR PAST SELVES RETURN"
+  print at 5,11,"AS PALE AFTERIMAGES."
+  print at 6,15,"LIGHT THREE FLOWERS"
+  print at 8,16,"AT THE SAME TIME."
+  PutFlower(3,2)
+  PutFlower(27,2)
+  print at 8,20,"PRESS FIRE"
+  display on
+  nmi on
+  play sound SoundMusicA
+  play sound SoundMusicB
+title_wait:
+  wait
+  ReadPad
+  if Press = 0 then goto title_wait
+
+new_game:
+  nmi off
+  ClearPaths
+  Phase = 0
+  BeginLoop
+
+game_loop:
+  ' Amy draws and changes VRAM only after WAIT, while the NMI is disabled.
+  nmi on
+  wait
+  nmi off
+  ReadPad
+  if Press = 1 then
+    if Phase = 2 then
+      ClearPaths
+      Phase = 0
+      BeginLoop
+    end if
+  end if
+
+  inc FrameNo
+  inc Anim
+  if Anim = 12 then
+    Anim = 0
+    Wind ^= 1
+    DrawWind
+  end if
+  if FrameNo < TickFrames then
+    DrawActors
+    nmi on
+    goto game_loop
+  end if
+  FrameNo = 0
+  ReadCommand
+
+  ' Record the live command first, then fetch the commands of earlier loops.
+  if Phase = 0 then PathA[StepNo] = Cmd
+  if Phase = 1 then PathB[StepNo] = Cmd
+  if Phase > 0 then Acmd = PathA[StepNo]
+  if Phase > 1 then Bcmd = PathB[StepNo]
+
+  MovePlayer
+  if Phase > 0 then MoveEchoA
+  if Phase > 1 then MoveEchoB
+  DrawActors
+  CheckFlowers
+  if FlowerMask = 7 then goto victory
+
+  ' Recording ends automatically on a new flower. The unused tail is filled
+  ' with waits, so human reaction time cannot desynchronise later echoes.
+  PlayerFlower
+  if Phase = 0 then
+    if V > 0 then
+      ClaimA = V
+      inc StepNo
+      SealLoop
+      goto game_loop
+    end if
+  end if
+  if Phase = 1 then
+    if V > 0 then
+      if V != ClaimA then
+        ClaimB = V
+        inc StepNo
+        SealLoop
+        goto game_loop
+      end if
+    end if
+  end if
+
+  inc StepNo
+  if StepNo < LoopSteps then
+    DrawClock
+    nmi on
+    goto game_loop
+  end if
+
+  if Phase < 2 then
+    inc Phase
+    BeginLoop
+    goto game_loop
+  end if
+  BeginLoop
+  goto game_loop
+
+victory:
+  nmi on
+  for K = 0 to 35
+    wait
+  next
+  nmi off
+  print at 5,10,"THE GARDEN REMEMBERS!"
+  print at 6,12,"THREE MOMENTS BLOOM"
+  print at 8,13,"AS ONE MOMENT."
+  print at 6,17,"PRESS FIRE TO REPLAY"
+  nmi on
+  WasBtn = 1
+win_wait:
+  wait
+  ReadPad
+  if Press = 0 then goto win_wait
+  goto new_game
+
+' -------------------------------------------------------------------------
+' TIMELINE MANAGEMENT
+sub BeginLoop:
+  Px = StartX
+  Py = StartY
+  Ax = StartX
+  Ay = StartY
+  Bx = StartX
+  By = StartY
+  StepNo = 0
+  FrameNo = 0
+  Cmd = 0
+  Acmd = 0
+  Bcmd = 0
+  WasBtn = 1
+  DrawGarden
+  DrawActors
+  nmi on
+  return
+end sub
+
+sub ClearPaths:
+  fill array PathA with 0
+  fill array PathB with 0
+  ClaimA = 0
+  ClaimB = 0
+  return
+end sub
+
+sub PlayerFlower:
+  V = 0
+  if Px = FlowerAX then
+    if Py = FlowerAY then V = 1
+  end if
+  if Px = FlowerBX then
+    if Py = FlowerBY then V = 2
+  end if
+  if Px = FlowerCX then
+    if Py = FlowerCY then V = 4
+  end if
+  return
+end sub
+
+sub SealLoop:
+  ' StepNo already points one entry past the flower-reaching command.
+  ' Padding with command 0 makes arrival timing independent of reflexes.
+  if Phase = 0 then
+    for K = StepNo to 63
+      PathA[K] = 0
+    next
+  else
+    for K = StepNo to 63
+      PathB[K] = 0
+    next
+  end if
+  inc Phase
+  BeginLoop
+  return
+end sub
+
+' -------------------------------------------------------------------------
+' INPUT
+sub ReadPad:
+  Btn = 0
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub ReadCommand:
+  Cmd = 0
+  if joypad(1).up | joypad(2).up then Cmd = 1
+  if joypad(1).down | joypad(2).down then Cmd = 2
+  if joypad(1).left | joypad(2).left then Cmd = 3
+  if joypad(1).right | joypad(2).right then Cmd = 4
+  return
+end sub
+
+' -------------------------------------------------------------------------
+' GRID MOVEMENT AND COLLISION
+' The hedge occupies logical X=5 for Y=2 through Y=6. DrawGarden places its
+' 16x16 metatiles at exactly those cells, keeping graphics and collision equal.
+sub MovePlayer:
+  if Cmd = 1 then
+    if Py > 0 then dec Py
+  end if
+  if Cmd = 2 then
+    if Py < 7 then inc Py
+  end if
+  if Cmd = 3 then
+    if Px > 0 then dec Px
+  end if
+  if Cmd = 4 then
+    if Px < 11 then inc Px
+  end if
+  BlockPlayer
+  return
+end sub
+
+sub MoveEchoA:
+  if Acmd = 1 then
+    if Ay > 0 then dec Ay
+  end if
+  if Acmd = 2 then
+    if Ay < 7 then inc Ay
+  end if
+  if Acmd = 3 then
+    if Ax > 0 then dec Ax
+  end if
+  if Acmd = 4 then
+    if Ax < 11 then inc Ax
+  end if
+  if Ax = 5 then
+    if Ay > 1 then
+      if Ay < 7 then UndoEchoA
+    end if
+  end if
+  return
+end sub
+
+sub MoveEchoB:
+  if Bcmd = 1 then
+    if By > 0 then dec By
+  end if
+  if Bcmd = 2 then
+    if By < 7 then inc By
+  end if
+  if Bcmd = 3 then
+    if Bx > 0 then dec Bx
+  end if
+  if Bcmd = 4 then
+    if Bx < 11 then inc Bx
+  end if
+  if Bx = 5 then
+    if By > 1 then
+      if By < 7 then UndoEchoB
+    end if
+  end if
+  return
+end sub
+
+sub BlockPlayer:
+  if Px = 5 then
+    if Py > 1 then
+      if Py < 7 then UndoPlayer
+    end if
+  end if
+  return
+end sub
+
+sub UndoPlayer:
+  if Cmd = 1 then inc Py
+  if Cmd = 2 then dec Py
+  if Cmd = 3 then inc Px
+  if Cmd = 4 then dec Px
+  return
+end sub
+
+sub UndoEchoA:
+  if Acmd = 1 then inc Ay
+  if Acmd = 2 then dec Ay
+  if Acmd = 3 then inc Ax
+  if Acmd = 4 then dec Ax
+  return
+end sub
+
+sub UndoEchoB:
+  if Bcmd = 1 then inc By
+  if Bcmd = 2 then dec By
+  if Bcmd = 3 then inc Bx
+  if Bcmd = 4 then dec Bx
+  return
+end sub
+
+' -------------------------------------------------------------------------
+' FLOWER OCCUPANCY
+' FlowerMask uses one bit per flower: A=$01, B=$02, C=$04. A value of $07
+' proves that the live glow and its two echoes bloom all flowers together.
+sub CheckFlowers:
+  FlowerMask = 0
+  if Px = FlowerAX then
+    if Py = FlowerAY then FlowerMask |= 1
+  end if
+  if Px = FlowerBX then
+    if Py = FlowerBY then FlowerMask |= 2
+  end if
+  if Px = FlowerCX then
+    if Py = FlowerCY then FlowerMask |= 4
+  end if
+  if Phase > 0 then
+    if Ax = FlowerAX then
+      if Ay = FlowerAY then FlowerMask |= 1
+    end if
+    if Ax = FlowerBX then
+      if Ay = FlowerBY then FlowerMask |= 2
+    end if
+    if Ax = FlowerCX then
+      if Ay = FlowerCY then FlowerMask |= 4
+    end if
+  end if
+  if Phase > 1 then
+    if Bx = FlowerAX then
+      if By = FlowerAY then FlowerMask |= 1
+    end if
+    if Bx = FlowerBX then
+      if By = FlowerBY then FlowerMask |= 2
+    end if
+    if Bx = FlowerCX then
+      if By = FlowerCY then FlowerMask |= 4
+    end if
+  end if
+  return
+end sub
+
+' -------------------------------------------------------------------------
+' PRESENTATION
+sub DrawGarden:
+  display off
+  backdrop dark blue
+  cls
+  print at 8,1,"AFTERGLOW GARDEN"
+  for K = 4 to 19
+    fill TGround count 24 at 4,K
+  next
+  Wind = 0
+  DrawWind
+  fill TVine count 26 at 3,3
+  fill TVine count 26 at 3,20
+  for K = 4 to 19
+    put char TVine at 3,K
+    put char TVine at 28,K
+  next
+  PutFlower(6,6)
+  PutFlower(24,6)
+  PutFlower(24,18)
+  for K = 8 to 16 step 2
+    PutHedge(14,K)
+  next
+  DrawClock
+  print at 4,22,"STEP ON A NEW FLOWER"
+  display on
+  return
+end sub
+
+sub DrawWind:
+  ' Four tufts alternate between adjacent character cells every 12 frames.
+  ' This is deliberately slow and subtle rather than a distracting scroll.
+  put char TGround at 9,5
+  put char TGround at 10,5
+  put char TGround at 18,7
+  put char TGround at 19,7
+  put char TGround at 7,14
+  put char TGround at 8,14
+  put char TGround at 21,16
+  put char TGround at 22,16
+  if Wind = 0 then
+    put char TGround2 at 9,5
+    put char TGround2 at 18,7
+    put char TGround2 at 7,14
+    put char TGround2 at 21,16
+  else
+    put char TGround2 at 10,5
+    put char TGround2 at 19,7
+    put char TGround2 at 8,14
+    put char TGround2 at 22,16
+  end if
+  return
+end sub
+
+sub PutFlower(u8 Fx, u8 Fy):
+  put char TFlower00 at Fx,Fy
+  put char TFlower01 at Fx + 1,Fy
+  put char TFlower10 at Fx,Fy + 1
+  put char TFlower11 at Fx + 1,Fy + 1
+  return
+end sub
+
+sub PutHedge(u8 Hx, u8 Hy):
+  put char THedge00 at Hx,Hy
+  put char THedge01 at Hx + 1,Hy
+  put char THedge10 at Hx,Hy + 1
+  put char THedge11 at Hx + 1,Hy + 1
+  return
+end sub
+
+sub DrawClock:
+  if Phase = 0 then print at 4,21,"RECORD ECHO ONE       "
+  if Phase = 1 then print at 4,21,"RECORD ECHO TWO       "
+  if Phase = 2 then print at 4,21,"FINAL - FIRE RESETS   "
+  X = StepNo / 8
+  print at 27,21, digits$(X,1)
+  return
+end sub
+
+sub DrawActors:
+  ' All three glows share the same three-frame pulse. Their sprite colors
+  ' distinguish the live moment (white) from the cyan and magenta echoes.
+  V = SGlow0
+  if Anim >= 4 then V = SGlow1
+  if Anim >= 8 then V = SGlow2
+  Y = 32 + Py * 16
+  X = 32 + Px * 16
+  set sprite 0 to Y,X,V,15
+  if Phase > 0 then
+    Y = 32 + Ay * 16
+    X = 32 + Ax * 16
+    set sprite 1 to Y,X,V,7
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  if Phase > 1 then
+    Y = 32 + By * 16
+    X = 32 + Bx * 16
+    set sprite 2 to Y,X,V,13
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' -------------------------------------------------------------------------
+' EDITABLE MODE 2 ART
+' Tile codes 128-138: ground, wind tuft, border vine, 2x2 flower and hedge.
+' Open "Afterglow Garden Tiles" in Graphics Editors to edit pixels/colors.
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$18,$A5,$00
+  $00,$48,$84,$21,$08,$42,$90,$00
+  $00,$00,$02,$07,$F0,$F0,$07,$03
+  $00,$00,$40,$E0,$F0,$F0,$E0,$C0
+  $01,$01,$03,$07,$F0,$E0,$C0,$80
+  $80,$80,$80,$80,$C0,$E0,$F0,$07
+  $80,$21,$48,$02,$20,$49,$00,$24
+  $01,$08,$42,$10,$42,$08,$20,$08
+  $40,$08,$21,$48,$02,$20,$49,$80
+  $82,$10,$02,$48,$00,$48,$02,$01
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$C4,$C4,$4C,$0C
+  $0C,$2C,$2C,$2C,$2C,$2C,$2C,$0C
+  $04,$04,$B4,$B4,$4B,$4B,$B4,$B4
+  $04,$04,$B4,$B4,$B4,$B4,$B4,$B4
+  $C4,$C4,$C4,$C4,$4C,$4C,$4C,$4C
+  $C4,$C4,$C4,$C4,$C4,$C4,$C4,$4C
+  $4C,$2C,$2C,$2C,$2C,$2C,$0C,$2C
+  $4C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$4C
+  $2C,$2C,$2C,$2C,$0C,$2C,$2C,$4C
+end data
+' Three consecutive 16x16 frames form the pulsing glow animation.
+' Open "Afterglow Pulsing Light" to preview and edit the animation.
+data SpritePat bytes
+  $00,$00,$01,$07,$0F,$1F,$1F,$3F,$3F,$1F,$1F,$0F,$07,$01,$00,$00
+  $00,$00,$80,$E0,$F0,$F8,$F8,$FC,$FC,$F8,$F8,$F0,$E0,$80,$00,$00
+  $01,$01,$01,$07,$1F,$3F,$FF,$FF,$FF,$FF,$3F,$1F,$07,$01,$01,$01
+  $80,$80,$80,$E0,$F8,$FC,$FF,$FF,$FF,$FF,$FC,$F8,$E0,$80,$80,$80
+  $00,$01,$01,$03,$0F,$1F,$1F,$7F,$7F,$1F,$1F,$0F,$03,$01,$01,$00
+  $00,$80,$80,$C0,$F0,$F8,$F8,$FE,$FE,$F8,$F8,$F0,$C0,$80,$80,$00
+end data
+
+asm {
+AfterglowSounds:
+    ; The first sound-table entry uses the required lowest OS7 area $702B.
+    dw AfterglowMelody,$702B
+    dw AfterglowBass,$7035
+
+; Glass Flowers - generated from note names with Claude's tunekit and
+; previewed through Amy Studio's Tiny Sound decoder.
+AfterglowMelody:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$90,$F1,$22,$21,$00,$28,$00,$24,$00,$23,$00,$21,$00,$00,$00
+    db $01,$01,$1C,$00,$21,$00,$24,$00,$1F,$00,$26,$00,$23,$00,$21,$00
+    db $1F,$00,$00,$00,$01,$01,$1A,$00,$1F,$00,$23,$00,$1D,$00,$24,$00
+    db $21,$00,$1F,$00,$1D,$00,$00,$00,$01,$01,$18,$00,$1D,$00,$21,$00
+    db $1C,$00,$23,$00,$20,$00,$21,$00,$1C,$00,$00,$00,$01,$01,$01,$01
+    db $21,$00,$00,$00
+    db $FF
+AfterglowBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$B0,$F1,$22,$09,$00,$00,$00,$10,$00,$00,$00,$15,$00,$00,$00
+    db $01,$01,$10,$00,$00,$00,$15,$00,$00,$00,$07,$00,$00,$00,$0E,$00
+    db $00,$00,$13,$00,$00,$00,$01,$01,$0E,$00,$00,$00,$13,$00,$00,$00
+    db $05,$00,$00,$00,$0C,$00,$00,$00,$11,$00,$00,$00,$01,$01,$0C,$00
+    db $00,$00,$11,$00,$00,$00,$04,$00,$00,$00,$0B,$00,$00,$00,$10,$00
+    db $00,$00,$01,$01
+    db $FF
+}

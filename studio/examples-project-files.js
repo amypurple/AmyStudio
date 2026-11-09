@@ -128,6 +128,23 @@ const derivedProjectFilesById = {
   "sprite-minimal": [makeEditorsProjectFile([
     { name: "Dot Sprite", kind: "sprite-patterns", pattern: { from: "inline", name: "DotSprite" }, spriteSize: [8, 8], spriteCount: 1, basePattern: 0, spriteColor: 15, notes: "Single 8x8 sprite pattern copied to VRAM sprite patterns." }
   ])],
+  "afterglow-garden": [makeEditorsProjectFile([
+    {
+      name: "Afterglow Garden Tiles", kind: "charset",
+      pattern: { from: "inline", name: "TilePat" }, color: { from: "inline", name: "TileCol" },
+      baseTile: 128, sourceBaseTile: 128, tileCount: 11, screenMode: "mode2",
+      notes: "Codes 128-138: moonlit ground, wind tuft, vine, four flower quadrants and four hedge quadrants. Preserve each four-tile flower/hedge group when changing its silhouette."
+    },
+    {
+      name: "Afterglow Pulsing Light", kind: "sprite-patterns",
+      pattern: { from: "inline", name: "SpritePat" }, spriteSize: [16, 16], spriteCount: 3,
+      basePattern: 0, sourceBasePattern: 0, patternTable: "vram.spr_pat", spriteColor: 15,
+      animation: { frameMs: 200, frames: [0, 1, 2, 1] },
+      tileset: { from: "inline", name: "TilePat" }, color: { from: "inline", name: "TileCol" },
+      backgroundBaseTile: 128, backgroundTile: 128,
+      notes: "Three pulse phases shared by the white live glow and cyan/magenta echoes. Runtime colors are selected in DrawActors."
+    }
+  ])],
   "collision-minimal": [makeEditorsProjectFile([
     { name: "Collision Dot Sprite", kind: "sprite-patterns", pattern: { from: "inline", name: "DotSprite" }, spriteSize: [8, 8], spriteCount: 1, basePattern: 0, spriteColor: 15, notes: "Shared 8x8 collision-test sprite pattern." }
   ])],

@@ -1,5 +1,46 @@
 # Decision Ledger
 
+## 2026-11-08 - Claude toolbox lessons are contracts plus risk-selected QA
+
+The Claude toolbox is not only a set of coding recipes. Its durable value includes
+runtime/visual evidence, human-paced and cheap-strategy bots, independent rules
+models, generated-content validation, stale-artifact protection, reproducible
+delivery, and explicit agent ownership. Amy Studio will classify imported rules as
+hardware, compiler, runtime evidence, publication, recommended UX, project
+preference, or historical workaround. Workarounds require capability tests and a
+retirement condition. Routine changes use capability-selected exemplars; the full
+corpus remains a promotion gate rather than the default test. Evidence and adoption
+order: `docs/agent-kit/claude-toolbox-lessons-2026-11-08.md`.
+
+Implemented first stage in `tools/amy-author-check.mjs`: project capability
+detection, risk-profile selection, static project checks, JSON reports, and opt-in
+`--execute` adapters. Runtime/ABI uses the bounded quick gate; only an explicit
+promotion profile selects corpus compilation. Missing BIOS/generated ASM and
+sandbox-blocked child processes remain visible `SKIP` results.
+
+Afterglow Garden is the first pilot for the repository-native authoring toolbox. Its
+sidecar declares target, optimization, provenance, and runtime bot. The separated
+pipeline produced a 5,150-byte Balanced ROM, validated editor metadata, then passed
+the real GearColeco runtime route through title, OS7 music, VRAM/sprites, both echo
+recordings, replay, and victory. The runtime test now accepts prebuilt `--rom/--asm`
+inputs so compilation proof and execution proof remain independent.
+
+The executable Claude-equivalence audit currently reports 6 READY, 4 PARTIAL, and
+4 MISSING areas. Amy now has a repository-native doctor (Node, manifest, compiler
+fingerprint, BIOS, GearColeco, author tools), project build/identity proof, sound
+validation, bots, and target-aware size checks. Remaining priority gaps are
+essential-content CRT annotations, generic checkpoints/frame strips, dynamic edge
+and text-area oracles, and a source-complete delivery gate. Matrix:
+`docs/agent-kit/tool-equivalence.json`.
+
+The completed first author-toolbox pass now reports 13 READY, 1 PARTIAL, and 0
+MISSING Claude-equivalent areas. Added materialized stale-safe builds, literal
+essential CRT checks, generic GearColeco visual checkpoints/PNGs, dynamic edge and
+transient-pixel measurements, opt-in text regions, compiler fingerprints, and a
+delivery gate that includes complete declared `@project` source, ROM, evidence,
+hashes, and explicit human visual approval. V10 remains deliberately PARTIAL until
+page-wipe and sustained-flicker heuristics are validated on more game families.
+
 This is a compact index of durable conclusions. Detailed evidence remains in the linked documents.
 Add an entry only when it prevents repeated investigation or changes the recommended direction.
 
@@ -1076,7 +1117,6 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - The evidence package retains the six complete ROMs, source files, measurements and SHA-256
   hashes. See `docs/audits/optimization/cvbasic-refresh-2026-11-06.md`.
 
-
 ## 2026-11-08 - BCD word adjustment is bounded and divided indexes retain width
 
 - `BCD += u16` and `BCD -= u16` decompose an unsigned word through at most five divide-by-ten
@@ -1088,3 +1128,144 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   temporary-variable workaround.
 - `tools/test-bcd-u16-index-runtime.mjs` executes scalar and indexed word sources, 65,535,
   narrow-BCD wrapping, underflow saturation, and both index paths under all five profiles.
+
+## 2026-11-08 - Agent guidance uses curated recipes, not the full game corpus
+
+- The 500-plus game corpus is evidence for mining, regression, and selecting proven
+  patterns; it is not loaded into an agent's working context.
+- Agent guidance starts at `docs/agent-kit/README.md` and loads one subsystem skill,
+  recipe, and canonical excerpt at a time.
+- Tiny Sound guidance uses a progression: Flynn's Gold for the compact four-stream
+  architecture, Lamplighter for multiple simple scene songs, Hassle Castle for that
+  architecture inside a large effect-heavy game, and Commando for the most advanced
+  complete composition.
+- The reviewed Raging Thunder source currently has two Tiny Sound music streams and
+  uses tone 3/noise areas for effects; it must not be described as four-stream music
+  unless a newer source changes that layout.
+- Claude's toolbox is treated as the stronger game-production harness, while the Amy
+  repository remains the compiler and language source of truth. Its useful offline
+  compiler snapshot must be regenerated from validated Amy releases, with capabilities
+  that automatically retire stale lint rules and workarounds.
+- Detailed comparison: `docs/agent-kit/claude-toolbox-comparison-2026-11-08.md`.
+
+## 2026-11-08 - Small-model QA must enforce declared measurements
+
+- Z.AI successfully used the external toolbox to produce Pond Hopper with coherent Amy source,
+  CRT-safe presentation, reproducible output, and a model-based gameplay bot. This validates a
+  compact intent-to-command front door for smaller coding models.
+- Its report nevertheless marked a 94-second average as `PASS` against its own 120-480 second
+  target because no machine-readable expectations were declared. Logged targets are not proof.
+- Amy author projects may now pair bot metric JSON with explicit thresholds. Missing or
+  out-of-range metrics become `WARN` or `FAIL`, and the compact cheatsheet is generated from the
+  current manifest so old compiler workarounds cannot silently survive as a second rulebook.
+- Claude's `vischeck` supplied the missing detector design for mass VDP-table writes while the
+  display remains enabled and sprite patterns disappearing for one frame. Amy's checkpoint proof
+  now implements both with explicit `allow`, `measure`, and `clear` policies.
+- Evidence: `docs/agent-kit/zai-small-model-audit-2026-11-08.md` and
+  `tools/test-amy-author-metrics.mjs`.
+
+## 2026-11-08 - Agent toolbox reaches a tested authoring baseline
+
+- Eight compact skills now cover sound, graphics/compression, NMI/input, sprites,
+  menus/CRT sleep, editable assets, BCD/high scores, and multi-file publication.
+- `amy-author-new` creates a neutral project without imposing one game's editorial
+  structure. Its generated cartridge compiles to 1,289 bytes with 1 byte of RAM and
+  rebuilds byte-identically.
+- Project and editor metadata now have executable validators. Aggregate author
+  checks preserve tool-emitted `WARN` states instead of converting every successful
+  process exit to `PASS`.
+- Readiness evidence: `docs/agent-kit/readiness-report-2026-11-08.md`.
+
+## 2026-11-08 - Observe agents before expanding authoring automation
+
+- A controlled Goodbye Charlie pilot produced a validated historical adaptation
+  in about 12.5 minutes without loading the game corpus.
+- Agent friction must be classified as source, game-design, language, tool,
+  evidence, or necessary work before changing the toolbox.
+- Scaffold bot, metric, and provenance files; reject unknown CLI options; publish
+  exact metadata schemas; and detect nearly uniform frames. Compile success and
+  simple nonblank screenshots are not sufficient visual or gameplay proof.
+- Evidence: `docs/agent-kit/experiments/goodbye-charlie-observation-2026-11-08.md`
+  and `experiments/toolbox-pilot-goodbye-charlie/validation-report.md`.
+
+## 2026-11-08 - Measure ugBASIC BIOS mode separately
+
+- ugBASIC `2db87eb` implements `DEFINE BIOS ALLOWED` through Coleco-specific
+  TMS9918 and startup branches.
+- Treat portable and BIOS-enabled builds as two evidenced configurations. Promote
+  BIOS-enabled sizes only when all six existing behavior oracles pass.
+- The rebuild script now supports `-BiosAllowed`; no published values changed
+  because the current older executable rejects the directive and the newer source
+  build is blocked by the local GNU make/WSL environment.
+- Evidence: `docs/audits/ugbasic-bios-allowed-audit-2026-11-08.md`.
+
+## 2026-11-08 - Blind authoring pilots must test toolbox transmission
+
+- A fresh agent using only the compact Amy toolbox produced a working Lantern
+  Ferry ROM with START, HOW TO, CREDITS, win/failure paths, editable assets,
+  metrics, and visual evidence. This proves that the general structure transfers.
+- The same agent omitted title music and did not prove OS7 sound-area termination.
+  These are toolbox failures, not reasons for the observer to finish the game.
+- Publication projects now declare title flow, title-music policy, and sound
+  lifecycle verification in `amy-author.json`. The author checker reports missing
+  declarations or bot expectations as visible warnings.
+- Focused game QA remains bounded; full-corpus compilation is reserved for changes
+  to the compiler, runtime, optimizer, or toolbox being promoted.
+- Evidence: `docs/agent-kit/experiments/lantern-ferry-blind-observation-2026-11-08.md`.
+
+## 2026-11-08 - Production quality is a separate promotion gate
+
+- The Moonseed Keeper blind pilot passed technical navigation and reachability but
+  avoided audio entirely and retained scaffold-like graphics and fixed gameplay.
+- Claude's toolbox succeeds more often because it combines a complete reference
+  game, independent rules model, delayed human bot, cheap-strategy bots, frame-rate
+  proof, contact sheets, and a delivery gate.
+- Alexis-Z80 now treats audiovisual identity, illustrated HOW TO, animated feedback,
+  variation, human-paced play, strategy resistance, audio lifecycle, and frame budget
+  as explicit evidence. A declared omission cannot prove a capability test.
+- Evidence: `docs/agent-kit/claude-production-quality-gap-2026-11-08.md` and
+  `docs/agent-kit/skills/production-polish.md`.
+
+## 2026-11-08 - Human-paced bot policies must be screen-only by construction
+
+- Moonseed Keeper v2 improved substantially under the production-polish contract,
+  but its human strategy still read the player's lane from user RAM.
+- A delayed bot is not human evidence when its decision policy can inspect hidden
+  state. New projects separate a pure `human-policy.mjs` from the emulator harness
+  and an independent `rules-model.mjs` from both the policy and Amy implementation.
+- Exact boolean expectations now work in `amy-author-metrics`; the previous scaffold
+  emitted `equals` rules that were silently ignored.
+- Evidence: `docs/agent-kit/experiments/moonseed-keeper-v2-blind-observation-2026-11-08.md`.
+
+## 2026-11-08 - Human playability includes realistic hold duration
+
+- Moonseed Keeper v2 changed a discrete lane every frame while a direction was
+  held. The middle lane therefore existed for only 1/60 second during a normal
+  press, although a bot using exact taps could win.
+- Discrete controls must be edge-triggered or use a documented delayed repeat.
+  Continuous controls must leave a measurable correction window.
+- Game bots now need hold-duration evidence at 2, 6, 14, and 30 frames and a
+  minimum decision window; delayed perfect taps do not prove human playability.
+
+## 2026-11-08 - Toolbox parity includes production lessons, not only V01-V11
+
+- The earlier equivalence audit incorrectly reported complete parity because it
+  covered Claude's mechanical V01-V11 checks but not the human-production lessons.
+- The matrix now includes control holds, pure screen-only policies, independent
+  models, cheap strategies, gameplay variation, frame budget, audio lifecycle, and
+  illustrated audiovisual identity. Delivery requires these checks for games.
+- Current evidence is 26 READY, 3 PARTIAL, 0 MISSING. Remaining partial integrations
+  are art generation with preview, one-command music/effects generation, and unified
+  original-system tracing for historical ports.
+
+## 2026-11-08 - Gameplay variation must come from compiled-ROM executions
+
+- Moonseed Keeper v3 reported three variants generated by its independent model,
+  while three real ROM runs all produced the same lane sequence. A correct model
+  cannot prove that the implementation varies.
+- Publishable games now require at least three unique visible sequences recorded in
+  `runtimeVariantSequences` from separate compiled-ROM executions. Model-only seeds
+  remain useful rules evidence but do not count toward runtime variation.
+- The same pilot exposed reusable harness gaps: OS7 startup timing, RGB565 capture,
+  menu navigation, Tiny Sound schedule shape, ascending sound-area order, and
+  one-VBlank presentation latency are now focused agent-kit guidance.
