@@ -1,15 +1,15 @@
 # Amy Studio Agent Toolbox Readiness Report
 
-Date: 2026-11-08
+Date: 2026-11-09
 
 ## Verdict
 
-The experimental Alexis-Z80 toolbox, skills, and generated cheatsheet are ready for
-continued agent-assisted game-production pilots, but not clean-repository promotion.
-After two blind pilots exposed human-control and production-quality gaps, the expanded
+The Amy Studio toolbox, skills, and generated cheatsheet were promoted to the clean
+repository in commit `c0cf6e876` after blind game-production pilots exposed and then
+closed the important human-control and production-quality gaps. The expanded
 equivalence audit reports **26 READY, 3 PARTIAL, 0 MISSING**. Art generation with
 preview, one-command music/effect generation, and unified original-system tracing
-remain partial.
+remain partial and are identified as such rather than presented as completed gates.
 
 ## Author-facing workflow
 
@@ -64,5 +64,5 @@ false pass.
 - A serious game still needs its own rule model, reachable-ending bot, gameplay
   metrics, and human visual/audio review.
 - Real OS7 remains required for final BIOS, controller, sound, VDP, and ABI proof.
-- Clean-repository promotion still requires the repository's promotion gates and a
-  separate commit decision.
+- Future toolbox changes still require the repository's promotion gates and a separate
+  clean-repository commit; the current published baseline is `c0cf6e876`.
