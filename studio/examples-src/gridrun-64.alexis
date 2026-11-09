@@ -1,0 +1,561 @@
+cartridge "GRIDRUN 64/Tony Brantner/1990"
+
+' GRIDRUN 64
+' Faithful ColecoVision adaptation of Tony Brantner's machine-language
+' game published in RUN, December 1990, page 37. The ReRUN executable
+' contains one BASIC SYS line followed by about 2 KB of 6502 code; the
+' rules and timing were reconstructed from that executable, the original
+' article and play in jsC64.
+'
+' Guide the ship along the grid and collect every diamond. Four guards
+' patrol its edges and fire energy bolts along the grid lines. A hit costs
+' a ship and repopulates the board with more diamonds. Clearing the board
+' advances to a faster level. Diamonds score 10 times the current level;
+' another ship is awarded every 5000 points.
+'
+' ColecoVision liberties: either joystick replaces C64 port 2; movement
+' remains continuous and direction changes occur at intersections. The
+' original session high score, three starting ships and fire-button replay
+' are retained. New tile and sprite art fits the ColecoVision safe area.
+
+const TGrid = 128
+const TDiamond = 129
+const TFlash = 130
+const TFrameH = 131
+const TFrameV = 132
+const TFrameTL = 133
+const TFrameTR = 134
+const TFrameBL = 135
+const TFrameBR = 136
+const GridW = 15
+const GridH = 13
+const GridN = 195
+const GridX = 3
+const GridY = 4
+const MinX = 24
+const MaxX = 136
+const MinY = 32
+const MaxY = 128
+const SShip = 0
+const SGuard = 1
+const SBoltH = 2
+const SBoltV = 3
+const SBoom = 4
+const SGuard2 = 5
+const SShip2 = 6
+const SprBytes = 56
+const TileBytes = 72
+const SndGem = 1
+const SndHit = 2
+const SndLevel = 3
+const SndStart = 4
+
+u8 Gems[195]
+u8 ShotX[4]
+u8 ShotY[4]
+u8 ShotOn[4]
+u8 Px = 80
+u8 Py = 80
+u8 Dir = 0
+u8 Want = 0
+u8 Ships = 3
+u8 Lv = 1
+u8 Left = 0
+u8 Need = 0
+u8 Placed = 0
+u8 GuardTop = 32
+u8 GuardBottom = 112
+u8 GuardLeft = 48
+u8 GuardRight = 112
+u8 Gd0 = 1
+u8 Gd1 = 2
+u8 Gd2 = 1
+u8 Gd3 = 2
+u8 GuardTick = 0
+u8 ShotWait = 30
+u8 MoveTick = 0
+u8 Tick = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 K = 0
+u8 Gx = 0
+u8 Gy = 0
+u8 V = 0
+u8 StepV = 1
+u16 Idx = 0
+u16 Score = 0
+u16 High = 0
+u16 NextLife = 5000
+u16 NumU = 0
+u16 Rs = $6D35
+u16 Rt = 0
+u16 T16 = 0
+
+  tile screen
+  set sound table GrSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  set sprite count 9
+  HideSprites
+  screen on
+
+title:
+  TitleScreen
+  WaitPress
+
+new_game:
+  Score = 0
+  Lv = 1
+  Ships = 3
+  NextLife = 5000
+  play sound SndStart
+  NewRound(0)
+
+game_loop:
+  Frame1
+  ReadPad
+  MoveShip
+  MoveGuards
+  FireGuards
+  MoveShots
+  DrawSprites
+  goto game_loop
+
+level_clear:
+  play sound SndLevel
+  inc Lv
+  if Lv > 99 then Lv = 99
+  for K = 1 to 45
+    Frame1
+    if (K & 3) < 2 then
+      print at 9,2, "GRID CLEARED!"
+    else
+      print at 9,2, "             "
+    end if
+  next
+  NewRound(0)
+  goto game_loop
+
+ship_hit:
+  play sound SndHit
+  set sprite 0 to Py,Px,SBoom,8
+  for K = 1 to 35
+    Frame1
+  next
+  dec Ships
+  if Ships = 0 then goto game_over
+  NewRound(1)
+  goto game_loop
+
+game_over:
+  if Score > High then High = Score
+  HideSprites
+  print at 9,2, " GAME OVER "
+  print at 4,18, "PRESS A BUTTON TO REPLAY"
+  WaitPress
+  goto title
+
+sub NewRound(u8 AfterHit):
+  DrawBoard
+  fill array Gems with 0
+  Need = 20 + Lv * 3
+  if AfterHit = 1 then Need = Need + 6
+  if Need > 80 then Need = 80
+  Placed = 0
+nr_place:
+  Idx = RndBelow(GridN)
+  if Gems[Idx] = 1 then goto nr_place
+  Gems[Idx] = 1
+  inc Placed
+  CellFromIndex
+  put char TDiamond at Gx + GridX,Gy + GridY
+  if Placed < Need then goto nr_place
+  Left = Need
+  Px = 80
+  Py = 80
+  Dir = 0
+  Want = 0
+  GuardTop = 40
+  GuardBottom = 120
+  GuardLeft = 48
+  GuardRight = 112
+  Gd0 = 1
+  Gd1 = 2
+  Gd2 = 1
+  Gd3 = 2
+  GuardTick = 0
+  ShotWait = 14
+  MoveTick = 0
+  for K = 0 to 3
+    ShotOn[K] = 0
+  next
+  Idx = 6 * GridW + 7
+  if Gems[Idx] = 1 then
+    Gems[Idx] = 0
+    dec Left
+    put char TGrid at 10,10
+  end if
+  ShowHud
+  DrawSprites
+  return
+end sub
+
+sub DrawBoard:
+  NewScreen
+  backdrop black
+  print at 9,1, "GRID RUN 64"
+  for Gy = 0 to GridH - 1
+    for Gx = 0 to GridW - 1
+      put char TGrid at Gx + GridX,Gy + GridY
+    next
+  next
+  put char TFrameTL at GridX - 1,GridY - 1
+  put char TFrameTR at GridX + GridW,GridY - 1
+  put char TFrameBL at GridX - 1,GridY + GridH
+  put char TFrameBR at GridX + GridW,GridY + GridH
+  for Gx = 0 to GridW - 1
+    put char TFrameH at Gx + GridX,GridY - 1
+    put char TFrameH at Gx + GridX,GridY + GridH
+  next
+  for Gy = 0 to GridH - 1
+    put char TFrameV at GridX - 1,Gy + GridY
+    put char TFrameV at GridX + GridW,Gy + GridY
+  next
+  print at 19,5, "SCORE"
+  print at 19,8, "HIGH"
+  print at 19,11, "LEVEL"
+  print at 19,14, "SHIPS"
+  print at 19,17, "DIAMONDS"
+  print at 2,21, "STEER AT INTERSECTIONS"
+  print at 2,22, "AVOID THE ENERGY BOLTS"
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowHud:
+  print at 19,6, digits$(Score, 5)
+  print at 19,9, digits$(High, 5)
+  print at 19,12, digits$(Lv, 2)
+  print at 19,15, digits$(Ships, 2)
+  print at 19,18, digits$(Left, 2)
+  return
+end sub
+
+sub MoveShip:
+  Want = 0
+  if joypad(1).up or joypad(2).up then Want = 1
+  if joypad(1).right or joypad(2).right then Want = 2
+  if joypad(1).down or joypad(2).down then Want = 3
+  if joypad(1).left or joypad(2).left then Want = 4
+  if (Px & 7) = 0 and (Py & 7) = 0 then
+    if Want = 1 and Py > MinY then Dir = 1
+    if Want = 2 and Px < MaxX then Dir = 2
+    if Want = 3 and Py < MaxY then Dir = 3
+    if Want = 4 and Px > MinX then Dir = 4
+  end if
+  if Dir = 1 then
+    if Py > MinY then dec Py else Dir = 0
+  end if
+  if Dir = 2 then
+    if Px < MaxX then inc Px else Dir = 0
+  end if
+  if Dir = 3 then
+    if Py < MaxY then inc Py else Dir = 0
+  end if
+  if Dir = 4 then
+    if Px > MinX then dec Px else Dir = 0
+  end if
+  if (Px & 7) = 0 and (Py & 7) = 0 then
+    Gy = (Py >> 3) - GridY
+    Gx = (Px >> 3) - GridX
+    Idx = Gy * GridW + Gx
+    if Gems[Idx] = 1 then
+      Gems[Idx] = 0
+      dec Left
+      put char TGrid at Gx + GridX,Gy + GridY
+      NumU = Lv * 10
+      Score = Score + NumU
+      if Score > High then High = Score
+      if Score >= NextLife then
+        if Ships < 9 then inc Ships
+        NextLife = NextLife + 5000
+      end if
+      play sound SndGem
+      ShowHud
+      if Left = 0 then goto level_clear
+    end if
+  end if
+  return
+end sub
+
+sub MoveGuards:
+  inc GuardTick
+  V = 4
+  if Lv >= 4 then V = 3
+  if Lv >= 8 then V = 2
+  if GuardTick < V then return
+  GuardTick = 0
+  if Gd0 = 1 then
+    inc GuardTop
+    if GuardTop >= MaxX then Gd0 = 2
+  else
+    dec GuardTop
+    if GuardTop <= MinX then Gd0 = 1
+  end if
+  if Gd1 = 1 then
+    inc GuardBottom
+    if GuardBottom >= MaxX then Gd1 = 2
+  else
+    dec GuardBottom
+    if GuardBottom <= MinX then Gd1 = 1
+  end if
+  if Gd2 = 1 then
+    inc GuardLeft
+    if GuardLeft >= MaxY then Gd2 = 2
+  else
+    dec GuardLeft
+    if GuardLeft <= MinY then Gd2 = 1
+  end if
+  if Gd3 = 1 then
+    inc GuardRight
+    if GuardRight >= MaxY then Gd3 = 2
+  else
+    dec GuardRight
+    if GuardRight <= MinY then Gd3 = 1
+  end if
+  return
+end sub
+
+sub FireGuards:
+  if ShotWait > 0 then
+    dec ShotWait
+    return
+  end if
+  K = RndBelow(4)
+  if ShotOn[K] = 0 then
+    ShotOn[K] = 1
+    if K = 0 then
+      ShotX[K] = GuardTop
+      ShotY[K] = 24
+    end if
+    if K = 1 then
+      ShotX[K] = GuardBottom
+      ShotY[K] = 136
+    end if
+    if K = 2 then
+      ShotX[K] = 16
+      ShotY[K] = GuardLeft
+    end if
+    if K = 3 then
+      ShotX[K] = 144
+      ShotY[K] = GuardRight
+    end if
+  end if
+  V = RndBelow(24)
+  ShotWait = 18 + V
+  if Lv >= 5 then ShotWait = ShotWait - 4
+  if Lv >= 10 then ShotWait = ShotWait - 4
+  return
+end sub
+
+sub MoveShots:
+  StepV = 1
+  if Lv >= 4 then StepV = 2
+  for K = 0 to 3
+    if ShotOn[K] = 1 then
+      if K = 0 then
+        ShotY[K] = ShotY[K] + StepV
+        if ShotY[K] > 143 then ShotOn[K] = 0
+      end if
+      if K = 1 then
+        if ShotY[K] > StepV then ShotY[K] = ShotY[K] - StepV
+        if ShotY[K] < 22 then ShotOn[K] = 0
+      end if
+      if K = 2 then
+        ShotX[K] = ShotX[K] + StepV
+        if ShotX[K] > 151 then ShotOn[K] = 0
+      end if
+      if K = 3 then
+        if ShotX[K] > StepV then ShotX[K] = ShotX[K] - StepV
+        if ShotX[K] < 16 then ShotOn[K] = 0
+      end if
+      if ShotOn[K] = 1 then
+        if ShotX[K] + 5 >= Px and ShotX[K] <= Px + 5 then
+          if ShotY[K] + 5 >= Py and ShotY[K] <= Py + 5 then goto ship_hit
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawSprites:
+  V = SGuard
+  if (Tick & 8) = 8 then V = SGuard2
+  Gx = SShip
+  if (Tick & 4) = 4 then Gx = SShip2
+  set sprite 0 to Py,Px,Gx,15
+  set sprite 1 to 23,GuardTop,V,7
+  set sprite 2 to 135,GuardBottom,V,7
+  set sprite 3 to GuardLeft,16,V,7
+  set sprite 4 to GuardRight,144,V,7
+  for K = 0 to 3
+    if ShotOn[K] = 1 then
+      V = SBoltV
+      if K >= 2 then V = SBoltH
+      set sprite K + 5 to ShotY[K],ShotX[K],V,10
+    else
+      set sprite K + 5 to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub CellFromIndex:
+  Gy = Idx / GridW
+  Gx = Idx % GridW
+  return
+end sub
+
+function RndBelow(u8 Lim) as u8
+  Rnd16
+  T16 = Rs & 255
+  T16 = T16 * Lim
+  return T16 >> 8
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  return
+end sub
+
+sub ReadPad:
+  Btn = 0
+  if joypad(1).fire or joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 and WasBtn = 0 then Press = 1
+  WasBtn = Btn
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub HideSprites:
+  for K = 0 to 8
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub TitleScreen:
+  NewScreen
+  backdrop black
+  print at 7,3, "*** GRID RUN 64 ***"
+  print at 6,5, "TONY BRANTNER, 1990"
+  print at 5,6, "RUN MAGAZINE DECEMBER"
+  print at 3,9, "COLLECT EVERY DIAMOND ON"
+  print at 3,10, "THE GRID. KEEP MOVING AND"
+  print at 3,11, "DODGE THE GUARDS' ENERGY."
+  print at 3,14, "THE STICK STEERS AT EACH"
+  print at 3,15, "INTERSECTION. THREE SHIPS."
+  print at 5,19, "PRESS A BUTTON TO START"
+  print at 3,21, "ADAPTED WITH CODEX + AMY"
+  screen on
+  nmi off
+  HideSprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $F1
+  copy TilePat count TileBytes to vram.pattern + 1024
+  copy TileCol count TileBytes to vram.color + 1024
+  copy TilePat count TileBytes to vram.pattern + 3072
+  copy TileCol count TileBytes to vram.color + 3072
+  copy TilePat count TileBytes to vram.pattern + 5120
+  copy TileCol count TileBytes to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+data TilePat bytes
+  $08,$08,$08,$FF,$08,$08,$08,$08
+  $00,$18,$3C,$7E,$7E,$3C,$18,$00
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+  $18,$18,$18,$FF,$FF,$00,$00,$00
+  $00,$00,$00,$FF,$FF,$18,$18,$18
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+end data
+data TileCol bytes
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+end data
+data SpritePat bytes
+  $18,$3C,$7E,$DB,$18,$3C,$24,$42
+  $3C,$7E,$DB,$FF,$7E,$24,$5A,$A5
+  $00,$00,$7E,$FF,$7E,$00,$00,$00
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+  $81,$42,$24,$18,$18,$24,$42,$81
+  $3C,$7E,$BD,$FF,$7E,$5A,$24,$5A
+  $18,$3C,$7E,$DB,$3C,$18,$5A,$24
+end data
+
+asm {
+GrGem:
+    db $40,$70,$20,$01,$40,$50,$20,$01,$50
+GrHit:
+    db $00,$00,$06,$18,$00,$00,$46,$08,$00,$00,$F6,$01,$10
+GrLevel:
+    db $40,$80,$30,$03,$40,$60,$30,$03,$40,$40,$30,$06,$50
+GrStart:
+    db $40,$A0,$30,$02,$40,$80,$30,$02,$40,$60,$30,$04,$50
+GrSoundTable:
+    dw GrGem,$702B
+    dw GrHit,$702B
+    dw GrLevel,$7035
+    dw GrStart,$7035
+}

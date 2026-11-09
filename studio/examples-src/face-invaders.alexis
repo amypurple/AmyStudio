@@ -1,0 +1,603 @@
+cartridge "FACE INVADERS/REINER RICHTER RUN 1992/1992"
+
+' FACE INVADERS
+' ColecoVision adaptation of Reiner Richter's 6502 machine-language game,
+' published by RUN magazine on the November/December 1992 ReRUN disk.
+' The original is a one-line BASIC SYS launcher followed by about 2 KB of
+' machine code. Its rules, presentation and pace were reconstructed from
+' the executable and observed play in jsC64.
+'
+' Move the cannon and destroy five rows of animated faces. The formation
+' descends and accelerates as faces are removed. Enemy fire damages the
+' four shelters; a hit costs one of four lives. A passing saucer awards a
+' bonus. Clear every face to begin a faster wave.
+'
+' ColecoVision adaptation: either joystick controls the cannon. The alien
+' formation is tile-based so all forty faces remain stable on TMS9918A
+' hardware; bullets, cannon and saucer are sprites. The complete playfield
+' stays inside the CRT-safe columns.
+
+const TFace0A = 128
+const TFace0B = 129
+const TFace1A = 130
+const TFace1B = 131
+const TFace2A = 132
+const TFace2B = 133
+const TFace3A = 134
+const TFace3B = 135
+const TFace4A = 136
+const TFace4B = 137
+const TShield = 138
+const TShieldHit = 139
+const TileBytes = 96
+const SPlayer = 0
+const SBullet = 1
+const SEnemy = 2
+const SUfo = 3
+const SBlast = 4
+const SpriteBytes = 40
+const SndShoot = 1
+const SndAlien = 2
+const SndHit = 3
+const SndWave = 4
+
+u8 Alive[40]
+u8 Shield[24]
+u8 EnemyX[2]
+u8 EnemyY[2]
+u8 EnemyOn[2]
+u8 PlayerX = 120
+u8 PlayerY = 168
+u8 BulletX = 0
+u8 BulletY = 0
+u8 BulletOn = 0
+u8 UfoX = 0
+u8 UfoOn = 0
+u8 FormCol = 5
+u8 FormRow = 4
+u8 FormDir = 1
+u8 FormFrame = 0
+u8 MoveClock = 0
+u8 MoveDelay = 17
+u8 FireClock = 0
+u8 Lives = 4
+u8 Wave = 1
+u8 Left = 40
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 K = 0
+u8 I = 0
+u8 R = 0
+u8 C = 0
+u8 X = 0
+u8 Y = 0
+u8 V = 0
+u8 Group = 0
+u8 Cell = 0
+u8 ShotSlot = 0
+u8 Try = 0
+u8 Hit = 0
+u16 Score = 0
+u16 High = 0
+u16 NumU = 0
+u16 Rs = $4A39
+u16 Rt = 0
+u16 T16 = 0
+
+  tile screen
+  set sound table FiSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy SpritePat count SpriteBytes to vram.spr_pat
+  set sprite count 6
+  HideSprites
+  screen on
+
+title:
+  TitleScreen
+  WaitPress
+
+new_game:
+  Score = 0
+  Lives = 4
+  Wave = 1
+  NewWave
+
+game_loop:
+  Frame1
+  ReadPad
+  MovePlayer
+  MoveFormation
+  MovePlayerBullet
+  FireEnemies
+  MoveEnemyBullets
+  MoveUfo
+  DrawSprites
+  if Left = 0 then goto wave_clear
+  goto game_loop
+
+wave_clear:
+  play sound SndWave
+  HideSprites
+  print at 10,11, "WAVE CLEARED"
+  for K = 1 to 80
+    Frame1
+  next
+  inc Wave
+  if Wave > 20 then Wave = 20
+  NewWave
+  goto game_loop
+
+player_hit:
+  play sound SndHit
+  set sprite 0 to PlayerY,PlayerX,SBlast,8
+  update sprites
+  for K = 1 to 40
+    Frame1
+  next
+  dec Lives
+  if Lives = 0 then goto game_over
+  PlayerX = 120
+  BulletOn = 0
+  EnemyOn[0] = 0
+  EnemyOn[1] = 0
+  ShowHud
+  goto game_loop
+
+invaded:
+  Lives = 0
+
+game_over:
+  if Score > High then High = Score
+  HideSprites
+  print at 9,10, "*** GAME OVER ***"
+  print at 5,13, "PRESS A BUTTON TO REPLAY"
+  WaitPress
+  goto title
+
+sub NewWave:
+  NewScreen
+  backdrop black
+  for I = 0 to 39
+    Alive[I] = 1
+  next
+  for I = 0 to 23
+    Shield[I] = 2
+  next
+  EnemyOn[0] = 0
+  EnemyOn[1] = 0
+  BulletOn = 0
+  UfoOn = 0
+  PlayerX = 120
+  FormCol = 5
+  FormRow = 4
+  FormDir = 1
+  FormFrame = 0
+  MoveClock = 0
+  Left = 40
+  MoveDelay = 18
+  if Wave > 1 then MoveDelay = MoveDelay - Wave
+  if MoveDelay < 8 then MoveDelay = 8
+  print at 2,1, "FACE INVADERS"
+  DrawAliens
+  DrawShields
+  ShowHud
+  screen on
+  return
+end sub
+
+sub DrawAliens:
+  I = 0
+  for R = 0 to 4
+    for C = 0 to 7
+      if Alive[I] = 1 then
+        V = TFace0A + R * 2 + FormFrame
+        put char V at FormCol + C * 2,FormRow + R * 2
+      end if
+      inc I
+    next
+  next
+  return
+end sub
+
+sub ClearAliens:
+  I = 0
+  for R = 0 to 4
+    for C = 0 to 7
+      if Alive[I] = 1 then put char 32 at FormCol + C * 2,FormRow + R * 2
+      inc I
+    next
+  next
+  return
+end sub
+
+sub MoveFormation:
+  inc MoveClock
+  if MoveClock < MoveDelay then return
+  MoveClock = 0
+  ClearAliens
+  if FormDir = 1 then
+    if FormCol >= 14 then
+      inc FormRow
+      FormDir = 0
+    else
+      inc FormCol
+    end if
+  else
+    if FormCol <= 2 then
+      inc FormRow
+      FormDir = 1
+    else
+      dec FormCol
+    end if
+  end if
+  FormFrame = FormFrame ^ 1
+  MoveDelay = 4 + Left / 3
+  if Wave < MoveDelay then MoveDelay = MoveDelay - Wave
+  if MoveDelay < 3 then MoveDelay = 3
+  DrawAliens
+  play sound SndAlien
+  if FormRow >= 9 then goto invaded
+  return
+end sub
+
+sub MovePlayer:
+  if joypad(1).left or joypad(2).left then
+    if PlayerX > 16 then PlayerX = PlayerX - 2
+  end if
+  if joypad(1).right or joypad(2).right then
+    if PlayerX < 232 then PlayerX = PlayerX + 2
+  end if
+  if Press = 1 and BulletOn = 0 then
+    BulletOn = 1
+    BulletX = PlayerX + 3
+    BulletY = PlayerY - 4
+    play sound SndShoot
+  end if
+  return
+end sub
+
+sub MovePlayerBullet:
+  if BulletOn = 0 then return
+  if BulletY < 5 then
+    BulletOn = 0
+    return
+  end if
+  BulletY = BulletY - 4
+  Hit = 0
+  CheckPlayerShield
+  if Hit = 1 then return
+  if UfoOn = 1 then
+    if BulletY <= 27 and BulletY + 7 >= 20 then
+      if BulletX + 3 >= UfoX and BulletX <= UfoX + 7 then
+        BulletOn = 0
+        UfoOn = 0
+        Score = Score + 100
+        ShowHud
+        return
+      end if
+    end if
+  end if
+  I = 0
+  for R = 0 to 4
+    for C = 0 to 7
+      if Alive[I] = 1 then
+        X = (FormCol + C * 2) * 8
+        Y = (FormRow + R * 2) * 8
+        if BulletX + 3 >= X and BulletX <= X + 7 then
+          if BulletY + 7 >= Y and BulletY <= Y + 7 then
+            Alive[I] = 0
+            put char 32 at FormCol + C * 2,FormRow + R * 2
+            dec Left
+            BulletOn = 0
+            NumU = 50 - R * 10
+            Score = Score + NumU
+            ShowHud
+            return
+          end if
+        end if
+      end if
+      inc I
+    next
+  next
+  return
+end sub
+
+sub FireEnemies:
+  inc FireClock
+  if FireClock < 22 then return
+  FireClock = 0
+  ShotSlot = 0
+  if EnemyOn[0] = 1 then ShotSlot = 1
+  if EnemyOn[ShotSlot] = 1 then return
+  Try = 0
+fi_pick:
+  I = RndBelow(40)
+  inc Try
+  if Alive[I] = 0 and Try < 20 then goto fi_pick
+  if Alive[I] = 0 then return
+  R = I / 8
+  C = I % 8
+  EnemyX[ShotSlot] = (FormCol + C * 2) * 8 + 3
+  EnemyY[ShotSlot] = (FormRow + R * 2) * 8 + 8
+  EnemyOn[ShotSlot] = 1
+  return
+end sub
+
+sub MoveEnemyBullets:
+  for K = 0 to 1
+    if EnemyOn[K] = 1 then
+      EnemyY[K] = EnemyY[K] + 2
+      Hit = 0
+      CheckEnemyShield(K)
+      if Hit = 0 then
+        if EnemyY[K] + 7 >= PlayerY and EnemyY[K] <= PlayerY + 7 then
+          if EnemyX[K] + 3 >= PlayerX and EnemyX[K] <= PlayerX + 7 then
+            EnemyOn[K] = 0
+            goto player_hit
+          end if
+        end if
+        if EnemyY[K] > 184 then EnemyOn[K] = 0
+      end if
+    end if
+  next
+  return
+end sub
+
+sub CheckPlayerShield:
+  for I = 0 to 23
+    if Shield[I] > 0 then
+      ShieldPosition
+      if BulletX + 3 >= X and BulletX <= X + 7 then
+        if BulletY + 7 >= Y and BulletY <= Y + 7 then
+          dec Shield[I]
+          DrawShieldCell
+          BulletOn = 0
+          Hit = 1
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub CheckEnemyShield(u8 Slot):
+  for I = 0 to 23
+    if Shield[I] > 0 then
+      ShieldPosition
+      if EnemyX[Slot] + 3 >= X and EnemyX[Slot] <= X + 7 then
+        if EnemyY[Slot] + 7 >= Y and EnemyY[Slot] <= Y + 7 then
+          dec Shield[I]
+          DrawShieldCell
+          EnemyOn[Slot] = 0
+          Hit = 1
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub ShieldPosition:
+  Group = I / 6
+  Cell = I % 6
+  X = (4 + Group * 7 + Cell % 3) * 8
+  Y = (17 + Cell / 3) * 8
+  return
+end sub
+
+sub DrawShieldCell:
+  X = 4 + Group * 7 + Cell % 3
+  Y = 17 + Cell / 3
+  if Shield[I] = 2 then put char TShield at X,Y
+  if Shield[I] = 1 then put char TShieldHit at X,Y
+  if Shield[I] = 0 then put char 32 at X,Y
+  return
+end sub
+
+sub DrawShields:
+  for I = 0 to 23
+    ShieldPosition
+    DrawShieldCell
+  next
+  return
+end sub
+
+sub MoveUfo:
+  if UfoOn = 0 then
+    if (Tick & 127) <> 0 then return
+    V = RndBelow(4)
+    if V <> 0 then return
+    UfoOn = 1
+    UfoX = 16
+    return
+  end if
+  UfoX = UfoX + 1
+  if UfoX > 232 then UfoOn = 0
+  return
+end sub
+
+sub DrawSprites:
+  set sprite 0 to PlayerY,PlayerX,SPlayer,15
+  if BulletOn = 1 then
+    set sprite 1 to BulletY,BulletX,SBullet,10
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for K = 0 to 1
+    if EnemyOn[K] = 1 then
+      set sprite K + 2 to EnemyY[K],EnemyX[K],SEnemy,8
+    else
+      set sprite K + 2 to 192,0,0,0
+    end if
+  next
+  if UfoOn = 1 then
+    set sprite 4 to 20,UfoX,SUfo,8
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  set sprite 5 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 18,1, "SCORE"
+  NumU = Score
+  print at 25,1, digits$(NumU, 5)
+  print at 2,22, "WAVE"
+  NumU = Wave
+  print at 7,22, digits$(NumU, 2)
+  print at 22,22, "LIVES"
+  NumU = Lives
+  print at 28,22, digits$(NumU, 1)
+  return
+end sub
+
+function RndBelow(u8 Lim) as u8
+  Rnd16
+  T16 = Rs & 255
+  T16 = T16 * Lim
+  return T16 >> 8
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  return
+end sub
+
+sub ReadPad:
+  Btn = 0
+  if joypad(1).fire or joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 and WasBtn = 0 then Press = 1
+  WasBtn = Btn
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+fp_wait:
+  Frame1
+  ReadPad
+  if Press = 0 then goto fp_wait
+  return
+end sub
+
+sub HideSprites:
+  for K = 0 to 5
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub TitleScreen:
+  NewScreen
+  backdrop black
+  print at 7,3, "*** FACE INVADERS ***"
+  print at 7,5, "BY REINER RICHTER"
+  print at 3,6, "RUN MAGAZINE NOV/DEC 1992"
+  print at 3,9, "DESTROY THE INVADING FACES"
+  print at 3,10, "BEFORE THEY REACH YOUR BASE."
+  print at 3,13, "STICK: MOVE   BUTTON: FIRE"
+  print at 3,15, "FOUR LIVES. SHIELDS CRUMBLE."
+  print at 5,19, "PRESS A BUTTON TO START"
+  print at 3,21, "ADAPTED WITH CODEX + AMY"
+  screen on
+  nmi off
+  HideSprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $F1
+  copy TilePat count TileBytes to vram.pattern + 1024
+  copy TileCol count TileBytes to vram.color + 1024
+  copy TilePat count TileBytes to vram.pattern + 3072
+  copy TileCol count TileBytes to vram.color + 3072
+  copy TilePat count TileBytes to vram.pattern + 5120
+  copy TileCol count TileBytes to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+data TilePat bytes
+  $3C,$42,$A5,$81,$A5,$99,$42,$3C
+  $3C,$42,$99,$81,$BD,$81,$42,$3C
+  $3C,$42,$A5,$81,$99,$A5,$42,$3C
+  $3C,$42,$99,$81,$A5,$BD,$42,$3C
+  $3C,$42,$A5,$81,$A5,$81,$5A,$3C
+  $3C,$42,$99,$81,$BD,$81,$66,$3C
+  $3C,$42,$A5,$81,$BD,$99,$42,$3C
+  $3C,$42,$99,$81,$A5,$A5,$42,$3C
+  $3C,$42,$A5,$81,$99,$BD,$42,$3C
+  $3C,$42,$99,$81,$A5,$99,$66,$3C
+  $7E,$FF,$DB,$FF,$A5,$FF,$7E,$3C
+  $66,$DB,$A5,$5A,$A5,$DB,$66,$24
+end data
+
+data TileCol bytes
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $31,$31,$31,$31,$31,$31,$31,$31
+  $31,$31,$31,$31,$31,$31,$31,$31
+  $61,$61,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$61,$61,$61,$61
+end data
+
+data SpritePat bytes
+  $18,$3C,$7E,$FF,$DB,$18,$24,$42
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $24,$18,$3C,$18,$24,$18,$3C,$18
+  $00,$3C,$7E,$FF,$DB,$7E,$24,$00
+  $81,$42,$24,$18,$18,$24,$42,$81
+end data
+
+asm {
+FiShoot:
+    db $40,$70,$20,$02,$50
+FiAlien:
+    db $00,$00,$05,$02,$10
+FiHit:
+    db $00,$00,$06,$18,$00,$00,$46,$08,$00,$00,$F6,$01,$10
+FiWave:
+    db $40,$90,$30,$03,$40,$70,$30,$03,$40,$50,$30,$06,$50
+FiSoundTable:
+    dw FiShoot,$702B
+    dw FiAlien,$7035
+    dw FiHit,$702B
+    dw FiWave,$7035
+}

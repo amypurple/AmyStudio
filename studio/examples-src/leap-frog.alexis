@@ -1,0 +1,1908 @@
+cartridge "LEAP FROG/TONY BRANTNER/1992"
+
+' LEAP FROG - after the Commodore 64 game by Tony Brantner (RUN magazine,
+' ReRUN disk July/August 1992: LEAP + LEAP FROG, machine code typed in as
+' LEAPFROG.HEX). ColecoVision port in Amy.
+'
+' Ribbit the frog sits on a log. Dragonflies come down from the sky and
+' flutter about; the button shoots his tongue straight up to swat one
+' (10 points x the level). A swatted fly jumps and drops: dodge it. A snake
+' wanders the log with its head bobbing: hop over it (stick up-left or
+' up-right; up alone hops in place). Touch the snake or a fly and Ribbit
+' hops away: one frog lost. Three frogs, one more every 2000 points. Catch
+' all the flies of a level (13 to 20) for the next, faster level (15 levels).
+'
+' Controls: either controller; stick left/right walks, up / up-left /
+' up-right hops, either button the tongue. Menus: stick up/down, button.
+'
+' The rules are the original's machine code, kept in its own units: sprite
+' X 0-511 and Y 0-255 of the C64 screen, the main loop's passes and
+' counters (frog every 17 passes, flies every 45 - 2 x level, swatted
+' flies every 8th pass), its random choices, its pixel-exact collisions
+' (the C64 sprites' shapes are kept as masks: Masks, MaskTest). The C64
+' loop was not tied to the frame; an NTSC C64 runs 24 passes a frame, 22
+' while the stick or button is held (measured in c64/, see README): the
+' port runs exactly that many passes per frame. The C64 screen is then
+' drawn scaled (x 0.7, y 0.83) on the ColecoVision (XMap, YMap).
+'
+' Liberties (README): new pictures (sky, log, reeds, title picture),
+' ColecoVision sprites redrawn from the original shapes; collisions tested
+' once a frame (the C64 latched them every pass); the wings flap at 7.5 Hz
+' on screen (the C64 changed them about 45 times a second); the frog
+' appears / vanishes at the playfield edges instead of in the border;
+' title menu, HOW TO PLAY, CREDITS, GAME OVER message (the original just
+' waited for the button), an original title tune; the SHIFT LOCK pause and
+' RUN/STOP are left out.
+'
+' House rules: everything in columns 2-29 / rows 1-22; music first in the
+' sound table; screens drawn with the display off; one press at game over
+' back to the title; nothing flashes faster than 3 Hz.
+
+const PFF4K = 0
+const PFF4G = 4
+const PFF5K = 8
+const PFF5G = 12
+const PFF6K = 16
+const PFF6G = 20
+const PFF7K = 24
+const PFF7G = 28
+const PFF8K = 32
+const PFF8G = 36
+const PFF9K = 40
+const PFF9G = 44
+const PSFA0K = 48
+const PSFA0G = 52
+const PSFA1K = 56
+const PSFA1G = 60
+const PSFB0K = 64
+const PSFB0G = 68
+const PSFB1K = 72
+const PSFB1G = 76
+const PSFC0K = 80
+const PSFC0G = 84
+const PSFC1K = 88
+const PSFC1G = 92
+const PSFD0K = 96
+const PSFD0G = 100
+const PSFD1K = 104
+const PSFD1G = 108
+const PFLY0 = 112
+const PFLY1 = 116
+const PTBAR = 120
+const PTTIP = 124
+const PBLANK = 128
+const SprBytes = 1056
+const SndMel = 1
+const SndHarm = 2
+const SndBassV = 3
+const SndBassP = 4
+const SndStep = 5
+const SndStep2 = 6
+const SndJump = 7
+const SndTick0 = 8
+const SndTick1 = 9
+const SndTick2 = 10
+const SndTick3 = 11
+const SndTick4 = 12
+const SndHit = 13
+const SndDie = 14
+const SndExtra = 15
+const SndLevel = 16
+const SndOver = 17
+const SndClick = 18
+const TuneFrames = 596
+
+' game states, read by the bots
+enum GameState:
+  StBoot = 0
+  StTitle = 1
+  StHow = 2
+  StCredits = 3
+  StPlay = 4
+  StOver = 9
+end enum
+
+' how a play phase ended (EndOf)
+enum EndKind:
+  EndNone = 0
+  EndLost = 1
+  EndLevel = 2
+end enum
+
+const HideY = 207
+const FrogSlot = 0
+const SnakeSlot = 2
+const FlySlot = 6
+const TongueSlot = 12
+const NSpr = 19
+const MaxLevel = 15
+' the original's constants
+const FrogY0 = $B4
+const SnakeY0 = $BC
+const WalkStop = $AC
+
+' sprite poses of the original ($F4..$FF), as metasprites: outline + colour
+data FrogMeta metasprite layers 2
+  frame PFF4K,1, PFF4G,3
+  frame PFF5K,1, PFF5G,3
+  frame PFF6K,1, PFF6G,3
+  frame PFF7K,1, PFF7G,3
+  frame PFF8K,1, PFF8G,3
+  frame PFF9K,1, PFF9G,3
+end data
+data SnakeHead metasprite layers 2
+  frame PSFA0K,1, PSFA0G,2
+  frame PSFB0K,1, PSFB0G,2
+  frame PSFC0K,1, PSFC0G,2
+  frame PSFD0K,1, PSFD0G,2
+end data
+data SnakeBody metasprite layers 2
+  frame PSFA1K,1, PSFA1G,2
+  frame PSFB1K,1, PSFB1G,2
+  frame PSFC1K,1, PSFC1G,2
+  frame PSFD1K,1, PSFD1G,2
+end data
+
+' the original's tables ($0E76..$0EA3)
+data T76 bytes = 0, 1, 255, 0
+data T7E bytes = $F6, $F6, $F8, $F9
+data T82 bytes = 7, 0, 7, 5
+data T86 bytes = $FB, $FA, $FB, $FC, $FD, $FC
+data T90 bytes = 4, 7, 10, 12, 14, 16, 17, 18, 18, 19, 18, 18, 17, 16, 14, 12, 10, 7, 4, 0
+' C64 fly colours 1-8 (white, red, cyan, purple, green, blue, yellow,
+' orange) as TMS9918 colours; a fly never takes the sky's colour
+data FlyCol bytes = 15, 15, 8, 7, 13, 12, 4, 11, 9
+' bits of the 12 multicolour pixels of a mask row (pixel 0 = bit 11)
+data PxBit words = $0800, $0400, $0200, $0100, $0080, $0040, $0020, $0010, $0008, $0004, $0002, $0001
+' a sprite's height in mask rows: the snake (sprite 6) is doubled
+data SprRows bytes = 21, 21, 21, 21, 21, 21, 42
+
+' sprites 0-5 flies, 6 snake, 7 frog: the original's arrays $13A9...
+u8 Sy[8]
+u16 Sx[8]
+u8 Fptr[6]
+u8 Col[6]
+u8 Hit[6]
+u8 Vc[7]
+u8 Vl[7]
+u8 Vd[7]
+u8 Hc[7]
+u8 Hl[7]
+u8 Hd[7]
+u8 Ptr6 = $FB
+u8 Ptr7 = $F5
+u8 Wing = $FE
+u8 Left = 0
+u8 Level = 1
+u8 Lives = 3
+u8 Ton = 0
+u8 A7 = 0
+u8 Glyph = 0
+u16 Tx = 0
+u8 Jmp = 0
+u8 Dir = 0
+u8 Dead = 0
+u8 T1 = 0
+u8 T2 = 0
+u8 P04 = 0
+u8 A3c = 0
+u8 EndOf = 0
+u8 DiedNow = 0
+bcd digits 6 Score = 0
+bcd digits 6 High = 0
+u16 Pts = 0
+u16 Rmd = 0
+u16 Kilo = 0
+' play phases
+state machine Phase:
+  Walking calls DoWalk
+  Playing calls DoPlay
+  Frozen calls DoFrozen
+  Hopping calls DoHop
+  Pausing calls DoPause
+end state machine
+u8 Ph = 0
+u8 Acc = 0
+u8 Fz = 0
+u8 Hops = 0
+u8 Over = 0
+u8 Np = 0
+u8 Pi = 0
+' frog tick arguments (the original's A, $3A, $3B)
+u8 Ja = 0
+u8 Lo = 0
+u8 Hb = 0
+u8 Joy = $1F
+' collision scratch
+u8 Cn = 0
+u8 Pose = 0
+u16 Ox = 0
+u16 Fx = 0
+u8 Oy = 0
+u8 Fy = 0
+u8 Oh = 0
+u8 Ys = 0
+u8 Ye = 0
+u16 Dx = 0
+u16 Lp = 0
+u16 Rp = 0
+u8 Rows = 0
+u8 Shf = 0
+u8 HitOdd = 0
+u8 HitRes = 0
+u16 Tm = 0
+u16 Um = 0
+' drawing
+u8 Dy = 0
+u8 Dxs = 0
+u8 Ty = 0
+u8 Tb = 0
+u8 Tc = 0
+' misc
+u16 Rs = 1
+u16 W16 = 0
+u16 N16 = 0
+u16 Waited = 0
+u16 TzLeft = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 J1 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Fi = 0
+u8 Li = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 X8 = 0
+u8 Rv = 0
+u8 Msg = 0
+u8 NHit = 0
+u8 TgEnd = NSpr
+
+  tile screen
+  ColourThirds
+  set sound table LfSoundTable areas 8
+  sprites 16x16
+  nmi off
+  copy SprPat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  dispatch Ph using Phase
+  DrawSprites
+  if Over = 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' random: 16-bit xorshift, its low byte (the original read SID noise)
+
+' (Rs ^= Rs << 7; Rs ^= Rs >> 9; Rs ^= Rs << 8, in Z80: up to 37 calls
+' a frame when six flies come at once)
+function Rnd() as u8
+  asm {
+    ld hl,(Rs)
+    ld a,h
+    rra
+    ld a,l
+    rra
+    ld b,a
+    ld a,0
+    rra
+    xor l
+    ld l,a
+    ld a,b
+    xor h
+    ld h,a
+    ld a,h
+    srl a
+    xor l
+    ld l,a
+    xor h
+    ld h,a
+    ld (Rs),hl
+  }
+  return lowbyte(Rs)
+
+' ---------------------------------------------------------------------------
+' the original's rules
+
+' $0CC5: new step rates and directions for slot X8
+sub Reroll:
+  V = Rnd()
+  Vl[X8] = V & 3
+  V = Rnd()
+  Vd[X8] = V & 1
+  V = Rnd()
+  Hl[X8] = V & 3
+  V = Rnd()
+  Hd[X8] = V & 1
+  return
+end sub
+
+' $0C9D: a new fly in slot X8, if any are left to come
+sub Spawn:
+  if Left = 0 then return
+  dec Left
+  V = Rnd()
+  V = V & 7
+  Col[X8] = V + 1
+  Sy[X8] = $1E
+  V = Rnd()
+  V = V | $20
+  Sx[X8] = V
+  Hit[X8] = 0
+  Reroll
+  return
+end sub
+
+' $0C57: one horizontal step (when its counter runs out), off the edges or
+' 1 in 128: new rates and direction instead
+sub Horiz:
+  inc Hc[X8]
+  if Hc[X8] < Hl[X8] then return
+  Hc[X8] = 0
+  if Hd[X8] = 0 then
+    N16 = Sx[X8] + 1
+  else
+    N16 = Sx[X8] - 1
+  end if
+  if highbyte(N16) = 0 then
+    if lowbyte(N16) < $18 then
+      Reroll
+      return
+    end if
+  else
+    if lowbyte(N16) >= $41 then
+      Reroll
+      return
+    end if
+  end if
+  V = Rnd()
+  V = V & $7F
+  if V = 0 then
+    Reroll
+    return
+  end if
+  Sx[X8] = N16
+  return
+end sub
+
+' $0C28: a fly: down into the sky, then up/down between rows $32 and $B1
+sub FlyMove:
+  inc Vc[X8]
+  if Vc[X8] >= Vl[X8] then
+    Vc[X8] = 0
+    if Sy[X8] < $33 then
+      inc Sy[X8]
+    else
+      V = Sy[X8]
+      if Vd[X8] = 0 then
+        inc V
+      else
+        dec V
+      end if
+      select case V
+        case $32, $B1
+          Reroll
+          return
+      end select
+      Sy[X8] = V
+    end if
+  end if
+  Horiz
+  return
+end sub
+
+' $0C0F: the six fly slots
+sub FlyTick:
+  X8 = 5
+  for Fi = 0 to 5
+    if Sy[X8] = 0 then
+      Spawn
+    else
+      if Hit[X8] = 0 then FlyMove
+    end if
+    dec X8
+  next
+  return
+end sub
+
+sub SnakeAnim:
+  inc A3c
+  V = A3c >> 3
+  if V >= 6 then
+    V = 0
+    A3c = 0
+  end if
+  Ptr6 = T86[V]
+  return
+end sub
+
+' $0BCD: swatted flies rise 13 px, then drop until they leave (Y wraps to 0)
+sub DeadFlies:
+  asm {
+    ld hl,Sy
+    ld de,Hit
+    ld b,6
+DF_LOOP:
+    ld a,(de)
+    or a
+    jr z,DF_NEXT
+    ld c,a
+    ld a,(hl)
+    or a
+    jr z,DF_NEXT
+    ld a,c
+    cp 14
+    jr nc,DF_FALL
+    inc a
+    ld (de),a
+    dec (hl)
+    jr DF_NEXT
+DF_FALL:
+    inc (hl)
+    jr nz,DF_NEXT
+    ld a,(NHit)
+    dec a
+    ld (NHit),a
+DF_NEXT:
+    inc hl
+    inc de
+    djnz DF_LOOP
+  }
+  return
+end sub
+
+' points: 10 x level; a frog more when the thousands digit turns even
+sub AddPoints:
+  Pts = Level * 10
+  Score += Pts
+  K = Kilo % 10
+  Rmd += Pts
+  if Rmd >= 1000 then
+    Rmd -= 1000
+    inc Kilo
+    if Kilo >= 1000 then Kilo = 0
+  end if
+  T = Kilo % 10
+  if T <> K then
+    V = T & 1
+    if V = 0 then
+      if Lives < 99 then
+        inc Lives
+        play sound SndExtra
+        ShowLives
+      end if
+    end if
+  end if
+  print at 8,21, Score
+  if Score > High then
+    High = Score
+    print at 23,21, High
+  end if
+  return
+end sub
+
+' a tongue blip: higher as the tip goes up
+sub TongueSound:
+  V = 17 - A7
+  V = V >> 2
+  select case V
+    case 0
+      play sound SndTick0
+    case 1
+      play sound SndTick1
+    case 2
+      play sound SndTick2
+    case 3
+      play sound SndTick3
+    case is >= 4
+      play sound SndTick4
+  end select
+  return
+end sub
+
+' $0B8F: a fly over the tongue whose top is 0-4 rows below the tip
+sub HitCheck:
+  for Fi = 0 to 5
+    if Hit[Fi] = 0 then
+      if Sy[Fi] >= $32 then
+        V = Sy[Fi] - $32
+        V = V >> 3
+        V = V - A7
+        if V < 5 then
+          if TongueOver(Fi) = 1 then
+            Fptr[Fi] = Wing
+            inc Ton
+            Hit[Fi] = 1
+            inc NHit
+            play sound SndHit
+            AddPoints
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' does fly F's shape (all its rows: a fly 0-4 rows below the tip is
+' entirely beside the tongue) cover the tongue's 2-pixel column?
+function TongueOver(u8 F) as u8
+  u8 Pz = 0
+  Um = FlyUnion[0]
+  if Wing = $FF then Um = FlyUnion[1]
+  if Hit[F] <> 0 then
+    Um = FlyUnion[0]
+    if Fptr[F] = $FF then Um = FlyUnion[1]
+  end if
+  Tm = 0
+  Ox = Sx[F]
+  ' d = Tx - fly X, for d and d + 1 inside 0..23
+  if Tx + 1 >= Ox then
+    Dx = Tx + 1
+    Dx = Dx - Ox
+    if Dx <= 24 then
+      if Dx >= 1 then
+        Pz = Dx - 1
+        Pz = Pz >> 1
+        Tm = Tm | PxBit[Pz]
+      end if
+      if Dx <= 23 then
+        Pz = Dx >> 1
+        Tm = Tm | PxBit[Pz]
+      end if
+    end if
+  end if
+  Tm = Tm & Um
+  if Tm <> 0 then return 1
+  return 0
+
+sub Retract:
+  inc A7
+  if A7 < $12 then
+    TongueSound
+  else
+    Ton = 0
+  end if
+  return
+end sub
+
+' $0AD1: the tongue grows one cell a tick up to row 1, then shrinks back
+sub TongueTick:
+  if Ton < 2 then
+    dec A7
+    if A7 = 0 then
+      inc Ton
+      Retract
+      return
+    end if
+    TongueSound
+    HitCheck
+  else
+    Retract
+  end if
+  return
+end sub
+
+' $0B32: a hop tick: the height from T90, sideways with Dir, turned back
+' at the stops
+sub JumpTick:
+  V = Jmp >> 2
+  Sy[7] = FrogY0 - T90[V]
+  N16 = Sx[7]
+  select case Dir
+    case 1
+      inc N16
+    case 2
+      dec N16
+  end select
+  if N16 <> Sx[7] then
+    T = 0
+    if highbyte(N16) = 0 then
+      if lowbyte(N16) = Lo then T = 1
+    else
+      if lowbyte(N16) = Hb then T = 1
+    end if
+    if T = 1 then
+      Dir = Dir ^ 3
+    else
+      Sx[7] = N16
+    end if
+  end if
+  V = FrogY0 - Sy[7]
+  Ptr7 = $F5
+  if V >= 6 then inc Ptr7
+  if V >= 14 then inc Ptr7
+  inc Jmp
+  if Jmp >= $50 then Jmp = 0
+  return
+end sub
+
+' $0A2D: a frog tick with stick bits Ja (0 = pressed: 1 up, 4 left,
+' 8 right, 16 button) and stops Lo / Hb
+sub FrogTick:
+  if Ton <> 0 then
+    TongueTick
+    return
+  end if
+  if Jmp <> 0 then
+    JumpTick
+    return
+  end if
+  V = Ja & $10
+  if V = 0 then
+    ' the tongue: its column from the frog's X ($0A97)
+    Ptr7 = $F4
+    N16 = Sx[7] - 21
+    V = lowbyte(N16)
+    V = V >> 1
+    Glyph = V & 3
+    Tx = N16 & $FFFE
+    Tx += 32
+    A7 = $11
+    Ton = 1
+    TongueTick
+    return
+  end if
+  V = Ja & 1
+  if V = 0 then
+    V = Ja >> 2
+    Dir = V & 3
+    play sound SndJump
+    JumpTick
+    return
+  end if
+  V = Ja >> 2
+  V = V & 3
+  T = T76[V]
+  if T = 0 then
+    Ptr7 = $F5
+    return
+  end if
+  N16 = Sx[7]
+  if T = 1 then
+    inc N16
+  else
+    dec N16
+  end if
+  T = 0
+  if highbyte(N16) = 0 then
+    if lowbyte(N16) = Lo then T = 1
+  else
+    if lowbyte(N16) = Hb then T = 1
+  end if
+  if T = 1 then
+    Ptr7 = $F5
+    return
+  end if
+  Sx[7] = N16
+  V = lowbyte(N16)
+  K = V >> 3
+  K = K & 3
+  V = V & 7
+  if V = 0 then
+    T = T82[K]
+    if T = 7 then play sound SndStep
+    if T = 5 then play sound SndStep2
+  end if
+  Ptr7 = T7E[K]
+  return
+end sub
+
+' one pass of the original's main loop ($0938), without the collisions
+sub PassCore:
+  inc P04
+  inc T2
+  if T2 >= $11 then
+    T2 = 0
+    if Dead <> 0 then
+      Ja = $16
+      Lo = $17
+      Hb = $C8
+      FrogTick
+      if Jmp = 0 then
+        if Sx[7] >= $15A then
+          EndOf = EndLost
+          return
+        end if
+      end if
+    else
+      Ja = Joy
+      Lo = $17
+      Hb = $41
+      FrogTick
+    end if
+  end if
+  V = P04 >> 4
+  V = V & 1
+  Wing = $FE | V
+  V = P04 & 7
+  if V = 0 then
+    if NHit <> 0 then DeadFlies
+  end if
+  inc T1
+  if T1 >= $2D then
+    T1 = Level << 1
+    X8 = 6
+    Horiz
+    SnakeAnim
+    FlyTick
+  end if
+  return
+end sub
+
+' the frog against the snake and every fly, pixel-exact on the original's
+' shapes (bounding boxes first, then MaskTest)
+sub CheckFrog:
+  Fx = Sx[7]
+  Fy = Sy[7]
+  for Cn = 0 to 6
+    Oy = Sy[Cn]
+    ' (the frog's top is at Y 161 or lower on the screen: a sprite whose
+    ' bottom is above that can't touch him)
+    if Oy >= 141 then
+      Ox = Sx[Cn]
+      Oh = SprRows[Cn]
+      T = 0
+      if Ox + 24 > Fx then
+        if Fx + 24 > Ox then
+          W16 = Oy + Oh
+          N16 = Fy + 21
+          if W16 > Fy then
+            if N16 > Oy then T = 1
+          end if
+        end if
+      end if
+      if T = 1 then
+        Pose = Ptr6
+        if Cn < 6 then
+          Pose = Wing
+          if Hit[Cn] <> 0 then Pose = Fptr[Cn]
+        end if
+        MaskTest
+        if HitRes <> 0 then
+          Dead = 1
+          DiedNow = 1
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' rows Ys..Ye-1 of the frog (pose Ptr7 at Fx,Fy) and of sprite Cn (pose
+' Pose at Ox,Oy): the left sprite's mask rows AND the right one's, shifted
+' by the multicolour pixels between them (and one more when the gap is odd)
+sub MaskTest:
+  Ys = Fy
+  if Oy > Ys then Ys = Oy
+  W16 = Oy + Oh
+  N16 = Fy + 21
+  if W16 < N16 then
+    Ye = lowbyte(W16)
+  else
+    Ye = lowbyte(N16)
+  end if
+  Rows = Ye - Ys
+  ' the frog's rows, the other's rows
+  V = Ptr7 - $F4
+  Lp = MaskAt[V]
+  T = Ys - Fy
+  W16 = T << 1
+  Lp += W16
+  V = Pose - $F4
+  Rp = MaskAt[V]
+  T = Ys - Oy
+  W16 = T << 1
+  Rp += W16
+  if Ox >= Fx then
+    Dx = Ox - Fx
+  else
+    Dx = Fx - Ox
+    W16 = Lp
+    Lp = Rp
+    Rp = W16
+  end if
+  V = lowbyte(Dx)
+  Shf = V >> 1
+  HitOdd = V & 1
+  HitRes = 0
+  call asm LF_MASKHIT with hl = Lp, de = Rp, b = Rows, c = Shf
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the phases of play (one call a frame)
+
+' $08BB: a level (re)starts: slots cleared, a new count of flies, the
+' snake on the right with new steps, Ribbit walks in from the left
+sub LevelStart:
+  fill array Sy with 0
+  for Fi = 0 to 7
+    Sx[Fi] = 0
+  next
+  fill array Hit with 0
+  NHit = 0
+  fill array Col with 0
+  fill array Vc with 0
+  fill array Vl with 0
+  fill array Vd with 0
+  fill array Hc with 0
+  fill array Hl with 0
+  fill array Hd with 0
+  Ton = 0
+  Jmp = 0
+  Dead = 0
+  T1 = 0
+  T2 = 0
+  EndOf = EndNone
+  Sy[6] = SnakeY0
+  V = Rnd()
+  V = V & $3F
+  W16 = V
+  Sx[6] = W16 + 256
+  SnakeAnim
+  X8 = 6
+  Reroll
+  Sy[7] = FrogY0
+  V = Rnd()
+  V = V & 7
+  Left = V + 13
+  Acc = 0
+  ShowLevel
+  ShowMsg(1)
+  Ph = Phase.Walking
+  return
+end sub
+
+' $0908: the walk-in, 1.4 ticks a frame (7 every 5 frames)
+sub DoWalk:
+  Acc += 7
+  while Acc >= 5
+    Acc -= 5
+    Ja = $17
+    Lo = 0
+    Hb = $41
+    FrogTick
+    if Sx[7] = WalkStop then
+      Acc = 0
+      ClearMsg
+      Ph = Phase.Playing
+      return
+    end if
+  end while
+  return
+end sub
+
+sub DoPlay:
+  DiedNow = 0
+  Np = 24
+  if Joy <> $1F then Np = 22
+  ' passes where nothing happens but the counters are skipped in one go:
+  ' K passes up to the next frog tick, fly tick or swatted-fly step
+  while Np > 0
+    K = $11 - T2
+    T = $2D - T1
+    if T < K then K = T
+    if NHit <> 0 then
+      T = P04 & 7
+      T = 8 - T
+      if T < K then K = T
+    end if
+    if K > Np then K = Np
+    Np -= K
+    dec K
+    P04 += K
+    T2 += K
+    T1 += K
+    V = P04 >> 4
+    V = V & 1
+    Wing = $FE | V
+    PassCore
+    if EndOf <> EndNone then exit while
+  end while
+  if EndOf = EndLost then
+    dec Lives
+    ShowLives
+    if Lives = 0 then
+      Over = 1
+      return
+    end if
+    LevelStart
+    return
+  end if
+  if Dead = 0 then
+    CheckFrog
+    if DiedNow = 1 then
+      play sound SndDie
+      Fz = 78
+      Ph = Phase.Frozen
+      return
+    end if
+    if Ton = 0 then
+      if Jmp = 0 then
+        if Left = 0 then
+          T = 0
+          for Fi = 0 to 5
+            if Sy[Fi] <> 0 then T = 1
+          next
+          if T = 0 then
+            play sound SndLevel
+            ShowMsg(2)
+            Hops = 4
+            Acc = 0
+            Ph = Phase.Hopping
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the C64's death sound held everything for 78 jiffies
+sub DoFrozen:
+  dec Fz
+  if Fz = 0 then Ph = Phase.Playing
+  return
+end sub
+
+' $09D8: four hops in place, then the next level after 25 frames
+sub DoHop:
+  Acc += 7
+  while Acc >= 5
+    Acc -= 5
+    Ja = $1E
+    Lo = $18
+    Hb = $41
+    FrogTick
+    if Jmp = 0 then
+      dec Hops
+      if Hops = 0 then
+        ClearMsg
+        if Level < MaxLevel then inc Level
+        Fz = 25
+        Ph = Phase.Pausing
+        return
+      end if
+    end if
+  end while
+  return
+end sub
+
+sub DoPause:
+  dec Fz
+  if Fz = 0 then LevelStart
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Pts = 0
+  Rmd = 0
+  Kilo = 0
+  Lives = 3
+  Level = 1
+  Over = 0
+  P04 = 0
+  A3c = 0
+  Ptr7 = $F5
+  Wing = $FE
+  Msg = 0
+  DrawPlay
+  State = StPlay
+if defined ROM_TEST_CHECKPOINTS
+  test checkpoint "new_game"
+end defined
+  LevelStart
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawSprites:
+  ' Ribbit: shown inside the playfield stops only (the C64 hid him in the
+  ' border)
+  V = Sy[7]
+  Dy = YMap[V]
+  N16 = Sx[7]
+  Dxs = XMap[N16]
+  V = Ptr7 - $F4
+  if Dxs = 0 then Dy = HideY
+  if Dxs = 255 then Dy = HideY
+  set metasprite FrogMeta frame V to Dy,Dxs using sprite 0
+  ' the snake: head and body
+  V = Sy[6]
+  Dy = YMap[V]
+  N16 = Sx[6]
+  Dxs = XMap[N16]
+  V = Ptr6 - $FA
+  set metasprite SnakeHead frame V to Dy,Dxs using sprite 2
+  Dy += 16
+  set metasprite SnakeBody frame V to Dy,Dxs using sprite 4
+  ' the flies (wings at 7.5 Hz on screen)
+  T = Tick >> 2
+  T = T & 1
+  for Li = 0 to 5
+    C = Li + FlySlot
+    V = Sy[Li]
+    Dy = HideY
+    if V <> 0 then Dy = YMap[V]
+    N16 = Sx[Li]
+    Dxs = XMap[N16]
+    K = PFLY0
+    if T = 1 then K = PFLY1
+    if Hit[Li] <> 0 then K = PFLY1
+    V = Col[Li]
+    V = FlyCol[V]
+    set sprite C to Dy,Dxs,K,V
+  next
+  ' the tongue: from its top row down to Ribbit's mouth (C64 row 17)
+  Tb = 17
+  if Ton <> 0 then
+    Tb = A7
+    if Ton = 2 then inc Tb
+  end if
+  C = TongueSlot
+  if Tb <= 16 then
+    V = Tb << 3
+    V += 50
+    Ty = YMap[V]
+    Tc = XMap[Tx]
+    K = PTTIP
+    while Ty < 120
+      set sprite C to Ty,Tc,K,9
+      K = PTBAR
+      Ty += 16
+      inc C
+    end while
+  end if
+  ' hide the tongue sprites the last frame used and this one doesn't
+  T = C
+  while C < TgEnd
+    set sprite C to HideY,0,PBLANK,0
+    inc C
+  end while
+  TgEnd = T
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 2,21, "SCORE "
+  print at 8,21, Score
+  print at 18,21, "HIGH "
+  print at 23,21, High
+  return
+end sub
+
+sub ShowLevel:
+  print at 2,22, "LEVEL "
+  N16 = Level
+  print at 8,22, digits$(N16, 2)
+  return
+end sub
+
+sub ShowLives:
+  print at 18,22, "FROGS "
+  N16 = Lives
+  print at 27,22, digits$(N16, 2)
+  return
+end sub
+
+' messages on a dark band across the sky (row 10), erased by writing the
+' scene's own cells back
+sub ShowMsg(u8 M):
+  Msg = M
+  print at 6,10, "                    "
+  if M = 1 then print at 11,10, "GET READY!"
+  if M = 2 then print at 8,10, "LEVEL COMPLETED!"
+  return
+end sub
+
+sub ClearMsg:
+  copy PlayCells + 320 count 32 to vram.name + 320
+  Msg = 0
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  decompress zx0 PlayNam to vram.name
+  decompress zx0 PlayP0 to vram.pattern + 768
+  decompress zx0 PlayP1 to vram.pattern + 2816
+  decompress zx0 PlayP2 to vram.pattern + 4864
+  decompress zx0 PlayC0 to vram.color
+  decompress zx0 PlayC1 to vram.color + 2048
+  decompress zx0 PlayC2 to vram.color + 4096
+  ShowScore
+  ShowLevel
+  ShowLives
+  ShowScreen
+  return
+end sub
+
+sub GameOver:
+  print at 6,10, "                    "
+  print at 11,10, "GAME  OVER"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens (as the toolbox template)
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      StopTune
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub StopTune:
+  stop sound SndMel
+  stop sound SndHarm
+  stop sound SndBassV
+  stop sound SndBassP
+  TzOn = 0
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = 1 up, 2 down, 4 left, 8 right; Joy = the C64
+' port bits (0 = pressed, 16 = a button)
+sub ReadPad:
+  J1 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J1 = J1 | 1
+  if joypad(2).down then J1 = J1 | 2
+  if joypad(2).left then J1 = J1 | 4
+  if joypad(2).right then J1 = J1 | 8
+  if joypad(2).fire then J1 = J1 | 16
+  Jk = J1 & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Joy = J1 ^ $1F
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 5
+  sprites flicker on
+  for J = 0 to 18
+    set sprite J to HideY,0,PBLANK,0
+  next
+  update sprites
+  return
+end sub
+
+' each screen third its own colour table (VDP R3 = $FF; `tile screen`
+' shares one, R3 = $9F): the pictures need it (OS7 WRITE_REGISTER)
+sub ColourThirds:
+  asm {
+    ld bc,$03FF
+    call $1FD9
+  }
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub LoadPage:
+  NewScreen
+  decompress zx0 PageNam to vram.name
+  decompress zx0 PageP0 to vram.pattern + 768
+  decompress zx0 PageP1 to vram.pattern + 2816
+  decompress zx0 PageP2 to vram.pattern + 4864
+  decompress zx0 PageC0 to vram.color
+  decompress zx0 PageC1 to vram.color + 2048
+  decompress zx0 PageC2 to vram.color + 4096
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  decompress zx0 TitleNam to vram.name
+  decompress zx0 TitleP0 to vram.pattern + 768
+  decompress zx0 TitleP1 to vram.pattern + 2816
+  decompress zx0 TitleP2 to vram.pattern + 4864
+  decompress zx0 TitleC0 to vram.color
+  decompress zx0 TitleC1 to vram.color + 2048
+  decompress zx0 TitleC2 to vram.color + 4096
+  print at 13,15, "START"
+  print at 13,17, "HOW TO PLAY"
+  print at 13,19, "CREDITS"
+  print at 7,21, "BY TONY BRANTNER"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndMel
+  play sound SndHarm
+  play sound SndBassV
+  play sound SndBassP
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  V = Rnd()
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  StopTune
+  mute all
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,15
+  put char 32 at 11,17
+  put char 32 at 11,19
+  C = Menu << 1
+  C += 15
+  put char 62 at 11,C
+  return
+end sub
+
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  LoadPage
+  State = StCredits
+  print at 11,2, "LEAP FROG"
+  print at 3,5, "A C64 GAME BY"
+  print at 3,7, "TONY BRANTNER, RUN"
+  print at 3,9, "MAGAZINE, RERUN DISK"
+  print at 3,11, "JULY/AUGUST 1992."
+  print at 3,14, "COLECOVISION PORT IN AMY"
+  print at 3,16, "BY CLAUDE (ANTHROPIC)"
+  print at 3,18, "FOR AMY BIENVENU, 2026."
+  print at 3,20, "MUSIC: RIBBIT'S HOP (NEW)"
+  print at 8,22, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: two pages, pictures made of the game's own sprites
+sub HowTo:
+  Page = 1
+  LoadPage
+  State = StHow
+  print at 8,2, "HOW TO PLAY  1/2"
+  print at 3,4, "RIBBIT SWATS DRAGONFLIES"
+  print at 3,6, "WITH HIS LONG TONGUE."
+  set metasprite FrogMeta frame 0 to 87,64 using sprite 0
+  set sprite 12 to 47,70,PTTIP,9
+  set sprite 13 to 63,70,PTBAR,9
+  set sprite 14 to 79,70,PTBAR,9
+  set sprite 6 to 40,63,PFLY0,8
+  set sprite 7 to 64,150,PFLY1,15
+  update sprites
+  print at 13,9, "BUTTON: TONGUE"
+  print at 13,11, "10 POINTS X LEVEL"
+  print at 3,14, "STICK LEFT/RIGHT WALKS."
+  print at 3,16, "A SWATTED FLY DROPS:"
+  print at 3,18, "STEP OUT OF ITS WAY!"
+  print at 3,20, "ALL SWATTED: NEXT LEVEL"
+  print at 8,22, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    LoadPage
+    print at 8,2, "HOW TO PLAY  2/2"
+    print at 3,4, "THE SNAKE WANDERS THE LOG."
+    set metasprite FrogMeta frame 3 to 63,72 using sprite 0
+    set metasprite SnakeHead frame 1 to 79,104 using sprite 2
+    set metasprite SnakeBody frame 1 to 95,104 using sprite 4
+    update sprites
+    print at 16,8, "STICK UP-LEFT"
+    print at 16,10, "OR UP-RIGHT:"
+    print at 16,12, "HOP OVER IT."
+    print at 3,15, "TOUCH IT OR A FLY: ONE FROG"
+    print at 3,17, "LOST. 3 FROGS, ONE MORE"
+    print at 3,19, "EVERY 2000 POINTS."
+    print at 8,22, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+data SprPat bytes
+  $00,$00,$03,$04,$0B,$37,$3C,$30,$0C,$34,$33,$44,$40,$34,$83,$7C,$00,$00,$80,$40,$A0,$D0,$70,$10
+  $60,$50,$90,$4C,$0C,$50,$82,$7C,$00,$00,$00,$03,$04,$08,$03,$0F,$03,$0B,$0C,$3B,$3F,$0B,$7C,$00
+  $00,$00,$00,$80,$40,$20,$80,$E0,$80,$A0,$60,$B0,$F0,$A0,$7C,$00,$00,$00,$00,$04,$0B,$08,$30,$3F
+  $0F,$34,$33,$44,$40,$34,$83,$7C,$00,$00,$00,$40,$A0,$20,$10,$F0,$E0,$50,$90,$4C,$0C,$50,$82,$7C
+  $00,$00,$00,$00,$04,$07,$0F,$00,$00,$0B,$0C,$3B,$3F,$0B,$7C,$00,$00,$00,$00,$00,$40,$C0,$E0,$00
+  $00,$A0,$60,$B0,$F0,$A0,$7C,$00,$00,$00,$0B,$0C,$08,$3F,$08,$07,$34,$34,$0C,$44,$47,$33,$83,$7C
+  $00,$00,$A0,$60,$20,$F0,$20,$C0,$50,$50,$60,$4C,$CC,$90,$82,$7C,$00,$00,$04,$03,$07,$00,$07,$00
+  $0B,$0B,$03,$3B,$38,$0C,$7C,$00,$00,$00,$40,$80,$C0,$00,$C0,$00,$A0,$A0,$80,$B0,$30,$60,$7C,$00
+  $04,$0B,$08,$30,$3F,$07,$08,$34,$74,$04,$08,$44,$44,$33,$83,$7C,$40,$A0,$20,$10,$F0,$C0,$20,$50
+  $5C,$40,$20,$4C,$4C,$90,$82,$7C,$00,$04,$07,$0F,$00,$00,$07,$0B,$03,$03,$07,$38,$38,$0C,$7C,$00
+  $00,$40,$C0,$E0,$00,$00,$C0,$A0,$80,$80,$C0,$30,$30,$60,$7C,$00,$04,$0B,$08,$30,$3F,$07,$08,$34
+  $74,$0C,$30,$44,$3A,$33,$3D,$00,$40,$A0,$20,$10,$F0,$C0,$20,$50,$5C,$40,$20,$4C,$4C,$90,$82,$7C
+  $00,$04,$07,$0F,$00,$00,$07,$0B,$03,$03,$0F,$38,$04,$0C,$00,$00,$00,$40,$C0,$E0,$00,$00,$C0,$A0
+  $80,$80,$C0,$30,$30,$60,$7C,$00,$04,$0B,$08,$30,$3F,$07,$08,$34,$74,$04,$08,$44,$45,$33,$82,$7C
+  $40,$A0,$20,$10,$F0,$C0,$20,$50,$5C,$60,$10,$4C,$B0,$90,$70,$00,$00,$04,$07,$0F,$00,$00,$07,$0B
+  $03,$03,$07,$38,$38,$0C,$7C,$00,$00,$40,$C0,$E0,$00,$00,$C0,$A0,$80,$80,$E0,$30,$40,$60,$00,$00
+  $00,$00,$00,$0F,$0F,$10,$18,$18,$16,$10,$10,$08,$06,$06,$01,$01,$00,$00,$00,$E0,$E0,$10,$70,$70
+  $90,$10,$10,$70,$90,$90,$10,$10,$00,$00,$00,$00,$00,$0F,$07,$07,$09,$0F,$0F,$07,$01,$01,$00,$00
+  $00,$00,$00,$00,$00,$E0,$80,$80,$60,$E0,$E0,$80,$60,$60,$E0,$E0,$01,$06,$08,$08,$10,$60,$60,$81
+  $80,$80,$80,$80,$80,$60,$1F,$1F,$10,$60,$60,$60,$86,$89,$89,$11,$F6,$F6,$06,$06,$06,$08,$F0,$F0
+  $00,$01,$07,$07,$0F,$1F,$1F,$7E,$7F,$7F,$7F,$7F,$7F,$1F,$00,$00,$E0,$80,$80,$80,$00,$06,$06,$0E
+  $08,$08,$F8,$F8,$F8,$F0,$00,$00,$0F,$0F,$10,$18,$18,$16,$10,$10,$08,$06,$06,$07,$06,$06,$06,$06
+  $E0,$E0,$10,$70,$70,$90,$10,$10,$60,$E0,$E0,$60,$60,$60,$60,$60,$00,$00,$0F,$07,$07,$09,$0F,$0F
+  $07,$01,$01,$00,$01,$01,$01,$01,$00,$00,$E0,$80,$80,$60,$E0,$E0,$80,$00,$00,$80,$80,$80,$80,$80
+  $06,$08,$10,$10,$10,$61,$61,$61,$60,$60,$60,$60,$60,$10,$0F,$0F,$60,$80,$88,$88,$96,$66,$66,$88
+  $E6,$E6,$06,$08,$08,$10,$E0,$E0,$01,$07,$0F,$0F,$0F,$1E,$1E,$1E,$1F,$1F,$1F,$1F,$1F,$0F,$00,$00
+  $80,$00,$00,$00,$08,$18,$18,$70,$18,$18,$F8,$F0,$F0,$E0,$00,$00,$07,$07,$08,$0E,$0E,$09,$08,$08
+  $06,$07,$07,$06,$06,$06,$06,$06,$F0,$F0,$08,$18,$18,$68,$08,$08,$10,$60,$60,$E0,$60,$60,$60,$60
+  $00,$00,$07,$01,$01,$06,$07,$07,$01,$00,$00,$01,$01,$01,$01,$01,$00,$00,$F0,$E0,$E0,$90,$F0,$F0
+  $E0,$80,$80,$00,$80,$80,$80,$80,$06,$01,$11,$11,$69,$66,$66,$11,$67,$67,$60,$10,$10,$08,$07,$07
+  $60,$10,$08,$08,$08,$86,$86,$86,$06,$06,$06,$06,$06,$08,$F0,$F0,$01,$00,$00,$00,$10,$18,$18,$0E
+  $18,$18,$1F,$0F,$0F,$07,$00,$00,$80,$E0,$F0,$F0,$F0,$78,$78,$78,$F8,$F8,$F8,$F8,$F8,$F0,$00,$00
+  $00,$00,$00,$07,$07,$08,$0E,$0E,$09,$08,$08,$0E,$09,$09,$08,$08,$00,$00,$00,$F0,$F0,$08,$18,$18
+  $68,$08,$08,$10,$60,$60,$80,$80,$00,$00,$00,$00,$00,$07,$01,$01,$06,$07,$07,$01,$06,$06,$07,$07
+  $00,$00,$00,$00,$00,$F0,$E0,$E0,$90,$F0,$F0,$E0,$80,$80,$00,$00,$08,$06,$06,$06,$61,$91,$91,$88
+  $6F,$6F,$60,$60,$60,$10,$0F,$0F,$80,$60,$10,$10,$08,$06,$06,$81,$01,$01,$01,$01,$01,$06,$F8,$F8
+  $07,$01,$01,$01,$00,$60,$60,$70,$10,$10,$1F,$1F,$1F,$0F,$00,$00,$00,$80,$E0,$E0,$F0,$F8,$F8,$7E
+  $FE,$FE,$FE,$FE,$FE,$F8,$00,$00,$00,$20,$51,$4B,$37,$0B,$05,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$8A,$D2,$EC,$D0,$A0,$40,$00,$00,$00,$00,$00,$00,$00,$00,$60,$91,$8B,$77,$0B,$05,$04,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$06,$89,$D1,$EE,$D0,$A0,$20,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data Masks bytes
+  $00,$00,$00,$00,$00,$00,$60,$00,$F0,$00,$F8,$01,$FC,$03,$FC,$03,$FC,$03,$FC,$03,$F8,$01,$F8,$01
+  $FC,$03,$FC,$03,$FC,$03,$FE,$07,$FE,$07,$FC,$03,$FE,$07,$FF,$0F,$9E,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$90,$00,$F8,$01,$F8,$01,$F8,$01,$FC,$03,$FC,$03,$F8,$01,$F8,$01,$FC,$03,$FC,$03,$FC,$03
+  $FE,$07,$FE,$07,$FC,$03,$FE,$07,$FF,$0F,$9E,$07,$00,$00,$00,$00,$90,$00,$F8,$01,$F8,$01,$F8,$01
+  $FC,$03,$FC,$03,$F8,$01,$F0,$00,$F8,$01,$FC,$03,$FC,$03,$F8,$01,$FC,$03,$FE,$07,$FE,$07,$FC,$03
+  $FE,$07,$FF,$0F,$9E,$07,$90,$00,$F8,$01,$F8,$01,$F8,$01,$FC,$03,$FC,$03,$F8,$01,$F0,$00,$F8,$01
+  $FC,$03,$FE,$07,$F6,$06,$F0,$00,$F8,$01,$FC,$03,$9E,$07,$9E,$07,$FC,$03,$FE,$07,$FF,$0F,$9E,$07
+  $90,$00,$F8,$01,$F8,$01,$F8,$01,$FC,$03,$FC,$03,$F8,$01,$F0,$00,$F8,$01,$FC,$03,$FE,$07,$F6,$06
+  $F0,$01,$F8,$03,$FC,$07,$9E,$07,$DE,$03,$FC,$03,$FE,$07,$BF,$03,$1E,$00,$90,$00,$F8,$01,$F8,$01
+  $F8,$01,$FC,$03,$FC,$03,$F8,$01,$F0,$00,$F8,$01,$FC,$03,$FE,$07,$F6,$06,$F8,$00,$FC,$01,$FE,$03
+  $9E,$07,$BC,$07,$FC,$03,$FE,$07,$DC,$0F,$80,$07,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$01,$F0,$01
+  $F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$01,$F8,$01,$F8,$00,$F8,$00
+  $78,$00,$78,$00,$78,$00,$78,$00,$F0,$00,$F0,$00,$F0,$01,$F0,$01,$E2,$03,$E2,$03,$E7,$07,$E7,$07
+  $CF,$0F,$CF,$0F,$FE,$0F,$FE,$0F,$FE,$0F,$FE,$0F,$FE,$0F,$FE,$0F,$FC,$07,$FC,$07,$F8,$03,$F8,$03
+  $F0,$01,$F0,$01,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F8,$03,$F0,$01,$F0,$01
+  $F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$E0,$01,$E0,$01
+  $E4,$03,$E4,$03,$EE,$03,$EE,$03,$DE,$07,$DE,$07,$FC,$07,$FC,$07,$FE,$07,$FE,$07,$FE,$07,$FE,$07
+  $FC,$07,$FC,$07,$F8,$03,$F8,$03,$F0,$01,$F0,$01,$F8,$00,$F8,$00,$FC,$01,$FC,$01,$FC,$01,$FC,$01
+  $FC,$01,$FC,$01,$FC,$01,$FC,$01,$F8,$00,$F8,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00,$F0,$00
+  $F0,$00,$F0,$00,$F0,$00,$F0,$00,$78,$00,$78,$00,$7C,$02,$7C,$02,$7C,$07,$7C,$07,$BE,$07,$BE,$07
+  $FE,$03,$FE,$03,$FE,$07,$FE,$07,$FE,$07,$FE,$07,$FE,$03,$FE,$03,$FC,$01,$FC,$01,$F8,$00,$F8,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$F8,$00,$F8,$00,$FC,$01,$FC,$01,$FC,$01,$FC,$01,$FC,$01,$FC,$01
+  $FC,$01,$FC,$01,$F8,$01,$F8,$01,$F0,$01,$F0,$01,$E0,$01,$E0,$01,$E0,$01,$E0,$01,$F0,$00,$F0,$00
+  $F8,$00,$F8,$00,$7C,$04,$7C,$04,$7E,$0E,$7E,$0E,$3F,$0F,$3F,$0F,$FF,$07,$FF,$07,$FF,$07,$FF,$07
+  $FF,$07,$FF,$07,$FE,$03,$FE,$03,$FC,$01,$FC,$01,$00,$00,$00,$00,$04,$02,$6A,$05,$F2,$04,$FC,$03
+  $68,$01,$08,$01,$90,$00,$08,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$04,$02,$0A,$05,$0A,$05,$F4,$02,$F8,$01,$F0,$00,$68,$01,$08,$01,$90,$00
+  $08,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data MaskAt words
+  @Masks + 0, @Masks + 42, @Masks + 84, @Masks + 126, @Masks + 168, @Masks + 210, @Masks + 252, @Masks + 336, @Masks + 420, @Masks + 504, @Masks + 588, @Masks + 630
+end data
+data FlyUnion words = $07FE, $07FE
+data XMap bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,16,17,17,18,19,19,20,21,22
+  22,23,24,24,25,26,26,27,28,29,29,30,31,31,32,33,33,34,35,36,36,37,38,38,39,40,40,41,42,43,43,44
+  45,45,46,47,47,48,49,50,50,51,52,52,53,54,54,55,56,56,57,58,59,59,60,61,61,62,63,63,64,65,66,66
+  67,68,68,69,70,70,71,72,73,73,74,75,75,76,77,77,78,79,80,80,81,82,82,83,84,84,85,86,86,87,88,89
+  89,90,91,91,92,93,93,94,95,96,96,97,98,98,99,100,100,101,102,103,103,104,105,105,106,107,107,108,109,110,110,111
+  112,112,113,114,114,115,116,117,117,118,119,119,120,121,121,122,123,123,124,125,126,126,127,128,128,129,130,130,131,132,133,133
+  134,135,135,136,137,137,138,139,140,140,141,142,142,143,144,144,145,146,147,147,148,149,149,150,151,151,152,153,154,154,155,156
+  156,157,158,158,159,160,160,161,162,163,163,164,165,165,166,167,167,168,169,170,170,171,172,172,173,174,174,175,176,177,177,178
+  179,179,180,181,181,182,183,184,184,185,186,186,187,188,188,189,190,190,191,192,193,193,194,195,195,196,197,197,198,199,200,200
+  201,202,202,203,204,204,205,206,207,207,208,209,209,210,211,211,212,213,214,214,215,216,216,217,218,218,219,220,221,221,222,223
+  223,224,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+data YMap bytes
+  207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207
+  207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,7,7,8,9,10,11,12,12,13,14,15,16,17,17
+  18,19,20,21,22,22,23,24,25,26,27,27,28,29,30,31,32,32,33,34,35,36,37,37,38,39,40,41,42,42,43,44
+  45,46,47,47,48,49,50,51,52,52,53,54,55,56,57,57,58,59,60,61,62,62,63,64,65,66,67,67,68,69,70,71
+  72,72,73,74,75,76,77,77,78,79,80,81,82,82,83,84,85,86,87,87,88,89,90,91,92,92,93,94,95,96,97,97
+  98,99,100,101,102,102,103,104,105,106,107,107,108,109,110,111,112,112,113,114,115,116,117,117,118,119,120,121,122,122,123,124
+  125,126,127,127,128,129,130,131,132,132,133,134,135,136,137,137,138,139,140,141,142,142,143,144,145,146,147,147,148,149,150,151
+  152,152,153,154,155,156,157,157,158,159,160,161,162,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207,207
+end data
+data PlayNam bytes
+  $95,$80,$68,$81,$06,$1F,$82,$83,$84,$85,$86,$E4,$98,$87,$88,$89,$B8,$8A,$FF,$60,$8B,$8C,$8D,$8E
+  $8A,$65,$E9,$8F,$90,$91,$92,$93,$94,$95,$DE,$89,$96,$97,$98,$89,$99,$99,$9A,$F9,$9B,$9C,$9D,$F1
+  $FC,$6B,$9E,$E6,$FE,$9F,$A0,$99,$A1,$A1,$98,$A2,$A3,$A1,$02,$18,$A4,$A5,$A6,$A7,$A1,$A4,$A8,$08
+  $A6,$A9,$AA,$AB,$AC,$A8,$A4,$AD,$09,$20,$AE,$AF,$B0,$B1,$B2,$AD,$06,$80,$80,$00,$35,$9D,$60,$6D
+  $68,$6D,$71,$83,$6D,$6E,$6D,$83,$83,$6D,$81,$83,$6E,$7E,$D2,$88,$96,$97,$B5,$98,$D6,$81,$84,$B5
+  $9E,$D6,$AB,$B8,$8D,$A4,$9F,$6C,$D8,$CB,$0F,$10,$3C,$45,$D3,$E5,$40,$47,$B3,$B4,$B5,$B6,$B7,$B8
+  $B9,$BA,$BB,$BC,$BD,$BE,$BF,$C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF,$D0
+  $D1,$D2,$D3,$D4,$CF,$D5,$D6,$C9,$B8,$D4,$D7,$D8,$D9,$CF,$BE,$DA,$DB,$DC,$DD,$DE,$C4,$DF,$E0,$E1
+  $DA,$C9,$E2,$E3,$E4,$E5,$DF,$93,$DD,$E6,$E7,$B8,$E8,$E9,$EA,$D0,$FA,$B9,$EB,$FE,$54,$D5,$55,$60
+end data
+data PlayP0 bytes
+  $B8,$00,$FC,$00,$1A,$88,$AA,$22,$AA,$0A,$44,$F2,$F0,$22,$54,$E0,$7A,$07,$C0,$80,$BA,$A2,$AA,$0F
+  $01,$79,$D0,$8F,$03,$00,$B0,$69,$80,$68,$01,$A4,$F0,$E0,$BD,$BA,$E0,$0F,$07,$03,$C8,$AF,$11,$55
+  $FD,$E0,$F0,$8B,$54,$57,$07,$E0,$E0,$8E,$38,$F1,$FF,$EA,$C5,$F0,$EF,$C0,$E0,$EB,$BE,$88,$C1,$B0
+  $F9,$88,$B7,$C0,$C0,$80,$CA,$29,$D5,$69,$55,$6F,$03,$06,$F8,$FC,$2A,$AA,$C4,$EA,$E0,$0A,$9A,$2A
+  $AB,$47,$A3,$03,$55,$54,$DA,$C0,$00,$FE,$FE,$13,$FA,$07,$6D,$FD,$11,$AE,$44,$F1,$A9,$54,$10,$F2
+  $70,$96,$F0,$F8,$10,$1B,$6B,$E9,$06,$06,$B1,$C1,$67,$80,$C0,$F0,$89,$F0,$87,$0F,$E0,$AA,$BA,$1C
+  $F9,$22,$2F,$03,$F0,$29,$E0,$68,$00,$62,$01,$57,$0D,$FE,$B6,$F0,$DF,$C0,$6C,$9B,$C0,$2A,$AB,$F8
+  $88,$AA,$FE,$07,$69,$E0,$C0,$80,$97,$70,$C0,$00,$37,$E7,$8C,$39,$C1,$F8,$08,$C0,$E0,$FF,$D0,$2D
+  $07,$D3,$CC,$82,$9C,$E6,$C1,$E2,$B8,$80,$FE,$51,$43,$55,$55,$80
+end data
+data PlayC0 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$9B,$14,$54,$DB,$FC,$54,$D8,$F0,$89,$45,$4F,$22,$F5,$4F,$5F,$1F,$1F
+  $1F,$A8,$4F,$1F,$7A,$ED,$54,$7C,$B0,$A5,$F4,$A2,$B4,$0F,$4B,$4B,$5B,$1B,$FF,$AF,$E4,$B4,$ED,$A1
+  $FF,$54,$63,$45,$54,$FF,$79,$F5,$74,$BE,$90,$FF,$6E,$3F,$D0,$FF,$D3,$EB,$C4,$FE,$FD,$FF,$38,$61
+  $FE,$FE,$5E,$BB,$1E,$FF,$54,$D3,$F0,$E7,$AF,$F0,$EF,$90,$F4,$9A,$3E,$19,$F2,$BC,$1B,$FE,$FF,$1D
+  $03,$F8,$FD,$D9,$5C,$FF,$F9,$FC,$DF,$80,$F0,$27,$5F,$F4,$5F,$7B,$63,$30,$F3,$F5,$BC,$B8,$96,$F0
+  $98,$4B,$B5,$54,$6F,$15,$FC,$AD,$45,$F1,$CB,$F0,$F3,$D0,$8D,$E4,$8F,$A8,$F0,$9B,$F5,$5F,$5F,$9F
+  $D0,$FC,$3A,$FE,$BA,$F5,$3E,$8F,$5F,$BD,$9F,$1C,$B8,$FF,$F0,$C0,$FA,$C9,$FF,$15,$5B,$5E,$CB,$EC
+  $1E,$DA,$F0,$5F,$5B,$1F,$FA,$EF,$D0,$E5,$5B,$11,$85,$FE,$05,$35,$55,$58
+end data
+data PlayP1 bytes
+  $81,$00,$55,$57,$55,$55,$80
+end data
+data PlayC1 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$96,$15,$95,$11,$51,$5D,$55,$56
+end data
+data PlayP2 bytes
+  $95,$00,$55,$AE,$07,$88,$62,$0F,$0F,$29,$01,$69,$01,$5A,$03,$62,$C0,$C0,$29,$03,$88,$80,$80,$5E
+  $F0,$4B,$01,$C8,$86,$8A,$03,$03,$F0,$5B,$0F,$CA,$F0,$E0,$62,$F0,$F0,$1F,$F9,$F7,$F7,$FE,$F7,$59
+  $F0,$CF,$50,$4A,$7D,$F0,$F7,$60,$77,$B0,$FD,$3B,$80,$87,$E0,$E9,$FE,$18,$BB,$1F,$F8,$FF,$96,$CB
+  $AE,$E5,$40,$FE,$84,$93,$DE,$C1,$C7,$8B,$EE,$0F,$3A,$FC,$8A,$C0,$C1,$2F,$C0,$03,$84,$7F,$5E,$DE
+  $2E,$64,$7A,$F6,$F9,$0C,$FE,$87,$06,$C6,$06,$EF,$60,$C1,$BA,$A5,$80,$BF,$F0,$F0,$8B,$80,$60,$E9
+  $FE,$30,$88,$17,$10,$F2,$71,$87,$95,$07,$FD,$1B,$81,$E3,$F6,$0C,$03,$98,$FF,$01,$02,$01,$69,$80
+  $BB,$60,$F8,$67,$C0,$FA,$89,$16,$C0,$0F,$B5,$8F,$FE,$81,$25,$F0,$DD,$C0,$EF,$91,$18,$FE,$A2,$30
+  $AA,$07,$02,$9F,$0E,$4B,$9A,$FE,$03,$5E,$44,$7D,$F1,$8B,$36,$81,$EE,$EC,$C1,$FF,$8F,$81,$2C,$DF
+  $B0,$E6,$2B,$FE,$97,$18,$9F,$24,$F1,$EE,$61,$76,$EC,$DE,$5D,$AD,$EF,$83,$FE,$2B,$9F,$FE,$07,$9A
+  $FE,$C0,$5A,$60,$1A,$C0,$AA,$E0,$70,$3B,$EC,$37,$08,$2C,$A4,$9D,$A0,$C3,$E0,$EE,$F1,$B7,$21,$FF
+  $8F,$23,$78,$DD,$60,$FA,$70,$00,$E6,$FE,$96,$30,$B6,$38,$4E,$78,$76,$FE,$60,$FE,$DE,$50,$91,$00
+  $E8,$FF,$0E,$A0,$1A,$89,$06,$0C,$29,$81,$77,$D6,$FA,$50,$30,$5B,$0C,$CA,$FE,$83,$28,$86,$2F,$01
+  $70,$29,$81,$6F,$80,$FE,$29,$60,$7F,$06,$FE,$FE,$09,$FE,$69,$23,$73,$16,$FE,$FE,$4A,$E7,$A0,$33
+  $F0,$3D,$A4,$E9,$20,$03,$67,$84,$40,$04,$62,$48,$F2,$28,$F0,$9E,$42,$FE,$44,$5D,$55,$56
+end data
+data PlayC2 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$AA,$2A,$16,$22,$1A,$16,$BA,$A2,$F1,$6A,$62,$1A,$1A,$29,$A6,$69,$1A
+  $7F,$D1,$C0,$E7,$D0,$F7,$A1,$D0,$C7,$A0,$96,$70,$94,$A6,$FD,$F1,$40,$F1,$80,$FD,$D1,$40,$7D,$50
+  $29,$16,$1D,$91,$F0,$BA,$C6,$FE,$E8,$A6,$F8,$E7,$16,$61,$D0,$FD,$F0,$FE,$FA,$A1,$D0,$BD,$11,$C0
+  $FC,$F7,$FC,$AE,$6A,$D0,$3D,$FE,$7F,$61,$A0,$38,$FE,$F7,$F2,$FC,$70,$C0,$F7,$40,$DF,$50,$FE,$E5
+  $00,$A5,$6A,$7E,$A1,$10,$68,$6A,$2B,$61,$C3,$00,$70,$C0,$EF,$E8,$C1,$D2,$20,$83,$11,$DA,$FE,$C6
+  $A5,$C1,$AE,$61,$EC,$6B,$11,$D1,$FE,$FD,$B1,$A0,$88,$11,$11,$50,$F6,$B0,$80,$11,$0E,$FE,$E0,$B0
+  $5F,$A6,$78,$A0,$3C,$B0,$0F,$50,$5F,$FE,$54,$77,$F2,$E0,$FE,$5A,$32,$28,$12,$3D,$F0,$6F,$14,$FE
+  $28,$11,$15,$5D,$55,$56
+end data
+data TitleNam bytes
+  $95,$80,$6B,$81,$EA,$FC,$82,$69,$83,$84,$85,$FA,$86,$87,$88,$EB,$EF,$89,$8A,$8A,$8B,$78,$8C,$8D
+  $81,$FE,$A1,$8E,$84,$F8,$8F,$8E,$90,$91,$92,$93,$94,$95,$96,$8E,$EE,$0F,$97,$98,$99,$9A,$9B,$9C
+  $9D,$8E,$FE,$A1,$9E,$84,$A1,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$9E,$60,$A8,$A9,$AA,$AB,$AC,$AD
+  $AE,$AF,$B0,$B1,$9E,$A1,$B2,$81,$88,$B3,$B4,$B5,$B6,$B7,$B8,$B9,$BA,$B2,$48,$BB,$B2,$BC,$B8,$BD
+  $BE,$BF,$C0,$C1,$B2,$68,$C2,$06,$48,$C3,$C4,$C5,$C6,$C7,$C2,$0A,$C8,$42,$07,$C9,$CA,$CB,$CC,$CD
+  $CE,$CF,$D0,$D1,$8B,$E5,$D2,$D3,$C9,$CA,$99,$D4,$D5,$D6,$83,$D7,$D8,$D9,$98,$DA,$3C,$DA,$DB,$DC
+  $DD,$C4,$B6,$80,$49,$9D,$83,$A3,$4A,$89,$8A,$60,$16,$B7,$8B,$45,$77,$5B,$6F,$8D,$E8,$8B,$52,$80
+  $63,$5A,$24,$D2,$DD,$45,$F8,$58,$E0,$76,$44,$33,$74,$48,$81,$A7,$A8,$DC,$18,$C8,$40,$4C,$D8,$F3
+  $06,$27,$BB,$B3,$BC,$78,$0E,$36,$B3,$C1,$C2,$B3,$38,$ED,$D2,$F6,$33,$D3,$58,$1D,$8D,$5D,$D4,$CF
+  $DB,$6B,$70,$7B,$84,$DE,$80,$D3,$07,$DF,$E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9,$EA,$EB,$EC,$ED
+  $EE,$EF,$F0,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$F9,$FA,$FB,$FC,$FD,$FE,$FF,$60,$61,$62,$63,$64,$FF
+  $65,$66,$F9,$E8,$64,$67,$68,$69,$FF,$EE,$6A,$6B,$6C,$6D,$6E,$F4,$6F,$70,$71,$6A,$F9,$72,$73,$74
+  $75,$6F,$9D,$DD,$76,$77,$E8,$BD,$00,$FA,$0B,$83,$C5,$FE,$53,$55,$55,$80
+end data
+data TitleP0 bytes
+  $B8,$00,$FC,$00,$1A,$88,$AA,$22,$AA,$0A,$44,$E2,$F0,$3F,$1F,$0F,$FF,$F0,$BB,$C0,$FF,$07,$FF,$F0
+  $FE,$E0,$F0,$86,$AB,$C1,$3E,$31,$7C,$83,$7C,$1C,$D0,$BE,$80,$B0,$61,$EA,$E0,$1F,$83,$70,$30,$20
+  $E1,$9B,$70,$2A,$FE,$C0,$C7,$FF,$FB,$C0,$F0,$E0,$BE,$FF,$F0,$50,$6E,$0F,$07,$04,$38,$AB,$11,$55
+  $FA,$FD,$3D,$FC,$88,$07,$EE,$03,$C3,$FE,$2E,$BE,$00,$D0,$1E,$03,$01,$01,$1F,$F0,$FE,$6E,$80,$79
+  $2E,$11,$2A,$FF,$24,$0C,$08,$92,$C0,$60,$8A,$91,$8A,$00,$2F,$C0,$A0,$9B,$E1,$F1,$1F,$96,$C0,$08
+  $87,$C7,$7C,$E0,$26,$6A,$8A,$6A,$1B,$C1,$BF,$FD,$F8,$40,$A3,$CA,$0F,$F0,$8F,$3B,$AA,$01,$FF,$A0
+  $11,$2A,$BE,$AA,$08,$08,$11,$55,$44,$55,$3F,$FF,$81,$9F,$E0,$C1,$FD,$B5,$99,$FF,$AF,$EF,$01,$E0
+  $F6,$D1,$F4,$63,$70,$41,$6A,$3B,$2A,$A7,$91,$C4,$AA,$08,$CD,$FE,$EA,$5D,$35,$71,$3E,$60,$6A,$47
+  $70,$7F,$90,$FE,$FE,$91,$E0,$79,$90,$E4,$F7,$68,$38,$3C,$82,$98,$88,$F8,$C7,$54,$7C,$3F,$AB,$57
+  $83,$FF,$1E,$0F,$95,$90,$3F,$DF,$A5,$A0,$DB,$7F,$19,$88,$00,$3F,$60,$20,$0E,$0F,$A4,$F9,$75,$35
+  $30,$BE,$00,$09,$FD,$EF,$22,$F8,$2F,$8F,$F0,$51,$9A,$E0,$80,$A1,$70,$A5,$00,$98,$61,$20,$1C,$66
+  $80,$AA,$80,$19,$86,$08,$86,$38,$61,$60,$EA,$E0,$EE,$3B,$0E,$F0,$32,$3C,$E2,$C0,$24,$07,$87,$F9
+  $53,$C0,$98,$F0,$0F,$0F,$6F,$E0,$09,$88,$B0,$87,$03,$04,$EB,$F8,$88,$BC,$FE,$F0,$B9,$01,$E0,$A1
+  $0F,$83,$03,$80,$01,$C0,$AA,$C0,$E0,$87,$F0,$34,$E9,$81,$50,$A4,$01,$A1,$0F,$E2,$A0,$96,$00,$A8
+  $07,$03,$3E,$DF,$E3,$87,$00,$86,$FE,$9C,$0F,$F9,$1C,$F0,$F3,$F9,$DC,$FF,$D0,$F0,$39,$47,$84,$07
+  $0F,$E0,$F8,$76,$8E,$E0,$03,$BC,$7D,$7C,$F2,$20,$FF,$30,$74,$D0,$E7,$64,$F8,$F4,$E8,$78,$B0,$E0
+  $FE,$15,$35,$55,$58
+end data
+data TitleC0 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$9B,$14,$54,$DB,$FC,$54,$9B,$F0,$43,$BC,$FE,$F0,$A0,$C3,$BB,$13,$FF
+  $1C,$8A,$CC,$34,$3D,$F0,$F2,$D0,$90,$3C,$EB,$A1,$13,$CE,$70,$C0,$26,$53,$43,$53,$F7,$F0,$CF,$C0
+  $F1,$CA,$FE,$43,$0E,$CE,$8E,$13,$43,$FE,$6E,$11,$D6,$63,$13,$31,$CA,$E0,$51,$0E,$3E,$F9,$DD,$FE
+  $BF,$31,$54,$FE,$EE,$C0,$2A,$3C,$31,$11,$43,$B8,$E0,$C0,$BB,$45,$FD,$13,$CF,$50,$70,$FE,$C8,$CD
+  $89,$C5,$F3,$53,$C3,$C3,$12,$FE,$BD,$F6,$FC,$FF,$B8,$FF,$E3,$C1,$E0,$EF,$BE,$13,$E0,$DA,$EF,$1C
+  $FA,$72,$13,$5F,$D1,$FF,$E1,$E3,$FE,$F9,$32,$2A,$FA,$E0,$15,$8E,$4C,$41,$70,$7F,$90,$F9,$FE,$90
+  $FC,$FD,$90,$DA,$BA,$EE,$13,$CA,$E0,$82,$31,$54,$54,$35,$7F,$C6,$FF,$FF,$A4,$A0,$EE,$C5,$C3,$F0
+  $3F,$E1,$ED,$FE,$A0,$F1,$C0,$78,$FD,$9E,$15,$54,$F4,$9E,$13,$4C,$51,$F0,$36,$FE,$E6,$E0,$92,$1C
+  $96,$13,$97,$C3,$F6,$F9,$A0,$F0,$15,$E0,$A5,$53,$89,$35,$C4,$4E,$D1,$93,$51,$F1,$F1,$D0,$E1,$60
+  $FB,$FD,$FE,$CA,$F0,$95,$1E,$F3,$F9,$19,$E0,$BA,$95,$59,$59,$C0,$64,$59,$19,$95,$F8,$F3,$FE,$0F
+  $DA,$3F,$A1,$F4,$E2,$A0,$97,$15,$E4,$DB,$E6,$E8,$97,$59,$5B,$F5,$BF,$FE,$F4,$C3,$F0,$DE,$D0,$EE
+  $6F,$5F,$E0,$82,$5F,$1F,$1F,$1F,$43,$AA,$FF,$51,$15,$6A,$11,$BC,$93,$20,$F3,$98,$9E,$D1,$F1,$F1
+  $D1,$FE,$E1,$F0,$F6,$D0,$E0,$11,$FE,$15,$35,$55,$58
+end data
+data TitleP1 bytes
+  $A9,$38,$18,$AA,$30,$0C,$0A,$18,$29,$00,$A6,$06,$24,$00,$03,$A5,$01,$A2,$0E,$82,$1A,$24,$06,$0C
+  $A5,$81,$A2,$60,$82,$C0,$24,$30,$60,$A5,$0C,$A2,$83,$82,$86,$F2,$01,$70,$96,$81,$F2,$80,$FE,$97
+  $60,$FF,$06,$FE,$E6,$09,$FE,$96,$23,$8E,$00,$A0,$3B,$4A,$9B,$A0,$C0,$9A,$FE,$06,$28,$0C,$22,$03
+  $06,$4A,$00,$04,$19,$8B,$01,$03,$07,$03,$F4,$25,$CE,$8B,$80,$07,$7E,$EA,$E8,$7A,$FF,$00,$A1,$F0
+  $AF,$0F,$F4,$E1,$B2,$FE,$DC,$FF,$9A,$00,$0F,$1F,$C8,$F7,$E0,$DF,$BC,$E4,$22,$03,$08,$BB,$E0,$70
+  $DF,$2E,$E7,$DF,$72,$DB,$FD,$EB,$2F,$E8,$DC,$B4,$A5,$01,$6B,$01,$CE,$64,$14,$5D,$87,$EC,$67,$D4
+  $61,$E8,$D9,$54,$F5,$54,$F6,$0A,$25,$00,$C0,$A6,$40,$1F,$07,$F8,$F8,$F0,$E0,$85,$DF,$58,$F9,$F7
+  $EC,$3C,$1E,$C8,$78,$B8,$E1,$5E,$3D,$D5,$87,$EC,$C7,$88,$9C,$64,$97,$E4,$DD,$E8,$F7,$C7,$E8,$68
+  $1B,$01,$53,$37,$9F,$AE,$BF,$C0,$F0,$A1,$1F,$80,$7F,$8B,$F0,$75,$83,$BC,$1B,$92,$BD,$08,$40,$DC
+  $C8,$A5,$E0,$FB,$F1,$F8,$DD,$F7,$06,$7F,$F1,$50,$3D,$FB,$D7,$58,$FC,$60,$38,$A7,$07,$CD,$80,$DF
+  $E0,$FE,$A6,$18,$EF,$1F,$F8,$96,$FF,$CB,$AE,$97,$40,$C7,$85,$70,$A7,$C1,$6C,$E6,$62,$70,$22,$C0
+  $C1,$9F,$03,$B8,$7F,$97,$2E,$79,$64,$EC,$F6,$62,$40,$24,$06,$C6,$FB,$60,$C1,$E9,$BA,$80,$6F,$F0
+  $F0,$E2,$80,$FA,$60,$FE,$30,$62,$17,$10,$3C,$71,$A5,$87,$07,$7F,$1B,$81,$7B,$F6,$0C,$0A,$00,$21
+  $01,$02,$29,$60,$D9,$C0,$FE,$89,$16,$83,$C0,$E3,$B5,$FE,$C9,$81,$F0,$77,$C0,$7B,$91,$18,$E8,$FE
+  $30,$AA,$07,$02,$A7,$0E,$E6,$4B,$FE,$97,$03,$9F,$44,$F1,$62,$36,$FB,$81,$EC,$C1,$A3,$FF,$81,$F7
+  $2C,$B0,$F9,$2B,$FE,$A5,$18,$E7,$24,$F5,$F1,$61,$67,$5C,$57,$32,$BB,$83,$FE,$E7,$2B,$FE,$E6,$07
+  $FE,$96,$C0,$86,$60,$AA,$C0,$E0,$8E,$70,$EC,$CD,$08,$CB,$A4,$27,$A0,$70,$E0,$FB,$F1,$B7,$21,$A3
+  $FF,$23,$F7,$78,$60,$7E,$70,$B9,$00,$FE,$A5,$30,$D5,$55,$60
+end data
+data TitleC1 bytes
+  $85,$F4,$55,$5A,$61,$A4,$C1,$69,$11,$FF,$F0,$F7,$D5,$FE,$1A,$11,$38,$B0,$47,$D5,$FE,$28,$15,$1A
+  $F5,$1A,$5F,$A6,$1F,$BE,$1E,$F9,$F0,$7F,$D3,$DC,$8F,$FE,$FE,$BA,$7B,$F7,$51,$8A,$FE,$31,$1A,$11
+  $5A,$13,$F7,$E0,$DF,$C0,$FF,$FF,$A2,$96,$FD,$EC,$F0,$FF,$F4,$D3,$FF,$5F,$59,$ED,$F5,$F8,$FE,$54
+  $FD,$F0,$DD,$FA,$C8,$E4,$F2,$1E,$5F,$F0,$96,$F5,$92,$1F,$FC,$FE,$8B,$64,$20,$FB,$32,$32,$21,$21
+  $15,$0D,$12,$A9,$FE,$13,$F7,$E0,$DF,$C0,$5A,$FD,$54,$9F,$64,$55,$CF,$F0,$E0,$4F,$F1,$7B,$0A,$E5
+  $B7,$FF,$F5,$48,$76,$5C,$7D,$65,$FF,$44,$48,$DF,$E0,$C0,$77,$B0,$7D,$F0,$E7,$24,$F3,$F8,$E4,$EE
+  $F9,$21,$FE,$FF,$95,$88,$27,$34,$DF,$E0,$C0,$7D,$A0,$93,$2A,$2A,$16,$16,$1A,$16,$AE,$FF,$A2,$F1
+  $98,$6A,$8A,$1A,$1A,$A6,$5A,$1A,$5F,$D1,$F9,$C0,$D0,$FD,$A1,$D0,$F1,$A0,$E5,$70,$A5,$A6,$3F,$F1
+  $40,$7C,$80,$7F,$D1,$40,$5F,$50,$4A,$16,$47,$64,$F0,$6E,$C6,$FE,$BA,$A6,$F8,$39,$16,$61,$D0,$FF
+  $F0,$FE,$7E,$A1,$D0,$AF,$11,$C0,$7F,$F7,$FC,$2B,$6A,$8F,$D0,$FE,$5F,$61,$CE,$A0,$FE,$3D,$F2,$FF
+  $70,$C0,$3D,$40,$F7,$50,$F9,$FE,$00,$69,$6A,$5F,$A1,$9A,$10,$6A,$0A,$61,$F0,$00,$DC,$C0,$3B,$E8
+  $F4,$C1,$20,$A0,$11,$F6,$FE,$A9,$C6,$C1,$75,$37,$A0,$57,$C4,$57,$F7,$B1,$F0,$53,$60,$47,$95,$50
+  $A5,$11,$5D,$3E,$54,$B0,$05,$F7,$A6,$95,$A0,$D5,$55,$60
+end data
+data TitleP2 bytes
+  $95,$00,$55,$9E,$84,$40,$04,$F0,$29,$28,$69,$42,$F5,$FE,$44,$5D,$55,$56
+end data
+data TitleC2 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$8A,$32,$12,$0F,$F0,$5B,$14,$CA,$FE,$11,$54,$55,$75,$55,$58
+end data
+data PageNam bytes
+  $7D,$80,$81,$82,$FA,$0B,$83,$C5,$FE,$52,$94,$80,$55,$71,$BD,$79,$83,$FA,$0D,$55,$56
+end data
+data PageP0 bytes
+  $80,$00,$01,$69,$20,$A6,$00,$9A,$82,$00,$69,$08,$A5,$00,$50,$57,$55,$55,$80
+end data
+data PageC0 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$9A,$14,$24,$78,$F0,$5F,$FE,$A5,$11,$45,$57,$55,$55,$80
+end data
+data PageP1 bytes
+  $81,$00,$55,$57,$55,$55,$80
+end data
+data PageC1 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$96,$14,$95,$11,$51,$5D,$55,$56
+end data
+data PageP2 bytes
+  $80,$00,$05,$69,$20,$A6,$00,$9A,$82,$00,$69,$08,$A5,$00,$50,$17,$55,$55,$80
+end data
+data PageC2 bytes
+  $85,$F4,$55,$5A,$11,$55,$56,$96,$14,$9E,$24,$F0,$16,$F5,$11,$FE,$15,$4D,$55,$56
+end data
+data PlayCells bytes
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$82,$83,$84,$85,$86,$81,$81,$81,$81,$87,$88,$89,$81,$81,$8A,$8A,$8A,$8B,$8C,$8D,$8E,$8A
+  $8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A,$8F,$90,$91,$92,$93,$94,$95,$8A,$8A,$8A,$96,$97,$98,$8A,$8A
+  $99,$99,$9A,$90,$91,$9B,$9C,$9D,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$9E,$99
+  $99,$99,$99,$99,$9F,$A0,$99,$99,$A1,$A1,$A1,$A1,$A1,$A1,$A2,$A3,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$A4,$A5,$A6,$A7,$A1,$A1,$A1,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8
+  $A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8,$A9,$AA,$AA,$AB,$AC,$A8,$A8
+  $AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD
+  $AD,$AE,$AF,$B0,$B1,$B2,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD
+  $AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$82,$83,$84,$85,$86,$87,$88,$89,$8A,$8B,$83,$8C,$8D,$8E
+  $8F,$90,$83,$91,$92,$83,$93,$94,$95,$82,$83,$84,$96,$97,$87,$88,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F
+  $A0,$A1,$A2,$A3,$A4,$9F,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$99,$9A,$AF,$B0,$B1,$B2,$B3,$B4
+  $B5,$B6,$B7,$B8,$B9,$BA,$BB,$BC,$BD,$BE,$BF,$C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC
+  $CD,$CE,$CF,$D0,$D1,$D2,$D3,$D4,$CF,$D5,$D6,$C9,$B8,$D4,$D7,$D8,$D9,$CF,$BE,$DA,$DB,$DC,$DD,$DE
+  $C4,$DF,$E0,$E1,$DA,$C9,$E2,$E3,$E4,$E5,$DF,$CF,$BE,$E6,$E7,$B8,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9
+  $EA,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9,$EA,$E8,$E9
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+end data
+
+asm {
+; LF_MASKHIT: HL = the left sprite's mask rows, DE = the right one's (words,
+; bit 11 = the leftmost multicolour pixel), B = rows, C = the shift (pixels
+; between them); HitOdd = 1 when they are an odd number of screen pixels
+; apart (a right pixel then covers two left pixels). HitRes = 1 on overlap.
+LF_MASKHIT:
+    ld a,b
+    or a
+    ret z
+LF_ROW:
+    push bc
+    push hl
+    ex de,hl
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    push hl
+    ld a,c
+    or a
+    jr z,LF_NOSH
+LF_SH:
+    srl d
+    rr e
+    dec a
+    jr nz,LF_SH
+LF_NOSH:
+    ld a,(HitOdd)
+    or a
+    jr z,LF_EVEN
+    ld h,d
+    ld l,e
+    srl h
+    rr l
+    ld a,d
+    or h
+    ld d,a
+    ld a,e
+    or l
+    ld e,a
+LF_EVEN:
+    pop bc
+    pop hl
+    ld a,(hl)
+    and e
+    jr nz,LF_YES
+    inc hl
+    ld a,(hl)
+    and d
+    jr nz,LF_YES
+    inc hl
+    ld d,b
+    ld e,c
+    pop bc
+    djnz LF_ROW
+    ret
+LF_YES:
+    pop bc
+    ld a,1
+    ld (HitRes),a
+    ret
+LfStep:
+    db $C0,$FE,$50,$02,$D0
+LfStep2:
+    db $C0,$68,$51,$02,$D0
+LfJump:
+    db $40,$31,$10,$02,$40,$42,$20,$02,$40,$59,$30,$02,$40,$7C,$50,$02,$40,$A0,$70,$02,$50
+LfTick0:
+    db $80,$AE,$31,$01,$90
+LfTick1:
+    db $80,$18,$31,$01,$90
+LfTick2:
+    db $80,$CF,$30,$01,$90
+LfTick3:
+    db $80,$A5,$30,$01,$90
+LfTick4:
+    db $80,$88,$30,$01,$90
+LfHit:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$66,$03,$10
+LfDie:
+    db $40,$A4,$13,$02,$40,$E2,$11,$02,$40,$45,$11,$02,$40,$F5,$10,$02,$40,$C5,$10,$02,$40,$A5,$10,$02
+    db $40,$8D,$10,$02,$40,$7C,$10,$02,$40,$A4,$23,$02,$40,$E2,$21,$02,$40,$45,$21,$02,$40,$F5,$20,$02
+    db $40,$C5,$20,$02,$40,$A5,$20,$02,$40,$8D,$20,$02,$40,$7C,$20,$02,$40,$A4,$23,$02,$40,$E2,$21,$02
+    db $40,$45,$21,$02,$40,$F5,$20,$02,$40,$C5,$20,$02,$40,$A5,$20,$02,$40,$8D,$20,$02,$40,$7C,$20,$02
+    db $40,$A4,$33,$02,$40,$E2,$31,$02,$40,$45,$31,$02,$40,$F5,$30,$02,$40,$C5,$30,$02,$40,$A5,$30,$02
+    db $40,$8D,$30,$02,$40,$7C,$30,$02,$40,$A4,$33,$02,$40,$E2,$31,$02,$40,$45,$31,$02,$40,$F5,$30,$02
+    db $40,$C5,$30,$02,$40,$A5,$30,$02,$40,$8D,$30,$02,$50
+LfExtra:
+    db $40,$8F,$10,$05,$40,$71,$10,$05,$40,$5F,$10,$05,$40,$47,$20,$0A,$50
+LfLevel:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$20,$0C,$40,$55,$60,$0A
+    db $50
+LfOver:
+    db $40,$1D,$21,$0C,$40,$53,$21,$0C,$40,$AB,$31,$0C,$40,$3B,$32,$18,$50
+LfClick:
+    db $80,$47,$40,$01,$90
+
+LfSoundTable:
+    dw LfMel,$702B
+    dw LfHarm,$7035
+    dw LfBassVol,$703F
+    dw LfBassPitch,$7049
+    dw LfStep,$7071
+    dw LfStep2,$7071
+    dw LfJump,$705D
+    dw LfTick0,$7067
+    dw LfTick1,$7067
+    dw LfTick2,$7067
+    dw LfTick3,$7067
+    dw LfTick4,$7067
+    dw LfHit,$7053
+    dw LfDie,$705D
+    dw LfExtra,$705D
+    dw LfLevel,$705D
+    dw LfOver,$705D
+    dw LfClick,$7067
+; Ribbit's Hop (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums
+LfMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$1A,$21,$1A,$00,$1E,$00,$21,$00,$1E,$00,$1F,$00,$23,$00
+    db $A1,$00,$00,$00,$1A,$00,$1E,$00,$21,$00,$26,$00,$25,$00,$23,$00
+    db $A1,$00,$00,$01,$23,$00,$1F,$00,$23,$00,$26,$00,$25,$00,$21,$00
+    db $25,$00,$28,$00,$26,$00,$21,$00,$1E,$00,$1A,$00,$1C,$00,$1E,$00
+    db $1F,$00,$21,$00,$23,$00,$21,$00,$1F,$00,$1E,$00,$1C,$00,$21,$00
+    db $25,$00,$28,$00,$26,$00,$25,$00,$23,$00,$25,$00,$A6,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+LfHarm:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$1A,$21,$15,$00,$00,$00,$1A,$00,$00,$00,$17,$00,$00,$00
+    db $19,$00,$00,$00,$15,$00,$00,$00,$1E,$00,$00,$00,$1C,$00,$00,$00
+    db $19,$00,$00,$01,$1F,$00,$00,$00,$1A,$00,$00,$00,$1C,$00,$00,$00
+    db $15,$00,$00,$00,$1E,$00,$00,$00,$1A,$00,$00,$00,$19,$00,$00,$00
+    db $1C,$00,$00,$00,$1F,$00,$00,$00,$1A,$00,$00,$00,$19,$00,$00,$00
+    db $21,$00,$00,$00,$1E,$00,$00,$00,$1F,$00,$00,$00,$9E,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+LfBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$02,$36,$04,$13,$11
+    db $02,$33,$06,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$11,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$07,$14,$66,$02,$36,$04,$13,$11,$02,$33,$06,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66
+    db $22,$02,$45,$05,$13,$11,$02,$33,$11,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66
+    db $22,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$02,$36,$04,$13,$11,$02,$33,$06,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$02,$36,$04,$13,$11
+    db $02,$33,$06,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$11,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$07,$14,$66,$02,$36,$04,$13,$11,$02,$33,$06,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$12,$14,$66
+    db $22,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$02,$45,$05,$13,$11,$21,$02,$36,$04,$13,$11
+    db $02,$33,$12,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$02,$36,$04,$13,$11,$02,$33,$06,$14,$66
+    db $22
+    db $10
+LfBassPitch:
+    db $C0,$98,$F0,$1D,$C0,$66,$F0,$17,$C0,$72,$F0,$19,$C0,$66,$F0,$17,$C0,$98,$F0,$19,$C0,$66,$F0,$30
+    db $C0,$88,$F0,$17,$C0,$72,$F0,$19,$C0,$98,$F0,$17,$C0,$66,$F0,$19,$C0,$88,$F0,$17,$C0,$98,$F0,$19
+    db $C0,$66,$F0,$30,$C0,$A1,$F0,$17,$C0,$72,$F0,$19,$C0,$98,$F0,$17,$C0,$66,$F0,$19,$C0,$88,$F0,$17
+    db $C0,$5A,$F0,$19,$C0,$66,$F0,$17,$C0,$98,$F0,$2A,$E2
+    db $D0
+}
