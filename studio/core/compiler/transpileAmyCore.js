@@ -1481,6 +1481,42 @@ export function transpileAmyCore(sourceText, deps) {
     /^set\s+number\s+(?:digits|pad)\s+(?:tile|tiles|char|to)\s+/i.test(stripAmyInlineComment(candidateRaw).trim())
   );
   const earlyCompileTimeConstants = collectEarlyNumericConstants(lines);
+  for (let index = 0; index < lines.length; index += 1) {
+    const command = stripAmyInlineComment(lines[index]).trim().match(
+      /^set\s+sound\s+table\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+areas\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i
+    );
+    if (!command?.[2]) continue;
+    const areaCount = resolveEarlyNumericConstant(command[2], earlyCompileTimeConstants);
+    if (!Number.isInteger(areaCount) || areaCount < 1 || areaCount > 8) {
+      return { ok: false, asmBody: "", log: `set sound table areas must be a constant from 1 to 8: ${lines[index]}` };
+    }
+    const tableLabel = command[1].toLowerCase();
+    const labelIndex = lines.findIndex((candidateRaw) => {
+      const label = stripAmyInlineComment(candidateRaw).trim().match(/^([A-Za-z_][A-Za-z0-9_]*):$/);
+      return label?.[1].toLowerCase() === tableLabel;
+    });
+    if (labelIndex < 0) continue;
+    const firstArea = 0x702B;
+    const lastArea = firstArea + 7 * 10;
+    for (let tableIndex = labelIndex + 1; tableIndex < lines.length; tableIndex += 1) {
+      const tableLine = stripAmyInlineComment(lines[tableIndex]).trim();
+      if (!tableLine) continue;
+      const words = tableLine.match(/^(?:dw|\.dw)\s+(.+)$/i);
+      if (!words) break;
+      const entries = words[1].split(",").map((entry) => entry.trim()).filter(Boolean);
+      for (let entryIndex = 1; entryIndex < entries.length; entryIndex += 2) {
+        const area = resolveEarlyNumericConstant(entries[entryIndex], earlyCompileTimeConstants);
+        if (!Number.isInteger(area)) continue;
+        if (area < firstArea || area > lastArea || (area - firstArea) % 10 !== 0) {
+          return {
+            ok: false,
+            asmBody: "",
+            log: `Sound area $${area.toString(16).toUpperCase()} is outside the 8 OS7 sound areas ($${firstArea.toString(16).toUpperCase()}-$${(lastArea + 9).toString(16).toUpperCase()}) for table ${command[1]}`
+          };
+        }
+      }
+    }
+  }
   const spriteStableRanges = [];
   let usesSpriteFlicker = false;
   let usesPartialSpriteUpdate = false;
@@ -4745,7 +4781,7 @@ export function transpileAmyCore(sourceText, deps) {
       if (/^0x[0-9A-Fa-f]+$/i.test(token)) return `$${token.slice(2).toUpperCase()}`;
       return token.toUpperCase();
     });
-    if (entries.length && entries.length <= 256) dataWordTables.set(header[1], { length: entries.length, entries });
+    if (entries.length) dataWordTables.set(header[1], { length: entries.length, entries });
   }
   // Byte-table indexing is valid before the data declaration too. Record only
   // its expanded shape here; the normal pass still owns byte emission/order.

@@ -1,0 +1,1514 @@
+cartridge "WRITHEN/STEVE HARTER/1991"
+' WRITHEN - ColecoVision port of Steve Harter's C64 game from ReRUN
+' (RUN magazine's disk), January/February 1991.
+'
+' Two or three snakes (player 1 red, player 2 green, the computer blue)
+' crawl around a walled or wrap-around field leaving their bodies behind.
+' Running into anything ends that snake's round. Every move a snake survives
+' is a point; the last snake alive doubles its round score (seen in the C64
+' trace: 40 -> 80). After the chosen number of rounds the highest total wins.
+'
+' Controls: controller 1 = player 1, controller 2 = player 2. Stick turns;
+' the button does what the FIRE option says (off, speed, hyperspace, leave
+' spaces, skip). Menus by joystick only.
+'
+' Field: the C64 field is 40 x 23 cells; the CRT safe area holds 28 x 21,
+' so the field here is 28 x 21 cells (cols 2-29, rows 2-22), HUD on row 1.
+' Speed: from the C64 code and a jsc64 cycle count (c64/cyc.mjs): a cell
+' is 4 head steps, a step every 2 CIA timer IRQs of ($46-SPEED)*256+$95
+' cycles: 7.3 NTSC frames a cell at the default SPEED 10.
+'
+' Tail rings (positions of every body cell, for TAIL LENGTH) live in spare
+' VRAM at $3A00-$3FFF: X and Y rings of 256 bytes per snake.
+const TP1body = 128
+const TP1up = 129
+const TP1down = 130
+const TP1left = 131
+const TP1right = 132
+const TP2body = 133
+const TP2up = 134
+const TP2down = 135
+const TP2left = 136
+const TP2right = 137
+const TCpbody = 138
+const TCpup = 139
+const TCpdown = 140
+const TCpleft = 141
+const TCpright = 142
+const TWall = 143
+const TBlock = 144
+const SDummy = 0
+const NTiles8 = 136
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndGameA = 5
+const SndGameB = 6
+const SndGameC = 7
+const SndGameD = 8
+const SndClick = 9
+const SndReady = 10
+const SndCrash = 11
+const SndWarp = 12
+const SndRound = 13
+const SndOver = 14
+const TuneFrames = 512
+const GameFrames = 1152
+const TxtCredits = 0
+const NSpr = 5
+const HideY = 192
+const FX0 = 2
+const FX1 = 29
+const FY0 = 2
+const FY1 = 22
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StRound = 5
+const StOpt = 6
+const StOver = 9
+const RingOff = $0200
+
+u8 Hx[3]
+u8 Hy[3]
+u8 Dir[3]
+u8 Alive[3]
+u8 Ring[3]
+u8 Len[3]
+u8 Jumps[3]
+u8 WasF[3]
+u16 RSc[3]
+u16 Tot[3]
+u8 Opt[8]
+u8 OptN[8]
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Va = 0
+u16 Interval = 192
+u16 MinInt = 96
+u16 Acc = 0
+u16 Moves = 0
+u8 TzOn = 0
+u8 GzOn = 0
+u16 GzLeft = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 NSnk = 2
+u8 Round = 0
+u8 Rounds = 1
+u8 TailLim = 0
+u8 Left = 0
+u8 Winner = 0
+u8 OptSel = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Si = 0
+u8 Li = 0
+' current snake, probe
+u8 Sk = 0
+u8 Sj = 0
+u8 Sf = 0
+u8 PX = 0
+u8 PY = 0
+u8 PD = 0
+u8 PR = 0
+u8 NX = 0
+u8 NY = 0
+u8 ND = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 R1 = 0
+u8 R2 = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  ' options: mode, rounds, tail, speed, speed up, border, blocks, fire
+  OptN[0] = 3
+  OptN[1] = 11
+  OptN[2] = 6
+  OptN[3] = 5
+  OptN[4] = 2
+  OptN[5] = 2
+  OptN[6] = 2
+  OptN[7] = 5
+  fill array Opt with 0
+  Opt[1] = 1
+  Opt[3] = 2
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    OptionsPage
+    goto title
+  end if
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+round_loop:
+  NewRound
+play_loop:
+  Frame1
+  ReadPad
+  GameTune
+  PlayStep
+  if Left > 1 then goto play_loop
+  if NSnk = 1 then
+    if Left > 0 then goto play_loop
+  end if
+  EndRound
+  inc Round
+  if Round < Rounds then goto round_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs % M
+  Rv = W16
+  return Rv
+
+sub NewGame:
+  NSnk = 2
+  if Opt[0] = 2 then NSnk = 3
+  C = Opt[1]
+  Rounds = C << 1
+  inc Rounds
+  ' the C64 list: 1 3 5 7 9 11 13 17 19 21 25
+  if C >= 7 then Rounds += 2
+  if C = 10 then Rounds += 2
+  C = Opt[2]
+  TailLim = C * 50
+  Tot[0] = 0
+  Tot[1] = 0
+  Tot[2] = 0
+  Round = 0
+  return
+end sub
+
+' a snake k at x,y going d (Sk, PX, PY, PD)
+sub PlaceSnake:
+  Hx[Sk] = PX
+  Hy[Sk] = PY
+  Dir[Sk] = PD
+  Alive[Sk] = 1
+  Ring[Sk] = 0
+  Len[Sk] = 0
+  Jumps[Sk] = 3
+  WasF[Sk] = 16
+  RSc[Sk] = 0
+  Sj = Sk
+  RecordHead
+  HeadTile
+  put char T at PX,PY
+  return
+end sub
+
+' T = head tile of snake Sk going Dir[Sk]
+sub HeadTile:
+  T = Sk * 5
+  T += TP1up
+  C = Dir[Sk]
+  T += C
+  return
+end sub
+
+sub NewRound:
+  State = StRound
+  NewScreen
+  if Opt[5] = 1 then
+    fill TWall count 28 at FX0,FY0
+    fill TWall count 28 at FX0,FY1
+    for Li = 3 to 21
+      put char TWall at FX0,Li
+      put char TWall at FX1,Li
+    next
+  end if
+  ' slots: 0 player 1, 1 player 2 or computer, 2 computer
+  Sk = 0
+  PX = 22
+  PY = 6
+  PD = 2
+  PlaceSnake
+  Alive[1] = 0
+  RSc[1] = 0
+  Alive[2] = 0
+  RSc[2] = 0
+  if Opt[0] <> 1 then
+    Sk = 1
+    PX = 8
+    PY = 8
+    PD = 1
+    PlaceSnake
+  end if
+  if Opt[0] > 0 then
+    Sk = 2
+    PX = 15
+    PY = 19
+    PD = 0
+    PlaceSnake
+  end if
+  if Opt[6] = 1 then
+    for Li = 0 to 11
+      PlaceBlock
+    next
+  end if
+  Left = NSnk
+  C = Opt[3]
+  ' frames per cell x 16, from the C64 code: a cell = 4 steps of 2 timer
+  ' IRQs, timer = ($46 - SPEED) * 256 + $95 cycles (NTSC 17045/frame);
+  ' SPEED 0, 5, 10 (the C64 default), 15, 20 -> 8.5 .. 6.1 frames a cell
+  Interval = 136
+  if C = 1 then Interval = 126
+  if C = 2 then Interval = 117
+  if C = 3 then Interval = 107
+  if C = 4 then Interval = 97
+  ' SPEED UP: the C64 timer loses 256 cycles every 256 IRQs (32 cells)
+  ' down to $20xx = 4.0 frames a cell
+  MinInt = 64
+  Acc = 0
+  Moves = 0
+  ShowHud
+  print at 11,12, "ROUND"
+  NumU = Round + 1
+  print at 17,12, digits$(NumU, 2)
+  print at 11,14, "GET READY"
+  ShowScreen
+  play sound SndReady
+  wait 90 frames
+  print at 11,12, "        "
+  print at 11,14, "         "
+  GzOn = 0
+  WasBtn = 16
+  State = StPlay
+  return
+end sub
+
+sub PlaceBlock:
+  K = 0
+pb_try:
+  C = RandBelow(26)
+  C += 3
+  T = RandBelow(19)
+  T += 3
+  V = get char at C,T
+  inc K
+  if K > 20 then return
+  if V <> 32 then goto pb_try
+  ' keep the start rows clear
+  if T = 6 then goto pb_try
+  if T = 12 then goto pb_try
+  if T = 14 then goto pb_try
+  if C = 8 then goto pb_try
+  if C = 15 then goto pb_try
+  put char TBlock at C,T
+  return
+end sub
+
+' one frame: snakes move when the accumulator passes Interval
+sub PlayStep:
+  Acc += 16
+  if Acc < Interval then return
+  Acc -= Interval
+  inc Moves
+  if Opt[4] = 1 then
+    V = Moves & 31
+    if V = 0 then
+      if Interval > MinInt then Interval -= 2
+    end if
+  end if
+  for Si = 0 to 2
+    Sk = Si
+    if Alive[Sk] = 1 then MoveSnake
+  next
+  ShowScores
+  return
+end sub
+
+' the controls of snake Sk -> Sf (fire held, 16), K (directions)
+sub SnakePad:
+  K = 0
+  Sf = 0
+  if Sk = 0 then
+    K = J1 & 15
+    Sf = J1 & 16
+  end if
+  if Sk = 1 then
+    K = J2 & 15
+    Sf = J2 & 16
+  end if
+  return
+end sub
+
+' snake Sk is the computer?
+function IsCpu() as u8
+  u8 Cr = 0
+  if Sk = 2 then Cr = 1
+  return Cr
+
+sub MoveSnake:
+  PD = Dir[Sk]
+  if IsCpu() = 1 then
+    Sf = 0
+    CpuSteer
+  else
+    SnakePad
+    ' a new direction, never straight back
+    if K > 0 then
+      V = K & 1
+      if V > 0 then
+        if PD <> 1 then PD = 0
+      end if
+      V = K & 2
+      if V > 0 then
+        if PD <> 0 then PD = 1
+      end if
+      V = K & 4
+      if V > 0 then
+        if PD <> 3 then PD = 2
+      end if
+      V = K & 8
+      if V > 0 then
+        if PD <> 2 then PD = 3
+      end if
+    end if
+  end if
+  Dir[Sk] = PD
+  NX = Hx[Sk]
+  NY = Hy[Sk]
+  PX = NX
+  PY = NY
+  StepXY
+  ' fire options (computer: never)
+  T = 0
+  if Sf > 0 then
+    if WasF[Sk] = 0 then T = 1
+  end if
+  WasF[Sk] = Sf
+  C = Opt[7]
+  if C = 4 then
+    if T = 1 then
+      if Jumps[Sk] > 0 then
+        dec Jumps[Sk]
+        StepXY
+        play sound SndWarp
+      end if
+    end if
+  end if
+  if C = 2 then
+    if T = 1 then
+      if Jumps[Sk] > 0 then
+        dec Jumps[Sk]
+        Hyper
+        play sound SndWarp
+      end if
+    end if
+  end if
+  ' the old head becomes body (or a gap with LEAVE SPACES held)
+  T = Sk * 5
+  T += TP1body
+  if C = 3 then
+    if Sf > 0 then T = 32
+  end if
+  put char T at NX,NY
+  V = get char at PX,PY
+  if V <> 32 then
+    Alive[Sk] = 0
+    dec Left
+    play sound SndCrash
+    ' the crashed head stays where it was
+    HeadTile
+    put char T at NX,NY
+    return
+  end if
+  Hx[Sk] = PX
+  Hy[Sk] = PY
+  HeadTile
+  put char T at PX,PY
+  inc RSc[Sk]
+  Sj = Sk
+  RecordHead
+  ' INC. SPEED: one more cell while the button is held
+  if C = 1 then
+    if Sf > 0 then
+      if Sk < 2 then
+        Sf = 0
+        MoveAgain
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the extra cell of INC. SPEED (no fire options this time)
+sub MoveAgain:
+  NX = Hx[Sk]
+  NY = Hy[Sk]
+  PX = NX
+  PY = NY
+  PD = Dir[Sk]
+  StepXY
+  T = Sk * 5
+  T += TP1body
+  put char T at NX,NY
+  V = get char at PX,PY
+  if V <> 32 then
+    Alive[Sk] = 0
+    dec Left
+    play sound SndCrash
+    HeadTile
+    put char T at NX,NY
+    return
+  end if
+  Hx[Sk] = PX
+  Hy[Sk] = PY
+  HeadTile
+  put char T at PX,PY
+  inc RSc[Sk]
+  Sj = Sk
+  RecordHead
+  return
+end sub
+
+' HYPERSPACE: PX,PY = a random free cell
+sub Hyper:
+  K = 0
+hy_try:
+  PX = RandBelow(26)
+  PX += 3
+  PY = RandBelow(19)
+  PY += 3
+  V = get char at PX,PY
+  inc K
+  if K > 30 then return
+  if V <> 32 then goto hy_try
+  return
+end sub
+
+' PX,PY one cell along PD, wrapping inside the field
+sub StepXY:
+  if PD = 0 then
+    if PY = FY0 then
+      PY = FY1
+    else
+      dec PY
+    end if
+  end if
+  if PD = 1 then
+    if PY = FY1 then
+      PY = FY0
+    else
+      inc PY
+    end if
+  end if
+  if PD = 2 then
+    if PX = FX0 then
+      PX = FX1
+    else
+      dec PX
+    end if
+  end if
+  if PD = 3 then
+    if PX = FX1 then
+      PX = FX0
+    else
+      inc PX
+    end if
+  end if
+  return
+end sub
+
+' the head of snake Sj into its ring; erase the oldest cell past TailLim
+sub RecordHead:
+  V = Ring[Sj]
+  Va = Sj
+  Va = Va << 9
+  Va += RingOff
+  Va += V
+  R1 = Hx[Sj]
+  vpoke vram.spr_pat + Va, R1
+  Va += 256
+  R1 = Hy[Sj]
+  vpoke vram.spr_pat + Va, R1
+  inc V
+  Ring[Sj] = V
+  if Len[Sj] < 255 then inc Len[Sj]
+  if TailLim = 0 then return
+  if Len[Sj] <= TailLim then return
+  dec Len[Sj]
+  V -= TailLim
+  dec V
+  Va = Sj
+  Va = Va << 9
+  Va += RingOff
+  Va += V
+  vpeek vram.spr_pat + Va into R1
+  Va += 256
+  vpeek vram.spr_pat + Va into R2
+  ' only this snake's body is erased (another snake may be in a gap)
+  T = Sj * 5
+  T += TP1body
+  V = get char at R1,R2
+  if V = T then put char 32 at R1,R2
+  return
+end sub
+
+' PR = free cells straight ahead from PX,PY along PD (at most 6)
+sub Probe:
+  PR = 0
+pr_next:
+  StepXY
+  V = get char at PX,PY
+  if V <> 32 then return
+  inc PR
+  if PR < 6 then goto pr_next
+  return
+end sub
+
+' the computer (from the C64 routine at $75C2): it hunts the NEAREST live
+' player (distance across the wrap when the border is off), wants the
+' direction toward that head on a randomly chosen axis, takes it when the
+' way is clear for 4 cells, otherwise the direction with the longest
+' free run (never straight back)
+sub CpuSteer:
+  ND = Dir[Sk]
+  ' target: the nearer of players 0 and 1
+  R1 = 255
+  NX = 0
+  NY = 0
+  for Li = 0 to 1
+    if Alive[Li] = 1 then
+      C = Hx[Li]
+      T = Hy[Li]
+      AxisDist
+      if V < R1 then
+        R1 = V
+        NX = C
+        NY = T
+      end if
+    end if
+  next
+  ' the wanted direction
+  PD = ND
+  if R1 < 255 then
+    K = RandBelow(2)
+    PX = Hx[Sk]
+    PY = Hy[Sk]
+    if K = 0 then
+      if NX < PX then PD = 2
+      if NX > PX then PD = 3
+      if NX = PX then K = 1
+    end if
+    if K = 1 then
+      if NY < PY then PD = 0
+      if NY > PY then PD = 1
+    end if
+    if Opt[5] = 0 then
+      ' wrap: the other way round is shorter past half the field
+      if PD = 2 then
+        V = PX - NX
+        if V > 14 then PD = 3
+      else
+        if PD = 3 then
+          V = NX - PX
+          if V > 14 then PD = 2
+        end if
+      end if
+      if PD = 0 then
+        V = PY - NY
+        if V > 10 then PD = 1
+      else
+        if PD = 1 then
+          V = NY - PY
+          if V > 10 then PD = 0
+        end if
+      end if
+    end if
+    V = PD ^ 1
+    if V = ND then PD = ND
+  end if
+  R2 = PD
+  PX = Hx[Sk]
+  PY = Hy[Sk]
+  Probe
+  if PR >= 4 then
+    PD = R2
+    return
+  end if
+  ' the longest free run of the three directions that are not back
+  K = 0
+  R1 = ND
+  for Li = 0 to 3
+    V = Li ^ 1
+    if V <> ND then
+      PX = Hx[Sk]
+      PY = Hy[Sk]
+      PD = Li
+      Probe
+      if PR > K then
+        K = PR
+        R1 = Li
+      end if
+    end if
+  next
+  PD = R1
+  return
+end sub
+
+' V = |C - Hx[Sk]| + |T - Hy[Sk]| (wrap-aware when the border is off), max 254
+sub AxisDist:
+  PX = Hx[Sk]
+  PY = Hy[Sk]
+  if C > PX then
+    R2 = C - PX
+  else
+    R2 = PX - C
+  end if
+  if Opt[5] = 0 then
+    if R2 > 14 then R2 = 28 - R2
+  end if
+  V = R2
+  if T > PY then
+    R2 = T - PY
+  else
+    R2 = PY - T
+  end if
+  if Opt[5] = 0 then
+    if R2 > 10 then R2 = 21 - R2
+  end if
+  V += R2
+  return
+end sub
+
+sub EndRound:
+  State = StRound
+  ' the last snake alive doubles its round score
+  Winner = 9
+  for Li = 0 to 2
+    if Alive[Li] = 1 then
+      Winner = Li
+      W16 = RSc[Li]
+      RSc[Li] += W16
+    end if
+  next
+  for Li = 0 to 2
+    W16 = RSc[Li]
+    Tot[Li] += W16
+    RSc[Li] = 0
+  next
+  wait 30 frames
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  GzOn = 0
+  play sound SndRound
+  ShowScores
+  print at 10,11, "ROUND OVER"
+  if Winner < 9 then
+    Sk = Winner
+    HeadTile
+    put char T at 10,13
+    print at 12,13, "SURVIVES X2"
+  end if
+  ' the score stays on screen for 2 s
+  Rearm
+  wait 120 frames
+  return
+end sub
+
+' the in-game loop tune, quiet, restarted when it ends
+sub GameTune:
+  if GzOn = 0 then
+    play sound SndGameA
+    play sound SndGameB
+    play sound SndGameC
+    play sound SndGameD
+    GzLeft = GameFrames
+    GzOn = 1
+    return
+  end if
+  dec GzLeft
+  if GzLeft = 0 then GzOn = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' row 1: three heads and totals + this round, RD nn
+sub ShowHud:
+  put char TP1right at 2,1
+  if Opt[0] <> 1 then put char TP2right at 9,1
+  if Opt[0] > 0 then put char TCpright at 16,1
+  print at 23,1, "RD"
+  NumU = Round + 1
+  print at 26,1, digits$(NumU, 2)
+  ShowScores
+  return
+end sub
+
+sub ShowScores:
+  NumU = Tot[0] + RSc[0]
+  print at 3,1, digits$(NumU, 5)
+  if Opt[0] <> 1 then
+    NumU = Tot[1] + RSc[1]
+    print at 10,1, digits$(NumU, 5)
+  end if
+  if Opt[0] > 0 then
+    NumU = Tot[2] + RSc[2]
+    print at 17,1, digits$(NumU, 5)
+  end if
+  return
+end sub
+
+sub GameOver:
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  mute all
+  NewScreen
+  print at 11,4, "GAME OVER"
+  Winner = 0
+  NumU = 0
+  for Li = 0 to 2
+    Sk = Li
+    NY = Li << 1
+    NY += 8
+    T = 1
+    if Li = 2 then
+      if Opt[0] = 0 then T = 0
+    end if
+    if Li = 1 then
+      if Opt[0] = 1 then T = 0
+    end if
+    if T = 1 then
+      Dir[Li] = 3
+      HeadTile
+      put char T at 8,NY
+      T = Sk * 5
+      T += TP1body
+      put char T at 7,NY
+      put char T at 6,NY
+      if Li = 0 then print at 10,NY, "PLAYER 1"
+      if Li = 1 then print at 10,NY, "PLAYER 2"
+      if Li = 2 then print at 10,NY, "COMPUTER"
+      W16 = Tot[Li]
+      print at 20,NY, digits$(W16, 5)
+      if W16 > NumU then
+        NumU = W16
+        Winner = Li
+      end if
+    end if
+  next
+  print at 9,16, "BEST:"
+  Sk = Winner
+  Dir[Sk] = 3
+  HeadTile
+  put char T at 15,16
+  if Winner = 0 then print at 17,16, "PLAYER 1"
+  if Winner = 1 then print at 17,16, "PLAYER 2"
+  if Winner = 2 then print at 17,16, "COMPUTER"
+  print at 9,20, "PRESS BUTTON"
+  ShowScreen
+  play sound SndOver
+  return
+end sub
+
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+
+' a coiled snake for the title and the pages: Sk's colour, from x,y (PX,PY)
+sub TitleSnake:
+  T = Sk * 5
+  T += TP1body
+  fill T count 9 at PX,PY
+  C = PX + 8
+  PY += 1
+  put char T at C,PY
+  PY += 1
+  fill T count 9 at PX,PY
+  Dir[Sk] = 2
+  HeadTile
+  put char T at PX,PY
+  return
+end sub
+
+' the title: name, author, menu (cursor back on START), the tune once
+sub TitlePage:
+  State = StTitle
+  NewScreen
+  fill TWall count 28 at 2,2
+  fill TWall count 28 at 2,8
+  print at 12,4, "WRITHEN"
+  print at 9,6, "BY STEVE HARTER"
+  print at 11,11, "START"
+  print at 11,13, "OPTIONS"
+  print at 11,15, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
+  Sk = 0
+  PX = 4
+  PY = 19
+  TitleSnake
+  Sk = 1
+  PX = 18
+  PY = 19
+  TitleSnake
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  StopTitleTune
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub StopTitleTune:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,11
+  put char 32 at 9,13
+  put char 32 at 9,15
+  put char 32 at 9,17
+  C = Menu << 1
+  C += 11
+  put char 62 at 9,C
+  return
+end sub
+
+' OPTIONS: up/down picks a line, left/right changes it, the button returns
+sub OptionsPage:
+  State = StOpt
+  NewScreen
+  print at 12,1, "OPTIONS"
+  print at 3,3, "PLAYERS"
+  print at 3,5, "ROUNDS"
+  print at 3,7, "TAIL LENGTH"
+  print at 3,9, "SPEED"
+  print at 3,11, "SPEED UP"
+  print at 3,13, "BORDER"
+  print at 3,15, "RANDOM BLOCKS"
+  print at 3,17, "FIRE"
+  print at 4,20, "STICK: CHOOSE AND SET"
+  print at 4,22, "BUTTON: BACK TO TITLE"
+  OptSel = 0
+  for Li = 0 to 7
+    ShowOpt
+  next
+  ShowOptCursor
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+op_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then return
+  if Edge > 0 then Waited = 0
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if OptSel = 0 then
+        OptSel = 7
+      else
+        dec OptSel
+      end if
+    else
+      inc OptSel
+      if OptSel > 7 then OptSel = 0
+    end if
+    ShowOptCursor
+    play sound SndClick
+  end if
+  K = Edge & 12
+  if K > 0 then
+    C = OptSel
+    V = Opt[C]
+    if K = 4 then
+      if V = 0 then
+        V = OptN[C]
+      end if
+      dec V
+    else
+      inc V
+      if V >= OptN[C] then V = 0
+    end if
+    Opt[C] = V
+    Li = C
+    ShowOpt
+    play sound SndClick
+  end if
+  if Press = 0 then goto op_loop
+  return
+end sub
+
+sub ShowOptCursor:
+  for J = 0 to 7
+    C = J << 1
+    C += 3
+    put char 32 at 2,C
+  next
+  C = OptSel << 1
+  C += 3
+  put char 62 at 2,C
+  return
+end sub
+
+' option Li's value at column 17 of its row
+sub ShowOpt:
+  C = Li << 1
+  C += 3
+  print at 17,C, "            "
+  V = Opt[Li]
+  if Li = 0 then
+    if V = 0 then print at 17,C, "1P VS 2P"
+    if V = 1 then print at 17,C, "1P VS CPU"
+    if V = 2 then print at 17,C, "1P 2P CPU"
+  end if
+  if Li = 1 then
+    T = V << 1
+    inc T
+    if V >= 7 then T += 2
+    if V = 10 then T += 2
+    NumU = T
+    print at 17,C, digits$(NumU, 2)
+  end if
+  if Li = 2 then
+    if V = 0 then
+      print at 17,C, "NO LIMIT"
+    else
+      NumU = V * 50
+      print at 17,C, digits$(NumU, 3)
+    end if
+  end if
+  if Li = 3 then
+    T = V + 1
+    for J = 0 to 4
+      K = J + 17
+      R1 = 45
+      if J < T then R1 = 42
+      put char R1 at K,C
+    next
+  end if
+  if Li >= 4 then
+    if Li <= 6 then
+      if V = 0 then print at 17,C, "OFF"
+      if V = 1 then print at 17,C, "ON"
+    end if
+  end if
+  if Li = 7 then
+    if V = 0 then print at 17,C, "OFF"
+    if V = 1 then print at 17,C, "INC. SPEED"
+    if V = 2 then print at 17,C, "HYPERSPACE"
+    if V = 3 then print at 17,C, "LEAVE SPACE"
+    if V = 4 then print at 17,C, "SKIP"
+  end if
+  return
+end sub
+
+' HOW TO PLAY: three pages with the game's own tiles
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 2,3, "STEER YOUR SNAKE WITH THE"
+  print at 2,5, "STICK. IT NEVER STOPS AND"
+  print at 2,7, "LEAVES ITS BODY BEHIND."
+  Sk = 0
+  PX = 6
+  PY = 10
+  TitleSnake
+  Sk = 1
+  PX = 17
+  PY = 10
+  TitleSnake
+  print at 2,15, "HIT A BODY, A BLOCK OR"
+  print at 2,17, "THE BORDER AND YOUR ROUND"
+  print at 2,19, "IS OVER."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then return
+  Page = 2
+  NewScreen
+  print at 8,1, "HOW TO PLAY  2/3"
+  print at 2,3, "EVERY MOVE YOU SURVIVE"
+  print at 2,5, "SCORES 1 POINT. THE LAST"
+  print at 2,7, "SNAKE ALIVE DOUBLES ITS"
+  print at 2,9, "ROUND SCORE."
+  put char TP1right at 4,11
+  print at 6,11, "PLAYER 1  CONTROLLER 1"
+  put char TP2right at 4,13
+  print at 6,13, "PLAYER 2  CONTROLLER 2"
+  put char TCpright at 4,15
+  print at 6,15, "COMPUTER"
+  print at 2,17, "MOST POINTS AFTER THE LAST"
+  print at 2,19, "ROUND WINS."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then return
+  Page = 3
+  NewScreen
+  print at 8,1, "HOW TO PLAY  3/3"
+  print at 2,3, "OPTIONS SET PLAYERS,"
+  print at 2,5, "ROUNDS, TAIL LENGTH, SPEED,"
+  print at 2,7, "BORDER (OFF: WRAP AROUND)"
+  print at 2,9, "AND RANDOM BLOCKS."
+  put char TBlock at 4,11
+  put char TWall at 6,11
+  print at 2,13, "THE BUTTON DOES WHAT FIRE"
+  print at 2,15, "SAYS: SPEED WHILE HELD,"
+  print at 2,17, "HYPERSPACE OR SKIP (3 PER"
+  print at 2,19, "ROUND), OR LEAVE SPACES."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 12,2, "WRITHEN"
+  ' packed text (text.mjs -> kit/textpack.mjs), airy: lines 2 rows apart,
+  ' inside the text area [2,4,29,20] of areas.json
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $66,$00,$C3,$81,$7F,$C3,$00,$18,$F1,$F9,$B8,$FF,$00,$F6,$8A,$81,$C3,$4A,$10,$30,$70,$01,$01,$70
+  $5A,$10,$08,$0C,$0E,$80,$80,$0E,$E4,$08,$B0,$02,$5E,$40,$00,$04,$00,$20,$00,$02,$D7,$E8,$C0,$FE
+  $D5,$80,$00,$55,$60
+end data
+data TileColZ bytes
+  $21,$01,$19,$8E,$01,$91,$F9,$BA,$09,$FF,$01,$EB,$F6,$09,$A7,$E9,$91,$FD,$F4,$F0,$EE,$CF,$12,$FE
+  $23,$01,$21,$AF,$F9,$02,$FF,$EB,$B1,$F6,$02,$A7,$E9,$21,$FD,$F4,$F0,$EE,$CF,$15,$FE,$23,$01,$51
+  $AF,$F9,$05,$FF,$EB,$B1,$F6,$05,$A7,$E9,$51,$F8,$F4,$F0,$23,$0A,$BA,$99,$FC,$FB,$EF,$EF,$FE,$FE
+  $0E,$55,$55,$80
+end data
+data SpritePatZ bytes
+  $25,$FF,$00,$3D,$E0,$75,$55,$58
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$0C,$28,$41,$4E,$54,$48,$52,$4F
+  $50,$49,$43,$29,$2C,$04,$28,$52,$55,$4E,$05,$31,$39,$39,$31,$2E,$05,$32,$30,$32,$36,$2E,$09,$42
+  $49,$45,$4E,$56,$45,$4E,$55,$2C,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49
+  $53,$49,$4F,$4E,$03,$46,$4F,$52,$04,$46,$52,$4F,$4D,$04,$47,$41,$4D,$45,$07,$48,$41,$52,$54,$45
+  $52,$2C,$02,$49,$4E,$03,$4A,$41,$4E
+end data
+data TxD_1 bytes
+  $09,$4D,$41,$47,$41,$5A,$49,$4E,$45,$29,$06,$4D,$55,$53,$49,$43,$3A,$04,$50,$4F,$52,$54,$05,$50
+  $4F,$52,$54,$2E,$05,$52,$45,$52,$55,$4E,$05,$53,$54,$45,$56,$45,$04,$54,$48,$49,$53,$05,$54,$55
+  $4E,$45,$53,$07,$57,$52,$49,$54,$54,$45,$4E
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $02,$0C,$01,$FE,$15,$0D,$0B,$14,$FE,$04,$10,$0F,$05,$FE,$09,$12,$0E,$00,$FE,$01,$08,$03,$FE,$00
+  $01,$00,$07,$06,$FE,$11,$02,$17,$FE,$18,$0A,$16,$13,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScReady:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$0A,$50
+ScCrash:
+    db $00,$00,$04,$03,$00,$00,$25,$06,$00,$00,$36,$0A,$00,$00,$56,$0A,$10
+ScWarp:
+    db $40,$47,$20,$02,$40,$5F,$20,$02,$40,$7F,$30,$02,$40,$AA,$30,$02,$50
+ScRound:
+    db $40,$8F,$20,$06,$40,$71,$20,$06,$40,$55,$20,$0C,$50
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScGameMel,$7053
+    dw ScGameHarm,$705D
+    dw ScGameBassVol,$7067
+    dw ScGameBassPitch,$7071
+    dw ScClick,$7071
+    dw ScReady,$7071
+    dw ScCrash,$7067
+    dw ScWarp,$7071
+    dw ScRound,$7071
+    dw ScOver,$7071
+; Writhen title (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1C,$01,$1F,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$23,$01,$26,$01,$24,$01,$23,$01,$21,$01,$23,$01
+    db $1F,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $24,$01,$01,$01,$23,$01,$21,$01,$1E,$01,$1B,$01,$1C,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$10,$01,$01,$01,$17,$01,$01,$01,$18,$01,$01,$01
+    db $17,$01,$01,$01,$13,$01,$01,$01,$12,$01,$01,$01,$10,$01,$01,$01
+    db $17,$01,$01,$01,$13,$01,$01,$01,$17,$01,$01,$01,$15,$01,$01,$01
+    db $10,$01,$01,$01,$12,$01,$01,$01,$17,$01,$01,$01,$17,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$25,$C0,$5A,$F0,$1F,$C0,$AB,$F0,$21,$C0,$5A,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F
+    db $C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$72,$F0,$1F,$C0,$66,$F0,$21,$C0,$AB,$F0,$1F
+    db $C0,$5A,$F0,$40,$C0,$88,$F0,$1A,$FF,$E3
+    db $D0
+; Writhen game loop (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScGameMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$80,$18,$32,$23,$01,$01,$01,$21,$01,$1F,$01,$1E,$01,$01,$01
+    db $1C,$01,$01,$01,$1F,$01,$21,$01,$23,$01,$26,$01,$23,$01,$01,$01
+    db $21,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$1C,$01,$1A,$01,$01,$01
+    db $1C,$01,$01,$01,$1E,$01,$1F,$01,$21,$01,$1E,$01,$23,$01,$01,$01
+    db $01,$01,$01,$01,$28,$01,$01,$01,$26,$01,$23,$01,$24,$01,$01,$01
+    db $23,$01,$01,$01,$21,$01,$1F,$01,$1E,$01,$1F,$01,$1C,$01,$01,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$01,$1E,$01,$1A,$01,$1C,$01,$01,$01
+    db $17,$01,$01,$01,$18,$01,$1C,$01,$1B,$01,$1E,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScGameHarm:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$80,$18,$32,$10,$01,$01,$01,$01,$01,$01,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01,$10,$01,$01,$01,$01,$01,$01,$01,$0E,$01,$01,$01
+    db $01,$01,$01,$01,$0C,$01,$01,$01,$01,$01,$01,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01,$0E,$01,$01,$01,$01,$01,$01,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01,$0C,$01,$01,$01,$01,$01,$01,$01,$13,$01,$01,$01
+    db $01,$01,$01,$01,$0E,$01,$01,$01,$01,$01,$01,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01,$0C,$01,$01,$01,$01,$01,$01,$01,$07,$01,$01,$01
+    db $01,$01,$01,$01,$09,$01,$01,$01,$0B,$01,$01,$01,$10,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScGameBassVol:
+    db $02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11
+    db $02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66
+    db $22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22
+    db $02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66
+    db $22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22
+    db $02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11
+    db $02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66
+    db $22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22
+    db $02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66
+    db $22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22
+    db $02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11
+    db $02,$63,$1E,$14,$66,$22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66
+    db $22,$02,$63,$22,$14,$66,$22,$02,$76,$04,$13,$11,$02,$63,$1E,$14,$66,$22
+    db $02,$63,$22,$14,$66,$22
+    db $10
+ScGameBassPitch:
+    db $C0,$88,$F0,$4C,$C0,$5A,$F0,$48,$C0,$88,$F0,$48,$C0,$98,$F0,$48,$C0,$AB,$F0,$48,$C0,$5A,$F0,$48
+    db $C0,$98,$F0,$48,$C0,$5A,$F0,$48,$C0,$AB,$F0,$48,$C0,$72,$F0,$48,$C0,$98,$F0,$48,$C0,$5A,$F0,$48
+    db $C0,$AB,$F0,$48,$C0,$72,$F0,$48,$C0,$66,$F0,$20,$C0,$5A,$F0,$28,$C0,$88,$F0,$42,$E2
+    db $D0
+}

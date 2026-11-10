@@ -12,7 +12,11 @@ const compiler = process.env.AMY_VSCODE_COMPILER
 
 assert.ok(existsSync(compiler), `Missing staged compiler: ${compiler}`);
 const zx0Module = resolve(root, "toolchain", "studio", "vendor", "retrocompress-lite", "js", "codecs", "zx0.js");
+const compressionModule = resolve(root, "toolchain", "studio", "core", "compression.js");
+const soundNotesModule = resolve(root, "toolchain", "studio", "core", "colecoSoundNotes.js");
 assert.ok(existsSync(zx0Module), `Missing staged host-side ZX0 compressor: ${zx0Module}`);
+assert.ok(existsSync(compressionModule), `Missing staged build-side compression module: ${compressionModule}`);
+assert.ok(existsSync(soundNotesModule), `Missing staged build-side sound module: ${soundNotesModule}`);
 const { ZX0Codec } = await import(pathToFileURL(zx0Module).href);
 const zx0 = new ZX0Codec();
 const zx0Input = Uint8Array.from({ length: 320 }, (_, index) => (index >> 3) & 0x0F);

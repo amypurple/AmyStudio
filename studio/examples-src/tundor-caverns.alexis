@@ -1,0 +1,1025 @@
+cartridge "TUNDOR CAVERNS/TONY BRANTNER/1992"
+' TUNDOR CAVERNS - by Tony Brantner (ReRUN, Nov/Dec 1992, C-64).
+' ColecoVision port in Amy. Fly through the caverns of Tundor, shoot the
+' roving air mines (10 points x level). Walls or a mine cost a ship; an
+' extra ship every 2,000 points. Caverns narrow and speed up each level.
+' Stick moves the ship in four directions, button fires.
+' From the original (TUNDOR.ML disassembly): 3 ships, level 1..9,
+' cavern gap = 13 - level/2 rows, a mine timer counting to 75 that restarts
+' at level*4, scroll speed (level*32 + 256)/256 units.
+
+const TWall = 128
+const TWtop = 129
+const TWbot = 130
+const TLife = 131
+const SShip = 0
+const SMine = 4
+const SShot = 8
+const SBoom = 12
+const NTiles8 = 32
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndCatch = 6
+const SndMiss = 7
+const SndThud = 8
+const SndLevel = 9
+const SndOver = 10
+const TuneFrames = 512
+const TxtCredits = 0
+const NSpr = 5
+const HideY = 192
+const NCol = 28
+const NRow = 19
+const PlayTop = 3
+const Ring = $0400
+const ShXMin = 16
+const ShXMax = 136
+const ShYMin = 23
+const ShYMax = 166
+const MineT = 75
+const LevLen = 240
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+
+u8 Top[28]
+u8 Bot[28]
+u8 Ln[28]
+u8 Mx[3]
+u8 My[3]
+u8 Mon[3]
+u8 Mdy[3]
+u16 Score = 0
+u16 Bonus = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 VA = 0
+u16 VB = 0
+u16 Dist = 0
+u16 SpdAcc = 0
+u16 SpdAdd = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Ships = 0
+u8 Level = 0
+u8 Hd = 0
+u8 Cen = 0
+u8 GapR = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Fx = 0
+u8 Fy = 0
+u8 FOn = 0
+u8 MTim = 0
+u8 Dead = 0
+u8 Crash = 0
+u8 Scrolled = 0
+u8 Half = 0
+u8 RunLen = 0
+u8 Dir = 1
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Oi = 0
+u8 Li = 0
+u8 Pi = 0
+u8 Px = 0
+u8 Py = 0
+u8 Hit = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Ships > 0 then goto play_loop
+  if Dead > 1 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs % M
+  Rv = W16
+  return Rv
+
+sub NewGame:
+  Score = 0
+  Bonus = 2000
+  Ships = 3
+  Level = 1
+  StartLevel
+  State = StPlay
+  return
+end sub
+
+' a level (or a new ship): straight cavern, ship on the left, no mines
+sub StartLevel:
+  T = Level >> 1
+  GapR = 12 - T
+  SpdAdd = Level << 6
+  SpdAdd += 512
+  SpdAcc = 0
+  Dist = 0
+  MTim = 0
+  Dead = 0
+  Half = 0
+  FOn = 0
+  fill array Mon with 0
+  Cen = 9
+  RunLen = 0
+  Hd = 0
+  NewScreen
+  ShowHud
+  for Li = 0 to 27
+    MakeCol
+    DrawCol
+    inc Hd
+  next
+  Hd = 0
+  ShowCave
+  ShowScreen
+  Sx = 40
+  Sy = Cen << 3
+  Sy += 20
+  DrawSprites
+  return
+end sub
+
+' the next column of the cavern at ring slot Hd: the centre wanders by
+' at most one row, the gap is GapR rows
+sub MakeCol:
+  ' a slope runs 3..6 columns (original: random & 3 + 3 at $10FD)
+  Rand
+  if RunLen = 0 then
+    T = Rs & 3
+    RunLen = T + 3
+    W16 = Rs >> 8
+    T = W16 & 3
+    if T = 3 then T = 1
+    Dir = T
+  end if
+  dec RunLen
+  T = Dir
+  if T = 0 then
+    if Cen > 1 then dec Cen
+  end if
+  if T = 2 then inc Cen
+  K = GapR >> 1
+  if Cen < K + 1 then Cen = K + 1
+  V = NRow - 2
+  V -= GapR
+  V += K
+  if Cen > V then Cen = V
+  T = Cen - K
+  Top[Hd] = T
+  T += GapR
+  T -= 1
+  Bot[Hd] = T
+  return
+end sub
+
+' writes ring column Hd into VRAM (19 cells)
+sub DrawCol:
+  K = Top[Hd]
+  V = Bot[Hd]
+  VA = Ring + Hd
+  for J = 0 to 18
+    T = 32
+    if J < K then T = TWall
+    if J = K - 1 then T = TWtop
+    if J > V then T = TWall
+    if J = V + 1 then T = TWbot
+    vpoke vram.name + VA, T
+    VA += 32
+  next
+  return
+end sub
+
+' the ring shown in columns 2..29, rows 3..21, oldest column (Hd) left
+sub ShowCave:
+  ShowRows0
+  ShowRows1
+  ShowRows2
+  return
+end sub
+
+' the cavern drawn in two halves, on two frames (a whole redraw overran)
+sub ShowRows0:
+  VA = Ring
+  VB = 98
+  K = NCol - Hd
+  for J = 0 to 5
+    ShowRow
+  next
+  return
+end sub
+
+sub ShowRows1:
+  VA = Ring + 192
+  VB = 290
+  K = NCol - Hd
+  for J = 6 to 12
+    ShowRow
+  next
+  return
+end sub
+
+sub ShowRows2:
+  VA = Ring + 416
+  VB = 514
+  K = NCol - Hd
+  for J = 13 to 18
+    ShowRow
+  next
+  return
+end sub
+
+sub ShowRow:
+    copy vram.name + VA count 28 to Ln
+    copy Ln + Hd count K to vram.name + VB
+    if Hd > 0 then
+      VB += K
+      copy Ln count Hd to vram.name + VB
+      VB -= K
+    end if
+    VA += 32
+    VB += 32
+  return
+end sub
+
+sub PlayStep:
+  if Dead > 0 then
+    dec Dead
+    if Dead = 0 then
+      if Ships > 0 then StartLevel
+    end if
+    DrawSprites
+    return
+  end if
+  ' the ship, 2 pixels a frame
+  V = Jk & 1
+  if V > 0 then
+    if Sy > ShYMin + 1 then Sy -= 2
+  end if
+  V = Jk & 2
+  if V > 0 then
+    if Sy < ShYMax - 1 then Sy += 2
+  end if
+  V = Jk & 4
+  if V > 0 then
+    if Sx > ShXMin + 1 then Sx -= 2
+  end if
+  V = Jk & 8
+  if V > 0 then
+    if Sx < ShXMax - 1 then Sx += 2
+  end if
+  ' fire: one shot at a time
+  if FOn = 0 then
+    V = Btn
+    if V > 0 then
+      FOn = 1
+      Fx = Sx + 10
+      Fy = Sy
+      play sound SndMiss
+    end if
+  end if
+  ' the cavern scrolls one column each time the speed sum passes 2048
+  Scrolled = 0
+  if Half > 0 then
+    if Half = 1 then
+      ShowRows1
+      Half = 2
+    else
+      ShowRows2
+      Half = 0
+    end if
+  else
+    SpdAcc += SpdAdd
+  end if
+  if SpdAcc >= 2048 then
+    if Half > 0 then goto no_scroll
+    SpdAcc -= 2048
+    MakeCol
+    DrawCol
+    inc Hd
+    if Hd >= NCol then Hd = 0
+    ShowRows0
+    Half = 1
+    Scrolled = 1
+    inc Dist
+  end if
+no_scroll:
+  MoveShot
+  MoveMines
+  ' mine timer (original: counts to 75, restarts at level*4)
+  inc MTim
+  if MTim >= MineT then
+    MTim = Level << 2
+    SpawnMine
+  end if
+  ' the walls
+  Px = Sx + 13
+  Py = Sy + 4
+  WallAt
+  C = Hit
+  Px = Sx + 2
+  Py = Sy + 1
+  WallAt
+  C = C | Hit
+  Py = Sy + 6
+  WallAt
+  C = C | Hit
+  if C > 0 then LoseShip
+  if Dead = 0 then
+    if Dist >= LevLen then
+      if Level < 9 then inc Level
+      play sound SndLevel
+      ShowHud
+      wait 60 frames
+      StartLevel
+    end if
+  end if
+  DrawSprites
+  return
+end sub
+
+' Hit = 1 when screen pixel (Px, Py+1) is inside a wall
+sub WallAt:
+  Hit = 0
+  T = Px >> 3
+  if T < 2 then return
+  T -= 2
+  if T > 27 then return
+  T += Hd
+  if T >= NCol then T -= NCol
+  V = Py + 1
+  V = V >> 3
+  if V < PlayTop then
+    Hit = 1
+    return
+  end if
+  V -= PlayTop
+  if V < Top[T] then Hit = 1
+  if V > Bot[T] then Hit = 1
+  return
+end sub
+
+sub MoveShot:
+  if FOn = 0 then return
+  Fx += 6
+  if Fx > 218 then
+    FOn = 0
+    return
+  end if
+  Px = Fx + 5
+  Py = Fy + 7
+  WallAt
+  if Hit > 0 then
+    FOn = 0
+    return
+  end if
+  for Pi = 0 to 2
+    if Mon[Pi] > 0 then
+      T = Mx[Pi]
+      V = My[Pi]
+      K = Fx + 6
+      if K >= T then
+        K = T + 12
+        if Fx <= K then
+          K = V + 10
+          if Fy <= K then
+            K = Fy + 10
+            if K >= V then
+              Mon[Pi] = 0
+              FOn = 0
+              NumU = Level * 10
+              Score += NumU
+              play sound SndCatch
+              if Score >= Bonus then
+                Bonus += 2000
+                inc Ships
+              end if
+              ShowHud
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' mines drift left with the cavern and rove up and down inside the gap
+sub MoveMines:
+  for Oi = 0 to 2
+    if Mon[Oi] > 0 then
+      T = Mx[Oi]
+      if T < 18 then
+        Mon[Oi] = 0
+      else
+        T -= 1
+        if Scrolled > 0 then
+          if T > 8 then T -= 8
+        end if
+        Mx[Oi] = T
+        V = My[Oi]
+        if Mdy[Oi] = 0 then
+          V -= 1
+        else
+          V += 1
+        end if
+        My[Oi] = V
+        if T < 18 then Mon[Oi] = 0
+        Px = T + 6
+        Py = V + 2
+        WallAt
+        if Hit > 0 then Mdy[Oi] = 1
+        Py = V + 9
+        WallAt
+        if Hit > 0 then Mdy[Oi] = 0
+        V = My[Oi]
+        T = Mx[Oi]
+        if V < 25 then Mdy[Oi] = 1
+        if V > 158 then Mdy[Oi] = 0
+        ' the ship
+        K = Sx + 13
+        if K >= T then
+          K = T + 10
+          if Sx <= K then
+            K = V + 8
+            if Sy <= K then
+              K = Sy + 8
+              if K >= V then
+                Mon[Oi] = 0
+                LoseShip
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub SpawnMine:
+  K = 255
+  for J = 0 to 2
+    if Mon[J] = 0 then K = J
+  next
+  if K = 255 then return
+  T = Hd + 27
+  if T >= NCol then T -= NCol
+  V = Top[T] + PlayTop
+  V = V << 3
+  C = Bot[T] - Top[T]
+  C -= 1
+  C = C << 3
+  C = RandBelow(C)
+  V += C
+  My[K] = V
+  Mx[K] = 224
+  T = RandBelow(2)
+  Mdy[K] = T
+  Mon[K] = 1
+  return
+end sub
+
+sub LoseShip:
+  if Dead > 0 then return
+  play sound SndThud
+  dec Ships
+  Dead = 90
+  FOn = 0
+  ShowHud
+  return
+end sub
+
+sub DrawSprites:
+  if Dead > 0 then
+    T = Dead & 32
+    V = 9
+    if T > 0 then V = 11
+    set sprite 0 to Sy,Sx,SBoom,V
+  else
+    set sprite 0 to Sy,Sx,SShip,7
+  end if
+  if FOn > 0 then
+    set sprite 1 to Fy,Fx,SShot,11
+  else
+    set sprite 1 to HideY,0,SShot,0
+  end if
+  for Li = 0 to 2
+    C = Li + 2
+    if Mon[Li] > 0 then
+      T = My[Li]
+      V = Mx[Li]
+      set sprite C to T,V,SMine,13
+    else
+      set sprite C to HideY,0,SMine,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 15,1, "SHIPS"
+  NumU = Ships
+  print at 21,1, digits$(NumU, 1)
+  print at 23,1, "LEVEL"
+  NumU = Level
+  print at 29,1, digits$(NumU, 1)
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  for J = 9 to 15
+    fill 32 count 16 at 8,J
+  next
+  print at 11,10, "GAME OVER"
+  print at 9,12, "SCORE"
+  NumU = Score
+  print at 15,12, digits$(NumU, 5)
+  print at 9,14, "PRESS BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: banner, name, menu (cursor back on START), the tune once
+sub TitlePage:
+  State = StTitle
+  NewScreen
+  fill TWall count 28 at 2,2
+  fill TWtop count 28 at 2,3
+  print at 9,5, "TUNDOR CAVERNS"
+  print at 8,7, "BY TONY BRANTNER"
+  fill TWbot count 28 at 2,9
+  fill TWall count 28 at 2,10
+  print at 11,12, "START"
+  print at 11,14, "HOW TO PLAY"
+  print at 11,16, "CREDITS"
+  fill TWtop count 28 at 2,19
+  print at 9,21, "RERUN 1992"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,12
+  put char 32 at 9,14
+  put char 32 at 9,16
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 9,2, "TUNDOR CAVERNS"
+  ' packed text (text.mjs -> kit/textpack.mjs), airy: lines 2 rows apart,
+  ' inside the text area [2,4,29,20] of areas.json
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: two pages, each with a picture made of the game's own
+' sprites and tiles
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/2"
+  print at 2,3, "FLY THROUGH THE CAVERNS"
+  print at 2,5, "OF TUNDOR AND DESTROY THE"
+  print at 2,7, "ROVING AIR MINES."
+  fill TWall count 16 at 8,9
+  fill TWtop count 16 at 8,10
+  fill TWbot count 16 at 8,13
+  set sprite 0 to 87,72,SShip,7
+  set sprite 1 to 87,96,SShot,11
+  set sprite 2 to 84,152,SMine,13
+  update sprites
+  print at 2,16, "STICK MOVES THE SHIP."
+  print at 2,18, "BUTTON FIRES. A MINE IS"
+  print at 2,20, "WORTH 10 POINTS X LEVEL."
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/2"
+    print at 2,3, "YOU HAVE THREE SHIPS."
+    for Li = 0 to 2
+      C = Li << 1
+      C += 12
+      put char TLife at C,5
+    next
+    print at 2,7, "A WALL OR A MINE COSTS"
+    print at 2,9, "ONE SHIP. EXTRA SHIP"
+    print at 2,11, "EVERY 2000 POINTS."
+    print at 2,13, "EACH LEVEL THE CAVERNS"
+    print at 2,15, "NARROW AND SPEED UP."
+    print at 2,17, "NO SHIPS LEFT: GAME OVER."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $03,$20,$02,$40,$08,$00,$80,$04,$20,$E0,$F0,$3E,$91,$89,$22,$00,$00,$44,$91,$26,$E0,$4F,$00,$60
+  $83,$01,$83,$60,$E3,$55,$55,$80
+end data
+data TileColZ bytes
+  $98,$86,$92,$06,$86,$0A,$96,$19,$91,$01,$7E,$91,$19,$69,$E0,$4F,$01,$51,$15,$F5,$15,$51,$E3,$55
+  $55,$80
+end data
+data SpritePatZ bytes
+  $98,$00,$08,$60,$78,$7F,$FF,$7F,$78,$60,$00,$49,$F3,$C0,$FE,$C0,$EC,$81,$C3,$96,$04,$03,$17,$0F
+  $3F,$0F,$17,$03,$04,$AA,$80,$A0,$AE,$F0,$A0,$F0,$E4,$FE,$89,$FC,$00,$02,$1E,$20,$09,$45,$13,$87
+  $81,$08,$4B,$12,$22,$02,$60,$A1,$84,$10,$40,$94,$87,$E4,$A0,$80,$90,$24,$55,$55,$80
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$0A,$28,$4F,$52
+  $49,$47,$49,$4E,$41,$4C,$29,$07,$28,$52,$45,$52,$55,$4E,$2C,$05,$31,$39,$39,$32,$2C,$05,$32,$30
+  $32,$36,$2E,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$08,$42,$52,$41,$4E,$54,$4E,$45,$52,$06,$43
+  $2D,$36,$34,$29,$2E,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F
+  $4E,$04,$47,$41,$4D,$45,$02,$49,$4E,$06,$4D,$55,$53,$49,$43,$3A,$07,$4E,$4F,$56,$2F,$44,$45,$43
+end data
+data TxD_1 bytes
+  $08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$50,$4F,$52,$54,$05,$54,$49,$54,$4C,$45,$04,$54,$4F,$4E
+  $59,$04,$54,$55,$4E,$45
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $10,$0C,$01,$FE,$13,$08,$04,$FE,$0F,$05,$09,$FE,$0B,$11,$0D,$00,$FE,$01,$0A,$02,$FE,$00,$01,$00
+  $07,$06,$FE,$0E,$12,$14,$FE,$03,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScCatch:
+    db $00,$00,$15,$03,$00,$00,$36,$05,$00,$00,$56,$06,$10
+ScMiss:
+    db $40,$2A,$20,$01,$40,$39,$30,$01,$40,$4C,$30,$01,$40,$71,$40,$02,$50
+ScThud:
+    db $00,$00,$16,$04,$00,$00,$26,$08,$00,$00,$47,$0C,$00,$00,$67,$10,$10
+ScLevel:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$08,$50
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScCatch,$7053
+    dw ScMiss,$705D
+    dw ScThud,$7053
+    dw ScLevel,$705D
+    dw ScOver,$705D
+; Caverns of Tundor (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1C,$01,$1F,$01,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$1A,$01,$1C,$01,$1F,$01,$1E,$01,$1A,$01,$17,$01
+    db $1A,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $24,$01,$01,$01,$23,$01,$21,$01,$1E,$01,$1B,$01,$1C,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1C,$01,$01,$01,$17,$01,$01,$01
+    db $15,$01,$01,$01,$15,$01,$01,$01,$17,$01,$01,$01,$12,$01,$01,$01
+    db $12,$01,$01,$01,$13,$01,$01,$01,$17,$01,$01,$01,$1F,$01,$01,$01
+    db $1C,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01,$13,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$25,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$98,$F0,$21,$C0,$66,$F0,$1F
+    db $C0,$B5,$F0,$21,$C0,$79,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$AB,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$B5,$F0,$21,$C0,$79,$F0,$1F,$C0,$88,$F0,$1A,$FF,$E3
+    db $D0
+}

@@ -268,7 +268,7 @@ export function createAddressHelpers(ctx) {
       if (!loadOffset) return null;
       return [...loadOffset, `    ld de,${symbolOrValue(rawAddress[1])}`, "    add hl,de"];
     }
-    return null;
+    return emitLoadInt16IntoHL(rawTarget, "u16");
   }
 
   return {

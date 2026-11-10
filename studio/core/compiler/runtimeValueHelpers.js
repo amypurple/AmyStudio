@@ -842,6 +842,13 @@ export function createRuntimeValueHelpers({
       const storeTarget = emitStoreInt16FromHL(name);
       if (loadExpr && storeTarget) return [...loadExpr, ...storeTarget];
     }
+    if (targetType === "int16" && !sourceType) {
+      const loadByte = emitLoadInt8Into("a", value);
+      const storeTarget = emitStoreInt16FromHL(name);
+      if (loadByte && storeTarget) {
+        return [...loadByte, "    ld l,a", "    ld h,0", ...storeTarget];
+      }
+    }
     if (sourceType) {
       if (
         targetType === "int16"
@@ -928,6 +935,7 @@ export function createRuntimeValueHelpers({
       const fixedLiteral = parseFixedPointLiteral(value);
       if (fixedLiteral !== null) return [`    ld hl,${formatFixedPointLiteral16(fixedLiteral)}`, ...storeTarget];
     }
+    if (!/^(?:-?\$[0-9A-Fa-f]+|-?[0-9]+|[A-Za-z_][A-Za-z0-9_]*)$/.test(String(value).trim())) return null;
     return [`    ld hl,${symbolOrValue(value)}`, ...storeTarget];
   }
 

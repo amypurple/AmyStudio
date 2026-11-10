@@ -618,6 +618,12 @@ export function createControlFlowHelpers(ctx) {
     const rightComputedDeclared = rightComputed?.declaredType || inferLiteralDeclaredType(rightToken) || rightDeclared;
     const computedHasExpression = (ast) => ast && (ast.kind === "binary" || ast.kind === "unary" || ast.kind === "call");
     const computedWidth = Math.max(declaredTypeBitWidth(leftComputedDeclared), declaredTypeBitWidth(rightComputedDeclared));
+    const hasByteArithmetic = (ast) => ast?.kind === "binary"
+      && ["+", "-", "*"].includes(ast.op);
+    const byteArithmeticNeedsWideCompare = computedWidth <= 8
+      && (hasByteArithmetic(leftAst) || hasByteArithmetic(rightAst));
+    const byteArithmeticNeedsSignedCompare = byteArithmeticNeedsWideCompare
+      && (leftAst?.op === "-" || rightAst?.op === "-");
     const computedMixedSignedness = effectiveOperator !== "=="
       && effectiveOperator !== "!="
       && isSignedDeclaredType(leftComputedDeclared) !== isSignedDeclaredType(rightComputedDeclared);
@@ -628,6 +634,7 @@ export function createControlFlowHelpers(ctx) {
     const preserveSignedMixedCompare = computedMixedSignedness
       && (compareMode === "unsigned" || compareMode === "auto");
     const computedSigned = compareMode === "signed"
+      || byteArithmeticNeedsSignedCompare
       || preserveSignedMixedCompare
       || (compareMode === "auto" && (isSignedDeclaredType(leftComputedDeclared) || isSignedDeclaredType(rightComputedDeclared)));
     const signedOperandWidth = Math.max(
@@ -642,7 +649,7 @@ export function createControlFlowHelpers(ctx) {
       ? (signedOperandWidth > unsignedOperandWidth
           ? computedWidth
           : Math.min(32, Math.max(16, computedWidth * 2)))
-      : Math.max(computedWidth, 8);
+      : Math.max(computedWidth, byteArithmeticNeedsWideCompare ? 16 : 8);
     const promotedCompareDeclared = preserveSignedMixedCompare
       ? null
       : declaredTypeForWidth(promotedCompareWidth, computedSigned);
@@ -731,7 +738,7 @@ export function createControlFlowHelpers(ctx) {
       && leftComputed.runtimeType !== "i32"
       && rightComputed.runtimeType !== "u32"
       && rightComputed.runtimeType !== "i32"
-      && !(computedWidth <= 8 && !computedSigned)
+      && !(computedWidth <= 8 && !computedSigned && !byteArithmeticNeedsWideCompare)
       && (computedHasExpression(leftAst)
         || computedHasExpression(rightAst)
         || compareMode === "signed"

@@ -1,0 +1,3220 @@
+cartridge "GO CARTS/CHARLES ORCUTT/1989"
+' GO CARTS - ColecoVision port of the C-64 game by Charles Orcutt
+' (program) and Dan Diamante (graphics), RUN magazine 1989 (ReRUN Summer
+' 1990). Pseudo-3-D kart racing: hold the stick up to speed up, down to
+' slow down, left/right to steer. Pass the other karts: 30 passes or more
+' before the 60-second clock runs out keeps your kart; fewer costs one of
+' your five. Hitting a kart costs one too. Score grows with speed, plus a
+' 5-point passing bonus per pass at time out.
+'
+' Faithful to the original's rules, read from its 6502 code (orig/m.dis):
+' every frame (the original's main loop waits for raster line 253 once a
+' pass) the same counters run with the same periods: speed delay Spd
+' (59 = stopped .. 2 = 58 MPH), score +1 every Spd+1 frames, karts move
+' one depth unit every 30-|29-Spd| frames, curve steps every Spd+1 frames,
+' the road's colour bands step every (Spd+1)/3 frames, centrifugal drift.
+' The 15 road pictures are the original's TABLE file, converted to VDP
+' tiles (gen/gen.py) and ZX0-packed; one is unpacked in 6 parts while the
+' previous is shown (two pattern banks, two name stores in VRAM).
+
+const TBall = 128
+const TRball = 129
+const TGrass = 130
+const TRoad = 131
+const TBordl = 132
+const TBordr = 133
+const TCentre = 134
+const TSky = 135
+const NTiles8 = 64
+const SprBytes = 0
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndRaceA = 5
+const SndRaceB = 6
+const SndClick = 7
+const SndPass = 8
+const SndBonus = 9
+const SndCrash = 10
+const SndSkid = 11
+const SndOver = 12
+const SndEng0 = 13
+const SndEng1 = 14
+const SndEng2 = 15
+const SndEng3 = 16
+const SndEng4 = 17
+const SndEng5 = 18
+const SndEng6 = 19
+const SndEng7 = 20
+const TuneFrames = 384
+const RaceFrames = 1024
+const TxtCredits = 0
+const MtnTiles = 109
+const LaneE1 = 35
+const LaneE2 = 80
+const LaneE3 = 125
+const BankO1 = 70
+const BankO2 = 124
+const MtnT0 = 144
+const NParts = 293
+const NSpr = 4
+const HideY = 192
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StCrash = 5
+const StTimeout = 6
+const StOver = 9
+' VRAM name stores of the two curve banks (phase A rows, then phase B rows)
+const Store0 = $0400
+const Store1 = $0180
+
+u8 Ey[3]
+u8 Ecol[3]
+u8 Eshape[3]
+u16 Ex[3]
+u8 RowPh[13]
+u8 Bl[4]
+u8 CrashBuf[32]
+u16 Score = 0
+u16 ScoreHi = 0
+u16 Hi = 0
+u16 HiHi = 0
+u16 Px = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Vx = 0
+u16 Ad = 0
+u16 StoreB = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' the original's variables (C-64 address in brackets)
+u8 Lives = 0
+u8 Passes = 0
+u8 Time = 0
+u8 TimeSub = 0
+u8 Spd = 0
+u8 Mph = 0
+u8 Running = 0
+u8 Cv = 0
+u8 CScore = 0
+u8 CSteer = 0
+u8 CSpeed = 0
+u8 CCurve = 0
+u8 CurveWait = 0
+u8 RunLen = 0
+u8 RunMax = 0
+u8 DirB = 0
+u8 EnTimer = 0
+u8 EnDir = 0
+u8 Dir7 = 0
+u8 Rate = 0
+u8 CDrift = 0
+u8 CPush = 0
+u8 FrameCnt = 0
+u8 Recol = 0
+u8 BandAcc = 0
+u8 Flip = 0
+u8 MPos = 0
+u8 MShown = 0
+' display state
+u8 DispC = 0
+u8 LoadC = 0
+u16 Zi = 0
+u16 RaceLeft = 0
+u16 ZEnd = 0
+u8 Zk = 0
+u8 LastFr = 0
+u8 Lag = 0
+u8 Decoded = 0
+u8 Busy = 0
+u8 Loading = 0
+u8 RowsDirty = 0
+u8 HudDirty = 0
+u8 Engine = 0
+u8 EngT = 0
+u8 Hit = 0
+u8 Keep = 0
+u8 CrashT = 0
+u8 Pshape = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Oi = 0
+u8 Li = 0
+u8 Ri = 0
+u8 Rn = 0
+u8 RowMax = 0
+' scratch
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 D = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  update sprites
+  ' a frame missed (a road part took longer): one extra pass keeps the
+  ' original's 60 passes a second
+  T = frame
+  V = T - LastFr
+  LastFr = T
+  Lag = V
+  Decoded = 0
+  VramWork
+  ReadPad
+  PlayStep
+  ' a road part (ZX0, ~200 bytes) makes this pass span two frames: one
+  ' more pass keeps the original's one pass per frame
+  if Decoded = 1 then
+    if State = StPlay then PlayStep
+  end if
+  Sounds
+  if State = StCrash then
+    CrashSeq
+    if Lives > 0 then NewRound
+  end if
+  if State = StTimeout then
+    TimeoutSeq
+    if Lives > 0 then NewRound
+  end if
+  if Lives > 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (C-64 routine addresses in brackets)
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  ScoreHi = 0
+  Lives = 5
+  PlayScreen
+  NewRound
+  return
+end sub
+
+' a new 60-second round [$12A0 + the $CF00 defaults]
+sub NewRound:
+  Passes = 0
+  Time = 60
+  TimeSub = 59
+  Mph = 0
+  Spd = 59
+  Running = 0
+  Cv = 7
+  CScore = 0
+  CSteer = 0
+  CSpeed = 0
+  CCurve = 0
+  CurveWait = 40
+  RunLen = 0
+  RunMax = 10
+  DirB = 2
+  EnTimer = 59
+  EnDir = 0
+  CDrift = 0
+  CPush = 0
+  FrameCnt = 0
+  Recol = 8
+  BandAcc = 0
+  Flip = 0
+  BandReset
+  Px = 192
+  Ey[0] = 155
+  Ey[1] = 183
+  Ey[2] = 216
+  Ecol[0] = 13
+  Ecol[1] = 2
+  Ecol[2] = 11
+  Pshape = 9
+  fill array RowPh with 255
+  ' road straight ahead, unpacked whole with the display off
+  if DispC <> 7 then
+    Rearm
+    wait
+    nmi off
+    display off
+    Zi = ZFirst[7]
+    ZEnd = ZFirst[8]
+    while Zi < ZEnd
+      ZStream
+      inc Zi
+    end while
+    DispC = 7
+    StoreB = Store1
+    screen on
+  end if
+  Loading = 0
+  ShowHudAll
+  print at 2,7, "                            "
+  print at 2,6, "                            "
+  for Oi = 0 to 2
+    EnemyPos
+  next
+  State = StPlay
+  return
+end sub
+
+' one road part: tables split at 180 (word tables over 256 entries are refused)
+sub ZStream:
+  if Zi < 180 then
+    Zk = Zi
+    Ad = ZDstA[Zk]
+    decompress zx0 ZTabA[Zk] to vram.pattern + Ad
+  else
+    W16 = Zi - 180
+    Zk = W16
+    Ad = ZDstB[Zk]
+    decompress zx0 ZTabB[Zk] to vram.pattern + Ad
+  end if
+  return
+end sub
+
+' the in-game tune (looped, quiet) and the engine: tone 3 follows the speed
+sub Sounds:
+  if RaceLeft = 0 then
+    play sound SndRaceA
+    play sound SndRaceB
+    RaceLeft = RaceFrames
+  else
+    dec RaceLeft
+  end if
+  if EngT > 0 then
+    dec EngT
+  else
+    EngT = 7
+    if Running = 1 then
+      T = 59 - Spd
+      T = T >> 3
+      if T > 7 then T = 7
+      play sound SndEng0 + T
+    end if
+  end if
+  T = Jk & 12
+  if T > 0 then
+    if Running = 1 then
+      V = FrameCnt & 15
+      if V = 0 then play sound SndSkid
+    end if
+  end if
+  return
+end sub
+
+sub StopRace:
+  stop sound SndRaceA
+  stop sound SndRaceB
+  RaceLeft = 0
+  return
+end sub
+
+sub BandReset:
+  Bl[0] = 151
+  Bl[1] = 161
+  Bl[2] = 181
+  Bl[3] = 211
+  return
+end sub
+
+' one frame of the original's main loop [$1347 .. $15F8]
+sub PlayStep:
+  inc FrameCnt
+  ' the clock [$134A]
+  if Time = 0 then
+    State = StTimeout
+    return
+  end if
+  if TimeSub = 0 then
+    TimeSub = 59
+    dec Time
+    HudDirty = HudDirty | 4
+  else
+    dec TimeSub
+  end if
+  ' score: +1 every Spd+1 frames while moving [$136A]
+  if Running = 1 then
+    if CScore = 0 then
+      CScore = Spd
+      AddScore
+    else
+      dec CScore
+    end if
+  end if
+  ' steering every 2nd frame [$13D1]
+  if Running = 1 then
+    if CSteer = 0 then
+      CSteer = 1
+      V = Jk & 8
+      if V > 0 then MoveRight
+      V = Jk & 4
+      if V > 0 then MoveLeft
+    else
+      dec CSteer
+    end if
+  end if
+  ' centrifugal direction and rate from the curve [$140A]
+  Dir7 = 0
+  Rate = 8
+  if Cv < 7 then
+    Dir7 = 1
+    Rate = Cv + 1
+  end if
+  if Cv > 7 then
+    Dir7 = 2
+    Rate = 15 - Cv
+  end if
+  ' speed every 3rd frame [$1782]
+  if CSpeed = 0 then
+    CSpeed = 2
+    V = Jk & 1
+    if V > 0 then
+      Accel
+    else
+      V = Jk & 2
+      if V > 0 then Slow
+    end if
+  else
+    dec CSpeed
+  end if
+  ' the road curves [$143A]
+  if CCurve = 0 then
+    CCurve = Spd
+    if Running = 1 then CurveStep
+  else
+    dec CCurve
+  end if
+  Collide
+  if State <> StPlay then return
+  ' the other karts [$1588]
+  if EnTimer = 0 then
+    if Spd < 29 then
+      EnDir = 0
+      T = 29 - Spd
+    else
+      EnDir = 1
+      T = Spd - 29
+    end if
+    if T > 0 then
+      ' at a standstill $1D - 30 = $FF: the next DEC is negative too (every frame)
+      EnTimer = 0
+      if T < 29 then EnTimer = 29 - T
+      EnemyStep
+    end if
+  else
+    dec EnTimer
+  end if
+  ' drift and the mountains [$1A32]
+  if Running = 1 then
+    T = Spd >> 3
+    D = 8 - T
+    for Li = 1 to D
+      Drift1
+    next
+  end if
+  ' the road's colour bands: 3 IRQ ticks a frame [$192B]
+  if Running = 1 then
+    BandAcc += 3
+    T = Spd + 1
+    while BandAcc >= T
+      BandAcc -= T
+      BandStep
+    end while
+  end if
+  DrawSprites
+  return
+end sub
+
+sub AddScore:
+  inc Score
+  if Score >= 10000 then
+    Score = 0
+    inc ScoreHi
+  end if
+  if ScoreHi > HiHi then
+    HiHi = ScoreHi
+    Hi = Score
+  else
+    if ScoreHi = HiHi then
+      if Score > Hi then Hi = Score
+    end if
+  end if
+  HudDirty = HudDirty | 1
+  return
+end sub
+
+' [$1B8D]
+sub Accel:
+  inc Mph
+  dec Spd
+  Running = 1
+  if Spd = 1 then
+    Spd = 2
+    Mph = 58
+  end if
+  HudDirty = HudDirty | 4
+  return
+end sub
+
+' [$1B4F]
+sub Slow:
+  if Mph > 0 then dec Mph
+  inc Spd
+  if Spd = 60 then
+    Spd = 59
+    Running = 0
+    Mph = 0
+  end if
+  HudDirty = HudDirty | 4
+  return
+end sub
+
+' [$1A9B] 2 pixels right; the grass slows the kart
+sub MoveRight:
+  Px += 2
+  if Px >= 266 then
+    Slow
+    Px = 266
+  end if
+  return
+end sub
+
+' [$1ACF]
+sub MoveLeft:
+  Px -= 2
+  if Px < 80 then
+    Slow
+    Px = 80
+  end if
+  return
+end sub
+
+' [$1A53] one drift tick: the mountains move one pixel, every 7th tick the
+' kart is pushed 2 pixels out of the bend
+sub Drift1:
+  if Dir7 = 0 then return
+  if CDrift > 0 then
+    dec CDrift
+    return
+  end if
+  CDrift = Rate
+  if CPush = 0 then
+    CPush = 6
+    if Dir7 = 1 then
+      MoveRight
+    else
+      MoveLeft
+    end if
+  else
+    dec CPush
+  end if
+  if Dir7 = 1 then
+    dec MPos
+  else
+    inc MPos
+  end if
+  return
+end sub
+
+' [$1442] the curve generator: the frame counter picks the straight length
+sub CurveStep:
+  if CurveWait > 0 then
+    dec CurveWait
+    return
+  end if
+  CurveWait = FrameCnt & 15
+  if RunLen = 0 then
+    inc RunMax
+    if RunMax = 22 then RunMax = 5
+    RunLen = RunMax
+    DirB = DirB ^ 3
+  else
+    dec RunLen
+  end if
+  T = Cv
+  V = DirB & 2
+  if V > 0 then
+    if Cv > 0 then dec Cv
+  else
+    if Cv < 14 then inc Cv
+  end if
+  if Cv = 7 then CurveWait = 40
+  ' a new road picture also moves the karts one step [$1704]
+  if Cv <> T then EnemyStep
+  return
+end sub
+
+' [$15FB] every kart one depth unit nearer (or farther when slower than 29)
+sub EnemyStep:
+  Oi = 3
+  while Oi > 0
+    dec Oi
+    T = Ey[Oi]
+    if EnDir = 0 then
+      inc T
+      if T = 250 then
+        T = 150
+        if Passes < 99 then inc Passes
+        HudDirty = HudDirty | 2
+        Recolour
+        play sound SndPass
+      end if
+    else
+      dec T
+      if T = 149 then
+        Recolour
+        T = 249
+      end if
+    end if
+    Ey[Oi] = T
+    EnemyPos
+  end while
+  return
+end sub
+
+' [$1658] the next colour of the 8-colour cycle
+sub Recolour:
+  dec Recol
+  if Recol = 0 then Recol = 8
+  Ecol[Oi] = PalTab[Recol]
+  return
+end sub
+
+' [$09F0] kart Oi: lane x from depth and curve, shape from depth
+sub EnemyPos:
+  D = Ey[Oi] - 150
+  ' lane: from the vanishing point (24 + 8 * curve) to the lane's end
+  T = Cv << 3
+  T += 24
+  K = LaneEnd[Oi]
+  if K >= T then
+    W16 = K - T
+    W16 = W16 * Ramp[D]
+    W16 = W16 >> 8
+    Vx = T + W16
+  else
+    W16 = T - K
+    W16 = W16 * Ramp[D]
+    W16 = W16 >> 8
+    Vx = T - W16
+  end if
+  Vx = Vx << 1
+  Vx += 12
+  ' the bend's sine offset [$0CC0]
+  if Cv <> 7 then
+    if Cv < 7 then
+      K = 7 - Cv
+    else
+      K = Cv - 7
+    end if
+    dec K
+    Ad = K * 100
+    Ad += D
+    V = OffTab[Ad]
+    W16 = V << 1
+    if Cv < 7 then
+      Vx += W16
+    else
+      Vx -= W16
+    end if
+  end if
+  Ex[Oi] = Vx
+  ' size [$0A87]
+  T = Ey[Oi] - 100
+  T = T >> 2
+  if T >= 10 then
+    T -= 10
+    T = T >> 1
+  else
+    T = 0
+  end if
+  if T > 9 then T = 9
+  Eshape[Oi] = T
+  return
+end sub
+
+' box overlap with the player's kart (shape 9); the original uses the
+' VIC's sprite-sprite collision
+sub Collide:
+  for Oi = 0 to 2
+    K = Eshape[Oi]
+    Vx = Ey[Oi]
+    T = BoxY1[K]
+    Vx += T
+    if Vx >= 205 then
+      Vx = Ey[Oi]
+      T = BoxY0[K]
+      Vx += T
+      if Vx <= 225 then
+        Vx = Ex[Oi]
+        T = BoxX1[K]
+        Vx += T
+        W16 = Px + 2
+        if Vx >= W16 then
+          Vx = Ex[Oi]
+          T = BoxX0[K]
+          Vx += T
+          W16 = Px + 21
+          if Vx <= W16 then
+            Hit = Oi
+            State = StCrash
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' one step of the colour bands [$1A16]
+sub BandStep:
+  inc Bl[0]
+  Bl[1] += 2
+  Bl[2] += 3
+  Bl[3] += 4
+  if Bl[3] >= 251 then
+    BandReset
+    Flip = Flip ^ 1
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' after the frame wait: sprites, then VRAM work (bands, mountains, road)
+sub DrawSprites:
+  W16 = Px - 56
+  V = W16
+  K = Pshape << 2
+  set sprite 0 to 146,V,K,7
+  for Li = 0 to 2
+    C = Li + 1
+    T = Ey[Li] - 59
+    Vx = Ex[Li]
+    if Vx < 56 then T = HideY
+    if Vx > 300 then T = HideY
+    W16 = Vx - 56
+    V = W16
+    if T > 190 then T = HideY
+    K = Eshape[Li] << 2
+    set sprite C to T,V,K,Ecol[Li]
+  next
+  return
+end sub
+
+sub VramWork:
+  ' road rows whose band phase changed (copy 32 names from the store)
+  Rn = 0
+  RowMax = 4
+  if Loading = 1 then RowMax = 1
+  for Ri = 0 to 12
+    if Rn >= RowMax then goto vw_rows_done
+    ' phase at raster line 150 + 8 * row
+    T = Ri << 3
+    T += 150
+    V = 0
+    if T >= Bl[0] then V = 1
+    if T >= Bl[1] then V = 0
+    if T >= Bl[2] then V = 1
+    if T >= Bl[3] then V = 0
+    V = V ^ Flip
+    if V <> RowPh[Ri] then
+      RowPh[Ri] = V
+      Ad = StoreB
+      if V = 1 then Ad += 416
+      W16 = Ri << 5
+      Ad += W16
+      W16 += 352
+      if StoreB = Store0 then
+        copy vram.name + Ad count 32 to vram.name + W16
+      else
+        copy vram.spr_pat + Ad count 32 to vram.name + W16
+      end if
+      inc Rn
+    end if
+  next
+vw_rows_done:
+  ' the mountains (2 rows, 4-pixel steps)
+  T = MPos & 252
+  if T <> MShown then
+    MShown = T
+    V = MPos >> 3
+    K = MPos & 4
+    Ad = V
+    if K > 0 then Ad += 128
+    copy MtnNames + Ad count 32 to vram.name + 288
+    Ad += 64
+    copy MtnNames + Ad count 32 to vram.name + 320
+  end if
+  ' the road picture: one ZX0 part a frame; the target is the logic curve
+  ' (or its neighbour, so the bank alternates)
+  ' a new load only once every row shows the current bank (the other bank
+  ' is about to be overwritten)
+  if Loading = 0 then
+    if Busy > 0 then
+      dec Busy
+      goto vw_noload
+    end if
+    if DispC <> Cv then
+      LoadC = Cv
+      T = Cv ^ DispC
+      T = T & 1
+      if T = 0 then
+        if Cv > DispC then
+          LoadC = Cv - 1
+        else
+          LoadC = Cv + 1
+        end if
+      end if
+      Zi = ZFirst[LoadC]
+      ZEnd = ZFirst[LoadC + 1]
+      Loading = 1
+    end if
+  end if
+vw_noload:
+  if Loading = 1 then
+    ZStream
+    Decoded = 1
+    inc Zi
+    if Zi = ZEnd then
+      Loading = 0
+      DispC = LoadC
+      V = DispC & 1
+      StoreB = Store0
+      if V = 1 then StoreB = Store1
+      fill array RowPh with 255
+      Busy = 4
+    end if
+  end if
+  if Loading = 0 then
+    if HudDirty > 0 then HudPart
+  end if
+  return
+end sub
+
+' the play screen: Mode 2 with its own tiles in each third
+sub PlayScreen:
+  State = StBoot
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  mode 2 screen
+  sprites 16x16
+  sprites double
+  load default ascii
+  fill $F4 count 2048 to vram.color
+  ' tiles 0 sky, 1 grass, 2 road in thirds 1 and 2
+  fill 0 count 24 to vram.pattern + $0800
+  fill 0 count 24 to vram.pattern + $1000
+  fill $44 count 8 to vram.color + $0800
+  fill $33 count 8 to vram.color + $0808
+  fill $11 count 8 to vram.color + $0810
+  fill $33 count 8 to vram.color + $1008
+  fill $11 count 8 to vram.color + $1010
+  decompress zx0 MtnPat to vram.pattern + $0C80
+  decompress zx0 MtnCol to vram.color + $0C80
+  decompress zx0 KartSpr to vram.spr_pat
+  fill 32 count 256 to vram.name
+  fill 0 count 32 to vram.name + 256
+  backdrop black
+  MShown = 255
+  MPos = 0
+  DispC = 255
+  set sprite count NSpr
+  return
+end sub
+
+sub ShowHudAll:
+  print at 2,1, "SCORE:"
+  print at 16,1, "HISCORE:"
+  print at 2,3, "PASSES:"
+  print at 16,3, "GOCARTS:"
+  print at 2,5, "TIME:"
+  print at 16,5, "MPH:"
+  ShowHud
+  return
+end sub
+
+sub ShowHud:
+  HudDirty = 7
+  HudPart
+  HudPart
+  HudPart
+  return
+end sub
+
+' one group of HUD numbers a frame (bit 1 score, 2 passes/karts, 4 time/MPH)
+sub HudPart:
+  T = HudDirty & 1
+  if T > 0 then
+    HudDirty = HudDirty & 6
+    NumU = ScoreHi
+    print at 8,1, digits$(NumU, 2)
+    NumU = Score
+    print at 10,1, digits$(NumU, 4)
+    NumU = HiHi
+    print at 24,1, digits$(NumU, 2)
+    NumU = Hi
+    print at 26,1, digits$(NumU, 4)
+    return
+  end if
+  T = HudDirty & 2
+  if T > 0 then
+    HudDirty = HudDirty & 5
+    NumU = Passes
+    print at 9,3, digits$(NumU, 2)
+    NumU = Lives
+    print at 24,3, digits$(NumU, 2)
+    return
+  end if
+  T = HudDirty & 4
+  if T > 0 then
+    HudDirty = HudDirty & 3
+    NumU = Time
+    print at 7,5, digits$(NumU, 2)
+    NumU = Mph
+    print at 20,5, digits$(NumU, 2)
+  end if
+  return
+end sub
+
+' a crash [$14F5]: the kart breaks up, one gocart lost, the round restarts
+sub CrashSeq:
+  play sound SndCrash
+  dec Lives
+  Running = 0
+  ShowHud
+  Pshape = 10
+  K = Hit + 1
+  set sprite K pattern to 40
+  copy vram.spr_pat + 320 count 32 to CrashBuf
+  for CrashT = 0 to 140
+    Frame1
+    VramWork
+    set sprite 0 pattern to 44
+    set sprite K pattern to 44
+    update sprites
+    T = CrashT & 7
+    if T = 0 then
+      for Li = 0 to 31
+        Rand
+        V = Rs
+        T = CrashBuf[Li]
+        CrashBuf[Li] = T & V
+      next
+      copy CrashBuf count 32 to vram.spr_pat + 352
+    end if
+  next
+  return
+end sub
+
+' time out [$1C6B]: 5 points per pass; 30 passes or more keep the kart
+sub TimeoutSeq:
+  Running = 0
+  Keep = 0
+  if Passes >= 30 then Keep = 1
+  print at 4,6, "TIMEOUT  PASSING BONUS"
+  if Keep = 1 then print at 2,7, "OVER 29 PASSES KEEP YOUR CAR"
+  for Li = 0 to 30
+    Frame1
+  next
+  while Passes > 0
+    for Li = 0 to 4
+      AddScore
+    next
+    dec Passes
+    ShowHud
+    play sound SndBonus
+    for Li = 0 to 18
+      Frame1
+    next
+  end while
+  if Keep = 0 then
+    dec Lives
+    ShowHud
+    play sound SndOver
+  end if
+  for Li = 0 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub GameOver:
+  StopRace
+  print at 11,7, "GAME OVER"
+  play sound SndOver
+  return
+end sub
+
+data PalTab bytes
+  7,13,2,11,9,10,9,3,5
+end data
+
+data Ramp bytes
+  0,3,5,8,10,13,16,18,21,23,26,28,31,34,36,39,41,44,47,49,52,54,57,59,62,65,67,70,72,75,78,80,83,85,88,91,93,96,98,101,103,106,109,111,114,116,119,122,124,127,129,132,134,137,140,142,145,147,150,153,155,158,160,163,165,168,171,173,176,178,181,184,186,189,191,194,197,199,202,204,207,209,212,215,217,220,222,225,228,230,233,235,238,240,243,246,248,251,253,255
+end data
+
+data LaneEnd bytes
+  LaneE1,LaneE2,LaneE3
+end data
+
+data OffTab bytes
+  0,0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6
+  7,7,7,7,7,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9
+  9,9,9,9,9,9,9,9,9,9,9,9,9,9,8,8,8,8,8,8,7,7,7,7,7
+  6,6,6,6,5,5,5,5,4,4,4,4,3,3,3,2,2,2,1,1,1,0,0,0,0
+  0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,6,7,7,8,8,8,9,9,10,10
+  10,11,11,11,11,12,12,12,12,13,13,13,13,14,14,14,14,14,14,14,14,14,14,14,14
+  14,14,14,14,14,14,14,14,14,14,14,14,13,13,13,13,12,12,12,12,11,11,11,11,10
+  10,10,9,9,8,8,8,7,7,6,6,6,5,5,4,4,3,3,2,2,1,1,0,0,0
+  0,0,1,1,2,3,3,4,5,5,6,6,7,8,8,9,9,10,10,11,11,12,12,13,13
+  14,14,15,15,15,16,16,16,17,17,17,18,18,18,18,19,19,19,19,19,19,19,19,19,19
+  19,19,19,19,19,19,19,19,19,19,18,18,18,18,17,17,17,16,16,16,15,15,15,14,14
+  13,13,12,12,11,11,10,10,9,9,8,8,7,6,6,5,5,4,3,3,2,1,1,0,0
+  0,0,1,2,3,3,4,5,6,7,7,8,9,10,10,11,12,12,13,14,14,15,16,16,17
+  17,18,18,19,19,20,20,21,21,22,22,22,23,23,23,23,24,24,24,24,24,24,24,24,24
+  24,24,24,24,24,24,24,24,24,23,23,23,23,22,22,22,21,21,20,20,19,19,18,18,17
+  17,16,16,15,14,14,13,12,12,11,10,10,9,8,7,7,6,5,4,3,3,2,1,0,0
+  0,0,1,2,3,4,5,6,7,8,9,10,11,12,12,13,14,15,16,17,17,18,19,20,20
+  21,22,22,23,23,24,24,25,25,26,26,27,27,28,28,28,28,29,29,29,29,29,29,29,29
+  29,29,29,29,29,29,29,29,28,28,28,28,27,27,26,26,25,25,24,24,23,23,22,22,21
+  20,20,19,18,17,17,16,15,14,13,12,12,11,10,9,8,7,6,5,4,3,2,1,0,0
+  0,1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,17,18,19,20,21,22,23,24
+  24,25,26,27,27,28,29,29,30,30,31,31,32,32,33,33,33,34,34,34,34,34,34,34,34
+  34,34,34,34,34,34,34,34,33,33,33,32,32,31,31,30,30,29,29,28,27,27,26,25,24
+  24,23,22,21,20,19,18,17,17,16,15,14,13,11,10,9,8,7,6,5,4,3,2,1,0
+  0,1,2,3,5,6,7,8,10,11,12,13,14,16,17,18,19,20,21,22,23,24,25,26,27
+  28,29,30,31,31,32,33,33,34,35,35,36,36,37,37,38,38,38,39,39,39,39,39,39,39
+  39,39,39,39,39,39,39,38,38,38,37,37,36,36,35,35,34,33,33,32,31,31,30,29,28
+  27,26,25,24,23,22,21,20,19,18,17,16,14,13,12,11,10,8,7,6,5,3,2,1,0
+end data
+data MtnNames bytes
+  144,145,146,147,148,149,150,151,152,153,154,155,0,156,157,158,159,0,0,160,161,162,163,164,165,166,167,168,169,170,160,165
+  144,145,146,147,148,149,150,151,152,153,154,155,0,156,157,158,159,0,0,160,161,162,163,164,165,166,167,168,169,170,160,165
+  171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,171,171,191,192,193,194,195,196,197,198,199,171
+  171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,171,171,191,192,193,194,195,196,197,198,199,171
+  153,200,201,202,203,204,205,206,207,208,209,210,0,211,212,213,214,0,0,215,216,217,218,219,220,221,222,223,224,0,225,220
+  153,200,201,202,203,204,205,206,207,208,209,210,0,211,212,213,214,0,0,215,216,217,218,219,220,221,222,223,224,0,225,220
+  226,227,228,229,230,231,232,233,234,235,236,191,237,238,239,240,241,242,243,171,171,171,244,245,246,247,248,249,250,251,252,171
+  226,227,228,229,230,231,232,233,234,235,236,191,237,238,239,240,241,242,243,171,171,171,244,245,246,247,248,249,250,251,252,171
+end data
+data BoxX0 bytes
+  10,10,8,6,6,4,4,2,2,2,0
+end data
+data BoxX1 bytes
+  13,13,15,17,17,19,19,21,21,21,23
+end data
+data BoxY0 bytes
+  0,0,0,0,0,0,0,0,0,0,1
+end data
+data BoxY1 bytes
+  0,2,5,8,11,15,16,16,19,20,20
+end data
+data MtnPat bytes
+  $82,$00,$66,$03,$0F,$00,$24,$3F,$00,$9F,$C0,$F0,$FC,$DD,$E2,$D6,$3F,$C0,$08,$EE,$30,$0C,$FB,$0F
+  $E1,$2A,$C3,$00,$0C,$BE,$C0,$C4,$8F,$33,$E1,$9F,$AE,$F0,$F7,$FE,$FA,$9E,$75,$0C,$38,$72,$7E,$FF
+  $C8,$0E,$C0,$7E,$77,$E5,$AA,$F3,$30,$E3,$30,$6E,$B8,$BE,$8A,$36,$F5,$86,$03,$93,$0F,$E5,$23,$72
+  $FD,$F5,$E6,$F7,$A2,$FE,$A0,$AB,$52,$FF,$98,$F3,$EE,$5F,$64,$AE,$A5,$0C,$3D,$A4,$DB,$90,$FA,$F9
+  $F3,$3D,$03,$78,$F5,$9F,$33,$3C,$BA,$3E,$DA,$FB,$33,$C7,$C5,$C0,$F8,$B4,$FE,$9B,$30,$3C,$0C,$F9
+  $C5,$3B,$E6,$EF,$EB,$33,$E3,$FD,$50,$C3,$87,$24,$A1,$87,$FC,$F2,$9D,$B6,$EF,$B9,$30,$A8,$FE,$70
+  $ED,$79,$C0,$3C,$3C,$A2,$FB,$22,$3C,$99,$0F,$C3,$30,$00,$3E,$EB,$39,$DD,$33,$D2,$F6,$93,$10,$0E
+  $CB,$FB,$C3,$B1,$9D,$C0,$FD,$FB,$87,$FF,$FE,$DE,$E3,$EE,$BD,$3C,$AE,$FF,$93,$51,$59,$EF,$C3,$D2
+  $C6,$DE,$37,$4A,$A2,$3C,$DF,$3F,$07,$60,$72,$36,$1B,$CF,$7D,$34,$CF,$DF,$24,$BF,$B0,$F1,$97,$BF
+  $5F,$3C,$E5,$14,$3D,$DB,$B7,$BE,$80,$75,$97,$D4,$5D,$16,$F7,$FE,$F5,$1B,$E5,$87,$5C,$B2,$F9,$33
+  $FA,$CA,$55,$3C,$13,$DF,$C0,$C2,$DB,$EC,$65,$F6,$B9,$30,$72,$39,$58,$75,$8A,$B2,$3F,$E7,$98,$6B
+  $B2,$FC,$9F,$BC,$AE,$4A,$3C,$5C,$FF,$D0,$B7,$5C,$2D,$0F,$DF,$01,$92,$3E,$D4,$DD,$9A,$30,$0C,$CC
+  $A7,$F7,$BF,$F7,$D1,$F6,$E0,$34,$FF,$9A,$54,$FA,$FF,$92,$24,$0F,$03,$CB,$C4,$CD,$40,$6C,$66,$BA
+  $F9,$F3,$CC,$FF,$C3,$53,$DD,$80,$F5,$3F,$F8,$B6,$C4,$FD,$57,$B5,$6C,$3C,$F3,$C8,$02,$AF,$3F,$91
+  $CD,$1E,$7D,$1C,$33,$24,$BB,$50,$B4,$5F,$F0,$BB,$D6,$1E,$D7,$FF,$A4,$3E,$E3,$70,$FF,$66,$52,$FD
+  $DC,$7F,$01,$F7,$EC,$BC,$03,$29,$E0,$07,$70,$F5,$7D,$55,$58
+end data
+data MtnCol bytes
+  $82,$04,$AE,$E4,$0E,$F4,$FB,$F7,$FE,$8E,$E4,$ED,$F8,$CE,$F2,$3B,$C4,$EC,$0C,$0C,$EA,$BE,$F5,$6C
+  $FF,$C4,$86,$EC,$EC,$6C,$6C,$0C,$6E,$CE,$E0,$3A,$FE,$AA,$C4,$EC,$87,$04,$DF,$90,$F1,$FF,$F8,$FE
+  $8E,$E2,$50,$7E,$FC,$BC,$E4,$5E,$FF,$F3,$5C,$FE,$80,$C2,$25,$C4,$0C,$EF,$C0,$A4,$E1,$80,$F2,$72
+  $87,$0E,$F3,$F3,$70,$9D,$60,$F9,$F8,$A0,$DF,$EB,$C8,$DF,$CC,$F7,$B2,$CA,$F2,$20,$FD,$C4,$D7,$FE
+  $FF,$B7,$21,$11,$BE,$18,$FE,$8E,$0C,$F4,$A7,$C6,$BF,$FC,$FE,$E3,$DA,$C6,$C6,$FE,$CA,$F7,$DC,$7F
+  $E3,$B0,$FF,$98,$FE,$DF,$04,$F9,$E0,$72,$FD,$E1,$58,$E3,$10,$B7,$C6,$58,$FF,$5E,$FF,$CF,$70,$F6
+  $FF,$6E,$5A,$3F,$C2,$FB,$FE,$82,$7F,$FA,$80,$6D,$EC,$DF,$CA,$52,$FD,$C0,$9A,$C2,$6C,$4D,$9D,$BA
+  $DF,$E6,$DB,$73,$BE,$78,$88,$9E,$C4,$64,$E2,$DF,$06,$F5,$60,$87,$90,$3F,$DC,$DB,$2E,$F6,$1C,$FF
+  $B9,$F3,$39,$F2,$AE,$22,$3B,$70,$EF,$C2,$C4,$E0,$E3,$FE,$CC,$D9,$62,$CF,$40,$8F,$80,$F2,$E1,$70
+  $F3,$FF,$30,$2B,$C4,$5C,$1E,$FF,$A6,$95,$F7,$71,$D0,$CE,$F0,$80,$0E,$84,$75,$96,$00,$90,$04,$F3
+  $50,$FD,$7F,$98,$F2,$8C,$80,$7F,$E1,$62,$39,$60,$FC,$38,$E9,$D0,$CE,$32,$FE,$3C,$09,$93,$5E,$F7
+  $F5,$EC,$33,$DE,$F5,$E0,$8A,$90,$EC,$03,$A0,$91,$6C,$C8,$C4,$CD,$20,$D6,$8C,$EC,$08,$FE,$2C,$B1
+  $80,$1E,$88,$D6,$B0,$4F,$32,$2F,$E4,$AB,$8D,$EC,$33,$8E,$FF,$80,$8E,$4F,$E0,$5F,$48,$FF,$BD,$90
+  $FE,$75,$DD,$C0,$93,$BE,$DF,$F6,$21,$FD,$9E,$70,$F5,$E9,$55,$58
+end data
+data KartSpr bytes
+  $25,$06,$00,$4A,$06,$A5,$00,$1A,$0F,$3D,$C0,$58,$94,$1F,$16,$89,$80,$80,$1B,$06,$A4,$BF,$1F,$4E
+  $C6,$EF,$FB,$3F,$FF,$93,$C6,$BF,$FB,$C0,$FF,$C0,$5A,$36,$56,$80,$C0,$F8,$CB,$C1,$20,$7F,$76,$7F
+  $6F,$3E,$CD,$C1,$08,$E0,$E0,$E0,$60,$4A,$3F,$FA,$BE,$7F,$5A,$C0,$29,$80,$FD,$FF,$C0,$69,$60,$5F
+  $E0,$21,$F8,$3F,$FF,$EF,$37,$FF,$FE,$82,$8C,$00,$64,$10,$70,$F0,$BF,$00,$FD,$FE,$D5,$55,$60
+end data
+data Z0 bytes
+  $98,$00,$AF,$C0,$0C,$03,$F5,$9F,$EC,$E0,$5B,$30,$CA,$EA,$3C,$2F,$C0,$E8,$FA,$BA,$0C,$7E,$C6,$FF
+  $03,$DD,$DF,$94,$7D,$A0,$7E,$FB,$A0,$0A,$00,$5F,$CC,$F5,$A0,$F8,$7D,$88,$26,$C0,$3C,$0F,$E7,$B6
+  $BD,$F5,$F0,$B4,$BE,$F0,$F8,$F7,$3C,$70,$FA,$D1,$70,$0F,$03,$E0,$D1,$EC,$D5,$55,$60
+end data
+data Z1 bytes
+  $65,$30,$03,$00,$A9,$C0,$F6,$3C,$0F,$03,$E8,$38,$F0,$F0,$D2,$2E,$0C,$EC,$0A,$0F,$5F,$AF,$F7,$B1
+  $EC,$E4,$99,$96,$E4,$7E,$FD,$ED,$A6,$3F,$C0,$A9,$D6,$03,$7F,$E9,$52,$78,$EC,$6E,$FC,$98,$13,$95
+  $40,$BD,$03,$84,$35,$55,$58
+end data
+data Z2 bytes
+  $A6,$00,$F0,$0F,$00,$58,$F2,$FC,$03,$EC,$20,$C0,$3C,$69,$00,$6A,$F0,$4F,$F0,$3C,$FC,$3F,$0F,$0F
+  $D2,$3F,$D1,$E1,$F3,$E7,$C8,$BE,$EB,$3F,$FF,$88,$4E,$D2,$1F,$D8,$7E,$8D,$70,$57,$D5,$90,$D5,$55
+  $60
+end data
+data Z3 bytes
+  $9A,$03,$83,$68,$03,$7F,$F0,$A7,$FF,$F3,$9F,$E0,$F1,$FE,$CA,$FE,$2A,$83,$B1,$81,$F9,$E8,$2F,$83
+  $81,$01,$B1,$01,$01,$DA,$AF,$81,$FF,$FF,$F3,$EE,$DF,$E7,$F5,$EC,$CF,$8A,$8D,$8F,$DB,$F1,$F1,$E8
+  $82,$F3,$F1,$01,$01,$6F,$03,$EC,$3F,$F3,$EE,$F7,$A0,$F9,$ED,$59,$EC,$FF,$DD,$42,$FF,$E7,$5D,$ED
+  $E8,$F9,$F9,$EC,$89,$83,$01,$EF,$EA,$36,$FF,$EC,$22,$3F,$E1,$EE,$ED,$EC,$DD,$90,$55,$56
+end data
+data Z4 bytes
+  $61,$F1,$F3,$03,$AA,$01,$F1,$A3,$F3,$FF,$F1,$FE,$E8,$E6,$EE,$2A,$01,$03,$F1,$1F,$BD,$9F,$EC,$A8
+  $FF,$B3,$ED,$F5,$9B,$EC,$83,$B8,$FE,$80,$EA,$FF,$81,$8A,$83,$01,$48,$BC,$81,$B1,$EC,$A4,$B1,$3A
+  $EB,$81,$5B,$83,$F3,$EF,$50,$F3,$ED,$40,$F9,$EC,$50,$E8,$5B,$81,$E7,$EC,$F7,$3D,$FF,$BE,$A5,$01
+  $A0,$01,$3C,$EE,$A5,$F3,$D5,$55,$60
+end data
+data Z5 bytes
+  $A6,$03,$F3,$F1,$01,$7E,$F1,$EC,$7F,$F5,$EE,$FE,$ED,$F7,$EC,$62,$03,$83,$4B,$81,$BE,$FF,$83,$FD
+  $FF,$86,$01,$A2,$81,$01,$B1,$0E,$E4,$7F,$EC,$E7,$DD,$E8,$FF,$A1,$B3,$EA,$FF,$9D,$EC,$F0,$E7,$EC
+  $B8,$6C,$FE,$A2,$F1,$FA,$F3,$FD,$FF,$01,$1A,$F1,$7C,$90,$FD,$DB,$EB,$9A,$F0,$F3,$43,$55,$55,$80
+end data
+data Z6 bytes
+  $AA,$0F,$03,$9A,$00,$C0,$AA,$F0,$FC,$7F,$E4,$F8,$FE,$E5,$F3,$3F,$0F,$EA,$E3,$CD,$D3,$0F,$00,$CF
+  $E8,$D9,$CB,$C0,$00,$83,$EC,$F2,$C7,$D6,$60,$C0,$FC,$3F,$7D,$50,$78,$90,$57,$9F,$F2,$89,$FA,$98
+  $B9,$FC,$13,$EF,$A3,$B5,$3F,$55,$DF,$58,$E7,$61,$C4,$A7,$3F,$55,$55,$80
+end data
+data Z7 bytes
+  $98,$00,$64,$C0,$FC,$00,$3F,$00,$88,$C0,$00,$6A,$03,$9E,$FC,$CD,$AA,$FC,$FC,$96,$03,$E8,$F0,$EB
+  $0F,$F5,$A0,$BE,$03,$FE,$8A,$3F,$FC,$0A,$C0,$3B,$94,$B8,$E4,$AC,$EE,$E4,$97,$F2,$0F,$82,$FB,$F0
+  $D3,$EB,$03,$CE,$6E,$E8,$F7,$56,$D7,$80,$D5,$A0,$DC,$C0,$EE,$E0,$C4,$36,$B8,$3F,$95,$F5,$55,$55
+  $80
+end data
+data Z8 bytes
+  $22,$3F,$0F,$89,$3F,$86,$00,$C0,$F0,$6F,$C0,$F0,$00,$E7,$AE,$DF,$0F,$FF,$A2,$C0,$F0,$FC,$A1,$00
+  $BE,$03,$E1,$F9,$BE,$03,$FF,$E0,$FF,$D9,$CF,$F5,$91,$B0,$FF,$B7,$F8,$FE,$5F,$F7,$F8,$61,$FC,$F0
+  $C0,$F7,$FE,$FF,$78,$9B,$95,$FF,$EC,$2A,$FF,$8F,$DC,$9B,$CF,$FE,$CB,$BD,$60,$70,$5F,$A0,$5E,$B2
+  $7D,$FF,$55,$56
+end data
+data Z9 bytes
+  $0A,$0F,$3F,$00,$FC,$49,$F0,$C0,$00,$FC,$F0,$00,$08,$8A,$03,$0F,$3F,$FB,$F1,$C6,$FB,$CD,$FD,$BF
+  $0F,$A7,$FF,$03,$8F,$CA,$D0,$F5,$90,$E0,$C0,$F7,$BC,$FB,$F7,$F9,$C4,$BF,$EC,$B5,$EC,$F9,$F7,$C8
+  $FE,$C6,$FE,$7F,$52,$F3,$FF,$D0,$D5,$90,$FC,$E1,$DE,$E3,$08,$D9,$FF,$C4,$D8,$BE,$E3,$D2,$55,$55
+  $80
+end data
+data Z10 bytes
+  $9A,$00,$03,$6E,$3F,$F0,$8F,$F0,$C0,$F9,$DD,$E0,$55,$56
+end data
+data Z11 bytes
+  $9A,$83,$03,$69,$81,$6A,$B1,$86,$01,$9F,$B1,$EA,$5F,$E8,$BC,$81,$EE,$98,$83,$08,$81,$7F,$8D,$81
+  $FE,$95,$F0,$EC,$7F,$F0,$EE,$EA,$F3,$FE,$A6,$03,$80,$F1,$F2,$90,$65,$F3,$0F,$F1,$FF,$C1,$D7,$F0
+  $E7,$EC,$CE,$90,$98,$F7,$6C,$62,$E1,$08,$08,$53,$FD,$FE,$E8,$FC,$BF,$00,$A4,$83,$D5,$55,$60
+end data
+data Z12 bytes
+  $9A,$03,$83,$99,$08,$81,$03,$22,$83,$03,$1A,$F3,$A6,$F1,$BE,$0F,$F9,$EE,$BF,$01,$FE,$B8,$DA,$EA
+  $E7,$C4,$FF,$CF,$F0,$EA,$BC,$83,$FE,$A5,$81,$A8,$B1,$82,$0B,$B1,$8A,$01,$B1,$0A,$81,$A1,$01,$FF
+  $3B,$C4,$FF,$80,$A9,$E8,$E7,$82,$BC,$EB,$F3,$FE,$A0,$F1,$79,$A0,$F9,$3B,$E8,$FF,$24,$E8,$DD,$D0
+  $F7,$90,$EB,$70,$08,$BC,$6F,$08,$50,$D5,$55,$60
+end data
+data Z13 bytes
+  $92,$B1,$25,$0B,$B1,$8A,$83,$08,$FA,$81,$FD,$FF,$03,$28,$83,$28,$03,$6B,$F3,$EE,$F8,$0F,$FF,$EE
+  $F1,$FA,$FE,$AF,$01,$E7,$FF,$EF,$EA,$C6,$FF,$FE,$B4,$FE,$98,$90,$7E,$77,$F8,$FB,$72,$01,$F8,$F8
+  $FE,$78,$2A,$FF,$FD,$FF,$20,$3F,$DD,$C0,$6F,$08,$A2,$FF,$10,$1E,$39,$50,$FF,$37,$F8,$FF,$1E,$F8
+  $FD,$FE,$F0,$DF,$E8,$F9,$FE,$22,$F5,$FF,$55,$58
+end data
+data Z14 bytes
+  $A2,$83,$08,$81,$6E,$01,$FA,$E5,$FE,$A1,$B1,$A2,$0B,$96,$B1,$92,$81,$2A,$01,$03,$F3,$28,$0F,$EB
+  $F6,$F1,$AE,$FE,$01,$FA,$E2,$FE,$93,$F1,$EF,$C1,$FE,$59,$EA,$57,$F6,$08,$EE,$4A,$F4,$FE,$4A,$40
+  $0F,$52,$3F,$FE,$CE,$4C,$D0,$7E,$95,$4C,$7F,$F7,$44,$FB,$6F,$F4,$F8,$4A,$40,$3F,$64,$93,$78,$87
+  $72,$CD,$7A,$55,$56
+end data
+data Z15 bytes
+  $9A,$01,$81,$62,$F3,$0F,$2A,$F1,$86,$01,$9D,$F1,$55,$56
+end data
+data Z16 bytes
+  $A6,$01,$04,$05,$01,$54,$93,$08,$09,$0A,$0B,$0C,$0D,$C5,$BC,$81,$90,$14,$15,$16,$17,$18,$19,$1A
+  $1B,$1C,$64,$21,$25,$26,$27,$28,$29,$2A,$2B,$2C,$2D,$2E,$2F,$30,$19,$48,$3A,$3B,$3C,$02,$02,$28
+  $3D,$3E,$02,$02,$3F,$40,$41,$42,$17,$7E,$B3,$CB,$FF,$37,$06,$07,$E5,$DE,$F5,$E0,$94,$0E,$D5,$55
+  $60
+end data
+data Z17 bytes
+  $08,$01,$16,$17,$02,$60,$82,$18,$19,$1A,$02,$18,$1B,$1C,$1D,$1E,$01,$59,$92,$25,$26,$02,$79,$06
+  $27,$28,$EE,$83,$29,$2A,$2B,$2C,$D9,$C2,$97,$33,$34,$35,$88,$F9,$36,$37,$F2,$BC,$38,$38,$39,$C2
+  $82,$3F,$40,$41,$42,$06,$6F,$43,$44,$45,$FE,$63,$46,$47,$E6,$88,$4E,$4F,$50,$4F,$F4,$99,$51,$52
+  $53,$F6,$E0,$48,$54,$01,$59,$5A,$5B,$5C,$4E,$85,$6E,$5D,$5E,$5F,$FE,$49,$90,$64,$42,$02,$B5,$65
+  $55,$58
+end data
+data Z18 bytes
+  $64,$66,$67,$02,$22,$68,$01,$99,$06,$07,$01,$52,$4F,$0E,$0F,$10,$11,$12,$13,$BC,$16,$06,$1D,$1E
+  $1F,$02,$20,$21,$22,$23,$24,$41,$9E,$31,$32,$33,$24,$92,$34,$35,$36,$37,$38,$39,$11,$9D,$43,$44
+  $45,$C8,$DA,$38,$46,$47,$48,$49,$BE,$4D,$D8,$F7,$94,$76,$E2,$D5,$55,$60
+end data
+data Z19 bytes
+  $65,$14,$15,$01,$26,$1F,$20,$02,$46,$18,$21,$22,$23,$24,$01,$59,$95,$2D,$2E,$02,$83,$2F,$30,$31
+  $32,$D9,$C4,$9E,$3A,$3B,$3C,$BC,$02,$38,$3D,$3E,$C4,$82,$48,$49,$4A,$4B,$E1,$FE,$63,$4C,$4D,$E6
+  $88,$55,$56,$57,$E5,$FE,$25,$91,$58,$01,$60,$61,$62,$63,$02,$35,$55,$58
+end data
+data Z20 bytes
+  $65,$69,$4B,$02,$0B,$6A,$55,$55,$80
+end data
+data Z21 bytes
+  $98,$00,$AF,$C0,$0C,$03,$F5,$9F,$EC,$E0,$59,$FF,$C0,$C0,$30,$E7,$E5,$EC,$EF,$D6,$E7,$8A,$B3,$F0
+  $03,$87,$30,$E2,$F3,$ED,$C0,$00,$5F,$B0,$3D,$7C,$FF,$B0,$78,$3A,$ED,$30,$17,$83,$EA,$AE,$9E,$0F
+  $FF,$3C,$03,$0C,$E4,$F9,$FD,$B4,$A6,$0F,$7D,$F0,$3C,$0F,$96,$A1,$F0,$F6,$9A,$3D,$F0,$0F,$EC,$BD
+  $3C,$70,$75,$55,$58
+end data
+data Z22 bytes
+  $92,$00,$7C,$C0,$0F,$00,$EC,$88,$30,$03,$06,$60,$C0,$F0,$0F,$24,$F2,$3C,$F0,$3C,$0F,$0F,$03,$CE
+  $8F,$C0,$E3,$93,$B6,$86,$EA,$E1,$3C,$BA,$E0,$BE,$E1,$EC,$FF,$96,$70,$5F,$C8,$79,$A0,$5A,$3C,$EE
+  $A3,$3F,$9A,$FE,$CE,$0E,$6B,$0F,$CE,$C0,$E9,$F5,$3F,$CD,$55,$58
+end data
+data Z23 bytes
+  $92,$00,$3D,$C0,$03,$EE,$8F,$F0,$0F,$EC,$63,$3C,$3F,$D8,$D6,$84,$F0,$FC,$87,$3C,$0F,$03,$3F,$0F
+  $FF,$F9,$E8,$FD,$F5,$A5,$A0,$75,$55,$58
+end data
+data Z24 bytes
+  $9A,$03,$83,$9B,$B3,$83,$03,$9F,$EC,$E0,$82,$F3,$F3,$13,$F3,$4E,$ED,$E8,$81,$FF,$83,$E8,$CC,$EF
+  $81,$B1,$FF,$01,$E7,$E9,$EC,$01,$F9,$F1,$EC,$F9,$F5,$EC,$BA,$F1,$FF,$F3,$2A,$03,$67,$F3,$F1,$01
+  $F7,$E7,$EC,$E7,$F1,$EC,$E7,$F5,$EC,$E7,$6B,$FE,$FF,$6B,$4E,$FF,$E3,$6D,$FE,$F8,$58,$EA,$AA,$81
+  $01,$1F,$46,$FE,$EA,$32,$79,$80,$FD,$A5,$ED,$DB,$B0,$F3,$DF,$70,$0E,$ED,$FE,$55,$56
+end data
+data Z25 bytes
+  $92,$01,$BC,$F1,$EE,$8E,$03,$F3,$EC,$62,$03,$03,$4F,$F3,$A7,$ED,$F3,$E6,$F5,$EC,$3E,$81,$83,$FE
+  $A9,$03,$01,$A6,$81,$BC,$B1,$8E,$FC,$EF,$EA,$29,$81,$7E,$A9,$EC,$7F,$9D,$EC,$FE,$F0,$EC,$63,$F1
+  $F3,$FE,$FE,$E9,$06,$7F,$FF,$00,$68,$F3,$1A,$F3,$46,$F3,$83,$FE,$FF,$12,$0E,$FC,$24,$20,$A0,$B1
+  $D5,$55,$60
+end data
+data Z26 bytes
+  $92,$01,$64,$B1,$81,$01,$AE,$83,$EC,$62,$03,$03,$7F,$EB,$F1,$E3,$FF,$EA,$E6,$F7,$EC,$F3,$F3,$FE
+  $AF,$BA,$F1,$FD,$EF,$FF,$ED,$F1,$A0,$3F,$ED,$E5,$9F,$A0,$EA,$F9,$F7,$EC,$D5,$55,$60
+end data
+data Z27 bytes
+  $2A,$0F,$03,$00,$E8,$FA,$67,$C0,$F0,$F0,$FC,$FC,$E7,$EB,$FE,$B8,$EB,$3F,$CA,$A1,$00,$8E,$3F,$3F
+  $D0,$0F,$EC,$7F,$D5,$BF,$93,$EA,$DF,$C2,$60,$5E,$90,$15,$FE,$99,$FE,$BE,$0F,$99,$8E,$3F,$71,$04
+  $29,$C0,$EA,$85,$3F,$86,$00,$A8,$C0,$FC,$5F,$D3,$CE,$EA,$9D,$D5,$00,$55,$60
+end data
+data Z28 bytes
+  $20,$00,$03,$A8,$0F,$8A,$FC,$F0,$FC,$A8,$F0,$61,$FC,$3F,$0F,$03,$00,$83,$C0,$F0,$00,$3F,$CE,$EA
+  $D5,$F3,$00,$FE,$AE,$AC,$3F,$FE,$9A,$00,$FC,$F0,$9F,$C0,$DF,$FF,$94,$CE,$DF,$92,$95,$E9,$E3,$EB
+  $03,$79,$90,$5F,$A0,$47,$FB,$A6,$F8,$DB,$EF,$DE,$BC,$9E,$7A,$FF,$CE,$FD,$F8,$7B,$FD,$A6,$F3,$FC
+  $FF,$59,$87,$82,$55,$55,$80
+end data
+data Z29 bytes
+  $6A,$C0,$F0,$FC,$00,$06,$A9,$C0,$00,$8A,$03,$0F,$EF,$3F,$F8,$EF,$E2,$CB,$C5,$F0,$F0,$1B,$3F,$EF
+  $DD,$FE,$F1,$85,$A0,$FA,$9E,$00,$5F,$F8,$FE,$D6,$F8,$E7,$CA,$FF,$D1,$62,$C8,$E3,$62,$FF,$ED,$E1
+  $6E,$FF,$E9,$E1,$52,$D5,$80,$E4,$A0,$3F,$61,$F1,$A0,$A1,$3F,$F6,$F7,$BC,$75,$55,$58
+end data
+data Z30 bytes
+  $21,$F0,$00,$2A,$03,$6A,$0F,$03,$3F,$00,$1A,$F0,$A6,$C0,$60,$00,$C0,$3F,$BE,$0F,$D1,$D6,$2E,$0F
+  $C4,$FA,$B9,$BC,$6A,$FC,$FC,$3F,$FC,$FF,$88,$80,$7C,$B0,$3B,$B6,$9F,$A2,$EA,$FF,$A2,$6F,$A1,$AB
+  $FC,$FC,$53,$20,$3B,$FE,$DF,$1C,$59,$EF,$21,$D8,$FF,$F9,$F8,$70,$03,$DD,$A0,$55,$56
+end data
+data Z31 bytes
+  $29,$3F,$00,$E7,$FC,$F0,$C0,$F6,$DA,$FE,$0F,$AB,$3F,$FC,$FA,$DF,$DD,$DA,$BA,$03,$FF,$03,$7D,$B0
+  $7D,$D0,$D5,$55,$60
+end data
+data Z32 bytes
+  $8A,$83,$03,$EB,$FA,$81,$C8,$FE,$92,$B1,$01,$87,$B1,$86,$EA,$F2,$81,$D0,$F8,$83,$BB,$F0,$FF,$99
+  $ED,$EA,$FF,$8D,$FF,$EA,$FF,$F0,$EA,$BF,$F3,$FF,$F5,$AF,$FA,$F1,$FE,$7C,$90,$BC,$F3,$EC,$FF,$C9
+  $ED,$EA,$FF,$A6,$EA,$F3,$90,$B9,$9D,$83,$FE,$A5,$81,$F7,$04,$EB,$F5,$FF,$0B,$F9,$E8,$E4,$E7,$14
+  $FA,$80,$A9,$08,$3F,$70,$8D,$EA,$55,$56
+end data
+data Z33 bytes
+  $24,$03,$F3,$A5,$F1,$FA,$EF,$FF,$01,$6B,$03,$A3,$D9,$0F,$F8,$F1,$FF,$EA,$B9,$03,$FE,$A4,$83,$89
+  $08,$81,$2A,$01,$9A,$B1,$0B,$7F,$E6,$FC,$FE,$C6,$FE,$90,$AE,$39,$92,$F6,$34,$97,$0F,$FF,$B1,$F6
+  $FE,$F3,$D6,$F8,$A0,$BE,$E5,$36,$A5,$08,$F7,$FE,$A7,$27,$01,$FF,$FD,$FE,$EB,$9F,$FC,$BA,$75,$55
+  $58
+end data
+data Z34 bytes
+  $9A,$83,$08,$68,$03,$6A,$83,$9A,$03,$F3,$4A,$0F,$A1,$F1,$A0,$01,$F7,$EA,$9F,$CE,$FF,$9F,$A0,$E9
+  $CF,$92,$91,$88,$70,$EF,$81,$81,$F8,$FF,$BE,$A0,$F9,$FE,$69,$B1,$6B,$0B,$FF,$FB,$F0,$C7,$FF,$FE
+  $C5,$12,$2B,$81,$CA,$1E,$03,$5E,$16,$3F,$20,$E4,$FB,$10,$F9,$E5,$12,$FD,$C7,$20,$69,$83,$75,$55
+  $58
+end data
+data Z35 bytes
+  $21,$81,$01,$28,$B1,$68,$0B,$79,$E8,$EF,$DB,$81,$FE,$28,$03,$28,$F3,$FA,$F9,$FF,$0F,$AE,$F1,$F7
+  $8E,$F1,$98,$F9,$F9,$FE,$A5,$F1,$A1,$03,$AE,$83,$F4,$63,$08,$08,$8E,$F6,$83,$FF,$01,$F6,$B0,$F9
+  $F5,$20,$7D,$1C,$7F,$C0,$F7,$BF,$20,$FF,$1E,$F4,$F8,$1C,$F6,$EF,$1C,$F6,$E7,$20,$83,$10,$8D,$08
+  $55,$56
+end data
+data Z36 bytes
+  $2A,$83,$08,$81,$2B,$01,$FD,$F6,$FE,$A0,$B1,$7F,$E9,$D4,$F8,$CB,$FF,$A8,$F3,$0F,$F1,$FF,$E9,$F6
+  $FF,$FE,$F4,$F5,$EB,$FF,$55,$58
+end data
+data Z37 bytes
+  $99,$01,$95,$4A,$4B,$01,$21,$F1,$4E,$4F,$50,$51,$52,$B8,$60,$64,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F
+  $60,$18,$48,$69,$6A,$02,$6B,$6C,$6D,$6E,$6F,$70,$71,$56,$52,$78,$79,$02,$02,$02,$7A,$7B,$7C,$02
+  $7D,$7E,$7F,$80,$81,$04,$FE,$D9,$C3,$BF,$69,$82,$83,$84,$65,$02,$02,$85,$86,$87,$88,$89,$35,$55
+  $58
+end data
+data Z38 bytes
+  $08,$01,$91,$92,$02,$60,$82,$93,$94,$95,$02,$08,$96,$97,$98,$01,$58,$3C,$9E,$9F,$A0,$02,$BE,$BC
+  $A1,$EE,$9E,$A2,$A3,$A4,$C2,$09,$BC,$AB,$AC,$AD,$FE,$9F,$AE,$AF,$B0,$EA,$67,$B1,$B2,$B3,$88,$C4
+  $2F,$BA,$BB,$BC,$BD,$FE,$66,$BE,$BF,$02,$06,$62,$C0,$C1,$01,$18,$C8,$C9,$CA,$CB,$02,$18,$21,$CC
+  $CD,$CE,$02,$25,$84,$CF,$D5,$D6,$D7,$D8,$D9,$02,$82,$DA,$DB,$DC,$02,$16,$09,$DD,$E4,$E5,$02,$0B
+  $E6,$55,$55,$80
+end data
+data Z39 bytes
+  $64,$CD,$E7,$02,$22,$E8,$01,$66,$4C,$4D,$01,$54,$87,$53,$54,$55,$56,$57,$C5,$BC,$81,$90,$61,$62
+  $63,$02,$64,$65,$66,$67,$68,$63,$72,$73,$E0,$22,$E5,$74,$75,$76,$77,$B8,$23,$82,$83,$FE,$BE,$B8
+  $08,$84,$85,$86,$87,$12,$36,$8A,$8B,$94,$19,$D5,$8C,$8D,$8E,$55,$60
+end data
+data Z40 bytes
+  $65,$8F,$90,$01,$26,$99,$9A,$02,$46,$79,$9B,$9C,$9D,$C0,$66,$A5,$A6,$A7,$53,$98,$BD,$A8,$A9,$AA
+  $19,$EF,$B4,$B5,$B6,$DC,$BC,$59,$BE,$B7,$B8,$B9,$FE,$18,$C2,$C3,$C4,$C5,$02,$42,$62,$C6,$C7,$01
+  $18,$D0,$D1,$D2,$D3,$02,$56,$59,$D4,$DE,$DF,$E0,$E1,$E2,$02,$06,$D5,$E3,$55,$60
+end data
+data Z41 bytes
+  $65,$E9,$EA,$02,$0B,$EB,$55,$55,$80
+end data
+data Z42 bytes
+  $98,$00,$64,$C0,$30,$03,$0C,$00,$BD,$30,$E0,$63,$0C,$03,$9E,$EE,$DD,$3E,$C0,$C0,$E7,$E4,$EF,$C9
+  $C0,$D8,$3E,$ED,$C2,$F7,$EC,$82,$B0,$81,$00,$F3,$7A,$C7,$EC,$E2,$C7,$C3,$0F,$0F,$39,$D8,$88,$C0
+  $F0,$E7,$C2,$E6,$F6,$F0,$3C,$03,$FF,$46,$D0,$E4,$90,$EE,$E5,$3C,$EC,$1F,$80,$69,$00,$7D,$EC,$D5
+  $55,$60
+end data
+data Z43 bytes
+  $08,$C0,$0C,$03,$00,$09,$E0,$C0,$3C,$03,$EC,$67,$F0,$3C,$0F,$AF,$FD,$03,$E4,$28,$00,$E1,$B8,$E4
+  $B6,$AF,$F0,$76,$79,$EC,$28,$3F,$1E,$96,$1E,$50,$57,$90,$80,$3E,$FE,$2A,$0F,$03,$C0,$6F,$F0,$10
+  $F3,$A2,$55,$55,$80
+end data
+data Z44 bytes
+  $AA,$00,$F0,$18,$FC,$3F,$0F,$03,$00,$61,$97,$C0,$F0,$3C,$0F,$00,$E1,$EB,$D4,$EF,$BE,$FE,$EB,$F4
+  $C0,$FF,$FF,$E3,$FD,$B0,$03,$55,$55,$80
+end data
+data Z45 bytes
+  $9A,$03,$83,$69,$03,$3E,$F1,$FE,$A7,$F3,$FF,$F0,$EA,$D9,$CC,$FB,$81,$B1,$81,$FF,$B0,$FA,$BD,$ED
+  $FF,$01,$FA,$DD,$EC,$8F,$01,$F3,$9F,$EC,$9C,$67,$F1,$01,$F1,$EF,$FF,$80,$8D,$FF,$ED,$FE,$DD,$9F
+  $EC,$F3,$9B,$EC,$81,$CF,$72,$7B,$FF,$FE,$E9,$7B,$E3,$FF,$EC,$E3,$FB,$EA,$E7,$6B,$EC,$8F,$54,$90
+  $3F,$A3,$ED,$E6,$F5,$EC,$F3,$F1,$42,$8F,$82,$29,$A4,$FF,$01,$D5,$55,$60
+end data
+data Z46 bytes
+  $2A,$F3,$F1,$01,$0A,$03,$6B,$F3,$F9,$E9,$F5,$EC,$8E,$83,$03,$FE,$6A,$81,$86,$83,$86,$01,$63,$81
+  $01,$B1,$9F,$EA,$ED,$C2,$EA,$96,$81,$7C,$03,$83,$81,$60,$E7,$EC,$8A,$74,$83,$3E,$F7,$EC,$6F,$F3
+  $EE,$3F,$13,$39,$F9,$FE,$94,$BF,$F1,$FD,$80,$77,$F9,$DF,$80,$ED,$DD,$80,$BC,$B6,$92,$DF,$D1,$FE
+  $29,$81,$77,$F8,$75,$55,$58
+end data
+data Z47 bytes
+  $A8,$01,$B1,$68,$01,$78,$ED,$92,$83,$81,$2E,$03,$03,$EB,$FE,$81,$F0,$EC,$6F,$F3,$FE,$29,$F1,$7F
+  $EF,$B0,$7F,$D8,$F9,$F0,$EC,$D5,$55,$60
+end data
+data Z48 bytes
+  $7A,$00,$03,$00,$FB,$03,$26,$FC,$F0,$FC,$2F,$F0,$F4,$8E,$0F,$0F,$E0,$EA,$FE,$C0,$EB,$E0,$3F,$FF
+  $FD,$E8,$E2,$FF,$ED,$CF,$EA,$28,$F0,$F7,$D4,$D7,$80,$D5,$A0,$BA,$03,$FF,$0F,$2A,$3F,$8E,$F0,$40
+  $FF,$39,$CD,$20,$28,$C0,$FB,$7D,$68,$CA,$82,$F0,$17,$F9,$D3,$EB,$EC,$FD,$D5,$80,$7D,$A0,$D5,$55
+  $60
+end data
+data Z49 bytes
+  $48,$F0,$FC,$3F,$0F,$03,$00,$67,$C0,$FC,$00,$E7,$EB,$EC,$F9,$D5,$DE,$A8,$00,$03,$0F,$3F,$22,$FC
+  $F0,$AE,$C0,$FE,$68,$3F,$FA,$D7,$D0,$FE,$C0,$FF,$D7,$D0,$F9,$DF,$98,$3B,$C8,$9F,$E8,$E7,$95,$80
+  $F4,$A0,$3B,$9F,$03,$FF,$F6,$D3,$30,$FF,$94,$CA,$F7,$CC,$F8,$FF,$A5,$FD,$8A,$FC,$FC,$F0,$7F,$87
+  $E4,$FF,$69,$88,$F5,$E4,$55,$58
+end data
+data Z50 bytes
+  $86,$00,$BE,$03,$F6,$23,$3F,$3F,$A6,$F8,$FC,$F0,$F0,$98,$00,$C0,$C0,$FA,$FC,$FC,$88,$3F,$0F,$BF
+  $0F,$C1,$DF,$8E,$D3,$FC,$FC,$A4,$7B,$DD,$00,$F8,$DB,$C6,$FF,$F0,$C0,$DB,$AC,$FE,$90,$FE,$A8,$00
+  $F0,$7F,$D9,$DA,$E1,$90,$A4,$00,$1E,$B0,$17,$FF,$AA,$A8,$FB,$FF,$B7,$A8,$CF,$AE,$DD,$E7,$FD,$D6
+  $FF,$F8,$D6,$87,$7E,$D5,$FF,$55,$60
+end data
+data Z51 bytes
+  $92,$00,$A6,$03,$0F,$3F,$00,$24,$A9,$FC,$C0,$00,$FC,$F0,$C0,$00,$29,$3F,$E7,$EC,$FF,$C5,$F6,$BA
+  $F7,$B2,$FF,$B0,$F7,$C4,$7F,$D5,$EA,$3F,$D5,$FF,$8E,$CE,$8D,$3F,$0F,$03,$FE,$D5,$80,$F7,$B0,$FE
+  $D3,$D4,$F6,$77,$DA,$7B,$04,$E7,$FB,$52,$60,$D2,$FF,$A8,$23,$F5,$99,$A0,$D5,$55,$60
+end data
+data Z52 bytes
+  $9A,$03,$0F,$2D,$03,$55,$56
+end data
+data Z53 bytes
+  $6A,$03,$83,$03,$83,$99,$03,$83,$81,$68,$B1,$69,$01,$E7,$EC,$FF,$CF,$ED,$FE,$FE,$BD,$BA,$F0,$F8
+  $FF,$EA,$F8,$F5,$FC,$AA,$83,$F3,$E8,$FB,$F3,$BC,$F1,$FE,$FC,$EF,$A0,$FB,$D7,$E4,$9F,$A0,$EA,$FF
+  $F0,$EA,$B9,$83,$FE,$F4,$20,$F6,$22,$25,$0B,$0B,$A5,$01,$A1,$01,$BF,$08,$20,$FA,$EC,$FF,$F3,$5A
+  $F1,$03,$CD,$A0,$55,$56
+end data
+data Z54 bytes
+  $A8,$F3,$F1,$A2,$01,$8E,$03,$EB,$8F,$0F,$F3,$FA,$EC,$FF,$03,$0A,$83,$69,$08,$A6,$81,$92,$01,$95
+  $B1,$FF,$C8,$D0,$FF,$A8,$E8,$F7,$90,$DF,$70,$59,$A9,$FE,$F1,$F3,$80,$FF,$E8,$F0,$FF,$C8,$E9,$20
+  $1F,$8E,$E7,$84,$E7,$1B,$64,$F9,$B1,$F9,$10,$1F,$C2,$FF,$FE,$A4,$FD,$9E,$55,$56
+end data
+data Z55 bytes
+  $86,$03,$BF,$F3,$F6,$AE,$FF,$0F,$F8,$BA,$F1,$FF,$01,$FF,$F8,$FE,$FF,$E2,$FE,$FF,$C4,$BE,$FB,$A4
+  $83,$BB,$FF,$08,$FA,$A4,$FF,$81,$A6,$01,$86,$B1,$A9,$0B,$B1,$7D,$C4,$FF,$A6,$A8,$FF,$90,$80,$FE
+  $38,$5A,$79,$3C,$EE,$E4,$40,$4A,$0F,$0E,$3A,$7C,$3E,$A1,$08,$E5,$3C,$FF,$3B,$F8,$EE,$FF,$DC,$D4
+  $BC,$08,$2E,$D5,$55,$60
+end data
+data Z56 bytes
+  $92,$03,$9A,$F3,$0F,$2B,$F1,$EA,$FB,$FE,$01,$29,$0F,$A6,$F1,$86,$03,$BF,$83,$F6,$AF,$FF,$08,$F8
+  $82,$08,$81,$81,$01,$7F,$F7,$FE,$29,$B1,$A4,$0B,$A1,$B1,$A2,$01,$97,$81,$DE,$42,$38,$7F,$59,$32
+  $3F,$41,$32,$EA,$FE,$F1,$5E,$52,$E3,$5E,$D3,$54,$CF,$4E,$F5,$E8,$50,$01,$5F,$73,$FF,$74,$80,$9D
+  $A4,$55,$56
+end data
+data Z57 bytes
+  $97,$F1,$55,$55,$80
+end data
+data Z58 bytes
+  $86,$01,$65,$04,$05,$01,$18,$7D,$08,$09,$0A,$0B,$0C,$B8,$08,$09,$12,$13,$14,$15,$16,$17,$18,$19
+  $02,$42,$20,$21,$22,$02,$23,$24,$25,$26,$27,$28,$29,$2A,$11,$9E,$33,$34,$02,$FF,$79,$35,$36,$37
+  $F7,$E1,$38,$39,$3A,$BA,$36,$BB,$F9,$02,$FE,$9D,$06,$07,$02,$FC,$E0,$C2,$75,$55,$58
+end data
+data Z59 bytes
+  $08,$01,$12,$13,$02,$66,$14,$15,$02,$08,$61,$16,$17,$18,$19,$01,$60,$92,$20,$21,$22,$02,$64,$23
+  $24,$02,$9F,$25,$26,$27,$C0,$61,$96,$2E,$2F,$30,$31,$02,$25,$32,$33,$E3,$79,$34,$35,$99,$86,$9F
+  $3C,$3D,$3E,$BE,$26,$3F,$40,$02,$06,$3A,$41,$42,$C5,$48,$8B,$49,$4A,$86,$FE,$08,$4B,$4C,$4D,$02
+  $49,$21,$4E,$53,$54,$55,$56,$02,$67,$57,$58,$59,$96,$E2,$6E,$5A,$60,$61,$FE,$5B,$62,$55,$55,$80
+end data
+data Z60 bytes
+  $64,$63,$64,$02,$22,$65,$01,$19,$94,$06,$07,$01,$61,$F4,$0D,$0E,$0F,$10,$11,$B8,$21,$A2,$1A,$1B
+  $02,$1C,$1D,$1E,$1F,$40,$9F,$2B,$2C,$2D,$20,$86,$2E,$2F,$30,$31,$32,$E1,$FE,$66,$3B,$3C,$02,$59
+  $E1,$3D,$3E,$3F,$BA,$23,$0C,$0D,$64,$92,$DD,$E3,$55,$56
+end data
+data Z61 bytes
+  $65,$10,$11,$01,$26,$1A,$1B,$02,$42,$18,$1C,$1D,$1E,$1F,$01,$58,$25,$28,$29,$2A,$02,$67,$2B,$2C
+  $2D,$D8,$C4,$25,$36,$37,$38,$39,$7E,$78,$39,$3A,$3B,$86,$99,$43,$44,$45,$E1,$BE,$23,$46,$47,$A8
+  $C5,$4F,$B9,$50,$51,$FE,$59,$24,$52,$5B,$5C,$5D,$5E,$02,$4B,$5F,$55,$55,$80
+end data
+data Z62 bytes
+  $65,$66,$67,$02,$0B,$68,$55,$55,$80
+end data
+data Z63 bytes
+  $98,$00,$64,$C0,$30,$03,$30,$00,$BD,$30,$E0,$6E,$0C,$FF,$BA,$03,$D6,$9F,$03,$CF,$EF,$FF,$F9,$0C
+  $FB,$FF,$D5,$DA,$ED,$FC,$BC,$9E,$F7,$B0,$FD,$F8,$B0,$FF,$FE,$B0,$5F,$8B,$88,$5B,$0F,$0F,$3C,$AE
+  $EF,$90,$AE,$66,$3C,$3C,$0F,$F8,$BD,$92,$A1,$F0,$7B,$E7,$3C,$DA,$BA,$C0,$F5,$80,$FF,$A0,$FE,$D5
+  $55,$60
+end data
+data Z64 bytes
+  $A6,$00,$C0,$0C,$00,$59,$F2,$F0,$3C,$03,$EC,$8A,$C0,$03,$58,$FF,$C0,$F0,$FF,$CF,$FB,$93,$DC,$BE
+  $E9,$0F,$FF,$96,$0A,$0F,$13,$87,$D6,$80,$80,$F5,$A0,$7E,$BD,$FB,$EE,$FC,$FE,$A8,$FF,$49,$BB,$88
+  $6E,$FC,$A6,$0E,$90,$49,$80,$FC,$3F,$03,$A0,$FC,$35,$55,$58
+end data
+data Z65 bytes
+  $24,$03,$00,$9E,$C0,$F0,$0F,$EA,$08,$80,$FC,$3F,$AD,$F0,$55,$56
+end data
+data Z66 bytes
+  $9A,$03,$83,$69,$03,$3E,$F1,$FE,$A7,$F3,$FF,$F0,$EA,$FE,$C8,$D6,$38,$81,$B1,$FF,$88,$01,$81,$67
+  $03,$83,$81,$01,$B1,$FF,$DD,$EC,$FF,$9E,$94,$EB,$F2,$F3,$96,$FA,$F1,$DB,$FF,$F1,$3F,$8D,$EC,$FE
+  $C0,$EC,$79,$64,$EF,$EB,$81,$AB,$8E,$5A,$C6,$3F,$5F,$53,$FC,$50,$FE,$FF,$EA,$C3,$9F,$EA,$42,$29
+  $01,$7F,$F1,$2E,$2B,$F1,$FE,$FD,$FE,$9C,$7F,$31,$46,$FD,$FE,$55,$56
+end data
+data Z67 bytes
+  $A6,$03,$F3,$F1,$01,$7E,$F1,$EC,$EF,$EA,$F5,$98,$EC,$92,$83,$83,$E2,$81,$FE,$66,$83,$81,$B1,$87
+  $01,$FA,$EC,$E7,$81,$4F,$A1,$FF,$CB,$EA,$90,$FF,$9B,$ED,$80,$3F,$EB,$7D,$FA,$F5,$FE,$F1,$1B,$F3
+  $F7,$FB,$A0,$CF,$EA,$22,$38,$20,$7F,$39,$FB,$FE,$FF,$30,$2A,$0E,$30,$5A,$83,$46,$84,$81,$FE,$49
+  $FB,$FE,$D5,$55,$60
+end data
+data Z68 bytes
+  $24,$F1,$01,$AA,$F3,$F1,$A6,$01,$8F,$03,$EA,$FE,$F0,$EA,$35,$55,$58
+end data
+data Z69 bytes
+  $99,$00,$A9,$03,$00,$03,$FC,$BE,$F0,$FD,$FB,$3A,$3F,$0F,$FF,$00,$0A,$C0,$3F,$DB,$E3,$E7,$C7,$FE
+  $FC,$CC,$EA,$A1,$C0,$7D,$80,$7D,$A0,$5B,$03,$BE,$45,$3F,$FF,$C2,$FB,$45,$3C,$FF,$F1,$E9,$1E,$FF
+  $81,$C8,$85,$E5,$79,$82,$A0,$03,$2F,$00,$80,$7F,$BB,$80,$5F,$A0,$75,$55,$58
+end data
+data Z70 bytes
+  $48,$F0,$FC,$3F,$0F,$03,$00,$67,$C0,$FC,$00,$F2,$E9,$EA,$A7,$F0,$03,$03,$0F,$8A,$FF,$3F,$00,$A8
+  $FC,$F0,$8F,$C0,$00,$B8,$28,$00,$E9,$FF,$3F,$E3,$B4,$E2,$FF,$98,$97,$03,$A9,$80,$3F,$68,$C0,$03
+  $C0,$B0,$E2,$FE,$A8,$0F,$03,$FF,$A6,$FE,$EF,$54,$38,$A2,$0F,$9F,$3F,$A3,$8F,$FA,$86,$29,$00,$E3
+  $C6,$9F,$6C,$E5,$DD,$80,$55,$56
+end data
+data Z71 bytes
+  $88,$03,$A8,$3F,$00,$FC,$28,$C0,$A9,$00,$86,$0F,$03,$00,$62,$F0,$FC,$00,$AF,$3F,$0F,$E6,$AF,$C0
+  $E4,$FF,$FE,$A7,$AE,$F8,$0F,$9E,$FA,$D2,$FC,$EF,$A0,$99,$CF,$CC,$FD,$BD,$FE,$84,$EF,$A2,$D0,$3A
+  $DD,$03,$5E,$60,$0A,$C0,$54,$F5,$90,$7F,$CB,$E7,$FA,$DA,$CA,$FE,$F0,$DA,$9E,$75,$55,$58
+end data
+data Z72 bytes
+  $8A,$0F,$3F,$2A,$00,$88,$FC,$AA,$F0,$FC,$F0,$23,$0F,$03,$EF,$E5,$E0,$F6,$E9,$F9,$3F,$FF,$BD,$EE
+  $E0,$ED,$DB,$F8,$F0,$C0,$C0,$F0,$F9,$CE,$E1,$B0,$3F,$FF,$DB,$FF,$67,$D8,$B3,$F3,$F9,$B0,$FF,$D9
+  $D6,$D2,$FF,$CE,$D2,$EE,$C6,$60,$3B,$0C,$B8,$76,$90,$5F,$C0,$1D,$BB,$D4,$E0,$9F,$D2,$A6,$7B,$C3
+  $F0,$F9,$6E,$42,$E3,$F8,$55,$55,$80
+end data
+data Z73 bytes
+  $AA,$00,$FC,$22,$F0,$00,$61,$F0,$C0,$00,$A3,$03,$8D,$F8,$55,$56
+end data
+data Z74 bytes
+  $99,$03,$A9,$83,$03,$83,$81,$68,$B1,$28,$01,$28,$B1,$6A,$81,$87,$01,$FF,$BA,$EA,$FF,$A0,$EA,$B9
+  $F2,$8A,$E9,$FE,$A8,$F3,$03,$F3,$F1,$1F,$A0,$3F,$DA,$CF,$A0,$EA,$FF,$F0,$EA,$FE,$89,$FE,$BA,$08
+  $24,$8F,$01,$34,$7F,$FF,$1E,$7C,$22,$A7,$01,$DE,$20,$A2,$F7,$20,$FE,$EB,$69,$FE,$BF,$0F,$2E,$FE
+  $3E,$FB,$FE,$75,$55,$58
+end data
+data Z75 bytes
+  $A8,$F3,$F1,$A2,$01,$8E,$03,$EB,$8F,$0F,$F3,$EA,$FE,$F3,$21,$03,$83,$AA,$08,$81,$19,$92,$01,$B1
+  $01,$22,$B1,$0B,$9F,$B1,$E8,$FF,$F0,$BD,$FF,$C4,$80,$FE,$A4,$EB,$80,$7F,$EB,$7B,$8A,$FE,$0F,$EF
+  $42,$3C,$FD,$ED,$30,$A5,$F3,$3F,$FE,$D3,$26,$E7,$FF,$48,$EF,$2F,$28,$FE,$3F,$D8,$FF,$FE,$B4,$FD
+  $B2,$94,$F7,$70,$55,$55,$80
+end data
+data Z76 bytes
+  $9A,$F3,$0F,$A5,$F1,$AF,$01,$F8,$FF,$FE,$D4,$FA,$D3,$FF,$03,$69,$F3,$A1,$03,$AE,$83,$F8,$E8,$FF
+  $08,$68,$81,$FF,$B1,$F8,$E8,$FC,$B1,$E2,$FE,$87,$0B,$F9,$F3,$E3,$D0,$FF,$B6,$FE,$BC,$83,$9C,$FF
+  $76,$FE,$E7,$60,$F7,$50,$FE,$E3,$FE,$C3,$00,$69,$F1,$F1,$28,$0F,$1A,$F3,$5E,$00,$3F,$F7,$65,$FD
+  $60,$40,$D5,$55,$60
+end data
+data Z77 bytes
+  $86,$B1,$A9,$0B,$B1,$69,$81,$A6,$01,$21,$83,$08,$88,$81,$03,$AA,$F3,$0F,$3A,$F6,$F8,$F1,$FD,$FE
+  $A0,$01,$F7,$EE,$E2,$D3,$FE,$20,$F1,$03,$A7,$83,$BF,$96,$7A,$CE,$72,$FF,$92,$B1,$9F,$0B,$37,$9F
+  $32,$D7,$A5,$FF,$81,$E3,$90,$E3,$47,$38,$F9,$5A,$40,$7F,$FE,$9F,$64,$A0,$F8,$F9,$5E,$7F,$71,$6E
+  $7D,$28,$D5,$55,$60
+end data
+data Z78 bytes
+  $A8,$0F,$F1,$A3,$01,$FF,$F6,$FE,$FF,$E4,$F8,$55,$55,$80
+end data
+data Z79 bytes
+  $96,$01,$65,$4A,$4B,$01,$18,$7C,$4E,$4F,$50,$51,$52,$BE,$58,$09,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F
+  $02,$16,$66,$67,$02,$02,$68,$69,$02,$6A,$6B,$6C,$6D,$14,$88,$74,$02,$81,$81,$02,$75,$76,$02,$02
+  $77,$78,$79,$7A,$26,$80,$81,$02,$08,$8E,$82,$83,$BB,$09,$84,$85,$86,$87,$4D,$55,$56
+end data
+data Z80 bytes
+  $08,$01,$8E,$8F,$02,$66,$90,$91,$02,$08,$61,$92,$93,$94,$95,$01,$66,$9C,$9D,$02,$49,$E6,$9E,$9F
+  $A0,$EE,$0F,$92,$A1,$A2,$A3,$C4,$66,$A9,$AA,$AB,$F6,$FE,$65,$AC,$AD,$02,$9E,$AE,$AF,$B0,$C2,$20
+  $81,$B7,$B8,$B9,$BA,$9B,$BB,$BC,$BD,$D9,$FE,$E9,$BE,$BF,$C0,$C4,$B8,$C8,$C9,$CA,$FE,$66,$CB,$CC
+  $02,$12,$58,$CD,$CE,$D4,$B8,$D5,$D6,$02,$59,$E5,$D7,$D8,$D9,$E2,$9B,$DA,$DF,$E0,$96,$FE,$D5,$E1
+  $55,$60
+end data
+data Z81 bytes
+  $64,$BC,$E2,$02,$22,$E3,$01,$59,$94,$4C,$4D,$01,$61,$F1,$53,$54,$55,$56,$57,$BE,$60,$24,$60,$61
+  $02,$02,$62,$63,$64,$65,$08,$E2,$6E,$6F,$1E,$0B,$70,$71,$72,$73,$90,$FE,$89,$7B,$02,$61,$80,$7C
+  $7D,$7E,$7F,$01,$66,$88,$89,$02,$12,$35,$8A,$8B,$55,$58
+end data
+data Z82 bytes
+  $65,$8C,$8D,$01,$26,$96,$97,$02,$42,$0E,$98,$99,$9A,$9B,$C2,$58,$9F,$A4,$A5,$BC,$19,$F6,$A6,$A7
+  $A8,$C4,$6E,$B1,$B2,$B3,$FE,$06,$08,$B4,$B5,$B6,$01,$21,$84,$C1,$C2,$C3,$C4,$02,$27,$C5,$C6,$C7
+  $A6,$C4,$CF,$D0,$D1,$E5,$FE,$25,$91,$D2,$D3,$DB,$C2,$DC,$DD,$02,$2D,$DE,$55,$56
+end data
+data Z83 bytes
+  $65,$E4,$E5,$02,$0B,$E6,$55,$55,$80
+end data
+data Z84 bytes
+  $9A,$00,$C0,$8F,$0C,$C3,$F0,$6E,$30,$FE,$BE,$0C,$FD,$F5,$22,$03,$C0,$FF,$03,$D4,$D7,$F8,$CC,$EC
+  $FF,$D7,$F2,$9F,$EA,$B0,$7D,$DA,$FF,$B0,$EC,$79,$D6,$78,$FF,$EE,$03,$0F,$FC,$E4,$7F,$CA,$86,$C8
+  $3A,$F0,$0F,$CD,$0C,$5F,$80,$A0,$03,$22,$3C,$0F,$02,$94,$F0,$E1,$B6,$F5,$A0,$D5,$55,$60
+end data
+data Z85 bytes
+  $92,$00,$79,$F0,$0F,$03,$FC,$89,$00,$C0,$3E,$EF,$FE,$62,$C0,$3C,$AA,$0F,$00,$5A,$F0,$F8,$E5,$CE
+  $3E,$9B,$EA,$1F,$D5,$D7,$80,$C0,$B0,$EB,$B6,$3F,$BB,$FF,$FC,$E4,$8A,$0E,$3C,$3E,$DF,$C4,$7A,$FF
+  $FC,$3E,$BB,$A4,$1B,$FC,$E0,$C9,$EA,$F5,$90,$F5,$B0,$D5,$55,$60
+end data
+data Z86 bytes
+  $82,$00,$75,$C0,$F0,$FC,$55,$58
+end data
+data Z87 bytes
+  $9A,$03,$83,$22,$8B,$03,$68,$F3,$98,$F1,$83,$81,$FE,$F9,$FC,$EA,$B1,$FE,$01,$FF,$D5,$ED,$F5,$E7
+  $ED,$B0,$FF,$EB,$F0,$EA,$FF,$AD,$FF,$F9,$FF,$FC,$C5,$FE,$F9,$DB,$EC,$E7,$70,$FF,$EB,$F0,$EA,$BC
+  $83,$FE,$E3,$B6,$FE,$83,$54,$9E,$7B,$56,$FE,$FE,$25,$E8,$7F,$30,$F8,$EA,$30,$0F,$FE,$38,$B4,$FE
+  $53,$17,$20,$4A,$F1,$17,$55,$55,$80
+end data
+data Z88 bytes
+  $92,$03,$25,$F3,$83,$8E,$01,$81,$FC,$63,$B1,$01,$9A,$FE,$B1,$7E,$E9,$E6,$18,$92,$83,$81,$EB,$03
+  $AB,$81,$FA,$F0,$FE,$88,$83,$96,$81,$F3,$39,$01,$F1,$FC,$AF,$F3,$B0,$3A,$DB,$F1,$F3,$B0,$FC,$EB
+  $E9,$32,$FF,$8B,$3B,$40,$4F,$EE,$E9,$3F,$83,$79,$54,$FF,$E9,$90,$FC,$EA,$42,$EE,$6A,$4E,$7B,$EA
+  $CF,$B0,$D4,$F5,$E9,$55,$58
+end data
+data Z89 bytes
+  $82,$03,$8D,$F3,$55,$56
+end data
+data Z90 bytes
+  $8B,$00,$03,$E2,$FD,$FF,$3F,$FC,$BE,$F0,$FD,$FF,$AA,$3F,$0F,$A9,$03,$00,$AF,$C0,$E5,$F2,$D7,$E6
+  $9E,$00,$E8,$A4,$00,$EF,$EB,$3F,$90,$5F,$B0,$07,$FF,$FE,$C7,$55,$FF,$4D,$F1,$A7,$55,$FF,$E0,$EC
+  $FF,$E1,$28,$2C,$79,$98,$7D,$68,$EB,$83,$FC,$95,$80,$F5,$A0,$D5,$55,$60
+end data
+data Z91 bytes
+  $98,$00,$A9,$F0,$FC,$00,$62,$03,$0F,$AA,$3F,$00,$22,$FC,$F0,$AA,$C0,$00,$6A,$0F,$9E,$03,$B7,$9F
+  $F0,$B2,$BE,$3F,$E1,$AE,$2F,$C0,$E1,$93,$E8,$95,$80,$F4,$A0,$7B,$AA,$FF,$F8,$A6,$F9,$41,$A3,$7E
+  $EF,$BA,$79,$FE,$73,$28,$F8,$EF,$96,$95,$EF,$FD,$D4,$C1,$FC,$B5,$E5,$90,$0D,$55,$56
+end data
+data Z92 bytes
+  $28,$00,$3F,$28,$0F,$3F,$0F,$03,$AA,$00,$C0,$F0,$24,$FC,$00,$BF,$03,$DB,$FB,$E3,$CF,$EF,$FC,$F0
+  $E9,$FB,$D3,$C0,$BA,$0F,$DB,$0F,$62,$3F,$FC,$3B,$FA,$F8,$FF,$91,$94,$A1,$03,$7F,$FF,$77,$C0,$80
+  $F0,$A0,$3A,$AE,$9A,$00,$00,$4F,$7C,$7C,$70,$FE,$FF,$C7,$FE,$7F,$C9,$FF,$F8,$F8,$6E,$ED,$6C,$FF
+  $A2,$D0,$DD,$80,$55,$56
+end data
+data Z93 bytes
+  $A2,$00,$FC,$F0,$BF,$C0,$F5,$FB,$DA,$FE,$3F,$AA,$0F,$03,$AF,$C0,$D3,$8E,$E2,$EB,$FF,$3F,$F7,$B7
+  $F8,$FA,$B1,$E2,$EF,$0F,$FF,$3F,$DD,$FE,$FD,$DE,$DD,$E4,$FC,$90,$E3,$8A,$D7,$A0,$DE,$D0,$E3,$87
+  $00,$F9,$56,$50,$FD,$FF,$70,$FF,$A2,$C7,$FF,$FF,$EC,$08,$EB,$FA,$00,$D7,$A0,$DD,$D0,$55,$56
+end data
+data Z94 bytes
+  $89,$03,$9A,$83,$03,$83,$81,$4A,$B1,$1A,$01,$68,$B1,$68,$81,$A0,$01,$E7,$BA,$FF,$F1,$A3,$FF,$EA
+  $EB,$F2,$F3,$EA,$FD,$FE,$F1,$07,$8E,$B0,$DA,$79,$B0,$FF,$EA,$F5,$9F,$9C,$FE,$AF,$08,$3C,$F9,$C9
+  $44,$F1,$2C,$F7,$D0,$73,$EC,$DA,$30,$08,$7F,$6C,$8A,$FE,$0F,$F7,$32,$F7,$FF,$F0,$FF,$38,$D6,$55
+  $55,$80
+end data
+data Z95 bytes
+  $9A,$03,$F3,$22,$0F,$03,$4A,$83,$0A,$08,$28,$81,$29,$01,$A1,$B1,$F6,$F0,$3F,$0B,$0B,$D2,$FF,$FE
+  $B2,$FF,$E8,$96,$FC,$E8,$80,$FF,$6D,$66,$A0,$FF,$F1,$FF,$B0,$F2,$FF,$FE,$D2,$FF,$E8,$20,$7D,$90
+  $F7,$70,$DE,$50,$28,$5F,$F9,$F9,$FB,$C7,$FE,$DD,$CC,$F7,$80,$DF,$60,$40,$75,$55,$58
+end data
+data Z96 bytes
+  $24,$0F,$F1,$88,$03,$F3,$2A,$0F,$82,$03,$92,$83,$AB,$08,$81,$EA,$FB,$FE,$01,$29,$B1,$5F,$D0,$EB
+  $FD,$01,$9E,$B0,$FF,$E7,$03,$8E,$9F,$F2,$6F,$CF,$64,$51,$8E,$40,$80,$E6,$30,$B9,$01,$D0,$FC,$FF
+  $AE,$F9,$FB,$80,$FC,$31,$2E,$F9,$FB,$FE,$29,$B1,$A4,$0B,$F6,$0E,$93,$08,$87,$10,$9B,$60,$F1,$55
+  $55,$80
+end data
+data Z97 bytes
+  $A9,$0F,$F1,$AF,$01,$FB,$9F,$FE,$E0,$FA,$FE,$F3,$69,$0F,$88,$03,$83,$A2,$08,$FE,$81,$F8,$FF,$A8
+  $01,$B1,$66,$0B,$B1,$0B,$78,$EA,$F3,$90,$FE,$BA,$BC,$E6,$03,$90,$FF,$F1,$F8,$50,$FF,$EA,$EC,$E3
+  $80,$BF,$B0,$F9,$FE,$39,$70,$3F,$FF,$F3,$DF,$6A,$B7,$FF,$FE,$B5,$80,$F6,$83,$D0,$1D,$9F,$D4,$E5
+  $55,$55,$80
+end data
+data Z98 bytes
+  $81,$01,$89,$04,$01,$52,$1F,$06,$07,$08,$09,$0A,$C0,$12,$02,$10,$11,$12,$13,$14,$15,$16,$17,$40
+  $85,$84,$1E,$1F,$02,$20,$21,$22,$02,$23,$24,$25,$0A,$62,$2B,$2C,$E6,$FF,$2D,$2E,$02,$27,$2F,$30
+  $31,$81,$C2,$8B,$04,$05,$F7,$FE,$F5,$F6,$F4,$EC,$07,$55,$55,$80
+end data
+data Z99 bytes
+  $08,$10,$11,$12,$02,$66,$13,$14,$02,$08,$21,$15,$16,$17,$01,$60,$92,$1E,$1F,$20,$02,$64,$21,$22
+  $02,$9E,$23,$24,$25,$C4,$09,$BC,$2C,$2D,$2E,$FE,$98,$2F,$30,$02,$09,$86,$31,$32,$01,$08,$38,$39
+  $3A,$02,$19,$81,$3B,$3C,$02,$9E,$3D,$3E,$3F,$C3,$08,$38,$46,$47,$48,$49,$B8,$49,$4A,$4B,$FE,$65
+  $85,$4C,$4D,$38,$53,$54,$2E,$02,$9E,$55,$56,$57,$E2,$59,$B9,$58,$5C,$5D,$FE,$6D,$5E,$55,$56
+end data
+data Z100 bytes
+  $64,$5F,$60,$02,$22,$61,$01,$06,$25,$05,$01,$48,$7C,$0B,$0C,$0D,$0E,$0F,$C0,$48,$09,$18,$19,$02
+  $02,$1A,$1B,$1C,$1D,$02,$2F,$26,$27,$FE,$9E,$28,$29,$2A,$74,$46,$37,$32,$33,$D6,$67,$34,$35,$36
+  $85,$02,$D9,$92,$37,$ED,$55,$55,$80
+end data
+data Z101 bytes
+  $25,$0F,$01,$20,$90,$18,$19,$1A,$02,$9E,$1B,$1C,$1D,$C2,$59,$BD,$26,$27,$28,$FE,$27,$29,$2A,$2B
+  $82,$C4,$6E,$33,$34,$35,$FE,$06,$61,$36,$37,$01,$82,$40,$41,$42,$02,$11,$9E,$43,$44,$45,$C4,$9B
+  $4E,$4F,$50,$94,$FE,$96,$51,$52,$40,$59,$5A,$35,$02,$44,$B5,$5B,$55,$58
+end data
+data Z102 bytes
+  $65,$62,$63,$02,$0B,$64,$55,$55,$80
+end data
+data Z103 bytes
+  $86,$00,$20,$03,$00,$A8,$C0,$F5,$30,$C3,$E0,$F8,$ED,$FC,$82,$03,$30,$C0,$0C,$F9,$DF,$B3,$98,$C0
+  $0C,$03,$9E,$30,$0C,$A5,$93,$03,$FD,$D4,$B0,$EF,$B8,$B0,$79,$CA,$F5,$B0,$FB,$FF,$F9,$0F,$FF,$FD
+  $E4,$AE,$FD,$6F,$CA,$EB,$FF,$3C,$F2,$CF,$94,$9A,$C0,$0C,$02,$23,$F0,$3C,$DF,$B6,$80,$5F,$4A,$75
+  $55,$58
+end data
+data Z104 bytes
+  $19,$00,$C0,$30,$0C,$00,$66,$F0,$3C,$03,$A1,$00,$AA,$C0,$0F,$BF,$3C,$FD,$FF,$A5,$DD,$00,$BF,$F0
+  $C5,$DD,$86,$C0,$B8,$F0,$CC,$3B,$D3,$0F,$87,$7C,$DE,$90,$C0,$57,$E3,$F4,$0F,$3F,$F8,$FD,$63,$FD
+  $8E,$C0,$00,$5C,$48,$79,$3C,$FC,$FC,$3F,$3F,$92,$2F,$3C,$E7,$DF,$E8,$CF,$D7,$90,$D7,$B0,$55,$55
+  $80
+end data
+data Z105 bytes
+  $82,$00,$75,$C0,$FC,$3F,$55,$58
+end data
+data Z106 bytes
+  $86,$03,$E7,$83,$F4,$B9,$FF,$8B,$E0,$B9,$F3,$F4,$EF,$FF,$F1,$CD,$89,$FC,$8A,$83,$B1,$81,$01,$27
+  $01,$83,$81,$FE,$EF,$FE,$A2,$3B,$E0,$9F,$A0,$ED,$FE,$9D,$FC,$9D,$BF,$01,$FC,$FF,$D1,$8D,$F7,$FE
+  $FF,$72,$E9,$DE,$B0,$60,$F3,$FE,$FE,$C8,$83,$FD,$BC,$B1,$FE,$A4,$B1,$BC,$81,$E4,$FF,$44,$80,$3E
+  $EA,$F2,$81,$30,$BC,$83,$FE,$EF,$CA,$2A,$39,$FE,$D5,$55,$60
+end data
+data Z107 bytes
+  $28,$03,$F3,$9A,$F1,$01,$03,$6A,$F3,$A8,$F1,$03,$6A,$F3,$96,$83,$24,$B1,$01,$A5,$B1,$F6,$E4,$78
+  $83,$81,$81,$EC,$FF,$A9,$B9,$EA,$FF,$94,$E8,$BD,$F3,$FE,$FC,$6B,$C0,$E7,$EA,$DE,$50,$B4,$7F,$98
+  $AB,$FC,$01,$BC,$6C,$40,$7C,$52,$E8,$51,$83,$5E,$EA,$E7,$84,$FA,$68,$FC,$8F,$01,$42,$3F,$C1,$2A
+  $35,$55,$58
+end data
+data Z108 bytes
+  $82,$03,$AD,$F3,$F1,$55,$56
+end data
+data Z109 bytes
+  $82,$00,$A1,$03,$AA,$0F,$3F,$FC,$3F,$FC,$F0,$2A,$C0,$3F,$03,$1A,$00,$A1,$F0,$98,$0F,$03,$00,$63
+  $C0,$F0,$E5,$BF,$E8,$F5,$90,$F1,$B0,$3F,$B2,$EF,$B1,$B2,$AE,$FF,$F4,$DD,$F3,$E5,$BC,$F0,$21,$8E
+  $F9,$E7,$EA,$FD,$E9,$90,$79,$B0,$5F,$B2,$75,$55,$58
+end data
+data Z110 bytes
+  $A2,$3F,$00,$FC,$AA,$F0,$C0,$28,$00,$69,$3F,$A6,$0F,$9A,$C0,$F0,$79,$DF,$FF,$0F,$03,$03,$CE,$E5
+  $EF,$B1,$E6,$EF,$9E,$E6,$F6,$FB,$D1,$B3,$3F,$D7,$80,$C1,$A0,$FF,$FE,$9F,$FF,$F9,$95,$9A,$FE,$F9
+  $94,$CC,$A0,$00,$3F,$66,$FF,$F1,$18,$62,$FF,$79,$74,$A7,$FD,$FC,$FD,$73,$71,$80,$5D,$55,$56
+end data
+data Z111 bytes
+  $3A,$03,$00,$FD,$00,$68,$FC,$E6,$F7,$3F,$3F,$0F,$22,$03,$03,$BF,$0F,$EA,$A4,$D8,$E4,$FC,$C0,$C0
+  $F0,$F0,$00,$FE,$FE,$A9,$CF,$EC,$7F,$CF,$C9,$FF,$FF,$F3,$A5,$D9,$DF,$FE,$85,$E2,$FF,$CA,$F9,$FC
+  $FF,$70,$5F,$A0,$07,$EA,$9E,$3F,$9E,$03,$9C,$FA,$A5,$9E,$93,$C0,$FD,$B7,$6C,$FF,$BA,$A6,$CE,$F6
+  $72,$1F,$38,$F5,$6D,$55,$58
+end data
+data Z112 bytes
+  $AA,$00,$C0,$8A,$FC,$00,$6A,$03,$3B,$0F,$3F,$F7,$3F,$E0,$F9,$FF,$BE,$FC,$F0,$00,$F0,$CD,$D6,$3F
+  $F9,$FE,$68,$3F,$B9,$0F,$A0,$28,$00,$62,$0F,$0F,$4E,$AB,$21,$F0,$C0,$3F,$73,$FE,$FF,$CC,$FE,$BB
+  $F0,$CB,$0F,$F0,$71,$6C,$E5,$80,$7D,$B0,$7F,$C8,$67,$F0,$FE,$A4,$DF,$D2,$3D,$5D,$B9,$F4,$24,$FF
+  $D7,$7F,$FF,$D5,$9B,$55,$60
+end data
+data Z113 bytes
+  $A0,$00,$89,$FC,$F0,$C0,$00,$98,$0F,$3F,$0F,$D5,$03,$00,$55,$60
+end data
+data Z114 bytes
+  $82,$03,$9B,$83,$81,$FA,$FD,$FE,$B1,$5A,$01,$A1,$B1,$AA,$81,$01,$1F,$BC,$FF,$E8,$A2,$FB,$E8,$03
+  $E9,$FE,$F3,$99,$F1,$F3,$F1,$39,$B0,$FF,$DC,$E8,$FF,$C2,$E8,$F7,$42,$FD,$82,$40,$89,$0B,$0B,$E3
+  $FE,$A5,$3F,$81,$FF,$B6,$C0,$F7,$A0,$DF,$42,$62,$E5,$3E,$FF,$D6,$E6,$F7,$C0,$DD,$42,$55,$56
+end data
+data Z115 bytes
+  $A2,$83,$08,$81,$4A,$01,$1A,$B1,$56,$F2,$08,$CA,$F8,$03,$AF,$AA,$B8,$03,$FE,$AA,$83,$03,$29,$F3
+  $22,$0F,$F1,$4E,$80,$78,$E4,$FF,$A0,$CA,$39,$A0,$F8,$EB,$90,$79,$70,$E7,$12,$F9,$B1,$FB,$10,$62
+  $0B,$0B,$02,$F3,$81,$CC,$FF,$B1,$FD,$AA,$87,$70,$9E,$50,$12,$7A,$81,$F1,$5D,$55,$56
+end data
+data Z116 bytes
+  $3F,$F1,$01,$FD,$FE,$82,$F3,$0F,$F3,$0F,$A2,$F1,$A9,$03,$83,$AF,$08,$F8,$B8,$81,$FE,$A1,$01,$61
+  $86,$B1,$01,$0B,$B1,$0B,$87,$B1,$F7,$DF,$BE,$E7,$A5,$A0,$FE,$81,$7F,$FE,$A9,$03,$F3,$FF,$5B,$F8
+  $FE,$55,$FE,$7C,$7D,$EE,$F9,$D5,$D0,$FF,$B1,$AF,$FE,$F3,$90,$FA,$11,$0E,$08,$29,$08,$E3,$4C,$9F
+  $2E,$14,$FF,$F9,$F6,$8F,$D8,$FB,$A4,$11,$01,$75,$55,$58
+end data
+data Z117 bytes
+  $A8,$03,$83,$22,$08,$03,$29,$F3,$BF,$0F,$F8,$AE,$FF,$F1,$FA,$BF,$01,$FD,$FF,$B8,$F2,$FE,$A6,$0F
+  $9F,$F1,$B2,$FF,$B8,$F1,$FF,$FF,$90,$F8,$EB,$FF,$81,$8F,$F6,$B3,$DA,$FE,$B1,$1A,$0B,$29,$B1,$7B
+  $C6,$8E,$C2,$B0,$E3,$AA,$F9,$80,$20,$7F,$F6,$CA,$20,$F1,$5E,$DA,$3F,$A8,$FC,$8E,$60,$FF,$5A,$56
+  $FF,$50,$B2,$F9,$57,$FE,$B5,$01,$55,$58
+end data
+data Z118 bytes
+  $A8,$0F,$F1,$A2,$01,$92,$F1,$D5,$01,$55,$60
+end data
+data Z119 bytes
+  $84,$01,$99,$4A,$4B,$01,$46,$1F,$4E,$4F,$50,$51,$52,$C0,$12,$02,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F
+  $40,$84,$84,$66,$02,$02,$67,$68,$69,$02,$6A,$6B,$6C,$62,$71,$72,$E6,$FF,$73,$74,$02,$27,$75,$76
+  $77,$81,$C2,$89,$80,$81,$E6,$BD,$82,$83,$02,$66,$84,$85,$86,$57,$55,$55,$80
+end data
+data Z120 bytes
+  $64,$8C,$8D,$02,$98,$8E,$8F,$02,$20,$85,$90,$91,$92,$01,$9F,$98,$99,$9A,$C0,$23,$9B,$9C,$C9,$EE
+  $F6,$9D,$9E,$9F,$C2,$09,$A6,$A7,$A8,$A9,$66,$02,$AA,$AB,$4E,$7B,$25,$AC,$AD,$9F,$B4,$B5,$B6,$DA
+  $39,$F9,$BD,$B7,$B8,$B9,$BE,$9B,$BA,$BB,$BC,$82,$FF,$C3,$C4,$C5,$02,$12,$78,$C6,$C7,$C8,$E6,$65
+  $E4,$C9,$CA,$CB,$D2,$D3,$D4,$A9,$C2,$9B,$D5,$D6,$D7,$92,$FE,$19,$D8,$D9,$DF,$A9,$02,$0B,$E0,$55
+  $55,$80
+end data
+data Z121 bytes
+  $64,$E1,$E2,$02,$22,$E3,$01,$12,$65,$4C,$4D,$01,$18,$7C,$53,$54,$55,$56,$57,$C0,$48,$09,$60,$61
+  $02,$02,$62,$63,$64,$65,$02,$E6,$6D,$1A,$79,$6E,$6F,$70,$C0,$08,$93,$78,$79,$98,$BD,$7A,$7B,$7C
+  $12,$36,$87,$88,$92,$48,$D5,$89,$8A,$55,$60
+end data
+data Z122 bytes
+  $25,$8B,$01,$26,$93,$94,$02,$46,$79,$95,$96,$97,$C2,$66,$A0,$A1,$A2,$F4,$FE,$9F,$A3,$A4,$A5,$C4
+  $60,$94,$AE,$AF,$B0,$B1,$F8,$7A,$96,$B2,$B3,$0E,$BD,$BE,$BF,$02,$FE,$16,$7A,$C0,$C1,$C2,$C4,$6E
+  $CC,$CD,$CE,$FE,$52,$02,$CF,$D0,$D1,$DA,$DB,$DC,$B1,$02,$41,$8D,$DD,$DE,$55,$56
+end data
+data Z123 bytes
+  $65,$E4,$B1,$02,$0B,$E5,$55,$55,$80
+end data
+data Z124 bytes
+  $86,$00,$A9,$03,$00,$A8,$C0,$F5,$30,$0C,$E0,$8E,$03,$0C,$FF,$93,$30,$BE,$EC,$D1,$D8,$E3,$C8,$9F
+  $C0,$DF,$DF,$C0,$D0,$5F,$76,$B8,$0F,$FD,$FE,$0F,$C0,$FF,$ED,$FA,$E0,$C6,$EB,$A8,$3C,$FE,$D3,$D1
+  $63,$DA,$0B,$F0,$F6,$DF,$E8,$F5,$C0,$90,$F0,$B0,$7F,$58,$B9,$03,$3C,$FF,$F5,$F0,$C0,$F0,$A7,$55
+  $58
+end data
+data Z125 bytes
+  $26,$0F,$03,$9A,$00,$C0,$68,$3C,$9F,$F0,$3C,$0F,$E2,$E3,$DC,$DF,$E8,$F7,$FF,$BB,$CA,$DF,$E1,$BB
+  $C0,$7B,$C5,$0F,$FE,$FF,$E9,$BF,$C0,$FB,$B3,$EB,$3F,$BE,$FE,$E9,$4C,$F6,$B0,$60,$FC,$FC,$3F,$0F
+  $C0,$5D,$55,$56
+end data
+data Z126 bytes
+  $86,$03,$B9,$83,$F4,$FF,$F0,$FE,$AE,$F3,$F4,$7A,$FF,$83,$69,$81,$A5,$B1,$FB,$E2,$01,$B9,$FE,$A0
+  $FE,$D1,$BD,$FF,$9F,$F1,$F2,$F7,$D0,$FF,$DC,$C2,$CF,$88,$D7,$AB,$FA,$B1,$CE,$FE,$70,$0A,$81,$47
+  $FF,$F0,$EA,$FC,$82,$58,$FB,$C7,$FA,$BD,$EC,$50,$78,$EA,$E7,$A6,$DF,$3A,$FF,$55,$55,$80
+end data
+data Z127 bytes
+  $82,$B1,$9A,$01,$B1,$4A,$83,$AA,$81,$01,$68,$03,$BF,$83,$E8,$E8,$F3,$FD,$F3,$FA,$FE,$F1,$0F,$F2
+  $F3,$C0,$8F,$DA,$F3,$A5,$FF,$83,$A6,$81,$E4,$B1,$70,$A0,$81,$69,$83,$3C,$FE,$F6,$70,$81,$F1,$F5
+  $E7,$55,$58
+end data
+data Z128 bytes
+  $9A,$00,$03,$A2,$0F,$A2,$3F,$FC,$F0,$A2,$C0,$92,$00,$A8,$0F,$03,$6A,$C0,$86,$F0,$24,$03,$00,$8A
+  $F0,$FC,$F9,$3F,$CB,$E4,$FE,$CB,$E5,$80,$57,$C4,$A0,$EA,$A4,$3F,$7F,$A3,$A0,$E7,$34,$FF,$D7,$38
+  $DB,$E9,$F1,$A7,$0F,$7F,$A5,$E7,$F7,$E5,$E8,$D7,$90,$D7,$B0,$55,$55,$80
+end data
+data Z129 bytes
+  $82,$00,$A6,$C0,$F0,$00,$03,$8B,$0F,$3F,$A2,$E8,$FC,$FC,$FB,$E3,$F0,$CA,$FA,$FC,$23,$3F,$0F,$FE
+  $C9,$EA,$B7,$FD,$FC,$E5,$B0,$7D,$C0,$7E,$FE,$EF,$0F,$BC,$B5,$EF,$F7,$BA,$DB,$E0,$FB,$64,$FF,$B3
+  $AE,$BC,$84,$16,$FF,$F9,$86,$FF,$85,$FD,$86,$9F,$84,$C8,$78,$70,$4F,$A0,$43,$55,$55,$80
+end data
+data Z130 bytes
+  $9E,$00,$FB,$26,$03,$0F,$EB,$3F,$EE,$FC,$A7,$FA,$F0,$C0,$C0,$BE,$DC,$E1,$FE,$3B,$E0,$8B,$FE,$3F
+  $AB,$E8,$03,$A7,$E5,$F0,$FA,$F5,$AA,$00,$28,$C0,$E5,$80,$7D,$A0,$1F,$A5,$BF,$F8,$9F,$D3,$FB,$CC
+  $BC,$E3,$D1,$96,$FA,$D6,$FF,$3F,$78,$D6,$FE,$F8,$71,$96,$03,$81,$00,$FF,$A7,$D1,$70,$5D,$55,$56
+end data
+data Z131 bytes
+  $2A,$3F,$00,$FC,$23,$F0,$C0,$99,$FD,$C0,$00,$00,$98,$3F,$0F,$03,$E8,$F0,$FB,$F0,$FC,$D1,$E4,$8F
+  $D8,$C7,$EE,$BF,$F2,$CF,$EB,$0F,$BF,$0F,$EF,$D8,$F0,$E1,$F8,$97,$9F,$FE,$2A,$03,$87,$F0,$F9,$77
+  $97,$FE,$E5,$A0,$78,$C0,$3B,$16,$CF,$B6,$B5,$CF,$2E,$DB,$F7,$C5,$56,$F6,$93,$D1,$E8,$E3,$B0,$97
+  $E0,$55,$55,$80
+end data
+data Z132 bytes
+  $9A,$03,$83,$4A,$81,$1A,$01,$4A,$B1,$57,$DE,$D0,$B0,$7F,$E5,$90,$7E,$F5,$FF,$92,$F3,$87,$F1,$CF
+  $B0,$F0,$79,$D0,$FD,$E5,$B0,$E0,$22,$A4,$81,$E7,$44,$D8,$20,$DD,$0B,$0B,$FA,$FA,$B5,$2F,$08,$69
+  $03,$7A,$35,$03,$17,$87,$2A,$EE,$D4,$0F,$E8,$D5,$55,$60
+end data
+data Z133 bytes
+  $82,$03,$88,$F3,$82,$03,$83,$8A,$08,$81,$0A,$01,$A5,$0B,$EE,$DA,$DE,$3B,$B4,$8F,$BE,$A9,$E8,$FE
+  $0F,$A0,$F1,$FB,$B1,$EA,$8E,$EE,$74,$7F,$E5,$F3,$A5,$FF,$83,$A5,$81,$A5,$01,$A7,$B1,$FF,$5D,$F8
+  $FF,$FF,$E4,$D8,$DF,$BC,$02,$7E,$85,$7C,$76,$D2,$3C,$FE,$A5,$F1,$FF,$A0,$EC,$77,$F2,$79,$A0,$F5
+  $EB,$55,$58
+end data
+data Z134 bytes
+  $86,$03,$BE,$83,$FB,$FF,$8B,$08,$81,$BA,$FA,$FE,$A9,$01,$B1,$6A,$0B,$86,$B1,$82,$81,$8A,$01,$83
+  $7F,$B2,$CF,$92,$91,$8A,$FE,$F3,$FA,$FB,$FF,$0F,$2E,$F1,$FA,$EA,$FE,$01,$A0,$F1,$EE,$A0,$D2,$A0
+  $F3,$F3,$B2,$F3,$B1,$1E,$9E,$84,$1F,$87,$83,$DE,$44,$10,$0E,$14,$F5,$10,$A0,$08,$69,$83,$7F,$5C
+  $FF,$F8,$3C,$55,$55,$80
+end data
+data Z135 bytes
+  $2A,$F3,$0F,$F1,$5A,$01,$0F,$EC,$6F,$F3,$CF,$E3,$CA,$0F,$03,$A9,$FE,$F3,$A2,$03,$8A,$83,$08,$FE
+  $F6,$FF,$BE,$81,$FB,$FF,$81,$01,$A0,$B1,$7E,$C5,$FE,$79,$92,$FF,$7D,$F6,$FF,$3A,$34,$FE,$AC,$E5
+  $FE,$7D,$80,$FB,$98,$0B,$FF,$FF,$F9,$F6,$FC,$FF,$F9,$5C,$FF,$C5,$FF,$BA,$F7,$90,$77,$B8,$55,$55
+  $80
+end data
+data Z136 bytes
+  $90,$01,$99,$04,$05,$01,$46,$0F,$08,$09,$0A,$0B,$BC,$12,$02,$0F,$10,$11,$12,$02,$13,$14,$15,$15
+  $96,$1B,$1C,$02,$02,$1D,$1E,$02,$88,$1F,$20,$46,$7A,$25,$26,$02,$FE,$F8,$27,$F6,$F5,$28,$29,$C6
+  $DE,$C8,$F8,$06,$CA,$FD,$07,$08,$F4,$81,$F0,$D5,$55,$60
+end data
+data Z137 bytes
+  $61,$12,$13,$02,$98,$14,$15,$02,$60,$85,$16,$17,$18,$01,$99,$1E,$1F,$02,$6F,$20,$F0,$27,$09,$21
+  $22,$82,$C2,$60,$27,$28,$29,$27,$2A,$2B,$2C,$D9,$EA,$E2,$2D,$2E,$2F,$C4,$0B,$36,$37,$38,$06,$D9
+  $FE,$81,$39,$3A,$02,$82,$3B,$3C,$3D,$01,$86,$44,$45,$46,$47,$02,$12,$39,$48,$49,$E6,$24,$87,$4A
+  $4B,$4C,$54,$55,$56,$CA,$02,$57,$AE,$58,$BE,$58,$F9,$59,$5E,$4B,$FE,$6D,$5F,$55,$56
+end data
+data Z138 bytes
+  $64,$60,$61,$02,$22,$62,$01,$42,$65,$06,$07,$01,$18,$64,$0C,$02,$0D,$0E,$01,$49,$89,$16,$17,$02
+  $E5,$18,$19,$1A,$C2,$22,$21,$22,$7A,$BC,$21,$23,$24,$18,$D8,$2A,$2B,$D4,$23,$2C,$2D,$84,$08,$F6
+  $0B,$92,$18,$D5,$0F,$10,$55,$60
+end data
+data Z139 bytes
+  $25,$11,$01,$26,$19,$1A,$02,$46,$79,$1B,$1C,$1D,$C2,$62,$23,$24,$53,$98,$BF,$0F,$25,$26,$19,$EF
+  $30,$31,$32,$DC,$BC,$59,$BE,$33,$34,$35,$FE,$18,$3E,$3F,$40,$0E,$02,$42,$78,$41,$42,$43,$C5,$21
+  $4D,$4E,$4F,$50,$0F,$EE,$92,$51,$52,$53,$5A,$5B,$5C,$7C,$BE,$0B,$5D,$55,$55,$80
+end data
+data Z140 bytes
+  $65,$63,$0E,$02,$0B,$64,$55,$55,$80
+end data
+data Z141 bytes
+  $86,$00,$3E,$03,$0C,$F0,$6E,$C0,$C0,$30,$E0,$17,$8F,$E5,$30,$30,$FB,$FA,$E5,$CA,$0C,$FF,$F1,$FE
+  $9F,$C4,$E5,$81,$C0,$E7,$7C,$97,$C0,$FE,$BA,$FD,$B5,$7F,$3C,$F0,$F0,$D7,$C4,$7A,$FE,$9F,$F0,$B4
+  $A0,$0F,$3B,$DC,$C1,$A0,$F5,$B0,$F8,$B4,$20,$0F,$3C,$0F,$0F,$F5,$EB,$55,$58
+end data
+data Z142 bytes
+  $96,$F0,$28,$3C,$0F,$92,$03,$00,$FF,$C0,$E4,$EE,$98,$00,$03,$0F,$F9,$FB,$C1,$84,$C0,$00,$00,$7B
+  $BF,$03,$E3,$F8,$3F,$FC,$E9,$DD,$B5,$C0,$F7,$D4,$E5,$FF,$A4,$9F,$FC,$3F,$0F,$A0,$3E,$B9,$90,$57
+  $95,$A0,$D5,$55,$60
+end data
+data Z143 bytes
+  $86,$03,$B9,$83,$F4,$FF,$F0,$FE,$AE,$F3,$F4,$79,$F0,$E3,$D5,$81,$81,$E9,$FB,$FF,$01,$98,$83,$81
+  $B1,$7F,$D4,$F9,$D8,$B0,$8F,$F1,$F1,$FB,$FF,$FF,$C0,$F1,$FF,$F9,$FE,$D4,$FE,$D8,$60,$7F,$A7,$FD
+  $FF,$A0,$76,$9A,$FE,$B1,$5E,$D4,$7B,$A0,$72,$FE,$97,$03,$E7,$FD,$80,$E7,$63,$FE,$9F,$E4,$B0,$3B
+  $E6,$DF,$A0,$80,$75,$55,$58
+end data
+data Z144 bytes
+  $96,$B1,$22,$83,$81,$9A,$01,$03,$29,$83,$88,$81,$03,$28,$F3,$68,$F1,$FF,$D1,$F4,$CE,$C0,$D8,$3F
+  $C2,$FF,$AA,$F8,$FD,$88,$80,$FF,$FE,$60,$F7,$E4,$9F,$64,$FF,$83,$A0,$CF,$4E,$F8,$FF,$58,$50,$7F
+  $F5,$A0,$3C,$1C,$F7,$B0,$55,$55,$80
+end data
+data Z145 bytes
+  $9A,$00,$03,$8E,$0F,$3F,$FD,$48,$3F,$FC,$F0,$F0,$C0,$00,$E6,$FE,$96,$03,$96,$F0,$24,$03,$00,$8B
+  $F0,$FC,$B9,$A9,$0F,$E4,$88,$C0,$C0,$E5,$80,$7C,$A0,$1F,$C2,$7E,$97,$99,$BE,$00,$FF,$97,$9F,$F0
+  $38,$EF,$E6,$A4,$0E,$A6,$A3,$3F,$9E,$E6,$90,$57,$DD,$A0,$55,$56
+end data
+data Z146 bytes
+  $AA,$00,$C0,$28,$FC,$00,$92,$3F,$00,$20,$C0,$00,$8B,$03,$0F,$92,$FB,$3F,$3F,$00,$FC,$F0,$F0,$3F
+  $C1,$DF,$A5,$FF,$FC,$EE,$CC,$BA,$3F,$CD,$94,$F9,$E5,$94,$F9,$E5,$90,$5F,$A0,$07,$F8,$A5,$AD,$0E
+  $FF,$AB,$A9,$E7,$A9,$FE,$0F,$FF,$B4,$FF,$E7,$97,$B4,$F5,$E5,$B0,$E1,$C0,$3E,$FF,$16,$D5,$55,$60
+end data
+data Z147 bytes
+  $A2,$0F,$3F,$00,$26,$FC,$F0,$FC,$8A,$F0,$C0,$8A,$00,$0F,$5E,$ED,$E8,$3F,$F5,$03,$FA,$D7,$CA,$F7
+  $00,$FE,$BE,$BA,$FE,$FD,$03,$97,$90,$7C,$A0,$0F,$A7,$BF,$A4,$A9,$FD,$FA,$A2,$A7,$F0,$4F,$EB,$B8
+  $FE,$94,$7F,$FF,$94,$FE,$E4,$E8,$28,$F0,$E1,$90,$7C,$A0,$5D,$55,$56
+end data
+data Z148 bytes
+  $28,$03,$0F,$92,$3F,$00,$28,$FC,$F0,$80,$C0,$00,$98,$0F,$03,$00,$1B,$3F,$EE,$B9,$E5,$C0,$C5,$9F
+  $FC,$A0,$4F,$B0,$03,$E9,$EB,$FF,$3F,$FF,$D4,$FD,$F7,$D3,$F0,$55,$55,$80
+end data
+data Z149 bytes
+  $9A,$03,$83,$4A,$81,$66,$01,$81,$01,$4A,$B1,$57,$DF,$D0,$B0,$7D,$90,$FA,$F5,$FF,$F3,$4A,$F1,$66
+  $01,$F1,$01,$4F,$F0,$7D,$D0,$F7,$B0,$FF,$F0,$8A,$F8,$84,$FF,$93,$08,$81,$87,$20,$9F,$44,$FF,$8A
+  $C0,$08,$3D,$A0,$F3,$F0,$BE,$80,$2A,$B9,$0F,$FE,$F9,$B1,$44,$F5,$FF,$55,$58
+end data
+data Z150 bytes
+  $A8,$03,$F3,$A8,$0F,$92,$F1,$03,$20,$F3,$03,$A4,$83,$89,$08,$81,$29,$01,$A5,$B1,$FF,$E2,$FE,$FF
+  $C2,$C0,$F7,$A0,$9E,$84,$FE,$7E,$65,$FE,$7F,$B0,$FF,$F2,$FE,$9F,$34,$FF,$DF,$B0,$94,$FF,$7A,$74
+  $FF,$58,$40,$7C,$E0,$FD,$50,$8F,$FA,$A4,$FF,$8A,$84,$FF,$68,$F0,$3F,$70,$8F,$2A,$00,$75,$55,$58
+end data
+data Z151 bytes
+  $8A,$83,$08,$29,$81,$28,$01,$A5,$B1,$E7,$D8,$FF,$E1,$C3,$BC,$A1,$FF,$03,$AA,$83,$03,$0A,$F3,$1A
+  $0F,$29,$F1,$3B,$90,$9F,$E8,$F1,$DE,$CC,$A0,$7F,$EB,$F9,$9F,$7C,$FD,$DE,$32,$A6,$F2,$30,$EF,$0B
+  $FE,$DC,$77,$F0,$7F,$94,$FE,$E8,$F5,$6C,$7F,$FD,$32,$79,$90,$F7,$EC,$DF,$00,$A0,$FD,$E8,$55,$56
+end data
+data Z152 bytes
+  $9A,$83,$08,$4A,$81,$62,$01,$0B,$5E,$EA,$E3,$FE,$DB,$CE,$03,$CB,$AE,$F3,$A9,$FE,$0F,$29,$F1,$BE
+  $01,$FB,$B0,$7D,$DE,$BC,$03,$BE,$BC,$B1,$FE,$E7,$84,$E7,$67,$C4,$D5,$A7,$55,$60
+end data
+data Z153 bytes
+  $94,$01,$99,$4A,$4B,$01,$42,$0F,$4E,$4F,$50,$51,$C0,$06,$02,$56,$57,$58,$02,$59,$02,$5A,$5B,$15
+  $82,$61,$62,$02,$02,$A9,$63,$84,$02,$64,$65,$20,$8A,$6A,$6B,$6C,$02,$6D,$60,$80,$02,$6E,$6F,$70
+  $60,$98,$80,$81,$82,$02,$98,$83,$84,$25,$02,$85,$86,$87,$23,$8E,$8F,$55,$55,$80
+end data
+data Z154 bytes
+  $21,$90,$02,$98,$83,$91,$02,$60,$84,$92,$93,$94,$01,$83,$9B,$9C,$9D,$02,$CA,$C0,$9E,$48,$20,$02
+  $9F,$A0,$A1,$21,$96,$8E,$A8,$A9,$82,$02,$97,$AA,$99,$BF,$85,$AB,$AC,$27,$B1,$B2,$B3,$F6,$E5,$C0
+  $81,$B4,$86,$02,$02,$B5,$B6,$B7,$60,$85,$BE,$BF,$C0,$02,$A1,$C1,$20,$A0,$02,$C2,$C3,$C4,$90,$CB
+  $CC,$82,$02,$B9,$CD,$E4,$67,$CE,$CF,$D0,$F0,$49,$FE,$B5,$D6,$55,$58
+end data
+data Z155 bytes
+  $24,$CD,$02,$62,$D7,$01,$52,$65,$4C,$4D,$01,$08,$64,$52,$53,$54,$55,$01,$19,$E8,$5C,$5D,$5E,$5A
+  $E5,$5F,$60,$C2,$23,$66,$67,$98,$18,$E1,$68,$69,$C2,$66,$71,$72,$73,$4E,$BF,$60,$74,$75,$76,$19
+  $D8,$88,$89,$8A,$94,$67,$8B,$8C,$8D,$55,$55,$80
+end data
+data Z156 bytes
+  $91,$01,$82,$95,$96,$97,$02,$46,$79,$98,$99,$9A,$C2,$26,$A2,$A3,$A4,$F4,$FE,$9E,$A5,$A6,$A7,$86
+  $09,$8F,$AD,$AE,$8A,$BE,$59,$92,$8B,$AF,$B0,$0E,$B8,$B9,$BA,$02,$FE,$42,$7A,$BB,$BC,$BD,$C2,$61
+  $C5,$C6,$C7,$4E,$BF,$68,$C8,$C9,$CA,$FC,$D1,$D2,$49,$FE,$09,$D5,$D3,$D4,$D5,$55,$60
+end data
+data Z157 bytes
+  $25,$BA,$02,$1B,$D8,$55,$55,$80
+end data
+data Z158 bytes
+  $86,$00,$66,$03,$0C,$00,$AB,$C0,$30,$90,$E0,$FE,$E3,$F1,$D9,$21,$30,$C0,$FA,$E7,$FF,$30,$7A,$F2
+  $F8,$03,$FD,$C0,$1E,$7C,$7C,$C0,$26,$0F,$3C,$3C,$EB,$98,$F0,$FF,$C0,$FB,$3A,$3A,$FE,$8B,$0F,$30
+  $DF,$D8,$AC,$FE,$E8,$7C,$BB,$3C,$FF,$0F,$90,$90,$F0,$B0,$6D,$F0,$55,$56
+end data
+data Z159 bytes
+  $0A,$00,$0F,$3C,$F0,$8F,$00,$F9,$92,$FE,$8F,$03,$D3,$A8,$FE,$C0,$AF,$0F,$E9,$FE,$E1,$D6,$E9,$EF
+  $F0,$FD,$3C,$EC,$FF,$98,$90,$5E,$B0,$16,$4B,$0F,$3F,$3F,$FC,$03,$03,$E3,$E3,$D4,$DF,$4A,$AD,$FD
+  $D3,$FF,$E0,$BF,$3C,$71,$DF,$F6,$89,$8C,$F5,$F0,$90,$F5,$C0,$D5,$55,$60
+end data
+data Z160 bytes
+  $86,$03,$B9,$83,$F4,$FF,$F0,$FE,$AE,$F3,$F4,$7F,$FF,$C2,$28,$81,$E3,$F9,$81,$01,$AA,$FF,$81,$B1
+  $1E,$DA,$E3,$FE,$CA,$A2,$F1,$3B,$F9,$F1,$BF,$C0,$F6,$FB,$FE,$DA,$FF,$FE,$D1,$4E,$3F,$82,$FF,$80
+  $F9,$FE,$29,$B1,$7B,$EA,$E1,$F9,$CE,$EF,$AE,$FE,$F7,$50,$F9,$01,$71,$50,$F7,$90,$DF,$40,$C6,$ED
+  $36,$DD,$C0,$55,$56
+end data
+data Z161 bytes
+  $2A,$03,$83,$81,$A3,$01,$E4,$F9,$FE,$A1,$B1,$29,$81,$FB,$C6,$03,$E2,$AF,$FE,$82,$03,$AF,$F3,$F1
+  $F8,$BA,$F1,$9A,$97,$F1,$FF,$E7,$FF,$E6,$FF,$C6,$FE,$FA,$B2,$9E,$BC,$81,$40,$FD,$F7,$4A,$79,$E0
+  $FF,$C5,$FD,$FE,$FF,$A0,$40,$69,$F3,$A5,$F3,$FF,$F5,$FD,$FE,$E7,$D0,$D5,$FF,$55,$60
+end data
+data Z162 bytes
+  $99,$00,$BA,$03,$0F,$3F,$FA,$7F,$FC,$F0,$C0,$E9,$FB,$DA,$FE,$03,$1A,$FC,$A1,$F0,$BC,$03,$D4,$BE
+  $F0,$DF,$A6,$FF,$D1,$E8,$F9,$A7,$D1,$80,$5F,$A0,$17,$F8,$9C,$96,$BF,$00,$9B,$96,$FD,$FD,$24,$88
+  $0F,$0F,$3B,$18,$E9,$92,$0F,$7E,$95,$E7,$E5,$00,$90,$7D,$B0,$D5,$55,$60
+end data
+data Z163 bytes
+  $89,$00,$A9,$C0,$F0,$FC,$00,$8A,$03,$0F,$3A,$3F,$00,$FA,$19,$FC,$F0,$F0,$C0,$00,$E2,$FE,$96,$0F
+  $96,$F0,$6A,$00,$3F,$0F,$03,$E3,$94,$FE,$92,$A5,$FE,$6E,$C0,$80,$57,$C1,$A0,$E7,$9C,$FF,$96,$EF
+  $CD,$FF,$96,$D6,$B8,$E2,$FE,$FF,$E2,$20,$FA,$82,$00,$5E,$66,$E3,$80,$FD,$CC,$80,$75,$55,$58
+end data
+data Z164 bytes
+  $2A,$FC,$F0,$C0,$A2,$00,$28,$3F,$0F,$9B,$03,$00,$C0,$BA,$E1,$FC,$E4,$E3,$3F,$E8,$B8,$E6,$EE,$FF
+  $B7,$B4,$FF,$B2,$CD,$AF,$8E,$FE,$B2,$E3,$FE,$F8,$94,$BA,$FF,$CA,$E7,$83,$7C,$D7,$90,$95,$B0,$EA
+  $FF,$03,$A8,$0F,$3F,$E7,$C4,$E9,$61,$FF,$03,$EF,$EC,$C7,$DF,$FE,$7D,$ED,$A9,$96,$E9,$C2,$00,$6F
+  $03,$90,$5D,$55,$56
+end data
+data Z165 bytes
+  $A2,$3F,$0F,$00,$0A,$F0,$BE,$FC,$F7,$E7,$86,$03,$F8,$FC,$FD,$E1,$B8,$C0,$C0,$FE,$2A,$3F,$86,$F0
+  $FA,$FC,$B6,$0F,$F3,$A0,$FE,$E8,$88,$9F,$C0,$90,$5E,$B0,$57,$FF,$C0,$BF,$DC,$E2,$FE,$61,$3F,$FC
+  $00,$3E,$CC,$E4,$0F,$18,$FF,$C3,$7D,$A0,$7D,$D0,$75,$55,$58
+end data
+data Z166 bytes
+  $9A,$03,$83,$4A,$81,$2B,$01,$F6,$FB,$FE,$91,$B1,$F7,$D0,$FE,$B0,$FE,$82,$03,$8A,$83,$03,$69,$F3
+  $28,$F1,$E9,$81,$F1,$7D,$F0,$FF,$D0,$FE,$BC,$03,$AE,$BC,$03,$8E,$EE,$FA,$6B,$87,$08,$FF,$19,$24
+  $FE,$4F,$32,$28,$01,$E7,$AC,$9E,$90,$80,$FA,$2C,$0F,$FE,$FE,$38,$39,$42,$F5,$ED,$55,$58
+end data
+data Z167 bytes
+  $8A,$03,$F3,$62,$0F,$03,$29,$83,$BA,$08,$FA,$6A,$81,$81,$81,$01,$78,$FE,$A5,$B1,$7F,$C4,$FF,$C8
+  $A4,$FF,$A8,$93,$FE,$FD,$E5,$70,$EB,$FA,$F1,$AF,$FE,$01,$FB,$9F,$80,$E4,$FF,$E8,$C4,$FF,$C8,$A0
+  $29,$F3,$FE,$1C,$74,$7E,$73,$FE,$78,$20,$4E,$D2,$7F,$FF,$B0,$7D,$92,$FC,$F5,$1C,$FE,$54,$36,$D5
+  $55,$60
+end data
+data Z168 bytes
+  $82,$F1,$8E,$01,$F2,$7A,$FF,$F3,$6A,$0F,$A9,$F1,$03,$A6,$F3,$26,$83,$08,$92,$81,$9A,$01,$B1,$57
+  $FF,$D4,$FE,$B8,$B0,$BA,$EF,$95,$83,$FF,$BB,$E6,$76,$FC,$72,$42,$FE,$40,$B0,$7F,$46,$F9,$DA,$44
+  $F9,$E7,$A0,$FE,$9A,$2E,$7C,$52,$FB,$30,$0B,$FD,$FE,$18,$F3,$02,$FE,$31,$AC,$E6,$E7,$80,$F9,$7A
+  $2E,$D5,$55,$60
+end data
+data Z169 bytes
+  $8A,$F1,$01,$0A,$F3,$2A,$0F,$8A,$F1,$08,$0B,$81,$FA,$FD,$FE,$01,$68,$0B,$68,$B1,$1F,$C7,$9B,$CE
+  $83,$A2,$FF,$08,$A9,$81,$03,$FF,$E8,$87,$FB,$FF,$81,$7C,$CE,$5E,$66,$3C,$50,$FF,$E8,$B0,$FF,$E8
+  $4E,$6F,$B1,$FE,$69,$0B,$3F,$98,$AF,$E4,$01,$C9,$9F,$FE,$49,$9F,$AC,$5E,$7F,$F8,$DF,$50,$DC,$D5
+  $55,$60
+end data
+data Z170 bytes
+  $80,$01,$26,$04,$05,$01,$45,$83,$08,$09,$0A,$0B,$C1,$C4,$96,$10,$11,$12,$13,$14,$15,$16,$15,$84
+  $84,$1C,$1D,$1E,$02,$1F,$20,$02,$02,$21,$22,$26,$28,$29,$2A,$E6,$FF,$2B,$2C,$02,$23,$2D,$2E,$61
+  $D4,$2F,$06,$D1,$99,$FF,$07,$08,$02,$D8,$F8,$0E,$14,$D5,$55,$60
+end data
+data Z171 bytes
+  $86,$02,$61,$15,$16,$02,$98,$17,$18,$01,$58,$24,$1E,$1F,$20,$02,$99,$21,$22,$02,$27,$23,$24,$25
+  $D9,$C4,$97,$2C,$2D,$2E,$89,$C1,$2F,$30,$60,$92,$02,$31,$32,$33,$08,$04,$3A,$3B,$02,$18,$97,$3C
+  $3D,$98,$7B,$3E,$3F,$40,$23,$46,$47,$FD,$48,$BC,$82,$48,$49,$4A,$02,$06,$62,$4B,$4C,$18,$79,$51
+  $52,$02,$FE,$66,$53,$54,$02,$16,$19,$55,$56,$57,$5D,$02,$1B,$5E,$55,$55,$80
+end data
+data Z172 bytes
+  $61,$5F,$60,$02,$66,$61,$62,$01,$00,$99,$06,$07,$01,$16,$0F,$0C,$0D,$0E,$0F,$C4,$06,$58,$17,$18
+  $19,$02,$02,$1A,$1B,$56,$6F,$23,$24,$25,$FE,$8E,$26,$27,$4C,$16,$2D,$2F,$30,$D8,$D4,$E1,$31,$32
+  $10,$76,$94,$19,$B5,$0F,$10,$11,$55,$58
+end data
+data Z173 bytes
+  $90,$01,$82,$19,$1A,$1B,$02,$46,$61,$1C,$1D,$01,$60,$95,$26,$27,$28,$02,$9F,$29,$2A,$2B,$C4,$66
+  $34,$35,$36,$E0,$FE,$67,$37,$38,$39,$99,$C2,$81,$0C,$41,$42,$79,$7B,$82,$43,$44,$45,$3F,$4D,$4E
+  $48,$90,$BC,$98,$4F,$50,$1D,$9F,$58,$59,$02,$FE,$06,$75,$5A,$5B,$5C,$55,$58
+end data
+data Z174 bytes
+  $25,$63,$02,$08,$D5,$64,$65,$55,$60
+end data
+data Z175 bytes
+  $86,$00,$66,$03,$30,$00,$A3,$C0,$30,$C0,$90,$E0,$E8,$D7,$0C,$3F,$D5,$E3,$A0,$ED,$30,$AB,$0C,$0C
+  $FF,$FB,$C6,$DB,$B9,$FC,$B0,$5F,$78,$FF,$F6,$B0,$59,$FB,$03,$3C,$F0,$F9,$BF,$F0,$BF,$E4,$B5,$FE
+  $7E,$8E,$3F,$0F,$3C,$55,$FE,$E2,$A0,$3B,$30,$3C,$FE,$91,$A0,$F4,$C0,$ED,$C7,$0F,$55,$56
+end data
+data Z176 bytes
+  $88,$00,$38,$03,$0F,$3C,$C0,$F7,$8E,$3C,$F0,$FE,$FD,$F7,$FE,$FB,$DB,$CE,$BF,$FF,$F0,$D1,$D8,$FB
+  $EB,$FC,$B9,$FE,$CA,$FC,$CD,$90,$3D,$C0,$66,$03,$3F,$FC,$38,$E9,$8F,$FC,$F0,$C3,$86,$60,$A2,$0F
+  $3F,$3F,$EF,$A0,$FF,$FA,$46,$FC,$8F,$00,$E9,$88,$FD,$F0,$FC,$E5,$90,$7D,$B0,$75,$55,$58
+end data
+data Z177 bytes
+  $86,$03,$B9,$83,$F4,$FF,$F0,$FE,$AE,$F3,$F4,$79,$F0,$FE,$CA,$B6,$26,$81,$81,$01,$38,$F9,$E2,$01
+  $B1,$FF,$81,$B1,$68,$01,$FF,$98,$90,$7F,$9A,$89,$86,$8F,$F1,$F1,$01,$F9,$FE,$FE,$F5,$FE,$7F,$68
+  $DF,$60,$6C,$E3,$64,$BE,$6A,$FB,$FE,$1A,$B1,$07,$C7,$50,$FF,$5C,$F8,$E5,$FF,$60,$3B,$66,$55,$55
+  $80
+end data
+data Z178 bytes
+  $8A,$03,$83,$23,$81,$01,$BE,$F8,$F7,$FE,$F8,$F7,$FE,$28,$B1,$1F,$D0,$FE,$C1,$FD,$FE,$A1,$03,$AE
+  $F3,$F6,$26,$F3,$F1,$01,$2B,$F1,$EF,$A6,$F1,$F1,$EE,$FD,$FE,$C2,$3B,$66,$E7,$F7,$5C,$E1,$F7,$60
+  $29,$B1,$FF,$FE,$F5,$F3,$C1,$FE,$CE,$52,$80,$E7,$5C,$E7,$F7,$96,$FE,$58,$EB,$30,$F3,$FE,$55,$55
+  $80
+end data
+data Z179 bytes
+  $98,$00,$3A,$03,$0F,$3F,$FC,$F9,$FC,$82,$F0,$C0,$00,$00,$7C,$FE,$A1,$03,$AA,$3F,$F0,$18,$2A,$FC
+  $3F,$FC,$3F,$0F,$88,$03,$00,$2A,$C0,$E5,$F0,$90,$78,$B0,$5F,$AE,$FF,$FB,$F9,$C7,$F9,$B5,$FD,$AE
+  $FF,$E3,$FE,$FB,$AB,$E3,$B6,$BE,$D6,$9F,$FE,$7E,$2F,$80,$1F,$CF,$E5,$E5,$80,$7D,$A0,$75,$55,$58
+end data
+data Z180 bytes
+  $98,$00,$AF,$C0,$F0,$FC,$F0,$E2,$FB,$03,$0F,$39,$F9,$22,$3F,$00,$FC,$F0,$00,$FC,$3A,$C0,$00,$FF
+  $3F,$78,$B8,$FF,$FF,$E2,$F9,$D3,$DA,$83,$0F,$0F,$03,$C0,$90,$E5,$B0,$3F,$BF,$BD,$E6,$62,$FC,$F0
+  $F0,$5F,$84,$3F,$B5,$FE,$4F,$C7,$FD,$9F,$85,$FD,$C7,$C4,$F9,$D0,$70,$5D,$55,$56
+end data
+data Z181 bytes
+  $59,$FC,$00,$3F,$0F,$3F,$0F,$00,$8B,$C0,$F0,$F2,$E7,$FE,$A9,$C0,$00,$29,$03,$F9,$C1,$D2,$88,$FC
+  $F0,$28,$03,$E1,$FC,$AA,$3F,$C0,$3B,$FE,$98,$CD,$3F,$3F,$03,$7F,$77,$F4,$B9,$0F,$5C,$8B,$C0,$FC
+  $95,$70,$E5,$A0,$6F,$0F,$B3,$8F,$B0,$8F,$E8,$E9,$AF,$F0,$3E,$DF,$FA,$D8,$C4,$FE,$64,$8D,$87,$0F
+  $FB,$DF,$E5,$C6,$DD,$A0,$55,$56
+end data
+data Z182 bytes
+  $62,$FC,$00,$FC,$A2,$F0,$C0,$00,$9A,$3F,$0F,$03,$88,$00,$2A,$C0,$F0,$FC,$00,$3F,$A7,$00,$EF,$CE
+  $03,$FE,$A0,$00,$62,$3F,$C0,$7F,$BB,$B9,$93,$D6,$EA,$8F,$90,$C0,$1A,$00,$79,$78,$F7,$80,$D4,$B0
+  $FE,$0A,$08,$FF,$1C,$C3,$F6,$FD,$FB,$E4,$E1,$24,$EB,$CA,$0F,$93,$80,$FD,$7E,$A0,$F5,$D0,$D5,$55
+  $60
+end data
+data Z183 bytes
+  $9A,$03,$83,$2E,$81,$FA,$EA,$FE,$01,$EF,$F8,$FE,$29,$B1,$1E,$BC,$A0,$81,$BC,$03,$9E,$FB,$F2,$F3
+  $BB,$FF,$F1,$FA,$BF,$FE,$A5,$F8,$FE,$FE,$DC,$A0,$F1,$BC,$03,$BE,$F7,$A0,$E2,$FE,$08,$81,$1E,$44
+  $13,$F7,$FF,$12,$E1,$B5,$30,$FF,$98,$70,$7E,$FE,$FF,$0F,$4E,$2E,$3F,$F5,$20,$29,$F3,$35,$55,$58
+end data
+data Z184 bytes
+  $9A,$03,$F3,$68,$03,$6B,$83,$E8,$FB,$FE,$BE,$08,$81,$FB,$FE,$A2,$01,$9A,$B1,$0B,$69,$B1,$A7,$01
+  $FF,$C9,$CD,$FE,$FF,$A6,$FE,$9F,$90,$81,$89,$76,$FB,$0F,$F1,$F1,$FB,$FE,$BF,$B0,$E9,$ED,$FF,$FE
+  $C6,$DF,$40,$4C,$E6,$44,$87,$81,$DF,$FE,$4C,$BC,$0B,$FE,$F7,$DC,$9F,$B4,$ED,$9F,$32,$17,$77,$C0
+  $9F,$24,$45,$9A,$24,$F1,$5F,$FF,$55,$55,$80
+end data
+data Z185 bytes
+  $66,$F3,$0F,$F1,$AA,$01,$03,$9A,$F3,$0F,$A1,$03,$AA,$F3,$03,$4A,$83,$1A,$08,$1A,$81,$6A,$01,$21
+  $B1,$01,$A1,$0B,$BF,$B1,$FD,$DF,$8E,$FE,$C6,$7E,$FF,$A6,$7F,$E9,$86,$6F,$03,$5E,$78,$42,$FE,$FE
+  $1E,$79,$14,$F9,$FF,$D6,$FD,$E9,$B6,$F3,$20,$F8,$7D,$FD,$FE,$F8,$3F,$FE,$7F,$E9,$1D,$77,$F2,$FF
+  $46,$E8,$DD,$50,$55,$56
+end data
+data Z186 bytes
+  $61,$F1,$0F,$F1,$AA,$0F,$F1,$6A,$01,$23,$03,$F3,$EE,$E8,$08,$FE,$A6,$81,$82,$B1,$8A,$01,$0B,$4A
+  $B1,$02,$A8,$81,$01,$79,$B2,$EE,$F1,$83,$FE,$FB,$E8,$03,$E8,$FE,$83,$A3,$0F,$CE,$4C,$B0,$7F,$E2
+  $E9,$40,$F3,$FF,$E8,$B2,$FF,$28,$38,$FA,$D5,$FF,$B1,$13,$8E,$2E,$96,$3A,$31,$01,$53,$F7,$E7,$5C
+  $C7,$50,$D5,$E7,$55,$60
+end data
+data Z187 bytes
+  $81,$01,$26,$4A,$4B,$01,$44,$87,$4E,$4F,$50,$51,$52,$C0,$C2,$96,$58,$59,$5A,$5B,$5C,$02,$5D,$14
+  $96,$62,$63,$64,$65,$02,$66,$67,$88,$02,$68,$42,$1A,$6D,$6E,$6F,$02,$02,$22,$70,$71,$60,$02,$72
+  $73,$18,$26,$80,$81,$82,$02,$27,$83,$84,$89,$BF,$85,$86,$49,$D5,$8C,$8D,$8E,$55,$60
+end data
+data Z188 bytes
+  $86,$02,$60,$8F,$90,$02,$82,$91,$92,$93,$01,$12,$7F,$9A,$9B,$9C,$D6,$E6,$BE,$9D,$9E,$02,$48,$81
+  $9F,$A0,$9F,$A6,$A7,$A8,$C2,$66,$A9,$AA,$AB,$F2,$BE,$61,$AC,$AD,$AE,$9F,$B5,$B6,$B7,$E5,$D9,$C0
+  $97,$B8,$B9,$BA,$98,$7B,$BB,$BC,$BD,$23,$C4,$C5,$DF,$DE,$F6,$89,$C6,$C7,$F6,$7A,$78,$C8,$C9,$BD
+  $C1,$90,$CE,$82,$9B,$CF,$D0,$D1,$86,$FE,$49,$D2,$D3,$D4,$D5,$DB,$02,$1B,$DC,$55,$55,$80
+end data
+data Z189 bytes
+  $61,$DD,$DE,$02,$66,$DF,$E0,$01,$04,$99,$4C,$4D,$01,$12,$49,$53,$54,$55,$56,$57,$01,$02,$7A,$5E
+  $5F,$60,$54,$E4,$61,$8A,$66,$69,$6A,$6B,$E2,$14,$E1,$6C,$C4,$67,$74,$75,$76,$76,$D4,$20,$77,$78
+  $19,$D9,$87,$88,$89,$92,$22,$8A,$8B,$D5,$55,$60
+end data
+data Z190 bytes
+  $90,$01,$82,$94,$95,$96,$02,$42,$79,$97,$98,$99,$C4,$26,$A1,$A2,$A3,$7C,$BE,$62,$A4,$A5,$06,$18
+  $AF,$B0,$B1,$02,$02,$06,$61,$B2,$B3,$B4,$9E,$BE,$BF,$C0,$DC,$7D,$7A,$66,$C1,$C2,$C3,$08,$E4,$CA
+  $CB,$C2,$79,$BD,$99,$97,$CC,$CD,$F0,$D6,$89,$02,$FE,$20,$D5,$D7,$D8,$D9,$DA,$55,$60
+end data
+data Z191 bytes
+  $25,$E1,$02,$08,$D5,$E2,$E3,$55,$60
+end data
+data Z192 bytes
+  $86,$00,$66,$0F,$30,$00,$BE,$C0,$FB,$E0,$42,$66,$03,$30,$C0,$B9,$0C,$EA,$8F,$03,$0C,$F9,$EA,$F7
+  $FE,$0C,$78,$C0,$4E,$DA,$39,$C0,$7F,$E2,$98,$52,$FA,$3C,$C0,$A6,$F0,$5F,$FE,$7F,$D1,$CF,$FF,$D5
+  $8F,$D0,$EE,$49,$FD,$3C,$FE,$F4,$90,$3D,$B0,$3A,$CB,$0F,$D5,$55,$60
+end data
+data Z193 bytes
+  $89,$00,$EA,$0F,$3C,$C0,$F7,$03,$BF,$F0,$FE,$F0,$EB,$FE,$9A,$03,$00,$03,$AA,$0F,$F0,$F9,$C0,$B9
+  $CC,$BB,$3C,$FF,$F0,$F9,$FC,$C4,$F9,$CD,$80,$4F,$B0,$5B,$3F,$EF,$F4,$3F,$73,$FC,$9A,$BA,$FF,$8C
+  $FF,$E3,$E1,$AF,$FC,$C0,$E4,$FF,$90,$FB,$E1,$FF,$3F,$95,$90,$F7,$C0,$55,$55,$80
+end data
+data Z194 bytes
+  $86,$03,$BC,$83,$F4,$F8,$FD,$FE,$AF,$F3,$F4,$3F,$FD,$FE,$8B,$83,$81,$8B,$F4,$01,$EB,$FF,$EA,$B1
+  $E9,$FE,$81,$79,$A2,$8E,$F1,$F1,$F4,$3B,$C0,$FE,$F7,$F5,$FE,$97,$F1,$9F,$60,$50,$3F,$3F,$A1,$FF
+  $66,$70,$E1,$F7,$FE,$A5,$B1,$E8,$EA,$FF,$81,$83,$FD,$FE,$CB,$90,$F3,$9F,$F4,$55,$F9,$42,$40,$A4
+  $01,$BF,$F3,$FD,$FE,$F7,$50,$55,$55,$80
+end data
+data Z195 bytes
+  $8A,$03,$83,$8B,$81,$01,$FF,$F6,$FE,$B9,$F4,$FC,$68,$B1,$E0,$FE,$A0,$01,$A5,$83,$A0,$03,$AB,$F3
+  $F1,$9F,$F4,$D1,$FF,$F6,$FE,$E6,$F5,$FE,$97,$F3,$8E,$B0,$A0,$7B,$3A,$FE,$45,$F6,$44,$1A,$B1,$43
+  $96,$40,$96,$81,$93,$F3,$FE,$55,$F6,$50,$1F,$E7,$55,$55,$80
+end data
+data Z196 bytes
+  $98,$00,$3E,$03,$0F,$3F,$FC,$F8,$3F,$F0,$C0,$E9,$F8,$F6,$FE,$AA,$03,$0F,$AA,$3F,$FC,$AA,$F0,$C0
+  $20,$FC,$3F,$F9,$E1,$CC,$F9,$E1,$90,$5E,$B0,$53,$8F,$A8,$AE,$FF,$5C,$FF,$F9,$CC,$F8,$BE,$03,$FF
+  $AC,$39,$39,$8E,$F0,$FC,$00,$90,$6A,$C0,$95,$F0,$F0,$B0,$3F,$B8,$F5,$C0,$55,$58
+end data
+data Z197 bytes
+  $09,$FC,$F0,$C0,$00,$29,$03,$AA,$0F,$00,$A6,$FC,$A2,$F0,$0F,$03,$29,$00,$88,$F0,$FC,$AA,$00,$3F
+  $EB,$CB,$3F,$FD,$A8,$A0,$F5,$C0,$F7,$78,$FF,$F9,$AC,$FF,$FF,$A4,$AA,$DF,$44,$48,$EB,$FD,$3F,$FF
+  $48,$F9,$FB,$DF,$52,$C8,$BB,$C0,$DB,$00,$D5,$80,$F4,$A0,$E1,$58,$E3,$0A,$D5,$C7,$55,$60
+end data
+data Z198 bytes
+  $28,$FC,$F0,$9A,$C0,$00,$0F,$BB,$03,$FA,$AB,$FF,$FC,$00,$BA,$FA,$FF,$03,$A5,$00,$AF,$3F,$D1,$FF
+  $F0,$AF,$D1,$E6,$E7,$D8,$7F,$C0,$F0,$00,$B8,$FF,$9B,$FF,$C3,$EF,$BD,$9A,$70,$F5,$90,$7F,$A2,$98
+  $D4,$FF,$C0,$C0,$F8,$A2,$3D,$9A,$FF,$C5,$DB,$D1,$AF,$62,$0F,$6E,$28,$FC,$39,$E8,$E1,$70,$AA,$C0
+  $FC,$00,$D5,$55,$60
+end data
+data Z199 bytes
+  $2A,$0F,$03,$00,$08,$AB,$FC,$00,$3F,$9A,$E8,$F0,$0E,$D6,$27,$C0,$C0,$FC,$BA,$CC,$FF,$F0,$9B,$C0
+  $3F,$0F,$EF,$AA,$03,$DF,$DF,$FE,$C2,$FF,$D0,$80,$7F,$FF,$BD,$FE,$EC,$D7,$BC,$1F,$8F,$DF,$80,$B0
+  $57,$F3,$69,$EA,$7A,$F5,$FC,$B7,$0F,$F7,$E4,$FF,$2C,$F6,$D3,$B0,$4F,$68,$F7,$A0,$DD,$D0,$55,$56
+end data
+data Z200 bytes
+  $2A,$FC,$00,$3F,$9D,$0F,$03,$00,$55,$56
+end data
+data Z201 bytes
+  $9A,$03,$83,$2F,$81,$F8,$EB,$FF,$01,$FD,$F8,$FE,$A1,$B1,$7E,$C5,$FE,$68,$03,$6A,$83,$9A,$03,$F3
+  $2F,$F1,$F8,$FF,$FF,$A9,$F8,$FF,$FE,$E5,$9E,$FE,$B0,$7F,$C7,$40,$29,$08,$3E,$47,$5C,$62,$0B,$0B
+  $3F,$40,$BC,$20,$1E,$BF,$83,$B6,$DA,$40,$83,$06,$92,$0F,$9A,$F1,$F1,$4F,$D6,$F7,$40,$BC,$E8,$92
+  $B5,$01,$55,$58
+end data
+data Z202 bytes
+  $8A,$81,$01,$4A,$B1,$1A,$0B,$A1,$B1,$A6,$81,$9A,$01,$83,$6A,$08,$A8,$81,$F3,$88,$0F,$F1,$BF,$01
+  $F8,$E9,$FE,$F1,$A6,$01,$9A,$F3,$0F,$AA,$F1,$03,$1F,$A9,$FF,$F9,$9E,$FF,$E7,$F9,$7C,$83,$44,$D3
+  $FE,$9F,$52,$FF,$FF,$94,$E8,$9F,$80,$69,$FF,$F9,$5E,$FF,$E7,$F9,$3C,$E7,$FB,$FE,$9E,$32,$30,$7F
+  $E8,$CD,$90,$8F,$C2,$6E,$D5,$55,$60
+end data
+data Z203 bytes
+  $9A,$81,$01,$69,$B1,$7A,$FB,$0B,$7F,$FF,$D4,$FA,$FE,$08,$A6,$81,$AA,$01,$03,$8E,$83,$E6,$FE,$F1
+  $FE,$A9,$83,$03,$A4,$F3,$A2,$0F,$87,$F1,$FF,$A0,$F4,$F9,$FE,$D8,$FF,$90,$BC,$F9,$E7,$90,$FF,$EB
+  $76,$E9,$FE,$81,$62,$B1,$01,$4A,$0B,$0E,$04,$DD,$EE,$B7,$81,$FE,$29,$83,$7F,$16,$DD,$00,$FF,$EA
+  $56,$E9,$FE,$F1,$75,$55,$58
+end data
+data Z204 bytes
+  $8A,$F1,$01,$08,$A9,$F3,$0F,$F1,$88,$01,$03,$BF,$F3,$E8,$FE,$F3,$EC,$FF,$A8,$08,$81,$68,$B1,$62
+  $01,$B1,$A4,$0B,$FF,$98,$DC,$EE,$CA,$80,$23,$83,$08,$FE,$AC,$F1,$97,$FB,$83,$EB,$FE,$FF,$82,$E8
+  $FF,$52,$FE,$93,$30,$E9,$DD,$33,$01,$3A,$2F,$03,$5F,$88,$F8,$FE,$84,$0B,$B1,$F7,$30,$F8,$FF,$0F
+  $30,$7F,$33,$E8,$F3,$62,$F3,$F1,$EE,$55,$55,$80
+end data
+data Z205 bytes
+  $2A,$F3,$0F,$F1,$6D,$01,$55,$56
+end data
+data Z206 bytes
+  $84,$01,$26,$04,$05,$01,$44,$83,$08,$09,$0A,$0B,$95,$C2,$80,$85,$10,$11,$12,$13,$14,$15,$02,$16
+  $25,$A2,$1C,$1D,$1E,$1F,$20,$21,$22,$02,$23,$05,$81,$BB,$29,$2A,$2B,$1F,$02,$02,$2C,$2D,$2E,$FF
+  $2F,$61,$DC,$2F,$06,$D3,$98,$FF,$07,$08,$02,$37,$FD,$D6,$12,$D5,$06,$55,$60
+end data
+data Z207 bytes
+  $86,$02,$60,$12,$13,$02,$82,$14,$15,$16,$01,$12,$09,$10,$1C,$1D,$02,$26,$1E,$1F,$02,$49,$F6,$20
+  $21,$0A,$C0,$19,$26,$27,$28,$29,$02,$62,$2A,$2B,$5E,$7D,$24,$2C,$2D,$9F,$34,$35,$36,$E5,$D8,$C0
+  $80,$37,$38,$86,$02,$39,$3A,$3B,$3C,$09,$84,$44,$45,$02,$9B,$46,$47,$48,$82,$FE,$1A,$49,$4A,$4B
+  $4C,$01,$24,$53,$02,$20,$84,$54,$55,$56,$02,$92,$57,$58,$59,$5A,$60,$02,$46,$D5,$61,$55,$60
+end data
+data Z208 bytes
+  $61,$62,$63,$02,$66,$64,$65,$01,$10,$99,$06,$07,$01,$12,$18,$0C,$0D,$0E,$0F,$01,$56,$18,$17,$18
+  $19,$1A,$02,$B9,$1B,$C4,$18,$27,$24,$25,$26,$27,$A0,$C1,$28,$59,$FC,$30,$31,$32,$C7,$FE,$B8,$33
+  $14,$0A,$0B,$36,$92,$4D,$B5,$FE,$55,$58
+end data
+data Z209 bytes
+  $90,$01,$82,$17,$18,$0D,$02,$42,$79,$19,$1A,$1B,$C4,$62,$22,$23,$F4,$FE,$9F,$24,$25,$0F,$C4,$60
+  $95,$2E,$2F,$30,$31,$F8,$7C,$E6,$32,$33,$86,$6E,$3D,$3E,$3F,$FE,$16,$19,$40,$41,$42,$43,$01,$98
+  $4D,$4E,$02,$56,$1A,$4F,$50,$51,$52,$01,$24,$5B,$02,$48,$35,$5C,$5D,$5E,$5F,$55,$58
+end data
+data Z210 bytes
+  $25,$66,$02,$08,$D5,$67,$68,$55,$60
+end data
+data Z211 bytes
+  $92,$00,$E6,$03,$F4,$FA,$33,$F1,$FE,$BF,$C0,$F9,$D0,$43,$BE,$DF,$30,$F4,$25,$0C,$C0,$82,$03,$0C
+  $30,$30,$FE,$D9,$EF,$EC,$FF,$FF,$F1,$FF,$90,$B0,$FA,$F4,$30,$0F,$B0,$4E,$E5,$F8,$3C,$C8,$BF,$0C
+  $F0,$9C,$92,$06,$6E,$03,$0F,$F0,$B0,$3F,$E9,$D4,$F6,$8E,$0F,$3C,$0F,$3C,$F0,$90,$5D,$55,$56
+end data
+data Z212 bytes
+  $08,$03,$30,$C0,$00,$22,$03,$0C,$20,$E2,$3C,$0F,$3C,$F0,$E8,$3B,$0F,$F0,$D6,$FE,$E7,$CC,$EB,$F7
+  $00,$FE,$EE,$CE,$0F,$F9,$FB,$3C,$B7,$CE,$E0,$F9,$D6,$FB,$FD,$FE,$BE,$D6,$FD,$FE,$E0,$80,$7C,$B0
+  $0F,$C4,$A0,$3F,$FE,$57,$E3,$0C,$F0,$2E,$F8,$F8,$EF,$FC,$FC,$A6,$6A,$FF,$B8,$E3,$FF,$A7,$FF,$A1
+  $8C,$3D,$80,$75,$55,$58
+end data
+data Z213 bytes
+  $61,$3C,$F0,$00,$9A,$0F,$03,$0F,$99,$3F,$87,$00,$C0,$00,$55,$55,$80
+end data
+data Z214 bytes
+  $92,$03,$E2,$83,$F2,$A9,$83,$81,$3C,$D4,$E8,$F3,$F3,$6A,$F3,$93,$F1,$DF,$D2,$B1,$98,$F4,$86,$01
+  $01,$EB,$B1,$FF,$81,$BB,$F6,$E3,$81,$EE,$89,$FA,$7E,$0F,$91,$9F,$F4,$CF,$9E,$F4,$FF,$F8,$F1,$F5
+  $F2,$FB,$69,$FA,$B9,$5E,$10,$3E,$F7,$60,$FF,$F6,$FE,$69,$B1,$FF,$F6,$4E,$F9,$FB,$FE,$A7,$81,$F7
+  $3A,$D0,$7F,$F4,$F5,$58,$55,$58
+end data
+data Z215 bytes
+  $2A,$F3,$F1,$01,$0A,$F1,$66,$F3,$F1,$F3,$A6,$03,$AB,$83,$81,$8E,$F4,$D0,$EE,$F6,$FE,$1A,$B1,$3F
+  $F9,$FE,$FF,$EA,$D6,$7F,$BF,$A5,$A5,$FF,$83,$FF,$80,$75,$FF,$69,$F4,$4C,$E3,$F6,$9E,$3C,$38,$7C
+  $FE,$FF,$B0,$38,$E2,$20,$BC,$08,$30,$7F,$44,$F7,$F9,$FE,$9F,$34,$FE,$26,$03,$83,$03,$17,$FA,$70
+  $2C,$8D,$0F,$55,$56
+end data
+data Z216 bytes
+  $61,$F3,$F1,$01,$A5,$F1,$98,$03,$F3,$03,$75,$55,$58
+end data
+data Z217 bytes
+  $92,$00,$E2,$03,$F6,$6A,$3F,$FC,$F0,$0F,$0E,$FF,$61,$FC,$C0,$00,$29,$0F,$FA,$D3,$FF,$C0,$69,$00
+  $29,$3F,$FF,$D9,$FB,$E8,$FF,$D9,$FB,$70,$57,$D7,$A0,$FF,$B2,$E1,$C3,$EE,$B2,$F0,$7E,$1F,$72,$7E
+  $7B,$A9,$8F,$FC,$1B,$FF,$0F,$E9,$56,$E8,$0F,$B3,$FC,$A1,$3F,$E1,$80,$35,$55,$58
+end data
+data Z218 bytes
+  $24,$C0,$00,$AA,$0F,$03,$28,$00,$AA,$C0,$F0,$BA,$FC,$D9,$3F,$0F,$E2,$EA,$CA,$03,$EE,$E4,$F8,$8E
+  $FC,$F0,$E4,$FF,$F8,$FF,$FA,$D6,$FF,$3F,$7E,$D7,$FF,$9F,$C0,$ED,$BF,$DE,$7D,$80,$EF,$7E,$7D,$95
+  $90,$F5,$B0,$F3,$AE,$FA,$F8,$AC,$BB,$FC,$A6,$CF,$AC,$CE,$FD,$A0,$9F,$E8,$D5,$9E,$FA,$1A,$EF,$0A
+  $E0,$F9,$AB,$82,$E7,$C4,$55,$55,$80
+end data
+data Z219 bytes
+  $99,$00,$FE,$03,$0F,$3F,$F8,$F7,$5F,$FC,$FC,$C0,$FC,$F0,$C0,$C0,$D8,$BE,$3F,$FF,$DB,$FF,$0F,$F1
+  $E5,$DB,$A5,$FF,$00,$FF,$E7,$AF,$D3,$FF,$AA,$FF,$A5,$FF,$A9,$A7,$ED,$E7,$FF,$FF,$DD,$ED,$E7,$F8
+  $FF,$DD,$C7,$93,$03,$00,$FF,$78,$A7,$96,$FF,$D1,$F7,$90,$5E,$B0,$53,$DB,$FE,$FC,$FF,$C1,$BF,$D4
+  $93,$06,$FB,$BF,$BC,$3F,$9F,$8E,$EB,$F7,$D1,$E8,$F5,$EA,$55,$58
+end data
+data Z220 bytes
+  $92,$00,$1F,$FC,$00,$3F,$0F,$03,$EA,$88,$C0,$F0,$F7,$E8,$E7,$EA,$FC,$FC,$F0,$AB,$FE,$C0,$FF,$D9
+  $FF,$D5,$FD,$FF,$D9,$FF,$D5,$FC,$29,$C0,$BC,$0F,$A8,$FA,$FB,$7A,$87,$0F,$DF,$BE,$D2,$F7,$80,$D5
+  $B0,$FE,$BD,$BB,$FE,$7E,$31,$BE,$8F,$3F,$F0,$2E,$4F,$DB,$77,$AE,$BB,$FE,$6A,$DF,$A0,$D0,$75,$55
+  $58
+end data
+data Z221 bytes
+  $26,$FC,$00,$75,$0F,$03,$00,$55,$58
+end data
+data Z222 bytes
+  $92,$03,$E2,$83,$F6,$61,$83,$81,$81,$99,$01,$01,$01,$E1,$FE,$A1,$B1,$69,$01,$29,$81,$7C,$86,$FF
+  $FB,$FE,$A1,$F7,$F3,$98,$F3,$F1,$F1,$7B,$B0,$FE,$F6,$FE,$97,$F1,$CF,$B6,$FB,$E6,$22,$83,$08,$81
+  $0F,$28,$FF,$22,$1E,$58,$8F,$0B,$0B,$C4,$FF,$C8,$B1,$FD,$A2,$A1,$93,$A0,$98,$33,$F3,$0F,$F1,$3F
+  $38,$55,$55,$80
+end data
+data Z223 bytes
+  $24,$F1,$01,$A0,$F1,$A2,$01,$82,$F3,$A2,$0F,$F1,$03,$48,$8A,$F3,$03,$83,$2B,$08,$AF,$F8,$81,$FF
+  $FF,$C1,$F8,$FE,$A5,$B1,$69,$81,$22,$01,$83,$4B,$08,$FF,$88,$6E,$B8,$F8,$4E,$F9,$F9,$30,$3E,$FF
+  $30,$7B,$C6,$FF,$36,$A0,$8F,$96,$76,$7D,$FE,$BE,$B1,$30,$FB,$0B,$FD,$FE,$A2,$31,$01,$80,$01,$A5
+  $01,$A7,$08,$9D,$7C,$55,$56
+end data
+data Z224 bytes
+  $9A,$03,$F3,$22,$0F,$F3,$62,$0F,$F1,$4A,$01,$7D,$EC,$FE,$D5,$FE,$A8,$0F,$03,$6A,$F3,$21,$03,$83
+  $A6,$08,$82,$81,$64,$B1,$0B,$B1,$68,$81,$A0,$01,$FF,$BA,$C0,$EE,$96,$A2,$2F,$03,$6E,$7B,$FF,$F1
+  $87,$32,$F9,$40,$DE,$FF,$46,$E8,$FF,$4E,$48,$E7,$64,$FF,$C1,$F9,$3D,$FE,$FF,$A8,$3E,$A5,$08,$A5
+  $83,$A7,$03,$F5,$EA,$55,$58
+end data
+data Z225 bytes
+  $92,$0F,$FA,$F1,$FD,$FF,$01,$68,$F3,$EE,$E4,$FF,$9F,$03,$EA,$BC,$81,$FE,$88,$0B,$B1,$4A,$0B,$7E
+  $AD,$FC,$A2,$B1,$EF,$08,$C8,$EA,$98,$83,$08,$08,$7A,$92,$FF,$83,$E8,$80,$FB,$E8,$F1,$CF,$FE,$40
+  $7E,$5B,$42,$29,$01,$3F,$FF,$B6,$FF,$E8,$88,$FF,$FE,$4D,$A1,$2F,$0B,$69,$01,$7F,$C2,$DA,$30,$08
+  $7C,$62,$EE,$F0,$D0,$75,$55,$58
+end data
+data Z226 bytes
+  $26,$F3,$0F,$AD,$F1,$01,$55,$56
+end data
+data Z227 bytes
+  $84,$01,$60,$90,$4A,$4B,$4C,$01,$61,$E5,$50,$51,$52,$53,$54,$C6,$20,$21,$4A,$5A,$5B,$5C,$5D,$5E
+  $5F,$60,$48,$48,$65,$66,$67,$02,$68,$69,$6A,$02,$6B,$6C,$12,$2A,$72,$73,$74,$81,$95,$02,$75,$76
+  $77,$02,$02,$02,$78,$79,$82,$80,$81,$82,$83,$E9,$FE,$F8,$84,$85,$86,$F2,$F1,$87,$88,$C4,$9D,$8F
+  $90,$91,$55,$56
+end data
+data Z228 bytes
+  $82,$02,$61,$92,$93,$02,$82,$94,$95,$96,$01,$12,$09,$9D,$9E,$9F,$02,$26,$A0,$A1,$02,$48,$E0,$A2
+  $A3,$C4,$99,$A9,$AA,$AB,$39,$C1,$96,$AC,$AD,$AE,$09,$02,$AF,$B0,$B1,$27,$B8,$B9,$91,$F6,$E5,$BE
+  $60,$BA,$BB,$02,$26,$BC,$BD,$BE,$1B,$C4,$87,$C2,$99,$EF,$C5,$C6,$C7,$37,$F4,$99,$C8,$C9,$CA,$BE
+  $CF,$EF,$BE,$49,$84,$D0,$D1,$D2,$96,$02,$D3,$D4,$D5,$D6,$DC,$02,$46,$D5,$DD,$55,$60
+end data
+data Z229 bytes
+  $61,$DE,$DF,$02,$66,$E0,$E1,$01,$11,$82,$4D,$4E,$4F,$01,$41,$93,$55,$56,$57,$58,$59,$01,$94,$8E
+  $9E,$61,$62,$63,$50,$B9,$64,$C6,$19,$9E,$6D,$6E,$6F,$C3,$20,$70,$71,$48,$37,$7A,$7B,$6E,$7C,$D2
+  $62,$7D,$7E,$56,$0D,$89,$8A,$8B,$8C,$92,$92,$2D,$8D,$8E,$55,$56
+end data
+data Z230 bytes
+  $85,$01,$86,$89,$97,$98,$99,$02,$42,$08,$9A,$9B,$9C,$01,$48,$25,$A4,$A5,$A6,$02,$63,$A7,$A8,$82
+  $C4,$67,$B2,$B3,$B4,$D6,$BE,$64,$B5,$B6,$B7,$8E,$BF,$C0,$4A,$E1,$BE,$26,$C1,$C2,$C3,$1B,$CB,$90
+  $C2,$DE,$F4,$66,$CC,$CD,$CE,$3C,$D7,$02,$FE,$18,$35,$D8,$D9,$DA,$DB,$55,$58
+end data
+data Z231 bytes
+  $25,$E2,$02,$08,$D5,$E3,$E4,$55,$60
+end data
+data Z232 bytes
+  $92,$00,$E6,$03,$F4,$2E,$33,$0C,$FE,$AF,$C0,$F9,$D4,$D0,$FE,$E1,$DE,$86,$0F,$3A,$03,$30,$FB,$0C
+  $2A,$30,$8A,$0C,$00,$E3,$F7,$03,$03,$EF,$F9,$F2,$C8,$E5,$A0,$38,$F4,$69,$00,$E1,$A0,$3E,$AD,$04
+  $68,$FC,$6F,$3C,$CA,$FD,$46,$F9,$F8,$DC,$BE,$F0,$F9,$7F,$EA,$F0,$9A,$30,$5D,$55,$56
+end data
+data Z233 bytes
+  $22,$00,$03,$68,$0F,$3C,$F0,$91,$C0,$00,$B8,$0F,$F4,$88,$03,$FC,$6F,$3C,$C6,$88,$0C,$30,$7D,$B0
+  $E4,$90,$3F,$93,$9E,$EF,$D1,$F0,$94,$7E,$FF,$F4,$E1,$9C,$EF,$A0,$C7,$BC,$DD,$C0,$70,$68,$0F,$EF
+  $FF,$F0,$D5,$D4,$70,$F0,$A0,$76,$EF,$B5,$FC,$55,$58
+end data
+data Z234 bytes
+  $A1,$00,$A0,$03,$0F,$F0,$C0,$00,$85,$0F,$3C,$C0,$00,$BE,$03,$F6,$1F,$0F,$3F,$FC,$F0,$0F,$C5,$F2
+  $C3,$D4,$BF,$0F,$E4,$BE,$E0,$FD,$DA,$3F,$E3,$C1,$D7,$80,$D7,$B0,$55,$55,$80
+end data
+data Z235 bytes
+  $92,$03,$E7,$83,$F4,$E7,$FF,$F2,$CE,$D4,$F5,$93,$F3,$E7,$FF,$F2,$F1,$F9,$A0,$8E,$81,$01,$F4,$62
+  $B1,$B1,$48,$BB,$01,$01,$F7,$81,$F9,$FF,$7D,$6A,$F5,$70,$8E,$F1,$01,$F4,$7E,$FF,$F4,$7A,$FB,$F1
+  $7F,$FF,$4D,$9E,$3A,$40,$47,$FF,$F3,$B7,$E8,$FF,$FE,$F4,$FF,$2F,$FF,$F8,$FE,$20,$FB,$FE,$75,$55
+  $58
+end data
+data Z236 bytes
+  $26,$01,$81,$9A,$83,$03,$46,$E6,$F3,$F4,$20,$F1,$01,$EF,$F2,$F1,$BF,$F6,$FE,$F2,$F5,$FE,$9A,$F1
+  $F3,$7C,$92,$23,$83,$81,$FF,$F6,$F5,$C3,$9F,$F4,$FF,$BD,$F4,$FE,$A0,$B1,$7F,$E6,$CF,$D6,$00,$37
+  $FC,$4F,$27,$87,$10,$9F,$0E,$F5,$C3,$10,$C3,$0C,$F5,$8B,$7B,$55,$58
+end data
+data Z237 bytes
+  $AA,$03,$83,$AB,$81,$01,$F9,$F5,$F7,$FE,$2E,$B1,$F6,$3D,$FE,$A4,$01,$A6,$81,$96,$83,$9A,$03,$F3
+  $AE,$F1,$F4,$7F,$C9,$F5,$F6,$F7,$FE,$9A,$F1,$F3,$5D,$55,$56
+end data
+data Z238 bytes
+  $92,$00,$E2,$03,$F6,$62,$0F,$FC,$F0,$8B,$3F,$C0,$A9,$DC,$F0,$F7,$C6,$8F,$CF,$3F,$0F,$C9,$EB,$D1
+  $CE,$C0,$E2,$FB,$FE,$6F,$3F,$0F,$3F,$F8,$FF,$DF,$E9,$F8,$F0,$70,$7C,$A0,$5F,$AD,$FF,$F8,$D7,$AB
+  $FC,$EF,$A5,$6A,$7F,$10,$FE,$15,$75,$FE,$A9,$F0,$0F,$A6,$03,$9F,$C0,$DC,$F5,$80,$D5,$55,$60
+end data
+data Z239 bytes
+  $0A,$0F,$00,$F0,$C0,$8F,$00,$F9,$9A,$FE,$0F,$69,$03,$A6,$C0,$9E,$FC,$D6,$3F,$E3,$B3,$8E,$CD,$3F
+  $00,$E3,$EF,$F0,$F6,$AA,$3F,$D0,$AF,$D5,$3F,$DD,$FF,$DB,$FB,$A5,$D2,$7F,$DA,$FE,$7B,$5A,$FF,$F1
+  $F0,$80,$3D,$B0,$7F,$BE,$FD,$FF,$64,$F7,$DC,$F8,$FD,$95,$FD,$8E,$F8,$FC,$F9,$E7,$96,$FF,$E5,$90
+  $8E,$E4,$95,$8F,$F0,$90,$75,$55,$58
+end data
+data Z240 bytes
+  $29,$3F,$00,$A2,$FC,$F0,$C0,$00,$03,$A1,$00,$A8,$FC,$8E,$00,$3F,$E4,$27,$C0,$F0,$F0,$9B,$E1,$03
+  $0F,$0F,$CF,$CE,$E2,$F8,$E1,$FE,$A5,$00,$7F,$7F,$F9,$FF,$AF,$D1,$EC,$EB,$AF,$E9,$3F,$9A,$64,$F0
+  $F5,$80,$E5,$B0,$7F,$FE,$FF,$BA,$D8,$FE,$FD,$BB,$C1,$D8,$E4,$3E,$F3,$AE,$EE,$73,$C0,$E8,$3E,$C1
+  $80,$1E,$EA,$D5,$55,$60
+end data
+data Z241 bytes
+  $86,$FC,$A2,$F0,$0F,$00,$48,$2F,$FC,$00,$3F,$0F,$EA,$88,$C0,$F0,$F9,$E9,$D2,$EE,$EA,$BD,$FF,$C0
+  $FE,$E4,$FB,$BC,$03,$E9,$E1,$99,$FC,$BC,$03,$90,$E9,$93,$3F,$28,$FC,$69,$03,$7D,$FE,$BC,$C0,$80
+  $E4,$A0,$0F,$DF,$87,$AE,$AF,$FD,$0F,$7F,$B8,$AE,$C2,$7D,$9A,$A7,$00,$8D,$E8,$55,$56
+end data
+data Z242 bytes
+  $08,$3F,$0F,$03,$00,$2E,$FC,$F8,$FD,$E8,$55,$56
+end data
+data Z243 bytes
+  $92,$03,$E2,$83,$F6,$60,$83,$81,$81,$EA,$FF,$01,$60,$08,$81,$01,$68,$B1,$4E,$E8,$E7,$D8,$FF,$B9
+  $FE,$A0,$F3,$84,$FA,$FF,$F6,$F3,$19,$83,$F3,$F1,$F1,$E2,$FF,$79,$0F,$F1,$4F,$E9,$FF,$FE,$D0,$DE
+  $B4,$1C,$7B,$F8,$A3,$1D,$08,$FF,$F8,$1A,$E1,$F9,$10,$7A,$FF,$81,$5A,$83,$5F,$22,$3F,$6D,$F9,$A3
+  $2D,$0F,$55,$55,$80
+end data
+data Z244 bytes
+  $62,$F3,$0F,$F1,$8F,$01,$F9,$9A,$FE,$F1,$5A,$F3,$5A,$03,$0A,$83,$3E,$F6,$3F,$08,$81,$FF,$F6,$F3
+  $AA,$A7,$FB,$B1,$AF,$FF,$0B,$FA,$E8,$FF,$01,$28,$08,$A0,$81,$E3,$94,$FF,$90,$FE,$FE,$70,$F7,$2A
+  $3F,$F6,$E6,$30,$0F,$0F,$0F,$1E,$C4,$7F,$C0,$FE,$3E,$FF,$F8,$FE,$82,$50,$E1,$FC,$A7,$0B,$DF,$14
+  $B7,$97,$40,$E3,$A7,$80,$B5,$66,$55,$58
+end data
+data Z245 bytes
+  $2A,$F3,$0F,$F1,$6E,$01,$FA,$E2,$FE,$BF,$F3,$E1,$FE,$A2,$03,$8A,$F3,$0F,$A6,$83,$82,$08,$9A,$81
+  $01,$28,$B1,$6A,$01,$97,$0B,$9F,$94,$DD,$DE,$BE,$A0,$7F,$ED,$83,$EA,$FE,$83,$9A,$F3,$0F,$3C,$34
+  $FD,$FF,$EE,$E7,$D0,$FE,$30,$FE,$A9,$F3,$81,$6A,$0B,$84,$B1,$FF,$40,$3E,$3E,$4B,$FE,$7F,$47,$32
+  $E9,$31,$03,$0E,$EA,$D5,$55,$60
+end data
+data Z246 bytes
+  $80,$F1,$A4,$01,$8F,$F3,$0F,$E8,$EB,$EF,$03,$AA,$FF,$0F,$F1,$A0,$03,$EB,$EA,$81,$98,$FE,$9A,$01
+  $0B,$B1,$03,$BE,$E8,$DD,$FE,$6F,$08,$C6,$EA,$FE,$83,$2F,$08,$E8,$FF,$92,$EA,$FF,$F0,$EA,$F7,$34
+  $DF,$30,$32,$29,$01,$39,$30,$FF,$EA,$F0,$FB,$EA,$B1,$CE,$B0,$23,$90,$B1,$A4,$0B,$FC,$C5,$22,$FE
+  $21,$3B,$0A,$35,$55,$58
+end data
+data Z247 bytes
+  $8A,$F1,$01,$08,$8F,$F3,$0F,$E8,$D5,$55,$60
+end data
+data Z248 bytes
+  $85,$01,$67,$04,$05,$06,$E5,$F7,$C6,$24,$85,$0A,$0B,$0C,$0D,$0E,$0F,$20,$61,$16,$17,$18,$19,$1A
+  $1B,$1C,$1D,$1E,$08,$58,$26,$27,$28,$29,$02,$2A,$2B,$2C,$02,$2D,$2E,$06,$1A,$04,$35,$36,$37,$02
+  $6E,$38,$39,$3A,$FF,$36,$3B,$3C,$E4,$06,$F9,$07,$D3,$FF,$FF,$08,$09,$0A,$F2,$01,$C2,$12,$6D,$13
+  $14,$15,$55,$56
+end data
+data Z249 bytes
+  $82,$02,$61,$17,$18,$02,$98,$19,$1A,$01,$48,$61,$21,$22,$23,$16,$02,$82,$24,$25,$26,$02,$48,$F6
+  $27,$28,$C4,$65,$04,$2E,$2F,$E6,$C1,$30,$31,$02,$59,$96,$32,$33,$34,$3D,$3A,$3B,$D8,$E6,$F9,$3C
+  $3D,$3E,$F6,$BC,$61,$3F,$40,$41,$BE,$47,$EB,$BE,$19,$81,$48,$49,$4A,$82,$4B,$4C,$4D,$4E,$62,$54
+  $02,$42,$27,$55,$56,$D9,$FE,$24,$57,$58,$59,$5A,$5B,$02,$63,$62,$63,$55,$55,$80
+end data
+data Z250 bytes
+  $61,$64,$65,$02,$66,$66,$67,$01,$15,$82,$07,$08,$09,$01,$40,$96,$10,$11,$12,$13,$14,$15,$01,$11
+  $87,$1F,$20,$21,$22,$23,$88,$4F,$24,$25,$42,$0E,$2F,$30,$31,$32,$10,$23,$33,$34,$81,$1E,$9D,$3D
+  $3E,$3F,$D8,$D2,$F4,$40,$41,$16,$9B,$0D,$0E,$0F,$64,$92,$ED,$01,$01,$55,$56
+end data
+data Z251 bytes
+  $85,$01,$86,$1B,$1C,$1D,$1E,$02,$42,$39,$1F,$20,$C4,$26,$29,$2A,$2B,$3D,$FE,$23,$2C,$2D,$D9,$C4
+  $9F,$0D,$35,$36,$C0,$59,$96,$37,$38,$39,$79,$42,$43,$02,$FE,$09,$E2,$44,$45,$46,$C0,$21,$4F,$02
+  $48,$66,$02,$50,$51,$52,$53,$BC,$5C,$FE,$08,$75,$5D,$5E,$5F,$60,$61,$55,$58
+end data
+data Z252 bytes
+  $94,$02,$63,$68,$69,$55,$55,$80
+end data
+data Z253 bytes
+  $92,$00,$E2,$0C,$F4,$7E,$0F,$CC,$30,$E6,$9F,$C0,$D0,$43,$BE,$DF,$C0,$F4,$24,$03,$30,$E2,$EF,$0C
+  $C0,$AA,$3C,$0C,$6B,$03,$EF,$FB,$F1,$C0,$A8,$39,$A0,$5F,$D2,$A7,$3C,$C0,$A0,$F9,$CF,$F4,$89,$3C
+  $C0,$8B,$0F,$F0,$87,$92,$9F,$7A,$DB,$FF,$DE,$D0,$E7,$0D,$9E,$55,$55,$80
+end data
+data Z254 bytes
+  $A6,$00,$03,$0C,$0F,$86,$3C,$F0,$30,$C0,$00,$42,$E6,$03,$F4,$26,$3C,$C0,$2F,$0F,$F0,$E8,$B8,$30
+  $BE,$A5,$30,$E5,$90,$29,$0F,$2F,$FC,$94,$FA,$EC,$00,$F1,$52,$A7,$3C,$FB,$95,$5F,$EC,$9F,$C0,$12
+  $4E,$FE,$EF,$C2,$C1,$E5,$FF,$50,$0F,$95,$55,$55,$80
+end data
+data Z255 bytes
+  $A6,$03,$0F,$3C,$F0,$A6,$C0,$84,$00,$9F,$0F,$3F,$F0,$F4,$BE,$FC,$D8,$60,$03,$3C,$C0,$F8,$BB,$C2
+  $6A,$03,$2F,$3F,$FC,$91,$F4,$93,$D0,$FF,$D9,$D7,$FF,$BB,$63,$FC,$5E,$D5,$70,$F5,$A0,$D5,$55,$60
+end data
+data Z256 bytes
+  $92,$03,$E7,$83,$F4,$F3,$FF,$E6,$DB,$FE,$F3,$9F,$F4,$FF,$CF,$E6,$A2,$6E,$81,$F4,$62,$01,$01,$1B
+  $B1,$FA,$FF,$F3,$F4,$38,$01,$81,$FE,$FC,$75,$78,$3E,$8C,$E7,$F1,$F4,$E7,$A1,$F4,$FE,$FF,$F3,$F9
+  $FF,$87,$F1,$E1,$45,$48,$DD,$E0,$3F,$30,$EF,$F7,$30,$32,$FF,$FE,$F4,$FF,$20,$F6,$FF,$F4,$F8,$FD
+  $FE,$55,$56
+end data
+data Z257 bytes
+  $A9,$01,$81,$A6,$83,$90,$03,$B9,$F3,$F4,$88,$F3,$F1,$2B,$F1,$FF,$B5,$F5,$F7,$FE,$FD,$F5,$FE,$A6
+  $F1,$9F,$F3,$90,$0E,$74,$67,$83,$81,$01,$FF,$F8,$FE,$E5,$F5,$FE,$AF,$B1,$F6,$EF,$FE,$F6,$E7,$DC
+  $C2,$C0,$DC,$81,$E6,$D9,$E0,$5F,$05,$75,$F0,$DD,$E8,$D5,$55,$60
+end data
+data Z258 bytes
+  $8A,$F1,$F3,$4A,$03,$12,$AF,$83,$81,$F4,$A8,$81,$8A,$01,$01,$83,$7F,$FF,$E8,$F6,$FE,$9E,$B1,$F6
+  $7F,$E8,$DF,$D4,$B6,$FA,$FE,$83,$1E,$70,$3B,$57,$F1,$FF,$F4,$3B,$CB,$FF,$E8,$BA,$E4,$E9,$A0,$F8
+  $E7,$02,$35,$55,$58
+end data
+data Z259 bytes
+  $86,$00,$38,$03,$0F,$F4,$9E,$3F,$F0,$C0,$EA,$BF,$FC,$F5,$E9,$FF,$EA,$FE,$9F,$F4,$B4,$3B,$BF,$3F
+  $BA,$C3,$3F,$C1,$F0,$3F,$C2,$E8,$FE,$0F,$A0,$3F,$AF,$C0,$AC,$7D,$60,$5F,$90,$13,$BE,$46,$F7,$F8
+  $EE,$9C,$34,$E0,$14,$EF,$AA,$E3,$EA,$E1,$FE,$C0,$A2,$3F,$83,$0F,$FF,$6A,$DC,$DD,$90,$55,$56
+end data
+data Z260 bytes
+  $A1,$00,$20,$0F,$3F,$00,$FC,$F0,$C0,$3F,$FC,$F0,$00,$A2,$3F,$82,$0F,$88,$00,$9F,$C0,$F0,$D8,$A3
+  $03,$E7,$F9,$B2,$EE,$E7,$F8,$FE,$6B,$03,$8F,$B0,$D5,$E8,$D3,$FE,$83,$0F,$03,$AF,$E5,$F0,$FE,$EE
+  $9E,$FE,$2B,$C0,$95,$80,$F4,$A0,$3B,$A6,$FF,$F9,$D8,$C8,$E6,$9E,$BF,$3F,$FD,$F7,$89,$FD,$C0,$F0
+  $36,$B4,$F6,$B1,$B6,$78,$C2,$D5,$55,$60
+end data
+data Z261 bytes
+  $82,$00,$A2,$C0,$F0,$00,$6A,$03,$6A,$0F,$3F,$03,$3F,$AA,$00,$FC,$66,$F0,$C0,$00,$62,$3F,$0F,$FE
+  $D1,$BA,$B8,$F0,$E2,$E5,$A0,$FF,$B3,$B7,$EB,$E3,$B3,$CE,$EF,$AF,$AA,$7F,$FF,$B3,$D9,$D3,$CD,$E3
+  $EB,$D2,$FA,$EF,$96,$03,$13,$D7,$90,$95,$B0,$FF,$71,$BB,$F8,$BC,$03,$C0,$F7,$38,$FE,$C0,$40,$F2
+  $3F,$8E,$8E,$F0,$EA,$35,$55,$58
+end data
+data Z262 bytes
+  $88,$00,$80,$F0,$00,$88,$C0,$F0,$2F,$C0,$F8,$9F,$3F,$0F,$03,$E1,$EB,$C6,$FC,$8F,$EA,$B0,$5E,$F2
+  $3A,$F8,$FF,$0F,$C7,$C5,$FE,$2A,$3F,$AA,$0F,$00,$AB,$C0,$FC,$9E,$E2,$7C,$28,$C0,$4F,$CF,$87,$7C
+  $DF,$F6,$B0,$57,$DF,$4C,$55,$FF,$19,$51,$EA,$77,$D0,$FF,$E8,$23,$E0,$75,$55,$58
+end data
+data Z263 bytes
+  $62,$F0,$FC,$00,$75,$3F,$0F,$00,$55,$58
+end data
+data Z264 bytes
+  $86,$03,$B9,$83,$F4,$8F,$81,$81,$F6,$EB,$FF,$01,$FF,$F5,$F7,$FE,$E1,$F5,$FE,$A0,$B1,$7F,$E9,$F8
+  $FA,$FE,$81,$5A,$83,$28,$03,$4A,$F3,$E6,$F4,$3F,$F1,$F1,$F6,$FB,$FF,$B1,$F4,$8F,$A0,$F5,$9A,$FE
+  $F1,$5A,$F3,$38,$92,$78,$76,$EF,$F9,$08,$60,$FD,$FB,$14,$F0,$FE,$F7,$20,$8F,$A4,$16,$7B,$76,$55
+  $55,$80
+end data
+data Z265 bytes
+  $AA,$03,$F3,$22,$0F,$F1,$2A,$F3,$F1,$01,$0A,$F1,$5A,$03,$28,$F3,$29,$03,$A2,$83,$F8,$08,$F8,$67
+  $81,$81,$81,$01,$08,$9A,$FE,$B1,$1A,$0B,$A1,$B1,$A1,$81,$AA,$01,$83,$1F,$ED,$E6,$95,$8C,$E6,$03
+  $6E,$BF,$0F,$32,$89,$31,$01,$0F,$1F,$F1,$8E,$36,$06,$E7,$A0,$CF,$20,$FE,$2B,$08,$9F,$54,$24,$7F
+  $2B,$FD,$DF,$FE,$D2,$FE,$CE,$B2,$3B,$AE,$55,$55,$80
+end data
+data Z266 bytes
+  $82,$03,$8A,$83,$03,$69,$F3,$6A,$0F,$86,$F1,$9F,$01,$F2,$FE,$EE,$D2,$3A,$CE,$F2,$03,$AE,$FA,$08
+  $FE,$81,$1A,$01,$0A,$B1,$46,$3F,$0B,$B1,$D2,$EE,$FE,$83,$B2,$3F,$F1,$36,$FF,$E8,$76,$F7,$42,$9E
+  $40,$B0,$7F,$44,$FF,$E8,$46,$E9,$E9,$FF,$81,$6A,$B1,$86,$01,$9F,$0B,$4C,$FC,$ED,$40,$F3,$3E,$B8
+  $56,$EA,$D5,$55,$60
+end data
+data Z267 bytes
+  $88,$03,$9A,$83,$08,$03,$0A,$83,$28,$F1,$4A,$01,$0A,$F3,$B8,$0F,$EA,$EF,$C4,$ED,$A8,$FE,$03,$28
+  $F3,$A6,$01,$22,$81,$01,$9A,$B1,$01,$69,$0B,$E7,$E8,$FE,$F4,$E9,$5A,$BF,$81,$C0,$FF,$58,$ED,$FF
+  $9E,$42,$30,$7F,$EA,$FF,$98,$3C,$B8,$5A,$2C,$F9,$59,$2C,$E7,$42,$9F,$30,$EA,$FD,$6D,$4C,$E7,$50
+  $FF,$54,$FE,$FF,$68,$E8,$FF,$84,$FE,$55,$55,$80
+end data
+data Z268 bytes
+  $A8,$F3,$0F,$AB,$F1,$01,$55,$55,$80
+end data
+data Z269 bytes
+  $90,$01,$67,$4A,$4B,$4C,$C0,$C6,$92,$50,$51,$52,$53,$54,$55,$11,$81,$81,$5C,$5D,$5E,$5F,$60,$61
+  $62,$63,$64,$64,$20,$6C,$6D,$5E,$6E,$6F,$70,$71,$72,$73,$74,$75,$76,$09,$49,$5C,$7E,$7F,$80,$81
+  $02,$02,$82,$83,$84,$02,$02,$85,$86,$5F,$CD,$FE,$D0,$CE,$F8,$87,$F7,$C1,$91,$88,$89,$83,$91,$92
+  $93,$02,$55,$55,$80
+end data
+data Z270 bytes
+  $82,$02,$61,$94,$95,$02,$98,$96,$97,$01,$48,$24,$9D,$9E,$9F,$02,$99,$A0,$A1,$02,$27,$A2,$A3,$A4
+  $D9,$C4,$97,$AB,$AC,$AD,$89,$C1,$AE,$AF,$60,$96,$02,$B0,$B1,$B2,$60,$B9,$BA,$02,$62,$BB,$BC,$5E
+  $7B,$64,$BD,$BE,$BF,$BE,$C5,$E9,$BE,$09,$81,$C6,$C7,$C8,$86,$02,$C9,$CA,$CB,$CC,$62,$D2,$02,$16
+  $79,$D3,$D4,$D5,$E4,$21,$9E,$BD,$D6,$D7,$D8,$D9,$7C,$5B,$DF,$55,$55,$80
+end data
+data Z271 bytes
+  $24,$E0,$02,$26,$E1,$E2,$01,$41,$9F,$4D,$4E,$4F,$C8,$02,$48,$56,$57,$58,$59,$5A,$5B,$46,$06,$65
+  $66,$67,$68,$69,$02,$02,$6A,$6B,$05,$8A,$77,$78,$3E,$79,$7A,$10,$78,$7B,$7C,$7D,$90,$08,$37,$87
+  $88,$89,$8A,$D2,$22,$8B,$8C,$56,$E3,$8A,$DD,$8D,$8E,$61,$92,$8B,$8F,$90,$55,$55,$80
+end data
+data Z272 bytes
+  $85,$01,$82,$98,$99,$9A,$02,$46,$61,$9B,$9C,$01,$20,$95,$A5,$A6,$A7,$02,$9F,$A8,$A9,$AA,$C4,$66
+  $B3,$B4,$B5,$7D,$BE,$66,$B6,$B7,$B8,$58,$E1,$C0,$C1,$C2,$39,$7B,$92,$C2,$C3,$C4,$39,$CD,$02,$FE
+  $48,$3A,$CE,$CF,$D0,$D1,$C0,$85,$DA,$7E,$78,$0D,$DB,$DC,$DD,$DE,$55,$56
+end data
+data Z273 bytes
+  $94,$02,$63,$E3,$E4,$55,$55,$80
+end data
+data Z274 bytes
+  $92,$00,$E2,$3C,$F4,$7E,$0F,$CC,$30,$E6,$9F,$C0,$D0,$42,$3E,$0C,$C0,$F4,$BB,$03,$FB,$30,$FF,$E6
+  $E2,$8B,$F9,$0C,$30,$8F,$FB,$C0,$03,$F9,$F5,$E5,$B0,$F3,$E6,$DF,$F4,$B0,$5F,$3C,$E2,$F4,$21,$03
+  $FC,$BF,$3C,$CD,$0A,$7F,$86,$EF,$DC,$F0,$8A,$BF,$F0,$E8,$CE,$92,$D2,$8B,$03,$0F,$BC,$D1,$03,$E0
+  $D5,$55,$60
+end data
+data Z275 bytes
+  $92,$00,$E2,$0F,$F4,$21,$03,$FC,$8F,$3C,$C0,$DA,$A4,$3C,$FD,$E9,$FE,$9A,$03,$0F,$3C,$78,$F0,$03
+  $30,$DE,$F6,$92,$94,$F0,$F7,$DA,$A5,$99,$F0,$E7,$B2,$FF,$CB,$C0,$D9,$FC,$EA,$5E,$7F,$F9,$D3,$FB
+  $DC,$F8,$85,$50,$79,$80,$0D,$55,$56
+end data
+data Z276 bytes
+  $21,$C0,$00,$67,$03,$3F,$FC,$EE,$F2,$0F,$F4,$6F,$F0,$C9,$FC,$E8,$C0,$2E,$3F,$DA,$2E,$F0,$F6,$AE
+  $3C,$CE,$5B,$03,$AB,$C6,$0F,$FF,$CF,$FF,$95,$60,$57,$D0,$90,$D5,$55,$60
+end data
+data Z277 bytes
+  $92,$03,$E7,$83,$F4,$F3,$FF,$E6,$DB,$FE,$F3,$9F,$F4,$FF,$87,$E6,$E3,$BE,$81,$01,$98,$F4,$FE,$B1
+  $B1,$F2,$F5,$20,$01,$01,$8B,$81,$81,$FF,$F3,$78,$B0,$62,$F3,$F1,$E7,$F4,$E7,$FF,$F2,$F8,$FF,$F4
+  $BF,$F1,$F1,$F3,$58,$3D,$5C,$E5,$50,$EA,$F2,$01,$7B,$A4,$FF,$50,$F9,$33,$E4,$FF,$F4,$E3,$D0,$BF
+  $F4,$22,$F3,$C3,$22,$55,$55,$80
+end data
+data Z278 bytes
+  $92,$03,$E6,$F3,$F4,$20,$F1,$01,$EA,$F2,$01,$6F,$01,$FE,$EF,$E8,$FE,$6A,$F1,$8E,$F3,$F8,$F3,$9A
+  $E2,$F4,$83,$81,$4F,$C7,$BF,$F4,$F2,$EF,$F1,$F4,$FE,$E6,$F4,$24,$01,$B1,$F9,$FF,$F6,$E7,$F4,$DA
+  $FE,$81,$FB,$99,$F8,$FE,$FF,$78,$5E,$77,$E2,$69,$F1,$69,$01,$7D,$F1,$CE,$EE,$F4,$DC,$DE,$3F,$F8
+  $7D,$DC,$55,$56
+end data
+data Z279 bytes
+  $21,$F3,$03,$6A,$83,$FE,$81,$F2,$F5,$20,$01,$01,$FE,$F3,$FF,$E8,$E1,$FE,$A3,$B1,$DF,$F4,$F6,$E1
+  $FE,$FB,$AB,$F8,$A1,$FF,$83,$E1,$60,$98,$F3,$F3,$F1,$3F,$F5,$C5,$FF,$F4,$F3,$FF,$B9,$E8,$FE,$3E
+  $DB,$F8,$E8,$FF,$F3,$78,$9A,$D5,$55,$60
+end data
+data Z280 bytes
+  $92,$00,$E2,$0F,$F6,$7E,$3F,$FC,$C0,$F4,$EF,$F0,$E8,$EA,$FF,$FE,$F5,$86,$FE,$28,$03,$0F,$B8,$FC
+  $03,$B7,$6F,$F0,$C0,$C0,$00,$F0,$D8,$3F,$D7,$9F,$FF,$FF,$D9,$D7,$AA,$3D,$60,$5F,$90,$17,$E3,$D3
+  $F6,$FA,$CD,$26,$00,$FA,$C9,$9D,$F0,$5F,$A0,$FF,$D3,$D8,$BA,$FE,$F0,$E7,$3F,$FE,$FF,$CA,$DC,$55
+  $55,$80
+end data
+data Z281 bytes
+  $92,$00,$E2,$03,$F6,$20,$0F,$3F,$86,$00,$FC,$F0,$C0,$00,$EF,$F8,$FE,$89,$FC,$3F,$29,$00,$A7,$C0
+  $CA,$A2,$0F,$7E,$A5,$D5,$FA,$F0,$F7,$A3,$C0,$13,$FF,$CD,$CB,$A2,$F8,$D7,$77,$A2,$EE,$EB,$0F,$FF
+  $8A,$03,$C0,$A2,$F0,$8F,$FC,$80,$57,$D7,$A0,$77,$D2,$FE,$F9,$5A,$59,$9F,$F0,$FE,$7B,$B2,$F3,$A1
+  $E8,$55,$55,$80
+end data
+data Z282 bytes
+  $21,$C0,$00,$E8,$F2,$EF,$3F,$0F,$FF,$03,$EA,$9E,$F0,$FC,$FC,$F2,$F7,$D0,$9A,$F9,$03,$0F,$3F,$9E
+  $00,$D3,$7E,$F0,$F0,$C0,$FD,$9C,$7C,$A0,$1E,$B4,$EB,$B6,$03,$FF,$CB,$C6,$A8,$6F,$3F,$CA,$FF,$D5
+  $CD,$92,$BD,$00,$94,$E9,$E9,$03,$3F,$EB,$90,$79,$C0,$5F,$12,$FF,$0C,$16,$FF,$D6,$C5,$FE,$98,$BD
+  $C0,$7D,$BF,$55,$56
+end data
+data Z283 bytes
+  $19,$00,$3F,$0F,$03,$00,$9F,$C0,$F0,$FC,$F7,$9A,$EA,$00,$E3,$F4,$98,$D4,$E9,$C0,$C0,$ED,$C0,$F5
+  $B0,$6F,$3F,$C0,$2F,$FC,$C3,$BE,$FE,$E5,$D6,$2F,$F0,$E5,$CF,$D2,$D1,$87,$7C,$8A,$EA,$00,$5F,$C0
+  $57,$F8,$D9,$D7,$FE,$28,$3F,$FF,$D9,$53,$3A,$FF,$F6,$B2,$F7,$F0,$55,$55,$80
+end data
+data Z284 bytes
+  $92,$03,$FA,$83,$F4,$83,$88,$81,$81,$6F,$01,$FF,$FF,$F7,$F5,$FE,$E1,$F5,$FE,$A1,$B1,$3F,$E9,$FB
+  $9E,$C0,$FE,$68,$83,$28,$03,$4B,$F3,$EA,$F4,$F3,$21,$F1,$F1,$EE,$B0,$EA,$E3,$A0,$E6,$F5,$FE,$92
+  $F1,$9E,$F3,$A8,$37,$F0,$0E,$6B,$BB,$08,$F8,$FB,$53,$05,$F6,$92,$06,$39,$0B,$0B,$02,$E9,$0F,$83
+  $79,$A0,$F5,$FF,$55,$58
+end data
+data Z285 bytes
+  $92,$03,$E3,$F3,$F6,$BE,$FF,$0F,$F7,$F9,$19,$F1,$F1,$F1,$01,$0F,$F8,$FE,$93,$F3,$F1,$CF,$C0,$B1
+  $8A,$FE,$83,$FE,$F6,$FF,$3F,$08,$81,$F8,$FF,$FF,$B1,$F8,$E9,$FE,$B1,$2F,$0B,$F0,$3F,$D1,$FE,$29
+  $83,$7C,$22,$A5,$F3,$A5,$F1,$A5,$01,$FC,$F1,$FE,$A5,$F3,$F2,$30,$83,$08,$CA,$FE,$01,$03,$FE,$40
+  $2D,$FE,$75,$55,$58
+end data
+data Z286 bytes
+  $21,$B1,$01,$8A,$B1,$08,$82,$81,$2A,$01,$03,$83,$6A,$08,$92,$03,$22,$83,$03,$8A,$F3,$0F,$EB,$F8
+  $F1,$CE,$FE,$9E,$3E,$DD,$E8,$7F,$C2,$F9,$C0,$A2,$FF,$E7,$70,$EF,$FE,$B1,$4F,$EA,$FD,$FE,$0B,$1E
+  $E4,$FE,$E3,$FD,$FE,$FF,$C2,$D0,$FF,$34,$E8,$FF,$96,$EA,$FF,$60,$3E,$A5,$0F,$FF,$54,$E8,$FF,$C0
+  $EA,$FF,$94,$8E,$FF,$78,$4E,$EF,$F4,$4E,$FC,$EB,$D8,$D5,$55,$60
+end data
+data Z287 bytes
+  $22,$08,$81,$9A,$01,$83,$2B,$08,$AE,$EA,$03,$FE,$FA,$ED,$FF,$03,$1A,$83,$AF,$F1,$C9,$E2,$FB,$FF
+  $0F,$F1,$29,$01,$A2,$F3,$BB,$0F,$EA,$FE,$C4,$ED,$FF,$86,$03,$A9,$F3,$B1,$A6,$01,$A9,$B1,$0B,$FF
+  $F5,$EA,$FC,$FE,$42,$FE,$41,$5B,$EA,$3F,$58,$FF,$EA,$94,$FC,$EA,$52,$FE,$51,$6B,$EA,$3F,$68,$FC
+  $EA,$52,$A5,$0F,$89,$01,$0B,$3F,$E7,$56,$EF,$EA,$74,$DF,$A0,$F7,$A4,$E0,$D5,$55,$60
+end data
+data Z288 bytes
+  $91,$01,$67,$04,$05,$06,$95,$C8,$92,$04,$0A,$0B,$0C,$0D,$0E,$11,$81,$81,$14,$15,$16,$17,$18,$19
+  $1A,$1B,$1C,$64,$20,$24,$25,$26,$27,$28,$29,$2A,$2B,$02,$2C,$2D,$2E,$08,$1E,$37,$38,$39,$3A,$02
+  $02,$3B,$3C,$3D,$F7,$76,$3E,$3F,$40,$EC,$02,$7B,$07,$08,$02,$FF,$09,$FF,$13,$F7,$FF,$0B,$97,$C6
+  $ED,$20,$02,$55,$56
+end data
+data Z289 bytes
+  $82,$02,$61,$19,$1A,$02,$98,$1B,$1C,$01,$18,$64,$23,$24,$25,$26,$02,$8E,$27,$28,$C2,$66,$02,$29
+  $2A,$06,$09,$31,$32,$33,$02,$66,$34,$35,$36,$F2,$BE,$65,$37,$38,$39,$BD,$40,$DA,$E6,$F9,$41,$42
+  $43,$F6,$BE,$64,$44,$45,$46,$88,$4B,$02,$49,$81,$4C,$4D,$4E,$86,$02,$4F,$50,$51,$52,$7E,$EF,$BE
+  $49,$84,$58,$59,$5A,$86,$02,$5B,$5C,$5D,$5E,$A4,$02,$63,$63,$64,$55,$55,$80
+end data
+data Z290 bytes
+  $24,$65,$02,$26,$4F,$66,$01,$45,$9F,$07,$08,$09,$CA,$02,$18,$0F,$10,$11,$12,$13,$46,$1E,$1D,$1E
+  $1F,$20,$21,$4B,$20,$22,$23,$58,$7E,$2F,$30,$31,$32,$33,$0E,$60,$34,$35,$36,$08,$37,$41,$42,$43
+  $44,$D2,$26,$45,$46,$47,$52,$FD,$0E,$22,$86,$92,$2D,$13,$14,$55,$56
+end data
+data Z291 bytes
+  $84,$01,$86,$1D,$1E,$1F,$20,$02,$46,$60,$21,$22,$01,$61,$95,$2B,$2C,$2D,$2E,$02,$98,$2F,$30,$01
+  $08,$20,$3A,$3B,$3C,$02,$48,$24,$3D,$3E,$3F,$01,$88,$47,$02,$46,$79,$48,$49,$4A,$C0,$A1,$53,$4E
+  $BD,$09,$54,$55,$56,$57,$EE,$EC,$BC,$56,$0B,$5F,$60,$61,$62,$55,$55,$80
+end data
+data Z292 bytes
+  $94,$02,$63,$54,$67,$55,$55,$80
+end data
+
+
+data ZTabA words
+  @Z0, @Z1, @Z2, @Z3, @Z4, @Z5, @Z6, @Z7
+  @Z8, @Z9, @Z10, @Z11, @Z12, @Z13, @Z14, @Z15
+  @Z16, @Z17, @Z18, @Z19, @Z20, @Z21, @Z22, @Z23
+  @Z24, @Z25, @Z26, @Z27, @Z28, @Z29, @Z30, @Z31
+  @Z32, @Z33, @Z34, @Z35, @Z36, @Z37, @Z38, @Z39
+  @Z40, @Z41, @Z42, @Z43, @Z44, @Z45, @Z46, @Z47
+  @Z48, @Z49, @Z50, @Z51, @Z52, @Z53, @Z54, @Z55
+  @Z56, @Z57, @Z58, @Z59, @Z60, @Z61, @Z62, @Z63
+  @Z64, @Z65, @Z66, @Z67, @Z68, @Z69, @Z70, @Z71
+  @Z72, @Z73, @Z74, @Z75, @Z76, @Z77, @Z78, @Z79
+  @Z80, @Z81, @Z82, @Z83, @Z84, @Z85, @Z86, @Z87
+  @Z88, @Z89, @Z90, @Z91, @Z92, @Z93, @Z94, @Z95
+  @Z96, @Z97, @Z98, @Z99, @Z100, @Z101, @Z102, @Z103
+  @Z104, @Z105, @Z106, @Z107, @Z108, @Z109, @Z110, @Z111
+  @Z112, @Z113, @Z114, @Z115, @Z116, @Z117, @Z118, @Z119
+  @Z120, @Z121, @Z122, @Z123, @Z124, @Z125, @Z126, @Z127
+  @Z128, @Z129, @Z130, @Z131, @Z132, @Z133, @Z134, @Z135
+  @Z136, @Z137, @Z138, @Z139, @Z140, @Z141, @Z142, @Z143
+  @Z144, @Z145, @Z146, @Z147, @Z148, @Z149, @Z150, @Z151
+  @Z152, @Z153, @Z154, @Z155, @Z156, @Z157, @Z158, @Z159
+  @Z160, @Z161, @Z162, @Z163, @Z164, @Z165, @Z166, @Z167
+  @Z168, @Z169, @Z170, @Z171, @Z172, @Z173, @Z174, @Z175
+  @Z176, @Z177, @Z178, @Z179
+end data
+data ZDstA words
+  $0820, $08E8, $09B0, $2820, $28E8, $29B0, $1020, $10E8
+  $11B0, $1278, $1340, $3020, $30E8, $31B0, $3278, $3340
+  $1C00, $1CC8, $1D90, $1E58, $1F20, $0A50, $0B18, $0BE0
+  $2A50, $2B18, $2BE0, $1400, $14C8, $1590, $1658, $1720
+  $3400, $34C8, $3590, $3658, $3720, $3980, $3A48, $3B10
+  $3BD8, $3CA0, $0820, $08E8, $09B0, $2820, $28E8, $29B0
+  $1020, $10E8, $11B0, $1278, $1340, $3020, $30E8, $31B0
+  $3278, $3340, $1C00, $1CC8, $1D90, $1E58, $1F20, $0A50
+  $0B18, $0BE0, $2A50, $2B18, $2BE0, $1400, $14C8, $1590
+  $1658, $1720, $3400, $34C8, $3590, $3658, $3720, $3980
+  $3A48, $3B10, $3BD8, $3CA0, $0820, $08E8, $09B0, $2820
+  $28E8, $29B0, $1020, $10E8, $11B0, $1278, $3020, $30E8
+  $31B0, $3278, $1C00, $1CC8, $1D90, $1E58, $1F20, $0A50
+  $0B18, $0BE0, $2A50, $2B18, $2BE0, $1400, $14C8, $1590
+  $1658, $1720, $3400, $34C8, $3590, $3658, $3720, $3980
+  $3A48, $3B10, $3BD8, $3CA0, $0820, $08E8, $2820, $28E8
+  $1020, $10E8, $11B0, $1278, $3020, $30E8, $31B0, $3278
+  $1C00, $1CC8, $1D90, $1E58, $1F20, $0A50, $0B18, $2A50
+  $2B18, $1400, $14C8, $1590, $1658, $3400, $34C8, $3590
+  $3658, $3980, $3A48, $3B10, $3BD8, $3CA0, $0820, $08E8
+  $2820, $28E8, $1020, $10E8, $11B0, $1278, $3020, $30E8
+  $31B0, $3278, $1C00, $1CC8, $1D90, $1E58, $1F20, $0A50
+  $0B18, $2A50, $2B18, $1400
+end data
+data ZTabB words
+  @Z180, @Z181, @Z182, @Z183, @Z184, @Z185, @Z186, @Z187
+  @Z188, @Z189, @Z190, @Z191, @Z192, @Z193, @Z194, @Z195
+  @Z196, @Z197, @Z198, @Z199, @Z200, @Z201, @Z202, @Z203
+  @Z204, @Z205, @Z206, @Z207, @Z208, @Z209, @Z210, @Z211
+  @Z212, @Z213, @Z214, @Z215, @Z216, @Z217, @Z218, @Z219
+  @Z220, @Z221, @Z222, @Z223, @Z224, @Z225, @Z226, @Z227
+  @Z228, @Z229, @Z230, @Z231, @Z232, @Z233, @Z234, @Z235
+  @Z236, @Z237, @Z238, @Z239, @Z240, @Z241, @Z242, @Z243
+  @Z244, @Z245, @Z246, @Z247, @Z248, @Z249, @Z250, @Z251
+  @Z252, @Z253, @Z254, @Z255, @Z256, @Z257, @Z258, @Z259
+  @Z260, @Z261, @Z262, @Z263, @Z264, @Z265, @Z266, @Z267
+  @Z268, @Z269, @Z270, @Z271, @Z272, @Z273, @Z274, @Z275
+  @Z276, @Z277, @Z278, @Z279, @Z280, @Z281, @Z282, @Z283
+  @Z284, @Z285, @Z286, @Z287, @Z288, @Z289, @Z290, @Z291
+  @Z292
+end data
+data ZDstB words
+  $14C8, $1590, $1658, $3400, $34C8, $3590, $3658, $3980
+  $3A48, $3B10, $3BD8, $3CA0, $0820, $08E8, $2820, $28E8
+  $1020, $10E8, $11B0, $1278, $1340, $3020, $30E8, $31B0
+  $3278, $3340, $1C00, $1CC8, $1D90, $1E58, $1F20, $0A50
+  $0B18, $0BE0, $2A50, $2B18, $2BE0, $1400, $14C8, $1590
+  $1658, $1720, $3400, $34C8, $3590, $3658, $3720, $3980
+  $3A48, $3B10, $3BD8, $3CA0, $0820, $08E8, $09B0, $2820
+  $28E8, $29B0, $1020, $10E8, $11B0, $1278, $1340, $3020
+  $30E8, $31B0, $3278, $3340, $1C00, $1CC8, $1D90, $1E58
+  $1F20, $0A50, $0B18, $0BE0, $2A50, $2B18, $2BE0, $1400
+  $14C8, $1590, $1658, $1720, $3400, $34C8, $3590, $3658
+  $3720, $3980, $3A48, $3B10, $3BD8, $3CA0, $0820, $08E8
+  $09B0, $2820, $28E8, $29B0, $1020, $10E8, $11B0, $1278
+  $3020, $30E8, $31B0, $3278, $1C00, $1CC8, $1D90, $1E58
+  $1F20
+end data
+data ZFirst words
+  0,21,42,63,84,103,124,141,158,175,192,211,232,253,274,293
+end data
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  tile screen
+  sprites 16x16
+  sprites double
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 KartSpr to vram.spr_pat
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: banner, name, menu (cursor back on START), the tune once
+sub TitlePage:
+  State = StTitle
+  NewScreen
+  BigText
+  print at 11,14, "START"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  print at 4,21, "BY CHARLES ORCUTT  1989"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+' the title in ball letters (4 x 5 each): GO on rows 2-6, CARTS on 8-12
+sub BigText:
+  for Li = 0 to 10
+    for Ri = 0 to 27
+      W16 = Li * 28
+      W16 += Ri
+      T = BigMap[W16]
+      if T > 0 then
+        K = TBall
+        if T = 2 then K = TRball
+        put char K at Ri + 2, Li + 2
+      end if
+    next
+  next
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,14
+  put char 32 at 9,16
+  put char 32 at 9,18
+  C = Menu << 1
+  C += 14
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 12,2, "GO CARTS"
+  ' packed text (text.mjs -> kit/textpack.mjs), airy: lines 2 rows apart,
+  ' inside the text area [2,4,29,20] of areas.json
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: two pages, each with a picture made of the game's own
+' sprites and tiles
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/2"
+  print at 2,3, "RACE YOUR GO-CART AND PASS"
+  print at 2,5, "THE OTHER KARTS."
+  RoadPic
+  print at 2,15, "STICK UP: FASTER"
+  print at 2,17, "STICK DOWN: SLOWER"
+  print at 2,19, "LEFT AND RIGHT: STEER"
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/2"
+    print at 2,3, "EACH ROUND LASTS 60 SECONDS."
+    print at 2,5, "30 PASSES OR MORE: YOU KEEP"
+    print at 2,7, "YOUR GO-CART. FEWER COST ONE"
+    print at 2,9, "OF YOUR FIVE, AND SO DOES A"
+    print at 2,11, "CRASH INTO ANOTHER KART."
+    print at 2,13, "THE FASTER YOU GO, THE MORE"
+    print at 2,15, "POINTS. AT TIME OUT EVERY"
+    print at 2,17, "PASS IS WORTH 5 MORE."
+    print at 2,19, "THE GRASS SLOWS YOU DOWN."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' a little road (rows 7-12) with the player's kart and one ahead
+sub RoadPic:
+  for Li = 7 to 12
+    fill TGrass count 28 at 2,Li
+    T = 19 - Li
+    V = Li + 10
+    C = V - T
+    fill TRoad count C at T,Li
+    put char TBordl at T - 1,Li
+    put char TBordr at V,Li
+    put char TCentre at 15,Li
+  next
+  set sprite 0 to 79,104,36,7
+  set sprite 1 to 52,124,16,13
+  update sprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $1A,$C3,$81,$10,$20,$00,$3D,$81,$C3,$F0,$BD,$00,$FE,$20,$19,$01,$03,$07,$F0,$E0,$C0,$80,$00,$80
+  $C0,$E0,$F0,$07,$03,$01,$00,$18,$7D,$C0,$D5,$55,$60
+end data
+data TileColZ bytes
+  $AA,$1B,$FB,$AA,$0B,$1B,$AA,$18,$F8,$AA,$08,$18,$96,$03,$96,$01,$8A,$83,$38,$62,$08,$83,$7E,$F0
+  $F2,$B1,$FE,$97,$04,$55,$55,$80
+end data
+
+data BigMap bytes
+  0,0,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,0,1,1,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,2,2,2,2,0,0,2,2,0,0,2,2,2,0,0,2,2,2,2,0,2,2,2,2,0,0
+  0,0,2,0,0,0,0,2,0,0,2,0,2,0,0,2,0,0,2,2,0,0,2,0,0,0,0,0
+  0,0,2,0,0,0,0,2,2,2,2,0,2,2,2,0,0,0,2,2,0,0,2,2,2,2,0,0
+  0,0,2,0,0,0,0,2,0,0,2,0,2,0,2,0,0,0,2,2,0,0,0,0,0,2,0,0
+  0,0,2,2,2,2,0,2,0,0,2,0,2,0,0,2,0,0,2,2,0,0,2,2,2,2,0,0
+end data
+
+data TxD_0 bytes
+  $02,$42,$59,$0B,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$05,$31,$39,$38,$39,$2C,$05,$31,$39
+  $39,$30,$2C,$04,$32,$30,$32,$36,$02,$36,$34,$03,$41,$4D,$59,$07,$43,$48,$41,$52,$4C,$45,$53,$06
+  $43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$09,$43,$4F,$4D,$4D
+  $4F,$44,$4F,$52,$45,$03,$44,$41,$4E,$09,$44,$49,$41,$4D,$41,$4E,$54,$45,$2E,$08,$47,$52,$41,$50
+  $48,$49,$43,$53,$02,$49,$4E,$08,$4D,$41,$47,$41,$5A,$49,$4E,$45
+end data
+data TxD_1 bytes
+  $06,$4D,$55,$53,$49,$43,$3A,$07,$4F,$52,$43,$55,$54,$54,$2C,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C
+  $04,$50,$4F,$52,$54,$0A,$50,$52,$4F,$47,$52,$41,$4D,$4D,$45,$44,$05,$52,$45,$52,$55,$4E,$03,$52
+  $55,$4E,$06,$53,$55,$4D,$4D,$45,$52,$06,$54,$55,$4E,$45,$53,$2E
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $14,$00,$FE,$07,$11,$FE,$0D,$00,$0B,$0C,$FE,$16,$0F,$02,$15,$FE,$17,$03,$0A,$05,$FE,$09,$13,$0E
+  $06,$FE,$00,$08,$01,$04,$FE,$10,$12,$18,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScPass:
+    db $40,$47,$20,$02,$40,$35,$30,$03,$50
+ScBonus:
+    db $40,$6B,$20,$02,$40,$55,$30,$04,$50
+ScCrash:
+    db $00,$00,$04,$06,$00,$00,$15,$0A,$00,$00,$36,$10,$00,$00,$56,$18,$10
+ScSkid:
+    db $00,$00,$61,$03,$10
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+ScEng0:
+    db $C0,$0E,$63,$04,$C0,$EF,$72,$04,$D0
+ScEng1:
+    db $C0,$4A,$62,$04,$C0,$38,$72,$04,$D0
+ScEng2:
+    db $C0,$D6,$61,$04,$C0,$CA,$71,$04,$D0
+ScEng3:
+    db $C0,$87,$61,$04,$C0,$7F,$71,$04,$D0
+ScEng4:
+    db $C0,$4F,$61,$04,$C0,$49,$71,$04,$D0
+ScEng5:
+    db $C0,$26,$61,$04,$C0,$21,$71,$04,$D0
+ScEng6:
+    db $C0,$05,$61,$04,$C0,$01,$71,$04,$D0
+ScEng7:
+    db $C0,$EB,$60,$04,$C0,$E8,$70,$04,$D0
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScRaceMel,$7053
+    dw ScRaceHarm,$705D
+    dw ScClick,$7071
+    dw ScPass,$7071
+    dw ScBonus,$7071
+    dw ScCrash,$7067
+    dw ScSkid,$7067
+    dw ScOver,$7071
+    dw ScEng0,$7071
+    dw ScEng1,$7071
+    dw ScEng2,$7071
+    dw ScEng3,$7071
+    dw ScEng4,$7071
+    dw ScEng5,$7071
+    dw ScEng6,$7071
+    dw ScEng7,$7071
+; Starting Grid (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01
+    db $26,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$21,$01,$01,$01,$00,$00
+    db $00,$01,$01,$01,$1C,$01,$21,$01,$24,$01,$28,$01,$01,$01,$24,$01
+    db $28,$01,$2A,$01,$2B,$01,$2A,$01,$28,$01,$26,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1A,$01,$01,$01,$1F,$01,$01,$01
+    db $23,$01,$01,$01,$1F,$01,$01,$01,$1A,$01,$01,$01,$1E,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$21,$01,$01,$01
+    db $24,$01,$01,$01,$23,$01,$01,$01,$24,$01,$01,$01,$21,$01,$1E,$01
+    db $17,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$14,$14,$66,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$11,$14,$66,$22
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$64,$C0,$98,$F0,$60,$C0,$66,$F0,$60,$C0,$98,$F0,$30,$C0,$72,$F0,$2A,$E2
+    db $D0
+; Back Straight (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScRaceMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$1A,$21,$23,$01,$01,$01,$21,$01,$1F,$01,$21,$01,$23,$01
+    db $26,$01,$01,$01,$23,$01,$21,$01,$1F,$01,$1C,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$1F,$01,$21,$01,$23,$01,$01,$01
+    db $21,$01,$1F,$01,$21,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01,$26,$01,$01,$01,$23,$01,$26,$01,$28,$01,$26,$01
+    db $23,$01,$01,$01,$21,$01,$23,$01,$21,$01,$1F,$01,$1C,$01,$01,$01
+    db $1A,$01,$01,$01,$1F,$01,$01,$01,$21,$01,$23,$01,$26,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScRaceHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$13,$01,$01,$01,$01,$01,$01,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$18,$01,$01,$01,$01,$01,$01,$01,$13,$01,$01,$01
+    db $01,$01,$01,$01,$1A,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$18,$01,$01,$01
+    db $01,$01,$01,$01,$1A,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScRaceBassVol:
+    db $3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$3F,$3F,$21
+    db $10
+ScRaceBassPitch:
+    db $FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$E1
+    db $D0
+}

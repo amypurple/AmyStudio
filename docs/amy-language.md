@@ -3148,6 +3148,13 @@ previous display/NMI state when it returns.
 Coleco BIOS sound indexes are `1..62`. Index `63` aliases the BIOS free-area
 sentinel and cannot start; compile-time indexes outside the valid range are rejected.
 
+`set sound table Name areas N` accepts a constant `N` from 1 to 8. Sound work
+areas begin at `$702B` and advance by ten bytes through `$7071`; every numeric
+area address in an inline ASM table must use one of those eight starts. `N`
+counts table entries initialized by OS7, not necessarily contiguous area numbers.
+Addresses at `$707B` or above are not sound areas and can overwrite Amy's NMI,
+controller, and runtime state, so the compiler rejects them.
+
 `play song Name once` is the one-shot form for Tiny Sound songs. Each active
 Tiny Sound channel stops when it reaches its `$FF` terminator instead of returning
 to the beginning of its stream. A later ordinary `play song Name` restores looping.

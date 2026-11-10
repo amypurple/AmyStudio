@@ -785,8 +785,8 @@ export function handleVramTextStatement({
       };
     }
     if (sourceVram) {
-      const targetBufferInfo = getByteArrayBufferInfo(targetExpr, 1);
-      const targetCode = targetBufferInfo ? emitLoadArrayAddressIntoHL(targetExpr, "0") : null;
+      const targetBufferInfo = getByteArrayBufferInfo(targetArrayName, 1);
+      const targetCode = targetBufferInfo ? emitLoadArrayAddressIntoHL(targetArrayName, targetArrayIndex) : null;
       if (targetCode) {
         let resolvedCountToken = countToken;
         if (!resolvedCountToken && typeof targetBufferInfo.length === "number") {

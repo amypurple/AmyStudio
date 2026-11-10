@@ -262,13 +262,16 @@ loop forever
   );
 });
 
-check("word tables above 256 entries are rejected clearly", () => {
+check("word tables above 256 entries remain indexable", () => {
   const entries = Array.from({ length: 257 }, (_, index) => String(0x4000 + index)).join(",");
   const oversizedTable = transpileAmy(`data TooLarge words = ${entries}
+u16 I = 256
+u16 V = 0
+V = TooLarge[I]
 loop forever
 `);
-  assert.equal(oversizedTable.ok, false);
-  assert.match(String(oversizedTable.log || ""), /257 entries.*at most 256/i);
+  assert.equal(oversizedTable.ok, true, oversizedTable.log || "257-entry word table transpile failed");
+  assert.match(String(oversizedTable.asmBody || ""), /AMY_UDATA_TooLarge/i);
 });
 
 check("u16 address arithmetic accepts a runtime offset", () => {
@@ -661,8 +664,9 @@ const logicalBoxCollisionResult = transpileAmy(LOGICAL_BOX_COLLISION_DEMO);
 const logicalBoxCollisionAsm = String(logicalBoxCollisionResult?.asmBody || "");
 check("logical pixel-box collision transpiles", () => {
   assert.equal(logicalBoxCollisionResult.ok, true, logicalBoxCollisionResult.log || "transpile failed");
-  assert.match(logicalBoxCollisionAsm, /add a,14/i, "15-pixel constant width should fold to an inclusive +14 edge");
-  assert.match(logicalBoxCollisionAsm, /add a,55/i, "56-pixel constant width should fold to an inclusive +55 edge");
+  assert.match(logicalBoxCollisionAsm, /ld hl,14\s*\n\s*ex de,hl\s*\n\s*pop hl\s*\n\s*add hl,de/i, "15-pixel constant width should use a 16-bit inclusive +14 edge");
+  assert.match(logicalBoxCollisionAsm, /ld hl,55\s*\n\s*ex de,hl\s*\n\s*pop hl\s*\n\s*add hl,de/i, "56-pixel constant width should use a 16-bit inclusive +55 edge");
+  assert.doesNotMatch(logicalBoxCollisionAsm, /add a,(?:14|55)/i, "pixel-box edges must not wrap through 8-bit addition");
   assert.doesNotMatch(logicalBoxCollisionAsm, /GET_BKGRND|GET_VRAM|AMY_CHECK_COLLISION_RAW/i, "logical boxes must not read VRAM or require sprite collision helpers");
 });
 const INLINE_FORWARD_WORD_TABLE_DEMO = `u8 I = 0
