@@ -91,6 +91,25 @@ u8 Shots = 0
 u8 Chips = 0
 u8 GTune = 0
 u8 Menu = 0
+' 1 = one player against the computer (right gantry), 2 = two players
+u8 Mode = 1
+' level 0 EASY, 1 NORMAL, 2 HARD: only the computer's reaction delay and aim error
+u8 Diff = 1
+' the computer's view of the left gantry and its shell, kept 32 frames back
+u8 HLy[32]
+u8 HLs[32]
+u8 HLx[32]
+u8 Hi = 0
+u8 React = 16
+u8 CpuErr = 0
+u8 Scoot = 0
+u8 ScootDir = 0
+u8 Dodge = 0
+u8 CpuShot = 0
+u8 SeenY = 0
+u8 SeenS = 0
+u8 SeenX = 0
+u8 Tgt = 0
 u8 Page = 0
 u8 TimedOut = 0
 u8 J1 = 0
@@ -134,14 +153,15 @@ u8 TxGap = 2
 
 title:
   TitlePage
-  if Menu = 1 then
+  if Menu = 2 then
     HowTo
     goto title
   end if
-  if Menu = 2 then
+  if Menu = 3 then
     CreditsPage
     goto title
   end if
+  Mode = Menu + 1
   NewGame
 
 play_loop:
@@ -215,6 +235,15 @@ sub NewGame:
   Div = 0
   Shots = 0
   Chips = 0
+  Scoot = 0
+  Dodge = 0
+  CpuShot = 0
+  Hi = 0
+  for J = 0 to 31
+    HLy[J] = Ly
+    HLs[J] = 255
+    HLx[J] = 0
+  next
   InitWalls
   DrawPlay
   State = StPlay
@@ -225,6 +254,8 @@ end sub
 
 ' one frame of play
 sub PlayStep:
+  Remember
+  if Mode = 1 then CpuThink
   ' the gantries and the triggers: every 2nd frame (150 C64 passes)
   inc Div
   if Div >= 2 then
@@ -449,6 +480,131 @@ sub HitGantry(u8 Who):
   return
 end sub
 
+
+' ---------------------------------------------------------------------------
+' the computer (1 PLAYER): it only sets the right stick bits J2, so it moves
+' and fires exactly as a player on controller 2 could (one pixel every 2nd
+' frame, one shell at a time). It sees the left gantry and the left shell
+' as they were React frames ago (12-25), and aims with an error by level.
+
+sub Remember:
+  Hi = Hi + 1
+  Hi = Hi & 31
+  HLy[Hi] = Ly
+  T = 255
+  if Lbon = 1 then T = Lby
+  HLs[Hi] = T
+  HLx[Hi] = Lbx
+  return
+end sub
+
+' a new reaction delay and aim error, by level
+sub CpuNewLook:
+  Rand
+  T = Rs & 7
+  if Diff = 0 then
+    React = 18 + T
+    T = Rs >> 4
+    CpuErr = T & 31
+  end if
+  if Diff = 1 then
+    T = Rs & 15
+    if T > 13 then T -= 2
+    React = 12 + T
+    T = Rs >> 4
+    CpuErr = T & 15
+  end if
+  if Diff = 2 then
+    T = Rs & 7
+    if T > 5 then T -= 2
+    React = 12 + T
+    T = Rs >> 4
+    CpuErr = T & 3
+  end if
+  return
+end sub
+
+sub CpuThink:
+  T = Tick & 31
+  if T = 0 then CpuNewLook
+  T = Hi - React
+  T = T & 31
+  SeenY = HLy[T]
+  SeenS = HLs[T]
+  SeenX = HLx[T]
+  ' the target: line up with the left gantry, plus the aim error
+  Tgt = SeenY + CpuErr
+  T = CpuErr >> 1
+  Tgt -= T
+  ' after a shot it steps off the line for a while (shoot and step aside)
+  if Scoot > 0 then
+    dec Scoot
+    if ScootDir = 0 then
+      Tgt = SeenY - 24
+      if SeenY < GyMin + 24 then Tgt = GyMin
+    else
+      Tgt = SeenY + 24
+      if SeenY > GyMax - 24 then Tgt = GyMax
+    end if
+  end if
+  ' an incoming shell seen in its band: sometimes it dodges
+  if SeenS <> 255 then
+    if SeenX >= 72 then
+      if Dodge = 0 then
+        Rand
+        T = Rs & 3
+        Dodge = 1
+        if T < Diff then Dodge = 2
+        if T = 0 then Dodge = 2
+      end if
+      if Dodge = 2 then
+        T = SeenS + 16
+        V = Ry + 16
+        if T >= Ry then
+          if SeenS <= V then
+            Tgt = SeenS + 20
+            if SeenS > 90 then Tgt = SeenS - 20
+          end if
+        end if
+      end if
+    end if
+  else
+    Dodge = 0
+  end if
+  if Tgt < GyMin then Tgt = GyMin
+  if Tgt > GyMax then Tgt = GyMax
+  J2 = 0
+  T = Tgt + 1
+  if Ry > T then J2 = 1
+  T = Ry + 1
+  if T < Tgt then J2 = 2
+  ' its shell has left: step aside for a while
+  if Rbon = 1 then
+    if CpuShot = 0 then
+      CpuShot = 1
+      Scoot = 50
+      Rand
+      ScootDir = Rs & 1
+    end if
+  else
+    CpuShot = 0
+  end if
+  ' fire when lined up with what it sees (every line is clear or breakable);
+  ' the button is held until the gantry's next step reads it
+  if Rbon = 0 then
+    if Scoot = 0 then
+      T = SeenY + 6
+      V = Ry + 6
+      if Ry <= T then
+        if SeenY <= V then
+          J2 = J2 | 16
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
 ' ---------------------------------------------------------------------------
 ' drawing
 
@@ -526,8 +682,13 @@ sub GameOver:
   stop sound SndTuneD
   GTune = 0
   print at 11,11, "GAME OVER"
-  if Winner = 1 then print at 7,13, "LEFT GANTRY WINS"
-  if Winner = 2 then print at 7,13, "RIGHT GANTRY WINS"
+  if Mode = 1 then
+    if Winner = 1 then print at 12,13, "YOU WIN"
+    if Winner = 2 then print at 9,13, "COMPUTER WINS"
+  else
+    if Winner = 1 then print at 7,13, "LEFT GANTRY WINS"
+    if Winner = 2 then print at 7,13, "RIGHT GANTRY WINS"
+  end if
   print at 9,15, "PRESS BUTTON"
   play sound SndOver
   return
@@ -662,10 +823,11 @@ sub TitlePage:
   fill TWall count 22 at 5,8
   print at 13,4, "GANTRY"
   print at 7,6, "BY COLIN ADAMS 1989"
-  print at 11,12, "START"
-  print at 11,14, "HOW TO PLAY"
-  print at 11,16, "CREDITS"
-  print at 6,19, "TWO PLAYERS, TWO STICKS"
+  print at 11,12, "1 PLAYER"
+  print at 11,14, "2 PLAYERS"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  ShowLevel
   set sprite 0 to 76,40,SGantryl,15
   set sprite 1 to 76,200,SGantryr,15
   update sprites
@@ -687,16 +849,27 @@ tp_loop:
   if K > 0 then
     if K = 1 then
       if Menu = 0 then
-        Menu = 2
+        Menu = 3
       else
         dec Menu
       end if
     else
       inc Menu
-      if Menu > 2 then Menu = 0
+      if Menu > 3 then Menu = 0
     end if
     play sound SndClick
     ShowMenu
+  end if
+  ' stick left/right: the computer's level
+  K = Edge & 12
+  if K > 0 then
+    if K = 4 then
+      if Diff > 0 then dec Diff
+    else
+      if Diff < 2 then inc Diff
+    end if
+    play sound SndClick
+    ShowLevel
   end if
   if Press = 0 then goto tp_loop
   stop sound SndTuneA
@@ -711,10 +884,19 @@ tp_loop:
   return
 end sub
 
+sub ShowLevel:
+  print at 7,21, "LEVEL"
+  if Diff = 0 then print at 13,21, "< EASY   >"
+  if Diff = 1 then print at 13,21, "< NORMAL >"
+  if Diff = 2 then print at 13,21, "< HARD   >"
+  return
+end sub
+
 sub ShowMenu:
   put char 32 at 9,12
   put char 32 at 9,14
   put char 32 at 9,16
+  put char 32 at 9,18
   C = Menu << 1
   C += 12
   put char 62 at 9,C
@@ -759,7 +941,7 @@ sub HowTo:
   State = StHow
   Page = 1
   NewScreen
-  print at 8,1, "HOW TO PLAY  1/2"
+  print at 8,1, "HOW TO PLAY  1/3"
   print at 2,3, "TWO GANTRIES FACE EACH"
   print at 2,5, "OTHER ACROSS TWO WALLS."
   fill TWall count 3 at 11,9
@@ -771,14 +953,14 @@ sub HowTo:
   print at 2,13, "STICK UP AND DOWN MOVES"
   print at 2,15, "YOUR GANTRY. THE BUTTON"
   print at 2,17, "FIRES ONE SHELL AT A TIME."
-  print at 2,19, "PLAYER 1 LEFT, PLAYER 2"
-  print at 2,21, "RIGHT."
+  print at 2,19, "1 PLAYER: YOU ARE LEFT,"
+  print at 2,21, "THE COMPUTER IS RIGHT."
   PageWait
   if TimedOut = 0 then
     Page = 2
     HideSprites
     NewScreen
-    print at 8,1, "HOW TO PLAY  2/2"
+    print at 8,1, "HOW TO PLAY  2/3"
     print at 2,3, "A SHELL KNOCKS ONE BLOCK"
     print at 2,5, "OUT OF A WALL."
     fill TWall count 4 at 12,7
@@ -790,6 +972,22 @@ sub HowTo:
     print at 2,15, "SCRAP LOSES THE GAME."
     print at 2,17, "TIP: OPEN A HOLE, THEN"
     print at 2,19, "FIRE THROUGH IT."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    HideSprites
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    print at 2,3, "2 PLAYERS: CONTROLLER 1"
+    print at 2,5, "IS LEFT, CONTROLLER 2 IS"
+    print at 2,7, "RIGHT."
+    print at 2,10, "LEVEL: STICK LEFT OR RIGHT"
+    print at 2,12, "ON THE TITLE PICKS EASY,"
+    print at 2,14, "NORMAL OR HARD. IT ONLY"
+    print at 2,16, "CHANGES HOW FAST AND HOW"
+    print at 2,18, "WELL THE COMPUTER AIMS."
     print at 8,21, "PRESS THE BUTTON"
     PageWait
   end if

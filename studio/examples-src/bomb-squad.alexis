@@ -480,6 +480,7 @@ sub NewGame:
   PlaceObjects
   RedrawRow = 99
   Blown = 0
+  BuildMap
   Defused = 0
   Charges = 0
   Result = 0
@@ -516,23 +517,25 @@ sub PlayStep:
   T = frame
   El = T - LastFr
   LastFr = T
-  if El = 0 then El = 1
+  ' a pass that comes back before a new frame (the wait can return at once
+  ' after a long pass) does nothing
+  if El = 0 then return
   if El > 8 then El = 8
-  ' a scroll redraws the window two rows a frame (a whole window at once
-  ' took up to 7 frames); no move until it is done, the clock runs on
+  ' a scroll redraws the window half a window a frame (VRAM map rows; the
+  ' whole window at once took 1.4 frames); the cooldown and the clock run on
   if RedrawRow < Vh then
-    Jif += El
-    Ri = RedrawRow
-    DrawRow
-    inc Ri
-    if Ri < Vh then DrawRow
-    RedrawRow += 2
+    for Li = 0 to 9
+      if RedrawRow < Vh then
+        Ri = RedrawRow
+        DrawRow
+        inc RedrawRow
+      end if
+    next
     if RedrawRow >= Vh then
       RedrawRow = 99
       PutMode = 1
       PutAll
     end if
-    return
   end if
 pe_frames:
   if Jif < 255 then inc Jif
@@ -544,7 +547,6 @@ pe_frames:
   end if
   ' frames left over after the cooldown ran out still count for the clock
   if Jif < 200 then Jif += El
-  Cool = 0
   ' a pass of the C64 loop: the clock first (checked once per pass)
   if Jif >= 60 then
     Jif = 0
@@ -556,6 +558,8 @@ pe_frames:
       return
     end if
   end if
+  ' no move while the window is still being redrawn
+  if RedrawRow < Vh then return
   Moved = 0
   Dx = 0
   Dy = 0
@@ -593,6 +597,7 @@ sub TryMove:
     BlX[Blown] = Tx
     BlY[Blown] = Ty
     inc Blown
+    MapFloor
     dec Charges
     play sound SndBlast
     DrawCharges
@@ -673,24 +678,14 @@ end sub
 ' ---------------------------------------------------------------------------
 ' drawing
 
-' the whole window from the maze, row by row (RowBuf copied to the name table),
-' then the things on top
-' one window row (maze row Ty, from column Camx) into RowBuf, straight
-' from the room bits (WallAt per character was too slow)
+' The maze as tiles (55 x 35 bytes) is built once per game into spare VRAM
+' (the sprite pattern table after the one sprite, vram.spr_pat + 32); a
+' window row is then one VRAM->RAM copy and one RAM->VRAM copy, so a whole
+' scroll redraw fits in one frame (building it per character took 7).
+const MapOff = 32
+
+' maze row Ty, columns Tx .. Tx+27, into RowBuf (from the room bits)
 sub RowBuild:
-  Tx = Camx
-  if Ty = 0 then
-    for Ci2 = 0 to 27
-      RowBuf[Ci2] = TEdge
-    next
-    return
-  end if
-  if Ty >= 34 then
-    for Ci2 = 0 to 27
-      RowBuf[Ci2] = TEdge
-    next
-    return
-  end if
   K = Ty & 1
   Gy = Ty >> 1
   if K = 0 then dec Gy
@@ -698,24 +693,28 @@ sub RowBuild:
   Ci = Ci * 27
   for Ci2 = 0 to 27
     T = TEdge
-    if Tx > 0 then
-      if Tx < 54 then
-        V = Tx & 1
-        Gx = Tx >> 1
-        if K = 1 then
-          T = TFloor
-          if V = 0 then
-            dec Gx
-            Ni = Ci + Gx
-            V = Mz[Ni] & 1
-            if V = 0 then T = TWall
-          end if
-        else
-          T = TWall
-          if V = 1 then
-            Ni = Ci + Gx
-            V = Mz[Ni] & 2
-            if V > 0 then T = TFloor
+    if Ty > 0 then
+      if Ty < 34 then
+        if Tx > 0 then
+          if Tx < 54 then
+            V = Tx & 1
+            Gx = Tx >> 1
+            if K = 1 then
+              T = TFloor
+              if V = 0 then
+                dec Gx
+                Ni = Ci + Gx
+                V = Mz[Ni] & 1
+                if V = 0 then T = TWall
+              end if
+            else
+              T = TWall
+              if V = 1 then
+                Ni = Ci + Gx
+                V = Mz[Ni] & 2
+                if V > 0 then T = TFloor
+              end if
+            end if
           end if
         end if
       end if
@@ -723,23 +722,44 @@ sub RowBuild:
     RowBuf[Ci2] = T
     inc Tx
   next
-  ' blown walls are floor now
-  for J = 0 to 2
-    if J < Blown then
-      if BlY[J] = Ty then
-        if BlX[J] >= Camx then
-          V = BlX[J] - Camx
-          if V < 28 then RowBuf[V] = TFloor
-        end if
-      end if
-    end if
+  return
+end sub
+
+' the whole map, each row in two halves (28 + 27 characters)
+sub BuildMap:
+  for Ty = 0 to 34
+    VAddr = Ty
+    VAddr = VAddr * 55
+    VAddr += MapOff
+    Tx = 0
+    RowBuild
+    copy RowBuf count 28 to vram.spr_pat + VAddr
+    VAddr += 28
+    Tx = 28
+    RowBuild
+    copy RowBuf count 27 to vram.spr_pat + VAddr
   next
+  return
+end sub
+
+' a blown wall (Tx, Ty) becomes floor in the VRAM map
+sub MapFloor:
+  VAddr = Ty
+  VAddr = VAddr * 55
+  VAddr += Tx
+  VAddr += MapOff
+  RowBuf[0] = TFloor
+  copy RowBuf count 1 to vram.spr_pat + VAddr
   return
 end sub
 
 sub DrawRow:
   Ty = Camy + Ri
-  RowBuild
+  VAddr = Ty
+  VAddr = VAddr * 55
+  VAddr += Camx
+  VAddr += MapOff
+  copy vram.spr_pat + VAddr count Vw to RowBuf
   VAddr = Wy0 + Ri
   VAddr = VAddr << 5
   VAddr += Wx0
@@ -1214,7 +1234,7 @@ sub HowTo:
   fill TWall count 12 at 10,11
   put char THero at 11,10
   put char TBomb at 15,10
-  put char TBomb at 19,9
+  put char TBomb at 19,10
   put char TExitshut at 21,11
   print at 2,13, "THE WINDOW SHOWS PART OF"
   print at 2,15, "THE MAZE AND SCROLLS AS"

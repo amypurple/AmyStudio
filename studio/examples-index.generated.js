@@ -15889,7 +15889,7 @@ export const exampleManifest = [
   {
     "id": "gantry",
     "label": "Gantry (September/October 1989)",
-    "detail": "ColecoVision adaptation of Colin Adams' C64 machine-language game from the September/October 1989 ReRUN disk. Two players fire through eroding walls until the opposing gantry is reduced to scrap.",
+    "detail": "ColecoVision adaptation of Colin Adams' C64 machine-language game from the September/October 1989 ReRUN disk. Play against a delayed-reaction CPU with three difficulty levels or challenge a second player through two eroding walls.",
     "projectName": "GANTRY",
     "sourceLang": "amy",
     "memoryProfile": "colecovision-cartridge",
@@ -15904,6 +15904,7 @@ export const exampleManifest = [
       "commodore-64",
       "machine-language",
       "artillery",
+      "one-player",
       "two-player",
       "joystick"
     ],
