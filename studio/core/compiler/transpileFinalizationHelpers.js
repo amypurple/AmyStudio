@@ -1624,6 +1624,13 @@ export function finalizeAmyTranspile({
         : "")
     : initRoutine;
   const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), emittedInitRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, numericDefaultWidthHelperBlock, numericCompactHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
+  const stackHeadroomBytes = ramLayout?.stackTop != null
+    ? Math.max(0, ramLayout.stackTop - nextRamAddress)
+    : null;
+  const recommendedStackReserveBytes = ramLayout?.recommendedStackReserveBytes || 0;
+  if (stackHeadroomBytes != null && recommendedStackReserveBytes > 0 && stackHeadroomBytes < recommendedStackReserveBytes) {
+    compilerWarnings.push(`Only ${stackHeadroomBytes} byte(s) remain below the initial OS7 stack pointer; ${recommendedStackReserveBytes} are recommended. This is an advisory budget, not a guaranteed maximum stack depth.`);
+  }
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`
@@ -1634,6 +1641,7 @@ export function finalizeAmyTranspile({
   const overlayLogicalBytes = normalizedOverlayLayouts.reduce((sum, overlay) => sum + overlay.logicalBytes, 0);
   const overlaySavedBytes = normalizedOverlayLayouts.reduce((sum, overlay) => sum + overlay.savedBytes, 0);
   const totalPhysicalBytes = Math.max(0, nextRamAddress - (ramLayout?.userRamStart ?? 0x7100));
+  const totalCapacityBytes = Math.max(0, (ramLayout?.userRamEndExclusive ?? 0x7400) - (ramLayout?.userRamStart ?? 0x7100));
 
   return {
     ok: true,
@@ -1661,6 +1669,10 @@ export function finalizeAmyTranspile({
     },
     ramUsage: {
       usedBytes: totalPhysicalBytes,
+      capacityBytes: totalCapacityBytes,
+      freeBytes: Math.max(0, totalCapacityBytes - totalPhysicalBytes),
+      stackHeadroomBytes,
+      recommendedStackReserveBytes,
       ...(normalizedOverlayLayouts.length ? {
         permanentBytes: totalPhysicalBytes - overlayPhysicalBytes,
         logicalBytes: totalPhysicalBytes - overlayPhysicalBytes + overlayLogicalBytes,

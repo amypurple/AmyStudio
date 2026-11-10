@@ -365,9 +365,17 @@ async function main() {
   if (staticAbiRam?.routineCount > 0) {
     console.log(`ABI  ${staticAbiRam.totalBytes} RAM bytes (${staticAbiRam.parameterBytes} params + ${staticAbiRam.localBytes} locals) across ${staticAbiRam.routineCount} frameless routine(s)`);
   }
-  if (transpiled.ramUsage?.overlays?.length) {
-    console.log(`RAM  ${transpiled.ramUsage.usedBytes} physical bytes; overlays save ${transpiled.ramUsage.overlaySavedBytes} bytes (${transpiled.ramUsage.overlayLogicalBytes} logical in ${transpiled.ramUsage.overlayPhysicalBytes} physical)`);
+  if (transpiled.ramUsage) {
+    const capacity = transpiled.ramUsage.capacityBytes ?? transpiled.ramUsage.usedBytes;
+    const free = transpiled.ramUsage.freeBytes ?? Math.max(0, capacity - transpiled.ramUsage.usedBytes);
+    const headroom = transpiled.ramUsage.stackHeadroomBytes;
+    const recommended = transpiled.ramUsage.recommendedStackReserveBytes || 0;
+    console.log(`RAM  ${transpiled.ramUsage.usedBytes}/${capacity} bytes used, ${free} free${headroom != null ? `, ${headroom}-byte stack headroom` : ""}${recommended ? ` (${recommended} recommended)` : ""}`);
   }
+  if (transpiled.ramUsage?.overlays?.length) {
+    console.log(`RAM  overlays save ${transpiled.ramUsage.overlaySavedBytes} bytes (${transpiled.ramUsage.overlayLogicalBytes} logical in ${transpiled.ramUsage.overlayPhysicalBytes} physical)`);
+  }
+  for (const warning of transpiled.warnings || []) console.warn(`WARN ${warning}`);
   const generatedAsm = generateAsm(project, transpiled.asmBody, transpiled.assets || [], transpiled.metadata || {});
 
   if (opts.asm !== undefined) {

@@ -4,6 +4,8 @@ const ramLayouts = {
     label: "ColecoVision Legacy SDCC",
     userRamStart: 0x7132,
     userRamEndExclusive: 0x73B8,
+    stackTop: 0x73B9,
+    recommendedStackReserveBytes: 64,
     reserved: [
       { start: 0x7000, endExclusive: 0x7020, label: "_buffer32" },
       { start: 0x7020, endExclusive: 0x702B, label: "snd_addr" },
@@ -256,7 +258,9 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     lowRuntimeEnd,
     reserved,
     userRamStart: current,
-    userRamEndExclusive: 0x73B8
+    userRamEndExclusive: 0x73B8,
+    stackTop: 0x73B9,
+    recommendedStackReserveBytes: 64
   };
 }
 

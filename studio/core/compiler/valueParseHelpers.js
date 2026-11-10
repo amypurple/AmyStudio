@@ -62,6 +62,9 @@ export function createValueParseHelpers({
     if (!parts.length) {
       throw new Error(`Invalid declaration list: ${rawLine || source}`);
     }
+    if (parts.length > 1 && /^([A-Za-z_][A-Za-z0-9_]*)\s*\[[^\]]+\]\s*=/.test(parts[0])) {
+      throw new Error(`Array declarations accept one fill value, not an element list. Use a data bytes/words table instead: ${rawLine || source}`);
+    }
     return parts.map((part) => {
       const match = part.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\[(.+)\])?(?:\s*=\s*(.+))?$/);
       if (!match) {

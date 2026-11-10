@@ -131,6 +131,8 @@ Important practical note:
 
 Known BIOS issue:
 - `WRITE_VRAM` and `READ_VRAM` have the classic count bug when both `B` and `C` are non-zero
+- each nonzero high byte loses one 256-byte block; for example, a raw count of
+  257 transfers only one byte
 - patched helper wrappers in this repo compensate for that in general-case paths
 - small byte-sized compile-time counts can often bypass that wrapper safely when the compiler can prove the count stays within the non-buggy case
 
@@ -139,7 +141,10 @@ Known BIOS issue:
 ## CRAM Reference — $7000 to $73FF
 
 Official symbol names from Rev.5 Table 10-1.
-Amy's runtime uses `$7020–$73B7` for user variables; OS-reserved areas are preserved.
+Amy can allocate runtime state and user variables through `$73B7`. The OS7 stack
+starts at `$73B9` and descends toward them. Amy recommends 64 bytes of headroom,
+reports the actual headroom, and warns below that budget. This is not a guaranteed
+maximum stack depth: runtime stack-watermark tests remain the definitive evidence.
 
 ### User RAM boundary
 

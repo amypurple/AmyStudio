@@ -84,6 +84,15 @@ export function handleVramTextStatement({
     return null;
   }
 
+  function unknownSimpleName(tokens) {
+    for (const token of tokens) {
+      const name = String(token || "").trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+      if (!resolveValueType?.(name) && !Number.isInteger(tryEvaluateConstantExpression?.(name))) return name;
+    }
+    return null;
+  }
+
   function wrapVramUploadLines(lines) {
     // An explicit `nmi off` is the programmer's critical-section contract.
     // Do not nest the managed save/disable/restore wrapper inside that region.
@@ -1101,6 +1110,8 @@ export function handleVramTextStatement({
       emitLoadInt8ValueIntoPreserving
     });
     if (!loadInputs) {
+      const unknownName = unknownSimpleName([fillCountAt[1], fillCountAt[2], fillCountAt[3], fillCountAt[4]]);
+      if (unknownName) return { ok: false, handled: true, log: `Unknown name '${unknownName}' in ${rawLine}` };
       return { ok: false, handled: true, log: `fill Value count N at X,Y requires byte-sized coordinates, tile, and count: ${rawLine}` };
     }
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_FILL_AT"] };
@@ -1115,6 +1126,8 @@ export function handleVramTextStatement({
       emitLoadInt8ValueIntoPreserving
     });
     if (!loadInputs) {
+      const unknownName = unknownSimpleName([fillAt[1], fillAt[2], fillAt[3], fillAt[4]]);
+      if (unknownName) return { ok: false, handled: true, log: `Unknown name '${unknownName}' in ${rawLine}` };
       return { ok: false, handled: true, log: `fill at requires byte-sized coordinates, tile, and count: ${rawLine}` };
     }
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_FILL_AT"] };

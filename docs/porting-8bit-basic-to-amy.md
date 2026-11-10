@@ -333,13 +333,13 @@ up fast. Blueberries' computer opponent slowed the whole game down until
 
 ### The frame budget and the NMI
 
-The NMI handler reads the VDP status register. If a frame's work runs past
-the next NMI while a VRAM transfer is in progress, the status read resets
-the VDP address latch and the rest of the transfer lands at a wrong address:
-random characters or corrupted glyphs (Bunny Hop). Amy's generated transfer
-helpers now guard individual VRAM operations. For known, bounded updates,
-explicitly take ownership once instead of paying for a wrapper around every
-consecutive upload:
+The NMI handler normally reads the VDP status register. If a frame's work runs
+past the next NMI while an unmanaged VRAM control sequence is in progress, that
+status read resets the VDP address latch and the rest of the transfer can land
+at a wrong address. Amy's generated NMI now honors its VDP guard and defers the
+status read, so ordinary generated operations are protected. For a group of
+known, bounded updates, explicitly take ownership once instead of paying for a
+managed wrapper around each transfer:
 
 ```basic
 sub FrameUpdate:
@@ -353,8 +353,8 @@ end sub
 
 Turn `nmi on` again before any other `wait`, menu, `pause until press` or
 end screen. Inside the explicit region, the transpiler omits redundant generated
-VRAM wrappers. Keep the batch bounded: an overrun can still delay music, timers,
-controller service and other VBlank work.
+VRAM save/disable/restore wrappers. Keep the region short enough that pausing
+music, timers, input refresh and VBlank callbacks remains acceptable.
 
 ### Reading the generated assembly
 
@@ -364,8 +364,9 @@ and check:
 - no `call` to multiply or divide helpers inside loops,
 - no 32-bit compare where a byte compare was intended,
 - `push` / `pop` balanced inside loops you leave with `goto` or `return`,
-- the highest `AMY_UVAR_` address: Amy's RAM ends at `$73B8`, and the
-  stack grows down toward the variables. Keep at least about 150 bytes free.
+- the highest `AMY_UVAR_` address: Amy's allocatable RAM ends at `$73B7`, while
+  the OS7 stack starts at `$73B9` and grows down toward the variables. The compiler
+  recommends at least 64 bytes of headroom; runtime watermarking is stronger proof.
 
 ---
 

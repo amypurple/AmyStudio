@@ -533,6 +533,35 @@ export function createAssignmentArithmeticHelpers({
     const loadValue = emitLoadInt16IntoHL(valueToken);
     const storeTarget = emitStoreInt16FromHL(target);
     if (!loadValue || !storeTarget) return null;
+    if (Number.isInteger(countValue)) {
+      const count = Math.min(countValue, 16);
+      if (count === 0) return [...loadValue, ...storeTarget];
+      if (count === 16) {
+        const clearOrSign = direction === "right" && signedRight
+          ? ["    ld a,h", "    add a,a", "    sbc a,a", "    ld h,a", "    ld l,a"]
+          : ["    ld hl,0"];
+        return [...loadValue, ...clearOrSign, ...storeTarget];
+      }
+      const lines = [];
+      let remaining = count;
+      if (count >= 8) {
+        if (direction === "left") {
+          lines.push("    ld h,l", "    ld l,0");
+        } else if (signedRight) {
+          lines.push("    ld l,h", "    ld a,h", "    add a,a", "    sbc a,a", "    ld h,a");
+        } else {
+          lines.push("    ld l,h", "    ld h,0");
+        }
+        remaining -= 8;
+      }
+      const oneShift = direction === "left"
+        ? ["    add hl,hl"]
+        : signedRight
+          ? ["    sra h", "    rr l"]
+          : ["    srl h", "    rr l"];
+      for (let index = 0; index < remaining; index += 1) lines.push(...oneShift);
+      return [...loadValue, ...lines, ...storeTarget];
+    }
     const shiftLoop = makeGeneratedLabel("Shift16Loop");
     const countReady = makeGeneratedLabel("Shift16CountReady");
     const done = makeGeneratedLabel("Shift16Done");
