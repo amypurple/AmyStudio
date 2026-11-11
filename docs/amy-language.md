@@ -1907,6 +1907,12 @@ contract, not weaker default safety: outside that lexical region every managed
 upload remains protected. The region must not contain `wait`, a blocking menu,
 or code that depends on VBlank music, timers, controller refresh, or callbacks.
 
+When calling the low-level wrappers from inline assembly, always use paired
+`call AMY_VRAM_BEGIN` and `call AMY_VRAM_END` instructions. `AMY_VRAM_BEGIN`
+stores the previous VDP register-1 state on the stack and `AMY_VRAM_END`
+consumes it. Tail-jumping with `jp AMY_VRAM_END` therefore treats the caller's
+return address as saved VDP state and corrupts control flow.
+
 VBlanks that occur while NMI is disabled are not counted. The TMS9918A status
 register records only that at least one VBlank is pending, so `nmi on` cannot
 reconstruct how many frames elapsed. During a long `nmi off` calculation,

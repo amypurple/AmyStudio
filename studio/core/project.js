@@ -1832,6 +1832,14 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsControllers || caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
+    if (caps.needsSpinner) {
+      const noEiLabel = `${continueLabel}_NO_EI`;
+      lines.push("        ld a,(SPINNER_ENABLED)");
+      lines.push("        or a");
+      lines.push(`        jr z,${noEiLabel}`);
+      lines.push("        ei");
+      lines.push(`${noEiLabel}:`);
+    }
     lines.push("        pop af");
     lines.push("        ret");
     lines.push(`${continueLabel}:`);
@@ -1843,6 +1851,14 @@ function emitLegacyRuntime(lines, caps) {
     // CP preserves A, and $A5 complemented is the deferred-ack marker $5A.
     lines.push("        cpl");
     lines.push("        ld ($701F),a");
+    if (caps.needsSpinner) {
+      const noEiLabel = `${continueLabel}_NO_EI`;
+      lines.push("        ld a,(SPINNER_ENABLED)");
+      lines.push("        or a");
+      lines.push(`        jr z,${noEiLabel}`);
+      lines.push("        ei");
+      lines.push(`${noEiLabel}:`);
+    }
     lines.push("        pop af");
     lines.push("        ret");
     lines.push(`${continueLabel}:`);

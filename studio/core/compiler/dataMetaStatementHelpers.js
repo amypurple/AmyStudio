@@ -105,7 +105,11 @@ export function handleDataMetaStatement({
       const emitsInlineData = state.asmBuffer.some((entry) =>
         /^\s*(?:\.?d(?:b|w|s)|defb|defw|defs|incbin)\b/i.test(String(entry || ""))
       );
-      if (emitsInlineData) {
+      const substantiveAsm = state.asmBuffer.filter((entry) => !/^\s*(?:;|$)/.test(String(entry || "")));
+      const emitsOnlyEqu = substantiveAsm.length > 0 && substantiveAsm.every((entry) =>
+        /^\s*[A-Za-z_][A-Za-z0-9_]*\s+equ\b/i.test(String(entry || ""))
+      );
+      if (emitsInlineData || emitsOnlyEqu) {
         state.detachedAsmData.push(...state.asmBuffer);
       } else {
         body.push(...state.asmBuffer);
@@ -127,7 +131,21 @@ export function handleDataMetaStatement({
           log: `Inline ASM label '${asmLabel[1]}' collides with existing Amy ${collision}. Rename the ASM label, for example '${asmLabel[1]}Sound' or '${asmLabel[1]}Data'. Offending line: ${rawLine}`
         };
       }
-      state.asmBuffer = [...state.asmBuffer, state.rewriteUserSymbolsInAsmLine(asmLine)];
+      try {
+        const sourceMarker = Number.isInteger(state.sourceLineNumber)
+          ? [`; @amy-source-line ${state.sourceLineNumber}`]
+          : [];
+        state.asmBuffer = [...state.asmBuffer, ...sourceMarker, state.rewriteUserSymbolsInAsmLine(asmLine)];
+      } catch (error) {
+        const linePrefix = Number.isInteger(state.sourceLineNumber)
+          ? `Line ${state.sourceLineNumber}: `
+          : "";
+        return {
+          handled: true,
+          ok: false,
+          log: `${linePrefix}${String(error.message || error)} Offending line: ${rawLine.trim()}`
+        };
+      }
     }
     return { handled: true, ok: true };
   }
