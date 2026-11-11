@@ -342,6 +342,12 @@ export function createInlineStatementCompiler(ctx) {
               inlineLines = emitPrintAutoAt(normalizeExpression(inlinePrintAt[1]), inlinePrintAt[2], inlinePrintAt[3], sizeToken, (inlinePrintAt[4] || "").toLowerCase() === "width");
               if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline print statement: ${rawLineText}` };
             } else {
+              const inlineAsmCall = inlineStmt.match(/^call\s+asm\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+              if (inlineAsmCall) {
+                inlineLines = [`    call ${inlineAsmCall[1]}`];
+              } else if (/^call\s+asm\b/i.test(inlineStmt)) {
+                return { ok: false, lines: [], log: `Inline call asm currently accepts a label without register arguments; use a block if for 'with' arguments: ${rawLineText}` };
+              } else {
               const inlineRemovedCall = inlineStmt.match(/^(call|gosub)\b/i);
               if (inlineRemovedCall) {
                 return { ok: false, lines: [], log: `CALL/GOSUB syntax has been removed. Call subroutines directly by name instead: ${rawLineText}` };
@@ -443,6 +449,7 @@ export function createInlineStatementCompiler(ctx) {
                     }
                   }
                 }
+              }
               }
             }
           }

@@ -22,6 +22,7 @@ MainWait:
 wait
 goto MainWait`;
 const framed = compile(framedSource);
+assert.match(framed.asmBody, /AMY_MAIN_AFTER_SUB_[^:]*:[\s\S]{0,80}call AMY_UPROC_StoryPage/i);
 const routine = framed.asmBody.match(/AMY_UPROC_StoryPage:[\s\S]*?(?=\nAMY_ULBL_MainWait:)/)?.[0] || "";
 assert.match(routine, /push ix\s+push iy\s+call AMY_SET_GRAPHICS_MODE2_RAW\s+pop iy\s+pop ix/i);
 assert.match(routine, /push ix\s+push iy\s+call AMY_LOAD_DEFAULT_ASCII\s+pop iy\s+pop ix/i);
@@ -51,4 +52,22 @@ Done:
 goto Done`);
 assert.match(equ.asmBody, /^Foo equ \$1234$/m);
 
-console.log("Deepwarden stage 1 regressions: PASS (IX\/IY guards, spinner EI tails, detached EQU)");
+const inlineAsm = compile(`u8 A = 1
+if A = 1 then call asm Foo
+Idle:
+goto Idle
+asm {
+Foo:
+  ret
+}`);
+assert.match(inlineAsm.asmBody, /call Foo/i);
+
+const lateDeclaration = transpileAmyForTest(`cls
+u8 T = 0
+sub SetT
+  T = 4
+end sub`);
+assert.equal(lateDeclaration.ok, false);
+assert.match(lateDeclaration.log, /Global declarations must appear before executable main-program statements/i);
+
+console.log("Deepwarden stage 1 regressions: PASS (IX\/IY guards, resumed main, spinner EI tails, detached EQU, late-declaration diagnostic)");

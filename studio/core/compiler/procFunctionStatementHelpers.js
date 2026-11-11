@@ -17,6 +17,8 @@ export function handleProcFunctionStatement({
   normalizeRuntimeType,
   normalizeDeclaredType,
   openStartProc,
+  makeGeneratedLabel,
+  allowMainContinuation,
   addCompilerWarning
 }) {
   if (/^proc\b/i.test(line)) {
@@ -46,7 +48,13 @@ export function handleProcFunctionStatement({
       state.currentProc = null;
       state.currentFunction = null;
     } else if (state.currentProc === "Start") {
-      emitCurrentProcReturnLinesIfNeeded();
+      if (allowMainContinuation) {
+        const continuationLabel = makeGeneratedLabel("MainAfterSub");
+        body.push(`    jp ${continuationLabel}`);
+        state.pendingMainContinuation = continuationLabel;
+      } else {
+        emitCurrentProcReturnLinesIfNeeded();
+      }
       state.currentProc = null;
       state.currentFunction = null;
       state.openedImplicitStart = false;
@@ -144,7 +152,14 @@ export function handleProcFunctionStatement({
       return { handled: true, ok: true };
     }
     emitCurrentProcReturnLinesIfNeeded();
-    state.currentProc = null;
+    if (state.pendingMainContinuation) {
+      body.push(`${state.pendingMainContinuation}:`);
+      state.pendingMainContinuation = null;
+      state.currentProc = "Start";
+      state.openedImplicitStart = true;
+    } else {
+      state.currentProc = null;
+    }
     state.currentFunction = null;
     return { handled: true, ok: true };
   }

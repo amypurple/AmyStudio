@@ -127,6 +127,11 @@ export function handleDeclarationStatement({
     return numeric;
   }
 
+  function lateMainDeclarationError(scopeKeyword) {
+    if (state.currentProc !== "Start" || state.openedImplicitStart !== true || scopeKeyword === "ram" || scopeKeyword === "dim") return null;
+    return `Global declarations must appear before executable main-program statements; move this declaration above the first statement or prefix it with 'ram': ${rawLine}`;
+  }
+
   function emitImmediateStackBytes(offset, bytes) {
     return bytes.map((value, index) => {
       const slot = offset + index;
@@ -174,6 +179,8 @@ export function handleDeclarationStatement({
   const bcdDecl = line.match(/^(?:(ram|dim|local)\s+)?bcd\s+(digits)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
   if (bcdDecl) {
     const scopeKeyword = bcdDecl[1] ? bcdDecl[1].toLowerCase() : null;
+    const lateDeclaration = lateMainDeclarationError(scopeKeyword);
+    if (lateDeclaration) return { handled: true, ok: false, log: lateDeclaration };
     const digitCount = tryEvaluateCompileTimeNumericExpression(bcdDecl[3]);
     if (!Number.isInteger(digitCount) || digitCount < 1 || digitCount > 12) {
       return { handled: true, ok: false, log: `BCD digit count must be a compile-time constant from 1 to 12: ${rawLine}` };
@@ -272,6 +279,8 @@ export function handleDeclarationStatement({
   const scopedDecl = line.match(/^(?:(ram|dim|local)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
   if (scopedDecl && isSupportedRecordTypeName?.(scopedDecl[2])) {
     const scopeKeyword = scopedDecl[1] ? scopedDecl[1].toLowerCase() : null;
+    const lateDeclaration = lateMainDeclarationError(scopeKeyword);
+    if (lateDeclaration) return { handled: true, ok: false, log: lateDeclaration };
     const recordTypeName = scopedDecl[2];
     const recordInfo = getRecordTypeInfo?.(recordTypeName);
     if (!recordInfo) return { handled: true, ok: false, log: `Unknown record type '${recordTypeName}': ${rawLine}` };
@@ -396,6 +405,8 @@ export function handleDeclarationStatement({
   }
   if (scopedDecl && isSupportedSourceTypeName(scopedDecl[2])) {
     const scopeKeyword = scopedDecl[1] ? scopedDecl[1].toLowerCase() : null;
+    const lateDeclaration = lateMainDeclarationError(scopeKeyword);
+    if (lateDeclaration) return { handled: true, ok: false, log: lateDeclaration };
     const declaredType = normalizeDeclaredType(scopedDecl[2].toLowerCase());
     const type = normalizeRuntimeType(declaredType);
     const inferredLocal = !scopeKeyword && !!state.currentProc;

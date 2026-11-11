@@ -1323,3 +1323,158 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Evidence: `tools/test-for-runtime-limit-static-slot.mjs`,
   `tools/test-for-runtime-bound-capture.mjs`, and
   `tools/tiny-sound-composer/test-gearcoleco-audition.mjs`.
+
+## 2026-11-10 - Inline ASM symbol compatibility relies on exact casing
+
+- An audit of 711 source files and 1,067 inline `asm {}` blocks found 1,883
+  case-insensitive homonyms between Amy names and Z80 registers, but no exact-case
+  collision that the current symbol rewriter would alter.
+- Existing sources consistently distinguish Amy names such as `A`, `B`, or `H`
+  from lowercase Z80 registers. Four lowercase register-named declarations exist,
+  but none is referenced ambiguously inside inline ASM.
+- `$FACE` remains unambiguously hexadecimal because the rewriter explicitly
+  protects identifiers preceded by `$`; bare `FACE` may remain an Amy symbol.
+- Do not reserve all Z80 register names or make inline symbol rewriting
+  case-insensitive. Exact-case rewriting remains compatible; explicit `amy(Name)`
+  now resolves ambiguous register/condition names and reports unknown explicit
+  symbols at their `.alexis` line. Nearest-name suggestions for otherwise bare
+  unresolved assembler symbols remain separate future diagnostic work.
+- Evidence: `tools/audit-inline-asm-symbol-ambiguity.mjs` and
+  `build/claude-message-9d19bf014-20261109/tundor-asm-unknown-name.alexis`.
+
+## 2026-11-10 - Compound shifts and byte-arithmetic compares retain their real width
+
+- A signed 16-bit compound expression shifted right must use arithmetic shift
+  semantics just like a named `i16`; shift counts of 16 or more saturate to the
+  sign or zero instead of being rejected only because the operand is compound.
+- Unsigned byte arithmetic used in a comparison is evaluated as a 16-bit value,
+  not wrapped to eight bits and not expanded through 32-bit scratch buffers.
+  Signed, fixed-point, BCD, mixed-domain, and true 32-bit comparisons retain their
+  conservative existing paths.
+- Low stack headroom remains advisory. The warning now cites the measured 36-38
+  byte OS7 depth and names variables intersecting a 40-byte risk window; it does
+  not promise or impose a universal 64-byte stack requirement.
+- VBlanks while NMI is disabled cannot be counted after the fact because the VDP
+  exposes only a pending bit. Long `nmi off` regions pause frame-owned services;
+  exact catch-up requires explicit polling/counting during the workload.
+- Evidence: `tools/test-inline-voxpcm-variable-shift.mjs`,
+  `tools/test-u8-arithmetic-compare.mjs`, and
+  `tools/test-stack-headroom-warning.mjs`.
+
+## 2026-11-10 - Half-register writes invalidate full-pair reload proofs
+
+- A local optimizer proof may remove a repeated `LD HL,(source)` only when no
+  intervening instruction writes `HL`, `H`, or `L`. This includes shifts,
+  rotates, `SET`, and `RES`, not only loads and increments.
+- Keep half-register constant tracking independent: changing only `L` can still
+  leave a known `H` and permit a later `LD L,n` shortening. The conservative
+  full-pair barrier therefore belongs specifically to duplicate-reload proof.
+- Evidence: `tools/test-optimizer-half-register-proof.mjs` and
+  `tools/test-optimizer-word-reload-runtime.mjs`; Claude's Bomb Squad repro now
+  produces `Mi=114` and `Mb=1` under all five optimization profiles.
+
+## 2026-11-10 - Byte arithmetic comparisons stay in their proven domain
+
+- Comparing a `u8` against `u8 + constant` uses the byte addition carry to
+  distinguish an in-range result from the exact 256..510 range. This retains
+  mathematical comparison semantics without 16- or 32-bit scratch code.
+- A difference between byte-domain values is promoted to signed 16-bit, whose
+  -255..255 range is sufficient. True wide, fixed-point, BCD, and mixed-domain
+  expressions keep their conservative paths.
+- Five-profile runtime tests cover overflow, reversed operands, equality, and
+  relational operators. The State Update runtime benchmark retains checksum
+  1478 while Balanced falls from 1,185 bytes/3,661 average cycles to 1,154
+  bytes/3,206 cycles.
+- Evidence: `tools/test-u8-arithmetic-compare.mjs` and
+  `tools/test-state-update-benchmark.mjs`.
+
+## 2026-11-10 - Inline ASM diagnostics retain Amy source lines
+
+- Generated inline ASM carries comment-only Amy source markers. When assembly
+  fails, the CLI locates the failing instruction and reports its `.alexis`
+  line, source text, and the `amy(Name)` escape for Amy symbols.
+- The assembler library returns its structured error without printing a second
+  JavaScript stack trace. Ambiguous register/condition names still require
+  explicit `amy(Name)` and hexadecimal `$FACE` remains unambiguous.
+- Evidence: `tools/test-inline-asm-symbols.mjs` and
+  `tools/test-inline-asm-cli-diagnostic.mjs`.
+# 2026-11-10 - Carry/borrow byte comparisons accepted after external validation
+
+- Exact `u8` sum/difference comparisons were validated against 186 expression
+  forms, 432 value combinations, and all five optimization profiles with zero
+  mismatches and no 32-bit comparison scratch references.
+- The r4 compiler produced byte-identical ROMs for the 38-game validation set.
+- Tundor's layout-sensitive failure was game-side: `update sprites` ran outside
+  VBlank after a near-full-frame update and exposed a partially copied SAT to
+  the bot. Moving the upload immediately after the frame wait closes the issue;
+  do not attribute it to comparison code generation.
+- Evidence: `build/claude-r4-validation/r4-validation.md` and
+  `build/claude-r4-validation/r3-tundor-layout-sensitive.md`.
+
+# 2026-11-11 - Standalone MegaCart and exact word bulk/arithmetic paths
+
+- `amyc --target colecovision-megacart` now emits a complete 128 KB MegaCart
+  image with the standalone program in the final fixed bank. GearColeco detects
+  and executes it at all five optimization profiles.
+- `fill array` now supports 16-bit arrays. Counts are elements and values are
+  stored little-endian; runtime RAM checks cover all five profiles.
+- Unsigned 16-bit division and modulo by constant powers of two lower to exact
+  shifts and masks. This deliberately supersedes the older size-only `/2`
+  policy when a constant-only program can avoid the roughly 4,900-cycle general
+  division path and its runtime dependency.
+- Evidence: `tools/test-megacart-cli-runtime.mjs` and
+  `tools/test-u16-divmod-fill-runtime.mjs`.
+
+# 2026-11-11 - r5 external validation and bounded bulk fills
+
+- External real-OS7 validation found zero mismatches across 10,120 unsigned
+  16-bit division/modulo checks per profile and byte-identical output for the
+  38-game regression set. Constant powers of two are roughly 40 times faster.
+- `fill array ... count N` now rejects a compile-time count larger than the
+  destination length for byte and word arrays. The prior behavior overwrote
+  adjacent RAM and predates word-array support.
+- Unsigned `/1` and `mod 1` now fold to the dividend and zero respectively.
+- Standalone MegaCart bank imports now fail before assembly with a project-mode
+  diagnostic. A source-only MegaCart intentionally has empty switchable banks;
+  imported bank data requires the multifile linker.
+- Evidence: `build/claude-r5-validation/r5-validation.md`,
+  `tools/test-u16-divmod-fill-runtime.mjs`, and
+  `tools/test-megacart-cli-diagnostic.mjs`.
+
+# 2026-11-11 - r6 accepted and diagnostic consistency
+
+- External r6 validation accepts all changes: 10,120 arithmetic checks per
+  profile pass, all 38 game ROMs remain byte-identical, and exact-size byte and
+  word fills preserve adjacent guards.
+- Zero-count word fills now match byte fills and compile as no-ops.
+- Standalone bank-import diagnostics apply even when the caller forgets the
+  MegaCart target, preventing undefined trampoline errors under the default
+  cartridge target.
+- Evidence: `build/claude-r6-validation/r6-validation.md`.
+
+# 2026-11-11 - r7 accepted as the stable experimental handoff
+
+- External real-OS7 validation accepts r7 with 38/38 game ROMs byte-identical
+  to r6 and no new warnings.
+- Zero-count `u16` fills emit no code and preserve all tested guards across all
+  five optimization profiles, including variable fill values.
+- Default-target bank imports now fail with the intended source-level MegaCart
+  project diagnostic rather than an undefined assembler trampoline.
+- Evidence: `build/claude-r7-validation/r7-validation.md`.
+
+# 2026-11-11 - Main code resumes safely after explicit sub definitions
+
+- When an explicit `sub ... end sub` interrupts an already-open implicit main
+  region, code generation now jumps around the routine body and resumes the
+  same `Start` flow after `end sub`. A first `call asm` after the routine also
+  opens/resumes `Start`; it can no longer be emitted after the routine's `ret`
+  and silently removed as unreachable.
+- Traditional terminal routines that end with `return` and omit `end sub`
+  retain their established behavior. Explicit `sub start:` declarations also
+  retain true local declarations.
+- An unqualified global declaration after implicit main code now reports a
+  direct ordering diagnostic; `ram`/`dim` remains the explicit global form.
+- One-line `if ... then call asm Label` is accepted. Register-bearing ASM calls
+  still require a block `if`, with a specific diagnostic.
+- Evidence: `tools/test-main-sub-layout-runtime.mjs`,
+  `tools/test-deepwarden-stage1-regressions.mjs`, and `node tools/amy-qa.mjs quick`.

@@ -1701,6 +1701,7 @@ export function transpileAmyCore(sourceText, deps) {
   let hasRuntimeRamDeclarations = false;
   let startRuntimeInitInsertIndex = -1;
   let openedImplicitStart = false;
+  let pendingMainContinuation = null;
   let ensureProcLocalMap = null;
   let ensureProcFrame = null;
   let emitAdjustSpBy = null;
@@ -5231,6 +5232,7 @@ export function transpileAmyCore(sourceText, deps) {
           compileTimeConstants,
           rewriteUserSymbolsInExpression,
           get currentProc() { return currentProc; },
+          get openedImplicitStart() { return openedImplicitStart; },
           isValidSymbolName,
           isReservedAmyIdentifier,
           describeGlobalNameCollision,
@@ -5290,6 +5292,14 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const routineEndsExplicitly = /^sub\s+/i.test(line) && (() => {
+        for (let probe = sourceLineNumber + 1; probe < lines.length; probe += 1) {
+          const probeLine = String(lines[probe] || "").replace(/'.*$/, "").trim();
+          if (/^end\s+sub$/i.test(probeLine)) return true;
+          if (/^(?:sub|function)\s+/i.test(probeLine)) return false;
+        }
+        return false;
+      })();
       const procFunctionStmt = handleProcFunctionStatement({
         line,
         rawLine,
@@ -5301,6 +5311,8 @@ export function transpileAmyCore(sourceText, deps) {
           set currentFunction(value) { currentFunction = value; },
           get openedImplicitStart() { return openedImplicitStart; },
           set openedImplicitStart(value) { openedImplicitStart = value; },
+          get pendingMainContinuation() { return pendingMainContinuation; },
+          set pendingMainContinuation(value) { pendingMainContinuation = value; },
           isStaticAbiProcCandidate: (name) => staticAbiProcCandidates.has(name)
         },
         isSupportedSourceTypeName,
@@ -5317,6 +5329,8 @@ export function transpileAmyCore(sourceText, deps) {
         normalizeRuntimeType,
         normalizeDeclaredType,
         openStartProc,
+        makeGeneratedLabel,
+        allowMainContinuation: routineEndsExplicitly,
         addCompilerWarning
       });
       if (procFunctionStmt.handled) {
@@ -5345,6 +5359,7 @@ export function transpileAmyCore(sourceText, deps) {
     {
       const callAsmStmt = line.match(/^call\s+asm\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+with\s+(.+))?$/i);
       if (callAsmStmt) {
+        ensureImplicitStartForExecutable();
         const label = callAsmStmt[1];
         const argsText = callAsmStmt[2]?.trim();
         const lines = [];
