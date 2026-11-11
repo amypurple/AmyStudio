@@ -1756,7 +1756,7 @@ reverse array Board
 reverse array Board from 2 count 6
 ```
 
-Current limits: `u8` arrays. `count` and slice values must be compile-time constants. A fixed `fill array` count from 1 to 255 uses a compact Z80 `DJNZ` loop. `fill record array ... field ...` fills one byte-sized `u8`, `i8`, or `bool` field across a fixed record array with a constant or byte value, advancing directly by the record size.
+`fill array` accepts `u8`/`i8` byte arrays and `u16`/`i16` word arrays. For word arrays, the value is written little-endian and `count` is a number of elements, not bytes. Counts and slice values must be compile-time constants; word fills accept 0 to 256 elements, with zero compiling as a no-op. A fixed fill uses a compact Z80 `DJNZ` loop. `fill record array ... field ...` fills one byte-sized `u8`, `i8`, or `bool` field across a fixed record array with a constant or byte value, advancing directly by the record size.
 The record array may be global or a record-array field qualified through a record or overlay.
 
 Single-line `if ... then` accepts the same qualified RAM buffers as normal statements
@@ -1906,6 +1906,14 @@ automatic `AMY_VRAM_BEGIN` / `AMY_VRAM_END` wrappers. This is an optimization
 contract, not weaker default safety: outside that lexical region every managed
 upload remains protected. The region must not contain `wait`, a blocking menu,
 or code that depends on VBlank music, timers, controller refresh, or callbacks.
+
+VBlanks that occur while NMI is disabled are not counted. The TMS9918A status
+register records only that at least one VBlank is pending, so `nmi on` cannot
+reconstruct how many frames elapsed. During a long `nmi off` calculation,
+`frame`, Tiny Sound, OS7 sounds, timers, controller refresh, and `on vblank`
+callbacks therefore pause rather than catching up afterward. Keep such regions
+short, split long rendering across frames, or explicitly poll and count VBlank
+status in a documented hardware-specific ASM engine.
 
 ```basic
 nmi off
@@ -3510,6 +3518,27 @@ asm {
 }
 ```
 
+Names that are also Z80 registers or condition codes must be explicit. Use
+`amy(Name)` for the Amy symbol and the ordinary lowercase spelling for the Z80
+register or condition:
+
+```basic
+u8 A = 3
+u16 HL = 0
+
+asm {
+  ld a,(amy(A))      ; Amy variable A
+  ld hl,amy(HL)      ; address of Amy variable HL
+  inc a              ; Z80 register A
+}
+```
+
+The compiler reports a bare ambiguous name at its `.alexis` source line instead
+of allowing the assembler to guess. `amy(Name)` is valid only inside inline
+`asm {}` and requires a known global, constant, data block, label, asset, or Amy
+routine. Hexadecimal literals remain unambiguous: `$FACE` is a number, while bare
+`FACE` may be an Amy symbol named `FACE`.
+
 An external `include asm` file is already assembler source, so use the generated names shown in
 the expanded ASM view:
 
@@ -4150,6 +4179,17 @@ For complete starter layouts, see **Choose the correct Coleco project form**
 in `amy-optimization-cookbook.md`. The examples browser includes native EOS
 and OS7+EOS hybrid programs; `studio/examples-src/megacart-bank-demo.amy.json`
 is the multi-output MegaCart reference.
+
+The command-line compiler can also package a standalone Amy source directly as
+a hardware-detectable 128 KB MegaCart:
+
+```text
+node tools/amyc.mjs game.alexis --target colecovision-megacart --output game.rom
+```
+
+This places the ordinary program in the final fixed 16 KB bank and leaves the
+switchable banks empty. Use a multifile MegaCart project when code or assets
+must occupy those switchable banks.
 
 MegaCart declarations intentionally follow the established CVBasic vocabulary so ports do not need a second spelling:
 

@@ -201,6 +201,17 @@ export function createExpressionComputeHelpers({
       const remainder = leftValue - quotient * rightValue;
       return emitLoadInt16ValueIntoHL(String(remainder));
     }
+    if (!signed && rightValue === 1) return ["    ld hl,0"];
+    if (!signed && Number.isInteger(rightValue) && rightValue >= 2 && rightValue <= 0x8000
+      && (rightValue & (rightValue - 1)) === 0) {
+      const loadLeft = emitLoadInt16AstIntoHL(node.left, "u16");
+      if (!loadLeft) return null;
+      const mask = rightValue - 1;
+      if (mask <= 0xFF) {
+        return [...loadLeft, "    ld a,l", `    and ${mask}`, "    ld l,a", "    ld h,0"];
+      }
+      return [...loadLeft, "    ld a,h", `    and ${(mask >> 8) & 0xFF}`, "    ld h,a"];
+    }
     const loadLeft = emitLoadInt16AstIntoHL(node.left, signed ? "i16" : "u16");
     const loadRight = emitLoadRoutineInputFromAst({
       routineName: signed ? "AMY_I16_MOD" : "AMY_U16_DIV",
@@ -436,6 +447,22 @@ export function createExpressionComputeHelpers({
     }
     if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType)) return null;
     const signed = isSignedDeclaredType(leftType.declaredType) || isSignedDeclaredType(rightType.declaredType) || isSignedDeclaredType(preferredDeclaredType);
+    const rightValue = tryEvaluateAstInteger(node.right);
+    if (!signed && rightValue === 1) return emitLoadInt16AstIntoHL(node.left, "u16");
+    if (!signed && Number.isInteger(rightValue) && rightValue >= 2 && rightValue <= 0x8000
+      && (rightValue & (rightValue - 1)) === 0) {
+      const loadLeft = emitLoadInt16AstIntoHL(node.left, "u16");
+      if (!loadLeft) return null;
+      const shiftCount = Math.log2(rightValue);
+      const lines = [...loadLeft];
+      if (shiftCount >= 8) {
+        lines.push("    ld l,h", "    ld h,0");
+        for (let index = 8; index < shiftCount; index += 1) lines.push("    srl l");
+      } else {
+        for (let index = 0; index < shiftCount; index += 1) lines.push("    srl h", "    rr l");
+      }
+      return lines;
+    }
     const loadLeft = emitLoadInt16AstIntoHL(node.left, signed ? "i16" : "u16");
     const loadRight = emitLoadRoutineInputFromAst({
       routineName: signed ? "AMY_I16_DIV" : "AMY_U16_DIV",
@@ -1101,16 +1128,16 @@ export function createExpressionComputeHelpers({
         const shiftCount = tryEvaluateAstInteger(node.right);
         const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
         if (!loadLeft) return null;
-        const declaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
+        const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+        const signedRightShift = node.op === ">>" && isSignedDeclaredType(leftType?.declaredType);
         if (node.op === ">>" && shiftCount === 8) {
-          const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
           if (!isSignedDeclaredType(leftType?.declaredType) && !isAnyFixedDeclaredType(leftType?.declaredType)) {
             return [...loadLeft, "    ld l,h", "    ld h,0"];
           }
         }
         const oneShift = node.op === "<<"
           ? ["    add hl,hl"]
-          : isSignedDeclaredType(declaredType)
+          : signedRightShift
             ? ["    sra h", "    rr l"]
             : ["    srl h", "    rr l"];
         if (shiftCount === null) {
@@ -1141,7 +1168,13 @@ export function createExpressionComputeHelpers({
             `${done}:`
           ];
         }
-        if (shiftCount < 0 || shiftCount > 15) return null;
+        if (shiftCount < 0) return null;
+        if (shiftCount >= 16) {
+          if (signedRightShift) {
+            return [...loadLeft, "    ld a,h", "    add a,a", "    sbc a,a", "    ld l,a", "    ld h,a"];
+          }
+          return [...loadLeft, "    ld hl,0"];
+        }
         const shiftLines = [];
         for (let i = 0; i < shiftCount; i += 1) {
           shiftLines.push(...oneShift);

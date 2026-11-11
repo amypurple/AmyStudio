@@ -8,6 +8,7 @@ import { normalizeCompressionIncludes } from "./compressionIncludes.js";
 function isColecoOs7MemoryProfile(memoryProfile) {
   return memoryProfile === "colecovision_legacy_sdcc"
     || memoryProfile === "colecovision-cartridge"
+    || memoryProfile === "colecovision-megacart"
     || memoryProfile === "adam-os7-eos-drivers";
 }
 

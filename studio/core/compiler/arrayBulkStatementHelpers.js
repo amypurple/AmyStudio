@@ -8,6 +8,7 @@ export function handleArrayBulkStatement({
   symbolOrValue,
   emitLoadInt8Into,
   emitLoadInt8ValueInto,
+  emitLoadInt16IntoHL,
   emitLoadArrayAddressIntoHL,
   getByteArrayBufferInfo,
   parseRecordFieldRef,
@@ -157,15 +158,14 @@ export function handleArrayBulkStatement({
   if (fillArray) {
     const arrName = fillArray[1];
     const arrInfo = getByteArrayBufferInfo?.(arrName, 1) || getRuntimeInfo(arrName);
-    if (!arrInfo || !["array", "array_field"].includes(arrInfo.kind) || arrInfo.elementType !== "int8") {
-      return { ok: false, handled: true, log: `fill array requires a byte array variable: ${rawLine}` };
+    if (!arrInfo || !["array", "array_field"].includes(arrInfo.kind) || !["int8", "int16"].includes(arrInfo.elementType)) {
+      return { ok: false, handled: true, log: `fill array requires a byte or word array variable: ${rawLine}` };
     }
     const countToken = fillArray[3];
     if (countToken && getRuntimeInfo(countToken)) {
       return { ok: false, handled: true, log: `fill array count must be a constant, not a RAM variable: ${rawLine}` };
     }
     const loadValue = emitLoadInt8ValueInto?.("a", fillArray[2]) || emitLoadInt8Into("a", fillArray[2]);
-    if (!loadValue) return { ok: false, handled: true, log: `fill array: invalid fill value: ${rawLine}` };
     const baseAddress = emitLoadArrayAddressIntoHL(arrName, "0");
     if (!baseAddress) return { ok: false, handled: true, log: `fill array: cannot resolve array base: ${rawLine}` };
     const fillLoop = makeGeneratedLabel("FillArrayLoop");
@@ -175,6 +175,36 @@ export function handleArrayBulkStatement({
     const fixedCount = /^\$[0-9A-Fa-f]+$/.test(fixedCountText)
       ? parseInt(fixedCountText.slice(1), 16)
       : (/^[0-9]+$/.test(fixedCountText) ? parseInt(fixedCountText, 10) : null);
+    if (Number.isInteger(fixedCount) && fixedCount > arrInfo.length) {
+      return { ok: false, handled: true, log: `fill array ${arrName} count ${fixedCount} exceeds its ${arrInfo.length} elements: ${rawLine}` };
+    }
+    if (fixedCount === 0) return { ok: true, handled: true, lines: [] };
+    if (arrInfo.elementType === "int16") {
+      if (!Number.isInteger(fixedCount) || fixedCount < 1 || fixedCount > 256) {
+        return { ok: false, handled: true, log: `fill word array requires a fixed count of 1..256 elements: ${rawLine}` };
+      }
+      const loadWord = emitLoadInt16IntoHL?.(fillArray[2]);
+      if (!loadWord) return { ok: false, handled: true, log: `fill word array: invalid 16-bit fill value: ${rawLine}` };
+      const wordLoop = makeGeneratedLabel("FillArrayWordLoop");
+      return {
+        ok: true,
+        handled: true,
+        lines: [
+          ...loadWord,
+          "    push hl",
+          ...baseAddress,
+          "    pop de",
+          `    ld b,${fixedCount & 0xFF}`,
+          `${wordLoop}:`,
+          "    ld (hl),e",
+          "    inc hl",
+          "    ld (hl),d",
+          "    inc hl",
+          `    djnz ${wordLoop}`
+        ]
+      };
+    }
+    if (!loadValue) return { ok: false, handled: true, log: `fill array: invalid fill value: ${rawLine}` };
     if (Number.isInteger(fixedCount) && fixedCount >= 1 && fixedCount <= 255) {
       const byteLoop = makeGeneratedLabel("FillArrayByteLoop");
       const fixedValueText = String(fillArray[2]).trim();

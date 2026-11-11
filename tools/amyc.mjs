@@ -26,6 +26,7 @@ import {
   rewriteImmediateByteTempCoordinateUses as rewriteImmediateByteTempCoordinateUsesCore
 } from "../studio/core/compilerFrontend.js";
 import { transpileAmySource } from "../studio/core/amyCompiler.js";
+import { buildMegaCartImage } from "../studio/core/megaCartImage.js";
 import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtimeCallHelpers.js";
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "../studio/core/compiler/addressHelpers.js";
@@ -360,6 +361,21 @@ async function main() {
     console.error("Transpile failed: " + log);
     process.exit(1);
   }
+  const standaloneMegaCartImports = transpiled.metadata?.megaCart?.imports || [];
+  if (standaloneMegaCartImports.length) {
+    const imports = standaloneMegaCartImports
+      .map((entry) => `${entry.name} from bank ${entry.bank}`)
+      .join(", ");
+    const targetHint = opts.target === "colecovision-megacart"
+      ? ""
+      : ` Select --target colecovision-megacart for fixed-bank-only builds.`;
+    const message = `Standalone Amy source cannot resolve MegaCart banked imports (${imports}).${targetHint} ` +
+      `Use a multifile MegaCart .amy.json project with switchable-bank outputs and exported symbols; ` +
+      `see studio/examples-src/megacart-bank-demo.amy.json.`;
+    writeBuildReport(opts, { ok: false, source: srcPath, stage: "transpile", diagnostics: [diagnosticFromLog(srcPath, "transpile", message)] });
+    console.error(`Compile failed: ${message}`);
+    process.exit(1);
+  }
   transpiled.metadata = { ...(transpiled.metadata || {}), buildTarget: buildContext };
   const staticAbiRam = transpiled.ramUsage?.staticAbi;
   if (staticAbiRam?.routineCount > 0) {
@@ -401,12 +417,44 @@ async function main() {
     optimizerEnabled: profile.optimizerEnabled, optimizerConfig: profile.optimizerConfig
   });
   if (!assembled.ok) {
-    const err = String(assembled.log || "").split("\n").filter((l) => /error/i.test(l)).slice(0, 3).join(" | ");
+    let err = String(assembled.log || "").split("\n").filter((l) => /error/i.test(l)).slice(0, 3).join(" | ");
+    const generatedLine = Number.parseInt(err.match(/\bLine\s+(\d+)\b/i)?.[1] || "", 10);
+    if (Number.isInteger(generatedLine) && generatedLine > 0) {
+      const asmLines = generatedAsm.split(/\r?\n/);
+      const failedInstruction = err.match(/\bLine\s+\d+:\s*(.+?)\s+-\s+[^|]+/i)?.[1]?.trim();
+      const normalizeAsm = (line) => String(line || "").replace(/;.*/, "").replace(/\s+/g, "").toLowerCase();
+      const failedNormalized = normalizeAsm(failedInstruction);
+      const matchingLines = failedNormalized
+        ? asmLines.map((line, index) => normalizeAsm(line) === failedNormalized ? index : -1).filter((index) => index >= 0)
+        : [];
+      const markerStart = matchingLines.length === 1
+        ? matchingLines[0]
+        : Math.min(generatedLine - 1, asmLines.length - 1);
+      for (let index = markerStart; index >= 0; index -= 1) {
+        const marker = asmLines[index].match(/^\s*;\s*@amy-source-line\s+(\d+)\s*$/i);
+        if (!marker) continue;
+        const amyLine = Number.parseInt(marker[1], 10);
+        const sourceLine = sourceText.split(/\r?\n/)[amyLine - 1]?.trim() || "";
+        err = `Amy line ${amyLine} (inline ASM): ${err}. ` +
+          `Check the symbol spelling; use amy(Name) when referring to an Amy variable or constant.${sourceLine ? ` Source: ${sourceLine}` : ""}`;
+        break;
+      }
+    }
     writeBuildReport(opts, { ok: false, source: srcPath, stage: "assemble", diagnostics: [diagnosticFromLog(srcPath, "assemble", err || assembled.log)] });
     console.error("Assemble failed (" + opts.opt + "): " + (err || "see assembler log"));
     process.exit(1);
   }
-  const rom = assembled.binary || assembled.bytes || new Uint8Array();
+  let rom = assembled.binary || assembled.bytes || new Uint8Array();
+  if (opts.target === "colecovision-megacart") {
+    try {
+      rom = buildMegaCartImage({ sizeKb: 128, fixedBank: rom }).image;
+    } catch (error) {
+      const message = error?.message || String(error);
+      writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });
+      console.error(`Compile failed: ${message}`);
+      process.exit(1);
+    }
+  }
   if (opts.target === "colecovision-cartridge" && rom.length > 32 * 1024) {
     const capacity = 32 * 1024;
     const overflow = rom.length - capacity;

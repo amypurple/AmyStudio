@@ -89,8 +89,11 @@ export function analyzeGlobalScratchClobbers(sourceText, stripComment = (line) =
       const rhs = written && line.includes("=") ? line.slice(line.indexOf("=") + 1) : line;
       const decisionRead = /^(?:if|elseif|while|until)\b/i.test(line);
       if (decisionRead) {
+        const decisionText = /^(?:if|elseif)\b/i.test(line)
+          ? line.replace(/^(?:if|elseif)\s+/i, "").split(/\s+then\b/i, 1)[0]
+          : line.replace(/^(?:while|until)\s+/i, "");
         for (const [key, info] of clobbered) {
-          if (new RegExp(`\\b${globals.get(key).name}\\b`, "i").test(rhs)) {
+          if (new RegExp(`\\b${globals.get(key).name}\\b`, "i").test(decisionText)) {
             warnings.push(`line ${lineNumber}: ${globals.get(key).name} controls a decision after a call to ${info.called} at line ${info.lineNumber}, which may also write it; re-read it or use a local scratch variable`);
             clobbered.delete(key);
           }
@@ -1978,10 +1981,9 @@ export function transpileAmyCore(sourceText, deps) {
         ) {
           addCompilerWarning("display off only disables the display bit here; NMI remains enabled in the known VDP register 1 state. In normal Amy code, prefer screen off unless you intentionally want a blank display with interrupts still running.");
         }
-        if (redundant) {
-          addCompilerWarning(`${classification.label} leaves the tracked VDP register 1 bits unchanged in this uninterrupted R1 sequence and may be omitted from generated ASM.`);
-        }
-        if (previousSameCategory && previousSameCategory.label !== classification.label) {
+        // Redundant pure modifiers are already removed below. Reporting every
+        // routine startup choice obscures actionable display/NMI diagnostics.
+        if (previousSameCategory && previousSameCategory.label !== classification.label && classification.category !== "nmi") {
           addCompilerWarning(`${classification.label} supersedes earlier ${previousSameCategory.label} (line ${previousSameCategory.lineNumber}) for the same VDP register 1 setting category in this straight-line flow.`);
         }
         vdpR1ModifierContexts = vdpR1ModifierContexts.filter((entry) => entry.category !== classification.category);
@@ -4186,6 +4188,7 @@ export function transpileAmyCore(sourceText, deps) {
     resolveDeclaredValueType,
     isSignedDeclaredType,
     parseExpressionAst,
+    renderExpressionAst,
     emitComputeExpressionAst: (...args) => emitComputeExpressionAst(...args),
     inferLiteralDeclaredType,
     declaredTypeBitWidth,
@@ -5092,6 +5095,7 @@ export function transpileAmyCore(sourceText, deps) {
           set cartridgeMeta(value) { cartridgeMeta = value; },
           get hasRamOverlay() { return overlayDefinitions.size > 0; },
           get detachedAsmData() { return romData; },
+          get sourceLineNumber() { return sourceLineNumber + 1; },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,
           rewriteUserSymbolsInAsmLine,
@@ -5696,6 +5700,7 @@ export function transpileAmyCore(sourceText, deps) {
         currentGraphicsMode,
         emitLoadInt8Into,
         emitLoadInt8ValueInto,
+        emitLoadInt16IntoHL,
         emitLoadInt8ValueIntoPreserving,
         tryEvaluateConstantExpression,
         formatHex16,
@@ -6576,6 +6581,7 @@ export function transpileAmyCore(sourceText, deps) {
         symbolOrValue,
         emitLoadInt8Into,
         emitLoadInt8ValueInto,
+        emitLoadInt16IntoHL,
         emitLoadArrayAddressIntoHL,
         getByteArrayBufferInfo,
         parseRecordFieldRef,
