@@ -15,6 +15,8 @@ const repoRoot = resolve(extensionRoot, "..", "..");
 const stageRoot = join(extensionRoot, "toolchain");
 const entry = join(repoRoot, "tools", "amyc.mjs");
 const copied = new Set();
+const extensionManifest = JSON.parse(readFileSync(join(extensionRoot, "package.json"), "utf8"));
+const toolchainVersion = String(extensionManifest.version || "unversioned");
 
 mkdirSync(join(extensionRoot, "dist"), { recursive: true });
 
@@ -80,6 +82,8 @@ writeFileSync(
   join(stageRoot, "VERSION.json"),
   `${JSON.stringify({
     schema: "amy-vscode-toolchain-v1",
+    version: toolchainVersion,
+    label: `amy-studio-vscode-${toolchainVersion}`,
     stagedAt: new Date().toISOString(),
     compilerModules: copied.size,
     compilerHash: hash.digest("hex"),

@@ -1529,3 +1529,11 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Evidence: `tools/test-function-goto-return-boundary.mjs`, Claude's
   `Gravitron-and-r10-bugs.zip`, the 42-ROM handoff corpus, and Gravitron's
   byte-identical 20,864-byte balanced build.
+
+# 2026-11-12 - Staged toolchains retain a visible version identity
+
+- `tools/vscode-amy-studio/scripts/stage-toolchain.mjs` now writes the extension
+  version and a stable `amy-studio-vscode-X.Y.Z` label into `VERSION.json`.
+- Handoff packages may add `baseCommit`, `handoff` and `status`, but regenerating
+  the ordinary toolchain can no longer leave only an anonymous hash and timestamp.
+- The bundled-toolchain test rejects a staged package without this identity.

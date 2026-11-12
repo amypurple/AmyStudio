@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -11,6 +11,9 @@ const compiler = process.env.AMY_VSCODE_COMPILER
   : resolve(root, "toolchain", "tools", "amyc.mjs");
 
 assert.ok(existsSync(compiler), `Missing staged compiler: ${compiler}`);
+const version = JSON.parse(readFileSync(resolve(root, "toolchain", "VERSION.json"), "utf8"));
+assert.match(version.version || "", /^\d+\.\d+\.\d+$/, "Staged toolchain must carry its package version");
+assert.equal(version.label, `amy-studio-vscode-${version.version}`, "Staged toolchain label must identify its version");
 const zx0Module = resolve(root, "toolchain", "studio", "vendor", "retrocompress-lite", "js", "codecs", "zx0.js");
 const compressionModule = resolve(root, "toolchain", "studio", "core", "compression.js");
 const soundNotesModule = resolve(root, "toolchain", "studio", "core", "colecoSoundNotes.js");
