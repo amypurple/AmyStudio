@@ -44,6 +44,8 @@ export function isBreakpointEligibleLine(rawLine) {
   const line = String(rawLine || "").trim();
   if (!line || line.startsWith("'") || /^rem(?:\s|$)/i.test(line)) return false;
   if (/^(?:project|cartridge|memory|asset|const|enum|record|data|end\s+(?:data|enum|record)|include(?:\s+asm)?|define|if\s+defined|else\s+defined|end\s+defined)\b/i.test(line)) return false;
+  if (/^picture\s+[A-Za-z_][A-Za-z0-9_]*\s*:?\s*$/i.test(line) && !/^picture\s+screen\s*$/i.test(line)) return false;
+  if (/^end\s+picture\b/i.test(line)) return false;
   if (/^(?:u8|i8|u16|i16|u32|i32|fixed|ufixed|fp5|bool|bcd|timer)\b/i.test(line)) return false;
   if (/^(?:end\s+sub|end\s+function)\b/i.test(line)) return false;
   if (/^(?:else|end\s+if)\s*$/i.test(line)) return false;
@@ -64,6 +66,7 @@ export function breakpointEligibleLineNumbers(sourceText) {
         || (block === "record" && /^end\s+record\b/i.test(line))
         || (block === "enum" && /^end\s+enum\b/i.test(line))
         || (block === "data" && /^end\s+data\b/i.test(line))
+        || (block === "picture" && /^end\s+picture\b/i.test(line))
       ) block = "";
       continue;
     }
@@ -76,6 +79,10 @@ export function breakpointEligibleLineNumbers(sourceText) {
     }
     if (/^enum\b/i.test(line)) { block = "enum"; continue; }
     if (/^data\b/i.test(line) && !/=/.test(line)) { block = "data"; continue; }
+    if (/^picture\s+[A-Za-z_][A-Za-z0-9_]*\s*:?\s*$/i.test(line) && !/^picture\s+screen\s*$/i.test(line)) {
+      block = "picture";
+      continue;
+    }
     if (/^(?:sub|function)\b/i.test(line)) {
       inRoutine = true;
       eligible.add(index + 1);

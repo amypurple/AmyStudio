@@ -1505,3 +1505,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Current experimental compiler result: 40 identical, 0 different, 0 failed.
 - Evidence: `tools/regression-corpus/claude-2026-11-11/README.md` and
   `tools/regression-corpus/claude-2026-11-11/check.mjs`.
+
+# 2026-11-11 - Language, documentation and editor surfaces synchronized
+
+- Alexis-Z80 and the clean AmyStudio repository use byte-identical compiler,
+  CLI, language-reference and optimization-cookbook sources.
+- The Web Studio autocomplete includes the current `poke(P, Value)` form, and
+  source breakpoints treat multiline `picture ... end picture` declarations as
+  data rather than executable statements.
+- VS Code 0.1.16 is staged from the current compiler instead of its obsolete
+  snapshot. Its bundled-toolchain test now uses the supported CLI output flags.
+- Evidence: `node tools/amy-qa.mjs quick`, editor syntax/breakpoint tests, and
+  `npm run package --prefix tools/vscode-amy-studio`.

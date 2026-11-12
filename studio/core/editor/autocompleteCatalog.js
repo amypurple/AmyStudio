@@ -379,6 +379,7 @@ export const AMY_AUTOCOMPLETE = [
   ["data Levels words = @Level0, @Level1", "Declare an indexable ROM word/address table"],
   ["P = Levels[LevelNum]", "Load one ROM word-table entry into a u16 pointer variable"],
   ["Code = peek(P)", "Read one byte from the ROM/RAM address held in a u16 expression"],
+  ["poke(P, Code)", "Write one byte to the RAM address held in a u16 expression"],
   ["data Charset bytes", "Start a multiline ROM u8 block"],
   ["data Smile sprite16", "Start a visual 16x16 sprite bitmap block"],
   ["data PlayerMeta metasprite layers 3", "Start ROM pattern/color frames for one layered sprite actor"],
