@@ -19,6 +19,10 @@ u8 Div = 200, DivA = 5
 i8 LoopValue = 0
 u8 UpCount = 0, DownCount = 0
 u8 BranchValue = 166, EmptyElse = 0, EmptyThen = 0
+i16 SignedDivisor = -23635, ShiftLiteral = 0
+u16 MixedModulo = 0, MixedQuotient = 0, MixedWord[1]
+u8 UnsignedDividend = 255, MixedFunction = 0, MixedEquality = 0
+i8 PositiveSignedDivisor = 1, SignedZero = 0, MixedByte[1]
 AC[0] |= (($905A * W1) & $3F)
 Mask(1, 5)
 Shift8 >>= 1
@@ -41,10 +45,25 @@ if BranchValue = 166 then
 else
   EmptyThen = 9
 end if
+MixedModulo = 47198 mod ((SignedDivisor & 7) + 1)
+MixedQuotient = UnsignedDividend / PositiveSignedDivisor
+ShiftLiteral = 52369 >> 1
+MixedByte[0] = 1
+if MixedWord[0] == MixedByte[0] then
+  MixedEquality = 1
+end if
+if MixedResult(0, 0) <= SignedZero then
+  MixedFunction = 1
+else
+  MixedFunction = 2
+end if
 loop forever
 sub Mask(u8 Q, u8 R):
   C1 &= (R & $F)
   return
+
+function MixedResult(i16 Left, i8 Right) as u8
+  return 1
 `, "utf8");
 
 const biosPath = process.env.AMY_OS7_BIOS
@@ -94,6 +113,11 @@ for (const profile of profiles) {
     assert.equal(byte("downcount"), 2, `${profile}: signed i8 downward FOR boundary`);
     assert.equal(byte("emptyelse"), 0, `${profile}: empty ELSEIF branch must reach END IF`);
     assert.equal(byte("emptythen"), 0, `${profile}: empty THEN branch must skip ELSE`);
+    assert.equal(word("mixedmodulo"), 2, `${profile}: unsigned literal modulo signed expression`);
+    assert.equal(word("mixedquotient"), 255, `${profile}: unsigned byte divided by positive signed byte`);
+    assert.equal(word("shiftliteral"), 26184, `${profile}: unsigned literal right shift into signed destination`);
+    assert.equal(byte("mixedequality"), 0, `${profile}: mixed-width array equality preserves both operands`);
+    assert.equal(byte("mixedfunction"), 2, `${profile}: mixed-sign function comparison preserves both operands`);
   } finally {
     core.destroy();
   }

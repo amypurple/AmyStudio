@@ -526,7 +526,7 @@ export function createControlFlowHelpers(ctx) {
       if (signedOnLeft) {
         lines.push("    push de", ...loadUnsigned, "    pop de", "    ex de,hl");
       } else {
-        lines.push(...loadUnsigned);
+        lines.push("    push de", ...loadUnsigned, "    pop de");
       }
       if (!emitPreparedWordCompareBranch(lines, operator, asmLabel, false)) return null;
       lines.push(`${done}:`);

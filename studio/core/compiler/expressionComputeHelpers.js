@@ -189,10 +189,12 @@ export function createExpressionComputeHelpers({
   }
 
   function emitLoadModulo16AstIntoHL(node, preferredDeclaredType = null) {
-    const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
-    const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
+    const leftType = resolveExpressionAstComputationType(node.left);
+    const rightType = resolveExpressionAstComputationType(node.right);
     if (!leftType || !rightType) return null;
-    const signed = isSignedDeclaredType(leftType.declaredType) || isSignedDeclaredType(rightType.declaredType) || isSignedDeclaredType(preferredDeclaredType);
+    // Division and remainder interpret the dividend in its own domain. The
+    // destination and divisor must not reinterpret an unsigned dividend.
+    const signed = isSignedDeclaredType(leftType.declaredType);
     const leftValue = tryEvaluateAstInteger(node.left);
     const rightValue = tryEvaluateAstInteger(node.right);
     if (leftValue !== null && rightValue !== null) {
@@ -426,9 +428,9 @@ export function createExpressionComputeHelpers({
   }
 
   function emitLoadInt16RuntimeDivideAstIntoHL(node, preferredDeclaredType = null) {
-    const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
-    const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
-    if (leftType?.runtimeType !== "int16" || !["int8", "int16"].includes(rightType?.runtimeType)) return null;
+    const leftType = resolveExpressionAstComputationType(node.left);
+    const rightType = resolveExpressionAstComputationType(node.right);
+    if (!["int8", "int16"].includes(leftType?.runtimeType) || !["int8", "int16"].includes(rightType?.runtimeType)) return null;
     const fixedType = isAnyFixedDeclaredType(preferredDeclaredType)
       ? normalizeDeclaredType(preferredDeclaredType)
       : null;
@@ -446,7 +448,7 @@ export function createExpressionComputeHelpers({
       ];
     }
     if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType)) return null;
-    const signed = isSignedDeclaredType(leftType.declaredType) || isSignedDeclaredType(rightType.declaredType) || isSignedDeclaredType(preferredDeclaredType);
+    const signed = isSignedDeclaredType(leftType.declaredType);
     const rightValue = tryEvaluateAstInteger(node.right);
     if (!signed && rightValue === 1) return emitLoadInt16AstIntoHL(node.left, "u16");
     if (!signed && Number.isInteger(rightValue) && rightValue >= 2 && rightValue <= 0x8000
@@ -1128,7 +1130,7 @@ export function createExpressionComputeHelpers({
         const shiftCount = tryEvaluateAstInteger(node.right);
         const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
         if (!loadLeft) return null;
-        const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+        const leftType = resolveExpressionAstComputationType(node.left);
         const signedRightShift = node.op === ">>" && isSignedDeclaredType(leftType?.declaredType);
         if (node.op === ">>" && shiftCount === 8) {
           if (!isSignedDeclaredType(leftType?.declaredType) && !isAnyFixedDeclaredType(leftType?.declaredType)) {
